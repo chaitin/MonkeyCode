@@ -350,11 +350,26 @@ func objectAccessBase(cfg config.ObjectStorageConfig) string {
 	if err != nil {
 		return strings.TrimRight(base, "/") + "/" + bucket
 	}
+	if endpointHostHasBucket(u, bucket) {
+		return u.String()
+	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	if len(parts) == 0 || parts[len(parts)-1] != bucket {
 		u.Path = strings.TrimRight(u.Path, "/") + "/" + bucket
 	}
 	return u.String()
+}
+
+func endpointHostHasBucket(u *url.URL, bucket string) bool {
+	if u == nil {
+		return false
+	}
+	bucket = strings.ToLower(strings.Trim(bucket, "/"))
+	if bucket == "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return strings.HasPrefix(host, bucket+".")
 }
 
 func presignSigningEndpoint(cfg config.ObjectStorageConfig) string {

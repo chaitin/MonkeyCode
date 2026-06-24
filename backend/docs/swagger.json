@@ -110,6 +110,47 @@
                 }
             }
         },
+        "/api/v1/server/config": {
+            "get": {
+                "description": "返回当前服务的产品形态、SaaS 区域和版本信息，用于前端区分部署形态和升级状态。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【服务】配置信息"
+                ],
+                "summary": "获取服务配置",
+                "responses": {
+                    "200": {
+                        "description": "获取成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ServerConfig"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/skills": {
             "get": {
                 "security": [
@@ -7274,6 +7315,62 @@
                 }
             }
         },
+        "/api/v1/users/oauth/{provider}/login": {
+            "get": {
+                "description": "根据 provider 生成第三方授权地址。provider 仅支持 google、github。redirect_url 可选，必须是站内相对路径；登录成功后后端会跳转到该路径，空值默认 /console/。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】第三方登录"
+                ],
+                "summary": "发起 Google/GitHub OAuth 登录",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "登录提供方，仅支持 google、github",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "登录成功后的站内跳转路径，例如 /console/tasks；只允许站内相对路径",
+                        "name": "redirect_url",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.OAuthLoginResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "provider 或 redirect_url 无效",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/oidc/callback": {
             "get": {
                 "description": "处理身份源回调并创建 MonkeyCode 登录会话",
@@ -9869,6 +9966,7 @@
             "type": "string",
             "enum": [
                 "baizhi",
+                "google",
                 "github",
                 "gitlab",
                 "gitea",
@@ -9880,6 +9978,7 @@
             },
             "x-enum-varnames": [
                 "UserPlatformBaizhi",
+                "UserPlatformGoogle",
                 "UserPlatformGithub",
                 "UserPlatformGitLab",
                 "UserPlatformGitea",
@@ -11094,6 +11193,9 @@
                 "created_images": {
                     "type": "integer"
                 },
+                "created_rules": {
+                    "type": "integer"
+                },
                 "created_skills": {
                     "type": "integer"
                 },
@@ -11101,6 +11203,9 @@
                     "type": "string"
                 },
                 "updated_images": {
+                    "type": "integer"
+                },
+                "updated_rules": {
                     "type": "integer"
                 },
                 "updated_skills": {
@@ -11642,6 +11747,14 @@
                 }
             }
         },
+        "domain.OAuthLoginResp": {
+            "type": "object",
+            "properties": {
+                "auth_url": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.OpenAIError": {
             "type": "object",
             "properties": {
@@ -11695,6 +11808,28 @@
                     "$ref": "#/definitions/domain.SkillScope"
                 }
             }
+        },
+        "domain.ProductEdition": {
+            "type": "string",
+            "enum": [
+                "saas",
+                "private"
+            ],
+            "x-enum-varnames": [
+                "ProductEditionSaaS",
+                "ProductEditionPrivate"
+            ]
+        },
+        "domain.ProductRegion": {
+            "type": "string",
+            "enum": [
+                "cn",
+                "global"
+            ],
+            "x-enum-varnames": [
+                "ProductRegionCN",
+                "ProductRegionGlobal"
+            ]
         },
         "domain.Project": {
             "type": "object",
@@ -12133,6 +12268,47 @@
                 "email": {
                     "description": "要绑定的邮箱地址",
                     "type": "string"
+                }
+            }
+        },
+        "domain.ServerConfig": {
+            "type": "object",
+            "properties": {
+                "current_version": {
+                    "description": "CurrentVersion 当前服务版本。",
+                    "type": "string",
+                    "example": "v1.2.3"
+                },
+                "edition": {
+                    "description": "Edition 当前产品形态：SaaS 或私有化版本。",
+                    "enum": [
+                        "saas",
+                        "private"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.ProductEdition"
+                        }
+                    ],
+                    "example": "saas"
+                },
+                "latest_version": {
+                    "description": "LatestVersion 最新可用版本。",
+                    "type": "string",
+                    "example": "v1.2.4"
+                },
+                "region": {
+                    "description": "Region SaaS 区域，国内 SaaS 返回 cn，海外 SaaS 返回 global。",
+                    "enum": [
+                        "cn",
+                        "global"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.ProductRegion"
+                        }
+                    ],
+                    "example": "cn"
                 }
             }
         },

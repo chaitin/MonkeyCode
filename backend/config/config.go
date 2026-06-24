@@ -80,6 +80,8 @@ type Config struct {
 	// 微信配置（开放平台 OAuth 登录 + 公众号消息推送）
 	Wechat WechatConfig `mapstructure:"wechat"`
 
+	OAuthLogin OAuthLoginConfig `mapstructure:"oauth_login"`
+
 	InitTeam InitTeam `mapstructure:"init_team"`
 
 	// 语音识别配置（阿里云 NLS，用于一段录音 POST 接口）
@@ -94,6 +96,18 @@ type Config struct {
 type ReviewAgent struct {
 	ModelID string `mapstructure:"model_id"`
 	Image   string `mapstructure:"image"`
+}
+
+type OAuthLoginConfig struct {
+	Google OAuthLoginProviderConfig `mapstructure:"google"`
+	Github OAuthLoginProviderConfig `mapstructure:"github"`
+}
+
+type OAuthLoginProviderConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	ClientID     string `mapstructure:"client_id"`
+	ClientSecret string `mapstructure:"client_secret"`
+	RedirectURL  string `mapstructure:"redirect_url"`
 }
 
 // AliyunOSSConfig is structurally identical to mcai-backend's config.OSSConfig
@@ -393,6 +407,14 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("wechat.mp.qa.base_url", "")
 	v.SetDefault("wechat.mp.qa.api_key", "")
 	v.SetDefault("wechat.mp.qa.model", "deepseek-v3.2")
+	v.SetDefault("oauth_login.google.enabled", false)
+	v.SetDefault("oauth_login.google.client_id", "")
+	v.SetDefault("oauth_login.google.client_secret", "")
+	v.SetDefault("oauth_login.google.redirect_url", "")
+	v.SetDefault("oauth_login.github.enabled", false)
+	v.SetDefault("oauth_login.github.client_id", "")
+	v.SetDefault("oauth_login.github.client_secret", "")
+	v.SetDefault("oauth_login.github.redirect_url", "")
 
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)

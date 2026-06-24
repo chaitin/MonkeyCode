@@ -237,6 +237,27 @@ other = "Account is not a member of this team"
 [err-password-login-disabled]
 other = "Password login is disabled for this team"
 
+[err-oauth-login-provider-disabled]
+other = "This login method is not enabled"
+
+[err-oauth-login-state-invalid]
+other = "Login state has expired, please try again"
+
+[err-oauth-login-email-required]
+other = "The third-party account did not return a usable email"
+
+[err-oauth-login-email-unverified]
+other = "The third-party account email is not verified"
+
+[err-oauth-login-role-denied]
+other = "This account is not allowed to use third-party login"
+
+[err-oauth-login-failed]
+other = "Third-party login failed"
+
+[err-oauth-login-redirect-invalid]
+other = "Login redirect URL is invalid"
+
 [err-has-invalid-entry]
 other = "Invalid entry exists"
 

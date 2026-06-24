@@ -65,6 +65,18 @@ func TestObjectStorageDefaults(t *testing.T) {
 	if cfg.HostInstaller.BundlePath != "installer/{{.arch}}/host.tgz" {
 		t.Fatalf("host_installer.bundle_path = %q", cfg.HostInstaller.BundlePath)
 	}
+	if cfg.OAuthLogin.Google.Enabled {
+		t.Fatal("oauth_login.google.enabled default = true, want false")
+	}
+	if cfg.OAuthLogin.Google.ClientID != "" {
+		t.Fatalf("oauth_login.google.client_id = %q, want empty", cfg.OAuthLogin.Google.ClientID)
+	}
+	if cfg.OAuthLogin.Github.Enabled {
+		t.Fatal("oauth_login.github.enabled default = true, want false")
+	}
+	if cfg.OAuthLogin.Github.ClientID != "" {
+		t.Fatalf("oauth_login.github.client_id = %q, want empty", cfg.OAuthLogin.Github.ClientID)
+	}
 }
 
 func TestTaskCreateReqTTLCanBeConfiguredByEnv(t *testing.T) {
