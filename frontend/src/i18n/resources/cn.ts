@@ -144,6 +144,8 @@ const cn = {
       title: "选择登录方式",
       baizhi: "百智云登录 - 推荐",
       oidc: "企业登录",
+      google: "Google 登录",
+      github: "GitHub 登录",
       password: "账号密码登录",
       signup: "快速注册",
     },

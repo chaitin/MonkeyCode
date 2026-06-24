@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { IconFolder } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import type { Dbv2Cursor, DomainTeamProjectItem } from "@/api/Api"
+import type { Dbv2Cursor, GithubComChaitinMonkeyCodeBackendDomainTeamProjectItem as DomainTeamProjectItem } from "@/api/Api"
 import {
   ManagerListEmpty,
   ManagerListLoading,

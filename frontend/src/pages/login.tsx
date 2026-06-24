@@ -24,9 +24,11 @@ import { apiRequest } from "@/utils/requestUtils"
 import { Link, useNavigate } from "react-router-dom"
 import { captchaChallenge } from "@/utils/common"
 import { ArrowLeft, Eye, EyeOff } from "lucide-react"
+import { IconBrandGithub, IconBrandGoogle } from "@tabler/icons-react"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
-import type { DomainTeamOIDCPublicConfigResp, GithubComGoYokoWebResp } from "@/api/Api"
+import type { GithubComChaitinMonkeyCodeBackendDomainTeamOIDCPublicConfigResp as DomainTeamOIDCPublicConfigResp, GithubComGoYokoWebResp } from "@/api/Api"
 import { useTranslation } from "react-i18next"
+import { useAppRuntime } from "@/components/app-runtime-provider"
 
 const USER_STORAGE_KEY = 'login_user'
 const MANAGER_STORAGE_KEY = 'login_manager'
@@ -47,6 +49,9 @@ export default function LoginPage({
   const [defaultOIDCConfig, setDefaultOIDCConfig] = React.useState<DomainTeamOIDCPublicConfigResp | null>(null)
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const { serverConfig } = useAppRuntime()
+  const serverRegion = serverConfig?.region as string | undefined
+  const isEnRegion = serverRegion === "en"
   const inviterId = typeof window !== 'undefined' ? (localStorage.getItem('ic') || '') : ''
   const userLoginHref = `/api/v1/users/login?redirect=&inviter_id=${inviterId}`
   const defaultOIDCLoginURL = defaultOIDCConfig?.enabled ? defaultOIDCConfig.login_url : ''
@@ -178,7 +183,35 @@ export default function LoginPage({
                   {userLoginView === 'choices' ? (
                     <div className="mt-1 flex flex-col gap-4">
                       <div className="text-sm font-medium">{t("login.choices.title")}</div>
-                      {!IS_OFFLINE_EDITION && (
+                      {!IS_OFFLINE_EDITION && isEnRegion && (
+                        <div className="flex flex-col gap-3">
+                          <Button
+                            type="button"
+                            size="lg"
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => {
+                              ensureTermsAccepted()
+                            }}
+                          >
+                            <IconBrandGoogle className="size-4" />
+                            {t("login.choices.google")}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="lg"
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => {
+                              ensureTermsAccepted()
+                            }}
+                          >
+                            <IconBrandGithub className="size-4" />
+                            {t("login.choices.github")}
+                          </Button>
+                        </div>
+                      )}
+                      {!IS_OFFLINE_EDITION && !isEnRegion && (
                         <Button size="lg" className="w-full" asChild>
                           <a
                             href={userLoginHref}
@@ -215,7 +248,7 @@ export default function LoginPage({
                       >
                         {t("login.choices.password")}
                       </Button>
-                      {!IS_OFFLINE_EDITION && (
+                      {!IS_OFFLINE_EDITION && !isEnRegion && (
                         <Button size="lg" variant="secondary" className="w-full" asChild>
                           <a
                             href={userLoginHref}

@@ -1,4 +1,4 @@
-import type { DomainSkill } from "@/api/Api"
+import type { DomainSkillListItem } from "@/api/Api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -13,6 +13,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 export const ALL_SKILLS_TAG = "__all__"
+
+type DomainSkill = DomainSkillListItem & { tags?: string[] }
 
 /**
  * SkillForPicker augments the swagger-generated DomainSkill with the

@@ -43,7 +43,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { IconTrash } from "@tabler/icons-react";
-import { type DomainVirtualMachine, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TaskflowVirtualMachineStatus } from "@/api/Api";
+import { type DomainVirtualMachine, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, GithubComChaitinMonkeyCodeBackendPkgTaskflowVirtualMachineStatus as TaskflowVirtualMachineStatus } from "@/api/Api";
 import {
   AlertDialog,
   AlertDialogAction,

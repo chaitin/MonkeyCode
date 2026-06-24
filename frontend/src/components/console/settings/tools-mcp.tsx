@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Blocks, MoreVertical, Plus, ServerCog } from "lucide-react"
 
-import { Api, type DomainCreateUserMCPUpstreamReq, type DomainMCPTool, type DomainMCPUpstream } from "@/api/Api"
+import { Api, type GithubComChaitinMonkeyCodeBackendDomainCreateUserMCPUpstreamReq as DomainCreateUserMCPUpstreamReq, type GithubComChaitinMonkeyCodeBackendDomainMCPTool as DomainMCPTool, type GithubComChaitinMonkeyCodeBackendDomainMCPUpstream as DomainMCPUpstream } from "@/api/Api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {

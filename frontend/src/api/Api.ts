@@ -22,7 +22,7 @@ export enum ConstsGitPlatform {
   GitPlatformGitee = "gitee",
   GitPlatformCodeup = "codeup",
   GitPlatformCnb = "cnb",
-  GitPlatformAtomGit = "atomgit",
+  GitPlatformAtomgit = "atomgit",
   GitPlatformInternal = "internal",
 }
 
@@ -197,11 +197,11 @@ export enum ConstsTransactionKind {
 
 export enum ConstsUserPlatform {
   UserPlatformBaizhi = "baizhi",
+  UserPlatformApple = "apple",
   UserPlatformGithub = "github",
   UserPlatformGitLab = "gitlab",
   UserPlatformGitea = "gitea",
   UserPlatformGitee = "gitee",
-  UserPlatformOIDC = "oidc",
 }
 
 export enum ConstsUserRole {
@@ -249,7 +249,6 @@ export interface DomainAddTeamAdminReq {
 }
 
 export interface DomainAddTeamAdminResp {
-  password?: string;
   user?: DomainTeamUser;
 }
 
@@ -269,29 +268,6 @@ export interface DomainAddTeamImageReq {
   group_ids: string[];
   name: string;
   remark?: string;
-}
-
-export interface DomainAddTeamSkillReq {
-  content: string;
-  description: string;
-  group_ids?: string[];
-  name: string;
-  skill_md_path?: string;
-  source_label: string;
-  source_type: string;
-  tags?: string[];
-}
-
-export interface DomainAddTeamSkillPackageReq {
-  content: string;
-  description: string;
-  file: File;
-  group_ids?: string;
-  name: string;
-  skill_md_path?: string;
-  source_label: string;
-  source_type: string;
-  tags?: string;
 }
 
 export interface DomainAddTeamModelReq {
@@ -329,6 +305,12 @@ export interface DomainAddTeamUserResp {
 export interface DomainAddTeamUserWithPasswordResp {
   passwords?: DomainTeamUserPassword[];
   users?: DomainTeamUser[];
+}
+
+export interface DomainAppleLoginReq {
+  authorization_code?: string;
+  full_name?: string;
+  identity_token: string;
 }
 
 export interface DomainApplyPortReq {
@@ -376,12 +358,6 @@ export interface DomainAvailableModelResp {
   /** 积分/1K output tokens（账面值） */
   output_price?: number;
   support_image?: boolean;
-}
-
-export interface DomainBindQRCodeResp {
-  expire_seconds?: number;
-  qrcode_url?: string;
-  ticket?: string;
 }
 
 export interface DomainBranch {
@@ -551,34 +527,6 @@ export interface DomainCreateTaskReq {
   system_prompt?: string;
   /** 任务类型 */
   task_type?: ConstsTaskType;
-}
-
-export interface DomainImportTeamExtensionPackageResp {
-  created_images?: number;
-  created_skills?: number;
-  package_id?: string;
-  updated_images?: number;
-  updated_skills?: number;
-  version?: string;
-}
-
-export interface DomainCreateTeamMCPUpstreamReq {
-  description?: string;
-  enabled?: boolean;
-  group_ids?: string[];
-  headers?: DomainMCPHeader[];
-  name: string;
-  slug: string;
-  url: string;
-}
-
-export interface DomainCreateUserMCPUpstreamReq {
-  description?: string;
-  enabled?: boolean;
-  headers?: DomainMCPHeader[];
-  name?: string;
-  slug?: string;
-  url?: string;
 }
 
 export interface DomainCreateVMReq {
@@ -879,10 +827,6 @@ export interface DomainListTeamImagesResp {
   images?: DomainTeamImage[];
 }
 
-export interface DomainListTeamSkillsResp {
-  skills?: DomainTeamSkill[];
-}
-
 export interface DomainListTeamModelsResp {
   models?: DomainTeamModel[];
 }
@@ -891,18 +835,10 @@ export interface DomainListTeamOAuthSitesResp {
   sites?: DomainTeamOAuthSite[];
 }
 
-export interface DomainListTeamMCPUpstreamsResp {
-  items?: DomainTeamMCPUpstream[];
-}
-
 export interface DomainListTransactionResp {
   /** 分页信息 */
   page?: Dbv2PageInfo;
   transactions?: DomainTransactionLog[];
-}
-
-export interface DomainListUserMCPUpstreamsResp {
-  items?: DomainMCPUpstream[];
 }
 
 export interface DomainListUserPlaygroundPostResp {
@@ -910,42 +846,6 @@ export interface DomainListUserPlaygroundPostResp {
   page?: Dbv2Cursor;
   /** 广场帖子列表 */
   playground_posts?: DomainPlaygroundPost[];
-}
-
-export interface DomainMCPHeader {
-  name?: string;
-  value?: string;
-}
-
-export interface DomainMCPTool {
-  created_at?: number;
-  description?: string;
-  enabled?: boolean;
-  id?: string;
-  input_schema?: Record<string, any>;
-  name?: string;
-  namespaced_name?: string;
-  price?: number;
-  scope?: GithubComChaitinMonkeyCodeBackendDbMcptoolScope;
-}
-
-export interface DomainMCPUpstream {
-  created_at?: number;
-  description?: string;
-  enabled?: boolean;
-  headers?: DomainMCPHeader[];
-  health_checked_at?: number;
-  health_status?: string;
-  id?: string;
-  last_synced_at?: number;
-  name?: string;
-  scope?: GithubComChaitinMonkeyCodeBackendDbMcpupstreamScope;
-  slug?: string;
-  sync_status?: string;
-  tools?: DomainMCPTool[];
-  type?: string;
-  url?: string;
-  user?: DomainUser;
 }
 
 export interface DomainMemberListResp {
@@ -1106,6 +1006,15 @@ export interface DomainPlaygroundTaskPost {
   title?: string;
   /** 更新时间 */
   updated_at?: number;
+}
+
+export interface DomainPluginListItem {
+  active_version?: string;
+  description?: string;
+  entry?: string;
+  id?: string;
+  is_force_delivery?: boolean;
+  name?: string;
 }
 
 export interface DomainPresignReq {
@@ -1405,15 +1314,12 @@ export interface DomainSitesResp {
   sites?: DomainSiteInfo[];
 }
 
-export interface DomainSkill {
-  args_schema?: Record<string, any>;
-  categories?: string[];
-  content?: string;
+export interface DomainSkillListItem {
+  active_version?: string;
   description?: string;
   id?: string;
+  is_force_delivery?: boolean;
   name?: string;
-  skill_id?: string;
-  tags?: string[];
 }
 
 export interface DomainSpeechRecognitionData {
@@ -1472,7 +1378,7 @@ export interface DomainSubscriptionResp {
   expires_at?: string;
   /** "basic" | "pro" | "ultra" */
   plan?: string;
-  /** "purchase" | "team_member" | "admin_grant" */
+  /** "purchase" | "team_member" | "admin_grant" | "invitation" */
   source?: string;
 }
 
@@ -1510,16 +1416,10 @@ export interface DomainTask {
   virtualmachine?: DomainVirtualMachine;
 }
 
-export interface DomainTaskChunkEntry {
-  data?: number[];
-  event?: string;
-  kind?: string;
-  labels?: Record<string, string>;
-  timestamp?: number;
-}
-
 export interface DomainTaskExtraConfig {
   issue_id?: string;
+  /** Plugin IDs 数组（仅 OpenCode 真正下发） */
+  plugin_ids?: string[];
   project_id?: string;
   /** Skill IDs 数组 */
   skill_ids?: string[];
@@ -1531,30 +1431,6 @@ export interface DomainTaskRepoReq {
   repo_filename?: string;
   repo_url?: string;
   zip_url?: string;
-}
-
-export interface DomainTaskRoundsResp {
-  chunks?: DomainTaskChunkEntry[];
-  has_more?: boolean;
-  /** 下一页游标 */
-  next_cursor?: string;
-}
-
-export interface DomainTaskUserInputItem {
-  /** 用户输入文本，超过 500 字符截断 */
-  content?: string;
-  /** 与前端 message.id 对齐：user-input-{timestamp} */
-  id?: string;
-  /** 纳秒，与 chunk.timestamp 对齐 */
-  timestamp?: number;
-  /** 是否被截断 */
-  truncated?: boolean;
-}
-
-export interface DomainTaskUserInputsResp {
-  has_more?: boolean;
-  items?: DomainTaskUserInputItem[];
-  next_cursor?: string;
 }
 
 export interface DomainTaskStats {
@@ -1569,99 +1445,6 @@ export interface DomainTeam {
   name?: string;
 }
 
-export interface DomainTeamConversationItem {
-  attachment_count?: number;
-  content?: string;
-  created_at?: number;
-  creator?: DomainUser;
-  id?: string;
-  project_id?: string;
-  project_name?: string;
-  task_id?: string;
-  task_title?: string;
-}
-
-export interface DomainTeamConversationListResp {
-  conversations?: DomainTeamConversationItem[];
-  page?: Dbv2Cursor;
-}
-
-export interface DomainTeamConversationStats {
-  count_7d?: number;
-  count_today?: number;
-  daily_created?: DomainTeamDashboardTrendPoint[];
-  total?: number;
-}
-
-export interface DomainTeamDashboardConsumptionInsight {
-  id?: string;
-  llm_requests?: number;
-  name?: string;
-  percent?: number;
-  total_tokens?: number;
-  type?: string;
-}
-
-export interface DomainTeamDashboardInsights {
-  active_members?: DomainTeamDashboardMemberInsight[];
-  high_consumption?: DomainTeamDashboardConsumptionInsight[];
-  long_running_tasks?: DomainTeamDashboardTaskInsight[];
-}
-
-export interface DomainTeamDashboardMemberInsight {
-  email?: string;
-  group_name?: string;
-  last_active_at?: number;
-  name?: string;
-  task_count?: number;
-  user_id?: string;
-}
-
-export interface DomainTeamDashboardMetrics {
-  active_members?: number;
-  active_rate?: number;
-  average_duration?: number;
-  finished_task_count?: number;
-  llm_requests?: number;
-  running_task_count?: number;
-  task_count?: number;
-  total_members?: number;
-  total_tokens?: number;
-}
-
-export interface DomainTeamDashboardResp {
-  conversation_stats?: DomainTeamConversationStats;
-  end_at?: number;
-  insights?: DomainTeamDashboardInsights;
-  metrics?: DomainTeamDashboardMetrics;
-  project_stats?: DomainTeamProjectStats;
-  range?: string;
-  start_at?: number;
-  task_stats?: DomainTeamTaskStats;
-  trends?: DomainTeamDashboardTrends;
-}
-
-export interface DomainTeamDashboardTaskInsight {
-  created_at?: number;
-  creator?: string;
-  duration?: number;
-  host_name?: string;
-  status?: string;
-  task_id?: string;
-  title?: string;
-}
-
-export interface DomainTeamDashboardTrendPoint {
-  date?: string;
-  value?: number;
-}
-
-export interface DomainTeamDashboardTrends {
-  active_members?: DomainTeamDashboardTrendPoint[];
-  task_counts?: DomainTeamDashboardTrendPoint[];
-  token_usage?: DomainTeamDashboardTrendPoint[];
-}
-
 export interface DomainTeamGroup {
   created_at?: number;
   id?: string;
@@ -1670,111 +1453,12 @@ export interface DomainTeamGroup {
   users?: DomainUser[];
 }
 
-export interface DomainTeamMCPUpstream {
-  created_at?: number;
-  description?: string;
-  enabled?: boolean;
-  groups?: DomainTeamGroup[];
-  headers?: DomainMCPHeader[];
-  health_checked_at?: number;
-  health_status?: string;
-  id?: string;
-  last_synced_at?: number;
-  name?: string;
-  scope?: GithubComChaitinMonkeyCodeBackendDbMcpupstreamScope;
-  slug?: string;
-  sync_status?: string;
-  team_id?: string;
-  tools?: DomainMCPTool[];
-  type?: string;
-  url?: string;
-  user?: DomainUser;
-}
-
-export interface DomainTeamProjectItem {
-  branch?: string;
-  created_at?: number;
-  creator?: DomainUser;
-  id?: string;
-  issue_count?: number;
-  name?: string;
-  repo_url?: string;
-  task_count?: number;
-  updated_at?: number;
-}
-
-export interface DomainTeamProjectListResp {
-  page?: Dbv2Cursor;
-  projects?: DomainTeamProjectItem[];
-}
-
-export interface DomainTeamProjectStats {
-  active_7d?: number;
-  active_today?: number;
-  daily_created?: DomainTeamDashboardTrendPoint[];
-  total?: number;
-}
-
-export interface DomainTeamTaskItem {
-  content?: string;
-  created_at?: number;
-  creator?: DomainUser;
-  id?: string;
-  kind?: string;
-  last_active_at?: number;
-  project_id?: string;
-  project_name?: string;
-  status?: string;
-  title?: string;
-}
-
-export interface DomainTeamTaskListResp {
-  page?: Dbv2Cursor;
-  tasks?: DomainTeamTaskItem[];
-}
-
-export interface DomainTeamTaskStats {
-  active_7d?: number;
-  active_today?: number;
-  daily_created?: DomainTeamDashboardTrendPoint[];
-  total?: number;
-}
-
-export interface DomainTeamTaskVMIdlePolicy {
-  effective_recycle_seconds?: number;
-  effective_sleep_seconds?: number;
-  recycle_enabled?: boolean;
-  recycle_inherited?: boolean;
-  recycle_seconds?: number;
-  sleep_enabled?: boolean;
-  sleep_inherited?: boolean;
-  sleep_seconds?: number;
-  task_concurrency_limit?: number;
-  team_id?: string;
-}
-
 export interface DomainTeamImage {
   created_at?: number;
   groups?: DomainTeamGroup[];
   id?: string;
   name?: string;
   remark?: string;
-  updated_at?: number;
-}
-
-export interface DomainTeamSkill {
-  content?: string;
-  created_at?: number;
-  description?: string;
-  groups?: DomainTeamGroup[];
-  id?: string;
-  name?: string;
-  package_object_key?: string;
-  package_url?: string;
-  skill_md_path?: string;
-  source_label?: string;
-  source_type?: string;
-  tags?: string[];
   updated_at?: number;
 }
 
@@ -1967,22 +1651,8 @@ export interface DomainUpdateProjectReq {
   name?: string;
 }
 
-export interface DomainUpdateTaskReq {
-  title?: string;
-}
-
 export interface DomainUpdateTeamGroupReq {
   name: string;
-}
-
-export interface DomainUpdateTeamMCPUpstreamReq {
-  description?: string;
-  enabled?: boolean;
-  group_ids?: string[];
-  headers?: DomainMCPHeader[];
-  name?: string;
-  slug?: string;
-  url?: string;
 }
 
 export interface DomainUpdateTeamHostReq {
@@ -1994,17 +1664,6 @@ export interface DomainUpdateTeamImageReq {
   group_ids?: string[];
   name?: string;
   remark?: string;
-}
-
-export interface DomainUpdateTeamSkillReq {
-  content?: string;
-  description?: string;
-  group_ids?: string[];
-  name?: string;
-  skill_md_path?: string;
-  source_label?: string;
-  source_type?: string;
-  tags?: string[];
 }
 
 export interface DomainUpdateTeamModelReq {
@@ -2019,14 +1678,6 @@ export interface DomainUpdateTeamModelReq {
   temperature?: number;
 }
 
-export interface DomainUpdateTeamTaskVMIdlePolicyReq {
-  recycle_enabled?: boolean;
-  recycle_seconds?: number;
-  sleep_enabled?: boolean;
-  sleep_seconds?: number;
-  task_concurrency_limit?: number;
-}
-
 export interface DomainUpdateTeamOAuthSiteReq {
   base_url?: string;
   client_id?: string;
@@ -2035,71 +1686,12 @@ export interface DomainUpdateTeamOAuthSiteReq {
   proxy_url?: string;
 }
 
-export interface DomainSaveTeamOIDCConfigReq {
-  allow_password_login?: boolean;
-  auto_create_member?: boolean;
-  client_id: string;
-  client_secret?: string;
-  display_name: string;
-  email_domain?: string;
-  enabled?: boolean;
-  issuer: string;
-  scopes?: string;
-}
-
-export interface DomainTeamOIDCConfig {
-  allow_password_login?: boolean;
-  auto_create_member?: boolean;
-  client_id?: string;
-  display_name?: string;
-  email_domain?: string;
-  enabled?: boolean;
-  has_client_secret?: boolean;
-  id?: string;
-  issuer?: string;
-  login_url?: string;
-  redirect_uri?: string;
-  scopes?: string;
-  team_id?: string;
-}
-
-export interface DomainTeamOIDCConfigResp {
-  config?: DomainTeamOIDCConfig;
-}
-
-export interface DomainTeamOIDCPublicConfigResp {
-  display_name?: string;
-  enabled?: boolean;
-  login_url?: string;
-  team_id?: string;
-}
-
-export interface DomainTeamOIDCTestResp {
-  issuer?: string;
-  message?: string;
-  success?: boolean;
-}
-
 export interface DomainUpdateTeamUserReq {
   is_blocked?: boolean;
-  name?: string;
 }
 
 export interface DomainUpdateTeamUserResp {
   user?: DomainUser;
-}
-
-export interface DomainUpdateUserMCPToolSettingReq {
-  enabled?: boolean;
-}
-
-export interface DomainUpdateUserMCPUpstreamReq {
-  description?: string;
-  enabled?: boolean;
-  headers?: DomainMCPHeader[];
-  name?: string;
-  slug?: string;
-  url?: string;
 }
 
 export interface DomainUpdateUserResp {
@@ -2190,7 +1782,7 @@ export interface DomainVirtualMachine {
   owner?: DomainUser;
   ports?: DomainVMPort[];
   repo?: DomainRepositoryItem;
-  status?: TaskflowVirtualMachineStatus;
+  status?: GithubComChaitinMonkeyCodeBackendPkgTaskflowVirtualMachineStatus;
   version?: string;
 }
 
@@ -2221,7 +1813,6 @@ export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
   type?: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType;
 }
 
-/** @format int32 */
 export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionStatus {
   ConditionStatusCONDITIONSTATUSUNKNOWN = 0,
   ConditionStatusCONDITIONSTATUSINPROGRESS = 1,
@@ -2252,18 +1843,585 @@ export interface GithubComGoYokoWebResp {
   message?: string;
 }
 
+export interface GithubComChaitinMonkeyCodeBackendDbCursor {
+  /** 游标 */
+  cursor?: string;
+  /** 是否有下一页 */
+  has_next_page?: boolean;
+}
+
 export enum GithubComChaitinMonkeyCodeBackendDbMcptoolScope {
   ScopeUser = "user",
   ScopePlatform = "platform",
+  ScopeTeam = "team",
 }
 
 export enum GithubComChaitinMonkeyCodeBackendDbMcpupstreamScope {
   ScopeUser = "user",
   ScopePlatform = "platform",
+  ScopeTeam = "team",
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainAddTeamSkillReq {
+  /** SKILL.md 原文 */
+  content: string;
+  description: string;
+  group_ids?: string[];
+  is_force_delivery?: boolean;
+  name: string;
+  skill_md_path?: string;
+  source_label?: string;
+  /**
+   * SourceType ∈ {"zip","markdown","text"};SourceLabel 为文件名或 "粘贴文本"。
+   * 纯展示元数据,存进 active version 的 parsed_meta。
+   */
+  source_type?: string;
+  tags?: string[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainBindQRCodeResp {
+  expire_seconds?: number;
+  qrcode_url?: string;
+  ticket?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainCreateTeamMCPUpstreamReq {
+  description?: string;
+  enabled?: boolean;
+  group_ids?: string[];
+  headers?: GithubComChaitinMonkeyCodeBackendDomainMCPHeader[];
+  name: string;
+  slug: string;
+  url: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainCreateUserMCPUpstreamReq {
+  description?: string;
+  enabled?: boolean;
+  headers?: GithubComChaitinMonkeyCodeBackendDomainMCPHeader[];
+  name?: string;
+  slug?: string;
+  url?: string;
 }
 
 export interface GithubComChaitinMonkeyCodeBackendDomainIDReqGithubComGoogleUuidUUID {
   id: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainImportTeamExtensionPackageResp {
+  created_images?: number;
+  created_rules?: number;
+  created_skills?: number;
+  package_id?: string;
+  updated_images?: number;
+  updated_rules?: number;
+  updated_skills?: number;
+  version?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainListTeamMCPUpstreamsResp {
+  items?: GithubComChaitinMonkeyCodeBackendDomainTeamMCPUpstream[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainListTeamSkillsResp {
+  skills?: GithubComChaitinMonkeyCodeBackendDomainTeamSkill[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainListUserMCPUpstreamsResp {
+  items?: GithubComChaitinMonkeyCodeBackendDomainMCPUpstream[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainMCPHeader {
+  name?: string;
+  value?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainMCPTool {
+  created_at?: number;
+  description?: string;
+  enabled?: boolean;
+  id?: string;
+  input_schema?: Record<string, any>;
+  name?: string;
+  namespaced_name?: string;
+  price?: number;
+  scope?: GithubComChaitinMonkeyCodeBackendDbMcptoolScope;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainMCPUpstream {
+  created_at?: number;
+  description?: string;
+  enabled?: boolean;
+  headers?: GithubComChaitinMonkeyCodeBackendDomainMCPHeader[];
+  health_checked_at?: number;
+  health_status?: string;
+  id?: string;
+  last_synced_at?: number;
+  name?: string;
+  scope?: GithubComChaitinMonkeyCodeBackendDbMcpupstreamScope;
+  slug?: string;
+  sync_status?: string;
+  tools?: GithubComChaitinMonkeyCodeBackendDomainMCPTool[];
+  type?: string;
+  url?: string;
+  user?: DomainUser;
+}
+
+export enum GithubComChaitinMonkeyCodeBackendDomainProductEdition {
+  ProductEditionSaaS = "saas",
+  ProductEditionPrivate = "private",
+}
+
+export enum GithubComChaitinMonkeyCodeBackendDomainProductRegion {
+  ProductRegionCN = "cn",
+  ProductRegionGlobal = "global",
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainSaveTeamOIDCConfigReq {
+  allow_password_login?: boolean;
+  auto_create_member?: boolean;
+  client_id: string;
+  client_secret?: string;
+  display_name: string;
+  email_domain?: string;
+  enabled?: boolean;
+  issuer: string;
+  scopes?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainServerConfig {
+  /**
+   * Edition 当前产品形态：SaaS 或私有化版本。
+   * @example "saas"
+   */
+  edition?: "saas" | "private";
+  /**
+   * Region SaaS 区域，国内 SaaS 返回 cn，海外 SaaS 返回 global。
+   * @example "cn"
+   */
+  region?: "cn" | "global";
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainSkillGroupRef {
+  id?: string;
+  name?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainSpeechStreamError {
+  /**
+   * 错误码;远端 ASR 错误码 (如豆包 45000001),本地校验错误为 0
+   * @example 45000001
+   */
+  code?: number;
+  /**
+   * 远端 ASR 服务返回的 trace id (如豆包 X-Tt-Logid),报障必备
+   * @example "202407261553070FACFE6D19421815D605"
+   */
+  logid?: string;
+  /**
+   * 错误描述,远端错误为远端 message,本地校验错误为可读原因
+   * @example "请求参数无效"
+   */
+  message?: string;
+  /**
+   * 后端发给远端 ASR 的 X-Api-Request-Id (UUID),便于跟单次请求关联日志
+   * @example "67ee89ba-7050-4c04-a3d7-ac61a63499b3"
+   */
+  request_id?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainSpeechStreamEvent {
+  /** 错误详情;仅 error 事件携带 */
+  error?: GithubComChaitinMonkeyCodeBackendDomainSpeechStreamError;
+  /**
+   * 句子序号,从 1 开始;partial / final 携带,其余事件省略
+   * @example 1
+   */
+  index?: number;
+  /**
+   * 远端 ASR 服务的 trace id;ready / error 事件携带,便于全程关联日志
+   * @example "202407261553070FACFE6D19421815D605"
+   */
+  logid?: string;
+  /**
+   * 识别文本;partial(中间结果,会反复变化)/ final(本句定稿)携带
+   * @example "今天天气真不错。"
+   */
+  text?: string;
+  /**
+   * 服务端时间(毫秒),所有事件都有
+   * @example 1733299200000
+   */
+  timestamp?: number;
+  /**
+   * 事件类型:ready / partial / final / done / error
+   * @example "partial"
+   */
+  type?: "ready" | "partial" | "final" | "done" | "error";
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainSpeechStreamStartReq {
+  /**
+   * 是否启用语义顺滑(过滤"嗯/啊"等口头禅、语义重复词),默认 false
+   * @example false
+   */
+  disfluency?: boolean;
+  /**
+   * 音频容器格式,单声道、16-bit、采样率固定 16000Hz。
+   * pcm / wav 内部音频流必须是 pcm_s16le;ogg 必须为 opus 编码;mp3 由服务端解码。
+   * @example "pcm"
+   */
+  format?: "pcm" | "wav" | "ogg" | "mp3";
+  /**
+   * 消息类型,固定为 "start"
+   * @example "start"
+   */
+  type: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTaskChunkEntry {
+  data?: number[];
+  event?: string;
+  kind?: string;
+  labels?: Record<string, string>;
+  /** 轮次号，可作为 cursor 翻页；仅日志存储为 ClickHouse 时有值 */
+  seq?: number;
+  timestamp?: number;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTaskRoundsResp {
+  chunks?: GithubComChaitinMonkeyCodeBackendDomainTaskChunkEntry[];
+  has_more?: boolean;
+  /** 下一页游标 */
+  next_cursor?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTaskUserInputItem {
+  /** 用户输入文本，超过 500 字符截断 */
+  content?: string;
+  /** 与前端 message.id 对齐：user-input-{timestamp} */
+  id?: string;
+  /** 轮次号，可作为 /rounds 的 cursor 跳转定位；仅日志存储为 ClickHouse 时有值 */
+  seq?: number;
+  /** 纳秒，与 chunk.timestamp 对齐 */
+  timestamp?: number;
+  /** 是否被截断 */
+  truncated?: boolean;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTaskUserInputsResp {
+  has_more?: boolean;
+  items?: GithubComChaitinMonkeyCodeBackendDomainTaskUserInputItem[];
+  next_cursor?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamConversationItem {
+  attachment_count?: number;
+  content?: string;
+  created_at?: number;
+  creator?: DomainUser;
+  id?: string;
+  project_id?: string;
+  project_name?: string;
+  task_id?: string;
+  task_title?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamConversationListResp {
+  conversations?: GithubComChaitinMonkeyCodeBackendDomainTeamConversationItem[];
+  page?: GithubComChaitinMonkeyCodeBackendDbCursor;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamConversationStats {
+  count_7d?: number;
+  count_today?: number;
+  daily_created?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTrendPoint[];
+  total?: number;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamDashboardConsumptionInsight {
+  id?: string;
+  llm_requests?: number;
+  name?: string;
+  percent?: number;
+  total_tokens?: number;
+  type?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamDashboardInsights {
+  active_members?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardMemberInsight[];
+  high_consumption?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardConsumptionInsight[];
+  long_running_tasks?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTaskInsight[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamDashboardMemberInsight {
+  email?: string;
+  group_name?: string;
+  last_active_at?: number;
+  name?: string;
+  task_count?: number;
+  user_id?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamDashboardMetrics {
+  active_members?: number;
+  active_rate?: number;
+  average_duration?: number;
+  cache_hit_rate?: number;
+  cached_tokens?: number;
+  finished_task_count?: number;
+  input_tokens?: number;
+  llm_requests?: number;
+  output_tokens?: number;
+  running_task_count?: number;
+  task_count?: number;
+  total_members?: number;
+  total_tokens?: number;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamDashboardResp {
+  conversation_stats?: GithubComChaitinMonkeyCodeBackendDomainTeamConversationStats;
+  end_at?: number;
+  insights?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardInsights;
+  metrics?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardMetrics;
+  project_stats?: GithubComChaitinMonkeyCodeBackendDomainTeamProjectStats;
+  range?: string;
+  start_at?: number;
+  task_stats?: GithubComChaitinMonkeyCodeBackendDomainTeamTaskStats;
+  trends?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTrends;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTaskInsight {
+  created_at?: number;
+  creator?: string;
+  duration?: number;
+  host_name?: string;
+  status?: string;
+  task_id?: string;
+  title?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTrendPoint {
+  date?: string;
+  value?: number;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTrends {
+  active_members?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTrendPoint[];
+  task_counts?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTrendPoint[];
+  token_usage?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTrendPoint[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamMCPUpstream {
+  created_at?: number;
+  description?: string;
+  enabled?: boolean;
+  groups?: GithubComChaitinMonkeyCodeBackendDomainSkillGroupRef[];
+  headers?: GithubComChaitinMonkeyCodeBackendDomainMCPHeader[];
+  health_checked_at?: number;
+  health_status?: string;
+  id?: string;
+  last_synced_at?: number;
+  name?: string;
+  scope?: GithubComChaitinMonkeyCodeBackendDbMcpupstreamScope;
+  slug?: string;
+  sync_status?: string;
+  team_id?: string;
+  tools?: GithubComChaitinMonkeyCodeBackendDomainMCPTool[];
+  type?: string;
+  url?: string;
+  user?: DomainUser;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamOIDCConfig {
+  allow_password_login?: boolean;
+  auto_create_member?: boolean;
+  client_id?: string;
+  display_name?: string;
+  email_domain?: string;
+  enabled?: boolean;
+  has_client_secret?: boolean;
+  id?: string;
+  issuer?: string;
+  login_url?: string;
+  redirect_uri?: string;
+  scopes?: string;
+  team_id?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamOIDCConfigResp {
+  config?: GithubComChaitinMonkeyCodeBackendDomainTeamOIDCConfig;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamOIDCPublicConfigResp {
+  display_name?: string;
+  enabled?: boolean;
+  login_url?: string;
+  team_id?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamOIDCTestResp {
+  issuer?: string;
+  message?: string;
+  success?: boolean;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamProjectItem {
+  branch?: string;
+  created_at?: number;
+  creator?: DomainUser;
+  id?: string;
+  issue_count?: number;
+  name?: string;
+  repo_url?: string;
+  task_count?: number;
+  updated_at?: number;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamProjectListResp {
+  page?: GithubComChaitinMonkeyCodeBackendDbCursor;
+  projects?: GithubComChaitinMonkeyCodeBackendDomainTeamProjectItem[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamProjectStats {
+  active_7d?: number;
+  active_today?: number;
+  daily_created?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTrendPoint[];
+  total?: number;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamSkill {
+  active_version?: string;
+  categories?: string[];
+  /** SKILL.md 文本,从 active version 当时入库时记录 */
+  content?: string;
+  created_at?: number;
+  description?: string;
+  enabled?: boolean;
+  groups?: GithubComChaitinMonkeyCodeBackendDomainSkillGroupRef[];
+  id?: string;
+  is_force_delivery?: boolean;
+  name?: string;
+  s3_key?: string;
+  skill_md_path?: string;
+  source_label?: string;
+  source_type?: string;
+  tags?: string[];
+  updated_at?: number;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamTaskItem {
+  content?: string;
+  created_at?: number;
+  creator?: DomainUser;
+  id?: string;
+  kind?: string;
+  last_active_at?: number;
+  project_id?: string;
+  project_name?: string;
+  status?: string;
+  title?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamTaskListResp {
+  page?: GithubComChaitinMonkeyCodeBackendDbCursor;
+  tasks?: GithubComChaitinMonkeyCodeBackendDomainTeamTaskItem[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamTaskStats {
+  active_7d?: number;
+  active_today?: number;
+  daily_created?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardTrendPoint[];
+  total?: number;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamTaskVMIdlePolicy {
+  effective_recycle_seconds?: number;
+  effective_sleep_seconds?: number;
+  recycle_enabled?: boolean;
+  recycle_inherited?: boolean;
+  recycle_seconds?: number;
+  sleep_enabled?: boolean;
+  sleep_inherited?: boolean;
+  sleep_seconds?: number;
+  task_concurrency_limit?: number;
+  team_id?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainUpdateTaskReq {
+  title?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainUpdateTeamMCPUpstreamReq {
+  description?: string;
+  enabled?: boolean;
+  group_ids?: string[];
+  headers?: GithubComChaitinMonkeyCodeBackendDomainMCPHeader[];
+  name?: string;
+  slug?: string;
+  url?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainUpdateTeamSkillReq {
+  content?: string;
+  description?: string;
+  group_ids?: string[];
+  is_force_delivery?: boolean;
+  /** 当前不允许改 name(unique 索引硬约束),保留位 */
+  name?: string;
+  skill_md_path?: string;
+  source_label?: string;
+  source_type?: string;
+  tags?: string[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainUpdateTeamTaskVMIdlePolicyReq {
+  recycle_enabled?: boolean;
+  recycle_seconds?: number;
+  sleep_enabled?: boolean;
+  sleep_seconds?: number;
+  task_concurrency_limit?: number;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainUpdateUserMCPToolSettingReq {
+  enabled?: boolean;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainUpdateUserMCPUpstreamReq {
+  description?: string;
+  enabled?: boolean;
+  headers?: GithubComChaitinMonkeyCodeBackendDomainMCPHeader[];
+  name?: string;
+  slug?: string;
+  url?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendPkgTaskflowFile {
+  accessed_at?: number;
+  created_at?: number;
+  kind?: GithubComChaitinMonkeyCodeBackendPkgTaskflowFileKind;
+  name?: string;
+  size?: number;
+  symlink_kind?: GithubComChaitinMonkeyCodeBackendPkgTaskflowFileKind;
+  symlink_target?: string;
+  unix_mode?: number;
+  updated_at?: number;
+  user?: string;
+}
+
+export enum GithubComChaitinMonkeyCodeBackendPkgTaskflowFileKind {
+  FileKindUnknown = "unknown",
+  FileKindFile = "file",
+  FileKindDir = "dir",
+  FileKindSymlink = "symlink",
+}
+
+export enum GithubComChaitinMonkeyCodeBackendPkgTaskflowVirtualMachineStatus {
+  VirtualMachineStatusUnknown = "unknown",
+  VirtualMachineStatusPending = "pending",
+  VirtualMachineStatusOnline = "online",
+  VirtualMachineStatusOffline = "offline",
+  VirtualMachineStatusHibernated = "hibernated",
 }
 
 export interface GocapChallengeData {
@@ -2290,34 +2448,6 @@ export interface GocapVerificationResult {
   success?: boolean;
   /** 验证令牌 */
   token?: string;
-}
-
-export interface TaskflowFile {
-  accessed_at?: number;
-  created_at?: number;
-  kind?: TaskflowFileKind;
-  name?: string;
-  size?: number;
-  symlink_kind?: TaskflowFileKind;
-  symlink_target?: string;
-  unix_mode?: number;
-  updated_at?: number;
-  user?: string;
-}
-
-export enum TaskflowFileKind {
-  FileKindUnknown = "unknown",
-  FileKindFile = "file",
-  FileKindDir = "dir",
-  FileKindSymlink = "symlink",
-}
-
-export enum TaskflowVirtualMachineStatus {
-  VirtualMachineStatusUnknown = "unknown",
-  VirtualMachineStatusPending = "pending",
-  VirtualMachineStatusOnline = "online",
-  VirtualMachineStatusOffline = "offline",
-  VirtualMachineStatusHibernated = "hibernated",
 }
 
 export type QueryParamsType = Record<string | number, any>;
@@ -2559,6 +2689,30 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         method: "GET",
         query: query,
         type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description 获取 CNB (cnb.cool) OAuth 授权 URL
+     *
+     * @tags 【用户】git 身份管理
+     * @name V1CnbAuthorizeUrlList
+     * @summary CNB OAuth 授权
+     * @request GET:/api/v1/cnb/authorize_url
+     * @secure
+     */
+    v1CnbAuthorizeUrlList: (params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainOAuthURLResp;
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/cnb/authorize_url`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
         ...params,
       }),
 
@@ -2818,6 +2972,31 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 处理 CNB OAuth 回调
+     *
+     * @tags 【用户】git 身份管理
+     * @name V1OauthCnbCallbackList
+     * @summary CNB OAuth 回调
+     * @request GET:/api/v1/oauth/cnb/callback
+     */
+    v1OauthCnbCallbackList: (
+      query: {
+        /** 授权码 */
+        code: string;
+        /** 状态码 */
+        state: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<any, string>({
+        path: `/api/v1/oauth/cnb/callback`,
+        method: "GET",
+        query: query,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
      * @description 处理 Gitea OAuth 回调
      *
      * @tags 【用户】git 身份管理
@@ -2975,6 +3154,30 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 并集返回 (global ∪ 用户 active team) 两级 scope 下的 plugin,同名 team>global 覆盖;disabled 仍返回但 enabled=false。
+     *
+     * @tags 【公共】plugin
+     * @name V1PluginsList
+     * @summary 获取 Plugins 列表
+     * @request GET:/api/v1/plugins
+     * @secure
+     */
+    v1PluginsList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainPluginListItem[];
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/plugins`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description CreateCaptcha
      *
      * @tags 【验证码】
@@ -3032,20 +3235,42 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 获取所有已启用的 Skills
+     * @description 返回当前服务的产品形态和 SaaS 区域，用于前端区分 SaaS、私有化、国内 SaaS 和海外 SaaS。
      *
-     * @tags 【公共】skill
+     * @tags 【服务】配置信息
+     * @name V1ServerConfigList
+     * @summary 获取服务配置
+     * @request GET:/api/v1/server/config
+     */
+    v1ServerConfigList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainServerConfig;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/server/config`,
+        method: "GET",
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 并集返回 (global ∪ 用户 active team ∪ 用户个人) 三级 scope 下的 skill，禁用的 skill 返回 enabled=false。
+     *
+     * @tags 【用户】任务管理
      * @name V1SkillsList
-     * @summary 获取已启用的 Skills 列表
+     * @summary 获取本用户的 Skill 列表
      * @request GET:/api/v1/skills
      * @secure
      */
     v1SkillsList: (params: RequestParams = {}) =>
       this.request<
-        GitInChaitinNetGoDevWebResp & {
-          data?: DomainSkill[];
+        GithubComGoYokoWebResp & {
+          data?: DomainSkillListItem[];
         },
-        GitInChaitinNetGoDevWebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/skills`,
         method: "GET",
@@ -3117,37 +3342,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 获取团队活跃、任务、耗时、Token 消耗趋势和洞察列表
-     *
-     * @tags 【Team 管理员】团队概览
-     * @name V1TeamsDashboardList
-     * @summary 获取团队管理概览
-     * @request GET:/api/v1/teams/dashboard
-     * @secure
-     */
-    v1TeamsDashboardList: (
-      query?: {
-        /** 时间范围：today、7d、30d */
-        range?: string;
-      },
-      params: RequestParams = {},
-    ) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamDashboardResp;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/dashboard`,
-        method: "GET",
-        query: query,
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
      * @description 获取当前团队任务日志中的 user-input 对话列表
      *
      * @tags 【Team 管理员】团队对话
@@ -3167,9 +3361,9 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
     ) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: DomainTeamConversationListResp;
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamConversationListResp;
         },
-        GithubComGoYokoWebResp
+        any
       >({
         path: `/api/v1/teams/conversations`,
         method: "GET",
@@ -3181,30 +3375,28 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 获取当前团队成员创建的项目列表
+     * @description 获取团队活跃、任务、耗时、Token 消耗趋势和洞察列表
      *
-     * @tags 【Team 管理员】团队项目
-     * @name V1TeamsProjectsList
-     * @summary 获取团队项目列表
-     * @request GET:/api/v1/teams/projects
+     * @tags 【Team 管理员】团队概览
+     * @name V1TeamsDashboardList
+     * @summary 获取团队管理概览
+     * @request GET:/api/v1/teams/dashboard
      * @secure
      */
-    v1TeamsProjectsList: (
+    v1TeamsDashboardList: (
       query?: {
-        /** 分页游标 */
-        cursor?: string;
-        /** 每页数量 */
-        limit?: number;
+        /** 时间范围：today、7d、30d */
+        range?: string;
       },
       params: RequestParams = {},
     ) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: DomainTeamProjectListResp;
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamDashboardResp;
         },
         GithubComGoYokoWebResp
       >({
-        path: `/api/v1/teams/projects`,
+        path: `/api/v1/teams/dashboard`,
         method: "GET",
         query: query,
         secure: true,
@@ -3214,34 +3406,35 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 获取当前团队成员创建的任务列表
+     * @description 上传团队扩展包并导入 Skills 和团队镜像记录
      *
-     * @tags 【Team 管理员】团队任务
-     * @name V1TeamsTasksList
-     * @summary 获取团队任务列表
-     * @request GET:/api/v1/teams/tasks
+     * @tags 【Team 管理员】扩展包管理
+     * @name V1TeamsExtensionPackagesCreate
+     * @summary 上传团队扩展包
+     * @request POST:/api/v1/teams/extension-packages
      * @secure
      */
-    v1TeamsTasksList: (
-      query?: {
-        /** 分页游标 */
-        cursor?: string;
-        /** 每页数量 */
-        limit?: number;
+    v1TeamsExtensionPackagesCreate: (
+      data: {
+        /**
+         * 扩展包 zip
+         * @format binary
+         */
+        file: File;
       },
       params: RequestParams = {},
     ) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: DomainTeamTaskListResp;
+          data?: GithubComChaitinMonkeyCodeBackendDomainImportTeamExtensionPackageResp;
         },
         GithubComGoYokoWebResp
       >({
-        path: `/api/v1/teams/tasks`,
-        method: "GET",
-        query: query,
+        path: `/api/v1/teams/extension-packages`,
+        method: "POST",
+        body: data,
         secure: true,
-        type: ContentType.Json,
+        type: ContentType.FormData,
         format: "json",
         ...params,
       }),
@@ -3340,118 +3533,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 获取团队 MCP Upstream 列表
-     *
-     * @tags 【Team 管理员】MCP 配置
-     * @name V1TeamsMcpUpstreamsList
-     * @summary 获取团队 MCP Upstream 列表
-     * @request GET:/api/v1/teams/mcp/upstreams
-     * @secure
-     */
-    v1TeamsMcpUpstreamsList: (params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainListTeamMCPUpstreamsResp;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/mcp/upstreams`,
-        method: "GET",
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 创建团队 MCP Upstream
-     *
-     * @tags 【Team 管理员】MCP 配置
-     * @name V1TeamsMcpUpstreamsCreate
-     * @summary 创建团队 MCP Upstream
-     * @request POST:/api/v1/teams/mcp/upstreams
-     * @secure
-     */
-    v1TeamsMcpUpstreamsCreate: (req: DomainCreateTeamMCPUpstreamReq, params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamMCPUpstream;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/mcp/upstreams`,
-        method: "POST",
-        body: req,
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 更新团队 MCP Upstream
-     *
-     * @tags 【Team 管理员】MCP 配置
-     * @name V1TeamsMcpUpstreamsUpdate
-     * @summary 更新团队 MCP Upstream
-     * @request PUT:/api/v1/teams/mcp/upstreams/{upstream_id}
-     * @secure
-     */
-    v1TeamsMcpUpstreamsUpdate: (upstreamId: string, req: DomainUpdateTeamMCPUpstreamReq, params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamMCPUpstream;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/mcp/upstreams/${upstreamId}`,
-        method: "PUT",
-        body: req,
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 删除团队 MCP Upstream
-     *
-     * @tags 【Team 管理员】MCP 配置
-     * @name V1TeamsMcpUpstreamsDelete
-     * @summary 删除团队 MCP Upstream
-     * @request DELETE:/api/v1/teams/mcp/upstreams/{upstream_id}
-     * @secure
-     */
-    v1TeamsMcpUpstreamsDelete: (upstreamId: string, params: RequestParams = {}) =>
-      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
-        path: `/api/v1/teams/mcp/upstreams/${upstreamId}`,
-        method: "DELETE",
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 同步团队 MCP Upstream
-     *
-     * @tags 【Team 管理员】MCP 配置
-     * @name V1TeamsMcpUpstreamsSyncCreate
-     * @summary 同步团队 MCP Upstream
-     * @request POST:/api/v1/teams/mcp/upstreams/{upstream_id}/sync
-     * @secure
-     */
-    v1TeamsMcpUpstreamsSyncCreate: (upstreamId: string, params: RequestParams = {}) =>
-      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
-        path: `/api/v1/teams/mcp/upstreams/${upstreamId}/sync`,
-        method: "POST",
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
      * @description 获取团队组成员列表
      *
      * @tags 【Team 管理员】分组成员管理
@@ -3492,55 +3573,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/groups/${groupId}/users`,
-        method: "PUT",
-        body: req,
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 获取当前团队任务创建开发环境的空闲休眠和回收策略
-     *
-     * @tags 【Team 管理员】开发环境管理
-     * @name V1TeamsTaskVmIdlePolicyList
-     * @summary 获取任务开发环境空闲策略
-     * @request GET:/api/v1/teams/task-vm-idle-policy
-     * @secure
-     */
-    v1TeamsTaskVmIdlePolicyList: (params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamTaskVMIdlePolicy;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/task-vm-idle-policy`,
-        method: "GET",
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 更新当前团队任务创建开发环境的空闲休眠和回收策略
-     *
-     * @tags 【Team 管理员】开发环境管理
-     * @name V1TeamsTaskVmIdlePolicyUpdate
-     * @summary 更新任务开发环境空闲策略
-     * @request PUT:/api/v1/teams/task-vm-idle-policy
-     * @secure
-     */
-    v1TeamsTaskVmIdlePolicyUpdate: (req: DomainUpdateTeamTaskVMIdlePolicyReq, params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamTaskVMIdlePolicy;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/task-vm-idle-policy`,
         method: "PUT",
         body: req,
         secure: true,
@@ -3741,53 +3773,22 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 上传团队扩展包并导入 Skills 和团队镜像记录
+     * No description
      *
-     * @tags 【Team 管理员】扩展包管理
-     * @name V1TeamsExtensionPackagesCreate
-     * @summary 上传团队扩展包
-     * @request POST:/api/v1/teams/extension-packages
+     * @tags 【Team 管理员】MCP 配置
+     * @name V1TeamsMcpUpstreamsList
+     * @summary 获取团队 MCP Upstream 列表
+     * @request GET:/api/v1/teams/mcp/upstreams
      * @secure
      */
-    v1TeamsExtensionPackagesCreate: (data: {
-      /**
-       * 扩展包 zip
-       * @format binary
-       */
-      file: File;
-    }, params: RequestParams = {}) =>
+    v1TeamsMcpUpstreamsList: (params: RequestParams = {}) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: DomainImportTeamExtensionPackageResp;
+          data?: GithubComChaitinMonkeyCodeBackendDomainListTeamMCPUpstreamsResp;
         },
-        GithubComGoYokoWebResp
+        any
       >({
-        path: `/api/v1/teams/extension-packages`,
-        method: "POST",
-        body: data,
-        secure: true,
-        type: ContentType.FormData,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 获取团队 Skill 列表
-     *
-     * @tags 【Team 管理员】Skill 管理
-     * @name V1TeamsSkillsList
-     * @summary 获取团队 Skill 列表
-     * @request GET:/api/v1/teams/skills
-     * @secure
-     */
-    v1TeamsSkillsList: (params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainListTeamSkillsResp;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/skills`,
+        path: `/api/v1/teams/mcp/upstreams`,
         method: "GET",
         secure: true,
         type: ContentType.Json,
@@ -3796,22 +3797,25 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 添加团队 Skill
+     * No description
      *
-     * @tags 【Team 管理员】Skill 管理
-     * @name V1TeamsSkillsCreate
-     * @summary 添加团队 Skill
-     * @request POST:/api/v1/teams/skills
+     * @tags 【Team 管理员】MCP 配置
+     * @name V1TeamsMcpUpstreamsCreate
+     * @summary 创建团队 MCP Upstream
+     * @request POST:/api/v1/teams/mcp/upstreams
      * @secure
      */
-    v1TeamsSkillsCreate: (req: DomainAddTeamSkillReq, params: RequestParams = {}) =>
+    v1TeamsMcpUpstreamsCreate: (
+      req: GithubComChaitinMonkeyCodeBackendDomainCreateTeamMCPUpstreamReq,
+      params: RequestParams = {},
+    ) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: DomainTeamSkill;
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamMCPUpstream;
         },
-        GithubComGoYokoWebResp
+        any
       >({
-        path: `/api/v1/teams/skills`,
+        path: `/api/v1/teams/mcp/upstreams`,
         method: "POST",
         body: req,
         secure: true,
@@ -3821,47 +3825,26 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 上传团队 Skill zip 包
+     * No description
      *
-     * @tags 【Team 管理员】Skill 管理
-     * @name V1TeamsSkillsPackageCreate
-     * @summary 上传团队 Skill zip 包
-     * @request POST:/api/v1/teams/skills/package
+     * @tags 【Team 管理员】MCP 配置
+     * @name V1TeamsMcpUpstreamsUpdate
+     * @summary 更新团队 MCP Upstream
+     * @request PUT:/api/v1/teams/mcp/upstreams/{upstream_id}
      * @secure
      */
-    v1TeamsSkillsPackageCreate: (req: DomainAddTeamSkillPackageReq, params: RequestParams = {}) =>
+    v1TeamsMcpUpstreamsUpdate: (
+      upstreamId: string,
+      req: GithubComChaitinMonkeyCodeBackendDomainUpdateTeamMCPUpstreamReq,
+      params: RequestParams = {},
+    ) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: DomainTeamSkill;
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamMCPUpstream;
         },
-        GithubComGoYokoWebResp
+        any
       >({
-        path: `/api/v1/teams/skills/package`,
-        method: "POST",
-        body: req,
-        secure: true,
-        type: ContentType.FormData,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 更新团队 Skill
-     *
-     * @tags 【Team 管理员】Skill 管理
-     * @name V1TeamsSkillsUpdate
-     * @summary 更新团队 Skill
-     * @request PUT:/api/v1/teams/skills/{skill_id}
-     * @secure
-     */
-    v1TeamsSkillsUpdate: (skillId: string, req: DomainUpdateTeamSkillReq, params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamSkill;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/skills/${skillId}`,
+        path: `/api/v1/teams/mcp/upstreams/${upstreamId}`,
         method: "PUT",
         body: req,
         secure: true,
@@ -3871,17 +3854,17 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 删除团队 Skill
+     * No description
      *
-     * @tags 【Team 管理员】Skill 管理
-     * @name V1TeamsSkillsDelete
-     * @summary 删除团队 Skill
-     * @request DELETE:/api/v1/teams/skills/{skill_id}
+     * @tags 【Team 管理员】MCP 配置
+     * @name V1TeamsMcpUpstreamsDelete
+     * @summary 删除团队 MCP Upstream
+     * @request DELETE:/api/v1/teams/mcp/upstreams/{upstream_id}
      * @secure
      */
-    v1TeamsSkillsDelete: (skillId: string, params: RequestParams = {}) =>
-      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
-        path: `/api/v1/teams/skills/${skillId}`,
+    v1TeamsMcpUpstreamsDelete: (upstreamId: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, any>({
+        path: `/api/v1/teams/mcp/upstreams/${upstreamId}`,
         method: "DELETE",
         secure: true,
         type: ContentType.Json,
@@ -3890,73 +3873,18 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 获取当前团队企业登录 OIDC 配置
+     * No description
      *
-     * @tags 【Team 管理员】企业登录
-     * @name V1TeamsOidcList
-     * @summary 获取团队 OIDC 配置
-     * @request GET:/api/v1/teams/oidc
+     * @tags 【Team 管理员】MCP 配置
+     * @name V1TeamsMcpUpstreamsSyncCreate
+     * @summary 同步团队 MCP Upstream
+     * @request POST:/api/v1/teams/mcp/upstreams/{upstream_id}/sync
      * @secure
      */
-    v1TeamsOidcList: (params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamOIDCConfigResp;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/oidc`,
-        method: "GET",
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 新增或更新当前团队企业登录 OIDC 配置
-     *
-     * @tags 【Team 管理员】企业登录
-     * @name V1TeamsOidcUpdate
-     * @summary 保存团队 OIDC 配置
-     * @request PUT:/api/v1/teams/oidc
-     * @secure
-     */
-    v1TeamsOidcUpdate: (req: DomainSaveTeamOIDCConfigReq, params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamOIDCConfigResp;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/oidc`,
-        method: "PUT",
-        body: req,
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 拉取 OIDC discovery 文档验证配置可用性
-     *
-     * @tags 【Team 管理员】企业登录
-     * @name V1TeamsOidcTestCreate
-     * @summary 测试团队 OIDC 配置
-     * @request POST:/api/v1/teams/oidc/test
-     * @secure
-     */
-    v1TeamsOidcTestCreate: (req: DomainSaveTeamOIDCConfigReq, params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamOIDCTestResp;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/oidc/test`,
+    v1TeamsMcpUpstreamsSyncCreate: (upstreamId: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, any>({
+        path: `/api/v1/teams/mcp/upstreams/${upstreamId}/sync`,
         method: "POST",
-        body: req,
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -4335,6 +4263,347 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 获取当前团队企业登录 OIDC 配置
+     *
+     * @tags 【Team 管理员】企业登录
+     * @name V1TeamsOidcList
+     * @summary 获取团队 OIDC 配置
+     * @request GET:/api/v1/teams/oidc
+     * @secure
+     */
+    v1TeamsOidcList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamOIDCConfigResp;
+        },
+        any
+      >({
+        path: `/api/v1/teams/oidc`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 新增或更新当前团队企业登录 OIDC 配置
+     *
+     * @tags 【Team 管理员】企业登录
+     * @name V1TeamsOidcUpdate
+     * @summary 保存团队 OIDC 配置
+     * @request PUT:/api/v1/teams/oidc
+     * @secure
+     */
+    v1TeamsOidcUpdate: (
+      req: GithubComChaitinMonkeyCodeBackendDomainSaveTeamOIDCConfigReq,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamOIDCConfigResp;
+        },
+        any
+      >({
+        path: `/api/v1/teams/oidc`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 拉取 OIDC discovery 文档验证配置可用性
+     *
+     * @tags 【Team 管理员】企业登录
+     * @name V1TeamsOidcTestCreate
+     * @summary 测试团队 OIDC 配置
+     * @request POST:/api/v1/teams/oidc/test
+     * @secure
+     */
+    v1TeamsOidcTestCreate: (
+      req: GithubComChaitinMonkeyCodeBackendDomainSaveTeamOIDCConfigReq,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamOIDCTestResp;
+        },
+        any
+      >({
+        path: `/api/v1/teams/oidc/test`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取当前团队成员创建的项目列表
+     *
+     * @tags 【Team 管理员】团队项目
+     * @name V1TeamsProjectsList
+     * @summary 获取团队项目列表
+     * @request GET:/api/v1/teams/projects
+     * @secure
+     */
+    v1TeamsProjectsList: (
+      query?: {
+        /** 分页游标 */
+        cursor?: string;
+        /** 每页数量 */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamProjectListResp;
+        },
+        any
+      >({
+        path: `/api/v1/teams/projects`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags 【Team 管理员】Skill 管理
+     * @name V1TeamsSkillsList
+     * @summary 获取团队 Skill 列表
+     * @request GET:/api/v1/teams/skills
+     * @secure
+     */
+    v1TeamsSkillsList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainListTeamSkillsResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/skills`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags 【Team 管理员】Skill 管理
+     * @name V1TeamsSkillsCreate
+     * @summary 添加团队 Skill (JSON)
+     * @request POST:/api/v1/teams/skills
+     * @secure
+     */
+    v1TeamsSkillsCreate: (req: GithubComChaitinMonkeyCodeBackendDomainAddTeamSkillReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamSkill;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/skills`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags 【Team 管理员】Skill 管理
+     * @name V1TeamsSkillsPackageCreate
+     * @summary 添加团队 Skill (multipart zip)
+     * @request POST:/api/v1/teams/skills/package
+     * @secure
+     */
+    v1TeamsSkillsPackageCreate: (
+      data: {
+        /** Skill 名称 */
+        name: string;
+        /** Skill 描述 */
+        description: string;
+        /** JSON 字符串数组 */
+        tags?: string;
+        /** SKILL.md 原文(可选) */
+        content?: string;
+        /** JSON 字符串数组 */
+        group_ids?: string;
+        /** zip 内 SKILL.md 路径 */
+        skill_md_path?: string;
+        /**
+         * Skill zip 包
+         * @format binary
+         */
+        file: File;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamSkill;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/skills/package`,
+        method: "POST",
+        body: data,
+        secure: true,
+        type: ContentType.FormData,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 请求参数的 content 非空时，后端将 SKILL.md 重新打包上传 OSS 并创建新的 agent_skill_versions 并切到 active version 到新版本，否则仅更新当前版本的 description / tags / is_force_delivery / group_ids
+     *
+     * @tags 【Team 管理员】Skill 管理
+     * @name V1TeamsSkillsUpdate
+     * @summary 更新团队 Skill
+     * @request PUT:/api/v1/teams/skills/{skill_id}
+     * @secure
+     */
+    v1TeamsSkillsUpdate: (
+      skillId: string,
+      req: GithubComChaitinMonkeyCodeBackendDomainUpdateTeamSkillReq,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamSkill;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/skills/${skillId}`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 从本团队 skill repo 中软删所选 agent skill
+     *
+     * @tags 【Team 管理员】Skill 管理
+     * @name V1TeamsSkillsDelete
+     * @summary 删除团队 Skill
+     * @request DELETE:/api/v1/teams/skills/{skill_id}
+     * @secure
+     */
+    v1TeamsSkillsDelete: (skillId: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/teams/skills/${skillId}`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取当前团队任务创建开发环境的空闲休眠和回收策略
+     *
+     * @tags 【Team 管理员】开发环境管理
+     * @name V1TeamsTaskVmIdlePolicyList
+     * @summary 获取任务开发环境空闲策略
+     * @request GET:/api/v1/teams/task-vm-idle-policy
+     * @secure
+     */
+    v1TeamsTaskVmIdlePolicyList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamTaskVMIdlePolicy;
+        },
+        any
+      >({
+        path: `/api/v1/teams/task-vm-idle-policy`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 更新当前团队任务创建开发环境的空闲休眠和回收策略
+     *
+     * @tags 【Team 管理员】开发环境管理
+     * @name V1TeamsTaskVmIdlePolicyUpdate
+     * @summary 更新任务开发环境空闲策略
+     * @request PUT:/api/v1/teams/task-vm-idle-policy
+     * @secure
+     */
+    v1TeamsTaskVmIdlePolicyUpdate: (
+      req: GithubComChaitinMonkeyCodeBackendDomainUpdateTeamTaskVMIdlePolicyReq,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamTaskVMIdlePolicy;
+        },
+        any
+      >({
+        path: `/api/v1/teams/task-vm-idle-policy`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取当前团队成员创建的任务列表
+     *
+     * @tags 【Team 管理员】团队任务
+     * @name V1TeamsTasksList
+     * @summary 获取团队任务列表
+     * @request GET:/api/v1/teams/tasks
+     * @secure
+     */
+    v1TeamsTasksList: (
+      query?: {
+        /** 分页游标 */
+        cursor?: string;
+        /** 每页数量 */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamTaskListResp;
+        },
+        any
+      >({
+        path: `/api/v1/teams/tasks`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 获取团队成员列表，支持按角色筛选
      *
      * @tags 【Team 管理员】分组成员管理
@@ -4664,6 +4933,48 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 永久删除当前账号及关联个人数据，并撤销 Apple 登录授权（仅 Apple 登录的账号可用）
+     *
+     * @tags 【用户】认证
+     * @name V1UsersAccountDelete
+     * @summary 注销账号
+     * @request DELETE:/api/v1/users/account
+     * @secure
+     */
+    v1UsersAccountDelete: (params: RequestParams = {}) =>
+      this.request<GitInChaitinNetGoDevWebResp, any>({
+        path: `/api/v1/users/account`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 用 Apple 下发的 identity token 登录，首次登录自动建号
+     *
+     * @tags 【用户】认证
+     * @name V1UsersAppleLoginCreate
+     * @summary Apple 登录
+     * @request POST:/api/v1/users/apple-login
+     */
+    v1UsersAppleLoginCreate: (req: DomainAppleLoginReq, params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainUser;
+        },
+        any
+      >({
+        path: `/api/v1/users/apple-login`,
+        method: "POST",
+        body: req,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 处理百智云登录回调，验证 token 并建立会话
      *
      * @tags 【用户】认证
@@ -4879,7 +5190,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
     ) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: TaskflowFile[];
+          data?: GithubComChaitinMonkeyCodeBackendPkgTaskflowFile[];
         },
         any
       >({
@@ -5781,73 +6092,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 处理身份源回调并创建 MonkeyCode 登录会话
-     *
-     * @tags 【用户】企业团队成员认证
-     * @name V1UsersOidcCallbackList
-     * @summary 处理团队 OIDC 回调
-     * @request GET:/api/v1/users/oidc/callback
-     */
-    v1UsersOidcCallbackList: (
-      query: {
-        code: string;
-        state: string;
-      },
-      params: RequestParams = {},
-    ) =>
-      this.request<any, GithubComGoYokoWebResp>({
-        path: `/api/v1/users/oidc/callback`,
-        method: "GET",
-        query: query,
-        type: ContentType.Json,
-        ...params,
-      }),
-
-    /**
-     * @description 根据 team_id 跳转到团队 OIDC 身份源
-     *
-     * @tags 【用户】企业团队成员认证
-     * @name V1UsersOidcLoginList
-     * @summary 发起团队 OIDC 登录
-     * @request GET:/api/v1/users/oidc/login
-     */
-    v1UsersOidcLoginList: (
-      query: {
-        team_id: string;
-      },
-      params: RequestParams = {},
-    ) =>
-      this.request<any, GithubComGoYokoWebResp>({
-        path: `/api/v1/users/oidc/login`,
-        method: "GET",
-        query: query,
-        type: ContentType.Json,
-        ...params,
-      }),
-
-    /**
-     * @description 用于团队专属登录页展示企业登录入口
-     *
-     * @tags 【用户】企业团队成员认证
-     * @name V1UsersOidcTeamsDetail
-     * @summary 获取团队公开 OIDC 登录配置
-     * @request GET:/api/v1/users/oidc/teams/{team_id}
-     */
-    v1UsersOidcTeamsDetail: (teamId: string, params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamOIDCPublicConfigResp;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/users/oidc/teams/${teamId}`,
-        method: "GET",
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
      * @description 清除用户会话，登出系统
      *
      * @tags 【用户】认证
@@ -5873,7 +6117,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @request PUT:/api/v1/users/mcp/tools/{id}
      * @secure
      */
-    v1UsersMcpToolsUpdate: (id: string, req: DomainUpdateUserMCPToolSettingReq, params: RequestParams = {}) =>
+    v1UsersMcpToolsUpdate: (
+      id: string,
+      req: GithubComChaitinMonkeyCodeBackendDomainUpdateUserMCPToolSettingReq,
+      params: RequestParams = {},
+    ) =>
       this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/mcp/tools/${id}`,
         method: "PUT",
@@ -5904,7 +6152,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
     ) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: DomainListUserMCPUpstreamsResp;
+          data?: GithubComChaitinMonkeyCodeBackendDomainListUserMCPUpstreamsResp;
         },
         GithubComGoYokoWebResp
       >({
@@ -5926,10 +6174,13 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @request POST:/api/v1/users/mcp/upstreams
      * @secure
      */
-    v1UsersMcpUpstreamsCreate: (req: DomainCreateUserMCPUpstreamReq, params: RequestParams = {}) =>
+    v1UsersMcpUpstreamsCreate: (
+      req: GithubComChaitinMonkeyCodeBackendDomainCreateUserMCPUpstreamReq,
+      params: RequestParams = {},
+    ) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: DomainMCPUpstream;
+          data?: GithubComChaitinMonkeyCodeBackendDomainMCPUpstream;
         },
         GithubComGoYokoWebResp
       >({
@@ -5951,7 +6202,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @request PUT:/api/v1/users/mcp/upstreams/{id}
      * @secure
      */
-    v1UsersMcpUpstreamsUpdate: (id: string, req: DomainUpdateUserMCPUpstreamReq, params: RequestParams = {}) =>
+    v1UsersMcpUpstreamsUpdate: (
+      id: string,
+      req: GithubComChaitinMonkeyCodeBackendDomainUpdateUserMCPUpstreamReq,
+      params: RequestParams = {},
+    ) =>
       this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/mcp/upstreams/${id}`,
         method: "PUT",
@@ -6367,6 +6622,98 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/users/notify/event-types`,
         method: "GET",
         secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 处理身份源回调并创建 MonkeyCode 登录会话
+     *
+     * @tags 【用户】企业团队成员认证
+     * @name V1UsersOidcCallbackList
+     * @summary 处理团队 OIDC 回调
+     * @request GET:/api/v1/users/oidc/callback
+     */
+    v1UsersOidcCallbackList: (
+      query: {
+        /** 授权码 */
+        code: string;
+        /** 状态 */
+        state: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<any, any>({
+        path: `/api/v1/users/oidc/callback`,
+        method: "GET",
+        query: query,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description 用于私有化登录页展示第一个已启用团队的企业登录入口
+     *
+     * @tags 【用户】企业团队成员认证
+     * @name V1UsersOidcDefaultTeamList
+     * @summary 获取默认团队公开 OIDC 登录配置
+     * @request GET:/api/v1/users/oidc/default-team
+     */
+    v1UsersOidcDefaultTeamList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamOIDCPublicConfigResp;
+        },
+        any
+      >({
+        path: `/api/v1/users/oidc/default-team`,
+        method: "GET",
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 根据 team_id 跳转到团队 OIDC 身份源
+     *
+     * @tags 【用户】企业团队成员认证
+     * @name V1UsersOidcLoginList
+     * @summary 发起团队 OIDC 登录
+     * @request GET:/api/v1/users/oidc/login
+     */
+    v1UsersOidcLoginList: (
+      query: {
+        /** 团队 ID */
+        team_id: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<any, any>({
+        path: `/api/v1/users/oidc/login`,
+        method: "GET",
+        query: query,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description 用于团队专属登录页展示企业登录入口
+     *
+     * @tags 【用户】企业团队成员认证
+     * @name V1UsersOidcTeamsDetail
+     * @summary 获取团队公开 OIDC 登录配置
+     * @request GET:/api/v1/users/oidc/teams/{team_id}
+     */
+    v1UsersOidcTeamsDetail: (teamId: string, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamOIDCPublicConfigResp;
+        },
+        any
+      >({
+        path: `/api/v1/users/oidc/teams/${teamId}`,
+        method: "GET",
         type: ContentType.Json,
         format: "json",
         ...params,
@@ -7291,7 +7638,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数）， limit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。 返回的 user-input.data 统一为 JSON payload 字符串，例如 `{"content":"57un57ut5aSE55CG","attachments":[]}`；content 为用户输入文本的 base64 编码，旧历史裸文本也会按该结构包装返回。
+     * @description 根据 cursor 翻页查询任务的历史轮次。limit 为轮次数（非条目数）， limit=2 表示返回 2 轮的完整消息。direction=backward（默认）从 cursor 往更早翻，轮间倒序（最新轮在前）； direction=forward 往更新翻，轮间正序（最旧轮在前）；轮内消息始终按时间正序。 即响应中最后一轮总是与 next_cursor 相邻的那一轮。前端应以每条 chunk 的 seq 做分组排序，不依赖数组顺序。 日志存储为 ClickHouse 时 cursor 即轮次号 seq，可配合 inclusive=true 实现"跳转到第 seq 轮"； Loki 仅支持 backward 且不支持 inclusive，违反时返回 err-task-rounds-direction-unsupported。 返回的 user-input.data 统一为 JSON payload 字符串，例如 `{"content":"57un57ut5aSE55CG","attachments":[]}`；content 为用户输入文本的 base64 编码，旧历史裸文本也会按该结构包装返回。
      *
      * @tags 【用户】任务管理
      * @name V1UsersTasksRoundsList
@@ -7303,55 +7650,24 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       query: {
         /** 任务 ID */
         id: string;
-        /** 分页游标 */
+        /** 分页游标（ClickHouse 下即轮次号 seq） */
         cursor?: string;
         /** 轮次数（默认 2，上限 10） */
         limit?: number;
+        /** 翻页方向：backward（默认）/ forward */
+        direction?: string;
+        /** 是否包含 cursor 指向的那一轮（跳转定位用） */
+        inclusive?: boolean;
       },
       params: RequestParams = {},
     ) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: DomainTaskRoundsResp;
+          data?: GithubComChaitinMonkeyCodeBackendDomainTaskRoundsResp;
         },
         GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/tasks/rounds`,
-        method: "GET",
-        query: query,
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 查询任务的所有 user-input 消息（正序，最早在前），用于聊天页侧边栏快速跳转到指定一轮对话。单条返回的 id 形如 `user-input-{timestamp_ns}`，与前端聊天页消息列表中的 `data-message-id` 对齐。content 已解码为明文，超出 500 字符会截断并将 truncated 置为 true。
-     *
-     * @tags 【用户】任务管理
-     * @name V1UsersTasksUserInputsList
-     * @summary 查询任务用户输入列表
-     * @request GET:/api/v1/users/tasks/user-inputs
-     * @secure
-     */
-    v1UsersTasksUserInputsList: (
-      query: {
-        /** 任务 ID */
-        id: string;
-        /** 分页游标，第一页留空 */
-        cursor?: string;
-        /** 返回条数（默认 20，上限 100） */
-        limit?: number;
-      },
-      params: RequestParams = {},
-    ) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTaskUserInputsResp;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/users/tasks/user-inputs`,
         method: "GET",
         query: query,
         secure: true,
@@ -7374,6 +7690,28 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/users/tasks/speech-to-text`,
         method: "POST",
         secure: true,
+        ...params,
+      }),
+
+    /**
+     * @description 通过 WebSocket 上传实时音频流并实时返回识别结果。 后端使用豆包流式语音识别 2.0 (bigmodel_async)。完整协议见 docs/speech-to-text-stream.md。 ## 帧类型约定 | 方向 | 帧类型 | 用途 | |---|---|---| | C → S | Text(JSON) | 控制消息:start / stop | | C → S | Binary | 音频字节流,服务端封装为豆包帧透传 | | S → C | Text(JSON) | 所有事件(ready / partial / final / done / error) | ## 客户端 → 服务端 ### 1) start (第一帧必须是它) ```json { "type": "start", "format": "pcm", "disfluency": false } ``` - `format` 可选,默认 `pcm`。支持 `pcm` / `wav` / `ogg` / `mp3`,单声道、16-bit、采样率固定 16000Hz - `pcm` / `wav` 内部音频流必须是 `pcm_s16le`;`ogg` 必须为 `opus` 编码;`mp3` 由远端解码 - `disfluency` 可选,默认 `false`。`true` 时启用语义顺滑(过滤"嗯/啊"等口头禅、语义重复词) - 服务端校验通过 → 与豆包建立 WSS → 收到首个响应后向客户端下发 `ready` 事件(带 `logid`) - **客户端必须在收到 `ready` 之后才能发 Binary 音频帧** - 以下能力默认开启:中间结果(双向流式天然有)、标点预测、ITN(中文数字转阿拉伯数字) ### 2) Binary 音频帧 `ready` 之后,客户端持续发 Binary 帧。**建议每帧 200ms**(豆包推荐值,过碎会影响性能)。 ### 3) stop (主动结束) ```json { "type": "stop" } ``` 服务端收到后向豆包发送"最后一包"标志,等待豆包最终响应后下发 `done` 事件并关闭 WS。客户端直接 close WS 亦可。 ## 服务端 → 客户端 所有事件统一外层结构: ```json { "type": "<event_type>", "timestamp": 1733299200000, ... } ``` ### ready — 远端已就绪 ```json { "type": "ready", "logid": "202407261553070FACFE6D19421815D605", "timestamp": 1733299200000 } ``` 仅推送一次。客户端收到后开始发 Binary 音频帧。`logid` 是豆包返回的 `X-Tt-Logid`,排障必备, 建议前端在 session 期间一直打印它,跟后续 error 事件可以关联。 ### partial — 中间结果(实时滚动,会反复推送) ```json { "type": "partial", "index": 1, "text": "今天天气真", "timestamp": 1733299201500 } ``` - 同一 `index` 的 `partial` 会反复推送,`text` 通常逐渐变长 - **客户端必须用 `text` 覆盖该句显示内容,不要追加** ### final — 一句话定稿 ```json { "type": "final", "index": 1, "text": "今天天气真不错。", "timestamp": 1733299202800 } ``` - 该句识别完成、内容固化,后续不会再变;客户端用 `text` 覆盖 `index` 对应位置 - `final` 之后可能立刻有下一句的 `partial`(`index+1`) ### done — 整个 session 结束 ```json { "type": "done", "logid": "...", "timestamp": 1733299210000 } ``` - 服务端已收到豆包最后一包响应、释放资源,即将关闭 WS;`done` 之后不会再有任何事件 ### error — 错误 豆包远端错误: ```json { "type": "error", "logid": "202407261553070FACFE6D19421815D605", "error": { "code": 45000001, "message": "请求参数无效", "request_id": "67ee89ba-7050-4c04-a3d7-ac61a63499b3", "logid": "202407261553070FACFE6D19421815D605" }, "timestamp": 1733299205000 } ``` 本服务前置校验错误(远端连接前):`code=0`,在 `message` 描述原因: ```json { "type": "error", "error": { "code": 0, "message": "first message must be a 'start' control message" }, "timestamp": 1733299205000 } ``` ## 豆包常见错误码速查 | code | 含义 | 典型原因 | |---|---|---| | `45000001` | 请求参数无效 | 缺字段 / 字段值无效 / 重复请求 | | `45000002` | 空音频 | 录音未采集到声音 | | `45000081` | 等包超时 | 前端没在期限内连续发送音频帧 | | `45000151` | 音频格式不正确 | `format` 与实际音频不匹配 | | `55000031` | 服务器繁忙 | 退避重试 | | `550xxxxx` | 服务内部错误 | 直接重试,持续失败时带 `logid` 联系运维 | ## 时序示例 ``` C → S: WS upgrade (带鉴权) C → S: {"type":"start","format":"pcm"} S → C: {"type":"ready","logid":"..."} C → S: <binary 200ms> <binary 200ms> ... S → C: {"type":"partial","index":1,"text":"今天"} S → C: {"type":"partial","index":1,"text":"今天天气真"} S → C: {"type":"final","index":1,"text":"今天天气真不错。"} C → S: {"type":"stop"} S → C: {"type":"done","logid":"..."} WS close ``` ## 与 POST /speech-to-text 的差异 - POST /speech-to-text:整段录音 → SSE 单段结果,适合短语音 ≤60s - 本接口:WS 双向实时流,支持长语音、句级 final、可被打断,适合 Web/移动端边说边显示
+     *
+     * @tags 【用户】任务管理
+     * @name V1UsersTasksSpeechToTextStreamList
+     * @summary 实时语音转写(WebSocket 流式)
+     * @request GET:/api/v1/users/tasks/speech-to-text-stream
+     * @secure
+     */
+    v1UsersTasksSpeechToTextStreamList: (
+      start: GithubComChaitinMonkeyCodeBackendDomainSpeechStreamStartReq,
+      params: RequestParams = {},
+    ) =>
+      this.request<any, GithubComChaitinMonkeyCodeBackendDomainSpeechStreamEvent | GithubComGoYokoWebResp>({
+        path: `/api/v1/users/tasks/speech-to-text-stream`,
+        method: "GET",
+        body: start,
+        secure: true,
+        type: ContentType.Json,
         ...params,
       }),
 
@@ -7429,6 +7767,41 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 查询任务的 user-input 消息（倒序，最新在前），根据 cursor 向更早翻页，用于聊天页侧边栏快速跳转到指定一轮对话。 单条返回的 id 形如 `user-input-{timestamp_ns}`，与前端聊天页消息列表中的 `data-message-id` 对齐。 content 已解码为明文，超出 500 字符会截断并将 truncated 置为 true。 日志存储为 ClickHouse 时每条带 seq（轮次号），可作为 /rounds 接口的 cursor 配合 inclusive=true 跳转定位；Loki 下无 seq。
+     *
+     * @tags 【用户】任务管理
+     * @name V1UsersTasksUserInputsList
+     * @summary 查询任务用户输入列表
+     * @request GET:/api/v1/users/tasks/user-inputs
+     * @secure
+     */
+    v1UsersTasksUserInputsList: (
+      query: {
+        /** 任务 ID */
+        id: string;
+        /** 分页游标，第一页留空 */
+        cursor?: string;
+        /** 返回条数（默认 20，上限 100） */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTaskUserInputsResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/users/tasks/user-inputs`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 任务详情
      *
      * @tags 【用户】任务管理
@@ -7461,7 +7834,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @request PUT:/api/v1/users/tasks/{id}
      * @secure
      */
-    v1UsersTasksUpdate: (id: string, param: DomainUpdateTaskReq, params: RequestParams = {}) =>
+    v1UsersTasksUpdate: (
+      id: string,
+      param: GithubComChaitinMonkeyCodeBackendDomainUpdateTaskReq,
+      params: RequestParams = {},
+    ) =>
       this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/tasks/${id}`,
         method: "PUT",
@@ -7680,7 +8057,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
     v1UsersWechatMpBindQrcodeCreate: (params: RequestParams = {}) =>
       this.request<
         GithubComGoYokoWebResp & {
-          data?: DomainBindQRCodeResp;
+          data?: GithubComChaitinMonkeyCodeBackendDomainBindQRCodeResp;
         },
         GithubComGoYokoWebResp
       >({

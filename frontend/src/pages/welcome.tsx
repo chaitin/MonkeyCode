@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AuthProvider } from "@/components/auth-provider";
 import TerminalNativePage from "@/components/welcome/terminal-native-page";
 
 const WelcomePage = () => {
@@ -14,9 +13,7 @@ const WelcomePage = () => {
   }, [searchParams]);
 
   return (
-    <AuthProvider>
-      <TerminalNativePage />
-    </AuthProvider>
+    <TerminalNativePage />
   )
 }
 

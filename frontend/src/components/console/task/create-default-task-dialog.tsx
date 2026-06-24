@@ -7,7 +7,7 @@ import {
   ConstsUserRole,
   type DomainAuthRepository,
   type DomainGitIdentity,
-  type DomainSkill,
+  type DomainSkillListItem,
 } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
@@ -78,6 +78,8 @@ import ModelSelect from "./model-select"
 import { ALL_SKILLS_TAG, TaskSkillSelector } from "./task-skill-selector"
 import { filterSelectableSkillIds } from "./task-skill-selection"
 
+type DomainSkill = DomainSkillListItem & { tags?: string[] }
+
 interface CreateDefaultTaskDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -97,7 +99,7 @@ function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
     ConstsGitPlatform.GitPlatformGitLab,
     ConstsGitPlatform.GitPlatformCodeup,
     ConstsGitPlatform.GitPlatformCnb,
-    ConstsGitPlatform.GitPlatformAtomGit,
+    ConstsGitPlatform.GitPlatformAtomgit,
   ].includes(identity.platform as ConstsGitPlatform)
 }
 

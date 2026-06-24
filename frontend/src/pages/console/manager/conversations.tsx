@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { IconMessages } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import type { Dbv2Cursor, DomainTeamConversationItem } from "@/api/Api"
+import type { Dbv2Cursor, GithubComChaitinMonkeyCodeBackendDomainTeamConversationItem as DomainTeamConversationItem } from "@/api/Api"
 import {
   ManagerListEmpty,
   ManagerListLoading,

@@ -1,4 +1,4 @@
-import { useAuth } from "@/components/auth-provider";
+import { useAppRuntime } from "@/components/app-runtime-provider";
 import { cn } from "@/lib/utils";
 import { IconArrowRight, IconMenu2, IconPointFilled } from "@tabler/icons-react";
 import React from "react";
@@ -90,7 +90,8 @@ function FooterLinkItem({ title, href }: { title: string; href: string }) {
 }
 
 export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }) {
-  const { isLoggedIn } = useAuth();
+  const { auth } = useAppRuntime();
+  const isLoggedIn = auth.status === "authenticated";
   const { t } = useTranslation();
   const [isScrolled, setIsScrolled] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);

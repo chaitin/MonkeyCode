@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
-import { TaskflowFileKind, type DomainVirtualMachine, type TaskflowFile } from "@/api/Api"
+import { GithubComChaitinMonkeyCodeBackendPkgTaskflowFileKind as TaskflowFileKind, type DomainVirtualMachine, type GithubComChaitinMonkeyCodeBackendPkgTaskflowFile as TaskflowFile } from "@/api/Api"
 import { Link as LinkIcon, MoreVertical } from "lucide-react"
 import {
   DropdownMenu,

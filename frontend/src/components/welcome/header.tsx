@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/components/auth-provider";
+import { useAppRuntime } from "@/components/app-runtime-provider";
 import { IconArrowLeft, IconMenu2 } from "@tabler/icons-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
@@ -11,7 +11,8 @@ const docsLink = "https://monkeycode.docs.baizhi.cloud/";
 const githubLink = "https://github.com/chaitin/MonkeyCode";
 
 const Header = () => {
-  const { isLoggedIn } = useAuth();
+  const { auth } = useAppRuntime();
+  const isLoggedIn = auth.status === "authenticated";
   const { t } = useTranslation();
   const [isScrolled, setIsScrolled] = React.useState(false);
   const location = useLocation();

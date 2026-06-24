@@ -29,7 +29,7 @@ import {
 import { apiRequest } from "@/utils/requestUtils"
 import { canManageDevEnvironment, getHostBadges } from "@/utils/common"
 import { toast } from "sonner"
-import { type DomainHost, ConstsOwnerType, TaskflowVirtualMachineStatus } from "@/api/Api"
+import { type DomainHost, ConstsOwnerType, GithubComChaitinMonkeyCodeBackendPkgTaskflowVirtualMachineStatus as TaskflowVirtualMachineStatus } from "@/api/Api"
 import {
   AlertDialog,
   AlertDialogAction,

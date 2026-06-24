@@ -5,6 +5,7 @@ import '@fontsource-variable/noto-sans-sc/wght.css'
 import './index.css'
 import App from './App.tsx'
 import { initI18n } from './i18n'
+import { AppRuntimeProvider } from './components/app-runtime-provider'
 
 
 import dayjs from 'dayjs';
@@ -18,7 +19,9 @@ dayjs.extend(relativeTime);
 void initI18n().then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <App />
+      <AppRuntimeProvider>
+        <App />
+      </AppRuntimeProvider>
     </StrictMode>,
   )
 })

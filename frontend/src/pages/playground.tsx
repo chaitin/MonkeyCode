@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { AuthProvider, useAuth } from "@/components/auth-provider";
+import { useAppRuntime } from "@/components/app-runtime-provider";
 import { useTranslation } from "react-i18next";
 
 const PlaygroundContent = () => {
@@ -21,7 +21,8 @@ const PlaygroundContent = () => {
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
 
-  const { isLoggedIn } = useAuth();
+  const { auth } = useAppRuntime();
+  const isLoggedIn = auth.status === "authenticated";
   const navigate = useNavigate();
 
   const fetchPosts = async () => {
@@ -122,13 +123,11 @@ const PlaygroundContent = () => {
 
 const PlaygroundPage = () => {
   return (
-    <AuthProvider>
-      <div className="flex flex-col h-screen">
-        <Header />
-        <PlaygroundContent />
-        <Footer />
-      </div>
-    </AuthProvider>
+    <div className="flex flex-col h-screen">
+      <Header />
+      <PlaygroundContent />
+      <Footer />
+    </div>
   )
 }
 

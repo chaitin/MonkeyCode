@@ -1,4 +1,4 @@
-import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainProject, type DomainBranch, type DomainSkill } from "@/api/Api"
+import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainProject, type DomainBranch, type DomainSkillListItem } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +33,8 @@ import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concur
 import { ALL_SKILLS_TAG, TaskSkillSelector } from "@/components/console/task/task-skill-selector"
 import { filterSelectableSkillIds } from "@/components/console/task/task-skill-selection"
 import { useTranslation } from "react-i18next"
+
+type DomainSkill = DomainSkillListItem & { tags?: string[] }
 
 interface StartDevelopTaskDialogProps {
   open: boolean

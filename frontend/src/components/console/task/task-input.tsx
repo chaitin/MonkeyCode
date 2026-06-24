@@ -1,4 +1,4 @@
-import { ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, ConstsTaskType, ConstsUserRole, type DomainAuthRepository, type DomainGitIdentity, type DomainSkill } from "@/api/Api";
+import { ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, ConstsTaskType, ConstsUserRole, type DomainAuthRepository, type DomainGitIdentity, type DomainSkillListItem } from "@/api/Api";
 import Icon from "@/components/common/Icon";
 import { useCommonData } from "@/components/console/data-provider";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,8 @@ import { MAX_TASK_CONTENT_LENGTH } from "./task-content-limit";
 import { filterSelectableSkillIds } from "./task-skill-selection";
 import { useTranslation } from "react-i18next";
 
+type DomainSkill = DomainSkillListItem & { tags?: string[] };
+
 interface RepoOption {
   gitIdentityId: string;
   username: string;
@@ -49,7 +51,7 @@ function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
     ConstsGitPlatform.GitPlatformGitLab,
     ConstsGitPlatform.GitPlatformCodeup,
     ConstsGitPlatform.GitPlatformCnb,
-    ConstsGitPlatform.GitPlatformAtomGit,
+    ConstsGitPlatform.GitPlatformAtomgit,
   ].includes(identity.platform as ConstsGitPlatform);
 }
 

@@ -6,7 +6,7 @@ import { Box, Clock3, MoreVertical, Save } from "lucide-react";
 import { useState, useEffect } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { toast } from "sonner";
-import { TaskflowVirtualMachineStatus, type DomainHost, type DomainTeamGroup, type DomainTeamTaskVMIdlePolicy, type DomainVirtualMachine } from "@/api/Api";
+import { GithubComChaitinMonkeyCodeBackendPkgTaskflowVirtualMachineStatus as TaskflowVirtualMachineStatus, type DomainHost, type DomainTeamGroup, type GithubComChaitinMonkeyCodeBackendDomainTeamTaskVMIdlePolicy as DomainTeamTaskVMIdlePolicy, type DomainVirtualMachine } from "@/api/Api";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup, ItemTitle } from "@/components/ui/item";

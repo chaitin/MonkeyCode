@@ -11,7 +11,7 @@ import {
 import { IconPencil, IconTrash } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { Api, type DomainTeamGroup, type DomainTeamSkill } from "@/api/Api"
+import { Api, type DomainTeamGroup, type GithubComChaitinMonkeyCodeBackendDomainTeamSkill as DomainTeamSkill } from "@/api/Api"
 import {
   findSkillMarkdownPath,
   normalizeSkillTags,
@@ -519,8 +519,6 @@ function AddSkillDialog({
         tags: JSON.stringify(tags),
         content: draft.content,
         group_ids: JSON.stringify(selectedGroupIds),
-        source_type: source.type,
-        source_label: source.label,
         skill_md_path: source.skillMdPath,
         file: packageFile,
       }).then((response) => {

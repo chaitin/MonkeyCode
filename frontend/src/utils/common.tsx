@@ -4,7 +4,7 @@ import Icon from "@/components/common/Icon"
 import { IconAssembly, IconBrandChrome, IconBrandPython, IconBug, IconDeviceGamepad2, IconFileText, IconHelpHexagon, IconPalette, IconPuzzle, IconShieldChevron, IconTerminal2, IconTestPipe } from "@tabler/icons-react"
 import Cap from "@cap.js/widget"
 import { HoverCardContent } from "@/components/ui/hover-card"
-import { ConstsGitPlatform, ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIssueStatus, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TaskflowVirtualMachineStatus, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainOwner, type DomainProjectTask, type DomainProviderModelListItem, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine, type GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition } from "@/api/Api"
+import { ConstsGitPlatform, ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIssueStatus, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, GithubComChaitinMonkeyCodeBackendPkgTaskflowVirtualMachineStatus as TaskflowVirtualMachineStatus, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainOwner, type DomainProjectTask, type DomainProviderModelListItem, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine, type GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition } from "@/api/Api"
 import { apiRequest } from "./requestUtils"
 import { remark } from "remark"
 import strip from "strip-markdown"
@@ -398,7 +398,7 @@ export function detectGitPlatformFromUrl(url: string): ConstsGitPlatform | undef
     return ConstsGitPlatform.GitPlatformCnb
   }
   if (hostname === "atomgit.com" || hostname.endsWith(".atomgit.com")) {
-    return ConstsGitPlatform.GitPlatformAtomGit
+    return ConstsGitPlatform.GitPlatformAtomgit
   }
   return undefined
 }

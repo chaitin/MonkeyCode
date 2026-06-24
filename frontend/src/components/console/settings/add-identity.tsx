@@ -76,7 +76,7 @@ export default function AddIdentity({
         case ConstsGitPlatform.GitPlatformCnb:
           setBaseUrl("https://api.cnb.cool")
           break
-        case ConstsGitPlatform.GitPlatformAtomGit:
+        case ConstsGitPlatform.GitPlatformAtomgit:
           setBaseUrl("https://api.atomgit.com")
           break
         default:
@@ -185,7 +185,7 @@ export default function AddIdentity({
                     <SelectItem value={ConstsGitPlatform.GitPlatformCnb}>
                       <Icon name="Cnb" />CNB
                     </SelectItem>
-                    <SelectItem value={ConstsGitPlatform.GitPlatformAtomGit}>
+                    <SelectItem value={ConstsGitPlatform.GitPlatformAtomgit}>
                       <Icon name="GitCode" />GitCode
                     </SelectItem>
                   </SelectContent>

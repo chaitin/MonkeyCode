@@ -1,4 +1,5 @@
 import { ConstsGitPlatform, ConstsOwnerType, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainProjectTask, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine } from '@/api/Api';
+import { useAppRuntime } from '@/components/app-runtime-provider';
 import { WechatMpBindDialog } from '@/components/console/wechat-mp-bind-dialog';
 import { getImageShortName } from '@/utils/common';
 import { IS_OFFLINE_EDITION } from '@/utils/edition';
@@ -64,7 +65,8 @@ const DataContext = createContext<CommonData | null>(null);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
-  const [userInfo, setUserInfo] = useState<DomainUser>({});
+  const { auth, reloadAuth } = useAppRuntime();
+  const userInfo = auth.user || {};
   const [wechatMpBindDialogOpen, setWechatMpBindDialogOpen] = useState(false);
   const checkedWechatMpBindRef = useRef(false);
 
@@ -101,18 +103,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [historicalTasks, setHistoricalTasks] = useState<DomainProjectTask[]>([]);
   const [loadingHistoricalTasks, setLoadingHistoricalTasks] = useState(true);
 
-  const fetchUserInfo = async () => {
-    let nextUser: DomainUser = {}
-    await apiRequest('v1UsersStatusList', {}, [], (resp) => {
-      nextUser = resp.data?.user || {}
-      setUserInfo(nextUser);
-      if (resp.code === 0 && !IS_OFFLINE_EDITION && !checkedWechatMpBindRef.current) {
-        checkedWechatMpBindRef.current = true;
-        setWechatMpBindDialogOpen(nextUser.wechat_mp_bound !== true);
-      }
-    })
-    return nextUser
-  }
+  const maybeOpenWechatMpBindDialog = useCallback((nextUser: DomainUser) => {
+    if (IS_OFFLINE_EDITION || checkedWechatMpBindRef.current) {
+      return;
+    }
+
+    checkedWechatMpBindRef.current = true;
+    setWechatMpBindDialogOpen(nextUser.wechat_mp_bound !== true);
+  }, []);
+
+  const fetchUserInfo = useCallback(async () => {
+    const nextAuth = await reloadAuth();
+    const nextUser = nextAuth.user || {};
+    maybeOpenWechatMpBindDialog(nextUser);
+    return nextUser;
+  }, [maybeOpenWechatMpBindDialog, reloadAuth]);
 
   const fetchHosts = async () => {
     setLoadingHosts(true)
@@ -379,7 +384,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   useEffect(() => {
-    fetchUserInfo();
     fetchHosts();
     fetchModels();
     fetchImages();
@@ -392,6 +396,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchUnlinkedTasks();
     fetchHistoricalTasks();
   }, []);
+
+  useEffect(() => {
+    if (auth.status === "authenticated" && auth.user) {
+      maybeOpenWechatMpBindDialog(auth.user);
+    }
+  }, [auth.status, auth.user, maybeOpenWechatMpBindDialog]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {

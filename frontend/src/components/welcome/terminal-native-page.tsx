@@ -1,4 +1,4 @@
-import { useAuth } from "@/components/auth-provider";
+import { useAppRuntime } from "@/components/app-runtime-provider";
 import Icon from "@/components/common/Icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -364,7 +364,8 @@ function HeaderAction({
 }
 
 export default function TerminalNativePage() {
-  const { isLoggedIn } = useAuth();
+  const { auth } = useAppRuntime();
+  const isLoggedIn = auth.status === "authenticated";
   const { t } = useTranslation();
   const [openFaq, setOpenFaq] = React.useState(0);
   const [billingPeriod, setBillingPeriod] = React.useState<BillingPeriod>("monthly");

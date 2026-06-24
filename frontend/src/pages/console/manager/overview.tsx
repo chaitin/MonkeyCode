@@ -16,7 +16,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-import type { DomainTeamDashboardResp } from "@/api/Api"
+import type { GithubComChaitinMonkeyCodeBackendDomainTeamDashboardResp as DomainTeamDashboardResp } from "@/api/Api"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InsightTable } from "@/components/manager/dashboard/insight-table"

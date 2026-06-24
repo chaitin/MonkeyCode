@@ -144,6 +144,8 @@ const en = {
       title: "Choose a sign-in method",
       baizhi: "Baizhi Cloud Sign-in - Recommended",
       oidc: "Enterprise Sign-in",
+      google: "Google Sign-in",
+      github: "GitHub Sign-in",
       password: "Email and Password",
       signup: "Quick Sign-up",
     },

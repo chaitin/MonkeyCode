@@ -175,7 +175,7 @@ export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitB
                   <SelectItem value={ConstsGitPlatform.GitPlatformCnb}>
                     <Icon name="Cnb" />CNB
                   </SelectItem>
-                  <SelectItem value={ConstsGitPlatform.GitPlatformAtomGit}>
+                  <SelectItem value={ConstsGitPlatform.GitPlatformAtomgit}>
                     <Icon name="GitCode" />GitCode
                   </SelectItem>
                 </SelectContent>
