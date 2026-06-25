@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -92,10 +93,10 @@ func TestValidateAttachmentsRejectsBadInputs(t *testing.T) {
 }
 
 func TestTaskAttachmentsToTaskflowConvertsAssetURLToHTTPPresignURL(t *testing.T) {
-	signer := &fakeAttachmentSigner{}
+	store := &fakeObjectStore{}
 	u := &TaskUsecase{
-		cfg:              &config.Config{},
-		attachmentSigner: signer,
+		cfg:         &config.Config{},
+		objectStore: store,
 	}
 	u.cfg.ObjectStorage.Enabled = true
 	got, err := u.taskAttachmentsToTaskflow(context.Background(), []domain.TaskAttachment{
@@ -111,14 +112,14 @@ func TestTaskAttachmentsToTaskflowConvertsAssetURLToHTTPPresignURL(t *testing.T)
 	if got[0].URL != wantURL {
 		t.Fatalf("url = %q, want %q", got[0].URL, wantURL)
 	}
-	if signer.key != "tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png" {
-		t.Fatalf("key = %q", signer.key)
+	if store.key != "tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png" {
+		t.Fatalf("key = %q", store.key)
 	}
 }
 
 func TestTaskAttachmentsToTaskflowKeepsExternalURL(t *testing.T) {
-	signer := &fakeAttachmentSigner{}
-	u := &TaskUsecase{attachmentSigner: signer}
+	store := &fakeObjectStore{}
+	u := &TaskUsecase{objectStore: store}
 	got, err := u.taskAttachmentsToTaskflow(context.Background(), []domain.TaskAttachment{
 		{URL: "https://oss.example.com/temp/a.txt", Filename: "a.txt"},
 	})
@@ -128,13 +129,13 @@ func TestTaskAttachmentsToTaskflowKeepsExternalURL(t *testing.T) {
 	if got[0].URL != "https://oss.example.com/temp/a.txt" {
 		t.Fatalf("url = %q", got[0].URL)
 	}
-	if signer.key != "" {
-		t.Fatalf("signer called for http url: %q", signer.key)
+	if store.key != "" {
+		t.Fatalf("store called for http url: %q", store.key)
 	}
 }
 
 func TestTaskAttachmentsToTaskflowRejectsAssetURLWhenObjectStorageDisabled(t *testing.T) {
-	u := &TaskUsecase{attachmentSigner: &fakeAttachmentSigner{}}
+	u := &TaskUsecase{objectStore: &fakeObjectStore{}}
 	_, err := u.taskAttachmentsToTaskflow(context.Background(), []domain.TaskAttachment{
 		{URL: asseturl.Build("tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png"), Filename: "a.png"},
 	})
@@ -143,13 +144,21 @@ func TestTaskAttachmentsToTaskflowRejectsAssetURLWhenObjectStorageDisabled(t *te
 	}
 }
 
-type fakeAttachmentSigner struct {
+type fakeObjectStore struct {
 	key     string
 	expires time.Duration
 }
 
-func (f *fakeAttachmentSigner) PresignGet(_ context.Context, key string, expires time.Duration) (string, error) {
+func (f *fakeObjectStore) GetObject(context.Context, string) (io.ReadCloser, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (f *fakeObjectStore) PresignGet(_ context.Context, key string, expires time.Duration) (string, error) {
 	f.key = key
 	f.expires = expires
 	return fmt.Sprintf("http://agent.local/%s", key), nil
+}
+
+func (f *fakeObjectStore) PutFile(context.Context, string, string, io.Reader) error {
+	return fmt.Errorf("not implemented")
 }

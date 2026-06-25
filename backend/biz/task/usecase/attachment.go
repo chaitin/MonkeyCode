@@ -73,10 +73,10 @@ func (a *TaskUsecase) taskAttachmentsToTaskflow(ctx context.Context, attachments
 	for _, attachment := range attachments {
 		raw := strings.TrimSpace(attachment.URL)
 		if key, ok := asseturl.Parse(raw); ok {
-			if a == nil || a.cfg == nil || !a.cfg.ObjectStorage.Enabled || a.attachmentSigner == nil {
+			if a == nil || a.cfg == nil || !a.cfg.ObjectStorage.Enabled || a.objectStore == nil {
 				return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("object storage is disabled"))
 			}
-			u, err := a.attachmentSigner.PresignGet(ctx, key, attachmentPresignExpires(a.cfg))
+			u, err := a.objectStore.PresignGet(ctx, key, attachmentPresignExpires(a.cfg))
 			if err != nil {
 				return nil, err
 			}
