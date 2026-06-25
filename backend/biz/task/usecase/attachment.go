@@ -33,6 +33,9 @@ func validateAttachments(userID uuid.UUID, attachments []domain.TaskAttachment, 
 			return errcode.ErrBadRequest.Wrap(fmt.Errorf("attachment filename is empty"))
 		}
 		if key, ok := asseturl.Parse(raw); ok {
+			if !objectCfg.Enabled {
+				return errcode.ErrBadRequest.Wrap(fmt.Errorf("object storage is disabled"))
+			}
 			if !asseturl.AllowedForUser(key, userID, objectCfg) {
 				return errcode.ErrBadRequest.Wrap(fmt.Errorf("attachment asset is not allowed"))
 			}
@@ -70,7 +73,7 @@ func (a *TaskUsecase) taskAttachmentsToTaskflow(ctx context.Context, attachments
 	for _, attachment := range attachments {
 		raw := strings.TrimSpace(attachment.URL)
 		if key, ok := asseturl.Parse(raw); ok {
-			if a == nil || a.attachmentSigner == nil {
+			if a == nil || a.cfg == nil || !a.cfg.ObjectStorage.Enabled || a.attachmentSigner == nil {
 				return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("object storage is disabled"))
 			}
 			u, err := a.attachmentSigner.PresignGet(ctx, key, attachmentPresignExpires(a.cfg))

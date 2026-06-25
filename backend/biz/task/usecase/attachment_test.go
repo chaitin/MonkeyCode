@@ -32,7 +32,7 @@ func TestValidateAttachmentsAllowsConfiguredPrefix(t *testing.T) {
 
 func TestValidateAttachmentsAllowsOwnedAssetURL(t *testing.T) {
 	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	cfg := config.ObjectStorageConfig{TempPrefix: "tmp/task-attachments"}
+	cfg := config.ObjectStorageConfig{Enabled: true, TempPrefix: "tmp/task-attachments"}
 	key := "tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png"
 
 	err := validateAttachments(userID, []domain.TaskAttachment{{URL: asseturl.Build(key), Filename: "a.png"}}, config.Attachment{}, cfg)
@@ -43,10 +43,20 @@ func TestValidateAttachmentsAllowsOwnedAssetURL(t *testing.T) {
 
 func TestValidateAttachmentsRejectsOtherUserAssetURL(t *testing.T) {
 	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	cfg := config.ObjectStorageConfig{TempPrefix: "tmp/task-attachments"}
+	cfg := config.ObjectStorageConfig{Enabled: true, TempPrefix: "tmp/task-attachments"}
 	key := "tmp/task-attachments/22222222-2222-2222-2222-222222222222_hash.png"
 
 	err := validateAttachments(userID, []domain.TaskAttachment{{URL: asseturl.Build(key), Filename: "a.png"}}, config.Attachment{}, cfg)
+	if err == nil {
+		t.Fatal("validateAttachments() error = nil, want error")
+	}
+}
+
+func TestValidateAttachmentsRejectsAssetURLWhenObjectStorageDisabled(t *testing.T) {
+	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	key := "tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png"
+
+	err := validateAttachments(userID, []domain.TaskAttachment{{URL: asseturl.Build(key), Filename: "a.png"}}, config.Attachment{}, config.ObjectStorageConfig{TempPrefix: "tmp/task-attachments"})
 	if err == nil {
 		t.Fatal("validateAttachments() error = nil, want error")
 	}
@@ -83,7 +93,11 @@ func TestValidateAttachmentsRejectsBadInputs(t *testing.T) {
 
 func TestTaskAttachmentsToTaskflowConvertsAssetURLToHTTPPresignURL(t *testing.T) {
 	signer := &fakeAttachmentSigner{}
-	u := &TaskUsecase{attachmentSigner: signer}
+	u := &TaskUsecase{
+		cfg:              &config.Config{},
+		attachmentSigner: signer,
+	}
+	u.cfg.ObjectStorage.Enabled = true
 	got, err := u.taskAttachmentsToTaskflow(context.Background(), []domain.TaskAttachment{
 		{URL: asseturl.Build("tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png"), Filename: "a.png"},
 	})
@@ -103,7 +117,8 @@ func TestTaskAttachmentsToTaskflowConvertsAssetURLToHTTPPresignURL(t *testing.T)
 }
 
 func TestTaskAttachmentsToTaskflowKeepsExternalURL(t *testing.T) {
-	u := &TaskUsecase{}
+	signer := &fakeAttachmentSigner{}
+	u := &TaskUsecase{attachmentSigner: signer}
 	got, err := u.taskAttachmentsToTaskflow(context.Background(), []domain.TaskAttachment{
 		{URL: "https://oss.example.com/temp/a.txt", Filename: "a.txt"},
 	})
@@ -112,6 +127,19 @@ func TestTaskAttachmentsToTaskflowKeepsExternalURL(t *testing.T) {
 	}
 	if got[0].URL != "https://oss.example.com/temp/a.txt" {
 		t.Fatalf("url = %q", got[0].URL)
+	}
+	if signer.key != "" {
+		t.Fatalf("signer called for http url: %q", signer.key)
+	}
+}
+
+func TestTaskAttachmentsToTaskflowRejectsAssetURLWhenObjectStorageDisabled(t *testing.T) {
+	u := &TaskUsecase{attachmentSigner: &fakeAttachmentSigner{}}
+	_, err := u.taskAttachmentsToTaskflow(context.Background(), []domain.TaskAttachment{
+		{URL: asseturl.Build("tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png"), Filename: "a.png"},
+	})
+	if err == nil {
+		t.Fatal("taskAttachmentsToTaskflow() error = nil, want error")
 	}
 }
 
