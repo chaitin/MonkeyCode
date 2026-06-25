@@ -117,6 +117,10 @@ type TaskAttachment struct {
 	Filename string `json:"filename"`
 }
 
+type AttachmentURLSigner interface {
+	PresignGet(ctx context.Context, key string, expires time.Duration) (string, error)
+}
+
 // Validate 验证请求参数
 func (r *CreateTaskReq) Validate() error {
 	if r.Resource == nil {

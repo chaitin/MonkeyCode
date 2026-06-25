@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
+	"net/url"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,6 +25,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
+	"github.com/chaitin/MonkeyCode/backend/pkg/asseturl"
 	"github.com/chaitin/MonkeyCode/backend/pkg/oss"
 )
 
@@ -60,6 +64,7 @@ func NewUploaderHandler(i *do.Injector) (*UploaderHandler, error) {
 	g.Use(auth.Auth(), targetActive.TargetActive())
 	g.POST("", web.BindHandler(h.Upload))
 	g.POST("/presign", web.BindHandler(h.Presign))
+	w.Group(asseturl.Path).GET("", web.BaseHandler(h.Asset), auth.Auth(), targetActive.TargetActive())
 	return h, nil
 }
 
@@ -107,7 +112,7 @@ func (h *UploaderHandler) Upload(c *web.Context, req domain.UploadReq) error {
 		h.logger.With("error", err).ErrorContext(c.Request().Context(), "upload object failed")
 		return err
 	}
-	return c.Success(client.GetURL(prefix, filename))
+	return c.Success(assetAccessURL(prefix, filename))
 }
 
 func (h *UploaderHandler) Presign(c *web.Context, req domain.PresignReq) error {
@@ -127,11 +132,107 @@ func (h *UploaderHandler) Presign(c *web.Context, req domain.PresignReq) error {
 		h.logger.With("error", err).ErrorContext(c.Request().Context(), "presign object failed")
 		return err
 	}
+	presign.UploadURL = uploadURLForRequest(presign.UploadURL, c.Request())
+	presign.AccessURL = assetAccessURL(h.cfg.ObjectStorage.TempPrefix, filename)
 	return c.Success(domain.PresignResp{UploadURL: presign.UploadURL, AccessURL: presign.AccessURL})
+}
+
+func (h *UploaderHandler) Asset(c *web.Context) error {
+	if h == nil || h.client == nil {
+		return errcode.ErrBadRequest.Wrap(fmt.Errorf("object storage is disabled"))
+	}
+	user := middleware.GetUser(c)
+	if user == nil {
+		return errcode.ErrUnauthorized
+	}
+	key, ok := asseturl.Parse(c.Request().URL.String())
+	if !ok {
+		return errcode.ErrBadRequest.Wrap(fmt.Errorf("invalid asset key"))
+	}
+	if !asseturl.AllowedForUser(key, user.ID, h.cfg.ObjectStorage) {
+		return errcode.ErrUnauthorized
+	}
+	rc, err := h.client.GetObject(c.Request().Context(), key)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	contentType := mime.TypeByExtension(path.Ext(key))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	c.Response().Header().Set("Content-Type", contentType)
+	c.Response().Header().Set("Cache-Control", "private, max-age=3600")
+	_, err = io.Copy(c.Response().Writer, rc)
+	return err
 }
 
 func (h *UploaderHandler) requestClient(r *http.Request) *oss.Client {
 	return h.client.WithAccessEndpoint(h.cfg.ObjectStorage.AccessEndpoint)
+}
+
+func assetAccessURL(prefix, filename string) string {
+	return asseturl.Build(assetObjectKey(prefix, filename))
+}
+
+func assetObjectKey(prefix, filename string) string {
+	cleanPrefix, _ := asseturl.CleanKey(prefix)
+	name := path.Base(strings.Trim(filename, "/"))
+	if name == "." || name == ".." || name == "/" {
+		name = ""
+	}
+	key, _ := asseturl.CleanKey(path.Join(cleanPrefix, name))
+	return key
+}
+
+func uploadURLForRequest(raw string, r *http.Request) string {
+	if requestScheme(r) != "https" {
+		return raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || !strings.EqualFold(u.Scheme, "http") {
+		return raw
+	}
+	u.Scheme = "https"
+	return u.String()
+}
+
+func requestScheme(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if proto := firstHeaderValue(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+		return strings.ToLower(proto)
+	}
+	if proto := forwardedProto(r.Header.Get("Forwarded")); proto != "" {
+		return strings.ToLower(proto)
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	if r.URL != nil {
+		return strings.ToLower(r.URL.Scheme)
+	}
+	return ""
+}
+
+func firstHeaderValue(v string) string {
+	if i := strings.Index(v, ","); i >= 0 {
+		v = v[:i]
+	}
+	return strings.TrimSpace(v)
+}
+
+func forwardedProto(v string) string {
+	v = firstHeaderValue(v)
+	for _, part := range strings.Split(v, ";") {
+		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok || !strings.EqualFold(key, "proto") {
+			continue
+		}
+		return strings.Trim(strings.TrimSpace(value), `"`)
+	}
+	return ""
 }
 
 func (h *UploaderHandler) uploadPrefix(usage consts.UploadUsage) (string, error) {
