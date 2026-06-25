@@ -17,6 +17,7 @@ type MemberManager interface {
 	AddUser(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserResp, error)
 	AddUserWithPassword(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserWithPasswordResp, error)
 	AddAdmin(ctx context.Context, teamUser *TeamUser, req *AddTeamAdminReq) (*AddTeamAdminResp, error)
+	AutoCreateOIDCMember(ctx context.Context, teamID uuid.UUID, external *OIDCExternalUser) (*User, error)
 }
 
 // TeamGroupUserUsecase 团队分组成员业务逻辑接口
