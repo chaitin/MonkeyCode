@@ -26,11 +26,12 @@ const oidcStatePrefix = "team_oidc_state:"
 const oidcDebugValueMaxLen = 256
 
 type TeamOIDCUsecase struct {
-	repo   domain.TeamOIDCRepo
-	cfg    *config.Config
-	redis  *redis.Client
-	oidc   *oidcpkg.Client
-	logger *slog.Logger
+	repo          domain.TeamOIDCRepo
+	memberManager domain.MemberManager
+	cfg           *config.Config
+	redis         *redis.Client
+	oidc          *oidcpkg.Client
+	logger        *slog.Logger
 }
 
 func NewTeamOIDCUsecase(i *do.Injector) (domain.TeamOIDCUsecase, error) {
@@ -43,11 +44,12 @@ func NewTeamOIDCLoginUsecase(i *do.Injector) (domain.TeamOIDCLoginUsecase, error
 
 func newTeamOIDCUsecase(i *do.Injector) (*TeamOIDCUsecase, error) {
 	return &TeamOIDCUsecase{
-		repo:   do.MustInvoke[domain.TeamOIDCRepo](i),
-		cfg:    do.MustInvoke[*config.Config](i),
-		redis:  do.MustInvoke[*redis.Client](i),
-		oidc:   oidcpkg.NewClient(nil),
-		logger: do.MustInvoke[*slog.Logger](i).With("module", "usecase.team_oidc"),
+		repo:          do.MustInvoke[domain.TeamOIDCRepo](i),
+		memberManager: do.MustInvoke[domain.MemberManager](i),
+		cfg:           do.MustInvoke[*config.Config](i),
+		redis:         do.MustInvoke[*redis.Client](i),
+		oidc:          oidcpkg.NewClient(nil),
+		logger:        do.MustInvoke[*slog.Logger](i).With("module", "usecase.team_oidc"),
 	}, nil
 }
 
@@ -235,6 +237,10 @@ func (u *TeamOIDCUsecase) HandleCallback(ctx context.Context, req *domain.TeamOI
 		return nil, errcode.ErrOIDCEmailDomainDenied
 	}
 
+	return u.resolveUser(ctx, teamID, cfg.AutoCreateMember, external)
+}
+
+func (u *TeamOIDCUsecase) resolveUser(ctx context.Context, teamID uuid.UUID, autoCreate bool, external *domain.OIDCExternalUser) (*domain.User, error) {
 	identityID := oidcpkg.IdentityID(external.Issuer, external.Subject)
 	u.logger.DebugContext(ctx, "oidc callback: identity resolved",
 		"team_id", teamID,
@@ -251,7 +257,7 @@ func (u *TeamOIDCUsecase) HandleCallback(ctx context.Context, req *domain.TeamOI
 		u.logger.DebugContext(ctx, "oidc callback: identity not bound, checking team member",
 			"team_id", teamID,
 			"email", external.Email,
-			"auto_create_member", cfg.AutoCreateMember,
+			"auto_create_member", autoCreate,
 		)
 		member, err := u.repo.FindTeamMemberByEmail(ctx, teamID, external.Email)
 		if err == nil && member.Edges.User != nil {
@@ -261,21 +267,34 @@ func (u *TeamOIDCUsecase) HandleCallback(ctx context.Context, req *domain.TeamOI
 				"user_id", user.ID,
 				"email", external.Email,
 			)
-		} else if db.IsNotFound(err) && cfg.AutoCreateMember {
+		} else if db.IsNotFound(err) && autoCreate {
 			u.logger.DebugContext(ctx, "oidc callback: auto creating team member",
 				"team_id", teamID,
 				"email", external.Email,
 				"name", oidcDisplayName(external),
 			)
-			user, err = u.repo.AutoCreateMember(ctx, teamID, external)
+			if u.memberManager == nil {
+				return nil, errcode.ErrOIDCTeamMemberRequired
+			}
+			created, err := u.memberManager.AutoCreateOIDCMember(ctx, teamID, external)
 			if err != nil {
+				return nil, err
+			}
+			if created == nil {
+				return nil, errcode.ErrOIDCTeamMemberRequired
+			}
+			if created.IsBlocked {
+				return nil, errcode.ErrUserBlocked
+			}
+			if err := u.repo.BindOIDCIdentity(ctx, created.ID, external); err != nil {
 				return nil, err
 			}
 			u.logger.DebugContext(ctx, "oidc callback: auto created team member",
 				"team_id", teamID,
-				"user_id", user.ID,
+				"user_id", created.ID,
 				"email", external.Email,
 			)
+			return created, nil
 		} else if db.IsNotFound(err) {
 			u.logger.DebugContext(ctx, "oidc callback: team member required",
 				"team_id", teamID,

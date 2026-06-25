@@ -3,15 +3,19 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 )
+
+var ctx = context.Background()
 
 func TestOIDCEmailDomainAllowed(t *testing.T) {
 	if !oidcEmailDomainAllowed("alice@example.com", "example.com") {
@@ -137,4 +141,130 @@ func (s *defaultOIDCRepoStub) GetDefaultEnabledConfig(ctx context.Context) (*db.
 		return nil, errors.New("unexpected empty config")
 	}
 	return s.cfg, nil
+}
+
+type oidcResolveRepoStub struct {
+	domain.TeamOIDCRepo
+	userByIdentity *db.User
+	memberByEmail  *db.TeamMember
+}
+
+func (s *oidcResolveRepoStub) FindUserByOIDCIdentity(ctx context.Context, identityID string) (*db.User, error) {
+	if s.userByIdentity != nil {
+		return s.userByIdentity, nil
+	}
+	return nil, &db.NotFoundError{}
+}
+
+func (s *oidcResolveRepoStub) FindTeamMemberByEmail(ctx context.Context, teamID uuid.UUID, email string) (*db.TeamMember, error) {
+	if s.memberByEmail != nil {
+		return s.memberByEmail, nil
+	}
+	return nil, &db.NotFoundError{}
+}
+
+func (s *oidcResolveRepoStub) BindOIDCIdentity(ctx context.Context, userID uuid.UUID, external *domain.OIDCExternalUser) error {
+	return nil
+}
+
+type oidcMemberManagerStub struct {
+	domain.MemberManager
+	called   bool
+	teamID   uuid.UUID
+	external *domain.OIDCExternalUser
+	user     *domain.User
+	err      error
+}
+
+func (s *oidcMemberManagerStub) AutoCreateOIDCMember(ctx context.Context, teamID uuid.UUID, external *domain.OIDCExternalUser) (*domain.User, error) {
+	s.called = true
+	s.teamID = teamID
+	s.external = external
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.user, nil
+}
+
+func TestTeamOIDCUsecaseResolveUserAutoCreateUsesMemberManager(t *testing.T) {
+	teamID := uuid.New()
+	createdUserID := uuid.New()
+	external := &domain.OIDCExternalUser{
+		Issuer:        "https://id.example.com",
+		Subject:       "sub-1",
+		Email:         "new@example.com",
+		EmailVerified: true,
+		Name:          "新成员",
+	}
+	manager := &oidcMemberManagerStub{
+		user: &domain.User{
+			ID:     createdUserID,
+			Email:  "new@example.com",
+			Name:   "新成员",
+			Status: consts.UserStatusActive,
+		},
+	}
+	u := &TeamOIDCUsecase{
+		repo:          &oidcResolveRepoStub{},
+		memberManager: manager,
+		logger:        slog.Default(),
+	}
+
+	got, err := u.resolveUser(ctx, teamID, true, external)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != createdUserID {
+		t.Fatalf("user id = %s, want %s", got.ID, createdUserID)
+	}
+	if !manager.called {
+		t.Fatal("expected MemberManager.AutoCreateOIDCMember to be called")
+	}
+	if manager.teamID != teamID {
+		t.Fatalf("team id = %s, want %s", manager.teamID, teamID)
+	}
+	if manager.external != external {
+		t.Fatal("external user should be passed through")
+	}
+}
+
+func TestTeamOIDCUsecaseResolveUserExistingMemberSkipsAutoCreate(t *testing.T) {
+	teamID := uuid.New()
+	userID := uuid.New()
+	external := &domain.OIDCExternalUser{
+		Issuer:        "https://id.example.com",
+		Subject:       "sub-1",
+		Email:         "member@example.com",
+		EmailVerified: true,
+		Name:          "已有成员",
+	}
+	manager := &oidcMemberManagerStub{}
+	u := &TeamOIDCUsecase{
+		repo: &oidcResolveRepoStub{
+			memberByEmail: &db.TeamMember{
+				UserID: userID,
+				Edges: db.TeamMemberEdges{
+					User: &db.User{
+						ID:     userID,
+						Email:  "member@example.com",
+						Name:   "已有成员",
+						Status: consts.UserStatusActive,
+					},
+				},
+			},
+		},
+		memberManager: manager,
+		logger:        slog.Default(),
+	}
+
+	got, err := u.resolveUser(ctx, teamID, true, external)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != userID {
+		t.Fatalf("user id = %s, want %s", got.ID, userID)
+	}
+	if manager.called {
+		t.Fatal("auto create should not be called for existing team member")
+	}
 }
