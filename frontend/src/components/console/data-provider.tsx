@@ -62,13 +62,57 @@ type CommonData = {
 };
 
 const DataContext = createContext<CommonData | null>(null);
+const WECHAT_MP_BIND_DIALOG_SNOOZE_MS = 24 * 60 * 60 * 1000;
+const WECHAT_MP_BIND_DIALOG_CLOSED_AT_PREFIX = "wechat_mp_bind_dialog_closed_at:";
+
+function getWechatMpBindDialogStorageKey(user: DomainUser) {
+  return `${WECHAT_MP_BIND_DIALOG_CLOSED_AT_PREFIX}${user.id || user.email || "anonymous"}`;
+}
+
+function isWechatMpBindDialogSnoozed(user: DomainUser) {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const key = getWechatMpBindDialogStorageKey(user);
+    const closedAt = Number(window.localStorage.getItem(key));
+
+    if (!Number.isFinite(closedAt) || closedAt <= 0) {
+      window.localStorage.removeItem(key);
+      return false;
+    }
+
+    if (Date.now() - closedAt < WECHAT_MP_BIND_DIALOG_SNOOZE_MS) {
+      return true;
+    }
+
+    window.localStorage.removeItem(key);
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function recordWechatMpBindDialogClosed(user: DomainUser) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(getWechatMpBindDialogStorageKey(user), String(Date.now()));
+  } catch {
+    // Ignore storage failures. The dialog should still be closable.
+  }
+}
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
-  const { auth, reloadAuth } = useAppRuntime();
+  const { auth, reloadAuth, serverConfig } = useAppRuntime();
   const userInfo = auth.user || {};
   const [wechatMpBindDialogOpen, setWechatMpBindDialogOpen] = useState(false);
   const checkedWechatMpBindRef = useRef(false);
+  const autoOpenedWechatMpBindDialogRef = useRef(false);
 
   const [hosts, setHosts] = useState<DomainHost[]>([]);
   const [hostsInited, setHostsInited] = useState<boolean>(false);
@@ -104,13 +148,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loadingHistoricalTasks, setLoadingHistoricalTasks] = useState(true);
 
   const maybeOpenWechatMpBindDialog = useCallback((nextUser: DomainUser) => {
-    if (IS_OFFLINE_EDITION || checkedWechatMpBindRef.current) {
+    if (IS_OFFLINE_EDITION || checkedWechatMpBindRef.current || serverConfig?.region !== "cn") {
       return;
     }
 
     checkedWechatMpBindRef.current = true;
-    setWechatMpBindDialogOpen(nextUser.wechat_mp_bound !== true);
-  }, []);
+    if (nextUser.wechat_mp_bound === true || isWechatMpBindDialogSnoozed(nextUser)) {
+      return;
+    }
+
+    autoOpenedWechatMpBindDialogRef.current = true;
+    setWechatMpBindDialogOpen(true);
+  }, [serverConfig?.region]);
+
+  const handleWechatMpBindDialogOpenChange = useCallback((open: boolean) => {
+    setWechatMpBindDialogOpen(open);
+
+    if (!open && autoOpenedWechatMpBindDialogRef.current) {
+      recordWechatMpBindDialogClosed(userInfo);
+      autoOpenedWechatMpBindDialogRef.current = false;
+    }
+  }, [userInfo]);
 
   const fetchUserInfo = useCallback(async () => {
     const nextAuth = await reloadAuth();
@@ -471,7 +529,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       </DataContext.Provider>
       <WechatMpBindDialog
         open={wechatMpBindDialogOpen}
-        onOpenChange={setWechatMpBindDialogOpen}
+        onOpenChange={handleWechatMpBindDialogOpenChange}
       />
     </>
   );

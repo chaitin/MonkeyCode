@@ -1967,6 +1967,10 @@ export interface GithubComChaitinMonkeyCodeBackendDomainMCPUpstream {
   user?: DomainUser;
 }
 
+export interface GithubComChaitinMonkeyCodeBackendDomainOAuthLoginResp {
+  auth_url?: string;
+}
+
 export enum GithubComChaitinMonkeyCodeBackendDomainProductEdition {
   ProductEditionSaaS = "saas",
   ProductEditionPrivate = "private",
@@ -1991,10 +1995,20 @@ export interface GithubComChaitinMonkeyCodeBackendDomainSaveTeamOIDCConfigReq {
 
 export interface GithubComChaitinMonkeyCodeBackendDomainServerConfig {
   /**
+   * CurrentVersion 当前服务版本。
+   * @example "v1.2.3"
+   */
+  current_version?: string;
+  /**
    * Edition 当前产品形态：SaaS 或私有化版本。
    * @example "saas"
    */
   edition?: "saas" | "private";
+  /**
+   * LatestVersion 最新可用版本。
+   * @example "v1.2.4"
+   */
+  latest_version?: string;
   /**
    * Region SaaS 区域，国内 SaaS 返回 cn，海外 SaaS 返回 global。
    * @example "cn"
@@ -3235,7 +3249,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 返回当前服务的产品形态和 SaaS 区域，用于前端区分 SaaS、私有化、国内 SaaS 和海外 SaaS。
+     * @description 返回当前服务的产品形态、SaaS 区域和版本信息，用于前端区分部署形态和升级状态。
      *
      * @tags 【服务】配置信息
      * @name V1ServerConfigList
@@ -6622,6 +6636,36 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/users/notify/event-types`,
         method: "GET",
         secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 根据 provider 生成第三方授权地址。provider 仅支持 google、github。redirect_url 可选，必须是站内相对路径；登录成功后后端会跳转到该路径，空值默认 /console/。
+     *
+     * @tags 【用户】OAuth
+     * @name V1UsersOauthLoginDetail
+     * @summary 发起 Google/GitHub OAuth 登录
+     * @request GET:/api/v1/users/oauth/{provider}/login
+     */
+    v1UsersOauthLoginDetail: (
+      provider: string,
+      query?: {
+        /** 登录成功后的站内跳转路径，例如 /console/tasks；只允许站内相对路径 */
+        redirect_url?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainOAuthLoginResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/users/oauth/${provider}/login`,
+        method: "GET",
+        query: query,
         type: ContentType.Json,
         format: "json",
         ...params,

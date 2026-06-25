@@ -26,12 +26,14 @@ import { captchaChallenge } from "@/utils/common"
 import { ArrowLeft, Eye, EyeOff } from "lucide-react"
 import { IconBrandGithub, IconBrandGoogle } from "@tabler/icons-react"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
+import { Api } from "@/api/Api"
 import type { GithubComChaitinMonkeyCodeBackendDomainTeamOIDCPublicConfigResp as DomainTeamOIDCPublicConfigResp, GithubComGoYokoWebResp } from "@/api/Api"
 import { useTranslation } from "react-i18next"
 import { useAppRuntime } from "@/components/app-runtime-provider"
 
 const USER_STORAGE_KEY = 'login_user'
 const MANAGER_STORAGE_KEY = 'login_manager'
+type OAuthProvider = "github" | "google"
 
 export default function LoginPage({
   className,
@@ -46,12 +48,14 @@ export default function LoginPage({
   const [showManagerPassword, setShowManagerPassword] = React.useState(false)
   const [userLoginView, setUserLoginView] = React.useState<'choices' | 'password'>('choices')
   const [agreedToTerms, setAgreedToTerms] = React.useState(true)
+  const [oauthLoggingProvider, setOauthLoggingProvider] = React.useState<OAuthProvider | null>(null)
   const [defaultOIDCConfig, setDefaultOIDCConfig] = React.useState<DomainTeamOIDCPublicConfigResp | null>(null)
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { serverConfig } = useAppRuntime()
   const serverRegion = serverConfig?.region as string | undefined
-  const isEnRegion = serverRegion === "en"
+  const isCnRegion = serverRegion === "cn"
+  const isGlobalRegion = serverRegion === "global"
   const inviterId = typeof window !== 'undefined' ? (localStorage.getItem('ic') || '') : ''
   const userLoginHref = `/api/v1/users/login?redirect=&inviter_id=${inviterId}`
   const defaultOIDCLoginURL = defaultOIDCConfig?.enabled ? defaultOIDCConfig.login_url : ''
@@ -132,6 +136,31 @@ export default function LoginPage({
     setLogging(false)
   }
 
+  const handleOAuthLogin = async (provider: OAuthProvider) => {
+    if (oauthLoggingProvider) return
+    if (!ensureTermsAccepted()) return
+
+    setOauthLoggingProvider(provider)
+
+    try {
+      const response = await new Api().api.v1UsersOauthLoginDetail(provider, {
+        redirect_url: "/console/",
+      })
+      const authUrl = response.data?.data?.auth_url
+
+      if (response.data?.code !== 0 || !authUrl) {
+        toast.error(t("login.toast.loginFailed"))
+        return
+      }
+
+      window.location.assign(authUrl)
+    } catch {
+      toast.error(t("login.toast.loginFailed"))
+    } finally {
+      setOauthLoggingProvider(null)
+    }
+  }
+
   const handleTeamManagerLogin = async () => {
     if (!ensureTermsAccepted()) return
 
@@ -183,35 +212,36 @@ export default function LoginPage({
                   {userLoginView === 'choices' ? (
                     <div className="mt-1 flex flex-col gap-4">
                       <div className="text-sm font-medium">{t("login.choices.title")}</div>
-                      {!IS_OFFLINE_EDITION && isEnRegion && (
+                      {!IS_OFFLINE_EDITION && isGlobalRegion && (
                         <div className="flex flex-col gap-3">
                           <Button
                             type="button"
                             size="lg"
-                            variant="outline"
                             className="w-full"
+                            disabled={!!oauthLoggingProvider}
                             onClick={() => {
-                              ensureTermsAccepted()
+                              void handleOAuthLogin("github")
                             }}
                           >
-                            <IconBrandGoogle className="size-4" />
-                            {t("login.choices.google")}
+                            {oauthLoggingProvider === "github" ? <Spinner className="size-4" /> : <IconBrandGithub className="size-4" />}
+                            {t("login.choices.github")}
                           </Button>
                           <Button
                             type="button"
                             size="lg"
                             variant="outline"
                             className="w-full"
+                            disabled={!!oauthLoggingProvider}
                             onClick={() => {
-                              ensureTermsAccepted()
+                              void handleOAuthLogin("google")
                             }}
                           >
-                            <IconBrandGithub className="size-4" />
-                            {t("login.choices.github")}
+                            {oauthLoggingProvider === "google" ? <Spinner className="size-4" /> : <IconBrandGoogle className="size-4" />}
+                            {t("login.choices.google")}
                           </Button>
                         </div>
                       )}
-                      {!IS_OFFLINE_EDITION && !isEnRegion && (
+                      {!IS_OFFLINE_EDITION && isCnRegion && (
                         <Button size="lg" className="w-full" asChild>
                           <a
                             href={userLoginHref}
@@ -248,7 +278,7 @@ export default function LoginPage({
                       >
                         {t("login.choices.password")}
                       </Button>
-                      {!IS_OFFLINE_EDITION && !isEnRegion && (
+                      {!IS_OFFLINE_EDITION && isCnRegion && (
                         <Button size="lg" variant="secondary" className="w-full" asChild>
                           <a
                             href={userLoginHref}
