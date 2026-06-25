@@ -63,7 +63,7 @@ type TaskUsecase struct {
 	idleRefresher         vmidle.VMIdleRefresher
 	dbClient              *db.Client
 	resolver              agentresource.ResolverInterface
-	attachmentSigner      domain.AttachmentURLSigner
+	objectStore           agentresource.ObjectStore
 }
 
 // NewTaskUsecase 创建任务业务逻辑实例
@@ -92,10 +92,8 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		u.resolver = r
 	}
 
-	if signer, err := do.Invoke[domain.AttachmentURLSigner](i); err == nil {
-		u.attachmentSigner = signer
-	} else if store, err := do.Invoke[agentresource.ObjectStore](i); err == nil {
-		u.attachmentSigner = store
+	if store, err := do.Invoke[agentresource.ObjectStore](i); err == nil {
+		u.objectStore = store
 	}
 
 	// 可选注入 TaskHook
