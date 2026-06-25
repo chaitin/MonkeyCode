@@ -130,7 +130,7 @@ export function RewardsBalanceIndicator() {
   } = useCommonData()
   const plan = normalizePlan(subscription?.plan)
   const planLabel = t(`consoleShell.rewards.plans.${plan}`)
-  const balanceLabel = Math.floor(balance).toLocaleString("zh-CN")
+  const balanceLabel = Math.ceil(balance).toLocaleString("zh-CN")
   const canUpgradePlan = plan !== "ultra"
   const canRenewPlan = plan !== "basic"
   const quotaItems = getQuotaItems(plan, {
