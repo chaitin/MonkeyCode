@@ -40,6 +40,11 @@
   "model": "monkeycode-ai/{{.model}}",
   "disabled_providers": ["openai", "opencode"],
   "instructions": ["${HOME}/.codingmatrix/project-tpl/.ai-ready/rules/*.md"],
+  "permission": {
+    "doom_loop": "allow",
+    "external_directory": { "*": "allow" },
+    "read": { "*.env": "allow", "*.env.*": "allow" }
+  },
   "skills": {
     "paths": ["${HOME}/.codingmatrix/project-tpl/.ai-ready/skills/"]
   }
