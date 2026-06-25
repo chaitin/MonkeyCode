@@ -56,65 +56,6 @@ func TestTeamOIDCConfigSchemaPersistsDefaults(t *testing.T) {
 	}
 }
 
-func TestTeamOIDCRepoAutoCreateMemberCreatesDefaultGroup(t *testing.T) {
-	ctx := context.Background()
-	client := enttest.Open(t, "sqlite3", "file:team_oidc_repo?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
-
-	teamID := uuid.New()
-	_, err := client.Team.Create().SetID(teamID).SetName("研发团队").SetMemberLimit(2).Save(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	r := &TeamOIDCRepo{db: client}
-	user, err := r.AutoCreateMember(ctx, teamID, &domain.OIDCExternalUser{
-		Issuer:        "https://id.example.com",
-		Subject:       "sub-1",
-		Email:         "new@example.com",
-		EmailVerified: true,
-		Name:          "新成员",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if user.Email != "new@example.com" {
-		t.Fatalf("email = %q", user.Email)
-	}
-
-	memberCount, err := client.TeamMember.Query().Count(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if memberCount != 1 {
-		t.Fatalf("member count = %d, want 1", memberCount)
-	}
-	groupMemberCount, err := client.TeamGroupMember.Query().Count(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if groupMemberCount != 1 {
-		t.Fatalf("group member count = %d, want 1", groupMemberCount)
-	}
-}
-
-func TestTeamOIDCRepoAutoCreateMemberHonorsLimit(t *testing.T) {
-	ctx := context.Background()
-	client := enttest.Open(t, "sqlite3", "file:team_oidc_repo_limit?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
-
-	teamID := uuid.New()
-	_, err := client.Team.Create().SetID(teamID).SetName("研发团队").SetMemberLimit(0).Save(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := &TeamOIDCRepo{db: client}
-	_, err = r.AutoCreateMember(ctx, teamID, &domain.OIDCExternalUser{Email: "new@example.com", Name: "新成员"})
-	if err == nil {
-		t.Fatal("expected member limit error")
-	}
-}
-
 func TestTeamOIDCRepoBindOIDCIdentitySkipsCreateWhenIdentityExists(t *testing.T) {
 	ctx := context.Background()
 	sqlDB, mock, err := sqlmock.New()

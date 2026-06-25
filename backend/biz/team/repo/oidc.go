@@ -11,14 +11,11 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
-	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/domain"
-	"github.com/chaitin/MonkeyCode/backend/errcode"
-	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 	"github.com/chaitin/MonkeyCode/backend/pkg/oidc"
 )
 
@@ -141,73 +138,6 @@ func (r *TeamOIDCRepo) BindOIDCIdentity(ctx context.Context, userID uuid.UUID, e
 		SetEmail(external.Email).
 		SetAvatarURL(external.AvatarURL).
 		Exec(ctx)
-}
-
-func (r *TeamOIDCRepo) AutoCreateMember(ctx context.Context, teamID uuid.UUID, external *domain.OIDCExternalUser) (*db.User, error) {
-	var created *db.User
-	err := entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
-		tm, err := tx.Team.Get(ctx, teamID)
-		if err != nil {
-			return err
-		}
-		count, err := tx.TeamMember.Query().Where(teammember.TeamIDEQ(teamID)).Count(ctx)
-		if err != nil {
-			return err
-		}
-		if count >= tm.MemberLimit {
-			return errcode.ErrTeamMemberLimitExceeded
-		}
-		email := normalizeEmail(external.Email)
-		u, err := tx.User.Query().Where(user.EmailEQ(email), user.RoleEQ(consts.UserRoleSubAccount)).First(ctx)
-		if err != nil {
-			if !db.IsNotFound(err) {
-				return err
-			}
-			name := external.Name
-			if name == "" {
-				name = external.Username
-			}
-			if name == "" {
-				name = email
-			}
-			u, err = tx.User.Create().
-				SetID(uuid.New()).
-				SetName(name).
-				SetEmail(email).
-				SetAvatarURL(external.AvatarURL).
-				SetRole(consts.UserRoleSubAccount).
-				SetStatus(consts.UserStatusActive).
-				Save(ctx)
-			if err != nil {
-				return err
-			}
-		}
-		exists, err := tx.TeamMember.Query().Where(teammember.TeamIDEQ(teamID), teammember.UserIDEQ(u.ID)).Exist(ctx)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			if _, err := tx.TeamMember.Create().SetID(uuid.New()).SetTeamID(teamID).SetUserID(u.ID).SetRole(consts.TeamMemberRoleUser).Save(ctx); err != nil {
-				return err
-			}
-		}
-		group, err := ensureDefaultTeamGroupTx(ctx, tx, teamID)
-		if err != nil {
-			return err
-		}
-		exists, err = tx.TeamGroupMember.Query().Where(teamgroupmember.GroupIDEQ(group.ID), teamgroupmember.UserIDEQ(u.ID)).Exist(ctx)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			if err := tx.TeamGroupMember.Create().SetID(uuid.New()).SetGroupID(group.ID).SetUserID(u.ID).Exec(ctx); err != nil {
-				return err
-			}
-		}
-		created = u
-		return nil
-	})
-	return created, err
 }
 
 func normalizeEmail(email string) string {
