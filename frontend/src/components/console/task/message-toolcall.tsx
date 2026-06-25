@@ -12,11 +12,11 @@ import * as claudeEditRender from "./toolcalls/claude_edit"
 import * as claudeReadRender from "./toolcalls/claude_read"
 import * as opencodeFetchRender from "./toolcalls/opencode_fetch"
 import * as opencodeLoadSkillRender from "./toolcalls/opencode_load_skill"
+import * as applyPatchRender from "./toolcalls/apply_patch"
 import * as internalReportUserAbuseRender from "./toolcalls/internal_report_user_abuse"
 import * as internalWebsearchRender from "./toolcalls/internal_websearch"
 import * as internalImgsearchRender from "./toolcalls/internal_imgsearch"
 import * as internalImageAnalysisRender from "./toolcalls/internal_image_analysis"
-import { UnifiedDiffViewer } from "./unified-diff-viewer"
 import { taskDetailT } from "./task-i18n"
 
 type ToolCallRenderer = {
@@ -124,22 +124,14 @@ const toolCallRenderers: ToolCallRenderer[] = [
     expandable: false,
   },
   {
-    match: (message) => (
-      message.data.kind === "other"
-      && message.data.title === "apply_patch"
-    ),
-    renderTitle: (message) => {
-      if (message.data.status === "pending") return taskDetailT("toolcall.editingFile")
-      if (message.data.status === "failed") return taskDetailT("toolcall.editFailed")
-      return message.data.title
-    },
-    renderDetail: fallbackRender.renderDetail,
+    match: applyPatchRender.match,
+    renderTitle: applyPatchRender.renderTitle,
+    renderDetail: applyPatchRender.renderDetail,
     expandable: (message) => message.data.status !== "pending" && message.data.status !== "failed",
   },
   {
     match: (message) => (
-      message.data.kind === "other"
-      && !!message.data.title?.startsWith("Success. Updated the following files:")
+      !!message.data.title?.startsWith("Success. Updated the following files:")
     ),
     renderTitle: (message) => {
       const fileLabel = getPatchUpdatedFileLabel(message)
@@ -147,8 +139,9 @@ const toolCallRenderers: ToolCallRenderer[] = [
     },
     renderDetail: (message) => {
       const diff = getPatchUpdatedDiff(message)
-      if (diff) {
-        return <UnifiedDiffViewer diffText={diff} />
+      const patchText = typeof message.data.rawInput?.patchText === "string" ? message.data.rawInput.patchText : ""
+      if (diff || patchText) {
+        return applyPatchRender.renderPatchContent(diff || patchText)
       }
 
       return (
