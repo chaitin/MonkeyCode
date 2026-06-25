@@ -63,6 +63,7 @@ type TaskUsecase struct {
 	idleRefresher         vmidle.VMIdleRefresher
 	dbClient              *db.Client
 	resolver              agentresource.ResolverInterface
+	attachmentSigner      domain.AttachmentURLSigner
 }
 
 // NewTaskUsecase 创建任务业务逻辑实例
@@ -85,11 +86,16 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		idleRefresher:         do.MustInvoke[vmidle.VMIdleRefresher](i),
 		dbClient:              do.MustInvoke[*db.Client](i),
 	}
-
 	// agentresource.ResolverInterface 注入失败时降级为 nil — getCodingConfigs
 	// 内部 nil-check，跳过 rule/skill/plugin 注入，并打 warn 日志。
 	if r, err := do.Invoke[agentresource.ResolverInterface](i); err == nil {
 		u.resolver = r
+	}
+
+	if signer, err := do.Invoke[domain.AttachmentURLSigner](i); err == nil {
+		u.attachmentSigner = signer
+	} else if store, err := do.Invoke[agentresource.ObjectStore](i); err == nil {
+		u.attachmentSigner = store
 	}
 
 	// 可选注入 TaskHook
@@ -401,7 +407,11 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 	if strings.TrimSpace(string(req.Content)) == "" {
 		return errcode.ErrBadRequest
 	}
-	if err := validateAttachments(req.Attachments, a.cfg.Attachment); err != nil {
+	if err := validateAttachments(user.ID, req.Attachments, a.cfg.Attachment, a.cfg.ObjectStorage); err != nil {
+		return err
+	}
+	attachments, err := a.taskAttachmentsToTaskflow(ctx, req.Attachments)
+	if err != nil {
 		return err
 	}
 	t, err := a.repo.Info(ctx, user, id, false)
@@ -418,7 +428,7 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 		Task: &taskflow.Task{
 			ID:          id,
 			Text:        string(req.Content),
-			Attachments: taskAttachmentsToTaskflow(req.Attachments),
+			Attachments: attachments,
 			LogStore:    string(tk.LogStore),
 		},
 	}); err != nil {
@@ -450,7 +460,11 @@ func (a *TaskUsecase) IncrUserInputCount(ctx context.Context, userID, taskID uui
 
 // Create implements domain.TaskUsecase.
 func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq) (*domain.ProjectTask, error) {
-	if err := validateAttachments(req.Attachments, a.cfg.Attachment); err != nil {
+	if err := validateAttachments(user.ID, req.Attachments, a.cfg.Attachment, a.cfg.ObjectStorage); err != nil {
+		return nil, err
+	}
+	attachments, err := a.taskAttachmentsToTaskflow(ctx, req.Attachments)
+	if err != nil {
 		return nil, err
 	}
 
@@ -632,7 +646,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		ID:           t.ID,
 		VMID:         createdVm.ID,
 		Text:         req.Content,
-		Attachments:  taskAttachmentsToTaskflow(req.Attachments),
+		Attachments:  attachments,
 		SystemPrompt: req.SystemPrompt,
 		CodingAgent:  coding,
 		LLM: taskflow.LLM{

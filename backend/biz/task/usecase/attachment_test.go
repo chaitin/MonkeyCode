@@ -1,27 +1,54 @@
 package usecase
 
 import (
+	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/asseturl"
+	"github.com/google/uuid"
 )
 
 func TestValidateAttachmentsAllowsEmpty(t *testing.T) {
 	cfg := config.Attachment{AllowedURLPrefixes: []string{"https://oss.example.com/temp/"}}
-	if err := validateAttachments(nil, cfg); err != nil {
+	if err := validateAttachments(uuid.Nil, nil, cfg, config.ObjectStorageConfig{}); err != nil {
 		t.Fatalf("validateAttachments(nil) error = %v", err)
 	}
-	if err := validateAttachments([]domain.TaskAttachment{}, cfg); err != nil {
+	if err := validateAttachments(uuid.Nil, []domain.TaskAttachment{}, cfg, config.ObjectStorageConfig{}); err != nil {
 		t.Fatalf("validateAttachments(empty) error = %v", err)
 	}
 }
 
 func TestValidateAttachmentsAllowsConfiguredPrefix(t *testing.T) {
 	cfg := config.Attachment{AllowedURLPrefixes: []string{"https://oss.example.com/temp/"}}
-	err := validateAttachments([]domain.TaskAttachment{{URL: "https://oss.example.com/temp/a.txt", Filename: "a.txt"}}, cfg)
+	err := validateAttachments(uuid.Nil, []domain.TaskAttachment{{URL: "https://oss.example.com/temp/a.txt", Filename: "a.txt"}}, cfg, config.ObjectStorageConfig{})
 	if err != nil {
 		t.Fatalf("validateAttachments() error = %v", err)
+	}
+}
+
+func TestValidateAttachmentsAllowsOwnedAssetURL(t *testing.T) {
+	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	cfg := config.ObjectStorageConfig{TempPrefix: "tmp/task-attachments"}
+	key := "tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png"
+
+	err := validateAttachments(userID, []domain.TaskAttachment{{URL: asseturl.Build(key), Filename: "a.png"}}, config.Attachment{}, cfg)
+	if err != nil {
+		t.Fatalf("validateAttachments() error = %v", err)
+	}
+}
+
+func TestValidateAttachmentsRejectsOtherUserAssetURL(t *testing.T) {
+	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	cfg := config.ObjectStorageConfig{TempPrefix: "tmp/task-attachments"}
+	key := "tmp/task-attachments/22222222-2222-2222-2222-222222222222_hash.png"
+
+	err := validateAttachments(userID, []domain.TaskAttachment{{URL: asseturl.Build(key), Filename: "a.png"}}, config.Attachment{}, cfg)
+	if err == nil {
+		t.Fatal("validateAttachments() error = nil, want error")
 	}
 }
 
@@ -48,8 +75,53 @@ func TestValidateAttachmentsRejectsBadInputs(t *testing.T) {
 	}
 
 	for _, attachments := range cases {
-		if err := validateAttachments(attachments, cfg); err == nil {
+		if err := validateAttachments(uuid.Nil, attachments, cfg, config.ObjectStorageConfig{}); err == nil {
 			t.Fatalf("validateAttachments(%#v) error = nil, want error", attachments)
 		}
 	}
+}
+
+func TestTaskAttachmentsToTaskflowConvertsAssetURLToHTTPPresignURL(t *testing.T) {
+	signer := &fakeAttachmentSigner{}
+	u := &TaskUsecase{attachmentSigner: signer}
+	got, err := u.taskAttachmentsToTaskflow(context.Background(), []domain.TaskAttachment{
+		{URL: asseturl.Build("tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png"), Filename: "a.png"},
+	})
+	if err != nil {
+		t.Fatalf("taskAttachmentsToTaskflow() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len = %d", len(got))
+	}
+	wantURL := "http://agent.local/tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png"
+	if got[0].URL != wantURL {
+		t.Fatalf("url = %q, want %q", got[0].URL, wantURL)
+	}
+	if signer.key != "tmp/task-attachments/11111111-1111-1111-1111-111111111111_hash.png" {
+		t.Fatalf("key = %q", signer.key)
+	}
+}
+
+func TestTaskAttachmentsToTaskflowKeepsExternalURL(t *testing.T) {
+	u := &TaskUsecase{}
+	got, err := u.taskAttachmentsToTaskflow(context.Background(), []domain.TaskAttachment{
+		{URL: "https://oss.example.com/temp/a.txt", Filename: "a.txt"},
+	})
+	if err != nil {
+		t.Fatalf("taskAttachmentsToTaskflow() error = %v", err)
+	}
+	if got[0].URL != "https://oss.example.com/temp/a.txt" {
+		t.Fatalf("url = %q", got[0].URL)
+	}
+}
+
+type fakeAttachmentSigner struct {
+	key     string
+	expires time.Duration
+}
+
+func (f *fakeAttachmentSigner) PresignGet(_ context.Context, key string, expires time.Duration) (string, error) {
+	f.key = key
+	f.expires = expires
+	return fmt.Sprintf("http://agent.local/%s", key), nil
 }
