@@ -29,7 +29,6 @@ type TeamOIDCRepo interface {
 	FindUserByOIDCIdentity(ctx context.Context, identityID string) (*db.User, error)
 	FindTeamMemberByEmail(ctx context.Context, teamID uuid.UUID, email string) (*db.TeamMember, error)
 	BindOIDCIdentity(ctx context.Context, userID uuid.UUID, external *OIDCExternalUser) error
-	AutoCreateMember(ctx context.Context, teamID uuid.UUID, external *OIDCExternalUser) (*db.User, error)
 }
 
 type TeamOIDCConfig struct {
