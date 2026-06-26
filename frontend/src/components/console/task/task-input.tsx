@@ -196,6 +196,14 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const setDefaultConfig = () => {
     const storedParams = readStoredTaskDialogParams();
     setSelectedModelId(selectPreferredTaskModel(models, subscription));
+    const nextImageId = (
+      storedParams.imageId
+      && images.some((image) => image.id === storedParams.imageId)
+    )
+      ? storedParams.imageId
+      : selectImage(images, true);
+
+    setSelectedImageId(nextImageId);
 
     if (user.role === ConstsUserRole.UserRoleSubAccount) {
       const nextHostId = hosts.some((host) => host.id === storedParams.hostId && host.status === ConstsHostStatus.HostStatusOnline)
@@ -203,20 +211,12 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
         : IS_OFFLINE_EDITION
           ? (hosts.find((host) => host.id && host.status === ConstsHostStatus.HostStatusOnline)?.id || "")
           : selectHost(hosts, true);
-      const nextImageId = (
-        storedParams.imageId
-        && images.some((image) => image.id === storedParams.imageId)
-      )
-        ? storedParams.imageId
-        : selectImage(images, true);
 
       setSelectedHostId(nextHostId);
-      setSelectedImageId(nextImageId);
       return;
     }
 
     setSelectedHostId(selectHost(hosts, false));
-    setSelectedImageId(selectImage(images, false));
   };
 
   const selectedModel = useMemo(
@@ -266,7 +266,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     const storedParams = readStoredTaskDialogParams();
     writeStoredTaskDialogParams({
       hostId: user.role === ConstsUserRole.UserRoleSubAccount ? selectedHostId : storedParams.hostId,
-      imageId: user.role === ConstsUserRole.UserRoleSubAccount ? selectedImageId : storedParams.imageId,
+      imageId: selectedImageId,
     });
 
     executeTask();
@@ -669,120 +669,122 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto flex flex-col">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{t("taskWorkflow.dialog.params.title")}</DialogTitle>
           </DialogHeader>
-          <Field>
-            <FieldLabel>{t("taskWorkflow.dialog.params.model")}</FieldLabel>
-            <FieldContent>
-              <ModelSelect
-                models={models}
-                selectedModel={selectedModel}
-                selectedModelId={selectedModelId}
-                setSelectedModelId={setSelectedModelId}
-                subscription={subscription}
-              />
-            </FieldContent>
-          </Field>
-          {selectedRepo && !selectedRepoDisplayName.endsWith('.zip') && <>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
             <Field>
-              <FieldLabel>{t("taskWorkflow.dialog.params.branch")}</FieldLabel>
+              <FieldLabel>{t("taskWorkflow.dialog.params.model")}</FieldLabel>
               <FieldContent>
-                <Input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder={t("taskWorkflow.dialog.params.branchPlaceholder")} className="text-sm" />
+                <ModelSelect
+                  models={models}
+                  selectedModel={selectedModel}
+                  selectedModelId={selectedModelId}
+                  setSelectedModelId={setSelectedModelId}
+                  subscription={subscription}
+                />
               </FieldContent>
             </Field>
-            {!selectedRepoFromMyRepos && (
+            {selectedRepo && !selectedRepoDisplayName.endsWith('.zip') && <>
               <Field>
-                <FieldLabel>{t("taskWorkflow.dialog.params.identity")}</FieldLabel>
+                <FieldLabel>{t("taskWorkflow.dialog.params.branch")}</FieldLabel>
                 <FieldContent>
-                  <Select value={selectedIdentityId || "none"} onValueChange={setSelectedIdentityId}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t("taskWorkflow.dialog.params.selectIdentity")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">{t("taskWorkflow.dialog.params.anonymous")}</SelectItem>
-                      {(() => {
-                        const matched = findIdentitiesForRepoUrl(selectedRepo, identities);
-                        return matched.length > 0 ? (
-                          matched.map((identity) => (
-                            <SelectItem key={identity.id} value={identity.id as string}>
-                              {getGitPlatformIcon(identity.platform || '')}
-                              {identity.remark || identity.username}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <SelectItem value="unknown" disabled>{t("taskWorkflow.dialog.params.noIdentity")}</SelectItem>
-                        );
-                      })()}
-                    </SelectContent>
-                  </Select>
+                  <Input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder={t("taskWorkflow.dialog.params.branchPlaceholder")} className="text-sm" />
                 </FieldContent>
               </Field>
-            )}
-          </>}
-          {user.role === ConstsUserRole.UserRoleSubAccount && <Field>
-            <FieldLabel>{t("taskWorkflow.dialog.params.host")}</FieldLabel>
-            <FieldContent>
-              <Select value={selectedHostId} onValueChange={setSelectedHostId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("taskWorkflow.dialog.params.selectHost")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {!IS_OFFLINE_EDITION && (
-                    <SelectItem value={"public_host"}>
-                      <div className="flex items-center gap-2">
-                        <span>MonkeyCode</span>
-                        <Badge className="!text-primary-foreground">{t("taskWorkflow.dialog.params.free")}</Badge>
-                      </div>
-                    </SelectItem>
-                  )}
-                  {hosts.map((host) => {
-                    return (
-                      <SelectItem
-                        key={host.id}
-                        value={host.id!}
-                        disabled={host.status !== ConstsHostStatus.HostStatusOnline || (!IS_OFFLINE_EDITION && selectedPublicModel)}>
+              {!selectedRepoFromMyRepos && (
+                <Field>
+                  <FieldLabel>{t("taskWorkflow.dialog.params.identity")}</FieldLabel>
+                  <FieldContent>
+                    <Select value={selectedIdentityId || "none"} onValueChange={setSelectedIdentityId}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={t("taskWorkflow.dialog.params.selectIdentity")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t("taskWorkflow.dialog.params.anonymous")}</SelectItem>
+                        {(() => {
+                          const matched = findIdentitiesForRepoUrl(selectedRepo, identities);
+                          return matched.length > 0 ? (
+                            matched.map((identity) => (
+                              <SelectItem key={identity.id} value={identity.id as string}>
+                                {getGitPlatformIcon(identity.platform || '')}
+                                {identity.remark || identity.username}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="unknown" disabled>{t("taskWorkflow.dialog.params.noIdentity")}</SelectItem>
+                          );
+                        })()}
+                      </SelectContent>
+                    </Select>
+                  </FieldContent>
+                </Field>
+              )}
+            </>}
+            {user.role === ConstsUserRole.UserRoleSubAccount && <Field>
+              <FieldLabel>{t("taskWorkflow.dialog.params.host")}</FieldLabel>
+              <FieldContent>
+                <Select value={selectedHostId} onValueChange={setSelectedHostId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t("taskWorkflow.dialog.params.selectHost")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!IS_OFFLINE_EDITION && (
+                      <SelectItem value={"public_host"}>
                         <div className="flex items-center gap-2">
-                          <span>{host.remark || `${host.name}-${host.external_ip}`}</span>
-                          {getHostBadges(host)}
+                          <span>MonkeyCode</span>
+                          <Badge className="!text-primary-foreground">{t("taskWorkflow.dialog.params.free")}</Badge>
                         </div>
                       </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-            </FieldContent>
-          </Field>}
-          {user.role === ConstsUserRole.UserRoleSubAccount && <Field>
-            <FieldLabel>{t("taskWorkflow.dialog.params.image")}</FieldLabel>
-            <FieldContent>
-              <Select value={selectedImageId} onValueChange={setSelectedImageId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("taskWorkflow.dialog.params.selectImage")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {images.filter(image => image.id).map((image) => (
-                    <SelectItem key={image.id} value={image.id!}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
+                    )}
+                    {hosts.map((host) => {
+                      return (
+                        <SelectItem
+                          key={host.id}
+                          value={host.id!}
+                          disabled={host.status !== ConstsHostStatus.HostStatusOnline || (!IS_OFFLINE_EDITION && selectedPublicModel)}>
                           <div className="flex items-center gap-2">
-                            <Icon name={getOSFromImageName(image.name || '')} className="h-4 w-4" />
-                            <span>{image.remark || getImageShortName(image.name || '')}</span>
-                            {getOwnerTypeBadge(image.owner)}
+                            <span>{host.remark || `${host.name}-${host.external_ip}`}</span>
+                            {getHostBadges(host)}
                           </div>
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+              </FieldContent>
+            </Field>}
+            <Field>
+              <FieldLabel>{t("taskWorkflow.dialog.params.image")}</FieldLabel>
+              <FieldContent>
+                <Select value={selectedImageId} onValueChange={setSelectedImageId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t("taskWorkflow.dialog.params.selectImage")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {images.filter(image => image.id).map((image) => (
+                      <SelectItem key={image.id} value={image.id!}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-2">
+                              <Icon name={getOSFromImageName(image.name || '')} className="h-4 w-4" />
+                              <span>{image.remark || getImageShortName(image.name || '')}</span>
+                              {getOwnerTypeBadge(image.owner)}
+                            </div>
                           </TooltipTrigger>
                           <TooltipContent side="right">
                             {image.name}
                           </TooltipContent>
                         </Tooltip>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FieldContent>
-          </Field>}
-          <DialogFooter>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FieldContent>
+            </Field>
+          </div>
+          <DialogFooter className="shrink-0 border-t pt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               {t("taskWorkflow.dialog.params.cancel")}
             </Button>

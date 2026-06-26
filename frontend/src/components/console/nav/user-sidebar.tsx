@@ -18,6 +18,7 @@ import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context"
 import { ExternalLink, Settings } from "lucide-react"
 import { IS_OFFLINE_EDITION, IS_ONLINE_EDITION } from "@/utils/edition"
 import { useTranslation } from "react-i18next"
+import { useAppRuntime } from "@/components/app-runtime-provider"
 
 const CONSULT_PURCHASE_URL = "https://baizhi.cloud/consult"
 
@@ -26,6 +27,8 @@ export default function UserSidebar({
 }: React.ComponentProps<typeof Sidebar>) {
   const { t } = useTranslation()
   const { open: settingsOpen, setOpen: setSettingsOpen } = useSettingsDialog()
+  const { serverConfig } = useAppRuntime()
+  const isCnRegion = serverConfig?.region === "cn"
 
   return (
     <Sidebar variant="inset" collapsible="icon" {...props}>
@@ -51,8 +54,12 @@ export default function UserSidebar({
         {IS_ONLINE_EDITION && (
           <>
             <NavCheckin />
-            <NavInvite />
-            <NavEssay />
+            {isCnRegion && (
+              <>
+                <NavInvite />
+                <NavEssay />
+              </>
+            )}
           </>
         )}
         {IS_OFFLINE_EDITION && (

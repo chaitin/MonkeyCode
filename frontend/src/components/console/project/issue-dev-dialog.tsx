@@ -117,28 +117,30 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
   return (
     <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex flex-col">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{t("consoleProject.issueTask.develop.title")}</DialogTitle>
           <DialogDescription>
             {t("consoleProject.issueTask.develop.description")}
           </DialogDescription>
         </DialogHeader>
-        <IssueTaskProjectFields
-          branches={branches}
-          loadingBranches={loadingBranches}
-          project={project}
-          selectedBranch={selectedBranch}
-          selectBranch={selectBranch}
-        />
-        <IssueTaskModelSelect
-          models={models}
-          selectedModel={selectedModel}
-          selectedModelId={selectedModelId}
-          setSelectedModelId={setSelectedModelId}
-          subscription={subscription}
-        />
-        <DialogFooter>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+          <IssueTaskProjectFields
+            branches={branches}
+            loadingBranches={loadingBranches}
+            project={project}
+            selectedBranch={selectedBranch}
+            selectBranch={selectBranch}
+          />
+          <IssueTaskModelSelect
+            models={models}
+            selectedModel={selectedModel}
+            selectedModelId={selectedModelId}
+            setSelectedModelId={setSelectedModelId}
+            subscription={subscription}
+          />
+        </div>
+        <DialogFooter className="shrink-0 border-t pt-4">
           <Button onClick={handleConfirm} disabled={submitting}>
             {submitting ? <Spinner /> : <IconSparkles className="size-4" />}
             {t("consoleProject.issueTask.develop.start")}

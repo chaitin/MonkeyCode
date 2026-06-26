@@ -385,12 +385,12 @@ export default function StartDevelopTaskDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex flex-col">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{t("consoleProject.startTask.title")}</DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           <div className="space-y-2">
             <Label>{t("consoleProject.startTask.project")}</Label>
             <Input 
@@ -538,7 +538,7 @@ export default function StartDevelopTaskDialog({
                 onChange={(e) => setUserMessage(e.target.value)}
                 placeholder={t("consoleProject.startTask.contentPlaceholder")}
                 rows={4}
-                className="resize-none break-all"
+                className="min-h-32 max-h-60 resize-none overflow-y-auto break-all field-sizing-fixed"
                 aria-invalid={userMessageTooLong}
               />
               {userMessageTooLong && (
@@ -551,9 +551,9 @@ export default function StartDevelopTaskDialog({
               )}
             </div>
           </div>
-         </div>
-         
-         <DialogFooter>
+        </div>
+
+        <DialogFooter className="shrink-0 border-t pt-4">
           <Button 
             onClick={handleSubmit}
             disabled={submitting || userMessageTooLong}

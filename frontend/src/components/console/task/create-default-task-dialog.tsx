@@ -154,6 +154,14 @@ export default function CreateDefaultTaskDialog({
   const setDefaultConfig = useCallback(() => {
     const storedParams = readStoredTaskDialogParams()
     setSelectedModelId(selectPreferredTaskModel(models, subscription))
+    const nextImageId = (
+      storedParams.imageId
+      && images.some((image) => image.id === storedParams.imageId)
+    )
+      ? storedParams.imageId
+      : selectImage(images, true)
+
+    setSelectedImageId(nextImageId)
 
     if (user.role === ConstsUserRole.UserRoleSubAccount) {
       const nextHostId = hosts.some((host) => host.id === storedParams.hostId && host.status === ConstsHostStatus.HostStatusOnline)
@@ -161,20 +169,12 @@ export default function CreateDefaultTaskDialog({
         : IS_OFFLINE_EDITION
           ? (hosts.find((host) => host.id && host.status === ConstsHostStatus.HostStatusOnline)?.id || "")
           : selectHost(hosts, true)
-      const nextImageId = (
-        storedParams.imageId
-        && images.some((image) => image.id === storedParams.imageId)
-      )
-        ? storedParams.imageId
-        : selectImage(images, true)
 
       setSelectedHostId(nextHostId)
-      setSelectedImageId(nextImageId)
       return
     }
 
     setSelectedHostId(selectHost(hosts, false))
-    setSelectedImageId(selectImage(images, false))
   }, [hosts, images, models, subscription, user.role])
 
   useEffect(() => {
@@ -406,7 +406,7 @@ export default function CreateDefaultTaskDialog({
     const storedParams = readStoredTaskDialogParams()
     writeStoredTaskDialogParams({
       hostId: user.role === ConstsUserRole.UserRoleSubAccount ? selectedHostId : storedParams.hostId,
-      imageId: user.role === ConstsUserRole.UserRoleSubAccount ? selectedImageId : storedParams.imageId,
+      imageId: selectedImageId,
     })
 
     let zipUrl = selectedRepo
@@ -492,13 +492,13 @@ export default function CreateDefaultTaskDialog({
   }
 
   return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-2xl">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{t("taskWorkflow.dialog.create.title")}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           <input
             ref={fileInputRef}
             type="file"
@@ -511,7 +511,7 @@ export default function CreateDefaultTaskDialog({
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder={t("taskWorkflow.input.placeholder")}
-              className="min-h-36 resize-none"
+              className="min-h-36 max-h-60 resize-none overflow-y-auto break-all field-sizing-fixed"
               aria-invalid={contentTooLong}
             />
             {contentTooLong && (
@@ -895,40 +895,38 @@ export default function CreateDefaultTaskDialog({
                       </Field>
                     )}
 
-                    {user.role === ConstsUserRole.UserRoleSubAccount && (
-                      <Field>
-                        <FieldLabel>{t("taskWorkflow.dialog.params.image")}</FieldLabel>
-                        <FieldContent>
-                          <Select value={selectedImageId} onValueChange={setSelectedImageId}>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder={t("taskWorkflow.dialog.params.selectImage")} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {images.filter((image) => image.id).map((image) => (
-                                <SelectItem key={image.id} value={image.id!}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="flex items-center gap-2">
-                                        <Icon name={getOSFromImageName(image.name || "")} className="h-4 w-4" />
-                                        <span>{image.remark || getImageShortName(image.name || "")}</span>
-                                        {getOwnerTypeBadge(image.owner)}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="right">{image.name}</TooltipContent>
-                                  </Tooltip>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FieldContent>
-                      </Field>
-                    )}
+                    <Field>
+                      <FieldLabel>{t("taskWorkflow.dialog.params.image")}</FieldLabel>
+                      <FieldContent>
+                        <Select value={selectedImageId} onValueChange={setSelectedImageId}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder={t("taskWorkflow.dialog.params.selectImage")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {images.filter((image) => image.id).map((image) => (
+                              <SelectItem key={image.id} value={image.id!}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="flex items-center gap-2">
+                                      <Icon name={getOSFromImageName(image.name || "")} className="h-4 w-4" />
+                                      <span>{image.remark || getImageShortName(image.name || "")}</span>
+                                      {getOwnerTypeBadge(image.owner)}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="right">{image.name}</TooltipContent>
+                                </Tooltip>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FieldContent>
+                    </Field>
               </CollapsibleContent>
             </Collapsible>
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 border-t pt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t("taskWorkflow.dialog.params.cancel")}
           </Button>
