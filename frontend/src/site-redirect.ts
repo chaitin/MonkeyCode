@@ -1,6 +1,6 @@
 const CN_SITE_HOST = "monkeycode-ai.com"
 const GLOBAL_SITE_HOST = "monkeycode-ai.net"
-const LANGUAGE_CHAIN_LIMIT = 4
+const LANGUAGE_CHAIN_LIMIT = 2
 
 type SiteLocation = Pick<Location, "hostname" | "pathname" | "search" | "hash">
 
