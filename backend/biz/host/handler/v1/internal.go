@@ -334,6 +334,9 @@ return nil
 				h.logger.With("error", uerr).ErrorContext(ctx, "failed to unmarshal user from redis token")
 				return nil, uerr
 			}
+			if u.ID == uuid.Nil {
+				return nil, fmt.Errorf("invalid host install token user")
+			}
 			h.logger.With("user_id", u.ID).DebugContext(ctx, "get result from redis by lua")
 
 			typeUser := &taskflow.TokenUser{

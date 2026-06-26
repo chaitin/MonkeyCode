@@ -175,6 +175,26 @@ func TestCheckTokenLogsMissingAgentVMBelowError(t *testing.T) {
 	}
 }
 
+func TestHostAuthRejectsInstallTokenWithoutUserID(t *testing.T) {
+	rdb := newTestRedis(t)
+	ctx := context.Background()
+	token := "install-token-without-user"
+	if err := rdb.Set(ctx, "host:token:"+token, `{"token":"`+token+`"}`, time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	h := &InternalHostHandler{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		redis:  rdb,
+		repo:   &internalHostRepoStub{},
+	}
+
+	_, err := h.hostAuth(ctx, token, "")
+	if err == nil {
+		t.Fatal("host auth error is nil")
+	}
+}
+
 type internalHostRepoStub struct {
 	vm               *db.VirtualMachine
 	accessTokenVM    *db.VirtualMachine
