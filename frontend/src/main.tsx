@@ -6,6 +6,7 @@ import './index.css'
 import App from './App.tsx'
 import { initI18n } from './i18n'
 import { AppRuntimeProvider } from './components/app-runtime-provider'
+import { getSiteRedirectUrl } from './site-redirect'
 
 
 import dayjs from 'dayjs';
@@ -16,7 +17,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(duration);
 dayjs.extend(relativeTime);
 
-void initI18n().then(() => {
+function renderApp() {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <AppRuntimeProvider>
@@ -24,4 +25,12 @@ void initI18n().then(() => {
       </AppRuntimeProvider>
     </StrictMode>,
   )
-})
+}
+
+const siteRedirectUrl = getSiteRedirectUrl()
+
+if (siteRedirectUrl) {
+  window.location.replace(siteRedirectUrl)
+} else {
+  void initI18n().then(renderApp)
+}
