@@ -26,6 +26,8 @@ test("设置身份页面使用 consoleSettings identities i18n key", () => {
   assert.match(sourceFiles.addIdentity, /t\("consoleSettings\.identities\.add\.title"\)/);
   assert.match(sourceFiles.editIdentity, /t\("consoleSettings\.identities\.edit\.title"\)/);
   assert.match(sourceFiles.identities, /t\("consoleSettings\.identities\.title"\)/);
+  assert.match(sourceFiles.identities, /identity\.is_installation_app === true/);
+  assert.match(sourceFiles.identities, /t\("consoleSettings\.identities\.actions\.rebind"\)/);
 });
 
 test("设置身份页面提供中英文资源", () => {
@@ -33,6 +35,8 @@ test("设置身份页面提供中英文资源", () => {
   assert.equal(en.consoleSettings.identities.title, "Git platform identities");
   assert.equal(cn.consoleSettings.identities.actions.bindOther, "绑定其他平台");
   assert.equal(en.consoleSettings.identities.actions.bindOther, "Bind another platform");
+  assert.equal(cn.consoleSettings.identities.actions.rebind, "重新绑定");
+  assert.equal(en.consoleSettings.identities.actions.rebind, "Rebind");
   assert.equal(cn.consoleSettings.identities.delete.description, "确定要移除身份 \"{{name}}\" 吗？此操作不可撤销。");
   assert.equal(en.consoleSettings.identities.delete.description, "Remove identity \"{{name}}\"? This action cannot be undone.");
 });

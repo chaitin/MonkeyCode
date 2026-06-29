@@ -1300,6 +1300,7 @@ const cn = {
         fetching: "获取中...",
         cancel: "取消",
         save: "保存",
+        rebind: "重新绑定",
         edit: "修改",
         remove: "移除",
       },

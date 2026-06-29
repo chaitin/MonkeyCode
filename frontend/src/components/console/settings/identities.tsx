@@ -36,7 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { IconAlertHexagon, IconPasswordFingerprint, IconPencil, IconPlugConnected, IconTrash } from "@tabler/icons-react"
+import { IconAlertHexagon, IconPasswordFingerprint, IconPencil, IconPlugConnected, IconRefresh, IconTrash } from "@tabler/icons-react"
 import { getGitPlatformIcon, getGithubAppInstallUrl } from "@/utils/common"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import Icon from "@/components/common/Icon"
@@ -74,20 +74,29 @@ export default function Identities() {
     showPlatformConnectCards &&
     (!hasGitHubIdentity || !hasGiteeIdentity || !hasGiteaIdentity || !hasGitLabIdentity)
 
+  const openAuthorizePopup = (url: string) => {
+    const popup = window.open(url, "_blank")
+    if (!popup) return
+
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosed)
+        reloadIdentities()
+      }
+    }, 500)
+  }
+
+  const handleGithubBind = () => {
+    if (!githubAppInstallUrl) return
+    openAuthorizePopup(githubAppInstallUrl)
+  }
+
   const handleGiteeBind = () => {
     setGiteeBindLoading(true)
     apiRequest('v1GiteeAuthorizeUrlList', {}, [], (resp) => {
       setGiteeBindLoading(false)
       if (resp.code === 0 && resp.data?.url) {
-        const popup = window.open(resp.data.url, "_blank")
-        if (popup) {
-          const checkClosed = setInterval(() => {
-            if (popup.closed) {
-              clearInterval(checkClosed)
-              reloadIdentities()
-            }
-          }, 500)
-        }
+        openAuthorizePopup(resp.data.url)
       } else {
         toast.error(resp.message || t("consoleSettings.identities.toast.authorizeUrlFailed", { platform: "Gitee" }))
       }
@@ -101,15 +110,7 @@ export default function Identities() {
     apiRequest('v1GiteaAuthorizeUrlList', {}, [], (resp) => {
       setGiteaBindLoading(false)
       if (resp.code === 0 && resp.data?.url) {
-        const popup = window.open(resp.data.url, "_blank")
-        if (popup) {
-          const checkClosed = setInterval(() => {
-            if (popup.closed) {
-              clearInterval(checkClosed)
-              reloadIdentities()
-            }
-          }, 500)
-        }
+        openAuthorizePopup(resp.data.url)
       } else {
         toast.error(resp.message || t("consoleSettings.identities.toast.authorizeUrlFailed", { platform: "Gitea" }))
       }
@@ -118,26 +119,51 @@ export default function Identities() {
     })
   }
 
-  const handleGitLabBind = () => {
+  const handleGitLabBind = (baseUrl = "https://gitlab.com") => {
     setGitlabBindLoading(true)
-    apiRequest('v1GitlabAuthorizeUrlList', { base: 'https://gitlab.com' }, [], (resp) => {
+    apiRequest('v1GitlabAuthorizeUrlList', { base: baseUrl }, [], (resp) => {
       setGitlabBindLoading(false)
       if (resp.code === 0 && resp.data?.url) {
-        const popup = window.open(resp.data.url, "_blank")
-        if (popup) {
-          const checkClosed = setInterval(() => {
-            if (popup.closed) {
-              clearInterval(checkClosed)
-              reloadIdentities()
-            }
-          }, 500)
-        }
+        openAuthorizePopup(resp.data.url)
       } else {
         toast.error(resp.message || t("consoleSettings.identities.toast.authorizeUrlFailed", { platform: "GitLab" }))
       }
     }, () => {
       setGitlabBindLoading(false)
     })
+  }
+
+  const handleCnbBind = () => {
+    apiRequest('v1CnbAuthorizeUrlList', {}, [], (resp) => {
+      if (resp.code === 0 && resp.data?.url) {
+        openAuthorizePopup(resp.data.url)
+      } else {
+        toast.error(resp.message || t("consoleSettings.identities.toast.authorizeUrlFailed", { platform: "CNB" }))
+      }
+    })
+  }
+
+  const handleRebind = (identity: DomainGitIdentity) => {
+    switch (identity.platform) {
+      case ConstsGitPlatform.GitPlatformGithub:
+        handleGithubBind()
+        break
+      case ConstsGitPlatform.GitPlatformGitee:
+        handleGiteeBind()
+        break
+      case ConstsGitPlatform.GitPlatformGitea:
+        handleGiteaBind()
+        break
+      case ConstsGitPlatform.GitPlatformGitLab:
+        handleGitLabBind(identity.base_url || "https://gitlab.com")
+        break
+      case ConstsGitPlatform.GitPlatformCnb:
+        handleCnbBind()
+        break
+      default:
+        toast.error(t("consoleSettings.identities.toast.authorizeUrlFailed", { platform: identity.platform || "" }))
+        break
+    }
   }
 
   const handleEdit = (identity: DomainGitIdentity) => {
@@ -221,7 +247,7 @@ export default function Identities() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => githubAppInstallUrl && window.open(githubAppInstallUrl, "_blank")}
+          onClick={handleGithubBind}
           disabled={!githubAppInstallUrl}
         >
           {t("consoleSettings.identities.actions.bind")}
@@ -314,7 +340,7 @@ export default function Identities() {
         <Button
           variant="outline"
           size="sm"
-          onClick={handleGitLabBind}
+          onClick={() => handleGitLabBind()}
           disabled={gitlabBindLoading}
         >
           {gitlabBindLoading ? t("consoleSettings.identities.actions.fetching") : t("consoleSettings.identities.actions.bind")}
@@ -349,6 +375,12 @@ export default function Identities() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {identity.is_installation_app === true && (
+                <DropdownMenuItem onClick={() => handleRebind(identity)}>
+                  <IconRefresh />
+                  {t("consoleSettings.identities.actions.rebind")}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => handleEdit(identity)}>
                 <IconPencil />
                 {t("consoleSettings.identities.actions.edit")}
@@ -414,7 +446,7 @@ export default function Identities() {
                 <>
                   <DropdownMenuItem
                     className="whitespace-nowrap"
-                    onClick={() => githubAppInstallUrl && window.open(githubAppInstallUrl, "_blank")}
+                    onClick={handleGithubBind}
                     disabled={!githubAppInstallUrl}
                   >
                     <Icon name="GitHub-Uncolor" className="fill-foreground size-4" />
@@ -438,7 +470,7 @@ export default function Identities() {
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="whitespace-nowrap"
-                    onClick={handleGitLabBind}
+                    onClick={() => handleGitLabBind()}
                     disabled={gitlabBindLoading}
                   >
                     <Icon name="GitLab" className="size-4" />

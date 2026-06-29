@@ -1300,6 +1300,7 @@ const en = {
         fetching: "Fetching...",
         cancel: "Cancel",
         save: "Save",
+        rebind: "Rebind",
         edit: "Edit",
         remove: "Remove",
       },
