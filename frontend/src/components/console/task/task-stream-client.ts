@@ -4,6 +4,7 @@ import {
   type TaskMessageHandlerState,
   type TaskMessageRawChunk,
 } from "./task-message-handler"
+import { getTaskStreamDedupKey, type TaskStreamDedupChunk } from "./task-stream-dedupe"
 import { normalizeTaskUserInput, type TaskUserInput, type TaskUserInputPayload } from "./task-shared"
 
 const normalizeTimestampToMilliseconds = (timestamp: number) => {
@@ -42,12 +43,7 @@ export interface TaskStreamClientNewOptions extends TaskStreamClientBaseOptions 
   userInput: TaskUserInput
 }
 
-interface TaskStreamServerChunk {
-  type?: string
-  kind?: string
-  data?: unknown
-  timestamp?: number
-}
+type TaskStreamServerChunk = TaskStreamDedupChunk
 
 type TaskStreamClientMode = "attach" | "new"
 
@@ -300,12 +296,7 @@ export class TaskStreamClient {
   }
 
   private shouldProcessChunk(chunk: TaskStreamServerChunk) {
-    const key = JSON.stringify([
-      chunk.type ?? "",
-      chunk.kind ?? "",
-      chunk.timestamp ?? 0,
-      typeof chunk.data === "string" ? chunk.data : chunk.data == null ? "" : JSON.stringify(chunk.data),
-    ])
+    const key = getTaskStreamDedupKey(chunk)
 
     if (this.processedChunkKeys.has(key)) {
       return false
