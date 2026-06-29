@@ -51,6 +51,7 @@ type TurnChunk struct {
 	Event     string
 	Kind      string
 	Timestamp int64
+	Seq       uint64 // 消息序号，来自 ClickHouse msg_seq_start
 	TurnSeq   uint32 // 轮次号，仅 ClickHouse 有值，Loki 为 0
 	Labels    map[string]string
 }

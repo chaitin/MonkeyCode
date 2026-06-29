@@ -107,7 +107,7 @@ func (p *ClickHouseProvider) QueryTurns(ctx context.Context, taskID uuid.UUID, _
 	args = append(args, limit)
 
 	q := fmt.Sprintf(`
-SELECT ts, event, kind, data, turn_seq
+SELECT ts, event, kind, data, turn_seq, msg_seq_start
 FROM %[1]s
 WHERE task_id = ? AND turn_seq IN (
 	SELECT DISTINCT turn_seq
@@ -135,8 +135,9 @@ ORDER BY turn_seq %[3]s, ts ASC, msg_seq_start ASC, ingest_id ASC
 			kind    string
 			data    string
 			turnSeq uint32
+			seq     uint64
 		)
-		if err := rows.Scan(&ts, &event, &kind, &data, &turnSeq); err != nil {
+		if err := rows.Scan(&ts, &event, &kind, &data, &turnSeq, &seq); err != nil {
 			return nil, err
 		}
 		// 行按扫描方向排列，最后一行所在轮即本页边界轮
@@ -146,6 +147,7 @@ ORDER BY turn_seq %[3]s, ts ASC, msg_seq_start ASC, ingest_id ASC
 			Event:     event,
 			Kind:      kind,
 			Timestamp: ts.UTC().UnixNano(),
+			Seq:       seq,
 			TurnSeq:   turnSeq,
 		})
 	}

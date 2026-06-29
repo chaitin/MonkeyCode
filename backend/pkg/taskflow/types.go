@@ -362,6 +362,7 @@ type TaskChunk struct {
 	Data      []byte `json:"data,omitempty"`
 	Event     string `json:"event"`
 	Kind      string `json:"kind"`
+	Seq       uint64 `json:"seq,omitempty"`
 	Timestamp int64  `json:"timestamp,omitempty"`
 }
 

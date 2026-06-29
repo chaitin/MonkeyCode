@@ -37,7 +37,7 @@ func TestBuildTaskStreamsFromLogEntriesKeepsStreamingWhenNotEnded(t *testing.T) 
 
 	streams, ended := buildTaskStreamsFromLogEntries([]tasklog.Entry{
 		{TaskID: uuid.Nil, TS: base, Event: "task-started", Kind: "acp_event"},
-		{TaskID: uuid.Nil, TS: base.Add(time.Second), Event: "task-running", Kind: "agent_message_chunk"},
+		{TaskID: uuid.Nil, TS: base.Add(time.Second), Event: "task-running", Kind: "agent_message_chunk", MsgSeq: "13-16"},
 	}, logger)
 
 	if ended {
@@ -45,6 +45,9 @@ func TestBuildTaskStreamsFromLogEntriesKeepsStreamingWhenNotEnded(t *testing.T) 
 	}
 	if len(streams) != 2 {
 		t.Fatalf("len(streams) = %d, want 2", len(streams))
+	}
+	if streams[1].Seq != 13 {
+		t.Fatalf("stream seq = %d, want 13", streams[1].Seq)
 	}
 }
 

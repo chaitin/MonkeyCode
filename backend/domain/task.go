@@ -315,6 +315,7 @@ type TaskStream struct {
 	Type      consts.TaskStreamType `json:"type"`
 	Data      []byte                `json:"data"` // user-input 事件使用 TaskUserInputPayload 的 JSON 字符串
 	Kind      string                `json:"kind"`
+	Seq       uint64                `json:"seq,omitempty"`
 	Timestamp int64                 `json:"timestamp"`
 }
 
@@ -357,7 +358,8 @@ type TaskChunkEntry struct {
 	Event     string            `json:"event"`
 	Kind      string            `json:"kind"`
 	Timestamp int64             `json:"timestamp"`
-	Seq       uint32            `json:"seq,omitempty"` // 轮次号，可作为 cursor 翻页；仅日志存储为 ClickHouse 时有值
+	Seq       uint64            `json:"seq,omitempty"`      // 消息序号，来自 ClickHouse msg_seq_start
+	TurnSeq   uint32            `json:"turn_seq,omitempty"` // 轮次号，可作为 cursor 翻页；仅日志存储为 ClickHouse 时有值
 	Labels    map[string]string `json:"labels,omitempty"`
 }
 

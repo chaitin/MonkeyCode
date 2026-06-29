@@ -115,10 +115,10 @@ func TestClickHouseProviderQueryTurnsUsesSparseTurnCursor(t *testing.T) {
 	defer db.Close()
 
 	taskID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	chunkRows := sqlmock.NewRows([]string{"ts", "event", "kind", "data", "turn_seq"}).
-		AddRow(time.Unix(1_710_000_010, 0).UTC(), "user-input", "", "latest", uint32(1))
+	chunkRows := sqlmock.NewRows([]string{"ts", "event", "kind", "data", "turn_seq", "msg_seq_start"}).
+		AddRow(time.Unix(1_710_000_010, 0).UTC(), "user-input", "", "latest", uint32(1), uint64(11))
 
-	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq < \\?[\\s\\S]*ORDER BY turn_seq DESC[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
+	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq, msg_seq_start[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq < \\?[\\s\\S]*ORDER BY turn_seq DESC[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
 		WithArgs(taskID, taskID, uint32(2), 1).
 		WillReturnRows(chunkRows)
 
@@ -136,6 +136,9 @@ func TestClickHouseProviderQueryTurnsUsesSparseTurnCursor(t *testing.T) {
 	}
 	if resp.Chunks[0].TurnSeq != 1 {
 		t.Fatalf("chunk turn_seq = %d, want 1", resp.Chunks[0].TurnSeq)
+	}
+	if resp.Chunks[0].Seq != 11 {
+		t.Fatalf("chunk seq = %d, want 11", resp.Chunks[0].Seq)
 	}
 	if resp.HasMore {
 		t.Fatal("expected has_more=false")
@@ -157,10 +160,10 @@ func TestClickHouseProviderQueryTurnsBackwardHasMore(t *testing.T) {
 
 	taskID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	now := time.Unix(1_710_000_010, 0).UTC()
-	chunkRows := sqlmock.NewRows([]string{"ts", "event", "kind", "data", "turn_seq"}).
-		AddRow(now, "task-running", "acp_event", "turn-3", uint32(3))
+	chunkRows := sqlmock.NewRows([]string{"ts", "event", "kind", "data", "turn_seq", "msg_seq_start"}).
+		AddRow(now, "task-running", "acp_event", "turn-3", uint32(3), uint64(31))
 
-	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*ORDER BY turn_seq DESC[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
+	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq, msg_seq_start[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*ORDER BY turn_seq DESC[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
 		WithArgs(taskID, taskID, 1).
 		WillReturnRows(chunkRows)
 
@@ -178,6 +181,9 @@ func TestClickHouseProviderQueryTurnsBackwardHasMore(t *testing.T) {
 	}
 	if string(resp.Chunks[0].Data) != "turn-3" {
 		t.Fatalf("chunk data = %q, want turn-3", string(resp.Chunks[0].Data))
+	}
+	if resp.Chunks[0].Seq != 31 {
+		t.Fatalf("chunk seq = %d, want 31", resp.Chunks[0].Seq)
 	}
 	if !resp.HasMore {
 		t.Fatal("expected has_more=true")
@@ -199,11 +205,11 @@ func TestClickHouseProviderQueryTurnsForward(t *testing.T) {
 
 	taskID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	now := time.Unix(1_710_000_010, 0).UTC()
-	chunkRows := sqlmock.NewRows([]string{"ts", "event", "kind", "data", "turn_seq"}).
-		AddRow(now, "user-input", "", "turn-4", uint32(4)).
-		AddRow(now.Add(time.Second), "user-input", "", "turn-5", uint32(5))
+	chunkRows := sqlmock.NewRows([]string{"ts", "event", "kind", "data", "turn_seq", "msg_seq_start"}).
+		AddRow(now, "user-input", "", "turn-4", uint32(4), uint64(41)).
+		AddRow(now.Add(time.Second), "user-input", "", "turn-5", uint32(5), uint64(51))
 
-	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq > \\?[\\s\\S]*ORDER BY turn_seq ASC[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq ASC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
+	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq, msg_seq_start[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq > \\?[\\s\\S]*ORDER BY turn_seq ASC[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq ASC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
 		WithArgs(taskID, taskID, uint32(3), 2).
 		WillReturnRows(chunkRows)
 
@@ -225,6 +231,9 @@ func TestClickHouseProviderQueryTurnsForward(t *testing.T) {
 	}
 	if resp.Chunks[0].TurnSeq != 4 || resp.Chunks[1].TurnSeq != 5 {
 		t.Fatalf("chunk turn_seqs = [%d, %d], want [4, 5]", resp.Chunks[0].TurnSeq, resp.Chunks[1].TurnSeq)
+	}
+	if resp.Chunks[0].Seq != 41 || resp.Chunks[1].Seq != 51 {
+		t.Fatalf("chunk seqs = [%d, %d], want [41, 51]", resp.Chunks[0].Seq, resp.Chunks[1].Seq)
 	}
 	if !resp.HasMore {
 		t.Fatal("expected has_more=true")
@@ -324,11 +333,11 @@ func TestClickHouseProviderQueryTurnsBackwardInclusive(t *testing.T) {
 
 	taskID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	now := time.Unix(1_710_000_010, 0).UTC()
-	chunkRows := sqlmock.NewRows([]string{"ts", "event", "kind", "data", "turn_seq"}).
-		AddRow(now.Add(time.Second), "user-input", "", "turn-5", uint32(5)).
-		AddRow(now, "user-input", "", "turn-4", uint32(4))
+	chunkRows := sqlmock.NewRows([]string{"ts", "event", "kind", "data", "turn_seq", "msg_seq_start"}).
+		AddRow(now.Add(time.Second), "user-input", "", "turn-5", uint32(5), uint64(51)).
+		AddRow(now, "user-input", "", "turn-4", uint32(4), uint64(41))
 
-	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq[\\s\\S]*turn_seq <= \\?[\\s\\S]*ORDER BY turn_seq DESC[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
+	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq, msg_seq_start[\\s\\S]*turn_seq <= \\?[\\s\\S]*ORDER BY turn_seq DESC[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
 		WithArgs(taskID, taskID, uint32(5), 2).
 		WillReturnRows(chunkRows)
 
@@ -350,6 +359,9 @@ func TestClickHouseProviderQueryTurnsBackwardInclusive(t *testing.T) {
 	}
 	if resp.Chunks[0].TurnSeq != 5 || resp.Chunks[1].TurnSeq != 4 {
 		t.Fatalf("chunk turn_seqs = [%d, %d], want [5, 4]", resp.Chunks[0].TurnSeq, resp.Chunks[1].TurnSeq)
+	}
+	if resp.Chunks[0].Seq != 51 || resp.Chunks[1].Seq != 41 {
+		t.Fatalf("chunk seqs = [%d, %d], want [51, 41]", resp.Chunks[0].Seq, resp.Chunks[1].Seq)
 	}
 	if resp.HasMore {
 		t.Fatal("expected has_more=false")
