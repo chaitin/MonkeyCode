@@ -487,6 +487,7 @@ func (s *TaskSummaryService) generateSummary(ctx context.Context, conversation [
 	userPrompt := fmt.Sprintf(`请根据以上对话，总结用户的核心意图，生成一个简短标题。
 
 要求：
+- 使用与用户最近一条实质输入相同的语言生成标题（用户用英文就输出英文标题，用中文就输出中文标题，其他语言同理），不要统一翻译成中文
 - 不超过%d字
 - 不要标点结尾
 - 只输出标题，不要解释
@@ -494,10 +495,10 @@ func (s *TaskSummaryService) generateSummary(ctx context.Context, conversation [
 - 如果早期输入为空泛或无意义，但后续用户消息补充了明确需求，以后续明确需求为准
 - 重点关注用户想要完成什么目标，而不是 AI 问了什么问题
 - 标题要具体，让人一看就知道用户想做什么
-  - 如果是开发任务：说明做的是什么应用/功能（如"开发五子棋游戏"）
-  - 如果是问问题：说明问的是什么问题（如"React Hooks 如何管理状态"）
-  - 如果是修 bug：说明修的是什么问题（如"修复用户登录失败问题"）
-- 中英文之间要加空格（如"修复 React 组件的 bug"而不是"修复React组件的bug"）
+  - 如果是开发任务：说明做的是什么应用/功能（如"开发五子棋游戏"、"Build a Gomoku game"）
+  - 如果是问问题：说明问的是什么问题（如"React Hooks 如何管理状态"、"How React Hooks manage state"）
+  - 如果是修 bug：说明修的是什么问题（如"修复用户登录失败问题"、"Fix user login failure"）
+- 当标题为中文时，中英文之间要加空格（如"修复 React 组件的 bug"而不是"修复React组件的bug"）
 - 如果对话无实质内容，就用最近一条用户输入作为标题`, maxChars)
 
 	messages := []llm.Message{
