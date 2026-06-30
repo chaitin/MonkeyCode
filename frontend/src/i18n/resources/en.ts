@@ -1553,7 +1553,7 @@ const en = {
     confirm: {
       renewTitle: "Confirm renewal",
       subscribeTitle: "Confirm subscription",
-      description: "Confirm {{action}} {{plan}} for {{period}}, total ¥{{total}}?",
+      description: "Confirm {{action}} {{plan}} for {{period}}, total {{total}}?",
       renewAction: "Confirm renewal",
       subscribeAction: "Confirm subscription",
     },

@@ -8,6 +8,14 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { TerminalFooter, TerminalHeader } from "./terminal-chrome";
+import {
+  CREDIT_RECHARGE_PACKAGES,
+  formatRegionCurrency,
+  getCreditRechargeAmount,
+  getPricingRegion,
+  getSubscriptionPlanAmount,
+  type SubscriptionPlanPriceId,
+} from "@/utils/pricing";
 
 const GITHUB_LINK = "https://github.com/chaitin/MonkeyCode/";
 const CONSULT_LINK = "https://baizhi.cloud/consult";
@@ -149,8 +157,7 @@ type PricingFeature = {
 type PricingTier = {
   key: string;
   cmd: string;
-  monthlyPrice: string;
-  yearlyPrice: string;
+  planId: SubscriptionPlanPriceId;
   features: PricingFeature[];
   ctaTo: string;
   featured?: boolean;
@@ -160,8 +167,7 @@ const pricingTiers: PricingTier[] = [
   {
     key: "free",
     cmd: "monkey account --free",
-    monthlyPrice: "¥0",
-    yearlyPrice: "¥0",
+    planId: "basic",
     features: [
       { key: "concurrency1" },
       { key: "cloud1c4g" },
@@ -177,8 +183,7 @@ const pricingTiers: PricingTier[] = [
   {
     key: "pro",
     cmd: "monkey account --pro",
-    monthlyPrice: "¥99",
-    yearlyPrice: "¥999",
+    planId: "pro",
     features: [
       { key: "concurrency3" },
       { key: "cloud2c8g" },
@@ -193,8 +198,7 @@ const pricingTiers: PricingTier[] = [
   {
     key: "ultra",
     cmd: "monkey account --ultra",
-    monthlyPrice: "¥499",
-    yearlyPrice: "¥4999",
+    planId: "ultra",
     features: [
       { key: "concurrency3" },
       { key: "cloud2c8g" },
@@ -220,13 +224,6 @@ const earnWays = [
   { icon: "✓", key: "checkin" },
   { icon: "✎", key: "article" },
   { icon: "#", key: "community", valueTo: "#community" },
-] as const;
-
-const rechargeTiers = [
-  { amount: "¥10", key: "rmb10" },
-  { amount: "¥50", key: "rmb50" },
-  { amount: "¥250", key: "rmb250" },
-  { amount: "¥1000", key: "rmb1000" },
 ] as const;
 
 const faqKeys = ["free", "training", "models", "offline", "difference", "production"] as const;
@@ -361,9 +358,10 @@ function HeaderAction({
 }
 
 export default function TerminalNativePage() {
-  const { auth } = useAppRuntime();
+  const { auth, serverConfig } = useAppRuntime();
   const isLoggedIn = auth.status === "authenticated";
   const { t } = useTranslation();
+  const pricingRegion = getPricingRegion(serverConfig?.region);
   const [openFaq, setOpenFaq] = React.useState(0);
   const [billingPeriod, setBillingPeriod] = React.useState<BillingPeriod>("monthly");
   const selfHostingAdvantages = selfHostingAdvantageKeys.map((key) => t(`terminalNative.selfHosting.advantages.${key}`));
@@ -710,7 +708,10 @@ export default function TerminalNativePage() {
         >
           <div className="grid gap-4 xl:grid-cols-3">
             {pricingTiers.map((tier) => {
-              const price = billingPeriod === "monthly" ? tier.monthlyPrice : tier.yearlyPrice;
+              const price = formatRegionCurrency(
+                getSubscriptionPlanAmount(pricingRegion, tier.planId, billingPeriod),
+                pricingRegion,
+              );
               const unit = t(`terminalNative.pricing.tiers.${tier.key}.${billingPeriod}Unit`);
               const discount = billingPeriod === "yearly" ? t(`terminalNative.pricing.tiers.${tier.key}.yearlyDiscount`) : "";
 
@@ -834,9 +835,9 @@ export default function TerminalNativePage() {
               <div className="text-[10px] tracking-[0.12em] text-[var(--a-warn)]">▸ RECHARGE</div>
               <div className="mt-2 text-lg font-semibold text-[var(--a-fg)]">{t("terminalNative.pricing.recharge.title")}</div>
               <div className="mt-4">
-                {rechargeTiers.map((item, index) => (
+                {CREDIT_RECHARGE_PACKAGES.map((item, index) => (
                   <div
-                    key={item.amount}
+                    key={item.labelKey}
                     className={cn(
                       "flex items-center gap-3 py-3",
                       index > 0 ? "border-t border-[var(--a-line)]" : ""
@@ -845,11 +846,13 @@ export default function TerminalNativePage() {
                     <span className="inline-flex size-6 items-center justify-center rounded bg-[rgba(247,185,85,0.08)] text-[13px] text-[var(--a-warn)]">
                       <IconCoins className="size-4" />
                     </span>
-                    <span className="flex-1 text-sm font-medium text-[var(--a-fg)]">{t(`terminalNative.pricing.recharge.items.${item.key}.points`)}</span>
+                    <span className="flex-1 text-sm font-medium text-[var(--a-fg)]">{t(`terminalNative.pricing.recharge.items.${item.labelKey}.points`)}</span>
                     <span className="rounded bg-[rgba(124,242,156,0.08)] px-2 py-1 text-[11px] tracking-[0.04em] text-[var(--a-accent)]">
-                      {t(`terminalNative.pricing.recharge.items.${item.key}.extra`)}
+                      {t(`terminalNative.pricing.recharge.items.${item.labelKey}.extra`)}
                     </span>
-                    <span className="text-base font-semibold text-[var(--a-fg)]">{item.amount}</span>
+                    <span className="text-base font-semibold text-[var(--a-fg)]">
+                      {formatRegionCurrency(getCreditRechargeAmount(pricingRegion, item), pricingRegion)}
+                    </span>
                   </div>
                 ))}
               </div>

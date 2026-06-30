@@ -13,10 +13,12 @@ import { toast } from "sonner"
 import dayjs from "dayjs"
 
 import { ConstsTransactionKind, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api"
+import { useAppRuntime } from "@/components/app-runtime-provider"
 import Icon from "@/components/common/Icon"
 import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
 import { captchaChallenge } from "@/utils/common"
+import { CREDIT_RECHARGE_PACKAGES, formatRegionCurrency, getCreditRechargeAmount, getPricingRegion } from "@/utils/pricing"
 import { useCommonData } from "../data-provider"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
@@ -36,6 +38,8 @@ type WalletSectionId = (typeof WALLET_NAV)[number]["id"]
 
 export default function WalletDialog() {
   const { t } = useTranslation()
+  const { serverConfig } = useAppRuntime()
+  const pricingRegion = getPricingRegion(serverConfig?.region)
   const [open, setOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<WalletSectionId>("earn")
   const [transcations, setTranscations] = useState<DomainTransactionLog[]>([])
@@ -70,12 +74,10 @@ export default function WalletDialog() {
   const formatPoints = (value: number) => Math.ceil(value).toLocaleString()
   const getInvitationInitial = (name?: string) => name?.trim().charAt(0).toUpperCase() || "?"
   const invitationLink = `https://monkeycode-ai.com/?ic=${user.id}`
-  const rechargeOptions = [
-    { credits: 2000, price: 10, discountKey: "none" },
-    { credits: 15000, price: 50, discountKey: "sixSeven" },
-    { credits: 100000, price: 250, discountKey: "five" },
-    { credits: 500000, price: 1000, discountKey: "four" },
-  ]
+  const rechargeOptions = CREDIT_RECHARGE_PACKAGES.map((option) => ({
+    ...option,
+    amount: getCreditRechargeAmount(pricingRegion, option),
+  }))
   const navLabels = {
     earn: t("walletDialog.nav.earn"),
     usage: t("walletDialog.nav.usage"),
@@ -705,7 +707,7 @@ export default function WalletDialog() {
                     selectedRechargeCredits === option.credits && "font-bold",
                   )}
                 >
-                  ¥{option.price}
+                  {formatRegionCurrency(option.amount, pricingRegion)}
                 </div>
               </button>
             ))}

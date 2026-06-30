@@ -24,6 +24,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
 import { hasProSubscription } from "@/utils/common"
+import { useAppRuntime } from "@/components/app-runtime-provider"
+import { formatRegionCurrency, getPricingRegion, getSubscriptionPlanAmount } from "@/utils/pricing"
 import { useCommonData } from "../data-provider"
 import dayjs from "dayjs"
 import { useTranslation } from "react-i18next"
@@ -73,6 +75,8 @@ function normalizeAccountPlanId(plan?: string | null): PersonalAccountPlanId {
 
 export default function SubscriptionPlanDialog({ open, onOpenChange }: SubscriptionPlanDialogProps) {
   const { t } = useTranslation()
+  const { serverConfig } = useAppRuntime()
+  const pricingRegion = getPricingRegion(serverConfig?.region)
   const {
     loadingSubscription,
     reloadSubscription,
@@ -84,22 +88,22 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       id: "basic",
       name: t("subscriptionPlan.plans.basic.name"),
       desc: t("subscriptionPlan.plans.basic.desc"),
-      monthlyAmount: 0,
-      yearlyAmount: 0,
+      monthlyAmount: getSubscriptionPlanAmount(pricingRegion, "basic", "monthly"),
+      yearlyAmount: getSubscriptionPlanAmount(pricingRegion, "basic", "yearly"),
     },
     {
       id: "pro",
       name: t("subscriptionPlan.plans.pro.name"),
       desc: t("subscriptionPlan.plans.pro.desc"),
-      monthlyAmount: 99,
-      yearlyAmount: 999,
+      monthlyAmount: getSubscriptionPlanAmount(pricingRegion, "pro", "monthly"),
+      yearlyAmount: getSubscriptionPlanAmount(pricingRegion, "pro", "yearly"),
     },
     {
       id: "ultra",
       name: t("subscriptionPlan.plans.ultra.name"),
       desc: t("subscriptionPlan.plans.ultra.desc"),
-      monthlyAmount: 499,
-      yearlyAmount: 4999,
+      monthlyAmount: getSubscriptionPlanAmount(pricingRegion, "ultra", "monthly"),
+      yearlyAmount: getSubscriptionPlanAmount(pricingRegion, "ultra", "yearly"),
     },
   ]
   const accountPlanComparisonRows: { label: string; tooltip?: string; values: Record<PersonalAccountPlanId, AccountPlanFeature> }[] = [
@@ -193,6 +197,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const canSubscribeSelectedPlan = selectedSubscriptionPlan === "pro" ? !isFlagshipPlan : selectedSubscriptionPlan === "ultra"
   const selectedPeriodAmount = selectedBillingPeriod === "monthly" ? selectedAccountPlan.monthlyAmount : selectedAccountPlan.yearlyAmount
   const selectedOrderTotal = selectedPeriodAmount * selectedPeriodCount
+  const selectedOrderTotalLabel = formatRegionCurrency(selectedOrderTotal, pricingRegion)
   const selectedPeriodUnit = selectedBillingPeriod === "monthly" ? ConstsSubscriptionPeriodUnit.PeriodMonth : ConstsSubscriptionPeriodUnit.PeriodYear
   const subscriptionPeriodCounts = selectedBillingPeriod === "monthly" ? monthlyPeriodCounts : yearlyPeriodCounts
   const selectedPeriodCountLabel = selectedBillingPeriod === "monthly"
@@ -435,7 +440,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-3">
                     <div className="flex min-w-20 items-end justify-end">
-                      <span className="text-xl font-semibold leading-none">¥{selectedOrderTotal}</span>
+                      <span className="text-xl font-semibold leading-none">{selectedOrderTotalLabel}</span>
                     </div>
                     {canSubscribeSelectedPlan ? (
                       <Button
@@ -470,7 +475,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                     action: isRenewingCurrentPlan ? t("subscriptionPlan.actions.renew") : t("subscriptionPlan.actions.subscribe"),
                     plan: confirmingPlanCard.name,
                     period: selectedPeriodCountLabel,
-                    total: selectedOrderTotal,
+                    total: selectedOrderTotalLabel,
                   })
                 : ""}
             </AlertDialogDescription>

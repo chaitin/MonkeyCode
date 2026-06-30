@@ -1553,7 +1553,7 @@ const cn = {
     confirm: {
       renewTitle: "确认续费套餐",
       subscribeTitle: "确认开通套餐",
-      description: "确认{{action}}{{plan}}，购买 {{period}}，合计 ¥{{total}}？",
+      description: "确认{{action}}{{plan}}，购买 {{period}}，合计 {{total}}？",
       renewAction: "确认续费",
       subscribeAction: "确认开通",
     },
