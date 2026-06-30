@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
-import type { DomainProviderModelListItem } from "@/api/Api"
+import type { DomainModel, DomainProviderModelListItem } from "@/api/Api"
 import { ConstsInterfaceType } from "@/api/Api"
 import {
   Select,
@@ -32,22 +32,31 @@ import { useTranslation } from "react-i18next"
 interface AddModelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialModel?: DomainModel | null
   onRefresh?: () => void
 }
+
+const DEFAULT_BASE_URL = "https://model-square.app.baizhi.cloud/v1"
+const DEFAULT_PROVIDER = "BaiZhiCloud"
+const DEFAULT_CONTEXT_LIMIT = "200000"
+const DEFAULT_OUTPUT_LIMIT = "32000"
 
 export default function AddModel({
   open,
   onOpenChange,
+  initialModel,
   onRefresh,
 }: AddModelProps) {
   const { t } = useTranslation()
   const [model, setModel] = useState("")
   const [remark, setRemark] = useState("")
   const [apiToken, setApiToken] = useState("")
-  const [baseUrl, setBaseUrl] = useState("https://model-square.app.baizhi.cloud/v1")
+  const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL)
+  const [provider, setProvider] = useState(DEFAULT_PROVIDER)
   const [interfaceType, setInterfaceType] = useState<ConstsInterfaceType>(ConstsInterfaceType.InterfaceTypeOpenAIChat)
-  const [contextLimit, setContextLimit] = useState("200000")
-  const [outputLimit, setOutputLimit] = useState("32000")
+  const [contextLimit, setContextLimit] = useState(DEFAULT_CONTEXT_LIMIT)
+  const [outputLimit, setOutputLimit] = useState(DEFAULT_OUTPUT_LIMIT)
+  const [temperature, setTemperature] = useState<number | undefined>(undefined)
   const [thinkingEnabled, setThinkingEnabled] = useState(true)
   const [supportImage, setSupportImage] = useState(false)
   const [modelList, setModelList] = useState<DomainProviderModelListItem[]>([])
@@ -56,19 +65,32 @@ export default function AddModel({
   const [modelListFetchFailed, setModelListFetchFailed] = useState(false)
   const [modelListAttempted, setModelListAttempted] = useState(false)
 
-  useEffect(() => {
-    if (open) {
-      setModelList([])
-      setModelListAttempted(false)
-      setModelListFetchFailed(false)
-    }
-  }, [open])
-
   const resetModelListState = () => {
     setModelList([])
     setModelListAttempted(false)
     setModelListFetchFailed(false)
   }
+
+  const resetForm = (source?: DomainModel | null) => {
+    setModel(source?.model || "")
+    setRemark(source?.remark || "")
+    setApiToken(source?.api_key || "")
+    setBaseUrl(source?.base_url || DEFAULT_BASE_URL)
+    setProvider(source?.provider || DEFAULT_PROVIDER)
+    setInterfaceType(source?.interface_type || ConstsInterfaceType.InterfaceTypeOpenAIChat)
+    setContextLimit(source?.context_limit ? String(source.context_limit) : DEFAULT_CONTEXT_LIMIT)
+    setOutputLimit(source?.output_limit ? String(source.output_limit) : DEFAULT_OUTPUT_LIMIT)
+    setTemperature(source?.temperature)
+    setThinkingEnabled(source ? source.thinking_enabled === true : true)
+    setSupportImage(source?.support_image === true)
+    resetModelListState()
+  }
+
+  useEffect(() => {
+    if (open) {
+      resetForm(initialModel)
+    }
+  }, [open, initialModel])
 
   const showManualModelInput =
     apiToken.trim() &&
@@ -103,8 +125,8 @@ export default function AddModel({
     setLoadingModels(true)
     await apiRequest('getProviderModelList', {
         api_key: apiToken.trim(),
-        base_url: baseUrl.trim() || "https://model-square.app.baizhi.cloud/v1",
-        provider: "BaiZhiCloud",
+        base_url: baseUrl.trim() || DEFAULT_BASE_URL,
+        provider,
       }, [], (resp) => {
         if (resp.code === 0) {
           const models = resp.data?.models || []
@@ -154,14 +176,14 @@ export default function AddModel({
       model: model.trim(),
       base_url: baseUrl.trim(),
       interface_type: interfaceType,
-      provider: "BaiZhiCloud",
+      provider,
     }
 
     await apiRequest('v1UsersModelsHealthCheckCreate', healthCheckData, [], async (resp) => {
       if (resp.code === 0) {
         if (resp.data?.success) {
           const requestData: any = {
-            provider: "BaiZhiCloud",
+            provider,
             model: model.trim(),
             remark: remark.trim(),
             base_url: baseUrl.trim(),
@@ -173,19 +195,14 @@ export default function AddModel({
             support_image: supportImage,
           }
 
+          if (temperature !== undefined) {
+            requestData.temperature = temperature
+          }
+
           await apiRequest('v1UsersModelsCreate', requestData, [], (resp) => {
             if (resp.code === 0) {
               toast.success(t("consoleSettings.models.toast.addSuccess"))
-              setModel("")
-              setRemark("")
-              setApiToken("")
-              setBaseUrl("https://model-square.app.baizhi.cloud/v1")
-              setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
-              setContextLimit("200000")
-              setOutputLimit("32000")
-              setThinkingEnabled(true)
-              setSupportImage(false)
-              resetModelListState()
+              resetForm()
               onOpenChange(false)
               onRefresh?.()
             } else {
@@ -202,16 +219,7 @@ export default function AddModel({
   }
 
   const handleCancel = () => {
-    setModel("")
-    setRemark("")
-    setApiToken("")
-    setBaseUrl("https://model-square.app.baizhi.cloud/v1")
-    setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
-    setContextLimit("200000")
-    setOutputLimit("32000")
-    setThinkingEnabled(true)
-    setSupportImage(false)
-    resetModelListState()
+    resetForm()
     onOpenChange(false)
   }
 
@@ -274,7 +282,15 @@ export default function AddModel({
 
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          resetForm()
+        }
+        onOpenChange(nextOpen)
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant={"outline"} size="sm">{t("consoleSettings.models.actions.bind")}</Button>
       </DialogTrigger>
@@ -375,7 +391,7 @@ export default function AddModel({
                   disabled={loadingModels || !apiToken.trim()}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={loadingModels ? t("consoleSettings.models.loadingShort") : t("consoleSettings.models.placeholders.selectModel")} />
+                    <SelectValue placeholder={loadingModels ? t("consoleSettings.models.loadingShort") : model || t("consoleSettings.models.placeholders.selectModel")} />
                   </SelectTrigger>
                   <SelectContent>
                     {loadingModels ? (
@@ -399,7 +415,11 @@ export default function AddModel({
                           ))}
                         </>
                       )
-                    })() : (
+                    })() : model ? (
+                      <SelectItem value={model}>
+                        {model}
+                      </SelectItem>
+                    ) : (
                       <div className="py-4 text-center text-sm text-muted-foreground">
                         {apiToken.trim() ? t("consoleSettings.models.emptyProviderModels") : t("consoleSettings.models.apiTokenFirst")}
                       </div>

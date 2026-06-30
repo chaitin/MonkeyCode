@@ -1081,6 +1081,7 @@ const en = {
       actions: {
         bind: "Bind",
         edit: "Edit",
+        copy: "Copy",
         remove: "Remove",
         cancel: "Cancel",
         save: "Save",
@@ -1354,6 +1355,9 @@ const en = {
     sidebar: {
       brandSubtitle: "Chaitin Baizhi Cloud",
       consultPurchase: "Contact sales",
+      currentVersion: "Current version",
+      unknownVersion: "Unknown version",
+      update: "Update",
       settings: "Settings",
     },
     user: {
@@ -3193,6 +3197,7 @@ const en = {
       bind: "Bind",
       check: "Check",
       edit: "Edit",
+      copy: "Copy",
       remove: "Remove",
       cancel: "Cancel",
       save: "Save",

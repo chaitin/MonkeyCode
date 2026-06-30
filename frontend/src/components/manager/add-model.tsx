@@ -13,7 +13,7 @@ import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/
 import { Checkbox } from "@/components/ui/checkbox"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
-import type { DomainProviderModelListItem, DomainTeamGroup } from "@/api/Api"
+import type { DomainProviderModelListItem, DomainTeamGroup, DomainTeamModel } from "@/api/Api"
 import { ConstsInterfaceType } from "@/api/Api"
 import { getModelDisplayName, getModelUrlDescription, modelProviderList } from "@/utils/common"
 import { ChevronDown } from "lucide-react"
@@ -35,19 +35,27 @@ import { useTranslation } from "react-i18next"
 interface AddModelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialModel?: DomainTeamModel | null
   onRefresh?: () => void
 }
+
+const DEFAULT_BASE_URL = "https://model-square.app.baizhi.cloud/v1"
+const DEFAULT_PROVIDER = "BaiZhiCloud"
 
 export default function AddModel({
   open,
   onOpenChange,
+  initialModel,
   onRefresh,
 }: AddModelProps) {
   const { t } = useTranslation()
   const [model, setModel] = useState("")
+  const [remark, setRemark] = useState("")
   const [apiToken, setApiToken] = useState("")
-  const [baseUrl, setBaseUrl] = useState("https://model-square.app.baizhi.cloud/v1")
+  const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL)
+  const [provider, setProvider] = useState(DEFAULT_PROVIDER)
   const [interfaceType, setInterfaceType] = useState<ConstsInterfaceType>(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+  const [temperature, setTemperature] = useState<number | undefined>(undefined)
   const [modelList, setModelList] = useState<DomainProviderModelListItem[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -65,6 +73,20 @@ export default function AddModel({
     setModelListFetchFailed(false)
   }
 
+  const resetForm = (source?: DomainTeamModel | null) => {
+    setModel(source?.model || "")
+    setRemark(source?.remark || "")
+    setApiToken(source?.api_key || "")
+    setBaseUrl(source?.base_url || DEFAULT_BASE_URL)
+    setProvider(source?.provider || DEFAULT_PROVIDER)
+    setInterfaceType(source?.interface_type || ConstsInterfaceType.InterfaceTypeOpenAIChat)
+    setTemperature(source?.temperature)
+    setSupportImage(source?.support_image === true)
+    resetModelListState()
+    setSelectedGroupIds(source?.groups?.map((group) => group.id || "").filter(Boolean) || [])
+    setSelectOpen(false)
+  }
+
   const showManualModelInput =
     apiToken.trim() &&
     !loadingModels &&
@@ -74,11 +96,9 @@ export default function AddModel({
   useEffect(() => {
     if (open) {
       fetchGroups()
-      setModelList([])
-      setModelListAttempted(false)
-      setModelListFetchFailed(false)
+      resetForm(initialModel)
     }
-  }, [open])
+  }, [open, initialModel])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -131,8 +151,8 @@ export default function AddModel({
     setLoadingModels(true)
     await apiRequest('getProviderModelList', {
         api_key: apiToken.trim(),
-        base_url: baseUrl.trim() || "https://model-square.app.baizhi.cloud/v1",
-        provider: "BaiZhiCloud",
+        base_url: baseUrl.trim() || DEFAULT_BASE_URL,
+        provider,
       }, [], (resp) => {
         if (resp.code === 0) {
           const models = resp.data?.models || []
@@ -173,14 +193,14 @@ export default function AddModel({
       model: model.trim(),
       base_url: baseUrl.trim(),
       interface_type: interfaceType,
-      provider: "BaiZhiCloud",
+      provider,
     }
 
     await apiRequest('v1TeamsModelsHealthCheckCreate', healthCheckData, [], async (resp) => {
       if (resp.code === 0) {
         if (resp.data?.success) {
           const requestData: any = {
-            provider: "BaiZhiCloud",
+            provider,
             model: model.trim(),
             base_url: baseUrl.trim(),
             api_key: apiToken.trim(),
@@ -189,17 +209,18 @@ export default function AddModel({
             group_ids: selectedGroupIds
           }
 
+          if (remark.trim()) {
+            requestData.remark = remark.trim()
+          }
+
+          if (temperature !== undefined) {
+            requestData.temperature = temperature
+          }
+
           await apiRequest('v1TeamsModelsCreate', requestData, [], (resp) => {
             if (resp.code === 0) {
               toast.success(t("managerModels.toast.bindSuccess"))
-              setModel("")
-              setApiToken("")
-              setBaseUrl("https://model-square.app.baizhi.cloud/v1")
-              setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
-              setSupportImage(false)
-              resetModelListState()
-              setSelectedGroupIds([])
-              setSelectOpen(false)
+              resetForm()
               onOpenChange(false)
               onRefresh?.()
             } else {
@@ -216,14 +237,7 @@ export default function AddModel({
   }
 
   const handleCancel = () => {
-    setModel("")
-    setApiToken("")
-    setBaseUrl("https://model-square.app.baizhi.cloud/v1")
-    setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
-    setSupportImage(false)
-    resetModelListState()
-    setSelectedGroupIds([])
-    setSelectOpen(false)
+    resetForm()
     onOpenChange(false)
   }
 
@@ -258,7 +272,15 @@ export default function AddModel({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          resetForm()
+        }
+        onOpenChange(nextOpen)
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant={"outline"} size="sm">{t("managerModels.actions.bind")}</Button>
       </DialogTrigger>
@@ -361,7 +383,7 @@ export default function AddModel({
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue
-                      placeholder={loadingModels ? t("managerModels.form.loading") : t("managerModels.form.selectModel")}
+                      placeholder={loadingModels ? t("managerModels.form.loading") : model || t("managerModels.form.selectModel")}
                     />
                   </SelectTrigger>
                   <SelectContent>
@@ -388,7 +410,11 @@ export default function AddModel({
                           ))}
                         </>
                       )
-                    })() : (
+                    })() : model ? (
+                      <SelectItem value={model}>
+                        {model}
+                      </SelectItem>
+                    ) : (
                       <div className="py-4 text-center text-sm text-muted-foreground">
                         {apiToken.trim()
                           ? t("managerModels.form.noModels")

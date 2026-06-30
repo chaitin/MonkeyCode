@@ -56,7 +56,7 @@ import Icon from "@/components/common/Icon"
 import { getBrandFromModelName, getInterfaceTypeBadge, getModelDisplayNameForModel } from "@/utils/common"
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
-import { IconCheck, IconHeartRateMonitor, IconLoader, IconPencil, IconTrash, IconX } from "@tabler/icons-react"
+import { IconCheck, IconCopy, IconHeartRateMonitor, IconLoader, IconPencil, IconTrash, IconX } from "@tabler/icons-react"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { useTranslation } from "react-i18next"
@@ -66,6 +66,7 @@ export default function TeamManagerModels() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [selectedModel, setSelectedModel] = useState<DomainTeamModel | null>(null)
+  const [copySourceModel, setCopySourceModel] = useState<DomainTeamModel | null>(null)
   const [models, setModels] = useState<DomainTeamModel[]>([])
   const [loading, setLoading] = useState(true)
   const [isCheckDialogOpen, setIsCheckDialogOpen] = useState(false)
@@ -85,9 +86,21 @@ export default function TeamManagerModels() {
     setLoading(false)
   }
 
+  const handleAddDialogOpenChange = (open: boolean) => {
+    setIsDialogOpen(open)
+    if (!open) {
+      setCopySourceModel(null)
+    }
+  }
+
   const handleEdit = (model: DomainTeamModel) => {
     setSelectedModel(model)
     setIsEditDialogOpen(true)
+  }
+
+  const handleCopy = (model: DomainTeamModel) => {
+    setCopySourceModel(model)
+    setIsDialogOpen(true)
   }
 
   const handleDelete = (model: DomainTeamModel) => {
@@ -155,7 +168,8 @@ export default function TeamManagerModels() {
           <CardAction>
             <AddModel
               open={isDialogOpen}
-              onOpenChange={setIsDialogOpen}
+              onOpenChange={handleAddDialogOpenChange}
+              initialModel={copySourceModel}
               onRefresh={fetchModels}
             />
           </CardAction>
@@ -202,6 +216,10 @@ export default function TeamManagerModels() {
                       <DropdownMenuItem onClick={() => handleEdit(model)}>
                         <IconPencil />
                         {t("managerModels.actions.edit")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleCopy(model)}>
+                        <IconCopy />
+                        {t("managerModels.actions.copy")}
                       </DropdownMenuItem>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>

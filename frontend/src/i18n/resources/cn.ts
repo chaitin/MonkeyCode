@@ -1081,6 +1081,7 @@ const cn = {
       actions: {
         bind: "绑定",
         edit: "修改",
+        copy: "复制",
         remove: "移除",
         cancel: "取消",
         save: "保存",
@@ -1354,6 +1355,9 @@ const cn = {
     sidebar: {
       brandSubtitle: "长亭百智云",
       consultPurchase: "咨询采购",
+      currentVersion: "当前版本",
+      unknownVersion: "未知版本",
+      update: "更新",
       settings: "配置",
     },
     user: {
@@ -3193,6 +3197,7 @@ const cn = {
       bind: "绑定",
       check: "检查",
       edit: "修改",
+      copy: "复制",
       remove: "移除",
       cancel: "取消",
       save: "保存",

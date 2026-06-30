@@ -33,6 +33,8 @@ test("设置模型页面提供中英文资源", () => {
   assert.equal(en.consoleSettings.models.title, "AI models");
   assert.equal(cn.consoleSettings.models.actions.bind, "绑定");
   assert.equal(en.consoleSettings.models.actions.bind, "Bind");
+  assert.equal(cn.consoleSettings.models.actions.copy, "复制");
+  assert.equal(en.consoleSettings.models.actions.copy, "Copy");
   assert.equal(cn.consoleSettings.models.remove.description, "确定要移除模型 \"{{name}}\" 吗？此操作不可撤销。");
   assert.equal(en.consoleSettings.models.remove.description, "Remove model \"{{name}}\"? This action cannot be undone.");
 });

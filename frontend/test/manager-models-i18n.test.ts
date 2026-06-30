@@ -33,6 +33,8 @@ test("manager model pages provide Chinese and English resources", () => {
   assert.equal(en.managerModels.title, "AI models");
   assert.equal(cn.managerModels.actions.bind, "绑定");
   assert.equal(en.managerModels.actions.bind, "Bind");
+  assert.equal(cn.managerModels.actions.copy, "复制");
+  assert.equal(en.managerModels.actions.copy, "Copy");
   assert.equal(cn.managerModels.remove.description, "确定要移除模型 \"{{name}}\" 吗？此操作不可撤销。");
   assert.equal(en.managerModels.remove.description, "Remove model \"{{name}}\"? This action cannot be undone.");
 });

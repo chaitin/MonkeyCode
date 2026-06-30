@@ -39,7 +39,7 @@ import Icon from "@/components/common/Icon"
 import { getBrandFromModel, getInterfaceTypeBadge, getModelDisplayNameForModel, getOwnerTypeBadge } from "@/utils/common"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
-import { IconAlertHexagon, IconPencil, IconTrash } from "@tabler/icons-react"
+import { IconAlertHexagon, IconCopy, IconPencil, IconTrash } from "@tabler/icons-react"
 import { useCommonData } from "../data-provider"
 import { useTranslation } from "react-i18next"
 
@@ -48,13 +48,26 @@ export default function Models() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [selectedModel, setSelectedModel] = useState<DomainModel | undefined>(undefined)
+  const [copySourceModel, setCopySourceModel] = useState<DomainModel | undefined>(undefined)
   const { models, reloadModels, loadingModels } = useCommonData();
   const privateModels = models.filter((model) => model.owner?.type === ConstsOwnerType.OwnerTypePrivate)
 
 
+  const handleAddDialogOpenChange = (open: boolean) => {
+    setIsDialogOpen(open)
+    if (!open) {
+      setCopySourceModel(undefined)
+    }
+  }
+
   const handleEdit = (model: DomainModel) => {
     setSelectedModel(model)
     setIsEditDialogOpen(true)
+  }
+
+  const handleCopy = (model: DomainModel) => {
+    setCopySourceModel(model)
+    setIsDialogOpen(true)
   }
 
   const handleDelete = (model: DomainModel) => {
@@ -139,6 +152,10 @@ export default function Models() {
                   <IconPencil />
                   {t("consoleSettings.models.actions.edit")}
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleCopy(model)} disabled={model.owner?.type !== ConstsOwnerType.OwnerTypePrivate}>
+                  <IconCopy />
+                  {t("consoleSettings.models.actions.copy")}
+                </DropdownMenuItem>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <DropdownMenuItem 
@@ -193,7 +210,8 @@ export default function Models() {
         </div>
         <AddModel
           open={isDialogOpen}
-          onOpenChange={setIsDialogOpen}
+          onOpenChange={handleAddDialogOpenChange}
+          initialModel={copySourceModel}
           onRefresh={reloadModels}
         />
       </div>

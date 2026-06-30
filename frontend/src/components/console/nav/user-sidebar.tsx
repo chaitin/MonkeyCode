@@ -14,6 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { Badge } from "@/components/ui/badge"
 import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context"
 import { ExternalLink, Settings } from "lucide-react"
 import { IS_OFFLINE_EDITION, IS_ONLINE_EDITION } from "@/utils/edition"
@@ -21,6 +22,7 @@ import { useTranslation } from "react-i18next"
 import { useAppRuntime } from "@/components/app-runtime-provider"
 
 const CONSULT_PURCHASE_URL = "https://baizhi.cloud/consult"
+const MONKEYCODE_REPOSITORY_URL = "https://github.com/chaitin/monkeycode"
 
 export default function UserSidebar({ 
   ...props 
@@ -29,6 +31,9 @@ export default function UserSidebar({
   const { open: settingsOpen, setOpen: setSettingsOpen } = useSettingsDialog()
   const { serverConfig } = useAppRuntime()
   const isCnRegion = serverConfig?.region === "cn"
+  const currentVersion = serverConfig?.current_version || t("consoleShell.sidebar.unknownVersion")
+  const latestVersion = serverConfig?.latest_version || ""
+  const hasUpdate = Boolean(serverConfig?.current_version && latestVersion && serverConfig.current_version !== latestVersion)
 
   return (
     <Sidebar variant="inset" collapsible="icon" {...props}>
@@ -75,6 +80,27 @@ export default function UserSidebar({
                   <span className="font-medium">{t("consoleShell.sidebar.consultPurchase")}</span>
                 </a>
               </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
+        {IS_OFFLINE_EDITION && (
+          <SidebarMenu className="group-data-[collapsible=icon]:hidden">
+            <SidebarMenuItem>
+              <div className="rounded-md border bg-muted/35 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">{t("consoleShell.sidebar.currentVersion")}</span>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate font-medium">{currentVersion}</span>
+                    {hasUpdate && (
+                      <Badge asChild className="shrink-0">
+                        <a href={MONKEYCODE_REPOSITORY_URL} target="_blank" rel="noreferrer">
+                          {t("consoleShell.sidebar.update")}
+                        </a>
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
             </SidebarMenuItem>
           </SidebarMenu>
         )}
