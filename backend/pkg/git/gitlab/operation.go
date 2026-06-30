@@ -12,6 +12,8 @@ import (
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 
+	"github.com/GoYoko/web"
+
 	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
@@ -77,8 +79,37 @@ func (g *Gitlab) listProjects(ctx context.Context, client *gitlab.Client) ([]dom
 		}
 		opt.Page = resp.NextPage
 	}
-	out := make([]domain.AuthRepository, 0, len(all))
-	for _, p := range all {
+	return projectsToAuthRepos(all), nil
+}
+
+// listProjectsPage 服务端分页拉取单页项目，支持关键字搜索。
+func (g *Gitlab) listProjectsPage(ctx context.Context, client *gitlab.Client, opts *domain.RepositoryOptions) (*domain.RepositoryPage, error) {
+	opt := &gitlab.ListProjectsOptions{
+		ListOptions: gitlab.ListOptions{Page: int64(opts.Page), PerPage: int64(opts.Size)},
+		Membership:  ptr(true),
+		OrderBy:     ptr("updated_at"),
+		Sort:        ptr("desc"),
+	}
+	if opts.Keyword != "" {
+		opt.Search = ptr(opts.Keyword)
+	}
+	projects, resp, err := client.Projects.ListProjects(opt, gitlab.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("list projects: %w", err)
+	}
+	return &domain.RepositoryPage{
+		Repositories: projectsToAuthRepos(projects),
+		PageInfo: &web.PageInfo{
+			TotalCount:  resp.TotalItems,
+			HasNextPage: resp.NextPage != 0,
+		},
+	}, nil
+}
+
+// projectsToAuthRepos 把 GitLab 项目映射为统一的授权仓库结构。
+func projectsToAuthRepos(projects []*gitlab.Project) []domain.AuthRepository {
+	out := make([]domain.AuthRepository, 0, len(projects))
+	for _, p := range projects {
 		cloneURL := p.HTTPURLToRepo
 		if cloneURL == "" {
 			cloneURL = p.SSHURLToRepo
@@ -89,7 +120,7 @@ func (g *Gitlab) listProjects(ctx context.Context, client *gitlab.Client) ([]dom
 			Description: p.Description,
 		})
 	}
-	return out, nil
+	return out
 }
 
 // ListBranches 获取仓库分支列表
@@ -370,12 +401,19 @@ func (g *Gitlab) UserInfo(ctx context.Context, token string) (*domain.PlatformUs
 }
 
 // Repositories 实现 GitPlatformClient 接口
-func (g *Gitlab) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
+func (g *Gitlab) Repositories(ctx context.Context, opts *domain.RepositoryOptions) (*domain.RepositoryPage, error) {
 	client, err := g.newClientWithToken(opts.Token, opts.IsOAuth)
 	if err != nil {
 		return nil, fmt.Errorf("new client: %w", err)
 	}
-	return g.listProjects(ctx, client)
+	if opts.Page > 0 {
+		return g.listProjectsPage(ctx, client, opts)
+	}
+	all, err := g.listProjects(ctx, client)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.RepositoryPage{Repositories: all}, nil
 }
 
 // Tree 实现 GitPlatformClient 接口

@@ -77,10 +77,11 @@ func normalizeBase(input, fallback string) (scheme, host string) {
 
 // ParseRepoPath 从仓库 URL 解析 orgId 和 repo 标识（groupPath/repoName）。
 // 支持以下形式：
-//   https://codeup.aliyun.com/{orgId}/{group}/{repo}.git
-//   https://codeup.aliyun.com/{orgId}/{group}/{repo}
-//   git@codeup.aliyun.com:{orgId}/{group}/{repo}.git
-//   https://{orgId}.codeup.aliyun.com/{group}/{repo}.git
+//
+//	https://codeup.aliyun.com/{orgId}/{group}/{repo}.git
+//	https://codeup.aliyun.com/{orgId}/{group}/{repo}
+//	git@codeup.aliyun.com:{orgId}/{group}/{repo}.git
+//	https://{orgId}.codeup.aliyun.com/{group}/{repo}.git
 func ParseRepoPath(repoURL string) (orgID, identity string, err error) {
 	raw := strings.TrimSpace(repoURL)
 	raw = strings.TrimSuffix(raw, ".git")
@@ -290,8 +291,8 @@ func (c *Codeup) UserInfo(ctx context.Context, token string) (*domain.PlatformUs
 	return &domain.PlatformUserInfo{Name: ""}, nil
 }
 
-// Repositories 列出当前用户在组织内可访问的仓库
-func (c *Codeup) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
+// Repositories 列出当前用户在组织内可访问的仓库（暂不支持服务端分页，始终返回全量）
+func (c *Codeup) Repositories(ctx context.Context, opts *domain.RepositoryOptions) (*domain.RepositoryPage, error) {
 	orgID := c.orgID
 	if orgID == "" {
 		resolved, err := c.ResolveOrgID(ctx, opts.Token)
@@ -336,7 +337,7 @@ func (c *Codeup) Repositories(ctx context.Context, opts *domain.RepositoryOption
 			break
 		}
 	}
-	return result, nil
+	return &domain.RepositoryPage{Repositories: result}, nil
 }
 
 // rawRequest 透传 HTTP 调用，用于 OpenAPI 之外的简单请求（如 webhook 删除）

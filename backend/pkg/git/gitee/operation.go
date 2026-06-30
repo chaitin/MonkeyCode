@@ -377,17 +377,46 @@ func (g *Gitee) UserInfo(ctx context.Context, token string) (*domain.PlatformUse
 	return g.GetUserInfoByPAT(ctx, token)
 }
 
-// Repositories 实现 GitPlatformClient 接口
-func (g *Gitee) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
-	repos, err := g.ListUserReposByToken(g.baseURL, opts.Token, 1, 100)
+// Repositories 实现 GitPlatformClient 接口。
+// opts.Page>0 时做服务端分页：拉全量后按 keyword 过滤再切片（与 GitHub 行为一致）；
+// opts.Page==0 时返回全量，PageInfo 为 nil。
+func (g *Gitee) Repositories(ctx context.Context, opts *domain.RepositoryOptions) (*domain.RepositoryPage, error) {
+	all, err := g.listAllRepositories(opts.Token)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]domain.AuthRepository, len(repos))
-	for i, r := range repos {
-		result[i] = domain.AuthRepository{FullName: r.FullName, URL: r.HTMLURL, Description: r.Description}
+	if opts.Page > 0 {
+		return domain.PaginateRepos(all, opts.Keyword, opts.Page, opts.Size), nil
 	}
-	return result, nil
+	return &domain.RepositoryPage{Repositories: all}, nil
+}
+
+// listAllRepositories 循环翻页拉取全部仓库。
+// 修复此前只取第 1 页（per_page=100）导致仓库数 >100 时被静默截断的问题。
+func (g *Gitee) listAllRepositories(token string) ([]domain.AuthRepository, error) {
+	return collectAllRepos(func(page, perPage int) ([]*Repository, error) {
+		return g.ListUserReposByToken(g.baseURL, token, page, perPage)
+	})
+}
+
+// collectAllRepos 循环翻页累积全部仓库，直到某页不足 perPage 或触达安全上限。
+// 抽成纯函数（fetchPage 可注入）以便单测翻页/截断/上限逻辑。
+func collectAllRepos(fetchPage func(page, perPage int) ([]*Repository, error)) ([]domain.AuthRepository, error) {
+	const perPage = 100
+	var all []domain.AuthRepository
+	for page := 1; page <= 50; page++ { // 安全上限 50 页 = 5000 个仓库
+		repos, err := fetchPage(page, perPage)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range repos {
+			all = append(all, domain.AuthRepository{FullName: r.FullName, URL: r.HTMLURL, Description: r.Description})
+		}
+		if len(repos) < perPage {
+			break
+		}
+	}
+	return all, nil
 }
 
 // Tree 实现 GitPlatformClient 接口

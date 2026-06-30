@@ -158,7 +158,7 @@
                         "MonkeyCodeAIAuth": []
                     }
                 ],
-                "description": "并集返回 (global ∪ 用户 active team ∪ 用户个人) 三级 scope 下的 skill，禁用的 skill 返回 enabled=false。",
+                "description": "并集返回 (global ∪ 用户 active team ∪ 用户个人) 三级 scope 下、enabled=true 的 skill。禁用的 skill 不返回。",
                 "consumes": [
                     "application/json"
                 ],
@@ -4505,11 +4505,29 @@
                         "description": "是否刷新缓存",
                         "name": "flush",
                         "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码（\u003e0 时启用分页，目前 GitHub/GitLab 支持）",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量（默认 20，上限 100）",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "按仓库名关键字过滤",
+                        "name": "keyword",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "成功",
+                        "description": "成功，分页时 data.repo_page_info 含 total_count/has_next_page",
                         "schema": {
                             "allOf": [
                                 {
@@ -7325,7 +7343,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "【用户】第三方登录"
+                    "【用户】OAuth"
                 ],
                 "summary": "发起 Google/GitHub OAuth 登录",
                 "parameters": [
@@ -9976,6 +9994,15 @@
             "x-enum-comments": {
                 "UserPlatformBaizhi": "百智云平台"
             },
+            "x-enum-descriptions": [
+                "百智云平台",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+            ],
             "x-enum-varnames": [
                 "UserPlatformBaizhi",
                 "UserPlatformGoogle",
@@ -10002,6 +10029,13 @@
                 "UserRoleIndividual": "个人用户",
                 "UserRoleSubAccount": "企业子账户"
             },
+            "x-enum-descriptions": [
+                "个人用户",
+                "企业用户",
+                "企业子账户",
+                "MonkeyCode-AI 管理员账号，用来配置公共资源. 如公共宿主机等",
+                "全自动 git 任务插入的用户"
+            ],
             "x-enum-varnames": [
                 "UserRoleIndividual",
                 "UserRoleEnterprise",
@@ -11060,6 +11094,14 @@
                 },
                 "remark": {
                     "type": "string"
+                },
+                "repo_page_info": {
+                    "description": "仅当请求带分页参数时返回",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/web.PageInfo"
+                        }
+                    ]
                 },
                 "username": {
                     "type": "string"
@@ -14510,6 +14552,7 @@
         },
         "types.ConditionStatus": {
             "type": "integer",
+            "format": "int32",
             "enum": [
                 0,
                 1,
@@ -14547,6 +14590,20 @@
                 "ConditionTypeFailed",
                 "ConditionTypeHibernated"
             ]
+        },
+        "web.PageInfo": {
+            "type": "object",
+            "properties": {
+                "has_next_page": {
+                    "type": "boolean"
+                },
+                "next_token": {
+                    "type": "string"
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
         },
         "web.Resp": {
             "type": "object",

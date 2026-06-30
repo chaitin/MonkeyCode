@@ -71,14 +71,17 @@ func (h *GitIdentityHandler) List(c *web.Context) error {
 //	@Security		MonkeyCodeAIAuth
 //	@Param			id		path		string								true	"Git 身份认证ID"
 //	@Param			flush	query		bool								false	"是否刷新缓存"
-//	@Success		200		{object}	web.Resp{data=domain.GitIdentity}	"成功"
+//	@Param			page	query		int									false	"页码（>0 时启用分页，目前 GitHub/GitLab 支持）"
+//	@Param			size	query		int									false	"每页数量（默认 20，上限 100）"
+//	@Param			keyword	query		string								false	"按仓库名关键字过滤"
+//	@Success		200		{object}	web.Resp{data=domain.GitIdentity}	"成功，分页时 data.repo_page_info 含 total_count/has_next_page"
 //	@Failure		400		{object}	web.Resp							"请求参数错误"
 //	@Failure		404		{object}	web.Resp							"资源不存在"
 //	@Failure		500		{object}	web.Resp							"服务器内部错误"
 //	@Router			/api/v1/users/git-identities/{id} [get]
 func (h *GitIdentityHandler) Get(c *web.Context, req domain.GetGitIdentityReq) error {
 	user := middleware.GetUser(c)
-	identity, err := h.usecase.Get(c.Request().Context(), user.ID, req.ID, req.Flush)
+	identity, err := h.usecase.Get(c.Request().Context(), user.ID, req.ID, req.Flush, req.Page, req.Size, req.Keyword)
 	if err != nil {
 		return err
 	}

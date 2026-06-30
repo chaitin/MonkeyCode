@@ -403,9 +403,19 @@ func (g *Gitea) UserInfo(ctx context.Context, token string) (*domain.PlatformUse
 	return g.GetUserInfoByPAT(ctx, g.baseURL, token)
 }
 
-// Repositories 实现 GitPlatformClient 接口
-func (g *Gitea) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
-	return g.GetAuthorizedRepositories(ctx, opts.Token)
+// Repositories 实现 GitPlatformClient 接口。
+// opts.Page>0 时做服务端分页：拉全量后按 keyword 过滤再切片
+// （Gitea /user/repos 不支持搜索词，统一在内存里过滤，与 GitHub 行为一致）；
+// opts.Page==0 时返回全量，PageInfo 为 nil。
+func (g *Gitea) Repositories(ctx context.Context, opts *domain.RepositoryOptions) (*domain.RepositoryPage, error) {
+	all, err := g.GetAuthorizedRepositories(ctx, opts.Token)
+	if err != nil {
+		return nil, err
+	}
+	if opts.Page > 0 {
+		return domain.PaginateRepos(all, opts.Keyword, opts.Page, opts.Size), nil
+	}
+	return &domain.RepositoryPage{Repositories: all}, nil
 }
 
 // Tree 实现 GitPlatformClient 接口
