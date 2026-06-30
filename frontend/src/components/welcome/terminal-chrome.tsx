@@ -1,6 +1,6 @@
 import { useAppRuntime } from "@/components/app-runtime-provider";
 import { cn } from "@/lib/utils";
-import { IconArrowRight, IconMenu2, IconPointFilled } from "@tabler/icons-react";
+import { IconArrowRight, IconBrandDiscord, IconMenu2, IconPointFilled } from "@tabler/icons-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -12,6 +12,7 @@ const MODEL_SQUARE_LINK = "https://baizhi.cloud/landing/model-square";
 const SHOWCASE_LINK = "https://showcase.monkeycode-ai.online/";
 const CHAITIN_LINK = "https://www.chaitin.cn/";
 const BAIZHI_LINK = "https://www.baizhi.cloud/";
+const DISCORD_INVITE_LINK = "https://discord.gg/8NgHexaaMa";
 
 const resourceLinks = [
   { titleKey: "welcomeShell.footer.productDocs", href: DOCS_LINK },
@@ -226,6 +227,8 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
 
 export function TerminalFooter() {
   const { t } = useTranslation();
+  const { serverConfig } = useAppRuntime();
+  const isGlobalRegion = serverConfig?.region === "global";
 
   return (
     <footer id="community" className="relative z-10 mt-10 border-t border-[var(--a-line)] px-5 pb-8 pt-14 sm:px-8">
@@ -254,14 +257,33 @@ export function TerminalFooter() {
 
           <div>
             <div className="mb-4 text-[11px] font-semibold tracking-[0.08em] text-[var(--a-fg)]"># {t("welcomeShell.footer.community")}</div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {communityCards.map((item) => (
-                <div key={item.labelKey} className="text-center">
-                  <img src={item.src} alt={t(item.altKey)} className="mx-auto aspect-square w-full rounded-sm object-cover" />
-                  <div className="mt-2 text-[11px] tracking-[0.04em] text-[var(--a-fg-dim)]">{t(item.labelKey)}</div>
-                </div>
-              ))}
-            </div>
+            {isGlobalRegion ? (
+              <a
+                href={DISCORD_INVITE_LINK}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex min-h-[104px] items-center gap-4 rounded-[4px] border border-[var(--a-line-2)] bg-[var(--a-panel)] p-4 transition-colors hover:border-[rgba(124,242,156,0.35)] hover:bg-[#162019]"
+              >
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-[4px] border border-[var(--a-line-2)] bg-[rgba(124,242,156,0.08)] text-[var(--a-accent)]">
+                  <IconBrandDiscord className="size-6" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-[var(--a-fg)]">{t("welcomeShell.community.discord")}</span>
+                  <span className="mt-1 block text-xs leading-5 text-[var(--a-fg-dim)] group-hover:text-[var(--a-fg)]">
+                    {t("welcomeShell.community.discordDescription")}
+                  </span>
+                </span>
+              </a>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-3">
+                {communityCards.map((item) => (
+                  <div key={item.labelKey} className="text-center">
+                    <img src={item.src} alt={t(item.altKey)} className="mx-auto aspect-square w-full rounded-sm object-cover" />
+                    <div className="mt-2 text-[11px] tracking-[0.04em] text-[var(--a-fg-dim)]">{t(item.labelKey)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
