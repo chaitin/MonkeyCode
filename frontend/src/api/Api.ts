@@ -1791,12 +1791,10 @@ export interface DomainVirtualMachine {
 export interface DomainWallet {
   /** 积分余额 */
   balance?: number;
-  /** 基础会员每日模型剩余 tokens */
-  daily_basic_token_balance?: number;
-  /** 专业会员每日模型剩余 tokens */
-  daily_pro_token_balance?: number;
-  /** 旗舰会员每日模型剩余 tokens */
-  daily_ultra_token_balance?: number;
+  /** 每日免费模型剩余 tokens */
+  daily_token_balance?: number;
+  /** 每日免费模型 tokens 上限 */
+  daily_token_limit?: number;
   id?: string;
 }
 

@@ -3,7 +3,6 @@ import { Progress } from "@/components/ui/progress"
 import { CircularProgress } from "@/components/ui/circular-progress"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { cn } from "@/lib/utils"
 import { useCommonData } from "../data-provider"
 import { Copy, Crown, ExternalLink, MessageSquarePlus } from "lucide-react"
 import { useState } from "react"
@@ -13,33 +12,7 @@ import { toast } from "sonner"
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 const GITHUB_REPOSITORY_URL = "https://github.com/chaitin/monkeycode"
 
-const PLAN_TOKEN_LIMITS = {
-  basic: {
-    basic: 30_000_000,
-    pro: 0,
-    ultra: 0,
-  },
-  pro: {
-    basic: 30_000_000,
-    pro: 30_000_000,
-    ultra: 0,
-  },
-  ultra: {
-    basic: 60_000_000,
-    pro: 60_000_000,
-    ultra: 60_000_000,
-  },
-} as const
-
-type PlanTokenLimitKey = keyof typeof PLAN_TOKEN_LIMITS
-type ModelQuotaKey = keyof (typeof PLAN_TOKEN_LIMITS)["basic"]
-type QuotaItem = {
-  key: string
-  total: number
-  remaining: number
-  used: number
-  progress: number
-}
+type PlanKey = "basic" | "pro" | "ultra"
 
 function formatTokenNumber(value: number) {
   const amount = value / 1_000_000
@@ -51,7 +24,7 @@ function formatTokenNumber(value: number) {
   return `${value.toLocaleString("zh-CN")}`
 }
 
-function normalizePlan(plan?: string | null): PlanTokenLimitKey {
+function normalizePlan(plan?: string | null): PlanKey {
   if (plan === "pro") {
     return "pro"
   }
@@ -59,10 +32,6 @@ function normalizePlan(plan?: string | null): PlanTokenLimitKey {
     return "ultra"
   }
   return "basic"
-}
-
-function clampTokenBalance(value: number, total: number) {
-  return Math.min(Math.max(value, 0), total)
 }
 
 function getQuotaProgressClassName(progress: number) {
@@ -89,30 +58,6 @@ function getQuotaCircularProgressClassName(progress: number) {
   return "text-muted-foreground"
 }
 
-function getQuotaItems(
-  plan: PlanTokenLimitKey,
-  remainingByType: Record<ModelQuotaKey, number>,
-): QuotaItem[] {
-  const limits = PLAN_TOKEN_LIMITS[plan]
-
-  return [
-    { key: "basic", total: limits.basic },
-    { key: "pro", total: limits.pro },
-    { key: "ultra", total: limits.ultra },
-  ].map((item) => {
-    const remaining = clampTokenBalance(remainingByType[item.key as ModelQuotaKey], item.total)
-    const used = Math.max(item.total - remaining, 0)
-    const progress = item.total > 0 ? Math.min((used / item.total) * 100, 100) : 0
-
-    return {
-      ...item,
-      remaining,
-      used,
-      progress,
-    }
-  })
-}
-
 function openWalletSection(section: "earn" | "usage" | "plan") {
   window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
     detail: { section },
@@ -123,9 +68,8 @@ export function RewardsBalanceIndicator() {
   const { t } = useTranslation()
   const {
     balance,
-    dailyBasicTokenBalance,
-    dailyProTokenBalance,
-    dailyUltraTokenBalance,
+    dailyTokenBalance,
+    dailyTokenLimit,
     subscription,
   } = useCommonData()
   const plan = normalizePlan(subscription?.plan)
@@ -133,15 +77,14 @@ export function RewardsBalanceIndicator() {
   const balanceLabel = Math.ceil(balance).toLocaleString("zh-CN")
   const canUpgradePlan = plan !== "ultra"
   const canRenewPlan = plan !== "basic"
-  const quotaItems = getQuotaItems(plan, {
-    basic: dailyBasicTokenBalance,
-    pro: dailyProTokenBalance,
-    ultra: dailyUltraTokenBalance,
-  })
-  const availableQuotaItems = quotaItems.filter((item) => item.total > 0)
-  const totalTokens = availableQuotaItems.reduce((sum, item) => sum + item.total, 0)
-  const remainingTokens = availableQuotaItems.reduce((sum, item) => sum + item.remaining, 0)
-  const usedProgress = totalTokens > 0 ? Math.min(((totalTokens - remainingTokens) / totalTokens) * 100, 100) : 0
+  const tokenLimit = Math.max(dailyTokenLimit, 0)
+  const remainingTokens = tokenLimit > 0
+    ? Math.min(Math.max(dailyTokenBalance, 0), tokenLimit)
+    : Math.max(dailyTokenBalance, 0)
+  const usedProgress = tokenLimit > 0 ? Math.min(((tokenLimit - remainingTokens) / tokenLimit) * 100, 100) : 0
+  const quotaAmountLabel = tokenLimit > 0
+    ? `${formatTokenNumber(remainingTokens)} / ${formatTokenNumber(tokenLimit)}`
+    : ""
 
   return (
     <HoverCard openDelay={120} closeDelay={120}>
@@ -219,21 +162,19 @@ export function RewardsBalanceIndicator() {
           </section>
 
           <section className="space-y-3">
-            {quotaItems.map((item) => (
-              <div key={item.key} className="rounded-lg border bg-muted/20 p-3">
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate font-medium">{t(`consoleShell.rewards.quota.models.${item.key}`)}</span>
-                  <span className={cn("text-xs", item.total > 0 ? "text-muted-foreground" : "text-muted-foreground/70")}>
-                    {item.total > 0 ? t("consoleShell.rewards.quota.remainingToday", { amount: formatTokenNumber(item.remaining) }) : t("consoleShell.rewards.quota.noQuota")}
-                  </span>
-                </div>
-                <Progress
-                  value={item.progress}
-                  className={cn("mt-3 h-2 bg-muted", item.total === 0 && "opacity-50")}
-                  indicatorClassName={getQuotaProgressClassName(item.progress)}
-                />
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="truncate font-medium">{t("consoleShell.rewards.quota.freeQuota")}</span>
+                <span className="text-xs text-muted-foreground">
+                  {tokenLimit > 0 ? t("consoleShell.rewards.quota.remainingToday", { amount: quotaAmountLabel }) : t("consoleShell.rewards.quota.noQuota")}
+                </span>
               </div>
-            ))}
+              <Progress
+                value={usedProgress}
+                className="mt-3 h-2 bg-muted"
+                indicatorClassName={getQuotaProgressClassName(usedProgress)}
+              />
+            </div>
           </section>
         </div>
       </HoverCardContent>
