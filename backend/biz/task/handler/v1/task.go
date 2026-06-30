@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/GoYoko/web"
@@ -469,6 +471,7 @@ func buildTaskStreamsFromLogEntries(entries []tasklog.Entry, logger *slog.Logger
 			Type:      consts.TaskStreamType(entry.Event),
 			Data:      normalizeTaskStreamData(entry.Event, []byte(entry.Data)),
 			Kind:      entry.Kind,
+			Seq:       msgSeqStart(entry.MsgSeq),
 			Timestamp: entry.TS.UnixMilli(),
 		})
 		if entry.Event == "task-ended" {
@@ -477,6 +480,18 @@ func buildTaskStreamsFromLogEntries(entries []tasklog.Entry, logger *slog.Logger
 	}
 
 	return streams, ended
+}
+
+func msgSeqStart(msgSeq string) uint64 {
+	if msgSeq == "" {
+		return 0
+	}
+	start, _, _ := strings.Cut(msgSeq, "-")
+	seq, err := strconv.ParseUint(start, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return seq
 }
 
 type taskUserInputStoragePayload struct {
@@ -554,6 +569,7 @@ func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.Canc
 				Type:      consts.TaskStreamType(chunk.Event),
 				Data:      normalizeTaskStreamData(chunk.Event, chunk.Data),
 				Kind:      chunk.Kind,
+				Seq:       chunk.Seq,
 				Timestamp: chunk.Timestamp / 1e6,
 			}); err != nil {
 				return
@@ -572,6 +588,7 @@ func (h *TaskHandler) subscribeRealtimeStream(ctx context.Context, cancel contex
 			Type:      consts.TaskStreamType(chunk.Event),
 			Data:      normalizeTaskStreamData(chunk.Event, chunk.Data),
 			Kind:      chunk.Kind,
+			Seq:       chunk.Seq,
 			Timestamp: chunk.Timestamp / 1e6,
 		}); err != nil {
 			return fmt.Errorf("failed to write to websocket: %w", err)
@@ -788,7 +805,8 @@ func (h *TaskHandler) TaskTurns(c *web.Context, req domain.TaskRoundsReq) error 
 			Event:     c.Event,
 			Kind:      c.Kind,
 			Timestamp: c.Timestamp,
-			Seq:       c.TurnSeq,
+			Seq:       c.Seq,
+			TurnSeq:   c.TurnSeq,
 			Labels:    c.Labels,
 		})
 	}

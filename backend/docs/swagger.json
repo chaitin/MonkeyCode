@@ -12689,6 +12689,10 @@
                     }
                 },
                 "seq": {
+                    "description": "消息序号，来自 ClickHouse msg_seq_start",
+                    "type": "integer"
+                },
+                "turn_seq": {
                     "description": "轮次号，可作为 cursor 翻页；仅日志存储为 ClickHouse 时有值",
                     "type": "integer"
                 },
