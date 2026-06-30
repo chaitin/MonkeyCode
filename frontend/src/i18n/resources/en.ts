@@ -36,6 +36,18 @@ const en = {
       connectionError: "Terminal connection error",
     },
   },
+  siteRegionPrompt: {
+    title: "Switch to {{targetRegion}}?",
+    description: "You are currently visiting the {{currentRegion}}. Switch to the {{targetRegion}}?",
+    versions: {
+      cn: "Chinese",
+      global: "International",
+    },
+    actions: {
+      stay: "Stay on {{region}}",
+      switch: "Switch to {{region}}",
+    },
+  },
   requestUtils: {
     errors: {
       methodMissing: "API method \"{{method}}\" does not exist",
@@ -1468,10 +1480,6 @@ const en = {
         name: "Ultra",
         desc: "For professional developers and heavy users.",
       },
-      team: {
-        name: "Team",
-        desc: "For enterprise development teams.",
-      },
     },
     features: {
       taskConcurrency: {
@@ -1480,17 +1488,11 @@ const en = {
       cloudDevEnvironment: {
         label: "Cloud development environment",
       },
-      basicModels: {
-        label: "Basic models",
-        tooltip: "Currently qwen3.6-plus",
+      dailyQuota: {
+        label: "Daily quota",
       },
-      proModels: {
-        label: "Pro models",
-        tooltip: "Larger context and stronger capability, aligned with current leading domestic models such as qwen3.6-plus, minimax-m2.7, kimi-k2.6, and glm-5.1.",
-      },
-      ultraModels: {
-        label: "Ultra models",
-        tooltip: "Extra-long context and top-tier capability, aligned with leading international models such as gpt-5.5 and claude-opus-4.6.",
+      modelScope: {
+        label: "Model scope",
       },
       monthlyCredits: {
         label: "Monthly credits",
@@ -1508,27 +1510,17 @@ const en = {
     featureValues: {
       oneTask: "1 task",
       threeTasks: "3 tasks",
-      dailyTokens30m: "30M tokens/day",
-      dailyTokens60m: "60M tokens/day",
-      noQuota: "No quota",
+      dailyQuotaBasic: "30M tokens/day",
+      dailyQuotaPro: "100M tokens/day",
+      dailyQuotaUltra: "300M tokens/day",
+      modelScopeBasic: "Basic models",
+      modelScopePro: "Basic and Pro models",
+      modelScopeUltra: "Basic, Pro, and Ultra models",
       noCredits: "No credits",
       credits10k: "10,000 credits",
       credits100k: "100,000 credits",
       partialSupport: "Partial support",
       supported: "Supported",
-    },
-    team: {
-      intro: "Team is for enterprise development teams, with shared quotas and private deployment support.",
-      contactDescription: "Submit your contact information and we will reach out based on your team size and deployment needs.",
-      contactSales: "Contact sales",
-      features: {
-        sharedPool: "Unified quota pool shared by team members",
-        memberManagement: "Member management with team-wide enablement",
-        usageStats: "Usage statistics for team consumption",
-        privateDeployment: "Private deployment for internal networks and compliance requirements",
-        customSolution: "Dedicated plan configured by team size and model needs",
-        salesFollowUp: "Sales follow-up after consultation submission",
-      },
     },
     billing: {
       monthly: "Monthly",
@@ -2302,13 +2294,12 @@ const en = {
         concurrency3: "3 concurrent tasks",
         cloud1c4g: "Cloud environment 1C / 4G",
         cloud2c8g: "Cloud environment 2C / 8G",
-        basic30m: "Basic models: 30M tokens per day",
-        basic60m: "Basic models: 60M tokens per day",
-        proNone: "Pro models: no quota",
-        pro30m: "Pro models: 30M tokens per day",
-        pro60m: "Pro models: 60M tokens per day",
-        ultraNone: "Ultra models: no quota",
-        ultra60m: "Ultra models: 60M tokens per day",
+        dailyQuotaBasic: "Daily quota: 30M tokens/day",
+        dailyQuotaPro: "Daily quota: 100M tokens/day",
+        dailyQuotaUltra: "Daily quota: 300M tokens/day",
+        modelScopeBasic: "Model scope: Basic models",
+        modelScopePro: "Model scope: Basic and Pro models",
+        modelScopeUltra: "Model scope: Basic, Pro, and Ultra models",
         noCredits: "No included credits",
         credits10k: "10K credits included monthly",
         credits100k: "100K credits included monthly",

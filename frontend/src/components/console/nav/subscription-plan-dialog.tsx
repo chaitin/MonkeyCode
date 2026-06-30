@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { IconBuildingSkyscraper, IconCheck, IconCrown, IconHelpCircle, IconX } from "@tabler/icons-react"
+import { IconCheck, IconCrown, IconHelpCircle, IconX } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { ConstsSubscriptionPeriodUnit, ConstsSubscriptionPlan } from "@/api/Api"
@@ -29,7 +29,6 @@ import dayjs from "dayjs"
 import { useTranslation } from "react-i18next"
 
 type PersonalAccountPlanId = "basic" | "pro" | "ultra"
-type AccountPlanId = PersonalAccountPlanId | "team"
 type SubscriptionBillingPeriod = "monthly" | "yearly"
 
 type AccountPlanFeature = {
@@ -38,22 +37,12 @@ type AccountPlanFeature = {
 }
 
 type AccountPlanCard = {
-  id: AccountPlanId
+  id: PersonalAccountPlanId
   name: string
   desc: string
   monthlyAmount: number
   yearlyAmount: number
 }
-
-const teamPlanFeatureKeys = [
-  "sharedPool",
-  "memberManagement",
-  "usageStats",
-  "privateDeployment",
-  "customSolution",
-  "salesFollowUp",
-] as const
-const TEAM_CONSULT_URL = "https://baizhi.cloud/consult"
 
 const monthlyPeriodCounts = Array.from({ length: 12 }, (_, index) => index + 1)
 const yearlyPeriodCounts = Array.from({ length: 5 }, (_, index) => index + 1)
@@ -112,13 +101,6 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       monthlyAmount: 499,
       yearlyAmount: 4999,
     },
-    {
-      id: "team",
-      name: t("subscriptionPlan.plans.team.name"),
-      desc: t("subscriptionPlan.plans.team.desc"),
-      monthlyAmount: 0,
-      yearlyAmount: 0,
-    },
   ]
   const accountPlanComparisonRows: { label: string; tooltip?: string; values: Record<PersonalAccountPlanId, AccountPlanFeature> }[] = [
     {
@@ -138,30 +120,19 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       },
     },
     {
-      label: t("subscriptionPlan.features.basicModels.label"),
-      tooltip: t("subscriptionPlan.features.basicModels.tooltip"),
+      label: t("subscriptionPlan.features.dailyQuota.label"),
       values: {
-        basic: { label: t("subscriptionPlan.featureValues.dailyTokens30m") },
-        pro: { label: t("subscriptionPlan.featureValues.dailyTokens30m") },
-        ultra: { label: t("subscriptionPlan.featureValues.dailyTokens60m") },
+        basic: { label: t("subscriptionPlan.featureValues.dailyQuotaBasic") },
+        pro: { label: t("subscriptionPlan.featureValues.dailyQuotaPro") },
+        ultra: { label: t("subscriptionPlan.featureValues.dailyQuotaUltra") },
       },
     },
     {
-      label: t("subscriptionPlan.features.proModels.label"),
-      tooltip: t("subscriptionPlan.features.proModels.tooltip"),
+      label: t("subscriptionPlan.features.modelScope.label"),
       values: {
-        basic: { label: t("subscriptionPlan.featureValues.noQuota"), status: "unsupported" },
-        pro: { label: t("subscriptionPlan.featureValues.dailyTokens30m") },
-        ultra: { label: t("subscriptionPlan.featureValues.dailyTokens60m") },
-      },
-    },
-    {
-      label: t("subscriptionPlan.features.ultraModels.label"),
-      tooltip: t("subscriptionPlan.features.ultraModels.tooltip"),
-      values: {
-        basic: { label: t("subscriptionPlan.featureValues.noQuota"), status: "unsupported" },
-        pro: { label: t("subscriptionPlan.featureValues.noQuota"), status: "unsupported" },
-        ultra: { label: t("subscriptionPlan.featureValues.dailyTokens60m") },
+        basic: { label: t("subscriptionPlan.featureValues.modelScopeBasic") },
+        pro: { label: t("subscriptionPlan.featureValues.modelScopePro") },
+        ultra: { label: t("subscriptionPlan.featureValues.modelScopeUltra") },
       },
     },
     {
@@ -192,7 +163,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       },
     },
   ]
-  const [selectedAccountPlanId, setSelectedAccountPlanId] = useState<AccountPlanId>("basic")
+  const [selectedAccountPlanId, setSelectedAccountPlanId] = useState<PersonalAccountPlanId>("basic")
   const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<SubscriptionBillingPeriod>("monthly")
   const [selectedPeriodCount, setSelectedPeriodCount] = useState(1)
   const [confirmSubscriptionPlan, setConfirmSubscriptionPlan] = useState<"pro" | "ultra" | null>(null)
@@ -211,16 +182,12 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       : false
   const confirmingPlanCard = accountPlanCards.find((plan) => plan.id === confirmSubscriptionPlan)
   const selectedAccountPlan = accountPlanCards.find((plan) => plan.id === selectedAccountPlanId) || accountPlanCards[0]
-  const isSelectedTeamPlan = selectedAccountPlan.id === "team"
-  const SelectedPlanIcon = isSelectedTeamPlan ? IconBuildingSkyscraper : IconCrown
-  const selectedAccountPlanFeatures = isSelectedTeamPlan
-    ? []
-    : accountPlanComparisonRows.map((row) => ({
-      label: row.label,
-      tooltip: row.tooltip,
-      feature: row.values[selectedAccountPlan.id as PersonalAccountPlanId],
-    }))
-  const selectedSubscriptionPlan = selectedAccountPlan.id === "pro" || selectedAccountPlan.id === "ultra" ? selectedAccountPlan.id : null
+  const selectedAccountPlanFeatures = accountPlanComparisonRows.map((row) => ({
+    label: row.label,
+    tooltip: row.tooltip,
+    feature: row.values[selectedAccountPlan.id],
+  }))
+  const selectedSubscriptionPlan = selectedAccountPlan.id === "basic" ? null : selectedAccountPlan.id
   const isSelectedCurrentPlan = selectedAccountPlan.id === "basic" ? !hasAdvancedPlan : selectedAccountPlan.id === "pro" ? isProPlan : selectedAccountPlan.id === "ultra" ? isFlagshipPlan : false
   const isSelectedPlanLoading = selectedAccountPlan.id === "pro" ? isProLoading : selectedAccountPlan.id === "ultra" ? isFlagshipLoading : false
   const canSubscribeSelectedPlan = selectedSubscriptionPlan === "pro" ? !isFlagshipPlan : selectedSubscriptionPlan === "ultra"
@@ -309,7 +276,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex h-[60vh] max-h-[90vh] max-w-[80vw] flex-col gap-0 overflow-hidden p-0 md:max-w-4xl">
+        <DialogContent className="flex h-[40vh] max-h-[80vh] max-w-[80vw] flex-col gap-0 overflow-hidden p-0 md:max-w-4xl">
           <DialogHeader className="px-5 py-4">
             <DialogTitle>{t("subscriptionPlan.dialog.title")}</DialogTitle>
           </DialogHeader>
@@ -342,11 +309,10 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
             ) : null}
             <div className="grid min-h-0 flex-1 grid-rows-[1fr_auto] gap-4">
               <div className="grid min-h-0 gap-4 md:grid-cols-[240px_1fr]">
-                <div className="grid min-h-0 gap-3 overflow-y-auto pr-1 md:grid-rows-4">
+                <div className="grid min-h-0 gap-3 overflow-y-auto pr-1 md:grid-rows-3">
                   {accountPlanCards.map((plan) => {
                     const isCurrentPlan = plan.id === "basic" ? !hasAdvancedPlan : plan.id === "pro" ? isProPlan : plan.id === "ultra" ? isFlagshipPlan : false
                     const isSelected = selectedAccountPlan.id === plan.id
-                    const PlanIcon = plan.id === "team" ? IconBuildingSkyscraper : IconCrown
 
                     return (
                       <button
@@ -360,7 +326,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                         >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2 font-medium">
-                            <PlanIcon className={cn("size-4", isSelected ? "text-primary" : "text-muted-foreground")} />
+                            <IconCrown className={cn("size-4", isSelected ? "text-primary" : "text-muted-foreground")} />
                             {plan.name}
                           </div>
                           {isCurrentPlan ? <Badge className="shrink-0">{t("subscriptionPlan.status.currentPlan")}</Badge> : null}
@@ -375,7 +341,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                   <div className="border-b px-4 py-2">
                     <div>
                       <div className="flex items-center gap-2 text-sm font-medium">
-                        <SelectedPlanIcon className="size-4 text-primary" />
+                        <IconCrown className="size-4 text-primary" />
                         {selectedAccountPlan.name}
                         {isSelectedCurrentPlan ? <Badge>{t("subscriptionPlan.status.currentPlan")}</Badge> : null}
                       </div>
@@ -384,90 +350,58 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                   </div>
 
                   <div className="min-h-0 flex-1 overflow-auto p-4">
-                    {isSelectedTeamPlan ? (
-                      <div className="space-y-4">
-                        <div className="rounded-md border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
-                          {t("subscriptionPlan.team.intro")}
-                        </div>
-                        <div className="divide-y">
-                          {teamPlanFeatureKeys.map((featureKey) => (
-                            <div key={featureKey} className="flex h-10 items-center gap-3 px-4 text-sm">
-                              <IconCheck className="size-4 shrink-0 text-primary" />
-                              <div className="min-w-0 flex-1 truncate text-foreground">
-                                {t(`subscriptionPlan.team.features.${featureKey}`)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="divide-y">
-                        {selectedAccountPlanFeatures.map(({ label, tooltip, feature }) => {
-                          const status = feature.status || "supported"
-                          const FeatureIcon = status === "unsupported" ? IconX : IconCheck
+                    <div className="divide-y">
+                      {selectedAccountPlanFeatures.map(({ label, tooltip, feature }) => {
+                        const status = feature.status || "supported"
+                        const FeatureIcon = status === "unsupported" ? IconX : IconCheck
 
-                          return (
-                            <div
-                              key={label}
+                        return (
+                          <div
+                            key={label}
+                            className={cn(
+                              "flex h-10 items-center gap-3 px-4 text-sm",
+                              status === "unsupported" && "text-muted-foreground",
+                            )}
+                          >
+                            <FeatureIcon
                               className={cn(
-                                "flex h-10 items-center gap-3 px-4 text-sm",
-                                status === "unsupported" && "text-muted-foreground",
-                              )}
-                            >
-                              <FeatureIcon
-                                className={cn(
-                                  "size-4 shrink-0",
-                                  status === "unsupported"
-                                    ? "text-muted-foreground"
-                                    : status === "partial"
-                                      ? "text-warning"
+                                "size-4 shrink-0",
+                                status === "unsupported"
+                                  ? "text-muted-foreground"
+                                  : status === "partial"
+                                    ? "text-warning"
                                   : "text-primary",
-                                )}
-                              />
-                              <div className="flex min-w-0 flex-1 items-center gap-1 text-foreground">
-                                <span className="truncate">{label}</span>
-                                {tooltip ? (
-                                  <Tooltip>
-                                    <TooltipTrigger className="inline-flex shrink-0 transition-colors hover:text-primary">
-                                      <IconHelpCircle className="size-3.5" />
-                                    </TooltipTrigger>
-                                    <TooltipContent className="max-w-[320px] leading-6">
-                                      {tooltip}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ) : null}
-                              </div>
-                              <div className={cn(
-                                "flex max-w-[60%] shrink-0 items-center justify-end text-right font-medium leading-5",
-                                status === "unsupported" ? "text-muted-foreground" : "text-foreground",
-                              )}>
-                                  {feature.label}
-                              </div>
+                              )}
+                            />
+                            <div className="flex min-w-0 flex-1 items-center gap-1 text-foreground">
+                              <span className="truncate">{label}</span>
+                              {tooltip ? (
+                                <Tooltip>
+                                  <TooltipTrigger className="inline-flex shrink-0 transition-colors hover:text-primary">
+                                    <IconHelpCircle className="size-3.5" />
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-[320px] leading-6">
+                                    {tooltip}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : null}
                             </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                            <div className={cn(
+                              "flex max-w-[60%] shrink-0 items-center justify-end text-right font-medium leading-5",
+                              status === "unsupported" ? "text-muted-foreground" : "text-foreground",
+                            )}>
+                              {feature.label}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  {isSelectedTeamPlan ? (
-                    <>
-                      <div className="text-sm text-muted-foreground">
-                        {t("subscriptionPlan.team.contactDescription")}
-                      </div>
-                      <Button
-                        className="w-full md:w-40"
-                        onClick={() => window.open(TEAM_CONSULT_URL, "_blank", "noopener,noreferrer")}
-                      >
-                        {t("subscriptionPlan.team.contactSales")}
-                      </Button>
-                    </>
-                  ) : (
-                    <>
                   <div className="flex flex-wrap items-center gap-3">
                     <Tabs
                       value={selectedBillingPeriod}
@@ -520,8 +454,6 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                       </div>
                     )}
                   </div>
-                    </>
-                  )}
                 </div>
               </div>
             </div>

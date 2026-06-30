@@ -36,6 +36,18 @@ const cn = {
       connectionError: "终端连接发生错误",
     },
   },
+  siteRegionPrompt: {
+    title: "切换到{{targetRegion}}？",
+    description: "当前访问的是{{currentRegion}}，是否需要切换到{{targetRegion}}",
+    versions: {
+      cn: "中文版",
+      global: "国际版",
+    },
+    actions: {
+      stay: "留在{{region}}",
+      switch: "切换到{{region}}",
+    },
+  },
   requestUtils: {
     errors: {
       methodMissing: "API 方法 \"{{method}}\" 不存在",
@@ -1468,10 +1480,6 @@ const cn = {
         name: "旗舰会员",
         desc: "面向专业开发者和重度用户。",
       },
-      team: {
-        name: "团队版",
-        desc: "面向企业级开发团队。",
-      },
     },
     features: {
       taskConcurrency: {
@@ -1480,17 +1488,11 @@ const cn = {
       cloudDevEnvironment: {
         label: "云开发环境",
       },
-      basicModels: {
-        label: "基础模型",
-        tooltip: "当前为 qwen3.6-plus",
+      dailyQuota: {
+        label: "每日额度",
       },
-      proModels: {
-        label: "专业模型",
-        tooltip: "上下文更大，能力更强，对标国内一线厂商的当前主力模型，如 qwen3.6-plus, minimax-m2.7, kimi-k2.6, glm-5.1 等",
-      },
-      ultraModels: {
-        label: "旗舰模型",
-        tooltip: "超长的上下文和超强的能力，对标国际一线厂商的主力模型，如 gpt-5.5, claude-opus-4.6 等",
+      modelScope: {
+        label: "模型范围",
       },
       monthlyCredits: {
         label: "每月赠送积分",
@@ -1508,27 +1510,17 @@ const cn = {
     featureValues: {
       oneTask: "1 个任务",
       threeTasks: "3 个任务",
-      dailyTokens30m: "每天 3000 万 Token",
-      dailyTokens60m: "每天 6000 万 Token",
-      noQuota: "无额度",
+      dailyQuotaBasic: "每天 30M Token",
+      dailyQuotaPro: "每天 100M Token",
+      dailyQuotaUltra: "每天 300M Token",
+      modelScopeBasic: "基础模型",
+      modelScopePro: "基础模型、专业模型",
+      modelScopeUltra: "基础模型、专业模型、旗舰模型",
       noCredits: "不赠送积分",
       credits10k: "1 万积分",
       credits100k: "10 万积分",
       partialSupport: "部分支持",
       supported: "支持",
-    },
-    team: {
-      intro: "面向企业级开发团队，团队版支持团队内共享额度和私有化部署。",
-      contactDescription: "提交联系方式后，我们会根据团队规模和部署需求联系你。",
-      contactSales: "联系销售",
-      features: {
-        sharedPool: "统一额度池，团队成员共享使用",
-        memberManagement: "成员管理，支持按团队统一开通",
-        usageStats: "用量统计，便于查看团队消耗",
-        privateDeployment: "私有化部署，适配企业内网和合规要求",
-        customSolution: "专属方案，按团队规模和模型需求配置",
-        salesFollowUp: "咨询留资，销售专人跟进",
-      },
     },
     billing: {
       monthly: "月付",
@@ -2302,13 +2294,12 @@ const cn = {
         concurrency3: "3 个任务并发",
         cloud1c4g: "云开发环境 1C / 4G",
         cloud2c8g: "云开发环境 2C / 8G",
-        basic30m: "基础模型：每天 3000 万 Token",
-        basic60m: "基础模型：每天 6000 万 Token",
-        proNone: "专业模型：无额度",
-        pro30m: "专业模型：每天 3000 万 Token",
-        pro60m: "专业模型：每天 6000 万 Token",
-        ultraNone: "旗舰模型：无额度",
-        ultra60m: "旗舰模型：每天 6000 万 Token",
+        dailyQuotaBasic: "每日额度：每天 30M Token",
+        dailyQuotaPro: "每日额度：每天 100M Token",
+        dailyQuotaUltra: "每日额度：每天 300M Token",
+        modelScopeBasic: "模型范围：基础模型",
+        modelScopePro: "模型范围：基础模型、专业模型",
+        modelScopeUltra: "模型范围：基础模型、专业模型、旗舰模型",
         noCredits: "不赠送积分",
         credits10k: "每月赠送 1 万积分",
         credits100k: "每月赠送 10 万积分",

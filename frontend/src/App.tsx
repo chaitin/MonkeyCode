@@ -33,6 +33,7 @@ import PrivacyPolicyPage from "./pages/privacy-policy"
 import UserAgreementPage from "./pages/user-agreement"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
+import { SiteRegionPrompt } from "@/components/site-region-prompt"
 
 function TaskDetailRoute() {
   const { taskId } = useParams()
@@ -97,6 +98,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
+        <SiteRegionPrompt />
         <Toaster position="top-center" />
       </TooltipProvider>
     </ThemeProvider>

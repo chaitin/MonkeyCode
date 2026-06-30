@@ -6,7 +6,6 @@ import './index.css'
 import App from './App.tsx'
 import { initI18n } from './i18n'
 import { AppRuntimeProvider } from './components/app-runtime-provider'
-import { getSiteRedirectUrl } from './site-redirect'
 
 
 import dayjs from 'dayjs';
@@ -27,10 +26,4 @@ function renderApp() {
   )
 }
 
-const siteRedirectUrl = getSiteRedirectUrl()
-
-if (siteRedirectUrl) {
-  window.location.replace(siteRedirectUrl)
-} else {
-  void initI18n().then(renderApp)
-}
+void initI18n().then(renderApp)
