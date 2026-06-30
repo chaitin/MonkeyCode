@@ -638,6 +638,8 @@ export interface DomainGitIdentity {
   oauth_site_id?: string;
   platform?: ConstsGitPlatform;
   remark?: string;
+  /** 仅当请求带分页参数时返回 */
+  repo_page_info?: Dbv2PageInfo;
   username?: string;
 }
 
@@ -5480,6 +5482,12 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       query?: {
         /** 是否刷新缓存 */
         flush?: boolean;
+        /** 页码（>0 时启用分页，目前 GitHub/GitLab 支持） */
+        page?: number;
+        /** 每页数量（默认 20，上限 100） */
+        size?: number;
+        /** 按仓库名关键字过滤 */
+        keyword?: string;
       },
       params: RequestParams = {},
     ) =>

@@ -441,6 +441,7 @@ const cn = {
       noRepositoriesDescription: "暂无仓库或获取失败，请点击重试。",
       searchRepository: "搜索仓库...",
       repositoryNotFound: "未找到匹配的仓库",
+      loadMoreRepositories: "加载更多（{{loaded}}/{{total}}）",
       noDescription: "暂无描述",
       refreshRepositoriesAria: "刷新仓库列表",
       toast: {
@@ -3716,6 +3717,7 @@ const cn = {
       loading: "加载中...",
       empty: "没有仓库",
       noMatches: "未找到匹配的仓库",
+      loadMore: "加载更多（{{loaded}}/{{total}}）",
       noDescription: "暂无描述",
       otherRepositories: "其他仓库",
       otherRepoPlaceholder: "输入代码仓库地址，按回车键确认",

@@ -191,7 +191,7 @@ func (c *Cnb) UserInfo(ctx context.Context, token string) (*domain.PlatformUserI
 // Repositories 列出当前 token 可访问的仓库 (按更新时间倒序)。
 //
 // GET /user/repos 翻页拉取, 上限 50 页 = 5000 个仓库。
-func (c *Cnb) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
+func (c *Cnb) Repositories(ctx context.Context, opts *domain.RepositoryOptions) (*domain.RepositoryPage, error) {
 	result := make([]domain.AuthRepository, 0, 64)
 	page, perPage := 1, 100
 	for {
@@ -233,7 +233,7 @@ func (c *Cnb) Repositories(ctx context.Context, opts *domain.RepositoryOptions) 
 			break
 		}
 	}
-	return result, nil
+	return &domain.RepositoryPage{Repositories: result}, nil
 }
 
 // rawRequest 透传 HTTP 调用, 用于 OpenAPI 的二进制响应 (Archive)。

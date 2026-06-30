@@ -92,17 +92,18 @@ func (u *GitIdentityUsecase) prefetchRepositories(identity *db.GitIdentity) {
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		if _, err := u.fetchRepositories(ctx, identity, false); err != nil {
+		if _, err := u.fetchRepositories(ctx, identity, false, 0, 0, ""); err != nil {
 			u.logger.WarnContext(ctx, "prefetch: failed to fetch repositories", "error", err, "identity_id", identity.ID)
 		}
 	}()
 }
 
-// fetchRepositories 拉取 identity 关联的仓库列表
-func (u *GitIdentityUsecase) fetchRepositories(ctx context.Context, identity *db.GitIdentity, flush bool) ([]domain.AuthRepository, error) {
+// fetchRepositories 拉取 identity 关联的仓库列表。
+// page>0 时按平台能力做服务端分页（GitHub/GitLab），其它平台忽略分页参数返回全量。
+func (u *GitIdentityUsecase) fetchRepositories(ctx context.Context, identity *db.GitIdentity, flush bool, page, size int, keyword string) (*domain.RepositoryPage, error) {
 	client := u.gitClienter(identity)
 	if client == nil {
-		return nil, nil
+		return &domain.RepositoryPage{}, nil
 	}
 	token, err := u.tokenProvider.GetToken(ctx, identity.ID)
 	if err != nil {
@@ -113,11 +114,31 @@ func (u *GitIdentityUsecase) fetchRepositories(ctx context.Context, identity *db
 		InstallID: identity.InstallationID,
 		IsOAuth:   identity.OauthRefreshToken != "",
 		Flush:     flush,
+		Page:      page,
+		Size:      size,
+		Keyword:   keyword,
 	})
 }
 
-// Get 获取单个 Git 身份认证（仅限当前用户）
-func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUID, flush bool) (*domain.GitIdentity, error) {
+const (
+	defaultRepoPageSize = 20
+	maxRepoPageSize     = 100
+)
+
+// normalizeRepoPageSize 归一化分页大小：缺省 20，上限 100。
+func normalizeRepoPageSize(size int) int {
+	if size <= 0 {
+		return defaultRepoPageSize
+	}
+	if size > maxRepoPageSize {
+		return maxRepoPageSize
+	}
+	return size
+}
+
+// Get 获取单个 Git 身份认证（仅限当前用户）。
+// page>0 时返回分页后的仓库列表与 RepoPageInfo；page==0 时返回全部仓库（RepoPageInfo 为 nil）。
+func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUID, flush bool, page, size int, keyword string) (*domain.GitIdentity, error) {
 	identity, err := u.repo.GetByUserID(ctx, uid, id)
 	if err != nil {
 		if db.IsNotFound(err) {
@@ -128,12 +149,16 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 	}
 	gi := cvt.From(identity, &domain.GitIdentity{})
 
-	repos, err := u.fetchRepositories(ctx, identity, flush)
+	if page > 0 {
+		size = normalizeRepoPageSize(size)
+	}
+	repoPage, err := u.fetchRepositories(ctx, identity, flush, page, size, keyword)
 	if err != nil {
 		u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
 		return gi, nil
 	}
-	gi.AuthorizedRepositories = repos
+	gi.AuthorizedRepositories = repoPage.Repositories
+	gi.RepoPageInfo = repoPage.PageInfo
 
 	return gi, nil
 }

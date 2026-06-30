@@ -33,12 +33,13 @@ import { cn } from "@/lib/utils"
 import { getGitPlatformIcon } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconCheck, IconChevronDown, IconGitBranch, IconLoader, IconReload } from "@tabler/icons-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context"
 import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { useCommonData } from "@/components/console/data-provider"
+import { useIdentityRepos } from "@/hooks/useIdentityRepos"
 import { useTranslation } from "react-i18next"
 
 interface RepoOption {
@@ -60,9 +61,9 @@ export default function AddProjectDialog({
 }: AddProjectDialogProps) {
   const [name, setName] = useState("")
   const [selectedSource, setSelectedSource] = useState<string>("")
-  const [identityRepoOptions, setIdentityRepoOptions] = useState<RepoOption[]>([])
-  const [loadingIdentityRepos, setLoadingIdentityRepos] = useState(false)
   const [selectedRepoValue, setSelectedRepoValue] = useState("")
+  // 持久化已选仓库，避免分页/搜索后当前页不含它时标签丢失
+  const [selectedRepoOption, setSelectedRepoOption] = useState<RepoOption | null>(null)
   const [repoPopoverOpen, setRepoPopoverOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -78,12 +79,32 @@ export default function AddProjectDialog({
     [identities, selectedIdentityId]
   )
 
-  const selectedRepo = identityRepoOptions.find(
-    (o) => `${o.gitIdentityId}:${o.repository.url || ""}` === selectedRepoValue
-  )
-  const selectedRepoLabel = selectedRepo
-    ? (selectedRepo.repository.full_name || selectedRepo.repository.url || "").replace(
-        `${selectedRepo.username}/`,
+  const {
+    repos,
+    loading: loadingIdentityRepos,
+    loadingMore,
+    hasNext,
+    total,
+    keyword,
+    setKeyword,
+    loadMore,
+    reload,
+  } = useIdentityRepos(selectedIdentityId, { enabled: open && !!selectedIdentityId })
+
+  const identityRepoOptions = useMemo<RepoOption[]>(() => {
+    if (!selectedIdentityId) return []
+    const username =
+      selectedIdentity?.username ||
+      selectedIdentity?.remark ||
+      t("consoleProject.create.unnamedIdentity")
+    return repos
+      .filter((repo) => repo.url?.trim())
+      .map((repo) => ({ gitIdentityId: selectedIdentityId, username, repository: repo }))
+  }, [repos, selectedIdentity, selectedIdentityId, t])
+
+  const selectedRepoLabel = selectedRepoOption
+    ? (selectedRepoOption.repository.full_name || selectedRepoOption.repository.url || "").replace(
+        `${selectedRepoOption.username}/`,
         ""
       )
     : ""
@@ -91,52 +112,10 @@ export default function AddProjectDialog({
   const identityLabel = (identity: DomainGitIdentity) =>
     identity.remark || identity.username || identity.base_url || t("consoleProject.create.unnamedIdentity")
 
-  const loadReposForIdentity = useCallback(
-    async (identityId: string, flush = false) => {
-      setLoadingIdentityRepos(true)
-      setIdentityRepoOptions([])
-
-      await apiRequest(
-        "v1UsersGitIdentitiesDetail",
-        flush ? { flush: true } : {},
-        [identityId],
-        (detailResp) => {
-          if (detailResp.code !== 0) {
-            setLoadingIdentityRepos(false)
-            return
-          }
-          const identity = identities.find((i) => i.id === identityId)
-          const authorizedRepositories = detailResp.data?.authorized_repositories || []
-          const repos: RepoOption[] = []
-          for (const repo of authorizedRepositories) {
-            if (!repo.url?.trim()) continue
-            repos.push({
-              gitIdentityId: identityId,
-              username: identity?.username || identity?.remark || t("consoleProject.create.unnamedIdentity"),
-              repository: repo,
-            })
-          }
-          setIdentityRepoOptions(repos)
-          setLoadingIdentityRepos(false)
-        },
-        () => setLoadingIdentityRepos(false)
-      )
-    },
-    [identities]
-  )
-
+  // 切换身份时清空已选仓库（仓库列表由 useIdentityRepos 自动按身份重新拉取）
   useEffect(() => {
-    if (open && selectedIdentityId) {
-      loadReposForIdentity(selectedIdentityId)
-    } else if (open && !selectedIdentityId) {
-      setIdentityRepoOptions([])
-    }
-  }, [open, selectedIdentityId, loadReposForIdentity])
-
-  useEffect(() => {
-    if (selectedIdentityId) {
-      setSelectedRepoValue("")
-    }
+    setSelectedRepoValue("")
+    setSelectedRepoOption(null)
   }, [selectedIdentityId])
 
   const handleSave = async () => {
@@ -161,9 +140,7 @@ export default function AddProjectDialog({
       toast.error(t("consoleProject.create.toast.repositoryRequired"))
       return
     }
-    const repo = identityRepoOptions.find(
-      (o) => `${o.gitIdentityId}:${o.repository.url || ""}` === selectedRepoValue
-    )
+    const repo = selectedRepoOption
     if (!repo?.repository.url) {
       toast.error(t("consoleProject.create.toast.availableRepositoryRequired"))
       return
@@ -184,7 +161,7 @@ export default function AddProjectDialog({
           setName("")
           setSelectedSource("")
           setSelectedRepoValue("")
-          setIdentityRepoOptions([])
+          setSelectedRepoOption(null)
           onSuccess?.()
           if (resp.data?.id) {
             navigate(`/console/project/${resp.data.id}`)
@@ -202,7 +179,7 @@ export default function AddProjectDialog({
     setName("")
     setSelectedSource("")
     setSelectedRepoValue("")
-    setIdentityRepoOptions([])
+    setSelectedRepoOption(null)
   }
 
   const canSubmit = name.trim() && selectedIdentityId && selectedRepoValue
@@ -235,7 +212,7 @@ export default function AddProjectDialog({
                   onValueChange={(v) => {
                     setSelectedSource(v)
                     setSelectedRepoValue("")
-                    setIdentityRepoOptions([])
+                    setSelectedRepoOption(null)
                   }}
                   className="grid grid-cols-2 gap-2"
                   disabled={loading}
@@ -293,81 +270,103 @@ export default function AddProjectDialog({
                           disabled={loading}
                         >
                           <span className={cn("truncate", !selectedRepoValue && "text-muted-foreground")}>
-                            {loadingIdentityRepos
-                              ? t("consoleProject.create.loadingRepositories")
-                              : selectedRepoValue
-                                ? selectedRepoLabel
-                                : identityRepoOptions.length === 0
-                                  ? t("consoleProject.create.noRepositoriesRetry")
-                                  : t("consoleProject.create.selectRepository")}
+                            {selectedRepoValue
+                              ? selectedRepoLabel
+                              : loadingIdentityRepos
+                                ? t("consoleProject.create.loadingRepositories")
+                                : t("consoleProject.create.selectRepository")}
                           </span>
                           <IconChevronDown className="ml-2 size-4 shrink-0 opacity-50" />
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                        {loadingIdentityRepos ? (
-                          <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-                            <Spinner />
-                            {t("consoleProject.create.loadingRepositories")}
-                          </div>
-                        ) : identityRepoOptions.length === 0 ? (
-                          <div className="p-4">
-                            <p className="mb-3 text-sm">{t("consoleProject.create.noRepositoriesDescription")}</p>
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => loadReposForIdentity(selectedIdentityId)}
-                            >
-                              {t("consoleProject.common.retry")}
-                            </Button>
-                          </div>
-                        ) : (
-                          <Command>
-                            <CommandInput placeholder={t("consoleProject.create.searchRepository")} />
-                            <CommandList className="max-h-48 p-1">
-                              <CommandEmpty>{t("consoleProject.create.repositoryNotFound")}</CommandEmpty>
-                              {identityRepoOptions.map((option) => {
-                                const value = `${option.gitIdentityId}:${option.repository.url || ""}`
-                                const repoName = (
-                                  option.repository.full_name || option.repository.url || ""
-                                ).replace(`${option.username}/`, "")
-                                const desc = option.repository.description
-                                return (
-                                  <CommandItem
-                                    key={value}
-                                    value={`${repoName} ${desc || ""} ${option.username}`}
-                                    onSelect={() => {
-                                      setSelectedRepoValue(value)
-                                      setRepoPopoverOpen(false)
-                                    }}
-                                    className={cn(
-                                      "cursor-pointer flex flex-col items-start gap-0.5 py-1 [&>svg:last-child]:hidden",
-                                      selectedRepoValue === value &&
-                                        "bg-muted/50 data-[selected=true]:bg-muted/70"
-                                    )}
-                                  >
-                                    <div className="flex items-center gap-2 w-full min-w-0">
-                                      <IconGitBranch className="size-4 shrink-0" />
-                                      <span className="truncate flex-1 text-sm">{repoName}</span>
-                                      <IconCheck
-                                        className={cn(
-                                          "size-4 shrink-0",
-                                          selectedRepoValue === value ? "opacity-100" : "opacity-0"
-                                        )}
-                                      />
-                                    </div>
-                                    <span
-                                      className="text-xs text-muted-foreground truncate w-full pl-6"
-                                      title={desc || undefined}
+                        <Command shouldFilter={false}>
+                          <CommandInput
+                            placeholder={t("consoleProject.create.searchRepository")}
+                            value={keyword}
+                            onValueChange={setKeyword}
+                          />
+                          <CommandList className="max-h-48 p-1">
+                            {loadingIdentityRepos && identityRepoOptions.length === 0 ? (
+                              <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+                                <Spinner />
+                                {t("consoleProject.create.loadingRepositories")}
+                              </div>
+                            ) : identityRepoOptions.length === 0 ? (
+                              keyword.trim() ? (
+                                <CommandEmpty>{t("consoleProject.create.repositoryNotFound")}</CommandEmpty>
+                              ) : (
+                                <div className="p-4">
+                                  <p className="mb-3 text-sm">
+                                    {t("consoleProject.create.noRepositoriesDescription")}
+                                  </p>
+                                  <Button type="button" size="sm" onClick={() => reload()}>
+                                    {t("consoleProject.common.retry")}
+                                  </Button>
+                                </div>
+                              )
+                            ) : (
+                              <>
+                                {identityRepoOptions.map((option) => {
+                                  const value = `${option.gitIdentityId}:${option.repository.url || ""}`
+                                  const repoName = (
+                                    option.repository.full_name || option.repository.url || ""
+                                  ).replace(`${option.username}/`, "")
+                                  const desc = option.repository.description
+                                  return (
+                                    <CommandItem
+                                      key={value}
+                                      value={value}
+                                      onSelect={() => {
+                                        setSelectedRepoValue(value)
+                                        setSelectedRepoOption(option)
+                                        setRepoPopoverOpen(false)
+                                      }}
+                                      className={cn(
+                                        "cursor-pointer flex flex-col items-start gap-0.5 py-1 [&>svg:last-child]:hidden",
+                                        selectedRepoValue === value &&
+                                          "bg-muted/50 data-[selected=true]:bg-muted/70"
+                                      )}
                                     >
-                                      {desc || t("consoleProject.create.noDescription")}
-                                    </span>
-                                  </CommandItem>
-                                )
-                              })}
-                            </CommandList>
-                          </Command>
-                        )}
+                                      <div className="flex items-center gap-2 w-full min-w-0">
+                                        <IconGitBranch className="size-4 shrink-0" />
+                                        <span className="truncate flex-1 text-sm">{repoName}</span>
+                                        <IconCheck
+                                          className={cn(
+                                            "size-4 shrink-0",
+                                            selectedRepoValue === value ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                      </div>
+                                      <span
+                                        className="text-xs text-muted-foreground truncate w-full pl-6"
+                                        title={desc || undefined}
+                                      >
+                                        {desc || t("consoleProject.create.noDescription")}
+                                      </span>
+                                    </CommandItem>
+                                  )
+                                })}
+                                {hasNext ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full justify-center text-muted-foreground"
+                                    disabled={loadingMore}
+                                    onClick={() => loadMore()}
+                                  >
+                                    {loadingMore ? <Spinner className="size-4" /> : null}
+                                    {t("consoleProject.create.loadMoreRepositories", {
+                                      loaded: identityRepoOptions.length,
+                                      total,
+                                    })}
+                                  </Button>
+                                ) : null}
+                              </>
+                            )}
+                          </CommandList>
+                        </Command>
                       </PopoverContent>
                     </Popover>
                   </div>
@@ -376,7 +375,7 @@ export default function AddProjectDialog({
                     variant="outline"
                     size="icon"
                     className="shrink-0"
-                    onClick={() => loadReposForIdentity(selectedIdentityId, true)}
+                    onClick={() => reload(true)}
                     disabled={loading || loadingIdentityRepos || !selectedIdentityId}
                     aria-label={t("consoleProject.create.refreshRepositoriesAria")}
                   >

@@ -441,6 +441,7 @@ const en = {
       noRepositoriesDescription: "No repositories were found, or loading failed. Click to retry.",
       searchRepository: "Search repositories...",
       repositoryNotFound: "No matching repositories",
+      loadMoreRepositories: "Load more ({{loaded}}/{{total}})",
       noDescription: "No description",
       refreshRepositoriesAria: "Refresh repository list",
       toast: {
@@ -3716,6 +3717,7 @@ const en = {
       loading: "Loading...",
       empty: "No repositories",
       noMatches: "No matching repositories",
+      loadMore: "Load more ({{loaded}}/{{total}})",
       noDescription: "No description",
       otherRepositories: "Other repositories",
       otherRepoPlaceholder: "Enter a repository URL and press Enter",
