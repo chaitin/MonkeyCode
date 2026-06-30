@@ -1,4 +1,4 @@
-import { ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, ConstsTaskType, ConstsUserRole, type DomainAuthRepository, type DomainGitIdentity, type DomainSkillListItem } from "@/api/Api";
+import { ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, ConstsTaskType, ConstsUserRole, type DomainGitIdentity, type DomainSkillListItem } from "@/api/Api";
 import Icon from "@/components/common/Icon";
 import { useCommonData } from "@/components/console/data-provider";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { findIdentitiesForRepoUrl, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconLink, IconReload, IconSend, IconSourceCode, IconUpload, IconUser, IconXboxX } from "@tabler/icons-react";
+import { IconLink, IconSend, IconSourceCode, IconUpload, IconUser, IconXboxX } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context";
@@ -24,10 +24,10 @@ import { toast } from "sonner";
 import { VoiceInputButton } from "./voice-input-button";
 import { TaskConcurrentLimitDialog } from "./task-concurrent-limit-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { defaultSkills } from "@/utils/config";
 import { IS_OFFLINE_EDITION } from "@/utils/edition";
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage";
+import { IdentityRepoSubmenu } from "./identity-repo-submenu";
 import ModelSelect from "./model-select";
 import { ALL_SKILLS_TAG, TaskSkillSelector } from "./task-skill-selector";
 import { MAX_TASK_CONTENT_LENGTH } from "./task-content-limit";
@@ -35,12 +35,6 @@ import { filterSelectableSkillIds } from "./task-skill-selection";
 import { useTranslation } from "react-i18next";
 
 type DomainSkill = DomainSkillListItem & { tags?: string[] };
-
-interface RepoOption {
-  gitIdentityId: string;
-  username: string;
-  repository: DomainAuthRepository;
-}
 
 /** Identities that can be used to select repositories from the repository list. */
 function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
@@ -70,9 +64,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const [selectedRepo, setSelectedRepo] = useState<string>("");
   const [selectedRepoDisplayName, setSelectedRepoDisplayName] = useState<string>("");
   const [selectedRepoFromMyRepos, setSelectedRepoFromMyRepos] = useState<boolean>(false);
-  const [reposByIdentity, setReposByIdentity] = useState<Record<string, RepoOption[]>>({});
-  const [loadingByIdentity, setLoadingByIdentity] = useState<Record<string, boolean>>({});
-  const [identitySearch, setIdentitySearch] = useState<Record<string, string>>({});
   const [codeDropdownOpen, setCodeDropdownOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills);
   const [skillList, setSkillList] = useState<DomainSkill[]>([]);
@@ -127,71 +118,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   useEffect(() => {
     fetchSkillList();
   }, [fetchSkillList]);
-
-  const loadReposForAllIdentities = async (flush = false, targetIdentityId?: string) => {
-    const targetIdentities = selectableIdentities.filter((identity) => {
-      if (!identity.id) return false;
-      return targetIdentityId ? identity.id === targetIdentityId : true;
-    });
-
-    if (targetIdentities.length === 0) {
-      return;
-    }
-
-    setLoadingByIdentity((prev) => {
-      const next = { ...prev };
-      targetIdentities.forEach((identity) => {
-        if (identity.id) next[identity.id] = true;
-      });
-      return next;
-    });
-
-    if (!targetIdentityId) {
-      setReposByIdentity({});
-    }
-
-    const newRepos: Record<string, RepoOption[]> = {};
-    const newLoading: Record<string, boolean> = {};
-
-    for (const identity of targetIdentities) {
-      const id = identity.id;
-      if (!id) continue;
-      await new Promise<void>((resolve) => {
-        apiRequest(
-          "v1UsersGitIdentitiesDetail",
-          flush ? { flush: true } : {},
-          [id],
-          (detailResp) => {
-            if (detailResp.code !== 0) {
-              newLoading[id] = false;
-              resolve();
-              return;
-            }
-            const authorizedRepositories = detailResp.data?.authorized_repositories || [];
-            const repos: RepoOption[] = [];
-            for (const repo of authorizedRepositories) {
-              if (!repo.url?.trim()) continue;
-              repos.push({
-                gitIdentityId: id,
-                username: identity.username || t("taskWorkflow.repo.unnamedIdentity"),
-                repository: repo,
-              });
-            }
-            newRepos[id] = repos;
-            newLoading[id] = false;
-            resolve();
-          },
-          () => {
-            newLoading[id] = false;
-            resolve();
-          }
-        );
-      });
-    }
-
-    setReposByIdentity((prev) => ({ ...prev, ...newRepos }));
-    setLoadingByIdentity((prev) => ({ ...prev, ...newLoading }));
-  };
 
   const setDefaultConfig = () => {
     const storedParams = readStoredTaskDialogParams();
@@ -420,13 +346,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
         />
         <InputGroupAddon align="block-end" className="flex flex-row w-full justify-between">
           <div className="flex flex-row gap-2">
-            <DropdownMenu open={codeDropdownOpen}             onOpenChange={(open) => {
-              setCodeDropdownOpen(open);
-              if (open) {
-                loadReposForAllIdentities();
-                setIdentitySearch({});
-              }
-            }}>
+            <DropdownMenu open={codeDropdownOpen} onOpenChange={setCodeDropdownOpen}>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="outline" className={cn("rounded-full max-w-[200px] sm:max-w-full", selectedRepo ? "text-primary hover:text-primary" : "")}>
                   <IconSourceCode />
@@ -469,107 +389,18 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                             {t("taskWorkflow.repo.goToSettings")}
                           </Button>
                         </div>
-                      ) : selectableIdentities.map((identity) => {
-                        const identityId = identity.id || "";
-                        const repos = reposByIdentity[identityId] || [];
-                        const isLoading = loadingByIdentity[identityId];
-                        const search = identitySearch[identityId] ?? "";
-                        const identityLabel = identity.remark || identity.username || identity.base_url || t("taskWorkflow.repo.unnamedIdentity");
-                        const filteredRepos = repos.filter((o) => {
-                          if (!o.repository.url?.trim()) return false;
-                          const kw = search.trim().toLowerCase();
-                          if (!kw) return true;
-                          const name = (o.repository.full_name || o.repository.url || "").toLowerCase();
-                          const desc = (o.repository.description || "").toLowerCase();
-                          const user = (o.username || "").toLowerCase();
-                          return name.includes(kw) || desc.includes(kw) || user.includes(kw);
-                        });
-                        return (
-                          <DropdownMenuSub key={identityId}>
-                            <DropdownMenuSubTrigger className="w-full">
-                              {getGitPlatformIcon(identity.platform)}
-                              <span className="truncate">{identityLabel}</span>
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuPortal>
-                              <DropdownMenuSubContent className="max-h-[320px] overflow-y-auto min-w-[380px] p-0">
-                                <div className="flex flex-col bg-popover p-2">
-                                  <div className="flex items-center gap-2">
-                                    <Input
-                                      placeholder={t("taskWorkflow.repo.searchPlaceholder")}
-                                      className="text-sm w-full min-w-0"
-                                      value={search}
-                                      onChange={(e) => setIdentitySearch((prev) => ({ ...prev, [identityId]: e.target.value }))}
-                                      onKeyDown={(e) => e.stopPropagation()}
-                                    />
-                                    <Button
-                                      type="button"
-                                      size="icon-sm"
-                                      variant="outline"
-                                      className="shrink-0"
-                                      disabled={isLoading}
-                                      aria-label={t("taskWorkflow.repo.refreshList")}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        void loadReposForAllIdentities(true, identityId);
-                                      }}
-                                    >
-                                      <IconReload className={cn("size-4", isLoading && "animate-spin")} />
-                                    </Button>
-                                  </div>
-                                  <Separator className="my-2" />
-                                  <div className="grid gap-2 overflow-y-auto max-h-[240px]">
-                                    {isLoading ? (
-                                      <Empty className="border border-dashed">
-                                        <EmptyHeader>
-                                          <EmptyMedia variant="icon">
-                                            <Spinner className="size-5" />
-                                          </EmptyMedia>
-                                          <EmptyDescription>{t("taskWorkflow.repo.loading")}</EmptyDescription>
-                                        </EmptyHeader>
-                                      </Empty>
-                                    ) : repos.length === 0 ? (
-                                      <div className="py-6 text-center text-sm text-muted-foreground">
-                                        {t("taskWorkflow.repo.empty")}
-                                      </div>
-                                    ) : filteredRepos.length === 0 ? (
-                                      <div className="py-6 text-center text-sm text-muted-foreground">
-                                        {search.trim() ? t("taskWorkflow.repo.noMatches") : null}
-                                      </div>
-                                    ) : (
-                                      filteredRepos.map((option) => {
-                                        const repoUrl = option.repository.url?.trim() || "";
-                                        if (!repoUrl) return null;
-                                        const repoName = (option.repository.full_name || repoUrl).replace(`${option.username}/`, "");
-                                        const desc = option.repository.description;
-                                        return (
-                                          <DropdownMenuItem
-                                            key={`${option.gitIdentityId}:${repoUrl}`}
-                                            onSelect={() => {
-                                              setSelectedRepo(repoUrl);
-                                              setSelectedRepoDisplayName(repoName);
-                                              setSelectedIdentityId(option.gitIdentityId);
-                                              setSelectedRepoFromMyRepos(true);
-                                            }}
-                                            className="flex flex-col items-start gap-0.5 py-1 cursor-pointer min-w-0 max-w-full"
-                                          >
-                                            <div className="flex items-center gap-2 w-full min-w-0 max-w-[320px]">
-                                              {getRepoIcon(repoUrl)}
-                                              <span className="truncate flex-1 text-sm" title={repoName}>{repoName}</span>
-                                            </div>
-                                            <span className="text-xs text-muted-foreground truncate w-full max-w-[400px] pl-6" title={desc || undefined}>
-                                              {desc || t("taskWorkflow.repo.noDescription")}
-                                            </span>
-                                          </DropdownMenuItem>
-                                        );
-                                      })
-                                    )}
-                                  </div>
-                                </div>
-                              </DropdownMenuSubContent>
-                            </DropdownMenuPortal>
-                          </DropdownMenuSub>
-                        );
-                      })}
+                      ) : selectableIdentities.map((identity) => (
+                        <IdentityRepoSubmenu
+                          key={identity.id || ""}
+                          identity={identity}
+                          onSelectRepo={({ repoUrl, repoName, gitIdentityId }) => {
+                            setSelectedRepo(repoUrl);
+                            setSelectedRepoDisplayName(repoName);
+                            setSelectedIdentityId(gitIdentityId);
+                            setSelectedRepoFromMyRepos(true);
+                          }}
+                        />
+                      ))}
                     </DropdownMenuSubContent>
                   </DropdownMenuPortal>
                 </DropdownMenuSub>

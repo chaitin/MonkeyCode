@@ -14,6 +14,8 @@ import (
 	"github.com/palantir/go-githubapp/githubapp"
 	"golang.org/x/oauth2"
 
+	"github.com/GoYoko/web"
+
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 )
@@ -260,6 +262,77 @@ func (g *Github) listUserRepos(ctx context.Context, client *github.Client) ([]do
 		opts.Page = resp.NextPage
 	}
 	return all, nil
+}
+
+// repositoriesPage 服务端分页拉取单页仓库。
+// 无关键字时走平台原生分页；带关键字时拉全量后内存过滤再切片
+// （GitHub 列表 API 不支持搜索词，Search API 又有 scope/限流限制）。
+func (g *Github) repositoriesPage(ctx context.Context, opts *domain.RepositoryOptions) (*domain.RepositoryPage, error) {
+	if opts.Keyword != "" {
+		all, err := g.GetAuthorizedRepositories(ctx, opts.Token, opts.InstallID)
+		if err != nil {
+			return nil, err
+		}
+		return domain.PaginateRepos(all, opts.Keyword, opts.Page, opts.Size), nil
+	}
+
+	client, err := g.GetClient(ctx, opts.Token, opts.InstallID)
+	if err != nil {
+		return nil, err
+	}
+	if opts.InstallID > 0 {
+		return g.listInstallationReposPage(ctx, client, opts.Page, opts.Size)
+	}
+	return g.listUserReposPage(ctx, client, opts.Page, opts.Size)
+}
+
+func (g *Github) listInstallationReposPage(ctx context.Context, client *github.Client, page, size int) (*domain.RepositoryPage, error) {
+	result, resp, err := client.Apps.ListRepos(ctx, &github.ListOptions{Page: page, PerPage: size})
+	if err != nil {
+		return nil, fmt.Errorf("list repos: %w", err)
+	}
+	items := make([]domain.AuthRepository, 0, len(result.Repositories))
+	for _, r := range result.Repositories {
+		items = append(items, domain.AuthRepository{
+			FullName:    r.GetFullName(),
+			URL:         r.GetHTMLURL(),
+			Description: r.GetDescription(),
+		})
+	}
+	return &domain.RepositoryPage{
+		Repositories: items,
+		PageInfo: &web.PageInfo{
+			TotalCount:  int64(result.GetTotalCount()),
+			HasNextPage: resp.NextPage != 0,
+		},
+	}, nil
+}
+
+func (g *Github) listUserReposPage(ctx context.Context, client *github.Client, page, size int) (*domain.RepositoryPage, error) {
+	opts := &github.RepositoryListByAuthenticatedUserOptions{
+		ListOptions: github.ListOptions{Page: page, PerPage: size},
+		Sort:        "updated",
+	}
+	repos, resp, err := client.Repositories.ListByAuthenticatedUser(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("list repos: %w", err)
+	}
+	items := make([]domain.AuthRepository, 0, len(repos))
+	for _, r := range repos {
+		items = append(items, domain.AuthRepository{
+			FullName:    r.GetFullName(),
+			URL:         r.GetHTMLURL(),
+			Description: r.GetDescription(),
+		})
+	}
+	return &domain.RepositoryPage{
+		Repositories: items,
+		PageInfo: &web.PageInfo{
+			// GitHub /user/repos 不返回总数，前端以 has_next_page 翻页
+			TotalCount:  0,
+			HasNextPage: resp.NextPage != 0,
+		},
+	}, nil
 }
 
 // DeleteWebhookByURL 根据 webhook URL 精确匹配删除 GitHub 仓库上的 webhook

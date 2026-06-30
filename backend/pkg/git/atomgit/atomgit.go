@@ -186,7 +186,7 @@ func (a *Atomgit) fetchCurrentUser(ctx context.Context, token string) (*User, er
 //
 // 走 GET /api/v5/user/repos (Gitee 风格, 拿当前 token 用户的全部仓库,
 // 包括所属组织的仓库)。上限 50 页 = 5000 个仓库。
-func (a *Atomgit) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
+func (a *Atomgit) Repositories(ctx context.Context, opts *domain.RepositoryOptions) (*domain.RepositoryPage, error) {
 	result := make([]domain.AuthRepository, 0, 64)
 	page, perPage := 1, 100
 	apiPath := APIPrefix + "/user/repos"
@@ -231,7 +231,7 @@ func (a *Atomgit) Repositories(ctx context.Context, opts *domain.RepositoryOptio
 			break
 		}
 	}
-	return result, nil
+	return &domain.RepositoryPage{Repositories: result}, nil
 }
 
 // rawRequest 透传 HTTP 调用, 用于二进制响应 (如归档下载)。

@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 
 	gocache "github.com/patrickmn/go-cache"
 
@@ -19,18 +20,23 @@ func NewCachedGitClient(inner domain.GitClienter, c *gocache.Cache, cacheKey str
 	return &CachedGitClient{inner: inner, cache: c, cacheKey: cacheKey}
 }
 
-func (c *CachedGitClient) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
+func (c *CachedGitClient) Repositories(ctx context.Context, opts *domain.RepositoryOptions) (*domain.RepositoryPage, error) {
+	// 全量列表用 cacheKey；分页结果按 keyword/page/size 分别缓存。
+	key := c.cacheKey
+	if opts.Page > 0 {
+		key = fmt.Sprintf("%s:page:%s:%d:%d", c.cacheKey, opts.Keyword, opts.Page, opts.Size)
+	}
 	if !opts.Flush {
-		if cached, ok := c.cache.Get(c.cacheKey); ok {
-			return cached.([]domain.AuthRepository), nil
+		if cached, ok := c.cache.Get(key); ok {
+			return cached.(*domain.RepositoryPage), nil
 		}
 	}
-	repos, err := c.inner.Repositories(ctx, opts)
+	page, err := c.inner.Repositories(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
-	c.cache.Set(c.cacheKey, repos, gocache.DefaultExpiration)
-	return repos, nil
+	c.cache.Set(key, page, gocache.DefaultExpiration)
+	return page, nil
 }
 
 func (c *CachedGitClient) CheckPAT(ctx context.Context, token, repoURL string) (bool, *domain.BindRepository, error) {
