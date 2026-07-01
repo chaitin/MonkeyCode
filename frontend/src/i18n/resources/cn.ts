@@ -1440,7 +1440,7 @@ const cn = {
         action: "去 GitHub 反馈",
       },
       quota: {
-        freeQuota: "免费额度",
+        freeQuota: "会员额度",
         freeWithValue: "今日额度 {{amount}}",
         remainingToday: "今日剩余 {{amount}}",
         noQuota: "无额度",

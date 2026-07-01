@@ -48,8 +48,8 @@ test("侧边栏在线权益入口提供中英文资源", () => {
   assert.equal(en.consoleShell.rewards.checkin.label, "Check in for credits");
   assert.equal(cn.consoleShell.rewards.invite.title, "邀请注册赚积分");
   assert.equal(en.consoleShell.rewards.invite.title, "Invite users for credits");
-  assert.equal(cn.consoleShell.rewards.quota.freeQuota, "免费额度");
-  assert.equal(en.consoleShell.rewards.quota.freeQuota, "Free quota");
+  assert.equal(cn.consoleShell.rewards.quota.freeQuota, "会员额度");
+  assert.equal(en.consoleShell.rewards.quota.freeQuota, "Membership quota");
   assert.equal(cn.consoleShell.rewards.quota.freeWithValue, "今日额度 {{amount}}");
   assert.equal(en.consoleShell.rewards.quota.freeWithValue, "Daily quota {{amount}}");
   assert.equal(cn.consoleShell.rewards.quota.creditsSummary, "积分 {{value}}");

@@ -1,4 +1,5 @@
 import { ConstsOwnerType, ConstsTaskStatus, type DomainModel, type DomainProjectTask, type DomainVMPort } from "@/api/Api"
+import { useAppRuntime } from "@/components/app-runtime-provider"
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
 import { useCommonData } from "@/components/console/data-provider"
 import { PlanStepsBlock } from "@/components/console/task/chat-panel"
@@ -62,6 +63,7 @@ const BUILTIN_TASK_MODEL_OPTIONS = [
   { model: "monkeycode-pro", labelKey: "pro", badgeKey: "proBadge", badgeVariant: "secondary" as const, iconName: "vip-1" },
   { model: "monkeycode-ultra", labelKey: "ultra", badgeKey: "ultraBadge", badgeVariant: "secondary" as const, iconName: "vip-2" },
 ] as const
+type BuiltinTaskModelName = typeof BUILTIN_TASK_MODEL_OPTIONS[number]["model"]
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 type MessageSource = "live" | "history"
 const MODEL_SWITCH_MIN_CREATED_AT = 1777381200 // 2026-04-28 21:00:00 +08:00
@@ -69,6 +71,7 @@ const MODEL_SWITCH_MIN_CREATED_AT = 1777381200 // 2026-04-28 21:00:00 +08:00
 export default function TaskDetailPage() {
   const { taskId } = useParams()
   const { setTaskName } = useBreadcrumbTask() ?? {}
+  const { serverConfig } = useAppRuntime()
   const { models, loadingModels, subscription } = useCommonData()
   const { t } = useTranslation()
   const isMobile = useIsMobile()
@@ -133,6 +136,7 @@ export default function TaskDetailPage() {
   const previewDialogOpenRef = React.useRef(false)
   const showPreparing = useShouldShowPreparing(task)
   const taskInteractive = task?.status === ConstsTaskStatus.TaskStatusProcessing
+  const canPublishWebsite = !IS_OFFLINE_EDITION && serverConfig?.region === "cn"
   const envid = task?.virtualmachine?.id
   const cancelledRef = React.useRef(false)
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -274,6 +278,32 @@ export default function TaskDetailPage() {
     () => models.filter((model) => model.id || model.model),
     [models]
   )
+  const recommendedModelKeys = React.useMemo(() => {
+    return BUILTIN_TASK_MODEL_OPTIONS.reduce((recommended, option) => {
+      const recommendedModel = supportedModels
+        .filter((model) => getBuiltinModelName(model.model) === option.model)
+        .sort((left, right) => {
+          const weightDiff = (right.weight || 0) - (left.weight || 0)
+          if (weightDiff !== 0) {
+            return weightDiff
+          }
+
+          const nameDiff = (left.model || "").localeCompare(right.model || "")
+          if (nameDiff !== 0) {
+            return nameDiff
+          }
+
+          return (left.id || "").localeCompare(right.id || "")
+        })[0]
+
+      const recommendedKey = recommendedModel?.id || recommendedModel?.model
+      if (recommendedKey) {
+        recommended[option.model] = recommendedKey
+      }
+
+      return recommended
+    }, {} as Partial<Record<BuiltinTaskModelName, string>>)
+  }, [supportedModels])
   const modelGroups = React.useMemo(() => {
     const builtinModelGroups = IS_OFFLINE_EDITION
       ? []
@@ -774,34 +804,26 @@ export default function TaskDetailPage() {
     return currentModel ? getModelOptionDisplayName(currentModel) : getModelDisplayName(currentModelName)
   }, [builtinTaskModelOptions, currentModel, currentModelName, getModelOptionDisplayName, isMobile])
 
-  const getRecommendedModelBadge = React.useCallback((modelName?: string | null) => {
-    const normalizedModelName = modelName?.trim().toLowerCase()
-    if (!normalizedModelName) {
+  const getRecommendedModelBadge = React.useCallback((model: DomainModel) => {
+    const builtinModelName = getBuiltinModelName(model.model)
+    if (!builtinModelName) {
       return null
     }
 
-    const builtinModelName = getBuiltinModelName(normalizedModelName)
-    const nestedModelName = builtinModelName
-      ? normalizedModelName.slice(builtinModelName.length).replace(/^\/+/, "")
-      : normalizedModelName
-
-    if (
-      (builtinModelName === "monkeycode-basic" && nestedModelName === "qwen3.5-plus")
-      || (builtinModelName === "monkeycode-pro" && nestedModelName === "qwen3.6-plus")
-      || (builtinModelName === "monkeycode-ultra" && nestedModelName === "gpt-5.5")
-    ) {
+    const modelKey = model.id || model.model
+    if (modelKey && recommendedModelKeys[builtinModelName] === modelKey) {
       return t("taskDetail.page.models.recommended")
     }
 
     return null
-  }, [t])
+  }, [recommendedModelKeys, t])
 
   const renderModelSwitchOption = React.useCallback((model: DomainModel, nested = false, indented = false) => {
     const modelName = model.model || t("taskDetail.page.models.unknown")
     const isSelected = model.id === currentModelId || (!currentModelId && model.model === currentModelName)
     const canUseModel = canUseModelBySubscription(model, subscription)
     const displayName = getModelOptionDisplayName(model, nested)
-    const recommendedBadge = getRecommendedModelBadge(model.model)
+    const recommendedBadge = getRecommendedModelBadge(model)
 
     return (
       <DropdownMenuRadioItem
@@ -1294,7 +1316,7 @@ export default function TaskDetailPage() {
               <IconDeviceDesktop className="size-3.5" />
               {t("taskDetail.panels.preview")}{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
             </Button>
-            {!IS_OFFLINE_EDITION && (
+            {canPublishWebsite && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -1530,24 +1552,26 @@ export default function TaskDetailPage() {
           />
         </DialogContent>
       </Dialog>
-      <Dialog open={publishConfirmDialogOpen} onOpenChange={setPublishConfirmDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("taskDetail.page.dialogs.publishWebsite.title")}</DialogTitle>
-            <DialogDescription>
-              {t("taskDetail.page.dialogs.publishWebsite.description")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPublishConfirmDialogOpen(false)}>
-              {t("taskDetail.common.cancel")}
-            </Button>
-            <Button onClick={handleConfirmPublishWebsite}>
-              {t("taskDetail.page.dialogs.publishWebsite.confirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {canPublishWebsite && (
+        <Dialog open={publishConfirmDialogOpen} onOpenChange={setPublishConfirmDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t("taskDetail.page.dialogs.publishWebsite.title")}</DialogTitle>
+              <DialogDescription>
+                {t("taskDetail.page.dialogs.publishWebsite.description")}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPublishConfirmDialogOpen(false)}>
+                {t("taskDetail.common.cancel")}
+              </Button>
+              <Button onClick={handleConfirmPublishWebsite}>
+                {t("taskDetail.page.dialogs.publishWebsite.confirm")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

@@ -1440,7 +1440,7 @@ const en = {
         action: "Give feedback on GitHub",
       },
       quota: {
-        freeQuota: "Free quota",
+        freeQuota: "Membership quota",
         freeWithValue: "Daily quota {{amount}}",
         remainingToday: "{{amount}} left today",
         noQuota: "No quota",

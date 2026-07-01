@@ -28,3 +28,10 @@ test("任务详情页面壳提供中英文资源", () => {
   assert.equal(cn.taskDetail.page.dialogs.switchModel.title, "切换模型");
   assert.equal(en.taskDetail.page.dialogs.switchModel.title, "Switch model");
 });
+
+test("任务详情模型切换推荐标按同级别模型 weight 计算", () => {
+  assert.match(source, /recommendedModelKeys/);
+  assert.match(source, /getBuiltinModelName\(model\.model\) === option\.model/);
+  assert.match(source, /\(right\.weight \|\| 0\) - \(left\.weight \|\| 0\)/);
+  assert.doesNotMatch(source, /qwen3\.5-plus|qwen3\.6-plus|gpt-5\.5/);
+});

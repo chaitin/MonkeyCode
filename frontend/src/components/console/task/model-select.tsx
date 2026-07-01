@@ -41,6 +41,8 @@ const BUILTIN_MODEL_OPTIONS = [
   },
 ] as const
 
+type BuiltinModelName = typeof BUILTIN_MODEL_OPTIONS[number]["model"]
+
 interface ModelSelectProps {
   models: DomainModel[]
   selectedModel?: DomainModel
@@ -88,6 +90,32 @@ export default function ModelSelect({
     () => models.filter((model) => model.id || model.model),
     [models],
   )
+  const recommendedModelKeys = useMemo(() => {
+    return BUILTIN_MODEL_OPTIONS.reduce((recommended, option) => {
+      const recommendedModel = supportedModels
+        .filter((model) => getBuiltinModelName(model.model) === option.model)
+        .sort((left, right) => {
+          const weightDiff = (right.weight || 0) - (left.weight || 0)
+          if (weightDiff !== 0) {
+            return weightDiff
+          }
+
+          const nameDiff = (left.model || "").localeCompare(right.model || "")
+          if (nameDiff !== 0) {
+            return nameDiff
+          }
+
+          return (left.id || "").localeCompare(right.id || "")
+        })[0]
+
+      const recommendedKey = recommendedModel?.id || recommendedModel?.model
+      if (recommendedKey) {
+        recommended[option.model] = recommendedKey
+      }
+
+      return recommended
+    }, {} as Partial<Record<BuiltinModelName, string>>)
+  }, [supportedModels])
   const builtinModelGroups = useMemo(
     () => IS_OFFLINE_EDITION
       ? []
@@ -197,22 +225,14 @@ export default function ModelSelect({
     return selectedModel ? getModelOptionDisplayName(selectedModel) : ""
   }
 
-  const getRecommendedModelBadge = (modelName?: string | null) => {
-    const normalizedModelName = modelName?.trim().toLowerCase()
-    if (!normalizedModelName) {
+  const getRecommendedModelBadge = (model: DomainModel) => {
+    const builtinModelName = getBuiltinModelName(model.model)
+    if (!builtinModelName) {
       return null
     }
 
-    const builtinModelName = getBuiltinModelName(normalizedModelName)
-    const nestedModelName = builtinModelName
-      ? normalizedModelName.slice(builtinModelName.length).replace(/^\/+/, "")
-      : normalizedModelName
-
-    if (
-      (builtinModelName === "monkeycode-basic" && nestedModelName === "qwen3.5-plus")
-      || (builtinModelName === "monkeycode-pro" && nestedModelName === "qwen3.6-plus")
-      || (builtinModelName === "monkeycode-ultra" && nestedModelName === "gpt-5.5")
-    ) {
+    const modelKey = model.id || model.model
+    if (modelKey && recommendedModelKeys[builtinModelName] === modelKey) {
       return t("taskWorkflow.model.recommended")
     }
 
@@ -221,7 +241,7 @@ export default function ModelSelect({
 
   const renderModelOption = (model: DomainModel, nested = false, indented = false) => {
     const displayName = getModelOptionDisplayName(model, nested)
-    const recommendedBadge = getRecommendedModelBadge(model.model)
+    const recommendedBadge = getRecommendedModelBadge(model)
 
     return (
       <DropdownMenuRadioItem

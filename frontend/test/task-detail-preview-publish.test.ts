@@ -26,6 +26,8 @@ test("任务详情预览弹窗支持确认后自动发送发布指令", () => {
   assert.doesNotMatch(chatInputSource, /taskDetail\.chat\.commands\.publishWebsiteDescription/);
 
   assert.match(pageSource, /TaskChatInputBoxHandle/);
+  assert.match(pageSource, /useAppRuntime/);
+  assert.match(pageSource, /const canPublishWebsite = !IS_OFFLINE_EDITION && serverConfig\?\.region === "cn"/);
   assert.match(pageSource, /chatInputRef/);
   assert.match(pageSource, /publishConfirmDialogOpen/);
   assert.match(pageSource, /chatInputRef\.current\?\.submitPublishWebsite\(\)/);
@@ -39,6 +41,7 @@ test("任务详情预览弹窗支持确认后自动发送发布指令", () => {
     /<IconTerminal2[\s\S]*?t\("taskDetail\.panels\.preview"\)[\s\S]*?<IconUpload[\s\S]*?t\("taskDetail\.page\.dialogs\.publishWebsite\.button"\)[\s\S]*?<\/div>/,
   );
   assert.ok(panelButtonGroupMatch, "publish button should sit next to terminal, files, and preview controls");
+  assert.match(panelButtonGroupMatch[0], /canPublishWebsite/);
   assert.match(panelButtonGroupMatch[0], /disabled=\{!canInput\}/);
 
   const previewDialogMatch = pageSource.match(

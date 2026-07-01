@@ -68,3 +68,10 @@ test("任务工作流共享组件提供中英文资源", () => {
   assert.equal(cn.taskWorkflow.actions.delete, "删除任务");
   assert.equal(en.taskWorkflow.actions.delete, "Delete");
 });
+
+test("模型选择框推荐标按同级别模型 weight 计算", () => {
+  assert.match(sourceFiles.modelSelect, /recommendedModelKeys/);
+  assert.match(sourceFiles.modelSelect, /getBuiltinModelName\(model\.model\) === option\.model/);
+  assert.match(sourceFiles.modelSelect, /\(right\.weight \|\| 0\) - \(left\.weight \|\| 0\)/);
+  assert.doesNotMatch(sourceFiles.modelSelect, /qwen3\.5-plus|qwen3\.6-plus|gpt-5\.5/);
+});
