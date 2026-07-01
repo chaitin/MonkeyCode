@@ -91,8 +91,9 @@ function FooterLinkItem({ title, href }: { title: string; href: string }) {
 }
 
 export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }) {
-  const { auth } = useAppRuntime();
+  const { auth, serverConfig } = useAppRuntime();
   const isLoggedIn = auth.status === "authenticated";
+  const isGlobalRegion = serverConfig?.region === "global";
   const { t } = useTranslation();
   const [isScrolled, setIsScrolled] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -159,13 +160,13 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
         </nav>
 
         <div className="ml-auto hidden items-center gap-2 md:flex">
+          {!isGlobalRegion && !isLoggedIn ? (
+            <HeaderAction href={signUpLink}>{t("welcomeShell.actions.signUp")}</HeaderAction>
+          ) : null}
           {!isLoggedIn ? (
-            <>
-              <HeaderAction href={signUpLink}>{t("welcomeShell.actions.signUp")}</HeaderAction>
-              <HeaderAction to="/login" primary>
-                {t("welcomeShell.actions.login")}
-              </HeaderAction>
-            </>
+            <HeaderAction to="/login" primary>
+              {t("welcomeShell.actions.login")}
+            </HeaderAction>
           ) : (
             <HeaderAction to="/console" primary>
               {t("welcomeShell.actions.console")} <IconArrowRight className="size-4" />
@@ -205,13 +206,13 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
               )}
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
+              {!isGlobalRegion && !isLoggedIn ? (
+                <HeaderAction href={signUpLink}>{t("welcomeShell.actions.signUp")}</HeaderAction>
+              ) : null}
               {!isLoggedIn ? (
-                <>
-                  <HeaderAction href={signUpLink}>{t("welcomeShell.actions.signUp")}</HeaderAction>
-                  <HeaderAction to="/login" primary>
-                    {t("welcomeShell.actions.login")}
-                  </HeaderAction>
-                </>
+                <HeaderAction to="/login" primary>
+                  {t("welcomeShell.actions.login")}
+                </HeaderAction>
               ) : (
                 <HeaderAction to="/console" primary>
                   {t("welcomeShell.actions.console")} <IconArrowRight className="size-4" />
@@ -224,7 +225,6 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
     </header>
   );
 }
-
 export function TerminalFooter() {
   const { t } = useTranslation();
   const { serverConfig } = useAppRuntime();

@@ -45,3 +45,13 @@ test("欢迎页外壳提供中英文资源", () => {
   assert.equal(cn.welcomeShell.legal.contents, "# 目录");
   assert.equal(en.welcomeShell.legal.contents, "# Contents");
 });
+
+test("欢迎页终端 header 在国际版隐藏注册入口", () => {
+  assert.match(sourceFiles.header, /const \{ auth, serverConfig \} = useAppRuntime\(\)/);
+  assert.match(sourceFiles.header, /const isGlobalRegion = serverConfig\?\.region === "global"/);
+  assert.match(sourceFiles.header, /!isGlobalRegion && \(/);
+
+  assert.match(sourceFiles.terminalChrome, /const \{ auth, serverConfig \} = useAppRuntime\(\)/);
+  assert.match(sourceFiles.terminalChrome, /const isGlobalRegion = serverConfig\?\.region === "global"/);
+  assert.match(sourceFiles.terminalChrome, /!\s*isGlobalRegion && !isLoggedIn \?/);
+});

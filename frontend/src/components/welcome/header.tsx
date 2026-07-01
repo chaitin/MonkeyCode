@@ -11,8 +11,9 @@ const docsLink = "https://monkeycode.docs.baizhi.cloud/";
 const githubLink = "https://github.com/chaitin/MonkeyCode";
 
 const Header = () => {
-  const { auth } = useAppRuntime();
+  const { auth, serverConfig } = useAppRuntime();
   const isLoggedIn = auth.status === "authenticated";
+  const isGlobalRegion = serverConfig?.region === "global";
   const { t } = useTranslation();
   const [isScrolled, setIsScrolled] = React.useState(false);
   const location = useLocation();
@@ -116,7 +117,7 @@ const Header = () => {
                     ) : null}
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {!isLoggedIn && (
+                    {!isGlobalRegion && !isLoggedIn && (
                       <Button
                         variant="ghost"
                         className="h-11 rounded-xl border border-[#243329] bg-[#111814] text-[#c9d6cc] hover:bg-[#162019] hover:text-[#e8efe9]"
@@ -196,7 +197,7 @@ const Header = () => {
           </nav>
 
           <div className="ml-auto hidden items-center gap-3 md:flex">
-            {!isLoggedIn && (
+            {!isGlobalRegion && !isLoggedIn && (
               <Button
                 variant="ghost"
                 className="rounded-full border border-[#243329] bg-[#111814] px-5 text-[#c9d6cc] hover:bg-[#162019] hover:text-[#e8efe9]"
@@ -293,7 +294,9 @@ const Header = () => {
             <Button className={cn(isPixelPage && "pixel-button border-slate-900")} asChild><Link to="/console">{t("welcomeShell.actions.console")}</Link></Button>
           ) : (
             <>
-              <Button variant="ghost" className={cn("hidden sm:inline-flex", isPixelPage && "pixel-button border-slate-900 bg-white text-slate-900 hover:bg-amber-50")} asChild><a href={signUpLink}>{t("welcomeShell.actions.signUp")}</a></Button>
+              {!isGlobalRegion && (
+                <Button variant="ghost" className={cn("hidden sm:inline-flex", isPixelPage && "pixel-button border-slate-900 bg-white text-slate-900 hover:bg-amber-50")} asChild><a href={signUpLink}>{t("welcomeShell.actions.signUp")}</a></Button>
+              )}
               <Button className={cn(isPixelPage && "pixel-button border-slate-900")} asChild><Link to="/login">{t("welcomeShell.actions.start")}</Link></Button>
             </>
           )}
