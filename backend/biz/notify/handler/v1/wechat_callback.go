@@ -18,9 +18,11 @@ import (
 
 // 微信回调的默认回复文案。usecase 返回非空文本时优先用 usecase 的；为空时回退到这里。
 const (
-	defaultReplySubscribe = "感谢关注！您将收到任务进度通知。"
-	defaultReplyScan      = "扫码成功"
-	defaultReplyClick     = "收到点击事件"
+	defaultReplySubscribe = `🎉 感谢关注，欢迎体验 MonkeyCode AI！
+🔗 官方网站：https://monkeycode-ai.com
+🌟 帮助文档：https://monkeycode.docs.baizhi.cloud`
+	defaultReplyScan  = "扫码成功"
+	defaultReplyClick = "收到点击事件"
 )
 
 // WechatCallbackHandler 微信公众号回调处理器
