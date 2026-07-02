@@ -1912,7 +1912,6 @@ const en = {
       community: "Community",
       productDocs: "Product Docs",
       forum: "Forum",
-      modelSquare: "Model Square",
       chaitin: "Chaitin Tech",
       baizhi: "Baizhi Cloud",
       copyright: "© 2026 MonkeyCode · Copyright: Beijing Chaitin Technology Co., Ltd. · Built with MonkeyCode",

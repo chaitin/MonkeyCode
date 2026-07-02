@@ -63,3 +63,8 @@ test("欢迎页 footer 在国际版隐藏 ICP 备案信息", () => {
 
   assert.match(sourceFiles.terminalChrome, /!\s*isGlobalRegion \? \([\s\S]*t\("welcomeShell\.footer\.icp"\)[\s\S]*\) : null/);
 });
+
+test("欢迎页资源列表不展示模型广场", () => {
+  assert.doesNotMatch(sourceFiles.footer, /modelSquare|model-square/);
+  assert.doesNotMatch(sourceFiles.terminalChrome, /MODEL_SQUARE_LINK|modelSquare|model-square/);
+});

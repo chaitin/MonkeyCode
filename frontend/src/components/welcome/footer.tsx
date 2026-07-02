@@ -18,10 +18,6 @@ const LINKS = [
       {
         titleKey: "welcomeShell.nav.openSourceRepo",
         href: "https://github.com/chaitin/MonkeyCode/"
-      },
-      {
-        titleKey: "welcomeShell.footer.modelSquare",
-        href: "https://baizhi.cloud/landing/model-square"
       }
     ]
   },

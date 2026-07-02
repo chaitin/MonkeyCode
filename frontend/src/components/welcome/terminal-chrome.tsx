@@ -8,7 +8,6 @@ import { Link } from "react-router-dom";
 const DOCS_LINK = "https://monkeycode.docs.baizhi.cloud/";
 const GITHUB_LINK = "https://github.com/chaitin/MonkeyCode/";
 const FORUM_LINK = "https://bbs.baizhi.cloud/";
-const MODEL_SQUARE_LINK = "https://baizhi.cloud/landing/model-square";
 const SHOWCASE_LINK = "https://showcase.monkeycode-ai.online/";
 const CHAITIN_LINK = "https://www.chaitin.cn/";
 const BAIZHI_LINK = "https://www.baizhi.cloud/";
@@ -18,7 +17,6 @@ const resourceLinks = [
   { titleKey: "welcomeShell.footer.productDocs", href: DOCS_LINK },
   { titleKey: "welcomeShell.footer.forum", href: FORUM_LINK },
   { titleKey: "welcomeShell.nav.openSourceRepo", href: GITHUB_LINK },
-  { titleKey: "welcomeShell.footer.modelSquare", href: MODEL_SQUARE_LINK },
 ];
 
 const aboutLinks = [

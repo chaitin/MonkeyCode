@@ -362,6 +362,8 @@ export default function TerminalNativePage() {
   const isLoggedIn = auth.status === "authenticated";
   const { t } = useTranslation();
   const pricingRegion = getPricingRegion(serverConfig?.region);
+  const isGlobalRegion = serverConfig?.region === "global";
+  const selfHostingActionLink = isGlobalRegion ? GITHUB_LINK : SELF_HOSTING_DOC_LINK;
   const [openFaq, setOpenFaq] = React.useState(0);
   const [billingPeriod, setBillingPeriod] = React.useState<BillingPeriod>("monthly");
   const selfHostingAdvantages = selfHostingAdvantageKeys.map((key) => t(`terminalNative.selfHosting.advantages.${key}`));
@@ -559,7 +561,7 @@ export default function TerminalNativePage() {
           title={t("terminalNative.selfHosting.title")}
           subtitle={t("terminalNative.selfHosting.subtitle")}
           action={
-            <HeaderAction href={SELF_HOSTING_DOC_LINK} external>
+            <HeaderAction href={selfHostingActionLink} external>
               <IconArrowRight className="size-4" />
               <span>{t("terminalNative.selfHosting.action")}</span>
             </HeaderAction>

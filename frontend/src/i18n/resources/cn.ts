@@ -1912,7 +1912,6 @@ const cn = {
       community: "技术交流群",
       productDocs: "产品文档",
       forum: "技术论坛",
-      modelSquare: "模型广场",
       chaitin: "长亭科技",
       baizhi: "长亭百智云",
       copyright: "© 2026 MonkeyCode · 版权所有：北京长亭科技有限公司 · 本应用由 MonkeyCode 开发",

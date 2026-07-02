@@ -25,3 +25,9 @@ test("终端风格欢迎页提供中英文资源", () => {
   assert.equal(cn.terminalNative.pricing.recommended, "推荐");
   assert.equal(en.terminalNative.pricing.recommended, "Recommended");
 });
+
+test("终端风格欢迎页国际版私有化按钮指向 GitHub", () => {
+  assert.match(source, /const isGlobalRegion = serverConfig\?\.region === "global"/);
+  assert.match(source, /const selfHostingActionLink = isGlobalRegion \? GITHUB_LINK : SELF_HOSTING_DOC_LINK/);
+  assert.match(source, /<HeaderAction href=\{selfHostingActionLink\} external>/);
+});
