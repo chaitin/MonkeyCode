@@ -14,8 +14,9 @@ import (
 
 // NotifyHandler 通知渠道管理 HTTP 处理器
 type NotifyHandler struct {
-	channelUsecase domain.NotifyChannelUsecase
-	logger         *slog.Logger
+	channelUsecase       domain.NotifyChannelUsecase
+	serverConfigProvider domain.ServerConfigProvider
+	logger               *slog.Logger
 }
 
 // NewNotifyHandler 创建通知处理器并注册路由
@@ -24,9 +25,11 @@ func NewNotifyHandler(i *do.Injector) (*NotifyHandler, error) {
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
 	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 
+	provider, _ := do.Invoke[domain.ServerConfigProvider](i)
 	h := &NotifyHandler{
-		channelUsecase: do.MustInvoke[domain.NotifyChannelUsecase](i),
-		logger:         do.MustInvoke[*slog.Logger](i).With("module", "handler.notify"),
+		channelUsecase:       do.MustInvoke[domain.NotifyChannelUsecase](i),
+		serverConfigProvider: provider,
+		logger:               do.MustInvoke[*slog.Logger](i).With("module", "handler.notify"),
 	}
 
 	// 用户接口
@@ -293,7 +296,7 @@ func (h *NotifyHandler) TestTeamChannel(c *web.Context, req domain.IDReq[uuid.UU
 //	@Router			/api/v1/users/notify/event-types [get]
 func (h *NotifyHandler) ListEventTypes(c *web.Context, _ struct{}) error {
 	_placeholder()
-	return c.Success(consts.AllNotifyEventTypes)
+	return c.Success(h.eventTypes(c))
 }
 
 // ListEventTypes 列出所有支持的事件类型
@@ -309,3 +312,15 @@ func (h *NotifyHandler) ListEventTypes(c *web.Context, _ struct{}) error {
 //	@Failure		500	{object}	web.Resp									"服务器内部错误"
 //	@Router			/api/v1/teams/notify/event-types [get]
 func _placeholder() {}
+
+func (h *NotifyHandler) eventTypes(c *web.Context) []consts.NotifyEventTypeInfo {
+	if h.serverConfigProvider == nil {
+		return consts.NotifyEventTypesForRegion("")
+	}
+	info, err := h.serverConfigProvider.GetServerConfig(c.Request().Context())
+	if err != nil {
+		h.logger.WarnContext(c.Request().Context(), "failed to get server config for notify event labels", "error", err)
+		return consts.NotifyEventTypesForRegion("")
+	}
+	return consts.NotifyEventTypesForRegion(string(info.Region))
+}
