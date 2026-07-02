@@ -31,6 +31,30 @@ var AllNotifyEventTypes = []NotifyEventTypeInfo{
 	{Type: NotifyEventQuotaUltraExhausted, Name: "今日旗舰模型额度已耗尽", Description: "旗舰模型当日免费额度耗尽提醒"},
 }
 
+var globalNotifyEventTypes = []NotifyEventTypeInfo{
+	{Type: NotifyEventTaskCreated, Name: "Create task", Description: "New task created"},
+	{Type: NotifyEventTaskEnded, Name: "Conversation completed", Description: "A conversation round in the task has completed"},
+	{Type: NotifyEventVMExpiringSoon, Name: "Development environment expiring soon", Description: "Development environment expiration reminder"},
+	{Type: NotifyEventQuotaRefreshed, Name: "Member free quota refreshed", Description: "Daily free quota refresh reminder for members"},
+	{Type: NotifyEventQuotaBasicExhausted, Name: "Basic model quota exhausted today", Description: "Daily free quota exhaustion reminder for Basic models"},
+	{Type: NotifyEventQuotaProExhausted, Name: "Pro model quota exhausted today", Description: "Daily free quota exhaustion reminder for Pro models"},
+	{Type: NotifyEventQuotaUltraExhausted, Name: "Ultra model quota exhausted today", Description: "Daily free quota exhaustion reminder for Ultra models"},
+}
+
+// NotifyEventTypesForRegion 返回指定产品区域的通知事件展示文案。
+func NotifyEventTypesForRegion(region string) []NotifyEventTypeInfo {
+	if region == "global" {
+		return cloneNotifyEventTypes(globalNotifyEventTypes)
+	}
+	return cloneNotifyEventTypes(AllNotifyEventTypes)
+}
+
+func cloneNotifyEventTypes(src []NotifyEventTypeInfo) []NotifyEventTypeInfo {
+	out := make([]NotifyEventTypeInfo, len(src))
+	copy(out, src)
+	return out
+}
+
 // WechatMPFixedNotifyEventTypes 是微信公众号渠道固定接收的事件集合。
 var WechatMPFixedNotifyEventTypes = []NotifyEventType{
 	NotifyEventVMExpiringSoon,
