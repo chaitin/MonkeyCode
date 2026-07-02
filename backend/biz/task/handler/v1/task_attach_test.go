@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
 )
@@ -79,6 +80,89 @@ func TestNormalizeUserInputDataKeepsPlaintextBase64LookingContent(t *testing.T) 
 func TestNormalizeUserInputDataKeepsPlaintextStoragePayloadAttachmentsWhenContentEmpty(t *testing.T) {
 	got := normalizeUserInputData([]byte(`{"encoding":"plaintext","content":"","attachments":[{"url":"https://oss.example.com/temp/empty.txt","filename":"empty.txt"}]}`))
 	assertUserInputPayload(t, got, "", []domain.TaskAttachment{{URL: "https://oss.example.com/temp/empty.txt", Filename: "empty.txt"}})
+}
+
+func TestWithInitialUserInputFallbackPrependsTaskContent(t *testing.T) {
+	taskID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	base := time.Unix(1_700_000_000, 0).UTC()
+
+	handler := &TaskHandler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	entries := handler.withInitialUserInputFallback(&domain.Task{
+		ID:        taskID,
+		Content:   "创建任务",
+		CreatedAt: base.Unix(),
+	}, &tasklog.QueryLatestTurnResp{
+		Entries: []tasklog.Entry{{TaskID: taskID, TS: base.Add(time.Second), Event: "task-started"}},
+	})
+
+	if len(entries) != 2 {
+		t.Fatalf("len(entries) = %d, want 2", len(entries))
+	}
+	if entries[0].Event != string(consts.TaskStreamTypeUserInput) {
+		t.Fatalf("first event = %q, want user-input", entries[0].Event)
+	}
+	assertUserInputPayload(t, []byte(entries[0].Data), "创建任务", []domain.TaskAttachment{})
+}
+
+func TestWithInitialUserInputFallbackSkipsEmptyTaskContent(t *testing.T) {
+	taskID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	base := time.Unix(1_700_000_000, 0).UTC()
+	handler := &TaskHandler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+
+	entries := handler.withInitialUserInputFallback(&domain.Task{
+		ID:        taskID,
+		Content:   "",
+		CreatedAt: base.Unix(),
+	}, &tasklog.QueryLatestTurnResp{})
+
+	if len(entries) != 0 {
+		t.Fatalf("len(entries) = %d, want 0", len(entries))
+	}
+}
+
+func TestWithInitialUserInputFallbackDoesNotDuplicateExistingUserInput(t *testing.T) {
+	taskID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	base := time.Unix(1_700_000_000, 0).UTC()
+	handler := &TaskHandler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	original := []tasklog.Entry{{
+		TaskID: taskID,
+		TS:     base,
+		Event:  string(consts.TaskStreamTypeUserInput),
+		Data:   string(normalizeUserInputData([]byte("日志输入"))),
+	}}
+
+	entries := handler.withInitialUserInputFallback(&domain.Task{
+		ID:        taskID,
+		Content:   "db content",
+		CreatedAt: base.Unix(),
+	}, &tasklog.QueryLatestTurnResp{Entries: original})
+
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(entries))
+	}
+	assertUserInputPayload(t, []byte(entries[0].Data), "日志输入", []domain.TaskAttachment{})
+}
+
+func TestWithInitialUserInputFallbackSkipsNonFirstTurn(t *testing.T) {
+	taskID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	base := time.Unix(1_700_000_000, 0).UTC()
+	handler := &TaskHandler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+
+	entries := handler.withInitialUserInputFallback(&domain.Task{
+		ID:        taskID,
+		Content:   "db content",
+		CreatedAt: base.Unix(),
+	}, &tasklog.QueryLatestTurnResp{
+		HasMore: true,
+		Entries: []tasklog.Entry{{TaskID: taskID, TS: base.Add(time.Second), Event: "task-started"}},
+	})
+
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(entries))
+	}
+	if entries[0].Event != "task-started" {
+		t.Fatalf("event = %q, want task-started", entries[0].Event)
+	}
 }
 
 func assertUserInputPayload(t *testing.T, data []byte, wantContent string, wantAttachments []domain.TaskAttachment) {

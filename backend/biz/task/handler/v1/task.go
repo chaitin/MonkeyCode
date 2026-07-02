@@ -447,6 +447,7 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 		return fmt.Errorf("query latest turn: %w", err)
 	}
 	h.writeCursor(wsConn, latestTurn.NextCursor, latestTurn.HasMore)
+	latestTurn.Entries = h.withInitialUserInputFallback(task, latestTurn)
 
 	ended, err := h.replayLatestTurnHistory(wsConn, latestTurn.Entries)
 	if err != nil {
@@ -492,6 +493,34 @@ func msgSeqStart(msgSeq string) uint64 {
 		return 0
 	}
 	return seq
+}
+
+func (h *TaskHandler) withInitialUserInputFallback(task *domain.Task, latestTurn *tasklog.QueryLatestTurnResp) []tasklog.Entry {
+	if task == nil || latestTurn == nil {
+		return nil
+	}
+	if latestTurn.HasMore || hasUserInputEntry(latestTurn.Entries) {
+		return latestTurn.Entries
+	}
+	if task.Content == "" {
+		return latestTurn.Entries
+	}
+	entry := tasklog.Entry{
+		TaskID: task.ID,
+		TS:     time.Unix(task.CreatedAt, 0).UTC(),
+		Event:  string(consts.TaskStreamTypeUserInput),
+		Data:   string(normalizeUserInputData([]byte(task.Content))),
+	}
+	return append([]tasklog.Entry{entry}, latestTurn.Entries...)
+}
+
+func hasUserInputEntry(entries []tasklog.Entry) bool {
+	for _, entry := range entries {
+		if entry.Event == string(consts.TaskStreamTypeUserInput) {
+			return true
+		}
+	}
+	return false
 }
 
 type taskUserInputStoragePayload struct {
