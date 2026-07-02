@@ -289,9 +289,11 @@ export function TerminalFooter() {
 
         <div className="mt-10 flex flex-col gap-3 border-t border-dashed border-[var(--a-line-2)] pt-5 text-[11px] tracking-[0.06em] text-[var(--a-fg-mute)] sm:flex-row sm:items-center sm:justify-between">
           <span>{t("welcomeShell.footer.copyright")}</span>
-          <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer" className="transition-colors hover:text-[var(--a-fg)]">
-            {t("welcomeShell.footer.icp")}
-          </a>
+          {!isGlobalRegion ? (
+            <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer" className="transition-colors hover:text-[var(--a-fg)]">
+              {t("welcomeShell.footer.icp")}
+            </a>
+          ) : null}
         </div>
       </div>
     </footer>

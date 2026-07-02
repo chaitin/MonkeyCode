@@ -1,6 +1,7 @@
 
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+import { useAppRuntime } from "@/components/app-runtime-provider"
 
 const LINKS = [
   {
@@ -53,6 +54,8 @@ const LINKS = [
 
 const Footer = () => {
   const { t } = useTranslation()
+  const { serverConfig } = useAppRuntime()
+  const isGlobalRegion = serverConfig?.region === "global"
 
   return (
     <footer className="bg-primary px-10">
@@ -70,19 +73,23 @@ const Footer = () => {
           <div key={link.titleKey} className="flex flex-col gap-4">
             <h3 className="text-background leading-8">{t(link.titleKey)}</h3>
             <ul className="text-background/50 text-sm flex flex-col gap-2">
-              {link.links.map((link) => (
-                <li key={link.titleKey}>
-                  {link.href.startsWith("/") ? (
-                    <Link to={link.href} className="flex items-center gap-2 hover:text-background">
-                      {t(link.titleKey)}
-                    </Link>
-                  ) : (
-                    <a href={link.href} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-background">
-                      {t(link.titleKey)}
-                    </a>
-                  )}
-                </li>
-              ))}
+              {link.links.map((link) => {
+                if (isGlobalRegion && link.titleKey === "welcomeShell.footer.icp") return null
+
+                return (
+                  <li key={link.titleKey}>
+                    {link.href.startsWith("/") ? (
+                      <Link to={link.href} className="flex items-center gap-2 hover:text-background">
+                        {t(link.titleKey)}
+                      </Link>
+                    ) : (
+                      <a href={link.href} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-background">
+                        {t(link.titleKey)}
+                      </a>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         ))}

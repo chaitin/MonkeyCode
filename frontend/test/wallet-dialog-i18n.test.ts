@@ -25,3 +25,13 @@ test("钱包弹窗提供中英文资源", () => {
   assert.equal(cn.walletDialog.recharge.confirm, "确认充值");
   assert.equal(en.walletDialog.recharge.confirm, "Confirm recharge");
 });
+
+test("钱包弹窗国际版隐藏邀请注册入口", () => {
+  assert.match(source, /const isGlobalRegion = serverConfig\?\.region === "global"/);
+  assert.match(source, /if \(!isGlobalRegion\) \{\s*fetchInvitations\(\)\s*\}/);
+  assert.match(source, /!\s*isGlobalRegion \? \([\s\S]*t\("walletDialog\.invite\.title"\)[\s\S]*\) : null/);
+});
+
+test("钱包弹窗国际版隐藏开发者社区入口", () => {
+  assert.match(source, /!\s*isGlobalRegion \? \(\s*<div className="rounded-md border p-4">\s*<div>\s*<div className="text-md font-medium">\{t\("walletDialog\.community\.title"\)\}<\/div>/);
+});

@@ -55,3 +55,11 @@ test("欢迎页终端 header 在国际版隐藏注册入口", () => {
   assert.match(sourceFiles.terminalChrome, /const isGlobalRegion = serverConfig\?\.region === "global"/);
   assert.match(sourceFiles.terminalChrome, /!\s*isGlobalRegion && !isLoggedIn \?/);
 });
+
+test("欢迎页 footer 在国际版隐藏 ICP 备案信息", () => {
+  assert.match(sourceFiles.footer, /const \{ serverConfig \} = useAppRuntime\(\)/);
+  assert.match(sourceFiles.footer, /const isGlobalRegion = serverConfig\?\.region === "global"/);
+  assert.match(sourceFiles.footer, /isGlobalRegion && link\.titleKey === "welcomeShell\.footer\.icp"/);
+
+  assert.match(sourceFiles.terminalChrome, /!\s*isGlobalRegion \? \([\s\S]*t\("welcomeShell\.footer\.icp"\)[\s\S]*\) : null/);
+});

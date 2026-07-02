@@ -40,6 +40,7 @@ export default function WalletDialog() {
   const { t } = useTranslation()
   const { serverConfig } = useAppRuntime()
   const pricingRegion = getPricingRegion(serverConfig?.region)
+  const isGlobalRegion = serverConfig?.region === "global"
   const [open, setOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<WalletSectionId>("earn")
   const [transcations, setTranscations] = useState<DomainTransactionLog[]>([])
@@ -225,8 +226,10 @@ export default function WalletDialog() {
     setTranscations([])
     setHasNextPage(false)
     fetchTranscations(1, true)
-    fetchInvitations()
-  }, [fetchInvitations, fetchTranscations, reloadCheckinStatus, reloadSubscription, reloadWallet])
+    if (!isGlobalRegion) {
+      fetchInvitations()
+    }
+  }, [fetchInvitations, fetchTranscations, isGlobalRegion, reloadCheckinStatus, reloadSubscription, reloadWallet])
 
   useEffect(() => {
     const handleOpenWallet = (event: Event) => {
@@ -404,104 +407,108 @@ export default function WalletDialog() {
           </div>
         </div>
       </div>
-      <div className="rounded-md border p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-md font-medium">{t("walletDialog.invite.title")}</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              {t("walletDialog.invite.description")}
+      {!isGlobalRegion ? (
+        <div className="rounded-md border p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-md font-medium">{t("walletDialog.invite.title")}</div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                {t("walletDialog.invite.description")}
+              </div>
+            </div>
+            <div className="rounded-full bg-brand-muted px-2.5 py-1 text-xs font-medium text-brand">
+              +5,000
             </div>
           </div>
-          <div className="rounded-full bg-brand-muted px-2.5 py-1 text-xs font-medium text-brand">
-            +5,000
+          <div className="mt-4 flex flex-row justify-between gap-2">
+            <Input value={invitationLink} readOnly />
+            <Button variant="outline" onClick={handleCopyInvitationLink}>{t("walletDialog.invite.copyLink")}</Button>
           </div>
-        </div>
-        <div className="mt-4 flex flex-row justify-between gap-2">
-          <Input value={invitationLink} readOnly />
-          <Button variant="outline" onClick={handleCopyInvitationLink}>{t("walletDialog.invite.copyLink")}</Button>
-        </div>
-        <div className="mt-4">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-left transition-colors hover:bg-muted/60"
-            onClick={() => setIsInvitationListExpanded((prev) => !prev)}
-          >
-            <span className="text-sm font-medium">{t("walletDialog.invite.invitedCount", { count: formatPoints(invitationCount) })}</span>
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              {isInvitationListExpanded ? t("walletDialog.invite.collapseList") : t("walletDialog.invite.expandList")}
-              <IconChevronDown className={cn("size-4 transition-transform", isInvitationListExpanded && "rotate-180")} />
-            </span>
-          </button>
-          {isInvitationListExpanded ? (
-            <div className="mt-3 space-y-2">
-              {isInvitationsLoading ? (
-                <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
-                  <Spinner />
-                  <span className="ml-2">{t("walletDialog.invite.loading")}</span>
-                </div>
-              ) : invitations.length > 0 ? (
-                invitations.map((invitation) => (
-                  <div
-                    key={invitation.id || `${invitation.name || "unknown"}-${invitation.invited_at || 0}`}
-                    className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
-                  >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <Avatar className="size-8">
-                        <AvatarImage src={invitation.avatar_url} alt={invitation.name || t("walletDialog.invite.avatarAlt")} />
-                        <AvatarFallback>{getInvitationInitial(invitation.name)}</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">
-                          {invitation.name || t("walletDialog.invite.unnamedUser")}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatInvitationTime(invitation.invited_at)}
+          <div className="mt-4">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-left transition-colors hover:bg-muted/60"
+              onClick={() => setIsInvitationListExpanded((prev) => !prev)}
+            >
+              <span className="text-sm font-medium">{t("walletDialog.invite.invitedCount", { count: formatPoints(invitationCount) })}</span>
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                {isInvitationListExpanded ? t("walletDialog.invite.collapseList") : t("walletDialog.invite.expandList")}
+                <IconChevronDown className={cn("size-4 transition-transform", isInvitationListExpanded && "rotate-180")} />
+              </span>
+            </button>
+            {isInvitationListExpanded ? (
+              <div className="mt-3 space-y-2">
+                {isInvitationsLoading ? (
+                  <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                    <Spinner />
+                    <span className="ml-2">{t("walletDialog.invite.loading")}</span>
+                  </div>
+                ) : invitations.length > 0 ? (
+                  invitations.map((invitation) => (
+                    <div
+                      key={invitation.id || `${invitation.name || "unknown"}-${invitation.invited_at || 0}`}
+                      className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+                    >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <Avatar className="size-8">
+                          <AvatarImage src={invitation.avatar_url} alt={invitation.name || t("walletDialog.invite.avatarAlt")} />
+                          <AvatarFallback>{getInvitationInitial(invitation.name)}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">
+                            {invitation.name || t("walletDialog.invite.unnamedUser")}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatInvitationTime(invitation.invited_at)}
+                          </div>
                         </div>
                       </div>
+                      <div className="shrink-0 text-sm font-medium text-brand">
+                        {t("walletDialog.invite.creditReward", { points: formatPoints(invitation.credits || 0) })}
+                      </div>
                     </div>
-                    <div className="shrink-0 text-sm font-medium text-brand">
-                      {t("walletDialog.invite.creditReward", { points: formatPoints(invitation.credits || 0) })}
-                    </div>
+                  ))
+                ) : (
+                  <div className="py-6 text-center text-sm text-muted-foreground">
+                    {t("walletDialog.invite.empty")}
                   </div>
-                ))
-              ) : (
-                <div className="py-6 text-center text-sm text-muted-foreground">
-                  {t("walletDialog.invite.empty")}
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
-      </div>
-      <div className="rounded-md border p-4">
-        <div>
-          <div className="text-md font-medium">{t("walletDialog.community.title")}</div>
-          <div className="mt-2 text-sm text-muted-foreground">
-            {t("walletDialog.community.description")}
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-3">
-          {COMMUNITY_GROUPS.map((group) => (
-            <HoverCard key={group.id} openDelay={120} closeDelay={80}>
-              <HoverCardTrigger asChild>
-                <Button variant="outline">
-                  <Icon name={group.iconName} className="size-4" />
-                  {t(`walletDialog.community.groups.${group.id}.label`)}
-                </Button>
-              </HoverCardTrigger>
-              <HoverCardContent className="w-auto p-3" side="top" align="center">
-                <div className="flex items-center justify-center">
-                  <img
-                    src={group.src}
-                    alt={t(`walletDialog.community.groups.${group.id}.alt`)}
-                    className="h-40 w-40 rounded-lg object-contain"
-                  />
-                </div>
-              </HoverCardContent>
-            </HoverCard>
-          ))}
+      ) : null}
+      {!isGlobalRegion ? (
+        <div className="rounded-md border p-4">
+          <div>
+            <div className="text-md font-medium">{t("walletDialog.community.title")}</div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              {t("walletDialog.community.description")}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            {COMMUNITY_GROUPS.map((group) => (
+              <HoverCard key={group.id} openDelay={120} closeDelay={80}>
+                <HoverCardTrigger asChild>
+                  <Button variant="outline">
+                    <Icon name={group.iconName} className="size-4" />
+                    {t(`walletDialog.community.groups.${group.id}.label`)}
+                  </Button>
+                </HoverCardTrigger>
+                <HoverCardContent className="w-auto p-3" side="top" align="center">
+                  <div className="flex items-center justify-center">
+                    <img
+                      src={group.src}
+                      alt={t(`walletDialog.community.groups.${group.id}.alt`)}
+                      className="h-40 w-40 rounded-lg object-contain"
+                    />
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className="rounded-md border p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
