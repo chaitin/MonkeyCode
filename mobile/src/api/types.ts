@@ -125,9 +125,10 @@ export interface UserStatus {
 export interface Wallet {
   /** 积分余额（展示时需 /1000） */
   balance?: number;
-  daily_basic_token_balance?: number;
-  daily_pro_token_balance?: number;
-  daily_ultra_token_balance?: number;
+  /** 每日免费模型剩余 tokens */
+  daily_token_balance?: number;
+  /** 每日免费模型 tokens 上限 */
+  daily_token_limit?: number;
 }
 
 export interface Subscription {
