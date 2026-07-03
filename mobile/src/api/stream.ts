@@ -11,7 +11,7 @@
  *  - { type:"user-cancel" }
  *  - { type:"reply-question", data: b64(JSON.stringify({ request_id, answers_json, cancelled:false })) }
  *
- * 下行（server -> client）JSON：{ type, kind, data, timestamp }，喂给 TaskMessageHandler。
+ * 下行（server -> client）JSON：{ type, kind, data, timestamp, seq }，喂给 TaskMessageHandler。
  *
  * 鉴权：复用会话 Cookie。Android 的 RN WebSocket（OkHttp）会带上共享 Cookie；
  * iOS 多数情况下也会随 NSURLSession 携带。
@@ -49,6 +49,14 @@ type Mode = 'attach' | 'new';
 
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
 
+interface ServerChunk {
+  type?: string;
+  kind?: string;
+  data?: unknown;
+  timestamp?: number;
+  seq?: number | string;
+}
+
 export class TaskStreamClient {
   private taskId: string;
   private mode: Mode;
@@ -65,7 +73,7 @@ export class TaskStreamClient {
   private reconnectAttempts = 0;
   private connectionState: ConnectionState = 'closed';
   private closeReason: CloseReason = null;
-  private seenKeys = new Set<string>();
+  private lastProcessedSeq: number | null = null;
   private queuedReplies = new Map<string, string>();
 
   private constructor(taskId: string, mode: Mode, captureCursor: boolean, cb: Callbacks) {
@@ -95,7 +103,7 @@ export class TaskStreamClient {
     this.hasReceivedTaskEnded = false;
     this.reconnectAttempts = 0;
     this.clearReconnectTimer();
-    this.seenKeys.clear();
+    this.lastProcessedSeq = null;
     this.handler = new TaskMessageHandler({ captureCursor: this.captureCursor });
     this.connectionState = 'connecting';
     this.closeReason = null;
@@ -208,7 +216,7 @@ export class TaskStreamClient {
     };
   }
 
-  private handleServerChunk(chunk: { type?: string; kind?: string; data?: unknown; timestamp?: number }) {
+  private handleServerChunk(chunk: ServerChunk) {
     if (chunk.type === 'task-ended') this.hasReceivedTaskEnded = true;
 
     if (!this.shouldProcess(chunk)) return;
@@ -226,18 +234,18 @@ export class TaskStreamClient {
     }
   }
 
-  private shouldProcess(chunk: { type?: string; kind?: string; data?: unknown; timestamp?: number }) {
-    // reply-question 始终处理（不参与去重）
-    if (chunk.type === 'reply-question') return true;
-    const key = JSON.stringify([
-      chunk.type ?? '',
-      chunk.kind ?? '',
-      chunk.timestamp ?? 0,
-      typeof chunk.data === 'string' ? chunk.data : chunk.data == null ? '' : JSON.stringify(chunk.data),
-    ]);
-    if (this.seenKeys.has(key)) return false;
-    this.seenKeys.add(key);
+  private shouldProcess(chunk: ServerChunk): boolean {
+    const seq = this.normalizeSeq(chunk.seq);
+    if (seq == null) return true;
+    if (this.lastProcessedSeq != null && seq <= this.lastProcessedSeq) return false;
+    this.lastProcessedSeq = seq;
     return true;
+  }
+
+  private normalizeSeq(seq: ServerChunk['seq']): number | null {
+    if (seq == null || seq === '') return null;
+    const n = typeof seq === 'number' ? seq : Number(seq);
+    return Number.isFinite(n) && n > 0 ? n : null;
   }
 
   private scheduleReconnect() {

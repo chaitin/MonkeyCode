@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 import type { Image, Model, Skill } from '@/api/types';
 
 /** 默认技能 ID（与 Web 端 src/utils/config.tsx 一致），始终勾选、不可取消。 */
@@ -104,7 +103,7 @@ export function pickDefaultModel(models: Model[], plan?: string): string {
     .sort(byWeightThenName)[0];
   if (publicModel?.id) return publicModel.id;
 
-  const usable = usableModels(models);
+  const usable = usableModels(models).filter((m) => planAllowsModel(m, plan));
   const pool = usable.slice().sort(byWeightThenName);
   return pool.find((m) => m.is_default)?.id || pool[0]?.id || usable[0]?.id || '';
 }
@@ -128,8 +127,7 @@ export interface ModelGroup {
 
 /**
  * 模型分组（对齐 Web ModelSelect）：基础/专业/旗舰内置 + 付费 + 我的 + 团队。
- * 仅 iOS：高于当前会员等级的内置分组不展示（基础会员看不到专业/旗舰档）——App 内
- * 没有升级会员的购买路径，展示用不了的档位既是死入口，也有审核风险。Android 不受限。
+ * 高于当前会员等级的内置分组不展示（基础会员看不到专业/旗舰档）。
  */
 export function groupModels(models: Model[], plan?: string): ModelGroup[] {
   const supported = models.filter((m) => m.id && m.model && !m.is_hidden);
@@ -138,7 +136,7 @@ export function groupModels(models: Model[], plan?: string): ModelGroup[] {
     { key: 'monkeycode-pro', label: '专业模型', badge: '专业会员免费' },
     { key: 'monkeycode-ultra', label: '旗舰模型', badge: '旗舰会员免费' },
   ] as const)
-    .filter((o) => Platform.OS !== 'ios' || planAllowsBuiltin(o.key, plan))
+    .filter((o) => planAllowsBuiltin(o.key, plan))
     .map((o) => ({ ...o, models: supported.filter((m) => builtinName(m.model) === o.key) }));
 
   const paid = supported.filter((m) => m.owner?.type === 'public' && !builtinName(m.model));

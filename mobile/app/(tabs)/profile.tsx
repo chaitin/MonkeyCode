@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getCheckinStatus, getSubscription, getWallet, listInvitations, resolveAssetUrl, submitCheckin } from '@/api/client';
 import { checkAppUpdate, checkOta, currentOtaId, downloadAndApplyOta, installedAppVersion } from '@/updates/useOtaUpdate';
@@ -147,12 +147,7 @@ function About({ t }: { t: Theme }) {
 
 const INVITE_REWARD = 5000;
 
-const PLAN_LIMITS = {
-  basic: { basic: 30_000_000, pro: 0, ultra: 0 },
-  pro: { basic: 30_000_000, pro: 30_000_000, ultra: 0 },
-  ultra: { basic: 60_000_000, pro: 60_000_000, ultra: 60_000_000 },
-} as const;
-type PlanKey = keyof typeof PLAN_LIMITS;
+type PlanKey = 'basic' | 'pro' | 'ultra';
 
 function normalizePlan(plan?: string): PlanKey {
   if (plan === 'pro') return 'pro';
@@ -328,14 +323,10 @@ export default function ProfileScreen() {
   const credits = Math.floor((wallet?.balance ?? 0) / 1000).toLocaleString('zh-CN');
   const inviteLink = user?.id ? `${baseUrl}/?ic=${user.id}` : '';
   const planKey = normalizePlan(subscription?.plan);
-  const limits = PLAN_LIMITS[planKey];
-  // 仅 iOS：只展示当前会员等级包含的档位（total>0），基础会员看不到专业/旗舰的
-  // 额度条（App 内无升级购买路径，展示死入口有审核风险）。Android 保持全部展示。
-  const quotas = [
-    { key: 'basic', label: '基础模型', total: limits.basic, remaining: clamp(wallet?.daily_basic_token_balance ?? 0, limits.basic) },
-    { key: 'pro', label: '专业模型', total: limits.pro, remaining: clamp(wallet?.daily_pro_token_balance ?? 0, limits.pro) },
-    { key: 'ultra', label: '旗舰模型', total: limits.ultra, remaining: clamp(wallet?.daily_ultra_token_balance ?? 0, limits.ultra) },
-  ].filter((q) => Platform.OS !== 'ios' || q.total > 0);
+  const dailyTokenLimit = Math.max(wallet?.daily_token_limit ?? 0, 0);
+  const dailyTokenRemaining = dailyTokenLimit > 0
+    ? clamp(wallet?.daily_token_balance ?? 0, dailyTokenLimit)
+    : Math.max(wallet?.daily_token_balance ?? 0, 0);
   const expiry = subscription?.expires_at && planKey !== 'basic' ? subscription.expires_at.slice(0, 10) : undefined;
 
   return (
@@ -405,7 +396,7 @@ export default function ProfileScreen() {
               <Text style={{ fontSize: 12.5, color: t.tx3 }}>{expiry ? `有效期至 ${expiry}` : '长期有效'}</Text>
             </View>
             <Text style={{ paddingTop: 8, paddingBottom: 2, fontSize: 12, fontWeight: '700', color: t.tx3, letterSpacing: 0.5 }}>今日额度</Text>
-            {quotas.map((q) => <QuotaBar key={q.key} name={q.label} total={q.total} remaining={q.remaining} t={t} />)}
+            <QuotaBar name="免费模型" total={dailyTokenLimit} remaining={dailyTokenRemaining} t={t} />
           </Card>
 
           {/* 代码仓库与模型管理入口 */}
