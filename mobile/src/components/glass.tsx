@@ -28,12 +28,14 @@ export function Glass({ children, style, radius = 0, intensity = 36, border = tr
     borderBottomRightRadius: flatStyle.borderBottomRightRadius ?? baseRadius,
     borderBottomLeftRadius: flatStyle.borderBottomLeftRadius ?? baseRadius,
   };
-  const clipStyle = shadow ? radiusStyle : { ...radiusStyle, overflow: 'hidden' as const };
+  // 圆角裁剪只落在模糊层/底色层自身（radiusStyle + overflow）。外层容器绝不能加
+  // overflow:'hidden'：给 UIVisualEffectView 的父视图加裁剪是 Apple 标注的未定义行为，
+  // iOS 26+ 上会导致导航转场中挂载的毛玻璃整体失效（首次进页面无模糊，返回重进才恢复）。
 
   // Android：expo-blur 的模糊很弱/不稳定，毛玻璃几乎透明 → 直接铺一层近不透明底色，保证浮层可读。
   if (Platform.OS === 'android') {
     return (
-      <View style={[clipStyle, shadow && t.shLift, style]}>
+      <View style={[radiusStyle, shadow && t.shLift, style]}>
         <View style={[StyleSheet.absoluteFill, radiusStyle, { backgroundColor: t.glassSolid }, borderStyle]} />
         {children}
       </View>
@@ -41,7 +43,7 @@ export function Glass({ children, style, radius = 0, intensity = 36, border = tr
   }
 
   return (
-    <View style={[clipStyle, shadow && t.shLift, style]}>
+    <View style={[radiusStyle, shadow && t.shLift, style]}>
       <BlurView
         intensity={intensity}
         tint={t.glassTint}
