@@ -2,15 +2,37 @@
  * Agent 活动流的消息块渲染 —— 对齐设计稿 screen-chat.jsx。
  * 复用 messages/handler 的 ChatMessage 类型（user / agent / thought / tool / error / system / ask）。
  */
-import React, { useEffect, useState } from 'react';
-import { Image, Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Image, Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
+import { WebView } from 'react-native-webview';
+import { Asset } from 'expo-asset';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { AskQuestion, ChatMessage } from '@/messages/handler';
 import { resolveAssetUrl } from '@/api/client';
 import { Icons, Spinner } from '@/components/Icons';
+import { buildMermaidHtml, fenceLanguage, trimFenceContent } from '@/components/mermaidHtml';
 import { useTheme, type Theme } from '@/theme';
 
 export type AnswerMap = Record<string, string | string[]>;
+
+const MERMAID_RUNTIME_ASSET = require('../../assets/mermaid.min.mermaidjs');
+let mermaidRuntimePromise: Promise<string> | null = null;
+
+function loadMermaidRuntime(): Promise<string> {
+  if (mermaidRuntimePromise) return mermaidRuntimePromise;
+  mermaidRuntimePromise = (async () => {
+    const asset = Asset.fromModule(MERMAID_RUNTIME_ASSET);
+    await asset.downloadAsync();
+    const uri = asset.localUri ?? asset.uri;
+    if (!uri) throw new Error('Mermaid runtime asset is unavailable');
+    return FileSystem.readAsStringAsync(uri);
+  })().catch((error) => {
+    mermaidRuntimePromise = null;
+    throw error;
+  });
+  return mermaidRuntimePromise;
+}
 
 function mdStyles(t: Theme) {
   return {
@@ -53,13 +75,130 @@ function MarkdownImage({ uri, t, onSave }: { uri: string; t: Theme; onSave?: (ur
   );
 }
 
-/** 覆盖 markdown 的 image 规则（修掉永远转圈的 loading + React19 的 key-spread 告警）。 */
-function markdownImageRules(t: Theme, onSave?: (url: string) => void) {
+function MermaidDiagram({ code, t }: { code: string; t: Theme }) {
+  const [height, setHeight] = useState(120);
+  const [failed, setFailed] = useState(false);
+  const [runtime, setRuntime] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadMermaidRuntime()
+      .then((script) => { if (!cancelled) setRuntime(script); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => { setHeight(120); setFailed(false); }, [code]);
+
+  const html = useMemo(() => runtime ? buildMermaidHtml(code, t, runtime) : '', [code, runtime, t]);
+
+  if (failed) {
+    return <Text style={mdStyles(t).fence}>{code}</Text>;
+  }
+
+  return (
+    <View style={{ marginVertical: 7, height: runtime ? height : 120, borderRadius: 12, overflow: 'hidden', backgroundColor: t.bg2 }}>
+      {!runtime ? (
+        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 120, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="small" color={t.acTx} />
+        </View>
+      ) : null}
+      {runtime ? (
+        <WebView
+          originWhitelist={['*']}
+          source={{ html }}
+          javaScriptEnabled
+          scrollEnabled={false}
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+          onMessage={(event) => {
+            try {
+              const msg = JSON.parse(event.nativeEvent.data);
+              if (msg.type === 'height' && Number.isFinite(msg.value)) setHeight(Math.max(32, Math.min(1600, Number(msg.value))));
+              if (msg.type === 'error') setFailed(true);
+            } catch { /* ignore malformed WebView messages */ }
+          }}
+          onError={() => setFailed(true)}
+          style={{ height, backgroundColor: 'transparent' }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function stableMermaidKey(node: { content?: string; index?: number; tokenIndex?: number }): string {
+  const text = trimFenceContent(node.content);
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) hash = ((hash * 31) + text.charCodeAt(i)) | 0;
+  return `mermaid-${node.tokenIndex ?? node.index ?? 0}-${text.length}-${hash >>> 0}`;
+}
+
+/** 覆盖 markdown 的 image/fence 规则（图片修告警；mermaid fence 渲染为图）。 */
+function markdownRules(t: Theme, onSave?: (url: string) => void, renderMermaid = true) {
   return {
     image: (node: { key: string; attributes?: { src?: string; alt?: string } }) => (
       <MarkdownImage key={node.key} uri={resolveAssetUrl(node.attributes?.src) ?? node.attributes?.src ?? ''} t={t} onSave={onSave} />
     ),
+    fence: (node: { key: string; content?: string; sourceInfo?: string; info?: string; index?: number; tokenIndex?: number }, _children: unknown, _parent: unknown, styles: Record<string, any>, inheritedStyles: any = {}) => {
+      const lang = fenceLanguage(node);
+      const content = trimFenceContent(node.content);
+      if (lang === 'mermaid' && renderMermaid) return <MermaidDiagram key={stableMermaidKey(node)} code={content} t={t} />;
+      return <Text key={node.key} style={[inheritedStyles, styles.fence]}>{content}</Text>;
+    },
   };
+}
+
+function useThrottledText(text: string, active: boolean, intervalMs = 100): string {
+  const [renderText, setRenderText] = useState(text);
+  const lastUpdateRef = useRef(0);
+  const latestTextRef = useRef(text);
+  const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  latestTextRef.current = text;
+
+  useEffect(() => () => {
+    if (pendingRef.current) clearTimeout(pendingRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!active) {
+      if (pendingRef.current) clearTimeout(pendingRef.current);
+      pendingRef.current = null;
+      lastUpdateRef.current = Date.now();
+      setRenderText(text);
+      return;
+    }
+
+    const now = Date.now();
+    const elapsed = now - lastUpdateRef.current;
+    if (elapsed >= intervalMs) {
+      if (pendingRef.current) clearTimeout(pendingRef.current);
+      pendingRef.current = null;
+      lastUpdateRef.current = now;
+      setRenderText(text);
+      return;
+    }
+
+    if (!pendingRef.current) {
+      pendingRef.current = setTimeout(() => {
+        pendingRef.current = null;
+        lastUpdateRef.current = Date.now();
+        setRenderText(latestTextRef.current);
+      }, intervalMs - elapsed);
+    }
+  }, [active, intervalMs, text]);
+
+  return renderText;
+}
+
+function AgentMarkdown({ text, isStreaming, t, onCopy, onSaveImage }: { text: string; isStreaming?: boolean; t: Theme; onCopy?: (text: string) => void; onSaveImage?: (url: string) => void }) {
+  const displayText = useThrottledText(text, !!isStreaming);
+  const rules = useMemo(() => markdownRules(t, onSaveImage, !isStreaming), [isStreaming, onSaveImage, t]);
+  return (
+    <Pressable onPress={() => Keyboard.dismiss()} onLongPress={() => onCopy?.(text)}>
+      <Markdown style={mdStyles(t) as any} rules={rules}>{displayText}</Markdown>
+    </Pressable>
+  );
 }
 
 function toolIcon(kind?: string): string {
@@ -219,7 +358,7 @@ function ToolCard({ msg, t, onCopy }: { msg: ToolMsg; t: Theme; onCopy?: (s: str
   );
 }
 
-function StreamBlockBase({ message, canAnswer, onAnswer, onCopy, onSaveImage }: { message: ChatMessage; canAnswer?: boolean; onAnswer?: (askId: string, answers: AnswerMap) => void; onCopy?: (text: string) => void; onSaveImage?: (url: string) => void }) {
+function StreamBlockBase({ message, canAnswer, isStreaming, onAnswer, onCopy, onSaveImage }: { message: ChatMessage; canAnswer?: boolean; isStreaming?: boolean; onAnswer?: (askId: string, answers: AnswerMap) => void; onCopy?: (text: string) => void; onSaveImage?: (url: string) => void }) {
   const t = useTheme();
   switch (message.kind) {
     case 'user': {
@@ -245,7 +384,7 @@ function StreamBlockBase({ message, canAnswer, onAnswer, onCopy, onSaveImage }: 
       );
     }
     case 'agent':
-      return <Pressable onPress={() => Keyboard.dismiss()} onLongPress={() => onCopy?.(message.text)}><Markdown style={mdStyles(t) as any} rules={markdownImageRules(t, onSaveImage)}>{message.text}</Markdown></Pressable>;
+      return <AgentMarkdown text={message.text} isStreaming={isStreaming} t={t} onCopy={onCopy} onSaveImage={onSaveImage} />;
     case 'thought':
       return <ThoughtBlock text={message.text} t={t} onCopy={onCopy} />;
     case 'tool':
@@ -265,9 +404,11 @@ function StreamBlockBase({ message, canAnswer, onAnswer, onCopy, onSaveImage }: 
 // 其余 Markdown 块不再反复解析/测量 —— 避免列表中间空白与高度跳动。
 type MsgCmp = { id?: string; kind?: string; text?: string; title?: string; status?: string; questions?: unknown };
 export const StreamBlock = React.memo(StreamBlockBase, (a, b) => {
-  if (a.canAnswer !== b.canAnswer || a.onAnswer !== b.onAnswer || a.onCopy !== b.onCopy || a.onSaveImage !== b.onSaveImage) return false;
   const m = a.message as MsgCmp;
   const n = b.message as MsgCmp;
+  if (m.kind === 'ask' && (a.canAnswer !== b.canAnswer || a.onAnswer !== b.onAnswer)) return false;
+  if (m.kind === 'agent' && a.isStreaming !== b.isStreaming) return false;
+  if (a.onCopy !== b.onCopy || a.onSaveImage !== b.onSaveImage) return false;
   return (
     m.id === n.id &&
     m.kind === n.kind &&

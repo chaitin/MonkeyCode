@@ -413,6 +413,7 @@ export default function TaskDetailScreen() {
 
   const streamConnected = liveState?.connectionState === 'connected';
   const roundRunning = streamConnected && liveState?.status === 'connected';
+  const streamingMessageId = roundRunning ? liveMessages[liveMessages.length - 1]?.id : undefined;
   // 本轮执行起始时间：取当前流中第一条用户消息的时间（对齐 web 的 executionStartedAt）。
   const roundStartMs = useMemo(() => {
     if (!roundRunning) return null;
@@ -507,7 +508,7 @@ export default function TaskDetailScreen() {
             data={reversed}
             inverted
             keyExtractor={(m) => m.id}
-            renderItem={({ item }) => <StreamBlock message={item} canAnswer={canAnswer} onAnswer={handleAnswer} onCopy={onCopy} onSaveImage={onSaveImage} />}
+            renderItem={({ item }) => <StreamBlock message={item} isStreaming={item.id === streamingMessageId && item.kind === 'agent'} canAnswer={item.kind === 'ask' ? canAnswer : undefined} onAnswer={handleAnswer} onCopy={onCopy} onSaveImage={onSaveImage} />}
             ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
             // inverted 下：paddingTop=视觉底部（贴近 composer），paddingBottom=视觉顶部（避开浮动 header）。
             contentContainerStyle={{ paddingTop: 14, paddingBottom: headerH + 12, paddingHorizontal: spacing.pad }}
