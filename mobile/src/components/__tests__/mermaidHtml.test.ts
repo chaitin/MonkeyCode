@@ -9,6 +9,8 @@ const theme = {
   tx: '#1d1d1a',
 };
 
+const runtime = 'window.mermaid = { initialize() {}, async render() { return { svg: "<svg></svg>" }; } };';
+
 test('fenceLanguage detects mermaid from markdown-display sourceInfo', () => {
   expect(fenceLanguage({ sourceInfo: 'mermaid' })).toBe('mermaid');
   expect(fenceLanguage({ sourceInfo: ' Mermaid title=flow ' })).toBe('mermaid');
@@ -22,10 +24,19 @@ test('trimFenceContent removes only the parser-added trailing newline', () => {
 
 test('buildMermaidHtml keeps diagram text in JS data and escapes closing script tags', () => {
   const code = 'graph TD\nA["</script><script>alert(1)</script>"]-->B';
-  const html = buildMermaidHtml(code, theme);
+  const html = buildMermaidHtml(code, theme, runtime);
 
-  expect(html).toContain('const diagram = ');
+  expect(html).toContain('window.__mermaidDiagram = ');
   expect(html).toContain('<\\/script>');
-  expect(html).toContain('pre.textContent = diagram.trimEnd()');
+  expect(html).toContain('pre.textContent = window.__mermaidDiagram.trimEnd()');
   expect(html).not.toContain('A["</script><script>alert(1)</script>"]');
+});
+
+test('buildMermaidHtml inlines and escapes the local mermaid runtime', () => {
+  const runtimeWithEndTag = 'window.__runtimeLoaded = "</script>";';
+  const html = buildMermaidHtml('graph TD\nA-->B', theme, runtimeWithEndTag);
+
+  expect(html).toContain('window.__runtimeLoaded = "<\\/script>";');
+  expect(html).not.toContain('window.__runtimeLoaded = "</script>";');
+  expect(html.indexOf('window.__runtimeLoaded')).toBeLessThan(html.indexOf('window.mermaid.initialize'));
 });

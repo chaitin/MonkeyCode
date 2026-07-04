@@ -26,8 +26,7 @@ function loadMermaidRuntime(): Promise<string> {
     await asset.downloadAsync();
     const uri = asset.localUri ?? asset.uri;
     if (!uri) throw new Error('Mermaid runtime asset is unavailable');
-    const script = await FileSystem.readAsStringAsync(uri);
-    return `${script}\ntrue;`;
+    return FileSystem.readAsStringAsync(uri);
   })().catch((error) => {
     mermaidRuntimePromise = null;
     throw error;
@@ -91,7 +90,7 @@ function MermaidDiagram({ code, t }: { code: string; t: Theme }) {
 
   useEffect(() => { setHeight(120); setFailed(false); }, [code]);
 
-  const html = useMemo(() => runtime ? buildMermaidHtml(code, t) : '', [code, runtime, t]);
+  const html = useMemo(() => runtime ? buildMermaidHtml(code, t, runtime) : '', [code, runtime, t]);
 
   if (failed) {
     return <Text style={mdStyles(t).fence}>{code}</Text>;
@@ -109,7 +108,6 @@ function MermaidDiagram({ code, t }: { code: string; t: Theme }) {
           originWhitelist={['*']}
           source={{ html }}
           javaScriptEnabled
-          injectedJavaScriptBeforeContentLoaded={runtime}
           scrollEnabled={false}
           showsVerticalScrollIndicator={false}
           showsHorizontalScrollIndicator={false}
