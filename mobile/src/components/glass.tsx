@@ -19,11 +19,12 @@ interface GlassProps {
 export function Glass({ children, style, radius = 0, intensity = 36, border = true, shadow = false }: GlassProps) {
   const t = useTheme();
   const borderStyle = border ? { borderWidth: StyleSheet.hairlineWidth, borderColor: t.glassBrd } : null;
+  const clipStyle = shadow ? { borderRadius: radius } : { borderRadius: radius, overflow: 'hidden' as const };
 
   // Android：expo-blur 的模糊很弱/不稳定，毛玻璃几乎透明 → 直接铺一层近不透明底色，保证浮层可读。
   if (Platform.OS === 'android') {
     return (
-      <View style={[{ borderRadius: radius }, shadow && t.shLift, style]}>
+      <View style={[clipStyle, shadow && t.shLift, style]}>
         <View style={[StyleSheet.absoluteFill, { borderRadius: radius, backgroundColor: t.glassSolid }, borderStyle]} />
         {children}
       </View>
@@ -31,7 +32,7 @@ export function Glass({ children, style, radius = 0, intensity = 36, border = tr
   }
 
   return (
-    <View style={[{ borderRadius: radius }, shadow && t.shLift, style]}>
+    <View style={[clipStyle, shadow && t.shLift, style]}>
       <BlurView
         intensity={intensity}
         tint={t.glassTint}
