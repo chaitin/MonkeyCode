@@ -16,11 +16,11 @@ function RootNav() {
   const segments = useSegments();
   const router = useRouter();
 
-  // 鉴权导航的唯一入口：未登录踢回登录页；登录成功后清掉登录/OAuth 屏并进入主界面。
+  // 鉴权导航的唯一入口：未登录踢回登录页；登录成功后清掉登录屏并进入主界面。
   // 用 dismissAll 清栈，避免登录页残留在栈底导致「登录后返回又回到登录页」。
   useEffect(() => {
     if (!ready) return;
-    const inAuthFlow = segments[0] === 'login' || segments[0] === 'oauth';
+    const inAuthFlow = segments[0] === 'login';
     if (!authenticated) {
       if (!inAuthFlow) router.replace('/login');
     } else if (inAuthFlow) {
@@ -41,7 +41,6 @@ function RootNav() {
     >
       <Stack.Screen name="index" />
       <Stack.Screen name="login" />
-      <Stack.Screen name="oauth" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="task/[id]" />
       <Stack.Screen name="project/[id]" />

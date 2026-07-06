@@ -1,7 +1,7 @@
 /**
  * Git 身份 OAuth 授权（WebView）。
  *
- * 复用登录页（app/oauth.tsx）的判定思路：WebView 先停在第三方平台授权/安装页（github.com /
+ * WebView 先停在第三方平台授权/安装页（github.com /
  * gitee.com / gitlab.com …），用户授权后第三方回跳后端回调，后端凭会话 Cookie / state 把身份
  * 绑定到当前用户，再重定向回站点域名。一旦 WebView 从第三方域名回到后端域名（且加载完成），
  * 即视为完成 —— 返回上一页，身份管理列表在 focus 时自动刷新。
