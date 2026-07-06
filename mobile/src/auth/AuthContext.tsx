@@ -9,6 +9,11 @@ import React, {
 } from 'react';
 import { obtainCaptchaToken } from '@/api/captcha';
 import {
+  completeBaizhiOAuth,
+  loginBaizhiPhone as apiLoginBaizhiPhone,
+  sendBaizhiPhoneCode as apiSendBaizhiPhoneCode,
+} from '@/api/baizhi';
+import {
   appleLogin as apiAppleLogin,
   deleteAccount as apiDeleteAccount,
   DEFAULT_BASE_URL,
@@ -24,6 +29,7 @@ import type { UserStatus } from '@/api/types';
 const STORAGE_BASE_URL = 'mc.baseUrl';
 const STORAGE_EMAIL = 'mc.email';
 const STORAGE_PASSWORD = 'mc.pw';
+const STORAGE_BAIZHI_PHONE = 'mc.baizhiPhone';
 const STORAGE_BASIC_AUTH = 'mc.basicAuth';
 const STORAGE_LOGGED_IN = 'mc.loggedIn';
 const STORAGE_APPLE_LOGIN = 'mc.appleLogin'; // 当前登录态是否来自 Apple 登录（注销账号入口只对 Apple 账号开放）
@@ -37,10 +43,12 @@ interface AuthState {
   basicAuth: string; // 测试环境的 HTTP Basic Auth（"user:pass"），可选
   savedEmail: string;
   savedPassword: string; // 上次登录成功的密码，用于自动填充
+  savedPhone: string;
   refreshUser: () => Promise<UserStatus>;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, targetBaseUrl?: string) => Promise<void>;
   loginWithApple: (params: { identity_token: string; authorization_code?: string; full_name?: string }) => Promise<void>;
-  completeOAuthLogin: () => Promise<void>; // 百智云 OAuth 在 WebView 完成后，用会话 Cookie 确认登录
+  sendBaizhiPhoneCode: (phone: string) => Promise<void>;
+  loginWithBaizhiPhone: (phone: string, code: string, targetBaseUrl?: string) => Promise<void>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<void>; // 注销账号：后端删除成功后清空本地登录态与保存的凭据
   updateBaseUrl: (url: string) => Promise<void>;
@@ -58,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [basicAuth, setBasicAuthState] = useState('');
   const [savedEmail, setSavedEmail] = useState('');
   const [savedPassword, setSavedPassword] = useState('');
+  const [savedPhone, setSavedPhone] = useState('');
 
   const doLogout = useCallback(async () => {
     // 先清掉本地登录态与用户信息，再让后端失效会话；
@@ -80,15 +89,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  // 启动恢复：读取 baseUrl / email，并尝试用现有 Cookie 验证会话
+  // 启动恢复：读取 baseUrl / 自动填充信息，并尝试用现有 Cookie 验证会话
   useEffect(() => {
     (async () => {
       try {
-        const [storedBase, storedBasic, storedEmail, storedPassword, loggedIn, storedApple] = await Promise.all([
+        const [storedBase, storedBasic, storedEmail, storedPassword, storedPhone, loggedIn, storedApple] = await Promise.all([
           AsyncStorage.getItem(STORAGE_BASE_URL),
           AsyncStorage.getItem(STORAGE_BASIC_AUTH),
           AsyncStorage.getItem(STORAGE_EMAIL),
           AsyncStorage.getItem(STORAGE_PASSWORD),
+          AsyncStorage.getItem(STORAGE_BAIZHI_PHONE),
           AsyncStorage.getItem(STORAGE_LOGGED_IN),
           AsyncStorage.getItem(STORAGE_APPLE_LOGIN),
         ]);
@@ -100,6 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setBasicAuthState(storedBasic || '');
         if (storedEmail) setSavedEmail(storedEmail);
         if (storedPassword) setSavedPassword(storedPassword);
+        if (storedPhone) setSavedPhone(storedPhone);
 
         if (loggedIn === '1') {
           try {
@@ -119,10 +130,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const u = await getUserStatus();
+    if (u && (u.id || u.email || u.username)) {
+      setUser(u);
+      setAuthenticated(true);
+    }
+    return u;
+  }, []);
+
   const login = useCallback(
-    async (email: string, password: string) => {
-      const captchaToken = await obtainCaptchaToken(baseUrl);
-      await apiLogin(email.trim(), password, captchaToken);
+    async (email: string, password: string, targetBaseUrl?: string) => {
+      const cleanEmail = email.trim();
+      const captchaToken = await obtainCaptchaToken(targetBaseUrl || baseUrl);
+      await apiLogin(cleanEmail, password, captchaToken);
       // 登录成功后拉取用户信息
       let u: UserStatus = {};
       try {
@@ -133,10 +154,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.multiSet([
         [STORAGE_LOGGED_IN, '1'],
         [STORAGE_APPLE_LOGIN, '0'],
-        [STORAGE_EMAIL, email.trim()],
+        [STORAGE_EMAIL, cleanEmail],
         [STORAGE_PASSWORD, password],
       ]);
-      setSavedEmail(email.trim());
+      setSavedEmail(cleanEmail);
       setSavedPassword(password);
       setUser(u);
       setAppleSession(false);
@@ -145,14 +166,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [baseUrl],
   );
 
-  const refreshUser = useCallback(async () => {
-    const u = await getUserStatus();
-    if (u && (u.id || u.email || u.username)) {
-      setUser(u);
+  // Sign in with Apple：原生授权拿到 identity_token 后交给后端建会话（写 Cookie），
+  // 之后与密码登录共用同一套会话机制。不保存表单自动填充凭据。
+  const loginWithApple = useCallback(
+    async (params: { identity_token: string; authorization_code?: string; full_name?: string }) => {
+      // 后端 apple-login 直接返回用户信息，无需再多打一次 status（省一个慢网络往返）
+      const resp = await apiAppleLogin(params);
+      await AsyncStorage.multiSet([
+        [STORAGE_LOGGED_IN, '1'],
+        [STORAGE_APPLE_LOGIN, '1'],
+      ]);
+      setUser(resp.data ?? {});
+      setAppleSession(true);
       setAuthenticated(true);
-    }
-    return u;
+    },
+    [],
+  );
+
+  const sendBaizhiPhoneCode = useCallback(async (phone: string) => {
+    await apiSendBaizhiPhoneCode(phone.trim());
   }, []);
+
+  const loginWithBaizhiPhone = useCallback(
+    async (phone: string, code: string, targetBaseUrl?: string) => {
+      const cleanPhone = phone.trim();
+      await apiLoginBaizhiPhone(cleanPhone, code.trim());
+      await completeBaizhiOAuth(targetBaseUrl || baseUrl);
+      const u = await getUserStatus();
+      if (!u || !(u.id || u.email || u.username)) {
+        throw new Error('登录未完成');
+      }
+      await AsyncStorage.multiSet([
+        [STORAGE_LOGGED_IN, '1'],
+        [STORAGE_APPLE_LOGIN, '0'],
+        [STORAGE_BAIZHI_PHONE, cleanPhone],
+      ]);
+      setSavedPhone(cleanPhone);
+      setUser(u);
+      setAppleSession(false);
+      setAuthenticated(true);
+    },
+    [baseUrl],
+  );
 
   // 注销账号：后端删除成功后，账号已不存在——清掉保存的自动填充凭据，
   // 其余登录态清理复用 doLogout（保持与退出登录完全一致的清场顺序）。
@@ -173,40 +228,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
     }
   }, [doLogout]);
-
-  // Sign in with Apple：原生授权拿到 identity_token 后交给后端建会话（写 Cookie），
-  // 之后与密码登录共用同一套会话机制。不保存表单自动填充凭据。
-  const loginWithApple = useCallback(
-    async (params: { identity_token: string; authorization_code?: string; full_name?: string }) => {
-      // 后端 apple-login 直接返回用户信息，无需再多打一次 status（省一个慢网络往返）
-      const resp = await apiAppleLogin(params);
-      await AsyncStorage.multiSet([
-        [STORAGE_LOGGED_IN, '1'],
-        [STORAGE_APPLE_LOGIN, '1'],
-      ]);
-      setUser(resp.data ?? {});
-      setAppleSession(true);
-      setAuthenticated(true);
-    },
-    [],
-  );
-
-  // 百智云 OAuth：WebView 跑完整个授权流程后，后端已写入会话 Cookie（原生网络层与
-  // WebView 共享 Cookie 存储）。这里用 Cookie 拉一次用户信息确认登录成功。
-  const completeOAuthLogin = useCallback(async () => {
-    const u = await getUserStatus();
-    if (!u || !(u.id || u.email || u.username)) {
-      throw new Error('登录未完成');
-    }
-    // 只建立会话 + 当前用户信息；不动登录表单的自动填充凭据（那是另一回事）。
-    await AsyncStorage.multiSet([
-      [STORAGE_LOGGED_IN, '1'],
-      [STORAGE_APPLE_LOGIN, '0'],
-    ]);
-    setUser(u);
-    setAppleSession(false);
-    setAuthenticated(true);
-  }, []);
 
   const updateBaseUrl = useCallback(async (url: string) => {
     const clean = url.replace(/\/+$/, '');
@@ -232,16 +253,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       basicAuth,
       savedEmail,
       savedPassword,
+      savedPhone,
       refreshUser,
       login,
       loginWithApple,
-      completeOAuthLogin,
+      sendBaizhiPhoneCode,
+      loginWithBaizhiPhone,
       logout: doLogout,
       deleteAccount,
       updateBaseUrl,
       updateBasicAuth,
     }),
-    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, refreshUser, login, loginWithApple, completeOAuthLogin, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
+    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, savedPhone, refreshUser, login, loginWithApple, sendBaizhiPhoneCode, loginWithBaizhiPhone, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
