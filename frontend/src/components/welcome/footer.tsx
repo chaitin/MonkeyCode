@@ -3,48 +3,38 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { useAppRuntime } from "@/components/app-runtime-provider"
 
-const LINKS = [
+const CHAITIN_LINK = "https://www.chaitin.cn/"
+const BAIZHI_LINK = "https://www.baizhi.cloud/"
+const CYBERSERVAL_LINK = "https://www.cyberserval.com/"
+const SAFELINE_WAF_LINK = "https://cyberserval.tech/home"
+
+const resourceLinks = [
   {
-    titleKey: "welcomeShell.footer.resources",
-    links: [
-      {
-        titleKey: "welcomeShell.footer.productDocs",
-        href: "https://monkeycode.docs.baizhi.cloud/"
-      },
-      {
-        titleKey: "welcomeShell.footer.forum",
-        href: "https://bbs.baizhi.cloud/"
-      },
-      {
-        titleKey: "welcomeShell.nav.openSourceRepo",
-        href: "https://github.com/chaitin/MonkeyCode/"
-      }
-    ]
+    titleKey: "welcomeShell.footer.productDocs",
+    href: "https://monkeycode.docs.baizhi.cloud/"
   },
   {
-    titleKey: "welcomeShell.footer.about",
-    links: [
-      {
-        titleKey: "welcomeShell.footer.chaitin",
-        href: "https://www.chaitin.cn/"
-      },
-      {
-        titleKey: "welcomeShell.footer.baizhi",
-        href: "https://www.baizhi.cloud/"
-      },
-      {
-        titleKey: "welcomeShell.nav.privacyPolicy",
-        href: "/privacy-policy"
-      },
-      {
-        titleKey: "welcomeShell.nav.userAgreement",
-        href: "/user-agreement"
-      },
-      {
-        titleKey: "welcomeShell.footer.icp",
-        href: "https://beian.miit.gov.cn/"
-      }
-    ]
+    titleKey: "welcomeShell.footer.forum",
+    href: "https://bbs.baizhi.cloud/"
+  },
+  {
+    titleKey: "welcomeShell.nav.openSourceRepo",
+    href: "https://github.com/chaitin/MonkeyCode/"
+  }
+]
+
+const legalLinks = [
+  {
+    titleKey: "welcomeShell.nav.privacyPolicy",
+    href: "/privacy-policy"
+  },
+  {
+    titleKey: "welcomeShell.nav.userAgreement",
+    href: "/user-agreement"
+  },
+  {
+    titleKey: "welcomeShell.footer.icp",
+    href: "https://beian.miit.gov.cn/"
   }
 ]
 
@@ -52,6 +42,24 @@ const Footer = () => {
   const { t } = useTranslation()
   const { serverConfig } = useAppRuntime()
   const isGlobalRegion = serverConfig?.region === "global"
+  const companyLinks = isGlobalRegion ? [
+      { titleKey: "welcomeShell.footer.cyberserval", href: CYBERSERVAL_LINK },
+      { titleKey: "welcomeShell.footer.safelineWaf", href: SAFELINE_WAF_LINK }
+    ]
+    : [
+      { titleKey: "welcomeShell.footer.chaitin", href: CHAITIN_LINK },
+      { titleKey: "welcomeShell.footer.baizhi", href: BAIZHI_LINK }
+    ]
+  const links = [
+    {
+      titleKey: "welcomeShell.footer.resources",
+      links: resourceLinks
+    },
+    {
+      titleKey: "welcomeShell.footer.about",
+      links: [...companyLinks, ...legalLinks]
+    }
+  ]
 
   return (
     <footer className="bg-primary px-10">
@@ -65,7 +73,7 @@ const Footer = () => {
             {t("welcomeShell.footer.brandDescription")}
           </p>
         </div>
-        {LINKS.map((link) => (
+        {links.map((link) => (
           <div key={link.titleKey} className="flex flex-col gap-4">
             <h3 className="text-background leading-8">{t(link.titleKey)}</h3>
             <ul className="text-background/50 text-sm flex flex-col gap-2">

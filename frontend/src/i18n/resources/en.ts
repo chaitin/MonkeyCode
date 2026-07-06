@@ -1914,7 +1914,10 @@ const en = {
       forum: "Forum",
       chaitin: "Chaitin Tech",
       baizhi: "Baizhi Cloud",
+      cyberserval: "CyberServal",
+      safelineWaf: "SafeLine WAF",
       copyright: "© 2026 MonkeyCode · Copyright: Beijing Chaitin Technology Co., Ltd. · Built with MonkeyCode",
+      globalCopyright: "© 2026 MonkeyCode · Copyright: CyberServal Co., Limited · Built with MonkeyCode",
       icp: "京ICP备2024055124号-12",
     },
     community: {
@@ -2545,6 +2548,8 @@ const en = {
         chaitin: "Chaitin Tech website",
         or: " or ",
         baizhi: "Chaitin Baizhi Cloud website",
+        cyberserval: "CyberServal website",
+        safelineWaf: "SafeLine WAF",
         suffix: ".",
       },
       sections: [
@@ -2646,6 +2651,8 @@ const en = {
         chaitin: "Chaitin Tech website",
         or: " or ",
         baizhi: "Chaitin Baizhi Cloud website",
+        cyberserval: "CyberServal website",
+        safelineWaf: "SafeLine WAF",
         suffix: ".",
       },
       sections: [

@@ -1914,7 +1914,10 @@ const cn = {
       forum: "技术论坛",
       chaitin: "长亭科技",
       baizhi: "长亭百智云",
+      cyberserval: "CyberServal",
+      safelineWaf: "SafeLine WAF",
       copyright: "© 2026 MonkeyCode · 版权所有：北京长亭科技有限公司 · 本应用由 MonkeyCode 开发",
+      globalCopyright: "© 2026 MonkeyCode · 版权所有：CyberServal Co., Limited · 本应用由 MonkeyCode 开发",
       icp: "京ICP备2024055124号-12",
     },
     community: {
@@ -2545,6 +2548,8 @@ const cn = {
         chaitin: "长亭科技官网",
         or: " 或 ",
         baizhi: "长亭百智云官网",
+        cyberserval: "CyberServal 官网",
+        safelineWaf: "SafeLine WAF",
         suffix: "。",
       },
       sections: [
@@ -2646,6 +2651,8 @@ const cn = {
         chaitin: "长亭科技官网",
         or: " 或 ",
         baizhi: "长亭百智云官网",
+        cyberserval: "CyberServal 官网",
+        safelineWaf: "SafeLine WAF",
         suffix: "。",
       },
       sections: [

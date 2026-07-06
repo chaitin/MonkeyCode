@@ -12,6 +12,8 @@ const SHOWCASE_LINK = "https://showcase.monkeycode-ai.online/";
 const SELF_HOSTING_PAGE_PATH = "/self-hosting";
 const CHAITIN_LINK = "https://www.chaitin.cn/";
 const BAIZHI_LINK = "https://www.baizhi.cloud/";
+const CYBERSERVAL_LINK = "https://www.cyberserval.com/";
+const SAFELINE_WAF_LINK = "https://cyberserval.tech/home";
 const DISCORD_INVITE_LINK = "https://discord.gg/8NgHexaaMa";
 
 const resourceLinks = [
@@ -20,9 +22,7 @@ const resourceLinks = [
   { titleKey: "welcomeShell.nav.openSourceRepo", href: GITHUB_LINK },
 ];
 
-const aboutLinks = [
-  { titleKey: "welcomeShell.footer.chaitin", href: CHAITIN_LINK },
-  { titleKey: "welcomeShell.footer.baizhi", href: BAIZHI_LINK },
+const legalAboutLinks = [
   { titleKey: "welcomeShell.nav.privacyPolicy", href: "/privacy-policy" },
   { titleKey: "welcomeShell.nav.userAgreement", href: "/user-agreement" },
 ];
@@ -228,6 +228,17 @@ export function TerminalFooter() {
   const { t } = useTranslation();
   const { serverConfig } = useAppRuntime();
   const isGlobalRegion = serverConfig?.region === "global";
+  const copyrightKey = isGlobalRegion ? "welcomeShell.footer.globalCopyright" : "welcomeShell.footer.copyright";
+  const aboutLinks = isGlobalRegion ? [
+      { titleKey: "welcomeShell.footer.cyberserval", href: CYBERSERVAL_LINK },
+      { titleKey: "welcomeShell.footer.safelineWaf", href: SAFELINE_WAF_LINK },
+      ...legalAboutLinks,
+    ]
+    : [
+      { titleKey: "welcomeShell.footer.chaitin", href: CHAITIN_LINK },
+      { titleKey: "welcomeShell.footer.baizhi", href: BAIZHI_LINK },
+      ...legalAboutLinks,
+    ];
 
   return (
     <footer id="community" className="relative z-10 mt-10 border-t border-[var(--a-line)] px-5 pb-8 pt-14 sm:px-8">
@@ -287,7 +298,7 @@ export function TerminalFooter() {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 border-t border-dashed border-[var(--a-line-2)] pt-5 text-[11px] tracking-[0.06em] text-[var(--a-fg-mute)] sm:flex-row sm:items-center sm:justify-between">
-          <span>{t("welcomeShell.footer.copyright")}</span>
+          <span>{t(copyrightKey)}</span>
           {!isGlobalRegion ? (
             <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer" className="transition-colors hover:text-[var(--a-fg)]">
               {t("welcomeShell.footer.icp")}
