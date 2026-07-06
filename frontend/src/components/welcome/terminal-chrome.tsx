@@ -9,6 +9,7 @@ const DOCS_LINK = "https://monkeycode.docs.baizhi.cloud/";
 const GITHUB_LINK = "https://github.com/chaitin/MonkeyCode/";
 const FORUM_LINK = "https://bbs.baizhi.cloud/";
 const SHOWCASE_LINK = "https://showcase.monkeycode-ai.online/";
+const SELF_HOSTING_PAGE_PATH = "/self-hosting";
 const CHAITIN_LINK = "https://www.chaitin.cn/";
 const BAIZHI_LINK = "https://www.baizhi.cloud/";
 const DISCORD_INVITE_LINK = "https://discord.gg/8NgHexaaMa";
@@ -102,7 +103,7 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
   const pageNav = [
     { labelKey: "welcomeShell.nav.showcase", href: SHOWCASE_LINK, external: true },
     { labelKey: "welcomeShell.nav.client", href: `${navPrefix}#mobile-client` },
-    { labelKey: "welcomeShell.nav.selfHosting", href: `${navPrefix}#self-hosting` },
+    { labelKey: "welcomeShell.nav.selfHosting", href: SELF_HOSTING_PAGE_PATH },
   ];
 
   React.useEffect(() => {

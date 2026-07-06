@@ -113,8 +113,6 @@ const mobileClientItems = [
   },
 ] as const;
 
-const SELF_HOSTING_DOC_LINK = "https://monkeycode.docs.baizhi.cloud/node/019eb0f3-9424-7c93-9489-4e584f989527";
-
 const selfHostingAdvantageKeys = ["dataBoundary", "governance", "integration", "offline"] as const;
 
 const compareColumns = ["MonkeyCode", "Cursor", "Claude Code", "Codex"] as const;
@@ -362,8 +360,6 @@ export default function TerminalNativePage() {
   const isLoggedIn = auth.status === "authenticated";
   const { t } = useTranslation();
   const pricingRegion = getPricingRegion(serverConfig?.region);
-  const isGlobalRegion = serverConfig?.region === "global";
-  const selfHostingActionLink = isGlobalRegion ? GITHUB_LINK : SELF_HOSTING_DOC_LINK;
   const [openFaq, setOpenFaq] = React.useState(0);
   const [billingPeriod, setBillingPeriod] = React.useState<BillingPeriod>("monthly");
   const selfHostingAdvantages = selfHostingAdvantageKeys.map((key) => t(`terminalNative.selfHosting.advantages.${key}`));
@@ -561,7 +557,7 @@ export default function TerminalNativePage() {
           title={t("terminalNative.selfHosting.title")}
           subtitle={t("terminalNative.selfHosting.subtitle")}
           action={
-            <HeaderAction href={selfHostingActionLink} external>
+            <HeaderAction to="/self-hosting">
               <IconArrowRight className="size-4" />
               <span>{t("terminalNative.selfHosting.action")}</span>
             </HeaderAction>

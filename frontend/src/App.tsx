@@ -31,6 +31,7 @@ import ProjectOverviewPage from "./pages/console/user/project/overview"
 import TaskDetailPage from "./pages/console/user/task/task-detail"
 import PrivacyPolicyPage from "./pages/privacy-policy"
 import UserAgreementPage from "./pages/user-agreement"
+import SelfHostingPage from "./pages/self-hosting"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { SiteRegionPrompt } from "@/components/site-region-prompt"
@@ -52,6 +53,7 @@ function App() {
             <Route path="/playground/create" element={<PostCreatePage />} />
             <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
             <Route path="/user-agreement" element={<UserAgreementPage />} />
+            <Route path="/self-hosting" element={<SelfHostingPage />} />
             <Route path="/tasks/public" element={<PublicTaskPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/team-login/:teamId" element={<TeamOIDCLoginPage />} />

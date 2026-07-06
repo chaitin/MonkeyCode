@@ -2427,6 +2427,113 @@ const cn = {
       send: "发送",
     },
   },
+  selfHostingPage: {
+    hero: {
+      eyebrow: "SELF HOSTING",
+      title: "私有化部署",
+      subtitle: "面向需要内网部署、数据边界和统一治理的研发团队。MonkeyCode 可以部署在企业自己的基础设施内，集中管理团队成员、模型接入、开发环境和 AI 任务流程。",
+    },
+    actions: {
+      docs: "免费部署使用",
+      github: "查看 GitHub",
+      contact: "咨询付费方案",
+      backHome: "返回首页",
+    },
+    sections: {
+      scenarios: {
+        title: "适用场景",
+        description: "私有化部署适合对代码、网络、模型或团队治理有明确要求的研发组织。",
+        items: {
+          intranet: {
+            title: "研发环境在企业内网",
+            body: "代码仓库、制品仓库、测试服务和内部系统都在内网，AI 开发平台也需要部署到同一网络边界内。",
+          },
+          compliance: {
+            title: "需要数据边界和审计",
+            body: "任务记录、提示词、代码变更和成员操作需要可追踪、可审计，并符合企业内部合规要求。",
+          },
+          localModels: {
+            title: "使用自有模型或本地算力",
+            body: "团队已经部署 Ollama、vLLM 或兼容 OpenAI API 的模型服务，希望统一接入到研发工作流中。",
+          },
+          teamControl: {
+            title: "集中管理研发团队",
+            body: "管理员需要统一配置成员、权限、开发环境宿主机和模型额度，减少个人环境差异带来的维护成本。",
+          },
+        },
+      },
+      deploymentFlow: {
+        title: "部署流程",
+        description: "把资源准备、控制台安装、宿主机安装和首次配置合并到一条路径里，按 6 步完成私有化部署。",
+        stepperLabel: "部署步骤",
+        steps: {
+          prepareResources: {
+            title: "准备资源",
+            body: "选择预期并发任务数，页面会直接给出控制台和开发环境宿主机的推荐配置。",
+            note: "准备两台 Linux x86 服务器，推荐 ubuntu24.04；最低配置支持 8 个并发任务。",
+            calculatorTitle: "选择并发任务数",
+            taskCountOption: "并发执行 {{taskCount}} 个任务",
+            servers: {
+              console: {
+                title: "控制台服务器",
+              },
+              host: {
+                title: "开发环境宿主机",
+              },
+            },
+            metrics: {
+              cpu: "CPU",
+              memory: "内存",
+              disk: "磁盘",
+              coreUnit: "核",
+            },
+          },
+          installConsole: {
+            title: "安装控制台",
+            body: "控制台支持在线安装和离线安装两种方式。服务器可以访问公网时，推荐使用在线安装。",
+            methodTabLabel: "控制台安装方式",
+            methods: {
+              online: {
+                title: "在线安装",
+                recommendedBadge: "推荐",
+                description: "适合服务器可以访问公网的环境。直接执行下面命令完成控制台安装。",
+              },
+              offline: {
+                title: "离线安装",
+                description: "服务器不联网时，先在可联网环境下载离线安装包，再上传到目标服务器解压并执行安装脚本。",
+              },
+            },
+          },
+          installHost: {
+            title: "安装宿主机",
+            body: "控制台安装完成后，绑定用于执行 AI 开发任务的宿主机。宿主机绑定命令由控制面板生成，不需要手动拼接。",
+            hostSteps: {
+              login: "使用管理员账号登录控制面板。",
+              bind: "进入开发环境页面，点击绑定宿主机，控制面板会生成一条绑定命令。",
+              run: "在目标宿主机上执行生成的命令，完成宿主机安装和绑定。",
+            },
+          },
+          configureModels: {
+            title: "配置大模型",
+            body: "在控制台接入企业可用的大模型服务，可以使用已有模型网关、本地推理服务或兼容 OpenAI API 的模型服务。",
+          },
+          createAccounts: {
+            title: "为员工创建账号",
+            body: "为团队成员创建账号并分配权限，让员工可以登录控制台、选择项目并发起 AI 开发任务。",
+          },
+          startUsing: {
+            title: "开始使用",
+            body: "完成模型、账号和宿主机配置后，创建测试任务验证仓库、模型和运行环境链路，然后逐步纳入研发流程。",
+          },
+        },
+      },
+    },
+    final: {
+      label: "GET STARTED",
+      title: "详细使用文档",
+      description: "部署文档会说明环境准备、安装步骤和关键配置。需要评估企业内网、模型接入或离线部署方案时，可以联系团队进一步确认。",
+    },
+  },
   legalPages: {
     privacy: {
       eyebrow: "PRIVACY POLICY",
