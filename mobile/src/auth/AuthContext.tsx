@@ -9,8 +9,11 @@ import React, {
 } from 'react';
 import { obtainCaptchaToken } from '@/api/captcha';
 import {
+  completeBaizhiMobileOAuth as apiCompleteBaizhiMobileOAuth,
   completeBaizhiOAuth,
+  completeBaizhiOAuthPhone as apiCompleteBaizhiOAuthPhone,
   loginBaizhiPhone as apiLoginBaizhiPhone,
+  sendBaizhiPhoneCodeForToken as apiSendBaizhiPhoneCodeForToken,
   sendBaizhiPhoneCode as apiSendBaizhiPhoneCode,
 } from '@/api/baizhi';
 import {
@@ -49,6 +52,10 @@ interface AuthState {
   loginWithApple: (params: { identity_token: string; authorization_code?: string; full_name?: string }) => Promise<void>;
   sendBaizhiPhoneCode: (phone: string) => Promise<void>;
   loginWithBaizhiPhone: (phone: string, code: string, targetBaseUrl?: string) => Promise<void>;
+  sendBaizhiOAuthPhoneCode: (phone: string, token: string) => Promise<void>;
+  loginWithBaizhiSession: (targetBaseUrl?: string) => Promise<void>;
+  loginWithBaizhiDouyinToken: (token: string, targetBaseUrl?: string) => Promise<void>;
+  loginWithBaizhiOAuthPhone: (token: string, phone: string, code: string, targetBaseUrl?: string) => Promise<void>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<void>; // 注销账号：后端删除成功后清空本地登录态与保存的凭据
   updateBaseUrl: (url: string) => Promise<void>;
@@ -209,6 +216,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [baseUrl],
   );
 
+  const sendBaizhiOAuthPhoneCode = useCallback(async (phone: string, token: string) => {
+    await apiSendBaizhiPhoneCodeForToken(phone.trim(), token.trim());
+  }, []);
+
+  const finishBaizhiCloudLogin = useCallback(
+    async (targetBaseUrl?: string, phoneToSave?: string) => {
+      await completeBaizhiOAuth(targetBaseUrl || baseUrl);
+      const u = await getUserStatus();
+      if (!u || !(u.id || u.email || u.username)) {
+        throw new Error('登录未完成');
+      }
+      const pairs: [string, string][] = [
+        [STORAGE_LOGGED_IN, '1'],
+        [STORAGE_APPLE_LOGIN, '0'],
+      ];
+      if (phoneToSave) pairs.push([STORAGE_BAIZHI_PHONE, phoneToSave]);
+      await AsyncStorage.multiSet(pairs);
+      if (phoneToSave) setSavedPhone(phoneToSave);
+      setUser(u);
+      setAppleSession(false);
+      setAuthenticated(true);
+    },
+    [baseUrl],
+  );
+
+  const loginWithBaizhiDouyinToken = useCallback(
+    async (token: string, targetBaseUrl?: string) => {
+      await apiCompleteBaizhiMobileOAuth(token.trim());
+      await finishBaizhiCloudLogin(targetBaseUrl);
+    },
+    [finishBaizhiCloudLogin],
+  );
+
+  const loginWithBaizhiOAuthPhone = useCallback(
+    async (token: string, phone: string, code: string, targetBaseUrl?: string) => {
+      const cleanPhone = phone.trim();
+      await apiCompleteBaizhiOAuthPhone(token.trim(), cleanPhone, code.trim());
+      await finishBaizhiCloudLogin(targetBaseUrl, cleanPhone);
+    },
+    [finishBaizhiCloudLogin],
+  );
+
   // 注销账号：后端删除成功后，账号已不存在——清掉保存的自动填充凭据，
   // 其余登录态清理复用 doLogout（保持与退出登录完全一致的清场顺序）。
   const deleteAccount = useCallback(async () => {
@@ -259,12 +308,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loginWithApple,
       sendBaizhiPhoneCode,
       loginWithBaizhiPhone,
+      sendBaizhiOAuthPhoneCode,
+      loginWithBaizhiSession: finishBaizhiCloudLogin,
+      loginWithBaizhiDouyinToken,
+      loginWithBaizhiOAuthPhone,
       logout: doLogout,
       deleteAccount,
       updateBaseUrl,
       updateBasicAuth,
     }),
-    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, savedPhone, refreshUser, login, loginWithApple, sendBaizhiPhoneCode, loginWithBaizhiPhone, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
+    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, savedPhone, refreshUser, login, loginWithApple, sendBaizhiPhoneCode, loginWithBaizhiPhone, sendBaizhiOAuthPhoneCode, finishBaizhiCloudLogin, loginWithBaizhiDouyinToken, loginWithBaizhiOAuthPhone, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

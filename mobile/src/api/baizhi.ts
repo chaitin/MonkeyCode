@@ -170,10 +170,14 @@ async function obtainBaizhiCaptchaToken(): Promise<string> {
 }
 
 export async function sendBaizhiPhoneCode(phone: string): Promise<void> {
+  await sendBaizhiPhoneCodeForToken(phone);
+}
+
+export async function sendBaizhiPhoneCodeForToken(phone: string, token?: string): Promise<void> {
   const captchaToken = await obtainBaizhiCaptchaToken();
   await baizhiRequest('/api/v1/user/phone_code', {
     method: 'POST',
-    body: { phone, kind: 'login', captcha_token: captchaToken },
+    body: { phone, kind: 'login', token, captcha_token: captchaToken },
   });
 }
 
@@ -182,6 +186,43 @@ export async function loginBaizhiPhone(phone: string, code: string): Promise<voi
   await baizhiRequest('/api/v1/user/login/phone', {
     method: 'POST',
     body: { phone, code, captcha_token: captchaToken },
+  });
+}
+
+interface OAuthURLResp {
+  url?: string;
+}
+
+export type BaizhiOAuthPlatform = 'github' | 'douyin';
+
+export async function getBaizhiOAuthLoginUrl(platform: BaizhiOAuthPlatform, redirectUrl: string): Promise<string> {
+  const resp = await baizhiRequest<OAuthURLResp>('/api/v1/user/oauth/login', {
+    query: { platform, redirect_url: redirectUrl },
+  });
+  if (!resp?.url) throw new ApiError('未获取到授权地址，请重试');
+  return resp.url;
+}
+
+export async function getBaizhiDouyinMobileLoginUrl(redirectUrl: string): Promise<string> {
+  const resp = await baizhiRequest<OAuthURLResp>('/api/v1/user/oauth/mobile-login', {
+    query: { platform: 'douyin', redirect_url: redirectUrl },
+  });
+  if (!resp?.url) throw new ApiError('未获取到抖音授权地址，请重试');
+  return resp.url;
+}
+
+export async function completeBaizhiMobileOAuth(token: string): Promise<void> {
+  await baizhiRequest('/api/v1/user/oauth/mobile-complete', {
+    method: 'POST',
+    body: { token },
+  });
+}
+
+export async function completeBaizhiOAuthPhone(token: string, phone: string, code: string): Promise<void> {
+  const captchaToken = await obtainBaizhiCaptchaToken();
+  await baizhiRequest('/api/v1/user/oauth/complete-phone', {
+    method: 'POST',
+    body: { token, phone, code, captcha_token: captchaToken },
   });
 }
 
