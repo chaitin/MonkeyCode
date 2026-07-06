@@ -325,11 +325,17 @@ func (g *Github) listUserReposPage(ctx context.Context, client *github.Client, p
 			Description: r.GetDescription(),
 		})
 	}
+	var totalCount int64
+	if resp.NextPage == 0 {
+		totalCount = int64((page-1)*size + len(repos))
+	} else if resp.LastPage > 0 {
+		totalCount = int64(resp.LastPage) * int64(size)
+	}
+
 	return &domain.RepositoryPage{
 		Repositories: items,
 		PageInfo: &web.PageInfo{
-			// GitHub /user/repos 不返回总数，前端以 has_next_page 翻页
-			TotalCount:  0,
+			TotalCount:  totalCount,
 			HasNextPage: resp.NextPage != 0,
 		},
 	}, nil
