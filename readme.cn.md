@@ -12,6 +12,7 @@
 
 <p align="center">
   <a href="https://monkeycode-ai.com/">在线使用</a> ·
+  <a href="https://showcase.monkeycode-ai.online/">用户作品集</a> ·
   <a href="#独立部署使用">独立部署</a> ·
   <a href="https://baizhi.cloud/consult">企业咨询</a>
 </p>
