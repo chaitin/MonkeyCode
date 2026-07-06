@@ -1,19 +1,53 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
-import React, { useEffect, useRef, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
+import { WebView, type WebViewNavigation } from 'react-native-webview';
+import { getBaizhiDouyinMobileLoginUrl, getBaizhiOAuthLoginUrl } from '@/api/baizhi';
 import { ApiError, DEFAULT_BASE_URL } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { Icons } from '@/components/Icons';
 import { useTheme } from '@/theme';
 
 const LOGO_LIGHT = require('../assets/logo-light.png');
-const LOGO_DARK = require('../assets/logo-dark.png');
-const BAIZHI_ICON = require('../assets/baizhi-dark.png'); // 白色猫头，配合绿色按钮上的白色文字
 const norm = (u: string) => u.trim().replace(/\/+$/, '');
 const phoneValid = (v: string) => /^1[3-9]\d{9}$/.test(v.trim());
+const DOUYIN_CALLBACK_URL = 'monkeycode://oauth/douyin';
+const GITHUB_CALLBACK_URL = 'monkeycode://oauth/github';
 
-type LoginView = 'choices' | 'baizhi' | 'password';
+type LoginView = 'password' | 'phone' | 'douyinPhone' | 'oauthWeb';
+
+function parseCallbackQuery(url: string): Record<string, string> {
+  const start = url.indexOf('?');
+  if (start < 0) return {};
+  const hash = url.indexOf('#', start + 1);
+  const raw = url.slice(start + 1, hash < 0 ? undefined : hash);
+  const params: Record<string, string> = {};
+  for (const part of raw.split('&')) {
+    if (!part) continue;
+    const eq = part.indexOf('=');
+    const key = eq < 0 ? part : part.slice(0, eq);
+    const value = eq < 0 ? '' : part.slice(eq + 1);
+    try {
+      params[decodeURIComponent(key.replace(/\+/g, ' '))] = decodeURIComponent(value.replace(/\+/g, ' '));
+    } catch {
+      params[key] = value;
+    }
+  }
+  return params;
+}
+
+function parseDouyinCallback(url: string): { status?: string; token?: string } | null {
+  if (!url.startsWith(DOUYIN_CALLBACK_URL) && !url.startsWith('monkeycode:///oauth/douyin')) return null;
+  const params = parseCallbackQuery(url);
+  return { status: params.status, token: params.token };
+}
+
+function isGithubCallback(url: string): boolean {
+  return url.startsWith(GITHUB_CALLBACK_URL) || url.startsWith('monkeycode:///oauth/github');
+}
 
 export default function LoginScreen() {
   const t = useTheme();
@@ -22,6 +56,10 @@ export default function LoginScreen() {
     loginWithApple,
     sendBaizhiPhoneCode,
     loginWithBaizhiPhone,
+    sendBaizhiOAuthPhoneCode,
+    loginWithBaizhiSession,
+    loginWithBaizhiDouyinToken,
+    loginWithBaizhiOAuthPhone,
     savedEmail,
     savedPassword,
     savedPhone,
@@ -43,15 +81,22 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [agreed, setAgreed] = useState(!!savedPassword);
   const [countdown, setCountdown] = useState(0);
+  const [douyinToken, setDouyinToken] = useState('');
+  const [webOAuthUrl, setWebOAuthUrl] = useState('');
+  const [webOAuthTitle, setWebOAuthTitle] = useState('');
   const [showServer, setShowServer] = useState(false);
   const [serverUrl, setServerUrl] = useState(baseUrl);
   const [basicAuthInput, setBasicAuthInput] = useState(basicAuth);
   const [focused, setFocused] = useState<string | null>(null);
   const tapsRef = useRef(0);
+  const phoneInputRef = useRef<TextInput>(null);
+  const douyinPhoneInputRef = useRef<TextInput>(null);
+  const handledDouyinTokenRef = useRef('');
+  const handledGithubCallbackRef = useRef(false);
 
-  // 百智云登录入口只在官方云展示；私有化 / 自定义地址保持原账号密码入口。
+  // 手机号 / 抖音 / GitHub 登录入口只在官方云展示；私有化 / 自定义地址保持账号密码入口。
   const cloud = norm(serverUrl || baseUrl) === DEFAULT_BASE_URL;
-  const [view, setView] = useState<LoginView>(cloud && !savedPassword ? 'choices' : 'password');
+  const [view, setView] = useState<LoginView>('password');
 
   // Sign in with Apple（App Store Guideline 4.8：提供第三方登录时必须有等效的 Apple 登录）。
   // 仅 iOS 且系统支持时展示；官方云和自定义服务地址（如测试环境）都可用，
@@ -85,17 +130,122 @@ export default function LoginScreen() {
     backgroundColor: t.bg3, borderWidth: 1, borderColor: focused === name ? t.ac : t.line2, borderRadius: 14,
     paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 14 : 10, color: t.tx, fontSize: 15,
   });
+  const pageBg = '#F6F7F3';
+  const heroGreen = '#1FA855';
+  const heroGreen2 = '#1A9C50';
+  const sheetBg = '#FFFFFF';
+  const fieldBg = '#F4F5F1';
+  const fieldBorder = '#E7E8E2';
+  const inputText = '#262A27';
+  const darkText = '#17181A';
+  const iconIdle = '#A9AFA6';
+  const mutedText = '#8A9089';
+  const softText = '#A2A89F';
+  const loginShadow = { shadowColor: '#143C23', shadowOffset: { width: 0, height: 24 }, shadowOpacity: 0.28, shadowRadius: 25, elevation: 4 };
+  const primaryShadow = { shadowColor: heroGreen2, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.35, shadowRadius: 13, elevation: 3 };
+  const fieldFrameStyle = (name: string) => ({
+    height: 54,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 11,
+    paddingHorizontal: 16,
+    borderRadius: 15,
+    borderWidth: 1.5,
+    borderColor: focused === name ? heroGreen : fieldBorder,
+    backgroundColor: focused === name ? sheetBg : fieldBg,
+    shadowColor: heroGreen,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: focused === name ? 0.13 : 0,
+    shadowRadius: 10,
+    elevation: focused === name ? 1 : 0,
+  });
+  const inputStyle = { flex: 1, minWidth: 0, color: inputText, fontSize: 15.5, fontWeight: '600' as const, paddingVertical: 0 };
+  const loginDisabled = busy || codeBusy || !agreed;
+  const actionBusy = busy || codeBusy;
 
   const formatError = (e: unknown, fallback: string) => (
     e instanceof ApiError ? e.message : (e as Error)?.message || fallback
   );
 
-  const applyServerSettings = async () => {
+  const applyServerSettings = useCallback(async () => {
     const target = norm(serverUrl || baseUrl || DEFAULT_BASE_URL);
     if (target && target !== norm(baseUrl)) await updateBaseUrl(target);
     if (basicAuthInput.trim() !== basicAuth) await updateBasicAuth(basicAuthInput.trim());
     return target;
-  };
+  }, [baseUrl, basicAuth, basicAuthInput, serverUrl, updateBaseUrl, updateBasicAuth]);
+
+  const handleDouyinCallback = useCallback(
+    async (url: string) => {
+      const callback = parseDouyinCallback(url);
+      if (!callback) return;
+      const token = (callback.token || '').trim();
+      if (!token) {
+        setError('抖音登录回调缺少授权信息，请重试');
+        return;
+      }
+      if (callback.status === 'pending_phone') {
+        setDouyinToken(token);
+        setCode('');
+        setCountdown(0);
+        setError('');
+        setView('douyinPhone');
+        return;
+      }
+      const handledKey = `success:${token}`;
+      if (handledDouyinTokenRef.current === handledKey) return;
+      handledDouyinTokenRef.current = handledKey;
+      setError('');
+      setBusy(true);
+      setPhase('正在完成抖音登录…');
+      try {
+        const targetBaseUrl = await applyServerSettings();
+        await loginWithBaizhiDouyinToken(token, targetBaseUrl);
+      } catch (e) {
+        handledDouyinTokenRef.current = '';
+        setError(formatError(e, '抖音登录失败，请重试'));
+      } finally {
+        setBusy(false);
+        setPhase('');
+      }
+    },
+    [applyServerSettings, loginWithBaizhiDouyinToken],
+  );
+
+  const finishGithubOAuthLogin = useCallback(async () => {
+    if (handledGithubCallbackRef.current) return;
+    handledGithubCallbackRef.current = true;
+    setError('');
+    setBusy(true);
+    setPhase('正在完成 GitHub 登录…');
+    try {
+      const targetBaseUrl = await applyServerSettings();
+      await loginWithBaizhiSession(targetBaseUrl);
+    } catch (e) {
+      handledGithubCallbackRef.current = false;
+      setView('password');
+      setError(formatError(e, 'GitHub 登录失败，请重试'));
+    } finally {
+      setBusy(false);
+      setPhase('');
+    }
+  }, [applyServerSettings, loginWithBaizhiSession]);
+
+  const handleOAuthCallback = useCallback(
+    async (url: string) => {
+      if (isGithubCallback(url)) {
+        await finishGithubOAuthLogin();
+        return;
+      }
+      await handleDouyinCallback(url);
+    },
+    [finishGithubOAuthLogin, handleDouyinCallback],
+  );
+
+  useEffect(() => {
+    const sub = Linking.addEventListener('url', ({ url }) => { void handleOAuthCallback(url); });
+    Linking.getInitialURL().then((url) => { if (url) void handleOAuthCallback(url); }).catch(() => undefined);
+    return () => sub.remove();
+  }, [handleOAuthCallback]);
 
   const onAppleLogin = async () => {
     setError('');
@@ -126,6 +276,43 @@ export default function LoginScreen() {
         return;
       }
       setError(formatError(e, 'Apple 登录失败，请重试'));
+    } finally {
+      setBusy(false);
+      setPhase('');
+    }
+  };
+
+  const onDouyinLogin = async () => {
+    setError('');
+    if (!ensureAgreed()) return;
+    setBusy(true);
+    setPhase('正在打开抖音…');
+    try {
+      await applyServerSettings();
+      const authorizeUrl = await getBaizhiDouyinMobileLoginUrl(DOUYIN_CALLBACK_URL);
+      await Linking.openURL(authorizeUrl);
+    } catch (e) {
+      setError(formatError(e, '打开抖音登录失败，请重试'));
+    } finally {
+      setBusy(false);
+      setPhase('');
+    }
+  };
+
+  const onGithubLogin = async () => {
+    setError('');
+    if (!ensureAgreed()) return;
+    setBusy(true);
+    setPhase('正在打开 GitHub…');
+    try {
+      await applyServerSettings();
+      const authorizeUrl = await getBaizhiOAuthLoginUrl('github', GITHUB_CALLBACK_URL);
+      handledGithubCallbackRef.current = false;
+      setWebOAuthTitle('GitHub 登录');
+      setWebOAuthUrl(authorizeUrl);
+      setView('oauthWeb');
+    } catch (e) {
+      setError(formatError(e, '打开 GitHub 登录失败，请重试'));
     } finally {
       setBusy(false);
       setPhase('');
@@ -188,164 +375,377 @@ export default function LoginScreen() {
     }
   };
 
+  const onDouyinSendCode = async () => {
+    setError('');
+    const cleanPhone = phone.trim();
+    if (!douyinToken) { setError('抖音登录状态已失效，请重新授权'); return; }
+    if (!phoneValid(cleanPhone)) { setError('请输入有效的手机号'); return; }
+    if (!ensureAgreed()) return;
+    setCodeBusy(true);
+    try {
+      await sendBaizhiOAuthPhoneCode(cleanPhone, douyinToken);
+      setCountdown(60);
+    } catch (e) {
+      setError(formatError(e, '验证码发送失败，请稍后重试'));
+    } finally {
+      setCodeBusy(false);
+    }
+  };
+
+  const onDouyinPhoneSubmit = async () => {
+    setError('');
+    const cleanPhone = phone.trim();
+    const cleanCode = code.trim();
+    if (!douyinToken) { setError('抖音登录状态已失效，请重新授权'); return; }
+    if (!phoneValid(cleanPhone)) { setError('请输入有效的手机号'); return; }
+    if (!/^\d{4,6}$/.test(cleanCode)) { setError('请输入短信验证码'); return; }
+    if (!ensureAgreed()) return;
+    setBusy(true);
+    setPhase('正在登录…');
+    try {
+      const targetBaseUrl = await applyServerSettings();
+      await loginWithBaizhiOAuthPhone(douyinToken, cleanPhone, cleanCode, targetBaseUrl);
+      setPhase('');
+    } catch (e) {
+      setError(formatError(e, '登录失败，请重试'));
+    } finally {
+      setBusy(false);
+      setPhase('');
+    }
+  };
+
+  const closeWebOAuth = () => {
+    setWebOAuthUrl('');
+    setWebOAuthTitle('');
+    setView('password');
+  };
+
+  const onWebOAuthNav = useCallback(
+    (navState: WebViewNavigation) => {
+      if (isGithubCallback(navState.url)) void finishGithubOAuthLogin();
+    },
+    [finishGithubOAuthLogin],
+  );
+
+  const onWebOAuthShouldStart = useCallback(
+    (req: { url: string }) => {
+      if (isGithubCallback(req.url)) {
+        void finishGithubOAuthLogin();
+        return false;
+      }
+      return true;
+    },
+    [finishGithubOAuthLogin],
+  );
+
   const openDoc = (path: string) => Linking.openURL(`${norm(baseUrl)}${path}`).catch(() => undefined);
 
-  // Apple 登录按钮：登录方式选择页和账号密码页（自定义服务地址直接进入的视图）共用
-  const AppleButton = appleAvailable ? (
-    <AppleAuthentication.AppleAuthenticationButton
-      buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-      buttonStyle={t.dark ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-      cornerRadius={16}
-      style={{ height: 51, marginTop: 12, opacity: busy || codeBusy ? 0.6 : 1 }}
-      onPress={() => { if (!busy && !codeBusy) void onAppleLogin(); }}
-    />
+  const HeroBackground = (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 336, borderBottomLeftRadius: 44, borderBottomRightRadius: 44, overflow: 'hidden' }}>
+      <Svg width="100%" height="100%" viewBox="0 0 390 336" preserveAspectRatio="none">
+        <Defs>
+          <SvgLinearGradient id="heroGrad" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor="#2ED06B" />
+            <Stop offset="1" stopColor="#12904A" />
+          </SvgLinearGradient>
+        </Defs>
+        <Rect x={0} y={0} width={390} height={336} fill="url(#heroGrad)" />
+        <Circle cx={320} cy={50} r={120} fill="rgba(255,255,255,0.13)" />
+        <Circle cx={50} cy={366} r={90} fill="rgba(255,255,255,0.09)" />
+        <Circle cx={285} cy={165} r={45} fill="rgba(255,255,255,0.06)" />
+      </Svg>
+    </View>
+  );
+
+  const LoginButtonBackground = (
+    <Svg pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} width="100%" height="100%" viewBox="0 0 320 54" preserveAspectRatio="none">
+      <Defs>
+        <SvgLinearGradient id="loginGrad" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#27B866" />
+          <Stop offset="1" stopColor="#1A9C50" />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect x={0} y={0} width={320} height={54} rx={15} fill="url(#loginGrad)" />
+    </Svg>
+  );
+
+  const SocialLoginButtons = view === 'password' && (appleAvailable || cloud) ? (
+    <>
+      <View style={{ marginTop: 22, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ flex: 1, height: 1, backgroundColor: '#E1E0DA' }} />
+        <Text style={{ color: softText, fontSize: 12, fontWeight: '600' }}>其它登录方式</Text>
+        <View style={{ flex: 1, height: 1, backgroundColor: '#E1E0DA' }} />
+      </View>
+
+      <View style={{ marginTop: 18, flexDirection: 'row', justifyContent: 'center', gap: 14 }}>
+        {appleAvailable ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Sign in with Apple"
+            onPress={() => { if (!busy && !codeBusy) void onAppleLogin(); }}
+            disabled={actionBusy}
+            style={({ pressed }) => [
+              { width: 50, height: 50, borderRadius: 25, backgroundColor: '#16171A', alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.24, shadowRadius: 9, elevation: 3 },
+              pressed && { opacity: 0.86 },
+              actionBusy && { opacity: 0.55 },
+            ]}
+          >
+            <Icons.apple size={22} color="#FFFFFF" />
+          </Pressable>
+        ) : null}
+
+        {cloud ? (
+          <>
+            <Pressable accessibilityRole="button" accessibilityLabel="手机号登录" onPress={() => { setError(''); setView('phone'); }} disabled={actionBusy} style={({ pressed }) => [{ width: 50, height: 50, borderRadius: 25, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
+              <Icons.phoneDevice size={22} color="#20231F" />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="GitHub 登录" onPress={onGithubLogin} disabled={actionBusy} style={({ pressed }) => [{ width: 50, height: 50, borderRadius: 25, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
+              <Icons.github size={22} color="#16171A" />
+            </Pressable>
+          </>
+        ) : null}
+      </View>
+    </>
   ) : null;
 
   const Agreement = (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 16 }}>
-      <Pressable onPress={() => setAgreed((v) => !v)} hitSlop={8} style={{ marginTop: 1, width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: agreed ? t.ac : t.line2, backgroundColor: agreed ? t.ac : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-        {agreed ? <Icons.check size={12} color={t.acInk} sw={3} /> : null}
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 9, marginTop: 2 }}>
+      <Pressable onPress={() => setAgreed((v) => !v)} hitSlop={8} style={{ marginTop: 1, width: 19, height: 19, borderRadius: 6, borderWidth: 2, borderColor: agreed ? heroGreen : '#CDD1C9', backgroundColor: agreed ? heroGreen : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+        {agreed ? <Icons.check size={12} color="#FFFFFF" sw={3} /> : null}
       </Pressable>
-      <Text style={{ flex: 1, fontSize: 12.5, color: t.tx3, lineHeight: 19 }}>
+      <Text style={{ flex: 1, fontSize: 12.5, color: mutedText, lineHeight: 19, fontWeight: '600' }}>
         我已阅读并同意
-        <Text onPress={() => openDoc('/user-agreement')} style={{ color: t.acTx, fontWeight: '600' }}>《用户协议》</Text>
+        <Text onPress={() => openDoc('/user-agreement')} style={{ color: heroGreen, fontWeight: '700' }}>《用户协议》</Text>
         和
-        <Text onPress={() => openDoc('/privacy-policy')} style={{ color: t.acTx, fontWeight: '600' }}>《隐私政策》</Text>
+        <Text onPress={() => openDoc('/privacy-policy')} style={{ color: heroGreen, fontWeight: '700' }}>《隐私政策》</Text>
       </Text>
     </View>
   );
 
+  if (view === 'oauthWeb' && webOAuthUrl) {
+    return (
+      <View style={{ flex: 1, backgroundColor: t.bg }}>
+        <View style={{ paddingTop: insets.top, backgroundColor: t.bg2, borderBottomWidth: 1, borderColor: t.line }}>
+          <View style={{ height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6 }}>
+            <Pressable onPress={closeWebOAuth} hitSlop={8} style={{ padding: 8 }}>
+              <Icons.back size={22} color={t.tx} sw={2} />
+            </Pressable>
+            <Text numberOfLines={1} style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: t.tx, marginHorizontal: 2 }}>{webOAuthTitle || '授权登录'}</Text>
+            <View style={{ width: 38 }} />
+          </View>
+        </View>
+        <View style={{ flex: 1 }}>
+          <WebView
+            source={{ uri: webOAuthUrl }}
+            originWhitelist={['https://*', 'http://*', 'monkeycode://*']}
+            onNavigationStateChange={onWebOAuthNav}
+            onShouldStartLoadWithRequest={onWebOAuthShouldStart}
+            sharedCookiesEnabled
+            thirdPartyCookiesEnabled
+            startInLoadingState
+            renderLoading={() => (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: t.bg }}>
+                <ActivityIndicator color={t.ac} />
+              </View>
+            )}
+            style={{ flex: 1, backgroundColor: t.bg }}
+          />
+          {busy ? (
+            <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: t.dark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.82)' }}>
+              <View style={[{ backgroundColor: t.bg2, borderRadius: 18, paddingVertical: 22, paddingHorizontal: 26, alignItems: 'center', gap: 12, minWidth: 200 }, t.shCard]}>
+                <ActivityIndicator color={t.ac} />
+                <Text style={{ color: t.tx2, fontSize: 14 }}>{phase || '正在完成登录…'}</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: t.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 32, paddingTop: insets.top + 40 }} keyboardShouldPersistTaps="handled">
-        <View style={{ alignItems: 'center', marginBottom: 32 }}>
-          <Pressable onPress={onLogoTap} hitSlop={10}>
-            <Image source={t.dark ? LOGO_DARK : LOGO_LIGHT} style={{ width: 104, height: 104, marginBottom: 10 }} resizeMode="contain" />
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: pageBg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <StatusBar style="light" />
+      {HeroBackground}
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 28, paddingBottom: 34, paddingTop: insets.top + 36 }} keyboardShouldPersistTaps="handled">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <Pressable onPress={onLogoTap} hitSlop={10} style={[{ width: 60, height: 60, borderRadius: 19, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, { shadowColor: '#000000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.22, shadowRadius: 14, elevation: 4 }]}>
+            <Image source={LOGO_LIGHT} style={{ width: 42, height: 42 }} resizeMode="contain" />
           </Pressable>
-          <Text style={{ fontSize: 27, fontWeight: '800', color: t.tx, letterSpacing: 0 }}>MonkeyCode</Text>
-          <Text style={{ fontSize: 13, color: t.tx3, marginTop: 3 }}>智能开发平台</Text>
+          <View>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0 }}>MonkeyCode</Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.82)', marginTop: 2, letterSpacing: 1 }}>智能开发平台</Text>
+          </View>
         </View>
 
-        <View style={[{ backgroundColor: t.bg2, borderRadius: 24, padding: 22 }, t.shCard]}>
-          {view === 'choices' && cloud ? (
+        <Text style={{ marginTop: 32, fontSize: 30, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0 }}>欢迎回来 👋</Text>
+        <Text style={{ marginTop: 8, fontSize: 14.5, fontWeight: '500', color: 'rgba(255,255,255,0.85)' }}>登录以继续你的智能开发之旅</Text>
+
+        <View style={[{ marginTop: 30, backgroundColor: sheetBg, borderRadius: 26, paddingTop: 22, paddingHorizontal: 22, paddingBottom: 24, gap: 15 }, loginShadow]}>
+          {view === 'phone' && cloud ? (
             <>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: t.tx2 }}>选择登录方式</Text>
-              <Pressable onPress={() => { setError(''); setView('baizhi'); }} disabled={busy || codeBusy} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: t.ac, borderRadius: 16, paddingVertical: 15, marginTop: 18 }, t.shCard, { shadowColor: t.ac }, (busy || codeBusy || pressed) && { opacity: busy || codeBusy ? 0.6 : 0.8 }]}>
-                <Image source={BAIZHI_ICON} style={{ width: 21, height: 21 }} resizeMode="contain" />
-                <Text style={{ color: t.acInk, fontSize: 16, fontWeight: '700' }}>百智云登录</Text>
-                <View style={{ backgroundColor: t.dark ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.28)', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 1.5 }}>
-                  <Text style={{ color: t.acInk, fontSize: 11, fontWeight: '700' }}>推荐</Text>
-                </View>
+              <Pressable onPress={() => { setError(''); setView('password'); }} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}>
+                <Icons.back size={16} color={mutedText} sw={2} />
+                <Text style={{ color: mutedText, fontSize: 14 }}>账号密码登录</Text>
               </Pressable>
 
-              {AppleButton}
-
-              <Pressable onPress={() => { setError(''); setView('password'); }} disabled={busy || codeBusy} style={({ pressed }) => [{ alignItems: 'center', justifyContent: 'center', backgroundColor: t.bg3, borderWidth: 1, borderColor: t.line2, borderRadius: 16, paddingVertical: 15, marginTop: 12 }, (busy || codeBusy || pressed) && { opacity: busy || codeBusy ? 0.6 : 0.8 }]}>
-                <Text style={{ color: t.tx, fontSize: 15, fontWeight: '600' }}>账号密码登录</Text>
-              </Pressable>
-
-              {busy ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12 }}>
-                  <ActivityIndicator color={t.tx2} size="small" />
-                  <Text style={{ color: t.tx2, fontSize: 13 }}>{phase || '正在登录…'}</Text>
-                </View>
-              ) : null}
-              {error ? <Text style={{ color: t.red, fontSize: 13, marginTop: 12 }}>{error}</Text> : null}
-              {Agreement}
-            </>
-          ) : view === 'baizhi' && cloud ? (
-            <>
-              <Pressable onPress={() => { setError(''); setView('choices'); }} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 16, alignSelf: 'flex-start' }}>
-                <Icons.back size={16} color={t.tx2} sw={2} />
-                <Text style={{ color: t.tx2, fontSize: 14 }}>其它登录方式</Text>
-              </Pressable>
-
-              <Text style={{ fontSize: 13, color: t.tx2, marginBottom: 8 }}>手机号</Text>
-              <TextInput
-                value={phone}
-                onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, 11))}
-                placeholder="请输入手机号"
-                placeholderTextColor={t.tx3}
-                keyboardType="phone-pad"
-                textContentType="telephoneNumber"
-                editable={!busy && !codeBusy}
-                style={fieldStyle('phone')}
-                {...focusProps('phone')}
-              />
-
-              <Text style={{ fontSize: 13, color: t.tx2, marginBottom: 8, marginTop: 16 }}>验证码</Text>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                onPress={() => phoneInputRef.current?.focus()}
+                style={({ pressed }) => [fieldFrameStyle('phone'), focused === 'phone' && { borderWidth: 2, shadowOpacity: 0.18, shadowRadius: 12 }, pressed && { opacity: 0.96 }]}
+              >
+                <Icons.phoneDevice size={19} color={focused === 'phone' ? heroGreen : iconIdle} />
                 <TextInput
-                  value={code}
-                  onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="短信验证码"
-                  placeholderTextColor={t.tx3}
-                  keyboardType="number-pad"
-                  textContentType="oneTimeCode"
-                  editable={!busy}
-                  style={[fieldStyle('code'), { flex: 1 }]}
-                  onSubmitEditing={onBaizhiSubmit}
-                  {...focusProps('code')}
+                  ref={phoneInputRef}
+                  value={phone}
+                  onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, 11))}
+                  placeholder="请输入手机号"
+                  placeholderTextColor="#B4B9B0"
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                  editable={!busy && !codeBusy}
+                  style={inputStyle}
+                  {...focusProps('phone')}
                 />
+              </Pressable>
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={[fieldFrameStyle('code'), { flex: 1 }]}>
+                  <Icons.key size={19} color={focused === 'code' ? heroGreen : iconIdle} sw={1.9} />
+                  <TextInput
+                    value={code}
+                    onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="短信验证码"
+                    placeholderTextColor="#B4B9B0"
+                    keyboardType="number-pad"
+                    textContentType="oneTimeCode"
+                    editable={!busy}
+                    style={inputStyle}
+                    onSubmitEditing={onBaizhiSubmit}
+                    {...focusProps('code')}
+                  />
+                </View>
                 <Pressable
                   onPress={onSendCode}
                   disabled={busy || codeBusy || countdown > 0}
-                  style={({ pressed }) => [{ minWidth: 104, minHeight: Platform.OS === 'ios' ? 51 : 48, borderRadius: 14, borderWidth: 1, borderColor: t.line2, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, backgroundColor: t.bg3 }, pressed && { opacity: 0.82 }, (busy || codeBusy || countdown > 0) && { opacity: 0.55 }]}
+                  style={({ pressed }) => [{ width: 104, height: 54, borderRadius: 15, borderWidth: 1.5, borderColor: fieldBorder, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, backgroundColor: fieldBg }, pressed && { opacity: 0.82 }, (busy || codeBusy || countdown > 0) && { opacity: 0.55 }]}
                 >
-                  {codeBusy ? <ActivityIndicator color={t.ac} size="small" /> : <Text style={{ color: t.acTx, fontSize: 14, fontWeight: '700' }}>{countdown > 0 ? `${countdown}s` : '获取验证码'}</Text>}
+                  {codeBusy ? <ActivityIndicator color={heroGreen} size="small" /> : <Text style={{ color: heroGreen, fontSize: 14, fontWeight: '800' }}>{countdown > 0 ? `${countdown}s` : '获取验证码'}</Text>}
                 </Pressable>
               </View>
 
               {error ? <Text style={{ color: t.red, fontSize: 13, marginTop: 12 }}>{error}</Text> : null}
               {Agreement}
 
-              <Pressable onPress={onBaizhiSubmit} disabled={busy || codeBusy} style={({ pressed }) => [{ backgroundColor: t.ac, borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginTop: 16 }, t.shCard, { shadowColor: t.ac }, (busy || codeBusy || pressed) && { opacity: busy || codeBusy ? 0.75 : 0.86 }]}>
+              <Pressable onPress={onBaizhiSubmit} disabled={loginDisabled} style={({ pressed }) => [{ height: 54, backgroundColor: heroGreen2, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginTop: 4, overflow: 'hidden' }, primaryShadow, (loginDisabled || pressed) && { opacity: loginDisabled ? 0.55 : 0.86 }]}>
+                {LoginButtonBackground}
                 {busy ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <ActivityIndicator color={t.acInk} size="small" />
-                    <Text style={{ color: t.acInk, fontSize: 16, fontWeight: '700' }}>{phase || '登录中…'}</Text>
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }}>{phase || '登录中…'}</Text>
                   </View>
-                ) : <Text style={{ color: t.acInk, fontSize: 16, fontWeight: '700' }}>登录</Text>}
+                ) : <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 2 }}>登 录</Text>}
+              </Pressable>
+            </>
+          ) : view === 'douyinPhone' && cloud ? (
+            <>
+              <Pressable onPress={() => { setError(''); setView('password'); }} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}>
+                <Icons.back size={16} color={mutedText} sw={2} />
+                <Text style={{ color: mutedText, fontSize: 14 }}>其它登录方式</Text>
+              </Pressable>
+
+              <Text style={{ fontSize: 18, fontWeight: '800', color: darkText, letterSpacing: 0 }}>抖音登录</Text>
+              <Pressable
+                onPress={() => douyinPhoneInputRef.current?.focus()}
+                style={({ pressed }) => [fieldFrameStyle('douyinPhone'), focused === 'douyinPhone' && { borderWidth: 2, shadowOpacity: 0.18, shadowRadius: 12 }, pressed && { opacity: 0.96 }]}
+              >
+                <Icons.phoneDevice size={19} color={focused === 'douyinPhone' ? heroGreen : iconIdle} />
+                <TextInput
+                  ref={douyinPhoneInputRef}
+                  value={phone}
+                  onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, 11))}
+                  placeholder="请输入手机号"
+                  placeholderTextColor="#B4B9B0"
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                  editable={!busy && !codeBusy}
+                  style={inputStyle}
+                  {...focusProps('douyinPhone')}
+                />
+              </Pressable>
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={[fieldFrameStyle('douyinCode'), { flex: 1 }]}>
+                  <Icons.key size={19} color={focused === 'douyinCode' ? heroGreen : iconIdle} sw={1.9} />
+                  <TextInput
+                    value={code}
+                    onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="短信验证码"
+                    placeholderTextColor="#B4B9B0"
+                    keyboardType="number-pad"
+                    textContentType="oneTimeCode"
+                    editable={!busy}
+                    style={inputStyle}
+                    onSubmitEditing={onDouyinPhoneSubmit}
+                    {...focusProps('douyinCode')}
+                  />
+                </View>
+                <Pressable
+                  onPress={onDouyinSendCode}
+                  disabled={busy || codeBusy || countdown > 0}
+                  style={({ pressed }) => [{ width: 104, height: 54, borderRadius: 15, borderWidth: 1.5, borderColor: fieldBorder, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, backgroundColor: fieldBg }, pressed && { opacity: 0.82 }, (busy || codeBusy || countdown > 0) && { opacity: 0.55 }]}
+                >
+                  {codeBusy ? <ActivityIndicator color={heroGreen} size="small" /> : <Text style={{ color: heroGreen, fontSize: 14, fontWeight: '800' }}>{countdown > 0 ? `${countdown}s` : '获取验证码'}</Text>}
+                </Pressable>
+              </View>
+
+              {error ? <Text style={{ color: t.red, fontSize: 13, marginTop: 12 }}>{error}</Text> : null}
+              {Agreement}
+
+              <Pressable onPress={onDouyinPhoneSubmit} disabled={loginDisabled} style={({ pressed }) => [{ height: 54, backgroundColor: heroGreen2, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginTop: 4, overflow: 'hidden' }, primaryShadow, (loginDisabled || pressed) && { opacity: loginDisabled ? 0.55 : 0.86 }]}>
+                {LoginButtonBackground}
+                {busy ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }}>{phase || '登录中…'}</Text>
+                  </View>
+                ) : <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 2 }}>登 录</Text>}
               </Pressable>
             </>
           ) : (
             <>
-              {cloud ? (
-                <Pressable onPress={() => { setError(''); setView('choices'); }} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 16, alignSelf: 'flex-start' }}>
-                  <Icons.back size={16} color={t.tx2} sw={2} />
-                  <Text style={{ color: t.tx2, fontSize: 14 }}>其它登录方式</Text>
-                </Pressable>
-              ) : null}
+              <Text style={{ fontSize: 18, fontWeight: '600', color: darkText, letterSpacing: 0 }}>账号密码登录</Text>
 
-              <Text style={{ fontSize: 13, color: t.tx2, marginBottom: 8 }}>邮箱</Text>
-              <TextInput value={email} onChangeText={setEmail} placeholder="monkeycode@example.com" placeholderTextColor={t.tx3}
-                autoCapitalize="none" autoCorrect={false} keyboardType="email-address" editable={!busy && !codeBusy} style={fieldStyle('email')} {...focusProps('email')} />
+              <View style={fieldFrameStyle('email')}>
+                <Icons.mail size={19} color={focused === 'email' ? heroGreen : iconIdle} sw={1.9} />
+                <TextInput value={email} onChangeText={setEmail} placeholder="dev@monkeycode.io" placeholderTextColor="#B4B9B0"
+                  autoCapitalize="none" autoCorrect={false} keyboardType="email-address" editable={!busy && !codeBusy}
+                  style={inputStyle} {...focusProps('email')} />
+              </View>
 
-              <Text style={{ fontSize: 13, color: t.tx2, marginBottom: 8, marginTop: 16 }}>密码</Text>
-              <View style={[fieldStyle('pwd'), { flexDirection: 'row', alignItems: 'center', paddingVertical: 0, paddingRight: 6 }]}>
-                <TextInput value={password} onChangeText={setPassword} placeholder="••••••••" placeholderTextColor={t.tx3}
+              <View style={[fieldFrameStyle('pwd'), { paddingRight: 8 }]}>
+                <Icons.lock size={19} color={focused === 'pwd' ? heroGreen : iconIdle} sw={1.9} />
+                <TextInput value={password} onChangeText={setPassword} placeholder="请输入密码" placeholderTextColor="#B4B9B0"
                   secureTextEntry={!showPwd} autoCapitalize="none" autoCorrect={false} editable={!busy && !codeBusy}
-                  style={{ flex: 1, color: t.tx, fontSize: 15, paddingVertical: Platform.OS === 'ios' ? 14 : 10 }}
+                  style={inputStyle}
                   onSubmitEditing={onPasswordSubmit} {...focusProps('pwd')} />
                 <Pressable onPress={() => setShowPwd((v) => !v)} hitSlop={8} style={{ padding: 8 }}>
-                  {showPwd ? <Icons.eyeOff size={20} color={t.tx2} sw={1.8} /> : <Icons.eye size={20} color={t.tx2} sw={1.8} />}
+                  {showPwd ? <Icons.eye size={20} color={iconIdle} sw={1.8} /> : <Icons.eyeOff size={20} color={iconIdle} sw={1.8} />}
                 </Pressable>
               </View>
 
               {error ? <Text style={{ color: t.red, fontSize: 13, marginTop: 12 }}>{error}</Text> : null}
               {Agreement}
 
-              <Pressable onPress={onPasswordSubmit} disabled={busy || codeBusy} style={({ pressed }) => [{ backgroundColor: t.ac, borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginTop: 16 }, t.shCard, { shadowColor: t.ac }, (busy || codeBusy || pressed) && { opacity: busy || codeBusy ? 0.75 : 0.86 }]}>
+              <Pressable onPress={onPasswordSubmit} disabled={loginDisabled} style={({ pressed }) => [{ height: 54, backgroundColor: heroGreen2, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginTop: 4, overflow: 'hidden' }, primaryShadow, (loginDisabled || pressed) && { opacity: loginDisabled ? 0.55 : 0.86 }]}>
+                {LoginButtonBackground}
                 {busy ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <ActivityIndicator color={t.acInk} size="small" />
-                    <Text style={{ color: t.acInk, fontSize: 16, fontWeight: '700' }}>{phase || '登录中…'}</Text>
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }}>{phase || '登录中…'}</Text>
                   </View>
-                ) : <Text style={{ color: t.acInk, fontSize: 16, fontWeight: '700' }}>登录</Text>}
+                ) : <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 2 }}>登 录</Text>}
               </Pressable>
 
-              {/* 自定义服务地址（测试环境等）没有“选择登录方式”页，Apple 登录入口放在这里 */}
-              {!cloud ? AppleButton : null}
             </>
           )}
 
@@ -364,6 +764,8 @@ export default function LoginScreen() {
             </View>
           ) : null}
         </View>
+
+        {SocialLoginButtons}
       </ScrollView>
     </KeyboardAvoidingView>
   );
