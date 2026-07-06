@@ -222,6 +222,14 @@ export async function getUserStatus(): Promise<UserStatus> {
   return resp.data?.user ?? {};
 }
 
+/** 发送邮箱绑定验证邮件。验证链接被点击后，后端才会把邮箱写入用户信息。 */
+export function sendBindEmailVerification(email: string) {
+  return request('/api/v1/users/email/bind-request', {
+    method: 'PUT',
+    body: { email },
+  });
+}
+
 export async function getWallet(): Promise<Wallet | null> {
   const resp = await request<Wallet>('/api/v1/users/wallet');
   return resp.data ?? null;

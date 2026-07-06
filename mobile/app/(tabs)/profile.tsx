@@ -1,9 +1,9 @@
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getCheckinStatus, getSubscription, getWallet, listInvitations, resolveAssetUrl, submitCheckin } from '@/api/client';
+import { getCheckinStatus, getSubscription, getWallet, listInvitations, resolveAssetUrl, sendBindEmailVerification, submitCheckin } from '@/api/client';
 import { checkAppUpdate, checkOta, currentOtaId, downloadAndApplyOta, installedAppVersion } from '@/updates/useOtaUpdate';
 import { obtainCaptchaToken } from '@/api/captcha';
 import type { InvitationItem, Subscription, Wallet } from '@/api/types';
@@ -103,7 +103,7 @@ function About({ t }: { t: Theme }) {
       { text: '取消', style: 'cancel' },
       { text: '立即更新', onPress: applyOtaNow },
     ]);
-  }, [otaBusy, appVersion, applyOtaNow]);
+  }, [otaBusy, applyOtaNow, verLine]);
   return (
     <Card style={{ padding: 16 }}>
       <Text style={{ fontSize: 12, fontWeight: '700', color: t.tx3, letterSpacing: 0.5, marginBottom: 13 }}>关于</Text>
@@ -142,6 +142,86 @@ function About({ t }: { t: Theme }) {
         </Pressable>
       </View>
     </Card>
+  );
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function BindEmailSheet({
+  visible,
+  email,
+  busy,
+  onChangeEmail,
+  onClose,
+  onSubmit,
+}: {
+  visible: boolean;
+  email: string;
+  busy: boolean;
+  onChangeEmail: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!visible) setFocused(false);
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={{ backgroundColor: t.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: StyleSheet.hairlineWidth, borderColor: t.line2, paddingHorizontal: spacing.pad, paddingBottom: insets.bottom + 16 }}>
+          <View style={{ width: 38, height: 4, borderRadius: 99, backgroundColor: t.line2, alignSelf: 'center', marginTop: 10, marginBottom: 14 }} />
+          <Text style={{ fontSize: 18, fontWeight: '800', color: t.tx }}>绑定邮箱</Text>
+          <Text style={{ fontSize: 13, color: t.tx2, fontWeight: '600', marginTop: 18, marginBottom: 8 }}>邮箱地址</Text>
+          <TextInput
+            value={email}
+            onChangeText={onChangeEmail}
+            placeholder="name@example.com"
+            placeholderTextColor={t.tx3}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!busy}
+            returnKeyType="send"
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onSubmitEditing={onSubmit}
+            style={{
+              backgroundColor: t.bg3,
+              borderWidth: 1,
+              borderColor: focused ? t.ac : t.line2,
+              borderRadius: 14,
+              paddingHorizontal: 14,
+              paddingVertical: Platform.OS === 'ios' ? 13 : 9,
+              color: t.tx,
+              fontSize: 15,
+            }}
+          />
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+            <Pressable
+              onPress={onClose}
+              disabled={busy}
+              style={({ pressed }) => [{ flex: 1, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: t.bg3 }, pressed && { opacity: 0.65 }, busy && { opacity: 0.5 }]}
+            >
+              <Text style={{ color: t.tx2, fontSize: 14.5, fontWeight: '700' }}>取消</Text>
+            </Pressable>
+            <Pressable
+              onPress={onSubmit}
+              disabled={busy || !email.trim()}
+              style={({ pressed }) => [{ flex: 1.45, height: 46, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: t.ac }, pressed && { transform: [{ scale: 0.98 }] }, (busy || !email.trim()) && { opacity: 0.45 }]}
+            >
+              {busy ? <ActivityIndicator size="small" color={t.acInk} /> : <Icons.mail size={16} color={t.acInk} sw={2.1} />}
+              <Text style={{ color: t.acInk, fontSize: 14.5, fontWeight: '800' }}>发送验证邮件</Text>
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -226,7 +306,7 @@ export default function ProfileScreen() {
   const t = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, baseUrl, logout, deleteAccount, appleSession } = useAuth();
+  const { user, baseUrl, logout, deleteAccount, appleSession, refreshUser } = useAuth();
   const [busy, setBusy] = useState(false);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
@@ -238,11 +318,14 @@ export default function ProfileScreen() {
   const [avatarBroken, setAvatarBroken] = useState(false);
   const [checkedIn, setCheckedIn] = useState<boolean | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [bindEmailOpen, setBindEmailOpen] = useState(false);
+  const [bindEmail, setBindEmail] = useState('');
+  const [bindingEmail, setBindingEmail] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      Promise.allSettled([getWallet(), getSubscription(), listInvitations(), getCheckinStatus()]).then(([w, s, inv, c]) => {
+      Promise.allSettled([refreshUser(), getWallet(), getSubscription(), listInvitations(), getCheckinStatus()]).then(([, w, s, inv, c]) => {
         if (!active) return;
         if (w.status === 'fulfilled') setWallet(w.value);
         if (s.status === 'fulfilled') setSubscription(s.value);
@@ -251,7 +334,7 @@ export default function ProfileScreen() {
         setLoadingWallet(false);
       });
       return () => { active = false; };
-    }, []),
+    }, [refreshUser]),
   );
 
   const showToast = useCallback((msg: string) => {
@@ -263,6 +346,33 @@ export default function ProfileScreen() {
     await Clipboard.setStringAsync(text);
     showToast(msg);
   }, [showToast]);
+
+  const closeBindEmail = useCallback(() => {
+    if (bindingEmail) return;
+    setBindEmailOpen(false);
+    setBindEmail('');
+  }, [bindingEmail]);
+
+  const handleBindEmail = useCallback(async () => {
+    if (bindingEmail) return;
+    const nextEmail = bindEmail.trim();
+    if (!EMAIL_RE.test(nextEmail)) {
+      Alert.alert('邮箱格式不正确', '请输入有效的邮箱地址。');
+      return;
+    }
+
+    setBindingEmail(true);
+    try {
+      await sendBindEmailVerification(nextEmail);
+      setBindEmailOpen(false);
+      setBindEmail('');
+      Alert.alert('验证邮件已发送', `请前往 ${nextEmail} 查收验证邮件，完成验证后邮箱会显示在本页。`);
+    } catch (e) {
+      Alert.alert('绑定邮箱失败', e instanceof Error && e.message ? e.message : '请稍后重试');
+    } finally {
+      setBindingEmail(false);
+    }
+  }, [bindEmail, bindingEmail]);
 
   const doCheckin = useCallback(async () => {
     if (checkingIn || checkedIn) return;
@@ -320,6 +430,13 @@ export default function ProfileScreen() {
   const email = user?.email || '';
   const avatarUrl = resolveAssetUrl(user?.avatar_url || user?.avatar);
   useEffect(() => { setAvatarBroken(false); }, [avatarUrl]);
+  useEffect(() => {
+    if (email) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshUser().catch(() => undefined);
+    });
+    return () => sub.remove();
+  }, [email, refreshUser]);
   const credits = Math.floor((wallet?.balance ?? 0) / 1000).toLocaleString('zh-CN');
   const inviteLink = user?.id ? `${baseUrl}/?ic=${user.id}` : '';
   const planKey = normalizePlan(subscription?.plan);
@@ -341,20 +458,30 @@ export default function ProfileScreen() {
         <View style={{ paddingHorizontal: spacing.pad, paddingTop: 12, gap: spacing.gap }}>
           {/* identity */}
           <Card style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            <View style={[{ width: 60, height: 60, borderRadius: 99, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: avatarUrl && !avatarBroken ? t.ac : t.dark ? t.bg3 : '#fff' }, t.shCard]}>
+            <View style={[{ width: 60, height: 60, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: avatarUrl && !avatarBroken ? t.ac : t.dark ? t.bg3 : '#fff' }, t.shCard]}>
               {avatarUrl && !avatarBroken
-                ? <Image source={{ uri: avatarUrl }} onError={() => setAvatarBroken(true)} style={{ width: 60, height: 60, borderRadius: 99 }} />
+                ? <Image source={{ uri: avatarUrl }} onError={() => setAvatarBroken(true)} style={{ width: 60, height: 60, borderRadius: 18 }} />
                 : <MonkeyLogo size={52} />}
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: '700', color: t.tx }}>{name}</Text>
-              {email ? <Text numberOfLines={1} style={{ marginTop: 3, fontSize: 13, color: t.tx2 }}>{email}</Text> : null}
-              {user?.id ? (
-                <Pressable onPress={() => copy(user.id!, '用户 ID 已复制')} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8, alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 99, backgroundColor: t.bg3 }, pressed && { opacity: 0.6 }]}>
-                  <Text style={{ fontSize: 11, color: t.tx3, fontFamily: 'monospace' }}>ID {user.id.slice(0, 8)}</Text>
-                  <Icons.copy size={11} color={t.tx3} sw={1.8} />
-                </Pressable>
-              ) : null}
+              <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: '800', color: t.tx }}>{name}</Text>
+              <View style={{ marginTop: 7, gap: 5 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                  <Icons.mail size={13} color={t.tx3} sw={1.8} />
+                  <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: t.tx3, fontWeight: '500' }}>{email || '未绑定邮箱'}</Text>
+                  {!email ? (
+                    <Pressable onPress={() => setBindEmailOpen(true)} hitSlop={8} style={({ pressed }) => [{ paddingHorizontal: 4, paddingVertical: 2 }, pressed && { opacity: 0.55 }]}>
+                      <Text style={{ color: t.acTx, fontSize: 12.5, fontWeight: '700' }}>绑定</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                {user?.id ? (
+                  <Pressable onPress={() => copy(user.id!, '用户 ID 已复制')} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' }, pressed && { opacity: 0.55 }]}>
+                    <Icons.copy size={13} color={t.tx3} sw={1.8} />
+                    <Text style={{ fontSize: 12.5, color: t.tx3, fontFamily: 'monospace' }}>{user.id.slice(0, 8)}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           </Card>
 
@@ -430,6 +557,7 @@ export default function ProfileScreen() {
       </ScrollView>
 
       <GlassTop title="我的" collapsed={collapsed} />
+      <BindEmailSheet visible={bindEmailOpen} email={bindEmail} busy={bindingEmail} onChangeEmail={setBindEmail} onClose={closeBindEmail} onSubmit={handleBindEmail} />
       {toast ? <Toast text={toast} bottom={insets.bottom + 116} /> : null}
     </View>
   );

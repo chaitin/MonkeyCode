@@ -49,6 +49,7 @@ export const Icons: Record<string, IconFn> = {
   stop: (p) => <Ic {...p}><Rect x={7} y={7} width={10} height={10} rx={2.2} fill={p.color} stroke="none" /></Ic>,
   diamond: (p) => <Ic {...p}><Path d="M5 9.5l3-4.5h8l3 4.5-7 9z M5 9.5h14" /></Ic>,
   logout: (p) => <Ic {...p}><Path d="M14 7V5.5A1.5 1.5 0 0 0 12.5 4H6a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 6 20h6.5a1.5 1.5 0 0 0 1.5-1.5V17" /><Path d="M10 12h10m0 0l-3-3m3 3l-3 3" /></Ic>,
+  mail: (p) => <Ic {...p}><Rect x={3.5} y={5.5} width={17} height={13} rx={2.4} /><Path d="M5 8l7 5.2L19 8" /></Ic>,
   at: (p) => <Ic {...p}><Circle cx={12} cy={12} r={3.8} /><Path d="M15.8 12v1.5a2.5 2.5 0 0 0 5 0V12a8.5 8.5 0 1 0-3.3 6.7" /></Ic>,
   slash: (p) => <Ic {...p}><Path d="M15 4L9 20" /></Ic>,
   attach: (p) => <Ic {...p}><Path d="M19 11.5l-7.1 7.1a4 4 0 0 1-5.7-5.7l7.7-7.7a2.6 2.6 0 0 1 3.7 3.7l-7.6 7.6a1.2 1.2 0 0 1-1.7-1.7l6.9-6.9" /></Ic>,

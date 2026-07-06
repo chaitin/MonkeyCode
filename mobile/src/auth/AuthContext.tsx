@@ -37,6 +37,7 @@ interface AuthState {
   basicAuth: string; // 测试环境的 HTTP Basic Auth（"user:pass"），可选
   savedEmail: string;
   savedPassword: string; // 上次登录成功的密码，用于自动填充
+  refreshUser: () => Promise<UserStatus>;
   login: (email: string, password: string) => Promise<void>;
   loginWithApple: (params: { identity_token: string; authorization_code?: string; full_name?: string }) => Promise<void>;
   completeOAuthLogin: () => Promise<void>; // 百智云 OAuth 在 WebView 完成后，用会话 Cookie 确认登录
@@ -144,6 +145,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [baseUrl],
   );
 
+  const refreshUser = useCallback(async () => {
+    const u = await getUserStatus();
+    if (u && (u.id || u.email || u.username)) {
+      setUser(u);
+      setAuthenticated(true);
+    }
+    return u;
+  }, []);
+
   // 注销账号：后端删除成功后，账号已不存在——清掉保存的自动填充凭据，
   // 其余登录态清理复用 doLogout（保持与退出登录完全一致的清场顺序）。
   const deleteAccount = useCallback(async () => {
@@ -222,6 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       basicAuth,
       savedEmail,
       savedPassword,
+      refreshUser,
       login,
       loginWithApple,
       completeOAuthLogin,
@@ -230,7 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateBaseUrl,
       updateBasicAuth,
     }),
-    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, login, loginWithApple, completeOAuthLogin, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
+    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, refreshUser, login, loginWithApple, completeOAuthLogin, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
