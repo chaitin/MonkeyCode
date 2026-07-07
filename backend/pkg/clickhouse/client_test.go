@@ -4,11 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"io"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/golang-migrate/migrate/v4/source"
+	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
@@ -323,6 +326,60 @@ func TestBuildMigrationSourcesUseUTCDateTimeColumns(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLatestTaskLogTime(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	client := NewWithDBTables(sqlDB, "task_logs_test", "model_usage_events_test")
+	taskID := uuid.New()
+	latest := time.Date(2026, 7, 7, 2, 33, 3, 722859301, time.UTC)
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT maxOrNull(ts) AS ts FROM `task_logs_test` WHERE task_id = ?")).
+		WithArgs(taskID.String()).
+		WillReturnRows(sqlmock.NewRows([]string{"ts"}).AddRow(latest))
+
+	got, ok, err := client.LatestTaskLogTime(context.Background(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected latest task log time")
+	}
+	if !got.Equal(latest) {
+		t.Fatalf("latest = %s, want %s", got, latest)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLatestTaskLogTimeNoRows(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	client := NewWithDBTables(sqlDB, "task_logs_test", "model_usage_events_test")
+	taskID := uuid.New()
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT maxOrNull(ts) AS ts FROM `task_logs_test` WHERE task_id = ?")).
+		WithArgs(taskID.String()).
+		WillReturnRows(sqlmock.NewRows([]string{"ts"}).AddRow(nil))
+
+	_, ok, err := client.LatestTaskLogTime(context.Background(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("expected no latest task log time")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 	migrateclickhouse "github.com/golang-migrate/migrate/v4/database/clickhouse"
 	"github.com/golang-migrate/migrate/v4/source"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/google/uuid"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
 )
@@ -236,6 +237,25 @@ type TeamConversationListResult struct {
 	Rows        []TeamConversationRow
 	NextCursor  string
 	HasNextPage bool
+}
+
+func (c *Client) LatestTaskLogTime(ctx context.Context, taskID uuid.UUID) (time.Time, bool, error) {
+	if c == nil || c.db == nil {
+		return time.Time{}, false, fmt.Errorf("clickhouse client is nil")
+	}
+	tableIdentifier, err := quoteIdentifier(c.Table())
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	query := fmt.Sprintf(`SELECT maxOrNull(ts) AS ts FROM %s WHERE task_id = ?`, tableIdentifier)
+	var latest sql.NullTime
+	if err := c.db.QueryRowContext(ctx, query, taskID.String()).Scan(&latest); err != nil {
+		return time.Time{}, false, err
+	}
+	if !latest.Valid {
+		return time.Time{}, false, nil
+	}
+	return latest.Time, true, nil
 }
 
 func (c *Client) InsertModelUsageEvent(ctx context.Context, event ModelUsageEvent) error {
