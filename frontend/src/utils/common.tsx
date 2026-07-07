@@ -14,12 +14,10 @@ function commonText(key: string, options?: Record<string, unknown>): string {
   return String(i18n.t(key, options))
 }
 
-/** GitHub App install URL: production uses monkeycode-ai.com, other domains use the dev app. */
-export function getGithubAppInstallUrl(): string {
-  if (typeof window !== "undefined" && window.location.origin === "https://monkeycode-ai.com") {
-    return "https://github.com/apps/monkeycode-ai/installations/new"
-  }
-  return "https://github.com/apps/mcai-dev-nb/installations/new"
+export function getGithubAppInstallUrl(isGlobalRegion: boolean): string {
+  return isGlobalRegion
+    ? "https://github.com/apps/monkeycode-global/installations/new"
+    : "https://github.com/apps/monkeycode-ai/installations/new"
 }
 
 export function getHostStatusBadge(status?: string) {

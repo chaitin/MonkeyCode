@@ -10,6 +10,7 @@ const sourceFiles = {
   editIdentity: readSource("../src/components/console/settings/edit-identity.tsx"),
   identities: readSource("../src/components/console/settings/identities.tsx"),
 };
+const commonSource = readSource("../src/utils/common.tsx");
 const cjkPattern = /[\u3400-\u9fff]/;
 
 function readSource(path: string) {
@@ -39,4 +40,14 @@ test("设置身份页面提供中英文资源", () => {
   assert.equal(en.consoleSettings.identities.actions.rebind, "Rebind");
   assert.equal(cn.consoleSettings.identities.delete.description, "确定要移除身份 \"{{name}}\" 吗？此操作不可撤销。");
   assert.equal(en.consoleSettings.identities.delete.description, "Remove identity \"{{name}}\"? This action cannot be undone.");
+});
+
+test("GitHub App 绑定地址按国内和国际版切换", () => {
+  assert.match(sourceFiles.identities, /useAppRuntime/);
+  assert.match(sourceFiles.identities, /const isGlobalRegion = serverConfig\?\.region === "global"/);
+  assert.match(sourceFiles.identities, /getGithubAppInstallUrl\(isGlobalRegion\)/);
+  assert.match(commonSource, /getGithubAppInstallUrl\(isGlobalRegion: boolean\)/);
+  assert.match(commonSource, /https:\/\/github\.com\/apps\/monkeycode-global\/installations\/new/);
+  assert.match(commonSource, /https:\/\/github\.com\/apps\/monkeycode-ai\/installations\/new/);
+  assert.doesNotMatch(commonSource, /mcai-dev-nb|window\.location\.origin/);
 });

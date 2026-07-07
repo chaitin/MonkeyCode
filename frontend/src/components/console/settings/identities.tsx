@@ -43,10 +43,13 @@ import Icon from "@/components/common/Icon"
 import { useCommonData } from "../data-provider"
 import { Spinner } from "@/components/ui/spinner"
 import { useTranslation } from "react-i18next"
+import { useAppRuntime } from "@/components/app-runtime-provider"
 
 export default function Identities() {
   const { t } = useTranslation()
-  const githubAppInstallUrl = getGithubAppInstallUrl()
+  const { serverConfig } = useAppRuntime()
+  const isGlobalRegion = serverConfig?.region === "global"
+  const githubAppInstallUrl = getGithubAppInstallUrl(isGlobalRegion)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [giteeBindLoading, setGiteeBindLoading] = useState(false)
   const [giteaBindLoading, setGiteaBindLoading] = useState(false)
