@@ -21,6 +21,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
@@ -610,6 +611,7 @@ func (h *HostRepo) CompleteCreateVirtualMachine(ctx context.Context, id string, 
 func (h *HostRepo) DeleteVirtualMachine(ctx context.Context, uid uuid.UUID, hostID, id string, fn func(*db.VirtualMachine) error) error {
 	return entx.WithTx2(ctx, h.db, func(tx *db.Tx) error {
 		vm, err := tx.VirtualMachine.Query().
+			WithTasks().
 			Where(virtualmachine.ID(id)).
 			Where(virtualmachine.UserID(uid)).
 			First(ctx)
@@ -625,6 +627,27 @@ func (h *HostRepo) DeleteVirtualMachine(ctx context.Context, uid uuid.UUID, host
 			SetIsRecycled(true).
 			Exec(ctx); err != nil {
 			return err
+		}
+
+		taskIDs := make([]uuid.UUID, 0, len(vm.Edges.Tasks))
+		for _, tk := range vm.Edges.Tasks {
+			if tk == nil {
+				continue
+			}
+			taskIDs = append(taskIDs, tk.ID)
+		}
+		if len(taskIDs) > 0 {
+			_, err := tx.Task.Update().
+				Where(
+					task.IDIn(taskIDs...),
+					task.StatusNotIn(consts.TaskStatusFinished, consts.TaskStatusError),
+				).
+				SetStatus(consts.TaskStatusFinished).
+				SetCompletedAt(time.Now()).
+				Save(ctx)
+			if err != nil {
+				return err
+			}
 		}
 
 		_, err = tx.VirtualMachine.Delete().Where(virtualmachine.ID(id)).Exec(ctx)

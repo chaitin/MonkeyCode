@@ -23,6 +23,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
 
@@ -334,6 +335,97 @@ func TestHostUsecase_markRecycledTasksFinished(t *testing.T) {
 
 	if len(taskRepo.updatedIDs) != 1 || taskRepo.updatedIDs[0] != processingTask.ID {
 		t.Fatalf("updated task ids = %v, want only %s", taskRepo.updatedIDs, processingTask.ID)
+	}
+}
+
+func TestHostUsecase_DeleteVMFinishesBoundTasks(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := enttest.Open(t, "sqlite3", "file:host-usecase-delete-vm-finish-task-test?mode=memory&cache=shared&_fk=1")
+	defer client.Close()
+
+	userID := uuid.New()
+	if _, err := client.User.Create().
+		SetID(userID).
+		SetName("tester").
+		SetRole(consts.UserRoleIndividual).
+		SetStatus(consts.UserStatusActive).
+		Save(ctx); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	hostID := "host-1"
+	if _, err := client.Host.Create().
+		SetID(hostID).
+		SetUserID(userID).
+		SetHostname("host").
+		Save(ctx); err != nil {
+		t.Fatalf("create host: %v", err)
+	}
+
+	vmID := "vm-1"
+	if _, err := client.VirtualMachine.Create().
+		SetID(vmID).
+		SetHostID(hostID).
+		SetUserID(userID).
+		SetName("vm").
+		SetEnvironmentID("env-1").
+		Save(ctx); err != nil {
+		t.Fatalf("create vm: %v", err)
+	}
+
+	taskID := uuid.New()
+	if _, err := client.Task.Create().
+		SetID(taskID).
+		SetUserID(userID).
+		SetKind(consts.TaskTypeDevelop).
+		SetContent("content").
+		SetStatus(consts.TaskStatusProcessing).
+		Save(ctx); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	if _, err := client.TaskVirtualMachine.Create().
+		SetID(uuid.New()).
+		SetTaskID(taskID).
+		SetVirtualmachineID(vmID).
+		Save(ctx); err != nil {
+		t.Fatalf("bind task vm: %v", err)
+	}
+
+	i := do.New()
+	do.ProvideValue(i, client)
+	redisServer := miniredis.RunT(t)
+	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = redisClient.Close() })
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	do.ProvideValue(i, &config.Config{})
+	do.ProvideValue(i, logger)
+	do.ProvideValue(i, redisClient)
+	hostRepo, err := repo.NewHostRepo(i)
+	if err != nil {
+		t.Fatalf("new host repo: %v", err)
+	}
+	u := &HostUsecase{
+		repo:          hostRepo,
+		taskflow:      &preinsertTaskflowStub{vm: &preinsertVMCreateStub{db: client}},
+		logger:        logger,
+		vmexpireQueue: delayqueue.NewVMExpireQueue(redisClient, logger),
+	}
+
+	if err := u.DeleteVM(ctx, userID, hostID, vmID); err != nil {
+		t.Fatalf("DeleteVM() error = %v", err)
+	}
+
+	gotTask, err := client.Task.Get(ctx, taskID)
+	if err != nil {
+		t.Fatalf("query task: %v", err)
+	}
+	if gotTask.Status != consts.TaskStatusFinished {
+		t.Fatalf("task status = %s, want %s", gotTask.Status, consts.TaskStatusFinished)
+	}
+	if gotTask.CompletedAt.IsZero() {
+		t.Fatal("expected task completed_at to be set")
 	}
 }
 
