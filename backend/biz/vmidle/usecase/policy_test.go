@@ -109,6 +109,46 @@ func TestRefreshCachesNotFoundVM(t *testing.T) {
 	}
 }
 
+func TestShouldSkipRecycleForRecentTaskLastActiveAtSkipsClickHouse(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 7, 7, 10, 34, 38, 0, time.UTC)
+	taskID := uuid.New()
+	vm := &db.VirtualMachine{ID: "vm-recent-pg-activity", UserID: uuid.New()}
+	vm.Edges.Tasks = []*db.Task{{
+		ID:           taskID,
+		Status:       consts.TaskStatusProcessing,
+		LastActiveAt: now.Add(-time.Minute),
+	}}
+	redisClient := newTestRedis(t)
+	logger := slog.Default()
+	repo := &refreshHostRepoStub{vm: vm}
+	activity := &taskLogActivityStub{err: errors.New("unexpected clickhouse query")}
+	r := &vmIdleRefresher{
+		cfg:             &config.Config{VMIdle: config.VMIdle{SleepSeconds: 600, RecycleSeconds: 3600}},
+		redis:           redisClient,
+		logger:          logger,
+		hostRepo:        repo,
+		taskLogActivity: activity,
+		sleepQueue:      delayqueue.NewVMSleepQueue(redisClient, logger),
+		notifyQueue:     delayqueue.NewVMNotifyQueue(redisClient, logger),
+		recycleQueue:    delayqueue.NewVMRecycleQueue(redisClient, logger),
+	}
+
+	skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !skip {
+		t.Fatal("expected recent task last_active_at to skip recycle")
+	}
+	if activity.calls != 0 {
+		t.Fatalf("clickhouse calls = %d, want 0", activity.calls)
+	}
+	if repo.getVirtualMachineCalls != 1 {
+		t.Fatalf("GetVirtualMachine calls = %d, want 1", repo.getVirtualMachineCalls)
+	}
+}
+
 func TestShouldSkipRecycleForRecentTaskLogRefreshesVM(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 7, 7, 10, 34, 38, 0, time.UTC)
@@ -129,7 +169,7 @@ func TestShouldSkipRecycleForRecentTaskLogRefreshesVM(t *testing.T) {
 		recycleQueue:    delayqueue.NewVMRecycleQueue(redisClient, logger),
 	}
 
-	skip, err := r.shouldSkipRecycleForRecentTaskLog(ctx, vm, now)
+	skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +195,7 @@ func TestShouldSkipRecycleForRecentTaskLogAllowsStaleVM(t *testing.T) {
 		taskLogActivity: &taskLogActivityStub{latest: map[uuid.UUID]time.Time{taskID: now.Add(-2 * time.Hour)}},
 	}
 
-	skip, err := r.shouldSkipRecycleForRecentTaskLog(ctx, vm, now)
+	skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,9 +242,11 @@ type refreshHostRepoStub struct {
 type taskLogActivityStub struct {
 	latest map[uuid.UUID]time.Time
 	err    error
+	calls  int
 }
 
 func (s *taskLogActivityStub) LatestTaskLogTime(_ context.Context, taskID uuid.UUID) (time.Time, bool, error) {
+	s.calls++
 	if s.err != nil {
 		return time.Time{}, false, s.err
 	}

@@ -464,7 +464,7 @@ func (r *vmIdleRefresher) recycleConsumer() {
 					return nil
 				}
 
-				skip, err := r.shouldSkipRecycleForRecentTaskLog(ctx, vm, time.Now())
+				skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, time.Now())
 				if err != nil {
 					return err
 				}
@@ -498,8 +498,8 @@ func (r *vmIdleRefresher) recycleConsumer() {
 	}
 }
 
-func (r *vmIdleRefresher) shouldSkipRecycleForRecentTaskLog(ctx context.Context, vm *db.VirtualMachine, now time.Time) (bool, error) {
-	if r.taskLogActivity == nil || vm == nil {
+func (r *vmIdleRefresher) shouldSkipRecycleForRecentActivity(ctx context.Context, vm *db.VirtualMachine, now time.Time) (bool, error) {
+	if vm == nil {
 		return false, nil
 	}
 	policy, err := r.resolvePolicyForVM(ctx, vm)
@@ -510,40 +510,55 @@ func (r *vmIdleRefresher) shouldSkipRecycleForRecentTaskLog(ctx context.Context,
 		return false, nil
 	}
 
-	taskIDs, err := r.activeTaskIDs(ctx, vm)
+	activeTasks, err := r.activeRecycleTasks(ctx, vm)
 	if err != nil {
 		return false, err
 	}
-	if len(taskIDs) == 0 {
+	if len(activeTasks) == 0 {
 		return false, nil
 	}
 
 	cutoff := now.Add(-time.Duration(policy.EffectiveRecycleSeconds) * time.Second)
-	for _, taskID := range taskIDs {
-		latest, ok, err := r.taskLogActivity.LatestTaskLogTime(ctx, taskID)
+	for _, tk := range activeTasks {
+		if tk.LastActiveAt.IsZero() || !tk.LastActiveAt.After(cutoff) {
+			continue
+		}
+		return r.skipRecycleAndRefresh(ctx, vm, tk.ID, tk.LastActiveAt, cutoff, "pg_task_last_active_at")
+	}
+
+	if r.taskLogActivity == nil {
+		return false, nil
+	}
+	for _, tk := range activeTasks {
+		latest, ok, err := r.taskLogActivity.LatestTaskLogTime(ctx, tk.ID)
 		if err != nil {
-			return false, fmt.Errorf("get latest task log time for task %s: %w", taskID, err)
+			return false, fmt.Errorf("get latest task log time for task %s: %w", tk.ID, err)
 		}
 		if !ok || !latest.After(cutoff) {
 			continue
 		}
 
-		r.logger.InfoContext(ctx, "skip vm recycle because task has recent log",
-			"vm_id", vm.ID,
-			"task_id", taskID.String(),
-			"latest_log_at", latest.UTC().Format(time.RFC3339Nano),
-			"cutoff", cutoff.UTC().Format(time.RFC3339Nano))
-		if err := r.Refresh(ctx, vm.ID); err != nil {
-			return false, fmt.Errorf("refresh vm idle timer after recent task log: %w", err)
-		}
-		return true, nil
+		return r.skipRecycleAndRefresh(ctx, vm, tk.ID, latest, cutoff, "clickhouse_task_log")
 	}
 	return false, nil
 }
 
-func (r *vmIdleRefresher) activeTaskIDs(ctx context.Context, vm *db.VirtualMachine) ([]uuid.UUID, error) {
+func (r *vmIdleRefresher) skipRecycleAndRefresh(ctx context.Context, vm *db.VirtualMachine, taskID uuid.UUID, activeAt, cutoff time.Time, source string) (bool, error) {
+	r.logger.InfoContext(ctx, "skip vm recycle because task has recent activity",
+		"vm_id", vm.ID,
+		"task_id", taskID.String(),
+		"source", source,
+		"active_at", activeAt.UTC().Format(time.RFC3339Nano),
+		"cutoff", cutoff.UTC().Format(time.RFC3339Nano))
+	if err := r.Refresh(ctx, vm.ID); err != nil {
+		return false, fmt.Errorf("refresh vm idle timer after recent task activity: %w", err)
+	}
+	return true, nil
+}
+
+func (r *vmIdleRefresher) activeRecycleTasks(ctx context.Context, vm *db.VirtualMachine) ([]*db.Task, error) {
 	seen := make(map[uuid.UUID]struct{}, len(vm.Edges.Tasks))
-	taskIDs := make([]uuid.UUID, 0, len(vm.Edges.Tasks))
+	activeTasks := make([]*db.Task, 0, len(vm.Edges.Tasks))
 	for _, tk := range vm.Edges.Tasks {
 		if tk == nil {
 			continue
@@ -555,10 +570,10 @@ func (r *vmIdleRefresher) activeTaskIDs(ctx context.Context, vm *db.VirtualMachi
 			continue
 		}
 		seen[tk.ID] = struct{}{}
-		taskIDs = append(taskIDs, tk.ID)
+		activeTasks = append(activeTasks, tk)
 	}
 	if len(vm.Edges.Tasks) > 0 {
-		return taskIDs, nil
+		return activeTasks, nil
 	}
 
 	taskIDStr, err := r.hostRepo.GetTaskIDByVMID(ctx, vm.ID)
@@ -572,7 +587,17 @@ func (r *vmIdleRefresher) activeTaskIDs(ctx context.Context, vm *db.VirtualMachi
 	if err != nil {
 		return nil, fmt.Errorf("invalid task id %q: %w", taskIDStr, err)
 	}
-	return []uuid.UUID{taskID}, nil
+	if r.taskRepo == nil {
+		return []*db.Task{{ID: taskID}}, nil
+	}
+	tk, err := r.taskRepo.GetByID(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("get task %s: %w", taskID, err)
+	}
+	if tk.Status == consts.TaskStatusFinished || tk.Status == consts.TaskStatusError {
+		return nil, nil
+	}
+	return []*db.Task{tk}, nil
 }
 
 func (r *vmIdleRefresher) markRecycledTasksFinished(ctx context.Context, vm *db.VirtualMachine) error {
