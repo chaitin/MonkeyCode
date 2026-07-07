@@ -96,7 +96,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "updatesServer": "https://release.monkeycode-ai.com"
+      "updatesServer": "https://release.monkeycode-ai.com/public/mobile"
     }
   }
 }

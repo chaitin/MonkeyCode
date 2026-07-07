@@ -63,6 +63,11 @@ export function currentOtaId(): string | null {
 }
 
 export type AppUpdate = { version: string; url: string } | null;
+const APP_VERSION_RE = /^\d+$/;
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
 
 /**
  * 检查是否有更新的「原生版本」（新安装包）。比 OTA 优先：原生改动 OTA 推不动，
@@ -71,17 +76,21 @@ export type AppUpdate = { version: string; url: string } | null;
  *
  * 用 path 而非 query：`<updatesServer>/app-version/<platform>.json` —— 这样可以直接
  * 作为静态文件托管在 OSS/CDN 上（每个平台一个 JSON，内容为 { version, url }）。
+ * 生产 updatesServer 指向发布静态目录，如 https://release.monkeycode-ai.com/public/mobile。
  */
 export async function checkAppUpdate(): Promise<AppUpdate> {
   const base = (Constants.expoConfig?.extra as { updatesServer?: string } | undefined)?.updatesServer?.replace(/\/$/, '');
   const installed = installedAppVersion();
   if (!base || !installed) return null;
   try {
-    const res = await fetch(`${base}/app-version/${Platform.OS}.json`);
+    const res = await fetch(`${base}/app-version/${Platform.OS}.json?_=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return null;
-    const j = (await res.json()) as { version?: string; url?: string };
-    if (j?.version && String(j.version) > installed) {
-      return { version: String(j.version), url: String(j.url || '') };
+    const j = (await res.json()) as { version?: unknown; url?: unknown };
+    const version = typeof j?.version === 'string' ? j.version.trim() : '';
+    const url = typeof j?.url === 'string' ? j.url.trim() : '';
+    if (!APP_VERSION_RE.test(version) || !isHttpUrl(url)) return null;
+    if (version > installed) {
+      return { version, url };
     }
     return null;
   } catch {
