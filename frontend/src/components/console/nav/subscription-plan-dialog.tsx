@@ -281,7 +281,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex h-[40vh] max-h-[80vh] max-w-[80vw] flex-col gap-0 overflow-hidden p-0 md:max-w-4xl">
+        <DialogContent className="flex h-120 max-h-[calc(100dvh-2rem)] max-w-[80vw] flex-col gap-0 overflow-hidden p-0 md:max-w-4xl">
           <DialogHeader className="px-5 py-4">
             <DialogTitle>{t("subscriptionPlan.dialog.title")}</DialogTitle>
           </DialogHeader>

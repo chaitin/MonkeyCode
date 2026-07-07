@@ -25,3 +25,9 @@ test("套餐弹窗提供中英文资源", () => {
   assert.equal(cn.subscriptionPlan.actions.subscribePlan, "开通{{plan}}");
   assert.equal(en.subscriptionPlan.actions.subscribePlan, "Subscribe to {{plan}}");
 });
+
+test("套餐弹窗使用固定设计高度并限制极小视口", () => {
+  assert.match(source, /h-120/);
+  assert.match(source, /max-h-\[calc\(100dvh-2rem\)\]/);
+  assert.doesNotMatch(source, /h-\[40vh\]|max-h-\[80vh\]/);
+});
