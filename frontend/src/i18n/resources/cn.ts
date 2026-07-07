@@ -1366,6 +1366,7 @@ const cn = {
     },
     sidebar: {
       brandSubtitle: "长亭百智云",
+      globalBrandSubtitle: "CyberServal",
       consultPurchase: "咨询采购",
       currentVersion: "当前版本",
       unknownVersion: "未知版本",

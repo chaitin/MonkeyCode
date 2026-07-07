@@ -1366,6 +1366,7 @@ const en = {
     },
     sidebar: {
       brandSubtitle: "Chaitin Baizhi Cloud",
+      globalBrandSubtitle: "CyberServal",
       consultPurchase: "Contact sales",
       currentVersion: "Current version",
       unknownVersion: "Unknown version",

@@ -34,14 +34,27 @@ test("用户控制台外壳和基础导航使用 consoleShell i18n key", () => {
   assert.match(sourceFiles.userSidebar, /t\("consoleShell\.sidebar\.update"\)/);
   assert.match(sourceFiles.userSidebar, /target="_blank"/);
   assert.match(sourceFiles.userSidebar, /t\("consoleShell\.sidebar\.settings"\)/);
+  assert.match(sourceFiles.userSidebar, /const isGlobalRegion = serverConfig\?\.region === "global"/);
+  assert.match(sourceFiles.userSidebar, /isGlobalRegion \? "consoleShell\.sidebar\.globalBrandSubtitle" : "consoleShell\.sidebar\.brandSubtitle"/);
+  assert.match(sourceFiles.userSidebar, /t\(brandSubtitleKey\)/);
   assert.match(sourceFiles.navUser, /t\("consoleShell\.user\.unknown"\)/);
   assert.match(sourceFiles.navCommunity, /t\("consoleShell\.community\.title"\)/);
   assert.match(sourceFiles.communityDialog, /t\("consoleShell\.community\.dialogTitle"\)/);
 });
 
+test("用户控制台侧边栏社区入口仅在国内在线版展示", () => {
+  assert.match(sourceFiles.userSidebar, /const isCnRegion = serverConfig\?\.region === "cn"/);
+  assert.match(sourceFiles.userSidebar, /IS_ONLINE_EDITION && isCnRegion && \(/);
+  assert.match(sourceFiles.userSidebar, /<NavCommunity/);
+});
+
 test("用户控制台外壳提供中英文资源", () => {
   assert.equal(cn.consoleShell.breadcrumbs.dashboard, "仪表盘");
   assert.equal(en.consoleShell.breadcrumbs.dashboard, "Dashboard");
+  assert.equal(cn.consoleShell.sidebar.brandSubtitle, "长亭百智云");
+  assert.equal(en.consoleShell.sidebar.brandSubtitle, "Chaitin Baizhi Cloud");
+  assert.equal(cn.consoleShell.sidebar.globalBrandSubtitle, "CyberServal");
+  assert.equal(en.consoleShell.sidebar.globalBrandSubtitle, "CyberServal");
   assert.equal(cn.consoleShell.sidebar.consultPurchase, "咨询采购");
   assert.equal(en.consoleShell.sidebar.consultPurchase, "Contact sales");
   assert.equal(cn.consoleShell.sidebar.currentVersion, "当前版本");

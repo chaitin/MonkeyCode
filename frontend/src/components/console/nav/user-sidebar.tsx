@@ -31,6 +31,8 @@ export default function UserSidebar({
   const { open: settingsOpen, setOpen: setSettingsOpen } = useSettingsDialog()
   const { serverConfig } = useAppRuntime()
   const isCnRegion = serverConfig?.region === "cn"
+  const isGlobalRegion = serverConfig?.region === "global"
+  const brandSubtitleKey = isGlobalRegion ? "consoleShell.sidebar.globalBrandSubtitle" : "consoleShell.sidebar.brandSubtitle"
   const currentVersion = serverConfig?.current_version || t("consoleShell.sidebar.unknownVersion")
   const latestVersion = serverConfig?.latest_version || ""
   const hasUpdate = Boolean(serverConfig?.current_version && latestVersion && serverConfig.current_version !== latestVersion)
@@ -45,7 +47,7 @@ export default function UserSidebar({
                 <img src="/logo-light.png" alt="MonkeyCode AI" className="size-8" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">MonkeyCode</span>
-                  <span className="truncate text-xs text-foreground/60">{t("consoleShell.sidebar.brandSubtitle")}</span>
+                  <span className="truncate text-xs text-foreground/60">{t(brandSubtitleKey)}</span>
                 </div>
               </a>
             </SidebarMenuButton>
@@ -105,7 +107,7 @@ export default function UserSidebar({
           </SidebarMenu>
         )}
         <div className="flex items-stretch gap-2 group-data-[collapsible=icon]:flex-col">
-          {IS_ONLINE_EDITION && (
+          {IS_ONLINE_EDITION && isCnRegion && (
             <NavCommunity
               menuClassName="flex-[2]"
               itemClassName="h-full"
