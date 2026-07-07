@@ -533,7 +533,7 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 
 // DeleteVM 删除虚拟机
 func (h *HostUsecase) DeleteVM(ctx context.Context, uid uuid.UUID, hostID, vmID string) error {
-	h.logger.InfoContext(ctx, "delete vm", "vmID", vmID)
+	h.logger.InfoContext(ctx, "delete vm", "vmID", vmID, "user_id", uid, "host_id", hostID)
 	return h.repo.DeleteVirtualMachine(ctx, uid, hostID, vmID, func(vm *db.VirtualMachine) error {
 		if err := h.taskflow.VirtualMachiner().Delete(ctx, &taskflow.DeleteVirtualMachineReq{
 			UserID: uid.String(),

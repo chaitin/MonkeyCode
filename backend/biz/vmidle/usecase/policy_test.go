@@ -14,10 +14,12 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
 
@@ -107,6 +109,104 @@ func TestRefreshCachesNotFoundVM(t *testing.T) {
 	}
 }
 
+func TestShouldSkipRecycleForRecentTaskLastActiveAtSkipsClickHouse(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 7, 7, 10, 34, 38, 0, time.UTC)
+	taskID := uuid.New()
+	vm := &db.VirtualMachine{ID: "vm-recent-pg-activity", UserID: uuid.New()}
+	vm.Edges.Tasks = []*db.Task{{
+		ID:           taskID,
+		Status:       consts.TaskStatusProcessing,
+		LastActiveAt: now.Add(-time.Minute),
+	}}
+	redisClient := newTestRedis(t)
+	logger := slog.Default()
+	repo := &refreshHostRepoStub{vm: vm}
+	activity := &taskLogActivityStub{err: errors.New("unexpected clickhouse query")}
+	r := &vmIdleRefresher{
+		cfg:             &config.Config{VMIdle: config.VMIdle{SleepSeconds: 600, RecycleSeconds: 3600}},
+		redis:           redisClient,
+		logger:          logger,
+		hostRepo:        repo,
+		taskLogActivity: activity,
+		sleepQueue:      delayqueue.NewVMSleepQueue(redisClient, logger),
+		notifyQueue:     delayqueue.NewVMNotifyQueue(redisClient, logger),
+		recycleQueue:    delayqueue.NewVMRecycleQueue(redisClient, logger),
+	}
+
+	skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !skip {
+		t.Fatal("expected recent task last_active_at to skip recycle")
+	}
+	if activity.calls != 0 {
+		t.Fatalf("clickhouse calls = %d, want 0", activity.calls)
+	}
+	if repo.getVirtualMachineCalls != 1 {
+		t.Fatalf("GetVirtualMachine calls = %d, want 1", repo.getVirtualMachineCalls)
+	}
+}
+
+func TestShouldSkipRecycleForRecentTaskLogRefreshesVM(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 7, 7, 10, 34, 38, 0, time.UTC)
+	taskID := uuid.New()
+	vm := &db.VirtualMachine{ID: "vm-recent-log", UserID: uuid.New()}
+	vm.Edges.Tasks = []*db.Task{{ID: taskID, Status: consts.TaskStatusProcessing}}
+	redisClient := newTestRedis(t)
+	logger := slog.Default()
+	repo := &refreshHostRepoStub{vm: vm}
+	r := &vmIdleRefresher{
+		cfg:             &config.Config{VMIdle: config.VMIdle{SleepSeconds: 600, RecycleSeconds: 3600}},
+		redis:           redisClient,
+		logger:          logger,
+		hostRepo:        repo,
+		taskLogActivity: &taskLogActivityStub{latest: map[uuid.UUID]time.Time{taskID: now.Add(-time.Minute)}},
+		sleepQueue:      delayqueue.NewVMSleepQueue(redisClient, logger),
+		notifyQueue:     delayqueue.NewVMNotifyQueue(redisClient, logger),
+		recycleQueue:    delayqueue.NewVMRecycleQueue(redisClient, logger),
+	}
+
+	skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !skip {
+		t.Fatal("expected recent task log to skip recycle")
+	}
+	if repo.getVirtualMachineCalls != 1 {
+		t.Fatalf("GetVirtualMachine calls = %d, want 1", repo.getVirtualMachineCalls)
+	}
+}
+
+func TestShouldSkipRecycleForRecentTaskLogAllowsStaleVM(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 7, 7, 10, 34, 38, 0, time.UTC)
+	taskID := uuid.New()
+	vm := &db.VirtualMachine{ID: "vm-stale-log", UserID: uuid.New()}
+	vm.Edges.Tasks = []*db.Task{{ID: taskID, Status: consts.TaskStatusProcessing}}
+	repo := &refreshHostRepoStub{vm: vm}
+	r := &vmIdleRefresher{
+		cfg:             &config.Config{VMIdle: config.VMIdle{SleepSeconds: 600, RecycleSeconds: 3600}},
+		logger:          slog.Default(),
+		hostRepo:        repo,
+		taskLogActivity: &taskLogActivityStub{latest: map[uuid.UUID]time.Time{taskID: now.Add(-2 * time.Hour)}},
+	}
+
+	skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skip {
+		t.Fatal("expected stale task log to allow recycle")
+	}
+	if repo.getVirtualMachineCalls != 0 {
+		t.Fatalf("GetVirtualMachine calls = %d, want 0", repo.getVirtualMachineCalls)
+	}
+}
+
 func newTestRedis(t *testing.T) *redis.Client {
 	t.Helper()
 	srv := miniredis.RunT(t)
@@ -137,6 +237,21 @@ type refreshHostRepoStub struct {
 	vm                     *db.VirtualMachine
 	err                    error
 	getVirtualMachineCalls int
+}
+
+type taskLogActivityStub struct {
+	latest map[uuid.UUID]time.Time
+	err    error
+	calls  int
+}
+
+func (s *taskLogActivityStub) LatestTaskLogTime(_ context.Context, taskID uuid.UUID) (time.Time, bool, error) {
+	s.calls++
+	if s.err != nil {
+		return time.Time{}, false, s.err
+	}
+	latest, ok := s.latest[taskID]
+	return latest, ok, nil
 }
 
 func (s *refreshHostRepoStub) List(context.Context, uuid.UUID) ([]*db.Host, error) {
