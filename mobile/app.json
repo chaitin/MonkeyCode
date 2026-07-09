@@ -83,6 +83,7 @@
           "isAccessMediaLocationEnabled": false
         }
       ],
+      "./plugins/withDouyinLogin",
       [
         "expo-build-properties",
         {
@@ -96,7 +97,8 @@
       "typedRoutes": true
     },
     "extra": {
-      "updatesServer": "https://release.monkeycode-ai.com/public/mobile"
+      "updatesServer": "https://release.monkeycode-ai.com/public/mobile",
+      "douyinClientKey": "awxdjorbktpeiqaj"
     }
   }
 }

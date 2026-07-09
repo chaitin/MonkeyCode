@@ -5,21 +5,36 @@ import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pres
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
-import { getBaizhiDouyinMobileLoginUrl, getBaizhiOAuthLoginUrl } from '@/api/baizhi';
-import { ApiError, DEFAULT_BASE_URL } from '@/api/client';
+import { BAIZHI_BASE_URL, getBaizhiOAuthLoginUrl, getMonkeyCodeBaizhiLoginUrl } from '@/api/baizhi';
+import { ApiError, authHeaders, basicAuthCredential as getBasicAuthCred, DEFAULT_BASE_URL } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { Icons } from '@/components/Icons';
+import { authorizeDouyin } from '@/native/douyinAuth';
 import { useTheme } from '@/theme';
 
 const LOGO_LIGHT = require('../assets/logo-light.png');
 const norm = (u: string) => u.trim().replace(/\/+$/, '');
 const phoneValid = (v: string) => /^1[3-9]\d{9}$/.test(v.trim());
-const DOUYIN_CALLBACK_URL = 'monkeycode://oauth/douyin';
 const GITHUB_CALLBACK_URL = 'monkeycode://oauth/github';
+const BAIZHI_HOST = 'baizhi.cloud';
+const BROWSER_UA = Platform.select({
+  ios: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1',
+  android: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36',
+  default: undefined,
+}) as string | undefined;
 
-type LoginView = 'password' | 'phone' | 'douyinPhone' | 'oauthWeb';
+type LoginView = 'password' | 'phone' | 'oauthWeb';
+type WebOAuthMode = 'github' | 'baizhiBridge';
 
-function parseCallbackQuery(url: string): Record<string, string> {
+function hostOf(url: string): string {
+  return url.match(/^https?:\/\/([^/?#]+)/i)?.[1]?.toLowerCase() || '';
+}
+
+function pathOf(url: string): string {
+  return url.match(/^https?:\/\/[^/]+([^?#]*)/i)?.[1] || '';
+}
+
+function parseUrlQuery(url: string): Record<string, string> {
   const start = url.indexOf('?');
   if (start < 0) return {};
   const hash = url.indexOf('#', start + 1);
@@ -39,10 +54,29 @@ function parseCallbackQuery(url: string): Record<string, string> {
   return params;
 }
 
-function parseDouyinCallback(url: string): { status?: string; token?: string } | null {
-  if (!url.startsWith(DOUYIN_CALLBACK_URL) && !url.startsWith('monkeycode:///oauth/douyin')) return null;
-  const params = parseCallbackQuery(url);
-  return { status: params.status, token: params.token };
+function buildUrlQuery(query: Record<string, string | undefined>): string {
+  return Object.entries(query)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value || '')}`)
+    .join('&');
+}
+
+function toBaizhiAuthorizeApiUrl(url: string): string {
+  if (hostOf(url) !== BAIZHI_HOST || pathOf(url) !== '/oauth/authorize') return '';
+  const params = parseUrlQuery(url);
+  const clientID = params.client_id;
+  const redirectUri = params.redirect_uri || params.redirect_url;
+  const scope = params.scope;
+  const state = params.state;
+  const responseType = params.response_type || 'code';
+  if (!clientID || !redirectUri || !scope || !state) return '';
+  return `${BAIZHI_BASE_URL}/api/v1/oauth/authorize?${buildUrlQuery({
+    client_id: clientID,
+    redirect_uri: redirectUri,
+    scope,
+    state,
+    response_type: responseType,
+  })}`;
 }
 
 function isGithubCallback(url: string): boolean {
@@ -55,11 +89,9 @@ export default function LoginScreen() {
     login,
     loginWithApple,
     sendBaizhiPhoneCode,
-    loginWithBaizhiPhone,
-    sendBaizhiOAuthPhoneCode,
-    loginWithBaizhiSession,
-    loginWithBaizhiDouyinToken,
-    loginWithBaizhiOAuthPhone,
+    startBaizhiPhoneLogin,
+    startDouyinAppBaizhiLogin,
+    finishBaizhiOAuthLogin,
     savedEmail,
     savedPassword,
     savedPhone,
@@ -81,18 +113,21 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [agreed, setAgreed] = useState(!!savedPassword);
   const [countdown, setCountdown] = useState(0);
-  const [douyinToken, setDouyinToken] = useState('');
   const [webOAuthUrl, setWebOAuthUrl] = useState('');
   const [webOAuthTitle, setWebOAuthTitle] = useState('');
+  const [webOAuthMode, setWebOAuthMode] = useState<WebOAuthMode>('github');
+  const [webOAuthKey, setWebOAuthKey] = useState(0);
   const [showServer, setShowServer] = useState(false);
   const [serverUrl, setServerUrl] = useState(baseUrl);
   const [basicAuthInput, setBasicAuthInput] = useState(basicAuth);
   const [focused, setFocused] = useState<string | null>(null);
   const tapsRef = useRef(0);
   const phoneInputRef = useRef<TextInput>(null);
-  const douyinPhoneInputRef = useRef<TextInput>(null);
-  const handledDouyinTokenRef = useRef('');
   const handledGithubCallbackRef = useRef(false);
+  const baizhiBridgeLeftRef = useRef(false);
+  const baizhiBridgeDoneRef = useRef(false);
+  const baizhiAutoAuthorizeUrlRef = useRef('');
+  const baizhiBridgeRef = useRef<{ targetBaseUrl: string; phoneToSave?: string } | null>(null);
 
   // 手机号 / 抖音 / GitHub 登录入口只在官方云展示；私有化 / 自定义地址保持账号密码入口。
   const cloud = norm(serverUrl || baseUrl) === DEFAULT_BASE_URL;
@@ -174,42 +209,44 @@ export default function LoginScreen() {
     return target;
   }, [baseUrl, basicAuth, basicAuthInput, serverUrl, updateBaseUrl, updateBasicAuth]);
 
-  const handleDouyinCallback = useCallback(
-    async (url: string) => {
-      const callback = parseDouyinCallback(url);
-      if (!callback) return;
-      const token = (callback.token || '').trim();
-      if (!token) {
-        setError('抖音登录回调缺少授权信息，请重试');
-        return;
-      }
-      if (callback.status === 'pending_phone') {
-        setDouyinToken(token);
-        setCode('');
-        setCountdown(0);
-        setError('');
-        setView('douyinPhone');
-        return;
-      }
-      const handledKey = `success:${token}`;
-      if (handledDouyinTokenRef.current === handledKey) return;
-      handledDouyinTokenRef.current = handledKey;
-      setError('');
-      setBusy(true);
-      setPhase('正在完成抖音登录…');
-      try {
-        const targetBaseUrl = await applyServerSettings();
-        await loginWithBaizhiDouyinToken(token, targetBaseUrl);
-      } catch (e) {
-        handledDouyinTokenRef.current = '';
-        setError(formatError(e, '抖音登录失败，请重试'));
-      } finally {
-        setBusy(false);
-        setPhase('');
-      }
-    },
-    [applyServerSettings, loginWithBaizhiDouyinToken],
-  );
+  const startBaizhiBridge = useCallback((title: string, targetBaseUrl: string, phoneToSave?: string) => {
+    const cleanTarget = norm(targetBaseUrl || baseUrl || DEFAULT_BASE_URL);
+    baizhiBridgeRef.current = { targetBaseUrl: cleanTarget, phoneToSave };
+    baizhiBridgeLeftRef.current = false;
+    baizhiBridgeDoneRef.current = false;
+    baizhiAutoAuthorizeUrlRef.current = '';
+    setWebOAuthMode('baizhiBridge');
+    setWebOAuthTitle(title);
+    setWebOAuthUrl(getMonkeyCodeBaizhiLoginUrl(cleanTarget));
+    setWebOAuthKey((k) => k + 1);
+    setView('oauthWeb');
+  }, [baseUrl]);
+
+  const finishBaizhiBridgeLogin = useCallback(async () => {
+    if (baizhiBridgeDoneRef.current) return;
+    const bridge = baizhiBridgeRef.current;
+    if (!bridge) return;
+    baizhiBridgeDoneRef.current = true;
+    setError('');
+    setBusy(true);
+    setPhase('正在完成登录…');
+    try {
+      await finishBaizhiOAuthLogin(bridge.targetBaseUrl, bridge.phoneToSave);
+    } catch (e) {
+      baizhiBridgeDoneRef.current = false;
+      baizhiBridgeLeftRef.current = false;
+      baizhiAutoAuthorizeUrlRef.current = '';
+      baizhiBridgeRef.current = null;
+      setWebOAuthUrl('');
+      setWebOAuthTitle('');
+      setWebOAuthMode('github');
+      setView(bridge.phoneToSave ? 'phone' : 'password');
+      setError(formatError(e, '登录失败，请重试'));
+    } finally {
+      setBusy(false);
+      setPhase('');
+    }
+  }, [finishBaizhiOAuthLogin]);
 
   const finishGithubOAuthLogin = useCallback(async () => {
     if (handledGithubCallbackRef.current) return;
@@ -219,7 +256,7 @@ export default function LoginScreen() {
     setPhase('正在完成 GitHub 登录…');
     try {
       const targetBaseUrl = await applyServerSettings();
-      await loginWithBaizhiSession(targetBaseUrl);
+      startBaizhiBridge('GitHub 登录', targetBaseUrl);
     } catch (e) {
       handledGithubCallbackRef.current = false;
       setView('password');
@@ -228,17 +265,15 @@ export default function LoginScreen() {
       setBusy(false);
       setPhase('');
     }
-  }, [applyServerSettings, loginWithBaizhiSession]);
+  }, [applyServerSettings, startBaizhiBridge]);
 
   const handleOAuthCallback = useCallback(
     async (url: string) => {
       if (isGithubCallback(url)) {
         await finishGithubOAuthLogin();
-        return;
       }
-      await handleDouyinCallback(url);
     },
-    [finishGithubOAuthLogin, handleDouyinCallback],
+    [finishGithubOAuthLogin],
   );
 
   useEffect(() => {
@@ -288,11 +323,14 @@ export default function LoginScreen() {
     setBusy(true);
     setPhase('正在打开抖音…');
     try {
-      await applyServerSettings();
-      const authorizeUrl = await getBaizhiDouyinMobileLoginUrl(DOUYIN_CALLBACK_URL);
-      await Linking.openURL(authorizeUrl);
+      const targetBaseUrl = await applyServerSettings();
+      const result = await authorizeDouyin();
+      setPhase('正在完成抖音登录…');
+      await startDouyinAppBaizhiLogin(result.code);
+      startBaizhiBridge('抖音登录', targetBaseUrl);
     } catch (e) {
-      setError(formatError(e, '打开抖音登录失败，请重试'));
+      if ((e as { code?: string })?.code === 'E_DOUYIN_CANCELLED') return;
+      setError(formatError(e, '抖音登录失败，请重试'));
     } finally {
       setBusy(false);
       setPhase('');
@@ -308,8 +346,10 @@ export default function LoginScreen() {
       await applyServerSettings();
       const authorizeUrl = await getBaizhiOAuthLoginUrl('github', GITHUB_CALLBACK_URL);
       handledGithubCallbackRef.current = false;
+      setWebOAuthMode('github');
       setWebOAuthTitle('GitHub 登录');
       setWebOAuthUrl(authorizeUrl);
+      setWebOAuthKey((k) => k + 1);
       setView('oauthWeb');
     } catch (e) {
       setError(formatError(e, '打开 GitHub 登录失败，请重试'));
@@ -365,47 +405,8 @@ export default function LoginScreen() {
     setPhase('正在登录…');
     try {
       const targetBaseUrl = await applyServerSettings();
-      await loginWithBaizhiPhone(cleanPhone, cleanCode, targetBaseUrl);
-      setPhase('');
-    } catch (e) {
-      setError(formatError(e, '登录失败，请重试'));
-    } finally {
-      setBusy(false);
-      setPhase('');
-    }
-  };
-
-  const onDouyinSendCode = async () => {
-    setError('');
-    const cleanPhone = phone.trim();
-    if (!douyinToken) { setError('抖音登录状态已失效，请重新授权'); return; }
-    if (!phoneValid(cleanPhone)) { setError('请输入有效的手机号'); return; }
-    if (!ensureAgreed()) return;
-    setCodeBusy(true);
-    try {
-      await sendBaizhiOAuthPhoneCode(cleanPhone, douyinToken);
-      setCountdown(60);
-    } catch (e) {
-      setError(formatError(e, '验证码发送失败，请稍后重试'));
-    } finally {
-      setCodeBusy(false);
-    }
-  };
-
-  const onDouyinPhoneSubmit = async () => {
-    setError('');
-    const cleanPhone = phone.trim();
-    const cleanCode = code.trim();
-    if (!douyinToken) { setError('抖音登录状态已失效，请重新授权'); return; }
-    if (!phoneValid(cleanPhone)) { setError('请输入有效的手机号'); return; }
-    if (!/^\d{4,6}$/.test(cleanCode)) { setError('请输入短信验证码'); return; }
-    if (!ensureAgreed()) return;
-    setBusy(true);
-    setPhase('正在登录…');
-    try {
-      const targetBaseUrl = await applyServerSettings();
-      await loginWithBaizhiOAuthPhone(douyinToken, cleanPhone, cleanCode, targetBaseUrl);
-      setPhase('');
+      await startBaizhiPhoneLogin(cleanPhone, cleanCode);
+      startBaizhiBridge('手机号登录', targetBaseUrl, cleanPhone);
     } catch (e) {
       setError(formatError(e, '登录失败，请重试'));
     } finally {
@@ -415,27 +416,61 @@ export default function LoginScreen() {
   };
 
   const closeWebOAuth = () => {
+    const nextView = webOAuthMode === 'baizhiBridge' && baizhiBridgeRef.current?.phoneToSave ? 'phone' : 'password';
+    baizhiBridgeRef.current = null;
+    baizhiBridgeLeftRef.current = false;
+    baizhiBridgeDoneRef.current = false;
+    baizhiAutoAuthorizeUrlRef.current = '';
     setWebOAuthUrl('');
     setWebOAuthTitle('');
-    setView('password');
+    setWebOAuthMode('github');
+    setView(nextView);
   };
+
+  const openBaizhiAuthorizeApi = useCallback((url: string) => {
+    if (webOAuthMode !== 'baizhiBridge') return false;
+    const apiUrl = toBaizhiAuthorizeApiUrl(url);
+    if (!apiUrl) return false;
+    if (baizhiAutoAuthorizeUrlRef.current === apiUrl) return true;
+    baizhiAutoAuthorizeUrlRef.current = apiUrl;
+    setPhase('正在确认授权…');
+    setWebOAuthUrl(apiUrl);
+    setWebOAuthKey((k) => k + 1);
+    return true;
+  }, [webOAuthMode]);
 
   const onWebOAuthNav = useCallback(
     (navState: WebViewNavigation) => {
-      if (isGithubCallback(navState.url)) void finishGithubOAuthLogin();
+      if (webOAuthMode === 'github') {
+        if (isGithubCallback(navState.url)) void finishGithubOAuthLogin();
+        return;
+      }
+      if (openBaizhiAuthorizeApi(navState.url)) return;
+      const bridge = baizhiBridgeRef.current;
+      const backendHost = hostOf(bridge?.targetBaseUrl || baseUrl);
+      const currentHost = hostOf(navState.url);
+      if (!backendHost || !currentHost || baizhiBridgeDoneRef.current) return;
+      if (currentHost !== backendHost) {
+        baizhiBridgeLeftRef.current = true;
+        return;
+      }
+      if (!navState.loading && (baizhiBridgeLeftRef.current || pathOf(navState.url) !== '/api/v1/users/login')) {
+        void finishBaizhiBridgeLogin();
+      }
     },
-    [finishGithubOAuthLogin],
+    [baseUrl, openBaizhiAuthorizeApi, finishBaizhiBridgeLogin, finishGithubOAuthLogin, webOAuthMode],
   );
 
   const onWebOAuthShouldStart = useCallback(
     (req: { url: string }) => {
-      if (isGithubCallback(req.url)) {
+      if (webOAuthMode === 'github' && isGithubCallback(req.url)) {
         void finishGithubOAuthLogin();
         return false;
       }
+      if (openBaizhiAuthorizeApi(req.url)) return false;
       return true;
     },
-    [finishGithubOAuthLogin],
+    [openBaizhiAuthorizeApi, finishGithubOAuthLogin, webOAuthMode],
   );
 
   const openDoc = (path: string) => Linking.openURL(`${norm(baseUrl)}${path}`).catch(() => undefined);
@@ -499,6 +534,9 @@ export default function LoginScreen() {
             <Pressable accessibilityRole="button" accessibilityLabel="手机号登录" onPress={() => { setError(''); setView('phone'); }} disabled={actionBusy} style={({ pressed }) => [{ width: 50, height: 50, borderRadius: 25, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
               <Icons.phoneDevice size={22} color="#20231F" />
             </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="抖音登录" onPress={onDouyinLogin} disabled={actionBusy} style={({ pressed }) => [{ width: 50, height: 50, borderRadius: 25, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
+              <Icons.douyinBrand size={24} />
+            </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="GitHub 登录" onPress={onGithubLogin} disabled={actionBusy} style={({ pressed }) => [{ width: 50, height: 50, borderRadius: 25, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
               <Icons.github size={22} color="#16171A" />
             </Pressable>
@@ -522,6 +560,12 @@ export default function LoginScreen() {
     </View>
   );
 
+  const webOAuthNeedsMonkeyCodeAuth = webOAuthMode === 'baizhiBridge' && hostOf(webOAuthUrl) !== BAIZHI_HOST;
+  const webOAuthCanUseMonkeyCodeAuth = webOAuthMode === 'baizhiBridge';
+  const webOAuthSource = webOAuthNeedsMonkeyCodeAuth
+    ? { uri: webOAuthUrl, headers: authHeaders() }
+    : { uri: webOAuthUrl };
+
   if (view === 'oauthWeb' && webOAuthUrl) {
     return (
       <View style={{ flex: 1, backgroundColor: t.bg }}>
@@ -536,8 +580,11 @@ export default function LoginScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <WebView
-            source={{ uri: webOAuthUrl }}
+            key={webOAuthKey}
+            source={webOAuthSource}
             originWhitelist={['https://*', 'http://*', 'monkeycode://*']}
+            basicAuthCredential={webOAuthCanUseMonkeyCodeAuth ? getBasicAuthCred() : undefined}
+            userAgent={BROWSER_UA}
             onNavigationStateChange={onWebOAuthNav}
             onShouldStartLoadWithRequest={onWebOAuthShouldStart}
             sharedCookiesEnabled
@@ -637,71 +684,6 @@ export default function LoginScreen() {
               {Agreement}
 
               <Pressable onPress={onBaizhiSubmit} disabled={loginDisabled} style={({ pressed }) => [{ height: 54, backgroundColor: heroGreen2, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginTop: 4, overflow: 'hidden' }, primaryShadow, (loginDisabled || pressed) && { opacity: loginDisabled ? 0.55 : 0.86 }]}>
-                {LoginButtonBackground}
-                {busy ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                    <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }}>{phase || '登录中…'}</Text>
-                  </View>
-                ) : <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 2 }}>登 录</Text>}
-              </Pressable>
-            </>
-          ) : view === 'douyinPhone' && cloud ? (
-            <>
-              <Pressable onPress={() => { setError(''); setView('password'); }} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}>
-                <Icons.back size={16} color={mutedText} sw={2} />
-                <Text style={{ color: mutedText, fontSize: 14 }}>其它登录方式</Text>
-              </Pressable>
-
-              <Text style={{ fontSize: 18, fontWeight: '800', color: darkText, letterSpacing: 0 }}>抖音登录</Text>
-              <Pressable
-                onPress={() => douyinPhoneInputRef.current?.focus()}
-                style={({ pressed }) => [fieldFrameStyle('douyinPhone'), focused === 'douyinPhone' && { borderWidth: 2, shadowOpacity: 0.18, shadowRadius: 12 }, pressed && { opacity: 0.96 }]}
-              >
-                <Icons.phoneDevice size={19} color={focused === 'douyinPhone' ? heroGreen : iconIdle} />
-                <TextInput
-                  ref={douyinPhoneInputRef}
-                  value={phone}
-                  onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, 11))}
-                  placeholder="请输入手机号"
-                  placeholderTextColor="#B4B9B0"
-                  keyboardType="phone-pad"
-                  textContentType="telephoneNumber"
-                  editable={!busy && !codeBusy}
-                  style={inputStyle}
-                  {...focusProps('douyinPhone')}
-                />
-              </Pressable>
-
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={[fieldFrameStyle('douyinCode'), { flex: 1 }]}>
-                  <Icons.key size={19} color={focused === 'douyinCode' ? heroGreen : iconIdle} sw={1.9} />
-                  <TextInput
-                    value={code}
-                    onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="短信验证码"
-                    placeholderTextColor="#B4B9B0"
-                    keyboardType="number-pad"
-                    textContentType="oneTimeCode"
-                    editable={!busy}
-                    style={inputStyle}
-                    onSubmitEditing={onDouyinPhoneSubmit}
-                    {...focusProps('douyinCode')}
-                  />
-                </View>
-                <Pressable
-                  onPress={onDouyinSendCode}
-                  disabled={busy || codeBusy || countdown > 0}
-                  style={({ pressed }) => [{ width: 104, height: 54, borderRadius: 15, borderWidth: 1.5, borderColor: fieldBorder, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, backgroundColor: fieldBg }, pressed && { opacity: 0.82 }, (busy || codeBusy || countdown > 0) && { opacity: 0.55 }]}
-                >
-                  {codeBusy ? <ActivityIndicator color={heroGreen} size="small" /> : <Text style={{ color: heroGreen, fontSize: 14, fontWeight: '800' }}>{countdown > 0 ? `${countdown}s` : '获取验证码'}</Text>}
-                </Pressable>
-              </View>
-
-              {error ? <Text style={{ color: t.red, fontSize: 13, marginTop: 12 }}>{error}</Text> : null}
-              {Agreement}
-
-              <Pressable onPress={onDouyinPhoneSubmit} disabled={loginDisabled} style={({ pressed }) => [{ height: 54, backgroundColor: heroGreen2, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginTop: 4, overflow: 'hidden' }, primaryShadow, (loginDisabled || pressed) && { opacity: loginDisabled ? 0.55 : 0.86 }]}>
                 {LoginButtonBackground}
                 {busy ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

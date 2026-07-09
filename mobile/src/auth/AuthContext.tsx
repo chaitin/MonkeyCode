@@ -9,11 +9,8 @@ import React, {
 } from 'react';
 import { obtainCaptchaToken } from '@/api/captcha';
 import {
-  completeBaizhiMobileOAuth as apiCompleteBaizhiMobileOAuth,
-  completeBaizhiOAuth,
-  completeBaizhiOAuthPhone as apiCompleteBaizhiOAuthPhone,
+  loginBaizhiDouyinApp as apiLoginBaizhiDouyinApp,
   loginBaizhiPhone as apiLoginBaizhiPhone,
-  sendBaizhiPhoneCodeForToken as apiSendBaizhiPhoneCodeForToken,
   sendBaizhiPhoneCode as apiSendBaizhiPhoneCode,
 } from '@/api/baizhi';
 import {
@@ -50,12 +47,10 @@ interface AuthState {
   refreshUser: () => Promise<UserStatus>;
   login: (email: string, password: string, targetBaseUrl?: string) => Promise<void>;
   loginWithApple: (params: { identity_token: string; authorization_code?: string; full_name?: string }) => Promise<void>;
+  startDouyinAppBaizhiLogin: (code: string) => Promise<void>;
   sendBaizhiPhoneCode: (phone: string) => Promise<void>;
-  loginWithBaizhiPhone: (phone: string, code: string, targetBaseUrl?: string) => Promise<void>;
-  sendBaizhiOAuthPhoneCode: (phone: string, token: string) => Promise<void>;
-  loginWithBaizhiSession: (targetBaseUrl?: string) => Promise<void>;
-  loginWithBaizhiDouyinToken: (token: string, targetBaseUrl?: string) => Promise<void>;
-  loginWithBaizhiOAuthPhone: (token: string, phone: string, code: string, targetBaseUrl?: string) => Promise<void>;
+  startBaizhiPhoneLogin: (phone: string, code: string) => Promise<void>;
+  finishBaizhiOAuthLogin: (targetBaseUrl?: string, phoneToSave?: string) => Promise<void>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<void>; // 注销账号：后端删除成功后清空本地登录态与保存的凭据
   updateBaseUrl: (url: string) => Promise<void>;
@@ -63,6 +58,12 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | null>(null);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function hasUserIdentity(u: UserStatus | null | undefined): u is UserStatus {
+  return !!u && !!(u.id || u.email || u.username);
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -122,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (loggedIn === '1') {
           try {
             const u = await getUserStatus();
-            if (u && (u.id || u.email || u.username)) {
+            if (hasUserIdentity(u)) {
               setUser(u);
               setAppleSession(storedApple === '1');
               setAuthenticated(true);
@@ -139,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     const u = await getUserStatus();
-    if (u && (u.id || u.email || u.username)) {
+    if (hasUserIdentity(u)) {
       setUser(u);
       setAuthenticated(true);
     }
@@ -190,41 +191,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const startDouyinAppBaizhiLogin = useCallback(async (code: string) => {
+    await apiLoginBaizhiDouyinApp(code.trim());
+  }, []);
+
   const sendBaizhiPhoneCode = useCallback(async (phone: string) => {
     await apiSendBaizhiPhoneCode(phone.trim());
   }, []);
 
-  const loginWithBaizhiPhone = useCallback(
-    async (phone: string, code: string, targetBaseUrl?: string) => {
+  const startBaizhiPhoneLogin = useCallback(
+    async (phone: string, code: string) => {
       const cleanPhone = phone.trim();
       await apiLoginBaizhiPhone(cleanPhone, code.trim());
-      await completeBaizhiOAuth(targetBaseUrl || baseUrl);
-      const u = await getUserStatus();
-      if (!u || !(u.id || u.email || u.username)) {
-        throw new Error('登录未完成');
-      }
-      await AsyncStorage.multiSet([
-        [STORAGE_LOGGED_IN, '1'],
-        [STORAGE_APPLE_LOGIN, '0'],
-        [STORAGE_BAIZHI_PHONE, cleanPhone],
-      ]);
-      setSavedPhone(cleanPhone);
-      setUser(u);
-      setAppleSession(false);
-      setAuthenticated(true);
     },
-    [baseUrl],
+    [],
   );
 
-  const sendBaizhiOAuthPhoneCode = useCallback(async (phone: string, token: string) => {
-    await apiSendBaizhiPhoneCodeForToken(phone.trim(), token.trim());
-  }, []);
-
-  const finishBaizhiCloudLogin = useCallback(
-    async (targetBaseUrl?: string, phoneToSave?: string) => {
-      await completeBaizhiOAuth(targetBaseUrl || baseUrl);
-      const u = await getUserStatus();
-      if (!u || !(u.id || u.email || u.username)) {
+  const finishBaizhiOAuthLogin = useCallback(
+    async (_targetBaseUrl?: string, phoneToSave?: string) => {
+      let u: UserStatus | null = null;
+      let lastError: unknown;
+      for (let i = 0; i < 4; i += 1) {
+        try {
+          const status = await getUserStatus();
+          if (hasUserIdentity(status)) {
+            u = status;
+            break;
+          }
+        } catch (e) {
+          lastError = e;
+        }
+        await sleep(250 + i * 250);
+      }
+      if (!u) {
+        if (lastError) throw lastError;
         throw new Error('登录未完成');
       }
       const pairs: [string, string][] = [
@@ -238,24 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAppleSession(false);
       setAuthenticated(true);
     },
-    [baseUrl],
-  );
-
-  const loginWithBaizhiDouyinToken = useCallback(
-    async (token: string, targetBaseUrl?: string) => {
-      await apiCompleteBaizhiMobileOAuth(token.trim());
-      await finishBaizhiCloudLogin(targetBaseUrl);
-    },
-    [finishBaizhiCloudLogin],
-  );
-
-  const loginWithBaizhiOAuthPhone = useCallback(
-    async (token: string, phone: string, code: string, targetBaseUrl?: string) => {
-      const cleanPhone = phone.trim();
-      await apiCompleteBaizhiOAuthPhone(token.trim(), cleanPhone, code.trim());
-      await finishBaizhiCloudLogin(targetBaseUrl, cleanPhone);
-    },
-    [finishBaizhiCloudLogin],
+    [],
   );
 
   // 注销账号：后端删除成功后，账号已不存在——清掉保存的自动填充凭据，
@@ -306,18 +289,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshUser,
       login,
       loginWithApple,
+      startDouyinAppBaizhiLogin,
       sendBaizhiPhoneCode,
-      loginWithBaizhiPhone,
-      sendBaizhiOAuthPhoneCode,
-      loginWithBaizhiSession: finishBaizhiCloudLogin,
-      loginWithBaizhiDouyinToken,
-      loginWithBaizhiOAuthPhone,
+      startBaizhiPhoneLogin,
+      finishBaizhiOAuthLogin,
       logout: doLogout,
       deleteAccount,
       updateBaseUrl,
       updateBasicAuth,
     }),
-    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, savedPhone, refreshUser, login, loginWithApple, sendBaizhiPhoneCode, loginWithBaizhiPhone, sendBaizhiOAuthPhoneCode, finishBaizhiCloudLogin, loginWithBaizhiDouyinToken, loginWithBaizhiOAuthPhone, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
+    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, savedPhone, refreshUser, login, loginWithApple, startDouyinAppBaizhiLogin, sendBaizhiPhoneCode, startBaizhiPhoneLogin, finishBaizhiOAuthLogin, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
