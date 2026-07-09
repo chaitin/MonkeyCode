@@ -138,6 +138,11 @@ def patch_douyin_resource_bundles(installer)
   if system('/usr/libexec/PlistBuddy', '-c', 'Print :CFBundleExecutable', info_plist, out: File::NULL, err: File::NULL)
     system('/usr/libexec/PlistBuddy', '-c', 'Delete :CFBundleExecutable', info_plist)
   end
+  ['CFBundleShortVersionString', 'CFBundleVersion'].each do |key|
+    if system('/usr/libexec/PlistBuddy', '-c', "Print :#{key}", info_plist, out: File::NULL, err: File::NULL)
+      system('/usr/libexec/PlistBuddy', '-c', "Delete :#{key}", info_plist)
+    end
+  end
   system('/usr/libexec/PlistBuddy', '-c', 'Set :CFBundlePackageType BNDL', info_plist) ||
     system('/usr/libexec/PlistBuddy', '-c', 'Add :CFBundlePackageType string BNDL', info_plist)
 end

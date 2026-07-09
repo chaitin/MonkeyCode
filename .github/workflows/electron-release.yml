@@ -301,6 +301,7 @@ jobs:
           fi
           # CFBundleShortVersionString(version) 与 CFBundleVersion(build) 都取 V → 可对应 tag / CI run。
           node -e "const fs=require('fs');const p='app.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.expo.version=String(process.argv[1]);j.expo.ios=j.expo.ios||{};j.expo.ios.buildNumber=String(process.argv[1]);fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
+          echo "MOBILE_RELEASE_VERSION=$V" >> "$GITHUB_ENV"
 
       - name: Install mobile deps
         working-directory: mobile
@@ -309,6 +310,28 @@ jobs:
       - name: Expo prebuild (generate ios project)
         working-directory: mobile
         run: npx expo prebuild -p ios --no-install
+
+      - name: Sync iOS Xcode version settings
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${MOBILE_RELEASE_VERSION:?Missing MOBILE_RELEASE_VERSION}"
+          export MOBILE_RELEASE_VERSION
+          PBX="ios/MonkeyCode.xcodeproj/project.pbxproj"
+          PLIST="ios/MonkeyCode/Info.plist"
+          test -f "$PBX"
+          test -f "$PLIST"
+
+          perl -0pi -e 's/(MARKETING_VERSION = )[^;]+;/${1}$ENV{MOBILE_RELEASE_VERSION};/g; s/(CURRENT_PROJECT_VERSION = )[^;]+;/${1}$ENV{MOBILE_RELEASE_VERSION};/g' "$PBX"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MOBILE_RELEASE_VERSION" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $MOBILE_RELEASE_VERSION" "$PLIST"
+
+          SHORT_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")
+          BUILD_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")
+          test "$SHORT_VERSION" = "$MOBILE_RELEASE_VERSION"
+          test "$BUILD_VERSION" = "$MOBILE_RELEASE_VERSION"
+          grep -nE "MARKETING_VERSION = $MOBILE_RELEASE_VERSION;|CURRENT_PROJECT_VERSION = $MOBILE_RELEASE_VERSION;" "$PBX"
 
       - name: Pod install
         working-directory: mobile/ios
