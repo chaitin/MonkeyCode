@@ -1,11 +1,7 @@
-import { ApiError, authHeaders } from './client';
+import { ApiError } from './client';
 import { solveChallenges } from './captcha';
 
 export const BAIZHI_BASE_URL = 'https://baizhi.cloud';
-
-const BAIZHI_CLIENT_ID = 'monkeycode-ai';
-const BAIZHI_SCOPE = 'user phone';
-const BAIZHI_RESPONSE_TYPE = 'code';
 
 interface ChallengeResp {
   challenge: { c: number; s: number; d: number };
@@ -40,54 +36,6 @@ function buildQuery(query: Query): string {
     parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
   }
   return parts.join('&');
-}
-
-function readLocation(headers: Headers): string {
-  return headers.get('Location') || headers.get('location') || '';
-}
-
-function parseQuery(url: string): Record<string, string> {
-  const start = url.indexOf('?');
-  if (start < 0) return {};
-  const hash = url.indexOf('#', start + 1);
-  const raw = url.slice(start + 1, hash < 0 ? undefined : hash);
-  const params: Record<string, string> = {};
-  for (const part of raw.split('&')) {
-    if (!part) continue;
-    const eq = part.indexOf('=');
-    const key = eq < 0 ? part : part.slice(0, eq);
-    const value = eq < 0 ? '' : part.slice(eq + 1);
-    try {
-      params[decodeURIComponent(key.replace(/\+/g, ' '))] = decodeURIComponent(value.replace(/\+/g, ' '));
-    } catch {
-      params[key] = value;
-    }
-  }
-  return params;
-}
-
-function absoluteUrl(location: string, base: string): string {
-  if (/^https?:\/\//i.test(location)) return location;
-  if (location.startsWith('//')) return `https:${location}`;
-  const cleanBase = trimBase(base);
-  return location.startsWith('/') ? `${cleanBase}${location}` : `${cleanBase}/${location}`;
-}
-
-function originOf(url: string): string {
-  const match = trimBase(url).match(/^https?:\/\/[^/]+/i);
-  return match ? match[0].toLowerCase() : '';
-}
-
-function assertSameOrigin(url: string, base: string): void {
-  const urlOrigin = originOf(url);
-  const baseOrigin = originOf(base);
-  if (!urlOrigin || !baseOrigin || urlOrigin !== baseOrigin) {
-    throw new ApiError('百智云回调地址异常，已停止登录');
-  }
-}
-
-function isBaizhiAuthorizeUrl(url: string): boolean {
-  return /^https:\/\/baizhi\.cloud\/oauth\/authorize(?:\?|$)/i.test(url);
 }
 
 async function parseError(res: Response, fallback: string): Promise<ApiError> {
@@ -189,11 +137,18 @@ export async function loginBaizhiPhone(phone: string, code: string): Promise<voi
   });
 }
 
+export async function loginBaizhiDouyinApp(code: string): Promise<void> {
+  await baizhiRequest('/api/v1/user/oauth/app-login', {
+    method: 'POST',
+    body: { platform: 'douyin_app', code },
+  });
+}
+
 interface OAuthURLResp {
   url?: string;
 }
 
-export type BaizhiOAuthPlatform = 'github' | 'douyin';
+export type BaizhiOAuthPlatform = 'github';
 
 export async function getBaizhiOAuthLoginUrl(platform: BaizhiOAuthPlatform, redirectUrl: string): Promise<string> {
   const resp = await baizhiRequest<OAuthURLResp>('/api/v1/user/oauth/login', {
@@ -203,112 +158,6 @@ export async function getBaizhiOAuthLoginUrl(platform: BaizhiOAuthPlatform, redi
   return resp.url;
 }
 
-export async function getBaizhiDouyinMobileLoginUrl(redirectUrl: string): Promise<string> {
-  const resp = await baizhiRequest<OAuthURLResp>('/api/v1/user/oauth/mobile-login', {
-    query: { platform: 'douyin', redirect_url: redirectUrl },
-  });
-  if (!resp?.url) throw new ApiError('未获取到抖音授权地址，请重试');
-  return resp.url;
-}
-
-export async function completeBaizhiMobileOAuth(token: string): Promise<void> {
-  await baizhiRequest('/api/v1/user/oauth/mobile-complete', {
-    method: 'POST',
-    body: { token },
-  });
-}
-
-export async function completeBaizhiOAuthPhone(token: string, phone: string, code: string): Promise<void> {
-  const captchaToken = await obtainBaizhiCaptchaToken();
-  await baizhiRequest('/api/v1/user/oauth/complete-phone', {
-    method: 'POST',
-    body: { token, phone, code, captcha_token: captchaToken },
-  });
-}
-
-async function getBaizhiAuthorizeUrl(monkeyCodeBaseUrl: string): Promise<string> {
-  const base = trimBase(monkeyCodeBaseUrl);
-  let res: Response;
-  try {
-    res = await fetch(`${base}/api/v1/users/login?redirect=&inviter_id=`, {
-      method: 'GET',
-      credentials: 'include',
-      headers: authHeaders(),
-      redirect: 'manual',
-    });
-  } catch (e) {
-    throw new ApiError((e as Error)?.message || '获取百智云授权地址失败，请重试');
-  }
-
-  const location = readLocation(res.headers);
-  const authorizeLocation = location ? absoluteUrl(location, base) : '';
-  if (isBaizhiAuthorizeUrl(authorizeLocation)) return authorizeLocation;
-  if (res.url && isBaizhiAuthorizeUrl(res.url)) return res.url;
-  if (!res.ok) {
-    throw await parseError(res, `获取百智云授权地址失败（${res.status}）`);
-  }
-  throw new ApiError('未获取到百智云授权地址，请重试', undefined, res.status);
-}
-
-function toAuthorizeApiUrl(authorizeUrl: string, monkeyCodeBaseUrl: string): string {
-  const params = parseQuery(authorizeUrl);
-  if (!params.state) {
-    throw new ApiError('百智云授权参数缺失，请重试');
-  }
-  const redirectUri = params.redirect_uri || params.redirect_url || `${trimBase(monkeyCodeBaseUrl)}/api/v1/users/baizhi/callback`;
-  return `${BAIZHI_BASE_URL}/api/v1/oauth/authorize?${buildQuery({
-    client_id: params.client_id || BAIZHI_CLIENT_ID,
-    redirect_uri: redirectUri,
-    scope: params.scope || BAIZHI_SCOPE,
-    state: params.state,
-    response_type: params.response_type || BAIZHI_RESPONSE_TYPE,
-  })}`;
-}
-
-export async function completeBaizhiOAuth(monkeyCodeBaseUrl: string): Promise<void> {
-  const authorizeUrl = await getBaizhiAuthorizeUrl(monkeyCodeBaseUrl);
-  const apiUrl = toAuthorizeApiUrl(authorizeUrl, monkeyCodeBaseUrl);
-  let res: Response;
-  try {
-    res = await fetch(apiUrl, {
-      method: 'GET',
-      credentials: 'include',
-      redirect: 'manual',
-    });
-  } catch (e) {
-    throw new ApiError((e as Error)?.message || '百智云授权失败，请重试');
-  }
-
-  if (res.status === 401) {
-    throw new ApiError('百智云登录状态已失效，请重新获取验证码登录', undefined, 401);
-  }
-  if (res.url?.includes('/login?error=')) {
-    throw new ApiError('MonkeyCode 登录回调失败，请重试');
-  }
-  const callbackLocation = readLocation(res.headers);
-  if (callbackLocation) {
-    const callbackUrl = absoluteUrl(callbackLocation, monkeyCodeBaseUrl);
-    assertSameOrigin(callbackUrl, monkeyCodeBaseUrl);
-    let callbackRes: Response;
-    try {
-      callbackRes = await fetch(callbackUrl, {
-        method: 'GET',
-        credentials: 'include',
-        headers: authHeaders(),
-        redirect: 'follow',
-      });
-    } catch (e) {
-      throw new ApiError((e as Error)?.message || 'MonkeyCode 登录回调失败，请重试');
-    }
-    if (callbackRes.url?.includes('/login?error=')) {
-      throw new ApiError('MonkeyCode 登录回调失败，请重试');
-    }
-    if (!callbackRes.ok) {
-      throw await parseError(callbackRes, `MonkeyCode 登录回调失败（${callbackRes.status}）`);
-    }
-    return;
-  }
-  if (!res.ok) {
-    throw await parseError(res, `百智云授权失败（${res.status}）`);
-  }
+export function getMonkeyCodeBaizhiLoginUrl(monkeyCodeBaseUrl: string): string {
+  return `${trimBase(monkeyCodeBaseUrl)}/api/v1/users/login?redirect=&inviter_id=`;
 }
