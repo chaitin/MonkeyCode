@@ -25,6 +25,7 @@ const BROWSER_UA = Platform.select({
 
 type LoginView = 'password' | 'phone' | 'oauthWeb';
 type WebOAuthMode = 'github' | 'baizhiBridge';
+type BaizhiBridgeState = { targetBaseUrl: string; phoneToSave?: string; authorizeViaFetch?: boolean };
 
 function hostOf(url: string): string {
   return url.match(/^https?:\/\/([^/?#]+)/i)?.[1]?.toLowerCase() || '';
@@ -83,6 +84,21 @@ function isGithubCallback(url: string): boolean {
   return url.startsWith(GITHUB_CALLBACK_URL) || url.startsWith('monkeycode:///oauth/github');
 }
 
+async function readResponseError(res: Response, fallback: string): Promise<string> {
+  try {
+    const json = (await res.clone().json()) as { message?: string };
+    if (json?.message) return json.message.replace(/\s*\[trace_id:[^\]]+\]\s*$/i, '').trim();
+  } catch {
+    try {
+      const text = await res.text();
+      if (text.trim()) return text.trim();
+    } catch {
+      /* keep fallback */
+    }
+  }
+  return fallback;
+}
+
 export default function LoginScreen() {
   const t = useTheme();
   const {
@@ -127,7 +143,7 @@ export default function LoginScreen() {
   const baizhiBridgeLeftRef = useRef(false);
   const baizhiBridgeDoneRef = useRef(false);
   const baizhiAutoAuthorizeUrlRef = useRef('');
-  const baizhiBridgeRef = useRef<{ targetBaseUrl: string; phoneToSave?: string } | null>(null);
+  const baizhiBridgeRef = useRef<BaizhiBridgeState | null>(null);
 
   // 手机号 / 抖音 / GitHub 登录入口只在官方云展示；私有化 / 自定义地址保持账号密码入口。
   const cloud = norm(serverUrl || baseUrl) === DEFAULT_BASE_URL;
@@ -209,9 +225,9 @@ export default function LoginScreen() {
     return target;
   }, [baseUrl, basicAuth, basicAuthInput, serverUrl, updateBaseUrl, updateBasicAuth]);
 
-  const startBaizhiBridge = useCallback((title: string, targetBaseUrl: string, phoneToSave?: string) => {
+  const startBaizhiBridge = useCallback((title: string, targetBaseUrl: string, phoneToSave?: string, authorizeViaFetch = false) => {
     const cleanTarget = norm(targetBaseUrl || baseUrl || DEFAULT_BASE_URL);
-    baizhiBridgeRef.current = { targetBaseUrl: cleanTarget, phoneToSave };
+    baizhiBridgeRef.current = { targetBaseUrl: cleanTarget, phoneToSave, authorizeViaFetch };
     baizhiBridgeLeftRef.current = false;
     baizhiBridgeDoneRef.current = false;
     baizhiAutoAuthorizeUrlRef.current = '';
@@ -327,7 +343,7 @@ export default function LoginScreen() {
       const result = await authorizeDouyin();
       setPhase('正在完成抖音登录…');
       await startDouyinAppBaizhiLogin(result.code);
-      startBaizhiBridge('抖音登录', targetBaseUrl);
+      startBaizhiBridge('抖音登录', targetBaseUrl, undefined, true);
     } catch (e) {
       if ((e as { code?: string })?.code === 'E_DOUYIN_CANCELLED') return;
       setError(formatError(e, '抖音登录失败，请重试'));
@@ -406,7 +422,7 @@ export default function LoginScreen() {
     try {
       const targetBaseUrl = await applyServerSettings();
       await startBaizhiPhoneLogin(cleanPhone, cleanCode);
-      startBaizhiBridge('手机号登录', targetBaseUrl, cleanPhone);
+      startBaizhiBridge('手机号登录', targetBaseUrl, cleanPhone, true);
     } catch (e) {
       setError(formatError(e, '登录失败，请重试'));
     } finally {
@@ -427,17 +443,49 @@ export default function LoginScreen() {
     setView(nextView);
   };
 
+  const authorizeBaizhiWithNativeSession = useCallback(async (apiUrl: string) => {
+    const bridge = baizhiBridgeRef.current;
+    if (!bridge || baizhiBridgeDoneRef.current) return;
+    setError('');
+    setBusy(true);
+    setPhase('正在确认授权…');
+    try {
+      const res = await fetch(apiUrl, { credentials: 'include', redirect: 'follow' });
+      if (!res.ok) {
+        throw new ApiError(await readResponseError(res, `百智云授权失败（${res.status}）`), undefined, res.status);
+      }
+      await finishBaizhiBridgeLogin();
+    } catch (e) {
+      baizhiBridgeDoneRef.current = false;
+      baizhiBridgeLeftRef.current = false;
+      baizhiAutoAuthorizeUrlRef.current = '';
+      baizhiBridgeRef.current = null;
+      setWebOAuthUrl('');
+      setWebOAuthTitle('');
+      setWebOAuthMode('github');
+      setView(bridge.phoneToSave ? 'phone' : 'password');
+      setError(formatError(e, '登录失败，请重试'));
+    } finally {
+      setBusy(false);
+      setPhase('');
+    }
+  }, [finishBaizhiBridgeLogin]);
+
   const openBaizhiAuthorizeApi = useCallback((url: string) => {
     if (webOAuthMode !== 'baizhiBridge') return false;
     const apiUrl = toBaizhiAuthorizeApiUrl(url);
     if (!apiUrl) return false;
     if (baizhiAutoAuthorizeUrlRef.current === apiUrl) return true;
     baizhiAutoAuthorizeUrlRef.current = apiUrl;
-    setPhase('正在确认授权…');
-    setWebOAuthUrl(apiUrl);
-    setWebOAuthKey((k) => k + 1);
+    if (baizhiBridgeRef.current?.authorizeViaFetch) {
+      void authorizeBaizhiWithNativeSession(apiUrl);
+    } else {
+      setPhase('正在确认授权…');
+      setWebOAuthUrl(apiUrl);
+      setWebOAuthKey((k) => k + 1);
+    }
     return true;
-  }, [webOAuthMode]);
+  }, [authorizeBaizhiWithNativeSession, webOAuthMode]);
 
   const onWebOAuthNav = useCallback(
     (navState: WebViewNavigation) => {
