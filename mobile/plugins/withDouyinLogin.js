@@ -97,10 +97,10 @@ function addPod(source) {
   if (!next.includes("pod 'DouyinOpenSDK'")) {
     next = next.replace(/use_expo_modules!\n/, "use_expo_modules!\n  pod 'DouyinOpenSDK'\n");
   }
-  return addIOSSimulatorPodPatch(next);
+  return addIOSPodPatches(next);
 }
 
-function addIOSSimulatorPodPatch(source) {
+function addIOSPodPatches(source) {
   const helperName = 'patch_douyin_ios_simulator_linkage';
   const helper = `def ${helperName}(installer)
   installer.aggregate_targets.each do |aggregate_target|
@@ -129,6 +129,18 @@ function addIOSSimulatorPodPatch(source) {
     end
   end
 end
+
+def patch_douyin_resource_bundles(installer)
+  sandbox_root = installer.sandbox.root.to_s
+  info_plist = File.join(sandbox_root, 'DouyinOpenSDK', 'DouyinOpenSDK.framework', 'Resources', 'DYOpenCore.bundle', 'Info.plist')
+  return unless File.exist?(info_plist)
+
+  if system('/usr/libexec/PlistBuddy', '-c', 'Print :CFBundleExecutable', info_plist, out: File::NULL, err: File::NULL)
+    system('/usr/libexec/PlistBuddy', '-c', 'Delete :CFBundleExecutable', info_plist)
+  end
+  system('/usr/libexec/PlistBuddy', '-c', 'Set :CFBundlePackageType BNDL', info_plist) ||
+    system('/usr/libexec/PlistBuddy', '-c', 'Add :CFBundlePackageType string BNDL', info_plist)
+end
 `;
   const helperPattern = new RegExp(`def ${helperName}\\(installer\\)[\\s\\S]*?\\nend\\n\\ntarget ['"]`);
   let next = helperPattern.test(source)
@@ -138,6 +150,12 @@ end
     next = next.replace(
       /(react_native_post_install\([\s\S]*?:ccache_enabled => ccache_enabled\?\(podfile_properties\),\n    \))/,
       (match) => `${match}\n    ${helperName}(installer)`,
+    );
+  }
+  if (!next.includes('\n    patch_douyin_resource_bundles(installer)')) {
+    next = next.replace(
+      new RegExp(`(\\n    ${helperName}\\(installer\\))`),
+      (match) => `${match}\n    patch_douyin_resource_bundles(installer)`,
     );
   }
   return next;
