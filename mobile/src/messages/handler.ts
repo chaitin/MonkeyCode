@@ -16,6 +16,7 @@ import { base64DecodeToString } from './base64';
 
 export interface AskQuestion {
   question: string;
+  custom?: boolean;
   header?: string;
   multiSelect: boolean;
   options: { label: string; description?: string }[];
@@ -266,50 +267,9 @@ export class TaskMessageHandler {
         else this.messages.push({ id: nextId(), kind: 'thought', text, time });
         break;
       }
-      case 'tool_call': {
-        this.messages.push({
-          id: nextId(),
-          kind: 'tool',
-          toolCallId: update.toolCallId,
-          title: update.title || '工具调用',
-          status: update.status,
-          toolKind: update.kind,
-          rawInput: update.rawInput,
-          rawOutput: update.rawOutput,
-          content: update.content,
-          time,
-        });
-        break;
-      }
+      case 'tool_call':
       case 'tool_call_update': {
-        // 优先按 toolCallId 匹配 tool；其次匹配 ask 的状态。
-        // 不可变更新：定位下标后替换为新对象，保证状态/标题变化能触发重渲染。
-        let toolIdx = -1;
-        for (let i = this.messages.length - 1; i >= 0; i--) {
-          const m = this.messages[i];
-          if (m.kind === 'tool' && m.toolCallId === update.toolCallId) { toolIdx = i; break; }
-        }
-        if (toolIdx >= 0) {
-          const tool = this.messages[toolIdx];
-          if (tool.kind === 'tool')
-            this.messages[toolIdx] = {
-              ...tool,
-              status: update.status ?? tool.status,
-              title: update.title ?? tool.title,
-              toolKind: update.kind ?? tool.toolKind,
-              rawInput: update.rawInput ?? tool.rawInput,
-              rawOutput: update.rawOutput ?? tool.rawOutput,
-              content: update.content ?? tool.content,
-            };
-          break;
-        }
-        const askIdx = this.messages.findIndex(
-          (m) => m.kind === 'ask' && m.askId === update.toolCallId,
-        );
-        if (askIdx >= 0 && update.status) {
-          const ask = this.messages[askIdx];
-          if (ask.kind === 'ask') this.messages[askIdx] = { ...ask, status: update.status };
-        }
+        this.applyToolCall(update, time);
         break;
       }
       case 'available_commands_update': {
@@ -354,26 +314,157 @@ export class TaskMessageHandler {
     }
   }
 
-  private applyAskUserQuestion(data: any, time: number) {
-    const toolCall = data?.toolCall;
-    if (!toolCall) return;
-    const rawQuestions = toolCall.rawInput?.questions ?? [];
-    this.messages.push({
+  private normalizeAskUserQuestions(rawQuestions: any, defaultMultiple = false): AskQuestion[] | null {
+    if (!Array.isArray(rawQuestions)) return null;
+    return rawQuestions.map((q: any) => {
+      const multiple = q?.multiple ?? q?.multiSelect ?? defaultMultiple;
+      return {
+        custom: !!q?.custom,
+        header: q?.header,
+        multiSelect: !!multiple,
+        question: q?.question,
+        options: (Array.isArray(q?.options) ? q.options : []).map((o: any) => ({
+          label: o?.label,
+          description: o?.description,
+        })),
+      };
+    });
+  }
+
+  private getAskUserQuestionRawQuestions(toolCall: any) {
+    return Array.isArray(toolCall?.rawInput?.questions)
+      ? toolCall.rawInput.questions
+      : toolCall?._meta?.askUserQuestion?.questions;
+  }
+
+  private getAskUserQuestionDefaultMultiple(toolCall: any) {
+    return !!(toolCall?.rawInput?.multiple ?? toolCall?._meta?.askUserQuestion?.multiple ?? false);
+  }
+
+  private isUserQuestionToolCall(data: any) {
+    const questions = this.normalizeAskUserQuestions(
+      this.getAskUserQuestionRawQuestions(data),
+      this.getAskUserQuestionDefaultMultiple(data),
+    );
+    if (!questions) return false;
+
+    const title = typeof data?.title === 'string' ? data.title : '';
+    const kind = typeof data?.kind === 'string' ? data.kind : '';
+    const normalizedTitle = title.toLowerCase().trim().replace(/[_\s]+/g, '-');
+    const normalizedKind = kind.toLowerCase().trim().replace(/[_\s]+/g, '-');
+
+    return (
+      normalizedTitle === 'question'
+      || normalizedTitle === 'user-question'
+      || normalizedTitle.endsWith('-user-question')
+      || normalizedTitle.includes('ask-user-question')
+      || normalizedKind === 'user-question'
+      || normalizedKind === 'ask-user-question'
+      || (title === '' && kind === '')
+    );
+  }
+
+  private upsertAskUserQuestionFromToolCall(toolCall: any, time: number) {
+    const askId = toolCall?.toolCallId;
+    const questions = this.normalizeAskUserQuestions(
+      this.getAskUserQuestionRawQuestions(toolCall),
+      this.getAskUserQuestionDefaultMultiple(toolCall),
+    );
+    if (!askId || !questions) return false;
+
+    const askIdx = this.messages.findIndex((m) => m.kind === 'ask' && m.askId === askId);
+    const toolIdx = this.messages.findIndex((m) => m.kind === 'tool' && m.toolCallId === askId);
+    const nextMessage: ChatMessage = {
       id: nextId(),
       kind: 'ask',
-      askId: toolCall.toolCallId,
-      status: 'pending',
+      askId,
+      status: toolCall?.status || 'pending',
       time,
-      questions: rawQuestions.map((q: any) => ({
-        question: q.question,
-        header: q.header,
-        multiSelect: !!q.multiSelect,
-        options: (q.options ?? []).map((o: any) => ({
-          label: o.label,
-          description: o.description,
-        })),
-      })),
-    });
+      questions,
+    };
+
+    if (askIdx >= 0) {
+      const ask = this.messages[askIdx];
+      if (ask.kind !== 'ask') return false;
+      const existingAnswers = new Map(
+        ask.questions
+          .filter((q) => q.answer !== undefined)
+          .map((q) => [q.question, q.answer] as const),
+      );
+      this.messages[askIdx] = {
+        ...ask,
+        status: ask.status === 'completed' ? 'completed' : toolCall?.status || ask.status || 'pending',
+        questions: questions.map((q) => (
+          existingAnswers.has(q.question)
+            ? { ...q, answer: existingAnswers.get(q.question) }
+            : q
+        )),
+      };
+      return true;
+    }
+
+    if (toolIdx >= 0) {
+      this.messages[toolIdx] = nextMessage;
+      return true;
+    }
+
+    this.messages.push(nextMessage);
+    return true;
+  }
+
+  private applyToolCall(data: any, time: number) {
+    if (this.isUserQuestionToolCall(data)) {
+      this.upsertAskUserQuestionFromToolCall(data, time);
+      return;
+    }
+
+    let toolIdx = -1;
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const m = this.messages[i];
+      if (m.kind === 'tool' && m.toolCallId === data.toolCallId) { toolIdx = i; break; }
+    }
+
+    const askIdx = this.messages.findIndex((m) => m.kind === 'ask' && m.askId === data.toolCallId);
+
+    if (toolIdx === -1 && askIdx === -1 && data.sessionUpdate === 'tool_call') {
+      this.messages.push({
+        id: nextId(),
+        kind: 'tool',
+        toolCallId: data.toolCallId,
+        title: data.title || '工具调用',
+        status: data.status,
+        toolKind: data.kind,
+        rawInput: data.rawInput,
+        rawOutput: data.rawOutput,
+        content: data.content,
+        time,
+      });
+      return;
+    }
+
+    if (toolIdx >= 0) {
+      const tool = this.messages[toolIdx];
+      if (tool.kind === 'tool')
+        this.messages[toolIdx] = {
+          ...tool,
+          status: data.status ?? tool.status,
+          title: data.title ?? tool.title,
+          toolKind: data.kind ?? tool.toolKind,
+          rawInput: data.rawInput ?? tool.rawInput,
+          rawOutput: data.rawOutput ?? tool.rawOutput,
+          content: data.content ?? tool.content,
+        };
+      return;
+    }
+
+    if (askIdx >= 0 && data.status) {
+      const ask = this.messages[askIdx];
+      if (ask.kind === 'ask') this.messages[askIdx] = { ...ask, status: data.status };
+    }
+  }
+
+  private applyAskUserQuestion(data: any, time: number) {
+    this.upsertAskUserQuestionFromToolCall({ ...data?.toolCall, status: 'pending' }, time);
   }
 
   private applyReplyQuestion(data: any) {

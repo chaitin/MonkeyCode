@@ -26,6 +26,7 @@ import {
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'closed';
 export type CloseReason = 'manual' | 'task_ended' | 'unknown' | null;
 export type SendReplyResult = 'sent' | 'queued' | 'rejected';
+export type ReplyDeliveryStatus = SendReplyResult;
 
 /** 用户消息携带的图片附件（已上传，url 为对象存储可访问地址）。 */
 export interface UserAttachment {
@@ -43,6 +44,7 @@ interface Callbacks {
   onOpen?: () => void;
   onClose?: () => void;
   onError?: () => void;
+  onReplyStatus?: (requestId: string, status: ReplyDeliveryStatus) => void;
 }
 
 type Mode = 'attach' | 'new';
@@ -140,11 +142,16 @@ export class TaskStreamClient {
         }),
       ),
     };
-    if (this.send(payload)) return 'sent';
+    if (this.send(payload)) {
+      this.cb.onReplyStatus?.(requestId, 'sent');
+      return 'sent';
+    }
     if (this.connectionState === 'connecting' || this.connectionState === 'reconnecting') {
       this.queuedReplies.set(requestId, JSON.stringify(payload));
+      this.cb.onReplyStatus?.(requestId, 'queued');
       return 'queued';
     }
+    this.cb.onReplyStatus?.(requestId, 'rejected');
     return 'rejected';
   }
 
@@ -273,6 +280,7 @@ export class TaskStreamClient {
       if (this.socket?.readyState !== WebSocket.OPEN) break;
       this.socket.send(payload);
       this.queuedReplies.delete(id);
+      this.cb.onReplyStatus?.(id, 'sent');
     }
   }
 

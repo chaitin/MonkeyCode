@@ -13,6 +13,7 @@ import { RepoEntryMode, type RepoFileChange, type RepoFileStatus, type TaskContr
 import { authHeaders, getDownloadUrl } from '@/api/client';
 import { base64DecodeToString, bytesToBase64 } from '@/messages/base64';
 import { Icons, Spinner } from '@/components/Icons';
+import { isNativeFileSaverAvailable, saveFileToDevice } from '@/native/fileSaver';
 import { useTheme, type Theme } from '@/theme';
 
 const ADD = '#3fb950';
@@ -195,16 +196,26 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
     };
     const fail = (msg: string) => { if (!canceledRef.current) Alert.alert('下载失败', msg); };
     const done = () => { resumableRef.current = null; xhrRef.current = null; setDownloading(null); setDl(null); };
-    // Android：保存到用户选择的文件夹（SAF 选目录 → 在目录里建文件 → 写入）。
-    const saveToFolder = async (b64: string) => {
+    // 新版原生包用 ACTION_CREATE_DOCUMENT 直接选择最终文件位置；旧包降级到 SAF 目录授权。
+    const saveToDevice = async (b64: string) => {
       try {
+        if (isNativeFileSaverAvailable()) {
+          const savedUri = await saveFileToDevice(target, safeName, mimeForName(safeName));
+          if (savedUri) Alert.alert('已保存', '文件已保存到所选位置');
+          return;
+        }
         const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
         if (!perm.granted) return;
         const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(perm.directoryUri, safeName, mimeForName(safeName));
         await FileSystem.writeAsStringAsync(fileUri, b64, { encoding: FileSystem.EncodingType.Base64 });
         Alert.alert('已保存', '文件已保存到所选文件夹');
       } catch (e) {
-        Alert.alert('保存失败', (e as Error)?.message || '未知错误');
+        const message = (e as Error)?.message || '未知错误';
+        if (/isn['’]?t writable|not writable/i.test(message)) {
+          Alert.alert('该目录不可写', 'Android 不允许直接写入 Downloads 根目录，请在其中新建并选择一个子文件夹后重试。');
+        } else {
+          Alert.alert('保存失败', message);
+        }
       }
     };
 
@@ -229,7 +240,7 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
           await FileSystem.writeAsStringAsync(target, b64, { encoding: FileSystem.EncodingType.Base64 }); // 缓存副本（供分享）
           // Android 分享面板只能发给应用、不能选文件夹，所以下完让用户选：存到设备文件夹 或 分享。
           Alert.alert('下载完成', safeName, [
-            { text: '保存到文件夹', onPress: () => { void saveToFolder(b64); } },
+            { text: '保存到设备', onPress: () => { void saveToDevice(b64); } },
             { text: '分享', onPress: () => { void share(target); } },
             { text: '取消', style: 'cancel' },
           ]);

@@ -84,6 +84,7 @@
         }
       ],
       "./plugins/withDouyinLogin",
+      "./plugins/withAndroidFileSaver",
       [
         "expo-build-properties",
         {

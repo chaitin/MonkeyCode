@@ -243,6 +243,11 @@ function fmtTokens(v: number): string {
   if (v >= 1_000_000) return `${(Math.floor(v / 100_000) / 10).toFixed(1)}M`;
   return v.toLocaleString('zh-CN');
 }
+function maskUserId(id: string): string {
+  const v = id.trim();
+  if (v.length <= 16) return v;
+  return `${v.slice(0, 8)}...${v.slice(-6)}`;
+}
 const clamp = (v: number, total: number) => Math.min(Math.max(v, 0), total);
 
 function QuotaBar({ name, total, remaining, t }: { name: string; total: number; remaining: number; t: Theme }) {
@@ -478,7 +483,7 @@ export default function ProfileScreen() {
                 {user?.id ? (
                   <Pressable onPress={() => copy(user.id!, '用户 ID 已复制')} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' }, pressed && { opacity: 0.55 }]}>
                     <Icons.copy size={13} color={t.tx3} sw={1.8} />
-                    <Text style={{ fontSize: 12.5, color: t.tx3, fontFamily: 'monospace' }}>{user.id.slice(0, 8)}</Text>
+                    <Text style={{ fontSize: 12.5, color: t.tx3, fontFamily: 'monospace' }}>{maskUserId(user.id)}</Text>
                   </Pressable>
                 ) : null}
               </View>
