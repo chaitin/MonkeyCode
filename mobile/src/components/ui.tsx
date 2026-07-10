@@ -299,13 +299,13 @@ export function GlassNav({ title, onBack, right, children }: { title?: string; o
 
 // ── 底部选择面板（仓库 / 模型）──────────────────────────────────────────────────
 export interface PickerOption { key: string; title: string; sub?: string; icon?: string; disabled?: boolean; badge?: string }
-export function PickerSheet({ title, options, selected, onPick, onClose, visible }: {
-  title: string; options: PickerOption[]; selected?: string; onPick: (k: string) => void; onClose: () => void; visible: boolean;
+export function PickerSheet({ title, options, selected, onPick, onClose, onDismiss, visible }: {
+  title: string; options: PickerOption[]; selected?: string; onPick: (k: string) => void; onClose: () => void; onDismiss?: () => void; visible: boolean;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={onDismiss} statusBarTranslucent>
       <Scrim onPress={onClose} />
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '74%', backgroundColor: t.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: StyleSheet.hairlineWidth, borderColor: t.line2, paddingBottom: insets.bottom + 16 }}>
         <View style={{ width: 38, height: 4, borderRadius: 99, backgroundColor: t.line2, alignSelf: 'center', marginTop: 10, marginBottom: 4 }} />

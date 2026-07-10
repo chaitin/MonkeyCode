@@ -4,6 +4,7 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, Vi
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError, createTask, getSubscription, listImages, listModels, listProjects } from '@/api/client';
+import { pickZipFile, uploadFileWithPresignedUrl, type PickedFile } from '@/api/upload';
 import { AiConsentModal, useAiConsent } from '@/components/AiConsent';
 import type { Model, Project } from '@/api/types';
 import { ConcurrentLimitModal } from '@/components/ConcurrentLimitModal';
@@ -19,6 +20,7 @@ const SUGGESTIONS = ['修复一个线上 bug', '为这个仓库写单元测试',
 
 // 「选择仓库」列表里的「手动输入仓库地址」入口标识（区别于真实 project.id）
 const MANUAL_REPO_KEY = '__manual_repo__';
+const ZIP_REPO_KEY = '__zip_repo__';
 
 /** 从 Git 地址里取 owner/repo 作为简短展示名（取不到则回退为整段地址）。 */
 function repoNameFromUrl(url: string): string {
@@ -63,6 +65,10 @@ export default function NewTaskScreen() {
   const [imageId, setImageId] = useState('');
   const [repoKey, setRepoKey] = useState<string>(params.projectId || ''); // '' = 不关联仓库；project.id = 选中项目；MANUAL_REPO_KEY = 手动输入
   const [manualRepo, setManualRepo] = useState(''); // 手动输入的 Git 仓库地址
+  const [zipFile, setZipFile] = useState<PickedFile | null>(null); // 本地上传的 zip 包
+  const zipPickingRef = useRef(false);
+  const zipPickAfterDismissRef = useRef(false);
+  const zipPickFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [picking, setPicking] = useState<'repo' | 'model' | null>(null);
   const [manualOpen, setManualOpen] = useState(false); // 手动输入仓库地址对话框
@@ -108,21 +114,70 @@ export default function NewTaskScreen() {
 
   const repoOptions: PickerOption[] = [
     { key: '', title: '快速开始', sub: '不关联仓库', icon: 'sparkle' },
+    { key: ZIP_REPO_KEY, title: '上传 Zip 文件', sub: zipFile?.name || '选择本地 .zip 压缩包', icon: 'filePlus' },
     { key: MANUAL_REPO_KEY, title: '手动输入仓库地址', sub: manualRepo || '填写 Git 仓库地址', icon: manualRepo ? providerIconForUrl(manualRepo) : 'git' },
     ...projects.map((p, i) => ({ key: p.id || `p${i}`, title: p.name || p.full_name || '项目', sub: p.repo_url, icon: providerIconForUrl(p.repo_url) })),
   ];
+
+  const selectZip = useCallback(async () => {
+    if (zipPickingRef.current) return;
+    zipPickingRef.current = true;
+    setError('');
+    let file: PickedFile | null = null;
+    try {
+      file = await pickZipFile();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '无法选择 zip 文件');
+      return;
+    } finally {
+      zipPickingRef.current = false;
+    }
+    if (!file) return;
+    setZipFile(file);
+    setManualRepo('');
+    setRepoKey(ZIP_REPO_KEY);
+  }, []);
+
+  const runQueuedZipPick = useCallback(() => {
+    if (!zipPickAfterDismissRef.current) return;
+    zipPickAfterDismissRef.current = false;
+    if (zipPickFallbackTimerRef.current) {
+      clearTimeout(zipPickFallbackTimerRef.current);
+      zipPickFallbackTimerRef.current = null;
+    }
+    void selectZip();
+  }, [selectZip]);
+
+  const queueZipPickAfterSheet = useCallback(() => {
+    zipPickAfterDismissRef.current = true;
+    setPicking(null);
+    if (zipPickFallbackTimerRef.current) clearTimeout(zipPickFallbackTimerRef.current);
+    // Android 没有稳定的 Modal onDismiss 回调；iOS 正常走 onDismiss，定时器只作兜底。
+    zipPickFallbackTimerRef.current = setTimeout(runQueuedZipPick, 500);
+  }, [runQueuedZipPick]);
+
+  useEffect(() => () => {
+    if (zipPickFallbackTimerRef.current) clearTimeout(zipPickFallbackTimerRef.current);
+  }, []);
 
   const submit = useCallback(async () => {
     setError('');
     if (!content.trim()) { setError('请描述你想让 AI 做什么'); return; }
     if (!modelId) { setError('请选择模型'); return; }
+    if (repoKey === ZIP_REPO_KEY && !zipFile) { setError('请选择 zip 文件'); return; }
     setSubmitting(true);
     try {
-      // 手动输入的仓库地址优先；否则用所选项目；都没有则不关联仓库（快速开始）
+      // zip 上传优先；否则手动输入仓库地址；再否则用所选项目；都没有则不关联仓库（快速开始）
       const manualUrl = repoKey === MANUAL_REPO_KEY ? manualRepo.trim() : '';
-      const repo = manualUrl
-        ? { repo_url: manualUrl }
-        : selectedProject ? { repo_url: selectedProject.repo_url || undefined } : {};
+      let repo: { repo_url?: string; zip_url?: string; repo_filename?: string } = {};
+      if (repoKey === ZIP_REPO_KEY && zipFile) {
+        const uploaded = await uploadFileWithPresignedUrl(zipFile);
+        repo = { zip_url: uploaded.url, repo_filename: uploaded.filename };
+      } else if (manualUrl) {
+        repo = { repo_url: manualUrl };
+      } else if (selectedProject) {
+        repo = { repo_url: selectedProject.repo_url || undefined };
+      }
       const task = await createTask({
         content: content.trim(),
         cli_name: TASK_DEFAULTS.cliName,
@@ -132,20 +187,22 @@ export default function NewTaskScreen() {
         task_type: 'develop',
         repo,
         resource: { ...TASK_DEFAULTS.resource },
-        extra: { skill_ids: DEFAULT_SKILL_IDS, project_id: manualUrl ? undefined : selectedProject?.id },
+        extra: { skill_ids: DEFAULT_SKILL_IDS, project_id: (!manualUrl && repoKey !== ZIP_REPO_KEY) ? selectedProject?.id : undefined },
       });
       if (task?.id) router.replace(`/task/${task.id}`);
       else setError('任务创建成功但未返回 ID');
     } catch (e) {
       if (e instanceof ApiError && e.code === 10811) setLimitOpen(true);
-      else setError(e instanceof ApiError ? e.message : '任务创建失败，请重试');
+      else setError(e instanceof Error ? e.message : '任务创建失败，请重试');
     } finally {
       setSubmitting(false);
     }
-  }, [content, imageId, modelId, router, selectedProject, repoKey, manualRepo]);
+  }, [content, imageId, modelId, router, selectedProject, repoKey, manualRepo, zipFile]);
 
   // 仓库行只展示一处信息，避免「快速开始 / 不关联仓库」「名字 / 同名仓库路径」这种左右重复。
-  const repoValue = repoKey === MANUAL_REPO_KEY && manualRepo
+  const repoValue = repoKey === ZIP_REPO_KEY
+    ? zipFile?.name || 'Zip 文件'
+    : repoKey === MANUAL_REPO_KEY && manualRepo
     ? repoNameFromUrl(manualRepo)
     : selectedProject ? (selectedProject.full_name || selectedProject.name || '项目') : '不关联仓库';
 
@@ -175,7 +232,7 @@ export default function NewTaskScreen() {
 
           {/* config */}
           <Card style={{ overflow: 'hidden', marginBottom: 14 }}>
-            <ConfigRow icon="folder" label="代码仓库" value={repoValue} onPress={() => setPicking('repo')} t={t} />
+            <ConfigRow icon={repoKey === ZIP_REPO_KEY ? 'file' : 'folder'} label="代码仓库" value={repoValue} onPress={() => setPicking('repo')} t={t} />
             <ConfigRow icon="cube" label="模型" value={selectedModel ? modelLabel(selectedModel) : '选择模型'} divider onPress={() => setPicking('model')} t={t} />
           </Card>
 
@@ -214,7 +271,7 @@ export default function NewTaskScreen() {
       {/* footer action */}
       {!loading ? (
         <View style={{ paddingHorizontal: spacing.pad, paddingTop: 12, paddingBottom: insets.bottom + 14, borderTopWidth: 1, borderColor: t.line, backgroundColor: t.bg }}>
-          <PrimaryButton block icon={submitting ? undefined : 'send'} label={submitting ? '正在创建…' : '发起任务'} disabled={submitting || !content.trim()} onPress={submit} />
+          <PrimaryButton block icon={submitting ? undefined : 'send'} label={submitting ? (repoKey === ZIP_REPO_KEY ? '正在上传…' : '正在创建…') : '发起任务'} disabled={submitting || !content.trim()} onPress={submit} />
         </View>
       ) : null}
 
@@ -222,10 +279,11 @@ export default function NewTaskScreen() {
         onPick={(k) => {
           // 「手动输入仓库地址」不直接选中，而是先收起列表、弹出输入框
           if (k === MANUAL_REPO_KEY) { setPicking(null); setManualOpen(true); return; }
-          setRepoKey(k); setPicking(null);
-        }} onClose={() => setPicking(null)} />
+          if (k === ZIP_REPO_KEY) { queueZipPickAfterSheet(); return; }
+          setZipFile(null); setRepoKey(k); setPicking(null);
+        }} onClose={() => setPicking(null)} onDismiss={runQueuedZipPick} />
       <RepoUrlSheet visible={manualOpen} initialUrl={manualRepo}
-        onConfirm={(u) => { setManualRepo(u); setRepoKey(MANUAL_REPO_KEY); setManualOpen(false); }}
+        onConfirm={(u) => { setZipFile(null); setManualRepo(u); setRepoKey(MANUAL_REPO_KEY); setManualOpen(false); }}
         onClose={() => setManualOpen(false)} />
       <ModelSheet visible={picking === 'model'} models={models} selectedId={modelId} plan={plan}
         onPick={(k) => { setModelId(k); setPicking(null); }} onClose={() => setPicking(null)} />

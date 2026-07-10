@@ -3,10 +3,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import { ApiError, getSubscription, getTaskDetail, getTaskRounds, listModels } from '@/api/client';
 import { TaskControlClient, type PortForwardInfo, type RepoFileChange } from '@/api/control';
-import { TaskStreamClient, type StreamState } from '@/api/stream';
+import { TaskStreamClient, type ReplyDeliveryStatus, type StreamState } from '@/api/stream';
 import { MAX_ATTACHMENTS, pickImages, saveImageToAlbum, uploadImage } from '@/api/upload';
 import { AiConsentModal, useAiConsent } from '@/components/AiConsent';
 import type { Model, ProjectTask } from '@/api/types';
@@ -18,7 +19,7 @@ import { FilesPanel } from '@/components/FilesPanel';
 import { MicButton } from '@/components/MicButton';
 import { usePreview } from '@/components/PreviewProvider';
 import { useSpeechToText } from '@/speech/useSpeechToText';
-import { StreamBlock, type AnswerMap } from '@/components/StreamBlocks';
+import { StreamBlock, type AnswerMap, type AnswerSubmitResult, type AnswerSubmitState } from '@/components/StreamBlocks';
 import { EmptyView, IconButton, LoadingView, Ring, RunTimer, Scrim, Toast, TypingDots } from '@/components/ui';
 import { modelLabel } from '@/config';
 import { decodeChunks, type ChatMessage } from '@/messages/handler';
@@ -27,6 +28,7 @@ import { formatTokens, modelDisplayName, taskDisplayName } from '@/utils/format'
 
 const ROUNDS_PER_FETCH = 1;
 const POLL_INTERVAL = 10000;
+const TASK_DRAFT_PREFIX = 'monkeycode:task-draft:';
 // 指令：继续/压缩 直接发消息；重启/重置 走控制通道 restart(load_session)
 type CmdKey = 'continue' | 'skill' | 'compact' | 'restart' | 'reset';
 type Cmd = { key: CmdKey; label: string; tone: 'ac' | 'neutral' | 'amber' | 'red'; icon?: string; desc?: string };
@@ -81,6 +83,18 @@ function ctxColor(pct: number, t: Theme): string {
   return t.ac;
 }
 
+function taskDraftKey(taskId: string): string {
+  return `${TASK_DRAFT_PREFIX}${taskId}`;
+}
+
+function normalizeAskStatus(message: ChatMessage, expirePending: boolean): ChatMessage {
+  if (message.kind !== 'ask') return message;
+  const completed = message.status === 'completed';
+  const expired = message.status === 'failed' || message.status === 'expired';
+  const nextStatus = completed ? 'completed' : expired || expirePending ? 'expired' : 'pending';
+  return nextStatus === message.status ? message : { ...message, status: nextStatus };
+}
+
 export default function TaskDetailScreen() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -116,6 +130,7 @@ export default function TaskDetailScreen() {
   const [portsRefreshing, setPortsRefreshing] = useState(false);
   const [fileChanges, setFileChanges] = useState<RepoFileChange[]>([]);
   const [filesOpen, setFilesOpen] = useState(false);
+  const [answerSubmitStates, setAnswerSubmitStates] = useState<Record<string, AnswerSubmitState>>({});
 
   const clientRef = useRef<TaskStreamClient | null>(null);
   const liveStateRef = useRef<StreamState | null>(null);
@@ -125,6 +140,8 @@ export default function TaskDetailScreen() {
   const controlRef = useRef<TaskControlClient | null>(null);
   const attachmentsRef = useRef<PendingAtt[]>([]);
   const attachSeq = useRef(0);
+  const draftDirtyRef = useRef(false);
+  const [draftReadyTaskId, setDraftReadyTaskId] = useState<string | null>(null);
 
   const interactive = task?.status === 'processing';
   const starting = task?.status === 'pending';
@@ -132,7 +149,46 @@ export default function TaskDetailScreen() {
 
   const setLive = useCallback((s: StreamState | null) => { liveStateRef.current = s; setLiveState(s); }, []);
   const flashToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2400); }, []);
+  const handleReplyStatus = useCallback((askId: string, status: ReplyDeliveryStatus) => {
+    setAnswerSubmitStates((prev) => {
+      if (status === 'rejected') {
+        if (!(askId in prev)) return prev;
+        const next = { ...prev };
+        delete next[askId];
+        return next;
+      }
+      return prev[askId] === status ? prev : { ...prev, [askId]: status };
+    });
+  }, []);
+  const setUserInput = useCallback((value: React.SetStateAction<string>) => {
+    draftDirtyRef.current = true;
+    setInput(value);
+  }, []);
   useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
+
+  useEffect(() => {
+    draftDirtyRef.current = false;
+    setDraftReadyTaskId(null);
+    setInput('');
+    if (!id) return undefined;
+    let active = true;
+    AsyncStorage.getItem(taskDraftKey(id))
+      .then((v) => { if (active && !draftDirtyRef.current && v != null) setInput(v); })
+      .catch(() => undefined)
+      .finally(() => { if (active) setDraftReadyTaskId(id); });
+    return () => { active = false; };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || draftReadyTaskId !== id) return;
+    const key = taskDraftKey(id);
+    const op = input ? AsyncStorage.setItem(key, input) : AsyncStorage.removeItem(key);
+    op.catch(() => undefined);
+  }, [draftReadyTaskId, id, input]);
+
+  const clearDraft = useCallback(() => {
+    if (id) AsyncStorage.removeItem(taskDraftKey(id)).catch(() => undefined);
+  }, [id]);
 
   // 拉取开发环境监听端口（用于在线预览）；控制通道未连接时直接返回。
   const refreshPorts = useCallback(async () => {
@@ -173,10 +229,12 @@ export default function TaskDetailScreen() {
 
   useEffect(() => {
     if (!id || !interactive) return;
-    const client = TaskStreamClient.attach(id, { onState: (s) => setLive(s) });
+    const client = TaskStreamClient.attach(id, { onState: (s) => setLive(s), onReplyStatus: handleReplyStatus });
     clientRef.current = client; client.connect();
     return () => { client.disconnect(); if (clientRef.current === client) clientRef.current = null; setLive(null); cursorSeededRef.current = false; };
-  }, [id, interactive, setLive]);
+  }, [handleReplyStatus, id, interactive, setLive]);
+
+  useEffect(() => { setAnswerSubmitStates({}); }, [id]);
 
   useEffect(() => {
     if (!id || !interactive) return;
@@ -286,19 +344,27 @@ export default function TaskDetailScreen() {
     const ready = includeAttachments ? attachmentsRef.current.filter((a) => a.status === 'done' && a.url) : [];
     if (!id || (!body && ready.length === 0)) return;
     if (includeAttachments && attachmentsRef.current.some((a) => a.status === 'uploading')) { flashToast('图片还在上传中…'); return; }
-    setInput('');
-    if (includeAttachments) setAttachments([]);
     const atts = ready.map((a) => ({ url: a.url as string, filename: a.name }));
     const prevLive = liveStateRef.current?.messages ?? [];
     if (prevLive.length) setHistoryMessages((prev) => [...prev, ...prevLive]);
     clientRef.current?.disconnect();
     setSending(true);
     const client = TaskStreamClient.newRound(id, body, atts, {
-      onState: (s) => { setLive(s); if (s.connectionState === 'connected') setSending(false); },
-      onOpen: () => setSending(false), onClose: () => setSending(false), onError: () => setSending(false),
+      onState: setLive,
+      onReplyStatus: handleReplyStatus,
+      onOpen: () => {
+        if (includeAttachments) {
+          setInput('');
+          clearDraft();
+          setAttachments([]);
+        }
+        setSending(false);
+      },
+      onClose: () => setSending(false),
+      onError: () => setSending(false),
     });
     clientRef.current = client; client.connect();
-  }, [id, setLive, flashToast]);
+  }, [id, setLive, flashToast, clearDraft, handleReplyStatus]);
 
   // 选图 → 逐张上传（先占位预览，上传完回填 url）。受 MAX_ATTACHMENTS 张数限制。
   const onAttach = useCallback(async () => {
@@ -343,12 +409,21 @@ export default function TaskDetailScreen() {
   }, [flashToast]);
 
   const handleCancel = useCallback(() => clientRef.current?.sendCancel(), []);
-  const handleAnswer = useCallback((askId: string, answers: AnswerMap) => { clientRef.current?.sendReplyQuestion(askId, answers); }, []);
+  const handleAnswer = useCallback((askId: string, answers: AnswerMap): AnswerSubmitResult => {
+    const result = clientRef.current?.sendReplyQuestion(askId, answers) ?? 'rejected';
+    if (result === 'rejected') flashToast('连接已断开，回答未发送，请重试');
+    return result;
+  }, [flashToast]);
 
   // 倒置列表里原生选中不可用，长按消息改为弹出可选中文本的面板（在正常层里选词复制 / 复制全部）。
   const [copyText, setCopyText] = useState<string | null>(null);
   const onCopy = useCallback((text: string) => setCopyText(text), []);
   const onCopyAll = useCallback((text: string) => { void Clipboard.setStringAsync(text); flashToast('已复制'); setCopyText(null); }, [flashToast]);
+  const copyTaskId = useCallback(() => {
+    if (!id) return;
+    void Clipboard.setStringAsync(id);
+    flashToast('任务 ID 已复制');
+  }, [flashToast, id]);
 
   // 本任务是否有一个“已收起”的预览（用于把 composer 的「在线预览」条变成展开入口）
   const previewMinimized = !!preview && preview.taskId === id && preview.minimized;
@@ -367,16 +442,16 @@ export default function TaskDetailScreen() {
   // 语音转写：识别文本实时写回输入框（保留点击麦克风前已有的内容作为前缀）。
   const speechBaseRef = useRef('');
   const speech = useSpeechToText({
-    onText: (text) => setInput(speechBaseRef.current + text),
+    onText: (text) => setUserInput(speechBaseRef.current + text),
     onError: (msg) => flashToast(msg),
   });
   const onMic = useCallback(() => {
-    setInput((cur) => {
+    setUserInput((cur) => {
       if (speech.status === 'idle') speechBaseRef.current = cur ? (cur.endsWith(' ') ? cur : cur + ' ') : '';
       return cur;
     });
     speech.toggle();
-  }, [speech]);
+  }, [setUserInput, speech]);
 
   const doRestart = useCallback(async (loadSession: boolean) => {
     const control = controlRef.current;
@@ -403,10 +478,17 @@ export default function TaskDetailScreen() {
         { text: '清空并重启', style: 'destructive', onPress: () => doRestart(false) },
       ]);
     }
-  }, [restartBusy, handleSend, doRestart]);
+  }, [restartBusy, handleSend, doRestart, flashToast]);
 
-  const liveMessages = liveState?.messages ?? [];
-  const messages = useMemo(() => [...historyMessages, ...liveMessages], [historyMessages, liveMessages]);
+  const liveAskExpired = liveState?.connectionState === 'closed' || liveState?.status === 'finished' || liveState?.status === 'error';
+  const liveMessages = useMemo(
+    () => (liveState?.messages ?? []).map((m) => normalizeAskStatus(m, !!liveAskExpired)),
+    [liveState?.messages, liveAskExpired],
+  );
+  const messages = useMemo(
+    () => [...historyMessages.map((m) => normalizeAskStatus(m, true)), ...liveMessages],
+    [historyMessages, liveMessages],
+  );
   // 倒置列表：最新在前（视觉底部）。新消息进 data[0]（底部）、历史从 data 末尾（视觉顶部）追加。
   // 初始定位底部、流式吸底、上滑加载历史、展开 toolcall 都由 inverted 天然处理，无需手动 scrollToEnd。
   const reversed = useMemo(() => messages.slice().reverse(), [messages]);
@@ -438,8 +520,8 @@ export default function TaskDetailScreen() {
   const pickSkill = useCallback((name: string) => {
     setSkillPickerOpen(false);
     const cmd = (liveStateRef.current?.availableCommands ?? []).find((c) => c.name === name);
-    setInput(`/${name}${cmd?.input?.hint ? ' ' : ''}`);
-  }, []);
+    setUserInput(`/${name}${cmd?.input?.hint ? ' ' : ''}`);
+  }, [setUserInput]);
 
   const AgentHeader = (
     <Glass border style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 45, borderBottomLeftRadius: 26, borderBottomRightRadius: 26 }}
@@ -449,7 +531,10 @@ export default function TaskDetailScreen() {
         <View style={{ height: insets.top }} />
         <View style={{ height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}>
           <IconButton icon="back" onPress={() => router.back()} />
-          <Text numberOfLines={1} style={{ position: 'absolute', left: 56, right: 56, textAlign: 'center', fontSize: 16, fontWeight: '700', color: t.tx }}>{title}</Text>
+          <Pressable onLongPress={copyTaskId} delayLongPress={450} hitSlop={{ top: 8, bottom: 8 }}
+            style={{ position: 'absolute', left: 56, right: 56, alignItems: 'center' }}>
+            <Text numberOfLines={1} style={{ width: '100%', textAlign: 'center', fontSize: 16, fontWeight: '700', color: t.tx }}>{title}</Text>
+          </Pressable>
           <View style={{ flex: 1 }} />
           {(interactive || fileChanges.length > 0) ? (
             <Pressable onPress={() => { setFilesOpen(true); refreshChanges(); }} hitSlop={6} style={{ padding: 8 }}>
@@ -508,7 +593,7 @@ export default function TaskDetailScreen() {
             data={reversed}
             inverted
             keyExtractor={(m) => m.id}
-            renderItem={({ item }) => <StreamBlock message={item} isStreaming={item.id === streamingMessageId && item.kind === 'agent'} canAnswer={item.kind === 'ask' ? canAnswer : undefined} onAnswer={handleAnswer} onCopy={onCopy} onSaveImage={onSaveImage} />}
+            renderItem={({ item }) => <StreamBlock message={item} isStreaming={item.id === streamingMessageId && item.kind === 'agent'} canAnswer={item.kind === 'ask' ? canAnswer : undefined} answerSubmitState={item.kind === 'ask' ? answerSubmitStates[item.askId] : undefined} onAnswer={handleAnswer} onCopy={onCopy} onSaveImage={onSaveImage} />}
             ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
             // inverted 下：paddingTop=视觉底部（贴近 composer），paddingBottom=视觉顶部（避开浮动 header）。
             contentContainerStyle={{ paddingTop: 14, paddingBottom: headerH + 12, paddingHorizontal: spacing.pad }}
@@ -622,7 +707,7 @@ export default function TaskDetailScreen() {
               <Pressable onPress={onAttach} disabled={roundRunning || sending || attachments.length >= MAX_ATTACHMENTS} hitSlop={8} style={{ paddingVertical: 4, paddingHorizontal: 2 }}>
                 <Icons.attach size={20} color={attachments.length >= MAX_ATTACHMENTS ? t.line2 : t.tx3} sw={1.8} />
               </Pressable>
-              <TextInput value={input} onChangeText={setInput} editable={!roundRunning && !sending && !speech.active}
+              <TextInput value={input} onChangeText={setUserInput} editable={!roundRunning && !sending && !speech.active}
                 onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)}
                 placeholder={speech.active ? '请说话…' : roundRunning ? '' : '继续这个任务…'} placeholderTextColor={speech.active ? t.acTx : t.tx3}
                 multiline style={{ flex: 1, color: t.tx, fontSize: 15, paddingVertical: 11, maxHeight: 120 }} />

@@ -3,18 +3,21 @@
  * 复用 messages/handler 的 ChatMessage 类型（user / agent / thought / tool / error / system / ask）。
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { WebView } from 'react-native-webview';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { AskQuestion, ChatMessage } from '@/messages/handler';
+import { buildAskAnswers, CUSTOM_ANSWER_KEY, type AnswerMap } from '@/messages/askAnswers';
 import { resolveAssetUrl } from '@/api/client';
 import { Icons, Spinner } from '@/components/Icons';
 import { buildMermaidHtml, fenceLanguage, trimFenceContent } from '@/components/mermaidHtml';
 import { useTheme, type Theme } from '@/theme';
 
-export type AnswerMap = Record<string, string | string[]>;
+export type { AnswerMap } from '@/messages/askAnswers';
+export type AnswerSubmitResult = 'sent' | 'queued' | 'rejected';
+export type AnswerSubmitState = Exclude<AnswerSubmitResult, 'rejected'>;
 
 const MERMAID_RUNTIME_ASSET = require('../../assets/mermaid.min.mermaidjs');
 let mermaidRuntimePromise: Promise<string> | null = null;
@@ -358,7 +361,7 @@ function ToolCard({ msg, t, onCopy }: { msg: ToolMsg; t: Theme; onCopy?: (s: str
   );
 }
 
-function StreamBlockBase({ message, canAnswer, isStreaming, onAnswer, onCopy, onSaveImage }: { message: ChatMessage; canAnswer?: boolean; isStreaming?: boolean; onAnswer?: (askId: string, answers: AnswerMap) => void; onCopy?: (text: string) => void; onSaveImage?: (url: string) => void }) {
+function StreamBlockBase({ message, canAnswer, answerSubmitState, isStreaming, onAnswer, onCopy, onSaveImage }: { message: ChatMessage; canAnswer?: boolean; answerSubmitState?: AnswerSubmitState; isStreaming?: boolean; onAnswer?: (askId: string, answers: AnswerMap) => AnswerSubmitResult; onCopy?: (text: string) => void; onSaveImage?: (url: string) => void }) {
   const t = useTheme();
   switch (message.kind) {
     case 'user': {
@@ -394,7 +397,7 @@ function StreamBlockBase({ message, canAnswer, isStreaming, onAnswer, onCopy, on
     case 'system':
       return <Text style={{ color: t.tx3, fontSize: 12, textAlign: 'center', paddingHorizontal: 12 }}>{message.text}</Text>;
     case 'ask':
-      return <AskBlock askId={message.askId} status={message.status} questions={message.questions} canAnswer={!!canAnswer && message.status === 'pending'} onAnswer={onAnswer} t={t} />;
+      return <AskBlock askId={message.askId} status={message.status} questions={message.questions} canAnswer={!!canAnswer && message.status === 'pending'} answerSubmitState={answerSubmitState} onAnswer={onAnswer} t={t} />;
     default:
       return null;
   }
@@ -406,7 +409,7 @@ type MsgCmp = { id?: string; kind?: string; text?: string; title?: string; statu
 export const StreamBlock = React.memo(StreamBlockBase, (a, b) => {
   const m = a.message as MsgCmp;
   const n = b.message as MsgCmp;
-  if (m.kind === 'ask' && (a.canAnswer !== b.canAnswer || a.onAnswer !== b.onAnswer)) return false;
+  if (m.kind === 'ask' && (a.canAnswer !== b.canAnswer || a.answerSubmitState !== b.answerSubmitState || a.onAnswer !== b.onAnswer)) return false;
   if (m.kind === 'agent' && a.isStreaming !== b.isStreaming) return false;
   if (a.onCopy !== b.onCopy || a.onSaveImage !== b.onSaveImage) return false;
   return (
@@ -419,15 +422,29 @@ export const StreamBlock = React.memo(StreamBlockBase, (a, b) => {
   );
 });
 
-function AskBlock({ askId, status, questions, canAnswer, onAnswer, t }: { askId: string; status: string; questions: AskQuestion[]; canAnswer: boolean; onAnswer?: (askId: string, answers: AnswerMap) => void; t: Theme }) {
+function AskBlock({ askId, status, questions, canAnswer, answerSubmitState, onAnswer, t }: { askId: string; status: string; questions: AskQuestion[]; canAnswer: boolean; answerSubmitState?: AnswerSubmitState; onAnswer?: (askId: string, answers: AnswerMap) => AnswerSubmitResult; t: Theme }) {
   const [selected, setSelected] = useState<Record<number, Set<string>>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [customAnswers, setCustomAnswers] = useState<Record<number, string>>({});
+  const [submitState, setSubmitState] = useState<'idle' | AnswerSubmitState>('idle');
+
+  useEffect(() => {
+    setSelected({});
+    setCustomAnswers({});
+    setSubmitState('idle');
+  }, [askId]);
+
+  useEffect(() => {
+    if (answerSubmitState) setSubmitState(answerSubmitState);
+  }, [answerSubmitState, askId]);
 
   const toggle = (qi: number, label: string, multi: boolean) => {
     setSelected((prev) => {
       const next = { ...prev };
       const set = new Set(next[qi] ?? []);
-      if (multi) { set.has(label) ? set.delete(label) : set.add(label); }
+      if (multi) {
+        if (set.has(label)) set.delete(label);
+        else set.add(label);
+      }
       else { set.clear(); set.add(label); }
       next[qi] = set;
       return next;
@@ -436,26 +453,24 @@ function AskBlock({ askId, status, questions, canAnswer, onAnswer, t }: { askId:
 
   const submit = () => {
     if (!onAnswer) return;
-    const answers: AnswerMap = {};
-    questions.forEach((q, qi) => {
-      const set = selected[qi];
-      if (!set || set.size === 0) return;
-      answers[q.question] = q.multiSelect ? Array.from(set) : Array.from(set)[0];
-    });
-    if (Object.keys(answers).length === 0) return;
-    setSubmitted(true);
-    onAnswer(askId, answers);
+    const answers = buildAskAnswers(questions, selected, customAnswers);
+    if (!answers) return;
+    const result = onAnswer(askId, answers);
+    if (result !== 'rejected') setSubmitState(result);
   };
 
-  const interactive = canAnswer && !submitted;
+  const interactive = canAnswer && submitState === 'idle';
   const answered = status === 'completed';
+  const expired = status === 'expired' || status === 'failed';
+  const statusLabel = answered ? '已回答' : expired ? '问题已过期' : null;
+  const canSubmit = interactive && buildAskAnswers(questions, selected, customAnswers) !== null;
 
   return (
-    <View style={{ backgroundColor: t.bg2, borderWidth: 1, borderColor: t.acLine, borderRadius: 13, padding: 14, gap: 10 }}>
+    <View style={{ backgroundColor: t.bg2, borderWidth: 1, borderColor: expired ? t.line : t.acLine, borderRadius: 13, padding: 14, gap: 10 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-        <Icons.sparkle size={15} color={t.acTx} sw={1.8} />
-        <Text style={{ color: t.acTx, fontSize: 13.5, fontWeight: '700', flex: 1 }}>AI 提问</Text>
-        {answered ? <Text style={{ color: t.tx3, fontSize: 11.5 }}>已回答</Text> : null}
+        {expired ? <Icons.alert size={15} color={t.tx3} sw={1.8} /> : <Icons.sparkle size={15} color={t.acTx} sw={1.8} />}
+        <Text style={{ color: expired ? t.tx3 : t.acTx, fontSize: 13.5, fontWeight: '700', flex: 1 }}>AI 提问</Text>
+        {statusLabel ? <Text style={{ color: t.tx3, fontSize: 11.5 }}>{statusLabel}</Text> : null}
       </View>
       {questions.map((q, qi) => (
         <View key={qi} style={{ gap: 4 }}>
@@ -479,13 +494,49 @@ function AskBlock({ askId, status, questions, canAnswer, onAnswer, t }: { askId:
                 </Pressable>
               );
             })}
+            {(() => {
+              const optionLabels = new Set(q.options.map((opt) => opt.label));
+              const recordedAnswers = Array.isArray(q.answer) ? q.answer : q.answer ? [q.answer] : [];
+              const recordedCustom = recordedAnswers.find((answer) => !optionLabels.has(answer));
+              const customSelected = answered ? !!recordedCustom : (selected[qi]?.has(CUSTOM_ANSWER_KEY) ?? false);
+              if (!interactive && !recordedCustom) return null;
+              return (
+                <View style={{ gap: 6 }}>
+                  <Pressable disabled={!interactive} onPress={() => toggle(qi, CUSTOM_ANSWER_KEY, q.multiSelect)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: customSelected ? t.ac : t.line, backgroundColor: customSelected ? t.acGhost : 'transparent', borderRadius: 11, paddingHorizontal: 11, paddingVertical: 10 }}>
+                    {q.multiSelect
+                      ? <View style={{ width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: customSelected ? t.ac : t.line2, backgroundColor: customSelected ? t.ac : 'transparent', alignItems: 'center', justifyContent: 'center' }}>{customSelected ? <Icons.check size={12} color={t.acInk} sw={3} /> : null}</View>
+                      : <View style={{ width: 18, height: 18, borderRadius: 99, borderWidth: 1.5, borderColor: customSelected ? t.ac : t.line2, alignItems: 'center', justifyContent: 'center' }}>{customSelected ? <View style={{ width: 9, height: 9, borderRadius: 99, backgroundColor: t.ac }} /> : null}</View>}
+                    <Text style={{ flex: 1, color: customSelected ? t.tx : t.tx2, fontSize: 13.5, fontWeight: customSelected ? '600' : '400' }}>其他</Text>
+                  </Pressable>
+                  {interactive && customSelected ? (
+                    <TextInput
+                      value={customAnswers[qi] ?? ''}
+                      onChangeText={(value) => setCustomAnswers((prev) => ({ ...prev, [qi]: value }))}
+                      placeholder="请输入回答"
+                      placeholderTextColor={t.tx3}
+                      autoFocus
+                      style={{ minHeight: 42, borderWidth: 1, borderColor: t.line, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9, color: t.tx, fontSize: 13.5 }}
+                    />
+                  ) : recordedCustom ? (
+                    <Text style={{ color: t.tx2, fontSize: 12.5, lineHeight: 18, paddingHorizontal: 4 }}>{recordedCustom}</Text>
+                  ) : null}
+                </View>
+              );
+            })()}
           </View>
         </View>
       ))}
       {interactive ? (
-        <Pressable onPress={submit} style={{ backgroundColor: t.ac, borderRadius: 12, paddingVertical: 11, alignItems: 'center', marginTop: 2 }}>
+        <Pressable disabled={!canSubmit} onPress={submit} style={{ backgroundColor: t.ac, borderRadius: 12, paddingVertical: 11, alignItems: 'center', marginTop: 2, opacity: canSubmit ? 1 : 0.45 }}>
           <Text style={{ color: t.acInk, fontSize: 14, fontWeight: '700' }}>提交回答</Text>
         </Pressable>
+      ) : expired ? (
+        <Text style={{ color: t.tx3, fontSize: 11.5, fontStyle: 'italic' }}>问题已过期（可在下方直接输入消息）</Text>
+      ) : !answered && submitState === 'queued' ? (
+        <Text style={{ color: t.amber, fontSize: 11.5 }}>网络恢复后将自动发送回答</Text>
+      ) : !answered && submitState === 'sent' ? (
+        <Text style={{ color: t.tx3, fontSize: 11.5 }}>回答已发送，等待处理</Text>
       ) : !answered && status !== 'pending' ? (
         <Text style={{ color: t.tx3, fontSize: 11.5, fontStyle: 'italic' }}>该提问已失效（可在下方直接输入消息）</Text>
       ) : null}

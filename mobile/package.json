@@ -23,6 +23,7 @@
     "expo-build-properties": "~55.0.15",
     "expo-clipboard": "~55.0.14",
     "expo-constants": "~55.0.16",
+    "expo-document-picker": "~55.0.14",
     "expo-file-system": "~55.0.23",
     "expo-font": "~55.0.8",
     "expo-image-manipulator": "~55.0.18",
