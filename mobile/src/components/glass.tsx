@@ -1,11 +1,29 @@
 /**
  * 液态玻璃容器。
- * 用 expo-blur 实现真实毛玻璃（模糊层 + 薄边 + 顶部高光）。
+ * iOS 26+ 用 expo-glass-effect（系统 UIGlassEffect）；旧 iOS 回退 expo-blur 毛玻璃。
+ * 换掉 UIVisualEffectView 方案的原因：它的高斯模糊会越过 bounds 向外渗出约一个
+ * blur radius，iOS 26 上 RN 层的裁剪约束不住（Apple 标注裁剪其宿主为未定义行为），
+ * composer 顶边上方会浮出一条把消息糊住的毛玻璃光晕。UIGlassEffect 严格按 bounds 渲染。
  */
 import { BlurView } from 'expo-blur';
 import React from 'react';
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '@/theme';
+
+// 懒加载 + 容错：OTA 包可能跑在还没编入 ExpoGlassEffect 原生模块的旧安装包上，
+// 顶层 import 触发 requireNativeModule 抛错会直接崩 App；失败则永远走 BlurView 回退。
+let glassEffectMod: typeof import('expo-glass-effect') | null | undefined;
+function liquidGlassModule(): typeof import('expo-glass-effect') | null {
+  if (glassEffectMod === undefined) {
+    try {
+      const mod = require('expo-glass-effect') as typeof import('expo-glass-effect');
+      glassEffectMod = mod.isLiquidGlassAvailable() ? mod : null;
+    } catch {
+      glassEffectMod = null;
+    }
+  }
+  return glassEffectMod;
+}
 
 interface GlassProps {
   children?: React.ReactNode;
@@ -37,6 +55,20 @@ export function Glass({ children, style, radius = 0, intensity = 36, border = tr
     return (
       <View style={[radiusStyle, shadow && t.shLift, style]}>
         <View style={[StyleSheet.absoluteFill, radiusStyle, { backgroundColor: t.glassSolid }, borderStyle]} />
+        {children}
+      </View>
+    );
+  }
+
+  // iOS 26+：系统液态玻璃。intensity 在此路径无效（材质强度由系统定），观感靠 veil 统一；
+  // colorScheme 跟随 App 内主题开关而非系统外观，避免强制深/浅色时玻璃底色错位。
+  const glassEffect = liquidGlassModule();
+  if (glassEffect) {
+    const { GlassView } = glassEffect;
+    return (
+      <View style={[radiusStyle, shadow && t.shLift, style]}>
+        <GlassView glassEffectStyle="regular" colorScheme={t.glassTint} style={[StyleSheet.absoluteFill, radiusStyle]} />
+        <View style={[StyleSheet.absoluteFill, radiusStyle, { backgroundColor: t.glassVeil }, borderStyle]} />
         {children}
       </View>
     );
