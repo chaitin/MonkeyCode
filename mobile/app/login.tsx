@@ -1,7 +1,7 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
@@ -9,6 +9,7 @@ import { BAIZHI_BASE_URL, getBaizhiOAuthLoginUrl, getMonkeyCodeBaizhiLoginUrl } 
 import { ApiError, authHeaders, basicAuthCredential as getBasicAuthCred, DEFAULT_BASE_URL } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { Icons } from '@/components/Icons';
+import { authorizeAlipay, clearPendingAlipayAuthorization, consumePendingAlipayAuthorization } from '@/native/alipayAuth';
 import { authorizeDouyin } from '@/native/douyinAuth';
 import { useTheme } from '@/theme';
 
@@ -104,7 +105,10 @@ export default function LoginScreen() {
   const {
     login,
     loginWithApple,
+    prepareAlipayAppBaizhiLogin,
+    completeBaizhiOAuthPhoneLogin,
     sendBaizhiPhoneCode,
+    startAlipayAppBaizhiLogin,
     startBaizhiPhoneLogin,
     startDouyinAppBaizhiLogin,
     finishBaizhiOAuthLogin,
@@ -133,6 +137,7 @@ export default function LoginScreen() {
   const [webOAuthTitle, setWebOAuthTitle] = useState('');
   const [webOAuthMode, setWebOAuthMode] = useState<WebOAuthMode>('github');
   const [webOAuthKey, setWebOAuthKey] = useState(0);
+  const [oauthPhoneToken, setOAuthPhoneToken] = useState('');
   const [showServer, setShowServer] = useState(false);
   const [serverUrl, setServerUrl] = useState(baseUrl);
   const [basicAuthInput, setBasicAuthInput] = useState(basicAuth);
@@ -144,8 +149,9 @@ export default function LoginScreen() {
   const baizhiBridgeDoneRef = useRef(false);
   const baizhiAutoAuthorizeUrlRef = useRef('');
   const baizhiBridgeRef = useRef<BaizhiBridgeState | null>(null);
+  const alipayCompletingRef = useRef('');
 
-  // 手机号 / 抖音 / GitHub 登录入口只在官方云展示；私有化 / 自定义地址保持账号密码入口。
+  // 手机号 / 支付宝 / 抖音 / GitHub 登录入口只在官方云展示；私有化 / 自定义地址保持账号密码入口。
   const cloud = norm(serverUrl || baseUrl) === DEFAULT_BASE_URL;
   const [view, setView] = useState<LoginView>('password');
 
@@ -285,9 +291,7 @@ export default function LoginScreen() {
 
   const handleOAuthCallback = useCallback(
     async (url: string) => {
-      if (isGithubCallback(url)) {
-        await finishGithubOAuthLogin();
-      }
+      if (isGithubCallback(url)) await finishGithubOAuthLogin();
     },
     [finishGithubOAuthLogin],
   );
@@ -375,6 +379,78 @@ export default function LoginScreen() {
     }
   };
 
+  const finishAlipayAppLogin = useCallback(async (code: string, requestId: string, targetBaseUrl: string) => {
+    if (alipayCompletingRef.current === requestId) return;
+    alipayCompletingRef.current = requestId;
+    try {
+      const result = await startAlipayAppBaizhiLogin(code, requestId);
+      await clearPendingAlipayAuthorization().catch(() => undefined);
+      if (result.pendingPhoneToken) {
+        setOAuthPhoneToken(result.pendingPhoneToken);
+        setView('phone');
+        return;
+      }
+      startBaizhiBridge('支付宝登录', targetBaseUrl, undefined, true);
+    } finally {
+      alipayCompletingRef.current = '';
+    }
+  }, [startAlipayAppBaizhiLogin, startBaizhiBridge]);
+
+  const onAlipayLogin = async () => {
+    setError('');
+    if (!ensureAgreed()) return;
+    setBusy(true);
+    setPhase('正在打开支付宝…');
+    try {
+      const targetBaseUrl = await applyServerSettings();
+      const prepared = await prepareAlipayAppBaizhiLogin();
+      const result = await authorizeAlipay(prepared.authInfo, prepared.requestId, prepared.expiresAt);
+      setPhase('正在完成支付宝登录…');
+      await finishAlipayAppLogin(result.code, prepared.requestId, targetBaseUrl);
+    } catch (e) {
+      if ((e as { code?: string })?.code === 'E_ALIPAY_CANCELLED') return;
+      await clearPendingAlipayAuthorization().catch(() => undefined);
+      setError(formatError(e, '打开支付宝登录失败，请重试'));
+    } finally {
+      setBusy(false);
+      setPhase('');
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    let restoring = false;
+    const restore = async () => {
+      if (!active || restoring) return;
+      restoring = true;
+      try {
+        const pending = await consumePendingAlipayAuthorization();
+        if (!active || !pending) return;
+        setError('');
+        setBusy(true);
+        setPhase('正在恢复支付宝登录…');
+        const targetBaseUrl = await applyServerSettings();
+        await finishAlipayAppLogin(pending.code, pending.requestId, targetBaseUrl);
+      } catch (e) {
+        await clearPendingAlipayAuthorization().catch(() => undefined);
+        if (active && (e as { code?: string })?.code !== 'E_ALIPAY_CANCELLED') {
+          setError(formatError(e, '支付宝登录失败，请重试'));
+        }
+      } finally {
+        if (active) {
+          setBusy(false);
+          setPhase('');
+        }
+        restoring = false;
+      }
+    };
+    void restore();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void restore();
+    });
+    return () => { active = false; subscription.remove(); };
+  }, [applyServerSettings, finishAlipayAppLogin]);
+
   const onPasswordSubmit = async () => {
     setError('');
     if (!email.trim() || !password.trim()) { setError('请输入邮箱和密码'); return; }
@@ -401,7 +477,7 @@ export default function LoginScreen() {
     if (!ensureAgreed()) return;
     setCodeBusy(true);
     try {
-      await sendBaizhiPhoneCode(cleanPhone);
+      await sendBaizhiPhoneCode(cleanPhone, oauthPhoneToken || undefined);
       setCountdown(60);
     } catch (e) {
       setError(formatError(e, '验证码发送失败，请稍后重试'));
@@ -421,7 +497,12 @@ export default function LoginScreen() {
     setPhase('正在登录…');
     try {
       const targetBaseUrl = await applyServerSettings();
-      await startBaizhiPhoneLogin(cleanPhone, cleanCode);
+      if (oauthPhoneToken) {
+        await completeBaizhiOAuthPhoneLogin(oauthPhoneToken, cleanPhone, cleanCode);
+        setOAuthPhoneToken('');
+      } else {
+        await startBaizhiPhoneLogin(cleanPhone, cleanCode);
+      }
       startBaizhiBridge('手机号登录', targetBaseUrl, cleanPhone, true);
     } catch (e) {
       setError(formatError(e, '登录失败，请重试'));
@@ -560,7 +641,7 @@ export default function LoginScreen() {
         <View style={{ flex: 1, height: 1, backgroundColor: '#E1E0DA' }} />
       </View>
 
-      <View style={{ marginTop: 18, flexDirection: 'row', justifyContent: 'center', gap: 14 }}>
+      <View style={{ marginTop: 18, flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
         {appleAvailable ? (
           <Pressable
             accessibilityRole="button"
@@ -568,7 +649,7 @@ export default function LoginScreen() {
             onPress={() => { if (!busy && !codeBusy) void onAppleLogin(); }}
             disabled={actionBusy}
             style={({ pressed }) => [
-              { width: 50, height: 50, borderRadius: 25, backgroundColor: '#16171A', alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.24, shadowRadius: 9, elevation: 3 },
+              { width: 46, height: 46, borderRadius: 23, backgroundColor: '#16171A', alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.24, shadowRadius: 9, elevation: 3 },
               pressed && { opacity: 0.86 },
               actionBusy && { opacity: 0.55 },
             ]}
@@ -579,13 +660,16 @@ export default function LoginScreen() {
 
         {cloud ? (
           <>
-            <Pressable accessibilityRole="button" accessibilityLabel="手机号登录" onPress={() => { setError(''); setView('phone'); }} disabled={actionBusy} style={({ pressed }) => [{ width: 50, height: 50, borderRadius: 25, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="手机号登录" onPress={() => { setError(''); setView('phone'); }} disabled={actionBusy} style={({ pressed }) => [{ width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
               <Icons.phoneDevice size={22} color="#20231F" />
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="抖音登录" onPress={onDouyinLogin} disabled={actionBusy} style={({ pressed }) => [{ width: 50, height: 50, borderRadius: 25, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="支付宝登录" onPress={onAlipayLogin} disabled={actionBusy} style={({ pressed }) => [{ width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
+              <Icons.alipayBrand size={24} />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="抖音登录" onPress={onDouyinLogin} disabled={actionBusy} style={({ pressed }) => [{ width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
               <Icons.douyinBrand size={24} />
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="GitHub 登录" onPress={onGithubLogin} disabled={actionBusy} style={({ pressed }) => [{ width: 50, height: 50, borderRadius: 25, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="GitHub 登录" onPress={onGithubLogin} disabled={actionBusy} style={({ pressed }) => [{ width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: '#E7E6E0', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.78 }, actionBusy && { opacity: 0.55 }]}>
               <Icons.github size={22} color="#16171A" />
             </Pressable>
           </>
@@ -679,7 +763,7 @@ export default function LoginScreen() {
         <View style={[{ marginTop: 30, backgroundColor: sheetBg, borderRadius: 26, paddingTop: 22, paddingHorizontal: 22, paddingBottom: 24, gap: 15 }, loginShadow]}>
           {view === 'phone' && cloud ? (
             <>
-              <Pressable onPress={() => { setError(''); setView('password'); }} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}>
+              <Pressable onPress={() => { setError(''); setOAuthPhoneToken(''); setView('password'); }} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}>
                 <Icons.back size={16} color={mutedText} sw={2} />
                 <Text style={{ color: mutedText, fontSize: 14 }}>账号密码登录</Text>
               </Pressable>

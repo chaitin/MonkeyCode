@@ -144,6 +144,53 @@ export async function loginBaizhiDouyinApp(code: string): Promise<void> {
   });
 }
 
+interface AlipayAppAuthPrepareResp {
+  auth_info?: string;
+  request_id?: string;
+  expires_at?: string | number;
+}
+
+export interface BaizhiAlipayAppAuth {
+  authInfo: string;
+  requestId: string;
+  expiresAt?: string | number;
+}
+
+export interface BaizhiAlipayAppLoginResult {
+  pendingPhoneToken?: string;
+}
+
+export async function prepareBaizhiAlipayAppLogin(): Promise<BaizhiAlipayAppAuth> {
+  const resp = await baizhiRequest<AlipayAppAuthPrepareResp>('/api/v1/user/oauth/app-login/prepare', {
+    method: 'POST',
+    body: { platform: 'alipay_app' },
+  });
+  if (!resp?.auth_info || !resp?.request_id) {
+    throw new ApiError('支付宝授权参数响应格式异常');
+  }
+  return {
+    authInfo: resp.auth_info,
+    requestId: resp.request_id,
+    expiresAt: resp.expires_at,
+  };
+}
+
+export async function loginBaizhiAlipayApp(code: string, requestId: string): Promise<BaizhiAlipayAppLoginResult> {
+  const resp = await baizhiRequest<{ pending_phone_token?: string }>('/api/v1/user/oauth/app-login', {
+    method: 'POST',
+    body: { platform: 'alipay_app', code, request_id: requestId },
+  });
+  return { pendingPhoneToken: resp?.pending_phone_token };
+}
+
+export async function completeBaizhiOAuthPhoneLogin(token: string, phone: string, code: string): Promise<void> {
+  const captchaToken = await obtainBaizhiCaptchaToken();
+  await baizhiRequest('/api/v1/user/oauth/complete-phone', {
+    method: 'POST',
+    body: { token, phone, code, captcha_token: captchaToken },
+  });
+}
+
 interface OAuthURLResp {
   url?: string;
 }
