@@ -16,6 +16,14 @@ type Gateway struct {
 	ClickHouse Provider
 }
 
+func (g *Gateway) LatestEventTime(ctx context.Context, taskID uuid.UUID, start, end time.Time, events []string, store consts.LogStore) (time.Time, bool, error) {
+	p, err := g.providerByStore(store)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return p.LatestEventTime(ctx, taskID, start, end, events)
+}
+
 func (g *Gateway) QueryLatestTurn(ctx context.Context, taskID uuid.UUID, taskCreatedAt, end time.Time, store consts.LogStore) (*QueryLatestTurnResp, error) {
 	p, err := g.providerByStore(store)
 	if err != nil {

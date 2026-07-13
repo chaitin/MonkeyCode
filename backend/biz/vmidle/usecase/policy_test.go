@@ -14,13 +14,13 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
-	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/vmrecycle"
 )
 
 func TestVMIdleSchedulePlanUsesSingleNow(t *testing.T) {
@@ -155,10 +155,10 @@ func TestKeepAwakeOnlyUpdatesSleepSchedule(t *testing.T) {
 	oldRecycleAt := time.Date(2026, 7, 20, 10, 0, 0, 0, time.UTC)
 	payload := &domain.VmIdleInfo{VmID: vmID, RecycleAt: oldRecycleAt}
 	oldNotifyAt := oldRecycleAt.Add(-10 * time.Minute)
-	if _, err := r.notifyQueue.Enqueue(ctx, notifyQueueKey, payload, oldNotifyAt, vmID+":default"); err != nil {
+	if _, err := r.notifyQueue.Enqueue(ctx, vmrecycle.NotifyQueueKey, payload, oldNotifyAt, vmID+":default"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.recycleQueue.Enqueue(ctx, recycleQueueKey, payload, oldRecycleAt, vmID); err != nil {
+	if _, err := r.recycleQueue.Enqueue(ctx, vmrecycle.RecycleQueueKey, payload, oldRecycleAt, vmID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -168,9 +168,9 @@ func TestKeepAwakeOnlyUpdatesSleepSchedule(t *testing.T) {
 	}
 	after := time.Now()
 
-	assertVMIdleJobBetween(t, r.sleepQueue.RedisDelayQueue, ctx, sleepQueueKey, vmID, before.Add(10*time.Minute), after.Add(10*time.Minute))
-	assertVMIdleJobAt(t, r.notifyQueue.RedisDelayQueue, ctx, notifyQueueKey, vmID+":default", oldNotifyAt)
-	assertVMIdleJobAt(t, r.recycleQueue.RedisDelayQueue, ctx, recycleQueueKey, vmID, oldRecycleAt)
+	assertVMIdleJobBetween(t, r.sleepQueue.RedisDelayQueue, ctx, vmrecycle.SleepQueueKey, vmID, before.Add(10*time.Minute), after.Add(10*time.Minute))
+	assertVMIdleJobAt(t, r.notifyQueue.RedisDelayQueue, ctx, vmrecycle.NotifyQueueKey, vmID+":default", oldNotifyAt)
+	assertVMIdleJobAt(t, r.recycleQueue.RedisDelayQueue, ctx, vmrecycle.RecycleQueueKey, vmID, oldRecycleAt)
 }
 
 func TestRecordActivityUpdatesAllSchedules(t *testing.T) {
@@ -187,9 +187,9 @@ func TestRecordActivityUpdatesAllSchedules(t *testing.T) {
 	}
 	after := time.Now()
 
-	assertVMIdleJobBetween(t, r.sleepQueue.RedisDelayQueue, ctx, sleepQueueKey, vmID, before.Add(10*time.Minute), after.Add(10*time.Minute))
-	assertVMIdleJobBetween(t, r.notifyQueue.RedisDelayQueue, ctx, notifyQueueKey, vmID+":default", before.Add(50*time.Minute), after.Add(50*time.Minute))
-	assertVMIdleJobBetween(t, r.recycleQueue.RedisDelayQueue, ctx, recycleQueueKey, vmID, before.Add(time.Hour), after.Add(time.Hour))
+	assertVMIdleJobBetween(t, r.sleepQueue.RedisDelayQueue, ctx, vmrecycle.SleepQueueKey, vmID, before.Add(10*time.Minute), after.Add(10*time.Minute))
+	assertVMIdleJobBetween(t, r.notifyQueue.RedisDelayQueue, ctx, vmrecycle.NotifyQueueKey, vmID+":default", before.Add(50*time.Minute), after.Add(50*time.Minute))
+	assertVMIdleJobBetween(t, r.recycleQueue.RedisDelayQueue, ctx, vmrecycle.RecycleQueueKey, vmID, before.Add(time.Hour), after.Add(time.Hour))
 }
 
 func TestKeepAwakeWithSleepDisabledOnlyRemovesSleepSchedule(t *testing.T) {
@@ -210,24 +210,24 @@ func TestKeepAwakeWithSleepDisabledOnlyRemovesSleepSchedule(t *testing.T) {
 	payload := &domain.VmIdleInfo{VmID: vmID, RecycleAt: oldRecycleAt}
 	oldSleepAt := oldRecycleAt.Add(-50 * time.Minute)
 	oldNotifyAt := oldRecycleAt.Add(-10 * time.Minute)
-	if _, err := r.sleepQueue.Enqueue(ctx, sleepQueueKey, payload, oldSleepAt, vmID); err != nil {
+	if _, err := r.sleepQueue.Enqueue(ctx, vmrecycle.SleepQueueKey, payload, oldSleepAt, vmID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.notifyQueue.Enqueue(ctx, notifyQueueKey, payload, oldNotifyAt, vmID+":default"); err != nil {
+	if _, err := r.notifyQueue.Enqueue(ctx, vmrecycle.NotifyQueueKey, payload, oldNotifyAt, vmID+":default"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.recycleQueue.Enqueue(ctx, recycleQueueKey, payload, oldRecycleAt, vmID); err != nil {
+	if _, err := r.recycleQueue.Enqueue(ctx, vmrecycle.RecycleQueueKey, payload, oldRecycleAt, vmID); err != nil {
 		t.Fatal(err)
 	}
 
 	if err := r.KeepAwake(ctx, vmID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok, err := r.sleepQueue.GetJobInfo(ctx, sleepQueueKey, vmID); err != nil || ok {
+	if _, _, ok, err := r.sleepQueue.GetJobInfo(ctx, vmrecycle.SleepQueueKey, vmID); err != nil || ok {
 		t.Fatalf("sleep job ok = %v, err = %v, want removed", ok, err)
 	}
-	assertVMIdleJobAt(t, r.notifyQueue.RedisDelayQueue, ctx, notifyQueueKey, vmID+":default", oldNotifyAt)
-	assertVMIdleJobAt(t, r.recycleQueue.RedisDelayQueue, ctx, recycleQueueKey, vmID, oldRecycleAt)
+	assertVMIdleJobAt(t, r.notifyQueue.RedisDelayQueue, ctx, vmrecycle.NotifyQueueKey, vmID+":default", oldNotifyAt)
+	assertVMIdleJobAt(t, r.recycleQueue.RedisDelayQueue, ctx, vmrecycle.RecycleQueueKey, vmID, oldRecycleAt)
 }
 
 func newQueueTestVMIdleRefresher(redisClient *redis.Client, repo domain.HostRepo) *vmIdleRefresher {
@@ -263,104 +263,6 @@ func assertVMIdleJobBetween(t *testing.T, queue *delayqueue.RedisDelayQueue[*dom
 	}
 	if got.Before(earliest.Add(-time.Second)) || got.After(latest.Add(time.Second)) {
 		t.Fatalf("job %q run at = %v, want between %v and %v", id, got, earliest, latest)
-	}
-}
-
-func TestShouldSkipRecycleForRecentTaskLastActiveAtSkipsClickHouse(t *testing.T) {
-	ctx := context.Background()
-	now := time.Date(2026, 7, 7, 10, 34, 38, 0, time.UTC)
-	taskID := uuid.New()
-	vm := &db.VirtualMachine{ID: "vm-recent-pg-activity", UserID: uuid.New()}
-	vm.Edges.Tasks = []*db.Task{{
-		ID:           taskID,
-		Status:       consts.TaskStatusProcessing,
-		LastActiveAt: now.Add(-time.Minute),
-	}}
-	redisClient := newTestRedis(t)
-	logger := slog.Default()
-	repo := &refreshHostRepoStub{vm: vm}
-	activity := &taskLogActivityStub{err: errors.New("unexpected clickhouse query")}
-	r := &vmIdleRefresher{
-		cfg:             &config.Config{VMIdle: config.VMIdle{SleepSeconds: 600, RecycleSeconds: 3600}},
-		redis:           redisClient,
-		logger:          logger,
-		hostRepo:        repo,
-		taskLogActivity: activity,
-		sleepQueue:      delayqueue.NewVMSleepQueue(redisClient, logger),
-		notifyQueue:     delayqueue.NewVMNotifyQueue(redisClient, logger),
-		recycleQueue:    delayqueue.NewVMRecycleQueue(redisClient, logger),
-	}
-
-	skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !skip {
-		t.Fatal("expected recent task last_active_at to skip recycle")
-	}
-	if activity.calls != 0 {
-		t.Fatalf("clickhouse calls = %d, want 0", activity.calls)
-	}
-	if repo.getVirtualMachineCalls != 1 {
-		t.Fatalf("GetVirtualMachine calls = %d, want 1", repo.getVirtualMachineCalls)
-	}
-}
-
-func TestShouldSkipRecycleForRecentTaskLogRefreshesVM(t *testing.T) {
-	ctx := context.Background()
-	now := time.Date(2026, 7, 7, 10, 34, 38, 0, time.UTC)
-	taskID := uuid.New()
-	vm := &db.VirtualMachine{ID: "vm-recent-log", UserID: uuid.New()}
-	vm.Edges.Tasks = []*db.Task{{ID: taskID, Status: consts.TaskStatusProcessing}}
-	redisClient := newTestRedis(t)
-	logger := slog.Default()
-	repo := &refreshHostRepoStub{vm: vm}
-	r := &vmIdleRefresher{
-		cfg:             &config.Config{VMIdle: config.VMIdle{SleepSeconds: 600, RecycleSeconds: 3600}},
-		redis:           redisClient,
-		logger:          logger,
-		hostRepo:        repo,
-		taskLogActivity: &taskLogActivityStub{latest: map[uuid.UUID]time.Time{taskID: now.Add(-time.Minute)}},
-		sleepQueue:      delayqueue.NewVMSleepQueue(redisClient, logger),
-		notifyQueue:     delayqueue.NewVMNotifyQueue(redisClient, logger),
-		recycleQueue:    delayqueue.NewVMRecycleQueue(redisClient, logger),
-	}
-
-	skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !skip {
-		t.Fatal("expected recent task log to skip recycle")
-	}
-	if repo.getVirtualMachineCalls != 1 {
-		t.Fatalf("GetVirtualMachine calls = %d, want 1", repo.getVirtualMachineCalls)
-	}
-}
-
-func TestShouldSkipRecycleForRecentTaskLogAllowsStaleVM(t *testing.T) {
-	ctx := context.Background()
-	now := time.Date(2026, 7, 7, 10, 34, 38, 0, time.UTC)
-	taskID := uuid.New()
-	vm := &db.VirtualMachine{ID: "vm-stale-log", UserID: uuid.New()}
-	vm.Edges.Tasks = []*db.Task{{ID: taskID, Status: consts.TaskStatusProcessing}}
-	repo := &refreshHostRepoStub{vm: vm}
-	r := &vmIdleRefresher{
-		cfg:             &config.Config{VMIdle: config.VMIdle{SleepSeconds: 600, RecycleSeconds: 3600}},
-		logger:          slog.Default(),
-		hostRepo:        repo,
-		taskLogActivity: &taskLogActivityStub{latest: map[uuid.UUID]time.Time{taskID: now.Add(-2 * time.Hour)}},
-	}
-
-	skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if skip {
-		t.Fatal("expected stale task log to allow recycle")
-	}
-	if repo.getVirtualMachineCalls != 0 {
-		t.Fatalf("GetVirtualMachine calls = %d, want 0", repo.getVirtualMachineCalls)
 	}
 }
 
@@ -414,21 +316,6 @@ func (s *refreshTeamPolicyRepoStub) UpdateTaskVMIdlePolicy(context.Context, uuid
 
 func (s *refreshTeamPolicyRepoStub) GetMember(context.Context, uuid.UUID, uuid.UUID) (*db.TeamMember, error) {
 	return nil, errors.New("not implemented")
-}
-
-type taskLogActivityStub struct {
-	latest map[uuid.UUID]time.Time
-	err    error
-	calls  int
-}
-
-func (s *taskLogActivityStub) LatestTaskLogTime(_ context.Context, taskID uuid.UUID) (time.Time, bool, error) {
-	s.calls++
-	if s.err != nil {
-		return time.Time{}, false, s.err
-	}
-	latest, ok := s.latest[taskID]
-	return latest, ok, nil
 }
 
 func (s *refreshHostRepoStub) List(context.Context, uuid.UUID) ([]*db.Host, error) {

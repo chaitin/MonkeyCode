@@ -34,6 +34,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
+	"github.com/chaitin/MonkeyCode/backend/pkg/vmrecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
@@ -190,6 +191,9 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		l := do.MustInvoke[*slog.Logger](i)
 		return delayqueue.NewVMExpireQueue(r, l), nil
 	})
+
+	do.Provide(i, vmrecycle.NewRecycler)
+	do.Provide(i, vmrecycle.NewAnalyzer)
 
 	// Channel Registry（通知渠道）
 	do.Provide(i, func(i *do.Injector) (*msgpush.WechatClient, error) {

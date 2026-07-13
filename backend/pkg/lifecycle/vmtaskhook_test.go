@@ -58,7 +58,7 @@ func TestVMTaskHook_OnStateChange_FailedTransitionsTaskToError(t *testing.T) {
 	}
 }
 
-func TestVMTaskHook_OnStateChange_RecycledTransitionsTaskToFinished(t *testing.T) {
+func TestVMTaskHook_OnStateChange_RecycledDoesNotTransitionTask(t *testing.T) {
 	mr, err := miniredis.Run()
 	if err != nil {
 		t.Fatalf("miniredis.Run() error = %v", err)
@@ -101,7 +101,7 @@ func TestVMTaskHook_OnStateChange_RecycledTransitionsTaskToFinished(t *testing.T
 	if err != nil {
 		t.Fatalf("taskLifecycle.GetState() error = %v", err)
 	}
-	if state != consts.TaskStatusFinished {
-		t.Fatalf("task state = %s, want %s", state, consts.TaskStatusFinished)
+	if state != consts.TaskStatusProcessing {
+		t.Fatalf("task state = %s, want %s", state, consts.TaskStatusProcessing)
 	}
 }

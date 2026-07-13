@@ -117,15 +117,10 @@ func (q *RedisDelayQueue[T]) Enqueue(ctx context.Context, queue string, payload 
 
 // GetJobInfo 查询任务信息
 func (q *RedisDelayQueue[T]) GetJobInfo(ctx context.Context, queue, id string) (*Job[T], time.Time, bool, error) {
-	zkey := q.zsetKey(queue)
-	score, err := q.rdb.ZScore(ctx, zkey, id).Result()
-	if err == redis.Nil {
-		return nil, time.Time{}, false, nil
+	runAt, ok, err := q.GetRunAt(ctx, queue, id)
+	if err != nil || !ok {
+		return nil, time.Time{}, ok, err
 	}
-	if err != nil {
-		return nil, time.Time{}, false, err
-	}
-	runAt := time.UnixMilli(int64(score))
 
 	job, err := q.loadJob(ctx, queue, id)
 	if err != nil {
@@ -135,6 +130,17 @@ func (q *RedisDelayQueue[T]) GetJobInfo(ctx context.Context, queue, id string) (
 		return nil, time.Time{}, false, nil
 	}
 	return job, runAt, true, nil
+}
+
+func (q *RedisDelayQueue[T]) GetRunAt(ctx context.Context, queue, id string) (time.Time, bool, error) {
+	score, err := q.rdb.ZScore(ctx, q.zsetKey(queue), id).Result()
+	if errors.Is(err, redis.Nil) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return time.UnixMilli(int64(score)), true, nil
 }
 
 // Remove 移除任务
