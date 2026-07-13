@@ -426,15 +426,21 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 		}
 
 		id := uuid.New()
-		tk, err := tx.Task.Create().
+		tkCrt := tx.Task.Create().
 			SetID(id).
 			SetKind(req.Type).
 			SetSubType(req.SubType).
 			SetContent(req.Content).
 			SetUserID(u.ID).
 			SetStatus(consts.TaskStatusPending).
-			SetLogStore(consts.LogStoreClickHouse).
-			Save(ctx)
+			SetLogStore(consts.LogStoreClickHouse)
+		if len(req.Extra.SkillIDs) > 0 {
+			tkCrt.SetSkillIds(req.Extra.SkillIDs)
+		}
+		if len(req.Extra.PluginIDs) > 0 {
+			tkCrt.SetPluginIds(req.Extra.PluginIDs)
+		}
+		tk, err := tkCrt.Save(ctx)
 		if err != nil {
 			return err
 		}
@@ -575,15 +581,21 @@ func (t *TaskRepo) PrepareCreate(ctx context.Context, u *domain.User, req domain
 		}
 
 		id := uuid.New()
-		tk, err := tx.Task.Create().
+		tkCrt := tx.Task.Create().
 			SetID(id).
 			SetKind(req.Type).
 			SetSubType(req.SubType).
 			SetContent(req.Content).
 			SetUserID(u.ID).
 			SetStatus(consts.TaskStatusPending).
-			SetLogStore(consts.LogStoreClickHouse).
-			Save(ctx)
+			SetLogStore(consts.LogStoreClickHouse)
+		if len(req.Extra.SkillIDs) > 0 {
+			tkCrt.SetSkillIds(req.Extra.SkillIDs)
+		}
+		if len(req.Extra.PluginIDs) > 0 {
+			tkCrt.SetPluginIds(req.Extra.PluginIDs)
+		}
+		tk, err := tkCrt.Save(ctx)
 		if err != nil {
 			return err
 		}

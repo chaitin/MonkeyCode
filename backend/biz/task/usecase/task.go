@@ -306,6 +306,7 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 	owner := user.ID == t.UserID
 
 	tk := cvt.From(t, &domain.Task{})
+	fillAgentResourceBaseline(tk, t.SkillIds, t.PluginIds)
 	if vm := tk.VirtualMachine; vm != nil {
 		resp, _ := a.taskflow.VirtualMachiner().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
 			IDs: []string{vm.ID},
