@@ -147,6 +147,10 @@ interface MarkdownProps {
   allowHtml?: boolean
   /** Whether internal links should navigate in-app. */
   allowInternalLink?: boolean
+  /** VM id used to route workspace file links to the file manager. */
+  fileLinkEnvid?: string
+  /** Opens workspace file links in the current task context. */
+  onWorkspaceFileClick?: (path: string) => void
   className?: string
 }
 
@@ -191,7 +195,32 @@ function resolveRelativePath(href: string, currentPath: string): string {
   }
 }
 
-export const Markdown = memo(function Markdown({ children, allowHtml = false, allowInternalLink = true, className }: MarkdownProps) {
+function resolveWorkspaceFileLink(href: string | undefined, envid: string | undefined): string | null {
+  if (!href || !envid) return null
+
+  try {
+    const url = new URL(href, window.location.origin)
+    if (url.origin !== window.location.origin) return null
+    if (url.pathname !== "/workspace" && !url.pathname.startsWith("/workspace/")) return null
+
+    const path = url.pathname
+    const searchParams = new URLSearchParams({ envid })
+
+    if (path === "/workspace") {
+      searchParams.set("path", path)
+    } else {
+      const parentPath = path.substring(0, path.lastIndexOf("/")) || "/"
+      searchParams.set("path", parentPath)
+      searchParams.set("open", path)
+    }
+
+    return `/console/files?${searchParams.toString()}`
+  } catch {
+    return null
+  }
+}
+
+export const Markdown = memo(function Markdown({ children, allowHtml = false, allowInternalLink = true, fileLinkEnvid, onWorkspaceFileClick, className }: MarkdownProps) {
   const location = useLocation()
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === "dark"
@@ -199,8 +228,25 @@ export const Markdown = memo(function Markdown({ children, allowHtml = false, al
   const components = useMemo<Components>(() => ({
     a({ href, children, ...props }) {
       if (isInternalLink(href)) {
+        const fileManagerPath = allowInternalLink ? resolveWorkspaceFileLink(href, fileLinkEnvid) : null
         const absolutePath = resolveRelativePath(href as string, location.pathname)
-        return <Link to={allowInternalLink ? absolutePath : ""} {...props}>{children}</Link>
+        const workspacePath = fileManagerPath ? new URL(href as string, window.location.origin).pathname : null
+        return (
+          <Link
+            to={allowInternalLink ? fileManagerPath ?? absolutePath : ""}
+            onClick={(event) => {
+              if (!workspacePath || !onWorkspaceFileClick || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                return
+              }
+
+              event.preventDefault()
+              onWorkspaceFileClick(workspacePath)
+            }}
+            {...props}
+          >
+            {children}
+          </Link>
+        )
       }
 
       return (
@@ -211,7 +257,7 @@ export const Markdown = memo(function Markdown({ children, allowHtml = false, al
     },
     p: MarkdownParagraph,
     pre: ({ children }) => <MarkdownCodeBlock isDark={isDark}>{children}</MarkdownCodeBlock>,
-  }), [allowInternalLink, isDark, location.pathname])
+  }), [allowInternalLink, fileLinkEnvid, isDark, location.pathname, onWorkspaceFileClick])
 
   return (
     <div className={cn("markdown-body pb-2", isDark ? "markdown-body-dark" : "markdown-body-light", className)}>

@@ -54,6 +54,10 @@ interface TaskFileExplorerProps {
   envid?: string
 }
 
+export interface TaskFileExplorerHandle {
+  openFile: (path: string) => Promise<FileItem | null>
+}
+
 const sortFiles = (files: RepoFileStatus[]) => {
   return files.sort((a, b) => {
     const getTypePriority = (file: RepoFileStatus) => {
@@ -161,6 +165,12 @@ function tryDecodeAsText(bytes: Uint8Array): { text: string; isText: boolean } {
   } catch {
     return { text: '', isText: false }
   }
+}
+
+function normalizeWorkspacePath(path: string): string {
+  if (path === "/workspace") return ""
+  if (path.startsWith("/workspace/")) return path.substring("/workspace/".length)
+  return path
 }
 
 interface FileItem {
@@ -390,7 +400,7 @@ const DirNode = forwardRef<DirNodeRef, {
 
 DirNode.displayName = 'DirNode'
 
-export const TaskFileExplorer = ({
+export const TaskFileExplorer = forwardRef<TaskFileExplorerHandle, TaskFileExplorerProps>(function TaskFileExplorer({
   className,
   disabled,
   repository,
@@ -398,7 +408,7 @@ export const TaskFileExplorer = ({
   onChangesCountChange,
   onClosePanel,
   envid,
-}: TaskFileExplorerProps): React.JSX.Element => {
+}, ref): React.JSX.Element {
   const { t } = useTranslation()
   const rootRef = useRef<DirNodeRef>(null)
   const lastRefreshSignalRef = useRef<number | undefined>(undefined)
@@ -528,17 +538,19 @@ export const TaskFileExplorer = ({
 
   const openFile = useCallback(async (path: string) => {
     if (!envid || !path) return null
-    const bytes = await fetchFileContent(path)
+    const filePath = normalizeWorkspacePath(path)
+    if (!filePath) return null
+    const bytes = await fetchFileContent(filePath)
     if (!bytes) return null
-    const isBinaryByExt = isBinaryExtension(path)
-    const isImage = isImageExtension(path)
+    const isBinaryByExt = isBinaryExtension(filePath)
+    const isImage = isImageExtension(filePath)
     const isTooLarge = bytes.length > MAX_FILE_SIZE
     const { text, isText } = isBinaryByExt ? { text: '', isText: false } : tryDecodeAsText(bytes)
     const isBinary = isBinaryByExt || !isText
-    const imageDataUrl = isImage ? createImageDataUrl(path, bytes) : null
+    const imageDataUrl = isImage ? createImageDataUrl(filePath, bytes) : null
     const file: FileItem = {
-      name: path.split('/').pop() || path,
-      path,
+      name: filePath.split('/').pop() || filePath,
+      path: filePath,
       bytes,
       content: isText ? text : null,
       isBinary,
@@ -551,6 +563,8 @@ export const TaskFileExplorer = ({
     setCurrentFile(file)
     return file
   }, [envid, fetchFileContent])
+
+  useImperativeHandle(ref, () => ({ openFile }), [openFile])
 
   const clearCurrentFile = useCallback(() => {
     setFileLoading(false)
@@ -888,4 +902,4 @@ export const TaskFileExplorer = ({
       </Dialog>
     </div>
   )
-}
+})

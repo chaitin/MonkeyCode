@@ -27,6 +27,8 @@ export interface TaskMessageVirtualListScrollOptions {
 interface TaskMessageVirtualListProps {
   messages: MessageType[]
   cli?: ConstsCliName
+  fileLinkEnvid?: string
+  onWorkspaceFileClick?: (path: string) => void
   contentRef?: React.Ref<HTMLDivElement>
   className?: string
   getScrollContainer: () => HTMLDivElement | null
@@ -80,6 +82,8 @@ const TaskMessageVirtualList = React.forwardRef<TaskMessageVirtualListHandle, Ta
     const {
       messages,
       cli,
+      fileLinkEnvid,
+      onWorkspaceFileClick,
       contentRef,
       className,
       getScrollContainer,
@@ -261,6 +265,8 @@ const TaskMessageVirtualList = React.forwardRef<TaskMessageVirtualListHandle, Ta
                     message={renderableMessages[row.messageIndex]}
                     cli={cli}
                     isLatest={renderableMessages[row.messageIndex]?.id === latestMessageId}
+                    fileLinkEnvid={fileLinkEnvid}
+                    onWorkspaceFileClick={onWorkspaceFileClick}
                   />
                 </div>
               )}
