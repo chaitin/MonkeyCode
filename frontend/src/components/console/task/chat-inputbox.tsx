@@ -580,6 +580,9 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     nextAttachmentFileIndexRef.current += 1
     setSelectedUploadFile(null)
     setShouldAutoUpload(false)
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+    })
   }
 
   const handleWhiteboardUploaded = (file: TaskUploadedFile) => {
