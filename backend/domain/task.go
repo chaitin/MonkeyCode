@@ -26,6 +26,7 @@ type TaskUsecase interface {
 	Cancel(ctx context.Context, user *User, id uuid.UUID) error
 	AutoApprove(ctx context.Context, user *User, id uuid.UUID, approve bool) error
 	SwitchModel(ctx context.Context, user *User, taskID uuid.UUID, req SwitchTaskModelReq) (*SwitchTaskModelResp, error)
+	SwitchAgentResources(ctx context.Context, user *User, taskID uuid.UUID, req SwitchAgentResourcesReq) (*SwitchAgentResourcesResp, error)
 	GitTask(ctx context.Context, id uuid.UUID) (*GitTask, error)
 	Delete(ctx context.Context, user *User, id uuid.UUID) error
 	Update(ctx context.Context, user *User, req UpdateTaskReq) error
@@ -48,6 +49,7 @@ type TaskRepo interface {
 	Stop(ctx context.Context, user *User, id uuid.UUID, fn func(*db.Task) error) error
 	Delete(ctx context.Context, user *User, id uuid.UUID) error
 	UpdateProjectTaskModel(ctx context.Context, taskID, modelID uuid.UUID) error
+	UpdateAgentResourceSelection(ctx context.Context, taskID uuid.UUID, skillIDs, pluginIDs []string) error
 	CreateModelSwitch(ctx context.Context, item *TaskModelSwitch) error
 	FinishModelSwitch(ctx context.Context, id uuid.UUID, success bool, message, sessionID string) error
 	CompleteModelSwitch(ctx context.Context, id, taskID, modelID uuid.UUID, success bool, message, sessionID string) error
@@ -150,6 +152,21 @@ type SwitchTaskModelResp struct {
 	Message   string      `json:"message"`
 	SessionID string      `json:"session_id"`
 	Model     *ModelBrief `json:"model,omitempty"`
+}
+
+// SwitchAgentResourcesReq 切换运行中任务的 skill/plugin 列表请求
+type SwitchAgentResourcesReq struct {
+	RequestID string   `json:"request_id" validate:"required"`
+	SkillIDs  []string `json:"skill_ids"`
+	PluginIDs []string `json:"plugin_ids"`
+}
+
+// SwitchAgentResourcesResp 切换运行中任务的 skill/plugin 列表响应
+type SwitchAgentResourcesResp struct {
+	RequestID string `json:"request_id"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	SessionID string `json:"session_id"`
 }
 
 // TaskModelSwitch 任务模型切换记录

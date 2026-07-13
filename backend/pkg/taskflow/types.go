@@ -581,9 +581,10 @@ type ConfigFile struct {
 
 // TaskExecutionConfig 任务运行配置
 type TaskExecutionConfig struct {
-	Envs        map[string]string `json:"envs,omitempty"`
-	ConfigFiles []ConfigFile      `json:"config_files,omitempty"`
-	McpServers  []McpServerConfig `json:"mcp_servers,omitempty"`
+	Envs           map[string]string `json:"envs,omitempty"`
+	ConfigFiles    []ConfigFile      `json:"config_files,omitempty"`
+	McpServers     []McpServerConfig `json:"mcp_servers,omitempty"`
+	AgentResources *AgentResources   `json:"agent_resources,omitempty"`
 }
 
 // McpHttpHeader MCP HTTP 头

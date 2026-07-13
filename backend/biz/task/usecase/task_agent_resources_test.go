@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
 
 func TestFillAgentResourceBaseline_NilExtra(t *testing.T) {
@@ -63,5 +64,30 @@ func TestFillAgentResourceBaseline_EmptySlices(t *testing.T) {
 	}
 	if tk.Extra.PluginIDs != nil {
 		t.Fatalf("PluginIDs = %v, want nil", tk.Extra.PluginIDs)
+	}
+}
+
+func TestNormalizeAgentResources_NilBecomesEmpty(t *testing.T) {
+	got := normalizeAgentResources(nil)
+	if got == nil {
+		t.Fatal("normalizeAgentResources(nil) returned nil, want non-nil empty struct")
+	}
+	if got.Skills != nil {
+		t.Fatalf("Skills = %v, want nil (empty)", got.Skills)
+	}
+	if got.Plugins != nil {
+		t.Fatalf("Plugins = %v, want nil (empty)", got.Plugins)
+	}
+}
+
+func TestNormalizeAgentResources_PassThrough(t *testing.T) {
+	input := &taskflow.AgentResources{
+		Skills: []*taskflow.AgentResourceAssetRef{
+			{Name: "skill-a"},
+		},
+	}
+	got := normalizeAgentResources(input)
+	if got != input {
+		t.Fatal("normalizeAgentResources() with non-nil input returned different pointer, want same pointer")
 	}
 }

@@ -308,6 +308,11 @@ func (t *TaskRepo) Delete(ctx context.Context, user *domain.User, id uuid.UUID) 
 	return err
 }
 
+// UpdateAgentResourceSelection 更新任务的 skill/plugin 基线选择
+func (t *TaskRepo) UpdateAgentResourceSelection(ctx context.Context, taskID uuid.UUID, skillIDs, pluginIDs []string) error {
+	return t.db.Task.UpdateOneID(taskID).SetSkillIds(skillIDs).SetPluginIds(pluginIDs).Exec(ctx)
+}
+
 // UpdateProjectTaskModel 更新项目任务当前模型
 func (t *TaskRepo) UpdateProjectTaskModel(ctx context.Context, taskID, modelID uuid.UUID) error {
 	count, err := t.db.ProjectTask.Update().
