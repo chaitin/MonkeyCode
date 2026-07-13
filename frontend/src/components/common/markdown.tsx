@@ -203,10 +203,10 @@ function resolveWorkspaceFileLink(href: string | undefined, envid: string | unde
     if (url.origin !== window.location.origin) return null
     if (url.pathname !== "/workspace" && !url.pathname.startsWith("/workspace/")) return null
 
-    const path = url.pathname
+    const path = url.pathname === "/workspace" ? "/" : url.pathname.substring("/workspace".length)
     const searchParams = new URLSearchParams({ envid })
 
-    if (path === "/workspace") {
+    if (path === "/") {
       searchParams.set("path", path)
     } else {
       const parentPath = path.substring(0, path.lastIndexOf("/")) || "/"
