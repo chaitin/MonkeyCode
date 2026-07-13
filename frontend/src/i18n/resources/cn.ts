@@ -4073,6 +4073,9 @@ const cn = {
       loadingHistory: "正在加载",
       loadMore: "加载更多",
       loadHistory: "加载历史消息",
+      copyUserInput: "复制用户输入",
+      copyUserInputSuccess: "用户输入已复制到剪贴板",
+      copyUserInputFailed: "复制用户输入失败",
     },
     plan: {
       title: "执行步骤 ({{completed}}/{{total}})",
