@@ -120,7 +120,7 @@ bash -c "$(curl -fsSL 'https://monkeycode-ai.com/online/install')"
 - 使用文档：[https://monkeycode.docs.baizhi.cloud/](https://monkeycode.docs.baizhi.cloud/)
 - 在线使用：[https://monkeycode-ai.com/](https://monkeycode-ai.com/)
 - 企业咨询：[https://baizhi.cloud/consult](https://baizhi.cloud/consult)
-- Discord：[https://discord.gg/8NgHexaaMa](https://discord.gg/8NgHexaaMa)
+- Discord：[https://discord.gg/2pPmuyr4pP](https://discord.gg/2pPmuyr4pP)
 - GitHub Issues：[https://github.com/chaitin/MonkeyCode/issues](https://github.com/chaitin/MonkeyCode/issues)
 
 ## Star History

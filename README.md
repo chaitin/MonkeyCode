@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://monkeycode-ai.net/">Try Online</a> ·
   <a href="#self-hosted-deployment">Self-Hosted Deployment</a> ·
-  <a href="https://discord.gg/8NgHexaaMa">Discord</a> ·
+  <a href="https://discord.gg/2pPmuyr4pP">Discord</a> ·
   <a href="./readme.cn.md">中文</a>
 </p>
 
@@ -120,7 +120,7 @@ You can also get support through:
 - Documentation: [https://monkeycode.docs.baizhi.cloud/](https://monkeycode.docs.baizhi.cloud/)
 - Online service: [https://monkeycode-ai.net/](https://monkeycode-ai.net/)
 - Enterprise consultation: [https://baizhi.cloud/consult](https://baizhi.cloud/consult)
-- Discord: [https://discord.gg/8NgHexaaMa](https://discord.gg/8NgHexaaMa)
+- Discord: [https://discord.gg/2pPmuyr4pP](https://discord.gg/2pPmuyr4pP)
 - GitHub Issues: [https://github.com/chaitin/MonkeyCode/issues](https://github.com/chaitin/MonkeyCode/issues)
 
 ## Star History

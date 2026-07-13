@@ -108,3 +108,8 @@ test("欢迎页资源列表不展示模型广场", () => {
   assert.doesNotMatch(sourceFiles.footer, /modelSquare|model-square/);
   assert.doesNotMatch(sourceFiles.terminalChrome, /MODEL_SQUARE_LINK|modelSquare|model-square/);
 });
+
+test("欢迎页 Discord 链接使用当前邀请地址", () => {
+  assert.match(sourceFiles.terminalChrome, /DISCORD_INVITE_LINK = "https:\/\/discord\.gg\/2pPmuyr4pP"/);
+  assert.doesNotMatch(sourceFiles.terminalChrome, /https:\/\/discord\.gg\/(?!2pPmuyr4pP)/);
+});

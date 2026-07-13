@@ -14,7 +14,7 @@ const CHAITIN_LINK = "https://www.chaitin.cn/";
 const BAIZHI_LINK = "https://www.baizhi.cloud/";
 const CYBERSERVAL_LINK = "https://www.cyberserval.com/";
 const SAFELINE_WAF_LINK = "https://cyberserval.tech/home";
-const DISCORD_INVITE_LINK = "https://discord.gg/8NgHexaaMa";
+const DISCORD_INVITE_LINK = "https://discord.gg/2pPmuyr4pP";
 
 const resourceLinks = [
   { titleKey: "welcomeShell.footer.productDocs", href: DOCS_LINK },
