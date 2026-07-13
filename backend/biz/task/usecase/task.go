@@ -205,14 +205,19 @@ func (a *TaskUsecase) SwitchModel(ctx context.Context, user *domain.User, taskID
 		}
 	}
 
-	coding, configs, agentRes, err := a.getCodingConfigs(ctx, t.CliName, model, nil, nil, a.userScope(ctx, user), false)
+	var skillIDs, pluginIDs []string
+	if t.Extra != nil {
+		skillIDs = t.Extra.SkillIDs
+		pluginIDs = t.Extra.PluginIDs
+	}
+	coding, configs, agentRes, err := a.getCodingConfigs(ctx, t.CliName, model, skillIDs, pluginIDs, a.userScope(ctx, user), false)
 	if err != nil {
 		return nil, err
 	}
 	if coding != taskflow.CodingAgentOpenCode {
 		return nil, fmt.Errorf("switch model only supports opencode runtime")
 	}
-	_ = agentRes // switch-model path does not currently forward AgentResources to taskflow.
+	_ = agentRes // switch-model intentionally leaves AgentResources nil (see design spec: nil = agent does not touch on-disk assets).
 
 	envs := map[string]string{
 		"OPENAI_API_KEY":                   model.APIKey,
