@@ -432,6 +432,9 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 	}); err != nil {
 		return err
 	}
+	if err := a.idleRefresher.RecordActivity(ctx, tk.VirtualMachine.ID); err != nil {
+		a.logger.WarnContext(ctx, "failed to refresh vm idle timers on user input", "task_id", id, "vm_id", tk.VirtualMachine.ID, "error", err)
+	}
 
 	// 缓存最近一次 user-input，供通知推送使用
 	a.redis.Set(ctx, fmt.Sprintf("mcai:task:%s:last_input", id.String()), string(req.Content), 24*time.Hour)
@@ -721,7 +724,7 @@ func (a *TaskUsecase) refreshCreatedTaskState(ctx context.Context, taskID uuid.U
 	if vmID == "" {
 		return
 	}
-	if err := a.idleRefresher.Refresh(ctx, vmID); err != nil {
+	if err := a.idleRefresher.RecordActivity(ctx, vmID); err != nil {
 		a.logger.WarnContext(ctx, "failed to refresh vm idle timers on create", "task_id", taskID, "vm_id", vmID, "error", err)
 	}
 }

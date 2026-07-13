@@ -148,7 +148,7 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 
 	// 连接建立：刷新空闲计时器
 	if vm := task.VirtualMachine; vm != nil {
-		if err := h.idleRefresher.Refresh(c.Request().Context(), vm.ID); err != nil {
+		if err := h.idleRefresher.KeepAwake(c.Request().Context(), vm.ID); err != nil {
 			logger.WarnContext(c.Request().Context(), "failed to refresh idle timers on connect", "error", err)
 		}
 
@@ -174,7 +174,7 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 		if vm := task.VirtualMachine; vm != nil && !h.controlConns.Has(taskID) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-			if err := h.idleRefresher.Refresh(ctx, vm.ID); err != nil {
+			if err := h.idleRefresher.KeepAwake(ctx, vm.ID); err != nil {
 				logger.WarnContext(ctx, "failed to refresh idle timers on disconnect", "error", err)
 			}
 		}
@@ -227,7 +227,7 @@ func (h *TaskHandler) controlPing(ctx context.Context, wsConn *ws.WebsocketManag
 
 // controlKeepAlive 定期刷新空闲计时器，防止 VM 被误判空闲
 func (h *TaskHandler) controlKeepAlive(ctx context.Context, taskID uuid.UUID, vmID string) error {
-	if err := h.idleRefresher.Refresh(ctx, vmID); err != nil {
+	if err := h.idleRefresher.KeepAwake(ctx, vmID); err != nil {
 		h.logger.WarnContext(ctx, "keepalive refresh failed", "vmID", vmID, "error", err)
 	}
 	if err := h.taskActivity.Refresh(ctx, taskID); err != nil {
@@ -243,7 +243,7 @@ func (h *TaskHandler) controlKeepAlive(ctx context.Context, taskID uuid.UUID, vm
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-idleTicker.C:
-			if err := h.idleRefresher.Refresh(ctx, vmID); err != nil {
+			if err := h.idleRefresher.KeepAwake(ctx, vmID); err != nil {
 				h.logger.WarnContext(ctx, "keepalive refresh failed", "vmID", vmID, "error", err)
 			}
 		case <-activityTicker.C:

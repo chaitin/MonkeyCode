@@ -192,6 +192,7 @@ func (noopTaskActivityRefresher) ForceRefresh(context.Context, uuid.UUID) error 
 
 type noopVMIdleRefresher struct{}
 
-func (noopVMIdleRefresher) Refresh(context.Context, string) error { return nil }
+func (noopVMIdleRefresher) KeepAwake(context.Context, string) error      { return nil }
+func (noopVMIdleRefresher) RecordActivity(context.Context, string) error { return nil }
 
 var _ vmidle.VMIdleRefresher = noopVMIdleRefresher{}

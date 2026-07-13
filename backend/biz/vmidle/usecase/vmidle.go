@@ -25,7 +25,8 @@ import (
 )
 
 type VMIdleRefresher interface {
-	Refresh(ctx context.Context, vmID string) error
+	KeepAwake(ctx context.Context, vmID string) error
+	RecordActivity(ctx context.Context, vmID string) error
 }
 
 const (
@@ -129,6 +130,13 @@ type vmIdleSchedulePlan struct {
 	NotifyJobs []vmIdleNotifyJob
 }
 
+type vmIdleRefreshMode string
+
+const (
+	vmIdleKeepAwakeMode vmIdleRefreshMode = "keep-awake"
+	vmIdleActivityMode  vmIdleRefreshMode = "activity"
+)
+
 func NewVMIdleRefresher(i *do.Injector) (VMIdleRefresher, error) {
 	cfg := do.MustInvoke[*config.Config](i)
 	taskLogActivity, err := do.Invoke[*clickhouse.Client](i)
@@ -212,8 +220,7 @@ func (r *vmIdleRefresher) resolvePolicyForVM(ctx context.Context, vm *db.Virtual
 	return domain.ResolveTeamTaskVMIdlePolicy(team, r.cfg.VMIdle)
 }
 
-func buildVMIdleSchedulePlan(policy *domain.TeamTaskVMIdlePolicy, schedules []notifySchedule) vmIdleSchedulePlan {
-	now := time.Now()
+func buildVMIdleSchedulePlan(policy *domain.TeamTaskVMIdlePolicy, schedules []notifySchedule, now time.Time) vmIdleSchedulePlan {
 	var plan vmIdleSchedulePlan
 	if policy.SleepEnabled {
 		sleepAt := now.Add(time.Duration(policy.EffectiveSleepSeconds) * time.Second)
@@ -237,7 +244,15 @@ func buildVMIdleSchedulePlan(policy *domain.TeamTaskVMIdlePolicy, schedules []no
 	return plan
 }
 
-func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
+func (r *vmIdleRefresher) KeepAwake(ctx context.Context, vmID string) error {
+	return r.refresh(ctx, vmID, vmIdleKeepAwakeMode)
+}
+
+func (r *vmIdleRefresher) RecordActivity(ctx context.Context, vmID string) error {
+	return r.refresh(ctx, vmID, vmIdleActivityMode)
+}
+
+func (r *vmIdleRefresher) refresh(ctx context.Context, vmID string, mode vmIdleRefreshMode) error {
 	notFoundKey := fmt.Sprintf("vm:idle:not-found:%s", vmID)
 	if exists, err := r.redis.Exists(ctx, notFoundKey).Result(); err == nil && exists > 0 {
 		return nil
@@ -245,7 +260,7 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 		r.logger.WarnContext(ctx, "redis not found cache check failed", "vmID", vmID, "error", err)
 	}
 
-	debounceKey := fmt.Sprintf("vm:idle:debounce:%s", vmID)
+	debounceKey := fmt.Sprintf("vm:idle:debounce:%s:%s", vmID, mode)
 	ok, err := r.redis.SetNX(ctx, debounceKey, "1", vmIdleDebounceTTL).Result()
 	if err != nil {
 		r.logger.ErrorContext(ctx, "redis SetNX failed", "vmID", vmID, "error", err)
@@ -278,7 +293,7 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 	if err != nil {
 		return err
 	}
-	plan := buildVMIdleSchedulePlan(policy, r.schedules)
+	plan := buildVMIdleSchedulePlan(policy, r.schedules, time.Now())
 	recycleAt := time.Time{}
 	if plan.RecycleAt != nil {
 		recycleAt = *plan.RecycleAt
@@ -290,16 +305,29 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 		EnvID:     vm.EnvironmentID,
 		RecycleAt: recycleAt,
 	}
+	if mode == vmIdleKeepAwakeMode {
+		return r.applySleepPlan(ctx, vmID, payload, plan)
+	}
+	return r.applyActivityPlan(ctx, vmID, payload, policy, plan)
+}
 
-	var errs []error
+func (r *vmIdleRefresher) applySleepPlan(ctx context.Context, vmID string, payload *domain.VmIdleInfo, plan vmIdleSchedulePlan) error {
 	if plan.SleepAt != nil {
 		if _, err := r.sleepQueue.Enqueue(ctx, sleepQueueKey, payload, *plan.SleepAt, vmID); err != nil {
 			r.logger.ErrorContext(ctx, "failed to enqueue sleep", "error", err, "vmID", vmID)
-			errs = append(errs, fmt.Errorf("enqueue sleep: %w", err))
+			return fmt.Errorf("enqueue sleep: %w", err)
 		}
 	} else if err := r.sleepQueue.Remove(ctx, sleepQueueKey, vmID); err != nil {
 		r.logger.ErrorContext(ctx, "failed to remove sleep", "error", err, "vmID", vmID)
-		errs = append(errs, fmt.Errorf("remove sleep: %w", err))
+		return fmt.Errorf("remove sleep: %w", err)
+	}
+	return nil
+}
+
+func (r *vmIdleRefresher) applyActivityPlan(ctx context.Context, vmID string, payload *domain.VmIdleInfo, policy *domain.TeamTaskVMIdlePolicy, plan vmIdleSchedulePlan) error {
+	var errs []error
+	if err := r.applySleepPlan(ctx, vmID, payload, plan); err != nil {
+		errs = append(errs, err)
 	}
 	for _, s := range r.schedules {
 		member := fmt.Sprintf("%s:%s", vmID, s.name)
@@ -523,7 +551,7 @@ func (r *vmIdleRefresher) shouldSkipRecycleForRecentActivity(ctx context.Context
 		if tk.LastActiveAt.IsZero() || !tk.LastActiveAt.After(cutoff) {
 			continue
 		}
-		return r.skipRecycleAndRefresh(ctx, vm, tk.ID, tk.LastActiveAt, cutoff, "pg_task_last_active_at")
+		return r.skipRecycleAndRecordActivity(ctx, vm, tk.ID, tk.LastActiveAt, cutoff, "pg_task_last_active_at")
 	}
 
 	if r.taskLogActivity == nil {
@@ -538,20 +566,20 @@ func (r *vmIdleRefresher) shouldSkipRecycleForRecentActivity(ctx context.Context
 			continue
 		}
 
-		return r.skipRecycleAndRefresh(ctx, vm, tk.ID, latest, cutoff, "clickhouse_task_log")
+		return r.skipRecycleAndRecordActivity(ctx, vm, tk.ID, latest, cutoff, "clickhouse_task_log")
 	}
 	return false, nil
 }
 
-func (r *vmIdleRefresher) skipRecycleAndRefresh(ctx context.Context, vm *db.VirtualMachine, taskID uuid.UUID, activeAt, cutoff time.Time, source string) (bool, error) {
+func (r *vmIdleRefresher) skipRecycleAndRecordActivity(ctx context.Context, vm *db.VirtualMachine, taskID uuid.UUID, activeAt, cutoff time.Time, source string) (bool, error) {
 	r.logger.InfoContext(ctx, "skip vm recycle because task has recent activity",
 		"vm_id", vm.ID,
 		"task_id", taskID.String(),
 		"source", source,
 		"active_at", activeAt.UTC().Format(time.RFC3339Nano),
 		"cutoff", cutoff.UTC().Format(time.RFC3339Nano))
-	if err := r.Refresh(ctx, vm.ID); err != nil {
-		return false, fmt.Errorf("refresh vm idle timer after recent task activity: %w", err)
+	if err := r.RecordActivity(ctx, vm.ID); err != nil {
+		return false, fmt.Errorf("record vm activity after recent task activity: %w", err)
 	}
 	return true, nil
 }

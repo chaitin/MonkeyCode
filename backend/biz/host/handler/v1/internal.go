@@ -122,7 +122,7 @@ func (h *InternalHostHandler) VMActivity(c *web.Context, req VMActivityReq) erro
 	if strings.TrimSpace(req.VMID) == "" {
 		return errors.New("vm_id is required")
 	}
-	if err := h.idleRefresher.Refresh(c.Request().Context(), req.VMID); err != nil {
+	if err := h.idleRefresher.RecordActivity(c.Request().Context(), req.VMID); err != nil {
 		h.logger.WarnContext(c.Request().Context(), "failed to refresh vm idle timers on activity", "vm_id", req.VMID, "error", err)
 		return err
 	}

@@ -23,25 +23,29 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
 
-func TestVMIdleSchedulePlanFromPolicy(t *testing.T) {
+func TestVMIdleSchedulePlanUsesSingleNow(t *testing.T) {
+	now := time.Date(2026, 7, 13, 10, 0, 0, 123, time.UTC)
 	policy := &domain.TeamTaskVMIdlePolicy{
 		TeamID:                  uuid.New(),
-		SleepEnabled:            false,
-		EffectiveSleepSeconds:   0,
+		SleepEnabled:            true,
+		EffectiveSleepSeconds:   600,
 		RecycleEnabled:          true,
 		EffectiveRecycleSeconds: 3600,
 	}
 	schedules := []notifySchedule{{name: "default", lead: 600 * time.Second, leadSeconds: 600}}
 
-	got := buildVMIdleSchedulePlan(policy, schedules)
-	if got.SleepAt != nil {
-		t.Fatalf("sleep should be disabled: %#v", got.SleepAt)
+	got := buildVMIdleSchedulePlan(policy, schedules, now)
+	if got.SleepAt == nil || !got.SleepAt.Equal(now.Add(600*time.Second)) {
+		t.Fatalf("sleep at = %v, want %v", got.SleepAt, now.Add(600*time.Second))
 	}
-	if got.RecycleAt == nil {
-		t.Fatal("recycle should be scheduled")
+	if got.RecycleAt == nil || !got.RecycleAt.Equal(now.Add(3600*time.Second)) {
+		t.Fatalf("recycle at = %v, want %v", got.RecycleAt, now.Add(3600*time.Second))
 	}
 	if len(got.NotifyJobs) != 1 || got.NotifyJobs[0].MemberSuffix != "default" {
 		t.Fatalf("notify jobs = %#v", got.NotifyJobs)
+	}
+	if !got.NotifyJobs[0].RunAt.Equal(now.Add(3000 * time.Second)) {
+		t.Fatalf("notify at = %v, want %v", got.NotifyJobs[0].RunAt, now.Add(3000*time.Second))
 	}
 }
 
@@ -63,7 +67,7 @@ func TestResolvePolicyForVMFallsBackToGlobalWhenTeamMissing(t *testing.T) {
 	}
 }
 
-func TestRefreshDebouncesBeforeVMQuery(t *testing.T) {
+func TestRecordActivityDebouncesBeforeVMQuery(t *testing.T) {
 	ctx := context.Background()
 	redisClient := newTestRedis(t)
 	repo := &refreshHostRepoStub{
@@ -76,18 +80,50 @@ func TestRefreshDebouncesBeforeVMQuery(t *testing.T) {
 		hostRepo: repo,
 	}
 
-	if err := r.Refresh(ctx, "vm-activity"); err != nil {
-		t.Fatalf("first refresh: %v", err)
+	if err := r.RecordActivity(ctx, "vm-activity"); err != nil {
+		t.Fatalf("first activity: %v", err)
 	}
-	if err := r.Refresh(ctx, "vm-activity"); err != nil {
-		t.Fatalf("second refresh: %v", err)
+	if err := r.RecordActivity(ctx, "vm-activity"); err != nil {
+		t.Fatalf("second activity: %v", err)
 	}
 	if repo.getVirtualMachineCalls != 1 {
 		t.Fatalf("GetVirtualMachine calls = %d, want 1", repo.getVirtualMachineCalls)
 	}
 }
 
-func TestRefreshCachesNotFoundVM(t *testing.T) {
+func TestKeepAwakeAndRecordActivityDebounceIndependently(t *testing.T) {
+	ctx := context.Background()
+	redisClient := newTestRedis(t)
+	repo := &refreshHostRepoStub{
+		vm: &db.VirtualMachine{ID: "vm-activity", UserID: uuid.New()},
+	}
+	r := &vmIdleRefresher{
+		cfg:      &config.Config{VMIdle: config.VMIdle{SleepSeconds: 600, RecycleSeconds: 604800}},
+		redis:    redisClient,
+		logger:   slog.Default(),
+		hostRepo: repo,
+	}
+
+	if err := r.KeepAwake(ctx, "vm-activity"); err != nil {
+		t.Fatalf("keep awake: %v", err)
+	}
+	if err := r.RecordActivity(ctx, "vm-activity"); err != nil {
+		t.Fatalf("record activity: %v", err)
+	}
+	if repo.getVirtualMachineCalls != 2 {
+		t.Fatalf("GetVirtualMachine calls = %d, want 2", repo.getVirtualMachineCalls)
+	}
+	for _, key := range []string{
+		"vm:idle:debounce:vm-activity:keep-awake",
+		"vm:idle:debounce:vm-activity:activity",
+	} {
+		if exists, err := redisClient.Exists(ctx, key).Result(); err != nil || exists != 1 {
+			t.Fatalf("debounce key %q exists = %d, err = %v", key, exists, err)
+		}
+	}
+}
+
+func TestRecordActivityCachesNotFoundVM(t *testing.T) {
 	ctx := context.Background()
 	redisClient := newTestRedis(t)
 	repo := &refreshHostRepoStub{err: newVirtualMachineNotFoundErr(t)}
@@ -98,14 +134,135 @@ func TestRefreshCachesNotFoundVM(t *testing.T) {
 		hostRepo: repo,
 	}
 
-	if err := r.Refresh(ctx, "missing-vm"); err != nil {
-		t.Fatalf("first refresh: %v", err)
+	if err := r.RecordActivity(ctx, "missing-vm"); err != nil {
+		t.Fatalf("first activity: %v", err)
 	}
-	if err := r.Refresh(ctx, "missing-vm"); err != nil {
-		t.Fatalf("second refresh: %v", err)
+	if err := r.RecordActivity(ctx, "missing-vm"); err != nil {
+		t.Fatalf("second activity: %v", err)
 	}
 	if repo.getVirtualMachineCalls != 1 {
 		t.Fatalf("GetVirtualMachine calls = %d, want 1", repo.getVirtualMachineCalls)
+	}
+}
+
+func TestKeepAwakeOnlyUpdatesSleepSchedule(t *testing.T) {
+	ctx := context.Background()
+	redisClient := newTestRedis(t)
+	vmID := "vm-keep-awake"
+	vm := &db.VirtualMachine{ID: vmID, UserID: uuid.New(), HostID: "host-1", EnvironmentID: "env-1"}
+	vm.Edges.Tasks = []*db.Task{{ID: uuid.New()}}
+	r := newQueueTestVMIdleRefresher(redisClient, &refreshHostRepoStub{vm: vm})
+	oldRecycleAt := time.Date(2026, 7, 20, 10, 0, 0, 0, time.UTC)
+	payload := &domain.VmIdleInfo{VmID: vmID, RecycleAt: oldRecycleAt}
+	oldNotifyAt := oldRecycleAt.Add(-10 * time.Minute)
+	if _, err := r.notifyQueue.Enqueue(ctx, notifyQueueKey, payload, oldNotifyAt, vmID+":default"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.recycleQueue.Enqueue(ctx, recycleQueueKey, payload, oldRecycleAt, vmID); err != nil {
+		t.Fatal(err)
+	}
+
+	before := time.Now()
+	if err := r.KeepAwake(ctx, vmID); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now()
+
+	assertVMIdleJobBetween(t, r.sleepQueue.RedisDelayQueue, ctx, sleepQueueKey, vmID, before.Add(10*time.Minute), after.Add(10*time.Minute))
+	assertVMIdleJobAt(t, r.notifyQueue.RedisDelayQueue, ctx, notifyQueueKey, vmID+":default", oldNotifyAt)
+	assertVMIdleJobAt(t, r.recycleQueue.RedisDelayQueue, ctx, recycleQueueKey, vmID, oldRecycleAt)
+}
+
+func TestRecordActivityUpdatesAllSchedules(t *testing.T) {
+	ctx := context.Background()
+	redisClient := newTestRedis(t)
+	vmID := "vm-record-activity"
+	vm := &db.VirtualMachine{ID: vmID, UserID: uuid.New(), HostID: "host-1", EnvironmentID: "env-1"}
+	vm.Edges.Tasks = []*db.Task{{ID: uuid.New()}}
+	r := newQueueTestVMIdleRefresher(redisClient, &refreshHostRepoStub{vm: vm})
+
+	before := time.Now()
+	if err := r.RecordActivity(ctx, vmID); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now()
+
+	assertVMIdleJobBetween(t, r.sleepQueue.RedisDelayQueue, ctx, sleepQueueKey, vmID, before.Add(10*time.Minute), after.Add(10*time.Minute))
+	assertVMIdleJobBetween(t, r.notifyQueue.RedisDelayQueue, ctx, notifyQueueKey, vmID+":default", before.Add(50*time.Minute), after.Add(50*time.Minute))
+	assertVMIdleJobBetween(t, r.recycleQueue.RedisDelayQueue, ctx, recycleQueueKey, vmID, before.Add(time.Hour), after.Add(time.Hour))
+}
+
+func TestKeepAwakeWithSleepDisabledOnlyRemovesSleepSchedule(t *testing.T) {
+	ctx := context.Background()
+	redisClient := newTestRedis(t)
+	vmID := "vm-sleep-disabled"
+	vm := &db.VirtualMachine{ID: vmID, UserID: uuid.New(), HostID: "host-1", EnvironmentID: "env-1"}
+	vm.Edges.Tasks = []*db.Task{{ID: uuid.New()}}
+	r := newQueueTestVMIdleRefresher(redisClient, &refreshHostRepoStub{vm: vm})
+	r.teamPolicyRepo = &refreshTeamPolicyRepoStub{team: &db.Team{
+		ID:                   uuid.New(),
+		TaskConcurrencyLimit: 3,
+		TaskVMSleepEnabled:   false,
+		TaskVMRecycleEnabled: true,
+		TaskVMRecycleSeconds: 3600,
+	}}
+	oldRecycleAt := time.Date(2026, 7, 20, 10, 0, 0, 0, time.UTC)
+	payload := &domain.VmIdleInfo{VmID: vmID, RecycleAt: oldRecycleAt}
+	oldSleepAt := oldRecycleAt.Add(-50 * time.Minute)
+	oldNotifyAt := oldRecycleAt.Add(-10 * time.Minute)
+	if _, err := r.sleepQueue.Enqueue(ctx, sleepQueueKey, payload, oldSleepAt, vmID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.notifyQueue.Enqueue(ctx, notifyQueueKey, payload, oldNotifyAt, vmID+":default"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.recycleQueue.Enqueue(ctx, recycleQueueKey, payload, oldRecycleAt, vmID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.KeepAwake(ctx, vmID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok, err := r.sleepQueue.GetJobInfo(ctx, sleepQueueKey, vmID); err != nil || ok {
+		t.Fatalf("sleep job ok = %v, err = %v, want removed", ok, err)
+	}
+	assertVMIdleJobAt(t, r.notifyQueue.RedisDelayQueue, ctx, notifyQueueKey, vmID+":default", oldNotifyAt)
+	assertVMIdleJobAt(t, r.recycleQueue.RedisDelayQueue, ctx, recycleQueueKey, vmID, oldRecycleAt)
+}
+
+func newQueueTestVMIdleRefresher(redisClient *redis.Client, repo domain.HostRepo) *vmIdleRefresher {
+	logger := slog.Default()
+	return &vmIdleRefresher{
+		cfg:          &config.Config{VMIdle: config.VMIdle{SleepSeconds: 600, RecycleSeconds: 3600}},
+		redis:        redisClient,
+		logger:       logger,
+		hostRepo:     repo,
+		sleepQueue:   delayqueue.NewVMSleepQueue(redisClient, logger),
+		notifyQueue:  delayqueue.NewVMNotifyQueue(redisClient, logger),
+		recycleQueue: delayqueue.NewVMRecycleQueue(redisClient, logger),
+		schedules:    []notifySchedule{{name: "default", lead: 10 * time.Minute, leadSeconds: 600}},
+	}
+}
+
+func assertVMIdleJobAt(t *testing.T, queue *delayqueue.RedisDelayQueue[*domain.VmIdleInfo], ctx context.Context, queueKey, id string, want time.Time) {
+	t.Helper()
+	_, got, ok, err := queue.GetJobInfo(ctx, queueKey, id)
+	if err != nil || !ok {
+		t.Fatalf("job %q ok = %v, err = %v", id, ok, err)
+	}
+	if !got.Equal(want) {
+		t.Fatalf("job %q run at = %v, want %v", id, got, want)
+	}
+}
+
+func assertVMIdleJobBetween(t *testing.T, queue *delayqueue.RedisDelayQueue[*domain.VmIdleInfo], ctx context.Context, queueKey, id string, earliest, latest time.Time) {
+	t.Helper()
+	_, got, ok, err := queue.GetJobInfo(ctx, queueKey, id)
+	if err != nil || !ok {
+		t.Fatalf("job %q ok = %v, err = %v", id, ok, err)
+	}
+	if got.Before(earliest.Add(-time.Second)) || got.After(latest.Add(time.Second)) {
+		t.Fatalf("job %q run at = %v, want between %v and %v", id, got, earliest, latest)
 	}
 }
 
@@ -237,6 +394,26 @@ type refreshHostRepoStub struct {
 	vm                     *db.VirtualMachine
 	err                    error
 	getVirtualMachineCalls int
+}
+
+type refreshTeamPolicyRepoStub struct {
+	team *db.Team
+}
+
+func (s *refreshTeamPolicyRepoStub) GetTeam(context.Context, uuid.UUID) (*db.Team, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *refreshTeamPolicyRepoStub) GetTeamByUserID(context.Context, uuid.UUID) (*db.Team, error) {
+	return s.team, nil
+}
+
+func (s *refreshTeamPolicyRepoStub) UpdateTaskVMIdlePolicy(context.Context, uuid.UUID, *domain.UpdateTeamTaskVMIdlePolicyReq) (*db.Team, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *refreshTeamPolicyRepoStub) GetMember(context.Context, uuid.UUID, uuid.UUID) (*db.TeamMember, error) {
+	return nil, errors.New("not implemented")
 }
 
 type taskLogActivityStub struct {

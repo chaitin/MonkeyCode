@@ -69,7 +69,9 @@ type internalVMIdleRefresherStub struct {
 	ch chan string
 }
 
-func (s *internalVMIdleRefresherStub) Refresh(_ context.Context, vmID string) error {
+func (s *internalVMIdleRefresherStub) KeepAwake(context.Context, string) error { return nil }
+
+func (s *internalVMIdleRefresherStub) RecordActivity(_ context.Context, vmID string) error {
 	select {
 	case s.ch <- vmID:
 	default:

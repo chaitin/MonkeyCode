@@ -89,7 +89,7 @@ type VmIdleInfo struct {
 	EnvID  string    `json:"env_id"`
 	TaskID string    `json:"task_id,omitempty"` // 关联的任务 ID，用于通知
 	Name   string    `json:"name,omitempty"`    // 任务名称，用于通知内容
-	// RecycleAt 是本次 Refresh 算出的预计回收时间。每次用户活动都会延长这个值，
+	// RecycleAt 是本次 RecordActivity 算出的预计回收时间。每次用户活动都会延长这个值，
 	// consumer 把它编进 RefID，让每个回收窗口都能产生不同的 dedup key（否则
 	// dispatcher 会按 (subID, eventType, RefID) 把同一 task 的后续推送全部静默）。
 	RecycleAt time.Time `json:"recycle_at"`

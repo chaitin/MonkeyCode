@@ -66,13 +66,15 @@ type testVMIdleRefresher struct {
 	ch chan string
 }
 
-func (r *testVMIdleRefresher) Refresh(_ context.Context, vmID string) error {
+func (r *testVMIdleRefresher) KeepAwake(_ context.Context, vmID string) error {
 	select {
 	case r.ch <- vmID:
 	default:
 	}
 	return nil
 }
+
+func (r *testVMIdleRefresher) RecordActivity(context.Context, string) error { return nil }
 
 type testTaskActivityRefresher struct {
 	ch chan uuid.UUID
