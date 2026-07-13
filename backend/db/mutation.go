@@ -37203,6 +37203,10 @@ type TaskMutation struct {
 	last_active_at        *time.Time
 	updated_at            *time.Time
 	completed_at          *time.Time
+	skill_ids             *[]string
+	appendskill_ids       []string
+	plugin_ids            *[]string
+	appendplugin_ids      []string
 	clearedFields         map[string]struct{}
 	project_tasks         map[uuid.UUID]struct{}
 	removedproject_tasks  map[uuid.UUID]struct{}
@@ -37878,6 +37882,136 @@ func (m *TaskMutation) ResetCompletedAt() {
 	delete(m.clearedFields, task.FieldCompletedAt)
 }
 
+// SetSkillIds sets the "skill_ids" field.
+func (m *TaskMutation) SetSkillIds(s []string) {
+	m.skill_ids = &s
+	m.appendskill_ids = nil
+}
+
+// SkillIds returns the value of the "skill_ids" field in the mutation.
+func (m *TaskMutation) SkillIds() (r []string, exists bool) {
+	v := m.skill_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSkillIds returns the old "skill_ids" field's value of the Task entity.
+// If the Task object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskMutation) OldSkillIds(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSkillIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSkillIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSkillIds: %w", err)
+	}
+	return oldValue.SkillIds, nil
+}
+
+// AppendSkillIds adds s to the "skill_ids" field.
+func (m *TaskMutation) AppendSkillIds(s []string) {
+	m.appendskill_ids = append(m.appendskill_ids, s...)
+}
+
+// AppendedSkillIds returns the list of values that were appended to the "skill_ids" field in this mutation.
+func (m *TaskMutation) AppendedSkillIds() ([]string, bool) {
+	if len(m.appendskill_ids) == 0 {
+		return nil, false
+	}
+	return m.appendskill_ids, true
+}
+
+// ClearSkillIds clears the value of the "skill_ids" field.
+func (m *TaskMutation) ClearSkillIds() {
+	m.skill_ids = nil
+	m.appendskill_ids = nil
+	m.clearedFields[task.FieldSkillIds] = struct{}{}
+}
+
+// SkillIdsCleared returns if the "skill_ids" field was cleared in this mutation.
+func (m *TaskMutation) SkillIdsCleared() bool {
+	_, ok := m.clearedFields[task.FieldSkillIds]
+	return ok
+}
+
+// ResetSkillIds resets all changes to the "skill_ids" field.
+func (m *TaskMutation) ResetSkillIds() {
+	m.skill_ids = nil
+	m.appendskill_ids = nil
+	delete(m.clearedFields, task.FieldSkillIds)
+}
+
+// SetPluginIds sets the "plugin_ids" field.
+func (m *TaskMutation) SetPluginIds(s []string) {
+	m.plugin_ids = &s
+	m.appendplugin_ids = nil
+}
+
+// PluginIds returns the value of the "plugin_ids" field in the mutation.
+func (m *TaskMutation) PluginIds() (r []string, exists bool) {
+	v := m.plugin_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPluginIds returns the old "plugin_ids" field's value of the Task entity.
+// If the Task object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskMutation) OldPluginIds(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPluginIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPluginIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPluginIds: %w", err)
+	}
+	return oldValue.PluginIds, nil
+}
+
+// AppendPluginIds adds s to the "plugin_ids" field.
+func (m *TaskMutation) AppendPluginIds(s []string) {
+	m.appendplugin_ids = append(m.appendplugin_ids, s...)
+}
+
+// AppendedPluginIds returns the list of values that were appended to the "plugin_ids" field in this mutation.
+func (m *TaskMutation) AppendedPluginIds() ([]string, bool) {
+	if len(m.appendplugin_ids) == 0 {
+		return nil, false
+	}
+	return m.appendplugin_ids, true
+}
+
+// ClearPluginIds clears the value of the "plugin_ids" field.
+func (m *TaskMutation) ClearPluginIds() {
+	m.plugin_ids = nil
+	m.appendplugin_ids = nil
+	m.clearedFields[task.FieldPluginIds] = struct{}{}
+}
+
+// PluginIdsCleared returns if the "plugin_ids" field was cleared in this mutation.
+func (m *TaskMutation) PluginIdsCleared() bool {
+	_, ok := m.clearedFields[task.FieldPluginIds]
+	return ok
+}
+
+// ResetPluginIds resets all changes to the "plugin_ids" field.
+func (m *TaskMutation) ResetPluginIds() {
+	m.plugin_ids = nil
+	m.appendplugin_ids = nil
+	delete(m.clearedFields, task.FieldPluginIds)
+}
+
 // AddProjectTaskIDs adds the "project_tasks" edge to the ProjectTask entity by ids.
 func (m *TaskMutation) AddProjectTaskIDs(ids ...uuid.UUID) {
 	if m.project_tasks == nil {
@@ -38248,7 +38382,7 @@ func (m *TaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TaskMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 15)
 	if m.deleted_at != nil {
 		fields = append(fields, task.FieldDeletedAt)
 	}
@@ -38288,6 +38422,12 @@ func (m *TaskMutation) Fields() []string {
 	if m.completed_at != nil {
 		fields = append(fields, task.FieldCompletedAt)
 	}
+	if m.skill_ids != nil {
+		fields = append(fields, task.FieldSkillIds)
+	}
+	if m.plugin_ids != nil {
+		fields = append(fields, task.FieldPluginIds)
+	}
 	return fields
 }
 
@@ -38322,6 +38462,10 @@ func (m *TaskMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdatedAt()
 	case task.FieldCompletedAt:
 		return m.CompletedAt()
+	case task.FieldSkillIds:
+		return m.SkillIds()
+	case task.FieldPluginIds:
+		return m.PluginIds()
 	}
 	return nil, false
 }
@@ -38357,6 +38501,10 @@ func (m *TaskMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldUpdatedAt(ctx)
 	case task.FieldCompletedAt:
 		return m.OldCompletedAt(ctx)
+	case task.FieldSkillIds:
+		return m.OldSkillIds(ctx)
+	case task.FieldPluginIds:
+		return m.OldPluginIds(ctx)
 	}
 	return nil, fmt.Errorf("unknown Task field %s", name)
 }
@@ -38457,6 +38605,20 @@ func (m *TaskMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCompletedAt(v)
 		return nil
+	case task.FieldSkillIds:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSkillIds(v)
+		return nil
+	case task.FieldPluginIds:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPluginIds(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Task field %s", name)
 }
@@ -38505,6 +38667,12 @@ func (m *TaskMutation) ClearedFields() []string {
 	if m.FieldCleared(task.FieldCompletedAt) {
 		fields = append(fields, task.FieldCompletedAt)
 	}
+	if m.FieldCleared(task.FieldSkillIds) {
+		fields = append(fields, task.FieldSkillIds)
+	}
+	if m.FieldCleared(task.FieldPluginIds) {
+		fields = append(fields, task.FieldPluginIds)
+	}
 	return fields
 }
 
@@ -38536,6 +38704,12 @@ func (m *TaskMutation) ClearField(name string) error {
 		return nil
 	case task.FieldCompletedAt:
 		m.ClearCompletedAt()
+		return nil
+	case task.FieldSkillIds:
+		m.ClearSkillIds()
+		return nil
+	case task.FieldPluginIds:
+		m.ClearPluginIds()
 		return nil
 	}
 	return fmt.Errorf("unknown Task nullable field %s", name)
@@ -38583,6 +38757,12 @@ func (m *TaskMutation) ResetField(name string) error {
 		return nil
 	case task.FieldCompletedAt:
 		m.ResetCompletedAt()
+		return nil
+	case task.FieldSkillIds:
+		m.ResetSkillIds()
+		return nil
+	case task.FieldPluginIds:
+		m.ResetPluginIds()
 		return nil
 	}
 	return fmt.Errorf("unknown Task field %s", name)

@@ -3,6 +3,7 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -47,6 +48,10 @@ type Task struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// CompletedAt holds the value of the "completed_at" field.
 	CompletedAt time.Time `json:"completed_at,omitempty"`
+	// SkillIds holds the value of the "skill_ids" field.
+	SkillIds []string `json:"skill_ids,omitempty"`
+	// PluginIds holds the value of the "plugin_ids" field.
+	PluginIds []string `json:"plugin_ids,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the TaskQuery when eager-loading is set.
 	Edges        TaskEdges `json:"edges"`
@@ -146,6 +151,8 @@ func (*Task) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case task.FieldSkillIds, task.FieldPluginIds:
+			values[i] = new([]byte)
 		case task.FieldKind, task.FieldSubType, task.FieldContent, task.FieldTitle, task.FieldSummary, task.FieldStatus, task.FieldLogStore:
 			values[i] = new(sql.NullString)
 		case task.FieldDeletedAt, task.FieldCreatedAt, task.FieldLastActiveAt, task.FieldUpdatedAt, task.FieldCompletedAt:
@@ -251,6 +258,22 @@ func (_m *Task) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field completed_at", values[i])
 			} else if value.Valid {
 				_m.CompletedAt = value.Time
+			}
+		case task.FieldSkillIds:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field skill_ids", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.SkillIds); err != nil {
+					return fmt.Errorf("unmarshal field skill_ids: %w", err)
+				}
+			}
+		case task.FieldPluginIds:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field plugin_ids", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.PluginIds); err != nil {
+					return fmt.Errorf("unmarshal field plugin_ids: %w", err)
+				}
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -363,6 +386,12 @@ func (_m *Task) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("completed_at=")
 	builder.WriteString(_m.CompletedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("skill_ids=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SkillIds))
+	builder.WriteString(", ")
+	builder.WriteString("plugin_ids=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PluginIds))
 	builder.WriteByte(')')
 	return builder.String()
 }

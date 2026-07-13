@@ -41,6 +41,10 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// FieldCompletedAt holds the string denoting the completed_at field in the database.
 	FieldCompletedAt = "completed_at"
+	// FieldSkillIds holds the string denoting the skill_ids field in the database.
+	FieldSkillIds = "skill_ids"
+	// FieldPluginIds holds the string denoting the plugin_ids field in the database.
+	FieldPluginIds = "plugin_ids"
 	// EdgeProjectTasks holds the string denoting the project_tasks edge name in mutations.
 	EdgeProjectTasks = "project_tasks"
 	// EdgeGitTasks holds the string denoting the git_tasks edge name in mutations.
@@ -122,6 +126,8 @@ var Columns = []string{
 	FieldLastActiveAt,
 	FieldUpdatedAt,
 	FieldCompletedAt,
+	FieldSkillIds,
+	FieldPluginIds,
 }
 
 var (

@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
@@ -245,6 +246,42 @@ func (_u *TaskUpdate) SetNillableCompletedAt(v *time.Time) *TaskUpdate {
 // ClearCompletedAt clears the value of the "completed_at" field.
 func (_u *TaskUpdate) ClearCompletedAt() *TaskUpdate {
 	_u.mutation.ClearCompletedAt()
+	return _u
+}
+
+// SetSkillIds sets the "skill_ids" field.
+func (_u *TaskUpdate) SetSkillIds(v []string) *TaskUpdate {
+	_u.mutation.SetSkillIds(v)
+	return _u
+}
+
+// AppendSkillIds appends value to the "skill_ids" field.
+func (_u *TaskUpdate) AppendSkillIds(v []string) *TaskUpdate {
+	_u.mutation.AppendSkillIds(v)
+	return _u
+}
+
+// ClearSkillIds clears the value of the "skill_ids" field.
+func (_u *TaskUpdate) ClearSkillIds() *TaskUpdate {
+	_u.mutation.ClearSkillIds()
+	return _u
+}
+
+// SetPluginIds sets the "plugin_ids" field.
+func (_u *TaskUpdate) SetPluginIds(v []string) *TaskUpdate {
+	_u.mutation.SetPluginIds(v)
+	return _u
+}
+
+// AppendPluginIds appends value to the "plugin_ids" field.
+func (_u *TaskUpdate) AppendPluginIds(v []string) *TaskUpdate {
+	_u.mutation.AppendPluginIds(v)
+	return _u
+}
+
+// ClearPluginIds clears the value of the "plugin_ids" field.
+func (_u *TaskUpdate) ClearPluginIds() *TaskUpdate {
+	_u.mutation.ClearPluginIds()
 	return _u
 }
 
@@ -595,6 +632,28 @@ func (_u *TaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.CompletedAtCleared() {
 		_spec.ClearField(task.FieldCompletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SkillIds(); ok {
+		_spec.SetField(task.FieldSkillIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedSkillIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, task.FieldSkillIds, value)
+		})
+	}
+	if _u.mutation.SkillIdsCleared() {
+		_spec.ClearField(task.FieldSkillIds, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.PluginIds(); ok {
+		_spec.SetField(task.FieldPluginIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedPluginIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, task.FieldPluginIds, value)
+		})
+	}
+	if _u.mutation.PluginIdsCleared() {
+		_spec.ClearField(task.FieldPluginIds, field.TypeJSON)
 	}
 	if _u.mutation.ProjectTasksCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1123,6 +1182,42 @@ func (_u *TaskUpdateOne) ClearCompletedAt() *TaskUpdateOne {
 	return _u
 }
 
+// SetSkillIds sets the "skill_ids" field.
+func (_u *TaskUpdateOne) SetSkillIds(v []string) *TaskUpdateOne {
+	_u.mutation.SetSkillIds(v)
+	return _u
+}
+
+// AppendSkillIds appends value to the "skill_ids" field.
+func (_u *TaskUpdateOne) AppendSkillIds(v []string) *TaskUpdateOne {
+	_u.mutation.AppendSkillIds(v)
+	return _u
+}
+
+// ClearSkillIds clears the value of the "skill_ids" field.
+func (_u *TaskUpdateOne) ClearSkillIds() *TaskUpdateOne {
+	_u.mutation.ClearSkillIds()
+	return _u
+}
+
+// SetPluginIds sets the "plugin_ids" field.
+func (_u *TaskUpdateOne) SetPluginIds(v []string) *TaskUpdateOne {
+	_u.mutation.SetPluginIds(v)
+	return _u
+}
+
+// AppendPluginIds appends value to the "plugin_ids" field.
+func (_u *TaskUpdateOne) AppendPluginIds(v []string) *TaskUpdateOne {
+	_u.mutation.AppendPluginIds(v)
+	return _u
+}
+
+// ClearPluginIds clears the value of the "plugin_ids" field.
+func (_u *TaskUpdateOne) ClearPluginIds() *TaskUpdateOne {
+	_u.mutation.ClearPluginIds()
+	return _u
+}
+
 // AddProjectTaskIDs adds the "project_tasks" edge to the ProjectTask entity by IDs.
 func (_u *TaskUpdateOne) AddProjectTaskIDs(ids ...uuid.UUID) *TaskUpdateOne {
 	_u.mutation.AddProjectTaskIDs(ids...)
@@ -1500,6 +1595,28 @@ func (_u *TaskUpdateOne) sqlSave(ctx context.Context) (_node *Task, err error) {
 	}
 	if _u.mutation.CompletedAtCleared() {
 		_spec.ClearField(task.FieldCompletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SkillIds(); ok {
+		_spec.SetField(task.FieldSkillIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedSkillIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, task.FieldSkillIds, value)
+		})
+	}
+	if _u.mutation.SkillIdsCleared() {
+		_spec.ClearField(task.FieldSkillIds, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.PluginIds(); ok {
+		_spec.SetField(task.FieldPluginIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedPluginIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, task.FieldPluginIds, value)
+		})
+	}
+	if _u.mutation.PluginIdsCleared() {
+		_spec.ClearField(task.FieldPluginIds, field.TypeJSON)
 	}
 	if _u.mutation.ProjectTasksCleared() {
 		edge := &sqlgraph.EdgeSpec{

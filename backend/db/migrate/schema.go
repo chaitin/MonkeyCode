@@ -1277,6 +1277,8 @@ var (
 		{Name: "last_active_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "skill_ids", Type: field.TypeJSON, Nullable: true},
+		{Name: "plugin_ids", Type: field.TypeJSON, Nullable: true},
 		{Name: "user_id", Type: field.TypeUUID},
 	}
 	// TasksTable holds the schema information for the "tasks" table.
@@ -1287,7 +1289,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "tasks_users_tasks",
-				Columns:    []*schema.Column{TasksColumns[13]},
+				Columns:    []*schema.Column{TasksColumns[15]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
