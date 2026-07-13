@@ -1,5 +1,3 @@
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
 import "@/utils/plain-text-markdown.css"
 import type { MessageType } from "./message"
 import { IconCopy, IconFile } from "@tabler/icons-react"
@@ -10,8 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
+import { Markdown } from "@/components/common/markdown"
 
-export const UserInputMessageItem = ({ message }: { message: MessageType }) => {
+export const UserInputMessageItem = ({ message, fileLinkEnvid, onWorkspaceFileClick }: { message: MessageType, fileLinkEnvid?: string, onWorkspaceFileClick?: (path: string) => void }) => {
   const { t } = useTranslation()
   const [previewFile, setPreviewFile] = React.useState<TaskAttachmentPreviewFile | null>(null)
   const content = typeof message.data.content === "string" ? message.data.content : ""
@@ -42,21 +41,9 @@ export const UserInputMessageItem = ({ message }: { message: MessageType }) => {
       <div className="flex flex-col rounded-md bg-accent/50 px-4 py-3 break-all">
         {content && (
           <div className="user-message-markdown break-all">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                p({children, ...props}) {
-                  if (typeof children === 'string') {
-                    return (children as string).split('\n').map((line: string, index: number) => (
-                      <p key={index} {...props}>{line}</p>
-                    ))
-                  } else {
-                    return <p {...props}>{children}</p>
-                  }
-                }
-              }}>
+            <Markdown fileLinkEnvid={fileLinkEnvid} onWorkspaceFileClick={onWorkspaceFileClick}>
               {content}
-            </ReactMarkdown>
+            </Markdown>
           </div>
         )}
         {attachments.length > 0 && (

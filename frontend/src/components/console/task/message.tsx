@@ -80,15 +80,15 @@ const shouldRenderMessage = (message: MessageType) => {
   return true
 }
 
-const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType, cli?: ConstsCliName, isLatest?: boolean }) => {
+const MessageItem = ({ message, cli, isLatest = false, fileLinkEnvid, onWorkspaceFileClick }: { message: MessageType, cli?: ConstsCliName, isLatest?: boolean, fileLinkEnvid?: string, onWorkspaceFileClick?: (path: string) => void }) => {
   const renderMessage = (message: MessageType) => {
     switch (message.type) {
       case 'agent_message_chunk':
-        return <TextMessageItem message={message} />
+        return <TextMessageItem message={message} fileLinkEnvid={fileLinkEnvid} onWorkspaceFileClick={onWorkspaceFileClick} />
       case 'agent_thought_chunk':
         return <ThoughtMessageItem message={message} isLatest={isLatest} />
       case 'user_input':
-        return <UserInputMessageItem message={message} />
+        return <UserInputMessageItem message={message} fileLinkEnvid={fileLinkEnvid} onWorkspaceFileClick={onWorkspaceFileClick} />
       case 'tool_call':
         return <ToolCallMessageItem message={message} cli={cli} />
       case 'error_message':

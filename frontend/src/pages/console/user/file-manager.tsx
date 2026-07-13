@@ -113,6 +113,10 @@ const sortFiles = (files: TaskflowFile[]) => {
   })
 }
 
+const getParentPath = (path: string) => normalizePath(path.substring(0, path.lastIndexOf('/')) || '/')
+
+const getFileName = (path: string) => path.split('/').filter(Boolean).pop() || ''
+
 const getFileIcon = (file: TaskflowFile) => {
   const kind = file.kind === TaskflowFileKind.FileKindSymlink ? file.symlink_kind : file.kind
   switch (kind) {
@@ -134,6 +138,7 @@ export default function FileManagerPage() {
   const [vm, setVm] = useState<DomainVirtualMachine | null>(null)
   const [envid] = useState<string>(searchParams.get('envid') || '')
   const [currentPath, setCurrentPath] = useState<string>(normalizePath(searchParams.get('path') || '/'))
+  const [pendingOpenPath, setPendingOpenPath] = useState<string>(normalizePath(searchParams.get('open') || ''))
   const [editFileDialogOpen, setEditFileDialogOpen] = useState(false)
   const [editingFile, setEditingFile] = useState<string | null>(null)
   const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false)
@@ -194,6 +199,36 @@ export default function FileManagerPage() {
 
     fetchFiles()
   }, [fetchFiles])
+
+  useEffect(() => {
+    if (!pendingOpenPath || loading || getParentPath(pendingOpenPath) !== currentPath) {
+      return
+    }
+
+    const fileName = getFileName(pendingOpenPath)
+    const file = files.find((item) => item.name === fileName)
+
+    if (!file) {
+      return
+    }
+
+    setPendingOpenPath('')
+
+    if (file.kind === TaskflowFileKind.FileKindDir || (file.kind === TaskflowFileKind.FileKindSymlink && file.symlink_kind === TaskflowFileKind.FileKindDir)) {
+      ChangeDirectory(file.name || pendingOpenPath)
+      return
+    }
+
+    if (file.kind === TaskflowFileKind.FileKindFile) {
+      if (file.size && file.size > 1024 * 1024) {
+        toast.error(t("consoleFiles.toast.editTooLarge"))
+        return
+      }
+
+      setEditingFile(pendingOpenPath)
+      setEditFileDialogOpen(true)
+    }
+  }, [currentPath, files, loading, pendingOpenPath, t])
 
   const ChangeDirectory = (path: string) => {
     if (path.startsWith('/')) {

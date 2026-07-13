@@ -9,7 +9,7 @@ import { TaskMessageHandler, type TaskMessageHandlerStatus } from "@/components/
 import type { MessageType } from "@/components/console/task/message"
 import { TaskMessageVirtualList, type TaskMessageVirtualListHandle, type TaskMessageVirtualListScrollOptions } from "@/components/console/task/task-message-virtual-list"
 import { TaskPreparingView, useShouldShowPreparing } from "@/components/console/task/task-preparing-dialog"
-import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
+import { TaskFileExplorer, type TaskFileExplorerHandle } from "@/components/console/task/task-file-explorer"
 import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
 import type { AvailableCommands, TaskPlan, TaskStreamStatus, TaskUserInput } from "@/components/console/task/task-shared"
 import { TaskStreamClient, type TaskStreamClientState, type TaskStreamCloseReason, type TaskStreamConnectionState } from "@/components/console/task/task-stream-client"
@@ -116,6 +116,7 @@ export default function TaskDetailPage() {
   const [modelSwitchDialogOpen, setModelSwitchDialogOpen] = React.useState(false)
   const [modelSwitchSubmitting, setModelSwitchSubmitting] = React.useState(false)
   const [pendingSwitchModel, setPendingSwitchModel] = React.useState<DomainModel | null>(null)
+  const [pendingWorkspaceFilePath, setPendingWorkspaceFilePath] = React.useState<string | null>(null)
   const taskControlClientRef = React.useRef<TaskControlClient | null>(null)
   const streamClientRef = React.useRef<TaskStreamClient | null>(null)
   const historyLoadingRef = React.useRef(false)
@@ -125,6 +126,7 @@ export default function TaskDetailPage() {
   const chatInputRef = React.useRef<TaskChatInputBoxHandle>(null)
   const chatContentRef = React.useRef<HTMLDivElement | null>(null)
   const taskMessageListRef = React.useRef<TaskMessageVirtualListHandle | null>(null)
+  const taskFileExplorerRef = React.useRef<TaskFileExplorerHandle | null>(null)
   const autoScrollFrameRef = React.useRef<number | null>(null)
   const autoScrollLockTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoScrollIntentLockedRef = React.useRef(false)
@@ -1067,6 +1069,29 @@ export default function TaskDetailPage() {
     return taskMessageListRef.current?.scrollToMessage(messageId, options) ?? false
   }, [])
 
+  const openWorkspaceFileLink = React.useCallback((path: string) => {
+    if (!path) return
+
+    const fileExplorer = taskFileExplorerRef.current
+    if (fileExplorer) {
+      void fileExplorer.openFile(path)
+      return
+    }
+
+    setPendingWorkspaceFilePath(path)
+    setActiveSidePanel("files")
+  }, [])
+
+  React.useEffect(() => {
+    if (activeSidePanel !== "files" || !pendingWorkspaceFilePath || !taskFileExplorerRef.current) {
+      return
+    }
+
+    const path = pendingWorkspaceFilePath
+    setPendingWorkspaceFilePath(null)
+    void taskFileExplorerRef.current.openFile(path)
+  }, [activeSidePanel, pendingWorkspaceFilePath])
+
   const scheduleChatScrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth", options?: { forceAutoScroll?: boolean }) => {
     const container = getChatScrollContainer()
     if (!container) return
@@ -1450,6 +1475,8 @@ export default function TaskDetailPage() {
                         contentRef={chatContentRef}
                         messages={messages}
                         cli={task?.cli_name}
+                        fileLinkEnvid={envid}
+                        onWorkspaceFileClick={openWorkspaceFileLink}
                         getScrollContainer={getChatScrollContainer}
                         showHistoryLoadButton={showHistoryLoadButton}
                         historyLoading={historyLoading}
@@ -1503,6 +1530,7 @@ export default function TaskDetailPage() {
                       {activeSidePanel === "files" && (
                         <div className="flex-1 min-h-0 overflow-hidden">
                           <TaskFileExplorer
+                            ref={taskFileExplorerRef}
                             disabled={!taskInteractive}
                             repository={taskControlClientRef.current}
                             refreshSignal={fileRefreshSignal}
