@@ -48,6 +48,8 @@ func (Task) Fields() []ent.Field {
 		field.Time("last_active_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 		field.Time("completed_at").Optional(),
+		field.JSON("skill_ids", []string{}).Optional(),
+		field.JSON("plugin_ids", []string{}).Optional(),
 	}
 }
 
