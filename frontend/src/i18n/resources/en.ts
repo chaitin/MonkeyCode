@@ -4073,6 +4073,9 @@ const en = {
       loadingHistory: "Loading",
       loadMore: "Load more",
       loadHistory: "Load history",
+      copyUserInput: "Copy user input",
+      copyUserInputSuccess: "User input copied to clipboard",
+      copyUserInputFailed: "Failed to copy user input",
     },
     plan: {
       title: "Steps ({{completed}}/{{total}})",
