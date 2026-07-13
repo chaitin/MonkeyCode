@@ -128,6 +128,8 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   const fileInputRef = useRef<HTMLInputElement>(null)
   const quickInputContainerRef = useRef<HTMLDivElement>(null)
   const quickInputMeasureRef = useRef<HTMLDivElement>(null)
+  const slashCommandCancelRef = useRef<HTMLButtonElement>(null)
+  const slashCommandConfirmRef = useRef<HTMLButtonElement>(null)
   const dragDepthRef = useRef(0)
   const nextAttachmentFileIndexRef = useRef(1)
   const autoSendingQueuedInputRef = useRef(false)
@@ -435,6 +437,19 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     }
 
     void sendCurrentInput()
+  }
+
+  const handleSlashCommandDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault()
+      slashCommandCancelRef.current?.focus()
+      return
+    }
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault()
+      slashCommandConfirmRef.current?.focus()
+    }
   }
 
   const handleTextRecognized = (text: string) => {
@@ -1121,7 +1136,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
         }}
       />
       <AlertDialog open={slashCommandConfirmOpen} onOpenChange={setSlashCommandConfirmOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent onKeyDown={handleSlashCommandDialogKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.chat.slashCommand.title")}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1129,8 +1144,8 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("taskDetail.common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmSlashCommand}>
+            <AlertDialogCancel ref={slashCommandCancelRef}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction ref={slashCommandConfirmRef} onClick={handleConfirmSlashCommand}>
               {t("taskDetail.chat.slashCommand.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
