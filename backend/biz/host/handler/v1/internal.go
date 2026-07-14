@@ -34,6 +34,7 @@ type InternalHostHandler struct {
 	logger         *slog.Logger
 	repo           domain.HostRepo
 	taskRepo       taskLogStoreRepo
+	taskActivity   vmActivityTaskRepo
 	teamRepo       domain.TeamHostRepo
 	redis          *redis.Client
 	getAgentToken  agentTokenGetter
@@ -53,15 +54,27 @@ type taskLogStoreRepo interface {
 	GetLogStore(ctx context.Context, id uuid.UUID) (consts.LogStore, error)
 }
 
+type vmActivityTaskRepo interface {
+	RefreshLastActiveAtByVMID(ctx context.Context, vmID string, at time.Time, minInterval time.Duration) error
+}
+
+const vmActivityTaskRefreshInterval = 5 * time.Minute
+
 func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	tf := do.MustInvoke[taskflow.Clienter](i)
 	rdb := do.MustInvoke[*redis.Client](i)
+	taskRepo := do.MustInvoke[domain.TaskRepo](i)
+	taskActivity, ok := taskRepo.(vmActivityTaskRepo)
+	if !ok {
+		return nil, errors.New("task repo does not support VM activity")
+	}
 
 	h := &InternalHostHandler{
 		logger:         do.MustInvoke[*slog.Logger](i).With("module", "InternalHostHandler"),
 		repo:           do.MustInvoke[domain.HostRepo](i),
-		taskRepo:       do.MustInvoke[domain.TaskRepo](i),
+		taskRepo:       taskRepo,
+		taskActivity:   taskActivity,
 		teamRepo:       do.MustInvoke[domain.TeamHostRepo](i),
 		redis:          rdb,
 		getAgentToken:  defaultAgentTokenGetter(rdb),
@@ -122,8 +135,26 @@ func (h *InternalHostHandler) VMActivity(c *web.Context, req VMActivityReq) erro
 	if strings.TrimSpace(req.VMID) == "" {
 		return errors.New("vm_id is required")
 	}
-	if err := h.idleRefresher.RecordActivity(c.Request().Context(), req.VMID); err != nil {
-		h.logger.WarnContext(c.Request().Context(), "failed to refresh vm idle timers on activity", "vm_id", req.VMID, "error", err)
+	if req.LastActiveAt <= 0 {
+		return errors.New("last_active_at is required")
+	}
+
+	ctx := c.Request().Context()
+	activeAt := time.Unix(req.LastActiveAt, 0)
+	if now := time.Now(); activeAt.After(now) {
+		h.logger.WarnContext(ctx, "vm activity timestamp is in the future", "vm_id", req.VMID, "last_active_at", req.LastActiveAt)
+		activeAt = now
+	}
+	var errs []error
+	if err := h.taskActivity.RefreshLastActiveAtByVMID(ctx, req.VMID, activeAt, vmActivityTaskRefreshInterval); err != nil {
+		h.logger.WarnContext(ctx, "failed to persist vm activity", "vm_id", req.VMID, "error", err)
+		errs = append(errs, err)
+	}
+	if err := h.idleRefresher.RecordActivity(ctx, req.VMID); err != nil {
+		h.logger.WarnContext(ctx, "failed to refresh vm idle timers on activity", "vm_id", req.VMID, "error", err)
+		errs = append(errs, err)
+	}
+	if err := errors.Join(errs...); err != nil {
 		return err
 	}
 	return c.Success(nil)

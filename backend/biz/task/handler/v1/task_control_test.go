@@ -6,22 +6,15 @@ import (
 	"log/slog"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
-
-	"github.com/chaitin/MonkeyCode/backend/biz/task/service"
 )
 
 func TestControlKeepAliveRefreshesImmediately(t *testing.T) {
-	taskID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	vmID := "vm-1"
 
 	idleRefresher := &testVMIdleRefresher{ch: make(chan string, 1)}
-	taskActivity := &testTaskActivityRefresher{ch: make(chan uuid.UUID, 1)}
 	handler := &TaskHandler{
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		idleRefresher: idleRefresher,
-		taskActivity:  taskActivity,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -29,7 +22,7 @@ func TestControlKeepAliveRefreshesImmediately(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- handler.controlKeepAlive(ctx, taskID, vmID)
+		done <- handler.controlKeepAlive(ctx, vmID)
 	}()
 
 	select {
@@ -39,15 +32,6 @@ func TestControlKeepAliveRefreshesImmediately(t *testing.T) {
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("expected idle refresher to run immediately")
-	}
-
-	select {
-	case got := <-taskActivity.ch:
-		if got != taskID {
-			t.Fatalf("task activity task id = %s, want %s", got, taskID)
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("expected task activity refresher to run immediately")
 	}
 
 	cancel()
@@ -75,21 +59,3 @@ func (r *testVMIdleRefresher) KeepAwake(_ context.Context, vmID string) error {
 }
 
 func (r *testVMIdleRefresher) RecordActivity(context.Context, string) error { return nil }
-
-type testTaskActivityRefresher struct {
-	ch chan uuid.UUID
-}
-
-func (r *testTaskActivityRefresher) Refresh(_ context.Context, taskID uuid.UUID) error {
-	select {
-	case r.ch <- taskID:
-	default:
-	}
-	return nil
-}
-
-func (r *testTaskActivityRefresher) ForceRefresh(context.Context, uuid.UUID) error {
-	return nil
-}
-
-var _ service.TaskActivityRefresher = (*testTaskActivityRefresher)(nil)

@@ -19,22 +19,12 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
-	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
 )
 
 const (
 	analyzePageSize    = 100
 	analyzeWorkerCount = 8
 )
-
-var activityEvents = []string{
-	"user-input",
-	"task-started",
-	"task-running",
-	"task-ended",
-	"task-error",
-	"task-event",
-}
 
 type Decision string
 
@@ -49,10 +39,11 @@ const (
 )
 
 type TaskInfo struct {
-	ID        uuid.UUID
-	Status    consts.TaskStatus
-	LogStore  consts.LogStore
-	CreatedAt time.Time
+	ID           uuid.UUID
+	Status       consts.TaskStatus
+	LogStore     consts.LogStore
+	CreatedAt    time.Time
+	LastActiveAt time.Time
 }
 
 type Analysis struct {
@@ -79,10 +70,6 @@ type Analyzer interface {
 	AnalyzeTargets(ctx context.Context, taskIDs []uuid.UUID, vmIDs []string) ([]Analysis, error)
 }
 
-type activityReader interface {
-	LatestEventTime(ctx context.Context, taskID uuid.UUID, start, end time.Time, events []string, store consts.LogStore) (time.Time, bool, error)
-}
-
 type deadlineReader interface {
 	GetRunAt(ctx context.Context, queue, id string) (time.Time, bool, error)
 }
@@ -91,7 +78,6 @@ type analyzer struct {
 	cfg            *config.Config
 	db             *db.Client
 	teamPolicyRepo domain.TeamPolicyRepo
-	activity       activityReader
 	deadlines      deadlineReader
 	now            func() time.Time
 }
@@ -101,7 +87,6 @@ func NewAnalyzer(i *do.Injector) (Analyzer, error) {
 		cfg:            do.MustInvoke[*config.Config](i),
 		db:             do.MustInvoke[*db.Client](i),
 		teamPolicyRepo: do.MustInvoke[domain.TeamPolicyRepo](i),
-		activity:       do.MustInvoke[*tasklog.Gateway](i),
 		deadlines:      do.MustInvoke[*delayqueue.VMRecycleQueue](i),
 		now:            time.Now,
 	}, nil
@@ -233,7 +218,13 @@ func (a *analyzer) analyzeVM(ctx context.Context, vm *db.VirtualMachine) Analysi
 		if tk.LogStore != nil && *tk.LogStore != "" {
 			store = *tk.LogStore
 		}
-		item.Tasks = append(item.Tasks, TaskInfo{ID: tk.ID, Status: tk.Status, LogStore: store, CreatedAt: tk.CreatedAt})
+		item.Tasks = append(item.Tasks, TaskInfo{
+			ID:           tk.ID,
+			Status:       tk.Status,
+			LogStore:     store,
+			CreatedAt:    tk.CreatedAt,
+			LastActiveAt: tk.LastActiveAt,
+		})
 	}
 	if vm.IsRecycled {
 		item.Decision = DecisionAlreadyRecycled
@@ -260,15 +251,9 @@ func (a *analyzer) analyzeVM(ctx context.Context, vm *db.VirtualMachine) Analysi
 	item.RecycleSeconds = policy.EffectiveRecycleSeconds
 	now := a.now()
 	for _, tk := range item.Tasks {
-		lastActivity := tk.CreatedAt
-		latest, ok, err := a.activity.LatestEventTime(ctx, tk.ID, tk.CreatedAt, now, activityEvents, tk.LogStore)
-		if err != nil {
-			item.Decision = DecisionUnavailable
-			item.Reason = fmt.Sprintf("query task %s activity: %v", tk.ID, err)
-			return item
-		}
-		if ok && latest.After(lastActivity) {
-			lastActivity = latest
+		lastActivity := tk.LastActiveAt
+		if lastActivity.IsZero() || lastActivity.Before(tk.CreatedAt) {
+			lastActivity = tk.CreatedAt
 		}
 		if lastActivity.After(item.LastActivityAt) {
 			item.LastActivityAt = lastActivity
@@ -321,7 +306,6 @@ func (a *analyzer) loadVM(ctx context.Context, vmID string) (*db.VirtualMachine,
 }
 
 var _ Analyzer = (*analyzer)(nil)
-var _ activityReader = (*tasklog.Gateway)(nil)
 var _ deadlineReader = (*delayqueue.VMRecycleQueue)(nil)
 
 func IsExecutable(decision Decision) bool {

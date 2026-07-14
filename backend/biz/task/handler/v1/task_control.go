@@ -10,9 +10,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/GoYoko/web"
-	"github.com/google/uuid"
 
-	"github.com/chaitin/MonkeyCode/backend/biz/task/service"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
@@ -142,10 +140,6 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 
 	logger := h.logger.With("task_id", task.ID, "fn", "task.control")
 	taskID := task.ID.String()
-	if err := h.taskActivity.Refresh(c.Request().Context(), task.ID); err != nil {
-		logger.WarnContext(c.Request().Context(), "failed to refresh task last active on control connect", "error", err)
-	}
-
 	// 连接建立：刷新空闲计时器
 	if vm := task.VirtualMachine; vm != nil {
 		if err := h.idleRefresher.KeepAwake(c.Request().Context(), vm.ID); err != nil {
@@ -197,7 +191,7 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 	// 定期刷新空闲计时器，保持 VM 活跃
 	if vm := task.VirtualMachine; vm != nil {
 		g.Go(func() error {
-			return h.controlKeepAlive(ctx, task.ID, vm.ID)
+			return h.controlKeepAlive(ctx, vm.ID)
 		})
 	}
 
@@ -226,18 +220,13 @@ func (h *TaskHandler) controlPing(ctx context.Context, wsConn *ws.WebsocketManag
 }
 
 // controlKeepAlive 定期刷新空闲计时器，防止 VM 被误判空闲
-func (h *TaskHandler) controlKeepAlive(ctx context.Context, taskID uuid.UUID, vmID string) error {
+func (h *TaskHandler) controlKeepAlive(ctx context.Context, vmID string) error {
 	if err := h.idleRefresher.KeepAwake(ctx, vmID); err != nil {
 		h.logger.WarnContext(ctx, "keepalive refresh failed", "vmID", vmID, "error", err)
 	}
-	if err := h.taskActivity.Refresh(ctx, taskID); err != nil {
-		h.logger.WarnContext(ctx, "task activity refresh failed", "taskID", taskID, "error", err)
-	}
 
 	idleTicker := time.NewTicker(1 * time.Minute)
-	activityTicker := time.NewTicker(service.TaskActivityRefreshInterval)
 	defer idleTicker.Stop()
-	defer activityTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -245,10 +234,6 @@ func (h *TaskHandler) controlKeepAlive(ctx context.Context, taskID uuid.UUID, vm
 		case <-idleTicker.C:
 			if err := h.idleRefresher.KeepAwake(ctx, vmID); err != nil {
 				h.logger.WarnContext(ctx, "keepalive refresh failed", "vmID", vmID, "error", err)
-			}
-		case <-activityTicker.C:
-			if err := h.taskActivity.Refresh(ctx, taskID); err != nil {
-				h.logger.WarnContext(ctx, "task activity refresh failed", "taskID", taskID, "error", err)
 			}
 		}
 	}

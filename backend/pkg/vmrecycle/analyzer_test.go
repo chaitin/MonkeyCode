@@ -2,7 +2,6 @@ package vmrecycle
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -21,19 +20,20 @@ func TestAnalyzerCandidateRequiresBothDeadlinesOverdue(t *testing.T) {
 	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
 	taskID := uuid.New()
 	logStore := consts.LogStoreClickHouse
+	activityAt := now.Add(-90 * time.Minute)
 	vm := &db.VirtualMachine{
 		ID:     "vm-candidate",
 		UserID: uuid.New(),
 		Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{
-			ID:        taskID,
-			Status:    consts.TaskStatusProcessing,
-			CreatedAt: now.Add(-2 * time.Hour),
-			LogStore:  &logStore,
+			ID:           taskID,
+			Status:       consts.TaskStatusProcessing,
+			CreatedAt:    now.Add(-2 * time.Hour),
+			LastActiveAt: activityAt,
+			LogStore:     &logStore,
 		}}},
 	}
-	activityAt := now.Add(-90 * time.Minute)
 	redisAt := now.Add(-time.Minute)
-	analyzer := newAnalyzerForTest(now, &analyzerActivityStub{latest: map[uuid.UUID]time.Time{taskID: activityAt}}, &analyzerDeadlineStub{runAt: map[string]time.Time{vm.ID: redisAt}})
+	analyzer := newAnalyzerForTest(now, &analyzerDeadlineStub{runAt: map[string]time.Time{vm.ID: redisAt}})
 
 	got := analyzer.analyzeVM(context.Background(), vm)
 	if got.Decision != DecisionCandidate {
@@ -64,7 +64,7 @@ func TestAnalyzerMarksHistoricalUncertainWhenRedisDeadlineCannotConfirm(t *testi
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			analyzer := newAnalyzerForTest(now, &analyzerActivityStub{}, tt.deadlines)
+			analyzer := newAnalyzerForTest(now, tt.deadlines)
 			got := analyzer.analyzeVM(context.Background(), vm)
 			if got.Decision != DecisionHistoricalUncertain {
 				t.Fatalf("decision = %s, reason = %s", got.Decision, got.Reason)
@@ -78,14 +78,10 @@ func TestAnalyzerUsesLatestActivityAcrossTasks(t *testing.T) {
 	oldTaskID := uuid.New()
 	recentTaskID := uuid.New()
 	vm := &db.VirtualMachine{ID: "vm-multi-task", UserID: uuid.New(), Edges: db.VirtualMachineEdges{Tasks: []*db.Task{
-		{ID: oldTaskID, CreatedAt: now.Add(-3 * time.Hour)},
-		{ID: recentTaskID, CreatedAt: now.Add(-2 * time.Hour)},
+		{ID: oldTaskID, CreatedAt: now.Add(-3 * time.Hour), LastActiveAt: now.Add(-2 * time.Hour)},
+		{ID: recentTaskID, CreatedAt: now.Add(-2 * time.Hour), LastActiveAt: now.Add(-30 * time.Minute)},
 	}}}
-	activity := &analyzerActivityStub{latest: map[uuid.UUID]time.Time{
-		oldTaskID:    now.Add(-2 * time.Hour),
-		recentTaskID: now.Add(-30 * time.Minute),
-	}}
-	analyzer := newAnalyzerForTest(now, activity, &analyzerDeadlineStub{runAt: map[string]time.Time{vm.ID: now.Add(-time.Hour)}})
+	analyzer := newAnalyzerForTest(now, &analyzerDeadlineStub{runAt: map[string]time.Time{vm.ID: now.Add(-time.Hour)}})
 
 	got := analyzer.analyzeVM(context.Background(), vm)
 	if got.Decision != DecisionNotDue {
@@ -94,29 +90,22 @@ func TestAnalyzerUsesLatestActivityAcrossTasks(t *testing.T) {
 	if !got.LastActivityAt.Equal(now.Add(-30 * time.Minute)) {
 		t.Fatalf("last activity = %v", got.LastActivityAt)
 	}
-	if len(activity.events) != len(activityEvents) {
-		t.Fatalf("activity events = %v", activity.events)
-	}
-	if _, ok := activity.events["task-event"]; !ok {
-		t.Fatalf("activity events = %v, missing task-event", activity.events)
-	}
 }
 
-func TestAnalyzerReturnsUnavailableOnLogFailure(t *testing.T) {
+func TestAnalyzerFallsBackToCreatedAtWhenLastActiveAtIsZero(t *testing.T) {
 	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
-	wantErr := errors.New("log query failed")
 	taskID := uuid.New()
 	vm := &db.VirtualMachine{ID: "vm-log-error", UserID: uuid.New(), Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{ID: taskID, CreatedAt: now.Add(-2 * time.Hour)}}}}
-	analyzer := newAnalyzerForTest(now, &analyzerActivityStub{err: wantErr}, &analyzerDeadlineStub{})
+	analyzer := newAnalyzerForTest(now, &analyzerDeadlineStub{runAt: map[string]time.Time{vm.ID: now.Add(-time.Minute)}})
 
 	got := analyzer.analyzeVM(context.Background(), vm)
-	if got.Decision != DecisionUnavailable || got.Reason == "" {
+	if got.Decision != DecisionCandidate || !got.LastActivityAt.Equal(now.Add(-2*time.Hour)) {
 		t.Fatalf("analysis = %+v", got)
 	}
 }
 
 func TestAnalyzerAlreadyRecycledIsSuccessfulNoop(t *testing.T) {
-	analyzer := newAnalyzerForTest(time.Now(), &analyzerActivityStub{}, &analyzerDeadlineStub{})
+	analyzer := newAnalyzerForTest(time.Now(), &analyzerDeadlineStub{})
 	got := analyzer.analyzeVM(context.Background(), &db.VirtualMachine{ID: "vm-recycled", IsRecycled: true})
 	if got.Decision != DecisionAlreadyRecycled || !IsSuccessfulNoop(got.Decision) {
 		t.Fatalf("analysis = %+v", got)
@@ -161,7 +150,7 @@ func TestAnalyzerDeduplicatesTaskAndVMTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	analyzer := newAnalyzerForTest(now, &analyzerActivityStub{}, &analyzerDeadlineStub{runAt: map[string]time.Time{vmID: now.Add(-time.Minute)}})
+	analyzer := newAnalyzerForTest(now, &analyzerDeadlineStub{runAt: map[string]time.Time{vmID: now.Add(-time.Minute)}})
 	analyzer.db = client
 	items, err := analyzer.AnalyzeTargets(ctx, []uuid.UUID{taskID, taskID}, []string{vmID, vmID})
 	if err != nil {
@@ -172,7 +161,7 @@ func TestAnalyzerDeduplicatesTaskAndVMTargets(t *testing.T) {
 	}
 }
 
-func newAnalyzerForTest(now time.Time, activity activityReader, deadlines deadlineReader) *analyzer {
+func newAnalyzerForTest(now time.Time, deadlines deadlineReader) *analyzer {
 	return &analyzer{
 		cfg: &config.Config{VMIdle: config.VMIdle{SleepSeconds: 600, RecycleSeconds: 3600}},
 		teamPolicyRepo: &analyzerTeamPolicyRepoStub{team: &db.Team{
@@ -183,28 +172,9 @@ func newAnalyzerForTest(now time.Time, activity activityReader, deadlines deadli
 			TaskVMRecycleEnabled: true,
 			TaskVMRecycleSeconds: 0,
 		}},
-		activity:  activity,
 		deadlines: deadlines,
 		now:       func() time.Time { return now },
 	}
-}
-
-type analyzerActivityStub struct {
-	latest map[uuid.UUID]time.Time
-	err    error
-	events map[string]struct{}
-}
-
-func (s *analyzerActivityStub) LatestEventTime(_ context.Context, taskID uuid.UUID, _, _ time.Time, events []string, _ consts.LogStore) (time.Time, bool, error) {
-	s.events = make(map[string]struct{}, len(events))
-	for _, event := range events {
-		s.events[event] = struct{}{}
-	}
-	if s.err != nil {
-		return time.Time{}, false, s.err
-	}
-	latest, ok := s.latest[taskID]
-	return latest, ok, nil
 }
 
 type analyzerDeadlineStub struct {
