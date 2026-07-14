@@ -17,22 +17,18 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
-	"github.com/chaitin/MonkeyCode/backend/pkg/clickhouse"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
-	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/vmrecycle"
 )
 
 type VMIdleRefresher interface {
-	Refresh(ctx context.Context, vmID string) error
+	KeepAwake(ctx context.Context, vmID string) error
+	RecordActivity(ctx context.Context, vmID string) error
 }
 
 const (
-	sleepQueueKey   = "vm:idle:sleep"
-	notifyQueueKey  = "vm:idle:notify"
-	recycleQueueKey = "vm:idle:recycle"
-
 	vmIdleDebounceTTL = 30 * time.Second
 	vmNotFoundTTL     = 30 * time.Second
 )
@@ -105,16 +101,12 @@ type vmIdleRefresher struct {
 	hostRepo         domain.HostRepo
 	taskRepo         domain.TaskRepo
 	teamPolicyRepo   domain.TeamPolicyRepo
-	taskLogActivity  taskLogActivityReader
 	notifyDispatcher *dispatcher.Dispatcher
 	sleepQueue       *delayqueue.VMSleepQueue
 	notifyQueue      *delayqueue.VMNotifyQueue
 	recycleQueue     *delayqueue.VMRecycleQueue
+	recycler         vmrecycle.Recycler
 	schedules        []notifySchedule
-}
-
-type taskLogActivityReader interface {
-	LatestTaskLogTime(ctx context.Context, taskID uuid.UUID) (time.Time, bool, error)
 }
 
 type vmIdleNotifyJob struct {
@@ -129,16 +121,15 @@ type vmIdleSchedulePlan struct {
 	NotifyJobs []vmIdleNotifyJob
 }
 
+type vmIdleRefreshMode string
+
+const (
+	vmIdleKeepAwakeMode vmIdleRefreshMode = "keep-awake"
+	vmIdleActivityMode  vmIdleRefreshMode = "activity"
+)
+
 func NewVMIdleRefresher(i *do.Injector) (VMIdleRefresher, error) {
 	cfg := do.MustInvoke[*config.Config](i)
-	taskLogActivity, err := do.Invoke[*clickhouse.Client](i)
-	if err != nil {
-		return nil, err
-	}
-	var activityReader taskLogActivityReader
-	if taskLogActivity != nil {
-		activityReader = taskLogActivity
-	}
 	r := &vmIdleRefresher{
 		cfg:              cfg,
 		redis:            do.MustInvoke[*redis.Client](i),
@@ -147,11 +138,11 @@ func NewVMIdleRefresher(i *do.Injector) (VMIdleRefresher, error) {
 		hostRepo:         do.MustInvoke[domain.HostRepo](i),
 		taskRepo:         do.MustInvoke[domain.TaskRepo](i),
 		teamPolicyRepo:   do.MustInvoke[domain.TeamPolicyRepo](i),
-		taskLogActivity:  activityReader,
 		notifyDispatcher: do.MustInvoke[*dispatcher.Dispatcher](i),
 		sleepQueue:       do.MustInvoke[*delayqueue.VMSleepQueue](i),
 		notifyQueue:      do.MustInvoke[*delayqueue.VMNotifyQueue](i),
 		recycleQueue:     do.MustInvoke[*delayqueue.VMRecycleQueue](i),
+		recycler:         do.MustInvoke[vmrecycle.Recycler](i),
 		schedules:        buildNotifySchedules(cfg.VMIdle),
 	}
 
@@ -212,8 +203,7 @@ func (r *vmIdleRefresher) resolvePolicyForVM(ctx context.Context, vm *db.Virtual
 	return domain.ResolveTeamTaskVMIdlePolicy(team, r.cfg.VMIdle)
 }
 
-func buildVMIdleSchedulePlan(policy *domain.TeamTaskVMIdlePolicy, schedules []notifySchedule) vmIdleSchedulePlan {
-	now := time.Now()
+func buildVMIdleSchedulePlan(policy *domain.TeamTaskVMIdlePolicy, schedules []notifySchedule, now time.Time) vmIdleSchedulePlan {
 	var plan vmIdleSchedulePlan
 	if policy.SleepEnabled {
 		sleepAt := now.Add(time.Duration(policy.EffectiveSleepSeconds) * time.Second)
@@ -237,7 +227,15 @@ func buildVMIdleSchedulePlan(policy *domain.TeamTaskVMIdlePolicy, schedules []no
 	return plan
 }
 
-func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
+func (r *vmIdleRefresher) KeepAwake(ctx context.Context, vmID string) error {
+	return r.refresh(ctx, vmID, vmIdleKeepAwakeMode)
+}
+
+func (r *vmIdleRefresher) RecordActivity(ctx context.Context, vmID string) error {
+	return r.refresh(ctx, vmID, vmIdleActivityMode)
+}
+
+func (r *vmIdleRefresher) refresh(ctx context.Context, vmID string, mode vmIdleRefreshMode) error {
 	notFoundKey := fmt.Sprintf("vm:idle:not-found:%s", vmID)
 	if exists, err := r.redis.Exists(ctx, notFoundKey).Result(); err == nil && exists > 0 {
 		return nil
@@ -245,7 +243,7 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 		r.logger.WarnContext(ctx, "redis not found cache check failed", "vmID", vmID, "error", err)
 	}
 
-	debounceKey := fmt.Sprintf("vm:idle:debounce:%s", vmID)
+	debounceKey := fmt.Sprintf("vm:idle:debounce:%s:%s", vmID, mode)
 	ok, err := r.redis.SetNX(ctx, debounceKey, "1", vmIdleDebounceTTL).Result()
 	if err != nil {
 		r.logger.ErrorContext(ctx, "redis SetNX failed", "vmID", vmID, "error", err)
@@ -278,7 +276,7 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 	if err != nil {
 		return err
 	}
-	plan := buildVMIdleSchedulePlan(policy, r.schedules)
+	plan := buildVMIdleSchedulePlan(policy, r.schedules, time.Now())
 	recycleAt := time.Time{}
 	if plan.RecycleAt != nil {
 		recycleAt = *plan.RecycleAt
@@ -290,21 +288,34 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 		EnvID:     vm.EnvironmentID,
 		RecycleAt: recycleAt,
 	}
+	if mode == vmIdleKeepAwakeMode {
+		return r.applySleepPlan(ctx, vmID, payload, plan)
+	}
+	return r.applyActivityPlan(ctx, vmID, payload, policy, plan)
+}
 
-	var errs []error
+func (r *vmIdleRefresher) applySleepPlan(ctx context.Context, vmID string, payload *domain.VmIdleInfo, plan vmIdleSchedulePlan) error {
 	if plan.SleepAt != nil {
-		if _, err := r.sleepQueue.Enqueue(ctx, sleepQueueKey, payload, *plan.SleepAt, vmID); err != nil {
+		if _, err := r.sleepQueue.Enqueue(ctx, vmrecycle.SleepQueueKey, payload, *plan.SleepAt, vmID); err != nil {
 			r.logger.ErrorContext(ctx, "failed to enqueue sleep", "error", err, "vmID", vmID)
-			errs = append(errs, fmt.Errorf("enqueue sleep: %w", err))
+			return fmt.Errorf("enqueue sleep: %w", err)
 		}
-	} else if err := r.sleepQueue.Remove(ctx, sleepQueueKey, vmID); err != nil {
+	} else if err := r.sleepQueue.Remove(ctx, vmrecycle.SleepQueueKey, vmID); err != nil {
 		r.logger.ErrorContext(ctx, "failed to remove sleep", "error", err, "vmID", vmID)
-		errs = append(errs, fmt.Errorf("remove sleep: %w", err))
+		return fmt.Errorf("remove sleep: %w", err)
+	}
+	return nil
+}
+
+func (r *vmIdleRefresher) applyActivityPlan(ctx context.Context, vmID string, payload *domain.VmIdleInfo, policy *domain.TeamTaskVMIdlePolicy, plan vmIdleSchedulePlan) error {
+	var errs []error
+	if err := r.applySleepPlan(ctx, vmID, payload, plan); err != nil {
+		errs = append(errs, err)
 	}
 	for _, s := range r.schedules {
 		member := fmt.Sprintf("%s:%s", vmID, s.name)
 		if !policy.RecycleEnabled {
-			if err := r.notifyQueue.Remove(ctx, notifyQueueKey, member); err != nil {
+			if err := r.notifyQueue.Remove(ctx, vmrecycle.NotifyQueueKey, member); err != nil {
 				r.logger.ErrorContext(ctx, "failed to remove notify", "error", err, "vm_id", vmID, "tier", s.name)
 				errs = append(errs, fmt.Errorf("remove notify %s: %w", s.name, err))
 			}
@@ -313,7 +324,7 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 	for _, job := range plan.NotifyJobs {
 		// member key 带 tier name 后缀，让同一 VM 的不同档作业互不覆盖。
 		member := fmt.Sprintf("%s:%s", vmID, job.MemberSuffix)
-		if _, err := r.notifyQueue.Enqueue(ctx, notifyQueueKey, payload, job.RunAt, member); err != nil {
+		if _, err := r.notifyQueue.Enqueue(ctx, vmrecycle.NotifyQueueKey, payload, job.RunAt, member); err != nil {
 			r.logger.ErrorContext(ctx, "failed to enqueue notify", "error", err, "vm_id", vmID, "tier", job.MemberSuffix)
 			errs = append(errs, fmt.Errorf("enqueue notify %s: %w", job.MemberSuffix, err))
 			continue
@@ -325,11 +336,11 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 			"fire_at", job.RunAt.Format(time.RFC3339))
 	}
 	if plan.RecycleAt != nil {
-		if _, err := r.recycleQueue.Enqueue(ctx, recycleQueueKey, payload, *plan.RecycleAt, vmID); err != nil {
+		if _, err := r.recycleQueue.Enqueue(ctx, vmrecycle.RecycleQueueKey, payload, *plan.RecycleAt, vmID); err != nil {
 			r.logger.ErrorContext(ctx, "failed to enqueue recycle", "error", err, "vmID", vmID)
 			errs = append(errs, fmt.Errorf("enqueue recycle: %w", err))
 		}
-	} else if err := r.recycleQueue.Remove(ctx, recycleQueueKey, vmID); err != nil {
+	} else if err := r.recycleQueue.Remove(ctx, vmrecycle.RecycleQueueKey, vmID); err != nil {
 		r.logger.ErrorContext(ctx, "failed to remove recycle", "error", err, "vmID", vmID)
 		errs = append(errs, fmt.Errorf("remove recycle: %w", err))
 	}
@@ -339,7 +350,7 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 func (r *vmIdleRefresher) sleepConsumer() {
 	logger := r.logger.With("fn", "sleepConsumer")
 	for {
-		err := r.sleepQueue.StartConsumer(context.Background(), sleepQueueKey,
+		err := r.sleepQueue.StartConsumer(context.Background(), vmrecycle.SleepQueueKey,
 			func(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo]) error {
 				logger.InfoContext(ctx, "vm idle sleep triggered", "vmID", job.Payload.VmID)
 				vm, err := r.hostRepo.GetVirtualMachine(ctx, job.Payload.VmID)
@@ -371,7 +382,7 @@ func (r *vmIdleRefresher) sleepConsumer() {
 func (r *vmIdleRefresher) notifyConsumer() {
 	logger := r.logger.With("fn", "notifyConsumer")
 	for {
-		err := r.notifyQueue.StartConsumer(context.Background(), notifyQueueKey,
+		err := r.notifyQueue.StartConsumer(context.Background(), vmrecycle.NotifyQueueKey,
 			func(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo]) error {
 				// job.ID 形如 "<vmID>:<tier.name>"，从中解出 tier 名再 lookup schedule。
 				s, ok := r.lookupSchedule(job.ID)
@@ -446,179 +457,49 @@ func (r *vmIdleRefresher) lookupSchedule(jobID string) (notifySchedule, bool) {
 }
 
 func (r *vmIdleRefresher) recycleConsumer() {
-	logger := r.logger.With("fn", "recycleConsumer")
 	for {
-		err := r.recycleQueue.StartConsumer(context.Background(), recycleQueueKey,
-			func(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo]) error {
-				logger.InfoContext(ctx, "vm recycle triggered", "vmID", job.Payload.VmID)
-
-				ctx = entx.SkipSoftDelete(ctx)
-				vm, err := r.hostRepo.GetVirtualMachine(ctx, job.Payload.VmID)
-				if err != nil {
-					if db.IsNotFound(err) {
-						return nil
-					}
-					return fmt.Errorf("get vm %s: %w", job.Payload.VmID, err)
-				}
-				if vm.IsRecycled {
-					return nil
-				}
-
-				skip, err := r.shouldSkipRecycleForRecentActivity(ctx, vm, time.Now())
-				if err != nil {
-					return err
-				}
-				if skip {
-					return nil
-				}
-
-				if err := r.hostRepo.UpdateVirtualMachine(ctx, vm.ID, func(vmuo *db.VirtualMachineUpdateOne) error {
-					vmuo.SetIsRecycled(true)
-					return nil
-				}); err != nil {
-					return err
-				}
-
-				if err := r.markRecycledTasksFinished(ctx, vm); err != nil {
-					return err
-				}
-
-				if err := r.taskflow.VirtualMachiner().Delete(ctx, &taskflow.DeleteVirtualMachineReq{
-					UserID: vm.UserID.String(),
-					HostID: vm.HostID,
-					ID:     vm.EnvironmentID,
-				}); err != nil {
-					return fmt.Errorf("delete vm %s: %w", vm.ID, err)
-				}
-
-				return nil
-			})
-		logger.Warn("recycle consumer error, retrying...", "error", err)
+		err := r.recycleQueue.StartConsumer(context.Background(), vmrecycle.RecycleQueueKey, r.handleRecycleJob)
+		r.logger.With("fn", "recycleConsumer").Warn("recycle consumer error, retrying...", "error", err)
 		time.Sleep(10 * time.Second)
 	}
 }
 
-func (r *vmIdleRefresher) shouldSkipRecycleForRecentActivity(ctx context.Context, vm *db.VirtualMachine, now time.Time) (bool, error) {
-	if vm == nil {
-		return false, nil
+func (r *vmIdleRefresher) handleRecycleJob(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo]) error {
+	vmID := job.Payload.VmID
+	logger := r.logger.With("fn", "recycleConsumer", "vm_id", vmID)
+	if job.Payload.RecycleDeleteExhausted {
+		return r.markRecycledForReconnectCompensation(ctx, job, nil)
 	}
-	policy, err := r.resolvePolicyForVM(ctx, vm)
-	if err != nil {
-		return false, err
+	logger.InfoContext(ctx, "vm recycle triggered", "attempt", job.Attempts+1)
+	_, err := r.recycler.Recycle(ctx, vmID)
+	if err == nil {
+		return nil
 	}
-	if !policy.RecycleEnabled || policy.EffectiveRecycleSeconds <= 0 {
-		return false, nil
+	if !errors.Is(err, vmrecycle.ErrRemoteDelete) || !r.recycleQueue.IsFinalAttempt(job) {
+		return err
 	}
-
-	activeTasks, err := r.activeRecycleTasks(ctx, vm)
-	if err != nil {
-		return false, err
-	}
-	if len(activeTasks) == 0 {
-		return false, nil
-	}
-
-	cutoff := now.Add(-time.Duration(policy.EffectiveRecycleSeconds) * time.Second)
-	for _, tk := range activeTasks {
-		if tk.LastActiveAt.IsZero() || !tk.LastActiveAt.After(cutoff) {
-			continue
-		}
-		return r.skipRecycleAndRefresh(ctx, vm, tk.ID, tk.LastActiveAt, cutoff, "pg_task_last_active_at")
-	}
-
-	if r.taskLogActivity == nil {
-		return false, nil
-	}
-	for _, tk := range activeTasks {
-		latest, ok, err := r.taskLogActivity.LatestTaskLogTime(ctx, tk.ID)
-		if err != nil {
-			return false, fmt.Errorf("get latest task log time for task %s: %w", tk.ID, err)
-		}
-		if !ok || !latest.After(cutoff) {
-			continue
-		}
-
-		return r.skipRecycleAndRefresh(ctx, vm, tk.ID, latest, cutoff, "clickhouse_task_log")
-	}
-	return false, nil
+	job.Payload.RecycleDeleteExhausted = true
+	return r.markRecycledForReconnectCompensation(ctx, job, err)
 }
 
-func (r *vmIdleRefresher) skipRecycleAndRefresh(ctx context.Context, vm *db.VirtualMachine, taskID uuid.UUID, activeAt, cutoff time.Time, source string) (bool, error) {
-	r.logger.InfoContext(ctx, "skip vm recycle because task has recent activity",
-		"vm_id", vm.ID,
-		"task_id", taskID.String(),
-		"source", source,
-		"active_at", activeAt.UTC().Format(time.RFC3339Nano),
-		"cutoff", cutoff.UTC().Format(time.RFC3339Nano))
-	if err := r.Refresh(ctx, vm.ID); err != nil {
-		return false, fmt.Errorf("refresh vm idle timer after recent task activity: %w", err)
+func (r *vmIdleRefresher) markRecycledForReconnectCompensation(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo], remoteErr error) error {
+	vmID := job.Payload.VmID
+	if err := r.hostRepo.UpdateVirtualMachine(ctx, vmID, func(up *db.VirtualMachineUpdateOne) error {
+		up.SetIsRecycled(true)
+		return nil
+	}); err != nil {
+		return errors.Join(
+			delayqueue.ErrRetryAfterMaxAttempts,
+			remoteErr,
+			fmt.Errorf("mark vm %s recycled after remote delete retries exhausted: %w", vmID, err),
+		)
 	}
-	return true, nil
-}
-
-func (r *vmIdleRefresher) activeRecycleTasks(ctx context.Context, vm *db.VirtualMachine) ([]*db.Task, error) {
-	seen := make(map[uuid.UUID]struct{}, len(vm.Edges.Tasks))
-	activeTasks := make([]*db.Task, 0, len(vm.Edges.Tasks))
-	for _, tk := range vm.Edges.Tasks {
-		if tk == nil {
-			continue
-		}
-		if tk.Status == consts.TaskStatusFinished || tk.Status == consts.TaskStatusError {
-			continue
-		}
-		if _, ok := seen[tk.ID]; ok {
-			continue
-		}
-		seen[tk.ID] = struct{}{}
-		activeTasks = append(activeTasks, tk)
-	}
-	if len(vm.Edges.Tasks) > 0 {
-		return activeTasks, nil
-	}
-
-	taskIDStr, err := r.hostRepo.GetTaskIDByVMID(ctx, vm.ID)
-	if err != nil {
-		return nil, fmt.Errorf("get task id by vm %s: %w", vm.ID, err)
-	}
-	if taskIDStr == "" {
-		return nil, nil
-	}
-	taskID, err := uuid.Parse(taskIDStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid task id %q: %w", taskIDStr, err)
-	}
-	if r.taskRepo == nil {
-		return []*db.Task{{ID: taskID}}, nil
-	}
-	tk, err := r.taskRepo.GetByID(ctx, taskID)
-	if err != nil {
-		return nil, fmt.Errorf("get task %s: %w", taskID, err)
-	}
-	if tk.Status == consts.TaskStatusFinished || tk.Status == consts.TaskStatusError {
-		return nil, nil
-	}
-	return []*db.Task{tk}, nil
-}
-
-func (r *vmIdleRefresher) markRecycledTasksFinished(ctx context.Context, vm *db.VirtualMachine) error {
-	var errs []error
-	for _, tk := range vm.Edges.Tasks {
-		if tk == nil {
-			continue
-		}
-		if tk.Status == consts.TaskStatusFinished || tk.Status == consts.TaskStatusError {
-			continue
-		}
-		err := r.taskRepo.Update(ctx, nil, tk.ID, func(up *db.TaskUpdateOne) error {
-			up.SetStatus(consts.TaskStatusFinished)
-			up.SetCompletedAt(time.Now())
-			return nil
-		})
-		if err != nil {
-			errs = append(errs, fmt.Errorf("update task %s: %w", tk.ID, err))
-		}
-	}
-	return errors.Join(errs...)
+	r.logger.With("fn", "recycleConsumer", "vm_id", vmID).WarnContext(ctx,
+		"vm remote delete retries exhausted, marked recycled for agent reconnect compensation",
+		"attempts", job.Attempts+1,
+		"error", remoteErr,
+	)
+	return nil
 }
 
 func (r *vmIdleRefresher) buildRecycleNotifyEvent(ctx context.Context, vm *db.VirtualMachine, expiresAt time.Time) (*domain.NotifyEvent, error) {

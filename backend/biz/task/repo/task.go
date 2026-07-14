@@ -286,6 +286,19 @@ func (t *TaskRepo) RefreshLastActiveAt(ctx context.Context, id uuid.UUID, at tim
 	return err
 }
 
+func (t *TaskRepo) RefreshLastActiveAtByVMID(ctx context.Context, vmID string, at time.Time, minInterval time.Duration) error {
+	up := t.db.Task.Update().Where(
+		task.HasVmsWith(virtualmachine.ID(vmID)),
+		task.StatusNotIn(consts.TaskStatusFinished, consts.TaskStatusError),
+		task.LastActiveAtLT(at),
+	)
+	if minInterval > 0 {
+		up = up.Where(task.LastActiveAtLT(at.Add(-minInterval)))
+	}
+	_, err := up.SetLastActiveAt(at).Save(ctx)
+	return err
+}
+
 // Delete implements domain.TaskRepo.
 func (t *TaskRepo) Delete(ctx context.Context, user *domain.User, id uuid.UUID) error {
 	_, err := t.db.Task.Delete().

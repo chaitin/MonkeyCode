@@ -47,6 +47,9 @@ const (
 	defaultJobTTL       = 7 * 24 * time.Hour
 )
 
+// ErrRetryAfterMaxAttempts 让已耗尽普通尝试次数的任务继续保留并重试。
+var ErrRetryAfterMaxAttempts = errors.New("retry delay queue job after max attempts")
+
 // NewRedisDelayQueue 创建延迟队列（泛型）
 func NewRedisDelayQueue[T any](rdb *redis.Client, logger *slog.Logger, opts ...Option[T]) *RedisDelayQueue[T] {
 	q := &RedisDelayQueue[T]{
@@ -89,6 +92,11 @@ func WithJobTTL[T any](d time.Duration) Option[T] {
 	return func(q *RedisDelayQueue[T]) { q.jobTTL = d }
 }
 
+// IsFinalAttempt 判断当前处理是否为队列允许的最后一次尝试。
+func (q *RedisDelayQueue[T]) IsFinalAttempt(job *Job[T]) bool {
+	return job != nil && job.Attempts+1 >= q.maxAttempts
+}
+
 // Enqueue 入队：始终写入/覆盖 payload 并更新到期时间。
 // 这样即使 pollOnce 在 handleJob 完成后删除了旧 job key，
 // 新的 Enqueue 调用也能重建 job 数据，避免 ZSet 中存在孤立条目。
@@ -115,17 +123,32 @@ func (q *RedisDelayQueue[T]) Enqueue(ctx context.Context, queue string, payload 
 	return id, nil
 }
 
+// EnqueueIfMissing 仅在延迟队列中不存在指定 ID 时入队。
+func (q *RedisDelayQueue[T]) EnqueueIfMissing(ctx context.Context, queue string, payload T, runAt time.Time, id string) (string, bool, error) {
+	if id == "" {
+		id = uuid.NewString()
+	}
+
+	b, err := json.Marshal(&jobData[T]{Payload: payload, Attempts: 0})
+	if err != nil {
+		return "", false, err
+	}
+	added, err := enqueueIfMissingScript.Run(ctx, q.rdb, []string{
+		q.jobKey(queue, id),
+		q.zsetKey(queue),
+	}, id, b, q.jobTTL.Milliseconds(), runAt.UnixMilli()).Int()
+	if err != nil {
+		return "", false, err
+	}
+	return id, added == 1, nil
+}
+
 // GetJobInfo 查询任务信息
 func (q *RedisDelayQueue[T]) GetJobInfo(ctx context.Context, queue, id string) (*Job[T], time.Time, bool, error) {
-	zkey := q.zsetKey(queue)
-	score, err := q.rdb.ZScore(ctx, zkey, id).Result()
-	if err == redis.Nil {
-		return nil, time.Time{}, false, nil
+	runAt, ok, err := q.GetRunAt(ctx, queue, id)
+	if err != nil || !ok {
+		return nil, time.Time{}, ok, err
 	}
-	if err != nil {
-		return nil, time.Time{}, false, err
-	}
-	runAt := time.UnixMilli(int64(score))
 
 	job, err := q.loadJob(ctx, queue, id)
 	if err != nil {
@@ -135,6 +158,17 @@ func (q *RedisDelayQueue[T]) GetJobInfo(ctx context.Context, queue, id string) (
 		return nil, time.Time{}, false, nil
 	}
 	return job, runAt, true, nil
+}
+
+func (q *RedisDelayQueue[T]) GetRunAt(ctx context.Context, queue, id string) (time.Time, bool, error) {
+	score, err := q.rdb.ZScore(ctx, q.zsetKey(queue), id).Result()
+	if errors.Is(err, redis.Nil) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return time.UnixMilli(int64(score)), true, nil
 }
 
 // Remove 移除任务
@@ -207,9 +241,13 @@ func (q *RedisDelayQueue[T]) pollOnce(ctx context.Context, queue string, handler
 		if err := handler(ctx, job); err != nil {
 			q.logger.Warn("handle job failed, will requeue", "queue", queue, "id", id, "attempts", job.Attempts+1, "err", err)
 			job.Attempts++
-			if job.Attempts >= q.maxAttempts {
+			retryAfterMaxAttempts := errors.Is(err, ErrRetryAfterMaxAttempts)
+			if job.Attempts >= q.maxAttempts && !retryAfterMaxAttempts {
 				_ = q.deleteJob(ctx, queue, id)
 				continue
+			}
+			if retryAfterMaxAttempts && job.Attempts >= q.maxAttempts {
+				job.Attempts = max(q.maxAttempts-1, 0)
 			}
 			if err := q.saveJob(ctx, queue, id, job.Attempts, job.Payload); err != nil {
 				q.logger.Error("save job failed when requeue", "queue", queue, "id", id, "err", err)
@@ -318,4 +356,13 @@ if #items > 0 then
   end
 end
 return items
+`)
+
+var enqueueIfMissingScript = redis.NewScript(`
+if redis.call('ZSCORE', KEYS[2], ARGV[1]) then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
+redis.call('ZADD', KEYS[2], ARGV[4], ARGV[1])
+return 1
 `)
