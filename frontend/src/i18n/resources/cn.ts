@@ -4107,6 +4107,9 @@ const cn = {
       llmRetry: "模型调用失败，正在重试：{{message}}",
       compactStarted: "启动上下文压缩",
       compactEnded: "上下文压缩完成",
+      copy: "复制提示内容",
+      copySuccess: "提示内容已复制到剪贴板",
+      copyFailed: "复制提示内容失败",
     },
     files: {
       title: "项目文件",

@@ -4107,6 +4107,9 @@ const en = {
       llmRetry: "Model call failed. Retrying: {{message}}",
       compactStarted: "Starting context compression",
       compactEnded: "Context compression completed",
+      copy: "Copy alert message",
+      copySuccess: "Alert message copied to clipboard",
+      copyFailed: "Failed to copy alert message",
     },
     files: {
       title: "Project files",
