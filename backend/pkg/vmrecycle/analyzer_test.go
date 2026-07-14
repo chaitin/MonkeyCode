@@ -50,26 +50,56 @@ func TestAnalyzerCandidateRequiresBothDeadlinesOverdue(t *testing.T) {
 	}
 }
 
-func TestAnalyzerMarksHistoricalUncertainWhenRedisDeadlineCannotConfirm(t *testing.T) {
+func TestAnalyzerMarksActiveTaskForDeadlineRepairWhenRedisDeadlineMissing(t *testing.T) {
 	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
 	taskID := uuid.New()
-	vm := &db.VirtualMachine{ID: "vm-uncertain", UserID: uuid.New(), Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{ID: taskID, CreatedAt: now.Add(-2 * time.Hour)}}}}
+	vm := &db.VirtualMachine{ID: "vm-missing-deadline", UserID: uuid.New(), Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{
+		ID: taskID, Status: consts.TaskStatusProcessing, CreatedAt: now.Add(-2 * time.Hour),
+	}}}}
+	analyzer := newAnalyzerForTest(now, &analyzerDeadlineStub{})
 
-	tests := []struct {
-		name      string
-		deadlines *analyzerDeadlineStub
-	}{
-		{name: "missing", deadlines: &analyzerDeadlineStub{}},
-		{name: "future", deadlines: &analyzerDeadlineStub{runAt: map[string]time.Time{vm.ID: now.Add(time.Hour)}}},
+	got := analyzer.analyzeVM(context.Background(), vm)
+	if got.Decision != DecisionDeadlineMissing || !IsDeadlineRepairable(got.Decision) {
+		t.Fatalf("analysis = %+v", got)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			analyzer := newAnalyzerForTest(now, tt.deadlines)
-			got := analyzer.analyzeVM(context.Background(), vm)
-			if got.Decision != DecisionHistoricalUncertain {
-				t.Fatalf("decision = %s, reason = %s", got.Decision, got.Reason)
-			}
-		})
+	if got.Target != "vm:"+vm.ID {
+		t.Fatalf("target = %q", got.Target)
+	}
+}
+
+func TestAnalyzerTerminalTaskCandidateWhenRedisDeadlineMissing(t *testing.T) {
+	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+	vm := &db.VirtualMachine{ID: "vm-terminal", UserID: uuid.New(), Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{
+		ID: uuid.New(), Status: consts.TaskStatusFinished, CreatedAt: now.Add(-2 * time.Hour), LastActiveAt: now.Add(-2 * time.Hour),
+	}}}}
+	analyzer := newAnalyzerForTest(now, &analyzerDeadlineStub{})
+
+	got := analyzer.analyzeVM(context.Background(), vm)
+	if got.Decision != DecisionCandidate || !IsExecutable(got.Decision) {
+		t.Fatalf("analysis = %+v", got)
+	}
+}
+
+func TestAnalyzerKeepsFutureRedisDeadlineHistoricalUncertain(t *testing.T) {
+	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+	vm := &db.VirtualMachine{ID: "vm-future", UserID: uuid.New(), Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{
+		ID: uuid.New(), Status: consts.TaskStatusProcessing, CreatedAt: now.Add(-2 * time.Hour),
+	}}}}
+	analyzer := newAnalyzerForTest(now, &analyzerDeadlineStub{runAt: map[string]time.Time{vm.ID: now.Add(time.Hour)}})
+
+	got := analyzer.analyzeVM(context.Background(), vm)
+	if got.Decision != DecisionHistoricalUncertain {
+		t.Fatalf("analysis = %+v", got)
+	}
+}
+
+func TestAnalyzerOrphanVMIsExplicitlyExecutable(t *testing.T) {
+	vm := &db.VirtualMachine{ID: "vm-orphan", UserID: uuid.New()}
+	analyzer := newAnalyzerForTest(time.Now(), &analyzerDeadlineStub{})
+
+	got := analyzer.analyzeVM(context.Background(), vm)
+	if got.Decision != DecisionOrphan || !IsExecutable(got.Decision) {
+		t.Fatalf("analysis = %+v", got)
 	}
 }
 

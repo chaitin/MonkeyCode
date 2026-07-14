@@ -32,6 +32,8 @@ const (
 	DecisionCandidate           Decision = "candidate"
 	DecisionUnavailable         Decision = "unavailable"
 	DecisionHistoricalUncertain Decision = "historical_uncertain"
+	DecisionDeadlineMissing     Decision = "deadline_missing"
+	DecisionOrphan              Decision = "orphan"
 	DecisionNotDue              Decision = "not_due"
 	DecisionDisabled            Decision = "disabled"
 	DecisionAlreadyRecycled     Decision = "already_recycled"
@@ -116,7 +118,7 @@ func (a *analyzer) Scan(ctx context.Context) (ScanReport, error) {
 		items := a.analyzeBatch(ctx, vms)
 		for _, item := range items {
 			report.Counts[item.Decision]++
-			if item.Decision == DecisionCandidate || item.Decision == DecisionUnavailable || item.Decision == DecisionHistoricalUncertain {
+			if shouldReport(item.Decision) {
 				report.Items = append(report.Items, item)
 			}
 		}
@@ -209,7 +211,7 @@ func (a *analyzer) analyzeBatch(ctx context.Context, vms []*db.VirtualMachine) [
 }
 
 func (a *analyzer) analyzeVM(ctx context.Context, vm *db.VirtualMachine) Analysis {
-	item := Analysis{VMID: vm.ID, AlreadyRecycled: vm.IsRecycled}
+	item := Analysis{Target: "vm:" + vm.ID, VMID: vm.ID, AlreadyRecycled: vm.IsRecycled}
 	for _, tk := range vm.Edges.Tasks {
 		if tk == nil {
 			continue
@@ -232,7 +234,7 @@ func (a *analyzer) analyzeVM(ctx context.Context, vm *db.VirtualMachine) Analysi
 		return item
 	}
 	if len(item.Tasks) == 0 {
-		item.Decision = DecisionUnavailable
+		item.Decision = DecisionOrphan
 		item.Reason = "VM has no task"
 		return item
 	}
@@ -269,17 +271,31 @@ func (a *analyzer) analyzeVM(ctx context.Context, vm *db.VirtualMachine) Analysi
 	if ok {
 		item.RedisRecycleAt = &redisAt
 	}
+	if item.RedisRecycleAt == nil {
+		if allTasksTerminal(item.Tasks) {
+			if now.Before(item.DueAt) {
+				item.Decision = DecisionNotDue
+				item.Reason = "activity deadline not reached"
+				return item
+			}
+			item.Overdue = now.Sub(item.DueAt)
+			item.Decision = DecisionCandidate
+			item.Reason = "terminal tasks overdue and redis recycle deadline missing"
+			return item
+		}
+		if now.After(item.DueAt) {
+			item.Overdue = now.Sub(item.DueAt)
+		}
+		item.Decision = DecisionDeadlineMissing
+		item.Reason = "active task redis recycle deadline missing"
+		return item
+	}
 	if now.Before(item.DueAt) {
 		item.Decision = DecisionNotDue
 		item.Reason = "activity deadline not reached"
 		return item
 	}
 	item.Overdue = now.Sub(item.DueAt)
-	if item.RedisRecycleAt == nil {
-		item.Decision = DecisionHistoricalUncertain
-		item.Reason = "redis recycle deadline missing"
-		return item
-	}
 	if now.Before(*item.RedisRecycleAt) {
 		item.Decision = DecisionHistoricalUncertain
 		item.Reason = "redis recycle deadline is still in the future"
@@ -291,25 +307,43 @@ func (a *analyzer) analyzeVM(ctx context.Context, vm *db.VirtualMachine) Analysi
 }
 
 func (a *analyzer) resolvePolicy(ctx context.Context, userID uuid.UUID) (*domain.TeamTaskVMIdlePolicy, error) {
-	team, err := a.teamPolicyRepo.GetTeamByUserID(ctx, userID)
-	if err != nil && !db.IsNotFound(err) {
-		return nil, err
-	}
-	if db.IsNotFound(err) {
-		team = nil
-	}
-	return domain.ResolveTeamTaskVMIdlePolicy(team, a.cfg.VMIdle)
+	return resolvePolicy(ctx, a.teamPolicyRepo, a.cfg.VMIdle, userID)
 }
 
 func (a *analyzer) loadVM(ctx context.Context, vmID string) (*db.VirtualMachine, error) {
 	return a.db.VirtualMachine.Query().Where(virtualmachine.ID(vmID)).WithTasks().Only(ctx)
 }
 
+func allTasksTerminal(tasks []TaskInfo) bool {
+	if len(tasks) == 0 {
+		return false
+	}
+	for _, task := range tasks {
+		if task.Status != consts.TaskStatusFinished && task.Status != consts.TaskStatusError {
+			return false
+		}
+	}
+	return true
+}
+
+func shouldReport(decision Decision) bool {
+	switch decision {
+	case DecisionCandidate, DecisionUnavailable, DecisionHistoricalUncertain, DecisionDeadlineMissing, DecisionOrphan:
+		return true
+	default:
+		return false
+	}
+}
+
 var _ Analyzer = (*analyzer)(nil)
 var _ deadlineReader = (*delayqueue.VMRecycleQueue)(nil)
 
 func IsExecutable(decision Decision) bool {
-	return decision == DecisionCandidate
+	return decision == DecisionCandidate || decision == DecisionOrphan
+}
+
+func IsDeadlineRepairable(decision Decision) bool {
+	return decision == DecisionDeadlineMissing
 }
 
 func IsSuccessfulNoop(decision Decision) bool {

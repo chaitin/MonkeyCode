@@ -194,6 +194,7 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 
 	do.Provide(i, vmrecycle.NewRecycler)
 	do.Provide(i, vmrecycle.NewAnalyzer)
+	do.Provide(i, vmrecycle.NewDeadlineRepairer)
 
 	// Channel Registry（通知渠道）
 	do.Provide(i, func(i *do.Injector) (*msgpush.WechatClient, error) {

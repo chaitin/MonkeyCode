@@ -115,6 +115,26 @@ func (q *RedisDelayQueue[T]) Enqueue(ctx context.Context, queue string, payload 
 	return id, nil
 }
 
+// EnqueueIfMissing 仅在延迟队列中不存在指定 ID 时入队。
+func (q *RedisDelayQueue[T]) EnqueueIfMissing(ctx context.Context, queue string, payload T, runAt time.Time, id string) (string, bool, error) {
+	if id == "" {
+		id = uuid.NewString()
+	}
+
+	b, err := json.Marshal(&jobData[T]{Payload: payload, Attempts: 0})
+	if err != nil {
+		return "", false, err
+	}
+	added, err := enqueueIfMissingScript.Run(ctx, q.rdb, []string{
+		q.jobKey(queue, id),
+		q.zsetKey(queue),
+	}, id, b, q.jobTTL.Milliseconds(), runAt.UnixMilli()).Int()
+	if err != nil {
+		return "", false, err
+	}
+	return id, added == 1, nil
+}
+
 // GetJobInfo 查询任务信息
 func (q *RedisDelayQueue[T]) GetJobInfo(ctx context.Context, queue, id string) (*Job[T], time.Time, bool, error) {
 	runAt, ok, err := q.GetRunAt(ctx, queue, id)
@@ -324,4 +344,13 @@ if #items > 0 then
   end
 end
 return items
+`)
+
+var enqueueIfMissingScript = redis.NewScript(`
+if redis.call('ZSCORE', KEYS[2], ARGV[1]) then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
+redis.call('ZADD', KEYS[2], ARGV[4], ARGV[1])
+return 1
 `)
