@@ -142,6 +142,9 @@ func TestRecyclerRemoteFailureDoesNotMarkOrClean(t *testing.T) {
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("error = %v, want %v", err, wantErr)
 	}
+	if !errors.Is(err, ErrRemoteDelete) {
+		t.Fatalf("error = %v, want ErrRemoteDelete", err)
+	}
 	if result.Status != "" || hostRepo.updateCalls != 0 || len(queues.removed) != 0 {
 		t.Fatalf("result = %+v, update calls = %d, cleanup = %v", result, hostRepo.updateCalls, queues.removed)
 	}

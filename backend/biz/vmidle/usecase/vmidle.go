@@ -457,17 +457,49 @@ func (r *vmIdleRefresher) lookupSchedule(jobID string) (notifySchedule, bool) {
 }
 
 func (r *vmIdleRefresher) recycleConsumer() {
-	logger := r.logger.With("fn", "recycleConsumer")
 	for {
-		err := r.recycleQueue.StartConsumer(context.Background(), vmrecycle.RecycleQueueKey,
-			func(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo]) error {
-				logger.InfoContext(ctx, "vm recycle triggered", "vmID", job.Payload.VmID)
-				_, err := r.recycler.Recycle(ctx, job.Payload.VmID)
-				return err
-			})
-		logger.Warn("recycle consumer error, retrying...", "error", err)
+		err := r.recycleQueue.StartConsumer(context.Background(), vmrecycle.RecycleQueueKey, r.handleRecycleJob)
+		r.logger.With("fn", "recycleConsumer").Warn("recycle consumer error, retrying...", "error", err)
 		time.Sleep(10 * time.Second)
 	}
+}
+
+func (r *vmIdleRefresher) handleRecycleJob(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo]) error {
+	vmID := job.Payload.VmID
+	logger := r.logger.With("fn", "recycleConsumer", "vm_id", vmID)
+	if job.Payload.RecycleDeleteExhausted {
+		return r.markRecycledForReconnectCompensation(ctx, job, nil)
+	}
+	logger.InfoContext(ctx, "vm recycle triggered", "attempt", job.Attempts+1)
+	_, err := r.recycler.Recycle(ctx, vmID)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, vmrecycle.ErrRemoteDelete) || !r.recycleQueue.IsFinalAttempt(job) {
+		return err
+	}
+	job.Payload.RecycleDeleteExhausted = true
+	return r.markRecycledForReconnectCompensation(ctx, job, err)
+}
+
+func (r *vmIdleRefresher) markRecycledForReconnectCompensation(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo], remoteErr error) error {
+	vmID := job.Payload.VmID
+	if err := r.hostRepo.UpdateVirtualMachine(ctx, vmID, func(up *db.VirtualMachineUpdateOne) error {
+		up.SetIsRecycled(true)
+		return nil
+	}); err != nil {
+		return errors.Join(
+			delayqueue.ErrRetryAfterMaxAttempts,
+			remoteErr,
+			fmt.Errorf("mark vm %s recycled after remote delete retries exhausted: %w", vmID, err),
+		)
+	}
+	r.logger.With("fn", "recycleConsumer", "vm_id", vmID).WarnContext(ctx,
+		"vm remote delete retries exhausted, marked recycled for agent reconnect compensation",
+		"attempts", job.Attempts+1,
+		"error", remoteErr,
+	)
+	return nil
 }
 
 func (r *vmIdleRefresher) buildRecycleNotifyEvent(ctx context.Context, vm *db.VirtualMachine, expiresAt time.Time) (*domain.NotifyEvent, error) {

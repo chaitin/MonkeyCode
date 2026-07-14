@@ -96,3 +96,49 @@ func TestEnqueueIfMissingDoesNotOverwriteExistingJob(t *testing.T) {
 		t.Fatalf("job = %+v, run at = %v", job, gotRunAt)
 	}
 }
+
+func TestIsFinalAttemptUsesConfiguredMaxAttempts(t *testing.T) {
+	queue := NewRedisDelayQueue[string](nil, slog.Default(), WithMaxAttempts[string](3))
+	if queue.IsFinalAttempt(&Job[string]{Attempts: 1}) {
+		t.Fatal("second attempt must not be final")
+	}
+	if !queue.IsFinalAttempt(&Job[string]{Attempts: 2}) {
+		t.Fatal("third attempt must be final")
+	}
+}
+
+func TestPollOncePreservesJobForRetryAfterMaxAttempts(t *testing.T) {
+	ctx := context.Background()
+	srv := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	queue := NewRedisDelayQueue[string](
+		rdb,
+		slog.Default(),
+		WithMaxAttempts[string](1),
+		WithRequeueDelay[string](0),
+	)
+	if _, err := queue.Enqueue(ctx, "recycle", "payload", time.Now(), "vm-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := queue.pollOnce(ctx, "recycle", func(context.Context, *Job[string]) error {
+		return ErrRetryAfterMaxAttempts
+	}); err != nil {
+		t.Fatal(err)
+	}
+	job, _, ok, err := queue.GetJobInfo(ctx, "recycle", "vm-1")
+	if err != nil || !ok {
+		t.Fatalf("job preserved = %v, err = %v", ok, err)
+	}
+	if job.Attempts != 0 {
+		t.Fatalf("attempts = %d, want 0", job.Attempts)
+	}
+
+	if err := queue.pollOnce(ctx, "recycle", func(context.Context, *Job[string]) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok, err := queue.GetJobInfo(ctx, "recycle", "vm-1"); err != nil || ok {
+		t.Fatalf("job preserved = %v, err = %v, want removed", ok, err)
+	}
+}

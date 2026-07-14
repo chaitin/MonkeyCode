@@ -230,6 +230,109 @@ func TestKeepAwakeWithSleepDisabledOnlyRemovesSleepSchedule(t *testing.T) {
 	assertVMIdleJobAt(t, r.recycleQueue.RedisDelayQueue, ctx, vmrecycle.RecycleQueueKey, vmID, oldRecycleAt)
 }
 
+func TestRecycleJobMarksVMRecycledAfterFinalRemoteDeleteFailure(t *testing.T) {
+	repo := &refreshHostRepoStub{}
+	r := &vmIdleRefresher{
+		logger:       slog.Default(),
+		hostRepo:     repo,
+		recycleQueue: delayqueue.NewVMRecycleQueue(newTestRedis(t), slog.Default()),
+		recycler:     &idleRecyclerStub{err: fmt.Errorf("%w: taskflow unavailable", vmrecycle.ErrRemoteDelete)},
+	}
+	job := &delayqueue.Job[*domain.VmIdleInfo]{
+		Payload:  &domain.VmIdleInfo{VmID: "vm-final"},
+		Attempts: 4,
+	}
+
+	if err := r.handleRecycleJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if repo.updateVirtualMachineCalls != 1 || !repo.isRecycled {
+		t.Fatalf("update calls = %d, is recycled = %v", repo.updateVirtualMachineCalls, repo.isRecycled)
+	}
+}
+
+func TestRecycleJobDoesNotMarkVMBeforeFinalAttempt(t *testing.T) {
+	wantErr := fmt.Errorf("%w: taskflow unavailable", vmrecycle.ErrRemoteDelete)
+	repo := &refreshHostRepoStub{}
+	r := &vmIdleRefresher{
+		logger:       slog.Default(),
+		hostRepo:     repo,
+		recycleQueue: delayqueue.NewVMRecycleQueue(newTestRedis(t), slog.Default()),
+		recycler:     &idleRecyclerStub{err: wantErr},
+	}
+	job := &delayqueue.Job[*domain.VmIdleInfo]{
+		Payload:  &domain.VmIdleInfo{VmID: "vm-retry"},
+		Attempts: 3,
+	}
+
+	err := r.handleRecycleJob(context.Background(), job)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("error = %v, want %v", err, wantErr)
+	}
+	if repo.updateVirtualMachineCalls != 0 {
+		t.Fatalf("update calls = %d, want 0", repo.updateVirtualMachineCalls)
+	}
+}
+
+func TestRecycleJobDoesNotMarkVMForNonRemoteFailure(t *testing.T) {
+	wantErr := errors.New("database unavailable")
+	repo := &refreshHostRepoStub{}
+	r := &vmIdleRefresher{
+		logger:       slog.Default(),
+		hostRepo:     repo,
+		recycleQueue: delayqueue.NewVMRecycleQueue(newTestRedis(t), slog.Default()),
+		recycler:     &idleRecyclerStub{err: wantErr},
+	}
+	job := &delayqueue.Job[*domain.VmIdleInfo]{
+		Payload:  &domain.VmIdleInfo{VmID: "vm-database-error"},
+		Attempts: 4,
+	}
+
+	err := r.handleRecycleJob(context.Background(), job)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("error = %v, want %v", err, wantErr)
+	}
+	if repo.updateVirtualMachineCalls != 0 {
+		t.Fatalf("update calls = %d, want 0", repo.updateVirtualMachineCalls)
+	}
+}
+
+func TestRecycleJobRetriesMarkWithoutDeletingRemotelyAgain(t *testing.T) {
+	remoteErr := fmt.Errorf("%w: taskflow unavailable", vmrecycle.ErrRemoteDelete)
+	markErr := errors.New("database unavailable")
+	repo := &refreshHostRepoStub{updateVirtualMachineErr: markErr}
+	recycler := &idleRecyclerStub{err: remoteErr}
+	r := &vmIdleRefresher{
+		logger:       slog.Default(),
+		hostRepo:     repo,
+		recycleQueue: delayqueue.NewVMRecycleQueue(newTestRedis(t), slog.Default()),
+		recycler:     recycler,
+	}
+	job := &delayqueue.Job[*domain.VmIdleInfo]{
+		Payload:  &domain.VmIdleInfo{VmID: "vm-mark-retry"},
+		Attempts: 4,
+	}
+
+	err := r.handleRecycleJob(context.Background(), job)
+	if !errors.Is(err, remoteErr) || !errors.Is(err, markErr) || !errors.Is(err, delayqueue.ErrRetryAfterMaxAttempts) {
+		t.Fatalf("error = %v, want remote, database and persistent retry errors", err)
+	}
+	if !job.Payload.RecycleDeleteExhausted || recycler.calls != 1 {
+		t.Fatalf("delete exhausted = %v, recycle calls = %d", job.Payload.RecycleDeleteExhausted, recycler.calls)
+	}
+
+	repo.updateVirtualMachineErr = nil
+	if err := r.handleRecycleJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if recycler.calls != 1 {
+		t.Fatalf("recycle calls = %d, want 1", recycler.calls)
+	}
+	if repo.updateVirtualMachineCalls != 2 || !repo.isRecycled {
+		t.Fatalf("update calls = %d, is recycled = %v", repo.updateVirtualMachineCalls, repo.isRecycled)
+	}
+}
+
 func newQueueTestVMIdleRefresher(redisClient *redis.Client, repo domain.HostRepo) *vmIdleRefresher {
 	logger := slog.Default()
 	return &vmIdleRefresher{
@@ -293,9 +396,22 @@ func newVirtualMachineNotFoundErr(t *testing.T) error {
 }
 
 type refreshHostRepoStub struct {
-	vm                     *db.VirtualMachine
-	err                    error
-	getVirtualMachineCalls int
+	vm                        *db.VirtualMachine
+	err                       error
+	updateVirtualMachineErr   error
+	getVirtualMachineCalls    int
+	updateVirtualMachineCalls int
+	isRecycled                bool
+}
+
+type idleRecyclerStub struct {
+	err   error
+	calls int
+}
+
+func (s *idleRecyclerStub) Recycle(_ context.Context, vmID string) (vmrecycle.Result, error) {
+	s.calls++
+	return vmrecycle.Result{VMID: vmID}, s.err
 }
 
 type refreshTeamPolicyRepoStub struct {
@@ -383,8 +499,17 @@ func (s *refreshHostRepoStub) UpsertVirtualMachine(context.Context, *taskflow.Vi
 	return errors.New("not implemented")
 }
 
-func (s *refreshHostRepoStub) UpdateVirtualMachine(context.Context, string, func(*db.VirtualMachineUpdateOne) error) error {
-	return errors.New("not implemented")
+func (s *refreshHostRepoStub) UpdateVirtualMachine(_ context.Context, id string, fn func(*db.VirtualMachineUpdateOne) error) error {
+	s.updateVirtualMachineCalls++
+	if s.updateVirtualMachineErr != nil {
+		return s.updateVirtualMachineErr
+	}
+	up := db.NewClient().VirtualMachine.UpdateOneID(id)
+	if err := fn(up); err != nil {
+		return err
+	}
+	s.isRecycled, _ = up.Mutation().IsRecycled()
+	return nil
 }
 
 func (s *refreshHostRepoStub) UpsertHost(context.Context, *taskflow.Host) error {

@@ -37,7 +37,10 @@ const (
 	StatusNotFound        Status = "not_found"
 )
 
-var ErrInProgress = errors.New("vm recycle in progress")
+var (
+	ErrInProgress   = errors.New("vm recycle in progress")
+	ErrRemoteDelete = errors.New("vm remote delete failed")
+)
 
 type Result struct {
 	VMID    string
@@ -113,7 +116,7 @@ func (r *recycler) Recycle(ctx context.Context, vmID string) (Result, error) {
 			HostID: vm.HostID,
 			ID:     vm.EnvironmentID,
 		}); err != nil {
-			return result, fmt.Errorf("delete vm %s: %w", vmID, err)
+			return result, fmt.Errorf("%w: delete vm %s: %w", ErrRemoteDelete, vmID, err)
 		}
 		if err := r.hostRepo.UpdateVirtualMachine(ctx, vmID, func(up *db.VirtualMachineUpdateOne) error {
 			up.SetIsRecycled(true)
