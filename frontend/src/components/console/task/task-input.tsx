@@ -184,6 +184,11 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       return;
     }
 
+    if (!selectedImageId) {
+      toast.error(t("taskWorkflow.toast.missingImage"));
+      return;
+    }
+
     if (!IS_OFFLINE_EDITION && selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic && selectedHostId !== "public_host") {
       toast.warning(t("taskWorkflow.toast.builtinModelHostOnly"));
       return;

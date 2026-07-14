@@ -3,13 +3,12 @@ import { useCommonData } from "@/components/console/data-provider"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
-import { selectHost, selectImage } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
-import { IssueTaskModelSelect, IssueTaskProjectFields, useIssueTaskModelSelection, useProjectBranchSelection } from "./issue-task-dialog-shared"
+import { IssueTaskHostSelect, IssueTaskImageSelect, IssueTaskModelSelect, IssueTaskProjectFields, useIssueTaskHostSelection, useIssueTaskImageSelection, useIssueTaskModelSelection, useProjectBranchSelection } from "./issue-task-dialog-shared"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
@@ -36,6 +35,8 @@ export default function IssueDesignDialog({
   const { images, models, hosts, reloadProjects, reloadUnlinkedTasks, subscription } = useCommonData()
   const { branches, loadingBranches, selectedBranch, selectBranch } = useProjectBranchSelection(open, project)
   const { selectedModel, selectedModelId, setSelectedModelId } = useIssueTaskModelSelection(open, models, subscription)
+  const { selectedHostId, setSelectedHostId } = useIssueTaskHostSelection(open, hosts, selectedModel)
+  const { selectedImageId, setSelectedImageId } = useIssueTaskImageSelection(open, images, project?.image_id)
   const { t } = useTranslation()
 
   const handleOpenChange = (open: boolean) => {
@@ -69,14 +70,24 @@ ${issue?.requirement_document?.replaceAll("`", "\\`")}
       return
     }
 
+    if (!selectedImageId) {
+      toast.error(t("consoleProject.issueTask.toast.imageRequired"))
+      return
+    }
+
+    if (!selectedHostId) {
+      toast.error(t("consoleProject.issueTask.toast.hostRequired"))
+      return
+    }
+
     setSubmitting(true)
   
     await apiRequest('v1UsersTasksCreate', {
       content: renderPrompt,
       cli_name: ConstsCliName.CliNameOpencode,
       model_id: selectedModelId,
-      image_id: selectImage(images, false),
-      host_id: selectHost(hosts, false),
+      image_id: selectedImageId,
+      host_id: selectedHostId,
       repo: {
         branch: project?.platform === ConstsGitPlatform.GitPlatformInternal ? '' : selectedBranch,
       },
@@ -133,6 +144,17 @@ ${issue?.requirement_document?.replaceAll("`", "\\`")}
             selectedModelId={selectedModelId}
             setSelectedModelId={setSelectedModelId}
             subscription={subscription}
+          />
+          <IssueTaskHostSelect
+            hosts={hosts}
+            selectedHostId={selectedHostId}
+            selectedModel={selectedModel}
+            setSelectedHostId={setSelectedHostId}
+          />
+          <IssueTaskImageSelect
+            images={images}
+            selectedImageId={selectedImageId}
+            setSelectedImageId={setSelectedImageId}
           />
         </div>
         <DialogFooter className="shrink-0 border-t pt-4">

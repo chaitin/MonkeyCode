@@ -313,6 +313,11 @@ export default function CreateDefaultTaskDialog({
       return
     }
 
+    if (!selectedImageId) {
+      toast.error(t("taskWorkflow.toast.missingImage"))
+      return
+    }
+
     if (!selectedRepoDisplayName.endsWith(".zip") && selectedRepo && !selectedIdentityId) {
       setSelectedIdentityId("none")
     }

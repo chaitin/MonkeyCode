@@ -1,10 +1,14 @@
-import { ConstsGitPlatform, type DomainBranch, type DomainModel, type DomainProject, type DomainSubscriptionResp } from "@/api/Api"
+import { ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainBranch, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainSubscriptionResp } from "@/api/Api"
+import Icon from "@/components/common/Icon"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import ModelSelect from "@/components/console/task/model-select"
-import { selectPreferredTaskModel } from "@/utils/common"
+import { getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { apiRequest } from "@/utils/requestUtils"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -59,6 +63,76 @@ export function useIssueTaskModelSelection(
     selectedModel,
     selectedModelId,
     setSelectedModelId,
+  }
+}
+
+export function useIssueTaskImageSelection(
+  open: boolean,
+  images: DomainImage[],
+  projectImageId?: string,
+) {
+  const [selectedImageId, setSelectedImageId] = useState("")
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedImageId("")
+      return
+    }
+
+    const selectedImageIsValid = images.some((image) => image.id === selectedImageId)
+    if (selectedImageIsValid) {
+      return
+    }
+
+    const projectImageIsValid = !!projectImageId && images.some((image) => image.id === projectImageId)
+    setSelectedImageId(projectImageIsValid ? projectImageId : selectImage(images, true))
+  }, [images, open, projectImageId, selectedImageId])
+
+  return {
+    selectedImageId,
+    setSelectedImageId,
+  }
+}
+
+function getDefaultIssueTaskHostId(hosts: DomainHost[]) {
+  if (IS_OFFLINE_EDITION) {
+    return hosts.find((host) => host.id && host.status === ConstsHostStatus.HostStatusOnline)?.id || ""
+  }
+
+  return selectHost(hosts, false)
+}
+
+export function useIssueTaskHostSelection(
+  open: boolean,
+  hosts: DomainHost[],
+  selectedModel?: DomainModel,
+) {
+  const [selectedHostId, setSelectedHostId] = useState("")
+  const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedHostId("")
+      return
+    }
+
+    if (!IS_OFFLINE_EDITION && selectedPublicModel) {
+      setSelectedHostId("public_host")
+      return
+    }
+
+    const selectedHostIsValid = selectedHostId === "public_host"
+      ? !IS_OFFLINE_EDITION
+      : hosts.some((host) => host.id === selectedHostId && host.status === ConstsHostStatus.HostStatusOnline)
+
+    if (!selectedHostIsValid) {
+      setSelectedHostId(getDefaultIssueTaskHostId(hosts))
+    }
+  }, [hosts, open, selectedHostId, selectedPublicModel])
+
+  return {
+    selectedHostId,
+    setSelectedHostId,
   }
 }
 
@@ -245,6 +319,93 @@ export function IssueTaskModelSelect({
         setSelectedModelId={setSelectedModelId}
         subscription={subscription}
       />
+    </div>
+  )
+}
+
+export function IssueTaskImageSelect({
+  images,
+  selectedImageId,
+  setSelectedImageId,
+}: {
+  images: DomainImage[]
+  selectedImageId: string
+  setSelectedImageId: (imageId: string) => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="space-y-2">
+      <Label>{t("consoleProject.issueTask.image")}</Label>
+      <Select value={selectedImageId} onValueChange={setSelectedImageId}>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder={t("consoleProject.issueTask.selectImage")} />
+        </SelectTrigger>
+        <SelectContent>
+          {images.filter((image) => image.id).map((image) => (
+            <SelectItem key={image.id} value={image.id!}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-2">
+                    <Icon name={getOSFromImageName(image.name || "")} className="size-4" />
+                    <span>{image.remark || getImageShortName(image.name || "")}</span>
+                    {getOwnerTypeBadge(image.owner)}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">{image.name}</TooltipContent>
+              </Tooltip>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+export function IssueTaskHostSelect({
+  hosts,
+  selectedHostId,
+  selectedModel,
+  setSelectedHostId,
+}: {
+  hosts: DomainHost[]
+  selectedHostId: string
+  selectedModel?: DomainModel
+  setSelectedHostId: (hostId: string) => void
+}) {
+  const { t } = useTranslation()
+  const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic
+
+  return (
+    <div className="space-y-2">
+      <Label>{t("consoleProject.issueTask.host")}</Label>
+      <Select value={selectedHostId} onValueChange={setSelectedHostId}>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder={t("consoleProject.issueTask.selectHost")} />
+        </SelectTrigger>
+        <SelectContent>
+          {!IS_OFFLINE_EDITION && (
+            <SelectItem value="public_host">
+              <div className="flex items-center gap-2">
+                <span>MonkeyCode</span>
+                <Badge className="!text-primary-foreground">{t("consoleProject.issueTask.free")}</Badge>
+              </div>
+            </SelectItem>
+          )}
+          {hosts.filter((host) => host.id).map((host) => (
+            <SelectItem
+              key={host.id}
+              value={host.id!}
+              disabled={host.status !== ConstsHostStatus.HostStatusOnline || (!IS_OFFLINE_EDITION && selectedPublicModel)}
+            >
+              <div className="flex items-center gap-2">
+                <span>{host.remark || `${host.name}-${host.external_ip}`}</span>
+                {getHostBadges(host)}
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }
