@@ -432,6 +432,9 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 	}); err != nil {
 		return err
 	}
+	if err := a.taskActivityRefresher.ForceRefresh(ctx, id); err != nil {
+		a.logger.WarnContext(ctx, "failed to refresh task last active on user input", "task_id", id, "error", err)
+	}
 	if err := a.idleRefresher.RecordActivity(ctx, tk.VirtualMachine.ID); err != nil {
 		a.logger.WarnContext(ctx, "failed to refresh vm idle timers on user input", "task_id", id, "vm_id", tk.VirtualMachine.ID, "error", err)
 	}

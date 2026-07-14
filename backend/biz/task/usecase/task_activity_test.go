@@ -51,13 +51,17 @@ func TestRefreshCreatedTaskStateAlwaysRefreshesIdleTimer(t *testing.T) {
 func TestContinueRecordsVMActivityAfterTaskflowAcceptsInput(t *testing.T) {
 	manager := &continueTaskManagerStub{}
 	idleRefresher := &vmIdleRefresherStub{}
-	u, user, taskID := newContinueTaskUsecase(t, manager, idleRefresher)
+	u, user, taskID, taskRefresher := newContinueTaskUsecase(t, manager, idleRefresher)
+	taskRefresher.err = errors.New("db write failed")
 
 	if err := u.Continue(context.Background(), user, taskID, domain.ContinueTaskReq{Content: []byte("继续执行")}); err != nil {
 		t.Fatal(err)
 	}
 	if !manager.called {
 		t.Fatal("expected taskflow continue to be called")
+	}
+	if !taskRefresher.forceCalled || taskRefresher.taskID != taskID {
+		t.Fatalf("task activity called = %v, task id = %s", taskRefresher.forceCalled, taskRefresher.taskID)
 	}
 	if !idleRefresher.recordActivityCalled || idleRefresher.vmID != "vm-continue" {
 		t.Fatalf("record activity called = %v, vm id = %q", idleRefresher.recordActivityCalled, idleRefresher.vmID)
@@ -71,7 +75,7 @@ func TestContinueDoesNotRecordVMActivityWhenTaskflowRejectsInput(t *testing.T) {
 	wantErr := errors.New("taskflow unavailable")
 	manager := &continueTaskManagerStub{err: wantErr}
 	idleRefresher := &vmIdleRefresherStub{}
-	u, user, taskID := newContinueTaskUsecase(t, manager, idleRefresher)
+	u, user, taskID, taskRefresher := newContinueTaskUsecase(t, manager, idleRefresher)
 
 	err := u.Continue(context.Background(), user, taskID, domain.ContinueTaskReq{Content: []byte("继续执行")})
 	if !errors.Is(err, wantErr) {
@@ -80,9 +84,12 @@ func TestContinueDoesNotRecordVMActivityWhenTaskflowRejectsInput(t *testing.T) {
 	if idleRefresher.recordActivityCalled || idleRefresher.keepAwakeCalled {
 		t.Fatal("did not expect rejected input to refresh vm idle state")
 	}
+	if taskRefresher.forceCalled {
+		t.Fatal("did not expect rejected input to refresh task activity")
+	}
 }
 
-func newContinueTaskUsecase(t *testing.T, manager *continueTaskManagerStub, idleRefresher *vmIdleRefresherStub) (*TaskUsecase, *domain.User, uuid.UUID) {
+func newContinueTaskUsecase(t *testing.T, manager *continueTaskManagerStub, idleRefresher *vmIdleRefresherStub) (*TaskUsecase, *domain.User, uuid.UUID, *taskActivityRefresherStub) {
 	t.Helper()
 	user := &domain.User{ID: uuid.New()}
 	taskID := uuid.New()
@@ -101,14 +108,16 @@ func newContinueTaskUsecase(t *testing.T, manager *continueTaskManagerStub, idle
 		Edges:     db.TaskEdges{Vms: []*db.VirtualMachine{vm}},
 	}}
 	redisClient := newTaskActivityRedis(t)
+	taskRefresher := &taskActivityRefresherStub{}
 	return &TaskUsecase{
-		cfg:           &config.Config{},
-		repo:          repo,
-		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-		taskflow:      &continueTaskflowStub{manager: manager},
-		redis:         redisClient,
-		idleRefresher: idleRefresher,
-	}, user, taskID
+		cfg:                   &config.Config{},
+		repo:                  repo,
+		logger:                slog.New(slog.NewTextHandler(io.Discard, nil)),
+		taskflow:              &continueTaskflowStub{manager: manager},
+		redis:                 redisClient,
+		idleRefresher:         idleRefresher,
+		taskActivityRefresher: taskRefresher,
+	}, user, taskID, taskRefresher
 }
 
 func newTaskActivityRedis(t *testing.T) *redis.Client {
