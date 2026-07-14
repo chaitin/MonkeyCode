@@ -13,53 +13,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
 )
 
-func TestClickHouseProviderLatestEventTimeFiltersEvents(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	taskID := uuid.New()
-	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 7, 13, 0, 0, 0, 0, time.UTC)
-	want := end.Add(-time.Minute)
-	mock.ExpectQuery("SELECT maxOrNull\\(ts\\)[\\s\\S]*event IN \\(\\?,\\?\\)").
-		WithArgs(taskID, start, end, "user-input", "task-event").
-		WillReturnRows(sqlmock.NewRows([]string{"max"}).AddRow(want))
-
-	provider := tasklog.NewClickHouseProvider(clickhouse.NewWithDBAndTable(db, "task_logs_test"))
-	got, ok, err := provider.LatestEventTime(context.Background(), taskID, start, end, []string{"user-input", "task-event"})
-	if err != nil || !ok {
-		t.Fatalf("LatestEventTime() ok = %v, err = %v", ok, err)
-	}
-	if !got.Equal(want) {
-		t.Fatalf("latest = %v, want %v", got, want)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestClickHouseProviderLatestEventTimeHandlesNoMatch(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	taskID := uuid.New()
-	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 7, 13, 0, 0, 0, 0, time.UTC)
-	mock.ExpectQuery("SELECT maxOrNull\\(ts\\)").
-		WithArgs(taskID, start, end, "task-event").
-		WillReturnRows(sqlmock.NewRows([]string{"max"}).AddRow(nil))
-
-	provider := tasklog.NewClickHouseProvider(clickhouse.NewWithDBAndTable(db, "task_logs_test"))
-	_, ok, err := provider.LatestEventTime(context.Background(), taskID, start, end, []string{"task-event"})
-	if err != nil || ok {
-		t.Fatalf("LatestEventTime() ok = %v, err = %v", ok, err)
-	}
-}
-
 func TestClickHouseProviderQueryLatestTurnUsesTurnSeqCursor(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

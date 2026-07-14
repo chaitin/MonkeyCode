@@ -1,11 +1,7 @@
 package loki
 
 import (
-	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strconv"
 	"testing"
 	"time"
 )
@@ -58,7 +54,7 @@ func TestFindLatestRoundStart(t *testing.T) {
 				{Timestamp: base.Add(2 * time.Second), Line: marshalChunk(t, "task-started")},
 				{Timestamp: base.Add(3 * time.Second), Line: marshalChunk(t, "task-running")},
 			},
-			want: taskCreatedAt,
+			want:    taskCreatedAt,
 		},
 	}
 
@@ -100,66 +96,5 @@ func TestFilterEntriesByTimeWindow(t *testing.T) {
 		if chunk.Event != wantEvents[i] {
 			t.Fatalf("event[%d] = %s, want %s", i, chunk.Event, wantEvents[i])
 		}
-	}
-}
-
-func TestLatestMatchingEventUsesLabelsAndJSONFallback(t *testing.T) {
-	base := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
-	events := map[string]struct{}{"user-input": {}, "task-event": {}}
-	entries := []LogEntry{
-		{Timestamp: base.Add(3 * time.Minute), Labels: map[string]string{"event": "task-running"}, Line: marshalChunk(t, "task-event")},
-		{Timestamp: base.Add(2 * time.Minute), Labels: map[string]string{"event": "task-event"}},
-		{Timestamp: base.Add(time.Minute), Line: marshalChunk(t, "user-input")},
-	}
-
-	got, ok := latestMatchingEvent(entries, events)
-	if !ok || !got.Equal(base.Add(2*time.Minute)) {
-		t.Fatalf("latest = %v, ok = %v", got, ok)
-	}
-}
-
-func TestLatestMatchingEventReturnsMissing(t *testing.T) {
-	entries := []LogEntry{{Timestamp: time.Now(), Line: marshalChunk(t, "task-running")}}
-	if _, ok := latestMatchingEvent(entries, map[string]struct{}{"task-event": {}}); ok {
-		t.Fatal("expected no matching event")
-	}
-}
-
-func TestFindLastEventInPagesBackward(t *testing.T) {
-	base := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
-	requests := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
-		values := make([][]string, 0, 200)
-		event := "task-running"
-		if requests == 1 {
-			for i := range 200 {
-				ts := base.Add(-time.Duration(i) * time.Second)
-				values = append(values, []string{strconv.FormatInt(ts.UnixNano(), 10), marshalChunk(t, "task-running")})
-			}
-		} else {
-			event = "task-event"
-			values = append(values, []string{strconv.FormatInt(base.Add(-201*time.Second).UnixNano(), 10), marshalChunk(t, "task-event")})
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
-			"data": map[string]any{
-				"resultType": "streams",
-				"result": []any{map[string]any{
-					"stream": map[string]string{"task_id": "task-1", "event": event},
-					"values": values,
-				}},
-			},
-		})
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL)
-	got, ok, err := client.FindLastEventIn(context.Background(), "task-1", []string{"user-input", "task-event"}, base.Add(-time.Hour), base.Add(time.Second))
-	if err != nil || !ok {
-		t.Fatalf("FindLastEventIn() ok = %v, err = %v", ok, err)
-	}
-	if !got.Equal(base.Add(-201*time.Second)) || requests != 2 {
-		t.Fatalf("latest = %v, requests = %d", got, requests)
 	}
 }

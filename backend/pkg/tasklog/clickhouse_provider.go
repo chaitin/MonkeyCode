@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,30 +22,6 @@ func NewClickHouseProvider(client *clickhouse.Client) *ClickHouseProvider {
 
 func (p *ClickHouseProvider) Name() string {
 	return "clickhouse"
-}
-
-func (p *ClickHouseProvider) LatestEventTime(ctx context.Context, taskID uuid.UUID, start, end time.Time, events []string) (time.Time, bool, error) {
-	if p.client == nil {
-		return time.Time{}, false, ErrProviderUnavailable
-	}
-	if len(events) == 0 {
-		return time.Time{}, false, nil
-	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(events)), ",")
-	query := fmt.Sprintf(`SELECT maxOrNull(ts) FROM %s WHERE task_id = ? AND ts >= ? AND ts <= ? AND event IN (%s)`, p.client.Table(), placeholders)
-	args := make([]any, 0, len(events)+3)
-	args = append(args, taskID, start, end)
-	for _, event := range events {
-		args = append(args, event)
-	}
-	var latest sql.NullTime
-	if err := p.client.QueryRowContext(ctx, query, args...).Scan(&latest); err != nil {
-		return time.Time{}, false, err
-	}
-	if !latest.Valid {
-		return time.Time{}, false, nil
-	}
-	return latest.Time.UTC(), true, nil
 }
 
 func (p *ClickHouseProvider) QueryLatestTurn(ctx context.Context, taskID uuid.UUID, taskCreatedAt, end time.Time) (*QueryLatestTurnResp, error) {

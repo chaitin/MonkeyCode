@@ -597,19 +597,7 @@ func (c *Client) tailWebSocketSession(
 // 优先从 Loki structured metadata (labels) 中读取 event 字段，回退到解析 JSON body。
 // end 为搜索的结束时间上界，零值表示 time.Now()。
 func (c *Client) FindLastEvent(ctx context.Context, taskID string, event string, start, end time.Time) (time.Time, error) {
-	latest, _, err := c.FindLastEventIn(ctx, taskID, []string{event}, start, end)
-	return latest, err
-}
-
-func (c *Client) FindLastEventIn(ctx context.Context, taskID string, events []string, start, end time.Time) (time.Time, bool, error) {
 	const pageSize = 200
-	if len(events) == 0 {
-		return time.Time{}, false, nil
-	}
-	eventSet := make(map[string]struct{}, len(events))
-	for _, event := range events {
-		eventSet[event] = struct{}{}
-	}
 
 	if end.IsZero() {
 		end = time.Now()
@@ -621,40 +609,36 @@ func (c *Client) FindLastEventIn(ctx context.Context, taskID string, events []st
 	for {
 		entries, err := c.QueryByTaskID(ctx, taskID, start, end, pageSize, "backward")
 		if err != nil {
-			return time.Time{}, false, fmt.Errorf("FindLastEventIn query failed: %w", err)
+			return time.Time{}, fmt.Errorf("FindLastEvent query failed: %w", err)
 		}
-		if latest, ok := latestMatchingEvent(entries, eventSet); ok {
-			return latest, true, nil
+
+		for _, entry := range entries {
+			// 优先从 labels（structured metadata）读取
+			if ev, ok := entry.Labels["event"]; ok {
+				if ev == event {
+					return entry.Timestamp, nil
+				}
+				continue
+			}
+			// 回退：解析 JSON body
+			var chunk struct {
+				Event string `json:"event"`
+			}
+			if err := json.Unmarshal([]byte(entry.Line), &chunk); err != nil {
+				continue
+			}
+			if chunk.Event == event {
+				return entry.Timestamp, nil
+			}
 		}
 
 		if len(entries) < pageSize {
-			return time.Time{}, false, nil
+			return time.Time{}, nil
 		}
 
-		end = entries[len(entries)-1].Timestamp.Add(-time.Nanosecond)
+		// 继续往前扫描
+		end = entries[len(entries)-1].Timestamp
 	}
-}
-
-func latestMatchingEvent(entries []LogEntry, events map[string]struct{}) (time.Time, bool) {
-	for _, entry := range entries {
-		if event, ok := entry.Labels["event"]; ok {
-			_, matched := events[event]
-			if matched {
-				return entry.Timestamp, true
-			}
-			continue
-		}
-		var chunk struct {
-			Event string `json:"event"`
-		}
-		if err := json.Unmarshal([]byte(entry.Line), &chunk); err != nil {
-			continue
-		}
-		if _, ok := events[chunk.Event]; ok {
-			return entry.Timestamp, true
-		}
-	}
-	return time.Time{}, false
 }
 
 // FindLatestRoundStart 定位 attach 模式下最新论次的起点。

@@ -26,13 +26,6 @@ func (p *LokiProvider) Name() string {
 	return "loki"
 }
 
-func (p *LokiProvider) LatestEventTime(ctx context.Context, taskID uuid.UUID, start, end time.Time, events []string) (time.Time, bool, error) {
-	if p.client == nil {
-		return time.Time{}, false, ErrProviderUnavailable
-	}
-	return p.client.FindLastEventIn(ctx, taskID.String(), events, start, end)
-}
-
 func (p *LokiProvider) QueryWindow(ctx context.Context, taskID uuid.UUID, start, end time.Time) ([]Entry, error) {
 	if p.client == nil {
 		return nil, ErrProviderUnavailable

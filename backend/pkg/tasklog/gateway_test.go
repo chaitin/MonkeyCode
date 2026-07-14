@@ -16,12 +16,6 @@ type gatewayProviderStub struct {
 	name                  string
 	queryLatestTurnCalled bool
 	queryTurnsCalled      bool
-	latestEventTimeCalled bool
-}
-
-func (s *gatewayProviderStub) LatestEventTime(context.Context, uuid.UUID, time.Time, time.Time, []string) (time.Time, bool, error) {
-	s.latestEventTimeCalled = true
-	return time.Now(), true, nil
 }
 
 func (s *gatewayProviderStub) Name() string {
@@ -73,20 +67,6 @@ func TestGatewayClickHouseStoreUsesClickHouse(t *testing.T) {
 	}
 	if loki.queryLatestTurnCalled {
 		t.Fatal("expected Loki QueryLatestTurn not to be called")
-	}
-}
-
-func TestGatewayLatestEventTimeUsesConfiguredStore(t *testing.T) {
-	loki := &gatewayProviderStub{name: "loki"}
-	clickHouse := &gatewayProviderStub{name: "clickhouse"}
-	gateway := &Gateway{Loki: loki, ClickHouse: clickHouse}
-
-	_, _, err := gateway.LatestEventTime(context.Background(), uuid.New(), time.Now().Add(-time.Hour), time.Now(), []string{"task-event"}, consts.LogStoreClickHouse)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !clickHouse.latestEventTimeCalled || loki.latestEventTimeCalled {
-		t.Fatalf("loki called = %v, clickhouse called = %v", loki.latestEventTimeCalled, clickHouse.latestEventTimeCalled)
 	}
 }
 
