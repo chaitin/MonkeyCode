@@ -170,6 +170,39 @@ func TestRecyclerTreatsMissingRemoteEnvironmentAsDeleted(t *testing.T) {
 	}
 }
 
+func TestForceRecyclerContinuesAfterOpaqueRemoteDeleteFailure(t *testing.T) {
+	taskID := uuid.New()
+	vm := &db.VirtualMachine{
+		ID:     "vm-force-remote-fail",
+		UserID: uuid.New(),
+		Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{
+			ID: taskID, Status: consts.TaskStatusProcessing,
+		}}},
+	}
+	r, hostRepo, taskRepo, vmClient := newStubRecycler(t, vm)
+	vmClient.err = errors.New(`HTTP 500: {"code":500,"message":"服务器错误 [trace_id: test]"}`)
+	forceRecycler, ok := any(r).(interface {
+		ForceRecycle(context.Context, string) (Result, error)
+	})
+	if !ok {
+		t.Fatal("recycler must support force recycle")
+	}
+
+	result, err := forceRecycler.ForceRecycle(context.Background(), vm.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusRecycled || hostRepo.updateCalls != 1 || !vm.IsRecycled {
+		t.Fatalf("result = %+v, update calls = %d, recycled = %v", result, hostRepo.updateCalls, vm.IsRecycled)
+	}
+	if vmClient.deleteCalls != 1 || len(taskRepo.updated) != 1 || taskRepo.updated[0] != taskID {
+		t.Fatalf("delete calls = %d, updated tasks = %v", vmClient.deleteCalls, taskRepo.updated)
+	}
+	if !r.recycleQueue.(*recycleQueueStub).removedContains(RecycleQueueKey, vm.ID) {
+		t.Fatal("force recycle must continue local cleanup after remote delete failure")
+	}
+}
+
 func TestRecyclerRetriesCleanupWithoutDeletingRemoteAgain(t *testing.T) {
 	vm := &db.VirtualMachine{ID: "vm-cleanup-retry", UserID: uuid.New()}
 	r, hostRepo, _, vmClient := newStubRecycler(t, vm)

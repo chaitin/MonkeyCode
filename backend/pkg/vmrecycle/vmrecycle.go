@@ -52,6 +52,11 @@ type Recycler interface {
 	Recycle(ctx context.Context, vmID string) (Result, error)
 }
 
+type ForceRecycler interface {
+	Recycler
+	ForceRecycle(ctx context.Context, vmID string) (Result, error)
+}
+
 type removableQueue interface {
 	Remove(ctx context.Context, queue, id string) error
 }
@@ -90,6 +95,14 @@ func NewRecycler(i *do.Injector) (Recycler, error) {
 }
 
 func (r *recycler) Recycle(ctx context.Context, vmID string) (Result, error) {
+	return r.recycle(ctx, vmID, false)
+}
+
+func (r *recycler) ForceRecycle(ctx context.Context, vmID string) (Result, error) {
+	return r.recycle(ctx, vmID, true)
+}
+
+func (r *recycler) recycle(ctx context.Context, vmID string, ignoreRemoteDeleteFailure bool) (Result, error) {
 	result := Result{VMID: vmID}
 	token, err := r.acquire(ctx, vmID)
 	if err != nil {
@@ -111,12 +124,16 @@ func (r *recycler) Recycle(ctx context.Context, vmID string) (Result, error) {
 	if vm.IsRecycled {
 		result.Status = StatusAlreadyRecycled
 	} else {
-		if err := r.taskflow.VirtualMachiner().Delete(ctx, &taskflow.DeleteVirtualMachineReq{
+		deleteErr := r.taskflow.VirtualMachiner().Delete(ctx, &taskflow.DeleteVirtualMachineReq{
 			UserID: vm.UserID.String(),
 			HostID: vm.HostID,
 			ID:     vm.EnvironmentID,
-		}); err != nil && !taskflow.IsVirtualMachineNotFound(err) {
-			return result, fmt.Errorf("%w: delete vm %s: %w", ErrRemoteDelete, vmID, err)
+		})
+		if deleteErr != nil && !taskflow.IsVirtualMachineNotFound(deleteErr) {
+			if !ignoreRemoteDeleteFailure {
+				return result, fmt.Errorf("%w: delete vm %s: %w", ErrRemoteDelete, vmID, deleteErr)
+			}
+			r.logger.WarnContext(ctx, "force recycle continuing after remote delete failure", "vm_id", vmID, "error", deleteErr)
 		}
 		if err := r.hostRepo.UpdateVirtualMachine(ctx, vmID, func(up *db.VirtualMachineUpdateOne) error {
 			up.SetIsRecycled(true)
