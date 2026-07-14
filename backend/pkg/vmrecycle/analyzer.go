@@ -99,7 +99,7 @@ func (a *analyzer) Scan(ctx context.Context) (ScanReport, error) {
 	cursor := ""
 	for {
 		query := a.db.VirtualMachine.Query().
-			Where(virtualmachine.IsRecycled(false), virtualmachine.HasTasks()).
+			Where(virtualmachine.IsRecycled(false)).
 			WithTasks().
 			Order(db.Asc(virtualmachine.FieldID)).
 			Limit(analyzePageSize)

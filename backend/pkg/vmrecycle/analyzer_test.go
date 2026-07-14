@@ -103,6 +103,32 @@ func TestAnalyzerOrphanVMIsExplicitlyExecutable(t *testing.T) {
 	}
 }
 
+func TestAnalyzerScanReportsOrphanVM(t *testing.T) {
+	ctx := context.Background()
+	client := enttest.Open(t, "sqlite3", fmt.Sprintf("file:vm-recycle-orphan-%s?mode=memory&cache=shared&_fk=1", uuid.NewString()))
+	t.Cleanup(func() { _ = client.Close() })
+	userID := uuid.New()
+	if _, err := client.User.Create().SetID(userID).SetName("tester").SetRole(consts.UserRoleIndividual).SetStatus(consts.UserStatusActive).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Host.Create().SetID("host-orphan").SetUserID(userID).SetHostname("host").Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.VirtualMachine.Create().SetID("vm-orphan").SetHostID("host-orphan").SetUserID(userID).SetName("vm").SetIsRecycled(false).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	analyzer := newAnalyzerForTest(time.Now(), &analyzerDeadlineStub{})
+	analyzer.db = client
+
+	report, err := analyzer.Scan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Counts[DecisionOrphan] != 1 || len(report.Items) != 1 || report.Items[0].Decision != DecisionOrphan {
+		t.Fatalf("report = %+v", report)
+	}
+}
+
 func TestAnalyzerUsesLatestActivityAcrossTasks(t *testing.T) {
 	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
 	oldTaskID := uuid.New()
