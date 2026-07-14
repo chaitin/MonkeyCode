@@ -150,6 +150,26 @@ func TestRecyclerRemoteFailureDoesNotMarkOrClean(t *testing.T) {
 	}
 }
 
+func TestRecyclerTreatsMissingRemoteEnvironmentAsDeleted(t *testing.T) {
+	vm := &db.VirtualMachine{ID: "vm-remote-missing", UserID: uuid.New()}
+	r, hostRepo, taskRepo, vmClient := newStubRecycler(t, vm)
+	vmClient.err = errors.New("recv err failed to stop environment: environment not found: env-1")
+
+	result, err := r.Recycle(context.Background(), vm.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusRecycled || hostRepo.updateCalls != 1 || !vm.IsRecycled {
+		t.Fatalf("result = %+v, update calls = %d, recycled = %v", result, hostRepo.updateCalls, vm.IsRecycled)
+	}
+	if vmClient.deleteCalls != 1 || len(taskRepo.updated) != 0 {
+		t.Fatalf("delete calls = %d, updated tasks = %v", vmClient.deleteCalls, taskRepo.updated)
+	}
+	if !r.recycleQueue.(*recycleQueueStub).removedContains(RecycleQueueKey, vm.ID) {
+		t.Fatal("recycle cleanup must continue when the remote environment is already absent")
+	}
+}
+
 func TestRecyclerRetriesCleanupWithoutDeletingRemoteAgain(t *testing.T) {
 	vm := &db.VirtualMachine{ID: "vm-cleanup-retry", UserID: uuid.New()}
 	r, hostRepo, _, vmClient := newStubRecycler(t, vm)

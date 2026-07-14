@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/coder/websocket"
 
@@ -36,6 +37,11 @@ func (v *virtualMachineClient) Delete(ctx context.Context, req *DeleteVirtualMac
 	}
 	_, err := request.Delete[any](v.client, ctx, "/internal/vm", request.WithQuery(q))
 	return err
+}
+
+// IsVirtualMachineNotFound 判断删除失败是否表示远端环境已经不存在。
+func IsVirtualMachineNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "environment not found:")
 }
 
 // List implements VirtualMachiner.

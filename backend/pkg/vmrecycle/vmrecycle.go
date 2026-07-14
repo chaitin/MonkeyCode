@@ -115,7 +115,7 @@ func (r *recycler) Recycle(ctx context.Context, vmID string) (Result, error) {
 			UserID: vm.UserID.String(),
 			HostID: vm.HostID,
 			ID:     vm.EnvironmentID,
-		}); err != nil {
+		}); err != nil && !taskflow.IsVirtualMachineNotFound(err) {
 			return result, fmt.Errorf("%w: delete vm %s: %w", ErrRemoteDelete, vmID, err)
 		}
 		if err := r.hostRepo.UpdateVirtualMachine(ctx, vmID, func(up *db.VirtualMachineUpdateOne) error {
