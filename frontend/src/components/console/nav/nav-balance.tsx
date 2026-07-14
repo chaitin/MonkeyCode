@@ -31,6 +31,8 @@ import { useNavigate } from "react-router-dom";
 import SubscriptionPlanDialog from "./subscription-plan-dialog";
 import { IS_OFFLINE_EDITION } from "@/utils/edition";
 import { useTranslation } from "react-i18next";
+import { useAppRuntime } from "@/components/app-runtime-provider";
+import { resetMatomoUser } from "@/lib/matomo";
 
 interface NavBalanceProps {
   variant?: "sidebar" | "header";
@@ -83,6 +85,7 @@ export default function NavBalance({
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const previousDialogOpenRef = useRef(false);
   const navigate = useNavigate()
+  const { reloadAuth } = useAppRuntime()
   const {
     balance,
     reloadSubscription,
@@ -115,6 +118,8 @@ export default function NavBalance({
   const handleLogout = () => {
     apiRequest("v1UsersLogoutCreate", {}, [], (resp) => {
       if (resp.code === 0) {
+        resetMatomoUser()
+        void reloadAuth()
         navigate("/")
       } else {
         toast.error(t("navBalance.toast.logoutFailed", { message: resp.message || t("navBalance.common.unknownError") }))

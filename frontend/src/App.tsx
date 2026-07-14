@@ -35,6 +35,7 @@ import SelfHostingPage from "./pages/self-hosting"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { SiteRegionPrompt } from "@/components/site-region-prompt"
+import { MatomoConsoleTracker } from "@/components/matomo-console-tracker"
 
 function TaskDetailRoute() {
   const { taskId } = useParams()
@@ -47,6 +48,7 @@ function App() {
       <TooltipProvider>
         <BrowserRouter>
           <ThemePathListener />
+          <MatomoConsoleTracker />
           <Routes>
             <Route path="/" element={IS_OFFLINE_EDITION ? <Navigate to="/login" replace /> : <WelcomePage />} />
             <Route path="/playground" element={<PlaygroundPage />} />

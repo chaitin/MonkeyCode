@@ -46,7 +46,7 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    
+
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-RQQN0BK11M"></script>
     <script>
@@ -56,32 +56,31 @@
 
       gtag('config', 'G-RQQN0BK11M');
     </script>
-<script>
-  var _paq = window._paq = window._paq || [];
-  _paq.push(["setDocumentTitle", document.domain + "/" + document.title]);
-  _paq.push(["setRequestMethod", "POST"]);
-  _paq.push(["setDomains", [
-    "showcase.monkeycode-ai.online",
-    "*.showcase.monkeycode-ai.online",
-    "monkeycode-ai.com",
-    "monkeycode-ai.net",
-  ]]);
-  _paq.push(["enableCrossDomainLinking"]);
-  _paq.push(["trackPageView"]);
-  _paq.push(["enableLinkTracking"]);
-  (function() {
-    var u = "//stats.monkeycode-ai.com/";
-    _paq.push(["setTrackerUrl", u + "statcall.php"]);
-    _paq.push(["setSiteId", "2"]);
+    <script>
+      var _paq = window._paq = window._paq || [];
+      _paq.push(["setDocumentTitle", location.hostname + "/" + document.title]);
+      _paq.push(["setRequestMethod", "POST"]);
+      _paq.push(["setDomains", [
+        "showcase.monkeycode-ai.online",
+        "*.showcase.monkeycode-ai.online",
+        "monkeycode-ai.com",
+        "monkeycode-ai.net",
+      ]]);
+      _paq.push(["enableCrossDomainLinking"]);
+      _paq.push(["enableLinkTracking"]);
+      (function() {
+        var u = "https://stats.monkeycode-ai.com/";
+        _paq.push(["setTrackerUrl", u + "statcall.php"]);
+        _paq.push(["setSiteId", "2"]);
+        _paq.push(["trackPageView"]);
 
-    var d = document;
-    var g = d.createElement("script");
-    var s = d.getElementsByTagName("script")[0];
-    g.async = true;
-    g.src = u + "statloader.js";
-    s.parentNode.insertBefore(g, s);
-  })();
-
-</script>
+        var d = document;
+        var g = d.createElement("script");
+        var s = d.getElementsByTagName("script")[0];
+        g.async = true;
+        g.src = u + "statloader.js";
+        s.parentNode.insertBefore(g, s);
+      })();
+    </script>
   </body>
 </html>

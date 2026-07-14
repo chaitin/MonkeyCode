@@ -52,7 +52,7 @@ export default function LoginPage({
   const [defaultOIDCConfig, setDefaultOIDCConfig] = React.useState<DomainTeamOIDCPublicConfigResp | null>(null)
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { serverConfig } = useAppRuntime()
+  const { reloadAuth, serverConfig } = useAppRuntime()
   const serverRegion = serverConfig?.region as string | undefined
   const isCnRegion = serverRegion === "cn"
   const isGlobalRegion = serverRegion === "global"
@@ -122,10 +122,11 @@ export default function LoginPage({
         email: userEmail.trim(),
         password: userPassword.trim(),
         captcha_token: token,
-      }, [], (resp) => {
+      }, [], async (resp) => {
         if (resp.code === 0) {
           localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ email: userEmail.trim(), password: userPassword.trim() }))
-          navigate('/console/')
+          await reloadAuth()
+          navigate('/console/tasks')
         } else {
           toast.error(t("login.toast.loginFailed"))
         }
@@ -144,7 +145,7 @@ export default function LoginPage({
 
     try {
       const response = await new Api().api.v1UsersOauthLoginDetail(provider, {
-        redirect_url: "/console/",
+        redirect_url: "/console/tasks",
       })
       const authUrl = response.data?.data?.auth_url
 
