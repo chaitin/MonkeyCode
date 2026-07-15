@@ -3922,6 +3922,8 @@ const cn = {
       forceDeliveryTooltip: "由管理员强制下发，无需选择",
       label: "技能",
       selectedCount: "{{count}} 个技能",
+      searchPlaceholder: "搜索 Skill 名称、描述或标签",
+      searchEmpty: "未找到匹配的 Skill",
     },
     plugin: {
       forceDelivery: "强制下发",

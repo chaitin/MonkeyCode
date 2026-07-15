@@ -2,13 +2,14 @@ import type { DomainSkillListItem } from "@/api/Api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { getSkillTagIcon } from "@/utils/common"
 import { defaultSkills } from "@/utils/config"
-import { IconChevronLeft, IconChevronRight, IconPuzzle } from "@tabler/icons-react"
+import { IconChevronLeft, IconChevronRight, IconPuzzle, IconSearch } from "@tabler/icons-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -121,6 +122,16 @@ export function TaskSkillSelector({
   const tabsListRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(skillTags.length > 1)
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase()
+  const searchedSkills = normalizedSearchQuery
+    ? skills.filter((skill) => [
+        skill.name || "",
+        skill.description || "",
+        ...(skill.tags || []),
+      ].some((value) => value.toLowerCase().includes(normalizedSearchQuery)))
+    : skills
 
   const updateScrollState = useCallback(() => {
     const tabsList = tabsListRef.current
@@ -146,6 +157,7 @@ export function TaskSkillSelector({
 
   useEffect(() => {
     if (!open) {
+      setSearchQuery("")
       return
     }
 
@@ -188,6 +200,17 @@ export function TaskSkillSelector({
           onValueChange={onActiveSkillTagChange}
           className="flex min-h-0 w-full flex-1 flex-col"
         >
+          <div className="relative mb-2">
+            <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={t("taskWorkflow.skill.searchPlaceholder")}
+              aria-label={t("taskWorkflow.skill.searchPlaceholder")}
+              className="h-11 pl-8 md:h-8"
+            />
+          </div>
           <div className="flex items-center gap-1">
             <Button
               type="button"
@@ -226,25 +249,34 @@ export function TaskSkillSelector({
               <IconChevronRight className="size-4" />
             </Button>
           </div>
-          {skillTags.map((tag) => (
-            <TabsContent
-              key={tag}
-              value={tag}
-              className="mt-0 min-h-0 flex-1 overflow-y-auto rounded-md border bg-background p-1"
-            >
-              {skills
-                .filter((skill) => !skill.is_force_delivery)
-                .filter((skill) => tag === ALL_SKILLS_TAG || (skill.tags || []).includes(tag))
-                .map((skill) => (
-                  <SkillItem
-                    key={skill.id}
-                    skill={skill}
-                    selectedSkills={selectedSkills}
-                    onSkillChange={onSkillChange}
-                  />
-                ))}
-            </TabsContent>
-          ))}
+          {skillTags.map((tag) => {
+            const visibleSkills = searchedSkills
+              .filter((skill) => !skill.is_force_delivery)
+              .filter((skill) => tag === ALL_SKILLS_TAG || (skill.tags || []).includes(tag))
+
+            return (
+              <TabsContent
+                key={tag}
+                value={tag}
+                className="mt-0 min-h-0 flex-1 overflow-y-auto rounded-md border bg-background p-1"
+              >
+                {visibleSkills.length > 0 ? (
+                  visibleSkills.map((skill) => (
+                    <SkillItem
+                      key={skill.id}
+                      skill={skill}
+                      selectedSkills={selectedSkills}
+                      onSkillChange={onSkillChange}
+                    />
+                  ))
+                ) : (
+                  <div role="status" className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    {t("taskWorkflow.skill.searchEmpty")}
+                  </div>
+                )}
+              </TabsContent>
+            )
+          })}
         </Tabs>
       </PopoverContent>
     </Popover>
