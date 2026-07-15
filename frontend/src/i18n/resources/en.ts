@@ -3922,6 +3922,9 @@ const en = {
       forceDeliveryTooltip: "Required by an administrator; no selection needed",
       label: "Skills",
       selectedCount: "{{count}} skills",
+      searchPlaceholder: "Search Skill names, descriptions, or tags",
+      searchClear: "Clear search",
+      searchEmpty: "No matching Skills found",
     },
     plugin: {
       forceDelivery: "Required",
