@@ -14,6 +14,23 @@ import { useTranslation } from "react-i18next"
 
 export const ALL_SKILLS_TAG = "__all__"
 
+const DOM_DELTA_LINE = 1
+const DOM_DELTA_PAGE = 2
+const WHEEL_LINE_HEIGHT = 16
+const ACTIVE_SKILL_LIST_SELECTOR = '[role="tabpanel"][data-state="active"]'
+
+function getWheelScrollDelta(deltaY: number, deltaMode: number, pageHeight: number) {
+  if (deltaMode === DOM_DELTA_LINE) {
+    return deltaY * WHEEL_LINE_HEIGHT
+  }
+
+  if (deltaMode === DOM_DELTA_PAGE) {
+    return deltaY * pageHeight
+  }
+
+  return deltaY
+}
+
 type DomainSkill = DomainSkillListItem & { tags?: string[] }
 
 /**
@@ -27,6 +44,7 @@ type DomainSkill = DomainSkillListItem & { tags?: string[] }
 type SkillForPicker = DomainSkill & { is_force_delivery?: boolean }
 
 interface TaskSkillSelectorProps {
+  enableWheelScrollFallback?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedSkills: string[]
@@ -106,6 +124,7 @@ function SkillItem({ skill, selectedSkills, onSkillChange }: SkillItemProps) {
 }
 
 export function TaskSkillSelector({
+  enableWheelScrollFallback,
   open,
   onOpenChange,
   selectedSkills,
@@ -119,6 +138,7 @@ export function TaskSkillSelector({
 }: TaskSkillSelectorProps) {
   const { t } = useTranslation()
   const tabsListRef = useRef<HTMLDivElement>(null)
+  const [popoverContentElement, setPopoverContentElement] = useState<HTMLDivElement | null>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(skillTags.length > 1)
 
@@ -160,6 +180,39 @@ export function TaskSkillSelector({
     return () => window.removeEventListener("resize", updateScrollState)
   }, [updateScrollState])
 
+  useEffect(() => {
+    if (!enableWheelScrollFallback || !open || !popoverContentElement) {
+      return
+    }
+
+    const handleSkillListWheel = (event: WheelEvent) => {
+      if (
+        event.ctrlKey ||
+        event.deltaY === 0 ||
+        Math.abs(event.deltaY) <= Math.abs(event.deltaX) ||
+        !(event.target instanceof Element)
+      ) {
+        return
+      }
+
+      const activeSkillList = event.target.closest<HTMLDivElement>(ACTIVE_SKILL_LIST_SELECTOR)
+      if (!activeSkillList || !popoverContentElement.contains(activeSkillList)) {
+        return
+      }
+
+      event.preventDefault()
+      activeSkillList.scrollTop += getWheelScrollDelta(
+        event.deltaY,
+        event.deltaMode,
+        activeSkillList.clientHeight
+      )
+    }
+
+    popoverContentElement.addEventListener("wheel", handleSkillListWheel, { passive: false })
+
+    return () => popoverContentElement.removeEventListener("wheel", handleSkillListWheel)
+  }, [enableWheelScrollFallback, open, popoverContentElement])
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -180,6 +233,7 @@ export function TaskSkillSelector({
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        ref={setPopoverContentElement}
         className="flex max-h-[min(24rem,var(--radix-popover-content-available-height))] w-[90vw] max-w-xl flex-col overflow-hidden p-2"
         align="start"
       >
