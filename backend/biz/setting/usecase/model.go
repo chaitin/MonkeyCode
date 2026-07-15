@@ -193,7 +193,8 @@ func (u *modelUsecase) CheckByConfig(ctx context.Context, req *domain.CheckByCon
 func (u *modelUsecase) GetProviderModelList(ctx context.Context, req *domain.GetProviderModelListReq) (*domain.GetProviderModelListResp, error) {
 	switch req.Provider {
 	case consts.ModelProviderAzureOpenAI,
-		consts.ModelProviderVolcengine:
+		consts.ModelProviderVolcengine,
+		consts.ModelProviderMiniMax:
 		return &domain.GetProviderModelListResp{
 			Models: domain.ModelProviderBrandModelsList[req.Provider],
 		}, nil
