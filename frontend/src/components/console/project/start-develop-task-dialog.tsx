@@ -454,6 +454,7 @@ export default function StartDevelopTaskDialog({
               <div className="space-y-2">
                 <Label>{t("taskWorkflow.skill.label")}</Label>
                 <TaskSkillSelector
+                  enableWheelScrollFallback
                   open={skillPopoverOpen}
                   onOpenChange={setSkillPopoverOpen}
                   selectedSkills={selectedSkill}

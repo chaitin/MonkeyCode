@@ -573,6 +573,7 @@ export default function CreateDefaultTaskDialog({
             </DropdownMenu>
 
             <TaskSkillSelector
+              enableWheelScrollFallback
               open={skillPopoverOpen}
               onOpenChange={setSkillPopoverOpen}
               selectedSkills={selectedSkill}
