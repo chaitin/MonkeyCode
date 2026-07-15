@@ -3923,6 +3923,7 @@ const cn = {
       label: "技能",
       selectedCount: "{{count}} 个技能",
       searchPlaceholder: "搜索 Skill 名称、描述或标签",
+      searchClear: "清空搜索",
       searchEmpty: "未找到匹配的 Skill",
     },
     plugin: {

@@ -3923,6 +3923,7 @@ const en = {
       label: "Skills",
       selectedCount: "{{count}} skills",
       searchPlaceholder: "Search Skill names, descriptions, or tags",
+      searchClear: "Clear search",
       searchEmpty: "No matching Skills found",
     },
     plugin: {

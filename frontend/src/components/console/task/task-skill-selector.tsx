@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 import { getSkillTagIcon } from "@/utils/common"
 import { defaultSkills } from "@/utils/config"
-import { IconChevronLeft, IconChevronRight, IconPuzzle, IconSearch } from "@tabler/icons-react"
+import { IconChevronLeft, IconChevronRight, IconPuzzle, IconSearch, IconX } from "@tabler/icons-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -203,13 +203,25 @@ export function TaskSkillSelector({
           <div className="relative mb-2">
             <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              type="search"
+              type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={t("taskWorkflow.skill.searchPlaceholder")}
               aria-label={t("taskWorkflow.skill.searchPlaceholder")}
-              className="h-11 pl-8 md:h-8"
+              className="h-11 pr-8 pl-8 md:h-8"
             />
+            {searchQuery && (
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="absolute top-1/2 right-1.5 h-6 w-6 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                aria-label={t("taskWorkflow.skill.searchClear")}
+                onClick={() => setSearchQuery("")}
+              >
+                <IconX className="size-3.5" />
+              </Button>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <Button
