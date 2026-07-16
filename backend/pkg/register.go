@@ -34,6 +34,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
+	"github.com/chaitin/MonkeyCode/backend/pkg/telemetry"
 	"github.com/chaitin/MonkeyCode/backend/pkg/vmrecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
@@ -61,10 +62,12 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 
 	// Web
 	if len(w) > 0 && w[0] != nil {
+		w[0].Echo().Pre(telemetry.SanitizeIncomingTrace)
 		do.ProvideValue(i, w[0])
 	} else {
 		do.Provide(i, func(i *do.Injector) (*web.Web, error) {
 			w := web.New()
+			w.Echo().Pre(telemetry.SanitizeIncomingTrace)
 			return w, nil
 		})
 	}

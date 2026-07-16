@@ -26,6 +26,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/telemetry"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
@@ -115,8 +116,9 @@ type VMActivityReq struct {
 
 // ReportHostInfo 上报宿主机信息
 func (h *InternalHostHandler) ReportHostInfo(c *web.Context, host taskflow.Host) error {
-	if err := h.repo.UpsertHost(context.Background(), &host); err != nil {
-		h.logger.ErrorContext(context.Background(), "upsert host failed", "error", err)
+	ctx := c.Request().Context()
+	if err := h.repo.UpsertHost(ctx, &host); err != nil {
+		h.logger.ErrorContext(ctx, "upsert host failed", "error", err)
 		return err
 	}
 	return c.Success(nil)
@@ -124,8 +126,9 @@ func (h *InternalHostHandler) ReportHostInfo(c *web.Context, host taskflow.Host)
 
 // ReportVirtualMachine 上报虚拟机信息
 func (h *InternalHostHandler) ReportVirtualMachine(c *web.Context, vm taskflow.VirtualMachine) error {
-	if err := h.repo.UpsertVirtualMachine(context.Background(), &vm); err != nil {
-		h.logger.ErrorContext(context.Background(), "upsert virtual machine failed", "error", err)
+	ctx := telemetry.WithVMID(c.Request().Context(), vm.ID)
+	if err := h.repo.UpsertVirtualMachine(ctx, &vm); err != nil {
+		h.logger.ErrorContext(ctx, "upsert virtual machine failed", "error", err)
 		return err
 	}
 	return c.Success(nil)
@@ -139,7 +142,7 @@ func (h *InternalHostHandler) VMActivity(c *web.Context, req VMActivityReq) erro
 		return errors.New("last_active_at is required")
 	}
 
-	ctx := c.Request().Context()
+	ctx := telemetry.WithVMID(c.Request().Context(), req.VMID)
 	activeAt := time.Unix(req.LastActiveAt, 0)
 	if now := time.Now(); activeAt.After(now) {
 		h.logger.WarnContext(ctx, "vm activity timestamp is in the future", "vm_id", req.VMID, "last_active_at", req.LastActiveAt)
@@ -162,14 +165,15 @@ func (h *InternalHostHandler) VMActivity(c *web.Context, req VMActivityReq) erro
 
 // ListLLM 列出虚拟机关联的 LLM
 func (h *InternalHostHandler) ListLLM(c *web.Context, req taskflow.ListLLMReq) error {
-	vm, err := h.repo.GetVirtualMachine(c.Request().Context(), req.VmID)
+	ctx := telemetry.WithVMID(c.Request().Context(), req.VmID)
+	vm, err := h.repo.GetVirtualMachine(ctx, req.VmID)
 	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "get virtual machine failed", "error", err)
+		h.logger.ErrorContext(ctx, "get virtual machine failed", "error", err)
 		return err
 	}
 
 	if vm.HostID != req.HostID {
-		h.logger.ErrorContext(c.Request().Context(), "host id mismatch", "vm_host_id", vm.HostID, "req_host_id", req.HostID)
+		h.logger.ErrorContext(ctx, "host id mismatch", "vm_host_id", vm.HostID, "req_host_id", req.HostID)
 		return errors.New("host id mismatch")
 	}
 
@@ -256,14 +260,19 @@ func (h *InternalHostHandler) CheckToken(c *web.Context, req taskflow.CheckToken
 		h.logCheckTokenError(c.Request().Context(), logger, err)
 		return err
 	}
+	ctx := c.Request().Context()
+	ctx = telemetry.WithTaskID(ctx, tk.TaskID.String())
+	ctx = telemetry.WithVMID(ctx, tk.Token)
+	ctx = telemetry.WithAgentSessionID(ctx, tk.SessionID)
 
-	logger.With("kind", tk.Kind, "vm_id", tk.Token).DebugContext(c.Request().Context(), "check token success")
+	logger.With("kind", tk.Kind, "vm_id", tk.Token).DebugContext(ctx, "check token success")
 
 	return c.Success(tk)
 }
 
 func (h *InternalHostHandler) GetTaskLogStore(c *web.Context, req taskflow.GetTaskLogStoreReq) error {
-	store, err := h.taskRepo.GetLogStore(c.Request().Context(), req.TaskID)
+	ctx := telemetry.WithTaskID(c.Request().Context(), req.TaskID.String())
+	store, err := h.taskRepo.GetLogStore(ctx, req.TaskID)
 	if err != nil {
 		return err
 	}
@@ -429,24 +438,26 @@ return nil
 
 // VmReady VM 就绪回调
 func (h *InternalHostHandler) VmReady(c *web.Context, req taskflow.VirtualMachine) error {
-	h.logger.With("req", req).DebugContext(c.Request().Context(), "recv vm ready req")
+	ctx := telemetry.WithVMID(c.Request().Context(), req.ID)
+	h.logger.With("req", req).DebugContext(ctx, "recv vm ready req")
 
-	vm, err := h.repo.GetVirtualMachine(c.Request().Context(), req.ID)
+	vm, err := h.repo.GetVirtualMachine(ctx, req.ID)
 	if err != nil {
 		return err
 	}
 
 	for _, t := range vm.Edges.Tasks {
-		h.logger.With("task", t).DebugContext(c.Request().Context(), "vm-ready")
+		taskCtx := telemetry.WithTaskID(ctx, t.ID.String())
+		h.logger.With("task", t).DebugContext(taskCtx, "vm-ready")
 		if t.Status == consts.TaskStatusProcessing {
 			continue
 		}
 
-		if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusProcessing, lifecycle.TaskMetadata{
+		if err := h.taskLifecycle.Transition(taskCtx, t.ID, consts.TaskStatusProcessing, lifecycle.TaskMetadata{
 			TaskID: t.ID,
 			UserID: t.UserID,
 		}); err != nil {
-			h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
+			h.logger.With("task", t, "error", err).ErrorContext(taskCtx, "failed to transition task to processing")
 		}
 	}
 
@@ -504,7 +515,8 @@ func (h *InternalHostHandler) VmConditions(c *web.Context, req taskflow.VirtualM
 
 // GitCredential 获取 git 凭证
 func (h *InternalHostHandler) GitCredential(c *web.Context, req taskflow.GitCredentialRequest) error {
-	ctx := c.Request().Context()
+	ctx := telemetry.WithTaskID(c.Request().Context(), req.TaskID)
+	ctx = telemetry.WithVMID(ctx, req.VMID)
 	logger := h.logger.With("fn", "GitCredential", "task_id", req.TaskID, "vm_id", req.VMID)
 
 	// 1. 有 task_id 时按任务链路取 token
@@ -561,6 +573,8 @@ func (h *InternalHostHandler) GitCredential(c *web.Context, req taskflow.GitCred
 
 // GetTaskStreamIPs 获取任务 WebSocket 连接的客户端 IP
 func (h *InternalHostHandler) GetTaskStreamIPs(c *web.Context, req taskflow.GetTaskStreamIPsReq) error {
+	ctx := telemetry.WithTaskID(c.Request().Context(), req.TaskID)
+	c.SetRequest(c.Request().WithContext(ctx))
 	var ips []string
 	if wsConn, ok := h.taskConns.Get(req.TaskID); ok {
 		addr := wsConn.RemoteAddr()
