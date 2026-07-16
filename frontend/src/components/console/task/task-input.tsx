@@ -51,13 +51,15 @@ function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
 
 interface TaskInputProps {
   repos: string[];
+  /** Initial task content (e.g. the Open Design #od-task= handoff prompt); applied on first mount only. */
+  initialContent?: string;
   onTaskCreated: () => void;
 }
 
-export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
+export function TaskInput({ repos, initialContent, onTaskCreated }: TaskInputProps) {
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const [taskContent, setTaskContent] = useState<string>("");
+  const [taskContent, setTaskContent] = useState<string>(() => initialContent ?? "");
   const taskType = ConstsTaskType.TaskTypeDevelop;
   const [skillPopoverOpen, setSkillPopoverOpen] = useState<boolean>(false);
   const [searchInput, setSearchInput] = useState<string>("");

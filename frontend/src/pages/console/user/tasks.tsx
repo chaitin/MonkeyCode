@@ -25,6 +25,7 @@ import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCommonData } from "@/components/console/data-provider";
+import { confirmOdTaskConsumed, takeOdTaskContent } from "@/utils/od-task-import";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
@@ -45,6 +46,12 @@ export default function TasksPage() {
   const [stopping, setStopping] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const loadingRef = useRef(false)
+  // Open Design handoff: od-web carries the prompt in the #od-task= fragment.
+  // takeOdTaskContent() decodes it (persisting to sessionStorage and stripping
+  // the URL on the spot, so the value survives a 401 → /login round trip and
+  // pre-fills again on the post-login mount); the persisted copy is dropped
+  // after the first successful list fetch proves the user is signed in.
+  const [importedTaskContent] = useState<string | null>(() => takeOdTaskContent())
 
   const handleConfirmDeleteTask = () => {
     if (!taskToDelete?.id) {
@@ -135,6 +142,7 @@ export default function TasksPage() {
     }
     apiRequest('v1UsersTasksList', { page: pageNum, size: PAGE_SIZE }, [], (resp) => {
       if (resp.code === 0) {
+        confirmOdTaskConsumed()
         const newTasks = resp.data?.tasks || []
         setTasks(prev => append ? [...prev, ...newTasks] : newTasks)
         setHasMore(newTasks.length >= PAGE_SIZE)
@@ -191,7 +199,7 @@ export default function TasksPage() {
     <div className="flex flex-col flex-1 items-center">
       <h1 className="text-4xl pt-30 pb-10">{t("consoleTasks.title")}</h1>
       <div className="max-w-[800px] w-full py-10">
-        <TaskInput repos={repos} onTaskCreated={() => { setPage(1); setHasMore(true); fetchTasks(1, false); reloadProjects(); reloadUnlinkedTasks(); }} />
+        <TaskInput repos={repos} initialContent={importedTaskContent ?? undefined} onTaskCreated={() => { setPage(1); setHasMore(true); fetchTasks(1, false); reloadProjects(); reloadUnlinkedTasks(); }} />
       </div>
       <Separator className="my-4"/>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] gap-4 w-full">
