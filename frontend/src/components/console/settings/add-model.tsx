@@ -17,17 +17,16 @@ import { ConstsInterfaceType } from "@/api/Api"
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Spinner } from "@/components/ui/spinner"
 import { CircleQuestionMark } from 'lucide-react'
-import { getModelDisplayName, modelProviderList } from "@/utils/common"
+import { modelProviderList } from "@/utils/common"
 import { useTranslation } from "react-i18next"
+import { ProviderModelCombobox } from "./provider-model-combobox"
 
 interface AddModelProps {
   open: boolean
@@ -250,37 +249,6 @@ export default function AddModel({
     }
   }
 
-  // Group and sort provider model options.
-  const getGroupedModels = () => {
-    const groups: Record<string, DomainProviderModelListItem[]> = {}
-    
-    modelList.forEach((item) => {
-      const modelName = item.model || ""
-      const parts = modelName.split("-")
-      const groupKey = parts.length > 0 ? parts[0] : t("consoleSettings.models.fallback.other")
-      
-      if (!groups[groupKey]) {
-        groups[groupKey] = []
-      }
-      groups[groupKey].push(item)
-    })
-    
-    // Sort each group by model id.
-    Object.keys(groups).forEach((key) => {
-      groups[key].sort((a, b) => {
-        const aName = a.model || ""
-        const bName = b.model || ""
-        return aName.localeCompare(bName)
-      })
-    })
-    
-    // Sort group names.
-    const sortedGroupKeys = Object.keys(groups).sort()
-    
-    return { groups, sortedGroupKeys }
-  }
-
-
   return (
     <Dialog
       open={open}
@@ -380,52 +348,18 @@ export default function AddModel({
                   </FieldDescription>
                 </>
               ) : (
-                <Select
+                <ProviderModelCombobox
                   value={model}
-                  onValueChange={setModel}
-                  onOpenChange={(open) => {
-                    if (open && apiToken.trim() && !loadingModels) {
-                      fetchModelList()
+                  models={modelList}
+                  loading={loadingModels}
+                  disabled={!apiToken.trim()}
+                  onOpen={() => {
+                    if (apiToken.trim() && !loadingModels) {
+                      void fetchModelList()
                     }
                   }}
-                  disabled={loadingModels || !apiToken.trim()}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={loadingModels ? t("consoleSettings.models.loadingShort") : model || t("consoleSettings.models.placeholders.selectModel")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {loadingModels ? (
-                      <div className="flex items-center justify-center py-4">
-                        <Spinner />
-                        <span className="ml-2 text-sm text-muted-foreground">{t("consoleSettings.models.loadingModels")}</span>
-                      </div>
-                    ) : modelList.length > 0 ? (() => {
-                      const { groups, sortedGroupKeys } = getGroupedModels()
-                      return (
-                        <>
-                          {sortedGroupKeys.map((groupKey) => (
-                            <SelectGroup key={groupKey}>
-                              <SelectLabel>{groupKey}</SelectLabel>
-                              {groups[groupKey].map((item, index) => (
-                                <SelectItem key={`${groupKey}-${index}`} value={item.model || ""}>
-                                  {getModelDisplayName(item.model)}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          ))}
-                        </>
-                      )
-                    })() : model ? (
-                      <SelectItem value={model}>
-                        {model}
-                      </SelectItem>
-                    ) : (
-                      <div className="py-4 text-center text-sm text-muted-foreground">
-                        {apiToken.trim() ? t("consoleSettings.models.emptyProviderModels") : t("consoleSettings.models.apiTokenFirst")}
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
+                  onValueChange={setModel}
+                />
               )}
             </FieldContent>
           </Field>

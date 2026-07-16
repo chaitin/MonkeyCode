@@ -1092,6 +1092,8 @@ const en = {
       loadingModels: "Loading models...",
       empty: "No configuration yet. Bind a model first.",
       emptyProviderModels: "No available models",
+      noSearchResults: "No matching models",
+      selected: "Selected",
       apiTokenFirst: "Enter an API Token first",
       fallback: {
         unknownModel: "Unknown model",
@@ -1132,6 +1134,7 @@ const en = {
         apiToken: "Enter API Token",
         modelName: "Enter model name matching the provider API",
         selectModel: "Select model",
+        searchModel: "Search model ID",
         remark: "Enter remark (optional)",
         contextLimit: "Enter context length",
         outputLimit: "Enter output length",
