@@ -1092,6 +1092,8 @@ const cn = {
       loadingModels: "加载模型中...",
       empty: "暂无配置，请先绑定模型",
       emptyProviderModels: "暂无可用模型",
+      noSearchResults: "未找到匹配的模型",
+      selected: "已选择",
       apiTokenFirst: "请先输入 API Token",
       fallback: {
         unknownModel: "未知模型",
@@ -1132,6 +1134,7 @@ const cn = {
         apiToken: "请输入 API Token",
         modelName: "请输入模型名称（与服务商 API 一致）",
         selectModel: "请选择模型",
+        searchModel: "搜索模型 ID",
         remark: "请输入备注（选填）",
         contextLimit: "请输入上下文长度",
         outputLimit: "请输入输出长度",
