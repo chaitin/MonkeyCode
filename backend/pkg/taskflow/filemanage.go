@@ -12,6 +12,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/chaitin/MonkeyCode/backend/pkg/request"
+	"github.com/chaitin/MonkeyCode/backend/pkg/telemetry"
 )
 
 type fileManageClient struct {
@@ -57,7 +58,7 @@ func (f *fileManageClient) Download(ctx context.Context, req FileReq, fn func(ui
 	values.Add("path", req.Path)
 	u.RawQuery = values.Encode()
 
-	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{})
+	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: telemetry.TraceHeader(ctx)})
 	if err != nil {
 		return err
 	}
@@ -130,7 +131,7 @@ func (f *fileManageClient) Upload(ctx context.Context, req FileReq, data <-chan 
 	values.Add("path", req.Path)
 	u.RawQuery = values.Encode()
 
-	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{})
+	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: telemetry.TraceHeader(ctx)})
 	if err != nil {
 		return err
 	}

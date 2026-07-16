@@ -15,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg"
 	"github.com/chaitin/MonkeyCode/backend/pkg/service"
 	"github.com/chaitin/MonkeyCode/backend/pkg/store"
+	"github.com/chaitin/MonkeyCode/backend/pkg/telemetry"
 )
 
 func main() {
@@ -39,6 +40,19 @@ func main() {
 
 	l := do.MustInvoke[*slog.Logger](injector)
 	l.With("config", cfg).Debug("print config")
+	w := do.MustInvoke[*web.Web](injector)
+	shutdownTelemetry, err := telemetry.Setup(context.Background(), cfg.Telemetry)
+	if err != nil {
+		l.Warn("failed to setup telemetry, tracing disabled", "error", err)
+		shutdownTelemetry = func(context.Context) error { return nil }
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTelemetry(ctx); err != nil {
+			l.Warn("failed to shutdown telemetry", "error", err)
+		}
+	}()
 
 	// 运行数据库迁移
 	if err := store.MigrateSQL(cfg, l); err != nil {
@@ -53,7 +67,6 @@ func main() {
 	biz.InvokeOpenSource(injector)
 
 	// 获取 web 实例并启动服务
-	w := do.MustInvoke[*web.Web](injector)
 	w.PrintRoutes()
 	svc := service.NewService(
 		service.WithPprof(),

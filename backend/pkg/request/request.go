@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Client HTTP 客户端
@@ -53,9 +54,14 @@ func NewClient(scheme string, host string, timeout time.Duration, opts ...ReqOpt
 		opt(req)
 	}
 
+	transport := req.client.Transport
 	if req.tr != nil {
-		req.client.Transport = req.tr
+		transport = req.tr
 	}
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	req.client.Transport = otelhttp.NewTransport(transport)
 
 	return req
 }
@@ -203,7 +209,7 @@ func PostURL[T any](ctx context.Context, rawURL string, body any, opts ...Opt) (
 		req.Header.Set(k, v)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := otelhttp.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
