@@ -2,12 +2,20 @@ package usecase
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
 	"github.com/chaitin/MonkeyCode/backend/domain"
 )
+
+func TestUnconfiguredUserMCPSyncClientReturnsError(t *testing.T) {
+	err := (&unconfiguredUserMCPSyncClient{}).SyncUpstream(context.Background(), uuid.New())
+	if err == nil || !strings.Contains(err.Error(), "not configured") {
+		t.Fatalf("SyncUpstream() error = %v, want configuration error", err)
+	}
+}
 
 func TestCreatePrivateMCPUpstream(t *testing.T) {
 	repo := &userMCPRepoStub{}
