@@ -16,6 +16,7 @@ type upstreamRepo interface {
 	Get(ctx context.Context, id uuid.UUID) (*repo.UpstreamConfig, error)
 	MarkSyncSuccess(ctx context.Context, id uuid.UUID) error
 	MarkSyncFailed(ctx context.Context, id uuid.UUID) error
+	MarkHealthStatus(ctx context.Context, id uuid.UUID, healthy bool) error
 }
 
 type toolRepo interface {
@@ -54,6 +55,11 @@ func (s *Service) Sync(ctx context.Context, upstreamID uuid.UUID) error {
 
 	tools, err := s.client.ListTools(ctx, upstream)
 	if err != nil {
+		_ = s.upstreams.MarkHealthStatus(ctx, upstreamID, false)
+		_ = s.upstreams.MarkSyncFailed(ctx, upstreamID)
+		return err
+	}
+	if err := s.upstreams.MarkHealthStatus(ctx, upstreamID, true); err != nil {
 		_ = s.upstreams.MarkSyncFailed(ctx, upstreamID)
 		return err
 	}
