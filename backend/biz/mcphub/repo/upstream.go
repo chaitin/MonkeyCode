@@ -93,6 +93,20 @@ func (r *UpstreamRepo) MarkSyncFailed(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (r *UpstreamRepo) MarkHealthStatus(ctx context.Context, id uuid.UUID, healthy bool) error {
+	status := "unhealthy"
+	if healthy {
+		status = "healthy"
+	}
+	if err := r.db.MCPUpstream.UpdateOneID(id).
+		SetHealthStatus(status).
+		SetHealthCheckedAt(time.Now()).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("mark upstream %s health status: %w", id, err)
+	}
+	return nil
+}
+
 func IsUpstreamNotFound(err error) bool {
 	return errors.Is(err, ErrUpstreamNotFound)
 }
