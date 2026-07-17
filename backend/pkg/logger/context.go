@@ -3,6 +3,8 @@ package logger
 import (
 	"context"
 	"log/slog"
+
+	"github.com/chaitin/MonkeyCode/backend/pkg/telemetry"
 )
 
 type contextKey string
@@ -38,6 +40,7 @@ func (c *ContextLogger) Handle(ctx context.Context, r slog.Record) error {
 	if i, ok := ctx.Value(UserIDKey).(string); ok {
 		newRecord.AddAttrs(slog.String("user_id", i))
 	}
+	newRecord.AddAttrs(telemetry.LogAttrs(ctx)...)
 
 	return c.Handler.Handle(ctx, newRecord)
 }

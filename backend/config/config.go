@@ -9,6 +9,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
+	"github.com/chaitin/MonkeyCode/backend/pkg/telemetry"
 )
 
 type Config struct {
@@ -41,10 +42,11 @@ type Config struct {
 		RequestLogPath       string `mapstructure:"request_log_path"`
 	} `mapstructure:"llm_proxy"`
 
-	RootPath   string        `mapstructure:"root_path"`
-	Logger     logger.Config `mapstructure:"logger"`
-	AdminToken string        `mapstructure:"admin_token"`
-	Proxies    []string      `mapstructure:"proxies"`
+	RootPath   string           `mapstructure:"root_path"`
+	Logger     logger.Config    `mapstructure:"logger"`
+	Telemetry  telemetry.Config `mapstructure:"telemetry"`
+	AdminToken string           `mapstructure:"admin_token"`
+	Proxies    []string         `mapstructure:"proxies"`
 
 	TaskFlow      TaskFlow            `mapstructure:"taskflow"`
 	MCPHub        MCPHub              `mapstructure:"mcp_hub"`
@@ -344,6 +346,12 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("database.conn_max_lifetime", 30)
 	v.SetDefault("root_path", "/app")
 	v.SetDefault("logger.level", "info")
+	v.SetDefault("telemetry.enabled", false)
+	v.SetDefault("telemetry.endpoint", "")
+	v.SetDefault("telemetry.insecure", true)
+	v.SetDefault("telemetry.service_name", "monkeycode-backend")
+	v.SetDefault("telemetry.service_version", "")
+	v.SetDefault("telemetry.environment", "")
 	v.SetDefault("session.expire_day", 30)
 	v.SetDefault("smtp.host", "")
 	v.SetDefault("smtp.port", 587)
