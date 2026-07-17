@@ -35,7 +35,7 @@ func NewUserMCPSyncClient(i *do.Injector) (domain.UserMCPSyncClient, error) {
 	cfg := do.MustInvoke[*config.Config](i)
 	logger := do.MustInvoke[*slog.Logger](i).With("module", "usecase.UserMCPSyncClient")
 	if strings.TrimSpace(cfg.MCPHub.URL) == "" || strings.TrimSpace(cfg.MCPHub.Token) == "" {
-		return &noopUserMCPSyncClient{logger: logger}, nil
+		return &unconfiguredUserMCPSyncClient{}, nil
 	}
 	return &httpUserMCPSyncClient{
 		baseURL: cfg.MCPHub.URL,
@@ -125,12 +125,10 @@ func (u *userMCPUsecase) UpdateToolSetting(ctx context.Context, uid, toolID uuid
 	return u.repo.UpsertToolSetting(ctx, uid, toolID, enabled)
 }
 
-type noopUserMCPSyncClient struct {
-	logger *slog.Logger
-}
+type unconfiguredUserMCPSyncClient struct{}
 
-func (c *noopUserMCPSyncClient) SyncUpstream(context.Context, uuid.UUID) error {
-	return nil
+func (c *unconfiguredUserMCPSyncClient) SyncUpstream(context.Context, uuid.UUID) error {
+	return fmt.Errorf("mcp hub sync is not configured")
 }
 
 type httpUserMCPSyncClient struct {
