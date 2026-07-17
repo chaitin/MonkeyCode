@@ -4072,6 +4072,17 @@ const cn = {
         description: "消息以 / 开头，会被系统识别成内部指令。",
         confirm: "确认发送",
       },
+      longContent: {
+        title: "内容超出长度限制",
+        description: "当前内容共 {{count}} 字，可转为 TXT 附件后继续补充说明。",
+        filename: "文件名：{{filename}}",
+        fileLimit: "单个附件最大 {{size}}",
+        convert: "转为 TXT 附件",
+        manualConvert: "转为 TXT",
+        converting: "正在转换并上传...",
+        convertFailed: "TXT 附件生成失败，请重试",
+        addDescription: "TXT 附件已生成，请补充说明后发送",
+      },
       toast: {
         autoSendFailed: "等待发送失败，请手动重试",
         maxFiles: "最多只能上传 {{count}} 个文件",

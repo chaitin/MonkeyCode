@@ -4072,6 +4072,17 @@ const en = {
         description: "Messages that start with / are treated as internal commands.",
         confirm: "Send anyway",
       },
+      longContent: {
+        title: "Content exceeds the length limit",
+        description: "This content contains {{count}} characters. Convert it to a TXT attachment, then add a message.",
+        filename: "File name: {{filename}}",
+        fileLimit: "Maximum attachment size: {{size}}",
+        convert: "Convert to TXT attachment",
+        manualConvert: "Convert to TXT",
+        converting: "Converting and uploading...",
+        convertFailed: "Failed to create the TXT attachment. Please retry.",
+        addDescription: "TXT attachment created. Add a message before sending.",
+      },
       toast: {
         autoSendFailed: "Queued send failed. Please retry manually.",
         maxFiles: "You can upload up to {{count}} files",
