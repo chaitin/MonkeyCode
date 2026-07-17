@@ -1,6 +1,6 @@
 import { useState, useRef } from "react"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
-import { IconCommand, IconDots, IconLoader, IconPalette, IconReload, IconTrash, IconSend, IconSparkles, IconTerminal2, IconUpload } from "@tabler/icons-react"
+import { IconCommand, IconDots, IconFileText, IconLoader, IconPalette, IconReload, IconTrash, IconSend, IconSparkles, IconTerminal2, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { isCompressibleImageFile, MAX_TASK_UPLOAD_FILE_SIZE_BYTES, MAX_TASK_UPLOAD_FILE_SIZE_LABEL, TaskFileUploadDialog, TaskUploadedFileItem, type TaskUploadedFile } from "./task-file-upload"
+import { isCompressibleImageFile, MAX_TASK_UPLOAD_FILE_SIZE_BYTES, MAX_TASK_UPLOAD_FILE_SIZE_LABEL, TaskFileUploadDialog, TaskUploadedFileItem, TaskUploadFileTooLargeError, uploadTaskFile, type TaskUploadedFile } from "./task-file-upload"
 import { toast } from "sonner"
 import { TaskWhiteboardDialog } from "./task-whiteboard-dialog"
 import { TaskAttachmentPreviewDialog } from "./task-attachment-preview-dialog"
@@ -28,6 +28,8 @@ import {
   TASK_QUICK_INPUT_STORAGE_KEY,
   type TaskQuickInputItem,
 } from "./task-quick-inputs"
+import { createLongContentFileName, createLongContentTextFile, hasCrossedTaskContentLimit } from "./task-long-content"
+import { TaskLongContentDialog } from "./task-long-content-dialog"
 
 const MAX_UPLOADED_FILES = 3
 const TASK_INPUT_DRAFT_STORAGE_PREFIX = "task-chat-input-draft"
@@ -45,6 +47,11 @@ interface QueuedTaskInput {
   content: string
   uploadedFiles: TaskUploadedFile[]
   nextAttachmentFileIndex: number
+}
+
+interface LongContentConversionDraft {
+  content: string
+  filename: string
 }
 
 interface TaskChatInputBoxProps {
@@ -124,6 +131,10 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   const [quickInputs, setQuickInputs] = useState<TaskQuickInputItem[]>([])
   const [quickInputContainerWidth, setQuickInputContainerWidth] = useState(0)
   const [measuredQuickInputVisibleCount, setMeasuredQuickInputVisibleCount] = useState<number | null>(null)
+  const [longContentDraft, setLongContentDraft] = useState<LongContentConversionDraft | null>(null)
+  const [longContentConverting, setLongContentConverting] = useState(false)
+  const [longContentPromptPending, setLongContentPromptPending] = useState(false)
+  const [longContentPromptSuppressed, setLongContentPromptSuppressed] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const quickInputContainerRef = useRef<HTMLDivElement>(null)
@@ -135,11 +146,13 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   const autoSendingQueuedInputRef = useRef(false)
   const mountedRef = useRef(true)
   const selectedQuickInputRef = useRef<string | null>(null)
+  const currentTaskIdRef = useRef(taskId)
   const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited' || streamStatus === 'executing')
   const wasExecutingRef = useRef(isExecuting)
   const restoreSubmittedInputOnIdleRef = useRef(false)
   const lastSubmittedInputRef = useRef<{ content: string; uploadedFiles: TaskUploadedFile[]; nextAttachmentFileIndex: number } | null>(null)
-  const inputLocked = autoSendingQueuedInput
+  const inputLocked = autoSendingQueuedInput || longContentConverting
+  const contentLength = content.length
   const canEditContent = React.useMemo(() => {
     return !sending && queueSize === 0 && !queuedInput && !inputLocked
   }, [inputLocked, queueSize, queuedInput, sending])
@@ -192,6 +205,14 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
       mountedRef.current = false
     }
   }, [])
+
+  React.useEffect(() => {
+    currentTaskIdRef.current = taskId
+    setLongContentDraft(null)
+    setLongContentConverting(false)
+    setLongContentPromptPending(false)
+    setLongContentPromptSuppressed(false)
+  }, [taskId])
 
   React.useEffect(() => {
     const nextQuickInputs = readQuickInputs()
@@ -464,6 +485,14 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     ) {
       selectedQuickInputRef.current = null
     }
+
+    if (
+      !longContentPromptSuppressed
+      && hasCrossedTaskContentLimit(content.length, nextContent.length, MAX_TASK_CONTENT_LENGTH)
+    ) {
+      setLongContentPromptPending(true)
+    }
+
     setContent(nextContent)
   }
 
@@ -599,6 +628,84 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
       textareaRef.current?.focus()
     })
   }
+
+  const openLongContentDialog = React.useCallback(() => {
+    if (content.length <= MAX_TASK_CONTENT_LENGTH) return
+
+    if (uploadedFiles.length >= MAX_UPLOADED_FILES) {
+      toast.error(t("taskDetail.chat.toast.maxFiles", { count: MAX_UPLOADED_FILES }))
+      setLongContentPromptSuppressed(true)
+      return
+    }
+
+    setLongContentDraft({
+      content,
+      filename: createLongContentFileName(new Date()),
+    })
+  }, [content, t, uploadedFiles.length])
+
+  const handleLongContentDialogOpenChange = (open: boolean) => {
+    if (open || longContentConverting) return
+    setLongContentDraft(null)
+    setLongContentPromptSuppressed(true)
+  }
+
+  const handleManualLongContentConversion = () => {
+    setLongContentPromptPending(false)
+    openLongContentDialog()
+  }
+
+  const handleConfirmLongContentConversion = async () => {
+    if (!longContentDraft || longContentConverting) return
+
+    const conversionTaskId = taskId
+    setLongContentConverting(true)
+    try {
+      const file = createLongContentTextFile(longContentDraft.content, longContentDraft.filename)
+      const uploadedFile = await uploadTaskFile(file)
+
+      if (!mountedRef.current || currentTaskIdRef.current !== conversionTaskId) {
+        return
+      }
+
+      handleUploaded(uploadedFile)
+      removeTaskInputDraft(taskId)
+      setContent('')
+      setLongContentDraft(null)
+      setLongContentPromptPending(false)
+      setLongContentPromptSuppressed(false)
+      toast.success(t("taskDetail.chat.longContent.addDescription"))
+    } catch (error) {
+      if (!mountedRef.current || currentTaskIdRef.current !== conversionTaskId) {
+        return
+      }
+
+      const message = error instanceof TaskUploadFileTooLargeError
+        ? t("taskDetail.chat.toast.fileTooLarge", { size: MAX_TASK_UPLOAD_FILE_SIZE_LABEL })
+        : t("taskDetail.chat.longContent.convertFailed")
+      toast.error(message)
+      console.error("Failed to convert long task input:", error)
+    } finally {
+      if (mountedRef.current && currentTaskIdRef.current === conversionTaskId) {
+        setLongContentConverting(false)
+      }
+    }
+  }
+
+  React.useEffect(() => {
+    if (contentLength <= MAX_TASK_CONTENT_LENGTH) {
+      setLongContentPromptPending(false)
+      setLongContentPromptSuppressed(false)
+      return
+    }
+
+    if (!longContentPromptPending || isComposing || !canUseIdleControls) {
+      return
+    }
+
+    setLongContentPromptPending(false)
+    openLongContentDialog()
+  }, [canUseIdleControls, contentLength, isComposing, longContentPromptPending, openLongContentDialog])
 
   const handleWhiteboardUploaded = (file: TaskUploadedFile) => {
     handleUploaded(file)
@@ -748,7 +855,6 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
 
   const commandItems = availableCommands?.commands ?? []
   const showCommandItems = !isExecuting && commandItems.length > 0
-  const contentLength = content.length
   const contentTooLong = contentLength > MAX_TASK_CONTENT_LENGTH
   const canSend = content.trim() !== '' && !contentTooLong
   const canUploadMoreFiles = uploadedFiles.length < MAX_UPLOADED_FILES
@@ -1101,13 +1207,34 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
         </InputGroupAddon>
       </InputGroup>
       {contentTooLong && (
-        <div className="mt-1 px-1 text-xs text-destructive">
-          {t("taskDetail.chat.contentTooLongInline", {
-            overCount: contentLength - MAX_TASK_CONTENT_LENGTH,
-            maxCount: MAX_TASK_CONTENT_LENGTH,
-          })}
+        <div className="mt-1 flex items-center justify-between gap-2 px-1 text-xs text-destructive">
+          <span>
+            {t("taskDetail.chat.contentTooLongInline", {
+              overCount: contentLength - MAX_TASK_CONTENT_LENGTH,
+              maxCount: MAX_TASK_CONTENT_LENGTH,
+            })}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="shrink-0 text-destructive hover:text-destructive"
+            disabled={longContentConverting || !canUseIdleControls}
+            onClick={handleManualLongContentConversion}
+          >
+            <IconFileText className="size-3.5" />
+            {t("taskDetail.chat.longContent.manualConvert")}
+          </Button>
         </div>
       )}
+      <TaskLongContentDialog
+        open={!!longContentDraft}
+        characterCount={longContentDraft?.content.length ?? contentLength}
+        filename={longContentDraft?.filename ?? ""}
+        converting={longContentConverting}
+        onOpenChange={handleLongContentDialogOpenChange}
+        onConfirm={handleConfirmLongContentConversion}
+      />
       <TaskFileUploadDialog
         open={uploadDialogOpen}
         file={selectedUploadFile}
