@@ -145,6 +145,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   const nextAttachmentFileIndexRef = useRef(1)
   const autoSendingQueuedInputRef = useRef(false)
   const mountedRef = useRef(true)
+  const uploadedFilesRef = useRef(uploadedFiles)
   const selectedQuickInputRef = useRef<string | null>(null)
   const currentTaskIdRef = useRef(taskId)
   const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited' || streamStatus === 'executing')
@@ -201,6 +202,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   }, [writeQuickInputs])
 
   React.useEffect(() => {
+    mountedRef.current = true
     return () => {
       mountedRef.current = false
     }
@@ -231,6 +233,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
       const lastSubmittedInput = lastSubmittedInputRef.current
       if (lastSubmittedInput) {
         setContent(lastSubmittedInput.content)
+        uploadedFilesRef.current = lastSubmittedInput.uploadedFiles
         setUploadedFiles(lastSubmittedInput.uploadedFiles)
         setPreviewFile(null)
         nextAttachmentFileIndexRef.current = lastSubmittedInput.nextAttachmentFileIndex
@@ -286,6 +289,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     removeTaskInputDraft(taskId)
     selectedQuickInputRef.current = null
     setContent('')
+    uploadedFilesRef.current = []
     setUploadedFiles([])
     setPreviewFile(null)
     setWhiteboardFileIndex(1)
@@ -411,6 +415,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
       }
 
       setContent(inputToSend.content)
+      uploadedFilesRef.current = inputToSend.uploadedFiles
       setUploadedFiles(inputToSend.uploadedFiles)
       setPreviewFile(null)
       nextAttachmentFileIndexRef.current = inputToSend.nextAttachmentFileIndex
@@ -473,11 +478,6 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     }
   }
 
-  const handleTextRecognized = (text: string) => {
-    selectedQuickInputRef.current = null
-    setContent(text)
-  }
-
   const handleContentChange = (nextContent: string) => {
     if (
       selectedQuickInputRef.current
@@ -496,6 +496,11 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     setContent(nextContent)
   }
 
+  const handleTextRecognized = (text: string) => {
+    selectedQuickInputRef.current = null
+    handleContentChange(text)
+  }
+
   const applyQuickInput = (text: string) => {
     const normalizedText = normalizeQuickInputText(text)
     if (!normalizedText) {
@@ -503,7 +508,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     }
 
     selectedQuickInputRef.current = normalizedText
-    setContent(normalizedText)
+    handleContentChange(normalizedText)
     requestAnimationFrame(() => {
       textareaRef.current?.focus()
       const cursorPosition = normalizedText.length
@@ -615,18 +620,20 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   }
 
   const handleUploaded = (file: TaskUploadedFile) => {
-    setUploadedFiles((prev) => {
-      if (prev.length >= MAX_UPLOADED_FILES) {
-        return prev
-      }
-      return [...prev, file]
-    })
+    if (uploadedFilesRef.current.length >= MAX_UPLOADED_FILES) {
+      return false
+    }
+
+    const nextUploadedFiles = [...uploadedFilesRef.current, file]
+    uploadedFilesRef.current = nextUploadedFiles
+    setUploadedFiles(nextUploadedFiles)
     nextAttachmentFileIndexRef.current += 1
     setSelectedUploadFile(null)
     setShouldAutoUpload(false)
     requestAnimationFrame(() => {
       textareaRef.current?.focus()
     })
+    return true
   }
 
   const openLongContentDialog = React.useCallback(() => {
@@ -658,6 +665,13 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   const handleConfirmLongContentConversion = async () => {
     if (!longContentDraft || longContentConverting) return
 
+    if (uploadedFilesRef.current.length >= MAX_UPLOADED_FILES) {
+      toast.error(t("taskDetail.chat.toast.maxFiles", { count: MAX_UPLOADED_FILES }))
+      setLongContentDraft(null)
+      setLongContentPromptSuppressed(true)
+      return
+    }
+
     const conversionTaskId = taskId
     setLongContentConverting(true)
     try {
@@ -668,7 +682,13 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
         return
       }
 
-      handleUploaded(uploadedFile)
+      if (!handleUploaded(uploadedFile)) {
+        toast.error(t("taskDetail.chat.toast.maxFiles", { count: MAX_UPLOADED_FILES }))
+        setLongContentDraft(null)
+        setLongContentPromptSuppressed(true)
+        return
+      }
+
       removeTaskInputDraft(taskId)
       setContent('')
       setLongContentDraft(null)
@@ -708,8 +728,9 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   }, [canUseIdleControls, contentLength, isComposing, longContentPromptPending, openLongContentDialog])
 
   const handleWhiteboardUploaded = (file: TaskUploadedFile) => {
-    handleUploaded(file)
-    setWhiteboardFileIndex((prev) => prev + 1)
+    if (handleUploaded(file)) {
+      setWhiteboardFileIndex((prev) => prev + 1)
+    }
   }
 
   const hasTransferFile = (dataTransfer: DataTransfer) => {
@@ -832,7 +853,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
       const start = textarea.selectionStart
       const end = textarea.selectionEnd
       const nextContent = `${content.slice(0, start)}\n${content.slice(end)}`
-      setContent(nextContent)
+      handleContentChange(nextContent)
       requestAnimationFrame(() => {
         textarea.selectionStart = start + 1
         textarea.selectionEnd = start + 1
@@ -1090,7 +1111,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {commandItems.map((command: AvailableCommand, index: number) => (
-                        <DropdownMenuItem key={index} className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => setContent(`/${command.name}`)}>
+                        <DropdownMenuItem key={index} className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => handleContentChange(`/${command.name}`)}>
                           <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
                             <IconCommand />
                             <div className="font-bold text-xs">/{command.name}</div>
@@ -1145,12 +1166,14 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
                   file={uploadedFile}
                   disabled={!!queuedInput || inputLocked}
                   onPreview={() => setPreviewFile(uploadedFile)}
-                  onRemove={() => {
-                    if (previewFile?.accessUrl === uploadedFile.accessUrl) {
-                      setPreviewFile(null)
-                    }
-                    setUploadedFiles((prev) => prev.filter((file) => file.accessUrl !== uploadedFile.accessUrl))
-                  }}
+                      onRemove={() => {
+                        if (previewFile?.accessUrl === uploadedFile.accessUrl) {
+                          setPreviewFile(null)
+                        }
+                        const nextUploadedFiles = uploadedFilesRef.current.filter((file) => file.accessUrl !== uploadedFile.accessUrl)
+                        uploadedFilesRef.current = nextUploadedFiles
+                        setUploadedFiles(nextUploadedFiles)
+                      }}
                 />
               ))}
             </div>
