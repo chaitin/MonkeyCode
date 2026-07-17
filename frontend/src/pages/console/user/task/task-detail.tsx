@@ -949,6 +949,31 @@ export default function TaskDetailPage() {
     streamClientRef.current?.sendCancel()
   }, [])
 
+  const handleSwitchAgentResources = React.useCallback(
+    async (skillIds: string[], pluginIds: string[]) => {
+      const response = await taskControlClientRef.current?.switchAgentResources(
+        skillIds,
+        pluginIds,
+      )
+      if (response?.success) {
+        setTask((prev) =>
+          prev
+            ? {
+                ...prev,
+                extra: {
+                  ...(prev.extra ?? {}),
+                  skill_ids: skillIds,
+                  plugin_ids: pluginIds,
+                },
+              }
+            : prev,
+        )
+      }
+      return response ?? null
+    },
+    [],
+  )
+
   const handleResetSession = React.useCallback(async () => {
     const success = await taskControlClientRef.current?.restart(false)
     return !!success
@@ -1513,6 +1538,9 @@ export default function TaskDetailPage() {
                         sending={sending}
                         queueSize={0}
                         executionTimeMs={timeCost}
+                        skillIds={task?.extra?.skill_ids ?? []}
+                        pluginIds={task?.extra?.plugin_ids ?? []}
+                        onSwitchAgentResources={handleSwitchAgentResources}
                       />
                     ) : (
                       <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">

@@ -80,6 +80,11 @@ interface SwitchModelResponse extends TaskControlCallResponse {
   model?: unknown
 }
 
+export interface SwitchAgentResourcesResponse extends TaskControlCallResponse {
+  message?: string
+  session_id?: string
+}
+
 export class TaskControlClient implements TaskRepositoryClient {
   private static readonly CONNECT_TIMEOUT_MS = 10000
   private static readonly DEFAULT_CALL_TIMEOUT_MS = 5000
@@ -286,6 +291,13 @@ export class TaskControlClient implements TaskRepositoryClient {
     return this.call<SwitchModelResponse>("switch_model", {
       model_id: modelId,
       load_session: loadSession,
+    }, TaskControlClient.RESTART_TIMEOUT_MS)
+  }
+
+  switchAgentResources(skillIds: string[], pluginIds: string[]) {
+    return this.call<SwitchAgentResourcesResponse>("switch_agent_resources", {
+      skill_ids: skillIds,
+      plugin_ids: pluginIds,
     }, TaskControlClient.RESTART_TIMEOUT_MS)
   }
 
