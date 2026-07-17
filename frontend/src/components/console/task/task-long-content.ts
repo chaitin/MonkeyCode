@@ -11,6 +11,16 @@ export const createLongContentFileName = (date: Date) => {
   return `long-input-${day}-${time}.txt`
 }
 
+export const mergeLongContentFollowUp = (
+  currentContent: string,
+  deferredContent: string | null,
+) => {
+  if (!deferredContent) return currentContent
+  if (!currentContent) return deferredContent
+  const separator = currentContent.endsWith("\n") ? "" : "\n"
+  return `${currentContent}${separator}${deferredContent}`
+}
+
 export const createLongContentTextFile = (
   content: string,
   filename: string,

@@ -5,6 +5,7 @@ import {
   createLongContentFileName,
   createLongContentTextFile,
   hasCrossedTaskContentLimit,
+  mergeLongContentFollowUp,
 } from "../src/components/console/task/task-long-content.ts"
 
 test("仅在内容首次跨越字符上限时触发", () => {
@@ -28,4 +29,12 @@ test("创建保留中文 Emoji 和换行的 UTF-8 TXT 文件", async () => {
   assert.equal(file.lastModified, 123)
   assert.equal(await file.text(), content)
   assert.equal(file.size, new TextEncoder().encode(content).byteLength)
+})
+
+test("合并转换期间更新的正文与延迟语音", () => {
+  assert.equal(mergeLongContentFollowUp("", null), "")
+  assert.equal(mergeLongContentFollowUp("", "语音说明"), "语音说明")
+  assert.equal(mergeLongContentFollowUp("已更新正文", null), "已更新正文")
+  assert.equal(mergeLongContentFollowUp("已更新正文", "语音说明"), "已更新正文\n语音说明")
+  assert.equal(mergeLongContentFollowUp("已更新正文\n", "语音说明"), "已更新正文\n语音说明")
 })

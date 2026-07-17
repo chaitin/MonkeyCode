@@ -28,7 +28,7 @@ import {
   TASK_QUICK_INPUT_STORAGE_KEY,
   type TaskQuickInputItem,
 } from "./task-quick-inputs"
-import { createLongContentFileName, createLongContentTextFile, hasCrossedTaskContentLimit } from "./task-long-content"
+import { createLongContentFileName, createLongContentTextFile, hasCrossedTaskContentLimit, mergeLongContentFollowUp } from "./task-long-content"
 import { TaskLongContentDialog } from "./task-long-content-dialog"
 
 const MAX_UPLOADED_FILES = 3
@@ -519,8 +519,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
 
     deferredRecognizedTextRef.current = null
     selectedQuickInputRef.current = null
-    const separator = baseContent && !baseContent.endsWith('\n') ? '\n' : ''
-    handleContentChange(`${baseContent}${separator}${deferredRecognizedText}`)
+    handleContentChange(mergeLongContentFollowUp(baseContent, deferredRecognizedText))
   }
 
   const applyQuickInput = (text: string) => {
@@ -719,7 +718,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
 
       const currentContent = contentRef.current === conversionContent ? '' : contentRef.current
       const deferredRecognizedText = deferredRecognizedTextRef.current
-      const nextContent = deferredRecognizedText ?? currentContent
+      const nextContent = mergeLongContentFollowUp(currentContent, deferredRecognizedText)
       deferredRecognizedTextRef.current = null
       contentRef.current = nextContent
       if (nextContent === '') {

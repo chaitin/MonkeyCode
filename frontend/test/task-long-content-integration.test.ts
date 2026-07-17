@@ -42,7 +42,7 @@ test("转换期间延迟语音结果并避免覆盖更新后的正文", () => {
   assert.match(source, /const deferredRecognizedTextRef = useRef<string \| null>\(null\)/)
   assert.match(source, /if \(longContentDraft \|\| longContentConverting\) \{\s+deferredRecognizedTextRef\.current = text/)
   assert.match(source, /contentRef\.current === conversionContent/)
-  assert.match(source, /deferredRecognizedText \?\? currentContent/)
+  assert.match(source, /mergeLongContentFollowUp\(currentContent, deferredRecognizedText\)/)
   assert.match(source, /appendDeferredRecognizedText\(longContentDraft\.content\)/)
 })
 
