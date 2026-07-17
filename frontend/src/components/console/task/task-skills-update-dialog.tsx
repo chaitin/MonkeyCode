@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -46,9 +46,12 @@ export function TaskSkillsUpdateDialog({
   const [selectedSkills, setSelectedSkills] = useState<string[]>(initialSkillIds)
   const [activeSkillTag, setActiveSkillTag] = useState<string>(ALL_SKILLS_TAG)
   const [submitting, setSubmitting] = useState(false)
+  const prevOpenRef = useRef(false)
 
   useEffect(() => {
-    if (!open) return
+    const wasOpen = prevOpenRef.current
+    prevOpenRef.current = open
+    if (!open || wasOpen) return
     setSelectedSkills(initialSkillIds)
     setLoading(true)
     apiRequest("v1SkillsList", {}, [], (resp) => {
@@ -61,7 +64,7 @@ export function TaskSkillsUpdateDialog({
         toast.error(resp.message || t("taskWorkflow.toast.fetchSkillsFailed"))
       }
     })
-  }, [open, initialSkillIds, t])
+  }, [open])
 
   const skillTags = useMemo(() => {
     const tagCountMap = new Map<string, number>()
