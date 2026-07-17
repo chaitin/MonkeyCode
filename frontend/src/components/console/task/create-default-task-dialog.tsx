@@ -125,6 +125,7 @@ export default function CreateDefaultTaskDialog({
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const [selectedZipFile, setSelectedZipFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const modelTouchedRef = useRef(false)
 
   const selectableIdentities = useMemo(
     () => identities.filter(isIdentityWithRepos),
@@ -142,7 +143,6 @@ export default function CreateDefaultTaskDialog({
 
   const setDefaultConfig = useCallback(() => {
     const storedParams = readStoredTaskDialogParams()
-    setSelectedModelId(selectPreferredTaskModel(models, subscription))
     const nextImageId = (
       storedParams.imageId
       && images.some((image) => image.id === storedParams.imageId)
@@ -164,11 +164,12 @@ export default function CreateDefaultTaskDialog({
     }
 
     setSelectedHostId(selectHost(hosts, false))
-  }, [hosts, images, models, subscription, user.role])
+  }, [hosts, images, user.role])
 
   useEffect(() => {
     if (!open) {
 
+      modelTouchedRef.current = false
       setContent("")
       setCodeDropdownOpen(false)
       setSkillPopoverOpen(false)
@@ -206,6 +207,14 @@ export default function CreateDefaultTaskDialog({
       setSelectedSkill((prev) => filterSelectableSkillIds(prev, skillList))
     }
   }, [open, skillList, skillList.length, t])
+
+  useEffect(() => {
+    if (!open || modelTouchedRef.current || models.length === 0) {
+      return
+    }
+
+    setSelectedModelId(selectPreferredTaskModel(models, subscription))
+  }, [models, open, subscription])
 
   useEffect(() => {
     if (!open) {
@@ -263,6 +272,11 @@ export default function CreateDefaultTaskDialog({
       }
       return prev.filter((id) => id !== skillId)
     })
+  }
+
+  const handleModelChange = (modelId: string) => {
+    modelTouchedRef.current = true
+    setSelectedModelId(modelId)
   }
 
   const selectedModel = useMemo(
@@ -617,7 +631,7 @@ export default function CreateDefaultTaskDialog({
                           models={models}
                           selectedModel={selectedModel}
                           selectedModelId={selectedModelId}
-                          setSelectedModelId={setSelectedModelId}
+                          setSelectedModelId={handleModelChange}
                           subscription={subscription}
                         />
                       </FieldContent>
