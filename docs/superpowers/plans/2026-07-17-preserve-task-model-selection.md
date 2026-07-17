@@ -19,7 +19,7 @@
 ### Task 1: 增加模型选择保持回归测试
 
 **Files:**
-- Create: `frontend/test/create-default-task-dialog-model-selection.test.ts`
+- Create: `frontend/test/create-default-task-dialog-model-selection.test.mjs`
 
 **Interfaces:**
 - Consumes: `CreateDefaultTaskDialog` 源码契约。
@@ -27,18 +27,18 @@
 
 - [ ] **Step 1: 编写失败测试**
 
-测试应读取弹窗源码并断言：存在 `modelTouchedRef`；用户选择回调设置 touched；关闭时清除 touched；默认模型仅在未 touched 且当前 ID 无效时设置；请求提交 `selectedModelId`。
+测试应读取弹窗源码并断言：存在 `modelTouchedRef`；用户选择回调设置 touched；关闭时清除 touched；默认模型仅在未 touched 且模型列表可用时设置；请求提交 `selectedModelId`。
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `node --test test/create-default-task-dialog-model-selection.test.ts`
+Run: `node --test test/create-default-task-dialog-model-selection.test.mjs`
 
 Expected: FAIL，提示源码缺少 `modelTouchedRef`。
 
 - [ ] **Step 3: 提交失败测试**
 
 ```bash
-git add frontend/test/create-default-task-dialog-model-selection.test.ts
+git add frontend/test/create-default-task-dialog-model-selection.test.mjs
 git commit -m "增加启动任务模型选择回归测试"
 ```
 
@@ -46,7 +46,7 @@ git commit -m "增加启动任务模型选择回归测试"
 
 **Files:**
 - Modify: `frontend/src/components/console/task/create-default-task-dialog.tsx`
-- Test: `frontend/test/create-default-task-dialog-model-selection.test.ts`
+- Test: `frontend/test/create-default-task-dialog-model-selection.test.mjs`
 
 **Interfaces:**
 - Consumes: `selectPreferredTaskModel(models, subscription)`。
@@ -58,7 +58,7 @@ git commit -m "增加启动任务模型选择回归测试"
 
 - [ ] **Step 2: 拆分默认初始化**
 
-从 `setDefaultConfig` 移除模型写入，新增 effect：弹窗打开、用户尚未操作、模型列表已就绪且当前选择无效时设置推荐模型。
+从 `setDefaultConfig` 移除模型写入，新增 effect：弹窗打开、用户尚未操作且模型列表已就绪时设置推荐模型。
 
 - [ ] **Step 3: 重置生命周期状态**
 
@@ -66,7 +66,7 @@ git commit -m "增加启动任务模型选择回归测试"
 
 - [ ] **Step 4: 运行专项测试**
 
-Run: `node --test test/create-default-task-dialog-model-selection.test.ts`
+Run: `node --test test/create-default-task-dialog-model-selection.test.mjs`
 
 Expected: PASS。
 

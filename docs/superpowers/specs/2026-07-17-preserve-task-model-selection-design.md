@@ -16,7 +16,7 @@
 在 `CreateDefaultTaskDialog` 中增加 `modelTouchedRef`，将模型初始化从主机和镜像默认配置中拆分：
 
 1. `ModelSelect` 的变更回调先标记用户已操作，再更新 `selectedModelId`。
-2. 模型初始化 effect 在弹窗打开、用户尚未操作且当前模型无效时调用 `selectPreferredTaskModel`。
+2. 模型初始化 effect 在弹窗打开、用户尚未操作且模型列表可用时调用 `selectPreferredTaskModel`，使首次异步加载期间的套餐默认值保持最新。
 3. 主机和镜像继续根据弹窗状态及数据更新初始化，但不再写入模型状态。
 4. 弹窗关闭时重置 `modelTouchedRef` 和模型状态。
 
