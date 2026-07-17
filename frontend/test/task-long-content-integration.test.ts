@@ -33,9 +33,17 @@ test("StrictMode 生命周期与附件竞争保持转换状态安全", () => {
 })
 
 test("所有用户正文更新入口统一执行越界检测", () => {
-  assert.match(source, /const handleTextRecognized = \(text: string\) => \{\s+selectedQuickInputRef\.current = null\s+handleContentChange\(text\)/)
+  assert.match(source, /const handleTextRecognized = \(text: string\) => \{[\s\S]+?selectedQuickInputRef\.current = null\s+handleContentChange\(text\)/)
   assert.match(source, /selectedQuickInputRef\.current = normalizedText\s+handleContentChange\(normalizedText\)/)
   assert.match(source, /const nextContent = `[^`]+`\s+handleContentChange\(nextContent\)/)
+})
+
+test("转换期间延迟语音结果并避免覆盖更新后的正文", () => {
+  assert.match(source, /const deferredRecognizedTextRef = useRef<string \| null>\(null\)/)
+  assert.match(source, /if \(longContentDraft \|\| longContentConverting\) \{\s+deferredRecognizedTextRef\.current = text/)
+  assert.match(source, /contentRef\.current === conversionContent/)
+  assert.match(source, /deferredRecognizedText \?\? currentContent/)
+  assert.match(source, /appendDeferredRecognizedText\(longContentDraft\.content\)/)
 })
 
 test("超限提示提供手动转换入口并渲染确认弹窗", () => {

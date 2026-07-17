@@ -145,7 +145,9 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   const nextAttachmentFileIndexRef = useRef(1)
   const autoSendingQueuedInputRef = useRef(false)
   const mountedRef = useRef(true)
+  const contentRef = useRef(content)
   const uploadedFilesRef = useRef(uploadedFiles)
+  const deferredRecognizedTextRef = useRef<string | null>(null)
   const selectedQuickInputRef = useRef<string | null>(null)
   const currentTaskIdRef = useRef(taskId)
   const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited' || streamStatus === 'executing')
@@ -214,6 +216,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     setLongContentConverting(false)
     setLongContentPromptPending(false)
     setLongContentPromptSuppressed(false)
+    deferredRecognizedTextRef.current = null
   }, [taskId])
 
   React.useEffect(() => {
@@ -232,6 +235,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     } else if (wasExecutingRef.current && !isExecuting && restoreSubmittedInputOnIdleRef.current) {
       const lastSubmittedInput = lastSubmittedInputRef.current
       if (lastSubmittedInput) {
+        contentRef.current = lastSubmittedInput.content
         setContent(lastSubmittedInput.content)
         uploadedFilesRef.current = lastSubmittedInput.uploadedFiles
         setUploadedFiles(lastSubmittedInput.uploadedFiles)
@@ -288,6 +292,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   const clearCurrentInput = React.useCallback(() => {
     removeTaskInputDraft(taskId)
     selectedQuickInputRef.current = null
+    contentRef.current = ''
     setContent('')
     uploadedFilesRef.current = []
     setUploadedFiles([])
@@ -414,6 +419,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
         return
       }
 
+      contentRef.current = inputToSend.content
       setContent(inputToSend.content)
       uploadedFilesRef.current = inputToSend.uploadedFiles
       setUploadedFiles(inputToSend.uploadedFiles)
@@ -493,12 +499,28 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
       setLongContentPromptPending(true)
     }
 
+    contentRef.current = nextContent
     setContent(nextContent)
   }
 
   const handleTextRecognized = (text: string) => {
+    if (longContentDraft || longContentConverting) {
+      deferredRecognizedTextRef.current = text
+      return
+    }
+
     selectedQuickInputRef.current = null
     handleContentChange(text)
+  }
+
+  const appendDeferredRecognizedText = (baseContent: string) => {
+    const deferredRecognizedText = deferredRecognizedTextRef.current
+    if (!deferredRecognizedText) return
+
+    deferredRecognizedTextRef.current = null
+    selectedQuickInputRef.current = null
+    const separator = baseContent && !baseContent.endsWith('\n') ? '\n' : ''
+    handleContentChange(`${baseContent}${separator}${deferredRecognizedText}`)
   }
 
   const applyQuickInput = (text: string) => {
@@ -653,6 +675,9 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
 
   const handleLongContentDialogOpenChange = (open: boolean) => {
     if (open || longContentConverting) return
+    if (longContentDraft) {
+      appendDeferredRecognizedText(longContentDraft.content)
+    }
     setLongContentDraft(null)
     setLongContentPromptSuppressed(true)
   }
@@ -667,12 +692,14 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
 
     if (uploadedFilesRef.current.length >= MAX_UPLOADED_FILES) {
       toast.error(t("taskDetail.chat.toast.maxFiles", { count: MAX_UPLOADED_FILES }))
+      appendDeferredRecognizedText(longContentDraft.content)
       setLongContentDraft(null)
       setLongContentPromptSuppressed(true)
       return
     }
 
     const conversionTaskId = taskId
+    const conversionContent = longContentDraft.content
     setLongContentConverting(true)
     try {
       const file = createLongContentTextFile(longContentDraft.content, longContentDraft.filename)
@@ -684,13 +711,21 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
 
       if (!handleUploaded(uploadedFile)) {
         toast.error(t("taskDetail.chat.toast.maxFiles", { count: MAX_UPLOADED_FILES }))
+        appendDeferredRecognizedText(conversionContent)
         setLongContentDraft(null)
         setLongContentPromptSuppressed(true)
         return
       }
 
-      removeTaskInputDraft(taskId)
-      setContent('')
+      const currentContent = contentRef.current === conversionContent ? '' : contentRef.current
+      const deferredRecognizedText = deferredRecognizedTextRef.current
+      const nextContent = deferredRecognizedText ?? currentContent
+      deferredRecognizedTextRef.current = null
+      contentRef.current = nextContent
+      if (nextContent === '') {
+        removeTaskInputDraft(taskId)
+      }
+      setContent(nextContent)
       setLongContentDraft(null)
       setLongContentPromptPending(false)
       setLongContentPromptSuppressed(false)
@@ -1166,14 +1201,14 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
                   file={uploadedFile}
                   disabled={!!queuedInput || inputLocked}
                   onPreview={() => setPreviewFile(uploadedFile)}
-                      onRemove={() => {
-                        if (previewFile?.accessUrl === uploadedFile.accessUrl) {
-                          setPreviewFile(null)
-                        }
-                        const nextUploadedFiles = uploadedFilesRef.current.filter((file) => file.accessUrl !== uploadedFile.accessUrl)
-                        uploadedFilesRef.current = nextUploadedFiles
-                        setUploadedFiles(nextUploadedFiles)
-                      }}
+                  onRemove={() => {
+                    if (previewFile?.accessUrl === uploadedFile.accessUrl) {
+                      setPreviewFile(null)
+                    }
+                    const nextUploadedFiles = uploadedFilesRef.current.filter((file) => file.accessUrl !== uploadedFile.accessUrl)
+                    uploadedFilesRef.current = nextUploadedFiles
+                    setUploadedFiles(nextUploadedFiles)
+                  }}
                 />
               ))}
             </div>
