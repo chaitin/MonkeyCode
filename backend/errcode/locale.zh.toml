@@ -37,6 +37,9 @@ other = "与开发环境断开连接， 请稍后再试"
 [err-file-op]
 other = "文件操作失败"
 
+[err-file-too-large]
+other = "单个文件不能超过 10MB"
+
 [err-vm-id-required]
 other = "开发环境ID必填"
 

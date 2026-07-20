@@ -3,10 +3,12 @@ package v1
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"mime"
+	"net/http"
 	"path"
 	"strings"
 	"time"
@@ -20,6 +22,18 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/middleware"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
+
+const (
+	maxUploadFileSize          int64 = 10 * 1024 * 1024
+	maxUploadMultipartOverhead int64 = 1024 * 1024
+)
+
+func validateUploadFileSize(size int64) error {
+	if size > maxUploadFileSize {
+		return errcode.ErrFileTooLarge
+	}
+	return nil
+}
 
 // FileHandler VM 内文件管理处理器
 type FileHandler struct {
@@ -118,7 +132,7 @@ func (f *FileHandler) ListFolder(c *web.Context, req domain.FilePathReq) error {
 //	@Summary		创建目录
 //	@Description	创建目录
 //	@Tags			【用户】文件管理
-//	@Accept			json
+//	@Accept			multipart/form-data
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
 //	@Param			param	body		domain.FilePathReq	false	"参数"
@@ -272,8 +286,17 @@ func (f *FileHandler) Upload(c *web.Context) error {
 		return wraperr(err, path)
 	}
 
+	// 客户端也会限制 10MB，但服务端必须独立兜底。额外预留 1MB 给 multipart boundary/headers。
+	c.Request().Body = http.MaxBytesReader(c.Response().Writer, c.Request().Body, maxUploadFileSize+maxUploadMultipartOverhead)
 	fh, err := c.FormFile("file")
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return errcode.ErrFileTooLarge
+		}
+		return err
+	}
+	if err := validateUploadFileSize(fh.Size); err != nil {
 		return err
 	}
 	ff, err := fh.Open()

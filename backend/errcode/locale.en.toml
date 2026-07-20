@@ -267,6 +267,9 @@ other = "Disconnected from development environment, please try again later"
 [err-file-op]
 other = "File operation failed"
 
+[err-file-too-large]
+other = "A single file cannot exceed 10MB"
+
 [err-vm-removed]
 other = "VM has been recycled"
 

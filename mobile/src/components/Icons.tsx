@@ -35,6 +35,7 @@ export const Icons: Record<string, IconFn> = {
   branch: (p) => <Ic {...p}><Circle cx={6} cy={5} r={2.2} /><Circle cx={6} cy={19} r={2.2} /><Circle cx={18} cy={7} r={2.2} /><Path d="M6 7.2v9.6M18 9.2c0 4-4 3-6 5" /></Ic>,
   file: (p) => <Ic {...p}><Path d="M6 3.5h7l5 5V20a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 20z" /><Path d="M13 3.5V8a1 1 0 0 0 1 1h4" /></Ic>,
   download: (p) => <Ic {...p}><Path d="M12 4v10m0 0l-4-4m4 4l4-4M5 18.5h14" /></Ic>,
+  upload: (p) => <Ic {...p}><Path d="M12 15V5m0 0L8 9m4-4l4 4M5 18.5h14" /></Ic>,
   calendar: (p) => <Ic {...p}><Rect x={3.5} y={5} width={17} height={15.5} rx={2.5} /><Path d="M3.5 9.5h17M8 3v4M16 3v4" /></Ic>,
   filePlus: (p) => <Ic {...p}><Path d="M6 3.5h7l5 5V20a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 20z" /><Path d="M13 3.5V8a1 1 0 0 0 1 1h4" /><Path d="M12 12v5M9.5 14.5h5" /></Ic>,
   edit: (p) => <Ic {...p}><Path d="M4 20h4l10.5-10.5a2 2 0 0 0 0-2.8l-1.2-1.2a2 2 0 0 0-2.8 0L4 16z" /></Ic>,
