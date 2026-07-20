@@ -94,6 +94,7 @@ func (g *Guard) transport(base *http.Transport) http.RoundTripper {
 	direct.DialContext = g.dialContext
 
 	proxied := base.Clone()
+	proxied.DialContext = g.dialContext
 	return &guardedTransport{
 		guard:   g,
 		base:    base,

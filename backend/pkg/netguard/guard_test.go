@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
+	"net/url"
 	"testing"
 )
 
@@ -61,5 +63,24 @@ func TestValidateURLRejectsUnsupportedScheme(t *testing.T) {
 		if err := New(enabled).ValidateURL(context.Background(), "file:///etc/passwd"); err == nil {
 			t.Fatalf("ValidateURL() error = nil, enabled = %v", enabled)
 		}
+	}
+}
+
+func TestHTTPClientBlocksPrivateProxy(t *testing.T) {
+	proxyURL, err := url.Parse("http://127.0.0.1:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyURL(proxyURL)
+	client := New(true).HTTPClient(&http.Client{Transport: transport})
+	req, err := http.NewRequest(http.MethodGet, "http://8.8.8.8", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.Do(req)
+	if !errors.Is(err, ErrPrivateNetwork) {
+		t.Fatalf("Do() error = %v, want ErrPrivateNetwork", err)
 	}
 }
