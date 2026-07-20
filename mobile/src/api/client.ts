@@ -126,13 +126,16 @@ interface RequestOpts {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   query?: Query;
   body?: unknown;
+  /** multipart 请求体；不要手动设置 Content-Type，RN 会自动补 boundary。 */
+  formData?: FormData;
+  signal?: AbortSignal;
 }
 
 export async function request<T = unknown>(
   path: string,
   opts: RequestOpts = {},
 ): Promise<ApiEnvelope<T>> {
-  const { method = 'GET', query, body } = opts;
+  const { method = 'GET', query, body, formData, signal } = opts;
   const url = `${baseUrl}${path}${buildQuery(query)}`;
 
   const headers: Record<string, string> = { ...authHeaders() };
@@ -144,7 +147,8 @@ export async function request<T = unknown>(
       method,
       credentials: 'include',
       headers: Object.keys(headers).length ? headers : undefined,
-      body: body != null ? JSON.stringify(body) : undefined,
+      body: formData ?? (body != null ? JSON.stringify(body) : undefined),
+      signal,
     });
   } catch (e) {
     throw new ApiError((e as Error)?.message || '网络错误');

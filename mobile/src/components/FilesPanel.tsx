@@ -11,6 +11,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { RepoEntryMode, type RepoFileChange, type RepoFileStatus, type TaskControlClient } from '@/api/control';
 import { authHeaders, getDownloadUrl } from '@/api/client';
+import { pickWorkspaceFile, uploadWorkspaceFile } from '@/api/upload';
 import { base64DecodeToString, bytesToBase64 } from '@/messages/base64';
 import { Icons, Spinner } from '@/components/Icons';
 import { isNativeFileSaverAvailable, saveFileToDevice } from '@/native/fileSaver';
@@ -53,6 +54,26 @@ function formatSize(bytes?: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function confirmOverwrite(name: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    Alert.alert(
+      '覆盖同名文件？',
+      `当前目录已存在“${name}”，继续上传会覆盖它。`,
+      [
+        { text: '取消', style: 'cancel', onPress: () => finish(false) },
+        { text: '覆盖', style: 'destructive', onPress: () => finish(true) },
+      ],
+      { cancelable: true, onDismiss: () => finish(false) },
+    );
+  });
 }
 
 function statusInfo(s: string | undefined, t: Theme): { letter: string; color: string; bg: string } {
@@ -170,16 +191,22 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
   const [diff, setDiff] = useState<{ path: string; text: string | null } | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null); // 正在下载的条目 path（'' = 根目录）
   const [dl, setDl] = useState<{ name: string; bytes: number; total: number | null } | null>(null); // 下载进度（驱动底部进度条）
+  const [uploadingFile, setUploadingFile] = useState<{ name: string; size?: number } | null>(null);
+  const pathRef = useRef('');
+  const directoryRequestRef = useRef(0);
   const resumableRef = useRef<FileSystem.DownloadResumable | null>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
   const canceledRef = useRef(false);
+  const uploadBusyRef = useRef(false);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  const uploadOperationRef = useRef(0);
 
   // 下载文件或目录（目录由后端打包成 zip）：下完再交给系统分享面板。
   // 会话鉴权靠 cookie：iOS 的 expo-file-system 共享系统 cookie 存储，能流式落盘（带进度、不占内存）；
   // Android 的 expo-file-system 用独立 cookie jar 不带 cookie（会 401），改用 RN 自带的 XHR（走 RN 网络栈、
   // 自动携带会话 cookie），代价是整包先进内存——@react-native-cookies/cookies 在新架构上不可用，故不走它。
   const download = useCallback(async (item: { path: string; name: string; dir: boolean }) => {
-    if (downloading !== null) return;
+    if (downloading !== null || uploadingFile) return;
     if (!vmId) { Alert.alert('无法下载', '开发环境不可用，请稍后重试'); return; }
     const downloadName = item.dir ? `${item.name}.zip` : item.name;
     const safeName = downloadName.replace(/[/\\:*?"<>|\s]/g, '_') || 'download';
@@ -270,7 +297,7 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
     } finally {
       done();
     }
-  }, [downloading, vmId]);
+  }, [downloading, uploadingFile, vmId]);
 
   const cancelDownload = useCallback(() => {
     canceledRef.current = true;
@@ -282,29 +309,120 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
     setDl(null);
   }, []);
 
-  const loadDir = useCallback(async (p: string) => {
-    if (!control) { setEntries([]); return; }
-    setEntriesLoading(true);
-    const list = await control.getFileList(p);
-    setEntriesLoading(false);
-    setEntries(list ?? []);
+  const loadDir = useCallback(async (p: string, preserveOnFailure = false): Promise<boolean> => {
+    const request = ++directoryRequestRef.current;
+    const isCurrent = () => directoryRequestRef.current === request && pathRef.current === p;
+    if (!control) {
+      if (!preserveOnFailure && isCurrent()) setEntries([]);
+      return false;
+    }
+    if (isCurrent()) setEntriesLoading(true);
+    try {
+      const list = await control.getFileList(p);
+      if (list == null) {
+        if (!preserveOnFailure && isCurrent()) setEntries([]);
+        return false;
+      }
+      if (isCurrent()) setEntries(list);
+      return true;
+    } catch {
+      if (!preserveOnFailure && isCurrent()) setEntries([]);
+      return false;
+    } finally {
+      if (isCurrent()) setEntriesLoading(false);
+    }
   }, [control]);
 
-  const loadChanges = useCallback(async () => {
-    if (!control) return;
+  const loadChanges = useCallback(async (): Promise<boolean> => {
+    if (!control) return false;
     setChangesLoading(true);
-    const c = await control.getFileChanges();
-    setChangesLoading(false);
-    if (c != null) setChanges(c);
+    try {
+      const c = await control.getFileChanges();
+      if (c == null) return false;
+      setChanges(c);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setChangesLoading(false);
+    }
   }, [control]);
+
+  const cancelUpload = useCallback(() => {
+    uploadOperationRef.current += 1;
+    uploadBusyRef.current = false;
+    uploadAbortRef.current?.abort();
+    uploadAbortRef.current = null;
+    setUploadingFile(null);
+  }, []);
+
+  const upload = useCallback(async () => {
+    if (uploadBusyRef.current || uploadingFile || downloading !== null) return;
+    if (!vmId) { Alert.alert('无法上传', '开发环境不可用，请稍后重试'); return; }
+
+    const operation = ++uploadOperationRef.current;
+    uploadBusyRef.current = true;
+    let controller: AbortController | null = null;
+    try {
+      const file = await pickWorkspaceFile();
+      if (!file || uploadOperationRef.current !== operation) return;
+      if ((entries ?? []).some((entry) => entry.name === file.name) && !(await confirmOverwrite(file.name))) return;
+      if (uploadOperationRef.current !== operation) return;
+
+      const targetDir = pathRef.current;
+      controller = new AbortController();
+      uploadAbortRef.current = controller;
+      setUploadingFile({ name: file.name, size: file.size });
+      const targetPath = normalizePath(`${WORKDIR}/${targetDir}/${file.name}`);
+      await uploadWorkspaceFile(vmId, targetPath, file, controller.signal);
+      if (controller.signal.aborted || uploadOperationRef.current !== operation) return;
+
+      // 先乐观更新当前目录，让控制通道临时断线时也不会把成功上传显示成空目录；再后台校准。
+      if (pathRef.current === targetDir) {
+        const relativePath = [targetDir, file.name].filter(Boolean).join('/');
+        setEntries((current) => [
+          ...(current ?? []).filter((entry) => entry.name !== file.name),
+          { name: file.name, path: relativePath, entry_mode: RepoEntryMode.File, size: file.size },
+        ]);
+      }
+      Alert.alert('上传成功', `${file.name} 已上传到${targetDir ? ` ${targetDir}` : '根目录'}`);
+      void Promise.all([loadDir(targetDir, true), loadChanges()]);
+    } catch (e) {
+      if (!controller?.signal.aborted && uploadOperationRef.current === operation) {
+        Alert.alert('上传失败', (e as Error)?.message || '未知错误');
+      }
+    } finally {
+      if (uploadOperationRef.current === operation) {
+        uploadBusyRef.current = false;
+        uploadAbortRef.current = null;
+        setUploadingFile(null);
+      }
+    }
+  }, [downloading, entries, loadChanges, loadDir, uploadingFile, vmId]);
 
   useEffect(() => {
     if (!visible) return;
+    pathRef.current = '';
     setPath(''); setViewer(null); setDiff(null);
     loadDir(''); loadChanges();
   }, [visible, loadDir, loadChanges]);
 
-  const openDir = (p: string) => { setPath(p); loadDir(p); };
+  useEffect(() => {
+    if (!visible) {
+      directoryRequestRef.current += 1;
+      setEntriesLoading(false);
+      cancelUpload();
+    }
+  }, [cancelUpload, visible]);
+
+  useEffect(() => () => {
+    directoryRequestRef.current += 1;
+    uploadOperationRef.current += 1;
+    uploadAbortRef.current?.abort();
+  }, []);
+
+  const closePanel = useCallback(() => { cancelUpload(); onClose(); }, [cancelUpload, onClose]);
+  const openDir = (p: string) => { pathRef.current = p; setPath(p); loadDir(p); };
   const openFile = async (p: string) => { setViewer({ path: p, content: null }); const c = await control?.getFileContent(p); setViewer({ path: p, content: c ?? '（无法读取该文件）' }); };
   const openDiff = async (p: string) => { setDiff({ path: p, text: null }); const d = await control?.getFileDiff(p); setDiff({ path: p, text: d || '（无差异内容）' }); };
 
@@ -319,7 +437,7 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
   ];
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={() => (viewer ? setViewer(null) : diff ? setDiff(null) : onClose())} statusBarTranslucent>
+    <Modal visible={visible} animationType="slide" onRequestClose={() => (viewer ? setViewer(null) : diff ? setDiff(null) : closePanel())} statusBarTranslucent>
       {viewer ? (
         <View style={{ flex: 1, backgroundColor: t.bg }}>
           <SubHeader title={baseName(viewer.path)} subtitle={viewer.path} onBack={() => setViewer(null)} t={t} top={top}
@@ -335,7 +453,7 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
         <View style={{ flex: 1, backgroundColor: t.bg }}>
           <View style={{ paddingTop: top, backgroundColor: t.bg2, borderBottomWidth: 1, borderColor: t.line }}>
             <View style={{ height: 50, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6 }}>
-              <Pressable onPress={onClose} hitSlop={8} style={{ padding: 8 }}><Icons.back size={22} color={t.tx} sw={2} /></Pressable>
+              <Pressable onPress={closePanel} hitSlop={8} style={{ padding: 8 }}><Icons.back size={22} color={t.tx} sw={2} /></Pressable>
               <Text style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: t.tx }}>代码文件</Text>
               <Pressable onPress={() => (tab === 'tree' ? loadDir(path) : loadChanges())} hitSlop={8} style={{ padding: 8 }}>
                 {(entriesLoading || changesLoading) ? <Spinner size={18} color={t.acTx} sw={2} /> : <Icons.refresh size={19} color={t.tx2} sw={2} />}
@@ -355,7 +473,7 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
           </View>
 
           {tab === 'tree' ? (
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1 }} pointerEvents={uploadingFile ? 'none' : 'auto'}>
               <View style={{ flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderColor: t.line }}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, gap: 1 }}>
                   <Pressable onPress={() => openDir('')} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -373,8 +491,13 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
                     );
                   })}
                 </ScrollView>
-                {/* 下载当前目录（根目录即整个项目，打包成 zip）；单个文件在文件查看页顶部下载 */}
-                <Pressable onPress={() => download({ path, name: baseName(path) || 'workspace', dir: true })} hitSlop={10} style={({ pressed }) => [{ padding: 7, marginRight: 8, borderRadius: 8 }, pressed && { backgroundColor: t.bg3 }]}>
+                {/* 上传到当前目录；下载则把当前目录（根目录即整个项目）打包成 zip。 */}
+                <Pressable onPress={upload} disabled={!!uploadingFile || downloading !== null} hitSlop={10}
+                  style={({ pressed }) => [{ padding: 7, borderRadius: 8, opacity: downloading !== null ? 0.45 : 1 }, pressed && { backgroundColor: t.bg3 }]}>
+                  {uploadingFile ? <Spinner size={16} color={t.acTx} sw={2} /> : <Icons.upload size={18} color={t.tx2} sw={1.9} />}
+                </Pressable>
+                <Pressable onPress={() => download({ path, name: baseName(path) || 'workspace', dir: true })} disabled={!!uploadingFile} hitSlop={10}
+                  style={({ pressed }) => [{ padding: 7, marginRight: 8, borderRadius: 8, opacity: uploadingFile ? 0.45 : 1 }, pressed && { backgroundColor: t.bg3 }]}>
                   {downloading === path ? <Spinner size={16} color={t.acTx} sw={2} /> : <Icons.download size={18} color={t.tx2} sw={1.9} />}
                 </Pressable>
               </View>
@@ -450,6 +573,22 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
               <View style={{ height: 3, borderRadius: 99, backgroundColor: t.ac, width: `${Math.max(2, Math.round((dl.bytes / dl.total) * 100))}%` }} />
             </View>
           ) : null}
+        </View>
+      ) : uploadingFile ? (
+        // multipart 暂无可靠的跨平台上传进度事件，至少持续展示当前文件和目标目录。
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: t.bg2, borderTopWidth: StyleSheet.hairlineWidth, borderColor: t.line2, paddingTop: 11, paddingHorizontal: 16, paddingBottom: bottom + 11, ...t.shLift }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Spinner size={18} color={t.acTx} sw={2} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={{ fontSize: 13.5, fontWeight: '600', color: t.tx }}>正在上传 {uploadingFile.name}</Text>
+              <Text numberOfLines={1} style={{ fontSize: 11.5, color: t.tx3, marginTop: 1.5 }}>
+                {uploadingFile.size != null ? `${formatSize(uploadingFile.size)} · ` : ''}上传到{path ? ` ${path}` : '根目录'}
+              </Text>
+            </View>
+            <Pressable onPress={cancelUpload} hitSlop={8} style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, backgroundColor: t.bg3 }, pressed && { backgroundColor: t.bg4 }]}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: t.tx2 }}>取消</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
     </Modal>

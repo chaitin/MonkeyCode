@@ -38,6 +38,7 @@ var (
 	// 文件管理
 	ErrFilePermisionDenied = web.NewErr(http.StatusOK, 10100, "err-file-permision-denied")
 	ErrFileOp              = web.NewErr(http.StatusOK, 10101, "err-file-op")
+	ErrFileTooLarge        = web.NewErr(http.StatusOK, 10102, "err-file-too-large")
 
 	// 主机管理
 	ErrVMIDRequired          = web.NewErr(http.StatusOK, 10200, "err-vm-id-required")

@@ -3,7 +3,8 @@
  *   1) POST /api/v1/uploader/presign { filename } -> { access_url, upload_url }
  *   2) PUT 原始字节到 upload_url（预签名 URL 自带鉴权，不需要 cookie）
  *   3) 发消息时带上 { url: access_url, filename }
- * 约束与 Web 对齐：图片单张 ≤2MB、最多 3 张；zip ≤10MB。
+ * 任务工作区文件则走 /users/files/upload multipart 直传到 VM。
+ * 约束与 Web 对齐：图片单张 ≤2MB、最多 3 张；zip / 工作区文件 ≤10MB。
  */
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -16,6 +17,7 @@ import { request } from './client';
 export const MAX_ATTACHMENTS = 3;
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB（与 Web MAX_UPLOAD_FILE_SIZE 一致）
 export const MAX_ZIP_BYTES = 10 * 1024 * 1024; // 10MB（与 Web 端 zip 上传限制一致）
+export const MAX_WORKSPACE_FILE_BYTES = 10 * 1024 * 1024; // 10MB（与 Web 工作区文件上传一致）
 
 export interface PickedImage {
   uri: string;
@@ -38,6 +40,7 @@ export interface PickedFile {
 }
 
 let pendingZipPick: Promise<PickedFile | null> | null = null;
+let pendingWorkspaceFilePick: Promise<PickedFile | null> | null = null;
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
@@ -119,6 +122,57 @@ export function pickZipFile(): Promise<PickedFile | null> {
   });
 
   return pendingZipPick;
+}
+
+function pickedFileName(name: string | undefined, uri: string): string {
+  const candidate = (name || uri.split('/').pop()?.split('?')[0] || 'upload').replace(/\\/g, '/').split('/').pop()?.trim() ?? '';
+  const cleaned = candidate.replace(/[\u0000-\u001f\u007f]/g, '');
+  return !cleaned || cleaned === '.' || cleaned === '..' ? 'upload' : cleaned;
+}
+
+/** 从系统文件选择器选择一个要写入任务工作区的文件；用户取消返回 null。 */
+export function pickWorkspaceFile(): Promise<PickedFile | null> {
+  if (pendingWorkspaceFilePick) return pendingWorkspaceFilePick;
+
+  pendingWorkspaceFilePick = (async () => {
+    let res;
+    try {
+      res = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (/document picking in progress/i.test(message)) {
+        throw new Error('文件选择器状态异常，请重新打开 App 后重试');
+      }
+      throw error;
+    }
+    if (res.canceled || !res.assets?.length) return null;
+
+    const asset = res.assets[0];
+    let size = typeof asset.size === 'number' && asset.size >= 0 ? asset.size : undefined;
+    if (size === undefined) {
+      try {
+        const info = await FileSystem.getInfoAsync(asset.uri);
+        if (info.exists && typeof (info as { size?: number }).size === 'number') size = (info as { size: number }).size;
+      } catch { /* 下面统一报错 */ }
+    }
+    if (size === undefined || size < 0) throw new Error('无法读取文件大小，请重新选择');
+    if (size > MAX_WORKSPACE_FILE_BYTES) throw new Error('单个文件不能超过 10MB');
+
+    return {
+      uri: asset.uri,
+      name: pickedFileName(asset.name, asset.uri),
+      mimeType: asset.mimeType ?? 'application/octet-stream',
+      size,
+    };
+  })().finally(() => {
+    pendingWorkspaceFilePick = null;
+  });
+
+  return pendingWorkspaceFilePick;
 }
 
 async function fileSizeOf(uri: string): Promise<number> {
@@ -218,6 +272,22 @@ export async function uploadFileWithPresignedUrl(file: PickedFile): Promise<Uplo
     throw new Error(`上传失败（${status}${code ? ` ${code}` : ''}${message ? `：${message}` : ''}）`);
   }
   return { url: accessUrl, filename: file.name };
+}
+
+/** 把本地文件以 multipart/form-data 直接写入任务 VM 的绝对路径。 */
+export async function uploadWorkspaceFile(vmId: string, path: string, file: PickedFile, signal?: AbortSignal): Promise<void> {
+  const formData = new FormData();
+  formData.append('file', {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType || 'application/octet-stream',
+  } as unknown as Blob);
+  await request('/api/v1/users/files/upload', {
+    method: 'POST',
+    query: { id: vmId, path },
+    formData,
+    signal,
+  });
 }
 
 /** 单张图片：必要时压到 ≤2MB -> 预签名 -> PUT 原始字节 -> 返回可访问 URL + 文件名。 */
