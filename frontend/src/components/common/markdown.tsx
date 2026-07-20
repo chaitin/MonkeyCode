@@ -40,7 +40,7 @@ const Mermaid = memo(function Mermaid({ chart, isDark }: MermaidProps) {
         mermaid.initialize({
           startOnLoad: false,
           theme: isDark ? "dark" : "default",
-          securityLevel: "loose",
+          securityLevel: "strict",
           suppressErrorRendering: true,
         })
         // 使用唯一 ID 避免冲突
