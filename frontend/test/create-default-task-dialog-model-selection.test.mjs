@@ -65,6 +65,21 @@ test("用户选择的模型失效后要求重新选择", () => {
   )
 })
 
+test("模型列表暂不可用或用户尚未完成选择时保持空值", () => {
+  assert.equal(resolveTaskModelSelection({
+    availableModelIds: [],
+    currentModelId: "custom",
+    preferredModelId: "",
+    touched: true,
+  }), "")
+  assert.equal(resolveTaskModelSelection({
+    availableModelIds: ["default"],
+    currentModelId: "",
+    preferredModelId: "default",
+    touched: true,
+  }), "")
+})
+
 test("侧边栏启动任务弹窗关闭时重置模型操作状态", () => {
   assert.match(
     dialogSource,
