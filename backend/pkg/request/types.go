@@ -13,6 +13,7 @@ type Ctx struct {
 	contentType string
 	hook        func(http.Header)
 	ctx         context.Context
+	client      *http.Client
 }
 
 // Response 通用响应

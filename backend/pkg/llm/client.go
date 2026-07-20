@@ -30,14 +30,16 @@ func NewClient(cfg Config, opts ...ClientOption) *Client {
 		interfaceType = InterfaceOpenAIChat
 	}
 
+	httpClient := cfg.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 60 * time.Second}
+	}
 	client := &Client{
 		baseURL:       cfg.BaseURL,
 		apiKey:        cfg.APIKey,
 		model:         cfg.Model,
 		interfaceType: interfaceType,
-		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
-		},
+		httpClient:    httpClient,
 	}
 
 	for _, opt := range opts {
@@ -49,6 +51,7 @@ func NewClient(cfg Config, opts ...ClientOption) *Client {
 		if cfg.BaseURL != "" {
 			openaiConfig.BaseURL = cfg.BaseURL
 		}
+		openaiConfig.HTTPClient = client.httpClient
 		client.openaiClient = openai.NewClientWithConfig(openaiConfig)
 	} else if client.interfaceType == InterfaceAnthropic && cfg.APIKey != "" {
 		client.anthropicClient = newAnthropicClient(cfg, client.httpClient)
@@ -100,6 +103,7 @@ func (c *Client) chatOpenAI(ctx context.Context, req ChatRequest) (*ChatResponse
 		if c.baseURL != "" {
 			openaiConfig.BaseURL = c.baseURL
 		}
+		openaiConfig.HTTPClient = c.httpClient
 		c.openaiClient = openai.NewClientWithConfig(openaiConfig)
 	}
 

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -16,14 +15,14 @@ import (
 
 	"github.com/chaitin/MonkeyCode/backend/biz/mcphub/repo"
 	"github.com/chaitin/MonkeyCode/backend/biz/mcphub/runtime/gateway"
+	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 )
 
 type HTTPClient struct {
-	client      *http.Client
-	resolver    hostResolver
-	dialContext func(ctx context.Context, network, address string) (net.Conn, error)
-	mu          sync.RWMutex
-	sessions    map[string]string
+	client   *http.Client
+	guard    *netguard.Guard
+	mu       sync.RWMutex
+	sessions map[string]string
 }
 
 type rpcResponse struct {
@@ -42,28 +41,30 @@ type listToolsResult struct {
 	} `json:"tools"`
 }
 
-func NewHTTPClient(timeout time.Duration) *HTTPClient {
+func NewHTTPClient(timeout time.Duration, blockPrivateNetwork ...bool) *HTTPClient {
 	if timeout <= 0 {
 		timeout = 15 * time.Second
 	}
-	dialer := &net.Dialer{Timeout: timeout}
+	block := true
+	if len(blockPrivateNetwork) > 0 {
+		block = blockPrivateNetwork[0]
+	}
+	guard := netguard.New(block)
 	client := &HTTPClient{
-		resolver:    net.DefaultResolver,
-		dialContext: dialer.DialContext,
-		sessions:    make(map[string]string),
+		guard:    guard,
+		sessions: make(map[string]string),
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	transport.DialContext = client.guardedDialContext
-	client.client = &http.Client{
+	client.client = guard.HTTPClient(&http.Client{
 		Timeout:   timeout,
 		Transport: transport,
-	}
+	})
 	return client
 }
 
 func (c *HTTPClient) CallTool(ctx context.Context, upstream *repo.UpstreamConfig, tool repo.ToolSnapshot, params gateway.CallToolParams) (json.RawMessage, string, error) {
-	if err := validateUpstreamURL(ctx, upstream.URL, c.resolver); err != nil {
+	if err := c.guard.ValidateURL(ctx, upstream.URL); err != nil {
 		return nil, "", err
 	}
 
@@ -106,7 +107,7 @@ func (c *HTTPClient) CallTool(ctx context.Context, upstream *repo.UpstreamConfig
 }
 
 func (c *HTTPClient) ListTools(ctx context.Context, upstream *repo.UpstreamConfig) ([]repo.UpstreamTool, error) {
-	if err := validateUpstreamURL(ctx, upstream.URL, c.resolver); err != nil {
+	if err := c.guard.ValidateURL(ctx, upstream.URL); err != nil {
 		return nil, err
 	}
 
@@ -331,27 +332,6 @@ func decodeMCPResponseBody(data []byte, contentType string) ([]byte, error) {
 		return extractSSEData(data)
 	}
 	return data, nil
-}
-
-func (c *HTTPClient) guardedDialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	host, port, err := net.SplitHostPort(address)
-	if err != nil {
-		return nil, err
-	}
-	addrs, err := resolveAndValidateHost(ctx, host, c.resolver)
-	if err != nil {
-		return nil, err
-	}
-	var lastErr error
-	for _, addr := range addrs {
-		target := net.JoinHostPort(addr.String(), port)
-		conn, dialErr := c.dialContext(ctx, network, target)
-		if dialErr == nil {
-			return conn, nil
-		}
-		lastErr = dialErr
-	}
-	return nil, lastErr
 }
 
 func extractSSEData(data []byte) ([]byte, error) {

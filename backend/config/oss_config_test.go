@@ -90,3 +90,15 @@ func TestTaskCreateReqTTLCanBeConfiguredByEnv(t *testing.T) {
 		t.Fatalf("task.create_req_ttl_seconds = %d, want 3600", cfg.Task.CreateReqTTLSeconds)
 	}
 }
+
+func TestPrivateNetworkBlockCanBeConfiguredByEnv(t *testing.T) {
+	t.Setenv("MCAI_SECURITY_BLOCK_PRIVATE_NETWORK", "true")
+
+	cfg, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Security.BlockPrivateNetwork {
+		t.Fatal("security.block_private_network = false, want true")
+	}
+}

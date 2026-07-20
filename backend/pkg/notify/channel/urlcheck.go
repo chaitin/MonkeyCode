@@ -1,10 +1,11 @@
 package channel
 
 import (
+	"context"
 	"fmt"
-	"net"
-	"net/url"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 )
 
 var blockedHeaderKeys = map[string]struct{}{
@@ -14,30 +15,13 @@ var blockedHeaderKeys = map[string]struct{}{
 	"connection":        {},
 }
 
-func ValidateWebhookURL(rawURL string) error {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("invalid url: %w", err)
+func ValidateWebhookURL(rawURL string, blockPrivateNetwork ...bool) error {
+	block := true
+	if len(blockPrivateNetwork) > 0 {
+		block = blockPrivateNetwork[0]
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("unsupported scheme %q, only http and https are allowed", u.Scheme)
-	}
-	host := u.Hostname()
-	if host == "" {
-		return fmt.Errorf("empty host")
-	}
-	ips, err := net.LookupHost(host)
-	if err != nil {
-		return fmt.Errorf("failed to resolve host %q: %w", host, err)
-	}
-	for _, ipStr := range ips {
-		ip := net.ParseIP(ipStr)
-		if ip == nil {
-			continue
-		}
-		if isBlockedIP(ip) {
-			return fmt.Errorf("webhook url resolves to blocked address %s", ipStr)
-		}
+	if err := netguard.New(block).ValidateURL(context.Background(), rawURL); err != nil {
+		return fmt.Errorf("invalid webhook url: %w", err)
 	}
 	return nil
 }
@@ -54,24 +38,8 @@ func ValidateHeaders(headers map[string]string) error {
 // validateURLChannelCfg 是 URL 类渠道（dingtalk/feishu/wecom/webhook）的共用校验：
 // 校验 webhook URL 与 Header 的 SSRF 风险，让各 sender 在 Validate 里直接复用。
 func validateURLChannelCfg(cfg *ChannelConfig) error {
-	if err := ValidateWebhookURL(cfg.WebhookURL); err != nil {
+	if err := ValidateWebhookURL(cfg.WebhookURL, cfg.BlockPrivateNetwork); err != nil {
 		return err
 	}
 	return ValidateHeaders(cfg.Headers)
-}
-
-func isBlockedIP(ip net.IP) bool {
-	if ip.IsLoopback() {
-		return true
-	}
-	if ip.IsPrivate() {
-		return true
-	}
-	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-	if ip.IsUnspecified() {
-		return true
-	}
-	return false
 }

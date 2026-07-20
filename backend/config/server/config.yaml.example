@@ -4,6 +4,11 @@ server:
   # 必须手动配置为外部可访问地址，用于安装脚本、回调、对象存储公开 URL 等场景。
   base_url: "http://localhost:8888"
 
+security:
+  # SaaS 环境设为 true；私有化默认关闭，以允许访问部署方内网服务。
+  # 可通过 MCAI_SECURITY_BLOCK_PRIVATE_NETWORK 环境变量覆盖。
+  block_private_network: false
+
 database:
   master: "postgres://monkeycode:monkeycode@localhost:5432/monkeycode?sslmode=disable"
   slave: ""

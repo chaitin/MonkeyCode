@@ -91,6 +91,11 @@ type Config struct {
 	Doubao Doubao `mapstructure:"doubao"`
 
 	ReviewAgent ReviewAgent `mapstructure:"review_agent"`
+	Security    Security    `mapstructure:"security"`
+}
+
+type Security struct {
+	BlockPrivateNetwork bool `mapstructure:"block_private_network"`
 }
 
 type ReviewAgent struct {
@@ -324,6 +329,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("debug", false)
 	v.SetDefault("server.addr", ":8888")
 	v.SetDefault("server.base_url", "")
+	v.SetDefault("security.block_private_network", false)
 	v.SetDefault("loki.addr", "http://monkeycode-ai-loki:3100")
 	v.SetDefault("clickhouse.addr", "")
 	v.SetDefault("clickhouse.database", "")

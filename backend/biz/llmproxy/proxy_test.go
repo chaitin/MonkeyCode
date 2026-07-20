@@ -289,3 +289,33 @@ func TestProxyAppendsEndpointToVersionedBaseURL(t *testing.T) {
 		t.Fatalf("upstream path = %q, want /v1/responses", gotPath)
 	}
 }
+
+func TestProxyBlocksPrivateModelUpstream(t *testing.T) {
+	called := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(upstream.Close)
+
+	client := newProxyTestDB(t)
+	runtimeKey := seedProxyModel(t, client, upstream.URL+"/v1")
+	proxy := NewProxy(
+		client,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithPrivateNetworkBlocked(true),
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+runtimeKey)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if called {
+		t.Fatal("private upstream was called")
+	}
+}

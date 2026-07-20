@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/channel"
@@ -22,16 +23,17 @@ import (
 
 // Dispatcher 事件分发器
 type Dispatcher struct {
-	redis         *redis.Client
-	channelRepo   domain.NotifyChannelRepo
-	sendLogRepo   domain.NotifySendLogRepo
-	senderReg     *channel.Registry
-	templateReg   *template.Registry
-	logger        *slog.Logger
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	teamResolver  func(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
-	sendSemaphore chan struct{}
+	redis               *redis.Client
+	channelRepo         domain.NotifyChannelRepo
+	sendLogRepo         domain.NotifySendLogRepo
+	senderReg           *channel.Registry
+	templateReg         *template.Registry
+	logger              *slog.Logger
+	cancel              context.CancelFunc
+	wg                  sync.WaitGroup
+	teamResolver        func(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
+	sendSemaphore       chan struct{}
+	blockPrivateNetwork bool
 }
 
 // NewDispatcher 创建事件分发器
@@ -40,14 +42,15 @@ func NewDispatcher(
 	teamResolver func(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error),
 ) *Dispatcher {
 	return &Dispatcher{
-		redis:         do.MustInvoke[*redis.Client](i),
-		channelRepo:   do.MustInvoke[domain.NotifyChannelRepo](i),
-		sendLogRepo:   do.MustInvoke[domain.NotifySendLogRepo](i),
-		senderReg:     do.MustInvoke[*channel.Registry](i),
-		templateReg:   do.MustInvoke[*template.Registry](i),
-		teamResolver:  teamResolver,
-		logger:        do.MustInvoke[*slog.Logger](i).With("module", "notify.dispatcher"),
-		sendSemaphore: make(chan struct{}, 20),
+		redis:               do.MustInvoke[*redis.Client](i),
+		channelRepo:         do.MustInvoke[domain.NotifyChannelRepo](i),
+		sendLogRepo:         do.MustInvoke[domain.NotifySendLogRepo](i),
+		senderReg:           do.MustInvoke[*channel.Registry](i),
+		templateReg:         do.MustInvoke[*template.Registry](i),
+		teamResolver:        teamResolver,
+		logger:              do.MustInvoke[*slog.Logger](i).With("module", "notify.dispatcher"),
+		sendSemaphore:       make(chan struct{}, 20),
+		blockPrivateNetwork: do.MustInvoke[*config.Config](i).Security.BlockPrivateNetwork,
 	}
 }
 
@@ -213,10 +216,11 @@ func (d *Dispatcher) dispatchOne(ctx context.Context, event *domain.NotifyEvent)
 				}
 
 				cfg := &channel.ChannelConfig{
-					WebhookURL: ch.WebhookURL,
-					Secret:     ch.Secret,
-					Headers:    ch.Headers,
-					TargetID:   ch.TargetID,
+					WebhookURL:          ch.WebhookURL,
+					Secret:              ch.Secret,
+					Headers:             ch.Headers,
+					TargetID:            ch.TargetID,
+					BlockPrivateNetwork: d.blockPrivateNetwork,
 				}
 
 				// 校验 ChannelConfig 由各 sender 自己负责（URL 类做 SSRF，ID 类做 target_id 非空等）。

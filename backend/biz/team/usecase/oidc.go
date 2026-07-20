@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 	oidcpkg "github.com/chaitin/MonkeyCode/backend/pkg/oidc"
 )
 
@@ -31,6 +33,7 @@ type TeamOIDCUsecase struct {
 	cfg           *config.Config
 	redis         *redis.Client
 	oidc          *oidcpkg.Client
+	httpClient    *http.Client
 	logger        *slog.Logger
 }
 
@@ -43,12 +46,15 @@ func NewTeamOIDCLoginUsecase(i *do.Injector) (domain.TeamOIDCLoginUsecase, error
 }
 
 func newTeamOIDCUsecase(i *do.Injector) (*TeamOIDCUsecase, error) {
+	cfg := do.MustInvoke[*config.Config](i)
+	httpClient := netguard.New(cfg.Security.BlockPrivateNetwork).HTTPClient(&http.Client{Timeout: 30 * time.Second})
 	return &TeamOIDCUsecase{
 		repo:          do.MustInvoke[domain.TeamOIDCRepo](i),
 		memberManager: do.MustInvoke[domain.MemberManager](i),
-		cfg:           do.MustInvoke[*config.Config](i),
+		cfg:           cfg,
 		redis:         do.MustInvoke[*redis.Client](i),
-		oidc:          oidcpkg.NewClient(nil),
+		oidc:          oidcpkg.NewClient(httpClient),
+		httpClient:    httpClient,
 		logger:        do.MustInvoke[*slog.Logger](i).With("module", "usecase.team_oidc"),
 	}, nil
 }
@@ -66,6 +72,9 @@ func (u *TeamOIDCUsecase) GetConfig(ctx context.Context, teamUser *domain.TeamUs
 
 func (u *TeamOIDCUsecase) SaveConfig(ctx context.Context, teamUser *domain.TeamUser, req *domain.SaveTeamOIDCConfigReq) (*domain.TeamOIDCConfigResp, error) {
 	req.Issuer = oidcpkg.CleanIssuer(req.Issuer)
+	if err := netguard.New(u.cfg.Security.BlockPrivateNetwork).ValidateURL(ctx, req.Issuer); err != nil {
+		return nil, errcode.ErrOIDCConfigInvalid.Wrap(err)
+	}
 	if req.Scopes == "" {
 		req.Scopes = "openid email profile"
 	}
@@ -176,6 +185,7 @@ func (u *TeamOIDCUsecase) HandleCallback(ctx context.Context, req *domain.TeamOI
 		RedirectURL:  u.redirectURI(),
 		Scopes:       oidcpkg.SplitScopes(cfg.Scopes),
 	})
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, u.httpClient)
 	token, err := oauthCfg.Exchange(ctx, req.Code)
 	if err != nil {
 		return nil, errcode.ErrOIDCTokenInvalid.Wrap(err)

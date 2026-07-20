@@ -203,7 +203,11 @@ func PostURL[T any](ctx context.Context, rawURL string, body any, opts ...Opt) (
 		req.Header.Set(k, v)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := c.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

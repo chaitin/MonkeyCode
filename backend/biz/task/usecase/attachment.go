@@ -11,13 +11,14 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/asseturl"
+	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/google/uuid"
 )
 
 const maxAttachments = 10
 
-func validateAttachments(userID uuid.UUID, attachments []domain.TaskAttachment, cfg config.Attachment, objectCfg config.ObjectStorageConfig) error {
+func validateAttachments(userID uuid.UUID, attachments []domain.TaskAttachment, cfg config.Attachment, objectCfg config.ObjectStorageConfig, blockPrivateNetwork ...bool) error {
 	if len(attachments) == 0 {
 		return nil
 	}
@@ -47,6 +48,10 @@ func validateAttachments(userID uuid.UUID, attachments []domain.TaskAttachment, 
 		}
 		if u.Scheme != "http" && u.Scheme != "https" {
 			return errcode.ErrBadRequest.Wrap(fmt.Errorf("unsupported attachment url scheme: %q", u.Scheme))
+		}
+		block := len(blockPrivateNetwork) > 0 && blockPrivateNetwork[0]
+		if err := netguard.New(block).ValidateURL(context.Background(), raw); err != nil {
+			return errcode.ErrBadRequest.Wrap(fmt.Errorf("attachment url is not allowed: %w", err))
 		}
 		if !matchAllowedAttachmentPrefix(raw, cfg.AllowedURLPrefixes) {
 			return errcode.ErrBadRequest.Wrap(fmt.Errorf("attachment url is not allowed"))

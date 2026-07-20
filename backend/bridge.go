@@ -110,6 +110,13 @@ func WithServerConfigProvider(provider domain.ServerConfigProvider) BridgeOption
 	}
 }
 
+func WithPrivateNetworkBlocked(block bool) BridgeOption {
+	return func(i *do.Injector) {
+		cfg := do.MustInvoke[*config.Config](i)
+		cfg.Security.BlockPrivateNetwork = block
+	}
+}
+
 func Register(e *echo.Echo, dir string, opts ...BridgeOption) error {
 	cfg, err := config.Init(dir)
 	if err != nil {

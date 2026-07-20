@@ -73,3 +73,9 @@ func WithContext(c context.Context) Opt {
 		ctx.ctx = c
 	}
 }
+
+func WithHTTPClient(client *http.Client) Opt {
+	return func(ctx *Ctx) {
+		ctx.client = client
+	}
+}

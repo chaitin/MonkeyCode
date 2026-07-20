@@ -3,30 +3,43 @@ package usecase
 import (
 	"context"
 	"log/slog"
+	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/llm"
+	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 )
 
 type teamModelUsecase struct {
 	repo   domain.TeamModelRepo
 	logger *slog.Logger
+	client *http.Client
+	guard  *netguard.Guard
 }
 
 func NewTeamModelUsecase(i *do.Injector) (domain.TeamModelUsecase, error) {
+	cfg := do.MustInvoke[*config.Config](i)
+	guard := netguard.New(cfg.Security.BlockPrivateNetwork)
 	return &teamModelUsecase{
 		repo:   do.MustInvoke[domain.TeamModelRepo](i),
 		logger: do.MustInvoke[*slog.Logger](i),
+		client: guard.HTTPClient(&http.Client{Timeout: 30 * time.Second}),
+		guard:  guard,
 	}, nil
 }
 
 func (u *teamModelUsecase) Add(ctx context.Context, teamUser *domain.TeamUser, req *domain.AddTeamModelReq) (*domain.TeamModel, error) {
+	if err := u.validateBaseURL(ctx, req.BaseURL); err != nil {
+		return nil, err
+	}
 	model, err := u.repo.Create(ctx, teamUser.GetTeamID(), teamUser.User.ID, req)
 	if err != nil {
 		return nil, errcode.ErrDatabaseQuery.Wrap(err)
@@ -50,6 +63,11 @@ func (u *teamModelUsecase) List(ctx context.Context, teamUser *domain.TeamUser) 
 }
 
 func (u *teamModelUsecase) Update(ctx context.Context, teamUser *domain.TeamUser, req *domain.UpdateTeamModelReq) (*domain.TeamModel, error) {
+	if req.BaseURL != "" {
+		if err := u.validateBaseURL(ctx, req.BaseURL); err != nil {
+			return nil, err
+		}
+	}
 	model, err := u.repo.Update(ctx, teamUser.GetTeamID(), req)
 	if err != nil {
 		return nil, err
@@ -75,6 +93,7 @@ func (u *teamModelUsecase) Check(ctx context.Context, teamUser *domain.TeamUser,
 		APIKey:        m.APIKey,
 		Model:         m.Model,
 		InterfaceType: llm.InterfaceType(m.InterfaceType),
+		HTTPClient:    u.client,
 	})
 
 	resp := &domain.CheckModelResp{}
@@ -102,6 +121,7 @@ func (u *teamModelUsecase) CheckByConfig(ctx context.Context, req *domain.CheckB
 		APIKey:        req.APIKey,
 		Model:         req.Model,
 		InterfaceType: llm.InterfaceType(req.InterfaceType),
+		HTTPClient:    u.client,
 	})
 
 	resp := &domain.CheckModelResp{}
@@ -115,4 +135,11 @@ func (u *teamModelUsecase) CheckByConfig(ctx context.Context, req *domain.CheckB
 	}
 
 	return resp, nil
+}
+
+func (u *teamModelUsecase) validateBaseURL(ctx context.Context, baseURL string) error {
+	if err := u.guard.ValidateURL(ctx, baseURL); err != nil {
+		return errcode.ErrForbiddenBaseURL.Wrap(err)
+	}
+	return nil
 }
