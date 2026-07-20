@@ -1,0 +1,2 @@
+ALTER TABLE tasks DROP COLUMN IF EXISTS skill_ids;
+ALTER TABLE tasks DROP COLUMN IF EXISTS plugin_ids;

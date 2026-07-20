@@ -14,6 +14,7 @@ import { isCompressibleImageFile, MAX_TASK_UPLOAD_FILE_SIZE_BYTES, MAX_TASK_UPLO
 import { toast } from "sonner"
 import { TaskWhiteboardDialog } from "./task-whiteboard-dialog"
 import { TaskAttachmentPreviewDialog } from "./task-attachment-preview-dialog"
+
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { MAX_TASK_CONTENT_LENGTH } from "./task-content-limit"
 import { useTranslation } from "react-i18next"

@@ -182,6 +182,18 @@ func (_c *TaskCreate) SetNillableCompletedAt(v *time.Time) *TaskCreate {
 	return _c
 }
 
+// SetSkillIds sets the "skill_ids" field.
+func (_c *TaskCreate) SetSkillIds(v []string) *TaskCreate {
+	_c.mutation.SetSkillIds(v)
+	return _c
+}
+
+// SetPluginIds sets the "plugin_ids" field.
+func (_c *TaskCreate) SetPluginIds(v []string) *TaskCreate {
+	_c.mutation.SetPluginIds(v)
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *TaskCreate) SetID(v uuid.UUID) *TaskCreate {
 	_c.mutation.SetID(v)
@@ -462,6 +474,14 @@ func (_c *TaskCreate) createSpec() (*Task, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CompletedAt(); ok {
 		_spec.SetField(task.FieldCompletedAt, field.TypeTime, value)
 		_node.CompletedAt = value
+	}
+	if value, ok := _c.mutation.SkillIds(); ok {
+		_spec.SetField(task.FieldSkillIds, field.TypeJSON, value)
+		_node.SkillIds = value
+	}
+	if value, ok := _c.mutation.PluginIds(); ok {
+		_spec.SetField(task.FieldPluginIds, field.TypeJSON, value)
+		_node.PluginIds = value
 	}
 	if nodes := _c.mutation.ProjectTasksIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -824,6 +844,42 @@ func (u *TaskUpsert) ClearCompletedAt() *TaskUpsert {
 	return u
 }
 
+// SetSkillIds sets the "skill_ids" field.
+func (u *TaskUpsert) SetSkillIds(v []string) *TaskUpsert {
+	u.Set(task.FieldSkillIds, v)
+	return u
+}
+
+// UpdateSkillIds sets the "skill_ids" field to the value that was provided on create.
+func (u *TaskUpsert) UpdateSkillIds() *TaskUpsert {
+	u.SetExcluded(task.FieldSkillIds)
+	return u
+}
+
+// ClearSkillIds clears the value of the "skill_ids" field.
+func (u *TaskUpsert) ClearSkillIds() *TaskUpsert {
+	u.SetNull(task.FieldSkillIds)
+	return u
+}
+
+// SetPluginIds sets the "plugin_ids" field.
+func (u *TaskUpsert) SetPluginIds(v []string) *TaskUpsert {
+	u.Set(task.FieldPluginIds, v)
+	return u
+}
+
+// UpdatePluginIds sets the "plugin_ids" field to the value that was provided on create.
+func (u *TaskUpsert) UpdatePluginIds() *TaskUpsert {
+	u.SetExcluded(task.FieldPluginIds)
+	return u
+}
+
+// ClearPluginIds clears the value of the "plugin_ids" field.
+func (u *TaskUpsert) ClearPluginIds() *TaskUpsert {
+	u.SetNull(task.FieldPluginIds)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
@@ -1093,6 +1149,48 @@ func (u *TaskUpsertOne) UpdateCompletedAt() *TaskUpsertOne {
 func (u *TaskUpsertOne) ClearCompletedAt() *TaskUpsertOne {
 	return u.Update(func(s *TaskUpsert) {
 		s.ClearCompletedAt()
+	})
+}
+
+// SetSkillIds sets the "skill_ids" field.
+func (u *TaskUpsertOne) SetSkillIds(v []string) *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetSkillIds(v)
+	})
+}
+
+// UpdateSkillIds sets the "skill_ids" field to the value that was provided on create.
+func (u *TaskUpsertOne) UpdateSkillIds() *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdateSkillIds()
+	})
+}
+
+// ClearSkillIds clears the value of the "skill_ids" field.
+func (u *TaskUpsertOne) ClearSkillIds() *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.ClearSkillIds()
+	})
+}
+
+// SetPluginIds sets the "plugin_ids" field.
+func (u *TaskUpsertOne) SetPluginIds(v []string) *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetPluginIds(v)
+	})
+}
+
+// UpdatePluginIds sets the "plugin_ids" field to the value that was provided on create.
+func (u *TaskUpsertOne) UpdatePluginIds() *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdatePluginIds()
+	})
+}
+
+// ClearPluginIds clears the value of the "plugin_ids" field.
+func (u *TaskUpsertOne) ClearPluginIds() *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.ClearPluginIds()
 	})
 }
 
@@ -1532,6 +1630,48 @@ func (u *TaskUpsertBulk) UpdateCompletedAt() *TaskUpsertBulk {
 func (u *TaskUpsertBulk) ClearCompletedAt() *TaskUpsertBulk {
 	return u.Update(func(s *TaskUpsert) {
 		s.ClearCompletedAt()
+	})
+}
+
+// SetSkillIds sets the "skill_ids" field.
+func (u *TaskUpsertBulk) SetSkillIds(v []string) *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetSkillIds(v)
+	})
+}
+
+// UpdateSkillIds sets the "skill_ids" field to the value that was provided on create.
+func (u *TaskUpsertBulk) UpdateSkillIds() *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdateSkillIds()
+	})
+}
+
+// ClearSkillIds clears the value of the "skill_ids" field.
+func (u *TaskUpsertBulk) ClearSkillIds() *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.ClearSkillIds()
+	})
+}
+
+// SetPluginIds sets the "plugin_ids" field.
+func (u *TaskUpsertBulk) SetPluginIds(v []string) *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetPluginIds(v)
+	})
+}
+
+// UpdatePluginIds sets the "plugin_ids" field to the value that was provided on create.
+func (u *TaskUpsertBulk) UpdatePluginIds() *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdatePluginIds()
+	})
+}
+
+// ClearPluginIds clears the value of the "plugin_ids" field.
+func (u *TaskUpsertBulk) ClearPluginIds() *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.ClearPluginIds()
 	})
 }
 

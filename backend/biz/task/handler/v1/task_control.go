@@ -101,6 +101,16 @@ import (
 //	@Description	{"id":"uuid","request_id":"string?","success":true,"message":"string","session_id":"string","model":{}}
 //	@Description	```
 //	@Description
+//	@Description	### Type=call, Kind=switch_agent_resources — 运行中更新任务 skill/plugin 列表
+//	@Description	请求 Data (全量声明当前所选，非增量)：
+//	@Description	```json
+//	@Description	{"request_id":"string","skill_ids":["uuid"],"plugin_ids":["uuid"]}
+//	@Description	```
+//	@Description	响应 Data:
+//	@Description	```json
+//	@Description	{"request_id":"string","success":true,"message":"string","session_id":"string"}
+//	@Description	```
+//	@Description
 //	@Description	### Type=sync-my-ip — 同步 Web 客户端真实 IP
 //	@Description	请求 Data:
 //	@Description	```json
@@ -348,6 +358,15 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 		}
 		requestID = req.RequestID
 		result, err = h.usecase.SwitchModel(ctx, user, task.ID, req)
+
+	case "switch_agent_resources":
+		var req domain.SwitchAgentResourcesReq
+		if err := json.Unmarshal(m.Data, &req); err != nil {
+			logger.WarnContext(ctx, "failed to unmarshal switch agent resources", "error", err)
+			return
+		}
+		requestID = req.RequestID
+		result, err = h.usecase.SwitchAgentResources(ctx, user, task.ID, req)
 
 	default:
 		return

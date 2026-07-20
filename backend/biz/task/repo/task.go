@@ -308,6 +308,11 @@ func (t *TaskRepo) Delete(ctx context.Context, user *domain.User, id uuid.UUID) 
 	return err
 }
 
+// UpdateAgentResourceSelection 更新任务的 skill/plugin 基线选择
+func (t *TaskRepo) UpdateAgentResourceSelection(ctx context.Context, taskID uuid.UUID, skillIDs, pluginIDs []string) error {
+	return t.db.Task.UpdateOneID(taskID).SetSkillIds(skillIDs).SetPluginIds(pluginIDs).Exec(ctx)
+}
+
 // UpdateProjectTaskModel 更新项目任务当前模型
 func (t *TaskRepo) UpdateProjectTaskModel(ctx context.Context, taskID, modelID uuid.UUID) error {
 	count, err := t.db.ProjectTask.Update().
@@ -426,15 +431,21 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 		}
 
 		id := uuid.New()
-		tk, err := tx.Task.Create().
+		tkCrt := tx.Task.Create().
 			SetID(id).
 			SetKind(req.Type).
 			SetSubType(req.SubType).
 			SetContent(req.Content).
 			SetUserID(u.ID).
 			SetStatus(consts.TaskStatusPending).
-			SetLogStore(consts.LogStoreClickHouse).
-			Save(ctx)
+			SetLogStore(consts.LogStoreClickHouse)
+		if len(req.Extra.SkillIDs) > 0 {
+			tkCrt.SetSkillIds(req.Extra.SkillIDs)
+		}
+		if len(req.Extra.PluginIDs) > 0 {
+			tkCrt.SetPluginIds(req.Extra.PluginIDs)
+		}
+		tk, err := tkCrt.Save(ctx)
 		if err != nil {
 			return err
 		}
@@ -575,15 +586,21 @@ func (t *TaskRepo) PrepareCreate(ctx context.Context, u *domain.User, req domain
 		}
 
 		id := uuid.New()
-		tk, err := tx.Task.Create().
+		tkCrt := tx.Task.Create().
 			SetID(id).
 			SetKind(req.Type).
 			SetSubType(req.SubType).
 			SetContent(req.Content).
 			SetUserID(u.ID).
 			SetStatus(consts.TaskStatusPending).
-			SetLogStore(consts.LogStoreClickHouse).
-			Save(ctx)
+			SetLogStore(consts.LogStoreClickHouse)
+		if len(req.Extra.SkillIDs) > 0 {
+			tkCrt.SetSkillIds(req.Extra.SkillIDs)
+		}
+		if len(req.Extra.PluginIDs) > 0 {
+			tkCrt.SetPluginIds(req.Extra.PluginIDs)
+		}
+		tk, err := tkCrt.Save(ctx)
 		if err != nil {
 			return err
 		}

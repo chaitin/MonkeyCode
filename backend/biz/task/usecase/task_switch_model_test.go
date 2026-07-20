@@ -355,6 +355,10 @@ func (r *switchModelTaskRepo) CompleteModelSwitch(_ context.Context, id, taskID,
 	return nil
 }
 
+func (r *switchModelTaskRepo) UpdateAgentResourceSelection(_ context.Context, _ uuid.UUID, _, _ []string) error {
+	return nil
+}
+
 type switchModelModelRepo struct {
 	model          *db.Model
 	runtimeKey     string

@@ -937,6 +937,26 @@ func CompletedAtNotNil() predicate.Task {
 	return predicate.Task(sql.FieldNotNull(FieldCompletedAt))
 }
 
+// SkillIdsIsNil applies the IsNil predicate on the "skill_ids" field.
+func SkillIdsIsNil() predicate.Task {
+	return predicate.Task(sql.FieldIsNull(FieldSkillIds))
+}
+
+// SkillIdsNotNil applies the NotNil predicate on the "skill_ids" field.
+func SkillIdsNotNil() predicate.Task {
+	return predicate.Task(sql.FieldNotNull(FieldSkillIds))
+}
+
+// PluginIdsIsNil applies the IsNil predicate on the "plugin_ids" field.
+func PluginIdsIsNil() predicate.Task {
+	return predicate.Task(sql.FieldIsNull(FieldPluginIds))
+}
+
+// PluginIdsNotNil applies the NotNil predicate on the "plugin_ids" field.
+func PluginIdsNotNil() predicate.Task {
+	return predicate.Task(sql.FieldNotNull(FieldPluginIds))
+}
+
 // HasProjectTasks applies the HasEdge predicate on the "project_tasks" edge.
 func HasProjectTasks() predicate.Task {
 	return predicate.Task(func(s *sql.Selector) {
