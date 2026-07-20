@@ -67,7 +67,7 @@ func NewHandlerFromInjector(i *do.Injector) (*Handler, error) {
 	calls := repo.NewToolCallRepo(client)
 	authSvc := auth.NewService(client, logger)
 	billingSvc := billing.NewNoop()
-	upstreamHTTP := upstreamclient.NewHTTPClient(cfg.MCPHub.UpstreamTimeoutDuration())
+	upstreamHTTP := upstreamclient.NewHTTPClient(cfg.MCPHub.UpstreamTimeoutDuration(), cfg.Security.BlockPrivateNetwork)
 
 	var rdb redis.Cmdable
 	if redisClient, err := do.Invoke[*redis.Client](i); err == nil {

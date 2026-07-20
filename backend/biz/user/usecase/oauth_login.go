@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 	"github.com/chaitin/MonkeyCode/backend/pkg/oss"
 )
 
@@ -57,7 +59,8 @@ func NewOAuthLoginUsecase(i *do.Injector) (domain.OAuthLoginUsecase, error) {
 		if err != nil {
 			return nil, err
 		}
-		avatarArchiver = provider.NewAvatarArchiver(cfg.ObjectStorage, nil, client)
+		httpClient := netguard.New(cfg.Security.BlockPrivateNetwork).HTTPClient(&http.Client{Timeout: 5 * time.Second})
+		avatarArchiver = provider.NewAvatarArchiver(cfg.ObjectStorage, httpClient, client)
 	}
 	return &OAuthLoginUsecase{
 		repo:   do.MustInvoke[domain.OAuthLoginRepo](i),

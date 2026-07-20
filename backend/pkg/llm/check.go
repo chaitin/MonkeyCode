@@ -29,6 +29,7 @@ type Config struct {
 	APIKey        string        `json:"api_key"`
 	Model         string        `json:"model"`
 	InterfaceType InterfaceType `json:"interface_type,omitempty"`
+	HTTPClient    *http.Client  `json:"-"`
 }
 
 // HealthCheck 模型的健康检查
@@ -72,7 +73,7 @@ func healthCheckOpenAIChat(ctx context.Context, cfg Config) error {
 		"max_tokens": 1,
 	}
 
-	respBody, err := doRequest(ctx, baseURL+"/chat/completions", cfg.APIKey, body)
+	respBody, err := doRequest(ctx, healthCheckHTTPClient(cfg), baseURL+"/chat/completions", cfg.APIKey, body)
 	if err != nil {
 		return err
 	}
@@ -101,7 +102,7 @@ func healthCheckOpenAIResponses(ctx context.Context, cfg Config) error {
 		},
 	}
 
-	respBody, err := doRequest(ctx, baseURL+"/responses", cfg.APIKey, body)
+	respBody, err := doRequest(ctx, healthCheckHTTPClient(cfg), baseURL+"/responses", cfg.APIKey, body)
 	if err != nil {
 		return err
 	}
@@ -121,7 +122,7 @@ func healthCheckOpenAIResponses(ctx context.Context, cfg Config) error {
 }
 
 func healthCheckAnthropic(ctx context.Context, cfg Config) error {
-	client := newAnthropicClient(cfg, &http.Client{Timeout: 30 * time.Second})
+	client := newAnthropicClient(cfg, healthCheckHTTPClient(cfg))
 	_, err := client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(cfg.Model),
 		MaxTokens: 1,
@@ -135,7 +136,14 @@ func healthCheckAnthropic(ctx context.Context, cfg Config) error {
 	return nil
 }
 
-func doRequest(ctx context.Context, url, apiKey string, body any) ([]byte, error) {
+func healthCheckHTTPClient(cfg Config) *http.Client {
+	if cfg.HTTPClient != nil {
+		return cfg.HTTPClient
+	}
+	return &http.Client{Timeout: 30 * time.Second}
+}
+
+func doRequest(ctx context.Context, client *http.Client, url, apiKey string, body any) ([]byte, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -149,7 +157,6 @@ func doRequest(ctx context.Context, url, apiKey string, body any) ([]byte, error
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)

@@ -405,7 +405,7 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 	if strings.TrimSpace(string(req.Content)) == "" {
 		return errcode.ErrBadRequest
 	}
-	if err := validateAttachments(user.ID, req.Attachments, a.cfg.Attachment, a.cfg.ObjectStorage); err != nil {
+	if err := validateAttachments(user.ID, req.Attachments, a.cfg.Attachment, a.cfg.ObjectStorage, a.cfg.Security.BlockPrivateNetwork); err != nil {
 		return err
 	}
 	attachments, err := a.taskAttachmentsToTaskflow(ctx, req.Attachments)
@@ -464,7 +464,7 @@ func (a *TaskUsecase) IncrUserInputCount(ctx context.Context, userID, taskID uui
 
 // Create implements domain.TaskUsecase.
 func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq) (*domain.ProjectTask, error) {
-	if err := validateAttachments(user.ID, req.Attachments, a.cfg.Attachment, a.cfg.ObjectStorage); err != nil {
+	if err := validateAttachments(user.ID, req.Attachments, a.cfg.Attachment, a.cfg.ObjectStorage, a.cfg.Security.BlockPrivateNetwork); err != nil {
 		return nil, err
 	}
 	attachments, err := a.taskAttachmentsToTaskflow(ctx, req.Attachments)

@@ -25,6 +25,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/gitee"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/github"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/gitlab"
+	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 )
 
 // GitIdentityUsecase Git 身份认证用例
@@ -34,16 +35,19 @@ type GitIdentityUsecase struct {
 	tokenProvider *TokenProvider
 	logger        *slog.Logger
 	repoCache     *cache.Cache
+	guard         *netguard.Guard
 }
 
 // NewGitIdentityUsecase 创建 Git 身份认证用例
 func NewGitIdentityUsecase(i *do.Injector) (domain.GitIdentityUsecase, error) {
+	cfg := do.MustInvoke[*config.Config](i)
 	return &GitIdentityUsecase{
-		cfg:           do.MustInvoke[*config.Config](i),
+		cfg:           cfg,
 		repo:          do.MustInvoke[domain.GitIdentityRepo](i),
 		tokenProvider: do.MustInvoke[*TokenProvider](i),
 		logger:        do.MustInvoke[*slog.Logger](i).With("module", "GitIdentityUsecase"),
 		repoCache:     cache.New(7*24*time.Hour, 10*time.Minute),
+		guard:         netguard.New(cfg.Security.BlockPrivateNetwork),
 	}, nil
 }
 
@@ -101,6 +105,9 @@ func (u *GitIdentityUsecase) prefetchRepositories(identity *db.GitIdentity) {
 // fetchRepositories 拉取 identity 关联的仓库列表。
 // page>0 时按平台能力做服务端分页（GitHub/GitLab），其它平台忽略分页参数返回全量。
 func (u *GitIdentityUsecase) fetchRepositories(ctx context.Context, identity *db.GitIdentity, flush bool, page, size int, keyword string) (*domain.RepositoryPage, error) {
+	if err := u.validateIdentityBaseURL(ctx, identity.Platform, identity.BaseURL); err != nil {
+		return nil, err
+	}
 	client := u.gitClienter(identity)
 	if client == nil {
 		return &domain.RepositoryPage{}, nil
@@ -165,6 +172,9 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 
 // Add 添加 Git 身份认证
 func (u *GitIdentityUsecase) Add(ctx context.Context, uid uuid.UUID, req *domain.AddGitIdentityReq) (*domain.GitIdentity, error) {
+	if err := u.validateIdentityBaseURL(ctx, req.Platform, req.BaseURL); err != nil {
+		return nil, err
+	}
 	identity, err := u.repo.Create(ctx, uid, req)
 	if err != nil {
 		u.logger.ErrorContext(ctx, "failed to create git identity", "error", err, "user_id", uid)
@@ -199,6 +209,11 @@ func (u *GitIdentityUsecase) resolveCodeupOrgID(ctx context.Context, identity *d
 
 // Update 更新 Git 身份认证
 func (u *GitIdentityUsecase) Update(ctx context.Context, uid uuid.UUID, req *domain.UpdateGitIdentityReq) error {
+	if req.BaseURL != nil {
+		if err := u.validateBaseURL(ctx, *req.BaseURL); err != nil {
+			return err
+		}
+	}
 	if err := u.repo.Update(ctx, uid, req.ID, req); err != nil {
 		u.logger.ErrorContext(ctx, "failed to update git identity", "error", err, "user_id", uid, "id", req.ID)
 		return err
@@ -255,6 +270,9 @@ func (u *GitIdentityUsecase) ListBranches(ctx context.Context, uid uuid.UUID, id
 	if identity.UserID != uid {
 		return nil, errcode.ErrNotFound
 	}
+	if err := u.validateIdentityBaseURL(ctx, identity.Platform, identity.BaseURL); err != nil {
+		return nil, err
+	}
 
 	if page <= 0 {
 		page = 1
@@ -310,4 +328,18 @@ func (u *GitIdentityUsecase) ListBranches(ctx context.Context, uid uuid.UUID, id
 		result = append(result, &domain.Branch{Name: b.Name})
 	}
 	return result, nil
+}
+
+func (u *GitIdentityUsecase) validateBaseURL(ctx context.Context, baseURL string) error {
+	if err := u.guard.ValidateURL(ctx, baseURL); err != nil {
+		return errcode.ErrForbiddenBaseURL.Wrap(err)
+	}
+	return nil
+}
+
+func (u *GitIdentityUsecase) validateIdentityBaseURL(ctx context.Context, platform consts.GitPlatform, baseURL string) error {
+	if platform == consts.GitPlatformGithub {
+		return nil
+	}
+	return u.validateBaseURL(ctx, baseURL)
 }

@@ -6,20 +6,26 @@ import (
 
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 )
 
 type teamMCPUsecase struct {
 	repo       domain.TeamMCPRepo
 	syncClient domain.UserMCPSyncClient
+	guard      *netguard.Guard
 }
 
 func NewTeamMCPUsecase(i *do.Injector) (domain.TeamMCPUsecase, error) {
+	cfg := do.MustInvoke[*config.Config](i)
 	return &teamMCPUsecase{
 		repo:       do.MustInvoke[domain.TeamMCPRepo](i),
 		syncClient: do.MustInvoke[domain.UserMCPSyncClient](i),
+		guard:      netguard.New(cfg.Security.BlockPrivateNetwork),
 	}, nil
 }
 
@@ -36,6 +42,9 @@ func (u *teamMCPUsecase) ListUpstreams(ctx context.Context, teamUser *domain.Tea
 }
 
 func (u *teamMCPUsecase) CreateUpstream(ctx context.Context, teamUser *domain.TeamUser, req domain.CreateTeamMCPUpstreamReq) (*domain.TeamMCPUpstream, error) {
+	if err := u.guard.ValidateURL(ctx, req.URL); err != nil {
+		return nil, errcode.ErrInvalidParameter.Wrap(err)
+	}
 	if ok, err := u.repo.HasPlatformSlug(ctx, req.Slug); err != nil {
 		return nil, err
 	} else if ok {
@@ -49,6 +58,11 @@ func (u *teamMCPUsecase) CreateUpstream(ctx context.Context, teamUser *domain.Te
 }
 
 func (u *teamMCPUsecase) UpdateUpstream(ctx context.Context, teamUser *domain.TeamUser, req domain.UpdateTeamMCPUpstreamReq) (*domain.TeamMCPUpstream, error) {
+	if req.URL != nil {
+		if err := u.guard.ValidateURL(ctx, *req.URL); err != nil {
+			return nil, errcode.ErrInvalidParameter.Wrap(err)
+		}
+	}
 	if req.Slug != nil {
 		if ok, err := u.repo.HasPlatformSlug(ctx, *req.Slug); err != nil {
 			return nil, err

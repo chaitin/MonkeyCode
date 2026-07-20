@@ -30,7 +30,7 @@ func (w *WebhookSender) Send(ctx context.Context, cfg *ChannelConfig, _ *domain.
 	if len(cfg.Headers) > 0 {
 		opts = append(opts, request.WithHeader(cfg.Headers))
 	}
-	resp, err := request.PostURL[apiResponse](ctx, cfg.WebhookURL, body, opts...)
+	resp, err := postURL[apiResponse](ctx, cfg, cfg.WebhookURL, body, opts...)
 	if err != nil {
 		return err
 	}

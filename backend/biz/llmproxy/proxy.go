@@ -22,6 +22,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/pkg/modelusage"
+	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 )
 
 const upstreamFailureMessage = "连接上游模型失败，请检查模型配置，或重试"
@@ -51,11 +52,12 @@ type proxyContext struct {
 }
 
 type Proxy struct {
-	db        *db.Client
-	logger    *slog.Logger
-	recorder  usageRecorder
-	transport *http.Transport
-	proxy     *httputil.ReverseProxy
+	db                  *db.Client
+	logger              *slog.Logger
+	recorder            usageRecorder
+	transport           http.RoundTripper
+	proxy               *httputil.ReverseProxy
+	blockPrivateNetwork bool
 }
 
 type usageRecorder interface {
@@ -70,6 +72,12 @@ func WithUsageRecorder(recorder usageRecorder) Option {
 	}
 }
 
+func WithPrivateNetworkBlocked(block bool) Option {
+	return func(p *Proxy) {
+		p.blockPrivateNetwork = block
+	}
+}
+
 func NewProxy(db *db.Client, logger *slog.Logger, opts ...Option) *Proxy {
 	if logger == nil {
 		logger = slog.Default()
@@ -77,23 +85,24 @@ func NewProxy(db *db.Client, logger *slog.Logger, opts ...Option) *Proxy {
 	p := &Proxy{
 		db:     db,
 		logger: logger.With("module", "llmproxy"),
-		transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 100,
-			MaxConnsPerHost:     100,
-			IdleConnTimeout:     90 * time.Second,
-			Proxy:               http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   5 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			TLSHandshakeTimeout:   5 * time.Second,
-			ResponseHeaderTimeout: 300 * time.Second,
-		},
 	}
 	for _, opt := range opts {
 		opt(p)
 	}
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     100,
+		IdleConnTimeout:     90 * time.Second,
+		Proxy:               http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 300 * time.Second,
+	}
+	p.transport = netguard.New(p.blockPrivateNetwork).HTTPClient(&http.Client{Transport: transport}).Transport
 	p.proxy = &httputil.ReverseProxy{
 		Transport:      p.transport,
 		Rewrite:        p.rewrite,

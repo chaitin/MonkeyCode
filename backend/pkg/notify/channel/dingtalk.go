@@ -13,7 +13,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
-	"github.com/chaitin/MonkeyCode/backend/pkg/request"
 )
 
 type DingTalkSender struct{}
@@ -42,7 +41,7 @@ func (d *DingTalkSender) Send(ctx context.Context, cfg *ChannelConfig, _ *domain
 			"text":  msg.Body,
 		},
 	}
-	resp, err := request.PostURL[apiResponse](ctx, webhookURL, body)
+	resp, err := postURL[apiResponse](ctx, cfg, webhookURL, body)
 	if err != nil {
 		return err
 	}

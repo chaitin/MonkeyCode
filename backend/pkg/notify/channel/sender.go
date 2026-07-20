@@ -17,7 +17,8 @@ type ChannelConfig struct {
 	Secret     string
 	Headers    map[string]string
 	// TargetID 用于 ID 类渠道（如 wechat_mp 存 openid）；URL 类渠道忽略。
-	TargetID string
+	TargetID            string
+	BlockPrivateNetwork bool
 }
 
 // Sender 通知渠道发送器。

@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -20,22 +21,24 @@ import (
 )
 
 type NotifyChannelUsecaseImpl struct {
-	repo        domain.NotifyChannelRepo
-	subRepo     domain.NotifySubscriptionRepo
-	dispatcher  *dispatcher.Dispatcher
-	senderReg   *channel.Registry
-	templateReg *template.Registry
-	logger      *slog.Logger
+	repo                domain.NotifyChannelRepo
+	subRepo             domain.NotifySubscriptionRepo
+	dispatcher          *dispatcher.Dispatcher
+	senderReg           *channel.Registry
+	templateReg         *template.Registry
+	logger              *slog.Logger
+	blockPrivateNetwork bool
 }
 
 func NewNotifyChannelUsecase(i *do.Injector) (domain.NotifyChannelUsecase, error) {
 	return &NotifyChannelUsecaseImpl{
-		repo:        do.MustInvoke[domain.NotifyChannelRepo](i),
-		subRepo:     do.MustInvoke[domain.NotifySubscriptionRepo](i),
-		dispatcher:  do.MustInvoke[*dispatcher.Dispatcher](i),
-		senderReg:   do.MustInvoke[*channel.Registry](i),
-		templateReg: do.MustInvoke[*template.Registry](i),
-		logger:      do.MustInvoke[*slog.Logger](i).With("module", "usecase.notify_channel"),
+		repo:                do.MustInvoke[domain.NotifyChannelRepo](i),
+		subRepo:             do.MustInvoke[domain.NotifySubscriptionRepo](i),
+		dispatcher:          do.MustInvoke[*dispatcher.Dispatcher](i),
+		senderReg:           do.MustInvoke[*channel.Registry](i),
+		templateReg:         do.MustInvoke[*template.Registry](i),
+		logger:              do.MustInvoke[*slog.Logger](i).With("module", "usecase.notify_channel"),
+		blockPrivateNetwork: do.MustInvoke[*config.Config](i).Security.BlockPrivateNetwork,
 	}, nil
 }
 
@@ -44,7 +47,7 @@ func (u *NotifyChannelUsecaseImpl) Create(ctx context.Context, ownerID uuid.UUID
 	if req.Kind == consts.NotifyChannelWechatMP {
 		return nil, errcode.ErrInvalidParameter
 	}
-	if err := channel.ValidateWebhookURL(req.WebhookURL); err != nil {
+	if err := channel.ValidateWebhookURL(req.WebhookURL, u.blockPrivateNetwork); err != nil {
 		return nil, errcode.ErrInvalidParameter.Wrap(err)
 	}
 	if err := channel.ValidateHeaders(req.Headers); err != nil {
@@ -81,7 +84,7 @@ func (u *NotifyChannelUsecaseImpl) Update(ctx context.Context, ownerID uuid.UUID
 	}
 
 	if req.WebhookURL != "" {
-		if err := channel.ValidateWebhookURL(req.WebhookURL); err != nil {
+		if err := channel.ValidateWebhookURL(req.WebhookURL, u.blockPrivateNetwork); err != nil {
 			return nil, errcode.ErrInvalidParameter.Wrap(err)
 		}
 	}
@@ -158,10 +161,11 @@ func (u *NotifyChannelUsecaseImpl) Test(ctx context.Context, ownerID uuid.UUID, 
 	}
 
 	cfg := &channel.ChannelConfig{
-		WebhookURL: ch.WebhookURL,
-		Secret:     ch.Secret,
-		Headers:    ch.Headers,
-		TargetID:   ch.TargetID,
+		WebhookURL:          ch.WebhookURL,
+		Secret:              ch.Secret,
+		Headers:             ch.Headers,
+		TargetID:            ch.TargetID,
+		BlockPrivateNetwork: u.blockPrivateNetwork,
 	}
 
 	// 由 sender 自己判定哪些字段需要校验（URL 类做 SSRF，ID 类做 target_id 非空等）。

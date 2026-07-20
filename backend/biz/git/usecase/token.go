@@ -17,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/github"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/oauth"
+	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 )
 
 const tokenCacheTTL = 50 * time.Minute // 略小于 GitHub App 1h 有效期
@@ -30,6 +31,7 @@ type TokenProvider struct {
 	proxies      []string
 	tokenCache   *cache.Cache
 	logger       *slog.Logger
+	guard        *netguard.Guard
 }
 
 // NewTokenProvider 创建 TokenProvider
@@ -42,6 +44,7 @@ func NewTokenProvider(i *do.Injector) (*TokenProvider, error) {
 		proxies:    cfg.Proxies,
 		tokenCache: cache.New(tokenCacheTTL, 10*time.Minute),
 		logger:     logger.With("module", "TokenProvider"),
+		guard:      netguard.New(cfg.Security.BlockPrivateNetwork),
 	}
 	// 可选注入 SiteResolver（内部项目通过 WithSiteResolver 提供）
 	if sr, err := do.Invoke[domain.SiteResolver](i); err == nil {
@@ -186,6 +189,9 @@ func (p *TokenProvider) calcCacheTTL(expiresAt time.Time) time.Duration {
 // ── 平台刷新实现 ───────────────────────────────────────────────
 
 func (p *TokenProvider) refreshGitlab(ctx context.Context, gi *db.GitIdentity) (string, string, time.Time, error) {
+	if err := p.guard.ValidateURL(ctx, gi.BaseURL); err != nil {
+		return "", "", time.Time{}, err
+	}
 	site, err := p.resolveSiteConfig(ctx, gi.BaseURL)
 	if err != nil {
 		return "", "", time.Time{}, fmt.Errorf("resolve gitlab site: %w", err)
@@ -198,6 +204,9 @@ func (p *TokenProvider) refreshGitlab(ctx context.Context, gi *db.GitIdentity) (
 }
 
 func (p *TokenProvider) refreshGitea(ctx context.Context, gi *db.GitIdentity) (string, string, time.Time, error) {
+	if err := p.guard.ValidateURL(ctx, gi.BaseURL); err != nil {
+		return "", "", time.Time{}, err
+	}
 	site, err := p.resolveSiteConfig(ctx, gi.BaseURL)
 	if err != nil {
 		return "", "", time.Time{}, fmt.Errorf("resolve gitea site: %w", err)
@@ -243,6 +252,9 @@ func (p *TokenProvider) refreshCodeup(ctx context.Context, gi *db.GitIdentity) (
 // HTTP Basic Auth 头传递。site.BaseURL 视为可选的 token endpoint 覆盖, 常规情况下
 // 留空走默认 https://cnb.cool。
 func (p *TokenProvider) refreshCnb(ctx context.Context, gi *db.GitIdentity) (string, string, time.Time, error) {
+	if err := p.guard.ValidateURL(ctx, gi.BaseURL); err != nil {
+		return "", "", time.Time{}, err
+	}
 	site, err := p.resolveSiteConfig(ctx, gi.BaseURL)
 	if err != nil {
 		return "", "", time.Time{}, fmt.Errorf("resolve cnb site: %w", err)

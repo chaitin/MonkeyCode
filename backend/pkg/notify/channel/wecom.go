@@ -8,7 +8,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
-	"github.com/chaitin/MonkeyCode/backend/pkg/request"
 )
 
 type WeComSender struct{}
@@ -28,7 +27,7 @@ func (w *WeComSender) Send(ctx context.Context, cfg *ChannelConfig, _ *domain.No
 			"content": fmt.Sprintf("## %s\n\n%s", msg.Title, msg.Body),
 		},
 	}
-	resp, err := request.PostURL[apiResponse](ctx, cfg.WebhookURL, body)
+	resp, err := postURL[apiResponse](ctx, cfg, cfg.WebhookURL, body)
 	if err != nil {
 		return err
 	}
