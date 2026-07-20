@@ -42,6 +42,7 @@ import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context"
 import { defaultSkills } from "@/utils/config"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
+  canUseModelBySubscription,
   findIdentitiesForRepoUrl,
   getGitPlatformIcon,
   getHostBadges,
@@ -75,6 +76,7 @@ import ModelSelect from "./model-select"
 import { IdentityRepoSubmenu } from "./identity-repo-submenu"
 import { ALL_SKILLS_TAG, TaskSkillSelector } from "./task-skill-selector"
 import { filterSelectableSkillIds } from "./task-skill-selection"
+import { resolveTaskModelSelection } from "./task-model-selection"
 
 type DomainSkill = DomainSkillListItem & { tags?: string[] }
 
@@ -209,11 +211,21 @@ export default function CreateDefaultTaskDialog({
   }, [open, skillList, skillList.length, t])
 
   useEffect(() => {
-    if (!open || modelTouchedRef.current || models.length === 0) {
+    if (!open || models.length === 0) {
       return
     }
 
-    setSelectedModelId(selectPreferredTaskModel(models, subscription))
+    const availableModelIds = models
+      .filter((model) => canUseModelBySubscription(model, subscription))
+      .map((model) => model.id)
+      .filter((modelId): modelId is string => Boolean(modelId))
+    const preferredModelId = selectPreferredTaskModel(models, subscription)
+    setSelectedModelId((currentModelId) => resolveTaskModelSelection({
+      availableModelIds,
+      currentModelId,
+      preferredModelId,
+      touched: modelTouchedRef.current,
+    }))
   }, [models, open, subscription])
 
   useEffect(() => {
@@ -322,7 +334,11 @@ export default function CreateDefaultTaskDialog({
       return
     }
 
-    if (!selectedModelId) {
+    if (
+      !selectedModelId
+      || !selectedModel
+      || !canUseModelBySubscription(selectedModel, subscription)
+    ) {
       toast.error(t("taskWorkflow.toast.missingModel"))
       return
     }

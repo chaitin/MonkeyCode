@@ -4,7 +4,7 @@
 
 **Goal:** 保证侧边栏启动任务弹窗在数据刷新后仍提交用户最后选择的模型。
 
-**Architecture:** 使用 `modelTouchedRef` 区分系统默认初始化与用户手动选择，并将模型初始化从主机、镜像默认配置中拆分。默认模型只在用户尚未操作且当前选择无效时更新。
+**Architecture:** 使用 `modelTouchedRef` 区分系统默认初始化与用户手动选择，并将模型初始化从主机、镜像默认配置中拆分。用户尚未操作时同步套餐默认模型；用户选择有效时保持该选择；选择失效时清空并要求重新选择。
 
 **Tech Stack:** React 19、TypeScript、Node.js test、ESLint、Vite
 
@@ -23,11 +23,11 @@
 
 **Interfaces:**
 - Consumes: `CreateDefaultTaskDialog` 源码契约。
-- Produces: 用户 touched 标记、受保护默认初始化和请求字段的回归约束。
+- Produces: 用户 touched 标记、可执行选择状态规则、受保护默认初始化和请求字段的回归约束。
 
 - [ ] **Step 1: 编写失败测试**
 
-测试应读取弹窗源码并断言：存在 `modelTouchedRef`；用户选择回调设置 touched；关闭时清除 touched；默认模型仅在未 touched 且模型列表可用时设置；请求提交 `selectedModelId`。
+测试应执行模型选择状态规则并断言：用户选择后数据刷新保留有效模型；已选模型失效时要求重新选择；关闭时清除 touched；请求提交 `selectedModelId`。
 
 - [ ] **Step 2: 运行测试确认失败**
 
