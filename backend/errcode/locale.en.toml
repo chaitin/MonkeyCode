@@ -302,3 +302,5 @@ other = "License is not active yet"
 
 [err-license-machine-mismatch]
 other = "License machine code does not match"
+[err-endpoint-limit-exceeded]
+other = "Endpoint limit exceeded"

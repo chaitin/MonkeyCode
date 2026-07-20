@@ -13,6 +13,7 @@ import {
   type DomainUser,
   type GithubComChaitinMonkeyCodeBackendDomainServerConfig,
 } from "@/api/Api";
+import { DesktopEndpointBridge } from "@/components/desktop-endpoint-bridge";
 
 export type ServerConfig = GithubComChaitinMonkeyCodeBackendDomainServerConfig;
 export type RuntimeAuthStatus = "unknown" | "authenticated" | "anonymous";
@@ -131,6 +132,7 @@ export function AppRuntimeProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppRuntimeContext.Provider value={value}>
+      <DesktopEndpointBridge authenticated={auth.status === "authenticated"} />
       {children}
     </AppRuntimeContext.Provider>
   );

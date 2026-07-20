@@ -39,6 +39,9 @@ type AgentSyncJob func(*sql.Selector)
 // Audit is the predicate function for audit builders.
 type Audit func(*sql.Selector)
 
+// Endpoint is the predicate function for endpoint builders.
+type Endpoint func(*sql.Selector)
+
 // GitBot is the predicate function for gitbot builders.
 type GitBot func(*sql.Selector)
 

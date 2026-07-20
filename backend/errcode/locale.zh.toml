@@ -300,3 +300,5 @@ other = "License 尚未生效"
 
 [err-license-machine-mismatch]
 other = "License 机器码不匹配"
+[err-endpoint-limit-exceeded]
+other = "端点数量已达上限"

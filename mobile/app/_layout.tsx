@@ -9,6 +9,7 @@ import { LoadingView } from '@/components/ui';
 import { PreviewProvider } from '@/components/PreviewProvider';
 import { ThemeProvider, useTheme } from '@/theme';
 import { applyOta, useOtaAutoUpdate } from '@/updates/useOtaUpdate';
+import { EndpointBridgeProvider } from '@/api/EndpointBridgeContext';
 
 function RootNav() {
   const { ready, authenticated } = useAuth();
@@ -86,7 +87,9 @@ export default function RootLayout() {
       <KeyboardProvider>
         <ThemeProvider>
           <AuthProvider>
-            <Themed />
+            <EndpointBridgeProvider>
+              <Themed />
+            </EndpointBridgeProvider>
           </AuthProvider>
         </ThemeProvider>
       </KeyboardProvider>

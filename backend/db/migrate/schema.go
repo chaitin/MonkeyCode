@@ -405,6 +405,44 @@ var (
 			},
 		},
 	}
+	// EndpointsColumns holds the columns for the "endpoints" table.
+	EndpointsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "machine_id", Type: field.TypeUUID},
+		{Name: "device_name", Type: field.TypeString},
+		{Name: "platform", Type: field.TypeEnum, Enums: []string{"macos", "windows", "linux", "ios", "android"}},
+		{Name: "os_version", Type: field.TypeString},
+		{Name: "arch", Type: field.TypeString},
+		{Name: "client_version", Type: field.TypeString},
+		{Name: "protocol_version", Type: field.TypeInt, Default: 1},
+		{Name: "alias", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "revoked"}, Default: "active"},
+		{Name: "last_seen_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// EndpointsTable holds the schema information for the "endpoints" table.
+	EndpointsTable = &schema.Table{
+		Name:       "endpoints",
+		Columns:    EndpointsColumns,
+		PrimaryKey: []*schema.Column{EndpointsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "endpoints_users_endpoints",
+				Columns:    []*schema.Column{EndpointsColumns[13]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "endpoint_user_id_machine_id",
+				Unique:  true,
+				Columns: []*schema.Column{EndpointsColumns[13], EndpointsColumns[1]},
+			},
+		},
+	}
 	// GitBotsColumns holds the columns for the "git_bots" table.
 	GitBotsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -1971,6 +2009,7 @@ var (
 		AgentSkillVersionsTable,
 		AgentSyncJobsTable,
 		AuditsTable,
+		EndpointsTable,
 		GitBotsTable,
 		GitBotTasksTable,
 		GitBotUsersTable,
@@ -2058,6 +2097,10 @@ func init() {
 	AuditsTable.ForeignKeys[0].RefTable = UsersTable
 	AuditsTable.Annotation = &entsql.Annotation{
 		Table: "audits",
+	}
+	EndpointsTable.ForeignKeys[0].RefTable = UsersTable
+	EndpointsTable.Annotation = &entsql.Annotation{
+		Table: "endpoints",
 	}
 	GitBotsTable.ForeignKeys[0].RefTable = HostsTable
 	GitBotsTable.Annotation = &entsql.Annotation{
