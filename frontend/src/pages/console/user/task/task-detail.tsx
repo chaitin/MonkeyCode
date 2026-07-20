@@ -14,6 +14,7 @@ import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
 import type { AvailableCommands, TaskPlan, TaskStreamStatus, TaskUserInput } from "@/components/console/task/task-shared"
 import { TaskStreamClient, type TaskStreamClientState, type TaskStreamCloseReason, type TaskStreamConnectionState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
+import { TaskSkillsUpdateDialog } from "@/components/console/task/task-skills-update-dialog"
 import { TaskUserInputIndex } from "@/components/console/task/task-user-input-index"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
@@ -49,7 +50,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { canUseModelBySubscription, formatTokens, getBrandFromModel, getBuiltinModelName, getModelDisplayName, getOwnerTypeBadge, getTaskDisplayName, isBuiltinPublicModelPackage, stripBuiltinPublicModelPackagePrefix } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconChevronDown, IconDeviceDesktop, IconFile, IconReload, IconTerminal2, IconUpload } from "@tabler/icons-react"
+import { IconChevronDown, IconDeviceDesktop, IconFile, IconPuzzle, IconReload, IconTerminal2, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -113,6 +114,7 @@ export default function TaskDetailPage() {
   const [restartAgentSubmitting, setRestartAgentSubmitting] = React.useState(false)
   const [restartAgentClearContext, setRestartAgentClearContext] = React.useState(false)
   const [publishConfirmDialogOpen, setPublishConfirmDialogOpen] = React.useState(false)
+  const [skillsDialogOpen, setSkillsDialogOpen] = React.useState(false)
   const [modelSwitchDialogOpen, setModelSwitchDialogOpen] = React.useState(false)
   const [modelSwitchSubmitting, setModelSwitchSubmitting] = React.useState(false)
   const [pendingSwitchModel, setPendingSwitchModel] = React.useState<DomainModel | null>(null)
@@ -1339,6 +1341,16 @@ export default function TaskDetailPage() {
             <Button
               variant="ghost"
               size="sm"
+              className="h-7 min-w-0 gap-1 px-2 text-sm font-normal"
+              onClick={() => setSkillsDialogOpen(true)}
+              disabled={!taskInteractive}
+            >
+              <IconPuzzle className="size-3.5" />
+              {t("taskDetail.chat.skills")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               className={cn("hidden h-7 min-w-0 gap-1 px-2 text-sm font-normal md:inline-flex", terminalPanelOpen && "text-primary bg-accent")}
               onClick={toggleTerminalPanel}
               disabled={!taskInteractive}
@@ -1538,9 +1550,6 @@ export default function TaskDetailPage() {
                         sending={sending}
                         queueSize={0}
                         executionTimeMs={timeCost}
-                        skillIds={task?.extra?.skill_ids ?? []}
-                        pluginIds={task?.extra?.plugin_ids ?? []}
-                        onSwitchAgentResources={handleSwitchAgentResources}
                       />
                     ) : (
                       <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
@@ -1628,6 +1637,13 @@ export default function TaskDetailPage() {
           </DialogContent>
         </Dialog>
       )}
+      <TaskSkillsUpdateDialog
+        open={skillsDialogOpen}
+        onOpenChange={setSkillsDialogOpen}
+        initialSkillIds={task?.extra?.skill_ids ?? []}
+        pluginIds={task?.extra?.plugin_ids ?? []}
+        onSwitch={handleSwitchAgentResources}
+      />
     </div>
   )
 }
