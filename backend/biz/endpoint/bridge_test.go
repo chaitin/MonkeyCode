@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -354,6 +355,88 @@ func TestDevelopmentPlainWebSocketOnlyAllowsLoopback(t *testing.T) {
 	loopback := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/v1/endpoints/connect", nil)
 	if err := bridge.validateUpgrade(loopback); err != nil {
 		t.Fatalf("开发环境本机明文 WebSocket 被拒绝: %v", err)
+	}
+}
+
+func TestEndpointSwaggerCoverage(t *testing.T) {
+	raw, err := os.ReadFile("../../docs/swagger.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec struct {
+		Paths map[string]map[string]struct {
+			Summary     string                       `json:"summary"`
+			Description string                       `json:"description"`
+			Security    []map[string]json.RawMessage `json:"security"`
+			Responses   map[string]json.RawMessage   `json:"responses"`
+		} `json:"paths"`
+		Definitions map[string]json.RawMessage `json:"definitions"`
+	}
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		t.Fatal(err)
+	}
+	expected := []struct {
+		path        string
+		method      string
+		successCode string
+	}{
+		{"/api/v1/endpoints", "get", "200"},
+		{"/api/v1/endpoints/{machine_id}", "get", "200"},
+		{"/api/v1/endpoints/{machine_id}", "patch", "200"},
+		{"/api/v1/endpoints/{machine_id}/revoke", "post", "200"},
+		{"/api/v1/endpoints/{machine_id}/restore", "post", "200"},
+		{"/api/v1/endpoints/connect", "get", "101"},
+	}
+	for _, item := range expected {
+		operation, ok := spec.Paths[item.path][item.method]
+		if !ok {
+			t.Errorf("Swagger 缺少 %s %s", item.method, item.path)
+			continue
+		}
+		if operation.Summary == "" || operation.Description == "" {
+			t.Errorf("Swagger 接口说明不完整: %s %s", item.method, item.path)
+		}
+		hasCookieAuth := false
+		for _, security := range operation.Security {
+			if _, ok := security["MonkeyCodeAIAuth"]; ok {
+				hasCookieAuth = true
+				break
+			}
+		}
+		if !hasCookieAuth {
+			t.Errorf("Swagger 缺少 Cookie 鉴权声明: %s %s", item.method, item.path)
+		}
+		if _, ok := operation.Responses[item.successCode]; !ok {
+			t.Errorf("Swagger 缺少成功响应 %s: %s %s", item.successCode, item.method, item.path)
+		}
+	}
+	for _, name := range []string{
+		"domain.EndpointView",
+		"domain.UpdateEndpointReq",
+		"domain.EndpointStatusResp",
+	} {
+		rawDefinition, ok := spec.Definitions[name]
+		if !ok {
+			t.Errorf("Swagger 缺少模型定义 %s", name)
+			continue
+		}
+		var definition struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(rawDefinition, &definition); err != nil {
+			t.Errorf("解析 Swagger 模型定义失败 %s: %v", name, err)
+			continue
+		}
+		if len(definition.Properties) == 0 {
+			t.Errorf("Swagger 模型没有字段定义 %s", name)
+		}
+		for field, property := range definition.Properties {
+			if property.Description == "" {
+				t.Errorf("Swagger 模型字段缺少说明 %s.%s", name, field)
+			}
+		}
 	}
 }
 

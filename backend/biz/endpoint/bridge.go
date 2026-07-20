@@ -181,7 +181,7 @@ func (b *Bridge) Register(w *web.Web, auth *middleware.AuthMiddleware) {
 	group.GET("/:machine_id", web.BindHandler(b.Get))
 	group.POST("/:machine_id/revoke", web.BindHandler(b.Revoke))
 	group.POST("/:machine_id/restore", web.BindHandler(b.Restore))
-	w.Echo().PATCH("/api/v1/endpoints/:machine_id", b.updateEndpoint, endpointAuth)
+	w.Echo().PATCH("/api/v1/endpoints/:machine_id", b.Update, endpointAuth)
 	w.Echo().Server.RegisterOnShutdown(b.Close)
 	w.Echo().TLSServer.RegisterOnShutdown(b.Close)
 }
@@ -225,6 +225,18 @@ func (b *Bridge) Close() {
 	}
 }
 
+// List 获取当前用户的全部端点
+//
+//	@Summary		获取端点列表
+//	@Description	返回当前登录用户登记过的全部端点，包括 active 和 revoked 状态。online 表示端点当前是否持有有效在线租约；last_seen_at、created_at、updated_at 均为 Unix 毫秒时间戳。
+//	@Tags			【用户】端点桥接
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Success		200	{object}	web.Resp{data=[]domain.EndpointView}	"成功"
+//	@Failure		401	{object}	web.Resp								"登录会话无效"
+//	@Failure		500	{object}	web.Resp								"服务器内部错误"
+//	@Router			/api/v1/endpoints [get]
 func (b *Bridge) List(c *web.Context) error {
 	user := middleware.GetUser(c)
 	items, err := b.listEndpoints(c.Request().Context(), user.ID, true)
@@ -234,6 +246,21 @@ func (b *Bridge) List(c *web.Context) error {
 	return c.Success(items)
 }
 
+// Get 获取指定端点
+//
+//	@Summary		获取端点详情
+//	@Description	按安装级 machine_id 查询当前登录用户自己的端点。其他用户的端点与不存在的端点统一返回资源不存在，避免跨用户枚举。
+//	@Tags			【用户】端点桥接
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			machine_id	path		string								true	"安装实例首次启动生成的 UUIDv4 机器标识"	Format(uuid)
+//	@Success		200			{object}	web.Resp{data=domain.EndpointView}	"成功"
+//	@Failure		400			{object}	web.Resp							"machine_id 格式无效"
+//	@Failure		401			{object}	web.Resp							"登录会话无效"
+//	@Failure		404			{object}	web.Resp							"端点不存在"
+//	@Failure		500			{object}	web.Resp							"服务器内部错误"
+//	@Router			/api/v1/endpoints/{machine_id} [get]
 func (b *Bridge) Get(c *web.Context, req domain.EndpointPathReq) error {
 	user := middleware.GetUser(c)
 	item, err := b.db.Endpoint.Query().
@@ -249,14 +276,28 @@ func (b *Bridge) Get(c *web.Context, req domain.EndpointPathReq) error {
 	return c.Success(view)
 }
 
-func (b *Bridge) updateEndpoint(c echo.Context) error {
+// Update 修改端点别名
+//
+//	@Summary		修改端点别名
+//	@Description	修改当前登录用户指定端点的展示别名。alias 为 null、空字符串或仅含空白字符时清除别名；别名最长 128 个 Unicode 字符。后续 hello 上报只更新系统设备资料，不会覆盖别名。
+//	@Tags			【用户】端点桥接
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			machine_id	path		string								true	"安装实例首次启动生成的 UUIDv4 机器标识"	Format(uuid)
+//	@Param			req			body		domain.UpdateEndpointReq			true	"端点别名；null 或空字符串表示清除"
+//	@Success		200			{object}	web.Resp{data=domain.EndpointView}	"成功"
+//	@Failure		400			{object}	web.Resp							"请求参数无效或别名过长"
+//	@Failure		401			{object}	web.Resp							"登录会话无效"
+//	@Failure		404			{object}	web.Resp							"端点不存在"
+//	@Failure		500			{object}	web.Resp							"服务器内部错误"
+//	@Router			/api/v1/endpoints/{machine_id} [patch]
+func (b *Bridge) Update(c echo.Context) error {
 	machineID, err := uuid.Parse(c.Param("machine_id"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]any{"code": http.StatusBadRequest, "message": "machine_id 无效"})
 	}
-	var body struct {
-		Alias *string `json:"alias"`
-	}
+	var body domain.UpdateEndpointReq
 	if err := c.Bind(&body); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]any{"code": http.StatusBadRequest, "message": "请求体无效"})
 	}
@@ -292,6 +333,21 @@ func (b *Bridge) updateEndpoint(c echo.Context) error {
 	})
 }
 
+// Revoke 撤销指定端点
+//
+//	@Summary		撤销端点
+//	@Description	将当前登录用户的端点标记为 revoked，并立即关闭该端点的在线连接。被撤销端点不会出现在 WebSocket 目录中，也不能通过 hello 自动重新登记；撤销不等同于撤销该设备上的登录会话。
+//	@Tags			【用户】端点桥接
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			machine_id	path		string										true	"安装实例首次启动生成的 UUIDv4 机器标识"	Format(uuid)
+//	@Success		200			{object}	web.Resp{data=domain.EndpointStatusResp}	"成功，status 为 revoked"
+//	@Failure		400			{object}	web.Resp									"machine_id 格式无效"
+//	@Failure		401			{object}	web.Resp									"登录会话无效"
+//	@Failure		404			{object}	web.Resp									"端点不存在"
+//	@Failure		500			{object}	web.Resp									"服务器内部错误"
+//	@Router			/api/v1/endpoints/{machine_id}/revoke [post]
 func (b *Bridge) Revoke(c *web.Context, req domain.EndpointPathReq) error {
 	user := middleware.GetUser(c)
 	affected, err := b.db.Endpoint.Update().
@@ -315,6 +371,21 @@ func (b *Bridge) Revoke(c *web.Context, req domain.EndpointPathReq) error {
 	return c.Success(map[string]any{"machine_id": req.MachineID, "status": domain.EndpointStatusRevoked})
 }
 
+// Restore 恢复指定端点
+//
+//	@Summary		恢复端点
+//	@Description	将当前登录用户已撤销的端点恢复为 active。接口幂等，端点已启用时仍返回成功；恢复后的端点可以重新建立桥接连接。当未撤销端点已达到部署配置上限时返回业务错误码 10009。
+//	@Tags			【用户】端点桥接
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			machine_id	path		string										true	"安装实例首次启动生成的 UUIDv4 机器标识"	Format(uuid)
+//	@Success		200			{object}	web.Resp{data=domain.EndpointStatusResp}	"成功，status 为 active"
+//	@Failure		400			{object}	web.Resp									"machine_id 格式无效"
+//	@Failure		401			{object}	web.Resp									"登录会话无效"
+//	@Failure		404			{object}	web.Resp									"端点不存在"
+//	@Failure		500			{object}	web.Resp									"服务器内部错误"
+//	@Router			/api/v1/endpoints/{machine_id}/restore [post]
 func (b *Bridge) Restore(c *web.Context, req domain.EndpointPathReq) error {
 	ctx := c.Request().Context()
 	user := middleware.GetUser(c)
@@ -376,6 +447,20 @@ func (b *Bridge) Restore(c *web.Context, req domain.EndpointPathReq) error {
 	return c.Success(map[string]any{"machine_id": req.MachineID, "status": domain.EndpointStatusActive})
 }
 
+// Connect 建立端点桥接 WebSocket
+//
+//	@Summary		建立端点桥接连接
+//	@Description	该路由用于 WebSocket Upgrade，不是普通 REST 查询。原生桌面端和移动端复用当前登录 Cookie 连接；生产环境必须使用 WSS，非空 Origin 必须匹配服务端白名单。
+//	@Description	Upgrade 成功后，客户端须在 5 秒内发送 hello 文本帧，包含支持的协议主版本、安装级 UUIDv4 machine_id 和设备资料。服务端返回 welcome，并立即发送同一用户全部未撤销端点的 directory.snapshot 全量快照。
+//	@Description	业务帧仅支持 UTF-8 JSON 文本格式的 event、request、response；单帧最大 256 KiB，不支持二进制帧和压缩。完整消息结构、关闭码和重连规则见 docs/design/2026-07-17-client-bridge-client-protocol.md。
+//	@Tags			【用户】端点桥接
+//	@Security		MonkeyCodeAIAuth
+//	@Param			Upgrade		header		string	true	"固定为 websocket"
+//	@Param			Connection	header		string	true	"包含 Upgrade"
+//	@Success		101			{string}	string	"切换到 WebSocket 协议；后续通过文本帧交换 hello、welcome、directory.snapshot 和业务消息"
+//	@Failure		401			{string}	string	"登录会话无效"
+//	@Failure		403			{string}	string	"必须使用 WSS 或 Origin 不受信任"
+//	@Router			/api/v1/endpoints/connect [get]
 func (b *Bridge) Connect(c *web.Context) error {
 	if err := b.validateUpgrade(c.Request()); err != nil {
 		return c.String(http.StatusForbidden, err.Error())
