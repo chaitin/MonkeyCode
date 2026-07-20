@@ -4067,7 +4067,7 @@ const en = {
       skillsDisabledTooltip: "Skills can only be updated while the task is idle",
       skillsDialog: {
         title: "Update task skills",
-        description: "Select the skills to use for this task. The agent will restart with the new skill list after saving.",
+        description: "Update the Skills supported by the current development task. Newly selected Skills will be deployed to the development environment, and deselected Skills will be removed from the development environment.",
         empty: "No skills available",
         save: "Save",
         toast: {

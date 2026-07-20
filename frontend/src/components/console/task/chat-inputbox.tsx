@@ -1,6 +1,6 @@
 import { useState, useRef } from "react"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
-import { IconCommand, IconDots, IconLoader, IconPalette, IconPuzzle, IconReload, IconTrash, IconSend, IconSparkles, IconTerminal2, IconUpload } from "@tabler/icons-react"
+import { IconCommand, IconDots, IconLoader, IconPalette, IconReload, IconTrash, IconSend, IconSparkles, IconTerminal2, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
@@ -14,8 +14,7 @@ import { isCompressibleImageFile, MAX_TASK_UPLOAD_FILE_SIZE_BYTES, MAX_TASK_UPLO
 import { toast } from "sonner"
 import { TaskWhiteboardDialog } from "./task-whiteboard-dialog"
 import { TaskAttachmentPreviewDialog } from "./task-attachment-preview-dialog"
-import { TaskSkillsUpdateDialog } from "./task-skills-update-dialog"
-import type { SwitchAgentResourcesResponse } from "./task-control-client"
+
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { MAX_TASK_CONTENT_LENGTH } from "./task-content-limit"
 import { useTranslation } from "react-i18next"
@@ -60,12 +59,6 @@ interface TaskChatInputBoxProps {
   onCancel?: () => void
   onRequestRestartAgent?: (clearContext: boolean) => void
   whiteboardPersistenceKey?: string
-  skillIds?: string[]
-  pluginIds?: string[]
-  onSwitchAgentResources?: (
-    skillIds: string[],
-    pluginIds: string[],
-  ) => Promise<SwitchAgentResourcesResponse | null> | undefined
 }
 
 export interface TaskChatInputBoxHandle {
@@ -114,7 +107,7 @@ const removeTaskInputDraft = (taskId: string) => {
   writeTaskInputDraft(taskId, "")
 }
 
-export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskChatInputBoxProps>(function TaskChatInputBox({ taskId, streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel, onRequestRestartAgent, whiteboardPersistenceKey = "task-whiteboard", skillIds, pluginIds, onSwitchAgentResources }, ref) {
+export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskChatInputBoxProps>(function TaskChatInputBox({ taskId, streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel, onRequestRestartAgent, whiteboardPersistenceKey = "task-whiteboard" }, ref) {
   const { t } = useTranslation()
   const [content, setContent] = useState(() => readTaskInputDraft(taskId))
   const [isComposing, setIsComposing] = useState(false)
@@ -124,7 +117,6 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   const [isDragActive, setIsDragActive] = useState(false)
   const [whiteboardDialogOpen, setWhiteboardDialogOpen] = useState(false)
   const [whiteboardFileIndex, setWhiteboardFileIndex] = useState(1)
-  const [skillsDialogOpen, setSkillsDialogOpen] = useState(false)
   const [previewFile, setPreviewFile] = useState<TaskUploadedFile | null>(null)
   const [uploadedFiles, setUploadedFiles] = useState<TaskUploadedFile[]>([])
   const [slashCommandConfirmOpen, setSlashCommandConfirmOpen] = useState(false)
@@ -1042,31 +1034,6 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
                 </TooltipTrigger>
                 <TooltipContent>{t("taskDetail.chat.whiteboard")}</TooltipContent>
               </Tooltip>
-              {onSwitchAgentResources && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-sm"
-                      className={cn(
-                        "rounded-full",
-                        (skillIds?.length ?? 0) > 0 && "text-primary hover:text-primary",
-                      )}
-                      disabled={!canUseIdleControls}
-                      aria-label={t("taskDetail.chat.skills")}
-                      onClick={() => setSkillsDialogOpen(true)}
-                    >
-                      <IconPuzzle />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {canUseIdleControls
-                      ? t("taskDetail.chat.skills")
-                      : t("taskDetail.chat.skillsDisabledTooltip")}
-                  </TooltipContent>
-                </Tooltip>
-              )}
               {uploadedFiles.map((uploadedFile) => (
                 <TaskUploadedFileItem
                   key={uploadedFile.accessUrl}
@@ -1172,15 +1139,6 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
           }
         }}
       />
-      {onSwitchAgentResources && (
-        <TaskSkillsUpdateDialog
-          open={skillsDialogOpen}
-          onOpenChange={setSkillsDialogOpen}
-          initialSkillIds={skillIds ?? []}
-          pluginIds={pluginIds ?? []}
-          onSwitch={onSwitchAgentResources}
-        />
-      )}
       <AlertDialog open={slashCommandConfirmOpen} onOpenChange={setSlashCommandConfirmOpen}>
         <AlertDialogContent onKeyDown={handleSlashCommandDialogKeyDown}>
           <AlertDialogHeader>

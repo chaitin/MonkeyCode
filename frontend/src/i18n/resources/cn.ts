@@ -4067,7 +4067,7 @@ const cn = {
       skillsDisabledTooltip: "任务空闲时才可以更新技能",
       skillsDialog: {
         title: "更新任务技能",
-        description: "勾选想在本任务里使用的技能，保存后 Agent 会用新的技能重启。",
+        description: "更新当前开发任务支持的 Skills，新勾选的 Skills 会下发到开发环境，取消勾选的 Skills 会从开发环境中删除。",
         empty: "暂无可用技能",
         save: "保存",
         toast: {
