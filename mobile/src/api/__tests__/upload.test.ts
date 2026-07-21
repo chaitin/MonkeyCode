@@ -122,19 +122,21 @@ test('pickWorkspaceFile rejects a document larger than 10MB', async () => {
 test('uploadWorkspaceFile sends the picked file as multipart form data', async () => {
   mockRequest.mockResolvedValueOnce({ code: 0 });
   const controller = new AbortController();
+  const onProgress = jest.fn();
 
   await uploadWorkspaceFile('vm-1', '/workspace/docs/spec.pdf', {
     uri: 'file:///cache/spec.pdf',
     name: 'spec.pdf',
     mimeType: 'application/pdf',
     size: 4096,
-  }, controller.signal);
+  }, { signal: controller.signal, onProgress });
 
   expect(mockRequest).toHaveBeenCalledWith('/api/v1/users/files/upload', expect.objectContaining({
     method: 'POST',
     query: { id: 'vm-1', path: '/workspace/docs/spec.pdf' },
     formData: expect.any(MockFormData),
     signal: controller.signal,
+    onUploadProgress: onProgress,
   }));
   const form = mockRequest.mock.calls[0][1].formData as MockFormData;
   expect(form.entries).toEqual([['file', {

@@ -274,8 +274,13 @@ export async function uploadFileWithPresignedUrl(file: PickedFile): Promise<Uplo
   return { url: accessUrl, filename: file.name };
 }
 
+export interface WorkspaceUploadOptions {
+  signal?: AbortSignal;
+  onProgress?: (loaded: number, total: number | null) => void;
+}
+
 /** 把本地文件以 multipart/form-data 直接写入任务 VM 的绝对路径。 */
-export async function uploadWorkspaceFile(vmId: string, path: string, file: PickedFile, signal?: AbortSignal): Promise<void> {
+export async function uploadWorkspaceFile(vmId: string, path: string, file: PickedFile, options: WorkspaceUploadOptions = {}): Promise<void> {
   const formData = new FormData();
   formData.append('file', {
     uri: file.uri,
@@ -286,7 +291,8 @@ export async function uploadWorkspaceFile(vmId: string, path: string, file: Pick
     method: 'POST',
     query: { id: vmId, path },
     formData,
-    signal,
+    signal: options.signal,
+    onUploadProgress: options.onProgress,
   });
 }
 
