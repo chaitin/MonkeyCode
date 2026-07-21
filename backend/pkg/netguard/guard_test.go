@@ -84,3 +84,33 @@ func TestHTTPClientBlocksPrivateProxy(t *testing.T) {
 		t.Fatalf("Do() error = %v, want ErrPrivateNetwork", err)
 	}
 }
+
+func TestHTTPClientPreservesAutomaticHTTP2(t *testing.T) {
+	client := New(true).HTTPClient(&http.Client{Transport: &http.Transport{}})
+	transport, ok := client.Transport.(*guardedTransport)
+	if !ok {
+		t.Fatalf("Transport type = %T, want *guardedTransport", client.Transport)
+	}
+	if !transport.direct.ForceAttemptHTTP2 {
+		t.Fatal("direct transport ForceAttemptHTTP2 = false")
+	}
+	if !transport.proxied.ForceAttemptHTTP2 {
+		t.Fatal("proxied transport ForceAttemptHTTP2 = false")
+	}
+}
+
+func TestHTTPClientPreservesDisabledHTTP2(t *testing.T) {
+	client := New(true).HTTPClient(&http.Client{Transport: &http.Transport{
+		DialContext: (&net.Dialer{}).DialContext,
+	}})
+	transport, ok := client.Transport.(*guardedTransport)
+	if !ok {
+		t.Fatalf("Transport type = %T, want *guardedTransport", client.Transport)
+	}
+	if transport.direct.ForceAttemptHTTP2 {
+		t.Fatal("direct transport ForceAttemptHTTP2 = true")
+	}
+	if transport.proxied.ForceAttemptHTTP2 {
+		t.Fatal("proxied transport ForceAttemptHTTP2 = true")
+	}
+}
