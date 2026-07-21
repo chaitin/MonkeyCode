@@ -89,18 +89,36 @@ func (g *Guard) HTTPClient(base *http.Client) *http.Client {
 }
 
 func (g *Guard) transport(base *http.Transport) http.RoundTripper {
+	forceHTTP2 := shouldForceHTTP2(base)
+
 	direct := base.Clone()
 	direct.Proxy = nil
 	direct.DialContext = g.dialContext
+	direct.ForceAttemptHTTP2 = forceHTTP2
 
 	proxied := base.Clone()
 	proxied.DialContext = g.dialContext
+	proxied.ForceAttemptHTTP2 = forceHTTP2
 	return &guardedTransport{
 		guard:   g,
 		base:    base,
 		direct:  direct,
 		proxied: proxied,
 	}
+}
+
+func shouldForceHTTP2(transport *http.Transport) bool {
+	if transport.ForceAttemptHTTP2 {
+		return true
+	}
+	if transport.Protocols != nil || transport.TLSNextProto != nil {
+		return false
+	}
+	return transport.TLSClientConfig == nil &&
+		transport.Dial == nil &&
+		transport.DialContext == nil &&
+		transport.DialTLS == nil &&
+		transport.DialTLSContext == nil
 }
 
 type validatingTransport struct {
