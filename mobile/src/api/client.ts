@@ -129,17 +129,96 @@ interface RequestOpts {
   /** multipart 请求体；不要手动设置 Content-Type，RN 会自动补 boundary。 */
   formData?: FormData;
   signal?: AbortSignal;
+  onUploadProgress?: (loaded: number, total: number | null) => void;
+}
+
+function requestWithUploadProgress<T>(
+  url: string,
+  method: string,
+  headers: Record<string, string>,
+  formData: FormData,
+  signal: AbortSignal | undefined,
+  onUploadProgress: (loaded: number, total: number | null) => void,
+): Promise<ApiEnvelope<T>> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new ApiError('请求已取消'));
+      return;
+    }
+
+    const xhr = new XMLHttpRequest();
+    let settled = false;
+    const cleanup = () => signal?.removeEventListener('abort', abort);
+    const fail = (error: ApiError) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const succeed = (envelope: ApiEnvelope<T>) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(envelope);
+    };
+    const abort = () => {
+      xhr.abort();
+      fail(new ApiError('请求已取消'));
+    };
+
+    xhr.open(method, url, true);
+    xhr.withCredentials = true;
+    for (const [key, value] of Object.entries(headers)) xhr.setRequestHeader(key, value);
+    xhr.upload.onprogress = (event) => {
+      onUploadProgress(event.loaded, event.lengthComputable && event.total > 0 ? event.total : null);
+    };
+    xhr.onload = () => {
+      if (xhr.status === 401) {
+        onUnauthorized?.();
+        fail(new ApiError('登录已过期，请重新登录', undefined, 401));
+        return;
+      }
+
+      let json: ApiEnvelope<T> | null = null;
+      if (xhr.responseText) {
+        try {
+          json = JSON.parse(xhr.responseText) as ApiEnvelope<T>;
+        } catch {
+          if (xhr.status < 200 || xhr.status >= 300) {
+            fail(new ApiError(`请求失败（${xhr.status}）`, undefined, xhr.status));
+            return;
+          }
+        }
+      }
+      if (json && typeof json.code === 'number' && json.code !== 0) {
+        fail(new ApiError(json.message || '请求失败', json.code, xhr.status));
+        return;
+      }
+      if ((xhr.status < 200 || xhr.status >= 300) && (!json || typeof json.code !== 'number')) {
+        fail(new ApiError(`请求失败（${xhr.status}）`, undefined, xhr.status));
+        return;
+      }
+      succeed(json ?? ({ code: 0 } as ApiEnvelope<T>));
+    };
+    xhr.onerror = () => fail(new ApiError('网络错误'));
+    xhr.onabort = () => fail(new ApiError('请求已取消'));
+    signal?.addEventListener('abort', abort, { once: true });
+    xhr.send(formData);
+  });
 }
 
 export async function request<T = unknown>(
   path: string,
   opts: RequestOpts = {},
 ): Promise<ApiEnvelope<T>> {
-  const { method = 'GET', query, body, formData, signal } = opts;
+  const { method = 'GET', query, body, formData, signal, onUploadProgress } = opts;
   const url = `${baseUrl}${path}${buildQuery(query)}`;
 
   const headers: Record<string, string> = { ...authHeaders() };
   if (body) headers['Content-Type'] = 'application/json';
+  if (formData && onUploadProgress) {
+    return requestWithUploadProgress<T>(url, method, headers, formData, signal, onUploadProgress);
+  }
 
   let res: Response;
   try {

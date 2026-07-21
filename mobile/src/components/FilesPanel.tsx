@@ -191,7 +191,7 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
   const [diff, setDiff] = useState<{ path: string; text: string | null } | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null); // 正在下载的条目 path（'' = 根目录）
   const [dl, setDl] = useState<{ name: string; bytes: number; total: number | null } | null>(null); // 下载进度（驱动底部进度条）
-  const [uploadingFile, setUploadingFile] = useState<{ name: string; size?: number } | null>(null);
+  const [uploadingFile, setUploadingFile] = useState<{ name: string; size?: number; bytes: number; total: number | null } | null>(null);
   const pathRef = useRef('');
   const directoryRequestRef = useRef(0);
   const resumableRef = useRef<FileSystem.DownloadResumable | null>(null);
@@ -372,9 +372,15 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
       const targetDir = pathRef.current;
       controller = new AbortController();
       uploadAbortRef.current = controller;
-      setUploadingFile({ name: file.name, size: file.size });
+      setUploadingFile({ name: file.name, size: file.size, bytes: 0, total: file.size && file.size > 0 ? file.size : null });
       const targetPath = normalizePath(`${WORKDIR}/${targetDir}/${file.name}`);
-      await uploadWorkspaceFile(vmId, targetPath, file, controller.signal);
+      await uploadWorkspaceFile(vmId, targetPath, file, {
+        signal: controller.signal,
+        onProgress: (bytes, total) => {
+          if (uploadOperationRef.current !== operation) return;
+          setUploadingFile((current) => (current ? { ...current, bytes, total: total ?? current.total } : current));
+        },
+      });
       if (controller.signal.aborted || uploadOperationRef.current !== operation) return;
 
       // 先乐观更新当前目录，让控制通道临时断线时也不会把成功上传显示成空目录；再后台校准。
@@ -435,6 +441,9 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
     { key: 'tree', label: '文件' },
     { key: 'changes', label: '变动', count: changes.length },
   ];
+  const uploadPercent = uploadingFile?.total
+    ? Math.max(0, Math.min(100, Math.round((uploadingFile.bytes / uploadingFile.total) * 100)))
+    : null;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={() => (viewer ? setViewer(null) : diff ? setDiff(null) : closePanel())} statusBarTranslucent>
@@ -575,20 +584,28 @@ export function FilesPanel({ visible, onClose, control, initialChanges, vmId }: 
           ) : null}
         </View>
       ) : uploadingFile ? (
-        // multipart 暂无可靠的跨平台上传进度事件，至少持续展示当前文件和目标目录。
         <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: t.bg2, borderTopWidth: StyleSheet.hairlineWidth, borderColor: t.line2, paddingTop: 11, paddingHorizontal: 16, paddingBottom: bottom + 11, ...t.shLift }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <Spinner size={18} color={t.acTx} sw={2} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text numberOfLines={1} style={{ fontSize: 13.5, fontWeight: '600', color: t.tx }}>正在上传 {uploadingFile.name}</Text>
               <Text numberOfLines={1} style={{ fontSize: 11.5, color: t.tx3, marginTop: 1.5 }}>
-                {uploadingFile.size != null ? `${formatSize(uploadingFile.size)} · ` : ''}上传到{path ? ` ${path}` : '根目录'}
+                {uploadPercent != null
+                  ? uploadPercent >= 100
+                    ? '100% · 正在完成…'
+                    : `${uploadPercent}% · ${formatSize(Math.min(uploadingFile.bytes, uploadingFile.total ?? 0))} / ${formatSize(uploadingFile.total ?? 0)}`
+                  : `${uploadingFile.size != null ? `${formatSize(uploadingFile.size)} · ` : ''}正在准备…`}
               </Text>
             </View>
             <Pressable onPress={cancelUpload} hitSlop={8} style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, backgroundColor: t.bg3 }, pressed && { backgroundColor: t.bg4 }]}>
               <Text style={{ fontSize: 13, fontWeight: '600', color: t.tx2 }}>取消</Text>
             </Pressable>
           </View>
+          {uploadPercent != null ? (
+            <View style={{ height: 3, borderRadius: 99, backgroundColor: t.bg4, marginTop: 10, overflow: 'hidden' }}>
+              <View style={{ height: 3, borderRadius: 99, backgroundColor: t.ac, width: `${uploadPercent}%` }} />
+            </View>
+          ) : null}
         </View>
       ) : null}
     </Modal>
