@@ -217,7 +217,7 @@ Start the frontend and required backend services from the Issue #910 worktree us
 
 Expected: the preview URL responds successfully and the task page loads.
 
-- [ ] **Step 2: Verify both restart modes manually**
+- [x] **Step 2: Verify both restart modes manually**
 
 For “Restart Agent” and “Restart Agent and clear context”:
 
