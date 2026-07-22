@@ -211,7 +211,7 @@ Expected: one implementation commit containing the dialog behavior, regression t
 - Consumes: the completed Issue #910 branch build.
 - Produces: a local preview URL for manual acceptance testing.
 
-- [ ] **Step 1: Start the project with the deploy-website skill**
+- [x] **Step 1: Start the project with the deploy-website skill**
 
 Start the frontend and required backend services from the Issue #910 worktree using the repository's existing development commands and proxy configuration.
 
