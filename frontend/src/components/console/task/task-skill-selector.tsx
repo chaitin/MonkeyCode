@@ -203,7 +203,7 @@ export function TaskSkillPickerBody({
     <Tabs
       value={activeSkillTag}
       onValueChange={onActiveSkillTagChange}
-      className={cn("flex min-h-0 w-full flex-1 flex-col", className)}
+      className={cn("flex min-h-0 min-w-0 w-full flex-1 flex-col", className)}
     >
       <div className="relative mb-2">
         <IconSearch className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -228,7 +228,7 @@ export function TaskSkillPickerBody({
           </Button>
         )}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-center gap-1">
         <Button
           type="button"
           size="icon"
@@ -242,7 +242,7 @@ export function TaskSkillPickerBody({
         <TabsList
           ref={tabsListRef}
           onScroll={updateScrollState}
-          className="no-scrollbar h-7 min-w-0 flex-1 justify-start gap-1 overflow-x-auto overflow-y-hidden bg-background p-0 whitespace-nowrap group-data-horizontal/tabs:h-7"
+          className="no-scrollbar h-7 min-w-0 w-auto flex-1 justify-start gap-1 overflow-x-auto overflow-y-hidden bg-background p-0 whitespace-nowrap group-data-horizontal/tabs:h-7"
         >
           {skillTags.map((tag) => (
             <TabsTrigger

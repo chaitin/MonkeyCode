@@ -148,7 +148,7 @@ export function TaskSkillsUpdateDialog({
     }
 
     return (
-      <div className="flex h-80 min-h-0 flex-col">
+      <div className="flex h-80 min-h-0 min-w-0 max-w-full flex-col">
         <TaskSkillPickerBody
           active={open}
           selectedSkills={selectedSkills}
