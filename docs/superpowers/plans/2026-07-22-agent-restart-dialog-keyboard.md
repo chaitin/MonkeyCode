@@ -22,18 +22,18 @@
 ### Task 1: Agent Restart Dialog Keyboard Navigation
 
 **Files:**
-- Create: `frontend/test/task-restart-dialog-keyboard.test.ts`
+- Create: `frontend/test/task-restart-dialog-keyboard.test.mjs`
 - Modify: `frontend/src/pages/console/user/task/task-detail.tsx:20-28,111-140,974-997,1472-1506`
 
 **Interfaces:**
 - Consumes: `AlertDialogAction`, `AlertDialogCancel`, `React.KeyboardEvent<HTMLDivElement>`, and the existing `handleConfirmRestartAgent(): Promise<void>` callback.
 - Produces: `handleRestartAgentDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void`, `restartAgentCancelRef`, and `restartAgentConfirmRef` within `TaskDetailPage`.
 
-- [ ] **Step 1: Write the failing source regression test**
+- [x] **Step 1: Write the failing source regression test**
 
-Create `frontend/test/task-restart-dialog-keyboard.test.ts`:
+Create `frontend/test/task-restart-dialog-keyboard.test.mjs`:
 
-```typescript
+```javascript
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -72,19 +72,19 @@ test("Agent 重启确认弹窗支持左右方向键切换操作按钮", () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused test and verify the expected failure**
+- [x] **Step 2: Run the focused test and verify the expected failure**
 
 Run:
 
 ```bash
-node --experimental-strip-types --test test/task-restart-dialog-keyboard.test.ts
+node --test test/task-restart-dialog-keyboard.test.mjs
 ```
 
 Working directory: `frontend`
 
 Expected: FAIL on the missing `AlertDialogAction` import, refs, or handler.
 
-- [ ] **Step 3: Implement the minimal dialog behavior**
+- [x] **Step 3: Implement the minimal dialog behavior**
 
 Add `AlertDialogAction` to the existing alert-dialog import:
 
@@ -154,31 +154,31 @@ Replace the restart Confirm action with:
 </AlertDialogAction>
 ```
 
-- [ ] **Step 4: Run the focused test and verify success**
+- [x] **Step 4: Run the focused test and verify success**
 
 Run:
 
 ```bash
-node --experimental-strip-types --test test/task-restart-dialog-keyboard.test.ts
+node --test test/task-restart-dialog-keyboard.test.mjs
 ```
 
 Working directory: `frontend`
 
 Expected: 1 test passes and 0 tests fail.
 
-- [ ] **Step 5: Run targeted lint**
+- [x] **Step 5: Run targeted lint**
 
 Run:
 
 ```bash
-pnpm exec eslint src/pages/console/user/task/task-detail.tsx test/task-restart-dialog-keyboard.test.ts
+pnpm exec eslint src/pages/console/user/task/task-detail.tsx test/task-restart-dialog-keyboard.test.mjs
 ```
 
 Working directory: `frontend`
 
 Expected: exit code 0 with no lint errors.
 
-- [ ] **Step 6: Run the online frontend build**
+- [x] **Step 6: Run the online frontend build**
 
 Run:
 
@@ -196,13 +196,13 @@ Review:
 
 ```bash
 git diff --check
-git diff -- frontend/src/pages/console/user/task/task-detail.tsx frontend/test/task-restart-dialog-keyboard.test.ts
+git diff -- frontend/src/pages/console/user/task/task-detail.tsx frontend/test/task-restart-dialog-keyboard.test.mjs
 ```
 
 Commit:
 
 ```bash
-git add frontend/src/pages/console/user/task/task-detail.tsx frontend/test/task-restart-dialog-keyboard.test.ts
+git add frontend/src/pages/console/user/task/task-detail.tsx frontend/test/task-restart-dialog-keyboard.test.mjs
 git commit -m "fix(frontend): support keyboard navigation in restart dialog"
 ```
 
