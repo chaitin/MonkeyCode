@@ -22,7 +22,7 @@ The restart dialog owns refs for its Cancel and Confirm actions. A keydown handl
 - `Enter` keeps the native behavior of the focused action.
 - `Tab`, `Shift+Tab`, and `Escape` continue to use Radix AlertDialog behavior.
 
-The Confirm control uses `AlertDialogAction`, matching the slash-command confirmation dialog and preserving the existing async click handler and disabled state.
+The Confirm control remains a plain `Button`, preserving the existing behavior where the dialog closes only after a successful asynchronous restart. Both controls expose refs for focus navigation.
 
 ## Implementation
 
@@ -32,7 +32,7 @@ Modify `frontend/src/pages/console/user/task/task-detail.tsx`:
 2. Add a restart-dialog keydown handler beside the existing restart callbacks.
 3. Attach the handler to the restart `AlertDialogContent`.
 4. Attach the refs to both actions.
-5. Replace the restart Confirm `Button` with `AlertDialogAction`.
+5. Attach the Confirm ref to the existing `Button`.
 
 No shared UI primitive changes or unrelated dialog refactors are included.
 
@@ -43,7 +43,7 @@ Add a focused regression test that verifies:
 - The restart dialog binds its keydown handler.
 - `ArrowLeft` focuses Cancel and prevents the default action.
 - `ArrowRight` focuses Confirm and prevents the default action.
-- Both controls expose refs and Confirm uses `AlertDialogAction`.
+- Both controls expose refs and Confirm remains a plain `Button`.
 - The existing restart callback, submitting guard, spinner, and disabled state remain present.
 
 Run the focused test, frontend lint for changed files, and the online frontend build. Start a preview from the issue branch for manual verification of both restart modes.

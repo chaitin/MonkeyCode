@@ -19,7 +19,6 @@ import { TaskUserInputIndex } from "@/components/console/task/task-user-input-in
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -1500,8 +1499,9 @@ export default function TaskDetailPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel ref={restartAgentCancelRef} disabled={restartAgentSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
+            <Button
               ref={restartAgentConfirmRef}
+              type="button"
               onClick={() => {
                 void handleConfirmRestartAgent()
               }}
@@ -1509,7 +1509,7 @@ export default function TaskDetailPage() {
             >
               {restartAgentSubmitting && <Spinner className="mr-2 size-4" />}
               {t("taskDetail.page.dialogs.confirm")}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
