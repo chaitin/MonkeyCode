@@ -1,4 +1,4 @@
-import { ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainBranch, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainSubscriptionResp } from "@/api/Api"
+import { ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainSubscriptionResp } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -9,9 +9,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import ModelSelect from "@/components/console/task/model-select"
 import { getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
-import { apiRequest } from "@/utils/requestUtils"
+import { useBranches } from "@/hooks/useBranches"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
 function getDefaultModelId(models: DomainModel[], subscription: DomainSubscriptionResp | null) {
@@ -137,101 +136,46 @@ export function useIssueTaskHostSelection(
 }
 
 export function useProjectBranchSelection(open: boolean, project?: DomainProject) {
-  const { t } = useTranslation()
-  const [branches, setBranches] = useState<string[]>([])
   const [selectedBranch, setSelectedBranch] = useState("")
-  const [loadingBranches, setLoadingBranches] = useState(false)
-  const branchRequestIdRef = useRef(0)
   const branchTouchedRef = useRef(false)
 
-  const branchSourceKey = useMemo(() => {
-    if (!project?.id) return ""
-    return [
-      project.id,
-      project.platform,
-      project.git_identity_id || "",
-      project.full_name || "",
-      project.repo_url || "",
-    ].join(":")
-  }, [project?.id, project?.platform, project?.git_identity_id, project?.full_name, project?.repo_url])
+  const isInternal = project?.platform === ConstsGitPlatform.GitPlatformInternal
+  const { branches, loading, loadingMore, hasMore, loadMore } = useBranches(
+    project?.git_identity_id,
+    project?.full_name,
+    { enabled: open && !isInternal }
+  )
 
   const selectBranch = useCallback((branch: string) => {
     branchTouchedRef.current = true
     setSelectedBranch(branch)
   }, [])
 
-  const fetchBranches = useCallback(async () => {
-    const requestId = ++branchRequestIdRef.current
-    branchTouchedRef.current = false
-
-    if (!project?.git_identity_id || !project?.repo_url) {
-      setBranches([])
-      setLoadingBranches(false)
-      return
-    }
-
-    if (project.platform === ConstsGitPlatform.GitPlatformInternal) {
-      setSelectedBranch("")
-      setBranches([])
-      setLoadingBranches(false)
-      return
-    }
-
-    setLoadingBranches(true)
-    try {
-      const escapedRepoFullName = project.full_name || ""
-      if (!escapedRepoFullName) {
-        if (requestId === branchRequestIdRef.current) {
-          toast.error(t("consoleProject.issueTask.toast.repositoryUnavailable"))
-          setLoadingBranches(false)
-        }
-        return
-      }
-
-      const encodedRepoName = encodeURIComponent(escapedRepoFullName)
-      await apiRequest("v1UsersGitIdentitiesBranchesDetail", {}, [project.git_identity_id, encodedRepoName], (resp) => {
-        if (requestId !== branchRequestIdRef.current) return
-
-        if (resp.code === 0 && resp.data) {
-          const branchList = resp.data.map((branch: DomainBranch) => branch.name || "").filter(Boolean)
-          setBranches(branchList)
-
-          if (branchTouchedRef.current) return
-
-          if (branchList.includes("main")) {
-            setSelectedBranch("main")
-          } else if (branchList.includes("master")) {
-            setSelectedBranch("master")
-          } else if (branchList.length > 0) {
-            setSelectedBranch(branchList[0])
-          }
-        } else {
-          toast.error(t("consoleProject.issueTask.toast.fetchBranchesFailedWithMessage", { message: resp.message || t("consoleProject.common.unknownError") }))
-        }
-      })
-    } catch (error) {
-      console.error("Fetch branches error:", error)
-      toast.error(t("consoleProject.issueTask.toast.fetchBranchesFailed"))
-    } finally {
-      if (requestId === branchRequestIdRef.current) {
-        setLoadingBranches(false)
-      }
-    }
-  }, [project?.git_identity_id, project?.repo_url, project?.platform, project?.full_name, t])
-
   useEffect(() => {
     if (!open) {
-      branchRequestIdRef.current += 1
       branchTouchedRef.current = false
       return
     }
-    if (!branchSourceKey) return
-    fetchBranches()
-  }, [branchSourceKey, fetchBranches, open])
+  }, [open])
+
+  useEffect(() => {
+    if (branchTouchedRef.current || branches.length === 0) return
+
+    if (branches.includes("main")) {
+      setSelectedBranch("main")
+    } else if (branches.includes("master")) {
+      setSelectedBranch("master")
+    } else {
+      setSelectedBranch(branches[0])
+    }
+  }, [branches])
 
   return {
     branches,
-    loadingBranches,
+    loadingBranches: loading,
+    loadingMore,
+    hasMore,
+    loadMore,
     selectedBranch,
     selectBranch,
   }
@@ -240,12 +184,16 @@ export function useProjectBranchSelection(open: boolean, project?: DomainProject
 export function IssueTaskProjectFields({
   branches,
   loadingBranches,
+  loadingMore,
+  loadMore,
   project,
   selectedBranch,
   selectBranch,
 }: {
   branches: string[]
   loadingBranches: boolean
+  loadingMore?: boolean
+  loadMore?: () => void
   project?: DomainProject
   selectedBranch: string
   selectBranch: (branch: string) => void
@@ -280,12 +228,17 @@ export function IssueTaskProjectFields({
                 <SelectValue placeholder={t("consoleProject.issueTask.selectBranch")} />
               )}
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper" className="max-h-[196px]" onScrollEnd={loadMore}>
               {branches.map((branch) => (
                 <SelectItem key={branch} value={branch}>
                   {branch}
                 </SelectItem>
               ))}
+              {loadingMore && (
+                <div className="flex justify-center py-2">
+                  <Spinner className="size-4" />
+                </div>
+              )}
             </SelectContent>
           </Select>
         </div>

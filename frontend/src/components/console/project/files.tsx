@@ -1,6 +1,6 @@
 import { useState, useCallback, memo, useMemo, useRef, useEffect } from "react"
 import { apiRequest } from "@/utils/requestUtils"
-import { type DomainProject, type DomainProjectTreeEntry, type DomainBranch } from "@/api/Api"
+import { type DomainProject, type DomainProjectTreeEntry } from "@/api/Api"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { IconFileText, IconFolder, IconFolderOpen, IconLoader, IconGitBranch, IconFile, IconFileSymlink, IconExternalLink } from "@tabler/icons-react"
@@ -9,7 +9,9 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/u
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Spinner } from "@/components/ui/spinner"
 import { b64decode } from "@/utils/common"
+import { useBranches } from "@/hooks/useBranches"
 import { useTranslation } from "react-i18next"
 import AceEditor from "react-ace"
 import "ace-builds/src-noconflict/mode-text"
@@ -229,15 +231,38 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
   const { t } = useTranslation()
   const [entries, setEntries] = useState<TreeEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [branches, setBranches] = useState<DomainBranch[]>([])
   const [selectedBranch, setSelectedBranch] = useState<string>('')
   const [branchResolved, setBranchResolved] = useState(false)
-  const [branchProjectId, setBranchProjectId] = useState<string>('')
   const projectIdRef = useRef(project?.id)
   projectIdRef.current = project?.id
   const selectedBranchRef = useRef(selectedBranch)
   selectedBranchRef.current = selectedBranch
   const isMountedRef = useRef(true)
+
+  const { branches, loading: branchLoading, loadingMore, loadMore } = useBranches(
+    project?.git_identity_id,
+    project?.full_name,
+  )
+
+  useEffect(() => {
+    if (branchLoading) {
+      setBranchResolved(false)
+      setSelectedBranch('')
+      setEntries([])
+      setLoading(true)
+      return
+    }
+    setBranchResolved(true)
+    if (branches.length > 0 && !selectedBranch) {
+      if (branches.includes('main')) {
+        setSelectedBranch('main')
+      } else if (branches.includes('master')) {
+        setSelectedBranch('master')
+      } else {
+        setSelectedBranch(branches[0])
+      }
+    }
+  }, [branches, branchLoading, selectedBranch])
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedFile, setSelectedFile] = useState<TreeEntry | null>(null)
@@ -255,7 +280,6 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
       return
     }
     if (!branchResolved) return
-    if (branchProjectId !== project.id) return
 
     const requestedProjectId = project.id
     const requestedBranch = selectedBranch
@@ -277,55 +301,7 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
     if (selectedBranchRef.current !== requestedBranch) return
     setLoading(false)
     onLoaded?.()
-  }, [project?.id, onLoaded, selectedBranch, branchProjectId, branchResolved])
-
-  useEffect(() => {
-    const fetchBranches = async () => {
-      if (!project?.id || !project?.git_identity_id || !project?.full_name) {
-        setBranches([])
-        setSelectedBranch('')
-        setBranchProjectId(project?.id || '')
-        setBranchResolved(true)
-        return
-      }
-
-      const requestedProjectId = project.id
-      const encodedRepoName = encodeURIComponent(project.full_name)
-      setBranches([])
-      setSelectedBranch('')
-      setEntries([])
-      setLoading(true)
-      setBranchProjectId('')
-      setBranchResolved(false)
-
-      await apiRequest('v1UsersGitIdentitiesBranchesDetail', {}, [project.git_identity_id, encodedRepoName], (resp) => {
-        if (projectIdRef.current !== requestedProjectId) return
-        if (resp.code === 0 && resp.data) {
-          setBranches(resp.data)
-          if (resp.data.length > 0) {
-            const branchNames = resp.data.map((b: DomainBranch) => b.name || '').filter(Boolean)
-            let defaultBranch = ''
-            if (branchNames.includes('main')) {
-              defaultBranch = 'main'
-            } else if (branchNames.includes('master')) {
-              defaultBranch = 'master'
-            } else {
-              defaultBranch = branchNames.sort()[0] || ''
-            }
-            setSelectedBranch(defaultBranch)
-          }
-        }
-        setBranchProjectId(requestedProjectId)
-        setBranchResolved(true)
-      }, () => {
-        if (projectIdRef.current !== requestedProjectId) return
-        setBranchProjectId(requestedProjectId)
-        setBranchResolved(true)
-      })
-    }
-
-    fetchBranches()
-  }, [project?.id, project?.git_identity_id, project?.full_name])
+  }, [project?.id, onLoaded, selectedBranch, branchResolved])
 
   useEffect(() => {
     isMountedRef.current = true
@@ -374,12 +350,17 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
             <SelectTrigger className="w-[140px] text-xs" style={{ height: '28px' }}>
               <SelectValue placeholder={t("consoleProject.files.selectBranch")} />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper" className="max-h-[196px]" onScrollEnd={loadMore}>
               {branches.map((branch) => (
-                <SelectItem key={branch.name} value={branch.name || ''} className="text-xs">
-                  {branch.name}
+                <SelectItem key={branch} value={branch} className="text-xs">
+                  {branch}
                 </SelectItem>
               ))}
+              {loadingMore && (
+                <div className="flex justify-center py-2">
+                  <Spinner className="size-3" />
+                </div>
+              )}
             </SelectContent>
           </Select>
         )}

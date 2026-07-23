@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useCallback } from "react"
 import { Select as SelectPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
@@ -60,8 +61,22 @@ function SelectContent({
   children,
   position = "item-aligned",
   align = "center",
+  onScrollEnd,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+}: React.ComponentProps<typeof SelectPrimitive.Content> & {
+  onScrollEnd?: () => void
+}) {
+  const handleScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      if (!onScrollEnd) return
+      const target = e.currentTarget
+      if (target.scrollHeight - target.scrollTop - target.clientHeight < 50) {
+        onScrollEnd()
+      }
+    },
+    [onScrollEnd]
+  )
+
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
@@ -79,6 +94,7 @@ function SelectContent({
             "data-[position=popper]:h-(--radix-select-trigger-height) data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)",
             position === "popper" && ""
           )}
+          onScroll={handleScroll}
         >
           {children}
         </SelectPrimitive.Viewport>

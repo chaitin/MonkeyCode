@@ -33,7 +33,7 @@ export default function IssueDesignDialog({
   const [submitting, setSubmitting] = useState<boolean>(false)
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const { images, models, hosts, reloadProjects, reloadUnlinkedTasks, subscription } = useCommonData()
-  const { branches, loadingBranches, selectedBranch, selectBranch } = useProjectBranchSelection(open, project)
+  const { branches, loadingBranches, loadingMore, loadMore, selectedBranch, selectBranch } = useProjectBranchSelection(open, project)
   const { selectedModel, selectedModelId, setSelectedModelId } = useIssueTaskModelSelection(open, models, subscription)
   const { selectedHostId, setSelectedHostId } = useIssueTaskHostSelection(open, hosts, selectedModel)
   const { selectedImageId, setSelectedImageId } = useIssueTaskImageSelection(open, images, project?.image_id)
@@ -134,6 +134,8 @@ ${issue?.requirement_document?.replaceAll("`", "\\`")}
           <IssueTaskProjectFields
             branches={branches}
             loadingBranches={loadingBranches}
+            loadingMore={loadingMore}
+            loadMore={loadMore}
             project={project}
             selectedBranch={selectedBranch}
             selectBranch={selectBranch}
