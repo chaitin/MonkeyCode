@@ -126,6 +126,8 @@ export default function TaskDetailPage() {
   const historyLoadedRef = React.useRef(false)
   const chatScrollRef = React.useRef<HTMLDivElement | null>(null)
   const chatInputRef = React.useRef<TaskChatInputBoxHandle>(null)
+  const restartAgentCancelRef = React.useRef<HTMLButtonElement>(null)
+  const restartAgentConfirmRef = React.useRef<HTMLButtonElement>(null)
   const chatContentRef = React.useRef<HTMLDivElement | null>(null)
   const taskMessageListRef = React.useRef<TaskMessageVirtualListHandle | null>(null)
   const taskFileExplorerRef = React.useRef<TaskFileExplorerHandle | null>(null)
@@ -1004,6 +1006,19 @@ export default function TaskDetailPage() {
     setRestartAgentDialogOpen(true)
   }, [canInput])
 
+  const handleRestartAgentDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault()
+      restartAgentCancelRef.current?.focus()
+      return
+    }
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault()
+      restartAgentConfirmRef.current?.focus()
+    }
+  }
+
   const handleConfirmRestartAgent = React.useCallback(async () => {
     if (restartAgentSubmitting) return
 
@@ -1469,7 +1484,7 @@ export default function TaskDetailPage() {
           setRestartAgentDialogOpen(open)
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent onKeyDown={handleRestartAgentDialogKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {restartAgentClearContext
@@ -1483,8 +1498,9 @@ export default function TaskDetailPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={restartAgentSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel ref={restartAgentCancelRef} disabled={restartAgentSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
+              ref={restartAgentConfirmRef}
               type="button"
               onClick={() => {
                 void handleConfirmRestartAgent()
