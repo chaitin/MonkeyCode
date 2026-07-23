@@ -42,6 +42,7 @@ import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context"
 import { defaultSkills } from "@/utils/config"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
+  canUseModelBySubscription,
   findIdentitiesForRepoUrl,
   getGitPlatformIcon,
   getHostBadges,
@@ -75,6 +76,7 @@ import ModelSelect from "./model-select"
 import { IdentityRepoSubmenu } from "./identity-repo-submenu"
 import { ALL_SKILLS_TAG, TaskSkillSelector } from "./task-skill-selector"
 import { filterSelectableSkillIds } from "./task-skill-selection"
+import { resolveTaskModelSelection } from "./task-model-selection"
 
 type DomainSkill = DomainSkillListItem & { tags?: string[] }
 
@@ -125,6 +127,7 @@ export default function CreateDefaultTaskDialog({
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const [selectedZipFile, setSelectedZipFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const modelTouchedRef = useRef(false)
 
   const selectableIdentities = useMemo(
     () => identities.filter(isIdentityWithRepos),
@@ -142,7 +145,6 @@ export default function CreateDefaultTaskDialog({
 
   const setDefaultConfig = useCallback(() => {
     const storedParams = readStoredTaskDialogParams()
-    setSelectedModelId(selectPreferredTaskModel(models, subscription))
     const nextImageId = (
       storedParams.imageId
       && images.some((image) => image.id === storedParams.imageId)
@@ -164,11 +166,12 @@ export default function CreateDefaultTaskDialog({
     }
 
     setSelectedHostId(selectHost(hosts, false))
-  }, [hosts, images, models, subscription, user.role])
+  }, [hosts, images, user.role])
 
   useEffect(() => {
     if (!open) {
 
+      modelTouchedRef.current = false
       setContent("")
       setCodeDropdownOpen(false)
       setSkillPopoverOpen(false)
@@ -206,6 +209,24 @@ export default function CreateDefaultTaskDialog({
       setSelectedSkill((prev) => filterSelectableSkillIds(prev, skillList))
     }
   }, [open, skillList, skillList.length, t])
+
+  useEffect(() => {
+    if (!open || models.length === 0) {
+      return
+    }
+
+    const availableModelIds = models
+      .filter((model) => canUseModelBySubscription(model, subscription))
+      .map((model) => model.id)
+      .filter((modelId): modelId is string => Boolean(modelId))
+    const preferredModelId = selectPreferredTaskModel(models, subscription)
+    setSelectedModelId((currentModelId) => resolveTaskModelSelection({
+      availableModelIds,
+      currentModelId,
+      preferredModelId,
+      touched: modelTouchedRef.current,
+    }))
+  }, [models, open, subscription])
 
   useEffect(() => {
     if (!open) {
@@ -265,6 +286,11 @@ export default function CreateDefaultTaskDialog({
     })
   }
 
+  const handleModelChange = (modelId: string) => {
+    modelTouchedRef.current = true
+    setSelectedModelId(modelId)
+  }
+
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId),
     [models, selectedModelId]
@@ -308,7 +334,11 @@ export default function CreateDefaultTaskDialog({
       return
     }
 
-    if (!selectedModelId) {
+    if (
+      !selectedModelId
+      || !selectedModel
+      || !canUseModelBySubscription(selectedModel, subscription)
+    ) {
       toast.error(t("taskWorkflow.toast.missingModel"))
       return
     }
@@ -617,7 +647,7 @@ export default function CreateDefaultTaskDialog({
                           models={models}
                           selectedModel={selectedModel}
                           selectedModelId={selectedModelId}
-                          setSelectedModelId={setSelectedModelId}
+                          setSelectedModelId={handleModelChange}
                           subscription={subscription}
                         />
                       </FieldContent>
