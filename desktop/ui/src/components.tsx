@@ -210,7 +210,7 @@ function MarkdownInline({ text, style }: { text: string; style?: CSSProperties }
 function ThoughtView({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "92%" }}>
       <div
         onClick={() => setOpen(!open)}
         style={{
