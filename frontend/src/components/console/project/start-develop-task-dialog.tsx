@@ -1,4 +1,4 @@
-import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainProject, type DomainBranch, type DomainSkillListItem } from "@/api/Api"
+import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainProject, type DomainSkillListItem } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +24,7 @@ import {
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { defaultSkills } from "@/utils/config"
 import { apiRequest } from "@/utils/requestUtils"
+import { useBranches } from "@/hooks/useBranches"
 import { cn } from "@/lib/utils"
 import { IconChevronDown, IconSparkles } from "@tabler/icons-react"
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
@@ -50,9 +51,7 @@ export default function StartDevelopTaskDialog({
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState<boolean>(false)
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
-  const [branches, setBranches] = useState<string[]>([])
   const [selectedBranch, setSelectedBranch] = useState<string>('main')
-  const [loadingBranches, setLoadingBranches] = useState<boolean>(false)
   const [branchFetchFailed, setBranchFetchFailed] = useState<boolean>(false)
   const [userMessage, setUserMessage] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
@@ -65,9 +64,34 @@ export default function StartDevelopTaskDialog({
   const [activeSkillTag, setActiveSkillTag] = useState(ALL_SKILLS_TAG)
   const { images, models, hosts, subscription } = useCommonData()
   const { t } = useTranslation()
-  const branchRequestIdRef = useRef(0)
   const branchTouchedRef = useRef(false)
   const prevOpenRef = useRef(false)
+
+  const isInternal = project?.platform === ConstsGitPlatform.GitPlatformInternal
+  const { branches, loading: loadingBranches, loadingMore, loadMore } = useBranches(
+    project?.git_identity_id,
+    project?.full_name,
+    { enabled: open && !isInternal }
+  )
+
+  useEffect(() => {
+    if (branches.length === 0 && !loadingBranches) {
+      if (project?.git_identity_id && project?.full_name && !isInternal) {
+        setBranchFetchFailed(true)
+      }
+      return
+    }
+    setBranchFetchFailed(false)
+    if (branchTouchedRef.current) return
+    if (branches.includes('main')) {
+      setSelectedBranch('main')
+    } else if (branches.includes('master')) {
+      setSelectedBranch('master')
+    } else if (branches.length > 0) {
+      setSelectedBranch(branches[0])
+    }
+  }, [branches, loadingBranches, project?.git_identity_id, project?.full_name, isInternal])
+
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId),
     [models, selectedModelId]
@@ -82,105 +106,11 @@ export default function StartDevelopTaskDialog({
   }, [hosts])
   const userMessageLength = userMessage.length
   const userMessageTooLong = userMessageLength > MAX_TASK_CONTENT_LENGTH
-  const branchSourceKey = useMemo(() => {
-    if (!project?.id) return ""
-    return [
-      project.id,
-      project.platform,
-      project.git_identity_id || "",
-      project.full_name || "",
-      project.repo_url || "",
-    ].join(":")
-  }, [project?.id, project?.platform, project?.git_identity_id, project?.full_name, project?.repo_url])
 
   const selectBranch = (branch: string) => {
     branchTouchedRef.current = true
     setSelectedBranch(branch)
   }
-
-  const fetchBranches = useCallback(async () => {
-    const requestId = ++branchRequestIdRef.current
-    branchTouchedRef.current = false
-
-    if (!project?.git_identity_id || !project?.repo_url) {
-      setBranches([])
-      setBranchFetchFailed(false)
-      setLoadingBranches(false)
-      return
-    }
-
-    if (project.platform === ConstsGitPlatform.GitPlatformInternal) {
-      setSelectedBranch('')
-      setBranches([])
-      setBranchFetchFailed(false)
-      return
-    }
-
-    setLoadingBranches(true)
-    setBranchFetchFailed(false)
-    setBranches([])
-    setSelectedBranch('main')
-    
-    try {
-      const escapedRepoFullName = project?.full_name || ''
-      
-      if (!escapedRepoFullName) {
-        if (requestId === branchRequestIdRef.current) {
-          setBranchFetchFailed(true)
-          setLoadingBranches(false)
-        }
-        return
-      }
-
-      const encodedRepoName = encodeURIComponent(escapedRepoFullName)
-
-      await apiRequest('v1UsersGitIdentitiesBranchesDetail', {}, [project.git_identity_id, encodedRepoName], (resp) => {
-        if (requestId !== branchRequestIdRef.current) return
-
-        if (resp.code === 0 && resp.data) {
-          const branchList = resp.data.map((b: DomainBranch) => b.name || '').filter(Boolean)
-          setBranches(branchList)
-
-          if (branchList.length === 0) {
-            setBranchFetchFailed(true)
-            if (!branchTouchedRef.current) {
-              setSelectedBranch('main')
-            }
-            return
-          }
-          
-          if (!branchTouchedRef.current) {
-            if (branchList.includes('main')) {
-              setSelectedBranch('main')
-            } else if (branchList.includes('master')) {
-              setSelectedBranch('master')
-            } else if (branchList.length > 0) {
-              setSelectedBranch(branchList[0])
-            }
-          }
-        } else {
-          setBranchFetchFailed(true)
-          if (!branchTouchedRef.current) {
-            setSelectedBranch('main')
-          }
-          toast.error(t("consoleProject.startTask.toast.fetchBranchesFailedWithMessage", { message: resp.message || t("consoleProject.common.unknownError") }))
-        }
-      })
-    } catch (error) {
-      console.error('Fetch branches error:', error)
-      if (requestId === branchRequestIdRef.current) {
-        setBranchFetchFailed(true)
-        if (!branchTouchedRef.current) {
-          setSelectedBranch('main')
-        }
-        toast.error(t("consoleProject.startTask.toast.fetchBranchesFailed"))
-      }
-    } finally {
-      if (requestId === branchRequestIdRef.current) {
-        setLoadingBranches(false)
-      }
-    }
-  }, [project?.git_identity_id, project?.repo_url, project?.platform, project?.full_name, t])
 
   useEffect(() => {
     if (open) {
@@ -192,6 +122,8 @@ export default function StartDevelopTaskDialog({
         setSelectedHostId(selectDefaultHostId())
         setSelectedImageId(selectImage(images, true))
         setSelectedBranch('main')
+        branchTouchedRef.current = false
+        setBranchFetchFailed(false)
         setSkillPopoverOpen(false)
         setSelectedSkill(
           skillList.length > 0
@@ -202,7 +134,6 @@ export default function StartDevelopTaskDialog({
       }
     } else {
       prevOpenRef.current = false
-      branchRequestIdRef.current += 1
       setSelectedHostId('')
       setSelectedImageId('')
       setSkillPopoverOpen(false)
@@ -264,11 +195,6 @@ export default function StartDevelopTaskDialog({
       setSelectedImageId(selectImage(images, true))
     }
   }, [images, open, selectedImageId])
-
-  useEffect(() => {
-    if (!open || !branchSourceKey) return
-    fetchBranches()
-  }, [open, branchSourceKey, fetchBranches])
 
   const skillTags = useMemo(() => {
     const tagCountMap = new Map<string, number>()
@@ -419,12 +345,17 @@ export default function StartDevelopTaskDialog({
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={t("consoleProject.startTask.selectBranch")} />
                   </SelectTrigger>
-                  <SelectContent className="break-all">
+                  <SelectContent position="popper" className="break-all max-h-[196px]" onScrollEnd={loadMore}>
                     {branches.map((branch) => (
                       <SelectItem key={branch} value={branch}>
                         {branch}
                       </SelectItem>
                     ))}
+                    {loadingMore && (
+                      <div className="flex justify-center py-2">
+                        <Spinner className="size-4" />
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
               )}
