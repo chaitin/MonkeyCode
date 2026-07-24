@@ -53,7 +53,7 @@ export interface NewTaskPrefill {
   cloudProject?: McCloudProject | null;
 }
 
-/** 云端运行配置使用独立自适应网格；触发器自身必须允许收缩，长名称只截断值。 */
+/** 云端运行配置使用轻量文字触发器；自然排布、窄宽度换行，避免做成三列表单。 */
 function CloudConfigField({
   label,
   value,
@@ -71,30 +71,36 @@ function CloudConfigField({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const hasValue = !!value && value !== label;
   return (
-    <span style={{ position: "relative", minWidth: 0 }}>
+    <span style={{ position: "relative", display: "inline-flex", minWidth: 0, maxWidth: "100%" }}>
       <button
         className="hv"
         title={`选择云端${label}：${value}`}
         onClick={onToggle}
         style={{
-          width: "100%",
+          maxWidth: "100%",
           minWidth: 0,
-          height: 34,
+          height: 27,
           display: "flex",
           alignItems: "center",
-          gap: 7,
-          padding: "0 9px",
-          border: "1px solid var(--line2)",
-          borderRadius: 8,
-          background: open ? "var(--hov)" : "var(--segBg)",
+          gap: 5,
+          padding: "0 8px",
+          border: "none",
+          borderRadius: 7,
+          background: open ? "var(--hov2)" : "transparent",
           color: "var(--t2)",
           cursor: "pointer",
         }}
       >
-        <span style={{ flex: "none", fontSize: 10.5, color: "var(--t5)" }}>{label}</span>
-        <span className="ellipsis" style={{ flex: 1, minWidth: 0, textAlign: "left", fontSize: 12, fontWeight: 550 }}>{value}</span>
-        <IconChevronDown size={9} color="var(--t5)" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s ease" }} />
+        <span style={{ flex: "none", fontSize: 11.5, color: hasValue ? "var(--t5)" : "var(--t3)", fontWeight: hasValue ? 450 : 550 }}>{label}</span>
+        {hasValue && (
+          <>
+            <span style={{ flex: "none", color: "var(--t7)", fontSize: 10 }}>·</span>
+            <span className="ellipsis" style={{ minWidth: 0, textAlign: "left", fontSize: 12, fontWeight: 550 }}>{value}</span>
+          </>
+        )}
+        <IconChevronDown size={8} color="var(--t6)" style={{ flex: "none", transform: open ? "rotate(180deg)" : "none", transition: "transform .15s ease" }} />
       </button>
       {open && (
         <>
@@ -103,7 +109,7 @@ function CloudConfigField({
             className="pop model-menu"
             style={{
               position: "absolute",
-              bottom: 40,
+              bottom: 32,
               ...(align === "end" ? { right: 0 } : { left: 0 }),
               maxHeight: 360,
               overflowY: "auto",
@@ -769,12 +775,13 @@ export function NewTaskView({
 
           {mode === "cloud" && (
             <div
-              data-cloud-runtime-grid=""
+              data-cloud-runtime-controls=""
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(min(140px, 100%), 1fr))",
-                gap: 6,
-                padding: "8px 10px 2px",
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "1px 2px",
+                padding: "5px 10px 1px",
                 borderTop: "1px solid var(--line2)",
               }}
             >

@@ -120,7 +120,7 @@ describe("侧栏新建任务入口", () => {
     expect(html).toContain('title="选择云端模型：模型"');
     expect(html).toContain('title="选择云端宿主机：宿主机"');
     expect(html).toContain('title="选择云端镜像：镜像"');
-    expect(html).toContain('data-cloud-runtime-grid=""');
+    expect(html).toContain('data-cloud-runtime-controls=""');
     expect(html).toContain("请先连接");
   });
 
