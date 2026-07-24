@@ -12,9 +12,14 @@ import { inDesktopShell, pickDirectory, workdirPickBase } from "./host";
 import { createSession } from "./session";
 import type { CloudTask } from "./types";
 import {
+  cloudHostLabel,
+  cloudImageLabel,
   cloudModelLabel,
   pickDefaultCloudImage,
+  pickDefaultCloudHost,
   pickDefaultCloudModel,
+  PUBLIC_CLOUD_HOST_ID,
+  usableCloudHosts,
   usableCloudModels,
   type McCloudProject,
   type McTaskOptions,
@@ -168,15 +173,16 @@ export function NewTaskView({
     if (files.length) addFiles(files);
   };
 
-  // ===== 云端模式:选项数据(模型/镜像/项目)+ 选择态 =====
+  // ===== 云端模式:选项数据(模型/宿主机/镜像/项目)+ 选择态 =====
   const [cloudOpts, setCloudOpts] = useState<McTaskOptions | null>(null);
   const [cloudErr, setCloudErr] = useState("");
   const [cloudBusy, setCloudBusy] = useState(false);
   const [cloudModelId, setCloudModelId] = useState("");
+  const [cloudHostId, setCloudHostId] = useState("");
   const [cloudImageId, setCloudImageId] = useState("");
   const [cloudProject, setCloudProject] = useState<McCloudProject | null>(() => prefill?.cloudProject ?? null);
   const [repoOpen, setRepoOpen] = useState(false);
-  const [cloudModelOpen, setCloudModelOpen] = useState(false);
+  const [cloudPicker, setCloudPicker] = useState<"model" | "host" | "image" | null>(null);
 
   useEffect(() => {
     if (mode !== "cloud" || !cloudReady || cloudOpts) return;
@@ -184,8 +190,11 @@ export function NewTaskView({
     mcTaskOptions()
       .then((o) => {
         if (!alive) return;
+        const modelId = pickDefaultCloudModel(o.models, o.plan);
+        const publicModel = o.models.find((model) => model.id === modelId)?.owner?.type === "public";
         setCloudOpts(o);
-        setCloudModelId(pickDefaultCloudModel(o.models, o.plan));
+        setCloudModelId(modelId);
+        setCloudHostId(pickDefaultCloudHost(o.hosts ?? [], o.task_defaults?.host_id, publicModel));
         setCloudImageId(pickDefaultCloudImage(o.images));
       })
       .catch((e) => alive && setCloudErr("云端选项加载失败: " + (e instanceof Error ? e.message : String(e))));
@@ -205,10 +214,21 @@ export function NewTaskView({
   }, [prefill, cloudOpts]);
 
   const cloudModels = cloudOpts ? usableCloudModels(cloudOpts.models, cloudOpts.plan) : [];
-  const cloudModelName = (() => {
-    const m = cloudOpts?.models.find((x) => x.id === cloudModelId);
-    return m ? cloudModelLabel(m) : "模型";
-  })();
+  const selectedCloudModel = cloudOpts?.models.find((model) => model.id === cloudModelId);
+  const publicCloudModel = selectedCloudModel?.owner?.type === "public";
+  const cloudHosts = cloudOpts ? usableCloudHosts(cloudOpts.hosts ?? [], publicCloudModel) : [];
+  const cloudImages = cloudOpts?.images.filter((image) => image.id) ?? [];
+  const cloudModelName = selectedCloudModel ? cloudModelLabel(selectedCloudModel) : "模型";
+  const cloudHostName = cloudHostLabel(cloudHosts.find((host) => host.id === cloudHostId)) || "宿主机";
+  const cloudImageName = cloudImageLabel(cloudImages.find((image) => image.id === cloudImageId)) || "镜像";
+
+  // 公共模型只能使用公共宿主机；宿主列表刷新后也不能保留已离线选项。
+  useEffect(() => {
+    if (!cloudOpts) return;
+    const modelIsPublic = cloudOpts.models.find((model) => model.id === cloudModelId)?.owner?.type === "public";
+    const allowed = usableCloudHosts(cloudOpts.hosts ?? [], modelIsPublic);
+    if (!allowed.some((host) => host.id === cloudHostId)) setCloudHostId(PUBLIC_CLOUD_HOST_ID);
+  }, [cloudOpts, cloudModelId, cloudHostId]);
 
   const createCloud = async () => {
     const content = text.trim();
@@ -221,8 +241,8 @@ export function NewTaskView({
       setCloudErr("云端任务需要先描述要做的事");
       return;
     }
-    if (!cloudModelId || !cloudImageId) {
-      setCloudErr(cloudOpts ? "云端模型/镜像不可用,请稍后重试" : "云端选项还没加载好,请稍候");
+    if (!cloudModelId || !cloudHostId || !cloudImageId) {
+      setCloudErr(cloudOpts ? "云端模型/宿主机/镜像不可用,请稍后重试" : "云端选项还没加载好,请稍候");
       return;
     }
     setCloudBusy(true);
@@ -231,6 +251,7 @@ export function NewTaskView({
       const task = await mcTaskCreate({
         content,
         model_id: cloudModelId,
+        host_id: cloudHostId,
         image_id: cloudImageId,
         repo_url: cloudProject?.repo_url || undefined,
         project_id: cloudProject?.id || undefined,
@@ -629,35 +650,101 @@ export function NewTaskView({
               </span>
             </span>
             {mode === "cloud" ? (
-              <span style={{ position: "relative", flex: "none" }}>
-                <ModelPickerTrigger
-                  label={cloudModelName}
-                  open={cloudModelOpen}
-                  title="云端模型(按订阅档位)"
-                  onClick={() => setCloudModelOpen(!cloudModelOpen)}
-                />
-                {cloudModelOpen && (
-                  <>
-                    <div className="backdrop" onClick={() => setCloudModelOpen(false)} />
-                    <div className="pop model-menu" style={{ position: "absolute", bottom: 30, left: 0, maxHeight: 320, overflowY: "auto" }}>
-                      {cloudModels.map((m) => (
-                        <ModelMenuItem
-                          key={m.id}
-                          label={cloudModelLabel(m)}
-                          selected={m.id === cloudModelId}
-                          onClick={() => {
-                            setCloudModelId(m.id!);
-                            setCloudModelOpen(false);
-                          }}
-                        />
-                      ))}
-                      {cloudModels.length === 0 && (
-                        <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的云端模型" : "加载中…"}</span>
-                      )}
-                    </div>
-                  </>
-                )}
-              </span>
+              <>
+                <span style={{ position: "relative", flex: "0 1 auto", minWidth: 0, maxWidth: 128 }}>
+                  <ModelPickerTrigger
+                    label={cloudModelName}
+                    open={cloudPicker === "model"}
+                    title={`选择云端模型：${cloudModelName}`}
+                    onClick={() => setCloudPicker((current) => current === "model" ? null : "model")}
+                  />
+                  {cloudPicker === "model" && (
+                    <>
+                      <div className="backdrop" onClick={() => setCloudPicker(null)} />
+                      <div className="pop model-menu" style={{ position: "absolute", bottom: 30, left: 0, maxHeight: 320, overflowY: "auto" }}>
+                        {cloudModels.map((model) => (
+                          <ModelMenuItem
+                            key={model.id}
+                            label={cloudModelLabel(model)}
+                            selected={model.id === cloudModelId}
+                            onClick={() => {
+                              setCloudModelId(model.id!);
+                              if (model.owner?.type === "public") setCloudHostId(PUBLIC_CLOUD_HOST_ID);
+                              setCloudPicker(null);
+                            }}
+                          />
+                        ))}
+                        {cloudModels.length === 0 && (
+                          <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的云端模型" : "加载中…"}</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </span>
+                <span style={{ position: "relative", flex: "0 1 auto", minWidth: 0, maxWidth: 112 }}>
+                  <ModelPickerTrigger
+                    label={cloudHostName}
+                    open={cloudPicker === "host"}
+                    title={`选择云端宿主机：${cloudHostName}`}
+                    onClick={() => setCloudPicker((current) => current === "host" ? null : "host")}
+                  />
+                  {cloudPicker === "host" && (
+                    <>
+                      <div className="backdrop" onClick={() => setCloudPicker(null)} />
+                      <div className="pop model-menu" style={{ position: "absolute", bottom: 30, left: 0, maxHeight: 320, overflowY: "auto" }}>
+                        {cloudHosts.map((host) => (
+                          <ModelMenuItem
+                            key={host.id}
+                            label={cloudHostLabel(host)}
+                            hint={host.id === PUBLIC_CLOUD_HOST_ID ? "免费" : undefined}
+                            selected={host.id === cloudHostId}
+                            onClick={() => {
+                              setCloudHostId(host.id!);
+                              setCloudPicker(null);
+                            }}
+                          />
+                        ))}
+                        {publicCloudModel && cloudOpts && (
+                          <span style={{ fontSize: 10.5, lineHeight: 1.45, color: "var(--t6)", padding: "5px 10px 7px", whiteSpace: "normal" }}>公共模型仅支持公共宿主机</span>
+                        )}
+                        {cloudHosts.length === 0 && (
+                          <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的宿主机" : "加载中…"}</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </span>
+                <span style={{ position: "relative", flex: "0 1 auto", minWidth: 0, maxWidth: 112 }}>
+                  <ModelPickerTrigger
+                    label={cloudImageName}
+                    open={cloudPicker === "image"}
+                    title={`选择云端镜像：${cloudImageName}`}
+                    onClick={() => setCloudPicker((current) => current === "image" ? null : "image")}
+                  />
+                  {cloudPicker === "image" && (
+                    <>
+                      <div className="backdrop" onClick={() => setCloudPicker(null)} />
+                      <div className="pop model-menu" style={{ position: "absolute", bottom: 30, right: 0, maxHeight: 320, overflowY: "auto" }}>
+                        {cloudImages.map((image) => (
+                          <ModelMenuItem
+                            key={image.id}
+                            label={cloudImageLabel(image)}
+                            hint={image.owner?.type === "public" ? "公共" : undefined}
+                            selected={image.id === cloudImageId}
+                            onClick={() => {
+                              setCloudImageId(image.id!);
+                              setCloudPicker(null);
+                            }}
+                          />
+                        ))}
+                        {cloudImages.length === 0 && (
+                          <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的云端镜像" : "加载中…"}</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </span>
+              </>
             ) : (
               <ModelPicker models={models} current={model} onPick={setPickedModel} />
             )}

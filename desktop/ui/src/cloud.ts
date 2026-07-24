@@ -21,14 +21,28 @@ export interface McCloudImage {
   owner?: { type?: string };
 }
 
+export interface McCloudHost {
+  id?: string;
+  name?: string;
+  remark?: string;
+  external_ip?: string;
+  status?: string;
+  is_default?: boolean;
+  owner?: { type?: string };
+}
+
 export type McCloudProject = CloudProject;
 
 export interface McTaskOptions {
   models: McCloudModel[];
   images: McCloudImage[];
+  hosts: McCloudHost[];
   projects: McCloudProject[];
   plan: string; // basic | pro | ultra | flagship | ""
+  task_defaults?: { host_id?: string };
 }
+
+export const PUBLIC_CLOUD_HOST_ID = "public_host";
 
 const BUILTIN_META = new Set(["monkeycode-basic", "monkeycode-pro", "monkeycode-ultra"]);
 
@@ -55,6 +69,55 @@ export function cloudModelLabel(model?: { model?: string; remark?: string } | nu
   const remark = model.remark?.trim();
   if (remark) return translateBuiltinNames(remark);
   return translateBuiltinNames(model.model || "");
+}
+
+/** 镜像展示名与 Web 一致：优先备注，否则只展示镜像 tag 的最后一段。 */
+export function cloudImageLabel(image?: McCloudImage | null): string {
+  if (!image) return "";
+  const remark = image.remark?.trim();
+  if (remark) return remark;
+  const name = image.name?.trim() || "";
+  return name.slice(name.lastIndexOf("/") + 1) || "镜像";
+}
+
+/** 宿主机展示名：公共档使用稳定产品名，私有宿主优先使用备注。 */
+export function cloudHostLabel(host?: McCloudHost | null): string {
+  if (!host) return "";
+  if (host.id === PUBLIC_CLOUD_HOST_ID) return "公共宿主机";
+  if (host.remark?.trim()) return host.remark.trim();
+  return [host.name, host.external_ip].filter(Boolean).join(" · ") || "宿主机";
+}
+
+/** 可选宿主机：公共宿主始终存在；离线与重复的私有宿主不进入创建列表。
+ * 公共模型受云端约束，只能运行在公共宿主机。 */
+export function usableCloudHosts(hosts: McCloudHost[], publicModel = false): McCloudHost[] {
+  const remotePublic = hosts.find((host) => host.id === PUBLIC_CLOUD_HOST_ID);
+  const publicHost: McCloudHost = {
+    ...remotePublic,
+    id: PUBLIC_CLOUD_HOST_ID,
+    name: remotePublic?.name || "MonkeyCode",
+    remark: remotePublic?.remark || "公共宿主机",
+    status: "online",
+    owner: remotePublic?.owner || { type: "public" },
+  };
+  if (publicModel) return [publicHost];
+
+  const seen = new Set([PUBLIC_CLOUD_HOST_ID]);
+  return [
+    publicHost,
+    ...hosts.filter((host) => {
+      const id = host.id || "";
+      if (!id || id.startsWith(PUBLIC_CLOUD_HOST_ID) || host.status !== "online" || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    }),
+  ];
+}
+
+/** 服务端默认宿主有效时采用，否则回退公共宿主；公共模型始终强制公共宿主。 */
+export function pickDefaultCloudHost(hosts: McCloudHost[], preferredId = "", publicModel = false): string {
+  const available = usableCloudHosts(hosts, publicModel);
+  return available.some((host) => host.id === preferredId) ? preferredId : PUBLIC_CLOUD_HOST_ID;
 }
 
 function planAllowsModel(model: McCloudModel, plan?: string): boolean {

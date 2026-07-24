@@ -323,8 +323,8 @@ pub async fn mc_task_create(svc: &Service, req: &Value) -> BzResult<Value> {
     mc_call(svc, reqwest::Method::POST, "/api/v1/users/tasks", Some(&payload)).await
 }
 
-/// 建任务所需的下拉数据:模型/镜像/项目/订阅档。
-/// 项目与订阅失败可容忍(与 mobile 一致),模型/镜像失败即报错。
+/// 建任务所需的下拉数据:模型/宿主机/镜像/项目/订阅档。
+/// 宿主机、项目与订阅失败可容忍(公共宿主机仍可使用),模型/镜像失败即报错。
 pub async fn mc_task_options(svc: &Service) -> BzResult<Value> {
     let models = mc_call(svc, reqwest::Method::GET, "/api/v1/users/models", None).await?;
     let images = mc_call(svc, reqwest::Method::GET, "/api/v1/users/images", None).await?;
@@ -337,6 +337,7 @@ pub async fn mc_task_options(svc: &Service) -> BzResult<Value> {
     let mut res = json!({
         "models": arr(&models, "models"),
         "images": arr(&images, "images"),
+        "hosts": [],
         "projects": [],
         "plan": "",
     });
@@ -345,6 +346,9 @@ pub async fn mc_task_options(svc: &Service) -> BzResult<Value> {
     // 取用,壳内常量退位(云端调档不再依赖壳发版)。当前真实云端无此字段。
     if let Some(d) = models.get("task_defaults").filter(|d| d.is_object()) {
         res["task_defaults"] = d.clone();
+    }
+    if let Ok(hosts) = mc_call(svc, reqwest::Method::GET, "/api/v1/users/hosts", None).await {
+        res["hosts"] = arr(&hosts, "hosts");
     }
     if let Ok(projects) = mc_call(svc, reqwest::Method::GET, "/api/v1/users/projects?limit=50", None).await {
         res["projects"] = arr(&projects, "projects");

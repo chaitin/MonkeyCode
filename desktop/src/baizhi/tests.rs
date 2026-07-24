@@ -528,6 +528,10 @@ async fn task_create_defaults_and_overrides() {
                 } }),
             ),
             ("GET", "/api/v1/users/images") => Resp::json(200, json!({ "code": 0, "data": {"images": []} })),
+            ("GET", "/api/v1/users/hosts") => Resp::json(
+                200,
+                json!({ "code": 0, "data": {"hosts": [{"id": "gpu_host", "status": "online"}] } }),
+            ),
             _ => Resp::json(404, json!({ "code": 1, "message": "not found" })),
         }
     }));
@@ -542,6 +546,7 @@ async fn task_create_defaults_and_overrides() {
     let opts = super::monkeycode::mc_task_options(&svc).await.map_err(|e| e.msg()).unwrap();
     let defaults = opts.get("task_defaults").cloned().unwrap();
     assert_eq!(defaults.get("host_id").and_then(|v| v.as_str()), Some("gpu_host"));
+    assert_eq!(opts.pointer("/hosts/0/id").and_then(|v| v.as_str()), Some("gpu_host"));
 
     // req 未带档位 → 壳内常量(与 mobile/Web 端一致的云端契约)
     let req = json!({ "content": "做点事", "model_id": "m1", "image_id": "i1" });

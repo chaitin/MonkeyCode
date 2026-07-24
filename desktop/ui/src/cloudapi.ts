@@ -51,6 +51,7 @@ export const mcTaskDelete = (id: string) => invoke<{ ok: boolean }>("mc_task_del
 export const mcTaskCreate = (req: {
   content: string;
   model_id: string;
+  host_id: string;
   image_id: string;
   repo_url?: string;
   branch?: string;

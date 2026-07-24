@@ -117,6 +117,9 @@ describe("侧栏新建任务入口", () => {
     expect(html).toContain("不关联仓库(快速开始)");
     expect(html).toContain("云端任务需要先连接 MonkeyCode");
     expect(html).toContain('title="请先连接 MonkeyCode 后再创建云端任务"');
+    expect(html).toContain('title="选择云端模型：模型"');
+    expect(html).toContain('title="选择云端宿主机：宿主机"');
+    expect(html).toContain('title="选择云端镜像：镜像"');
     expect(html).toContain("请先连接");
   });
 
