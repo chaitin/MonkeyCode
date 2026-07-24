@@ -257,7 +257,19 @@ async fn e2e_chat_normalization() {
             && v["update"]["content"]["text"].as_str().map(|t| t.contains("任务完成")).unwrap_or(false)
     });
     assert!(has_text, "缺 agent 文本帧: {journal:?}");
-    // 轮后上下文占用帧(turn/stopped.context,296176a):used>0,window=清单值
+    // usage 事件会在模型正文尚未结束时先把主 Agent 当前 context 推给
+    // composer；turn/stopped 的扁平字段随后再给轮后权威快照。
+    let first_text = journal.iter().position(|f| {
+        acp_update(f).is_some_and(|u| {
+            u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("agent_message_chunk")
+        })
+    }).expect("缺 agent 文本位置");
+    let first_usage = journal.iter().position(|f| {
+        acp_update(f).is_some_and(|u| {
+            u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("usage_update")
+        })
+    }).expect("缺上下文占用位置");
+    assert!(first_usage < first_text, "usage 未在流式对话过程中更新: {journal:?}");
     let has_usage = journal
         .iter()
         .filter_map(acp_update)
@@ -475,6 +487,7 @@ fn bare_session(sid: &str) -> SessionState {
         open_tools: HashMap::new(),
         model_text: String::new(),
         last_event_seq: 0,
+        context_usage: None,
         workdir: String::new(),
         model_name: String::new(),
         mode: "default".into(),
@@ -880,6 +893,75 @@ fn model_done_reconciles_dropped_deltas() {
     assert_eq!(texts, vec!["你好", ",世界", "abc"], "对账补帧不符");
 }
 
+/// event/stream usage 只用 context_* 更新事件所属 Agent 的上下文环：
+/// 主 Agent 轮中可见，子代理自己的用量不会回填并抬高父会话 composer。
+#[test]
+fn streaming_usage_updates_emitting_agent_without_parent_leak() {
+    let inner = bare_inner("usage-stream");
+    {
+        let mut sessions = inner.sess.sessions.lock().unwrap();
+        sessions.insert("main".into(), bare_session("main"));
+        sessions.insert("child".into(), bare_session("child"));
+    }
+
+    inner.handle_event(json!({ "type": "usage", "session_id": "main", "seq": 1,
+        "data": { "input_tokens": 900, "output_tokens": 20,
+            "context_used": 1_234, "context_window": 200_000 } }));
+    // Anthropic 等 provider 会在同一调用的 message_start/message_delta
+    // 各发 usage；context 未变化时不得重复刷 UI/写 journal。
+    inner.handle_event(json!({ "type": "usage", "session_id": "main", "seq": 2,
+        "data": { "context_used": 1_234, "context_window": 200_000 } }));
+    inner.handle_event(json!({ "type": "usage", "session_id": "child", "seq": 1,
+        "parent_session_id": "main", "parent_tool_call_id": "tc-agent",
+        "data": { "input_tokens": 40_000, "output_tokens": 5_000,
+            "context_used": 45_678, "context_window": 64_000 } }));
+
+    let usage_of = |sid: &str| {
+        journal_frames(&inner, sid).iter().filter_map(acp_update)
+            .filter(|u| u.get("sessionUpdate").and_then(Value::as_str) == Some("usage_update"))
+            .map(|u| (
+                u.get("used").and_then(Value::as_i64).unwrap_or(-1),
+                u.get("size").and_then(Value::as_i64).unwrap_or(-1),
+            ))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(usage_of("main"), vec![(1_234, 200_000)]);
+    assert_eq!(usage_of("child"), vec![(45_678, 64_000)]);
+}
+
+/// 最新 Agent 将 turn/stopped 与 usage 统一成扁平字段；旧版嵌套形状仍
+/// 接受，保证桌面壳与已分发 sidecar 的滚动升级兼容。
+#[test]
+fn turn_stopped_accepts_flat_and_legacy_context_shapes() {
+    let inner = bare_inner("usage-stopped");
+    {
+        let mut sessions = inner.sess.sessions.lock().unwrap();
+        sessions.insert("flat".into(), bare_session("flat"));
+        sessions.insert("legacy".into(), bare_session("legacy"));
+    }
+
+    inner.handle_notification("turn/stopped", json!({
+        "session_id": "flat", "stop_reason": "complete",
+        "context_used": 2_345, "context_window": 200_000
+    }));
+    inner.handle_notification("turn/stopped", json!({
+        "session_id": "legacy", "stop_reason": "complete",
+        "context": { "used_tokens": 3_456, "window_tokens": 128_000 }
+    }));
+
+    let last_usage = |sid: &str| {
+        journal_frames(&inner, sid).iter().filter_map(acp_update)
+            .filter(|u| u.get("sessionUpdate").and_then(Value::as_str) == Some("usage_update"))
+            .last()
+            .map(|u| (
+                u.get("used").and_then(Value::as_i64).unwrap_or(-1),
+                u.get("size").and_then(Value::as_i64).unwrap_or(-1),
+            ))
+    };
+    assert_eq!(last_usage("flat"), Some((2_345, 200_000)));
+    assert_eq!(last_usage("legacy"), Some((3_456, 128_000)));
+}
+
 /// structuredToolResult:失败判定用 is_error 结构位(不再嗅探 "Error: "
 /// 前缀);Agent 工具卡内容以 agent_result 事件的全量 content 为权威
 /// (tool_result 截断 500 字符可能把结果 JSON 截成半截)。
@@ -1168,19 +1250,18 @@ fn task_notification_without_registry_falls_back_stripped() {
     assert!(!text.contains("<task-notification>"), "包装标签未剥: {text}");
 }
 
-/// E2E:真实引擎显式 run_in_background + 假 LLM，验证 async_launched
-/// 卡文案 → 后台完成通知回填 → 📌 系统行 → 子会话收尾整条链路。
+/// E2E:当前引擎的 run_in_background 只收紧子代理工具集为只读，调用仍
+/// 同步等待并直接回填结果；不得再按旧契约渲染 async_launched/完成通知。
 #[tokio::test(flavor = "multi_thread")]
-async fn e2e_explicit_background_subagent() {
+async fn e2e_readonly_subagent_stays_synchronous() {
     if find_ohmyagent().is_none() {
         eprintln!("skip: 未找到 ohmyagent 二进制");
         return;
     }
     let _g = e2e_lock().await;
     let steps = vec![
-        // req0 父轮:显式后台 Agent;req1 子代理应答;
-        // req2 父轮继续(Bash 给循环一次迭代机会,好在轮内排空通知);
-        // req3 父轮收尾(模型已看到 <task-notification>)
+        // req0 父轮:只读 Agent;req1 子代理应答;
+        // req2 父轮继续 Bash;req3 父轮收尾。
         sse_tool_use("tu_1", "Agent", &json!({
             "prompt": "深入调查并汇报", "description": "后台调查任务",
             "name": "bg-worker", "run_in_background": true
@@ -1213,32 +1294,16 @@ async fn e2e_explicit_background_subagent() {
                 && u.get("status").and_then(|v| v.as_str()) != Some("in_progress")
         })
         .collect();
-    assert_eq!(tu1_finals.len(), 2, "应有转后台 + 回填两次终态帧: {journal:?}");
-    let first = tu1_finals[0].get("rawOutput").and_then(|v| v.as_str()).unwrap_or("");
+    assert_eq!(tu1_finals.len(), 1, "同步 Agent 应只有一次终态帧: {journal:?}");
+    assert_eq!(tu1_finals[0].get("status").and_then(|v| v.as_str()), Some("completed"));
     assert!(
-        first.contains("已转入后台") && first.contains("bg-worker") && !first.contains("async_launched"),
-        "async_launched 卡文案不符: {first}"
+        tu1_finals[0].get("rawOutput").and_then(|v| v.as_str()).unwrap_or("").contains("子代理最终结论"),
+        "同步结果未回填父卡: {tu1_finals:?}"
     );
-    assert_eq!(tu1_finals[1].get("status").and_then(|v| v.as_str()), Some("completed"));
-    assert!(
-        tu1_finals[1].get("rawOutput").and_then(|v| v.as_str()).unwrap_or("").contains("子代理最终结论"),
-        "后台完成结果未回填父卡: {tu1_finals:?}"
-    );
-    // 📌 系统行帧
-    let note = journal
-        .iter()
-        .filter_map(acp_update)
-        .find(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification"))
-        .expect("缺 📌 系统行帧");
-    assert!(note.get("text").and_then(|v| v.as_str()).unwrap_or("").contains("bg-worker"));
-    // 通知全文不得混进正文气泡
-    let leaked = journal.iter().filter_map(acp_update).any(|u| {
-        u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("agent_message_chunk")
-            && u["content"]["text"].as_str().map(|t| t.contains("Background agent")).unwrap_or(false)
+    let has_note = journal.iter().filter_map(acp_update).any(|u| {
+        u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification")
     });
-    assert!(!leaked, "通知全文混进正文气泡");
-    // 当前引擎对显式后台 Agent 只转发 tool/error 心跳，纯文本子任务不承诺
-    // child_session；task_notification 才是完成真值，并须消费存活登记。
+    assert!(!has_note, "同步 Agent 不应产生后台完成通知: {journal:?}");
     assert!(driver.0.sub.background_agents.lock().unwrap().is_empty());
     driver.stop();
 }

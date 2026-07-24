@@ -127,6 +127,7 @@ impl Inner {
                 open_tools: HashMap::new(),
                 model_text: String::new(),
                 last_event_seq: 0,
+                context_usage: None,
                 workdir: workdir.clone(),
                 model_name: model_name.clone(),
                 mode: "default".into(),

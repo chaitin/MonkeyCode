@@ -121,13 +121,10 @@ impl Inner {
                 for (tc, _name) in open {
                     self.push_frame(&sid, |seq| frame::tool_call_failed(&tc, tool_msg, seq));
                 }
-                // 轮后上下文占用(见 push_usage 注释)
-                if let Some(c) = params.get("context") {
-                    self.push_usage(
-                        &sid,
-                        c.get("used_tokens").and_then(|v| v.as_i64()).unwrap_or(0),
-                        c.get("window_tokens").and_then(|v| v.as_i64()).unwrap_or(0),
-                    );
+                // 轮后用权威快照收口。新引擎与 usage 事件统一为顶层
+                // context_used/context_window；嵌套 context 仅留给旧引擎回放。
+                if let Some((used, window)) = context_usage_fields(&params) {
+                    self.push_usage(&sid, used, window);
                 }
                 // turn/stopped 是「本轮结束」而非「整个会话完成」。顶层会话
                 // 正常收尾后回 idle；finished 只留给真正终结的子任务。
@@ -402,6 +399,15 @@ impl Inner {
                 let todos = data.get("todos").cloned().unwrap_or_else(|| serde_json::json!([]));
                 self.push_frame(&sid, |seq| frame::plan(&todos, seq));
             }
+            // 主循环在每次模型调用收到 provider usage 时发一次；压缩/清空
+            // 上下文后也会发。只取 context_*，不用本轮累计 input/output
+            // 冒充占用。按事件自身 session_id 落帧，子代理用量不会污染父
+            // 会话 composer 的主 Agent 上下文环。
+            "usage" => {
+                if let Some((used, window)) = context_usage_fields(&data) {
+                    self.push_usage(&sid, used, window);
+                }
+            }
             "compaction" => {
                 self.push_frame(&sid, |seq| frame::compact_status("started", seq));
                 self.push_frame(&sid, |seq| frame::compact_status("ended", seq));
@@ -414,6 +420,20 @@ impl Inner {
             _ => {}
         }
     }
+}
+
+/// 上下文占用字段防腐层。13c8adc 起所有新入口统一为扁平
+/// context_used/context_window；兼容此前 turn/stopped.context 的旧形状。
+/// window 出现即表示这是一条上下文快照，used 缺省按 0 处理（清空语义）。
+fn context_usage_fields(v: &Value) -> Option<(i64, i64)> {
+    if let Some(window) = v.get("context_window").and_then(Value::as_i64) {
+        return Some((v.get("context_used").and_then(Value::as_i64).unwrap_or(0), window));
+    }
+    let legacy = v.get("context")?;
+    Some((
+        legacy.get("used_tokens").and_then(Value::as_i64).unwrap_or(0),
+        legacy.get("window_tokens").and_then(Value::as_i64)?,
+    ))
 }
 
 /// 工具标题:「名称 主参数」(「动词 目标」的可读形态)。

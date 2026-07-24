@@ -147,7 +147,7 @@ impl DriverHost {
 pub struct Caps {
     /// 浏览器扩展桥(壳内 browser/ 模块,MCP 暴露给引擎)
     pub browser_ext: bool,
-    /// 上下文用量(turn/stopped 携带轮后占用估计,296176a 起)
+    /// 上下文用量(event/stream usage 实时更新 + turn/stopped 轮后快照)
     pub usage_update: bool,
     pub perm_remember: bool,
     pub attachments: bool,

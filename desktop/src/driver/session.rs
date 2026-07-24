@@ -153,6 +153,9 @@ pub(super) struct SessionState {
     /// 引擎事件 seq 水位(eventSeq:被丢弃的 delta 仍占号,空洞=丢帧信号,
     /// 记日志与 model_done 全文对账互补;回落=引擎会话重建,水位重置)
     pub(super) last_event_seq: u64,
+    /// 最近一次已下发的上下文占用；provider 常在同一次模型调用的头尾各发
+    /// usage，context_* 相同，壳侧据此去重，避免 journal/UI 空转。
+    pub(super) context_usage: Option<(i64, i64)>,
     pub(super) workdir: String,
     pub(super) model_name: String,
     pub(super) mode: String,
@@ -360,6 +363,7 @@ impl OhmyDriver {
                 open_tools: HashMap::new(),
                 model_text: String::new(),
                 last_event_seq: 0,
+                context_usage: None,
                 workdir: workdir.to_string(),
                 model_name: model_name.to_string(),
                 mode: "default".into(),
@@ -446,6 +450,7 @@ impl OhmyDriver {
                 open_tools: HashMap::new(),
                 model_text: String::new(),
                 last_event_seq: 0,
+                context_usage: None,
                 workdir: meta.get("workdir").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 model_name: meta.get("model_name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 mode: meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default").to_string(),
@@ -1284,12 +1289,26 @@ impl Inner {
         }
     }
 
-    /// 上下文占用 → usage 帧。上游 296176a 起:turn/stopped 带
-    /// context:{used_tokens,window_tokens}(轮后整会话历史+系统提示的
-    /// token 估计),session/create 结果带 context_used/context_window
-    /// (resume 时立即可显示占用)。
+    /// 上下文占用 → usage 帧。新引擎在模型调用 usage 到达、压缩/清空后
+    /// 经 event/stream usage 实时报告，turn/stopped 再给轮后权威快照；
+    /// session/create 的同名字段让 resume 后立即显示。used 是当前 Agent
+    /// 历史 + system prompt 的估算，不是含子代理的本轮累计 token。
     pub(super) fn push_usage(&self, sid: &str, used: i64, window: i64) {
-        if used > 0 && window > 0 {
+        if used < 0 || window <= 0 {
+            return;
+        }
+        let next = (used, window);
+        let changed = {
+            let mut sessions = self.sess.sessions.lock().unwrap();
+            let Some(s) = sessions.get_mut(sid) else { return };
+            if s.context_usage == Some(next) {
+                false
+            } else {
+                s.context_usage = Some(next);
+                true
+            }
+        };
+        if changed {
             self.push_frame(sid, |seq| frame::usage_update(used, window, seq));
         }
     }

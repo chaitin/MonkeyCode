@@ -172,7 +172,7 @@ stop/start；浏览器配对这类自动维护额外要求前台会话与后台 
 防同 wire id 多网关撞 wireIndex)、会话交互性声明(8afc338,
 壳 session/create 带 interactive:true,引擎给持久 Task 工具族)。
 已补齐:OHMYAGENT_CONFIG_DIR、子代理权限实时继承、上下文用量
-(turn/stopped.context)、附件(提示词图片路径内联)、MCP image 结果
+(event/stream usage 轮中更新 + turn/stopped 扁平轮后快照)、附件(提示词图片路径内联)、MCP image 结果
 直达模型(c1d8482)、工具错误发 tool_result(b02fc77,含 deferred
 直调自动提升)、子代理事件带 parent_session_id/parent_tool_call_id
 (dab1b85,壳精确认领)。固定引擎已删除“同步 Agent 超时后自动转后台”，

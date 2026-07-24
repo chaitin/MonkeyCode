@@ -245,8 +245,8 @@ pub fn tool_call_failed(tc_id: &str, raw_output: &str, seq: u64) -> Value {
     )
 }
 
-/// 上下文用量(环形指示):used = 最近一次模型调用的 prompt 侧 token
-/// (input + cache 写/读),size = 模型上下文预算。
+/// 上下文用量(环形指示):used = 当前 Agent 历史 + system prompt 的
+/// token 估算，size = 模型上下文预算；不使用含子代理的整轮累计用量。
 pub fn usage_update(used: i64, size: i64, seq: u64) -> Value {
     acp(json!({ "sessionUpdate": "usage_update", "used": used, "size": size }), seq)
 }
