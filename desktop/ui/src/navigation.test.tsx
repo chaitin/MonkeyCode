@@ -99,7 +99,7 @@ describe("会话辅助信息", () => {
     expect(relativeTime("2026-07-21T12:00:00Z")).toBe("2 天前");
   });
 
-  it("会话只展示状态和轮次，不再展示更新时间或预留更多按钮", () => {
+  it("普通会话用一行展示标题和轮次，不再常驻状态点、更新时间或更多按钮", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-23T12:00:00Z"));
     const html = renderToStaticMarkup(
@@ -136,9 +136,9 @@ describe("会话辅助信息", () => {
       />,
     );
 
-    expect(html).toContain("可继续");
+    expect(html).not.toContain("可继续");
     expect(html).toContain("12 轮");
-    expect(html).toContain("border:1.3px solid var(--ok)");
+    expect(html).toContain("min-height:34px");
     expect(html).not.toContain("26 分钟前");
     expect(html).toContain("右键管理");
     expect(html).toContain("scrollbar-gutter:stable");

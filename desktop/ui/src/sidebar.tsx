@@ -92,7 +92,7 @@ const CLOUD_STATUS: Record<string, { text: string; color: string }> = {
   finished: { text: "已完成", color: "var(--t4)" },
 };
 
-function rowStatus(meta: SessionMeta): { text: string; color: string; textColor?: string; hollow?: boolean } {
+function rowStatus(meta: SessionMeta): { text: string; color: string } {
   if (meta.waiting_ask) return { text: "等待确认", color: "var(--warn)" };
   switch (meta.status) {
     case "running":
@@ -104,10 +104,10 @@ function rowStatus(meta: SessionMeta): { text: string; color: string; textColor?
     case "idle":
     case "finished":
       // finished 是旧版顶层会话的一轮结束状态；新版壳会返回 idle。
-      return { text: "可继续", color: "var(--ok)", textColor: "var(--t4)", hollow: true };
+      return { text: "可继续", color: "var(--t4)" };
     default:
       return meta.turns > 0
-        ? { text: "可继续", color: "var(--ok)", textColor: "var(--t4)", hollow: true }
+        ? { text: "可继续", color: "var(--t4)" }
         : { text: "尚未开始", color: "var(--t5)" };
   }
 }
@@ -146,7 +146,14 @@ function SessionRow({
   const st = rowStatus(meta);
   const title = meta.title || (meta.kind === "chat" ? "新对话" : "新任务");
   const turns = turnCountLabel(meta.turns);
-  const statusColor = archived && !attention ? "var(--t5)" : st.color;
+  const emphasizeState = !!meta.waiting_ask || meta.status === "running" || meta.status === "error";
+  const showState = emphasizeState || meta.status === "interrupted";
+  const trailing = showState ? st.text : turns || st.text;
+  const trailingColor = archived
+    ? "var(--t5)"
+    : showState
+      ? st.color
+      : active ? "var(--accSelDim)" : "var(--t5)";
 
   const closeMenu = () => setMenu("closed");
   const openMenuAt = (clientX: number, clientY: number) => {
@@ -177,76 +184,72 @@ function SessionRow({
           openMenuAt(e.clientX, e.clientY);
         }}
         style={{
-          minHeight: 48,
-          position: "relative",
+          minHeight: 34,
           display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          gap: 3,
-          padding: `6px 8px 6px ${11 + Math.max(0, depth) * 14}px`,
-          borderRadius: 8,
+          alignItems: "center",
+          gap: 7,
+          padding: `0 8px 0 ${11 + Math.max(0, depth) * 14}px`,
+          borderRadius: 7,
           cursor: "pointer",
           background: active ? (archived ? "var(--hov2)" : "var(--accSel)") : "transparent",
           color: "var(--t2)",
           minWidth: 0,
         }}
       >
-        <div style={{ width: "100%", minWidth: 0, display: "flex", alignItems: "center" }}>
-          {editing ? (
-            <input
-              autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onContextMenu={(e) => e.stopPropagation()}
-              onCompositionEnd={markImeEnd}
-              onBlur={commitRename}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Enter" && !isImeEnter(e)) commitRename();
-                else if (e.key === "Escape") setEditing(false);
-              }}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                height: 23,
-                border: "1px solid var(--accBd)",
-                borderRadius: 5,
-                padding: "2px 6px",
-                fontSize: 12.5,
-                background: "var(--card)",
-                color: "var(--t1)",
-                outline: "none",
-              }}
-            />
-          ) : (
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.stopPropagation()}
+            onCompositionEnd={markImeEnd}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter" && !isImeEnter(e)) commitRename();
+              else if (e.key === "Escape") setEditing(false);
+            }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              height: 24,
+              border: "1px solid var(--accBd)",
+              borderRadius: 5,
+              padding: "2px 6px",
+              fontSize: 12.5,
+              background: "var(--card)",
+              color: "var(--t1)",
+              outline: "none",
+            }}
+          />
+        ) : (
+          <>
             <span className="ellipsis" style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.35, fontWeight: 400, color: active ? "var(--t1)" : archived ? "var(--t4)" : "var(--t2)" }}>
               {title}
             </span>
-          )}
-        </div>
-        <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 5, minWidth: 0, fontSize: 10.5, lineHeight: 1.25 }}>
-          <span
-            title={attention ? (meta.status === "error" ? "后台任务出错" : "会话有新进展") : undefined}
-            style={{
-              width: attention ? 7 : 6,
-              height: attention ? 7 : 6,
-              borderRadius: "50%",
-              background: attention
-                ? (meta.status === "error" ? "var(--err)" : "var(--acc)")
-                : st.hollow ? "transparent" : statusColor,
-              border: !attention && st.hollow ? `1.3px solid ${statusColor}` : "none",
-              boxShadow: attention
-                ? `0 0 0 2px ${meta.status === "error" ? "var(--errBg)" : "var(--accBg)"}`
-                : "none",
-              flex: "none",
-            }}
-          />
-          <span className="ellipsis" style={{ color: archived && !attention ? "var(--t5)" : st.textColor ?? st.color, minWidth: 0, flex: "none" }}>
-            {st.text}
-          </span>
-          {turns && <span style={{ color: "var(--t5)", marginLeft: "auto", flex: "none", fontVariantNumeric: "tabular-nums" }}>{turns}</span>}
-        </div>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, flex: "none" }}>
+              {(attention || emphasizeState) && (
+                <span
+                  title={attention ? (meta.status === "error" ? "后台任务出错" : "会话有新进展") : undefined}
+                  style={{
+                    width: attention ? 7 : 6,
+                    height: attention ? 7 : 6,
+                    borderRadius: "50%",
+                    background: attention ? (meta.status === "error" ? "var(--err)" : "var(--acc)") : st.color,
+                    boxShadow: attention
+                      ? `0 0 0 2px ${meta.status === "error" ? "var(--errBg)" : "var(--accBg)"}`
+                      : "none",
+                    flex: "none",
+                  }}
+                />
+              )}
+              <span className="ellipsis" style={{ maxWidth: 60, color: trailingColor, fontSize: 10.5, lineHeight: 1.2, fontVariantNumeric: "tabular-nums" }}>
+                {trailing}
+              </span>
+            </span>
+          </>
+        )}
       </div>
 
       {menu !== "closed" && (
