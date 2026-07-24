@@ -271,11 +271,12 @@ async fn e2e_chat_normalization() {
     let seqs: Vec<u64> = journal.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
     assert!(seqs.windows(2).all(|w| w[0] < w[1]), "seq 不单调: {seqs:?}");
 
-    // 会话列表(sidecar 权威):标题取首条输入,状态 finished
+    // 会话列表(sidecar 权威):标题取首条输入；一轮结束后会话空闲可继续，
+    // 不能误报为整个任务 finished。
     let list = driver.sessions_list().await.unwrap();
     let items = list.as_array().unwrap();
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].get("status").and_then(|v| v.as_str()), Some("finished"));
+    assert_eq!(items[0].get("status").and_then(|v| v.as_str()), Some("idle"));
     assert_eq!(items[0].get("kind").and_then(|v| v.as_str()), Some("local"));
     assert!(items[0].get("title").and_then(|v| v.as_str()).unwrap_or("").contains("hello world"));
 
@@ -505,6 +506,22 @@ fn concurrent_sidecar_updates_do_not_lose_fields() {
         assert_eq!(meta.get(&key).and_then(Value::as_u64), Some(i));
     }
     assert!(meta.get("updated_at").and_then(Value::as_u64).is_some());
+}
+
+#[tokio::test]
+async fn sessions_list_treats_legacy_finished_as_idle() {
+    let inner = bare_inner("legacy-finished");
+    inner.write_sidecar("legacy", |meta| {
+        meta["title"] = json!("可继续的旧会话");
+        meta["workdir"] = json!("/workspace/legacy");
+        meta["turns"] = json!(3);
+        meta["status"] = json!("finished");
+    });
+
+    let list = OhmyDriver(inner).sessions_list().await.unwrap();
+    let legacy = list.as_array().unwrap().iter().find(|item| item["id"] == "legacy").unwrap();
+    assert_eq!(legacy["status"], "idle");
+    assert_eq!(legacy["turns"], 3);
 }
 
 #[test]

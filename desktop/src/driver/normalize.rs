@@ -129,12 +129,17 @@ impl Inner {
                         c.get("window_tokens").and_then(|v| v.as_i64()).unwrap_or(0),
                     );
                 }
-                // 状态词汇对齐 SessionStatus:取消是 interrupted,
-                // 不能混进 finished(桌宠会当作完成来庆祝)
+                // turn/stopped 是「本轮结束」而非「整个会话完成」。顶层会话
+                // 正常收尾后回 idle；finished 只留给真正终结的子任务。
                 let status = match stop_reason {
+                    "complete" => SessionStatus::Idle,
                     "error" => SessionStatus::Error,
+                    "max_turns" => SessionStatus::Error,
                     "interrupted" => SessionStatus::Interrupted,
-                    _ => SessionStatus::Finished,
+                    other => {
+                        eprintln!("[desktop] 未知 turn/stopped.stop_reason={other},按 error 收尾");
+                        SessionStatus::Error
+                    }
                 };
                 if stop_reason == "error" && !err.is_empty() {
                     self.push_frame(&sid, |seq| frame::task_error(&err, seq));

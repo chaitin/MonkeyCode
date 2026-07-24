@@ -252,14 +252,20 @@ impl OhmyDriver {
                 continue; // 子代理子会话不进列表(经父会话工具卡点开)
             }
             let running = running_set.contains(&id);
+            let turns = meta.get("turns").and_then(|v| v.as_u64()).unwrap_or(0);
             let status = if running {
                 "running".to_string()
             } else {
-                match meta.get("status").and_then(|v| v.as_str()).unwrap_or("finished") {
+                match meta.get("status").and_then(|v| v.as_str()) {
                     // 历史遗留的 sidecar "running"(和解机制上线前的崩溃残留):
                     // 内存里没在跑就不是在跑,读取时自愈为 interrupted
-                    "running" => "interrupted".to_string(),
-                    s => s.to_string(),
+                    Some("running") => "interrupted".to_string(),
+                    // 旧版把每轮正常结束写成 finished；顶层会话可继续，读取时
+                    // 兼容迁移为 idle，不修改真正子任务（它们已在上方过滤）。
+                    Some("finished") => "idle".to_string(),
+                    Some(s) => s.to_string(),
+                    None if turns > 0 => "idle".to_string(),
+                    None => "created".to_string(),
                 }
             };
             let updated = meta.get("updated_at").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -272,7 +278,7 @@ impl OhmyDriver {
                     "kind": meta.get("kind").and_then(|v| v.as_str()).unwrap_or("local"),
                     "model": meta.get("model_name").and_then(|v| v.as_str()).unwrap_or(""),
                     "mode": meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default"),
-                    "turns": meta.get("turns").and_then(|v| v.as_u64()).unwrap_or(0),
+                    "turns": turns,
                     "status": status,
                     "archived": meta.get("archived").and_then(|v| v.as_bool()).unwrap_or(false),
                     // 契约:SessionMeta.updated_at 是 RFC3339 字符串(与 Go time.Time 的

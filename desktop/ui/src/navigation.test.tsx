@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { NewTaskView } from "./newtask";
-import { relativeTime, Sidebar } from "./sidebar";
+import { relativeTime, Sidebar, turnCountLabel } from "./sidebar";
 
 beforeEach(() => {
   vi.stubGlobal("window", {});
@@ -95,5 +95,51 @@ describe("会话辅助信息", () => {
     expect(relativeTime("2026-07-23T11:59:42Z")).toBe("刚刚");
     expect(relativeTime("2026-07-23T11:34:00Z")).toBe("26 分钟前");
     expect(relativeTime("2026-07-21T12:00:00Z")).toBe("2 天前");
+  });
+
+  it("同时展示可继续状态、轮次和稳定滚动槽，不再预留更多按钮", () => {
+    const html = renderToStaticMarkup(
+      <Sidebar
+        sessions={[{
+          id: "chat-1",
+          title: "继续优化侧边栏",
+          workdir: "/app-data/chat-1",
+          kind: "chat",
+          model: "test",
+          turns: 12,
+          status: "idle",
+          updated_at: "2026-07-23T11:34:00Z",
+        }]}
+        currentId="chat-1"
+        attention={new Set()}
+        sessionActive
+        connected
+        status="已连接"
+        mcConnection={{ phase: "connected", host: "monkeycode-ai.com" }}
+        cloudTasks={[]}
+        onConnectCloud={() => {}}
+        onNewCloudTask={() => {}}
+        onOpenCloudTask={() => {}}
+        onSelect={() => {}}
+        onNewTask={() => {}}
+        onNewChat={() => {}}
+        onOpenSettings={() => {}}
+        onArchive={() => {}}
+        onDelete={() => {}}
+        onRename={() => {}}
+      />,
+    );
+
+    expect(html).toContain("可继续");
+    expect(html).toContain("12 轮");
+    expect(html).toContain("右键管理");
+    expect(html).toContain("scrollbar-gutter:stable");
+    expect(html).not.toContain('title="更多操作"');
+  });
+
+  it("轮次文案会过滤空值和异常历史值", () => {
+    expect(turnCountLabel(3)).toBe("3 轮");
+    expect(turnCountLabel(0)).toBe("");
+    expect(turnCountLabel(Number.NaN)).toBe("");
   });
 });

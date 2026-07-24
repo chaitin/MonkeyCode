@@ -220,7 +220,10 @@
     s.touchedAt = Date.now();
     if (e.type === 'session-status') {
       s.status = e.status;
-      if (e.status === 'finished') {
+      if (e.status === 'idle') {
+        showFlash('ok', '「' + (e.title || '任务') + '」已回复', false, e.id);
+        play('end');
+      } else if (e.status === 'finished') {
         showFlash('ok', '「' + (e.title || '任务') + '」完成 ✓', true, e.id);
         play('end');
       } else if (e.status === 'error') {

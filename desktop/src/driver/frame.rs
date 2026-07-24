@@ -32,6 +32,9 @@ use serde_json::{json, Value};
 pub enum SessionStatus {
     Created,
     Running,
+    /// 当前轮已正常结束，会话空闲并可继续发送消息。
+    Idle,
+    /// 真正结束的子任务；顶层本地会话不以一轮回复作为完成。
     Finished,
     Interrupted,
     Error,
@@ -42,6 +45,7 @@ impl SessionStatus {
         match self {
             SessionStatus::Created => "created",
             SessionStatus::Running => "running",
+            SessionStatus::Idle => "idle",
             SessionStatus::Finished => "finished",
             SessionStatus::Interrupted => "interrupted",
             SessionStatus::Error => "error",

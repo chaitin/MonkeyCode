@@ -5,4 +5,4 @@
  * ts-rs 导出 → ui/src/gen/SessionStatus.ts(types.ts 复用);
  * rename_all 小写与 as_str 一致(两处同改才算改)。
  */
-export type SessionStatus = "created" | "running" | "finished" | "interrupted" | "error";
+export type SessionStatus = "created" | "running" | "idle" | "finished" | "interrupted" | "error";

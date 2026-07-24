@@ -11,6 +11,8 @@ export function noticeForSessionEvent(event: SessionEvent): SessionNotice | null
   if (event.type !== "session-status") return null;
 
   switch (event.status) {
+    case "idle":
+      return { text: `「${title}」已回复`, tone: "success", targetSessionId: event.id };
     case "finished":
       return { text: `「${title}」已完成`, tone: "success", targetSessionId: event.id };
     case "error":

@@ -9,7 +9,6 @@ import {
   IconChat,
   IconChevronRight,
   IconCloud,
-  IconDots,
   IconFolder,
   IconGear,
   IconMonitor,
@@ -83,12 +82,22 @@ function rowStatus(meta: SessionMeta): { text: string; color: string } {
     case "error":
       return { text: "运行出错", color: "var(--err)" };
     case "interrupted":
-      return { text: "已中断", color: "var(--t4)" };
+      return { text: "已停止", color: "var(--t4)" };
+    case "idle":
     case "finished":
-      return { text: "已完成", color: "var(--t4)" };
+      // finished 是旧版顶层会话的一轮结束状态；新版壳会返回 idle。
+      return { text: "可继续", color: "var(--t4)" };
     default:
-      return { text: "尚未开始", color: "var(--t5)" };
+      return meta.turns > 0
+        ? { text: "可继续", color: "var(--t4)" }
+        : { text: "尚未开始", color: "var(--t5)" };
   }
+}
+
+/** turns 是已发起的用户轮次数；异常历史值不应污染侧栏。 */
+export function turnCountLabel(value?: number): string {
+  if (!Number.isFinite(value) || Number(value) <= 0) return "";
+  return `${Math.trunc(Number(value))} 轮`;
 }
 
 function SessionRow({
@@ -112,17 +121,26 @@ function SessionRow({
   onDelete: () => void;
   onRename: (title: string) => void;
 }) {
-  const [hover, setHover] = useState(false);
   const [menu, setMenu] = useState<MenuState>("closed");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number }>({ left: 0 });
   const st = rowStatus(meta);
-  const showActions = hover || menu !== "closed";
   const selected = active && !archived;
   const title = meta.title || (meta.kind === "chat" ? "新对话" : "新任务");
+  const turns = turnCountLabel(meta.turns);
+  const time = relativeTime(meta.updated_at);
 
   const closeMenu = () => setMenu("closed");
+  const openMenuAt = (clientX: number, clientY: number) => {
+    const left = Math.max(8, Math.min(clientX, window.innerWidth - 146));
+    const openUp = clientY + 166 > window.innerHeight;
+    setPos({
+      left,
+      ...(openUp ? { bottom: Math.max(8, window.innerHeight - clientY + 4) } : { top: clientY + 4 }),
+    });
+    setMenu("open");
+  };
   const commitRename = () => {
     setEditing(false);
     const next = draft.trim();
@@ -130,13 +148,19 @@ function SessionRow({
   };
 
   return (
-    <div style={{ position: "relative" }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+    <div style={{ position: "relative" }}>
       <div
         className={active ? undefined : "hv"}
-        title={`${title}\n${meta.kind === "chat" ? "独立对话" : meta.workdir}`}
+        title={`${title}\n${meta.kind === "chat" ? "独立对话" : meta.workdir}\n右键管理`}
         onClick={onClick}
+        onContextMenu={(e) => {
+          if (editing) return;
+          e.preventDefault();
+          e.stopPropagation();
+          openMenuAt(e.clientX, e.clientY);
+        }}
         style={{
-          minHeight: 52,
+          minHeight: 50,
           position: "relative",
           display: "flex",
           flexDirection: "column",
@@ -153,13 +177,14 @@ function SessionRow({
         {selected && (
           <span aria-hidden="true" style={{ position: "absolute", left: 2, top: 11, bottom: 11, width: 2, borderRadius: 2, background: "var(--acc)" }} />
         )}
-        <div style={{ width: "100%", minWidth: 0, display: "flex", alignItems: "center", gap: 5 }}>
+        <div style={{ width: "100%", minWidth: 0, display: "flex", alignItems: "center" }}>
           {editing ? (
             <input
               autoFocus
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onClick={(e) => e.stopPropagation()}
+              onContextMenu={(e) => e.stopPropagation()}
               onCompositionEnd={markImeEnd}
               onBlur={commitRename}
               onKeyDown={(e) => {
@@ -185,41 +210,31 @@ function SessionRow({
               {title}
             </span>
           )}
-          <span style={{ position: "relative", width: 20, height: 20, flex: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {attention && !showActions && (
-              <span
-                title={meta.status === "error" ? "后台任务出错" : "会话有新进展"}
-                style={{ position: "absolute", width: 7, height: 7, borderRadius: "50%", background: meta.status === "error" ? "var(--err)" : "var(--acc)" }}
-              />
-            )}
-            <button
-              title="更多操作"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (menu !== "closed") return closeMenu();
-                const r = e.currentTarget.getBoundingClientRect();
-                const up = r.bottom + 160 > window.innerHeight;
-                setPos({
-                  left: Math.min(r.left, window.innerWidth - 170),
-                  ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }),
-                });
-                setMenu("open");
-              }}
-              className="hv3 icon-btn"
-              style={{ width: 20, height: 20, borderRadius: 5, background: menu !== "closed" ? "var(--hov3)" : "transparent", opacity: showActions ? 1 : 0, pointerEvents: showActions ? "auto" : "none", transition: "opacity .12s ease" }}
-            >
-              <IconDots color="var(--t3)" />
-            </button>
-          </span>
         </div>
         <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: 10.5, lineHeight: 1.2 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.color, flex: "none" }} />
-          <span className="ellipsis" style={{ color: st.color, minWidth: 0 }}>
+          <span
+            title={attention ? (meta.status === "error" ? "后台任务出错" : "会话有新进展") : undefined}
+            style={{
+              width: attention ? 7 : 6,
+              height: attention ? 7 : 6,
+              borderRadius: "50%",
+              background: attention ? (meta.status === "error" ? "var(--err)" : "var(--acc)") : st.color,
+              boxShadow: attention
+                ? `0 0 0 2px ${meta.status === "error" ? "var(--errBg)" : "var(--accBg)"}`
+                : "none",
+              flex: "none",
+            }}
+          />
+          <span className="ellipsis" style={{ color: st.color, minWidth: 0, flex: "none" }}>
             {st.text}
           </span>
-          <span style={{ color: "var(--t5)", marginLeft: "auto", flex: "none", fontVariantNumeric: "tabular-nums" }}>
-            {relativeTime(meta.updated_at)}
-          </span>
+          {turns && (
+            <>
+              <span aria-hidden="true" style={{ color: "var(--t7)", flex: "none" }}>·</span>
+              <span style={{ color: "var(--t5)", flex: "none", fontVariantNumeric: "tabular-nums" }}>{turns}</span>
+            </>
+          )}
+          {time && <span style={{ color: "var(--t5)", marginLeft: "auto", flex: "none", fontVariantNumeric: "tabular-nums" }}>{time}</span>}
         </div>
       </div>
 
@@ -284,6 +299,7 @@ function ProjectGroup({
         onMouseLeave={() => setHover(false)}
         style={{
           minHeight: 34,
+          position: "relative",
           display: "flex",
           alignItems: "center",
           gap: 6,
@@ -309,7 +325,21 @@ function ProjectGroup({
             className="hv3 icon-btn"
             title="在此项目新建任务"
             onClick={(e) => { e.stopPropagation(); onNewTask(); }}
-            style={{ width: 22, height: 22, borderRadius: 6, opacity: hover ? 1 : 0, pointerEvents: hover ? "auto" : "none", transition: "opacity .12s ease" }}
+            style={{
+              position: "absolute",
+              right: 4,
+              top: 6,
+              width: 22,
+              height: 22,
+              border: "1px solid var(--line2)",
+              borderRadius: 6,
+              background: "var(--card)",
+              boxShadow: "var(--cardSh)",
+              opacity: hover ? 1 : 0,
+              visibility: hover ? "visible" : "hidden",
+              pointerEvents: hover ? "auto" : "none",
+              transition: "opacity .12s ease, visibility 0s linear 0s",
+            }}
           >
             <IconPlus size={10} color="var(--t3)" />
           </button>
@@ -329,7 +359,8 @@ function CloudTaskRow({ task, active, onClick }: { task: CloudTask; active: bool
       title={label}
       onClick={onClick}
       style={{
-        minHeight: 52,
+        minHeight: 50,
+        position: "relative",
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
@@ -342,6 +373,9 @@ function CloudTaskRow({ task, active, onClick }: { task: CloudTask; active: bool
         minWidth: 0,
       }}
     >
+      {active && (
+        <span aria-hidden="true" style={{ position: "absolute", left: 2, top: 11, bottom: 11, width: 2, borderRadius: 2, background: "var(--acc)" }} />
+      )}
       <span className="ellipsis" style={{ width: "100%", fontSize: 13, lineHeight: 1.25, fontWeight: 400, color: active ? "var(--t1)" : "var(--t2)" }}>{label}</span>
       <span style={{ width: "100%", minWidth: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, lineHeight: 1.2 }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.color, flex: "none" }} />
@@ -746,7 +780,22 @@ export function Sidebar({
         <MacDragSpacer />
         <PanelHeader title={panel.title} detail={panel.detail}>{panel.actions}</PanelHeader>
         <SearchBox value={query} placeholder={panel.placeholder} onChange={setQuery} />
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 9px 10px", display: "flex", flexDirection: "column", gap: 3 }}>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            overflowX: "hidden",
+            scrollbarGutter: "stable",
+            overscrollBehavior: "contain",
+            // 8px 固定滚动槽 + 1px 右内边距 = 原来的 9px；有无滚动条时
+            // 会话行宽度完全一致，也不会与右侧边界贴在一起。
+            padding: "0 1px 10px 9px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 3,
+          }}
+        >
           {panel.content}
         </div>
         {update?.available && (

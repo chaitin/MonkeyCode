@@ -3,6 +3,14 @@ import { describe, expect, it } from "vitest";
 import { noticeForSessionEvent } from "./sessionNotice";
 
 describe("noticeForSessionEvent", () => {
+  it("本轮正常结束只提示已回复，不宣称整个任务完成", () => {
+    expect(noticeForSessionEvent({ type: "session-status", id: "idle", title: "继续优化", status: "idle" })).toEqual({
+      text: "「继续优化」已回复",
+      tone: "success",
+      targetSessionId: "idle",
+    });
+  });
+
   it("按后台会话状态生成不同颜色并携带跳转目标", () => {
     expect(noticeForSessionEvent({ type: "session-status", id: "done", title: "完成任务", status: "finished" })).toEqual({
       text: "「完成任务」已完成",
