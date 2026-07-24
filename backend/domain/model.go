@@ -261,7 +261,7 @@ type UpdateModelReq struct {
 }
 
 type GetProviderModelListReq struct {
-	Provider  consts.ModelProvider `json:"provider" query:"provider" validate:"required,oneof=SiliconFlow OpenAI Ollama DeepSeek Moonshot AzureOpenAI BaiZhiCloud Hunyuan BaiLian Volcengine Gemini Other"`
+	Provider  consts.ModelProvider `json:"provider" query:"provider" validate:"required,oneof=SiliconFlow OpenAI Ollama DeepSeek Moonshot AzureOpenAI BaiZhiCloud MiniMax Hunyuan BaiLian Volcengine Gemini Other"`
 	BaseURL   string               `json:"base_url" query:"base_url" validate:"required"`
 	APIKey    string               `json:"api_key" query:"api_key" validate:"required"`
 	APIHeader string               `json:"api_header" query:"api_header"`
@@ -325,5 +325,12 @@ var ModelProviderBrandModelsList = map[consts.ModelProvider][]ProviderModelListI
 		{Model: "doubao-seed-1.6-thinking-250615"},
 		{Model: "doubao-1.5-thinking-vision-pro-250428"},
 		{Model: "deepseek-r1-250528"},
+	},
+	consts.ModelProviderMiniMax: {
+		{Model: "MiniMax-M3"},
+		{Model: "MiniMax-M2.7"},
+		{Model: "MiniMax-M2.5"},
+		{Model: "MiniMax-M2.1"},
+		{Model: "MiniMax-M2"},
 	},
 }
