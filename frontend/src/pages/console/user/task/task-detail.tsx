@@ -1615,6 +1615,9 @@ export default function TaskDetailPage() {
         <DialogContent>
           <DialogHeader className="flex-row items-center justify-start gap-2 pr-8">
             <DialogTitle>{t("taskDetail.panels.preview")}</DialogTitle>
+            <DialogDescription className="sr-only">
+              {t("taskDetail.preview.description")}
+            </DialogDescription>
             <Button
               variant="ghost"
               size="icon-sm"
