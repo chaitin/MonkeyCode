@@ -67,3 +67,10 @@ test("侧边栏在线权益入口提供中英文资源", () => {
   assert.match(en.consoleShell.rewards.feedback.template, /\{\{uid\}\}/);
   assert.equal(cn.consoleShell.rewards.feedback.description, "到 MonkeyCode 的 GitHub 提 Issue，并留下你的 UID。\nIssue 被采纳后你将获得 3 万积分的奖励。");
 });
+
+test("权益浮层可容纳英文长文案", () => {
+  assert.match(sourceFiles.freeModelUsage, /className="w-96 max-w-\[calc\(100vw-2rem\)\]"/);
+  assert.match(sourceFiles.freeModelUsage, /className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm"/);
+  assert.match(sourceFiles.freeModelUsage, /className="shrink-0 font-medium"/);
+  assert.match(sourceFiles.freeModelUsage, /className="ml-auto shrink-0 whitespace-nowrap text-right text-xs text-muted-foreground"/);
+});

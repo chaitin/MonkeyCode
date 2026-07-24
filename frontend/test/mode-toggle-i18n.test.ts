@@ -22,3 +22,7 @@ test("主题切换菜单提供中英文资源", () => {
   assert.equal(cn.common.theme.system, "跟随系统");
   assert.equal(en.common.theme.system, "Follow system");
 });
+
+test("主题切换菜单可容纳英文长文案", () => {
+  assert.match(source, /<DropdownMenuContent align="end" className="w-max min-w-40">/);
+});
