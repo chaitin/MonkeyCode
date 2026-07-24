@@ -42,8 +42,9 @@ const scrollMemo = new Map<string, { anchor: number; offset: number; pinned: boo
 const fmtK = (n: number) =>
   n >= 1_000_000 ? Math.round(n / 100_000) / 10 + "M" : n >= 1000 ? Math.round(n / 100) / 10 + "k" : String(n);
 
-/** 对话与操作区共用稳定内容轨；正文自身再由消息 maxWidth 保持可读行长。 */
-export const COL_MAX = "min(880px, calc(100% - 24px))";
+/** 对话与操作区共用响应式内容轨：默认窗口保持紧凑，宽屏渐进展开，
+ * 但在 920px 封顶以免正文行长失控；窄屏至少保留 24px 单侧外沿。 */
+export const COL_MAX = "min(clamp(820px, 76%, 920px), calc(100% - 48px))";
 
 export const basename = (p: string) => p.replace(/[\/\\]+$/, "").split(/[\/\\]/).pop() || p;
 
