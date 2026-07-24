@@ -505,12 +505,31 @@ pub async fn mc_logout(bz: State<'_, BaizhiState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub async fn mc_tasks(bz: State<'_, BaizhiState>, page: u32, size: u32, status: Option<String>) -> Result<Value, String> {
+pub async fn mc_tasks(
+    bz: State<'_, BaizhiState>,
+    page: u32,
+    size: u32,
+    status: Option<String>,
+    project_id: Option<String>,
+    quick_start: Option<bool>,
+) -> Result<Value, String> {
     let size = size.clamp(1, 50);
     let page = page.max(1);
-    monkeycode::mc_tasks(&bz.0, page, size, status.as_deref().unwrap_or(""))
-        .await
-        .map_err(BzErr::msg)
+    monkeycode::mc_tasks(
+        &bz.0,
+        page,
+        size,
+        status.as_deref().unwrap_or(""),
+        project_id.as_deref().unwrap_or(""),
+        quick_start,
+    )
+    .await
+    .map_err(BzErr::msg)
+}
+
+#[tauri::command]
+pub async fn mc_projects(bz: State<'_, BaizhiState>) -> Result<Value, String> {
+    monkeycode::mc_projects(&bz.0).await.map_err(BzErr::msg)
 }
 
 #[tauri::command]
@@ -534,6 +553,12 @@ pub async fn mc_task_rounds(
 #[tauri::command]
 pub async fn mc_task_stop(bz: State<'_, BaizhiState>, id: String) -> Result<Value, String> {
     monkeycode::mc_task_stop(&bz.0, &id).await.map_err(BzErr::msg)?;
+    Ok(json!({ "ok": true }))
+}
+
+#[tauri::command]
+pub async fn mc_task_delete(bz: State<'_, BaizhiState>, id: String) -> Result<Value, String> {
+    monkeycode::mc_task_delete(&bz.0, &id).await.map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))
 }
 

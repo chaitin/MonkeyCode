@@ -16,12 +16,13 @@ import {
   IconPlus,
   IconRefresh,
   IconSearch,
+  IconStop,
   IconX,
 } from "./icons";
 import logoUrl from "./logo.png";
 import { isProjectArchived, projectArchiveKey } from "./projectArchive";
 import { MacDragSpacer } from "./titlebar";
-import type { CloudTask, McConnectionState, SessionMeta } from "./types";
+import type { CloudProject, CloudTask, McConnectionState, SessionMeta } from "./types";
 
 export interface ProjectGroup {
   dir: string;
@@ -400,38 +401,102 @@ function ProjectGroup({
   );
 }
 
-function CloudTaskRow({ task, active, onClick }: { task: CloudTask; active: boolean; onClick: () => void }) {
+function CloudTaskRow({
+  task,
+  active,
+  depth = 0,
+  onClick,
+  onStop,
+  onDelete,
+}: {
+  task: CloudTask;
+  active: boolean;
+  depth?: number;
+  onClick: () => void;
+  onStop: () => void;
+  onDelete: () => void;
+}) {
+  const [menu, setMenu] = useState<MenuState>("closed");
+  const [confirmAction, setConfirmAction] = useState<"stop" | "delete">("delete");
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number }>({ left: 0 });
   const label = task.title || task.summary || task.content || "云端任务";
   const st = CLOUD_STATUS[task.status ?? ""] ?? { text: "云端任务", color: "var(--t5)" };
+  const running = task.status === "pending" || task.status === "processing";
+  const emphasizeState = running || task.status === "error";
+  const openMenuAt = (clientX: number, clientY: number) => {
+    const left = Math.max(8, Math.min(clientX, window.innerWidth - 166));
+    const openUp = clientY + 150 > window.innerHeight;
+    setPos({
+      left,
+      ...(openUp ? { bottom: Math.max(8, window.innerHeight - clientY + 4) } : { top: clientY + 4 }),
+    });
+    setMenu("open");
+  };
+  const closeMenu = () => setMenu("closed");
   return (
-    <div
-      className={active ? undefined : "hv"}
-      title={label}
-      onClick={onClick}
-      style={{
-        minHeight: 50,
-        position: "relative",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        gap: 4,
-        padding: "7px 9px 7px 11px",
-        borderRadius: 9,
-        cursor: "pointer",
-        background: active ? "var(--accSel)" : "transparent",
-        color: "var(--t2)",
-        minWidth: 0,
-      }}
-    >
-      {active && (
-        <span aria-hidden="true" style={{ position: "absolute", left: 2, top: 11, bottom: 11, width: 2, borderRadius: 2, background: "var(--acc)" }} />
+    <div style={{ position: "relative" }}>
+      <div
+        className={active ? undefined : "hv"}
+        title={`${label}\n${st.text}\n右键管理`}
+        onClick={onClick}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openMenuAt(event.clientX, event.clientY);
+        }}
+        style={{
+          minHeight: 34,
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          padding: `0 8px 0 ${11 + Math.max(0, depth) * 14}px`,
+          borderRadius: 7,
+          cursor: "pointer",
+          background: active ? "var(--accSel)" : "transparent",
+          color: "var(--t2)",
+          minWidth: 0,
+        }}
+      >
+        <span className="ellipsis" style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.35, fontWeight: 400, color: active ? "var(--t1)" : "var(--t2)" }}>
+          {label}
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, flex: "none" }}>
+          {emphasizeState && <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.color, flex: "none" }} />}
+          <span className="ellipsis" style={{ maxWidth: 60, color: active ? "var(--accSelDim)" : st.color, fontSize: 10.5, lineHeight: 1.2 }}>
+            {st.text}
+          </span>
+        </span>
+      </div>
+
+      {menu !== "closed" && (
+        <>
+          <div className="backdrop" onClick={(event) => { event.stopPropagation(); closeMenu(); }} />
+          <div className="pop" style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: 142 }} onClick={(event) => event.stopPropagation()}>
+            {menu === "open" ? (
+              <>
+                {running && (
+                  <button className="hv-errbg menu-item" style={{ color: "var(--err)" }} onClick={() => { setConfirmAction("stop"); setMenu("confirm"); }}>
+                    <IconStop size={10} color="var(--err)" />
+                    终止任务
+                  </button>
+                )}
+                <DeleteMenuItem running={running} label="删除任务" onDelete={() => { setConfirmAction("delete"); setMenu("confirm"); }} />
+              </>
+            ) : (
+              <ConfirmPane
+                message={confirmAction === "stop" ? "任务终止后无法恢复。" : "删除后不可恢复。"}
+                confirmLabel={confirmAction === "stop" ? "确认终止" : "确认删除"}
+                onConfirm={() => {
+                  closeMenu();
+                  if (confirmAction === "stop") onStop();
+                  else onDelete();
+                }}
+                onCancel={closeMenu}
+              />
+            )}
+          </div>
+        </>
       )}
-      <span className="ellipsis" style={{ width: "100%", fontSize: 13, lineHeight: 1.25, fontWeight: 400, color: active ? "var(--t1)" : "var(--t2)" }}>{label}</span>
-      <span style={{ width: "100%", minWidth: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, lineHeight: 1.2 }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.color, flex: "none" }} />
-        <span style={{ color: st.color }}>{st.text}</span>
-        <span style={{ marginLeft: "auto", color: "var(--t5)", fontVariantNumeric: "tabular-nums" }}>{relativeTime(task.created_at)}</span>
-      </span>
     </div>
   );
 }
@@ -551,6 +616,8 @@ export function Sidebar({
   onUpdate,
   mcConnection,
   cloudTasks,
+  cloudHistory = [],
+  cloudProjects = [],
   activeCloudId,
   cloudSyncing,
   cloudError,
@@ -558,6 +625,8 @@ export function Sidebar({
   onRefreshCloud,
   onNewCloudTask,
   onOpenCloudTask,
+  onStopCloudTask = () => {},
+  onDeleteCloudTask = () => {},
   onSelect,
   onNewTask,
   onProjectArchive,
@@ -579,13 +648,17 @@ export function Sidebar({
   onUpdate?: () => void;
   mcConnection: McConnectionState;
   cloudTasks: CloudTask[];
+  cloudHistory?: CloudTask[];
+  cloudProjects?: CloudProject[];
   activeCloudId?: string | null;
   cloudSyncing?: boolean;
   cloudError?: string;
   onConnectCloud: () => void;
   onRefreshCloud?: () => void;
-  onNewCloudTask: () => void;
+  onNewCloudTask: (project?: CloudProject) => void;
   onOpenCloudTask: (task: CloudTask) => void;
+  onStopCloudTask?: (task: CloudTask) => void;
+  onDeleteCloudTask?: (task: CloudTask) => void;
   onSelect: (meta: SessionMeta) => void;
   onNewTask: (dir?: string) => void;
   onProjectArchive: (dir: string, archived: boolean) => void;
@@ -676,10 +749,21 @@ export function Sidebar({
   const activeSessionCount = activeLocalAll.filter((m) => !m.archived).length;
   const localAttention = [...attention].filter((id) => localAll.some((m) => m.id === id)).length;
   const chatAttention = [...attention].filter((id) => chatAll.some((m) => m.id === id)).length;
-  const cloudRunning = cloudTasks.filter((task) => task.status === "pending" || task.status === "processing");
-  const cloudPast = cloudTasks.filter((task) => task.status !== "pending" && task.status !== "processing");
-  const filteredCloudRunning = cloudRunning.filter(matchesCloud);
-  const filteredCloudPast = cloudPast.filter(matchesCloud);
+  const allCloudTasks = new Map<string, CloudTask>();
+  for (const task of [...cloudTasks, ...cloudHistory, ...cloudProjects.flatMap((project) => project.tasks ?? [])]) {
+    allCloudTasks.set(task.id, task);
+  }
+  const cloudRunning = [...allCloudTasks.values()].filter((task) => task.status === "pending" || task.status === "processing");
+  const filteredCloudTasks = cloudTasks.filter(matchesCloud);
+  const filteredCloudHistory = cloudHistory.filter(matchesCloud);
+  const filteredCloudProjects: { project: CloudProject; tasks: CloudTask[] }[] = [];
+  for (const project of cloudProjects) {
+    const projectMatch = !norm || `${project.name ?? ""} ${project.full_name ?? ""} ${project.repo_url ?? ""}`.toLocaleLowerCase().includes(norm);
+    const tasks = [...(project.tasks ?? [])]
+      .sort((a, b) => Number(b.created_at ?? 0) - Number(a.created_at ?? 0))
+      .filter((task) => projectMatch || matchesCloud(task));
+    if (projectMatch || tasks.length > 0) filteredCloudProjects.push({ project, tasks });
+  }
 
   const sessionRow = (meta: SessionMeta, archived: boolean, depth = 0) => (
     <SessionRow
@@ -695,6 +779,19 @@ export function Sidebar({
       onRename={(title) => onRename(meta, title)}
     />
   );
+
+  const cloudTaskRow = (task: CloudTask, depth = 0) => (
+    <CloudTaskRow
+      key={task.id}
+      task={task}
+      active={task.id === activeCloudId}
+      depth={depth}
+      onClick={() => onOpenCloudTask(task)}
+      onStop={() => onStopCloudTask(task)}
+      onDelete={() => onDeleteCloudTask(task)}
+    />
+  );
+  const cloudActionError = !!cloudError && /^(终止|删除)任务失败：/.test(cloudError);
 
   const projectRow = (group: ProjectGroup, projectArchived: boolean, depth = 0) => {
     const activeItems = group.items.filter((m) => !m.archived);
@@ -758,25 +855,64 @@ export function Sidebar({
         run: onConnectCloud,
       });
     }
-    if (cloudTasks.length === 0 && !cloudError) {
-      return <EmptyState icon={<IconCloud size={21} color="var(--t6)" />} title="还没有云端任务" detail="从这里新建，或在网页和手机端派发任务。" />;
+    if (cloudTasks.length === 0 && cloudHistory.length === 0 && cloudProjects.length === 0 && !cloudError) {
+      return <EmptyState icon={<IconCloud size={21} color="var(--t6)" />} title="还没有云端项目或任务" detail="从这里新建，或在网页和手机端派发任务。" />;
     }
     return (
       <>
-        {cloudError && <div title={cloudError} className="ellipsis" style={{ margin: "2px 4px 7px", padding: "6px 8px", borderRadius: 7, background: "var(--warnBg)", color: "var(--warn)", fontSize: 10.5 }}>刷新失败，当前显示上次结果</div>}
-        {filteredCloudRunning.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 8 }}>
-            <span style={{ padding: "4px 9px 3px", color: "var(--t5)", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.35 }}>进行中</span>
-            {filteredCloudRunning.map((task) => <CloudTaskRow key={task.id} task={task} active={task.id === activeCloudId} onClick={() => onOpenCloudTask(task)} />)}
+        {cloudError && (
+          <div
+            title={cloudError}
+            className="ellipsis"
+            style={{
+              margin: "2px 4px 7px",
+              padding: "6px 8px",
+              borderRadius: 7,
+              background: cloudActionError ? "var(--errBg)" : "var(--warnBg)",
+              color: cloudActionError ? "var(--err)" : "var(--warn)",
+              fontSize: 10.5,
+            }}
+          >
+            {cloudActionError ? cloudError : "部分数据刷新失败，当前显示上次结果"}
           </div>
         )}
-        {filteredCloudPast.length > 0 && (
-          <ProjectGroup name={`历史任务 · ${filteredCloudPast.length}`} expanded={!!norm || cloudHistoryOpen} muted onToggle={toggleCloudHistory}>
-            {filteredCloudPast.map((task) => <CloudTaskRow key={task.id} task={task} active={task.id === activeCloudId} onClick={() => onOpenCloudTask(task)} />)}
+        {filteredCloudTasks.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 8 }}>
+            <span style={{ padding: "4px 9px 3px", color: "var(--t5)", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.35 }}>快速任务</span>
+            {filteredCloudTasks.map((task) => cloudTaskRow(task))}
+          </div>
+        )}
+        {filteredCloudHistory.length > 0 && (
+          <ProjectGroup name={`历史任务 · ${filteredCloudHistory.length}`} expanded={!!norm || cloudHistoryOpen} muted onToggle={toggleCloudHistory}>
+            {filteredCloudHistory.map((task) => cloudTaskRow(task, 1))}
           </ProjectGroup>
         )}
-        {norm && filteredCloudRunning.length === 0 && filteredCloudPast.length === 0 && (
-          <EmptyState icon={<IconSearch size={19} color="var(--t6)" />} title="没有匹配的任务" detail="试试任务标题或描述中的其他关键词。" />
+        {filteredCloudProjects.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 1, borderTop: "1px solid var(--line2)", marginTop: 9, paddingTop: 8 }}>
+            <span style={{ padding: "3px 9px 4px", color: "var(--t5)", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.35 }}>项目</span>
+            {filteredCloudProjects.map(({ project, tasks }, index) => {
+              const key = `cloud:${project.id || project.repo_url || project.name || index}`;
+              const name = project.name || project.full_name || "未命名项目";
+              return (
+                <ProjectGroup
+                  key={key}
+                  name={name}
+                  detail={`${project.repo_url || project.full_name || "云端项目"}\n${tasks.length} 个任务`}
+                  project
+                  expanded={!!norm || !collapsed.has(key)}
+                  onToggle={() => toggleGroup(key)}
+                  onNewTask={() => onNewCloudTask(project)}
+                >
+                  {tasks.length > 0
+                    ? tasks.map((task) => cloudTaskRow(task, 1))
+                    : <span style={{ padding: "3px 12px 5px 38px", color: "var(--t6)", fontSize: 10.5 }}>暂无任务</span>}
+                </ProjectGroup>
+              );
+            })}
+          </div>
+        )}
+        {norm && filteredCloudTasks.length === 0 && filteredCloudHistory.length === 0 && filteredCloudProjects.length === 0 && (
+          <EmptyState icon={<IconSearch size={19} color="var(--t6)" />} title="没有匹配的项目或任务" detail="试试项目名、仓库或任务标题中的其他关键词。" />
         )}
       </>
     );
@@ -785,9 +921,9 @@ export function Sidebar({
   const panel = (() => {
     if (space === "cloud") {
       return {
-        title: "云端任务",
-        detail: cloudRunning.length ? `${cloudRunning.length} 个正在进行` : `${cloudTasks.length} 个任务`,
-        placeholder: "搜索云端任务",
+        title: "云端",
+        detail: `${cloudProjects.length} 个项目 · ${allCloudTasks.size} 个任务`,
+        placeholder: "搜索项目或任务",
         actions: (
           <>
             {onRefreshCloud && mcConnection.phase === "connected" && (
@@ -795,7 +931,7 @@ export function Sidebar({
                 <IconRefresh size={12} style={cloudSyncing ? { animation: "mcspin .9s linear infinite" } : undefined} />
               </button>
             )}
-            <button className="hv-acc icon-btn" title="新建云端任务" onClick={onNewCloudTask} style={{ ...headerAction, background: "var(--acc)" }}>
+            <button className="hv-acc icon-btn" title="新建云端任务" onClick={() => onNewCloudTask()} style={{ ...headerAction, background: "var(--acc)" }}>
               <IconPlus size={11} color="var(--onAcc)" />
             </button>
           </>

@@ -1677,16 +1677,16 @@ export function ConfirmPane({
 }
 
 /** 删除菜单项:运行中置灰(先停止才能删),否则进入二段确认 */
-export function DeleteMenuItem({ running, onDelete }: { running: boolean; onDelete: () => void }) {
+export function DeleteMenuItem({ running, onDelete, label = "删除" }: { running: boolean; onDelete: () => void; label?: string }) {
   return running ? (
     <button className="menu-item" style={{ cursor: "default", color: "var(--t5)" }} title="运行中,请先停止">
       <IconTrash color="var(--t5)" />
-      删除
+      {label}
     </button>
   ) : (
     <button className="hv-errbg menu-item" style={{ color: "var(--err)" }} onClick={onDelete}>
       <IconTrash />
-      删除
+      {label}
     </button>
   );
 }

@@ -1,6 +1,7 @@
 // 云端建任务的选项模型与默认值挑选,移植自 mobile/src/config.ts
 // (与 Web 端 selectPreferredTaskModel / pickDefaultImage 同一套规则)。
 // 纯函数无副作用;网络层在 client.ts。
+import type { CloudProject } from "./types";
 
 export interface McCloudModel {
   id?: string;
@@ -20,12 +21,7 @@ export interface McCloudImage {
   owner?: { type?: string };
 }
 
-export interface McCloudProject {
-  id?: string;
-  name?: string;
-  full_name?: string;
-  repo_url?: string;
-}
+export type McCloudProject = CloudProject;
 
 export interface McTaskOptions {
   models: McCloudModel[];

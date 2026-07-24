@@ -162,13 +162,32 @@ pub fn mc_host(svc: &Service) -> String {
         .unwrap_or_else(|| svc.ep.monkeycode.clone())
 }
 
-/// 云端任务列表({tasks, page_info} 原样透传 UI)。
-pub async fn mc_tasks(svc: &Service, page: u32, size: u32, status: &str) -> BzResult<Value> {
+/// 云端任务列表({tasks, page_info} 原样透传 UI)。project_id / quick_start
+/// 与 Web 侧栏筛选一致：项目内任务、未关联项目的快速任务分别查询。
+pub async fn mc_tasks(
+    svc: &Service,
+    page: u32,
+    size: u32,
+    status: &str,
+    project_id: &str,
+    quick_start: Option<bool>,
+) -> BzResult<Value> {
     let mut path = format!("/api/v1/users/tasks?page={page}&size={size}");
     if !status.is_empty() {
         path.push_str(&format!("&status={}", urlencode(status)));
     }
+    if !project_id.is_empty() {
+        path.push_str(&format!("&project_id={}", urlencode(project_id)));
+    }
+    if let Some(value) = quick_start {
+        path.push_str(&format!("&quick_start={value}"));
+    }
     mc_call(svc, reqwest::Method::GET, &path, None).await
+}
+
+/// Web 侧栏同款项目列表；每个项目可携带其最近任务。
+pub async fn mc_projects(svc: &Service) -> BzResult<Value> {
+    mc_call(svc, reqwest::Method::GET, "/api/v1/users/projects?limit=50", None).await
 }
 
 pub async fn mc_task_info(svc: &Service, id: &str) -> BzResult<Value> {
@@ -219,6 +238,18 @@ pub async fn mc_task_stop(svc: &Service, id: &str) -> BzResult<()> {
     mc_call(svc, reqwest::Method::PUT, "/api/v1/users/tasks/stop", Some(&json!({ "id": id })))
         .await
         .map(|_| ())
+}
+
+/// 删除云端任务。服务端会拒绝仍在运行或虚拟机尚在线的任务。
+pub async fn mc_task_delete(svc: &Service, id: &str) -> BzResult<()> {
+    mc_call(
+        svc,
+        reqwest::Method::DELETE,
+        &format!("/api/v1/users/tasks/{}", urlencode(id)),
+        None,
+    )
+    .await
+    .map(|_| ())
 }
 
 // ---- 云端建任务默认档位(云端契约)----

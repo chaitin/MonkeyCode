@@ -2,7 +2,7 @@
 // Chat / New Task / Settings 三屏间切换。会话协议状态(WS/帧归约/composer)
 // 收口在 useSession 句柄里;视觉对照「MonkeyCode 桌面应用设计」。
 import { useCallback, useEffect, useRef, useState } from "react";
-import { mcLogin, mcLogout } from "./cloudapi";
+import { mcLogin, mcLogout, mcTaskDelete, mcTaskStop } from "./cloudapi";
 import {
   getHostInfo,
   inDesktopShell,
@@ -40,7 +40,7 @@ import { SettingsView } from "./settings";
 import TitleBar from "./titlebar";
 import { uploadFileURL } from "./uploads";
 import { lastSessionId, useSession } from "./useSession";
-import type { CloudTask, EngineCrash, HostInfo, LogItem, McConnectionState, ModelInfo, SessionMeta, UpdateStatus } from "./types";
+import type { CloudProject, CloudTask, EngineCrash, HostInfo, LogItem, McConnectionState, ModelInfo, SessionMeta, UpdateStatus } from "./types";
 
 /** 内核与页面同机(serve 仅绑 loopback),浏览器 UA 即宿主平台 */
 const IS_MAC = /Mac/.test(navigator.userAgent);
@@ -90,7 +90,10 @@ export default function App() {
   // 百智云登录只用于显式桥接授权;这里独立持有 MonkeyCode 关联态。
   // 任务数组不再以 null 兼任账号状态,空列表只表示“已关联但暂无任务”。
   const [cloudTask, setCloudTaskOpen] = useState<CloudTask | null>(null);
+  /** Web 同款三段数据：快速任务、历史任务、带最近任务的项目。 */
   const [cloudTasks, setCloudTasks] = useState<CloudTask[]>([]);
+  const [cloudHistory, setCloudHistory] = useState<CloudTask[]>([]);
+  const [cloudProjects, setCloudProjects] = useState<CloudProject[]>([]);
   const [mcConnection, setMcConnection] = useState<McConnectionState>({
     phase: "checking",
     host: "monkeycode-ai.com",
@@ -112,12 +115,16 @@ export default function App() {
       if (!st.logged_in) {
         setMcConnection({ phase: "disconnected", host });
         setCloudTasks([]);
+        setCloudHistory([]);
+        setCloudProjects([]);
         return;
       }
       setMcConnection({ phase: "connected", host, user: st.user });
-      // 失败时保留上次列表;账号关联态和列表请求错误分渠道展示。
+      // 三个列表独立容错：失败的部分保留上次结果，成功的部分照常刷新。
+      if (snapshot.tasks !== undefined) setCloudTasks(snapshot.tasks);
+      if (snapshot.historicalTasks !== undefined) setCloudHistory(snapshot.historicalTasks);
+      if (snapshot.projects !== undefined) setCloudProjects(snapshot.projects);
       if (snapshot.taskError) setCloudError(snapshot.taskError);
-      else setCloudTasks(snapshot.tasks);
     } catch (e) {
       if (op !== cloudOp.current) return;
       setMcConnection((cur) => ({
@@ -126,6 +133,8 @@ export default function App() {
         error: e instanceof Error ? e.message : String(e),
       }));
       setCloudTasks([]);
+      setCloudHistory([]);
+      setCloudProjects([]);
     } finally {
       if (op === cloudOp.current) setCloudSyncing(false);
     }
@@ -148,6 +157,8 @@ export default function App() {
         error: e instanceof Error ? e.message : String(e),
       }));
       setCloudTasks([]);
+      setCloudHistory([]);
+      setCloudProjects([]);
     }
   }, [syncCloud]);
 
@@ -161,6 +172,8 @@ export default function App() {
       if (op !== cloudOp.current) return;
       setMcConnection((cur) => ({ phase: "disconnected", host: cur.host }));
       setCloudTasks([]);
+      setCloudHistory([]);
+      setCloudProjects([]);
       setCloudTaskOpen(null);
     } catch (e) {
       if (op !== cloudOp.current) return;
@@ -176,7 +189,7 @@ export default function App() {
   useEffect(() => {
     if (view !== "settings") void syncCloud();
   }, [view, syncCloud]);
-  // 窗口重获焦点即刷新:网页/手机端刚派发的任务切回来就能看到(不等 60s 轮询)
+  // 窗口重获焦点即刷新:网页/手机端刚派发的任务切回来就能看到(不等轮询)
   useEffect(() => {
     const onFocus = () => void syncCloud();
     window.addEventListener("focus", onFocus);
@@ -185,7 +198,7 @@ export default function App() {
   const cloudConnected = mcConnection.phase === "connected";
   useEffect(() => {
     if (!cloudConnected) return;
-    const t = setInterval(() => void syncCloud(), 60_000);
+    const t = setInterval(() => void syncCloud(), 30_000);
     return () => clearInterval(t);
   }, [cloudConnected, syncCloud]);
   // 桌面内打开的云端任务(view === "cloud" 时渲染详情视图)
@@ -198,6 +211,36 @@ export default function App() {
     setCloudTaskOpen(null);
     setView(session.id ? "session" : "new");
     void syncCloud();
+  };
+
+  const stopCloudTask = async (task: CloudTask) => {
+    setCloudError("");
+    try {
+      await mcTaskStop(task.id);
+      await syncCloud();
+    } catch (e) {
+      setCloudError("终止任务失败：" + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
+  const deleteCloudTask = async (task: CloudTask) => {
+    setCloudError("");
+    try {
+      await mcTaskDelete(task.id);
+      setCloudTasks((current) => current.filter((item) => item.id !== task.id));
+      setCloudHistory((current) => current.filter((item) => item.id !== task.id));
+      setCloudProjects((current) => current.map((project) => ({
+        ...project,
+        tasks: project.tasks?.filter((item) => item.id !== task.id),
+      })));
+      if (cloudTask?.id === task.id) {
+        setCloudTaskOpen(null);
+        setView(session.id ? "session" : "new");
+      }
+      await syncCloud();
+    } catch (e) {
+      setCloudError("删除任务失败：" + (e instanceof Error ? e.message : String(e)));
+    }
   };
 
   const refreshSessions = useCallback(async () => {
@@ -567,16 +610,20 @@ export default function App() {
           onUpdate={() => void installUpdate()}
           mcConnection={mcConnection}
           cloudTasks={cloudTasks}
+          cloudHistory={cloudHistory}
+          cloudProjects={cloudProjects}
           activeCloudId={view === "cloud" ? cloudTask?.id ?? null : null}
           cloudSyncing={cloudSyncing}
           cloudError={cloudError}
           onConnectCloud={() => void connectCloud()}
           onRefreshCloud={() => void syncCloud()}
-          onNewCloudTask={() => {
-            setNewTaskPrefill({ mode: "cloud" });
+          onNewCloudTask={(project) => {
+            setNewTaskPrefill({ mode: "cloud", cloudProject: project ?? null });
             setView("new");
           }}
           onOpenCloudTask={openCloudTask}
+          onStopCloudTask={(task) => void stopCloudTask(task)}
+          onDeleteCloudTask={(task) => void deleteCloudTask(task)}
           onSelect={(m) => openSession(m)}
           onNewTask={(dir) => {
             setNewTaskPrefill({ dir, mode: "local" });

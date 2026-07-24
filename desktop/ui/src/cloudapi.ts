@@ -4,7 +4,7 @@
 import { b64encode, frameData } from "./codec";
 import type { McTaskOptions } from "./cloud";
 import { invoke, listenAsync } from "./ipc";
-import type { CloudTaskDetail, CloudTasksResp, Frame, McStatus, McUser, WsCloseInfo } from "./types";
+import type { CloudProjectsResp, CloudTaskDetail, CloudTasksResp, Frame, McStatus, McUser, WsCloseInfo } from "./types";
 
 // ==================== 云端 REST(壳命令代理) ====================
 
@@ -16,8 +16,20 @@ export const mcLogin = () => invoke<{ ok: boolean; user?: McUser }>("mc_login");
 
 export const mcLogout = () => invoke<{ ok: boolean }>("mc_logout");
 
-export const mcTasks = (page = 1, size = 20, status = "") =>
-  invoke<CloudTasksResp>("mc_tasks", { page, size, status });
+export const mcTasks = (
+  page = 1,
+  size = 20,
+  status = "",
+  options: { projectId?: string; quickStart?: boolean } = {},
+) => invoke<CloudTasksResp>("mc_tasks", {
+  page,
+  size,
+  status,
+  projectId: options.projectId ?? null,
+  quickStart: options.quickStart ?? null,
+});
+
+export const mcProjects = () => invoke<CloudProjectsResp>("mc_projects");
 
 export const mcTaskInfo = (id: string) => invoke<CloudTaskDetail>("mc_task_info", { id });
 
@@ -32,6 +44,8 @@ export const mcTaskRounds = (id: string, cursor = "", limit = 1) =>
 
 /** 终止云端任务(区别于流上行 user-cancel:那只中断当前执行)。 */
 export const mcTaskStop = (id: string) => invoke<{ ok: boolean }>("mc_task_stop", { id });
+
+export const mcTaskDelete = (id: string) => invoke<{ ok: boolean }>("mc_task_delete", { id });
 
 /** 创建云端任务(壳补默认值:公共宿主机/opencode/2核8G3小时/官方技能)。 */
 export const mcTaskCreate = (req: {

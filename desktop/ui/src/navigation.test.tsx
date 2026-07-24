@@ -50,6 +50,57 @@ describe("侧栏新建任务入口", () => {
     expect(html).toContain('title="新建云端任务"');
   });
 
+  it("云端按快速任务、历史任务和项目分组，并与本地会话使用同款单行", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => key === "mc.cloudHistoryOpen" ? "1" : null,
+      setItem: vi.fn(),
+    });
+    const html = renderToStaticMarkup(
+      <Sidebar
+        sessions={[]}
+        archivedProjects={new Set()}
+        currentId={null}
+        attention={new Set()}
+        sessionActive={false}
+        connected={false}
+        status="未连接"
+        mcConnection={{ phase: "connected", host: "monkeycode-ai.com" }}
+        cloudTasks={[{ id: "quick-1", title: "快速修复", status: "processing", created_at: 1 }]}
+        cloudHistory={[{ id: "history-1", title: "已经完成", status: "finished", created_at: 2 }]}
+        cloudProjects={[{
+          id: "project-1",
+          name: "MonkeyCode",
+          repo_url: "https://github.com/example/MonkeyCode",
+          tasks: [{ id: "project-task-1", title: "项目任务", status: "pending", created_at: 3 }],
+        }]}
+        activeCloudId="project-task-1"
+        onConnectCloud={() => {}}
+        onRefreshCloud={() => {}}
+        onNewCloudTask={() => {}}
+        onOpenCloudTask={() => {}}
+        onStopCloudTask={() => {}}
+        onDeleteCloudTask={() => {}}
+        onSelect={() => {}}
+        onNewTask={() => {}}
+        onProjectArchive={() => {}}
+        onNewChat={() => {}}
+        onOpenSettings={() => {}}
+        onArchive={() => {}}
+        onDelete={() => {}}
+        onRename={() => {}}
+      />,
+    );
+
+    expect(html).toContain("快速任务");
+    expect(html).toContain("历史任务 · 1");
+    expect(html).toContain("MonkeyCode");
+    expect(html).toContain("项目任务");
+    expect(html).toContain("min-height:34px");
+    expect(html).not.toContain("min-height:50px");
+    expect(html).toContain("右键管理");
+    expect(html).toContain('title="在此项目新建任务"');
+  });
+
   it("云端入口的预填会直接打开云端模式", () => {
     const html = renderToStaticMarkup(
       <NewTaskView
@@ -67,6 +118,24 @@ describe("侧栏新建任务入口", () => {
     expect(html).toContain("云端任务需要先连接 MonkeyCode");
     expect(html).toContain('title="请先连接 MonkeyCode 后再创建云端任务"');
     expect(html).toContain("请先连接");
+  });
+
+  it("从云端项目新建任务时会直接预选该项目", () => {
+    const html = renderToStaticMarkup(
+      <NewTaskView
+        models={[]}
+        lastDir=""
+        recentDirs={[]}
+        prefill={{ mode: "cloud", cloudProject: { id: "p1", name: "MonkeyCode", repo_url: "https://github.com/example/MonkeyCode" } }}
+        cloudReady={false}
+        onCreated={() => {}}
+        onCloudCreated={() => {}}
+      />,
+    );
+
+    expect(html).toContain("MonkeyCode");
+    expect(html).toContain(">MonkeyCode</span>");
+    expect(html).not.toContain(">不关联仓库(快速开始)</span>");
   });
 
   it("对话入口创建不绑定项目的独立会话", () => {

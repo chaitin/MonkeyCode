@@ -42,6 +42,8 @@ export type NewTaskMode = "local" | "cloud" | "chat";
 export interface NewTaskPrefill {
   dir?: string | null;
   mode?: NewTaskMode;
+  /** 云端项目行的 + 号可直接预选项目；null 表示快速任务。 */
+  cloudProject?: McCloudProject | null;
 }
 
 export function NewTaskView({
@@ -172,7 +174,7 @@ export function NewTaskView({
   const [cloudBusy, setCloudBusy] = useState(false);
   const [cloudModelId, setCloudModelId] = useState("");
   const [cloudImageId, setCloudImageId] = useState("");
-  const [cloudProject, setCloudProject] = useState<McCloudProject | null>(null);
+  const [cloudProject, setCloudProject] = useState<McCloudProject | null>(() => prefill?.cloudProject ?? null);
   const [repoOpen, setRepoOpen] = useState(false);
   const [cloudModelOpen, setCloudModelOpen] = useState(false);
 
@@ -191,6 +193,16 @@ export function NewTaskView({
       alive = false;
     };
   }, [mode, cloudReady, cloudOpts]);
+
+  useEffect(() => {
+    if (!prefill || !("cloudProject" in prefill)) return;
+    const requested = prefill.cloudProject ?? null;
+    if (!requested?.id || !cloudOpts) {
+      setCloudProject(requested);
+      return;
+    }
+    setCloudProject(cloudOpts.projects.find((project) => project.id === requested.id) ?? requested);
+  }, [prefill, cloudOpts]);
 
   const cloudModels = cloudOpts ? usableCloudModels(cloudOpts.models, cloudOpts.plan) : [];
   const cloudModelName = (() => {
@@ -225,7 +237,7 @@ export function NewTaskView({
       });
       if (!task?.id) throw new Error("云端未返回任务 ID");
       setText("");
-      onCloudCreated({ id: task.id, content, status: task.status ?? "pending", title: task.title, summary: task.summary });
+      onCloudCreated({ ...task, content: task.content ?? content, status: task.status ?? "pending" });
     } catch (e) {
       setCloudErr("云端任务创建失败: " + (e instanceof Error ? e.message : String(e)));
     } finally {

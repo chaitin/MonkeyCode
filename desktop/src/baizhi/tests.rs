@@ -571,6 +571,54 @@ async fn task_create_defaults_and_overrides() {
     );
 }
 
+/// 桌面云端侧栏与 Web 使用同一组项目/任务管理接口：快速任务筛选、
+/// 项目列表、终止和删除都由壳代理，凭证不进入 UI。
+#[tokio::test(flavor = "multi_thread")]
+async fn cloud_sidebar_and_task_actions_contract() {
+    let captured: Arc<Mutex<Vec<(String, String, Value)>>> = Arc::new(Mutex::new(Vec::new()));
+    let cap = captured.clone();
+    let (url, _stop) = serve(Arc::new(move |req: Req| {
+        cap.lock().unwrap().push((req.method.clone(), req.path.clone(), body_json(&req.body)));
+        match (req.method.as_str(), req.path.split('?').next().unwrap()) {
+            ("GET", "/api/v1/users/tasks") => {
+                Resp::json(200, json!({ "code": 0, "data": { "tasks": [{"id": "t1"}] } }))
+            }
+            ("GET", "/api/v1/users/projects") => {
+                Resp::json(200, json!({ "code": 0, "data": { "projects": [{"id": "p1"}] } }))
+            }
+            ("PUT", "/api/v1/users/tasks/stop") | ("DELETE", "/api/v1/users/tasks/t1") => {
+                Resp::json(200, json!({ "code": 0, "data": {} }))
+            }
+            _ => Resp::json(404, json!({ "code": 1, "message": "not found" })),
+        }
+    }));
+    let svc = Service::test_service(Endpoints {
+        account: url.clone(),
+        model_gateway: url.clone(),
+        mcp_gateway: url.clone(),
+        monkeycode: url,
+    });
+
+    let tasks = super::monkeycode::mc_tasks(&svc, 1, 50, "pending,processing", "p/1", Some(true))
+        .await
+        .map_err(|e| e.msg())
+        .unwrap();
+    assert_eq!(tasks.pointer("/tasks/0/id").and_then(Value::as_str), Some("t1"));
+    let projects = super::monkeycode::mc_projects(&svc).await.map_err(|e| e.msg()).unwrap();
+    assert_eq!(projects.pointer("/projects/0/id").and_then(Value::as_str), Some("p1"));
+    super::monkeycode::mc_task_stop(&svc, "t1").await.map_err(|e| e.msg()).unwrap();
+    super::monkeycode::mc_task_delete(&svc, "t1").await.map_err(|e| e.msg()).unwrap();
+
+    let requests = captured.lock().unwrap();
+    let list = requests.iter().find(|(method, path, _)| method == "GET" && path.starts_with("/api/v1/users/tasks?")).unwrap();
+    assert!(list.1.contains("status=pending%2Cprocessing"));
+    assert!(list.1.contains("project_id=p%2F1"));
+    assert!(list.1.contains("quick_start=true"));
+    assert!(requests.iter().any(|(method, path, _)| method == "GET" && path == "/api/v1/users/projects?limit=50"));
+    assert!(requests.iter().any(|(method, path, body)| method == "PUT" && path == "/api/v1/users/tasks/stop" && body.get("id").and_then(Value::as_str) == Some("t1")));
+    assert!(requests.iter().any(|(method, path, _)| method == "DELETE" && path == "/api/v1/users/tasks/t1"));
+}
+
 // ==================== 微信扫码登录(wechat.rs 刮取链路) ====================
 
 /// 微信授权页(qrconnect)HTML 最小快照,结构取自

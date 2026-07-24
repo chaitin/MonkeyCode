@@ -354,11 +354,31 @@ export interface CloudTask {
   content?: string;
   status?: "pending" | "processing" | "error" | "finished";
   created_at?: number;
+  completed_at?: number;
+  updated_at?: number;
+  extra?: { project_id?: string; [key: string]: unknown };
 }
 
 export interface CloudTasksResp {
   tasks?: CloudTask[];
   page_info?: { total?: number; total_count?: number };
+}
+
+/** 云端项目；列表接口与 Web 侧栏一致，会附带项目下的最近任务。 */
+export interface CloudProject {
+  id?: string;
+  name?: string;
+  description?: string;
+  full_name?: string;
+  repo_url?: string;
+  created_at?: number;
+  updated_at?: number;
+  tasks?: CloudTask[];
+}
+
+export interface CloudProjectsResp {
+  projects?: CloudProject[];
+  page?: { cursor?: string; has_more?: boolean };
 }
 
 /** 云端任务详情(ProjectTask 子集;VM 准备进度在 virtualmachine.conditions)。 */
