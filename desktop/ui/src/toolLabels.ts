@@ -155,6 +155,16 @@ function inputRecord(input: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function nestedInput(input: unknown, keys: string[]): unknown {
+  let value = input;
+  for (const key of keys) {
+    const source = inputRecord(value);
+    if (!source) return undefined;
+    value = source[key];
+  }
+  return value;
+}
+
 function inputValue(input: Record<string, unknown>, key: string): string {
   const value = input[key];
   if (typeof value === "string") return value;
@@ -167,10 +177,32 @@ function joinedInput(input: Record<string, unknown>, keys: string[]): string {
   return keys.map((key) => inputValue(input, key)).filter(Boolean).join(" · ");
 }
 
+function commandInput(input: Record<string, unknown>): string {
+  if (typeof input.command === "string") return input.command;
+  if (Array.isArray(input.command)) {
+    for (let i = input.command.length - 1; i >= 0; i--) {
+      const value = input.command[i];
+      if (typeof value === "string" && value.trim()) return value;
+    }
+  }
+  if (Array.isArray(input.parsed_cmd)) {
+    for (const value of input.parsed_cmd) {
+      const parsed = inputRecord(value);
+      if (parsed) {
+        const command = inputValue(parsed, "cmd");
+        if (command) return command;
+      }
+    }
+  }
+  return "";
+}
+
 /** 完整 rawInput → 卡片的主目标；不展示 Write.content/Edit.new_string 等大段正文。 */
-function structuredTarget(rawTool: string, rawInput: unknown): { target: string; kind: ToolTargetKind } | null {
-  const input = inputRecord(rawInput);
-  if (!input) return null;
+function structuredTarget(rawTool: string, rawInput: unknown, toolKind?: string, meta?: unknown): { target: string; kind: ToolTargetKind } | null {
+  const input = inputRecord(rawInput) ?? {};
+  const toolResponse = nestedInput(meta, ["claudeCode", "toolResponse"]);
+  const metaPath = inputValue(inputRecord(toolResponse) ?? {}, "filePath")
+    || inputValue(inputRecord(nestedInput(toolResponse, ["file"])) ?? {}, "filePath");
 
   const mcp = mcpParts(rawTool);
   if (mcp && ["mc-browser", "browser", "playwright"].includes(mcp.service.toLowerCase())) {
@@ -200,7 +232,7 @@ function structuredTarget(rawTool: string, rawInput: unknown): { target: string;
     case "Read":
     case "Write":
     case "Edit":
-      return { target: joinedInput(input, ["file_path", "path"]), kind: "path" };
+      return { target: joinedInput(input, ["file_path", "filePath", "path"]) || metaPath, kind: "path" };
     case "NotebookEdit":
       return { target: joinedInput(input, ["notebook_path", "file_path"]), kind: "path" };
     case "LSP":
@@ -208,7 +240,7 @@ function structuredTarget(rawTool: string, rawInput: unknown): { target: string;
     case "Bash":
     case "Cmd":
     case "PowerShell":
-      return { target: inputValue(input, "command"), kind: "code" };
+      return { target: commandInput(input), kind: "code" };
     case "Grep":
     case "Glob":
       return { target: joinedInput(input, ["pattern", "path"]), kind: "code" };
@@ -237,9 +269,43 @@ function structuredTarget(rawTool: string, rawInput: unknown): { target: string;
       return { target: joinedInput(input, ["to", "target"]), kind: "text" };
   }
 
-  for (const key of ["file_path", "path", "command", "pattern", "query", "url", "description", "name", "id"]) {
-    const target = inputValue(input, key);
-    if (target) return { target, kind: key === "file_path" || key === "path" ? "path" : key === "command" ? "code" : "text" };
+  switch (toolKind) {
+    case "read":
+    case "edit":
+    case "create":
+    case "delete":
+    case "move": {
+      const path = joinedInput(input, ["file_path", "filePath", "path"]) || metaPath;
+      if (path) return { target: path, kind: "path" };
+      if (Array.isArray(input.parsed_cmd)) {
+        for (const value of input.parsed_cmd) {
+          const parsed = inputRecord(value);
+          const parsedPath = parsed ? inputValue(parsed, "path") : "";
+          if (parsedPath) return { target: parsedPath, kind: "path" };
+        }
+      }
+      break;
+    }
+    case "execute": {
+      const command = commandInput(input);
+      if (command) return { target: command, kind: "code" };
+      break;
+    }
+    case "search": {
+      const target = joinedInput(input, ["pattern", "path"]) || commandInput(input);
+      if (target) return { target, kind: "code" };
+      break;
+    }
+    case "fetch": {
+      const url = inputValue(input, "url");
+      if (url) return { target: url, kind: "text" };
+      break;
+    }
+  }
+
+  for (const key of ["file_path", "filePath", "path", "command", "pattern", "query", "url", "description", "name", "id"]) {
+    const target = key === "command" ? commandInput(input) : inputValue(input, key);
+    if (target) return { target, kind: key === "file_path" || key === "filePath" || key === "path" ? "path" : key === "command" ? "code" : "text" };
   }
   return null;
 }
@@ -282,18 +348,51 @@ export function localizeToolTitle(title: string, locale: ToolLocale = DEFAULT_TO
   };
 }
 
-/** 标题决定动作，结构化入参决定完整目标；旧 journal 无 rawInput 时自动回退标题。 */
+export interface ToolPresentationOptions {
+  locale?: ToolLocale;
+  /** 云端 ACP 的语义类型；标题不是标准本地工具名时用于统一动作名。 */
+  toolKind?: string;
+  /** Claude 等 CLI 把文件路径补充在 provider metadata 中。 */
+  meta?: unknown;
+}
+
+function actionForKind(kind: string | undefined, locale: ToolLocale): string {
+  const en: Record<string, string> = {
+    read: "Read file", edit: "Edit file", create: "Write file", execute: "Run command",
+    search: "Search content", fetch: "Fetch web page", delete: "Delete file", move: "Move file", think: "Think",
+  };
+  const zh: Record<string, string> = {
+    read: "读取文件", edit: "编辑文件", create: "写入文件", execute: "执行命令",
+    search: "搜索内容", fetch: "读取网页", delete: "删除文件", move: "移动文件", think: "思考",
+  };
+  return (locale === "en" ? en : zh)[kind ?? ""] ?? "";
+}
+
+/** 标题决定动作，结构化入参决定完整目标；云端 kind 补足非标准标题。 */
 export function presentToolCall(
   title: string,
   rawInput?: unknown,
-  locale: ToolLocale = DEFAULT_TOOL_LOCALE,
+  options: ToolLocale | ToolPresentationOptions = DEFAULT_TOOL_LOCALE,
 ): ToolPresentation {
+  const locale = typeof options === "string" ? options : options.locale ?? DEFAULT_TOOL_LOCALE;
+  const toolKind = typeof options === "string" ? undefined : options.toolKind;
+  const meta = typeof options === "string" ? undefined : options.meta;
   const base = localizeToolTitle(title, locale);
-  const structured = structuredTarget(base.rawTool, rawInput);
+  const structured = structuredTarget(base.rawTool, rawInput, toolKind, meta);
+  const kindAction = actionForKind(toolKind, locale);
+  const titleHasSpecificAction = !!ZH_TOOL_LABELS[base.rawTool]
+    || !!mcpParts(base.rawTool)
+    || /[\u3400-\u9fff]/.test(base.rawTool);
   return {
     ...base,
+    action: kindAction && !titleHasSpecificAction ? kindAction : base.action,
     target: structured?.target ?? base.target,
-    targetKind: structured?.kind ?? (base.rawTool === "Read" || base.rawTool === "Write" || base.rawTool === "Edit" ? "path" : "text"),
+    targetKind: structured?.kind ?? (
+      base.rawTool === "Read" || base.rawTool === "Write" || base.rawTool === "Edit"
+      || ["read", "edit", "create", "delete", "move"].includes(toolKind ?? "")
+        ? "path"
+        : toolKind === "execute" ? "code" : "text"
+    ),
   };
 }
 

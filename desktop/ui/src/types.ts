@@ -88,13 +88,16 @@ export type Frame = { type: string; data?: unknown } & Partial<Omit<WireFrame, "
 /** task-running 帧内的 ACP 风格 sessionUpdate */
 export interface AcpUpdate {
   sessionUpdate: string;
-  content?: { text?: string };
+  /** 文本分片通常是 {text};云端工具结果也会使用 content block 数组。 */
+  content?: unknown;
   toolCallId?: string;
   title?: string;
   kind?: string;
   status?: string;
   rawInput?: unknown;
   rawOutput?: unknown;
+  /** 云端 ACP 工具可能附带命中的文件位置。 */
+  locations?: unknown;
   /** ask_user_question 的兜底载荷位置(部分 CLI 把问题放在 _meta 里) */
   _meta?: unknown;
   entries?: PlanEntry[];
@@ -166,6 +169,12 @@ export type LogItem =
       title: string;
       /** 工具的完整结构化入参；卡片优先用它展示路径/命令/查询 */
       rawInput?: unknown;
+      /** ACP kind 以及完整结构化结果；本地和云端共用详情解析。 */
+      toolKind?: string;
+      rawOutput?: unknown;
+      content?: unknown;
+      locations?: unknown;
+      _meta?: unknown;
       status: "run" | "ok" | "fail";
       out: string;
       /** 工具开始帧时间；与结束帧时间共同计算耗时，旧记录可缺省。 */

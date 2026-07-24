@@ -57,6 +57,32 @@ describe("工具标题本地化", () => {
     });
   });
 
+  it("云端 kind 与 camelCase 入参复用本地动作和路径样式", () => {
+    expect(presentToolCall("opencode_read", { filePath: "/workspace/src/app.ts" }, { toolKind: "read" })).toEqual({
+      action: "读取文件",
+      target: "/workspace/src/app.ts",
+      targetKind: "path",
+      rawTool: "opencode_read",
+    });
+    expect(presentToolCall("read", {}, {
+      toolKind: "read",
+      meta: { claudeCode: { toolResponse: { file: { filePath: "/workspace/README.md" } } } },
+    })).toMatchObject({ action: "读取文件", target: "/workspace/README.md", targetKind: "path" });
+  });
+
+  it("云端命令数组和 parsed_cmd 都提取实际命令", () => {
+    expect(presentToolCall("shell", { command: ["cd /workspace", "npm test"] }, { toolKind: "execute" })).toMatchObject({
+      action: "执行命令",
+      target: "npm test",
+      targetKind: "code",
+    });
+    expect(presentToolCall("shell", { parsed_cmd: [{ cmd: "rg TODO src" }] }, { toolKind: "search" })).toMatchObject({
+      action: "搜索内容",
+      target: "rg TODO src",
+      targetKind: "code",
+    });
+  });
+
   it("浏览器 MCP 按具体操作展示，不显示内部服务名", () => {
     expect(presentToolCall("mcp__mc-browser__browser_navigate", { url: "https://example.com" })).toEqual({
       action: "打开网页",

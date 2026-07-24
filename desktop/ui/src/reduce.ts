@@ -1,6 +1,7 @@
 // 帧 → 对话流渲染项的归约:流式文本聚合、工具状态回写、审批卡片终态、
 // AI 提问卡(ask_user_question)等。纯函数,不触 DOM。
 import { b64decode, frameData } from "./codec";
+import { toolContentText, toolResultText } from "./toolDetails";
 import type { AcpUpdate, AskQuestion, Frame, LogItem, PermOutcome, PlanEntry, SubEntry, ToolProgress, Usage } from "./types";
 
 export interface ChatState {
@@ -71,6 +72,51 @@ function expirePerms(items: LogItem[]): LogItem[] {
   return items.map((it) =>
     (it.kind === "perm" || it.kind === "ask") && it.state === "open" ? { ...it, state: "expired" } : it,
   );
+}
+
+type ToolItem = Extract<LogItem, { kind: "tool" }>;
+type UnknownRecord = Record<string, unknown>;
+
+function unknownRecord(value: unknown): UnknownRecord | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : null;
+}
+
+/** 云端 _meta 会分多帧补齐，递归合并，避免后一个状态帧擦掉前面的 diff 信息。 */
+function mergeUnknown(previous: unknown, next: unknown): unknown {
+  if (next === undefined) return previous;
+  const left = unknownRecord(previous);
+  const right = unknownRecord(next);
+  if (!left || !right) return next;
+  const merged: UnknownRecord = { ...left };
+  for (const [key, value] of Object.entries(right)) merged[key] = mergeUnknown(left[key], value);
+  return merged;
+}
+
+function mergeToolUpdate(item: ToolItem, update: AcpUpdate): ToolItem {
+  return {
+    ...item,
+    ...(update.title ? { title: update.title } : {}),
+    ...(update.kind !== undefined ? { toolKind: update.kind } : {}),
+    ...(update.rawInput !== undefined ? { rawInput: update.rawInput } : {}),
+    ...(update.rawOutput !== undefined ? { rawOutput: update.rawOutput } : {}),
+    ...(update.content !== undefined ? { content: update.content } : {}),
+    ...(update.locations !== undefined ? { locations: update.locations } : {}),
+    ...(update._meta !== undefined ? { _meta: mergeUnknown(item._meta, update._meta) } : {}),
+    ...(Array.isArray(update.images) ? { images: update.images } : {}),
+  };
+}
+
+function mergeToolInState(s: ChatState, tcId: string, update: AcpUpdate): ChatState {
+  const items = s.items.slice();
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    if (item.kind !== "tool" || item.tcId !== tcId) continue;
+    items[i] = mergeToolUpdate(item, update);
+    return { ...s, items };
+  }
+  return s;
 }
 
 // ==================== AI 提问(ask_user_question,对齐 mobile handler.ts) ====================
@@ -213,22 +259,32 @@ function applyProgress(s: ChatState, tcId: string, p: ToolProgress): ChatState {
 function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
   switch (u.sessionUpdate) {
     case "agent_message_chunk":
-      return appendStream(s, "agent", u.content?.text ?? "", timestamp);
+      return appendStream(s, "agent", toolContentText(u.content), timestamp);
     case "agent_thought_chunk":
-      return appendStream(s, "thought", u.content?.text ?? "");
+      return appendStream(s, "thought", toolContentText(u.content));
     case "tool_call": {
       // 云端 CLI 的"向用户提问"以 tool_call 形态出现,渲染为提问卡而非工具卡
       const askQs = isAskToolCall(u);
       if (askQs && u.toolCallId) return upsertAsk(s, u.toolCallId, askQs, u.status === "completed");
-      return push(s, {
+      const next = push(s, {
         kind: "tool",
         tcId: u.toolCallId ?? "",
         title: u.title || u.kind || "工具调用",
         ...(u.rawInput !== undefined ? { rawInput: u.rawInput } : {}),
+        ...(u.kind !== undefined ? { toolKind: u.kind } : {}),
+        ...(u.rawOutput !== undefined ? { rawOutput: u.rawOutput } : {}),
+        ...(u.content !== undefined ? { content: u.content } : {}),
+        ...(u.locations !== undefined ? { locations: u.locations } : {}),
+        ...(u._meta !== undefined ? { _meta: u._meta } : {}),
+        ...(Array.isArray(u.images) ? { images: u.images } : {}),
         ...(timestamp !== undefined ? { startedAt: timestamp } : {}),
         status: "run",
         out: "",
       });
+      // 部分云端历史把完整终态直接放在 tool_call，而不再单独补 update。
+      return u.status === "completed" || u.status === "failed" || u.status === "error" || u.status === "cancelled"
+        ? reduceAcp(next, { ...u, sessionUpdate: "tool_call_update" })
+        : u.progress ? applyProgress(next, u.toolCallId ?? "", u.progress) : next;
     }
     case "tool_call_update": {
       const askQs = isAskToolCall(u);
@@ -243,10 +299,12 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
           ),
         };
       }
-      if (u.status === "in_progress") {
+      const terminal = u.status === "completed" || u.status === "failed" || u.status === "error" || u.status === "cancelled";
+      if (!terminal) {
         // 注:已闭合卡也接受 progress——显式转后台的 Agent 卡先以
         // "已转入后台"文案 completed,后台代理继续流式,进度窗照常直播
-        return u.progress ? applyProgress(s, u.toolCallId ?? "", u.progress) : s;
+        const merged = mergeToolInState(s, u.toolCallId ?? "", u);
+        return u.progress ? applyProgress(merged, u.toolCallId ?? "", u.progress) : merged;
       }
       // 终态可重复回写:后台 Agent 卡的真实结果随 task_notification 迟到,
       // 驱动补发终态帧回填——后到者权威,直接覆写
@@ -254,9 +312,10 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
       for (let i = items.length - 1; i >= 0; i--) {
         const it = items[i];
         if (it.kind === "tool" && it.tcId === u.toolCallId) {
-          const raw = typeof u.rawOutput === "string" ? u.rawOutput : "";
+          const merged = mergeToolUpdate(it, u);
+          const raw = toolResultText(merged.rawOutput, merged.content);
           const out = raw.split("\n")[0].slice(0, 160);
-          const images = Array.isArray(u.images) ? (u.images as string[]) : it.images;
+          const images = merged.images;
           const durationMs = it.durationMs ?? (
             timestamp !== undefined && it.startedAt !== undefined && timestamp >= it.startedAt
               ? timestamp - it.startedAt
@@ -267,13 +326,13 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
           if (backgroundLaunch) {
             // Agent 工具调用虽已返回 completed,子代理仍在后台执行:卡片视觉
             // 上保持运行态,最终正文到达时再作为独立对话项展示。
-            items[i] = { ...it, status: "run", out: "后台运行中", result: undefined, images, lastLine: undefined, background: true };
+            items[i] = { ...merged, status: "run", out: "后台运行中", result: undefined, images, lastLine: undefined, background: true };
             break;
           }
           if (it.background) {
             const error = u.status !== "completed";
             items[i] = {
-              ...it,
+              ...merged,
               status: error ? "fail" : "ok",
               out: error ? "后台执行失败" : "后台执行完成",
               result: raw,
@@ -286,7 +345,7 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
           }
           // 完整结果一并保留:子代理卡把最终产出按 markdown 展示,
           // 普通工具卡仅在失败时外显首行摘要
-          items[i] = { ...it, status: u.status === "completed" ? "ok" : "fail", out, result: raw, images, ...timing, lastLine: undefined };
+          items[i] = { ...merged, status: u.status === "completed" ? "ok" : "fail", out, result: raw, images, ...timing, lastLine: undefined };
           break;
         }
       }

@@ -70,6 +70,60 @@ describe("工具调用生命周期", () => {
     expect(toolItem(s, "t1").rawInput).toEqual(rawInput);
   });
 
+  it("云端工具跨状态帧保留结构化详情并合并 metadata", () => {
+    const content = [{ type: "content", content: { type: "text", text: "流式正文" } }];
+    const rawOutput = { output: "文件正文\n第二行" };
+    const locations = [{ path: "/workspace/src/app.ts", line: 3 }];
+    const s = run([
+      acp({
+        sessionUpdate: "tool_call",
+        toolCallId: "cloud-read",
+        title: "opencode_read",
+        kind: "read",
+        rawInput: { filePath: "/workspace/src/app.ts" },
+        _meta: { provider: { requestId: "req-1" } },
+      }),
+      acp({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "cloud-read",
+        status: "in_progress",
+        content,
+        _meta: { provider: { phase: "reading" } },
+      }),
+      acp({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "cloud-read",
+        status: "completed",
+        rawOutput,
+        locations,
+      }),
+    ]);
+    expect(toolItem(s, "cloud-read")).toMatchObject({
+      toolKind: "read",
+      rawInput: { filePath: "/workspace/src/app.ts" },
+      rawOutput,
+      content,
+      locations,
+      _meta: { provider: { requestId: "req-1", phase: "reading" } },
+      status: "ok",
+      out: "文件正文",
+      result: "文件正文\n第二行",
+    });
+  });
+
+  it("云端历史把终态直接放在 tool_call 时立即闭合卡片", () => {
+    const s = run([acp({
+      sessionUpdate: "tool_call",
+      toolCallId: "cloud-complete",
+      title: "read",
+      kind: "read",
+      status: "completed",
+      rawInput: { filePath: "/workspace/a.ts" },
+      rawOutput: { output: "const a = 1" },
+    })]);
+    expect(toolItem(s, "cloud-complete")).toMatchObject({ status: "ok", out: "const a = 1", result: "const a = 1" });
+  });
+
   it("起止帧都有时间时记录工具最终耗时", () => {
     const s = run([
       { ...acp({ sessionUpdate: "tool_call", toolCallId: "timed", title: "Read a.txt" }), timestamp: 1_000 },

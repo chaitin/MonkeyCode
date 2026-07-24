@@ -36,6 +36,21 @@ describe("ToolCard", () => {
     expect(html).toContain("var(--err)");
   });
 
+  it("云端结构化工具使用同一张卡并提供可展开详情", () => {
+    const html = renderToStaticMarkup(<ToolCard item={tool({
+      title: "opencode_read",
+      toolKind: "read",
+      rawInput: { filePath: "/workspace/src/app.ts" },
+      rawOutput: { output: "export const app = true" },
+      result: "export const app = true",
+    })} workdir="/workspace" />);
+
+    expect(html).toContain("读取文件");
+    expect(html).toContain("src/app.ts");
+    expect(html).toContain('aria-label="展开工具详情"');
+    expect(html).not.toContain("export const app = true");
+  });
+
   it("相邻工具调用共享一个外框并去掉间距", () => {
     const html = renderToStaticMarkup(
       <LogList

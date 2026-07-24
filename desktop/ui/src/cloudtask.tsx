@@ -220,7 +220,7 @@ export function CloudTaskView({
               {ended ? "没有可回放的对话记录。" : h.status}
             </div>
           )}
-          <LogList items={chat.items} onPermAnswer={() => {}} onAskAnswer={ended ? undefined : h.answerAsk} />
+          <LogList items={chat.items} onPermAnswer={() => {}} onAskAnswer={ended ? undefined : h.answerAsk} workdir="/workspace" />
         </div>
       </div>
 

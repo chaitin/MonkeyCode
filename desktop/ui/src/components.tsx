@@ -44,6 +44,7 @@ import {
 } from "./icons";
 import { resolveMarkdownResource } from "./markdownPaths";
 import { permAnchors } from "./reduce";
+import { toolDetailFor } from "./toolDetails";
 import { localizedToolTitleText, presentToolCall, toolDisplayName, type ToolTargetKind } from "./toolLabels";
 import type { LogItem, PlanEntry } from "./types";
 
@@ -493,6 +494,7 @@ export function ToolCard({
 }) {
   const [zoom, setZoom] = useState<string | null>(null);
   const [showAgentResult, setShowAgentResult] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
   const feed = item.feed ?? [];
   // 子代理运行时卡内直播少量进度;完成后无论同步/后台都收成单行,
   // 完整过程与最终产出统一从子会话查看。
@@ -506,10 +508,12 @@ export function ToolCard({
   const summary = agentResult && !canOpenChild && showAgentResult ? agentResult : "";
   const images = uploadUrl && !(agentFinished && canOpenChild) ? (item.images ?? []) : [];
   // 动作取标题，目标优先取完整 rawInput；旧 journal 自动回退标题。
-  const presentation = presentToolCall(item.title, item.rawInput);
+  const presentation = presentToolCall(item.title, item.rawInput, { toolKind: item.toolKind, meta: item._meta });
   const fullTarget = presentation.target;
   const target = presentation.targetKind === "path" ? stripWorkdir(fullTarget, workdir) : fullTarget;
   const { action, targetKind } = presentation;
+  // 子代理沿用“子会话/查看结果”；其余本地与云端工具统一走结构化详情。
+  const detail = !isAgentCard && item.status !== "run" ? toolDetailFor(item) : null;
   const duration = formatToolDuration(item.durationMs);
   const stepRow: CSSProperties = {
     display: "flex",
@@ -558,6 +562,23 @@ export function ToolCard({
               {showAgentResult ? "收起结果" : "查看结果"}
             </button>
           )}
+          {detail && (
+            <button
+              type="button"
+              className="hv-t1"
+              aria-label={showDetail ? "收起工具详情" : "展开工具详情"}
+              aria-expanded={showDetail}
+              title={showDetail ? "收起详情" : "查看详情"}
+              onClick={() => setShowDetail((value) => !value)}
+              style={{ width: 20, height: 20, padding: 0, border: 0, borderRadius: 5, background: "transparent", display: "grid", placeItems: "center", cursor: "pointer" }}
+            >
+              <IconChevronRight
+                size={9}
+                color="var(--t5)"
+                style={{ transform: showDetail ? "rotate(90deg)" : "none", transition: "transform .15s ease" }}
+              />
+            </button>
+          )}
         </div>
       </div>
       {visible.length > 0 && (
@@ -589,6 +610,20 @@ export function ToolCard({
       {summary && (
         <div style={{ marginLeft: 5, borderLeft: "2px solid var(--line)", padding: "2px 0 2px 13px" }}>
           <Markdown text={summary} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />
+        </div>
+      )}
+      {showDetail && detail && (
+        <div
+          aria-label="工具详情"
+          style={{ margin: "2px 0 0 15px", maxHeight: "50vh", overflow: "auto", border: "1px solid var(--line2)", borderRadius: 8, background: "var(--codeBg)" }}
+        >
+          {detail.kind === "diff" ? (
+            <DiffPanel text={detail.text} />
+          ) : (
+            <pre style={{ margin: 0, padding: "10px 12px", font: "11.5px/1.7 " + MONO, color: "var(--t3)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+              {detail.text}
+            </pre>
+          )}
         </div>
       )}
       {item.status === "run" && item.lastLine && (
