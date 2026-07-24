@@ -394,7 +394,8 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 }
 .md-table-scroll:focus-visible { outline: 2px solid var(--accBd); outline-offset: 2px; }
 .md-table-scroll table {
-  width: max-content;
+  width: auto;
+  max-width: 100%;
   margin: 0;
   border-collapse: collapse;
 }
@@ -404,8 +405,7 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   vertical-align: top;
 }
 .md-table-cell {
-  width: max-content;
-  max-width: min(32ch, 70vw);
+  min-width: 8ch;
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: normal;
