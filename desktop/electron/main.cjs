@@ -1,12 +1,17 @@
-const { app, BrowserWindow, shell, dialog, Menu } = require("electron")
+const { app, BrowserWindow, shell, dialog, Menu, ipcMain, safeStorage } = require("electron")
+const { randomUUID } = require("crypto")
 const fs = require("fs")
+const os = require("os")
 const path = require("path")
+const WebSocket = require("ws")
 
 const isDev = !app.isPackaged
 const DEFAULT_PROD_URL = "https://monkeycode-ai.com"
 const ERR_ABORTED = -3
 /** 桌面端启动路径（相对站点根），可用 MONKEYCODE_DESKTOP_START_PATH 覆盖 */
 const START_PATH = (process.env.MONKEYCODE_DESKTOP_START_PATH || "/console/").replace(/\/$/, "") || "/console"
+const ENDPOINT_MAX_FRAME_BYTES = 256 * 1024
+const endpointConnections = new Map()
 
 function desktopEntryUrl(base) {
   const href = (base || "").trim() || DEFAULT_PROD_URL
@@ -45,6 +50,145 @@ function ensureWindowVisible(win, ms = 2000) {
 
 function isBenignLoadFailure(code, desc) {
   return code === ERR_ABORTED || desc === "ERR_ABORTED"
+}
+
+function endpointIdentityPath() {
+  return path.join(app.getPath("userData"), "endpoint-machine-id")
+}
+
+function endpointMachineId() {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("操作系统安全存储不可用")
+  }
+  const filename = endpointIdentityPath()
+  try {
+    const encrypted = fs.readFileSync(filename)
+    const machineId = safeStorage.decryptString(encrypted)
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(machineId)) {
+      return machineId
+    }
+  } catch {
+    // 首次安装或本地安全存储已失效时生成新标识。
+  }
+  const machineId = randomUUID()
+  fs.mkdirSync(path.dirname(filename), { recursive: true })
+  fs.writeFileSync(filename, safeStorage.encryptString(machineId), { mode: 0o600 })
+  return machineId
+}
+
+function endpointBaseUrl(sender, requested) {
+  const senderUrl = new URL(sender.getURL())
+  if (senderUrl.protocol === "http:" || senderUrl.protocol === "https:") {
+    const base = new URL(requested || senderUrl.origin)
+    if (base.origin !== senderUrl.origin) throw new Error("桥接地址必须与客户端页面同源")
+    return base
+  }
+  const configured = new URL(process.env.MONKEYCODE_DESKTOP_URL || DEFAULT_PROD_URL)
+  if (requested && new URL(requested).origin !== configured.origin) {
+    throw new Error("桥接地址不受信任")
+  }
+  return configured
+}
+
+async function startEndpointBridge(event, requestedBaseUrl) {
+  const sender = event.sender
+  stopEndpointBridge(sender.id)
+  const base = endpointBaseUrl(sender, requestedBaseUrl)
+  const entry = {
+    sender,
+    base,
+    socket: null,
+    timer: null,
+    attempt: 0,
+    stableSince: 0,
+    stopped: false,
+  }
+  endpointConnections.set(sender.id, entry)
+  try {
+    await connectEndpointBridge(entry)
+  } catch (error) {
+    stopEndpointBridge(sender.id)
+    throw error
+  }
+  return { machine_id: endpointMachineId() }
+}
+
+async function connectEndpointBridge(entry) {
+  if (entry.stopped || entry.sender.isDestroyed()) return
+  const { sender, base } = entry
+  const cookies = await sender.session.cookies.get({ url: base.origin })
+  const cookieHeader = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ")
+  const wsUrl = new URL("/api/v1/endpoints/connect", base)
+  wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:"
+  const socket = new WebSocket(wsUrl, {
+    headers: cookieHeader ? { Cookie: cookieHeader } : undefined,
+    maxPayload: ENDPOINT_MAX_FRAME_BYTES,
+    perMessageDeflate: false,
+  })
+  entry.socket = socket
+  socket.on("open", () => {
+    if (entry.stopped || entry.socket !== socket) return
+    entry.stableSince = Date.now()
+    const platform = process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : process.platform
+    socket.send(JSON.stringify({
+      type: "hello",
+      protocol_versions: [1],
+      machine_id: endpointMachineId(),
+      profile: {
+        device_name: os.hostname(),
+        platform,
+        os_version: os.release(),
+        arch: process.arch,
+        client_version: app.getVersion(),
+      },
+    }))
+  })
+  socket.on("message", (data, isBinary) => {
+    if (isBinary || data.byteLength > ENDPOINT_MAX_FRAME_BYTES || sender.isDestroyed()) return
+    sender.send("endpoint-bridge-message", data.toString("utf8"))
+  })
+  socket.on("close", (code, reason) => {
+    if (entry.socket === socket) entry.socket = null
+    if (!sender.isDestroyed()) {
+      sender.send("endpoint-bridge-close", { code, reason: reason.toString("utf8") })
+    }
+    if (entry.stopped || ![1006, 1011, 1012, 1013].includes(code)) return
+    if (entry.stableSince > 0 && Date.now() - entry.stableSince >= 60_000) entry.attempt = 0
+    const delays = [500, 1000, 2000, 4000, 8000, 16_000, 30_000]
+    const baseDelay = delays[Math.min(entry.attempt, delays.length - 1)]
+    entry.attempt += 1
+    entry.timer = setTimeout(() => {
+      entry.timer = null
+      void connectEndpointBridge(entry).catch((error) => {
+        if (!sender.isDestroyed()) sender.send("endpoint-bridge-error", error.message)
+      })
+    }, Math.round(baseDelay * (0.8 + Math.random() * 0.4)))
+  })
+  socket.on("error", (error) => {
+    if (!sender.isDestroyed()) sender.send("endpoint-bridge-error", error.message)
+  })
+}
+
+function stopEndpointBridge(senderId) {
+  const entry = endpointConnections.get(senderId)
+  if (!entry) return
+  endpointConnections.delete(senderId)
+  entry.stopped = true
+  if (entry.timer) clearTimeout(entry.timer)
+  entry.socket?.close(1000, "client stopped")
+}
+
+function sendEndpointMessage(event, message) {
+  const entry = endpointConnections.get(event.sender.id)
+  if (!entry?.socket || entry.socket.readyState !== WebSocket.OPEN) throw new Error("端点桥接连接尚未就绪")
+  if (typeof message !== "string" || Buffer.byteLength(message, "utf8") > ENDPOINT_MAX_FRAME_BYTES) {
+    throw new Error("端点消息无效或超过大小限制")
+  }
+  const envelope = JSON.parse(message)
+  if (!["event", "request", "response"].includes(envelope?.type)) {
+    throw new Error("端点消息类型无效")
+  }
+  entry.socket.send(message)
 }
 
 function createWindow() {
@@ -124,12 +268,19 @@ if (!gotLock) {
       const icon = windowIconPath()
       if (icon) app.dock.setIcon(icon)
     }
+    ipcMain.handle("endpoint-bridge-start", startEndpointBridge)
+    ipcMain.handle("endpoint-bridge-stop", (event) => stopEndpointBridge(event.sender.id))
+    ipcMain.handle("endpoint-bridge-send", sendEndpointMessage)
     createWindow()
   })
 }
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit()
+})
+
+app.on("web-contents-created", (_event, contents) => {
+  contents.once("destroyed", () => stopEndpointBridge(contents.id))
 })
 
 app.on("activate", () => {

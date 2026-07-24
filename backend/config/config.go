@@ -61,9 +61,10 @@ type Config struct {
 	// Aliyun mirrors mcai-backend's aliyun.public_oss block so the agent-
 	// resources Resolver can fall back to that bucket when ObjectStorage is
 	// disabled (the same OSS that admin-new writes assets into). Optional.
-	Aliyun        AliyunConfig      `mapstructure:"aliyun"`
-	StaticFiles   StaticFilesConfig `mapstructure:"static_files"`
-	HostInstaller HostInstaller     `mapstructure:"host_installer"`
+	Aliyun         AliyunConfig      `mapstructure:"aliyun"`
+	StaticFiles    StaticFilesConfig `mapstructure:"static_files"`
+	HostInstaller  HostInstaller     `mapstructure:"host_installer"`
+	EndpointBridge EndpointBridge    `mapstructure:"endpoint_bridge"`
 
 	// Context7 API 配置
 	Context7ApiKey string `mapstructure:"context7_api_key"`
@@ -101,6 +102,20 @@ type Security struct {
 type ReviewAgent struct {
 	ModelID string `mapstructure:"model_id"`
 	Image   string `mapstructure:"image"`
+}
+
+type EndpointBridge struct {
+	InstanceID        string   `mapstructure:"instance_id"`
+	AllowedOrigins    []string `mapstructure:"allowed_origins"`
+	MaxEndpoints      int      `mapstructure:"max_endpoints"`
+	MaxFrameBytes     int64    `mapstructure:"max_frame_bytes"`
+	QueueMessages     int      `mapstructure:"queue_messages"`
+	QueueBytes        int64    `mapstructure:"queue_bytes"`
+	MessageRate       int      `mapstructure:"message_rate"`
+	ByteRate          int64    `mapstructure:"byte_rate"`
+	HeartbeatInterval string   `mapstructure:"heartbeat_interval"`
+	HeartbeatTimeout  string   `mapstructure:"heartbeat_timeout"`
+	PresenceTTL       string   `mapstructure:"presence_ttl"`
 }
 
 type OAuthLoginConfig struct {
@@ -398,6 +413,17 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("static_files.route_prefix", "/static")
 	v.SetDefault("host_installer.mode", "online")
 	v.SetDefault("host_installer.bundle_path", "installer/{{.arch}}/host.tgz")
+	v.SetDefault("endpoint_bridge.instance_id", "")
+	v.SetDefault("endpoint_bridge.allowed_origins", []string{})
+	v.SetDefault("endpoint_bridge.max_endpoints", 20)
+	v.SetDefault("endpoint_bridge.max_frame_bytes", 256<<10)
+	v.SetDefault("endpoint_bridge.queue_messages", 128)
+	v.SetDefault("endpoint_bridge.queue_bytes", 4<<20)
+	v.SetDefault("endpoint_bridge.message_rate", 100)
+	v.SetDefault("endpoint_bridge.byte_rate", 4<<20)
+	v.SetDefault("endpoint_bridge.heartbeat_interval", "30s")
+	v.SetDefault("endpoint_bridge.heartbeat_timeout", "10s")
+	v.SetDefault("endpoint_bridge.presence_ttl", "60s")
 	v.SetDefault("llm_proxy.base_url", "")
 	v.SetDefault("wechat.open.app_id", "")
 	v.SetDefault("wechat.open.app_secret", "")
@@ -425,7 +451,7 @@ func Init(dir string) (*Config, error) {
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)
 	v.SetConfigName("config")
-	v.ReadInConfig()
+	_ = v.ReadInConfig()
 
 	if err := normalizeWechatMPTemplates(v); err != nil {
 		return nil, err

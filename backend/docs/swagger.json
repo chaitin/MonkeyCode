@@ -4,6 +4,414 @@
         "contact": {}
     },
     "paths": {
+        "/api/v1/endpoints": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "返回当前登录用户登记过的全部端点，包括 active 和 revoked 状态。online 表示端点当前是否持有有效在线租约；last_seen_at、created_at、updated_at 均为 Unix 毫秒时间戳。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】端点桥接"
+                ],
+                "summary": "获取端点列表",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/domain.EndpointView"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "登录会话无效",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/endpoints/connect": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "该路由用于 WebSocket Upgrade，不是普通 REST 查询。原生桌面端和移动端复用当前登录 Cookie 连接；生产环境必须使用 WSS，非空 Origin 必须匹配服务端白名单。\nUpgrade 成功后，客户端须在 5 秒内发送 hello 文本帧，包含支持的协议主版本、安装级 UUIDv4 machine_id 和设备资料。服务端返回 welcome，并立即发送同一用户全部未撤销端点的 directory.snapshot 全量快照。\n业务帧仅支持 UTF-8 JSON 文本格式的 event、request、response；单帧最大 256 KiB，不支持二进制帧和压缩。完整消息结构、关闭码和重连规则见 docs/design/2026-07-17-client-bridge-client-protocol.md。",
+                "tags": [
+                    "【用户】端点桥接"
+                ],
+                "summary": "建立端点桥接连接",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "固定为 websocket",
+                        "name": "Upgrade",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "包含 Upgrade",
+                        "name": "Connection",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "101": {
+                        "description": "切换到 WebSocket 协议；后续通过文本帧交换 hello、welcome、directory.snapshot 和业务消息",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "登录会话无效",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "必须使用 WSS 或 Origin 不受信任",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/endpoints/{machine_id}": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "按安装级 machine_id 查询当前登录用户自己的端点。其他用户的端点与不存在的端点统一返回资源不存在，避免跨用户枚举。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】端点桥接"
+                ],
+                "summary": "获取端点详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "安装实例首次启动生成的 UUIDv4 机器标识",
+                        "name": "machine_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.EndpointView"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "machine_id 格式无效",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "401": {
+                        "description": "登录会话无效",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "404": {
+                        "description": "端点不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "修改当前登录用户指定端点的展示别名。alias 为 null、空字符串或仅含空白字符时清除别名；别名最长 128 个 Unicode 字符。后续 hello 上报只更新系统设备资料，不会覆盖别名。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】端点桥接"
+                ],
+                "summary": "修改端点别名",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "安装实例首次启动生成的 UUIDv4 机器标识",
+                        "name": "machine_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "端点别名；null 或空字符串表示清除",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.UpdateEndpointReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.EndpointView"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数无效或别名过长",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "401": {
+                        "description": "登录会话无效",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "404": {
+                        "description": "端点不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/endpoints/{machine_id}/restore": {
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "将当前登录用户已撤销的端点恢复为 active。接口幂等，端点已启用时仍返回成功；恢复后的端点可以重新建立桥接连接。当未撤销端点已达到部署配置上限时返回业务错误码 10009。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】端点桥接"
+                ],
+                "summary": "恢复端点",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "安装实例首次启动生成的 UUIDv4 机器标识",
+                        "name": "machine_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功，status 为 active",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.EndpointStatusResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "machine_id 格式无效",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "401": {
+                        "description": "登录会话无效",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "404": {
+                        "description": "端点不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/endpoints/{machine_id}/revoke": {
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "将当前登录用户的端点标记为 revoked，并立即关闭该端点的在线连接。被撤销端点不会出现在 WebSocket 目录中，也不能通过 hello 自动重新登记；撤销不等同于撤销该设备上的登录会话。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】端点桥接"
+                ],
+                "summary": "撤销端点",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "安装实例首次启动生成的 UUIDv4 机器标识",
+                        "name": "machine_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功，status 为 revoked",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.EndpointStatusResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "machine_id 格式无效",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "401": {
+                        "description": "登录会话无效",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "404": {
+                        "description": "端点不存在",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/plugins": {
             "get": {
                 "security": [
@@ -10926,6 +11334,113 @@
                 }
             }
         },
+        "domain.EndpointStatusResp": {
+            "type": "object",
+            "properties": {
+                "machine_id": {
+                    "description": "MachineID 是本次操作对应的端点机器标识。",
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "status": {
+                    "description": "Status 是操作完成后的端点管理状态。",
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "revoked"
+                    ],
+                    "example": "active"
+                }
+            }
+        },
+        "domain.EndpointView": {
+            "type": "object",
+            "properties": {
+                "alias": {
+                    "description": "Alias 是用户设置的端点别名，未设置时为空。",
+                    "type": "string",
+                    "example": "办公电脑"
+                },
+                "arch": {
+                    "description": "Arch 是客户端上报的处理器架构。",
+                    "type": "string",
+                    "example": "arm64"
+                },
+                "client_version": {
+                    "description": "ClientVersion 是 MonkeyCode 客户端版本。",
+                    "type": "string",
+                    "example": "1.0.0"
+                },
+                "created_at": {
+                    "description": "CreatedAt 是端点首次登记时间，单位为 Unix 毫秒。",
+                    "type": "integer",
+                    "example": 1752739200000
+                },
+                "device_name": {
+                    "description": "DeviceName 是客户端上报的系统设备名。",
+                    "type": "string",
+                    "example": "MacBook Pro"
+                },
+                "display_name": {
+                    "description": "DisplayName 是端点展示名，优先使用 alias，否则使用 device_name。",
+                    "type": "string",
+                    "example": "办公电脑"
+                },
+                "last_seen_at": {
+                    "description": "LastSeenAt 是端点最后在线时间，单位为 Unix 毫秒。",
+                    "type": "integer",
+                    "example": 1752739200000
+                },
+                "machine_id": {
+                    "description": "MachineID 是客户端首次安装生成的 UUIDv4，仅用于同一用户内稳定寻址。",
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "online": {
+                    "description": "Online 表示端点当前是否持有有效的在线租约。",
+                    "type": "boolean",
+                    "example": true
+                },
+                "os_version": {
+                    "description": "OSVersion 是客户端上报的操作系统版本。",
+                    "type": "string",
+                    "example": "15.5"
+                },
+                "platform": {
+                    "description": "Platform 是客户端操作系统平台。",
+                    "type": "string",
+                    "enum": [
+                        "macos",
+                        "windows",
+                        "linux",
+                        "ios",
+                        "android"
+                    ],
+                    "example": "macos"
+                },
+                "protocol_version": {
+                    "description": "ProtocolVersion 是端点最近一次连接协商成功的桥接协议主版本。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "status": {
+                    "description": "Status 是端点管理状态：active 表示可连接，revoked 表示已撤销。",
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "revoked"
+                    ],
+                    "example": "active"
+                },
+                "updated_at": {
+                    "description": "UpdatedAt 是端点资料最后更新时间，单位为 Unix 毫秒。",
+                    "type": "integer",
+                    "example": 1752739200000
+                }
+            }
+        },
         "domain.FileChangeReq": {
             "type": "object",
             "required": [
@@ -13737,6 +14252,16 @@
                 },
                 "title": {
                     "type": "string"
+                }
+            }
+        },
+        "domain.UpdateEndpointReq": {
+            "type": "object",
+            "properties": {
+                "alias": {
+                    "description": "Alias 是新的端点别名；null、空字符串或仅含空白字符时清除别名，最长 128 个 Unicode 字符。",
+                    "type": "string",
+                    "example": "办公电脑"
                 }
             }
         },
