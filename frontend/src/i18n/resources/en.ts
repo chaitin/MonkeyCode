@@ -4304,6 +4304,7 @@ const en = {
     },
     preview: {
       title: "Preview",
+      description: "View accessible port previews from the development environment",
       envNotReady: "Development environment is not ready; preview is unavailable",
       unavailable: "Unavailable",
       open: "Open",

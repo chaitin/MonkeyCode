@@ -4304,6 +4304,7 @@ const cn = {
     },
     preview: {
       title: "在线预览",
+      description: "查看开发环境中可访问的端口预览",
       envNotReady: "开发环境未就绪，无法预览",
       unavailable: "暂不可访问",
       open: "访问",

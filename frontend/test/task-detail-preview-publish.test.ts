@@ -48,6 +48,10 @@ test("任务详情预览弹窗支持确认后自动发送发布指令", () => {
     /<Dialog open=\{previewDialogOpen\}[\s\S]*?<\/Dialog>/,
   );
   assert.ok(previewDialogMatch, "preview dialog should be present");
+  assert.match(
+    previewDialogMatch[0],
+    /<DialogDescription className="sr-only">[\s\S]*?taskDetail\.preview\.description[\s\S]*?<\/DialogDescription>/,
+  );
   assert.doesNotMatch(
     previewDialogMatch[0],
     /taskDetail\.page\.dialogs\.publishWebsite\.button/,
@@ -56,6 +60,14 @@ test("任务详情预览弹窗支持确认后自动发送发布指令", () => {
 });
 
 test("任务详情预览发布确认提供中英文资源", () => {
+  assert.equal(
+    cn.taskDetail.preview.description,
+    "查看开发环境中可访问的端口预览",
+  );
+  assert.equal(
+    en.taskDetail.preview.description,
+    "View accessible port previews from the development environment",
+  );
   assert.equal(cn.taskDetail.page.dialogs.publishWebsite.button, "发布");
   assert.equal(en.taskDetail.page.dialogs.publishWebsite.button, "Publish");
   assert.equal(
