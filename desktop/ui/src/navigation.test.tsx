@@ -138,6 +138,7 @@ describe("会话辅助信息", () => {
 
     expect(html).toContain("可继续");
     expect(html).toContain("12 轮");
+    expect(html).toContain("border:1.3px solid var(--ok)");
     expect(html).not.toContain("26 分钟前");
     expect(html).toContain("右键管理");
     expect(html).toContain("scrollbar-gutter:stable");

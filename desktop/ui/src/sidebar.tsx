@@ -92,7 +92,7 @@ const CLOUD_STATUS: Record<string, { text: string; color: string }> = {
   finished: { text: "已完成", color: "var(--t4)" },
 };
 
-function rowStatus(meta: SessionMeta): { text: string; color: string } {
+function rowStatus(meta: SessionMeta): { text: string; color: string; textColor?: string; hollow?: boolean } {
   if (meta.waiting_ask) return { text: "等待确认", color: "var(--warn)" };
   switch (meta.status) {
     case "running":
@@ -104,10 +104,10 @@ function rowStatus(meta: SessionMeta): { text: string; color: string } {
     case "idle":
     case "finished":
       // finished 是旧版顶层会话的一轮结束状态；新版壳会返回 idle。
-      return { text: "可继续", color: "var(--t4)" };
+      return { text: "可继续", color: "var(--ok)", textColor: "var(--t4)", hollow: true };
     default:
       return meta.turns > 0
-        ? { text: "可继续", color: "var(--t4)" }
+        ? { text: "可继续", color: "var(--ok)", textColor: "var(--t4)", hollow: true }
         : { text: "尚未开始", color: "var(--t5)" };
   }
 }
@@ -144,9 +144,9 @@ function SessionRow({
   const [draft, setDraft] = useState("");
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number }>({ left: 0 });
   const st = rowStatus(meta);
-  const selected = active && !archived;
   const title = meta.title || (meta.kind === "chat" ? "新对话" : "新任务");
   const turns = turnCountLabel(meta.turns);
+  const statusColor = archived && !attention ? "var(--t5)" : st.color;
 
   const closeMenu = () => setMenu("closed");
   const openMenuAt = (clientX: number, clientY: number) => {
@@ -191,9 +191,6 @@ function SessionRow({
           minWidth: 0,
         }}
       >
-        {selected && (
-          <span aria-hidden="true" style={{ position: "absolute", left: 2, top: 10, bottom: 10, width: 2, borderRadius: 2, background: "var(--acc)" }} />
-        )}
         <div style={{ width: "100%", minWidth: 0, display: "flex", alignItems: "center" }}>
           {editing ? (
             <input
@@ -235,14 +232,17 @@ function SessionRow({
               width: attention ? 7 : 6,
               height: attention ? 7 : 6,
               borderRadius: "50%",
-              background: attention ? (meta.status === "error" ? "var(--err)" : "var(--acc)") : st.color,
+              background: attention
+                ? (meta.status === "error" ? "var(--err)" : "var(--acc)")
+                : st.hollow ? "transparent" : statusColor,
+              border: !attention && st.hollow ? `1.3px solid ${statusColor}` : "none",
               boxShadow: attention
                 ? `0 0 0 2px ${meta.status === "error" ? "var(--errBg)" : "var(--accBg)"}`
                 : "none",
               flex: "none",
             }}
           />
-          <span className="ellipsis" style={{ color: archived && !attention ? "var(--t5)" : st.color, minWidth: 0, flex: "none" }}>
+          <span className="ellipsis" style={{ color: archived && !attention ? "var(--t5)" : st.textColor ?? st.color, minWidth: 0, flex: "none" }}>
             {st.text}
           </span>
           {turns && <span style={{ color: "var(--t5)", marginLeft: "auto", flex: "none", fontVariantNumeric: "tabular-nums" }}>{turns}</span>}
