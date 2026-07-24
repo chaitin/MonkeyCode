@@ -23,7 +23,7 @@ export function ModeToggle() {
           <span className="sr-only">{t("common.theme.toggle")}</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-max min-w-40">
         <DropdownMenuItem onClick={() => setTheme("light")}>
           <Sun />
           {t("common.theme.light")}

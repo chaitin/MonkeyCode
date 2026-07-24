@@ -109,7 +109,7 @@ export function RewardsBalanceIndicator() {
       <HoverCardContent
         side="bottom"
         align="end"
-        className="w-80"
+        className="w-96 max-w-[calc(100vw-2rem)]"
       >
         <div className="space-y-4">
           <section className="rounded-lg border bg-muted/20 p-3 text-sm">
@@ -163,9 +163,9 @@ export function RewardsBalanceIndicator() {
 
           <section className="space-y-3">
             <div className="rounded-lg border bg-muted/20 p-3">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="truncate font-medium">{t("consoleShell.rewards.quota.freeQuota")}</span>
-                <span className="text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
+                <span className="shrink-0 font-medium">{t("consoleShell.rewards.quota.freeQuota")}</span>
+                <span className="ml-auto shrink-0 whitespace-nowrap text-right text-xs text-muted-foreground">
                   {tokenLimit > 0 ? t("consoleShell.rewards.quota.remainingToday", { amount: quotaAmountLabel }) : t("consoleShell.rewards.quota.noQuota")}
                 </span>
               </div>
