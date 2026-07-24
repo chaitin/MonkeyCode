@@ -753,7 +753,6 @@ export function Sidebar({
   for (const task of [...cloudTasks, ...cloudHistory, ...cloudProjects.flatMap((project) => project.tasks ?? [])]) {
     allCloudTasks.set(task.id, task);
   }
-  const cloudRunning = [...allCloudTasks.values()].filter((task) => task.status === "pending" || task.status === "processing");
   const filteredCloudTasks = cloudTasks.filter(matchesCloud);
   const filteredCloudHistory = cloudHistory.filter(matchesCloud);
   const filteredCloudProjects: { project: CloudProject; tasks: CloudTask[] }[] = [];
@@ -994,7 +993,7 @@ export function Sidebar({
         <MacDragSpacer />
         <img src={logoUrl} alt="MonkeyCode" draggable={false} style={{ width: 31, height: 31, borderRadius: 9, margin: "2px 0 15px" }} />
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-          <RailButton active={space === "cloud"} label="云端" badge={cloudRunning.length} icon={<IconCloud size={16} color={space === "cloud" ? "var(--accSelT)" : "var(--t4)"} />} onClick={() => selectSpace("cloud")} />
+          <RailButton active={space === "cloud"} label="云端" icon={<IconCloud size={16} color={space === "cloud" ? "var(--accSelT)" : "var(--t4)"} />} onClick={() => selectSpace("cloud")} />
           <RailButton active={space === "local"} label="本地" badge={localAttention} icon={<IconMonitor size={16} color={space === "local" ? "var(--accSelT)" : "var(--t4)"} strokeWidth={1.25} />} onClick={() => selectSpace("local")} />
           <RailButton active={space === "chat"} label="对话" badge={chatAttention} icon={<IconChat size={16} color={space === "chat" ? "var(--accSelT)" : "var(--t4)"} />} onClick={() => selectSpace("chat")} />
         </div>

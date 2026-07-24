@@ -814,12 +814,15 @@ function MessageTime({ timestamp, align }: { timestamp?: number; align: "start" 
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return null;
   const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  // 用户消息有气泡边框，需要比无底色的 assistant 正文再抬高一点，
+  // 否则同一偏移会让时间胶囊压在气泡上沿。
+  const top = align === "end" ? -20 : -16;
   return (
     <time
       className="mc-message-time"
       dateTime={date.toISOString()}
       title={date.toLocaleString()}
-      style={{ position: "absolute", top: -16, ...(align === "end" ? { right: 0 } : { left: 0 }) }}
+      style={{ position: "absolute", top, ...(align === "end" ? { right: 0 } : { left: 0 }) }}
     >
       {time}
     </time>
