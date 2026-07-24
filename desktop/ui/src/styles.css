@@ -169,9 +169,17 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   font-variant-numeric: tabular-nums;
   user-select: none;
 }
+.tool-detail-toggle {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
 .tool-card:hover .tool-duration,
 .tool-card:focus-within .tool-duration {
   display: inline;
+}
+.tool-card:hover .tool-detail-toggle,
+.tool-card:focus-within .tool-detail-toggle {
+  opacity: 1;
 }
 .tool-stack > .tool-card + .tool-card { border-top: 1px solid var(--line2); }
 .card-lg { border-radius: 11px; padding: 16px; }

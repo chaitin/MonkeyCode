@@ -565,7 +565,7 @@ export function ToolCard({
           {detail && (
             <button
               type="button"
-              className="hv-t1"
+              className="hv-t1 tool-detail-toggle"
               aria-label={showDetail ? "收起工具详情" : "展开工具详情"}
               aria-expanded={showDetail}
               title={showDetail ? "收起详情" : "查看详情"}
@@ -819,7 +819,7 @@ function MessageTime({ timestamp, align }: { timestamp?: number; align: "start" 
       className="mc-message-time"
       dateTime={date.toISOString()}
       title={date.toLocaleString()}
-      style={{ position: "absolute", top: -20, ...(align === "end" ? { right: 0 } : { left: 0 }) }}
+      style={{ position: "absolute", top: -16, ...(align === "end" ? { right: 0 } : { left: 0 }) }}
     >
       {time}
     </time>

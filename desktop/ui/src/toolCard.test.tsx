@@ -48,6 +48,7 @@ describe("ToolCard", () => {
     expect(html).toContain("读取文件");
     expect(html).toContain("src/app.ts");
     expect(html).toContain('aria-label="展开工具详情"');
+    expect(html).toContain('class="hv-t1 tool-detail-toggle"');
     expect(html).not.toContain("export const app = true");
   });
 
