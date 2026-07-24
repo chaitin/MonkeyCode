@@ -10,7 +10,14 @@ export interface McCloudModel {
   weight?: number;
   is_default?: boolean;
   is_hidden?: boolean;
-  owner?: { type?: "private" | "public" | "team" };
+  owner?: { type?: "private" | "public" | "team"; id?: string; name?: string };
+}
+
+export interface McCloudModelGroup {
+  key: string;
+  label: string;
+  badge?: string;
+  models: McCloudModel[];
 }
 
 export interface McCloudImage {
@@ -71,6 +78,13 @@ export function cloudModelLabel(model?: { model?: string; remark?: string } | nu
   return translateBuiltinNames(model.model || "");
 }
 
+/** 分组内不重复展示「基础模型 /」等前缀。 */
+export function groupedCloudModelLabel(model: McCloudModel): string {
+  const label = cloudModelLabel(model);
+  const nested = label.replace(/^(基础|专业|旗舰)模型\s*\/\s*/i, "").trim();
+  return nested || label;
+}
+
 /** 镜像展示名与 Web 一致：优先备注，否则只展示镜像 tag 的最后一段。 */
 export function cloudImageLabel(image?: McCloudImage | null): string {
   if (!image) return "";
@@ -120,6 +134,21 @@ export function pickDefaultCloudHost(hosts: McCloudHost[], preferredId = "", pub
   return available.some((host) => host.id === preferredId) ? preferredId : PUBLIC_CLOUD_HOST_ID;
 }
 
+/** 手动仓库地址规则与移动端一致，兼容 HTTPS 与常见 SSH Git 地址。 */
+export function validCloudRepoUrl(value: string): boolean {
+  return /^(https?:\/\/|ssh:\/\/|git@)\S+$/i.test(value.trim());
+}
+
+export function cloudRepoLabel(value: string): string {
+  const path = value
+    .trim()
+    .replace(/^git@[^:]+:/i, "")
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "");
+  const tail = path.split("/").pop()?.replace(/\.git$/i, "");
+  return tail || "仓库";
+}
+
 function planAllowsModel(model: McCloudModel, plan?: string): boolean {
   const b = builtinName(model.model);
   if (b === "monkeycode-pro") return plan === "pro" || plan === "flagship" || plan === "ultra";
@@ -135,22 +164,53 @@ const byWeightThenName = (a: McCloudModel, b: McCloudModel) => {
 /** 可选模型:有 id、非裸内置占位项、未隐藏、会员档允许。 */
 export function usableCloudModels(models: McCloudModel[], plan?: string): McCloudModel[] {
   return models
-    .filter((m) => m.id && m.model && !m.is_hidden && !BUILTIN_META.has(m.model) && planAllowsModel(m, plan))
+    .filter((m) => m.id && m.model && !m.is_hidden && !BUILTIN_META.has(m.model.toLowerCase()) && planAllowsModel(m, plan))
     .sort(byWeightThenName);
+}
+
+/** 模型分级与 Web / 移动端一致：会员档位、付费、我的、团队。 */
+export function groupCloudModels(models: McCloudModel[], plan?: string): McCloudModelGroup[] {
+  const supported = usableCloudModels(models, plan);
+  const builtin: McCloudModelGroup[] = [
+    { key: "monkeycode-basic", label: "基础模型", badge: "免费使用", models: [] },
+    { key: "monkeycode-pro", label: "专业模型", badge: "专业会员免费", models: [] },
+    { key: "monkeycode-ultra", label: "旗舰模型", badge: "旗舰会员免费", models: [] },
+  ].map((group) => ({
+    ...group,
+    models: supported.filter((model) => builtinName(model.model) === group.key),
+  }));
+
+  const paid = supported.filter((model) => model.owner?.type === "public" && !builtinName(model.model));
+  const personal = supported.filter((model) => model.owner?.type === "private" && !builtinName(model.model));
+  const teams = new Map<string, McCloudModelGroup>();
+  for (const model of supported.filter((item) => item.owner?.type === "team" && !builtinName(item.model))) {
+    const name = model.owner?.name || "团队模型";
+    const key = `${model.owner?.id || name}:${name}`;
+    const group = teams.get(key) || { key, label: name, models: [] };
+    group.models.push(model);
+    teams.set(key, group);
+  }
+
+  return [
+    ...builtin,
+    { key: "paid", label: "付费模型", badge: "消耗积分", models: paid },
+    { key: "private", label: "我的模型", models: personal },
+    ...teams.values(),
+  ].filter((group) => group.models.length > 0);
 }
 
 /** 默认模型:会员档匹配的内置档 weight 最高 → 公共模型 → 任意可用。 */
 export function pickDefaultCloudModel(models: McCloudModel[], plan?: string): string {
+  const pool = usableCloudModels(models, plan);
   const planBuiltin = plan === "pro" ? "monkeycode-pro" : plan === "flagship" || plan === "ultra" ? "monkeycode-ultra" : "monkeycode-basic";
-  const planModel = models
-    .filter((m) => m.id && builtinName(m.model) === planBuiltin && planAllowsModel(m, plan))
+  const planModel = pool
+    .filter((m) => builtinName(m.model) === planBuiltin)
     .sort(byWeightThenName)[0];
   if (planModel?.id) return planModel.id;
-  const publicModel = models
-    .filter((m) => m.id && m.owner?.type === "public" && planAllowsModel(m, plan))
+  const publicModel = pool
+    .filter((m) => m.owner?.type === "public")
     .sort(byWeightThenName)[0];
   if (publicModel?.id) return publicModel.id;
-  const pool = usableCloudModels(models, plan);
   return pool.find((m) => m.is_default)?.id || pool[0]?.id || "";
 }
 

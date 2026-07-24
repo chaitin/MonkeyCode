@@ -1,11 +1,11 @@
 // 新建任务视图:居中卡片(任务输入 + 本地/云端/对话模式 + 模型 + 开始)。
-// 本地模式选择工作目录；云端模式选择仓库(可不选=快速开始)+ 云端模型，
+// 本地模式选择工作目录；云端模式选择仓库(可不选=快速开始)+ 模型/宿主机/镜像，
 // 经内核代理真实创建 monkeycode 云端任务,成功后进桌面内详情视图跟看。
 // 表单状态(目录/文本/模型/错误/busy + 附件/云端选项)整体收口在本组件:
 // 状态随视图挂载与卸载,App 只注入数据(models/recentDirs/lastDir)与编排回调
 // (onCreated/onCloudCreated)及外部预填(prefill)。
-import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent } from "react";
-import { basename, isImeEnter, markImeEnd, ModelMenuItem, ModelPicker, ModelPickerTrigger } from "./chat";
+import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { basename, isImeEnter, markImeEnd, ModelMenuItem, ModelPicker } from "./chat";
 import { MONO } from "./components";
 import { mcTaskCreate, mcTaskOptions } from "./cloudapi";
 import { inDesktopShell, pickDirectory, workdirPickBase } from "./host";
@@ -14,13 +14,15 @@ import type { CloudTask } from "./types";
 import {
   cloudHostLabel,
   cloudImageLabel,
-  cloudModelLabel,
+  cloudRepoLabel,
+  groupedCloudModelLabel,
+  groupCloudModels,
   pickDefaultCloudImage,
   pickDefaultCloudHost,
   pickDefaultCloudModel,
   PUBLIC_CLOUD_HOST_ID,
   usableCloudHosts,
-  usableCloudModels,
+  validCloudRepoUrl,
   type McCloudProject,
   type McTaskOptions,
 } from "./cloud";
@@ -49,6 +51,70 @@ export interface NewTaskPrefill {
   mode?: NewTaskMode;
   /** 云端项目行的 + 号可直接预选项目；null 表示快速任务。 */
   cloudProject?: McCloudProject | null;
+}
+
+/** 云端运行配置使用独立自适应网格；触发器自身必须允许收缩，长名称只截断值。 */
+function CloudConfigField({
+  label,
+  value,
+  open,
+  align = "start",
+  onToggle,
+  onClose,
+  children,
+}: {
+  label: string;
+  value: string;
+  open: boolean;
+  align?: "start" | "end";
+  onToggle: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <span style={{ position: "relative", minWidth: 0 }}>
+      <button
+        className="hv"
+        title={`选择云端${label}：${value}`}
+        onClick={onToggle}
+        style={{
+          width: "100%",
+          minWidth: 0,
+          height: 34,
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          padding: "0 9px",
+          border: "1px solid var(--line2)",
+          borderRadius: 8,
+          background: open ? "var(--hov)" : "var(--segBg)",
+          color: "var(--t2)",
+          cursor: "pointer",
+        }}
+      >
+        <span style={{ flex: "none", fontSize: 10.5, color: "var(--t5)" }}>{label}</span>
+        <span className="ellipsis" style={{ flex: 1, minWidth: 0, textAlign: "left", fontSize: 12, fontWeight: 550 }}>{value}</span>
+        <IconChevronDown size={9} color="var(--t5)" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s ease" }} />
+      </button>
+      {open && (
+        <>
+          <div className="backdrop" onClick={onClose} />
+          <div
+            className="pop model-menu"
+            style={{
+              position: "absolute",
+              bottom: 40,
+              ...(align === "end" ? { right: 0 } : { left: 0 }),
+              maxHeight: 360,
+              overflowY: "auto",
+            }}
+          >
+            {children}
+          </div>
+        </>
+      )}
+    </span>
+  );
 }
 
 export function NewTaskView({
@@ -181,6 +247,9 @@ export function NewTaskView({
   const [cloudHostId, setCloudHostId] = useState("");
   const [cloudImageId, setCloudImageId] = useState("");
   const [cloudProject, setCloudProject] = useState<McCloudProject | null>(() => prefill?.cloudProject ?? null);
+  const [cloudRepoUrl, setCloudRepoUrl] = useState("");
+  const [cloudRepoDraft, setCloudRepoDraft] = useState("");
+  const [cloudRepoErr, setCloudRepoErr] = useState("");
   const [repoOpen, setRepoOpen] = useState(false);
   const [cloudPicker, setCloudPicker] = useState<"model" | "host" | "image" | null>(null);
 
@@ -205,6 +274,13 @@ export function NewTaskView({
 
   useEffect(() => {
     if (!prefill || !("cloudProject" in prefill)) return;
+    setCloudRepoUrl("");
+    setCloudRepoDraft("");
+    setCloudRepoErr("");
+  }, [prefill]);
+
+  useEffect(() => {
+    if (!prefill || !("cloudProject" in prefill)) return;
     const requested = prefill.cloudProject ?? null;
     if (!requested?.id || !cloudOpts) {
       setCloudProject(requested);
@@ -213,14 +289,20 @@ export function NewTaskView({
     setCloudProject(cloudOpts.projects.find((project) => project.id === requested.id) ?? requested);
   }, [prefill, cloudOpts]);
 
-  const cloudModels = cloudOpts ? usableCloudModels(cloudOpts.models, cloudOpts.plan) : [];
+  const cloudModelGroups = cloudOpts ? groupCloudModels(cloudOpts.models, cloudOpts.plan) : [];
   const selectedCloudModel = cloudOpts?.models.find((model) => model.id === cloudModelId);
+  const selectedCloudModelGroup = cloudModelGroups.find((group) => group.models.some((model) => model.id === cloudModelId));
   const publicCloudModel = selectedCloudModel?.owner?.type === "public";
   const cloudHosts = cloudOpts ? usableCloudHosts(cloudOpts.hosts ?? [], publicCloudModel) : [];
   const cloudImages = cloudOpts?.images.filter((image) => image.id) ?? [];
-  const cloudModelName = selectedCloudModel ? cloudModelLabel(selectedCloudModel) : "模型";
+  const cloudModelName = selectedCloudModel
+    ? [selectedCloudModelGroup?.label, groupedCloudModelLabel(selectedCloudModel)].filter(Boolean).join(" / ")
+    : "模型";
   const cloudHostName = cloudHostLabel(cloudHosts.find((host) => host.id === cloudHostId)) || "宿主机";
   const cloudImageName = cloudImageLabel(cloudImages.find((image) => image.id === cloudImageId)) || "镜像";
+  const cloudRepoName = cloudProject
+    ? cloudProject.name || cloudProject.full_name || cloudProject.repo_url || "云端项目"
+    : cloudRepoUrl ? cloudRepoLabel(cloudRepoUrl) : "不关联仓库(快速开始)";
 
   // 公共模型只能使用公共宿主机；宿主列表刷新后也不能保留已离线选项。
   useEffect(() => {
@@ -229,6 +311,23 @@ export function NewTaskView({
     const allowed = usableCloudHosts(cloudOpts.hosts ?? [], modelIsPublic);
     if (!allowed.some((host) => host.id === cloudHostId)) setCloudHostId(PUBLIC_CLOUD_HOST_ID);
   }, [cloudOpts, cloudModelId, cloudHostId]);
+
+  const commitCloudRepoUrl = () => {
+    const value = cloudRepoDraft.trim();
+    if (!value) {
+      setCloudRepoErr("请输入仓库地址");
+      return;
+    }
+    if (!validCloudRepoUrl(value)) {
+      setCloudRepoErr("请输入有效的 Git 地址（http(s)://、ssh:// 或 git@）");
+      return;
+    }
+    setCloudProject(null);
+    setCloudRepoUrl(value);
+    setCloudRepoDraft(value);
+    setCloudRepoErr("");
+    setRepoOpen(false);
+  };
 
   const createCloud = async () => {
     const content = text.trim();
@@ -253,7 +352,7 @@ export function NewTaskView({
         model_id: cloudModelId,
         host_id: cloudHostId,
         image_id: cloudImageId,
-        repo_url: cloudProject?.repo_url || undefined,
+        repo_url: cloudProject?.repo_url || cloudRepoUrl || undefined,
         project_id: cloudProject?.id || undefined,
       });
       if (!task?.id) throw new Error("云端未返回任务 ID");
@@ -397,14 +496,21 @@ export function NewTaskView({
             {mode === "cloud" ? (
               <>
                 <button
-                  title="云端任务可关联代码仓库,也可不关联直接对话"
+                  title={cloudProject?.repo_url || cloudRepoUrl || "云端任务可关联代码仓库,也可不关联直接对话"}
                   className="hv"
-                  onClick={() => setRepoOpen(!repoOpen)}
+                  onClick={() => {
+                    const next = !repoOpen;
+                    if (next) {
+                      setCloudRepoDraft(cloudRepoUrl);
+                      setCloudRepoErr("");
+                    }
+                    setRepoOpen(next);
+                  }}
                   style={{ display: "flex", alignItems: "center", gap: 7, height: 28, padding: "0 9px", border: "none", borderRadius: 8, background: repoOpen ? "var(--hov)" : "transparent", cursor: "pointer", maxWidth: "100%" }}
                 >
                   <IconCloud size={13} color="var(--t3)" />
-                  <span className="ellipsis" style={{ fontSize: 12, fontWeight: cloudProject ? 600 : 400, color: cloudProject ? "var(--t2)" : "var(--t5)" }}>
-                    {cloudProject ? cloudProject.name || cloudProject.full_name || cloudProject.repo_url : "不关联仓库(快速开始)"}
+                  <span className="ellipsis" style={{ fontSize: 12, fontWeight: cloudProject || cloudRepoUrl ? 600 : 400, color: cloudProject || cloudRepoUrl ? "var(--t2)" : "var(--t5)" }}>
+                    {cloudRepoName}
                   </span>
                   <IconChevronDown color="var(--t5)" style={{ transform: repoOpen ? "rotate(180deg)" : "none", transition: "transform .15s ease" }} />
                 </button>
@@ -412,11 +518,38 @@ export function NewTaskView({
                   <>
                     <div className="backdrop" onClick={() => setRepoOpen(false)} />
                     <div className="pop" style={{ position: "absolute", top: 34, left: 8, borderRadius: 10, minWidth: 280, maxWidth: 400, maxHeight: 320, overflowY: "auto" }}>
-                      <button className="hv menu-item" onClick={() => { setCloudProject(null); setRepoOpen(false); }} style={{ gap: 9 }}>
+                      <button className="hv menu-item" onClick={() => { setCloudProject(null); setCloudRepoUrl(""); setCloudRepoDraft(""); setCloudRepoErr(""); setRepoOpen(false); }} style={{ gap: 9 }}>
                         <IconCloud size={12} color="var(--t5)" />
                         <span style={{ flex: 1, fontSize: 12.5, color: "var(--t2)" }}>不关联仓库(快速开始)</span>
-                        {!cloudProject && <IconCheck size={11} color="var(--acc)" strokeWidth={1.6} />}
+                        {!cloudProject && !cloudRepoUrl && <IconCheck size={11} color="var(--acc)" strokeWidth={1.6} />}
                       </button>
+                      <span style={{ height: 1, background: "var(--line2)", margin: "4px 6px" }} />
+                      <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, color: "var(--t6)", padding: "5px 9px 3px" }}>
+                        手动输入仓库地址
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 6px 5px" }}>
+                        <input
+                          autoFocus
+                          value={cloudRepoDraft}
+                          onChange={(event) => { setCloudRepoDraft(event.target.value); setCloudRepoErr(""); }}
+                          onCompositionEnd={markImeEnd}
+                          onKeyDown={(event) => {
+                            event.stopPropagation();
+                            if (event.key === "Enter" && !isImeEnter(event)) commitCloudRepoUrl();
+                          }}
+                          placeholder="https://github.com/owner/repo.git"
+                          style={{ flex: 1, minWidth: 0, height: 28, padding: "0 8px", border: `1px solid ${cloudRepoErr ? "var(--err)" : "var(--inputBd)"}`, borderRadius: 6, outline: "none", background: "var(--bg)", color: "var(--t2)", font: `11px ${MONO}` }}
+                        />
+                        <button
+                          className="hv-acc"
+                          disabled={!cloudRepoDraft.trim()}
+                          onClick={commitCloudRepoUrl}
+                          style={{ height: 28, padding: "0 10px", border: "none", borderRadius: 6, background: "var(--acc)", color: "var(--onAcc)", fontSize: 11.5, fontWeight: 650, cursor: cloudRepoDraft.trim() ? "pointer" : "default", opacity: cloudRepoDraft.trim() ? 1 : 0.55 }}
+                        >
+                          使用
+                        </button>
+                      </div>
+                      {cloudRepoErr && <span style={{ padding: "0 8px 6px", color: "var(--err)", fontSize: 10.5 }}>{cloudRepoErr}</span>}
                       {(cloudOpts?.projects.length ?? 0) > 0 && (
                         <>
                           <span style={{ height: 1, background: "var(--line2)", margin: "4px 6px" }} />
@@ -424,7 +557,7 @@ export function NewTaskView({
                             云端项目
                           </span>
                           {cloudOpts!.projects.map((p) => (
-                            <button key={p.id || p.repo_url} className="hv menu-item" onClick={() => { setCloudProject(p); setRepoOpen(false); }} style={{ gap: 9 }}>
+                            <button key={p.id || p.repo_url} className="hv menu-item" onClick={() => { setCloudProject(p); setCloudRepoUrl(""); setCloudRepoDraft(""); setCloudRepoErr(""); setRepoOpen(false); }} style={{ gap: 9 }}>
                               <IconFolder color="var(--t5)" />
                               <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                                 <span className="ellipsis" style={{ fontSize: 12.5, fontWeight: 500, color: "var(--t2)" }}>
@@ -440,7 +573,7 @@ export function NewTaskView({
                         </>
                       )}
                       {cloudOpts && cloudOpts.projects.length === 0 && (
-                        <span style={{ fontSize: 11, color: "var(--t6)", padding: "3px 9px 6px" }}>云端还没有项目;不关联仓库也能直接开跑</span>
+                        <span style={{ fontSize: 11, color: "var(--t6)", padding: "3px 9px 6px" }}>还没有绑定项目，也可以直接填写仓库地址</span>
                       )}
                     </div>
                   </>
@@ -634,6 +767,114 @@ export function NewTaskView({
             }}
           />
 
+          {mode === "cloud" && (
+            <div
+              data-cloud-runtime-grid=""
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(140px, 100%), 1fr))",
+                gap: 6,
+                padding: "8px 10px 2px",
+                borderTop: "1px solid var(--line2)",
+              }}
+            >
+              <CloudConfigField
+                label="模型"
+                value={cloudModelName}
+                open={cloudPicker === "model"}
+                onToggle={() => setCloudPicker((current) => current === "model" ? null : "model")}
+                onClose={() => setCloudPicker(null)}
+              >
+                {cloudModelGroups.map((group, index) => (
+                  <span
+                    key={group.key}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      paddingTop: index === 0 ? 0 : 4,
+                      marginTop: index === 0 ? 0 : 4,
+                      borderTop: index === 0 ? "none" : "1px solid var(--line2)",
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, padding: "5px 9px 3px" }}>
+                      <span className="ellipsis" style={{ flex: 1, minWidth: 0, fontSize: 10.5, fontWeight: 750, color: "var(--t4)" }}>
+                        {group.label}
+                      </span>
+                      {group.badge && <span style={{ flex: "none", fontSize: 9.5, color: "var(--t6)" }}>{group.badge}</span>}
+                    </span>
+                    {group.models.map((cloudModel) => (
+                      <ModelMenuItem
+                        key={cloudModel.id}
+                        label={groupedCloudModelLabel(cloudModel)}
+                        selected={cloudModel.id === cloudModelId}
+                        onClick={() => {
+                          setCloudModelId(cloudModel.id!);
+                          if (cloudModel.owner?.type === "public") setCloudHostId(PUBLIC_CLOUD_HOST_ID);
+                          setCloudPicker(null);
+                        }}
+                      />
+                    ))}
+                  </span>
+                ))}
+                {cloudModelGroups.length === 0 && (
+                  <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的云端模型" : "加载中…"}</span>
+                )}
+              </CloudConfigField>
+
+              <CloudConfigField
+                label="宿主机"
+                value={cloudHostName}
+                open={cloudPicker === "host"}
+                onToggle={() => setCloudPicker((current) => current === "host" ? null : "host")}
+                onClose={() => setCloudPicker(null)}
+              >
+                {cloudHosts.map((host) => (
+                  <ModelMenuItem
+                    key={host.id}
+                    label={cloudHostLabel(host)}
+                    hint={host.id === PUBLIC_CLOUD_HOST_ID ? "免费" : undefined}
+                    selected={host.id === cloudHostId}
+                    onClick={() => {
+                      setCloudHostId(host.id!);
+                      setCloudPicker(null);
+                    }}
+                  />
+                ))}
+                {publicCloudModel && cloudOpts && (
+                  <span style={{ fontSize: 10.5, lineHeight: 1.45, color: "var(--t6)", padding: "5px 10px 7px", whiteSpace: "normal" }}>公共模型仅支持公共宿主机</span>
+                )}
+                {cloudHosts.length === 0 && (
+                  <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的宿主机" : "加载中…"}</span>
+                )}
+              </CloudConfigField>
+
+              <CloudConfigField
+                label="镜像"
+                value={cloudImageName}
+                open={cloudPicker === "image"}
+                align="end"
+                onToggle={() => setCloudPicker((current) => current === "image" ? null : "image")}
+                onClose={() => setCloudPicker(null)}
+              >
+                {cloudImages.map((image) => (
+                  <ModelMenuItem
+                    key={image.id}
+                    label={cloudImageLabel(image)}
+                    hint={image.owner?.type === "public" ? "公共" : undefined}
+                    selected={image.id === cloudImageId}
+                    onClick={() => {
+                      setCloudImageId(image.id!);
+                      setCloudPicker(null);
+                    }}
+                  />
+                ))}
+                {cloudImages.length === 0 && (
+                  <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的云端镜像" : "加载中…"}</span>
+                )}
+              </CloudConfigField>
+            </div>
+          )}
+
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px 11px" }}>
             <span style={{ display: "flex", background: "var(--segBg)", borderRadius: 13, padding: 2, flex: "none" }}>
               <span onClick={() => setMode("local")} title="跑在这台电脑上,直接读写本地文件,每步权限逐一确认" style={segItem(mode === "local", "var(--acc)")}>
@@ -649,103 +890,7 @@ export function NewTaskView({
                 对话
               </span>
             </span>
-            {mode === "cloud" ? (
-              <>
-                <span style={{ position: "relative", flex: "0 1 auto", minWidth: 0, maxWidth: 128 }}>
-                  <ModelPickerTrigger
-                    label={cloudModelName}
-                    open={cloudPicker === "model"}
-                    title={`选择云端模型：${cloudModelName}`}
-                    onClick={() => setCloudPicker((current) => current === "model" ? null : "model")}
-                  />
-                  {cloudPicker === "model" && (
-                    <>
-                      <div className="backdrop" onClick={() => setCloudPicker(null)} />
-                      <div className="pop model-menu" style={{ position: "absolute", bottom: 30, left: 0, maxHeight: 320, overflowY: "auto" }}>
-                        {cloudModels.map((model) => (
-                          <ModelMenuItem
-                            key={model.id}
-                            label={cloudModelLabel(model)}
-                            selected={model.id === cloudModelId}
-                            onClick={() => {
-                              setCloudModelId(model.id!);
-                              if (model.owner?.type === "public") setCloudHostId(PUBLIC_CLOUD_HOST_ID);
-                              setCloudPicker(null);
-                            }}
-                          />
-                        ))}
-                        {cloudModels.length === 0 && (
-                          <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的云端模型" : "加载中…"}</span>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </span>
-                <span style={{ position: "relative", flex: "0 1 auto", minWidth: 0, maxWidth: 112 }}>
-                  <ModelPickerTrigger
-                    label={cloudHostName}
-                    open={cloudPicker === "host"}
-                    title={`选择云端宿主机：${cloudHostName}`}
-                    onClick={() => setCloudPicker((current) => current === "host" ? null : "host")}
-                  />
-                  {cloudPicker === "host" && (
-                    <>
-                      <div className="backdrop" onClick={() => setCloudPicker(null)} />
-                      <div className="pop model-menu" style={{ position: "absolute", bottom: 30, left: 0, maxHeight: 320, overflowY: "auto" }}>
-                        {cloudHosts.map((host) => (
-                          <ModelMenuItem
-                            key={host.id}
-                            label={cloudHostLabel(host)}
-                            hint={host.id === PUBLIC_CLOUD_HOST_ID ? "免费" : undefined}
-                            selected={host.id === cloudHostId}
-                            onClick={() => {
-                              setCloudHostId(host.id!);
-                              setCloudPicker(null);
-                            }}
-                          />
-                        ))}
-                        {publicCloudModel && cloudOpts && (
-                          <span style={{ fontSize: 10.5, lineHeight: 1.45, color: "var(--t6)", padding: "5px 10px 7px", whiteSpace: "normal" }}>公共模型仅支持公共宿主机</span>
-                        )}
-                        {cloudHosts.length === 0 && (
-                          <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的宿主机" : "加载中…"}</span>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </span>
-                <span style={{ position: "relative", flex: "0 1 auto", minWidth: 0, maxWidth: 112 }}>
-                  <ModelPickerTrigger
-                    label={cloudImageName}
-                    open={cloudPicker === "image"}
-                    title={`选择云端镜像：${cloudImageName}`}
-                    onClick={() => setCloudPicker((current) => current === "image" ? null : "image")}
-                  />
-                  {cloudPicker === "image" && (
-                    <>
-                      <div className="backdrop" onClick={() => setCloudPicker(null)} />
-                      <div className="pop model-menu" style={{ position: "absolute", bottom: 30, right: 0, maxHeight: 320, overflowY: "auto" }}>
-                        {cloudImages.map((image) => (
-                          <ModelMenuItem
-                            key={image.id}
-                            label={cloudImageLabel(image)}
-                            hint={image.owner?.type === "public" ? "公共" : undefined}
-                            selected={image.id === cloudImageId}
-                            onClick={() => {
-                              setCloudImageId(image.id!);
-                              setCloudPicker(null);
-                            }}
-                          />
-                        ))}
-                        {cloudImages.length === 0 && (
-                          <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的云端镜像" : "加载中…"}</span>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </span>
-              </>
-            ) : (
+            {mode !== "cloud" && (
               <ModelPicker models={models} current={model} onPick={setPickedModel} />
             )}
             <span style={{ flex: 1 }} />
