@@ -220,6 +220,19 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 .hv-op:hover { filter: brightness(0.97); }
 .hv-acc:hover { background: var(--accH) !important; }
 .hv-accbg:hover { background: var(--accBgSoft) !important; }
+
+/* 项目行快捷入口覆盖在行尾，不参与排版；鼠标经过项目或键盘聚焦按钮时
+ * 才显现，避免常驻操作槽挤压标题，也不再出现一块突兀的白底。 */
+.project-quick-add {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.project-row:hover .project-quick-add,
+.project-row:focus-within .project-quick-add {
+  opacity: 1;
+  pointer-events: auto;
+}
 .hv-bd:hover { border-color: var(--acc) !important; }
 /* Windows 自绘标题栏的关闭按钮:hover 红底白字(系统惯例,明暗主题同色) */
 .hv-caption-close:hover { background: #e81123 !important; color: #fff !important; }

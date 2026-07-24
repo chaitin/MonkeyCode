@@ -19,6 +19,7 @@ import {
   IconX,
 } from "./icons";
 import logoUrl from "./logo.png";
+import { isProjectArchived, projectArchiveKey } from "./projectArchive";
 import { MacDragSpacer } from "./titlebar";
 import type { CloudTask, McConnectionState, SessionMeta } from "./types";
 
@@ -50,9 +51,26 @@ export function groupByProject(sessions: SessionMeta[]): ProjectGroup[] {
   return groups;
 }
 
+function readStoredSet(key: string): Set<string> {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function storeSet(key: string, value: ReadonlySet<string>) {
+  try {
+    localStorage.setItem(key, JSON.stringify([...value]));
+  } catch {
+    // 偏好写盘失败不应阻断侧栏的本次展开/收起。
+  }
+}
+
 export type SidebarSpace = "cloud" | "local" | "chat";
 
-/** “多久没碰”比轮数更适合作为个人检索线索；一周后改短日期。 */
+/** 云端任务保留相对时间；会话行只展示状态和轮次，不消费这个字段。 */
 export function relativeTime(value?: string | number): string {
   if (value === undefined || value === null || value === "") return "";
   const raw = typeof value === "number" && value < 10_000_000_000 ? value * 1000 : value;
@@ -105,7 +123,7 @@ function SessionRow({
   active,
   attention,
   archived,
-  nested = false,
+  depth = 0,
   onClick,
   onArchive,
   onDelete,
@@ -115,7 +133,7 @@ function SessionRow({
   active: boolean;
   attention: boolean;
   archived: boolean;
-  nested?: boolean;
+  depth?: number;
   onClick: () => void;
   onArchive: () => void;
   onDelete: () => void;
@@ -129,7 +147,6 @@ function SessionRow({
   const selected = active && !archived;
   const title = meta.title || (meta.kind === "chat" ? "新对话" : "新任务");
   const turns = turnCountLabel(meta.turns);
-  const time = relativeTime(meta.updated_at);
 
   const closeMenu = () => setMenu("closed");
   const openMenuAt = (clientX: number, clientY: number) => {
@@ -160,14 +177,14 @@ function SessionRow({
           openMenuAt(e.clientX, e.clientY);
         }}
         style={{
-          minHeight: 50,
+          minHeight: 48,
           position: "relative",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          gap: 4,
-          padding: nested ? "7px 8px 7px 24px" : "7px 9px 7px 11px",
-          borderRadius: 9,
+          gap: 3,
+          padding: `6px 8px 6px ${11 + Math.max(0, depth) * 14}px`,
+          borderRadius: 8,
           cursor: "pointer",
           background: active ? (archived ? "var(--hov2)" : "var(--accSel)") : "transparent",
           color: "var(--t2)",
@@ -175,7 +192,7 @@ function SessionRow({
         }}
       >
         {selected && (
-          <span aria-hidden="true" style={{ position: "absolute", left: 2, top: 11, bottom: 11, width: 2, borderRadius: 2, background: "var(--acc)" }} />
+          <span aria-hidden="true" style={{ position: "absolute", left: 2, top: 10, bottom: 10, width: 2, borderRadius: 2, background: "var(--acc)" }} />
         )}
         <div style={{ width: "100%", minWidth: 0, display: "flex", alignItems: "center" }}>
           {editing ? (
@@ -206,12 +223,12 @@ function SessionRow({
               }}
             />
           ) : (
-            <span className="ellipsis" style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.25, fontWeight: 400, color: active ? "var(--t1)" : "var(--t2)" }}>
+            <span className="ellipsis" style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.35, fontWeight: 400, color: active ? "var(--t1)" : archived ? "var(--t4)" : "var(--t2)" }}>
               {title}
             </span>
           )}
         </div>
-        <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: 10.5, lineHeight: 1.2 }}>
+        <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 5, minWidth: 0, fontSize: 10.5, lineHeight: 1.25 }}>
           <span
             title={attention ? (meta.status === "error" ? "后台任务出错" : "会话有新进展") : undefined}
             style={{
@@ -225,16 +242,10 @@ function SessionRow({
               flex: "none",
             }}
           />
-          <span className="ellipsis" style={{ color: st.color, minWidth: 0, flex: "none" }}>
+          <span className="ellipsis" style={{ color: archived && !attention ? "var(--t5)" : st.color, minWidth: 0, flex: "none" }}>
             {st.text}
           </span>
-          {turns && (
-            <>
-              <span aria-hidden="true" style={{ color: "var(--t7)", flex: "none" }}>·</span>
-              <span style={{ color: "var(--t5)", flex: "none", fontVariantNumeric: "tabular-nums" }}>{turns}</span>
-            </>
-          )}
-          {time && <span style={{ color: "var(--t5)", marginLeft: "auto", flex: "none", fontVariantNumeric: "tabular-nums" }}>{time}</span>}
+          {turns && <span style={{ color: "var(--t5)", marginLeft: "auto", flex: "none", fontVariantNumeric: "tabular-nums" }}>{turns}</span>}
         </div>
       </div>
 
@@ -273,48 +284,69 @@ function ProjectGroup({
   name,
   detail,
   project = false,
+  projectArchived = false,
+  depth = 0,
   expanded,
   muted,
   onToggle,
   onNewTask,
+  onProjectArchive,
   children,
 }: {
   name: string;
   detail?: string;
   project?: boolean;
+  projectArchived?: boolean;
+  depth?: number;
   expanded: boolean;
   muted?: boolean;
   onToggle: () => void;
   onNewTask?: () => void;
+  onProjectArchive?: () => void;
   children: ReactNode;
 }) {
-  const [hover, setHover] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number }>({ left: 0 });
+  const openMenuAt = (clientX: number, clientY: number) => {
+    const left = Math.max(8, Math.min(clientX, window.innerWidth - 166));
+    const openUp = clientY + 106 > window.innerHeight;
+    setPos({
+      left,
+      ...(openUp ? { bottom: Math.max(8, window.innerHeight - clientY + 4) } : { top: clientY + 4 }),
+    });
+    setMenuOpen(true);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
       <div
-        className="hv"
-        title={detail}
+        className="hv project-row"
+        title={[detail, project && onProjectArchive ? "右键管理项目" : ""].filter(Boolean).join("\n") || undefined}
+        aria-expanded={expanded}
         onClick={onToggle}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
+        onContextMenu={project && onProjectArchive ? (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openMenuAt(e.clientX, e.clientY);
+        } : undefined}
         style={{
           minHeight: 34,
           position: "relative",
           display: "flex",
           alignItems: "center",
           gap: 6,
-          padding: "0 5px 0 7px",
+          padding: `0 5px 0 ${7 + Math.max(0, depth) * 14}px`,
           borderRadius: 8,
           cursor: "pointer",
           userSelect: "none",
-          fontWeight: 650,
-          fontSize: 12.5,
-          color: muted ? "var(--t5)" : "var(--t1)",
+          fontWeight: project ? 600 : 550,
+          fontSize: project ? 12.5 : 11.5,
+          color: muted ? "var(--t5)" : projectArchived ? "var(--t3)" : "var(--t1)",
         }}
       >
         <span style={{ width: 13, height: 13, flex: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
           {project ? (
-            <IconFolder size={13} color={muted ? "var(--t5)" : "var(--t3)"} />
+            <IconFolder size={13} color={muted || projectArchived ? "var(--t5)" : "var(--t3)"} />
           ) : (
             <IconChevronRight size={9} style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s ease" }} />
           )}
@@ -322,8 +354,9 @@ function ProjectGroup({
         <span className="ellipsis" style={{ flex: 1 }}>{name}</span>
         {onNewTask && (
           <button
-            className="hv3 icon-btn"
+            className="hv3 icon-btn project-quick-add"
             title="在此项目新建任务"
+            aria-label={`在 ${name} 中新建任务`}
             onClick={(e) => { e.stopPropagation(); onNewTask(); }}
             style={{
               position: "absolute",
@@ -331,21 +364,35 @@ function ProjectGroup({
               top: 6,
               width: 22,
               height: 22,
-              border: "1px solid var(--line2)",
+              border: "none",
               borderRadius: 6,
-              background: "var(--card)",
-              boxShadow: "var(--cardSh)",
-              opacity: hover ? 1 : 0,
-              visibility: hover ? "visible" : "hidden",
-              pointerEvents: hover ? "auto" : "none",
-              transition: "opacity .12s ease, visibility 0s linear 0s",
+              background: "transparent",
+              boxShadow: "none",
             }}
           >
             <IconPlus size={10} color="var(--t3)" />
           </button>
         )}
       </div>
-      {expanded && <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: 6 }}>{children}</div>}
+      {expanded && <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: depth > 0 ? 4 : 6 }}>{children}</div>}
+
+      {menuOpen && onProjectArchive && (
+        <>
+          <div className="backdrop" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
+          <div className="pop" style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: 148 }} onClick={(e) => e.stopPropagation()}>
+            {onNewTask && (
+              <button className="hv menu-item" onClick={() => { setMenuOpen(false); onNewTask(); }}>
+                <IconPlus size={12} />
+                在此新建任务
+              </button>
+            )}
+            <button className="hv menu-item" onClick={() => { setMenuOpen(false); onProjectArchive(); }}>
+              <IconArchive />
+              {projectArchived ? "恢复项目" : "归档项目"}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -490,6 +537,7 @@ const headerAction: CSSProperties = {
 
 export function Sidebar({
   sessions,
+  archivedProjects,
   currentId,
   attention,
   sessionActive,
@@ -509,6 +557,7 @@ export function Sidebar({
   onOpenCloudTask,
   onSelect,
   onNewTask,
+  onProjectArchive,
   onNewChat,
   onOpenSettings,
   onArchive,
@@ -516,6 +565,7 @@ export function Sidebar({
   onRename,
 }: {
   sessions: SessionMeta[];
+  archivedProjects: ReadonlySet<string>;
   currentId: string | null;
   attention: Set<string>;
   sessionActive: boolean;
@@ -535,6 +585,7 @@ export function Sidebar({
   onOpenCloudTask: (task: CloudTask) => void;
   onSelect: (meta: SessionMeta) => void;
   onNewTask: (dir?: string) => void;
+  onProjectArchive: (dir: string, archived: boolean) => void;
   onNewChat: () => void;
   onOpenSettings: () => void;
   onArchive: (meta: SessionMeta) => void;
@@ -548,14 +599,10 @@ export function Sidebar({
     return saved === "cloud" || saved === "chat" || saved === "local" ? saved : inferred;
   });
   const [query, setQuery] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    try {
-      return new Set(JSON.parse(localStorage.getItem("mc.collapsedGroups") || "[]") as string[]);
-    } catch {
-      return new Set();
-    }
-  });
-  const [archivedOpen, setArchivedOpen] = useState(() => localStorage.getItem("mc.archivedOpen") === "1");
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => readStoredSet("mc.collapsedGroups"));
+  const [sessionArchivesOpen, setSessionArchivesOpen] = useState<Set<string>>(() => readStoredSet("mc.sessionArchivesOpen"));
+  const [chatArchiveOpen, setChatArchiveOpen] = useState(() => localStorage.getItem("mc.archivedOpen") === "1");
+  const [projectArchiveOpen, setProjectArchiveOpen] = useState(() => localStorage.getItem("mc.projectArchiveOpen") === "1");
   const [cloudHistoryOpen, setCloudHistoryOpen] = useState(() => localStorage.getItem("mc.cloudHistoryOpen") === "1");
 
   // 外部入口(桌宠提醒、通知跳转)真正打开另一个空间时同步主导航；
@@ -575,13 +622,29 @@ export function Sidebar({
       const next = new Set(prev);
       if (next.has(dir)) next.delete(dir);
       else next.add(dir);
-      localStorage.setItem("mc.collapsedGroups", JSON.stringify([...next]));
+      storeSet("mc.collapsedGroups", next);
       return next;
     });
   };
-  const toggleArchived = () => {
-    setArchivedOpen((open) => {
+  const toggleSessionArchive = (dir: string) => {
+    const key = projectArchiveKey(dir);
+    setSessionArchivesOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      storeSet("mc.sessionArchivesOpen", next);
+      return next;
+    });
+  };
+  const toggleChatArchive = () => {
+    setChatArchiveOpen((open) => {
       localStorage.setItem("mc.archivedOpen", open ? "0" : "1");
+      return !open;
+    });
+  };
+  const toggleProjectArchive = () => {
+    setProjectArchiveOpen((open) => {
+      localStorage.setItem("mc.projectArchiveOpen", open ? "0" : "1");
       return !open;
     });
   };
@@ -600,11 +663,14 @@ export function Sidebar({
 
   const localAll = sessions.filter((m) => m.kind !== "chat");
   const chatAll = sessions.filter((m) => m.kind === "chat");
-  const local = localAll.filter((m) => !m.archived && matchesSession(m));
   const chats = chatAll.filter((m) => !m.archived && matchesSession(m));
-  const localArchived = localAll.filter((m) => m.archived && matchesSession(m));
   const chatArchived = chatAll.filter((m) => m.archived && matchesSession(m));
-  const projectGroups = groupByProject(local);
+  const filteredLocal = localAll.filter(matchesSession);
+  const projectGroups = groupByProject(filteredLocal.filter((m) => !isProjectArchived(archivedProjects, m.workdir)));
+  const archivedProjectGroups = groupByProject(filteredLocal.filter((m) => isProjectArchived(archivedProjects, m.workdir)));
+  const activeLocalAll = localAll.filter((m) => !isProjectArchived(archivedProjects, m.workdir));
+  const activeProjectCount = groupByProject(activeLocalAll).length;
+  const activeSessionCount = activeLocalAll.filter((m) => !m.archived).length;
   const localAttention = [...attention].filter((id) => localAll.some((m) => m.id === id)).length;
   const chatAttention = [...attention].filter((id) => chatAll.some((m) => m.id === id)).length;
   const cloudRunning = cloudTasks.filter((task) => task.status === "pending" || task.status === "processing");
@@ -612,20 +678,58 @@ export function Sidebar({
   const filteredCloudRunning = cloudRunning.filter(matchesCloud);
   const filteredCloudPast = cloudPast.filter(matchesCloud);
 
-  const sessionRow = (meta: SessionMeta, archived: boolean, nested = false) => (
+  const sessionRow = (meta: SessionMeta, archived: boolean, depth = 0) => (
     <SessionRow
       key={meta.id}
       meta={meta}
       active={meta.id === currentId && sessionActive}
       attention={attention.has(meta.id)}
       archived={archived}
-      nested={nested}
+      depth={depth}
       onClick={() => onSelect(meta)}
       onArchive={() => onArchive(meta)}
       onDelete={() => onDelete(meta)}
       onRename={(title) => onRename(meta, title)}
     />
   );
+
+  const projectRow = (group: ProjectGroup, projectArchived: boolean, depth = 0) => {
+    const activeItems = group.items.filter((m) => !m.archived);
+    const archivedItems = group.items.filter((m) => m.archived);
+    const archiveKey = projectArchiveKey(group.dir);
+    const startTask = () => {
+      // 在归档项目里新建任务等同于重新启用项目；项目行 + 与右键菜单共用。
+      if (projectArchived) onProjectArchive(group.dir, false);
+      onNewTask(group.dir);
+    };
+    return (
+      <ProjectGroup
+        key={group.dir}
+        name={group.name}
+        detail={`${group.dir}\n${activeItems.length} 个会话${archivedItems.length ? ` · ${archivedItems.length} 个已归档` : ""}`}
+        project
+        projectArchived={projectArchived}
+        depth={depth}
+        expanded={!!norm || !collapsed.has(group.dir)}
+        onToggle={() => toggleGroup(group.dir)}
+        onNewTask={startTask}
+        onProjectArchive={() => onProjectArchive(group.dir, !projectArchived)}
+      >
+        {activeItems.map((m) => sessionRow(m, false, depth + 1))}
+        {archivedItems.length > 0 && (
+          <ProjectGroup
+            name={`已归档会话 · ${archivedItems.length}`}
+            depth={depth + 1}
+            expanded={!!norm || sessionArchivesOpen.has(archiveKey)}
+            muted
+            onToggle={() => toggleSessionArchive(group.dir)}
+          >
+            {archivedItems.map((m) => sessionRow(m, true, depth + 2))}
+          </ProjectGroup>
+        )}
+      </ProjectGroup>
+    );
+  };
 
   const stateCard = (content: string, action?: { label: string; run: () => void }) => (
     <div style={{ margin: "6px 3px 12px", padding: "11px 12px", border: "1px dashed var(--dashBd)", borderRadius: 10, color: "var(--t4)", fontSize: 11.5, lineHeight: 1.55 }}>
@@ -712,7 +816,7 @@ export function Sidebar({
               <EmptyState icon={norm ? <IconSearch size={19} color="var(--t6)" /> : <IconChat size={21} color="var(--t6)" />} title={norm ? "没有匹配的对话" : "还没有独立对话"} detail={norm ? "试试标题中的其他关键词。" : "新建一段不绑定项目的普通对话。"} />
             )}
             {chatArchived.length > 0 && (
-              <ProjectGroup name={`已归档 · ${chatArchived.length}`} expanded={!!norm || archivedOpen} muted onToggle={toggleArchived}>
+              <ProjectGroup name={`已归档对话 · ${chatArchived.length}`} expanded={!!norm || chatArchiveOpen} muted onToggle={toggleChatArchive}>
                 {chatArchived.map((m) => sessionRow(m, true))}
               </ProjectGroup>
             )}
@@ -722,7 +826,7 @@ export function Sidebar({
     }
     return {
       title: "本地项目",
-      detail: `${groupByProject(localAll.filter((m) => !m.archived)).length} 个项目 · ${localAll.filter((m) => !m.archived).length} 个会话`,
+      detail: `${activeProjectCount} 个项目 · ${activeSessionCount} 个会话`,
       placeholder: "搜索项目或会话",
       actions: (
         <button className="hv-acc icon-btn" title="新建本地任务" onClick={() => onNewTask()} style={{ ...headerAction, background: "var(--acc)" }}>
@@ -731,24 +835,13 @@ export function Sidebar({
       ),
       content: (
         <>
-          {projectGroups.length ? projectGroups.map((group) => (
-            <ProjectGroup
-              key={group.dir}
-              name={group.name}
-              detail={group.dir}
-              project
-              expanded={!!norm || !collapsed.has(group.dir)}
-              onToggle={() => toggleGroup(group.dir)}
-              onNewTask={() => onNewTask(group.dir)}
-            >
-              {group.items.map((m) => sessionRow(m, false, true))}
-            </ProjectGroup>
-          )) : (
+          {projectGroups.map((group) => projectRow(group, false))}
+          {projectGroups.length === 0 && archivedProjectGroups.length === 0 && (
             <EmptyState icon={norm ? <IconSearch size={19} color="var(--t6)" /> : <IconMonitor size={21} color="var(--t6)" />} title={norm ? "没有匹配的会话" : "还没有本地项目"} detail={norm ? "试试项目名、目录或会话标题。" : "选择一个文件夹，开始第一个本地任务。"} />
           )}
-          {localArchived.length > 0 && (
-            <ProjectGroup name={`已归档 · ${localArchived.length}`} expanded={!!norm || archivedOpen} muted onToggle={toggleArchived}>
-              {localArchived.map((m) => sessionRow(m, true))}
+          {archivedProjectGroups.length > 0 && (
+            <ProjectGroup name={`已归档项目 · ${archivedProjectGroups.length}`} expanded={!!norm || projectArchiveOpen} muted onToggle={toggleProjectArchive}>
+              {archivedProjectGroups.map((group) => projectRow(group, true, 1))}
             </ProjectGroup>
           )}
         </>

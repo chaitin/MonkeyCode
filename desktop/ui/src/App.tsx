@@ -32,6 +32,7 @@ import { IconFolder, IconX } from "./icons";
 import { inspectMcAccount } from "./mcaccount";
 import { workspaceRelativePath } from "./markdownPaths";
 import { NewTaskView, type NewTaskPrefill } from "./newtask";
+import { isProjectArchived, readArchivedProjects, updateArchivedProjects } from "./projectArchive";
 import { initialChat, reduceBatch, type ChatState } from "./reduce";
 import { noticeForSessionEvent } from "./sessionNotice";
 import { groupByProject, Sidebar } from "./sidebar";
@@ -45,6 +46,7 @@ import type { CloudTask, EngineCrash, HostInfo, LogItem, McConnectionState, Mode
 const IS_MAC = /Mac/.test(navigator.userAgent);
 export default function App() {
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
+  const [archivedProjects, setArchivedProjects] = useState<Set<string>>(readArchivedProjects);
   const [view, setView] = useState<"new" | "session" | "settings" | "cloud">("new");
   // 页内设置视图的脏状态(浏览器回退模式;桌面走独立设置窗口):离开前确认
   const settingsDirty = useRef(false);
@@ -80,6 +82,9 @@ export default function App() {
   // 新建任务表单状态整体在 NewTaskView 内(随视图生命周期);App 只保留外部
   // 预填触发(侧栏本地/云端/对话 +、项目行 +)——每次触发都换新对象,同入口重复点击也生效
   const [newTaskPrefill, setNewTaskPrefill] = useState<NewTaskPrefill | null>(null);
+  const setProjectArchived = (workdir: string, archived: boolean) => {
+    setArchivedProjects((current) => updateArchivedProjects(current, workdir, archived));
+  };
 
   // ===== MonkeyCode 云端账号与任务 =====
   // 百智云登录只用于显式桥接授权;这里独立持有 MonkeyCode 关联态。
@@ -368,7 +373,7 @@ export default function App() {
   // 新任务默认工作目录跟随最近会话:数据在这派生,跟随逻辑在 NewTaskView 内
   const lastDir =
     [...sessions]
-      .filter((m) => m.kind !== "chat")
+      .filter((m) => m.kind !== "chat" && !isProjectArchived(archivedProjects, m.workdir))
       .sort((a, b) => String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? "")))[0]?.workdir ?? "";
 
   // 本地文件抽屉的数据适配:与云端同名协议(repo_file_list / repo_read_file /
@@ -441,7 +446,9 @@ export default function App() {
   // 文件抽屉预览头的改动标注:路径 → 状态(树/列表内的标注在 FilesDrawer)
   const changeMap = new Map((changes ?? []).map((c) => [c.path, c.status] as const));
   // 最近用过的项目目录(侧栏同款分组;当前目录补入/截断在 NewTaskView 内做)
-  const recentDirs = groupByProject(sessions.filter((m) => !m.archived && m.kind !== "chat")).map((g) => g.dir);
+  const recentDirs = groupByProject(
+    sessions.filter((m) => !m.archived && m.kind !== "chat" && !isProjectArchived(archivedProjects, m.workdir)),
+  ).map((g) => g.dir);
 
   // ===== 全局快捷键:⇧⇥ 权限模式、⏎/esc 应答审批、esc 关闭浮层 =====
   useEffect(() => {
@@ -549,6 +556,7 @@ export default function App() {
       {view !== "settings" && (
         <Sidebar
           sessions={sessions}
+          archivedProjects={archivedProjects}
           currentId={session.id}
           attention={attention}
           sessionActive={view === "session"}
@@ -574,6 +582,7 @@ export default function App() {
             setNewTaskPrefill({ dir, mode: "local" });
             setView("new");
           }}
+          onProjectArchive={setProjectArchived}
           onNewChat={() => {
             setNewTaskPrefill({ mode: "chat" });
             setView("new");
@@ -621,6 +630,8 @@ export default function App() {
               void syncCloud();
             }}
             onCreated={async (meta, first, files) => {
+              // 从任意入口在旧目录新建任务，都视为重新启用该项目。
+              if (meta.kind !== "chat") setProjectArchived(meta.workdir, false);
               await refreshSessions();
               // 附件在会话连上后由 useSession 上传并随首条消息发出
               openSession(meta, first, files);

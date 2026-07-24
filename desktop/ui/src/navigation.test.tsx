@@ -23,6 +23,7 @@ describe("侧栏新建任务入口", () => {
     const html = renderToStaticMarkup(
       <Sidebar
         sessions={[]}
+        archivedProjects={new Set()}
         currentId={null}
         attention={new Set()}
         sessionActive={false}
@@ -37,6 +38,7 @@ describe("侧栏新建任务入口", () => {
         onOpenCloudTask={() => {}}
         onSelect={() => {}}
         onNewTask={() => {}}
+        onProjectArchive={() => {}}
         onNewChat={() => {}}
         onOpenSettings={() => {}}
         onArchive={() => {}}
@@ -97,7 +99,9 @@ describe("会话辅助信息", () => {
     expect(relativeTime("2026-07-21T12:00:00Z")).toBe("2 天前");
   });
 
-  it("同时展示可继续状态、轮次和稳定滚动槽，不再预留更多按钮", () => {
+  it("会话只展示状态和轮次，不再展示更新时间或预留更多按钮", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-23T12:00:00Z"));
     const html = renderToStaticMarkup(
       <Sidebar
         sessions={[{
@@ -110,6 +114,7 @@ describe("会话辅助信息", () => {
           status: "idle",
           updated_at: "2026-07-23T11:34:00Z",
         }]}
+        archivedProjects={new Set()}
         currentId="chat-1"
         attention={new Set()}
         sessionActive
@@ -122,6 +127,7 @@ describe("会话辅助信息", () => {
         onOpenCloudTask={() => {}}
         onSelect={() => {}}
         onNewTask={() => {}}
+        onProjectArchive={() => {}}
         onNewChat={() => {}}
         onOpenSettings={() => {}}
         onArchive={() => {}}
@@ -132,9 +138,58 @@ describe("会话辅助信息", () => {
 
     expect(html).toContain("可继续");
     expect(html).toContain("12 轮");
+    expect(html).not.toContain("26 分钟前");
     expect(html).toContain("右键管理");
     expect(html).toContain("scrollbar-gutter:stable");
     expect(html).not.toContain('title="更多操作"');
+  });
+
+  it("把会话归档留在项目内，把项目归档集中到底部", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => {
+        if (key === "mc.projectArchiveOpen") return "1";
+        if (key === "mc.sessionArchivesOpen") return JSON.stringify(["/workspace/current", "/workspace/old"]);
+        return null;
+      },
+      setItem: vi.fn(),
+    });
+
+    const html = renderToStaticMarkup(
+      <Sidebar
+        sessions={[
+          { id: "current-1", title: "正在处理的任务", workdir: "/workspace/current", kind: "local", model: "test", turns: 2, status: "idle" },
+          { id: "current-2", title: "项目内的旧会话", workdir: "/workspace/current", kind: "local", model: "test", turns: 5, status: "idle", archived: true },
+          { id: "old-1", title: "旧项目里的任务", workdir: "/workspace/old", kind: "local", model: "test", turns: 3, status: "idle" },
+        ]}
+        archivedProjects={new Set(["/workspace/old"])}
+        currentId={null}
+        attention={new Set()}
+        sessionActive={false}
+        connected
+        status="已连接"
+        mcConnection={{ phase: "connected", host: "monkeycode-ai.com" }}
+        cloudTasks={[]}
+        onConnectCloud={() => {}}
+        onNewCloudTask={() => {}}
+        onOpenCloudTask={() => {}}
+        onSelect={() => {}}
+        onNewTask={() => {}}
+        onProjectArchive={() => {}}
+        onNewChat={() => {}}
+        onOpenSettings={() => {}}
+        onArchive={() => {}}
+        onDelete={() => {}}
+        onRename={() => {}}
+      />,
+    );
+
+    expect(html).toContain("正在处理的任务");
+    expect(html).toContain("已归档会话 · 1");
+    expect(html).toContain("项目内的旧会话");
+    expect(html).toContain("已归档项目 · 1");
+    expect(html).toContain("旧项目里的任务");
+    expect(html).toContain('class="hv3 icon-btn project-quick-add"');
+    expect(html).not.toContain("已归档 · 2");
   });
 
   it("轮次文案会过滤空值和异常历史值", () => {
