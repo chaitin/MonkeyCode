@@ -7,6 +7,7 @@ export { CodeView } from "./codeView";
 export { DiffPanel } from "./diffView";
 export { MONO } from "./fonts";
 export { LogList } from "./logView";
+export { OutlineNav, outlineEntries, type OutlineEntry } from "./outline";
 export { Markdown } from "./markdown";
 export { TaskPanel } from "./taskPanel";
 export { ToolCard } from "./toolCard";

@@ -10,6 +10,7 @@
 //
 // 上行统一走 invoke 命令(本文件底部,main.rs 注册)。
 
+mod fold;
 pub mod frame;
 mod normalize;
 pub mod ohmy;
@@ -224,9 +225,36 @@ pub async fn models_list(host: State<'_, DriverHost>) -> Result<Value, String> {
     host.get()?.models_list().await
 }
 
+/// 打开会话:返回尾部回放窗口 `{frames, cursor, has_more}`。历史走返回值
+/// 而非 `frames:{sid}` 事件——返回值天生有序,不必依赖"监听先于命令"。
 #[tauri::command]
-pub async fn session_open(host: State<'_, DriverHost>, id: String) -> Result<(), String> {
+pub async fn session_open(host: State<'_, DriverHost>, id: String) -> Result<Value, String> {
     host.get()?.session_open(&id).await
+}
+
+/// 往前翻页:cursor 之前的最多 limit 轮,形状对齐云端 mc_task_rounds
+/// (`{frames, next_cursor, has_more}`),UI 两条路径共用一套"加载更早"。
+#[tauri::command]
+pub async fn session_history(
+    host: State<'_, DriverHost>,
+    id: String,
+    cursor: u64,
+    limit: usize,
+) -> Result<Value, String> {
+    host.get()?.session_history(&id, cursor, limit).await
+}
+
+/// 回读单帧原文:物化时截断的工具大字段,展开卡片时按 seq 取全文。
+#[tauri::command]
+pub async fn session_frame(host: State<'_, DriverHost>, id: String, seq: u64) -> Result<Value, String> {
+    host.get()?.session_frame(&id, seq).await
+}
+
+/// 提问大纲:全量 user-input 条目(含未物化尾巴),条目自带轮起始偏移,
+/// UI 点到未加载的早期提问时拿它当 cursor 补历史。
+#[tauri::command]
+pub async fn session_outline(host: State<'_, DriverHost>, id: String) -> Result<Value, String> {
+    host.get()?.session_outline(&id).await
 }
 
 #[tauri::command]

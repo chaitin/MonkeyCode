@@ -4,6 +4,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ClipboardEvent,
@@ -17,9 +18,12 @@ import {
   HeaderMenu,
   LogList,
   MONO,
+  OutlineNav,
   TaskPanel,
   ViewHeader,
+  outlineEntries,
   type MenuState,
+  type OutlineEntry,
 } from "./components";
 import { Composer, QueuedChip, RunningBar } from "./composer";
 import { IconArchive, IconChat, IconCheck, IconChevronDown, IconFolder, IconInfo, IconShield, IconTaskDone, IconX } from "./icons";
@@ -427,20 +431,121 @@ export function ChatView({
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0); // dragenter/leave 在子元素间反复触发,计数配对
 
+  // 锚点恢复的轮询校准:渲染后布局还会无事件地微调一次(实测 ~6px,RO 也
+  // 抓不到这种再分配),对齐到位后是零修正的空转,用户接管即停。
+  // 会话切换恢复与大纲跳转共用同一条路径——跳转别自己写 scrollIntoView,
+  // 图片解码/字体加载会把它顶漂,这里已经处理过。
+  const restoreTimer = useRef(0);
+  const stopRestorePolling = () => {
+    window.clearInterval(restoreTimer.current);
+    restoreTimer.current = 0;
+  };
+  const startRestore = (anchor: number, offset: number) => {
+    restoreRef.current = { anchor, offset };
+    alignLog();
+    stopRestorePolling();
+    restoreTimer.current = window.setInterval(() => {
+      if (restoreRef.current) alignLog();
+      else stopRestorePolling();
+    }, 200);
+  };
+  useEffect(() => stopRestorePolling, []);
+
+  // 「加载更早」的位置保持:前插会把所有条目往下推,记像素没用,记**元素**
+  // ——keyBase 稳定 key 保证 React 不会把既有条目换成新节点,前插后按同一
+  // 元素重新对齐,视口纹丝不动(云端那条路径至今没做,别照抄)
+  const prependAnchor = useRef<{ node: Element; offset: number } | null>(null);
+  const onLoadEarlier = () => {
+    pinnedRef.current = false;
+    void session.loadEarlier(() => {
+      const el = logRef.current;
+      const col = el?.firstElementChild;
+      if (!el || !col) return;
+      const elTop = el.getBoundingClientRect().top;
+      for (const kid of Array.from(col.children)) {
+        const r = kid.getBoundingClientRect();
+        if (r.bottom > elTop) {
+          prependAnchor.current = { node: kid, offset: elTop - r.top };
+          break;
+        }
+      }
+    });
+  };
+  // 用 layout effect:DOM 已更新但尚未绘制,这一帧就把位置纠回去,不闪
+  useLayoutEffect(() => {
+    const pa = prependAnchor.current;
+    if (!pa) return;
+    prependAnchor.current = null;
+    const col = logRef.current?.firstElementChild;
+    const idx = col ? Array.prototype.indexOf.call(col.children, pa.node) : -1;
+    if (idx >= 0) startRestore(idx, pa.offset);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.items]);
+
+  // ==== 提问大纲 ====
+  const outline = useMemo(() => outlineEntries(session.outline), [session.outline]);
+  const [activeSeq, setActiveSeq] = useState<number | undefined>(undefined);
+  const activeRaf = useRef(0);
+  // 当前视口所在的提问 = 视口顶部之上最后一条用户气泡。判定沿用 saveAnchor
+  // 同款 rect 比较,rAF 节流:流式期间每批帧都重算会把轨道刷成动画
+  const updateActive = () => {
+    const el = logRef.current;
+    const col = el?.firstElementChild;
+    if (!el || !col) return;
+    const elTop = el.getBoundingClientRect().top;
+    let seq: number | undefined;
+    for (const kid of Array.from(col.children)) {
+      if (kid.getBoundingClientRect().top - elTop > 8) break;
+      const raw = (kid as HTMLElement).dataset?.mcSeq;
+      if (raw) seq = Number(raw);
+    }
+    setActiveSeq((prev) => (prev === seq ? prev : seq));
+  };
+  const scheduleActive = () => {
+    if (activeRaf.current) return;
+    activeRaf.current = window.requestAnimationFrame(() => {
+      activeRaf.current = 0;
+      updateActive();
+    });
+  };
+  useEffect(scheduleActive, [chat.items]);
+  useEffect(() => () => window.cancelAnimationFrame(activeRaf.current), []);
+
+  /** 定位到某次提问;目标不在当前 DOM 里返回 false(还没加载进来) */
+  const jumpToSeq = (seq: number): boolean => {
+    const col = logRef.current?.firstElementChild;
+    const node = col?.querySelector(`[data-mc-seq="${seq}"]`);
+    if (!col || !node) return false;
+    const idx = Array.prototype.indexOf.call(col.children, node);
+    if (idx < 0) return false;
+    pinnedRef.current = false;
+    // 复用锚点恢复:图片解码/字体加载后仍会自动纠偏(scrollIntoView 不会)
+    startRestore(idx, -12);
+    node.classList.remove("mc-jump-flash");
+    void (node as HTMLElement).offsetWidth; // 重启动画
+    node.classList.add("mc-jump-flash");
+    window.setTimeout(() => node.classList.remove("mc-jump-flash"), 1000);
+    return true;
+  };
+  const jumpWithRetry = (seq: number, tries = 12) => {
+    if (jumpToSeq(seq) || tries <= 0) return;
+    window.setTimeout(() => jumpWithRetry(seq, tries - 1), 32);
+  };
+  const onOutlineJump = (e: OutlineEntry) => {
+    if (jumpToSeq(e.seq)) return;
+    // 更早的提问还没加载:按它那一轮的偏移把历史补齐,再定位
+    void session.ensureLoaded(e.offset).then(() => jumpWithRetry(e.seq));
+  };
+
   // 会话切换:复位跟随状态并取出记忆位置。ChatView 不按会话重挂载,
   // 不显式复位的话 pinnedRef 会带着上一会话的值进入新会话(切过来停在顶部的根因)
   useLayoutEffect(() => {
     const saved = session.id ? scrollMemo.get(session.id) : undefined;
     pinnedRef.current = saved ? saved.pinned : true; // 首次打开默认贴底
-    restoreRef.current = saved && !saved.pinned ? { anchor: saved.anchor, offset: saved.offset } : null;
-    if (!restoreRef.current) return;
-    // 渲染后布局还会无事件地微调一次(实测 ~6px,RO 也抓不到这种再分配):
-    // 恢复期间低频轮询对齐兜底,对齐到位后是零修正的空转,用户接管即停
-    const iv = window.setInterval(() => {
-      if (restoreRef.current) alignLog();
-      else clearInterval(iv);
-    }, 200);
-    return () => clearInterval(iv);
+    if (saved && !saved.pinned) startRestore(saved.anchor, saved.offset);
+    else restoreRef.current = null;
+    return () => stopRestorePolling();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
 
   // 自动滚动:优先对齐记忆锚点,否则贴底跟随
@@ -503,6 +608,7 @@ export function ChatView({
     // 卡在中途)。离底判定只认用户真实输入(onWheel/滚动条拖拽)
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) pinnedRef.current = true;
     saveAnchor();
+    scheduleActive();
     // 滚动停止后布局仍会微调一次(实测 ~6px,不发 scroll 事件),停稳后补一次校准
     clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(saveAnchor, 600);
@@ -709,7 +815,9 @@ export function ChatView({
           </div>
         </div>
       ) : (
-        // scrollbar-gutter 两侧对称预留(Chromium 94+):滚动条出现时内容列不再被挤得比 composer 偏左
+        // 外层只为提问大纲提供定位上下文:轨道绝对定位贴在滚动视口左缘,
+        // 不参与布局,窄窗口下正文列宽不受影响
+        <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex" }}>
         <div
           ref={logRef}
           onScroll={onLogScroll}
@@ -719,16 +827,39 @@ export function ChatView({
           style={{ flex: 1, overflowY: "auto", overflowX: "hidden", minHeight: 0, scrollbarGutter: "stable both-edges" }}
         >
           <div style={{ width: "100%", maxWidth: COL_MAX, margin: "0 auto", padding: "28px 30px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
+            {session.canLoadEarlier && (
+              <button
+                className="hv"
+                onClick={onLoadEarlier}
+                style={{
+                  alignSelf: "center",
+                  border: "1px solid var(--line)",
+                  background: "var(--card)",
+                  color: "var(--t3)",
+                  fontSize: 11.5,
+                  borderRadius: 8,
+                  padding: "4px 14px",
+                  cursor: "pointer",
+                  boxShadow: "var(--cardSh)",
+                }}
+              >
+                {session.loadingEarlier ? "加载中…" : "加载更早的对话"}
+              </button>
+            )}
             <LogList
               items={chat.items}
+              keyBase={chat.keyBase}
               onPermAnswer={session.answerPerm}
               onAskAnswer={session.answerAsk}
               onOpenChild={onOpenChild}
               uploadUrl={session.uploadUrl}
               onLocalLink={revealMarkdownLink}
               workdir={workdir}
+              loadFullTool={session.loadFrame}
             />
           </div>
+        </div>
+          <OutlineNav entries={outline} activeSeq={activeSeq} onJump={onOutlineJump} />
         </div>
       )}
 

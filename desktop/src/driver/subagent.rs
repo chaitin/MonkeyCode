@@ -132,6 +132,7 @@ impl Inner {
                 model_name: model_name.clone(),
                 mode: "default".into(),
                 title: title.clone(),
+                fold: Default::default(),
             },
         );
         self.write_sidecar(child_sid, |m| {

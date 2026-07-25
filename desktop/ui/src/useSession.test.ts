@@ -10,7 +10,7 @@
 // 于是「监听先于命令」(ARCHITECTURE 契约 3)在这里是可断言的:谁把
 // invoke 提到 listen 前面,回放帧就静默丢失,对话流空 + trace 顺序翻转。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { b64decode } from "./codec";
+import { b64decode, b64encode } from "./codec";
 import { initialChat, type ChatState } from "./reduce";
 import { createSessionCore, type SessionCoreIO } from "./useSession";
 import type { Attachment, FileChange, Frame, LogItem } from "./types";
@@ -22,8 +22,15 @@ let trace: string[] = [];
 /** 上行帧(session_send) */
 let sent: { ftype: string; payload: Record<string, unknown> }[] = [];
 let sendFail = false; // session_send 是否失败(壳侧发送失败窗口)
-/** session_open 时壳同步回放的历史帧 */
+/** session_open 返回的尾部窗口 */
 let replay: Frame[] = [];
+let replayCursor = 0;
+let replayHasMore = false;
+/** session_history 的应答队列(按调用顺序出队)与调用记录 */
+let historyPages: { frames: Frame[]; next_cursor?: number; has_more?: boolean }[] = [];
+let historyCalls: { cursor: number; limit: number }[] = [];
+/** session_outline 的应答 */
+let outlineScript: { seq: number; offset: number; content: string; timestamp?: number }[] = [];
 /** session_call 应答脚本:kind → 结果(未登记则 reject) */
 let callScript: Record<string, unknown> = {};
 let uploaded: string[] = []; // upload_file 收到的文件名(按序)
@@ -57,6 +64,11 @@ beforeEach(() => {
   sent = [];
   sendFail = false;
   replay = [];
+  replayCursor = 0;
+  replayHasMore = false;
+  historyPages = [];
+  historyCalls = [];
+  outlineScript = [];
   callScript = {};
   uploaded = [];
   uploadDeny = new Set();
@@ -68,11 +80,18 @@ beforeEach(() => {
           trace.push("invoke:" + cmd);
           if (cmd === "session_open") {
             const sid = args!.id as string;
-            // 壳在命令处理中同步回放历史帧并推连接状态(Tauri 事件不排队:
-            // 监听没注册就永久丢失)
-            if (replay.length) pushFrames(sid, replay);
+            // 历史走返回值(尾部窗口);连接状态仍是命令内同步 emit 的事件
+            // (Tauri 事件不排队:监听没注册就永久丢失)
             pushStatus(sid, "已连接", true);
-            return Promise.resolve(null);
+            return Promise.resolve({ frames: replay, cursor: replayCursor, has_more: replayHasMore });
+          }
+          if (cmd === "session_history") {
+            historyCalls.push({ cursor: args!.cursor as number, limit: args!.limit as number });
+            const page = historyPages.shift();
+            return Promise.resolve(page ?? { frames: [], next_cursor: 0, has_more: false });
+          }
+          if (cmd === "session_outline") {
+            return Promise.resolve(outlineScript);
           }
           if (cmd === "session_send") {
             if (sendFail) return Promise.reject(new Error("引擎未就绪"));
@@ -152,6 +171,9 @@ function makeCore() {
     sessionsChanged: 0,
     remembered: null as string | null,
     forgotten: false,
+    canLoadEarlier: false,
+    loadingEarlier: [] as boolean[],
+    outline: [] as { seq: number; offset: number; text: string; timestamp?: number }[],
   };
   const io: SessionCoreIO = {
     setId: (v) => (out.id = v),
@@ -165,6 +187,9 @@ function makeCore() {
     setIsGitRepo: (v) => (out.isGitRepo = v),
     setChangesErr: (v) => (out.changesErr = v),
     notify: (text) => out.notices.push(text),
+    setCanLoadEarlier: (v) => (out.canLoadEarlier = v),
+    setLoadingEarlier: (v) => out.loadingEarlier.push(v),
+    setOutline: (v) => (out.outline = v),
     onSessionsChanged: () => (out.sessionsChanged += 1),
     rememberSession: (sid) => (out.remembered = sid),
     forgetSession: () => (out.forgotten = true),
@@ -520,5 +545,93 @@ describe("本地会话核心:文件抽屉查询", () => {
     expect((await core.listFiles("")).result?.[0].name).toBe("src");
     expect((await core.readFile("a.ts")).result?.content).toBe("hello");
     expect((await core.reveal("a.ts")).result?.ok).toBe(true);
+  });
+});
+
+describe("历史分页与提问大纲", () => {
+  const userFrame = (text: string, seq: number): Frame =>
+    ({ type: "user-input", data: { content: b64encode(text) }, seq }) as unknown as Frame;
+
+  it("打开时的尾部窗口来自 session_open 返回值,并带出翻页能力与大纲", async () => {
+    replay = [userFrame("窗口里的提问", 40), agentChunk("答")];
+    replayCursor = 512;
+    replayHasMore = true;
+    outlineScript = [
+      { seq: 7, offset: 0, content: b64encode("很早的提问"), timestamp: 1 },
+      { seq: 40, offset: 512, content: b64encode("窗口里的提问"), timestamp: 2 },
+    ];
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    await vi.waitFor(() => expect(out.outline.length).toBe(2));
+
+    expect(out.chat.items.map((i) => i.kind)).toEqual(["user", "agent"]);
+    expect(out.canLoadEarlier).toBe(true);
+    // 大纲是全量的:第一条尚未加载进对话流,但目录里有,且带翻页锚点
+    expect(out.outline[0]).toEqual({ seq: 7, offset: 0, text: "很早的提问", timestamp: 1 });
+  });
+
+  it("加载更早把历史插到最前,keyBase 左移保住既有条目的渲染 key", async () => {
+    replay = [userFrame("第二问", 40)];
+    replayCursor = 512;
+    replayHasMore = true;
+    historyPages = [{ frames: [userFrame("第一问", 7)], next_cursor: 0, has_more: false }];
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    const keyOfSecond = out.chat.keyBase + 0;
+
+    await core.loadEarlier();
+
+    expect(historyCalls).toEqual([{ cursor: 512, limit: 1 }]);
+    expect(out.chat.items.map((i) => (i as { text: string }).text)).toEqual(["第一问", "第二问"]);
+    // 「第二问」原来在下标 0,前插一条后到下标 1;key = keyBase + 下标 应当不变
+    expect(out.chat.keyBase + 1).toBe(keyOfSecond);
+    expect(out.canLoadEarlier).toBe(false);
+    // open 会先复位一次,翻页本身是 true → false
+    expect(out.loadingEarlier.slice(-2)).toEqual([true, false]);
+  });
+
+  it("到头之后不再发请求,失败只提示不打断会话", async () => {
+    replay = [];
+    replayCursor = 0;
+    replayHasMore = false;
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+
+    await core.loadEarlier();
+
+    expect(historyCalls).toEqual([]);
+    expect(out.notices).toEqual([]);
+  });
+
+  it("跳到未加载的早期提问:按 offset 一路往前翻到覆盖它为止", async () => {
+    replay = [userFrame("最新一问", 90)];
+    replayCursor = 900;
+    replayHasMore = true;
+    historyPages = [
+      { frames: [userFrame("中间一问", 50)], next_cursor: 500, has_more: true },
+      { frames: [userFrame("最早一问", 7)], next_cursor: 0, has_more: false },
+    ];
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+
+    await core.ensureLoaded(0);
+
+    expect(historyCalls.map((c) => c.cursor)).toEqual([900, 500]);
+    expect(out.chat.items.map((i) => (i as { text: string }).text)).toEqual([
+      "最早一问",
+      "中间一问",
+      "最新一问",
+    ]);
+  });
+
+  it("本轮结束会重拉大纲(壳刚把这一轮物化)", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    outlineScript = [{ seq: 3, offset: 0, content: b64encode("刚问完的"), timestamp: 9 }];
+
+    pushFrames("s1", [frame("task-ended")]);
+    await vi.waitFor(() => expect(out.outline.length).toBe(1));
+
+    expect(out.outline[0].text).toBe("刚问完的");
   });
 });

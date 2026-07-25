@@ -18,6 +18,11 @@ export interface ChatState {
   model: string;
   /** 会话权限模式(permission_mode_update 帧回写;空 = 以会话 meta 为准) */
   permMode: string;
+  /** 渲染 key 的基准:key = keyBase + 下标。"加载更早"往前插 N 条时减 N,
+   * 既有条目的 key 因此保持不变——否则下标 key 整体平移,React 认不出
+   * 同一条,ToolCard/ThoughtView 的展开态串位、整列重挂载(markdown 全部
+   * 重解析)。 */
+  keyBase: number;
 }
 
 export const initialChat: ChatState = {
@@ -29,6 +34,7 @@ export const initialChat: ChatState = {
   turnEnded: false,
   model: "",
   permMode: "",
+  keyBase: 0,
 };
 
 const PERM_OUTCOME: Record<PermOutcome, string> = {
@@ -425,7 +431,13 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
       } catch {
         text = data?.content ?? "";
       }
-      return push(s, { kind: "user", text, ...(f.timestamp !== undefined ? { timestamp: f.timestamp } : {}) });
+      return push(s, {
+        kind: "user",
+        text,
+        ...(f.timestamp !== undefined ? { timestamp: f.timestamp } : {}),
+        // 大纲跳转的锚:壳的 session_outline 条目按同一 seq 对表
+        ...(f.seq !== undefined ? { seq: f.seq } : {}),
+      });
     }
     case "permission-req": {
       const data = frameData<{ id?: string; title?: string; tool?: string; tool_call_id?: string }>(f);
@@ -509,6 +521,21 @@ export function reduceBatch(s: ChatState, batch: Frame[]): ChatState {
   let next = s;
   for (const f of batch) next = reduceFrame(next, f);
   return next;
+}
+
+/** 「加载更早」:把更早的一段历史帧归约后插到最前。
+ *
+ * 更早那段单独归约(不是接着当前状态跑):它只贡献 items——running/usage/
+ * plan 都是"此刻"的状态,让过去的帧回写会把现状覆盖成历史值。keyBase 同步
+ * 左移,既有条目的渲染 key 不变。 */
+export function prependBatch(s: ChatState, batch: Frame[]): ChatState {
+  const older = reduceBatch(initialChat, batch);
+  if (older.items.length === 0) return s;
+  return {
+    ...s,
+    items: [...older.items, ...s.items],
+    keyBase: s.keyBase - older.items.length,
+  };
 }
 
 /** 待决审批 → 工具卡锚定(tcId → perm 项)。审批 UX 终态:perm 带

@@ -49,21 +49,50 @@ export interface Conn {
   close(): void;
 }
 
+/** 一段历史:折叠后的帧 + 往前翻的游标(hasMore 为假即已到会话开头) */
+export interface HistoryPage {
+  frames: Frame[];
+  cursor: number;
+  hasMore: boolean;
+}
+
 export interface ConnHandlers {
   onFrames(batch: Frame[]): void;
+  /** 打开会话拿到的尾部窗口(命令返回值,不走事件) */
+  onHistory(page: HistoryPage): void;
   onStatus(text: string, connected: boolean): void;
 }
 
+/** 往前翻页:cursor 之前的最多 limit 轮(形状与云端 mcTaskRounds 一致) */
+export const sessionHistory = (id: string, cursor: number, limit = 1) =>
+  invoke<{ frames?: Frame[]; next_cursor?: number; has_more?: boolean }>("session_history", {
+    id,
+    cursor,
+    limit,
+  });
+
+/** 回读单帧原文:物化时被截断的工具大字段,展开卡片时按 seq 取全文 */
+export const sessionFrame = (id: string, seq: number) =>
+  invoke<Frame>("session_frame", { id, seq });
+
+/** 提问大纲:全量 user-input 条目(content 为 base64,offset 是翻页锚点) */
+export const sessionOutline = (id: string) =>
+  invoke<{ seq: number; offset: number; content: string; timestamp?: number }[]>("session_outline", {
+    id,
+  });
+
 /**
- * 打开会话流:壳侧接引擎并按 ~30ms 批量推 frames:{sid} 事件(历史帧由
- * 引擎回放);断线由壳自动重连,状态经 conn-status:{sid} 事件透传。
+ * 打开会话流:壳侧接引擎并按 ~30ms 批量推 frames:{sid} 事件;历史走
+ * session_open 的**返回值**(尾部窗口,更早的按 cursor 翻)。断线由壳自动
+ * 重连,状态经 conn-status:{sid} 事件透传。
  */
 export function connect(sessionId: string, h: ConnHandlers): Conn {
   let closed = false;
   h.onStatus("连接中…", false);
 
-  // 监听注册落地后才 session_open:壳在命令内同步回放历史帧并推送连接
-  // 状态,监听未注册前的事件会被丢(不排队),表现为空对话/卡在"连接中"
+  // 监听注册落地后才 session_open:壳在命令内同步推送连接状态,监听未注册
+  // 前的事件会被丢(不排队),表现为卡在"连接中"。历史帧自身已改走返回值,
+  // 不再受这条时序约束——实时帧仍要靠它。
   const unFramesP = listenAsync(`frames:${sessionId}`, (p) => {
     if (!closed) h.onFrames(p as Frame[]);
   });
@@ -73,7 +102,15 @@ export function connect(sessionId: string, h: ConnHandlers): Conn {
     h.onStatus(s.text, s.connected);
   });
   Promise.all([unFramesP, unStatusP])
-    .then(() => invoke("session_open", { id: sessionId }))
+    .then(() =>
+      invoke<{ frames?: Frame[]; cursor?: number; has_more?: boolean } | null>("session_open", {
+        id: sessionId,
+      }),
+    )
+    .then((w) => {
+      if (closed) return;
+      h.onHistory({ frames: w?.frames ?? [], cursor: w?.cursor ?? 0, hasMore: !!w?.has_more });
+    })
     .catch((e) => {
       if (!closed) h.onStatus("⚠ 打开会话失败: " + String(e), false);
     });

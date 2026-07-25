@@ -1,0 +1,29 @@
+{"data":{"content":"5biu5oiR55yL5LiL6L+Z5LiqIHBhbmlj"},"seq":1,"timestamp":1784088476037,"type":"user-input"}
+{"seq":2,"timestamp":1784088476074,"type":"task-started"}
+{"data":{"update":{"content":{"text":"我先看一下栈顶那一帧继续想边界条件","type":"text"},"sessionUpdate":"agent_thought_chunk"}},"kind":"acp_event","seq":3,"timestamp":1784088476111,"type":"task-running"}
+{"data":{"update":{"sessionUpdate":"usage_update","size":200000,"used":3400}},"kind":"acp_event","seq":39,"timestamp":1784088477443,"type":"task-running"}
+{"data":{"update":{"entries":[{"content":"定位 panic","status":"completed"}],"sessionUpdate":"plan"}},"kind":"acp_event","seq":40,"timestamp":1784088477480,"type":"task-running"}
+{"data":{"update":{"kind":"read","rawInput":{"path":"src/main.go"},"sessionUpdate":"tool_call","title":"Read","toolCallId":"t1"}},"kind":"acp_event","seq":22,"timestamp":1784088476814,"type":"task-running"}
+{"data":{"update":{"content":{"text":"读到了越界的索引","type":"text"},"sessionUpdate":"agent_message_chunk"}},"kind":"acp_event","seq":23,"timestamp":1784088476851,"type":"task-running"}
+{"data":{"update":{"rawOutput":{"output":"line 120: items[idx]"},"sessionUpdate":"tool_call_update","status":"completed","toolCallId":"t1"}},"kind":"acp_event","seq":31,"timestamp":1784088477147,"type":"task-running"}
+{"data":{"update":{"content":{"text":"所以是切片越界","type":"text"},"sessionUpdate":"agent_message_chunk"}},"kind":"acp_event","seq":32,"timestamp":1784088477184,"type":"task-running"}
+{"seq":41,"timestamp":1784088477517,"type":"task-ended"}
+{"data":{"content":"6aG65L6/5oqK5rWL6K+V6KGl5LiA5LiLClvlm77niYddIC5tb25rZXljb2RlL3VwbG9hZHMvYS5wbmc="},"seq":42,"timestamp":1784088477554,"type":"user-input"}
+{"seq":43,"timestamp":1784088477591,"type":"task-started"}
+{"data":{"update":{"content":{"text":"先写用例","type":"text"},"sessionUpdate":"agent_thought_chunk"}},"kind":"acp_event","seq":44,"timestamp":1784088477628,"type":"task-running"}
+{"data":{"update":{"kind":"execute","rawInput":{"command":"go test ./..."},"sessionUpdate":"tool_call","title":"Bash","toolCallId":"t2"}},"kind":"acp_event","seq":48,"timestamp":1784088477776,"type":"task-running"}
+{"data":{"id":"p1","title":"运行 go test","tool":"Bash","tool_call_id":"t2"},"seq":49,"timestamp":1784088477813,"type":"permission-req"}
+{"data":{"id":"p1","outcome":"approved"},"seq":50,"timestamp":1784088477850,"type":"permission-resolved"}
+{"data":{"update":{"rawOutput":{"output":"ok  1.2s"},"sessionUpdate":"tool_call_update","status":"completed","toolCallId":"t2"}},"kind":"acp_event","seq":51,"timestamp":1784088477887,"type":"task-running"}
+{"data":{"update":{"content":{"text":"测试通过","type":"text"},"sessionUpdate":"agent_message_chunk"}},"kind":"acp_event","seq":52,"timestamp":1784088477924,"type":"task-running"}
+{"data":{"update":{"content":{"data":"iVBORw0KGgo=","type":"image"},"sessionUpdate":"agent_message_chunk"}},"kind":"acp_event","seq":53,"timestamp":1784088477961,"type":"task-running"}
+{"data":{"update":{"content":{"text":"截图在上面","type":"text"},"sessionUpdate":"agent_message_chunk"}},"kind":"acp_event","seq":54,"timestamp":1784088477998,"type":"task-running"}
+{"data":{"update":{"model":"claude-opus-5","sessionUpdate":"model_update"}},"kind":"acp_event","seq":55,"timestamp":1784088478035,"type":"task-running"}
+{"data":{"update":{"content":{"text":"换了个模型继续","type":"text"},"sessionUpdate":"agent_message_chunk"}},"kind":"acp_event","seq":56,"timestamp":1784088478072,"type":"task-running"}
+{"seq":57,"timestamp":1784088478109,"type":"task-ended"}
+{"data":{"content":"5YaN6LeR5LiA6YGNIENJ"},"seq":58,"timestamp":1784088478146,"type":"user-input"}
+{"seq":59,"timestamp":1784088478183,"type":"task-started"}
+{"data":{"update":{"content":{"text":"准备跑","type":"text"},"sessionUpdate":"agent_thought_chunk"}},"kind":"acp_event","seq":60,"timestamp":1784088478220,"type":"task-running"}
+{"data":{"toolCall":{"rawInput":{"questions":[{"options":[{"label":"全量"},{"label":"只跑单测"}],"question":"跑哪个流水线?"}]},"toolCallId":"q1"}},"kind":"acp_ask_user_question","seq":63,"timestamp":1784088478331,"type":"task-running"}
+{"data":{"answers_json":"{\"跑哪个流水线?\": \"全量\"}","request_id":"q1"},"seq":64,"timestamp":1784088478368,"type":"reply-question"}
+{"data":{"update":{"content":{"text":"好的,跑全量","type":"text"},"sessionUpdate":"agent_message_chunk"}},"kind":"acp_event","seq":65,"timestamp":1784088478405,"type":"task-running"}

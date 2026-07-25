@@ -66,6 +66,12 @@ pub(super) struct TransportState {
 pub(super) enum JournalMsg {
     /// 追加一行(已含换行前的完整 JSON;按到达顺序 == seq 顺序写入)
     Append { sid: String, line: String },
+    /// 轮结束物化:折叠后的一轮写进 replay.jsonl(一行一轮,见 fold.rs)。
+    /// `src_end` = None 时由写线程取 events.jsonl 当前长度——通道内该轮的
+    /// Append 必然先于本消息到达,单线程顺序处理,此刻的文件长度精确等于
+    /// "这一轮最后一帧写完"的位置。补录/迁移的旧轮后面还跟着别的帧,
+    /// 必须显式给出那一轮自己的结束偏移。
+    Materialize { sid: String, turn: super::fold::Turn, src_end: Option<u64> },
     /// 关闭并移除该会话的缓存句柄;带 ack 时处理完即应答——
     /// 删除会话目录前必须等到(Windows 上打开中的文件删不掉目录)
     Close { sid: String, ack: Option<std::sync::mpsc::Sender<()>> },
@@ -116,6 +122,32 @@ pub(super) fn spawn_journal_writer(data_dir: PathBuf) -> mpsc::UnboundedSender<J
                     *t = tick;
                     if writeln!(f, "{line}").is_err() {
                         handles.remove(&sid);
+                    }
+                }
+                // 一轮一次,不值得为它留句柄(留了反而是 Windows 删目录时
+                // 的又一个待关文件):每轮 open-append-close。
+                JournalMsg::Materialize { sid, mut turn, src_end } => {
+                    // 截断只发生在写进 replay.jsonl 的这一刻(见 Turn::guard)
+                    turn.guard();
+                    let dir = data_dir.join(&sid);
+                    let end = match src_end {
+                        Some(v) => v,
+                        None => std::fs::metadata(dir.join("events.jsonl"))
+                            .map(|m| m.len())
+                            .unwrap_or(0),
+                    };
+                    match std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(dir.join("replay.jsonl"))
+                    {
+                        Ok(mut f) => {
+                            if let Err(e) = writeln!(f, "{}", turn.to_line(end)) {
+                                eprintln!("[desktop] 写回放日志失败({sid}): {e}");
+                            }
+                        }
+                        // 写不成只是这轮下次打开要现折,不影响正确性
+                        Err(e) => eprintln!("[desktop] 打开回放日志失败({sid}): {e}"),
                     }
                 }
                 JournalMsg::Close { sid, ack } => {
@@ -229,6 +261,7 @@ impl OhmyDriver {
                 pending_questions: StdMutex::new(HashMap::new()),
                 pending_perms: StdMutex::new(HashMap::new()),
                 perm_tools: StdMutex::new(HashMap::new()),
+                resume: StdMutex::new(HashMap::new()),
             },
             sub: SubagentState {
                 subagents: StdMutex::new(HashMap::new()),

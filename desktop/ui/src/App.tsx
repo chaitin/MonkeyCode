@@ -823,6 +823,8 @@ function SessionViewer({ id, workdir }: { id: string; workdir?: string }) {
   useEffect(() => {
     const conn = connect(id, {
       onFrames: (batch) => setChat((s) => reduceBatch(s, batch)),
+      // 子会话只读回放:尾部窗口够看完整过程,不做"加载更早"
+      onHistory: (page) => setChat((s) => reduceBatch(s, page.frames)),
       onStatus: (text) => setStatus(text),
     });
     connRef.current = conn;

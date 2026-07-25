@@ -4,7 +4,7 @@
 // 回归用例见文末「旧格式帧兼容」。
 import { describe, expect, it } from "vitest";
 import { b64encode } from "./codec";
-import { answerAsk, answerPerm, initialChat, permAnchors, permStateLabel, reduceBatch, reduceFrame } from "./reduce";
+import { answerAsk, answerPerm, initialChat, permAnchors, permStateLabel, prependBatch, reduceBatch, reduceFrame, type ChatState } from "./reduce";
 import type { AcpUpdate, Frame, LogItem, ToolProgress } from "./types";
 
 const frame = (type: string, data?: unknown, kind?: string): Frame => ({
@@ -619,5 +619,74 @@ describe("旧格式帧兼容(data = base64(JSON) 字符串)", () => {
   it("裸 JSON 字符串形态的 data(云端观测形态)也可解", () => {
     const s = run([{ type: "task-error", data: JSON.stringify({ error: "裸串" }) } as Frame]);
     expect(s.items.at(-1)).toEqual({ kind: "sys", text: "✗ 裸串", error: true });
+  });
+});
+
+describe("prependBatch(加载更早)", () => {
+  const f = (type: string, data?: unknown, kind?: string, seq?: number) =>
+    ({ type, ...(kind ? { kind } : {}), ...(data !== undefined ? { data } : {}), ...(seq !== undefined ? { seq } : {}) }) as Frame;
+
+  it("更早的一段只贡献 items,不把此刻的运行态/用量覆盖成历史值", () => {
+    const now: ChatState = {
+      ...initialChat,
+      items: [{ kind: "user", text: "现在这条" }],
+      running: true,
+      usage: { used: 999, size: 1000 },
+    };
+    const older = [
+      f("task-started"),
+      f("task-running", { update: { sessionUpdate: "usage_update", used: 1, size: 1000 } }, "acp_event"),
+      f("task-ended"),
+    ];
+
+    const s = prependBatch(now, older);
+
+    expect(s.running).toBe(true);
+    expect(s.usage).toEqual({ used: 999, size: 1000 });
+    expect(s.items[s.items.length - 1]).toEqual({ kind: "user", text: "现在这条" });
+  });
+
+  it("keyBase 左移与新增条数一致,既有条目的渲染 key 不变", () => {
+    const now: ChatState = { ...initialChat, items: [{ kind: "user", text: "第二问" }] };
+    const older = [f("user-input", { content: b64encode("第一问") }, undefined, 7), f("task-started"), f("task-ended")];
+
+    const s = prependBatch(now, older);
+
+    const added = s.items.length - now.items.length;
+    expect(s.keyBase).toBe(now.keyBase - added);
+    // 「第二问」原 key = 0 + 0;前插后 key = keyBase + 新下标,应当仍是 0
+    expect(s.keyBase + s.items.indexOf(now.items[0])).toBe(0);
+  });
+
+  it("空的一页不动状态", () => {
+    const now: ChatState = { ...initialChat, items: [{ kind: "user", text: "只有这条" }] };
+    expect(prependBatch(now, [])).toBe(now);
+  });
+});
+
+describe("大字段护栏标记透传", () => {
+  it("_meta.mcSrc 原样带到工具项上(工具卡据此回读全文)", () => {
+    // 壳侧物化时截断了 rawOutput,并在 _meta 留下按 seq 回读的凭据
+    const s = reduceBatch(initialChat, [
+      frame("task-running", { update: { sessionUpdate: "tool_call", toolCallId: "t1", title: "Read" } }, "acp_event"),
+      frame(
+        "task-running",
+        {
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "t1",
+            status: "completed",
+            rawOutput: { output: "前 1KB…" },
+            _meta: { mcSrc: { seq: 42 } },
+          },
+        },
+        "acp_event",
+      ),
+    ]);
+
+    const tool = s.items.find((i) => i.kind === "tool") as Extract<LogItem, { kind: "tool" }>;
+    expect((tool._meta as { mcSrc?: { seq?: number } }).mcSrc?.seq).toBe(42);
+    // 行内头部照常渲染,卡片折叠态不受影响
+    expect(tool.out).toContain("前 1KB");
   });
 });

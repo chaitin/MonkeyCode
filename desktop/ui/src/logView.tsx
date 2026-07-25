@@ -5,7 +5,7 @@ import { Markdown } from "./markdown";
 import { AskCard, PermCard } from "./promptCards";
 import { permAnchors } from "./reduce";
 import { ToolCard } from "./toolCard";
-import type { LogItem } from "./types";
+import type { Frame, LogItem } from "./types";
 import { UploadImg, downloadUpload } from "./uploadMedia";
 
 /** 思考块:单行折叠(✦ 思考 + 摘要省略),点击在下方展开完整文本的缩进块。
@@ -79,8 +79,9 @@ function ModelSwitchEvent({ names }: { names: string[] }) {
   );
 }
 
-/** 用户消息里的附件行:`[图片]/[文件] <工作区相对路径>`(composer 发送时拼接的约定格式) */
-const ATT_LINE = /^\[(图片|文件)\] (\S+)$/;
+/** 用户消息里的附件行:`[图片]/[文件] <工作区相对路径>`(composer 发送时拼接的约定格式)。
+ * 提问大纲复用同一约定剥附件行,故导出。 */
+export const ATT_LINE = /^\[(图片|文件)\] (\S+)$/;
 
 /** 消息时间:默认隐藏,悬停消息时在其上沿浮出,不参与正文布局。 */
 function MessageTime({ timestamp, align }: { timestamp?: number; align: "start" | "end" }) {
@@ -107,10 +108,13 @@ function MessageTime({ timestamp, align }: { timestamp?: number; align: "start" 
 function UserBubble({
   text,
   timestamp,
+  seq,
   uploadUrl,
 }: {
   text: string;
   timestamp?: number;
+  /** 产生它的 user-input 帧 seq:提问大纲按它定位这条气泡 */
+  seq?: number;
   uploadUrl?: (path: string) => Promise<string>;
 }) {
   const [zoom, setZoom] = useState<string | null>(null);
@@ -125,7 +129,7 @@ function UserBubble({
   }
   const body = rest.join("\n").trim();
   return (
-    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+    <div data-mc-seq={seq} style={{ display: "flex", justifyContent: "flex-end" }}>
       <div
         className="mc-message-row"
         style={{
@@ -233,7 +237,9 @@ function ItemView({
 }) {
   switch (item.kind) {
     case "user":
-      return <UserBubble text={item.text} timestamp={item.timestamp} uploadUrl={uploadUrl} />;
+      return (
+        <UserBubble text={item.text} timestamp={item.timestamp} seq={item.seq} uploadUrl={uploadUrl} />
+      );
     case "agent":
       return (
         <div
@@ -263,14 +269,19 @@ function ItemView({
 /** 对话流:相邻工具调用共享一个卡片外框，以细分割线保留逐项结构。 */
 export function LogList({
   items,
+  keyBase = 0,
   onPermAnswer,
   onAskAnswer,
   onOpenChild,
   uploadUrl,
   onLocalLink,
   workdir,
+  loadFullTool,
 }: {
   items: LogItem[];
+  /** 渲染 key 的基准(见 ChatState.keyBase):「加载更早」前插 N 条时它减 N,
+   * 既有条目的 key 保持不变——否则整列重挂载、展开态串位、markdown 全部重解析 */
+  keyBase?: number;
   onPermAnswer: (id: string, action: "allow" | "always" | "persist" | "deny") => void;
   /** 回答 AI 提问卡(云端任务);缺省则提问卡只读 */
   onAskAnswer?: (askId: string, answers: Record<string, string | string[]>) => void;
@@ -281,6 +292,8 @@ export function LogList({
   onLocalLink?: (path: string) => void;
   /** 工作区根:工具卡标题里的绝对路径按它收敛为相对路径 */
   workdir?: string;
+  /** 回读被截断的工具大字段原文(见 fold.rs 的大字段护栏) */
+  loadFullTool?: (seq: number) => Promise<Frame>;
 }) {
   // 审批锚定:待决 perm 带 toolCallId 且有同 id 工具卡时,按钮行嵌进
   // 那张卡(见 reduce.ts::permAnchors),对应的独立审批项跳过不渲染;
@@ -301,7 +314,7 @@ export function LogList({
         names.push(name);
         i++;
       }
-      out.push(<ModelSwitchEvent key={"models" + start} names={names} />);
+      out.push(<ModelSwitchEvent key={"models" + (keyBase + start)} names={names} />);
     } else if (it.kind === "tool") {
       const start = i;
       const group: Extract<LogItem, { kind: "tool" }>[] = [];
@@ -313,7 +326,7 @@ export function LogList({
       }
       const grouped = group.length > 1;
       out.push(
-        <div className={grouped ? "card tool-stack" : undefined} key={"g" + start} style={{ display: "flex", flexDirection: "column", gap: grouped ? 0 : 8, maxWidth: "92%" }}>
+        <div className={grouped ? "card tool-stack" : undefined} key={"g" + (keyBase + start)} style={{ display: "flex", flexDirection: "column", gap: grouped ? 0 : 8, maxWidth: "92%" }}>
           {group.map((t, j) => (
             <ToolCard
               key={t.tcId || j}
@@ -324,6 +337,7 @@ export function LogList({
               workdir={workdir}
               perm={anchors.get(t.tcId)}
               onPermAnswer={onPermAnswer}
+              loadFullTool={loadFullTool}
               grouped={grouped}
             />
           ))}
@@ -336,7 +350,7 @@ export function LogList({
       }
       out.push(
         <ItemView
-          key={i}
+          key={keyBase + i}
           item={it}
           onPermAnswer={onPermAnswer}
           onAskAnswer={onAskAnswer}

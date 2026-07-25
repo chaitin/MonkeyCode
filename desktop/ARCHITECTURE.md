@@ -58,7 +58,14 @@ tool_call_update(含 progress 子代理 feed 与 failed 终态)/plan/usage_updat
 llm_call_retry/compact_status/model_update/permission_mode_update`。
 
 改词汇的顺序:frame.rs 与 types.ts 同一 PR 内同步,
-reduce.test.ts 补对应归约断言。云端管道帧(ping/cursor/call-response)
+reduce.test.ts 补对应归约断言。
+
+**折叠是等价变换**(driver/fold.rs):journal 是「一 token 一帧」,回放前把
+相邻同类流式碎片合并回一帧(usage/plan 每轮只留最后一条,其余原样)。
+规则只增不改词汇。等价性由两侧守:Rust 钉住"折叠输出 == fixtures/replay/
+folded.jsonl",TS 钉住 `reduceBatch(raw) ≡ reduceBatch(folded)`
+(ui/src/foldEquivalence.test.ts)。素材换了跑
+`cargo test regenerate_fold_fixture -- --ignored` 重生成。云端管道帧(ping/cursor/call-response)
 是传输层词汇,不属对话流(遗留:归属待正式定义,见审计清单)。
 
 ## 契约 2:能力模型(Caps)
@@ -81,6 +88,12 @@ reduce.test.ts 补对应归约断言。云端管道帧(ping/cursor/call-response
   `browser-mcp-reloaded`(配对后引擎已带新工具集,UI 整页刷新)、
   `browser-mcp-refresh-timeout`(等任务空闲超时放弃,UI 提示手动重启;
   见 main.rs `BROWSER_MCP_REFRESH_DEADLINE`)。UI 侧清单同在 ui/src/ipc.ts。
+- `session_open` 返回**尾部回放窗口** `{frames, cursor, has_more}`——历史走
+  返回值不走事件(返回值天生有序);更早的按 cursor 走 `session_history`
+  (形状对齐云端 `mc_task_rounds`),`session_outline` 给全量提问目录,
+  `session_frame` 按 seq 回读被截断的工具大字段原文。
+  引擎 resume 不再挡在打开路径上(后台做,conn-status 通知);上行命令经
+  `ensure_engine_ready` 等待而非报错。
 - **监听先于命令**:壳会在命令处理中同步 emit(回放、管道首帧),
   Tauri 事件不排队,监听未注册即丢。UI 侧必须 `await listenAsync(...)`
   完成后再 invoke;需要壳生成 id 的场景改为 UI 生成 id 先注册。
@@ -108,6 +121,7 @@ URL/Bearer 进程级新发;首次配对/重置配对在所有前台/后台任务
 |---|---|
 | 引擎模型上下文 | app_config_dir/ohmyagent/sessions/<engine_id>/messages.jsonl |
 | 会话索引/标题/归档/**帧日志**/engine_id 别名 | 壳 sidecar:app_config_dir/ohmy-sessions/<sid>/ |
+| 回放物化(一行一轮的折叠帧 + events 偏移) | 同上 replay.jsonl(打开只读尾部窗口,见 fold.rs) |
 | 子代理子会话(有流式事件时物化,仅回放) | 同上(sidecar 带 parent);显式后台纯文本任务可能仅有完成通知 |
 | 附件 | <workdir>/.monkeycode/uploads(会话工作区内,模型经相对路径可读;旧目录约定的附件按消息内路径回读) |
 | 百智云/云端凭证 | app_config_dir/*-cookies.json(双罐,互不牵连) |
@@ -121,6 +135,10 @@ app_config_dir 走,首启自动迁移旧接管目录的 sessions。
 引擎 id 与壳 sid 解耦:壳 sid 是目录/UI 通道的稳定标识;engine_id 是
 可替换属性(空会话无法 resume 时 destroy+全新 create 换绑),出站 RPC
 映射、入站 shell_sid_of 反查、sidecar 持久化。
+`events.jsonl` 从"审计"升格为**大字段全文的权威回读源**:物化时超 4KB 的
+工具字段只留头部 + `_meta.mcSrc`,展开卡片经 `session_frame` 按 seq 取原文
+(所以不建 blobs/,也所以保留策略不能随手砍——砍了就只剩截断头部)。
+
 sidecar 更新是串行 read-modify-write，并与配置共用跨平台原子替换；
 Windows 不得用不能覆盖既有目标的裸 `std::fs::rename`。
 
@@ -133,6 +151,8 @@ Windows 不得用不能覆盖既有目标的裸 `std::fs::rename`。
 - `waiting_ask` 是运行时叠加位(有待答复的审批/提问),不落盘。
 - 轮次帧序(驱动本地先行,不依赖引擎事件时序):
   `user-input → task-started → …engine 事件… → [task-error] → task-ended`。
+- 轮末(`task-ended`,含出错与本地和解两条路径)是**回放物化点**:该轮折叠成
+  replay.jsonl 的一行,并记下此刻 events.jsonl 的长度供下次打开续读。
 - **和解原则:引擎应答是确认,不是前提。** 引擎停止/崩溃/取消无应答时,
   驱动本地补收尾(未闭合工具 failed 帧 → task-error → task-ended,
   状态落 interrupted,挂起审批/提问一并失效);引擎迟到的 turn/stopped

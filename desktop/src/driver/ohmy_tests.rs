@@ -487,6 +487,7 @@ fn bare_inner(tag: &str) -> Arc<Inner> {
             pending_questions: StdMutex::new(HashMap::new()),
             pending_perms: StdMutex::new(HashMap::new()),
             perm_tools: StdMutex::new(HashMap::new()),
+            resume: StdMutex::new(HashMap::new()),
         },
         sub: SubagentState {
             subagents: StdMutex::new(HashMap::new()),
@@ -517,6 +518,7 @@ fn bare_session(sid: &str) -> SessionState {
         model_name: String::new(),
         mode: "default".into(),
         title: String::new(),
+        fold: Default::default(),
     }
 }
 
@@ -674,7 +676,7 @@ fn replay_window_no_frame_loss() {
     let replay = inner.replay_open("s1");
     pusher.join().unwrap();
     let rseqs: Vec<u64> =
-        replay.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
+        replay.frames.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
     assert!(rseqs.len() >= 50, "回放至少含预置帧: {}", rseqs.len());
     assert_eq!(rseqs.first(), Some(&1));
     assert!(rseqs.windows(2).all(|w| w[1] == w[0] + 1), "回放帧 seq 不连续: {rseqs:?}");
@@ -1323,4 +1325,173 @@ async fn e2e_readonly_subagent_stays_synchronous() {
     assert!(!has_note, "同步 Agent 不应产生后台完成通知: {journal:?}");
     assert!(driver.0.sub.background_agents.lock().unwrap().is_empty());
     driver.stop();
+}
+
+// ==================== 回放物化 / 尾部窗口 / 补录 ====================
+//
+// 折叠规则本身在 fold_tests.rs;这里守的是「壳把它接对了」:轮末物化、
+// 打开只读窗口、老会话迁移、补录偏移不重不丢。
+
+/// 空闲会话(running=false),补录/物化路径要求
+fn idle_session(sid: &str) -> SessionState {
+    let mut s = bare_session(sid);
+    s.running = false;
+    s
+}
+
+fn push_one_turn(inner: &Arc<Inner>, sid: &str, prompt: &str, chunks: usize) {
+    inner.push_frame(sid, |seq| frame::user_input(prompt, seq));
+    inner.push_frame(sid, frame::task_started);
+    for _ in 0..chunks {
+        inner.push_frame(sid, |seq| frame::agent_thought("字", seq));
+    }
+    inner.push_frame(sid, frame::task_ended);
+}
+
+/// user-input 帧的 content 是 base64(与云端上行同格式)
+fn prompt_of(f: &Value) -> String {
+    use base64::Engine as _;
+    let b64 = f["data"]["content"].as_str().unwrap();
+    String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b64).unwrap()).unwrap()
+}
+
+fn replay_lines(inner: &Arc<Inner>, sid: &str) -> Vec<Value> {
+    let path = inner.data_dir.join(sid).join("replay.jsonl");
+    std::fs::read_to_string(path)
+        .map(|t| t.lines().filter_map(|l| serde_json::from_str(l).ok()).collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_finished_turn_is_materialised_as_one_folded_line() {
+    let inner = bare_inner("materialize");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+
+    push_one_turn(&inner, "s1", "问题", 300);
+    inner.journal_barrier();
+
+    let turns = replay_lines(&inner, "s1");
+    assert_eq!(turns.len(), 1, "一轮一行");
+    let frames = turns[0]["frames"].as_array().unwrap();
+    // user-input + task-started + 300 碎片折成 1 帧 + task-ended
+    assert_eq!(frames.len(), 4, "折叠后应只剩 4 帧: {frames:?}");
+    assert_eq!(
+        frames[2]["data"]["update"]["content"]["text"].as_str().unwrap().chars().count(),
+        300
+    );
+    // src_end 必须精确落在这一轮最后一帧写完的位置
+    let events = std::fs::metadata(inner.data_dir.join("s1").join("events.jsonl")).unwrap().len();
+    assert_eq!(turns[0]["src_end"].as_u64(), Some(events));
+    assert_eq!(turns[0]["to"].as_u64(), Some(303));
+}
+
+#[test]
+fn reopening_reads_the_folded_window_not_the_raw_journal() {
+    let inner = bare_inner("window");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    push_one_turn(&inner, "s1", "问题", 500);
+    inner.journal_barrier();
+
+    let w = inner.replay_open("s1");
+
+    assert_eq!(w.frames.len(), 4, "打开拿到的是折叠帧,不是 503 帧原始流");
+    assert!(!w.has_more);
+    // 已物化的历史不会被再算一遍:补录不产生第二行
+    assert_eq!(replay_lines(&inner, "s1").len(), 1);
+}
+
+#[test]
+fn an_unmaterialised_legacy_journal_is_migrated_on_first_open_and_only_once() {
+    let inner = bare_inner("migrate");
+    let dir = inner.data_dir.join("s1");
+    std::fs::create_dir_all(&dir).unwrap();
+    // 老会话:只有 events.jsonl(两轮),没有 replay.jsonl
+    let mut seq = 0u64;
+    let mut lines = String::new();
+    for turn in 0..2 {
+        for f in [
+            frame::user_input(&format!("第 {turn} 问"), { seq += 1; seq }),
+            frame::task_started({ seq += 1; seq }),
+        ] {
+            lines.push_str(&f.to_string());
+            lines.push('\n');
+        }
+        for _ in 0..200 {
+            lines.push_str(&frame::agent_thought("字", { seq += 1; seq }).to_string());
+            lines.push('\n');
+        }
+        lines.push_str(&frame::task_ended({ seq += 1; seq }).to_string());
+        lines.push('\n');
+    }
+    std::fs::write(dir.join("events.jsonl"), &lines).unwrap();
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+
+    let first = inner.replay_open("s1");
+    inner.journal_barrier();
+
+    assert_eq!(replay_lines(&inner, "s1").len(), 2, "两轮各物化一行");
+    assert_eq!(first.frames.len(), 8, "窗口是折叠后的两轮");
+    // seq 水位跟上历史,新帧不会与旧行撞号
+    assert_eq!(inner.sess.sessions.lock().unwrap()["s1"].seq, seq);
+
+    // 第二次打开:不重复物化、内容一致(补录偏移写对了才可能)
+    let second = inner.replay_open("s1");
+    inner.journal_barrier();
+    assert_eq!(replay_lines(&inner, "s1").len(), 2, "补录必须幂等");
+    assert_eq!(second.frames, first.frames);
+}
+
+#[test]
+fn the_open_window_keeps_only_the_newest_turns_and_pages_back_from_the_cursor() {
+    let inner = bare_inner("paging");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    for i in 0..(crate::driver::fold::TAIL_TURNS + 5) {
+        push_one_turn(&inner, "s1", &format!("第 {i} 问"), 3);
+    }
+    inner.journal_barrier();
+
+    let w = inner.replay_open("s1");
+
+    let turns = replay_lines(&inner, "s1");
+    assert_eq!(turns.len(), crate::driver::fold::TAIL_TURNS + 5);
+    assert_eq!(w.frames.len(), crate::driver::fold::TAIL_TURNS * 4, "只回最近 TAIL_TURNS 轮");
+    assert!(w.has_more, "前面还有 5 轮");
+    assert!(w.cursor > 0);
+    // 窗口第一帧是第 5 问(0..24 共 25 轮,尾 20 轮从第 5 轮起)
+    assert_eq!(prompt_of(&w.frames[0]), "第 5 问");
+
+    // 往前翻一轮
+    let (older, has_more) = crate::driver::fold::read_before(
+        &inner.data_dir.join("s1").join("replay.jsonl"),
+        w.cursor,
+        1,
+    );
+    assert_eq!(older.len(), 1);
+    assert!(has_more);
+    assert_eq!(prompt_of(&older[0].frames[0]), "第 4 问");
+}
+
+#[test]
+fn a_turn_still_running_stays_raw_and_is_not_materialised_early() {
+    let inner = bare_inner("openturn");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    push_one_turn(&inner, "s1", "已完成", 5);
+    // 未闭合轮:没有 task-ended
+    inner.push_frame("s1", |seq| frame::user_input("进行中", seq));
+    inner.push_frame("s1", frame::task_started);
+    inner.push_frame("s1", |seq| frame::agent_thought("正在想", seq));
+    inner.journal_barrier();
+
+    assert_eq!(replay_lines(&inner, "s1").len(), 1, "只物化已闭合的那一轮");
+
+    // 打开:窗口 = 已物化的一轮 + 未物化尾巴(折叠后),按 seq 连续
+    if let Some(s) = inner.sess.sessions.lock().unwrap().get_mut("s1") {
+        s.running = true; // 运行中:补录必须让路
+    }
+    let w = inner.replay_open("s1");
+    let seqs: Vec<u64> =
+        w.frames.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
+    // 已物化轮折成 user-input(1) + started(2) + 正文(3) + ended(8),
+    // 后接未物化尾巴 9/10/11——折叠帧取首帧 seq,两段无缝衔接
+    assert_eq!(seqs, vec![1, 2, 3, 8, 9, 10, 11]);
 }

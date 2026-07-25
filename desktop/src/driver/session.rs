@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use base64::Engine as _;
 use serde_json::{json, Value};
 
+use super::fold::{self, TurnFold};
 use super::frame::{self, PermOutcome, SessionStatus};
 use super::ohmy::{Inner, OhmyDriver};
 use super::transport::JournalMsg;
@@ -161,6 +162,10 @@ pub(super) struct SessionState {
     pub(super) model_name: String,
     pub(super) mode: String,
     pub(super) title: String,
+    /// 本轮的增量折叠(见 fold.rs)。push_frame 逐帧喂,task-ended 时取走
+    /// 投给写线程物化成 replay.jsonl 的一行。内存里只留折叠后的百来帧,
+    /// 十万 token 的长轮次也不会把原始碎片堆住。
+    pub(super) fold: TurnFold,
 }
 
 /// 会话态锁组:会话表、待发帧缓冲与审批/提问簿记。
@@ -189,6 +194,18 @@ pub(super) struct SessionsState {
     pub(super) pending_perms: StdMutex<HashMap<String, String>>,
     /// 审批请求的工具名(request_id → tool;"始终允许"回写记忆集用)
     pub(super) perm_tools: StdMutex<HashMap<String, String>>,
+    /// 后台 resume 的完成广播(sid → 结果)。打开会话不再串行等引擎握手,
+    /// 但所有上行命令必须先经 ensure_engine_ready 等它就绪。
+    pub(super) resume:
+        StdMutex<HashMap<String, tokio::sync::watch::Receiver<Option<Result<(), String>>>>>,
+}
+
+/// 打开会话时下发的回放窗口。cursor 是窗口最早那一轮在 replay.jsonl 里的
+/// 字节偏移,UI 拿它调 session_history 往前翻;has_more 为假即已到会话开头。
+pub(super) struct ReplayWindow {
+    pub(super) frames: Vec<Value>,
+    pub(super) cursor: u64,
+    pub(super) has_more: bool,
 }
 
 /// 从 pos 起补读日志新增部分,解析出的帧追加到 out,pos 前移。
@@ -368,6 +385,7 @@ impl OhmyDriver {
                 model_name: model_name.to_string(),
                 mode: "default".into(),
                 title: String::new(),
+                fold: TurnFold::default(),
             },
         );
         // 契约 5:新建未运行的会话是 created,不是 finished(否则侧栏打勾、桌宠庆祝)
@@ -384,100 +402,239 @@ impl OhmyDriver {
         }))
     }
 
-    pub async fn session_open(&self, id: &str) -> Result<(), String> {
-        // 幂等:确保 resume + 标记 opened + 回放日志
+    /// 打开会话:立刻返回尾部回放窗口,引擎 resume 转后台。
+    ///
+    /// 顺序反转的动机——历史帧是壳自己的 sidecar 数据,本来不依赖引擎;
+    /// 旧实现却先 await `session/create{resume}`,而引擎那一步要读回整份
+    /// messages.jsonl 并用 tiktoken 重算 context_used(实测 1.4MB 历史
+    /// 236ms),这段时间 UI 只有"连接中…"、一个字都画不出来。现在先出图,
+    /// resume 完成/失败经 conn-status 通知,上行命令由 ensure_engine_ready
+    /// 挡住(等待而非报错),用户观感是"内容秒出、输入框稍后可用"。
+    ///
+    /// 历史帧改走命令返回值而不是 `frames:{sid}` 事件:返回值天生有序,
+    /// "监听先于命令"那条约束对历史部分自然消失(实时流仍走事件,契约不变)。
+    pub async fn session_open(&self, id: &str) -> Result<Value, String> {
         let need_create = {
             let sessions = self.0.sess.sessions.lock_ok();
             !sessions.get(id).map(|s| s.created).unwrap_or(false)
         };
-        let mut resume_ctx: Option<(i64, i64)> = None;
         if need_create {
             let meta = self.read_sidecar(id);
             let is_child =
                 meta.get("parent").and_then(|v| v.as_str()).map(|p| !p.is_empty()).unwrap_or(false);
-            let mut engine_id = meta
+            let engine_id = meta
                 .get("engine_id")
                 .and_then(|v| v.as_str())
                 .filter(|e| !e.is_empty())
                 .unwrap_or(id)
                 .to_string();
-            if !is_child {
-                // 有历史则 resume 带全参(缺参会回落进程默认值);空会话
-                // resume 必失败,改全新 create 换绑 engine_id(壳 sid 不变)。
-                // 模型已从配置移除时不带 model,退化引擎默认(不阻断打开)
-                let mode = meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default");
-                let has_history = self.engine_session_exists(&engine_id).await;
-                let mut workdir = meta.get("workdir").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                if workdir.is_empty() {
-                    // 兼容没有 workdir 的旧 sidecar；不能留空让引擎隐式继承
-                    // Desktop 引擎进程 cwd，否则 resume 后会话会漂到进程目录。
-                    workdir = crate::config::home_dir()
-                        .map(|h| h.to_string_lossy().into_owned())
-                        .unwrap_or_default();
+            // 先登记会话态(零 RPC):push_frame 有落点、replay_open 查得到
+            // fold/running,后台 resume 也要靠它回写 engine_id。
+            // 子代理子会话是壳侧实体(仅回放),created 直接为真、不向引擎 resume。
+            {
+                let mut sessions = self.0.sess.sessions.lock_ok();
+                let entry = sessions.entry(id.to_string()).or_insert(SessionState {
+                    seq: 0,
+                    running: false,
+                    created: is_child,
+                    engine_id: engine_id.clone(),
+                    opened: false,
+                    open_tools: HashMap::new(),
+                    model_text: String::new(),
+                    last_event_seq: 0,
+                    context_usage: None,
+                    workdir: meta.get("workdir").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    model_name: meta.get("model_name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    mode: meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default").to_string(),
+                    title: meta.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    fold: TurnFold::default(),
+                });
+                entry.engine_id = engine_id.clone();
+                if is_child {
+                    entry.created = true;
                 }
-                let mut params = engine_session_create_params(
-                    &workdir,
-                    has_history.then_some(engine_id.as_str()),
-                    None,
-                    mode,
-                );
-                let model_name = meta.get("model_name").and_then(|v| v.as_str()).unwrap_or("");
-                if let Ok(model_id) = self.model_id_of(model_name) {
-                    params["model"] = json!(model_id);
-                }
-                let result = self.rpc("session/create", params).await?;
-                if let Some(e) = result.get("session_id").and_then(|v| v.as_str()) {
-                    engine_id = e.to_string();
-                }
-                if engine_id != id {
-                    let e = engine_id.clone();
-                    self.write_sidecar(id, |m| m["engine_id"] = json!(e));
-                }
-                // resume 结果带恢复历史的占用估计,立即可显示(296176a)
-                resume_ctx = Some((
-                    result.get("context_used").and_then(|v| v.as_i64()).unwrap_or(0),
-                    result.get("context_window").and_then(|v| v.as_i64()).unwrap_or(0),
-                ));
             }
-            // 子代理子会话是壳侧实体(仅回放),登记但不向引擎 resume
-            let mut sessions = self.0.sess.sessions.lock_ok();
-            let entry = sessions.entry(id.to_string()).or_insert(SessionState {
-                seq: 0,
-                running: false,
-                created: true,
-                engine_id: engine_id.clone(),
-                opened: false,
-                open_tools: HashMap::new(),
-                model_text: String::new(),
-                last_event_seq: 0,
-                context_usage: None,
-                workdir: meta.get("workdir").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                model_name: meta.get("model_name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                mode: meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default").to_string(),
-                title: meta.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            });
-            entry.created = true;
-            entry.engine_id = engine_id.clone();
-            drop(sessions);
-            if let Some((used, window)) = resume_ctx.take() {
-                self.0.push_usage(id, used, window);
+            if !is_child {
+                self.spawn_resume(id, meta, engine_id);
             }
         }
-        // 回放日志(重开页面/重连:整份重放)。磁盘读与 flush 屏障都在
-        // 阻塞线程上做(replay_open),不占 tokio 运行时;无缺口保证见
-        // replay_open 注释。
-        let journal = {
+        // 磁盘读与 flush 屏障都在阻塞线程上做,不占 tokio 运行时;
+        // 无缺口保证见 replay_open 注释。
+        let window = {
             let inner = self.0.clone();
             let sid = id.to_string();
             tokio::task::spawn_blocking(move || inner.replay_open(&sid))
                 .await
                 .map_err(|e| format!("回放任务失败: {e}"))?
         };
-        self.0.app.emit_json(&format!("conn-status:{id}"), json!({ "text": "已连接", "connected": true }));
-        if !journal.is_empty() {
-            self.0.app.emit_json(&format!("frames:{id}"), Value::Array(journal));
+        // 已就绪(新建会话/子会话)直接报连接;等 resume 的由后台任务报
+        if self.0.sess.sessions.lock_ok().get(id).map(|s| s.created).unwrap_or(false) {
+            self.0
+                .app
+                .emit_json(&format!("conn-status:{id}"), json!({ "text": "已连接", "connected": true }));
+        } else {
+            self.0.app.emit_json(
+                &format!("conn-status:{id}"),
+                json!({ "text": "正在恢复会话…", "connected": false }),
+            );
         }
+        Ok(json!({
+            "frames": window.frames,
+            "cursor": window.cursor,
+            "has_more": window.has_more,
+        }))
+    }
+
+    /// 后台 resume:引擎握手挪出打开路径。结果经 watch 广播给
+    /// ensure_engine_ready,并经 conn-status 外显(失败文案不能吞)。
+    fn spawn_resume(&self, id: &str, meta: Value, engine_id: String) {
+        let (tx, rx) = tokio::sync::watch::channel::<Option<Result<(), String>>>(None);
+        self.0.sess.resume.lock_ok().insert(id.to_string(), rx);
+        let me = self.clone();
+        let sid = id.to_string();
+        tauri::async_runtime::spawn(async move {
+            let r = me.resume_engine(&sid, &meta, engine_id).await;
+            let status = match &r {
+                Ok(()) => json!({ "text": "已连接", "connected": true }),
+                Err(e) => json!({ "text": format!("⚠ 会话恢复失败: {e}"), "connected": false }),
+            };
+            let _ = tx.send(Some(r));
+            me.0.app.emit_json(&format!("conn-status:{sid}"), status);
+        });
+    }
+
+    /// 引擎侧会话恢复。有历史则 resume 带全参(缺参会回落进程默认值);
+    /// 空会话 resume 必失败,改全新 create 换绑 engine_id(壳 sid 不变)。
+    /// 模型已从配置移除时不带 model,退化引擎默认(不阻断打开)。
+    async fn resume_engine(
+        &self,
+        id: &str,
+        meta: &Value,
+        mut engine_id: String,
+    ) -> Result<(), String> {
+        let mode = meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default");
+        let has_history = self.engine_session_exists(&engine_id).await;
+        let mut workdir = meta.get("workdir").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        if workdir.is_empty() {
+            // 兼容没有 workdir 的旧 sidecar；不能留空让引擎隐式继承
+            // Desktop 引擎进程 cwd，否则 resume 后会话会漂到进程目录。
+            workdir =
+                crate::config::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
+        }
+        let mut params = engine_session_create_params(
+            &workdir,
+            has_history.then_some(engine_id.as_str()),
+            None,
+            mode,
+        );
+        let model_name = meta.get("model_name").and_then(|v| v.as_str()).unwrap_or("");
+        if let Ok(model_id) = self.model_id_of(model_name) {
+            params["model"] = json!(model_id);
+        }
+        let result = self.rpc("session/create", params).await?;
+        if let Some(e) = result.get("session_id").and_then(|v| v.as_str()) {
+            engine_id = e.to_string();
+        }
+        if engine_id != id {
+            let e = engine_id.clone();
+            let inner = self.0.clone();
+            let sid = id.to_string();
+            let _ = tokio::task::spawn_blocking(move || {
+                inner.write_sidecar(&sid, |m| m["engine_id"] = json!(e))
+            })
+            .await;
+        }
+        if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
+            s.created = true;
+            s.engine_id = engine_id;
+        }
+        // resume 结果带恢复历史的占用估计,立即可显示(296176a)
+        self.0.push_usage(
+            id,
+            result.get("context_used").and_then(|v| v.as_i64()).unwrap_or(0),
+            result.get("context_window").and_then(|v| v.as_i64()).unwrap_or(0),
+        );
         Ok(())
+    }
+
+    /// 上行命令的引擎就绪门:后台 resume 未完成时**等待**而不是报错
+    /// (用户在恢复期间点发送不该丢消息)。会话不存在或恢复失败即上抛。
+    pub(super) async fn ensure_engine_ready(&self, id: &str) -> Result<(), String> {
+        if self.0.sess.sessions.lock_ok().get(id).map(|s| s.created).unwrap_or(false) {
+            return Ok(());
+        }
+        let Some(mut rx) = self.0.sess.resume.lock_ok().get(id).cloned() else {
+            return Err("会话未打开".into());
+        };
+        loop {
+            // borrow 的守卫必须在 await 前落地,否则跨 await 持锁
+            let current = rx.borrow().clone();
+            if let Some(r) = current {
+                return r;
+            }
+            if rx.changed().await.is_err() {
+                return Err("会话恢复中断".into());
+            }
+        }
+    }
+
+    /// 往前翻页:cursor 之前的最多 limit 轮(cursor = replay.jsonl 的轮起始
+    /// 字节偏移,与 session_open/大纲同一坐标系)。
+    pub async fn session_history(&self, id: &str, cursor: u64, limit: usize) -> Result<Value, String> {
+        let inner = self.0.clone();
+        let sid = id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let path = inner.data_dir.join(&sid).join("replay.jsonl");
+            let (turns, has_more) = fold::read_before(&path, cursor, limit.clamp(1, 50));
+            let next = turns.first().map(|t| t.offset).unwrap_or(0);
+            let frames: Vec<Value> = turns.into_iter().flat_map(|t| t.frames).collect();
+            json!({ "frames": frames, "next_cursor": next, "has_more": has_more })
+        })
+        .await
+        .map_err(|e| format!("读取历史失败: {e}"))
+    }
+
+    /// 回读单帧原文:物化时被截断的工具大字段,展开卡片时按 seq 取全文。
+    /// 完整原帧一直在 events.jsonl 里(审计源),所以不需要第二份存储;
+    /// 日志若因保留策略被清理过,明确报错而不是静默给半截。
+    pub async fn session_frame(&self, id: &str, seq: u64) -> Result<Value, String> {
+        let inner = self.0.clone();
+        let sid = id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let dir = inner.data_dir.join(&sid);
+            fold::read_frame_by_seq(&dir.join("replay.jsonl"), &dir.join("events.jsonl"), seq)
+                .ok_or_else(|| "原始记录已不可用(帧日志可能已被清理)".to_string())
+        })
+        .await
+        .map_err(|e| format!("回读原始帧失败: {e}"))?
+    }
+
+    /// 提问大纲:全量扫 replay.jsonl 的 user-input 帧 + 尚未物化的尾巴。
+    /// 折叠后的文件只有几十 KB~数 MB,一次顺序读即可;条目自带轮起始偏移,
+    /// UI 点到未加载的早期提问时拿它当 cursor 补历史。
+    pub async fn session_outline(&self, id: &str) -> Result<Value, String> {
+        let inner = self.0.clone();
+        let sid = id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let dir = inner.data_dir.join(&sid);
+            let mut out: Vec<Value> = Vec::new();
+            let mut src_end = 0u64;
+            for (offset, line) in fold::scan_lines(&dir.join("replay.jsonl")) {
+                if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                    src_end = v.get("src_end").and_then(|x| x.as_u64()).unwrap_or(src_end);
+                }
+                out.extend(fold::outline_of_line(offset, &line));
+            }
+            // 未物化的尾巴(当前轮/崩溃残留)也要出现在大纲里,否则刚问完的
+            // 那一条不在目录中。offset 给 0:这段本来就在打开窗口内,不需要翻页
+            let mut pos = src_end;
+            let mut tail: Vec<Value> = Vec::new();
+            read_journal_tail(&dir.join("events.jsonl"), &mut pos, &mut tail);
+            out.extend(tail.iter().filter_map(|f| fold::outline_entry(0, f)));
+            json!(out)
+        })
+        .await
+        .map_err(|e| format!("读取大纲失败: {e}"))
     }
 
     pub async fn session_close(&self, id: &str) {
@@ -604,6 +761,9 @@ impl OhmyDriver {
     // ==================== 对话 ====================
 
     pub async fn session_send(&self, id: &str, ftype: &str, payload: Value) -> Result<(), String> {
+        // 打开会话已不等引擎握手(见 session_open),上行到这里必须等它就绪:
+        // 等待而不是报错——用户在恢复期间敲下的消息不该丢
+        self.ensure_engine_ready(id).await?;
         match ftype {
             "user-input" => {
                 let content_b64 = payload.get("content").and_then(|v| v.as_str()).unwrap_or("");
@@ -789,6 +949,8 @@ impl OhmyDriver {
     }
 
     pub async fn session_call(&self, id: &str, kind: &str, payload: Value) -> Result<Value, String> {
+        // 同 session_send:引擎侧查询/切换都得等后台 resume 落地
+        self.ensure_engine_ready(id).await?;
         match kind {
             "session_set_model" => {
                 let name = payload.get("model").and_then(|v| v.as_str()).unwrap_or("");
@@ -1144,12 +1306,83 @@ impl Inner {
         let _ = self
             .transport.journal_tx
             .send(JournalMsg::Append { sid: sid.to_string(), line: f.to_string() });
+        // 折叠累积与物化跟着帧走:轮末(task-ended,契约 5 的和解点——正常
+        // 结束、出错、本地和解都经它)把这一轮折叠成 replay.jsonl 的一行。
+        // 与 Append 同在通道内顺序投递,写线程据此取到准确的 events 偏移。
+        s.fold.push(&f);
+        if fold::is_turn_end(&f) {
+            let turn = s.fold.take();
+            if !turn.frames.is_empty() {
+                let _ = self.transport.journal_tx.send(JournalMsg::Materialize {
+                    sid: sid.to_string(),
+                    turn,
+                    src_end: None,
+                });
+            }
+        }
         if s.opened {
             self.sess.batch.lock_ok().entry(sid.to_string()).or_default().push(f);
         }
     }
 
-    /// 回放打开(阻塞线程调用):返回完整回放帧并置 opened=true 接实时流。
+    /// 把 events.jsonl 中 `from` 之后的完整轮折叠物化进 replay.jsonl。
+    /// 老会话首次打开(无 replay.jsonl,from = 0)即一次性迁移;进程崩溃
+    /// 残留的完整轮即补录。流式单遍,不把整份日志读进内存——23MB 的
+    /// 病态 journal 也只占一行的内存。返回是否写入过内容。
+    fn catch_up(&self, sid: &str, events: &Path, from: u64) -> bool {
+        use std::io::{BufRead as _, BufReader, Seek as _, SeekFrom};
+        let Ok(mut f) = std::fs::File::open(events) else { return false };
+        if f.seek(SeekFrom::Start(from)).is_err() {
+            return false;
+        }
+        let mut r = BufReader::new(f);
+        let mut acc = TurnFold::default();
+        let mut off = from;
+        let mut wrote = false;
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match r.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    // 半行(并发追加下可能读到)留给下次,绝不按残行切轮
+                    if !line.ends_with('\n') {
+                        break;
+                    }
+                    off += n as u64;
+                    let Ok(v) = serde_json::from_str::<Value>(line.trim_end()) else { continue };
+                    let end = fold::is_turn_end(&v);
+                    acc.push(&v);
+                    if end {
+                        let _ = self.transport.journal_tx.send(JournalMsg::Materialize {
+                            sid: sid.to_string(),
+                            turn: acc.take(),
+                            src_end: Some(off),
+                        });
+                        wrote = true;
+                    }
+                }
+            }
+        }
+        // 末尾未闭合的一段也物化:补录只在会话空闲时做,它不会再有新帧,
+        // 留着只会每次打开重折一遍
+        if !acc.is_empty() {
+            let _ = self.transport.journal_tx.send(JournalMsg::Materialize {
+                sid: sid.to_string(),
+                turn: acc.take(),
+                src_end: Some(off),
+            });
+            wrote = true;
+        }
+        wrote
+    }
+
+    /// 回放打开(阻塞线程调用):返回**尾部窗口**并置 opened=true 接实时流。
+    ///
+    /// 窗口 = replay.jsonl 的最近若干轮(折叠后,见 fold.rs)+ events.jsonl
+    /// 里尚未物化的尾巴。更早的历史由 session_history 按 cursor 往前翻——
+    /// 打开成本自此与会话总长度无关,只与窗口大小有关。
+    ///
     /// 旧实现的缺口:opened=false 期间到达的帧只入日志不入缓冲,读完日志
     /// 才置 opened=true——窗口内已落盘的帧既不在回放结果也不进 batch,
     /// UI 要重开会话才能看到。现分两段消除缺口:
@@ -1161,32 +1394,62 @@ impl Inner {
     ///    回放与实时流按 seq 无缝衔接、无重复。
     /// 死锁安全:写线程只碰文件系统,不拿 sessions 锁;锁内屏障只等
     /// 窗口内的少量尾帧,阻塞极短。
-    pub(super) fn replay_open(&self, sid: &str) -> Vec<Value> {
+    pub(super) fn replay_open(&self, sid: &str) -> ReplayWindow {
         if let Some(s) = self.sess.sessions.lock_ok().get_mut(sid) {
             s.opened = false;
         }
         // 清批量缓冲:其中的帧已在日志里,会随回放送达,留着会重帧
         self.sess.batch.lock_ok().remove(sid);
-        let path = self.data_dir.join(sid).join("events.jsonl");
-        let mut frames: Vec<Value> = Vec::new();
-        let mut pos: u64 = 0;
+        let dir = self.data_dir.join(sid);
+        let (replay, events) = (dir.join("replay.jsonl"), dir.join("events.jsonl"));
+
         self.journal_barrier();
-        read_journal_tail(&path, &mut pos, &mut frames);
+        // 补录/迁移只在会话空闲且本进程没有累积中的轮次时做:那时 events.jsonl
+        // 里 src_end 之后的完整轮必然来自更早的进程,不可能与实时物化撞车
+        let idle = self
+            .sess
+            .sessions
+            .lock_ok()
+            .get(sid)
+            .map(|s| s.fold.is_empty() && !s.running)
+            .unwrap_or(true);
+        if idle {
+            let (last, _) = fold::read_before(&replay, u64::MAX, 1);
+            let from = last.last().map(|t| t.src_end).unwrap_or(0);
+            if self.catch_up(sid, &events, from) {
+                self.journal_barrier(); // 等补录落盘再取窗口
+            }
+        }
+
+        let (turns, has_more) = fold::read_tail(&replay);
+        let cursor = turns.first().map(|t| t.offset).unwrap_or(0);
+        let src_end = turns.last().map(|t| t.src_end).unwrap_or(0);
+        let mut high = turns.last().map(|t| t.to).unwrap_or(0);
+        let mut frames: Vec<Value> = turns.into_iter().flat_map(|t| t.frames).collect();
+
+        // 未物化的尾巴(通常是当前未闭合轮;补录跳过时是全部原始帧)
+        let mut pos = src_end;
+        let mut raw: Vec<Value> = Vec::new();
+        read_journal_tail(&events, &mut pos, &mut raw);
         let mut sessions = self.sess.sessions.lock_ok();
         if let Some(s) = sessions.get_mut(sid) {
             self.journal_barrier();
-            read_journal_tail(&path, &mut pos, &mut frames);
+            read_journal_tail(&events, &mut pos, &mut raw);
             s.opened = true;
             // seq 取 max 防序号回卷(引擎侧回放/历史日志行数与内存编号对齐)
-            let replay_high = frames
-                .iter()
-                .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
-                .max()
-                .unwrap_or(0)
-                .max(frames.len() as u64);
-            s.seq = s.seq.max(replay_high);
+            high = high.max(
+                raw.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).max().unwrap_or(0),
+            );
+            if src_end == 0 {
+                // 无物化记录时 raw 即整份日志,行数是极老 journal(可能缺 seq)
+                // 的兜底水位
+                high = high.max(raw.len() as u64);
+            }
+            s.seq = s.seq.max(high);
         }
-        frames
+        drop(sessions);
+        frames.extend(fold::fold_frames(&raw));
+        ReplayWindow { frames, cursor, has_more }
     }
 
     pub(super) fn emit_session_event(&self, sid: &str, status: &str) {

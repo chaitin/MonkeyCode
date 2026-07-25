@@ -1,13 +1,14 @@
 // 工具卡:状态点、动作/目标、耗时、子代理进度直播、结构化详情与内嵌审批。
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { DiffPanel } from "./diffView";
 import { MONO } from "./fonts";
 import { IconCheck, IconChevronRight } from "./icons";
 import { Markdown, MarkdownInline } from "./markdown";
 import { PermActions, type PermAnswerFn } from "./promptCards";
-import { toolDetailFor } from "./toolDetails";
+import { frameData } from "./codec";
+import { toolDetailFor, toolResultText } from "./toolDetails";
 import { presentToolCall, toolDisplayName, type ToolTargetKind } from "./toolLabels";
-import type { LogItem } from "./types";
+import type { AcpUpdate, Frame, LogItem } from "./types";
 import { UploadImg } from "./uploadMedia";
 
 /** 状态标记:执行中空心绿点呼吸(设计稿 agents 的 dot),结束 ✓/✗——
@@ -101,6 +102,7 @@ export function ToolCard({
   workdir,
   perm,
   onPermAnswer,
+  loadFullTool,
   grouped = false,
 }: {
   item: Extract<LogItem, { kind: "tool" }>;
@@ -114,19 +116,43 @@ export function ToolCard({
    * 独立审批大卡随之不渲染;已决后由调用方不再传入,卡片回归常态 */
   perm?: Extract<LogItem, { kind: "perm" }>;
   onPermAnswer?: PermAnswerFn;
+  /** 回读被截断的工具大字段原文(壳侧物化时超 4KB 会截,见 fold.rs);
+   * 不传则只展示行内的截断头部 */
+  loadFullTool?: (seq: number) => Promise<Frame>;
   /** 相邻工具共享外框时只渲染内部区块，由父级提供卡片底座。 */
   grouped?: boolean;
 }) {
   const [zoom, setZoom] = useState<string | null>(null);
   const [showAgentResult, setShowAgentResult] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  // 大字段护栏的另一半:行内只有头部时,展开即按 seq 回读原帧补全。
+  // 截断与回读必须成对存在——只截不读会把子代理的最终产出切掉半截。
+  const srcSeq = (item._meta as { mcSrc?: { seq?: number } } | undefined)?.mcSrc?.seq;
+  const [full, setFull] = useState<AcpUpdate | null>(null);
+  const [fullErr, setFullErr] = useState("");
+  const [loadingFull, setLoadingFull] = useState(false);
+  const wantFull = showDetail || showAgentResult;
+  useEffect(() => {
+    if (!wantFull || srcSeq === undefined || full || loadingFull || fullErr || !loadFullTool) return;
+    setLoadingFull(true);
+    loadFullTool(srcSeq)
+      .then((f) => {
+        const u = frameData<{ update?: AcpUpdate }>(f)?.update;
+        if (u) setFull(u);
+        else setFullErr("原始记录已不可用");
+      })
+      .catch((e) => setFullErr(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoadingFull(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantFull, srcSeq]);
   const feed = item.feed ?? [];
   // 子代理运行时卡内直播少量进度;完成后无论同步/后台都收成单行,
   // 完整过程与最终产出统一从子会话查看。
   const isAgentCard = !!(item.childSessionId || feed.length || item.background);
   const agentFinished = isAgentCard && item.status !== "run";
   const canOpenChild = !!(item.childSessionId && onOpenChild);
-  const agentResult = agentFinished ? (item.result ?? "").trim() : "";
+  const fullResult = full ? toolResultText(full.rawOutput, full.content) : "";
+  const agentResult = agentFinished ? (fullResult || item.result || "").trim() : "";
   const visible = agentFinished ? [] : feed.slice(-FEED_WINDOW);
   // 极端情况下子会话入口缺失(云端只读流/旧 journal),保留按需展开兜底,
   // 但不再默认把整段结果灌进卡片。
@@ -138,7 +164,16 @@ export function ToolCard({
   const target = presentation.targetKind === "path" ? stripWorkdir(fullTarget, workdir) : fullTarget;
   const { action, targetKind } = presentation;
   // 子代理沿用“子会话/查看结果”；其余本地与云端工具统一走结构化详情。
-  const detail = !isAgentCard && item.status !== "run" ? toolDetailFor(item) : null;
+  // 回读到全文后用全文渲染详情;没有护栏标记时 full 恒为 null,行为不变
+  const shown = full
+    ? {
+        ...item,
+        ...(full.rawInput !== undefined ? { rawInput: full.rawInput } : {}),
+        ...(full.rawOutput !== undefined ? { rawOutput: full.rawOutput } : {}),
+        ...(full.content !== undefined ? { content: full.content } : {}),
+      }
+    : item;
+  const detail = !isAgentCard && shown.status !== "run" ? toolDetailFor(shown) : null;
   const duration = formatToolDuration(item.durationMs);
   const stepRow: CSSProperties = {
     display: "flex",
@@ -235,6 +270,11 @@ export function ToolCard({
       {summary && (
         <div style={{ marginLeft: 5, borderLeft: "2px solid var(--line)", padding: "2px 0 2px 13px" }}>
           <Markdown text={summary} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />
+        </div>
+      )}
+      {wantFull && (loadingFull || fullErr) && (
+        <div style={{ ...stepRow, display: "block", color: fullErr ? "var(--err)" : "var(--t5)" }}>
+          {fullErr ? `⚠ 完整内容取不回来了: ${fullErr}` : "正在取完整内容…"}
         </div>
       )}
       {showDetail && detail && (

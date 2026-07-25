@@ -11,11 +11,28 @@
 //   useSession —— React 侧:state 持有与镜像回写、notice 定时器、卸载断开,
 //     拼装为 SessionHandle(形状不变)。
 import { useCallback, useEffect, useRef, useState } from "react";
-import { connect, type Conn } from "./session";
+import { connect, sessionFrame, sessionHistory, sessionOutline, type Conn, type HistoryPage } from "./session";
 import { uploadFile, uploadFileURL } from "./uploads";
-import { b64encode } from "./codec";
-import { answerAsk as applyAskAnswer, answerPerm as applyPermAnswer, initialChat, reduceBatch, type ChatState } from "./reduce";
+import { b64decode, b64encode } from "./codec";
+import {
+  answerAsk as applyAskAnswer,
+  answerPerm as applyPermAnswer,
+  initialChat,
+  prependBatch,
+  reduceBatch,
+  type ChatState,
+} from "./reduce";
 import type { Attachment, FileChange, FileEntry, Frame, SessionNotice } from "./types";
+
+/** 提问大纲的一条(壳的 session_outline 投影;text 已解 base64) */
+export interface OutlineItem {
+  /** 产生它的 user-input 帧 seq:与 LogItem.user.seq 对表 */
+  seq: number;
+  /** 该轮在 replay.jsonl 的字节偏移:跳到未加载区间时当翻页 cursor */
+  offset: number;
+  text: string;
+  timestamp?: number;
+}
 
 export type PermAction = "allow" | "always" | "persist" | "deny";
 
@@ -72,6 +89,11 @@ export interface SessionCoreIO {
   notify(text: string, options?: Partial<Pick<SessionNotice, "tone" | "targetSessionId">>): void;
   /** 会话列表需要刷新(打开会话、本轮结束、切模型) */
   onSessionsChanged(): void;
+  /** 还能不能往前翻(尾部窗口之前是否还有历史) */
+  setCanLoadEarlier(v: boolean): void;
+  setLoadingEarlier(v: boolean): void;
+  /** 提问大纲(全量,含尚未加载进对话流的更早提问) */
+  setOutline(items: OutlineItem[]): void;
   /** 「上次会话」记忆写入/清除(localStorage 留在 hook 侧,核心不碰浏览器全局) */
   rememberSession(id: string): void;
   forgetSession(): void;
@@ -99,6 +121,10 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
   // 投递时机(否则每批帧都会重投,失败重试节奏与原实现不一致)
   let lastRunning = initialChat.running;
   let lastQueued: string | null = null;
+  // 历史翻页游标:cursor 是当前已加载最早那一轮在 replay.jsonl 的字节偏移
+  let cursor = 0;
+  let hasMore = false;
+  let loadingEarlier = false;
 
   const setChat = (next: ChatState) => {
     chat = next;
@@ -181,14 +207,82 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
     })();
   }
 
+  /** 大纲随历史推进变化:打开时拉一次,每轮结束再拉一次(几十 KB 的顺序读) */
+  async function refreshOutline() {
+    const id = sid;
+    if (!id) return;
+    try {
+      const raw = await sessionOutline(id);
+      if (sid !== id) return;
+      io.setOutline(
+        raw.map((e) => {
+          let text = "";
+          try {
+            text = b64decode(e.content);
+          } catch {
+            /* 坏载荷按空条目处理,不吞掉整份大纲 */
+          }
+          return { seq: e.seq, offset: e.offset, text, timestamp: e.timestamp };
+        }),
+      );
+    } catch {
+      /* 大纲拿不到不影响会话本身 */
+    }
+  }
+
+  function applyHistory(page: HistoryPage) {
+    // 已有内容时按前插处理:实时帧理论上可能先于命令返回值到达(两条都是
+    // 异步 IPC),窗口与实时流在壳侧按 opened 切分、互不重叠,前插总是正确的
+    setChat(chat.items.length === 0 ? reduceBatch(chat, page.frames) : prependBatch(chat, page.frames));
+    cursor = page.cursor;
+    hasMore = page.hasMore;
+    io.setCanLoadEarlier(hasMore && cursor > 0);
+    void refreshOutline();
+  }
+
+  /** 往前翻一页;beforeApply 在写入 state 前同步回调,供视图记录滚动锚点 */
+  async function loadEarlier(beforeApply?: () => void): Promise<void> {
+    const id = sid;
+    if (!id || !hasMore || cursor <= 0 || loadingEarlier) return;
+    loadingEarlier = true;
+    io.setLoadingEarlier(true);
+    try {
+      const r = await sessionHistory(id, cursor, 1);
+      if (sid !== id) return;
+      beforeApply?.();
+      setChat(prependBatch(chat, r.frames ?? []));
+      cursor = r.next_cursor ?? 0;
+      hasMore = !!r.has_more;
+      io.setCanLoadEarlier(hasMore && cursor > 0);
+    } catch (e) {
+      io.notify("⚠ 加载更早的对话失败: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      loadingEarlier = false;
+      io.setLoadingEarlier(false);
+    }
+  }
+
+  /** 确保 offset 所在的那一轮已加载(大纲跳到窗口之前的提问)。
+   * 上限兜底,防坏 cursor 把这里变成死循环。 */
+  async function ensureLoaded(offset: number): Promise<void> {
+    for (let i = 0; i < 200 && hasMore && cursor > offset; i++) {
+      const before = cursor;
+      await loadEarlier();
+      if (cursor === before) return; // 没前进(失败/到头),别空转
+    }
+  }
+
   function handlers() {
     return {
+      onHistory: applyHistory,
       onFrames: (batch: Frame[]) => {
         setChat(reduceBatch(chat, batch));
         // 本轮结束:刷新改动计数与会话列表
         if (chat.turnEnded) {
           setChat({ ...chat, turnEnded: false });
           void refreshChanges();
+          // 轮末壳侧刚把这一轮物化,大纲多出一条提问
+          void refreshOutline();
           io.onSessionsChanged();
         }
         flushQueued();
@@ -222,6 +316,12 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       pendingFiles = o.firstFiles?.length ? { sid: id, files: o.firstFiles } : null;
       lastRunning = false;
       lastQueued = null;
+      cursor = 0;
+      hasMore = false;
+      loadingEarlier = false;
+      io.setCanLoadEarlier(false);
+      io.setLoadingEarlier(false);
+      io.setOutline([]);
       io.rememberSession(id);
       conn = openConn(id, handlers());
       io.onSessionsChanged();
@@ -246,6 +346,12 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       io.setChangesErr("");
       lastRunning = false;
       lastQueued = null;
+      cursor = 0;
+      hasMore = false;
+      loadingEarlier = false;
+      io.setCanLoadEarlier(false);
+      io.setLoadingEarlier(false);
+      io.setOutline([]);
       if (forget) io.forgetSession();
     },
 
@@ -367,6 +473,14 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
     },
 
     refreshChanges,
+    loadEarlier,
+    ensureLoaded,
+
+    /** 回读被截断的工具大字段原文(见 fold.rs 的大字段护栏) */
+    loadFrame(seq: number) {
+      if (!sid) return Promise.reject(new Error("未打开会话"));
+      return sessionFrame(sid, seq);
+    },
 
     fileDiff(path: string) {
       const c = conn;
@@ -423,6 +537,17 @@ export interface SessionHandle {
   /** null = 尚未探测；false 时文件抽屉不展示“改动”页。 */
   isGitRepo: boolean | null;
   changesErr: string;
+  /** 尾部窗口之前还有历史(可「加载更早」) */
+  canLoadEarlier: boolean;
+  loadingEarlier: boolean;
+  /** 往前翻一页;beforeApply 在写入 state 前同步回调,供视图记录滚动锚点 */
+  loadEarlier(beforeApply?: () => void): Promise<void>;
+  /** 确保某轮(replay.jsonl 字节偏移)已加载进对话流——大纲跳到更早提问用 */
+  ensureLoaded(offset: number): Promise<void>;
+  /** 提问大纲(全量,含尚未加载进对话流的更早提问) */
+  outline: OutlineItem[];
+  /** 回读被截断的工具大字段原文(工具卡展开时按需取) */
+  loadFrame(seq: number): Promise<Frame>;
   /** 已上传附件/工作区图片的回读 URL(无会话时 undefined) */
   uploadUrl?: (path: string) => Promise<string>;
 
@@ -486,6 +611,9 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
   const [changes, setChanges] = useState<FileChange[] | null>(null);
   const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null);
   const [changesErr, setChangesErr] = useState("");
+  const [canLoadEarlier, setCanLoadEarlier] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [outline, setOutline] = useState<OutlineItem[]>([]);
 
   // 回调经 ref 转发,避免调用方每次渲染的新函数搅动核心持有的 IO
   const onSessionsChangedRef = useRef(opts.onSessionsChanged);
@@ -507,6 +635,9 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
       setIsGitRepo,
       setChangesErr,
       notify: pushNotice,
+      setCanLoadEarlier,
+      setLoadingEarlier,
+      setOutline,
       onSessionsChanged: () => onSessionsChangedRef.current?.(),
       rememberSession: (sid) => localStorage.setItem(LAST_SESSION_KEY, sid),
       forgetSession: () => localStorage.removeItem(LAST_SESSION_KEY),
@@ -534,6 +665,12 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
     changes,
     isGitRepo,
     changesErr,
+    canLoadEarlier,
+    loadingEarlier,
+    loadEarlier: core.loadEarlier,
+    ensureLoaded: core.ensureLoaded,
+    outline,
+    loadFrame: core.loadFrame,
     uploadUrl: id ? (p: string) => uploadFileURL(id, p) : undefined,
     open: core.open,
     close: core.close,
