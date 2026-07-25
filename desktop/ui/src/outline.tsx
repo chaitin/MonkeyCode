@@ -99,7 +99,8 @@ export function OutlineNav({
       }}
       style={{
         position: "absolute",
-        left: 0,
+        // 不贴窗口左缘:点列离边 10px,面板再往右(见 .mc-outline-panel)
+        left: 10,
         top: 0,
         bottom: 0,
         width: 18,

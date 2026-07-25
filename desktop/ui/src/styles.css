@@ -749,13 +749,23 @@ nav:hover > .mc-outline-rail > .mc-outline-dot { background: var(--t5); }
 nav:hover > .mc-outline-rail > .mc-outline-dot[data-outline-current="true"] { background: var(--acc); }
 .mc-outline-panel {
   position: absolute;
-  left: 6px;
+  /* 轨道右侧留间距,面板不贴窗口左缘 */
+  left: 24px;
   top: 50%;
   transform: translateY(-50%);
   width: 280px;
   max-height: calc(100% - 24px);
   overflow-y: auto;
   padding: 4px;
+  /* 覆盖 .pop 自带的 mcin:那条关键帧把 transform 动画到 none,动画期间会
+     盖掉上面的居中位移(关键帧优先级高于普通声明),表现为面板先落在偏下
+     的位置、动画结束再跳回中间。凡是用 transform 定位的 .pop 元素,都得
+     自带一条保留该位移的入场动画。 */
+  animation: mc-outline-in 0.15s ease;
+}
+@keyframes mc-outline-in {
+  from { opacity: 0; transform: translateY(calc(-50% + 6px)); }
+  to { opacity: 1; transform: translateY(-50%); }
 }
 /* 跳转落点闪一下,否则在密集对话里找不到自己点的是哪条 */
 .mc-jump-flash > .mc-message-row {
