@@ -26,6 +26,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::config::DesktopConfig;
 use crate::repo::RepoCtx;
+use crate::util::LockExt;
 
 /// 当前引擎(壳生命周期内至多一个;保存设置时整体替换)。命令通过 lease
 /// 使用克隆句柄；维护事务先关闭新 lease，再等已有 IPC 调用退出。
@@ -52,7 +53,7 @@ impl Deref for DriverLease<'_> {
 
 impl Drop for DriverLease<'_> {
     fn drop(&mut self) {
-        let mut state = self.host.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = self.host.state.lock_ok();
         state.leases = state.leases.saturating_sub(1);
         self.host.idle.notify_all();
     }
@@ -64,7 +65,7 @@ pub struct DriverApplyGuard<'a> { host: &'a DriverHost }
 
 impl Drop for DriverApplyGuard<'_> {
     fn drop(&mut self) {
-        let mut state = self.host.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = self.host.state.lock_ok();
         state.applying = false;
         self.host.idle.notify_all();
     }
@@ -79,7 +80,7 @@ impl DriverHost {
     }
 
     pub fn get(&self) -> Result<DriverLease<'_>, String> {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = self.state.lock_ok();
         if state.applying { return Err("引擎配置正在应用，请稍后重试".into()); }
         let engine = state.engine.clone().ok_or_else(|| "引擎未运行".to_string())?;
         state.leases += 1;
@@ -88,7 +89,7 @@ impl DriverHost {
 
     /// 显式设置保存/手动重启：阻止新命令，并等待已进入的 IPC 命令退出。
     pub fn begin_apply(&self) -> DriverApplyGuard<'_> {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = self.state.lock_ok();
         while state.applying {
             state = self.idle.wait(state).unwrap_or_else(|e| e.into_inner());
         }
@@ -102,7 +103,7 @@ impl DriverHost {
     /// 自动维护只在没有运行中父任务时取得独占权。先关入口并排空 lease，
     /// 再检查 running，消除“检查空闲后新任务刚好启动”的 TOCTOU 窗口。
     pub fn try_begin_idle_apply(&self) -> Option<DriverApplyGuard<'_>> {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = self.state.lock_ok();
         // 忙碌期间刷新线程会周期重试；先读一次状态可避免每次轮询都短暂
         // 关闭 IPC 入口。这个检查只用于快速退出，真正取得 guard 前仍会
         // 在排空 lease 后二次检查。
@@ -128,15 +129,15 @@ impl DriverHost {
     }
 
     pub fn running(&self) -> bool {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).engine.is_some()
+        self.state.lock_ok().engine.is_some()
     }
 
     pub fn set(&self, e: OhmyDriver) {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).engine = Some(e);
+        self.state.lock_ok().engine = Some(e);
     }
 
     pub fn take(&self) -> Option<OhmyDriver> {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).engine.take()
+        self.state.lock_ok().engine.take()
     }
 }
 

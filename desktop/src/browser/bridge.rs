@@ -43,6 +43,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::WebSocketStream;
 
 use super::protocol::*;
+use crate::util::LockExt;
 
 /// 连接后首帧(hello)必须在此时限内到达。
 const HELLO_TIMEOUT: Duration = Duration::from_secs(3);
@@ -155,16 +156,16 @@ impl ExtBridge {
     /// 是否已持有扩展的长期配对凭据。浏览器是否正在运行是瞬时连接状态，
     /// 不能作为 MCP 工具是否安装到 Agent 的条件。
     pub fn is_paired(&self) -> bool {
-        !self.0.st.lock().unwrap().token.is_empty()
+        !self.0.st.lock_ok().token.is_empty()
     }
 
     /// 注册配对状态变化回调。仅桌面壳生命周期层消费；桥本身不负责重启 Agent。
     pub fn set_pairing_change_handler(&self, f: Arc<dyn Fn(bool) + Send + Sync>) {
-        *self.0.pairing_handler.lock().unwrap() = Some(f);
+        *self.0.pairing_handler.lock_ok() = Some(f);
     }
 
     fn notify_pairing_changed(&self, paired: bool) {
-        let handler = self.0.pairing_handler.lock().unwrap().clone();
+        let handler = self.0.pairing_handler.lock_ok().clone();
         if let Some(handler) = handler {
             handler(paired);
         }
@@ -179,7 +180,7 @@ impl ExtBridge {
 
     /// 发送请求并等待应答(超时/断连即错)。req.id 由本方法发号,调用方置 0 即可。
     pub async fn call(&self, mut req: Request, timeout: Duration) -> Result<serde_json::Value, String> {
-        let c = { self.0.st.lock().unwrap().conn.clone() };
+        let c = { self.0.st.lock_ok().conn.clone() };
         let Some(c) = c else {
             return Err("浏览器扩展未连接;请确认已在浏览器中安装 MonkeyCode 扩展并完成配对(设置页可查看状态)".to_string());
         };
@@ -188,7 +189,7 @@ impl ExtBridge {
         let (otx, orx) = oneshot::channel::<Message>();
         // 不变式:先挂 pending 再查 closed。close_handle 先置 closed 再排空
         // pending——两侧任一交错,本次等待都能收到断连唤醒或被本地清理。
-        c.pending.lock().unwrap().insert(id, otx);
+        c.pending.lock_ok().insert(id, otx);
         let sent = if c.closed.load(Ordering::SeqCst) {
             false
         } else {
@@ -199,23 +200,23 @@ impl ExtBridge {
                     Ok(()) => true,
                     Err(mpsc::error::TrySendError::Full(_)) => {
                         self.drop_conn(Some(&c));
-                        c.pending.lock().unwrap().remove(&id);
+                        c.pending.lock_ok().remove(&id);
                         return Err("发送浏览器指令失败: 出站队列积压(连接不健康),已断开".to_string());
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => false,
                 },
                 Err(e) => {
-                    c.pending.lock().unwrap().remove(&id);
+                    c.pending.lock_ok().remove(&id);
                     return Err(format!("发送浏览器指令失败: {e}"));
                 }
             }
         };
         if !sent {
-            c.pending.lock().unwrap().remove(&id);
+            c.pending.lock_ok().remove(&id);
             return Err("发送浏览器指令失败: 连接已关闭".to_string());
         }
         let res = tokio::time::timeout(timeout, orx).await;
-        c.pending.lock().unwrap().remove(&id);
+        c.pending.lock_ok().remove(&id);
         match res {
             // 超时(对应 Go ctx.Err())
             Err(_) => Err(format!("等待浏览器扩展应答超时({}s)", timeout.as_secs())),
@@ -237,29 +238,29 @@ impl ExtBridge {
     /// 注册意味着旧路由器被静默顶掉失聪，是编码错误。
     pub fn set_event_handler(&self, f: Arc<dyn Fn(Message) + Send + Sync>) {
         // 下划线前缀:release 构建 debug_assert 不求值,避免未用变量警告
-        let _prev = self.0.handler.lock().unwrap().replace(f);
+        let _prev = self.0.handler.lock_ok().replace(f);
         debug_assert!(_prev.is_none(), "ExtBridge 事件路由器重复注册");
     }
 
     /// 声明标签页受控(新建/认领交付时调用;幂等)。
     pub fn claim_tab(&self, tab_id: i64) {
-        self.0.tabs.lock().unwrap().insert(tab_id);
+        self.0.tabs.lock_ok().insert(tab_id);
     }
 
     /// 释放标签页(关闭/用户收回时调用)。
     pub fn release_tab(&self, tab_id: i64) {
-        self.0.tabs.lock().unwrap().remove(&tab_id);
+        self.0.tabs.lock_ok().remove(&tab_id);
     }
 
     /// 标签页是否在受控集合内。
     #[allow(dead_code)] // 契约 API 保留(Go 同样未消费)
     pub fn owns_tab(&self, tab_id: i64) -> bool {
-        self.0.tabs.lock().unwrap().contains(&tab_id)
+        self.0.tabs.lock_ok().contains(&tab_id)
     }
 
     /// 认领一个用户交付的标签页(队首;无则 None)。
     pub fn take_pending_handoff(&self) -> Option<TabInfo> {
-        let mut q = self.0.handoffs.lock().unwrap();
+        let mut q = self.0.handoffs.lock_ok();
         if q.is_empty() {
             None
         } else {
@@ -272,7 +273,7 @@ impl ExtBridge {
     /// connected、browser_name/browser_version(仅 connected)、
     /// pairing_code(仅未配对)。
     pub fn status(&self) -> serde_json::Value {
-        let st = self.0.st.lock().unwrap();
+        let st = self.0.st.lock_ok();
         let mut m = serde_json::Map::new();
         m.insert("enabled".into(), (!st.listen_addr.is_empty()).into());
         if !st.listen_addr.is_empty() {
@@ -302,7 +303,7 @@ impl ExtBridge {
     /// 重置配对:删除长期 token 与落盘凭据,断开现有连接,生成新配对码。
     pub fn repair(&self) -> serde_json::Value {
         let (old, was_paired) = {
-            let mut st = self.0.st.lock().unwrap();
+            let mut st = self.0.st.lock_ok();
             let was_paired = !st.token.is_empty();
             st.token.clear();
             st.ext_id.clear();
@@ -313,8 +314,8 @@ impl ExtBridge {
         // 受控 tab 与待领 handoff 随旧浏览器一并失效:重置配对多半是换浏览器/
         // 换扩展,新浏览器的 tabId 会与旧号撞号,不清空会把新事件错误路由
         // (handle_event 按 tabs 集合放行)、把旧 handoff 交给新会话
-        self.0.tabs.lock().unwrap().clear();
-        self.0.handoffs.lock().unwrap().clear();
+        self.0.tabs.lock_ok().clear();
+        self.0.handoffs.lock_ok().clear();
         if let Some(c) = old {
             close_handle(&c);
         }
@@ -327,7 +328,7 @@ impl ExtBridge {
     /// 校验 hello 鉴权。配对码路径成功时颁发并落盘长期 token,返回新 token
     /// (扩展需存储);token 路径返回空串。语义逐字对齐 Go authorize()。
     fn authorize(&self, hello: &Message) -> Result<String, String> {
-        let mut st = self.0.st.lock().unwrap();
+        let mut st = self.0.st.lock_ok();
         let ext_id = hello.ext.as_ref().map(|e| e.id.clone()).unwrap_or_default();
         let Some(auth) = hello.auth.as_ref() else {
             return Err("unauthorized".to_string());
@@ -379,13 +380,13 @@ impl ExtBridge {
             EVENT_PONG | "" => {}
             EVENT_HANDOFF => {
                 if let Some(info) = msg.info.clone() {
-                    self.0.handoffs.lock().unwrap().push(info);
+                    self.0.handoffs.lock_ok().push(info);
                 }
             }
             _ => {
                 let tab = msg.tab_id.unwrap_or(0);
-                if self.0.tabs.lock().unwrap().contains(&tab) {
-                    let h = self.0.handler.lock().unwrap().clone();
+                if self.0.tabs.lock_ok().contains(&tab) {
+                    let h = self.0.handler.lock_ok().clone();
                     if let Some(h) = h {
                         h(msg);
                     }
@@ -398,7 +399,7 @@ impl ExtBridge {
     /// 从状态摘除(epoch 比较),但无论如何都关闭 c 本身(对齐 Go dropConn)。
     fn drop_conn(&self, c: Option<&ConnHandle>) {
         let target = {
-            let mut st = self.0.st.lock().unwrap();
+            let mut st = self.0.st.lock_ok();
             match c {
                 None => st.conn.take(),
                 Some(h) => {
@@ -422,7 +423,7 @@ fn close_handle(c: &ConnHandle) {
         return;
     }
     // 排空在途请求:oneshot sender 落栈 → call() 端收到「连接已断开」
-    c.pending.lock().unwrap().clear();
+    c.pending.lock_ok().clear();
     // 关闭信号:writer 发 WS Close 帧后退出;rx 落栈使 tx.closed() 就绪,
     // reader/ping 的 select 分支随之唤醒——不依赖对端配合。走 Notify 而非
     // 队列哨兵:有界队列满时哨兵会挤不进去,连接关不掉
@@ -555,7 +556,7 @@ async fn run_listener(bridge: ExtBridge) {
     let l = match listener {
         Some(l) => l,
         None => {
-            bridge.0.st.lock().unwrap().listen_err = format!(
+            bridge.0.st.lock_ok().listen_err = format!(
                 "扩展桥监听失败(端口 {} 起 {} 个均被占用): {}",
                 pref, PORT_SCAN_RANGE, last_err
             );
@@ -563,7 +564,7 @@ async fn run_listener(bridge: ExtBridge) {
         }
     };
     if let Ok(addr) = l.local_addr() {
-        bridge.0.st.lock().unwrap().listen_addr = addr.to_string();
+        bridge.0.st.lock_ok().listen_addr = addr.to_string();
     }
     loop {
         match l.accept().await {
@@ -659,7 +660,7 @@ async fn serve_conn(bridge: ExtBridge, stream: TcpStream) {
     // 新连接顶替旧连接(处理浏览器重启后的僵尸连接);旧连 close 唤醒其
     // 全部在途等待者
     let old = {
-        let mut st = bridge.0.st.lock().unwrap();
+        let mut st = bridge.0.st.lock_ok();
         if let Some(b) = &hello.browser {
             st.browser = b.clone();
         }
@@ -758,7 +759,7 @@ async fn read_loop(bridge: ExtBridge, c: ConnHandle, mut source: WsSource) {
         let id = parsed.id.unwrap_or(0);
         if id > 0 {
             // 应答:oneshot 一次性投递(Go 是缓冲 1 的 channel,等价)
-            let tx = c.pending.lock().unwrap().remove(&id);
+            let tx = c.pending.lock_ok().remove(&id);
             if let Some(tx) = tx {
                 let _ = tx.send(parsed);
             }

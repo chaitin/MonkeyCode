@@ -14,6 +14,7 @@ use base64::Engine as _;
 use regex::Regex;
 
 use super::{clean_message, other, BzResult, Service};
+use crate::util::LockExt;
 
 // 页面刮取正则。OnceLock:长轮询每 ~25s 打一次 poll,现编译纯属重复劳动,
 // 进程内编译一次即可。
@@ -112,7 +113,7 @@ pub async fn start_wechat_login(svc: &Service) -> BzResult<String> {
         callback_url: callback,
         lp_base: lp_base_for(scheme, host),
     };
-    *svc.wx.lock().unwrap() = Some(login);
+    *svc.wx.lock_ok() = Some(login);
     Ok(format!(
         "data:image/jpeg;base64,{}",
         base64::engine::general_purpose::STANDARD.encode(&img)
@@ -123,7 +124,7 @@ pub async fn start_wechat_login(svc: &Service) -> BzResult<String> {
 /// 确认成功时就地完成百智云回调,返回 "ok" 即已登录。
 pub async fn poll_wechat_login(svc: &Service) -> BzResult<&'static str> {
     let (uuid, state, callback_url, lp_base) = {
-        let wx = svc.wx.lock().unwrap();
+        let wx = svc.wx.lock_ok();
         let login = wx.as_ref().ok_or_else(|| other("没有进行中的扫码会话,请先获取二维码"))?;
         (login.uuid.clone(), login.state.clone(), login.callback_url.clone(), login.lp_base.clone())
     };
@@ -160,7 +161,7 @@ pub async fn poll_wechat_login(svc: &Service) -> BzResult<&'static str> {
                 return Err(other("扫码确认成功但未返回授权码"));
             }
             complete_wechat_callback(svc, &callback_url, &state, &code).await?;
-            *svc.wx.lock().unwrap() = None;
+            *svc.wx.lock_ok() = None;
             Ok("ok")
         }
         n => Err(other(format!("未知扫码状态 wx_errcode={n}"))),

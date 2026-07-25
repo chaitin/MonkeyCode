@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 
 use super::frame::{self, PermOutcome, SessionStatus};
 use super::ohmy::Inner;
+use crate::util::LockExt;
 
 impl Inner {
     /// stdio 通知路由(reader 线程调用)。
@@ -31,7 +32,7 @@ impl Inner {
                 // permissionRemember cap 出现后审批记忆归引擎(命令段粒度
                 // 规则,记住后引擎根本不再发 request),壳侧工具名粒度的
                 // 自动放行(记住一次 Bash 放行所有命令)随之停用
-                if !self.has_cap("permissionRemember") && self.sess.perm_remember.lock().unwrap().contains(&tool) {
+                if !self.has_cap("permissionRemember") && self.sess.perm_remember.lock_ok().contains(&tool) {
                     self.respond_rpc("permission/respond", json!({ "request_id": req_id, "approved": true }));
                     return;
                 }
@@ -40,8 +41,8 @@ impl Inner {
                 // 旧引擎/空 id 不带字段,UI 回退独立审批卡
                 let tc_id =
                     params.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                self.sess.pending_perms.lock().unwrap().insert(req_id.clone(), sid.clone());
-                self.sess.perm_tools.lock().unwrap().insert(req_id.clone(), tool.clone());
+                self.sess.pending_perms.lock_ok().insert(req_id.clone(), sid.clone());
+                self.sess.perm_tools.lock_ok().insert(req_id.clone(), tool.clone());
                 self.push_frame(&sid, |seq| frame::permission_req(&req_id, &tool, &title, &tc_id, seq));
                 self.emit_session_ask(&sid, true);
             }
@@ -49,7 +50,7 @@ impl Inner {
                 let req_id = params.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
                 let reason = params.get("reason").and_then(|v| v.as_str()).unwrap_or("cancelled");
-                self.sess.perm_tools.lock().unwrap().remove(&req_id);
+                self.sess.perm_tools.lock_ok().remove(&req_id);
                 if !sid.is_empty() {
                     self.resolve_perm(
                         &sid,
@@ -66,8 +67,7 @@ impl Inner {
                     return;
                 }
                 self.sess.pending_questions
-                    .lock()
-                    .unwrap()
+                    .lock_ok()
                     .insert(req_id.clone(), (sid.clone(), questions.clone()));
                 // kind=acp_ask_user_question 即一等公民提问卡标记,reduce.ts 据此
                 // 直接消费 rawInput.questions,不走 tool_call 的标题启发式
@@ -76,7 +76,7 @@ impl Inner {
             }
             "question/cancelled" => {
                 let req_id = params.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let sid = self.sess.pending_questions.lock().unwrap().remove(&req_id).map(|(s, _)| s);
+                let sid = self.sess.pending_questions.lock_ok().remove(&req_id).map(|(s, _)| s);
                 if let Some(sid) = sid {
                     self.emit_session_ask(&sid, false);
                 }
@@ -89,7 +89,7 @@ impl Inner {
                     return;
                 }
                 let (was_running, open) = {
-                    let mut sessions = self.sess.sessions.lock().unwrap();
+                    let mut sessions = self.sess.sessions.lock_ok();
                     match sessions.get_mut(&sid) {
                         Some(s) => {
                             let was = s.running;
@@ -102,7 +102,7 @@ impl Inner {
                 };
                 // 中断轮次可能留下已暂存未被 tool_result 消费的 agent_result
                 if !open.is_empty() {
-                    let mut ar = self.sub.agent_results.lock().unwrap();
+                    let mut ar = self.sub.agent_results.lock_ok();
                     for tc in open.keys() {
                         ar.remove(tc);
                     }
@@ -178,7 +178,7 @@ impl Inner {
         }
         // 未知 session_id = 上游转发的子代理事件(子循环随机 id):
         // 认领并物化为壳侧子会话,后续事件走正常帧路径;认领不到(迟到)丢弃
-        if !self.sess.sessions.lock().unwrap().contains_key(&sid) && !self.claim_subagent(&sid, &event) {
+        if !self.sess.sessions.lock_ok().contains_key(&sid) && !self.claim_subagent(&sid, &event) {
             return;
         }
         // eventSeq:事件带会话内单调 seq(被背压丢弃的 delta 仍占号),
@@ -187,7 +187,7 @@ impl Inner {
         // 重建(destroy+create 换绑)后重新起算,水位跟随重置。
         // 旧引擎不带 seq 字段,自然跳过——无需 caps 门控
         if let Some(eseq) = event.get("seq").and_then(|v| v.as_u64()).filter(|s| *s > 0) {
-            if let Some(s) = self.sess.sessions.lock().unwrap().get_mut(&sid) {
+            if let Some(s) = self.sess.sessions.lock_ok().get_mut(&sid) {
                 if s.last_event_seq > 0 && eseq > s.last_event_seq + 1 {
                     eprintln!(
                         "[desktop] 会话 {sid} 事件 seq 空洞 {}→{eseq}(背压丢弃 {} 条)",
@@ -209,7 +209,7 @@ impl Inner {
                 // modelDoneText 对账:累积本段实收流式文本(旧引擎不宣告
                 // 则不累积,免白耗内存;对账逻辑见 model_done 分支)
                 if !text.is_empty() && self.has_cap("modelDoneText") {
-                    if let Some(s) = self.sess.sessions.lock().unwrap().get_mut(&sid) {
+                    if let Some(s) = self.sess.sessions.lock_ok().get_mut(&sid) {
                         s.model_text.push_str(text);
                     }
                 }
@@ -218,7 +218,7 @@ impl Inner {
             // 新一段模型输出:重置对账累积(上一段 model_done 缺席/中断的
             // 残留不得跨段污染前缀比对)
             "model_start" => {
-                if let Some(s) = self.sess.sessions.lock().unwrap().get_mut(&sid) {
+                if let Some(s) = self.sess.sessions.lock_ok().get_mut(&sid) {
                     s.model_text.clear();
                 }
             }
@@ -230,7 +230,7 @@ impl Inner {
             "model_done" => {
                 let full = data.get("text").and_then(|v| v.as_str()).unwrap_or("");
                 let acc = {
-                    let mut sessions = self.sess.sessions.lock().unwrap();
+                    let mut sessions = self.sess.sessions.lock_ok();
                     sessions.get_mut(&sid).map(|s| std::mem::take(&mut s.model_text)).unwrap_or_default()
                 };
                 if full.is_empty() || !self.has_cap("modelDoneText") {
@@ -266,7 +266,7 @@ impl Inner {
                 let input = data.get("input").cloned().unwrap_or(Value::Null);
                 let title = perm_title(&name, &input);
                 if !tc_id.is_empty() {
-                    if let Some(s) = self.sess.sessions.lock().unwrap().get_mut(&sid) {
+                    if let Some(s) = self.sess.sessions.lock_ok().get_mut(&sid) {
                         s.open_tools.insert(tc_id.clone(), name.clone());
                     }
                     if name == "Agent" {
@@ -278,7 +278,7 @@ impl Inner {
                             .to_string();
                         let prompt =
                             input.get("prompt").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        self.sub.agent_inputs.lock().unwrap().insert(tc_id.clone(), (desc, prompt));
+                        self.sub.agent_inputs.lock_ok().insert(tc_id.clone(), (desc, prompt));
                     }
                 }
                 self.push_frame(&sid, |seq| frame::tool_call(&tc_id, &title, &input, seq));
@@ -295,7 +295,7 @@ impl Inner {
                         data.get("status").and_then(|v| v.as_str()).unwrap_or("completed").to_string();
                     let content =
                         data.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    self.sub.agent_results.lock().unwrap().insert(tc.to_string(), (status, content));
+                    self.sub.agent_results.lock_ok().insert(tc.to_string(), (status, content));
                 }
             }
             "tool_result" => {
@@ -303,8 +303,7 @@ impl Inner {
                 let content = data.get("content").and_then(|v| v.as_str()).unwrap_or("");
                 let name = self
                     .sess.sessions
-                    .lock()
-                    .unwrap()
+                    .lock_ok()
                     .get_mut(&sid)
                     .and_then(|s| s.open_tools.remove(&tc_id));
                 // 失败判定:结构化错误位优先(structuredToolResult 的
@@ -322,7 +321,7 @@ impl Inner {
                 // 其余退回解析截断 500 字符的 {status,…,content} JSON——
                 // 可能破损,解析失败原样退回(兼容尾巴)
                 let stashed =
-                    if tc_id.is_empty() { None } else { self.sub.agent_results.lock().unwrap().remove(&tc_id) };
+                    if tc_id.is_empty() { None } else { self.sub.agent_results.lock_ok().remove(&tc_id) };
                 let is_agent = name.as_deref() == Some("Agent");
                 if is_agent && stashed.is_none() && !is_error {
                     if let Some(resp) = serde_json::from_str::<Value>(content)

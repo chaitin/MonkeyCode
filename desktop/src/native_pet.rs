@@ -24,6 +24,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
+use crate::util::LockExt;
 use windows::Win32::UI::Shell::{
     DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass, SUBCLASSPROC,
 };
@@ -57,15 +58,15 @@ impl NativePetHost {
     }
 
     fn set(&self, pet: Arc<NativePet>) {
-        *self.0.lock().unwrap() = Some(pet);
+        *self.0.lock_ok() = Some(pet);
     }
 
     fn get(&self) -> Option<Arc<NativePet>> {
-        self.0.lock().unwrap().clone()
+        self.0.lock_ok().clone()
     }
 
     fn take(&self) -> Option<Arc<NativePet>> {
-        self.0.lock().unwrap().take()
+        self.0.lock_ok().take()
     }
 }
 
@@ -284,7 +285,7 @@ pub fn update(app: &AppHandle, mode: &str, tone: &str, text: &str, session_id: O
     let pet = app.state::<NativePetHost>().get();
     let Some(pet) = pet else { return };
     {
-        let mut visual = pet.visual.lock().unwrap();
+        let mut visual = pet.visual.lock_ok();
         visual.mode = match mode {
             "idle" => Mode::Idle,
             "running" => Mode::Running,
@@ -348,7 +349,7 @@ impl NativePet {
         let height = (client.bottom - client.top).max(1) as u32;
 
         let (frame, tone, text, mode) = {
-            let mut visual = self.visual.lock().unwrap();
+            let mut visual = self.visual.lock_ok();
             let frame = Self::frame_at(visual.mode, visual.since.elapsed());
             let key = (frame, visual.generation, width, height);
             if !force && visual.last_key == Some(key) {
@@ -693,7 +694,7 @@ unsafe extern "system" fn window_proc(
             return LRESULT(0);
         }
         WM_SIZE => {
-            pet.visual.lock().unwrap().last_key = None;
+            pet.visual.lock_ok().last_key = None;
             if let Err(e) = pet.render(true) {
                 eprintln!("[desktop] 桌宠尺寸变化后重绘失败: {e}");
             }
@@ -719,7 +720,7 @@ unsafe extern "system" fn window_proc(
             if windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut cursor).is_ok()
                 && GetWindowRect(hwnd, &mut origin).is_ok()
             {
-                let mut mouse = pet.mouse.lock().unwrap();
+                let mut mouse = pet.mouse.lock_ok();
                 mouse.down = true;
                 mouse.dragged = false;
                 mouse.cursor = cursor;
@@ -729,7 +730,7 @@ unsafe extern "system" fn window_proc(
             return LRESULT(0);
         }
         WM_MOUSEMOVE => {
-            let mut mouse = pet.mouse.lock().unwrap();
+            let mut mouse = pet.mouse.lock_ok();
             if mouse.down {
                 let mut cursor = POINT::default();
                 if windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut cursor).is_ok() {
@@ -754,13 +755,13 @@ unsafe extern "system" fn window_proc(
             return LRESULT(0);
         }
         WM_LBUTTONUP => {
-            let mut mouse = pet.mouse.lock().unwrap();
+            let mut mouse = pet.mouse.lock_ok();
             let clicked = mouse.down && !mouse.dragged;
             mouse.down = false;
             let _ = ReleaseCapture();
             drop(mouse);
             if clicked {
-                let target = pet.visual.lock().unwrap().target_session_id.clone();
+                let target = pet.visual.lock_ok().target_session_id.clone();
                 crate::show_main_session(&pet.app, target.as_deref());
             }
             return LRESULT(0);

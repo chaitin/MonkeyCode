@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::io::{Read as _, Write as _};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use base64::Engine as _;
@@ -23,6 +23,16 @@ use serde_json::{json, Value};
 
 use super::ops::tool_metas;
 use super::session::{BrowserSession, BrowserSessions};
+use crate::util::LockExt;
+
+/// 请求头(含请求行)总字节上限。环回面在 Bearer 校验**之前**就要读头,
+/// 所以这个上限是防本机异常/恶意进程灌爆内存的第一道闸,不能只靠 body 上限。
+const MAX_HEADER_BYTES: usize = 32 * 1024;
+/// 头条数上限:防只发头不发空行的连接把循环挂死。
+const MAX_HEADERS: usize = 100;
+/// 在途连接上限。请求频率 = 工具调用频率(极低),真实用量个位数;
+/// 设上限只为不让异常端用连接把线程数拉爆(此前 incoming() 无条件 spawn)。
+const MAX_INFLIGHT_CONNS: usize = 32;
 
 #[derive(Clone, Default)]
 pub struct CallScope {
@@ -57,7 +67,7 @@ impl McpClientSession {
         // 先封门再等 contexts 锁：已进临界区的创建会被随后 drain，尚未进入
         // 的创建会看到 closed。DELETE/reset 后不会晚生幽灵 context。
         self.closed.store(true, Ordering::Release);
-        self.contexts.lock().unwrap().drain().map(|(_, context)| context).collect()
+        self.contexts.lock_ok().drain().map(|(_, context)| context).collect()
     }
 }
 
@@ -71,7 +81,7 @@ impl McpSessions {
 
     fn create(&self) -> Result<String, String> {
         let id = new_token()?;
-        self.0.clients.lock().unwrap().insert(
+        self.0.clients.lock_ok().insert(
             id.clone(),
             Arc::new(McpClientSession {
                 closed: AtomicBool::new(false),
@@ -82,13 +92,13 @@ impl McpSessions {
     }
 
     fn contains(&self, id: &str) -> bool {
-        self.0.clients.lock().unwrap().contains_key(id)
+        self.0.clients.lock_ok().contains_key(id)
     }
 
     fn context(&self, protocol_id: &str, agent_id: Option<&str>) -> Option<Arc<McpCallContext>> {
-        let client = self.0.clients.lock().unwrap().get(protocol_id).cloned()?;
+        let client = self.0.clients.lock_ok().get(protocol_id).cloned()?;
         let key = agent_id.filter(|id| !id.is_empty()).unwrap_or("root");
-        let mut contexts = client.contexts.lock().unwrap();
+        let mut contexts = client.contexts.lock_ok();
         if client.closed.load(Ordering::Acquire) {
             return None;
         }
@@ -107,7 +117,7 @@ impl McpSessions {
     }
 
     async fn remove(&self, id: &str) -> bool {
-        let client = self.0.clients.lock().unwrap().remove(id);
+        let client = self.0.clients.lock_ok().remove(id);
         let Some(client) = client else { return false };
         for context in client.drain_contexts() {
             // DELETE 可与最后一个 tools/call 同时到达。先从协议注册表摘除，
@@ -123,7 +133,7 @@ impl McpSessions {
     /// initialize 不会与旧 owner 争同一个 tab。
     pub async fn reset(&self) {
         let clients = {
-            let mut clients = self.0.clients.lock().unwrap();
+            let mut clients = self.0.clients.lock_ok();
             std::mem::take(&mut *clients).into_values().collect::<Vec<_>>()
         };
         for client in clients {
@@ -145,13 +155,25 @@ pub fn serve(sessions: McpSessions, workdir: WorkdirFn) -> Result<(String, Strin
     let url = format!("http://{addr}/mcp");
 
     let tok = token.clone();
+    let inflight = Arc::new(AtomicUsize::new(0));
     std::thread::spawn(move || {
         for conn in listener.incoming() {
-            let Ok(conn) = conn else { continue };
+            let Ok(mut conn) = conn else { continue };
+            // 满载直接回 503 并关闭,不排队、不 spawn。工具调用是低频串行动作,
+            // 触到上限说明对端异常,让它立刻收到明确拒绝比堆线程好。
+            if inflight.load(Ordering::SeqCst) >= MAX_INFLIGHT_CONNS {
+                let _ = write_http(&mut conn, 503, "text/plain", b"too many connections", None);
+                continue;
+            }
+            inflight.fetch_add(1, Ordering::SeqCst);
             let sessions = sessions.clone();
             let tok = tok.clone();
             let wd = workdir.clone();
-            std::thread::spawn(move || handle_conn(conn, &sessions, &tok, &wd));
+            let gauge = inflight.clone();
+            std::thread::spawn(move || {
+                handle_conn(conn, &sessions, &tok, &wd);
+                gauge.fetch_sub(1, Ordering::SeqCst);
+            });
         }
     });
     Ok((url, token))
@@ -416,15 +438,19 @@ fn read_http_request(conn: &mut TcpStream) -> Option<HttpReq> {
     let _ = conn.set_read_timeout(Some(std::time::Duration::from_secs(30)));
     let mut reader = std::io::BufReader::new(conn.try_clone().ok()?);
     use std::io::BufRead as _;
+    // 头部整体设上限。此前请求行与每条头都是无界 read_line:环回上的任意
+    // 本地进程(还没到 Bearer 校验)只要发一条不含换行的超长头,String 就
+    // 一直长到把内存吃光;头条数也没有上限。体量上限只管到 body,管不到这里。
+    let mut head = reader.by_ref().take(MAX_HEADER_BYTES as u64);
     let mut line = String::new();
-    reader.read_line(&mut line).ok()?;
+    head.read_line(&mut line).ok()?;
     let method = line.split_whitespace().next()?.to_string();
     let mut bearer = None;
     let mut mcp_session_id = None;
     let mut content_len = 0usize;
-    loop {
+    for _ in 0..MAX_HEADERS {
         let mut h = String::new();
-        if reader.read_line(&mut h).is_err() || h.trim().is_empty() {
+        if head.read_line(&mut h).is_err() || h.trim().is_empty() {
             break;
         }
         let lower = h.to_ascii_lowercase();

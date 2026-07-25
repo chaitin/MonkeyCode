@@ -14,6 +14,7 @@ use super::frame::{self, SessionStatus};
 use super::normalize::perm_title;
 use super::ohmy::Inner;
 use super::session::SessionState;
+use crate::util::LockExt;
 
 pub(super) struct SubagentRoute {
     pub(super) parent_sid: String,
@@ -59,7 +60,7 @@ impl Inner {
     /// **壳侧子会话**(sidecar 带 parent,可回放可跟流)——父卡 feed 预览
     /// + child_session 链接点开完整对话。认领不到(迟到/无戳记)返回 false。
     pub(super) fn claim_subagent(&self, child_sid: &str, event: &Value) -> bool {
-        if self.sub.subagents.lock().unwrap().contains_key(child_sid) {
+        if self.sub.subagents.lock_ok().contains_key(child_sid) {
             return true;
         }
         // 事件自带父归属:父 sid 经 shell_sid_of 反查(engine_id 换绑兼容)
@@ -78,7 +79,7 @@ impl Inner {
             });
         let claimed = match stamped {
             Some((psid, ptc)) => {
-                let sessions = self.sess.sessions.lock().unwrap();
+                let sessions = self.sess.sessions.lock_ok();
                 sessions.get(&psid).map(|s| {
                     // 父工具 id 缺省时兜底找未闭合 Agent 工具
                     let ptc = if !ptc.is_empty() {
@@ -106,8 +107,7 @@ impl Inner {
         let Some((psid, ptc, workdir, model_name)) = claimed else { return false };
         let (mut title, prompt) = self
             .sub.agent_inputs
-            .lock()
-            .unwrap()
+            .lock_ok()
             .get(&ptc)
             .cloned()
             .unwrap_or_else(|| ("子代理".into(), String::new()));
@@ -116,7 +116,7 @@ impl Inner {
         if let Some(d) = event.get("parent_description").and_then(|v| v.as_str()).filter(|d| !d.is_empty()) {
             title = d.to_string();
         }
-        self.sess.sessions.lock().unwrap().insert(
+        self.sess.sessions.lock_ok().insert(
             child_sid.to_string(),
             SessionState {
                 seq: 0,
@@ -145,11 +145,10 @@ impl Inner {
         // 登记表已有该父工具的后台标记,路由生来即后台,跨轮存活
         let background = self
             .sub.background_agents
-            .lock()
-            .unwrap()
+            .lock_ok()
             .values()
             .any(|(s, tc)| s == &psid && tc == &ptc);
-        self.sub.subagents.lock().unwrap().insert(
+        self.sub.subagents.lock_ok().insert(
             child_sid.to_string(),
             SubagentRoute { parent_sid: psid.clone(), parent_tc: ptc.clone(), line_buf: String::new(), background },
         );
@@ -173,8 +172,7 @@ impl Inner {
     pub(super) fn subagent_feed(&self, child_sid: &str, etype: &str, event: &Value, data: &Value) {
         let Some((psid, ptc)) = self
             .sub.subagents
-            .lock()
-            .unwrap()
+            .lock_ok()
             .get(child_sid)
             .map(|r| (r.parent_sid.clone(), r.parent_tc.clone()))
         else {
@@ -213,7 +211,7 @@ impl Inner {
             "model_delta" => {
                 let text = data.get("text").and_then(|v| v.as_str()).unwrap_or("");
                 let lines = {
-                    let mut subs = self.sub.subagents.lock().unwrap();
+                    let mut subs = self.sub.subagents.lock_ok();
                     let Some(r) = subs.get_mut(child_sid) else { return };
                     r.line_buf.push_str(text);
                     let mut out = Vec::new();
@@ -250,7 +248,7 @@ impl Inner {
     /// 关闭一个子会话:收尾帧 + sidecar 终态(不发 session-event,不惊动侧栏)。
     fn close_child(&self, child_sid: &str, status: SessionStatus) {
         let was = {
-            let mut sessions = self.sess.sessions.lock().unwrap();
+            let mut sessions = self.sess.sessions.lock_ok();
             match sessions.get_mut(child_sid) {
                 Some(s) if s.running => {
                     s.running = false;
@@ -270,7 +268,7 @@ impl Inner {
     /// 删路由(同步完成 Finished;后台代理经 task_notification 按其终态)。
     pub(super) fn close_subagents_of(&self, sid: &str, tc_id: &str, status: SessionStatus) {
         let closing: Vec<(String, String)> = {
-            let mut subs = self.sub.subagents.lock().unwrap();
+            let mut subs = self.sub.subagents.lock_ok();
             let closing = subs
                 .iter_mut()
                 .filter(|(_, r)| r.parent_sid == sid && r.parent_tc == tc_id)
@@ -287,7 +285,7 @@ impl Inner {
             }
             self.close_child(&child, status);
         }
-        self.sub.agent_inputs.lock().unwrap().remove(tc_id);
+        self.sub.agent_inputs.lock_ok().remove(tc_id);
     }
 
     /// 会话轮次结束/和解:子代理路由失效,残留子会话按 status 收尾。
@@ -296,7 +294,7 @@ impl Inner {
     /// 后台登记一并清除(通知永远不会来了)。
     pub(super) fn close_children_of_session(&self, sid: &str, status: SessionStatus, include_background: bool) {
         let children: Vec<String> = {
-            let mut subs = self.sub.subagents.lock().unwrap();
+            let mut subs = self.sub.subagents.lock_ok();
             let children = subs
                 .iter()
                 .filter(|(_, r)| r.parent_sid == sid && (include_background || !r.background))
@@ -309,7 +307,7 @@ impl Inner {
             self.close_child(&child, status);
         }
         if include_background {
-            self.sub.background_agents.lock().unwrap().retain(|_, (s, _)| s != sid);
+            self.sub.background_agents.lock_ok().retain(|_, (s, _)| s != sid);
         }
     }
 
@@ -323,14 +321,12 @@ impl Inner {
         let agent_id = get("agentId");
         if !agent_id.is_empty() {
             self.sub.background_agents
-                .lock()
-                .unwrap()
+                .lock_ok()
                 .insert(agent_id.to_string(), (sid.to_string(), tc_id.to_string()));
         }
         if let Some(r) = self
             .sub.subagents
-            .lock()
-            .unwrap()
+            .lock_ok()
             .values_mut()
             .find(|r| r.parent_sid == sid && r.parent_tc == tc_id)
         {
@@ -355,7 +351,7 @@ impl Inner {
         }
         // 帧一律落在登记的父会话(通知本就发在父会话,psid 即 sid;
         // 万一不符也以卡所在会话为准,不把结果写岔)
-        let Some((psid, ptc)) = self.sub.background_agents.lock().unwrap().remove(agent_id) else {
+        let Some((psid, ptc)) = self.sub.background_agents.lock_ok().remove(agent_id) else {
             return false;
         };
         let status = get("status");

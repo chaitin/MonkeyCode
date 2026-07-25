@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use crate::util::LockExt;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct StoredCookie {
@@ -99,7 +100,7 @@ impl CookieStore {
         }
         let now = SystemTime::now();
         let host = req_url.host_str().unwrap_or("").to_string();
-        let mut list = self.list.lock().unwrap();
+        let mut list = self.list.lock_ok();
         for raw in set_cookies {
             let Ok(c) = cookie::Cookie::parse(raw.clone()) else { continue };
             let mut sc = StoredCookie {
@@ -174,7 +175,7 @@ impl CookieStore {
         let host = url.host_str().unwrap_or("");
         let path = if url.path().is_empty() { "/" } else { url.path() };
         let secure = url.scheme() == "https";
-        let list = self.list.lock().unwrap();
+        let list = self.list.lock_ok();
         let parts: Vec<String> = list
             .iter()
             .filter(|c| !c.expired(now) && (!c.secure || secure) && c.matches(host, path))
@@ -189,7 +190,7 @@ impl CookieStore {
 
     /// 清空全部 cookie 并删除落盘文件(登出)。
     pub fn clear(&self) {
-        let mut list = self.list.lock().unwrap();
+        let mut list = self.list.lock_ok();
         list.clear();
         if let Some(p) = &self.path {
             let _ = std::fs::remove_file(p);
@@ -199,10 +200,16 @@ impl CookieStore {
     /// 是否没有任何(未过期)cookie。
     pub fn is_empty(&self) -> bool {
         let now = SystemTime::now();
-        self.list.lock().unwrap().iter().all(|c| c.expired(now))
+        self.list.lock_ok().iter().all(|c| c.expired(now))
     }
 
     /// 把序列化好的罐内容落盘(调用方须已释放 list 锁)。
+    ///
+    /// 与权威配置共用 `config::atomic_write_private`——凭证文件不该比
+    /// config.json 落得更弱:该函数以 0600 **创建**临时文件(旧实现先
+    /// `fs::write` 后 `set_permissions`,登录 cookie 有一瞬间是默认 umask)、
+    /// fsync 文件与父目录、再做跨平台原子替换(Windows 上裸 `fs::rename`
+    /// 覆盖既有目标会直接失败)。
     fn persist(&self, data: &[u8]) {
         let Some(p) = &self.path else { return };
         if let Some(dir) = p.parent() {
@@ -213,15 +220,9 @@ impl CookieStore {
                 let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
             }
         }
-        // 同目录临时文件 + rename,避免半写文件
-        let tmp = p.with_extension(format!("tmp{}", std::process::id()));
-        if std::fs::write(&tmp, &data).is_ok() {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
-            }
-            let _ = std::fs::rename(&tmp, p);
+        // 落盘失败此前完全静默(登出后 cookie 仍在盘上、或登录态丢失都无征兆)。
+        if let Err(e) = crate::config::atomic_write_private(p, data) {
+            eprintln!("[desktop] cookie 罐落盘失败({}): {e}", p.display());
         }
     }
 }
@@ -232,6 +233,45 @@ mod tests {
 
     fn url(s: &str) -> reqwest::Url {
         reqwest::Url::parse(s).unwrap()
+    }
+
+    /// 凭证落盘的终态不变量:文件 0600、覆盖既有文件不失败、重开可读回、
+    /// 不留临时文件残渣。
+    ///
+    /// 注意本测试**不能**证明"0600 在创建瞬间即生效"——那是先 write 后
+    /// chmod 留下的 umask 时间窗,终态与正确实现一致,单测观察不到。该性质
+    /// 由 persist() 走 config::atomic_write_private(以 mode(0o600) 创建)
+    /// 保证;此处锁住的是回归防线。
+    #[test]
+    fn persisted_jar_is_private_and_reloadable() {
+        let dir = std::env::temp_dir().join(format!("mc-cookie-persist-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("baizhi-cookies.json");
+
+        let store = CookieStore::new(Some(path.clone()));
+        store.update(&url("https://baizhi.cloud/api/v1/login"), &["sid=abc; Path=/; Domain=baizhi.cloud".into()]);
+        assert!(path.is_file(), "首次落盘应创建罐文件");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "cookie 罐必须只有属主可读写");
+        }
+
+        // 覆盖既有文件:旧实现的裸 rename 在 Windows 上会失败。
+        store.update(&url("https://baizhi.cloud/x"), &["other=1; Path=/; Domain=baizhi.cloud".into()]);
+        let reloaded = CookieStore::new(Some(path.clone()));
+        let header = reloaded.header(&url("https://baizhi.cloud/api/v1/user/profile")).unwrap();
+        assert!(header.contains("sid=abc"), "重开后应读回 sid: {header}");
+        assert!(header.contains("other=1"), "重开后应读回 other: {header}");
+
+        // 登出删文件,且不留临时文件残渣。
+        reloaded.clear();
+        assert!(!path.exists());
+        let leftovers: Vec<_> = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).collect();
+        assert!(leftovers.is_empty(), "目录应无临时文件残留: {:?}", leftovers.iter().map(|e| e.file_name()).collect::<Vec<_>>());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

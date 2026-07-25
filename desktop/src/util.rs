@@ -14,9 +14,48 @@ pub fn urlencode(s: &str) -> String {
         .collect()
 }
 
+/// 取锁并忽略中毒。
+///
+/// 桌面壳是长驻进程:一个线程在持锁期间 panic 后,若其余代码继续用裸
+/// `unwrap()` 取锁,该锁保护的整个功能面(会话、桥、cookie 罐…)就在进程
+/// 剩余生命周期里永久不可用——用户看到的是"重启才能好",而壳恰恰是不轻易
+/// 重启的。宁可拿着可能不一致的数据继续跑并让上层自愈(壳有会话和解、
+/// 引擎重启、配置备份三重兜底),也不要把一次局部 panic 放大成功能性死亡。
+///
+/// 此前壳内两种取锁姿势并存(裸 unwrap 与显式 into_inner),取哪种全看作者;
+/// 统一到本方法后只剩一种。用扩展 trait 而非自由函数,是为了保住
+/// `x.lock_ok()` 的链式调用形态。
+pub trait LockExt<T> {
+    fn lock_ok(&self) -> std::sync::MutexGuard<'_, T>;
+}
+
+impl<T> LockExt<T> for std::sync::Mutex<T> {
+    fn lock_ok(&self) -> std::sync::MutexGuard<'_, T> {
+        // 唯一允许直接处理 PoisonError 的地方。
+        self.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 中毒后仍能取到锁,并且看得到 panic 前写入的数据。
+    #[test]
+    fn lock_ok_survives_poisoning() {
+        let m = std::sync::Arc::new(std::sync::Mutex::new(0u32));
+        let m2 = m.clone();
+        let _ = std::thread::spawn(move || {
+            // guard 必须在 panic 时仍然存活才会中毒:写成
+            // `*m2.lock_ok() = 7;` 的话临时 guard 当场就 drop 了,锁不中毒。
+            let mut held = m2.lock_ok();
+            *held = 7;
+            panic!("毒化持有中的锁");
+        })
+        .join();
+        assert!(m.lock().is_err(), "前置条件:锁应已中毒");
+        assert_eq!(*m.lock_ok(), 7);
+    }
 
     #[test]
     fn urlencode_unreserved_passthrough() {

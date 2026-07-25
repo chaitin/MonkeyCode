@@ -188,6 +188,53 @@ async fn bridge_pair_and_call_roundtrip() {
     assert!(!b.owns_tab(9), "repair 应清空受控集合");
 }
 
+/// 读头发生在 Bearer 校验**之前**,所以头部必须自带字节上限:否则环回上的
+/// 任意本机进程只要发一条永不换行的超长头,壳侧 String 就一路长到吃光内存。
+/// 断言超限连接被干掉(无正常应答),且服务端在此之后仍能正常服务。
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_oversized_headers_are_dropped_and_server_survives() {
+    let dir = tmp_dir("mcp-hdr");
+    let b = ExtBridge::new(27462, &dir);
+    let sessions = mcp::McpSessions::new(b);
+    let (url, token) = mcp::serve(sessions, std::sync::Arc::new(|_| Ok(None))).expect("MCP 启动");
+    let addr = url.strip_prefix("http://").unwrap().split('/').next().unwrap().to_string();
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    // 一条 1MB 且不含 CRLF 的头(远超 32KB 上限),连体都不发
+    {
+        let mut conn = tokio::net::TcpStream::connect(&addr).await.unwrap();
+        conn.write_all(b"POST /mcp HTTP/1.1\r\nX-Flood: ").await.unwrap();
+        conn.write_all(&vec![b'A'; 1024 * 1024]).await.unwrap();
+        let _ = conn.flush().await;
+        let mut buf = Vec::new();
+        // 关键断言是"服务端**主动**关了连接",而不仅仅是"没应答":无上限时
+        // 服务端会一直等 CRLF、把头读到内存里,直到它自己 30s 读超时才罢手,
+        // 此处的 read_to_end 就会超时。有上限时 32KB 一到即放弃并关连接,
+        // EOF 立刻到达。只断言"无 jsonrpc 应答"两种实现都成立,区分不了。
+        let closed = tokio::time::timeout(std::time::Duration::from_secs(5), conn.read_to_end(&mut buf)).await;
+        assert!(closed.is_ok(), "超限连接应被服务端及时关闭(EOF),而不是挂着等 CRLF");
+        let resp = String::from_utf8_lossy(&buf);
+        assert!(!resp.contains("jsonrpc"), "超长头不应得到 JSON-RPC 应答: {resp}");
+    }
+
+    // 服务端未被拖死,正常请求照常受理
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "protocolVersion": "2025-06-18" } })
+    .to_string();
+    let req = format!(
+        "POST /mcp HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n\
+         Authorization: Bearer {token}\r\nContent-Length: {}\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    let mut conn = tokio::net::TcpStream::connect(&addr).await.unwrap();
+    conn.write_all(req.as_bytes()).await.unwrap();
+    let mut buf = Vec::new();
+    let _ = conn.read_to_end(&mut buf).await;
+    let resp = String::from_utf8_lossy(&buf);
+    assert!(resp.contains(r#""protocolVersion":"2025-06-18""#), "超限连接后服务端应仍可用: {resp}");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn mcp_smoke_initialize_list_call() {
     let dir = tmp_dir("mcp");
@@ -622,8 +669,7 @@ impl FakeExt {
     /// 指定键收到的全部请求帧(按到达顺序)。
     fn calls(&self, key: &str) -> Vec<Value> {
         self.log
-            .lock()
-            .unwrap()
+            .lock().unwrap()
             .iter()
             .filter(|(k, _)| k == key)
             .map(|(_, v)| v.clone())

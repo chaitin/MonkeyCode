@@ -75,14 +75,19 @@ fn image_mime(path: &Path) -> Option<&'static str> {
 }
 
 /// 保存原始字节到上传目录(浏览器截图等壳内生成物),返回工作区相对路径。
+///
+/// name 与 save() 同样过 sanitize_name:当前唯一调用方传的是壳自己生成的
+/// `browser-<ms>.png`,但本函数是 pub 的,未清洗时 `../../x` 能写出目录外
+/// (join 遇到 `..` 会向上跳)。清洗成本为零,不留这条latent 路径遍历。
 pub fn save_raw(workdir: &str, wsl_distro: Option<&str>, name: &str, data: &[u8]) -> Result<String, String> {
+    let name = sanitize_name(name).ok_or("文件名无效")?;
     let dir = uploads_dir(workdir, wsl_distro)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建上传目录失败: {e}"))?;
     let gi = dir.join(".gitignore");
     if !gi.exists() {
         let _ = std::fs::write(&gi, "*\n");
     }
-    std::fs::write(dir.join(name), data).map_err(|e| format!("写入失败: {e}"))?;
+    std::fs::write(dir.join(&name), data).map_err(|e| format!("写入失败: {e}"))?;
     Ok(format!(".monkeycode/uploads/{name}"))
 }
 
@@ -208,6 +213,33 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// save_raw 是 pub 的,名字必须与 save() 同样清洗:未清洗时 join 遇到
+    /// `..` 会跳出 uploads 目录,把字节写到工作区外。
+    #[test]
+    fn save_raw_rejects_path_traversal_and_keeps_path_consistent() {
+        let tmp = TempDir::new();
+        // 工作区嵌在临时目录内层:逃逸目标才落在受控的 tmp.0 里,而不是
+        // 共享的系统 temp(否则一次失败会留下 /tmp/evil.png 污染后续跑批)。
+        let ws = tmp.0.join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        let workdir = ws.to_string_lossy().to_string();
+
+        // uploads 目录是 <workdir>/.monkeycode/uploads,三级 `..` 才真正逃出
+        // 工作区——旧实现会把字节写到 workdir 的父目录里。
+        let rel = save_raw(&workdir, None, "../../../evil.png", b"x").unwrap();
+        assert_eq!(rel, ".monkeycode/uploads/evil.png");
+        assert!(ws.join(".monkeycode/uploads/evil.png").is_file());
+        assert!(!tmp.0.join("evil.png").exists(), "不得写出工作区");
+
+        // 返回的相对路径与实际落盘文件名一致(壳把它当模型可读路径回传)
+        let rel = save_raw(&workdir, None, "browser-1730000000000.png", b"y").unwrap();
+        assert_eq!(rel, ".monkeycode/uploads/browser-1730000000000.png");
+        assert!(ws.join(&rel).is_file());
+
+        // 清洗后为空的名字必须硬错误,不能写出无名文件
+        assert!(save_raw(&workdir, None, "../..", b"z").is_err());
     }
 
     #[test]

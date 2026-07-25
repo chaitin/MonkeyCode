@@ -26,7 +26,7 @@ mod wsl;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem};
@@ -37,6 +37,7 @@ use tauri_nspanel::{tauri_panel, StyleMask, WebviewWindowExt as _};
 
 use config::{load_config, materialize_engine_config, save_ui_config_files, DesktopConfig};
 use driver::DriverHost;
+use crate::util::LockExt;
 
 // macOS 桌宠面板类:普通 NSWindow 被点击会激活应用、把主窗口带到最前;
 // NonactivatingPanel 让桌宠保持为不抢焦点的独立面板。hides_on_deactivate 必须关,
@@ -135,6 +136,11 @@ fn restart_engine_locked(app: &AppHandle, config: &DesktopConfig) -> Result<(), 
     Ok(())
 }
 
+/// 配对刷新等待任务空闲的上限。此前是无截止的 250ms 轮询:只要有一个会话
+/// 一直在跑,这个线程就转到进程退出。超时即放弃并外显——工具集会在下一次
+/// 引擎重启(保存设置 / 设置页手动重启)时自然生效,不需要线程守着。
+const BROWSER_MCP_REFRESH_DEADLINE: Duration = Duration::from_secs(600);
+
 /// 扩展首次配对或重置配对后异步刷新 Agent 的 MCP 工具集合。
 /// 回调来自桥的 async 任务，不能在其上阻塞数秒等待 Agent 启停。
 fn schedule_browser_mcp_refresh(app: &AppHandle) {
@@ -145,12 +151,13 @@ fn schedule_browser_mcp_refresh(app: &AppHandle) {
         .wrapping_add(1);
     let app = app.clone();
     std::thread::spawn(move || {
+        let started = Instant::now();
         loop {
             if app.state::<BrowserMcpRefresh>().0.load(Ordering::SeqCst) != generation {
                 return;
             }
             let apply = app.state::<EngineApply>();
-            let _apply = apply.0.lock().unwrap_or_else(|e| e.into_inner());
+            let _apply = apply.0.lock_ok();
             if app.state::<BrowserMcpRefresh>().0.load(Ordering::SeqCst) != generation {
                 return;
             }
@@ -160,6 +167,16 @@ fn schedule_browser_mcp_refresh(app: &AppHandle) {
             let host = app.state::<DriverHost>();
             let Some(_host_apply) = host.try_begin_idle_apply() else {
                 drop(_apply);
+                if started.elapsed() >= BROWSER_MCP_REFRESH_DEADLINE {
+                    eprintln!(
+                        "[desktop] 浏览器 MCP 工具刷新放弃:等待任务空闲超过 {}s",
+                        BROWSER_MCP_REFRESH_DEADLINE.as_secs()
+                    );
+                    if app.state::<BrowserMcpRefresh>().0.load(Ordering::SeqCst) == generation {
+                        let _ = app.emit("browser-mcp-refresh-timeout", ());
+                    }
+                    return;
+                }
                 std::thread::sleep(Duration::from_millis(250));
                 continue;
             };
@@ -188,7 +205,7 @@ fn schedule_browser_mcp_refresh(app: &AppHandle) {
 async fn save_config(app: AppHandle, config: DesktopConfig) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let apply = app.state::<EngineApply>();
-        let _apply = apply.0.lock().unwrap_or_else(|e| e.into_inner());
+        let _apply = apply.0.lock_ok();
         let host = app.state::<DriverHost>();
         let _host_apply = host.begin_apply();
         // 壳自有偏好的合并与写盘在 ConfigStore 的同一事务内完成。
@@ -204,7 +221,7 @@ async fn save_config(app: AppHandle, config: DesktopConfig) -> Result<(), String
 async fn engine_restart(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let apply = app.state::<EngineApply>();
-        let _apply = apply.0.lock().unwrap_or_else(|e| e.into_inner());
+        let _apply = apply.0.lock_ok();
         let host = app.state::<DriverHost>();
         let _host_apply = host.begin_apply();
         let config = load_config(&app)?;
@@ -219,7 +236,7 @@ async fn engine_restart(app: AppHandle) -> Result<(), String> {
 /// 事件;open-settings 事件处理器里消费掉副本,防止下次整页加载时重放。
 #[tauri::command]
 fn take_ui_intent(app: AppHandle) -> Option<String> {
-    app.state::<UiIntent>().0.lock().unwrap().take()
+    app.state::<UiIntent>().0.lock_ok().take()
 }
 
 /// 宿主与内核信息(设置视图"关于"卡片展示)。
@@ -260,8 +277,7 @@ fn show_main_session(app: &AppHandle, session_id: Option<&str>) {
     if let Some((_, intent)) = &target {
         app.state::<UiIntent>()
             .0
-            .lock()
-            .unwrap()
+            .lock_ok()
             .replace(intent.clone());
     }
     show_any_window(app);
@@ -540,8 +556,7 @@ fn ensure_pet_window(app: &AppHandle) {
     let saved = *app
         .state::<PetPos>()
         .0
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+        .lock_ok();
     let win = WebviewWindowBuilder::new(app, "pet", WebviewUrl::App("pet.html".into()))
         .title("MonkeyCode 桌宠")
         .inner_size(PET_W, PET_H)
@@ -589,8 +604,7 @@ fn ensure_pet_window(app: &AppHandle) {
     let saved = *app
         .state::<PetPos>()
         .0
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+        .lock_ok();
     let position = pet_position(app, saved);
     let scale = app
         .available_monitors()
@@ -706,7 +720,7 @@ fn persist_pet_prefs(app: &AppHandle) {
     #[cfg(target_os = "windows")]
     let pos = native_pet::position(app);
     #[cfg(not(target_os = "windows"))]
-    let pos = *app.state::<PetPos>().0.lock().unwrap();
+    let pos = *app.state::<PetPos>().0.lock_ok();
     if let Err(e) = config::update_config_json(app, |cfg| {
         cfg.pet_enabled = enabled;
         if let Some(pos) = pos {
@@ -805,8 +819,7 @@ fn main() {
                 .store(cfg.pet_enabled, Ordering::Relaxed);
             *app.state::<PetPos>()
                 .0
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()) = cfg.pet_pos;
+                .lock_ok() = cfg.pet_pos;
 
             // 托盘失败只降级(无托盘宿主的桌面环境),不阻塞
             if let Err(e) = setup_tray(app.handle(), cfg.pet_enabled) {
@@ -869,8 +882,7 @@ fn main() {
                         .app_handle()
                         .state::<PetPos>()
                         .0
-                        .lock()
-                        .unwrap()
+                        .lock_ok()
                         .replace((pos.x, pos.y));
                 }
             }
@@ -938,8 +950,7 @@ fn setup_tray(app: &AppHandle, pet_enabled: bool) -> tauri::Result<()> {
                 show_any_window(app);
                 app.state::<UiIntent>()
                     .0
-                    .lock()
-                    .unwrap()
+                    .lock_ok()
                     .replace("open-settings".into());
                 let _ = app.emit_to("main", "open-settings", ());
             }

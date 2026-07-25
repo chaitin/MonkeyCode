@@ -74,12 +74,22 @@ pub fn init(app: &AppHandle) {
     // 回退 session id/唯一活跃工作区。无法确定只跳过落盘，不阻断操作。
     let app2 = app.clone();
     let wd: mcp::WorkdirFn = std::sync::Arc::new(move |scope| {
+        // 上面那句"无法确定只跳过落盘，不阻断操作"此前并未成立:取不到
+        // driver 就返回 Err，整个 tools/call 直接失败。而 DriverHost::get()
+        // 在配置应用期(保存设置/配对刷新)必然报错——用户存一次设置就能让
+        // 正在进行的浏览器操作报"引擎配置正在应用"。归属解析不出来时按
+        // 契约退化成 Ok(None):跳过本地副本，截图仍作为 MCP image 回模型。
         let Some(host) = app2.try_state::<crate::driver::DriverHost>() else {
-            return Err("桌面驱动尚未初始化，无法确定浏览器操作归属".into());
+            eprintln!("[desktop] 浏览器操作归属未定(驱动未初始化),跳过本地落盘");
+            return Ok(None);
         };
-        let driver = host
-            .get()
-            .map_err(|e| format!("无法确定浏览器操作归属：{e}"))?;
+        let driver = match host.get() {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("[desktop] 浏览器操作归属未定({e}),跳过本地落盘");
+                return Ok(None);
+            }
+        };
         Ok(scope
             .work_dir
             .clone()

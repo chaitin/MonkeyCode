@@ -28,6 +28,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 use super::{code_is_zero, other, unwrap_envelope, BzErr, BzResult, Envelope, Service};
 use crate::util::urlencode;
+use crate::util::LockExt;
 
 /// 桥接重定向链上限(实测 4~6 跳,留余量防环)。
 const MAX_BRIDGE_HOPS: usize = 12;
@@ -411,7 +412,7 @@ impl CloudPipes {
     /// TOCTOU(双流交织、互删注册项)。返回本次的代次。
     fn claim(&self, pipe: &str, tx: mpsc::UnboundedSender<PipeMsg>) -> Result<u64, String> {
         let gen = self.next_gen.fetch_add(1, Ordering::Relaxed);
-        let mut map = self.pipes.lock().unwrap();
+        let mut map = self.pipes.lock_ok();
         if map.contains_key(pipe) {
             return Err("该管道已在连接中或已占用".into());
         }
@@ -422,7 +423,7 @@ impl CloudPipes {
     /// 按代次摘除:仅当注册项仍是自己那一代才删——连接失败/转发任务收尾
     /// 只清理自己的占位,不碰后来者。
     fn remove_gen(&self, pipe: &str, gen: u64) {
-        let mut map = self.pipes.lock().unwrap();
+        let mut map = self.pipes.lock_ok();
         if map.get(pipe).map(|e| e.gen) == Some(gen) {
             map.remove(pipe);
         }
@@ -573,14 +574,14 @@ pub async fn cloud_ws_open(
 
 #[tauri::command]
 pub async fn cloud_ws_send(pipes: State<'_, CloudPipes>, pipe: String, text: String) -> Result<(), String> {
-    let map = pipes.pipes.lock().unwrap();
+    let map = pipes.pipes.lock_ok();
     let entry = map.get(&pipe).ok_or_else(|| "连接已关闭".to_string())?;
     entry.tx.send(PipeMsg::Text(text)).map_err(|_| "连接已关闭".to_string())
 }
 
 #[tauri::command]
 pub async fn cloud_ws_close(pipes: State<'_, CloudPipes>, pipe: String) -> Result<(), String> {
-    if let Some(entry) = pipes.pipes.lock().unwrap().remove(&pipe) {
+    if let Some(entry) = pipes.pipes.lock_ok().remove(&pipe) {
         let _ = entry.tx.send(PipeMsg::Close);
     }
     Ok(())

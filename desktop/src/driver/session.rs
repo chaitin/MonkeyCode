@@ -16,6 +16,7 @@ use serde_json::{json, Value};
 use super::frame::{self, PermOutcome, SessionStatus};
 use super::ohmy::{Inner, OhmyDriver};
 use super::transport::JournalMsg;
+use crate::util::LockExt;
 
 const CHAT_WORKSPACE_PREFIX: &str = "chat-";
 
@@ -231,16 +232,15 @@ impl OhmyDriver {
         // 同一把 sessions 锁(push_frame),若持锁贯穿下面的逐会话
         // read_sidecar(磁盘 I/O),UI 刷列表会把整条事件流卡在磁盘上
         let running_set: HashSet<String> = {
-            let sessions = inner.sess.sessions.lock().unwrap();
+            let sessions = inner.sess.sessions.lock_ok();
             sessions.iter().filter(|(_, s)| s.running).map(|(id, _)| id.clone()).collect()
         };
         let waiting: HashSet<String> = inner
             .sess.pending_perms
-            .lock()
-            .unwrap()
+            .lock_ok()
             .values()
             .cloned()
-            .chain(inner.sess.pending_questions.lock().unwrap().values().map(|(s, _)| s.clone()))
+            .chain(inner.sess.pending_questions.lock_ok().values().map(|(s, _)| s.clone()))
             .collect();
         for e in entries {
             if !e.path().is_dir() {
@@ -352,7 +352,7 @@ impl OhmyDriver {
                 return Err("session/create 未返回 session_id".into());
             }
         };
-        self.0.sess.sessions.lock().unwrap().insert(
+        self.0.sess.sessions.lock_ok().insert(
             sid.clone(),
             SessionState {
                 seq: 0,
@@ -387,7 +387,7 @@ impl OhmyDriver {
     pub async fn session_open(&self, id: &str) -> Result<(), String> {
         // 幂等:确保 resume + 标记 opened + 回放日志
         let need_create = {
-            let sessions = self.0.sess.sessions.lock().unwrap();
+            let sessions = self.0.sess.sessions.lock_ok();
             !sessions.get(id).map(|s| s.created).unwrap_or(false)
         };
         let mut resume_ctx: Option<(i64, i64)> = None;
@@ -440,7 +440,7 @@ impl OhmyDriver {
                 ));
             }
             // 子代理子会话是壳侧实体(仅回放),登记但不向引擎 resume
-            let mut sessions = self.0.sess.sessions.lock().unwrap();
+            let mut sessions = self.0.sess.sessions.lock_ok();
             let entry = sessions.entry(id.to_string()).or_insert(SessionState {
                 seq: 0,
                 running: false,
@@ -481,7 +481,7 @@ impl OhmyDriver {
     }
 
     pub async fn session_close(&self, id: &str) {
-        if let Some(s) = self.0.sess.sessions.lock().unwrap().get_mut(id) {
+        if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
             s.opened = false;
         }
         // 不 destroy:后台任务继续跑(关闭页面 ≠ 结束任务)。
@@ -492,7 +492,7 @@ impl OhmyDriver {
 
     pub async fn session_delete(&self, id: &str) -> Result<Value, String> {
         {
-            let sessions = self.0.sess.sessions.lock().unwrap();
+            let sessions = self.0.sess.sessions.lock_ok();
             if sessions.get(id).map(|s| s.running).unwrap_or(false) {
                 return Err("会话正在执行,请先取消".into());
             }
@@ -505,12 +505,12 @@ impl OhmyDriver {
                     .and_then(|path| managed_chat_workdir(&self.0.chat_workspaces_dir, path))
             })
             .flatten();
-        let created = self.0.sess.sessions.lock().unwrap().get(id).map(|s| s.created).unwrap_or(false);
+        let created = self.0.sess.sessions.lock_ok().get(id).map(|s| s.created).unwrap_or(false);
         let eng = self.engine_id(id);
         if created {
             let _ = self.rpc("session/destroy", json!({ "session_id": eng })).await;
         }
-        self.0.sess.sessions.lock().unwrap().remove(id);
+        self.0.sess.sessions.lock_ok().remove(id);
         // 文件级删除(目录扫描 + 逐 sidecar 读 + 递归删)挪到阻塞线程,
         // 不占 tokio 运行时(对齐 driver/mod.rs 的 spawn_blocking 纪律)。
         // 会话已从 sessions 移除 → 不会再有新帧入队;journal_close 带 ack
@@ -532,8 +532,8 @@ impl OhmyDriver {
                 })
                 .unwrap_or_default();
             for cid in children {
-                inner.sess.sessions.lock().unwrap().remove(&cid);
-                inner.sub.subagents.lock().unwrap().remove(&cid);
+                inner.sess.sessions.lock_ok().remove(&cid);
+                inner.sub.subagents.lock_ok().remove(&cid);
                 inner.journal_close(&cid, true);
                 let _ = std::fs::remove_dir_all(inner.data_dir.join(&cid));
             }
@@ -570,7 +570,7 @@ impl OhmyDriver {
             }
         });
         if let Some(t) = patch.get("title").and_then(|v| v.as_str()) {
-            if let Some(s) = self.0.sess.sessions.lock().unwrap().get_mut(id) {
+            if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
                 s.title = t.to_string();
             }
         }
@@ -588,7 +588,7 @@ impl OhmyDriver {
     }
 
     pub async fn session_workdir(&self, id: &str) -> Result<String, String> {
-        if let Some(s) = self.0.sess.sessions.lock().unwrap().get(id) {
+        if let Some(s) = self.0.sess.sessions.lock_ok().get(id) {
             if !s.workdir.is_empty() {
                 return Ok(s.workdir.clone());
             }
@@ -618,7 +618,7 @@ impl OhmyDriver {
                 // 忙碌守卫:执行中不再开轮(UI 侧已排队,这里兜底;
                 // 不能靠引擎拒绝——乐观帧先落,误开轮会污染回放)
                 {
-                    let mut sessions = self.0.sess.sessions.lock().unwrap();
+                    let mut sessions = self.0.sess.sessions.lock_ok();
                     let Some(s) = sessions.get_mut(id) else {
                         return Err("会话未打开".into());
                     };
@@ -663,7 +663,7 @@ impl OhmyDriver {
                     Ok(_) => Ok(()),
                     Err(e) => {
                         // 引擎没接活:补终止帧关轮,状态回落,错误上抛(UI 保留输入)
-                        if let Some(s) = self.0.sess.sessions.lock().unwrap().get_mut(id) {
+                        if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
                             s.running = false;
                         }
                         self.push_frame(id, |seq| frame::task_error(&e, seq));
@@ -723,9 +723,9 @@ impl OhmyDriver {
                     let tool = self.take_perm_tool(&req_id);
                     if approved && remember {
                         if let Some(tool) = tool {
-                            self.0.sess.perm_remember.lock().unwrap().insert(tool);
+                            self.0.sess.perm_remember.lock_ok().insert(tool);
                             if persist {
-                                let set = self.0.sess.perm_remember.lock().unwrap().clone();
+                                let set = self.0.sess.perm_remember.lock_ok().clone();
                                 let _ = std::fs::write(
                                     &self.0.perm_persist_path,
                                     serde_json::to_vec_pretty(&set).unwrap_or_default(),
@@ -742,7 +742,7 @@ impl OhmyDriver {
                 let answers_json = payload.get("answers_json").and_then(|v| v.as_str()).unwrap_or("{}");
                 let cancelled = payload.get("cancelled").and_then(|v| v.as_bool()).unwrap_or(false);
                 let answers: HashMap<String, Value> = serde_json::from_str(answers_json).unwrap_or_default();
-                let stored = self.0.sess.pending_questions.lock().unwrap().remove(&req_id);
+                let stored = self.0.sess.pending_questions.lock_ok().remove(&req_id);
                 let ua: Vec<Value> = stored
                     .as_ref()
                     .and_then(|(_, qs)| qs.as_array())
@@ -794,7 +794,7 @@ impl OhmyDriver {
                 let name = payload.get("model").and_then(|v| v.as_str()).unwrap_or("");
                 let model_id = self.model_id_of(name)?; // 前置校验,未知模型不动会话
                 // 引擎同样拒绝运行中切模型,本地先给友好错误
-                if self.0.sess.sessions.lock().unwrap().get(id).map(|s| s.running).unwrap_or(false) {
+                if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
                     return Err("执行中不能切换,请先取消当前任务".into());
                 }
                 if !self.session_created(id) {
@@ -811,7 +811,7 @@ impl OhmyDriver {
                     let mode = self.session_mode(id);
                     self.recreate_fallback(id, &model_id, &mode).await?;
                 }
-                if let Some(s) = self.0.sess.sessions.lock().unwrap().get_mut(id) {
+                if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
                     s.model_name = name.to_string();
                 }
                 self.write_sidecar(id, |m| m["model_name"] = json!(name));
@@ -833,7 +833,7 @@ impl OhmyDriver {
                     .await?;
                 } else {
                     // 版本握手回退:旧引擎只能 destroy+resume,那必须空闲
-                    if self.0.sess.sessions.lock().unwrap().get(id).map(|s| s.running).unwrap_or(false) {
+                    if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
                         return Err("当前引擎版本较旧,执行中不能切换权限模式,请先取消任务".into());
                     }
                     let model_id = self.model_id_of(&self.session_model_name(id))?;
@@ -846,8 +846,7 @@ impl OhmyDriver {
                     let drained: Vec<String> = self
                         .0
                         .sess.pending_perms
-                        .lock()
-                        .unwrap()
+                        .lock_ok()
                         .iter()
                         .filter(|(_, sid)| sid.as_str() == id)
                         .map(|(req_id, _)| req_id.clone())
@@ -861,7 +860,7 @@ impl OhmyDriver {
                         self.resolve_perm(id, &req_id, PermOutcome::Approved);
                     }
                 }
-                if let Some(s) = self.0.sess.sessions.lock().unwrap().get_mut(id) {
+                if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
                     s.mode = mode.to_string();
                 }
                 self.write_sidecar(id, |m| m["mode"] = json!(mode));
@@ -880,7 +879,7 @@ impl OhmyDriver {
         let eng = self.engine_id(id);
         let has_history = self.engine_session_exists(&eng).await;
         let mut workdir =
-            self.0.sess.sessions.lock().unwrap().get(id).map(|s| s.workdir.clone()).unwrap_or_default();
+            self.0.sess.sessions.lock_ok().get(id).map(|s| s.workdir.clone()).unwrap_or_default();
         if workdir.is_empty() {
             // 空 workdir 会触发引擎的 os.Getwd 兜底(进程 cwd),显式回退主目录
             workdir = crate::config::home_dir()
@@ -896,7 +895,7 @@ impl OhmyDriver {
         let result = self.rpc("session/create", params).await?;
         let new_eng =
             result.get("session_id").and_then(|v| v.as_str()).unwrap_or(&eng).to_string();
-        if let Some(s) = self.0.sess.sessions.lock().unwrap().get_mut(id) {
+        if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
             s.created = true;
             s.engine_id = new_eng.clone();
         }
@@ -916,7 +915,7 @@ impl OhmyDriver {
     /// 按 Agent/壳 session id 精确查工作区。新 MCP 调用同时显式携带
     /// work_dir；本方法用于兼容元数据缺失或旧 Agent。
     pub fn browser_workdir_for(&self, id: &str) -> Option<String> {
-        let sessions = self.0.sess.sessions.lock().unwrap();
+        let sessions = self.0.sess.sessions.lock_ok();
         sessions
             .get(id)
             .or_else(|| sessions.values().find(|session| session.engine_id == id))
@@ -929,10 +928,10 @@ impl OhmyDriver {
     pub fn single_running_workdir(&self) -> Option<String> {
         // 显式后台 Agent 只转发 tool/error 心跳，纯文本任务可能从未物化
         // child SessionState；background_agents 才是其存活/父归属真值。
-        let background_parents: Vec<String> = self.0.sub.background_agents.lock().unwrap()
+        let background_parents: Vec<String> = self.0.sub.background_agents.lock_ok()
             .values().map(|(parent_sid, _)| parent_sid.clone()).collect();
-        let subs = self.0.sub.subagents.lock().unwrap();
-        let sessions = self.0.sess.sessions.lock().unwrap();
+        let subs = self.0.sub.subagents.lock_ok();
+        let sessions = self.0.sess.sessions.lock_ok();
         let mut owners: HashMap<String, String> = HashMap::new();
         for (sid, session) in sessions.iter().filter(|(_, session)| session.running) {
             let (owner, workdir) = match subs.get(sid) {
@@ -960,19 +959,19 @@ impl OhmyDriver {
 
     /// 自动维护不得中断父任务或仍在后台执行的子代理。
     pub fn has_running_sessions(&self) -> bool {
-        let foreground = self.0.sess.sessions.lock().unwrap().values()
+        let foreground = self.0.sess.sessions.lock_ok().values()
             .any(|session| session.running);
-        foreground || !self.0.sub.background_agents.lock().unwrap().is_empty()
+        foreground || !self.0.sub.background_agents.lock_ok().is_empty()
     }
 
     fn session_created(&self, id: &str) -> bool {
-        self.0.sess.sessions.lock().unwrap().get(id).map(|s| s.created).unwrap_or(false)
+        self.0.sess.sessions.lock_ok().get(id).map(|s| s.created).unwrap_or(false)
     }
 
     /// 出站 RPC 用的引擎会话 id(通常 == 壳 sid;空会话重建后换绑,
     /// 未加载时回退 sidecar 记录)。
     fn engine_id(&self, id: &str) -> String {
-        if let Some(e) = self.0.sess.sessions.lock().unwrap().get(id).map(|s| s.engine_id.clone()) {
+        if let Some(e) = self.0.sess.sessions.lock_ok().get(id).map(|s| s.engine_id.clone()) {
             return e;
         }
         self.read_sidecar(id)
@@ -1008,7 +1007,7 @@ impl OhmyDriver {
     async fn recreate_fallback(&self, id: &str, model_id: &str, mode: &str) -> Result<(), String> {
         // destroy 容错:引擎侧可能已无此会话(崩溃重启后),不阻断重建
         let _ = self.rpc("session/destroy", json!({ "session_id": self.engine_id(id) })).await;
-        if let Some(s) = self.0.sess.sessions.lock().unwrap().get_mut(id) {
+        if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
             s.created = false;
         }
         self.create_resumed(id, model_id, mode).await
@@ -1017,15 +1016,14 @@ impl OhmyDriver {
     fn session_mode(&self, id: &str) -> String {
         self.0
             .sess.sessions
-            .lock()
-            .unwrap()
+            .lock_ok()
             .get(id)
             .map(|s| s.mode.clone())
             .unwrap_or_else(|| "default".into())
     }
 
     fn session_model_name(&self, id: &str) -> String {
-        self.0.sess.sessions.lock().unwrap().get(id).map(|s| s.model_name.clone()).unwrap_or_default()
+        self.0.sess.sessions.lock_ok().get(id).map(|s| s.model_name.clone()).unwrap_or_default()
     }
 
     // ==================== 辅助 ====================
@@ -1053,7 +1051,7 @@ impl OhmyDriver {
     }
 
     fn session_title(&self, id: &str) -> String {
-        self.0.sess.sessions.lock().unwrap().get(id).map(|s| s.title.clone()).unwrap_or_default()
+        self.0.sess.sessions.lock_ok().get(id).map(|s| s.title.clone()).unwrap_or_default()
     }
 
     fn read_sidecar(&self, id: &str) -> Value {
@@ -1090,7 +1088,7 @@ impl OhmyDriver {
     }
 
     fn take_perm_tool(&self, req_id: &str) -> Option<String> {
-        self.0.sess.perm_tools.lock().unwrap().remove(req_id)
+        self.0.sess.perm_tools.lock_ok().remove(req_id)
     }
 }
 
@@ -1113,7 +1111,7 @@ impl Inner {
     /// async command 里的调用点按需套 spawn_blocking(session_send/
     /// session_delete/sessions_list),reader 线程本就是专用 std 线程。
     pub(super) fn write_sidecar(&self, id: &str, f: impl FnOnce(&mut Value)) {
-        let _write = self.sess.sidecar_write.lock().unwrap_or_else(|e| e.into_inner());
+        let _write = self.sess.sidecar_write.lock_ok();
         let mut meta = self.read_sidecar(id);
         f(&mut meta);
         meta["updated_at"] = json!(frame::now_ms());
@@ -1139,7 +1137,7 @@ impl Inner {
     /// 热路径(model_delta 每 token 一帧)自此无任何磁盘 I/O。
     /// 锁序:sessions → batch(flush_batch 只拿 batch,无反向嵌套)。
     pub(super) fn push_frame(&self, sid: &str, build: impl FnOnce(u64) -> Value) {
-        let mut sessions = self.sess.sessions.lock().unwrap();
+        let mut sessions = self.sess.sessions.lock_ok();
         let Some(s) = sessions.get_mut(sid) else { return };
         s.seq += 1;
         let f = build(s.seq);
@@ -1147,7 +1145,7 @@ impl Inner {
             .transport.journal_tx
             .send(JournalMsg::Append { sid: sid.to_string(), line: f.to_string() });
         if s.opened {
-            self.sess.batch.lock().unwrap().entry(sid.to_string()).or_default().push(f);
+            self.sess.batch.lock_ok().entry(sid.to_string()).or_default().push(f);
         }
     }
 
@@ -1164,17 +1162,17 @@ impl Inner {
     /// 死锁安全:写线程只碰文件系统,不拿 sessions 锁;锁内屏障只等
     /// 窗口内的少量尾帧,阻塞极短。
     pub(super) fn replay_open(&self, sid: &str) -> Vec<Value> {
-        if let Some(s) = self.sess.sessions.lock().unwrap().get_mut(sid) {
+        if let Some(s) = self.sess.sessions.lock_ok().get_mut(sid) {
             s.opened = false;
         }
         // 清批量缓冲:其中的帧已在日志里,会随回放送达,留着会重帧
-        self.sess.batch.lock().unwrap().remove(sid);
+        self.sess.batch.lock_ok().remove(sid);
         let path = self.data_dir.join(sid).join("events.jsonl");
         let mut frames: Vec<Value> = Vec::new();
         let mut pos: u64 = 0;
         self.journal_barrier();
         read_journal_tail(&path, &mut pos, &mut frames);
-        let mut sessions = self.sess.sessions.lock().unwrap();
+        let mut sessions = self.sess.sessions.lock_ok();
         if let Some(s) = sessions.get_mut(sid) {
             self.journal_barrier();
             read_journal_tail(&path, &mut pos, &mut frames);
@@ -1192,7 +1190,7 @@ impl Inner {
     }
 
     pub(super) fn emit_session_event(&self, sid: &str, status: &str) {
-        let title = self.sess.sessions.lock().unwrap().get(sid).map(|s| s.title.clone()).unwrap_or_default();
+        let title = self.sess.sessions.lock_ok().get(sid).map(|s| s.title.clone()).unwrap_or_default();
         self.app.emit_json(
             "session-event",
             json!({ "type": "session-status", "id": sid, "status": status, "title": title }),
@@ -1200,7 +1198,7 @@ impl Inner {
     }
 
     pub(super) fn emit_session_ask(&self, sid: &str, open: bool) {
-        let title = self.sess.sessions.lock().unwrap().get(sid).map(|s| s.title.clone()).unwrap_or_default();
+        let title = self.sess.sessions.lock_ok().get(sid).map(|s| s.title.clone()).unwrap_or_default();
         self.app.emit_json(
             "session-event",
             json!({ "type": "session-ask", "id": sid, "title": title, "open": open }),
@@ -1208,7 +1206,7 @@ impl Inner {
     }
 
     pub(super) fn resolve_perm(&self, sid: &str, req_id: &str, outcome: PermOutcome) {
-        self.sess.pending_perms.lock().unwrap().remove(req_id);
+        self.sess.pending_perms.lock_ok().remove(req_id);
         self.push_frame(sid, |seq| frame::permission_resolved(req_id, outcome, seq));
         self.emit_session_ask(sid, false);
     }
@@ -1216,7 +1214,7 @@ impl Inner {
     /// 排空批量缓冲(flusher 周期调用;stop 前同步调用,保证收尾帧送达)。
     pub(super) fn flush_batch(&self) {
         let drained: Vec<(String, Vec<Value>)> = {
-            let mut b = self.sess.batch.lock().unwrap();
+            let mut b = self.sess.batch.lock_ok();
             b.drain().collect()
         };
         for (sid, frames) in drained {
@@ -1232,7 +1230,7 @@ impl Inner {
     /// (不能发/不能删/不能切,重启也救不回)。
     pub(super) fn reconcile_session(&self, sid: &str, reason: &str) {
         let open = {
-            let mut sessions = self.sess.sessions.lock().unwrap();
+            let mut sessions = self.sess.sessions.lock_ok();
             match sessions.get_mut(sid) {
                 Some(s) if s.running => {
                     s.running = false;
@@ -1244,7 +1242,7 @@ impl Inner {
         };
         // 未闭合工具的 agent_result 暂存一并失效(与 turn/stopped 同纪律)
         if !open.is_empty() {
-            let mut ar = self.sub.agent_results.lock().unwrap();
+            let mut ar = self.sub.agent_results.lock_ok();
             for tc in open.keys() {
                 ar.remove(tc);
             }
@@ -1263,26 +1261,25 @@ impl Inner {
     pub(super) fn reconcile_all(&self, reason: &str) {
         // 挂起审批/提问随引擎一起失效(resolved 帧先于 task-ended 落日志)
         let perms: Vec<(String, String)> =
-            self.sess.pending_perms.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            self.sess.pending_perms.lock_ok().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         for (req_id, sid) in perms {
-            self.sess.perm_tools.lock().unwrap().remove(&req_id);
+            self.sess.perm_tools.lock_ok().remove(&req_id);
             self.resolve_perm(&sid, &req_id, PermOutcome::Cancelled);
         }
         let questions: Vec<(String, String)> = self
             .sess.pending_questions
-            .lock()
-            .unwrap()
+            .lock_ok()
             .iter()
             .map(|(k, (s, _))| (k.clone(), s.clone()))
             .collect();
         for (req_id, sid) in questions {
-            self.sess.pending_questions.lock().unwrap().remove(&req_id);
+            self.sess.pending_questions.lock_ok().remove(&req_id);
             self.emit_session_ask(&sid, false);
         }
         // 子会话跳过:由各自父会话的和解统一收尾(close_children_of_session)
         let ids: Vec<String> = {
-            let subs = self.sub.subagents.lock().unwrap();
-            self.sess.sessions.lock().unwrap().keys().filter(|id| !subs.contains_key(*id)).cloned().collect()
+            let subs = self.sub.subagents.lock_ok();
+            self.sess.sessions.lock_ok().keys().filter(|id| !subs.contains_key(*id)).cloned().collect()
         };
         for id in ids {
             self.reconcile_session(&id, reason);
@@ -1299,7 +1296,7 @@ impl Inner {
         }
         let next = (used, window);
         let changed = {
-            let mut sessions = self.sess.sessions.lock().unwrap();
+            let mut sessions = self.sess.sessions.lock_ok();
             let Some(s) = sessions.get_mut(sid) else { return };
             if s.context_usage == Some(next) {
                 false
@@ -1317,8 +1314,7 @@ impl Inner {
     /// 空会话重建换绑后不同。未命中原样返回(供子代理未知 id 认领)。
     pub(super) fn shell_sid_of(&self, engine: &str) -> String {
         self.sess.sessions
-            .lock()
-            .unwrap()
+            .lock_ok()
             .iter()
             .find(|(_, s)| s.engine_id == engine)
             .map(|(sid, _)| sid.clone())
@@ -1330,9 +1326,17 @@ impl Inner {
 fn ohmy_mode_of(mode: &str) -> &'static str {
     match mode {
         "yolo" => "bypassPermissions",
-        // 兼容历史 sidecar 中可能存在的显式 normal；UI 的默认模式从现在起
-        // 使用 auto，由 agent 分类器决定放行、拒绝或询问。
-        "normal" => "normal",
+        // 历史 sidecar 里可能存着显式 normal。**不能原样转发**:引擎
+        // permission.ParseMode 只接受 default/plan/auto/bypassPermissions/yolo,
+        // "normal" 只是个未被 ParseMode 收录的遗留别名常量,发过去会得到
+        // `unknown permission mode "normal"` —— session/create 失败,
+        // 那批老会话直接打不开(此前的映射把这个 bug 钉在了测试里)。
+        //
+        // 落到 default(逐操作询问)而不是今天的默认 auto:老 normal 的语义是
+        // "写操作要问",auto 由分类器裁决、可能自动放行写操作。权限是安全
+        // 边界,宁可多问几次,不可替用户悄悄放宽既存意图。
+        "normal" => "default",
+        // UI 的默认模式使用 auto,由 agent 分类器决定放行、拒绝或询问。
         _ => "auto",
     }
 }
@@ -1363,11 +1367,26 @@ fn engine_session_create_params(
 mod permission_mode_tests {
     use super::{engine_session_create_params, ohmy_mode_of};
 
+    /// 映射结果必须全部落在引擎 permission.ParseMode 的受理集合内
+    /// (default/plan/auto/bypassPermissions/yolo)。历史遗留的 "normal"
+    /// 不在其中:原样转发会让老 sidecar 的会话开不起来。
     #[test]
     fn shell_modes_map_to_agent_permission_modes() {
+        const ENGINE_ACCEPTED: [&str; 5] =
+            ["default", "plan", "auto", "bypassPermissions", "yolo"];
+
         assert_eq!(ohmy_mode_of("default"), "auto");
-        assert_eq!(ohmy_mode_of("normal"), "normal");
         assert_eq!(ohmy_mode_of("yolo"), "bypassPermissions");
+        // 遗留别名退到 default(更严),不退到 auto(分类器可能自动放行写操作)
+        assert_eq!(ohmy_mode_of("normal"), "default");
+
+        for stored in ["default", "yolo", "normal", "", "plan", "什么鬼"] {
+            let mapped = ohmy_mode_of(stored);
+            assert!(
+                ENGINE_ACCEPTED.contains(&mapped),
+                "sidecar 里的 {stored:?} 映射出引擎不受理的 {mapped:?}",
+            );
+        }
     }
 
     #[test]

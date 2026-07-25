@@ -28,6 +28,7 @@ use super::protocol::{
     Message, TabInfo, ERR_MARK_DETACHED, EVENT_CDP, EVENT_DETACHED, EVENT_TAB_REMOVED,
 };
 use super::refs::{err_ref_stale, RefTable};
+use crate::util::LockExt;
 
 /// BrowserSession 浏览器操作现场:当前标签页、ref 表、事件旁白。
 /// Clone 共享同一现场(9 个工具共用;对齐 Go 里工具内嵌 *Session)。
@@ -73,7 +74,7 @@ impl BrowserSessions {
     }
 
     pub fn get_or_create(&self, owner: &str) -> BrowserSession {
-        let mut sessions = self.0.sessions.lock().unwrap();
+        let mut sessions = self.0.sessions.lock_ok();
         if let Some(existing) = sessions.get(owner).and_then(Weak::upgrade) {
             return BrowserSession(existing);
         }
@@ -97,7 +98,7 @@ impl BrowserSessions {
         handoff: bool,
     ) -> Result<bool, String> {
         let previous = {
-            let mut owners = self.0.tab_owners.lock().unwrap();
+            let mut owners = self.0.tab_owners.lock_ok();
             match owners.get(&tab_id) {
                 Some(current) if current == owner => return Ok(false),
                 Some(_) if !handoff => {
@@ -118,7 +119,7 @@ impl BrowserSessions {
         };
         self.0.bridge.claim_tab(tab_id);
         if let Some(previous) = previous {
-            let old = self.0.sessions.lock().unwrap().get(&previous).and_then(Weak::upgrade);
+            let old = self.0.sessions.lock_ok().get(&previous).and_then(Weak::upgrade);
             if let Some(old) = old {
                 old.relinquish_tab(tab_id, "用户已将该标签页交付给另一个任务");
             }
@@ -128,7 +129,7 @@ impl BrowserSessions {
 
     pub(crate) fn release_tab(&self, owner: &str, tab_id: i64) {
         let released = {
-            let mut owners = self.0.tab_owners.lock().unwrap();
+            let mut owners = self.0.tab_owners.lock_ok();
             if owners.get(&tab_id).is_some_and(|current| current == owner) {
                 owners.remove(&tab_id);
                 true
@@ -142,13 +143,13 @@ impl BrowserSessions {
     }
 
     pub fn owner_of(&self, tab_id: i64) -> Option<String> {
-        self.0.tab_owners.lock().unwrap().get(&tab_id).cloned()
+        self.0.tab_owners.lock_ok().get(&tab_id).cloned()
     }
 
     fn unregister(&self, owner: &str) {
-        self.0.sessions.lock().unwrap().remove(owner);
+        self.0.sessions.lock_ok().remove(owner);
         let released: Vec<i64> = {
-            let mut owners = self.0.tab_owners.lock().unwrap();
+            let mut owners = self.0.tab_owners.lock_ok();
             let tabs = owners
                 .iter()
                 .filter_map(|(tab, current)| (current == owner).then_some(*tab))
@@ -165,13 +166,13 @@ impl BrowserSessions {
 impl BrowserSessionsInner {
     fn route_event(&self, msg: Message) {
         let Some(tab_id) = msg.tab_id else { return };
-        let owner = self.tab_owners.lock().unwrap().get(&tab_id).cloned();
+        let owner = self.tab_owners.lock_ok().get(&tab_id).cloned();
         let Some(owner) = owner else { return };
-        let session = self.sessions.lock().unwrap().get(&owner).and_then(Weak::upgrade);
+        let session = self.sessions.lock_ok().get(&owner).and_then(Weak::upgrade);
         match session {
             Some(session) => session.handle_event(msg),
             None => {
-                self.tab_owners.lock().unwrap().remove(&tab_id);
+                self.tab_owners.lock_ok().remove(&tab_id);
                 self.bridge.release_tab(tab_id);
             }
         }
@@ -211,7 +212,7 @@ impl BrowserSession {
     }
 
     pub(crate) fn state(&self) -> MutexGuard<'_, SessState> {
-        self.0.st.lock().unwrap()
+        self.0.st.lock_ok()
     }
 
     /// 释放会话:剥离本会话标签页的 debugger(标签页保留,用户可能还要看)。
@@ -417,7 +418,7 @@ impl BrowserSession {
 
 impl SessInner {
     fn relinquish_tab(&self, tab_id: i64, reason: &str) {
-        let mut st = self.st.lock().unwrap();
+        let mut st = self.st.lock_ok();
         if st.tabs.remove(&tab_id) {
             st.add_note(format!("标签页 #{tab_id} 已移交：{reason}"));
             if st.tab_id == Some(tab_id) {
@@ -435,7 +436,7 @@ impl SessInner {
             EVENT_TAB_REMOVED => {
                 let Some(tab) = msg.tab_id else { return };
                 self.sessions.release_tab(&self.owner, tab);
-                let mut st = self.st.lock().unwrap();
+                let mut st = self.st.lock_ok();
                 if st.tabs.remove(&tab) {
                     st.add_note(format!("标签页 #{tab} 已被关闭"));
                     if st.tab_id == Some(tab) {
@@ -446,7 +447,7 @@ impl SessInner {
             }
             EVENT_DETACHED => {
                 let Some(tab) = msg.tab_id else { return };
-                let mut st = self.st.lock().unwrap();
+                let mut st = self.st.lock_ok();
                 if st.tabs.contains(&tab) {
                     match msg.reason.as_str() {
                         "canceled_by_user" | "released_by_user" => {
@@ -486,7 +487,7 @@ impl SessInner {
                 if !parent_id.is_empty() {
                     return; // 子 frame 导航不失效主表
                 }
-                let mut st = self.st.lock().unwrap();
+                let mut st = self.st.lock_ok();
                 if msg.tab_id.is_some() && st.tab_id == msg.tab_id {
                     st.refs.invalidate();
                 }
@@ -529,7 +530,7 @@ impl SessInner {
                     });
                 }
                 let action = if accept { "已自动确认" } else { "已自动取消" };
-                let mut st = self.st.lock().unwrap();
+                let mut st = self.st.lock_ok();
                 st.add_note(format!(
                     "页面弹出 {typ} 对话框({action}): {:?}",
                     truncate(&message, 200)

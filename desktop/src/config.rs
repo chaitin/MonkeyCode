@@ -16,6 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
+use crate::util::LockExt;
 
 static TEMP_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 const DEFAULT_MODEL_CONTEXT_WINDOW: i64 = 200_000;
@@ -32,7 +33,7 @@ impl ConfigStore {
     fn lock(&self) -> std::sync::MutexGuard<'_, ()> {
         // 某次写盘 panic 不应让此后所有配置操作永久不可用；磁盘内容本身由
         // 原子替换保护，恢复 poisoned guard 后仍可安全继续。
-        self.0.lock().unwrap_or_else(|e| e.into_inner())
+        self.0.lock_ok()
     }
 }
 

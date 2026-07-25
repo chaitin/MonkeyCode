@@ -21,6 +21,7 @@ use super::ohmy::{parse_manifest_models, Inner, OhmyDriver, ShellCtx};
 use super::session::SessionsState;
 use super::subagent::SubagentState;
 use crate::config::DesktopConfig;
+use crate::util::LockExt;
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 const FRAME_FLUSH_MS: u64 = 30;
@@ -275,7 +276,7 @@ impl OhmyDriver {
                 if v.get("id").and_then(|i| i.as_i64()).is_some() && v.get("method").is_none() {
                     // RPC 应答
                     let id = v.get("id").and_then(|i| i.as_i64()).unwrap();
-                    if let Some(tx) = inner_r.transport.pending.lock().unwrap().remove(&id) {
+                    if let Some(tx) = inner_r.transport.pending.lock_ok().remove(&id) {
                         let _ = tx.send(v);
                     }
                     continue;
@@ -307,8 +308,8 @@ impl OhmyDriver {
                         let version =
                             params.get("version").and_then(|v| v.as_str()).unwrap_or("?").to_string();
                         eprintln!("[desktop] ohmyagent 就绪 version={version} caps={}", caps.len());
-                        *inner_r.transport.engine_version.lock().unwrap() = version;
-                        *inner_r.transport.engine_caps.lock().unwrap() = caps;
+                        *inner_r.transport.engine_version.lock_ok() = version;
+                        *inner_r.transport.engine_caps.lock_ok() = caps;
                         // 停止预算协商:记下引擎内部的优雅退出预算,stop()
                         // 的等待取 grace+3s(见 shutdown_grace_ms 字段注释)
                         if let Some(g) =
@@ -324,7 +325,7 @@ impl OhmyDriver {
             // stdout EOF = 进程退出:无论优雅停止还是崩溃都先释放在途 RPC
             // 等待者(此后不可能再有应答;respond_rpc 的 fire-and-log 任务
             // 也靠 sender 丢弃收尾,否则优雅停止后任务悬挂到 Inner 释放)
-            inner_r.transport.pending.lock().unwrap().clear();
+            inner_r.transport.pending.lock_ok().clear();
             // stop() 未置位即崩溃,外显
             if !inner_r.transport.stopped.load(Ordering::Relaxed) {
                 inner_r.reconcile_all("引擎进程异常退出"); // 运行中会话本地收尾,不留永久 running
@@ -358,7 +359,7 @@ impl OhmyDriver {
                 // 错误已由返回值外显,不能双报)
                 inner.transport.stopped.store(true, Ordering::Relaxed);
                 let _ = inner.transport.stdin_tx.send(None); // 关 stdin → 优雅退出
-                if let Some(mut child) = inner.transport.child.lock().unwrap().take() {
+                if let Some(mut child) = inner.transport.child.lock_ok().take() {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
@@ -380,7 +381,7 @@ impl OhmyDriver {
         self.0.journal_barrier();
         self.0.transport.stopped.store(true, Ordering::Relaxed);
         let _ = self.0.transport.stdin_tx.send(None); // 关 stdin → 优雅退出
-        let Some(mut child) = self.0.transport.child.lock().unwrap().take() else { return };
+        let Some(mut child) = self.0.transport.child.lock_ok().take() else { return };
         // 停止预算协商:引擎收到 EOF 后自己也要等运行中 loop 收敛
         // (ready.shutdownGraceMs,缺省 5s)再退出——壳若同样只等 5s,
         // 两个 5s 叠死,壳必先到期 kill,优雅退出永远走不完。
@@ -404,17 +405,17 @@ impl OhmyDriver {
     pub(super) async fn rpc(&self, method: &str, params: Value) -> Result<Value, String> {
         let id = self.0.transport.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        self.0.transport.pending.lock().unwrap().insert(id, tx);
+        self.0.transport.pending.lock_ok().insert(id, tx);
         let line = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string();
         if self.0.transport.stdin_tx.send(Some(line)).is_err() {
-            self.0.transport.pending.lock().unwrap().remove(&id);
+            self.0.transport.pending.lock_ok().remove(&id);
             return Err("引擎已退出".into());
         }
         let resp = match tokio::time::timeout(RPC_TIMEOUT, rx).await {
             Ok(Ok(v)) => v,
             Ok(Err(_)) => return Err("引擎已退出".into()),
             Err(_) => {
-                self.0.transport.pending.lock().unwrap().remove(&id);
+                self.0.transport.pending.lock_ok().remove(&id);
                 return Err(format!("{method} 超时"));
             }
         };
@@ -434,7 +435,7 @@ impl OhmyDriver {
 
 impl Inner {
     pub(super) fn has_cap(&self, cap: &str) -> bool {
-        self.transport.engine_caps.lock().unwrap().contains(cap)
+        self.transport.engine_caps.lock_ok().contains(cap)
     }
 
     /// respond 型上行(permission/respond、question/respond)带 id 发送,
@@ -449,10 +450,10 @@ impl Inner {
     pub(super) fn respond_rpc(&self, method: &str, params: Value) {
         let id = self.transport.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        self.transport.pending.lock().unwrap().insert(id, tx);
+        self.transport.pending.lock_ok().insert(id, tx);
         let line = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string();
         if self.transport.stdin_tx.send(Some(line)).is_err() {
-            self.transport.pending.lock().unwrap().remove(&id);
+            self.transport.pending.lock_ok().remove(&id);
             return;
         }
         let method = method.to_string();

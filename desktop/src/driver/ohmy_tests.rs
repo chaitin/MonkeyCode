@@ -28,6 +28,18 @@ async fn e2e_lock() -> tokio::sync::MutexGuard<'static, ()> {
     E2E_LOCK.lock().await
 }
 
+/// E2E 前置守卫。E2E 全部标 `#[ignore]`:缺配套引擎时 `cargo test` 报
+/// "ignored"(诚实),而不是静默 return 后报 "ok"——后者让绿灯毫无意义
+/// (曾经 6 个 E2E 在 0.00s 内全部 "passed",实则一行没跑)。
+/// 一旦被显式选中执行(--include-ignored / --ignored),缺二进制就是硬失败。
+fn require_ohmyagent() {
+    assert!(
+        find_ohmyagent().is_some(),
+        "E2E 需要 MC_OHMYAGENT_BIN 指向配套 ohmyagent 二进制\n\
+         (测试内不从 PATH 猜版本,见 transport.rs::find_ohmyagent)"
+    );
+}
+
 fn sse_event(name: &str, data: Value) -> String {
     format!("event: {name}\ndata: {data}")
 }
@@ -80,8 +92,20 @@ fn sse_tool_use(tu_id: &str, name: &str, input: &Value) -> String {
     ev.join("\n\n") + "\n\n"
 }
 
+/// 引擎 auto 模式下 shell 分类器系统提示的尾句(cmd/ohmyagent/root.go 的
+/// shellClassifierPrompt)。假 LLM 靠它把"分类请求"与主循环请求区分开。
+const SHELL_CLASSIFIER_MARK: &str = "Respond with a single word: ALLOW or ASK";
+
 /// 假 Anthropic SSE 服务:按请求序回放 steps(超出重复最后一步);
 /// delay_ms > 0 时应答前挂起(模拟慢模型,测运行中停止的和解)。
+///
+/// 另外要扮演**第二个角色**:壳的默认权限模式是 auto(session.rs
+/// ohmy_mode_of),引擎 ModelClassifier 在启发式判不出时会单独发一次
+/// LLM 请求来裁决 shell 命令。此前假服务不认这类请求,把它当主循环请求
+/// 回了一个脚本步骤——后果有两重:裁决拿到空文本按 Allow 放行(该弹的
+/// 审批卡不弹),而且**白吃掉一个脚本步骤**让后续步序全部错位。
+/// 这也正是 e2e_perm_remember_engine_rules 在假绿灯下被掩盖的失败原因。
+/// 现在按真实契约回 ASK(单词应答,不消耗步骤),把 Ask 分支稳定地走出来。
 fn fake_anthropic_steps(delay_ms: u64, steps: Vec<String>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
@@ -89,8 +113,8 @@ fn fake_anthropic_steps(delay_ms: u64, steps: Vec<String>) -> String {
     std::thread::spawn(move || {
         for conn in listener.incoming() {
             let Ok(mut conn) = conn else { continue };
-            let n = counter.fetch_add(1, Ordering::Relaxed);
-            let sse = steps[n.min(steps.len() - 1)].clone();
+            let counter = counter.clone();
+            let steps = steps.clone();
             std::thread::spawn(move || {
                 use std::io::{BufRead as _, Write as _};
                 if delay_ms > 0 {
@@ -112,6 +136,13 @@ fn fake_anthropic_steps(delay_ms: u64, steps: Vec<String>) -> String {
                 let mut body = vec![0u8; content_len];
                 use std::io::Read as _;
                 let _ = reader.read_exact(&mut body);
+                // 分类请求必须在取步骤**之前**判定:它不属于主循环步序。
+                let sse = if String::from_utf8_lossy(&body).contains(SHELL_CLASSIFIER_MARK) {
+                    sse_text("ASK")
+                } else {
+                    let n = counter.fetch_add(1, Ordering::Relaxed);
+                    steps[n.min(steps.len() - 1)].clone()
+                };
                 let resp = format!(
                     "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
                     sse.len(),
@@ -214,11 +245,9 @@ fn e2e_setup_cfg(
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
 async fn e2e_chat_normalization() {
-    if find_ohmyagent().is_none() {
-        eprintln!("skip: 未找到 ohmyagent 二进制");
-        return;
-    }
+    require_ohmyagent();
     let _g = e2e_lock().await;
     let (driver, home) = e2e_setup("chat", 0);
 
@@ -313,11 +342,9 @@ async fn e2e_chat_normalization() {
 /// 运行中停止引擎必须本地和解:补收尾帧、sidecar 落 interrupted——
 /// 否则会话永久卡"执行中"(不能发/不能删/不能切,重启也救不回)。
 #[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
 async fn e2e_stop_reconciles_running_session() {
-    if find_ohmyagent().is_none() {
-        eprintln!("skip: 未找到 ohmyagent 二进制");
-        return;
-    }
+    require_ohmyagent();
     let _g = e2e_lock().await;
     // 慢速假 LLM(8s,超过引擎 5s 的内部 shutdown 预算):轮次挂在模型
     // 调用上。stop() 预算 = 引擎宣告 grace(5s)+ 3s 余量,引擎会在
@@ -369,11 +396,9 @@ fn acp_update(f: &Value) -> Option<Value> {
 /// AskUserQuestion 全链路:deferred 工具经 ToolSearch 载入 → 引擎
 /// question/request → 壳 acp_ask_user_question 帧 → 答复 → 轮次完成。
 #[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
 async fn e2e_ask_user_question_flow() {
-    if find_ohmyagent().is_none() {
-        eprintln!("skip: 未找到 ohmyagent 二进制");
-        return;
-    }
+    require_ohmyagent();
     let _g = e2e_lock().await;
     let steps = vec![
         sse_tool_use("tu_1", "ToolSearch", &json!({ "query": "AskUserQuestion" })),
@@ -617,8 +642,7 @@ fn idle_maintenance_does_not_churn_the_command_gate_while_work_is_running() {
     inner
         .sess
         .sessions
-        .lock()
-        .unwrap()
+        .lock().unwrap()
         .insert("s1".into(), bare_session("s1"));
     host.set(OhmyDriver(inner));
 
@@ -657,8 +681,7 @@ fn replay_window_no_frame_loss() {
     // opened=true 之后的帧全部进 batch,与回放结果无缝衔接
     let batched: Vec<u64> = inner
         .sess.batch
-        .lock()
-        .unwrap()
+        .lock().unwrap()
         .get("s1")
         .map(|v| v.iter().filter_map(|f| f.get("seq").and_then(|x| x.as_u64())).collect())
         .unwrap_or_default();
@@ -698,11 +721,9 @@ fn journal_close_drains_before_delete() {
 /// SubAgent 进度:上游转发的子循环事件(未知随机 session_id)被认领到
 /// 父会话,归一化为 Agent 工具卡的 progress feed(subagent_text 行)。
 #[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
 async fn e2e_subagent_progress() {
-    if find_ohmyagent().is_none() {
-        eprintln!("skip: 未找到 ohmyagent 二进制");
-        return;
-    }
+    require_ohmyagent();
     let _g = e2e_lock().await;
     let steps = vec![
         sse_tool_use("tu_1", "Agent", &json!({ "prompt": "调查并汇报", "description": "调查任务" })),
@@ -789,11 +810,9 @@ async fn e2e_subagent_progress() {
 /// (cwd/.ohmyagent/settings.json),二次同命令不再弹卡;壳侧不再记忆,
 /// 持久化文件停用。
 #[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
 async fn e2e_perm_remember_engine_rules() {
-    if find_ohmyagent().is_none() {
-        eprintln!("skip: 未找到 ohmyagent 二进制");
-        return;
-    }
+    require_ohmyagent();
     let _g = e2e_lock().await;
     // git push 不在引擎安全命令白名单 → default 模式必弹审批;
     // 同一命令连发两次:第一次批准并记住,第二次考验引擎侧规则
@@ -1253,11 +1272,9 @@ fn task_notification_without_registry_falls_back_stripped() {
 /// E2E:当前引擎的 run_in_background 只收紧子代理工具集为只读，调用仍
 /// 同步等待并直接回填结果；不得再按旧契约渲染 async_launched/完成通知。
 #[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
 async fn e2e_readonly_subagent_stays_synchronous() {
-    if find_ohmyagent().is_none() {
-        eprintln!("skip: 未找到 ohmyagent 二进制");
-        return;
-    }
+    require_ohmyagent();
     let _g = e2e_lock().await;
     let steps = vec![
         // req0 父轮:只读 Agent;req1 子代理应答;

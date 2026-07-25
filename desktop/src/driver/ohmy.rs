@@ -27,6 +27,7 @@ use tauri::{AppHandle, Emitter};
 use super::session::SessionsState;
 use super::subagent::SubagentState;
 use super::transport::TransportState;
+use crate::util::LockExt;
 
 /// driver 对壳的最小依赖(事件发射 + 配置目录),经 trait 解耦以便
 /// 测试注入替身(tauri MockRuntime 与 Wry 的 AppHandle 泛型不互通)。
@@ -63,7 +64,7 @@ impl OhmyDriver {
     pub fn has_capability(&self, capability: &str) -> bool { self.0.has_cap(capability) }
 
     /// system/ready 宣告的内核版本；发布产物为 Agent commit hash。
-    pub fn version(&self) -> String { self.0.transport.engine_version.lock().unwrap().clone() }
+    pub fn version(&self) -> String { self.0.transport.engine_version.lock_ok().clone() }
 }
 
 /// 驱动共享状态。锁字段按职责归为三个锁组(各组文档注释写明含哪些锁

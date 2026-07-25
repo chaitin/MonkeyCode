@@ -80,9 +80,14 @@ pub struct Service {
     pub ep: Endpoints,
     /// API 短请求(30s;不自动跟随重定向——微信回调等 302 的 Set-Cookie
     /// 要在首响应就吸收,跟随会丢中间响应的 cookie)
-    http: reqwest::Client,
+    ///
+    /// Option 而非直接 Client:构建只在 TLS 后端起不来时失败,此前是
+    /// `.expect()`——而 Service::new 在 setup 里跑,GUI 子系统下(Windows
+    /// 无控制台)panic 就是双击没反应、零线索。云端/账号是可降级功能面,
+    /// 本地引擎会话并不依赖它,不该被它拖着一起打不开。
+    http: Option<reqwest::Client>,
     /// 微信授权页/二维码/长轮询(长轮询最长挂 ~25s)
-    lp: reqwest::Client,
+    lp: Option<reqwest::Client>,
     pub store: CookieStore,
     pub mc: CookieStore,
     /// 进行中的扫码会话(只保留最新)
@@ -102,8 +107,8 @@ impl Service {
         };
         Self {
             ep,
-            http: mk(10),
-            lp: mk(10),
+            http: Some(mk(10)),
+            lp: Some(mk(10)),
             store: CookieStore::new(None),
             mc: CookieStore::new(None),
             wx: StdMutex::new(None),
@@ -111,12 +116,16 @@ impl Service {
     }
 
     pub fn new(config_dir: std::path::PathBuf) -> Self {
+        // 构建失败只发生在 TLS 后端初始化不了时。不 panic:壳在 setup 里
+        // 构造本服务,GUI 子系统下 panic = 双击没反应、无任何线索。降级为
+        // 云端/账号命令逐条报错,本地引擎会话不受影响。
         let mk = |timeout: u64| {
             reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .timeout(Duration::from_secs(timeout))
                 .build()
-                .expect("构建 HTTP 客户端失败")
+                .inspect_err(|e| eprintln!("[desktop] HTTP 客户端构建失败(云端/账号功能不可用): {e}"))
+                .ok()
         };
         Self {
             ep: Endpoints::resolve(),
@@ -126,6 +135,20 @@ impl Service {
             mc: CookieStore::new(Some(config_dir.join("monkeycode-cookies.json"))),
             wx: StdMutex::new(None),
         }
+    }
+
+    /// 取 API 客户端;TLS 后端起不来时给出可行动错误而不是 panic。
+    fn http(&self) -> BzResult<&reqwest::Client> {
+        self.http
+            .as_ref()
+            .ok_or_else(|| other("HTTP 客户端初始化失败(系统 TLS 不可用),云端与账号功能暂不可用"))
+    }
+
+    /// 取长轮询客户端(同上)。
+    fn lp(&self) -> BzResult<&reqwest::Client> {
+        self.lp
+            .as_ref()
+            .ok_or_else(|| other("HTTP 客户端初始化失败(系统 TLS 不可用),云端与账号功能暂不可用"))
     }
 
     // ==================== HTTP 基座 ====================
@@ -141,7 +164,7 @@ impl Service {
     ) -> BzResult<(Vec<u8>, u16, Option<String>)> {
         let url = reqwest::Url::parse(target).map_err(|e| other(format!("地址异常: {e}")))?;
         let host = url.host_str().unwrap_or("").to_string();
-        let mut req = self.http.request(method, url.clone());
+        let mut req = self.http()?.request(method, url.clone());
         if let Some(b) = body {
             req = req.json(b);
         }
@@ -191,7 +214,7 @@ impl Service {
     /// GET 任意 URL(百智罐;微信页面/图片/长轮询走这里,超时 40s)。
     pub async fn fetch(&self, raw_url: &str) -> BzResult<Vec<u8>> {
         let url = reqwest::Url::parse(raw_url).map_err(|e| other(format!("地址异常: {e}")))?;
-        let mut req = self.lp.get(url.clone());
+        let mut req = self.lp()?.get(url.clone());
         if let Some(h) = self.store.header(&url) {
             req = req.header(reqwest::header::COOKIE, h);
         }

@@ -209,7 +209,7 @@ async fn model_catalog_page(svc: &Service, key: &str, after_id: Option<&str>) ->
     }
     let host = url.host_str().unwrap_or("").to_string();
     let resp = svc
-        .http
+        .http()?
         .get(url)
         .bearer_auth(key)
         .header(reqwest::header::CONTENT_TYPE, "application/json")
