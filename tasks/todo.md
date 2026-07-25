@@ -1962,3 +1962,28 @@ cargo test **60/60 零警告**(4 个真实引擎 E2E + perm remember/对账/结�
 | 三个契约检查器 + scripts 单测 | 全 OK / Ran 18 OK |
 
 基线对比:Rust 96 真实测试 → 106;UI 149 → 199;scripts 6 → 18。
+
+## 品牌绿对齐移动端(2026-07-25)
+
+起因:用户反馈新建任务按钮的绿"太深"。查 `mobile/src/theme.tsx` 得知
+`ACCENTS['清新绿'].fill = #16b364` 在浅/深两色下同值(`makeTheme` 只切
+`acTx`/`acGhost`),桌面深色早已对齐,**浅色的 `#1f8a5b` 是本地压深的偏离**。
+
+- [x] 浅色 `--acc` → `#16b364`、`--accH` → `#1dcc74`(同深色的 `ac+(ac−ac2)` 推导),
+      `accBg/Bd/Bg2/Bd2/BgSoft/Sel/Sh` 基色一并换成 `22,179,100`(透明度档位不动)
+- [x] 拆出 `--accTx`(移动端 `acTx`:浅 `#0b8f4d` / 深 `#46e08a`)。原先 `--acc`
+      同时当填充与文字用,fill 调亮后浅色文字掉到 2.74:1;9 个文件 30 处文字/图标
+      改指 `--accTx`(浅色回到 3.8:1),分工规则写进 styles.css:
+      `--acc` = 面与线(按钮底/徽章底/滑块/focus 描边/虚线框/进度环/accentColor),
+      `--accTx` = 浅底上的文字与小图标
+      **未动**:浅色 `--accSelT #24523d` / `--linkH #166b46` 压在绿色选中底上,
+      要 8.9:1 / 6.5:1,照移动端并进 `txL` 会让导航选中文字掉到 3.8:1
+- [x] 终端岛去硬编码:`cloudterm.tsx` / `cloudtask.tsx` 里 7 个 Nord 蓝灰字面量
+      (`#1c1e22` `#d8dee9` `#24272c` `#2e3238` `#c3cad3` `#6d7580` `#8b93a0`)
+      换成新令牌 `--termBg/--termHdr/--termBd/--termTx/--termTx2/--termTx3/--termAcc`。
+      底与输出直接取移动端 `termBg`/`termTx`(两个主题各一份),移动端没有的
+      面板头与两档次级文字按深色主题那套内插规则补。xterm 的 `theme` 是 JS 对象
+      吃不了 `var()`,加 `readTermTheme()` 解析令牌 + `MutationObserver` 盯
+      `data-theme`,开着终端换主题不会留一块旧底色
+
+验证:`tsc --noEmit` 无输出;`vitest` 27 files / 199 passed;`vite build` OK。

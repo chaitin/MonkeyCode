@@ -17,7 +17,7 @@ import { useCloudTask } from "./useCloudTask";
 
 const STATUS_LABEL: Record<string, { text: string; color: string }> = {
   pending: { text: "排队中", color: "var(--warn)" },
-  processing: { text: "运行中", color: "var(--acc)" },
+  processing: { text: "运行中", color: "var(--accTx)" },
   error: { text: "出错", color: "var(--err)" },
   finished: { text: "已完成", color: "var(--t4)" },
 };
@@ -174,7 +174,7 @@ export function CloudTaskView({
                     }}
                     style={{ gap: 8 }}
                   >
-                    <IconGlobe size={12} color="var(--acc)" />
+                    <IconGlobe size={12} color="var(--accTx)" />
                     <span style={{ flex: 1, minWidth: 0 }} className="ellipsis">
                       :{p.port} {p.label || p.process || ""}
                     </span>
@@ -243,17 +243,17 @@ export function CloudTaskView({
               display: "flex",
               flexDirection: "column",
               minHeight: 0,
-              background: "#1c1e22",
+              background: "var(--termBg)",
               animation: "mcin .2s ease",
             }}
           >
-            <div style={{ flex: "none", height: 32, display: "flex", alignItems: "center", gap: 8, padding: "0 12px", background: "#24272c", borderBottom: "1px solid #2e3238" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--ok)", flex: "none" }} />
-              <span style={{ color: "#c3cad3", fontSize: 11.5, fontWeight: 600 }}>云端终端</span>
-              <span style={{ color: "#6d7580", fontSize: 11 }}>任务虚拟机 · /workspace</span>
+            <div style={{ flex: "none", height: 32, display: "flex", alignItems: "center", gap: 8, padding: "0 12px", background: "var(--termHdr)", borderBottom: "1px solid var(--termBd)" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--termAcc)", flex: "none" }} />
+              <span style={{ color: "var(--termTx)", fontSize: 11.5, fontWeight: 600 }}>云端终端</span>
+              <span style={{ color: "var(--termTx3)", fontSize: 11 }}>任务虚拟机 · /workspace</span>
               <span style={{ flex: 1 }} />
               <button className="icon-btn" title="关闭终端" onClick={() => setTermOpen(false)} style={{ width: 22, height: 22, borderRadius: 6 }}>
-                <IconX size={10} color="#8b93a0" />
+                <IconX size={10} color="var(--termTx2)" />
               </button>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>

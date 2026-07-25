@@ -274,7 +274,7 @@ export function IconTaskPending({ size = 12, color = "var(--t5)", style }: IconP
 }
 
 /** 任务执行中(进度环) */
-export function IconTaskRunning({ size = 12, color = "var(--acc)", style }: IconProps) {
+export function IconTaskRunning({ size = 12, color = "var(--accTx)", style }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 14 14" fill="none" style={{ ...base, ...style }}>
       <circle cx="7" cy="7" r="5" stroke={color} strokeWidth="1.3" opacity=".25" />
@@ -305,7 +305,7 @@ export function IconTaskBlocked({ size = 12, color = "var(--t4)", style }: IconP
 }
 
 /** 思考火花 */
-export function IconSpark({ size = 12, color = "var(--acc)", style }: IconProps) {
+export function IconSpark({ size = 12, color = "var(--accTx)", style }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 12 12" fill="none" style={{ ...base, ...style }}>
       <path d="M6 1c.4 2.6 1.4 3.6 4 4-2.6.4-3.6 1.4-4 4-.4-2.6-1.4-3.6-4-4 2.6-.4 3.6-1.4 4-4z" fill={color} />

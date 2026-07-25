@@ -364,7 +364,7 @@ function MonkeyCodeAccountCard({
     <div className="card card-lg" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accBg)", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-          <IconCloud size={16} color="var(--acc)" />
+          <IconCloud size={16} color="var(--accTx)" />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
           <span style={{ fontWeight: 700, fontSize: 13 }}>MonkeyCode 云端任务</span>
@@ -638,9 +638,9 @@ export function SettingsView({
             {m.name.trim() || "未命名模型"}
           </span>
           <span style={pill}>{m.provider || "anthropic"}</span>
-          {m.vision && <span style={{ ...pill, background: "var(--accBg)", color: "var(--acc)" }}>视觉</span>}
+          {m.vision && <span style={{ ...pill, background: "var(--accBg)", color: "var(--accTx)" }}>视觉</span>}
           {i === defaultIdx && (
-            <span style={{ flex: "none", fontSize: 11, fontWeight: 700, color: "var(--acc)", whiteSpace: "nowrap" }}>✓ 默认</span>
+            <span style={{ flex: "none", fontSize: 11, fontWeight: 700, color: "var(--accTx)", whiteSpace: "nowrap" }}>✓ 默认</span>
           )}
           <span style={{ flex: 1 }} />
           <span className="row-acts" style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, flex: "none" }}>
@@ -812,7 +812,7 @@ export function SettingsView({
               {loggedIn ? (
                 <>
                   还没有同步的模型。到
-                  <span className="hv-t1" onClick={() => setActive("account")} style={{ color: "var(--acc)", cursor: "pointer", fontWeight: 600 }}>
+                  <span className="hv-t1" onClick={() => setActive("account")} style={{ color: "var(--accTx)", cursor: "pointer", fontWeight: 600 }}>
                     「百智云账号」
                   </span>
                   页点「同步模型与 MCP」即可拉取。
@@ -868,7 +868,7 @@ export function SettingsView({
           <span className="row-acts" style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, flex: "none" }}>
             <span
               className="hv-t1"
-              style={{ color: disabled ? "var(--t5)" : "var(--acc)", fontWeight: 600 }}
+              style={{ color: disabled ? "var(--t5)" : "var(--accTx)", fontWeight: 600 }}
               onClick={(e) => {
                 e.stopPropagation();
                 const { disabled: _d, ...rest } = m.extra ?? {};

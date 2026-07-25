@@ -89,7 +89,7 @@ export function relativeTime(value?: string | number): string {
 
 const CLOUD_STATUS: Record<string, { text: string; color: string }> = {
   pending: { text: "排队中", color: "var(--warn)" },
-  processing: { text: "运行中", color: "var(--acc)" },
+  processing: { text: "运行中", color: "var(--accTx)" },
   error: { text: "运行出错", color: "var(--err)" },
   finished: { text: "已完成", color: "var(--t4)" },
 };
@@ -98,7 +98,7 @@ function rowStatus(meta: SessionMeta): { text: string; color: string } {
   if (meta.waiting_ask) return { text: "等待确认", color: "var(--warn)" };
   switch (meta.status) {
     case "running":
-      return { text: "运行中", color: "var(--acc)" };
+      return { text: "运行中", color: "var(--accTx)" };
     case "error":
       return { text: "运行出错", color: "var(--err)" };
     case "interrupted":
@@ -835,7 +835,7 @@ export function Sidebar({
     <div style={{ margin: "6px 3px 12px", padding: "11px 12px", border: "1px dashed var(--dashBd)", borderRadius: 10, color: "var(--t4)", fontSize: 11.5, lineHeight: 1.55 }}>
       <div>{content}</div>
       {action && (
-        <button onClick={action.run} style={{ marginTop: 7, padding: 0, border: "none", background: "transparent", color: "var(--acc)", font: "inherit", fontWeight: 700, cursor: "pointer" }}>
+        <button onClick={action.run} style={{ marginTop: 7, padding: 0, border: "none", background: "transparent", color: "var(--accTx)", font: "inherit", fontWeight: 700, cursor: "pointer" }}>
           {action.label}
         </button>
       )}
@@ -1041,7 +1041,7 @@ export function Sidebar({
             <span className="ellipsis" style={{ flex: 1, minWidth: 0, textAlign: "left", fontSize: 11.5, fontWeight: 600 }}>
               {updateBusy ? "正在下载更新…" : `新版本 ${update.latest ?? ""} 可用`}
             </span>
-            {!updateBusy && <span style={{ color: "var(--acc)", fontSize: 10.5, fontWeight: 700 }}>更新</span>}
+            {!updateBusy && <span style={{ color: "var(--accTx)", fontSize: 10.5, fontWeight: 700 }}>更新</span>}
           </button>
         )}
       </aside>

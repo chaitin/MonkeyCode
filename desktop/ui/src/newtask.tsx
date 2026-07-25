@@ -467,7 +467,7 @@ export function NewTaskView({
             pointerEvents: "none",
             fontSize: 14,
             fontWeight: 700,
-            color: "var(--acc)",
+            color: "var(--accTx)",
           }}
         >
           松开以添加文件
@@ -529,7 +529,7 @@ export function NewTaskView({
                       <button className="hv menu-item" onClick={() => { setCloudProject(null); setCloudRepoUrl(""); setCloudRepoDraft(""); setCloudRepoErr(""); setRepoOpen(false); }} style={{ gap: 9 }}>
                         <IconCloud size={12} color="var(--t5)" />
                         <span style={{ flex: 1, fontSize: 12.5, color: "var(--t2)" }}>不关联仓库(快速开始)</span>
-                        {!cloudProject && !cloudRepoUrl && <IconCheck size={11} color="var(--acc)" strokeWidth={1.6} />}
+                        {!cloudProject && !cloudRepoUrl && <IconCheck size={11} color="var(--accTx)" strokeWidth={1.6} />}
                       </button>
                       <span style={{ height: 1, background: "var(--line2)", margin: "4px 6px" }} />
                       <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, color: "var(--t6)", padding: "5px 9px 3px" }}>
@@ -575,7 +575,7 @@ export function NewTaskView({
                                   <span className="ellipsis" style={{ fontSize: 10.5, fontFamily: MONO, color: "var(--t6)" }}>{p.repo_url}</span>
                                 )}
                               </span>
-                              {cloudProject?.id === p.id && <IconCheck size={11} color="var(--acc)" strokeWidth={1.6} />}
+                              {cloudProject?.id === p.id && <IconCheck size={11} color="var(--accTx)" strokeWidth={1.6} />}
                             </button>
                           ))}
                         </>
@@ -631,7 +631,7 @@ export function NewTaskView({
                               {p}
                             </span>
                           </span>
-                          {p === dir && <IconCheck size={11} color="var(--acc)" strokeWidth={1.6} />}
+                          {p === dir && <IconCheck size={11} color="var(--accTx)" strokeWidth={1.6} />}
                         </button>
                       ))}
                       <span style={{ height: 1, background: "var(--line2)", margin: "4px 6px" }} />
@@ -687,7 +687,7 @@ export function NewTaskView({
                   fontSize: 12,
                 }}
               >
-                <IconChat size={13} color="var(--acc)" />
+                <IconChat size={13} color="var(--accTx)" />
                 独立对话 · 不关联本地项目
               </div>
             )}
@@ -886,16 +886,16 @@ export function NewTaskView({
 
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px 11px" }}>
             <span style={{ display: "flex", background: "var(--segBg)", borderRadius: 13, padding: 2, flex: "none" }}>
-              <span onClick={() => setMode("local")} title="跑在这台电脑上,直接读写本地文件,每步权限逐一确认" style={segItem(mode === "local", "var(--acc)")}>
-                <IconMonitor size={11} color={mode === "local" ? "var(--acc)" : "var(--t5)"} strokeWidth={1.4} />
+              <span onClick={() => setMode("local")} title="跑在这台电脑上,直接读写本地文件,每步权限逐一确认" style={segItem(mode === "local", "var(--accTx)")}>
+                <IconMonitor size={11} color={mode === "local" ? "var(--accTx)" : "var(--t5)"} strokeWidth={1.4} />
                 本地
               </span>
               <span onClick={() => setMode("cloud")} title="跑在云上服务器,关掉客户端也继续" style={segItem(mode === "cloud", "var(--warn)")}>
                 <IconCloud size={11} color={mode === "cloud" ? "var(--warn)" : "var(--t5)"} />
                 云端
               </span>
-              <span onClick={() => setMode("chat")} title="不绑定项目的普通对话" style={segItem(mode === "chat", "var(--acc)")}>
-                <IconChat size={11} color={mode === "chat" ? "var(--acc)" : "var(--t5)"} />
+              <span onClick={() => setMode("chat")} title="不绑定项目的普通对话" style={segItem(mode === "chat", "var(--accTx)")}>
+                <IconChat size={11} color={mode === "chat" ? "var(--accTx)" : "var(--t5)"} />
                 对话
               </span>
             </span>

@@ -378,12 +378,12 @@ export function FilesDrawer({
               />
             )}
           </span>
-          {en.isDir ? <IconFolder size={14} color="var(--acc)" /> : <IconFile color={kind ? kind.fg : "var(--t4)"} />}
+          {en.isDir ? <IconFolder size={14} color="var(--accTx)" /> : <IconFile color={kind ? kind.fg : "var(--t4)"} />}
           <span className="ellipsis" style={{ flex: 1, fontSize: 12.5, color: "var(--t1)" }}>
             {en.name}
           </span>
           {en.isDir && subCount > 0 && (
-            <span style={{ ...changeTag, color: "var(--acc)", background: "var(--accBg)" }}>{subCount} 处改动</span>
+            <span style={{ ...changeTag, color: "var(--accTx)", background: "var(--accBg)" }}>{subCount} 处改动</span>
           )}
           {!en.isDir && kind && <span style={{ ...changeTag, color: kind.fg, background: kind.bg }}>{kind.text}</span>}
           {!en.isDir && !kind && (
@@ -441,7 +441,7 @@ export function FilesDrawer({
             <button className={tab === "changes" ? undefined : "hv-t1"} style={drawerTabStyle(tab === "changes")} onClick={() => selectTab("changes")}>
               改动
               {changes && changes.length > 0 && (
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--acc)", background: "var(--accBg)", borderRadius: 8, padding: "0 6px", lineHeight: "15px" }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accTx)", background: "var(--accBg)", borderRadius: 8, padding: "0 6px", lineHeight: "15px" }}>
                   {changes.length}
                 </span>
               )}

@@ -155,13 +155,13 @@ export function ModelMenuItem({
         width: "100%",
         minWidth: 0,
         padding: "7px 10px",
-        color: selected ? "var(--acc)" : "var(--t2)",
+        color: selected ? "var(--accTx)" : "var(--t2)",
         fontWeight: selected ? 600 : 400,
       }}
     >
       <span className="ellipsis" style={{ flex: 1, minWidth: 0 }}>{label}</span>
       {hint && <span style={{ flex: "none", fontSize: 11, color: "var(--t5)", fontWeight: 400 }}>{hint}</span>}
-      {selected && <IconCheck size={11} color="var(--acc)" strokeWidth={1.6} />}
+      {selected && <IconCheck size={11} color="var(--accTx)" strokeWidth={1.6} />}
     </button>
   );
 }
@@ -317,7 +317,7 @@ const NOTICE_VISUAL: Record<SessionNotice["tone"], { color: string; background: 
   success: { color: "var(--ok)", background: "var(--addBg)", border: "var(--accBd)" },
   warning: { color: "var(--warnT)", background: "var(--warnBg)", border: "var(--warnBd2)" },
   error: { color: "var(--err)", background: "var(--errBg)", border: "var(--errBd)" },
-  info: { color: "var(--acc)", background: "var(--accBgSoft)", border: "var(--accBd)" },
+  info: { color: "var(--accTx)", background: "var(--accBgSoft)", border: "var(--accBd)" },
 };
 
 /** Composer 上方短暂提示；后台会话提示的主体可点击跳转，关闭按钮只关闭。 */
@@ -616,7 +616,7 @@ export function ChatView({
             pointerEvents: "none",
             fontSize: 14,
             fontWeight: 700,
-            color: "var(--acc)",
+            color: "var(--accTx)",
           }}
         >
           松开以添加文件
@@ -658,7 +658,7 @@ export function ChatView({
                     height: 16,
                     borderRadius: 8,
                     background: "var(--accBg)",
-                    color: "var(--acc)",
+                    color: "var(--accTx)",
                     fontSize: 10.5,
                     fontWeight: 700,
                     display: "flex",

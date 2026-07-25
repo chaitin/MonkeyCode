@@ -9,6 +9,14 @@ import "@xterm/xterm/css/xterm.css";
 import { connectCloudTerminal } from "./cloudapi";
 import { MONO } from "./components";
 
+/** xterm 的 theme 是 JS 对象,吃不了 var(),只能把令牌解析成具体色值;
+ * 缺省值兜住令牌读不到的极端情况(样式表还没落地时不至于白底黑字闪一下)。 */
+function readTermTheme(): { background: string; foreground: string } {
+  const css = getComputedStyle(document.documentElement);
+  const pick = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
+  return { background: pick("--termBg", "#1c1d20"), foreground: pick("--termTx", "#d6d7d2") };
+}
+
 export function CloudTerminal({ vmId }: { vmId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState("连接终端…");
@@ -20,12 +28,19 @@ export function CloudTerminal({ vmId }: { vmId: string }) {
       fontSize: 12.5,
       fontFamily: MONO,
       cursorBlink: true,
-      theme: { background: "#1c1e22", foreground: "#d8dee9" },
+      theme: readTermTheme(),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
     fit.fit();
+
+    // 主题切换只改根节点的 data-theme(见 theme.ts),xterm 已经把颜色烤进了
+    // 自己的渲染层,得盯着这个属性重新喂一次,不然开着终端换主题会留一块旧底色。
+    const themeWatch = new MutationObserver(() => {
+      term.options.theme = readTermTheme();
+    });
+    themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
     const b64 = {
       enc: (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s))),
@@ -112,6 +127,7 @@ export function CloudTerminal({ vmId }: { vmId: string }) {
     return () => {
       closed = true;
       if (ping) clearInterval(ping);
+      themeWatch.disconnect();
       ro.disconnect();
       offData.dispose();
       pipe?.close();
@@ -120,10 +136,10 @@ export function CloudTerminal({ vmId }: { vmId: string }) {
   }, [vmId]);
 
   return (
-    <div style={{ position: "relative", height: "100%", minHeight: 0, background: "#1c1e22" }}>
+    <div style={{ position: "relative", height: "100%", minHeight: 0, background: "var(--termBg)" }}>
       <div ref={hostRef} style={{ position: "absolute", inset: "6px 0 6px 10px" }} />
       {status && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, color: "#8a919c", pointerEvents: "none" }}>
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, color: "var(--termTx2)", pointerEvents: "none" }}>
           {status}
         </div>
       )}

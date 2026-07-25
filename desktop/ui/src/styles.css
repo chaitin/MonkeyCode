@@ -21,11 +21,20 @@
   --t6: #a8afa9;            /* 最弱/占位 */
   --t7: #c4c9c3;            /* 装饰性符号(分隔点) */
   --tDis: #b3b9b2;          /* 禁用态文字 */
-  --acc: #1f8a5b;           /* 品牌绿 */
-  --accH: #25a06b;          /* 品牌绿 hover */
-  --accBg: rgba(31, 138, 91, 0.12);
-  --accBd: rgba(31, 138, 91, 0.2);
-  --accBg2: rgba(31, 138, 91, 0.15); /* 激活底(比 --accBg 深一档,设置齿轮) */
+  /* 品牌绿 = 移动端 ACCENTS['清新绿'].fill;该 fill 在浅/深两色下同值(见
+   * mobile/src/theme.tsx:makeTheme——只有 acTx / acGhost 随模式变),所以两个
+   * 主题块里的 --acc 也保持同值,不在浅色本地压深一档。
+   *
+   * ⚠️ 分工照移动端 ac / acTx 两档,别混用:
+   *   --acc   面与线:按钮底、徽章底、滑块、focus 描边、虚线拖放框、进度环。
+   *   --accTx 浅底上的文字与小图标:链接、状态字、徽章文字、勾选标记。
+   * fill 是给 --onAcc 白字垫底的,直接当文字色用在 --bg 上只有 2.74:1。 */
+  --acc: #16b364;           /* 品牌绿 */
+  --accH: #1dcc74;          /* 品牌绿 hover(ac + (ac − ac2),沿点缀色阶外推一步) */
+  --accTx: #0b8f4d;         /* 品牌绿文字(移动端 acTx = 清新绿 txL;对 --bg 3.8:1) */
+  --accBg: rgba(22, 179, 100, 0.12);
+  --accBd: rgba(22, 179, 100, 0.2);
+  --accBg2: rgba(22, 179, 100, 0.15); /* 激活底(比 --accBg 深一档,设置齿轮) */
   --onAcc: #fff;
   --ok: #28a866;
   --okBg: rgba(40, 168, 102, 0.13);
@@ -63,12 +72,12 @@
   --btnBd: rgba(30, 40, 35, 0.15);        /* 白底按钮/pill 描边 */
   --dashBd: rgba(30, 40, 35, 0.22);       /* 空态虚线框 */
   --errBd: rgba(194, 80, 62, 0.3);        /* 危险动作描边 */
-  --accBd2: rgba(31, 138, 91, 0.3);       /* 强调描边(加号按钮) */
-  --accBgSoft: rgba(31, 138, 91, 0.07);   /* 极浅强调底(拖放区/hover) */
-  --accSel: rgba(31, 138, 91, 0.085);     /* 侧栏/设置导航选中行浅色底 */
+  --accBd2: rgba(22, 179, 100, 0.3);      /* 强调描边(加号按钮) */
+  --accBgSoft: rgba(22, 179, 100, 0.07);  /* 极浅强调底(拖放区/hover) */
+  --accSel: rgba(22, 179, 100, 0.085);    /* 侧栏/设置导航选中行浅色底 */
   --accSelT: #24523d;                     /* 浅选中底上的主文字/图标 */
   --accSelDim: #66786e;                   /* 浅选中底上的次级文字/图标 */
-  --accSh: 0 2px 8px rgba(31, 138, 91, 0.25); /* 主按钮投影 */
+  --accSh: 0 2px 8px rgba(22, 179, 100, 0.25); /* 主按钮投影 */
   --warnBd2: rgba(161, 98, 7, 0.18);      /* 软警示描边(云端提示条) */
   --warnT: #7c5210;                       /* 警示正文 */
   --notice: #e8913a;                      /* 更新提醒圆点 */
@@ -78,6 +87,18 @@
   --linkH: #166b46;                       /* 链接 hover */
   --sbThumb: rgba(110, 120, 115, 0.22);   /* 滚动条 */
   --sbThumbH: rgba(110, 120, 115, 0.38);
+  /* 终端岛(云端 VM 终端卡):两个主题下都是一块深色面,所以岛内一律走移动端的
+   * 深色刻度,不掺浅色令牌。termBg / termTx / termAcc 直接取移动端同名令牌
+   * (mobile/src/theme.tsx 的 lightBase / darkBase 各有一份);移动端没有的
+   * 面板头与次级文字,按深色主题那套内插规则补:头底 = termBg 上叠一档
+   * (步长取移动端 bg→bg2),分隔线 = 深色主描边刻度,两档次级文字 = 深色 tx2/tx3。 */
+  --termBg: #1c1d20;                      /* 终端底(移动端 lightBase.termBg) */
+  --termHdr: #26272b;                     /* 面板头底(termBg + bg→bg2 的步长) */
+  --termBd: rgba(255, 255, 255, 0.12);    /* 头/体分隔(深色面上的主描边刻度) */
+  --termTx: #d6d7d2;                      /* 终端输出/面板标题(移动端 lightBase.termTx) */
+  --termTx2: #9fa0a0;                     /* 面板头图标与提示(移动端深色 tx2) */
+  --termTx3: #6c6d70;                     /* 面板头副标题(移动端深色 tx3) */
+  --termAcc: #6fe6a3;                     /* 岛内点缀(移动端 termAcc,两主题同值) */
   /* 代码高亮配色(GitHub Light 系;深色主题在 data-theme 块重定义) */
   --hlKw: #cf222e;   /* 关键字 */
   --hlStr: #0a3069;  /* 字符串/正则 */
@@ -116,9 +137,9 @@
  *    在最亮常规底上已有 7.6:1,不需要浅色那样再分出一档更深的正文色);--notice
  *    也落在 amber 上,深色调色板里没有独立的橙。需要比 ac 更亮一档的 hover 取
  *    ac + (ac − ac2) = #1dcc74,沿移动端自己的点缀色阶外推一步。
- *    ⚠️ --onAcc 照移动端 acInk 用白色,白字对 #16b364 只有 2.74:1(浅色同位
- *    4.33:1)。这是设计稿自己的配对,桌面保持一致;要过 3:1 得在设计侧改 acInk
- *    或 ac,不在桌面本地偷偷翻成深色字。
+ *    ⚠️ --onAcc 照移动端 acInk 用白色,白字对 #16b364 只有 2.74:1(浅色同值
+ *    同比)。这是设计稿自己的配对,桌面两个主题保持一致;要过 3:1 得在设计侧改
+ *    acInk 或 ac,不在桌面本地偷偷翻成深色字、也不把浅色的 ac 单独压深。
  * 4. 中性叠加层只用移动端已有的白色 alpha 刻度(line 0.07 / track 0.09 /
  *    line2 0.12 / glassBrd 0.13 / glassHi 0.16),按浅色同族令牌的强弱次序落位;
  *    刻度之外的(dashBd / sbThumbH / panel2 / headerBg)按浅色同族的比例外推或
@@ -148,6 +169,7 @@
   --tDis: #626367;          /* 禁用态文字(tx3→bg4 17.5%) */
   --acc: #16b364;           /* 品牌绿(移动端 清新绿 fill) */
   --accH: #1dcc74;          /* 品牌绿 hover(ac + (ac − ac2),沿点缀色阶外推一步) */
+  --accTx: #46e08a;         /* 品牌绿文字(移动端 acTx = 清新绿 txD;与 linkH/accSelT 同值) */
   --accBg: rgba(22, 179, 100, 0.17);      /* 移动端 acGhost */
   --accBd: rgba(22, 179, 100, 0.3);       /* 移动端 acLine */
   --accBg2: rgba(22, 179, 100, 0.21); /* 激活底(比 --accBg 深一档,设置齿轮) */
@@ -205,6 +227,15 @@
   --linkH: #46e08a;                       /* 链接 hover(移动端 acTx) */
   --sbThumb: rgba(255, 255, 255, 0.16);   /* 滚动条(移动端 sb #ffffff + glassHi 刻度) */
   --sbThumbH: rgba(255, 255, 255, 0.28);  /* 按浅色 sbThumbH:sbThumb 外推 */
+  /* 终端岛:同浅色块的推导,只是底与文字换成移动端 darkBase 的那一份;
+   * 岛内次级文字/分隔线本就取自深色刻度,两个主题同值。 */
+  --termBg: #101113;                      /* 终端底(移动端 darkBase.termBg,= --rail) */
+  --termHdr: #15161a;                     /* 面板头底(termBg 上叠一档 = 移动端 bg) */
+  --termBd: rgba(255, 255, 255, 0.12);    /* 头/体分隔(= --line) */
+  --termTx: #cdceca;                      /* 终端输出/面板标题(移动端 darkBase.termTx) */
+  --termTx2: #9fa0a0;                     /* 面板头图标与提示(移动端 tx2) */
+  --termTx3: #6c6d70;                     /* 面板头副标题(移动端 tx3) */
+  --termAcc: #6fe6a3;                     /* 岛内点缀(移动端 termAcc,两主题同值) */
   /* 代码高亮配色(GitHub Dark 系,与浅色的 GitHub Light 成对;移动端无对应令牌) */
   --hlKw: #ff7b72;   /* 关键字 */
   --hlStr: #a5d6ff;  /* 字符串/正则 */
@@ -227,7 +258,7 @@ body {
   overflow: hidden;
 }
 
-a { color: var(--acc); text-decoration: none; }
+a { color: var(--accTx); text-decoration: none; }
 a:hover { color: var(--linkH); text-decoration: underline; }
 input, textarea, select, button { font-family: inherit; }
 textarea::placeholder, input::placeholder { color: var(--t6); }
@@ -528,7 +559,7 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   transition: opacity 0.15s ease;
 }
 .mdcode:hover .mdcopy, .mdcode .mdcopy.ok { opacity: 1; }
-.mdcode .mdcopy.ok { color: var(--acc); border-color: var(--acc); }
+.mdcode .mdcopy.ok { color: var(--accTx); border-color: var(--accTx); }
 .md-table-scroll {
   max-width: 100%;
   margin: 1em 0;

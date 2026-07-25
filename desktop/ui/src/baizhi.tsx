@@ -286,7 +286,7 @@ export function BaizhiCard({
           };
           const linkBtn: React.CSSProperties = {
             background: "none", border: "none", padding: "2px 4px", fontSize: 12,
-            color: "var(--acc)", cursor: "pointer", flex: "none",
+            color: "var(--accTx)", cursor: "pointer", flex: "none",
           };
           return (
             <div style={{ border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>

@@ -166,8 +166,8 @@ export function AskCard({
             animation: "mcin .2s ease",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 8, color: hasAnswers ? "var(--acc)" : "var(--t5)", fontSize: 10.5, fontWeight: 700 }}>
-            {hasAnswers && <IconCheck size={11} color="var(--acc)" />}
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 8, color: hasAnswers ? "var(--accTx)" : "var(--t5)", fontSize: 10.5, fontWeight: 700 }}>
+            {hasAnswers && <IconCheck size={11} color="var(--accTx)" />}
             {hasAnswers ? "已回答" : "未回答"}
           </div>
           {item.questions.map((q, qi) => {
@@ -288,7 +288,7 @@ export function AskCard({
             justifyContent: "center",
             borderRadius: 8,
             background: "var(--accBg)",
-            color: "var(--acc)",
+            color: "var(--accTx)",
             fontSize: 13,
             fontWeight: 800,
             flex: "none",
@@ -314,7 +314,7 @@ export function AskCard({
           <div key={qi} style={{ marginTop: 13, paddingTop: qi ? 13 : 0, borderTop: qi ? "1px solid var(--line2)" : "none" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
               {q.header && (
-                <span style={{ flex: "none", fontSize: 10.5, fontWeight: 700, color: "var(--acc)", background: "var(--accBg)", borderRadius: 6, padding: "2px 6px" }}>
+                <span style={{ flex: "none", fontSize: 10.5, fontWeight: 700, color: "var(--accTx)", background: "var(--accBg)", borderRadius: 6, padding: "2px 6px" }}>
                   {q.header}
                 </span>
               )}
@@ -415,7 +415,7 @@ export function AskCard({
       })}
       {open && (
         <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line2)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <span style={{ color: ready ? "var(--acc)" : "var(--t5)", fontSize: 11.5 }}>
+          <span style={{ color: ready ? "var(--accTx)" : "var(--t5)", fontSize: 11.5 }}>
             {ready ? "已完成选择" : "请回答全部问题"}
           </span>
           <button

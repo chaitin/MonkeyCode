@@ -71,7 +71,7 @@ export function TaskPanel({ entries }: { entries: PlanEntry[] }) {
               <div
                 key={i}
                 style={{
-                  color: e.status === "completed" ? "var(--t5)" : blocked ? "var(--t4)" : e.status === "in_progress" ? "var(--acc)" : "var(--t2)",
+                  color: e.status === "completed" ? "var(--t5)" : blocked ? "var(--t4)" : e.status === "in_progress" ? "var(--accTx)" : "var(--t2)",
                   textDecoration: e.status === "completed" ? "line-through" : "none",
                 }}
                 title={hint ? `依赖未完成: ${hint}` : undefined}
