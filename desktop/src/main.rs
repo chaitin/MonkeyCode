@@ -381,9 +381,36 @@ fn update_notice(app: &AppHandle, manual: bool, error: bool, msg: &str) {
     }
 }
 
+/// 本机运行形态是否支持自更新。
+///
+/// Linux 上 updater 的安装方式是**原地覆盖当前 AppImage 文件**
+/// (tauri-plugin-updater::install_appimage)。deb/rpm 装出来的是 /usr/bin 下的
+/// 普通可执行文件:覆盖它既越权(要 root)又会把包管理器的记录搞乱——这两种
+/// 分发形态本就该由 apt/dnf 升级。所以非 AppImage 运行时直接不提供更新,
+/// 而不是让用户点了"更新"再收一个权限错误。
+/// 其它平台恒为支持(.app / NSIS 安装器都有对应安装路径)。
+fn updater_supported(app: &AppHandle) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        return app.env().appimage.is_some();
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = app;
+        true
+    }
+}
+
 /// 组装更新器(自动/手动/UI 内三条路径共用):仅升级 + 清单地址可覆盖。
+/// update_check / update_install / check_update 三个入口都经此收口,
+/// 运行形态守卫因此只需放这一处。
 fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
     use tauri_plugin_updater::UpdaterExt;
+    if !updater_supported(app) {
+        return Err("当前安装方式(deb/rpm)由系统包管理器升级,应用内不提供自动更新;\
+                    AppImage 版本支持一键更新"
+            .into());
+    }
     let handle = app.clone();
     let mut builder = app
         .updater_builder()

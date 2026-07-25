@@ -211,7 +211,10 @@ async fn mcp_oversized_headers_are_dropped_and_server_survives() {
         // 服务端会一直等 CRLF、把头读到内存里,直到它自己 30s 读超时才罢手,
         // 此处的 read_to_end 就会超时。有上限时 32KB 一到即放弃并关连接,
         // EOF 立刻到达。只断言"无 jsonrpc 应答"两种实现都成立,区分不了。
-        let closed = tokio::time::timeout(std::time::Duration::from_secs(5), conn.read_to_end(&mut buf)).await;
+        // 15s 而非 5s:区分信号本身余量极大(有上限时 32KB 一到即关连接、
+        // 近乎瞬时;无上限时要等服务端自己的 30s 读超时),没必要把阈值卡在
+        // 会被机器负载影响的位置。
+        let closed = tokio::time::timeout(std::time::Duration::from_secs(15), conn.read_to_end(&mut buf)).await;
         assert!(closed.is_ok(), "超限连接应被服务端及时关闭(EOF),而不是挂着等 CRLF");
         let resp = String::from_utf8_lossy(&buf);
         assert!(!resp.contains("jsonrpc"), "超长头不应得到 JSON-RPC 应答: {resp}");

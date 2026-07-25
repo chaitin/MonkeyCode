@@ -192,7 +192,7 @@ jobs:
             echo "::warning::TAURI_SIGNING_PRIVATE_KEY 未配置,跳过 updater 产物"
           fi
           npx --yes @tauri-apps/cli@^2 build \
-            --config tauri.windows.conf.json --config tauri.win7.conf.json $EXTRA_CONFIG \
+            --config bundle.windows.conf.json --config bundle.win7.conf.json $EXTRA_CONFIG \
             -- --locked
           if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             python scripts/gen-latest-json.py win7

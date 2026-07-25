@@ -38,7 +38,18 @@ cd ui && npm test
 make macos            # universal .app/.dmg(在 Mac 上执行)
 make macos-release    # + 签名 updater 产物(需 TAURI_SIGNING_PRIVATE_KEY)
 make windows          # NSIS 安装包(在 Windows 上执行;或走 CI)
+make linux            # deb + rpm + AppImage(在 Linux 上执行;AppImage 需 xdg-utils)
 ```
+
+打包配置文件一律叫 `bundle.<平台>.conf.json`,**不能**叫
+`tauri.<平台>.conf.json`——后者是 Tauri 的平台自动合并约定,那个名字一存在
+就会被并进该平台上的**每次** `cargo build/check`,把只属于打包的
+`active`/`externalBin`/`resources` 拖进普通开发构建(实测直接报
+`resource path binaries/ohmyagent-<triple> doesn't exist`)。命名由
+`scripts/check_bundle_configs.py` 守住。
+
+Linux 自更新只对 AppImage 生效(updater 是原地替换 AppImage 文件);
+deb/rpm 由 apt/dnf 升级,壳侧对非 AppImage 运行不提示更新。
 
 引擎 sidecar 由 make 从 `OHMYAGENT_SRC` 编译。externalBin 声明在各平台
 overlay 而非基础配置(基础配置带 sidecar 会让普通 `cargo check` 也强依赖

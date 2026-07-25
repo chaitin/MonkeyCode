@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """汇集 updater 发布物:重命名为带版本文件名 + 生成对应平台的更新清单。
 
-用法: gen-latest-json.py [macos|windows|win7]   (缺省 macos)
+用法: gen-latest-json.py [macos|windows|win7|linux]   (缺省 macos)
 
-三条更新通道各自独立,清单由对应平台的发布构建产出,互不协调:
+四条更新通道各自独立,清单由对应平台的发布构建产出,互不协调:
   macos   → latest.json          (darwin 双架构,universal .app.tar.gz)
   windows → latest-windows.json  (windows-x86_64,NSIS setup exe)
   win7    → latest-win7.json     (windows-x86_64,NSIS setup exe,捆 WebView2)
+  linux   → latest-linux.json    (linux-x86_64,**只有 AppImage**)
+
+Linux 只发 AppImage:updater 在 Linux 是把新包原地覆盖当前 AppImage 文件
+(tauri-plugin-updater 的 install_appimage),deb/rpm 装出来的是 /usr/bin 下
+的普通可执行文件,覆盖不了也不该覆盖——那两种由包管理器负责升级,壳侧对
+非 AppImage 运行直接不提示更新(main.rs updater_supported)。
 
 产物集中在 bundle 目录下的 updater/,人工上传 OSS(public/desktop/):
 先传包,再覆盖清单,顺序保证客户端不会拉到不存在的包。
@@ -47,8 +53,15 @@ elif platform in ("windows", "win7"):
     name = f"MonkeyCode_{short}_x64-setup{suffix}.exe"
     manifest_name = f"latest-{platform}.json"
     targets = ["windows-x86_64"]
+elif platform == "linux":
+    bundle = ROOT / "target/release/bundle"
+    # AppImage 文件名用 Tauri 的 x86_64 命名(非 deb 的 amd64)
+    src = bundle / f"appimage/MonkeyCode_{version}_amd64.AppImage"
+    name = f"MonkeyCode_{short}_amd64.AppImage"
+    manifest_name = "latest-linux.json"
+    targets = ["linux-x86_64"]
 else:
-    sys.exit(f"未知平台: {platform}(可选 macos/windows/win7)")
+    sys.exit(f"未知平台: {platform}(可选 macos/windows/win7/linux)")
 
 sig = pathlib.Path(str(src) + ".sig")
 if not src.exists() or not sig.exists():

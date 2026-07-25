@@ -30,6 +30,15 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE_CONFIG = "tauri.conf.json"
 SIDECAR = "binaries/ohmyagent"
+# Tauri 按平台自动合并的文件名(tauri-utils/src/config/parse.rs 的
+# ConfigFormat::into_platform_file_name)。这些名字**一存在就生效**,无需
+# --config —— 打包专属配置绝不能用它们,否则会被并进该平台上的每次
+# cargo build/check。打包配置一律叫 bundle.<平台>.conf.json。
+AUTO_MERGED_NAMES = tuple(
+    f"tauri.{p}.conf.{ext}"
+    for p in ("macos", "windows", "linux", "android", "ios")
+    for ext in ("json", "json5", "toml")
+)
 
 
 def bundle_of(config: dict) -> dict:
@@ -60,6 +69,7 @@ def icon_errors(root: pathlib.Path, name: str, bundle: dict) -> list[str]:
     needs = [
         (".ico", ("nsis", "msi"), "Windows 侧取不到应用图标"),
         (".icns", ("app", "dmg"), ".app 在 Finder/Dock 里没有图标"),
+        (".png", ("deb", "rpm", "appimage"), "Linux 的 .desktop 条目没有图标"),
     ]
     for ext, plat_targets, why in needs:
         if any(t in targets for t in plat_targets) and not any(
@@ -83,9 +93,22 @@ def icon_errors(root: pathlib.Path, name: str, bundle: dict) -> list[str]:
 
 def check(root: pathlib.Path = ROOT) -> list[str]:
     errors: list[str] = []
-    configs = sorted(root.glob("tauri*.conf.json"))
+    # 文件名检查用宽 glob(json/json5/toml 都是 Tauri 认的格式);内容检查只对
+    # .json —— 本仓库只用 JSON,别的格式出现在这里本身就该被上面那条拦下。
+    named = sorted(root.glob("tauri*.conf.*")) + sorted(root.glob("bundle*.conf.*"))
+    configs = [p for p in named if p.suffix == ".json"]
     if not configs:
-        raise ValueError(f"未找到任何 tauri*.conf.json({root})")
+        raise ValueError(f"未找到任何 tauri*/bundle* .conf.json({root})")
+
+    # 平台自动合并名一旦出现,该平台上的每次 cargo build/check 都会被并进
+    # 它的内容。打包配置放进去 = 全员开发构建强依赖 sidecar 与扩展产物。
+    for path in named:
+        if path.name in AUTO_MERGED_NAMES:
+            errors.append(
+                f"{path.name} 用了 Tauri 的平台自动合并名:它无需 --config 就会被并进"
+                f"该平台上的每次 cargo build/check。打包配置改名为 "
+                f"bundle.{path.name.split('.')[1]}.conf.json 并只经 --config 传入"
+            )
 
     bundling = []
     for path in configs:

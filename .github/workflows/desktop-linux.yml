@@ -1,0 +1,112 @@
+name: Desktop Linux Build
+
+on:
+  push:
+    # 发布只认 vYYMMDDNN tag，例如 v26072208。
+    tags: ["v[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]"]
+
+# 引擎版本 = agent/ submodule 的 gitlink(仓库内单一来源);
+# 升级引擎 = bump submodule(配合壳的 system/ready 能力握手)
+#
+# 三种产物一次构建产出:deb / rpm / AppImage。
+# 只有 AppImage 能自更新(updater 在 Linux 是原地替换 AppImage 文件),
+# deb/rpm 交给 apt/dnf,壳侧对非 AppImage 运行不提示更新(main.rs updater_supported)。
+
+jobs:
+  build:
+    # 用最老的受支持 runner:glibc 向前兼容不向后,构建机的 glibc 决定了
+    # 产物能跑的最低发行版。
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # webkit2gtk-4.1 + gtk3 是构建依赖;librsvg2/patchelf 是 bundler 需要;
+      # xdg-utils 不能省——AppImage bundler 会把系统的 xdg-open 复制进包,
+      # 缺了会在 release 编译跑完之后才报 "xdg-open binary not found"
+      # (实测:仅把 xdg-open 放进 PATH 不够,bundler 按系统路径找)。
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf xdg-utils rpm
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      # 仓库内版本只作开发占位；发布构建以 tag 为唯一真值。
+      - name: Set release version from tag
+        working-directory: desktop
+        run: python3 scripts/set_release_version.py "${GITHUB_REF_NAME}"
+
+      # 浏览器扩展:随包分发(tauri bundle.resources 引用 dist,缺失会打包失败)
+      - name: Build browser extension
+        working-directory: browser-extension
+        run: |
+          npm ci
+          npm run build
+
+      # 引擎 sidecar:源码来自 agent/ submodule(私库,checkout 默认
+      # GITHUB_TOKEN 无跨库权限 → 用 OHMYAGENT_REPO_TOKEN;.gitmodules
+      # 是 ssh URL,经 insteadOf 重写为带 token 的 https)。引擎必须进包,
+      # 凭据缺失直接失败而非静默出无引擎包
+      - name: Build ohmyagent sidecar (agent/ submodule)
+        env:
+          OHMYAGENT_REPO_TOKEN: ${{ secrets.OHMYAGENT_REPO_TOKEN }}
+        run: |
+          [ -n "$OHMYAGENT_REPO_TOKEN" ] || { echo "::error::OHMYAGENT_REPO_TOKEN 未配置,引擎无法进包"; exit 1; }
+          git config --global url."https://x-access-token:${OHMYAGENT_REPO_TOKEN}@github.com/".insteadOf "git@github.com:"
+          git submodule update --init agent
+          cd agent
+          AGENT_VERSION="$(git rev-parse --short HEAD)"
+          echo "ohmyagent version: ${AGENT_VERSION}"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags "-s -w -X main.Version=${AGENT_VERSION}" \
+            -o "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-x86_64-unknown-linux-gnu" ./cmd/ohmyagent
+
+      - name: Check bundle config contract
+        working-directory: desktop
+        run: python3 scripts/check_bundle_configs.py
+
+      # secret 就绪时走发布构建(额外产出签名的 AppImage + latest-linux.json),
+      # 否则回退普通打包,CI 不红
+      - name: Build deb / rpm / AppImage
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            npx --yes @tauri-apps/cli@^2 build \
+              --config bundle.linux.conf.json --config tauri.release.conf.json
+            python3 scripts/gen-latest-json.py linux
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY 未配置,跳过 updater 产物"
+            npx --yes @tauri-apps/cli@^2 build --config bundle.linux.conf.json
+          fi
+          RELEASE_VERSION="${GITHUB_REF_NAME#v}"
+          for f in \
+            "target/release/bundle/deb/MonkeyCode_${RELEASE_VERSION}.0.0_amd64.deb" \
+            "target/release/bundle/rpm/MonkeyCode-${RELEASE_VERSION}.0.0-1.x86_64.rpm" \
+            "target/release/bundle/appimage/MonkeyCode_${RELEASE_VERSION}.0.0_amd64.AppImage"; do
+            test -f "$f" || { echo "::error::产物缺失或版本未与 tag 对齐: $f"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MonkeyCode-linux-x64-${{ github.ref_name }}
+          path: |
+            desktop/target/release/bundle/deb/*.deb
+            desktop/target/release/bundle/rpm/*.rpm
+            desktop/target/release/bundle/appimage/*.AppImage
+            desktop/target/release/bundle/updater/*

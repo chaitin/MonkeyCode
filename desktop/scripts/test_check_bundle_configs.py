@@ -23,11 +23,11 @@ class BundleConfigContractTest(unittest.TestCase):
             (root / "icons").mkdir()
             (root / "icons" / "icon.icns").write_bytes(b"x")
             write(root, "tauri.conf.json", {"active": False})
-            write(root, "tauri.macos.conf.json",
+            write(root, "bundle.macos.conf.json",
                   {"active": True, "targets": ["dmg"], "icon": ["icons/icon.icns"]})
             errors = check(root)
             self.assertEqual(len(errors), 1, errors)
-            self.assertIn("tauri.macos.conf.json", errors[0])
+            self.assertIn("bundle.macos.conf.json", errors[0])
             self.assertIn("externalBin", errors[0])
 
     def test_base_config_may_not_declare_external_bin(self) -> None:
@@ -35,7 +35,7 @@ class BundleConfigContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
             write(root, "tauri.conf.json", {"active": False, "externalBin": [SIDECAR]})
-            write(root, "tauri.win.conf.json", {"active": True, "externalBin": [SIDECAR]})
+            write(root, "bundle.win.conf.json", {"active": True, "externalBin": [SIDECAR]})
             errors = check(root)
             self.assertEqual(len(errors), 1, errors)
             self.assertIn("tauri.conf.json", errors[0])
@@ -45,8 +45,8 @@ class BundleConfigContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
             write(root, "tauri.conf.json", {"active": False})
-            write(root, "tauri.win.conf.json", {"active": True, "externalBin": [SIDECAR]})
-            write(root, "tauri.win7.conf.json", {"resources": {"ucrt/*": "./"}})
+            write(root, "bundle.win.conf.json", {"active": True, "externalBin": [SIDECAR]})
+            write(root, "bundle.win7.conf.json", {"resources": {"ucrt/*": "./"}})
             self.assertEqual(check(root), [])
 
     # ---- 图标不变量 ----
@@ -64,7 +64,7 @@ class BundleConfigContractTest(unittest.TestCase):
         if nsis is not None:
             win["windows"] = {"nsis": nsis}
         write(root, "tauri.conf.json", {"active": False})
-        write(root, "tauri.windows.conf.json", win)
+        write(root, "bundle.windows.conf.json", win)
         return root
 
     def test_nsis_without_installer_icon_is_reported(self) -> None:
@@ -97,10 +97,66 @@ class BundleConfigContractTest(unittest.TestCase):
         (root / "icons").mkdir()
         (root / "icons" / "icon.icns").write_bytes(b"x")
         write(root, "tauri.conf.json", {"active": False})
-        write(root, "tauri.macos.conf.json", {
+        write(root, "bundle.macos.conf.json", {
             "active": True, "targets": ["app", "dmg"],
             "externalBin": [SIDECAR], "icon": ["icons/icon.icns"]})
         self.assertEqual(check(root), [])
+
+    # ---- 平台自动合并名 ----
+    # 这条是本轮最贵的一课:tauri.<平台>.conf.json 会被 Tauri 无条件并进该平台
+    # 上的每次 cargo build/check(不需要 --config),打包专属的
+    # active/externalBin/resources 一并生效 —— 实测普通 cargo check 直接报
+    # "resource path binaries/ohmyagent-<triple> doesn't exist"。
+
+    def test_platform_auto_merged_name_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "icons").mkdir()
+            (root / "icons" / "icon.icns").write_bytes(b"x")
+            write(root, "tauri.conf.json", {"active": False})
+            write(root, "tauri.macos.conf.json", {
+                "active": True, "targets": ["app"],
+                "externalBin": [SIDECAR], "icon": ["icons/icon.icns"]})
+            errors = check(root)
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("自动合并名", errors[0])
+            self.assertIn("bundle.macos.conf.json", errors[0])
+
+    def test_json5_variant_of_auto_merged_name_is_also_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            write(root, "tauri.conf.json", {"active": False})
+            (root / "icons").mkdir()
+            (root / "icons" / "32x32.png").write_bytes(b"x")
+            (root / "tauri.linux.conf.json5").write_text("{}", encoding="utf-8")
+            write(root, "bundle.linux.conf.json", {
+                "active": True, "targets": ["deb"],
+                "externalBin": [SIDECAR], "icon": ["icons/32x32.png"]})
+            self.assertTrue(any("自动合并名" in e for e in check(root)), check(root))
+
+    def test_bundle_prefixed_names_are_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "icons").mkdir()
+            (root / "icons" / "32x32.png").write_bytes(b"x")
+            write(root, "tauri.conf.json", {"active": False})
+            write(root, "bundle.linux.conf.json", {
+                "active": True, "targets": ["deb", "rpm", "appimage"],
+                "externalBin": [SIDECAR], "icon": ["icons/32x32.png"]})
+            self.assertEqual(check(root), [])
+
+    def test_linux_target_without_png_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "icons").mkdir()
+            (root / "icons" / "icon.ico").write_bytes(b"x")
+            write(root, "tauri.conf.json", {"active": False})
+            write(root, "bundle.linux.conf.json", {
+                "active": True, "targets": ["appimage"],
+                "externalBin": [SIDECAR], "icon": ["icons/icon.ico"]})
+            errors = check(root)
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn(".png", errors[0])
 
     def test_missing_bundling_entry_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -187,9 +187,12 @@ stop/start；浏览器配对这类自动维护额外要求前台会话与后台 
 uidist/ 是纯生成物不入库;壳静态页与 webfonts 在 ui/public/。
 引擎 sidecar 来自独立 ohmyagent 仓库:本地打包缺省用仓库根
 agent/ submodule(`export OHMYAGENT_SRC=...` 可覆盖),CI 同源。
-externalBin 只能落在平台 overlay(`tauri.{macos,windows}.conf.json`):
+externalBin 只能落在打包 overlay(`bundle.{macos,windows,win7,linux}.conf.json`):
 tauri_build 在编译期就为宿主 triple 解析 sidecar,基础配置一带上,每个
 开发者的 `cargo check` 都要先编出 `binaries/ohmyagent-<host-triple>`。
+同理**不能**用 `tauri.<平台>.conf.json` 这个名字——它是 Tauri 的平台自动
+合并约定(tauri-utils/src/config/parse.rs),存在即生效、不需要 --config,
+等于把打包配置塞进了该平台的基础配置。打包配置只经 --config 显式传入。
 "任何打包入口都带引擎"这条不变量因此由 `scripts/check_bundle_configs.py`
 强制(Makefile 打包前置 + CI),不存在"包里没引擎"的静默。
 

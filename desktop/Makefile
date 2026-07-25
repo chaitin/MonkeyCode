@@ -12,6 +12,18 @@
 # Windows 打包(在 Windows 上执行,Git Bash/MSYS;无 Windows 机器时走
 # CI: .github/workflows/desktop-windows.yml):
 #   make windows        # NSIS 安装包,引擎 sidecar 打进包
+#
+# Linux 打包(在 Linux 上执行):
+#   make linux          # deb + rpm + AppImage,引擎 sidecar 打进包
+# 前置:webkit2gtk-4.1/gtk3 开发包;AppImage 首次打包会联网取 linuxdeploy。
+#
+# 打包配置文件一律叫 bundle.<平台>.conf.json,**不能**叫
+# tauri.<平台>.conf.json:后者是 Tauri 的平台自动合并约定
+# (tauri-utils/src/config/parse.rs),它会被无条件并进该平台上的每次
+# cargo build/check,把只属于打包的 active/externalBin/resources 拖进
+# 普通开发构建——实测 `cargo check` 会直接报
+# "resource path binaries/ohmyagent-<triple> doesn't exist"。
+# 打包配置只经 --config 显式传入,由 check-bundle-configs 守住命名。
 
 # 缺省 = agent/ submodule;未初始化时下方守卫会给出可执行的报错
 OHMYAGENT_SRC ?= $(abspath $(CURDIR)/../agent)
@@ -22,11 +34,12 @@ SIDECAR_ARM := $(BIN_DIR)/ohmyagent-aarch64-apple-darwin
 SIDECAR_X64 := $(BIN_DIR)/ohmyagent-x86_64-apple-darwin
 SIDECAR_UNI := $(BIN_DIR)/ohmyagent-universal-apple-darwin
 SIDECAR_WIN := $(BIN_DIR)/ohmyagent-x86_64-pc-windows-msvc.exe
+SIDECAR_LIN := $(BIN_DIR)/ohmyagent-x86_64-unknown-linux-gnu
 TAURI       := npx --yes @tauri-apps/cli@^2
 GOFLAGS     := -trimpath -ldflags "-s -w -X main.Version=$(AGENT_VERSION)"
 GOFLAGS_WIN := -trimpath -ldflags "-s -w -H=windowsgui -X main.Version=$(AGENT_VERSION)"
 
-.PHONY: dev run macos macos-release set-release-version windows windows-release check-signing check-macos check-windows check-bundle-configs check-ohmy-src engine-universal engine-windows browser-extension icons clean
+.PHONY: dev run macos macos-release set-release-version windows windows-release linux linux-release check-signing check-macos check-windows check-linux check-bundle-configs check-ohmy-src engine-universal engine-windows engine-linux browser-extension icons clean
 
 # ---------- 开发 ----------
 
@@ -39,7 +52,7 @@ run: dev
 # ---------- macOS 打包(universal .app/.dmg,引擎 sidecar)----------
 
 macos: check-macos check-bundle-configs engine-universal browser-extension icons/icon.icns
-	$(TAURI) build --target universal-apple-darwin --config tauri.macos.conf.json $(EXTRA_TAURI_CONFIG)
+	$(TAURI) build --target universal-apple-darwin --config bundle.macos.conf.json $(EXTRA_TAURI_CONFIG)
 	@echo ""
 	@echo "打包完成,分发产物:"
 	@ls -lh target/universal-apple-darwin/release/bundle/dmg/*.dmg 2>/dev/null || true
@@ -88,9 +101,10 @@ check-ohmy-src:
 # 双架构编译引擎 sidecar。universal 打包会按架构各编译一遍,每遍的
 # tauri_build 都要求存在 <name>-<本架构 triple> 文件,最终 bundle 阶段
 # 再合成/取 universal——三个命名全部备齐,覆盖每个阶段的查找路径。
-# externalBin 声明在各平台 overlay(tauri.{macos,windows}.conf.json),不能上移
-# 到基础配置:tauri_build 编译期即解析宿主 triple 的 sidecar,基础配置一带上,
-# 普通 cargo check/build 就得先编出 binaries/ohmyagent-<host-triple>。
+# externalBin 声明在 bundle.<平台>.conf.json(只经 --config 显式传入),既不能
+# 上移到基础配置、也不能用 tauri.<平台>.conf.json 这个会被自动合并的名字:
+# 两者都会让 tauri_build 在编译期解析 sidecar,普通 cargo check/build 就得先
+# 编出 binaries/ohmyagent-<triple>(见文件头说明)。
 # "任何包都带引擎"由 check-bundle-configs 强制,缺二进制打包直接失败。
 engine-universal: check-ohmy-src
 	mkdir -p $(BIN_DIR)
@@ -101,7 +115,7 @@ engine-universal: check-ohmy-src
 # ---------- Windows 打包(NSIS 安装包,引擎 sidecar)----------
 
 windows: check-windows check-bundle-configs engine-windows browser-extension
-	$(TAURI) build --config tauri.windows.conf.json $(EXTRA_TAURI_CONFIG)
+	$(TAURI) build --config bundle.windows.conf.json $(EXTRA_TAURI_CONFIG)
 	@echo ""
 	@echo "打包完成,分发产物:"
 	@ls -lh target/release/bundle/nsis/*.exe 2>/dev/null || true
@@ -137,6 +151,44 @@ engine-windows: check-ohmy-src
 	mkdir -p $(BIN_DIR)
 	cd $(OHMYAGENT_SRC) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GOFLAGS_WIN) -o $(abspath $(SIDECAR_WIN)) ./cmd/ohmyagent
 	python3 scripts/check-pe-subsystem.py $(SIDECAR_WIN) gui
+
+# ---------- Linux 打包(deb + rpm + AppImage,引擎 sidecar)----------
+
+linux: check-linux check-bundle-configs engine-linux browser-extension
+	$(TAURI) build --config bundle.linux.conf.json $(EXTRA_TAURI_CONFIG)
+	@echo ""
+	@echo "打包完成,分发产物:"
+	@ls -lh target/release/bundle/deb/*.deb target/release/bundle/rpm/*.rpm \
+		target/release/bundle/appimage/*.AppImage 2>/dev/null || true
+
+# 发布构建:只有 AppImage 能自更新(updater 在 Linux 是原地替换 AppImage
+# 文件,见 tauri-plugin-updater install_appimage);deb/rpm 由包管理器负责,
+# 壳侧对非 AppImage 运行不提示更新(main.rs updater_supported)。
+linux-release: EXTRA_TAURI_CONFIG := --config tauri.release.conf.json
+
+linux-release:
+	$(MAKE) check-signing
+	$(MAKE) set-release-version
+	$(MAKE) linux EXTRA_TAURI_CONFIG="$(EXTRA_TAURI_CONFIG)"
+	python3 scripts/gen-latest-json.py linux
+
+# AppImage 的 bundler 会把构建机的 xdg-open 复制进包(供应用内开链接),缺了
+# 会在 release 编译跑完三分钟之后才报 "xdg-open binary not found" —— 前置查掉。
+#
+# deb/rpm 依赖声明有意不对称(实测所得):deb 的 bundler 会自动补
+# libwebkit2gtk-4.1-0 / libgtk-3-0 / libayatana-appindicator3-1,再写显式
+# depends 会让 control 里出现重复项、且 appindicator 同时落进 Depends 与
+# Recommends;所以 deb 只留 gstreamer 到 recommends(mp3 提示音,缺了只是没声),
+# rpm 侧未观察到自动补包级依赖,保留显式 depends。
+check-linux:
+	@[ "$$(uname -s)" = "Linux" ] || { echo "错误: Linux 打包需在 Linux 上执行"; exit 1; }
+	@command -v xdg-open >/dev/null || \
+		{ echo "错误: AppImage 打包需要 xdg-open(安装 xdg-utils)"; exit 1; }
+
+# Linux 引擎 sidecar(x64;CGO 关掉,避免把构建机的 glibc 版本写进依赖)。
+engine-linux: check-ohmy-src
+	mkdir -p $(BIN_DIR)
+	cd $(OHMYAGENT_SRC) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOFLAGS) -o $(abspath $(SIDECAR_LIN)) ./cmd/ohmyagent
 
 # 浏览器扩展:随包分发(tauri bundle.resources 引用 ../browser-extension/dist,
 # 缺失会打包失败)。

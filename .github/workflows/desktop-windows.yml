@@ -75,11 +75,11 @@ jobs:
         run: |
           if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             npx --yes @tauri-apps/cli@^2 build \
-              --config tauri.windows.conf.json --config tauri.release.conf.json
+              --config bundle.windows.conf.json --config tauri.release.conf.json
             python scripts/gen-latest-json.py windows
           else
             echo "::warning::TAURI_SIGNING_PRIVATE_KEY 未配置,跳过 updater 产物"
-            npx --yes @tauri-apps/cli@^2 build --config tauri.windows.conf.json
+            npx --yes @tauri-apps/cli@^2 build --config bundle.windows.conf.json
           fi
           RELEASE_VERSION="${GITHUB_REF_NAME#v}"
           EXPECTED="target/release/bundle/nsis/MonkeyCode_${RELEASE_VERSION}.0.0_x64-setup.exe"
