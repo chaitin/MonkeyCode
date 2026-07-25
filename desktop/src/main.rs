@@ -338,8 +338,8 @@ async fn update_install(app: AppHandle) -> Result<(), String> {
 
 // ==================== 自动更新 ====================
 //
-// OSS 静态清单(latest.json)+ tauri-plugin-updater:版本号与本地**不一致**
-// 即提示(YYMMDDNN 日期序号占 semver 主版本位,"!=" 同时覆盖前进与回滚);
+// OSS 静态清单(latest.json)+ tauri-plugin-updater:远端版本高于本地才提示
+// (YYMMDDNN 日期序号占 semver 主版本位,使用插件默认 SemVer 大小比较);
 // 用户确认后下载安装并重启,minisign 签名校验完整性。
 
 /// 展示用短版本号:去掉内部 semver 的 ".0.0" 后缀(26071401.0.0 → 26071401)。
@@ -365,15 +365,13 @@ fn update_notice(app: &AppHandle, manual: bool, error: bool, msg: &str) {
     }
 }
 
-/// 组装更新器(自动/手动/UI 内三条路径共用):不一致即有更新 + 清单地址可覆盖。
+/// 组装更新器(自动/手动/UI 内三条路径共用):仅升级 + 清单地址可覆盖。
 fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
     use tauri_plugin_updater::UpdaterExt;
     let handle = app.clone();
     let mut builder = app
         .updater_builder()
         .timeout(Duration::from_secs(30))
-        // 与 latest.json 的版本号不一致即视为有更新
-        .version_comparator(|current, update| update.version != current)
         // Windows 安装器路径由插件直接退进程(不走 RunEvent::Exit),
         // 必须先在这里回收引擎进程,否则 ohmyagent.exe 占用文件导致 NSIS 安装失败
         .on_before_exit(move || {
