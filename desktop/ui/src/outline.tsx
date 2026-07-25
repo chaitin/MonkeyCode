@@ -92,14 +92,9 @@ export function OutlineNav({
   return (
     <nav
       aria-label="提问大纲"
-      onMouseEnter={enter}
-      onMouseLeave={leave}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") setOpen(false);
-      }}
       style={{
         position: "absolute",
-        // 不贴窗口左缘:点列离边 10px,面板再往右(见 .mc-outline-panel)
+        // 不贴窗口左缘:点列离边 10px,面板与它左缘对齐(见 .mc-outline-panel)
         left: 10,
         top: 0,
         bottom: 0,
@@ -107,13 +102,19 @@ export function OutlineNav({
         display: "flex",
         alignItems: "center",
         zIndex: 12,
+        // 整条是**满高**的定位框,不能吃事件:否则鼠标在正文左缘任意高度
+        // 划过都会展开大纲(离点列十万八千里),顺带还会挡住正文的选中与点击。
+        // 触发只归点列与浮窗自己。
+        pointerEvents: "none",
       }}
     >
       <div
         ref={railRef}
         aria-hidden="true"
         className="mc-outline-rail"
-        style={{ opacity: open ? 0 : 1, pointerEvents: open ? "none" : undefined }}
+        onMouseEnter={enter}
+        onMouseLeave={leave}
+        style={{ opacity: open ? 0 : 1, pointerEvents: open ? "none" : "auto" }}
       >
         {entries.map((e) => (
           <span
@@ -124,7 +125,16 @@ export function OutlineNav({
         ))}
       </div>
       {open && (
-        <div ref={panelRef} className="pop mc-outline-panel">
+        <div
+          ref={panelRef}
+          className="pop mc-outline-panel"
+          onMouseEnter={enter}
+          onMouseLeave={leave}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setOpen(false);
+          }}
+          style={{ pointerEvents: "auto" }}
+        >
           {entries.map((e) => (
             <button
               key={e.seq}
