@@ -2047,3 +2047,83 @@ index.html 的首帧底色(样式表还没加载,已被检查器盯住)、`cloud
 
 验证:两个检查器 OK;scripts 单测 45 passed(新增 4 例);`tsc --noEmit` 无输出;
 `vitest` 27 files / 203 passed;`vite build` OK。
+
+# 本地会话:回放物化 + 分页 + 左侧提问大纲
+
+计划原文:`~/.claude/plans/robust-honking-emerson.md`
+
+## 背景
+
+打开多轮本地会话要卡好几秒。根因:journal 是「一 token 一帧」——实测一份 3 轮
+真实会话 8965 帧 / 1.85MB,其中 98.5% 是最终只合并成个位数气泡的流式碎片。
+这份数据要走完「整读 + 逐行 serde(181ms)→ 序列化(112ms)→ Tauri emit 把载荷
+内联进 JS 源码 eval(513ms,主线程全冻)→ 单批归约 → 无虚拟化全量挂载」,
+而且 `session_open` 还串行等着引擎 resume(tiktoken 全量重算,1.4MB 历史 236ms)。
+
+## 进度
+
+- [x] **Step 1 壳侧:折叠物化 + 尾部窗口 + 分页**
+  - [x] `driver/fold.rs`:增量折叠器(相邻同类流式帧合并;usage/plan 每轮留最后一条)
+  - [x] `replay.jsonl` 一行一轮 + `src_end` 偏移;崩溃只损坏最后一行,自动退回原始帧
+  - [x] 轮末(`task-ended`)经 journal 写线程物化;老会话首次打开流式迁移,幂等
+  - [x] `replay_open` 改尾部窗口(20 轮 / 3000 帧),保留原有"无缺口"两段屏障
+  - [x] `session_open` 返回 `{frames, cursor, has_more}`;引擎 resume 转后台 +
+        `ensure_engine_ready` 门(等待而非报错)
+  - [x] 新命令 `session_history` / `session_outline` / `session_frame`(三处登记 + ACL)
+- [x] **Step 2 UI:打开路径 + 加载更早**
+  - [x] `connect` 增 `onHistory`;历史走命令返回值,实时帧仍走事件
+  - [x] `prependBatch`(更早的一段只贡献 items)+ `ChatState.keyBase` 稳定渲染 key
+  - [x] 「加载更早」按钮 + 前插按**元素**重对齐,位置不跳(云端那条路径至今没做)
+  - [x] user 项带 `seq`(大纲 ↔ 渲染项 ↔ DOM 的稳定锚)
+- [x] **Step 3 左侧提问大纲**
+  - [x] `outline.tsx`:收起态点列 / 悬停展开浮窗 / 点条目跳转,<2 条不渲染
+  - [x] 跳转复用 `startRestore` 锚点恢复(不是 scrollIntoView),带落点闪烁
+  - [x] 当前项高亮按 rAF 节流;跳到未加载的早期提问先 `ensureLoaded(offset)`
+- [x] **Step 4 大字段护栏**
+  - [x] 物化那一刻(`Turn::guard`)截断超 4KB 工具字段,留头部 + `_meta.mcSrc`
+  - [x] `session_frame` 按 seq 回读原帧;ToolCard 展开时懒加载补全 + 失败降级文案
+  - [x] **不建 blobs/**:全文本来就在 events.jsonl 里,省掉重复存储与孤儿回收
+- [x] **等价性守卫 + 契约同步**
+  - [x] `fixtures/replay/`:Rust 钉住折叠输出、TS 钉住 `reduceBatch` 语义
+  - [x] ARCHITECTURE.md 契约 1/3/4/5 同步
+
+## Review
+
+### 实测效果(4 份真实 journal,纯折叠,未计尾部窗口与护栏)
+
+| 会话 | 帧数 | 体积 |
+|---|---|---|
+| 20260715-0407 | 8965 → 89 (1.0%) | 1.85MB → 78KB (4.1%) |
+| 20260714-1200 | 8129 → 9 (0.1%) | 1.64MB → 36KB (2.1%) |
+| 20260713-0333 | 4873 → 207 (4.2%) | 1.13MB → 164KB (14.1%) |
+| 20260715-1102 | 4332 → 60 (1.4%) | 0.97MB → 102KB (10.2%) |
+
+打开时再叠加尾部窗口(只取最近 20 轮),更早的按 cursor 翻。
+
+### 关键取舍
+
+1. **物化「折叠后的帧」而不是「渲染项」**。物化 LogItem 要在 Rust 里重写一份
+   500 行的 `reduce.ts`,两份归约逻辑此后必须永远同步;且 LogItem 是 UI 内部
+   形状,写进磁盘等于给它套上向后兼容义务。折叠帧则复用既有帧词汇(契约 1),
+   与云端 `mc_task_rounds` 同构。而"打开时 UI 零归约"的收益在折叠后可忽略
+   (几百帧 ≈ 0.1ms)。
+2. **护栏从折叠里搬了出来**。原本 `guard_big_fields` 在 `TurnFold::push` 里,
+   等价性于是只是"因为 fixture 字段小"才碰巧成立——真实 journal 一测即破
+   (差异全落在被截的 rawOutput/result/_meta)。现在截断只发生在 `Turn::guard`
+   (写进 replay.jsonl 的那一刻),折叠保持纯粹,未物化的当前轮始终是完整内容。
+3. **`src_end` 由写线程计算**。通道内该轮的 Append 必然先于 Materialize 到达,
+   单写线程顺序处理,此刻的文件长度精确等于"这一轮最后一帧写完"的位置;
+   补录旧轮时后面还跟着别的帧,必须显式传那一轮自己的偏移。
+
+### 验证
+
+- `cargo test` 122 passed(fold 规则、物化/迁移/补录幂等、尾部窗口与翻页、
+  护栏截断与回读、原有无缺口用例全绿)
+- `cargo test e2e_ -- --ignored`(真实 ohmyagent)6 passed —— 覆盖改写后的
+  `session_open` 后台 resume 与就绪门
+- `npm run test` 223 passed + `tsc --noEmit` + `npm run build`
+- `check_command_contract.py` / `check_bundle_configs.py` OK
+- **变异测试**:故意让不透明帧不打断流式相邻性 → Rust 侧与 TS 侧等价性守卫
+  同时报红,确认守卫不是摆设
+- **未做**:GUI 手动验收(本机无显示器)。大纲的悬停展开/浮窗定位、跳转闪烁、
+  窄窗口与深色模式仍需人眼过一遍
