@@ -990,7 +990,9 @@ export function Sidebar({
 
   return (
     <div className="mc-sidebar-shell" style={{ flex: "none", display: "flex", minHeight: 0 }}>
-      <div className="mc-nav-rail" style={{ width: 62, flex: "none", display: "flex", flexDirection: "column", alignItems: "center", background: "var(--rail)", borderRight: "1px solid var(--line2)" }}>
+      {/* 栏宽在 styles.css(.mc-nav-rail):mac 壳要让开红绿灯,窄窗要收窄,
+          两条规则都得能压过来——写成内联样式就把它们全挡了 */}
+      <div className="mc-nav-rail" style={{ flex: "none", display: "flex", flexDirection: "column", alignItems: "center", background: "var(--rail)", borderRight: "1px solid var(--line2)" }}>
         <MacDragSpacer />
         {!isWindowsShell() && <img src={logoUrl} alt="MonkeyCode" draggable={false} style={{ width: 31, height: 31, borderRadius: 9, margin: "2px 0 15px" }} />}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>

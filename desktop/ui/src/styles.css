@@ -9,6 +9,8 @@
  * 外观是正交的两维,都落在根节点属性上(见 ui/src/theme.ts):
  *   data-theme  深浅——:root(浅) / [data-theme="dark"]
  *   data-accent 主题色——缺省即默认绿,其余见文件末尾的生成块
+ * 另有一维不是偏好而是环境,由 ui/src/main.tsx 落上:
+ *   data-platform 宿主平台——目前只有 "mac",用于给原生红绿灯让位(.mc-nav-rail)
  * 主题色那几十个色值由 scripts/gen_accent_tokens.py 算好写死(运行时算不了色),
  * 改它请改脚本后重新生成,别手改生成块。 */
 :root {
@@ -572,8 +574,19 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   background: var(--card) !important;
 }
 
+/* 一级空间导航的栏宽。
+ *
+ * mac 壳用 TitleBarStyle::Overlay(src/main.rs),原生红绿灯直接落在 UI 上,
+ * 位置由系统给:三颗 12pt 按钮圆心在 x=20/40/60,最右那颗缩放键右缘到 x≈66。
+ * 62px 的栏放不下它——按钮会正好压在栏的右边框上。mac 下加宽到 76px,给红绿灯
+ * 留出整条落区外加 10px 余量;窄窗也不能收到 66px 以下,否则压线原样复现。
+ * data-platform 在 ui/src/main.tsx 落到根节点。 */
+.mc-nav-rail { width: 62px; }
+[data-platform="mac"] .mc-nav-rail { width: 76px; }
+
 @media (max-width: 1080px) {
-  .mc-nav-rail { width: 58px !important; }
+  .mc-nav-rail { width: 58px; }
+  [data-platform="mac"] .mc-nav-rail { width: 74px; }
   .mc-sidebar-panel { width: 220px !important; }
 }
 

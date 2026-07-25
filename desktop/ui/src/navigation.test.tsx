@@ -18,6 +18,44 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("一级导航栏的栏宽归属", () => {
+  // mac 壳的红绿灯盖在这一栏上,栏宽因此要随平台/窗宽变(styles.css .mc-nav-rail)。
+  // 内联 width 会压过那两条 CSS 规则,红绿灯压线的毛病就会静默复发——
+  // 这条断言守的是"宽度必须留在 CSS 里"。
+  it("栏宽不写在内联样式里,留给 CSS 按平台与窗宽决定", () => {
+    const html = renderToStaticMarkup(
+      <Sidebar
+        sessions={[]}
+        archivedProjects={new Set()}
+        currentId={null}
+        attention={new Set()}
+        sessionActive={false}
+        connected={false}
+        status="未连接"
+        mcConnection={{ phase: "connected", host: "monkeycode-ai.com" }}
+        cloudTasks={[]}
+        activeCloudId={null}
+        onConnectCloud={() => {}}
+        onRefreshCloud={() => {}}
+        onNewCloudTask={() => {}}
+        onOpenCloudTask={() => {}}
+        onSelect={() => {}}
+        onNewTask={() => {}}
+        onProjectArchive={() => {}}
+        onNewChat={() => {}}
+        onOpenSettings={() => {}}
+        onArchive={() => {}}
+        onDelete={() => {}}
+        onRename={() => {}}
+      />,
+    );
+
+    const rail = /<div class="mc-nav-rail" style="([^"]*)"/.exec(html);
+    expect(rail, "找不到 mc-nav-rail").not.toBeNull();
+    expect(rail![1]).not.toMatch(/(^|;)\s*width:/);
+  });
+});
+
 describe("侧栏新建任务入口", () => {
   it("云端任务标题栏提供新建按钮", () => {
     const html = renderToStaticMarkup(

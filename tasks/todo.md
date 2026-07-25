@@ -2161,3 +2161,24 @@ index.html 的首帧底色(样式表还没加载,已被检查器盯住)、`cloud
 
 验证:`tsc --noEmit` 无输出;`vitest` 30 files / 229 passed(本次新增 6);
 `vite build` OK;四个检查器 + scripts 单测全 OK。
+
+## mac 红绿灯压住一级导航栏的分隔线(2026-07-25)
+
+几何对不上:mac 壳用 `TitleBarStyle::Overlay`(`src/main.rs`),原生红绿灯直接
+落在 UI 上,位置由系统给——三颗 12pt 按钮圆心 x=20/40/60,最右那颗缩放键右缘
+到 x≈66;而一级导航栏宽 62px、右边框正好在 x=62。差 4px,压上去了。窄窗下
+媒体查询把栏收到 58px,压得更多。
+
+- [x] mac 下把栏加宽到 76px(红绿灯落区 + 10px 余量),窄窗 74px(不能低于 66)
+- [x] 栏宽从内联样式挪进 CSS(`.mc-nav-rail`):内联 width 会压过平台与窄窗
+      两条规则。补了渲染断言守这条——内联 width 一回来测试就挂(反向验证过)
+- [x] `data-platform="mac"` 由 `main.tsx` 在首帧前落到根节点,与 data-theme /
+      data-accent 同一姿势;判定不成立时按非 mac 走,即维持原样、不会崩
+
+没选的方案:用 Tauri 的 `traffic_light_position` 把红绿灯右移让开这一栏——
+移过去它们就浮在二级侧栏上、脱离窗口左上角,比压线更怪。"最左栏够宽、红绿灯
+落在它上面"是 mac 上的通行做法(Slack / Linear / Notion 都是)。
+
+验证:`tsc --noEmit` 无输出;`vitest` 230 passed;`vite build` OK,产物里四条
+栏宽规则(62/76/58/74)俱在。**未做视觉验证**——需要在 mac 上确认按钮与分隔线
+真的分开了,以及 `data-platform` 确实落上了。
