@@ -12,6 +12,7 @@ import { COL_MAX, ModelMenuItem, ModelPickerTrigger } from "./chat";
 import { HeaderFilesButton, HeaderMenu, LogList, TaskPanel, ViewHeader, type MenuState } from "./components";
 import { Composer, QueuedChip, RunningBar } from "./composer";
 import { IconCloud, IconGlobe, IconMonitor, IconStop, IconX } from "./icons";
+import { useUpwardMenuHeight } from "./menuPosition";
 import { useCloudTask } from "./useCloudTask";
 
 const STATUS_LABEL: Record<string, { text: string; color: string }> = {
@@ -64,6 +65,7 @@ export function CloudTaskView({
 
   // 云端模型下拉开合(列表加载/切换在 hook)
   const [modelOpen, setModelOpen] = useState(false);
+  const { anchorRef: modelAnchorRef, menuMaxHeight: modelMenuMaxHeight } = useUpwardMenuHeight<HTMLSpanElement>(modelOpen, 320);
   const openModelPicker = () => {
     setModelOpen((o) => !o);
     h.loadModels();
@@ -307,7 +309,7 @@ export function CloudTaskView({
                 </span>
                 <span style={{ flex: 1 }} />
                 {/* 云端模型切换(经控制流 switch_model,保留会话上下文;执行中禁用) */}
-                <span style={{ position: "relative", flex: "none" }}>
+                <span ref={modelAnchorRef} style={{ position: "relative", flex: "none" }}>
                   <ModelPickerTrigger
                     label={h.switching ? "切换中…" : cloudModelLabel(meta?.model)}
                     open={modelOpen}
@@ -318,7 +320,7 @@ export function CloudTaskView({
                   {modelOpen && (
                     <>
                       <div className="backdrop" onClick={() => setModelOpen(false)} />
-                      <div className="pop model-menu" style={{ position: "absolute", bottom: 30, right: 0, maxHeight: 320, overflowY: "auto" }}>
+                      <div className="pop model-menu" style={{ position: "absolute", bottom: 30, right: 0, maxHeight: modelMenuMaxHeight, overflowY: "auto" }}>
                         {(h.cloudModels ?? []).map((m) => (
                           <ModelMenuItem
                             key={m.id}

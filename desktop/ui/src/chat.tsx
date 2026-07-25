@@ -24,6 +24,7 @@ import {
 import { Composer, QueuedChip, RunningBar } from "./composer";
 import { IconArchive, IconChat, IconCheck, IconChevronDown, IconFolder, IconInfo, IconShield, IconTaskDone, IconX } from "./icons";
 import logoUrl from "./logo.png";
+import { useUpwardMenuHeight } from "./menuPosition";
 import { workspaceRelativePath } from "./markdownPaths";
 import type { SessionHandle } from "./useSession";
 import { modelSourceLabel, type LogItem, type ModelInfo, type SessionMeta, type SessionNotice, type Usage } from "./types";
@@ -222,6 +223,7 @@ export function ModelPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const { anchorRef, menuMaxHeight } = useUpwardMenuHeight<HTMLDivElement>(open, 370);
 
   const q = filter.trim().toLowerCase();
   const shown = q ? models.filter((m) => m.name.toLowerCase().includes(q)) : models;
@@ -240,7 +242,7 @@ export function ModelPicker({
   const showFilter = models.length > 10;
 
   return (
-    <div style={{ position: "relative", flex: "none" }}>
+    <div ref={anchorRef} style={{ position: "relative", flex: "none" }}>
       <ModelPickerTrigger
         label={current}
         open={open}
@@ -255,7 +257,7 @@ export function ModelPicker({
       {open && (
         <>
           <div className="backdrop" onClick={() => setOpen(false)} />
-          <div className="pop model-menu" style={{ position: "absolute", bottom: 30, right: 0 }}>
+          <div className="pop model-menu" style={{ position: "absolute", bottom: 30, right: 0, maxHeight: menuMaxHeight, overflow: "hidden" }}>
             {showFilter && (
               <div style={{ padding: "6px 8px 4px" }}>
                 <input
@@ -278,7 +280,7 @@ export function ModelPicker({
                 />
               </div>
             )}
-            <div style={{ maxHeight: 320, overflowY: "auto" }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
               {groups.length === 0 && (
                 <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--t5)" }}>无匹配模型</div>
               )}

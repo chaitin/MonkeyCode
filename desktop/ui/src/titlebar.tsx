@@ -1,5 +1,5 @@
 // Windows 壳的自绘标题栏:壳去掉了原生装饰栏(decorations=false),这里补回
-// 36px 的拖拽区 + 最小化/最大化/关闭按钮(跟随应用明暗主题,与界面同色融合)。
+// 与侧栏分区连续的品牌/页面上下文 + 拖拽区 + Windows 窗口按钮。
 // 仅 isWindowsShell() 时由 App 渲染;mac 壳走 Overlay 红绿灯,浏览器模式无此栏。
 import { useEffect, useState, type CSSProperties } from "react";
 import {
@@ -10,6 +10,7 @@ import {
   windowMinimize,
   windowToggleMaximize,
 } from "./host";
+import logoUrl from "./logo.png";
 
 /** macOS 壳最左栏顶部的红绿灯落区:50px 拖拽区(Tauri 的拖拽区机制是
  * data-tauri-drag-region 属性,不是 CSS app-region);非 mac 壳 12px 普通留白。
@@ -45,7 +46,7 @@ function Glyph({ d }: { d: string }) {
   );
 }
 
-export default function TitleBar() {
+export default function TitleBar({ context, layout = "sidebar" }: { context: string; layout?: "sidebar" | "settings" }) {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function TitleBar() {
 
   return (
     <div
+      data-window-titlebar=""
       data-tauri-drag-region=""
       style={{
         height: 36,
@@ -67,6 +69,33 @@ export default function TitleBar() {
         userSelect: "none",
       }}
     >
+      {layout === "sidebar" ? (
+        <>
+          <span
+            data-tauri-drag-region=""
+            style={{ width: 62, height: "100%", flex: "none", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--rail)", borderRight: "1px solid var(--line2)" }}
+          >
+            <img src={logoUrl} alt="" draggable={false} style={{ width: 19, height: 19, borderRadius: 5, pointerEvents: "none" }} />
+          </span>
+          <span
+            data-tauri-drag-region=""
+            style={{ width: 232, height: "100%", flex: "none", display: "flex", alignItems: "center", padding: "0 14px", background: "var(--side)", borderRight: "1px solid var(--line)" }}
+          >
+            <span data-tauri-drag-region="" style={{ fontSize: 12, fontWeight: 700, color: "var(--t2)", letterSpacing: 0.1 }}>MonkeyCode</span>
+          </span>
+        </>
+      ) : (
+        <span
+          data-tauri-drag-region=""
+          style={{ width: 168, height: "100%", flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 14px", background: "var(--side)", borderRight: "1px solid var(--line)" }}
+        >
+          <img src={logoUrl} alt="" draggable={false} style={{ width: 18, height: 18, borderRadius: 5, pointerEvents: "none" }} />
+          <span data-tauri-drag-region="" style={{ fontSize: 12, fontWeight: 700, color: "var(--t2)" }}>MonkeyCode</span>
+        </span>
+      )}
+      <span className="ellipsis" data-tauri-drag-region="" title={context} style={{ maxWidth: 420, padding: "0 14px", fontSize: 11.5, fontWeight: 550, color: "var(--t4)" }}>
+        {context}
+      </span>
       <span data-tauri-drag-region="" style={{ flex: 1, alignSelf: "stretch" }} />
       <button className="hv" title="最小化" onClick={() => void windowMinimize()} style={btn}>
         <Glyph d="M0 5h10" />

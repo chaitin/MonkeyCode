@@ -9,6 +9,7 @@ import { basename, isImeEnter, markImeEnd, ModelMenuItem, ModelPicker } from "./
 import { MONO } from "./components";
 import { mcTaskCreate, mcTaskOptions } from "./cloudapi";
 import { inDesktopShell, pickDirectory, workdirPickBase } from "./host";
+import { useUpwardMenuHeight } from "./menuPosition";
 import { createSession } from "./session";
 import type { CloudTask } from "./types";
 import {
@@ -72,8 +73,9 @@ function CloudConfigField({
   children: ReactNode;
 }) {
   const hasValue = !!value && value !== label;
+  const { anchorRef, menuMaxHeight } = useUpwardMenuHeight<HTMLSpanElement>(open, 360);
   return (
-    <span style={{ position: "relative", display: "inline-flex", minWidth: 0, maxWidth: "100%" }}>
+    <span ref={anchorRef} style={{ position: "relative", display: "inline-flex", minWidth: 0, maxWidth: "100%" }}>
       <button
         className="hv"
         title={`选择云端${label}：${value}`}
@@ -111,7 +113,7 @@ function CloudConfigField({
               position: "absolute",
               bottom: 32,
               ...(align === "end" ? { right: 0 } : { left: 0 }),
-              maxHeight: 360,
+              maxHeight: menuMaxHeight,
               overflowY: "auto",
             }}
           >

@@ -538,6 +538,15 @@ export default function App() {
     return () => window.removeEventListener("keydown", h);
   });
 
+  const windowContext =
+    view === "settings"
+      ? "设置"
+      : view === "cloud"
+        ? cloudTask?.title || cloudTask?.summary || cloudTask?.content || "云端任务"
+        : view === "session" && currentMeta
+          ? currentMeta.title || (currentMeta.kind === "chat" ? "对话" : "本地任务")
+          : "新建任务";
+
   return (
     <div
       style={{
@@ -551,8 +560,8 @@ export default function App() {
         overflow: "hidden",
       }}
     >
-      {/* Windows 壳:装饰栏已去除,自绘 36px 标题栏(拖拽 + 窗口按钮) */}
-      {isWindowsShell() && <TitleBar />}
+      {/* Windows 壳:装饰栏已去除,自绘 36px 标题栏(品牌/上下文 + 拖拽 + 窗口按钮) */}
+      {isWindowsShell() && <TitleBar context={windowContext} layout={view === "settings" ? "settings" : "sidebar"} />}
       {/* 引擎崩溃横幅:进程监视发现非正常退出时外显 + 一键重启
           (不外显的话会话流只会无限重连,表现为无提示的卡死) */}
       {engineCrash && (

@@ -19,6 +19,7 @@ import {
   IconStop,
   IconX,
 } from "./icons";
+import { isWindowsShell } from "./host";
 import logoUrl from "./logo.png";
 import { isProjectArchived, projectArchiveKey } from "./projectArchive";
 import { MacDragSpacer } from "./titlebar";
@@ -991,7 +992,7 @@ export function Sidebar({
     <div className="mc-sidebar-shell" style={{ flex: "none", display: "flex", minHeight: 0 }}>
       <div className="mc-nav-rail" style={{ width: 62, flex: "none", display: "flex", flexDirection: "column", alignItems: "center", background: "var(--rail)", borderRight: "1px solid var(--line2)" }}>
         <MacDragSpacer />
-        <img src={logoUrl} alt="MonkeyCode" draggable={false} style={{ width: 31, height: 31, borderRadius: 9, margin: "2px 0 15px" }} />
+        {!isWindowsShell() && <img src={logoUrl} alt="MonkeyCode" draggable={false} style={{ width: 31, height: 31, borderRadius: 9, margin: "2px 0 15px" }} />}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
           <RailButton active={space === "cloud"} label="云端" icon={<IconCloud size={16} color={space === "cloud" ? "var(--accSelT)" : "var(--t4)"} />} onClick={() => selectSpace("cloud")} />
           <RailButton active={space === "local"} label="本地" badge={localAttention} icon={<IconMonitor size={16} color={space === "local" ? "var(--accSelT)" : "var(--t4)"} strokeWidth={1.25} />} onClick={() => selectSpace("local")} />
