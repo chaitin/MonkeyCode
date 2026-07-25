@@ -815,9 +815,6 @@ export function ChatView({
           </div>
         </div>
       ) : (
-        // 外层只为提问大纲提供定位上下文:轨道绝对定位贴在滚动视口左缘,
-        // 不参与布局,窄窗口下正文列宽不受影响
-        <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex" }}>
         <div
           ref={logRef}
           onScroll={onLogScroll}
@@ -859,9 +856,14 @@ export function ChatView({
             />
           </div>
         </div>
-          <OutlineNav entries={outline} activeSeq={activeSeq} onJump={onOutlineJump} />
-        </div>
       )}
+
+      {/* 提问大纲:挂在 ChatView 根而不是日志视口内——参照物必须是**高度不变**
+          的那一层。挂在日志视口里的话,下方任务面板/排队条一长高,视口变矮,
+          居中的点列就跟着往上跑(这正是上一版把它钉到顶部的由来,但钉顶部
+          又不是"中间"了)。根的高度恒定,居中即稳定;点列自身限高 60%,
+          再多也只在中间那段内滚,够不着标题栏与 composer。 */}
+      {!empty && <OutlineNav entries={outline} activeSeq={activeSeq} onJump={onOutlineJump} />}
 
       {/* ==== 运行条 + 排队 + composer(680 列,钉在底部)====
           width 扣掉 16px:对话列在滚动容器内被 scrollbar-gutter 双侧各让 8px,

@@ -117,13 +117,15 @@ export function OutlineNav({
       aria-label="提问大纲"
       style={{
         position: "absolute",
-        // 不贴窗口左缘;浮窗在点列右侧(见 .mc-outline-panel)
+        // 不贴窗口左缘;浮窗在点列右侧(见 .mc-outline-panel)。
+        // top/bottom 贴满的是 ChatView 根(高度恒定),不是日志视口——
+        // 参照物会变的话,居中的点列会随任务面板长高而上移。
         left: 10,
         top: 0,
         bottom: 0,
         width: 18,
         display: "flex",
-        alignItems: "flex-start",
+        alignItems: "center",
         zIndex: 12,
         // 满高定位框不能吃事件:否则鼠标在正文左缘任意高度划过都会展开,
         // 顺带还挡住正文最左一条的选中与点击。触发只归点列与浮窗自己。
