@@ -1,4 +1,4 @@
-// 设置视图:左侧分类导航(百智云账号 / 模型 / MCP / 通用)+ 右侧单分类内容
+// 设置视图:左侧分类导航(百智云账号 / 模型 / MCP / 浏览器 / 通用与更新)+ 右侧单分类内容
 // + 底部脏状态保存条。账号优先:MonkeyCode 是百智云旗下产品,"登录 → 同步"
 // 是主路径,手工配置是高级路径。
 // 配置所有权在壳(写盘 0600/env 注入/重启内核),本视图只负责渲染与编辑,
@@ -35,6 +35,7 @@ import {
 } from "./settingsConfig";
 import { readAccent, readTheme, setAccent, setTheme, type AccentKey, type Theme } from "./theme";
 import { ACCENTS } from "./gen/accents";
+import { updateGate } from "./updateGate";
 import { MacDragSpacer } from "./titlebar";
 import {
   SOURCE_BAIZHI,
@@ -65,10 +66,13 @@ function AboutCard({
   const [msg, setMsg] = useState<{ text: string; color: string } | null>(null);
   const found = !!update?.available;
 
+  // 手动检查不过闸门(用户明确要查就得查),但记一笔账:紧接着切个窗口回来
+  // 不该再查一遍。
   const check = async () => {
     setPhase("checking");
     setMsg(null);
     try {
+      updateGate.record();
       const s = await updateCheck();
       onUpdateStatus(s);
       if (!s.available) setMsg({ text: "已是最新版本", color: "var(--ok)" });
@@ -291,7 +295,7 @@ const NAV: { key: SectionKey; label: string; icon: (p: { size?: number; color?: 
   { key: "models", label: "模型", icon: IconSpark },
   { key: "mcp", label: "MCP 服务器", icon: IconMonitor },
   { key: "browser", label: "浏览器", icon: IconGlobe },
-  { key: "general", label: "通用", icon: IconGear },
+  { key: "general", label: "通用与更新", icon: IconGear },
 ];
 
 // 徽标小药丸(provider/类型/来源)

@@ -363,22 +363,22 @@ fn display_version(v: &str) -> String {
     v.strip_suffix(".0.0").unwrap_or(v).to_string()
 }
 
-/// 更新流程中的提示(manual=托盘手动检查;自动检查失败只打日志不打扰)。
-fn update_notice(app: &AppHandle, manual: bool, error: bool, msg: &str) {
+/// 更新流程中的提示。只服务托盘的手动检查——用户点了就得有回音,"已是最新"
+/// 也要弹。曾有个 manual 开关用来让自动检查静默,自动检查移到 UI 侧之后这个
+/// 分支恒真,留着就是死参数。UI 侧的静默检查走 update_check 命令,不经这里。
+fn update_notice(app: &AppHandle, error: bool, msg: &str) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
     eprintln!("[desktop] 更新: {msg}");
-    if manual {
-        let kind = if error {
-            MessageDialogKind::Error
-        } else {
-            MessageDialogKind::Info
-        };
-        app.dialog()
-            .message(msg)
-            .title("检查更新")
-            .kind(kind)
-            .show(|_| {});
-    }
+    let kind = if error {
+        MessageDialogKind::Error
+    } else {
+        MessageDialogKind::Info
+    };
+    app.dialog()
+        .message(msg)
+        .title("检查更新")
+        .kind(kind)
+        .show(|_| {});
 }
 
 /// 本机运行形态是否支持自更新。
@@ -436,22 +436,23 @@ fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, Strin
         .map_err(|e| format!("初始化更新器失败: {e}"))
 }
 
-/// 检查更新并在有新版时询问用户;确认则下载安装 + 重启(内核经 RunEvent::Exit 回收)。
-async fn check_update(app: AppHandle, manual: bool) {
+/// 托盘「检查更新」:查到新版就询问用户,确认则下载安装 + 重启(内核经
+/// RunEvent::Exit 回收)。自动检查不走这里,见 setup 里那段说明。
+async fn check_update(app: AppHandle) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
     let updater = match build_updater(&app) {
         Ok(u) => u,
-        Err(e) => return update_notice(&app, manual, true, &e),
+        Err(e) => return update_notice(&app, true, &e),
     };
 
     let update = match updater.check().await {
         Ok(Some(u)) => u,
         Ok(None) => {
             let cur = display_version(&app.package_info().version.to_string());
-            return update_notice(&app, manual, false, &format!("当前已是最新版本({cur})"));
+            return update_notice(&app, false, &format!("当前已是最新版本({cur})"));
         }
-        Err(e) => return update_notice(&app, manual, true, &format!("检查更新失败: {e}")),
+        Err(e) => return update_notice(&app, true, &format!("检查更新失败: {e}")),
     };
 
     let msg = format!(
@@ -495,7 +496,7 @@ async fn check_update(app: AppHandle, manual: bool) {
                             app.restart();
                         }
                         // 用户已确认过更新,失败必须外显
-                        Err(e) => update_notice(&app, true, true, &format!("更新失败: {e}")),
+                        Err(e) => update_notice(&app, true, &format!("更新失败: {e}")),
                     }
                 });
             }
@@ -857,15 +858,13 @@ fn main() {
                 app.state::<TrayReady>().0.store(false, Ordering::Relaxed);
             }
 
-            // 启动后延迟自检一次更新。debug 构建默认跳过(开发噪音),
-            // 设置 MC_UPDATE_MANIFEST 时强制启用(本机 http 清单联调)。
-            if !cfg!(debug_assertions) || std::env::var("MC_UPDATE_MANIFEST").is_ok() {
-                let handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_secs(5));
-                    tauri::async_runtime::block_on(check_update(handle, false));
-                });
-            }
+            // 自动检查更新整条收在 UI 侧(ui/src/App.tsx + updateGate.ts):挂载、
+            // 切回前台、4 小时兜底三个触发点共用一道 30 分钟闸门,发现新版点亮
+            // 侧栏徽标与横幅。这里曾经还有一条"启动后 5 秒自检 + 弹对话框"的
+            // 并行路径,与 UI 那次在启动瞬间各打一遍更新端点,且弹窗与横幅重复;
+            // 唯一去处是托盘的「检查更新」——那条仍在(见 check_update)。
+            // 联调仍走 MC_UPDATE_MANIFEST:它在 build_updater 里覆盖清单地址,
+            // 对托盘手动检查与 UI 的 update_check 命令同样生效。
 
             if let Some(e) = config_error {
                 eprintln!("[desktop] 配置加载失败: {e}");
@@ -996,7 +995,7 @@ fn setup_tray(app: &AppHandle, pet_enabled: bool) -> tauri::Result<()> {
             }
             "check-update" => {
                 let app = app.clone();
-                tauri::async_runtime::spawn(async move { check_update(app, true).await });
+                tauri::async_runtime::spawn(async move { check_update(app).await });
             }
             "quit" => app.exit(0),
             _ => {}

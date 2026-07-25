@@ -48,6 +48,7 @@ import { SettingsView } from "./settings";
 import TitleBar from "./titlebar";
 import { uploadFileURL } from "./uploads";
 import { lastSessionId, useSession } from "./useSession";
+import { updateGate } from "./updateGate";
 import type { CloudProject, CloudTask, EngineCrash, HostInfo, LogItem, McConnectionState, ModelInfo, SessionMeta, UpdateStatus } from "./types";
 
 /** 内核与页面同机(serve 仅绑 loopback),浏览器 UA 即宿主平台 */
@@ -407,14 +408,25 @@ export default function App() {
       })
       .catch((e) => session.notify("无法连接服务: " + (e instanceof Error ? e.message : e)));
     let updateTimer: ReturnType<typeof setInterval> | undefined;
+    let offForeground = () => {};
     if (inDesktopShell()) {
       void getHostInfo().then(setHostInfo);
-      const silentCheck = () =>
+      // 静默:自动检查失败不打扰。三个触发点共用 updateGate,30 分钟内只查一次
+      const silentCheck = () => {
+        if (!updateGate.tryTake()) return;
         updateCheck()
           .then(setUpdate)
-          .catch(() => {}); // 静默:自动检查失败不打扰
+          .catch(() => {});
+      };
       silentCheck();
-      // 长驻应用不重启就永远发现不了新版:每 4 小时静默复查一次
+      // 切回前台就顺手看一眼:长驻应用最常见的"用了一阵子回来"就是这个时刻。
+      // 前台信号沿用上面云端刷新那处的 window focus(最小化恢复、点任务栏、
+      // 从桌宠唤起都会触发);桌宠是另一个 webview(pet.html),不会走到这里。
+      // 密集触发全由闸门吸收,不必再听 visibilitychange。
+      window.addEventListener("focus", silentCheck);
+      offForeground = () => window.removeEventListener("focus", silentCheck);
+      // 兜底:窗口一直开着没失去过焦点(挂着跑任务)就等不到前台事件,
+      // 仍按 4 小时复查一次——被闸门挡掉也只是顺延到下一次 tick。
       updateTimer = setInterval(silentCheck, 4 * 3600_000);
     }
     return () => {
@@ -422,6 +434,7 @@ export default function App() {
       offSession();
       offBrowserMcp();
       offBrowserMcpTimeout();
+      offForeground();
       clearInterval(updateTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
