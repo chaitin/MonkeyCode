@@ -33,7 +33,8 @@ import {
   validateMcpNames,
   type McpEntry,
 } from "./settingsConfig";
-import { readTheme, setTheme, type Theme } from "./theme";
+import { readAccent, readTheme, setAccent, setTheme, type AccentKey, type Theme } from "./theme";
+import { ACCENTS } from "./gen/accents";
 import { MacDragSpacer } from "./titlebar";
 import {
   SOURCE_BAIZHI,
@@ -464,6 +465,12 @@ export function SettingsView({
   const pickTheme = (next: Theme) => {
     setTheme(next);
     setThemeState(next);
+  };
+  // 主题色同理,与深浅两维正交(见 theme.ts)
+  const [accent, setAccentState] = useState<AccentKey>(readAccent);
+  const pickAccent = (next: AccentKey) => {
+    setAccent(next);
+    setAccentState(next);
   };
 
   // 登录态由 Shell 持有:账号页 BaizhiCard 与模型/MCP 页的引导条共用
@@ -1013,15 +1020,53 @@ export function SettingsView({
     );
   };
 
+  /** 主题色色板一枚。圆点用该色**自己**的 --acc(gen/accents.ts 里生成的
+   *  swatch),不能写 var(--acc)——那是"当前选中的色",四枚会长得一模一样。 */
+  const accentBtn = (key: AccentKey, label: string, swatch: string) => {
+    const on = accent === key;
+    return (
+      <button
+        key={key}
+        type="button"
+        aria-pressed={on}
+        onClick={() => pickAccent(key)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          height: 26,
+          padding: "0 11px 0 8px",
+          borderRadius: 13,
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 600,
+          border: `1.5px solid ${on ? swatch : "var(--btnBd)"}`,
+          background: on ? "var(--card)" : "transparent",
+          color: on ? "var(--t1)" : "var(--t4)",
+          boxShadow: on ? "var(--cardSh)" : "none",
+        }}
+      >
+        <span style={{ width: 12, height: 12, borderRadius: "50%", background: swatch, flex: "none" }} />
+        {label}
+      </button>
+    );
+  };
+
   const generalSection = () => (
     <>
       <Section label="外观">
-        <div className="card card-lg" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ display: "flex", background: "var(--segBg)", borderRadius: 8, padding: 3, gap: 2 }}>
-            {themeBtn("light", "浅色")}
-            {themeBtn("dark", "深色")}
+        <div className="card card-lg" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ display: "flex", background: "var(--segBg)", borderRadius: 8, padding: 3, gap: 2 }}>
+              {themeBtn("light", "浅色")}
+              {themeBtn("dark", "深色")}
+            </div>
+            <span style={{ fontSize: 12, color: "var(--t5)" }}>切换立即生效并记在本机,不影响内核配置。</span>
           </div>
-          <span style={{ fontSize: 12, color: "var(--t5)" }}>切换立即生效并记在本机,不影响内核配置。</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12, color: "var(--t4)", flex: "none", marginRight: 2 }}>主题色</span>
+            {ACCENTS.map((a) => accentBtn(a.key, a.label, a.swatch))}
+          </div>
         </div>
       </Section>
       {/* WSL 运行环境随单引擎化尚未移植:driver/transport.rs 对

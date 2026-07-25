@@ -4,7 +4,13 @@
  *
  * 兼容红线:Win7 上 WebView2 停在 Chromium 109。颜色一律经 :root 令牌 +
  * var() 引用,禁止 color-mix()/相对颜色语法/CSS 嵌套/light-dark()(均 >109);
- * 透明变体各开独立令牌,不做运行时颜色计算。主题切换 = 根节点换 data-theme。 */
+ * 透明变体各开独立令牌,不做运行时颜色计算。
+ *
+ * 外观是正交的两维,都落在根节点属性上(见 ui/src/theme.ts):
+ *   data-theme  深浅——:root(浅) / [data-theme="dark"]
+ *   data-accent 主题色——缺省即默认绿,其余见文件末尾的生成块
+ * 主题色那几十个色值由 scripts/gen_accent_tokens.py 算好写死(运行时算不了色),
+ * 改它请改脚本后重新生成,别手改生成块。 */
 :root {
   --bg: #fcfdfc;            /* 主区底色 */
   --rail: #edf1ee;          /* 一级空间导航 */
@@ -31,7 +37,7 @@
    * fill 是给 --onAcc 白字垫底的,直接当文字色用在 --bg 上只有 2.74:1。 */
   --acc: #16b364;           /* 品牌绿 */
   --accH: #1dcc74;          /* 品牌绿 hover(ac + (ac − ac2),沿点缀色阶外推一步) */
-  --accTx: #0b8f4d;         /* 品牌绿文字(移动端 acTx = 清新绿 txL;对 --bg 3.8:1) */
+  --accTx: #0b8f4d;         /* 品牌绿文字(移动端 acTx = 清新绿 txL;对 --bg 4.1:1) */
   --accBg: rgba(22, 179, 100, 0.12);
   --accBd: rgba(22, 179, 100, 0.2);
   --accBg2: rgba(22, 179, 100, 0.15); /* 激活底(比 --accBg 深一档,设置齿轮) */
@@ -99,6 +105,11 @@
   --termTx2: #9fa0a0;                     /* 面板头图标与提示(移动端深色 tx2) */
   --termTx3: #6c6d70;                     /* 面板头副标题(移动端深色 tx3) */
   --termAcc: #6fe6a3;                     /* 岛内点缀(移动端 termAcc,两主题同值) */
+  /* 平台/功能约定色:不属于本调色板,两个主题同值,也不跟主题色走。
+   * 收进令牌只为满足"颜色一律经令牌"这条红线,并把"为什么不跟随主题"写在这。 */
+  --capClose: #e81123;                    /* 窗口关闭键 hover:Windows caption 官方红 */
+  --capCloseTx: #ffffff;                  /* 同上,红底上的字形色 */
+  --qrBg: #ffffff;                        /* 二维码衬底:要白底才扫得出,深色下也不反相 */
   /* 代码高亮配色(GitHub Light 系;深色主题在 data-theme 块重定义) */
   --hlKw: #cf222e;   /* 关键字 */
   --hlStr: #0a3069;  /* 字符串/正则 */
@@ -236,6 +247,10 @@
   --termTx2: #9fa0a0;                     /* 面板头图标与提示(移动端 tx2) */
   --termTx3: #6c6d70;                     /* 面板头副标题(移动端 tx3) */
   --termAcc: #6fe6a3;                     /* 岛内点缀(移动端 termAcc,两主题同值) */
+  /* 平台/功能约定色:与浅色同值(理由见浅色块),列在这里是为了过令牌对齐检查 */
+  --capClose: #e81123;                    /* 窗口关闭键 hover:Windows caption 官方红 */
+  --capCloseTx: #ffffff;                  /* 同上,红底上的字形色 */
+  --qrBg: #ffffff;                        /* 二维码衬底:要白底才扫得出,深色下也不反相 */
   /* 代码高亮配色(GitHub Dark 系,与浅色的 GitHub Light 成对;移动端无对应令牌) */
   --hlKw: #ff7b72;   /* 关键字 */
   --hlStr: #a5d6ff;  /* 字符串/正则 */
@@ -243,6 +258,121 @@
   --hlFn: #d2a8ff;   /* 函数/类型/标题 */
   --hlAttr: #ffa657; /* 属性/标签名 */
 }
+
+/* BEGIN generated accents — scripts/gen_accent_tokens.py 生成,勿手改 */
+/* 主题色 = 样板(绿)的整套令牌在 OKLCH 里绕色相轴旋转到目标色相:OKLab 的
+ * L 与 C 不动,只换色相,所以四个色感知上一样轻重,派生关系(hover/文字/
+ * 选中/投影/气泡)自动跟着走,默认绿一个字节都不用改(旋转 0° 是恒等)。
+ * 色相取自移动端 ACCENTS 的 fill。默认绿不在这里——它就是 :root/深色块本身,
+ * 对应 data-accent 属性缺省(见 ui/src/theme.ts)。
+ * 权重说明:[data-theme=dark][data-accent=x] 是 (0,2,0),压得住 (0,1,0) 的
+ * 深色块;浅色块 [data-accent=x] 与深色块同权重,靠位置在后取胜。
+ * 括号里的比值是生成时实测的 WCAG 对比度(等 L 不等于等对比度,两套加权
+ * 不同)。样板绿是 白字/--acc 2.74:1、--accTx/--bg 4.08:1(浅),2.74:1、10.58:1(深);
+ * 生成色不应比它更差,更差就说明该色相在这个 L 上被色域压过了彩度。 */
+
+[data-accent="blue"] {   /* 天空蓝 · 浅色(白字/--acc 2.90:1,--accTx/--bg 4.30:1) */
+  --acc: #0f9ef5;
+  --accH: #54b4ff;
+  --accTx: #007ec5;
+  --accBg: rgba(15, 158, 245, 0.12);
+  --accBd: rgba(15, 158, 245, 0.2);
+  --accBg2: rgba(15, 158, 245, 0.15);
+  --accBd2: rgba(15, 158, 245, 0.3);
+  --accBgSoft: rgba(15, 158, 245, 0.07);
+  --accSel: rgba(15, 158, 245, 0.085);
+  --accSelT: #2e4969;
+  --accSelDim: #687482;
+  --accSh: 0 2px 8px rgba(15, 158, 245, 0.25);
+  --linkH: #2a5d90;
+  --userBg: #e9f0f8;
+}
+
+[data-theme="dark"][data-accent="blue"] {   /* 天空蓝 · 深色(白字/--acc 2.90:1,--accTx/--bg 10.01:1) */
+  --acc: #0f9ef5;
+  --accH: #54b4ff;
+  --accTx: #86c7ff;
+  --accBg: rgba(15, 158, 245, 0.17);
+  --accBd: rgba(15, 158, 245, 0.3);
+  --accBg2: rgba(15, 158, 245, 0.21);
+  --accBd2: rgba(15, 158, 245, 0.45);
+  --accBgSoft: rgba(15, 158, 245, 0.1);
+  --accSel: rgba(15, 158, 245, 0.12);
+  --accSelT: #86c7ff;
+  --accSelDim: #6398ce;
+  --accSh: 0 2px 8px rgba(15, 158, 245, 0.3);
+  --linkH: #86c7ff;
+  --userBg: #1f2b3e;
+}
+
+[data-accent="purple"] {   /* 葡萄紫 · 浅色(白字/--acc 3.15:1,--accTx/--bg 4.63:1) */
+  --acc: #b277e5;
+  --accH: #c98cff;
+  --accTx: #8e5eb9;
+  --accBg: rgba(178, 119, 229, 0.12);
+  --accBd: rgba(178, 119, 229, 0.2);
+  --accBg2: rgba(178, 119, 229, 0.15);
+  --accBd2: rgba(178, 119, 229, 0.3);
+  --accBgSoft: rgba(178, 119, 229, 0.07);
+  --accSel: rgba(178, 119, 229, 0.085);
+  --accSelT: #543d5f;
+  --accSelDim: #796f7e;
+  --accSh: 0 2px 8px rgba(178, 119, 229, 0.25);
+  --linkH: #6d4982;
+  --userBg: #f2edf6;
+}
+
+[data-theme="dark"][data-accent="purple"] {   /* 葡萄紫 · 深色(白字/--acc 3.15:1,--accTx/--bg 9.45:1) */
+  --acc: #b277e5;
+  --accH: #c98cff;
+  --accTx: #d6a9ff;
+  --accBg: rgba(178, 119, 229, 0.17);
+  --accBd: rgba(178, 119, 229, 0.3);
+  --accBg2: rgba(178, 119, 229, 0.21);
+  --accBd2: rgba(178, 119, 229, 0.45);
+  --accBgSoft: rgba(178, 119, 229, 0.1);
+  --accSel: rgba(178, 119, 229, 0.12);
+  --accSelT: #d6a9ff;
+  --accSelDim: #a881bf;
+  --accSh: 0 2px 8px rgba(178, 119, 229, 0.3);
+  --linkH: #d6a9ff;
+  --userBg: #342436;
+}
+
+[data-accent="orange"] {   /* 蜜橘橙 · 浅色(白字/--acc 3.10:1,--accTx/--bg 4.58:1) */
+  --acc: #e27502;
+  --accH: #ff8814;
+  --accTx: #b55c00;
+  --accBg: rgba(226, 117, 2, 0.12);
+  --accBd: rgba(226, 117, 2, 0.2);
+  --accBg2: rgba(226, 117, 2, 0.15);
+  --accBd2: rgba(226, 117, 2, 0.3);
+  --accBgSoft: rgba(226, 117, 2, 0.07);
+  --accSel: rgba(226, 117, 2, 0.085);
+  --accSelT: #5f4021;
+  --accSelDim: #7f7064;
+  --accSh: 0 2px 8px rgba(226, 117, 2, 0.25);
+  --linkH: #824b15;
+  --userBg: #f6eee7;
+}
+
+[data-theme="dark"][data-accent="orange"] {   /* 蜜橘橙 · 深色(白字/--acc 3.10:1,--accTx/--bg 9.59:1) */
+  --acc: #e27502;
+  --accH: #ff8814;
+  --accTx: #ffa96a;
+  --accBg: rgba(226, 117, 2, 0.17);
+  --accBd: rgba(226, 117, 2, 0.3);
+  --accBg2: rgba(226, 117, 2, 0.21);
+  --accBd2: rgba(226, 117, 2, 0.45);
+  --accBgSoft: rgba(226, 117, 2, 0.1);
+  --accSel: rgba(226, 117, 2, 0.12);
+  --accSelT: #ffa96a;
+  --accSelDim: #c08452;
+  --accSh: 0 2px 8px rgba(226, 117, 2, 0.3);
+  --linkH: #ffa96a;
+  --userBg: #372714;
+}
+/* END generated accents */
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
@@ -396,7 +526,7 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 }
 .hv-bd:hover { border-color: var(--acc) !important; }
 /* Windows 自绘标题栏的关闭按钮:hover 红底白字(系统惯例,明暗主题同色) */
-.hv-caption-close:hover { background: #e81123 !important; color: #fff !important; }
+.hv-caption-close:hover { background: var(--capClose) !important; color: var(--capCloseTx) !important; }
 
 /* 列表行的悬停操作区(设置页紧凑行:平时隐藏,悬停行时浮现) */
 .hrow .row-acts { opacity: 0; transition: opacity 0.12s ease; }

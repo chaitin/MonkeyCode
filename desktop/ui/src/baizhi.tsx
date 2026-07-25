@@ -371,7 +371,7 @@ export function BaizhiCard({
       <div className="card card-lg" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "18px 16px" }}>
         <BaizhiLogo size={36} />
         <span style={{ fontSize: 12.5, color: "var(--t3)" }}>登录百智云账号后,可同步账号下的模型与 MCP 配置。</span>
-        <div style={{ position: "relative", width: 168, height: 168, borderRadius: 10, border: "1px solid var(--inputBd)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        <div style={{ position: "relative", width: 168, height: 168, borderRadius: 10, border: "1px solid var(--inputBd)", background: "var(--qrBg)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
           {qr && <img src={qr} alt="微信扫码登录" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", filter: needRetry ? "blur(3px) opacity(.35)" : "none" }} />}
           {!qr && !needRetry && <span style={{ fontSize: 12, color: "var(--t5)" }}>加载中…</span>}
           {needRetry && (

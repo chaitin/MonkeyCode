@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { applyStoredTheme, readTheme, setTheme } from "./theme";
+import { applyStoredTheme, readAccent, readTheme, setAccent, setTheme } from "./theme";
 
 // node 环境无 DOM/存储:按 navigation.test.tsx 的做法只桩出用到的那两个全局
 let values: Map<string, string>;
-let root: { dataset: { theme?: string } };
+let root: { dataset: { theme?: string; accent?: string } };
 
 beforeEach(() => {
   values = new Map<string, string>();
@@ -68,5 +68,56 @@ describe("主题偏好", () => {
 
     expect(() => setTheme("dark")).not.toThrow();
     expect(root.dataset.theme).toBe("dark");
+  });
+});
+
+describe("主题色偏好", () => {
+  it("缺省、脏数据和不可读存储都回落默认色", () => {
+    expect(readAccent()).toBe("green");
+
+    values.set("mc.accent", "purple");
+    expect(readAccent()).toBe("purple");
+
+    // 脏数据含移动端那套中文 key:桌面存的是 slug,不认就回落
+    values.set("mc.accent", "葡萄紫");
+    expect(readAccent()).toBe("green");
+
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("storage disabled");
+      },
+      setItem: vi.fn(),
+    });
+    expect(readAccent()).toBe("green");
+  });
+
+  it("切换写盘并换根节点属性,默认色不留属性", () => {
+    setAccent("orange");
+    expect(values.get("mc.accent")).toBe("orange");
+    expect(root.dataset.accent).toBe("orange");
+
+    setAccent("green");
+    expect(values.get("mc.accent")).toBe("green");
+    expect(root.dataset.accent).toBe("");
+  });
+
+  it("启动一次把深浅与主题色两维都落上", () => {
+    values.set("mc.theme", "dark");
+    values.set("mc.accent", "blue");
+    applyStoredTheme();
+    expect(root.dataset.theme).toBe("dark");
+    expect(root.dataset.accent).toBe("blue");
+  });
+
+  it("存储不可写时仍应用本次主题色", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("quota exceeded");
+      },
+    });
+
+    expect(() => setAccent("blue")).not.toThrow();
+    expect(root.dataset.accent).toBe("blue");
   });
 });

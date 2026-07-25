@@ -8,8 +8,22 @@
          vite dev 模式下该路径不存在,回退本机字体链,不影响开发 -->
     <link rel="stylesheet" href="/fonts/fonts.css" />
     <style>
+      /* 首帧防闪。这里不能用 var(--bg):styles.css 由 main.tsx 引入,首帧时还没到。
+         两档值必须与 styles.css 的 --bg 逐字对齐,scripts/check_theme_tokens.py 会校验。 */
       html, body { background: #fcfdfc; }
+      html[data-theme="dark"], html[data-theme="dark"] body { background: #15161a; }
     </style>
+    <script>
+      /* 同步执行,先于首帧落属性:<script type="module"> 是 defer 的,main.tsx 里的
+         applyStoredTheme() 赶不上第一次绘制,深色用户会先闪一帧浅色。
+         只读深浅这一维——主题色不影响底色,它晚一帧无所谓。
+         键名与回落规则跟 src/theme.ts::readTheme 一致(同样的检查器盯着)。 */
+      try {
+        if (localStorage.getItem("mc.theme") === "dark") document.documentElement.dataset.theme = "dark";
+      } catch (e) {
+        /* 存储不可读:按浅色走,与 readTheme 的回落一致 */
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

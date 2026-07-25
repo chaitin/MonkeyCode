@@ -64,6 +64,7 @@ jobs:
           python3 scripts/check_command_contract.py
           python3 scripts/check_bundle_configs.py
           python3 scripts/check_theme_tokens.py
+          python3 scripts/gen_accent_tokens.py --check
           python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Check and test Rust shell

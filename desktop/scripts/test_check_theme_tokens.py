@@ -4,7 +4,7 @@ import pathlib
 import tempfile
 import unittest
 
-from check_theme_tokens import check, tokens_of
+from check_theme_tokens import check, check_boot_background, tokens_of
 
 
 def css_of(light: dict[str, str], dark: dict[str, str]) -> str:
@@ -63,6 +63,53 @@ class ThemeTokenContractTest(unittest.TestCase):
     def test_missing_selector_block_raises(self) -> None:
         with self.assertRaises(ValueError):
             tokens_of(":root { --a: 1; }", '[data-theme="dark"]')
+
+
+GOOD_HTML = """<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      html, body { background: #fcfdfc; }
+      html[data-theme="dark"], html[data-theme="dark"] body { background: #15161a; }
+    </style>
+    <script>
+      try { if (localStorage.getItem("mc.theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) {}
+    </script>
+  </head>
+  <body><script type="module" src="/src/main.tsx"></script></body>
+</html>
+"""
+
+BG_CSS = ':root {\n  --bg: #fcfdfc;\n}\n\n[data-theme="dark"] {\n  --bg: #15161a;\n}\n'
+
+
+def write_html(html: str) -> pathlib.Path:
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "index.html"
+    tmp.write_text(html, encoding="utf-8")
+    return tmp
+
+
+class BootBackgroundTest(unittest.TestCase):
+    """index.html 的首帧底色是唯一走不了 var() 的颜色,只能靠检查器盯着它
+    别与 --bg 漂开——漂了不报错,只是深色启动闪一帧浅色,没人会注意到。"""
+
+    def test_matching_pair_passes(self) -> None:
+        self.assertEqual(check_boot_background(BG_CSS, write_html(GOOD_HTML)), [])
+
+    def test_drifted_light_background_is_reported(self) -> None:
+        errors = check_boot_background(BG_CSS, write_html(GOOD_HTML.replace("#fcfdfc", "#ffffff")))
+        self.assertTrue(any("闪一帧" in e for e in errors), errors)
+
+    def test_missing_dark_rule_is_reported(self) -> None:
+        html = "\n".join(l for l in GOOD_HTML.split("\n") if "data-theme" not in l or "localStorage" in l)
+        errors = check_boot_background(BG_CSS, write_html(html))
+        self.assertTrue(any("缺首帧防闪底色规则" in e for e in errors), errors)
+
+    def test_deferred_only_script_is_reported(self) -> None:
+        # 只剩 <script type="module">:属性落得比首帧晚,两档规则都命不中
+        html = GOOD_HTML.replace("<script>", '<script type="module">')
+        errors = check_boot_background(BG_CSS, write_html(html))
+        self.assertTrue(any("同步内联脚本" in e for e in errors), errors)
 
 
 if __name__ == "__main__":

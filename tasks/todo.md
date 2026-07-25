@@ -1987,3 +1987,63 @@ cargo test **60/60 零警告**(4 个真实引擎 E2E + perm remember/对账/结�
       `data-theme`,开着终端换主题不会留一块旧底色
 
 验证:`tsc --noEmit` 无输出;`vitest` 27 files / 199 passed;`vite build` OK。
+
+## 主题色切换(2026-07-25)
+
+移动端 `ACCENTS` 有四组点缀色但没有落地入口;桌面把它做成可切换,并借机把
+调色板本身做得比移动端更合理(用户明确"不用完全照抄")。
+
+- [x] 机制:`data-accent` 与 `data-theme` 两维正交,都只是根节点属性,
+      组件与令牌零改动。默认色不写属性——它就是 `:root`/深色块本身
+- [x] 配色规则:**主题色 = 默认绿那 14 个令牌在 OKLCH 里绕色相轴整体旋转**,
+      OKLab 的 L 与 C 不动。好处:①默认绿逐字节不变(旋转 0° 是恒等,有断言);
+      ②感知轻重一致;③设计师手调的 accSelT/linkH/accSelDim/userBg 自动跟着走,
+      不用为每个色重新手调;④加新色只要给一个色相
+- [x] 色相按可辨识度重排,没照抄移动端:蓝 245°(原 260°)、紫 307°(原 291°)、
+      橙 55°(原 65°)。移动端的蓝与紫在 OKLab 里只差 31°,统一到同一 L/C 后
+      会糊成两块蓝紫;重排后最小间隔 62°,且三个色相都拿到满彩度(原橙 65°
+      会被 sRGB 色域压掉 9%)
+- [x] 对比度不降级:白字压在主题色上,绿 2.74:1(样板)、蓝 2.90、橙 3.10、
+      紫 3.15——三个生成色都优于默认绿。移动端原橙 #f29a35 只有 2.2:1,
+      照抄就是把坑搬过来。比值由脚本实测后写进每个 CSS 块的注释
+- [x] `scripts/gen_accent_tokens.py` + 单测 13 例:从 `mobile/src/theme.tsx`
+      解析 ACCENTS(色名与默认绿的唯一真源,并断言 styles.css 的 --acc 与之
+      一致——钉死 #1f8a5b 那次漂移的复发路径),产出 styles.css 生成块与
+      `ui/src/gen/accents.ts`;`--check` 进 CI
+- [x] UI:设置 → 外观,四枚色板与"浅色/深色"同卡。色板圆点用各色自己的
+      swatch,不能写 var(--acc)(那是"当前选中色",四枚会长得一模一样)
+
+测试写出来当场抓到两个真问题:等 L 旋转在某些色相会被色域压彩度(改成
+"亮度是硬约束、彩度只能不超过原值"并给调色板单独断言满彩度);移动端蓝紫
+色相只差 31°(加了 55° 下限拦住)。另有 `--onAcc: #fff` 是 3 位简写,按 6 位
+解析会得到一个蓝色,标注的对比度整片算错。
+
+验证:`gen_accent_tokens.py --check` / `check_theme_tokens.py` OK;
+scripts 单测 41 passed;`tsc --noEmit` 无输出;`vitest` 27 files / 203 passed;
+`vite build` OK。**未做视觉验证**——四个色板 × 深浅共 8 种组合需人工过一眼。
+
+## UI 写死颜色清扫(2026-07-25)
+
+全量扫 `#hex` / `rgb()` / `rgba()` / `hsl()` / 颜色关键字,共四处绕过令牌:
+
+- [x] **`ui/index.html` 的首帧防闪底色写死成浅色**(功能性 bug):`<script type="module">`
+      是 defer 的,`applyStoredTheme()` 赶不上第一次绘制,所以深色用户启动**必闪**
+      一帧浅色——正是这条规则本该防住的事。补深色一档 + 一段同步内联脚本
+      (先于首帧按 `mc.theme` 落 `data-theme`)
+- [x] `App.tsx:580` 引擎崩溃横幅底色 `rgba(248,113,113,.1)`(Tailwind red-400,
+      不在本调色板里,深色下也不跟随)→ `var(--errBg)`;它的描边本来就是 `var(--err)`
+- [x] `baizhi.tsx:374` 二维码衬底 `#fff` → 新令牌 `--qrBg`
+- [x] `styles.css` 窗口关闭键 hover `#e81123` / `#fff` → 新令牌 `--capClose` /
+      `--capCloseTx`。这俩与 `--qrBg` 归为"平台/功能约定色":两个主题同值、
+      不跟主题色走,收进令牌只为满足"颜色一律经令牌"这条红线,并把**为什么不
+      跟随主题**写在注释里(二维码要白底才扫得出;关闭键红是 Windows caption 约定)
+- [x] `check_theme_tokens.py` 增 `check_boot_background`:index.html 那两个值必须
+      与 `--bg` 逐字对齐,且必须存在同步内联脚本。反向验证过——拿旧版 index.html
+      跑,两条都报
+
+扫描后剩两处字面量,都是**结构上走不了 `var()`** 的,已各自留注释:
+index.html 的首帧底色(样式表还没加载,已被检查器盯住)、`cloudterm.tsx` 里
+`getComputedStyle` 读不到令牌时的兜底值。
+
+验证:两个检查器 OK;scripts 单测 45 passed(新增 4 例);`tsc --noEmit` 无输出;
+`vitest` 27 files / 203 passed;`vite build` OK。

@@ -577,7 +577,7 @@ export default function App() {
             alignItems: "center",
             gap: 10,
             padding: "8px 14px",
-            background: "rgba(248,113,113,.1)",
+            background: "var(--errBg)",
             borderBottom: "1px solid var(--err)",
             fontSize: 12.5,
           }}
