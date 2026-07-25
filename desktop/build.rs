@@ -13,8 +13,10 @@ fn main() {
                 "update_check",
                 "update_install",
                 "open_extension_dir",
+                "open_log_dir",
                 "list_wsl_distros",
                 "engine_restart",
+                "engine_status",
                 "probe_log",
                 // 引擎驱动层(driver/mod.rs)
                 "engine_caps",

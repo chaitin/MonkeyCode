@@ -283,13 +283,8 @@ export interface HostInfo {
   engine_version: string | null;
 }
 
-/** 引擎崩溃信息(壳的进程监视发现非正常退出时推送)。 */
-export interface EngineCrash {
-  engine: string;
-  detail: string;
-  /** 引擎日志尾部(诊断展示) */
-  log_tail?: string;
-}
+/** 引擎生命周期状态(契约 6;壳侧 driver::EngineStatus 的 ts-rs 产物)。 */
+export type { EngineStatus } from "./gen/EngineStatus";
 
 /** browser_status 应答:扩展桥监听/配对/连接状态(设置页展示)。 */
 export interface BrowserExtStatus {

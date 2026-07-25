@@ -2182,3 +2182,99 @@ index.html 的首帧底色(样式表还没加载,已被检查器盯住)、`cloud
 验证:`tsc --noEmit` 无输出;`vitest` 230 passed;`vite build` OK,产物里四条
 栏宽规则(62/76/58/74)俱在。**未做视觉验证**——需要在 mac 上确认按钮与分隔线
 真的分开了,以及 `data-platform` 确实落上了。
+
+---
+
+# 引擎生命周期治理(2026-07-25)
+
+起因:用户反馈"任务概率性一直显示运行中且无法操作"。顺着查下去发现根因不在
+会话层,而在引擎生命周期本身缺一套显式状态机——崩溃/启动失败/自动恢复三条路
+各走各的,没有单一真值。
+
+## 现状缺陷
+
+- **L1** 崩溃后死句柄不摘除 → `running()` 恒真 → 关主窗口只隐藏,用户以为
+  退出了进程还在;每条 IPC 各自撞见"引擎已退出"。
+- **L2** `restart_engine_locked` 中途失败(旧引擎已停、新引擎起不来)→
+  DriverHost 变空且**零事件**;浏览器配对刷新那条路径连错误都吞了。
+- **L3** 无自动重启、无退避;冷启动失败落 `error.html` 死页(只有一句
+  "请重新安装应用")。
+- **L4** 生命周期无单一真值,UI 靠事件 + 命令错误字符串 + `host_info` 三处拼。
+- **L5** 和解只覆盖"进程活着时":进程被硬杀留下的未闭合轮次无人修复;
+  cancel 应答 Ok 但引擎不发 `turn/stopped` 时永久卡 running;
+  `normalize.rs` 两处静默早退无日志。
+- **L6** `ohmyagent.log` 只轮转一份 `.prev`,重启循环冲掉首次崩溃现场。
+
+## 已确认的决策
+
+- **事件迁移:直接替换,不留兼容尾巴。** 壳与 UI 同包发版,不存在版本错配。
+- **自动重启默认开,不给开关。** 熔断后停在 `Failed` 并外显已是兜底;
+  再加配置项等于把本该无感的自愈变成用户要理解的选项。
+- **三期一起交付。**
+
+## 已完成
+
+### M1 止血
+
+- [x] `ShellCtx::on_engine_exit` 钩子:driver 只报告事实,摘句柄/退避/重启的
+      策略全在壳侧,transport 不必知道 DriverHost 与 Tauri State 的存在
+- [x] `restart_engine_locked` 失败路径统一置 `Failed` 并广播
+- [x] **冷修复** `replay_open` → `repair_unterminated`:未闭合轮次补
+      `task-error + task-ended` 并把 sidecar 落 interrupted。这是唯一能修
+      "进程被硬杀"的位置——热路径的 `reconcile_*` 全部以内存 `running` 为
+      前提,重启后恒 false、一律空转
+- [x] **cancel 看门狗**:应答 Ok 后按 `shutdownGraceMs + 10s` 兜底,按轮次号
+      比对避免误杀新一轮
+- [x] `normalize.rs` 两处静默早退加 eprintln
+
+### M2 单一真值
+
+- [x] `driver::EngineStatus` 五态,与引擎句柄**同一把锁**维护
+- [x] `engine_status` 命令(四处登记由 `check_command_contract.py` 守住)
+- [x] 全局事件 `engine-status` 替换 `engine-crashed`,ipc.ts 清单与
+      ARCHITECTURE.md 契约 3 同步
+- [x] `ui/src/engineBanner.ts` 纯推导 + App.tsx 横幅四态渲染
+- [x] UI 挂载后先挂监听再补拉快照(契约 3「监听先于命令」)
+
+### M3 自愈
+
+- [x] 退避 1/2/4/8/16s,连续 5 次熔断
+- [x] **稳定期判据**:ready 后连续存活 60s 才清零 attempt。没有这条,
+      "起来就崩"每次都被当作首次崩溃,退避永远停在 1s、熔断永远触发不到
+- [x] 退避决策抽成纯函数 `driver::next_retry`,单测覆盖收敛性
+- [x] 人工介入(保存设置 / 点横幅)代次 +1 作废在途退避
+- [x] `preserve_crash_log` 留存最近 3 份崩溃现场
+- [x] `error.html` 改为可操作页:重试启动 / 打开日志目录(新命令 `open_log_dir`)
+
+## 交付结果
+
+验证:`cargo test` 133 passed(新增 7 例)、`vitest` 236 passed(新增 8 例)、
+`tsc --noEmit` 无输出、`vite build` OK、三个契约检查器 + 6 个脚本单测全绿。
+
+| 文件 | 内容 |
+|---|---|
+| `driver/mod.rs` | `EngineStatus` + `next_retry` + `DriverHost` 同锁 + `engine_status` |
+| `driver/ohmy.rs` | `ShellCtx::on_engine_exit` 钩子 |
+| `driver/transport.rs` | 崩溃分支改走钩子;`preserve_crash_log` |
+| `driver/session.rs` | `turn` 轮次号 + `repair_unterminated` + `spawn_cancel_watchdog` |
+| `driver/fold.rs` | `unterminated` 判据 |
+| `driver/normalize.rs` | 两处静默早退加日志 |
+| `main.rs` | 监督器 + 状态收口 + 退避重启 + `open_log_dir` |
+| `ui/src/engineBanner.ts` | 状态 → 横幅纯推导(新文件) |
+| `ui/public/error.html` | 死页改可操作页 |
+| `ARCHITECTURE.md` | 新增契约 6;契约 5 补冷修复与 cancel 看门狗 |
+
+### 顺手修掉的连带缺陷
+
+复查时发现崩溃路径**不置 `stopped`**:帧 flusher 只认这个标志退出,不置位
+它就永远持有 `Arc<Inner>`——每崩一次泄漏一整份会话状态与 journal 写线程,
+自动重启下按崩溃次数累积。同处补了 `child.wait()`(Rust 的 `Child::drop`
+不 reap,unix 上会留僵尸进程)。
+
+### 已知未覆盖
+
+- cancel 看门狗的**计时路径**无自动化测试(要等 `shutdownGraceMs + 10s`)。
+  测的是它的认轮守卫——"到期时若已开了新一轮不得误杀",那才是会写错的地方;
+  计时本身是一句 sleep。
+- 退避重启的**端到端**行为(真杀引擎 → 看着它自己回来)没有自动化验证,
+  只有 `next_retry` 的纯函数收敛性与状态转移的单测。需要人工冒烟。

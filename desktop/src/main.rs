@@ -24,7 +24,7 @@ mod util;
 mod wsl;
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -79,6 +79,28 @@ struct EngineApply(Mutex<()>);
 /// 每次物化仍读取当下配对真值，最终配置不会停在过期状态。
 struct BrowserMcpRefresh(AtomicU64);
 
+/// 引擎监督(契约 6):崩溃自愈的簿记。
+struct EngineSupervisor {
+    /// 已连续用掉的自动重试次数;稳定运行满 ENGINE_STABLE_UPTIME 后由
+    /// next_retry 归零。
+    attempt: AtomicU32,
+    /// 重启代次。人工重启/保存设置会 +1,让在途的退避线程作废——否则用户
+    /// 手动救回来之后,几秒前排下的那次自动重启还会再把引擎踹一遍。
+    generation: AtomicU64,
+    /// 本次引擎就绪的时刻,崩溃时据此算存活时长(稳定期判据)。
+    ready_at: Mutex<Option<Instant>>,
+}
+
+impl EngineSupervisor {
+    fn new() -> Self {
+        Self {
+            attempt: AtomicU32::new(0),
+            generation: AtomicU64::new(0),
+            ready_at: Mutex::new(None),
+        }
+    }
+}
+
 /// 托盘图标:彩色透明图形(不走 macOS 模板渲染——模板会抹掉颜色只按
 /// alpha 涂黑/白,深色菜单栏下整只猴子被反色成白剪影;彩色图自带绿描边,
 /// 明暗菜单栏下轮廓均可辨,无需随主题换图)。
@@ -122,6 +144,35 @@ fn open_extension_dir(app: AppHandle) -> Result<String, String> {
     Ok(dir.to_string_lossy().into_owned())
 }
 
+/// 在文件管理器中定位引擎日志目录(app_config_dir:ohmyagent.log、
+/// ohmyagent.log.prev 与崩溃留存 ohmyagent.crash-N.log 都在这)。
+/// 启动失败页与设置页共用:引擎起不来时,横幅里的 15 行 tail 往往不够,
+/// 得让用户能一步拿到完整日志。
+#[tauri::command]
+fn open_log_dir(app: AppHandle) -> Result<String, String> {
+    let dir = config::config_dir(&app)?;
+    tauri_plugin_opener::reveal_item_in_dir(&dir).map_err(|e| format!("打开目录失败: {e}"))?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+// ==================== 引擎生命周期(契约 6)====================
+
+/// 生命周期状态的唯一出口:落状态 + 广播。所有转移都必须经它,否则 UI 会
+/// 看到一个停在过去的横幅(此前 restart 中途失败就是这样——DriverHost 空了
+/// 却没有任何事件,用户只能在下一条命令上撞见"引擎未运行")。
+fn publish_engine_status(app: &AppHandle, status: driver::EngineStatus) {
+    app.state::<DriverHost>().set_status(status.clone());
+    let _ = app.emit("engine-status", status);
+}
+
+/// 引擎就位:句柄、状态与稳定期起点三者一起更新。
+fn adopt_engine(app: &AppHandle, engine: driver::ohmy::OhmyDriver) {
+    let status = driver::EngineStatus::Ready { version: engine.version() };
+    app.state::<EngineSupervisor>().ready_at.lock_ok().replace(Instant::now());
+    app.state::<DriverHost>().set(engine, status.clone());
+    let _ = app.emit("engine-status", status);
+}
+
 /// 替换当前引擎。调用方须持 EngineApply，且已完成配置提交/物化；阻塞流程
 /// 会等待旧引擎优雅退出并等待新引擎 system/ready。
 fn restart_engine_locked(app: &AppHandle, config: &DesktopConfig) -> Result<(), String> {
@@ -131,9 +182,114 @@ fn restart_engine_locked(app: &AppHandle, config: &DesktopConfig) -> Result<(), 
     if let Some(browser) = app.try_state::<browser::BrowserHost>() {
         tauri::async_runtime::block_on(browser.mcp_sessions.reset());
     }
-    let engine = driver::start_engine(app, config)?;
-    app.state::<DriverHost>().set(engine);
-    Ok(())
+    let attempt = app.state::<EngineSupervisor>().attempt.load(Ordering::SeqCst);
+    publish_engine_status(app, driver::EngineStatus::Starting { attempt });
+    match driver::start_engine(app, config) {
+        Ok(engine) => {
+            adopt_engine(app, engine);
+            Ok(())
+        }
+        Err(e) => {
+            // 旧引擎已停、新引擎起不来:此刻 DriverHost 是空的。错误虽然会
+            // 从命令返回值上抛,但配对刷新那条路径没有调用方接错误,不在这里
+            // 外显就等于静默失去引擎且没有恢复入口。
+            publish_engine_status(app, driver::EngineStatus::Failed { error: e.clone() });
+            Err(e)
+        }
+    }
+}
+
+/// 人工介入(保存设置 / 点重启横幅):作废在途退避并重新起算重试预算。
+fn reset_engine_supervision(app: &AppHandle) {
+    let sup = app.state::<EngineSupervisor>();
+    sup.generation.fetch_add(1, Ordering::SeqCst);
+    sup.attempt.store(0, Ordering::SeqCst);
+}
+
+/// 引擎进程非 stop() 退出(ShellCtx::on_engine_exit 的壳侧实现)。
+/// 摘死句柄 → 按退避决策置状态 → 排下一次自动重启。
+pub fn engine_exited(app: &AppHandle, detail: &str, log_tail: &str) {
+    let sup = app.state::<EngineSupervisor>();
+    let uptime = sup.ready_at.lock_ok().take().map(|t| t.elapsed()).unwrap_or_default();
+    let decision = driver::next_retry(sup.attempt.load(Ordering::SeqCst), uptime);
+    // 先摘句柄:留着会让 running() 恒真(关窗只隐藏,用户以为退出了进程还在),
+    // 且每条 IPC 都能借到一个必然失败的死引擎
+    app.state::<DriverHost>().take();
+    let (attempt, delay) = match decision {
+        Some((attempt, delay)) => {
+            sup.attempt.store(attempt, Ordering::SeqCst);
+            (attempt, Some(delay))
+        }
+        None => {
+            eprintln!("[desktop] 引擎连续崩溃达上限,停止自动重启");
+            (sup.attempt.load(Ordering::SeqCst), None)
+        }
+    };
+    // 先外显再排重启:横幅要在退避窗口的第一时间就出现
+    publish_engine_status(
+        app,
+        driver::EngineStatus::Crashed {
+            detail: detail.to_string(),
+            log_tail: log_tail.to_string(),
+            attempt,
+            retry_in_ms: delay.map(|d| d.as_millis() as u32),
+        },
+    );
+    if let Some(delay) = delay {
+        schedule_engine_retry(app, delay);
+    }
+}
+
+/// 退避后自动重启。失败与崩溃在退避上同权,继续退避直到熔断。
+fn schedule_engine_retry(app: &AppHandle, delay: Duration) {
+    let generation = app.state::<EngineSupervisor>().generation.load(Ordering::SeqCst);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(delay);
+        let stale = || {
+            app.state::<EngineSupervisor>().generation.load(Ordering::SeqCst) != generation
+        };
+        if stale() {
+            return; // 期间用户已手动重启/保存设置,这次自动重启作废
+        }
+        let result = {
+            let apply = app.state::<EngineApply>();
+            let _apply = apply.0.lock_ok();
+            let host = app.state::<DriverHost>();
+            let _host_apply = host.begin_apply();
+            // 锁到手可能已过去很久(手动重启正持锁),再验一次代次
+            if stale() {
+                return;
+            }
+            load_config(&app).and_then(|config| {
+                materialize_engine_config(&app, &config, browser::mcp_endpoint(&app))?;
+                restart_engine_locked(&app, &config)
+            })
+        };
+        let Err(e) = result else { return }; // 成功:restart_engine_locked 已置 Ready
+        if stale() {
+            return;
+        }
+        let sup = app.state::<EngineSupervisor>();
+        // 起不来时 uptime 为零,必然递增 attempt,不会卡在同一档退避上
+        match driver::next_retry(sup.attempt.load(Ordering::SeqCst), Duration::ZERO) {
+            Some((attempt, next)) => {
+                sup.attempt.store(attempt, Ordering::SeqCst);
+                publish_engine_status(
+                    &app,
+                    driver::EngineStatus::Crashed {
+                        detail: format!("引擎自动重启失败: {e}"),
+                        log_tail: String::new(),
+                        attempt,
+                        retry_in_ms: Some(next.as_millis() as u32),
+                    },
+                );
+                schedule_engine_retry(&app, next);
+            }
+            // 熔断:restart_engine_locked 已置 Failed,保留那条更具体的错误
+            None => eprintln!("[desktop] 引擎自动重启达上限,停止重试: {e}"),
+        }
+    });
 }
 
 /// 配对刷新等待任务空闲的上限。此前是无截止的 250ms 轮询:只要有一个会话
@@ -208,6 +364,7 @@ async fn save_config(app: AppHandle, config: DesktopConfig) -> Result<(), String
         let _apply = apply.0.lock_ok();
         let host = app.state::<DriverHost>();
         let _host_apply = host.begin_apply();
+        reset_engine_supervision(&app);
         // 壳自有偏好的合并与写盘在 ConfigStore 的同一事务内完成。
         let config = save_ui_config_files(&app, config, browser::mcp_endpoint(&app))?;
         restart_engine_locked(&app, &config)
@@ -216,7 +373,7 @@ async fn save_config(app: AppHandle, config: DesktopConfig) -> Result<(), String
     .map_err(|e| format!("保存失败: {e}"))?
 }
 
-/// 按当前配置重启引擎(引擎崩溃后 UI 一键恢复;engine-crashed 事件的出口)。
+/// 按当前配置重启引擎(引擎崩溃/熔断后 UI 一键恢复;engine-status 横幅的出口)。
 #[tauri::command]
 async fn engine_restart(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -224,6 +381,7 @@ async fn engine_restart(app: AppHandle) -> Result<(), String> {
         let _apply = apply.0.lock_ok();
         let host = app.state::<DriverHost>();
         let _host_apply = host.begin_apply();
+        reset_engine_supervision(&app);
         let config = load_config(&app)?;
         materialize_engine_config(&app, &config, browser::mcp_endpoint(&app))?;
         restart_engine_locked(&app, &config)
@@ -779,6 +937,7 @@ fn main() {
         .manage(PetPos(Mutex::new(None)))
         .manage(EngineApply(Mutex::new(())))
         .manage(BrowserMcpRefresh(AtomicU64::new(0)))
+        .manage(EngineSupervisor::new())
         .manage(baizhi::monkeycode::CloudPipes::new())
         .invoke_handler(tauri::generate_handler![
             get_config,
@@ -790,9 +949,11 @@ fn main() {
             update_check,
             update_install,
             open_extension_dir,
+            open_log_dir,
             list_wsl_distros,
             engine_restart,
             probe_log,
+            driver::engine_status,
             driver::engine_caps,
             browser::browser_status,
             browser::browser_repair,
@@ -885,13 +1046,18 @@ fn main() {
                 ensure_pet_window(app.handle());
                 return Ok(());
             }
+            publish_engine_status(app.handle(), driver::EngineStatus::Starting { attempt: 0 });
             match driver::start_engine(app.handle(), &cfg) {
                 Ok(engine) => {
-                    app.state::<DriverHost>().set(engine);
+                    adopt_engine(app.handle(), engine);
                     create_main_window(app.handle(), "index.html");
                 }
                 Err(e) => {
                     eprintln!("[desktop] 引擎启动失败: {e}");
+                    publish_engine_status(
+                        app.handle(),
+                        driver::EngineStatus::Failed { error: e.clone() },
+                    );
                     create_main_window(
                         app.handle(),
                         &format!("error.html#{}", util::urlencode(&e)),
@@ -915,7 +1081,9 @@ fn main() {
                         .replace((pos.x, pos.y));
                 }
             }
-            // 主窗口:引擎在跑且托盘可用时关窗只隐藏;错误页正常关闭
+            // 主窗口:引擎在跑且托盘可用时关窗只隐藏(任务继续跑);错误页正常关闭。
+            // running() 现在按生命周期状态判定——崩溃/熔断态下引擎已不在,再假装
+            // 最小化到托盘,用户会以为退出了、进程却还常驻着
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() != "main" {
                     return;

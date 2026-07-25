@@ -40,6 +40,11 @@ pub trait ShellCtx: Send + Sync + 'static {
     /// 逐子进程注入隔离目录，禁止通过 set_var 污染并行测试进程。
     fn process_home(&self) -> Option<PathBuf> { crate::config::home_dir() }
     fn engine_env_overrides(&self) -> Vec<(String, OsString)> { Vec::new() }
+
+    /// 引擎进程非 stop() 退出(reader 读到 stdout EOF)。driver 只负责**报告**
+    /// 事实,摘句柄/置崩溃态/退避重启这些策略全在壳侧(main.rs),transport
+    /// 因此不必知道 DriverHost 与 Tauri State 的存在。
+    fn on_engine_exit(&self, _detail: &str, _log_tail: &str) {}
 }
 
 impl ShellCtx for AppHandle {
@@ -53,6 +58,9 @@ impl ShellCtx for AppHandle {
     }
     fn local_data_dir(&self) -> Result<PathBuf, String> {
         crate::config::local_data_dir(self)
+    }
+    fn on_engine_exit(&self, detail: &str, log_tail: &str) {
+        crate::engine_exited(self, detail, log_tail);
     }
 }
 

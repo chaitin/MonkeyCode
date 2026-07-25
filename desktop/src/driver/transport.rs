@@ -165,6 +165,25 @@ pub(super) fn spawn_journal_writer(data_dir: PathBuf) -> mpsc::UnboundedSender<J
     tx
 }
 
+/// 崩溃现场留存份数。
+const CRASH_LOG_KEEP: usize = 3;
+
+/// 把崩溃当时的引擎日志另存一份。start 的 `.prev` 轮转只保留上一次运行,
+/// 而自动重启是连着退避重试好几轮的——首次崩溃(最有诊断价值的那次)会被
+/// 后面几次覆盖掉,只剩事件里的 15 行 tail。copy 而非 rename:原文件要留给
+/// 下一次 start 的 `.prev` 轮转,且 Windows 上重命名刚被进程持有过的文件易失败。
+fn preserve_crash_log(log: &std::path::Path) {
+    let Some(dir) = log.parent() else { return };
+    let nth = |n: usize| dir.join(format!("ohmyagent.crash-{n}.log"));
+    let _ = std::fs::remove_file(nth(CRASH_LOG_KEEP));
+    for n in (1..CRASH_LOG_KEEP).rev() {
+        let _ = std::fs::rename(nth(n), nth(n + 1));
+    }
+    if let Err(e) = std::fs::copy(log, nth(1)) {
+        eprintln!("[desktop] 留存崩溃日志失败: {e}");
+    }
+}
+
 impl OhmyDriver {
     // ==================== 生命周期 ====================
 
@@ -362,12 +381,19 @@ impl OhmyDriver {
             // stop() 未置位即崩溃,外显
             if !inner_r.transport.stopped.load(Ordering::Relaxed) {
                 inner_r.reconcile_all("引擎进程异常退出"); // 运行中会话本地收尾,不留永久 running
+                inner_r.flush_batch(); // 收尾帧要立刻到 UI,不等 flusher 的下一拍
                 let tail = super::log_tail(&crash_log, 15);
+                preserve_crash_log(&crash_log);
                 eprintln!("[desktop] ohmyagent 引擎异常退出");
-                inner_r.app.emit_json(
-                    "engine-crashed",
-                    json!({ "engine": "ohmyagent", "detail": "ohmyagent 进程异常退出", "log_tail": tail }),
-                );
+                // 置位收摊:flusher 只认 stopped 退出,不置位它会永远持有
+                // Arc<Inner>——每崩一次就泄漏一整份会话状态与 journal 写线程,
+                // 自动重启下这个泄漏会按崩溃次数累积
+                inner_r.transport.stopped.store(true, Ordering::Relaxed);
+                // 回收子进程:Rust 的 Child::drop **不** wait,不收就是僵尸
+                if let Some(mut child) = inner_r.transport.child.lock_ok().take() {
+                    let _ = child.wait();
+                }
+                inner_r.app.on_engine_exit("ohmyagent 进程异常退出", &tail);
             }
         });
 

@@ -10,7 +10,8 @@
 //   session-event      {type: session-status|session-ask, ...} 全局会话状态
 //   ws-msg:{pipe}      云端 WS 桥下行文本帧(stream/control/terminal 协议不变)
 //   ws-closed:{pipe}   云端 WS 桥断开
-//   engine-crashed     {engine, detail, log_tail} 引擎非 stop 退出
+//   engine-status      引擎生命周期状态(契约 6:stopped/starting/ready/
+//                      crashed/failed);快照另有 engine_status 命令可补拉
 //   open-settings / open-session   托盘、桌宠等壳侧入口的导航意图
 //   browser-mcp-reloaded           配对后引擎已带新工具集(UI 整页刷新)
 //   browser-mcp-refresh-timeout    等任务空闲超时放弃刷新(提示手动重启)

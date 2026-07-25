@@ -1,7 +1,7 @@
 // 本地会话域:会话 CRUD、全局会话事件、引擎能力/崩溃/重启、本地会话流
 // (connect)。IPC 原语在 ipc.ts,载荷纯数据类型在 types.ts。
 import { invoke, listen, listenAsync } from "./ipc";
-import type { EngineCaps, EngineCrash, Frame, ModelInfo, SessionEvent, SessionMeta } from "./types";
+import type { EngineCaps, EngineStatus, Frame, ModelInfo, SessionEvent, SessionMeta } from "./types";
 
 // ==================== 会话管理 ====================
 
@@ -31,12 +31,17 @@ export function subscribeEvents(onEvent: (e: SessionEvent) => void): () => void 
 
 export const engineCaps = () => invoke<EngineCaps>("engine_caps");
 
-/** 订阅引擎崩溃事件;返回退订函数。 */
-export function onEngineCrashed(cb: (info: EngineCrash) => void): () => void {
-  return listen("engine-crashed", (p) => cb(p as EngineCrash));
+/** 订阅引擎生命周期状态。异步版:调用方必须等注册完成再补拉快照
+ *  (契约 3「监听先于命令」),否则两者之间到达的状态会静默丢失。 */
+export function onEngineStatus(cb: (s: EngineStatus) => void): Promise<() => void> {
+  return listenAsync("engine-status", (p) => cb(p as EngineStatus));
 }
 
-/** 按当前配置重启引擎(崩溃恢复;成功后调用方整页刷新复位状态)。 */
+/** 引擎生命周期状态快照。事件在窗口建起来之前就可能发过(冷启动失败、
+ *  启动期崩溃),只靠监听必然错过,UI 挂载后必须补拉一次。 */
+export const engineStatus = () => invoke<EngineStatus>("engine_status");
+
+/** 按当前配置重启引擎(崩溃/熔断恢复;成功后调用方整页刷新复位状态)。 */
 export const engineRestart = () => invoke<void>("engine_restart");
 
 // ==================== 本地会话流 ====================

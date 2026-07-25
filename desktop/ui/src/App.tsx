@@ -27,7 +27,8 @@ import {
   engineRestart,
   listModels,
   listSessions,
-  onEngineCrashed,
+  onEngineStatus,
+  engineStatus as fetchEngineStatus,
   setSessionArchived,
   setSessionTitle,
   subscribeEvents,
@@ -49,7 +50,8 @@ import TitleBar from "./titlebar";
 import { uploadFileURL } from "./uploads";
 import { lastSessionId, useSession } from "./useSession";
 import { updateGate } from "./updateGate";
-import type { CloudProject, CloudTask, EngineCrash, HostInfo, LogItem, McConnectionState, ModelInfo, SessionMeta, UpdateStatus } from "./types";
+import type { CloudProject, CloudTask, EngineStatus, HostInfo, LogItem, McConnectionState, ModelInfo, SessionMeta, UpdateStatus } from "./types";
+import { engineBannerView } from "./engineBanner";
 
 /** 内核与页面同机(serve 仅绑 loopback),浏览器 UA 即宿主平台 */
 const IS_MAC = /Mac/.test(navigator.userAgent);
@@ -78,10 +80,37 @@ export default function App() {
       session.notify("⚠ 更新失败: " + (e instanceof Error ? e.message : String(e)));
     }
   };
-  // 引擎崩溃外显(engine-crashed 事件;重启成功后整页刷新复位)
-  const [engineCrash, setEngineCrash] = useState<EngineCrash | null>(null);
+  // 引擎生命周期外显(engine-status 事件;契约 6)。
+  const [engine, setEngine] = useState<EngineStatus | null>(null);
   const [engineRestarting, setEngineRestarting] = useState(false);
-  useEffect(() => onEngineCrashed(setEngineCrash), []);
+  // 引擎重启后壳内会话表是全新的,UI 手里的会话句柄已失效——手动重启一直
+  // 是靠整页刷新复位的,自动重启同样需要,否则用户看着横幅消失却发不出消息
+  const engineWasDown = useRef(false);
+  useEffect(() => {
+    let un: (() => void) | null = null;
+    let dropped = false;
+    // 监听先于命令:补拉快照前必须先挂上监听,否则两者之间到达的状态会丢
+    void onEngineStatus((s) => {
+      if (s.phase === "ready" && engineWasDown.current) {
+        location.reload();
+        return;
+      }
+      if (s.phase !== "ready" && s.phase !== "stopped") engineWasDown.current = true;
+      setEngine(s);
+    })
+      .then((off) => {
+        if (dropped) off();
+        else un = off;
+        // 冷启动失败/启动期崩溃的状态早于窗口存在,只靠监听必然错过
+        return fetchEngineStatus().then(setEngine);
+      })
+      .catch(() => {});
+    return () => {
+      dropped = true;
+      un?.();
+    };
+  }, []);
+  const engineBanner = engineBannerView(engine);
   // App 级浮层;文件抽屉 = 工作区资源管理器(cwd 逐层导航 + 文件查看器)。
   // 渲染与树/预览状态整体收敛进共享 FilesDrawer(filesdrawer.tsx),App 只留
   // 开合与初始 tab(文件 / 改动)+ Esc 挂点(先关预览再关抽屉)
@@ -580,9 +609,9 @@ export default function App() {
     >
       {/* Windows 壳:装饰栏已去除,自绘 36px 标题栏(品牌/上下文 + 拖拽 + 窗口按钮) */}
       {isWindowsShell() && <TitleBar context={windowContext} layout={view === "settings" ? "settings" : "sidebar"} />}
-      {/* 引擎崩溃横幅:进程监视发现非正常退出时外显 + 一键重启
-          (不外显的话会话流只会无限重连,表现为无提示的卡死) */}
-      {engineCrash && (
+      {/* 引擎生命周期横幅(契约 6):崩溃/退避中/熔断/启动失败都在这里外显。
+          不外显的话会话流只会无限重连,表现为无提示的卡死 */}
+      {engineBanner && (
         <div
           style={{
             flex: "none",
@@ -595,29 +624,31 @@ export default function App() {
             fontSize: 12.5,
           }}
         >
-          <span style={{ color: "var(--err)", fontWeight: 600, flex: "none" }}>⚠ {engineCrash.detail}</span>
-          {engineCrash.log_tail && (
-            <span className="ellipsis" style={{ color: "var(--t4)", fontSize: 11.5, minWidth: 0, font: `11.5px ${MONO}` }} title={engineCrash.log_tail}>
-              {engineCrash.log_tail.trim().split("\n").pop()}
+          <span style={{ color: "var(--err)", fontWeight: 600, flex: "none" }}>⚠ {engineBanner.text}</span>
+          {engineBanner.detail && (
+            <span className="ellipsis" style={{ color: "var(--t4)", fontSize: 11.5, minWidth: 0, font: `11.5px ${MONO}` }} title={engineBanner.detail}>
+              {engineBanner.detail}
             </span>
           )}
           <span style={{ flex: 1 }} />
-          <button
-            className="hv-acc"
-            disabled={engineRestarting}
-            onClick={() => {
-              setEngineRestarting(true);
-              engineRestart()
-                .then(() => location.reload())
-                .catch((e) => {
-                  setEngineRestarting(false);
-                  setEngineCrash((c) => (c ? { ...c, detail: "重启失败: " + String(e) } : c));
-                });
-            }}
-            style={{ height: 26, padding: "0 14px", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600, background: "var(--acc)", color: "var(--onAcc)" }}
-          >
-            {engineRestarting ? "重启中…" : "重启引擎"}
-          </button>
+          {engineBanner.canRestart && (
+            <button
+              className="hv-acc"
+              disabled={engineRestarting || engineBanner.busy}
+              onClick={() => {
+                setEngineRestarting(true);
+                engineRestart()
+                  .then(() => location.reload())
+                  .catch((e) => {
+                    setEngineRestarting(false);
+                    setEngine({ phase: "failed", error: "重启失败: " + String(e) });
+                  });
+              }}
+              style={{ height: 26, padding: "0 14px", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600, background: "var(--acc)", color: "var(--onAcc)" }}
+            >
+              {engineRestarting ? "重启中…" : "重启引擎"}
+            </button>
+          )}
         </div>
       )}
       {/* 原根容器降级为内容行:改动抽屉的 absolute 以此为锚,始终盖在标题栏之下 */}

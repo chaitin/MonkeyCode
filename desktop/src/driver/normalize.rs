@@ -86,6 +86,10 @@ impl Inner {
                 let stop_reason = params.get("stop_reason").and_then(|v| v.as_str()).unwrap_or("complete");
                 let err = params.get("error").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 if sid.is_empty() {
+                    // 认不出会话 = 这一轮壳侧永远收不了尾(会话卡 running,
+                    // 输入/删除/切模型全锁死)。静默丢弃过一次就再也查不出来,
+                    // 必须留痕:引擎漏发 session_id 或 engine_id 换绑后的迟到应答
+                    eprintln!("[desktop] turn/stopped 无法映射到壳会话,已丢弃: {params}");
                     return;
                 }
                 let (was_running, open) = {
@@ -111,7 +115,12 @@ impl Inner {
                 // 除外——其子循环跨轮存活,收尾归 task_notification
                 self.close_children_of_session(&sid, SessionStatus::Interrupted, false);
                 if !was_running {
-                    // 已本地和解(取消超时/引擎重启)后迟到的收尾,忽略防重复帧
+                    // 已本地和解(取消超时/引擎重启)后迟到的收尾,忽略防重复帧。
+                    // 正常的幂等吞掉与"会话表里根本没这个 sid"(engine_id 换绑
+                    // 后 shell_sid_of 回退成引擎 id)在这里长得一样,留痕区分
+                    eprintln!(
+                        "[desktop] turn/stopped 落在非运行会话上,已忽略: sid={sid} reason={stop_reason}"
+                    );
                     return;
                 }
                 // 引擎的工具错误路径不发 tool_result(错误只进模型消息),

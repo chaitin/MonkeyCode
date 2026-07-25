@@ -121,6 +121,7 @@ impl Inner {
             SessionState {
                 seq: 0,
                 running: true,
+                turn: 1,
                 created: true, // 壳侧会话,无引擎实体,open 不做 resume RPC
                 engine_id: child_sid.to_string(),
                 opened: false,

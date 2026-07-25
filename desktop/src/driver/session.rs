@@ -8,7 +8,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Duration;
 
 use base64::Engine as _;
 use serde_json::{json, Value};
@@ -20,6 +22,14 @@ use super::transport::JournalMsg;
 use crate::util::LockExt;
 
 const CHAT_WORKSPACE_PREFIX: &str = "chat-";
+
+/// cancel 看门狗在引擎自宣的优雅预算之外再让出的余量。引擎收到 cancel 后
+/// 要把运行中的工具/模型调用收敛掉才发 turn/stopped,壳必须等得比它久,
+/// 否则每次取消都抢在引擎前面本地和解,把正常的收尾路径废掉。
+const CANCEL_GRACE_EXTRA_MS: u64 = 10_000;
+
+/// 冷修复补的错误文案。用户视角要能看懂"上一次不是我取消的,是应用没了"。
+const COLD_REPAIR_REASON: &str = "上次运行未正常结束(应用被强制退出),已按中断收尾";
 
 /// 普通对话不绑定用户项目，但引擎仍要求 cwd。每个新对话创建一个独立的
 /// 受管工作目录，根目录由 Tauri 按平台解析为本应用的 local data 目录。
@@ -137,6 +147,9 @@ pub(super) struct SessionState {
     /// 帧序号(回放续接:打开时取日志行数)
     pub(super) seq: u64,
     pub(super) running: bool,
+    /// 轮次序号(每次开轮 +1)。只用来给异步兜底认轮:cancel 看门狗到期时
+    /// 会话可能已经收尾并开了新的一轮,拿它比对才不会误杀新轮次。
+    pub(super) turn: u64,
     /// 本进程内已 session/create(resume)过
     pub(super) created: bool,
     /// 引擎侧会话 id(通常 == 壳 sid;空会话无法 resume 时壳会 destroy +
@@ -374,6 +387,7 @@ impl OhmyDriver {
             SessionState {
                 seq: 0,
                 running: false,
+                turn: 0,
                 created: true,
                 engine_id: sid.clone(),
                 opened: false,
@@ -436,6 +450,7 @@ impl OhmyDriver {
                 let entry = sessions.entry(id.to_string()).or_insert(SessionState {
                     seq: 0,
                     running: false,
+                    turn: 0,
                     created: is_child,
                     engine_id: engine_id.clone(),
                     opened: false,
@@ -786,6 +801,7 @@ impl OhmyDriver {
                         return Err("当前会话已有任务在执行,请等待完成或先取消".into());
                     }
                     s.running = true;
+                    s.turn += 1;
                     if s.title.is_empty() {
                         s.title = text.lines().next().unwrap_or("").chars().take(40).collect();
                     }
@@ -845,12 +861,19 @@ impl OhmyDriver {
                 }
             }
             "user-cancel" => {
+                let turn = self.0.sess.sessions.lock_ok().get(id).map(|s| s.turn).unwrap_or(0);
                 // 引擎应答是确认而非前提:cancel 无应答(挂死/超时)时本地和解,
                 // 否则会话永卡 running;引擎若事后仍发 turn/stopped,
                 // 幂等守卫(was_running)会吞掉迟到的收尾
                 if let Err(e) = self.rpc("cancel", json!({ "session_id": self.engine_id(id) })).await {
                     self.0.reconcile_session(id, &format!("取消未获引擎应答,已本地中断({e})"));
+                    return Ok(());
                 }
+                // 应答 Ok 只说明引擎**收下**了 cancel,不等于轮次停了:工具调用
+                // 挂死(bash 不返回、扩展不应答、无超时的网络请求)时 turn/stopped
+                // 永远不来,会话就永卡 running——再点取消也只是又被收下一次。
+                // 给引擎自宣的优雅预算 + 余量,到点仍是同一轮在跑就本地和解。
+                self.spawn_cancel_watchdog(id, turn);
                 Ok(())
             }
             "permission-resp" => {
@@ -946,6 +969,29 @@ impl OhmyDriver {
             }
             other => Err(format!("ohmyagent 引擎不支持上行帧 {other}")),
         }
+    }
+
+    /// cancel 兜底:到期仍是**同一轮**在跑才和解。不比对轮次会误杀——用户
+    /// 取消后引擎正常收尾、用户又发了新消息,看门狗到期时会话同样是 running,
+    /// 不认轮就把无辜的新一轮打断了。
+    fn spawn_cancel_watchdog(&self, id: &str, turn: u64) {
+        let me = self.clone();
+        let sid = id.to_string();
+        let grace = self.0.transport.shutdown_grace_ms.load(Ordering::Relaxed).max(0) as u64;
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(grace + CANCEL_GRACE_EXTRA_MS)).await;
+            let stale = me
+                .0
+                .sess.sessions
+                .lock_ok()
+                .get(&sid)
+                .map(|s| s.running && s.turn == turn)
+                .unwrap_or(false);
+            if stale {
+                eprintln!("[desktop] 取消后引擎未在期限内停止,本地和解: sid={sid} turn={turn}");
+                me.0.reconcile_session(&sid, "取消后引擎未在期限内停止,已本地中断");
+            }
+        });
     }
 
     pub async fn session_call(&self, id: &str, kind: &str, payload: Value) -> Result<Value, String> {
@@ -1449,7 +1495,56 @@ impl Inner {
         }
         drop(sessions);
         frames.extend(fold::fold_frames(&raw));
+        if idle && fold::unterminated(&frames) {
+            frames.extend(self.repair_unterminated(sid));
+        }
         ReplayWindow { frames, cursor, has_more }
+    }
+
+    /// 冷修复:进程被硬杀(kill -9 / OOM / 断电 / 系统强制重启)时 journal 就
+    /// 停在未闭合的轮次上,而热路径的 reconcile_* 全部以**内存** running 为
+    /// 前提(`Some(s) if s.running`),重启后恒 false、一律空转——没有任何
+    /// 现存路径补得了这个尾巴。
+    ///
+    /// 不修的后果不是"少一条收尾":UI 的运行态只由帧推导(reduce.ts 的
+    /// task-started → running=true),所以每次打开都按执行中渲染,输入框只排队、
+    /// 删除/切模型全灰,取消按钮打到壳里也因为 running=false 而空转——**永不解锁**,
+    /// 重装应用都救不回(数据在 sidecar 目录里)。
+    ///
+    /// 补的两帧直接返回给本次回放窗口,**不入批量缓冲**:窗口是 session_open
+    /// 的返回值,再经 frames:{sid} 投一次会让 UI 重复归约出两条收尾。
+    fn repair_unterminated(&self, sid: &str) -> Vec<Value> {
+        let (err, end) = {
+            let mut sessions = self.sess.sessions.lock_ok();
+            let Some(s) = sessions.get_mut(sid) else { return Vec::new() };
+            s.seq += 1;
+            let err = frame::task_error(COLD_REPAIR_REASON, s.seq);
+            s.seq += 1;
+            let end = frame::task_ended(s.seq);
+            for f in [&err, &end] {
+                let _ = self.transport.journal_tx.send(JournalMsg::Append {
+                    sid: sid.to_string(),
+                    line: f.to_string(),
+                });
+                s.fold.push(f);
+            }
+            // 冷修复只在 idle 分支触发(fold 必空),take 出来的就是这两帧,
+            // 单独物化成一行;被补的那一轮已由 catch_up 物化在前一行
+            let turn = s.fold.take();
+            if !turn.frames.is_empty() {
+                let _ = self.transport.journal_tx.send(JournalMsg::Materialize {
+                    sid: sid.to_string(),
+                    turn,
+                    src_end: None,
+                });
+            }
+            (err, end)
+        };
+        // sidecar 落终态:侧栏(读 sidecar)与聊天区(读帧)此前会一个显示
+        // "已中断"、一个显示"运行中",两个来源就此对齐
+        self.write_sidecar(sid, |m| m["status"] = json!(SessionStatus::Interrupted.as_str()));
+        eprintln!("[desktop] 冷修复未闭合轮次: sid={sid}");
+        vec![err, end]
     }
 
     pub(super) fn emit_session_event(&self, sid: &str, status: &str) {

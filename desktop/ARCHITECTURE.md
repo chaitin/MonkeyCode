@@ -84,7 +84,7 @@ folded.jsonl",TS 钉住 `reduceBatch(raw) ≡ reduceBatch(folded)`
   `scripts/check_command_contract.py` 在 CI 同时核对这三处与 UI 字面量 invoke。
 - 事件命名 `channel:{id}`:`frames:{sid}`、`conn-status:{sid}`、
   `ws-msg:{pipe}`、`ws-closed:{pipe}`。全局事件(无 id 后缀)共 6 个:
-  `session-event`、`engine-crashed`、`open-settings`、`open-session`、
+  `session-event`、`engine-status`(契约 6)、`open-settings`、`open-session`、
   `browser-mcp-reloaded`(配对后引擎已带新工具集,UI 整页刷新)、
   `browser-mcp-refresh-timeout`(等任务空闲超时放弃,UI 提示手动重启;
   见 main.rs `BROWSER_MCP_REFRESH_DEADLINE`)。UI 侧清单同在 ui/src/ipc.ts。
@@ -157,6 +157,15 @@ Windows 不得用不能覆盖既有目标的裸 `std::fs::rename`。
   驱动本地补收尾(未闭合工具 failed 帧 → task-error → task-ended,
   状态落 interrupted,挂起审批/提问一并失效);引擎迟到的 turn/stopped
   被 running 幂等守卫吞掉。没有这条,会话会永久卡"执行中"。
+  - cancel **应答 Ok 也不是前提**:引擎"收下"不等于"停了"(工具挂死时
+    turn/stopped 永远不来)。看门狗在 `shutdownGraceMs + 10s` 后按轮次号
+    比对,仍是同一轮在跑就本地和解。比对轮次是必要的——不比对会误杀
+    "用户取消后又发的新一轮"。
+- **冷修复:热路径的和解都以内存 `running` 为前提,进程被硬杀后恒 false。**
+  kill -9 / OOM / 断电留下的 journal 停在 `task-started`,而 UI 的运行态只由
+  帧推导,所以每次打开都按执行中渲染且**永不解锁**(输入只排队、删除/切模型
+  全灰、取消打到壳里空转)。`replay_open` 因此在会话空闲且窗口未闭合时补写
+  task-error + task-ended 并把 sidecar 落 interrupted——这是唯一能修它的位置。
 
 ## 浏览器扩展桥(browser/)
 
@@ -177,13 +186,48 @@ Op/Ev/错误码、proto:1、20s ping。
   操作，图片仍作为 MCP image 返回模型。
 - 错误码→中文可行动文案是产品契约(模型行为依赖),改动需过 e2e 断言。
 
-## 引擎监督
+## 契约 6:引擎生命周期
 
-壳监视引擎进程(stdout EOF);非 stop() 引发的退出 → 本地和解运行中
-会话(契约 5)→ 全局事件 `engine-crashed {engine, detail, log_tail}`
-→ UI 横幅 + `engine_restart` 一键重启。引擎日志:app_config_dir/ohmyagent.log。
-`DriverHost` 用 lease/维护闸门排空已进入的 IPC 命令并封住新命令，再做
-stop/start；浏览器配对这类自动维护额外要求前台会话与后台 Agent 都为空闲。
+```
+                 ┌───────────────── 退避重试 ────────────────┐
+                 ▼                                          │
+  [Stopped] ──start──▶ [Starting] ──ready──▶ [Ready] ──EOF+!stopped──▶ [Crashed]
+                          │                                          │
+                       启动失败                                   熔断(5 次)
+                          ▼                                          ▼
+                      [Failed] ◀────────────────────────────────────┘
+```
+
+状态是 `driver::EngineStatus`,**与 `DriverHost` 的引擎句柄同一把锁维护**——
+不允许出现"句柄已摘、状态还是 Ready"。所有转移经 main.rs 的
+`publish_engine_status`/`adopt_engine` 收口,那里同时 emit 全局事件
+`engine-status`;UI 另有 `engine_status` 命令补拉快照(窗口建起来之前发生的
+状态只靠监听必然错过)。引擎不在位时 IPC 的错误文案由状态派生
+(`EngineStatus::unavailable`),不再各命令自己拼。
+
+- **启动入口**(4 条,全部经 `restart_engine_locked` 或 setup):冷启动、
+  保存设置、手动重启、浏览器配对刷新。任何一条失败都落 `Failed` 并外显——
+  配对刷新那条没有调用方接错误,不外显就等于静默失去引擎且无恢复入口。
+- **停止入口**(4 条):应用退出(`RunEvent::Exit`)、更新器
+  `on_before_exit`、重启前置、**崩溃**。四条都摘句柄:崩溃路径不摘会让
+  `running()` 恒真(关窗只隐藏,用户以为退出了进程还在),且每条 IPC 都能
+  借到一个必然失败的死引擎。
+- **崩溃检测**:reader 读到 stdout EOF 且 `stopped` 未置位 → 释放在途 RPC →
+  本地和解运行中会话(契约 5)→ 留存 `ohmyagent.crash-N.log`(最近 3 份;
+  start 的 `.prev` 轮转只保留上一次运行,退避重试几轮就把首次现场冲没了)→
+  `ShellCtx::on_engine_exit`。driver 只报告事实,摘句柄/退避/重启的**策略在壳侧**。
+- **自动重启**:退避 1/2/4/8/16s,连续 5 次后熔断(状态停在 Crashed、
+  `retry_in_ms=None`),只能人工重启。**稳定期判据是命门**:引擎就绪后连续
+  存活满 `ENGINE_STABLE_UPTIME`(60s)才把 attempt 归零,否则"起来就崩"的
+  引擎每次都被当作首次崩溃,退避永远停在 1s、熔断永远触发不到,自动重启
+  退化成 1s 一次的死循环。决策是纯函数 `driver::next_retry`,有单测。
+- **人工介入**(保存设置 / 点横幅重启)会 `reset_engine_supervision`:代次 +1
+  作废在途退避线程,attempt 归零。否则用户手动救回来之后,几秒前排下的那次
+  自动重启还会再把引擎踹一遍。
+- `DriverHost` 用 lease/维护闸门排空已进入的 IPC 命令并封住新命令,再做
+  stop/start;浏览器配对这类自动维护额外要求前台会话与后台 Agent 都为空闲。
+- 引擎日志:app_config_dir/ohmyagent.log(`.prev` 上一次运行,
+  `crash-N.log` 崩溃留存)。启动失败页与横幅都提供"打开日志目录"。
 
 ## 已知上游缺口(ohmyagent)
 

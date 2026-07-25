@@ -20,6 +20,7 @@ mod transport;
 
 use std::ops::Deref;
 use std::sync::{Condvar, Mutex};
+use std::time::Duration;
 
 use ohmy::OhmyDriver;
 use serde_json::Value;
@@ -29,8 +30,76 @@ use crate::config::DesktopConfig;
 use crate::repo::RepoCtx;
 use crate::util::LockExt;
 
+/// 崩溃后自动重启的次数上限。用尽即熔断(状态停在 Crashed 且
+/// retry_in_ms=None),只能人工重启——起不来的引擎多半是配置或安装问题,
+/// 无限重试只会刷屏并烧 CPU。
+pub const ENGINE_MAX_RETRY: u32 = 5;
+/// 判定"这次启动是成功的"所需的连续存活时长,见 next_retry。
+pub const ENGINE_STABLE_UPTIME: Duration = Duration::from_secs(60);
+
+/// 引擎生命周期状态(契约 6)。壳内唯一真值:与 `engine` 句柄**同一把锁**
+/// 维护,不存在"句柄已摘、状态还是 Ready"这类可观测不一致。UI 的顶部横幅
+/// 与"引擎为什么不可用"的文案全部由它派生。
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[serde(tag = "phase", rename_all = "lowercase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../ui/src/gen/"))]
+pub enum EngineStatus {
+    /// 未启动:冷启动前、或应用退出/重启的中间态。
+    Stopped,
+    /// 正在拉起。attempt>0 表示这是崩溃后的第几次自动重试。
+    Starting { attempt: u32 },
+    Ready { version: String },
+    /// 非 stop() 引发的退出。retry_in_ms=Some 表示正在退避等待自动重启,
+    /// None 表示已熔断,只能人工重启。
+    /// retry_in_ms 用 u32:u64 经 ts-rs 会生成 `bigint`,而 Tauri IPC 送到 UI
+    /// 的是普通 JS number,类型与运行时对不上(退避上限 16s,u32 绰绰有余)。
+    Crashed { detail: String, log_tail: String, attempt: u32, retry_in_ms: Option<u32> },
+    /// 启动失败:二进制缺失、配置物化失败、握手超时、协议版本不匹配。
+    Failed { error: String },
+}
+
+impl EngineStatus {
+    /// 引擎不在位时给 IPC 调用方的原因。此前每条命令各自撞见
+    /// "引擎已退出"/"引擎未运行"两种文案,取决于死句柄有没有被摘,
+    /// 用户看到的提示与实际处境对不上;现在统一由状态派生。
+    fn unavailable(&self) -> String {
+        match self {
+            EngineStatus::Starting { attempt: 0 } => "引擎正在启动,请稍候".into(),
+            EngineStatus::Starting { .. } => "引擎正在自动重启,请稍候".into(),
+            EngineStatus::Crashed { retry_in_ms: Some(_), .. } => "引擎已退出,正在自动重启".into(),
+            EngineStatus::Crashed { .. } => "引擎已退出,请点顶部横幅重启".into(),
+            EngineStatus::Failed { error } => format!("引擎未运行: {error}"),
+            // Ready 而句柄为空是不可达的(同锁维护),兜底给通用文案
+            EngineStatus::Stopped | EngineStatus::Ready { .. } => "引擎未运行".into(),
+        }
+    }
+
+    /// 引擎在位或正在拉起。关主窗口是"最小化到托盘"还是"真退出"以此为准:
+    /// 崩溃/熔断态下还假装最小化,用户会以为已经退出、进程却还在后台。
+    pub fn alive(&self) -> bool {
+        matches!(self, EngineStatus::Ready { .. } | EngineStatus::Starting { .. })
+    }
+}
+
+/// 崩溃后的重试决策(纯函数,便于单测)。`uptime` = 本次引擎从就绪到崩溃的
+/// 存活时长。返回 (本次用掉的第几次重试, 退避时长);None = 熔断。
+///
+/// 稳定期判据是这套自愈的关键:没有它,"起来就崩"的引擎每次崩溃都被当作
+/// 首次,attempt 永远停在 1、退避永远是 1s、熔断永远触发不到——自动重启
+/// 直接退化成 1s 一次的死循环。
+pub fn next_retry(attempt: u32, uptime: Duration) -> Option<(u32, Duration)> {
+    let used = if uptime >= ENGINE_STABLE_UPTIME { 0 } else { attempt };
+    if used >= ENGINE_MAX_RETRY {
+        return None;
+    }
+    Some((used + 1, Duration::from_secs(1u64 << used))) // 1/2/4/8/16s
+}
+
 /// 当前引擎(壳生命周期内至多一个;保存设置时整体替换)。命令通过 lease
 /// 使用克隆句柄；维护事务先关闭新 lease，再等已有 IPC 调用退出。
+/// 句柄与生命周期状态同锁维护,状态变更一律经 main.rs 的 `publish_*` 收口
+/// (那里负责 emit `engine-status`),本类型不自己发事件。
 pub struct DriverHost {
     state: Mutex<DriverHostState>,
     idle: Condvar,
@@ -38,6 +107,7 @@ pub struct DriverHost {
 
 struct DriverHostState {
     engine: Option<OhmyDriver>,
+    status: EngineStatus,
     applying: bool,
     leases: usize,
 }
@@ -75,7 +145,12 @@ impl Drop for DriverApplyGuard<'_> {
 impl DriverHost {
     pub fn new() -> Self {
         Self {
-            state: Mutex::new(DriverHostState { engine: None, applying: false, leases: 0 }),
+            state: Mutex::new(DriverHostState {
+                engine: None,
+                status: EngineStatus::Stopped,
+                applying: false,
+                leases: 0,
+            }),
             idle: Condvar::new(),
         }
     }
@@ -83,7 +158,7 @@ impl DriverHost {
     pub fn get(&self) -> Result<DriverLease<'_>, String> {
         let mut state = self.state.lock_ok();
         if state.applying { return Err("引擎配置正在应用，请稍后重试".into()); }
-        let engine = state.engine.clone().ok_or_else(|| "引擎未运行".to_string())?;
+        let Some(engine) = state.engine.clone() else { return Err(state.status.unavailable()) };
         state.leases += 1;
         Ok(DriverLease { host: self, engine })
     }
@@ -129,16 +204,35 @@ impl DriverHost {
         Some(DriverApplyGuard { host: self })
     }
 
+    /// 引擎在位或正在拉起(关窗语义、托盘常驻判据)。
     pub fn running(&self) -> bool {
-        self.state.lock_ok().engine.is_some()
+        let state = self.state.lock_ok();
+        state.engine.is_some() || state.status.alive()
     }
 
-    pub fn set(&self, e: OhmyDriver) {
-        self.state.lock_ok().engine = Some(e);
+    pub fn status(&self) -> EngineStatus {
+        self.state.lock_ok().status.clone()
     }
 
+    /// 引擎就位:句柄与状态同一把锁一起写。
+    pub fn set(&self, e: OhmyDriver, status: EngineStatus) {
+        let mut state = self.state.lock_ok();
+        state.engine = Some(e);
+        state.status = status;
+    }
+
+    /// 只改状态(Starting/Crashed/Failed);句柄不动。
+    pub fn set_status(&self, status: EngineStatus) {
+        self.state.lock_ok().status = status;
+    }
+
+    /// 摘除句柄并落回 Stopped。停机、重启前置与**崩溃**都经它——崩溃路径
+    /// 此前不摘句柄,导致 running() 恒真(关窗只隐藏,用户以为退出了进程还在)
+    /// 且每条 IPC 都能借到一个必然失败的死引擎。
     pub fn take(&self) -> Option<OhmyDriver> {
-        self.state.lock_ok().engine.take()
+        let mut state = self.state.lock_ok();
+        state.status = EngineStatus::Stopped;
+        state.engine.take()
     }
 }
 
@@ -182,6 +276,13 @@ pub fn start_engine(app: &AppHandle, cfg: &DesktopConfig) -> Result<OhmyDriver, 
 }
 
 // ==================== Tauri 命令 ====================
+
+/// 引擎生命周期状态查询。UI 挂载后先拉一次:`engine-status` 事件在窗口
+/// 建起来之前就可能发过(冷启动失败、启动期崩溃),只靠监听必然错过。
+#[tauri::command]
+pub async fn engine_status(host: State<'_, DriverHost>) -> Result<EngineStatus, String> {
+    Ok(host.status())
+}
 
 #[tauri::command]
 pub async fn engine_caps(app: AppHandle, host: State<'_, DriverHost>) -> Result<Caps, String> {
@@ -321,4 +422,100 @@ pub async fn upload_read(host: State<'_, DriverHost>, id: String, path: String) 
     tauri::async_runtime::spawn_blocking(move || crate::uploads::read_data_url(&workdir, None, &path))
         .await
         .map_err(|e| format!("读取失败: {e}"))?
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    /// 崩了就重启,退避 1/2/4/8/16s,第 6 次熔断。
+    #[test]
+    fn backoff_grows_then_trips_the_breaker() {
+        let crashed_fast = Duration::from_secs(1);
+        let delays: Vec<u64> = (0..ENGINE_MAX_RETRY)
+            .map(|n| next_retry(n, crashed_fast).expect("未到上限应继续重试").1.as_secs())
+            .collect();
+        assert_eq!(delays, vec![1, 2, 4, 8, 16]);
+        assert_eq!(next_retry(ENGINE_MAX_RETRY, crashed_fast), None, "用尽即熔断");
+    }
+
+    /// 每次重试都要真的递增,否则退避永远停在第一档。
+    #[test]
+    fn each_retry_consumes_one_attempt() {
+        let (next, _) = next_retry(2, Duration::from_secs(1)).unwrap();
+        assert_eq!(next, 3);
+    }
+
+    /// 稳定期判据:活够久才算"上次重启成功",计数归零重新起算。
+    #[test]
+    fn a_long_lived_engine_resets_the_retry_budget() {
+        let stable = ENGINE_STABLE_UPTIME;
+        let (next, delay) = next_retry(4, stable).expect("稳定运行过就不该受旧计数拖累");
+        assert_eq!((next, delay.as_secs()), (1, 1), "归零后从头退避");
+        // 已经熔断过的计数同样能被一次稳定运行救回来
+        assert!(next_retry(ENGINE_MAX_RETRY, stable).is_some());
+    }
+
+    /// 这条是整套自愈的命门:起来就崩若被当成"每次都是首次崩溃",
+    /// attempt 永远回不到上限,自动重启退化成 1s 一次的死循环。
+    #[test]
+    fn an_instantly_crashing_engine_still_trips_the_breaker() {
+        let mut attempt = 0;
+        let mut rounds = 0;
+        // 每次刚起来就崩(uptime 远小于稳定期)
+        while let Some((next, _)) = next_retry(attempt, Duration::from_millis(200)) {
+            attempt = next;
+            rounds += 1;
+            assert!(rounds <= ENGINE_MAX_RETRY, "必须收敛到熔断,不能无限重试");
+        }
+        assert_eq!(rounds, ENGINE_MAX_RETRY);
+    }
+
+    /// 状态决定关窗语义:崩溃/熔断态不该再假装最小化到托盘。
+    #[test]
+    fn only_live_phases_keep_the_window_in_the_tray() {
+        assert!(EngineStatus::Ready { version: "v".into() }.alive());
+        assert!(EngineStatus::Starting { attempt: 1 }.alive());
+        assert!(!EngineStatus::Stopped.alive());
+        assert!(!EngineStatus::Failed { error: "x".into() }.alive());
+        assert!(!EngineStatus::Crashed {
+            detail: "x".into(),
+            log_tail: String::new(),
+            attempt: 1,
+            retry_in_ms: Some(1000),
+        }
+        .alive());
+    }
+
+    /// 引擎不在位时的文案由状态派生,退避中与熔断后必须说得不一样——
+    /// 一个是"等着就行",一个是"得你动手"。
+    #[test]
+    fn the_unavailable_reason_distinguishes_retrying_from_given_up() {
+        let crashed = |retry_in_ms| EngineStatus::Crashed {
+            detail: "崩了".into(),
+            log_tail: String::new(),
+            attempt: 1,
+            retry_in_ms,
+        };
+        assert!(crashed(Some(1000)).unavailable().contains("正在自动重启"));
+        assert!(crashed(None).unavailable().contains("请点顶部横幅重启"));
+        assert!(EngineStatus::Failed { error: "找不到二进制".into() }
+            .unavailable()
+            .contains("找不到二进制"));
+    }
+
+    /// 崩溃摘句柄后,借引擎的命令必须拿到崩溃态的文案而不是通用的"未运行"。
+    #[test]
+    fn a_crashed_host_reports_the_crash_not_a_generic_error() {
+        let host = DriverHost::new();
+        host.set_status(EngineStatus::Crashed {
+            detail: "崩了".into(),
+            log_tail: String::new(),
+            attempt: 2,
+            retry_in_ms: Some(2000),
+        });
+        assert!(!host.running(), "崩溃态不算存活");
+        let Err(err) = host.get() else { panic!("句柄已摘,不该借得出引擎") };
+        assert!(err.contains("自动重启"), "文案应说明壳正在处理: {err}");
+    }
 }

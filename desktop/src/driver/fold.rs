@@ -114,6 +114,20 @@ pub(super) fn is_turn_end(f: &Value) -> bool {
     f.get("type").and_then(|v| v.as_str()) == Some("task-ended")
 }
 
+/// 帧序列是否停在未闭合的轮次上(有 task-started,其后没有 task-ended)。
+/// 判据与 is_turn_end 同源:壳的收尾恒为 task-error → task-ended,被硬杀在
+/// 两者之间同样算未闭合(补一帧 task-ended 即可,重复的错误文案不会出现)。
+pub(super) fn unterminated(frames: &[Value]) -> bool {
+    for f in frames.iter().rev() {
+        match f.get("type").and_then(|v| v.as_str()) {
+            Some("task-ended") => return false,
+            Some("task-started") => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
 // ==================== 大字段护栏 ====================
 
 /// 按字符边界把字符串截到 head 字节以内。

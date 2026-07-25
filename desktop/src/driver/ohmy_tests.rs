@@ -458,6 +458,12 @@ async fn e2e_ask_user_question_flow() {
     driver.stop();
 }
 
+/// 裸 Inner 没跑过 system/ready,版本为空;句柄生命周期测试只关心状态与
+/// 句柄的原子性,给个占位的就绪态即可。
+fn ready_status() -> crate::driver::EngineStatus {
+    crate::driver::EngineStatus::Ready { version: String::new() }
+}
+
 /// 构造裸 Inner(不起引擎进程):journal 写线程 + 会话表,专测回放窗口
 /// 与句柄生命周期,不依赖 ohmyagent 二进制。
 fn bare_inner(tag: &str) -> Arc<Inner> {
@@ -507,6 +513,7 @@ fn bare_session(sid: &str) -> SessionState {
     SessionState {
         seq: 0,
         running: true,
+        turn: 1,
         created: true,
         engine_id: sid.to_string(),
         opened: false,
@@ -613,7 +620,7 @@ fn driver_exposes_the_ready_version() {
 #[test]
 fn driver_host_maintenance_drains_leases_and_closes_the_command_gate() {
     let host = Arc::new(crate::driver::DriverHost::new());
-    host.set(OhmyDriver(bare_inner("host-lease")));
+    host.set(OhmyDriver(bare_inner("host-lease")), ready_status());
     let lease = host.get().unwrap();
     let (acquired_tx, acquired_rx) = std::sync::mpsc::channel();
     let (release_tx, release_rx) = std::sync::mpsc::channel();
@@ -646,7 +653,7 @@ fn idle_maintenance_does_not_churn_the_command_gate_while_work_is_running() {
         .sessions
         .lock().unwrap()
         .insert("s1".into(), bare_session("s1"));
-    host.set(OhmyDriver(inner));
+    host.set(OhmyDriver(inner), ready_status());
 
     assert!(host.try_begin_idle_apply().is_none());
     assert!(host.get().is_ok(), "忙碌轮询不应短暂关闭命令入口");
@@ -1494,4 +1501,102 @@ fn a_turn_still_running_stays_raw_and_is_not_materialised_early() {
     // 已物化轮折成 user-input(1) + started(2) + 正文(3) + ended(8),
     // 后接未物化尾巴 9/10/11——折叠帧取首帧 seq,两段无缝衔接
     assert_eq!(seqs, vec![1, 2, 3, 8, 9, 10, 11]);
+}
+
+// ==================== 引擎生命周期(契约 6)====================
+
+/// 进程被硬杀留下的未闭合轮次,必须在冷启动打开会话时补上终态帧。
+/// 不补的话 UI 的 running 只由帧推导,会永久按"执行中"渲染:输入只排队、
+/// 删除/切模型全灰,取消打到壳里也因内存 running=false 而空转。
+#[test]
+fn a_journal_killed_mid_turn_is_repaired_on_cold_open() {
+    let inner = bare_inner("coldrepair");
+    // 直接写日志文件而不经 push_frame:硬杀留下的现场就是这样——文件里有
+    // 半截轮次,而**新进程**的会话表是全新的(fold 空、running=false)。
+    // 用 push_frame 造场景等于留着上个进程的内存态,测不到冷启动这条路。
+    let dir = inner.data_dir.join("s1");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut seq = 0u64;
+    let mut lines = String::new();
+    for f in [
+        frame::user_input("被打断的一轮", { seq += 1; seq }),
+        frame::task_started({ seq += 1; seq }),
+        frame::agent_thought("想到一半", { seq += 1; seq }),
+    ] {
+        lines.push_str(&f.to_string());
+        lines.push('\n');
+    }
+    std::fs::write(dir.join("events.jsonl"), &lines).unwrap();
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+
+    let w = inner.replay_open("s1");
+    let types: Vec<&str> =
+        w.frames.iter().filter_map(|f| f["type"].as_str()).collect();
+    assert_eq!(
+        types.last().copied(),
+        Some("task-ended"),
+        "窗口必须以终态帧收口,否则 UI 永远转圈: {types:?}"
+    );
+    assert!(types.contains(&"task-error"), "补的收尾要说明原因: {types:?}");
+    // seq 必须接在最后一帧之后,不能与历史撞号
+    let seqs: Vec<u64> =
+        w.frames.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
+    assert!(seqs.windows(2).all(|p| p[0] < p[1]), "seq 必须严格递增: {seqs:?}");
+
+    // 落盘同样收口:第二次打开不再重复补(已闭合就不满足补的条件)
+    inner.journal_barrier();
+    let again = inner.replay_open("s1");
+    let ends = |fs: &[Value]| fs.iter().filter(|f| f["type"] == "task-ended").count();
+    assert_eq!(ends(&again.frames), ends(&w.frames), "重开不得重复补帧");
+    assert_eq!(
+        inner.read_sidecar("s1")["status"].as_str(),
+        Some("interrupted"),
+        "sidecar 要与帧一起落终态,否则侧栏与聊天区继续各说各话"
+    );
+}
+
+/// 运行中的会话不能被冷修复碰:那是活的轮次,补终态帧等于凭空打断任务。
+#[test]
+fn a_live_running_turn_is_never_cold_repaired() {
+    let inner = bare_inner("liverepair");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    inner.push_frame("s1", |seq| frame::user_input("进行中", seq));
+    inner.push_frame("s1", frame::task_started);
+    if let Some(s) = inner.sess.sessions.lock().unwrap().get_mut("s1") {
+        s.running = true;
+    }
+    inner.journal_barrier();
+
+    let w = inner.replay_open("s1");
+    let types: Vec<&str> = w.frames.iter().filter_map(|f| f["type"].as_str()).collect();
+    assert!(!types.contains(&"task-ended"), "运行中会话不该被补收尾: {types:?}");
+}
+
+/// cancel 看门狗的认轮守卫:到期时若已开了新的一轮,不得误杀。
+#[test]
+fn the_cancel_watchdog_only_reconciles_its_own_turn() {
+    let inner = bare_inner("watchdog");
+    {
+        let mut sessions = inner.sess.sessions.lock().unwrap();
+        let mut s = idle_session("s1");
+        s.running = true;
+        s.turn = 7;
+        sessions.insert("s1".into(), s);
+    }
+    let matches = |turn: u64| {
+        inner
+            .sess
+            .sessions
+            .lock()
+            .unwrap()
+            .get("s1")
+            .map(|s| s.running && s.turn == turn)
+            .unwrap_or(false)
+    };
+    assert!(matches(7), "同一轮仍在跑:该和解");
+    assert!(!matches(6), "上一轮的看门狗不得动到当前轮");
+
+    // 轮次收尾后即使 turn 相同也不再和解(running 已落)
+    inner.sess.sessions.lock().unwrap().get_mut("s1").unwrap().running = false;
+    assert!(!matches(7));
 }
