@@ -1860,3 +1860,105 @@ cargo test **60/60 零警告**(4 个真实引擎 E2E + perm remember/对账/结�
    旧引擎 caps 回退路径(同包分发,可在下个版本清理)
 3. 评审建议未采纳项:引擎崩溃自动重试(现状"外显+一键恢复"是可辩护的
    显式设计,未改);CloudPipes 并入 BaizhiState(收益小改动面大,未动)
+
+# 桌面端审计修复(2026-07-25,四路探索 → 分波实施)
+
+> 来源:对 desktop/ 的 Rust 壳 / React UI / 构建发布链三路探索 + 实跑验证。
+> 范围经用户确认:P0/P1/P2 全量 + 结构重构。
+
+## Wave 1:P0 正确性(用户当场可踩)
+
+- [x] WSL 死路:settings.tsx:1178 仍渲染 WSL 下拉,transport.rs:144 对
+      `kernel_env=wsl:*` 硬错误。改为默认不提供 WSL 选项;仅当已存配置为
+      `wsl:*` 时显示只读警告行 + 一键切回本机(否则误配用户无路可退)
+- [x] E2E 假绿灯:6 个 `e2e_*` 无 MC_OHMYAGENT_BIN 时 eprintln 后 return,
+      测试报 ok(实跑 `cargo test e2e_` = 6 passed / 0.00s)。改 `#[ignore]`
+      诚实上报 + `MC_REQUIRE_E2E=1` 时缺二进制直接 panic;CI 显式跑 --ignored
+
+## Wave 2:P1 发布链
+
+- [x] Makefile:109 `windows-release` 缺 `set-release-version`(macos-release:57 有),
+      本地出包会把占位版本 26071401 烙进安装包名/updater/latest-windows.json
+- [x] externalBin 文档漂移:README:41 / ARCHITECTURE:185 / Makefile:91 三处称
+      "在基础配置",实际只在 macos/windows overlay。**让文档成真**:移进
+      tauri.conf.json 基础配置(而非改文档迁就代码)
+- [x] Cargo.lock.win7 无 CI 校验:加 lockfile 新鲜度检查(cargo metadata --locked)
+- [x] desktop-check.yml 无 macOS job:mac 独有代码(tauri-nspanel/macos-private-api)
+      只在手动 dispatch 的 workflow 编译,破坏在发版时才暴露
+
+## Wave 3:P2 小 bug
+
+- [x] cookies.rs:206 凭证落盘弱于配置落盘:先 `fs::write` 后 `set_permissions(0600)`
+      有 umask 窗口,且用裸 rename。改走 config::atomic_write_private
+- [x] main.rs:145 `schedule_browser_mcp_refresh` 250ms 无限重试无超时,
+      长跑会话可让线程转到进程结束。加截止时间 + 放弃时外显
+- [x] 锁中毒处理不一致:driver/config 用 `into_inner()`,main.rs:222/261/711/874
+      与 browser/baizhi 大量裸 unwrap()。统一为不 panic 的取锁助手
+
+## Wave 4:结构重构
+
+- [x] components.tsx 1744 行拆分(markdown / 工具卡 / 权限卡 / diff / 代码查看器 /
+      通用 chrome),被 14 个文件依赖,保持 barrel 导出不破坏调用方
+- [x] settings.tsx 1339 行:纯函数(parseKV/mcpsToServers/serversToMcps/
+      modelsToConfig/replaceBaizhiGroup)析出独立模块,便于测试
+- [x] App.tsx / useSession.ts 零测试:按 useCloudTask 的 React-free core 模式补
+- [x] 深色模式:styles.css:90 `[data-theme="dark"]` 块为空,切换是 no-op;
+      填全令牌并放开设置页开关
+
+## 验证
+
+- [x] cargo test(含 MC_OHMYAGENT_BIN 真引擎 E2E)、npm test、tsc --noEmit
+- [x] scripts/check_command_contract.py + python unittest
+- [x] cargo build 零告警
+
+## 实施中新发现并修掉的(不在原清单内)
+
+- [x] `uploads::save_raw` 未清洗文件名:pub 函数,`../../../x.png` 能写出工作区。
+      过 sanitize_name;测试反向验证过(旧实现下断言失败)
+- [x] `baizhi::Service::new` 用 `.expect()` 构建 HTTP 客户端:在 setup 里 panic,
+      Windows GUI 子系统下等于双击没反应零线索。改 `Option<Client>` 降级——
+      云端/账号逐条报错,本地会话不受影响(仅 3 个使用点)
+- [x] MCP server 读头无界:Bearer 校验**之前**就读头,一条不含换行的超长头能
+      吃光内存;头条数无限;`incoming()` 无条件 spawn。加 32KB/100 条/32 连接上限,
+      补 e2e(无上限时该测试 5s 超时失败,有上限 0.01s 通过)
+- [x] 浏览器工具在引擎重启期整体失败:WorkdirFn 里 `DriverHost::get()` 报错就返 Err,
+      与它上方"无法确定只跳过落盘,不阻断操作"的注释自相矛盾。按契约退化为 Ok(None)
+- [x] `ohmy_mode_of("normal")` 原样转发 `"normal"`,而引擎 ParseMode 只受理
+      default/plan/auto/bypassPermissions/yolo → 老 sidecar 的会话**根本打不开**。
+      落到 default(更严,不替用户放宽既存意图);测试改为断言映射结果全在受理集合内
+- [x] E2E 假 LLM 缺"分类器"角色:壳默认模式是 auto,引擎 ModelClassifier 启发式
+      判不出时会单独发一次 LLM 请求;假服务把它当主循环请求,既让裁决拿空文本按
+      Allow 放行(该弹的审批卡不弹),又白吃掉一个脚本步骤使步序错位。
+      这正是 e2e_perm_remember_engine_rules 被假绿灯掩盖的失败——补上分类器应答后
+      6/6 真引擎 E2E 通过,原断言一条没削弱
+- [x] `viewChrome.tsx` 硬编码 `rgba(255,255,255,.42)` 会在深色下变亮白横带;
+      提为 `--headerBg` 令牌(浅色沿用原值→零视觉变化)
+- [x] 主题令牌防漂移:`scripts/check_theme_tokens.py` + 7 个单测。放 scripts/ 而非
+      vitest——vitest 默认把 CSS 导入 stub 成空串(`?raw` 拿不到内容),
+      浏览器工程也不该为读文件引 @types/node
+
+## 用户反馈补充(2026-07-25)
+
+- [x] 深色配色改为对齐移动端设计令牌 `mobile/src/theme.tsx`(`darkBase` +
+      ACCENTS['清新绿'] 经 makeTheme 推导)。移动端只有 4 档面色/3 档文字,
+      桌面 76 个令牌的缺口按"先按浅色角色定位、再落到移动端同角色令牌、
+      无对位刻度时在相邻两档间内插"补齐,规则写进 styles.css 头部
+      **遗留**:`--onAcc` 照移动端 acInk 用白色,白字对 `--acc #16b364` 只有
+      2.74:1(浅色同位 4.33:1),低于 3:1 的 UI 文字底线。保持与设计稿一致、
+      在令牌上就地标注;要过线得在设计侧改 acInk 或 ac,不在桌面偷偷翻深色字
+- [x] desktop-check.yml 的固定引擎 E2E 缺 token 改硬失败(`exit 1`),
+      与 desktop-{windows,macos,win7}.yml 一致——软跳过等于把"引擎集成没验证"
+      伪装成绿灯,和刚修掉的 `#[ignore]` 是同一类病。仅 push 触发保留:
+      fork PR 拿不到 secrets,那里跳过是机制使然而非掩盖
+
+## 验证结果(全绿)
+
+| 项 | 结果 |
+|---|---|
+| `cargo check --all-targets --locked` | 0 告警 0 错误 |
+| `cargo test --locked` | 100 passed / 6 ignored(E2E 如实上报) |
+| 真引擎全量 `-- --include-ignored` | **106 passed / 0 ignored**(10.1s 真实执行) |
+| `tsc --noEmit` / `vitest` / `vite build` | OK / 27 files **199 passed** / built |
+| 三个契约检查器 + scripts 单测 | 全 OK / Ran 18 OK |
+
+基线对比:Rust 96 真实测试 → 106;UI 149 → 199;scripts 6 → 18。
