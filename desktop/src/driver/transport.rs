@@ -52,6 +52,8 @@ pub(super) struct TransportState {
     /// 否则两边各等 5s 时壳先到期,优雅退出永远被 kill 抢断
     pub(super) shutdown_grace_ms: AtomicI64,
     pub(super) stopped: Arc<AtomicBool>,
+    /// 本引擎进程的实例号(见 NEXT_ENGINE_INSTANCE)。
+    pub(super) instance: u64,
 }
 
 /// journal 写线程消息。落盘专职化的动机(架构评审):
@@ -168,6 +170,12 @@ pub(super) fn spawn_journal_writer(data_dir: PathBuf) -> mpsc::UnboundedSender<J
 /// 崩溃现场留存份数。
 const CRASH_LOG_KEEP: usize = 3;
 
+/// 引擎实例号发号器。壳生命周期内可能先后起过多个引擎进程,而"某个引擎
+/// 退出了"这条通知必须能对应到**具体哪一个**——否则一个早已被弃用的进程
+/// (启动超时后残留、重启中途自行退出)几分钟后咽气,会被当成当前引擎崩溃:
+/// 摘掉活引擎的句柄、发崩溃横幅、再排一次自动重启。
+static NEXT_ENGINE_INSTANCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 /// 把崩溃当时的引擎日志另存一份。start 的 `.prev` 轮转只保留上一次运行,
 /// 而自动重启是连着退避重试好几轮的——首次崩溃(最有诊断价值的那次)会被
 /// 后面几次覆盖掉,只剩事件里的 15 行 tail。copy 而非 rename:原文件要留给
@@ -182,6 +190,20 @@ fn preserve_crash_log(log: &std::path::Path) {
     if let Err(e) = std::fs::copy(log, nth(1)) {
         eprintln!("[desktop] 留存崩溃日志失败: {e}");
     }
+}
+
+/// 启动失败的收尾:置 stopped(reader 据此不把随后的 EOF 当崩溃上报——
+/// 启动错误已由返回值外显,不能双报;flusher 也据此退出,否则它会永远
+/// 持有 Arc<Inner>)、关 stdin、杀掉并回收子进程。原样返回错误便于
+/// `return Err(abort_startup(...))` 收口每条早退分支。
+fn abort_startup(inner: &Arc<Inner>, err: String) -> String {
+    inner.transport.stopped.store(true, Ordering::Relaxed);
+    let _ = inner.transport.stdin_tx.send(None);
+    if let Some(mut child) = inner.transport.child.lock_ok().take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    err
 }
 
 impl OhmyDriver {
@@ -241,8 +263,16 @@ impl OhmyDriver {
             .spawn()
             .map_err(|e| format!("启动 ohmyagent 失败({}): {e}", bin.display()))?;
 
-        let stdin = child.stdin.take().ok_or("ohmyagent stdin 不可用")?;
-        let stdout = child.stdout.take().ok_or("ohmyagent stdout 不可用")?;
+        // 管道拿不到就地杀掉:此时 Inner 还没建起来,走不了 abort_startup,
+        // 直接 return 会把刚 spawn 的进程漏在外面
+        let (stdin, stdout) = match (child.stdin.take(), child.stdout.take()) {
+            (Some(i), Some(o)) => (i, o),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("ohmyagent 标准输入/输出管道不可用".into());
+            }
+        };
 
         let models = parse_manifest_models(&cfg.models);
         let data_dir = cfg_dir.join("ohmy-sessions");
@@ -271,6 +301,7 @@ impl OhmyDriver {
                 engine_version: StdMutex::new(String::new()),
                 shutdown_grace_ms: AtomicI64::new(5000),
                 stopped: Arc::new(AtomicBool::new(false)),
+                instance: NEXT_ENGINE_INSTANCE.fetch_add(1, Ordering::Relaxed),
             },
             sess: SessionsState {
                 sessions: StdMutex::new(HashMap::new()),
@@ -393,7 +424,11 @@ impl OhmyDriver {
                 if let Some(mut child) = inner_r.transport.child.lock_ok().take() {
                     let _ = child.wait();
                 }
-                inner_r.app.on_engine_exit("ohmyagent 进程异常退出", &tail);
+                inner_r.app.on_engine_exit(
+                    inner_r.transport.instance,
+                    "ohmyagent 进程异常退出",
+                    &tail,
+                );
             }
         });
 
@@ -409,22 +444,19 @@ impl OhmyDriver {
             }
         });
 
-        // 等 system/ready(15s);协议版本不匹配走同一条启动失败路径外显
+        // 等 system/ready(15s);协议版本不匹配与握手超时走同一条收尾
         match ready_rx.recv_timeout(Duration::from_secs(15)) {
             Ok(Ok(())) => {}
-            Ok(Err(e)) => {
-                // 版本不兼容:引擎进程还活着,主动终止——先置 stopped 防
-                // reader 把随后的 EOF 当崩溃发 engine-crashed(启动失败的
-                // 错误已由返回值外显,不能双报)
-                inner.transport.stopped.store(true, Ordering::Relaxed);
-                let _ = inner.transport.stdin_tx.send(None); // 关 stdin → 优雅退出
-                if let Some(mut child) = inner.transport.child.lock_ok().take() {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                }
-                return Err(e);
+            Ok(Err(e)) => return Err(abort_startup(&inner, e)),
+            // 超时此前直接 return:进程没杀、stopped 没置——留下一个孤儿引擎
+            // 常驻,它的 flusher 永远持有 Arc<Inner>,而它日后咽气时 reader
+            // 还会把这次 EOF 当成"当前引擎崩溃"上报
+            Err(_) => {
+                return Err(abort_startup(
+                    &inner,
+                    "ohmyagent 未在 15 秒内就绪(查看 ohmyagent.log)".to_string(),
+                ))
             }
-            Err(_) => return Err("ohmyagent 未在 15 秒内就绪(查看 ohmyagent.log)".to_string()),
         }
         eprintln!("[desktop] ohmyagent 引擎就绪");
         Ok(OhmyDriver(inner))
@@ -462,6 +494,13 @@ impl OhmyDriver {
     // ==================== JSON-RPC ====================
 
     pub(super) async fn rpc(&self, method: &str, params: Value) -> Result<Value, String> {
+        // 引擎已收摊就别再登记等待者。stdin_tx 是 unbounded 通道,writer 线程
+        // 早退后 send 依然"成功",于是这条请求会挂到 RPC_TIMEOUT(30s)才报错——
+        // 崩溃瞬间在途的命令因此白等半分钟。reader 清 pending 与本次登记之间
+        // 的窗口就是靠这个标志收口的。
+        if self.0.transport.stopped.load(Ordering::Relaxed) {
+            return Err("引擎已退出".into());
+        }
         let id = self.0.transport.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         self.0.transport.pending.lock_ok().insert(id, tx);
@@ -507,6 +546,10 @@ impl Inner {
     /// 的记忆集自动放行),而 pending 应答正由 reader 线程回填,阻塞即
     /// 自死锁——spawn 到 async 运行时 await,错误仅 eprintln 外显。
     pub(super) fn respond_rpc(&self, method: &str, params: Value) {
+        // 同 rpc:引擎收摊后登记的等待者永远等不到应答,只会挂到 Inner 释放
+        if self.transport.stopped.load(Ordering::Relaxed) {
+            return;
+        }
         let id = self.transport.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         self.transport.pending.lock_ok().insert(id, tx);

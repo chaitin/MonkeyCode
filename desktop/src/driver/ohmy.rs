@@ -44,7 +44,8 @@ pub trait ShellCtx: Send + Sync + 'static {
     /// 引擎进程非 stop() 退出(reader 读到 stdout EOF)。driver 只负责**报告**
     /// 事实,摘句柄/置崩溃态/退避重启这些策略全在壳侧(main.rs),transport
     /// 因此不必知道 DriverHost 与 Tauri State 的存在。
-    fn on_engine_exit(&self, _detail: &str, _log_tail: &str) {}
+    /// `instance` 标明是**哪一个**引擎进程退出了,壳据此忽略早已被弃用的实例。
+    fn on_engine_exit(&self, _instance: u64, _detail: &str, _log_tail: &str) {}
 }
 
 impl ShellCtx for AppHandle {
@@ -59,8 +60,8 @@ impl ShellCtx for AppHandle {
     fn local_data_dir(&self) -> Result<PathBuf, String> {
         crate::config::local_data_dir(self)
     }
-    fn on_engine_exit(&self, detail: &str, log_tail: &str) {
-        crate::engine_exited(self, detail, log_tail);
+    fn on_engine_exit(&self, instance: u64, detail: &str, log_tail: &str) {
+        crate::engine_exited(self, instance, detail, log_tail);
     }
 }
 
@@ -73,6 +74,9 @@ impl OhmyDriver {
 
     /// system/ready 宣告的内核版本；发布产物为 Agent commit hash。
     pub fn version(&self) -> String { self.0.transport.engine_version.lock_ok().clone() }
+
+    /// 引擎进程实例号:壳用它判定退出通知是否来自当前这一个。
+    pub fn instance(&self) -> u64 { self.0.transport.instance }
 }
 
 /// 驱动共享状态。锁字段按职责归为三个锁组(各组文档注释写明含哪些锁

@@ -89,20 +89,24 @@ export default function App() {
   useEffect(() => {
     let un: (() => void) | null = null;
     let dropped = false;
-    // 监听先于命令:补拉快照前必须先挂上监听,否则两者之间到达的状态会丢
-    void onEngineStatus((s) => {
+    // 事件与快照走同一条判定:快照若只 setEngine 不记 down,那么"页面在退避
+    // 期间加载"的场景(自动重启途中用户切回窗口、或上一次刷新落在崩溃里)
+    // 就不会记住引擎down过,引擎回来时不刷新,UI 攥着失效的会话句柄
+    const apply = (s: EngineStatus) => {
       if (s.phase === "ready" && engineWasDown.current) {
         location.reload();
         return;
       }
       if (s.phase !== "ready" && s.phase !== "stopped") engineWasDown.current = true;
       setEngine(s);
-    })
+    };
+    // 监听先于命令:补拉快照前必须先挂上监听,否则两者之间到达的状态会丢
+    void onEngineStatus(apply)
       .then((off) => {
         if (dropped) off();
         else un = off;
         // 冷启动失败/启动期崩溃的状态早于窗口存在,只靠监听必然错过
-        return fetchEngineStatus().then(setEngine);
+        return fetchEngineStatus().then(apply);
       })
       .catch(() => {});
     return () => {

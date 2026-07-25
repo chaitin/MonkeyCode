@@ -484,6 +484,7 @@ fn bare_inner(tag: &str) -> Arc<Inner> {
             engine_version: StdMutex::new("agent-test-commit".into()),
             shutdown_grace_ms: AtomicI64::new(5000),
             stopped: Arc::new(AtomicBool::new(false)),
+            instance: 1,
         },
         sess: SessionsState {
             sessions: StdMutex::new(HashMap::new()),

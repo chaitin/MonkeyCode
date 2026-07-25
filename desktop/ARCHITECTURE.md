@@ -215,7 +215,21 @@ Op/Ev/错误码、proto:1、20s ping。
 - **崩溃检测**:reader 读到 stdout EOF 且 `stopped` 未置位 → 释放在途 RPC →
   本地和解运行中会话(契约 5)→ 留存 `ohmyagent.crash-N.log`(最近 3 份;
   start 的 `.prev` 轮转只保留上一次运行,退避重试几轮就把首次现场冲没了)→
-  `ShellCtx::on_engine_exit`。driver 只报告事实,摘句柄/退避/重启的**策略在壳侧**。
+  置 `stopped` 并 `child.wait()` 收摊(不置位 flusher 会永远持有 `Arc<Inner>`,
+  不 wait 则留僵尸)→ `ShellCtx::on_engine_exit`。driver 只报告事实,
+  摘句柄/退避/重启的**策略在壳侧**。
+- **实例号是死讯的身份证**。壳内先后起过的每个引擎进程带唯一 `instance`,
+  退出通知携带它,`DriverHost::take_instance` 只在**在位的就是它**时才摘句柄。
+  没有这道闸,一条过期死讯(启动握手超时后残留的孤儿进程日后咽气、重启期间
+  旧引擎抢在 `stop()` 置位前自行退出)会摘掉**当前活引擎**的句柄,再发一轮
+  崩溃横幅和自动重启,把刚起来的引擎踹掉。
+- **启动失败一律经 `abort_startup` 收尾**:置 `stopped`(reader 据此不把随后的
+  EOF 当崩溃双报)、关 stdin、kill + wait 子进程。每条早退分支都要走它——
+  握手超时那条曾经直接 return,留下一个常驻孤儿引擎。
+- `adopt_engine` 顺带把监督代次 +1:**只要有引擎活着,排队中的重启就没意义了**。
+  放在"就位"这个事实上而不是各调用点,才不会漏掉浏览器配对刷新那条路径。
+  但**不重置 attempt**——那归稳定期判据,在这里清零等于认定"起来了就算成功",
+  而"起来就崩"恰恰是必须能触发熔断的故障。
 - **自动重启**:退避 1/2/4/8/16s,连续 5 次后熔断(状态停在 Crashed、
   `retry_in_ms=None`),只能人工重启。**稳定期判据是命门**:引擎就绪后连续
   存活满 `ENGINE_STABLE_UPTIME`(60s)才把 attempt 归零,否则"起来就崩"的

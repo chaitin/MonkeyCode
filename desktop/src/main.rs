@@ -166,9 +166,19 @@ fn publish_engine_status(app: &AppHandle, status: driver::EngineStatus) {
 }
 
 /// 引擎就位:句柄、状态与稳定期起点三者一起更新。
+///
+/// 同时把代次 +1 作废在途的退避重试——**只要有引擎活着,排队中的那次重启
+/// 就已经没有意义了**。把这条放在这里而不是各个调用点:保存设置与手动重启
+/// 会自己 reset,但浏览器配对刷新那条路径不会,而它同样会拉起新引擎;
+/// 靠调用点自觉必然漏掉一条,靠"就位"这个事实则天然全覆盖。
+///
+/// 注意**不重置 attempt**:那由 next_retry 的稳定期判据负责。在这里清零等于
+/// 认定"起来了就算成功",而"起来就崩"恰恰是必须能触发熔断的那种故障。
 fn adopt_engine(app: &AppHandle, engine: driver::ohmy::OhmyDriver) {
     let status = driver::EngineStatus::Ready { version: engine.version() };
-    app.state::<EngineSupervisor>().ready_at.lock_ok().replace(Instant::now());
+    let sup = app.state::<EngineSupervisor>();
+    sup.generation.fetch_add(1, Ordering::SeqCst);
+    sup.ready_at.lock_ok().replace(Instant::now());
     app.state::<DriverHost>().set(engine, status.clone());
     let _ = app.emit("engine-status", status);
 }
@@ -176,14 +186,18 @@ fn adopt_engine(app: &AppHandle, engine: driver::ohmy::OhmyDriver) {
 /// 替换当前引擎。调用方须持 EngineApply，且已完成配置提交/物化；阻塞流程
 /// 会等待旧引擎优雅退出并等待新引擎 system/ready。
 fn restart_engine_locked(app: &AppHandle, config: &DesktopConfig) -> Result<(), String> {
-    if let Some(engine) = app.state::<DriverHost>().take() {
+    let old = app.state::<DriverHost>().take();
+    // Starting 要盖住**整个**重启窗口,包括旧引擎的优雅退出(最长 grace+3s)。
+    // take() 会把状态落回 Stopped,那期间 running() 为假——关主窗口会真退出
+    // 而不是最小化,UI 也看不出正在重启。所以先外显再停。
+    let attempt = app.state::<EngineSupervisor>().attempt.load(Ordering::SeqCst);
+    publish_engine_status(app, driver::EngineStatus::Starting { attempt });
+    if let Some(engine) = old {
         engine.stop();
     }
     if let Some(browser) = app.try_state::<browser::BrowserHost>() {
         tauri::async_runtime::block_on(browser.mcp_sessions.reset());
     }
-    let attempt = app.state::<EngineSupervisor>().attempt.load(Ordering::SeqCst);
-    publish_engine_status(app, driver::EngineStatus::Starting { attempt });
     match driver::start_engine(app, config) {
         Ok(engine) => {
             adopt_engine(app, engine);
@@ -208,13 +222,18 @@ fn reset_engine_supervision(app: &AppHandle) {
 
 /// 引擎进程非 stop() 退出(ShellCtx::on_engine_exit 的壳侧实现)。
 /// 摘死句柄 → 按退避决策置状态 → 排下一次自动重启。
-pub fn engine_exited(app: &AppHandle, detail: &str, log_tail: &str) {
+pub fn engine_exited(app: &AppHandle, instance: u64, detail: &str, log_tail: &str) {
+    // 先摘句柄,且**只摘这一个实例**:留着句柄会让 running() 恒真(关窗只
+    // 隐藏,用户以为退出了进程还在),而不认实例则会拿过期引擎的死讯摘掉
+    // 当前活引擎。摘不到 = 这条死讯已过期(停机/重启已收过尾,或来自启动
+    // 失败后残留的孤儿进程),整条处理都不该继续。
+    if app.state::<DriverHost>().take_instance(instance).is_none() {
+        eprintln!("[desktop] 忽略过期引擎实例的退出通知: instance={instance}");
+        return;
+    }
     let sup = app.state::<EngineSupervisor>();
     let uptime = sup.ready_at.lock_ok().take().map(|t| t.elapsed()).unwrap_or_default();
     let decision = driver::next_retry(sup.attempt.load(Ordering::SeqCst), uptime);
-    // 先摘句柄:留着会让 running() 恒真(关窗只隐藏,用户以为退出了进程还在),
-    // 且每条 IPC 都能借到一个必然失败的死引擎
-    app.state::<DriverHost>().take();
     let (attempt, delay) = match decision {
         Some((attempt, delay)) => {
             sup.attempt.store(attempt, Ordering::SeqCst);
@@ -1081,9 +1100,11 @@ fn main() {
                         .replace((pos.x, pos.y));
                 }
             }
-            // 主窗口:引擎在跑且托盘可用时关窗只隐藏(任务继续跑);错误页正常关闭。
-            // running() 现在按生命周期状态判定——崩溃/熔断态下引擎已不在,再假装
-            // 最小化到托盘,用户会以为退出了、进程却还常驻着
+            // 主窗口:引擎在跑且托盘可用时关窗只隐藏(任务继续跑);引擎不在位
+            // (崩溃/退避中/启动失败)则放行销毁——那时没有任务要护着,留一个
+            // 隐藏的陈旧页面反而挡住重建。**注意关窗不等于退出进程**:
+            // ExitRequested 在托盘可用时一律 prevent_exit,所以销毁后必须能重建,
+            // 由 show_any_window 负责(否则托盘里剩个叫不出来的应用)
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() != "main" {
                     return;
@@ -1184,12 +1205,23 @@ fn setup_tray(app: &AppHandle, pet_enabled: bool) -> tauri::Result<()> {
 }
 
 /// 恢复主窗口。
+/// 唤回主窗口;**窗口已被销毁则重建**。
+///
+/// 只 show 不重建会留下一个叫不出来的应用:`ExitRequested` 在托盘可用时一律
+/// `prevent_exit`,所以"关窗"从来不等于"退出进程"——只要有一条路径让
+/// CloseRequested 不走隐藏(引擎未在位时就是如此:崩溃/退避中/启动失败),
+/// 窗口就真的没了,而托盘的三个入口(左键、显示窗口、设置)全走这里,
+/// 于是只剩"退出"一个可用菜单项。
 fn show_any_window(app: &AppHandle) {
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.show();
-        let _ = win.unminimize();
-        let _ = win.set_focus();
-    }
+    let Some(win) = app.get_webview_window("main") else {
+        // 重建一律回 index.html:启动失败页是一次性的,重来时该给正常 UI
+        // (引擎仍不可用的话,横幅会按 engine_status 如实渲染)
+        create_main_window(app, "index.html");
+        return;
+    };
+    let _ = win.show();
+    let _ = win.unminimize();
+    let _ = win.set_focus();
 }
 
 #[cfg(test)]

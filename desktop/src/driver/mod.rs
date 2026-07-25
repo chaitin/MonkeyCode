@@ -75,8 +75,9 @@ impl EngineStatus {
         }
     }
 
-    /// 引擎在位或正在拉起。关主窗口是"最小化到托盘"还是"真退出"以此为准:
-    /// 崩溃/熔断态下还假装最小化,用户会以为已经退出、进程却还在后台。
+    /// 引擎在位或正在拉起。关主窗口是"隐藏留活"还是"放行销毁"以此为准——
+    /// 两种都不退进程(托盘可用时 ExitRequested 一律 prevent_exit),区别只在
+    /// 有没有任务要护着;销毁那条依赖 show_any_window 能把窗口重建回来。
     pub fn alive(&self) -> bool {
         matches!(self, EngineStatus::Ready { .. } | EngineStatus::Starting { .. })
     }
@@ -231,6 +232,22 @@ impl DriverHost {
     /// 且每条 IPC 都能借到一个必然失败的死引擎。
     pub fn take(&self) -> Option<OhmyDriver> {
         let mut state = self.state.lock_ok();
+        state.status = EngineStatus::Stopped;
+        state.engine.take()
+    }
+
+    /// 仅当在位的引擎就是 `instance` 时摘除。崩溃通知专用:壳生命周期内
+    /// 先后起过多个引擎进程,退出通知可能来自早已被弃用的那一个——
+    /// - 启动握手超时后残留的孤儿进程,几分钟后才咽气;
+    /// - 重启期间旧引擎抢在 stop() 置位前自行退出。
+    ///
+    /// 不认实例就会拿别人的死讯摘掉**当前活引擎**的句柄,再发一轮崩溃横幅和
+    /// 自动重启,把刚起来的引擎踹掉。返回 None 表示这条死讯已过期,应忽略。
+    pub fn take_instance(&self, instance: u64) -> Option<OhmyDriver> {
+        let mut state = self.state.lock_ok();
+        if state.engine.as_ref().map(OhmyDriver::instance) != Some(instance) {
+            return None;
+        }
         state.status = EngineStatus::Stopped;
         state.engine.take()
     }
@@ -502,6 +519,21 @@ mod lifecycle_tests {
         assert!(EngineStatus::Failed { error: "找不到二进制".into() }
             .unavailable()
             .contains("找不到二进制"));
+    }
+
+    /// 过期实例的死讯不得动到当前引擎——这是"启动超时残留的孤儿进程日后
+    /// 咽气"与"重启期间旧引擎自行退出"两条路径共用的闸门。
+    #[test]
+    fn a_stale_instance_exit_cannot_evict_the_live_engine() {
+        let host = DriverHost::new();
+        // 不起真进程:take_instance 的判定只看实例号,用状态侧模拟即可
+        assert!(host.take_instance(41).is_none(), "空 host 上任何实例都摘不到");
+        host.set_status(EngineStatus::Ready { version: "v".into() });
+        assert!(
+            host.take_instance(41).is_none(),
+            "句柄不在位时不得把状态改成 Stopped"
+        );
+        assert!(host.status().alive(), "状态必须原样保留,交给真正的收尾方处理");
     }
 
     /// 崩溃摘句柄后,借引擎的命令必须拿到崩溃态的文案而不是通用的"未运行"。
