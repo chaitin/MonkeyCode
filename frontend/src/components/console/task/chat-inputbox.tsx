@@ -1097,7 +1097,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
           </div>
         </div>
       )}
-      <InputGroup>
+      <InputGroup orientation="vertical">
         <InputGroupTextarea
           ref={textareaRef}
           className="min-h-8 max-h-36 resize-none overflow-y-auto text-sm break-all [field-sizing:content] disabled:opacity-80"

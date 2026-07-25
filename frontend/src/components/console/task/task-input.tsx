@@ -343,7 +343,7 @@ export function TaskInput({ repos, initialContent, onTaskCreated }: TaskInputPro
 
   return (
     <>
-      <InputGroup className="rounded-4xl p-2 pb-0">
+      <InputGroup orientation="vertical" className="rounded-4xl p-2 pb-0">
         <InputGroupTextarea 
           className="min-h-30 max-h-60 break-all" 
           aria-invalid={taskContentTooLong}
