@@ -160,6 +160,28 @@ describe("云端投递状态机:排队与自动投递", () => {
     expect(sentUserInputs()).toEqual(["第一条", "第二条"]);
   });
 
+  it("已收到运行帧后再次发送仍入队,不会直接抢开新一轮", async () => {
+    opens = [true, true];
+    const { core, out } = makeCore();
+    // 进入一个已经在执行的云端任务:attach 回放 task-started 后,
+    // sending 已经解除,但 running 仍应阻止新消息直接发出。
+    expect(core.maybeOpenAttach()).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    pushFrame({ type: "task-started", seq: 1 });
+
+    core.send("运行中补充");
+    expect(out.queued).toBe("运行中补充");
+    expect(openCalls).toBe(1);
+    expect(sentUserInputs()).toEqual([]);
+
+    // 当前轮结束后再自动开新一轮投递。
+    pushFrame({ type: "task-ended", seq: 2 });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(out.queued).toBe("");
+    expect(openCalls).toBe(2);
+    expect(sentUserInputs()).toEqual(["运行中补充"]);
+  });
+
   it("发送失败交还队列:连败 3 次暂停自动重试,手动发送重置并合并带上", async () => {
     opens = [true, true, true, true];
     const { core, out } = makeCore();

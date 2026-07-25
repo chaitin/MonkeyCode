@@ -213,20 +213,18 @@ export function createCloudTaskCore(
   return {
     // ==================== 投递状态机(视图动作) ====================
 
-    /** 发送:随时可按。上一条未回执 → 入队(多条合并,轮结束自动投递);
-     * 其余一律直发,交服务端裁决 */
+    /** 发送:随时可按。当前轮执行中或上一条未回执 → 入队
+     * (多条合并,轮结束自动投递);空闲时才直发。 */
     send(text: string) {
       if (!text || taskStatus === "finished" || taskStatus === "error") return;
       sendFails = 0; // 手动发送 = 用户明确要投递,重试机会重置
-      // 上一条直发还没回执:合并入队,别把在途连接顶掉
-      if (sending) {
+      // 当前轮还在执行或上一条直发还没回执:合并入队,别抢开新一轮或
+      // 把在途连接顶掉。task-ended / onIdle 会解除 running 并自动投递。
+      if (running || sending) {
         setQueued(queued ? queued + "\n" + text : text);
         return;
       }
-      // 手动发送不看本地 running 推断:被打断的轮(VM 休眠等)回放里只有
-      // task-started 没有 task-ended,running 永远卡 true,消息全进队列
-      // 死等。轮是否真在跑由服务端裁决——真在跑 mode=new 会被拒,走
-      // onSendFailed 回队;已死的轮则直接开新轮。队列里压着的一并带上
+      // 空闲时,把队列里压着的一并带上
       const full = [queued, text].filter(Boolean).join("\n");
       setQueued("");
       dispatch(full);
