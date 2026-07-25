@@ -12,7 +12,7 @@ export function upwardMenuMaxHeight(anchorTop: number, boundaryBottom: number, c
 /**
  * 根据触发器与顶部镶边的真实 DOM 位置限制向上弹窗。
  * 固定像素上限在矮窗口、Windows 自绘标题栏下会越过 header；几何计算同时
- * 覆盖标题栏、引擎错误横幅和 ViewHeader 带来的位置变化。
+ * 覆盖标题栏、ViewHeader 与 macOS 红绿灯预留区带来的位置变化。
  */
 export function useUpwardMenuHeight<T extends HTMLElement>(open: boolean, cap = 360) {
   const anchorRef = useRef<T>(null);
@@ -25,7 +25,7 @@ export function useUpwardMenuHeight<T extends HTMLElement>(open: boolean, cap = 
       if (!anchor) return;
       const anchorTop = anchor.getBoundingClientRect().top;
       let boundaryBottom = MENU_EDGE_GAP;
-      document.querySelectorAll<HTMLElement>("[data-window-titlebar], [data-view-header]").forEach((node) => {
+      document.querySelectorAll<HTMLElement>("[data-window-titlebar], [data-view-header], [data-menu-boundary]").forEach((node) => {
         const bottom = node.getBoundingClientRect().bottom;
         if (bottom <= anchorTop && bottom > boundaryBottom) boundaryBottom = bottom;
       });

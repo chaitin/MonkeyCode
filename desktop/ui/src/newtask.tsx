@@ -476,7 +476,7 @@ export function NewTaskView({
       {/* macOS Overlay 标题栏带:本页没有 chat 那样的头栏,补一条拖拽热区
           (data-tauri-drag-region 不被子元素继承,必须有专属元素;高度同
           MacDragSpacer,已从下方 14vh 顶距中扣除,视觉位置不变) */}
-      <div data-tauri-drag-region="" style={{ height: 50, flex: "none" }} />
+      <div data-menu-boundary="" data-tauri-drag-region="" style={{ height: 50, flex: "none" }} />
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div style={{ margin: "0 auto", width: "100%", maxWidth: 640, padding: "max(0px, 14vh - 50px) 36px 32px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, marginBottom: 8 }}>
