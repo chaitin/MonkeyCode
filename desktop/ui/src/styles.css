@@ -749,8 +749,10 @@ nav:hover > .mc-outline-rail > .mc-outline-dot { background: var(--t5); }
 nav:hover > .mc-outline-rail > .mc-outline-dot[data-outline-current="true"] { background: var(--acc); }
 .mc-outline-panel {
   position: absolute;
-  /* 轨道右侧留间距,面板不贴窗口左缘 */
-  left: 24px;
+  /* 与点列左缘对齐(nav 自身已内缩 10px):展开时点列淡出,面板正好接替
+     它的位置——排在点列右侧的话,淡出后左边会空出一条 34px 的死带,看着
+     就是"整个飘到右边去了" */
+  left: 0;
   top: 50%;
   transform: translateY(-50%);
   width: 280px;
