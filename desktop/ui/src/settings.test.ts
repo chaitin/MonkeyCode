@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mcpNameValidationError, modelsToConfig, validateMcpNames } from "./settings";
+import { mcpNameValidationError, modelsToConfig, validateMcpNames } from "./settingsConfig";
 import type { HostModel } from "./types";
 
 describe("modelsToConfig", () => {

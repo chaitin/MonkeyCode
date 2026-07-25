@@ -2,6 +2,14 @@
 // Chat / New Task / Settings 三屏间切换。会话协议状态(WS/帧归约/composer)
 // 收口在 useSession 句柄里;视觉对照「MonkeyCode 桌面应用设计」。
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  fallbackView,
+  isNewTaskView,
+  modelMenuList,
+  resolveKeyAction,
+  windowContextLabel,
+  type AppMainView,
+} from "./appView";
 import { mcLogin, mcLogout, mcTaskDelete, mcTaskStop } from "./cloudapi";
 import {
   getHostInfo,
@@ -47,12 +55,12 @@ const IS_MAC = /Mac/.test(navigator.userAgent);
 export default function App() {
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [archivedProjects, setArchivedProjects] = useState<Set<string>>(readArchivedProjects);
-  const [view, setView] = useState<"new" | "session" | "settings" | "cloud">("new");
+  const [view, setView] = useState<AppMainView>("new");
   // 页内设置视图的脏状态(浏览器回退模式;桌面走独立设置窗口):离开前确认
   const settingsDirty = useRef(false);
   const closeSettings = () => {
     if (settingsDirty.current && !window.confirm("有未保存的更改,确定离开设置?")) return;
-    setView(session.id ? "session" : "new");
+    setView(fallbackView(session.id));
   };
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [hostInfo, setHostInfo] = useState<HostInfo | null>(null);
@@ -209,7 +217,7 @@ export default function App() {
   };
   const closeCloudTask = () => {
     setCloudTaskOpen(null);
-    setView(session.id ? "session" : "new");
+    setView(fallbackView(session.id));
     void syncCloud();
   };
 
@@ -235,7 +243,7 @@ export default function App() {
       })));
       if (cloudTask?.id === task.id) {
         setCloudTaskOpen(null);
-        setView(session.id ? "session" : "new");
+        setView(fallbackView(session.id));
       }
       await syncCloud();
     } catch (e) {
@@ -376,6 +384,11 @@ export default function App() {
       }
       location.reload();
     });
+    // 壳等任务空闲重启引擎超时后放弃(见 main.rs BROWSER_MCP_REFRESH_DEADLINE)。
+    // 不能静默:用户配对完扩展却发现模型没有 browser_* 工具会以为配对失败。
+    const offBrowserMcpTimeout = onHostEvent("browser-mcp-refresh-timeout", () => {
+      session.notify("浏览器工具尚未装载:等待任务空闲超时。任务结束后保存设置或在设置页重启引擎即可生效");
+    });
     Promise.all([listModels().catch(() => [] as ModelInfo[]), refreshSessions()])
       .then(([ms, metas]) => {
         setModels(ms);
@@ -408,6 +421,7 @@ export default function App() {
       offSettings();
       offSession();
       offBrowserMcp();
+      offBrowserMcpTimeout();
       clearInterval(updateTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -477,14 +491,11 @@ export default function App() {
   // ===== 派生状态 =====
   const currentMeta = sessions.find((m) => m.id === session.id);
   const currentModel = session.model || models.find((m) => m.default)?.name || "";
-  const menuModels: ModelInfo[] =
-    session.model && !models.some((m) => m.name === session.model)
-      ? [...models, { name: session.model, default: false }] // 下线模型兜底,无 source 归「自定义」组
-      : models;
+  const menuModels: ModelInfo[] = modelMenuList(models, session.model); // 下线模型兜底,无 source 归「自定义」组
   const openPerm = [...session.chat.items].reverse().find((it) => it.kind === "perm" && it.state === "open") as
     | Extract<LogItem, { kind: "perm" }>
     | undefined;
-  const isNewView = view === "new" || session.id === null;
+  const isNewView = isNewTaskView(view, session.id);
   const changes = session.changes;
   // 文件抽屉预览头的改动标注:路径 → 状态(树/列表内的标注在 FilesDrawer)
   const changeMap = new Map((changes ?? []).map((c) => [c.path, c.status] as const));
@@ -494,58 +505,52 @@ export default function App() {
   ).map((g) => g.dir);
 
   // ===== 全局快捷键:⇧⇥ 权限模式、⏎/esc 应答审批、esc 关闭浮层 =====
+  // 输入态 Esc(清空/取消输入法/关自动补全)只收敛焦点,不触发视图级动作
+  // ——尤其不能当作审批拒绝(deny 不可逆);先 blur,想应答再按一次。
+  // 优先级与守卫全在 appView.resolveKeyAction(纯函数,单测覆盖),这里只做
+  // DOM 读取与动作派发。
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === "Tab" && e.shiftKey && view === "session" && session.id) {
-        e.preventDefault();
-        void session.toggleYolo();
-        return;
-      }
-      if (e.key === "Escape") {
-        if (childView) return setChildView(null);
-        if (drawer) {
+      const t = e.target as HTMLElement | null;
+      const action = resolveKeyAction({
+        key: e.key,
+        shiftKey: e.shiftKey,
+        isComposing: e.isComposing,
+        targetTag: t?.tagName,
+        inTerminal: view === "cloud" && !!t?.closest?.(".xterm"),
+        view,
+        sessionId: session.id,
+        childOpen: !!childView,
+        drawerOpen: !!drawer,
+        openPermId: openPerm?.id ?? null,
+        inputText: session.input,
+      });
+      if (action.preventDefault) e.preventDefault();
+      switch (action.type) {
+        case "toggle-yolo":
+          return void session.toggleYolo();
+        case "close-child":
+          return setChildView(null);
+        case "close-drawer":
           if (drawerEscRef.current?.()) return; // 先关文件查看器,再关抽屉
           return setDrawer(null);
-        }
-        // 输入态 Esc(清空/取消输入法/关自动补全)只收敛焦点,不触发视图级动作
-        // ——尤其不能当作审批拒绝(deny 不可逆);先 blur,想应答再按一次
-        const t = e.target as HTMLElement | null;
-        const typing = !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT");
-        if (view === "settings") {
-          if (typing) return t.blur();
+        case "blur":
+          return t?.blur();
+        case "close-settings":
           return closeSettings();
-        }
-        if (view === "cloud") {
-          // xterm 的隐藏 textarea:Esc 要透传给云端 shell(vim 等),不 blur 不关视图
-          if (t?.closest?.(".xterm")) return;
-          if (typing) return t.blur();
+        case "close-cloud":
           return closeCloudTask();
-        }
-        if (typing) return t.blur();
-        // 仅会话视图响应审批快捷键:新任务/云端视图不误拒背景会话的审批(Enter 同守卫)
-        if (openPerm && view === "session" && !isNewView && !e.isComposing) session.answerPerm(openPerm.id, "deny");
-        return;
-      }
-      if (e.key === "Enter" && !e.isComposing && openPerm && view === "session" && !isNewView) {
-        const t = e.target as HTMLElement | null;
-        const typing = t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT");
-        if (typing && session.input.trim()) return; // 正在输入内容,不当作审批
-        e.preventDefault();
-        session.answerPerm(openPerm.id, "allow");
+        case "answer-perm":
+          return session.answerPerm(action.id, action.action);
+        default:
+          return;
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   });
 
-  const windowContext =
-    view === "settings"
-      ? "设置"
-      : view === "cloud"
-        ? cloudTask?.title || cloudTask?.summary || cloudTask?.content || "云端任务"
-        : view === "session" && currentMeta
-          ? currentMeta.title || (currentMeta.kind === "chat" ? "对话" : "本地任务")
-          : "新建任务";
+  const windowContext = windowContextLabel(view, cloudTask, currentMeta);
 
   return (
     <div

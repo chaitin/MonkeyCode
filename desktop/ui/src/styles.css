@@ -54,6 +54,7 @@
   --scrim3: rgba(20, 30, 25, 0.55);       /* 图片查看遮罩 */
   --panel: rgba(255, 255, 255, 0.92);     /* 浮起面板(composer/新任务卡) */
   --panel2: rgba(255, 255, 255, 0.7);     /* 次级浮面(排队 chip) */
+  --headerBg: rgba(255, 255, 255, 0.42);  /* 视图标题栏薄雾底(内容自其下滚过) */
   --panelSh: 0 6px 24px rgba(30, 45, 38, 0.075), 0 1px 2px rgba(30, 45, 38, 0.035);
   --panelShLg: 0 12px 40px rgba(30, 45, 38, 0.1), 0 2px 4px rgba(30, 45, 38, 0.035);
   --shadowLg: 0 24px 70px rgba(30, 45, 38, 0.3);   /* 模态弹窗/大图查看 */
@@ -85,10 +86,131 @@
   --hlAttr: #953800; /* 属性/标签名 */
 }
 
-/* 深色主题:落地时只填这里的令牌值,组件零改动。
- * 切换方式:document.documentElement.dataset.theme = "dark" | ""。 */
+/* 深色主题:只填这里的令牌值,组件零改动。
+ * 切换方式:document.documentElement.dataset.theme = "dark" | ""(见 theme.ts)。
+ *
+ * 取值对齐移动端设计令牌 mobile/src/theme.tsx:面色/文字/线条/语义色取 `darkBase`,
+ * 强调色取 ACCENTS['清新绿'] 经 makeTheme 推导的 ac / ac2 / acInk / acTx /
+ * acGhost / acLine。移动端只有 4 档面色、3 档文字,桌面这里有 76 个令牌,缺口按
+ * 同一条内插规则补齐(改值时请沿用,别打破角色关系):
+ *
+ * 内插规则:桌面令牌先按浅色同名令牌的"角色"定位,再落到移动端同角色的令牌上;
+ * 移动端没有对位刻度时,在其相邻两档之间线性内插,需要更暗/更亮一档时沿移动端
+ * 自己的刻度方向外推一步——不引入移动端调色板之外的色相。
+ * 1. 面色:层级次序沿用浅色的 rail < side < bg < inputBg < card < pop(凹陷的
+ *    导航更暗、浮起的面更亮)。bg / card / pop = 移动端 bg / bg2 / bg3(移动端的
+ *    卡与浮层就是 bg2,其上再叠一层用 bg3);要比 bg 更暗的 rail 取移动端自己
+ *    最暗的面 termBg #101113,side = rail↔bg 中点,inputBg = bg↔bg2 中点
+ *    (输入框在卡内是凹的、对 bg 是浮的)。bg4 落在 hov 叠在 card 上的位置。
+ * 2. 文字:t1 / t3 / t6 = 移动端 tx / tx2 / tx3;t2 在 tx→tx2 上取 25%(使
+ *    t2:t1 的对比度比 0.83 与浅色一致),t4 / t5 三等分 tx2→tx3,t7 / tDis 继续
+ *    内插到 bg4。八档在最亮常规底(--userBg #153127,其次 --pop)上依次约
+ *    12.0 / 10.0 / 5.3 / 4.3 / 3.4 / 2.7 / 2.0 / 2.3:1:正文档 t1/t2/t3 过 WCAG
+ *    AA 4.5:1,t4/t5(分组标题/弱文字,浅色同位只有 3.9 / 3.2:1)过 3:1,t6 占位、
+ *    t7 装饰符、tDis 禁用态按 WCAG 豁免项处理。每一档都比浅色同位更宽裕,因此没有
+ *    哪一档需要在移动端值之上再提亮。
+ * 3. 强调/语义色直接取移动端令牌:acc=ac、accBg=acGhost、accBd=acLine、
+ *    onAcc=acInk、linkH/accSelT=acTx、ok/addT=add、err=red、del*=del、
+ *    warn*=amber、userBg=acGhost 压成不透明(移动端的用户气泡就是 acGhost+acLine)。
+ *    移动端只给一档时不再拆两档(--warn 与 --warnT、--ok 与 --addT 同值:#f0b454
+ *    在最亮常规底上已有 7.6:1,不需要浅色那样再分出一档更深的正文色);--notice
+ *    也落在 amber 上,深色调色板里没有独立的橙。需要比 ac 更亮一档的 hover 取
+ *    ac + (ac − ac2) = #1dcc74,沿移动端自己的点缀色阶外推一步。
+ *    ⚠️ --onAcc 照移动端 acInk 用白色,白字对 #16b364 只有 2.74:1(浅色同位
+ *    4.33:1)。这是设计稿自己的配对,桌面保持一致;要过 3:1 得在设计侧改 acInk
+ *    或 ac,不在桌面本地偷偷翻成深色字。
+ * 4. 中性叠加层只用移动端已有的白色 alpha 刻度(line 0.07 / track 0.09 /
+ *    line2 0.12 / glassBrd 0.13 / glassHi 0.16),按浅色同族令牌的强弱次序落位;
+ *    刻度之外的(dashBd / sbThumbH / panel2 / headerBg)按浅色同族的比例外推或
+ *    内插。注意移动端 line/line2 的强弱与桌面 --line/--line2 相反,这里按角色对位:
+ *    桌面主描边 --line = 移动端 line2。
+ * 5. 遮罩与投影一律纯黑,不透明度锚在移动端 shCard 0.5 / shLift 0.7;几何
+ *    (offset/blur)是桌面自己的布局约定,不动。--codeBg 取纯黑 0.3,叠在 --bg 上
+ *    正好落到移动端的 termBg(代码/终端底色)。不做运行时颜色计算(Chromium 109)。
+ * 6. 代码高亮移动端没有对应令牌,继续用 GitHub Dark 官方色阶,与浅色的
+ *    GitHub Light 成对。 */
 [data-theme="dark"] {
-  /* TODO(深色模式):按设计稿填全部令牌 */
+  color-scheme: dark; /* 原生滚动条/勾选框/下拉跟随深色,不然是白块 */
+  --bg: #15161a;            /* 主区底色(移动端 bg) */
+  --rail: #101113;          /* 一级空间导航(移动端 termBg:调色板里最暗的面) */
+  --side: #131417;          /* 二级内容侧栏(rail↔bg 中点) */
+  --railSel: rgba(255, 255, 255, 0.09);   /* 移动端 track 刻度;叠在 rail 上≈bg3 */
+  --sidebarInput: rgba(255, 255, 255, 0.07); /* 移动端 line 刻度(比 railSel 弱一档) */
+  --line: rgba(255, 255, 255, 0.12);      /* 主描边=移动端 line2(强弱按角色对位) */
+  --line2: rgba(255, 255, 255, 0.07);     /* 更细的分隔=移动端 line */
+  --t1: #edeeec;            /* 标题/正文强调(移动端 tx) */
+  --t2: #dadad9;            /* 正文(tx→tx2 25%) */
+  --t3: #9fa0a0;            /* 次级文字/图标(移动端 tx2) */
+  --t4: #8e8f90;            /* 分组标题/弱文字(tx2→tx3 1/3) */
+  --t5: #7d7e80;            /* 更弱(tx2→tx3 2/3) */
+  --t6: #6c6d70;            /* 最弱/占位(移动端 tx3) */
+  --t7: #57595d;            /* 装饰性符号(分隔点;tx3→bg4 35%) */
+  --tDis: #626367;          /* 禁用态文字(tx3→bg4 17.5%) */
+  --acc: #16b364;           /* 品牌绿(移动端 清新绿 fill) */
+  --accH: #1dcc74;          /* 品牌绿 hover(ac + (ac − ac2),沿点缀色阶外推一步) */
+  --accBg: rgba(22, 179, 100, 0.17);      /* 移动端 acGhost */
+  --accBd: rgba(22, 179, 100, 0.3);       /* 移动端 acLine */
+  --accBg2: rgba(22, 179, 100, 0.21); /* 激活底(比 --accBg 深一档,设置齿轮) */
+  --onAcc: #ffffff;         /* 移动端 acInk;白字对绿底仅 2.74:1,见头部第 3 条 */
+  --ok: #45cf86;            /* 移动端 add */
+  --okBg: rgba(69, 207, 134, 0.17);       /* 成功底取 acGhost 的 0.17 刻度 */
+  --err: #f0746a;           /* 移动端 red */
+  --errBg: rgba(240, 116, 106, 0.13);     /* 移动端 redGhost */
+  --warn: #f0b454;          /* 移动端 amber */
+  --warnBg: rgba(240, 180, 84, 0.15);     /* 移动端 amberGhost */
+  --warnBd: rgba(240, 180, 84, 0.3);      /* 描边落在 acLine 的 0.3 刻度 */
+  --card: #1f2025;          /* 移动端 bg2(其卡/浮层面) */
+  --cardBd: rgba(255, 255, 255, 0.12);    /* 与 --line 同档 */
+  --cardSh: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --hov: rgba(255, 255, 255, 0.07);       /* 移动端 line 刻度;叠在 card 上≈bg4 */
+  --hov2: rgba(255, 255, 255, 0.12);      /* 移动端 line2 刻度 */
+  --hov3: rgba(255, 255, 255, 0.16);      /* 移动端 glassHi 刻度 */
+  --pop: #282a30;           /* 移动端 bg3(浮层再叠一层) */
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);         /* 纯黑,锚 shCard 0.5 */
+  --codeBg: rgba(0, 0, 0, 0.3);           /* 叠在 --bg 上≈移动端 termBg */
+  --userBg: #153127;        /* 移动端用户气泡 acGhost 叠在 bg 上压成不透明 */
+  --addBg: rgba(69, 207, 134, 0.13);      /* 移动端 addBg */
+  --addT: #45cf86;                        /* 移动端 add */
+  --delBg: rgba(240, 128, 121, 0.12);     /* 移动端 delBg */
+  --delT: #f08079;                        /* 移动端 del */
+  /* -- 以下为组件内联字面量收敛的语义令牌 -- */
+  --scrim: rgba(0, 0, 0, 0.5);            /* 抽屉遮罩(锚 shCard 0.5) */
+  --scrim2: rgba(0, 0, 0, 0.66);          /* 弹窗遮罩(锚 glassVeil 0.66) */
+  --scrim3: rgba(0, 0, 0, 0.8);           /* 图片查看遮罩(shLift 0.7 上再压一档) */
+  --panel: rgba(255, 255, 255, 0.07);     /* 浮起面板(composer/新任务卡) */
+  --panel2: rgba(255, 255, 255, 0.05);    /* 次级浮面(排队 chip) */
+  /* 标题栏在浅色下是 42% 白雾;深色不能照搬(会变成一条亮白横带),按浅色
+     headerBg:panel = 0.46 的比例落到 --panel 之下,保住"内容从其下滚过"的层次感 */
+  --headerBg: rgba(255, 255, 255, 0.03);  /* 视图标题栏薄雾底 */
+  --panelSh: 0 6px 24px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --panelShLg: 0 12px 40px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.35);
+  --shadowLg: 0 24px 70px rgba(0, 0, 0, 0.7);      /* 模态弹窗/大图查看(锚 shLift) */
+  --inputBg: #1a1b20;                     /* bg↔bg2 中点 */
+  --inputBd: rgba(255, 255, 255, 0.13);   /* 移动端 glassBrd 刻度 */
+  --btnBd: rgba(255, 255, 255, 0.16);     /* 白底按钮/pill 描边(移动端 glassHi 刻度) */
+  --dashBd: rgba(255, 255, 255, 0.23);    /* 空态虚线框(glassHi 按浅色 dashBd:btnBd 外推) */
+  --errBd: rgba(240, 116, 106, 0.3);      /* 危险动作描边 */
+  --accBd2: rgba(22, 179, 100, 0.45);     /* 强调描边(加号按钮;acLine×1.5) */
+  --accBgSoft: rgba(22, 179, 100, 0.1);   /* 极浅强调底(拖放区/hover) */
+  --accSel: rgba(22, 179, 100, 0.12);     /* 侧栏/设置导航选中行浅色底 */
+  --accSelT: #46e08a;                     /* 浅选中底上的主文字/图标(移动端 acTx) */
+  --accSelDim: #59a67d;                   /* 浅选中底上的次级文字/图标(acTx↔tx3 中点) */
+  --accSh: 0 2px 8px rgba(22, 179, 100, 0.3); /* 主按钮投影(acLine 的 0.3) */
+  --warnBd2: rgba(240, 180, 84, 0.15);    /* 软警示描边(云端提示条) */
+  --warnT: #f0b454;                       /* 警示正文(移动端只有一档 amber) */
+  --notice: #f0b454;                      /* 更新提醒圆点(深色调色板无独立橙) */
+  --track: rgba(255, 255, 255, 0.09);     /* 用量圆环底轨(移动端有 track 令牌) */
+  --segBg: var(--hov);                    /* 分段控件槽底(缺省跟随中性灰刻度) */
+  --segSh: 0 1px 3px rgba(0, 0, 0, 0.5);  /* 分段控件滑块投影(锚 shCard 0.5) */
+  --linkH: #46e08a;                       /* 链接 hover(移动端 acTx) */
+  --sbThumb: rgba(255, 255, 255, 0.16);   /* 滚动条(移动端 sb #ffffff + glassHi 刻度) */
+  --sbThumbH: rgba(255, 255, 255, 0.28);  /* 按浅色 sbThumbH:sbThumb 外推 */
+  /* 代码高亮配色(GitHub Dark 系,与浅色的 GitHub Light 成对;移动端无对应令牌) */
+  --hlKw: #ff7b72;   /* 关键字 */
+  --hlStr: #a5d6ff;  /* 字符串/正则 */
+  --hlNum: #79c0ff;  /* 数字/字面量/内建 */
+  --hlFn: #d2a8ff;   /* 函数/类型/标题 */
+  --hlAttr: #ffa657; /* 属性/标签名 */
 }
 
 * { box-sizing: border-box; }

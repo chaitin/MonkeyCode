@@ -2,7 +2,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { inDesktopShell } from "./host";
+import { applyStoredTheme } from "./theme";
 import "./styles.css";
+
+// 主题偏好在首帧前落到根节点:深色下不会先闪一帧浅色底
+applyStoredTheme();
 
 // 桌面壳内屏蔽 WebView 默认右键菜单(重新加载/检查元素等浏览器项);
 // 输入框与选中文本保留系统菜单(复制/粘贴依赖它)。浏览器模式不干预。
