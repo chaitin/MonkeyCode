@@ -2278,3 +2278,31 @@ index.html 的首帧底色(样式表还没加载,已被检查器盯住)、`cloud
   计时本身是一句 sleep。
 - 退避重启的**端到端**行为(真杀引擎 → 看着它自己回来)没有自动化验证,
   只有 `next_retry` 的纯函数收敛性与状态转移的单测。需要人工冒烟。
+
+## 修正上一条:栏宽退回 62px,改让分隔线让位(2026-07-25)
+
+上一条用"mac 下把栏加宽到 76px"解决压线,用户反馈太宽,并问红绿灯的大小/间距
+能否调小。
+
+查实:**不能**。那三颗是 AppKit 画的标准 NSWindow 按钮。tao 的
+`inset_traffic_lights`(tao-0.35.3/src/platform_impl/macos/view.rs:1152)只调
+`setFrameOrigin` 整组平移,连 `space_between` 都是**从系统按钮布局里读出来的**
+(`miniaturize.origin.x - close.origin.x`),不是可传参数;全程没有 setFrameSize。
+Tauri 暴露的 `traffic_light_position` 也只是这个 inset。
+
+同时更正自己:上一条注释里"圆心 x=20/40/60、右缘 x≈66"是**按惯例估的、没实测**,
+只能说明"大于 62",不足以拿来精算余量——本轮不再依赖这个数。
+
+- [x] 栏宽退回 62px(窄窗 58px),`[data-platform="mac"]` 的两条宽度覆盖删掉
+- [x] 右分隔线从内联 `borderRight` 改为 `.mc-nav-rail::after` 绝对定位画,
+      mac 下 `top: 50px`(= MacDragSpacer 高度)——线从拖拽区下沿才开始,
+      红绿灯落在没有线的那一段上。**不依赖按钮的确切宽度**,系统改尺寸也成立
+- [x] 渲染断言从"不许内联 width"扩到"也不许内联 border-right"(反向验证过):
+      同一个毛病换个字段就会复发,而它只在 mac 上看得见
+
+**残留**:按钮越界的那几像素仍压在 `--rail`/`--side` 的交界上。两档底色本就相邻
+(浅色 #edf1ee / #f6f8f6,深色 #101113 / #131417),预期几乎看不出;若实机上仍
+碍眼,下一步是把顶部 50px 做成横贯两栏的同一块面。
+
+验证:`tsc --noEmit` 无输出;`vitest` 236 passed;`vite build` OK,产物里
+62/58 两条栏宽 + `::after` 全高线 + mac 的 `top:50px` 覆盖俱在。
