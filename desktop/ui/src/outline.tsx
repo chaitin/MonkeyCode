@@ -4,7 +4,7 @@
 // 数据来自壳的 session_outline —— **全量**,包含尚未加载进对话流的更早提问
 // (条目自带那一轮在 replay.jsonl 的字节偏移,点到时由调用方先补历史再定位)。
 // 点本身不响应点击:6px 的目标太小,误点代价是整屏跳走。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ATT_LINE } from "./logView";
 import type { OutlineItem } from "./useSession";
 
@@ -48,30 +48,51 @@ export function outlineEntries(items: OutlineItem[]): OutlineEntry[] {
   });
 }
 
-/** 收起 = 一列点;悬停 = 大纲浮窗。两态一个组件,`onJump` 交给调用方定位。 */
+/** 一列小点常驻,鼠标落到点上时在右侧浮出大纲;点条目跳转。
+ *
+ * 两条不变式,破了就会闪:
+ * ① **点列任何时候都可命中**——展开时把它藏起来(opacity/pointer-events)会
+ *    让指针脚下的元素凭空消失,浏览器立刻重判命中 → mouseleave → 关闭 →
+ *    点列回来 → 再触发,来回死循环。
+ * ② **浮窗浮在点列右侧,不盖住它**——盖住就等于把触发源换成了浮窗自己,
+ *    指针只要不在浮窗矩形内(比如浮窗短、指针在下方的点上)就同样断链。
+ * 指针从点移到浮窗要跨一小段空白,靠 200ms 延时收起兜住。 */
 export function OutlineNav({
   entries,
   activeSeq,
   onJump,
 }: {
   entries: OutlineEntry[];
-  /** 当前视口所在的那次提问(收起态点加粗、展开态条目高亮) */
+  /** 当前视口所在的那次提问(点加粗 + 浮窗内高亮) */
   activeSeq?: number;
   onJump: (entry: OutlineEntry) => void;
 }) {
   const [open, setOpen] = useState(false);
+  /** 浮窗纵向落点:以指针进入时的高度为中心,再夹在可视区内 */
+  const [top, setTop] = useState(0);
+  const pointerY = useRef(0);
   const closeTimer = useRef(0);
+  const navRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
 
-  // 当前项始终可见:点多到轨道装不下、或提问多到浮窗要内滚时,
-  // 打开就已经停在"我现在在哪"上,不用自己找
+  // 浮窗跟着指针高度走(而不是钉在顶部或中间):否则鼠标在下方的点上,
+  // 浮窗却在老远的地方弹出来
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    const panel = panelRef.current;
+    if (!open || !nav || !panel) return;
+    const limit = Math.max(8, nav.clientHeight - panel.offsetHeight - 8);
+    const next = Math.round(Math.min(Math.max(pointerY.current - panel.offsetHeight / 2, 8), limit));
+    if (next !== top) setTop(next);
+  }, [open, top, entries.length]);
+
+  // 当前项始终可见:提问多到浮窗要内滚时,打开就已经停在"我现在在哪"上
   useEffect(() => {
     const box = open ? panelRef.current : railRef.current;
     const target = box?.querySelector<HTMLElement>('[data-outline-current="true"]');
     if (!box || !target) return;
-    const top = target.offsetTop - box.clientHeight / 2 + target.offsetHeight / 2;
-    box.scrollTop = Math.max(0, top);
+    box.scrollTop = Math.max(0, target.offsetTop - box.clientHeight / 2 + target.offsetHeight / 2);
   }, [open, activeSeq, entries.length]);
 
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
@@ -79,11 +100,12 @@ export function OutlineNav({
   // 一条提问的会话不值得占一条轨道
   if (entries.length < 2) return null;
 
-  const enter = () => {
+  const enter = (e?: { clientY: number }) => {
     window.clearTimeout(closeTimer.current);
+    const box = navRef.current?.getBoundingClientRect();
+    if (e && box && !open) pointerY.current = e.clientY - box.top;
     setOpen(true);
   };
-  // 延时收起:点列很窄,指针从点移向浮窗的路上会短暂离开,立即收会闪
   const leave = () => {
     window.clearTimeout(closeTimer.current);
     closeTimer.current = window.setTimeout(() => setOpen(false), 200);
@@ -91,20 +113,20 @@ export function OutlineNav({
 
   return (
     <nav
+      ref={navRef}
       aria-label="提问大纲"
       style={{
         position: "absolute",
-        // 不贴窗口左缘:点列离边 10px,面板与它左缘对齐(见 .mc-outline-panel)
+        // 不贴窗口左缘;浮窗在点列右侧(见 .mc-outline-panel)
         left: 10,
         top: 0,
         bottom: 0,
         width: 18,
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         zIndex: 12,
-        // 整条是**满高**的定位框,不能吃事件:否则鼠标在正文左缘任意高度
-        // 划过都会展开大纲(离点列十万八千里),顺带还会挡住正文的选中与点击。
-        // 触发只归点列与浮窗自己。
+        // 满高定位框不能吃事件:否则鼠标在正文左缘任意高度划过都会展开,
+        // 顺带还挡住正文最左一条的选中与点击。触发只归点列与浮窗自己。
         pointerEvents: "none",
       }}
     >
@@ -114,7 +136,7 @@ export function OutlineNav({
         className="mc-outline-rail"
         onMouseEnter={enter}
         onMouseLeave={leave}
-        style={{ opacity: open ? 0 : 1, pointerEvents: open ? "none" : "auto" }}
+        style={{ pointerEvents: "auto" }}
       >
         {entries.map((e) => (
           <span
@@ -128,12 +150,12 @@ export function OutlineNav({
         <div
           ref={panelRef}
           className="pop mc-outline-panel"
-          onMouseEnter={enter}
+          onMouseEnter={() => enter()}
           onMouseLeave={leave}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setOpen(false);
+          onKeyDown={(ev) => {
+            if (ev.key === "Escape") setOpen(false);
           }}
-          style={{ pointerEvents: "auto" }}
+          style={{ top, pointerEvents: "auto" }}
         >
           {entries.map((e) => (
             <button
