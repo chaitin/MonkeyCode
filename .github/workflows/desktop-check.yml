@@ -62,6 +62,8 @@ jobs:
         working-directory: desktop
         run: |
           python3 scripts/check_command_contract.py
+          python3 scripts/check_bundle_configs.py
+          python3 scripts/check_theme_tokens.py
           python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Check and test Rust shell
@@ -72,21 +74,39 @@ jobs:
           cargo check --all-targets --locked
           cargo test --locked
 
+      # win7 通道用独立的 Cargo.lock.win7(锁老版本以避开 edition2024)。
+      # 此前它只在推 release tag 时才被 --locked 校验,改一个依赖能让 win7
+      # 发布链在发版当天才炸。这里在每次 PR 上验证它与 Cargo.toml 同步。
+      - name: Check win7 lockfile is in sync with Cargo.toml
+        working-directory: desktop
+        run: |
+          cp Cargo.lock.win7 Cargo.lock
+          if ! cargo metadata --locked --format-version 1 >/dev/null; then
+            git checkout -- Cargo.lock
+            echo "::error::Cargo.lock.win7 与 Cargo.toml 不同步,重新生成: scripts/regen-win7-lock.sh"
+            exit 1
+          fi
+          git checkout -- Cargo.lock
+
+      # 引擎版本由 agent/ submodule 的 gitlink 钉死,E2E 就跑那一份。
+      # 缺 token 硬失败,与 desktop-{windows,macos}.yml 一致:软跳过等于把
+      # "引擎集成没验证"伪装成绿灯,和它上一行修掉的 #[ignore] 是同一类病。
+      # 仅 push 触发——fork PR 拿不到 secrets,那里跳过是机制使然而非掩盖。
       - name: Test pinned agent integration
         if: github.event_name == 'push'
         env:
           OHMYAGENT_REPO_TOKEN: ${{ secrets.OHMYAGENT_REPO_TOKEN }}
         run: |
-          if [ -z "$OHMYAGENT_REPO_TOKEN" ]; then
-            echo "::warning::OHMYAGENT_REPO_TOKEN 未配置，跳过固定引擎 E2E"
-            exit 0
-          fi
+          [ -n "$OHMYAGENT_REPO_TOKEN" ] || \
+            { echo "::error::OHMYAGENT_REPO_TOKEN 未配置,固定引擎 E2E 无法运行"; exit 1; }
           git -c url."https://x-access-token:${OHMYAGENT_REPO_TOKEN}@github.com/".insteadOf="git@github.com:" \
             submodule update --init agent
           mkdir -p desktop/target/e2e
           (cd agent && go build -o ../desktop/target/e2e/ohmyagent ./cmd/ohmyagent)
+          # E2E 标了 #[ignore](缺引擎时诚实报 ignored,不冒充 ok),这里用
+          # --ignored 显式选中;二进制不到位就是硬失败,不再静默通过。
           MC_OHMYAGENT_BIN="$GITHUB_WORKSPACE/desktop/target/e2e/ohmyagent" \
-            cargo test --manifest-path desktop/Cargo.toml e2e_ -- --test-threads=1
+            cargo test --manifest-path desktop/Cargo.toml e2e_ -- --ignored --test-threads=1
 
   windows:
     runs-on: windows-latest
@@ -116,6 +136,42 @@ jobs:
         run: python scripts/check_command_contract.py
 
       - name: Check and test Windows shell
+        working-directory: desktop
+        run: |
+          cargo check --all-targets --locked
+          cargo test --locked
+
+  # mac 独有代码(tauri-nspanel 的 NonactivatingPanel、macos-private-api 透明
+  # 窗口、桌宠 mac 分支)此前只在手动 dispatch 的 desktop-macos.yml 里编译,
+  # 破坏要等到发版才暴露。这里在每次 PR 上编译并跑单测。
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/ui/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      - name: Build desktop UI
+        working-directory: desktop/ui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Check command contract
+        working-directory: desktop
+        run: python3 scripts/check_command_contract.py
+
+      - name: Check and test macOS shell
         working-directory: desktop
         run: |
           cargo check --all-targets --locked

@@ -22,8 +22,10 @@ cd .. && cargo build && ./target/debug/monkeycode-desktop
 # HMR 开发(devUrl overlay)
 npx tauri dev --config tauri.dev.conf.json
 
-# 测试(含 ohmy 假 LLM E2E、浏览器桥假扩展、MCP 冒烟；E2E 不从 PATH 猜版本)
-MC_OHMYAGENT_BIN=$OHMYAGENT_SRC/bin/ohmyagent cargo test
+# 测试(含浏览器桥假扩展、MCP 冒烟)。E2E 标 #[ignore]:缺引擎时如实报
+# ignored,不冒充 passed;显式选中后缺二进制即硬失败。
+cargo test
+MC_OHMYAGENT_BIN=$OHMYAGENT_SRC/bin/ohmyagent cargo test -- --include-ignored
 cd ui && npm test
 ```
 
@@ -38,8 +40,11 @@ make macos-release    # + 签名 updater 产物(需 TAURI_SIGNING_PRIVATE_KEY)
 make windows          # NSIS 安装包(在 Windows 上执行;或走 CI)
 ```
 
-引擎 sidecar 由 make 从 `OHMYAGENT_SRC` 编译;externalBin 在基础 tauri
-配置中,缺二进制打包直接失败。CI:desktop-{macos,windows,win7}.yml
+引擎 sidecar 由 make 从 `OHMYAGENT_SRC` 编译。externalBin 声明在各平台
+overlay 而非基础配置(基础配置带 sidecar 会让普通 `cargo check` 也强依赖
+宿主 triple 的二进制);"任何包都带引擎"由 `make check-bundle-configs`
+(`scripts/check_bundle_configs.py`,CI 同跑)强制,缺二进制打包直接失败。
+CI:desktop-{macos,windows,win7}.yml
 (win7 通道用 go-win7 补丁工具链 + 固定版 WebView2)。
 
 ## 浏览器扩展

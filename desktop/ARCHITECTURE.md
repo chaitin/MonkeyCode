@@ -76,7 +76,11 @@ reduce.test.ts 补对应归约断言。云端管道帧(ping/cursor/call-response
   新命令三处同步登记:main.rs invoke_handler、build.rs、tauri.conf.json capability。
   `scripts/check_command_contract.py` 在 CI 同时核对这三处与 UI 字面量 invoke。
 - 事件命名 `channel:{id}`:`frames:{sid}`、`conn-status:{sid}`、
-  `ws-msg:{pipe}`、`ws-closed:{pipe}`;全局事件 `session-event`、`engine-crashed`。
+  `ws-msg:{pipe}`、`ws-closed:{pipe}`。全局事件(无 id 后缀)共 6 个:
+  `session-event`、`engine-crashed`、`open-settings`、`open-session`、
+  `browser-mcp-reloaded`(配对后引擎已带新工具集,UI 整页刷新)、
+  `browser-mcp-refresh-timeout`(等任务空闲超时放弃,UI 提示手动重启;
+  见 main.rs `BROWSER_MCP_REFRESH_DEADLINE`)。UI 侧清单同在 ui/src/ipc.ts。
 - **监听先于命令**:壳会在命令处理中同步 emit(回放、管道首帧),
   Tauri 事件不排队,监听未注册即丢。UI 侧必须 `await listenAsync(...)`
   完成后再 invoke;需要壳生成 id 的场景改为 UI 生成 id 先注册。
@@ -182,13 +186,19 @@ stop/start；浏览器配对这类自动维护额外要求前台会话与后台 
 
 uidist/ 是纯生成物不入库;壳静态页与 webfonts 在 ui/public/。
 引擎 sidecar 来自独立 ohmyagent 仓库:本地打包缺省用仓库根
-agent/ submodule(`export OHMYAGENT_SRC=...` 可覆盖),CI 同源;externalBin 在基础 tauri 配置——缺二进制打包
-直接失败,不存在"包里没引擎"的静默。
+agent/ submodule(`export OHMYAGENT_SRC=...` 可覆盖),CI 同源。
+externalBin 只能落在平台 overlay(`tauri.{macos,windows}.conf.json`):
+tauri_build 在编译期就为宿主 triple 解析 sidecar,基础配置一带上,每个
+开发者的 `cargo check` 都要先编出 `binaries/ohmyagent-<host-triple>`。
+"任何打包入口都带引擎"这条不变量因此由 `scripts/check_bundle_configs.py`
+强制(Makefile 打包前置 + CI),不存在"包里没引擎"的静默。
 
 ```bash
 cd ui && npm run build      # 生成 uidist(cargo build 的前置)
 npx tauri dev --config tauri.dev.conf.json   # HMR 开发
 cargo test                  # hermetic 单测；不会从 PATH 猜 ohmyagent
-MC_OHMYAGENT_BIN=/绝对路径/ohmyagent cargo test e2e_ -- --test-threads=1
-                            # 固定引擎 + 假 LLM E2E
+                            # E2E 标 #[ignore]，此处如实报 ignored（缺引擎时
+                            # 静默 return 报 "ok" 会让绿灯失去意义）
+MC_OHMYAGENT_BIN=/绝对路径/ohmyagent cargo test e2e_ -- --ignored --test-threads=1
+                            # 固定引擎 + 假 LLM E2E；缺二进制即硬失败
 ```

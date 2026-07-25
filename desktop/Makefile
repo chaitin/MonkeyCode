@@ -26,7 +26,7 @@ TAURI       := npx --yes @tauri-apps/cli@^2
 GOFLAGS     := -trimpath -ldflags "-s -w -X main.Version=$(AGENT_VERSION)"
 GOFLAGS_WIN := -trimpath -ldflags "-s -w -H=windowsgui -X main.Version=$(AGENT_VERSION)"
 
-.PHONY: dev run macos macos-release set-release-version windows windows-release check-signing check-macos check-windows check-ohmy-src engine-universal engine-windows browser-extension icons clean
+.PHONY: dev run macos macos-release set-release-version windows windows-release check-signing check-macos check-windows check-bundle-configs check-ohmy-src engine-universal engine-windows browser-extension icons clean
 
 # ---------- 开发 ----------
 
@@ -38,7 +38,7 @@ run: dev
 
 # ---------- macOS 打包(universal .app/.dmg,引擎 sidecar)----------
 
-macos: check-macos engine-universal browser-extension icons/icon.icns
+macos: check-macos check-bundle-configs engine-universal browser-extension icons/icon.icns
 	$(TAURI) build --target universal-apple-darwin --config tauri.macos.conf.json $(EXTRA_TAURI_CONFIG)
 	@echo ""
 	@echo "打包完成,分发产物:"
@@ -88,7 +88,10 @@ check-ohmy-src:
 # 双架构编译引擎 sidecar。universal 打包会按架构各编译一遍,每遍的
 # tauri_build 都要求存在 <name>-<本架构 triple> 文件,最终 bundle 阶段
 # 再合成/取 universal——三个命名全部备齐,覆盖每个阶段的查找路径。
-# externalBin 列在基础配置里:缺二进制打包直接失败(不再有"包里没引擎"的静默)。
+# externalBin 声明在各平台 overlay(tauri.{macos,windows}.conf.json),不能上移
+# 到基础配置:tauri_build 编译期即解析宿主 triple 的 sidecar,基础配置一带上,
+# 普通 cargo check/build 就得先编出 binaries/ohmyagent-<host-triple>。
+# "任何包都带引擎"由 check-bundle-configs 强制,缺二进制打包直接失败。
 engine-universal: check-ohmy-src
 	mkdir -p $(BIN_DIR)
 	cd $(OHMYAGENT_SRC) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(GOFLAGS) -o $(abspath $(SIDECAR_ARM)) ./cmd/ohmyagent
@@ -97,7 +100,7 @@ engine-universal: check-ohmy-src
 
 # ---------- Windows 打包(NSIS 安装包,引擎 sidecar)----------
 
-windows: check-windows engine-windows browser-extension
+windows: check-windows check-bundle-configs engine-windows browser-extension
 	$(TAURI) build --config tauri.windows.conf.json $(EXTRA_TAURI_CONFIG)
 	@echo ""
 	@echo "打包完成,分发产物:"
@@ -107,11 +110,25 @@ windows: check-windows engine-windows browser-extension
 # 签名),并汇集 updater 产物(带版本文件名的 setup.exe + latest-windows.json)到
 # bundle/updater/,供人工上传 OSS。win7 通道由 CI(desktop-win7.yml)产出。
 windows-release: EXTRA_TAURI_CONFIG := --config tauri.release.conf.json
-windows-release: check-signing windows
+
+# 结构与 macos-release 一致:set-release-version 必须在 windows 打包**之前**
+# 跑完(曾漏掉,本地出包会把占位版本 26071401 烙进安装包名、updater 文件名
+# 和 latest-windows.json)。用 $(MAKE) 串行而非并列先决条件——并列先决在
+# make -j 下无顺序保证。
+windows-release:
+	$(MAKE) check-signing
+	$(MAKE) set-release-version
+	$(MAKE) windows EXTRA_TAURI_CONFIG="$(EXTRA_TAURI_CONFIG)"
 	python3 scripts/gen-latest-json.py windows
 
 check-windows:
 	@[ "$$OS" = "Windows_NT" ] || { echo "错误: Windows 打包需在 Windows 上执行(无 Windows 机器时用 CI: desktop-windows.yml)"; exit 1; }
+
+# 每个能独立打包的配置都必须带引擎 sidecar。externalBin 不能上移到基础
+# 配置(tauri_build 编译期就解析宿主 triple,会让普通 cargo check 强依赖
+# 二进制),所以这条不变量由脚本在打包前强制。CI 亦跑。
+check-bundle-configs:
+	python3 scripts/check_bundle_configs.py
 
 # Windows 引擎 sidecar(x64;tauri bundle 按 <name>-<triple>.exe 查找,
 # 安装后落地为应用同目录的 ohmyagent.exe,与壳的 find_ohmyagent 查找顺序吻合)。
