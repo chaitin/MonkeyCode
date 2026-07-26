@@ -1,7 +1,7 @@
 // 双层侧栏:窄主导航负责空间切换，内容栏只展示当前空间的数据。
 // 一级空间保持稳定(云端 / 本地 / 对话)，项目、任务、会话属于二级内容；
 // 这比把所有对象塞进一条长列表更利于检索，也给后续空间扩展留出位置。
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { isImeEnter, markImeEnd } from "./chat";
 import { ConfirmPane, DeleteMenuItem, type MenuState } from "./components";
 import {
@@ -22,6 +22,7 @@ import {
 import { isWindowsShell } from "./host";
 import logoUrl from "./logo.png";
 import { isProjectArchived, projectArchiveKey } from "./projectArchive";
+import { applyProjectOrder, persistProjectOrder, readProjectOrder, reorderProjects } from "./projectOrder";
 import { MacDragSpacer } from "./titlebar";
 import type { CloudProject, CloudTask, McConnectionState, SessionMeta } from "./types";
 
@@ -285,6 +286,20 @@ function SessionRow({
   );
 }
 
+/** 拖动排序的接线:手势与落点计算都在 Sidebar，这里只转发事件和画状态。 */
+export interface ProjectDrag {
+  dir: string;
+  active: boolean;
+  dropBefore: boolean;
+  dropAfter: boolean;
+  handlers: {
+    onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => void;
+    onPointerMove: (e: ReactPointerEvent<HTMLDivElement>) => void;
+    onPointerUp: (e: ReactPointerEvent<HTMLDivElement>) => void;
+    onPointerCancel: (e: ReactPointerEvent<HTMLDivElement>) => void;
+  };
+}
+
 function ProjectGroup({
   name,
   detail,
@@ -293,6 +308,7 @@ function ProjectGroup({
   depth = 0,
   expanded,
   muted,
+  drag,
   onToggle,
   onNewTask,
   onProjectArchive,
@@ -305,6 +321,7 @@ function ProjectGroup({
   depth?: number;
   expanded: boolean;
   muted?: boolean;
+  drag?: ProjectDrag;
   onToggle: () => void;
   onNewTask?: () => void;
   onProjectArchive?: () => void;
@@ -326,14 +343,16 @@ function ProjectGroup({
     <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
       <div
         className="hv project-row"
-        title={[detail, project && onProjectArchive ? "右键管理项目" : ""].filter(Boolean).join("\n") || undefined}
+        title={[detail, project && onProjectArchive ? "右键管理项目" : "", drag ? "拖动可调整项目顺序" : ""].filter(Boolean).join("\n") || undefined}
         aria-expanded={expanded}
+        data-project-dir={drag?.dir}
         onClick={onToggle}
         onContextMenu={project && onProjectArchive ? (e) => {
           e.preventDefault();
           e.stopPropagation();
           openMenuAt(e.clientX, e.clientY);
         } : undefined}
+        {...drag?.handlers}
         style={{
           minHeight: 34,
           position: "relative",
@@ -342,13 +361,32 @@ function ProjectGroup({
           gap: 6,
           padding: `0 5px 0 ${7 + Math.max(0, depth) * 14}px`,
           borderRadius: 8,
-          cursor: "pointer",
+          cursor: drag?.active ? "grabbing" : "pointer",
           userSelect: "none",
+          // 拖动中原地留一个淡影，跟落点指示线一起交代"从哪来、到哪去"
+          opacity: drag?.active ? 0.45 : undefined,
+          // 触屏/触控板上按住不放要走拖动，不能被浏览器的滚动手势吃掉
+          touchAction: drag ? "none" : undefined,
           fontWeight: project ? 600 : 550,
           fontSize: project ? 12.5 : 11.5,
           color: muted ? "var(--t5)" : projectArchived ? "var(--t3)" : "var(--t1)",
         }}
       >
+        {(drag?.dropBefore || drag?.dropAfter) && (
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              left: 6,
+              right: 6,
+              ...(drag.dropBefore ? { top: -2 } : { bottom: -2 }),
+              height: 2,
+              borderRadius: 1,
+              background: "var(--acc)",
+              pointerEvents: "none",
+            }}
+          />
+        )}
         <span style={{ width: 13, height: 13, flex: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
           {project ? (
             <IconFolder size={13} color={muted || projectArchived ? "var(--t5)" : "var(--t3)"} />
@@ -681,6 +719,11 @@ export function Sidebar({
   const [chatArchiveOpen, setChatArchiveOpen] = useState(() => localStorage.getItem("mc.archivedOpen") === "1");
   const [projectArchiveOpen, setProjectArchiveOpen] = useState(() => localStorage.getItem("mc.projectArchiveOpen") === "1");
   const [cloudHistoryOpen, setCloudHistoryOpen] = useState(() => localStorage.getItem("mc.cloudHistoryOpen") === "1");
+  const [projectOrder, setProjectOrder] = useState<string[]>(readProjectOrder);
+  // 拖动中只有落点需要重渲染;行位置快照和阈值判定放 ref，避免每次 move 都刷 state
+  const [dragTo, setDragTo] = useState<{ dir: string; index: number } | null>(null);
+  const dragRef = useRef<{ dir: string; startY: number; startX: number; active: boolean; rows: { dir: string; mid: number }[]; from: number; to: number } | null>(null);
+  const draggedRef = useRef(false);
 
   // 外部入口(桌宠提醒、通知跳转)真正打开另一个空间时同步主导航；
   // 单纯点主导航不会因当前主视图没变而被 effect 立即弹回。
@@ -743,8 +786,79 @@ export function Sidebar({
   const chats = chatAll.filter((m) => !m.archived && matchesSession(m));
   const chatArchived = chatAll.filter((m) => m.archived && matchesSession(m));
   const filteredLocal = localAll.filter(matchesSession);
-  const projectGroups = groupByProject(filteredLocal.filter((m) => !isProjectArchived(archivedProjects, m.workdir)));
+  // 手动顺序覆盖在活跃度排序之上;归档区不参与，仍按最近活跃排。
+  const projectGroups = applyProjectOrder(
+    groupByProject(filteredLocal.filter((m) => !isProjectArchived(archivedProjects, m.workdir))),
+    projectOrder,
+  );
   const archivedProjectGroups = groupByProject(filteredLocal.filter((m) => isProjectArchived(archivedProjects, m.workdir)));
+
+  // 搜索态的列表是过滤过的，此时提交顺序会把没显示出来的项目冲掉——直接不给拖。
+  const reorderable = !norm && projectGroups.length > 1;
+  const endDrag = () => {
+    dragRef.current = null;
+    setDragTo(null);
+  };
+  /** 落点是"插到第几项之前"的缝隙下标:与行中线比较，越过一半才算换位。 */
+  const dropIndexAt = (rows: { mid: number }[], y: number) => {
+    for (let i = 0; i < rows.length; i++) if (y < rows[i].mid) return i;
+    return rows.length;
+  };
+  const projectDrag = (group: ProjectGroup, index: number): ProjectDrag | undefined => {
+    if (!reorderable) return undefined;
+    const from = dragTo && dragRef.current ? dragRef.current.from : -1;
+    // 落在自己两侧的缝隙就是原位，不画线，避免"看起来会动其实不动"
+    const settled = dragTo ? dragTo.index === from || dragTo.index === from + 1 : true;
+    return {
+      dir: group.dir,
+      active: dragTo?.dir === group.dir,
+      dropBefore: !settled && dragTo?.index === index,
+      dropAfter: !settled && dragTo?.index === projectGroups.length && index === projectGroups.length - 1,
+      handlers: {
+        onPointerDown: (e) => {
+          if (e.button !== 0) return;
+          // 快捷新建按钮只拦了 click，pointerdown 仍会冒泡上来;一旦在它上面
+          // setPointerCapture，click 的 target 就被重定向到整行，按钮会失灵。
+          if ((e.target as HTMLElement | null)?.closest("button")) return;
+          dragRef.current = { dir: group.dir, startX: e.clientX, startY: e.clientY, active: false, rows: [], from: index, to: index };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        },
+        onPointerMove: (e) => {
+          const state = dragRef.current;
+          if (!state || state.dir !== group.dir) return;
+          if (!state.active) {
+            // 阈值之内仍算点击，让折叠/展开照常工作
+            if (Math.abs(e.clientY - state.startY) < 4 && Math.abs(e.clientX - state.startX) < 4) return;
+            // 拖动全程不重排 DOM(项目行下面还挂着会话行，整块跟手太重)，
+            // 所以起手快照一次行位置就够用，后续只按指针 Y 比对。
+            const rows: { dir: string; mid: number }[] = [];
+            for (const el of document.querySelectorAll<HTMLElement>("[data-project-dir]")) {
+              const rect = el.getBoundingClientRect();
+              rows.push({ dir: el.dataset.projectDir ?? "", mid: (rect.top + rect.bottom) / 2 });
+            }
+            state.rows = rows;
+            state.from = rows.findIndex((row) => row.dir === group.dir);
+            state.active = true;
+          }
+          // 落点同时写 ref:pointermove 的 state 更新会被批处理，pointerup
+          // 读 state 可能还是上一帧的值，提交必须以 ref 为准。
+          state.to = dropIndexAt(state.rows, e.clientY);
+          setDragTo({ dir: group.dir, index: state.to });
+        },
+        onPointerUp: () => {
+          const state = dragRef.current;
+          if (state?.active) {
+            setProjectOrder(persistProjectOrder(reorderProjects(projectGroups.map((g) => g.dir), group.dir, state.to)));
+            // 松手后紧跟着的 click 是拖动的尾巴，不该再切换折叠
+            draggedRef.current = true;
+          }
+          endDrag();
+        },
+        onPointerCancel: endDrag,
+      },
+    };
+  };
+
   const activeLocalAll = localAll.filter((m) => !isProjectArchived(archivedProjects, m.workdir));
   const activeProjectCount = groupByProject(activeLocalAll).length;
   const activeSessionCount = activeLocalAll.filter((m) => !m.archived).length;
@@ -793,7 +907,7 @@ export function Sidebar({
   );
   const cloudActionError = !!cloudError && /^(终止|删除)任务失败：/.test(cloudError);
 
-  const projectRow = (group: ProjectGroup, projectArchived: boolean, depth = 0) => {
+  const projectRow = (group: ProjectGroup, projectArchived: boolean, depth = 0, index = -1) => {
     const activeItems = group.items.filter((m) => !m.archived);
     const archivedItems = group.items.filter((m) => m.archived);
     const archiveKey = projectArchiveKey(group.dir);
@@ -811,7 +925,15 @@ export function Sidebar({
         projectArchived={projectArchived}
         depth={depth}
         expanded={!!norm || !collapsed.has(group.dir)}
-        onToggle={() => toggleGroup(group.dir)}
+        drag={index >= 0 ? projectDrag(group, index) : undefined}
+        onToggle={() => {
+          // 一次拖动会以 click 收尾，这一下不该顺带折叠项目
+          if (draggedRef.current) {
+            draggedRef.current = false;
+            return;
+          }
+          toggleGroup(group.dir);
+        }}
         onNewTask={startTask}
         onProjectArchive={() => onProjectArchive(group.dir, !projectArchived)}
       >
@@ -974,7 +1096,7 @@ export function Sidebar({
       ),
       content: (
         <>
-          {projectGroups.map((group) => projectRow(group, false))}
+          {projectGroups.map((group, index) => projectRow(group, false, 0, index))}
           {projectGroups.length === 0 && archivedProjectGroups.length === 0 && (
             <EmptyState icon={norm ? <IconSearch size={19} color="var(--t6)" /> : <IconMonitor size={21} color="var(--t6)" />} title={norm ? "没有匹配的会话" : "还没有本地项目"} detail={norm ? "试试项目名、目录或会话标题。" : "选择一个文件夹，开始第一个本地任务。"} />
           )}
