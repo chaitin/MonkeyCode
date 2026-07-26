@@ -81,9 +81,21 @@ function onMarkdownClick(e: ReactMouseEvent<HTMLDivElement>, onLocalLink?: (path
 
 /** 在 inert template 中先标记本地资源,再交给 DOMPurify 净化。
  * file: 等地址会被净化器移除,所以顺序不能反过来。 */
+/** 本地资源标记属性:壳自己打的,不能让正文内容自带。
+ *
+ * DOMPurify 默认放行 `data-*`,而 marked 会原样透传正文里的裸 HTML——模型
+ * 输出(或被渲染的文件内容)里写一个 `<img data-mc-local-src="...">`,就能
+ * 指使 UI 去读它挑的路径。边界另有 uploads.rs::read_data_url 的工作区校验
+ * 兜底,但"标记属性"和"用户内容"共用一个命名空间本身是脆的:解析后、打标记
+ * 前先清一遍,标记就重新只有壳能打。 */
+const LOCAL_MARKS = ["data-mc-local-src", "data-mc-local-href"] as const;
+
 function markdownHtml(text: string): string {
   const template = document.createElement("template");
   template.innerHTML = marked.parse(text, { async: false }) as string;
+  for (const mark of LOCAL_MARKS) {
+    for (const el of template.content.querySelectorAll(`[${mark}]`)) el.removeAttribute(mark);
+  }
   for (const img of template.content.querySelectorAll<HTMLImageElement>("img[src]")) {
     img.loading = "lazy";
     img.referrerPolicy = "no-referrer";

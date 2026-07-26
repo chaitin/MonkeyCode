@@ -1,4 +1,5 @@
 // 代码预览:highlight.js 语言注册、扩展名映射与带行号的高亮行渲染。
+import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
 import c from "highlight.js/lib/languages/c";
@@ -44,7 +45,12 @@ const EXT_LANG: Record<string, string> = {
 /** 高亮 HTML 按行拆分:跨行的 <span>(块注释/模板串)在行尾闭合、次行重开,
  * 使每行成为独立合法片段——行号采用逐行 flex 行(与 DiffPanel 同构),
  * pre-wrap 折行时行号才能与内容对齐(整体 gutter 会错位)。 */
-function splitHighlighted(html: string): string[] {
+export function splitHighlighted(html: string): string[] {
+  // 注:输入是 hljs 的输出(文本已转义,只剩 hljs 自己发的 <span>),
+  // 但这里的产物要进 dangerouslySetInnerHTML,所以调用方仍会过一遍 sanitize
+  // ——见 CodeView 里的说明。导出是为了让 codePreview.test.tsx 能直接钉住
+  // "产物里除 <span> 外不出现任何标签"这条不变量:它与运行环境无关,
+  // 而 DOMPurify 在 node 下 isSupported=false(测不到),不能只靠它守。
   const out: string[] = [];
   const open: string[] = []; // 行首需要重开的未闭合 <span ...> 栈
   for (const line of html.split("\n")) {
@@ -67,15 +73,26 @@ const codeLine: CSSProperties = {
   color: "var(--t2)",
 };
 
-/** 文件内容预览:行号 + 按扩展名语法高亮(hljs 输出自带转义);
- * 未知语言/高亮失败退回纯文本行。行号由 CSS 伪元素绘制，不进入复制文本。 */
+/** 文件内容预览:行号 + 按扩展名语法高亮;未知语言/高亮失败退回纯文本行。
+ * 行号由 CSS 伪元素绘制，不进入复制文本。
+ *
+ * 预览的是**工作区里的任意文件**(还可能是模型刚写出来的),即不可信输入。
+ * hljs v11 会把文本转义掉,所以它的输出本身安全;但这条链路的终点是
+ * dangerouslySetInnerHTML,而中间还隔着 splitHighlighted 的手写正则配平——
+ * 整条安全性押在"hljs 永远转义"加"正则永远配得对"上。补一道 sanitize 的成本
+ * 是每行一次纯函数调用,换掉这个押注,与 markdown.tsx 的处置也就一致了。 */
 export function CodeView({ path, text }: { path: string; text: string }) {
   const lines = useMemo(() => {
     const ext = path.split(".").pop()?.toLowerCase() ?? "";
     const lang = EXT_LANG[ext];
     if (lang) {
       try {
-        return { html: true, rows: splitHighlighted(hljs.highlight(text, { language: lang }).value) };
+        // 净化整段一次,再切行——不是逐行净化:文件预览上限 1MB(repo.rs
+        // MAX_FILE_BYTES),那是两万行量级,逐行就是两万次 HTML 解析+序列化,
+        // 足以把主线程卡住。整段净化后仍只剩 hljs 的 <span> 与转义文本,
+        // splitHighlighted 的配平不受影响。
+        const safe = DOMPurify.sanitize(hljs.highlight(text, { language: lang }).value);
+        return { html: true, rows: splitHighlighted(safe) };
       } catch {
         /* 高亮失败退回纯文本,不影响阅读 */
       }
