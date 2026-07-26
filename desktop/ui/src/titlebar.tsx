@@ -12,6 +12,43 @@ import {
 } from "./host";
 import logoUrl from "./logo.png";
 
+/** 品牌字后的小徽标。文案与含义由产品定,这里只保证它跟着品牌走。 */
+const BRAND_BADGE = "work";
+
+/** 品牌组合(字标 + 徽标,可选前置 logo)。三处共用:Windows 自绘标题栏的两种
+ * 布局、mac 二级侧栏顶部——写死在各处的话,平台之间迟早又长歪。
+ * 每个可见子节点都要自带 data-tauri-drag-region:Tauri 按指针下的元素判定拖拽区,
+ * 落在没有该属性的子节点上就拖不动窗口(logo 用 pointerEvents:none 穿透给父级)。 */
+function Brand({ logo = false }: { logo?: boolean }) {
+  return (
+    <>
+      {logo && (
+        <img src={logoUrl} alt="" draggable={false} style={{ width: 18, height: 18, borderRadius: 5, flex: "none", pointerEvents: "none" }} />
+      )}
+      <span data-tauri-drag-region="" style={{ flex: "none", fontSize: 12, fontWeight: 700, color: "var(--t2)", letterSpacing: 0.1 }}>
+        MonkeyCode
+      </span>
+      <span
+        data-tauri-drag-region=""
+        style={{
+          flex: "none",
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: 0.3,
+          lineHeight: "15px",
+          padding: "0 5px",
+          borderRadius: 4,
+          background: "var(--accBg)",
+          color: "var(--accTx)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {BRAND_BADGE}
+      </span>
+    </>
+  );
+}
+
 /** macOS 壳最左栏顶部的红绿灯落区:50px 拖拽区(Tauri 的拖拽区机制是
  * data-tauri-drag-region 属性,不是 CSS app-region);非 mac 壳 12px 普通留白。
  * 主侧栏与设置页左导航共用,保证两态顶部对齐不跳动。
@@ -26,13 +63,9 @@ export function MacDragSpacer({ brand = false }: { brand?: boolean } = {}) {
   return (
     <div
       data-tauri-drag-region=""
-      style={{ height: 50, flex: "none", display: "flex", alignItems: "center", padding: "0 14px" }}
+      style={{ height: 50, flex: "none", display: "flex", alignItems: "center", gap: 6, padding: "0 14px", overflow: "hidden" }}
     >
-      {brand && (
-        <span data-tauri-drag-region="" style={{ fontSize: 12, fontWeight: 700, color: "var(--t2)", letterSpacing: 0.1 }}>
-          MonkeyCode
-        </span>
-      )}
+      {brand && <Brand />}
     </div>
   );
 }
@@ -93,18 +126,17 @@ export default function TitleBar({ context, layout = "sidebar" }: { context: str
           </span>
           <span
             data-tauri-drag-region=""
-            style={{ width: 232, height: "100%", flex: "none", display: "flex", alignItems: "center", padding: "0 14px", background: "var(--side)", borderRight: "1px solid var(--line)" }}
+            style={{ width: 232, height: "100%", flex: "none", display: "flex", alignItems: "center", gap: 6, padding: "0 14px", overflow: "hidden", background: "var(--side)", borderRight: "1px solid var(--line)" }}
           >
-            <span data-tauri-drag-region="" style={{ fontSize: 12, fontWeight: 700, color: "var(--t2)", letterSpacing: 0.1 }}>MonkeyCode</span>
+            <Brand />
           </span>
         </>
       ) : (
         <span
           data-tauri-drag-region=""
-          style={{ width: 168, height: "100%", flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 14px", background: "var(--side)", borderRight: "1px solid var(--line)" }}
+          style={{ width: 168, height: "100%", flex: "none", display: "flex", alignItems: "center", gap: 6, padding: "0 14px", overflow: "hidden", background: "var(--side)", borderRight: "1px solid var(--line)" }}
         >
-          <img src={logoUrl} alt="" draggable={false} style={{ width: 18, height: 18, borderRadius: 5, pointerEvents: "none" }} />
-          <span data-tauri-drag-region="" style={{ fontSize: 12, fontWeight: 700, color: "var(--t2)" }}>MonkeyCode</span>
+          <Brand logo />
         </span>
       )}
       <span className="ellipsis" data-tauri-drag-region="" title={context} style={{ maxWidth: 420, padding: "0 14px", fontSize: 11.5, fontWeight: 550, color: "var(--t4)" }}>

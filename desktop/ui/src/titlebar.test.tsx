@@ -16,6 +16,7 @@ describe("Windows 标题栏", () => {
 
     expect(html).toContain('data-window-titlebar=""');
     expect(html).toContain("MonkeyCode");
+    expect(html).toContain(">work<");
     expect(html).toContain("新建任务");
     expect(html).toContain("width:62px");
     expect(html).toContain("width:232px");
@@ -27,6 +28,8 @@ describe("Windows 标题栏", () => {
 
     expect(html).toContain("width:168px");
     expect(html).not.toContain("width:232px");
+    // 168px 是三处品牌位里最窄的一格,徽标同样要在
+    expect(html).toContain(">work<");
   });
 });
 
@@ -38,6 +41,7 @@ describe("侧栏顶部拖拽区", () => {
     expect(html).toContain('data-tauri-drag-region=""');
     expect(html).toContain("height:50px");
     expect(html).toContain("MonkeyCode");
+    expect(html).toContain(">work<");
   });
 
   it("一级栏顶部只留拖拽区,不放品牌——那片被红绿灯占着", () => {
@@ -46,6 +50,7 @@ describe("侧栏顶部拖拽区", () => {
 
     expect(html).toContain("height:50px");
     expect(html).not.toContain("MonkeyCode");
+    expect(html).not.toContain(">work<");
   });
 
   it("非 mac 壳退回 12px 留白:Windows 的品牌在自绘标题栏里,不重复一份", () => {
