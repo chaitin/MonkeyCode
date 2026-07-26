@@ -14,12 +14,26 @@ import logoUrl from "./logo.png";
 
 /** macOS 壳最左栏顶部的红绿灯落区:50px 拖拽区(Tauri 的拖拽区机制是
  * data-tauri-drag-region 属性,不是 CSS app-region);非 mac 壳 12px 普通留白。
- * 主侧栏与设置页左导航共用,保证两态顶部对齐不跳动。 */
-export function MacDragSpacer() {
-  return isMacShell() ? (
-    <div data-tauri-drag-region="" style={{ height: 50, flex: "none" }} />
-  ) : (
-    <div style={{ height: 12, flex: "none" }} />
+ * 主侧栏与设置页左导航共用,保证两态顶部对齐不跳动。
+ *
+ * brand:二级侧栏顶部兼作品牌位。Windows 上这块是自绘标题栏的第二格(见下方
+ * layout === "sidebar" 分支),mac 没有那条栏、这 50px 原本空着,品牌就落在这里,
+ * 字号/字重/色/边距与 Windows 那一格逐项对齐,两平台品牌位置观感一致。
+ * 只给二级栏用:一级栏顶部被红绿灯占着(它们横跨到 x≈66),摆不下东西;
+ * 二级栏自 x=62 起,再加 14px 内边距,文字从 x≈76 开始,正好在按钮右侧。 */
+export function MacDragSpacer({ brand = false }: { brand?: boolean } = {}) {
+  if (!isMacShell()) return <div style={{ height: 12, flex: "none" }} />;
+  return (
+    <div
+      data-tauri-drag-region=""
+      style={{ height: 50, flex: "none", display: "flex", alignItems: "center", padding: "0 14px" }}
+    >
+      {brand && (
+        <span data-tauri-drag-region="" style={{ fontSize: 12, fontWeight: 700, color: "var(--t2)", letterSpacing: 0.1 }}>
+          MonkeyCode
+        </span>
+      )}
+    </div>
   );
 }
 
