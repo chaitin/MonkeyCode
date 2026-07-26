@@ -1,5 +1,5 @@
 // 视图镶边:标题栏、「文件」按钮、⋯ 菜单外壳与危险操作的二段确认页。
-import { useState, type ChangeEvent, type CompositionEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useState, type ChangeEvent, type CompositionEvent, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { isImeEnter, markImeEnd } from "./composer";
 import { IconDots, IconFolder, IconTrash } from "./icons";
 
@@ -25,6 +25,7 @@ export interface RenameDraft {
     maxLength: number;
     onChange: (e: ChangeEvent<HTMLInputElement>) => void;
     onCompositionEnd: (e: CompositionEvent<HTMLInputElement>) => void;
+    onFocus: (e: FocusEvent<HTMLInputElement>) => void;
     onBlur: () => void;
     onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
   };
@@ -52,6 +53,10 @@ export function useRenameDraft(current: string, onRename: (title: string) => voi
       maxLength: TITLE_MAX,
       onChange: (e) => setDraft(e.target.value),
       onCompositionEnd: markImeEnd,
+      // 进编辑态即全选(Finder 改名的手感:直接打字覆盖,想改局部再点一下)。
+      // 挂在 onFocus 而非 mount:autoFocus 触发的是真 focus,而编辑态一失焦就
+      // 提交并卸载,不存在"编辑中重新聚焦被强行全选"的场景。
+      onFocus: (e) => e.currentTarget.select(),
       onBlur: commit,
       onKeyDown: (e) => {
         e.stopPropagation();
