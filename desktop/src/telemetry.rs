@@ -1,9 +1,18 @@
 // 装机与使用统计:向自建 Matomo 发一条极小的心跳。
 //
 // 只回答两个问题:每天新增多少台装机、装了之后有没有真的用起来。
-// 载荷固定四项——设备标识、版本、系统、用没用——不含路径、仓库名、会话
+// 载荷固定四项——设备标识、事件名、版本、系统——不含路径、仓库名、会话
 // 内容或账号信息。上报由壳发起而非 UI(契约:UI 不建立任何网络连接),
 // 顺带也就不受 webview CSP 约束。
+//
+// 发的是 Matomo 的**事件**而不是页面浏览,于是三个数都等于事件数:
+//   当日新增装机 = install
+//   当日存活设备 = install + daily-launch
+//   当日真实使用 = first-use + daily-use
+// 每台设备每天每个槽位恰好一条,所以事件数就是设备数,不经过 Matomo 的访客
+// 识别。后者是拿 IP+UA 猜的(trust_visitors_cookies 默认 0),同一出口 IP 的
+// 多台机器会被归并成一个访客、多余的 `_id` 在入库时直接丢弃,而看板上看不出
+// 任何异常。事件计数绕开了整条不确定链路。
 //
 // 不上报的两种情形:端点未配置(只有 release 工作流注入,克隆本仓库自行编译
 // 即此状态),或 config.json 里 telemetry_enabled=false(给客户合规问卷留的
@@ -40,39 +49,56 @@ const FIRST_DELAY: Duration = Duration::from_secs(8);
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Matomo 要求 `url` 参数存在。桌面端没有真实页面地址,给一个固定的合成值,
-/// 让报表里所有心跳归到同一条"页面"下。
+/// 事件对 `url` 并非必需,但给一个固定的合成值能让四个事件在报表里有统一的
+/// 页面上下文。桌面端没有真实页面地址,这是个占位。
 const SYNTHETIC_URL: &str = "https://desktop.monkeycode/launch";
+
+/// 事件类别(`e_c`)。四个动作都归在这一类下,报表路径因此是固定的:
+/// 行为 → 事件 → 事件类别 `desktop` → 事件操作 install/daily-launch/first-use/daily-use。
+const EVENT_CATEGORY: &str = "desktop";
 
 // ==================== 状态 ====================
 
 #[derive(Default, Serialize, Deserialize)]
 struct State {
-    /// 16 位小写十六进制的设备标识。Matomo 的 `_id` **只接受这个形状**:
-    /// 给错格式它不会报错,而是退回按 IP+UA 另猜一个访客——于是每次上报都
-    /// 算成新装机,而看板上完全看不出异常。valid_install_id 是这条契约的
-    /// 唯一守卫。
+    /// 16 位小写十六进制的设备标识。同时进 `_id`(访客识别)和 `e_n`(事件
+    /// 名称):前者被 Matomo 按 IP+UA 归并时会被丢弃,后者落在动作行上,是唯一
+    /// 一份跑不掉的设备身份——出问题时能直接在"事件名称"报表里翻出是哪台机器。
+    ///
+    /// Matomo 的 `_id` **只接受这个形状**:给错格式它不会报错,而是退回按 IP+UA
+    /// 另猜一个访客,而看板上完全看不出异常。valid_install_id 是这条契约的唯一守卫。
     #[serde(default)]
     install_id: String,
-    /// 这台机器**至今**有没有真的跑过一轮会话。答"装了到底用没用"(激活率)。
+    /// 这台机器**至今**有没有成功报过一次使用。只用来区分 `first-use` 与
+    /// `daily-use`——"装了到底用没用"现在由两个事件的条数直接回答。
     #[serde(default)]
     used: bool,
-    /// 最近一次开对话所属的 UTC 日期。答"今天在不在干活"——`used` 一旦为真
-    /// 就永远为真,单靠它分不出"天天在用"和"半年前用过一次"。
+    /// 使用槽的游标:最近一次**成功**上报使用事件所属的 UTC 日期。
     #[serde(default)]
     last_used_day: String,
-    /// 最近一次**成功**上报所属的 UTC 日期(YYYY-MM-DD),按天去重用。
+    /// 启动槽的游标:最近一次**成功**上报启动事件所属的 UTC 日期(YYYY-MM-DD)。
+    /// 空 = 从没成功报过 = 我们还没见过这台设备(install 的判据)。
     #[serde(default)]
     last_day: String,
 }
 
+/// 两个上报槽位,各有各的游标。
+///
+/// 共用一个游标会互相吞事件:跨午夜后若用户先开对话,使用事件推进了共用游标,
+/// 当天的启动事件就再也发不出去——"当日存活设备 = install + daily-launch 的
+/// 事件数"因此系统性少算,而且少算的恰好是开着不关的重度用户。
+#[derive(Clone, Copy)]
+enum Slot {
+    Launch,
+    Use,
+}
+
 /// 上报时刻的环境事实。单独成结构体而不是一串参数:tracking_url 因此能在
-/// 测试里完全脱离 AppHandle 与真实时钟,而不必列七个位置参数。
+/// 测试里完全脱离 AppHandle 与真实时钟,而不必列六个位置参数。
 struct Facts {
     version: String,
     platform: String,
     nonce: String,
-    today: String,
 }
 
 /// 上报端点。运行时环境变量优先(本机联调),其次编译期注入(CI 出包时给)。
@@ -123,14 +149,15 @@ pub fn start(app: &AppHandle) {
     });
 }
 
-/// 每天第一次开对话时调用:标记"今天在干活"。
+/// 每天第一次开对话时调用:上报"今天在干活"。
 ///
 /// 由命令层调用而非 driver 内部——driver 只做协议翻译,埋点属于策略。
-/// 一天只落一次盘,当天后续消息走进程内快速路径,不给每轮对话加 I/O。
+/// 一天只碰一次盘,当天后续消息走进程内快速路径,不给每轮对话加 I/O。
 ///
-/// 动作名分两种,因为这是两个不同的问题:`first-use` 是这台机器**有史以来**
+/// 事件名分两种,因为这是两个不同的问题:`first-use` 是这台机器**有史以来**
 /// 第一次用(激活时点,一辈子一条),`daily-use` 是之后每天的第一次。混用一个
-/// 名字就再也算不出激活曲线。
+/// 名字,激活率就只能靠"扫历史找每台设备最早那条 daily-use"才算得出来——
+/// 跨天按设备聚合,Matomo 后台做不了。
 pub fn mark_used(app: &AppHandle) {
     // 记"已标记到哪天"而不是一个 bool:跨天要自动放行。
     // Mutex::new 是 const fn(1.63+),不能用 LazyLock——win7 通道锁在 1.77。
@@ -152,30 +179,21 @@ pub fn mark_used(app: &AppHandle) {
             Ok(st) => st,
             Err(e) => return eprintln!("[desktop] 统计: 读状态失败 {e}"),
         };
-        // 本进程之前那次运行今天可能已经标记过(进程内缓存只覆盖本次运行)
-        let Some(action) = advance_used(&mut st, &today) else { return };
-        // used/last_used_day 是状态不是游标:先落盘,发送成不成功都不影响
-        // 它们已经为真。
-        if let Err(e) = save_state(&path, &st) {
-            return eprintln!("[desktop] 统计: 写状态失败 {e}");
-        }
-        report(&path, &ep, &mut st, action, &version).await;
+        // 本进程之前那次运行今天可能已经报过(进程内缓存只覆盖本次运行)
+        let Some(action) = use_action(&st, &today) else { return };
+        report(&path, &ep, &mut st, Slot::Use, action, &version).await;
     });
 }
 
-/// 今天首次开对话时推进状态,返回该用的动作名;今天已标记过则返回 None。
+/// 使用槽今天该发的事件名;今天已成功报过则 None。
 ///
-/// 两个动作名对应两个不同的问题:`first-use` 是这台机器**有史以来**第一次用
-/// (激活时点,一辈子一条),`daily-use` 是之后每天的第一次。合成一个名字就
-/// 再也算不出激活曲线——`first-use` 的日分布会被日常活跃淹掉。
-fn advance_used(st: &mut State, today: &str) -> Option<&'static str> {
+/// 两个事件名对应两个不同的问题:`first-use` 是这台机器**有史以来**第一次用
+/// (激活时点,一辈子一条),`daily-use` 是之后每天的第一次。
+fn use_action(st: &State, today: &str) -> Option<&'static str> {
     if st.last_used_day == today {
         return None;
     }
-    let action = if st.used { "daily-use" } else { "first-use" };
-    st.used = true;
-    st.last_used_day = today.to_string();
-    Some(action)
+    Some(if st.used { "daily-use" } else { "first-use" })
 }
 
 // ==================== 内部 ====================
@@ -198,47 +216,58 @@ async fn tick(app: &AppHandle) {
         Ok(st) => st,
         Err(e) => return eprintln!("[desktop] 统计: 读状态失败 {e}"),
     };
-    if st.last_day == utc_day() {
-        return;
-    }
-    // 先定动作名再交出可变借用(launch_action 读的正是 report 会改的游标)
-    let action = launch_action(&st);
-    report(&path, &ep, &mut st, action, &version).await;
+    // 先定事件名再交出可变借用(launch_action 读的正是 report 会改的游标)
+    let Some(action) = launch_action(&st, &utc_day()) else { return };
+    report(&path, &ep, &mut st, Slot::Launch, action, &version).await;
 }
 
-/// 启动槽位的动作名:第一次是装机,之后是当天首次启动。
+/// 启动槽今天该发的事件名:第一次是装机,之后是当天首次启动;今天已成功
+/// 报过则 None。
 ///
-/// 判据是"`last_day` 为空 = 这台设备从没成功上报过任何东西 = 我们第一次见到
-/// 它"。用游标而不是另加一个 `install_reported` 字段:游标只在**成功**时推进,
-/// 所以首次上报失败(开机自启时网络常常还没就绪)后的重试仍然算装机,不会
-/// 静默退化成 daily-launch 把装机记录永久丢掉。
+/// 装机的判据是"`last_day` 为空 = 这台设备从没成功上报过启动事件 = 我们第一次
+/// 见到它"。用游标而不是另加一个 `install_reported` 字段:游标只在**成功**时
+/// 推进,所以首次上报失败(开机自启时网络常常还没就绪)后的重试仍然算装机,
+/// 不会静默退化成 daily-launch 把装机记录永久丢掉。
 ///
-/// 装机不单独再发一条请求:新设备的第一条启动记录本身就是装机记录。同一
-/// 槽位换个名字,"每台设备每天最多一条启动记录"这条不变量因此保持成立。
-fn launch_action(st: &State) -> &'static str {
-    if st.last_day.is_empty() {
-        "install"
-    } else {
-        "daily-launch"
+/// 装机不单独再发一条请求:新设备的第一条启动事件本身就是装机事件。同一
+/// 槽位换个名字,"每台设备每天恰好一条启动事件"这条不变量因此保持成立——
+/// 它正是"当日存活设备 = install + daily-launch 的事件数"能成立的前提。
+fn launch_action(st: &State, today: &str) -> Option<&'static str> {
+    if st.last_day == today {
+        return None;
     }
+    Some(if st.last_day.is_empty() { "install" } else { "daily-launch" })
 }
 
-/// 发送并在**成功后**推进游标。返回是否发成功(供测试断言)。
+/// 发送一条事件,并在**成功后**推进该槽位的游标。返回是否发成功(供测试断言)。
 ///
 /// 顺序很关键:先写游标再发送会系统性地丢数据——应用随开机自启时,
 /// launch+8s 常常早于网络就绪,那一天就永久没有了。成功才推进,失败留给
 /// 6 小时后的下一次醒来重试,一天最多四次尝试,不构成重试风暴。
-async fn report(path: &Path, ep: &Endpoint, st: &mut State, action: &str, version: &str) -> bool {
-    let facts = Facts {
-        version: version.to_string(),
-        platform: platform(),
-        nonce: nonce(),
-        today: utc_day(),
-    };
+///
+/// 两个槽位在这一点上同构:使用事件失败同样不推进,于是重试仍然是
+/// `first-use` 而不会退化成 `daily-use` —— 与 install 的判据是同一条理由。
+async fn report(
+    path: &Path,
+    ep: &Endpoint,
+    st: &mut State,
+    slot: Slot,
+    action: &str,
+    version: &str,
+) -> bool {
+    let facts =
+        Facts { version: version.to_string(), platform: platform(), nonce: nonce() };
     let url = tracking_url(ep, st, action, &facts);
     match send(&url).await {
         Ok(()) => {
-            st.last_day = facts.today;
+            let today = utc_day();
+            match slot {
+                Slot::Launch => st.last_day = today,
+                Slot::Use => {
+                    st.used = true;
+                    st.last_used_day = today;
+                }
+            }
             if let Err(e) = save_state(path, st) {
                 eprintln!("[desktop] 统计: 写状态失败 {e}");
             }
@@ -265,10 +294,15 @@ async fn send(url: &str) -> Result<(), String> {
     }
 }
 
-/// Matomo Tracking HTTP API 的完整请求地址。
+/// Matomo Tracking HTTP API 的完整请求地址(一条事件)。
 ///
-/// 纯函数,单测直接盯住两处静默失败点:`_id` 的形状,以及自定义维度的编号
-/// (dimension1..4 必须先在 Matomo 后台建好,否则参数被丢弃且不报错)。
+/// 发**事件**(e_c/e_a/e_n)而不是页面浏览:装机、存活、使用三个数因此等于
+/// 对应事件的条数,一次访客识别都不经过。设备标识同时进 `_id` 和 `e_n` ——
+/// 前者在归并时会被丢掉,后者落在动作行上,永远跑不掉。
+///
+/// 纯函数,单测直接盯住三处静默失败点:`_id` 的形状、`e_c`/`e_a` 非空(空值
+/// Matomo 判为无效事件直接丢弃),以及自定义维度的编号(dimension1/2 必须先
+/// 在 Matomo 后台建好且 scope 为 **Action**,否则参数被丢弃且不报错)。
 fn tracking_url(ep: &Endpoint, st: &State, action: &str, facts: &Facts) -> String {
     let params: [(&str, &str); 12] = [
         ("idsite", &ep.site_id),
@@ -280,16 +314,12 @@ fn tracking_url(ep: &Endpoint, st: &State, action: &str, facts: &Facts) -> Strin
         ("rand", &facts.nonce),
         ("_id", &st.install_id),
         ("url", SYNTHETIC_URL),
-        ("action_name", action),
+        ("e_c", EVENT_CATEGORY),
+        ("e_a", action),
+        // 设备标识落在动作行上的那一份。事件名称报表因此就是设备清单。
+        ("e_n", &st.install_id),
         ("dimension1", &facts.version),
         ("dimension2", &facts.platform),
-        // 曾经用过(激活率) vs 今天在干活(日活里的真实使用率)。两个都要:
-        // used 一旦为真就永远为真,单靠它分不出天天在用和半年前用过一次。
-        ("dimension3", if st.used { "true" } else { "false" }),
-        (
-            "dimension4",
-            if st.last_used_day == facts.today { "true" } else { "false" },
-        ),
     ];
     let query = params
         .iter()
@@ -378,15 +408,10 @@ mod tests {
     const TODAY: &str = "2026-07-26";
 
     fn facts(platform: &str) -> Facts {
-        Facts {
-            version: "26071401".into(),
-            platform: platform.into(),
-            nonce: "beef".into(),
-            today: TODAY.into(),
-        }
+        Facts { version: "26071401".into(), platform: platform.into(), nonce: "beef".into() }
     }
 
-    /// used = 曾经用过;used_today = 今天开过对话(last_used_day 落在今天)。
+    /// used = 曾经用过;used_today = 今天已成功报过使用事件。
     fn state(used: bool, used_today: bool) -> State {
         State {
             install_id: "a3f19c02b84e7d61".into(),
@@ -411,44 +436,46 @@ mod tests {
         assert!(url.contains("&rec=1"), "{url}");
     }
 
-    /// 四个自定义维度的编号是与 Matomo 后台配置的约定。改了编号等于把数据
-    /// 写进别的维度(或被丢弃),同样不报错。
+    /// 必须是事件(e_c/e_a)而不是页面浏览(action_name)。发成页面浏览时
+    /// Matomo 照收不误,只是全部落进"页面标题"报表、事件报表恒空,而三个
+    /// 指标的口径("等于事件数")悄悄失去依据。
+    #[test]
+    fn tracking_url_is_an_event_not_a_pageview() {
+        let url = tracking_url(&ep(), &state(true, true), "daily-launch", &facts("linux-x86_64"));
+
+        assert!(url.contains("&e_c=desktop"), "事件类别: {url}");
+        assert!(url.contains("&e_a=daily-launch"), "事件操作: {url}");
+        assert!(!url.contains("action_name="), "不能再发页面浏览: {url}");
+    }
+
+    /// 设备标识必须**同时**进 `_id` 和 `e_n`。只留 `_id` 时,同一出口 IP 的
+    /// 多台机器被 Matomo 归并成一个访客后,除第一台外的标识在入库时就没了,
+    /// 事后无从追查;`e_n` 落在动作行上,归并不掉。
+    #[test]
+    fn device_id_rides_on_every_event_not_just_the_visitor_field() {
+        let st = state(true, true);
+        let url = tracking_url(&ep(), &st, "install", &facts("macos-aarch64"));
+
+        assert!(url.contains("&_id=a3f19c02b84e7d61"), "{url}");
+        assert!(url.contains("&e_n=a3f19c02b84e7d61"), "事件自带设备标识: {url}");
+    }
+
+    /// 自定义维度的编号是与 Matomo 后台配置的约定。改了编号等于把数据写进
+    /// 别的维度(或被丢弃),同样不报错。
     #[test]
     fn tracking_url_pins_custom_dimension_slots() {
         let url = tracking_url(&ep(), &state(true, true), "daily-launch", &facts("linux-x86_64"));
 
         assert!(url.contains("&dimension1=26071401"), "版本 → dimension1: {url}");
         assert!(url.contains("&dimension2=linux-x86_64"), "系统 → dimension2: {url}");
-        assert!(url.contains("&dimension3=true"), "曾经用过 → dimension3: {url}");
-        assert!(url.contains("&dimension4=true"), "今天用过 → dimension4: {url}");
     }
 
-    /// "装了但没用过"是这套统计的核心问题,false 必须如实上报,不能因为
-    /// 默认值/序列化把它抹平成 true。
-    #[test]
-    fn unused_install_reports_false() {
-        let st = state(false, false);
-        let url = tracking_url(&ep(), &st, "daily-launch", &facts("macos-aarch64"));
-        assert!(url.contains("&dimension3=false"), "{url}");
-        assert!(url.contains("&dimension4=false"), "{url}");
-    }
-
-    /// 关键区分:一台"半年前用过一次、之后天天只是开着"的机器,dimension3 恒为
-    /// true 而 dimension4 必须是 false。两个维度混成一个就再也算不出日活里的
-    /// 真实使用率——这正是加 dimension4 的全部理由。
-    #[test]
-    fn long_dormant_install_is_ever_used_but_not_used_today() {
-        let url = tracking_url(&ep(), &state(true, false), "daily-launch", &facts("linux-x86_64"));
-        assert!(url.contains("&dimension3=true"), "曾经用过: {url}");
-        assert!(url.contains("&dimension4=false"), "但今天没干活: {url}");
-    }
-
-    /// 合成 URL 与动作名必须转义后进查询串,否则 `://` 会截断后面的参数。
+    /// 合成 URL 与事件名必须转义后进查询串,否则 `://` 会截断后面的参数。
     #[test]
     fn tracking_url_percent_encodes_values() {
         let url = tracking_url(&ep(), &state(true, true), "first-use", &facts("windows-x86_64"));
         assert!(url.contains("url=https%3A%2F%2Fdesktop.monkeycode%2Flaunch"), "{url}");
-        assert!(url.contains("&action_name=first-use"), "{url}");
+        assert!(url.contains("&e_a=first-use"), "{url}");
         // 查询串里只应有一个 '?';值里的保留字符都被编码掉了
         assert_eq!(url.matches('?').count(), 1, "{url}");
     }
@@ -471,14 +498,15 @@ mod tests {
         assert!(valid_install_id("0123456789abcdef"));
     }
 
-    /// 启动槽位:第一次见到这台设备是装机,之后是当天首次启动。
+    /// 启动槽:第一次见到这台设备是装机,之后是当天首次启动,当天报过就不再报。
     #[test]
     fn first_launch_ever_is_an_install_and_later_days_are_routine() {
         let mut st = State::default();
-        assert_eq!(launch_action(&st), "install");
+        assert_eq!(launch_action(&st, TODAY), Some("install"));
 
-        st.last_day = "2026-07-26".into(); // 一次成功上报之后
-        assert_eq!(launch_action(&st), "daily-launch");
+        st.last_day = TODAY.into(); // 一次成功上报之后
+        assert_eq!(launch_action(&st, TODAY), None, "当天不得重复上报");
+        assert_eq!(launch_action(&st, "2026-07-27"), Some("daily-launch"));
     }
 
     /// 首次上报失败(开机自启时网络常常还没就绪)后的重试**仍然算装机**。
@@ -491,11 +519,11 @@ mod tests {
             install_id: "0123456789abcdef".into(),
             ..Default::default()
         };
-        assert_eq!(launch_action(&st), "install", "重试仍应算装机");
+        assert_eq!(launch_action(&st, TODAY), Some("install"), "重试仍应算装机");
 
         // 只有成功过(游标推进)才不再算装机
-        st.last_day = "2026-07-26".into();
-        assert_eq!(launch_action(&st), "daily-launch");
+        st.last_day = "2026-07-25".into();
+        assert_eq!(launch_action(&st, TODAY), Some("daily-launch"));
     }
 
     /// 一台机器一生的用量序列:第一次是激活(first-use,只此一条),当天再发
@@ -504,29 +532,30 @@ mod tests {
     fn first_conversation_ever_is_activation_and_later_days_are_routine() {
         let mut st = State::default();
 
-        assert_eq!(advance_used(&mut st, "2026-07-26"), Some("first-use"));
-        assert!(st.used);
-        assert_eq!(st.last_used_day, "2026-07-26");
+        assert_eq!(use_action(&st, "2026-07-26"), Some("first-use"));
+
+        // 报成功之后(report 推进的正是这两个字段)
+        st.used = true;
+        st.last_used_day = "2026-07-26".into();
 
         // 同一天后续消息:不再上报(否则活跃用户一天几十条)
-        assert_eq!(advance_used(&mut st, "2026-07-26"), None);
+        assert_eq!(use_action(&st, "2026-07-26"), None);
 
         // 隔天:仍要上报,但不能再冒充激活
-        assert_eq!(advance_used(&mut st, "2026-07-27"), Some("daily-use"));
-        assert_eq!(st.last_used_day, "2026-07-27");
+        assert_eq!(use_action(&st, "2026-07-27"), Some("daily-use"));
         // 跳过几天照样是日常活跃,激活只发生过一次
-        assert_eq!(advance_used(&mut st, "2026-08-15"), Some("daily-use"));
+        assert_eq!(use_action(&st, "2026-08-15"), Some("daily-use"));
     }
 
     /// 从旧版本升级:磁盘上只有 used=true 没有 last_used_day。不能因此把
     /// 这台老机器当成新激活重新报一次 first-use。
     #[test]
     fn upgrade_from_state_without_last_used_day_is_not_a_new_activation() {
-        let mut st: State =
+        let st: State =
             serde_json::from_str(r#"{"install_id":"0123456789abcdef","used":true}"#).unwrap();
         assert_eq!(st.last_used_day, "");
 
-        assert_eq!(advance_used(&mut st, "2026-07-26"), Some("daily-use"));
+        assert_eq!(use_action(&st, "2026-07-26"), Some("daily-use"));
     }
 
     /// 去重键必须是 YYYY-MM-DD,且与 ms_to_rfc3339 的日期段一致。
@@ -631,6 +660,15 @@ mod tests {
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
+    /// 从假 Matomo 收到的请求行里取出事件操作名(`e_a`),按到达顺序。
+    fn event_actions(seen: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .map(|line| line.split("&e_a=").nth(1).unwrap().split('&').next().unwrap().to_string())
+            .collect()
+    }
+
     #[tokio::test]
     async fn successful_report_reaches_matomo_and_advances_the_cursor() {
         let (url, seen) = fake_matomo(204);
@@ -639,16 +677,17 @@ mod tests {
         let mut st = load_state(&path).unwrap();
         st.used = true;
 
-        assert!(report(&path, &ep, &mut st, "daily-launch", "26071401").await);
+        assert!(report(&path, &ep, &mut st, Slot::Launch, "daily-launch", "26071401").await);
 
         let reqs = seen.lock().unwrap().clone();
         assert_eq!(reqs.len(), 1, "应恰好发一条: {reqs:?}");
         let line = &reqs[0];
         assert!(line.starts_with("GET /matomo.php?"), "{line}");
         assert!(line.contains(&format!("_id={}", st.install_id)), "{line}");
+        assert!(line.contains(&format!("e_n={}", st.install_id)), "{line}");
         assert!(line.contains("idsite=7"), "{line}");
-        assert!(line.contains("dimension3=true"), "{line}");
-        assert!(line.contains("action_name=daily-launch"), "{line}");
+        assert!(line.contains("e_c=desktop"), "{line}");
+        assert!(line.contains("e_a=daily-launch"), "{line}");
 
         assert_eq!(st.last_day, utc_day(), "成功后游标推进到今天");
         let on_disk: State = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
@@ -665,7 +704,7 @@ mod tests {
         let path = tmp_state("retry");
         let mut st = load_state(&path).unwrap();
 
-        assert!(!report(&path, &ep, &mut st, "daily-launch", "26071401").await);
+        assert!(!report(&path, &ep, &mut st, Slot::Launch, "daily-launch", "26071401").await);
 
         assert_eq!(st.last_day, "", "失败不得推进游标");
         let on_disk: State = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
@@ -674,7 +713,7 @@ mod tests {
         // 下一次醒来重试:同一台机器、同一个标识,这次通了就该记上
         let (ok_url, ok_seen) = fake_matomo(204);
         let ok_ep = Endpoint { url: ok_url, site_id: "1".into() };
-        assert!(report(&path, &ok_ep, &mut st, "daily-launch", "26071401").await);
+        assert!(report(&path, &ok_ep, &mut st, Slot::Launch, "daily-launch", "26071401").await);
         assert_eq!(st.last_day, utc_day());
         assert_eq!(seen.lock().unwrap().len(), 1, "失败的那次确实发出去过");
         let retried = ok_seen.lock().unwrap().clone();
@@ -682,7 +721,56 @@ mod tests {
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
-    /// 一台新机器头两天的完整事件序列,打到真服务器上核对动作名与维度。
+    /// 使用事件失败后的重试**仍然是激活**。与 install 同一条理由:先把
+    /// used 记成真再发送,失败一次这台机器就永远不会出现在激活数里。
+    #[tokio::test]
+    async fn failed_use_report_retries_as_activation_not_routine() {
+        let (url, _) = fake_matomo(500);
+        let ep = Endpoint { url, site_id: "1".into() };
+        let path = tmp_state("use-retry");
+        let mut st = load_state(&path).unwrap();
+        let today = utc_day();
+        assert_eq!(use_action(&st, &today), Some("first-use"));
+
+        assert!(!report(&path, &ep, &mut st, Slot::Use, "first-use", "26071401").await);
+
+        assert!(!st.used, "失败不得把 used 记成真");
+        assert_eq!(use_action(&st, &today), Some("first-use"), "重试仍是激活,不能退化成 daily-use");
+        let on_disk: State = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(!on_disk.used, "盘上也不能推进");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// 两个槽位的游标必须互不干扰。共用一个游标时,跨午夜后先开对话的机器
+    /// 会把当天的启动事件永久吞掉——"当日存活设备 = install + daily-launch"
+    /// 因此系统性少算,而且少算的恰好是开着不关的重度用户。
+    #[tokio::test]
+    async fn a_use_event_does_not_swallow_the_same_day_launch_event() {
+        let (url, seen) = fake_matomo(204);
+        let ep = Endpoint { url, site_id: "1".into() };
+        let path = tmp_state("two-cursors");
+        let mut st = load_state(&path).unwrap();
+        st.used = true;
+        st.last_day = "2000-01-01".into(); // 昨天两个槽都报过
+        st.last_used_day = "2000-01-01".into();
+        let today = utc_day();
+
+        // 跨午夜后的常见次序:先开对话,启动事件还没轮到
+        let a = use_action(&st, &today).unwrap();
+        assert!(report(&path, &ep, &mut st, Slot::Use, a, "26071401").await);
+
+        let a = launch_action(&st, &today).expect("使用事件不得吞掉当天的启动事件");
+        assert_eq!(a, "daily-launch");
+        assert!(report(&path, &ep, &mut st, Slot::Launch, a, "26071401").await);
+
+        assert_eq!(event_actions(&seen), ["daily-use", "daily-launch"]);
+        // 各自推进各自的游标,当天都不再重复
+        assert_eq!(launch_action(&st, &today), None);
+        assert_eq!(use_action(&st, &today), None);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// 一台新机器头两天的完整事件序列,打到真服务器上核对事件名与维度。
     /// 这是四个事件唯一一处被**按顺序**验证的地方——单测只能各自钉一个片段。
     #[tokio::test]
     async fn a_new_machine_emits_install_then_first_use_then_daily_pair() {
@@ -691,61 +779,41 @@ mod tests {
         let path = tmp_state("lifecycle");
         let mut st = load_state(&path).unwrap();
         let id = st.install_id.clone();
+        let today = utc_day();
 
         // 第 1 天:启动(装机)
-        let a = launch_action(&st);
-        assert!(report(&path, &ep, &mut st, a, "26071401").await);
+        let a = launch_action(&st, &today).unwrap();
+        assert!(report(&path, &ep, &mut st, Slot::Launch, a, "26071401").await);
         // 第 1 天:第一次对话(激活)
-        let a = advance_used(&mut st, &utc_day()).unwrap();
-        assert!(report(&path, &ep, &mut st, a, "26071401").await);
-        // 第 1 天:再发消息 → 不再上报
-        assert_eq!(advance_used(&mut st, &utc_day()), None);
+        let a = use_action(&st, &today).unwrap();
+        assert!(report(&path, &ep, &mut st, Slot::Use, a, "26071401").await);
+        // 第 1 天:再启动一次 / 再发消息 → 两个槽都不再上报
+        assert_eq!(launch_action(&st, &today), None);
+        assert_eq!(use_action(&st, &today), None);
 
-        // 第 2 天:把两个游标一起拨回过去来伪造跨天(不动系统时钟)。只拨
-        // last_day 不拨 last_used_day,advance_used 会认为今天已标记过而返回
-        // None —— 这正是两个游标各管一件事的体现。
+        // 第 2 天:把两个游标一起拨回过去来伪造跨天(不动系统时钟)
         st.last_day = "2000-01-01".into();
         st.last_used_day = "2000-01-01".into();
-        let a = launch_action(&st);
-        assert!(report(&path, &ep, &mut st, a, "26071401").await);
-        let a = advance_used(&mut st, &utc_day()).unwrap();
-        assert!(report(&path, &ep, &mut st, a, "26071401").await);
+        let a = launch_action(&st, &today).unwrap();
+        assert!(report(&path, &ep, &mut st, Slot::Launch, a, "26071401").await);
+        let a = use_action(&st, &today).unwrap();
+        assert!(report(&path, &ep, &mut st, Slot::Use, a, "26071401").await);
 
-        let actions: Vec<String> = seen
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|line| {
-                line.split("action_name=")
-                    .nth(1)
-                    .unwrap()
-                    .split('&')
-                    .next()
-                    .unwrap()
-                    .to_string()
-            })
-            .collect();
-        assert_eq!(actions, ["install", "first-use", "daily-launch", "daily-use"]);
+        assert_eq!(
+            event_actions(&seen),
+            ["install", "first-use", "daily-launch", "daily-use"]
+        );
 
-        // 全程同一个设备标识,且每条都带完整维度
+        // 全程同一个设备标识,每条事件都自带它,且都带完整维度
         let lines = seen.lock().unwrap().clone();
         assert_eq!(lines.len(), 4);
         for line in &lines {
             assert!(line.contains(&format!("_id={id}")), "{line}");
+            assert!(line.contains(&format!("e_n={id}")), "事件自带设备标识: {line}");
+            assert!(line.contains("e_c=desktop"), "{line}");
             assert!(line.contains("dimension1=26071401"), "{line}");
             assert!(line.contains("dimension2="), "{line}");
         }
-        // 装机那条:还没用过 → 两个维度都是 false
-        assert!(lines[0].contains("dimension3=false") && lines[0].contains("dimension4=false"));
-        // 激活那条:曾经用过 + 今天用过
-        assert!(lines[1].contains("dimension3=true") && lines[1].contains("dimension4=true"));
-        // 第 2 天启动那条:曾经用过,但**当天还没干活** —— 这一条就是
-        // "半年前用过一次、之后天天只是开着"那类机器在数据上的样子,
-        // 也是 dimension3/dimension4 必须分开的全部理由。
-        assert!(lines[2].contains("dimension3=true"), "{}", lines[2]);
-        assert!(lines[2].contains("dimension4=false"), "{}", lines[2]);
-        // 第 2 天对话那条:当天开始干活了
-        assert!(lines[3].contains("dimension3=true") && lines[3].contains("dimension4=true"));
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
@@ -757,7 +825,7 @@ mod tests {
         let path = tmp_state("offline");
         let mut st = load_state(&path).unwrap();
 
-        assert!(!report(&path, &ep, &mut st, "daily-launch", "26071401").await);
+        assert!(!report(&path, &ep, &mut st, Slot::Launch, "daily-launch", "26071401").await);
         assert_eq!(st.last_day, "");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
