@@ -33,8 +33,9 @@ impl RepoCtx {
 
     /// 解析相对路径并防目录穿越;返回本地 fs 视角的绝对路径。
     fn resolve(&self, rel: &str) -> Result<PathBuf, String> {
-        // 归一化组件级校验:拒绝绝对路径与任何 .. 成分(简单可靠,无需 canonicalize
-        // ——目标文件可能尚不存在,canonicalize 会失败)
+        // 第一道:归一化组件级校验,拒绝绝对路径与任何 .. 成分。
+        // 目标可能尚不存在(file_diff 要为已删除文件出 diff),所以这一道
+        // 不能依赖 canonicalize。
         let p = Path::new(rel);
         if p.is_absolute()
             || p.components().any(|c| {
@@ -43,7 +44,21 @@ impl RepoCtx {
         {
             return Err(format!("路径 {rel} 超出工作区"));
         }
-        Ok(self.fs_root().join(rel))
+        let joined = self.fs_root().join(rel);
+        // 第二道:符号链接不受组件校验约束——工作区里一个指向外部的链接就能
+        // 把这套"只读浏览"带出工作区(link/passwd 之类)。路径已存在时做一次
+        // 实解析边界校验,标准与 uploads.rs::read_data_url 对齐;不存在时留给
+        // 调用方按"文件不存在"失败即可。
+        if joined.exists() {
+            let root = std::fs::canonicalize(self.fs_root())
+                .map_err(|e| format!("工作区路径无效: {e}"))?;
+            let real = std::fs::canonicalize(&joined)
+                .map_err(|e| format!("路径 {rel} 解析失败: {e}"))?;
+            if !real.starts_with(&root) {
+                return Err(format!("路径 {rel} 超出工作区"));
+            }
+        }
+        Ok(joined)
     }
 
     /// 在工作区内执行 git 的唯一通道(WSL 模式经 wsl.exe 在 guest 内跑)。
@@ -250,6 +265,42 @@ fn reveal(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 组件级校验挡不住符号链接:工作区内一条指向外部的链接,足以让只读
+    /// 文件浏览读到工作区外的文件。与 uploads.rs::read_data_url 同标准,
+    /// 已存在的路径要做实解析边界校验。
+    #[cfg(unix)]
+    #[test]
+    fn resolve_rejects_symlinks_that_point_outside_the_workspace() {
+        use std::os::unix::fs::symlink;
+
+        let base = std::env::temp_dir().join(format!("mc-repo-symlink-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let ws = base.join("workspace");
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::write(base.join("secret.txt"), b"outside").unwrap();
+        std::fs::create_dir_all(base.join("outside-dir")).unwrap();
+        std::fs::write(ws.join("inside.txt"), b"inside").unwrap();
+        symlink(base.join("secret.txt"), ws.join("leak.txt")).unwrap();
+        symlink(base.join("outside-dir"), ws.join("leak-dir")).unwrap();
+        symlink(ws.join("inside.txt"), ws.join("ok-link.txt")).unwrap();
+
+        let ctx = RepoCtx { workdir: ws.to_string_lossy().into_owned(), wsl_distro: None };
+
+        assert!(ctx.resolve("leak.txt").is_err(), "指向外部文件的链接应被拒绝");
+        assert!(ctx.resolve("leak-dir").is_err(), "指向外部目录的链接应被拒绝");
+        // 读文件与列目录是实际出口,必须一起挡住
+        assert!(read_file(&ctx, "leak.txt").is_err());
+        assert!(list_files(&ctx, "leak-dir").is_err());
+        // 工作区内的链接与普通文件照常可用,不能误伤
+        assert!(ctx.resolve("ok-link.txt").is_ok(), "工作区内的链接不该被误挡");
+        assert!(read_file(&ctx, "inside.txt").is_ok());
+        // 尚不存在的路径仍按组件校验放行(file_diff 要为已删除文件出 diff)
+        assert!(ctx.resolve("not-created-yet.txt").is_ok());
+        assert!(ctx.resolve("../escape").is_err());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn changes_response_marks_non_git_workspace() {
