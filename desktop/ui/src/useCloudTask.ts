@@ -35,6 +35,14 @@ function parseCursor(f: Frame): { cursor?: string; has_more?: boolean } | null {
   return frameData<{ cursor?: string; has_more?: boolean }>(f);
 }
 
+/** 任务详情决定首屏数据源。运行中只能由 attach 回放当前轮；若同时用
+ * REST rounds 播种，迟到的 REST 快照会覆盖 attach 已归档的当前轮。 */
+export function cloudInitialSource(status: string): "attach" | "rounds" | "pending" {
+  if (status === "processing") return "attach";
+  if (status === "finished" || status === "error") return "rounds";
+  return "pending";
+}
+
 // ==================== 状态机核心(非 React,可单测) ====================
 
 /** 核心对宿主(hook / 测试)的输出口:React 状态回写与跨模块副作用全部
@@ -489,8 +497,8 @@ export function useCloudTask(
   }, [id, core]);
   refreshInfoRef.current = refreshInfo;
 
-  // 进入/切任务:复位 + 拉详情;结束态任务直接回放最近一轮;
-  // 运行中任务也从 REST 播种历史(见下)
+  // 进入/切任务:复位 + 拉详情。结束态走 REST 回放；运行中不在这里碰
+  // history，由下方 attach 独占当前轮，避免迟到的 REST 覆盖 WS 回放。
   useEffect(() => {
     core.resetForTask();
     setChat(initialChat);
@@ -502,7 +510,7 @@ export function useCloudTask(
     void (async () => {
       const info = await refreshInfo();
       if (!alive || !info) return;
-      if (info.status === "finished" || info.status === "error") {
+      if (cloudInitialSource(info.status ?? "") === "rounds") {
         try {
           const r = await mcTaskRounds(id, "", 1);
           if (!alive) return;
@@ -512,23 +520,6 @@ export function useCloudTask(
           setStatus("已结束,只读回放");
         } catch (e) {
           setErr(e instanceof Error ? e.message : String(e));
-        }
-      } else if (info.status === "processing") {
-        // processing 此前完全依赖 attach 回放当前轮:attach 空闲关闭/失败时
-        // 对话区全空,且收不到 cursor 帧,"加载更早"也永不可达。这里从 REST
-        // 播种已完成轮 + 翻页游标兜底;活跃轮的尾巴丢弃(最后一个 task-ended
-        // 之后的帧),当前轮以 attach 整轮回放为权威,避免与回放重复
-        try {
-          const r = await mcTaskRounds(id, "", 2);
-          if (!alive) return;
-          const frames = r.frames ?? [];
-          const lastEnd = frames.map((f) => f.type).lastIndexOf("task-ended");
-          const seeded = frames.slice(0, lastEnd + 1);
-          core.seedHistory(seeded);
-          setCursor(r.next_cursor ? { cursor: r.next_cursor, hasMore: !!r.has_more } : null);
-          if (seeded.length) rebuild();
-        } catch {
-          // 播种失败不致命:attach 回放仍在,保持原行为
         }
       }
     })();
@@ -571,7 +562,7 @@ export function useCloudTask(
   // 休眠与否在核心内读镜像;唤醒完成由 handleInfo 按转变 bump
   // attachEpoch 触发一次重建。
   useEffect(() => {
-    if (taskStatus !== "processing") return;
+    if (cloudInitialSource(taskStatus) !== "attach") return;
     if (!core.maybeOpenAttach()) return;
     return () => core.closeConn();
   }, [id, core, taskStatus, attachEpoch]);

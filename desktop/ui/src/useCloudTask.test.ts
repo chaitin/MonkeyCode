@@ -5,7 +5,7 @@
 // 核心刻意不触 React(副作用经 CloudCoreIO 注入),故无需 DOM/renderHook。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { b64decode } from "./codec";
-import { createCloudTaskCore, type CloudCoreIO } from "./useCloudTask";
+import { cloudInitialSource, createCloudTaskCore, type CloudCoreIO } from "./useCloudTask";
 import type { CloudTaskDetail } from "./types";
 
 // ---- 假 Tauri 壳:cloud_ws_open 按脚本决定成败;事件按 pipe 精确投递 ----
@@ -116,6 +116,15 @@ function makeCore(taskStatus = "processing") {
   core.noteTaskStatus(taskStatus);
   return { core, out, events };
 }
+
+describe("云端任务首屏数据源", () => {
+  it("运行中只走 attach，结束态才走 REST rounds", () => {
+    expect(cloudInitialSource("processing")).toBe("attach");
+    expect(cloudInitialSource("finished")).toBe("rounds");
+    expect(cloudInitialSource("error")).toBe("rounds");
+    expect(cloudInitialSource("pending")).toBe("pending");
+  });
+});
 
 describe("云端投递状态机:排队与自动投递", () => {
   it("启动中直发被拒 → 入队;attach 就绪后自动投递", async () => {
