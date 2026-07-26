@@ -171,7 +171,7 @@ function SessionRow({
     <div style={{ position: "relative" }}>
       <div
         className={active ? undefined : "hv"}
-        title={`${title}\n${meta.kind === "chat" ? "独立对话" : meta.workdir}\n右键管理`}
+        title={`${title}\n${meta.summary ? `${meta.summary}\n` : ""}${meta.kind === "chat" ? "独立对话" : meta.workdir}\n右键管理`}
         onClick={onClick}
         onContextMenu={(e) => {
           if (rename.editing) return;
@@ -184,7 +184,9 @@ function SessionRow({
           display: "flex",
           alignItems: "center",
           gap: 7,
-          padding: `0 8px 0 ${11 + Math.max(0, depth) * 14}px`,
+          // 纵向内边距只在长出摘要行(两行)时起作用:单行内容 17px,离
+          // minHeight 34 还远,居中布局不受影响,几何与单行时代逐像素一致
+          padding: `5px 8px 5px ${11 + Math.max(0, depth) * 14}px`,
           borderRadius: 7,
           cursor: "pointer",
           background: active ? (archived ? "var(--hov2)" : "var(--accSel)") : "transparent",
@@ -211,31 +213,41 @@ function SessionRow({
             }}
           />
         ) : (
-          <>
-            <span className="ellipsis" style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.35, fontWeight: 400, color: active ? "var(--t1)" : archived ? "var(--t4)" : "var(--t2)" }}>
-              {title}
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, flex: "none" }}>
-              {(attention || emphasizeState) && (
-                <span
-                  title={attention ? (meta.status === "error" ? "后台任务出错" : "会话有新进展") : undefined}
-                  style={{
-                    width: attention ? 7 : 6,
-                    height: attention ? 7 : 6,
-                    borderRadius: "50%",
-                    background: attention ? (meta.status === "error" ? "var(--err)" : "var(--acc)") : st.color,
-                    boxShadow: attention
-                      ? `0 0 0 2px ${meta.status === "error" ? "var(--errBg)" : "var(--accBg)"}`
-                      : "none",
-                    flex: "none",
-                  }}
-                />
-              )}
-              <span className="ellipsis" style={{ maxWidth: 60, color: trailingColor, fontSize: 10.5, lineHeight: 1.2, fontVariantNumeric: "tabular-nums" }}>
-                {trailing}
+          // 两行式:标题行(标题 + 状态尾注)+ 摘要行(引擎每轮生成,随对话
+          // 演进改写)。摘要缺席(旧会话/首轮未回/引擎过旧)不长第二行,
+          // 单行密度与云端任务行保持一致
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+              <span className="ellipsis" style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.35, fontWeight: 400, color: active ? "var(--t1)" : archived ? "var(--t4)" : "var(--t2)" }}>
+                {title}
               </span>
-            </span>
-          </>
+              <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, flex: "none" }}>
+                {(attention || emphasizeState) && (
+                  <span
+                    title={attention ? (meta.status === "error" ? "后台任务出错" : "会话有新进展") : undefined}
+                    style={{
+                      width: attention ? 7 : 6,
+                      height: attention ? 7 : 6,
+                      borderRadius: "50%",
+                      background: attention ? (meta.status === "error" ? "var(--err)" : "var(--acc)") : st.color,
+                      boxShadow: attention
+                        ? `0 0 0 2px ${meta.status === "error" ? "var(--errBg)" : "var(--accBg)"}`
+                        : "none",
+                      flex: "none",
+                    }}
+                  />
+                )}
+                <span className="ellipsis" style={{ maxWidth: 60, color: trailingColor, fontSize: 10.5, lineHeight: 1.2, fontVariantNumeric: "tabular-nums" }}>
+                  {trailing}
+                </span>
+              </span>
+            </div>
+            {meta.summary && (
+              <span className="ellipsis" style={{ fontSize: 11, lineHeight: 1.3, color: archived ? "var(--t6)" : active ? "var(--t4)" : "var(--t5)" }}>
+                {meta.summary}
+              </span>
+            )}
+          </div>
         )}
       </div>
 
@@ -772,7 +784,7 @@ export function Sidebar({
 
   const norm = query.trim().toLocaleLowerCase();
   const matchesSession = (m: SessionMeta) =>
-    !norm || `${m.title} ${m.workdir} ${rowStatus(m).text}`.toLocaleLowerCase().includes(norm);
+    !norm || `${m.title} ${m.summary ?? ""} ${m.workdir} ${rowStatus(m).text}`.toLocaleLowerCase().includes(norm);
   const matchesCloud = (task: CloudTask) =>
     !norm || `${task.title ?? ""} ${task.summary ?? ""} ${task.content ?? ""} ${CLOUD_STATUS[task.status ?? ""]?.text ?? ""}`.toLocaleLowerCase().includes(norm);
 
