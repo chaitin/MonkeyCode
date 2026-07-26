@@ -85,6 +85,17 @@ jobs:
         working-directory: desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # 装机/使用统计的上报地址,编译期内联(desktop/src/telemetry.rs)。
+          # 只加在 release 工作流上:开发机 cargo run / cargo build 拿不到它,
+          # 因此开发过程不会往生产数据里灌噪声。secret 未配置时是空串 =
+          # 不上报,构建照常不红。
+          #
+          # 走 secret 不是把它当密钥(装了包的人 strings 一下就能拿到),而是
+          # 不把它摆在公开仓库里:端点免鉴权公开可写,而这套数据的全部意义
+          # 就是装机计数——谁都能 curl 循环随机塞 _id 把装机量刷成任意数字。
+          # 降低发现门槛没有收益,提高一点是免费的。
+          MC_MATOMO_URL: ${{ secrets.MC_MATOMO_URL }}
+          MC_MATOMO_SITE_ID: ${{ secrets.MC_MATOMO_SITE_ID }}
         run: |
           if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             npx --yes @tauri-apps/cli@^2 build \

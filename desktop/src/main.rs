@@ -19,6 +19,7 @@ mod driver;
 #[cfg(target_os = "windows")]
 mod native_pet;
 mod repo;
+mod telemetry;
 mod uploads;
 mod util;
 mod wsl;
@@ -536,7 +537,7 @@ async fn update_install(app: AppHandle) -> Result<(), String> {
 // 用户确认后下载安装并重启,minisign 签名校验完整性。
 
 /// 展示用短版本号:去掉内部 semver 的 ".0.0" 后缀(26071401.0.0 → 26071401)。
-fn display_version(v: &str) -> String {
+pub(crate) fn display_version(v: &str) -> String {
     v.strip_suffix(".0.0").unwrap_or(v).to_string()
 }
 
@@ -1037,6 +1038,9 @@ fn main() {
                 eprintln!("[desktop] 托盘创建失败(关窗将直接退出): {e}");
                 app.state::<TrayReady>().0.store(false, Ordering::Relaxed);
             }
+
+            // 装机/使用统计心跳。端点未注入(默认)或用户在托盘关掉则空转。
+            telemetry::start(app.handle());
 
             // 自动检查更新整条收在 UI 侧(ui/src/App.tsx + updateGate.ts):挂载、
             // 切回前台、4 小时兜底三个触发点共用一道 30 分钟闸门,发现新版点亮

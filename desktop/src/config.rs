@@ -3,7 +3,8 @@
 // DesktopConfig 是应用权威配置；引擎 settings.json/mcp.json 只是可重建的
 // 派生物。所有权威配置读改写经 ConfigStore 串行，并使用同目录临时文件
 // 原子替换；损坏的主文件只允许从有效备份恢复，绝不能静默退成默认配置后
-// 覆盖用户的模型/API Key。pet_* 是壳自有偏好，设置页保存时从磁盘合并。
+// 覆盖用户的模型/API Key。pet_*(托盘切换)与 telemetry_enabled(仅改文件)
+// 都不在设置页表单里，设置页保存时必须从磁盘合并，否则会被默认值打回。
 
 use std::ffi::OsString;
 use std::fs;
@@ -71,6 +72,12 @@ pub struct DesktopConfig {
     /// 桌宠窗口位置(物理像素;拖动后记忆)
     #[serde(default)]
     pub pet_pos: Option<(i32, i32)>,
+    /// 装机统计开关。**刻意不做任何 UI**:载荷只有随机设备标识、版本、系统和
+    /// 一个"用没用"的布尔,不含可关联到人的信息,装机计数不需要征求同意。留这个
+    /// 字段是给客户合规问卷的出口(改 config.json 一行即可关),不是给普通用户的
+    /// 选项。真正的第一道闸门在构建期:没注入上报端点就恒不上报。
+    #[serde(default = "default_true")]
+    pub telemetry_enabled: bool,
 }
 
 impl Default for DesktopConfig {
@@ -82,6 +89,7 @@ impl Default for DesktopConfig {
             agent_engine: default_engine(),
             pet_enabled: true,
             pet_pos: None,
+            telemetry_enabled: true,
         }
     }
 }
@@ -334,14 +342,22 @@ pub fn save_ui_config_files(
     let _guard = store.lock();
     let dir = config_dir(app)?;
     let disk = load_config_unlocked(&dir)?;
-    let cfg = DesktopConfig {
-        pet_enabled: disk.pet_enabled,
-        pet_pos: disk.pet_pos,
-        ..incoming
-    };
+    let cfg = merge_shell_prefs(incoming, &disk);
     write_ohmyagent_config(&dir.join("ohmyagent"), &cfg, browser_mcp.as_ref())?;
     save_config_unlocked(&dir, &cfg)?;
     Ok(cfg)
+}
+
+/// 设置页表单只覆盖它自己呈现的字段。桌宠偏好由托盘切换、统计开关只由改文件
+/// 关闭,两者都不在表单里——incoming 携带的是 serde 默认值(全为"开")。不从
+/// 磁盘捞回来,用户关掉的东西会被下一次"保存设置"静默打开。
+fn merge_shell_prefs(incoming: DesktopConfig, disk: &DesktopConfig) -> DesktopConfig {
+    DesktopConfig {
+        pet_enabled: disk.pet_enabled,
+        pet_pos: disk.pet_pos,
+        telemetry_enabled: disk.telemetry_enabled,
+        ..incoming
+    }
 }
 
 /// 只重建引擎派生配置，不改写权威 config.json。启动、手动重启和浏览器
@@ -634,6 +650,40 @@ mod tests {
         assert!(error.contains("损坏"), "{error}");
         assert_eq!(fs::read(&path).unwrap(), b"{broken");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 表单外关掉的东西不得被"保存设置"打回默认。设置页表单不含这些字段，
+    /// 于是 incoming 里它们恒为 serde 默认值 true —— 少一次磁盘合并，客户按
+    /// 合规要求关掉的统计会在下一次改模型配置时被静默打开，且毫无提示。
+    #[test]
+    fn saving_ui_settings_preserves_preferences_outside_the_form() {
+        let disk = DesktopConfig {
+            pet_enabled: false,
+            pet_pos: Some((12, 34)),
+            telemetry_enabled: false,
+            ..Default::default()
+        };
+        // 设置页提交的形态:只有表单字段有值，壳自有偏好走 serde 默认。
+        let incoming = DesktopConfig {
+            kernel_env: "wsl:Ubuntu".into(),
+            ..Default::default()
+        };
+        assert!(incoming.telemetry_enabled, "前提:表单提交里它就是 true");
+
+        let merged = merge_shell_prefs(incoming, &disk);
+
+        assert!(!merged.telemetry_enabled, "统计开关必须保留磁盘上的关闭态");
+        assert!(!merged.pet_enabled);
+        assert_eq!(merged.pet_pos, Some((12, 34)));
+        assert_eq!(merged.kernel_env, "wsl:Ubuntu", "表单字段仍应生效");
+    }
+
+    /// 老版本 config.json 没有这个字段，升级后应视为开启(而不是 false)。
+    #[test]
+    fn config_without_telemetry_field_defaults_to_enabled() {
+        let cfg: DesktopConfig = serde_json::from_str(r#"{"models":[],"pet_enabled":false}"#).unwrap();
+        assert!(cfg.telemetry_enabled);
+        assert!(!cfg.pet_enabled, "同一份 JSON 里显式给出的字段不受影响");
     }
 
     /// desktop 启动 agent 时统一启用 AI 权限分类；会话创建也显式传 auto，

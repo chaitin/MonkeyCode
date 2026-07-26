@@ -1,4 +1,10 @@
 fn main() {
+    // 统计上报端点经 option_env! 在编译期内联(src/telemetry.rs)。option_env!
+    // 的取值不在 cargo 的默认依赖图里:不显式声明,改了环境变量也命中旧缓存,
+    // 打出来的包会带着上一次的地址——CI 换 secret 时静默失效。
+    println!("cargo:rerun-if-env-changed=MC_MATOMO_URL");
+    println!("cargo:rerun-if-env-changed=MC_MATOMO_SITE_ID");
+
     // 为应用自定义命令生成 ACL 权限(allow-<command>):
     // capability 中引用的每个自定义命令都必须在此登记。
     tauri_build::try_build(

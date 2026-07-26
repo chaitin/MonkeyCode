@@ -385,12 +385,20 @@ pub async fn session_close(host: State<'_, DriverHost>, id: String) -> Result<()
 
 #[tauri::command]
 pub async fn session_send(
+    app: AppHandle,
     host: State<'_, DriverHost>,
     id: String,
     ftype: String,
     payload: Value,
 ) -> Result<(), String> {
-    host.get()?.session_send(&id, &ftype, payload).await
+    host.get()?.session_send(&id, &ftype, payload).await?;
+    // 装机统计里"用没用"的判据:开出了一轮真实对话,而不是"启动过"。
+    // 埋点是策略,只在命令层做——driver 内部只做协议翻译。上行还有审批
+    // 应答等其它 ftype,它们不算开轮。
+    if ftype == "user-input" {
+        crate::telemetry::mark_used(&app);
+    }
+    Ok(())
 }
 
 /// 会话 call 统一入口:repo_* 前缀在命令层分派到壳原生实现(UI 不感知
