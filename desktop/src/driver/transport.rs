@@ -18,7 +18,7 @@ use tauri::AppHandle;
 use tokio::sync::{mpsc, oneshot};
 
 use super::ohmy::{parse_manifest_models, Inner, OhmyDriver, ShellCtx};
-use super::session::SessionsState;
+use super::session::{valid_session_id, SessionsState};
 use super::subagent::SubagentState;
 use crate::config::DesktopConfig;
 use crate::util::LockExt;
@@ -82,6 +82,19 @@ pub(super) enum JournalMsg {
     Sync { ack: std::sync::mpsc::Sender<()> },
 }
 
+impl JournalMsg {
+    /// 会拿会话 id 去拼文件路径的变体(写线程据此做边界校验)。
+    /// Close/Sync 不建路径,也**不参与**校验:它们带 ack,被丢弃时调用方拿到
+    /// 的是"屏障已完成"的假象(Sender 随消息落栈 → recv 立刻 Err),
+    /// 落盘保证就此静默失效。
+    fn path_sid(&self) -> Option<&str> {
+        match self {
+            JournalMsg::Append { sid, .. } | JournalMsg::Materialize { sid, .. } => Some(sid),
+            JournalMsg::Close { .. } | JournalMsg::Sync { .. } => None,
+        }
+    }
+}
+
 /// 起 journal 专职写线程,返回投递端。线程内维护「sid → append 句柄」
 /// 缓存:数量上限 + 最久未用淘汰,防长期多会话累积句柄泄漏;
 /// 写失败即丢句柄,下一帧重新 open 重试,坏句柄不会永久卡死一个会话。
@@ -93,6 +106,23 @@ pub(super) fn spawn_journal_writer(data_dir: PathBuf) -> mpsc::UnboundedSender<J
         let mut handles: HashMap<String, (u64, std::fs::File)> = HashMap::new();
         let mut tick: u64 = 0; // 最近使用刻度(简易 LRU)
         while let Some(msg) = rx.blocking_recv() {
+            // 写线程是帧落盘的文件系统边界:它自己 create_dir_all + 追加文件。
+            // 上游(push_frame)只对 sessions 表里的会话产帧,而入表的 id 都过了
+            // session::valid_session_id——但那是**跨模块的隐式不变量**,一旦哪天
+            // 有人从别处投递,这里就是任意目录追加。在边界上自己再判一次,
+            // 契约 3 那句"唯一允许拼路径的构造器"才是真的。
+            //
+            // 只判真正拼路径的两个变体。Sync 与 Close(wait=true)带 ack,
+            // **不能**一起过滤:那不会挂死(ack 的 Sender 随消息丢弃,调用方
+            // 的 rx.recv() 立刻拿到 Err),而是更隐蔽的——屏障照常返回,却不再
+            // 保证"此前入队的 Append 已落盘"。后果是 replay_open 读到未落盘的
+            // journal(开会话丢帧),以及 Windows 上句柄未关就去删目录。
+            if let Some(sid) = msg.path_sid() {
+                if !valid_session_id(sid) {
+                    eprintln!("[desktop] 帧日志收到非法会话 id,已丢弃: {sid:?}");
+                    continue;
+                }
+            }
             match msg {
                 JournalMsg::Append { sid, line } => {
                     tick += 1;

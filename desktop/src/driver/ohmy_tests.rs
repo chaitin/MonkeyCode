@@ -17,7 +17,7 @@ use crate::config::DesktopConfig;
 use crate::driver::frame;
 use crate::driver::session::{SessionState, SessionsState};
 use crate::driver::subagent::SubagentState;
-use crate::driver::transport::{find_ohmyagent, spawn_journal_writer, TransportState};
+use crate::driver::transport::{find_ohmyagent, spawn_journal_writer, JournalMsg, TransportState};
 
 
 /// E2E 串行锁:限制真实引擎 + 假 LLM 的并发资源占用。async-aware 锁不会
@@ -1600,4 +1600,81 @@ fn the_cancel_watchdog_only_reconciles_its_own_turn() {
     // 轮次收尾后即使 turn 相同也不再和解(running 已落)
     inner.sess.sessions.lock().unwrap().get_mut("s1").unwrap().running = false;
     assert!(!matches(7));
+}
+
+/// 路径穿越回归:`session_delete` 的终点是 `remove_dir_all(<data_dir>/<id>)`,
+/// 而 id 是 IPC 入参。未加守卫时 `data_dir.join("../../..")` 会被
+/// remove_dir_all 一路解析上去,实测能清空 data_dir 上游几层的全部内容。
+///
+/// **断言顺序是刻意的**:先钉住路径构造器拒绝(它是所有文件系统操作的唯一
+/// 入口),再去调命令。守卫若回归,构造器那条 assert 先炸,后面的
+/// session_delete 根本不会带着一个可逃逸的 id 跑起来——这条测试因此不会
+/// 反过来把开发机的临时目录删了。
+#[tokio::test]
+async fn session_commands_refuse_ids_that_escape_the_session_root() {
+    let inner = bare_inner("path-traversal");
+    let driver = OhmyDriver(inner.clone());
+
+    for evil in ["..", "../..", "../../..", "a/../..", "/etc", "foo/bar", "x\\y", ".", ""] {
+        assert!(inner.session_dir(evil).is_none(), "sidecar 目录构造放行了 {evil:?}");
+        assert!(inner.engine_session_dir(evil).is_none(), "引擎目录构造放行了 {evil:?}");
+
+        let err = driver
+            .session_delete(evil)
+            .await
+            .expect_err("删除必须对逃逸 id 直接失败,它的终点是 remove_dir_all");
+        assert!(err.contains("非法会话 id"), "{evil:?} 的错误文案不对: {err}");
+        assert!(driver.session_open(evil).await.is_err(), "打开也不该放行 {evil:?}");
+        assert!(driver.session_frame(evil, 1).await.is_err(), "回读也不该放行 {evil:?}");
+        assert!(
+            driver.session_patch(evil, json!({ "title": "x" })).await.is_err(),
+            "sidecar 写也不该放行 {evil:?}",
+        );
+    }
+
+    // 正常 id(引擎发的是 uuid.NewString()[:8])一个都不能被挡,
+    // 且构造出的路径必须仍在会话根之内
+    let dir = inner.session_dir("1f2e3d4c").expect("正常 id 被误挡");
+    assert!(dir.starts_with(&inner.data_dir));
+    let _ = std::fs::remove_dir_all(inner.data_dir.parent().unwrap());
+}
+
+/// journal 写线程在文件系统边界上自判会话 id(见 spawn_journal_writer)。
+/// 这条钉两件事:
+/// 1. 非法 id 的 Append/Materialize 被丢弃,不在会话根之外建目录/写文件;
+/// 2. 合法 id 照常落盘,过滤没有误伤;
+/// 3. 屏障/Close 的 ack 路径仍走得通。
+///
+/// 关于第 3 点要说清楚:把 Sync/Close 也纳入过滤**不会**挂死——ack 的 Sender
+/// 随消息一起落栈,调用方的 rx.recv() 立刻拿到 Err(实测 62µs)。所以这条
+/// 测试抓不住那种回归,真正的后果是屏障返回却不再保证已落盘,得靠
+/// replay_window_no_frame_loss 那类端到端断言去守。此处只钉住边界过滤本身。
+#[test]
+fn journal_writer_drops_escaping_ids_without_stalling_the_barrier() {
+    let inner = bare_inner("journal-guard");
+    let outside = inner.data_dir.parent().unwrap().join("escaped");
+
+    for evil in ["../escaped", "..", "a/b"] {
+        let _ = inner.transport.journal_tx.send(JournalMsg::Append {
+            sid: evil.to_string(),
+            line: "{\"type\":\"task-started\"}".into(),
+        });
+    }
+    // 合法 id 照常落盘,证明过滤没有误伤
+    let _ = inner.transport.journal_tx.send(JournalMsg::Append {
+        sid: "1f2e3d4c".into(),
+        line: "{\"type\":\"task-started\"}".into(),
+    });
+
+    // 屏障必须返回(挂住就是这里回归了);它同时保证上面的投递已被处理完
+    inner.journal_barrier();
+    // 带 ack 的 Close 同理
+    inner.journal_close("1f2e3d4c", true);
+
+    assert!(!outside.exists(), "非法 id 在会话根之外建了目录: {}", outside.display());
+    assert!(
+        inner.data_dir.join("1f2e3d4c/events.jsonl").is_file(),
+        "合法 id 的帧日志被误伤",
+    );
+    let _ = std::fs::remove_dir_all(inner.data_dir.parent().unwrap());
 }

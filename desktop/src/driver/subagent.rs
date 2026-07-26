@@ -63,6 +63,12 @@ impl Inner {
         if self.sub.subagents.lock_ok().contains_key(child_sid) {
             return true;
         }
+        // 认领即物化成壳侧子会话:child_sid 会成为 sidecar 目录名,而它来自
+        // 引擎转发的子循环 id。守卫标准与壳 sid 一致(见 valid_session_id)
+        if !super::session::valid_session_id(child_sid) {
+            eprintln!("[desktop] 子代理事件的会话 id 不是合法目录名,不认领: {child_sid:?}");
+            return false;
+        }
         // 事件自带父归属:父 sid 经 shell_sid_of 反查(engine_id 换绑兼容)
         let stamped = event
             .get("parent_session_id")

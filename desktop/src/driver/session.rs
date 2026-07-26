@@ -79,6 +79,69 @@ fn managed_chat_workdir(root: &Path, path: &str) -> Option<PathBuf> {
     Some(candidate)
 }
 
+/// 会话 id 必须是**单段安全目录名**。
+///
+/// 它不是普通标识符:壳 sid、引擎 session/create 返回的 session_id、子代理
+/// 子循环 id 全都会原样拼进 `<data_dir>/<id>/` 与 `<engine_dir>/sessions/<id>/`,
+/// 而这些路径的终点是 `remove_dir_all` 与 `atomic_write_private`。
+/// `data_dir.join("../../..")` 会被 `remove_dir_all` 一路解析上去——实测能把
+/// 用户主目录下的内容清空。同一个未校验的 id 还能让 write_sidecar 在任意
+/// 目录写出 meta.json。
+///
+/// 所以在拼路径**之前**就挡:非空、限长、不含路径分隔符/NUL/冒号
+/// (Windows 盘符与 NTFS 数据流),且归一化后仍是同一段普通名(挡掉 "." 与 "..")。
+/// 引擎发的是 `uuid.NewString()[:8]`(8 位十六进制),壳自建的 chat- 工作区
+/// 同理,正常路径一个都不会被挡。
+pub(super) fn valid_session_id(id: &str) -> bool {
+    if id.is_empty() || id.len() > 128 {
+        return false;
+    }
+    if id.bytes().any(|b| matches!(b, b'/' | b'\\' | b'\0' | b':')) {
+        return false;
+    }
+    let mut parts = std::path::Path::new(id).components();
+    let single = matches!(
+        parts.next(),
+        Some(std::path::Component::Normal(seg)) if seg == std::ffi::OsStr::new(id)
+    );
+    single && parts.next().is_none()
+}
+
+/// 上行命令的 id 守卫:非法 id 直接外显错误,而不是让下游各自静默降级。
+fn check_session_id(id: &str) -> Result<(), String> {
+    if valid_session_id(id) {
+        Ok(())
+    } else {
+        Err(format!("非法会话 id: {id:?}"))
+    }
+}
+
+#[cfg(test)]
+mod session_id_tests {
+    use super::valid_session_id;
+
+    /// 引擎与壳实际用的 id 形态一个都不能被挡(否则存量会话打不开)。
+    #[test]
+    fn accepts_the_ids_actually_in_use() {
+        // ohmyagent stdio.go: uuid.NewString()[:8]
+        for id in ["1f2e3d4c", "0a1b2c3d", "s1", "child9", "agent-1", "chat_ws_01", &"a".repeat(128)] {
+            assert!(valid_session_id(id), "正常 id 被误挡: {id:?}");
+        }
+    }
+
+    /// 路径穿越是本守卫存在的唯一理由:这些一旦漏过去,终点是
+    /// remove_dir_all(<data_dir>/<id>) 与 write_sidecar 的任意目录写。
+    #[test]
+    fn rejects_anything_that_can_escape_the_session_root() {
+        for id in [
+            "", ".", "..", "../../..", "a/../../b", "foo/bar", "foo\\bar",
+            "/etc", "C:windows", "stream:name", "a\0b", &"a".repeat(129),
+        ] {
+            assert!(!valid_session_id(id), "可逃逸的 id 被放行: {id:?}");
+        }
+    }
+}
+
 #[cfg(test)]
 mod chat_workdir_tests {
     use super::*;
@@ -373,13 +436,19 @@ impl OhmyDriver {
                 return Err(e);
             }
         };
-        let sid = match result.get("session_id").and_then(|v| v.as_str()) {
+        // 引擎返回的 session_id 直接成为 sidecar 目录名,校验标准与 IPC 入参
+        // 一致:引擎是子进程不是信任边界,一个畸形 id 同样能穿越出 data_dir
+        let sid = match result
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .filter(|id| valid_session_id(id))
+        {
             Some(id) => id.to_string(),
             None => {
                 if let Some(path) = &chat_workdir {
                     let _ = std::fs::remove_dir_all(path);
                 }
-                return Err("session/create 未返回 session_id".into());
+                return Err("session/create 未返回可用的 session_id".into());
             }
         };
         self.0.sess.sessions.lock_ok().insert(
@@ -428,6 +497,7 @@ impl OhmyDriver {
     /// 历史帧改走命令返回值而不是 `frames:{sid}` 事件:返回值天生有序,
     /// "监听先于命令"那条约束对历史部分自然消失(实时流仍走事件,契约不变)。
     pub async fn session_open(&self, id: &str) -> Result<Value, String> {
+        check_session_id(id)?;
         let need_create = {
             let sessions = self.0.sess.sessions.lock_ok();
             !sessions.get(id).map(|s| s.created).unwrap_or(false)
@@ -547,7 +617,13 @@ impl OhmyDriver {
             params["model"] = json!(model_id);
         }
         let result = self.rpc("session/create", params).await?;
-        if let Some(e) = result.get("session_id").and_then(|v| v.as_str()) {
+        // 换绑来的 engine_id 会成为 <engine_dir>/sessions/<id> 的目录名(删会话
+        // 时被 remove_dir_all),同样只收单段安全名;畸形值保留原 id 不换绑
+        if let Some(e) = result
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .filter(|e| valid_session_id(e))
+        {
             engine_id = e.to_string();
         }
         if engine_id != id {
@@ -596,10 +672,14 @@ impl OhmyDriver {
     /// 往前翻页:cursor 之前的最多 limit 轮(cursor = replay.jsonl 的轮起始
     /// 字节偏移,与 session_open/大纲同一坐标系)。
     pub async fn session_history(&self, id: &str, cursor: u64, limit: usize) -> Result<Value, String> {
+        check_session_id(id)?;
         let inner = self.0.clone();
         let sid = id.to_string();
         tokio::task::spawn_blocking(move || {
-            let path = inner.data_dir.join(&sid).join("replay.jsonl");
+            let path = match inner.session_dir(&sid) {
+                Some(dir) => dir.join("replay.jsonl"),
+                None => return json!({ "frames": [], "next_cursor": 0, "has_more": false }),
+            };
             let (turns, has_more) = fold::read_before(&path, cursor, limit.clamp(1, 50));
             let next = turns.first().map(|t| t.offset).unwrap_or(0);
             let frames: Vec<Value> = turns.into_iter().flat_map(|t| t.frames).collect();
@@ -613,10 +693,11 @@ impl OhmyDriver {
     /// 完整原帧一直在 events.jsonl 里(审计源),所以不需要第二份存储;
     /// 日志若因保留策略被清理过,明确报错而不是静默给半截。
     pub async fn session_frame(&self, id: &str, seq: u64) -> Result<Value, String> {
+        check_session_id(id)?;
         let inner = self.0.clone();
         let sid = id.to_string();
         tokio::task::spawn_blocking(move || {
-            let dir = inner.data_dir.join(&sid);
+            let dir = inner.session_dir(&sid).ok_or("非法会话 id")?;
             fold::read_frame_by_seq(&dir.join("replay.jsonl"), &dir.join("events.jsonl"), seq)
                 .ok_or_else(|| "原始记录已不可用(帧日志可能已被清理)".to_string())
         })
@@ -628,10 +709,11 @@ impl OhmyDriver {
     /// 折叠后的文件只有几十 KB~数 MB,一次顺序读即可;条目自带轮起始偏移,
     /// UI 点到未加载的早期提问时拿它当 cursor 补历史。
     pub async fn session_outline(&self, id: &str) -> Result<Value, String> {
+        check_session_id(id)?;
         let inner = self.0.clone();
         let sid = id.to_string();
         tokio::task::spawn_blocking(move || {
-            let dir = inner.data_dir.join(&sid);
+            let Some(dir) = inner.session_dir(&sid) else { return json!([]) };
             let mut out: Vec<Value> = Vec::new();
             let mut src_end = 0u64;
             for (offset, line) in fold::scan_lines(&dir.join("replay.jsonl")) {
@@ -663,6 +745,8 @@ impl OhmyDriver {
     }
 
     pub async fn session_delete(&self, id: &str) -> Result<Value, String> {
+        // 本命令的终点是 remove_dir_all,是全壳爆炸半径最大的一条:先挡再说
+        check_session_id(id)?;
         {
             let sessions = self.0.sess.sessions.lock_ok();
             if sessions.get(id).map(|s| s.running).unwrap_or(false) {
@@ -707,15 +791,20 @@ impl OhmyDriver {
                 inner.sess.sessions.lock_ok().remove(&cid);
                 inner.sub.subagents.lock_ok().remove(&cid);
                 inner.journal_close(&cid, true);
-                let _ = std::fs::remove_dir_all(inner.data_dir.join(&cid));
+                // cid 来自目录扫描,天然是单段名;仍走受校验构造器,
+                // 不给"以后有人改成别的来源"留口子
+                if let Some(dir) = inner.session_dir(&cid) {
+                    let _ = std::fs::remove_dir_all(dir);
+                }
             }
             inner.journal_close(id, true);
             // 删 ohmyagent 会话目录(messages.jsonl,目录名是引擎 id)+ 壳 sidecar(含帧日志)
-            {
-                let root = inner.engine_dir.join("sessions");
-                let _ = std::fs::remove_dir_all(root.join(&eng));
+            if let Some(dir) = inner.engine_session_dir(&eng) {
+                let _ = std::fs::remove_dir_all(dir);
             }
-            let _ = std::fs::remove_dir_all(inner.data_dir.join(id));
+            if let Some(dir) = inner.session_dir(id) {
+                let _ = std::fs::remove_dir_all(dir);
+            }
             // 仅清理由 create_chat_workdir 创建并经父目录/命名/符号链接校验的
             // 独立工作区；旧版共享目录和用户项目永远不会走到这里。
             if let Some(path) = chat_workdir {
@@ -730,6 +819,7 @@ impl OhmyDriver {
     }
 
     pub async fn session_patch(&self, id: &str, patch: Value) -> Result<Value, String> {
+        check_session_id(id)?;
         self.write_sidecar(id, |m| {
             if let Some(t) = patch.get("title").and_then(|v| v.as_str()) {
                 // 按字符截断:String::truncate 是字节索引,中文标题在非字符
@@ -1101,8 +1191,13 @@ impl OhmyDriver {
             mode,
         );
         let result = self.rpc("session/create", params).await?;
-        let new_eng =
-            result.get("session_id").and_then(|v| v.as_str()).unwrap_or(&eng).to_string();
+        // 同 resume_engine:换绑的 engine_id 是目录名,畸形值不接受
+        let new_eng = result
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .filter(|e| valid_session_id(e))
+            .unwrap_or(&eng)
+            .to_string();
         if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
             s.created = true;
             s.engine_id = new_eng.clone();
@@ -1207,7 +1302,9 @@ impl OhmyDriver {
                 Err(e) => eprintln!("[desktop] session/exists 查询失败,回退文件探测: {e}"),
             }
         }
-        self.0.engine_dir.join("sessions").join(eng).join("messages.jsonl").is_file()
+        self.0
+            .engine_session_dir(eng)
+            .is_some_and(|dir| dir.join("messages.jsonl").is_file())
     }
 
     /// destroy + 重建实现切换(仅空闲时安全):模式切换的常规路径
@@ -1301,13 +1398,26 @@ impl OhmyDriver {
 }
 
 impl Inner {
-    fn sidecar_path(&self, id: &str) -> PathBuf {
-        self.data_dir.join(id).join("meta.json")
+    /// 会话 sidecar 目录。**唯一**允许把会话 id 拼进 data_dir 的地方:
+    /// 校验不过就不构造路径,未校验的名字因此到不了文件系统(见
+    /// valid_session_id 注释里的爆炸半径)。
+    pub(super) fn session_dir(&self, id: &str) -> Option<PathBuf> {
+        valid_session_id(id).then(|| self.data_dir.join(id))
+    }
+
+    /// 引擎侧会话目录(messages.jsonl 所在)。engine_id 同样是引擎给的、
+    /// 会被 remove_dir_all 的目录名,守卫标准与壳 sid 一致。
+    pub(super) fn engine_session_dir(&self, engine_id: &str) -> Option<PathBuf> {
+        valid_session_id(engine_id).then(|| self.engine_dir.join("sessions").join(engine_id))
+    }
+
+    fn sidecar_path(&self, id: &str) -> Option<PathBuf> {
+        Some(self.session_dir(id)?.join("meta.json"))
     }
 
     pub(super) fn read_sidecar(&self, id: &str) -> Value {
-        std::fs::read(self.sidecar_path(id))
-            .ok()
+        self.sidecar_path(id)
+            .and_then(|p| std::fs::read(p).ok())
             .and_then(|d| serde_json::from_slice(&d).ok())
             .unwrap_or_else(|| json!({}))
     }
@@ -1320,10 +1430,15 @@ impl Inner {
     /// session_delete/sessions_list),reader 线程本就是专用 std 线程。
     pub(super) fn write_sidecar(&self, id: &str, f: impl FnOnce(&mut Value)) {
         let _write = self.sess.sidecar_write.lock_ok();
+        // 非法 id 到这里就停:再往下是 atomic_write_private,它会 create_dir_all
+        // 出父目录,等于任意目录写 meta.json
+        let Some(path) = self.sidecar_path(id) else {
+            eprintln!("[desktop] 拒绝为非法会话 id 写 sidecar: {id:?}");
+            return;
+        };
         let mut meta = self.read_sidecar(id);
         f(&mut meta);
         meta["updated_at"] = json!(frame::now_ms());
-        let path = self.sidecar_path(id);
         let data = match serde_json::to_vec_pretty(&meta) {
             Ok(data) => data,
             Err(e) => {
@@ -1446,7 +1561,10 @@ impl Inner {
         }
         // 清批量缓冲:其中的帧已在日志里,会随回放送达,留着会重帧
         self.sess.batch.lock_ok().remove(sid);
-        let dir = self.data_dir.join(sid);
+        // 非法 id 给空窗口:调用方(session_open)已在入口挡过,这里是纵深
+        let Some(dir) = self.session_dir(sid) else {
+            return ReplayWindow { frames: Vec::new(), cursor: 0, has_more: false };
+        };
         let (replay, events) = (dir.join("replay.jsonl"), dir.join("events.jsonl"));
 
         self.journal_barrier();

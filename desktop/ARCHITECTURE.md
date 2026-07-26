@@ -99,6 +99,16 @@ folded.jsonl",TS 钉住 `reduceBatch(raw) ≡ reduceBatch(folded)`
   完成后再 invoke;需要壳生成 id 的场景改为 UI 生成 id 先注册。
 - 高频帧壳侧 ~30ms 批量后 emit;UI 侧 rAF 批量归约。
 - `Conn.send` 语义:resolve(false)=发送失败,调用方保留输入供重试。
+- **会话 id 是目录名,不是普通标识符**:壳 sid、引擎返回的 session_id、
+  子代理子循环 id 都会拼进 `<data_dir>/<id>/` 与 `<engine_dir>/sessions/<id>/`,
+  终点是 `remove_dir_all` 与 `atomic_write_private`。因此一律经
+  `session::valid_session_id` 判定为单段安全名(非空、限长、无分隔符/NUL/冒号、
+  归一化后仍是同一段普通名)才允许拼路径——`data_dir.join("../../..")` 会被
+  `remove_dir_all` 一路解析上去,实测可清空用户主目录。
+  强制点有两处:`Inner::session_dir` / `Inner::engine_session_dir` 是**唯一**
+  允许把 id 拼进根目录的构造器(拒绝即不构造,未校验的名字到不了文件系统);
+  上行命令另在入口 `check_session_id` 快速失败,让用户看到原因而不是静默降级。
+  **引擎不是信任边界**:它返回的 session_id / 换绑 engine_id 走同一套判定。
 
 ## 契约 4:配置所有权
 
