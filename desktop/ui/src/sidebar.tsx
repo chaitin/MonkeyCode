@@ -1011,8 +1011,7 @@ export function Sidebar({
       </div>
 
       <aside className="mc-sidebar-panel" style={{ width: 232, flex: "none", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--side)", borderRight: "1px solid var(--line)" }}>
-        {/* mac 下这 50px 兼作品牌位:Windows 的品牌在自绘标题栏的同一格里 */}
-        <MacDragSpacer brand />
+        <MacDragSpacer />
         <PanelHeader title={panel.title} detail={panel.detail}>{panel.actions}</PanelHeader>
         <SearchBox value={query} placeholder={panel.placeholder} onChange={setQuery} />
         <div

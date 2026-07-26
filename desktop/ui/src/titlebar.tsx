@@ -15,8 +15,8 @@ import logoUrl from "./logo.png";
 /** 品牌字后的小徽标。文案与含义由产品定,这里只保证它跟着品牌走。 */
 const BRAND_BADGE = "work";
 
-/** 品牌组合(字标 + 徽标,可选前置 logo)。三处共用:Windows 自绘标题栏的两种
- * 布局、mac 二级侧栏顶部——写死在各处的话,平台之间迟早又长歪。
+/** 品牌组合(字标 + 徽标,可选前置 logo)。Windows 自绘标题栏的两种
+ * 布局各用一次——写死在两处的话,迟早长歪。
  * 每个可见子节点都要自带 data-tauri-drag-region:Tauri 按指针下的元素判定拖拽区,
  * 落在没有该属性的子节点上就拖不动窗口(logo 用 pointerEvents:none 穿透给父级)。 */
 function Brand({ logo = false }: { logo?: boolean }) {
@@ -49,24 +49,19 @@ function Brand({ logo = false }: { logo?: boolean }) {
   );
 }
 
-/** macOS 壳最左栏顶部的红绿灯落区:50px 拖拽区(Tauri 的拖拽区机制是
+/** macOS 壳侧栏顶部的红绿灯落区:50px 拖拽区(Tauri 的拖拽区机制是
  * data-tauri-drag-region 属性,不是 CSS app-region);非 mac 壳 12px 普通留白。
  * 主侧栏与设置页左导航共用,保证两态顶部对齐不跳动。
  *
- * brand:二级侧栏顶部兼作品牌位。Windows 上这块是自绘标题栏的第二格(见下方
- * layout === "sidebar" 分支),mac 没有那条栏、这 50px 原本空着,品牌就落在这里,
- * 字号/字重/色/边距与 Windows 那一格逐项对齐,两平台品牌位置观感一致。
- * 只给二级栏用:一级栏顶部被红绿灯占着(它们横跨到 x≈66),摆不下东西;
- * 二级栏自 x=62 起,再加 14px 内边距,文字从 x≈76 开始,正好在按钮右侧。 */
-export function MacDragSpacer({ brand = false }: { brand?: boolean } = {}) {
-  if (!isMacShell()) return <div style={{ height: 12, flex: "none" }} />;
-  return (
-    <div
-      data-tauri-drag-region=""
-      style={{ height: 50, flex: "none", display: "flex", alignItems: "center", gap: 6, padding: "0 14px", overflow: "hidden" }}
-    >
-      {brand && <Brand />}
-    </div>
+ * 这里曾经兼作品牌位(字标 + 徽标),撤了:一级栏顶部已有 31px 的猴子 logo,
+ * 字标就在它右边 30px 处,同一个品牌说两遍;再往下还紧跟着更大更重的
+ * 「本地项目」标题,三层堆在一起太挤。品牌只留在 Windows 自绘标题栏里
+ * (那是独立一条 36px 的栏,不与侧栏标题争位置)。 */
+export function MacDragSpacer() {
+  return isMacShell() ? (
+    <div data-tauri-drag-region="" style={{ height: 50, flex: "none" }} />
+  ) : (
+    <div style={{ height: 12, flex: "none" }} />
   );
 }
 

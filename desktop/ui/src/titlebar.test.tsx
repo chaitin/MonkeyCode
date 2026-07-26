@@ -34,31 +34,21 @@ describe("Windows 标题栏", () => {
 });
 
 describe("侧栏顶部拖拽区", () => {
-  it("mac 下二级栏顶部是 50px 拖拽区并承担品牌位", () => {
-    stubShell("mac");
-    const html = renderToStaticMarkup(<MacDragSpacer brand />);
-
-    expect(html).toContain('data-tauri-drag-region=""');
-    expect(html).toContain("height:50px");
-    expect(html).toContain("MonkeyCode");
-    expect(html).toContain(">work<");
-  });
-
-  it("一级栏顶部只留拖拽区,不放品牌——那片被红绿灯占着", () => {
+  it("mac 下是 50px 拖拽区,不放品牌——一级栏已有 logo,下面紧跟着侧栏标题", () => {
     stubShell("mac");
     const html = renderToStaticMarkup(<MacDragSpacer />);
 
+    expect(html).toContain('data-tauri-drag-region=""');
     expect(html).toContain("height:50px");
     expect(html).not.toContain("MonkeyCode");
     expect(html).not.toContain(">work<");
   });
 
-  it("非 mac 壳退回 12px 留白:Windows 的品牌在自绘标题栏里,不重复一份", () => {
+  it("非 mac 壳退回 12px 留白,也不带拖拽区", () => {
     stubShell("windows");
-    const html = renderToStaticMarkup(<MacDragSpacer brand />);
+    const html = renderToStaticMarkup(<MacDragSpacer />);
 
     expect(html).toContain("height:12px");
-    expect(html).not.toContain("MonkeyCode");
     expect(html).not.toContain("data-tauri-drag-region");
   });
 });
