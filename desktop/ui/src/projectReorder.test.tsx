@@ -115,4 +115,16 @@ describe("侧栏项目拖动排序接线", () => {
     ]);
     expect(dragDirs(html)).toEqual([]);
   });
+
+  // 别把这条当冗余删掉:WebKitGTK 2.52.3 实测只认带前缀的写法,无前缀声明
+  // 会被整条丢弃(computed 值仍是 text),表现是拖项目时项目名被选中。
+  it("项目行同时写两种 user-select，少了前缀那条在 WebKit 上等于没写", () => {
+    const html = render([
+      session("s1", "/work/a", "2026-07-20T10:00:00Z"),
+      session("s2", "/work/b", "2026-07-26T10:00:00Z"),
+    ]);
+    const rowTag = html.match(/<div[^>]*data-project-dir="[^"]*"[^>]*>/)?.[0] ?? "";
+    expect(rowTag).toContain("user-select:none");
+    expect(rowTag).toContain("-webkit-user-select:none");
+  });
 });

@@ -275,12 +275,16 @@ export function FilesDrawer({
   };
 
   // 拖拽跟踪:mousedown 后接管 move/up,期间锁定光标与选区,松手时收尾
+  // WebKitGTK(Linux 宿主)与旧 WKWebView 都只认带前缀的写法,实测无前缀声明
+  // 会被整条丢弃(computed 值仍是 text),锁不住选区——两个都写。
   const trackPointer = (cursor: string, onMove: (ev: MouseEvent) => void, onDone: () => void) => {
     document.body.style.cursor = cursor;
     document.body.style.userSelect = "none";
+    document.body.style.setProperty("-webkit-user-select", "none");
     const onUp = () => {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      document.body.style.removeProperty("-webkit-user-select");
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       onDone();

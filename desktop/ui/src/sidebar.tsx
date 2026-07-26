@@ -347,6 +347,10 @@ function ProjectGroup({
           borderRadius: 8,
           cursor: drag?.active ? "grabbing" : "pointer",
           userSelect: "none",
+          // WKWebView 到 Safari 17.4 才认无前缀 user-select,mac 上少了这行
+          // 整条规则就是空的——项目名会被拖选中。参照 .mc-preview-line::before
+          // (styles.css)两个都写:那是本仓库唯一被真拖选过、因此踩到过的地方。
+          WebkitUserSelect: "none",
           // 拖动中原地留一个淡影，跟落点指示线一起交代"从哪来、到哪去"
           opacity: drag?.active ? 0.45 : undefined,
           // 触屏/触控板上按住不放要走拖动，不能被浏览器的滚动手势吃掉
@@ -709,6 +713,13 @@ export function Sidebar({
   const dragRef = useRef<{ dir: string; startY: number; startX: number; active: boolean; rows: { dir: string; mid: number }[]; from: number; to: number } | null>(null);
   const draggedRef = useRef(false);
 
+  // 选区锁是全局副作用:拖动中途卸载(热更新、整页切换)若不还原，整个应用
+  // 都会选不中文字,且现场早已消失、极难回溯。
+  useEffect(() => () => {
+    document.body.style.userSelect = "";
+    document.body.style.removeProperty("-webkit-user-select");
+  }, []);
+
   // 外部入口(桌宠提醒、通知跳转)真正打开另一个空间时同步主导航；
   // 单纯点主导航不会因当前主视图没变而被 effect 立即弹回。
   useEffect(() => {
@@ -779,7 +790,19 @@ export function Sidebar({
 
   // 搜索态的列表是过滤过的，此时提交顺序会把没显示出来的项目冲掉——直接不给拖。
   const reorderable = !norm && projectGroups.length > 1;
+  // 选区锁与 filesdrawer 的分栏拖拽同一套做法(见 trackPointer):按住期间
+  // 全局禁选,松手还原,不覆盖用户在别处已有的偏好。两个前缀都写的理由同
+  // 项目行样式——只写标准属性在 WKWebView 上等于没写。
+  const lockBodySelection = () => {
+    document.body.style.userSelect = "none";
+    document.body.style.setProperty("-webkit-user-select", "none");
+  };
+  const unlockBodySelection = () => {
+    document.body.style.userSelect = "";
+    document.body.style.removeProperty("-webkit-user-select");
+  };
   const endDrag = () => {
+    unlockBodySelection();
     dragRef.current = null;
     setDragTo(null);
   };
@@ -806,6 +829,10 @@ export function Sidebar({
           if ((e.target as HTMLElement | null)?.closest("button")) return;
           dragRef.current = { dir: group.dir, startX: e.clientX, startY: e.clientY, active: false, rows: [], from: index, to: index };
           e.currentTarget.setPointerCapture(e.pointerId);
+          // 行上那条只管住项目名自己。指针接着要纵向扫过下方的会话行,而
+          // SessionRow 没设 none,从这里按下拖过去仍会连出跨元素选区,所以
+          // 按下即锁全局,松手复原。
+          lockBodySelection();
         },
         onPointerMove: (e) => {
           const state = dragRef.current;
