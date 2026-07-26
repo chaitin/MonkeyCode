@@ -431,11 +431,68 @@ fn close_handle(c: &ConnHandle) {
 }
 
 /// 生成 8 位配对码(剔除易混字符的 base32 字母表,与 Go 完全一致)。
+///
+/// 随机源失败时返回**空串**,而不是把全零缓冲映射成 `AAAAAAAA`——配对码是
+/// 授予"驱动用户浏览器"能力的唯一凭据,可猜等于没有。空串是 fail-closed 的:
+/// `authorize()` 要求 `!st.pairing_code.is_empty()` 才受理配对码,`status()`
+/// 也只在非空时下发,所以拿不到熵就是"这次启动不提供配对",不是"人人可配对"。
+/// (同一纪律见 mcp.rs::new_token 与 authorize() 里颁发长期 token 的分支。)
 fn new_pairing_code() -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTVWXYZ23456789";
     let mut raw = [0u8; 8];
-    let _ = getrandom::getrandom(&mut raw);
+    if let Err(e) = getrandom::getrandom(&mut raw) {
+        eprintln!("[desktop] 系统随机源不可用,本次不生成浏览器配对码: {e}");
+        return String::new();
+    }
     raw.iter().map(|&c| ALPHABET[c as usize % ALPHABET.len()] as char).collect()
+}
+
+#[cfg(test)]
+mod pairing_code_tests {
+    use super::*;
+
+    fn bridge(tag: &str) -> ExtBridge {
+        let dir = std::env::temp_dir()
+            .join(format!("mc-bridge-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        ExtBridge::new(7440, &dir)
+    }
+
+    /// 正常路径:8 位、全部落在剔除易混字符的字母表内、且每次不同。
+    #[test]
+    fn generated_code_is_eight_chars_from_the_unambiguous_alphabet() {
+        const ALPHABET: &str = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
+        let a = new_pairing_code();
+        assert_eq!(a.chars().count(), 8, "配对码长度变了: {a:?}");
+        assert!(a.chars().all(|c| ALPHABET.contains(c)), "混入易混字符: {a:?}");
+        assert_ne!(a, new_pairing_code(), "两次生成相同,随机源没起作用");
+    }
+
+    /// fail-closed 契约:配对码为空(随机源失败时 new_pairing_code 的返回值)
+    /// 必须让**所有**配对尝试落空,而不是变成"空码即可配对"。
+    /// 这条是 new_pairing_code 敢于在拿不到熵时返回空串的前提。
+    #[test]
+    fn an_empty_pairing_code_authorizes_nobody() {
+        let b = bridge("empty-code");
+        b.0.st.lock_ok().pairing_code.clear();
+        assert!(b.0.st.lock_ok().token.is_empty(), "前置条件:尚未配对");
+
+        let hello = |code: &str| Message {
+            event: EVENT_HELLO.to_string(),
+            auth: Some(HelloAuth { token: String::new(), code: code.to_string() }),
+            ..Default::default()
+        };
+        // 空码、任意猜测、以及全零缓冲会映射出的那个码,一个都不能过
+        for attempt in ["", "AAAAAAAA", "ABCDEFGH", "-"] {
+            assert!(
+                b.authorize(&hello(attempt)).is_err(),
+                "配对码为空时 {attempt:?} 不该被受理",
+            );
+        }
+        // 也不该因为这些尝试而反手颁发长期 token
+        assert!(b.0.st.lock_ok().token.is_empty(), "失败的配对尝试不得留下 token");
+    }
 }
 
 /// 配对码归一:去连字符/空格,大写(按字节处理,对齐 Go normalizeCode)。
