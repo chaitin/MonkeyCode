@@ -22,11 +22,12 @@ import {
   TaskPanel,
   ViewHeader,
   outlineEntries,
+  useRenameDraft,
   type MenuState,
   type OutlineEntry,
 } from "./components";
 import { Composer, QueuedChip, RunningBar } from "./composer";
-import { IconArchive, IconChat, IconCheck, IconChevronDown, IconFolder, IconInfo, IconShield, IconTaskDone, IconX } from "./icons";
+import { IconArchive, IconChat, IconCheck, IconChevronDown, IconFolder, IconInfo, IconPencil, IconShield, IconTaskDone, IconX } from "./icons";
 import logoUrl from "./logo.png";
 import { useUpwardMenuHeight } from "./menuPosition";
 import { workspaceRelativePath } from "./markdownPaths";
@@ -406,6 +407,7 @@ export function ChatView({
   onOpenNoticeSession,
   onArchive,
   onDelete,
+  onRename,
 }: {
   meta: SessionMeta | undefined;
   /** 会话句柄(协议状态与动作,useSession) */
@@ -420,6 +422,7 @@ export function ChatView({
   onOpenNoticeSession: (id: string) => void;
   onArchive: () => void;
   onDelete: () => void;
+  onRename: (title: string) => void;
 }) {
   const { chat, input, queued, atts, yolo } = session;
   const changesCount = session.changes?.length ?? 0;
@@ -428,6 +431,8 @@ export function ChatView({
   // 待恢复的锚点;回放期间每批都重新对齐(上方内容变高也不漂),用户主动滚动后交还控制权
   const restoreRef = useRef<{ anchor: number; offset: number } | null>(null);
   const [menu, setMenu] = useState<MenuState>("closed");
+  // 改名的编辑态与侧栏行同源;新任务空态还没有会话(meta 为空),标题不可改
+  const rename = useRenameDraft(meta?.title ?? "", onRename);
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0); // dragenter/leave 在子元素间反复触发,计数配对
 
@@ -731,6 +736,7 @@ export function ChatView({
       {/* ==== 标题栏(共享 ViewHeader:56px 双行,空白区可拖拽窗口)==== */}
       <ViewHeader
         title={meta?.title || (chatMode ? "新对话" : "新任务")}
+        rename={meta ? rename : undefined}
         subtitle={
           chatMode ? (
             <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--t5)" }}>
@@ -785,6 +791,18 @@ export function ChatView({
           minWidth={118}
           confirm={{ message: "删除后不可恢复。", confirmLabel: "确认删除", onConfirm: onDelete }}
         >
+          {meta && (
+            <button
+              className="hv menu-item"
+              onClick={() => {
+                setMenu("closed");
+                rename.start();
+              }}
+            >
+              <IconPencil />
+              重命名
+            </button>
+          )}
           <button
             className="hv menu-item"
             onClick={() => {

@@ -1,6 +1,66 @@
 // 视图镶边:标题栏、「文件」按钮、⋯ 菜单外壳与危险操作的二段确认页。
-import type { ReactNode } from "react";
+import { useState, type ChangeEvent, type CompositionEvent, type KeyboardEvent, type ReactNode } from "react";
+import { isImeEnter, markImeEnd } from "./composer";
 import { IconDots, IconFolder, IconTrash } from "./icons";
+
+// ==================== 会话改名的编辑态(侧栏行 / 视图标题栏共用) ====================
+
+/** 内核截断到 80 字符(session_patch),输入框同步设限,免得输进去又被悄悄切掉。 */
+const TITLE_MAX = 80;
+
+/** 提交语义:trim 后为空(内核只收非空标题)或与原标题相同,都按放弃处理。 */
+export function nextRenameTitle(draft: string, current: string): string | null {
+  const next = draft.trim();
+  return next && next !== current ? next : null;
+}
+
+export interface RenameDraft {
+  editing: boolean;
+  /** 进入编辑态(标题栏双击 / 菜单项「重命名」) */
+  start: () => void;
+  /** 摊到 <input> 上:受控值 + 提交/放弃语义。调用方只管样式与额外的事件拦截。 */
+  inputProps: {
+    autoFocus: true;
+    value: string;
+    maxLength: number;
+    onChange: (e: ChangeEvent<HTMLInputElement>) => void;
+    onCompositionEnd: (e: CompositionEvent<HTMLInputElement>) => void;
+    onBlur: () => void;
+    onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
+  };
+}
+
+/** 改名的编辑态:Enter 提交(挡输入法选字回车)、Esc 放弃、失焦提交。
+ * 两个入口共用同一份实现——各写各的必然漂移。 */
+export function useRenameDraft(current: string, onRename: (title: string) => void): RenameDraft {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const commit = () => {
+    setEditing(false);
+    const next = nextRenameTitle(draft, current);
+    if (next) onRename(next);
+  };
+  return {
+    editing,
+    start: () => {
+      setDraft(current);
+      setEditing(true);
+    },
+    inputProps: {
+      autoFocus: true,
+      value: draft,
+      maxLength: TITLE_MAX,
+      onChange: (e) => setDraft(e.target.value),
+      onCompositionEnd: markImeEnd,
+      onBlur: commit,
+      onKeyDown: (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter" && !isImeEnter(e)) commit();
+        else if (e.key === "Escape") setEditing(false);
+      },
+    },
+  };
+}
 
 // ==================== 视图镶边共享件(ChatView / CloudTaskView / Sidebar) ====================
 
@@ -11,21 +71,60 @@ export function ViewHeader({
   title,
   titleTip,
   subtitle,
+  rename,
   children,
 }: {
   title: ReactNode;
   /** 标题的悬停提示(云端传完整任务名;本地不传) */
   titleTip?: string;
   subtitle: ReactNode;
+  /** 传入即启用「双击标题原地改名」(本地会话;云端任务不可改名,不传) */
+  rename?: RenameDraft;
   /** 右侧控件(文件按钮 / ⋯ 菜单) */
   children?: ReactNode;
 }) {
   return (
     <div data-view-header="" data-tauri-drag-region="" style={{ height: 58, flex: "none", display: "flex", alignItems: "center", gap: 12, padding: "0 26px", borderBottom: "1px solid var(--line2)", background: "var(--headerBg)" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-        <span className="ellipsis" title={titleTip} style={{ fontWeight: 700, fontSize: 14 }}>
-          {title}
-        </span>
+        {rename?.editing ? (
+          <input
+            {...rename.inputProps}
+            placeholder="输入会话名称"
+            // 负 margin 抵消边框+内边距,编辑态与展示态的文字左缘、行高对齐,切换时标题不跳
+            style={{
+              width: "min(360px, 40vw)",
+              height: 22,
+              boxSizing: "border-box",
+              margin: "-1px 0 -1px -7px",
+              border: "1px solid var(--accBd)",
+              borderRadius: 5,
+              padding: "0 6px",
+              fontFamily: "inherit",
+              fontSize: 14,
+              fontWeight: 700,
+              background: "var(--card)",
+              color: "var(--t1)",
+              outline: "none",
+            }}
+          />
+        ) : (
+          // 双击热区严格限定在文字上:此 span 不带 data-tauri-drag-region,
+          // 否则双击会被壳当作标题栏双击去切窗口最大化(Tauri 只认事件目标自身带该属性)
+          <span
+            className="ellipsis"
+            title={titleTip ?? (rename ? "双击重命名" : undefined)}
+            onDoubleClick={
+              rename &&
+              ((e) => {
+                e.stopPropagation();
+                rename.start();
+              })
+            }
+            style={{ fontWeight: 700, fontSize: 14, cursor: rename ? "text" : undefined }}
+          >
+            {title}
+          </span>
+        )}
         {subtitle}
       </div>
       <span data-tauri-drag-region="" style={{ flex: 1, alignSelf: "stretch" }} />

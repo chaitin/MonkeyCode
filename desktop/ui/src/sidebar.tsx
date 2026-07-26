@@ -2,8 +2,7 @@
 // 一级空间保持稳定(云端 / 本地 / 对话)，项目、任务、会话属于二级内容；
 // 这比把所有对象塞进一条长列表更利于检索，也给后续空间扩展留出位置。
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { isImeEnter, markImeEnd } from "./chat";
-import { ConfirmPane, DeleteMenuItem, type MenuState } from "./components";
+import { ConfirmPane, DeleteMenuItem, useRenameDraft, type MenuState } from "./components";
 import {
   IconArchive,
   IconChat,
@@ -143,8 +142,7 @@ function SessionRow({
   onRename: (title: string) => void;
 }) {
   const [menu, setMenu] = useState<MenuState>("closed");
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
+  const rename = useRenameDraft(meta.title || "", onRename);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number }>({ left: 0 });
   const st = rowStatus(meta);
   const title = meta.title || (meta.kind === "chat" ? "新对话" : "新任务");
@@ -168,11 +166,6 @@ function SessionRow({
     });
     setMenu("open");
   };
-  const commitRename = () => {
-    setEditing(false);
-    const next = draft.trim();
-    if (next && next !== (meta.title || "")) onRename(next);
-  };
 
   return (
     <div style={{ position: "relative" }}>
@@ -181,7 +174,7 @@ function SessionRow({
         title={`${title}\n${meta.kind === "chat" ? "独立对话" : meta.workdir}\n右键管理`}
         onClick={onClick}
         onContextMenu={(e) => {
-          if (editing) return;
+          if (rename.editing) return;
           e.preventDefault();
           e.stopPropagation();
           openMenuAt(e.clientX, e.clientY);
@@ -199,20 +192,11 @@ function SessionRow({
           minWidth: 0,
         }}
       >
-        {editing ? (
+        {rename.editing ? (
           <input
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            {...rename.inputProps}
             onClick={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.stopPropagation()}
-            onCompositionEnd={markImeEnd}
-            onBlur={commitRename}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter" && !isImeEnter(e)) commitRename();
-              else if (e.key === "Escape") setEditing(false);
-            }}
             style={{
               flex: 1,
               minWidth: 0,
@@ -261,7 +245,7 @@ function SessionRow({
           <div className="pop" style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: 122 }} onClick={(e) => e.stopPropagation()}>
             {menu === "open" ? (
               <>
-                <button className="hv menu-item" onClick={() => { closeMenu(); setDraft(meta.title || ""); setEditing(true); }}>
+                <button className="hv menu-item" onClick={() => { closeMenu(); rename.start(); }}>
                   <IconPencil />
                   重命名
                 </button>

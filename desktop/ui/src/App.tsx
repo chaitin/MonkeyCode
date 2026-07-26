@@ -758,6 +758,7 @@ export default function App() {
             onOpenNoticeSession={(id) => void openNoticeSession(id)}
             onArchive={() => currentMeta && void archiveSession(currentMeta)}
             onDelete={() => currentMeta && void removeSession(currentMeta)}
+            onRename={(title) => currentMeta && void renameSession(currentMeta, title)}
           />
         )}
       </div>

@@ -11,5 +11,5 @@ export { OutlineNav, outlineEntries, type OutlineEntry } from "./outline";
 export { Markdown } from "./markdown";
 export { TaskPanel } from "./taskPanel";
 export { ToolCard } from "./toolCard";
-export { ConfirmPane, DeleteMenuItem, HeaderFilesButton, HeaderMenu, ViewHeader } from "./viewChrome";
-export type { MenuState } from "./viewChrome";
+export { ConfirmPane, DeleteMenuItem, HeaderFilesButton, HeaderMenu, ViewHeader, useRenameDraft } from "./viewChrome";
+export type { MenuState, RenameDraft } from "./viewChrome";
