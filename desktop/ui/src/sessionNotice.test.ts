@@ -30,4 +30,10 @@ describe("noticeForSessionEvent", () => {
     expect(noticeForSessionEvent({ type: "session-ask", id: "ask", title: "审批任务", open: false })).toBeNull();
     expect(noticeForSessionEvent({ type: "session-status", id: "run", title: "运行任务", status: "running" })).toBeNull();
   });
+
+  it("摘要更新不提示:它在轮次收尾之后异步到达,提示会与「已回复」重复", () => {
+    expect(
+      noticeForSessionEvent({ type: "session-summary", id: "sum", title: "运行任务", summary: "修复登录流程" }),
+    ).toBeNull();
+  });
 });

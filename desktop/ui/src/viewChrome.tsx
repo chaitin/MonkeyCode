@@ -1,7 +1,7 @@
 // 视图镶边:标题栏、「文件」按钮、⋯ 菜单外壳与危险操作的二段确认页。
 import { useState, type ChangeEvent, type CompositionEvent, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { isImeEnter, markImeEnd } from "./composer";
-import { IconDots, IconFolder, IconTrash } from "./icons";
+import { IconDots, IconFolder, IconSpark, IconTrash } from "./icons";
 
 // ==================== 会话改名的编辑态(侧栏行 / 视图标题栏共用) ====================
 
@@ -135,6 +135,24 @@ export function ViewHeader({
       <span data-tauri-drag-region="" style={{ flex: 1, alignSelf: "stretch" }} />
       {children}
     </div>
+  );
+}
+
+/** 副标题行的尾段:引擎每轮异步生成的会话摘要(≤60 字,随对话演进改写)。
+ * 标题归用户(双击改名)与首条消息,摘要只在这里露一行——两行并列才有
+ * 「我说的」与「它理解的」这层信息;摘要参与命名反而会把用户改的名冲掉。
+ * 摘要缺席(旧会话、首轮还没回来、引擎过旧)时整段不渲染,副标题与摘要
+ * 上线前逐像素一致。 */
+export function HeaderSummary({ summary }: { summary?: string }) {
+  if (!summary) return null;
+  return (
+    <>
+      <span style={{ color: "var(--t7)", flex: "none" }}>·</span>
+      <span title={summary} style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, flex: "0 1 auto" }}>
+        <IconSpark size={10} color="var(--t5)" style={{ flex: "none" }} />
+        <span className="ellipsis" style={{ color: "var(--t4)" }}>{summary}</span>
+      </span>
+    </>
   );
 }
 

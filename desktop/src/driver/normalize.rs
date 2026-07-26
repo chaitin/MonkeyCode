@@ -416,6 +416,27 @@ impl Inner {
                     self.push_usage(&sid, used, window);
                 }
             }
+            // 会话摘要:引擎每轮用户消息后异步生成一句 ≤60 字的对话摘要
+            // (随对话演进改写,后一轮覆盖前一轮),只给顶层会话生成。
+            // 落 sidecar 的 summary 字段供顶栏副标题展示——标题归用户
+            // (双击改名)与首条消息,摘要不参与命名。
+            "session_summary" => {
+                // 上限防御:引擎的提示词卡在 60 字符,但落盘/渲染不该指望
+                // 对端守约;按字符截断(String::truncate 是字节索引,中文会 panic)
+                let raw = data.get("summary").and_then(|v| v.as_str()).unwrap_or("").trim();
+                let summary: String = raw.chars().take(120).collect();
+                if summary.is_empty() {
+                    return;
+                }
+                // 子代理子会话没有列表行也没有顶栏(引擎侧压根不给它们生成,
+                // 这里是防御)。判据 parent 与 sessions_list 的过滤同源
+                let meta = self.read_sidecar(&sid);
+                if meta.get("parent").and_then(|v| v.as_str()).is_some_and(|p| !p.is_empty()) {
+                    return;
+                }
+                self.write_sidecar_keep_updated(&sid, |m| m["summary"] = json!(summary.as_str()));
+                self.emit_session_summary(&sid, &summary);
+            }
             "compaction" => {
                 self.push_frame(&sid, |seq| frame::compact_status("started", seq));
                 self.push_frame(&sid, |seq| frame::compact_status("ended", seq));

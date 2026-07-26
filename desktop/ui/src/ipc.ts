@@ -7,7 +7,8 @@
 // 事件通道(壳 → UI):
 //   frames:{sid}       Frame[](批量;本地会话流,壳侧 ~30ms 聚合)
 //   conn-status:{sid}  {text, connected} 会话流连接状态
-//   session-event      {type: session-status|session-ask, ...} 全局会话状态
+//   session-event      {type: session-status|session-ask|session-summary, ...}
+//                      全局会话状态与摘要更新
 //   ws-msg:{pipe}      云端 WS 桥下行文本帧(stream/control/terminal 协议不变)
 //   ws-closed:{pipe}   云端 WS 桥断开
 //   engine-status      引擎生命周期状态(契约 6:stopped/starting/ready/

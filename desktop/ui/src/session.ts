@@ -24,7 +24,8 @@ export const setSessionTitle = (id: string, title: string) =>
 export const setSessionArchived = (id: string, archived: boolean) =>
   invoke<{ ok: boolean }>("session_patch", { id, patch: { archived } });
 
-/** 订阅全局会话事件流(session-status / session-ask);返回取消订阅函数。 */
+/** 订阅全局会话事件流(session-status / session-ask / session-summary);
+ * 返回取消订阅函数。 */
 export function subscribeEvents(onEvent: (e: SessionEvent) => void): () => void {
   return listen("session-event", (p) => onEvent(p as SessionEvent));
 }

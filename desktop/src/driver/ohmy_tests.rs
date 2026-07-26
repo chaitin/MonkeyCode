@@ -96,6 +96,15 @@ fn sse_tool_use(tu_id: &str, name: &str, input: &Value) -> String {
 /// shellClassifierPrompt)。假 LLM 靠它把"分类请求"与主循环请求区分开。
 const SHELL_CLASSIFIER_MARK: &str = "Respond with a single word: ALLOW or ASK";
 
+/// 引擎会话摘要系统提示的首句(agent/internal/agent/loop.go 的
+/// titleSystemPrompt)。摘要生成是**每轮一次的额外 LLM 调用**(c9d229c 起),
+/// 同样不属于主循环步序:不单独识别就白吃一个脚本步骤,tool_use id 与后续
+/// 步序整体错位——三个子代理/审批 e2e 就是这么一起红的。
+const TITLE_PROMPT_MARK: &str = "You generate concise conversation titles";
+
+/// 假 LLM 回给摘要请求的固定文本(e2e 据此断言 sidecar 落的就是它)。
+const FAKE_SUMMARY: &str = "假模型给的会话摘要";
+
 /// 假 Anthropic SSE 服务:按请求序回放 steps(超出重复最后一步);
 /// delay_ms > 0 时应答前挂起(模拟慢模型,测运行中停止的和解)。
 ///
@@ -136,9 +145,12 @@ fn fake_anthropic_steps(delay_ms: u64, steps: Vec<String>) -> String {
                 let mut body = vec![0u8; content_len];
                 use std::io::Read as _;
                 let _ = reader.read_exact(&mut body);
-                // 分类请求必须在取步骤**之前**判定:它不属于主循环步序。
-                let sse = if String::from_utf8_lossy(&body).contains(SHELL_CLASSIFIER_MARK) {
+                // 分类/摘要请求必须在取步骤**之前**判定:都不属于主循环步序。
+                let body_text = String::from_utf8_lossy(&body);
+                let sse = if body_text.contains(SHELL_CLASSIFIER_MARK) {
                     sse_text("ASK")
+                } else if body_text.contains(TITLE_PROMPT_MARK) {
+                    sse_text(FAKE_SUMMARY)
                 } else {
                     let n = counter.fetch_add(1, Ordering::Relaxed);
                     steps[n.min(steps.len() - 1)].clone()
@@ -158,9 +170,20 @@ fn fake_anthropic_steps(delay_ms: u64, steps: Vec<String>) -> String {
 /// 端到端:mock 壳 + 真实 ohmyagent + 假 LLM,验证 create → send → 归一化
 /// 帧日志(user-input/task-started/agent 文本/task-ended)与回放。
 /// 需要 MC_OHMYAGENT_BIN 显式指定配套的 ohmyagent；未指定则跳过。
-struct TestCtx(PathBuf);
+/// 壳事件(session-event 等)的收集缓冲:默认没人看,要断言时经
+/// bare_inner_events 取这份共享句柄。
+type EmittedEvents = Arc<StdMutex<Vec<(String, Value)>>>;
+
+struct TestCtx(PathBuf, EmittedEvents);
+impl TestCtx {
+    fn new(dir: PathBuf) -> Self {
+        Self(dir, Arc::new(StdMutex::new(Vec::new())))
+    }
+}
 impl ShellCtx for TestCtx {
-    fn emit_json(&self, _event: &str, _payload: Value) {}
+    fn emit_json(&self, event: &str, payload: Value) {
+        self.1.lock().unwrap().push((event.to_string(), payload));
+    }
     fn config_dir(&self) -> Result<PathBuf, String> {
         Ok(self.0.clone())
     }
@@ -234,7 +257,7 @@ fn e2e_setup_cfg(
     )
     .unwrap();
 
-    let ctx: Arc<dyn ShellCtx> = Arc::new(TestCtx(home.join("shellcfg")));
+    let ctx: Arc<dyn ShellCtx> = Arc::new(TestCtx::new(home.join("shellcfg")));
     let cfg = DesktopConfig {
         models: json!([{ "name": "测试模型", "provider": "anthropic",
             "base_url": format!("{llm}/api/anthropic"), "api_key": "sk-fake", "model": "test-model", "default": true }]),
@@ -320,6 +343,26 @@ async fn e2e_chat_normalization() {
     assert_eq!(items[0].get("status").and_then(|v| v.as_str()), Some("idle"));
     assert_eq!(items[0].get("kind").and_then(|v| v.as_str()), Some("local"));
     assert!(items[0].get("title").and_then(|v| v.as_str()).unwrap_or("").contains("hello world"));
+
+    // 会话摘要:引擎每轮异步生成(与轮次收尾无时序保证,轮询等它落盘),
+    // 只进 summary 字段——标题仍是首条输入,不被摘要改写。
+    let mut items = items.clone();
+    for _ in 0..50 {
+        if !items[0].get("summary").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        items = driver.sessions_list().await.unwrap().as_array().unwrap().clone();
+    }
+    assert_eq!(
+        items[0].get("summary").and_then(|v| v.as_str()),
+        Some(FAKE_SUMMARY),
+        "会话摘要未落 sidecar: {items:?}"
+    );
+    assert!(
+        items[0].get("title").and_then(|v| v.as_str()).unwrap_or("").contains("hello world"),
+        "摘要不该改写标题: {items:?}"
+    );
 
     // session/switchMode、session/switchModel 通路(会话已激活,走原生 RPC)
     driver
@@ -467,13 +510,20 @@ fn ready_status() -> crate::driver::EngineStatus {
 /// 构造裸 Inner(不起引擎进程):journal 写线程 + 会话表,专测回放窗口
 /// 与句柄生命周期,不依赖 ohmyagent 二进制。
 fn bare_inner(tag: &str) -> Arc<Inner> {
+    bare_inner_events(tag).0
+}
+
+/// 同 bare_inner,另给一份壳事件缓冲(断言 session-event 用)。
+fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
     let home = std::env::temp_dir().join(format!("ohmy-journal-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let data_dir = home.join("ohmy-sessions");
     std::fs::create_dir_all(&data_dir).unwrap();
     let (stdin_tx, _stdin_rx) = mpsc::unbounded_channel();
-    Arc::new(Inner {
-        app: Arc::new(TestCtx(home.clone())),
+    let ctx = TestCtx::new(home.clone());
+    let events = ctx.1.clone();
+    let inner = Arc::new(Inner {
+        app: Arc::new(ctx),
         transport: TransportState {
             child: StdMutex::new(None),
             stdin_tx,
@@ -507,7 +557,8 @@ fn bare_inner(tag: &str) -> Arc<Inner> {
         engine_dir: home.join("ohmyagent"),
         chat_workspaces_dir: home.join("local-data/chat-workspaces"),
         perm_persist_path: home.join("perm.json"),
-    })
+    });
+    (inner, events)
 }
 
 fn bare_session(sid: &str) -> SessionState {
@@ -920,6 +971,54 @@ fn model_done_reconciles_dropped_deltas() {
         .filter_map(|u| u["content"]["text"].as_str().map(String::from))
         .collect();
     assert_eq!(texts, vec!["你好", ",世界", "abc"], "对账补帧不符");
+}
+
+/// 会话摘要(引擎每轮异步生成):落 sidecar 的 summary 字段供顶栏副标题
+/// 展示——不碰 title(标题归用户与首条消息)、不刷 updated_at(摘要与用户
+/// 动作无关,刷了会把会话无端顶到侧栏最前),并经独立的 session-summary
+/// 事件通知 UI(复用 session-status 会在轮次收尾后重复弹一次「已回复」)。
+#[test]
+fn session_summary_lands_in_sidecar_without_touching_title_or_order() {
+    let (inner, events) = bare_inner_events("summary");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    inner.write_sidecar("s1", |m| m["title"] = json!("首条消息截断而来的标题"));
+    let updated_before = inner.read_sidecar("s1").get("updated_at").cloned().unwrap();
+    // 时间戳是毫秒:同毫秒内写两次会让"没刷新"这条断言白过
+    std::thread::sleep(Duration::from_millis(2));
+
+    inner.handle_event(json!({ "type": "session_summary", "session_id": "s1",
+        "data": { "summary": "  修复登录流程  " } }));
+
+    let meta = inner.read_sidecar("s1");
+    assert_eq!(meta.get("summary").and_then(Value::as_str), Some("修复登录流程"), "摘要未落盘: {meta}");
+    assert_eq!(
+        meta.get("title").and_then(Value::as_str),
+        Some("首条消息截断而来的标题"),
+        "摘要不该改标题: {meta}"
+    );
+    assert_eq!(meta.get("updated_at"), Some(&updated_before), "摘要不该刷 updated_at: {meta}");
+
+    let session_events = |events: &EmittedEvents| -> Vec<Value> {
+        events.lock().unwrap().iter().filter(|(n, _)| n == "session-event").map(|(_, p)| p.clone()).collect()
+    };
+    let emitted = session_events(&events);
+    assert_eq!(emitted.len(), 1, "应只发一条会话事件: {emitted:?}");
+    assert_eq!(emitted[0]["type"].as_str(), Some("session-summary"), "事件类型不符: {emitted:?}");
+    assert_eq!(emitted[0]["summary"].as_str(), Some("修复登录流程"), "事件缺摘要: {emitted:?}");
+
+    // 空摘要忽略(不覆盖已有的),子代理子会话(sidecar 带 parent)不落也不发
+    inner.handle_event(json!({ "type": "session_summary", "session_id": "s1", "data": { "summary": "   " } }));
+    inner.sess.sessions.lock().unwrap().insert("child".into(), bare_session("child"));
+    inner.write_sidecar("child", |m| m["parent"] = json!("s1"));
+    inner.handle_event(json!({ "type": "session_summary", "session_id": "child",
+        "data": { "summary": "子代理的摘要" } }));
+    assert_eq!(
+        inner.read_sidecar("s1")["summary"].as_str(),
+        Some("修复登录流程"),
+        "空摘要不该覆盖已有摘要"
+    );
+    assert!(inner.read_sidecar("child").get("summary").is_none(), "子会话不该落摘要");
+    assert_eq!(session_events(&events).len(), 1, "空摘要/子会话不该再发事件");
 }
 
 /// event/stream usage 只用 context_* 更新事件所属 Agent 的上下文环：

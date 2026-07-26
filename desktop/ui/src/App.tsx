@@ -304,8 +304,10 @@ export default function App() {
   useEffect(
     () =>
       subscribeEvents((e) => {
-        if (e.type !== "session-status" && e.type !== "session-ask") return;
-        void refreshSessions(); // waiting_ask/status 都在列表快照里,任一事件都重拉
+        if (e.type !== "session-status" && e.type !== "session-ask" && e.type !== "session-summary") return;
+        void refreshSessions(); // waiting_ask/status/summary 都在列表快照里,任一事件都重拉
+        // 摘要是模型异步吐出来的,与用户的等待无关:只刷列表,不进提醒/未读
+        if (e.type === "session-summary") return;
         if (e.id === sessionIdRef.current) return;
         const notice = noticeForSessionEvent(e);
         if (!notice) return;

@@ -370,6 +370,8 @@ impl OhmyDriver {
                 json!({
                     "id": id,
                     "title": meta.get("title").and_then(|v| v.as_str()).unwrap_or(""),
+                    // 引擎每轮生成的会话摘要(顶栏副标题展示;不参与命名)
+                    "summary": meta.get("summary").and_then(|v| v.as_str()).unwrap_or(""),
                     "workdir": meta.get("workdir").and_then(|v| v.as_str()).unwrap_or(""),
                     "kind": meta.get("kind").and_then(|v| v.as_str()).unwrap_or("local"),
                     "model": meta.get("model_name").and_then(|v| v.as_str()).unwrap_or(""),
@@ -1429,6 +1431,17 @@ impl Inner {
     /// async command 里的调用点按需套 spawn_blocking(session_send/
     /// session_delete/sessions_list),reader 线程本就是专用 std 线程。
     pub(super) fn write_sidecar(&self, id: &str, f: impl FnOnce(&mut Value)) {
+        self.write_sidecar_inner(id, true, f)
+    }
+
+    /// 不刷 updated_at 的写法。侧栏按 updated_at 倒序排,而摘要这类
+    /// "模型异步回来、与用户动作无关"的字段一刷就把会话无端顶到最前——
+    /// 用户没动它,列表却重排了。
+    pub(super) fn write_sidecar_keep_updated(&self, id: &str, f: impl FnOnce(&mut Value)) {
+        self.write_sidecar_inner(id, false, f)
+    }
+
+    fn write_sidecar_inner(&self, id: &str, touch: bool, f: impl FnOnce(&mut Value)) {
         let _write = self.sess.sidecar_write.lock_ok();
         // 非法 id 到这里就停:再往下是 atomic_write_private,它会 create_dir_all
         // 出父目录,等于任意目录写 meta.json
@@ -1438,7 +1451,9 @@ impl Inner {
         };
         let mut meta = self.read_sidecar(id);
         f(&mut meta);
-        meta["updated_at"] = json!(frame::now_ms());
+        if touch {
+            meta["updated_at"] = json!(frame::now_ms());
+        }
         let data = match serde_json::to_vec_pretty(&meta) {
             Ok(data) => data,
             Err(e) => {
@@ -1670,6 +1685,18 @@ impl Inner {
         self.app.emit_json(
             "session-event",
             json!({ "type": "session-status", "id": sid, "status": status, "title": title }),
+        );
+    }
+
+    /// 会话摘要更新(引擎每轮异步生成,见 normalize.rs 的 session_summary 分支)。
+    /// 单独一个事件类型而不是复用 session-status:后者在 UI 侧会经
+    /// noticeForSessionEvent 变成一条「已回复/已完成」提示,而摘要恰好在轮次
+    /// 收尾之后才到——复用等于每轮多弹一次重复提示。
+    pub(super) fn emit_session_summary(&self, sid: &str, summary: &str) {
+        let title = self.sess.sessions.lock_ok().get(sid).map(|s| s.title.clone()).unwrap_or_default();
+        self.app.emit_json(
+            "session-event",
+            json!({ "type": "session-summary", "id": sid, "title": title, "summary": summary }),
         );
     }
 

@@ -4,7 +4,8 @@
 // 词汇——引擎事件在 driver 内归一化,reduce 层零改动):
 //   frames:{sid}       Frame[](~30ms 批量,防高频 delta 拖垮 IPC)
 //   conn-status:{sid}  {text, connected} 会话流连接状态
-//   session-event      {type: session-status|session-ask, ...} 全局状态(侧栏+桌宠)
+//   session-event      {type: session-status|session-ask|session-summary, ...}
+//                      全局状态(侧栏+桌宠)与引擎生成的会话摘要
 //   ws-msg:{pipe}      云端 WS 桥下行文本帧(协议逻辑仍在 UI,壳只做管道)
 //   ws-closed:{pipe}   云端 WS 桥断开
 //

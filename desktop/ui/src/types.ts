@@ -63,6 +63,8 @@ export interface HostConfig {
 export interface SessionMeta {
   id: string;
   title: string;
+  /** 引擎每轮异步生成的会话摘要(顶栏副标题展示;不参与命名,旧 sidecar 缺省) */
+  summary?: string;
   workdir: string;
   /** 会话空间；旧 sidecar 缺省为 local。chat 仍有隐藏 cwd，但界面不绑定项目。 */
   kind?: "local" | "chat";
@@ -250,7 +252,8 @@ export interface Usage {
 // ==================== 壳 IPC 载荷(各域纯数据类型) ====================
 
 /** 全局事件流(session-event)载荷:session-status(状态变更)/
- * session-ask(审批等待)。后台会话结束靠它感知(不轮询)。 */
+ * session-ask(审批等待)/session-summary(摘要更新)。后台会话结束靠它
+ * 感知(不轮询)。 */
 export interface SessionEvent {
   type: string;
   id: string;
@@ -259,6 +262,8 @@ export interface SessionEvent {
   status?: string;
   /** session-ask:true 进入等待,false 解除 */
   open?: boolean;
+  /** session-summary:引擎新生成的会话摘要 */
+  summary?: string;
 }
 
 /** Composer 上方的短暂提示；targetSessionId 存在时可点击跳转。 */

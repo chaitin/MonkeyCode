@@ -16,6 +16,7 @@ import {
   DeleteMenuItem,
   HeaderFilesButton,
   HeaderMenu,
+  HeaderSummary,
   LogList,
   MONO,
   OutlineNav,
@@ -739,16 +740,18 @@ export function ChatView({
         rename={meta ? rename : undefined}
         subtitle={
           chatMode ? (
-            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--t5)" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--t5)", minWidth: 0 }}>
               <IconChat size={11} color="var(--t5)" />
-              独立对话 · 不关联项目
+              <span style={{ flex: "none" }}>独立对话 · 不关联项目</span>
+              <HeaderSummary summary={meta?.summary} />
             </span>
           ) : (
             <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--t5)", minWidth: 0 }}>
               <IconFolder size={11} color="var(--t6)" />
-              <span style={{ fontWeight: 600, color: "var(--t3)", flex: "none" }}>{basename(workdir)}</span>
-              <span style={{ color: "var(--t7)", flex: "none" }}>·</span>
-              <span className="ellipsis" style={{ fontFamily: MONO }}>{workdir}</span>
+              {/* 完整路径退到悬停提示:这一行的横向预算要留给摘要,而路径长起来
+                  (worktree、深目录)能把摘要挤没,自己却几乎全是重复的前缀 */}
+              <span title={workdir} style={{ fontWeight: 600, color: "var(--t3)", flex: "none" }}>{basename(workdir)}</span>
+              <HeaderSummary summary={meta?.summary} />
             </span>
           )
         }
