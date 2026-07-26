@@ -19,6 +19,23 @@ export interface OutlineEntry {
 
 const MAX_LABEL = 60;
 
+/** 大纲跳转后，目标气泡与日志视口顶部之间保留的呼吸空间。当前项判定必须
+ * 使用同一条线，否则目标停在这条线时仍会把上一问标绿。 */
+export const OUTLINE_JUMP_INSET = 12;
+
+export function outlineActiveSeq(
+  items: Iterable<{ top: number; seq?: number }>,
+  viewportTop: number,
+): number | undefined {
+  let seq: number | undefined;
+  for (const item of items) {
+    // 给布局的亚像素取整留 1px 余量，避免恰好对齐时来回跳。
+    if (item.top - viewportTop > OUTLINE_JUMP_INSET + 1) break;
+    if (item.seq !== undefined && Number.isFinite(item.seq)) seq = item.seq;
+  }
+  return seq;
+}
+
 function hhmm(ts?: number): string {
   if (ts === undefined || !Number.isFinite(ts)) return "";
   const d = new Date(ts);

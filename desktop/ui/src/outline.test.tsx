@@ -3,7 +3,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { OutlineNav, outlineEntries } from "./components";
+import { OutlineNav, OUTLINE_JUMP_INSET, outlineActiveSeq, outlineEntries } from "./components";
 import type { OutlineItem } from "./useSession";
 
 const item = (over: Partial<OutlineItem> = {}): OutlineItem => ({
@@ -43,6 +43,25 @@ describe("outlineEntries", () => {
   it("缺时间戳时不渲染时间", () => {
     const [e] = outlineEntries([item({ timestamp: undefined })]);
     expect(e.time).toBe("");
+  });
+});
+
+describe("outlineActiveSeq", () => {
+  it("跳转目标落在顶部留白线时标记目标，而不是上一问", () => {
+    expect(
+      outlineActiveSeq(
+        [
+          { top: -120, seq: 7 },
+          { top: OUTLINE_JUMP_INSET, seq: 40 },
+          { top: 80 },
+        ],
+        0,
+      ),
+    ).toBe(40);
+  });
+
+  it("尚未滚到顶部留白线的下一问不会提前标记", () => {
+    expect(outlineActiveSeq([{ top: -20, seq: 7 }, { top: 40, seq: 40 }], 0)).toBe(7);
   });
 });
 

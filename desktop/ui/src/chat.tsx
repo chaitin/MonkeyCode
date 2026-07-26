@@ -20,8 +20,10 @@ import {
   LogList,
   MONO,
   OutlineNav,
+  OUTLINE_JUMP_INSET,
   TaskPanel,
   ViewHeader,
+  outlineActiveSeq,
   outlineEntries,
   useRenameDraft,
   type MenuState,
@@ -499,12 +501,13 @@ export function ChatView({
     const col = el?.firstElementChild;
     if (!el || !col) return;
     const elTop = el.getBoundingClientRect().top;
-    let seq: number | undefined;
-    for (const kid of Array.from(col.children)) {
-      if (kid.getBoundingClientRect().top - elTop > 8) break;
-      const raw = (kid as HTMLElement).dataset?.mcSeq;
-      if (raw) seq = Number(raw);
-    }
+    const seq = outlineActiveSeq(
+      Array.from(col.children, (kid) => {
+        const raw = (kid as HTMLElement).dataset?.mcSeq;
+        return { top: kid.getBoundingClientRect().top, seq: raw ? Number(raw) : undefined };
+      }),
+      elTop,
+    );
     setActiveSeq((prev) => (prev === seq ? prev : seq));
   };
   const scheduleActive = () => {
@@ -526,7 +529,7 @@ export function ChatView({
     if (idx < 0) return false;
     pinnedRef.current = false;
     // 复用锚点恢复:图片解码/字体加载后仍会自动纠偏(scrollIntoView 不会)
-    startRestore(idx, -12);
+    startRestore(idx, -OUTLINE_JUMP_INSET);
     node.classList.remove("mc-jump-flash");
     void (node as HTMLElement).offsetWidth; // 重启动画
     node.classList.add("mc-jump-flash");
