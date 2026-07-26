@@ -258,6 +258,45 @@ describe("云端投递状态机:排队与自动投递", () => {
     expect(sentUserInputs()).toEqual(["在途"]);
   });
 
+  it("新建/环境创建中:收到 user-input 回显后第二条仍入队,不抢开新一轮", async () => {
+    // 用户实测:新建任务(环境还在创建)时连发两条,第二条直接发出去了。
+    // 云端收下第一条会先回显 user-input,回显解除了 sending,而 task-started
+    // 要等 VM 起来(以分钟计)才来——这段真空里两道闸全开。回显即视为在跑。
+    opens = [true, true];
+    const { core, out } = makeCore("pending");
+    core.send("第一条");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sentUserInputs()).toEqual(["第一条"]);
+    pushFrame({ type: "user-input", seq: 1, data: "e30=" }); // 云端回显:已收下
+    core.send("第二条");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(out.queued).toBe("第二条");
+    expect(openCalls).toBe(1); // 没顶掉在途连接
+    expect(sentUserInputs()).toEqual(["第一条"]);
+    // 环境就绪开跑 → 本轮结束后才投递排队的那条
+    pushFrame({ type: "task-started", seq: 2 });
+    pushFrame({ type: "task-ended", seq: 3 });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(out.queued).toBe("");
+    expect(sentUserInputs()).toEqual(["第一条", "第二条"]);
+  });
+
+  it("回显后被拒(task-error 且无 task-ended):放行排队投递,不永久卡死", async () => {
+    opens = [true, true];
+    const { core, out } = makeCore("pending");
+    core.send("第一条");
+    await vi.advanceTimersByTimeAsync(0);
+    pushFrame({ type: "user-input", seq: 1, data: "e30=" });
+    core.send("第二条");
+    expect(out.queued).toBe("第二条");
+    // 云端拒了这一轮:不会再补 task-ended,清 running 才不会让队列死等
+    pushFrame({ type: "task-error", seq: 2, data: "e30=" });
+    core.trySendQueued();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(out.queued).toBe("");
+    expect(sentUserInputs()).toEqual(["第一条", "第二条"]);
+  });
+
   it("取消排队:clearQueued 清空,后续就绪时机不再投递", async () => {
     opens = [true];
     const { core, out } = makeCore();

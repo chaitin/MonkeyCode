@@ -109,7 +109,14 @@ export function createCloudTaskCore(
         if (c?.cursor) io.setCursorIfEmpty(c.cursor, !!c.has_more);
         continue;
       }
-      if (f.type === "task-started") running = true;
+      // user-input 回显 = 云端已收下这条并排进执行:本轮从此刻起就算在跑。
+      // 不能只认 task-started——新建/环境创建时,回显与真正开跑之间隔着整个
+      // VM 启动(以分钟计),而 sending 在收到回显那一刻就解除了(见下),这段
+      // 真空里 send() 的两道闸全开:第二条直接抢开新一轮,还会顶掉在途连接
+      if (f.type === "task-started" || f.type === "user-input") running = true;
+      // 被拒/出错:本轮没开起来,放行排队投递。回显之后只等到 task-error
+      // (云端不会再补 task-ended)时,不清 running 就是队列永久卡死
+      if (f.type === "task-error") running = false;
       if (f.type === "task-ended") turnEnded = true;
       frames.push(f);
     }
