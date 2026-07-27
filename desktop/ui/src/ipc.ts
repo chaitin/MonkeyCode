@@ -25,6 +25,8 @@ interface TauriGlobal {
 }
 
 export function tauri(): TauriGlobal | undefined {
+  // node 测试环境(react-dom/server 渲染)没有 window:按非壳环境处理
+  if (typeof window === "undefined") return undefined;
   return (window as { __TAURI__?: TauriGlobal }).__TAURI__;
 }
 

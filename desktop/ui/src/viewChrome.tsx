@@ -1,7 +1,13 @@
 // 视图镶边:标题栏、「文件」按钮、⋯ 菜单外壳与危险操作的二段确认页。
 import { useState, type ChangeEvent, type CompositionEvent, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { isImeEnter, markImeEnd } from "./composer";
+import { isMacShell } from "./host";
 import { IconDots, IconFolder, IconSpark, IconTrash } from "./icons";
+
+/** 标题栏字重:mac 的 San Francisco 在 700 下明显偏重,降半档;其余平台
+ * 维持 700。展示态与改名输入框必须同值,编辑态切换时文字观感才不跳。
+ * 函数而非模块常量:顶层求值会在无 window 的 node 测试环境里崩。 */
+const titleWeight = () => (isMacShell() ? 600 : 700);
 
 // ==================== 会话改名的编辑态(侧栏行 / 视图标题栏共用) ====================
 
@@ -106,7 +112,7 @@ export function ViewHeader({
               padding: "0 6px",
               fontFamily: "inherit",
               fontSize: 14,
-              fontWeight: 700,
+              fontWeight: titleWeight(),
               background: "var(--card)",
               color: "var(--t1)",
               outline: "none",
@@ -125,7 +131,7 @@ export function ViewHeader({
                 rename.start();
               })
             }
-            style={{ fontWeight: 700, fontSize: 14, cursor: rename ? "text" : undefined }}
+            style={{ fontWeight: titleWeight(), fontSize: 14, cursor: rename ? "text" : undefined }}
           >
             {title}
           </span>
