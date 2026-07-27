@@ -390,7 +390,23 @@ body {
   color: var(--t1);
   font-size: 13px;
   overflow: hidden;
+  /* 桌面壳手感:chrome(侧栏/标题栏/按钮)默认不可选中,内容区按下方白名单放开。
+   * 拖拽期间 sidebar/filesdrawer 会直接写 body.style.userSelect,复位为 "" 时回落到这里 */
+  user-select: none;
+  -webkit-user-select: none;
 }
+
+/* 可选中白名单:用户会阅读/复制的内容。输入类控件、消息流、代码/diff/日志、
+ * 工具输出(pre)、终端(xterm)、设置卡片里的只读值;.selectable 给无类名的
+ * 内联样式元素(思考正文、系统行、配对码等)按处挂载。
+ * 局部禁选(.tool-duration/.mc-message-time/行号 ::before 等)直接写在元素上,不受此覆盖 */
+input, textarea, [contenteditable="true"],
+.md, .mdi, .mc-message-row, .mc-preview-line, .hl, pre,
+.tool-card, .card-lg .ellipsis, .xterm, .selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+.mdcopy, .tool-detail-toggle { user-select: none; -webkit-user-select: none; }
 
 a { color: var(--accTx); text-decoration: none; }
 a:hover { color: var(--linkH); text-decoration: underline; }
@@ -455,6 +471,7 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   display: none;
   font-variant-numeric: tabular-nums;
   user-select: none;
+  -webkit-user-select: none;
 }
 .tool-detail-toggle {
   opacity: 0;
@@ -552,6 +569,7 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   visibility: hidden;
   transform: translateY(3px) scale(0.98);
   user-select: none;
+  -webkit-user-select: none;
   white-space: nowrap;
   transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s linear 0.12s;
 }

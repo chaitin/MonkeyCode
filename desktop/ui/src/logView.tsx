@@ -44,6 +44,7 @@ function ThoughtView({ text }: { text: string }) {
       </div>
       {open && (
         <div
+          className="selectable"
           style={{
             marginLeft: 5,
             borderLeft: "2px solid var(--line)",
@@ -255,7 +256,7 @@ function ItemView({
     case "sys":
       if (item.text === "— 本轮结束 —") return <TurnDivider />;
       return (
-        <div style={{ color: item.error ? "var(--err)" : "var(--t5)", fontSize: 11.5, textAlign: "center" }}>
+        <div className="selectable" style={{ color: item.error ? "var(--err)" : "var(--t5)", fontSize: 11.5, textAlign: "center" }}>
           {item.text}
         </div>
       );

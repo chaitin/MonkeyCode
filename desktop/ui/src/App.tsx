@@ -632,7 +632,7 @@ export default function App() {
         >
           <span style={{ color: "var(--err)", fontWeight: 600, flex: "none" }}>⚠ {engineBanner.text}</span>
           {engineBanner.detail && (
-            <span className="ellipsis" style={{ color: "var(--t4)", fontSize: 11.5, minWidth: 0, font: `11.5px ${MONO}` }} title={engineBanner.detail}>
+            <span className="ellipsis selectable" style={{ color: "var(--t4)", fontSize: 11.5, minWidth: 0, font: `11.5px ${MONO}` }} title={engineBanner.detail}>
               {engineBanner.detail}
             </span>
           )}

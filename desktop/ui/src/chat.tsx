@@ -343,7 +343,7 @@ export function SessionNoticeBanner({
   const content = (
     <>
       {notice.tone === "success" ? <IconTaskDone size={13} color={visual.color} /> : <IconInfo size={13} color={visual.color} />}
-      <span className="ellipsis" style={{ flex: 1 }}>{notice.text}</span>
+      <span className="ellipsis selectable" style={{ flex: 1 }}>{notice.text}</span>
       {notice.targetSessionId && <span style={{ flex: "none", fontSize: 11.5, fontWeight: 700 }}>查看 ›</span>}
     </>
   );

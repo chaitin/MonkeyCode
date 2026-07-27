@@ -64,7 +64,7 @@ export function DiffPanel({ text }: { text: string }) {
         r.kind === "h" ? (
           <div key={i} style={{ display: "flex", padding: "2px 24px", background: "var(--codeBg)", color: "var(--t4)", fontSize: 11 }}>
             <span style={{ width: 36, flex: "none" }} />
-            <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{r.text}</span>
+            <span className="selectable" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{r.text}</span>
           </div>
         ) : (
           <div

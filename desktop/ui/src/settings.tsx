@@ -233,14 +233,14 @@ function BrowserExtCard() {
         {st?.enabled && !st.paired && code && (
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 12, color: "var(--t4)", flex: "none" }}>一次性配对码</span>
-            <span style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, letterSpacing: 2, color: "var(--t1)" }}>{codeShown}</span>
+            <span className="selectable" style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, letterSpacing: 2, color: "var(--t1)" }}>{codeShown}</span>
             <button className="hv" onClick={copyCode} style={{ ...whiteBtn, height: 24, padding: "0 9px", fontSize: 11.5, flex: "none" }}>
               {copied ? "已复制" : "复制"}
             </button>
           </div>
         )}
         {st?.enabled && st.addr && (
-          <span style={{ fontSize: 11.5, color: "var(--t5)", fontFamily: MONO }}>本地连接地址：{st.addr}</span>
+          <span className="selectable" style={{ fontSize: 11.5, color: "var(--t5)", fontFamily: MONO }}>本地连接地址：{st.addr}</span>
         )}
       </div>
       <div style={{ fontSize: 12.5, color: "var(--t4)", lineHeight: 1.8 }}>
@@ -1193,7 +1193,7 @@ export function SettingsView({
         {dirty && (
           <div style={{ flex: "none", borderTop: "1px solid var(--line)", background: "var(--card)", padding: "10px 20px", display: "flex", alignItems: "center", gap: 12, animation: "mcin .15s ease" }}>
             <span style={{ fontSize: 12.5, color: "var(--t3)" }}>有未保存的更改,保存后内核将重启(会话在磁盘不丢失)。</span>
-            {err && <span className="ellipsis" style={{ fontSize: 12, color: "var(--err)" }}>{err}</span>}
+            {err && <span className="ellipsis selectable" style={{ fontSize: 12, color: "var(--err)" }}>{err}</span>}
             <span style={{ flex: 1 }} />
             <button className="hv" onClick={discard} style={{ ...whiteBtn, flex: "none" }} disabled={saving}>
               放弃更改
