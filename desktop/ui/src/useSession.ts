@@ -511,6 +511,20 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       return true;
     },
 
+    async sendFiles(input: string, files: File[]): Promise<boolean> {
+      if (!sid || !conn) return false;
+      const uploaded: Attachment[] = [];
+      for (const file of files) uploaded.push(await uploadAtt(sid, file));
+      const text = [input.trim(), ...uploaded.map(attLine)].filter(Boolean).join("\n");
+      if (!text) return false;
+      if (chat.running) {
+        setQueued(text);
+        flushQueued();
+        return true;
+      }
+      return conn.send("user-input", { content: b64encode(text) });
+    },
+
     stop() {
       void conn?.send("user-cancel", {});
     },
@@ -756,6 +770,8 @@ export interface SessionHandle {
   /** 发送输入+附件;运行中自动排队,本轮结束发出。
    * 返回本次输入是否已接受(已发送或已排队),视图据此决定是否跟随最新消息。 */
   send(): boolean;
+  /** 原子上传附件并发送指定文本，供设计反馈等不经过输入框的工作流使用。 */
+  sendFiles(input: string, files: File[]): Promise<boolean>;
   stop(): void;
   clearQueued(): void;
   /** 删除会话的伴随清理:丢弃其排队/附件暂存(删非当前打开的会话时调用) */
@@ -880,6 +896,7 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
     close: core.close,
     setInput,
     send: () => core.send(input),
+    sendFiles: core.sendFiles,
     stop: core.stop,
     clearQueued: core.clearQueued,
     dropStash: core.dropStash,

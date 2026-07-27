@@ -14,6 +14,7 @@ import {
 } from "react";
 import {
   DeleteMenuItem,
+  HeaderActionButton,
   HeaderFilesButton,
   HeaderMenu,
   HeaderSummary,
@@ -30,7 +31,7 @@ import {
   type OutlineEntry,
 } from "./components";
 import { Composer, QueuedChip, RunningBar, UploadingChip } from "./composer";
-import { IconArchive, IconChat, IconCheck, IconChevronDown, IconFolder, IconInfo, IconPencil, IconShield, IconTaskDone, IconX } from "./icons";
+import { IconArchive, IconChat, IconCheck, IconChevronDown, IconFolder, IconInfo, IconMonitor, IconPencil, IconShield, IconTaskDone, IconX } from "./icons";
 import logoUrl from "./logo.png";
 import { useUpwardMenuHeight } from "./menuPosition";
 import {
@@ -576,6 +577,9 @@ export function ChatView({
   models,
   currentModel,
   chatMode = false,
+  previewAvailable = false,
+  previewAttentionKey,
+  onOpenPreview,
   onOpenDrawer,
   onOpenChild,
   onOpenNoticeSession,
@@ -593,6 +597,10 @@ export function ChatView({
    * 与本地任务的「文件」同走文件抽屉(会话产出的文件都落在临时目录,
    * 抽屉头部可跳系统文件管理器)。 */
   chatMode?: boolean;
+  /** MVP 先由项目会话提供；后续可直接替换为 Agent 的显式可预览信号。 */
+  previewAvailable?: boolean;
+  previewAttentionKey?: string;
+  onOpenPreview?: () => void;
   onOpenDrawer: (tab?: "files" | "changes") => void;
   onOpenChild: (id: string) => void;
   onOpenNoticeSession: (id: string) => void;
@@ -953,6 +961,17 @@ export function ChatView({
           )
         }
       >
+        {previewAvailable && onOpenPreview && (
+          <HeaderActionButton
+            key={previewAttentionKey}
+            className="preview-cta-attention"
+            title="在应用内预览 localhost 开发服务"
+            onClick={onOpenPreview}
+            icon={<IconMonitor size={12} color="var(--t3)" />}
+          >
+            预览
+          </HeaderActionButton>
+        )}
         {chatMode && meta && (
           <HeaderFilesButton
             title="浏览会话临时目录(会话中产出的文件都在这;抽屉里可跳系统文件管理器)"

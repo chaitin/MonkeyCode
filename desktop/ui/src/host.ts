@@ -1,7 +1,7 @@
 // 宿主(桌面壳)集成域:浏览器扩展桥、原生对话框、应用配置、窗口控制、
 // 应用更新、宿主事件/意图、外链打开。IPC 原语在 ipc.ts,载荷纯数据类型
 // 在 types.ts。
-import { invoke, listen, tauri } from "./ipc";
+import { invoke, listen, listenAsync, tauri } from "./ipc";
 import type { BrowserExtStatus, HostConfig, HostInfo, UpdateStatus } from "./types";
 
 // ==================== 浏览器扩展桥(壳内 browser/ 模块) ====================
@@ -93,6 +93,38 @@ export function workdirMatchesEnv(
 export function inDesktopShell(): boolean {
   return !!tauri()?.core?.invoke;
 }
+
+export type PreviewBounds = { x: number; y: number; width: number; height: number };
+
+export const previewCreate = (url: string, bounds: PreviewBounds) => invoke<void>("preview_create", { url, bounds });
+export const previewShow = () => invoke<void>("preview_show");
+export const previewHide = () => invoke<void>("preview_hide");
+export const previewSetBounds = (bounds: PreviewBounds) => invoke<void>("preview_set_bounds", { bounds });
+export const previewNavigate = (url: string) => invoke<void>("preview_navigate", { url });
+export const previewReload = () => invoke<void>("preview_reload");
+export const previewDestroy = () => invoke<void>("preview_destroy");
+
+export type ElementSnapshot = {
+  selector: string; text: string; tag: string;
+  bounds: PreviewBounds;
+  styles: { color: string; backgroundColor: string; fontSize: string; padding: string; margin: string; borderRadius: string };
+};
+export type ElementEdit = { selector: string; property: "text" | "color" | "backgroundColor" | "fontSize" | "padding" | "margin" | "borderRadius"; value: string };
+export const previewPickerToggle = (enabled: boolean) => invoke<void>("preview_picker_toggle", { enabled });
+export const previewElementApply = (edit: ElementEdit) => invoke<void>("preview_element_apply", { edit });
+export const previewElementUndo = () => invoke<void>("preview_element_undo");
+export const previewSerialize = (requestId: string) => invoke<void>("preview_serialize", { requestId });
+export const onPreviewSerializedAsync = (cb: (value: { requestId: string; html: string }) => void) => listenAsync("preview-serialized", (payload) => cb(payload as { requestId: string; html: string }));
+export type PreviewSerializedError = { requestId: string; error: string };
+export const onPreviewSerializedErrorAsync = (cb: (value: PreviewSerializedError) => void) => listenAsync("preview-serialized-error", (payload) => cb(payload as PreviewSerializedError));
+export const previewSaveHtml = (sessionId: string, path: string, html: string) => invoke<void>("preview_save_html", { sessionId, path, html });
+export type PreviewCaptureMode = "viewport" | "full";
+export const previewCapture = (mode: PreviewCaptureMode, requestId: string) => invoke<void>("preview_capture", { mode, requestId });
+export const onPreviewCaptured = (cb: (value: { requestId: string; dataUrl: string }) => void) => onHostEvent("preview-captured", cb);
+export type PreviewCaptureError = { requestId: string; error: string };
+export const onPreviewCaptureError = (cb: (value: PreviewCaptureError) => void) => onHostEvent<PreviewCaptureError>("preview-capture-error", cb);
+export const onPreviewElementPicked = (cb: (snapshot: ElementSnapshot) => void) => onHostEvent<ElementSnapshot>("preview-element-picked", cb);
+export const onPreviewPickerError = (cb: (error: string) => void) => onHostEvent<string>("preview-picker-error", cb);
 
 /** 读取壳持有的应用配置(模型 + MCP);非壳环境返回 null。 */
 export async function getHostConfig(): Promise<HostConfig | null> {

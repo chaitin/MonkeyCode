@@ -17,5 +17,5 @@ export {
 export { Markdown } from "./markdown";
 export { TaskPanel } from "./taskPanel";
 export { ToolCard } from "./toolCard";
-export { ConfirmPane, DeleteMenuItem, HeaderFilesButton, HeaderMenu, HeaderSummary, ViewHeader, useRenameDraft } from "./viewChrome";
+export { ConfirmPane, DeleteMenuItem, HeaderActionButton, HeaderFilesButton, HeaderMenu, HeaderSummary, ViewHeader, useRenameDraft } from "./viewChrome";
 export type { MenuState, RenameDraft } from "./viewChrome";

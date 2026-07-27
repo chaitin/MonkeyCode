@@ -19,6 +19,7 @@ mod driver;
 #[cfg(target_os = "windows")]
 mod native_pet;
 mod repo;
+mod preview;
 mod telemetry;
 mod uploads;
 mod util;
@@ -1196,6 +1197,19 @@ fn main() {
             uploads::upload_abort,
             uploads::stat_dropped_file,
             uploads::read_dropped_file,
+            preview::preview_create,
+            preview::preview_show,
+            preview::preview_hide,
+            preview::preview_set_bounds,
+            preview::preview_navigate,
+            preview::preview_reload,
+            preview::preview_destroy,
+            preview::preview_picker_toggle,
+            preview::preview_element_apply,
+            preview::preview_element_undo,
+            preview::preview_capture,
+            preview::preview_serialize,
+            preview::preview_save_html,
             baizhi::baizhi_status,
             baizhi::baizhi_send_code,
             baizhi::baizhi_login,
