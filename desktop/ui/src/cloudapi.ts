@@ -79,6 +79,13 @@ export const mcFileDownload = (dlId: string, vmId: string, path: string, filenam
 /** 取消进行中的下载(壳侧置旗收束并清残件;已完成/不存在静默)。 */
 export const mcFileDownloadCancel = (dlId: string) => invoke<{ ok: boolean }>("mc_file_download_cancel", { dlId });
 
+/** 虚拟机终端 session 列表(终端面板打开时复用已有会话,对齐 web 行为)。 */
+export const mcTerminalList = (vmId: string) =>
+  invoke<{ terminals?: { id?: string; title?: string; created_at?: number; connected_count?: number }[] }>(
+    "mc_terminal_list",
+    { vmId },
+  );
+
 // ==================== 云端 WS 桥(壳做纯文本管道,协议逻辑在本层) ====================
 
 /** 打开一条云端 WS 管道:onText 收下行文本帧,onClose 收断开(带服务端

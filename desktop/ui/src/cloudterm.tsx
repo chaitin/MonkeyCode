@@ -1,12 +1,14 @@
 // 云端 VM 终端:xterm.js + 壳 WS 管道(协议对齐 web 端 common/terminal.tsx:
 // 文本 JSON 帧 {type,data};上行 data=base64(输入)/resize=JSON{row,col}/5s ping;
-// 下行 connected/data(base64)/resize/error/ping)。terminal_id 每次挂载新生成,
-// 关掉面板即结束会话;共享/多 tab 等高级能力留给网页控制台。
+// 下行 connected/data(base64)/resize/error/ping)。terminal_id 复用优先
+// (对齐 web 终端面板):挂载先拉 VM 的终端列表重连第一个——每次新生成
+// 会把孤儿会话在 VM 里越堆越多,shell 上下文也随开关全丢;列表为空或
+// 拉取失败才新建。多 tab/显式销毁仍留给网页控制台。
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { connectCloudTerminal } from "./cloudapi";
+import { connectCloudTerminal, mcTerminalList } from "./cloudapi";
 import { MONO } from "./components";
 
 /** xterm 的 theme 是 JS 对象,吃不了 var(),只能把令牌解析成具体色值;
@@ -59,7 +61,22 @@ export function CloudTerminal({ vmId }: { vmId: string }) {
     let frames = 0;
     let gotData = false;
 
-    connectCloudTerminal(vmId, crypto.randomUUID(), {
+    // 复用优先:先查 VM 已有终端会话,重连第一个(shell 上下文得以保留,
+    // 也能接上网页控制台开的);没有/查不到再新建
+    const pickTerminalId = async (): Promise<string> => {
+      try {
+        const r = await mcTerminalList(vmId);
+        const existing = (r.terminals ?? []).find((t) => t.id)?.id;
+        if (existing) return existing;
+      } catch {
+        /* 列表拉不到不挡路:退回新建 */
+      }
+      return crypto.randomUUID();
+    };
+
+    pickTerminalId().then((terminalId) => {
+      if (closed) return; // 查列表期间面板已关:别再建连接
+      connectCloudTerminal(vmId, terminalId, {
       onText(text) {
         let m: { type?: string; data?: string };
         try {
@@ -112,6 +129,7 @@ export function CloudTerminal({ vmId }: { vmId: string }) {
       .catch((e) => {
         if (!closed) setStatus("终端连接失败: " + String(e));
       });
+    });
 
     const offData = term.onData((input) => {
       sendJSON({ type: "data", data: b64.enc(input) });

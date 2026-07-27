@@ -606,6 +606,12 @@ pub async fn mc_upload(bz: State<'_, BaizhiState>, filename: String, data: Strin
     Ok(json!({ "access_url": access_url }))
 }
 
+/// 虚拟机终端 session 列表(终端面板复用已有会话用;返回 {terminals})。
+#[tauri::command]
+pub async fn mc_terminal_list(bz: State<'_, BaizhiState>, vm_id: String) -> Result<Value, String> {
+    monkeycode::mc_terminal_list(&bz.0, &vm_id).await.map_err(BzErr::msg)
+}
+
 /// 从云端任务 VM 工作区下载文件/目录到本地(dest 为 UI 经保存对话框
 /// 选定的本地路径;目录由服务端打成 zip)。dl_id 由 UI 生成,进度经
 /// `dl-progress:{dl_id}` 事件上报,取消走 mc_file_download_cancel。

@@ -68,6 +68,7 @@ fn main() {
                 "mc_file_upload",
                 "mc_file_download",
                 "mc_file_download_cancel",
+                "mc_terminal_list",
             ]),
         ),
     )

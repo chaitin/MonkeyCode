@@ -360,6 +360,22 @@ pub async fn mc_task_options(svc: &Service) -> BzResult<Value> {
     Ok(res)
 }
 
+/// 虚拟机终端 session 列表(打开终端面板时先查已有会话并重连,而不是
+/// 每次新开——否则 VM 里孤儿终端只增不减;对齐 web 终端面板行为)。
+/// 返回 {terminals: [{id, title, created_at, connected_count}]}。
+pub async fn mc_terminal_list(svc: &Service, vm_id: &str) -> BzResult<Value> {
+    let out = mc_call(
+        svc,
+        reqwest::Method::GET,
+        &format!("/api/v1/users/hosts/vms/{}/terminals", urlencode(vm_id)),
+        None,
+    )
+    .await?;
+    // data 是裸数组;异常形状按空列表处理(调用方会退回新建终端)
+    let terminals = if out.is_array() { out } else { json!([]) };
+    Ok(json!({ "terminals": terminals }))
+}
+
 /// 附件上传壳侧护栏:UI 按云端约束(2MB,超限图片先压 webp)拦截,这里只防
 /// 超大载荷绕过 UI 直达 IPC;放宽到 4MB 免得两层阈值因压缩误差打架。
 const MC_UPLOAD_MAX_BYTES: usize = 4 << 20;

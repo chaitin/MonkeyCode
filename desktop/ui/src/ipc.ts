@@ -22,6 +22,11 @@ interface TauriGlobal {
   event?: {
     listen?: (name: string, cb: (e: { payload: unknown }) => void) => Promise<() => void>;
   };
+  /** 系统路径命名空间(withGlobalTauri 全量注入;保存对话框拼默认目录用) */
+  path?: {
+    downloadDir?: () => Promise<string>;
+    join?: (...paths: string[]) => Promise<string>;
+  };
 }
 
 export function tauri(): TauriGlobal | undefined {

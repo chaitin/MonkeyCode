@@ -7,9 +7,14 @@ import { fmtSize } from "./filesdrawer";
 import { IconCheck, IconFolder, IconX } from "./icons";
 import { invoke } from "./ipc";
 
-/** 在系统文件管理器中定位已保存的文件(opener 插件;失败静默——路径就在眼前,用户可自寻) */
+/** 在系统文件管理器中定位已保存的文件。opener 插件的命令签名是
+ * `reveal_item_in_dir(paths: Vec<PathBuf>)`——参数名必须是 paths 数组,
+ * 传 {path} 会反序列化失败且无声(踩过);失败留 console 便于诊断,
+ * 路径本身就在卡片上,用户仍可自寻。 */
 const revealDest = (path: string) => {
-  void invoke("plugin:opener|reveal_item_in_dir", { path }).catch(() => {});
+  void invoke("plugin:opener|reveal_item_in_dir", { paths: [path] }).catch((e) => {
+    console.error("[downloads] 文件管理器定位失败:", e);
+  });
 };
 
 function ProgressTrack({ it }: { it: DownloadItem }) {

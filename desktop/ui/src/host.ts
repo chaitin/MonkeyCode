@@ -30,10 +30,21 @@ export async function pickDirectory(defaultPath?: string): Promise<string | null
 
 /** 原生「另存为」对话框;返回选定的本地路径,非壳环境或取消返回 null。 */
 export async function pickSaveFile(defaultName: string): Promise<string | null> {
-  if (!tauri()?.core?.invoke) return null;
+  const t = tauri();
+  if (!t?.core?.invoke) return null;
+  // 裸文件名作 defaultPath 会被解析成相对进程 CWD(Windows 上即应用启动
+  // 目录,用户根本找不到):默认落到系统「下载」目录;目录拿不到时才退回
+  // 裸文件名兜底
+  let defaultPath = defaultName;
+  try {
+    const dir = await t.path?.downloadDir?.();
+    if (dir) defaultPath = (await t.path?.join?.(dir, defaultName)) ?? defaultPath;
+  } catch {
+    /* 平台拿不到下载目录:保持裸文件名 */
+  }
   try {
     const r = await invoke<unknown>("plugin:dialog|save", {
-      options: { defaultPath: defaultName, title: "保存到…" },
+      options: { defaultPath, title: "保存到…" },
     });
     return typeof r === "string" ? r : null;
   } catch {

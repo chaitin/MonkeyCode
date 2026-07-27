@@ -1115,6 +1115,7 @@ fn main() {
             baizhi::mc_file_upload,
             baizhi::mc_file_download,
             baizhi::mc_file_download_cancel,
+            baizhi::mc_terminal_list,
             baizhi::monkeycode::cloud_ws_open,
             baizhi::monkeycode::cloud_ws_send,
             baizhi::monkeycode::cloud_ws_close

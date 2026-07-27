@@ -84,6 +84,7 @@
             "allow-mc-file-upload",
             "allow-mc-file-download",
             "allow-mc-file-download-cancel",
+            "allow-mc-terminal-list",
             "opener:allow-reveal-item-in-dir",
             "dialog:allow-open",
             "dialog:allow-save",
