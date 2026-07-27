@@ -68,6 +68,24 @@ jobs:
           npm ci
           npm run build
 
+      # WSL 运行环境的 Linux 引擎:用 runner 预装的官方 Go 交叉编译。
+      # 必须在 go-win7 Activate **之前**跑(那一步会改写 GOROOT/GOTOOLCHAIN/
+      # PATH)——linux/amd64 产物与 Win7 兼容性无关,不该沾补丁工具链。
+      # submodule 拉取与后面的 sidecar step 幂等重复,顺序无碍。
+      - name: Build ohmyagent WSL engine (official Go)
+        env:
+          OHMYAGENT_REPO_TOKEN: ${{ secrets.OHMYAGENT_REPO_TOKEN }}
+        run: |
+          [ -n "$OHMYAGENT_REPO_TOKEN" ] || { echo "::error::OHMYAGENT_REPO_TOKEN 未配置,引擎无法进包"; exit 1; }
+          git config --global url."https://x-access-token:${OHMYAGENT_REPO_TOKEN}@github.com/".insteadOf "git@github.com:"
+          git submodule update --init agent
+          mkdir -p "$GITHUB_WORKSPACE/desktop/binaries"
+          cd agent
+          AGENT_VERSION="$(git rev-parse --short HEAD)"
+          echo "ohmyagent version: ${AGENT_VERSION} (linux/amd64, WSL)"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${AGENT_VERSION}" \
+            -o "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-linux" ./cmd/ohmyagent
+
       # go-win7 legacy 工具链:比标准版额外修复未打更新的裸 Win7 SP1(LoadLibraryEx
       # 新标志回退——缺 KB2533623 时标准版 "bcrypt.dll not found" 崩;sysSocket 回退)。
       # 打过更新的系统行为与标准版一致(运行时自动检测),一个包覆盖新旧机器。

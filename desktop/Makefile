@@ -35,6 +35,9 @@ SIDECAR_X64 := $(BIN_DIR)/ohmyagent-x86_64-apple-darwin
 SIDECAR_UNI := $(BIN_DIR)/ohmyagent-universal-apple-darwin
 SIDECAR_WIN := $(BIN_DIR)/ohmyagent-x86_64-pc-windows-msvc.exe
 SIDECAR_LIN := $(BIN_DIR)/ohmyagent-x86_64-unknown-linux-gnu
+# Windows 包附带的 WSL 引擎(bundle.resources 单文件映射保留 basename,
+# 名字即安装根落地名,与壳 find_ohmyagent_linux 的查找约定一致)
+SIDECAR_WIN_WSL := $(BIN_DIR)/ohmyagent-linux
 TAURI       := npx --yes @tauri-apps/cli@^2
 GOFLAGS     := -trimpath -ldflags "-s -w -X main.Version=$(AGENT_VERSION)"
 GOFLAGS_WIN := -trimpath -ldflags "-s -w -H=windowsgui -X main.Version=$(AGENT_VERSION)"
@@ -146,11 +149,14 @@ check-bundle-configs:
 
 # Windows 引擎 sidecar(x64;tauri bundle 按 <name>-<triple>.exe 查找,
 # 安装后落地为应用同目录的 ohmyagent.exe,与壳的 find_ohmyagent 查找顺序吻合)。
-# WSL 模式的 ohmyagent-linux 随 M3 落地。
+# 同时交叉编译 WSL 运行环境用的 Linux 引擎(经 bundle.resources 落安装根,
+# guest 经 /mnt/c 直接执行;用 GOFLAGS 而非 GOFLAGS_WIN——Linux 目标没有
+# windowsgui 链接标记)。
 engine-windows: check-ohmy-src
 	mkdir -p $(BIN_DIR)
 	cd $(OHMYAGENT_SRC) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GOFLAGS_WIN) -o $(abspath $(SIDECAR_WIN)) ./cmd/ohmyagent
 	python3 scripts/check-pe-subsystem.py $(SIDECAR_WIN) gui
+	cd $(OHMYAGENT_SRC) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOFLAGS) -o $(abspath $(SIDECAR_WIN_WSL)) ./cmd/ohmyagent
 
 # ---------- Linux 打包(deb + rpm + AppImage,引擎 sidecar)----------
 

@@ -8,7 +8,8 @@
       "binaries/ohmyagent"
     ],
     "resources": {
-      "../browser-extension/dist": "browser-extension"
+      "../browser-extension/dist": "browser-extension",
+      "binaries/ohmyagent-linux": "./"
     },
     "icon": [
       "icons/icon.ico",

@@ -30,6 +30,9 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE_CONFIG = "tauri.conf.json"
 SIDECAR = "binaries/ohmyagent"
+# Windows 包必须附带 WSL 运行环境用的 Linux 引擎(bundle.resources 单文件
+# 映射,落安装根;externalBin 走 <name>-<triple> 精确解析装不下第二平台)。
+WSL_SIDECAR = "binaries/ohmyagent-linux"
 # Tauri 按平台自动合并的文件名(tauri-utils/src/config/parse.rs 的
 # ConfigFormat::into_platform_file_name)。这些名字**一存在就生效**,无需
 # --config —— 打包专属配置绝不能用它们,否则会被并进该平台上的每次
@@ -128,6 +131,14 @@ def check(root: pathlib.Path = ROOT) -> list[str]:
             errors.append(
                 f"{path.name} 置了 bundle.active=true 但 externalBin 不含 "
                 f"{SIDECAR!r}:该配置能打出不带引擎的包"
+            )
+        # WSL 不变量:打 nsis(Windows 包)必须附带 Linux 引擎,否则用户
+        # 选 WSL 运行环境后 find_ohmyagent_linux 落空,功能静默残废。
+        resources = bundle.get("resources") or {}
+        if "nsis" in (bundle.get("targets") or []) and WSL_SIDECAR not in resources:
+            errors.append(
+                f"{path.name} 打 nsis 但 resources 不含 {WSL_SIDECAR!r}:"
+                f"该配置能打出不支持 WSL 运行环境的 Windows 包"
             )
         errors += icon_errors(root, path.name, bundle)
 

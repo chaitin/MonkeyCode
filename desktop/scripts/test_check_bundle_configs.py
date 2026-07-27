@@ -5,7 +5,7 @@ import pathlib
 import tempfile
 import unittest
 
-from check_bundle_configs import SIDECAR, check
+from check_bundle_configs import SIDECAR, WSL_SIDECAR, check
 
 
 def write(root: pathlib.Path, name: str, bundle: dict) -> None:
@@ -49,6 +49,31 @@ class BundleConfigContractTest(unittest.TestCase):
             write(root, "bundle.win7.conf.json", {"resources": {"ucrt/*": "./"}})
             self.assertEqual(check(root), [])
 
+    # ---- WSL 引擎不变量 ----
+    # Windows(nsis)包必须经 resources 附带 binaries/ohmyagent-linux,
+    # 否则 WSL 运行环境的 find_ohmyagent_linux 落空,功能静默残废。
+
+    def test_nsis_without_wsl_engine_resource_is_rejected(self) -> None:
+        root = self.nsis_root(nsis={"installerIcon": "icons/icon.ico",
+                                    "uninstallerIcon": "icons/icon.ico"})
+        cfg = json.loads((root / "bundle.windows.conf.json").read_text(encoding="utf-8"))
+        del cfg["bundle"]["resources"]
+        (root / "bundle.windows.conf.json").write_text(json.dumps(cfg), encoding="utf-8")
+        errors = check(root)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("ohmyagent-linux", errors[0])
+
+    def test_non_windows_targets_need_no_wsl_engine(self) -> None:
+        # WSL 只是 Windows 包的义务;macOS/Linux 包不受牵连
+        root = pathlib.Path(tempfile.mkdtemp())
+        (root / "icons").mkdir()
+        (root / "icons" / "icon.icns").write_bytes(b"x")
+        write(root, "tauri.conf.json", {"active": False})
+        write(root, "bundle.macos.conf.json", {
+            "active": True, "targets": ["app", "dmg"],
+            "externalBin": [SIDECAR], "icon": ["icons/icon.icns"]})
+        self.assertEqual(check(root), [])
+
     # ---- 图标不变量 ----
     # bundle.icon 缺 .ico 会让 tauri-build 硬失败,所以不用测"在不在";真正
     # 会静默丢的是 NSIS 的 installerIcon —— 不设就用 NSIS 通用安装图标,
@@ -60,6 +85,7 @@ class BundleConfigContractTest(unittest.TestCase):
         for f in ("icon.ico", "icon.icns"):
             (root / "icons" / f).write_bytes(b"x")
         win = {"active": True, "targets": ["nsis"], "externalBin": [SIDECAR],
+               "resources": {WSL_SIDECAR: "./"},
                "icon": ["icons/icon.ico"] if icon is None else icon}
         if nsis is not None:
             win["windows"] = {"nsis": nsis}

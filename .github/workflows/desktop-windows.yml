@@ -65,6 +65,10 @@ jobs:
             -o "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-x86_64-pc-windows-msvc.exe" ./cmd/ohmyagent
           python "$GITHUB_WORKSPACE/desktop/scripts/check-pe-subsystem.py" \
             "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-x86_64-pc-windows-msvc.exe" gui
+          # WSL 运行环境的 Linux 引擎(bundle.resources 落安装根,guest 经
+          # /mnt/c 直接执行;无 windowsgui 标记——Linux 目标没有该链接项)
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${AGENT_VERSION}" \
+            -o "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-linux" ./cmd/ohmyagent
 
       # secret 就绪时走发布构建(额外产出签名的 updater setup.exe + latest-windows.json),
       # 否则回退普通打包,CI 不红
