@@ -11,6 +11,7 @@ import {
   getBrowserExtStatus,
   getHostConfig,
   inDesktopShell,
+  isMacShell,
   isWindowsShell,
   openExtensionDir,
   repairBrowserExt,
@@ -1175,6 +1176,9 @@ export function SettingsView({
 
       {/* 内容区 + 保存条 */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+        {/* macOS 壳:内容列顶部的拖拽带。主视图有 ViewHeader、新任务页有专属
+            热区,设置页此前只剩左导航顶部一条 ~95px 的空隙可拖,形同不可拖 */}
+        {isMacShell() && <div data-tauri-drag-region="" style={{ height: 50, flex: "none" }} />}
         <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
           <div key={active} style={{ maxWidth: 640, margin: "0 auto", padding: "24px 32px 40px", display: "flex", flexDirection: "column", gap: 18, animation: "mcin .18s ease" }}>
             <span style={{ fontSize: 17, fontWeight: 800 }}>{activeLabel}</span>
