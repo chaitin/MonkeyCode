@@ -83,6 +83,8 @@
             "allow-mc-upload",
             "allow-mc-file-upload",
             "allow-mc-file-download",
+            "allow-mc-file-download-cancel",
+            "opener:allow-reveal-item-in-dir",
             "dialog:allow-open",
             "dialog:allow-save",
             "opener:allow-open-url",

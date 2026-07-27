@@ -15,9 +15,9 @@
 // 上行经 cloud_ws_send;帧原样转发零翻译(云端 TaskStream 与 UI Frame 同构)。
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex as StdMutex;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
@@ -446,14 +446,76 @@ pub async fn mc_file_upload(svc: &Service, vm_id: &str, path: &str, data: Vec<u8
     unwrap_envelope(&body, status, &ENV_MC).map(|_| ())
 }
 
+/// 下载取消旗标注册表(壳级单例,dl_id 由 UI 生成)。旗标在下载启动时登记、
+/// 收尾时摘除;cancel 只置旗,由下载循环在块间自检收束并清残件。
+pub struct DownloadCtl {
+    flags: StdMutex<HashMap<String, Arc<AtomicBool>>>,
+}
+
+impl DownloadCtl {
+    pub fn new() -> Self {
+        Self { flags: StdMutex::new(HashMap::new()) }
+    }
+
+    fn claim(&self, id: &str) -> Result<Arc<AtomicBool>, String> {
+        let mut map = self.flags.lock_ok();
+        if map.contains_key(id) {
+            return Err("该下载已在进行中".into());
+        }
+        let flag = Arc::new(AtomicBool::new(false));
+        map.insert(id.to_string(), flag.clone());
+        Ok(flag)
+    }
+
+    fn remove(&self, id: &str) {
+        self.flags.lock_ok().remove(id);
+    }
+
+    pub fn cancel(&self, id: &str) {
+        // 不存在(已完成/未开始)静默:取消与完成天然赛跑,不算错
+        if let Some(f) = self.flags.lock_ok().get(id) {
+            f.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
+/// 进度事件节流间隔:够手感流畅,也不会让 IPC 事件刷屏。
+const DL_PROGRESS_EVERY: Duration = Duration::from_millis(150);
+
 /// 从云端任务 VM 工作区下载文件/目录到本地(对齐 web 控制台文件树的
 /// "下载":GET /api/v1/users/files/download,目录由服务端打成 zip)。
-/// 流式写入 dest,不整包过内存/IPC;失败清掉残件。返回写入字节数。
+/// 流式写入 dest,不整包过内存/IPC;失败/取消清掉残件。返回写入字节数。
+///
+/// 进度经 `dl-progress:{dl_id}` 事件上报 {written, total}:total 取
+/// Content-Length,而服务端只在 VM agent 预告了大小(SIZE 帧)时才设——
+/// 目录 zip 是流式打包,基本拿不到,UI 按 null 降级为字节计数展示。
 ///
 /// 专用一次性 client:Service 的常规 client 带 30/40s **总**超时,大 zip
 /// 在慢速网络下必然中途被掐——下载只限连接超时,不限总时长。
 pub async fn mc_file_download(
+    app: &AppHandle,
+    ctl: &DownloadCtl,
     svc: &Service,
+    dl_id: &str,
+    vm_id: &str,
+    path: &str,
+    filename: &str,
+    dest: &str,
+) -> BzResult<u64> {
+    if dl_id.is_empty() || dl_id.len() > 64 {
+        return Err(other("下载 id 非法"));
+    }
+    let flag = ctl.claim(dl_id).map_err(other)?;
+    let out = do_file_download(app, &flag, svc, dl_id, vm_id, path, filename, dest).await;
+    ctl.remove(dl_id);
+    out
+}
+
+async fn do_file_download(
+    app: &AppHandle,
+    cancel: &AtomicBool,
+    svc: &Service,
+    dl_id: &str,
     vm_id: &str,
     path: &str,
     filename: &str,
@@ -495,12 +557,29 @@ pub async fn mc_file_download(
             Ok(_) => Err(other(format!("下载失败(HTTP {status})"))),
         };
     }
+    // total = Content-Length(见函数头注释:目录 zip 基本没有,事件里为 null)
+    let total = resp.content_length();
+    let emit_progress = |written: u64| {
+        let _ = app.emit_to(
+            "main",
+            &format!("dl-progress:{dl_id}"),
+            json!({ "written": written, "total": total }),
+        );
+    };
+    emit_progress(0); // 首帧带上 total,UI 立刻能定进度形态(百分比/字节计数)
+
     let mut file = tokio::fs::File::create(dest)
         .await
         .map_err(|e| other(format!("创建文件失败: {e}")))?;
     let mut stream = resp.bytes_stream();
     let mut written: u64 = 0;
+    let mut last_emit = Instant::now();
     while let Some(chunk) = stream.next().await {
+        if cancel.load(Ordering::Relaxed) {
+            drop(file);
+            let _ = tokio::fs::remove_file(dest).await; // 取消不留残件
+            return Err(other("下载已取消"));
+        }
         let chunk = match chunk {
             Ok(c) => c,
             Err(e) => {
@@ -515,11 +594,16 @@ pub async fn mc_file_download(
             return Err(other(format!("写入文件失败: {e}")));
         }
         written += chunk.len() as u64;
+        if last_emit.elapsed() >= DL_PROGRESS_EVERY {
+            last_emit = Instant::now();
+            emit_progress(written);
+        }
     }
     if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
         let _ = tokio::fs::remove_file(dest).await;
         return Err(other(format!("写入文件失败: {e}")));
     }
+    emit_progress(written); // 终值:UI 把进度顶满再转"完成"
     Ok(written)
 }
 

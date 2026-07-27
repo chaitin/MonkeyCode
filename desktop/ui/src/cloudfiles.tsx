@@ -4,8 +4,9 @@
 // repo_file_diff(与 web 控制台 task-file-explorer 同一套 kind 与字段),
 // 差异是 base64 内容解码、entry_mode 判目录、读取上限与唤醒超时余量。
 import { useEffect, useRef, useState } from "react";
-import { connectCloudControl, mcFileDownload, mcFileUpload, type CloudControl } from "./cloudapi";
+import { connectCloudControl, mcFileUpload, type CloudControl } from "./cloudapi";
 import { readDataURL } from "./cloudUpload";
+import { startDownload } from "./downloads";
 import { pickSaveFile } from "./host";
 import type { CloudFileChange, CloudRepoFile } from "./types";
 import { b64decode } from "./codec";
@@ -110,12 +111,13 @@ export function CloudFilesDrawer({
             }
             void refreshChanges();
           },
-          // 下载:原生「另存为」定位置,壳带会话流式落盘;目录服务端打 zip
+          // 下载:原生「另存为」定位置后登记到全局下载管理即返回——进度/
+          // 结果在右下角下载条外显,关抽屉/切页面不中断;目录服务端打 zip
           download: async (en: { path: string; name: string; isDir: boolean }) => {
             const filename = en.isDir ? en.name + ".zip" : en.name;
             const dest = await pickSaveFile(filename);
             if (!dest) return false; // 用户取消
-            await mcFileDownload(vmId, "/workspace/" + en.path, filename, dest);
+            void startDownload({ vmId, vmPath: "/workspace/" + en.path, filename, dest });
             return true;
           },
         }

@@ -36,6 +36,7 @@ import {
 import { ChatView } from "./chat";
 import { CloudTaskView } from "./cloudtask";
 import { LogList, MONO } from "./components";
+import { DownloadsBar } from "./downloadsBar";
 import { CHANGE_KIND, changeTag, FilesDrawer, type FsAdapter } from "./filesdrawer";
 import { IconFolder, IconX } from "./icons";
 import { inspectMcAccount } from "./mcaccount";
@@ -619,6 +620,8 @@ export default function App() {
     >
       {/* Windows 壳:装饰栏已去除,自绘 36px 标题栏(品牌/上下文 + 拖拽 + 窗口按钮) */}
       {isWindowsShell() && <TitleBar context={windowContext} layout={view === "settings" ? "settings" : "sidebar"} />}
+      {/* 右下角全局下载条:云端文件下载的进度/结果,跨页面常显(fixed 定位不占布局) */}
+      <DownloadsBar />
       {/* 引擎生命周期横幅(契约 6):崩溃/退避中/熔断/启动失败都在这里外显。
           不外显的话会话流只会无限重连,表现为无提示的卡死 */}
       {engineBanner && (

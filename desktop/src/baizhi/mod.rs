@@ -607,19 +607,35 @@ pub async fn mc_upload(bz: State<'_, BaizhiState>, filename: String, data: Strin
 }
 
 /// 从云端任务 VM 工作区下载文件/目录到本地(dest 为 UI 经保存对话框
-/// 选定的本地路径;目录由服务端打成 zip)。返回 {ok, bytes}。
+/// 选定的本地路径;目录由服务端打成 zip)。dl_id 由 UI 生成,进度经
+/// `dl-progress:{dl_id}` 事件上报,取消走 mc_file_download_cancel。
+/// 返回 {ok, bytes}。
 #[tauri::command]
 pub async fn mc_file_download(
+    app: tauri::AppHandle,
     bz: State<'_, BaizhiState>,
+    ctl: State<'_, monkeycode::DownloadCtl>,
+    dl_id: String,
     vm_id: String,
     path: String,
     filename: String,
     dest: String,
 ) -> Result<Value, String> {
-    let bytes = monkeycode::mc_file_download(&bz.0, &vm_id, &path, &filename, &dest)
+    let bytes = monkeycode::mc_file_download(&app, &ctl, &bz.0, &dl_id, &vm_id, &path, &filename, &dest)
         .await
         .map_err(BzErr::msg)?;
     Ok(json!({ "ok": true, "bytes": bytes }))
+}
+
+/// 取消进行中的下载(置旗,由下载循环在块间收束并清残件;已完成/不存在
+/// 静默——取消与完成天然赛跑)。
+#[tauri::command]
+pub async fn mc_file_download_cancel(
+    ctl: State<'_, monkeycode::DownloadCtl>,
+    dl_id: String,
+) -> Result<Value, String> {
+    ctl.cancel(&dl_id);
+    Ok(json!({ "ok": true }))
 }
 
 /// 上传文件到云端任务 VM 工作区(path 为 VM 内绝对路径,data = base64 文件字节)。

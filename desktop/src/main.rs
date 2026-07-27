@@ -1058,6 +1058,7 @@ fn main() {
         .manage(BrowserMcpRefresh(AtomicU64::new(0)))
         .manage(EngineSupervisor::new())
         .manage(baizhi::monkeycode::CloudPipes::new())
+        .manage(baizhi::monkeycode::DownloadCtl::new())
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
@@ -1113,6 +1114,7 @@ fn main() {
             baizhi::mc_upload,
             baizhi::mc_file_upload,
             baizhi::mc_file_download,
+            baizhi::mc_file_download_cancel,
             baizhi::monkeycode::cloud_ws_open,
             baizhi::monkeycode::cloud_ws_send,
             baizhi::monkeycode::cloud_ws_close

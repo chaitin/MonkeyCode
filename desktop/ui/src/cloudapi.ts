@@ -71,9 +71,13 @@ export const mcFileUpload = (vmId: string, path: string, dataB64: string) =>
   invoke<{ ok: boolean }>("mc_file_upload", { vmId, path, data: dataB64 });
 
 /** 从云端任务 VM 工作区下载文件/目录(壳带会话流式落盘到 dest,目录由
- * 服务端打成 zip;对齐 web 控制台文件树的"下载")。 */
-export const mcFileDownload = (vmId: string, path: string, filename: string, dest: string) =>
-  invoke<{ ok: boolean; bytes: number }>("mc_file_download", { vmId, path, filename, dest });
+ * 服务端打成 zip;对齐 web 控制台文件树的"下载")。dlId 由调用方生成,
+ * 进度经 `dl-progress:{dlId}` 事件下发 {written, total}(total 可为 null)。 */
+export const mcFileDownload = (dlId: string, vmId: string, path: string, filename: string, dest: string) =>
+  invoke<{ ok: boolean; bytes: number }>("mc_file_download", { dlId, vmId, path, filename, dest });
+
+/** 取消进行中的下载(壳侧置旗收束并清残件;已完成/不存在静默)。 */
+export const mcFileDownloadCancel = (dlId: string) => invoke<{ ok: boolean }>("mc_file_download_cancel", { dlId });
 
 // ==================== 云端 WS 桥(壳做纯文本管道,协议逻辑在本层) ====================
 

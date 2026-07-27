@@ -91,8 +91,10 @@ export interface FsAdapter {
   /** 上传能力(云端 VM 工作区;缺省无上传入口):把一批文件传到目录
    * (dir "" = 工作区根),抛错 → 错误行外显。完成后抽屉自行强刷该目录。 */
   upload?(dir: string, files: File[]): Promise<void>;
-  /** 下载能力(缺省无下载入口):保存对话框 + 落盘都在实现里做,目录由
-   * 服务端打成 zip。返回 false = 用户取消保存;抛错 → 错误行外显。 */
+  /** 下载能力(缺省无下载入口):实现里弹保存对话框并把下载登记到全局
+   * 下载管理(downloads.ts)即返回,进度/结果在右下角下载条外显,关抽屉
+   * 不中断;目录由服务端打成 zip。返回 false = 用户取消保存;抛错 →
+   * 错误行外显。 */
   download?(entry: FsEntry): Promise<boolean>;
 }
 
@@ -261,7 +263,8 @@ export function FilesDrawer({
     await loadChildren(dir, true);
   };
 
-  // ===== 下载(adapter.download 存在才有入口):行悬停按钮,一次一个 =====
+  // ===== 下载(adapter.download 存在才有入口):行悬停按钮。spinner 只盖
+  // "保存对话框 + 登记"阶段,落盘进度在全局下载条;守卫防同时开两个对话框 =====
   const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
   const canDownload = !!adapter.download;
   const startDownload = async (en: FsEntry) => {
