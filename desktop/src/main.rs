@@ -820,12 +820,18 @@ fn ensure_pet_window(app: &AppHandle) {
     let win = WebviewWindowBuilder::new(app, "pet", WebviewUrl::App("pet.html".into()))
         .title("MonkeyCode 桌宠")
         .inner_size(PET_W, PET_H)
+        // GTK 的不可缩放窗口按内容自然尺寸布局,resize 与几何约束全被忽略,
+        // 实测落在 WebView 默认的 200x200。Linux 改为保留 resizable,
+        // 用 min=max 几何约束钉死 116x120(用户与 WM 同样无法拉伸);
+        // mac 维持原状,约束只是兜底
+        .min_inner_size(PET_W, PET_H)
+        .max_inner_size(PET_W, PET_H)
         .transparent(true)
         .decorations(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .shadow(false)
-        .resizable(false)
+        .resizable(cfg!(target_os = "linux"))
         .maximizable(false)
         .minimizable(false)
         .focusable(false)
@@ -993,6 +999,16 @@ fn persist_pet_prefs(app: &AppHandle) {
 
 fn main() {
     eprintln!("[desktop] main 进入");
+    // Linux:桌宠依赖 set_position / always_on_top / skip_taskbar,这些在
+    // Wayland 协议里不存在,tao 全部静默 no-op——桌宠会被合成器扔到任意
+    // 位置(实测直接叠在主窗口上)、压不住层级,一被遮挡就"消失"。
+    // 优先 X11(Wayland 会话经 XWayland 承接,三项能力全恢复),保留
+    // wayland 兜底(纯 Wayland 无 X 的环境);用户显式设 GDK_BACKEND 则不动。
+    // 必须在任何 GTK 初始化(tauri::Builder)之前设置。
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("GDK_BACKEND").is_none() {
+        std::env::set_var("GDK_BACKEND", "x11,wayland");
+    }
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
