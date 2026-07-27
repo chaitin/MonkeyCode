@@ -840,7 +840,8 @@ fn ensure_pet_window(app: &AppHandle) {
         .build();
     match win {
         Ok(win) => {
-            let _ = win.set_position(pet_position(app, saved));
+            let position = pet_position(app, saved);
+            let _ = win.set_position(position);
             // macOS:转 NonactivatingPanel(见文件头 PetPanel 注释);
             // 无边框样式保持与 decorations(false) 一致
             #[cfg(target_os = "macos")]
@@ -853,6 +854,34 @@ fn ensure_pet_window(app: &AppHandle) {
                 Err(e) => eprintln!("[desktop] 桌宠转 NSPanel 失败(点击会激活应用): {e}"),
             }
             set_pet_visible(app, true);
+            // 排障锚点:"桌宠看不见"类反馈全靠这一行定位——开关/落点/实际
+            // 可见性/尺寸/会话环境一次外显,用户贴日志即可判因。
+            eprintln!(
+                "[desktop] 桌宠已创建: enabled={} saved={:?} pos=({},{}) visible={:?} size={:?} 屏幕={:?} 环境: DISPLAY={:?} WAYLAND_DISPLAY={:?} XDG_SESSION_TYPE={:?} GDK_BACKEND={:?}",
+                app.state::<PetEnabled>().0.load(Ordering::Relaxed),
+                saved,
+                position.x,
+                position.y,
+                win.is_visible(),
+                win.outer_size(),
+                app.primary_monitor().ok().flatten().map(|m| (*m.position(), *m.size(), m.scale_factor())),
+                std::env::var("DISPLAY").ok(),
+                std::env::var("WAYLAND_DISPLAY").ok(),
+                std::env::var("XDG_SESSION_TYPE").ok(),
+                std::env::var("GDK_BACKEND").ok(),
+            );
+            // GTK 的 map 是异步的,创建瞬间 visible 恒为 false;3s 后再查
+            // 一次稳态(方法内部会派发回主线程,跨线程调用安全)。
+            let win = win.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(3));
+                eprintln!(
+                    "[desktop] 桌宠稳态: visible={:?} pos={:?} size={:?}",
+                    win.is_visible(),
+                    win.outer_position(),
+                    win.outer_size(),
+                );
+            });
         }
         Err(e) => eprintln!("[desktop] 桌宠窗口创建失败: {e}"),
     }
