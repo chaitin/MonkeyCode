@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import TitleBar, { MacBrandBand, MacDragSpacer } from "./titlebar";
+import TitleBar, { MacBrandBand, MacWindowControls } from "./titlebar";
 
 /** isMacShell() = 有 __TAURI__ + UA 含 Mac;两者都桩掉才算 mac 壳 */
 function stubShell(platform: "mac" | "windows" | "browser") {
@@ -33,23 +33,26 @@ describe("Windows 标题栏", () => {
   });
 });
 
-describe("侧栏顶部拖拽区", () => {
-  it("mac 下是 50px 拖拽区,不放品牌——品牌带在主侧栏用 MacBrandBand 单独承担", () => {
+describe("mac 自绘小红绿灯", () => {
+  it("mac 下是 50px 拖拽区,带关闭/最小化/全屏三颗替身", () => {
     stubShell("mac");
-    const html = renderToStaticMarkup(<MacDragSpacer />);
+    const html = renderToStaticMarkup(<MacWindowControls />);
 
     expect(html).toContain('data-tauri-drag-region=""');
     expect(html).toContain("height:50px");
+    expect(html).toContain('aria-label="关闭"');
+    expect(html).toContain('aria-label="最小化"');
+    expect(html).toContain('aria-label="全屏"');
     expect(html).not.toContain("MonkeyCode");
-    expect(html).not.toContain(">work<");
   });
 
-  it("非 mac 壳退回 12px 留白,也不带拖拽区", () => {
+  it("非 mac 壳退回 12px 留白,窗口按钮归自绘标题栏", () => {
     stubShell("windows");
-    const html = renderToStaticMarkup(<MacDragSpacer />);
+    const html = renderToStaticMarkup(<MacWindowControls />);
 
     expect(html).toContain("height:12px");
     expect(html).not.toContain("data-tauri-drag-region");
+    expect(html).not.toContain("aria-label");
   });
 });
 

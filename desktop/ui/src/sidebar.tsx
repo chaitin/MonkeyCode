@@ -22,7 +22,7 @@ import { isWindowsShell } from "./host";
 import logoUrl from "./logo.png";
 import { isProjectArchived, projectArchiveKey } from "./projectArchive";
 import { applyProjectOrder, persistProjectOrder, readProjectOrder, reorderProjects } from "./projectOrder";
-import { MacBrandBand, MacDragSpacer } from "./titlebar";
+import { MacBrandBand, MacWindowControls } from "./titlebar";
 import type { CloudProject, CloudTask, McConnectionState, SessionMeta } from "./types";
 
 export interface ProjectGroup {
@@ -1138,7 +1138,7 @@ export function Sidebar({
       {/* 栏宽、右分隔线、底色都在 styles.css(.mc-nav-rail):窄窗要收窄,mac 下
           分隔线和底色还要为红绿灯让开顶部一段——写成内联样式就把这些规则全挡了 */}
       <div className="mc-nav-rail" style={{ flex: "none", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <MacDragSpacer />
+        <MacWindowControls />
         {!isWindowsShell() && <img src={logoUrl} alt="MonkeyCode" draggable={false} style={{ width: 31, height: 31, borderRadius: 9, margin: "2px 0 15px" }} />}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
           <RailButton active={space === "cloud"} label="云端" icon={<IconCloud size={16} color={space === "cloud" ? "var(--accSelT)" : "var(--t4)"} />} onClick={() => selectSpace("cloud")} />

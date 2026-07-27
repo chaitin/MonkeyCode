@@ -8,6 +8,7 @@ import {
   windowClose,
   windowIsMaximized,
   windowMinimize,
+  windowToggleFullscreen,
   windowToggleMaximize,
 } from "./host";
 import logoUrl from "./logo.png";
@@ -49,23 +50,73 @@ function Brand({ logo = false }: { logo?: boolean }) {
   );
 }
 
-/** macOS 壳顶部的红绿灯落区:50px 拖拽区(Tauri 的拖拽区机制是
- * data-tauri-drag-region 属性,不是 CSS app-region);非 mac 壳 12px 普通留白。
- * 一级栏与设置页左导航用它,保证各态顶部对齐不跳动;主侧栏面板顶部
- * 用的是同高的 MacBrandBand(带品牌)。 */
-export function MacDragSpacer() {
-  return isMacShell() ? (
-    <div data-tauri-drag-region="" style={{ height: 50, flex: "none" }} />
-  ) : (
-    <div style={{ height: 12, flex: "none" }} />
+/** mac 自绘小红绿灯:原生 NSWindow 按钮的尺寸与间距是 AppKit 私有绘制改不了,
+ * 壳里已把原生三颗隐藏(src/main.rs hide_native_window_buttons),这里画 10px
+ * 的替身,行为经 core window 命令接回——关闭走壳的托盘拦截(与原生一致)、
+ * 最小化、绿点进/出系统全屏(⌥ 点击缩放,mac 惯例)。悬停整组浮现字形、
+ * 窗口失焦整组退灰(样式在 styles.css .mac-lights)。
+ * 高 50px 与品牌带同一条中线,整条是拖拽区(双击缩放由 Tauri 内建处理),
+ * Tauri 的拖拽区机制是 data-tauri-drag-region 属性,不是 CSS app-region;
+ * 一级栏与设置页左导航共用,保证两态顶部对齐不跳动。
+ * 非 mac 壳退化为 12px 留白(Windows 的窗口按钮在自绘标题栏右侧)。
+ * 已知放弃:macOS 15 悬停绿点的系统平铺菜单无法复刻。 */
+export function MacWindowControls() {
+  const [blurred, setBlurred] = useState(false);
+  useEffect(() => {
+    if (!isMacShell()) return;
+    const focus = () => setBlurred(false);
+    const blur = () => setBlurred(true);
+    window.addEventListener("focus", focus);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("focus", focus);
+      window.removeEventListener("blur", blur);
+    };
+  }, []);
+  if (!isMacShell()) return <div style={{ height: 12, flex: "none" }} />;
+  const glyph = "rgba(0,0,0,0.55)";
+  return (
+    <div
+      className="mac-lights"
+      data-tauri-drag-region=""
+      data-blurred={blurred ? "" : undefined}
+      style={{ height: 50, flex: "none", alignSelf: "stretch", display: "flex", alignItems: "center", gap: 3, paddingLeft: 9 }}
+    >
+      <button className="mac-light" title="关闭" aria-label="关闭" onClick={() => void windowClose()} style={{ "--c": "#ff5f57" } as CSSProperties}>
+        <span className="mac-light-dot">
+          <svg className="mac-light-glyph" width={8} height={8} viewBox="0 0 8 8">
+            <path d="M2 2l4 4M6 2L2 6" stroke={glyph} strokeWidth="1.1" strokeLinecap="round" />
+          </svg>
+        </span>
+      </button>
+      <button className="mac-light" title="最小化" aria-label="最小化" onClick={() => void windowMinimize()} style={{ "--c": "#febc2e" } as CSSProperties}>
+        <span className="mac-light-dot">
+          <svg className="mac-light-glyph" width={8} height={8} viewBox="0 0 8 8">
+            <path d="M1.6 4h4.8" stroke={glyph} strokeWidth="1.1" strokeLinecap="round" />
+          </svg>
+        </span>
+      </button>
+      <button
+        className="mac-light"
+        title="全屏"
+        aria-label="全屏"
+        onClick={(e) => void (e.altKey ? windowToggleMaximize() : windowToggleFullscreen())}
+        style={{ "--c": "#28c840" } as CSSProperties}
+      >
+        <span className="mac-light-dot">
+          <svg className="mac-light-glyph" width={8} height={8} viewBox="0 0 8 8">
+            <path d="M1.6 6.4V3.7L4.3 6.4Z M6.4 1.6V4.3L3.7 1.6Z" fill={glyph} />
+          </svg>
+        </span>
+      </button>
+    </div>
   );
 }
 
 /** macOS 壳主侧栏顶部的品牌带:与 Windows 自绘标题栏同款字标 + 徽标,
- * 高度同 MacDragSpacer(50px),整条可拖拽。左内边距 14px 顺带让开了
- * 越界的绿色缩放键(它压出 62px 一级栏几个像素,见 styles.css 的
- * .mc-nav-rail 注释)。与一级栏 31px logo 并存是有意的:字标在带内、
- * logo 在带下方,分属两层不再同排争位。
+ * 高度同 MacWindowControls(50px),同一条中线,整条可拖拽。
+ * 与一级栏 31px logo 并存是有意的:字标在带内、logo 在带下方,
+ * 分属两层不再同排争位。
  * 非 mac 壳退化为 12px 留白——Windows 的品牌在自绘标题栏里,不重复。 */
 export function MacBrandBand() {
   return isMacShell() ? (

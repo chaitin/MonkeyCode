@@ -51,6 +51,8 @@ ts-rs = "12"
 # 应用(主窗口被提到最前并抢焦点→桌宠被显隐逻辑藏掉)。锁 rev 保证可复现。
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e894383aa068ec5365a42994e3ac94ba1b6" }
+# 隐藏原生红绿灯要向 NSWindow 发消息(标准按钮尺寸不可调,UI 自绘 10px 替身)
+objc2 = "0.6"
 
 # Windows 桌宠不再交给 WebView2 绘制:Win7 不支持透明 WebView
 # 背景,改用 UpdateLayeredWindow 直接提交预乘 alpha 位图。

@@ -101,6 +101,16 @@ export const windowMinimize = () => windowCmd("minimize").catch(console.error);
 export const windowToggleMaximize = () => windowCmd("toggle_maximize").catch(console.error);
 export const windowClose = () => windowCmd("close").catch(console.error);
 
+/** mac 自绘红绿灯的绿点:原生行为是进/出系统全屏(⌥ 点击才是缩放)。 */
+export async function windowToggleFullscreen(): Promise<void> {
+  try {
+    const fullscreen = (await windowCmd("is_fullscreen")) as boolean;
+    await invoke("plugin:window|set_fullscreen", { value: !fullscreen });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 export async function windowIsMaximized(): Promise<boolean> {
   try {
     return (await windowCmd("is_maximized")) as boolean;

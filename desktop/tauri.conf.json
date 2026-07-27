@@ -29,6 +29,8 @@
             "core:window:allow-toggle-maximize",
             "core:window:allow-internal-toggle-maximize",
             "core:window:allow-is-maximized",
+            "core:window:allow-set-fullscreen",
+            "core:window:allow-is-fullscreen",
             "core:window:allow-close",
             "allow-get-config",
             "allow-save-config",

@@ -18,6 +18,7 @@
   --rail: #edf1ee;          /* 一级空间导航 */
   --side: #f6f8f6;          /* 二级内容侧栏 */
   --railSel: rgba(255, 255, 255, 0.9);
+  --macLightIdle: #d5d9d6;  /* 自绘红绿灯失焦灰(mac 原生失焦按钮同档) */
   --sidebarInput: rgba(255, 255, 255, 0.88);
   --line: rgba(30, 40, 35, 0.1);
   --line2: rgba(30, 40, 35, 0.065);
@@ -169,6 +170,7 @@
   --rail: #101113;          /* 一级空间导航(移动端 termBg:调色板里最暗的面) */
   --side: #131417;          /* 二级内容侧栏(rail↔bg 中点) */
   --railSel: rgba(255, 255, 255, 0.09);   /* 移动端 track 刻度;叠在 rail 上≈bg3 */
+  --macLightIdle: #3f4443;  /* 自绘红绿灯失焦灰(深色) */
   --sidebarInput: rgba(255, 255, 255, 0.07); /* 移动端 line 刻度(比 railSel 弱一档) */
   --line: rgba(255, 255, 255, 0.12);      /* 主描边=移动端 line2(强弱按角色对位) */
   --line2: rgba(255, 255, 255, 0.07);     /* 更细的分隔=移动端 line */
@@ -604,6 +606,37 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 }
 [data-platform="mac"] .mc-nav-rail { --railSurface: var(--side); }
 [data-platform="mac"] .mc-nav-rail::after { display: none; }
+
+/* mac 自绘小红绿灯(titlebar.tsx MacWindowControls;原生按钮由壳隐藏)。
+ * 本色经 --c 由按钮内联携带;点击热区 14px、视觉圆点 10px(比原生 12px
+ * 小一号是产品要求)。失焦整组退灰,悬停恢复本色并浮现字形(与原生
+ * "悬停任意一颗、三颗齐现字形"的行为一致,靠容器 :hover 实现)。 */
+.mac-light {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default; /* mac 惯例:窗口按钮不是手型 */
+  flex: none;
+}
+.mac-light-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--c);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mac-lights[data-blurred] .mac-light-dot { background: var(--macLightIdle); }
+.mac-lights:hover .mac-light-dot { background: var(--c); }
+.mac-light:active .mac-light-dot { filter: brightness(0.82); }
+.mac-light-glyph { opacity: 0; display: block; }
+.mac-lights:hover .mac-light-glyph { opacity: 1; }
 
 @media (max-width: 1080px) {
   .mc-nav-rail { width: 58px; }

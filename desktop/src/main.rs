@@ -727,19 +727,14 @@ fn create_main_window(app: &AppHandle, page: &str) {
     {
         builder = builder.disable_drag_drop_handler();
     }
-    // macOS:标题栏悬浮融入侧栏(红绿灯直接落在 UI 上);
-    // UI 侧在 mac 壳内为侧栏顶部预留 50px 拖拽区/品牌带(titlebar.tsx)。
-    // 红绿灯默认贴在窗口顶端(~y11),与品牌带中线(25)不齐,左上角头重脚轻;
-    // 整组下移到 y19(按钮高 12,中心正落 25),与字标同一条线。x 维持系统
-    // 默认的 11 不动——横向 62px 一级栏本就容不下整组,mac 下一级栏与侧栏
-    // 已是同一块面色且无分隔线(styles.css .mc-nav-rail),横向越界无妨。
-    // tao 0.35 会存住该位置并在缩放/全屏往返后重放(set_traffic_light_inset)。
+    // macOS:标题栏悬浮融入侧栏(Overlay)。原生红绿灯在 build 后被
+    // hide_native_window_buttons 隐藏,UI 侧自绘 10px 小红绿灯替代
+    // (titlebar.tsx MacWindowControls),尺寸/间距/位置从此归 UI 管。
     #[cfg(target_os = "macos")]
     {
         builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .hidden_title(true)
-            .traffic_light_position(tauri::LogicalPosition::new(11.0, 19.0));
+            .hidden_title(true);
     }
     // Windows:去原生装饰栏,UI 侧自绘 36px 标题栏(拖拽区 + 窗口按钮)
     #[cfg(target_os = "windows")]
@@ -752,7 +747,47 @@ fn create_main_window(app: &AppHandle, page: &str) {
     if std::env::var("MC_DESKTOP_IPC_PROBE").is_ok() {
         builder = builder.initialization_script(include_str!("probe.js"));
     }
+    #[cfg(not(target_os = "macos"))]
     let _ = builder.build();
+    #[cfg(target_os = "macos")]
+    if let Ok(win) = builder.build() {
+        hide_native_window_buttons(&win);
+        // AppKit 在全屏往返等时机会重建标题栏视图,原生按钮可能复现;
+        // 尺寸/焦点事件上幂等补一次(三次空 objc 调用,开销可忽略)。
+        let w = win.clone();
+        win.on_window_event(move |e| {
+            if matches!(
+                e,
+                tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_)
+            ) {
+                hide_native_window_buttons(&w);
+            }
+        });
+    }
+}
+
+/// macOS:隐藏原生红绿灯。AppKit 标准窗口按钮的尺寸与间距是系统私有绘制,
+/// 公开途径只能整组挪位置;要"更小的红绿灯"只能藏掉原生、UI 自绘替身
+/// (跨平台应用的通行做法)。NSWindow 消息须在主线程发。
+#[cfg(target_os = "macos")]
+fn hide_native_window_buttons(window: &tauri::WebviewWindow) {
+    let win = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        let Ok(ns_window) = win.ns_window() else {
+            return;
+        };
+        let ns_window = ns_window as *mut objc2::runtime::AnyObject;
+        // NSWindowButton: Close=0 / Miniaturize=1 / Zoom=2
+        for kind in 0usize..=2 {
+            unsafe {
+                let btn: *mut objc2::runtime::AnyObject =
+                    objc2::msg_send![ns_window, standardWindowButton: kind];
+                if !btn.is_null() {
+                    let _: () = objc2::msg_send![btn, setHidden: true];
+                }
+            }
+        }
+    });
 }
 
 // ==================== 桌宠 ====================

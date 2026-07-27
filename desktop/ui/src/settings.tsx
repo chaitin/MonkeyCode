@@ -36,7 +36,7 @@ import {
 import { readAccent, readTheme, setAccent, setTheme, type AccentKey, type Theme } from "./theme";
 import { ACCENTS } from "./gen/accents";
 import { updateGate } from "./updateGate";
-import { MacDragSpacer } from "./titlebar";
+import { MacWindowControls } from "./titlebar";
 import {
   SOURCE_BAIZHI,
   modelSourceLabel,
@@ -1131,8 +1131,8 @@ export function SettingsView({
     <div style={{ flex: 1, display: "flex", minHeight: 0, animation: "mcin .25s ease" }}>
       {/* 左侧分类导航(设置态占满主窗口,此为最左栏) */}
       <div style={{ width: 168, flex: "none", background: "var(--side)", borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 2, padding: "0 10px 12px" }}>
-        {/* macOS 壳:红绿灯落在最左栏顶部,预留拖拽区(与主侧栏同一组件,切换不跳动) */}
-        <MacDragSpacer />
+        {/* macOS 壳:自绘红绿灯落在最左栏顶部(与主侧栏同一组件,切换不跳动) */}
+        <MacWindowControls />
         <div
           className="hv"
           onClick={onClose}
