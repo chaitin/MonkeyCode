@@ -70,6 +70,11 @@ export const mcUpload = (filename: string, dataB64: string) =>
 export const mcFileUpload = (vmId: string, path: string, dataB64: string) =>
   invoke<{ ok: boolean }>("mc_file_upload", { vmId, path, data: dataB64 });
 
+/** 从云端任务 VM 工作区下载文件/目录(壳带会话流式落盘到 dest,目录由
+ * 服务端打成 zip;对齐 web 控制台文件树的"下载")。 */
+export const mcFileDownload = (vmId: string, path: string, filename: string, dest: string) =>
+  invoke<{ ok: boolean; bytes: number }>("mc_file_download", { vmId, path, filename, dest });
+
 // ==================== 云端 WS 桥(壳做纯文本管道,协议逻辑在本层) ====================
 
 /** 打开一条云端 WS 管道:onText 收下行文本帧,onClose 收断开(带服务端

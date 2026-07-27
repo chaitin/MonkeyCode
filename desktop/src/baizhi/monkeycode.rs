@@ -446,6 +446,83 @@ pub async fn mc_file_upload(svc: &Service, vm_id: &str, path: &str, data: Vec<u8
     unwrap_envelope(&body, status, &ENV_MC).map(|_| ())
 }
 
+/// 从云端任务 VM 工作区下载文件/目录到本地(对齐 web 控制台文件树的
+/// "下载":GET /api/v1/users/files/download,目录由服务端打成 zip)。
+/// 流式写入 dest,不整包过内存/IPC;失败清掉残件。返回写入字节数。
+///
+/// 专用一次性 client:Service 的常规 client 带 30/40s **总**超时,大 zip
+/// 在慢速网络下必然中途被掐——下载只限连接超时,不限总时长。
+pub async fn mc_file_download(
+    svc: &Service,
+    vm_id: &str,
+    path: &str,
+    filename: &str,
+    dest: &str,
+) -> BzResult<u64> {
+    if vm_id.is_empty() {
+        return Err(other("缺少虚拟机 ID"));
+    }
+    if !path.starts_with('/') {
+        return Err(other("目标路径必须是绝对路径"));
+    }
+    if dest.is_empty() {
+        return Err(other("缺少保存位置"));
+    }
+    let target = format!(
+        "{}/api/v1/users/files/download?id={}&path={}&filename={}",
+        svc.ep.monkeycode,
+        urlencode(vm_id),
+        urlencode(path),
+        urlencode(filename)
+    );
+    let url = reqwest::Url::parse(&target).map_err(|e| other(format!("地址异常: {e}")))?;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| other(format!("HTTP 客户端构建失败: {e}")))?;
+    let mut req = client.get(url.clone());
+    if let Some(h) = svc.mc.header(&url) {
+        req = req.header(reqwest::header::COOKIE, h);
+    }
+    let resp = req.send().await.map_err(|e| other(format!("下载失败: {e}")))?;
+    let status = resp.status().as_u16();
+    if !(200..300).contains(&status) {
+        // 失败时响应体是 JSON 包壳:借 unwrap_envelope 取可读的 message
+        let body = resp.bytes().await.unwrap_or_default();
+        return match unwrap_envelope(&body, status, &ENV_MC) {
+            Err(e) => Err(e),
+            Ok(_) => Err(other(format!("下载失败(HTTP {status})"))),
+        };
+    }
+    let mut file = tokio::fs::File::create(dest)
+        .await
+        .map_err(|e| other(format!("创建文件失败: {e}")))?;
+    let mut stream = resp.bytes_stream();
+    let mut written: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(e) => {
+                drop(file);
+                let _ = tokio::fs::remove_file(dest).await; // 残件不留
+                return Err(other(format!("下载中断: {e}")));
+            }
+        };
+        if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await {
+            drop(file);
+            let _ = tokio::fs::remove_file(dest).await;
+            return Err(other(format!("写入文件失败: {e}")));
+        }
+        written += chunk.len() as u64;
+    }
+    if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
+        let _ = tokio::fs::remove_file(dest).await;
+        return Err(other(format!("写入文件失败: {e}")));
+    }
+    Ok(written)
+}
+
 /// MonkeyCode 云端包壳 {code,message,data}。401 不看响应体直接判会话失效:
 /// 恢复动作是"重新同步云端账号"(桥接登录),与百智云的"重新登录"不同。
 pub(crate) const ENV_MC: Envelope = Envelope {

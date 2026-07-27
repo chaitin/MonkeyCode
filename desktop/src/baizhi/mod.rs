@@ -606,6 +606,22 @@ pub async fn mc_upload(bz: State<'_, BaizhiState>, filename: String, data: Strin
     Ok(json!({ "access_url": access_url }))
 }
 
+/// 从云端任务 VM 工作区下载文件/目录到本地(dest 为 UI 经保存对话框
+/// 选定的本地路径;目录由服务端打成 zip)。返回 {ok, bytes}。
+#[tauri::command]
+pub async fn mc_file_download(
+    bz: State<'_, BaizhiState>,
+    vm_id: String,
+    path: String,
+    filename: String,
+    dest: String,
+) -> Result<Value, String> {
+    let bytes = monkeycode::mc_file_download(&bz.0, &vm_id, &path, &filename, &dest)
+        .await
+        .map_err(BzErr::msg)?;
+    Ok(json!({ "ok": true, "bytes": bytes }))
+}
+
 /// 上传文件到云端任务 VM 工作区(path 为 VM 内绝对路径,data = base64 文件字节)。
 #[tauri::command]
 pub async fn mc_file_upload(

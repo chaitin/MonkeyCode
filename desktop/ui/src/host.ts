@@ -28,6 +28,19 @@ export async function pickDirectory(defaultPath?: string): Promise<string | null
   }
 }
 
+/** 原生「另存为」对话框;返回选定的本地路径,非壳环境或取消返回 null。 */
+export async function pickSaveFile(defaultName: string): Promise<string | null> {
+  if (!tauri()?.core?.invoke) return null;
+  try {
+    const r = await invoke<unknown>("plugin:dialog|save", {
+      options: { defaultPath: defaultName, title: "保存到…" },
+    });
+    return typeof r === "string" ? r : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 当前内核运行环境对应的目录对话框初始位置:WSL 模式返回发行版 UNC 根
  * (\\wsl$\<发行版>,老新 Windows 通吃),本机模式/读取失败返回 undefined。 */
 export async function workdirPickBase(): Promise<string | undefined> {

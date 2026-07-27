@@ -7,7 +7,7 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
 import { basename } from "./chat";
 import { CodeView, DiffPanel, MONO } from "./components";
-import { IconChevronRight, IconFile, IconFolder, IconUpload, IconX } from "./icons";
+import { IconChevronRight, IconDownload, IconFile, IconFolder, IconUpload, IconX } from "./icons";
 
 /** 改动状态 → 普通用户可读的中文标签与配色(git 的 A/M/D 不外显)。
  * 云端词汇是本地(A/M/D)的超集,对齐 web/移动端:M/A/D/R/RM/?? */
@@ -91,6 +91,9 @@ export interface FsAdapter {
   /** 上传能力(云端 VM 工作区;缺省无上传入口):把一批文件传到目录
    * (dir "" = 工作区根),抛错 → 错误行外显。完成后抽屉自行强刷该目录。 */
   upload?(dir: string, files: File[]): Promise<void>;
+  /** 下载能力(缺省无下载入口):保存对话框 + 落盘都在实现里做,目录由
+   * 服务端打成 zip。返回 false = 用户取消保存;抛错 → 错误行外显。 */
+  download?(entry: FsEntry): Promise<boolean>;
 }
 
 export function FilesDrawer({
@@ -258,6 +261,22 @@ export function FilesDrawer({
     await loadChildren(dir, true);
   };
 
+  // ===== 下载(adapter.download 存在才有入口):行悬停按钮,一次一个 =====
+  const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
+  const canDownload = !!adapter.download;
+  const startDownload = async (en: FsEntry) => {
+    if (downloadingPath !== null || !adapterRef.current.download) return;
+    setDownloadingPath(en.path);
+    try {
+      await adapterRef.current.download(en);
+      setFsErr("");
+    } catch (e) {
+      setFsErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDownloadingPath(null);
+    }
+  };
+
   // 展开/收起文件夹(展开时懒加载子项,已缓存的即时展开)
   const toggleDir = (dir: string) => {
     setExpanded((prev) => {
@@ -397,10 +416,11 @@ export function FilesDrawer({
       const open = en.isDir && expanded.has(en.path);
       const active = viewer?.path === en.path;
       const rowUpload = en.isDir && canUpload;
+      const rowActs = rowUpload || canDownload;
       rows.push(
         <div
           key={en.path}
-          className={[active ? "" : "hv", rowUpload ? "hrow" : ""].filter(Boolean).join(" ") || undefined}
+          className={[active ? "" : "hv", rowActs ? "hrow" : ""].filter(Boolean).join(" ") || undefined}
           title={en.path}
           onClick={() => (en.isDir ? toggleDir(en.path) : void showFile(en))}
           style={{ ...fileRow, paddingLeft: pad, background: active ? "var(--hov)" : "transparent" }}
@@ -436,6 +456,24 @@ export function FilesDrawer({
                 <span className="spinner" style={{ width: 10, height: 10 }} />
               ) : (
                 <IconUpload size={11} color="var(--t4)" />
+              )}
+            </button>
+          )}
+          {canDownload && (
+            <button
+              // 同上:下载中 spinner 常显
+              className={"hv2 icon-btn" + (downloadingPath === en.path ? "" : " row-acts")}
+              title={en.isDir ? `下载 ${en.name}/(打包为 zip)` : `下载 ${en.name}`}
+              onClick={(e) => {
+                e.stopPropagation(); // 别顺手展开目录/打开预览
+                void startDownload(en);
+              }}
+              style={{ width: 22, height: 22, flex: "none" }}
+            >
+              {downloadingPath === en.path ? (
+                <span className="spinner" style={{ width: 10, height: 10 }} />
+              ) : (
+                <IconDownload size={11} color="var(--t4)" />
               )}
             </button>
           )}

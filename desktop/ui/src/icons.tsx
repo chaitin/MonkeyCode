@@ -237,6 +237,21 @@ export function IconX({ size = 9, color = "var(--t5)", style }: IconProps) {
   );
 }
 
+/** 下载(托盘 + 下箭头) */
+export function IconDownload({ size = 12, color = "var(--t3)", style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" style={{ ...base, ...style }}>
+      <path
+        d="M2.5 9.8v1.4a1.3 1.3 0 0 0 1.3 1.3h6.4a1.3 1.3 0 0 0 1.3-1.3V9.8M7 2.4v6.8M4.2 6.4 7 9.2l2.8-2.8"
+        stroke={color}
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** 上传(托盘 + 上箭头) */
 export function IconUpload({ size = 12, color = "var(--t3)", style }: IconProps) {
   return (

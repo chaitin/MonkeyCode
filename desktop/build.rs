@@ -66,6 +66,7 @@ fn main() {
                 "mc_task_options",
                 "mc_upload",
                 "mc_file_upload",
+                "mc_file_download",
             ]),
         ),
     )

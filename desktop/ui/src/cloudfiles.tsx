@@ -4,8 +4,9 @@
 // repo_file_diff(与 web 控制台 task-file-explorer 同一套 kind 与字段),
 // 差异是 base64 内容解码、entry_mode 判目录、读取上限与唤醒超时余量。
 import { useEffect, useRef, useState } from "react";
-import { connectCloudControl, mcFileUpload, type CloudControl } from "./cloudapi";
+import { connectCloudControl, mcFileDownload, mcFileUpload, type CloudControl } from "./cloudapi";
 import { readDataURL } from "./cloudUpload";
+import { pickSaveFile } from "./host";
 import type { CloudFileChange, CloudRepoFile } from "./types";
 import { b64decode } from "./codec";
 import { FilesDrawer, fmtSize, type FsAdapter } from "./filesdrawer";
@@ -96,8 +97,8 @@ export function CloudFilesDrawer({
     },
     diffTransientKind: "plain",
     clearErrOnListSuccess: true,
-    // 上传(REST 直达 VM,壳代理 multipart;与 web 控制台同一端点与 10MB 上限)。
-    // 顺序上传、失败即止:已传成功的部分随抽屉强刷可见,错误在列表区外显
+    // 上传/下载(REST 直达 VM,壳代理;与 web 控制台同一端点)。
+    // 上传顺序进行、失败即止:已传成功的部分随抽屉强刷可见,错误在列表区外显
     ...(vmId
       ? {
           upload: async (dir: string, files: File[]) => {
@@ -108,6 +109,14 @@ export function CloudFilesDrawer({
               await mcFileUpload(vmId, vmPath(dir, f.name), dataURL.slice(dataURL.indexOf(",") + 1));
             }
             void refreshChanges();
+          },
+          // 下载:原生「另存为」定位置,壳带会话流式落盘;目录服务端打 zip
+          download: async (en: { path: string; name: string; isDir: boolean }) => {
+            const filename = en.isDir ? en.name + ".zip" : en.name;
+            const dest = await pickSaveFile(filename);
+            if (!dest) return false; // 用户取消
+            await mcFileDownload(vmId, "/workspace/" + en.path, filename, dest);
+            return true;
           },
         }
       : {}),
