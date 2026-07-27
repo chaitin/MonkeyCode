@@ -470,6 +470,14 @@ fn show_main(app: AppHandle, session_id: Option<String>) {
     show_main_session(&app, session_id.as_deref());
 }
 
+/// 排障入口:壳内右键改自绘菜单后不再暴露"检查元素",devtools 由 UI 侧
+/// 快捷键(F12 / Ctrl|Cmd+Shift+I)经此命令打开;能力依赖 Cargo 的
+/// devtools feature,release 包保留。
+#[tauri::command]
+fn open_devtools(window: tauri::WebviewWindow) {
+    window.open_devtools();
+}
+
 /// Windows 隐藏状态页→原生 layered window 的视觉快照。
 /// 非 Windows 继续由 pet.html 自己渲染,命令保留为跨平台空操作,
 /// 使同一份内置页不需分叉打包。
@@ -1011,6 +1019,7 @@ fn main() {
             take_ui_intent,
             host_info,
             show_main,
+            open_devtools,
             pet_native_render,
             update_check,
             update_install,

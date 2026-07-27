@@ -35,7 +35,7 @@ marked.use({
 });
 
 /** 复制到剪贴板:异步 API 不可用/被拒时回退 execCommand(Win7 WebView2 无 clipboard API) */
-function copyText(text: string) {
+export function copyText(text: string) {
   const fallback = () => {
     const ta = document.createElement("textarea");
     ta.value = text;
