@@ -49,17 +49,29 @@ function Brand({ logo = false }: { logo?: boolean }) {
   );
 }
 
-/** macOS 壳侧栏顶部的红绿灯落区:50px 拖拽区(Tauri 的拖拽区机制是
+/** macOS 壳顶部的红绿灯落区:50px 拖拽区(Tauri 的拖拽区机制是
  * data-tauri-drag-region 属性,不是 CSS app-region);非 mac 壳 12px 普通留白。
- * 主侧栏与设置页左导航共用,保证两态顶部对齐不跳动。
- *
- * 这里曾经兼作品牌位(字标 + 徽标),撤了:一级栏顶部已有 31px 的猴子 logo,
- * 字标就在它右边 30px 处,同一个品牌说两遍;再往下还紧跟着更大更重的
- * 「本地项目」标题,三层堆在一起太挤。品牌只留在 Windows 自绘标题栏里
- * (那是独立一条 36px 的栏,不与侧栏标题争位置)。 */
+ * 一级栏与设置页左导航用它,保证各态顶部对齐不跳动;主侧栏面板顶部
+ * 用的是同高的 MacBrandBand(带品牌)。 */
 export function MacDragSpacer() {
   return isMacShell() ? (
     <div data-tauri-drag-region="" style={{ height: 50, flex: "none" }} />
+  ) : (
+    <div style={{ height: 12, flex: "none" }} />
+  );
+}
+
+/** macOS 壳主侧栏顶部的品牌带:与 Windows 自绘标题栏同款字标 + 徽标,
+ * 高度同 MacDragSpacer(50px),整条可拖拽。左内边距 14px 顺带让开了
+ * 越界的绿色缩放键(它压出 62px 一级栏几个像素,见 styles.css 的
+ * .mc-nav-rail 注释)。与一级栏 31px logo 并存是有意的:字标在带内、
+ * logo 在带下方,分属两层不再同排争位。
+ * 非 mac 壳退化为 12px 留白——Windows 的品牌在自绘标题栏里,不重复。 */
+export function MacBrandBand() {
+  return isMacShell() ? (
+    <div data-tauri-drag-region="" style={{ height: 50, flex: "none", display: "flex", alignItems: "center", gap: 6, padding: "0 14px", overflow: "hidden" }}>
+      <Brand />
+    </div>
   ) : (
     <div style={{ height: 12, flex: "none" }} />
   );

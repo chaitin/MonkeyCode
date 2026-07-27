@@ -19,10 +19,10 @@ afterEach(() => {
 });
 
 describe("一级导航栏的栏宽归属", () => {
-  // mac 壳的红绿灯盖在这一栏左上角:栏宽随窗宽变,右分隔线在 mac 下还要让开
-  // 顶部一段(styles.css .mc-nav-rail 与 ::after)。内联样式压得过这些规则,
-  // 红绿灯压线的毛病会就此静默复发——而它只在 mac 上看得见。
-  it("栏宽与右边线不写在内联样式里,留给 CSS 按平台与窗宽决定", () => {
+  // mac 壳的红绿灯盖在这一栏左上角:栏宽随窗宽变,右分隔线和底色在 mac 下
+  // 还要让开顶部一段(styles.css .mc-nav-rail 与 ::after)。内联样式压得过
+  // 这些规则,红绿灯压线/跨色的毛病会就此静默复发——而它只在 mac 上看得见。
+  it("栏宽、右边线与底色不写在内联样式里,留给 CSS 按平台与窗宽决定", () => {
     const html = renderToStaticMarkup(
       <Sidebar
         sessions={[]}
@@ -54,6 +54,7 @@ describe("一级导航栏的栏宽归属", () => {
     expect(rail, "找不到 mc-nav-rail").not.toBeNull();
     expect(rail![1]).not.toMatch(/(^|;)\s*width:/);
     expect(rail![1]).not.toMatch(/border-right/);
+    expect(rail![1]).not.toMatch(/background/);
   });
 });
 

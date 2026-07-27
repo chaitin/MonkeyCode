@@ -22,7 +22,7 @@ import { isWindowsShell } from "./host";
 import logoUrl from "./logo.png";
 import { isProjectArchived, projectArchiveKey } from "./projectArchive";
 import { applyProjectOrder, persistProjectOrder, readProjectOrder, reorderProjects } from "./projectOrder";
-import { MacDragSpacer } from "./titlebar";
+import { MacBrandBand, MacDragSpacer } from "./titlebar";
 import type { CloudProject, CloudTask, McConnectionState, SessionMeta } from "./types";
 
 export interface ProjectGroup {
@@ -1135,9 +1135,9 @@ export function Sidebar({
 
   return (
     <div className="mc-sidebar-shell" style={{ flex: "none", display: "flex", minHeight: 0 }}>
-      {/* 栏宽与右分隔线都在 styles.css(.mc-nav-rail):窄窗要收窄,mac 下分隔线
-          还要为红绿灯让开顶部一段——写成内联样式就把这些规则全挡了 */}
-      <div className="mc-nav-rail" style={{ flex: "none", display: "flex", flexDirection: "column", alignItems: "center", background: "var(--rail)" }}>
+      {/* 栏宽、右分隔线、底色都在 styles.css(.mc-nav-rail):窄窗要收窄,mac 下
+          分隔线和底色还要为红绿灯让开顶部一段——写成内联样式就把这些规则全挡了 */}
+      <div className="mc-nav-rail" style={{ flex: "none", display: "flex", flexDirection: "column", alignItems: "center" }}>
         <MacDragSpacer />
         {!isWindowsShell() && <img src={logoUrl} alt="MonkeyCode" draggable={false} style={{ width: 31, height: 31, borderRadius: 9, margin: "2px 0 15px" }} />}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
@@ -1156,7 +1156,7 @@ export function Sidebar({
       </div>
 
       <aside className="mc-sidebar-panel" style={{ width: 232, flex: "none", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--side)", borderRight: "1px solid var(--line)" }}>
-        <MacDragSpacer />
+        <MacBrandBand />
         <PanelHeader title={panel.title} detail={panel.detail}>{panel.actions}</PanelHeader>
         <SearchBox value={query} placeholder={panel.placeholder} onChange={setQuery} />
         <div

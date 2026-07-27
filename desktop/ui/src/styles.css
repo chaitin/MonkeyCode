@@ -574,22 +574,25 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   background: var(--card) !important;
 }
 
-/* 一级空间导航的栏宽与右分隔线。
+/* 一级空间导航的栏宽、底色与右分隔线。
  *
  * mac 壳用 TitleBarStyle::Overlay(src/main.rs),原生红绿灯直接盖在这一栏的
- * 左上角,最右那颗缩放键会越过 62px 的栏、正压在右分隔线上。
+ * 左上角,最右那颗缩放键会越过 62px 的栏、正压在右分隔线和底色交界上。
  *
  * 按钮的**大小与间距改不了**:那是 AppKit 画的标准 NSWindow 按钮,tao 的
  * inset_traffic_lights(tao 0.35 macos/view.rs)只调 setFrameOrigin 整组平移,
  * 连间距都是从系统按钮布局里读出来的,不是可传的参数。所以只有两条路:
- * 把栏加宽到容得下,或者别让线穿过它们。这里选后者——栏宽维持 62px,
- * 右分隔线从拖拽区下沿(50px,= MacDragSpacer 高度)才开始画。
- *
- * 线让开之后,按钮越界的那几像素只是压在 --rail 与 --side 的交界上,而这两档
- * 底色本就相邻(浅色 #edf1ee / #f6f8f6),几乎看不出;1px 的硬线穿过按钮才刺眼。
- * 这条也不依赖红绿灯的确切宽度——系统改了按钮尺寸它依然成立。
+ * 把栏加宽到容得下,或者别让任何边界穿过它们。这里选后者——栏宽维持 62px,
+ * 顶部 50px(= MacDragSpacer / MacBrandBand 高度)整段染成侧栏的 --side,
+ * 右分隔线也从这条下沿才开始画:三颗按钮坐在一整块单色上,没有线也没有
+ * 色差从中穿过。50px 以下 --side→--rail 的换色被紧贴其下的 31px logo 压住,
+ * 读作"一级栏从 logo 开始"。
+ * 这条不依赖红绿灯的确切宽度——系统改了按钮尺寸它依然成立。
  * data-platform 在 ui/src/main.tsx 落到根节点。 */
-.mc-nav-rail { width: 62px; position: relative; }
+.mc-nav-rail { width: 62px; position: relative; background: var(--rail); }
+[data-platform="mac"] .mc-nav-rail {
+  background: linear-gradient(to bottom, var(--side) 0 50px, var(--rail) 50px);
+}
 .mc-nav-rail::after {
   content: "";
   position: absolute;
