@@ -2171,6 +2171,21 @@ const en = {
         },
       },
     },
+    desktop: {
+      title: "Desktop client",
+      subtitle: "The desktop app supports both local and cloud Agents. Run AI tasks directly on your machine or connect to the cloud development environment — with deep filesystem, terminal, and editor integration for a seamless experience.",
+      items: {
+        windows: {
+          cta: "Download for Windows",
+        },
+        macos: {
+          cta: "Download for macOS",
+        },
+        linux: {
+          cta: "Download for Linux",
+        },
+      },
+    },
     selfHosting: {
       title: "Private deployment",
       subtitle: "When teams need AI development capabilities inside the corporate intranet, MonkeyCode can be deployed independently to manage developers, environments, and model configuration in one place.",

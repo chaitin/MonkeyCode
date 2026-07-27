@@ -2,7 +2,7 @@ import { useAppRuntime } from "@/components/app-runtime-provider";
 import Icon from "@/components/common/Icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { IconArrowRight, IconBrandAndroid, IconBrandApple, IconCheck, IconCoins, IconDownload, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconHelpCircle, IconSend, IconX } from "@tabler/icons-react";
+import { IconArrowRight, IconBrandAndroid, IconBrandApple, IconBrandWindows, IconCheck, IconCoins, IconDownload, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconHelpCircle, IconSend, IconTerminal, IconX } from "@tabler/icons-react";
 import type { TFunction } from "i18next";
 import React from "react";
 import { useTranslation } from "react-i18next";
@@ -110,6 +110,27 @@ const mobileClientItems = [
     icon: IconBrandApple,
     href: "https://apps.apple.com/cn/app/monkeycode%E7%BC%96%E7%A8%8B%E5%8A%A9%E6%89%8B/id6777423440",
     i18nKey: "ios",
+  },
+] as const;
+
+const desktopClientItems = [
+  {
+    platform: "Windows",
+    icon: IconBrandWindows,
+    href: "https://release.monkeycode-ai.com/public/desktop/MonkeyCode_latest_x64-setup.exe",
+    i18nKey: "windows",
+  },
+  {
+    platform: "macOS",
+    icon: IconBrandApple,
+    href: "https://release.monkeycode-ai.com/public/desktop/MonkeyCode_latest_universal.dmg",
+    i18nKey: "macos",
+  },
+  {
+    platform: "Linux",
+    icon: IconTerminal,
+    href: "https://release.monkeycode-ai.com/public/desktop/MonkeyCode_latest_amd64.AppImage",
+    i18nKey: "linux",
   },
 ] as const;
 
@@ -514,8 +535,45 @@ export default function TerminalNativePage() {
         </SectionShell>
 
         <SectionShell
-          id="mobile-client"
+          id="desktop-client"
           index="03"
+          label="DESKTOP CLIENT"
+          title={t("terminalNative.desktop.title")}
+          subtitle={t("terminalNative.desktop.subtitle")}
+        >
+          <div className="grid gap-4 md:grid-cols-3">
+            {desktopClientItems.map((item) => (
+              <div
+                key={item.platform}
+                className="rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6 transition-colors hover:border-[rgba(124,242,156,0.32)] hover:bg-[rgba(124,242,156,0.025)]"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex size-11 shrink-0 items-center justify-center rounded border border-[rgba(124,242,156,0.16)] bg-[rgba(124,242,156,0.06)] text-[var(--a-accent)]">
+                    <item.icon className="size-6" />
+                  </span>
+                  <div>
+                    <h3 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--a-accent)]">
+                      {item.platform}
+                    </h3>
+                  </div>
+                </div>
+                <a
+                  href={item.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded border border-[rgba(124,242,156,0.24)] bg-[rgba(124,242,156,0.08)] px-4 py-3 text-sm font-semibold text-[var(--a-accent)] transition-colors hover:bg-[rgba(124,242,156,0.14)] hover:text-[var(--a-fg)]"
+                >
+                  <IconDownload className="size-4" />
+                  {t(`terminalNative.desktop.items.${item.i18nKey}.cta`)}
+                </a>
+              </div>
+            ))}
+          </div>
+        </SectionShell>
+
+        <SectionShell
+          id="mobile-client"
+          index="04"
           label="MOBILE CLIENT"
           title={t("terminalNative.mobile.title")}
           subtitle={t("terminalNative.mobile.subtitle")}
@@ -552,7 +610,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="self-hosting"
-          index="04"
+          index="05"
           label="SELF HOSTING"
           title={t("terminalNative.selfHosting.title")}
           subtitle={t("terminalNative.selfHosting.subtitle")}
@@ -588,7 +646,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="why"
-          index="05"
+          index="06"
           label="WHY MONKEYCODE"
           title={t("terminalNative.compare.title")}
           subtitle={t("terminalNative.compare.subtitle")}
@@ -659,7 +717,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="testimonials"
-          index="06"
+          index="07"
           label="WHAT DEVS SAY"
           title={t("terminalNative.testimonials.title")}
           subtitle={t("terminalNative.testimonials.subtitle")}
@@ -680,7 +738,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="pricing"
-          index="07"
+          index="08"
           label="PRICING"
           title={t("terminalNative.pricing.title")}
           subtitle={t("terminalNative.pricing.subtitle")}
@@ -889,7 +947,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="faq"
-          index="08"
+          index="09"
           label="FAQ"
           title={t("terminalNative.faq.title")}
           subtitle={t("terminalNative.faq.subtitle")}
