@@ -89,11 +89,8 @@ export async function openExtensionDir(): Promise<string | null> {
   return invoke<string>("open_extension_dir");
 }
 
-/** 枚举 WSL 发行版。非壳环境、非 Windows 或未装 WSL 均返回空数组。
- *
- * 当前无调用方:WSL 运行环境尚未移植(driver/transport.rs 对
- * kernel_env=wsl:* 硬错误),设置页因此不提供发行版下拉。Rust 侧命令
- * 与 wsl.rs 一并保留,移植完成后此函数原地复用。 */
+/** 枚举 WSL 发行版(设置页「运行环境」下拉)。非壳环境、非 Windows 或
+ * 未装 WSL 均返回空数组。 */
 export async function listWslDistros(): Promise<string[]> {
   if (!tauri()?.core?.invoke) return [];
   try {

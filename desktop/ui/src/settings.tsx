@@ -13,6 +13,7 @@ import {
   inDesktopShell,
   isMacShell,
   isWindowsShell,
+  listWslDistros,
   openExtensionDir,
   repairBrowserExt,
   saveHostConfig,
@@ -458,7 +459,8 @@ export function SettingsView({
   const [mcps, setMcps] = useState<McpEntry[]>([]);
   const [mcpExpanded, setMcpExpanded] = useState<number | null>(null);
   const [baizhiMcpOpen, setBaizhiMcpOpen] = useState(true); // 百智云 MCP 组(默认展开)
-  const [kernelEnv, setKernelEnv] = useState(""); // 内核运行环境:"" 本机 / "wsl:<发行版>"(wsl 暂未支持,只读退出)
+  const [kernelEnv, setKernelEnv] = useState(""); // 内核运行环境:"" 本机 / "wsl:<发行版>"
+  const [wslDistros, setWslDistros] = useState<string[] | null>(null); // WSL 发行版列表(null=未加载)
   const [caps, setCaps] = useState<EngineCaps | null>(null); // 当前引擎能力(浏览器 tab 按此隐藏)
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState("");
@@ -520,6 +522,8 @@ export function SettingsView({
       })
       .catch((e) => setErr("读取配置失败: " + (e instanceof Error ? e.message : String(e))));
     void engineCaps().then(setCaps).catch(() => {});
+    // 运行环境下拉的发行版列表(读注册表,失败/非 Windows 返回空)
+    if (isWindowsShell()) void listWslDistros().then(setWslDistros);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desktop]);
 
@@ -1074,22 +1078,32 @@ export function SettingsView({
           </div>
         </div>
       </Section>
-      {/* WSL 运行环境随单引擎化尚未移植:driver/transport.rs 对
-          kernel_env=wsl:* 直接硬错误。因此**不提供选择入口**——列出选项
-          等于给用户一条必然启动失败的路。仅当配置里已存在 wsl:* 时露出
-          这张卡,让此前误配的用户有路可退(否则入口一藏就再也切不回来)。
-          移植完成后在此恢复发行版下拉,host.listWslDistros 已就位。 */}
-      {desktop && isWindowsShell() && kernelEnv.startsWith("wsl:") && (
+      {/* 内核运行环境:Windows 本机 / WSL 发行版(仅 Windows 壳显示)。
+          发行版列表读注册表(list_wsl_distros),未装 WSL 即空列表只留本机;
+          当前值不在列表(发行版被删)时保留一个标注项,用户能看到现状并切走。 */}
+      {desktop && isWindowsShell() && (
         <Section label="运行环境">
           <div className="card card-lg" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-            <span style={{ fontSize: 12.5, color: "var(--warn)", fontWeight: 600 }}>
-              当前配置为 WSL · {kernelEnv.slice(4)},该运行环境暂未支持,引擎无法启动。
-            </span>
-            <button type="button" style={{ ...whiteBtn, alignSelf: "flex-start" }} onClick={() => setKernelEnv("")}>
-              切回 Windows 本机
-            </button>
+            <Field label="内核运行环境">
+              <select style={select} value={kernelEnv} onChange={(e) => setKernelEnv(e.target.value)}>
+                <option value="">Windows 本机</option>
+                {(wslDistros ?? []).map((d) => (
+                  <option key={d} value={`wsl:${d}`}>WSL · {d}</option>
+                ))}
+                {kernelEnv.startsWith("wsl:") && !(wslDistros ?? []).includes(kernelEnv.slice(4)) && (
+                  <option value={kernelEnv}>WSL · {kernelEnv.slice(4)}(未检测到)</option>
+                )}
+              </select>
+            </Field>
+            {kernelEnv.startsWith("wsl:") && !(wslDistros ?? []).includes(kernelEnv.slice(4)) && (
+              <span style={{ fontSize: 12.5, color: "var(--warn)", fontWeight: 600 }}>
+                未检测到发行版 {kernelEnv.slice(4)},引擎将无法启动;可切回 Windows 本机或先安装该发行版。
+              </span>
+            )}
             <span style={{ fontSize: 12, color: "var(--t5)", lineHeight: 1.7 }}>
-              切换后点右上角「保存」生效。WSL 支持会随引擎移植完成重新开放。
+              选择 WSL 后,任务在发行版内运行,项目需位于发行版文件系统(如 /home/…)。
+              切换后点右上角「保存」生效(会重启内核);浏览器工具在 WSL 的 NAT 网络下暂不可用
+              (mirrored 网络不受影响)。
             </span>
           </div>
         </Section>
