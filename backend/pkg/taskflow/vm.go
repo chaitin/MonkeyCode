@@ -9,6 +9,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/chaitin/MonkeyCode/backend/pkg/request"
+	"github.com/chaitin/MonkeyCode/backend/pkg/telemetry"
 )
 
 type virtualMachineClient struct {
@@ -100,7 +101,7 @@ func (v *virtualMachineClient) Terminal(ctx context.Context, req *TerminalReq) (
 		values.Add("mode", fmt.Sprintf("%d", req.Mode))
 		u.RawQuery = values.Encode()
 
-		conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{})
+		conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: telemetry.TraceHeader(ctx)})
 		if err != nil {
 			return nil, err
 		}
@@ -147,7 +148,7 @@ func (v *virtualMachineClient) Reports(ctx context.Context, req ReportSubscribeR
 	}
 	u.RawQuery = values.Encode()
 
-	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{})
+	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: telemetry.TraceHeader(ctx)})
 	if err != nil {
 		return nil, err
 	}

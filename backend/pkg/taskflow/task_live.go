@@ -7,6 +7,8 @@ import (
 	"net/url"
 
 	"github.com/coder/websocket"
+
+	"github.com/chaitin/MonkeyCode/backend/pkg/telemetry"
 )
 
 // TaskLive 连接 taskflow 的 task-live WebSocket 并处理消息流
@@ -26,7 +28,8 @@ func (c *Client) TaskLive(ctx context.Context, taskID string, flush bool, fn fun
 	values.Add("flush", fmt.Sprintf("%t", flush))
 	u.RawQuery = values.Encode()
 
-	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{})
+	ctx = telemetry.WithTaskID(ctx, taskID)
+	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: telemetry.TraceHeader(ctx)})
 	if err != nil {
 		return err
 	}
