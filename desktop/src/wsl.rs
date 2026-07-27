@@ -1,6 +1,7 @@
-// WSL 内核支持:Windows 上壳把内核 spawn 进 WSL 发行版(wsl.exe -d <d> --exec)。
-// WSL2 localhostForwarding(默认开)让 WSL 内监听的 127.0.0.1:port 可从
-// Windows 侧直连,origin 不变,壳的端口/令牌/探活机制全部原样复用。
+// WSL 运行环境支持:Windows 上壳把 ohmyagent 引擎 spawn 进 WSL 发行版
+// (wsl.exe -d <d> --exec <登录shell> -l -c …,stdio 经中继透传)。引擎数据
+// 留 Windows 侧经 /mnt/c 访问;会话 workdir 是 guest Linux 路径,壳侧经
+// \\wsl$ UNC 访问(repo 浏览、附件上传共用 host_fs_view/unc_path)。
 //
 // 本模块全平台编译:Linux 开发机可经 MC_WSL_EXE 指向假 wsl 脚本冒烟整条
 // 代码路径;仅 CREATE_NO_WINDOW 之类 Windows 细节 cfg 局部化。
@@ -15,10 +16,48 @@ pub fn wsl_exe() -> String {
 }
 
 /// guest 内 Linux 绝对路径 → Windows 侧可见的 UNC 路径(\\wsl$\<发行版>\…)。
-/// 壳跨 host/guest 的文件系统访问统一走这里(repo 浏览、附件上传共用);
-/// M3(ohmy WSL 模式)若改用 \\wsl.localhost\ 等新形式,此函数是唯一改动点。
+/// 壳跨 host/guest 的文件系统访问统一经 host_fs_view 走到这里。
+#[cfg_attr(not(windows), allow(dead_code))] // 非 Windows 只有 host_fs_view 的恒等分支
 pub fn unc_path(distro: &str, guest_path: &str) -> PathBuf {
     PathBuf::from(format!(r"\\wsl$\{}{}", distro, guest_path.replace('/', r"\")))
+}
+
+/// unc_path 的逆:`\\wsl$\<d>\…` / `\\wsl.localhost\<d>\…` → (发行版, guest 路径)。
+/// 目录选择对话框在 WSL 模式下返回 UNC 形态,入会话前经此回译为引擎可用的
+/// Linux 路径;非 UNC(或不是 WSL 共享)返回 None。前缀按 Windows 语义
+/// 不区分大小写。
+pub fn guest_path_of_unc(path: &str) -> Option<(String, String)> {
+    fn strip_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
+        let head = s.get(..prefix.len())?;
+        head.eq_ignore_ascii_case(prefix).then(|| &s[prefix.len()..])
+    }
+    let rest =
+        strip_ci(path, r"\\wsl$\").or_else(|| strip_ci(path, r"\\wsl.localhost\"))?;
+    let (distro, tail) = match rest.split_once('\\') {
+        Some((d, t)) => (d, format!("/{}", t.replace('\\', "/"))),
+        None => (rest, "/".to_string()),
+    };
+    if distro.is_empty() {
+        return None;
+    }
+    // 去掉对话框可能带的尾随分隔符(\\wsl$\d\home\u\ → /home/u)
+    let tail = if tail.len() > 1 { tail.trim_end_matches('/').to_string() } else { tail };
+    Some((distro.to_string(), tail))
+}
+
+/// guest 路径的宿主文件系统视角:Windows 经 \\wsl$ UNC;非 Windows
+/// (MC_WSL_EXE 假脚本冒烟,guest == host)原样返回。会话目录判定/创建、
+/// repo 浏览、附件落盘等所有"壳侧 std::fs 摸 guest 文件"的点统一走这里。
+pub fn host_fs_view(distro: &str, guest_path: &str) -> PathBuf {
+    #[cfg(windows)]
+    {
+        unc_path(distro, guest_path)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = distro;
+        PathBuf::from(guest_path)
+    }
 }
 
 /// kernel_env 配置值解析:"wsl:<distro>" → Some(distro),其余(本机)→ None。
@@ -247,18 +286,37 @@ fn parse_distro_list(out: &str) -> Vec<String> {
         .collect()
 }
 
-/// 预热 VM + 校验发行版可运行 + 批量把 Windows 路径翻译为发行版内 Linux 路径,
-/// 一次 wsl 调用完成(VM 冷启的秒数在此吸收,45s 预算)。
-/// 返回与 win_paths 一一对应的 Linux 路径。
-#[allow(dead_code)] // M3(ohmy WSL 模式)复用:路径翻译 + 预热
-pub fn prepare(distro: &str, win_paths: &[&Path]) -> Result<Vec<String>, String> {
+/// prepare 的产出:guest 环境概况 + 与 win_paths 一一对应的 Linux 路径。
+pub struct WslPrep {
+    /// guest 内用户家目录($HOME):`~` 展开与 workdir 空缺回退用
+    pub guest_home: String,
+    /// 用户登录 shell(getent passwd 第 7 列):引擎经 `<shell> -l -c` 包一层
+    /// 启动,PATH 才带上 profile 里的 nvm/pyenv 等(MCP stdio 子进程依赖)
+    pub login_shell: String,
+    /// `wslinfo --networking-mode` 的结果:"mirrored" 时 guest 访 127.0.0.1
+    /// 可直达宿主(浏览器 MCP 可用);"nat"(或老版无 wslinfo)降级
+    pub networking: String,
+    /// 与入参 win_paths 一一对应的 guest 侧 Linux 路径
+    pub paths: Vec<String>,
+}
+
+/// 预热 VM + 校验发行版可运行 + 采集 guest 环境(home/登录 shell/网络模式)
+/// + 批量把 Windows 路径翻译为发行版内 Linux 路径,一次 wsl 调用完成
+/// (VM 冷启的秒数在此吸收,45s 预算)。每次引擎启动调用,不做进程级缓存
+/// (用户可能换发行版)。
+pub fn prepare(distro: &str, win_paths: &[&Path]) -> Result<WslPrep, String> {
+    // 前三行恒非空(有兜底值),第四行起逐路径翻译;任一 wslpath 失败即整体失败
+    const SCRIPT: &str = r#"printf '%s\n' "${HOME:-/root}"
+s="$(getent passwd "$(id -un)" | cut -d: -f7)"; printf '%s\n' "${s:-/bin/sh}"
+wslinfo --networking-mode 2>/dev/null || echo nat
+for p in "$@"; do wslpath -u "$p" || exit 1; done"#;
     let mut args: Vec<String> = vec![
         "-d".into(),
         distro.into(),
         "--exec".into(),
         "/bin/sh".into(),
         "-c".into(),
-        r#"for p in "$@"; do wslpath -u "$p" || exit 1; done"#.into(),
+        SCRIPT.into(),
         "sh".into(),
     ];
     args.extend(win_paths.iter().map(|p| p.to_string_lossy().into_owned()));
@@ -268,20 +326,63 @@ pub fn prepare(distro: &str, win_paths: &[&Path]) -> Result<Vec<String>, String>
              系统睡眠恢复后异常可先执行 `wsl --shutdown` 再重启应用。"
         )
     })?;
+    parse_prepare_output(&out, win_paths.len())
+}
+
+/// prepare 输出解析(拆出便于单测):HOME、登录 shell、网络模式各一行,
+/// 随后 expected_paths 行路径翻译。
+fn parse_prepare_output(out: &str, expected_paths: usize) -> Result<WslPrep, String> {
     let lines: Vec<String> = out
         .lines()
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         .collect();
-    if lines.len() != win_paths.len() {
+    if lines.len() != expected_paths + 3 {
         return Err(format!(
-            "WSL 路径翻译结果异常(期望 {} 行,得到 {} 行): {}",
-            win_paths.len(),
+            "WSL 环境采集结果异常(期望 {} 行,得到 {} 行): {}",
+            expected_paths + 3,
             lines.len(),
             out.trim()
         ));
     }
-    Ok(lines)
+    Ok(WslPrep {
+        guest_home: lines[0].clone(),
+        login_shell: lines[1].clone(),
+        networking: lines[2].to_lowercase(),
+        paths: lines[3..].to_vec(),
+    })
+}
+
+/// guest 内网络模式探测(mcp.json 物化时决定浏览器 MCP 是否可用)。
+/// 失败(未装 WSL、老版无 wslinfo、发行版异常)一律视为 "nat" 降级。
+pub fn networking_mode(distro: &str) -> String {
+    let args: Vec<String> = ["-d", distro, "--exec", "/bin/sh", "-c",
+        "wslinfo --networking-mode 2>/dev/null || echo nat"]
+        .map(String::from)
+        .to_vec();
+    match run_wsl(&args, Duration::from_secs(30)) {
+        Ok(out) => {
+            let mode = out.trim().to_lowercase();
+            if mode.is_empty() { "nat".into() } else { mode }
+        }
+        Err(e) => {
+            eprintln!("[desktop] WSL 网络模式探测失败,按 nat 处理: {e}");
+            "nat".into()
+        }
+    }
+}
+
+/// 兜底清理 guest 内残活的引擎进程。`child.kill()` 只杀 wsl.exe 中继,
+/// guest 引擎可能继续活着写 sessions——启动失败/强杀/崩溃重启前都补一刀。
+/// pkill -x 按 comm 精确匹配(内核截 15 字符,名字先截齐);无匹配
+/// (退出码 1,引擎已自退的常态)与失败都只记日志,不上抛。
+pub fn kill_guest_engine(distro: &str, bin_name: &str) {
+    let pattern: String = bin_name.chars().take(15).collect();
+    let args: Vec<String> =
+        ["-d", distro, "--exec", "pkill", "-x", &pattern].map(String::from).to_vec();
+    if let Err(e) = run_wsl(&args, Duration::from_secs(10)) {
+        eprintln!("[desktop] WSL 引擎兜底清理(无匹配即已退出,属常态): {e}");
+    }
 }
 
 /// Windows 上 GUI 进程 spawn 控制台子系统 exe 会弹黑窗,统一在此加
@@ -333,6 +434,57 @@ mod tests {
         assert_eq!(distro_of(""), None);
         assert_eq!(distro_of("wsl:"), None);
         assert_eq!(distro_of("Ubuntu"), None);
+    }
+
+    #[test]
+    fn guest_path_of_unc_roundtrip() {
+        assert_eq!(
+            guest_path_of_unc(r"\\wsl$\Ubuntu-22.04\home\u\proj"),
+            Some(("Ubuntu-22.04".into(), "/home/u/proj".into()))
+        );
+        assert_eq!(
+            guest_path_of_unc(r"\\wsl.localhost\Debian\home\u"),
+            Some(("Debian".into(), "/home/u".into()))
+        );
+        // 前缀大小写不敏感(Windows 语义);发行版名大小写保留
+        assert_eq!(
+            guest_path_of_unc(r"\\WSL$\Ubuntu\opt"),
+            Some(("Ubuntu".into(), "/opt".into()))
+        );
+        // 尾随分隔符去除;裸发行版根 → "/"
+        assert_eq!(
+            guest_path_of_unc(r"\\wsl$\Ubuntu\home\u\"),
+            Some(("Ubuntu".into(), "/home/u".into()))
+        );
+        assert_eq!(guest_path_of_unc(r"\\wsl$\Ubuntu"), Some(("Ubuntu".into(), "/".into())));
+        // 中文发行版名
+        assert_eq!(
+            guest_path_of_unc(r"\\wsl$\测试版\home"),
+            Some(("测试版".into(), "/home".into()))
+        );
+        // 非 WSL UNC 与本机路径
+        assert_eq!(guest_path_of_unc(r"\\server\share"), None);
+        assert_eq!(guest_path_of_unc(r"C:\Users\u"), None);
+        assert_eq!(guest_path_of_unc("/home/u"), None);
+        assert_eq!(guest_path_of_unc(r"\\wsl$\"), None);
+    }
+
+    #[test]
+    fn prepare_output_parsing() {
+        let out = "/home/u\n/usr/bin/zsh\nmirrored\n/mnt/c/bin/ohmyagent-linux\n/mnt/c/cfg\n";
+        let p = parse_prepare_output(out, 2).unwrap();
+        assert_eq!(p.guest_home, "/home/u");
+        assert_eq!(p.login_shell, "/usr/bin/zsh");
+        assert_eq!(p.networking, "mirrored");
+        assert_eq!(p.paths, vec!["/mnt/c/bin/ohmyagent-linux", "/mnt/c/cfg"]);
+
+        // 网络模式统一小写;空行被滤掉不影响行数(CRLF 已由 decode 处理)
+        let p = parse_prepare_output("/root\n/bin/sh\nNAT\n\n/mnt/c/a\n", 1).unwrap();
+        assert_eq!(p.networking, "nat");
+        assert_eq!(p.paths, vec!["/mnt/c/a"]);
+
+        // 行数不符(某个 wslpath 失败提前退出)→ 报错带原文
+        assert!(parse_prepare_output("/root\n/bin/sh\nnat\n", 2).is_err());
     }
 
     #[test]

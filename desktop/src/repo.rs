@@ -23,10 +23,10 @@ pub struct RepoCtx {
 }
 
 impl RepoCtx {
-    /// 本地文件系统视角的工作区根(WSL 模式转 UNC)。
+    /// 本地文件系统视角的工作区根(WSL 模式转 UNC;Linux 冒烟恒等)。
     fn fs_root(&self) -> PathBuf {
         match &self.wsl_distro {
-            Some(d) => crate::wsl::unc_path(d, &self.workdir),
+            Some(d) => crate::wsl::host_fs_view(d, &self.workdir),
             None => PathBuf::from(&self.workdir),
         }
     }

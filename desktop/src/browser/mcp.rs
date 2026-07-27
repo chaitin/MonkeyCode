@@ -42,7 +42,10 @@ pub struct CallScope {
 
 /// 解析/校验调用工作区。None 只跳过截图落盘，不影响浏览器操作；owner
 /// 隔离由 MCP protocol session + Agent session id 完成，不拿工作区充当锁。
-pub type WorkdirFn = Arc<dyn Fn(&CallScope) -> Result<Option<String>, String> + Send + Sync>;
+/// 归属解析:返回 (workdir, wsl_distro)。distro 仅 WSL 运行环境为 Some,
+/// 截图落盘经 \\wsl$ 视角写进 guest 工作区。
+pub type WorkdirFn =
+    Arc<dyn Fn(&CallScope) -> Result<Option<(String, Option<String>)>, String> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct McpSessions(Arc<McpSessionsInner>);
@@ -369,7 +372,7 @@ fn call_scope(params: &Value) -> CallScope {
 /// 工具分派:名称/入参形态对齐 ops.rs 的 tool_metas(即 Go tools.go)。
 async fn call_tool(
     sess: &BrowserSession,
-    workdir: Option<String>,
+    workdir: Option<(String, Option<String>)>,
     name: &str,
     args: &Value,
 ) -> Result<Vec<Value>, String> {
@@ -384,9 +387,9 @@ async fn call_tool(
             // 截图同时落当前会话工作区:UI 工具卡按路径内联显示
             // (帧协议传路径不传 base64);模型侧走 MCP image 块直达
             // (上游 c1d8482 起)
-            if let Some(wd) = workdir {
+            if let Some((wd, distro)) = workdir {
                 let name = format!("browser-{}.png", crate::driver::frame::now_ms());
-                match crate::uploads::save_raw(&wd, None, &name, &png) {
+                match crate::uploads::save_raw(&wd, distro.as_deref(), &name, &png) {
                     Ok(rel) => note.push_str(&format!("\n截图已保存: {rel}")),
                     Err(e) => eprintln!("[desktop] 截图落盘失败: {e}"),
                 }

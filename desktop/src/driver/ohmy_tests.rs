@@ -212,15 +212,17 @@ fn e2e_setup(tag: &str, llm_delay_ms: u64) -> (OhmyDriver, PathBuf) {
 }
 
 fn e2e_setup_steps(tag: &str, llm_delay_ms: u64, steps: Vec<String>) -> (OhmyDriver, PathBuf) {
-    e2e_setup_cfg(tag, llm_delay_ms, steps, json!({}))
+    e2e_setup_cfg(tag, llm_delay_ms, steps, json!({}), "")
 }
 
 /// extra_settings:并进引擎 settings.json 的顶层键。
+/// kernel_env:"wsl:<发行版>" 走 WSL spawn 分支(需 MC_WSL_EXE 假脚本)。
 fn e2e_setup_cfg(
     tag: &str,
     llm_delay_ms: u64,
     steps: Vec<String>,
     extra_settings: Value,
+    kernel_env: &str,
 ) -> (OhmyDriver, PathBuf) {
     let home = std::env::temp_dir().join(format!("ohmy-e2e-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
@@ -261,6 +263,7 @@ fn e2e_setup_cfg(
     let cfg = DesktopConfig {
         models: json!([{ "name": "测试模型", "provider": "anthropic",
             "base_url": format!("{llm}/api/anthropic"), "api_key": "sk-fake", "model": "test-model", "default": true }]),
+        kernel_env: kernel_env.to_string(),
         ..Default::default()
     };
     let driver = OhmyDriver::start_with(ctx, &cfg).expect("引擎启动");
@@ -380,6 +383,98 @@ async fn e2e_chat_normalization() {
     assert!(!driver.engine_session_exists("no-such-session").await, "未知会话应为 false");
 
     driver.stop();
+}
+
+/// WSL 运行环境冒烟:经 MC_WSL_EXE 假脚本走完整条 WSL spawn 链路——
+/// find_ohmyagent_linux(MC_OHMYAGENT_LINUX_BIN)→ prepare(home/登录
+/// shell/网络模式/路径翻译解析)→ 登录 shell 包装 spawn → 握手 → 会话
+/// 全流程 → 优雅停止。跑法:
+///   MC_WSL_EXE=$PWD/scripts/fake-wsl.sh \
+///   MC_OHMYAGENT_LINUX_BIN=$MC_OHMYAGENT_BIN \
+///   cargo test --bin monkeycode-desktop e2e_wsl -- --include-ignored
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN + MC_WSL_EXE + MC_OHMYAGENT_LINUX_BIN;用 --include-ignored 显式跑"]
+async fn e2e_wsl_smoke_full_lifecycle() {
+    require_ohmyagent();
+    assert!(
+        std::env::var("MC_WSL_EXE").is_ok() && std::env::var("MC_OHMYAGENT_LINUX_BIN").is_ok(),
+        "WSL 冒烟需 MC_WSL_EXE 指向 scripts/fake-wsl.sh,\
+         MC_OHMYAGENT_LINUX_BIN 指向本机引擎二进制(不 set_var 污染并行测试)"
+    );
+    let _g = e2e_lock().await;
+    let (driver, home) = e2e_setup_cfg(
+        "wsl",
+        0,
+        vec![sse_text("你好,任务完成")],
+        json!({}),
+        "wsl:Ubuntu-22.04",
+    );
+
+    // WSL 上下文随引擎启动填入(prepare 采集;fake 报 nat)
+    assert_eq!(driver.wsl_distro().as_deref(), Some("Ubuntu-22.04"));
+    assert_eq!(driver.wsl_networking().as_deref(), Some("nat"));
+
+    // fake-wsl 下 guest == host,本机绝对路径即 guest 路径
+    let workdir = home.to_string_lossy().into_owned();
+    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
+    driver.session_open(&sid).await.expect("打开会话");
+    let payload = json!({ "content": frame::b64_text("wsl 冒烟") });
+    driver.session_send(&sid, "user-input", payload).await.expect("发送");
+
+    let mut journal: Vec<Value> = vec![];
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        journal = driver.read_journal(&sid);
+        if journal.iter().any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended")) {
+            break;
+        }
+    }
+    let types: Vec<&str> =
+        journal.iter().filter_map(|f| f.get("type").and_then(|v| v.as_str())).collect();
+    assert!(types.contains(&"task-started"), "缺 task-started: {types:?}");
+    assert!(types.contains(&"task-ended"), "缺 task-ended: {types:?}");
+
+    // "~" 展开到 guest 家目录(prepare 采集;fake 下即本机 $HOME),
+    // 而不是宿主 expand_tilde——只建会话不写盘,不污染真实主目录
+    let meta = driver.session_create("~", "测试模型", false).await.expect("~ 建会话");
+    let sid2 = meta.get("id").and_then(|v| v.as_str()).unwrap();
+    let stored = driver.0.read_sidecar(sid2);
+    assert_eq!(
+        stored.get("workdir").and_then(|v| v.as_str()),
+        std::env::var("HOME").ok().as_deref(),
+        "~ 应展开为 guest 家目录"
+    );
+
+    // 优雅停止:stdin EOF 经中继(fake 直执)透传,引擎自退,不走 pkill
+    driver.stop();
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// WSL 启动失败外显:prepare 失败(fake-wsl 对发行版 "broken" 报错)时
+/// start_with 必须携带排查文案上抛,而不是挂死或降级本机。
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_WSL_EXE + MC_OHMYAGENT_LINUX_BIN;用 --include-ignored 显式跑"]
+async fn e2e_wsl_prepare_failure_surfaces() {
+    assert!(
+        std::env::var("MC_WSL_EXE").is_ok() && std::env::var("MC_OHMYAGENT_LINUX_BIN").is_ok(),
+        "需 MC_WSL_EXE + MC_OHMYAGENT_LINUX_BIN(见 e2e_wsl_smoke_full_lifecycle)"
+    );
+    let _g = e2e_lock().await;
+    let home = std::env::temp_dir().join(format!("ohmy-e2e-wslfail-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join("shellcfg")).unwrap();
+    let ctx: Arc<dyn ShellCtx> = Arc::new(TestCtx::new(home.join("shellcfg")));
+    let cfg = DesktopConfig { kernel_env: "wsl:broken".into(), ..Default::default() };
+    let err = match OhmyDriver::start_with(ctx, &cfg) {
+        Ok(driver) => {
+            driver.stop();
+            panic!("prepare 失败必须上抛");
+        }
+        Err(e) => e,
+    };
+    assert!(err.contains("broken") && err.contains("wsl --shutdown"), "缺排查文案: {err}");
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 运行中停止引擎必须本地和解:补收尾帧、sidecar 落 interrupted——
@@ -798,6 +893,7 @@ fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
         engine_dir: home.join("ohmyagent"),
         chat_workspaces_dir: home.join("local-data/chat-workspaces"),
         perm_persist_path: home.join("perm.json"),
+        wsl: None,
     });
     (inner, events)
 }

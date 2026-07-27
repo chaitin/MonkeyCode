@@ -61,6 +61,32 @@ fn valid_chat_workspace_name(path: &Path) -> bool {
         })
 }
 
+/// WSL 模式的 workdir 归一化(Inner::resolve_workdir 的 WSL 臂,拆出便于
+/// 单测):~ 拼 guest 家目录;\\wsl$ UNC 回译(发行版必须匹配);/ 开头
+/// 原样;其余(盘符路径等)明确拒绝。
+fn resolve_wsl_workdir(w: &super::ohmy::WslCtx, raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    if raw == "~" {
+        return Ok(w.guest_home.clone());
+    }
+    if let Some(rest) = raw.strip_prefix("~/") {
+        return Ok(format!("{}/{}", w.guest_home.trim_end_matches('/'), rest));
+    }
+    if let Some((distro, guest)) = crate::wsl::guest_path_of_unc(raw) {
+        if distro != w.distro {
+            return Err(format!(
+                "所选目录属于发行版 {distro},当前运行环境为 {}(设置里可切换)",
+                w.distro
+            ));
+        }
+        return Ok(guest);
+    }
+    if raw.starts_with('/') {
+        return Ok(raw.to_string());
+    }
+    Err(format!("WSL 运行环境的工作区需是发行版内目录(如 /home/…),收到: {raw}"))
+}
+
 /// 只返回指定应用数据根下、由本应用创建的单层 chat-<随机标识> 目录。
 /// 旧版 ~/.monkeycode/chat-workspace 不匹配，删除旧对话不会误删共享历史。
 fn managed_chat_workdir(root: &Path, path: &str) -> Option<PathBuf> {
@@ -139,6 +165,40 @@ mod session_id_tests {
         ] {
             assert!(!valid_session_id(id), "可逃逸的 id 被放行: {id:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod wsl_workdir_tests {
+    use super::*;
+
+    fn ctx() -> super::super::ohmy::WslCtx {
+        super::super::ohmy::WslCtx {
+            distro: "Ubuntu-22.04".into(),
+            bin_name: "ohmyagent-linux".into(),
+            guest_home: "/home/u".into(),
+            guest_chat_root: "/mnt/c/data/chat-workspaces".into(),
+            networking: "nat".into(),
+        }
+    }
+
+    #[test]
+    fn wsl_workdir_normalization_table() {
+        let w = ctx();
+        // ~ 展开到 guest 家目录(而不是宿主主目录)
+        assert_eq!(resolve_wsl_workdir(&w, "~"), Ok("/home/u".into()));
+        assert_eq!(resolve_wsl_workdir(&w, "~/proj"), Ok("/home/u/proj".into()));
+        // guest 绝对路径原样
+        assert_eq!(resolve_wsl_workdir(&w, "/opt/x"), Ok("/opt/x".into()));
+        // 目录对话框的 UNC 形态回译
+        assert_eq!(
+            resolve_wsl_workdir(&w, r"\\wsl$\Ubuntu-22.04\home\u\proj"),
+            Ok("/home/u/proj".into())
+        );
+        // 发行版不匹配与盘符路径明确报错
+        assert!(resolve_wsl_workdir(&w, r"\\wsl$\Debian\home\u").is_err());
+        assert!(resolve_wsl_workdir(&w, r"C:\Users\u\proj").is_err());
+        assert!(resolve_wsl_workdir(&w, "relative/path").is_err());
     }
 }
 
@@ -410,15 +470,18 @@ impl OhmyDriver {
         } else {
             None
         };
-        let workdir_owned = chat_workdir
-            .as_ref()
-            .map(|path| path.to_string_lossy().into_owned())
-            .unwrap_or_else(|| crate::config::expand_tilde(workdir));
+        let workdir_owned = match &chat_workdir {
+            Some(path) => self.0.chat_workdir_for_engine(path),
+            None => self.0.resolve_workdir(workdir)?,
+        };
         let workdir = workdir_owned.as_str();
-        let exists = std::path::Path::new(workdir).is_dir();
+        // 存在性判定/创建走宿主视角(WSL 模式经 \\wsl$ UNC)
+        let fs_view = self.0.workdir_fs_view(workdir);
+        let exists = fs_view.is_dir();
         if !exists {
             if create_dir {
-                std::fs::create_dir_all(workdir).map_err(|e| format!("创建工作区目录失败: {e}"))?;
+                std::fs::create_dir_all(&fs_view)
+                    .map_err(|e| format!("创建工作区目录失败: {e}"))?;
             } else {
                 return Err(format!("工作区目录不存在: {workdir}"));
             }
@@ -626,8 +689,8 @@ impl OhmyDriver {
         if workdir.is_empty() {
             // 兼容没有 workdir 的旧 sidecar；不能留空让引擎隐式继承
             // Desktop 引擎进程 cwd，否则 resume 后会话会漂到进程目录。
-            workdir =
-                crate::config::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
+            // WSL 模式回退 guest 家目录(见 default_workdir)。
+            workdir = self.0.default_workdir();
         }
         let mut params = engine_session_create_params(
             &workdir,
@@ -785,7 +848,9 @@ impl OhmyDriver {
             .then(|| {
                 meta.get("workdir")
                     .and_then(|v| v.as_str())
-                    .and_then(|path| managed_chat_workdir(&self.0.chat_workspaces_dir, path))
+                    // WSL 模式 sidecar 存 guest 形态,宿主删除前换回宿主路径
+                    .map(|path| self.0.host_chat_workdir(path))
+                    .and_then(|path| managed_chat_workdir(&self.0.chat_workspaces_dir, &path))
             })
             .flatten();
         let created = self.0.sess.sessions.lock_ok().get(id).map(|s| s.created).unwrap_or(false);
@@ -1206,10 +1271,9 @@ impl OhmyDriver {
         let mut workdir =
             self.0.sess.sessions.lock_ok().get(id).map(|s| s.workdir.clone()).unwrap_or_default();
         if workdir.is_empty() {
-            // 空 workdir 会触发引擎的 os.Getwd 兜底(进程 cwd),显式回退主目录
-            workdir = crate::config::home_dir()
-                .map(|h| h.to_string_lossy().into_owned())
-                .unwrap_or_default();
+            // 空 workdir 会触发引擎的 os.Getwd 兜底(进程 cwd),显式回退
+            // 主目录(WSL 模式 guest 家目录)
+            workdir = self.0.default_workdir();
         }
         let params = engine_session_create_params(
             &workdir,
@@ -1425,6 +1489,67 @@ impl OhmyDriver {
 }
 
 impl Inner {
+    /// 会话 workdir 归一化(kernel_env 语义的单点,session_create 入口)。
+    /// 本机:展开 ~(现状)。WSL:~ 拼 guest 家目录(宿主 expand_tilde 会
+    /// 展开成 Windows 主目录,落错环境);目录对话框选出的 \\wsl$ UNC 回译
+    /// 为 guest 路径(发行版必须与当前运行环境一致);/ 开头视为 guest
+    /// 绝对路径原样;其余(盘符路径等)明确拒绝。
+    pub(super) fn resolve_workdir(&self, raw: &str) -> Result<String, String> {
+        match &self.wsl {
+            Some(w) => resolve_wsl_workdir(w, raw),
+            None => Ok(crate::config::expand_tilde(raw)),
+        }
+    }
+
+    /// workdir 空缺时的回退(旧 sidecar 兼容/模式切换重建):本机主目录,
+    /// WSL 模式 guest 家目录——不能把 Windows 主目录喂给 guest 内的引擎。
+    pub(super) fn default_workdir(&self) -> String {
+        match &self.wsl {
+            Some(w) => w.guest_home.clone(),
+            None => crate::config::home_dir()
+                .map(|h| h.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        }
+    }
+
+    /// workdir 的宿主文件系统视角(存在性判定/按需创建):WSL 模式经
+    /// \\wsl$ UNC(冒烟时恒等),本机原样。
+    pub(super) fn workdir_fs_view(&self, workdir: &str) -> PathBuf {
+        match &self.wsl {
+            Some(w) => crate::wsl::host_fs_view(&w.distro, workdir),
+            None => PathBuf::from(workdir),
+        }
+    }
+
+    /// chat 会话 workdir 的会话面形态:目录由壳在宿主创建
+    /// (chat_workspaces_dir 下),WSL 模式下存 sidecar/传引擎的字符串换成
+    /// guest 形态(guest_chat_root 前缀),维持"WSL 模式 sidecar 一律存
+    /// guest 路径"不变量。
+    pub(super) fn chat_workdir_for_engine(&self, host_path: &Path) -> String {
+        match (&self.wsl, host_path.file_name()) {
+            (Some(w), Some(name)) => {
+                format!("{}/{}", w.guest_chat_root.trim_end_matches('/'), name.to_string_lossy())
+            }
+            _ => host_path.to_string_lossy().into_owned(),
+        }
+    }
+
+    /// chat_workdir_for_engine 的逆:删除会话等宿主文件操作前,把 sidecar
+    /// 里的 guest 形态换回宿主形态;非 WSL 或前缀不符原样返回(交给
+    /// managed_chat_workdir 的校验兜底)。
+    pub(super) fn host_chat_workdir(&self, workdir: &str) -> String {
+        let Some(w) = &self.wsl else {
+            return workdir.to_string();
+        };
+        let root = w.guest_chat_root.trim_end_matches('/');
+        match workdir.strip_prefix(root).and_then(|r| r.strip_prefix('/')) {
+            Some(name) if !name.is_empty() && !name.contains('/') => {
+                self.chat_workspaces_dir.join(name).to_string_lossy().into_owned()
+            }
+            _ => workdir.to_string(),
+        }
+    }
+
     /// 会话 sidecar 目录。**唯一**允许把会话 id 拼进 data_dir 的地方:
     /// 校验不过就不构造路径,未校验的名字因此到不了文件系统(见
     /// valid_session_id 注释里的爆炸半径)。

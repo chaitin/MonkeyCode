@@ -268,8 +268,14 @@ pub struct Caps {
 }
 
 pub fn caps(engine: &OhmyDriver, browser_ext: bool) -> Caps {
+    // WSL 运行环境:guest 内引擎回连宿主 127.0.0.1 仅 mirrored 网络可达,
+    // 其余模式浏览器桥压 false(mcp.json 物化同判定,见 write_ohmyagent_config)
+    let browser_reachable = match engine.wsl_networking() {
+        Some(mode) => mode == "mirrored",
+        None => true,
+    };
     Caps {
-        browser_ext,
+        browser_ext: browser_ext && browser_reachable,
         usage_update: engine.has_capability("turn/stopped"),
         perm_remember: engine.has_capability("permissionRemember"),
         // 上传/路径注入由壳实现，不是引擎握手项。
@@ -414,8 +420,7 @@ pub async fn session_call(
     let engine = host.get()?;
     if kind.starts_with("repo_") {
         let workdir = engine.session_workdir(&id).await?;
-        // wsl_distro 待 M3(ohmy WSL 模式)接回
-        let ctx = RepoCtx { workdir, wsl_distro: None };
+        let ctx = RepoCtx { workdir, wsl_distro: engine.wsl_distro() };
         // git/fs 是阻塞操作,丢 blocking 池;15s 超时防文件面板永久转圈
         let task = tauri::async_runtime::spawn_blocking(move || crate::repo::dispatch(&ctx, &kind, &payload));
         return match tokio::time::timeout(std::time::Duration::from_secs(15), task).await {
@@ -436,18 +441,24 @@ pub async fn upload_file(
 ) -> Result<Value, String> {
     let engine = host.get()?;
     let workdir = engine.session_workdir(&id).await?;
-    tauri::async_runtime::spawn_blocking(move || crate::uploads::save(&workdir, None, &name, &media_type, &data))
-        .await
-        .map_err(|e| format!("上传失败: {e}"))?
+    let distro = engine.wsl_distro();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::uploads::save(&workdir, distro.as_deref(), &name, &media_type, &data)
+    })
+    .await
+    .map_err(|e| format!("上传失败: {e}"))?
 }
 
 #[tauri::command]
 pub async fn upload_read(host: State<'_, DriverHost>, id: String, path: String) -> Result<String, String> {
     let engine = host.get()?;
     let workdir = engine.session_workdir(&id).await?;
-    tauri::async_runtime::spawn_blocking(move || crate::uploads::read_data_url(&workdir, None, &path))
-        .await
-        .map_err(|e| format!("读取失败: {e}"))?
+    let distro = engine.wsl_distro();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::uploads::read_data_url(&workdir, distro.as_deref(), &path)
+    })
+    .await
+    .map_err(|e| format!("读取失败: {e}"))?
 }
 
 #[cfg(test)]

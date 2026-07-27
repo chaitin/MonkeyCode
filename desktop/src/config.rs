@@ -503,11 +503,30 @@ fn write_ohmyagent_config(
     // 内置条目:壳的浏览器桥 MCP(browser_* 工具),接入信息经参数传入。
     // Bearer token 进程级每次启动新发;mcp.json 随引擎(重)启重写,
     // 恒为当前值,无需持久。
+    // WSL 运行环境:桥监听宿主 127.0.0.1,NAT 网络下 guest 内的引擎打不到
+    // (127.0.0.1 是 guest 自己)——仅 mirrored 网络物化,其余降级不写,
+    // UI 能力同步压 false(driver::caps)。改绑 vEth IP/interop stdio 代理
+    // 留待后续评估。
     if let Some((url, token)) = browser_mcp {
-        servers.push(serde_json::json!({
-            "name": "mc-browser", "transport": "streamable-http", "url": url,
-            "headers": { "Authorization": format!("Bearer {token}") },
-        }));
+        let reachable = match crate::wsl::distro_of(&cfg.kernel_env) {
+            Some(distro) => {
+                let mode = crate::wsl::networking_mode(distro);
+                if mode != "mirrored" {
+                    eprintln!(
+                        "[desktop] WSL 网络模式为 {mode},guest 无法回连宿主 127.0.0.1,\
+                         浏览器工具暂不可用(mirrored 网络可用)"
+                    );
+                }
+                mode == "mirrored"
+            }
+            None => true,
+        };
+        if reachable {
+            servers.push(serde_json::json!({
+                "name": "mc-browser", "transport": "streamable-http", "url": url,
+                "headers": { "Authorization": format!("Bearer {token}") },
+            }));
+        }
     }
     atomic_write_private(
         &dir.join("mcp.json"),

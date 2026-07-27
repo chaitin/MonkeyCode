@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # 假 wsl.exe:在无 Windows 的开发机上冒烟壳的 WSL 代码路径。
-# 用法:MC_WSL_EXE=$(pwd)/scripts/fake-wsl.sh MC_OHMYAGENT_LINUX_BIN=<本机引擎二进制>(M3 接入)\\
+# 用法:MC_WSL_EXE=$(pwd)/scripts/fake-wsl.sh MC_OHMYAGENT_LINUX_BIN=<本机引擎二进制>\
 #       且 config.json 写 "kernel_env": "wsl:Ubuntu-22.04",启动 desktop。
-# 仅覆盖壳实际使用的三种调用形态;开发工具,不随包分发。
+# 输出契约与 wsl.rs::parse_prepare_output 对表;FAKE_WSL_NETWORKING=mirrored
+# 可冒烟浏览器 MCP 不降级的分支。开发工具,不随包分发。
 set -u
 
 # wsl -l -q:发行版列表(FAKE_WSL_UTF16=1 时输出 BOM + UTF-16LE + CRLF,
@@ -17,22 +18,45 @@ if [ "${1:-}" = "-l" ]; then
   exit 0
 fi
 
-if [ "${1:-}" = "-d" ]; then shift 2; fi
+distro=""
+if [ "${1:-}" = "-d" ]; then distro="${2:-}"; shift 2; fi
+# "broken" 发行版恒失败:冒烟 prepare 失败的外显路径(e2e_wsl_prepare_failure_surfaces)
+if [ "$distro" = "broken" ]; then
+  echo "fake-wsl: 发行版 broken 不可用" >&2
+  exit 1
+fi
 [ "${1:-}" = "--exec" ] || { echo "fake-wsl: 仅支持 --exec 形态,得到: $*" >&2; exit 1; }
 shift
 
 case "${1:-}" in
   /bin/sh)
-    # prepare 调用(/bin/sh -c '<wslpath 批量翻译>' sh <p1> <p2> ...):
-    # 本机路径翻译即恒等,回显路径参数即可
-    shift 4
-    for p in "$@"; do printf '%s\n' "$p"; done
+    # 壳的两种 /bin/sh -c 探测形态按脚本内容区分(开发机没有 wslpath/wslinfo)
+    script="${3:-}"
+    case "$script" in
+      *wslpath*)
+        # prepare($1=/bin/sh $2=-c $3=脚本 $4=sh $5..=路径):
+        # HOME、登录 shell、网络模式各一行,再逐路径恒等回显(本机翻译即恒等)。
+        # 登录 shell 报 /bin/bash:与 /bin/sh 区分,让 serve 形态走 *) 分支
+        shift 4
+        printf '%s\n' "${HOME:-/root}" "/bin/bash" "${FAKE_WSL_NETWORKING:-nat}"
+        for p in "$@"; do printf '%s\n' "$p"; done
+        ;;
+      *wslinfo*)
+        # networking_mode 独立探测(mcp.json 物化时)
+        printf '%s\n' "${FAKE_WSL_NETWORKING:-nat}"
+        ;;
+      *)
+        echo "fake-wsl: 未知 /bin/sh -c 脚本: $script" >&2
+        exit 1
+        ;;
+    esac
     ;;
   pkill)
     exec "$@"
     ;;
   *)
-    # serve 调用:直接执行本机二进制,stdin/stdout 透传(--watch-stdin 契约保持)
+    # serve 调用(<登录shell> -l -c 'cd "$1" && exec "$2" --stdio' mc-engine <dir> <bin>):
+    # 登录 shell 本机真实存在,直接执行,stdin/stdout 透传
     exec "$@"
     ;;
 esac

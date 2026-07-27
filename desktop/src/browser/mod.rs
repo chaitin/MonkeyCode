@@ -90,6 +90,7 @@ pub fn init(app: &AppHandle) {
                 return Ok(None);
             }
         };
+        let distro = driver.wsl_distro();
         Ok(scope
             .work_dir
             .clone()
@@ -99,7 +100,8 @@ pub fn init(app: &AppHandle) {
                     .as_deref()
                     .and_then(|id| driver.browser_workdir_for(id))
             })
-            .or_else(|| driver.single_running_workdir()))
+            .or_else(|| driver.single_running_workdir())
+            .map(|wd| (wd, distro)))
     });
     match mcp::serve(mcp_sessions.clone(), wd) {
         Ok((url, token)) => {

@@ -250,7 +250,7 @@ async fn mcp_smoke_initialize_list_call() {
         sessions,
         std::sync::Arc::new(move |scope| {
             scopes2.lock().unwrap().push(scope.clone());
-            Ok(scope.work_dir.clone())
+            Ok(scope.work_dir.clone().map(|wd| (wd, None)))
         }),
     )
     .expect("MCP 启动");

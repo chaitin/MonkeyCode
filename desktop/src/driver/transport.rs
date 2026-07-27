@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tauri::AppHandle;
 use tokio::sync::{mpsc, oneshot};
 
-use super::ohmy::{parse_manifest_models, Inner, OhmyDriver, ShellCtx};
+use super::ohmy::{parse_manifest_models, Inner, OhmyDriver, ShellCtx, WslCtx};
 use super::session::{valid_session_id, SessionsState};
 use super::subagent::SubagentState;
 use crate::config::DesktopConfig;
@@ -233,6 +233,11 @@ fn abort_startup(inner: &Arc<Inner>, err: String) -> String {
         let _ = child.kill();
         let _ = child.wait();
     }
+    // kill 只终结 wsl.exe 中继;guest 引擎若已拉起需补刀,否则残活进程
+    // 继续持有 OHMYAGENT_CONFIG_DIR 下的 sessions
+    if let Some(w) = &inner.wsl {
+        crate::wsl::kill_guest_engine(&w.distro, &w.bin_name);
+    }
     err
 }
 
@@ -244,13 +249,6 @@ impl OhmyDriver {
     }
 
     pub fn start_with(app: Arc<dyn ShellCtx>, cfg: &DesktopConfig) -> Result<Self, String> {
-        if crate::wsl::distro_of(&cfg.kernel_env).is_some() {
-            return Err("WSL 运行环境暂未支持(移植中),请在设置中切换回本机".into());
-        }
-        let bin = find_ohmyagent().ok_or_else(|| {
-            "找不到 ohmyagent 可执行文件(查找顺序: MC_OHMYAGENT_BIN 环境变量 → 应用同目录 → PATH)".to_string()
-        })?;
-
         let cfg_dir = app.config_dir()?;
         let chat_workspaces_dir = app.local_data_dir()?.join("chat-workspaces");
         let log_path = cfg_dir.join("ohmyagent.log");
@@ -269,29 +267,20 @@ impl OhmyDriver {
         let process_home = app.process_home();
         migrate_legacy_sessions(&engine_dir, process_home.as_deref());
 
-        // agent 会把 <进程 cwd>/.ohmyagent/settings.json 当项目级配置加载。
-        // 若 cwd 是用户主目录，旧版 Desktop 遗留的 ~/.ohmyagent 会反过来
-        // 覆盖 OHMYAGENT_CONFIG_DIR 指向的壳私有配置（典型表现是 200k 又
-        // 退回 128k）。因此进程固定在私有引擎目录；各会话工作目录仍由
-        // session/create 显式传入，不受这里影响。
+        // 目录先建好:本机分支 cwd 要用,WSL 分支 prepare 的 wslpath 要翻译它们
         std::fs::create_dir_all(&engine_dir)
             .map_err(|e| format!("创建引擎运行目录失败({}): {e}", engine_dir.display()))?;
-        let mut cmd = Command::new(&bin);
-        cmd.current_dir(&engine_dir)
-            // GUI 启动时环境贫瘠,按登录 shell 补齐(只补缺,见 login_shell_env);
-            // OHMYAGENT_CONFIG_DIR 在其后设置,恒不被补齐项影响
-            .envs(engine_env_additions())
-            .envs(app.engine_env_overrides())
-            .env("OHMYAGENT_CONFIG_DIR", &engine_dir)
-            .arg("--stdio")
-            .stdin(Stdio::piped())
+        let (mut cmd, wsl_ctx) =
+            build_engine_command(cfg, app.as_ref(), &engine_dir, &chat_workspaces_dir)?;
+        cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(log_file.map(Stdio::from).unwrap_or_else(Stdio::null));
-        // 引擎是控制台子系统 exe,Windows 上 GUI 壳直接 spawn 会弹黑窗
+        // 引擎(或 wsl.exe 中继)是控制台子系统 exe,Windows 上 GUI 壳直接
+        // spawn 会弹黑窗
         crate::wsl::no_console(&mut cmd);
         let mut child = cmd
             .spawn()
-            .map_err(|e| format!("启动 ohmyagent 失败({}): {e}", bin.display()))?;
+            .map_err(|e| format!("启动 ohmyagent 失败: {e}"))?;
 
         // 管道拿不到就地杀掉:此时 Inner 还没建起来,走不了 abort_startup,
         // 直接 return 会把刚 spawn 的进程漏在外面
@@ -300,6 +289,9 @@ impl OhmyDriver {
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
+                if let Some(w) = &wsl_ctx {
+                    crate::wsl::kill_guest_engine(&w.distro, &w.bin_name);
+                }
                 return Err("ohmyagent 标准输入/输出管道不可用".into());
             }
         };
@@ -354,6 +346,7 @@ impl OhmyDriver {
             engine_dir,
             chat_workspaces_dir,
             perm_persist_path,
+            wsl: wsl_ctx,
         });
 
         // writer 线程:串行写 stdin;收到 None 哨兵或通道关闭即丢弃 stdin
@@ -454,6 +447,14 @@ impl OhmyDriver {
                 if let Some(mut child) = inner_r.transport.child.lock_ok().take() {
                     let _ = child.wait();
                 }
+                // WSL 模式:stdout EOF 只证明 wsl.exe 中继死了,guest 引擎
+                // 可能还活着(wsl --shutdown、VM 休眠恢复、外因杀中继)。
+                // 必须在通知壳(→退避重启)之前补刀,否则新老两个引擎并存
+                // 共写同一个 OHMYAGENT_CONFIG_DIR。reader 是专职线程,
+                // 同步跑 10s 超时的 wsl 调用可接受。
+                if let Some(w) = &inner_r.wsl {
+                    crate::wsl::kill_guest_engine(&w.distro, &w.bin_name);
+                }
                 inner_r.app.on_engine_exit(
                     inner_r.transport.instance,
                     "ohmyagent 进程异常退出",
@@ -474,8 +475,11 @@ impl OhmyDriver {
             }
         });
 
-        // 等 system/ready(15s);协议版本不匹配与握手超时走同一条收尾
-        match ready_rx.recv_timeout(Duration::from_secs(15)) {
+        // 等 system/ready;协议版本不匹配与握手超时走同一条收尾。
+        // WSL 模式放宽到 30s:VM 冷启已被 prepare 吸收,余量给 /mnt/c 上
+        // 9p 读取大二进制 + Defender 扫描。
+        let ready_budget = if inner.wsl.is_some() { 30 } else { 15 };
+        match ready_rx.recv_timeout(Duration::from_secs(ready_budget)) {
             Ok(Ok(())) => {}
             Ok(Err(e)) => return Err(abort_startup(&inner, e)),
             // 超时此前直接 return:进程没杀、stopped 没置——留下一个孤儿引擎
@@ -484,7 +488,7 @@ impl OhmyDriver {
             Err(_) => {
                 return Err(abort_startup(
                     &inner,
-                    "ohmyagent 未在 15 秒内就绪(查看 ohmyagent.log)".to_string(),
+                    format!("ohmyagent 未在 {ready_budget} 秒内就绪(查看 ohmyagent.log)"),
                 ))
             }
         }
@@ -519,6 +523,11 @@ impl OhmyDriver {
         eprintln!("[desktop] ohmyagent 未在期限内优雅退出,强制终止");
         let _ = child.kill();
         let _ = child.wait();
+        // 强杀只终结 wsl.exe 中继,guest 引擎补刀(优雅路径不需要:
+        // stdin EOF 透传到 guest,引擎自退,中继随之退出)
+        if let Some(w) = &self.0.wsl {
+            crate::wsl::kill_guest_engine(&w.distro, &w.bin_name);
+        }
     }
 
     // ==================== JSON-RPC ====================
@@ -813,6 +822,17 @@ mod login_env_tests {
     }
 
     #[test]
+    fn login_shell_whitelist_falls_back_to_sh() {
+        assert_eq!(pick_login_shell("/bin/bash"), "/bin/bash");
+        assert_eq!(pick_login_shell("/usr/bin/zsh"), "/usr/bin/zsh");
+        assert_eq!(pick_login_shell("/bin/dash"), "/bin/dash");
+        // fish/csh 的 -c 参数语义不同,回退 /bin/sh
+        assert_eq!(pick_login_shell("/usr/bin/fish"), "/bin/sh");
+        assert_eq!(pick_login_shell("/bin/csh"), "/bin/sh");
+        assert_eq!(pick_login_shell(""), "/bin/sh");
+    }
+
+    #[test]
     fn legacy_migration_uses_the_injected_home() {
         let root = std::env::temp_dir().join(format!("mc-migrate-home-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -826,6 +846,131 @@ mod login_env_tests {
 
         assert_eq!(std::fs::read(engine.join("sessions/s1/messages.jsonl")).unwrap(), b"one\n");
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// 组装引擎启动命令。本机模式:直接执行 ohmyagent;WSL 模式
+/// (kernel_env=wsl:*):`wsl.exe -d <发行版> --exec <登录shell> -l -c
+/// 'cd "$1" && exec "$2" --stdio'`,stdio 经中继透传,协议/握手/日志
+/// 全部原样复用。env 装配秩序:补齐项 → 测试覆盖 → OHMYAGENT_CONFIG_DIR
+/// (恒最后,不被前两者影响——历史 bug:登录 shell 若 export 同名变量
+/// 会把私有配置指走)。
+fn build_engine_command(
+    cfg: &DesktopConfig,
+    app: &dyn ShellCtx,
+    engine_dir: &std::path::Path,
+    chat_workspaces_dir: &std::path::Path,
+) -> Result<(Command, Option<WslCtx>), String> {
+    // WSL 仅 Windows 支持(Linux 开发机经 MC_WSL_EXE 假脚本冒烟例外);
+    // 其他平台残留的 wsl:* 配置(坏值同理经 distro_of 滤掉)降级本机运行,
+    // 不进必然失败的启动路径。这里是 kernel_env 的唯一消费点,配置层不再兜底。
+    let wsl_supported = cfg!(windows) || std::env::var("MC_WSL_EXE").is_ok();
+    let distro = crate::wsl::distro_of(&cfg.kernel_env).filter(|_| {
+        if !wsl_supported {
+            eprintln!("[desktop] kernel_env={:?} 在当前平台不可用,按本机运行", cfg.kernel_env);
+        }
+        wsl_supported
+    });
+    let Some(distro) = distro else {
+        // 本机模式(原有行为,零变化)
+        let bin = find_ohmyagent().ok_or_else(|| {
+            "找不到 ohmyagent 可执行文件(查找顺序: MC_OHMYAGENT_BIN 环境变量 → 应用同目录 → PATH)"
+                .to_string()
+        })?;
+        // agent 会把 <进程 cwd>/.ohmyagent/settings.json 当项目级配置加载。
+        // 若 cwd 是用户主目录,旧版 Desktop 遗留的 ~/.ohmyagent 会反过来
+        // 覆盖 OHMYAGENT_CONFIG_DIR 指向的壳私有配置(典型表现是 200k 又
+        // 退回 128k)。因此进程固定在私有引擎目录;各会话工作目录仍由
+        // session/create 显式传入,不受这里影响。
+        let mut cmd = Command::new(&bin);
+        cmd.current_dir(engine_dir)
+            .envs(engine_env_additions())
+            .envs(app.engine_env_overrides())
+            .env("OHMYAGENT_CONFIG_DIR", engine_dir)
+            .arg("--stdio");
+        return Ok((cmd, None));
+    };
+
+    let bin = find_ohmyagent_linux().ok_or_else(|| {
+        "找不到 Linux 版 ohmyagent(查找顺序: MC_OHMYAGENT_LINUX_BIN 环境变量 → 应用同目录 \
+         ohmyagent-linux)。WSL 运行环境需要随安装包分发的 Linux 引擎,请重装应用或切换回本机"
+            .to_string()
+    })?;
+    // chat 工作区根也要参与翻译(guest_chat_root),先确保存在
+    let _ = std::fs::create_dir_all(chat_workspaces_dir);
+    // 一次 wsl 调用:预热 VM + 健康检查 + 采集 home/登录 shell/网络模式 +
+    // 批量 wslpath 翻译。失败即启动失败,文案含排查指引,经既有三条外显
+    // 路径(setup 失败页/设置页报错/退避重启横幅)呈现。
+    let prep = crate::wsl::prepare(distro, &[bin.as_path(), engine_dir, chat_workspaces_dir])?;
+    let [guest_bin, guest_engine_dir, guest_chat_root]: [String; 3] =
+        prep.paths.try_into().map_err(|_| "WSL 路径翻译数量异常".to_string())?;
+    // guest cwd 必须钉在引擎私有目录(同上本机分支的 ~/.ohmyagent 反向覆盖
+    // bug);wsl.exe 的 --cd 老版本没有,横竖要包登录 shell,cd 顺手做掉。
+    // 登录 shell(-l)读 profile,guest PATH 才带上 nvm/pyenv 等——引擎
+    // spawn 的 MCP stdio 子进程(npx …)依赖它。
+    let shell = pick_login_shell(&prep.login_shell);
+    let mut cmd = Command::new(crate::wsl::wsl_exe());
+    cmd.args(["-d", distro, "--exec", &shell, "-l", "-c"])
+        .arg(r#"cd "$1" && exec "$2" --stdio"#)
+        .args(["mc-engine", &guest_engine_dir, &guest_bin])
+        .envs(engine_env_additions())
+        .envs(app.engine_env_overrides())
+        // wsl.exe 自身的报错走 UTF-8,不往 ohmyagent.log 里混 UTF-16
+        // (log_tail 的整块 NUL 嗅探会把混合日志整份解坏)
+        .env("WSL_UTF8", "1")
+        // wsl.exe 不透传任意环境变量,白名单点名;/u = 仅 Win→WSL 方向
+        // 且值已是 Linux 路径,不再翻译
+        .env("WSLENV", "OHMYAGENT_CONFIG_DIR/u")
+        .env("OHMYAGENT_CONFIG_DIR", &guest_engine_dir);
+    let bin_name = bin
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "ohmyagent-linux".into());
+    let ctx = WslCtx {
+        distro: distro.to_string(),
+        bin_name,
+        guest_home: prep.guest_home,
+        guest_chat_root,
+        networking: prep.networking,
+    };
+    Ok((cmd, Some(ctx)))
+}
+
+/// 登录 shell 白名单:`-l -c '<script>' $0 $1 $2` 的参数语义对 POSIX 系
+/// shell 一致;fish/csh 语义不同,回退 /bin/sh(其 PATH 至少含
+/// /etc/profile 级配置,降级可接受)。
+fn pick_login_shell(login_shell: &str) -> String {
+    const POSIX_LIKE: [&str; 5] = ["bash", "zsh", "sh", "dash", "ksh"];
+    let name = std::path::Path::new(login_shell)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if POSIX_LIKE.contains(&name.as_str()) {
+        login_shell.to_string()
+    } else {
+        "/bin/sh".into()
+    }
+}
+
+/// 查找 WSL 模式的 Linux 引擎:MC_OHMYAGENT_LINUX_BIN → 应用同目录
+/// ohmyagent-linux(随包 bundle.resources 落安装根,经 /mnt/c 在 guest 内
+/// 直接执行)。不搜 PATH——Windows 的 PATH 里只可能捡到错架构的二进制。
+fn find_ohmyagent_linux() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("MC_OHMYAGENT_LINUX_BIN") {
+        let p = PathBuf::from(p);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    // 测试同 find_ohmyagent:必须显式钉住,不捡应用目录残留
+    #[cfg(test)]
+    return None;
+
+    #[cfg(not(test))]
+    {
+        let exe = std::env::current_exe().ok()?;
+        let p = exe.parent()?.join("ohmyagent-linux");
+        p.is_file().then_some(p)
     }
 }
 

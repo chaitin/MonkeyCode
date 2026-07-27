@@ -77,6 +77,33 @@ impl OhmyDriver {
 
     /// 引擎进程实例号:壳用它判定退出通知是否来自当前这一个。
     pub fn instance(&self) -> u64 { self.0.transport.instance }
+
+    /// WSL 运行环境的发行版名(本机模式 None)。repo/uploads 的
+    /// wsl_distro 参数从这里接回,不再翻配置。
+    pub fn wsl_distro(&self) -> Option<String> {
+        self.0.wsl.as_ref().map(|w| w.distro.clone())
+    }
+
+    /// WSL guest 网络模式("mirrored"/"nat";本机模式 None)。
+    /// 浏览器 MCP 等回连宿主 127.0.0.1 的能力按此降级。
+    pub fn wsl_networking(&self) -> Option<String> {
+        self.0.wsl.as_ref().map(|w| w.networking.clone())
+    }
+}
+
+/// WSL 运行环境上下文(kernel_env=wsl:* 时随引擎启动填入;一次 prepare
+/// 采集,生命周期与引擎实例一致——换发行版必然经引擎重启,不会串)。
+pub(super) struct WslCtx {
+    pub(super) distro: String,
+    /// 引擎二进制 basename(pkill 兜底用)
+    pub(super) bin_name: String,
+    /// guest 内用户家目录(~ 展开与 workdir 空缺回退)
+    pub(super) guest_home: String,
+    /// chat-workspaces 根的 guest 侧形态(/mnt/c/...;chat 会话 workdir
+    /// 以此拼接,维持"WSL 模式 sidecar 存 guest 路径"不变量)
+    pub(super) guest_chat_root: String,
+    /// wslinfo --networking-mode("mirrored"/"nat")
+    pub(super) networking: String,
 }
 
 /// 驱动共享状态。锁字段按职责归为三个锁组(各组文档注释写明含哪些锁
@@ -100,6 +127,8 @@ pub(super) struct Inner {
     pub(super) chat_workspaces_dir: PathBuf,
     /// 壳侧审批记忆持久化路径(兼容尾巴,配对 SessionsState::perm_remember)
     pub(super) perm_persist_path: PathBuf,
+    /// WSL 运行环境上下文(本机模式 None;见 WslCtx)
+    pub(super) wsl: Option<WslCtx>,
 }
 
 #[derive(Clone)]
