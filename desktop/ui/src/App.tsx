@@ -319,7 +319,11 @@ export default function App() {
 
   // 打开会话 = 接上句柄 + 复位 App 级浮层(无消费方需要稳定引用,不做 memo)
   const openSession = (m: { id: string; model?: string; mode?: string }, firstMessage?: string, firstFiles?: File[]) => {
-    session.open(m.id, { model: m.model, mode: m.mode, firstMessage, firstFiles });
+    // 重复点开当前会话不重开连接:open 会复位状态、丢掉排队中的消息
+    // (openNoticeSession 已有同语义去重,侧栏 onSelect 此前没有)
+    if (m.id !== session.id || firstMessage || firstFiles?.length) {
+      session.open(m.id, { model: m.model, mode: m.mode, firstMessage, firstFiles });
+    }
     setAttention((prev) => {
       if (!prev.has(m.id)) return prev;
       const next = new Set(prev);

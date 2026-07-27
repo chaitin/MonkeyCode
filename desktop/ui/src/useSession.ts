@@ -117,10 +117,10 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
   // 新建会话时暂存的附件:连上后上传,附件行并入 pendingMsg(只上传一次,
   // 带会话 id 避免闭包对不上)
   let pendingFiles: { sid: string; files: File[] } | null = null;
-  // 原 useEffect([chat.running, queued]) 的依赖快照:两者任一变化才算一次
-  // 投递时机(否则每批帧都会重投,失败重试节奏与原实现不一致)
-  let lastRunning = initialChat.running;
-  let lastQueued: string | null = null;
+  // 上行在途/等首帧回执:user-input 发出后到回显帧到达之间,running 还是
+  // false(task-started 帧要 ~30ms 批量推回),这段真空里再发必须入队,
+  // 否则第二条直发会被壳的忙碌守卫拒掉(与 useCloudTask 的 sending 同款)
+  let sending = false;
   // 历史翻页游标:cursor 是当前已加载最早那一轮在 replay.jsonl 的字节偏移
   let cursor = 0;
   let hasMore = false;
@@ -166,14 +166,21 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
     }
   }
 
-  // 排队的输入:运行结束后自动发送(失败保留,可再触发或手动重试)
+  // 排队的输入:运行结束后自动发送。乐观出队、失败回队(内容不丢),
+  // 下一个时机(新帧到达/断线重连/用户再发送)重投。此前用「running/queued
+  // 依赖快照」当闸门,快照在发送成功前就被消费——一旦投递失败(引擎未就绪
+  // 等),之后每批帧都在闸门处提前返回,消息卡死在队列里直到被切会话清掉
   function flushQueued() {
-    if (lastRunning === chat.running && lastQueued === queued) return; // 依赖未变,不是投递时机
-    lastRunning = chat.running;
-    lastQueued = queued;
-    if (chat.running || !queued) return;
-    void conn?.send("user-input", { content: b64encode(queued) }).then((ok) => {
-      if (ok) setQueued(null);
+    const c = conn;
+    if (chat.running || sending || !queued || !c) return;
+    const q = queued;
+    sending = true;
+    setQueued(null);
+    void c.send("user-input", { content: b64encode(q) }).then((ok) => {
+      if (ok) return; // 回执 = 回显帧到达,onFrames 解除 sending
+      sending = false;
+      // 失败回队;在途期间用户又排了新的,按单槽语义保留最新那条
+      setQueued(queued ?? q);
     });
   }
 
@@ -183,6 +190,7 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
   // 只重发文本,不重复上传。
   function onConnected() {
     void refreshChanges();
+    flushQueued(); // 断线/发送失败会打回未连接,重连即是排队消息的补投时机
     if (!pendingMsg && !pendingFiles) return;
     void (async () => {
       let text = pendingMsg ?? "";
@@ -276,6 +284,7 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
     return {
       onHistory: applyHistory,
       onFrames: (batch: Frame[]) => {
+        sending = false; // 帧到达 = 上一条上行已被壳接收
         setChat(reduceBatch(chat, batch));
         // 本轮结束:刷新改动计数与会话列表
         if (chat.turnEnded) {
@@ -292,6 +301,7 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
         io.setConnected(ok);
         const was = connected;
         connected = ok;
+        if (!ok) sending = false; // 连接已断,回执不会再来
         if (ok && !was) onConnected();
       },
     };
@@ -300,6 +310,8 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
   return {
     /** 打开会话并接上 WS(见 SessionHandle.open) */
     open(id: string, o: { model?: string; mode?: string; firstMessage?: string; firstFiles?: File[] } = {}) {
+      // 复位会丢掉还压着的排队消息:外显提醒,不静默丢(与云端 handleEnded 同款)
+      if (queued) io.notify(`已离开会话,未发送的排队消息:「${queued.slice(0, 60)}」`);
       conn?.close();
       sid = id;
       io.setId(id);
@@ -314,8 +326,7 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       io.setChangesErr("");
       pendingMsg = o.firstMessage ?? null;
       pendingFiles = o.firstFiles?.length ? { sid: id, files: o.firstFiles } : null;
-      lastRunning = false;
-      lastQueued = null;
+      sending = false;
       cursor = 0;
       hasMore = false;
       loadingEarlier = false;
@@ -344,8 +355,7 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       io.setChanges(null);
       io.setIsGitRepo(null);
       io.setChangesErr("");
-      lastRunning = false;
-      lastQueued = null;
+      sending = false;
       cursor = 0;
       hasMore = false;
       loadingEarlier = false;
@@ -360,19 +370,23 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       const lines = atts.map(attLine);
       const text = [input.trim(), ...lines].filter(Boolean).join("\n");
       if (!text || !conn) return false;
-      if (chat.running) {
-        // 运行中先排队,本轮结束自动发送(可取消)
+      if (chat.running || sending || queued) {
+        // 运行中/上一条未回执/已有积压:单槽排队,后发覆盖先发(chip 可见,
+        // 最新一条为准),本轮结束自动发送(可取消)
         setQueued(text);
         io.setInput("");
         setAtts([]);
-        flushQueued();
+        flushQueued(); // 空闲且只是有积压(投递失败残留)时,立即投递
         return true;
       }
+      sending = true;
       void conn.send("user-input", { content: b64encode(text) }).then((ok) => {
         // 失败时保留输入与附件(原因已经 onStatus 外显),用户可重试
         if (ok) {
           io.setInput("");
           setAtts([]);
+        } else {
+          sending = false;
         }
       });
       return true;
@@ -384,7 +398,6 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
 
     clearQueued() {
       setQueued(null);
-      flushQueued();
     },
 
     async addFiles(files: File[]) {

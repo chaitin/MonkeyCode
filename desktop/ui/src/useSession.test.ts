@@ -342,21 +342,88 @@ describe("本地会话核心:composer(排队与附件)", () => {
     expect(out.sessionsChanged).toBe(changedBefore + 1);
   });
 
-  it("排队投递失败保留队列,下一个时机重投", async () => {
+  it("排队投递失败回队,下一个时机重投", async () => {
     const { core, out } = makeCore();
     await openAndSettle(core);
     pushFrames("s1", [frame("task-started")]);
     core.send("排着的");
     sendFail = true;
     pushFrames("s1", [frame("task-ended")]);
-    await Promise.resolve();
-    expect(out.queued).toBe("排着的"); // 没送达就不清
+    await vi.waitFor(() => expect(out.queued).toBe("排着的")); // 没送达就回队
 
     sendFail = false;
     pushFrames("s1", [frame("task-started")]);
     pushFrames("s1", [frame("task-ended")]);
     await vi.waitFor(() => expect(out.queued).toBe(null));
     expect(userInputs()).toEqual(["排着的"]);
+  });
+
+  it("运行中连发多条:单槽后发覆盖先发,轮末只发最新一条", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("第一条");
+    core.send("第二条");
+    expect(out.queued).toBe("第二条"); // chip 可见,最新一条为准
+    pushFrames("s1", [frame("task-ended")]);
+    await vi.waitFor(() => expect(out.queued).toBe(null));
+    expect(userInputs()).toEqual(["第二条"]);
+  });
+
+  it("轮末投递失败后断线重连,排队消息自动补投", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("重连后要补上");
+    sendFail = true;
+    // 投递失败时 Conn 已 onStatus(…, false) 打回未连接,之后不再有新帧——
+    // 旧实现在这里永久卡死(快照闸门被消费,没有任何重投时机)
+    pushFrames("s1", [frame("task-ended")]);
+    await vi.waitFor(() => expect(out.queued).toBe("重连后要补上"));
+    expect(userInputs()).toEqual([]);
+
+    sendFail = false;
+    pushStatus("s1", "已连接", true); // 壳侧重连:false→true 即补投时机
+    await vi.waitFor(() => expect(userInputs()).toEqual(["重连后要补上"]));
+    expect(out.queued).toBe(null);
+  });
+
+  it("直发后回显帧未到的窗口内再发:入队,不抢开新一轮", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    core.send("第一条"); // 空闲直发,task-started 帧还没回来
+    core.send("第二条"); // 真空期:直发会被壳的忙碌守卫拒掉,必须入队
+    expect(out.queued).toBe("第二条");
+    await vi.waitFor(() => expect(userInputs()).toEqual(["第一条"]));
+
+    pushFrames("s1", [frame("task-started")]); // 回执到达,本轮开跑
+    pushFrames("s1", [frame("task-ended")]);
+    await vi.waitFor(() => expect(userInputs()).toEqual(["第一条", "第二条"]));
+    expect(out.queued).toBe(null);
+  });
+
+  it("失败残留的积压:下次发送覆盖为最新内容并立即投递", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("压着的");
+    sendFail = true;
+    pushFrames("s1", [frame("task-ended")]);
+    await vi.waitFor(() => expect(out.queued).toBe("压着的"));
+
+    sendFail = false;
+    core.send("新输入");
+    await vi.waitFor(() => expect(userInputs()).toEqual(["新输入"]));
+    expect(out.queued).toBe(null);
+  });
+
+  it("切走会话时还压着排队消息:外显提醒,不静默丢", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("会被切掉的");
+    core.open("s2");
+    expect(out.notices.some((n) => n.includes("会被切掉的"))).toBe(true);
   });
 
   it("取消排队后本轮结束不再投递", async () => {
