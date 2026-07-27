@@ -731,8 +731,8 @@ fn create_main_window(app: &AppHandle, page: &str) {
     // UI 侧在 mac 壳内为侧栏顶部预留 50px 拖拽区/品牌带(titlebar.tsx)。
     // 红绿灯默认贴在窗口顶端(~y11),与品牌带中线(25)不齐,左上角头重脚轻;
     // 整组下移到 y19(按钮高 12,中心正落 25),与字标同一条线。x 维持系统
-    // 默认的 11 不动——横向 62px 一级栏本就容不下整组,顶部 50px 已整段
-    // 染成侧栏色(styles.css .mc-nav-rail),横向越界无妨。
+    // 默认的 11 不动——横向 62px 一级栏本就容不下整组,mac 下一级栏与侧栏
+    // 已是同一块面色且无分隔线(styles.css .mc-nav-rail),横向越界无妨。
     // tao 0.35 会存住该位置并在缩放/全屏往返后重放(set_traffic_light_inset)。
     #[cfg(target_os = "macos")]
     {

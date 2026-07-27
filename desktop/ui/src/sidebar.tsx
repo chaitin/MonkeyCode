@@ -609,7 +609,7 @@ function RailButton({
       {icon}
       {label}
       {!!badge && (
-        <span style={{ position: "absolute", top: 5, right: 4, minWidth: 15, height: 15, padding: "0 4px", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--acc)", color: "var(--onAcc)", border: "2px solid var(--rail)", fontSize: 8.5, fontWeight: 800 }}>
+        <span style={{ position: "absolute", top: 5, right: 4, minWidth: 15, height: 15, padding: "0 4px", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--acc)", color: "var(--onAcc)", border: "2px solid var(--railSurface)", fontSize: 8.5, fontWeight: 800 }}>
           {badge > 99 ? "99+" : badge}
         </span>
       )}
@@ -1151,7 +1151,7 @@ export function Sidebar({
         </span>
         <button className="hv icon-btn" title="设置" onClick={onOpenSettings} style={{ position: "relative", width: 36, height: 36, borderRadius: 10, marginBottom: 12 }}>
           <IconGear size={15} />
-          {update?.available && <span style={{ position: "absolute", top: 6, right: 6, width: 7, height: 7, borderRadius: "50%", background: "var(--notice)", border: "1.5px solid var(--rail)" }} />}
+          {update?.available && <span style={{ position: "absolute", top: 6, right: 6, width: 7, height: 7, borderRadius: "50%", background: "var(--notice)", border: "1.5px solid var(--railSurface)" }} />}
         </button>
       </div>
 

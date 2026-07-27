@@ -577,21 +577,21 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 /* 一级空间导航的栏宽、底色与右分隔线。
  *
  * mac 壳用 TitleBarStyle::Overlay(src/main.rs),原生红绿灯直接盖在这一栏的
- * 左上角,最右那颗缩放键会越过 62px 的栏、正压在右分隔线和底色交界上。
- *
- * 按钮的**大小与间距改不了**:那是 AppKit 画的标准 NSWindow 按钮,tao 的
- * inset_traffic_lights(tao 0.35 macos/view.rs)只调 setFrameOrigin 整组平移,
- * 连间距都是从系统按钮布局里读出来的,不是可传的参数。所以只有两条路:
- * 把栏加宽到容得下,或者别让任何边界穿过它们。这里选后者——栏宽维持 62px,
- * 顶部 50px(= MacDragSpacer / MacBrandBand 高度)整段染成侧栏的 --side,
- * 右分隔线也从这条下沿才开始画:三颗按钮坐在一整块单色上,没有线也没有
- * 色差从中穿过。50px 以下 --side→--rail 的换色被紧贴其下的 31px logo 压住,
- * 读作"一级栏从 logo 开始"。
- * 这条不依赖红绿灯的确切宽度——系统改了按钮尺寸它依然成立。
+ * 左上角,最右那颗缩放键会越过 62px 的栏。按钮的大小与间距改不了(AppKit
+ * 标准 NSWindow 按钮,tao 只能整组平移),所以唯一不丑的解法是**不让任何
+ * 边界靠近它们**:mac 下一级栏与侧栏共用同一块面色 --side,中间竖分隔线
+ * 整条去掉——红绿灯浮在一整块无缝的面上,结构感由按钮胶囊/logo/搜索框
+ * 自己撑起(Finder/Xcode 侧栏同款单一材质做法)。曾试过"只染顶部 50px"
+ * 的局部方案:rail 在 y50 处颜色一刀两断像被砍头,分隔线残段又与绿灯右缘
+ * 同列,搬运边界只会制造新边界。
+ * Windows/浏览器壳保留两档底色与右分隔线(自绘标题栏有明确分段,不冲突)。
+ * 徽章描边要跟着实际面色走,所以底色经 --railSurface 中转,tsx 里引用它。
  * data-platform 在 ui/src/main.tsx 落到根节点。 */
-.mc-nav-rail { width: 62px; position: relative; background: var(--rail); }
-[data-platform="mac"] .mc-nav-rail {
-  background: linear-gradient(to bottom, var(--side) 0 50px, var(--rail) 50px);
+.mc-nav-rail {
+  width: 62px;
+  position: relative;
+  --railSurface: var(--rail);
+  background: var(--railSurface);
 }
 .mc-nav-rail::after {
   content: "";
@@ -602,7 +602,8 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   width: 1px;
   background: var(--line2);
 }
-[data-platform="mac"] .mc-nav-rail::after { top: 50px; }
+[data-platform="mac"] .mc-nav-rail { --railSurface: var(--side); }
+[data-platform="mac"] .mc-nav-rail::after { display: none; }
 
 @media (max-width: 1080px) {
   .mc-nav-rail { width: 58px; }
