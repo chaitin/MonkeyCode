@@ -4,7 +4,7 @@
 import { b64encode, frameData } from "./codec";
 import type { McTaskOptions } from "./cloud";
 import { invoke, listenAsync } from "./ipc";
-import type { CloudProjectsResp, CloudTaskDetail, CloudTasksResp, Frame, McStatus, McUser, WsCloseInfo } from "./types";
+import type { CloudAttachment, CloudProjectsResp, CloudTaskDetail, CloudTasksResp, Frame, McStatus, McUser, WsCloseInfo } from "./types";
 
 // ==================== 云端 REST(壳命令代理) ====================
 
@@ -59,6 +59,16 @@ export const mcTaskCreate = (req: {
 }) => invoke<CloudTaskDetail>("mc_task_create", { req });
 
 export const mcTaskOptions = () => invoke<McTaskOptions>("mc_task_options");
+
+/** 云端聊天附件上传(壳内 presign + 直传对象存储,凭证不出内核;data 为
+ * base64 文件字节)。返回的 access_url 放进 user-input 的 attachments。 */
+export const mcUpload = (filename: string, dataB64: string) =>
+  invoke<{ access_url: string }>("mc_upload", { filename, data: dataB64 });
+
+/** 上传文件到云端任务 VM 工作区(壳代理 multipart,对齐 web 控制台文件树
+ * 的"上传文件")。path 为 VM 内绝对路径(如 /workspace/dir/name.txt)。 */
+export const mcFileUpload = (vmId: string, path: string, dataB64: string) =>
+  invoke<{ ok: boolean }>("mc_file_upload", { vmId, path, data: dataB64 });
 
 // ==================== 云端 WS 桥(壳做纯文本管道,协议逻辑在本层) ====================
 
@@ -120,6 +130,12 @@ export interface CloudConn {
   close(): void;
 }
 
+/** mode=new 的首条输入:正文 + 附件(与 web/mobile 的 user-input 契约一致)。 */
+export interface CloudUserInput {
+  content: string;
+  attachments?: CloudAttachment[];
+}
+
 /** 连接云端任务流(内核代理:内核带 monkeycode 会话拨 wss 到云端)。
  * mode=attach 回放当前轮+实时跟看;mode=new 开新一轮(连上即发 firstInput)。
  * 帧结构与本地会话 Frame 同构,可直接喂 reduceBatch;ping 已滤除,seq 单调去重。
@@ -136,10 +152,11 @@ export function connectCloudTask(
     /** 空闲关闭/连接彻底失败:云端对"当前轮已结束"的 attach 会直接关连接,
      * 这不是断线,不该重连——视图应转入"就绪"态(发消息时再建连接)。 */
     onIdle?(): void;
-    /** mode=new 的首条输入未能送达(拨号失败):视图应把内容放回队列 */
-    onSendFailed?(text: string): void;
+    /** mode=new 的首条输入未能送达(拨号失败):视图应把内容(含附件)放回队列 */
+    onSendFailed?(input: CloudUserInput): void;
   },
-  firstInput?: string,
+  /** 裸字符串视作无附件正文(兼容旧调用/测试) */
+  firstInput?: string | CloudUserInput,
 ): CloudConn {
   let pipe: { send(t: string): Promise<void>; close(): void } | null = null;
   let closed = false;
@@ -148,7 +165,8 @@ export function connectCloudTask(
   let queue: Frame[] = [];
   let flushScheduled = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let pendingFirst = firstInput;
+  let pendingFirst: CloudUserInput | undefined =
+    firstInput === undefined ? undefined : typeof firstInput === "string" ? { content: firstInput } : firstInput;
   let curMode = mode;
   let attempt = 0;
   let openedThisAttempt = false; // 本次尝试是否成功建立过管道
@@ -157,7 +175,7 @@ export function connectCloudTask(
   let dialErr = ""; // 最近一次拨号失败原因(状态行外显,不能吞——否则无从诊断)
   let dropCount = 0; // 连续短命断流次数(收过流又快速被关;超限转就绪兜底)
   let openedAt = 0; // 本次管道建立时刻(存活超 1 分钟视为健康,断流计数归零)
-  let sentFirstText: string | null = null; // 已上行但尚无任何回显的首条输入
+  let sentFirst: CloudUserInput | null = null; // 已上行但尚无任何回显的首条输入
 
   function flush() {
     flushScheduled = false;
@@ -208,7 +226,7 @@ export function connectCloudTask(
     // 成断流而无限重连
     if (f.type !== "cursor" && f.type !== "error" && f.type !== "task-error") {
       framesThisOpen += 1;
-      sentFirstText = null; // 有回显 = 首条输入已被云端接收
+      sentFirst = null; // 有回显 = 首条输入已被云端接收
     }
     queue.push(f);
     schedule();
@@ -228,10 +246,10 @@ export function connectCloudTask(
     const cleanClose = info?.code === 1000 || info?.code === 1001;
     if (openedThisAttempt && (cleanClose || framesThisOpen === 0)) {
       closed = true;
-      if (sentFirstText !== null) {
+      if (sentFirst !== null) {
         // mode=new 发了首条输入却零回显被关:大概率被拒(休眠/运行互斥),
         // 内容交还队列重试,绝不静默丢
-        h.onSendFailed?.(sentFirstText);
+        h.onSendFailed?.(sentFirst);
         return;
       }
       // 云端收束/一帧未发就被关:停止重连,转"就绪"——发消息时会另建
@@ -243,10 +261,10 @@ export function connectCloudTask(
       dialFails += 1;
       if (pendingFirst !== undefined) {
         // 带首条输入的连接没拨通:内容交还视图排队,本连接就此作废
-        const text = pendingFirst;
+        const input = pendingFirst;
         pendingFirst = undefined;
         closed = true;
-        h.onSendFailed?.(text);
+        h.onSendFailed?.(input);
         return;
       }
       if (dialFails >= DIAL_GIVEUP_FAILS) {
@@ -304,9 +322,12 @@ export function connectCloudTask(
         h.onStatus("已连接云端", true);
         // 新一轮:云端等第一条 user-input 才开跑;content 需再包一层 base64
         if (pendingFirst !== undefined) {
-          sentFirstText = pendingFirst;
-          // 发送失败不在此处理:零回显被关时经 sentFirstText → onSendFailed 兜底
-          void doSend("user-input", { content: b64encode(pendingFirst), attachments: [] });
+          sentFirst = pendingFirst;
+          // 发送失败不在此处理:零回显被关时经 sentFirst → onSendFailed 兜底
+          void doSend("user-input", {
+            content: b64encode(pendingFirst.content),
+            attachments: pendingFirst.attachments ?? [],
+          });
           pendingFirst = undefined;
         }
       })

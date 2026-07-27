@@ -23,11 +23,13 @@ import {
   mcTaskRounds,
   mcTaskStop,
   type CloudConn,
+  type CloudUserInput,
 } from "./cloudapi";
 import { usableCloudModels, type McCloudModel } from "./cloud";
+import { MAX_CLOUD_ATTS, uploadCloudFile, type CloudUploadedAtt } from "./cloudUpload";
 import { frameData } from "./codec";
 import { answerAsk as applyAskAnswer, initialChat, reduceBatch, type ChatState } from "./reduce";
-import type { CloudTask, CloudTaskDetail, Frame } from "./types";
+import type { CloudAttachment, CloudTask, CloudTaskDetail, Frame } from "./types";
 
 /** cursor 帧载荷:attach 下发时 data 既有裸 JSON 对象也有 base64(JSON)
  * 形态(云端契约不归本仓库管)——frameData 的双格式容错正是为此收口。 */
@@ -61,8 +63,8 @@ export interface CloudCoreIO {
   setConnected(ok: boolean): void;
   /** 翻页游标:仅在尚未持有游标时采纳(attach 回放的 cursor 帧) */
   setCursorIfEmpty(cursor: string, hasMore: boolean): void;
-  /** 排队内容镜像(React state,供 UI 外显) */
-  setQueued(text: string): void;
+  /** 排队内容镜像(React state,供 UI 外显;atts 为随队待发附件) */
+  setQueued(text: string, atts: CloudAttachment[]): void;
   setErr(text: string): void;
   /** 重新武装 attach effect(唤醒完成 / 投递被拒后重建观察通道) */
   bumpAttachEpoch(): void;
@@ -93,6 +95,7 @@ export function createCloudTaskCore(
   // 先入队,就绪(轮结束、attach 同步完)后自动投递;连发多条合并进同一队列,
   // 不会再出现"第二条把第一条的连接关掉导致丢消息"。
   let queued = ""; // 单一事实源(原 queuedRef + state 双写在此收敛,io.setQueued 只是镜像)
+  let queuedAtts: CloudAttachment[] = []; // 随队待发附件(与 queued 同生命周期)
   let running = false; // chat.running 镜像(稳定回调里读)
   let sending = false; // 直发后等首帧回执,期间再发只入队
   let taskStatus = "pending"; // 详情状态的渲染期镜像(原 statusRef)
@@ -102,9 +105,19 @@ export function createCloudTaskCore(
   let attachIdle = false;
   let sendFails = 0; // 连续投递失败计数(超限暂停自动重试)
 
-  const setQueued = (v: string) => {
+  const setQueued = (v: string, atts: CloudAttachment[]) => {
     queued = v;
-    io.setQueued(v);
+    queuedAtts = atts;
+    io.setQueued(v, atts);
+  };
+
+  /** 云端单条 user-input 附件上限(backend 契约为 10);排队合并超限时
+   * 截断并外显——静默丢会让用户以为图已随消息送达 */
+  const MAX_SEND_ATTS = 10;
+  const capAtts = (atts: CloudAttachment[]) => {
+    if (atts.length <= MAX_SEND_ATTS) return atts;
+    io.setErr(`合并排队后附件超过 ${MAX_SEND_ATTS} 个上限,已丢弃后 ${atts.length - MAX_SEND_ATTS} 个`);
+    return atts.slice(0, MAX_SEND_ATTS);
   };
 
   // 帧下发处理:cursor 帧捕获翻页游标,其余喂归约;轮结束把当前轮归档进历史
@@ -169,10 +182,13 @@ export function createCloudTaskCore(
       // 首条输入未送达(拨号失败/零回显被关):放回队列头,绝不静默丢。
       // 该连接已死,引用一并清掉;连续失败超限后暂停自动重试(内容仍在
       // 队列),否则"投递→被拒→2s 再投"会自持死循环
-      onSendFailed: (text: string) => {
+      onSendFailed: (input: CloudUserInput) => {
         sending = false;
         conn = null;
-        setQueued(queued ? text + "\n" + queued : text);
+        setQueued(
+          queued ? input.content + "\n" + queued : input.content,
+          capAtts([...(input.attachments ?? []), ...queuedAtts]),
+        );
         sendFails += 1;
         // 重建 attach 拿回观察通道:被拒大多因为轮在跑/环境未就绪,
         // attach 回放能揭示真实轮状态(收到帧会把失败计数归零),
@@ -194,7 +210,7 @@ export function createCloudTaskCore(
   }
 
   // 直发:并入历史 → 换 mode=new 连接(连上自动上行 user-input,云端回显)。
-  const dispatch = (text: string) => {
+  const dispatch = (text: string, atts: CloudAttachment[]) => {
     history = [...history, ...live];
     live = [];
     conn?.close();
@@ -207,7 +223,7 @@ export function createCloudTaskCore(
         trySendQueued();
       }
     }, 15000);
-    conn = connect(id, "new", handlers(), text);
+    conn = connect(id, "new", handlers(), { content: text, attachments: atts });
   };
 
   // 投递排队消息(对齐 mobile handleSend:直接建 mode=new 连接上行,服务端
@@ -221,34 +237,36 @@ export function createCloudTaskCore(
     if (running || sending) return; // 可见在跑/未回执才等
     if (sendFails >= 3) return; // 连败暂停:收到帧/唤醒/手动发送解除
     const q = queued;
-    setQueued("");
-    dispatch(q);
+    const qa = queuedAtts;
+    setQueued("", []);
+    dispatch(q, qa);
   }
 
   return {
     // ==================== 投递状态机(视图动作) ====================
 
     /** 发送:随时可按。当前轮执行中或上一条未回执 → 入队
-     * (多条合并,轮结束自动投递);空闲时才直发。 */
-    send(text: string) {
+     * (多条合并,轮结束自动投递);空闲时才直发。atts 为随消息附件。 */
+    send(text: string, atts: CloudAttachment[] = []) {
       if (!text || taskStatus === "finished" || taskStatus === "error") return;
       sendFails = 0; // 手动发送 = 用户明确要投递,重试机会重置
       // 当前轮还在执行或上一条直发还没回执:合并入队,别抢开新一轮或
       // 把在途连接顶掉。task-ended / onIdle 会解除 running 并自动投递。
       if (running || sending) {
-        setQueued(queued ? queued + "\n" + text : text);
+        setQueued(queued ? queued + "\n" + text : text, capAtts([...queuedAtts, ...atts]));
         return;
       }
       // 空闲时,把队列里压着的一并带上
       const full = [queued, text].filter(Boolean).join("\n");
-      setQueued("");
-      dispatch(full);
+      const fullAtts = capAtts([...queuedAtts, ...atts]);
+      setQueued("", []);
+      dispatch(full, fullAtts);
     },
 
     trySendQueued,
 
     clearQueued() {
-      setQueued("");
+      setQueued("", []);
     },
 
     /** 中断当前执行(WS user-cancel,不终止任务);发送结果是真实布尔——
@@ -281,9 +299,10 @@ export function createCloudTaskCore(
 
     /** 任务结束时还压着排队消息:外显提醒,不静默丢 */
     handleEnded() {
-      if (!queued) return;
-      io.setErr(`任务已结束,有未发送的消息:「${queued.slice(0, 60)}」`);
-      setQueued("");
+      if (!queued && queuedAtts.length === 0) return;
+      const attNote = queuedAtts.length ? `(含 ${queuedAtts.length} 个附件)` : "";
+      io.setErr(`任务已结束,有未发送的消息:「${queued.slice(0, 60)}」${attNote}`);
+      setQueued("", []);
     },
 
     // ==================== 连接编排(hook effects 驱动) ====================
@@ -391,8 +410,19 @@ export interface CloudTaskHandle {
   input: string;
   setInput(v: string): void;
   queued: string;
+  /** 随排队消息待发的附件数(排队 chip 外显) */
+  queuedAtts: number;
   clearQueued(): void;
   send(): void;
+  /** 待发送附件(已上传完成;单条消息上限 3) */
+  atts: CloudUploadedAtt[];
+  /** 上传进行中的附件数(>0 时发送先拦下,避免半套附件出门) */
+  uploading: number;
+  /** 选择/粘贴/拖入的文件逐个上传为附件(超限/失败经 err 外显) */
+  addFiles(files: File[]): void;
+  removeAtt(i: number): void;
+  /** 视图侧错误外显(如原生拖放读文件失败),走 err 横幅 */
+  notify(text: string): void;
   /** 中断当前执行(user-cancel,不终止任务) */
   cancel(): void;
   /** 终止任务(REST stop;确认交互在视图) */
@@ -434,6 +464,12 @@ export function useCloudTask(
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [err, setErr] = useState("");
   const [queued, setQueuedState] = useState("");
+  const [queuedAtts, setQueuedAttsState] = useState<CloudAttachment[]>([]);
+  // 待发送附件与上传中计数(附件随消息发出/入队后清空,额度重新起算)
+  const [atts, setAtts] = useState<CloudUploadedAtt[]>([]);
+  const [uploading, setUploading] = useState(0);
+  // 额度计数含上传中的(并发粘贴/拖入共享额度,state 异步更新看不住)
+  const attCountRef = useRef(0);
   // attach 生命周期与轮询解耦:vmStatus 抖动不能反复拆建连接——每次重建
   // 都会把 connectCloudTask 内部的重连上限(dialFails/dropCount)清零,
   // 3s/10s 的轮询节奏快于内部 ~30s 的放弃阈值,表现为永久"断开重连"。
@@ -459,7 +495,10 @@ export function useCloudTask(
       setStatus,
       setConnected,
       setCursorIfEmpty: (c, hasMore) => setCursor((prev) => prev ?? { cursor: c, hasMore }),
-      setQueued: setQueuedState,
+      setQueued: (text, queueAtts) => {
+        setQueuedState(text);
+        setQueuedAttsState(queueAtts);
+      },
       setErr,
       bumpAttachEpoch: () => setAttachEpoch((e) => e + 1),
       pin: () => {
@@ -505,6 +544,8 @@ export function useCloudTask(
     setCursor(null);
     setErr("");
     setInput("");
+    setAtts([]);
+    attCountRef.current = 0;
     pinnedRef.current = true;
     let alive = true;
     void (async () => {
@@ -592,8 +633,47 @@ export function useCloudTask(
   const send = () => {
     const text = input.trim();
     if (!text || ended) return;
+    // 上传还没落定就发送,消息会带着半套附件出门:拦下并外显
+    if (uploading > 0) {
+      setErr("附件上传中,请稍候再发送");
+      return;
+    }
     setInput("");
-    core.send(text);
+    const sendAtts = atts.map(({ url, filename }) => ({ url, filename }));
+    setAtts([]);
+    attCountRef.current = 0;
+    core.send(text, sendAtts);
+  };
+
+  // 附件逐个上传(与本地会话 addFiles 语义对齐:超限/失败经 err 外显,
+  // 成功即出现在待发条;上传中计数供发送拦截与 spinner)
+  const addFiles = (files: File[]) => {
+    if (ended) return;
+    void (async () => {
+      for (const f of files) {
+        if (attCountRef.current >= MAX_CLOUD_ATTS) {
+          setErr(`一条消息最多 ${MAX_CLOUD_ATTS} 个附件`);
+          break;
+        }
+        attCountRef.current += 1;
+        setUploading((n) => n + 1);
+        try {
+          const att = await uploadCloudFile(f);
+          setAtts((prev) => [...prev, att]);
+          setErr("");
+        } catch (e) {
+          attCountRef.current -= 1;
+          setErr("附件上传失败: " + (e instanceof Error ? e.message : String(e)));
+        } finally {
+          setUploading((n) => n - 1);
+        }
+      }
+    })();
+  };
+
+  const removeAtt = (i: number) => {
+    attCountRef.current = Math.max(0, attCountRef.current - 1);
+    setAtts((prev) => prev.filter((_, j) => j !== i));
   };
 
   // 任务结束时还压着排队消息:外显提醒,不静默丢
@@ -679,8 +759,14 @@ export function useCloudTask(
     input,
     setInput,
     queued,
+    queuedAtts: queuedAtts.length,
     clearQueued: () => core.clearQueued(),
     send,
+    atts,
+    uploading,
+    addFiles,
+    removeAtt,
+    notify: setErr,
     cancel: () => core.cancelRun(),
     stopTask,
     answerAsk: (askId, answers) => core.answerAsk(askId, answers),

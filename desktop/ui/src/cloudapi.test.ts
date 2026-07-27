@@ -81,7 +81,10 @@ afterEach(() => {
   delete (globalThis as Record<string, unknown>).window;
 });
 
-async function makeConn(mode: "attach" | "new", firstInput?: string) {
+async function makeConn(
+  mode: "attach" | "new",
+  firstInput?: string | { content: string; attachments?: { url: string; filename: string }[] },
+) {
   const { connectCloudTask } = await import("./cloudapi");
   const events: string[] = [];
   const conn = connectCloudTask(
@@ -92,7 +95,7 @@ async function makeConn(mode: "attach" | "new", firstInput?: string) {
       onStatus: (text) => events.push("status:" + text),
       onEnded: () => events.push("ended"),
       onIdle: () => events.push("idle"),
-      onSendFailed: (text) => events.push("sendFailed:" + text),
+      onSendFailed: (input) => events.push("sendFailed:" + input.content),
       onReconnect: () => events.push("reconnect"),
     },
     firstInput,
@@ -209,6 +212,29 @@ describe("connectCloudTask 重连状态机", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(events).toContain("sendFailed:排队内容");
     expect(openCalls).toBe(1);
+  });
+
+  it("mode=new 首条输入带附件 → user-input 帧携带 attachments(content 仍双层 base64)", async () => {
+    script.opens = [true];
+    const att = { url: "https://oss.example.com/a.webp", filename: "a.webp" };
+    await makeConn("new", { content: "看下这张图", attachments: [att] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.length).toBe(1);
+    const frame = JSON.parse(sent[0]) as { type: string; data: string };
+    expect(frame.type).toBe("user-input");
+    const payload = JSON.parse(b64decode(frame.data)) as { content: string; attachments: unknown };
+    expect(b64decode(payload.content)).toBe("看下这张图");
+    expect(payload.attachments).toEqual([att]);
+  });
+
+  it("mode=new 裸字符串首条输入(兼容旧调用)→ attachments 为空数组", async () => {
+    script.opens = [true];
+    await makeConn("new", "纯文本");
+    await vi.advanceTimersByTimeAsync(0);
+    const payload = JSON.parse(b64decode((JSON.parse(sent[0]) as { data: string }).data)) as {
+      attachments: unknown;
+    };
+    expect(payload.attachments).toEqual([]);
   });
 
   it("mode=new 有回显后中断 → 正常按断线重连(不误判拒收)", async () => {

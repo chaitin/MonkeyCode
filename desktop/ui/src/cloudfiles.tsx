@@ -4,7 +4,8 @@
 // repo_file_diff(与 web 控制台 task-file-explorer 同一套 kind 与字段),
 // 差异是 base64 内容解码、entry_mode 判目录、读取上限与唤醒超时余量。
 import { useEffect, useRef, useState } from "react";
-import { connectCloudControl, type CloudControl } from "./cloudapi";
+import { connectCloudControl, mcFileUpload, type CloudControl } from "./cloudapi";
+import { readDataURL } from "./cloudUpload";
 import type { CloudFileChange, CloudRepoFile } from "./types";
 import { b64decode } from "./codec";
 import { FilesDrawer, fmtSize, type FsAdapter } from "./filesdrawer";
@@ -13,11 +14,25 @@ const isDir = (f: CloudRepoFile) => f.entry_mode === 4 || f.entry_mode === 5;
 
 const MAX_FILE_SIZE = 1 << 20; // 读取上限 1MB(对齐 web/mobile)
 
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 上传上限 10MB(对齐 web 控制台文件树)
+
+/** 树内相对路径 → VM 内绝对路径(与 web 同一约定:工作区固定挂 /workspace) */
+const vmPath = (dir: string, name: string) => "/workspace/" + (dir ? dir + "/" : "") + name;
+
 // 控制流 call 默认 15s 超时,但拨号会触发休眠 VM 唤醒(以分钟计):
 // 抽屉打开即发的列表/改动调用给足唤醒余量,免得唤醒期间必然超时
 const WAKE_CALL_OPTS = { timeoutMs: 90_000, timeoutMsg: "云端环境可能在唤醒中,响应超时,请稍后重试" };
 
-export function CloudFilesDrawer({ taskId, onClose }: { taskId: string; onClose: () => void }) {
+export function CloudFilesDrawer({
+  taskId,
+  vmId,
+  onClose,
+}: {
+  taskId: string;
+  /** 任务 VM id(REST 文件上传按它寻址);空 = 无上传入口(VM 未就绪/已结束) */
+  vmId?: string;
+  onClose: () => void;
+}) {
   const [changes, setChanges] = useState<CloudFileChange[] | null>(null);
   const [ctrlErr, setCtrlErr] = useState("");
   const ctrlRef = useRef<CloudControl | null>(null);
@@ -31,12 +46,17 @@ export function CloudFilesDrawer({ taskId, onClose }: { taskId: string; onClose:
       },
     }));
 
-  // 拉改动(根目录由 FilesDrawer 挂载时经适配层拉取);卸载即断开
-  useEffect(() => {
+  // 拉改动(根目录由 FilesDrawer 挂载时经适配层拉取);上传后也重拉,
+  // 新文件的「??」要能出现在改动徽标里
+  const refreshChanges = () =>
     ensureCtrl()
       .call<{ changes?: CloudFileChange[] }>("repo_file_changes", {}, WAKE_CALL_OPTS)
       .then((r) => setChanges(r.changes ?? []))
       .catch(() => setChanges([]));
+
+  // 打开即拉改动;卸载即断开
+  useEffect(() => {
+    void refreshChanges();
     return () => {
       ctrlRef.current?.close();
       ctrlRef.current = null;
@@ -76,6 +96,21 @@ export function CloudFilesDrawer({ taskId, onClose }: { taskId: string; onClose:
     },
     diffTransientKind: "plain",
     clearErrOnListSuccess: true,
+    // 上传(REST 直达 VM,壳代理 multipart;与 web 控制台同一端点与 10MB 上限)。
+    // 顺序上传、失败即止:已传成功的部分随抽屉强刷可见,错误在列表区外显
+    ...(vmId
+      ? {
+          upload: async (dir: string, files: File[]) => {
+            for (const f of files) {
+              if (f.size === 0) throw new Error(`${f.name} 是空文件`);
+              if (f.size > MAX_UPLOAD_SIZE) throw new Error(`${f.name} 过大(单文件上限 10MB)`);
+              const dataURL = await readDataURL(f);
+              await mcFileUpload(vmId, vmPath(dir, f.name), dataURL.slice(dataURL.indexOf(",") + 1));
+            }
+            void refreshChanges();
+          },
+        }
+      : {}),
   };
 
   return (

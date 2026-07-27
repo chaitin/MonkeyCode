@@ -64,6 +64,8 @@ fn main() {
                 "mc_task_delete",
                 "mc_task_create",
                 "mc_task_options",
+                "mc_upload",
+                "mc_file_upload",
             ]),
         ),
     )

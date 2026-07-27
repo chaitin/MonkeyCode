@@ -25,7 +25,7 @@ tauri-plugin-updater = "2"
 
 # 引擎驱动层:壳直连 agent 内核(REST/WS/stdio),UI 只经 Tauri IPC
 # rustls 而非系统 openssl:Win7/老发行版无需系统 TLS 依赖
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
 tokio = { version = "1", features = ["sync", "time", "macros", "io-util", "process"] }
 # rustls-tls-webpki-roots 不能少:云端桥拨的是 wss,缺 TLS feature 时
 # connect_async 直接报 "TLS support not compiled in",所有云端 WS 秒败

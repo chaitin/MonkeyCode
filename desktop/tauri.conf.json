@@ -80,6 +80,8 @@
             "allow-mc-task-delete",
             "allow-mc-task-create",
             "allow-mc-task-options",
+            "allow-mc-upload",
+            "allow-mc-file-upload",
             "dialog:allow-open",
             "opener:allow-open-url",
             "opener:allow-default-urls",

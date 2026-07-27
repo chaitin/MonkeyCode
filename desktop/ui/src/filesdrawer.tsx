@@ -7,7 +7,7 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
 import { basename } from "./chat";
 import { CodeView, DiffPanel, MONO } from "./components";
-import { IconChevronRight, IconFile, IconFolder, IconX } from "./icons";
+import { IconChevronRight, IconFile, IconFolder, IconUpload, IconX } from "./icons";
 
 /** 改动状态 → 普通用户可读的中文标签与配色(git 的 A/M/D 不外显)。
  * 云端词汇是本地(A/M/D)的超集,对齐 web/移动端:M/A/D/R/RM/?? */
@@ -88,6 +88,9 @@ export interface FsAdapter {
   diffTransientKind: "diff" | "plain";
   /** 列表拉取成功后清除错误行(云端历史行为;本地保留错误) */
   clearErrOnListSuccess?: boolean;
+  /** 上传能力(云端 VM 工作区;缺省无上传入口):把一批文件传到目录
+   * (dir "" = 工作区根),抛错 → 错误行外显。完成后抽屉自行强刷该目录。 */
+  upload?(dir: string, files: File[]): Promise<void>;
 }
 
 export function FilesDrawer({
@@ -227,6 +230,34 @@ export function FilesDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ===== 上传(adapter.upload 存在才有入口):header 传根目录,目录行悬停
+  // 按钮传该目录;完成后强刷目标目录并展开让结果可见 =====
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const uploadDirRef = useRef(""); // 点击入口时锁定的目标目录(input 异步回调里读)
+  const [uploadingTo, setUploadingTo] = useState<string | null>(null);
+  const canUpload = !!adapter.upload;
+  const pickUpload = (dir: string) => {
+    if (uploadingTo !== null) return; // 一次一批,避免并发写同目录交错
+    uploadDirRef.current = dir;
+    uploadInputRef.current?.click();
+  };
+  const onUploadPicked = async (files: File[]) => {
+    const dir = uploadDirRef.current;
+    if (!files.length || !adapterRef.current.upload) return;
+    setUploadingTo(dir);
+    try {
+      await adapterRef.current.upload(dir, files);
+      setFsErr("");
+    } catch (e) {
+      // 批量顺序上传中途失败:已传上去的部分随下方强刷可见,不算静默
+      setFsErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploadingTo(null);
+    }
+    if (dir) setExpanded((s) => new Set(s).add(dir));
+    await loadChildren(dir, true);
+  };
+
   // 展开/收起文件夹(展开时懒加载子项,已缓存的即时展开)
   const toggleDir = (dir: string) => {
     setExpanded((prev) => {
@@ -365,10 +396,11 @@ export function FilesDrawer({
       const subCount = en.isDir && dirChangeBadges ? changedUnder(en.path) : 0;
       const open = en.isDir && expanded.has(en.path);
       const active = viewer?.path === en.path;
+      const rowUpload = en.isDir && canUpload;
       rows.push(
         <div
           key={en.path}
-          className={active ? undefined : "hv"}
+          className={[active ? "" : "hv", rowUpload ? "hrow" : ""].filter(Boolean).join(" ") || undefined}
           title={en.path}
           onClick={() => (en.isDir ? toggleDir(en.path) : void showFile(en))}
           style={{ ...fileRow, paddingLeft: pad, background: active ? "var(--hov)" : "transparent" }}
@@ -388,6 +420,24 @@ export function FilesDrawer({
           </span>
           {en.isDir && subCount > 0 && (
             <span style={{ ...changeTag, color: "var(--accTx)", background: "var(--accBg)" }}>{subCount} 处改动</span>
+          )}
+          {rowUpload && (
+            <button
+              // 上传中 spinner 要常显,不能被 row-acts 的悬停显隐藏掉
+              className={"hv2 icon-btn" + (uploadingTo === en.path ? "" : " row-acts")}
+              title={`上传文件到 ${en.name}/`}
+              onClick={(e) => {
+                e.stopPropagation(); // 别顺手展开/收起目录
+                pickUpload(en.path);
+              }}
+              style={{ width: 22, height: 22, flex: "none" }}
+            >
+              {uploadingTo === en.path ? (
+                <span className="spinner" style={{ width: 10, height: 10 }} />
+              ) : (
+                <IconUpload size={11} color="var(--t4)" />
+              )}
+            </button>
           )}
           {!en.isDir && kind && <span style={{ ...changeTag, color: kind.fg, background: kind.bg }}>{kind.text}</span>}
           {!en.isDir && !kind && (
@@ -452,12 +502,39 @@ export function FilesDrawer({
             </button>
           )}
           <span style={{ marginLeft: "auto", alignSelf: "center", display: "flex", alignItems: "center", gap: 4 }}>
+            {canUpload && tab === "files" && (
+              <button
+                className="hv2 icon-btn"
+                title="上传文件到工作区根目录(目录行悬停可传到该目录)"
+                onClick={() => pickUpload("")}
+                style={{ width: 24, height: 24 }}
+              >
+                {uploadingTo !== null ? (
+                  <span className="spinner" style={{ width: 11, height: 11 }} />
+                ) : (
+                  <IconUpload size={12} color="var(--t4)" />
+                )}
+              </button>
+            )}
             {headerExtra}
             <button className="hv2 icon-btn" title="关闭 (esc)" onClick={onClose} style={{ width: 24, height: 24 }}>
               <IconX size={11} color="var(--t4)" />
             </button>
           </span>
         </div>
+        {canUpload && (
+          <input
+            ref={uploadInputRef}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              const files = [...(e.target.files ?? [])];
+              e.target.value = ""; // 允许重复选同一文件
+              void onUploadPicked(files);
+            }}
+          />
+        )}
 
         {(fsErr || externalErr) && (
           <div style={{ padding: errPad, fontSize: 12, color: "var(--err)", flex: "none" }}>{fsErr || externalErr}</div>

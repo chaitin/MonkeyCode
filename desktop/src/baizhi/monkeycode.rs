@@ -360,6 +360,92 @@ pub async fn mc_task_options(svc: &Service) -> BzResult<Value> {
     Ok(res)
 }
 
+/// 附件上传壳侧护栏:UI 按云端约束(2MB,超限图片先压 webp)拦截,这里只防
+/// 超大载荷绕过 UI 直达 IPC;放宽到 4MB 免得两层阈值因压缩误差打架。
+const MC_UPLOAD_MAX_BYTES: usize = 4 << 20;
+
+/// 云端聊天附件上传(对齐 web uploadFileWithPresignedUrl):presign 换预签名
+/// URL → 壳直传对象存储(PUT 裸字节,预签名 URL 自带凭证,不带鉴权/Content-Type
+/// 头)→ 返回 access_url,由 UI 放进 user-input 帧的 attachments。
+pub async fn mc_upload(svc: &Service, filename: &str, data: Vec<u8>) -> BzResult<String> {
+    if filename.trim().is_empty() {
+        return Err(other("附件缺少文件名"));
+    }
+    if data.is_empty() {
+        return Err(other("附件内容为空"));
+    }
+    if data.len() > MC_UPLOAD_MAX_BYTES {
+        return Err(other("附件过大(上限 2MB)"));
+    }
+    let out = mc_call(
+        svc,
+        reqwest::Method::POST,
+        "/api/v1/uploader/presign",
+        Some(&json!({ "filename": filename })),
+    )
+    .await?;
+    let field = |k: &str| out.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let (upload_url, access_url) = (field("upload_url"), field("access_url"));
+    if upload_url.is_empty() || access_url.is_empty() {
+        return Err(other("预签名应答缺少上传/访问地址"));
+    }
+    // 直传走长超时客户端:2MB 在慢速网络下可能贴近 30s 普通超时
+    let resp = svc
+        .lp()?
+        .put(&upload_url)
+        .body(data)
+        .send()
+        .await
+        .map_err(|e| other(format!("上传附件失败: {e}")))?;
+    let status = resp.status().as_u16();
+    if !(200..300).contains(&status) {
+        return Err(other(format!("上传附件失败(HTTP {status})")));
+    }
+    Ok(access_url)
+}
+
+/// 工作区文件上传壳侧护栏(UI 按 web 控制台同款 10MB 拦截,这里防超大
+/// 载荷绕过 UI 直达 IPC;放宽到 12MB 免得两层阈值打架)。
+const MC_FILE_UPLOAD_MAX_BYTES: usize = 12 << 20;
+
+/// 上传文件到云端任务 VM 工作区(对齐 web 控制台文件树的"上传文件":
+/// POST /api/v1/users/files/upload?id=<vm>&path=<绝对路径>,multipart 字段
+/// file)。path 须为 VM 内绝对路径(如 /workspace/dir/name.txt),文件名取
+/// 其末段。
+pub async fn mc_file_upload(svc: &Service, vm_id: &str, path: &str, data: Vec<u8>) -> BzResult<()> {
+    if vm_id.is_empty() {
+        return Err(other("缺少虚拟机 ID"));
+    }
+    let filename = path.rsplit('/').next().unwrap_or("").to_string();
+    if !path.starts_with('/') || filename.is_empty() {
+        return Err(other("目标路径必须是文件的绝对路径"));
+    }
+    if data.is_empty() {
+        return Err(other("文件内容为空"));
+    }
+    if data.len() > MC_FILE_UPLOAD_MAX_BYTES {
+        return Err(other("文件过大(上限 10MB)"));
+    }
+    let target = format!(
+        "{}/api/v1/users/files/upload?id={}&path={}",
+        svc.ep.monkeycode,
+        urlencode(vm_id),
+        urlencode(path)
+    );
+    let url = reqwest::Url::parse(&target).map_err(|e| other(format!("地址异常: {e}")))?;
+    let form = reqwest::multipart::Form::new()
+        .part("file", reqwest::multipart::Part::bytes(data).file_name(filename));
+    // 长超时客户端:10MB 在慢速网络下会贴近 30s 普通超时
+    let mut req = svc.lp()?.post(url.clone()).multipart(form);
+    if let Some(h) = svc.mc.header(&url) {
+        req = req.header(reqwest::header::COOKIE, h);
+    }
+    let resp = req.send().await.map_err(|e| other(format!("上传失败: {e}")))?;
+    let status = resp.status().as_u16();
+    let body = resp.bytes().await.map_err(|e| other(format!("读取响应失败: {e}")))?;
+    unwrap_envelope(&body, status, &ENV_MC).map(|_| ())
+}
+
 /// MonkeyCode 云端包壳 {code,message,data}。401 不看响应体直接判会话失效:
 /// 恢复动作是"重新同步云端账号"(桥接登录),与百智云的"重新登录"不同。
 pub(crate) const ENV_MC: Envelope = Envelope {

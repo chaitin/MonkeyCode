@@ -594,3 +594,30 @@ pub async fn mc_task_create(bz: State<'_, BaizhiState>, req: Value) -> Result<Va
 pub async fn mc_task_options(bz: State<'_, BaizhiState>) -> Result<Value, String> {
     monkeycode::mc_task_options(&bz.0).await.map_err(BzErr::msg)
 }
+
+/// 云端聊天附件上传(data = base64 文件字节);返回 {access_url}。
+#[tauri::command]
+pub async fn mc_upload(bz: State<'_, BaizhiState>, filename: String, data: String) -> Result<Value, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.as_bytes())
+        .map_err(|e| format!("附件数据解码失败: {e}"))?;
+    let access_url = monkeycode::mc_upload(&bz.0, &filename, bytes).await.map_err(BzErr::msg)?;
+    Ok(json!({ "access_url": access_url }))
+}
+
+/// 上传文件到云端任务 VM 工作区(path 为 VM 内绝对路径,data = base64 文件字节)。
+#[tauri::command]
+pub async fn mc_file_upload(
+    bz: State<'_, BaizhiState>,
+    vm_id: String,
+    path: String,
+    data: String,
+) -> Result<Value, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.as_bytes())
+        .map_err(|e| format!("文件数据解码失败: {e}"))?;
+    monkeycode::mc_file_upload(&bz.0, &vm_id, &path, bytes).await.map_err(BzErr::msg)?;
+    Ok(json!({ "ok": true }))
+}

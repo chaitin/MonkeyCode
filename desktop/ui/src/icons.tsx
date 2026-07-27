@@ -237,6 +237,36 @@ export function IconX({ size = 9, color = "var(--t5)", style }: IconProps) {
   );
 }
 
+/** 上传(托盘 + 上箭头) */
+export function IconUpload({ size = 12, color = "var(--t3)", style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" style={{ ...base, ...style }}>
+      <path
+        d="M2.5 9.8v1.4a1.3 1.3 0 0 0 1.3 1.3h6.4a1.3 1.3 0 0 0 1.3-1.3V9.8M7 9.2V2.4M4.2 5.2 7 2.4l2.8 2.8"
+        stroke={color}
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** 回形针(添加附件) */
+export function IconPaperclip({ size = 13, color = "var(--t3)", style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" style={{ ...base, ...style }}>
+      <path
+        d="M11.6 6.4 7.2 10.8a2.9 2.9 0 0 1-4.1-4.1L7.9 2a1.93 1.93 0 0 1 2.73 2.73L6.2 9.2a.97.97 0 0 1-1.37-1.37L8.9 3.8"
+        stroke={color}
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** 发送(上箭头) */
 export function IconSend({ size = 13, color = "var(--onAcc)", style }: IconProps) {
   return (

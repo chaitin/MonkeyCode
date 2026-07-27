@@ -473,6 +473,32 @@ describe("轮次与系统帧", () => {
     expect(s.items[0]).toEqual({ kind: "user", text: "带时间", timestamp: 1_234 });
   });
 
+  it("user-input 解析云端附件;缺 filename 用 URL 末段兜底,无 url 的条目丢弃", () => {
+    const s = run([
+      frame("user-input", {
+        content: b64encode("看下这张图"),
+        attachments: [
+          { url: "https://oss.example.com/a.webp", filename: "a.webp" },
+          { url: "https://oss.example.com/x/b.pdf" }, // 旧帧缺 filename
+          { filename: "孤儿.png" }, // 无 url:不可渲染,丢弃
+        ],
+      }),
+    ]);
+    expect(s.items[0]).toEqual({
+      kind: "user",
+      text: "看下这张图",
+      attachments: [
+        { url: "https://oss.example.com/a.webp", filename: "a.webp" },
+        { url: "https://oss.example.com/x/b.pdf", filename: "b.pdf" },
+      ],
+    });
+    // 空 attachments:字段缺席(不污染全等比较)
+    expect(run([frame("user-input", { content: b64encode("无附件"), attachments: [] })]).items[0]).toEqual({
+      kind: "user",
+      text: "无附件",
+    });
+  });
+
   it("usage/model/permMode 回写状态并留系统行", () => {
     const s = run([
       acp({ sessionUpdate: "usage_update", used: 1200, size: 200000 }),

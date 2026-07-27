@@ -85,6 +85,14 @@ function sentUserInputs(): string[] {
     .map((m) => b64decode((JSON.parse(b64decode(m.data)) as { content: string }).content));
 }
 
+/** 上行 user-input 帧携带的 attachments(按帧序) */
+function sentAttachments(): unknown[] {
+  return sent
+    .map((t) => JSON.parse(t) as { type: string; data: string })
+    .filter((m) => m.type === "user-input")
+    .map((m) => (JSON.parse(b64decode(m.data)) as { attachments?: unknown }).attachments);
+}
+
 /** 组装核心 + 记录型 IO(排队/状态/错误/回写全部落到 out,便于断言) */
 function makeCore(taskStatus = "processing") {
   const events: string[] = [];
@@ -167,6 +175,25 @@ describe("云端投递状态机:排队与自动投递", () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(out.queued).toBe("");
     expect(sentUserInputs()).toEqual(["第一条", "第二条"]);
+  });
+
+  it("附件随消息投递:直发带附件;未回执入队的附件轮结束后随队发出", async () => {
+    opens = [true, true];
+    const { core, out } = makeCore();
+    const att1 = { url: "https://oss.example.com/a.webp", filename: "a.webp" };
+    const att2 = { url: "https://oss.example.com/b.pdf", filename: "b.pdf" };
+    core.send("第一条", [att1]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sentAttachments()).toEqual([[att1]]);
+    // 上一条未回执:第二条连同附件一起排队
+    core.send("第二条", [att2]);
+    expect(out.queued).toBe("第二条");
+    // 回显解除回执等待;轮结束后排队消息(含附件)自动投递
+    pushFrame({ type: "user-input", seq: 1, data: "e30=" });
+    pushFrame({ type: "task-ended", seq: 2 });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(sentUserInputs()).toEqual(["第一条", "第二条"]);
+    expect(sentAttachments()).toEqual([[att1], [att2]]);
   });
 
   it("已收到运行帧后再次发送仍入队,不会直接抢开新一轮", async () => {

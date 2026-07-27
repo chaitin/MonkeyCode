@@ -1110,6 +1110,8 @@ fn main() {
             baizhi::mc_task_delete,
             baizhi::mc_task_create,
             baizhi::mc_task_options,
+            baizhi::mc_upload,
+            baizhi::mc_file_upload,
             baizhi::monkeycode::cloud_ws_open,
             baizhi::monkeycode::cloud_ws_send,
             baizhi::monkeycode::cloud_ws_close

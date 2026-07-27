@@ -160,6 +160,13 @@ export interface AskQuestion {
   answer?: string | string[];
 }
 
+/** 云端任务聊天附件(user-input 帧的 attachments 条目;url 为对象存储
+ * access_url,与 web/mobile 同一契约,单条消息云端上限 10 个)。 */
+export interface CloudAttachment {
+  url: string;
+  filename: string;
+}
+
 /** 对话流里的一条渲染项 */
 export type LogItem =
   | {
@@ -170,6 +177,8 @@ export type LogItem =
       /** 产生它的 user-input 帧 seq:提问大纲 ↔ 渲染项 ↔ DOM 的稳定锚
        * (下标会因"加载更早"整体平移,seq 不会;旧记录可缺省) */
       seq?: number;
+      /** 云端任务附件(url 直链渲染;本地会话走文本附件行约定,不用此字段) */
+      attachments?: CloudAttachment[];
     }
   | { kind: "agent"; text: string; /** 首个流式分片时间(Unix ms;旧记录可缺省) */ timestamp?: number }
   | { kind: "thought"; text: string }

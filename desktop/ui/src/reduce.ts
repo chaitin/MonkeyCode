@@ -424,19 +424,26 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
       };
     }
     case "user-input": {
-      const data = frameData<{ content?: string }>(f);
+      const data = frameData<{ content?: string; attachments?: { url?: string; filename?: string }[] }>(f);
       let text = "";
       try {
         text = data?.content ? b64decode(data.content) : "";
       } catch {
         text = data?.content ?? "";
       }
+      // 云端附件({url, filename},与 web/mobile 契约一致):缺 filename 的
+      // 旧帧用 URL 末段兜底;本地会话帧无此字段,不受影响
+      const atts = (data?.attachments ?? [])
+        .filter((a) => !!a?.url)
+        .map((a) => ({ url: a.url!, filename: a.filename || a.url!.split("/").pop() || "附件" }));
       return push(s, {
         kind: "user",
         text,
         ...(f.timestamp !== undefined ? { timestamp: f.timestamp } : {}),
         // 大纲跳转的锚:壳的 session_outline 条目按同一 seq 对表
         ...(f.seq !== undefined ? { seq: f.seq } : {}),
+        // 有才写:undefined/空数组键会污染测试的全等比较,语义上也该缺席
+        ...(atts.length ? { attachments: atts } : {}),
       });
     }
     case "permission-req": {

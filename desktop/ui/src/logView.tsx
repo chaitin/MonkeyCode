@@ -1,11 +1,13 @@
 // 对话流:思考块、轮次边界、模型切换、用户气泡与逐项分发(相邻工具卡共享外框)。
 import { useState, type ReactElement } from "react";
+import { isImageFilename } from "./cloudUpload";
+import { openExternal } from "./host";
 import { IconChevronRight, IconSpark } from "./icons";
 import { Markdown } from "./markdown";
 import { AskCard, PermCard } from "./promptCards";
 import { permAnchors } from "./reduce";
 import { ToolCard } from "./toolCard";
-import type { Frame, LogItem } from "./types";
+import type { CloudAttachment, Frame, LogItem } from "./types";
 import { UploadImg, downloadUpload } from "./uploadMedia";
 
 /** 思考块:单行折叠(✦ 思考 + 摘要省略),点击在下方展开完整文本的缩进块。
@@ -105,20 +107,27 @@ function MessageTime({ timestamp, align }: { timestamp?: number; align: "start" 
   );
 }
 
-/** 用户气泡:文本 + 附图缩略图(点击看大图)+ 文件 chip(点击下载) */
+/** 用户气泡:文本 + 附图缩略图(点击看大图)+ 文件 chip(点击下载)。
+ * 附件两个来源互斥:本地会话走正文附件行约定(uploadUrl 回读工作区),
+ * 云端任务走 attachments 字段(对象存储直链,CSP 已放行 https: 图源)。 */
 function UserBubble({
   text,
   timestamp,
   seq,
   uploadUrl,
+  attachments,
 }: {
   text: string;
   timestamp?: number;
   /** 产生它的 user-input 帧 seq:提问大纲按它定位这条气泡 */
   seq?: number;
   uploadUrl?: (path: string) => Promise<string>;
+  /** 云端任务附件(url 直链渲染;文件 chip 点击在浏览器打开) */
+  attachments?: CloudAttachment[];
 }) {
   const [zoom, setZoom] = useState<string | null>(null);
+  // 云端图片大图预览(直链,与本地 zoom 的回读语义不同,分开持有)
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null);
   const lines = text.split("\n");
   const images: string[] = [];
   const files: string[] = [];
@@ -129,6 +138,8 @@ function UserBubble({
     else rest.push(line);
   }
   const body = rest.join("\n").trim();
+  const cloudImages = (attachments ?? []).filter((a) => isImageFilename(a.filename));
+  const cloudFiles = (attachments ?? []).filter((a) => !isImageFilename(a.filename));
   return (
     <div data-mc-seq={seq} style={{ display: "flex", justifyContent: "flex-end" }}>
       <div
@@ -149,8 +160,49 @@ function UserBubble({
         }}
       >
         {body}
-        {(images.length > 0 || files.length > 0) && (
+        {(images.length > 0 || files.length > 0 || cloudImages.length > 0 || cloudFiles.length > 0) && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: body ? 8 : 2, alignItems: "center" }}>
+            {cloudImages.map((a) => (
+              <img
+                key={a.url}
+                src={a.url}
+                alt={a.filename}
+                title={a.filename}
+                onClick={() => setZoomUrl(a.url)}
+                style={{
+                  maxWidth: 150,
+                  maxHeight: 120,
+                  borderRadius: 8,
+                  border: "1px solid var(--accBd)",
+                  cursor: "zoom-in",
+                  display: "block",
+                }}
+              />
+            ))}
+            {cloudFiles.map((a) => (
+              <span
+                key={a.url}
+                title={a.filename + "(点击在浏览器打开)"}
+                onClick={() => openExternal(a.url)}
+                style={{
+                  height: 28,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "0 10px",
+                  borderRadius: 8,
+                  border: "1px solid var(--accBd)",
+                  background: "var(--card)",
+                  fontSize: 12,
+                  color: "var(--t2)",
+                  maxWidth: 240,
+                  cursor: "pointer",
+                }}
+              >
+                📄
+                <span className="ellipsis">{a.filename}</span>
+              </span>
+            ))}
             {images.map((p) => (
               <UploadImg
                 key={p}
@@ -219,6 +271,27 @@ function UserBubble({
           />
         </div>
       )}
+      {zoomUrl && (
+        <div
+          onClick={() => setZoomUrl(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "var(--scrim3)",
+            zIndex: 50,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "zoom-out",
+          }}
+        >
+          <img
+            src={zoomUrl}
+            alt=""
+            style={{ maxWidth: "90vw", maxHeight: "90vh", borderRadius: 10, boxShadow: "var(--shadowLg)" }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -239,7 +312,13 @@ function ItemView({
   switch (item.kind) {
     case "user":
       return (
-        <UserBubble text={item.text} timestamp={item.timestamp} seq={item.seq} uploadUrl={uploadUrl} />
+        <UserBubble
+          text={item.text}
+          timestamp={item.timestamp}
+          seq={item.seq}
+          uploadUrl={uploadUrl}
+          attachments={item.attachments}
+        />
       );
     case "agent":
       return (
