@@ -504,6 +504,9 @@ impl OhmyDriver {
             let sessions = self.0.sess.sessions.lock_ok();
             !sessions.get(id).map(|s| s.created).unwrap_or(false)
         };
+        // 恢复期间上行的 user-input 不能在 seq 水位恢复前编号(会从 0 重编、
+        // 与旧帧撞号,大纲随之两点同亮/跳错):就绪宣告闸在水位恢复之后。
+        let mut seq_gate: Option<tokio::sync::oneshot::Sender<()>> = None;
         if need_create {
             let meta = self.read_sidecar(id);
             let is_child =
@@ -542,7 +545,9 @@ impl OhmyDriver {
                 }
             }
             if !is_child {
-                self.spawn_resume(id, meta, engine_id);
+                let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+                seq_gate = Some(tx);
+                self.spawn_resume(id, meta, engine_id, rx);
             }
         }
         // 磁盘读与 flush 屏障都在阻塞线程上做,不占 tokio 运行时;
@@ -554,6 +559,11 @@ impl OhmyDriver {
                 .await
                 .map_err(|e| format!("回放任务失败: {e}"))?
         };
+        // seq 水位已随 replay_open 恢复,放行 resume 的就绪宣告(见 spawn_resume)。
+        // 早退路径靠 tx 随 seq_gate 丢弃解闸,不会把 resume 挂死。
+        if let Some(tx) = seq_gate {
+            let _ = tx.send(());
+        }
         // 已就绪(新建会话/子会话)直接报连接;等 resume 的由后台任务报
         if self.0.sess.sessions.lock_ok().get(id).map(|s| s.created).unwrap_or(false) {
             self.0
@@ -574,13 +584,23 @@ impl OhmyDriver {
 
     /// 后台 resume:引擎握手挪出打开路径。结果经 watch 广播给
     /// ensure_engine_ready,并经 conn-status 外显(失败文案不能吞)。
-    fn spawn_resume(&self, id: &str, meta: Value, engine_id: String) {
+    ///
+    /// seq_gate:session_open 在 replay_open 恢复完 seq 水位后放行。resume
+    /// 的 RPC 照旧与回放并行,只闸「就绪宣告」——ensure_engine_ready 放行
+    /// 即可编帧号,水位未恢复就放行会让恢复期间的输入从 0 重编、撞上旧帧。
+    fn spawn_resume(
+        &self,
+        id: &str,
+        meta: Value,
+        engine_id: String,
+        seq_gate: tokio::sync::oneshot::Receiver<()>,
+    ) {
         let (tx, rx) = tokio::sync::watch::channel::<Option<Result<(), String>>>(None);
         self.0.sess.resume.lock_ok().insert(id.to_string(), rx);
         let me = self.clone();
         let sid = id.to_string();
         tauri::async_runtime::spawn(async move {
-            let r = me.resume_engine(&sid, &meta, engine_id).await;
+            let r = me.resume_engine(&sid, &meta, engine_id, seq_gate).await;
             let status = match &r {
                 Ok(()) => json!({ "text": "已连接", "connected": true }),
                 Err(e) => json!({ "text": format!("⚠ 会话恢复失败: {e}"), "connected": false }),
@@ -598,6 +618,7 @@ impl OhmyDriver {
         id: &str,
         meta: &Value,
         mut engine_id: String,
+        seq_gate: tokio::sync::oneshot::Receiver<()>,
     ) -> Result<(), String> {
         let mode = meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default");
         let has_history = self.engine_session_exists(&engine_id).await;
@@ -637,6 +658,10 @@ impl OhmyDriver {
             })
             .await;
         }
+        // created=true 是 ensure_engine_ready 的快路径:置位前必须等 seq 水位
+        // 恢复完(replay_open 末尾放行;发送端丢弃同样放行,不会挂死),
+        // 否则恢复期间的 user-input 会从 0 重编帧号、与旧帧撞 seq
+        let _ = seq_gate.await;
         if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
             s.created = true;
             s.engine_id = engine_id;

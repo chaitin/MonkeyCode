@@ -44,6 +44,16 @@ describe("outlineEntries", () => {
     const [e] = outlineEntries([item({ timestamp: undefined })]);
     expect(e.time).toBe("");
   });
+
+  it("撞 seq 的条目只留首条(帧号撞号的坏数据防御:两点同亮、点击跳错)", () => {
+    const entries = outlineEntries([
+      item({ seq: 1, text: "第一问" }),
+      item({ seq: 1, text: "撞号的重复问" }),
+      item({ seq: 5, text: "第二问" }),
+    ]);
+    expect(entries.map((e) => e.seq)).toEqual([1, 5]);
+    expect(entries[0].label).toBe("第一问");
+  });
 });
 
 describe("outlineActiveSeq", () => {

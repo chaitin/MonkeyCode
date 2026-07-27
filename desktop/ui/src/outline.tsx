@@ -44,9 +44,17 @@ function hhmm(ts?: number): string {
 }
 
 /** 大纲条目文案:剥掉附件行(与用户气泡同一 ATT_LINE 约定)、压平空白、截断。
- * 纯附件消息没有正文,回退成附件计数,不能出现空条目。 */
+ * 纯附件消息没有正文,回退成附件计数,不能出现空条目。
+ *
+ * 撞 seq 的条目只留首条:seq 是跳转与高亮的锚,重复意味着历史帧撞号
+ * (旧版壳在恢复期间收输入会重编帧号),两条同 seq 只能定位到同一气泡,
+ * 留着第二条只会两点同亮、点了跳错。 */
 export function outlineEntries(items: OutlineItem[]): OutlineEntry[] {
-  return items.map((it) => {
+  const seen = new Set<number>();
+  const out: OutlineEntry[] = [];
+  for (const it of items) {
+    if (seen.has(it.seq)) continue;
+    seen.add(it.seq);
     const body: string[] = [];
     let atts = 0;
     for (const line of it.text.split("\n")) {
@@ -61,8 +69,9 @@ export function outlineEntries(items: OutlineItem[]): OutlineEntry[] {
       : atts > 0
         ? `📎 ${atts} 个附件`
         : "(空消息)";
-    return { seq: it.seq, offset: it.offset, label, time: hhmm(it.timestamp) };
-  });
+    out.push({ seq: it.seq, offset: it.offset, label, time: hhmm(it.timestamp) });
+  }
+  return out;
 }
 
 /** 一列小点常驻,鼠标落到点上时在右侧浮出大纲;点条目跳转。

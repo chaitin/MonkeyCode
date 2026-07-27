@@ -436,6 +436,247 @@ fn acp_update(f: &Value) -> Option<Value> {
     f.get("data")?.get("update").cloned()
 }
 
+/// 复现排查:连续两轮发送**相同文本**的消息,大纲(session_outline)的
+/// seq 必须与两条 user-input 帧一一对应且互不重复——重复 seq 会让 UI
+/// 大纲两个点同时标绿、点击定位到错误的那条。
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
+async fn e2e_outline_two_identical_messages() {
+    require_ohmyagent();
+    let _g = e2e_lock().await;
+    let (driver, home) = e2e_setup("outline-dup", 0);
+
+    let workdir = home.to_string_lossy().into_owned();
+    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
+    driver.session_open(&sid).await.expect("打开会话");
+
+    // 全程高频轮询大纲:物化(Materialize)与大纲读取并发时,任何一个
+    // 快照里都不允许出现重复 seq(UI 在轮末刷新大纲,瞬态重复用户看得到)
+    let poll_stop = Arc::new(AtomicBool::new(false));
+    let poller = {
+        let driver = driver.clone();
+        let sid = sid.clone();
+        let stop = poll_stop.clone();
+        tokio::spawn(async move {
+            while !stop.load(Ordering::Relaxed) {
+                let snap = driver.session_outline(&sid).await.unwrap_or_else(|_| json!([]));
+                let seqs: Vec<u64> = snap
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|e| e.get("seq").and_then(|v| v.as_u64()))
+                    .collect();
+                let uniq: HashSet<u64> = seqs.iter().copied().collect();
+                assert_eq!(uniq.len(), seqs.len(), "大纲快照出现重复 seq: {seqs:?}");
+                tokio::time::sleep(Duration::from_millis(2)).await;
+            }
+        })
+    };
+
+    let payload = json!({ "content": frame::b64_text("一样的消息") });
+    driver.session_send(&sid, "user-input", payload.clone()).await.expect("发送 1");
+    let ended = |n: usize| {
+        move |j: &[Value]| {
+            j.iter().filter(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended")).count() >= n
+        }
+    };
+    let journal = wait_journal(&driver, &sid, ended(1)).await;
+    assert!(ended(1)(&journal), "第一轮未结束: {journal:?}");
+    // 第二条同文本消息。task-ended 帧与内存 running=false 之间可能有
+    // 极短间隙,忙碌守卫命中就稍等重试
+    for i in 0..50 {
+        match driver.session_send(&sid, "user-input", payload.clone()).await {
+            Ok(_) => break,
+            Err(e) if i < 49 => {
+                let _ = e;
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            Err(e) => panic!("发送 2 失败: {e}"),
+        }
+    }
+    let journal = wait_journal(&driver, &sid, ended(2)).await;
+    assert!(ended(2)(&journal), "第二轮未结束: {journal:?}");
+
+    // journal 里恰好两条 user-input,seq 各不相同
+    let input_seqs: Vec<u64> = journal
+        .iter()
+        .filter(|f| f.get("type").and_then(|v| v.as_str()) == Some("user-input"))
+        .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
+        .collect();
+    assert_eq!(input_seqs.len(), 2, "user-input 帧数不对: {journal:?}");
+    assert_ne!(input_seqs[0], input_seqs[1], "两条 user-input 撞 seq: {input_seqs:?}");
+
+    // 大纲与 journal 对表:两条、seq 一致且唯一
+    let outline = driver.session_outline(&sid).await.expect("大纲");
+    let entries = outline.as_array().cloned().unwrap_or_default();
+    let outline_seqs: Vec<u64> =
+        entries.iter().filter_map(|e| e.get("seq").and_then(|v| v.as_u64())).collect();
+    assert_eq!(outline_seqs, input_seqs, "大纲 seq 与帧不对表: {entries:?}");
+
+    // 重开会话(seq 水位恢复路径)后再发第三条同文本消息,仍不得撞 seq
+    driver.session_close(&sid).await;
+    driver.session_open(&sid).await.expect("重开会话");
+    driver.session_send(&sid, "user-input", payload.clone()).await.expect("发送 3");
+    let journal = wait_journal(&driver, &sid, ended(3)).await;
+    assert!(ended(3)(&journal), "第三轮未结束: {journal:?}");
+    let outline = driver.session_outline(&sid).await.expect("大纲 2");
+    let entries = outline.as_array().cloned().unwrap_or_default();
+    let seqs: Vec<u64> = entries.iter().filter_map(|e| e.get("seq").and_then(|v| v.as_u64())).collect();
+    let uniq: HashSet<u64> = seqs.iter().copied().collect();
+    assert_eq!(seqs.len(), 3, "大纲条目数不对: {entries:?}");
+    assert_eq!(uniq.len(), seqs.len(), "大纲出现重复 seq: {seqs:?}");
+
+    poll_stop.store(true, Ordering::Relaxed);
+    poller.await.expect("大纲轮询任务断言失败");
+
+    // ==== 壳进程重启(新 driver、同一数据目录):seq 水位必须从磁盘恢复 ====
+    driver.stop();
+    let settings: Value = serde_json::from_slice(
+        &std::fs::read(home.join("shellcfg/ohmyagent/settings.json")).unwrap(),
+    )
+    .unwrap();
+    let base_url = settings["models"]["测试模型"]["base_url"].as_str().unwrap().to_string();
+    let ctx: Arc<dyn ShellCtx> = Arc::new(TestCtx::new(home.join("shellcfg")));
+    let cfg = DesktopConfig {
+        models: json!([{ "name": "测试模型", "provider": "anthropic",
+            "base_url": base_url, "api_key": "sk-fake", "model": "test-model", "default": true }]),
+        ..Default::default()
+    };
+    let driver = OhmyDriver::start_with(ctx, &cfg).expect("重启引擎");
+    driver.session_open(&sid).await.expect("重启后打开会话");
+    for i in 0..50 {
+        match driver.session_send(&sid, "user-input", payload.clone()).await {
+            Ok(_) => break,
+            Err(e) if i < 49 => {
+                let _ = e;
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            Err(e) => panic!("重启后发送失败: {e}"),
+        }
+    }
+    let journal = wait_journal(&driver, &sid, ended(4)).await;
+    assert!(ended(4)(&journal), "重启后一轮未结束: {journal:?}");
+    // 全 journal 无重复 seq(水位回卷会让新帧撞上老帧,大纲两个点同亮)
+    let all_seqs: Vec<u64> =
+        journal.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
+    let uniq: HashSet<u64> = all_seqs.iter().copied().collect();
+    assert_eq!(uniq.len(), all_seqs.len(), "重启后 seq 回卷撞号: {all_seqs:?}");
+    let outline = driver.session_outline(&sid).await.expect("重启后大纲");
+    let entries = outline.as_array().cloned().unwrap_or_default();
+    let seqs: Vec<u64> = entries.iter().filter_map(|e| e.get("seq").and_then(|v| v.as_u64())).collect();
+    let uniq: HashSet<u64> = seqs.iter().copied().collect();
+    assert_eq!(seqs.len(), 4, "重启后大纲条目数不对: {entries:?}");
+    assert_eq!(uniq.len(), seqs.len(), "重启后大纲重复 seq: {seqs:?}");
+
+    driver.stop();
+}
+
+/// 恢复期间发送不得重编帧号:壳重启后打开长历史会话,replay_open 还在
+/// 恢复 seq 水位时上行 user-input——旧实现只等引擎 resume 就编号,新帧
+/// 从 0 重编、与旧帧撞 seq,大纲随之两点同亮、点击跳错。
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
+async fn e2e_send_during_replay_recovery_does_not_reuse_seqs() {
+    require_ohmyagent();
+    let _g = e2e_lock().await;
+    let (driver, home) = e2e_setup("seq-recover", 0);
+
+    let workdir = home.to_string_lossy().into_owned();
+    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
+    driver.session_open(&sid).await.expect("打开会话");
+    let payload = json!({ "content": frame::b64_text("第一轮") });
+    driver.session_send(&sid, "user-input", payload.clone()).await.expect("发送");
+    let ended = |n: usize| {
+        move |j: &[Value]| {
+            j.iter().filter(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended")).count() >= n
+        }
+    };
+    let journal = wait_journal(&driver, &sid, ended(1)).await;
+    assert!(ended(1)(&journal), "第一轮未结束: {journal:?}");
+    let base_seq =
+        journal.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).max().unwrap();
+    driver.stop();
+
+    // 数据面伪造长历史(壳自己的帧格式,seq 顺延):把 replay_open 的
+    // 恢复窗口拉长到肉眼可见,让竞态必然暴露
+    let events = home.join("shellcfg/ohmy-sessions").join(&sid).join("events.jsonl");
+    let mut buf = String::new();
+    let mut seq = base_seq;
+    for i in 0..15000u32 {
+        seq += 1;
+        buf.push_str(&frame::user_input(&format!("填充 {i}"), seq).to_string());
+        buf.push('\n');
+        seq += 1;
+        buf.push_str(&frame::task_started(seq).to_string());
+        buf.push('\n');
+        seq += 1;
+        buf.push_str(&frame::task_ended(seq).to_string());
+        buf.push('\n');
+    }
+    {
+        use std::io::Write as _;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&events).unwrap();
+        f.write_all(buf.as_bytes()).unwrap();
+    }
+
+    // 重启壳,并发地「打开会话 + 立即发送」
+    let settings: Value = serde_json::from_slice(
+        &std::fs::read(home.join("shellcfg/ohmyagent/settings.json")).unwrap(),
+    )
+    .unwrap();
+    let base_url = settings["models"]["测试模型"]["base_url"].as_str().unwrap().to_string();
+    let ctx: Arc<dyn ShellCtx> = Arc::new(TestCtx::new(home.join("shellcfg")));
+    let cfg = DesktopConfig {
+        models: json!([{ "name": "测试模型", "provider": "anthropic",
+            "base_url": base_url, "api_key": "sk-fake", "model": "test-model", "default": true }]),
+        ..Default::default()
+    };
+    let driver = OhmyDriver::start_with(ctx, &cfg).expect("重启引擎");
+    let open_task = {
+        let d = driver.clone();
+        let s = sid.clone();
+        tokio::spawn(async move { d.session_open(&s).await })
+    };
+    // 稍等让 open 走到登记会话态/后台 resume,然后立刻怼一条输入
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let payload = json!({ "content": frame::b64_text("恢复期间的输入") });
+    for i in 0..200 {
+        match driver.session_send(&sid, "user-input", payload.clone()).await {
+            Ok(_) => break,
+            Err(e) if i < 199 => {
+                let _ = e;
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            Err(e) => panic!("恢复期间发送失败: {e}"),
+        }
+    }
+    open_task.await.expect("open 任务").expect("重启后打开会话");
+    let journal = wait_journal(&driver, &sid, ended(15002)).await;
+    assert!(ended(15002)(&journal), "恢复后一轮未结束");
+
+    // 不变式:全 journal 无重复 seq——水位恢复前编号会撞上旧帧
+    let all: Vec<u64> = journal.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
+    let uniq: HashSet<u64> = all.iter().copied().collect();
+    assert_eq!(uniq.len(), all.len(), "恢复期间发送与旧帧撞 seq(重复 {} 个)", all.len() - uniq.len());
+
+    // 大纲同样不得出现重复 seq
+    let outline = driver.session_outline(&sid).await.expect("大纲");
+    let seqs: Vec<u64> = outline
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|e| e.get("seq").and_then(|v| v.as_u64()))
+        .collect();
+    let uniq: HashSet<u64> = seqs.iter().copied().collect();
+    assert_eq!(uniq.len(), seqs.len(), "大纲重复 seq: {}", seqs.len() - uniq.len());
+
+    driver.stop();
+}
+
 /// AskUserQuestion 全链路:deferred 工具经 ToolSearch 载入 → 引擎
 /// question/request → 壳 acp_ask_user_question 帧 → 答复 → 轮次完成。
 #[tokio::test(flavor = "multi_thread")]

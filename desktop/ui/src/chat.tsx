@@ -518,7 +518,15 @@ export function ChatView({
     });
   };
   useEffect(scheduleActive, [chat.items]);
-  useEffect(() => () => window.cancelAnimationFrame(activeRaf.current), []);
+  // 取消后必须把 id 清零:scheduleActive 以「非零 = 已排队」做节流,残留
+  // 旧 id 会让它永远短路(StrictMode 双挂载即触发,当前项从此不再更新)
+  useEffect(
+    () => () => {
+      window.cancelAnimationFrame(activeRaf.current);
+      activeRaf.current = 0;
+    },
+    [],
+  );
 
   /** 定位到某次提问;目标不在当前 DOM 里返回 false(还没加载进来) */
   const jumpToSeq = (seq: number): boolean => {
