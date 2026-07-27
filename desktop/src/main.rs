@@ -708,10 +708,6 @@ fn create_main_window(app: &AppHandle, page: &str) {
         // 布局下限:设置视图(168px 导航 + 内容列 + 保存条)在极窄窗口下
         // 保存按钮会被挤出可视区
         .min_inner_size(640.0, 480.0)
-        // Tauri 默认的原生拖放处理器会在窗口层吞掉文件拖拽,HTML5 的
-        // drag/drop 事件到不了页面(对话区拖入图片/文件依赖 DOM 事件);
-        // 禁用后由 UI 侧统一处理
-        .disable_drag_drop_handler()
         // 导航守卫:webview 只许待在壳内置页面;外部链接交系统浏览器,
         // 防止应用被"跳走"后无法返回。UI 侧已拦截点击,这里是兜底。
         .on_navigation(move |url| {
@@ -722,6 +718,15 @@ fn create_main_window(app: &AppHandle, page: &str) {
             }
             internal
         });
+    // Windows/macOS:Tauri 原生拖放处理器会在窗口层吞掉文件拖拽,HTML5 的
+    // drag/drop 事件到不了页面(对话区拖入图片/文件依赖 DOM 事件),禁用后
+    // 由 UI 侧统一处理。Linux 相反:WebKitGTK 在 wry 窗口里的 HTML5 拖拽
+    // 拿不到 File 对象(上游缺陷),必须保留原生处理器——UI 侧监听
+    // tauri://drag-* 事件取路径,经 read_dropped_file 读盘还原(nativeDrop.ts)
+    #[cfg(not(target_os = "linux"))]
+    {
+        builder = builder.disable_drag_drop_handler();
+    }
     // macOS:标题栏悬浮融入侧栏(红绿灯直接落在 UI 上);
     // UI 侧在 mac 壳内为侧栏顶部预留拖拽区
     #[cfg(target_os = "macos")]
@@ -991,6 +996,7 @@ fn main() {
             driver::session_call,
             driver::upload_file,
             driver::upload_read,
+            uploads::read_dropped_file,
             baizhi::baizhi_status,
             baizhi::baizhi_send_code,
             baizhi::baizhi_login,

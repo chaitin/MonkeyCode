@@ -33,6 +33,7 @@ import { Composer, QueuedChip, RunningBar } from "./composer";
 import { IconArchive, IconChat, IconCheck, IconChevronDown, IconFolder, IconInfo, IconPencil, IconShield, IconTaskDone, IconX } from "./icons";
 import logoUrl from "./logo.png";
 import { useUpwardMenuHeight } from "./menuPosition";
+import { useNativeFileDrop } from "./nativeDrop";
 import { workspaceRelativePath } from "./markdownPaths";
 import type { SessionHandle } from "./useSession";
 import { modelSourceLabel, type LogItem, type ModelInfo, type SessionMeta, type SessionNotice, type Usage } from "./types";
@@ -692,6 +693,13 @@ export function ChatView({
     const files = [...e.dataTransfer.files];
     if (files.length) void session.addFiles(files);
   };
+  // Linux 壳走原生拖放事件(HTML5 拖拽在 WebKitGTK 拿不到文件,见 nativeDrop.ts)
+  useNativeFileDrop({
+    enabled: true,
+    onDragging: setDragging,
+    onFiles: (files) => void session.addFiles(files),
+    onError: (msg) => session.notify("⚠ 附件上传失败: " + msg),
+  });
 
   const workdir = meta?.workdir ?? "";
   const revealMarkdownLink = (path: string) => {

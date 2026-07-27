@@ -74,6 +74,34 @@ fn image_mime(path: &Path) -> Option<&'static str> {
     }
 }
 
+/// 读取拖入窗口的本地文件(Linux 壳的原生拖放只给路径,拿不到内容):
+/// 返回 {name, mediaType, data(base64)},UI 侧还原成 File 后走与 DOM 拖拽
+/// 完全相同的附件上传管线。路径由用户拖拽动作产生,大小限制与上传一致。
+#[tauri::command]
+pub async fn read_dropped_file(path: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || read_dropped(&path))
+        .await
+        .map_err(|e| format!("读取失败: {e}"))?
+}
+
+fn read_dropped(path: &str) -> Result<Value, String> {
+    let p = Path::new(path);
+    let meta = std::fs::metadata(p).map_err(|e| format!("读取失败: {e}"))?;
+    if !meta.is_file() {
+        return Err("只支持拖入文件(不支持目录)".into());
+    }
+    if meta.len() > UPLOAD_MAX_BYTES as u64 {
+        return Err(format!("文件过大({} 字节,上限 {})", meta.len(), UPLOAD_MAX_BYTES));
+    }
+    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+    let data = std::fs::read(p).map_err(|e| format!("读取失败: {e}"))?;
+    Ok(json!({
+        "name": name,
+        "mediaType": image_mime(p).unwrap_or(""),
+        "data": base64::engine::general_purpose::STANDARD.encode(&data),
+    }))
+}
+
 /// 保存原始字节到上传目录(浏览器截图等壳内生成物),返回工作区相对路径。
 ///
 /// name 与 save() 同样过 sanitize_name:当前唯一调用方传的是壳自己生成的
@@ -271,6 +299,32 @@ mod tests {
         assert!(read_data_url(&workdir, None, "notes.txt")
             .unwrap_err()
             .contains("仅支持"));
+    }
+
+    /// 拖入文件按路径读回:名字/MIME/内容齐全;目录与超限文件硬错误
+    /// (Linux 原生拖放只给路径,这是唯一取内容的通道)。
+    #[test]
+    fn dropped_file_roundtrip_and_limits() {
+        let tmp = TempDir::new();
+        let img = tmp.0.join("猫图.png");
+        std::fs::write(&img, b"fake-png").unwrap();
+        let v = read_dropped(&img.to_string_lossy()).unwrap();
+        assert_eq!(v["name"], "猫图.png");
+        assert_eq!(v["mediaType"], "image/png");
+        assert_eq!(v["data"], base64::engine::general_purpose::STANDARD.encode(b"fake-png"));
+
+        // 非图片扩展名 MIME 置空(UI 侧按 [文件] 处理)
+        let txt = tmp.0.join("notes.txt");
+        std::fs::write(&txt, b"hi").unwrap();
+        assert_eq!(read_dropped(&txt.to_string_lossy()).unwrap()["mediaType"], "");
+
+        // 目录、不存在的路径、超限文件(sparse 快速置长)都拒绝
+        assert!(read_dropped(&tmp.0.to_string_lossy()).unwrap_err().contains("目录"));
+        assert!(read_dropped(&tmp.0.join("missing").to_string_lossy()).is_err());
+        let big = tmp.0.join("big.bin");
+        let f = std::fs::File::create(&big).unwrap();
+        f.set_len(UPLOAD_MAX_BYTES as u64 + 1).unwrap();
+        assert!(read_dropped(&big.to_string_lossy()).unwrap_err().contains("过大"));
     }
 
     #[test]

@@ -10,6 +10,7 @@ import { MONO } from "./components";
 import { mcTaskCreate, mcTaskOptions } from "./cloudapi";
 import { inDesktopShell, pickDirectory, workdirPickBase } from "./host";
 import { useUpwardMenuHeight } from "./menuPosition";
+import { useNativeFileDrop } from "./nativeDrop";
 import { createSession } from "./session";
 import type { CloudTask } from "./types";
 import {
@@ -246,6 +247,13 @@ export function NewTaskView({
     const files = [...e.dataTransfer.files];
     if (files.length) addFiles(files);
   };
+  // Linux 壳走原生拖放事件(HTML5 拖拽在 WebKitGTK 拿不到文件,见 nativeDrop.ts)
+  useNativeFileDrop({
+    enabled: mode !== "cloud",
+    onDragging: setDragging,
+    onFiles: addFiles,
+    onError: setAttErr,
+  });
 
   // ===== 云端模式:选项数据(模型/宿主机/镜像/项目)+ 选择态 =====
   const [cloudOpts, setCloudOpts] = useState<McTaskOptions | null>(null);
