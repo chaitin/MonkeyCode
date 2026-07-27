@@ -1,6 +1,17 @@
+import { Button } from "@/components/ui/button"
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
+import { IconListSearch, IconX } from "@tabler/icons-react"
 import React from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -22,18 +33,31 @@ export interface TaskUserInputIndexProps {
   scrollToMessage?: (messageId: string, options?: { align?: "start" | "center" | "end" | "auto"; behavior?: ScrollBehavior; highlight?: boolean }) => boolean
   historyHasMore: boolean
   loadMoreHistory: () => Promise<void>
+  presentation?: "desktop" | "mobile"
 }
 
 const PAGE_SIZE = 10
 const MAX_INDEX_DOTS = 20
 
 export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
-  const { taskId, liveMessages, getScrollContainer, scrollToMessage, historyHasMore, loadMoreHistory } = props
+  const {
+    taskId,
+    liveMessages,
+    getScrollContainer,
+    scrollToMessage,
+    historyHasMore,
+    loadMoreHistory,
+    presentation = "desktop",
+  } = props
   const { t } = useTranslation()
   const historyHasMoreRef = React.useRef(historyHasMore)
   React.useEffect(() => { historyHasMoreRef.current = historyHasMore }, [historyHasMore])
   const loadMoreHistoryRef = React.useRef(loadMoreHistory)
   React.useEffect(() => { loadMoreHistoryRef.current = loadMoreHistory }, [loadMoreHistory])
+  const historyBoundaryRef = React.useRef<string | null>(null)
+  React.useLayoutEffect(() => {
+    historyBoundaryRef.current = liveMessages[0]?.id ?? null
+  }, [liveMessages])
 
   const [entries, setEntries] = React.useState<UserInputIndexEntry[]>([])
   const [cursor, setCursor] = React.useState<string | null>(null)
@@ -42,6 +66,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
   const [initialized, setInitialized] = React.useState(false)
   const loadingRef = React.useRef(false)
   const [expanded, setExpanded] = React.useState(false)
+  const [mobileOpen, setMobileOpen] = React.useState(false)
   const [activeUserInputId, setActiveUserInputId] = React.useState<string | null>(null)
 
   const fetchPage = React.useCallback(async (nextCursor?: string) => {
@@ -67,7 +92,6 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
           toast.error(resp.message || t("taskDetail.userInputIndex.fetchFailed"))
         }
       },
-      () => undefined,
     )
     loadingRef.current = false
     setLoading(false)
@@ -165,12 +189,10 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
       highlight: true,
     }) ?? false
 
-    if (scrollVirtualMessage()) {
-      return
-    }
+    if (scrollVirtualMessage()) return true
 
     const container = getScrollContainer()
-    if (!container) return
+    if (!container) throw new Error("Scroll container unavailable")
     const findTarget = () => container.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(entry.id)}"]`)
     let target = findTarget()
 
@@ -180,12 +202,14 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
         const MAX_PAGES = 200
         let pages = 0
         while (!target && historyHasMoreRef.current && pages < MAX_PAGES) {
+          const previousHistoryBoundary = historyBoundaryRef.current
           await loadMoreHistoryRef.current()
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-          if (scrollVirtualMessage()) {
-            return
-          }
+          if (scrollVirtualMessage()) return true
           target = findTarget()
+          if (historyBoundaryRef.current === previousHistoryBoundary) {
+            throw new Error("History loading made no progress")
+          }
           pages++
         }
       } finally {
@@ -193,7 +217,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
       }
       if (!target) {
         toast.info(t("taskDetail.userInputIndex.notFound"))
-        return
+        return false
       }
     }
 
@@ -207,9 +231,128 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
     bubble.addEventListener("animationend", () => {
       bubble.classList.remove("jump-highlight")
     }, { once: true })
+    return true
   }, [getScrollContainer, scrollToMessage, t])
 
+  const handleJumpError = React.useCallback(() => {
+    toast.error(t("taskDetail.userInputIndex.jumpFailed"))
+  }, [t])
+
+  const handleMobileJump = React.useCallback(async (entry: UserInputIndexEntry) => {
+    try {
+      if (await handleJump(entry)) {
+        setMobileOpen(false)
+      }
+    } catch {
+      handleJumpError()
+    }
+  }, [handleJump, handleJumpError])
+
+  const handleDesktopJump = React.useCallback((entry: UserInputIndexEntry) => {
+    void handleJump(entry).catch(handleJumpError)
+  }, [handleJump, handleJumpError])
+
+  const renderEntries = (onSelect: (entry: UserInputIndexEntry) => void) => (
+    <>
+      {(jumpingId || hasMore) && (
+        <div className="sticky top-0 z-10 border-b bg-popover/95">
+          {jumpingId && (
+            <div className="flex items-center gap-1.5 px-4 py-2 text-xs text-muted-foreground">
+              <Spinner className="size-3" />
+              {t("taskDetail.userInputIndex.locating")}
+            </div>
+          )}
+          {hasMore && (
+            <div className="p-1.5">
+              <button
+                type="button"
+                onClick={() => fetchPage(cursor ?? undefined)}
+                disabled={loading}
+                className={cn(
+                  "flex w-full items-center justify-center gap-1.5 rounded-md text-sm transition-colors",
+                  presentation === "mobile" ? "h-11" : "h-8",
+                  "text-muted-foreground hover:bg-accent hover:text-popover-foreground",
+                  "disabled:pointer-events-none disabled:opacity-60",
+                )}
+              >
+                {loading && <Spinner className="size-3.5" />}
+                {t("taskDetail.userInputIndex.loadMore")}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      <div className="flex flex-col py-1.5">
+        {mergedEntries.map((entry) => {
+          const isJumping = jumpingId === entry.id
+          return (
+            <button
+              type="button"
+              key={entry.id}
+              onClick={() => onSelect(entry)}
+              disabled={Boolean(jumpingId)}
+              className={cn(
+                "w-full min-w-0 truncate px-4 py-2 text-left text-sm transition-colors",
+                presentation === "mobile" && "min-h-11",
+                "text-popover-foreground/80 hover:bg-accent hover:text-popover-foreground",
+                isJumping && "opacity-50",
+              )}
+            >
+              {isJumping && <Spinner className="mr-1.5 inline size-3" />}
+              {entry.content || "..."}
+            </button>
+          )
+        })}
+        {loading && !hasMore && (
+          <div className="flex justify-center py-2">
+            <Spinner className="size-4" />
+          </div>
+        )}
+      </div>
+    </>
+  )
+
   if (mergedEntries.length <= 1 && !loading) return null
+
+  if (presentation === "mobile") {
+    return (
+      <Drawer open={mobileOpen} onOpenChange={setMobileOpen}>
+        <DrawerTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-11 shrink-0"
+            aria-label={t("taskDetail.userInputIndex.trigger")}
+          >
+            <IconListSearch className="size-4" />
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent className="max-h-[70vh]">
+          <div className="relative">
+            <DrawerHeader className="pr-16 text-left">
+              <DrawerTitle>{t("taskDetail.userInputIndex.title")}</DrawerTitle>
+              <DrawerDescription>{t("taskDetail.userInputIndex.description")}</DrawerDescription>
+            </DrawerHeader>
+            <DrawerClose asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-4 top-4 size-11"
+                aria-label={t("taskDetail.common.close")}
+              >
+                <IconX className="size-4" />
+              </Button>
+            </DrawerClose>
+          </div>
+          <div className="min-h-0 overflow-y-auto border-t">
+            {renderEntries(handleMobileJump)}
+          </div>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
 
   return (
     <div
@@ -241,59 +384,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
         )}
         style={{ maxHeight: "min(480px, 70vh)", width: "280px" }}
       >
-        {(jumpingId || hasMore) && (
-          <div className="sticky top-0 z-10 border-b bg-popover/95">
-            {jumpingId && (
-              <div className="flex items-center gap-1.5 px-4 py-2 text-xs text-muted-foreground">
-                <Spinner className="size-3" />
-                {t("taskDetail.userInputIndex.locating")}
-              </div>
-            )}
-            {hasMore && (
-              <div className="p-1.5">
-                <button
-                  type="button"
-                  onClick={() => fetchPage(cursor ?? undefined)}
-                  disabled={loading}
-                  className={cn(
-                    "flex h-8 w-full items-center justify-center gap-1.5 rounded-md text-sm transition-colors",
-                    "text-muted-foreground hover:bg-accent hover:text-popover-foreground",
-                    "disabled:pointer-events-none disabled:opacity-60",
-                  )}
-                >
-                  {loading && <Spinner className="size-3.5" />}
-                  {t("taskDetail.userInputIndex.loadMore")}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-        <div className="flex flex-col py-1.5">
-          {mergedEntries.map((entry) => {
-            const isJumping = jumpingId === entry.id
-            return (
-              <button
-                type="button"
-                key={entry.id}
-                onClick={() => handleJump(entry)}
-                disabled={isJumping}
-                className={cn(
-                  "w-full min-w-0 truncate px-4 py-2 text-left text-sm transition-colors",
-                  "text-popover-foreground/80 hover:bg-accent hover:text-popover-foreground",
-                  isJumping && "opacity-50",
-                )}
-              >
-                {isJumping && <Spinner className="mr-1.5 inline size-3" />}
-                {entry.content || "..."}
-              </button>
-            )
-          })}
-          {loading && !hasMore && (
-            <div className="flex justify-center py-2">
-              <Spinner className="size-4" />
-            </div>
-          )}
-        </div>
+        {renderEntries(handleDesktopJump)}
       </div>
     </div>
   )

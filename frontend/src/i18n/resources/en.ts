@@ -4131,7 +4131,11 @@ const en = {
       loadFailed: "Failed to load task history",
     },
     userInputIndex: {
+      trigger: "Conversation navigator",
+      title: "Jump to a conversation",
+      description: "Select a user message to jump to its position.",
       fetchFailed: "Failed to load conversation list",
+      jumpFailed: "Failed to locate message. Please try again.",
       notFound: "Matching message not found",
       locating: "Locating message...",
       loadMore: "Load more",
