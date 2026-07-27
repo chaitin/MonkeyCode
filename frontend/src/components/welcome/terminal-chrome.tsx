@@ -102,7 +102,7 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
 
   const pageNav = [
     { labelKey: "welcomeShell.nav.showcase", href: SHOWCASE_LINK, external: true },
-    { labelKey: "welcomeShell.nav.client", href: `${navPrefix}#mobile-client` },
+    { labelKey: "welcomeShell.nav.client", href: `${navPrefix}#desktop-client` },
     { labelKey: "welcomeShell.nav.selfHosting", href: SELF_HOSTING_PAGE_PATH },
   ];
 

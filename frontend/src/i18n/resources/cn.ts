@@ -2171,6 +2171,21 @@ const cn = {
         },
       },
     },
+    desktop: {
+      title: "桌面客户端",
+      subtitle: "桌面端同时支持本地 Agent 和云端 Agent。既能在本机直接调度 AI 处理项目，也能无缝接入云端开发环境，本地文件系统、终端、编辑器深度集成，开发体验更流畅。",
+      items: {
+        windows: {
+          cta: "下载 Windows 安装包",
+        },
+        macos: {
+          cta: "下载 macOS DMG",
+        },
+        linux: {
+          cta: "下载 Linux AppImage",
+        },
+      },
+    },
     selfHosting: {
       title: "私有化部署",
       subtitle: "当团队需要把 AI 开发能力放进企业内网，MonkeyCode 可以独立部署，统一管理研发团队、开发环境和模型配置。",
