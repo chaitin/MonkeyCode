@@ -728,12 +728,18 @@ fn create_main_window(app: &AppHandle, page: &str) {
         builder = builder.disable_drag_drop_handler();
     }
     // macOS:标题栏悬浮融入侧栏(红绿灯直接落在 UI 上);
-    // UI 侧在 mac 壳内为侧栏顶部预留拖拽区
+    // UI 侧在 mac 壳内为侧栏顶部预留 50px 拖拽区/品牌带(titlebar.tsx)。
+    // 红绿灯默认贴在窗口顶端(~y11),与品牌带中线(25)不齐,左上角头重脚轻;
+    // 整组下移到 y19(按钮高 12,中心正落 25),与字标同一条线。x 维持系统
+    // 默认的 11 不动——横向 62px 一级栏本就容不下整组,顶部 50px 已整段
+    // 染成侧栏色(styles.css .mc-nav-rail),横向越界无妨。
+    // tao 0.35 会存住该位置并在缩放/全屏往返后重放(set_traffic_light_inset)。
     #[cfg(target_os = "macos")]
     {
         builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .hidden_title(true);
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(11.0, 19.0));
     }
     // Windows:去原生装饰栏,UI 侧自绘 36px 标题栏(拖拽区 + 窗口按钮)
     #[cfg(target_os = "windows")]
