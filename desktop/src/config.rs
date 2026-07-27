@@ -440,10 +440,10 @@ fn write_ohmyagent_config(
         // Desktop 的产品默认值是 200k。必须显式写给引擎，否则自定义/未知
         // model id 会落入引擎自己的 128k 通用兜底，composer 显示与设置页不符。
         entry["context_window"] = serde_json::json!(context_window);
-        // 视觉标记透传:缺失时 ohmyagent 按不支持处理,读图降级为文本占位
-        if m.get("vision").and_then(|v| v.as_bool()).unwrap_or(false) {
-            entry["supports_images"] = serde_json::json!(true);
-        }
+        // 视觉标记显式透传:勾选即支持;未勾选写 false 压过引擎目录里
+        // 已知 model id 的 vision 默认,保证不发图片块(读图降级为文本占位)
+        let vision = m.get("vision").and_then(|v| v.as_bool()).unwrap_or(false);
+        entry["supports_images"] = serde_json::json!(vision);
         models_out.insert(name.clone(), entry);
         let is_default = m.get("default").and_then(|v| v.as_bool()).unwrap_or(false);
         if default_model.is_empty() || is_default {
