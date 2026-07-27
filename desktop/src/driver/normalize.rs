@@ -437,7 +437,13 @@ impl Inner {
                 self.write_sidecar_keep_updated(&sid, |m| m["summary"] = json!(summary.as_str()));
                 self.emit_session_summary(&sid, &summary);
             }
+            // 微压缩(kind=micro)只是清空旧 tool_result,不调模型也与"接近
+            // 上限"无关,且触发频繁;不落帧,免得对话流反复刷压缩提示。
+            // 其余 kind(auto/manual/partial/local_fallback)才是整体压缩。
             "compaction" => {
+                if data.get("kind").and_then(|v| v.as_str()) == Some("micro") {
+                    return;
+                }
                 self.push_frame(&sid, |seq| frame::compact_status("started", seq));
                 self.push_frame(&sid, |seq| frame::compact_status("ended", seq));
             }
