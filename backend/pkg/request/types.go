@@ -2,6 +2,7 @@ package request
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 )
 
@@ -28,3 +29,16 @@ type Query map[string]string
 
 // Header 请求头
 type Header map[string]string
+
+// HTTPError 保留非成功响应的状态码和响应体，供上层协议解析。
+type HTTPError struct {
+	StatusCode int
+	Body       []byte
+}
+
+func (e *HTTPError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, string(e.Body))
+}

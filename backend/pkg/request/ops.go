@@ -35,7 +35,12 @@ func WithTransport(tr *http.Transport) ReqOpt {
 // WithHeader 设置请求头
 func WithHeader(h Header) Opt {
 	return func(ctx *Ctx) {
-		ctx.header = h
+		if ctx.header == nil {
+			ctx.header = make(Header, len(h))
+		}
+		for k, v := range h {
+			ctx.header[k] = v
+		}
 	}
 }
 

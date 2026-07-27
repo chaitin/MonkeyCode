@@ -27,9 +27,10 @@ func newFileManageClient(client *request.Client) FileManager {
 
 // Operate implements FileManager.
 func (f *fileManageClient) Operate(ctx context.Context, req FileReq) ([]*File, error) {
-	resp, err := request.Post[Resp[[]*File]](f.client, ctx, "/internal/files", req)
+	resp, err := request.Post[Resp[[]*File]](f.client, ctx, "/internal/files", req,
+		routeOption(CapabilityFileManager, req.ID))
 	if err != nil {
-		return []*File{}, err
+		return []*File{}, parseTaskflowError(err)
 	}
 	if resp.Code != 0 {
 		return nil, fmt.Errorf("%s", resp.Message)
@@ -58,9 +59,12 @@ func (f *fileManageClient) Download(ctx context.Context, req FileReq, fn func(ui
 	values.Add("path", req.Path)
 	u.RawQuery = values.Encode()
 
-	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: telemetry.TraceHeader(ctx)})
+	header := telemetry.TraceHeader(ctx)
+	header.Set(HeaderRouteCapability, string(CapabilityFileManager))
+	header.Set(HeaderRouteTargetID, req.ID)
+	conn, response, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
-		return err
+		return parseWebsocketError(response, err)
 	}
 	defer conn.Close(websocket.StatusGoingAway, "Closing connection due to context cancellation or other reasons.")
 	conn.SetReadLimit(-1)
@@ -131,9 +135,12 @@ func (f *fileManageClient) Upload(ctx context.Context, req FileReq, data <-chan 
 	values.Add("path", req.Path)
 	u.RawQuery = values.Encode()
 
-	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: telemetry.TraceHeader(ctx)})
+	header := telemetry.TraceHeader(ctx)
+	header.Set(HeaderRouteCapability, string(CapabilityFileManager))
+	header.Set(HeaderRouteTargetID, req.ID)
+	conn, response, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
-		return err
+		return parseWebsocketError(response, err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "upload completed")
 	conn.SetReadLimit(-1)
