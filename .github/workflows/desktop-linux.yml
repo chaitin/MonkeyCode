@@ -24,12 +24,18 @@ jobs:
       # xdg-utils 不能省——AppImage bundler 会把系统的 xdg-open 复制进包,
       # 缺了会在 release 编译跑完之后才报 "xdg-open binary not found"
       # (实测:仅把 xdg-open 放进 PATH 不够,bundler 按系统路径找)。
+      # gstreamer 插件供 AppImage 的 bundleMediaFramework 捆入包内:
+      # linuxdeploy 会连带捆入 GStreamer 核心库,插件必须成套跟上——
+      # 捆芯无插件时桌宠页 new Audio 初始化媒体后端即崩 WebProcess,
+      # 整页空白(桌宠隐身的根因,见 Makefile check-linux 注释)。
       - name: Install Tauri system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-            librsvg2-dev patchelf xdg-utils rpm
+            librsvg2-dev patchelf xdg-utils rpm \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-libav gstreamer1.0-alsa
 
       - uses: actions/setup-go@v5
         with:

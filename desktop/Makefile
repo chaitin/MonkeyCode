@@ -180,10 +180,22 @@ linux-release:
 # depends 会让 control 里出现重复项、且 appindicator 同时落进 Depends 与
 # Recommends;所以 deb 只留 gstreamer 到 recommends(mp3 提示音,缺了只是没声),
 # rpm 侧未观察到自动补包级依赖,保留显式 depends。
+#
+# "缺了只是没声"只对 deb/rpm 成立(全程系统库,自洽)。AppImage 不同:
+# linuxdeploy 会连带捆入 GStreamer *核心库*,若插件不成套跟上
+# (bundleMediaFramework=true),运行时是"捆芯 + 找不到任何插件"——桌宠页
+# new Audio 触发 WebKit 媒体后端初始化,appsink 缺失直接崩掉该页
+# WebProcess,整页空白,桌宠隐身(装了系统 gstreamer 也没用:bundled 核心
+# 不认系统插件)。捆插件需要构建机装 gstreamer1.0-plugins-base/-good
+# 与 patchelf——前置查掉,别在 release 编译几分钟后才失败。
 check-linux:
 	@[ "$$(uname -s)" = "Linux" ] || { echo "错误: Linux 打包需在 Linux 上执行"; exit 1; }
 	@command -v xdg-open >/dev/null || \
 		{ echo "错误: AppImage 打包需要 xdg-open(安装 xdg-utils)"; exit 1; }
+	@command -v patchelf >/dev/null || \
+		{ echo "错误: AppImage 捆绑 GStreamer 需要 patchelf"; exit 1; }
+	@ls /usr/lib/*/gstreamer-1.0/libgstautodetect.so >/dev/null 2>&1 || \
+		{ echo "错误: 构建机缺 GStreamer 插件(安装 gstreamer1.0-plugins-base gstreamer1.0-plugins-good)"; exit 1; }
 
 # Linux 引擎 sidecar(x64;CGO 关掉,避免把构建机的 glibc 版本写进依赖)。
 engine-linux: check-ohmy-src
