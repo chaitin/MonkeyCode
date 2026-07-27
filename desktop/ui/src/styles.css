@@ -578,22 +578,17 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 
 /* 一级空间导航的栏宽、底色与右分隔线。
  *
- * mac 壳用 TitleBarStyle::Overlay(src/main.rs),原生红绿灯直接盖在这一栏的
- * 左上角,最右那颗缩放键会越过 62px 的栏。按钮的大小与间距改不了(AppKit
- * 标准 NSWindow 按钮,tao 只能整组平移),所以唯一不丑的解法是**不让任何
- * 边界靠近它们**:mac 下一级栏与侧栏共用同一块面色 --side,中间竖分隔线
- * 整条去掉——红绿灯浮在一整块无缝的面上,结构感由按钮胶囊/logo/搜索框
- * 自己撑起(Finder/Xcode 侧栏同款单一材质做法)。曾试过"只染顶部 50px"
- * 的局部方案:rail 在 y50 处颜色一刀两断像被砍头,分隔线残段又与绿灯右缘
- * 同列,搬运边界只会制造新边界。
- * Windows/浏览器壳保留两档底色与右分隔线(自绘标题栏有明确分段,不冲突)。
- * 徽章描边要跟着实际面色走,所以底色经 --railSurface 中转,tsx 里引用它。
- * data-platform 在 ui/src/main.tsx 落到根节点。 */
+ * mac 的红绿灯已是 UI 自绘的 10px 替身(titlebar.tsx MacWindowControls,
+ * 原生按钮由壳隐藏),整组收在 62px 栏内——两档底色与右分隔线因此可以
+ * 贯通到顶,三端同构。曾为原生红绿灯越界做过"顶部 50px 染色"和"整面
+ * 同色去线"两轮让位,均随自绘方案退役;若将来恢复原生红绿灯,这段历史
+ * 见 git log(缩放键会压在栏边界上,须重新处理)。
+ * 栏宽随窗宽收窄(下方媒体查询),写进内联样式会盖掉规则,
+ * navigation.test 有守护断言。data-platform 在 ui/src/main.tsx 落到根节点。 */
 .mc-nav-rail {
   width: 62px;
   position: relative;
-  --railSurface: var(--rail);
-  background: var(--railSurface);
+  background: var(--rail);
 }
 .mc-nav-rail::after {
   content: "";
@@ -604,8 +599,6 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   width: 1px;
   background: var(--line2);
 }
-[data-platform="mac"] .mc-nav-rail { --railSurface: var(--side); }
-[data-platform="mac"] .mc-nav-rail::after { display: none; }
 
 /* mac 自绘小红绿灯(titlebar.tsx MacWindowControls;原生按钮由壳隐藏)。
  * 本色经 --c 由按钮内联携带;点击热区 14px、视觉圆点 10px(比原生 12px

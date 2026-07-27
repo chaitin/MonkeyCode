@@ -19,9 +19,9 @@ afterEach(() => {
 });
 
 describe("一级导航栏的栏宽归属", () => {
-  // mac 壳的红绿灯盖在这一栏左上角:栏宽随窗宽变,右分隔线和底色在 mac 下
-  // 还要让开顶部一段(styles.css .mc-nav-rail 与 ::after)。内联样式压得过
-  // 这些规则,红绿灯压线/跨色的毛病会就此静默复发——而它只在 mac 上看得见。
+  // 栏宽随窗宽收窄、底色与右分隔线都在 CSS(styles.css .mc-nav-rail 与
+  // ::after),写进内联样式会静默盖掉这些规则。mac 自绘红绿灯也依赖
+  // 62px 栏宽收纳整组圆点,宽度被内联锁死的话窄窗下会挤压变形。
   it("栏宽、右边线与底色不写在内联样式里,留给 CSS 按平台与窗宽决定", () => {
     const html = renderToStaticMarkup(
       <Sidebar
