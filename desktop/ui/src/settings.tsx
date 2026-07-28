@@ -624,6 +624,18 @@ export function SettingsView({
       }
       names.add(m.name.trim());
     }
+    // 内核在上下文占用达 90% 时自动压缩,要求 max_output < context_window
+    // 的 10%,否则接近阈值的请求会因输入+输出超模型上限被服务端拒绝
+    for (const m of models) {
+      const cw = m.context_window ?? 200000;
+      if (m.max_output && m.max_output >= cw * 0.1) {
+        setErr(
+          `模型「${m.name.trim()}」的最大输出(${m.max_output.toLocaleString()})需小于上下文窗口(${cw.toLocaleString()})的 10%,建议不超过 8%(${Math.floor(cw * 0.08).toLocaleString()})`,
+        );
+        setActive("models");
+        return;
+      }
+    }
     const invalidMcp = mcpNameErrors.findIndex(Boolean);
     if (invalidMcp >= 0) {
       setErr(mcpNameErrors[invalidMcp] ?? "MCP 名称无效");
@@ -756,8 +768,8 @@ export function SettingsView({
                 type="number"
                 min={1}
                 value={m.max_output ?? ""}
-                placeholder={m.provider === "anthropic" || !m.provider ? "16384(默认)" : "不限制,由服务端决定"}
-                title="单次回复的输出 token 上限。回复经常被截断(finish_reason=length)时调大它"
+                placeholder="16384(默认)"
+                title="单次回复的输出 token 上限。回复经常被截断(finish_reason=length)时调大它;须小于上下文窗口的 10%(建议 ≤8%),否则接近压缩阈值的请求会被服务端拒绝"
                 onChange={(e) => {
                   const n = parseInt(e.target.value, 10);
                   patchModel(i, { max_output: Number.isFinite(n) && n > 0 ? n : undefined });

@@ -5,7 +5,7 @@
 // 状态随视图挂载与卸载,App 只注入数据(models/recentDirs/lastDir)与编排回调
 // (onCreated/onCloudCreated)及外部预填(prefill)。
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
-import { basename, isImeEnter, markImeEnd, ModelMenuItem, ModelPicker, ThinkPicker } from "./chat";
+import { basename, effectiveThink, isImeEnter, markImeEnd, ModelMenuItem, ModelPicker, ThinkPicker } from "./chat";
 import { MONO } from "./components";
 import { mcTaskCreate, mcTaskOptions } from "./cloudapi";
 import { inDesktopShell, pickDirectory, workdirPickBase } from "./host";
@@ -162,8 +162,10 @@ export function NewTaskView({
   // 模型:未主动选择时跟随默认模型(models 异步到达也自动就位,无需同步 effect)
   const [pickedModel, setPickedModel] = useState("");
   const model = pickedModel || models.find((m) => m.default)?.name || "";
-  // 思考深度(本地/会话):""=跟随模型设置的默认档,随创建下发并持久到会话
+  // 思考深度(本地/会话):""=未显式选,创建时跟随模型设置的默认档;
+  // composer 上直接显示生效档位(模型是啥就显示啥),选了就随创建下发
   const [think, setThink] = useState("");
+  const modelThink = models.find((m) => m.name === model)?.think;
   const [err, setErr] = useState("");
   const [offerCreate, setOfferCreate] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -912,7 +914,7 @@ export function NewTaskView({
             {mode !== "cloud" && (
               <>
                 <ModelPicker models={models} current={model} onPick={setPickedModel} />
-                <ThinkPicker current={think} onPick={setThink} />
+                <ThinkPicker current={effectiveThink(think, modelThink)} modelDefault={modelThink} onPick={setThink} />
               </>
             )}
             <span style={{ flex: 1 }} />

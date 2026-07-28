@@ -244,7 +244,7 @@ fn e2e_setup_cfg(
     {
         let mut v = base_model.clone();
         if let Some(b) = budget {
-            v["thinking"] = json!({ "enabled": true, "budget_tokens": b });
+            v["thinking"] = json!({ "enabled": true, "type": "enabled", "budget_tokens": b });
         }
         settings["models"][format!("测试模型#think:{lvl}")] = v;
     }

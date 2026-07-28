@@ -322,37 +322,46 @@ export function ModelPicker({
   );
 }
 
-/** 思考深度档位(会话级)。""=跟随模型设置里的默认档;其余对应引擎侧
- * #think:<档位> 变体别名(壳物化,见 config.rs)。 */
-export const THINK_LEVELS: { value: string; label: string; hint?: string }[] = [
-  { value: "", label: "默认", hint: "跟随模型设置" },
+/** 思考深度档位(会话级),对应引擎侧 #think:<档位> 变体别名(壳物化,
+ * 见 config.rs)。composer 不设抽象的「默认」项:未显式选档时直接显示
+ * 模型设置里配置的档位(未配置 = 关闭),选啥就是啥。 */
+export const THINK_LEVELS: { value: string; label: string }[] = [
   { value: "off", label: "关闭" },
   { value: "low", label: "低" },
   { value: "medium", label: "中" },
   { value: "high", label: "高" },
 ];
 
-export const thinkLabelOf = (v: string) => THINK_LEVELS.find((l) => l.value === v)?.label ?? "默认";
+export const thinkLabelOf = (v: string) => THINK_LEVELS.find((l) => l.value === v)?.label ?? "关闭";
+
+/** 会话/模型状态 → composer 显示的生效档位:会话显式选过用会话档,
+ * 否则用模型设置的默认档(空 = 关闭)。 */
+export const effectiveThink = (sessionThink: string, modelThink?: string) =>
+  sessionThink || modelThink || "off";
 
 /** 思考深度选择按钮 + 上弹菜单(会话/新任务 composer 共用;几何与
- * ModelPicker 同款,运行中禁用) */
+ * ModelPicker 同款,运行中禁用)。modelDefault 为当前模型设置的默认档,
+ * 菜单里标注,便于知道"不动它"时跟随的是哪一档。 */
 export function ThinkPicker({
   current,
+  modelDefault,
   disabled,
   onPick,
 }: {
   current: string;
+  modelDefault?: string;
   disabled?: boolean;
   onPick: (level: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const defaultLevel = modelDefault || "off";
   return (
     <div style={{ position: "relative", flex: "none" }}>
       <ModelPickerTrigger
         label={`思考·${thinkLabelOf(current)}`}
         open={open}
         disabled={disabled}
-        title={disabled ? "轮次执行中,结束后可切换" : "调整思考深度(下一轮生效;「默认」跟随模型设置)"}
+        title={disabled ? "轮次执行中,结束后可切换" : "调整思考深度(下一轮生效)"}
         onClick={() => {
           if (!disabled) setOpen(!open);
         }}
@@ -366,7 +375,7 @@ export function ThinkPicker({
                 key={l.value}
                 label={l.label}
                 selected={l.value === current}
-                hint={l.hint}
+                hint={l.value === defaultLevel ? "模型默认" : undefined}
                 onClick={() => {
                   setOpen(false);
                   onPick(l.value);
@@ -1059,7 +1068,12 @@ export function ChatView({
             <>
               <PermPill yolo={yolo} onToggle={() => void session.toggleYolo()} />
               <span style={{ flex: 1 }} />
-              <ThinkPicker current={chat.think} disabled={chat.running} onPick={(level) => void session.setThink(level)} />
+              <ThinkPicker
+                current={effectiveThink(chat.think, models.find((m) => m.name === currentModel)?.think)}
+                modelDefault={models.find((m) => m.name === currentModel)?.think}
+                disabled={chat.running}
+                onPick={(level) => void session.setThink(level)}
+              />
               <ModelPicker models={models} current={currentModel} disabled={chat.running} onPick={(name) => void session.switchModel(name)} />
               <ContextRing usage={usage} />
             </>

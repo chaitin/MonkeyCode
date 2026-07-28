@@ -29,6 +29,9 @@ export interface ModelInfo {
   default: boolean;
   /** 条目来源("baizhi"=百智云同步);缺省=手工添加,UI 按它分组 */
   source?: string;
+  /** 模型设置的思考深度默认档(low/medium/high;缺省/"" = 关闭)。
+   * composer 未显式选档时按它显示生效档位 */
+  think?: string;
 }
 
 /** 壳持有的应用配置里的一个模型条目(设置视图编辑,壳原样写盘、内核消费)。 */

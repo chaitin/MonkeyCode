@@ -413,7 +413,12 @@ fn thinking_config(wire_type: &str, effort: &str, max_output: Option<i64>) -> Op
         _ => 8192,
     };
     let budget = preset.min(max_output.unwrap_or(16384) / 2);
-    (budget >= 1024).then(|| serde_json::json!({ "enabled": true, "budget_tokens": budget }))
+    // type:"enabled" 必须显式写:引擎 9af68c5 起 budget_tokens 属 legacy
+    // 兼容路径,判定条件是 type=="enabled"——缺省 type 会被当成新式统一
+    // 配置走 adaptive(裸 {type:adaptive},effort 也丢),老 Claude 模型
+    // 不支持 adaptive,思考整个失效。budget 路径全系 Claude 通用,保留。
+    (budget >= 1024)
+        .then(|| serde_json::json!({ "enabled": true, "type": "enabled", "budget_tokens": budget }))
 }
 
 /// 壳清单 → <engine_config_dir>/settings.json + mcp.json。
@@ -906,12 +911,12 @@ mod tests {
         // anthropic:未配 max_output 按引擎默认 16384 计,高档预设 8192 放得下
         assert_eq!(
             models["claude-default-max"]["thinking"],
-            serde_json::json!({ "enabled": true, "budget_tokens": 8192 })
+            serde_json::json!({ "enabled": true, "type": "enabled", "budget_tokens": 8192 })
         );
         // max_output 4096 → budget 压到一半 2048
         assert_eq!(
             models["claude-small-max"]["thinking"],
-            serde_json::json!({ "enabled": true, "budget_tokens": 2048 })
+            serde_json::json!({ "enabled": true, "type": "enabled", "budget_tokens": 2048 })
         );
         // max_output 1500 → 一半 750 < API 下限 1024,思考整个不开
         assert!(models["claude-tiny-max"].get("thinking").is_none());
@@ -971,7 +976,7 @@ mod tests {
         assert!(models["cl"].get("thinking").is_none());
         assert_eq!(
             models["cl#think:high"]["thinking"],
-            serde_json::json!({ "enabled": true, "budget_tokens": 8192 })
+            serde_json::json!({ "enabled": true, "type": "enabled", "budget_tokens": 8192 })
         );
         let _ = fs::remove_dir_all(&dir);
     }
