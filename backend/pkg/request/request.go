@@ -150,7 +150,7 @@ func sendRequest[T any](c *Client, method, path string, opts ...Opt) (*T, error)
 
 	// Check HTTP status code
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(b))
+		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: b}
 	}
 
 	var rr T
@@ -232,7 +232,7 @@ func PostURL[T any](ctx context.Context, rawURL string, body any, opts ...Opt) (
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(b))
+		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: b}
 	}
 
 	var rr T
