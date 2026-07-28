@@ -702,6 +702,23 @@ fn is_internal_url(url: &tauri::Url) -> bool {
     }
 }
 
+/// dev 前端从磁盘服务:返回 uidist/index.html 引用但磁盘上缺失的第一个
+/// 产物名(uidist 路径按编译机源码目录定位,dev 专用;index.html 整体
+/// 缺失沿用 tauri 自身报错,不在此重复)。
+#[cfg(dev)]
+fn frontend_missing_asset() -> Option<String> {
+    let dist = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("uidist");
+    let index = std::fs::read_to_string(dist.join("index.html")).ok()?;
+    for part in index.split("\"/assets/").skip(1) {
+        if let Some(name) = part.split('"').next() {
+            if !dist.join("assets").join(name).is_file() {
+                return Some(format!("assets/{name}"));
+            }
+        }
+    }
+    None
+}
+
 /// 创建主窗口并加载壳内置页面(page 如 "index.html" / "error.html#msg")。
 fn create_main_window(app: &AppHandle, page: &str) {
     if let Some(win) = app.get_webview_window("main") {
@@ -1170,6 +1187,22 @@ fn main() {
             // 唯一去处是托盘的「检查更新」——那条仍在(见 check_update)。
             // 联调仍走 MC_UPDATE_MANIFEST:它在 build_updater 里覆盖清单地址,
             // 对托盘手动检查与 UI 的 update_check 命令同样生效。
+
+            // 前端产物完整性(仅 dev:此时资产从磁盘 uidist 服务;release
+            // 走编译期嵌入,build.rs 已把关)。index.html 指向不存在的 hash
+            // 时资产协议会 SPA 回退返回 text/html,WKWebView 拒执行模块
+            // 脚本 → 白屏 + 晦涩 MIME 报错;抢在开窗前换成可行动的错误页。
+            #[cfg(dev)]
+            if let Some(missing) = frontend_missing_asset() {
+                let msg = format!(
+                    "前端产物不完整(index.html 引用的 {missing} 不存在),\
+                     请先执行 cd desktop/ui && npm run build 重建后再启动"
+                );
+                eprintln!("[desktop] {msg}");
+                create_main_window(app.handle(), &format!("error.html#{}", util::urlencode(&msg)));
+                ensure_pet_window(app.handle());
+                return Ok(());
+            }
 
             if let Some(e) = config_error {
                 eprintln!("[desktop] 配置加载失败: {e}");

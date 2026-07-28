@@ -18,10 +18,7 @@
          font:13.5px/1.8 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
   .box { max-width:460px; padding:32px; display:flex; flex-direction:column;
          align-items:center; gap:10px; text-align:center; animation:mcin .25s ease; }
-  .logo { width:52px; height:52px; border-radius:16px;
-          background:linear-gradient(135deg,#34d399,#059669);
-          display:flex; align-items:center; justify-content:center;
-          font:800 26px system-ui; box-shadow:0 6px 20px rgba(16,185,129,.3); }
+  .logo { width:52px; height:52px; border-radius:14px; }
   h2 { margin:4px 0 0; font-size:18px; font-weight:700; color:var(--t1); letter-spacing:-.01em; }
   .err { margin:6px 0 0; padding:9px 13px; background:var(--codeBg); border-radius:9px;
          font:12.5px/1.7 ui-monospace,Menlo,monospace; color:var(--err); word-break:break-all; }
@@ -37,7 +34,10 @@
 </head>
 <body>
 <div class="box">
-  <div class="logo">🐒</div>
+  <!-- 真产品 logo(public/logo.png,与 UI 内 src/logo.png 同源拷贝);
+       此前是 🐒 emoji,各平台渲染不一且非品牌形象 -->
+  <img class="logo" src="/logo.png" alt="MonkeyCode" />
+
   <h2>启动失败</h2>
   <p class="err" id="msg">未知错误</p>
   <p class="hint">内核未能启动。常见原因是模型配置不可用或安装不完整——

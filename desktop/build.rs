@@ -5,6 +5,12 @@ fn main() {
     println!("cargo:rerun-if-env-changed=MC_MATOMO_URL");
     println!("cargo:rerun-if-env-changed=MC_MATOMO_SITE_ID");
 
+    // uidist 产物完整性:release 在编译期整目录嵌入二进制,错位现场会被
+    // 原样打进包里,必须在这里拦住。
+    println!("cargo:rerun-if-changed=uidist/index.html");
+    println!("cargo:rerun-if-changed=uidist/assets");
+    validate_uidist();
+
     // 为应用自定义命令生成 ACL 权限(allow-<command>):
     // capability 中引用的每个自定义命令都必须在此登记。
     tauri_build::try_build(
@@ -74,4 +80,29 @@ fn main() {
         ),
     )
     .expect("tauri_build 失败")
+}
+
+/// uidist 完整性:index.html 引用的 /assets/ 产物必须齐全。vite 开着
+/// emptyOutDir(先清空再写),构建被打断或两次构建互踩会留下 index.html
+/// 指向不存在 hash 的现场;运行期症状是资产协议 SPA 回退返回 text/html、
+/// WKWebView 拒执行模块脚本——macOS 白屏,只有一条晦涩的 MIME 报错。
+/// 在编译期把它变成一句人话。uidist 整体缺失沿用 tauri 宏自身的报错。
+fn validate_uidist() {
+    let Ok(index) = std::fs::read_to_string("uidist/index.html") else {
+        return;
+    };
+    let mut missing = Vec::new();
+    for part in index.split("\"/assets/").skip(1) {
+        let Some(name) = part.split('"').next() else {
+            continue;
+        };
+        if !std::path::Path::new("uidist/assets").join(name).is_file() {
+            missing.push(name.to_string());
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "desktop/uidist 产物不完整,index.html 引用了不存在的文件: {missing:?}\n\
+         多半是上次 UI 构建被打断/互踩——先 `cd desktop/ui && npm run build` 重建再编译"
+    );
 }
