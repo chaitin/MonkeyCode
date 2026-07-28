@@ -946,20 +946,28 @@ fn ensure_pet_window(app: &AppHandle) {
     set_pet_visible(app, true);
 }
 
-/// 桌宠位置:记忆位置仍落在任一显示器内则沿用(显示器可能被拔掉),
-/// 否则回主显示器右下角留边(避开任务栏)。
+/// 桌宠位置:记忆位置须让**整个窗口**落在某台显示器内才沿用(显示器可能
+/// 被拔掉/换分辨率;历史版本还存过按别的窗口尺寸/别的后端算出的坐标)。
+/// 只验左上角时,窗口下半悬出屏外的陈旧坐标会让桌宠只露上半身——
+/// 实测复现:1000 高的屏 + 记忆 y=950,只剩头顶。判不过就回
+/// 主显示器右下角留边(避开任务栏)。
 fn pet_position(app: &AppHandle, saved: Option<(i32, i32)>) -> tauri::PhysicalPosition<i32> {
     if let Some((x, y)) = saved {
-        let on_screen = app
+        let fits = app
             .available_monitors()
             .unwrap_or_default()
             .iter()
             .any(|m| {
                 let p = m.position();
                 let s = m.size();
-                x >= p.x && x < p.x + s.width as i32 && y >= p.y && y < p.y + s.height as i32
+                let w = (PET_W * m.scale_factor()).round() as i32;
+                let h = (PET_H * m.scale_factor()).round() as i32;
+                x >= p.x
+                    && y >= p.y
+                    && x + w <= p.x + s.width as i32
+                    && y + h <= p.y + s.height as i32
             });
-        if on_screen {
+        if fits {
             return tauri::PhysicalPosition::new(x, y);
         }
     }
