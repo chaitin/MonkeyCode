@@ -61,6 +61,7 @@ export default function StartDevelopTaskDialog({
   const [skillPopoverOpen, setSkillPopoverOpen] = useState(false)
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills)
   const [skillList, setSkillList] = useState<DomainSkill[]>([])
+  const [skillsLoaded, setSkillsLoaded] = useState(false)
   const [activeSkillTag, setActiveSkillTag] = useState(ALL_SKILLS_TAG)
   const { images, models, hosts, subscription } = useCommonData()
   const { t } = useTranslation()
@@ -145,11 +146,12 @@ export default function StartDevelopTaskDialog({
       return
     }
 
-    if (skillList.length === 0) {
+    if (!skillsLoaded) {
       apiRequest("v1SkillsList", {}, [], (resp) => {
         if (resp.code === 0) {
           const skills = resp.data || []
           setSkillList(skills)
+          setSkillsLoaded(true)
           setSelectedSkill((prev) => filterSelectableSkillIds(prev, skills))
         } else {
           toast.error(resp.message || t("taskWorkflow.toast.fetchSkillsFailed"))
@@ -159,7 +161,7 @@ export default function StartDevelopTaskDialog({
     }
 
     setSelectedSkill((prev) => filterSelectableSkillIds(prev, skillList))
-  }, [open, skillList, skillList.length, t])
+  }, [open, skillList, skillsLoaded, t])
 
   useEffect(() => {
     if (!open) {
