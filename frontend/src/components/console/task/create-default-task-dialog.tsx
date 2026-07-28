@@ -116,6 +116,7 @@ export default function CreateDefaultTaskDialog({
   const [selectedRepoFromMyRepos, setSelectedRepoFromMyRepos] = useState(false)
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills)
   const [skillList, setSkillList] = useState<DomainSkill[]>([])
+  const [skillsLoaded, setSkillsLoaded] = useState(false)
   const [activeSkillTag, setActiveSkillTag] = useState(ALL_SKILLS_TAG)
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState("")
@@ -195,11 +196,12 @@ export default function CreateDefaultTaskDialog({
       return
     }
 
-    if (skillList.length === 0) {
+    if (!skillsLoaded) {
       apiRequest("v1SkillsList", {}, [], (resp) => {
         if (resp.code === 0) {
           const skills = resp.data || []
           setSkillList(skills)
+          setSkillsLoaded(true)
           setSelectedSkill((prev) => filterSelectableSkillIds(prev, skills))
         } else {
           toast.error(resp.message || t("taskWorkflow.toast.fetchSkillsFailed"))
@@ -208,7 +210,7 @@ export default function CreateDefaultTaskDialog({
     } else {
       setSelectedSkill((prev) => filterSelectableSkillIds(prev, skillList))
     }
-  }, [open, skillList, skillList.length, t])
+  }, [open, skillList, skillsLoaded, t])
 
   useEffect(() => {
     if (!open || models.length === 0) {

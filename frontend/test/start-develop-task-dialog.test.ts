@@ -7,6 +7,11 @@ const dialogSource = readFileSync(
   "utf8",
 );
 
+const createDefaultDialogSource = readFileSync(
+  new URL("../src/components/console/task/create-default-task-dialog.tsx", import.meta.url),
+  "utf8",
+);
+
 test("项目启动任务弹窗允许选择系统镜像并提交选中的镜像", () => {
   assert.match(dialogSource, /selectedImageId/);
   assert.match(dialogSource, /setSelectedImageId\(selectImage\(images, true\)\)/);
@@ -48,4 +53,13 @@ test("项目启动任务弹窗在高级选项里支持 Skills 并提交选中项
   assert.match(dialogSource, /<TaskSkillSelector/);
   assert.match(dialogSource, /selectedSkills=\{selectedSkill\}/);
   assert.match(dialogSource, /skill_ids: selectedSkill/);
+});
+
+test("启动任务弹窗在 skill 列表为空时不会重复请求", () => {
+  for (const source of [dialogSource, createDefaultDialogSource]) {
+    assert.match(source, /const \[skillsLoaded, setSkillsLoaded\] = useState\(false\)/);
+    assert.match(source, /if \(!skillsLoaded\) \{[\s\S]*?apiRequest\("v1SkillsList"/);
+    assert.match(source, /setSkillList\(skills\)[\s\S]*?setSkillsLoaded\(true\)/);
+    assert.doesNotMatch(source, /if \(skillList\.length === 0\) \{[\s\S]*?apiRequest\("v1SkillsList"/);
+  }
 });
