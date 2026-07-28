@@ -1,5 +1,9 @@
 // Windows 壳的自绘标题栏:壳去掉了原生装饰栏(decorations=false),这里补回
-// 与侧栏分区连续的品牌/页面上下文 + 拖拽区 + Windows 窗口按钮。
+// 与侧栏分区连续的品牌 + 拖拽区 + Windows 窗口按钮。
+// 刻意**不**复述页面上下文:任务标题的唯一归属是内容区 ViewHeader(此前
+// 标题栏灰字与其正下方的大标题连着重复两遍);窗口级上下文写进原生窗口
+// 标题(App 侧 setWindowTitle),Alt-Tab/任务栏那里才是它该在的地方——
+// 与 mac 的分工一致(品牌带 + 视图头,各管各的)。
 // 仅 isWindowsShell() 时由 App 渲染;mac 壳走 Overlay 红绿灯,浏览器模式无此栏。
 import { useEffect, useState, type CSSProperties } from "react";
 import {
@@ -151,7 +155,7 @@ function Glyph({ d }: { d: string }) {
   );
 }
 
-export default function TitleBar({ context, layout = "sidebar" }: { context: string; layout?: "sidebar" | "settings" }) {
+export default function TitleBar({ layout = "sidebar" }: { layout?: "sidebar" | "settings" }) {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -197,9 +201,6 @@ export default function TitleBar({ context, layout = "sidebar" }: { context: str
           <Brand logo />
         </span>
       )}
-      <span className="ellipsis" data-tauri-drag-region="" title={context} style={{ maxWidth: 420, padding: "0 14px", fontSize: 11.5, fontWeight: 550, color: "var(--t4)" }}>
-        {context}
-      </span>
       <span data-tauri-drag-region="" style={{ flex: 1, alignSelf: "stretch" }} />
       <button className="hv" title="最小化" onClick={() => void windowMinimize()} style={btn}>
         <Glyph d="M0 5h10" />

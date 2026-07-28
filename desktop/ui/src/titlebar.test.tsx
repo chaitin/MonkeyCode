@@ -11,20 +11,21 @@ function stubShell(platform: "mac" | "windows" | "browser") {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Windows 标题栏", () => {
-  it("主界面延续双层侧栏并展示页面上下文", () => {
-    const html = renderToStaticMarkup(<TitleBar context="新建任务" />);
+  it("主界面延续双层侧栏,只承载品牌与窗口按钮", () => {
+    const html = renderToStaticMarkup(<TitleBar />);
 
     expect(html).toContain('data-window-titlebar=""');
     expect(html).toContain("MonkeyCode");
     expect(html).toContain(">work<");
-    expect(html).toContain("新建任务");
+    // 页面上下文不再入栏(唯一标题在 ViewHeader;窗口级上下文走原生标题)
+    expect(html).not.toContain("新建任务");
     expect(html).toContain("width:62px");
     expect(html).toContain("width:232px");
     expect(html).toContain('title="最小化"');
   });
 
   it("设置页使用与设置导航一致的左侧宽度", () => {
-    const html = renderToStaticMarkup(<TitleBar context="设置" layout="settings" />);
+    const html = renderToStaticMarkup(<TitleBar layout="settings" />);
 
     expect(html).toContain("width:168px");
     expect(html).not.toContain("width:232px");

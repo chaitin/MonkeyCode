@@ -18,6 +18,7 @@ import {
   isWindowsShell,
   onHostEvent,
   sessionIdFromUiIntent,
+  setWindowTitle,
   takeUiIntent,
   updateCheck,
   updateInstall,
@@ -624,6 +625,11 @@ export default function App() {
   });
 
   const windowContext = windowContextLabel(view, cloudTask, currentMeta);
+  // 页面上下文只进原生窗口标题(Alt-Tab/任务栏/Mission Control 可见);
+  // 窗口内不复述——任务标题的唯一归属是 ViewHeader
+  useEffect(() => {
+    setWindowTitle(`${windowContext} - MonkeyCode`);
+  }, [windowContext]);
 
   return (
     <div
@@ -639,7 +645,7 @@ export default function App() {
       }}
     >
       {/* Windows 壳:装饰栏已去除,自绘 36px 标题栏(品牌/上下文 + 拖拽 + 窗口按钮) */}
-      {isWindowsShell() && <TitleBar context={windowContext} layout={view === "settings" ? "settings" : "sidebar"} />}
+      {isWindowsShell() && <TitleBar layout={view === "settings" ? "settings" : "sidebar"} />}
       {/* 右下角全局下载条:云端文件下载的进度/结果,跨页面常显(fixed 定位不占布局) */}
       <DownloadsBar />
       {/* 引擎生命周期横幅(契约 6):崩溃/退避中/熔断/启动失败都在这里外显。

@@ -142,6 +142,16 @@ function windowCmd(cmd: string): Promise<unknown> {
   return invoke(`plugin:window|${cmd}`);
 }
 
+/** 窗口级上下文标题:壳内写原生窗口标题(Alt-Tab/任务栏/Mission Control
+ * 可见;窗口内不再画重复标题),浏览器模式退回 document.title。 */
+export function setWindowTitle(text: string): void {
+  if (tauri()?.core?.invoke) {
+    void invoke("plugin:window|set_title", { value: text }).catch(() => {});
+  } else {
+    document.title = text;
+  }
+}
+
 export const windowMinimize = () => windowCmd("minimize").catch(console.error);
 export const windowToggleMaximize = () => windowCmd("toggle_maximize").catch(console.error);
 export const windowClose = () => windowCmd("close").catch(console.error);

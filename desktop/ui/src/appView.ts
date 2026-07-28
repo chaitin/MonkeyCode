@@ -18,7 +18,8 @@ export function isNewTaskView(view: AppMainView, sessionId: string | null): bool
   return view === "new" || sessionId === null;
 }
 
-/** Windows 自绘标题栏的上下文文案(视图 → 当前对象逐级回退) */
+/** 原生窗口标题的上下文文案(视图 → 当前对象逐级回退;经 setWindowTitle
+ * 写给系统,Alt-Tab/任务栏/Mission Control 可见——窗口内不再复述) */
 export function windowContextLabel(
   view: AppMainView,
   cloudTask: Pick<CloudTask, "title" | "summary" | "content"> | null,
