@@ -392,33 +392,11 @@ pub fn engine_config_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(config_dir(app)?.join("ohmyagent"))
 }
 
-/// 思考档位变体别名的分隔标记:引擎别名 = `<模型名>#think:<档位>`。
-/// composer 会话级思考切换靠这些变体实现(见 write_ohmyagent_config),
-/// driver 侧组别名(session.rs)与此处物化必须同源。
-pub const THINK_ALIAS_SEP: &str = "#think:";
-
-/// 思考深度 → 引擎 thinking 配置,按协议分流:openai 系直接映射
-/// reasoning effort;anthropic 的思考没有 effort 语义,映射 budget_tokens
-/// 预设(低 2048/中 4096/高 8192)并压到有效输出上限(缺省按引擎默认
-/// 16384 计)的一半以内(引擎要求 budget < max_tokens),低于 API 下限
-/// 1024 时返回 None 整个不开(开了引擎每轮构造请求都会报错,不如静默
-/// 降级为不思考)。
-fn thinking_config(wire_type: &str, effort: &str, max_output: Option<i64>) -> Option<serde_json::Value> {
-    if wire_type != "anthropic" {
-        return Some(serde_json::json!({ "enabled": true, "effort": effort }));
-    }
-    let preset: i64 = match effort {
-        "low" => 2048,
-        "medium" => 4096,
-        _ => 8192,
-    };
-    let budget = preset.min(max_output.unwrap_or(16384) / 2);
-    // type:"enabled" 必须显式写:引擎 9af68c5 起 budget_tokens 属 legacy
-    // 兼容路径,判定条件是 type=="enabled"——缺省 type 会被当成新式统一
-    // 配置走 adaptive(裸 {type:adaptive},effort 也丢),老 Claude 模型
-    // 不支持 adaptive,思考整个失效。budget 路径全系 Claude 通用,保留。
-    (budget >= 1024)
-        .then(|| serde_json::json!({ "enabled": true, "type": "enabled", "budget_tokens": budget }))
+/// 思考深度 → 引擎统一 thinking 配置(9af68c5 起 {enabled,effort} 对
+/// 所有协议生效:openai 系映射 reasoning effort,anthropic 由引擎转成
+/// adaptive + output_config.effort;budget_tokens/type 已废弃不再写)。
+fn thinking_config(effort: &str) -> serde_json::Value {
+    serde_json::json!({ "enabled": true, "effort": effort })
 }
 
 /// 壳清单 → <engine_config_dir>/settings.json + mcp.json。
@@ -481,40 +459,14 @@ fn write_ohmyagent_config(
         if let Some(n) = max_output {
             entry["max_output"] = serde_json::json!(n);
         }
-        // 思考深度:base 条目按模型设置的 think 默认档物化(缺省关闭)。
+        // 思考深度:条目按模型设置的 think 默认档物化(缺省关闭);会话级
+        // 调整走引擎 session/setThinking RPC(session.rs),不再物化变体别名。
         let think = m
             .get("think")
             .and_then(|v| v.as_str())
             .filter(|s| matches!(*s, "low" | "medium" | "high"));
         if let Some(effort) = think {
-            if let Some(t) = thinking_config(wire_type, effort, max_output) {
-                entry["thinking"] = t;
-            }
-        }
-        // 思考档位变体:引擎没有会话级思考旋钮(thinking 绑在模型条目上),
-        // 壳侧为每个模型物化 <name>#think:off/low/medium/high 四个同源变体
-        // 别名(仅 thinking 不同),composer 的思考深度选择器经现有切模型
-        // 链路(session/create、switchModel)切到对应变体即会话级生效。
-        // 变体只存在于引擎 settings.json;UI 模型列表来自壳配置,不会看到。
-        // 撞名防御:用户模型名恰好等于变体别名时跳过,保真实条目不被覆盖。
-        for lvl in ["off", "low", "medium", "high"] {
-            let alias = format!("{name}{THINK_ALIAS_SEP}{lvl}");
-            if models_arr
-                .iter()
-                .any(|other| other.get("name").and_then(|v| v.as_str()) == Some(alias.as_str()))
-            {
-                continue;
-            }
-            let mut variant = entry.clone();
-            variant.as_object_mut().expect("entry is object").remove("thinking");
-            if lvl != "off" {
-                // anthropic 的 max_output 压不进 budget 下限时该档退化为不
-                // 思考;别名仍要物化,否则切换会撞"未知模型"
-                if let Some(t) = thinking_config(wire_type, lvl, max_output) {
-                    variant["thinking"] = t;
-                }
-            }
-            models_out.insert(alias, variant);
+            entry["thinking"] = thinking_config(effort);
         }
         models_out.insert(name.clone(), entry);
         let is_default = m.get("default").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -908,76 +860,24 @@ mod tests {
             serde_json::json!({ "enabled": true, "effort": "high" })
         );
 
-        // anthropic:未配 max_output 按引擎默认 16384 计,高档预设 8192 放得下
+        // anthropic 与 openai 同用统一 {enabled,effort}(引擎按协议转译,
+        // budget_tokens/type 已废弃),max_output 不再耦合 thinking
         assert_eq!(
             models["claude-default-max"]["thinking"],
-            serde_json::json!({ "enabled": true, "type": "enabled", "budget_tokens": 8192 })
+            serde_json::json!({ "enabled": true, "effort": "high" })
         );
-        // max_output 4096 → budget 压到一半 2048
         assert_eq!(
             models["claude-small-max"]["thinking"],
-            serde_json::json!({ "enabled": true, "type": "enabled", "budget_tokens": 2048 })
+            serde_json::json!({ "enabled": true, "effort": "high" })
         );
-        // max_output 1500 → 一半 750 < API 下限 1024,思考整个不开
-        assert!(models["claude-tiny-max"].get("thinking").is_none());
+        assert_eq!(
+            models["claude-tiny-max"]["thinking"],
+            serde_json::json!({ "enabled": true, "effort": "low" })
+        );
         assert_eq!(models["claude-tiny-max"]["max_output"], 1500);
 
         // 未知档位不透传(防旧版/实验值造成引擎侧报错)
         assert!(models["bad-think"].get("thinking").is_none());
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    /// 思考档位变体:每个模型都物化 #think:off/low/medium/high 四个同源
-    /// 别名(composer 会话级思考切换的落点),仅 thinking 不同;凭据与
-    /// max_output 等其余字段与 base 一致;default_model 保持 base 别名。
-    #[test]
-    fn ohmyagent_config_materializes_think_variants() {
-        let dir = test_dir("model-think-variants");
-        let _ = fs::remove_dir_all(&dir);
-        let cfg = DesktopConfig {
-            models: serde_json::json!([
-                {
-                    "name": "gw",
-                    "provider": "openai",
-                    "base_url": "https://example.invalid",
-                    "api_key": "k",
-                    "model": "m",
-                    "max_output": 32768,
-                    "think": "medium",
-                    "default": true
-                },
-                {
-                    "name": "cl",
-                    "provider": "anthropic",
-                    "base_url": "https://example.invalid",
-                    "api_key": "k",
-                    "model": "m"
-                }
-            ]),
-            ..Default::default()
-        };
-
-        write_ohmyagent_config(&dir, &cfg, None).unwrap();
-        let settings: serde_json::Value =
-            serde_json::from_slice(&fs::read(dir.join("settings.json")).unwrap()).unwrap();
-        let models = &settings["models"];
-        assert_eq!(settings["default_model"], "gw");
-
-        // base 条目按模型默认档物化;变体覆盖四档
-        assert_eq!(models["gw"]["thinking"]["effort"], "medium");
-        assert!(models["gw#think:off"].get("thinking").is_none());
-        assert_eq!(models["gw#think:low"]["thinking"]["effort"], "low");
-        assert_eq!(models["gw#think:high"]["thinking"]["effort"], "high");
-        // 变体与 base 同源:凭据/上限一致
-        assert_eq!(models["gw#think:high"]["api_key"], "k");
-        assert_eq!(models["gw#think:high"]["max_output"], 32768);
-
-        // anthropic 变体映射 budget_tokens;base 未配 think 则无 thinking
-        assert!(models["cl"].get("thinking").is_none());
-        assert_eq!(
-            models["cl#think:high"]["thinking"],
-            serde_json::json!({ "enabled": true, "type": "enabled", "budget_tokens": 8192 })
-        );
         let _ = fs::remove_dir_all(&dir);
     }
 

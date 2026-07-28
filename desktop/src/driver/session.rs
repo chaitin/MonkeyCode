@@ -134,10 +134,19 @@ pub(super) fn valid_session_id(id: &str) -> bool {
 }
 
 /// 上行命令的 id 守卫:非法 id 直接外显错误,而不是让下游各自静默降级。
-/// 会话思考档位的合法值:""=跟随模型默认,其余四档对应 config.rs 物化的
-/// #think:<档位> 变体别名。
+/// 会话思考档位的合法值:""=跟随模型默认,其余四档经 session/setThinking
+/// 下发引擎(off = enabled:false,低/中/高 = enabled + effort)。
 fn valid_think(level: &str) -> bool {
     matches!(level, "" | "off" | "low" | "medium" | "high")
+}
+
+/// 档位 → session/setThinking 参数。
+fn think_rpc_params(engine_id: &str, level: &str) -> Value {
+    if level == "off" {
+        json!({ "session_id": engine_id, "enabled": false })
+    } else {
+        json!({ "session_id": engine_id, "enabled": true, "effort": level })
+    }
 }
 
 fn check_session_id(id: &str) -> Result<(), String> {
@@ -473,7 +482,7 @@ impl OhmyDriver {
         if !valid_think(think) {
             return Err(format!("不支持的思考档位: {think}"));
         }
-        let model_id = self.engine_model_alias(model_name, think)?;
+        let model_id = self.model_id_of(model_name)?;
         // 普通对话的 cwd 由壳生成，调用方传入值一律不采用；本地项目仍按
         // 用户选择展开 ~、按需创建或前置校验。
         let chat_workdir = if kind == "chat" {
@@ -555,6 +564,8 @@ impl OhmyDriver {
             m["think"] = json!(think);
             m["status"] = json!(SessionStatus::Created.as_str());
         });
+        // 创建即下发所选档位(引擎新会话按模型默认档起步)
+        self.apply_session_think(&sid, &sid).await;
         Ok(json!({
             "id": sid, "title": "", "workdir": workdir, "model": model_name,
             "kind": kind, "mode": "default", "turns": 0, "think": think,
@@ -711,8 +722,7 @@ impl OhmyDriver {
             mode,
         );
         let model_name = meta.get("model_name").and_then(|v| v.as_str()).unwrap_or("");
-        let think = meta.get("think").and_then(|v| v.as_str()).filter(|t| valid_think(t)).unwrap_or("");
-        if let Ok(model_id) = self.engine_model_alias(model_name, think) {
+        if let Ok(model_id) = self.model_id_of(model_name) {
             params["model"] = json!(model_id);
         }
         let result = self.rpc("session/create", params).await?;
@@ -740,8 +750,10 @@ impl OhmyDriver {
         let _ = seq_gate.await;
         if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
             s.created = true;
-            s.engine_id = engine_id;
+            s.engine_id = engine_id.clone();
         }
+        // resume 重建 loop,思考档位回落到模型默认,重放会话已选档位
+        self.apply_session_think(id, &engine_id).await;
         // resume 结果带恢复历史的占用估计,立即可显示(296176a)
         self.0.push_usage(
             id,
@@ -1195,8 +1207,7 @@ impl OhmyDriver {
         match kind {
             "session_set_model" => {
                 let name = payload.get("model").and_then(|v| v.as_str()).unwrap_or("");
-                // 前置校验,未知模型不动会话;保持会话已选思考档位跟随新模型
-                let model_id = self.engine_model_alias(name, &self.session_think(id))?;
+                let model_id = self.model_id_of(name)?; // 前置校验,未知模型不动会话
                 // 引擎同样拒绝运行中切模型,本地先给友好错误
                 if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
                     return Err("执行中不能切换,请先取消当前任务".into());
@@ -1219,35 +1230,30 @@ impl OhmyDriver {
                     s.model_name = name.to_string();
                 }
                 self.write_sidecar(id, |m| m["model_name"] = json!(name));
+                // 引擎切模型会把思考态重置为新模型默认档,重放会话已选档位
+                self.apply_session_think(id, &self.engine_id(id)).await;
                 self.push_frame(id, |seq| frame::model_update(name, seq));
                 Ok(json!({ "result": { "model": name } }))
             }
-            // 会话级思考档位:切到当前模型的 #think:<档位> 变体别名(config.rs
-            // 物化的同源条目,仅 thinking 不同),复用切模型的三条引擎路径;
-            // ""=跟随模型默认(base 别名)。档位随 sidecar 持久,resume 恢复。
+            // 会话级思考档位:经引擎 session/setThinking 下发(loop 内存态,
+            // 无须重建 provider);档位随 sidecar 持久,resume/切模型时由
+            // apply_session_think 重放。""(跟随默认)不是可下发的档位。
             "session_set_think" => {
                 let level = payload.get("think").and_then(|v| v.as_str()).unwrap_or("");
-                if !valid_think(level) {
-                    return Err(format!("不支持的思考档位: {level}"));
+                if level.is_empty() || !valid_think(level) {
+                    return Err(format!("不支持的思考档位: {level:?}"));
                 }
-                let model_id = self.engine_model_alias(&self.session_model_name(id), level)?;
-                // 与切模型同因:引擎拒绝运行中换 provider,本地先给友好错误
+                // 引擎同样拒绝运行中改思考,本地先给友好错误
                 if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
                     return Err("执行中不能切换,请先取消当前任务".into());
                 }
                 if !self.session_created(id) {
                     let mode = self.session_mode(id);
+                    let model_id = self.model_id_of(&self.session_model_name(id))?;
                     self.create_resumed(id, &model_id, &mode).await?;
-                } else if self.has_cap("session/switchModel") {
-                    self.rpc(
-                        "session/switchModel",
-                        json!({ "session_id": self.engine_id(id), "model": model_id }),
-                    )
-                    .await?;
-                } else {
-                    let mode = self.session_mode(id);
-                    self.recreate_fallback(id, &model_id, &mode).await?;
                 }
+                self.rpc("session/setThinking", think_rpc_params(&self.engine_id(id), level))
+                    .await?;
                 self.write_sidecar(id, |m| m["think"] = json!(level));
                 self.push_frame(id, |seq| frame::think_update(level, seq));
                 Ok(json!({ "result": { "think": level } }))
@@ -1257,9 +1263,9 @@ impl OhmyDriver {
                 // 父模式,969311a 起热切对后续子代理同样生效)。
                 let mode = payload.get("mode").and_then(|v| v.as_str()).unwrap_or("default");
                 if !self.session_created(id) {
-                    let model_id =
-                        self.engine_model_alias(&self.session_model_name(id), &self.session_think(id))?;
+                    let model_id = self.model_id_of(&self.session_model_name(id))?;
                     self.create_resumed(id, &model_id, mode).await?;
+                    self.apply_session_think(id, &self.engine_id(id)).await;
                 } else if self.has_cap("session/switchMode") {
                     self.rpc(
                         "session/switchMode",
@@ -1271,9 +1277,9 @@ impl OhmyDriver {
                     if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
                         return Err("当前引擎版本较旧,执行中不能切换权限模式,请先取消任务".into());
                     }
-                    let model_id =
-                        self.engine_model_alias(&self.session_model_name(id), &self.session_think(id))?;
+                    let model_id = self.model_id_of(&self.session_model_name(id))?;
                     self.recreate_fallback(id, &model_id, mode).await?;
+                    self.apply_session_think(id, &self.engine_id(id)).await;
                 }
                 // 切到 yolo 自动放行本会话所有挂起审批。
                 // 先切引擎再排空——切换后引擎新的审批直接放行不再产生 ask,
@@ -1492,19 +1498,7 @@ impl OhmyDriver {
             .ok_or_else(|| format!("未知模型 {name:?}"))
     }
 
-    /// 组引擎模型别名:思考档位非空时用 `<模型名>#think:<档位>` 变体条目
-    /// (config.rs 物化,分隔标记同源);空档位 = base 别名,跟随模型
-    /// 设置里的默认思考档。
-    fn engine_model_alias(&self, name: &str, think: &str) -> Result<String, String> {
-        let base = self.model_id_of(name)?;
-        if think.is_empty() {
-            return Ok(base);
-        }
-        Ok(format!("{base}{}{think}", crate::config::THINK_ALIAS_SEP))
-    }
-
-    /// 会话思考档位(sidecar 持久;""=跟随模型默认)。畸形值按默认处理,
-    /// 免得旧/坏 sidecar 让所有引擎调用组出未知别名。
+    /// 会话思考档位(sidecar 持久;""=跟随模型默认)。畸形值按默认处理。
     fn session_think(&self, id: &str) -> String {
         self.read_sidecar(id)
             .get("think")
@@ -1512,6 +1506,20 @@ impl OhmyDriver {
             .filter(|t| valid_think(t))
             .unwrap_or("")
             .to_string()
+    }
+
+    /// 把会话已选思考档位重放给引擎(session/setThinking)。引擎的思考态
+    /// 是 loop 内存值,create/resume/切模型都会回落到模型默认档,凡引擎
+    /// 会话(重)建或换 provider 处都要调;空档位 = 跟随默认,无需下发。
+    /// 失败不阻断调用方主流程(思考是增强配置,不该让会话打不开),留痕。
+    async fn apply_session_think(&self, id: &str, engine_id: &str) {
+        let level = self.session_think(id);
+        if level.is_empty() {
+            return;
+        }
+        if let Err(e) = self.rpc("session/setThinking", think_rpc_params(engine_id, &level)).await {
+            eprintln!("[desktop] 会话 {id} 思考档位重放失败: {e}");
+        }
     }
 
     fn session_title(&self, id: &str) -> String {

@@ -782,11 +782,7 @@ export function SettingsView({
             <select
               style={select}
               value={m.think ?? ""}
-              title={
-                m.provider === "anthropic" || !m.provider
-                  ? "扩展思考预算:低 2048 / 中 4096 / 高 8192 token(受最大输出的一半约束,最大输出低于 2048 时不生效)"
-                  : "推理深度(reasoning effort),仅推理模型有效;非推理模型/网关可能拒绝该参数,报错时改回关闭"
-              }
+              title="推理深度(effort),内核按协议转译:openai 系发 reasoning_effort,anthropic 走 adaptive 思考。仅支持思考的模型有效,网关拒绝该参数时改回关闭。此为新会话默认档,composer 里可随会话调整"
               onChange={(e) => patchModel(i, { think: e.target.value || undefined })}
             >
               <option value="">关闭(默认)</option>
