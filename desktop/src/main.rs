@@ -857,7 +857,7 @@ fn ensure_pet_window(app: &AppHandle) {
             // 排障锚点:"桌宠看不见"类反馈全靠这一行定位——开关/落点/实际
             // 可见性/尺寸/会话环境一次外显,用户贴日志即可判因。
             eprintln!(
-                "[desktop] 桌宠已创建: enabled={} saved={:?} pos=({},{}) visible={:?} size={:?} 屏幕={:?} 环境: DISPLAY={:?} WAYLAND_DISPLAY={:?} XDG_SESSION_TYPE={:?} GDK_BACKEND={:?}",
+                "[desktop] 桌宠已创建: enabled={} saved={:?} pos=({},{}) visible={:?} size={:?} 屏幕={:?} 工作区={:?} 环境: DISPLAY={:?} WAYLAND_DISPLAY={:?} XDG_SESSION_TYPE={:?} GDK_BACKEND={:?}",
                 app.state::<PetEnabled>().0.load(Ordering::Relaxed),
                 saved,
                 position.x,
@@ -865,6 +865,7 @@ fn ensure_pet_window(app: &AppHandle) {
                 win.is_visible(),
                 win.outer_size(),
                 app.primary_monitor().ok().flatten().map(|m| (*m.position(), *m.size(), m.scale_factor())),
+                app.primary_monitor().ok().flatten().map(|m| monitor_usable_rect(&m)),
                 std::env::var("DISPLAY").ok(),
                 std::env::var("WAYLAND_DISPLAY").ok(),
                 std::env::var("XDG_SESSION_TYPE").ok(),
@@ -946,11 +947,25 @@ fn ensure_pet_window(app: &AppHandle) {
     set_pet_visible(app, true);
 }
 
-/// 桌宠位置:记忆位置须让**整个窗口**落在某台显示器内才沿用(显示器可能
-/// 被拔掉/换分辨率;历史版本还存过按别的窗口尺寸/别的后端算出的坐标)。
-/// 只验左上角时,窗口下半悬出屏外的陈旧坐标会让桌宠只露上半身——
-/// 实测复现:1000 高的屏 + 记忆 y=950,只剩头顶。判不过就回
-/// 主显示器右下角留边(避开任务栏)。
+/// 显示器可用矩形(物理像素):任务栏/Dock/面板层级压过 always-on-top,
+/// 落进面板下的部分会被盖住(实测:KDE 底部面板把桌宠的腿吞了),所以
+/// 一律以工作区为准(X11 _NET_WORKAREA / mac visibleFrame)。WM 未上报
+/// (工作区与整屏等大)时按 56 逻辑像素预留底部任务栏保守量。
+fn monitor_usable_rect(m: &tauri::Monitor) -> (i32, i32, i32, i32) {
+    let wa = m.work_area();
+    let (x, y) = (wa.position.x, wa.position.y);
+    let (w, mut h) = (wa.size.width as i32, wa.size.height as i32);
+    if (w, h) == (m.size().width as i32, m.size().height as i32) {
+        h -= (56.0 * m.scale_factor()) as i32;
+    }
+    (x, y, w, h)
+}
+
+/// 桌宠位置:记忆位置须让**整个窗口**落在某台显示器的可用区域内才沿用
+/// (显示器可能被拔掉/换分辨率;历史版本还存过按别的窗口尺寸/别的后端
+/// 算出的坐标)。只验左上角时,窗口下半悬出屏外/压进任务栏的陈旧坐标会
+/// 让桌宠只露上半身——实测复现:1000 高的屏 + 记忆 y=950,只剩头顶。
+/// 判不过就回主显示器可用区域右下角留边。
 fn pet_position(app: &AppHandle, saved: Option<(i32, i32)>) -> tauri::PhysicalPosition<i32> {
     if let Some((x, y)) = saved {
         let fits = app
@@ -958,38 +973,28 @@ fn pet_position(app: &AppHandle, saved: Option<(i32, i32)>) -> tauri::PhysicalPo
             .unwrap_or_default()
             .iter()
             .any(|m| {
-                let p = m.position();
-                let s = m.size();
+                let (ax, ay, aw, ah) = monitor_usable_rect(m);
                 let w = (PET_W * m.scale_factor()).round() as i32;
                 let h = (PET_H * m.scale_factor()).round() as i32;
-                x >= p.x
-                    && y >= p.y
-                    && x + w <= p.x + s.width as i32
-                    && y + h <= p.y + s.height as i32
+                x >= ax && y >= ay && x + w <= ax + aw && y + h <= ay + ah
             });
         if fits {
             return tauri::PhysicalPosition::new(x, y);
         }
     }
-    let (mx, my, mw, mh, scale) = app
+    let (ax, ay, aw, ah, scale) = app
         .primary_monitor()
         .ok()
         .flatten()
         .map(|m| {
-            (
-                m.position().x,
-                m.position().y,
-                m.size().width as i32,
-                m.size().height as i32,
-                m.scale_factor(),
-            )
+            let (ax, ay, aw, ah) = monitor_usable_rect(&m);
+            (ax, ay, aw, ah, m.scale_factor())
         })
-        .unwrap_or((0, 0, 1280, 800, 1.0));
+        .unwrap_or((0, 0, 1280, 744, 1.0));
     let w = (PET_W * scale) as i32;
     let h = (PET_H * scale) as i32;
     let margin = (24.0 * scale) as i32;
-    let taskbar = (56.0 * scale) as i32;
-    tauri::PhysicalPosition::new(mx + mw - w - margin, my + mh - h - margin - taskbar)
+    tauri::PhysicalPosition::new(ax + aw - w - margin, ay + ah - h - margin)
 }
 
 /// 按用户开关显示/隐藏桌宠。引擎不可用时桌宠自己展示离线状态;
