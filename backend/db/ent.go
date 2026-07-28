@@ -23,6 +23,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/agentskillversion"
 	"github.com/chaitin/MonkeyCode/backend/db/agentsyncjob"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/endpoint"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
@@ -137,6 +138,7 @@ func checkColumn(t, c string) error {
 			agentskillversion.Table:         agentskillversion.ValidColumn,
 			agentsyncjob.Table:              agentsyncjob.ValidColumn,
 			audit.Table:                     audit.ValidColumn,
+			endpoint.Table:                  endpoint.ValidColumn,
 			gitbot.Table:                    gitbot.ValidColumn,
 			gitbottask.Table:                gitbottask.ValidColumn,
 			gitbotuser.Table:                gitbotuser.ValidColumn,

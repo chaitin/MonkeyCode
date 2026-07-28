@@ -36,6 +36,8 @@ type Tx struct {
 	AgentSyncJob *AgentSyncJobClient
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
+	// Endpoint is the client for interacting with the Endpoint builders.
+	Endpoint *EndpointClient
 	// GitBot is the client for interacting with the GitBot builders.
 	GitBot *GitBotClient
 	// GitBotTask is the client for interacting with the GitBotTask builders.
@@ -264,6 +266,7 @@ func (tx *Tx) init() {
 	tx.AgentSkillVersion = NewAgentSkillVersionClient(tx.config)
 	tx.AgentSyncJob = NewAgentSyncJobClient(tx.config)
 	tx.Audit = NewAuditClient(tx.config)
+	tx.Endpoint = NewEndpointClient(tx.config)
 	tx.GitBot = NewGitBotClient(tx.config)
 	tx.GitBotTask = NewGitBotTaskClient(tx.config)
 	tx.GitBotUser = NewGitBotUserClient(tx.config)

@@ -123,7 +123,7 @@ function buildQuery(query?: Query): string {
 }
 
 interface RequestOpts {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   query?: Query;
   body?: unknown;
   /** multipart 请求体；不要手动设置 Content-Type，RN 会自动补 boundary。 */

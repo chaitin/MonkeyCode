@@ -27,6 +27,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/agentskillversion"
 	"github.com/chaitin/MonkeyCode/backend/db/agentsyncjob"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/endpoint"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
@@ -101,6 +102,8 @@ type Client struct {
 	AgentSyncJob *AgentSyncJobClient
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
+	// Endpoint is the client for interacting with the Endpoint builders.
+	Endpoint *EndpointClient
 	// GitBot is the client for interacting with the GitBot builders.
 	GitBot *GitBotClient
 	// GitBotTask is the client for interacting with the GitBotTask builders.
@@ -209,6 +212,7 @@ func (c *Client) init() {
 	c.AgentSkillVersion = NewAgentSkillVersionClient(c.config)
 	c.AgentSyncJob = NewAgentSyncJobClient(c.config)
 	c.Audit = NewAuditClient(c.config)
+	c.Endpoint = NewEndpointClient(c.config)
 	c.GitBot = NewGitBotClient(c.config)
 	c.GitBotTask = NewGitBotTaskClient(c.config)
 	c.GitBotUser = NewGitBotUserClient(c.config)
@@ -355,6 +359,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AgentSkillVersion:         NewAgentSkillVersionClient(cfg),
 		AgentSyncJob:              NewAgentSyncJobClient(cfg),
 		Audit:                     NewAuditClient(cfg),
+		Endpoint:                  NewEndpointClient(cfg),
 		GitBot:                    NewGitBotClient(cfg),
 		GitBotTask:                NewGitBotTaskClient(cfg),
 		GitBotUser:                NewGitBotUserClient(cfg),
@@ -428,6 +433,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AgentSkillVersion:         NewAgentSkillVersionClient(cfg),
 		AgentSyncJob:              NewAgentSyncJobClient(cfg),
 		Audit:                     NewAuditClient(cfg),
+		Endpoint:                  NewEndpointClient(cfg),
 		GitBot:                    NewGitBotClient(cfg),
 		GitBotTask:                NewGitBotTaskClient(cfg),
 		GitBotUser:                NewGitBotUserClient(cfg),
@@ -502,16 +508,17 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AgentPlugin, c.AgentPluginRepo, c.AgentPluginVersion, c.AgentRule,
 		c.AgentRuleVersion, c.AgentSkill, c.AgentSkillGroupBinding, c.AgentSkillRepo,
-		c.AgentSkillVersion, c.AgentSyncJob, c.Audit, c.GitBot, c.GitBotTask,
-		c.GitBotUser, c.GitIdentity, c.GitTask, c.Host, c.Image, c.MCPTool,
-		c.MCPToolCall, c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey,
-		c.ModelPricing, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription,
-		c.Project, c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue,
-		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskModelSwitch,
-		c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamExtensionImageArchive,
-		c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMCPUpstream,
-		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
-		c.TeamModel, c.TeamOIDCConfig, c.User, c.UserIdentity, c.VirtualMachine,
+		c.AgentSkillVersion, c.AgentSyncJob, c.Audit, c.Endpoint, c.GitBot,
+		c.GitBotTask, c.GitBotUser, c.GitIdentity, c.GitTask, c.Host, c.Image,
+		c.MCPTool, c.MCPToolCall, c.MCPUpstream, c.MCPUserToolSetting, c.Model,
+		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
+		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
+		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
+		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team,
+		c.TeamExtensionImageArchive, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
+		c.TeamGroupMCPUpstream, c.TeamGroupMember, c.TeamGroupModel, c.TeamHost,
+		c.TeamImage, c.TeamMember, c.TeamModel, c.TeamOIDCConfig, c.User,
+		c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -523,16 +530,17 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AgentPlugin, c.AgentPluginRepo, c.AgentPluginVersion, c.AgentRule,
 		c.AgentRuleVersion, c.AgentSkill, c.AgentSkillGroupBinding, c.AgentSkillRepo,
-		c.AgentSkillVersion, c.AgentSyncJob, c.Audit, c.GitBot, c.GitBotTask,
-		c.GitBotUser, c.GitIdentity, c.GitTask, c.Host, c.Image, c.MCPTool,
-		c.MCPToolCall, c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey,
-		c.ModelPricing, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription,
-		c.Project, c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue,
-		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskModelSwitch,
-		c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamExtensionImageArchive,
-		c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMCPUpstream,
-		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
-		c.TeamModel, c.TeamOIDCConfig, c.User, c.UserIdentity, c.VirtualMachine,
+		c.AgentSkillVersion, c.AgentSyncJob, c.Audit, c.Endpoint, c.GitBot,
+		c.GitBotTask, c.GitBotUser, c.GitIdentity, c.GitTask, c.Host, c.Image,
+		c.MCPTool, c.MCPToolCall, c.MCPUpstream, c.MCPUserToolSetting, c.Model,
+		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
+		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
+		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
+		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team,
+		c.TeamExtensionImageArchive, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
+		c.TeamGroupMCPUpstream, c.TeamGroupMember, c.TeamGroupModel, c.TeamHost,
+		c.TeamImage, c.TeamMember, c.TeamModel, c.TeamOIDCConfig, c.User,
+		c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -563,6 +571,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AgentSyncJob.mutate(ctx, m)
 	case *AuditMutation:
 		return c.Audit.mutate(ctx, m)
+	case *EndpointMutation:
+		return c.Endpoint.mutate(ctx, m)
 	case *GitBotMutation:
 		return c.GitBot.mutate(ctx, m)
 	case *GitBotTaskMutation:
@@ -2322,6 +2332,155 @@ func (c *AuditClient) mutate(ctx context.Context, m *AuditMutation) (Value, erro
 		return (&AuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown Audit mutation op: %q", m.Op())
+	}
+}
+
+// EndpointClient is a client for the Endpoint schema.
+type EndpointClient struct {
+	config
+}
+
+// NewEndpointClient returns a client for the Endpoint from the given config.
+func NewEndpointClient(c config) *EndpointClient {
+	return &EndpointClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `endpoint.Hooks(f(g(h())))`.
+func (c *EndpointClient) Use(hooks ...Hook) {
+	c.hooks.Endpoint = append(c.hooks.Endpoint, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `endpoint.Intercept(f(g(h())))`.
+func (c *EndpointClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Endpoint = append(c.inters.Endpoint, interceptors...)
+}
+
+// Create returns a builder for creating a Endpoint entity.
+func (c *EndpointClient) Create() *EndpointCreate {
+	mutation := newEndpointMutation(c.config, OpCreate)
+	return &EndpointCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Endpoint entities.
+func (c *EndpointClient) CreateBulk(builders ...*EndpointCreate) *EndpointCreateBulk {
+	return &EndpointCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EndpointClient) MapCreateBulk(slice any, setFunc func(*EndpointCreate, int)) *EndpointCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EndpointCreateBulk{err: fmt.Errorf("calling to EndpointClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EndpointCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EndpointCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Endpoint.
+func (c *EndpointClient) Update() *EndpointUpdate {
+	mutation := newEndpointMutation(c.config, OpUpdate)
+	return &EndpointUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EndpointClient) UpdateOne(_m *Endpoint) *EndpointUpdateOne {
+	mutation := newEndpointMutation(c.config, OpUpdateOne, withEndpoint(_m))
+	return &EndpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EndpointClient) UpdateOneID(id uuid.UUID) *EndpointUpdateOne {
+	mutation := newEndpointMutation(c.config, OpUpdateOne, withEndpointID(id))
+	return &EndpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Endpoint.
+func (c *EndpointClient) Delete() *EndpointDelete {
+	mutation := newEndpointMutation(c.config, OpDelete)
+	return &EndpointDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EndpointClient) DeleteOne(_m *Endpoint) *EndpointDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EndpointClient) DeleteOneID(id uuid.UUID) *EndpointDeleteOne {
+	builder := c.Delete().Where(endpoint.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EndpointDeleteOne{builder}
+}
+
+// Query returns a query builder for Endpoint.
+func (c *EndpointClient) Query() *EndpointQuery {
+	return &EndpointQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEndpoint},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Endpoint entity by its id.
+func (c *EndpointClient) Get(ctx context.Context, id uuid.UUID) (*Endpoint, error) {
+	return c.Query().Where(endpoint.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EndpointClient) GetX(ctx context.Context, id uuid.UUID) *Endpoint {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a Endpoint.
+func (c *EndpointClient) QueryUser(_m *Endpoint) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(endpoint.Table, endpoint.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, endpoint.UserTable, endpoint.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *EndpointClient) Hooks() []Hook {
+	return c.hooks.Endpoint
+}
+
+// Interceptors returns the client interceptors.
+func (c *EndpointClient) Interceptors() []Interceptor {
+	return c.inters.Endpoint
+}
+
+func (c *EndpointClient) mutate(ctx context.Context, m *EndpointMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EndpointCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EndpointUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EndpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EndpointDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown Endpoint mutation op: %q", m.Op())
 	}
 }
 
@@ -10203,6 +10362,22 @@ func (c *UserClient) QueryMcpUpstreams(_m *User) *MCPUpstreamQuery {
 	return query
 }
 
+// QueryEndpoints queries the endpoints edge of a User.
+func (c *UserClient) QueryEndpoints(_m *User) *EndpointQuery {
+	query := (&EndpointClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(endpoint.Table, endpoint.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.EndpointsTable, user.EndpointsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamMembers queries the team_members edge of a User.
 func (c *UserClient) QueryTeamMembers(_m *User) *TeamMemberQuery {
 	query := (&TeamMemberClient{config: c.config}).Query()
@@ -10665,27 +10840,27 @@ type (
 	hooks struct {
 		AgentPlugin, AgentPluginRepo, AgentPluginVersion, AgentRule, AgentRuleVersion,
 		AgentSkill, AgentSkillGroupBinding, AgentSkillRepo, AgentSkillVersion,
-		AgentSyncJob, Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask,
-		Host, Image, MCPTool, MCPToolCall, MCPUpstream, MCPUserToolSetting, Model,
-		ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription,
-		Project, ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
-		ProjectTask, Task, TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team,
-		TeamExtensionImageArchive, TeamGroup, TeamGroupHost, TeamGroupImage,
-		TeamGroupMCPUpstream, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
-		TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
+		AgentSyncJob, Audit, Endpoint, GitBot, GitBotTask, GitBotUser, GitIdentity,
+		GitTask, Host, Image, MCPTool, MCPToolCall, MCPUpstream, MCPUserToolSetting,
+		Model, ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog,
+		NotifySubscription, Project, ProjectCollaborator, ProjectGitBot, ProjectIssue,
+		ProjectIssueComment, ProjectTask, Task, TaskModelSwitch, TaskUsageStat,
+		TaskVirtualMachine, Team, TeamExtensionImageArchive, TeamGroup, TeamGroupHost,
+		TeamGroupImage, TeamGroupMCPUpstream, TeamGroupMember, TeamGroupModel,
+		TeamHost, TeamImage, TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
 		VirtualMachine []ent.Hook
 	}
 	inters struct {
 		AgentPlugin, AgentPluginRepo, AgentPluginVersion, AgentRule, AgentRuleVersion,
 		AgentSkill, AgentSkillGroupBinding, AgentSkillRepo, AgentSkillVersion,
-		AgentSyncJob, Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask,
-		Host, Image, MCPTool, MCPToolCall, MCPUpstream, MCPUserToolSetting, Model,
-		ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription,
-		Project, ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
-		ProjectTask, Task, TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team,
-		TeamExtensionImageArchive, TeamGroup, TeamGroupHost, TeamGroupImage,
-		TeamGroupMCPUpstream, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
-		TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
+		AgentSyncJob, Audit, Endpoint, GitBot, GitBotTask, GitBotUser, GitIdentity,
+		GitTask, Host, Image, MCPTool, MCPToolCall, MCPUpstream, MCPUserToolSetting,
+		Model, ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog,
+		NotifySubscription, Project, ProjectCollaborator, ProjectGitBot, ProjectIssue,
+		ProjectIssueComment, ProjectTask, Task, TaskModelSwitch, TaskUsageStat,
+		TaskVirtualMachine, Team, TeamExtensionImageArchive, TeamGroup, TeamGroupHost,
+		TeamGroupImage, TeamGroupMCPUpstream, TeamGroupMember, TeamGroupModel,
+		TeamHost, TeamImage, TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
 		VirtualMachine []ent.Interceptor
 	}
 )

@@ -17,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/agentskillversion"
 	"github.com/chaitin/MonkeyCode/backend/db/agentsyncjob"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/endpoint"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
@@ -332,6 +333,30 @@ func init() {
 	auditDescCreatedAt := auditFields[7].Descriptor()
 	// audit.DefaultCreatedAt holds the default value on creation for the created_at field.
 	audit.DefaultCreatedAt = auditDescCreatedAt.Default.(func() time.Time)
+	endpointFields := schema.Endpoint{}.Fields()
+	_ = endpointFields
+	// endpointDescDeviceName is the schema descriptor for device_name field.
+	endpointDescDeviceName := endpointFields[3].Descriptor()
+	// endpoint.DeviceNameValidator is a validator for the "device_name" field. It is called by the builders before save.
+	endpoint.DeviceNameValidator = endpointDescDeviceName.Validators[0].(func(string) error)
+	// endpointDescProtocolVersion is the schema descriptor for protocol_version field.
+	endpointDescProtocolVersion := endpointFields[8].Descriptor()
+	// endpoint.DefaultProtocolVersion holds the default value on creation for the protocol_version field.
+	endpoint.DefaultProtocolVersion = endpointDescProtocolVersion.Default.(int)
+	// endpointDescCreatedAt is the schema descriptor for created_at field.
+	endpointDescCreatedAt := endpointFields[12].Descriptor()
+	// endpoint.DefaultCreatedAt holds the default value on creation for the created_at field.
+	endpoint.DefaultCreatedAt = endpointDescCreatedAt.Default.(func() time.Time)
+	// endpointDescUpdatedAt is the schema descriptor for updated_at field.
+	endpointDescUpdatedAt := endpointFields[13].Descriptor()
+	// endpoint.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	endpoint.DefaultUpdatedAt = endpointDescUpdatedAt.Default.(func() time.Time)
+	// endpoint.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	endpoint.UpdateDefaultUpdatedAt = endpointDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// endpointDescID is the schema descriptor for id field.
+	endpointDescID := endpointFields[0].Descriptor()
+	// endpoint.DefaultID holds the default value on creation for the id field.
+	endpoint.DefaultID = endpointDescID.Default.(func() uuid.UUID)
 	gitbotMixin := schema.GitBot{}.Mixin()
 	gitbotMixinHooks0 := gitbotMixin[0].Hooks()
 	gitbot.Hooks[0] = gitbotMixinHooks0[0]

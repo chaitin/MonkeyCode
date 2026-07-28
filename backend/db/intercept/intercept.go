@@ -19,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/agentskillversion"
 	"github.com/chaitin/MonkeyCode/backend/db/agentsyncjob"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/endpoint"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
@@ -416,6 +417,33 @@ func (f TraverseAudit) Traverse(ctx context.Context, q db.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.AuditQuery", q)
+}
+
+// The EndpointFunc type is an adapter to allow the use of ordinary function as a Querier.
+type EndpointFunc func(context.Context, *db.EndpointQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f EndpointFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.EndpointQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.EndpointQuery", q)
+}
+
+// The TraverseEndpoint type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseEndpoint func(context.Context, *db.EndpointQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseEndpoint) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseEndpoint) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.EndpointQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.EndpointQuery", q)
 }
 
 // The GitBotFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1604,6 +1632,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.AgentSyncJobQuery, predicate.AgentSyncJob, agentsyncjob.OrderOption]{typ: db.TypeAgentSyncJob, tq: q}, nil
 	case *db.AuditQuery:
 		return &query[*db.AuditQuery, predicate.Audit, audit.OrderOption]{typ: db.TypeAudit, tq: q}, nil
+	case *db.EndpointQuery:
+		return &query[*db.EndpointQuery, predicate.Endpoint, endpoint.OrderOption]{typ: db.TypeEndpoint, tq: q}, nil
 	case *db.GitBotQuery:
 		return &query[*db.GitBotQuery, predicate.GitBot, gitbot.OrderOption]{typ: db.TypeGitBot, tq: q}, nil
 	case *db.GitBotTaskQuery:
