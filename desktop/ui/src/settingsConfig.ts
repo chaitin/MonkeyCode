@@ -122,6 +122,8 @@ export function modelsToConfig(models: HostModel[], defaultIdx: number): HostMod
     model: m.model,
     default: i === defaultIdx,
     context_window: m.context_window,
+    max_output: m.max_output,
+    think: m.think,
     vision: m.vision,
     source: m.source,
   }));

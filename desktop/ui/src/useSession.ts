@@ -309,7 +309,7 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
 
   return {
     /** 打开会话并接上 WS(见 SessionHandle.open) */
-    open(id: string, o: { model?: string; mode?: string; firstMessage?: string; firstFiles?: File[] } = {}) {
+    open(id: string, o: { model?: string; mode?: string; think?: string; firstMessage?: string; firstFiles?: File[] } = {}) {
       // 复位会丢掉还压着的排队消息:外显提醒,不静默丢(与云端 handleEnded 同款)
       if (queued) io.notify(`已离开会话,未发送的排队消息:「${queued.slice(0, 60)}」`);
       conn?.close();
@@ -318,7 +318,7 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       // model/permMode 以 ChatState 为唯一真值:meta 值作为初值注入,后续
       // model_update / permission_mode_update 帧经 reduce 覆盖(回放/多客户端
       // 同步)。此前 hook 里另存镜像 state 靠 effect 缝合,存在不一致窗口。
-      setChat({ ...initialChat, model: o.model ?? "", permMode: o.mode ?? "" });
+      setChat({ ...initialChat, model: o.model ?? "", think: o.think ?? "", permMode: o.mode ?? "" });
       setQueued(null);
       setAtts([]);
       io.setChanges(null);
@@ -463,6 +463,26 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       }
     },
 
+    // 会话级思考档位(""=跟随模型默认):壳切到模型的 #think 变体别名,
+    // 回写语义与 switchModel 同款(成功即回写,think_update 帧幂等覆盖)
+    async setThink(level: string) {
+      if (!conn || level === chat.think) return;
+      try {
+        const r = await conn.call<{ result?: { think: string }; error?: string }>(
+          "session_set_think",
+          { think: level },
+        );
+        if (r.error) {
+          io.notify("⚠ 调整思考深度失败: " + r.error);
+          return;
+        }
+        setChat({ ...chat, think: level });
+        io.onSessionsChanged();
+      } catch (e) {
+        io.notify("⚠ 调整思考深度失败: " + (e instanceof Error ? e.message : e));
+      }
+    },
+
     async toggleYolo() {
       if (!conn) return;
       const prevMode = chat.permMode;
@@ -567,7 +587,7 @@ export interface SessionHandle {
   /** 打开会话并接上 WS;firstMessage 在连接就绪后自动发出(新建会话的
    * 首个任务);firstFiles 此刻上传落盘,按 send() 同款「[图片] 路径」
    * 约定拼进首条消息(新建任务页的附件——那时会话还不存在,传不了) */
-  open(id: string, opts?: { model?: string; mode?: string; firstMessage?: string; firstFiles?: File[] }): void;
+  open(id: string, opts?: { model?: string; mode?: string; think?: string; firstMessage?: string; firstFiles?: File[] }): void;
   /** 断开并复位;forget 时一并清掉"上次会话"记忆(删除流程) */
   close(forget?: boolean): void;
   setInput(v: string): void;
@@ -582,6 +602,8 @@ export interface SessionHandle {
   /** 答复 AI 提问卡(reply-question 上行;发送成功后乐观回写 UI) */
   answerAsk(askId: string, answers: Record<string, string | string[]>): void;
   switchModel(name: string): Promise<void>;
+  /** 会话级思考档位(""=跟随模型默认;引擎切到 #think 变体别名) */
+  setThink(level: string): Promise<void>;
   toggleYolo(): Promise<void>;
   refreshChanges(): Promise<FileChange[]>;
   /** repo_file_diff 同步查询(文件抽屉:改动文件的 diff) */
@@ -696,6 +718,7 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
     answerPerm: core.answerPerm,
     answerAsk: core.answerAsk,
     switchModel: core.switchModel,
+    setThink: core.setThink,
     toggleYolo: core.toggleYolo,
     refreshChanges: core.refreshChanges,
     fileDiff: core.fileDiff,

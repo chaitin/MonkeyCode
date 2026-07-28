@@ -511,6 +511,16 @@ describe("轮次与系统帧", () => {
     expect(s.items.filter((it) => it.kind === "sys")).toHaveLength(2);
   });
 
+  it("think_update 回写档位并留系统行,空档位显示为默认", () => {
+    const s = run([acp({ sessionUpdate: "think_update", think: "high" })]);
+    expect(s.think).toBe("high");
+    expect(s.items.at(-1)).toEqual({ kind: "sys", text: "思考深度已调整为「高」" });
+
+    const back = run([acp({ sessionUpdate: "think_update", think: "" })]);
+    expect(back.think).toBe("");
+    expect(back.items.at(-1)).toEqual({ kind: "sys", text: "思考深度已调整为「默认」" });
+  });
+
   it("compact_status 与 llm_call_retry 渲染系统行", () => {
     const s = run([
       acp({ sessionUpdate: "compact_status", status: "started" }),

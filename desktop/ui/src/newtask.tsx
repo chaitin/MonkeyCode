@@ -5,7 +5,7 @@
 // 状态随视图挂载与卸载,App 只注入数据(models/recentDirs/lastDir)与编排回调
 // (onCreated/onCloudCreated)及外部预填(prefill)。
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
-import { basename, isImeEnter, markImeEnd, ModelMenuItem, ModelPicker } from "./chat";
+import { basename, isImeEnter, markImeEnd, ModelMenuItem, ModelPicker, ThinkPicker } from "./chat";
 import { MONO } from "./components";
 import { mcTaskCreate, mcTaskOptions } from "./cloudapi";
 import { inDesktopShell, pickDirectory, workdirPickBase } from "./host";
@@ -162,6 +162,8 @@ export function NewTaskView({
   // 模型:未主动选择时跟随默认模型(models 异步到达也自动就位,无需同步 effect)
   const [pickedModel, setPickedModel] = useState("");
   const model = pickedModel || models.find((m) => m.default)?.name || "";
+  // 思考深度(本地/会话):""=跟随模型设置的默认档,随创建下发并持久到会话
+  const [think, setThink] = useState("");
   const [err, setErr] = useState("");
   const [offerCreate, setOfferCreate] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -392,7 +394,7 @@ export function NewTaskView({
     setOfferCreate(false);
     try {
       // 默认项目目录可静默创建；对话目录完全由壳管理，UI 不传内部路径。
-      const meta = await createSession(d, model, !chatMode && (createDir || d === DEFAULT_DIR), chatMode ? "chat" : "local");
+      const meta = await createSession(d, model, !chatMode && (createDir || d === DEFAULT_DIR), chatMode ? "chat" : "local", think);
       const first = text.trim();
       setText("");
       await onCreated(meta, first || undefined, files);
@@ -908,7 +910,10 @@ export function NewTaskView({
               </span>
             </span>
             {mode !== "cloud" && (
-              <ModelPicker models={models} current={model} onPick={setPickedModel} />
+              <>
+                <ModelPicker models={models} current={model} onPick={setPickedModel} />
+                <ThinkPicker current={think} onPick={setThink} />
+              </>
             )}
             <span style={{ flex: 1 }} />
             <button

@@ -41,6 +41,12 @@ export interface HostModel {
   default?: boolean;
   /** 上下文窗口(token),高级项;缺省内核按 200k 处理 */
   context_window?: number;
+  /** 最大输出(token),高级项;缺省时 openai 系请求不带上限(由服务端
+   * 默认值决定),anthropic 用内核默认 16384 */
+  max_output?: number;
+  /** 思考深度,高级项;low|medium|high,缺省关闭。物化按协议分流:
+   * openai 系 → reasoning effort;anthropic → budget_tokens 预设 */
+  think?: string;
   /** 支持图片输入(视觉);未勾选时读图降级为文本占位,不发图片块 */
   vision?: boolean;
   /** 条目来源("baizhi"=百智云同步);缺省=手工添加。重同步时按它整组替换 */
@@ -69,6 +75,8 @@ export interface SessionMeta {
   /** 会话空间；旧 sidecar 缺省为 local。chat 仍有隐藏 cwd，但界面不绑定项目。 */
   kind?: "local" | "chat";
   model: string;
+  /** 会话思考档位(off/low/medium/high;缺省/"" = 跟随模型设置的默认档) */
+  think?: string;
   /** 权限模式("yolo" 全放行;缺省 = default) */
   mode?: string;
   turns: number;
@@ -111,6 +119,8 @@ export interface AcpUpdate {
   size?: number;
   progress?: ToolProgress;
   model?: string;
+  /** think_update:会话思考档位("" = 跟随模型默认) */
+  think?: string;
   mode?: string;
   /** 工具产出的图片(截图/读图)在工作区的相对路径 */
   images?: string[];

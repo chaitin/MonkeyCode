@@ -134,6 +134,12 @@ pub(super) fn valid_session_id(id: &str) -> bool {
 }
 
 /// 上行命令的 id 守卫:非法 id 直接外显错误,而不是让下游各自静默降级。
+/// 会话思考档位的合法值:""=跟随模型默认,其余四档对应 config.rs 物化的
+/// #think:<档位> 变体别名。
+fn valid_think(level: &str) -> bool {
+    matches!(level, "" | "off" | "low" | "medium" | "high")
+}
+
 fn check_session_id(id: &str) -> Result<(), String> {
     if valid_session_id(id) {
         Ok(())
@@ -435,6 +441,7 @@ impl OhmyDriver {
                     "workdir": meta.get("workdir").and_then(|v| v.as_str()).unwrap_or(""),
                     "kind": meta.get("kind").and_then(|v| v.as_str()).unwrap_or("local"),
                     "model": meta.get("model_name").and_then(|v| v.as_str()).unwrap_or(""),
+                    "think": meta.get("think").and_then(|v| v.as_str()).unwrap_or(""),
                     "mode": meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default"),
                     "turns": turns,
                     "status": status,
@@ -452,7 +459,7 @@ impl OhmyDriver {
 
     #[cfg(test)]
     pub async fn session_create(&self, workdir: &str, model_name: &str, create_dir: bool) -> Result<Value, String> {
-        self.session_create_with_kind(workdir, model_name, create_dir, "local").await
+        self.session_create_with_kind(workdir, model_name, create_dir, "local", "").await
     }
 
     pub async fn session_create_with_kind(
@@ -461,8 +468,12 @@ impl OhmyDriver {
         model_name: &str,
         create_dir: bool,
         kind: &str,
+        think: &str,
     ) -> Result<Value, String> {
-        let model_id = self.model_id_of(model_name)?;
+        if !valid_think(think) {
+            return Err(format!("不支持的思考档位: {think}"));
+        }
+        let model_id = self.engine_model_alias(model_name, think)?;
         // 普通对话的 cwd 由壳生成，调用方传入值一律不采用；本地项目仍按
         // 用户选择展开 ~、按需创建或前置校验。
         let chat_workdir = if kind == "chat" {
@@ -541,11 +552,12 @@ impl OhmyDriver {
             m["model_name"] = json!(model_name);
             m["workdir"] = json!(workdir);
             m["kind"] = json!(kind);
+            m["think"] = json!(think);
             m["status"] = json!(SessionStatus::Created.as_str());
         });
         Ok(json!({
             "id": sid, "title": "", "workdir": workdir, "model": model_name,
-            "kind": kind, "mode": "default", "turns": 0,
+            "kind": kind, "mode": "default", "turns": 0, "think": think,
             "status": SessionStatus::Created.as_str(),
         }))
     }
@@ -699,7 +711,8 @@ impl OhmyDriver {
             mode,
         );
         let model_name = meta.get("model_name").and_then(|v| v.as_str()).unwrap_or("");
-        if let Ok(model_id) = self.model_id_of(model_name) {
+        let think = meta.get("think").and_then(|v| v.as_str()).filter(|t| valid_think(t)).unwrap_or("");
+        if let Ok(model_id) = self.engine_model_alias(model_name, think) {
             params["model"] = json!(model_id);
         }
         let result = self.rpc("session/create", params).await?;
@@ -1182,7 +1195,8 @@ impl OhmyDriver {
         match kind {
             "session_set_model" => {
                 let name = payload.get("model").and_then(|v| v.as_str()).unwrap_or("");
-                let model_id = self.model_id_of(name)?; // 前置校验,未知模型不动会话
+                // 前置校验,未知模型不动会话;保持会话已选思考档位跟随新模型
+                let model_id = self.engine_model_alias(name, &self.session_think(id))?;
                 // 引擎同样拒绝运行中切模型,本地先给友好错误
                 if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
                     return Err("执行中不能切换,请先取消当前任务".into());
@@ -1208,12 +1222,43 @@ impl OhmyDriver {
                 self.push_frame(id, |seq| frame::model_update(name, seq));
                 Ok(json!({ "result": { "model": name } }))
             }
+            // 会话级思考档位:切到当前模型的 #think:<档位> 变体别名(config.rs
+            // 物化的同源条目,仅 thinking 不同),复用切模型的三条引擎路径;
+            // ""=跟随模型默认(base 别名)。档位随 sidecar 持久,resume 恢复。
+            "session_set_think" => {
+                let level = payload.get("think").and_then(|v| v.as_str()).unwrap_or("");
+                if !valid_think(level) {
+                    return Err(format!("不支持的思考档位: {level}"));
+                }
+                let model_id = self.engine_model_alias(&self.session_model_name(id), level)?;
+                // 与切模型同因:引擎拒绝运行中换 provider,本地先给友好错误
+                if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
+                    return Err("执行中不能切换,请先取消当前任务".into());
+                }
+                if !self.session_created(id) {
+                    let mode = self.session_mode(id);
+                    self.create_resumed(id, &model_id, &mode).await?;
+                } else if self.has_cap("session/switchModel") {
+                    self.rpc(
+                        "session/switchModel",
+                        json!({ "session_id": self.engine_id(id), "model": model_id }),
+                    )
+                    .await?;
+                } else {
+                    let mode = self.session_mode(id);
+                    self.recreate_fallback(id, &model_id, &mode).await?;
+                }
+                self.write_sidecar(id, |m| m["think"] = json!(level));
+                self.push_frame(id, |seq| frame::think_update(level, seq));
+                Ok(json!({ "result": { "think": level } }))
+            }
             "session_set_mode" => {
                 // 权限模式切换:运行中也可热切(上游子代理评估器已实时继承
                 // 父模式,969311a 起热切对后续子代理同样生效)。
                 let mode = payload.get("mode").and_then(|v| v.as_str()).unwrap_or("default");
                 if !self.session_created(id) {
-                    let model_id = self.model_id_of(&self.session_model_name(id))?;
+                    let model_id =
+                        self.engine_model_alias(&self.session_model_name(id), &self.session_think(id))?;
                     self.create_resumed(id, &model_id, mode).await?;
                 } else if self.has_cap("session/switchMode") {
                     self.rpc(
@@ -1226,7 +1271,8 @@ impl OhmyDriver {
                     if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
                         return Err("当前引擎版本较旧,执行中不能切换权限模式,请先取消任务".into());
                     }
-                    let model_id = self.model_id_of(&self.session_model_name(id))?;
+                    let model_id =
+                        self.engine_model_alias(&self.session_model_name(id), &self.session_think(id))?;
                     self.recreate_fallback(id, &model_id, mode).await?;
                 }
                 // 切到 yolo 自动放行本会话所有挂起审批。
@@ -1444,6 +1490,28 @@ impl OhmyDriver {
             .find(|m| m.name == name)
             .map(|m| m.name.clone())
             .ok_or_else(|| format!("未知模型 {name:?}"))
+    }
+
+    /// 组引擎模型别名:思考档位非空时用 `<模型名>#think:<档位>` 变体条目
+    /// (config.rs 物化,分隔标记同源);空档位 = base 别名,跟随模型
+    /// 设置里的默认思考档。
+    fn engine_model_alias(&self, name: &str, think: &str) -> Result<String, String> {
+        let base = self.model_id_of(name)?;
+        if think.is_empty() {
+            return Ok(base);
+        }
+        Ok(format!("{base}{}{think}", crate::config::THINK_ALIAS_SEP))
+    }
+
+    /// 会话思考档位(sidecar 持久;""=跟随模型默认)。畸形值按默认处理,
+    /// 免得旧/坏 sidecar 让所有引擎调用组出未知别名。
+    fn session_think(&self, id: &str) -> String {
+        self.read_sidecar(id)
+            .get("think")
+            .and_then(|v| v.as_str())
+            .filter(|t| valid_think(t))
+            .unwrap_or("")
+            .to_string()
     }
 
     fn session_title(&self, id: &str) -> String {

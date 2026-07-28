@@ -236,6 +236,18 @@ fn e2e_setup_cfg(
             "api_key": "sk-fake", "base_url": format!("{llm}/api/anthropic"),
             "context_window": 200000 } },
     });
+    // 思考档位变体与产线物化同构(config.rs write_ohmyagent_config):
+    // session_set_think 切到 <模型名>#think:<档位> 别名,引擎侧必须有条目
+    let base_model = settings["models"]["测试模型"].clone();
+    for (lvl, budget) in
+        [("off", None), ("low", Some(2048)), ("medium", Some(4096)), ("high", Some(8192))]
+    {
+        let mut v = base_model.clone();
+        if let Some(b) = budget {
+            v["thinking"] = json!({ "enabled": true, "budget_tokens": b });
+        }
+        settings["models"][format!("测试模型#think:{lvl}")] = v;
+    }
     if let Some(extra) = extra_settings.as_object() {
         for (k, v) in extra {
             settings[k] = v.clone();
@@ -376,6 +388,22 @@ async fn e2e_chat_normalization() {
         .session_call(&sid, "session_set_model", json!({ "model": "测试模型" }))
         .await
         .expect("切模型");
+    // 会话级思考档位:切到 #think:high 变体别名(引擎 switchModel 通路),
+    // 档位落 sidecar 并在会话列表可见;回"跟随默认"则切回 base 别名
+    driver
+        .session_call(&sid, "session_set_think", json!({ "think": "high" }))
+        .await
+        .expect("切思考档位");
+    let list = driver.sessions_list().await.unwrap();
+    assert_eq!(
+        list.as_array().unwrap()[0].get("think").and_then(|v| v.as_str()),
+        Some("high"),
+        "思考档位未落 sidecar: {list:?}"
+    );
+    driver
+        .session_call(&sid, "session_set_think", json!({ "think": "" }))
+        .await
+        .expect("思考档位回默认");
 
     // sessionQuery 通路:resume 可用性经 session/exists RPC 判定
     // (存在/不存在两侧;壳不再探测引擎存储的文件布局)

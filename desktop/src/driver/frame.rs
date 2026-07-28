@@ -265,6 +265,12 @@ pub fn model_update(model: &str, seq: u64) -> Value {
     acp(json!({ "sessionUpdate": "model_update", "model": model }), seq)
 }
 
+/// 会话思考档位变更(""=跟随模型默认);与 model_update 同形,UI 据此
+/// 同步 composer 的思考深度选择器。
+pub fn think_update(think: &str, seq: u64) -> Value {
+    acp(json!({ "sessionUpdate": "think_update", "think": think }), seq)
+}
+
 pub fn permission_mode_update(mode: &str, seq: u64) -> Value {
     acp(json!({ "sessionUpdate": "permission_mode_update", "mode": mode }), seq)
 }

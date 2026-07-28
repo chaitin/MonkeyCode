@@ -12,6 +12,8 @@ describe("modelsToConfig", () => {
       api_key: "secret",
       model: "model-1",
       context_window: 42,
+      max_output: 32768,
+      think: "high",
       vision: true,
       source: "baizhi",
       skip_tls_verify: true,
@@ -27,6 +29,8 @@ describe("modelsToConfig", () => {
       model: "model-1",
       default: true,
       context_window: 42,
+      max_output: 32768,
+      think: "high",
       vision: true,
       source: "baizhi",
     });

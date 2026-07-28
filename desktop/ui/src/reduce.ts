@@ -16,6 +16,8 @@ export interface ChatState {
   turnEnded: boolean;
   /** 会话当前模型(model_update 帧回写;空 = 以会话 meta 为准) */
   model: string;
+  /** 会话思考档位(think_update 帧回写;"" = 跟随模型设置的默认档) */
+  think: string;
   /** 会话权限模式(permission_mode_update 帧回写;空 = 以会话 meta 为准) */
   permMode: string;
   /** 渲染 key 的基准:key = keyBase + 下标。"加载更早"往前插 N 条时减 N,
@@ -33,8 +35,18 @@ export const initialChat: ChatState = {
   streamKind: "",
   turnEnded: false,
   model: "",
+  think: "",
   permMode: "",
   keyBase: 0,
+};
+
+/** 思考档位展示名(""=跟随模型默认;与 composer 的 ThinkPicker 同源) */
+export const THINK_LABELS: Record<string, string> = {
+  "": "默认",
+  off: "关闭",
+  low: "低",
+  medium: "中",
+  high: "高",
 };
 
 const PERM_OUTCOME: Record<PermOutcome, string> = {
@@ -387,6 +399,11 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
     case "model_update": {
       const name = u.model ?? "";
       return { ...push(s, { kind: "sys", text: `模型已切换为 ${name}` }), model: name };
+    }
+    case "think_update": {
+      const level = u.think ?? "";
+      const label = THINK_LABELS[level] ?? "默认";
+      return { ...push(s, { kind: "sys", text: `思考深度已调整为「${label}」` }), think: level };
     }
     case "permission_mode_update": {
       const mode = u.mode ?? "default";

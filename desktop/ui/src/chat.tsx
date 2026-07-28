@@ -322,6 +322,64 @@ export function ModelPicker({
   );
 }
 
+/** 思考深度档位(会话级)。""=跟随模型设置里的默认档;其余对应引擎侧
+ * #think:<档位> 变体别名(壳物化,见 config.rs)。 */
+export const THINK_LEVELS: { value: string; label: string; hint?: string }[] = [
+  { value: "", label: "默认", hint: "跟随模型设置" },
+  { value: "off", label: "关闭" },
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+];
+
+export const thinkLabelOf = (v: string) => THINK_LEVELS.find((l) => l.value === v)?.label ?? "默认";
+
+/** 思考深度选择按钮 + 上弹菜单(会话/新任务 composer 共用;几何与
+ * ModelPicker 同款,运行中禁用) */
+export function ThinkPicker({
+  current,
+  disabled,
+  onPick,
+}: {
+  current: string;
+  disabled?: boolean;
+  onPick: (level: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative", flex: "none" }}>
+      <ModelPickerTrigger
+        label={`思考·${thinkLabelOf(current)}`}
+        open={open}
+        disabled={disabled}
+        title={disabled ? "轮次执行中,结束后可切换" : "调整思考深度(下一轮生效;「默认」跟随模型设置)"}
+        onClick={() => {
+          if (!disabled) setOpen(!open);
+        }}
+      />
+      {open && (
+        <>
+          <div className="backdrop" onClick={() => setOpen(false)} />
+          <div className="pop model-menu" style={{ position: "absolute", bottom: 30, right: 0 }}>
+            {THINK_LEVELS.map((l) => (
+              <ModelMenuItem
+                key={l.value}
+                label={l.label}
+                selected={l.value === current}
+                hint={l.hint}
+                onClick={() => {
+                  setOpen(false);
+                  onPick(l.value);
+                }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const NOTICE_VISUAL: Record<SessionNotice["tone"], { color: string; background: string; border: string }> = {
   success: { color: "var(--ok)", background: "var(--addBg)", border: "var(--accBd)" },
   warning: { color: "var(--warnT)", background: "var(--warnBg)", border: "var(--warnBd2)" },
@@ -1001,6 +1059,7 @@ export function ChatView({
             <>
               <PermPill yolo={yolo} onToggle={() => void session.toggleYolo()} />
               <span style={{ flex: 1 }} />
+              <ThinkPicker current={chat.think} disabled={chat.running} onPick={(level) => void session.setThink(level)} />
               <ModelPicker models={models} current={currentModel} disabled={chat.running} onPick={(name) => void session.switchModel(name)} />
               <ContextRing usage={usage} />
             </>

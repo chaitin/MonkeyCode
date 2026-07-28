@@ -300,6 +300,17 @@ const NAV: { key: SectionKey; label: string; icon: (p: { size?: number; color?: 
   { key: "general", label: "通用与更新", icon: IconGear },
 ];
 
+// 高级选项折叠态摘要:配置过的项都露出来,免得"改过但收起就不可见"
+const THINK_LABEL: Record<string, string> = { low: "低", medium: "中", high: "高" };
+const advSummary = (m: HostModel): string => {
+  const parts = [
+    m.context_window ? `上下文窗口 ${m.context_window.toLocaleString()}` : "",
+    m.max_output ? `最大输出 ${m.max_output.toLocaleString()}` : "",
+    m.think && THINK_LABEL[m.think] ? `思考${THINK_LABEL[m.think]}` : "",
+  ].filter(Boolean);
+  return parts.length ? `(${parts.join(",")})` : "";
+};
+
 // 徽标小药丸(provider/类型/来源)
 const pill: CSSProperties = {
   flex: "none",
@@ -724,19 +735,53 @@ export function SettingsView({
       </div>
       {advOpen[i] && (
         <>
-          <Field label="上下文窗口(token)">
-            <input
-              style={input}
-              type="number"
-              min={1}
-              value={m.context_window ?? ""}
-              placeholder="200000(默认)"
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                patchModel(i, { context_window: Number.isFinite(n) && n > 0 ? n : undefined });
-              }}
-              className="hv-bd"
-            />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="上下文窗口(token)">
+              <input
+                style={input}
+                type="number"
+                min={1}
+                value={m.context_window ?? ""}
+                placeholder="200000(默认)"
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  patchModel(i, { context_window: Number.isFinite(n) && n > 0 ? n : undefined });
+                }}
+                className="hv-bd"
+              />
+            </Field>
+            <Field label="最大输出(token)">
+              <input
+                style={input}
+                type="number"
+                min={1}
+                value={m.max_output ?? ""}
+                placeholder={m.provider === "anthropic" || !m.provider ? "16384(默认)" : "不限制,由服务端决定"}
+                title="单次回复的输出 token 上限。回复经常被截断(finish_reason=length)时调大它"
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  patchModel(i, { max_output: Number.isFinite(n) && n > 0 ? n : undefined });
+                }}
+                className="hv-bd"
+              />
+            </Field>
+          </div>
+          <Field label="思考深度">
+            <select
+              style={select}
+              value={m.think ?? ""}
+              title={
+                m.provider === "anthropic" || !m.provider
+                  ? "扩展思考预算:低 2048 / 中 4096 / 高 8192 token(受最大输出的一半约束,最大输出低于 2048 时不生效)"
+                  : "推理深度(reasoning effort),仅推理模型有效;非推理模型/网关可能拒绝该参数,报错时改回关闭"
+              }
+              onChange={(e) => patchModel(i, { think: e.target.value || undefined })}
+            >
+              <option value="">关闭(默认)</option>
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高</option>
+            </select>
           </Field>
         </>
       )}
@@ -748,7 +793,7 @@ export function SettingsView({
         >
           <span style={{ display: "inline-block", transform: advOpen[i] ? "rotate(90deg)" : "none", transition: "transform .15s ease", fontSize: 9 }}>▸</span>
           高级选项
-          {!advOpen[i] && m.context_window ? `(上下文窗口 ${m.context_window.toLocaleString()})` : ""}
+          {!advOpen[i] ? advSummary(m) : ""}
         </span>
         <label
           title="模型支持图片输入(视觉)。未勾选时对话里的图片以文件路径提供,模型不会收到图片内容"
