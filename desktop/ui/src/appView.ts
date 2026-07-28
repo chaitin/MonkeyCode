@@ -26,7 +26,7 @@ export function windowContextLabel(
 ): string {
   if (view === "settings") return "设置";
   if (view === "cloud") return cloudTask?.title || cloudTask?.summary || cloudTask?.content || "云端任务";
-  if (view === "session" && currentMeta) return currentMeta.title || (currentMeta.kind === "chat" ? "对话" : "本地任务");
+  if (view === "session" && currentMeta) return currentMeta.title || (currentMeta.kind === "chat" ? "会话" : "本地任务");
   return "新建任务";
 }
 

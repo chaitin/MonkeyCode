@@ -32,7 +32,7 @@ describe("窗口上下文文案", () => {
     expect(windowContextLabel("cloud", { summary: "修一下登录" }, undefined)).toBe("修一下登录");
     expect(windowContextLabel("cloud", {}, undefined)).toBe("云端任务");
     expect(windowContextLabel("session", null, { title: "重构侧栏", kind: "local" })).toBe("重构侧栏");
-    expect(windowContextLabel("session", null, { title: "", kind: "chat" })).toBe("对话");
+    expect(windowContextLabel("session", null, { title: "", kind: "chat" })).toBe("会话");
     expect(windowContextLabel("session", null, { title: "", kind: "local" })).toBe("本地任务");
     // 会话视图但侧栏快照里还没有这条会话(刚创建):回缺省
     expect(windowContextLabel("session", null, undefined)).toBe("新建任务");

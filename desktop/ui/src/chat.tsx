@@ -380,7 +380,7 @@ export function SessionNoticeBanner({
       {notice.targetSessionId ? (
         <button
           className="hv-op"
-          title="打开对应会话"
+          title="跳转查看"
           onClick={() => onOpenSession(notice.targetSessionId!)}
           style={{ ...mainStyle, cursor: "pointer" }}
         >
@@ -755,13 +755,13 @@ export function ChatView({
       )}
       {/* ==== 标题栏(共享 ViewHeader:56px 双行,空白区可拖拽窗口)==== */}
       <ViewHeader
-        title={meta?.title || (chatMode ? "新对话" : "新任务")}
+        title={meta?.title || (chatMode ? "新会话" : "新任务")}
         rename={meta ? rename : undefined}
         subtitle={
           chatMode ? (
             <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--t5)", minWidth: 0 }}>
               <IconChat size={11} color="var(--t5)" />
-              <span style={{ flex: "none" }}>独立对话 · 不关联项目</span>
+              <span style={{ flex: "none" }}>独立会话 · 不关联项目</span>
               <HeaderSummary summary={meta?.summary} />
             </span>
           ) : (
@@ -845,7 +845,7 @@ export function ChatView({
           <img src={logoUrl} alt="" draggable={false} style={{ width: 52, height: 52 }} />
           <div style={{ fontSize: 15, fontWeight: 700, textAlign: "center", maxWidth: 420 }}>
             {chatMode ? (
-              "开始一段新对话"
+              "开始一段新会话"
             ) : (
               <>在 <span style={{ whiteSpace: "nowrap", fontFamily: MONO, fontSize: 13.5 }}>{workdir}</span> 开始新任务</>
             )}

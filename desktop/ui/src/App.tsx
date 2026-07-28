@@ -352,7 +352,7 @@ export default function App() {
       }
     }
     if (!target) {
-      session.notify("无法打开对应会话,它可能已被删除", { tone: "error" });
+      session.notify("无法打开:对应的任务或会话可能已被删除", { tone: "error" });
       return;
     }
     session.dismissNotice();

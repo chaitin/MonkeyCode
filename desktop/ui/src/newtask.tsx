@@ -490,7 +490,7 @@ export function NewTaskView({
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, marginBottom: 8 }}>
           <img src={logoUrl} alt="" draggable={false} style={{ width: 52, height: 52 }} />
           <div style={{ fontSize: 18, fontWeight: 750, letterSpacing: 0.1, marginTop: 6 }}>
-            {mode === "chat" ? "开始一段新对话" : "开始一个新任务"}
+            {mode === "chat" ? "开始一段新会话" : "开始一个新任务"}
           </div>
           <div style={{ fontSize: 12, color: "var(--t5)" }}>
             {mode === "chat" ? "不绑定项目，随时记录、讨论或梳理想法" : "告诉我要做什么，剩下的交给我"}
@@ -696,7 +696,7 @@ export function NewTaskView({
                 }}
               >
                 <IconChat size={13} color="var(--accTx)" />
-                独立对话 · 不关联本地项目
+                独立会话 · 不关联本地项目
               </div>
             )}
           </div>
@@ -767,8 +767,8 @@ export function NewTaskView({
               mode === "chat"
                 ? "想聊点什么？也可以粘贴或拖入图片、文件…"
                 : mode === "local"
-                  ? "描述要做的事…粘贴或拖入图片、文件可作为附件，留空则先建会话"
-                  : "描述要做的事…留空则先建会话"
+                  ? "描述要做的事…粘贴或拖入图片、文件可作为附件，留空则先创建任务"
+                  : "描述要做的事…"
             }
             style={{
               border: "none",
@@ -902,9 +902,9 @@ export function NewTaskView({
                 <IconCloud size={11} color={mode === "cloud" ? "var(--warn)" : "var(--t5)"} />
                 云端
               </span>
-              <span onClick={() => setMode("chat")} title="不绑定项目的普通对话" style={segItem(mode === "chat", "var(--accTx)")}>
+              <span onClick={() => setMode("chat")} title="不绑定项目的普通会话" style={segItem(mode === "chat", "var(--accTx)")}>
                 <IconChat size={11} color={mode === "chat" ? "var(--accTx)" : "var(--t5)"} />
-                对话
+                会话
               </span>
             </span>
             {mode !== "cloud" && (
@@ -934,7 +934,7 @@ export function NewTaskView({
                 opacity: submitDisabled ? 0.6 : 1,
               }}
             >
-              {busy || cloudBusy ? "创建中…" : cloudDisconnected ? "请先连接" : mode === "chat" ? "开始对话" : "开始任务"}
+              {busy || cloudBusy ? "创建中…" : cloudDisconnected ? "请先连接" : mode === "chat" ? "开始会话" : "开始任务"}
               <IconSend size={11} />
             </button>
           </div>

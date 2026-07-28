@@ -14,7 +14,7 @@ describe("SessionNoticeBanner", () => {
     );
 
     expect(html).toContain("var(--ok)");
-    expect(html).toContain('title="打开对应会话"');
+    expect(html).toContain('title="跳转查看"');
     expect(html).toContain("查看 ›");
   });
 
@@ -28,6 +28,6 @@ describe("SessionNoticeBanner", () => {
     );
 
     expect(html).toContain("var(--err)");
-    expect(html).not.toContain('title="打开对应会话"');
+    expect(html).not.toContain('title="跳转查看"');
   });
 });

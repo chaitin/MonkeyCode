@@ -145,7 +145,7 @@ function SessionRow({
   const rename = useRenameDraft(meta.title || "", onRename);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number }>({ left: 0 });
   const st = rowStatus(meta);
-  const title = meta.title || (meta.kind === "chat" ? "新对话" : "新任务");
+  const title = meta.title || (meta.kind === "chat" ? "新会话" : "新任务");
   const turns = turnCountLabel(meta.turns);
   const emphasizeState = !!meta.waiting_ask || meta.status === "running" || meta.status === "error";
   const showState = emphasizeState || meta.status === "interrupted";
@@ -171,7 +171,7 @@ function SessionRow({
     <div style={{ position: "relative" }}>
       <div
         className={active ? undefined : "hv"}
-        title={`${title}\n${meta.summary ? `${meta.summary}\n` : ""}${meta.kind === "chat" ? "独立对话" : meta.workdir}\n右键管理`}
+        title={`${title}\n${meta.summary ? `${meta.summary}\n` : ""}${meta.kind === "chat" ? "独立会话" : meta.workdir}\n右键管理`}
         onClick={onClick}
         onContextMenu={(e) => {
           if (rename.editing) return;
@@ -224,7 +224,7 @@ function SessionRow({
               <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, flex: "none" }}>
                 {(attention || emphasizeState) && (
                   <span
-                    title={attention ? (meta.status === "error" ? "后台任务出错" : "会话有新进展") : undefined}
+                    title={attention ? (meta.status === "error" ? "后台运行出错" : "有新进展") : undefined}
                     style={{
                       width: attention ? 7 : 6,
                       height: attention ? 7 : 6,
@@ -943,7 +943,7 @@ export function Sidebar({
       <ProjectGroup
         key={group.dir}
         name={group.name}
-        detail={`${group.dir}\n${activeItems.length} 个会话${archivedItems.length ? ` · ${archivedItems.length} 个已归档` : ""}`}
+        detail={`${group.dir}\n${activeItems.length} 个任务${archivedItems.length ? ` · ${archivedItems.length} 个已归档` : ""}`}
         project
         projectArchived={projectArchived}
         depth={depth}
@@ -963,7 +963,7 @@ export function Sidebar({
         {activeItems.map((m) => sessionRow(m, false, depth + 1))}
         {archivedItems.length > 0 && (
           <ProjectGroup
-            name={`已归档会话 · ${archivedItems.length}`}
+            name={`已归档任务 · ${archivedItems.length}`}
             depth={depth + 1}
             expanded={!!norm || sessionArchivesOpen.has(archiveKey)}
             muted
@@ -1066,7 +1066,7 @@ export function Sidebar({
   const panel = (() => {
     if (space === "cloud") {
       return {
-        title: "云端",
+        title: "云端项目",
         detail: `${cloudProjects.length} 个项目 · ${allCloudTasks.size} 个任务`,
         placeholder: "搜索项目或任务",
         actions: (
@@ -1086,21 +1086,21 @@ export function Sidebar({
     }
     if (space === "chat") {
       return {
-        title: "对话",
-        detail: `${chatAll.filter((m) => !m.archived).length} 条独立对话`,
-        placeholder: "搜索对话",
+        title: "会话",
+        detail: `${chatAll.filter((m) => !m.archived).length} 个独立会话`,
+        placeholder: "搜索会话",
         actions: (
-          <button className="hv-acc icon-btn" title="新建对话" onClick={onNewChat} style={{ ...headerAction, background: "var(--acc)" }}>
+          <button className="hv-acc icon-btn" title="新建会话" onClick={onNewChat} style={{ ...headerAction, background: "var(--acc)" }}>
             <IconPlus size={11} color="var(--onAcc)" />
           </button>
         ),
         content: (
           <>
             {chats.length ? <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>{chats.map((m) => sessionRow(m, false))}</div> : (
-              <EmptyState icon={norm ? <IconSearch size={19} color="var(--t6)" /> : <IconChat size={21} color="var(--t6)" />} title={norm ? "没有匹配的对话" : "还没有独立对话"} detail={norm ? "试试标题中的其他关键词。" : "新建一段不绑定项目的普通对话。"} />
+              <EmptyState icon={norm ? <IconSearch size={19} color="var(--t6)" /> : <IconChat size={21} color="var(--t6)" />} title={norm ? "没有匹配的会话" : "还没有独立会话"} detail={norm ? "试试标题中的其他关键词。" : "新建一段不绑定项目的普通会话。"} />
             )}
             {chatArchived.length > 0 && (
-              <ProjectGroup name={`已归档对话 · ${chatArchived.length}`} expanded={!!norm || chatArchiveOpen} muted onToggle={toggleChatArchive}>
+              <ProjectGroup name={`已归档会话 · ${chatArchived.length}`} expanded={!!norm || chatArchiveOpen} muted onToggle={toggleChatArchive}>
                 {chatArchived.map((m) => sessionRow(m, true))}
               </ProjectGroup>
             )}
@@ -1110,8 +1110,8 @@ export function Sidebar({
     }
     return {
       title: "本地项目",
-      detail: `${activeProjectCount} 个项目 · ${activeSessionCount} 个会话`,
-      placeholder: "搜索项目或会话",
+      detail: `${activeProjectCount} 个项目 · ${activeSessionCount} 个任务`,
+      placeholder: "搜索项目或任务",
       actions: (
         <button className="hv-acc icon-btn" title="新建本地任务" onClick={() => onNewTask()} style={{ ...headerAction, background: "var(--acc)" }}>
           <IconPlus size={11} color="var(--onAcc)" />
@@ -1121,7 +1121,7 @@ export function Sidebar({
         <>
           {projectGroups.map((group, index) => projectRow(group, false, 0, index))}
           {projectGroups.length === 0 && archivedProjectGroups.length === 0 && (
-            <EmptyState icon={norm ? <IconSearch size={19} color="var(--t6)" /> : <IconMonitor size={21} color="var(--t6)" />} title={norm ? "没有匹配的会话" : "还没有本地项目"} detail={norm ? "试试项目名、目录或会话标题。" : "选择一个文件夹，开始第一个本地任务。"} />
+            <EmptyState icon={norm ? <IconSearch size={19} color="var(--t6)" /> : <IconMonitor size={21} color="var(--t6)" />} title={norm ? "没有匹配的任务" : "还没有本地项目"} detail={norm ? "试试项目名、目录或任务标题。" : "选择一个文件夹，开始第一个本地任务。"} />
           )}
           {archivedProjectGroups.length > 0 && (
             <ProjectGroup name={`已归档项目 · ${archivedProjectGroups.length}`} expanded={!!norm || projectArchiveOpen} muted onToggle={toggleProjectArchive}>
@@ -1143,7 +1143,7 @@ export function Sidebar({
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
           <RailButton active={space === "cloud"} label="云端" icon={<IconCloud size={16} color={space === "cloud" ? "var(--accSelT)" : "var(--t4)"} />} onClick={() => selectSpace("cloud")} />
           <RailButton active={space === "local"} label="本地" badge={localAttention} icon={<IconMonitor size={16} color={space === "local" ? "var(--accSelT)" : "var(--t4)"} strokeWidth={1.25} />} onClick={() => selectSpace("local")} />
-          <RailButton active={space === "chat"} label="对话" badge={chatAttention} icon={<IconChat size={16} color={space === "chat" ? "var(--accSelT)" : "var(--t4)"} />} onClick={() => selectSpace("chat")} />
+          <RailButton active={space === "chat"} label="会话" badge={chatAttention} icon={<IconChat size={16} color={space === "chat" ? "var(--accSelT)" : "var(--t4)"} />} onClick={() => selectSpace("chat")} />
         </div>
         <span style={{ flex: 1 }} />
         <span title={status} style={{ width: 32, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>

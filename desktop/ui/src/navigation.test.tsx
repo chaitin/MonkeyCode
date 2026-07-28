@@ -195,9 +195,9 @@ describe("侧栏新建任务入口", () => {
       />,
     );
 
-    expect(html).toContain("开始一段新对话");
-    expect(html).toContain("独立对话 · 不关联本地项目");
-    expect(html).toContain("开始对话");
+    expect(html).toContain("开始一段新会话");
+    expect(html).toContain("独立会话 · 不关联本地项目");
+    expect(html).toContain("开始会话");
     expect(html).not.toContain("文件夹里工作");
   });
 });
@@ -298,7 +298,7 @@ describe("会话辅助信息", () => {
     );
 
     expect(html).toContain("正在处理的任务");
-    expect(html).toContain("已归档会话 · 1");
+    expect(html).toContain("已归档任务 · 1");
     expect(html).toContain("项目内的旧会话");
     expect(html).toContain("已归档项目 · 1");
     expect(html).toContain("旧项目里的任务");
