@@ -83,6 +83,14 @@
           "isAccessMediaLocationEnabled": false
         }
       ],
+      [
+        "./plugins/withAlipayLogin",
+        {
+          "scheme": "com.chaitin.baizhi.monkeycode.alipay",
+          "androidSdkVersion": "15.8.42",
+          "iosSdkVersion": "15.8.30"
+        }
+      ],
       "./plugins/withDouyinLogin",
       "./plugins/withAndroidFileSaver",
       [
@@ -99,6 +107,7 @@
     },
     "extra": {
       "updatesServer": "https://release.monkeycode-ai.com/public/mobile",
+      "alipayScheme": "com.chaitin.baizhi.monkeycode.alipay",
       "douyinClientKey": "awxdjorbktpeiqaj"
     }
   }

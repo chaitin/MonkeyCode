@@ -9,9 +9,14 @@ import React, {
 } from 'react';
 import { obtainCaptchaToken } from '@/api/captcha';
 import {
+  completeBaizhiOAuthPhoneLogin as apiCompleteBaizhiOAuthPhoneLogin,
+  loginBaizhiAlipayApp as apiLoginBaizhiAlipayApp,
   loginBaizhiDouyinApp as apiLoginBaizhiDouyinApp,
   loginBaizhiPhone as apiLoginBaizhiPhone,
-  sendBaizhiPhoneCode as apiSendBaizhiPhoneCode,
+  prepareBaizhiAlipayAppLogin as apiPrepareBaizhiAlipayAppLogin,
+  sendBaizhiPhoneCodeForToken as apiSendBaizhiPhoneCode,
+  type BaizhiAlipayAppAuth,
+  type BaizhiAlipayAppLoginResult,
 } from '@/api/baizhi';
 import {
   appleLogin as apiAppleLogin,
@@ -47,8 +52,11 @@ interface AuthState {
   refreshUser: () => Promise<UserStatus>;
   login: (email: string, password: string, targetBaseUrl?: string) => Promise<void>;
   loginWithApple: (params: { identity_token: string; authorization_code?: string; full_name?: string }) => Promise<void>;
+  prepareAlipayAppBaizhiLogin: () => Promise<BaizhiAlipayAppAuth>;
+  startAlipayAppBaizhiLogin: (code: string, requestId: string) => Promise<BaizhiAlipayAppLoginResult>;
   startDouyinAppBaizhiLogin: (code: string) => Promise<void>;
-  sendBaizhiPhoneCode: (phone: string) => Promise<void>;
+  sendBaizhiPhoneCode: (phone: string, oauthToken?: string) => Promise<void>;
+  completeBaizhiOAuthPhoneLogin: (token: string, phone: string, code: string) => Promise<void>;
   startBaizhiPhoneLogin: (phone: string, code: string) => Promise<void>;
   finishBaizhiOAuthLogin: (targetBaseUrl?: string, phoneToSave?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -195,8 +203,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await apiLoginBaizhiDouyinApp(code.trim());
   }, []);
 
-  const sendBaizhiPhoneCode = useCallback(async (phone: string) => {
-    await apiSendBaizhiPhoneCode(phone.trim());
+  const prepareAlipayAppBaizhiLogin = useCallback(async () => {
+    return apiPrepareBaizhiAlipayAppLogin();
+  }, []);
+
+  const startAlipayAppBaizhiLogin = useCallback(async (code: string, requestId: string) => {
+    return apiLoginBaizhiAlipayApp(code.trim(), requestId.trim());
+  }, []);
+
+  const sendBaizhiPhoneCode = useCallback(async (phone: string, oauthToken?: string) => {
+    await apiSendBaizhiPhoneCode(phone.trim(), oauthToken?.trim());
+  }, []);
+
+  const completeBaizhiOAuthPhoneLogin = useCallback(async (token: string, phone: string, code: string) => {
+    await apiCompleteBaizhiOAuthPhoneLogin(token.trim(), phone.trim(), code.trim());
   }, []);
 
   const startBaizhiPhoneLogin = useCallback(
@@ -289,8 +309,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshUser,
       login,
       loginWithApple,
+      prepareAlipayAppBaizhiLogin,
+      startAlipayAppBaizhiLogin,
       startDouyinAppBaizhiLogin,
       sendBaizhiPhoneCode,
+      completeBaizhiOAuthPhoneLogin,
       startBaizhiPhoneLogin,
       finishBaizhiOAuthLogin,
       logout: doLogout,
@@ -298,7 +321,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateBaseUrl,
       updateBasicAuth,
     }),
-    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, savedPhone, refreshUser, login, loginWithApple, startDouyinAppBaizhiLogin, sendBaizhiPhoneCode, startBaizhiPhoneLogin, finishBaizhiOAuthLogin, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
+    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, savedPhone, refreshUser, login, loginWithApple, prepareAlipayAppBaizhiLogin, startAlipayAppBaizhiLogin, startDouyinAppBaizhiLogin, sendBaizhiPhoneCode, completeBaizhiOAuthPhoneLogin, startBaizhiPhoneLogin, finishBaizhiOAuthLogin, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
