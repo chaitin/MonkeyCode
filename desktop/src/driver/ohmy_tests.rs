@@ -413,6 +413,8 @@ async fn e2e_wsl_smoke_full_lifecycle() {
     // WSL 上下文随引擎启动填入(prepare 采集;fake 报 nat)
     assert_eq!(driver.wsl_distro().as_deref(), Some("Ubuntu-22.04"));
     assert_eq!(driver.wsl_networking().as_deref(), Some("nat"));
+    // 目录对话框初始位置 = guest 家目录的宿主视角(冒烟恒等)
+    assert_eq!(driver.wsl_workdir_base(), std::env::var("HOME").ok());
 
     // fake-wsl 下 guest == host,本机绝对路径即 guest 路径
     let workdir = home.to_string_lossy().into_owned();

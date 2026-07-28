@@ -315,6 +315,14 @@ pub async fn engine_caps(app: AppHandle, host: State<'_, DriverHost>) -> Result<
     Ok(caps(&engine, browser_ext))
 }
 
+/// 目录选择对话框的初始位置:WSL 模式返回 guest 家目录的 \\wsl$ 视角
+/// (prepare 采集,随引擎实例);本机模式/引擎未起返回 None,UI 自行回退
+/// (发行版根或不指定)。
+#[tauri::command]
+pub async fn wsl_workdir_base(host: State<'_, DriverHost>) -> Result<Option<String>, String> {
+    Ok(host.get().ok().and_then(|e| e.wsl_workdir_base()))
+}
+
 #[tauri::command]
 pub async fn sessions_list(host: State<'_, DriverHost>) -> Result<Value, String> {
     host.get()?.sessions_list().await

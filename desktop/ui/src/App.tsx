@@ -12,6 +12,7 @@ import {
 } from "./appView";
 import { mcLogin, mcLogout, mcTaskDelete, mcTaskStop } from "./cloudapi";
 import {
+  getHostConfig,
   getHostInfo,
   inDesktopShell,
   isWindowsShell,
@@ -20,6 +21,7 @@ import {
   takeUiIntent,
   updateCheck,
   updateInstall,
+  workdirMatchesEnv,
 } from "./host";
 import {
   connect,
@@ -81,6 +83,15 @@ export default function App() {
       session.notify("⚠ 更新失败: " + (e instanceof Error ? e.message : String(e)));
     }
   };
+  // 内核运行环境("" 本机 / "wsl:<发行版>"):新任务的最近目录/默认目录按它
+  // 过滤,切换运行环境后不预填另一环境的路径。改动经设置保存→整页刷新,
+  // 挂载读一次即准确。
+  const [kernelEnv, setKernelEnv] = useState("");
+  useEffect(() => {
+    void getHostConfig()
+      .then((c) => setKernelEnv(c?.kernel_env ?? ""))
+      .catch(() => {});
+  }, []);
   // 引擎生命周期外显(engine-status 事件;契约 6)。
   const [engine, setEngine] = useState<EngineStatus | null>(null);
   const [engineRestarting, setEngineRestarting] = useState(false);
@@ -480,10 +491,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 新任务默认工作目录跟随最近会话:数据在这派生,跟随逻辑在 NewTaskView 内
+  // 新任务默认工作目录跟随最近会话:数据在这派生,跟随逻辑在 NewTaskView 内。
+  // 只跟随当前运行环境的目录,否则切到 WSL 后仍预填 Windows 路径(反之亦然)
   const lastDir =
     [...sessions]
       .filter((m) => m.kind !== "chat" && !isProjectArchived(archivedProjects, m.workdir))
+      .filter((m) => workdirMatchesEnv(m.workdir, kernelEnv))
       .sort((a, b) => String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? "")))[0]?.workdir ?? "";
 
   // 本地文件抽屉的数据适配:与云端同名协议(repo_file_list / repo_read_file /
@@ -553,8 +566,15 @@ export default function App() {
   // 文件抽屉预览头的改动标注:路径 → 状态(树/列表内的标注在 FilesDrawer)
   const changeMap = new Map((changes ?? []).map((c) => [c.path, c.status] as const));
   // 最近用过的项目目录(侧栏同款分组;当前目录补入/截断在 NewTaskView 内做)
+  // 同 lastDir:只列当前运行环境的目录
   const recentDirs = groupByProject(
-    sessions.filter((m) => !m.archived && m.kind !== "chat" && !isProjectArchived(archivedProjects, m.workdir)),
+    sessions.filter(
+      (m) =>
+        !m.archived &&
+        m.kind !== "chat" &&
+        !isProjectArchived(archivedProjects, m.workdir) &&
+        workdirMatchesEnv(m.workdir, kernelEnv),
+    ),
   ).map((g) => g.dir);
 
   // ===== 全局快捷键:⇧⇥ 权限模式、⏎/esc 应答审批、esc 关闭浮层 =====

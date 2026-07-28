@@ -41,6 +41,7 @@
             "allow-open-extension-dir",
             "allow-open-log-dir",
             "allow-list-wsl-distros",
+            "allow-wsl-workdir-base",
             "allow-engine-status",
             "allow-engine-caps",
             "allow-browser-status",

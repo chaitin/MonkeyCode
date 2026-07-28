@@ -21,6 +21,7 @@ fn main() {
                 "open_extension_dir",
                 "open_log_dir",
                 "list_wsl_distros",
+                "wsl_workdir_base",
                 "engine_restart",
                 "engine_status",
                 "probe_log",

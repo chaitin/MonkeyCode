@@ -1084,6 +1084,7 @@ fn main() {
             probe_log,
             driver::engine_status,
             driver::engine_caps,
+            driver::wsl_workdir_base,
             browser::browser_status,
             browser::browser_repair,
             driver::sessions_list,

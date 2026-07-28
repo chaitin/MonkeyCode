@@ -52,9 +52,17 @@ export async function pickSaveFile(defaultName: string): Promise<string | null> 
   }
 }
 
-/** 当前内核运行环境对应的目录对话框初始位置:WSL 模式返回发行版 UNC 根
- * (\\wsl$\<发行版>,老新 Windows 通吃),本机模式/读取失败返回 undefined。 */
+/** 当前内核运行环境对应的目录对话框初始位置:WSL 模式返回 guest 家目录的
+ * \\wsl$ 视角(引擎持有 prepare 采集的家目录;引擎未就绪退回发行版 UNC 根),
+ * 本机模式/读取失败返回 undefined。 */
 export async function workdirPickBase(): Promise<string | undefined> {
+  if (!tauri()?.core?.invoke) return undefined;
+  try {
+    const base = await invoke<string | null>("wsl_workdir_base");
+    if (base) return base;
+  } catch {
+    /* 引擎未起/崩溃恢复中:落到配置推导的发行版根 */
+  }
   try {
     const env = (await getHostConfig())?.kernel_env ?? "";
     if (env.startsWith("wsl:") && env.length > 4) return `\\\\wsl$\\${env.slice(4)}`;
@@ -62,6 +70,22 @@ export async function workdirPickBase(): Promise<string | undefined> {
     /* 非壳或读取失败:不指定初始位置 */
   }
   return undefined;
+}
+
+/** 目录是否属于当前内核运行环境。WSL 模式认 guest 形态(/… 或 \\wsl$ UNC);
+ * 本机模式下这些形态是 WSL 会话的遗留——Windows 壳上滤掉(macOS/Linux 本机
+ * 的 / 开头是正常路径,只滤 UNC)。新任务的"最近目录/默认目录"按此过滤,
+ * 切换运行环境后不再预填一个必然失败的路径。 */
+export function workdirMatchesEnv(
+  dir: string,
+  kernelEnv: string,
+  windowsShell: boolean = isWindowsShell(),
+): boolean {
+  const wsl = kernelEnv.startsWith("wsl:");
+  const posix = dir.startsWith("/");
+  const unc = /^\\\\wsl(\$|\.localhost)\\/i.test(dir);
+  if (wsl) return posix || unc;
+  return windowsShell ? !posix && !unc : !unc;
 }
 
 /** 是否运行在桌面壳内。 */

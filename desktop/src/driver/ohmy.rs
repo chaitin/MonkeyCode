@@ -89,6 +89,14 @@ impl OhmyDriver {
     pub fn wsl_networking(&self) -> Option<String> {
         self.0.wsl.as_ref().map(|w| w.networking.clone())
     }
+
+    /// WSL 模式下目录选择对话框的初始位置:guest 家目录的宿主视角
+    /// (\\wsl$\<发行版>\home\<用户>;Linux 冒烟恒等)。本机模式 None。
+    pub fn wsl_workdir_base(&self) -> Option<String> {
+        self.0.wsl.as_ref().map(|w| {
+            crate::wsl::host_fs_view(&w.distro, &w.guest_home).to_string_lossy().into_owned()
+        })
+    }
 }
 
 /// WSL 运行环境上下文(kernel_env=wsl:* 时随引擎启动填入;一次 prepare
