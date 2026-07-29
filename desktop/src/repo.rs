@@ -250,6 +250,11 @@ fn reveal(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
     } else if cfg!(windows) {
         if md.is_dir() {
             Command::new("explorer").arg(&p).spawn()
+        } else if ctx.wsl_distro.is_some() {
+            // explorer 的 /select 吃不了 \\wsl$ UNC:不报错,但打开的是默认
+            // 文件夹而非目标。WSL 模式退回打开所在目录,少选中高亮但位置对
+            let dir = p.parent().map(Path::to_path_buf).unwrap_or_else(|| p.clone());
+            Command::new("explorer").arg(&dir).spawn()
         } else {
             Command::new("explorer").arg(format!("/select,{}", p.display())).spawn()
         }
