@@ -322,8 +322,8 @@ export function ModelPicker({
   );
 }
 
-/** 思考深度档位(会话级),对应引擎侧 #think:<档位> 变体别名(壳物化,
- * 见 config.rs)。composer 不设抽象的「默认」项:未显式选档时直接显示
+/** 思考深度档位(会话级),经引擎 session/setThinking RPC 生效(见
+ * session.rs)。composer 不设抽象的「默认」项:未显式选档时直接显示
  * 模型设置里配置的档位(未配置 = 关闭),选啥就是啥。 */
 export const THINK_LEVELS: { value: string; label: string }[] = [
   { value: "off", label: "关闭" },
@@ -340,21 +340,17 @@ export const effectiveThink = (sessionThink: string, modelThink?: string) =>
   sessionThink || modelThink || "off";
 
 /** 思考深度选择按钮 + 上弹菜单(会话/新任务 composer 共用;几何与
- * ModelPicker 同款,运行中禁用)。modelDefault 为当前模型设置的默认档,
- * 菜单里标注,便于知道"不动它"时跟随的是哪一档。 */
+ * ModelPicker 同款,运行中禁用)。 */
 export function ThinkPicker({
   current,
-  modelDefault,
   disabled,
   onPick,
 }: {
   current: string;
-  modelDefault?: string;
   disabled?: boolean;
   onPick: (level: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const defaultLevel = modelDefault || "off";
   return (
     <div style={{ position: "relative", flex: "none" }}>
       <ModelPickerTrigger
@@ -375,7 +371,6 @@ export function ThinkPicker({
                 key={l.value}
                 label={l.label}
                 selected={l.value === current}
-                hint={l.value === defaultLevel ? "模型默认" : undefined}
                 onClick={() => {
                   setOpen(false);
                   onPick(l.value);
@@ -1070,7 +1065,6 @@ export function ChatView({
               <span style={{ flex: 1 }} />
               <ThinkPicker
                 current={effectiveThink(chat.think, models.find((m) => m.name === currentModel)?.think)}
-                modelDefault={models.find((m) => m.name === currentModel)?.think}
                 disabled={chat.running}
                 onPick={(level) => void session.setThink(level)}
               />

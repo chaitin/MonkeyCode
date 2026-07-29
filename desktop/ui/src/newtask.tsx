@@ -914,7 +914,7 @@ export function NewTaskView({
             {mode !== "cloud" && (
               <>
                 <ModelPicker models={models} current={model} onPick={setPickedModel} />
-                <ThinkPicker current={effectiveThink(think, modelThink)} modelDefault={modelThink} onPick={setThink} />
+                <ThinkPicker current={effectiveThink(think, modelThink)} onPick={setThink} />
               </>
             )}
             <span style={{ flex: 1 }} />

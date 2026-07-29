@@ -463,8 +463,9 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       }
     },
 
-    // 会话级思考档位(""=跟随模型默认):壳切到模型的 #think 变体别名,
-    // 回写语义与 switchModel 同款(成功即回写,think_update 帧幂等覆盖)
+    // 会话级思考档位(""=跟随模型默认):壳经 session_set_think 走引擎
+    // session/setThinking RPC,回写语义与 switchModel 同款(成功即回写,
+    // think_update 帧幂等覆盖)
     async setThink(level: string) {
       if (!conn || level === chat.think) return;
       try {
@@ -602,7 +603,7 @@ export interface SessionHandle {
   /** 答复 AI 提问卡(reply-question 上行;发送成功后乐观回写 UI) */
   answerAsk(askId: string, answers: Record<string, string | string[]>): void;
   switchModel(name: string): Promise<void>;
-  /** 会话级思考档位(""=跟随模型默认;引擎切到 #think 变体别名) */
+  /** 会话级思考档位(""=跟随模型默认;经引擎 session/setThinking RPC) */
   setThink(level: string): Promise<void>;
   toggleYolo(): Promise<void>;
   refreshChanges(): Promise<FileChange[]>;
