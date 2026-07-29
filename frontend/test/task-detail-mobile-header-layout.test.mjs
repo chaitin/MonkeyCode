@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import ts from "typescript";
 
 const source = readFileSync(
   new URL("../src/pages/console/user/task/task-detail.tsx", import.meta.url),
@@ -12,6 +13,55 @@ const useMobileSource = readFileSync(new URL("../src/hooks/use-mobile.ts", impor
 const consoleUserPageSource = readFileSync(new URL("../src/pages/console/user/page.tsx", import.meta.url), "utf8");
 const modeToggleSource = readFileSync(new URL("../src/components/mode-toggle.tsx", import.meta.url), "utf8");
 const buttonSource = readFileSync(new URL("../src/components/ui/button.tsx", import.meta.url), "utf8");
+const sourceFile = ts.createSourceFile("task-detail.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const consoleUserPageFile = ts.createSourceFile(
+  "page.tsx",
+  consoleUserPageSource,
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.TSX,
+);
+
+function getClassName(node) {
+  if (!ts.isJsxElement(node)) return undefined;
+  const classAttribute = node.openingElement.attributes.properties.find(
+    (attribute) => ts.isJsxAttribute(attribute) && attribute.name.text === "className",
+  );
+  if (!classAttribute?.initializer || !ts.isStringLiteral(classAttribute.initializer)) return undefined;
+  return classAttribute.initializer.text;
+}
+
+function findElementByClassName(file, className) {
+  let result;
+
+  function visit(node) {
+    if (result) return;
+    if (getClassName(node) === className) {
+      result = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(file);
+  return result;
+}
+
+function findSelfClosingElement(file, tagName) {
+  let result;
+
+  function visit(node) {
+    if (result) return;
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(file) === tagName) {
+      result = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(file);
+  return result;
+}
 
 test("手机页头恢复官方紧凑尺寸", () => {
   assert.match(source, /className="h-7 min-w-0 max-w-\[220px\] shrink gap-1 px-2 text-xs font-normal"/);
@@ -20,7 +70,7 @@ test("手机页头恢复官方紧凑尺寸", () => {
   assert.doesNotMatch(source, /overflow-hidden rounded-md border md:contents/);
   assert.match(source, /className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm/);
   assert.match(source, /<CircularProgress[\s\S]*?size=\{20\}/);
-  assert.match(source, /className="fixed right-4 top-17 z-30 md:hidden"[\s\S]*?size="icon-sm"/);
+  assert.match(source, /className="absolute right-0 top-1\/2 z-30 -translate-y-1\/2 md:hidden"[\s\S]*?size="icon-sm"/);
   assert.match(source, /onPointerUp=\{\(event\) => \{[\s\S]*?event\.pointerType === "touch"[\s\S]*?setContextUsagePopoverOpen\(\(open\) => !open\)/);
   assert.doesNotMatch(source, /className="h-11 min-w-0 flex-1/);
   assert.doesNotMatch(source, /className="size-11 shrink-0 md:hidden"/);
@@ -32,14 +82,18 @@ test("320px 页头保留 104px 尾部对齐轨道", () => {
   assert.match(source, /mobileToolsView === "tools"[\s\S]*?"w-\[104px\] p-1\.5"/);
 });
 
-test("手机工具入口位于主题按钮正下方并使用相同尺寸", () => {
-  assert.match(source, /className="flex items-center gap-2 pr-10 md:justify-between md:gap-3 md:pr-0"/);
+test("手机工具入口保持横向位置并与模型按钮中心对齐", () => {
+  assert.match(source, /className="relative flex items-center gap-2 pr-10 md:justify-between md:gap-3 md:pr-0"/);
   assert.match(consoleUserPageSource, /<header className="flex h-15 shrink-0 items-center gap-2 overflow-hidden">/);
   assert.match(consoleUserPageSource, /className="ml-auto flex shrink-0 items-center gap-2 px-4"[\s\S]*?<ModeToggle \/>/);
+  const outlet = findSelfClosingElement(consoleUserPageFile, "Outlet");
+  assert.ok(outlet);
+  assert.ok(getClassName(outlet.parent) === "h-full w-full min-w-0 px-4 overflow-x-hidden overflow-y-auto");
   assert.match(modeToggleSource, /<Button variant="outline" size="icon-sm">/);
   assert.match(buttonSource, /"icon-sm":\s*"size-8 /);
+  assert.match(source, /className="h-7 min-w-0 max-w-\[220px\] shrink gap-1 px-2 text-xs font-normal"/);
 
-  const mobileToolsStart = source.indexOf('<div className="fixed right-4 top-17 z-30 md:hidden">');
+  const mobileToolsStart = source.indexOf('<div className="absolute right-0 top-1/2 z-30 -translate-y-1/2 md:hidden">');
   const mobileToolsEnd = source.indexOf("</Popover>", mobileToolsStart);
   assert.ok(mobileToolsStart >= 0);
   assert.ok(mobileToolsEnd > mobileToolsStart);
@@ -50,6 +104,23 @@ test("手机工具入口位于主题按钮正下方并使用相同尺寸", () =>
   assert.match(mobileToolsSource, /<PopoverContent[\s\S]*?side="bottom"[\s\S]*?align="end"[\s\S]*?sideOffset=\{6\}[\s\S]*?avoidCollisions=\{false\}/);
   assert.doesNotMatch(source, /className="flex w-11 shrink-0 justify-end md:hidden"/);
   assert.doesNotMatch(source, /className="size-7 shrink-0"/);
+});
+
+test("手机工具入口锚定模型行并共享滚动参考系", () => {
+  const modelRow = findElementByClassName(sourceFile, "relative flex items-center gap-2 pr-10 md:justify-between md:gap-3 md:pr-0");
+  const mobileTools = findElementByClassName(sourceFile, "absolute right-0 top-1/2 z-30 -translate-y-1/2 md:hidden");
+  assert.ok(modelRow);
+  assert.ok(mobileTools);
+
+  let ancestor = mobileTools.parent;
+  while (ancestor && ancestor !== modelRow) {
+    const ancestorClassName = getClassName(ancestor) ?? "";
+    assert.doesNotMatch(ancestorClassName, /(?:^|\s)(?:relative|absolute|fixed|sticky)(?:\s|$)/);
+    ancestor = ancestor.parent;
+  }
+  assert.ok(ancestor === modelRow);
+  assert.doesNotMatch(source, /import \{ createPortal \} from "react-dom"/);
+  assert.doesNotMatch(source, /createPortal\(|document\.body|fixed right-4 top-\[58px\]/);
 });
 
 test("手机页头不渲染消息定位按钮或定位下拉", () => {

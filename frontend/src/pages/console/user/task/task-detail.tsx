@@ -1256,7 +1256,7 @@ export default function TaskDetailPage() {
 
   const detailHeader = (
     <div className="shrink-0">
-      <div className="flex items-center gap-2 pr-10 md:justify-between md:gap-3 md:pr-0">
+      <div className="relative flex items-center gap-2 pr-10 md:justify-between md:gap-3 md:pr-0">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <DropdownMenu onOpenChange={(open) => {
             if (!open) {
@@ -1400,7 +1400,7 @@ export default function TaskDetailPage() {
               </span>
             )}
           </div>
-          <div className="fixed right-4 top-17 z-30 md:hidden">
+          <div className="absolute right-0 top-1/2 z-30 -translate-y-1/2 md:hidden">
             <Popover modal open={mobileToolsOpen} onOpenChange={handleMobileToolsOpenChange}>
               <PopoverTrigger asChild>
                 <Button
