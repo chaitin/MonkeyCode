@@ -789,7 +789,6 @@ export default function App() {
             currentModel={currentModel}
             chatMode={currentMeta?.kind === "chat"}
             onOpenDrawer={openDrawer}
-            onRevealWorkdir={() => void revealPath("")}
             onOpenChild={setChildView}
             onOpenNoticeSession={(id) => void openNoticeSession(id)}
             onArchive={() => currentMeta && void archiveSession(currentMeta)}

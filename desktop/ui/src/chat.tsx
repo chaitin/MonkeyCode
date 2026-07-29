@@ -470,7 +470,6 @@ export function ChatView({
   currentModel,
   chatMode = false,
   onOpenDrawer,
-  onRevealWorkdir,
   onOpenChild,
   onOpenNoticeSession,
   onArchive,
@@ -483,12 +482,11 @@ export function ChatView({
   models: ModelInfo[];
   /** 展示用模型名(session.model 为空时 App 已回退默认) */
   currentModel: string;
-  /** 普通对话有隐藏 cwd 供引擎运行,界面不暴露为项目、不显示文件抽屉,
-   * 但头部留「临时目录」直达入口(会话中产出的文件都落在那)。 */
+  /** 普通对话有隐藏 cwd 供引擎运行,界面不暴露为项目;头部「临时目录」
+   * 与本地任务的「文件」同走文件抽屉(会话产出的文件都落在临时目录,
+   * 抽屉头部可跳系统文件管理器)。 */
   chatMode?: boolean;
   onOpenDrawer: (tab?: "files" | "changes") => void;
-  /** 在系统文件管理器中打开会话工作目录(浏览器模式降级为复制路径) */
-  onRevealWorkdir?: () => void;
   onOpenChild: (id: string) => void;
   onOpenNoticeSession: (id: string) => void;
   onArchive: () => void;
@@ -838,11 +836,11 @@ export function ChatView({
           )
         }
       >
-        {chatMode && meta && onRevealWorkdir && (
+        {chatMode && meta && (
           <HeaderFilesButton
-            title="在系统文件管理器中打开会话临时目录(会话中产出的文件都在这)"
+            title="浏览会话临时目录(会话中产出的文件都在这;抽屉里可跳系统文件管理器)"
             label="临时目录"
-            onClick={onRevealWorkdir}
+            onClick={() => onOpenDrawer()}
           />
         )}
         {!chatMode && (
