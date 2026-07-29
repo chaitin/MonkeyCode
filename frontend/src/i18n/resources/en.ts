@@ -3991,6 +3991,9 @@ const en = {
         unknownName: "Unknown task",
         ended: "Task ended",
       },
+      mobileTools: {
+        trigger: "More task tools",
+      },
       context: {
         usageAria: "View context usage",
         usedPercent: "Context used {{percent}}",
@@ -4132,13 +4135,12 @@ const en = {
     },
     userInputIndex: {
       trigger: "Conversation navigator",
-      title: "Jump to a conversation",
-      description: "Select a user message to jump to its position.",
       fetchFailed: "Failed to load conversation list",
       jumpFailed: "Failed to locate message. Please try again.",
       notFound: "Matching message not found",
       locating: "Locating message...",
       loadMore: "Load more",
+      scrollToBottom: "Back to bottom",
     },
     system: {
       userCanceled: "The user canceled the current task",
