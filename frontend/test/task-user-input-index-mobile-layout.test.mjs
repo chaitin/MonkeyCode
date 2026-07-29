@@ -43,7 +43,9 @@ test("官方原面板在离开底部时显示固定的回到底部操作", () =>
   assert.match(source, /scrollToBottom: \(\) => void/);
   assert.match(source, /if \(isAtBottom\) return null/);
   assert.match(source, /taskDetail\.userInputIndex\.scrollToBottom/);
-  assert.match(source, /className="h-11 w-full[^"]*md:h-8"/);
+  assert.match(source, /"flex h-8 w-full items-center justify-center gap-1\.5 rounded-md text-sm transition-colors"/);
+  assert.match(source, /className="h-8 w-full gap-1\.5 text-muted-foreground hover:text-popover-foreground"/);
+  assert.doesNotMatch(source, /className="h-11 w-full[^"]*md:h-8"/);
   assert.match(source, /className="min-h-0 overflow-y-auto overflow-x-hidden"/);
   assert.equal(source.match(/renderScrollToBottom\(\)/g)?.length, 1);
 });

@@ -267,7 +267,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
         <Button
           type="button"
           variant="ghost"
-          className="h-11 w-full gap-1.5 text-muted-foreground hover:text-popover-foreground md:h-8"
+          className="h-8 w-full gap-1.5 text-muted-foreground hover:text-popover-foreground"
           onClick={handleScrollToBottom}
         >
           <IconArrowDown className="size-4" />
