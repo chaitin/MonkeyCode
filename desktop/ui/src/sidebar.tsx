@@ -146,6 +146,10 @@ function SessionRow({
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number }>({ left: 0 });
   const st = rowStatus(meta);
   const title = meta.title || (meta.kind === "chat" ? "新会话" : "新任务");
+  // 对话(chat)行单行化:有摘要用摘要作主行(摘要随对话演进,比首条消息
+  // 凝出的标题更达意),缺席回落标题;本地项目行保持 标题+摘要 两行式。
+  const isChat = meta.kind === "chat";
+  const primary = isChat && meta.summary ? meta.summary : title;
   const turns = turnCountLabel(meta.turns);
   const emphasizeState = !!meta.waiting_ask || meta.status === "running" || meta.status === "error";
   const showState = emphasizeState || meta.status === "interrupted";
@@ -213,13 +217,13 @@ function SessionRow({
             }}
           />
         ) : (
-          // 两行式:标题行(标题 + 状态尾注)+ 摘要行(引擎每轮生成,随对话
-          // 演进改写)。摘要缺席(旧会话/首轮未回/引擎过旧)不长第二行,
-          // 单行密度与云端任务行保持一致
+          // 本地项目行两行式:标题行(标题 + 状态尾注)+ 摘要行(引擎每轮
+          // 生成,随对话演进改写),摘要缺席(旧会话/首轮未回/引擎过旧)不长
+          // 第二行;对话行恒单行(主行=摘要或标题),密度与云端任务行一致
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
               <span className="ellipsis" style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.35, fontWeight: 400, color: active ? "var(--t1)" : archived ? "var(--t4)" : "var(--t2)" }}>
-                {title}
+                {primary}
               </span>
               <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, flex: "none" }}>
                 {(attention || emphasizeState) && (
@@ -242,7 +246,7 @@ function SessionRow({
                 </span>
               </span>
             </div>
-            {meta.summary && (
+            {!isChat && meta.summary && (
               <span className="ellipsis" style={{ fontSize: 11, lineHeight: 1.3, color: archived ? "var(--t6)" : active ? "var(--t4)" : "var(--t5)" }}>
                 {meta.summary}
               </span>

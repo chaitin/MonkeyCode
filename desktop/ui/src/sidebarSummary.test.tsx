@@ -70,3 +70,26 @@ describe("侧栏会话行的摘要", () => {
     expect(html).toMatch(/title="帮我看下这个报错\n\/work\/a\n/);
   });
 });
+
+describe("对话(chat)行恒单行", () => {
+  // chat 行只在「会话」空间渲染:让侧栏从持久化里恢复到 chat 空间
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => (k === "mc.sidebarSpace" ? "chat" : null),
+      setItem: vi.fn(),
+    });
+  });
+
+  it("有摘要时主行显摘要,标题只留在悬停提示里", () => {
+    const html = render([session({ kind: "chat", summary: "定位并修复解析器崩溃" })]);
+    // 摘要作为主行元素文本出现;标题不再作为元素文本(仅存在于 title 属性)
+    expect(html).toContain(">定位并修复解析器崩溃</span>");
+    expect(html).not.toContain(">帮我看下这个报错</span>");
+    expect(html).toMatch(/title="帮我看下这个报错\n定位并修复解析器崩溃\n/);
+  });
+
+  it("无摘要回落标题,同样不长第二行", () => {
+    const html = render([session({ kind: "chat" })]);
+    expect(html).toContain(">帮我看下这个报错</span>");
+  });
+});
