@@ -1256,7 +1256,7 @@ export default function TaskDetailPage() {
 
   const detailHeader = (
     <div className="shrink-0">
-      <div className="flex items-center gap-2 md:justify-between md:gap-3">
+      <div className="flex items-center gap-2 pr-10 md:justify-between md:gap-3 md:pr-0">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <DropdownMenu onOpenChange={(open) => {
             if (!open) {
@@ -1268,7 +1268,7 @@ export default function TaskDetailPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 min-w-0 flex-1 gap-1 px-2 text-xs font-normal md:max-w-[220px] md:shrink-0 md:flex-none"
+                className="h-7 min-w-0 max-w-[220px] shrink gap-1 px-2 text-xs font-normal"
                 disabled={!canSwitchModel}
               >
                 <span className="truncate">{getCurrentModelDisplayName() || t("taskDetail.page.models.unknown")}</span>
@@ -1400,14 +1400,13 @@ export default function TaskDetailPage() {
               </span>
             )}
           </div>
-          <div className="flex w-11 shrink-0 justify-end md:hidden">
+          <div className="fixed right-4 top-17 z-30 md:hidden">
             <Popover modal open={mobileToolsOpen} onOpenChange={handleMobileToolsOpenChange}>
               <PopoverTrigger asChild>
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon"
-                  className="size-7 shrink-0"
+                  size="icon-sm"
                   aria-label={t("taskDetail.page.mobileTools.trigger")}
                 >
                   <IconDots className="size-4" />
