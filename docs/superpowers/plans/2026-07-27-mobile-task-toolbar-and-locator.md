@@ -1,5 +1,7 @@
 # Web 任务页移动端紧凑工具栏与对话定位 Implementation Plan
 
+> 状态：历史计划，已被 `2026-07-27-mobile-top-tools-and-scroll-bottom-design.md` 及后续实施计划取代。本文中的手机定位 Drawer 与 `presentation` 分支未进入最终实现。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 Web 任务详情页手机端改为单行紧凑工具栏，并用底部抽屉替代遮挡消息内容的常驻定位栏。

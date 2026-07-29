@@ -172,7 +172,7 @@ Run from `frontend/`:
 /root/.local/share/pnpm/nodejs/22.23.1/bin/node --test test/task-detail-mobile-header-layout.test.mjs test/task-user-input-index-mobile-layout.test.mjs
 ```
 
-Observed before the model-row revision: all focused tests passed.
+Observed after the model-row revision: all 20 focused tests passed.
 
 - [x] **Step 5: Run complete verification**
 
@@ -185,7 +185,16 @@ Run from `frontend/`:
 /root/.local/share/pnpm/nodejs/22.23.1/bin/node node_modules/vite/bin/vite.js build --mode online
 ```
 
-Expected: ESLint, TypeScript, and online build exit 0. The complete test suite reports 306 total, 298 passed, and the same 8 pre-existing failures after replacing the Portal contract with the model-row contract.
+Observed: ESLint, TypeScript, and online build exited 0. The complete test suite reported 306 total, 298 passed, and the same eight pre-existing failures after replacing the viewport positioning contract with the model-row contract:
+
+- `项目基础组件使用 consoleProject i18n key`
+- `格式化扩展包导入结果`
+- `格式化扩展包导入结果时缺省计数按 0 处理`
+- `登录页根据服务端 region=en 展示海外登录入口`
+- `管理后台挂载 Skills 页面路由和侧边栏入口`
+- `添加 Skill 对话框默认选中输入文本并放在上传文件左侧`
+- `test/member-seat.test.ts`
+- `test/skill-package.test.ts`
 
 - [x] **Step 6: Verify online preview and manual behavior**
 
@@ -195,7 +204,7 @@ Run from `frontend/`:
 PREVIEW_URL=https://4215-e84020e6e952be3c.monkeycode-ai.online /root/.local/share/pnpm/nodejs/22.23.1/bin/node scripts/check-online-preview.mjs
 ```
 
-Expected: `Online preview captcha health check passed.`
+Observed: the health check printed `Online preview captcha health check passed.` The user completed logged-in scrolling acceptance and reported no significant issue.
 
 At 320px, 375px, 390px, and 430px widths, verify:
 
