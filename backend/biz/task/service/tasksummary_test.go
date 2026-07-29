@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/pkg/llm"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
@@ -295,6 +297,119 @@ func TestFallbackSummaryForAllLowInformationInputsUsesLatest(t *testing.T) {
 	}
 	if summary != "222" {
 		t.Fatalf("summary = %q, want 222", summary)
+	}
+}
+
+type fakeSummaryLLM struct {
+	responses []string
+	requests  []llm.ChatRequest
+}
+
+func (f *fakeSummaryLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	f.requests = append(f.requests, req)
+	response := f.responses[0]
+	f.responses = f.responses[1:]
+	return &llm.ChatResponse{Content: response}, nil
+}
+
+func TestGenerateSummaryVerifiesLanguageWithEnglishPrompt(t *testing.T) {
+	client := &fakeSummaryLLM{responses: []string{
+		"修复登录失败",
+		"Fix login failure",
+	}}
+	service := &TaskSummaryService{cfg: &config.Config{}, llm: client}
+
+	summary, err := service.generateSummary(context.Background(), []llm.Message{
+		{Role: "user", Content: "Please fix the login failure"},
+		{Role: "assistant", Content: "我会检查登录逻辑"},
+	})
+	if err != nil {
+		t.Fatalf("generateSummary() error = %v", err)
+	}
+	if summary != "Fix login failure" {
+		t.Fatalf("summary = %q, want %q", summary, "Fix login failure")
+	}
+	if len(client.requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(client.requests))
+	}
+	alignmentPrompt := client.requests[1].Messages[1].Content
+	if strings.Contains(alignmentPrompt, "校验") || !strings.Contains(alignmentPrompt, "Make sure the candidate title") {
+		t.Fatalf("alignment prompt must be English: %q", alignmentPrompt)
+	}
+	if !strings.Contains(alignmentPrompt, "Please fix the login failure") {
+		t.Fatalf("alignment prompt does not contain latest user input: %q", alignmentPrompt)
+	}
+}
+
+func TestGenerateSummaryUsesLatestSubstantiveUserLanguage(t *testing.T) {
+	client := &fakeSummaryLLM{responses: []string{
+		"Ajouter une pagination",
+		"Ajouter une pagination",
+	}}
+	service := &TaskSummaryService{cfg: &config.Config{}, llm: client}
+
+	_, err := service.generateSummary(context.Background(), []llm.Message{
+		{Role: "user", Content: "Please update the user list"},
+		{Role: "assistant", Content: "What should change?"},
+		{Role: "user", Content: "Ajoutez une pagination à la liste des utilisateurs"},
+	})
+	if err != nil {
+		t.Fatalf("generateSummary() error = %v", err)
+	}
+	generationPrompt := client.requests[0].Messages[len(client.requests[0].Messages)-1].Content
+	if !strings.Contains(generationPrompt, "Ajoutez une pagination à la liste des utilisateurs") {
+		t.Fatalf("generation prompt does not target latest substantive input: %q", generationPrompt)
+	}
+}
+
+func TestGenerateSummaryIgnoresTrailingAcknowledgementWhenChoosingLanguage(t *testing.T) {
+	client := &fakeSummaryLLM{responses: []string{
+		"Fix login failure",
+		"Fix login failure",
+	}}
+	service := &TaskSummaryService{cfg: &config.Config{}, llm: client}
+
+	_, err := service.generateSummary(context.Background(), []llm.Message{
+		{Role: "user", Content: "Please fix the login failure"},
+		{Role: "assistant", Content: "I fixed it"},
+		{Role: "user", Content: "谢谢"},
+	})
+	if err != nil {
+		t.Fatalf("generateSummary() error = %v", err)
+	}
+	verificationPrompt := client.requests[1].Messages[1].Content
+	if !strings.Contains(verificationPrompt, "Ignore later greetings, acknowledgements, thanks") {
+		t.Fatalf("verification prompt does not ignore trailing acknowledgement: %q", verificationPrompt)
+	}
+	if !strings.Contains(verificationPrompt, "Please fix the login failure") || !strings.Contains(verificationPrompt, "谢谢") {
+		t.Fatalf("verification prompt does not contain full user conversation: %q", verificationPrompt)
+	}
+}
+
+func TestGenerateSummaryUsesPlainTextAlignmentResponse(t *testing.T) {
+	client := &fakeSummaryLLM{responses: []string{"Fix login failure", "  Fix login failure  "}}
+	service := &TaskSummaryService{cfg: &config.Config{}, llm: client}
+
+	summary, err := service.generateSummary(context.Background(), []llm.Message{{Role: "user", Content: "Please fix the login failure"}})
+	if err != nil {
+		t.Fatalf("generateSummary() error = %v", err)
+	}
+	if summary != "Fix login failure" {
+		t.Fatalf("summary = %q, want %q", summary, "Fix login failure")
+	}
+	alignmentPrompt := client.requests[1].Messages[1].Content
+	if !strings.Contains(alignmentPrompt, "only translate the candidate title") || !strings.Contains(alignmentPrompt, "without quotes, labels, JSON, or explanation") {
+		t.Fatalf("alignment prompt does not constrain output: %q", alignmentPrompt)
+	}
+}
+
+func TestGenerateSummaryRejectsEmptyAlignmentResponse(t *testing.T) {
+	client := &fakeSummaryLLM{responses: []string{"Fix login failure", "  "}}
+	service := &TaskSummaryService{cfg: &config.Config{}, llm: client}
+
+	_, err := service.generateSummary(context.Background(), []llm.Message{{Role: "user", Content: "Please fix the login failure"}})
+	if err == nil || !strings.Contains(err.Error(), "returned an empty title") {
+		t.Fatalf("generateSummary() error = %v", err)
 	}
 }
 
