@@ -30,7 +30,7 @@ import {
   type OutlineEntry,
 } from "./components";
 import { Composer, QueuedChip, RunningBar } from "./composer";
-import { IconArchive, IconCheck, IconChevronDown, IconFolder, IconInfo, IconPencil, IconShield, IconTaskDone, IconX } from "./icons";
+import { IconArchive, IconChat, IconCheck, IconChevronDown, IconFolder, IconInfo, IconPencil, IconShield, IconTaskDone, IconX } from "./icons";
 import logoUrl from "./logo.png";
 import { useUpwardMenuHeight } from "./menuPosition";
 import { useNativeFileDrop } from "./nativeDrop";
@@ -820,12 +820,22 @@ export function ChatView({
       )}
       {/* ==== 标题栏(共享 ViewHeader:56px 双行,空白区可拖拽窗口)==== */}
       <ViewHeader
-        title={meta?.title || (chatMode ? "新会话" : "新任务")}
+        // 对话主标题与侧栏行同源:有摘要显摘要(随对话演进),无摘要回落
+        // 标题;双击改的仍是标题(编辑框里可见),悬停提示露原标题。
+        title={
+          chatMode
+            ? meta?.summary || meta?.title || "新会话"
+            : meta?.title || "新任务"
+        }
+        titleTip={chatMode && meta?.summary && meta?.title ? `${meta.title}\n双击重命名` : undefined}
         rename={meta ? rename : undefined}
         subtitle={
-          // 对话头部单行:与侧栏对话行的单行密度一致,「独立会话」的语境由
-          // 所在空间自明,摘要已是侧栏行主行,这里不再重复
-          chatMode ? undefined : (
+          chatMode ? (
+            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--t5)", minWidth: 0 }}>
+              <IconChat size={11} color="var(--t5)" />
+              <span style={{ flex: "none" }}>独立会话 · 不关联项目</span>
+            </span>
+          ) : (
             <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--t5)", minWidth: 0 }}>
               <IconFolder size={11} color="var(--t6)" />
               {/* 完整路径退到悬停提示:这一行的横向预算要留给摘要,而路径长起来
