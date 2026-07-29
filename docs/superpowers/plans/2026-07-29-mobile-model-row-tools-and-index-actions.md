@@ -185,7 +185,7 @@ Run from `frontend/`:
 /root/.local/share/pnpm/nodejs/22.23.1/bin/node node_modules/vite/bin/vite.js build --mode online
 ```
 
-Observed: ESLint, TypeScript, and online build exited 0. After adding the online preview regression coverage, the complete test suite reported 311 total, 303 passed, and the same eight pre-existing failures after replacing the viewport positioning contract with the model-row contract:
+Observed: ESLint, TypeScript, and online build exited 0. After completing the online preview regression coverage, the complete test suite reported 313 total, 305 passed, and the same eight pre-existing failures after replacing the viewport positioning contract with the model-row contract:
 
 - `项目基础组件使用 consoleProject i18n key`
 - `格式化扩展包导入结果`
