@@ -470,6 +470,7 @@ export function ChatView({
   currentModel,
   chatMode = false,
   onOpenDrawer,
+  onRevealWorkdir,
   onOpenChild,
   onOpenNoticeSession,
   onArchive,
@@ -482,9 +483,12 @@ export function ChatView({
   models: ModelInfo[];
   /** 展示用模型名(session.model 为空时 App 已回退默认) */
   currentModel: string;
-  /** 普通对话有隐藏 cwd 供引擎运行，但界面不暴露为项目，也不显示文件入口。 */
+  /** 普通对话有隐藏 cwd 供引擎运行,界面不暴露为项目、不显示文件抽屉,
+   * 但头部留「临时目录」直达入口(会话中产出的文件都落在那)。 */
   chatMode?: boolean;
   onOpenDrawer: (tab?: "files" | "changes") => void;
+  /** 在系统文件管理器中打开会话工作目录(浏览器模式降级为复制路径) */
+  onRevealWorkdir?: () => void;
   onOpenChild: (id: string) => void;
   onOpenNoticeSession: (id: string) => void;
   onArchive: () => void;
@@ -825,6 +829,17 @@ export function ChatView({
             <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--t5)", minWidth: 0 }}>
               <IconChat size={11} color="var(--t5)" />
               <span style={{ flex: "none" }}>独立会话 · 不关联项目</span>
+              {meta && onRevealWorkdir && (
+                <button
+                  className="hv"
+                  title="在系统文件管理器中打开会话临时目录(会话中产出的文件都在这)"
+                  onClick={onRevealWorkdir}
+                  style={{ display: "flex", alignItems: "center", gap: 4, flex: "none", border: "none", background: "transparent", borderRadius: 5, padding: "1px 6px", fontSize: 11, color: "var(--t5)", cursor: "pointer" }}
+                >
+                  <IconFolder size={11} color="var(--t6)" />
+                  临时目录
+                </button>
+              )}
               <HeaderSummary summary={meta?.summary} />
             </span>
           ) : (
