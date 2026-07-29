@@ -30,6 +30,10 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Test online preview configuration
+        working-directory: frontend
+        run: pnpm run test:online-preview
+
       - name: Build
         working-directory: frontend
         run: pnpm run build:online

@@ -1,7 +1,35 @@
 import path from "path"
+import { fileURLToPath } from "node:url"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig, loadEnv } from "vite"
+import { defineConfig, loadEnv, searchForWorkspaceRoot } from "vite"
+
+const fontPackageSpecifiers = [
+  "@fontsource-variable/jetbrains-mono",
+  "@fontsource-variable/noto-sans-sc",
+]
+
+export function resolveFontPackageDirectories(
+  resolveModule: (specifier: string) => string = (specifier) =>
+    import.meta.resolve(specifier),
+): string[] {
+  return [...new Set(
+    fontPackageSpecifiers.map((specifier) =>
+      path.dirname(fileURLToPath(resolveModule(`${specifier}/wght.css`))),
+    ),
+  )]
+}
+
+export function resolveDevServerFsAllow(
+  workspaceRoot: string,
+  resolveModule: (specifier: string) => string = (specifier) =>
+    import.meta.resolve(specifier),
+): string[] {
+  return [...new Set([
+    workspaceRoot,
+    ...resolveFontPackageDirectories(resolveModule),
+  ])]
+}
 
 interface OnlineProxyTargetOptions {
   command: string
@@ -37,12 +65,22 @@ export function resolveOnlineProxyTarget({
     throw new Error('TARGET must be an absolute HTTP(S) URL')
   }
 
-  return normalizedTarget
+  if (
+    parsedTarget.username ||
+    parsedTarget.password ||
+    parsedTarget.pathname !== '/' ||
+    parsedTarget.search ||
+    parsedTarget.hash
+  ) {
+    throw new Error('TARGET must contain only an HTTP(S) origin')
+  }
+
+  return parsedTarget.origin
 }
 
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => {
-  const env = loadEnv(mode, process.cwd(), '')
+  const env = loadEnv(mode, __dirname, '')
   const appEdition = process.env.VITE_APP_EDITION ?? env.VITE_APP_EDITION
   const proxyTarget = resolveOnlineProxyTarget({
     command,
@@ -61,7 +99,16 @@ export default defineConfig(({ mode, command }) => {
     )
   }
 
+  if (Boolean(proxyBasicAuthUsername) !== Boolean(proxyBasicAuthPassword)) {
+    throw new Error('Proxy basic authentication requires both username and password')
+  }
+
   if (proxyBasicAuthUsername && proxyBasicAuthPassword) {
+    const targetUrl = proxyTarget ? new URL(proxyTarget) : undefined
+    const isLoopback = targetUrl && ['localhost', '127.0.0.1', '[::1]'].includes(targetUrl.hostname)
+    if (targetUrl?.protocol !== 'https:' && !isLoopback) {
+      throw new Error('Proxy basic authentication requires an HTTPS or loopback TARGET')
+    }
     proxyHeaders.Authorization = `Basic ${Buffer.from(`${proxyBasicAuthUsername}:${proxyBasicAuthPassword}`).toString('base64')}`
   }
 
@@ -88,6 +135,11 @@ export default defineConfig(({ mode, command }) => {
       host: "0.0.0.0",
       port: devPort,
       allowedHosts: ['.monkeycode-ai.online'],
+      fs: {
+        allow: resolveDevServerFsAllow(
+          searchForWorkspaceRoot(__dirname),
+        ),
+      },
       proxy: {
         '/api': {
           target: proxyTarget,
