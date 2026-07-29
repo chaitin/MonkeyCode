@@ -768,7 +768,7 @@ export function SettingsView({
                 type="number"
                 min={1}
                 value={m.max_output ?? ""}
-                placeholder="16384(默认)"
+                placeholder="32768(默认)"
                 title="单次回复的输出 token 上限。回复经常被截断(finish_reason=length)时调大它;须小于上下文窗口的 10%(建议 ≤8%),否则接近压缩阈值的请求会被服务端拒绝"
                 onChange={(e) => {
                   const n = parseInt(e.target.value, 10);

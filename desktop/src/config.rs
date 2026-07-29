@@ -21,6 +21,7 @@ use crate::util::LockExt;
 
 static TEMP_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 const DEFAULT_MODEL_CONTEXT_WINDOW: i64 = 200_000;
+const DEFAULT_MODEL_MAX_OUTPUT: i64 = 32_768;
 
 /// 权威配置的进程内事务锁。引擎重启有自己更粗的 EngineApply 锁；这里的锁
 /// 只覆盖短暂的磁盘事务，桌宠偏好保存不会因 Agent 优雅退出而卡住 UI 线程。
@@ -452,13 +453,17 @@ fn write_ohmyagent_config(
         // 已知 model id 的 vision 默认,保证不发图片块(读图降级为文本占位)
         let vision = m.get("vision").and_then(|v| v.as_bool()).unwrap_or(false);
         entry["supports_images"] = serde_json::json!(vision);
-        // 最大输出(高级项):仅显式配置(>0)才写给引擎。不写时保持引擎
-        // 现状——openai 系请求不带输出上限(由服务端默认值决定),
-        // anthropic 用协议默认 16384。
-        let max_output = m.get("max_output").and_then(|v| v.as_i64()).filter(|&n| n > 0);
-        if let Some(n) = max_output {
-            entry["max_output"] = serde_json::json!(n);
-        }
+        // 最大输出:显式配置(>0)优先,缺省物化产品默认 32768——新一代模型
+        // 的输出上限(64k~128k)远超引擎 16384 兜底,不抬高会截断长输出。
+        // 已知取舍:引擎压缩在上下文占用 90% 才触发且不预留输出空间,
+        // 200k 窗口下输入落在 167k~180k 的请求会因 输入+输出 超模型上限
+        // 被服务端拒(settings.tsx 的 10% 校验即为此而设)。
+        let max_output = m
+            .get("max_output")
+            .and_then(|v| v.as_i64())
+            .filter(|&n| n > 0)
+            .unwrap_or(DEFAULT_MODEL_MAX_OUTPUT);
+        entry["max_output"] = serde_json::json!(max_output);
         // 思考深度:条目按模型设置的 think 默认档物化(缺省关闭);会话级
         // 调整走引擎 session/setThinking RPC(session.rs),不再物化变体别名。
         let think = m
@@ -782,9 +787,8 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// 最大输出/思考深度的物化:max_output 仅显式配置才写;think 按协议
-    /// 分流——openai 系映射 reasoning effort,anthropic 映射 budget_tokens
-    /// 预设并受 max_output 的一半约束,压不进 1024 下限时整个不开。
+    /// 最大输出/思考深度的物化:max_output 显式配置优先,缺省写产品默认
+    /// 32768;think 物化为引擎统一 {enabled,effort},未知档位不透传。
     #[test]
     fn ohmyagent_config_materializes_max_output_and_thinking() {
         let dir = test_dir("model-max-output-thinking");
@@ -850,8 +854,8 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.join("settings.json")).unwrap()).unwrap();
         let models = &settings["models"];
 
-        // 未配置:两个字段都不落盘(引擎保持自身默认行为)
-        assert!(models["plain"].get("max_output").is_none());
+        // 未配置:max_output 落产品默认 32768,thinking 不落盘
+        assert_eq!(models["plain"]["max_output"], 32768);
         assert!(models["plain"].get("thinking").is_none());
 
         assert_eq!(models["openai-tuned"]["max_output"], 32768);
@@ -862,6 +866,7 @@ mod tests {
 
         // anthropic 与 openai 同用统一 {enabled,effort}(引擎按协议转译,
         // budget_tokens/type 已废弃),max_output 不再耦合 thinking
+        assert_eq!(models["claude-default-max"]["max_output"], 32768);
         assert_eq!(
             models["claude-default-max"]["thinking"],
             serde_json::json!({ "enabled": true, "effort": "high" })
