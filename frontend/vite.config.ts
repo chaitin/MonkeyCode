@@ -92,6 +92,11 @@ export default defineConfig(({ mode, command }) => {
   const proxyBasicAuthUsername = env.PROXY_BASIC_AUTH_USERNAME?.trim()
   const proxyBasicAuthPassword = env.PROXY_BASIC_AUTH_PASSWORD?.trim()
   const proxyHeaders: Record<string, string> = {}
+  const usesOnlineProxy = command === 'serve' && appEdition === 'online'
+  const proxyTargetUrl = proxyTarget ? new URL(proxyTarget) : undefined
+  const proxyTargetIsLoopback = Boolean(
+    proxyTargetUrl && ['localhost', '127.0.0.1', '[::1]'].includes(proxyTargetUrl.hostname),
+  )
 
   if (appEdition !== 'online' && appEdition !== 'offline') {
     throw new Error(
@@ -99,14 +104,12 @@ export default defineConfig(({ mode, command }) => {
     )
   }
 
-  if (Boolean(proxyBasicAuthUsername) !== Boolean(proxyBasicAuthPassword)) {
+  if (usesOnlineProxy && Boolean(proxyBasicAuthUsername) !== Boolean(proxyBasicAuthPassword)) {
     throw new Error('Proxy basic authentication requires both username and password')
   }
 
-  if (proxyBasicAuthUsername && proxyBasicAuthPassword) {
-    const targetUrl = proxyTarget ? new URL(proxyTarget) : undefined
-    const isLoopback = targetUrl && ['localhost', '127.0.0.1', '[::1]'].includes(targetUrl.hostname)
-    if (targetUrl?.protocol !== 'https:' && !isLoopback) {
+  if (usesOnlineProxy && proxyBasicAuthUsername && proxyBasicAuthPassword) {
+    if (proxyTargetUrl?.protocol !== 'https:' && !proxyTargetIsLoopback) {
       throw new Error('Proxy basic authentication requires an HTTPS or loopback TARGET')
     }
     proxyHeaders.Authorization = `Basic ${Buffer.from(`${proxyBasicAuthUsername}:${proxyBasicAuthPassword}`).toString('base64')}`
@@ -144,7 +147,7 @@ export default defineConfig(({ mode, command }) => {
         '/api': {
           target: proxyTarget,
           changeOrigin: true,
-          secure: false,
+          secure: !proxyTargetIsLoopback,
           ws: true,
           ...(Object.keys(proxyHeaders).length > 0
             ? {

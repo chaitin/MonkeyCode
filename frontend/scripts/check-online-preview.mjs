@@ -124,51 +124,53 @@ export async function checkOnlinePreview(rawBaseUrl, fetchImpl = fetch, timeoutM
   const baseUrl = resolveBaseUrl(rawBaseUrl);
 
   for (const check of checks) {
-    let response;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      response = await fetchImpl(new URL(check.path, baseUrl), {
-        method: check.method ?? "GET",
-        headers:
-          check.method === "POST" ? { "content-type": "application/json" } : undefined,
-        signal: controller.signal,
-      });
-    } catch {
-      throw new Error(`${check.label} request failed`);
+      let response;
+      try {
+        response = await fetchImpl(new URL(check.path, baseUrl), {
+          method: check.method ?? "GET",
+          headers:
+            check.method === "POST" ? { "content-type": "application/json" } : undefined,
+          signal: controller.signal,
+        });
+      } catch {
+        throw new Error(`${check.label} request failed`);
+      }
+      const contentType = response.headers.get("content-type") ?? "(missing)";
+
+      if (
+        response.status !== check.expectedStatus ||
+        !check.contentTypePattern.test(contentType)
+      ) {
+        try {
+          await response.body?.cancel();
+        } catch {
+          // Preserve the HTTP metadata error when cancellation fails.
+        }
+        throw new Error(
+          `${check.label} check failed: status=${response.status}, content-type=${contentType}`,
+        );
+      }
+
+      const body = await readResponseBody(response, check.label);
+      validateStaticResourceBody(check.bodyType, body);
+
+      if (check.bodyType === "challenge") {
+        let challenge;
+        try {
+          challenge = JSON.parse(new TextDecoder().decode(body));
+        } catch {
+          throw new Error("Captcha challenge response has an invalid structure");
+        }
+
+        if (!isValidChallenge(challenge)) {
+          throw new Error("Captcha challenge response has an invalid structure");
+        }
+      }
     } finally {
       clearTimeout(timeout);
-    }
-    const contentType = response.headers.get("content-type") ?? "(missing)";
-
-    if (
-      response.status !== check.expectedStatus ||
-      !check.contentTypePattern.test(contentType)
-    ) {
-      try {
-        await response.body?.cancel();
-      } catch {
-        // Preserve the HTTP metadata error when cancellation fails.
-      }
-      throw new Error(
-        `${check.label} check failed: status=${response.status}, content-type=${contentType}`,
-      );
-    }
-
-    const body = await readResponseBody(response, check.label);
-    validateStaticResourceBody(check.bodyType, body);
-
-    if (check.bodyType === "challenge") {
-      let challenge;
-      try {
-        challenge = JSON.parse(new TextDecoder().decode(body));
-      } catch {
-        throw new Error("Captcha challenge response has an invalid structure");
-      }
-
-      if (!isValidChallenge(challenge)) {
-        throw new Error("Captcha challenge response has an invalid structure");
-      }
     }
   }
 }

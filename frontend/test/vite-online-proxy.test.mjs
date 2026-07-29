@@ -59,9 +59,10 @@ test("开发服务白名单从 Vite 配置目录查找 workspace root", () => {
 
 test("从外部工作目录加载配置时仍允许 frontend 和字体目录", async () => {
   const originalCwd = process.cwd();
+  const externalCwd = path.dirname(frontendRoot);
 
   try {
-    process.chdir("/workspace");
+    process.chdir(externalCwd);
     const config = await withEnvironment(
       {
         VITE_APP_EDITION: "online",
@@ -77,7 +78,7 @@ test("从外部工作目录加载配置时仍允许 frontend 和字体目录", a
     assert.equal(allow.length, 3);
     assert.match(allow[1], /@fontsource-variable\/jetbrains-mono$/);
     assert.match(allow[2], /@fontsource-variable\/noto-sans-sc$/);
-    assert.doesNotMatch(allow.join("\n"), /^\/workspace$/m);
+    assert.equal(allow.includes(externalCwd), false);
   } finally {
     process.chdir(originalCwd);
   }
@@ -149,6 +150,7 @@ test("online serve 返回规范化的 HTTPS origin", async () => {
     () => loadOnlineConfig(),
   );
   assert.equal(getApiProxy(config)?.target, "https://example.com");
+  assert.equal(getApiProxy(config)?.secure, true);
 });
 
 test("代理 Basic Auth 拒绝远程 HTTP TARGET", async () => {
@@ -178,6 +180,7 @@ test("代理 Basic Auth 允许 HTTP loopback TARGET", async () => {
     () => loadOnlineConfig(),
   );
   assert.equal(getApiProxy(config)?.target, "http://127.0.0.1:3001");
+  assert.equal(getApiProxy(config)?.secure, false);
   assert.match(getApiProxy(config)?.headers?.Authorization ?? "", /^Basic /);
 });
 
@@ -208,4 +211,18 @@ test("online build 缺少 TARGET 时保持可用", async () => {
     () => loadOnlineConfig("build"),
   );
   assert.equal(getApiProxy(config)?.target, undefined);
+});
+
+test("online build 忽略仅供开发代理使用的 Basic Auth", async () => {
+  const config = await withEnvironment(
+    {
+      VITE_APP_EDITION: "online",
+      TARGET: " ",
+      PROXY_BASIC_AUTH_USERNAME: "preview-user",
+      PROXY_BASIC_AUTH_PASSWORD: "preview-password",
+    },
+    () => loadOnlineConfig("build"),
+  );
+  assert.equal(getApiProxy(config)?.target, undefined);
+  assert.equal(getApiProxy(config)?.headers, undefined);
 });

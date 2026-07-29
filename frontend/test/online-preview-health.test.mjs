@@ -97,6 +97,39 @@ test("挂起请求在超时后中止并释放", async () => {
   assert.equal(aborted, true);
 });
 
+test("响应正文流挂起时在超时后中止", async () => {
+  let aborted = false;
+
+  await assert.rejects(
+    () =>
+      checkOnlinePreview(
+        "https://preview.example",
+        async (_url, options) =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                options.signal.addEventListener(
+                  "abort",
+                  () => {
+                    aborted = true;
+                    controller.error(options.signal.reason);
+                  },
+                  { once: true },
+                );
+              },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "text/javascript" },
+            },
+          ),
+        10,
+      ),
+    /CAP JavaScript response body read failed/,
+  );
+  assert.equal(aborted, true);
+});
+
 test("HTTP 元数据失败时取消响应正文", async () => {
   let bodyCancelled = false;
   const leakedMessage = "sensitive-cancel-error";
