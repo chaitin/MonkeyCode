@@ -42,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
@@ -50,13 +51,14 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { canUseModelBySubscription, formatTokens, getBrandFromModel, getBuiltinModelName, getModelDisplayName, getOwnerTypeBadge, getTaskDisplayName, isBuiltinPublicModelPackage, stripBuiltinPublicModelPackagePrefix } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconChevronDown, IconDeviceDesktop, IconFile, IconPuzzle, IconReload, IconTerminal2, IconUpload } from "@tabler/icons-react"
+import { IconChevronDown, IconDeviceDesktop, IconDots, IconFile, IconPuzzle, IconReload, IconTerminal2, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
 type SidePanelType = "files"
+type MobileToolsView = "tools" | "files"
 type AskUserQuestionStatus = "pending" | "queued" | "submitting" | "completed" | "expired"
 
 const BUILTIN_TASK_MODEL_OPTIONS = [
@@ -115,6 +117,9 @@ export default function TaskDetailPage() {
   const [restartAgentClearContext, setRestartAgentClearContext] = React.useState(false)
   const [publishConfirmDialogOpen, setPublishConfirmDialogOpen] = React.useState(false)
   const [skillsDialogOpen, setSkillsDialogOpen] = React.useState(false)
+  const [mobileToolsOpen, setMobileToolsOpen] = React.useState(false)
+  const [mobileToolsView, setMobileToolsView] = React.useState<MobileToolsView>("tools")
+  const [chatAtBottom, setChatAtBottom] = React.useState(true)
   const [modelSwitchDialogOpen, setModelSwitchDialogOpen] = React.useState(false)
   const [modelSwitchSubmitting, setModelSwitchSubmitting] = React.useState(false)
   const [pendingSwitchModel, setPendingSwitchModel] = React.useState<DomainModel | null>(null)
@@ -138,6 +143,7 @@ export default function TaskDetailPage() {
   const previousLiveUserInputIdRef = React.useRef<string | null>(null)
   const previousLiveEndedCycleIdRef = React.useRef<string | null>(null)
   const previousRunningMessagesSignatureRef = React.useRef<string | null>(null)
+  const pendingMobileToolActionRef = React.useRef<(() => void) | null>(null)
   const activeSidePanelRef = React.useRef<SidePanelType | null>(null)
   const previewDialogOpenRef = React.useRef(false)
   const showPreparing = useShouldShowPreparing(task)
@@ -258,7 +264,7 @@ export default function TaskDetailPage() {
       : "text-foreground"
   const contextUsagePercent = `${(contextProgress * 100).toFixed(1)}%`
 
-  const hasSidePanel = activeSidePanel !== null
+  const hasSidePanel = !isMobile && activeSidePanel !== null
   const hasBottomTerminal = terminalPanelOpen
   const currentModelId = task?.model?.id ?? ""
   const currentModelName = task?.model?.model ?? ""
@@ -385,6 +391,13 @@ export default function TaskDetailPage() {
   React.useEffect(() => {
     previewDialogOpenRef.current = previewDialogOpen
   }, [previewDialogOpen])
+
+  React.useEffect(() => {
+    if (!isMobile) {
+      setMobileToolsView("tools")
+      setMobileToolsOpen(false)
+    }
+  }, [isMobile])
 
   const disconnectStreamClient = React.useCallback(() => {
     const state = streamClientRef.current?.disconnect() ?? null
@@ -1063,6 +1076,7 @@ export default function TaskDetailPage() {
     const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
     const hasOverflow = maxScrollTop > 4
     const isAtBottom = !hasOverflow || maxScrollTop - container.scrollTop <= 24
+    setChatAtBottom((previous) => previous === isAtBottom ? previous : isAtBottom)
 
     if (!hasOverflow) {
       shouldAutoScrollChatRef.current = true
@@ -1121,18 +1135,26 @@ export default function TaskDetailPage() {
     }
 
     setPendingWorkspaceFilePath(path)
+    if (isMobile) {
+      setMobileToolsView("files")
+      setMobileToolsOpen(true)
+      return
+    }
     setActiveSidePanel("files")
-  }, [])
+  }, [isMobile])
 
   React.useEffect(() => {
-    if (activeSidePanel !== "files" || !pendingWorkspaceFilePath || !taskFileExplorerRef.current) {
+    const fileExplorerVisible = isMobile
+      ? mobileToolsOpen && mobileToolsView === "files"
+      : activeSidePanel === "files"
+    if (!fileExplorerVisible || !pendingWorkspaceFilePath || !taskFileExplorerRef.current) {
       return
     }
 
     const path = pendingWorkspaceFilePath
     setPendingWorkspaceFilePath(null)
     void taskFileExplorerRef.current.openFile(path)
-  }, [activeSidePanel, pendingWorkspaceFilePath])
+  }, [activeSidePanel, isMobile, mobileToolsOpen, mobileToolsView, pendingWorkspaceFilePath])
 
   const scheduleChatScrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth", options?: { forceAutoScroll?: boolean }) => {
     const container = getChatScrollContainer()
@@ -1166,6 +1188,10 @@ export default function TaskDetailPage() {
       nextContainer.scrollTo({ top: nextContainer.scrollHeight, behavior })
     })
   }, [getChatScrollContainer, updateChatScrollState])
+
+  const handleScrollToBottom = React.useCallback(() => {
+    scheduleChatScrollToBottom("smooth", { forceAutoScroll: true })
+  }, [scheduleChatScrollToBottom])
 
   React.useEffect(() => {
     return () => {
@@ -1209,9 +1235,28 @@ export default function TaskDetailPage() {
     scheduleChatScrollToBottom("auto")
   }, [historyLoading, runningMessagesSignature, scheduleChatScrollToBottom])
 
+  const runMobileToolAction = React.useCallback((action: () => void) => {
+    pendingMobileToolActionRef.current = action
+    setMobileToolsOpen(false)
+  }, [])
+
+  const handleMobileToolsOpenChange = React.useCallback((open: boolean) => {
+    setMobileToolsView("tools")
+    setMobileToolsOpen(open)
+  }, [])
+
+  const handleMobileToolsCloseAutoFocus = React.useCallback((event: Event) => {
+    const action = pendingMobileToolActionRef.current
+    if (!action) return
+
+    event.preventDefault()
+    pendingMobileToolActionRef.current = null
+    action()
+  }, [])
+
   const detailHeader = (
     <div className="shrink-0">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2 md:justify-between md:gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <DropdownMenu onOpenChange={(open) => {
             if (!open) {
@@ -1223,11 +1268,11 @@ export default function TaskDetailPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 max-w-[220px] shrink-0 gap-1 px-2 text-xs font-normal"
+                className="h-7 min-w-0 flex-1 gap-1 px-2 text-xs font-normal md:max-w-[220px] md:shrink-0 md:flex-none"
                 disabled={!canSwitchModel}
               >
                 <span className="truncate">{getCurrentModelDisplayName() || t("taskDetail.page.models.unknown")}</span>
-                <IconChevronDown className="size-3.5 text-muted-foreground" />
+                <IconChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] min-w-[320px] overflow-y-auto max-sm:w-[calc(100vw-2rem)] max-sm:min-w-0">
@@ -1249,7 +1294,7 @@ export default function TaskDetailPage() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <div className="flex w-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground md:w-auto">
             {taskInteractive && hasContextUsage && (
               <HoverCard
                 open={contextUsagePopoverOpen}
@@ -1260,8 +1305,13 @@ export default function TaskDetailPage() {
                 <HoverCardTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex shrink-0 items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                     aria-label={t("taskDetail.page.context.usageAria")}
+                    onPointerUp={(event) => {
+                      if (event.pointerType === "touch") {
+                        setContextUsagePopoverOpen((open) => !open)
+                      }
+                    }}
                   >
                     <CircularProgress
                       value={contextUsage.used ?? 0}
@@ -1350,23 +1400,117 @@ export default function TaskDetailPage() {
               </span>
             )}
           </div>
+          <div className="flex w-11 shrink-0 justify-end md:hidden">
+            <Popover modal open={mobileToolsOpen} onOpenChange={handleMobileToolsOpenChange}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  aria-label={t("taskDetail.page.mobileTools.trigger")}
+                >
+                  <IconDots className="size-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="bottom"
+                align="end"
+                sideOffset={6}
+                avoidCollisions={false}
+                className={cn(
+                  "max-h-[65dvh] gap-0 overflow-hidden md:hidden",
+                  mobileToolsView === "tools"
+                    ? "w-[104px] p-1.5"
+                    : "w-[calc(100vw-2rem)] max-w-[420px] p-0",
+                )}
+                onCloseAutoFocus={handleMobileToolsCloseAutoFocus}
+              >
+                {mobileToolsView === "tools" && (
+                  <div className="flex min-h-0 flex-col">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11 justify-start gap-2 px-3"
+                      disabled={!taskInteractive}
+                      onClick={() => runMobileToolAction(() => setSkillsDialogOpen(true))}
+                    >
+                      <IconPuzzle className="size-4 shrink-0" />
+                      <span className="truncate">{t("taskDetail.chat.skills")}</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11 justify-start gap-2 px-3"
+                      disabled={!taskInteractive}
+                      onClick={() => setMobileToolsView("files")}
+                    >
+                      <IconFile className="size-4 shrink-0" />
+                      <span className="truncate">{t("taskDetail.panels.files")}</span>
+                      {fileChangesCount > 0 && (
+                        <span className="ml-auto text-xs text-muted-foreground">{fileChangesCount}</span>
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className={cn("h-11 justify-start gap-2 px-3", previewDialogOpen && "bg-accent text-primary")}
+                      disabled={!taskInteractive}
+                      onClick={() => runMobileToolAction(togglePreviewDialog)}
+                    >
+                      <IconDeviceDesktop className="size-4 shrink-0" />
+                      <span className="truncate">{t("taskDetail.panels.preview")}</span>
+                      {previewPortCount > 0 && (
+                        <span className="ml-auto text-xs text-muted-foreground">{previewPortCount}</span>
+                      )}
+                    </Button>
+                    {canPublishWebsite && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className={cn("h-11 justify-start gap-2 px-3", publishConfirmDialogOpen && "bg-accent text-primary")}
+                        disabled={!canInput}
+                        onClick={() => runMobileToolAction(() => setPublishConfirmDialogOpen(true))}
+                      >
+                        <IconUpload className="size-4 shrink-0" />
+                        <span className="truncate">{t("taskDetail.page.dialogs.publishWebsite.button")}</span>
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {mobileToolsView === "files" && (
+                  <div className="h-[min(60dvh,520px)] p-2">
+                    <TaskFileExplorer
+                      ref={taskFileExplorerRef}
+                      disabled={!taskInteractive}
+                      repository={taskControlClientRef.current}
+                      refreshSignal={fileRefreshSignal}
+                      onChangesCountChange={setFileChangesCount}
+                      onClosePanel={() => handleMobileToolsOpenChange(false)}
+                      envid={envid}
+                    />
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="hidden shrink-0 md:block">
           <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 min-w-0 gap-1 px-2 text-sm font-normal"
+              className="h-7 gap-1 px-2 text-sm font-normal"
               onClick={() => setSkillsDialogOpen(true)}
               disabled={!taskInteractive}
             >
-              <IconPuzzle className="size-3.5" />
+              <IconPuzzle className="size-3.5 shrink-0" />
               {t("taskDetail.chat.skills")}
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className={cn("hidden h-7 min-w-0 gap-1 px-2 text-sm font-normal md:inline-flex", terminalPanelOpen && "text-primary bg-accent")}
+              className={cn("h-7 gap-1 px-2 text-sm font-normal", terminalPanelOpen && "text-primary bg-accent")}
               onClick={toggleTerminalPanel}
               disabled={!taskInteractive}
             >
@@ -1376,32 +1520,32 @@ export default function TaskDetailPage() {
             <Button
               variant="ghost"
               size="sm"
-              className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", activeSidePanel === "files" && "text-primary bg-accent")}
+              className={cn("h-7 gap-1 px-2 text-sm font-normal", activeSidePanel === "files" && "text-primary bg-accent")}
               onClick={() => toggleSidePanel("files")}
               disabled={!taskInteractive}
             >
-              <IconFile className="size-3.5" />
+              <IconFile className="size-3.5 shrink-0" />
               {t("taskDetail.panels.files")}{fileChangesCount > 0 ? ` (${fileChangesCount})` : ""}
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", previewDialogOpen && "text-primary bg-accent")}
+              className={cn("h-7 gap-1 px-2 text-sm font-normal", previewDialogOpen && "text-primary bg-accent")}
               onClick={togglePreviewDialog}
               disabled={!taskInteractive}
             >
-              <IconDeviceDesktop className="size-3.5" />
+              <IconDeviceDesktop className="size-3.5 shrink-0" />
               {t("taskDetail.panels.preview")}{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
             </Button>
             {canPublishWebsite && (
               <Button
                 variant="ghost"
                 size="sm"
-                className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", publishConfirmDialogOpen && "text-primary bg-accent")}
+                className={cn("h-7 gap-1 px-2 text-sm font-normal", publishConfirmDialogOpen && "text-primary bg-accent")}
                 onClick={() => setPublishConfirmDialogOpen(true)}
                 disabled={!canInput}
               >
-                <IconUpload className="size-3.5" />
+                <IconUpload className="size-3.5 shrink-0" />
                 {t("taskDetail.page.dialogs.publishWebsite.button")}
               </Button>
             )}
@@ -1545,6 +1689,8 @@ export default function TaskDetailPage() {
                       scrollToMessage={scrollChatToMessage}
                       historyHasMore={!historyLoaded || historyHasMore}
                       loadMoreHistory={() => fetchTaskRounds(historyCursorRef.current ?? undefined, 1)}
+                      isAtBottom={chatAtBottom}
+                      scrollToBottom={handleScrollToBottom}
                     />
                   </div>
                   <div className={cn("shrink-0", hasSidePanel ? "w-full" : "mx-auto max-w-[960px] w-full")}>
