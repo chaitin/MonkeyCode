@@ -3,17 +3,24 @@ import { useState, type ReactElement } from "react";
 import { isImageFilename } from "./cloudUpload";
 import { openExternal } from "./host";
 import { IconChevronRight, IconSpark } from "./icons";
-import { Markdown } from "./markdown";
+import { Markdown, MarkdownInline } from "./markdown";
 import { AskCard, PermCard } from "./promptCards";
 import { permAnchors } from "./reduce";
 import { ToolCard } from "./toolCard";
 import type { CloudAttachment, Frame, LogItem } from "./types";
 import { UploadImg, downloadUpload } from "./uploadMedia";
 
+/** 引擎思考流按 chunk 裸拼,相邻加粗标题会连成 `**A****B**`;marked 把中间的
+ * `****` 当字面量吞进同一个 strong,先补成段落边界再交给 markdown。 */
+function thoughtMarkdown(text: string): string {
+  return text.replace(/\*{4}/g, "**\n\n**");
+}
+
 /** 思考块:单行折叠(✦ 思考 + 摘要省略),点击在下方展开完整文本的缩进块。
  * 全文不放进标题 flex 行:多行文本会把居中的图标顶到段落中部,标签与内容挤作一团。 */
 function ThoughtView({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
+  const md = thoughtMarkdown(text);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "92%" }}>
       <div
@@ -32,11 +39,7 @@ function ThoughtView({ text }: { text: string }) {
       >
         <IconSpark />
         <span style={{ fontWeight: 600, color: "var(--t3)", flex: "none" }}>思考</span>
-        {!open && (
-          <span className="ellipsis" style={{ flex: 1, minWidth: 0 }}>
-            {text.trim().replace(/\s+/g, " ")}
-          </span>
-        )}
+        {!open && <MarkdownInline text={md.trim().replace(/\s+/g, " ")} style={{ flex: 1, minWidth: 0 }} />}
         {open && <span style={{ flex: 1 }} />}
         <IconChevronRight
           size={9}
@@ -46,20 +49,16 @@ function ThoughtView({ text }: { text: string }) {
       </div>
       {open && (
         <div
-          className="selectable"
+          className="selectable thought-md"
           style={{
             marginLeft: 5,
             borderLeft: "2px solid var(--line)",
             padding: "2px 0 2px 13px",
-            fontSize: 12,
-            color: "var(--t4)",
-            lineHeight: 1.7,
-            whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             animation: "mcin .2s ease",
           }}
         >
-          {text}
+          <Markdown text={md} />
         </div>
       )}
     </div>
