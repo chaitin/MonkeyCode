@@ -8,18 +8,27 @@ import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { highlightFence } from "./codeView";
 import { openExternal } from "./host";
 import { resolveMarkdownResource } from "./markdownPaths";
 
 marked.setOptions({ gfm: true, breaks: true });
 
 // 代码块包一层容器并附复制按钮;按钮点击走 .md 容器的事件代理
-// (innerHTML 注入的 DOM 挂不了 React handler)
+// (innerHTML 注入的 DOM 挂不了 React handler)。围栏带语言标记时走
+// hljs 高亮(codeView 同一注册表与配色令牌,容器加 .hl 复用样式),
+// 未标注/未收录语言回落 baseRenderer 的纯文本转义路径。
 const baseRenderer = new marked.Renderer();
 marked.use({
   renderer: {
     code(token) {
-      return `<div class="mdcode">${baseRenderer.code(token)}<button class="mdcopy" type="button">复制</button></div>`;
+      const lang = (token.lang ?? "").trim().split(/\s+/)[0]?.toLowerCase();
+      const highlighted = highlightFence(token.text, lang);
+      const body =
+        highlighted !== null
+          ? `<pre><code class="hljs language-${lang}">${highlighted}</code></pre>`
+          : baseRenderer.code(token);
+      return `<div class="mdcode${highlighted !== null ? " hl" : ""}">${body}<button class="mdcopy" type="button">复制</button></div>`;
     },
     table(token) {
       const table = baseRenderer.table.call(this, token);

@@ -40,7 +40,23 @@ const EXT_LANG: Record<string, string> = {
   sh: "bash", bash: "bash", zsh: "bash",
   yml: "yaml", yaml: "yaml", sql: "sql",
   ini: "ini", toml: "ini", conf: "ini",
+  // 以下是 markdown 围栏语言标记专用的别名(不是文件扩展名)
+  "c++": "cpp", shell: "bash", console: "bash", golang: "go",
 };
+
+/** markdown 围栏代码块的高亮:语言标记经别名表/注册表解析,未收录或
+ * 高亮失败返回 null(调用方回落纯文本转义路径)。输出是 hljs 的 HTML
+ * (文本已转义,只含 hljs 的 <span>),沿用与 CodeView 相同的安全前提。 */
+export function highlightFence(code: string, lang?: string): string | null {
+  if (!lang) return null;
+  const resolved = EXT_LANG[lang] ?? lang;
+  if (!hljs.getLanguage(resolved)) return null;
+  try {
+    return hljs.highlight(code, { language: resolved }).value;
+  } catch {
+    return null;
+  }
+}
 
 /** 高亮 HTML 按行拆分:跨行的 <span>(块注释/模板串)在行尾闭合、次行重开,
  * 使每行成为独立合法片段——行号采用逐行 flex 行(与 DiffPanel 同构),
