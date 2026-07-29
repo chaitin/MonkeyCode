@@ -1,6 +1,8 @@
 // 工具卡:状态点、动作/目标、耗时、子代理进度直播、结构化详情与内嵌审批。
 import { useEffect, useState, type CSSProperties } from "react";
 import { DiffPanel } from "./diffView";
+import { parseFindingsReport } from "./findings";
+import { FindingsReportView } from "./findingsCard";
 import { MONO } from "./fonts";
 import { IconCheck, IconChevronRight } from "./icons";
 import { Markdown, MarkdownInline } from "./markdown";
@@ -176,6 +178,8 @@ export function ToolCard({
         ...(full.content !== undefined ? { content: full.content } : {}),
       }
     : item;
+  // ReportFindings 走结构化发现列表;详情(原始 JSON)保留作兜底
+  const findingsReport = presentation.rawTool === "ReportFindings" ? parseFindingsReport(shown.rawInput) : null;
   const detail = !isAgentCard && shown.status !== "run" ? toolDetailFor(shown) : null;
   const duration = formatToolDuration(item.durationMs);
   const stepRow: CSSProperties = {
@@ -244,6 +248,7 @@ export function ToolCard({
           )}
         </div>
       </div>
+      {findingsReport && <FindingsReportView report={findingsReport} onOpenFile={onLocalLink} />}
       {visible.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {visible.map((s, i) => {

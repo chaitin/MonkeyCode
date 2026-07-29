@@ -752,6 +752,10 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 .thought-md .md { font-size: 12px; line-height: 1.7; color: var(--t4); }
 .thought-md .md p { margin: 0 0 6px; }
 .thought-md .md > :last-child { margin-bottom: 0; }
+/* 审查发现展开块:同思考块一档的弱化规格 */
+.finding-md .md { font-size: 11.5px; line-height: 1.65; color: var(--t3); }
+.finding-md .md p { margin: 0 0 6px; }
+.finding-md .md > :last-child { margin-bottom: 0; }
 /* 代码块容器:接管 pre 的默认外边距(:first/:last-child 归零规则落在容器上),复制按钮悬停浮现 */
 .mdcode { position: relative; margin: 1em 0; }
 .mdcode pre { margin: 0; }

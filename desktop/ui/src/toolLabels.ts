@@ -30,6 +30,7 @@ const ZH_TOOL_LABELS: Record<string, string> = {
   LSP: "代码分析",
   NotebookEdit: "编辑笔记本",
   RemoteTrigger: "管理远程触发器",
+  ReportFindings: "汇报审查发现",
   SendMessage: "发送协作消息",
   Skill: "调用技能",
   StructuredOutput: "输出结构化结果",
@@ -267,6 +268,11 @@ function structuredTarget(rawTool: string, rawInput: unknown, toolKind?: string,
       return { target: joinedInput(input, ["skill", "name"]), kind: "text" };
     case "SendMessage":
       return { target: joinedInput(input, ["to", "target"]), kind: "text" };
+    case "ReportFindings": {
+      // 流式期间 rawInput 可能还没到,不能把"没数据"渲染成"没问题"
+      if (!Array.isArray(input.findings)) return { target: "", kind: "text" };
+      return { target: input.findings.length ? `${input.findings.length} 项发现` : "未发现问题", kind: "text" };
+    }
   }
 
   switch (toolKind) {
