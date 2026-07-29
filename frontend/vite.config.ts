@@ -93,7 +93,7 @@ export default defineConfig(({ mode, command }) => {
   const proxyBasicAuthPassword = env.PROXY_BASIC_AUTH_PASSWORD?.trim()
   const proxyHeaders: Record<string, string> = {}
   const usesOnlineProxy = command === 'serve' && appEdition === 'online'
-  const proxyTargetUrl = proxyTarget ? new URL(proxyTarget) : undefined
+  const proxyTargetUrl = usesOnlineProxy && proxyTarget ? new URL(proxyTarget) : undefined
   const proxyTargetIsLoopback = Boolean(
     proxyTargetUrl && ['localhost', '127.0.0.1', '[::1]'].includes(proxyTargetUrl.hostname),
   )

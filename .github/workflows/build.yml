@@ -49,6 +49,7 @@ jobs:
           path: _build/dist/
 
   docker:
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     steps:

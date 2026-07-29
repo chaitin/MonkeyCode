@@ -226,3 +226,16 @@ test("online build 忽略仅供开发代理使用的 Basic Auth", async () => {
   assert.equal(getApiProxy(config)?.target, undefined);
   assert.equal(getApiProxy(config)?.headers, undefined);
 });
+
+test("online build 忽略无效的开发代理 TARGET", async () => {
+  const config = await withEnvironment(
+    {
+      VITE_APP_EDITION: "online",
+      TARGET: "invalid-dev-proxy-target",
+      PROXY_BASIC_AUTH_USERNAME: undefined,
+      PROXY_BASIC_AUTH_PASSWORD: undefined,
+    },
+    () => loadOnlineConfig("build"),
+  );
+  assert.equal(getApiProxy(config)?.target, "invalid-dev-proxy-target");
+});
