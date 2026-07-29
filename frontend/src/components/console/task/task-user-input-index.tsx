@@ -1,17 +1,8 @@
 import { Button } from "@/components/ui/button"
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconListSearch, IconX } from "@tabler/icons-react"
+import { IconArrowDown } from "@tabler/icons-react"
 import React from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -33,7 +24,8 @@ export interface TaskUserInputIndexProps {
   scrollToMessage?: (messageId: string, options?: { align?: "start" | "center" | "end" | "auto"; behavior?: ScrollBehavior; highlight?: boolean }) => boolean
   historyHasMore: boolean
   loadMoreHistory: () => Promise<void>
-  presentation?: "desktop" | "mobile"
+  isAtBottom: boolean
+  scrollToBottom: () => void
 }
 
 const PAGE_SIZE = 10
@@ -47,7 +39,8 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
     scrollToMessage,
     historyHasMore,
     loadMoreHistory,
-    presentation = "desktop",
+    isAtBottom,
+    scrollToBottom,
   } = props
   const { t } = useTranslation()
   const historyHasMoreRef = React.useRef(historyHasMore)
@@ -66,8 +59,21 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
   const [initialized, setInitialized] = React.useState(false)
   const loadingRef = React.useRef(false)
   const [expanded, setExpanded] = React.useState(false)
-  const [mobileOpen, setMobileOpen] = React.useState(false)
+  const rootRef = React.useRef<HTMLDivElement | null>(null)
   const [activeUserInputId, setActiveUserInputId] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    if (!expanded) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setExpanded(false)
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown)
+    return () => document.removeEventListener("pointerdown", handlePointerDown)
+  }, [expanded])
 
   const fetchPage = React.useCallback(async (nextCursor?: string) => {
     if (!taskId || loadingRef.current) return
@@ -109,6 +115,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
     setHasMore(false)
     setInitialized(false)
     setActiveUserInputId(null)
+    setExpanded(false)
   }, [taskId])
 
   const mergedEntries = React.useMemo(() => {
@@ -189,7 +196,9 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
       highlight: true,
     }) ?? false
 
-    if (scrollVirtualMessage()) return true
+    if (scrollVirtualMessage()) {
+      return true
+    }
 
     const container = getScrollContainer()
     if (!container) throw new Error("Scroll container unavailable")
@@ -205,7 +214,9 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
           const previousHistoryBoundary = historyBoundaryRef.current
           await loadMoreHistoryRef.current()
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-          if (scrollVirtualMessage()) return true
+          if (scrollVirtualMessage()) {
+            return true
+          }
           target = findTarget()
           if (historyBoundaryRef.current === previousHistoryBoundary) {
             throw new Error("History loading made no progress")
@@ -238,134 +249,55 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
     toast.error(t("taskDetail.userInputIndex.jumpFailed"))
   }, [t])
 
-  const handleMobileJump = React.useCallback(async (entry: UserInputIndexEntry) => {
-    try {
-      if (await handleJump(entry)) {
-        setMobileOpen(false)
-      }
-    } catch {
-      handleJumpError()
-    }
-  }, [handleJump, handleJumpError])
-
-  const handleDesktopJump = React.useCallback((entry: UserInputIndexEntry) => {
+  const handleSelectEntry = React.useCallback((entry: UserInputIndexEntry) => {
+    setExpanded(false)
     void handleJump(entry).catch(handleJumpError)
   }, [handleJump, handleJumpError])
 
-  const renderEntries = (onSelect: (entry: UserInputIndexEntry) => void) => (
-    <>
-      {(jumpingId || hasMore) && (
-        <div className="sticky top-0 z-10 border-b bg-popover/95">
-          {jumpingId && (
-            <div className="flex items-center gap-1.5 px-4 py-2 text-xs text-muted-foreground">
-              <Spinner className="size-3" />
-              {t("taskDetail.userInputIndex.locating")}
-            </div>
-          )}
-          {hasMore && (
-            <div className="p-1.5">
-              <button
-                type="button"
-                onClick={() => fetchPage(cursor ?? undefined)}
-                disabled={loading}
-                className={cn(
-                  "flex w-full items-center justify-center gap-1.5 rounded-md text-sm transition-colors",
-                  presentation === "mobile" ? "h-11" : "h-8",
-                  "text-muted-foreground hover:bg-accent hover:text-popover-foreground",
-                  "disabled:pointer-events-none disabled:opacity-60",
-                )}
-              >
-                {loading && <Spinner className="size-3.5" />}
-                {t("taskDetail.userInputIndex.loadMore")}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      <div className="flex flex-col py-1.5">
-        {mergedEntries.map((entry) => {
-          const isJumping = jumpingId === entry.id
-          return (
-            <button
-              type="button"
-              key={entry.id}
-              onClick={() => onSelect(entry)}
-              disabled={Boolean(jumpingId)}
-              className={cn(
-                "w-full min-w-0 truncate px-4 py-2 text-left text-sm transition-colors",
-                presentation === "mobile" && "min-h-11",
-                "text-popover-foreground/80 hover:bg-accent hover:text-popover-foreground",
-                isJumping && "opacity-50",
-              )}
-            >
-              {isJumping && <Spinner className="mr-1.5 inline size-3" />}
-              {entry.content || "..."}
-            </button>
-          )
-        })}
-        {loading && !hasMore && (
-          <div className="flex justify-center py-2">
-            <Spinner className="size-4" />
-          </div>
-        )}
-      </div>
-    </>
-  )
+  const handleScrollToBottom = React.useCallback(() => {
+    setExpanded(false)
+    scrollToBottom()
+  }, [scrollToBottom])
 
-  if (mergedEntries.length <= 1 && !loading) return null
+  const renderScrollToBottom = () => {
+    if (isAtBottom) return null
 
-  if (presentation === "mobile") {
     return (
-      <Drawer open={mobileOpen} onOpenChange={setMobileOpen}>
-        <DrawerTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="size-11 shrink-0"
-            aria-label={t("taskDetail.userInputIndex.trigger")}
-          >
-            <IconListSearch className="size-4" />
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent className="max-h-[70vh]">
-          <div className="relative">
-            <DrawerHeader className="pr-16 text-left">
-              <DrawerTitle>{t("taskDetail.userInputIndex.title")}</DrawerTitle>
-              <DrawerDescription>{t("taskDetail.userInputIndex.description")}</DrawerDescription>
-            </DrawerHeader>
-            <DrawerClose asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-4 top-4 size-11"
-                aria-label={t("taskDetail.common.close")}
-              >
-                <IconX className="size-4" />
-              </Button>
-            </DrawerClose>
-          </div>
-          <div className="min-h-0 overflow-y-auto border-t">
-            {renderEntries(handleMobileJump)}
-          </div>
-        </DrawerContent>
-      </Drawer>
+      <div className="shrink-0 border-t bg-popover/95 p-1.5">
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-11 w-full gap-1.5 text-muted-foreground hover:text-popover-foreground md:h-8"
+          onClick={handleScrollToBottom}
+        >
+          <IconArrowDown className="size-4" />
+          {t("taskDetail.userInputIndex.scrollToBottom")}
+        </Button>
+      </div>
     )
   }
 
+  if (mergedEntries.length <= 1 && !loading) return null
+
   return (
     <div
+      ref={rootRef}
       className="absolute right-2 top-1/2 z-20 -translate-y-1/2"
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
     >
-      <div className={cn(
-        "flex flex-col items-center gap-[5px] rounded-full border bg-popover/90 p-3 shadow-md backdrop-blur-sm transition-opacity cursor-pointer",
-        expanded ? "opacity-0 pointer-events-none absolute right-0 top-1/2 -translate-y-1/2" : "opacity-60 hover:opacity-100",
-      )}>
+      <button
+        type="button"
+        aria-label={t("taskDetail.userInputIndex.trigger")}
+        aria-expanded={expanded}
+        onClick={() => setExpanded(true)}
+        className={cn(
+          "flex flex-col items-center justify-center gap-[5px] rounded-full border bg-popover/90 p-3 shadow-md backdrop-blur-sm transition-opacity cursor-pointer",
+          expanded ? "opacity-0 pointer-events-none absolute right-0 top-1/2 -translate-y-1/2" : "opacity-60 hover:opacity-100",
+        )}
+      >
         {miniDots.map((dot, index) => (
-          <div
+          <span
             key={dot.key}
             className={cn(
               "size-2 rounded-full transition-colors",
@@ -373,18 +305,73 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
             )}
           />
         ))}
-      </div>
+      </button>
 
       <div
         className={cn(
-          "rounded-xl border bg-popover/95 shadow-xl backdrop-blur-sm transition-all origin-right overflow-y-auto overflow-x-hidden",
+          "flex flex-col rounded-xl border bg-popover/95 shadow-xl backdrop-blur-sm transition-all origin-right overflow-hidden",
           expanded
             ? "scale-100 opacity-100 pointer-events-auto"
             : "scale-95 opacity-0 pointer-events-none absolute right-0 top-1/2 -translate-y-1/2",
         )}
         style={{ maxHeight: "min(480px, 70vh)", width: "280px" }}
       >
-        {renderEntries(handleDesktopJump)}
+        <div className="min-h-0 overflow-y-auto overflow-x-hidden">
+          {(jumpingId || hasMore) && (
+            <div className="sticky top-0 z-10 border-b bg-popover/95">
+              {jumpingId && (
+                <div className="flex items-center gap-1.5 px-4 py-2 text-xs text-muted-foreground">
+                  <Spinner className="size-3" />
+                  {t("taskDetail.userInputIndex.locating")}
+                </div>
+              )}
+              {hasMore && (
+                <div className="p-1.5">
+                  <button
+                    type="button"
+                    onClick={() => fetchPage(cursor ?? undefined)}
+                    disabled={loading}
+                    className={cn(
+                      "flex h-8 w-full items-center justify-center gap-1.5 rounded-md text-sm transition-colors",
+                      "text-muted-foreground hover:bg-accent hover:text-popover-foreground",
+                      "disabled:pointer-events-none disabled:opacity-60",
+                    )}
+                  >
+                    {loading && <Spinner className="size-3.5" />}
+                    {t("taskDetail.userInputIndex.loadMore")}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex flex-col py-1.5">
+            {mergedEntries.map((entry) => {
+              const isJumping = jumpingId === entry.id
+              return (
+                <button
+                  type="button"
+                  key={entry.id}
+                  onClick={() => handleSelectEntry(entry)}
+                  disabled={Boolean(jumpingId)}
+                  className={cn(
+                    "w-full min-w-0 truncate px-4 py-2 text-left text-sm transition-colors",
+                    "text-popover-foreground/80 hover:bg-accent hover:text-popover-foreground",
+                    isJumping && "opacity-50",
+                  )}
+                >
+                  {isJumping && <Spinner className="mr-1.5 inline size-3" />}
+                  {entry.content || "..."}
+                </button>
+              )
+            })}
+            {loading && !hasMore && (
+              <div className="flex justify-center py-2">
+                <Spinner className="size-4" />
+              </div>
+            )}
+          </div>
+        </div>
+        {renderScrollToBottom()}
       </div>
     </div>
   )
