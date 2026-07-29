@@ -75,7 +75,8 @@ export function useRenameDraft(current: string, onRename: (title: string) => voi
 
 /** 视图标题栏:56px 双行,空白区可拖拽窗口(macOS 常规行为)。
  * 几何为本地会话与云端任务两个视图逐像素共用;副标题行整体作 ReactNode
- * 传入(两侧内容与 gap 各异,原样保留)。 */
+ * 传入(两侧内容与 gap 各异,原样保留)。副标题缺席(对话头部)时标题
+ * 垂直居中,收成单行,外框高度不变。 */
 export function ViewHeader({
   title,
   titleTip,
@@ -86,7 +87,7 @@ export function ViewHeader({
   title: ReactNode;
   /** 标题的悬停提示(云端传完整任务名;本地不传) */
   titleTip?: string;
-  subtitle: ReactNode;
+  subtitle?: ReactNode;
   /** 传入即启用「双击标题原地改名」(本地会话;云端任务不可改名,不传) */
   rename?: RenameDraft;
   /** 右侧控件(文件按钮 / ⋯ 菜单) */
@@ -160,8 +161,9 @@ export function HeaderSummary({ summary }: { summary?: string }) {
   );
 }
 
-/** 标题栏「文件」按钮(badge 位:本地放改动计数徽标) */
-export function HeaderFilesButton({ title, onClick, badge }: { title: string; onClick: () => void; badge?: ReactNode }) {
+/** 标题栏「文件」按钮(badge 位:本地放改动计数徽标;对话头部借同款
+ * 皮相放「临时目录」入口,label 可换) */
+export function HeaderFilesButton({ title, label = "文件", onClick, badge }: { title: string; label?: string; onClick: () => void; badge?: ReactNode }) {
   return (
     <button
       className="hv"
@@ -185,7 +187,7 @@ export function HeaderFilesButton({ title, onClick, badge }: { title: string; on
       }}
     >
       <IconFolder size={12} />
-      文件
+      {label}
       {badge}
     </button>
   );

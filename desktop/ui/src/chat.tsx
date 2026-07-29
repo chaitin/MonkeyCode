@@ -30,7 +30,7 @@ import {
   type OutlineEntry,
 } from "./components";
 import { Composer, QueuedChip, RunningBar } from "./composer";
-import { IconArchive, IconChat, IconCheck, IconChevronDown, IconFolder, IconInfo, IconPencil, IconShield, IconTaskDone, IconX } from "./icons";
+import { IconArchive, IconCheck, IconChevronDown, IconFolder, IconInfo, IconPencil, IconShield, IconTaskDone, IconX } from "./icons";
 import logoUrl from "./logo.png";
 import { useUpwardMenuHeight } from "./menuPosition";
 import { useNativeFileDrop } from "./nativeDrop";
@@ -825,24 +825,9 @@ export function ChatView({
         title={meta?.title || (chatMode ? "新会话" : "新任务")}
         rename={meta ? rename : undefined}
         subtitle={
-          chatMode ? (
-            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--t5)", minWidth: 0 }}>
-              <IconChat size={11} color="var(--t5)" />
-              <span style={{ flex: "none" }}>独立会话 · 不关联项目</span>
-              {meta && onRevealWorkdir && (
-                <button
-                  className="hv"
-                  title="在系统文件管理器中打开会话临时目录(会话中产出的文件都在这)"
-                  onClick={onRevealWorkdir}
-                  style={{ display: "flex", alignItems: "center", gap: 4, flex: "none", border: "none", background: "transparent", borderRadius: 5, padding: "1px 6px", fontSize: 11, color: "var(--t5)", cursor: "pointer" }}
-                >
-                  <IconFolder size={11} color="var(--t6)" />
-                  临时目录
-                </button>
-              )}
-              <HeaderSummary summary={meta?.summary} />
-            </span>
-          ) : (
+          // 对话头部单行:与侧栏对话行的单行密度一致,「独立会话」的语境由
+          // 所在空间自明,摘要已是侧栏行主行,这里不再重复
+          chatMode ? undefined : (
             <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--t5)", minWidth: 0 }}>
               <IconFolder size={11} color="var(--t6)" />
               {/* 完整路径退到悬停提示:这一行的横向预算要留给摘要,而路径长起来
@@ -853,6 +838,13 @@ export function ChatView({
           )
         }
       >
+        {chatMode && meta && onRevealWorkdir && (
+          <HeaderFilesButton
+            title="在系统文件管理器中打开会话临时目录(会话中产出的文件都在这)"
+            label="临时目录"
+            onClick={onRevealWorkdir}
+          />
+        )}
         {!chatMode && (
           <HeaderFilesButton
             title="浏览工作区文件(标注本轮改动)"
