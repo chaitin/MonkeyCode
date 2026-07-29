@@ -481,7 +481,12 @@ pub(super) fn extract_upload_paths(content: &str) -> Vec<String> {
         let tail = &rest[i..];
         let end = tail.find(|c: char| c.is_whitespace() || c == ')' || c == '"' || c == ',').unwrap_or(tail.len());
         let p = &tail[..end];
-        if p.len() > ".monkeycode/uploads/".len() && !out.iter().any(|x| x == p) {
+        // 该字段契约是"工具产出图片":docx/json 等附件路径进了 images 会被
+        // UI 塞进 <img> 渲染成裂图(octet-stream 数据 URL 解不出位图)
+        if p.len() > ".monkeycode/uploads/".len()
+            && crate::uploads::is_image_path(p)
+            && !out.iter().any(|x| x == p)
+        {
             out.push(p.to_string());
         }
         rest = &rest[i + end.max(1)..];

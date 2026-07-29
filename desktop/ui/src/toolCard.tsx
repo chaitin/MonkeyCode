@@ -5,6 +5,7 @@ import { MONO } from "./fonts";
 import { IconCheck, IconChevronRight } from "./icons";
 import { Markdown, MarkdownInline } from "./markdown";
 import { PermActions, type PermAnswerFn } from "./promptCards";
+import { isImageFilename } from "./cloudUpload";
 import { frameData } from "./codec";
 import { toolDetailFor, toolResultText } from "./toolDetails";
 import { presentToolCall, toolDisplayName, type ToolTargetKind } from "./toolLabels";
@@ -157,7 +158,9 @@ export function ToolCard({
   // 极端情况下子会话入口缺失(云端只读流/旧 journal),保留按需展开兜底,
   // 但不再默认把整段结果灌进卡片。
   const summary = agentResult && !canOpenChild && showAgentResult ? agentResult : "";
-  const images = uploadUrl && !(agentFinished && canOpenChild) ? (item.images ?? []) : [];
+  // 按扩展名过滤:修复前壳侧把 uploads 下所有路径(docx/json/.gitignore)
+  // 都当图片落进 images 帧,老 journal 回放时这些路径进 <img> 就是裂图
+  const images = uploadUrl && !(agentFinished && canOpenChild) ? (item.images ?? []).filter(isImageFilename) : [];
   // 动作取标题，目标优先取完整 rawInput；旧 journal 自动回退标题。
   const presentation = presentToolCall(item.title, item.rawInput, { toolKind: item.toolKind, meta: item._meta });
   const fullTarget = presentation.target;

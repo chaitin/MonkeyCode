@@ -1495,6 +1495,20 @@ fn structured_tool_result_and_agent_result() {
     );
 }
 
+/// tool_result 里的 uploads 路径只有图片扩展名才进 images 帧:字段契约是
+/// "工具产出图片",docx/json/.gitignore 混进去会被 UI 塞进 <img> 渲染成裂图
+/// (壳回读非图片是 application/octet-stream 数据 URL,解不出位图)。
+#[test]
+fn upload_path_extraction_keeps_only_images() {
+    let content = "读取 .monkeycode/uploads/合同.docx 与 .monkeycode/uploads/latest.json,\
+                   截图 .monkeycode/uploads/browser-1.png (.monkeycode/uploads/cat.JPG) \
+                   忽略 .monkeycode/uploads/.gitignore 与重复 .monkeycode/uploads/browser-1.png";
+    assert_eq!(
+        crate::driver::normalize::extract_upload_paths(content),
+        [".monkeycode/uploads/browser-1.png", ".monkeycode/uploads/cat.JPG"]
+    );
+}
+
 /// 无 parent_session_id 戳记的子代理事件不再猜测认领(旧启发式按
 /// "运行中且持有未闭合 Agent 工具的会话"猜,并发多 Agent 会挂错父卡):
 /// 未知会话 + 无戳记 → 丢弃;带戳记 → 精确认领。

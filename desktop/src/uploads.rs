@@ -70,8 +70,18 @@ fn image_mime(path: &Path) -> Option<&'static str> {
         "jpg" | "jpeg" => Some("image/jpeg"),
         "gif" => Some("image/gif"),
         "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        "svg" => Some("image/svg+xml"),
+        "avif" => Some("image/avif"),
         _ => None,
     }
+}
+
+/// 路径按扩展名判定能否当图片内联(<img> 渲染)。与 image_mime 同一张表,
+/// 也是 UI isImageFilename 的对齐口径:三层不一致时非图片会以
+/// application/octet-stream 数据 URL 塞进 <img>,呈现为裂图。
+pub(crate) fn is_image_path(path: &str) -> bool {
+    image_mime(Path::new(path)).is_some()
 }
 
 /// 读取拖入窗口的本地文件(Linux 壳的原生拖放只给路径,拿不到内容):
@@ -197,7 +207,7 @@ pub fn read_data_url(
     let mime = match image_mime(&p) {
         Some(m) => m,
         None if in_uploads => "application/octet-stream",
-        None => return Err("仅支持工作区内的 PNG、JPEG、GIF 或 WebP 图片".into()),
+        None => return Err("仅支持工作区内的常见图片格式(PNG/JPEG/GIF/WebP/BMP/SVG/AVIF)".into()),
     };
     let meta = std::fs::metadata(&p).map_err(|e| format!("读取失败: {e}"))?;
     if !meta.is_file() {
