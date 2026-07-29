@@ -325,11 +325,11 @@ export function ModelPicker({
 /** 思考深度档位(会话级),经引擎 session/setThinking RPC 生效(见
  * session.rs)。composer 不设抽象的「默认」项:未显式选档时直接显示
  * 模型设置里配置的档位(未配置 = 关闭),选啥就是啥。 */
-export const THINK_LEVELS: { value: string; label: string }[] = [
-  { value: "off", label: "关闭" },
-  { value: "low", label: "低" },
-  { value: "medium", label: "中" },
-  { value: "high", label: "高" },
+export const THINK_LEVELS: { value: string; label: string; hint: string }[] = [
+  { value: "off", label: "关闭", hint: "不思考,响应最快" },
+  { value: "low", label: "低", hint: "简单任务,快速" },
+  { value: "medium", label: "中", hint: "日常任务,均衡" },
+  { value: "high", label: "高", hint: "疑难任务,深入但更慢" },
 ];
 
 export const thinkLabelOf = (v: string) => THINK_LEVELS.find((l) => l.value === v)?.label ?? "关闭";
@@ -371,6 +371,7 @@ export function ThinkPicker({
                 key={l.value}
                 label={l.label}
                 selected={l.value === current}
+                hint={l.hint}
                 onClick={() => {
                   setOpen(false);
                   onPick(l.value);
