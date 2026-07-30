@@ -49,7 +49,13 @@ function HashAnchorScroller() {
   React.useEffect(() => {
     if (!location.hash) return
 
-    const targetId = decodeURIComponent(location.hash.slice(1))
+    let targetId = location.hash.slice(1)
+    try {
+      targetId = decodeURIComponent(targetId)
+    } catch {
+      return
+    }
+
     const frameId = window.requestAnimationFrame(() => {
       document.getElementById(targetId)?.scrollIntoView({ block: "start" })
     })
