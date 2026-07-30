@@ -1,5 +1,5 @@
-// 桥接协议的 TS 镜像。唯一权威定义在 agent/internal/browser/protocol.go,
-// 本文件只做常量与类型的逐字对齐,改协议必须先改 Go 侧。
+// 桥接协议的 TS 镜像。唯一权威定义在 desktop/src/browser/protocol.rs,
+// 本文件只做常量与类型的逐字对齐,改协议必须先改内核侧。
 export const PROTO_VERSION = 1;
 
 // 内核→扩展的请求 op

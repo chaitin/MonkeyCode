@@ -22,6 +22,8 @@ use crate::util::LockExt;
 static TEMP_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 const DEFAULT_MODEL_CONTEXT_WINDOW: i64 = 200_000;
 const DEFAULT_MODEL_MAX_OUTPUT: i64 = 32_768;
+/// 思考深度产品默认档:模型未配置(含旧版/未知档位)时物化此档。
+const DEFAULT_MODEL_THINK: &str = "low";
 
 /// 权威配置的进程内事务锁。引擎重启有自己更粗的 EngineApply 锁；这里的锁
 /// 只覆盖短暂的磁盘事务，桌宠偏好保存不会因 Agent 优雅退出而卡住 UI 线程。
@@ -464,15 +466,15 @@ fn write_ohmyagent_config(
             .filter(|&n| n > 0)
             .unwrap_or(DEFAULT_MODEL_MAX_OUTPUT);
         entry["max_output"] = serde_json::json!(max_output);
-        // 思考深度:条目按模型设置的 think 默认档物化(缺省关闭);会话级
-        // 调整走引擎 session/setThinking RPC(session.rs),不再物化变体别名。
-        let think = m
-            .get("think")
-            .and_then(|v| v.as_str())
-            .filter(|s| matches!(*s, "low" | "medium" | "high"));
-        if let Some(effort) = think {
-            entry["thinking"] = thinking_config(effort);
-        }
+        // 思考深度:条目按模型设置的 think 档物化,未配置/未知档位落产品
+        // 默认「低」;显式 off 写 enabled:false(与 vision 同理,显式写入
+        // 压过引擎目录里已知 model id 的默认)。会话级调整走引擎
+        // session/setThinking RPC(session.rs),不再物化变体别名。
+        entry["thinking"] = match m.get("think").and_then(|v| v.as_str()).unwrap_or("") {
+            "off" => serde_json::json!({ "enabled": false }),
+            effort @ ("low" | "medium" | "high") => thinking_config(effort),
+            _ => thinking_config(DEFAULT_MODEL_THINK),
+        };
         models_out.insert(name.clone(), entry);
         let is_default = m.get("default").and_then(|v| v.as_bool()).unwrap_or(false);
         if default_model.is_empty() || is_default {
@@ -788,7 +790,8 @@ mod tests {
     }
 
     /// 最大输出/思考深度的物化:max_output 显式配置优先,缺省写产品默认
-    /// 32768;think 物化为引擎统一 {enabled,effort},未知档位不透传。
+    /// 32768;think 物化为引擎统一 {enabled,effort},未配置/未知档位落产品
+    /// 默认「低」,显式 off 写 enabled:false。
     #[test]
     fn ohmyagent_config_materializes_max_output_and_thinking() {
         let dir = test_dir("model-max-output-thinking");
@@ -844,6 +847,14 @@ mod tests {
                     "api_key": "k",
                     "model": "m",
                     "think": "ultra"
+                },
+                {
+                    "name": "think-off",
+                    "provider": "openai",
+                    "base_url": "https://example.invalid",
+                    "api_key": "k",
+                    "model": "m",
+                    "think": "off"
                 }
             ]),
             ..Default::default()
@@ -854,9 +865,12 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.join("settings.json")).unwrap()).unwrap();
         let models = &settings["models"];
 
-        // 未配置:max_output 落产品默认 32768,thinking 不落盘
+        // 未配置:max_output 落产品默认 32768,thinking 落产品默认「低」
         assert_eq!(models["plain"]["max_output"], 32768);
-        assert!(models["plain"].get("thinking").is_none());
+        assert_eq!(
+            models["plain"]["thinking"],
+            serde_json::json!({ "enabled": true, "effort": "low" })
+        );
 
         assert_eq!(models["openai-tuned"]["max_output"], 32768);
         assert_eq!(
@@ -881,8 +895,13 @@ mod tests {
         );
         assert_eq!(models["claude-tiny-max"]["max_output"], 1500);
 
-        // 未知档位不透传(防旧版/实验值造成引擎侧报错)
-        assert!(models["bad-think"].get("thinking").is_none());
+        // 未知档位不透传原值(防旧版/实验值造成引擎侧报错),落产品默认「低」
+        assert_eq!(
+            models["bad-think"]["thinking"],
+            serde_json::json!({ "enabled": true, "effort": "low" })
+        );
+        // 显式关闭:enabled:false 显式写入,压过引擎目录里的模型默认
+        assert_eq!(models["think-off"]["thinking"], serde_json::json!({ "enabled": false }));
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -313,12 +313,16 @@ export default function App() {
   sessionIdRef.current = session.id;
   const notifyRef = useRef(session.notify);
   notifyRef.current = session.notify;
+  const deliverQueuedRef = useRef(session.deliverQueued);
+  deliverQueuedRef.current = session.deliverQueued;
   const openNoticeSessionRef = useRef<(id: string) => Promise<void>>(async () => {});
   useEffect(
     () =>
       subscribeEvents((e) => {
         if (e.type !== "session-status" && e.type !== "session-ask" && e.type !== "session-summary") return;
         void refreshSessions(); // waiting_ask/status/summary 都在列表快照里,任一事件都重拉
+        // 后台会话轮结束:补投其暂存的排队消息(当前会话由 flushQueued 负责,核心内自甄别)
+        if (e.type === "session-status" && e.status) deliverQueuedRef.current(e.id, e.status);
         // 摘要是模型异步吐出来的,与用户的等待无关:只刷列表,不进提醒/未读
         if (e.type === "session-summary") return;
         if (e.id === sessionIdRef.current) return;

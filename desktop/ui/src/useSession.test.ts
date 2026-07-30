@@ -549,6 +549,96 @@ describe("本地会话核心:composer(排队与附件)", () => {
     expect(out.atts.map((a) => a.name)).toEqual(["keep.png"]); // 切回恢复
   });
 
+  it("后台会话轮结束(session-status 事件):暂存的排队消息免连接补投", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("后台跑完就发");
+    core.open("s2");
+    await settleOpen(2);
+    expect(userInputs()).toEqual([]);
+
+    // 后台 s1 的轮结束:壳广播 session-status,App 转 deliverQueued
+    core.deliverQueued("s1", "idle");
+    await vi.waitFor(() => expect(userInputs()).toEqual(["后台跑完就发"]));
+    // 成功提示在回执微任务里外显,同样要等
+    await vi.waitFor(() => expect(out.notices.some((n) => n.includes("排队消息已发出"))).toBe(true));
+
+    // 暂存已清:切回没有排队 chip,后续轮末也不会重复投递
+    core.open("s1");
+    await settleOpen(3);
+    expect(out.queued).toBe(null);
+    pushFrames("s1", [frame("task-ended")]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(userInputs()).toEqual(["后台跑完就发"]);
+  });
+
+  it("deliverQueued 甄别:running 不投、无暂存不投、当前会话让位给 flushQueued", async () => {
+    const { core } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("只该发一次");
+    core.open("s2");
+    await settleOpen(2);
+
+    core.deliverQueued("s1", "running"); // 轮未结束:不投
+    core.deliverQueued("s3", "idle"); // 无暂存:不投
+    await new Promise((r) => setTimeout(r, 0));
+    expect(userInputs()).toEqual([]);
+
+    // 切回 s1:暂存条目仍挂在 map 里(open 恢复不删条目),此时轮末的
+    // session-status 事件到达——当前会话必须让位,否则与 flushQueued 双发
+    replay = [frame("task-started")];
+    core.open("s1");
+    await settleOpen(3);
+    core.deliverQueued("s1", "idle");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(userInputs()).toEqual([]);
+
+    pushFrames("s1", [frame("task-ended")]);
+    await vi.waitFor(() => expect(userInputs()).toEqual(["只该发一次"]));
+  });
+
+  it("补投失败(引擎未就绪/恰好又开跑):静默回栈,切回仍可见", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("投不出去先留着");
+    core.open("s2");
+    await settleOpen(2);
+
+    sendFail = true;
+    core.deliverQueued("s1", "idle");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(userInputs()).toEqual([]);
+    expect(out.notices).toEqual([]); // 失败不打扰:按排队语义等下个时机
+
+    sendFail = false;
+    core.open("s1");
+    expect(out.queued).toBe("投不出去先留着");
+  });
+
+  it("补投在途时用户切进该会话:失败内容回到活动队列槽,不落死暂存", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("在途切入");
+    core.open("s2");
+    await settleOpen(2);
+
+    let release!: () => void;
+    sendGate = new Promise<void>((r) => (release = r));
+    sendFail = true;
+    core.deliverQueued("s1", "idle"); // 上行挂起在途
+    core.open("s1"); // 暂存已被乐观清掉:恢复不到排队
+    expect(out.queued).toBe(null);
+    await settleOpen(3);
+
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(out.queued).toBe("在途切入"); // 失败回到活动槽,chip 重新可见
+  });
+
   it("直发失败的回执落在切会话之后:不把新会话的状态行打成未连接", async () => {
     const { core, out } = makeCore();
     await openAndSettle(core);

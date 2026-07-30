@@ -301,7 +301,7 @@ const NAV: { key: SectionKey; label: string; icon: (p: { size?: number; color?: 
 ];
 
 // 高级选项折叠态摘要:配置过的项都露出来,免得"改过但收起就不可见"
-const THINK_LABEL: Record<string, string> = { low: "低", medium: "中", high: "高" };
+const THINK_LABEL: Record<string, string> = { off: "关", low: "低", medium: "中", high: "高" };
 const advSummary = (m: HostModel): string => {
   const parts = [
     m.context_window ? `上下文窗口 ${m.context_window.toLocaleString()}` : "",
@@ -782,10 +782,11 @@ export function SettingsView({
             <select
               style={select}
               value={m.think ?? ""}
-              title="推理深度(effort),内核按协议转译:openai 系发 reasoning_effort,anthropic 走 adaptive 思考。仅支持思考的模型有效,网关拒绝该参数时改回关闭。此为新会话默认档,composer 里可随会话调整"
+              title="推理深度(effort),内核按协议转译:openai 系发 reasoning_effort,anthropic 走 adaptive 思考。仅支持思考的模型有效,网关拒绝该参数时改回关闭。未配置按产品默认「低」;此为新会话默认档,composer 里可随会话调整"
               onChange={(e) => patchModel(i, { think: e.target.value || undefined })}
             >
-              <option value="">关闭(默认)</option>
+              <option value="">默认(低)</option>
+              <option value="off">关闭</option>
               <option value="low">低</option>
               <option value="medium">中</option>
               <option value="high">高</option>

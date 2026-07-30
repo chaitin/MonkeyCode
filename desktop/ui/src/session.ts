@@ -74,6 +74,18 @@ export interface ConnHandlers {
   onStatus(text: string, connected: boolean): void;
 }
 
+/** 免连接上行:给后台会话(本客户端未开连接)补投排队消息用。内核按 id
+ * 寻址会话,不依赖 opened;成败返回布尔,失败不外显(调用方按排队语义
+ * 回栈重试),不能像 Conn.send 那样把失败喊到当前会话的状态行上。 */
+export async function sessionSend(id: string, ftype: string, payload: unknown): Promise<boolean> {
+  try {
+    await invoke("session_send", { id, ftype, payload });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** 往前翻页:cursor 之前的最多 limit 轮(形状与云端 mcTaskRounds 一致) */
 export const sessionHistory = (id: string, cursor: number, limit = 1) =>
   invoke<{ frames?: Frame[]; next_cursor?: number; has_more?: boolean }>("session_history", {

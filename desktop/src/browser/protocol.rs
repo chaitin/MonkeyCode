@@ -1,4 +1,5 @@
-// 浏览器桥接协议帧定义。契约对齐 agent/internal/browser/protocol.go。
+// 浏览器桥接协议帧定义。本文件是桥接协议的唯一权威定义,
+// browser-extension/src/protocol.ts 为其 TS 镜像。
 //
 // 架构:扩展是"带鉴权的 chrome.debugger 哑代理 + 标签页授权 UI",一切浏览器
 // 语义(快照、ref、坐标点击、键序列)在内核侧实现。
@@ -11,7 +12,7 @@
 //	扩展→内核 应答  {"id":N,"result":{...}} | {"id":N,"error":{"code","message"}}
 //	扩展→内核 事件  {"event":"cdp|tab.updated|tab.removed|detached|handoff|pong","tabId":T,...}
 
-// 协议面完整保留(与 Go/扩展side 对表),未用到的常量不裁剪。
+// 协议面完整保留(与扩展侧对表),未用到的常量不裁剪。
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
