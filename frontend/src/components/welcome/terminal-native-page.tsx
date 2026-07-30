@@ -295,7 +295,7 @@ function SectionShell({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="mx-auto max-w-[1280px] px-5 py-14 sm:px-8 sm:py-20">
+    <section id={id} className="mx-auto max-w-[1280px] px-5 py-14 sm:px-8 sm:py-20 scroll-mt-20">
       <div className="mb-3 flex items-center gap-3">
         <span className="text-[11px] tracking-[0.22em] text-[var(--a-accent)]">{index}</span>
         <span className="text-[11px] tracking-[0.22em] text-[var(--a-fg-mute)]">// {label}</span>
