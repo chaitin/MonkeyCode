@@ -2,6 +2,8 @@ package llmproxy
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
+	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
 	"github.com/chaitin/MonkeyCode/backend/pkg/modelusage"
 )
 
@@ -136,6 +139,77 @@ func (s *usageRecorderStub) waitForEvents(t *testing.T, want int) []modelusage.E
 			t.Fatalf("usage events = %d, want %d", len(events), want)
 		case <-ticker.C:
 		}
+	}
+}
+
+func TestProxyRejectsInvalidOhMyAgentSignature(t *testing.T) {
+	upstreamCalls := 0
+	var upstreamSignature string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		upstreamSignature = r.Header.Get(ohMyAgentSignatureHeader)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_test","choices":[]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	client := newProxyTestDB(t)
+	key, _, _, modelID := seedProxyModelWithTask(t, client, upstream.URL+"/v1")
+	modelKey, err := client.ModelApiKey.Query().Where(modelapikey.APIKey(key)).Only(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ModelApiKey.UpdateOneID(modelKey.ID).
+		SetKind(modelapikey.KindOhmyagent).
+		SetSigningSecret(testSigningSecret).
+		ClearModelID().
+		ClearVirtualmachineID().
+		Exec(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	proxy := NewProxy(client, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := proxy.resolveModel(context.Background(), key, modelID); !errors.Is(err, errModelForbidden) {
+		t.Fatalf("UUID model selector error = %v, want errModelForbidden", err)
+	}
+
+	payload := map[string]any{
+		"model": "gpt-4o",
+		"messages": []map[string]any{
+			{"role": "system", "content": testOhMyAgentPrompt},
+			{"role": "system", "content": "dynamic"},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(string(body)))
+	validReq.Header.Set("Authorization", "Bearer "+key)
+	validReq.Header.Set(ohMyAgentSignatureHeader, testOhMyAgentSignature(testOhMyAgentPrompt))
+	validRec := httptest.NewRecorder()
+	proxy.ServeHTTP(validRec, validReq)
+	if validRec.Code != http.StatusOK {
+		t.Fatalf("valid prompt status = %d, body = %s", validRec.Code, validRec.Body.String())
+	}
+	if upstreamSignature != "" {
+		t.Fatalf("signature was forwarded upstream: %q", upstreamSignature)
+	}
+
+	payload["messages"] = []map[string]any{{"role": "system", "content": "modified"}}
+	body, err = json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(string(body)))
+	invalidReq.Header.Set("Authorization", "Bearer "+key)
+	invalidReq.Header.Set(ohMyAgentSignatureHeader, testOhMyAgentSignature(testOhMyAgentPrompt))
+	invalidRec := httptest.NewRecorder()
+	proxy.ServeHTTP(invalidRec, invalidReq)
+	if invalidRec.Code != http.StatusForbidden {
+		t.Fatalf("invalid prompt status = %d, want %d", invalidRec.Code, http.StatusForbidden)
+	}
+	if upstreamCalls != 1 {
+		t.Fatalf("upstream calls = %d, want 1", upstreamCalls)
 	}
 }
 

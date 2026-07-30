@@ -18,12 +18,16 @@ type ModelUsecase interface {
 	Check(ctx context.Context, uid, id uuid.UUID) (*CheckModelResp, error)
 	CheckByConfig(ctx context.Context, req *CheckByConfigReq) (*CheckModelResp, error)
 	GetProviderModelList(ctx context.Context, req *GetProviderModelListReq) (*GetProviderModelListResp, error)
+	CreateOhMyAgentAPIKey(ctx context.Context, uid uuid.UUID) (*CreateOhMyAgentAPIKeyResp, error)
+	DeleteOhMyAgentAPIKey(ctx context.Context, uid, id uuid.UUID) error
 }
 
 // ModelRepo 模型配置数据仓库接口
 type ModelRepo interface {
 	Get(ctx context.Context, uid, id uuid.UUID) (*db.Model, error)
 	CreateRuntimeAPIKey(ctx context.Context, uid, modelID uuid.UUID, vmID string) (string, error)
+	CreateOhMyAgentAPIKey(ctx context.Context, uid uuid.UUID) (*db.ModelApiKey, error)
+	DeleteOhMyAgentAPIKey(ctx context.Context, uid, id uuid.UUID) error
 	List(ctx context.Context, uid uuid.UUID, cursor CursorReq) ([]*db.Model, *db.Cursor, error)
 	Create(ctx context.Context, uid uuid.UUID, req *CreateModelReq) (*db.Model, error)
 	Delete(ctx context.Context, uid, id uuid.UUID) error
@@ -215,6 +219,19 @@ type CreateModelReq struct {
 // CreateModelResp 创建模型配置响应
 type CreateModelResp struct {
 	ID uuid.UUID `json:"id"`
+}
+
+// CreateOhMyAgentAPIKeyResp 是创建模型无关代理 Key 的响应。APIKey 和 SigningSecret 仅在创建时返回。
+type CreateOhMyAgentAPIKeyResp struct {
+	ID            uuid.UUID `json:"id"`
+	APIKey        string    `json:"api_key"`
+	SigningSecret string    `json:"signing_secret"`
+	CreatedAt     int64     `json:"created_at"`
+}
+
+// DeleteOhMyAgentAPIKeyReq 删除当前用户的 OhMyAgent 代理 Key。
+type DeleteOhMyAgentAPIKeyReq struct {
+	ID uuid.UUID `param:"id" validate:"required"`
 }
 
 // DeleteModelConfigReq 删除模型配置请求

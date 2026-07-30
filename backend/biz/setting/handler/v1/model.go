@@ -43,7 +43,58 @@ func NewModelHandler(i *do.Injector) (*ModelHandler, error) {
 	v1.GET("/:id/health-check", web.BindHandler(h.CheckByID))
 	v1.POST("/health-check", web.BindHandler(h.CheckByConfig))
 
+	apiKeys := w.Group("/api/v1/users/ohmyagent/api-keys")
+	apiKeys.Use(auth.Auth(), targetActive.TargetActive())
+	apiKeys.POST("", web.BaseHandler(h.CreateOhMyAgentAPIKey))
+	apiKeys.DELETE("/:id", web.BindHandler(h.DeleteOhMyAgentAPIKey))
+
 	return h, nil
+}
+
+// CreateOhMyAgentAPIKey 创建模型无关的 OhMyAgent 代理 Key。
+//
+// Key 不绑定模型或任务；客户端应把每次代理请求的 model 设置为模型配置 ID。
+// 明文 api_key 仅在本接口响应中返回，调用方应立即安全保存。
+//
+//	@Summary		创建 OhMyAgent API Key
+//	@Description	创建当前用户的模型无关 OhMyAgent 代理 Key。请求无需模型参数；使用时在 LLM 请求的 model 字段传模型配置 ID。API Key 与签名 Secret 仅在创建响应中返回。
+//	@Tags			【用户】OhMyAgent
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Success		200	{object}	web.Resp{data=domain.CreateOhMyAgentAPIKeyResp}	"成功"
+//	@Failure		401	{object}	web.Resp										"未授权"
+//	@Failure		500	{object}	web.Resp										"服务器内部错误"
+//	@Router			/api/v1/users/ohmyagent/api-keys [post]
+func (h *ModelHandler) CreateOhMyAgentAPIKey(c *web.Context) error {
+	user := middleware.GetUser(c)
+	resp, err := h.usecase.CreateOhMyAgentAPIKey(c.Request().Context(), user.ID)
+	if err != nil {
+		h.logger.ErrorContext(c.Request().Context(), "failed to create ohmyagent api key", "error", err, "user_id", user.ID)
+		return errcode.ErrDatabaseOperation.Wrap(err)
+	}
+	return c.Success(resp)
+}
+
+// DeleteOhMyAgentAPIKey 删除当前用户的 OhMyAgent 代理 Key。
+//
+//	@Summary		删除 OhMyAgent API Key
+//	@Description	按 Key ID 删除当前用户自己的 OhMyAgent 代理 Key；不能删除 runtime Key 或其他用户的 Key。
+//	@Tags			【用户】OhMyAgent
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id	path		string		true	"创建接口返回的 Key ID"
+//	@Success		200	{object}	web.Resp{}	"成功"
+//	@Failure		400	{object}	web.Resp	"请求参数错误"
+//	@Failure		401	{object}	web.Resp	"未授权"
+//	@Failure		500	{object}	web.Resp	"服务器内部错误"
+//	@Router			/api/v1/users/ohmyagent/api-keys/{id} [delete]
+func (h *ModelHandler) DeleteOhMyAgentAPIKey(c *web.Context, req domain.DeleteOhMyAgentAPIKeyReq) error {
+	user := middleware.GetUser(c)
+	if err := h.usecase.DeleteOhMyAgentAPIKey(c.Request().Context(), user.ID, req.ID); err != nil {
+		h.logger.ErrorContext(c.Request().Context(), "failed to delete ohmyagent api key", "error", err, "user_id", user.ID, "key_id", req.ID)
+		return errcode.ErrDatabaseOperation.Wrap(err)
+	}
+	return c.Success(nil)
 }
 
 // List 获取当前用户的模型配置列表

@@ -65,6 +65,12 @@ func (_u *ModelApiKeyUpdate) SetNillableModelID(v *uuid.UUID) *ModelApiKeyUpdate
 	return _u
 }
 
+// ClearModelID clears the value of the "model_id" field.
+func (_u *ModelApiKeyUpdate) ClearModelID() *ModelApiKeyUpdate {
+	_u.mutation.ClearModelID()
+	return _u
+}
+
 // SetUserID sets the "user_id" field.
 func (_u *ModelApiKeyUpdate) SetUserID(v uuid.UUID) *ModelApiKeyUpdate {
 	_u.mutation.SetUserID(v)
@@ -75,6 +81,20 @@ func (_u *ModelApiKeyUpdate) SetUserID(v uuid.UUID) *ModelApiKeyUpdate {
 func (_u *ModelApiKeyUpdate) SetNillableUserID(v *uuid.UUID) *ModelApiKeyUpdate {
 	if v != nil {
 		_u.SetUserID(*v)
+	}
+	return _u
+}
+
+// SetKind sets the "kind" field.
+func (_u *ModelApiKeyUpdate) SetKind(v modelapikey.Kind) *ModelApiKeyUpdate {
+	_u.mutation.SetKind(v)
+	return _u
+}
+
+// SetNillableKind sets the "kind" field if the given value is not nil.
+func (_u *ModelApiKeyUpdate) SetNillableKind(v *modelapikey.Kind) *ModelApiKeyUpdate {
+	if v != nil {
+		_u.SetKind(*v)
 	}
 	return _u
 }
@@ -109,6 +129,20 @@ func (_u *ModelApiKeyUpdate) SetAPIKey(v string) *ModelApiKeyUpdate {
 func (_u *ModelApiKeyUpdate) SetNillableAPIKey(v *string) *ModelApiKeyUpdate {
 	if v != nil {
 		_u.SetAPIKey(*v)
+	}
+	return _u
+}
+
+// SetSigningSecret sets the "signing_secret" field.
+func (_u *ModelApiKeyUpdate) SetSigningSecret(v string) *ModelApiKeyUpdate {
+	_u.mutation.SetSigningSecret(v)
+	return _u
+}
+
+// SetNillableSigningSecret sets the "signing_secret" field if the given value is not nil.
+func (_u *ModelApiKeyUpdate) SetNillableSigningSecret(v *string) *ModelApiKeyUpdate {
+	if v != nil {
+		_u.SetSigningSecret(*v)
 	}
 	return _u
 }
@@ -172,13 +206,15 @@ func (_u *ModelApiKeyUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *ModelApiKeyUpdate) check() error {
+	if v, ok := _u.mutation.Kind(); ok {
+		if err := modelapikey.KindValidator(v); err != nil {
+			return &ValidationError{Name: "kind", err: fmt.Errorf(`db: validator failed for field "ModelApiKey.kind": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.APIKey(); ok {
 		if err := modelapikey.APIKeyValidator(v); err != nil {
 			return &ValidationError{Name: "api_key", err: fmt.Errorf(`db: validator failed for field "ModelApiKey.api_key": %w`, err)}
 		}
-	}
-	if _u.mutation.ModelCleared() && len(_u.mutation.ModelIDs()) > 0 {
-		return errors.New(`db: clearing a required unique edge "ModelApiKey.model"`)
 	}
 	return nil
 }
@@ -210,6 +246,9 @@ func (_u *ModelApiKeyUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.UserID(); ok {
 		_spec.SetField(modelapikey.FieldUserID, field.TypeUUID, value)
 	}
+	if value, ok := _u.mutation.Kind(); ok {
+		_spec.SetField(modelapikey.FieldKind, field.TypeEnum, value)
+	}
 	if value, ok := _u.mutation.VirtualmachineID(); ok {
 		_spec.SetField(modelapikey.FieldVirtualmachineID, field.TypeString, value)
 	}
@@ -218,6 +257,9 @@ func (_u *ModelApiKeyUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.APIKey(); ok {
 		_spec.SetField(modelapikey.FieldAPIKey, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SigningSecret(); ok {
+		_spec.SetField(modelapikey.FieldSigningSecret, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(modelapikey.FieldCreatedAt, field.TypeTime, value)
@@ -307,6 +349,12 @@ func (_u *ModelApiKeyUpdateOne) SetNillableModelID(v *uuid.UUID) *ModelApiKeyUpd
 	return _u
 }
 
+// ClearModelID clears the value of the "model_id" field.
+func (_u *ModelApiKeyUpdateOne) ClearModelID() *ModelApiKeyUpdateOne {
+	_u.mutation.ClearModelID()
+	return _u
+}
+
 // SetUserID sets the "user_id" field.
 func (_u *ModelApiKeyUpdateOne) SetUserID(v uuid.UUID) *ModelApiKeyUpdateOne {
 	_u.mutation.SetUserID(v)
@@ -317,6 +365,20 @@ func (_u *ModelApiKeyUpdateOne) SetUserID(v uuid.UUID) *ModelApiKeyUpdateOne {
 func (_u *ModelApiKeyUpdateOne) SetNillableUserID(v *uuid.UUID) *ModelApiKeyUpdateOne {
 	if v != nil {
 		_u.SetUserID(*v)
+	}
+	return _u
+}
+
+// SetKind sets the "kind" field.
+func (_u *ModelApiKeyUpdateOne) SetKind(v modelapikey.Kind) *ModelApiKeyUpdateOne {
+	_u.mutation.SetKind(v)
+	return _u
+}
+
+// SetNillableKind sets the "kind" field if the given value is not nil.
+func (_u *ModelApiKeyUpdateOne) SetNillableKind(v *modelapikey.Kind) *ModelApiKeyUpdateOne {
+	if v != nil {
+		_u.SetKind(*v)
 	}
 	return _u
 }
@@ -351,6 +413,20 @@ func (_u *ModelApiKeyUpdateOne) SetAPIKey(v string) *ModelApiKeyUpdateOne {
 func (_u *ModelApiKeyUpdateOne) SetNillableAPIKey(v *string) *ModelApiKeyUpdateOne {
 	if v != nil {
 		_u.SetAPIKey(*v)
+	}
+	return _u
+}
+
+// SetSigningSecret sets the "signing_secret" field.
+func (_u *ModelApiKeyUpdateOne) SetSigningSecret(v string) *ModelApiKeyUpdateOne {
+	_u.mutation.SetSigningSecret(v)
+	return _u
+}
+
+// SetNillableSigningSecret sets the "signing_secret" field if the given value is not nil.
+func (_u *ModelApiKeyUpdateOne) SetNillableSigningSecret(v *string) *ModelApiKeyUpdateOne {
+	if v != nil {
+		_u.SetSigningSecret(*v)
 	}
 	return _u
 }
@@ -427,13 +503,15 @@ func (_u *ModelApiKeyUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *ModelApiKeyUpdateOne) check() error {
+	if v, ok := _u.mutation.Kind(); ok {
+		if err := modelapikey.KindValidator(v); err != nil {
+			return &ValidationError{Name: "kind", err: fmt.Errorf(`db: validator failed for field "ModelApiKey.kind": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.APIKey(); ok {
 		if err := modelapikey.APIKeyValidator(v); err != nil {
 			return &ValidationError{Name: "api_key", err: fmt.Errorf(`db: validator failed for field "ModelApiKey.api_key": %w`, err)}
 		}
-	}
-	if _u.mutation.ModelCleared() && len(_u.mutation.ModelIDs()) > 0 {
-		return errors.New(`db: clearing a required unique edge "ModelApiKey.model"`)
 	}
 	return nil
 }
@@ -482,6 +560,9 @@ func (_u *ModelApiKeyUpdateOne) sqlSave(ctx context.Context) (_node *ModelApiKey
 	if value, ok := _u.mutation.UserID(); ok {
 		_spec.SetField(modelapikey.FieldUserID, field.TypeUUID, value)
 	}
+	if value, ok := _u.mutation.Kind(); ok {
+		_spec.SetField(modelapikey.FieldKind, field.TypeEnum, value)
+	}
 	if value, ok := _u.mutation.VirtualmachineID(); ok {
 		_spec.SetField(modelapikey.FieldVirtualmachineID, field.TypeString, value)
 	}
@@ -490,6 +571,9 @@ func (_u *ModelApiKeyUpdateOne) sqlSave(ctx context.Context) (_node *ModelApiKey
 	}
 	if value, ok := _u.mutation.APIKey(); ok {
 		_spec.SetField(modelapikey.FieldAPIKey, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SigningSecret(); ok {
+		_spec.SetField(modelapikey.FieldSigningSecret, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(modelapikey.FieldCreatedAt, field.TypeTime, value)

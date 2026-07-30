@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -255,6 +256,34 @@ func TestModelRepoCreateRuntimeAPIKeyReusesVMRuntimeKey(t *testing.T) {
 	}
 	if got.APIKey != runtimeKey || got.UserID != userID || got.VirtualmachineID != vmID || got.ModelID != targetModelID {
 		t.Fatalf("key = %+v, want reused key updated to target model", got)
+	}
+}
+
+func TestModelRepoCreateAndDeleteOhMyAgentAPIKey(t *testing.T) {
+	client := enttest.Open(t, "sqlite3", "file:model-repo-ohmyagent-key?mode=memory&cache=shared&_fk=1")
+	t.Cleanup(func() { _ = client.Close() })
+	ctx := context.Background()
+	userID := uuid.New()
+	repo := &modelRepo{db: client}
+
+	key, err := repo.CreateOhMyAgentAPIKey(ctx, userID)
+	if err != nil {
+		t.Fatalf("CreateOhMyAgentAPIKey() error = %v", err)
+	}
+	if key.UserID != userID || key.Kind != modelapikey.KindOhmyagent || key.ModelID != uuid.Nil || key.VirtualmachineID != "" || !strings.HasPrefix(key.APIKey, "oma_") || !strings.HasPrefix(key.SigningSecret, "omas_") {
+		t.Fatalf("key = %+v, want model-independent ohmyagent key", key)
+	}
+	if err := repo.DeleteOhMyAgentAPIKey(ctx, uuid.New(), key.ID); err != nil {
+		t.Fatalf("delete key as another user: %v", err)
+	}
+	if _, err := client.ModelApiKey.Get(ctx, key.ID); err != nil {
+		t.Fatalf("key should still exist after another user deletes it: %v", err)
+	}
+	if err := repo.DeleteOhMyAgentAPIKey(ctx, userID, key.ID); err != nil {
+		t.Fatalf("DeleteOhMyAgentAPIKey() error = %v", err)
+	}
+	if _, err := client.ModelApiKey.Get(ctx, key.ID); !db.IsNotFound(err) {
+		t.Fatalf("deleted key lookup error = %v, want not found", err)
 	}
 }
 

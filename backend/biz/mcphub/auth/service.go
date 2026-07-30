@@ -57,7 +57,7 @@ func (s *Service) Resolve(ctx context.Context, token string) (*Subject, error) {
 		}
 		return nil, fmt.Errorf("query model api key: %w", err)
 	}
-	if strings.TrimSpace(key.VirtualmachineID) == "" {
+	if key.Kind == modelapikey.KindOhmyagent || strings.TrimSpace(key.VirtualmachineID) == "" {
 		return nil, ErrTaskNotBound
 	}
 

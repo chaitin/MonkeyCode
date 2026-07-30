@@ -3915,7 +3915,7 @@
                 ],
                 "description": "创建目录",
                 "consumes": [
-                    "application/json"
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -7389,6 +7389,107 @@
                 }
             }
         },
+        "/api/v1/users/ohmyagent/api-keys": {
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "创建当前用户的模型无关 OhMyAgent 代理 Key。请求无需模型参数；使用时在 LLM 请求的 model 字段传模型配置 ID。API Key 与签名 Secret 仅在创建响应中返回。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】OhMyAgent"
+                ],
+                "summary": "创建 OhMyAgent API Key",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.CreateOhMyAgentAPIKeyResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/ohmyagent/api-keys/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "按 Key ID 删除当前用户自己的 OhMyAgent 代理 Key；不能删除 runtime Key 或其他用户的 Key。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】OhMyAgent"
+                ],
+                "summary": "删除 OhMyAgent API Key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "创建接口返回的 Key ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/oidc/callback": {
             "get": {
                 "description": "处理身份源回调并创建 MonkeyCode 登录会话",
@@ -9052,7 +9153,7 @@
                         "MonkeyCodeAIAuth": []
                     }
                 ],
-                "description": "数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）：\n```json\n{ \"type\": \"string\", \"data\": \"string\", \"kind\": \"string\", \"timestamp\": 0 }\n```\n独立于 stream 的长生命周期 WebSocket 连接，用于处理 call/call-response（文件浏览、diff 查看等同步请求）。\ntask 结束后连接不断开，仍可用于文件操作。\n支持同一 taskID 多 tab 并发连接。\n\n## 上行消息\n\n### Type=call, Kind=repo_file_diff — 获取文件 diff\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"unified\":true,\"context_lines\":3}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"diff\":\"string\",\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_file_list — 列出目录文件\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"glob_pattern\":\"string?\",\"include_hidden\":false}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"files\":[{\"name\":\"string\",\"path\":\"string\",\"entry_mode\":0,\"size\":0,\"modified_at\":0}],\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_read_file — 读取文件内容\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"offset\":0,\"length\":0}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"content\":\"bytes\",\"total_size\":0,\"offset\":0,\"length\":0,\"is_truncated\":false,\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_file_changes — 查询变更文件列表\n请求 Data:\n```json\n{\"request_id\":\"string\"}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"changes\":[{\"path\":\"string\",\"status\":\"string\",\"additions\":0,\"deletions\":0,\"old_path\":\"string?\"}],\"branch\":\"string?\",\"commit_hash\":\"string?\",\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=port_forward_list — 获取端口转发列表\n请求 Data:\n```json\n{\"request_id\":\"string\"}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"ports\":[{\"port\":0,\"status\":\"string\",\"process\":\"string\",\"forward_id\":\"string?\",\"access_url\":\"string?\",\"label\":\"string?\",\"error_message\":\"string?\",\"whitelist_ips\":[\"string\"]}]}\n```\n\n### Type=call, Kind=restart — 重启任务\n请求 Data:\n```json\n{\"request_id\":\"string\",\"load_session\":true}\n```\n响应 Data:\n```json\n{\"id\":\"uuid\",\"request_id\":\"string?\",\"success\":true,\"message\":\"string\",\"session_id\":\"string\"}\n```\n\n### Type=call, Kind=switch_model — 切换运行中任务模型\n请求 Data:\n```json\n{\"request_id\":\"string\",\"model_id\":\"uuid\",\"load_session\":true}\n```\n响应 Data:\n```json\n{\"id\":\"uuid\",\"request_id\":\"string?\",\"success\":true,\"message\":\"string\",\"session_id\":\"string\",\"model\":{}}\n```\n\n### Type=sync-my-ip — 同步 Web 客户端真实 IP\n请求 Data:\n```json\n{\"client_ip\":\"string\"}\n```\n\n## 下行消息\n\n- Type=call-response: 同步请求响应（Kind 与请求一致）。失败时 Data 为:\n```json\n{\"request_id\":\"string\",\"success\":false,\"error\":\"string\"}\n```\n- Type=task-event: 任务事件（从 TaskLive 订阅转发）\n- Type=ping: 心跳（无 Data）",
+                "description": "数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）：\n```json\n{ \"type\": \"string\", \"data\": \"string\", \"kind\": \"string\", \"timestamp\": 0 }\n```\n独立于 stream 的长生命周期 WebSocket 连接，用于处理 call/call-response（文件浏览、diff 查看等同步请求）。\ntask 结束后连接不断开，仍可用于文件操作。\n支持同一 taskID 多 tab 并发连接。\n\n## 上行消息\n\n### Type=call, Kind=repo_file_diff — 获取文件 diff\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"unified\":true,\"context_lines\":3}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"diff\":\"string\",\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_file_list — 列出目录文件\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"glob_pattern\":\"string?\",\"include_hidden\":false}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"files\":[{\"name\":\"string\",\"path\":\"string\",\"entry_mode\":0,\"size\":0,\"modified_at\":0}],\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_read_file — 读取文件内容\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"offset\":0,\"length\":0}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"content\":\"bytes\",\"total_size\":0,\"offset\":0,\"length\":0,\"is_truncated\":false,\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_file_changes — 查询变更文件列表\n请求 Data:\n```json\n{\"request_id\":\"string\"}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"changes\":[{\"path\":\"string\",\"status\":\"string\",\"additions\":0,\"deletions\":0,\"old_path\":\"string?\"}],\"branch\":\"string?\",\"commit_hash\":\"string?\",\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=port_forward_list — 获取端口转发列表\n请求 Data:\n```json\n{\"request_id\":\"string\"}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"ports\":[{\"port\":0,\"status\":\"string\",\"process\":\"string\",\"forward_id\":\"string?\",\"access_url\":\"string?\",\"label\":\"string?\",\"error_message\":\"string?\",\"whitelist_ips\":[\"string\"]}]}\n```\n\n### Type=call, Kind=restart — 重启任务\n请求 Data:\n```json\n{\"request_id\":\"string\",\"load_session\":true}\n```\n响应 Data:\n```json\n{\"id\":\"uuid\",\"request_id\":\"string?\",\"success\":true,\"message\":\"string\",\"session_id\":\"string\"}\n```\n\n### Type=call, Kind=switch_model — 切换运行中任务模型\n请求 Data:\n```json\n{\"request_id\":\"string\",\"model_id\":\"uuid\",\"load_session\":true}\n```\n响应 Data:\n```json\n{\"id\":\"uuid\",\"request_id\":\"string?\",\"success\":true,\"message\":\"string\",\"session_id\":\"string\",\"model\":{}}\n```\n\n### Type=call, Kind=switch_agent_resources — 运行中更新任务 skill/plugin 列表\n请求 Data (全量声明当前所选，非增量)：\n```json\n{\"request_id\":\"string\",\"skill_ids\":[\"uuid\"],\"plugin_ids\":[\"uuid\"]}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"success\":true,\"message\":\"string\",\"session_id\":\"string\"}\n```\n\n### Type=sync-my-ip — 同步 Web 客户端真实 IP\n请求 Data:\n```json\n{\"client_ip\":\"string\"}\n```\n\n## 下行消息\n\n- Type=call-response: 同步请求响应（Kind 与请求一致）。失败时 Data 为:\n```json\n{\"request_id\":\"string\",\"success\":false,\"error\":\"string\"}\n```\n- Type=task-event: 任务事件（从 TaskLive 订阅转发）\n- Type=ping: 心跳（无 Data）",
                 "consumes": [
                     "application/json"
                 ],
@@ -9994,15 +10095,6 @@
             "x-enum-comments": {
                 "UserPlatformBaizhi": "百智云平台"
             },
-            "x-enum-descriptions": [
-                "百智云平台",
-                "",
-                "",
-                "",
-                "",
-                "",
-                ""
-            ],
             "x-enum-varnames": [
                 "UserPlatformBaizhi",
                 "UserPlatformGoogle",
@@ -10029,13 +10121,6 @@
                 "UserRoleIndividual": "个人用户",
                 "UserRoleSubAccount": "企业子账户"
             },
-            "x-enum-descriptions": [
-                "个人用户",
-                "企业用户",
-                "企业子账户",
-                "MonkeyCode-AI 管理员账号，用来配置公共资源. 如公共宿主机等",
-                "全自动 git 任务插入的用户"
-            ],
             "x-enum-varnames": [
                 "UserRoleIndividual",
                 "UserRoleEnterprise",
@@ -10726,6 +10811,23 @@
                     "type": "string"
                 },
                 "webhook_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.CreateOhMyAgentAPIKeyResp": {
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "signing_secret": {
                     "type": "string"
                 }
             }
@@ -12734,11 +12836,11 @@
                     "description": "消息序号，来自 ClickHouse msg_seq_start",
                     "type": "integer"
                 },
-                "turn_seq": {
-                    "description": "轮次号，可作为 cursor 翻页；仅日志存储为 ClickHouse 时有值",
+                "timestamp": {
                     "type": "integer"
                 },
-                "timestamp": {
+                "turn_seq": {
+                    "description": "轮次号，可作为 cursor 翻页；仅日志存储为 ClickHouse 时有值",
                     "type": "integer"
                 }
             }
@@ -14556,7 +14658,6 @@
         },
         "types.ConditionStatus": {
             "type": "integer",
-            "format": "int32",
             "enum": [
                 0,
                 1,

@@ -385,6 +385,13 @@ func (r *switchModelModelRepo) Update(context.Context, uuid.UUID, uuid.UUID, *do
 func (r *switchModelModelRepo) UpdateCheckResult(context.Context, uuid.UUID, bool, string) error {
 	return errors.New("unused")
 }
+func (r *switchModelModelRepo) CreateOhMyAgentAPIKey(context.Context, uuid.UUID) (*db.ModelApiKey, error) {
+	return nil, errors.New("unused")
+}
+func (r *switchModelModelRepo) DeleteOhMyAgentAPIKey(context.Context, uuid.UUID, uuid.UUID) error {
+	return errors.New("unused")
+}
+
 func (r *switchModelModelRepo) CreateRuntimeAPIKey(_ context.Context, uid, modelID uuid.UUID, vmID string) (string, error) {
 	r.runtimeUserID = uid
 	r.runtimeModelID = modelID

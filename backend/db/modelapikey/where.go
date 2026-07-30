@@ -81,6 +81,11 @@ func APIKey(v string) predicate.ModelApiKey {
 	return predicate.ModelApiKey(sql.FieldEQ(FieldAPIKey, v))
 }
 
+// SigningSecret applies equality check predicate on the "signing_secret" field. It's identical to SigningSecretEQ.
+func SigningSecret(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldEQ(FieldSigningSecret, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.ModelApiKey {
 	return predicate.ModelApiKey(sql.FieldEQ(FieldCreatedAt, v))
@@ -156,6 +161,16 @@ func ModelIDNotIn(vs ...uuid.UUID) predicate.ModelApiKey {
 	return predicate.ModelApiKey(sql.FieldNotIn(FieldModelID, vs...))
 }
 
+// ModelIDIsNil applies the IsNil predicate on the "model_id" field.
+func ModelIDIsNil() predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldIsNull(FieldModelID))
+}
+
+// ModelIDNotNil applies the NotNil predicate on the "model_id" field.
+func ModelIDNotNil() predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldNotNull(FieldModelID))
+}
+
 // UserIDEQ applies the EQ predicate on the "user_id" field.
 func UserIDEQ(v uuid.UUID) predicate.ModelApiKey {
 	return predicate.ModelApiKey(sql.FieldEQ(FieldUserID, v))
@@ -194,6 +209,26 @@ func UserIDLT(v uuid.UUID) predicate.ModelApiKey {
 // UserIDLTE applies the LTE predicate on the "user_id" field.
 func UserIDLTE(v uuid.UUID) predicate.ModelApiKey {
 	return predicate.ModelApiKey(sql.FieldLTE(FieldUserID, v))
+}
+
+// KindEQ applies the EQ predicate on the "kind" field.
+func KindEQ(v Kind) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldEQ(FieldKind, v))
+}
+
+// KindNEQ applies the NEQ predicate on the "kind" field.
+func KindNEQ(v Kind) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldNEQ(FieldKind, v))
+}
+
+// KindIn applies the In predicate on the "kind" field.
+func KindIn(vs ...Kind) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldIn(FieldKind, vs...))
+}
+
+// KindNotIn applies the NotIn predicate on the "kind" field.
+func KindNotIn(vs ...Kind) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldNotIn(FieldKind, vs...))
 }
 
 // VirtualmachineIDEQ applies the EQ predicate on the "virtualmachine_id" field.
@@ -334,6 +369,71 @@ func APIKeyEqualFold(v string) predicate.ModelApiKey {
 // APIKeyContainsFold applies the ContainsFold predicate on the "api_key" field.
 func APIKeyContainsFold(v string) predicate.ModelApiKey {
 	return predicate.ModelApiKey(sql.FieldContainsFold(FieldAPIKey, v))
+}
+
+// SigningSecretEQ applies the EQ predicate on the "signing_secret" field.
+func SigningSecretEQ(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldEQ(FieldSigningSecret, v))
+}
+
+// SigningSecretNEQ applies the NEQ predicate on the "signing_secret" field.
+func SigningSecretNEQ(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldNEQ(FieldSigningSecret, v))
+}
+
+// SigningSecretIn applies the In predicate on the "signing_secret" field.
+func SigningSecretIn(vs ...string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldIn(FieldSigningSecret, vs...))
+}
+
+// SigningSecretNotIn applies the NotIn predicate on the "signing_secret" field.
+func SigningSecretNotIn(vs ...string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldNotIn(FieldSigningSecret, vs...))
+}
+
+// SigningSecretGT applies the GT predicate on the "signing_secret" field.
+func SigningSecretGT(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldGT(FieldSigningSecret, v))
+}
+
+// SigningSecretGTE applies the GTE predicate on the "signing_secret" field.
+func SigningSecretGTE(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldGTE(FieldSigningSecret, v))
+}
+
+// SigningSecretLT applies the LT predicate on the "signing_secret" field.
+func SigningSecretLT(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldLT(FieldSigningSecret, v))
+}
+
+// SigningSecretLTE applies the LTE predicate on the "signing_secret" field.
+func SigningSecretLTE(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldLTE(FieldSigningSecret, v))
+}
+
+// SigningSecretContains applies the Contains predicate on the "signing_secret" field.
+func SigningSecretContains(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldContains(FieldSigningSecret, v))
+}
+
+// SigningSecretHasPrefix applies the HasPrefix predicate on the "signing_secret" field.
+func SigningSecretHasPrefix(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldHasPrefix(FieldSigningSecret, v))
+}
+
+// SigningSecretHasSuffix applies the HasSuffix predicate on the "signing_secret" field.
+func SigningSecretHasSuffix(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldHasSuffix(FieldSigningSecret, v))
+}
+
+// SigningSecretEqualFold applies the EqualFold predicate on the "signing_secret" field.
+func SigningSecretEqualFold(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldEqualFold(FieldSigningSecret, v))
+}
+
+// SigningSecretContainsFold applies the ContainsFold predicate on the "signing_secret" field.
+func SigningSecretContainsFold(v string) predicate.ModelApiKey {
+	return predicate.ModelApiKey(sql.FieldContainsFold(FieldSigningSecret, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
