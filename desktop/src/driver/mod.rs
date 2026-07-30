@@ -442,19 +442,39 @@ pub async fn session_call(
     engine.session_call(&id, &kind, payload).await
 }
 
+/// 开始分块上传附件(chunk/finish/abort 在 uploads.rs——不需要会话上下文)。
+/// 附件大小不设限:单块 4MB 由 UI 控制,内存与单条 IPC 消息都有界。
 #[tauri::command]
-pub async fn upload_file(
+pub async fn upload_begin(
     host: State<'_, DriverHost>,
     id: String,
     name: String,
     media_type: String,
-    data: String,
 ) -> Result<Value, String> {
     let engine = host.get()?;
     let workdir = engine.session_workdir(&id).await?;
     let distro = engine.wsl_distro();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::uploads::save(&workdir, distro.as_deref(), &name, &media_type, &data)
+        crate::uploads::begin(&workdir, distro.as_deref(), &name, &media_type)
+            .map(|h| serde_json::json!({ "handle": h }))
+    })
+    .await
+    .map_err(|e| format!("上传失败: {e}"))?
+}
+
+/// 按源路径把本地文件直拷进会话 uploads 目录(Linux 原生拖拽给真实路径,
+/// 内容零穿越 IPC,大小不设限)。
+#[tauri::command]
+pub async fn upload_file_path(
+    host: State<'_, DriverHost>,
+    id: String,
+    src: String,
+) -> Result<Value, String> {
+    let engine = host.get()?;
+    let workdir = engine.session_workdir(&id).await?;
+    let distro = engine.wsl_distro();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::uploads::save_from_path(&workdir, distro.as_deref(), &src)
     })
     .await
     .map_err(|e| format!("上传失败: {e}"))?

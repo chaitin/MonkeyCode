@@ -12,7 +12,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { b64decode, b64encode } from "./codec";
 import { initialChat, type ChatState } from "./reduce";
-import { createSessionCore, type SessionCoreIO } from "./useSession";
+import { pathBackedFile } from "./uploads";
+import { createSessionCore, type SessionCoreIO, type UploadingAtt } from "./useSession";
 import type { Attachment, FileChange, Frame, LogItem } from "./types";
 
 // ---- 假 Tauri 壳 ----
@@ -36,7 +37,10 @@ let historyCalls: { cursor: number; limit: number }[] = [];
 let outlineScript: { seq: number; offset: number; content: string; timestamp?: number }[] = [];
 /** session_call 应答脚本:kind → 结果(未登记则 reject) */
 let callScript: Record<string, unknown> = {};
-let uploaded: string[] = []; // upload_file 收到的文件名(按序)
+let uploaded: string[] = []; // 分块上传收尾(upload_finish)的文件名(按序)
+let uploadNames = new Map<number, string>(); // 在途句柄 → 文件名
+let nextUploadHandle = 1;
+let pathUploads: string[] = []; // 路径直拷(upload_file_path)收到的源路径
 /** 按文件名拒收上传(逐文件容错要可确定地只失败其中一个) */
 let uploadDeny = new Set<string>();
 let closed: string[] = []; // session_close 的会话 id
@@ -76,6 +80,9 @@ beforeEach(() => {
   outlineScript = [];
   callScript = {};
   uploaded = [];
+  uploadNames = new Map();
+  nextUploadHandle = 1;
+  pathUploads = [];
   uploadDeny = new Set();
   closed = [];
   (globalThis as Record<string, unknown>).window = {
@@ -115,14 +122,30 @@ beforeEach(() => {
             closed.push(args!.id as string);
             return Promise.resolve(null);
           }
-          if (cmd === "upload_file") {
+          // 分块上传协议:begin 发名字领句柄(门闸/拒收都在这一步,与旧
+          // upload_file 单命令语义对齐),chunk 直收,finish 记录已上传并回路径
+          if (cmd === "upload_begin") {
             const name = args!.name as string;
             const finish = () => {
               if (uploadDeny.has(name)) return Promise.reject(new Error("磁盘已满"));
-              uploaded.push(name);
-              return Promise.resolve({ path: ".monkeycode/uploads/" + name });
+              const handle = nextUploadHandle++;
+              uploadNames.set(handle, name);
+              return Promise.resolve({ handle });
             };
             return uploadGate ? uploadGate.then(finish) : finish();
+          }
+          if (cmd === "upload_chunk") return Promise.resolve(null);
+          if (cmd === "upload_finish") {
+            const name = uploadNames.get(args!.handle as number) ?? "";
+            uploaded.push(name);
+            return Promise.resolve({ path: ".monkeycode/uploads/" + name });
+          }
+          if (cmd === "upload_abort") return Promise.resolve(null);
+          if (cmd === "upload_file_path") {
+            const src = args!.src as string;
+            pathUploads.push(src);
+            const base = src.split(/[\\/]/).pop() || "file";
+            return Promise.resolve({ path: ".monkeycode/uploads/" + base });
           }
           return Promise.reject(new Error("unexpected cmd " + cmd));
         },
@@ -162,8 +185,16 @@ function stubFileReader() {
     },
   );
 }
-/** 假 File(node 环境无 File;uploadAtt 只读 size/type/name) */
-const fakeFile = (name: string, type = "image/png", size = 10) => ({ name, type, size }) as unknown as File;
+/** 假 File(node 环境无 File;uploadAtt 读 size/type/name,分块上传经 slice) */
+const fakeFile = (name: string, type = "image/png", size = 10) =>
+  ({
+    name,
+    type,
+    size,
+    slice: (a: number, b: number) => ({
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(Math.max(0, Math.min(b, size) - a))),
+    }),
+  }) as unknown as File;
 
 /** 组装核心 + 记录型 IO(所有回写落到 out,便于断言) */
 function makeCore() {
@@ -175,6 +206,9 @@ function makeCore() {
     input: "有内容",
     queued: null as string | null,
     atts: [] as Attachment[],
+    uploads: [] as UploadingAtt[],
+    /** setUploads 的全部快照(进度序列断言:在途中间态会被最终态覆盖) */
+    uploadFrames: [] as UploadingAtt[][],
     changes: null as FileChange[] | null,
     isGitRepo: null as boolean | null,
     changesErr: "",
@@ -194,6 +228,10 @@ function makeCore() {
     setInput: (v) => (out.input = v),
     setQueued: (v) => (out.queued = v),
     setAtts: (v) => (out.atts = v),
+    setUploads: (v) => {
+      out.uploads = v;
+      out.uploadFrames.push(v);
+    },
     setChanges: (v) => (out.changes = v),
     setIsGitRepo: (v) => (out.isGitRepo = v),
     setChangesErr: (v) => (out.changesErr = v),
@@ -342,7 +380,7 @@ describe("本地会话核心:连接生命周期", () => {
     const { core, out } = makeCore();
     callScript.repo_file_changes = { result: [], is_git_repo: true };
     core.open("s1", { firstMessage: "首条", firstFiles: [fakeFile("slow.png")] });
-    await vi.waitFor(() => expect(trace).toContain("invoke:upload_file")); // 上传在途
+    await vi.waitFor(() => expect(trace).toContain("invoke:upload_begin")); // 上传在途
 
     core.open("s2"); // 上传完成前切走
     await settleOpen(2);
@@ -397,6 +435,33 @@ describe("本地会话核心:composer(排队与附件)", () => {
     pushFrames("s1", [frame("task-ended")]);
     await vi.waitFor(() => expect(out.queued).toBe(null));
     expect(userInputs()).toEqual(["排着的"]);
+  });
+
+  it("投递被壳收下但本轮随即失败(引擎没接活):不回队,不重复投递", async () => {
+    // 壳的 session_send 契约:回显帧一旦物化就回 Ok(错误走 task-error 帧),
+    // Err 只留给「消息未入会话」。这里钉住 UI 侧的配合面:回执 Ok 后失败轮
+    // 的收尾帧到达,不得把已落对话流的消息回队/重投(否则用户看到
+    // 「已发出却仍在排队」,重投再落一条重复回显)
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("引擎会拒的");
+    expect(out.queued).toBe("引擎会拒的");
+
+    pushFrames("s1", [frame("task-ended")]); // 轮末投递:壳收下,回执 Ok
+    await vi.waitFor(() => expect(userInputs()).toEqual(["引擎会拒的"]));
+    expect(out.queued).toBe(null);
+
+    // 壳物化的失败轮(回显 + 收尾)整批到达:再触发 flushQueued 也无货可投
+    pushFrames("s1", [
+      frame("user-input", { content: b64encode("引擎会拒的") }),
+      frame("task-started"),
+      frame("task-error", { message: "引擎没接活" }),
+      frame("task-ended"),
+    ]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(userInputs()).toEqual(["引擎会拒的"]); // 只投递过一次
+    expect(out.queued).toBe(null); // 消息归对话流持有,队列不再持有
   });
 
   it("运行中连发多条:单槽后发覆盖先发,轮末只发最新一条", async () => {
@@ -718,14 +783,61 @@ describe("本地会话核心:composer(排队与附件)", () => {
     expect(out.atts.map((a) => a.name)).toEqual(["doc.txt"]);
   });
 
-  it("附件超 20MB 直接拒收,不发上传命令", async () => {
+  it("大附件不再设上限:分块上传成功入列,大图不整读预览", async () => {
+    // 旧 20MB 上限是整包 base64 穿 IPC 的产物,分块通道下已废
     stubFileReader();
     const { core, out } = makeCore();
     await openAndSettle(core);
     await core.addFiles([fakeFile("huge.png", "image/png", 21 * 1024 * 1024)]);
-    expect(uploaded).toEqual([]);
-    expect(out.atts).toEqual([]);
-    expect(out.notices.some((n) => n.includes("上限 20MB"))).toBe(true);
+    expect(uploaded).toEqual(["huge.png"]);
+    expect(out.atts.map((a) => a.name)).toEqual(["huge.png"]);
+    // 超过预览阈值(8MB)的图不整读 dataURL(整读会撑爆 webview 内存)
+    expect(out.atts[0].preview).toBeUndefined();
+    // 21MB 按 4MB 分块:6 个 chunk 帧
+    expect(trace.filter((t) => t === "invoke:upload_chunk")).toHaveLength(6);
+  });
+
+  it("path-backed 附件(Linux 原生拖拽)走壳路径直拷,不经内容分块", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    await core.addFiles([pathBackedFile("/home/u/数据集.csv", "数据集.csv", "text/csv")]);
+    expect(pathUploads).toEqual(["/home/u/数据集.csv"]);
+    expect(trace.filter((t) => t === "invoke:upload_begin")).toHaveLength(0);
+    expect(out.atts.map((a) => a.name)).toEqual(["数据集.csv"]);
+  });
+
+  it("上传中外显进度:入列→逐块推进→完成出列(大文件不再像卡死)", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    out.uploadFrames.length = 0; // 只看本次上传的镜像序列(open 复位不算)
+    await core.addFiles([fakeFile("big.zip", "application/zip", 12 * 1024 * 1024)]);
+
+    // 首帧入列(0%),末帧出列(空);中间是逐块推进的百分比
+    const seq = out.uploadFrames.map((f) => f.map((u) => u.pct));
+    expect(seq[0]).toEqual([0]);
+    expect(seq.at(-1)).toEqual([]);
+    // 12MB/4MB = 3 块:33 / 66 / 99(末块封顶 99,100% 由出列表达——
+    // finish 改名还在途时显示 100 会让"卡在 100%"重新变成谜)
+    expect(seq.slice(1, -1)).toEqual([[33], [66], [99]]);
+    expect(out.uploads).toEqual([]); // 收尾后不残留
+    expect(out.atts.map((a) => a.name)).toEqual(["big.zip"]);
+  });
+
+  it("路径直拷与上传失败:进度不确定态(-1)且都必须出列,不留卡死的条", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    out.uploadFrames.length = 0;
+    await core.addFiles([pathBackedFile("/home/u/a.bin", "a.bin", "")]);
+    // 直拷没有分块回调:pct=-1(spinner 不画进度线),两帧一进一出
+    expect(out.uploadFrames.map((f) => f.map((u) => u.pct))).toEqual([[-1], []]);
+
+    // 失败路径同样出列(finally),否则失败后进度条永久挂着像卡死
+    out.uploadFrames.length = 0;
+    uploadDeny.add("no.bin");
+    await core.addFiles([fakeFile("no.bin", "", 10)]);
+    expect(out.uploads).toEqual([]);
+    expect(out.uploadFrames.at(-1)).toEqual([]);
+    expect(out.notices.some((n) => n.includes("附件上传失败"))).toBe(true);
   });
 
   it("stop 上行 user-cancel", async () => {

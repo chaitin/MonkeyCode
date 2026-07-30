@@ -6,11 +6,13 @@
 // (onCreated/onCloudCreated)及外部预填(prefill)。
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import { basename, effectiveThink, isImeEnter, markImeEnd, ModelMenuItem, ModelPicker, ThinkPicker } from "./chat";
+import { CloudModelGroups } from "./cloudModelMenu";
 import { MONO } from "./components";
 import { mcTaskCreate, mcTaskOptions } from "./cloudapi";
 import { inDesktopShell, pickDirectory, workdirPickBase } from "./host";
 import { useUpwardMenuHeight } from "./menuPosition";
 import { useNativeFileDrop } from "./nativeDrop";
+import { readLastTaskModel, rememberLastTaskModel } from "./modelMenu";
 import { createSession } from "./session";
 import type { CloudTask } from "./types";
 import {
@@ -159,9 +161,16 @@ export function NewTaskView({
   const dirTouchedRef = useRef(!!prefill?.dir); // 用户改过工作目录后不再跟随最近会话
   const [dir, setDir] = useState(() => prefill?.dir || lastDir || DEFAULT_DIR);
   const [text, setText] = useState("");
-  // 模型:未主动选择时跟随默认模型(models 异步到达也自动就位,无需同步 effect)
-  const [pickedModel, setPickedModel] = useState("");
-  const model = pickedModel || models.find((m) => m.default)?.name || "";
+  // 模型:预选「上次开任务用的」(mc.lastTaskModel),没有/已下线/被锁定
+  // 回落默认。校验放在派生处而非初始化:models 是异步到达的 props,挂载
+  // 时常为空,初始化时校验会让记忆永远失效。locked(超会员档展示专用)
+  // 条目全链路跳过——它不在引擎 settings 里,派生到它会话建不起来
+  const [pickedModel, setPickedModel] = useState(() => readLastTaskModel());
+  const model =
+    (pickedModel && models.some((m) => m.name === pickedModel && !m.locked) ? pickedModel : "") ||
+    models.find((m) => m.default && !m.locked)?.name ||
+    models.find((m) => !m.locked)?.name ||
+    "";
   // 思考深度(本地/会话):""=未显式选,创建时跟随模型设置的默认档;
   // composer 上直接显示生效档位(模型是啥就显示啥),选了就随创建下发
   const [think, setThink] = useState("");
@@ -199,11 +208,9 @@ export function NewTaskView({
   const addFiles = (files: File[]) => {
     setAttErr("");
     for (const f of files) {
-      if (f.size > 20 * 1024 * 1024) {
-        setAttErr(`${f.name || "文件"} 过大(上限 20MB)`);
-        continue;
-      }
-      if (f.type.startsWith("image/")) {
+      // 大小不设限(上传经分块/路径直拷,见 uploads.ts);预览只为小图整读,
+      // 大图整读 dataURL 会撑爆 webview 内存
+      if (f.type.startsWith("image/") && f.size > 0 && f.size <= 8 * 1024 * 1024) {
         const r = new FileReader();
         r.onload = () => setAtts((a) => [...a, { file: f, preview: r.result as string }]);
         r.readAsDataURL(f);
@@ -397,6 +404,7 @@ export function NewTaskView({
     try {
       // 默认项目目录可静默创建；对话目录完全由壳管理，UI 不传内部路径。
       const meta = await createSession(d, model, !chatMode && (createDir || d === DEFAULT_DIR), chatMode ? "chat" : "local", think);
+      rememberLastTaskModel(model); // 本地/对话共用记忆;云端是独立 id 体系不记
       const first = text.trim();
       setText("");
       await onCreated(meta, first || undefined, files);
@@ -806,37 +814,15 @@ export function NewTaskView({
                 onToggle={() => setCloudPicker((current) => current === "model" ? null : "model")}
                 onClose={() => setCloudPicker(null)}
               >
-                {cloudModelGroups.map((group, index) => (
-                  <span
-                    key={group.key}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      paddingTop: index === 0 ? 0 : 4,
-                      marginTop: index === 0 ? 0 : 4,
-                      borderTop: index === 0 ? "none" : "1px solid var(--line2)",
-                    }}
-                  >
-                    <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, padding: "5px 9px 3px" }}>
-                      <span className="ellipsis" style={{ flex: 1, minWidth: 0, fontSize: 10.5, fontWeight: 750, color: "var(--t4)" }}>
-                        {group.label}
-                      </span>
-                      {group.badge && <span style={{ flex: "none", fontSize: 9.5, color: "var(--t6)" }}>{group.badge}</span>}
-                    </span>
-                    {group.models.map((cloudModel) => (
-                      <ModelMenuItem
-                        key={cloudModel.id}
-                        label={groupedCloudModelLabel(cloudModel)}
-                        selected={cloudModel.id === cloudModelId}
-                        onClick={() => {
-                          setCloudModelId(cloudModel.id!);
-                          if (cloudModel.owner?.type === "public") setCloudHostId(PUBLIC_CLOUD_HOST_ID);
-                          setCloudPicker(null);
-                        }}
-                      />
-                    ))}
-                  </span>
-                ))}
+                <CloudModelGroups
+                  groups={cloudModelGroups}
+                  selectedId={cloudModelId}
+                  onPick={(cloudModel) => {
+                    setCloudModelId(cloudModel.id!);
+                    if (cloudModel.owner?.type === "public") setCloudHostId(PUBLIC_CLOUD_HOST_ID);
+                    setCloudPicker(null);
+                  }}
+                />
                 {cloudModelGroups.length === 0 && (
                   <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>{cloudOpts ? "没有可用的云端模型" : "加载中…"}</span>
                 )}
@@ -896,7 +882,7 @@ export function NewTaskView({
             </div>
           )}
 
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px 11px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px 11px", minWidth: 0 }}>
             <span style={{ display: "flex", background: "var(--segBg)", borderRadius: 13, padding: 2, flex: "none" }}>
               <span onClick={() => setMode("local")} title="跑在这台电脑上,直接读写本地文件,每步权限逐一确认" style={segItem(mode === "local", "var(--accTx)")}>
                 <IconMonitor size={11} color={mode === "local" ? "var(--accTx)" : "var(--t5)"} strokeWidth={1.4} />

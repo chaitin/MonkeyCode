@@ -18,12 +18,13 @@ import {
   IconStop,
   IconX,
 } from "./icons";
+import { engineCardView, railDotView } from "./engineBanner";
 import { isWindowsShell } from "./host";
 import logoUrl from "./logo.png";
 import { isProjectArchived, projectArchiveKey } from "./projectArchive";
 import { applyProjectOrder, persistProjectOrder, readProjectOrder, reorderProjects } from "./projectOrder";
 import { MacBrandBand, MacWindowControls } from "./titlebar";
-import type { CloudProject, CloudTask, McConnectionState, SessionMeta } from "./types";
+import type { CloudProject, CloudTask, EngineStatus, McConnectionState, SessionMeta } from "./types";
 
 export interface ProjectGroup {
   dir: string;
@@ -654,6 +655,10 @@ export function Sidebar({
   sessionActive,
   connected,
   status,
+  engine = null,
+  engineBusy = false,
+  onEngineRestart,
+  onOpenLogDir,
   update,
   updateBusy,
   onUpdate,
@@ -686,6 +691,12 @@ export function Sidebar({
   sessionActive: boolean;
   connected: boolean;
   status: string;
+  /** 引擎生命周期状态(契约 6);null = 快照未到,点回落会话连接语义 */
+  engine?: EngineStatus | null;
+  /** 壳正在重启引擎(横幅与卡共用同一个 restarting 态) */
+  engineBusy?: boolean;
+  onEngineRestart?: () => void;
+  onOpenLogDir?: () => void;
   update?: { available: boolean; latest?: string } | null;
   updateBusy?: boolean;
   onUpdate?: () => void;
@@ -724,6 +735,20 @@ export function Sidebar({
   const [projectArchiveOpen, setProjectArchiveOpen] = useState(() => localStorage.getItem("mc.projectArchiveOpen") === "1");
   const [cloudHistoryOpen, setCloudHistoryOpen] = useState(() => localStorage.getItem("mc.cloudHistoryOpen") === "1");
   const [projectOrder, setProjectOrder] = useState<string[]>(readProjectOrder);
+  // 冷启动宽限:starting/attempt=0 持续超过 3s 才亮引擎卡——快速启动不闪卡,
+  // WSL 预热/慢盘的长启动期不再零反馈(横幅对这段刻意留白,见 engineBanner.ts)
+  const coldStarting = engine?.phase === "starting" && engine.attempt === 0;
+  const [coldStartVisible, setColdStartVisible] = useState(false);
+  useEffect(() => {
+    if (!coldStarting) {
+      setColdStartVisible(false);
+      return;
+    }
+    const t = setTimeout(() => setColdStartVisible(true), 3000);
+    return () => clearTimeout(t);
+  }, [coldStarting]);
+  const engineCard = engineCardView(engine, coldStartVisible);
+  const railDot = railDotView(engine, connected, status);
   // 拖动中只有落点需要重渲染;行位置快照和阈值判定放 ref，避免每次 move 都刷 state
   const [dragTo, setDragTo] = useState<{ dir: string; index: number } | null>(null);
   const dragRef = useRef<{ dir: string; startY: number; startX: number; active: boolean; rows: { dir: string; mid: number }[]; from: number; to: number } | null>(null);
@@ -999,10 +1024,15 @@ export function Sidebar({
       return stateCard(`状态检查失败：${mcConnection.error || "无法连接 MonkeyCode"}`, onRefreshCloud ? { label: "重试", run: onRefreshCloud } : undefined);
     }
     if (mcConnection.phase === "disconnected") {
-      return stateCard(mcConnection.error ? `连接失败：${mcConnection.error}` : "连接 MonkeyCode 后，可在这里查看和跟进云端任务。", {
-        label: mcConnection.error ? "重试连接" : "连接 MonkeyCode",
-        run: onConnectCloud,
-      });
+      return stateCard(
+        mcConnection.error
+          ? `连接失败：${mcConnection.error}`
+          : "连接 MonkeyCode 后，可在这里查看和跟进云端任务。也可到设置中使用账号密码登录。",
+        {
+          label: mcConnection.error ? "重试连接" : "连接 MonkeyCode",
+          run: onConnectCloud,
+        },
+      );
     }
     if (cloudTasks.length === 0 && cloudHistory.length === 0 && cloudProjects.length === 0 && !cloudError) {
       return <EmptyState icon={<IconCloud size={21} color="var(--t6)" />} title="还没有云端项目或任务" detail="从这里新建，或在网页和手机端派发任务。" />;
@@ -1150,8 +1180,8 @@ export function Sidebar({
           <RailButton active={space === "chat"} label="会话" badge={chatAttention} icon={<IconChat size={16} color={space === "chat" ? "var(--accSelT)" : "var(--t4)"} />} onClick={() => selectSpace("chat")} />
         </div>
         <span style={{ flex: 1 }} />
-        <span title={status} style={{ width: 32, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: connected ? "var(--ok)" : "var(--t6)", boxShadow: connected ? "0 0 0 3px var(--okBg)" : "none" }} />
+        <span title={railDot.title} style={{ width: 32, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: railDot.color, boxShadow: railDot.glow ? `0 0 0 3px ${railDot.glow}` : "none", animation: railDot.pulse ? "mcpulse 1.2s infinite" : "none" }} />
         </span>
         <button className="hv icon-btn" title="设置" onClick={onOpenSettings} style={{ position: "relative", width: 36, height: 36, borderRadius: 10, marginBottom: 12 }}>
           <IconGear size={15} />
@@ -1181,6 +1211,37 @@ export function Sidebar({
         >
           {panel.content}
         </div>
+        {engineCard && (
+          <div
+            title={engineCard.detail || undefined}
+            style={{ margin: update?.available ? "6px 9px 0" : "6px 9px 9px", minHeight: 36, padding: "7px 9px", border: "1px solid var(--line)", borderRadius: 9, background: "var(--card)", display: "flex", alignItems: "center", gap: 7 }}
+          >
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: engineCard.busy ? "var(--notice)" : "var(--err)", animation: engineCard.busy ? "mcpulse 1.2s infinite" : "none", flex: "none" }} />
+            <span className="ellipsis selectable" style={{ flex: 1, minWidth: 0, textAlign: "left", fontSize: 11.5, fontWeight: 600, color: "var(--t2)" }}>
+              {engineCard.text}
+            </span>
+            {engineCard.canRestart && onEngineRestart && (
+              <button
+                className="hv-acc"
+                disabled={engineBusy}
+                onClick={() => !engineBusy && onEngineRestart()}
+                style={{ flex: "none", height: 22, padding: "0 9px", border: "none", borderRadius: 6, cursor: engineBusy ? "default" : "pointer", fontSize: 10.5, fontWeight: 700, background: "var(--acc)", color: "var(--onAcc)", opacity: engineBusy ? 0.7 : 1 }}
+              >
+                {engineBusy ? "重启中" : "重启"}
+              </button>
+            )}
+            {onOpenLogDir && (
+              <button
+                className="hv"
+                title="在文件管理器中打开引擎日志目录(ohmyagent.log 与崩溃留存)"
+                onClick={onOpenLogDir}
+                style={{ flex: "none", height: 22, padding: "0 8px", border: "1px solid var(--line)", borderRadius: 6, cursor: "pointer", fontSize: 10.5, fontWeight: 600, background: "transparent", color: "var(--t3)" }}
+              >
+                日志
+              </button>
+            )}
+          </div>
+        )}
         {update?.available && (
           <button
             className="hv2"

@@ -1,6 +1,7 @@
 // 帧 → 对话流渲染项的归约:流式文本聚合、工具状态回写、审批卡片终态、
 // AI 提问卡(ask_user_question)等。纯函数,不触 DOM。
 import { b64decode, frameData } from "./codec";
+import { stripTierPrefix } from "./modelMenu";
 import { toolContentText, toolResultText } from "./toolDetails";
 import type { AcpUpdate, AskQuestion, Frame, LogItem, PermOutcome, PlanEntry, SubEntry, ToolProgress, Usage } from "./types";
 
@@ -397,8 +398,10 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
         text: u.status === "started" ? "⟳ 上下文接近上限,正在压缩…" : "⟳ 上下文压缩完成",
       });
     case "model_update": {
+      // 系统行外显短名(剥会员档位前缀);状态 model 保持原始名——它是
+      // 按 name 回查模型/think 档的键
       const name = u.model ?? "";
-      return { ...push(s, { kind: "sys", text: `模型已切换为 ${name}` }), model: name };
+      return { ...push(s, { kind: "sys", text: `模型已切换为 ${stripTierPrefix(name)}` }), model: name };
     }
     case "think_update": {
       const level = u.think ?? "";

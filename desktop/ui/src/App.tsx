@@ -10,13 +10,14 @@ import {
   windowContextLabel,
   type AppMainView,
 } from "./appView";
-import { mcLogin, mcLogout, mcTaskDelete, mcTaskStop } from "./cloudapi";
+import { mcLogin, mcLogout, mcPasswordLogin, mcTaskDelete, mcTaskStop } from "./cloudapi";
 import {
   getHostConfig,
   getHostInfo,
   inDesktopShell,
   isWindowsShell,
   onHostEvent,
+  openLogDir,
   sessionIdFromUiIntent,
   setWindowTitle,
   takeUiIntent,
@@ -55,10 +56,27 @@ import { uploadFileURL } from "./uploads";
 import { lastSessionId, useSession } from "./useSession";
 import { updateGate } from "./updateGate";
 import type { CloudProject, CloudTask, EngineStatus, HostInfo, LogItem, McConnectionState, ModelInfo, SessionMeta, UpdateStatus } from "./types";
-import { engineBannerView } from "./engineBanner";
+import { engineBannerView, engineTransition } from "./engineBanner";
 
 /** 内核与页面同机(serve 仅绑 loopback),浏览器 UA 即宿主平台 */
 const IS_MAC = /Mac/.test(navigator.userAgent);
+
+/** 引擎重启后的首个命令要能撞上壳的"配置应用中"闸门再退回来:Ready 事件
+ * 在 adopt_engine 里就发出,而保存/重启命令持有的 DriverApplyGuard 要到
+ * 命令返回时才落闸(main.rs restart_engine_locked),两者之间有微秒级窗口;
+ * 连着两次重启(保存紧跟浏览器配对刷新)时窗口还会更长。退避重试几次抹平,
+ * 全败也不外显——重连是后台自愈动作,调用方各自保留原状态。 */
+async function afterEngineReady<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (attempt >= 3) throw e;
+      await new Promise((resolve) => setTimeout(resolve, 80 * (attempt + 1)));
+    }
+  }
+}
+
 export default function App() {
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [archivedProjects, setArchivedProjects] = useState<Set<string>>(readArchivedProjects);
@@ -85,8 +103,8 @@ export default function App() {
     }
   };
   // 内核运行环境("" 本机 / "wsl:<发行版>"):新任务的最近目录/默认目录按它
-  // 过滤,切换运行环境后不预填另一环境的路径。改动经设置保存→整页刷新,
-  // 挂载读一次即准确。
+  // 过滤,切换运行环境后不预填另一环境的路径。挂载读一次,此后随引擎重启
+  // 的重连重拉(改运行环境必经保存,保存必重启引擎)。
   const [kernelEnv, setKernelEnv] = useState("");
   useEffect(() => {
     void getHostConfig()
@@ -96,21 +114,21 @@ export default function App() {
   // 引擎生命周期外显(engine-status 事件;契约 6)。
   const [engine, setEngine] = useState<EngineStatus | null>(null);
   const [engineRestarting, setEngineRestarting] = useState(false);
-  // 引擎重启后壳内会话表是全新的,UI 手里的会话句柄已失效——手动重启一直
-  // 是靠整页刷新复位的,自动重启同样需要,否则用户看着横幅消失却发不出消息
+  // 引擎重启后壳内会话表是全新的,UI 手里的会话句柄已失效。免整页刷新:
+  // Ready 时经 reconnectRef 重拉模型/会话列表并幂等重开当前会话(重连闭包
+  // 每次渲染重赋,effect 只挂一次也不会攥着旧 session 句柄)。保存/手动
+  // 重启/崩溃自愈/浏览器配对四条重启路径统一收敛到这一处。
   const engineWasDown = useRef(false);
+  const reconnectRef = useRef<() => void>(() => {});
   useEffect(() => {
     let un: (() => void) | null = null;
     let dropped = false;
-    // 事件与快照走同一条判定:快照若只 setEngine 不记 down,那么"页面在退避
-    // 期间加载"的场景(自动重启途中用户切回窗口、或上一次刷新落在崩溃里)
-    // 就不会记住引擎down过,引擎回来时不刷新,UI 攥着失效的会话句柄
+    // 事件与快照走同一条判定(记忆语义与理由见 engineTransition)
     const apply = (s: EngineStatus) => {
-      if (s.phase === "ready" && engineWasDown.current) {
-        location.reload();
-        return;
-      }
-      if (s.phase !== "ready" && s.phase !== "stopped") engineWasDown.current = true;
+      const t = engineTransition(engineWasDown.current, s.phase);
+      engineWasDown.current = t.wasDown;
+      if (t.clearRestarting) setEngineRestarting(false);
+      if (t.reconnect) reconnectRef.current();
       setEngine(s);
     };
     // 监听先于命令:补拉快照前必须先挂上监听,否则两者之间到达的状态会丢
@@ -128,6 +146,16 @@ export default function App() {
     };
   }, []);
   const engineBanner = engineBannerView(engine);
+
+  // 顶部横幅与侧栏引擎卡共用的重启动作:Ready 后经统一重连路径复位
+  //(engine-status 事件驱动,见上方 apply;忙态也在 Ready 时复位)
+  const restartEngine = useCallback(() => {
+    setEngineRestarting(true);
+    engineRestart().catch((e) => {
+      setEngineRestarting(false);
+      setEngine({ phase: "failed", error: "重启失败: " + String(e) });
+    });
+  }, []);
   // App 级浮层;文件抽屉 = 工作区资源管理器(cwd 逐层导航 + 文件查看器)。
   // 渲染与树/预览状态整体收敛进共享 FilesDrawer(filesdrawer.tsx),App 只留
   // 开合与初始 tab(文件 / 改动)+ Esc 挂点(先关预览再关抽屉)
@@ -216,6 +244,31 @@ export default function App() {
       setCloudProjects([]);
     }
   }, [syncCloud]);
+
+  /** 账号密码直连登录(壳内自动完成 PoW 验证码;凭证不出内核)。返回
+   * null=成功、string=错误文案——错误交由设置卡表单本地展示,不写
+   * mcConnection.error:全局 error 会让侧栏出现「连接失败+重试连接」,
+   * 而那个按钮跑的是百智桥接,语义错位。 */
+  const connectCloudWithPassword = useCallback(
+    async (email: string, password: string): Promise<string | null> => {
+      const op = ++cloudOp.current;
+      setCloudSyncing(false);
+      setCloudError("");
+      setMcConnection((cur) => ({ ...cur, phase: "connecting", error: undefined }));
+      try {
+        await mcPasswordLogin(email, password);
+        // invoke 成功即会话已建立;竞态被顶掉时全局状态交给下次 syncCloud 兜底
+        if (op === cloudOp.current) await syncCloud();
+        return null;
+      } catch (e) {
+        if (op === cloudOp.current) {
+          setMcConnection((cur) => ({ ...cur, phase: "disconnected", error: undefined }));
+        }
+        return e instanceof Error ? e.message : String(e);
+      }
+    },
+    [syncCloud],
+  );
 
   const disconnectCloud = useCallback(async () => {
     const op = ++cloudOp.current;
@@ -335,6 +388,40 @@ export default function App() {
   );
 
   // 打开会话 = 接上句柄 + 复位 App 级浮层(无消费方需要稳定引用,不做 memo)
+  // 引擎重启(保存/手动/自愈/浏览器配对)后的免整页刷新重连:重拉受引擎
+  // 进程约束的状态(模型清单随 spawn 解析、会话列表磁盘权威、kernelEnv 随
+  // 保存变化),并幂等重开当前会话——session.open 自带 stash 暂存,排队
+  // 消息不丢;子会话回放浮层的连接随旧引擎死亡,直接关闭。每次渲染重赋,
+  // 挂一次的 engine-status effect 经 ref 调用拿到的闭包恒新鲜。
+  reconnectRef.current = () => {
+    const cur = session.id;
+    setChildView(null);
+    void getHostConfig()
+      .then((c) => setKernelEnv(c?.kernel_env ?? ""))
+      .catch(() => {});
+    // 各自容错:任一项拉取失败都保留现有状态,不能用空结果覆盖
+    //(清空模型列表会让 composer 无模型可选,清空会话列表会被误判为"会话已删")
+    void afterEngineReady(listModels)
+      .then(setModels)
+      .catch(() => {});
+    const reopen = (meta?: SessionMeta) => {
+      if (!cur) return;
+      // 重开接新引擎:壳侧对未登记 sid 会懒登记并后台 resume 回放历史。
+      // model/mode/think 用最新 meta,拉取失败则退回内存里的上一份快照
+      const m = meta ?? sessions.find((s) => s.id === cur);
+      session.open(cur, { model: m?.model, mode: m?.mode, think: m?.think });
+    };
+    void afterEngineReady(refreshSessions)
+      .then((metas) => {
+        const meta = metas.find((m) => m.id === cur);
+        if (meta || !cur) return reopen(meta);
+        // 会话确已不在磁盘上(重启期间被删):只在正看着它时才回落视图,
+        // 免得把停在设置页/新建页的用户莫名踢走
+        if (view === "session") setView(fallbackView(null));
+      })
+      .catch(() => reopen()); // 列表拉取失败多为瞬时:照常重连,别把用户晾在断线态
+  };
+
   const openSession = (m: { id: string; model?: string; mode?: string; think?: string }, firstMessage?: string, firstFiles?: File[]) => {
     // 重复点开当前会话不重开连接:open 会复位状态、丢掉排队中的消息
     // (openNoticeSession 已有同语义去重,侧栏 onSelect 此前没有)
@@ -435,12 +522,11 @@ export default function App() {
       void takeUiIntent();
       void openNoticeSessionRef.current(id);
     });
+    // 壳已按新配置重启引擎:engine-status Ready 会走统一重连路径(重拉
+    // 模型/会话+重开当前会话),这里只留一句可见反馈;设置页脏态也不再
+    // 是障碍——不整页刷新,未保存的表单原地保留
     const offBrowserMcp = onHostEvent("browser-mcp-reloaded", () => {
-      if (settingsDirty.current) {
-        session.notify("浏览器工具已更新；请先保存当前设置，页面随后会重新连接 Agent");
-        return;
-      }
-      location.reload();
+      session.notify("浏览器工具已装载,内核已按新配置重连");
     });
     // 壳等任务空闲重启引擎超时后放弃(见 main.rs BROWSER_MCP_REFRESH_DEADLINE)。
     // 不能静默:用户配对完扩展却发现模型没有 browser_* 工具会以为配对失败。
@@ -562,7 +648,7 @@ export default function App() {
 
   // ===== 派生状态 =====
   const currentMeta = sessions.find((m) => m.id === session.id);
-  const currentModel = session.model || models.find((m) => m.default)?.name || "";
+  const currentModel = session.model || models.find((m) => m.default && !m.locked)?.name || "";
   const menuModels: ModelInfo[] = modelMenuList(models, session.model); // 下线模型兜底,无 source 归「自定义」组
   const openPerm = [...session.chat.items].reverse().find((it) => it.kind === "perm" && it.state === "open") as
     | Extract<LogItem, { kind: "perm" }>
@@ -679,15 +765,7 @@ export default function App() {
             <button
               className="hv-acc"
               disabled={engineRestarting || engineBanner.busy}
-              onClick={() => {
-                setEngineRestarting(true);
-                engineRestart()
-                  .then(() => location.reload())
-                  .catch((e) => {
-                    setEngineRestarting(false);
-                    setEngine({ phase: "failed", error: "重启失败: " + String(e) });
-                  });
-              }}
+              onClick={restartEngine}
               style={{ height: 26, padding: "0 14px", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600, background: "var(--acc)", color: "var(--onAcc)" }}
             >
               {engineRestarting ? "重启中…" : "重启引擎"}
@@ -707,6 +785,12 @@ export default function App() {
           sessionActive={view === "session"}
           connected={session.connected}
           status={session.status}
+          engine={engine}
+          engineBusy={engineRestarting}
+          onEngineRestart={restartEngine}
+          onOpenLogDir={() => {
+            openLogDir().catch((e) => console.error("打开日志目录失败", e));
+          }}
           update={update}
           updateBusy={updateBusy}
           onUpdate={() => void installUpdate()}
@@ -757,8 +841,10 @@ export default function App() {
             onUpdateStatus={setUpdate}
             mcConnection={mcConnection}
             onConnectMc={() => void connectCloud()}
+            onPasswordLoginMc={connectCloudWithPassword}
             onRetryMc={() => void syncCloud()}
             onDisconnectMc={() => void disconnectCloud()}
+            hasRunningTask={sessions.some((s) => s.status === "running")}
           />
         ) : view === "cloud" && cloudTask ? (
           <CloudTaskView

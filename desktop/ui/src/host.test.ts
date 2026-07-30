@@ -7,13 +7,16 @@ import { workdirMatchesEnv } from "./host";
 describe("workdir 与内核运行环境匹配", () => {
   const wsl = "wsl:Ubuntu-22.04";
 
-  it("WSL 模式只认 guest 形态(/… 或 \\\\wsl$ UNC)", () => {
+  it("WSL 模式放行所有可归一化形态(guest/UNC/盘符/~)", () => {
     expect(workdirMatchesEnv("/home/u/proj", wsl, true)).toBe(true);
     expect(workdirMatchesEnv("\\\\wsl$\\Ubuntu-22.04\\home\\u", wsl, true)).toBe(true);
     expect(workdirMatchesEnv("\\\\wsl.localhost\\Debian\\opt", wsl, true)).toBe(true);
-    // 本机会话遗留的 Windows 路径不再预填
-    expect(workdirMatchesEnv("C:\\Users\\u\\MonkeyCode", wsl, true)).toBe(false);
-    expect(workdirMatchesEnv("~/MonkeyCode", wsl, true)).toBe(false);
+    // 本机会话遗留的 Windows 路径经壳映射 /mnt 可直接用,继续预填
+    expect(workdirMatchesEnv("C:\\Users\\u\\MonkeyCode", wsl, true)).toBe(true);
+    expect(workdirMatchesEnv("d:/dev/x", wsl, true)).toBe(true);
+    expect(workdirMatchesEnv("~/MonkeyCode", wsl, true)).toBe(true);
+    // 归一化不了的形态仍滤掉
+    expect(workdirMatchesEnv("relative/path", wsl, true)).toBe(false);
   });
 
   it("Windows 本机滤掉 guest 形态的遗留", () => {

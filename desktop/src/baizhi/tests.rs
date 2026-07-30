@@ -117,6 +117,22 @@ fn official_model_and_mcp_gateways_are_pinned() {
     assert_eq!(super::DEFAULT_MCP_GATEWAY, "https://agent-toolkit.app.baizhi.cloud");
 }
 
+/// MonkeyCode 服务地址解析:环境变量 > 设置值 > 官方云;设置值 trim +
+/// 尾斜杠归一。该环境变量只有生产路径(Service::new)消费,其余测试
+/// 不读它,本测试内设/删无交叉。
+#[test]
+fn endpoints_resolve_honors_configured_mc_base_url() {
+    std::env::remove_var("MC_DESKTOP_MONKEYCODE_URL");
+    let ep = Endpoints::resolve("https://self.example.com/");
+    assert_eq!(ep.monkeycode, "https://self.example.com", "设置值生效且尾斜杠归一");
+    let ep = Endpoints::resolve("  ");
+    assert_eq!(ep.monkeycode, "https://monkeycode-ai.com", "空白设置回落官方云");
+    std::env::set_var("MC_DESKTOP_MONKEYCODE_URL", "https://env.example.com");
+    let ep = Endpoints::resolve("https://self.example.com");
+    assert_eq!(ep.monkeycode, "https://env.example.com", "环境变量优先(开发/联调逃生门)");
+    std::env::remove_var("MC_DESKTOP_MONKEYCODE_URL");
+}
+
 /// ai-models 真机契约:控制台只管密钥;模型清单用该密钥请求
 /// /api/anthropic/models。清单按 Anthropic data/has_more 分页,条目标识为 id。
 #[tokio::test(flavor = "multi_thread")]
@@ -408,6 +424,143 @@ async fn monkeycode_bridge_login() {
     assert!(li, "百智登出不应牵连 MonkeyCode 会话");
 }
 
+/// 账号密码直连登录契约(对齐 mobile/backend):MC 域 PoW 验证码
+/// (challenge 201 裸结构、redeem 成功 201/失败 500,服务端按协议独立校验
+/// 解)→ password-login(email 精确、password **明文原样**含尾空格、
+/// captcha_token 必带)种 monkeycode_ai_session cookie → status 权威确认;
+/// 全程不碰百智罐(双罐隔离)。业务失败统一 200+code10606「登录失败」透传。
+#[tokio::test(flavor = "multi_thread")]
+async fn monkeycode_password_login_contract() {
+    let state = Arc::new(Mutex::new((String::new(), String::new(), String::new()))); // (challenge_token, captcha_token, session)
+    let st = state.clone();
+    let (url, _stop) = serve(Arc::new(move |req: Req| {
+        let mut s = st.lock().unwrap();
+        match (req.method.as_str(), req.path.split('?').next().unwrap()) {
+            ("POST", "/api/v1/public/captcha/challenge") => {
+                s.0 = "mc-chtok".into();
+                // 真实服务端(go-cap)回 201 + 裸结构(不套 {code,data} 包壳)
+                Resp::json(201, json!({ "challenge": {"c": 3, "s": 32, "d": 3}, "token": s.0 }))
+            }
+            ("POST", "/api/v1/public/captcha/redeem") => {
+                let b = body_json(&req.body);
+                let token = b.get("token").and_then(|v| v.as_str()).unwrap_or("");
+                let sols: Vec<u64> = b
+                    .get("solutions")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.iter().filter_map(|x| x.as_u64()).collect())
+                    .unwrap_or_default();
+                if token != s.0 || sols.len() != 3 {
+                    // 真实失败形态:HTTP 500 + {success:false,message}
+                    return Resp::json(500, json!({ "success": false, "message": "质询不匹配" }));
+                }
+                // 服务端独立校验每个解(与 login_flow 同一套协议复刻)
+                for (i, nonce) in sols.iter().enumerate() {
+                    let idx = (i + 1).to_string();
+                    let salt = prng(&format!("{token}{idx}"), 32);
+                    let target = prng(&format!("{token}{idx}d"), 3);
+                    let mut h = Sha256::new();
+                    h.update(salt.as_bytes());
+                    h.update(nonce.to_string().as_bytes());
+                    let hex = h.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
+                    if !hex.starts_with(&target) {
+                        return Resp::json(500, json!({ "success": false, "message": "PoW 解无效" }));
+                    }
+                }
+                s.1 = "mc-captok".into();
+                // 真实成功形态:HTTP 201
+                Resp::json(201, json!({ "success": true, "token": s.1 }))
+            }
+            ("POST", "/api/v1/users/password-login") => {
+                let b = body_json(&req.body);
+                if b.get("captcha_token").and_then(Value::as_str) != Some(s.1.as_str()) {
+                    // captcha 校验失败的真实形态(errcode.ErrForbidden)
+                    return Resp::json(403, json!({ "code": 403, "message": "禁止访问" }));
+                }
+                if b.get("email").and_then(Value::as_str) != Some("dev@monkeycode.io") {
+                    // 密码错/用户不存在统一折叠为 10606(HTTP 200)
+                    return Resp::json(200, json!({ "code": 10606, "message": "登录失败" }));
+                }
+                // password 明文原样:尾空格必须保留(mobile/web 均不 trim 不哈希)
+                assert_eq!(b.get("password").and_then(Value::as_str), Some("p@ss word "));
+                s.2 = "mc-sess-1".into();
+                Resp::json(200, json!({ "code": 0, "data": {"id": "u9", "email": "dev@monkeycode.io"} }))
+                    .with_cookie("monkeycode_ai_session=mc-sess-1; Path=/; HttpOnly")
+            }
+            ("GET", "/api/v1/users/status") => {
+                let sess = s.2.clone();
+                if sess.is_empty() || !req.cookie.contains(&format!("monkeycode_ai_session={sess}")) {
+                    return Resp::json(200, json!({ "code": 0, "data": {"user": {}} }));
+                }
+                Resp::json(200, json!({ "code": 0, "data": {"user": {"id": "u9", "name": "账密用户"}} }))
+            }
+            _ => Resp::json(404, json!({ "code": 1, "message": "not found" })),
+        }
+    }));
+    let svc = Service::test_service(Endpoints {
+        account: url.clone(),
+        model_gateway: url.clone(),
+        mcp_gateway: url.clone(),
+        monkeycode: url.clone(),
+    });
+
+    // 业务失败:10606「登录失败」原样透传,会话不建立
+    let err = super::monkeycode::login_monkeycode_password(&svc, "wrong@x.com", "whatever")
+        .await
+        .err()
+        .map(|e| e.msg())
+        .unwrap();
+    assert_eq!(err, "登录失败");
+    let (li, _) = super::monkeycode::mc_status(&svc).await.map_err(|e| e.msg()).unwrap();
+    assert!(!li, "登录失败不应建立会话");
+
+    // 成功:PoW → 登录种 cookie → status 权威确认
+    let user = super::monkeycode::login_monkeycode_password(&svc, "dev@monkeycode.io", "p@ss word ")
+        .await
+        .map_err(|e| e.msg())
+        .unwrap();
+    assert_eq!(user.get("id").and_then(Value::as_str), Some("u9"));
+    assert_eq!(user.get("name").and_then(Value::as_str), Some("账密用户"));
+    let (li, u) = super::monkeycode::mc_status(&svc).await.map_err(|e| e.msg()).unwrap();
+    assert!(li);
+    assert_eq!(u.get("id").and_then(Value::as_str), Some("u9"));
+    // 双罐隔离:整个账密链路(含 MC 域验证码)不得污染百智罐
+    assert!(svc.store.is_empty(), "百智罐必须始终为空");
+}
+
+/// 测试环境反代 Basic Auth:仅 MonkeyCode 域的请求附 Authorization 头
+/// ("Basic <b64(user:pass)>",对齐 mobile 的 authHeaders);百智域零附加
+/// (业务鉴权走 cookie,该头在 MC 的 REST/WS 链路上是空闲的)。
+#[tokio::test(flavor = "multi_thread")]
+async fn basic_auth_header_scoped_to_mc_host() {
+    let mc_auth: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let bz_auth: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let cap_mc = mc_auth.clone();
+    let (mc_url, _s1) = serve(Arc::new(move |req: Req| {
+        cap_mc.lock().unwrap().push(req.authorization.clone());
+        Resp::json(200, json!({ "code": 0, "data": { "projects": [] } }))
+    }));
+    let cap_bz = bz_auth.clone();
+    let (bz_url, _s2) = serve(Arc::new(move |req: Req| {
+        cap_bz.lock().unwrap().push(req.authorization.clone());
+        Resp::json(200, json!({ "code": 0, "data": {} }))
+    }));
+    let mut svc = Service::test_service(Endpoints {
+        account: bz_url.clone(),
+        model_gateway: bz_url.clone(),
+        mcp_gateway: bz_url.clone(),
+        monkeycode: mc_url.clone(),
+    });
+    svc.mc_basic = super::basic_header_value("user:pass");
+    assert_eq!(svc.mc_basic.as_deref(), Some("Basic dXNlcjpwYXNz"));
+    assert!(super::basic_header_value("  ").is_none(), "空白 = 未配置");
+
+    super::monkeycode::mc_projects(&svc).await.map_err(|e| e.msg()).unwrap();
+    svc.call(reqwest::Method::GET, "/api/v1/user/profile", None).await.map_err(|e| e.msg()).unwrap();
+
+    assert_eq!(mc_auth.lock().unwrap().as_slice(), ["Basic dXNlcjpwYXNz"], "MC 域必须附 Basic 头");
+    assert_eq!(bz_auth.lock().unwrap().as_slice(), [""], "百智域不得附 Basic 头");
+}
+
 /// 包壳解包策略:四链路(百智云/网关/MCP 网关/MonkeyCode)的差异点钉死,
 /// 防止合一后语义漂移(code 合法值集合、3xx/401 处理、data 兜底)。
 #[test]
@@ -448,12 +601,15 @@ fn envelope_policies_pinned() {
     assert!(unwrap_envelope(br#"{"code":"err","message":"x"}"#, 200, &ENV_MCP).is_err());
     assert!(unwrap_envelope(br#"{"code":true}"#, 200, &ENV_MCP).is_err());
 
-    // MonkeyCode:401 不看响应体,固定"重新同步云端账号"(与百智云语义不同)
+    // MonkeyCode:401 不看响应体,固定"到设置中重新连接"(中性,不偏向
+    // 桥接或账密任一登录方式;与百智云的"重新登录"语义不同)
     let m = unauthorized(unwrap_envelope(r#"{"code":1,"message":"别的话"}"#.as_bytes(), 401, &ENV_MC));
-    assert_eq!(m, "MonkeyCode 会话已失效,请重新同步云端账号");
+    assert_eq!(m, "MonkeyCode 会话已失效,请在设置中重新连接");
     // 业务失败走清洗后的 message;缺 data 兜底 Null
     assert_eq!(err_msg(unwrap_envelope(r#"{"code":7,"message":"忙 [trace_id:y]"}"#.as_bytes(), 200, &ENV_MC)), "忙");
     assert!(unwrap_envelope(br#"{"code":0}"#, 200, &ENV_MC).map_err(|e| e.msg()).unwrap().is_null());
+    // 账密登录的 captcha 校验失败形态:HTTP 403 + message,非 401 → Other 透传
+    assert_eq!(err_msg(unwrap_envelope(r#"{"code":403,"message":"禁止访问"}"#.as_bytes(), 403, &ENV_MC)), "禁止访问");
 }
 
 /// rounds 归一化:event→type、纳秒→毫秒、seq/kind/data 透传(对照 Go TestTaskRounds)。
@@ -622,6 +778,202 @@ async fn cloud_sidebar_and_task_actions_contract() {
     assert!(requests.iter().any(|(method, path, _)| method == "GET" && path == "/api/v1/users/projects?limit=50"));
     assert!(requests.iter().any(|(method, path, body)| method == "PUT" && path == "/api/v1/users/tasks/stop" && body.get("id").and_then(Value::as_str) == Some("t1")));
     assert!(requests.iter().any(|(method, path, _)| method == "DELETE" && path == "/api/v1/users/tasks/t1"));
+}
+
+// ==================== 会员模型本地同步 ====================
+
+/// 会员模型同步/删除契约(对齐服务端 swagger【用户】OhMyAgent 分组):
+/// 首次同步 POST ohmyagent/api-keys 并落盘,重同步复用不再创建;条目来自
+/// GET users/models(收 public/private/team,未知归属跳过;超订阅档的内置
+/// 模型**标 locked 保留**而非过滤——展示禁选;interface_type 改名
+/// provider、model 字段 = 服务端模型名);断开走 DELETE,成功清本地记录、
+/// 失败保留(下次重试)。
+#[tokio::test(flavor = "multi_thread")]
+async fn mc_member_models_sync_and_revoke_contract() {
+    struct TempDir(std::path::PathBuf);
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let tmp = TempDir(std::env::temp_dir().join(format!("monkeycode-omk-{}-{nonce}", std::process::id())));
+    std::fs::create_dir_all(&tmp.0).unwrap();
+
+    let captured: Arc<Mutex<Vec<(String, String, String)>>> = Arc::new(Mutex::new(Vec::new())); // (method, path, cookie)
+    let created = Arc::new(Mutex::new(0u32));
+    let (cap, cnt) = (captured.clone(), created.clone());
+    let (url, _stop) = serve(Arc::new(move |req: Req| {
+        cap.lock().unwrap().push((req.method.clone(), req.path.clone(), req.cookie.clone()));
+        match (req.method.as_str(), req.path.split('?').next().unwrap()) {
+            ("POST", "/api/v1/users/ohmyagent/api-keys") => {
+                let mut n = cnt.lock().unwrap();
+                *n += 1;
+                Resp::json(
+                    200,
+                    json!({ "code": 0, "data": {
+                        "id": format!("key-{}", *n), "api_key": format!("omk-{}", *n),
+                        "signing_secret": "sec-1", "created_at": 1_753_000_000
+                    } }),
+                )
+            }
+            ("DELETE", "/api/v1/users/ohmyagent/api-keys/key-1") => Resp::json(200, json!({ "code": 0, "data": {} })),
+            // key-2 的删除持续失败(演断网/服务端错):本地记录必须保留
+            ("DELETE", "/api/v1/users/ohmyagent/api-keys/key-2") => {
+                Resp::json(500, json!({ "code": 1, "message": "boom" }))
+            }
+            ("GET", "/api/v1/users/models") => Resp::json(
+                200,
+                json!({ "code": 0, "data": { "models": [
+                    { "id": "cfg-1", "remark": "专业模型", "model": "monkeycode-pro-claude", "interface_type": "anthropic",
+                      "owner": { "type": "public" }, "context_limit": 200_000, "output_limit": 16_384,
+                      "support_image": true, "access_level": "pro", "is_free": false },
+                    { "id": "cfg-2", "remark": "", "model": "mc-gpt", "interface_type": "openai_chat",
+                      "owner": { "type": "public" } },
+                    // 订阅档(pro)未覆盖 → 保留 + locked(展示禁选,静默无 note)
+                    { "id": "cfg-3", "remark": "旗舰", "model": "monkeycode-ultra-x", "interface_type": "anthropic",
+                      "owner": { "type": "public" } },
+                    // 未来新协议 → 跳过 + note(不能落进 anthropic 兜底)
+                    { "id": "cfg-4", "remark": "新协议", "model": "mc-next", "interface_type": "grpc_v2",
+                      "owner": { "type": "public" } },
+                    // 私有/团队条目(用户在服务端自配)→ 同样收录,走同一代理
+                    { "id": "cfg-5", "remark": "我的", "model": "my-model", "interface_type": "anthropic",
+                      "owner": { "type": "private" } },
+                    { "id": "cfg-6", "remark": "团队的", "model": "team-model", "interface_type": "anthropic",
+                      "owner": { "type": "team", "name": "翼龙组" } },
+                    // 归属缺失/未知 → 形状不明,仍跳过(静默)
+                    { "id": "cfg-7", "remark": "无主", "model": "orphan", "interface_type": "anthropic" },
+                    { "id": "cfg-8", "remark": "未知主", "model": "alien", "interface_type": "anthropic",
+                      "owner": { "type": "galaxy" } }
+                ] } }),
+            ),
+            ("GET", "/api/v1/users/subscription") => Resp::json(200, json!({ "code": 0, "data": { "plan": "pro" } })),
+            _ => Resp::json(404, json!({ "code": 1, "message": "not found" })),
+        }
+    }));
+    let svc = Service::test_service(Endpoints {
+        account: url.clone(),
+        model_gateway: url.clone(),
+        mcp_gateway: url.clone(),
+        monkeycode: url.clone(),
+    });
+    // 种 mc 会话 cookie:创建/删除/模型清单都走既有 MonkeyCode 会话
+    svc.mc.update(
+        &reqwest::Url::parse(&format!("{url}/")).unwrap(),
+        &["mc_session=sess-9; Path=/".to_string()],
+    );
+
+    // 首次同步:创建并落盘;条目 base_url/api_key 是空占位,物化时补齐
+    let out = super::sync_member_models(&svc, &tmp.0).await.map_err(|e| e.msg()).unwrap();
+    let models = out.get("models").and_then(Value::as_array).unwrap();
+    // 输出按节序排序:专业(档位)→ 旗舰(档位,locked)→ 付费 → 我的 → 团队
+    assert_eq!(models.len(), 5, "仅协议/占位/无主条目被过滤,超档转 locked、私有/团队收录: {models:?}");
+    let m0 = &models[0];
+    assert_eq!(m0.get("name").and_then(Value::as_str), Some("专业模型"));
+    assert_eq!(m0.get("provider").and_then(Value::as_str), Some("anthropic"));
+    assert_eq!(
+        m0.get("model").and_then(Value::as_str),
+        Some("monkeycode-pro-claude"),
+        "model 字段 = 服务端模型名(swagger 的'配置 ID'为过时文档)"
+    );
+    assert_eq!(m0.get("api_key").and_then(Value::as_str), Some(""), "条目里是空占位");
+    assert_eq!(m0.get("base_url").and_then(Value::as_str), Some(""), "条目里是空占位");
+    assert_eq!(m0.get("context_window").and_then(Value::as_i64), Some(200_000));
+    assert_eq!(m0.get("max_output").and_then(Value::as_i64), Some(16_384));
+    assert_eq!(m0.get("vision").and_then(Value::as_bool), Some(true));
+    assert_eq!(m0.get("source").and_then(Value::as_str), Some("monkeycode"));
+    assert_eq!(m0.get("owner").and_then(Value::as_str), Some("public"));
+    assert!(m0.get("locked").is_none(), "档内条目不携带 locked(omit-false)");
+    // 超档条目:保留 + locked(物化层整条跳过);
+    // 节序在付费条目之前(旗舰档位节 rank 2 < 付费 rank 3)
+    let m1 = &models[1];
+    assert_eq!(m1.get("name").and_then(Value::as_str), Some("旗舰"));
+    assert_eq!(m1.get("locked").and_then(Value::as_bool), Some(true));
+    assert_eq!(m1.get("owner").and_then(Value::as_str), Some("public"));
+    assert_eq!(m1.get("api_key").and_then(Value::as_str), Some(""));
+    assert_eq!(m1.get("base_url").and_then(Value::as_str), Some(""));
+    assert_eq!(models[2].get("name").and_then(Value::as_str), Some("mc-gpt"), "remark 空回退模型名");
+    assert_eq!(models[2].get("model").and_then(Value::as_str), Some("mc-gpt"));
+    assert_eq!(models[2].get("provider").and_then(Value::as_str), Some("openai"));
+    assert_eq!(models[2].get("api_key").and_then(Value::as_str), Some(""));
+    // 私有/团队条目:收录、归属标注、不锁(非内置命名不受档位门限)
+    let m3 = &models[3];
+    assert_eq!(m3.get("name").and_then(Value::as_str), Some("我的"));
+    assert_eq!(m3.get("owner").and_then(Value::as_str), Some("private"));
+    assert!(m3.get("locked").is_none());
+    assert_eq!(models[4].get("name").and_then(Value::as_str), Some("团队的"));
+    assert_eq!(models[4].get("owner").and_then(Value::as_str), Some("team"));
+    // 归属缺失/未知(cfg-7/8)不得出现
+    assert!(
+        !models.iter().any(|m| m.get("name").and_then(Value::as_str) == Some("无主")
+            || m.get("name").and_then(Value::as_str) == Some("未知主")),
+        "归属缺失/未知的条目必须跳过"
+    );
+    let notes = out.get("notes").and_then(Value::as_array).unwrap();
+    assert_eq!(notes.len(), 1, "仅未知协议一条 note(锁定与私有收录都静默): {notes:?}");
+    // 本机记录承载物化所需的全部字段(含 base_url 快照,同源 /v1)
+    let stored = super::stored_ohmyagent_key(&tmp.0).unwrap();
+    assert_eq!(stored.get("api_key").and_then(Value::as_str), Some("omk-1"));
+    assert_eq!(stored.get("signing_secret").and_then(Value::as_str), Some("sec-1"));
+    let expected_base = format!("{url}/v1");
+    assert_eq!(stored.get("base_url").and_then(Value::as_str), Some(expected_base.as_str()));
+
+    // 重同步:复用落盘 Key,不再创建
+    super::sync_member_models(&svc, &tmp.0).await.map_err(|e| e.msg()).unwrap();
+    assert_eq!(*created.lock().unwrap(), 1, "重同步不应重复创建 Key");
+
+    // 断开:DELETE 按 Key ID 删,成功后本地记录清除;再删是 no-op
+    super::revoke_member_models(&svc, &tmp.0).await.map_err(|e| e.msg()).unwrap();
+    assert!(!tmp.0.join(super::OHMYAGENT_KEY_FILE).exists(), "删成功应清本地记录");
+    super::revoke_member_models(&svc, &tmp.0).await.map_err(|e| e.msg()).unwrap();
+
+    // 再同步 → 创建 key-2;其删除失败时本地记录保留(下次复用/重试)
+    super::sync_member_models(&svc, &tmp.0).await.map_err(|e| e.msg()).unwrap();
+    assert_eq!(
+        super::stored_ohmyagent_key(&tmp.0).unwrap().get("api_key").and_then(Value::as_str),
+        Some("omk-2")
+    );
+    assert!(super::revoke_member_models(&svc, &tmp.0).await.is_err(), "服务端删失败应报错");
+    assert!(tmp.0.join(super::OHMYAGENT_KEY_FILE).exists(), "删失败必须保留本地记录,否则孤儿 Key");
+    super::sync_member_models(&svc, &tmp.0).await.map_err(|e| e.msg()).unwrap();
+    assert_eq!(
+        super::stored_ohmyagent_key(&tmp.0).unwrap().get("api_key").and_then(Value::as_str),
+        Some("omk-2"),
+        "删失败后同步复用原 Key"
+    );
+    assert_eq!(*created.lock().unwrap(), 2);
+
+    // 服务器切换:旧文件无 server 快照且 base_url 与当前不符(历史形态的
+    // 宽松判定)→ 作废重建(旧 Key 属旧服务器,跨服复用是误用;旧服务器侧
+    // 无从删除,已知限制)
+    let stale = json!({ "id": "key-2", "api_key": "omk-2", "signing_secret": "sec-1",
+                        "base_url": "https://old.example.com/v1" });
+    std::fs::write(tmp.0.join(super::OHMYAGENT_KEY_FILE), stale.to_string()).unwrap();
+    super::sync_member_models(&svc, &tmp.0).await.map_err(|e| e.msg()).unwrap();
+    let renewed = super::stored_ohmyagent_key(&tmp.0).unwrap();
+    assert_eq!(renewed.get("api_key").and_then(Value::as_str), Some("omk-3"), "服务器切换应重建 Key 而非跨服复用");
+    assert_eq!(renewed.get("base_url").and_then(Value::as_str), Some(expected_base.as_str()));
+    assert_eq!(renewed.get("server").and_then(Value::as_str), Some(url.as_str()), "新文件应带服务器快照");
+    assert_eq!(*created.lock().unwrap(), 3);
+
+    // 同服务器只换模型请求地址(拆分部署):Key 仍属同一服务器 → 复用并
+    // 原地刷新 base_url,不重建
+    let moved = json!({ "id": "key-3", "api_key": "omk-3", "signing_secret": "sec-1",
+                        "server": url, "base_url": "https://old-llm.example.com/v1" });
+    std::fs::write(tmp.0.join(super::OHMYAGENT_KEY_FILE), moved.to_string()).unwrap();
+    super::sync_member_models(&svc, &tmp.0).await.map_err(|e| e.msg()).unwrap();
+    let refreshed = super::stored_ohmyagent_key(&tmp.0).unwrap();
+    assert_eq!(refreshed.get("api_key").and_then(Value::as_str), Some("omk-3"), "同服务器换模型地址不得重建 Key");
+    assert_eq!(refreshed.get("base_url").and_then(Value::as_str), Some(expected_base.as_str()), "模型地址应原地刷新");
+    assert_eq!(*created.lock().unwrap(), 3);
+
+    let reqs = captured.lock().unwrap();
+    let post = reqs.iter().find(|(m, p, _)| m == "POST" && p == "/api/v1/users/ohmyagent/api-keys").unwrap();
+    assert!(post.2.contains("mc_session=sess-9"), "创建必须带 mc 会话 cookie: {}", post.2);
+    let del = reqs.iter().find(|(m, p, _)| m == "DELETE" && p == "/api/v1/users/ohmyagent/api-keys/key-1").unwrap();
+    assert!(del.2.contains("mc_session=sess-9"), "删除必须带 mc 会话 cookie: {}", del.2);
+    let deletes = reqs.iter().filter(|(m, _, _)| m == "DELETE").count();
+    assert_eq!(deletes, 2, "已清记录后的 revoke 不应再发 DELETE");
 }
 
 // ==================== 微信扫码登录(wechat.rs 刮取链路) ====================

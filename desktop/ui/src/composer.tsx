@@ -87,6 +87,51 @@ export function QueuedChip({ text, hint, onClear }: { text: string; hint: string
   );
 }
 
+/** 上传中 chip:与附件 chip 同尺寸(52 高的图占位太重,统一用 30 高的条),
+ * 底部一条进度线表达百分比;pct<0 = 不确定进度(路径直拷),只转 spinner。
+ * 大文件上传期间没有任何外显会被当成卡死,这条是必需品而非装饰。 */
+export function UploadingChip({ name, pct }: { name: string; pct: number }) {
+  const known = pct >= 0;
+  return (
+    <span
+      title={known ? `上传中 ${pct}% · ${name}` : `上传中 · ${name}`}
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        height: 30,
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "0 10px",
+        borderRadius: 8,
+        border: "1px solid var(--cardBd)",
+        background: "var(--codeBg)",
+        fontSize: 12,
+        color: "var(--t3)",
+        maxWidth: 220,
+      }}
+    >
+      <span className="spinner" style={{ width: 11, height: 11, flex: "none" }} />
+      <span className="ellipsis">{name}</span>
+      {known && <span style={{ flex: "none", color: "var(--t5)", fontVariantNumeric: "tabular-nums" }}>{pct}%</span>}
+      {/* 进度线:贴底 2px,宽度即百分比(不确定进度时不画) */}
+      {known && (
+        <span
+          style={{
+            position: "absolute",
+            left: 0,
+            bottom: 0,
+            height: 2,
+            width: `${pct}%`,
+            background: "var(--acc)",
+            transition: "width .2s linear",
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
 /** 输入卡:textarea 随内容自适应高度,Enter 发送(IME 组合态守卫)、⇧↩ 换行 */
 export function Composer({
   value,
@@ -165,7 +210,8 @@ export function Composer({
           width: "100%",
         }}
       />
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px 10px" }}>
+      {/* minWidth:0:行内选择器可收缩,长模型名不得把发送按钮挤出卡片 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px 10px", minWidth: 0 }}>
         {controls}
         <button
           className="hv-acc icon-btn"

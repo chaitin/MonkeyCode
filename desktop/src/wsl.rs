@@ -45,6 +45,41 @@ pub fn guest_path_of_unc(path: &str) -> Option<(String, String)> {
     Some((distro.to_string(), tail))
 }
 
+/// Windows 盘符路径 → guest 内 automount 路径(C:\a\b → <mount_root>/c/a/b)。
+/// WSL 模式下用户项目几乎都在盘符路径上(最近目录、旧会话 sidecar、
+/// 资源管理器里拷来的路径),一律映射进 automount 而不是拒绝。盘符按
+/// wslpath 语义小写;裸 "C:foo" 是"C 盘当前目录"的相对语义,不猜,
+/// 与其余非盘符形态一起返回 None。
+pub fn guest_path_of_drive(mount_root: &str, path: &str) -> Option<String> {
+    let bytes = path.as_bytes();
+    if bytes.len() < 2 || bytes[1] != b':' || !bytes[0].is_ascii_alphabetic() {
+        return None;
+    }
+    let rest = &path[2..];
+    if !rest.is_empty() && !rest.starts_with(['\\', '/']) {
+        return None;
+    }
+    let drive = bytes[0].to_ascii_lowercase() as char;
+    let tail: Vec<&str> = rest.split(['\\', '/']).filter(|s| !s.is_empty()).collect();
+    let root = mount_root.trim_end_matches('/');
+    Some(if tail.is_empty() {
+        format!("{root}/{drive}")
+    } else {
+        format!("{root}/{drive}/{}", tail.join("/"))
+    })
+}
+
+/// guest_path_of_drive 的 automount 根从哪来:prepare 已经拿 wslpath 翻译过
+/// 一批 Windows 路径,从(宿主路径, 翻译结果)对反推——wslpath 对盘符路径的
+/// 映射形状恒为 `<root>/<盘符小写>/<其余段>`,wsl.conf [automount] root
+/// 自定义(含 root=/)也能对上。宿主路径不是盘符形态(Linux 冒烟的恒等
+/// 翻译)返回 None,调用方退默认 /mnt。
+pub fn derive_mount_root(host: &Path, guest: &str) -> Option<String> {
+    // 空根产出的就是 `/c/Users/…` 纯尾巴,正好用作后缀匹配
+    let tail = guest_path_of_drive("", &host.to_string_lossy())?;
+    guest.strip_suffix(&tail).map(|root| root.trim_end_matches('/').to_string())
+}
+
 /// guest 路径的宿主文件系统视角:Windows 经 \\wsl$ UNC;非 Windows
 /// (MC_WSL_EXE 假脚本冒烟,guest == host)原样返回。会话目录判定/创建、
 /// repo 浏览、附件落盘等所有"壳侧 std::fs 摸 guest 文件"的点统一走这里。
@@ -353,6 +388,43 @@ fn parse_prepare_output(out: &str, expected_paths: usize) -> Result<WslPrep, Str
     })
 }
 
+/// guest 内校验(可选创建)工作区目录,返回 canonical 路径(cd + pwd -P,
+/// 符号链接就地解干净)。
+///
+/// 壳对 workdir 的存在性判定原先走 \\wsl$ UNC,但 Windows 对远程共享上
+/// 符号链接的求值默认禁用(fsutil SymlinkEvaluation 的 R2L/R2R),guest 内
+/// 软链指向的目录在宿主视角 stat 必败——用户在发行版里给项目建软链是常态,
+/// 表现为"WSL 终端里明明看得到,应用却报目录不存在"。判定挪进 guest 一次
+/// 调用完成;sidecar 落 canonical 形态,后续宿主侧文件操作(repo/uploads
+/// 的 UNC 视角)也不再穿越 symlink 组件。
+pub fn ensure_guest_dir(distro: &str, path: &str, create: bool) -> Result<String, String> {
+    let script = if create {
+        r#"mkdir -p -- "$1" && cd -- "$1" && pwd -P"#
+    } else {
+        r#"cd -- "$1" && pwd -P"#
+    };
+    let args: Vec<String> =
+        ["-d", distro, "--exec", "/bin/sh", "-c", script, "sh", path].map(String::from).to_vec();
+    match run_wsl(&args, Duration::from_secs(30)) {
+        Ok(out) => {
+            let canon = out.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+            if canon.starts_with('/') {
+                Ok(canon.to_string())
+            } else {
+                Err(format!("guest 工作区目录解析结果异常: {}", out.trim()))
+            }
+        }
+        // run_wsl 对脚本非零退出的错误恒以"wsl 命令失败"开头(见上),脚本里
+        // 只有 mkdir/cd,失败即目录不存在/不可进入;文案必须含"目录不存在"
+        // (前端 offerCreate 按此匹配给"创建"入口)。其余错误(wsl.exe 起
+        // 不来、超时)按环境错误原样上抛,不能伪装成目录问题诱导用户点创建
+        Err(e) if e.starts_with("wsl 命令失败") => {
+            Err(format!("工作区目录不存在或不可进入(发行版 {distro} 内): {path}\n{e}"))
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// guest 内网络模式探测(mcp.json 物化时决定浏览器 MCP 是否可用)。
 /// 失败(未装 WSL、老版无 wslinfo、发行版异常)一律视为 "nat" 降级。
 pub fn networking_mode(distro: &str) -> String {
@@ -467,6 +539,42 @@ mod tests {
         assert_eq!(guest_path_of_unc(r"C:\Users\u"), None);
         assert_eq!(guest_path_of_unc("/home/u"), None);
         assert_eq!(guest_path_of_unc(r"\\wsl$\"), None);
+    }
+
+    #[test]
+    fn drive_path_mapping() {
+        // 盘符小写、分隔符归一、重复/尾随分隔符收敛
+        assert_eq!(
+            guest_path_of_drive("/mnt", r"C:\Users\u\proj"),
+            Some("/mnt/c/Users/u/proj".into())
+        );
+        assert_eq!(guest_path_of_drive("/mnt", "d:/dev//x/"), Some("/mnt/d/dev/x".into()));
+        // 盘根;automount root=/(空根)与自定义根
+        assert_eq!(guest_path_of_drive("/mnt", r"C:\"), Some("/mnt/c".into()));
+        assert_eq!(guest_path_of_drive("", r"C:\a"), Some("/c/a".into()));
+        assert_eq!(guest_path_of_drive("/custom/", r"E:\a"), Some("/custom/e/a".into()));
+        // 相对盘符语义、UNC、posix、相对路径都不接
+        assert_eq!(guest_path_of_drive("/mnt", "C:foo"), None);
+        assert_eq!(guest_path_of_drive("/mnt", r"\\wsl$\Ubuntu\home"), None);
+        assert_eq!(guest_path_of_drive("/mnt", "/home/u"), None);
+        assert_eq!(guest_path_of_drive("/mnt", "relative"), None);
+    }
+
+    #[test]
+    fn mount_root_derivation() {
+        // 默认根、自定义根、根挂载(root=/)
+        assert_eq!(
+            derive_mount_root(Path::new(r"C:\Users\u\AppData"), "/mnt/c/Users/u/AppData"),
+            Some("/mnt".into())
+        );
+        assert_eq!(
+            derive_mount_root(Path::new(r"D:\dev"), "/custom/d/dev"),
+            Some("/custom".into())
+        );
+        assert_eq!(derive_mount_root(Path::new(r"C:\a"), "/c/a"), Some("".into()));
+        // 反推不出:形状对不上或宿主路径不是盘符(Linux 冒烟恒等翻译)
+        assert_eq!(derive_mount_root(Path::new(r"C:\a"), "/mnt/d/a"), None);
+        assert_eq!(derive_mount_root(Path::new("/opt/x"), "/opt/x"), None);
     }
 
     #[test]

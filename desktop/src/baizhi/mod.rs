@@ -21,6 +21,8 @@ use cookies::CookieStore;
 
 const DEFAULT_MODEL_GATEWAY: &str = "https://ai-models.app.baizhi.cloud";
 const DEFAULT_MCP_GATEWAY: &str = "https://agent-toolkit.app.baizhi.cloud";
+/// MonkeyCode 官方云地址(config.rs 的 Basic Auth 作用域判定也用它)。
+pub(crate) const DEFAULT_MONKEYCODE_URL: &str = "https://monkeycode-ai.com";
 
 /// 百智云服务地址。模型与 MCP 服务固定走官方云;账号和 MonkeyCode 地址可覆盖。
 pub struct Endpoints {
@@ -44,12 +46,16 @@ fn env_or(env: &str, def: &str) -> String {
 }
 
 impl Endpoints {
-    pub fn resolve() -> Self {
+    /// mc_base_url 来自设置(config.json,自建/私有化部署地址;空 = 官方云)。
+    /// 优先级:环境变量(开发/联调逃生门)> 设置值 > 官方云默认。
+    pub fn resolve(mc_base_url: &str) -> Self {
+        let mc_default = mc_base_url.trim();
+        let mc_default = if mc_default.is_empty() { DEFAULT_MONKEYCODE_URL } else { mc_default };
         Self {
             account: env_or("MC_DESKTOP_BAIZHI_URL", "https://baizhi.cloud"),
             model_gateway: DEFAULT_MODEL_GATEWAY.to_string(),
             mcp_gateway: DEFAULT_MCP_GATEWAY.to_string(),
-            monkeycode: env_or("MC_DESKTOP_MONKEYCODE_URL", "https://monkeycode-ai.com"),
+            monkeycode: env_or("MC_DESKTOP_MONKEYCODE_URL", mc_default),
         }
     }
 }
@@ -90,8 +96,21 @@ pub struct Service {
     lp: Option<reqwest::Client>,
     pub store: CookieStore,
     pub mc: CookieStore,
+    /// 测试环境反向代理的 Basic Auth 头值(预计算的 "Basic <b64>";None =
+    /// 未配置)。仅对 MonkeyCode 域的请求附加,见 mc_basic_header。
+    pub(crate) mc_basic: Option<String>,
+    /// 模型请求地址(llmproxy):设置里单独指定的值,或默认 {服务地址}/v1。
+    /// 会员模型条目的 base_url 快照与物化注入都以它为准。
+    pub(crate) mc_llm: String,
     /// 进行中的扫码会话(只保留最新)
     pub wx: StdMutex<Option<wechat::WechatLogin>>,
+}
+
+/// "user:pass" → 预计算的 Basic Auth 头值(空白 = 未配置)。
+fn basic_header_value(user_pass: &str) -> Option<String> {
+    use base64::Engine as _;
+    let v = user_pass.trim();
+    (!v.is_empty()).then(|| format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(v.as_bytes())))
 }
 
 impl Service {
@@ -105,17 +124,20 @@ impl Service {
                 .build()
                 .expect("构建 HTTP 客户端失败")
         };
+        let mc_llm = format!("{}/v1", ep.monkeycode);
         Self {
             ep,
             http: Some(mk(10)),
             lp: Some(mk(10)),
             store: CookieStore::new(None),
             mc: CookieStore::new(None),
+            mc_basic: None,
+            mc_llm,
             wx: StdMutex::new(None),
         }
     }
 
-    pub fn new(config_dir: std::path::PathBuf) -> Self {
+    pub fn new(config_dir: std::path::PathBuf, cfg: &crate::config::DesktopConfig) -> Self {
         // 构建失败只发生在 TLS 后端初始化不了时。不 panic:壳在 setup 里
         // 构造本服务,GUI 子系统下 panic = 双击没反应、无任何线索。降级为
         // 云端/账号命令逐条报错,本地引擎会话不受影响。
@@ -127,14 +149,32 @@ impl Service {
                 .inspect_err(|e| eprintln!("[desktop] HTTP 客户端构建失败(云端/账号功能不可用): {e}"))
                 .ok()
         };
+        let ep = Endpoints::resolve(&cfg.mc_base_url);
+        // 模型请求地址:设置值(拆分部署)优先,空则默认与服务同源 /v1
+        let llm = cfg.mc_llm_base_url.trim().trim_end_matches('/');
+        let mc_llm = if llm.is_empty() { format!("{}/v1", ep.monkeycode) } else { llm.to_string() };
         Self {
-            ep: Endpoints::resolve(),
+            ep,
             http: mk(30),
             lp: mk(40),
             store: CookieStore::new(Some(config_dir.join("baizhi-cookies.json"))),
             mc: CookieStore::new(Some(config_dir.join("monkeycode-cookies.json"))),
+            mc_basic: basic_header_value(&cfg.mc_basic_auth),
+            mc_llm,
             wx: StdMutex::new(None),
         }
+    }
+
+    /// 测试环境反向代理的 Basic Auth 头(仅当 url 落在 MonkeyCode 域时返回;
+    /// 业务鉴权走 cookie,REST/WS 链路上 Authorization 头是空闲的,对齐
+    /// mobile 的 authHeaders)。会员模型的 LLM 调用不走这里:引擎侧由物化
+    /// 把 Basic 嵌进条目 base_url 的 userinfo(config.rs with_basic_userinfo,
+    /// anthropic 协议可用;openai 系协议因引擎占用 Authorization 仍受限)。
+    pub(crate) fn mc_basic_header(&self, url: &reqwest::Url) -> Option<&str> {
+        let basic = self.mc_basic.as_deref()?;
+        let mc = reqwest::Url::parse(&self.ep.monkeycode).ok()?;
+        (url.host_str() == mc.host_str() && url.port_or_known_default() == mc.port_or_known_default())
+            .then_some(basic)
     }
 
     /// 取 API 客户端;TLS 后端起不来时给出可行动错误而不是 panic。
@@ -170,6 +210,9 @@ impl Service {
         }
         if let Some(h) = store.header(&url) {
             req = req.header(reqwest::header::COOKIE, h);
+        }
+        if let Some(b) = self.mc_basic_header(&url) {
+            req = req.header(reqwest::header::AUTHORIZATION, b);
         }
         let resp = req.send().await.map_err(|e| other(format!("请求 {host} 失败: {e}")))?;
         let status = resp.status().as_u16();
@@ -240,26 +283,50 @@ impl Service {
         unwrap_envelope(&data, status, &ENV_BAIZHI)
     }
 
-    /// 请求裸结构端点(验证码 challenge/redeem 不套包壳;2xx 即成功)。
-    pub async fn call_raw(&self, method: reqwest::Method, path: &str, body: Option<&Value>) -> BzResult<Value> {
-        let (data, status) = self.account_do(method, path, body).await?;
+    /// 裸结构端点请求(验证码 challenge/redeem 不套 {code,data} 包壳,
+    /// 2xx 即成功):罐与错误标签由调用方指定。罐参数决定的是
+    /// 响应 Set-Cookie 的**吸收方向**(裸结构端点本身多为免鉴权)——
+    /// MonkeyCode 域必须传 mc 罐,用百智罐会把 mc 域 cookie 混进百智罐,
+    /// 破坏双罐隔离。
+    async fn raw_at(
+        &self,
+        store: &CookieStore,
+        method: reqwest::Method,
+        target: &str,
+        body: Option<&Value>,
+        label: &str,
+    ) -> BzResult<Value> {
+        let (data, status) = self.do_store(store, method, target, body).await?;
         if !(200..300).contains(&status) {
             if let Ok(v) = serde_json::from_slice::<Value>(&data) {
                 if let Some(m) = v.get("message").and_then(|m| m.as_str()) {
                     return Err(other(clean_message(m)));
                 }
             }
-            return Err(http_error(status, &data, "百智云"));
+            return Err(http_error(status, &data, label));
         }
-        serde_json::from_slice(&data).map_err(|e| other(format!("百智云响应解析失败: {e}")))
+        serde_json::from_slice(&data).map_err(|e| other(format!("{label}响应解析失败: {e}")))
     }
 
     // ==================== 登录/状态 ====================
 
-    /// 完整跑一遍 PoW 验证码,返回登录接口所需 captcha_token。
+    /// 百智云域的 PoW 验证码(手机号发码/登录用)。
     async fn obtain_captcha_token(&self) -> BzResult<String> {
+        self.captcha_token_at(&self.ep.account, &self.store, "百智云").await
+    }
+
+    /// 完整跑一遍 PoW 验证码,返回登录接口所需 captcha_token。百智云与
+    /// MonkeyCode 服务端用同一套 go-cap 协议(challenge 201 裸结构 → 本地
+    /// 爆破 → redeem 换 token),差异只在域、cookie 罐与错误标签。
+    pub(crate) async fn captcha_token_at(&self, base: &str, store: &CookieStore, label: &str) -> BzResult<String> {
         let ch = self
-            .call_raw(reqwest::Method::POST, "/api/v1/public/captcha/challenge", None)
+            .raw_at(
+                store,
+                reqwest::Method::POST,
+                &format!("{base}/api/v1/public/captcha/challenge"),
+                None,
+                label,
+            )
             .await
             .map_err(|e| other(format!("获取验证码质询失败: {}", e.msg())))?;
         let token = ch.get("token").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -275,10 +342,12 @@ impl Service {
             .map_err(|e| other(format!("验证码求解失败: {e}")))?
             .map_err(other)?;
         let rd = self
-            .call_raw(
+            .raw_at(
+                store,
                 reqwest::Method::POST,
-                "/api/v1/public/captcha/redeem",
+                &format!("{base}/api/v1/public/captcha/redeem"),
                 Some(&json!({ "token": token, "solutions": solutions })),
+                label,
             )
             .await
             .map_err(|e| other(format!("验证码校验失败: {}", e.msg())))?;
@@ -351,7 +420,7 @@ pub(crate) struct Envelope {
     /// Some(文案):3xx 直接以该文案判失败(MCP 网关未开通时不重定向即 302)
     pub redirect_msg: Option<&'static str>,
     /// Some(文案):401 不看响应体,直接返回固定 Unauthorized
-    /// (MonkeyCode 链路的 401 恢复动作是"重新同步云端账号"而非重新登录)
+    /// (MonkeyCode 链路的 401 恢复动作是"到设置中重新连接"——桥接或账密皆可)
     pub fixed_401: Option<&'static str>,
     /// data 缺失/为 null 时:true 返回整个响应体(百智云,对齐移动端),false 返回 Null
     pub whole_body_fallback: bool,
@@ -521,9 +590,108 @@ pub async fn mc_login(bz: State<'_, BaizhiState>) -> Result<Value, String> {
     Ok(resp)
 }
 
+/// MonkeyCode 账号密码直连登录(不经百智云;壳内自动完成 PoW 验证码)。
+/// 校验对齐 mobile 的弱校验:仅非空;password **不 trim**——首尾空格是
+/// 密码的一部分,trim 会与 mobile/web 行为分叉。
+#[tauri::command]
+pub async fn mc_password_login(bz: State<'_, BaizhiState>, email: String, password: String) -> Result<Value, String> {
+    let email = email.trim();
+    if email.is_empty() || password.is_empty() {
+        return Err("请输入邮箱和密码".into());
+    }
+    let user = monkeycode::login_monkeycode_password(&bz.0, email, &password)
+        .await
+        .map_err(BzErr::msg)?;
+    let mut resp = json!({ "ok": true });
+    if !user.is_null() {
+        resp["user"] = user;
+    }
+    Ok(resp)
+}
+
 #[tauri::command]
 pub async fn mc_logout(bz: State<'_, BaizhiState>) -> Result<Value, String> {
     bz.0.mc.clear();
+    Ok(json!({ "ok": true }))
+}
+
+// ==================== 会员模型本地同步 ====================
+
+pub(crate) const OHMYAGENT_KEY_FILE: &str = "monkeycode-ohmyagent-key.json";
+
+/// 已落盘的记录(要求 id 与 api_key 齐全,损坏视为无)。
+pub(crate) fn stored_ohmyagent_key(cfg_dir: &std::path::Path) -> Option<Value> {
+    let data = std::fs::read(cfg_dir.join(OHMYAGENT_KEY_FILE)).ok()?;
+    let v: Value = serde_json::from_slice(&data).ok()?;
+    let has = |k: &str| v.get(k).and_then(Value::as_str).map(|s| !s.is_empty()).unwrap_or(false);
+    (has("id") && has("api_key")).then_some(v)
+}
+
+/// 取本机记录,没有就创建并立刻落盘。`server` 变化(切换了服务地址)作废
+/// 重建,仅 `base_url` 变化则原地刷新;旧文件缺 `server` 时按 base_url 宽松判定。
+async fn ensure_ohmyagent_key(svc: &Service, cfg_dir: &std::path::Path) -> BzResult<Value> {
+    let server = svc.ep.monkeycode.as_str();
+    let llm = svc.mc_llm.as_str();
+    let persist = |k: &Value| {
+        crate::config::atomic_write_private(&cfg_dir.join(OHMYAGENT_KEY_FILE), k.to_string().as_bytes())
+            .map_err(other)
+    };
+    if let Some(mut k) = stored_ohmyagent_key(cfg_dir) {
+        let stored_server = k.get("server").and_then(Value::as_str).unwrap_or("").to_string();
+        let stored_llm = k.get("base_url").and_then(Value::as_str).unwrap_or("").to_string();
+        let same_server = if stored_server.is_empty() {
+            stored_llm.is_empty() || stored_llm == llm // 旧文件:凭 base_url 宽松判定
+        } else {
+            stored_server == server
+        };
+        if same_server {
+            if stored_server != server || stored_llm != llm {
+                k["server"] = json!(server);
+                k["base_url"] = json!(llm);
+                persist(&k)?;
+            }
+            return Ok(k);
+        }
+        // 服务器已切换,落到下方重建
+    }
+    let mut k = monkeycode::mc_ohmyagent_key_create(svc).await?;
+    k["server"] = json!(server);
+    k["base_url"] = json!(llm);
+    persist(&k)?;
+    Ok(k)
+}
+
+/// 同步会员内置模型(命令的可测内核:tests.rs 以 TempDir 直调)。
+pub(crate) async fn sync_member_models(svc: &Service, cfg_dir: &std::path::Path) -> BzResult<Value> {
+    ensure_ohmyagent_key(svc, cfg_dir).await?;
+    monkeycode::mc_member_models_sync(svc).await
+}
+
+/// 删成功才移除本地记录;删失败(如断网)保留记录,下次断开重试即收敛。
+pub(crate) async fn revoke_member_models(svc: &Service, cfg_dir: &std::path::Path) -> BzResult<()> {
+    let Some(key) = stored_ohmyagent_key(cfg_dir) else {
+        return Ok(()); // 从未同步过,无可删
+    };
+    let id = key.get("id").and_then(Value::as_str).unwrap_or("");
+    monkeycode::mc_ohmyagent_key_delete(svc, id).await?;
+    let _ = std::fs::remove_file(cfg_dir.join(OHMYAGENT_KEY_FILE));
+    Ok(())
+}
+
+/// 同步 MonkeyCode 会员内置模型为本地条目(source="monkeycode")。与
+/// baizhi_sync 同款语义:不碰 config.json,纯返回 {models, notes}。
+#[tauri::command]
+pub async fn mc_models_sync(app: tauri::AppHandle, bz: State<'_, BaizhiState>) -> Result<Value, String> {
+    let cfg_dir = crate::config::config_dir(&app)?;
+    sync_member_models(&bz.0, &cfg_dir).await.map_err(BzErr::msg)
+}
+
+/// 断开 MonkeyCode 账号时调用(从未同步过直接成功)。须在清除 mc 会话
+/// 之前调用——请求走 mc 会话认证。
+#[tauri::command]
+pub async fn mc_models_revoke(app: tauri::AppHandle, bz: State<'_, BaizhiState>) -> Result<Value, String> {
+    let cfg_dir = crate::config::config_dir(&app)?;
+    revoke_member_models(&bz.0, &cfg_dir).await.map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))
 }
 

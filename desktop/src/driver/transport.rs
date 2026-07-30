@@ -926,12 +926,24 @@ fn build_engine_command(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "ohmyagent-linux".into());
+    // 盘符 workdir 映射需要 automount 根:上面 prepare 刚用 wslpath 翻译过
+    // 三个 Windows 路径,从翻译对反推(wsl.conf 自定义根也对);Linux 冒烟
+    // 的恒等翻译反推不出,退默认 /mnt
+    let mount_root = [
+        (bin.as_path(), guest_bin.as_str()),
+        (engine_dir, guest_engine_dir.as_str()),
+        (chat_workspaces_dir, guest_chat_root.as_str()),
+    ]
+    .into_iter()
+    .find_map(|(host, guest)| crate::wsl::derive_mount_root(host, guest))
+    .unwrap_or_else(|| "/mnt".into());
     let ctx = WslCtx {
         distro: distro.to_string(),
         bin_name,
         guest_home: prep.guest_home,
         guest_chat_root,
         networking: prep.networking,
+        mount_root,
     };
     Ok((cmd, Some(ctx)))
 }

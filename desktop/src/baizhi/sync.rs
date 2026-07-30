@@ -1,6 +1,7 @@
 // 模型网关/MCP 网关同步(agent/internal/baizhi/sync.go 的 Rust 移植)。
 // 登录后从模型网关拉模型清单并确保有一把可用的推理密钥,产出可直接落盘的
-// 清单(models.json 条目 + mcp.json servers)。UI 拿到后交用户确认再保存重启。
+// 清单(models.json 条目 + mcp.json servers)。UI 拿到后整组并入设置表单
+// (不再逐条挑选,用户拍板),经保存条落盘重启。
 //
 // 密钥策略:ai-models 列表会返回完整 api_key → 优先复用调用方已持有的同一把,
 // 其次复用 MonkeyCode 自有条目,都没有才新建并启用。
@@ -243,6 +244,17 @@ async fn model_catalog_page(svc: &Service, key: &str, after_id: Option<&str>) ->
     Ok(value)
 }
 
+/// 按模型 id 选推理协议与端点(用户拍板):GPT 系列走 OpenAI Responses
+/// (网关 /api/openai 推理面,引擎按 base_url + "/responses" 拼请求,故带
+/// /v1),其余一律 Anthropic 兼容面(引擎会把 base_url 归一到 /v1)。
+fn entry_route(id: &str, gateway: &str) -> (&'static str, String) {
+    if id.to_ascii_lowercase().starts_with("gpt") {
+        ("openai_responses", format!("{gateway}/api/openai/v1"))
+    } else {
+        ("anthropic", format!("{gateway}/api/anthropic"))
+    }
+}
+
 /// 拉模型列表并映射为同步条目。推理接口返回的 data 已是该密钥可用的
 /// 模型集,直接以 id 为请求模型,不再按控制台的 type=llm 字段二次过滤。
 async fn gateway_models(svc: &Service, key: &str) -> BzResult<(Vec<Value>, Vec<String>)> {
@@ -264,10 +276,11 @@ async fn gateway_models(svc: &Service, key: &str) -> BzResult<(Vec<Value>, Vec<S
             if id.is_empty() || !seen.insert(id.to_string()) {
                 continue;
             }
+            let (provider, base_url) = entry_route(id, &svc.ep.model_gateway);
             models.push(json!({
                 "name": id,
-                "provider": "anthropic",
-                "base_url": format!("{}/api/anthropic", svc.ep.model_gateway),
+                "provider": provider,
+                "base_url": base_url,
                 "api_key": key,
                 "model": id,
                 "source": SOURCE_BAIZHI,
@@ -468,6 +481,29 @@ async fn ensure_mcp_key(svc: &Service, tool_codes: &[String]) -> (String, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn entry_route_gpt_series_uses_responses() {
+        let gw = "https://gw.example";
+        assert_eq!(
+            entry_route("gpt-5-codex", gw),
+            ("openai_responses", "https://gw.example/api/openai/v1".to_string())
+        );
+        assert_eq!(
+            entry_route("GPT-4o", gw),
+            ("openai_responses", "https://gw.example/api/openai/v1".to_string()),
+            "大小写不敏感"
+        );
+        assert_eq!(
+            entry_route("claude-sonnet-4-5", gw),
+            ("anthropic", "https://gw.example/api/anthropic".to_string())
+        );
+        assert_eq!(
+            entry_route("deepseek-v3", gw),
+            ("anthropic", "https://gw.example/api/anthropic".to_string()),
+            "非 GPT 系一律 anthropic"
+        );
+    }
 
     #[test]
     fn pick_name_skips_taken() {

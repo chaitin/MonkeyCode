@@ -313,8 +313,13 @@ wsl.exe)。**唯一消费点是 transport 的 `build_engine_command`**——平�
   同名变量指走私有配置)。壳侧 std::fs 摸 guest 文件**统一经
   `wsl::host_fs_view`**(\\wsl$ UNC)——repo/uploads/session/浏览器截图
   四处消费;workdir 归一化单点 `resolve_workdir`(~ 按 guest home 展开、
-  跨发行版 UNC 拒绝、盘符/相对路径拒绝);sidecar 一律存 guest 形态,
-  宿主操作前经逆翻译回 UNC。git 在 guest 内执行(UNC 上跑 Windows git
+  跨发行版 UNC 拒绝、盘符映射 automount(C:\p → /mnt/c/p,根从 prepare
+  的 wslpath 翻译对反推)、相对路径拒绝),create/resume 重建/
+  session_workdir 读取三类入口都走它——运行环境可能中途切换,sidecar
+  形态不可直信。**唯一例外**:本地会话 workdir 的存在性判定/按需创建走
+  `wsl::ensure_guest_dir` 在 guest 内执行并 canonical 化(\\wsl$ 对 guest
+  符号链接不可求值,宿主视角会把软链工作区误报为不存在);新建会话
+  sidecar 存 canonical guest 形态,宿主操作前经逆翻译回 UNC。git 在 guest 内执行(UNC 上跑 Windows git
   撞 ownership 校验且行尾语义不对)。运行时 distro 以引擎实例接回为准,
   不再翻配置。
 - **浏览器桥**:仅 networking-mode=mirrored 才物化 mc-browser MCP 条目并

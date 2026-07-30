@@ -112,6 +112,9 @@ pub(super) struct WslCtx {
     pub(super) guest_chat_root: String,
     /// wslinfo --networking-mode("mirrored"/"nat")
     pub(super) networking: String,
+    /// guest 内 automount 根(常态 /mnt,wsl.conf [automount] root 可改;
+    /// 从 prepare 的 wslpath 翻译对反推)。盘符 workdir 映射 guest 路径用
+    pub(super) mount_root: String,
 }
 
 /// 驱动共享状态。锁字段按职责归为三个锁组(各组文档注释写明含哪些锁
@@ -147,6 +150,15 @@ pub(super) struct ManifestModel {
     /// 模型设置里的思考深度默认档(low/medium/high;""=关闭)。composer
     /// 未显式选档时按它显示当前生效档位。
     pub(super) think: String,
+    /// 底层模型串(条目 "model" 字段)。name 可能是 remark 别名,UI 判
+    /// 会员档位(monkeycode-{basic|pro|ultra}/…)只能靠它。
+    pub(super) model: String,
+    /// 超出会员档的展示专用条目:引擎 settings 里没有它(物化跳过),
+    /// 选择键解析必须拒绝(见 session.rs model_id_of),UI 灰态禁选。
+    pub(super) locked: bool,
+    /// 会员条目的服务端归属(public/private/team;非会员条目为空),
+    /// UI 会员 tab 按它分「付费/我的/团队」节。
+    pub(super) owner: String,
 }
 
 /// 清单模型解析(壳 models.json 词汇:name/provider/base_url/api_key/model/…)。
@@ -160,6 +172,11 @@ pub(super) fn parse_manifest_models(models: &Value) -> Vec<ManifestModel> {
                 default: m.get("default").and_then(|v| v.as_bool()).unwrap_or(false),
                 source: m.get("source").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 think: m.get("think").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                // unwrap_or 而非 ?:旧条目可能没有这些字段,缺省不能让
+                // 整条从选择器消失(locked 缺省 false = 旧数据照常可选)
+                model: m.get("model").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                locked: m.get("locked").and_then(|v| v.as_bool()).unwrap_or(false),
+                owner: m.get("owner").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             })
         })
         .collect()
