@@ -1441,27 +1441,37 @@ export default function TaskDetailPage() {
                       type="button"
                       variant="ghost"
                       className="h-11 justify-start gap-2 px-3"
+                      aria-label={fileChangesCount > 0 ? `${t("taskDetail.panels.files")} (${fileChangesCount})` : t("taskDetail.panels.files")}
                       disabled={!taskInteractive}
                       onClick={() => setMobileToolsView("files")}
                     >
-                      <IconFile className="size-4 shrink-0" />
+                      <span className="relative size-4 shrink-0">
+                        <IconFile className="size-4" />
+                        {fileChangesCount > 0 && (
+                          <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] leading-none text-primary-foreground">
+                            {fileChangesCount}
+                          </span>
+                        )}
+                      </span>
                       <span className="truncate">{t("taskDetail.panels.files")}</span>
-                      {fileChangesCount > 0 && (
-                        <span className="ml-auto text-xs text-muted-foreground">{fileChangesCount}</span>
-                      )}
                     </Button>
                     <Button
                       type="button"
                       variant="ghost"
                       className={cn("h-11 justify-start gap-2 px-3", previewDialogOpen && "bg-accent text-primary")}
+                      aria-label={previewPortCount > 0 ? `${t("taskDetail.panels.preview")} (${previewPortCount})` : t("taskDetail.panels.preview")}
                       disabled={!taskInteractive}
                       onClick={() => runMobileToolAction(togglePreviewDialog)}
                     >
-                      <IconDeviceDesktop className="size-4 shrink-0" />
+                      <span className="relative size-4 shrink-0">
+                        <IconDeviceDesktop className="size-4" />
+                        {previewPortCount > 0 && (
+                          <span className="absolute -right-1.5 -top-1.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] leading-none text-primary-foreground">
+                            {previewPortCount}
+                          </span>
+                        )}
+                      </span>
                       <span className="truncate">{t("taskDetail.panels.preview")}</span>
-                      {previewPortCount > 0 && (
-                        <span className="ml-auto text-xs text-muted-foreground">{previewPortCount}</span>
-                      )}
                     </Button>
                     {canPublishWebsite && (
                       <Button

@@ -148,6 +148,12 @@ test("竖向菜单沿用现有图标和 44px 操作行", () => {
   assert.match(source, /canPublishWebsite && \([\s\S]*?className=\{cn\("h-11 justify-start gap-2 px-3"[\s\S]*?<IconUpload/);
 });
 
+test("文件和预览计数以图标角标展示", () => {
+  assert.match(source, /aria-label=\{fileChangesCount > 0[\s\S]*?<span className="relative size-4 shrink-0">[\s\S]*?<IconFile className="size-4" \/>[\s\S]*?fileChangesCount > 0/);
+  assert.match(source, /aria-label=\{previewPortCount > 0[\s\S]*?<span className="relative size-4 shrink-0">[\s\S]*?<IconDeviceDesktop className="size-4" \/>[\s\S]*?previewPortCount > 0/);
+  assert.doesNotMatch(source, /<span className="ml-auto text-xs text-muted-foreground">\{(?:fileChangesCount|previewPortCount)\}<\/span>/);
+});
+
 test("文件与工具共享 Popover 且手机端不打开右侧面板", () => {
   assert.match(source, /mobileToolsView === "tools"/);
   assert.match(source, /mobileToolsView === "files"[\s\S]*?<TaskFileExplorer/);
