@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>MonkeyCode 浏览器助手</title>
+    <style>
+      /* 浅色简洁样式,与 mc-desktop 状态页气质对齐,不引入框架 */
+      body {
+        margin: 0;
+        width: 300px;
+        font: 13px/1.6 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: #1f2329;
+        background: #fff;
+      }
+      .section { padding: 12px 14px; }
+      .section + .section { border-top: 1px solid #eef0f2; }
+      .status { display: flex; align-items: center; gap: 8px; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: #c0c4cc; flex: none; }
+      .dot.ok { background: #34c759; }
+      .dot.busy { background: #f7b500; }
+      .muted { color: #8a9099; font-size: 12px; }
+      button {
+        font: inherit;
+        padding: 5px 12px;
+        border: 1px solid #d5d9de;
+        border-radius: 6px;
+        background: #fff;
+        color: #1f2329;
+        cursor: pointer;
+      }
+      button:hover { background: #f5f7f9; }
+      button.primary { background: #4f6ef7; border-color: #4f6ef7; color: #fff; }
+      button.primary:hover { background: #3d5ce5; }
+      button.small { padding: 2px 8px; font-size: 12px; }
+      .tab-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 4px 0;
+      }
+      .tab-title {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .block { display: block; width: 100%; box-sizing: border-box; margin-top: 8px; }
+      h2 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: #8a9099; }
+    </style>
+  </head>
+  <body>
+    <div class="section">
+      <div class="status">
+        <span id="dot" class="dot"></span>
+        <span id="status-text">加载中…</span>
+      </div>
+      <div id="status-extra" class="muted"></div>
+    </div>
+    <div class="section" id="current-section" hidden>
+      <h2>当前标签页</h2>
+      <div id="current-title" class="tab-title muted"></div>
+      <button id="handoff-btn" class="primary block" hidden>把此标签页交给 agent 操作</button>
+    </div>
+    <div class="section" id="controlled-section" hidden>
+      <h2>agent 控制中的标签页</h2>
+      <div id="controlled-list"></div>
+    </div>
+    <div class="section" id="unpaired-section" hidden>
+      <button id="open-options" class="block">去设置页配对</button>
+    </div>
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>

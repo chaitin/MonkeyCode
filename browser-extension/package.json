@@ -1,0 +1,19 @@
+{
+  "name": "monkeycode-browser-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.280",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "vitest": "^4.1.10"
+  }
+}

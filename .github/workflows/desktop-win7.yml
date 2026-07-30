@@ -1,0 +1,238 @@
+name: Desktop Windows 7 Build
+
+# Win7 兼容包(legacy 通道),与主线 Windows 包并行:
+#   - 内核: XTLS/go-win7 补丁工具链(官方 Go >=1.21 产物在 Win7 直接崩)
+#   - 壳:   Rust 1.77.2(最后支持 Win7 的 stable)+ Cargo.lock.win7(降级锁定的依赖树)
+#   - WebView2: 固定版 109.0.1518.78(Win7 最后支持的版本,离线捆进安装包,+~180MB)
+#   - updater 指向独立的 latest-win7.json,防止 Win7 用户被推送 Win10-only 更新
+# 维护约束:
+#   - ohmyagent go.mod 升 Go 版本时,同步升 GO_WIN7_VERSION(go-win7 通常滞后上游 3-7 天)
+#   - desktop/Cargo.toml 改依赖后,跑 desktop/scripts/regen-win7-lock.sh 重新生成
+#     Cargo.lock.win7(cargo 1.77.2 增量解析 + 压回 reqwest 的 http3/quinn 可选子树到
+#     edition<=2021)。直接 `cargo update` 会拉进 edition2024 依赖(rust>=1.85),即便不参与
+#     编译,只要在 windows 目标上"可下载"就会 `feature edition2024 is required` 打挂构建。
+#   - 目标机:Win7 SP1 即可(零 KB 前置)。内核经 go-win7 legacy 工具链覆盖
+#     未打更新的裸机;UCRT 已随包 app-local 分发(无需 KB2999226);Win8+ API 由
+#     YY-Thunks 兜底(无需 KB3080149)。尽管如此仍建议目标机打齐更新(安全)
+
+on:
+  push:
+    # 发布只认 vYYMMDDNN tag，例如 v26072208。
+    tags: ["v[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]"]
+
+env:
+  GO_WIN7_VERSION: patched-1.26.5 # 与 ohmyagent go.mod 的 go 版本对应
+  GO_WIN7_LEGACY_SHA256: "1fded9947a2da9e3eb8f6dc1754637dbb4f4eb82d6024c227fae870986cf629c"
+  WEBVIEW2_VERSION: 109.0.1518.78
+  WEBVIEW2_CAB_SHA256: "7622281cf83de1a35e3a471f432f7a897d65f0a7d3975df08512b7b253dd45c7"
+  YY_THUNKS_VERSION: v1.2.1
+  YY_THUNKS_SHA256: "36b6cf1f8f9ac0d05863140d20d8ca70a796775e520fed2842667b517a867f52"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # 先换锁再装缓存:rust-cache 的 key 取自 Cargo.lock,必须是 win7 锁
+      - name: Use win7 dependency lock
+        working-directory: desktop
+        run: cp Cargo.lock.win7 Cargo.lock
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.77.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+          key: win7
+
+      # 与主 Windows 通道共用 tag 版本；在换好 Win7 lockfile 且恢复缓存后
+      # 再注入，避免每个发布 tag 都产生一套新的依赖缓存。
+      - name: Set release version from tag
+        working-directory: desktop
+        run: python scripts/set_release_version.py "${GITHUB_REF_NAME}"
+
+      # 浏览器扩展:随包分发(tauri bundle.resources 引用 dist,缺失会打包失败)
+      - name: Build browser extension
+        working-directory: browser-extension
+        run: |
+          npm ci
+          npm run build
+
+      # WSL 运行环境的 Linux 引擎:用 runner 预装的官方 Go 交叉编译。
+      # 必须在 go-win7 Activate **之前**跑(那一步会改写 GOROOT/GOTOOLCHAIN/
+      # PATH)——linux/amd64 产物与 Win7 兼容性无关,不该沾补丁工具链。
+      # submodule 拉取与后面的 sidecar step 幂等重复,顺序无碍。
+      - name: Build ohmyagent WSL engine (official Go)
+        env:
+          OHMYAGENT_REPO_TOKEN: ${{ secrets.OHMYAGENT_REPO_TOKEN }}
+        run: |
+          [ -n "$OHMYAGENT_REPO_TOKEN" ] || { echo "::error::OHMYAGENT_REPO_TOKEN 未配置,引擎无法进包"; exit 1; }
+          git config --global url."https://x-access-token:${OHMYAGENT_REPO_TOKEN}@github.com/".insteadOf "git@github.com:"
+          git submodule update --init agent
+          mkdir -p "$GITHUB_WORKSPACE/desktop/binaries"
+          cd agent
+          AGENT_VERSION="$(git rev-parse --short HEAD)"
+          echo "ohmyagent version: ${AGENT_VERSION} (linux/amd64, WSL)"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${AGENT_VERSION}" \
+            -o "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-linux" ./cmd/ohmyagent
+
+      # go-win7 legacy 工具链:比标准版额外修复未打更新的裸 Win7 SP1(LoadLibraryEx
+      # 新标志回退——缺 KB2533623 时标准版 "bcrypt.dll not found" 崩;sysSocket 回退)。
+      # 打过更新的系统行为与标准版一致(运行时自动检测),一个包覆盖新旧机器。
+      # legacy 只发源码,首次在 runner 上自举构建(~15min),之后走缓存。
+      - name: Restore go-win7 legacy toolchain cache
+        id: go-legacy-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/go-win7-legacy
+          key: go-win7-legacy-${{ env.GO_WIN7_VERSION }}
+
+      - name: Build go-win7 legacy toolchain (cache miss)
+        if: steps.go-legacy-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -sL -o go-legacy.zip \
+            "https://github.com/XTLS/go-win7/releases/download/${GO_WIN7_VERSION}/source-legacy.zip"
+          echo "${GO_WIN7_LEGACY_SHA256}  go-legacy.zip" | sha256sum -c -
+          # zip 内容即 Go 源码树(src/ 在顶层,无包装目录)
+          mkdir -p "$HOME/go-win7-legacy"
+          unzip -q go-legacy.zip -d "$HOME/go-win7-legacy"
+          # 用 runner 预装的官方 Go 自举(只参与编译工具链,不进产物)
+          export GOROOT_BOOTSTRAP=$(cygpath -w "$(go env GOROOT)")
+          cd "$HOME/go-win7-legacy/src"
+          cmd //c make.bat
+
+      # GOTOOLCHAIN=local 防止 go.mod 版本超前时被静默换回官方工具链
+      # ——那会悄悄丢掉 Win7 兼容性
+      - name: Activate go-win7 legacy toolchain
+        run: |
+          test -x "$HOME/go-win7-legacy/bin/go.exe"
+          echo "GOROOT=$(cygpath -w "$HOME/go-win7-legacy")" >> "$GITHUB_ENV"
+          echo "GOTOOLCHAIN=local" >> "$GITHUB_ENV"
+          echo "$HOME/go-win7-legacy/bin" >> "$GITHUB_PATH"
+
+      # 引擎 sidecar(win7 兼容工具链编译;源码来自 agent/ submodule,
+      # 私库经 OHMYAGENT_REPO_TOKEN + insteadOf 拉取,凭据缺失直接失败)
+      - name: Build ohmyagent sidecar (win7-compatible, agent/ submodule)
+        env:
+          CGO_ENABLED: "0"
+          OHMYAGENT_REPO_TOKEN: ${{ secrets.OHMYAGENT_REPO_TOKEN }}
+        run: |
+          go version
+          # 断言用的是 go-win7 而非 runner 预装的官方 Go(官方产物 Win7 上直接崩,
+          # 且 go version 输出无法区分,必须查 GOROOT)
+          [ "$(go env GOROOT)" = "$GOROOT" ]
+          [ -n "$OHMYAGENT_REPO_TOKEN" ] || { echo "::error::OHMYAGENT_REPO_TOKEN 未配置,引擎无法进包"; exit 1; }
+          git config --global url."https://x-access-token:${OHMYAGENT_REPO_TOKEN}@github.com/".insteadOf "git@github.com:"
+          git submodule update --init agent
+          mkdir -p "$GITHUB_WORKSPACE/desktop/binaries"
+          cd agent
+          AGENT_VERSION="$(git rev-parse --short HEAD)"
+          echo "ohmyagent version: ${AGENT_VERSION}"
+          # Desktop 专用 sidecar 链成 GUI 子系统:stdio 仍走壳提供的管道,
+          # 但 Windows 不再给 ohmyagent.exe 分配常驻控制台黑框。
+          go build -trimpath -ldflags "-s -w -H=windowsgui -X main.Version=${AGENT_VERSION}" \
+            -o "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-x86_64-pc-windows-msvc.exe" ./cmd/ohmyagent
+          python "$GITHUB_WORKSPACE/desktop/scripts/check-pe-subsystem.py" \
+            "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-x86_64-pc-windows-msvc.exe" gui
+
+      - name: Download WebView2 fixed runtime 109
+        working-directory: desktop
+        run: |
+          curl -sL -o webview2.cab \
+            "https://github.com/westinyang/WebView2RuntimeArchive/releases/download/${WEBVIEW2_VERSION}/Microsoft.WebView2.FixedVersionRuntime.${WEBVIEW2_VERSION}.x64.cab"
+          echo "${WEBVIEW2_CAB_SHA256}  webview2.cab" | sha256sum -c -
+          mkdir -p webview2-fixed
+          # 绝对路径调系统 expand:Git Bash 的 GNU expand(coreutils)在 PATH 里遮住它
+          /c/Windows/System32/expand.exe -F:* webview2.cab webview2-fixed >/dev/null
+          RUNTIME_DIR="webview2-fixed/Microsoft.WebView2.FixedVersionRuntime.${WEBVIEW2_VERSION}.x64"
+          # cab 内若是扁平文件(无顶层目录)则归位到 tauri 配置期望的目录
+          if [ ! -d "$RUNTIME_DIR" ]; then
+            mkdir -p "$RUNTIME_DIR"
+            find webview2-fixed -maxdepth 1 -type f ! -name "*.cab" -exec mv {} "$RUNTIME_DIR"/ \;
+          fi
+          test -f "$RUNTIME_DIR/msedgewebview2.exe"
+          ls "$RUNTIME_DIR" | head
+
+      # UCRT app-local 部署(微软官方支持):Win7 无 KB2999226 时 api-ms-win-crt-*
+      # 缺失,壳 exe(依赖树中 /MD 预编译库引入动态 UCRT 导入)和 WebView2 运行时
+      # (Chromium 本身依赖 UCRT)都起不来。从 runner 的 Windows SDK 取可再分发的
+      # UCRT DLL:壳 exe 旁(bundle.resources)+ WebView2 固定版目录各放一份
+      - name: Bundle app-local UCRT
+        working-directory: desktop
+        run: |
+          UCRT_SRC=$(ls -d "/c/Program Files (x86)/Windows Kits/10/Redist/"*/ucrt/DLLs/x64 2>/dev/null | sort | tail -1)
+          [ -n "$UCRT_SRC" ] || UCRT_SRC="/c/Program Files (x86)/Windows Kits/10/Redist/ucrt/DLLs/x64"
+          test -f "$UCRT_SRC/ucrtbase.dll"
+          mkdir -p ucrt
+          cp "$UCRT_SRC"/*.dll ucrt/
+          echo "UCRT DLLs: $(ls ucrt | wc -l)"
+          cp ucrt/*.dll "webview2-fixed/Microsoft.WebView2.FixedVersionRuntime.${WEBVIEW2_VERSION}.x64/"
+
+      # YY-Thunks:链接期把 Win8+ API 的导入(如 WebView2LoaderStatic.lib 引用的
+      # EventSetInformation)替换为本地 thunk(运行时 GetProcAddress,缺失时优雅降级),
+      # 一次性消除整类"无法定位程序输入点"启动失败,目标机无需补 KB
+      - name: Download YY-Thunks
+        working-directory: desktop
+        run: |
+          curl -sL -o yy-thunks.zip \
+            "https://github.com/Chuyu-Team/YY-Thunks/releases/download/${YY_THUNKS_VERSION}/YY-Thunks-Objs.zip"
+          echo "${YY_THUNKS_SHA256}  yy-thunks.zip" | sha256sum -c -
+          unzip -o -q yy-thunks.zip -d yy-thunks
+          test -f yy-thunks/objs/x64/YY_Thunks_for_Win7.obj
+
+      # 静态 CRT:Win7 上未必有 VC++ 运行库,自包含省去 redist 前置。
+      # secret 就绪时走发布构建(额外产出签名的 updater setup.exe + latest-win7.json),
+      # 否则回退普通打包,CI 不红
+      - name: Build NSIS installer
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # 装机/使用统计的上报地址,编译期内联(desktop/src/telemetry.rs)。
+          # 只加在 release 工作流上:开发机 cargo run / cargo build 拿不到它,
+          # 因此开发过程不会往生产数据里灌噪声。secret 未配置时是空串 =
+          # 不上报,构建照常不红。
+          #
+          # 走 secret 不是把它当密钥(装了包的人 strings 一下就能拿到),而是
+          # 不把它摆在公开仓库里:端点免鉴权公开可写,而这套数据的全部意义
+          # 就是装机计数——谁都能 curl 循环随机塞 _id 把装机量刷成任意数字。
+          # 降低发现门槛没有收益,提高一点是免费的。
+          MC_MATOMO_URL: ${{ secrets.MC_MATOMO_URL }}
+          MC_MATOMO_SITE_ID: ${{ secrets.MC_MATOMO_SITE_ID }}
+        run: |
+          # 断言 1.77.2(≥1.78 编出的 exe 最低要求 Win10,构建会成功但产物在 Win7 崩)
+          rustup default 1.77.2
+          rustc --version | grep -F "1.77.2"
+          YY_OBJ=$(cygpath -w "$PWD/yy-thunks/objs/x64/YY_Thunks_for_Win7.obj")
+          export RUSTFLAGS="-C target-feature=+crt-static -C link-arg=$YY_OBJ"
+          EXTRA_CONFIG=""
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            EXTRA_CONFIG="--config tauri.release.conf.json"
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY 未配置,跳过 updater 产物"
+          fi
+          npx --yes @tauri-apps/cli@^2 build \
+            --config bundle.windows.conf.json --config bundle.win7.conf.json $EXTRA_CONFIG \
+            -- --locked
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            python scripts/gen-latest-json.py win7
+          fi
+          RELEASE_VERSION="${GITHUB_REF_NAME#v}"
+          EXPECTED="target/release/bundle/nsis/MonkeyCode_${RELEASE_VERSION}.0.0_x64-setup.exe"
+          test -f "$EXPECTED" || { echo "::error::安装包版本未与 tag 对齐，缺少 $EXPECTED"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MonkeyCode-win7-x64-${{ github.ref_name }}
+          path: |
+            desktop/target/release/bundle/nsis/*.exe
+            desktop/target/release/bundle/updater/*

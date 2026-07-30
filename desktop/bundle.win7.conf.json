@@ -1,0 +1,20 @@
+{
+  "bundle": {
+    "resources": {
+      "ucrt/*": "./"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "fixedRuntime",
+        "path": "./webview2-fixed/Microsoft.WebView2.FixedVersionRuntime.109.0.1518.78.x64/"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://release.monkeycode-ai.com/public/desktop/latest-win7.json"
+      ]
+    }
+  }
+}

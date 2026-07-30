@@ -1,0 +1,5 @@
+# dev 扩展签名私钥:仅用于本机钉死扩展 ID,严禁入库(公钥已写进 manifest.json 的 key 字段)
+dev-key.pem
+
+node_modules/
+dist/

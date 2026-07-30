@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "MonkeyCode 浏览器助手",
+  "version": "0.1.0",
+  "description": "把标签页交给 MonkeyCode 本地 agent 操作(带鉴权的 chrome.debugger 代理)。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0Paz9FvhOQP97ZDwf0OTjilvk3nOhn3ka3HRvV7CA5WmInvbXhPcPadiMeatBZG/Dai3jxzTHwPsOAGxs4gSNcYYRB6P779UsxgzhKlLArSa6aIoMzWECeMuIg4TOVzIGISZL+ULxVsZABFRREfBw/gkyNrkEuMSsE4c9iln/YMyQXUeX8VlZiR/1L30Yw2B3OheiVi49TyEajQMX0CC9QZz2Hn+eSqRYOpuPAYbTDteCCXAYl+vlHt6bymhZvG5dNENmgOoo9iTzCqmoG1JyyXVQSozpIu9ceS8II++/COhk4PZ0mhgsMvX44ITbmzoGLDsPKjyTuPJt0slqaLtHwIDAQAB",
+  "minimum_chrome_version": "116",
+  "permissions": ["debugger", "tabs", "storage", "alarms"],
+  "host_permissions": ["http://127.0.0.1/*", "ws://127.0.0.1/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "MonkeyCode 浏览器助手"
+  },
+  "options_page": "src/options/options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

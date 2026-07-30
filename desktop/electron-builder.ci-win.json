@@ -1,8 +1,0 @@
-{
-  "directories": {
-    "output": "release"
-  },
-  "win": {
-    "signAndEditExecutable": true
-  }
-}

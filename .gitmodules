@@ -1,0 +1,3 @@
+[submodule "agent"]
+	path = agent
+	url = git@github.com:chaitin/OhMyAgent.git

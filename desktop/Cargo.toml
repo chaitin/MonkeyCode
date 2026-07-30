@@ -1,0 +1,74 @@
+[package]
+name = "monkeycode-desktop"
+# 版本 = YYMMDDNN(日期+两位序号)占主版本位,与 tauri.conf.json 保持一致
+version = "26071401.0.0"
+description = "MonkeyCode 本地桌面客户端(Tauri 壳 + ohmyagent 引擎)"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# macos-private-api:桌宠透明窗口在 macOS 依赖私有 API(transparent 方法
+# 无此 feature 时在 mac 上被 cfg 掉,编译报 E0599);非 mac 平台是空操作。
+# 需配套 tauri.conf.json 的 app.macOSPrivateApi=true。不上 App Store,可用。
+# devtools:release 包保留 WebView 控制台能力(内部分发,非 App Store,
+# 无私有 API 顾虑;线上排障全靠它)。右键菜单已改壳内自绘、不暴露"检查
+# 元素",入口是 UI 侧快捷键 F12 / Ctrl|Cmd+Shift+I → open_devtools 命令
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api", "devtools"] }
+getrandom = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
+
+# 引擎驱动层:壳直连 agent 内核(REST/WS/stdio),UI 只经 Tauri IPC
+# rustls 而非系统 openssl:Win7/老发行版无需系统 TLS 依赖
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
+tokio = { version = "1", features = ["sync", "time", "macros", "io-util", "process", "fs"] }
+# rustls-tls-webpki-roots 不能少:云端桥拨的是 wss,缺 TLS feature 时
+# connect_async 直接报 "TLS support not compiled in",所有云端 WS 秒败
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+base64 = "0.22"
+
+# 百智云/云端原生化(baizhi/):PoW 验证码、Set-Cookie 解析、微信页刮取
+sha2 = "0.10"
+cookie = "0.18"
+regex = "1"
+# cookie 罐过期时间的 RFC3339 解析。time 本就在依赖树里(cookie 的 Expires
+# 解析),显式声明 + parsing feature,替代手写历算(严格校验月/日范围)
+time = { version = "0.3", features = ["parsing"] }
+
+[dev-dependencies]
+# baizhi 集成测试:假服务端 + async 测试运行时
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# Rust→TS 契约类型生成(derive 经 cfg_attr(test) 门控,不进产物二进制):
+# `cargo test export_bindings` 产出 desktop/ui/src/gen/,见 driver/frame.rs
+ts-rs = "12"
+
+# 桌宠窗口在 macOS 须是 NonactivatingPanel:普通 NSWindow 被点击会激活
+# 应用(主窗口被提到最前并抢焦点→桌宠被显隐逻辑藏掉)。锁 rev 保证可复现。
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e894383aa068ec5365a42994e3ac94ba1b6" }
+# 隐藏原生红绿灯要向 NSWindow 发消息(标准按钮尺寸不可调,UI 自绘 10px 替身)
+objc2 = "0.6"
+
+# Windows 桌宠不再交给 WebView2 绘制:Win7 不支持透明 WebView
+# 背景,改用 UpdateLayeredWindow 直接提交预乘 alpha 位图。
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Storage_FileSystem",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Registry",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+strip = true
+lto = true

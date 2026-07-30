@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>MonkeyCode 浏览器助手 · 设置</title>
+    <style>
+      body {
+        margin: 0;
+        font: 14px/1.7 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: #1f2329;
+        background: #f5f7f9;
+      }
+      .card {
+        max-width: 460px;
+        margin: 40px auto;
+        background: #fff;
+        border: 1px solid #e5e8eb;
+        border-radius: 10px;
+        padding: 24px 28px;
+      }
+      h1 { margin: 0 0 4px; font-size: 18px; }
+      .muted { color: #8a9099; font-size: 12px; }
+      label { display: block; margin: 16px 0 4px; font-weight: 600; font-size: 13px; }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 7px 10px;
+        border: 1px solid #d5d9de;
+        border-radius: 6px;
+        font: inherit;
+      }
+      input:focus { outline: none; border-color: #4f6ef7; }
+      button {
+        font: inherit;
+        padding: 7px 16px;
+        border: 1px solid #d5d9de;
+        border-radius: 6px;
+        background: #fff;
+        cursor: pointer;
+        margin-top: 16px;
+      }
+      button:hover { background: #f5f7f9; }
+      button.primary { background: #4f6ef7; border-color: #4f6ef7; color: #fff; }
+      button.primary:hover { background: #3d5ce5; }
+      button.danger { color: #d93026; border-color: #f0b4b0; }
+      button.danger:hover { background: #fdf1f0; }
+      .status { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: #c0c4cc; flex: none; }
+      .dot.ok { background: #34c759; }
+      .dot.busy { background: #f7b500; }
+      #error { color: #d93026; font-size: 12px; margin-top: 8px; min-height: 18px; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>MonkeyCode 浏览器助手</h1>
+      <div class="status">
+        <span id="dot" class="dot"></span>
+        <span id="status-text">加载中…</span>
+      </div>
+      <div id="error"></div>
+
+      <div id="pair-form">
+        <label for="port">agent 端口</label>
+        <input id="port" type="number" min="1" max="65535" placeholder="留空 = 自动扫描 7440-7449" />
+        <label for="code">配对码</label>
+        <input id="code" type="text" placeholder="在 mc-desktop 设置页获取,如 AB3D-9F2K" autocomplete="off" />
+        <button id="pair-btn" class="primary">连接并配对</button>
+      </div>
+
+      <div id="paired-panel" hidden>
+        <p class="muted">已与本地 agent 配对。如需换机或重置授权,可解除配对后重新输入配对码。</p>
+        <button id="unpair-btn" class="danger">解除配对</button>
+      </div>
+    </div>
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>

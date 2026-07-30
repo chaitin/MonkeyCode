@@ -1,0 +1,65 @@
+{"type": "user-input", "data": "eyJjb250ZW50IjogIjViaXU1b2lSNTV5TDVMaUw2TCtaNUxpcUlIQmhibWxqIn0=", "seq": 1, "timestamp": 1784088476037}
+{"type": "task-started", "seq": 2, "timestamp": 1784088476074}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLmiJEifX19", "seq": 3, "timestamp": 1784088476111}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLlhYgifX19", "seq": 4, "timestamp": 1784088476148}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLnnIsifX19", "seq": 5, "timestamp": 1784088476185}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLkuIAifX19", "seq": 6, "timestamp": 1784088476222}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLkuIsifX19", "seq": 7, "timestamp": 1784088476259}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLmoIgifX19", "seq": 8, "timestamp": 1784088476296}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLpobYifX19", "seq": 9, "timestamp": 1784088476333}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLpgqMifX19", "seq": 10, "timestamp": 1784088476370}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLkuIAifX19", "seq": 11, "timestamp": 1784088476407}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLluKcifX19", "seq": 12, "timestamp": 1784088476444}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAidXNhZ2VfdXBkYXRlIiwgInVzZWQiOiAxMjAwLCAic2l6ZSI6IDIwMDAwMH19", "seq": 13, "timestamp": 1784088476481}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLnu6cifX19", "seq": 14, "timestamp": 1784088476518}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLnu60ifX19", "seq": 15, "timestamp": 1784088476555}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLmg7MifX19", "seq": 16, "timestamp": 1784088476592}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLovrkifX19", "seq": 17, "timestamp": 1784088476629}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLnlYwifX19", "seq": 18, "timestamp": 1784088476666}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLmnaEifX19", "seq": 19, "timestamp": 1784088476703}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfdGhvdWdodF9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLku7YifX19", "seq": 20, "timestamp": 1784088476740}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAicGxhbiIsICJlbnRyaWVzIjogW3siY29udGVudCI6ICLlrprkvY0gcGFuaWMiLCAic3RhdHVzIjogImluX3Byb2dyZXNzIn1dfX0=", "seq": 21, "timestamp": 1784088476777}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAidG9vbF9jYWxsIiwgInRvb2xDYWxsSWQiOiAidDEiLCAidGl0bGUiOiAiUmVhZCIsICJraW5kIjogInJlYWQiLCAicmF3SW5wdXQiOiB7InBhdGgiOiAic3JjL21haW4uZ28ifX19", "seq": 22, "timestamp": 1784088476814}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLor7sifX19", "seq": 23, "timestamp": 1784088476851}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLliLAifX19", "seq": 24, "timestamp": 1784088476888}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLkuoYifX19", "seq": 25, "timestamp": 1784088476925}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLotooifX19", "seq": 26, "timestamp": 1784088476962}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLnlYwifX19", "seq": 27, "timestamp": 1784088476999}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLnmoQifX19", "seq": 28, "timestamp": 1784088477036}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLntKIifX19", "seq": 29, "timestamp": 1784088477073}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLlvJUifX19", "seq": 30, "timestamp": 1784088477110}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAidG9vbF9jYWxsX3VwZGF0ZSIsICJ0b29sQ2FsbElkIjogInQxIiwgInN0YXR1cyI6ICJjb21wbGV0ZWQiLCAicmF3T3V0cHV0IjogeyJvdXRwdXQiOiAibGluZSAxMjA6IGl0ZW1zW2lkeF0ifX19", "seq": 31, "timestamp": 1784088477147}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLmiYAifX19", "seq": 32, "timestamp": 1784088477184}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLku6UifX19", "seq": 33, "timestamp": 1784088477221}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLmmK8ifX19", "seq": 34, "timestamp": 1784088477258}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLliIcifX19", "seq": 35, "timestamp": 1784088477295}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLniYcifX19", "seq": 36, "timestamp": 1784088477332}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLotooifX19", "seq": 37, "timestamp": 1784088477369}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAiYWdlbnRfbWVzc2FnZV9jaHVuayIsICJjb250ZW50IjogeyJ0eXBlIjogInRleHQiLCAidGV4dCI6ICLnlYwifX19", "seq": 38, "timestamp": 1784088477406}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAidXNhZ2VfdXBkYXRlIiwgInVzZWQiOiAzNDAwLCAic2l6ZSI6IDIwMDAwMH19", "seq": 39, "timestamp": 1784088477443}
+{"type": "task-running", "kind": "acp_event", "data": "eyJ1cGRhdGUiOiB7InNlc3Npb25VcGRhdGUiOiAicGxhbiIsICJlbnRyaWVzIjogW3siY29udGVudCI6ICLlrprkvY0gcGFuaWMiLCAic3RhdHVzIjogImNvbXBsZXRlZCJ9XX19", "seq": 40, "timestamp": 1784088477480}
+{"type": "task-ended", "seq": 41, "timestamp": 1784088477517}
+{"type": "user-input", "data": {"content": "6aG65L6/5oqK5rWL6K+V6KGl5LiA5LiLClvlm77niYddIC5tb25rZXljb2RlL3VwbG9hZHMvYS5wbmc="}, "seq": 42, "timestamp": 1784088477554}
+{"type": "task-started", "seq": 43, "timestamp": 1784088477591}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "先"}}}, "seq": 44, "timestamp": 1784088477628}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "写"}}}, "seq": 45, "timestamp": 1784088477665}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "用"}}}, "seq": 46, "timestamp": 1784088477702}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "例"}}}, "seq": 47, "timestamp": 1784088477739}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "tool_call", "toolCallId": "t2", "title": "Bash", "kind": "execute", "rawInput": {"command": "go test ./..."}}}, "seq": 48, "timestamp": 1784088477776}
+{"type": "permission-req", "data": {"id": "p1", "tool": "Bash", "title": "运行 go test", "tool_call_id": "t2"}, "seq": 49, "timestamp": 1784088477813}
+{"type": "permission-resolved", "data": {"id": "p1", "outcome": "approved"}, "seq": 50, "timestamp": 1784088477850}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "tool_call_update", "toolCallId": "t2", "status": "completed", "rawOutput": {"output": "ok  1.2s"}}}, "seq": 51, "timestamp": 1784088477887}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "测试通过"}}}, "seq": 52, "timestamp": 1784088477924}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "image", "data": "iVBORw0KGgo="}}}, "seq": 53, "timestamp": 1784088477961}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "截图在上面"}}}, "seq": 54, "timestamp": 1784088477998}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "model_update", "model": "claude-opus-5"}}, "seq": 55, "timestamp": 1784088478035}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "换了个模型继续"}}}, "seq": 56, "timestamp": 1784088478072}
+{"type": "task-ended", "seq": 57, "timestamp": 1784088478109}
+{"type": "user-input", "data": {"content": "5YaN6LeR5LiA6YGNIENJ"}, "seq": 58, "timestamp": 1784088478146}
+{"type": "task-started", "seq": 59, "timestamp": 1784088478183}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "准"}}}, "seq": 60, "timestamp": 1784088478220}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "备"}}}, "seq": 61, "timestamp": 1784088478257}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "跑"}}}, "seq": 62, "timestamp": 1784088478294}
+{"type": "task-running", "kind": "acp_ask_user_question", "data": {"toolCall": {"toolCallId": "q1", "rawInput": {"questions": [{"question": "跑哪个流水线?", "options": [{"label": "全量"}, {"label": "只跑单测"}]}]}}}, "seq": 63, "timestamp": 1784088478331}
+{"type": "reply-question", "data": {"request_id": "q1", "answers_json": "{\"跑哪个流水线?\": \"全量\"}"}, "seq": 64, "timestamp": 1784088478368}
+{"type": "task-running", "kind": "acp_event", "data": {"update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "好的,跑全量"}}}, "seq": 65, "timestamp": 1784088478405}

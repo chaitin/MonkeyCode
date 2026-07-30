@@ -1,0 +1,37 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "externalBin": [
+      "binaries/ohmyagent"
+    ],
+    "resources": {
+      "../browser-extension/dist": "browser-extension",
+      "binaries/ohmyagent-linux": "./"
+    },
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://release.monkeycode-ai.com/public/desktop/latest-windows.json"
+      ]
+    }
+  }
+}

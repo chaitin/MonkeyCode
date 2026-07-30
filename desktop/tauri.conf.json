@@ -1,0 +1,133 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MonkeyCode",
+  "version": "26071401.0.0",
+  "identifier": "com.chaitin.baizhi.monkeycode",
+  "build": {
+    "frontendDist": "uidist",
+    "beforeBuildCommand": "npm ci && npm run build"
+  },
+  "app": {
+    "windows": [],
+    "macOSPrivateApi": true,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'",
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ],
+      "capabilities": [
+        {
+          "identifier": "main-app",
+          "description": "主窗口(壳内置 UI + 错误页):会话/引擎/云端全量 IPC、配置读写、原生目录选择",
+          "windows": [
+            "main"
+          ],
+          "permissions": [
+            "core:default",
+            "core:window:allow-start-dragging",
+            "core:window:allow-minimize",
+            "core:window:allow-toggle-maximize",
+            "core:window:allow-internal-toggle-maximize",
+            "core:window:allow-is-maximized",
+            "core:window:allow-set-title",
+            "core:window:allow-set-fullscreen",
+            "core:window:allow-is-fullscreen",
+            "core:window:allow-close",
+            "allow-get-config",
+            "allow-save-config",
+            "allow-take-ui-intent",
+            "allow-host-info",
+            "allow-update-check",
+            "allow-update-install",
+            "allow-open-extension-dir",
+            "allow-open-log-dir",
+            "allow-list-wsl-distros",
+            "allow-wsl-workdir-base",
+            "allow-engine-status",
+            "allow-engine-caps",
+            "allow-browser-status",
+            "allow-browser-repair",
+            "allow-sessions-list",
+            "allow-session-create",
+            "allow-session-delete",
+            "allow-session-patch",
+            "allow-models-list",
+            "allow-session-open",
+            "allow-session-history",
+            "allow-session-outline",
+            "allow-session-frame",
+            "allow-session-close",
+            "allow-session-send",
+            "allow-session-call",
+            "allow-upload-file",
+            "allow-upload-read",
+            "allow-cloud-ws-open",
+            "allow-cloud-ws-send",
+            "allow-cloud-ws-close",
+            "allow-baizhi-status",
+            "allow-baizhi-send-code",
+            "allow-baizhi-login",
+            "allow-baizhi-logout",
+            "allow-baizhi-wechat-start",
+            "allow-baizhi-wechat-poll",
+            "allow-baizhi-sync",
+            "allow-mc-status",
+            "allow-mc-login",
+            "allow-mc-logout",
+            "allow-mc-tasks",
+            "allow-mc-projects",
+            "allow-mc-task-info",
+            "allow-mc-task-rounds",
+            "allow-mc-task-stop",
+            "allow-mc-task-delete",
+            "allow-mc-task-create",
+            "allow-mc-task-options",
+            "allow-mc-upload",
+            "allow-mc-file-upload",
+            "allow-mc-file-download",
+            "allow-mc-file-download-cancel",
+            "allow-mc-terminal-list",
+            "opener:allow-reveal-item-in-dir",
+            "dialog:allow-open",
+            "dialog:allow-save",
+            "opener:allow-open-url",
+            "opener:allow-default-urls",
+            "allow-engine-restart",
+            "allow-probe-log"
+          ]
+        },
+        {
+          "identifier": "pet-page",
+          "description": "桌宠窗口(壳内静态页):会话状态快照与事件、拖动窗口、唤回主窗口",
+          "windows": [
+            "pet",
+            "pet-service"
+          ],
+          "permissions": [
+            "core:default",
+            "core:window:allow-start-dragging",
+            "core:window:allow-cursor-position",
+            "core:window:allow-set-ignore-cursor-events",
+            "core:window:allow-set-position",
+            "core:window:allow-outer-position",
+            "allow-sessions-list",
+            "allow-show-main",
+            "allow-pet-native-render"
+          ]
+        }
+      ]
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": false
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY0MTkzMzI3RjhCQzRFMUYKUldRZlRyejRKek1aOUpBME1rRWdvQ1JjMVYzMFlIVEQ4UVVMVmtwWTJLVnM5VHdVeGRTemUrc3kK",
+      "endpoints": [
+        "https://release.monkeycode-ai.com/public/desktop/latest.json"
+      ]
+    }
+  }
+}

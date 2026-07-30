@@ -1,0 +1,108 @@
+name: Desktop Windows Build
+
+on:
+  push:
+    # 发布只认 vYYMMDDNN tag，例如 v26072208。
+    tags: ["v[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]"]
+
+# 引擎版本 = agent/ submodule 的 gitlink(仓库内单一来源);
+# 升级引擎 = bump submodule(配合壳的 system/ready 能力握手)
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      # 仓库内版本只作开发占位；发布构建以 tag 为唯一真值。
+      # Tauri/Cargo 内部需要合法 SemVer，v26072208 会写成 26072208.0.0，
+      # 应用 UI 与 updater 文件名会按既有逻辑展示为 26072208。
+      - name: Set release version from tag
+        working-directory: desktop
+        run: python scripts/set_release_version.py "${GITHUB_REF_NAME}"
+
+      # 浏览器扩展:随包分发(tauri bundle.resources 引用 dist,缺失会打包失败)
+      - name: Build browser extension
+        working-directory: browser-extension
+        run: |
+          npm ci
+          npm run build
+
+      # 引擎 sidecar:源码来自 agent/ submodule(私库,checkout 默认
+      # GITHUB_TOKEN 无跨库权限 → 用 OHMYAGENT_REPO_TOKEN;.gitmodules
+      # 是 ssh URL,经 insteadOf 重写为带 token 的 https)。单引擎化后
+      # 引擎必须进包,凭据缺失直接失败而非静默出无引擎包
+      - name: Build ohmyagent sidecar (agent/ submodule)
+        env:
+          OHMYAGENT_REPO_TOKEN: ${{ secrets.OHMYAGENT_REPO_TOKEN }}
+        run: |
+          [ -n "$OHMYAGENT_REPO_TOKEN" ] || { echo "::error::OHMYAGENT_REPO_TOKEN 未配置,引擎无法进包"; exit 1; }
+          git config --global url."https://x-access-token:${OHMYAGENT_REPO_TOKEN}@github.com/".insteadOf "git@github.com:"
+          git submodule update --init agent
+          cd agent
+          AGENT_VERSION="$(git rev-parse --short HEAD)"
+          echo "ohmyagent version: ${AGENT_VERSION}"
+          # Desktop 专用 sidecar 链成 GUI 子系统:stdio 仍走壳提供的管道,
+          # 但 Windows 不再给 ohmyagent.exe 分配常驻控制台黑框。
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -H=windowsgui -X main.Version=${AGENT_VERSION}" \
+            -o "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-x86_64-pc-windows-msvc.exe" ./cmd/ohmyagent
+          python "$GITHUB_WORKSPACE/desktop/scripts/check-pe-subsystem.py" \
+            "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-x86_64-pc-windows-msvc.exe" gui
+          # WSL 运行环境的 Linux 引擎(bundle.resources 落安装根,guest 经
+          # /mnt/c 直接执行;无 windowsgui 标记——Linux 目标没有该链接项)
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${AGENT_VERSION}" \
+            -o "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-linux" ./cmd/ohmyagent
+
+      # secret 就绪时走发布构建(额外产出签名的 updater setup.exe + latest-windows.json),
+      # 否则回退普通打包,CI 不红
+      - name: Build NSIS installer
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # 装机/使用统计的上报地址,编译期内联(desktop/src/telemetry.rs)。
+          # 只加在 release 工作流上:开发机 cargo run / cargo build 拿不到它,
+          # 因此开发过程不会往生产数据里灌噪声。secret 未配置时是空串 =
+          # 不上报,构建照常不红。
+          #
+          # 走 secret 不是把它当密钥(装了包的人 strings 一下就能拿到),而是
+          # 不把它摆在公开仓库里:端点免鉴权公开可写,而这套数据的全部意义
+          # 就是装机计数——谁都能 curl 循环随机塞 _id 把装机量刷成任意数字。
+          # 降低发现门槛没有收益,提高一点是免费的。
+          MC_MATOMO_URL: ${{ secrets.MC_MATOMO_URL }}
+          MC_MATOMO_SITE_ID: ${{ secrets.MC_MATOMO_SITE_ID }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            npx --yes @tauri-apps/cli@^2 build \
+              --config bundle.windows.conf.json --config tauri.release.conf.json
+            python scripts/gen-latest-json.py windows
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY 未配置,跳过 updater 产物"
+            npx --yes @tauri-apps/cli@^2 build --config bundle.windows.conf.json
+          fi
+          RELEASE_VERSION="${GITHUB_REF_NAME#v}"
+          EXPECTED="target/release/bundle/nsis/MonkeyCode_${RELEASE_VERSION}.0.0_x64-setup.exe"
+          test -f "$EXPECTED" || { echo "::error::安装包版本未与 tag 对齐，缺少 $EXPECTED"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MonkeyCode-windows-x64-${{ github.ref_name }}
+          path: |
+            desktop/target/release/bundle/nsis/*.exe
+            desktop/target/release/bundle/updater/*
