@@ -76,10 +76,10 @@ test("手机页头恢复官方紧凑尺寸", () => {
   assert.doesNotMatch(source, /className="size-11 shrink-0 md:hidden"/);
 });
 
-test("320px 页头保留 104px 尾部对齐轨道", () => {
+test("320px 页头使用 120px 工具菜单", () => {
   assert.match(source, /className="flex min-w-0 flex-1 items-center gap-2"/);
   assert.match(source, /className="flex w-11 shrink-0 flex-wrap items-center/);
-  assert.match(source, /mobileToolsView === "tools"[\s\S]*?"w-\[104px\] p-1\.5"/);
+  assert.match(source, /mobileToolsView === "tools"[\s\S]*?"w-\[120px\] p-1\.5"/);
 });
 
 test("手机工具入口保持横向位置并与模型按钮中心对齐", () => {
@@ -132,7 +132,7 @@ test("更多工具使用固定向下的动态宽度单一 Popover", () => {
   assert.equal(source.match(/<Popover modal open=\{mobileToolsOpen\}/g)?.length, 1);
   assert.match(source, /<PopoverContent[\s\S]*?side="bottom"[\s\S]*?align="end"[\s\S]*?sideOffset=\{6\}[\s\S]*?avoidCollisions=\{false\}/);
   assert.match(source, /className="flex w-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground md:w-auto"/);
-  assert.match(source, /mobileToolsView === "tools"[\s\S]*?"w-\[104px\] p-1\.5"[\s\S]*?"w-\[calc\(100vw-2rem\)\] max-w-\[420px\] p-0"/);
+  assert.match(source, /mobileToolsView === "tools"[\s\S]*?"w-\[120px\] p-1\.5"[\s\S]*?"w-\[calc\(100vw-2rem\)\] max-w-\[420px\] p-0"/);
   assert.match(source, /className="flex min-h-0 flex-col"/);
   assert.doesNotMatch(source, /grid min-h-0 grid-cols-2 gap-2 overflow-y-auto border-t p-4/);
   assert.doesNotMatch(source, /taskDetail\.page\.mobileTools\.(title|description)/);
