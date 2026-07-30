@@ -405,6 +405,7 @@ export default function App() {
       setView("new");
       setDrawer(null);
     }
+    session.dropStash(m.id); // 删非当前打开的会话不走 close(forget),排队暂存在此清
     void refreshSessions();
   };
 

@@ -136,7 +136,9 @@ export function connect(sessionId: string, h: ConnHandlers): Conn {
         await invoke("session_send", { id: sessionId, ftype: type, payload });
         return true;
       } catch (e) {
-        h.onStatus("⚠ " + String(e), false);
+        // close 之后状态行已归新连接所有:旧连接的失败回执不再回喊,
+        // 否则会把新会话打成「⚠ …/未连接」
+        if (!closed) h.onStatus("⚠ " + String(e), false);
         return false;
       }
     },

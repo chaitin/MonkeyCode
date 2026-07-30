@@ -22,6 +22,9 @@ let trace: string[] = [];
 /** 上行帧(session_send) */
 let sent: { ftype: string; payload: Record<string, unknown> }[] = [];
 let sendFail = false; // session_send 是否失败(壳侧发送失败窗口)
+/** 门闸:置上后对应命令的应答挂起到 resolve,用于确定性复现「回执落在切会话之后」 */
+let sendGate: Promise<void> | null = null;
+let uploadGate: Promise<void> | null = null;
 /** session_open 返回的尾部窗口 */
 let replay: Frame[] = [];
 let replayCursor = 0;
@@ -63,6 +66,8 @@ beforeEach(() => {
   trace = [];
   sent = [];
   sendFail = false;
+  sendGate = null;
+  uploadGate = null;
   replay = [];
   replayCursor = 0;
   replayHasMore = false;
@@ -94,9 +99,12 @@ beforeEach(() => {
             return Promise.resolve(outlineScript);
           }
           if (cmd === "session_send") {
-            if (sendFail) return Promise.reject(new Error("引擎未就绪"));
-            sent.push({ ftype: args!.ftype as string, payload: args!.payload as Record<string, unknown> });
-            return Promise.resolve(null);
+            const finish = () => {
+              if (sendFail) return Promise.reject(new Error("引擎未就绪"));
+              sent.push({ ftype: args!.ftype as string, payload: args!.payload as Record<string, unknown> });
+              return Promise.resolve(null);
+            };
+            return sendGate ? sendGate.then(finish) : finish();
           }
           if (cmd === "session_call") {
             const kind = args!.kind as string;
@@ -109,9 +117,12 @@ beforeEach(() => {
           }
           if (cmd === "upload_file") {
             const name = args!.name as string;
-            if (uploadDeny.has(name)) return Promise.reject(new Error("磁盘已满"));
-            uploaded.push(name);
-            return Promise.resolve({ path: ".monkeycode/uploads/" + name });
+            const finish = () => {
+              if (uploadDeny.has(name)) return Promise.reject(new Error("磁盘已满"));
+              uploaded.push(name);
+              return Promise.resolve({ path: ".monkeycode/uploads/" + name });
+            };
+            return uploadGate ? uploadGate.then(finish) : finish();
           }
           return Promise.reject(new Error("unexpected cmd " + cmd));
         },
@@ -206,6 +217,12 @@ async function openAndSettle(core: ReturnType<typeof makeCore>["core"], sid = "s
   callScript.repo_file_changes = { result: [], is_git_repo: true };
   core.open(sid);
   await vi.waitFor(() => expect(trace).toContain("invoke:session_open"));
+  await Promise.resolve();
+}
+/** 等第 nth 次 session_open 落定(切会话的测试要按次数等,contains 不够) */
+async function settleOpen(nth: number) {
+  await vi.waitFor(() => expect(trace.filter((t) => t === "invoke:session_open")).toHaveLength(nth));
+  await Promise.resolve();
   await Promise.resolve();
 }
 
@@ -317,6 +334,30 @@ describe("本地会话核心:连接生命周期", () => {
     expect(userInputs()[0]).toBe("看这张图\n[图片] .monkeycode/uploads/shot.png");
     expect(out.notices.some((n) => n.includes("附件上传失败"))).toBe(true);
   });
+
+  it("首条消息上传期间切会话:不发进新会话,转入原会话排队暂存,切回补投", async () => {
+    stubFileReader();
+    let release!: () => void;
+    uploadGate = new Promise<void>((r) => (release = r));
+    const { core, out } = makeCore();
+    callScript.repo_file_changes = { result: [], is_git_repo: true };
+    core.open("s1", { firstMessage: "首条", firstFiles: [fakeFile("slow.png")] });
+    await vi.waitFor(() => expect(trace).toContain("invoke:upload_file")); // 上传在途
+
+    core.open("s2"); // 上传完成前切走
+    await settleOpen(2);
+    release();
+    await vi.waitFor(() => expect(uploaded).toEqual(["slow.png"]));
+    await new Promise((r) => setTimeout(r, 0));
+    // 旧实现:闭包在 await 后重读 conn,首条消息会经 s2 的连接发出去
+    expect(userInputs()).toEqual([]);
+
+    // 切回 s1:成品(正文+附件行)按排队恢复,历史落地即补投
+    core.open("s1");
+    expect(out.queued).toBe("首条\n[图片] .monkeycode/uploads/slow.png");
+    await vi.waitFor(() => expect(userInputs()).toEqual(["首条\n[图片] .monkeycode/uploads/slow.png"]));
+    expect(out.queued).toBe(null);
+  });
 });
 
 describe("本地会话核心:composer(排队与附件)", () => {
@@ -417,13 +458,128 @@ describe("本地会话核心:composer(排队与附件)", () => {
     expect(out.queued).toBe(null);
   });
 
-  it("切走会话时还压着排队消息:外显提醒,不静默丢", async () => {
+  it("切走会话排队不丢:不报警、会话间隔离,切回恢复并在原会话轮末补投", async () => {
     const { core, out } = makeCore();
     await openAndSettle(core);
     pushFrames("s1", [frame("task-started")]);
-    core.send("会被切掉的");
+    core.send("切走也不能丢");
+    expect(out.queued).toBe("切走也不能丢");
+
     core.open("s2");
-    expect(out.notices.some((n) => n.includes("会被切掉的"))).toBe(true);
+    await settleOpen(2);
+    expect(out.notices).toEqual([]); // 不再红条报警
+    expect(out.queued).toBe(null); // 隔离:s2 看不到 s1 的排队
+    expect(userInputs()).toEqual([]);
+
+    // 切回 s1:后台仍在跑,尾部窗口停在 task-started
+    replay = [frame("task-started")];
+    core.open("s1");
+    expect(out.queued).toBe("切走也不能丢"); // 恢复是同步的,chip 立即可见
+    await settleOpen(3);
+    expect(userInputs()).toEqual([]); // 历史显示轮未结束:不抢投(忙碌守卫会拒)
+
+    pushFrames("s1", [frame("task-ended")]);
+    await vi.waitFor(() => expect(userInputs()).toEqual(["切走也不能丢"]));
+    expect(out.queued).toBe(null);
+  });
+
+  it("切回已空闲的会话:排队消息在历史窗口落地后立即补投", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("等你跑完");
+    core.open("s2");
+    await settleOpen(2);
+
+    // 切走期间 s1 的轮已在后台结束:重开时尾部窗口是一段完整的轮
+    replay = [frame("task-started"), frame("task-ended")];
+    core.open("s1");
+    await vi.waitFor(() => expect(userInputs()).toEqual(["等你跑完"]));
+    expect(out.queued).toBe(null);
+  });
+
+  it("删除会话(close forget)连排队暂存一起清,重开不复活", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("将随会话一起删除");
+    core.close(true);
+    expect(out.queued).toBe(null);
+
+    core.open("s1");
+    await settleOpen(2);
+    expect(out.queued).toBe(null);
+    expect(userInputs()).toEqual([]);
+  });
+
+  it("直发回执落在切会话之后:不清新会话恢复的附件,已送达的附件暂存不复活", async () => {
+    stubFileReader();
+    const { core, out } = makeCore();
+    await openAndSettle(core); // s1
+    await core.addFiles([fakeFile("mine.png")]); // s1 的待发附件
+    core.open("s2"); // 切走:mine.png 入 s1 暂存
+    await settleOpen(2);
+
+    await core.addFiles([fakeFile("sent.png")]);
+    core.send("s2 的消息"); // 直发在途:附件行已折进正文,atts 等回执才清
+    core.open("s1"); // 回执落地前切走,s1 的 mine.png 同步恢复
+    expect(out.atts.map((a) => a.name)).toEqual(["mine.png"]);
+    await settleOpen(3);
+    // s2 的成功回执不能把 s1 恢复出来的附件清掉(旧写法 setAtts([]) 会串会话)
+    expect(out.atts.map((a) => a.name)).toEqual(["mine.png"]);
+    expect(userInputs()).toEqual(["s2 的消息\n[图片] .monkeycode/uploads/sent.png"]);
+
+    // 已送达:s2 暂存里的附件一并清掉,切回不复活(否则会重复发送)
+    core.open("s2");
+    expect(out.atts).toEqual([]);
+  });
+
+  it("待发附件同样按会话暂存:切走隔离,切回恢复", async () => {
+    stubFileReader();
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    await core.addFiles([fakeFile("keep.png")]);
+    expect(out.atts.map((a) => a.name)).toEqual(["keep.png"]);
+
+    core.open("s2");
+    await settleOpen(2);
+    expect(out.atts).toEqual([]); // 隔离:s2 没有 s1 的附件
+
+    core.open("s1");
+    expect(out.atts.map((a) => a.name)).toEqual(["keep.png"]); // 切回恢复
+  });
+
+  it("直发失败的回执落在切会话之后:不把新会话的状态行打成未连接", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    let release!: () => void;
+    sendGate = new Promise<void>((r) => (release = r));
+    sendFail = true;
+    core.send("会失败的在途消息");
+
+    core.open("s2"); // 回执前切走(open 会 close 旧连接)
+    await settleOpen(2);
+    expect(out.status).toBe("已连接");
+
+    release(); // 旧连接的失败回执此刻才到:closed 闸住,不再回喊状态
+    await new Promise((r) => setTimeout(r, 0));
+    expect(out.status).toBe("已连接");
+    expect(out.connected).toBe(true);
+  });
+
+  it("dropStash:删除未打开的会话时清其排队暂存,重开不复活", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("task-started")]);
+    core.send("要被删的会话的排队");
+    core.open("s2"); // s1 排队入暂存
+    await settleOpen(2);
+
+    core.dropStash("s1"); // App 删除 s1(非当前打开)时调用
+    core.open("s1");
+    await settleOpen(3);
+    expect(out.queued).toBe(null);
+    expect(userInputs()).toEqual([]);
   });
 
   it("取消排队后本轮结束不再投递", async () => {

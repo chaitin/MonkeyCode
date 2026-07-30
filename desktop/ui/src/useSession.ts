@@ -110,6 +110,12 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
   let chat: ChatState = initialChat;
   let queued: string | null = null;
   let atts: Attachment[] = [];
+  // 每会话 composer 暂存:切会话时排队消息与待发附件按 sid 留档,切回恢复
+  // (排队会话隔离,不再报警丢弃)。仅内存,重启即丢;删除会话随 close(forget) 清除
+  const stash = new Map<string, { queued: string | null; atts: Attachment[] }>();
+  // 打开后首份历史(尾部窗口)归约前 running 未知:恢复的排队消息不能抢投——
+  // 后台可能正跑轮,直发会被壳的忙碌守卫拒掉,且 send 失败会把连接态误打回未连接
+  let historyLoaded = false;
   // 连接态的核心镜像:false→true 的转变才是「连上」时机(含断线重连),
   // 原 useEffect([connected]) 的依赖语义在此显式化
   let connected = false;
@@ -137,6 +143,12 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
   const setAtts = (v: Attachment[]) => {
     atts = v;
     io.setAtts(v);
+  };
+  /** 把当前会话的排队/附件写回暂存(空则清条目);open/close 复位前调用 */
+  const stashCurrent = () => {
+    if (!sid) return;
+    if (queued || atts.length) stash.set(sid, { queued, atts });
+    else stash.delete(sid);
   };
 
   async function refreshChanges(): Promise<FileChange[]> {
@@ -172,11 +184,21 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
   // 等),之后每批帧都在闸门处提前返回,消息卡死在队列里直到被切会话清掉
   function flushQueued() {
     const c = conn;
-    if (chat.running || sending || !queued || !c) return;
+    const fromSid = sid;
+    if (!historyLoaded || chat.running || sending || !queued || !c || !fromSid) return;
     const q = queued;
     sending = true;
     setQueued(null);
     void c.send("user-input", { content: b64encode(q) }).then((ok) => {
+      if (sid !== fromSid) {
+        // 回执落在切会话之后:结果只归原会话——失败写回它的暂存,
+        // 不能把旧内容复活到当前会话的队列槽里
+        if (!ok) {
+          const prev = stash.get(fromSid);
+          stash.set(fromSid, { queued: prev?.queued ?? q, atts: prev?.atts ?? [] });
+        }
+        return;
+      }
       if (ok) return; // 回执 = 回显帧到达,onFrames 解除 sending
       sending = false;
       // 失败回队;在途期间用户又排了新的,按单槽语义保留最新那条
@@ -192,6 +214,10 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
     void refreshChanges();
     flushQueued(); // 断线/发送失败会打回未连接,重连即是排队消息的补投时机
     if (!pendingMsg && !pendingFiles) return;
+    // 上传耗时可观(大文件数秒),期间可能已切会话:写回与发送前都要对表,
+    // 否则首条消息会经新会话的连接发进错的会话(refreshChanges 同款纪元守卫)
+    const forSid = sid;
+    if (!forSid) return;
     void (async () => {
       let text = pendingMsg ?? "";
       const pf = pendingFiles;
@@ -207,11 +233,27 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
           }
         }
         text = [text, ...lines].filter(Boolean).join("\n");
-        pendingMsg = text || null;
+        // 上传结果(含失败后的残句)回写 pendingMsg,send 失败时下次 connected
+        // 重试只重发文本,不重复上传;已切会话则不可写(槽位已归新会话)
+        if (sid === forSid) pendingMsg = text || null;
       }
       if (!text) return;
+      // 已切会话时的兜底:成品转入原会话的排队暂存,切回时按排队语义恢复
+      // 补投;该会话已有新排队时不覆盖(后来者优先,单槽语义)
+      const rescueToStash = () => {
+        const prev = stash.get(forSid);
+        if (!prev?.queued) stash.set(forSid, { queued: text, atts: prev?.atts ?? [] });
+      };
+      if (sid !== forSid) {
+        rescueToStash();
+        return;
+      }
       const ok = await conn?.send("user-input", { content: b64encode(text) });
-      if (ok) pendingMsg = null;
+      if (ok) {
+        if (sid === forSid) pendingMsg = null;
+      } else if (sid !== forSid) {
+        rescueToStash();
+      }
     })();
   }
 
@@ -245,6 +287,9 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
     cursor = page.cursor;
     hasMore = page.hasMore;
     io.setCanLoadEarlier(hasMore && cursor > 0);
+    // 尾部窗口落地后 running 才可信:切回恢复的排队消息在此补投(空闲即发)
+    historyLoaded = true;
+    flushQueued();
     void refreshOutline();
   }
 
@@ -310,8 +355,8 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
   return {
     /** 打开会话并接上 WS(见 SessionHandle.open) */
     open(id: string, o: { model?: string; mode?: string; think?: string; firstMessage?: string; firstFiles?: File[] } = {}) {
-      // 复位会丢掉还压着的排队消息:外显提醒,不静默丢(与云端 handleEnded 同款)
-      if (queued) io.notify(`已离开会话,未发送的排队消息:「${queued.slice(0, 60)}」`);
+      // 切走前暂存本会话的排队/附件,切回时恢复(排队会话隔离,不丢不报警)
+      stashCurrent();
       conn?.close();
       sid = id;
       io.setId(id);
@@ -319,8 +364,10 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       // model_update / permission_mode_update 帧经 reduce 覆盖(回放/多客户端
       // 同步)。此前 hook 里另存镜像 state 靠 effect 缝合,存在不一致窗口。
       setChat({ ...initialChat, model: o.model ?? "", think: o.think ?? "", permMode: o.mode ?? "" });
-      setQueued(null);
-      setAtts([]);
+      const saved = stash.get(id);
+      setQueued(saved?.queued ?? null);
+      setAtts(saved?.atts ?? []);
+      historyLoaded = false;
       io.setChanges(null);
       io.setIsGitRepo(null);
       io.setChangesErr("");
@@ -340,6 +387,12 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
 
     /** 断开并复位;forget 时一并清掉"上次会话"记忆(删除流程) */
     close(forget = false) {
+      // forget(删除会话):排队暂存一并清掉;普通复位则留档,重开可恢复
+      if (forget) {
+        if (sid) stash.delete(sid);
+      } else {
+        stashCurrent();
+      }
       conn?.close();
       conn = null;
       pendingMsg = null;
@@ -356,6 +409,7 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       io.setIsGitRepo(null);
       io.setChangesErr("");
       sending = false;
+      historyLoaded = false;
       cursor = 0;
       hasMore = false;
       loadingEarlier = false;
@@ -380,14 +434,23 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
         return true;
       }
       sending = true;
+      const fromSid = sid;
       void conn.send("user-input", { content: b64encode(text) }).then((ok) => {
-        // 失败时保留输入与附件(原因已经 onStatus 外显),用户可重试
-        if (ok) {
-          io.setInput("");
-          setAtts([]);
-        } else {
-          sending = false;
+        if (ok) io.setInput("");
+        if (sid !== fromSid) {
+          // 回执落在切会话之后:不碰当前会话的附件/sending(否则会清掉
+          // 恢复出来的附件)。已送达时,原会话暂存里的附件已随正文的附件行
+          // 发出,条目里清掉,免得切回复活重复发送
+          if (ok && fromSid) {
+            const prev = stash.get(fromSid);
+            if (prev?.queued) stash.set(fromSid, { queued: prev.queued, atts: [] });
+            else stash.delete(fromSid);
+          }
+          return;
         }
+        // 失败时保留输入与附件(原因已经 onStatus 外显),用户可重试
+        if (ok) setAtts([]);
+        else sending = false;
       });
       return true;
     },
@@ -398,6 +461,12 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
 
     clearQueued() {
       setQueued(null);
+    },
+
+    /** 删除会话的伴随清理:丢弃其排队/附件暂存。当前打开的会话走 close(forget)
+     * 已顺带清;删「非当前打开」的会话不经过 close,暂存靠这里清 */
+    dropStash(id: string) {
+      stash.delete(id);
     },
 
     async addFiles(files: File[]) {
@@ -597,6 +666,8 @@ export interface SessionHandle {
   send(): boolean;
   stop(): void;
   clearQueued(): void;
+  /** 删除会话的伴随清理:丢弃其排队/附件暂存(删非当前打开的会话时调用) */
+  dropStash(id: string): void;
   addFiles(files: File[]): Promise<void>;
   removeAtt(i: number): void;
   answerPerm(id: string, action: PermAction): void;
@@ -714,6 +785,7 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
     send: () => core.send(input),
     stop: core.stop,
     clearQueued: core.clearQueued,
+    dropStash: core.dropStash,
     addFiles: core.addFiles,
     removeAtt: core.removeAtt,
     answerPerm: core.answerPerm,
