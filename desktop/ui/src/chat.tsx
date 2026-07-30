@@ -324,7 +324,8 @@ export function ModelPicker({
 
 /** 思考深度档位(会话级),经引擎 session/setThinking RPC 生效(见
  * session.rs)。composer 不设抽象的「默认」项:未显式选档时直接显示
- * 模型设置里配置的档位(未配置 = 关闭),选啥就是啥。 */
+ * 模型设置里配置的档位(未配置 = 产品默认「低」,与壳物化一致,见
+ * config.rs DEFAULT_MODEL_THINK),选啥就是啥。 */
 export const THINK_LEVELS: { value: string; label: string; hint: string }[] = [
   { value: "off", label: "关闭", hint: "不思考,响应最快" },
   { value: "low", label: "低", hint: "简单任务,快速" },
@@ -335,9 +336,9 @@ export const THINK_LEVELS: { value: string; label: string; hint: string }[] = [
 export const thinkLabelOf = (v: string) => THINK_LEVELS.find((l) => l.value === v)?.label ?? "关闭";
 
 /** 会话/模型状态 → composer 显示的生效档位:会话显式选过用会话档,
- * 否则用模型设置的默认档(空 = 关闭)。 */
+ * 否则用模型设置的默认档(空 = 产品默认「低」,与壳物化一致)。 */
 export const effectiveThink = (sessionThink: string, modelThink?: string) =>
-  sessionThink || modelThink || "off";
+  sessionThink || modelThink || "low";
 
 /** 思考深度选择按钮 + 上弹菜单(会话/新任务 composer 共用;几何与
  * ModelPicker 同款,运行中禁用)。 */
