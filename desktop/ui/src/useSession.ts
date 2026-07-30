@@ -11,7 +11,7 @@
 //   useSession —— React 侧:state 持有与镜像回写、notice 定时器、卸载断开,
 //     拼装为 SessionHandle(形状不变)。
 import { useCallback, useEffect, useRef, useState } from "react";
-import { connect, sessionFrame, sessionHistory, sessionOutline, type Conn, type HistoryPage } from "./session";
+import { connect, sessionFrame, sessionHistory, sessionOutline, sessionSend, type Conn, type HistoryPage } from "./session";
 import { uploadFile, uploadFileURL } from "./uploads";
 import { b64decode, b64encode } from "./codec";
 import {
@@ -469,6 +469,33 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       stash.delete(id);
     },
 
+    /** 后台会话状态变更(全局 session-status 事件):轮结束即补投其暂存的
+     * 排队消息——内核在 session_close 后仍按 id 持有会话,免连接可直投。
+     * 当前打开的会话不走这里(flushQueued 的既有时机链负责);乐观出栈、
+     * 失败回栈,恰好又开跑/多客户端抢先由内核忙碌守卫兜底拒掉。 */
+    deliverQueued(id: string, status: string) {
+      if (status === "running" || status === "created") return; // 轮未结束
+      if (id === sid) return;
+      const entry = stash.get(id);
+      if (!entry?.queued) return;
+      const q = entry.queued;
+      if (entry.atts.length) stash.set(id, { queued: null, atts: entry.atts });
+      else stash.delete(id);
+      void sessionSend(id, "user-input", { content: b64encode(q) }).then((ok) => {
+        if (ok) {
+          io.notify(`排队消息已发出:「${q.slice(0, 40)}」`, { tone: "success", targetSessionId: id });
+          return;
+        }
+        if (sid === id) {
+          // 补投期间用户恰好切了进来:回到活动队列槽(已排了新内容则让位)
+          setQueued(queued ?? q);
+        } else {
+          const prev = stash.get(id);
+          if (!prev?.queued) stash.set(id, { queued: q, atts: prev?.atts ?? [] });
+        }
+      });
+    },
+
     async addFiles(files: File[]) {
       if (!sid) return;
       for (const f of files) {
@@ -668,6 +695,8 @@ export interface SessionHandle {
   clearQueued(): void;
   /** 删除会话的伴随清理:丢弃其排队/附件暂存(删非当前打开的会话时调用) */
   dropStash(id: string): void;
+  /** 后台会话轮结束(全局 session-status 事件):补投其暂存的排队消息 */
+  deliverQueued(id: string, status: string): void;
   addFiles(files: File[]): Promise<void>;
   removeAtt(i: number): void;
   answerPerm(id: string, action: PermAction): void;
@@ -786,6 +815,7 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
     stop: core.stop,
     clearQueued: core.clearQueued,
     dropStash: core.dropStash,
+    deliverQueued: core.deliverQueued,
     addFiles: core.addFiles,
     removeAtt: core.removeAtt,
     answerPerm: core.answerPerm,
