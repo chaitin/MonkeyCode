@@ -1,4 +1,5 @@
-import { Route, BrowserRouter, Routes, Navigate, useParams } from "react-router-dom"
+import React from "react"
+import { Route, BrowserRouter, Routes, Navigate, useLocation, useParams } from "react-router-dom"
 import { ThemeProvider, ThemePathListener } from "@/components/theme-provider"
 import LoginPage from "@/pages/login"
 import WelcomePage from "@/pages/welcome"
@@ -42,11 +43,29 @@ function TaskDetailRoute() {
   return <TaskDetailPage key={taskId} />
 }
 
+function HashAnchorScroller() {
+  const location = useLocation()
+
+  React.useEffect(() => {
+    if (!location.hash) return
+
+    const targetId = decodeURIComponent(location.hash.slice(1))
+    const frameId = window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ block: "start" })
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [location.pathname, location.hash])
+
+  return null
+}
+
 function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="monkeycode-theme">
       <TooltipProvider>
         <BrowserRouter>
+          <HashAnchorScroller />
           <ThemePathListener />
           <MatomoConsoleTracker />
           <Routes>
