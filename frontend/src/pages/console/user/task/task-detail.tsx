@@ -1407,7 +1407,7 @@ export default function TaskDetailPage() {
                   type="button"
                   variant="outline"
                   size="icon-sm"
-                  className="h-7 w-8 border-border bg-background shadow-xs"
+                  className="!h-7 w-8 border-border bg-background shadow-xs"
                   aria-label={t("taskDetail.page.mobileTools.trigger")}
                 >
                   <IconDots className="size-4" />

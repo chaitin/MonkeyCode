@@ -71,7 +71,7 @@ test("手机页头恢复官方紧凑尺寸", () => {
   assert.match(source, /className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm/);
   assert.match(source, /<CircularProgress[\s\S]*?size=\{20\}/);
   assert.match(source, /className="absolute right-0 top-1\/2 z-30 -translate-y-1\/2 md:hidden"[\s\S]*?size="icon-sm"/);
-  assert.match(source, /size="icon-sm"[\s\S]*?className="h-7 w-8 border-border bg-background shadow-xs"[\s\S]*?aria-label=\{t\("taskDetail\.page\.mobileTools\.trigger"\)\}/);
+  assert.match(source, /size="icon-sm"[\s\S]*?className="!h-7 w-8 border-border bg-background shadow-xs"[\s\S]*?aria-label=\{t\("taskDetail\.page\.mobileTools\.trigger"\)\}/);
   assert.match(source, /onPointerUp=\{\(event\) => \{[\s\S]*?event\.pointerType === "touch"[\s\S]*?setContextUsagePopoverOpen\(\(open\) => !open\)/);
   assert.doesNotMatch(source, /className="h-11 min-w-0 flex-1/);
   assert.doesNotMatch(source, /className="size-11 shrink-0 md:hidden"/);
