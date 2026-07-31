@@ -311,12 +311,7 @@ export default function StartDevelopTaskDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="flex max-h-[90vh] flex-col overflow-hidden"
-        onPointerDownOutside={(event) => {
-          event.preventDefault()
-        }}
-      >
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle>{t("consoleProject.startTask.title")}</DialogTitle>
         </DialogHeader>

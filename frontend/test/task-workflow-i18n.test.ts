@@ -35,8 +35,6 @@ test("任务工作流共享组件使用 taskWorkflow i18n key", () => {
 
   assert.match(sourceFiles.modelSelect, /t\("taskWorkflow\.model\.basic"\)/);
   assert.match(sourceFiles.modelSelect, /t\("taskWorkflow\.model\.recommended"\)/);
-  assert.match(sourceFiles.modelSelect, /LOCALIZED_OTHER_MODEL_GROUP_NAMES\.includes\(normalizedName\)/);
-  assert.match(sourceFiles.modelSelect, /t\("taskWorkflow\.model\.other"\)/);
 
   assert.match(sourceFiles.skillSelector, /t\("taskWorkflow\.skill\.label"\)/);
   assert.match(sourceFiles.pluginSelector, /t\("taskWorkflow\.plugin\.empty"\)/);
@@ -57,8 +55,6 @@ test("任务工作流共享组件提供中英文资源", () => {
   assert.equal(en.taskWorkflow.repo.myRepositories, "My repositories");
   assert.equal(cn.taskWorkflow.model.basic, "基础模型");
   assert.equal(en.taskWorkflow.model.basic, "Basic model");
-  assert.equal(cn.taskWorkflow.model.other, "其它");
-  assert.equal(en.taskWorkflow.model.other, "Other");
   assert.equal(cn.taskWorkflow.concurrentLimit.title, "并发任务数已达上限");
   assert.equal(en.taskWorkflow.concurrentLimit.title, "Concurrent task limit reached");
   assert.equal(cn.taskWorkflow.voice.recording, "正在录音");

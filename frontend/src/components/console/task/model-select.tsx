@@ -41,8 +41,6 @@ const BUILTIN_MODEL_OPTIONS = [
   },
 ] as const
 
-const LOCALIZED_OTHER_MODEL_GROUP_NAMES = ["\u5176\u5b83", "\u5176\u4ed6"]
-
 type BuiltinModelName = typeof BUILTIN_MODEL_OPTIONS[number]["model"]
 
 interface ModelSelectProps {
@@ -149,18 +147,6 @@ export default function ModelSelect({
     )),
     [supportedModels],
   )
-  const getTeamModelGroupLabel = useCallback((name?: string | null) => {
-    const normalizedName = name?.trim()
-    if (!normalizedName) {
-      return t("taskWorkflow.model.team")
-    }
-
-    if (LOCALIZED_OTHER_MODEL_GROUP_NAMES.includes(normalizedName)) {
-      return t("taskWorkflow.model.other")
-    }
-
-    return normalizedName
-  }, [t])
   const teamModelGroups = useMemo(
     () => Array.from(
       supportedModels
@@ -169,7 +155,7 @@ export default function ModelSelect({
           && !getBuiltinModelName(model.model)
         ))
         .reduce((groups, model) => {
-          const teamName = getTeamModelGroupLabel(model.owner?.name)
+          const teamName = model.owner?.name || t("taskWorkflow.model.team")
           const teamId = model.owner?.id || teamName
           const groupKey = `${teamId}:${teamName}`
           const group = groups.get(groupKey) || { key: groupKey, label: teamName, iconName: "team", models: [] as DomainModel[] }
@@ -179,7 +165,7 @@ export default function ModelSelect({
         }, new Map<string, { key: string; label: string; iconName: string; models: DomainModel[] }>())
         .values(),
     ),
-    [supportedModels, getTeamModelGroupLabel],
+    [supportedModels, t],
   )
   const modelGroups = useMemo(
     () => [
