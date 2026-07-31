@@ -49,3 +49,9 @@ test("项目启动任务弹窗在高级选项里支持 Skills 并提交选中项
   assert.match(dialogSource, /selectedSkills=\{selectedSkill\}/);
   assert.match(dialogSource, /skill_ids: selectedSkill/);
 });
+
+test("项目启动任务弹窗拦截外部点击关闭以保留文案", () => {
+  assert.match(dialogSource, /<DialogContent[\s\S]*?onPointerDownOutside=\{\(event\) => \{[\s\S]*?event\.preventDefault\(\)/);
+  assert.match(dialogSource, /if \(justOpened\) \{[\s\S]*?setUserMessage\(''\)/);
+  assert.match(dialogSource, /toast\.success\(t\("consoleProject\.startTask\.toast\.started"\)\)[\s\S]*?onOpenChange\(false\)/);
+});

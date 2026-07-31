@@ -66,6 +66,8 @@ const BUILTIN_TASK_MODEL_OPTIONS = [
   { model: "monkeycode-pro", labelKey: "pro", badgeKey: "proBadge", badgeVariant: "secondary" as const, iconName: "vip-1" },
   { model: "monkeycode-ultra", labelKey: "ultra", badgeKey: "ultraBadge", badgeVariant: "secondary" as const, iconName: "vip-2" },
 ] as const
+
+const LOCALIZED_OTHER_MODEL_GROUP_NAMES = ["\u5176\u5b83", "\u5176\u4ed6"]
 type BuiltinTaskModelName = typeof BUILTIN_TASK_MODEL_OPTIONS[number]["model"]
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 type MessageSource = "live" | "history"
@@ -317,6 +319,18 @@ export default function TaskDetailPage() {
     }, {} as Partial<Record<BuiltinTaskModelName, string>>)
   }, [supportedModels])
   const modelGroups = React.useMemo(() => {
+    const getTeamModelGroupLabel = (name?: string | null) => {
+      const normalizedName = name?.trim()
+      if (!normalizedName) {
+        return t("taskDetail.page.models.team")
+      }
+
+      if (LOCALIZED_OTHER_MODEL_GROUP_NAMES.includes(normalizedName)) {
+        return t("taskDetail.page.models.other")
+      }
+
+      return normalizedName
+    }
     const builtinModelGroups = IS_OFFLINE_EDITION
       ? []
       : builtinTaskModelOptions.map((option) => ({
@@ -342,7 +356,7 @@ export default function TaskDetailPage() {
           && !getBuiltinModelName(model.model)
         ))
         .reduce((groups, model) => {
-          const teamName = model.owner?.name || t("taskDetail.page.models.team")
+          const teamName = getTeamModelGroupLabel(model.owner?.name)
           const teamId = model.owner?.id || teamName
           const groupKey = `${teamId}:${teamName}`
           const group = groups.get(groupKey) || { key: groupKey, label: teamName, iconName: "team", models: [] as DomainModel[] }

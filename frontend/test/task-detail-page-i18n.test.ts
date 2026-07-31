@@ -14,6 +14,8 @@ const cjkPattern = /[\u3400-\u9fff]/;
 test("任务详情页面壳使用 taskDetail page i18n key", () => {
   assert.match(source, /useTranslation/);
   assert.match(source, /t\("taskDetail\.page\.models\.basic"\)/);
+  assert.match(source, /t\("taskDetail\.page\.models\.other"\)/);
+  assert.match(source, /LOCALIZED_OTHER_MODEL_GROUP_NAMES\.includes\(normalizedName\)/);
   assert.match(source, /t\("taskDetail\.page\.context\.compactTitle"\)/);
   assert.match(source, /t\("taskDetail\.page\.dialogs\.switchModel\.title"\)/);
   assert.match(source, /t\("taskDetail\.panels\.preview"\)/);
@@ -23,6 +25,8 @@ test("任务详情页面壳使用 taskDetail page i18n key", () => {
 test("任务详情页面壳提供中英文资源", () => {
   assert.equal(cn.taskDetail.page.models.basic, "基础模型");
   assert.equal(en.taskDetail.page.models.basic, "Basic model");
+  assert.equal(cn.taskDetail.page.models.other, "其它");
+  assert.equal(en.taskDetail.page.models.other, "Other");
   assert.equal(cn.taskDetail.page.context.compactTitle, "压缩上下文");
   assert.equal(en.taskDetail.page.context.compactTitle, "Compact context");
   assert.equal(cn.taskDetail.page.dialogs.switchModel.title, "切换模型");
