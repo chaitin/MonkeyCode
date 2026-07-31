@@ -1,7 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MonkeyCode Dev",
+  "identifier": "com.chaitin.baizhi.monkeycode.dev",
   "build": {
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev"
+  },
+  "bundle": {
+    "active": false
   }
 }

@@ -9,7 +9,7 @@ export function latestPreviewUrl(items: LogItem[]): string | null {
     const matches = item.text.match(LOCAL_URL);
     if (!matches) continue;
     for (let matchIndex = matches.length - 1; matchIndex >= 0; matchIndex -= 1) {
-      const candidate = matches[matchIndex].replace(/[),.;:!?\]}]+$/, "");
+      const candidate = matches[matchIndex].replace(/[*)_,.;:!?\]}]+$/, "");
       try {
         const url = new URL(candidate);
         if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return url.toString();

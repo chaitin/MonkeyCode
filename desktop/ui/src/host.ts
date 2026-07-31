@@ -102,14 +102,23 @@ export const previewHide = () => invoke<void>("preview_hide");
 export const previewSetBounds = (bounds: PreviewBounds) => invoke<void>("preview_set_bounds", { bounds });
 export const previewNavigate = (url: string) => invoke<void>("preview_navigate", { url });
 export const previewReload = () => invoke<void>("preview_reload");
+export const previewSetZoom = (scale: number) => invoke<void>("preview_set_zoom", { scale });
 export const previewDestroy = () => invoke<void>("preview_destroy");
 
 export type ElementSnapshot = {
   selector: string; text: string; tag: string;
   bounds: PreviewBounds;
-  styles: { color: string; backgroundColor: string; fontSize: string; padding: string; margin: string; borderRadius: string };
+  styles: {
+    color: string; backgroundColor: string; fontSize: string; opacity: string;
+    width: string; height: string;
+    paddingTop: string; paddingRight: string; paddingBottom: string; paddingLeft: string;
+    marginTop: string; marginRight: string; marginBottom: string; marginLeft: string;
+    borderTopWidth: string; borderRightWidth: string; borderBottomWidth: string; borderLeftWidth: string;
+    borderStyle: string; borderColor: string; borderRadius: string;
+  };
 };
-export type ElementEdit = { selector: string; property: "text" | "color" | "backgroundColor" | "fontSize" | "padding" | "margin" | "borderRadius"; value: string };
+export type ElementEditProperty = "delete" | "text" | keyof ElementSnapshot["styles"];
+export type ElementEdit = { selector: string; property: ElementEditProperty; value: string };
 export const previewPickerToggle = (enabled: boolean) => invoke<void>("preview_picker_toggle", { enabled });
 export const previewElementApply = (edit: ElementEdit) => invoke<void>("preview_element_apply", { edit });
 export const previewElementUndo = () => invoke<void>("preview_element_undo");
@@ -120,7 +129,7 @@ export const onPreviewSerializedErrorAsync = (cb: (value: PreviewSerializedError
 export const previewSaveHtml = (sessionId: string, path: string, html: string) => invoke<void>("preview_save_html", { sessionId, path, html });
 export type PreviewCaptureMode = "viewport" | "full";
 export const previewCapture = (mode: PreviewCaptureMode, requestId: string) => invoke<void>("preview_capture", { mode, requestId });
-export const onPreviewCaptured = (cb: (value: { requestId: string; dataUrl: string }) => void) => onHostEvent("preview-captured", cb);
+export const onPreviewCaptured = (cb: (value: { requestId: string; dataUrl: string; clipboardError?: string | null }) => void) => onHostEvent("preview-captured", cb);
 export type PreviewCaptureError = { requestId: string; error: string };
 export const onPreviewCaptureError = (cb: (value: PreviewCaptureError) => void) => onHostEvent<PreviewCaptureError>("preview-capture-error", cb);
 export const onPreviewElementPicked = (cb: (snapshot: ElementSnapshot) => void) => onHostEvent<ElementSnapshot>("preview-element-picked", cb);

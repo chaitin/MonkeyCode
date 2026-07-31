@@ -864,6 +864,7 @@ export default function App() {
           onArchive={(m) => void archiveSession(m)}
           onDelete={(m) => void removeSession(m)}
           onRename={(m, title) => void renameSession(m, title)}
+          panelCollapsed={previewOpen && view === "session"}
         />
       )}
 
@@ -923,6 +924,7 @@ export default function App() {
               const sent = await session.sendFiles(prompt, files);
               if (!sent) throw new Error("设计反馈发送失败");
             }}
+            onQueueAgent={async (files) => { await session.addFiles(files); }}
           >
             <ChatView
               meta={currentMeta}

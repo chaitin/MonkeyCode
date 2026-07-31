@@ -32,6 +32,7 @@ tokio = { version = "1", features = ["sync", "time", "macros", "io-util", "proce
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 base64 = "0.22"
+arboard = "3"
 
 # 百智云/云端原生化(baizhi/):PoW 验证码、Set-Cookie 解析、微信页刮取
 sha2 = "0.10"

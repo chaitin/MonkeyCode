@@ -51,6 +51,7 @@
             "allow-preview-set-bounds",
             "allow-preview-navigate",
             "allow-preview-reload",
+            "allow-preview-set-zoom",
             "allow-preview-destroy",
             "allow-preview-picker-toggle",
             "allow-preview-element-apply",

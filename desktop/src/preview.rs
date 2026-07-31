@@ -1,5 +1,7 @@
+use base64::Engine as _;
 use crate::driver::DriverHost;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::path::{Component, Path, PathBuf};
 use std::{
     collections::HashMap,
@@ -147,6 +149,26 @@ fn capture_result(url: &Url) -> Option<Result<Option<(String, String)>, String>>
     }
 }
 
+fn copy_capture_to_clipboard(data_url: &str) -> Result<(), String> {
+    let encoded = data_url
+        .strip_prefix("data:image/png;base64,")
+        .ok_or("截图不是 PNG 数据")?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|e| format!("截图解码失败: {e}"))?;
+    let image = tauri::image::Image::from_bytes(&bytes)
+        .map_err(|e| format!("截图读取失败: {e}"))?;
+    arboard::Clipboard::new()
+        .and_then(|mut clipboard| {
+            clipboard.set_image(arboard::ImageData {
+                width: image.width() as usize,
+                height: image.height() as usize,
+                bytes: Cow::Owned(image.rgba().to_vec()),
+            })
+        })
+        .map_err(|e| format!("写入系统剪贴板失败: {e}"))
+}
+
 #[derive(Clone, Copy, Deserialize)]
 pub struct PreviewBounds {
     x: f64,
@@ -185,8 +207,23 @@ pub struct ElementStyles {
     color: String,
     background_color: String,
     font_size: String,
-    padding: String,
-    margin: String,
+    opacity: String,
+    width: String,
+    height: String,
+    padding_top: String,
+    padding_right: String,
+    padding_bottom: String,
+    padding_left: String,
+    margin_top: String,
+    margin_right: String,
+    margin_bottom: String,
+    margin_left: String,
+    border_top_width: String,
+    border_right_width: String,
+    border_bottom_width: String,
+    border_left_width: String,
+    border_style: String,
+    border_color: String,
     border_radius: String,
 }
 #[derive(Clone, Deserialize, Serialize)]
@@ -265,9 +302,9 @@ fn picker_result(url: &Url) -> Option<Result<ElementSnapshot, String>> {
     )
 }
 
-const CAPTURE_JS: &str = r#"(()=>{const send=(id,q)=>{location.href=`monkeycode-capture://${id}?${q}`};window.__mcPreviewCapture=async(mode,id)=>{try{const root=document.documentElement,body=document.body;const w=mode==='full'?Math.max(root.scrollWidth,body?.scrollWidth||0,root.clientWidth):innerWidth;const h=mode==='full'?Math.max(root.scrollHeight,body?.scrollHeight||0,root.clientHeight):innerHeight;if(w<1||h<1||w*h>80000000)throw Error('页面尺寸无效或超过 8000 万像素');const clone=root.cloneNode(true);clone.querySelectorAll('script').forEach(x=>x.remove());clone.setAttribute('xmlns','http://www.w3.org/1999/xhtml');if(mode==='viewport'){clone.style.width=`${w}px`;clone.style.height=`${h}px`;clone.style.overflow='hidden';const b=clone.querySelector('body');if(b)b.style.transform=`translate(${-scrollX}px,${-scrollY}px)`}const xml=new XMLSerializer().serializeToString(clone);const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%">${xml}</foreignObject></svg>`;const img=new Image;await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(Error('页面含无法序列化的跨域资源'));img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg)});const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');if(!ctx)throw Error('Canvas 不可用');ctx.drawImage(img,0,0);const png=c.toDataURL('image/png');const chunkSize=16000,total=Math.ceil(png.length/chunkSize);if(total<1||total>2048)throw Error('截图超过 24 MiB 限制');for(let i=0;i<total;i++){send(id,`index=${i}&total=${total}&data=${encodeURIComponent(png.slice(i*chunkSize,(i+1)*chunkSize))}`);await new Promise(ok=>setTimeout(ok,0))}}catch(e){send(id,`error=${encodeURIComponent(String(e?.message||e))}`)}}})()"#;
+const CAPTURE_JS: &str = r#"(()=>{const send=(id,q)=>{location.href=`monkeycode-capture://${id}?${q}`};window.__mcPreviewCapture=async(mode,id)=>{try{const root=document.documentElement,body=document.body;const w=mode==='full'?Math.max(root.scrollWidth,body?.scrollWidth||0,root.clientWidth):innerWidth;const h=mode==='full'?Math.max(root.scrollHeight,body?.scrollHeight||0,root.clientHeight):innerHeight;if(w<1||h<1||w*h>80000000)throw Error('页面尺寸无效或超过 8000 万像素');const clone=root.cloneNode(true);const sourceCanvases=[...root.querySelectorAll('canvas')],clonedCanvases=[...clone.querySelectorAll('canvas')];for(let i=0;i<clonedCanvases.length;i++){const source=sourceCanvases[i],canvas=clonedCanvases[i];if(!source||!canvas)continue;const image=document.createElement('img');image.src=source.toDataURL('image/png');image.width=source.width;image.height=source.height;for(const attr of canvas.attributes)image.setAttribute(attr.name,attr.value);image.style.cssText=canvas.style.cssText;canvas.replaceWith(image)}clone.querySelectorAll('script').forEach(x=>x.remove());clone.setAttribute('xmlns','http://www.w3.org/1999/xhtml');if(mode==='viewport'){clone.style.width=`${w}px`;clone.style.height=`${h}px`;clone.style.overflow='hidden';const b=clone.querySelector('body');if(b)b.style.transform=`translate(${-scrollX}px,${-scrollY}px)`}const xml=new XMLSerializer().serializeToString(clone);const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%">${xml}</foreignObject></svg>`;const img=new Image;await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(Error('页面含无法序列化的跨域资源'));img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg)});const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');if(!ctx)throw Error('Canvas 不可用');ctx.drawImage(img,0,0);const png=c.toDataURL('image/png');const chunkSize=16000,total=Math.ceil(png.length/chunkSize);if(total<1||total>2048)throw Error('截图超过 24 MiB 限制');for(let i=0;i<total;i++){send(id,`index=${i}&total=${total}&data=${encodeURIComponent(png.slice(i*chunkSize,(i+1)*chunkSize))}`);await new Promise(ok=>setTimeout(ok,0))}}catch(e){send(id,`error=${encodeURIComponent(String(e?.message||e))}`)}}})()"#;
 
-const PICKER_JS: &str = r#"(()=>{if(window.__mcPicker)return;const S=window.__mcPicker={active:false,hover:null,selected:null,undo:[]};const cssEscape=(s)=>window.CSS&&CSS.escape?CSS.escape(s):s.replace(/[^a-zA-Z0-9_-]/g,c=>'\\'+c);const selector=(el)=>{if(el.id)return '#'+cssEscape(el.id);const parts=[];for(let n=el;n&&n.nodeType===1&&n!==document.documentElement;n=n.parentElement){let p=n.tagName.toLowerCase();if(n.classList.length)p+='.'+[...n.classList].slice(0,2).map(cssEscape).join('.');const peers=n.parentElement?[...n.parentElement.children].filter(x=>x.tagName===n.tagName):[];if(peers.length>1)p+=`:nth-of-type(${peers.indexOf(n)+1})`;parts.unshift(p);if(document.querySelectorAll(parts.join(' > ')).length===1)break}return parts.join(' > ')};const outline=(el,on)=>{if(!el)return;if(on){el.dataset.mcPickerOutline=el.style.outline;el.style.outline='2px solid #16b364';el.style.outlineOffset='-2px'}else{el.style.outline=el.dataset.mcPickerOutline||'';delete el.dataset.mcPickerOutline}};addEventListener('pointerover',e=>{if(!S.active)return;outline(S.hover,false);S.hover=e.target;outline(S.hover,true)},true);addEventListener('click',e=>{if(!S.active)return;e.preventDefault();e.stopImmediatePropagation();outline(S.hover,false);S.active=false;S.selected=e.target;const el=e.target,r=el.getBoundingClientRect(),c=getComputedStyle(el);const data={selector:selector(el),text:(el.textContent||'').slice(0,16384),tag:el.tagName.toLowerCase(),bounds:{x:r.x,y:r.y,width:r.width,height:r.height},styles:{color:c.color,backgroundColor:c.backgroundColor,fontSize:c.fontSize,padding:c.padding,margin:c.margin,borderRadius:c.borderRadius}};location.href='monkeycode-picker://result?data='+encodeURIComponent(JSON.stringify(data))},true);S.toggle=(on)=>{S.active=on;outline(S.hover,false);S.hover=null;document.documentElement.style.cursor=on?'crosshair':''};S.apply=(edit)=>{const el=document.querySelector(edit.selector);if(!el)throw Error('元素已不存在');const prop=edit.property,before=prop==='text'?el.textContent:el.style[prop];S.undo.push({el,prop,before});if(prop==='text')el.textContent=edit.value;else el.style[prop]=edit.value};S.undoOne=()=>{const x=S.undo.pop();if(!x)return false;if(x.prop==='text')x.el.textContent=x.before;else x.el.style[x.prop]=x.before;return true}})()"#;
+const PICKER_JS: &str = r#"(()=>{if(window.__mcPicker)return;const S=window.__mcPicker={active:false,hover:null,selected:null,undo:[]};const cssEscape=(s)=>window.CSS&&CSS.escape?CSS.escape(s):s.replace(/[^a-zA-Z0-9_-]/g,c=>'\\'+c);const selector=(el)=>{if(el.id)return '#'+cssEscape(el.id);const parts=[];for(let n=el;n&&n.nodeType===1&&n!==document.documentElement;n=n.parentElement){let p=n.tagName.toLowerCase();if(n.classList.length)p+='.'+[...n.classList].slice(0,2).map(cssEscape).join('.');const peers=n.parentElement?[...n.parentElement.children].filter(x=>x.tagName===n.tagName):[];if(peers.length>1)p+=`:nth-of-type(${peers.indexOf(n)+1})`;parts.unshift(p);if(document.querySelectorAll(parts.join(' > ')).length===1)break}return parts.join(' > ')};const outline=(el,on)=>{if(!el)return;if(on){el.dataset.mcPickerOutline=el.style.outline;el.style.outline='2px solid #16b364';el.style.outlineOffset='-2px'}else{el.style.outline=el.dataset.mcPickerOutline||'';delete el.dataset.mcPickerOutline}};const pickTarget=(e)=>{const path=typeof e.composedPath==='function'?e.composedPath():[];const el=path.find(x=>x instanceof HTMLElement||x instanceof SVGElement);return el instanceof Element?el:e.target instanceof Element?e.target:null};addEventListener('pointerover',e=>{if(!S.active)return;outline(S.hover,false);S.hover=pickTarget(e);outline(S.hover,true)},true);addEventListener('click',e=>{if(!S.active)return;e.preventDefault();e.stopImmediatePropagation();outline(S.hover,false);S.active=false;S.selected=S.hover||pickTarget(e);const el=S.selected;if(!el)return;const r=el.getBoundingClientRect(),c=getComputedStyle(el);const data={selector:selector(el),text:(el.textContent||'').slice(0,16384),tag:el.tagName.toLowerCase(),bounds:{x:r.x,y:r.y,width:r.width,height:r.height},styles:{color:c.color,backgroundColor:c.backgroundColor,fontSize:c.fontSize,opacity:c.opacity,width:c.width,height:c.height,paddingTop:c.paddingTop,paddingRight:c.paddingRight,paddingBottom:c.paddingBottom,paddingLeft:c.paddingLeft,marginTop:c.marginTop,marginRight:c.marginRight,marginBottom:c.marginBottom,marginLeft:c.marginLeft,borderTopWidth:c.borderTopWidth,borderRightWidth:c.borderRightWidth,borderBottomWidth:c.borderBottomWidth,borderLeftWidth:c.borderLeftWidth,borderStyle:c.borderStyle,borderColor:c.borderColor,borderRadius:c.borderRadius}};location.href='monkeycode-picker://result?data='+encodeURIComponent(JSON.stringify(data))},true);S.toggle=(on)=>{S.active=on;outline(S.hover,false);S.hover=null;document.documentElement.style.cursor=on?'crosshair':''};S.apply=(edit)=>{const el=document.querySelector(edit.selector);if(!el)throw Error('元素已不存在');const prop=edit.property;if(prop==='delete'){const parent=el.parentNode,next=el.nextSibling;S.undo.push({el,prop,parent,next});el.remove();return}const before=prop==='text'?el.textContent:el.style[prop];S.undo.push({el,prop,before});if(prop==='text')el.textContent=edit.value;else el.style[prop]=edit.value};S.undoOne=()=>{const x=S.undo.pop();if(!x)return false;if(x.prop==='delete'){x.parent.insertBefore(x.el,x.next);return true}if(x.prop==='text')x.el.textContent=x.before;else x.el.style[x.prop]=x.before;return true}})()"#;
 
 #[tauri::command]
 pub fn preview_create(app: AppHandle, url: String, bounds: PreviewBounds) -> Result<(), String> {
@@ -291,7 +328,20 @@ pub fn preview_create(app: AppHandle, url: String, bounds: PreviewBounds) -> Res
                         match result { Ok(Some((request_id, html))) => { let _=callback_app.emit_to("main","preview-serialized",serde_json::json!({"requestId":request_id,"html":html})); }, Ok(None)=>{}, Err(error)=>{let _=callback_app.emit_to("main","preview-serialized-error",serde_json::json!({"requestId":url.host_str().unwrap_or(""),"error":error}));} }
                         false
                     } else if let Some(result) = capture_result(url) {
-                        match result { Ok(Some((request_id, data_url))) => { let _=callback_app.emit_to("main","preview-captured",serde_json::json!({"requestId":request_id,"dataUrl":data_url})); }, Ok(None)=>{}, Err(error)=>{let _=callback_app.emit_to("main","preview-capture-error",serde_json::json!({"requestId":url.host_str().unwrap_or(""),"error":error}));} }
+                        match result {
+                            Ok(Some((request_id, data_url))) => {
+                                let clipboard_error = copy_capture_to_clipboard(&data_url).err();
+                                let _ = callback_app.emit_to(
+                                    "main",
+                                    "preview-captured",
+                                    serde_json::json!({"requestId":request_id,"dataUrl":data_url,"clipboardError":clipboard_error}),
+                                );
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                let _ = callback_app.emit_to("main", "preview-capture-error", serde_json::json!({"requestId":url.host_str().unwrap_or(""),"error":error}));
+                            }
+                        }
                         false
                     } else if let Some(result) = picker_result(url) {
                         match result {
@@ -350,6 +400,17 @@ pub fn preview_reload(app: AppHandle) -> Result<(), String> {
     webview(&app)?.reload().map_err(|e| e.to_string())
 }
 #[tauri::command]
+pub fn preview_set_zoom(app: AppHandle, scale: f64) -> Result<(), String> {
+    if !scale.is_finite() || !(0.1..=5.0).contains(&scale) {
+        return Err("缩放比例必须在 10% 到 500% 之间".into());
+    }
+    webview(&app)?
+        .eval(format!(
+            "(()=>{{const target=document.getElementById('root')||document.body.firstElementChild||document.body;if(!target)throw new Error('找不到页面根元素');const root=document.documentElement,body=document.body,w=root.clientWidth,h=root.clientHeight,s={scale};target.style.setProperty('width',w+'px','important');target.style.setProperty('min-height',h+'px','important');target.style.setProperty('transform','scale('+s+')','important');target.style.setProperty('transform-origin','0 0','important');target.style.setProperty('margin-left',(s<1?(w-w*s)/2:0)+'px','important');body.style.setProperty('width',Math.max(w,w*s)+'px','important');body.style.setProperty('min-height',Math.max(h,h*s)+'px','important');body.style.setProperty('overflow','visible','important');root.style.setProperty('overflow','auto','important');target.dataset.mcZoom=String(s)}})()"
+        ))
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
 pub fn preview_destroy(app: AppHandle) -> Result<(), String> {
     if let Some(v) = app.get_webview(LABEL) {
         v.close().map_err(|e| e.to_string())?
@@ -366,18 +427,20 @@ pub fn preview_picker_toggle(app: AppHandle, enabled: bool) -> Result<(), String
 #[tauri::command]
 pub fn preview_element_apply(app: AppHandle, edit: ElementEdit) -> Result<(), String> {
     if !valid_selector(&edit.selector)
-        || !(edit.property == "text"
+        || !(edit.property == "delete"
+            || edit.property == "text"
             || [
-                "color",
-                "backgroundColor",
-                "fontSize",
-                "padding",
-                "margin",
-                "borderRadius",
+                "color", "backgroundColor", "fontSize", "opacity", "width", "height",
+                "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+                "marginTop", "marginRight", "marginBottom", "marginLeft",
+                "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+                "borderStyle", "borderColor", "borderRadius",
             ]
             .contains(&edit.property.as_str()))
         || if edit.property == "text" {
             !valid_text_value(&edit.value)
+        } else if edit.property == "delete" {
+            !edit.value.is_empty()
         } else {
             !valid_css_value(&edit.value)
         }

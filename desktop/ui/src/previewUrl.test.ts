@@ -20,6 +20,10 @@ describe("latestPreviewUrl", () => {
     expect(latestPreviewUrl(items)).toBe("http://localhost:5173/demo");
   });
 
+  it("去掉 URL 末尾的 Markdown 标记", () => {
+    expect(latestPreviewUrl([agent("预览地址：**http://127.0.0.1:8080/index.html**")])).toBe("http://127.0.0.1:8080/index.html");
+  });
+
   it("支持 IPv6 loopback", () => {
     expect(latestPreviewUrl([agent("http://[::1]:8080/")])).toBe("http://[::1]:8080/");
   });

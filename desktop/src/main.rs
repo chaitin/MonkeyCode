@@ -732,7 +732,12 @@ fn is_internal_url(url: &tauri::Url) -> bool {
     match url.scheme() {
         "tauri" => true,
         // Windows 下 Tauri app 页面以 http(s)://tauri.localhost 承载
-        "http" | "https" => matches!(url.host_str(), Some("tauri.localhost")),
+        "http" | "https" => {
+            matches!(url.host_str(), Some("tauri.localhost"))
+                || (cfg!(debug_assertions)
+                    && matches!(url.host_str(), Some("localhost") | Some("127.0.0.1"))
+                    && url.port_or_known_default() == Some(1420))
+        }
         _ => false,
     }
 }
@@ -1203,6 +1208,7 @@ fn main() {
             preview::preview_set_bounds,
             preview::preview_navigate,
             preview::preview_reload,
+            preview::preview_set_zoom,
             preview::preview_destroy,
             preview::preview_picker_toggle,
             preview::preview_element_apply,

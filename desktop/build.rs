@@ -75,6 +75,7 @@ fn main() {
                 "preview_set_bounds",
                 "preview_navigate",
                 "preview_reload",
+                "preview_set_zoom",
                 "preview_destroy",
                 "preview_picker_toggle",
                 "preview_element_apply",

@@ -685,6 +685,7 @@ export function Sidebar({
   onArchive,
   onDelete,
   onRename,
+  panelCollapsed = false,
 }: {
   sessions: SessionMeta[];
   archivedProjects: ReadonlySet<string>;
@@ -726,6 +727,7 @@ export function Sidebar({
   onArchive: (meta: SessionMeta) => void;
   onDelete: (meta: SessionMeta) => void;
   onRename: (meta: SessionMeta, title: string) => void;
+  panelCollapsed?: boolean;
 }) {
   const activeMeta = sessions.find((m) => m.id === currentId);
   const inferred: SidebarSpace = activeCloudId ? "cloud" : activeMeta?.kind === "chat" ? "chat" : "local";
@@ -1234,7 +1236,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <aside className="mc-sidebar-panel" style={{ width: 232, flex: "none", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--side)", borderRight: "1px solid var(--line)" }}>
+      <aside className={`mc-sidebar-panel${panelCollapsed ? " is-collapsed" : ""}`} aria-hidden={panelCollapsed}>
         <MacBrandBand />
         <PanelHeader title={panel.title} detail={panel.detail}>{panel.actions}</PanelHeader>
         <SearchBox value={query} placeholder={panel.placeholder} onChange={setQuery} />
