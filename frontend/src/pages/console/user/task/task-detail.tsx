@@ -1421,7 +1421,7 @@ export default function TaskDetailPage() {
                 className={cn(
                   "max-h-[65dvh] gap-0 overflow-hidden md:hidden",
                   mobileToolsView === "tools"
-                    ? "w-[120px] p-1.5"
+                    ? "w-max min-w-[120px] max-w-[calc(100vw-2rem)] p-1.5"
                     : "w-[calc(100vw-2rem)] max-w-[420px] p-0",
                 )}
                 onCloseAutoFocus={handleMobileToolsCloseAutoFocus}
