@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"sync/atomic"
 
 	"github.com/coder/websocket"
 
@@ -23,10 +22,7 @@ func newVirtualMachineClient(client *request.Client) VirtualMachiner {
 
 // Create implements VirtualMachiner.
 func (v *virtualMachineClient) Create(ctx context.Context, req *CreateVirtualMachineReq) (*VirtualMachine, error) {
-	resp, err := executeMutation(ctx, targetScope("vm", req.ID), req.ID, func(ctx context.Context) (*Resp[*VirtualMachine], error) {
-		return request.Post[Resp[*VirtualMachine]](v.client, ctx, "/internal/vm", req,
-			fencedRouteOption(ctx, CapabilityOrchestrator, req.HostID))
-	})
+	resp, err := request.Post[Resp[*VirtualMachine]](v.client, ctx, "/internal/vm", req)
 	if err != nil {
 		return nil, err
 	}
@@ -40,13 +36,8 @@ func (v *virtualMachineClient) Delete(ctx context.Context, req *DeleteVirtualMac
 		"host_id": req.HostID,
 		"user_id": req.UserID,
 	}
-	return executeMutationError(ctx, targetScope("vm", req.ID), req.ID, func(ctx context.Context) error {
-		_, err := request.Delete[any](v.client, ctx, "/internal/vm",
-			request.WithQuery(q),
-			fencedRouteOption(ctx, CapabilityOrchestrator, req.HostID),
-		)
-		return err
-	})
+	_, err := request.Delete[any](v.client, ctx, "/internal/vm", request.WithQuery(q))
+	return err
 }
 
 // IsVirtualMachineNotFound 判断删除失败是否表示远端环境已经不存在。
@@ -59,12 +50,9 @@ func (v *virtualMachineClient) List(ctx context.Context, id string) ([]*VirtualM
 	q := request.Query{
 		"id": id,
 	}
-	resp, err := request.Get[Resp[[]*VirtualMachine]](v.client, ctx, "/internal/vm/list",
-		request.WithQuery(q),
-		routeOption(CapabilityOrchestrator, id),
-	)
+	resp, err := request.Get[Resp[[]*VirtualMachine]](v.client, ctx, "/internal/vm/list", request.WithQuery(q))
 	if err != nil {
-		return []*VirtualMachine{}, parseTaskflowError(err)
+		return []*VirtualMachine{}, err
 	}
 	return resp.Data, nil
 }
@@ -98,7 +86,6 @@ func (v *virtualMachineClient) Terminal(ctx context.Context, req *TerminalReq) (
 		wsScheme = "wss"
 	}
 
-	var preferTerminal atomic.Bool
 	dial := func(ctx context.Context) (*websocket.Conn, error) {
 		u := &url.URL{
 			Scheme: wsScheme,
@@ -114,25 +101,10 @@ func (v *virtualMachineClient) Terminal(ctx context.Context, req *TerminalReq) (
 		values.Add("mode", fmt.Sprintf("%d", req.Mode))
 		u.RawQuery = values.Encode()
 
-		capability := CapabilityAgent
-		targetID := req.ID
-		if preferTerminal.Load() {
-			capability = CapabilityTerminal
-			targetID = req.TerminalID
-		}
-		header := telemetry.TraceHeader(ctx)
-		header.Set(HeaderRouteCapability, string(capability))
-		header.Set(HeaderRouteTargetID, targetID)
-		conn, response, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: header})
+		conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: telemetry.TraceHeader(ctx)})
 		if err != nil {
-			err = parseWebsocketError(response, err)
-			protocolErr, isProtocolErr := err.(*TaskflowError)
-			if capability == CapabilityTerminal && isProtocolErr && protocolErr.Code == ErrorOwnerNotFound {
-				preferTerminal.Store(false)
-			}
 			return nil, err
 		}
-		preferTerminal.Store(true)
 		return conn, nil
 	}
 
@@ -192,41 +164,35 @@ func (v *virtualMachineClient) Reports(ctx context.Context, req ReportSubscribeR
 
 // TerminalList implements VirtualMachiner.
 func (v *virtualMachineClient) TerminalList(ctx context.Context, id string) ([]*Terminal, error) {
-	resp, err := request.Get[Resp[[]*Terminal]](v.client, ctx, "/internal/terminal",
-		request.WithQuery(request.Query{"id": id}),
-		routeOption(CapabilityAgent, id),
-	)
+	resp, err := request.Get[Resp[[]*Terminal]](v.client, ctx, "/internal/terminal", request.WithQuery(
+		request.Query{"id": id},
+	))
 	if err != nil {
-		return nil, parseTaskflowError(err)
+		return nil, err
 	}
 	return resp.Data, nil
 }
 
 // CloseTerminal implements VirtualMachiner.
 func (v *virtualMachineClient) CloseTerminal(ctx context.Context, req *CloseTerminalReq) error {
-	return executeMutationError(ctx, targetScope("vm", req.ID), req.TerminalID, func(ctx context.Context) error {
-		_, err := request.Delete[any](v.client, ctx, "/internal/terminal",
-			request.WithBody(req),
-			fencedRouteOption(ctx, CapabilityAgent, req.ID),
-		)
-		return err
-	})
+	_, err := request.Delete[any](v.client, ctx, "/internal/terminal", request.WithBody(req))
+	return err
 }
 
 // Hibernate implements [VirtualMachiner].
 func (v *virtualMachineClient) Hibernate(ctx context.Context, req *HibernateVirtualMachineReq) error {
-	return executeMutationError(ctx, targetScope("vm", req.ID), "", func(ctx context.Context) error {
-		_, err := request.Post[Resp[any]](v.client, ctx, "/internal/vm/hibernate", req,
-			fencedRouteOption(ctx, CapabilityOrchestrator, req.HostID))
+	_, err := request.Post[Resp[any]](v.client, ctx, "/internal/vm/hibernate", req)
+	if err != nil {
 		return err
-	})
+	}
+	return nil
 }
 
 // Resume implements [VirtualMachiner].
 func (v *virtualMachineClient) Resume(ctx context.Context, req *ResumeVirtualMachineReq) error {
-	return executeMutationError(ctx, targetScope("vm", req.ID), "", func(ctx context.Context) error {
-		_, err := request.Post[Resp[any]](v.client, ctx, "/internal/vm/resume", req,
-			fencedRouteOption(ctx, CapabilityOrchestrator, req.HostID))
+	_, err := request.Post[Resp[any]](v.client, ctx, "/internal/vm/resume", req)
+	if err != nil {
 		return err
-	})
+	}
+	return nil
 }
