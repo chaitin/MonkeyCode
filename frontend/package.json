@@ -2,7 +2,7 @@
   "name": "monkeycode-ai",
   "private": true,
   "version": "260323.0.5",
-  "description": "MonkeyCode Web 前端",
+  "description": "MonkeyCode Web \u524d\u7aef",
   "author": "MonkeyCode",
   "type": "module",
   "scripts": {
@@ -87,7 +87,7 @@
     "globals": "^16.5.0",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
-    "swagger-typescript-api": "12.0.4",
+    "swagger-typescript-api": "13.12.2",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.1",
     "vite": "^7.3.1"
