@@ -18,14 +18,20 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
+	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/pkg/modelusage"
 	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 )
 
 const upstreamFailureMessage = "连接上游模型失败，请检查模型配置，或重试"
+
+var errModelForbidden = errors.New("model is not accessible")
 
 var allowPaths = map[string]string{
 	"/v1/chat/completions": "/chat/completions",
@@ -36,13 +42,15 @@ var allowPaths = map[string]string{
 type contextKey struct{}
 
 type modelContext struct {
-	modelID   uuid.UUID
-	userID    uuid.UUID
-	vmID      string
-	provider  string
-	modelName string
-	baseURL   string
-	apiKey    string
+	modelID       uuid.UUID
+	userID        uuid.UUID
+	vmID          string
+	keyKind       modelapikey.Kind
+	provider      string
+	modelName     string
+	baseURL       string
+	apiKey        string
+	signingSecret string
 }
 
 type proxyContext struct {
@@ -137,16 +145,35 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
-	m, err := p.resolveModel(r.Context(), token)
+	m, err := p.resolveModel(r.Context(), token, reqMeta.Model)
 	if err != nil {
+		if errors.Is(err, errModelForbidden) {
+			p.logger.WarnContext(r.Context(), "resolve ohmyagent model failed", "error", err)
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
 		p.logger.WarnContext(r.Context(), "resolve runtime model failed", "error", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if reqMeta.Model != "" && reqMeta.Model != m.modelName {
+	if m.keyKind == modelapikey.KindRuntime && reqMeta.Model != "" && reqMeta.Model != m.modelName {
 		p.logger.WarnContext(r.Context(), "model mismatch", "request_model", reqMeta.Model, "expected_model", m.modelName)
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
+	}
+	if m.keyKind == modelapikey.KindOhmyagent {
+		body, err = replaceRequestModel(body, m.modelName)
+		if err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+		if err := ValidateOhMyAgentPrompt(body, r.Header.Get(ohMyAgentSignatureHeader), m.signingSecret); err != nil {
+			p.logger.WarnContext(r.Context(), "ohmyagent prompt validation failed", "error", err)
+			http.Error(w, "invalid ohmyagent request", http.StatusForbidden)
+			return
+		}
 	}
 
 	ctx := context.WithValue(r.Context(), contextKey{}, &proxyContext{
@@ -157,7 +184,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.proxy.ServeHTTP(w, r.WithContext(ctx))
 }
 
-func (p *Proxy) resolveModel(ctx context.Context, token string) (*modelContext, error) {
+func (p *Proxy) resolveModel(ctx context.Context, token, requestedModel string) (*modelContext, error) {
 	keyID, err := uuid.Parse(token)
 	query := p.db.ModelApiKey.Query().
 		WithModel().
@@ -171,18 +198,50 @@ func (p *Proxy) resolveModel(ctx context.Context, token string) (*modelContext, 
 	if err != nil {
 		return nil, err
 	}
-	if key.Edges.Model == nil {
+
+	selected := key.Edges.Model
+	if key.Kind == modelapikey.KindOhmyagent {
+		selected, err = p.db.Model.Query().
+			Where(
+				model.Model(requestedModel),
+				model.Or(
+					model.UserID(key.UserID),
+					model.HasGroupsWith(teamgroup.HasMembersWith(user.ID(key.UserID))),
+					model.HasUserWith(user.Role(consts.UserRoleAdmin)),
+				),
+			).
+			Only(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", errModelForbidden, err)
+		}
+	}
+	if selected == nil {
 		return nil, errors.New("model not found")
 	}
 	return &modelContext{
-		modelID:   key.Edges.Model.ID,
-		userID:    key.UserID,
-		vmID:      key.VirtualmachineID,
-		provider:  key.Edges.Model.Provider,
-		modelName: key.Edges.Model.Model,
-		baseURL:   key.Edges.Model.BaseURL,
-		apiKey:    key.Edges.Model.APIKey,
+		modelID:       selected.ID,
+		userID:        key.UserID,
+		vmID:          key.VirtualmachineID,
+		keyKind:       key.Kind,
+		provider:      selected.Provider,
+		modelName:     selected.Model,
+		baseURL:       selected.BaseURL,
+		apiKey:        selected.APIKey,
+		signingSecret: key.SigningSecret,
 	}, nil
+}
+
+func replaceRequestModel(body []byte, modelName string) ([]byte, error) {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(modelName)
+	if err != nil {
+		return nil, err
+	}
+	payload["model"] = encoded
+	return json.Marshal(payload)
 }
 
 var LLMAllowPaths []string = []string{
@@ -227,6 +286,7 @@ func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 	r.Out.URL.Path = filepath.Join(ul.Path, uppath)
 	r.Out.Header.Set("Authorization", "Bearer "+m.apiKey)
 	r.Out.Header.Set("X-Api-Key", m.apiKey)
+	r.Out.Header.Del(ohMyAgentSignatureHeader)
 	r.SetXForwarded()
 	r.Out.Host = ul.Host
 	p.logger.With(

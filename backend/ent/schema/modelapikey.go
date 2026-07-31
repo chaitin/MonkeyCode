@@ -34,10 +34,12 @@ func (ModelApiKey) Mixin() []ent.Mixin {
 func (ModelApiKey) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Unique(),
-		field.UUID("model_id", uuid.UUID{}),
+		field.UUID("model_id", uuid.UUID{}).Optional(),
 		field.UUID("user_id", uuid.UUID{}),
+		field.Enum("kind").Values("runtime", "ohmyagent").Default("runtime"),
 		field.String("virtualmachine_id").Optional(),
 		field.Text("api_key").NotEmpty(),
+		field.Text("signing_secret").Default("").Sensitive(),
 		field.Time("created_at").Default(time.Now),
 	}
 }
@@ -45,6 +47,6 @@ func (ModelApiKey) Fields() []ent.Field {
 // Edges of the ModelApiKey.
 func (ModelApiKey) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("model", Model.Type).Ref("apikeys").Field("model_id").Unique().Required(),
+		edge.From("model", Model.Type).Ref("apikeys").Field("model_id").Unique(),
 	}
 }

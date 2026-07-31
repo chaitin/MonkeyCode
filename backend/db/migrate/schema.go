@@ -867,10 +867,12 @@ var (
 		{Name: "id", Type: field.TypeUUID, Unique: true},
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "user_id", Type: field.TypeUUID},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"runtime", "ohmyagent"}, Default: "runtime"},
 		{Name: "virtualmachine_id", Type: field.TypeString, Nullable: true},
 		{Name: "api_key", Type: field.TypeString, Size: 2147483647},
+		{Name: "signing_secret", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "created_at", Type: field.TypeTime},
-		{Name: "model_id", Type: field.TypeUUID},
+		{Name: "model_id", Type: field.TypeUUID, Nullable: true},
 	}
 	// ModelAPIKeysTable holds the schema information for the "model_api_keys" table.
 	ModelAPIKeysTable = &schema.Table{
@@ -880,9 +882,9 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "model_api_keys_models_apikeys",
-				Columns:    []*schema.Column{ModelAPIKeysColumns[6]},
+				Columns:    []*schema.Column{ModelAPIKeysColumns[8]},
 				RefColumns: []*schema.Column{ModelsColumns[0]},
-				OnDelete:   schema.NoAction,
+				OnDelete:   schema.SetNull,
 			},
 		},
 	}

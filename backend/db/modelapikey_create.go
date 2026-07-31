@@ -45,9 +45,31 @@ func (_c *ModelApiKeyCreate) SetModelID(v uuid.UUID) *ModelApiKeyCreate {
 	return _c
 }
 
+// SetNillableModelID sets the "model_id" field if the given value is not nil.
+func (_c *ModelApiKeyCreate) SetNillableModelID(v *uuid.UUID) *ModelApiKeyCreate {
+	if v != nil {
+		_c.SetModelID(*v)
+	}
+	return _c
+}
+
 // SetUserID sets the "user_id" field.
 func (_c *ModelApiKeyCreate) SetUserID(v uuid.UUID) *ModelApiKeyCreate {
 	_c.mutation.SetUserID(v)
+	return _c
+}
+
+// SetKind sets the "kind" field.
+func (_c *ModelApiKeyCreate) SetKind(v modelapikey.Kind) *ModelApiKeyCreate {
+	_c.mutation.SetKind(v)
+	return _c
+}
+
+// SetNillableKind sets the "kind" field if the given value is not nil.
+func (_c *ModelApiKeyCreate) SetNillableKind(v *modelapikey.Kind) *ModelApiKeyCreate {
+	if v != nil {
+		_c.SetKind(*v)
+	}
 	return _c
 }
 
@@ -68,6 +90,20 @@ func (_c *ModelApiKeyCreate) SetNillableVirtualmachineID(v *string) *ModelApiKey
 // SetAPIKey sets the "api_key" field.
 func (_c *ModelApiKeyCreate) SetAPIKey(v string) *ModelApiKeyCreate {
 	_c.mutation.SetAPIKey(v)
+	return _c
+}
+
+// SetSigningSecret sets the "signing_secret" field.
+func (_c *ModelApiKeyCreate) SetSigningSecret(v string) *ModelApiKeyCreate {
+	_c.mutation.SetSigningSecret(v)
+	return _c
+}
+
+// SetNillableSigningSecret sets the "signing_secret" field if the given value is not nil.
+func (_c *ModelApiKeyCreate) SetNillableSigningSecret(v *string) *ModelApiKeyCreate {
+	if v != nil {
+		_c.SetSigningSecret(*v)
+	}
 	return _c
 }
 
@@ -133,6 +169,14 @@ func (_c *ModelApiKeyCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *ModelApiKeyCreate) defaults() error {
+	if _, ok := _c.mutation.Kind(); !ok {
+		v := modelapikey.DefaultKind
+		_c.mutation.SetKind(v)
+	}
+	if _, ok := _c.mutation.SigningSecret(); !ok {
+		v := modelapikey.DefaultSigningSecret
+		_c.mutation.SetSigningSecret(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		if modelapikey.DefaultCreatedAt == nil {
 			return fmt.Errorf("db: uninitialized modelapikey.DefaultCreatedAt (forgotten import db/runtime?)")
@@ -145,11 +189,16 @@ func (_c *ModelApiKeyCreate) defaults() error {
 
 // check runs all checks and user-defined validators on the builder.
 func (_c *ModelApiKeyCreate) check() error {
-	if _, ok := _c.mutation.ModelID(); !ok {
-		return &ValidationError{Name: "model_id", err: errors.New(`db: missing required field "ModelApiKey.model_id"`)}
-	}
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`db: missing required field "ModelApiKey.user_id"`)}
+	}
+	if _, ok := _c.mutation.Kind(); !ok {
+		return &ValidationError{Name: "kind", err: errors.New(`db: missing required field "ModelApiKey.kind"`)}
+	}
+	if v, ok := _c.mutation.Kind(); ok {
+		if err := modelapikey.KindValidator(v); err != nil {
+			return &ValidationError{Name: "kind", err: fmt.Errorf(`db: validator failed for field "ModelApiKey.kind": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.APIKey(); !ok {
 		return &ValidationError{Name: "api_key", err: errors.New(`db: missing required field "ModelApiKey.api_key"`)}
@@ -159,11 +208,11 @@ func (_c *ModelApiKeyCreate) check() error {
 			return &ValidationError{Name: "api_key", err: fmt.Errorf(`db: validator failed for field "ModelApiKey.api_key": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.SigningSecret(); !ok {
+		return &ValidationError{Name: "signing_secret", err: errors.New(`db: missing required field "ModelApiKey.signing_secret"`)}
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`db: missing required field "ModelApiKey.created_at"`)}
-	}
-	if len(_c.mutation.ModelIDs()) == 0 {
-		return &ValidationError{Name: "model", err: errors.New(`db: missing required edge "ModelApiKey.model"`)}
 	}
 	return nil
 }
@@ -209,6 +258,10 @@ func (_c *ModelApiKeyCreate) createSpec() (*ModelApiKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(modelapikey.FieldUserID, field.TypeUUID, value)
 		_node.UserID = value
 	}
+	if value, ok := _c.mutation.Kind(); ok {
+		_spec.SetField(modelapikey.FieldKind, field.TypeEnum, value)
+		_node.Kind = value
+	}
 	if value, ok := _c.mutation.VirtualmachineID(); ok {
 		_spec.SetField(modelapikey.FieldVirtualmachineID, field.TypeString, value)
 		_node.VirtualmachineID = value
@@ -216,6 +269,10 @@ func (_c *ModelApiKeyCreate) createSpec() (*ModelApiKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.APIKey(); ok {
 		_spec.SetField(modelapikey.FieldAPIKey, field.TypeString, value)
 		_node.APIKey = value
+	}
+	if value, ok := _c.mutation.SigningSecret(); ok {
+		_spec.SetField(modelapikey.FieldSigningSecret, field.TypeString, value)
+		_node.SigningSecret = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(modelapikey.FieldCreatedAt, field.TypeTime, value)
@@ -320,6 +377,12 @@ func (u *ModelApiKeyUpsert) UpdateModelID() *ModelApiKeyUpsert {
 	return u
 }
 
+// ClearModelID clears the value of the "model_id" field.
+func (u *ModelApiKeyUpsert) ClearModelID() *ModelApiKeyUpsert {
+	u.SetNull(modelapikey.FieldModelID)
+	return u
+}
+
 // SetUserID sets the "user_id" field.
 func (u *ModelApiKeyUpsert) SetUserID(v uuid.UUID) *ModelApiKeyUpsert {
 	u.Set(modelapikey.FieldUserID, v)
@@ -329,6 +392,18 @@ func (u *ModelApiKeyUpsert) SetUserID(v uuid.UUID) *ModelApiKeyUpsert {
 // UpdateUserID sets the "user_id" field to the value that was provided on create.
 func (u *ModelApiKeyUpsert) UpdateUserID() *ModelApiKeyUpsert {
 	u.SetExcluded(modelapikey.FieldUserID)
+	return u
+}
+
+// SetKind sets the "kind" field.
+func (u *ModelApiKeyUpsert) SetKind(v modelapikey.Kind) *ModelApiKeyUpsert {
+	u.Set(modelapikey.FieldKind, v)
+	return u
+}
+
+// UpdateKind sets the "kind" field to the value that was provided on create.
+func (u *ModelApiKeyUpsert) UpdateKind() *ModelApiKeyUpsert {
+	u.SetExcluded(modelapikey.FieldKind)
 	return u
 }
 
@@ -359,6 +434,18 @@ func (u *ModelApiKeyUpsert) SetAPIKey(v string) *ModelApiKeyUpsert {
 // UpdateAPIKey sets the "api_key" field to the value that was provided on create.
 func (u *ModelApiKeyUpsert) UpdateAPIKey() *ModelApiKeyUpsert {
 	u.SetExcluded(modelapikey.FieldAPIKey)
+	return u
+}
+
+// SetSigningSecret sets the "signing_secret" field.
+func (u *ModelApiKeyUpsert) SetSigningSecret(v string) *ModelApiKeyUpsert {
+	u.Set(modelapikey.FieldSigningSecret, v)
+	return u
+}
+
+// UpdateSigningSecret sets the "signing_secret" field to the value that was provided on create.
+func (u *ModelApiKeyUpsert) UpdateSigningSecret() *ModelApiKeyUpsert {
+	u.SetExcluded(modelapikey.FieldSigningSecret)
 	return u
 }
 
@@ -457,6 +544,13 @@ func (u *ModelApiKeyUpsertOne) UpdateModelID() *ModelApiKeyUpsertOne {
 	})
 }
 
+// ClearModelID clears the value of the "model_id" field.
+func (u *ModelApiKeyUpsertOne) ClearModelID() *ModelApiKeyUpsertOne {
+	return u.Update(func(s *ModelApiKeyUpsert) {
+		s.ClearModelID()
+	})
+}
+
 // SetUserID sets the "user_id" field.
 func (u *ModelApiKeyUpsertOne) SetUserID(v uuid.UUID) *ModelApiKeyUpsertOne {
 	return u.Update(func(s *ModelApiKeyUpsert) {
@@ -468,6 +562,20 @@ func (u *ModelApiKeyUpsertOne) SetUserID(v uuid.UUID) *ModelApiKeyUpsertOne {
 func (u *ModelApiKeyUpsertOne) UpdateUserID() *ModelApiKeyUpsertOne {
 	return u.Update(func(s *ModelApiKeyUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetKind sets the "kind" field.
+func (u *ModelApiKeyUpsertOne) SetKind(v modelapikey.Kind) *ModelApiKeyUpsertOne {
+	return u.Update(func(s *ModelApiKeyUpsert) {
+		s.SetKind(v)
+	})
+}
+
+// UpdateKind sets the "kind" field to the value that was provided on create.
+func (u *ModelApiKeyUpsertOne) UpdateKind() *ModelApiKeyUpsertOne {
+	return u.Update(func(s *ModelApiKeyUpsert) {
+		s.UpdateKind()
 	})
 }
 
@@ -503,6 +611,20 @@ func (u *ModelApiKeyUpsertOne) SetAPIKey(v string) *ModelApiKeyUpsertOne {
 func (u *ModelApiKeyUpsertOne) UpdateAPIKey() *ModelApiKeyUpsertOne {
 	return u.Update(func(s *ModelApiKeyUpsert) {
 		s.UpdateAPIKey()
+	})
+}
+
+// SetSigningSecret sets the "signing_secret" field.
+func (u *ModelApiKeyUpsertOne) SetSigningSecret(v string) *ModelApiKeyUpsertOne {
+	return u.Update(func(s *ModelApiKeyUpsert) {
+		s.SetSigningSecret(v)
+	})
+}
+
+// UpdateSigningSecret sets the "signing_secret" field to the value that was provided on create.
+func (u *ModelApiKeyUpsertOne) UpdateSigningSecret() *ModelApiKeyUpsertOne {
+	return u.Update(func(s *ModelApiKeyUpsert) {
+		s.UpdateSigningSecret()
 	})
 }
 
@@ -770,6 +892,13 @@ func (u *ModelApiKeyUpsertBulk) UpdateModelID() *ModelApiKeyUpsertBulk {
 	})
 }
 
+// ClearModelID clears the value of the "model_id" field.
+func (u *ModelApiKeyUpsertBulk) ClearModelID() *ModelApiKeyUpsertBulk {
+	return u.Update(func(s *ModelApiKeyUpsert) {
+		s.ClearModelID()
+	})
+}
+
 // SetUserID sets the "user_id" field.
 func (u *ModelApiKeyUpsertBulk) SetUserID(v uuid.UUID) *ModelApiKeyUpsertBulk {
 	return u.Update(func(s *ModelApiKeyUpsert) {
@@ -781,6 +910,20 @@ func (u *ModelApiKeyUpsertBulk) SetUserID(v uuid.UUID) *ModelApiKeyUpsertBulk {
 func (u *ModelApiKeyUpsertBulk) UpdateUserID() *ModelApiKeyUpsertBulk {
 	return u.Update(func(s *ModelApiKeyUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetKind sets the "kind" field.
+func (u *ModelApiKeyUpsertBulk) SetKind(v modelapikey.Kind) *ModelApiKeyUpsertBulk {
+	return u.Update(func(s *ModelApiKeyUpsert) {
+		s.SetKind(v)
+	})
+}
+
+// UpdateKind sets the "kind" field to the value that was provided on create.
+func (u *ModelApiKeyUpsertBulk) UpdateKind() *ModelApiKeyUpsertBulk {
+	return u.Update(func(s *ModelApiKeyUpsert) {
+		s.UpdateKind()
 	})
 }
 
@@ -816,6 +959,20 @@ func (u *ModelApiKeyUpsertBulk) SetAPIKey(v string) *ModelApiKeyUpsertBulk {
 func (u *ModelApiKeyUpsertBulk) UpdateAPIKey() *ModelApiKeyUpsertBulk {
 	return u.Update(func(s *ModelApiKeyUpsert) {
 		s.UpdateAPIKey()
+	})
+}
+
+// SetSigningSecret sets the "signing_secret" field.
+func (u *ModelApiKeyUpsertBulk) SetSigningSecret(v string) *ModelApiKeyUpsertBulk {
+	return u.Update(func(s *ModelApiKeyUpsert) {
+		s.SetSigningSecret(v)
+	})
+}
+
+// UpdateSigningSecret sets the "signing_secret" field to the value that was provided on create.
+func (u *ModelApiKeyUpsertBulk) UpdateSigningSecret() *ModelApiKeyUpsertBulk {
+	return u.Update(func(s *ModelApiKeyUpsert) {
+		s.UpdateSigningSecret()
 	})
 }
 

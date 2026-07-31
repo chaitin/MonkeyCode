@@ -3,6 +3,7 @@
 package modelapikey
 
 import (
+	"fmt"
 	"time"
 
 	"entgo.io/ent"
@@ -21,10 +22,14 @@ const (
 	FieldModelID = "model_id"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldKind holds the string denoting the kind field in the database.
+	FieldKind = "kind"
 	// FieldVirtualmachineID holds the string denoting the virtualmachine_id field in the database.
 	FieldVirtualmachineID = "virtualmachine_id"
 	// FieldAPIKey holds the string denoting the api_key field in the database.
 	FieldAPIKey = "api_key"
+	// FieldSigningSecret holds the string denoting the signing_secret field in the database.
+	FieldSigningSecret = "signing_secret"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeModel holds the string denoting the model edge name in mutations.
@@ -46,8 +51,10 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldModelID,
 	FieldUserID,
+	FieldKind,
 	FieldVirtualmachineID,
 	FieldAPIKey,
+	FieldSigningSecret,
 	FieldCreatedAt,
 }
 
@@ -71,9 +78,37 @@ var (
 	Interceptors [1]ent.Interceptor
 	// APIKeyValidator is a validator for the "api_key" field. It is called by the builders before save.
 	APIKeyValidator func(string) error
+	// DefaultSigningSecret holds the default value on creation for the "signing_secret" field.
+	DefaultSigningSecret string
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 )
+
+// Kind defines the type for the "kind" enum field.
+type Kind string
+
+// KindRuntime is the default value of the Kind enum.
+const DefaultKind = KindRuntime
+
+// Kind values.
+const (
+	KindRuntime   Kind = "runtime"
+	KindOhmyagent Kind = "ohmyagent"
+)
+
+func (k Kind) String() string {
+	return string(k)
+}
+
+// KindValidator is a validator for the "kind" field enum values. It is called by the builders before save.
+func KindValidator(k Kind) error {
+	switch k {
+	case KindRuntime, KindOhmyagent:
+		return nil
+	default:
+		return fmt.Errorf("modelapikey: invalid enum value for kind field: %q", k)
+	}
+}
 
 // OrderOption defines the ordering options for the ModelApiKey queries.
 type OrderOption func(*sql.Selector)
@@ -98,6 +133,11 @@ func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
 }
 
+// ByKind orders the results by the kind field.
+func ByKind(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldKind, opts...).ToFunc()
+}
+
 // ByVirtualmachineID orders the results by the virtualmachine_id field.
 func ByVirtualmachineID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldVirtualmachineID, opts...).ToFunc()
@@ -106,6 +146,11 @@ func ByVirtualmachineID(opts ...sql.OrderTermOption) OrderOption {
 // ByAPIKey orders the results by the api_key field.
 func ByAPIKey(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAPIKey, opts...).ToFunc()
+}
+
+// BySigningSecret orders the results by the signing_secret field.
+func BySigningSecret(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSigningSecret, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

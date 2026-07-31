@@ -2,7 +2,10 @@ package repo
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -105,6 +108,31 @@ func (r *modelRepo) CreateRuntimeAPIKey(ctx context.Context, uid, modelID uuid.U
 		return "", err
 	}
 	return runtimeKey, nil
+}
+
+func (r *modelRepo) CreateOhMyAgentAPIKey(ctx context.Context, uid uuid.UUID) (*db.ModelApiKey, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return nil, fmt.Errorf("generate signing secret: %w", err)
+	}
+	return r.db.ModelApiKey.Create().
+		SetID(uuid.New()).
+		SetUserID(uid).
+		SetKind(modelapikey.KindOhmyagent).
+		SetAPIKey("oma_" + strings.ReplaceAll(uuid.NewString(), "-", "")).
+		SetSigningSecret("omas_" + base64.RawURLEncoding.EncodeToString(secret)).
+		Save(ctx)
+}
+
+func (r *modelRepo) DeleteOhMyAgentAPIKey(ctx context.Context, uid, id uuid.UUID) error {
+	_, err := r.db.ModelApiKey.Delete().
+		Where(
+			modelapikey.ID(id),
+			modelapikey.UserID(uid),
+			modelapikey.KindEQ(modelapikey.KindOhmyagent),
+		).
+		Exec(ctx)
+	return err
 }
 
 func (r *modelRepo) List(ctx context.Context, uid uuid.UUID, cursor domain.CursorReq) ([]*db.Model, *db.Cursor, error) {

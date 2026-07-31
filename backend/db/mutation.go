@@ -26656,8 +26656,10 @@ type ModelApiKeyMutation struct {
 	id                *uuid.UUID
 	deleted_at        *time.Time
 	user_id           *uuid.UUID
+	kind              *modelapikey.Kind
 	virtualmachine_id *string
 	api_key           *string
+	signing_secret    *string
 	created_at        *time.Time
 	clearedFields     map[string]struct{}
 	model             *uuid.UUID
@@ -26851,9 +26853,22 @@ func (m *ModelApiKeyMutation) OldModelID(ctx context.Context) (v uuid.UUID, err 
 	return oldValue.ModelID, nil
 }
 
+// ClearModelID clears the value of the "model_id" field.
+func (m *ModelApiKeyMutation) ClearModelID() {
+	m.model = nil
+	m.clearedFields[modelapikey.FieldModelID] = struct{}{}
+}
+
+// ModelIDCleared returns if the "model_id" field was cleared in this mutation.
+func (m *ModelApiKeyMutation) ModelIDCleared() bool {
+	_, ok := m.clearedFields[modelapikey.FieldModelID]
+	return ok
+}
+
 // ResetModelID resets all changes to the "model_id" field.
 func (m *ModelApiKeyMutation) ResetModelID() {
 	m.model = nil
+	delete(m.clearedFields, modelapikey.FieldModelID)
 }
 
 // SetUserID sets the "user_id" field.
@@ -26890,6 +26905,42 @@ func (m *ModelApiKeyMutation) OldUserID(ctx context.Context) (v uuid.UUID, err e
 // ResetUserID resets all changes to the "user_id" field.
 func (m *ModelApiKeyMutation) ResetUserID() {
 	m.user_id = nil
+}
+
+// SetKind sets the "kind" field.
+func (m *ModelApiKeyMutation) SetKind(value modelapikey.Kind) {
+	m.kind = &value
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *ModelApiKeyMutation) Kind() (r modelapikey.Kind, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the ModelApiKey entity.
+// If the ModelApiKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelApiKeyMutation) OldKind(ctx context.Context) (v modelapikey.Kind, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *ModelApiKeyMutation) ResetKind() {
+	m.kind = nil
 }
 
 // SetVirtualmachineID sets the "virtualmachine_id" field.
@@ -26977,6 +27028,42 @@ func (m *ModelApiKeyMutation) ResetAPIKey() {
 	m.api_key = nil
 }
 
+// SetSigningSecret sets the "signing_secret" field.
+func (m *ModelApiKeyMutation) SetSigningSecret(s string) {
+	m.signing_secret = &s
+}
+
+// SigningSecret returns the value of the "signing_secret" field in the mutation.
+func (m *ModelApiKeyMutation) SigningSecret() (r string, exists bool) {
+	v := m.signing_secret
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSigningSecret returns the old "signing_secret" field's value of the ModelApiKey entity.
+// If the ModelApiKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelApiKeyMutation) OldSigningSecret(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSigningSecret is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSigningSecret requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSigningSecret: %w", err)
+	}
+	return oldValue.SigningSecret, nil
+}
+
+// ResetSigningSecret resets all changes to the "signing_secret" field.
+func (m *ModelApiKeyMutation) ResetSigningSecret() {
+	m.signing_secret = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *ModelApiKeyMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -27021,7 +27108,7 @@ func (m *ModelApiKeyMutation) ClearModel() {
 
 // ModelCleared reports if the "model" edge to the Model entity was cleared.
 func (m *ModelApiKeyMutation) ModelCleared() bool {
-	return m.clearedmodel
+	return m.ModelIDCleared() || m.clearedmodel
 }
 
 // ModelIDs returns the "model" edge IDs in the mutation.
@@ -27074,7 +27161,7 @@ func (m *ModelApiKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelApiKeyMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 8)
 	if m.deleted_at != nil {
 		fields = append(fields, modelapikey.FieldDeletedAt)
 	}
@@ -27084,11 +27171,17 @@ func (m *ModelApiKeyMutation) Fields() []string {
 	if m.user_id != nil {
 		fields = append(fields, modelapikey.FieldUserID)
 	}
+	if m.kind != nil {
+		fields = append(fields, modelapikey.FieldKind)
+	}
 	if m.virtualmachine_id != nil {
 		fields = append(fields, modelapikey.FieldVirtualmachineID)
 	}
 	if m.api_key != nil {
 		fields = append(fields, modelapikey.FieldAPIKey)
+	}
+	if m.signing_secret != nil {
+		fields = append(fields, modelapikey.FieldSigningSecret)
 	}
 	if m.created_at != nil {
 		fields = append(fields, modelapikey.FieldCreatedAt)
@@ -27107,10 +27200,14 @@ func (m *ModelApiKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelID()
 	case modelapikey.FieldUserID:
 		return m.UserID()
+	case modelapikey.FieldKind:
+		return m.Kind()
 	case modelapikey.FieldVirtualmachineID:
 		return m.VirtualmachineID()
 	case modelapikey.FieldAPIKey:
 		return m.APIKey()
+	case modelapikey.FieldSigningSecret:
+		return m.SigningSecret()
 	case modelapikey.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -27128,10 +27225,14 @@ func (m *ModelApiKeyMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldModelID(ctx)
 	case modelapikey.FieldUserID:
 		return m.OldUserID(ctx)
+	case modelapikey.FieldKind:
+		return m.OldKind(ctx)
 	case modelapikey.FieldVirtualmachineID:
 		return m.OldVirtualmachineID(ctx)
 	case modelapikey.FieldAPIKey:
 		return m.OldAPIKey(ctx)
+	case modelapikey.FieldSigningSecret:
+		return m.OldSigningSecret(ctx)
 	case modelapikey.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -27164,6 +27265,13 @@ func (m *ModelApiKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetUserID(v)
 		return nil
+	case modelapikey.FieldKind:
+		v, ok := value.(modelapikey.Kind)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
 	case modelapikey.FieldVirtualmachineID:
 		v, ok := value.(string)
 		if !ok {
@@ -27177,6 +27285,13 @@ func (m *ModelApiKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAPIKey(v)
+		return nil
+	case modelapikey.FieldSigningSecret:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSigningSecret(v)
 		return nil
 	case modelapikey.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -27218,6 +27333,9 @@ func (m *ModelApiKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(modelapikey.FieldDeletedAt) {
 		fields = append(fields, modelapikey.FieldDeletedAt)
 	}
+	if m.FieldCleared(modelapikey.FieldModelID) {
+		fields = append(fields, modelapikey.FieldModelID)
+	}
 	if m.FieldCleared(modelapikey.FieldVirtualmachineID) {
 		fields = append(fields, modelapikey.FieldVirtualmachineID)
 	}
@@ -27237,6 +27355,9 @@ func (m *ModelApiKeyMutation) ClearField(name string) error {
 	switch name {
 	case modelapikey.FieldDeletedAt:
 		m.ClearDeletedAt()
+		return nil
+	case modelapikey.FieldModelID:
+		m.ClearModelID()
 		return nil
 	case modelapikey.FieldVirtualmachineID:
 		m.ClearVirtualmachineID()
@@ -27258,11 +27379,17 @@ func (m *ModelApiKeyMutation) ResetField(name string) error {
 	case modelapikey.FieldUserID:
 		m.ResetUserID()
 		return nil
+	case modelapikey.FieldKind:
+		m.ResetKind()
+		return nil
 	case modelapikey.FieldVirtualmachineID:
 		m.ResetVirtualmachineID()
 		return nil
 	case modelapikey.FieldAPIKey:
 		m.ResetAPIKey()
+		return nil
+	case modelapikey.FieldSigningSecret:
+		m.ResetSigningSecret()
 		return nil
 	case modelapikey.FieldCreatedAt:
 		m.ResetCreatedAt()

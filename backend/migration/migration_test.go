@@ -75,6 +75,26 @@ func TestTeamMCPHubMigrationAddsTeamScopeAndCalls(t *testing.T) {
 	}
 }
 
+func TestOhMyAgentAPIKeyMigrationRequiresSigningSecret(t *testing.T) {
+	up, err := os.ReadFile("000024_add_model_api_key_kind.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"signing_secret TEXT NOT NULL", "signing_secret <> ''"} {
+		if !strings.Contains(string(up), want) {
+			t.Fatalf("up migration missing %q", want)
+		}
+	}
+
+	down, err := os.ReadFile("000024_add_model_api_key_kind.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(down), "DROP COLUMN IF EXISTS signing_secret") {
+		t.Fatal("down migration does not drop signing_secret")
+	}
+}
+
 func TestAgentRulesExtensionSourceMigrationExists(t *testing.T) {
 	up, err := os.ReadFile("000021_agent_rules_extension_source.up.sql")
 	if err != nil {

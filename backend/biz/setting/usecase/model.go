@@ -150,6 +150,26 @@ func (u *modelUsecase) Update(ctx context.Context, uid, id uuid.UUID, req *domai
 	return nil
 }
 
+func (u *modelUsecase) CreateOhMyAgentAPIKey(ctx context.Context, uid uuid.UUID) (*domain.CreateOhMyAgentAPIKeyResp, error) {
+	key, err := u.repo.CreateOhMyAgentAPIKey(ctx, uid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ohmyagent api key: %w", err)
+	}
+	return &domain.CreateOhMyAgentAPIKeyResp{
+		ID:            key.ID,
+		APIKey:        key.APIKey,
+		SigningSecret: key.SigningSecret,
+		CreatedAt:     key.CreatedAt.Unix(),
+	}, nil
+}
+
+func (u *modelUsecase) DeleteOhMyAgentAPIKey(ctx context.Context, uid, id uuid.UUID) error {
+	if err := u.repo.DeleteOhMyAgentAPIKey(ctx, uid, id); err != nil {
+		return fmt.Errorf("failed to delete ohmyagent api key: %w", err)
+	}
+	return nil
+}
+
 func (u *modelUsecase) Check(ctx context.Context, uid, id uuid.UUID) (*domain.CheckModelResp, error) {
 	m, err := u.repo.Get(ctx, uid, id)
 	if err != nil {

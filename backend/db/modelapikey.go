@@ -25,10 +25,14 @@ type ModelApiKey struct {
 	ModelID uuid.UUID `json:"model_id,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID uuid.UUID `json:"user_id,omitempty"`
+	// Kind holds the value of the "kind" field.
+	Kind modelapikey.Kind `json:"kind,omitempty"`
 	// VirtualmachineID holds the value of the "virtualmachine_id" field.
 	VirtualmachineID string `json:"virtualmachine_id,omitempty"`
 	// APIKey holds the value of the "api_key" field.
 	APIKey string `json:"api_key,omitempty"`
+	// SigningSecret holds the value of the "signing_secret" field.
+	SigningSecret string `json:"-"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -62,7 +66,7 @@ func (*ModelApiKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case modelapikey.FieldVirtualmachineID, modelapikey.FieldAPIKey:
+		case modelapikey.FieldKind, modelapikey.FieldVirtualmachineID, modelapikey.FieldAPIKey, modelapikey.FieldSigningSecret:
 			values[i] = new(sql.NullString)
 		case modelapikey.FieldDeletedAt, modelapikey.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -107,6 +111,12 @@ func (_m *ModelApiKey) assignValues(columns []string, values []any) error {
 			} else if value != nil {
 				_m.UserID = *value
 			}
+		case modelapikey.FieldKind:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field kind", values[i])
+			} else if value.Valid {
+				_m.Kind = modelapikey.Kind(value.String)
+			}
 		case modelapikey.FieldVirtualmachineID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field virtualmachine_id", values[i])
@@ -118,6 +128,12 @@ func (_m *ModelApiKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field api_key", values[i])
 			} else if value.Valid {
 				_m.APIKey = value.String
+			}
+		case modelapikey.FieldSigningSecret:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field signing_secret", values[i])
+			} else if value.Valid {
+				_m.SigningSecret = value.String
 			}
 		case modelapikey.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -175,11 +191,16 @@ func (_m *ModelApiKey) String() string {
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))
 	builder.WriteString(", ")
+	builder.WriteString("kind=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Kind))
+	builder.WriteString(", ")
 	builder.WriteString("virtualmachine_id=")
 	builder.WriteString(_m.VirtualmachineID)
 	builder.WriteString(", ")
 	builder.WriteString("api_key=")
 	builder.WriteString(_m.APIKey)
+	builder.WriteString(", ")
+	builder.WriteString("signing_secret=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

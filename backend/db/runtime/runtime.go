@@ -759,11 +759,15 @@ func init() {
 	modelapikeyFields := schema.ModelApiKey{}.Fields()
 	_ = modelapikeyFields
 	// modelapikeyDescAPIKey is the schema descriptor for api_key field.
-	modelapikeyDescAPIKey := modelapikeyFields[4].Descriptor()
+	modelapikeyDescAPIKey := modelapikeyFields[5].Descriptor()
 	// modelapikey.APIKeyValidator is a validator for the "api_key" field. It is called by the builders before save.
 	modelapikey.APIKeyValidator = modelapikeyDescAPIKey.Validators[0].(func(string) error)
+	// modelapikeyDescSigningSecret is the schema descriptor for signing_secret field.
+	modelapikeyDescSigningSecret := modelapikeyFields[6].Descriptor()
+	// modelapikey.DefaultSigningSecret holds the default value on creation for the signing_secret field.
+	modelapikey.DefaultSigningSecret = modelapikeyDescSigningSecret.Default.(string)
 	// modelapikeyDescCreatedAt is the schema descriptor for created_at field.
-	modelapikeyDescCreatedAt := modelapikeyFields[5].Descriptor()
+	modelapikeyDescCreatedAt := modelapikeyFields[7].Descriptor()
 	// modelapikey.DefaultCreatedAt holds the default value on creation for the created_at field.
 	modelapikey.DefaultCreatedAt = modelapikeyDescCreatedAt.Default.(func() time.Time)
 	modelpricingFields := schema.ModelPricing{}.Fields()
