@@ -142,8 +142,13 @@ test("更多工具使用固定向下的动态宽度单一 Popover", () => {
   assert.match(source, /React\.useEffect\(\(\) => \{[\s\S]*?if \(!isMobile\) \{[\s\S]*?setMobileToolsOpen\(false\)[\s\S]*?\}, \[isMobile\]\)/);
 });
 
-test("竖向菜单沿用现有图标和 44px 操作行", () => {
-  assert.match(source, /className="h-11 justify-start gap-2 px-3"[\s\S]*?<IconPuzzle/);
+test("竖向菜单沿用现有图标和 44px 操作行并隐藏 Skills", () => {
+  const mobileToolsStart = source.indexOf('<div className="absolute right-0 top-1/2 z-30 -translate-y-1/2 md:hidden">');
+  const mobileToolsEnd = source.indexOf("</Popover>", mobileToolsStart);
+  const mobileToolsSource = source.slice(mobileToolsStart, mobileToolsEnd);
+
+  assert.doesNotMatch(mobileToolsSource, /<IconPuzzle/);
+  assert.doesNotMatch(mobileToolsSource, /taskDetail\.chat\.skills/);
   assert.match(source, /className="h-11 justify-start gap-2 px-3"[\s\S]*?<IconFile/);
   assert.match(source, /className=\{cn\("h-11 justify-start gap-2 px-3"[\s\S]*?<IconDeviceDesktop/);
   assert.match(source, /canPublishWebsite && \([\s\S]*?className=\{cn\("h-11 justify-start gap-2 px-3"[\s\S]*?<IconUpload/);

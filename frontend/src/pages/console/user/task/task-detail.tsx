@@ -1446,16 +1446,6 @@ export default function TaskDetailPage() {
                       type="button"
                       variant="ghost"
                       className="h-11 justify-start gap-2 px-3"
-                      disabled={!taskInteractive}
-                      onClick={() => runMobileToolAction(() => setSkillsDialogOpen(true))}
-                    >
-                      <IconPuzzle className="size-4 shrink-0" />
-                      <span className="truncate">{t("taskDetail.chat.skills")}</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="h-11 justify-start gap-2 px-3"
                       aria-label={fileChangesCount > 0 ? `${t("taskDetail.panels.files")} (${fileChangesCount})` : t("taskDetail.panels.files")}
                       disabled={!taskInteractive}
                       onClick={() => setMobileToolsView("files")}
