@@ -7423,6 +7423,34 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 获取项目中的栅格图片原始内容，用于 README 等页面内联展示
+     *
+     * @tags 【用户】项目管理
+     * @name V1UsersProjectsTreeMediaDetail
+     * @summary 获取项目图片
+     * @request GET:/api/v1/users/projects/{id}/tree/media
+     * @secure
+     */
+    v1UsersProjectsTreeMediaDetail: (
+      id: string,
+      query: {
+        /** 图片路径 */
+        path: string;
+        /** 分支 */
+        ref?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<File, string>({
+        path: `/api/v1/users/projects/${id}/tree/media`,
+        method: "GET",
+        query: query,
+        secure: true,
+        format: "blob",
+        ...params,
+      }),
+
+    /**
      * @description 获取项目仓库日志
      *
      * @tags 【用户】项目管理

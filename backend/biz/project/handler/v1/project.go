@@ -414,7 +414,7 @@ func (h *ProjectHandler) GetProjectBlob(c *web.Context, req domain.GetProjectBlo
 //	@Summary		获取项目图片
 //	@Description	获取项目中的栅格图片原始内容，用于 README 等页面内联展示
 //	@Tags			【用户】项目管理
-//	@Produce		image/png
+//	@Produce		image/png,image/jpeg,image/gif,image/webp
 //	@Security		MonkeyCodeAIAuth
 //	@Param			id		path		string	true	"项目ID"
 //	@Param			path	query		string	true	"图片路径"

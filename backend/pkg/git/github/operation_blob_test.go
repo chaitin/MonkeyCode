@@ -7,10 +7,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	gh "github.com/google/go-github/v74/github"
 )
+
+func TestGetBlobWithClientPreservesExistingLimitWithoutExplicitMaxSize(t *testing.T) {
+	payload := bytes.Repeat([]byte{0xef}, (1<<20)+1)
+	server := newBlobServer(t, payload)
+	defer server.Close()
+
+	client := gh.NewClient(server.Client())
+	client.BaseURL = mustParseURL(t, server.URL+"/")
+
+	_, err := getBlobWithClient(context.Background(), client, "owner", "repo", "main", "docs/demo.png", 0)
+	if err == nil || !strings.Contains(err.Error(), "unsupported content encoding: none") {
+		t.Fatalf("error = %v, want existing GitHub content limit error", err)
+	}
+}
 
 func TestGetBlobWithClientDownloadsGitHubContentLargerThanOneMiB(t *testing.T) {
 	payload := bytes.Repeat([]byte{0xab}, (1<<20)+1024)

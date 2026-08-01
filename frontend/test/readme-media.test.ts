@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import test from "node:test"
 
 import { resolveReadmeMediaUrl } from "../src/utils/readme-media.ts"
@@ -51,4 +52,17 @@ test("拒绝主动协议、空地址和越出仓库根目录的路径", () => {
   assert.equal(resolveReadmeMediaUrl({ ...options, src: "data:image/png;base64,AAAA" }), undefined)
   assert.equal(resolveReadmeMediaUrl({ ...options, src: "" }), undefined)
   assert.equal(resolveReadmeMediaUrl({ ...options, src: "../../../secret.png" }), undefined)
+})
+
+test("项目 README 启用安全 HTML 图片解析并保留生成的媒体 API 契约", () => {
+  const markdownSource = readFileSync(new URL("../src/components/common/markdown.tsx", import.meta.url), "utf8")
+  const infoTabSource = readFileSync(new URL("../src/pages/console/user/project/overview/info-tab.tsx", import.meta.url), "utf8")
+  const apiSource = readFileSync(new URL("../src/api/Api.ts", import.meta.url), "utf8")
+
+  assert.match(markdownSource, /rehypePlugins=\{allowHtml \? \[rehypeRaw, rehypeSanitize\] : \[\]\}/)
+  assert.match(markdownSource, /const resolvedSrc = resolveImageUrl \? resolveImageUrl\(src \?\? ""\) : src/)
+  assert.match(infoTabSource, /<Markdown allowHtml resolveImageUrl=\{resolveReadmeImageUrl\}>/)
+  assert.match(apiSource, /v1UsersProjectsTreeMediaDetail/)
+  assert.match(apiSource, /path: `\/api\/v1\/users\/projects\/\$\{id\}\/tree\/media`/)
+  assert.match(apiSource, /format: "blob"/)
 })

@@ -259,6 +259,34 @@ func (g *Github) GetBlob(ctx context.Context, installID int64, token, owner, rep
 }
 
 func getBlobWithClient(ctx context.Context, client *github.Client, owner, repo, ref, path string, maxSize int64) (*GetBlobResp, error) {
+	if maxSize <= 0 {
+		opts := &github.RepositoryContentGetOptions{}
+		if ref != "" {
+			opts.Ref = ref
+		}
+		fileContent, _, _, err := client.Repositories.GetContents(ctx, owner, repo, path, opts)
+		if err != nil {
+			return nil, fmt.Errorf("get file content: %w", err)
+		}
+		if fileContent == nil {
+			return nil, fmt.Errorf("path %s is a directory, not a file", path)
+		}
+		decoded, err := fileContent.GetContent()
+		if err != nil {
+			return nil, fmt.Errorf("decode file content: %w", err)
+		}
+		content := []byte(decoded)
+		return &GetBlobResp{
+			Content:  content,
+			IsBinary: isBinaryContent(content),
+			Sha:      fileContent.GetSHA(),
+			Size:     fileContent.GetSize(),
+		}, nil
+	}
+	return getLimitedBlobWithClient(ctx, client, owner, repo, ref, path, maxSize)
+}
+
+func getLimitedBlobWithClient(ctx context.Context, client *github.Client, owner, repo, ref, path string, maxSize int64) (*GetBlobResp, error) {
 	opts := &github.RepositoryContentGetOptions{}
 	if ref != "" {
 		opts.Ref = ref
@@ -266,6 +294,9 @@ func getBlobWithClient(ctx context.Context, client *github.Client, owner, repo, 
 	reader, fileContent, response, err := client.Repositories.DownloadContentsWithMeta(ctx, owner, repo, path, opts)
 	if err != nil {
 		return nil, fmt.Errorf("download file content: %w", err)
+	}
+	if reader == nil {
+		return nil, fmt.Errorf("download file content: empty response body")
 	}
 	defer reader.Close()
 	if response != nil && response.Response != nil && (response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices) {
