@@ -172,6 +172,7 @@ type BlobOptions struct {
 	Repo      string
 	Ref       string
 	Path      string
+	MaxSize   int64
 	InstallID int64
 	IsOAuth   bool
 }

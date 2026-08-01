@@ -250,33 +250,47 @@ func parseTreeCommitInfoDate(e *treeCommitInfoEntryRaw) int64 {
 }
 
 // GetBlob 获取单文件内容（PAT 模式）
-func (g *Github) GetBlob(ctx context.Context, installID int64, token, owner, repo, ref, path string) (*GetBlobResp, error) {
+func (g *Github) GetBlob(ctx context.Context, installID int64, token, owner, repo, ref, path string, maxSize int64) (*GetBlobResp, error) {
 	client, err := g.GetClient(ctx, token, installID)
 	if err != nil {
 		return nil, err
 	}
+	return getBlobWithClient(ctx, client, owner, repo, ref, path, maxSize)
+}
 
+func getBlobWithClient(ctx context.Context, client *github.Client, owner, repo, ref, path string, maxSize int64) (*GetBlobResp, error) {
 	opts := &github.RepositoryContentGetOptions{}
 	if ref != "" {
 		opts.Ref = ref
 	}
-	fileContent, _, _, err := client.Repositories.GetContents(ctx, owner, repo, path, opts)
+	reader, fileContent, response, err := client.Repositories.DownloadContentsWithMeta(ctx, owner, repo, path, opts)
 	if err != nil {
-		return nil, fmt.Errorf("get file content: %w", err)
+		return nil, fmt.Errorf("download file content: %w", err)
+	}
+	defer reader.Close()
+	if response != nil && response.Response != nil && (response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices) {
+		return nil, fmt.Errorf("download file content: unexpected status %s", response.Status)
 	}
 	if fileContent == nil {
-		return nil, fmt.Errorf("path %s is a directory, not a file", path)
+		return nil, fmt.Errorf("download file content: missing metadata for %s", path)
 	}
-	decoded, err := fileContent.GetContent()
+	size := fileContent.GetSize()
+	if maxSize > 0 && int64(size) > maxSize {
+		return &GetBlobResp{Sha: fileContent.GetSHA(), Size: size}, nil
+	}
+	contentReader := io.Reader(reader)
+	if maxSize > 0 {
+		contentReader = io.LimitReader(reader, maxSize+1)
+	}
+	content, err := io.ReadAll(contentReader)
 	if err != nil {
-		return nil, fmt.Errorf("decode file content: %w", err)
+		return nil, fmt.Errorf("read file content: %w", err)
 	}
-	content := []byte(decoded)
 	return &GetBlobResp{
 		Content:  content,
 		IsBinary: isBinaryContent(content),
 		Sha:      fileContent.GetSHA(),
-		Size:     fileContent.GetSize(),
+		Size:     size,
 	}, nil
 }
 
@@ -438,7 +452,7 @@ func (g *Github) Tree(ctx context.Context, opts *domain.TreeOptions) (*domain.Ge
 
 // Blob 实现 GitPlatformClient 接口
 func (g *Github) Blob(ctx context.Context, opts *domain.BlobOptions) (*domain.GetBlobResp, error) {
-	resp, err := g.GetBlob(ctx, opts.InstallID, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path)
+	resp, err := g.GetBlob(ctx, opts.InstallID, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path, opts.MaxSize)
 	if err != nil {
 		return nil, err
 	}

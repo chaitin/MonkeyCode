@@ -431,6 +431,7 @@ func (h *ProjectHandler) GetProjectMedia(c *web.Context, req domain.GetProjectBl
 		return c.String(http.StatusBadRequest, "invalid media path")
 	}
 	req.Path = cleanPath
+	req.MaxSize = maxProjectMediaSize
 
 	user := middleware.GetUser(c)
 	resp, err := h.usecase.GetProjectBlob(c.Request().Context(), user.ID, &req)
@@ -448,7 +449,7 @@ func (h *ProjectHandler) GetProjectMedia(c *web.Context, req domain.GetProjectBl
 	}
 
 	headers := c.Response().Header()
-	headers.Set("Cache-Control", "private, max-age=3600")
+	headers.Set("Cache-Control", "private, no-cache")
 	headers.Set("X-Content-Type-Options", "nosniff")
 	if resp.Sha != "" {
 		etag := strconv.Quote(resp.Sha)

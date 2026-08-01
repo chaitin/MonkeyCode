@@ -16,6 +16,7 @@ import (
 )
 
 var testPNG = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0}
+var testJPEG = []byte{0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0}
 
 func TestProjectMediaReturnsInlinePNG(t *testing.T) {
 	userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
@@ -46,7 +47,7 @@ func TestProjectMediaReturnsInlinePNG(t *testing.T) {
 	if got := rec.Header().Get(echo.HeaderContentLength); got != "12" {
 		t.Fatalf("Content-Length = %q, want 12", got)
 	}
-	if got := rec.Header().Get(echo.HeaderCacheControl); got != "private, max-age=3600" {
+	if got := rec.Header().Get(echo.HeaderCacheControl); got != "private, no-cache" {
 		t.Fatalf("Cache-Control = %q", got)
 	}
 	if got := rec.Header().Get("ETag"); got != `"png-sha"` {
@@ -55,8 +56,27 @@ func TestProjectMediaReturnsInlinePNG(t *testing.T) {
 	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("X-Content-Type-Options = %q", got)
 	}
-	if stub.uid != userID || stub.req == nil || stub.req.ID != projectID || stub.req.Path != "docs/demo.png" || stub.req.Ref != "main" {
+	if stub.uid != userID || stub.req == nil || stub.req.ID != projectID || stub.req.Path != "docs/demo.png" || stub.req.Ref != "main" || stub.req.MaxSize != maxProjectMediaSize {
 		t.Fatalf("usecase request = uid %s, req %#v", stub.uid, stub.req)
+	}
+}
+
+func TestProjectMediaDetectsJPEGContentBehindPNGFilename(t *testing.T) {
+	h := &ProjectHandler{usecase: &projectMediaUsecaseStub{
+		blob: &domain.ProjectBlob{Content: testJPEG, Sha: "jpeg-sha", Size: len(testJPEG)},
+	}}
+	w := web.New()
+	w.GET("/projects/:id/tree/media", web.BindHandler(h.GetProjectMedia), projectMediaUser(uuid.New()))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/projects/"+uuid.NewString()+"/tree/media?path=demo.png", nil)
+	w.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get(echo.HeaderContentType); got != "image/jpeg" {
+		t.Fatalf("Content-Type = %q, want image/jpeg", got)
 	}
 }
 
