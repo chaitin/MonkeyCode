@@ -37,6 +37,8 @@
             "allow-save-config",
             "allow-take-ui-intent",
             "allow-host-info",
+            "allow-sound-enabled",
+            "allow-set-sound-enabled",
             "allow-update-check",
             "allow-update-install",
             "allow-open-extension-dir",
@@ -123,7 +125,8 @@
             "core:window:allow-outer-position",
             "allow-sessions-list",
             "allow-show-main",
-            "allow-pet-native-render"
+            "allow-pet-native-render",
+            "allow-sound-enabled"
           ]
         }
       ]
