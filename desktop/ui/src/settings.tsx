@@ -10,14 +10,17 @@ import { baizhiStatus } from "./baizhiapi";
 import {
   getBrowserExtStatus,
   getHostConfig,
+  getSoundEnabled,
   inDesktopShell,
   isMacShell,
   isWindowsShell,
   listWslDistros,
   exportEngineLog,
+  onHostEvent,
   openExtensionDir,
   repairBrowserExt,
   saveHostConfig,
+  setSoundEnabled,
   updateCheck,
   updateInstall,
 } from "./host";
@@ -671,6 +674,25 @@ export function SettingsView({
   const pickAccent = (next: AccentKey) => {
     setAccent(next);
     setAccentState(next);
+  };
+  // 提示音也不进保存条(壳侧即时落盘,不重启内核),但真值在 config.json 而非
+  // localStorage:桌宠是另一个 webview,得由壳广播才能一起静音。托盘那个勾选项
+  // 是同一开关的另一入口,订阅 sound-enabled 让两处显示不打架。
+  const [soundOn, setSoundOn] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    void getSoundEnabled().then((on) => {
+      if (alive) setSoundOn(on);
+    }).catch(() => {});
+    const off = onHostEvent<boolean>("sound-enabled", (on) => setSoundOn(on !== false));
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
+  const pickSound = (next: boolean) => {
+    setSoundOn(next); // 乐观置位:壳广播会回来盖一次,失败则由它纠回
+    void setSoundEnabled(next).catch(() => void getSoundEnabled().then(setSoundOn).catch(() => {}));
   };
 
   // 登录态由 Shell 持有:账号页 BaizhiCard 与模型/MCP 页的引导条共用
@@ -1531,12 +1553,11 @@ export function SettingsView({
 
   // ---- 通用 ----
 
-  /** 主题分段控件的一格(选中格用卡面+投影浮起,未选中格只留弱文字) */
-  const themeBtn = (value: Theme, label: string) => {
-    const on = theme === value;
+  /** 分段控件的一格(选中格用卡面+投影浮起,未选中格只留弱文字) */
+  const segBtn = (label: string, on: boolean, onClick: () => void) => {
     return (
       <button
-        onClick={() => pickTheme(value)}
+        onClick={onClick}
         style={{
           border: "none",
           borderRadius: 6,
@@ -1554,6 +1575,8 @@ export function SettingsView({
       </button>
     );
   };
+
+  const themeBtn = (value: Theme, label: string) => segBtn(label, theme === value, () => pickTheme(value));
 
   /** 主题色色板一枚。圆点用该色**自己**的 --acc(gen/accents.ts 里生成的
    *  swatch),不能写 var(--acc)——那是"当前选中的色",四枚会长得一模一样。 */
@@ -1604,6 +1627,22 @@ export function SettingsView({
           </div>
         </div>
       </Section>
+      {/* 提示音:音效由桌宠页播放(隐藏桌宠不等于静音),故仅桌面壳有此项。
+          与主题同为"点一下即生效"的偏好,不进保存条也不重启内核 */}
+      {desktop && (
+        <Section label="提示音">
+          <div className="card card-lg" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ display: "flex", background: "var(--segBg)", borderRadius: 8, padding: 3, gap: 2 }}>
+              {segBtn("开", soundOn, () => pickSound(true))}
+              {segBtn("关", !soundOn, () => pickSound(false))}
+            </div>
+            <span style={{ fontSize: 12, color: "var(--t5)", lineHeight: 1.7 }}>
+              任务完成、出错、请求审批、长时间空闲提醒与应用启动的音效。切换立即生效;
+              托盘菜单的「任务提示音」是同一个开关。
+            </span>
+          </div>
+        </Section>
+      )}
       {/* 内核运行环境:Windows 本机 / WSL 发行版(仅 Windows 壳显示)。
           发行版列表读注册表(list_wsl_distros),未装 WSL 即空列表只留本机;
           当前值不在列表(发行版被删)时保留一个标注项,用户能看到现状并切走。 */}

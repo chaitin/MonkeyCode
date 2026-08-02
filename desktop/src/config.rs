@@ -3,8 +3,9 @@
 // DesktopConfig 是应用权威配置；引擎 settings.json/mcp.json 只是可重建的
 // 派生物。所有权威配置读改写经 ConfigStore 串行，并使用同目录临时文件
 // 原子替换；损坏的主文件只允许从有效备份恢复，绝不能静默退成默认配置后
-// 覆盖用户的模型/API Key。pet_*(托盘切换)与 telemetry_enabled(仅改文件)
-// 都不在设置页表单里，设置页保存时必须从磁盘合并，否则会被默认值打回。
+// 覆盖用户的模型/API Key。pet_*(托盘切换)、sound_enabled(设置页/托盘即时
+// 开关)与 telemetry_enabled(仅改文件)都不在设置页表单里，设置页保存时必须
+// 从磁盘合并，否则会被默认值打回。
 
 use std::ffi::OsString;
 use std::fs;
@@ -88,6 +89,11 @@ pub struct DesktopConfig {
     /// 桌宠开关(托盘菜单切换)
     #[serde(default = "default_true")]
     pub pet_enabled: bool,
+    /// 事件提示音开关(设置页与托盘菜单切换)。关掉后桌宠页的五种音效
+    /// (启动/轮次完成/出错/请求审批/空闲提醒)全部静音;桌宠是否显示不影响
+    /// 音效(pet.html 隐藏后仍在跑),两个开关彼此独立。
+    #[serde(default = "default_true")]
+    pub sound_enabled: bool,
     /// 桌宠窗口位置(物理像素;拖动后记忆)
     #[serde(default)]
     pub pet_pos: Option<(i32, i32)>,
@@ -110,6 +116,7 @@ impl Default for DesktopConfig {
             mc_llm_base_url: String::new(),
             agent_engine: default_engine(),
             pet_enabled: true,
+            sound_enabled: true,
             pet_pos: None,
             telemetry_enabled: true,
         }
@@ -370,12 +377,14 @@ pub fn save_ui_config_files(
     Ok(cfg)
 }
 
-/// 设置页表单只覆盖它自己呈现的字段。桌宠偏好由托盘切换、统计开关只由改文件
-/// 关闭,两者都不在表单里——incoming 携带的是 serde 默认值(全为"开")。不从
+/// 设置页表单只覆盖它自己呈现的字段。桌宠偏好由托盘切换、提示音开关走自己的
+/// 即时命令(set_sound_enabled,点一下就落盘,不进保存条)、统计开关只由改文件
+/// 关闭,三者都不在表单里——incoming 携带的是 serde 默认值(全为"开")。不从
 /// 磁盘捞回来,用户关掉的东西会被下一次"保存设置"静默打开。
 fn merge_shell_prefs(incoming: DesktopConfig, disk: &DesktopConfig) -> DesktopConfig {
     DesktopConfig {
         pet_enabled: disk.pet_enabled,
+        sound_enabled: disk.sound_enabled,
         pet_pos: disk.pet_pos,
         telemetry_enabled: disk.telemetry_enabled,
         ..incoming
@@ -810,6 +819,7 @@ mod tests {
     fn saving_ui_settings_preserves_preferences_outside_the_form() {
         let disk = DesktopConfig {
             pet_enabled: false,
+            sound_enabled: false,
             pet_pos: Some((12, 34)),
             telemetry_enabled: false,
             ..Default::default()
@@ -825,6 +835,7 @@ mod tests {
 
         assert!(!merged.telemetry_enabled, "统计开关必须保留磁盘上的关闭态");
         assert!(!merged.pet_enabled);
+        assert!(!merged.sound_enabled, "提示音开关同样不在表单里,必须保留关闭态");
         assert_eq!(merged.pet_pos, Some((12, 34)));
         assert_eq!(merged.kernel_env, "wsl:Ubuntu", "表单字段仍应生效");
     }
@@ -834,6 +845,7 @@ mod tests {
     fn config_without_telemetry_field_defaults_to_enabled() {
         let cfg: DesktopConfig = serde_json::from_str(r#"{"models":[],"pet_enabled":false}"#).unwrap();
         assert!(cfg.telemetry_enabled);
+        assert!(cfg.sound_enabled, "升级到带提示音开关的版本不该静音");
         assert!(!cfg.pet_enabled, "同一份 JSON 里显式给出的字段不受影响");
     }
 
