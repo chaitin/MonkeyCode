@@ -282,6 +282,16 @@ export function IconPaperclip({ size = 13, color = "var(--t3)", style }: IconPro
   );
 }
 
+/** 斜杠指令(方框里的 /) */
+export function IconSlash({ size = 13, color = "var(--t3)", style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" style={{ ...base, ...style }}>
+      <rect x="1.4" y="1.4" width="11.2" height="11.2" rx="3" stroke={color} strokeWidth="1.2" />
+      <path d="M8.6 4.1 5.4 9.9" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** 发送(上箭头) */
 export function IconSend({ size = 13, color = "var(--onAcc)", style }: IconProps) {
   return (

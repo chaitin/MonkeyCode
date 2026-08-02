@@ -3,7 +3,7 @@
 import { b64decode, frameData } from "./codec";
 import { stripTierPrefix } from "./modelMenu";
 import { toolContentText, toolResultText } from "./toolDetails";
-import type { AcpUpdate, AskQuestion, Frame, LogItem, PermOutcome, PlanEntry, SubEntry, ToolProgress, Usage } from "./types";
+import type { AcpUpdate, AskQuestion, Frame, LogItem, PermOutcome, PlanEntry, SlashCommand, SubEntry, ToolProgress, Usage } from "./types";
 
 export interface ChatState {
   items: LogItem[];
@@ -21,6 +21,8 @@ export interface ChatState {
   think: string;
   /** 会话权限模式(permission_mode_update 帧回写;空 = 以会话 meta 为准) */
   permMode: string;
+  /** Agent 上报的可用斜杠指令(available_commands_update 全量重发) */
+  commands: SlashCommand[];
   /** 渲染 key 的基准:key = keyBase + 下标。"加载更早"往前插 N 条时减 N,
    * 既有条目的 key 因此保持不变——否则下标 key 整体平移,React 认不出
    * 同一条,ToolCard/ThoughtView 的展开态串位、整列重挂载(markdown 全部
@@ -38,6 +40,7 @@ export const initialChat: ChatState = {
   model: "",
   think: "",
   permMode: "",
+  commands: [],
   keyBase: 0,
 };
 
@@ -390,6 +393,10 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
       }
       return u.text ? push(s, { kind: "sys", text: u.text }) : s;
     }
+    case "available_commands_update":
+      // 斜杠指令清单是"此刻"的会话状态(全量重发,不是对话内容):只回写
+      // 状态字段,不进对话流
+      return { ...s, commands: (u.availableCommands ?? []).filter((c) => !!c?.name) };
     case "usage_update":
       return { ...s, usage: { used: u.used ?? 0, size: u.size ?? 0 } };
     case "compact_status":

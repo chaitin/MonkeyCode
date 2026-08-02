@@ -29,7 +29,7 @@ import { groupCloudModels, type McCloudModelGroup } from "./cloud";
 import { MAX_CLOUD_ATTS, uploadCloudFile, type CloudUploadedAtt } from "./cloudUpload";
 import { frameData } from "./codec";
 import { answerAsk as applyAskAnswer, initialChat, reduceBatch, type ChatState } from "./reduce";
-import type { CloudAttachment, CloudTask, CloudTaskDetail, Frame } from "./types";
+import type { CloudAttachment, CloudTask, CloudTaskDetail, Frame, SlashCommand } from "./types";
 
 /** cursor 帧载荷:attach 下发时 data 既有裸 JSON 对象也有 base64(JSON)
  * 形态(云端契约不归本仓库管)——frameData 的双格式容错正是为此收口。 */
@@ -414,6 +414,8 @@ export interface CloudTaskHandle {
   queuedAtts: number;
   clearQueued(): void;
   send(): void;
+  /** Agent 上报的可用斜杠指令(composer 的 / 菜单;跨重连粘住最近一次非空清单) */
+  commands: SlashCommand[];
   /** 待发送附件(已上传完成;单条消息上限 3) */
   atts: CloudUploadedAtt[];
   /** 上传进行中的附件数(>0 时发送先拦下,避免半套附件出门) */
@@ -608,6 +610,16 @@ export function useCloudTask(
     return () => core.closeConn();
   }, [id, core, taskStatus, attachEpoch]);
 
+  // 斜杠指令清单是"事件驱动"的:只在 available_commands_update 到达时才有值,
+  // 而 attach 重连/新一轮会以历史帧重算 chat(commands 归零)。这里把最近一次
+  // 非空清单粘住,断线重连后 composer 的 / 菜单不会突然空掉。
+  const [commands, setCommands] = useState<SlashCommand[]>([]);
+  useEffect(() => {
+    if (chat.commands.length) setCommands(chat.commands);
+  }, [chat.commands]);
+  // 切任务时清空(App 以 id 为 key 重挂视图,这里是"key 被移除"时的兜底)
+  useEffect(() => setCommands([]), [id]);
+
   // 贴底跟随(简化版:仅程序滚动,不做锚点恢复——云端流为跟看场景)
   useEffect(() => {
     const el = scrollRef.current;
@@ -770,6 +782,7 @@ export function useCloudTask(
     queuedAtts: queuedAtts.length,
     clearQueued: () => core.clearQueued(),
     send,
+    commands,
     atts,
     uploading,
     addFiles,

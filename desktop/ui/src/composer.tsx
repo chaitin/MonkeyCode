@@ -2,7 +2,7 @@
 // + 发送按钮)、运行条、排队 chip。原先 chat.tsx 与 cloudtask.tsx 各持一份
 // 逐字相同的样式、靠注释对表,现收敛于此;两侧的扩展位(本地:附件条/权限
 // pill/模型切换/ctx 环;云端:状态行/云端模型选择器)走 above/controls 槽位。
-import { useEffect, useRef, type ClipboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
 import { IconClock, IconSend, IconStop, IconX } from "./icons";
 
 // 输入法(IME)组合态的 Enter 只是确认候选词,不能当作提交。Chromium 上该 keydown
@@ -140,6 +140,8 @@ export function Composer({
   onChange,
   onSend,
   onPaste,
+  onKeyDown,
+  inputRef,
   above,
   controls,
 }: {
@@ -151,12 +153,17 @@ export function Composer({
   onSend: () => void;
   /** 粘贴处理(本地:剪贴板文件转附件;不给则默认文本粘贴) */
   onPaste?: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+  /** 按键预处理:返回 true = 已被上层消费(斜杠指令菜单的 ↑↓/↩/Esc),
+   * 本组件不再把这一下当作发送/换行 */
+  onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => boolean;
+  /** 把 textarea 交给上层(选完指令后要把焦点还回来) */
+  inputRef?: MutableRefObject<HTMLTextAreaElement | null>;
   /** 卡片顶部扩展位(本地:附件条) */
   above?: ReactNode;
   /** 底部操作行(发送按钮左侧,含中缝 spacer 由调用方排布) */
   controls?: ReactNode;
 }) {
-  const taRef = useRef<HTMLTextAreaElement>(null);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
 
   // 输入框随内容自适应高度
   useEffect(() => {
@@ -182,13 +189,18 @@ export function Composer({
     >
       {above}
       <textarea
-        ref={taRef}
+        ref={(el) => {
+          taRef.current = el;
+          if (inputRef) inputRef.current = el;
+        }}
         rows={2}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         onCompositionEnd={markImeEnd}
         onKeyDown={(e) => {
+          // 上层浮层(斜杠指令菜单)优先:↑↓/↩/Esc 归菜单,不落到发送
+          if (onKeyDown?.(e)) return;
           // 输入法组合态(选字/确认候选)的 Enter 不发送
           if (e.key === "Enter" && !e.shiftKey && !isImeEnter(e)) {
             e.preventDefault();
