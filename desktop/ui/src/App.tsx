@@ -10,7 +10,7 @@ import {
   windowContextLabel,
   type AppMainView,
 } from "./appView";
-import { mcLogin, mcLogout, mcPasswordLogin, mcTaskDelete, mcTaskStop } from "./cloudapi";
+import { mcLogin, mcLogout, mcPasswordLogin, mcTaskDelete, mcTasks, mcTaskStop } from "./cloudapi";
 import {
   getHostConfig,
   getHostInfo,
@@ -55,7 +55,7 @@ import TitleBar from "./titlebar";
 import { uploadFileURL } from "./uploads";
 import { lastSessionId, useSession } from "./useSession";
 import { updateGate } from "./updateGate";
-import type { CloudProject, CloudTask, EngineStatus, HostInfo, LogItem, McConnectionState, ModelInfo, SessionMeta, UpdateStatus } from "./types";
+import type { CloudProject, CloudProjectTasks, CloudTask, EngineStatus, HostInfo, LogItem, McConnectionState, ModelInfo, SessionMeta, UpdateStatus } from "./types";
 import { engineBannerView, engineTransition } from "./engineBanner";
 
 /** 内核与页面同机(serve 仅绑 loopback),浏览器 UA 即宿主平台 */
@@ -177,6 +177,31 @@ export default function App() {
   const [cloudTasks, setCloudTasks] = useState<CloudTask[]>([]);
   const [cloudHistory, setCloudHistory] = useState<CloudTask[]>([]);
   const [cloudProjects, setCloudProjects] = useState<CloudProject[]>([]);
+  /** 项目行展开时按需拉取的任务(按项目 id 缓存)。项目列表接口只捎带每个
+   * 项目最多 3 条**运行中**的任务,历史任务在里面一条都没有——想在项目下看
+   * 到任务,只能展开时按 project_id 单独拉一次。 */
+  const [cloudProjectTasks, setCloudProjectTasks] = useState<Record<string, CloudProjectTasks>>({});
+  const loadCloudProjectTasks = useCallback(async (project: CloudProject) => {
+    const id = project.id;
+    if (!id) return;
+    let skip = false;
+    setCloudProjectTasks((cur) => {
+      // 在途/已到的不重拉;要刷新走下面的清缓存(整体同步时)
+      if (cur[id]?.loading || cur[id]?.tasks) {
+        skip = true;
+        return cur;
+      }
+      return { ...cur, [id]: { loading: true } };
+    });
+    if (skip) return;
+    try {
+      const resp = await mcTasks(1, 20, "", { projectId: id });
+      const tasks = [...(resp.tasks ?? [])].sort((a, b) => Number(b.created_at ?? 0) - Number(a.created_at ?? 0));
+      setCloudProjectTasks((cur) => ({ ...cur, [id]: { tasks } }));
+    } catch (e) {
+      setCloudProjectTasks((cur) => ({ ...cur, [id]: { error: e instanceof Error ? e.message : String(e) } }));
+    }
+  }, []);
   const [mcConnection, setMcConnection] = useState<McConnectionState>({
     phase: "checking",
     host: "monkeycode-ai.com",
@@ -207,6 +232,9 @@ export default function App() {
       if (snapshot.tasks !== undefined) setCloudTasks(snapshot.tasks);
       if (snapshot.historicalTasks !== undefined) setCloudHistory(snapshot.historicalTasks);
       if (snapshot.projects !== undefined) setCloudProjects(snapshot.projects);
+      // 整体刷新连带清掉项目任务缓存:仍展开着的项目由侧栏的按需拉取补回,
+      // 收起的等下次展开——不在这里替所有项目预拉
+      setCloudProjectTasks({});
       if (snapshot.taskError) setCloudError(snapshot.taskError);
     } catch (e) {
       if (op !== cloudOp.current) return;
@@ -798,6 +826,8 @@ export default function App() {
           cloudTasks={cloudTasks}
           cloudHistory={cloudHistory}
           cloudProjects={cloudProjects}
+          cloudProjectTasks={cloudProjectTasks}
+          onLoadCloudProjectTasks={(project) => void loadCloudProjectTasks(project)}
           activeCloudId={view === "cloud" ? cloudTask?.id ?? null : null}
           cloudSyncing={cloudSyncing}
           cloudError={cloudError}

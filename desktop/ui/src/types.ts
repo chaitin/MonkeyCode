@@ -465,6 +465,14 @@ export interface CloudProject {
   tasks?: CloudTask[];
 }
 
+/** 项目行展开时按需拉取的任务(App 持有缓存,侧栏只读):三态互斥,
+ * 都缺省 = 还没拉过。 */
+export interface CloudProjectTasks {
+  loading?: boolean;
+  tasks?: CloudTask[];
+  error?: string;
+}
+
 export interface CloudProjectsResp {
   projects?: CloudProject[];
   page?: { cursor?: string; has_more?: boolean };
