@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  pull_request:
 
 env:
   NODE_VERSION: "20"
@@ -30,6 +31,10 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Test online preview configuration
+        working-directory: frontend
+        run: pnpm run test:online-preview
+
       - name: Build
         working-directory: frontend
         run: pnpm run build:online
@@ -44,6 +49,7 @@ jobs:
           path: _build/dist/
 
   docker:
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     steps:

@@ -238,7 +238,7 @@ const TaskMessageVirtualList = React.forwardRef<TaskMessageVirtualListHandle, Ta
               key={virtualRow.key}
               ref={virtualizer.measureElement}
               data-index={virtualRow.index}
-              className="absolute top-0 left-0 w-full"
+              className="absolute top-0 left-0 w-full pr-11 md:pr-0"
               style={{ transform: `translateY(${virtualRow.start}px)` }}
             >
               {row.type === "history-loader" ? (

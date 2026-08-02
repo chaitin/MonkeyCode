@@ -4006,6 +4006,9 @@ const en = {
         unknownName: "Unknown task",
         ended: "Task ended",
       },
+      mobileTools: {
+        trigger: "More task tools",
+      },
       context: {
         usageAria: "View context usage",
         usedPercent: "Context used {{percent}}",
@@ -4146,10 +4149,13 @@ const en = {
       loadFailed: "Failed to load task history",
     },
     userInputIndex: {
+      trigger: "Conversation navigator",
       fetchFailed: "Failed to load conversation list",
+      jumpFailed: "Failed to locate message. Please try again.",
       notFound: "Matching message not found",
       locating: "Locating message...",
       loadMore: "Load more",
+      scrollToBottom: "Back to bottom",
     },
     system: {
       userCanceled: "The user canceled the current task",

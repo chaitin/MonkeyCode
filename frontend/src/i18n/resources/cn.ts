@@ -4006,6 +4006,9 @@ const cn = {
         unknownName: "未知任务名称",
         ended: "任务已结束",
       },
+      mobileTools: {
+        trigger: "更多任务工具",
+      },
       context: {
         usageAria: "查看上下文使用情况",
         usedPercent: "上下文已使用 {{percent}}",
@@ -4146,10 +4149,13 @@ const cn = {
       loadFailed: "获取任务历史消息失败",
     },
     userInputIndex: {
+      trigger: "对话定位",
       fetchFailed: "获取对话列表失败",
+      jumpFailed: "定位消息失败，请重试",
       notFound: "未找到对应消息",
       locating: "正在定位消息...",
       loadMore: "加载更多",
+      scrollToBottom: "回到底部",
     },
     system: {
       userCanceled: "用户取消当前任务",

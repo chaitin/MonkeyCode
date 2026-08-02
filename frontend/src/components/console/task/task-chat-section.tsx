@@ -151,7 +151,7 @@ export function TaskChatSection({
       </div>
       <div className="shrink-0 bg-background">
         <div className={cn("flex flex-col gap-2", hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")}>
-          <InputGroup className="rounded-lg">
+          <InputGroup orientation="vertical" className="rounded-lg">
             <InputGroupTextarea
               className="min-h-10 max-h-32 text-sm break-all resize-none"
               placeholder={t("taskDetail.chat.followupPlaceholder")}

@@ -12,7 +12,9 @@
     "build": "tsc -b && vite build --mode online",
     "build:online": "tsc -b && vite build --mode online",
     "build:offline": "tsc -b && vite build --mode offline",
+    "check:online-preview": "node scripts/check-online-preview.mjs",
     "lint": "eslint .",
+    "test:online-preview": "node --test test/online-preview-health.test.mjs test/vite-online-proxy.test.mjs",
     "preview": "vite preview",
     "api": "sta --path ${SWAGGER} --output src/api"
   },

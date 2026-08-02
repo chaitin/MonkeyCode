@@ -1097,10 +1097,10 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
           </div>
         </div>
       )}
-      <InputGroup>
+      <InputGroup orientation="vertical">
         <InputGroupTextarea
           ref={textareaRef}
-          className="min-h-8 max-h-36 resize-none overflow-y-auto text-sm break-all [field-sizing:content] disabled:opacity-80"
+          className="min-h-8 min-w-0 w-full max-h-36 resize-none overflow-y-auto text-sm break-all [field-sizing:content] disabled:opacity-80"
           placeholder={inputPlaceholder}
           value={content}
           disabled={!canEditContent}
@@ -1109,14 +1109,14 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
           onPaste={handlePaste}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd} />
-        <InputGroupAddon align="block-end" className="pb-1.5">
-          <div className="flex flex-row justify-between w-full">
-            <div className="flex flex-row gap-2 items-center min-w-0">
+        <InputGroupAddon align="block-end" className="min-w-0 pb-1.5">
+          <div className="flex w-full min-w-0 flex-row items-center justify-between gap-2">
+            <div className="no-scrollbar flex min-w-0 flex-1 flex-row items-center gap-2 overflow-x-auto">
               <DropdownMenu>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon-sm" className="rounded-full" disabled={!canUseIdleControls || !showCommandItems}>
+                      <Button variant="outline" size="icon-sm" className="rounded-full max-sm:size-11" disabled={!canUseIdleControls || !showCommandItems}>
                         <IconTerminal2 />
                       </Button>
                     </DropdownMenuTrigger>
@@ -1168,7 +1168,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
                       type="button"
                       variant="outline"
                       size="icon-sm"
-                      className="rounded-full"
+                      className="rounded-full max-sm:size-11"
                       disabled={!canUseIdleControls}
                       aria-label={t("taskDetail.chat.uploadAttachment")}
                       onClick={handleSelectFile}
@@ -1185,7 +1185,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
                     type="button"
                     variant="outline"
                     size="icon-sm"
-                    className="rounded-full"
+                    className="rounded-full max-sm:size-11"
                     disabled={!canUseIdleControls}
                     aria-label={t("taskDetail.chat.whiteboard")}
                     onClick={() => setWhiteboardDialogOpen(true)}
@@ -1212,16 +1212,20 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
                 />
               ))}
             </div>
-            <div className="flex flex-row gap-2 items-center min-w-0">
+            <div className="flex shrink-0 flex-row items-center gap-2">
               {!IS_OFFLINE_EDITION && (
                 <VoiceInputButton
+                  className="max-sm:min-h-11 max-sm:min-w-11"
                   onTextRecognized={handleTextRecognized}
                   disabled={!canEditContent || !!queuedInput}
                 />
               )}
               {queuedInput ? (
                 <InputGroupButton
-                  className="group/auto-send flex flex-row gap-2 items-center"
+                  aria-label={autoSendingQueuedInput
+                    ? t("taskDetail.chat.autoSending")
+                    : t("taskDetail.chat.cancelAutoSend")}
+                  className="group/auto-send flex flex-row items-center gap-2 max-sm:size-11 max-sm:justify-center max-sm:p-0"
                   variant="outline"
                   size="sm"
                   onClick={cancelQueuedInput}
@@ -1229,35 +1233,37 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
                 >
                   <IconLoader className="size-4 shrink-0 animate-spin" />
                   {autoSendingQueuedInput ? (
-                    t("taskDetail.chat.autoSending")
+                    <span className="max-sm:hidden">{t("taskDetail.chat.autoSending")}</span>
                   ) : (
                     <>
-                      <span className="group-hover/auto-send:hidden">{t("taskDetail.chat.waitingAutoSend")}</span>
-                      <span className="hidden group-hover/auto-send:inline">{t("taskDetail.chat.cancelAutoSend")}</span>
+                      <span className="max-sm:hidden group-hover/auto-send:hidden">{t("taskDetail.chat.waitingAutoSend")}</span>
+                      <span className="hidden group-hover/auto-send:inline max-sm:hidden">{t("taskDetail.chat.cancelAutoSend")}</span>
                     </>
                   )}
                 </InputGroupButton>
               ) : isExecuting ? (
                 <InputGroupButton
-                  className="flex flex-row gap-2 items-center"
+                  aria-label={t("taskDetail.common.send")}
+                  className="flex flex-row items-center gap-2 max-sm:size-11 max-sm:justify-center max-sm:p-0"
                   variant="default"
                   size="sm"
                   onClick={handleSend}
                   disabled={!canSend}
                 >
                   <IconSend />
-                  {t("taskDetail.common.send")}
+                  <span className="max-sm:hidden">{t("taskDetail.common.send")}</span>
                 </InputGroupButton>
               ) : (
                 <InputGroupButton
-                  className="flex flex-row gap-2 items-center"
+                  aria-label={t("taskDetail.common.send")}
+                  className="flex flex-row items-center gap-2 max-sm:size-11 max-sm:justify-center max-sm:p-0"
                   variant="default"
                   size="sm"
                   onClick={handleSend}
                   disabled={!canSend || !canUseIdleControls}
                 >
                   <IconSend />
-                  {t("taskDetail.common.send")}
+                  <span className="max-sm:hidden">{t("taskDetail.common.send")}</span>
                 </InputGroupButton>
               )}
             </div>
