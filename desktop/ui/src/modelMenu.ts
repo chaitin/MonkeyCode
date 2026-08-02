@@ -101,27 +101,31 @@ export interface MemberSection {
   items: ModelInfo[];
 }
 
-/** 会员 tab 分节(与 Web/groupCloudModels 同一分类词汇):档位三节 →
- * 付费(公共非档位;owner 缺失的旧同步条目也归这里——旧同步只收 public,
- * 语义正确)→ 我的(private)→ 团队(team,扁平单节)。徽标是资格说明;
- * 超档条目在档位节内以 locked 灰态出现。 */
-const MEMBER_SECTION_DEFS: {
-  label: string;
-  badge?: string;
-  match: (tier: string | undefined, owner: string | undefined) => boolean;
-}[] = [
-  { label: "基础模型", badge: "免费使用", match: (t) => t === "基础" },
-  { label: "专业模型", badge: "专业会员免费", match: (t) => t === "专业" },
-  { label: "旗舰模型", badge: "旗舰会员免费", match: (t) => t === "旗舰" },
-  { label: "付费模型", badge: "消耗积分", match: (t, o) => !t && o !== "private" && o !== "team" },
-  { label: "我的模型", match: (t, o) => !t && o === "private" },
-  { label: "团队模型", match: (t, o) => !t && o === "team" },
+/** 会员条目的分类词汇(与 Web/groupCloudModels 同一套,选择器分节与设置页
+ * 药丸共用这一处口径):档位三档(基础/专业/旗舰)→ 付费(公共非档位;
+ * owner 缺失的旧同步条目也归这里——旧同步只收 public,语义正确)→ 我的
+ * (private)→ 团队(team)。 */
+export function memberCategory(m: Pick<ModelInfo, "model" | "owner">): string {
+  const tier = builtinTierLabel(m.model);
+  if (tier) return tier;
+  return m.owner === "private" ? "我的" : m.owner === "team" ? "团队" : "付费";
+}
+
+/** 会员 tab 分节:节序即上面的分类序。徽标是资格说明;超档条目在档位节内
+ * 以 locked 灰态出现。 */
+const MEMBER_SECTION_DEFS: { cat: string; badge?: string }[] = [
+  { cat: "基础", badge: "免费使用" },
+  { cat: "专业", badge: "专业会员免费" },
+  { cat: "旗舰", badge: "旗舰会员免费" },
+  { cat: "付费", badge: "消耗积分" },
+  { cat: "我的" },
+  { cat: "团队" },
 ];
 
 export function groupMemberSections(items: ModelInfo[]): MemberSection[] {
   return MEMBER_SECTION_DEFS.map((d) => ({
-    label: d.label,
+    label: `${d.cat}模型`,
     badge: d.badge,
-    items: items.filter((m) => d.match(builtinTierLabel(m.model), m.owner)),
+    items: items.filter((m) => memberCategory(m) === d.cat),
   })).filter((s) => s.items.length > 0);
 }
