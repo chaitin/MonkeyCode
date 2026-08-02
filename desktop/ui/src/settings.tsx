@@ -683,7 +683,7 @@ export function SettingsView({
     let alive = true;
     void getSoundEnabled().then((on) => {
       if (alive) setSoundOn(on);
-    }).catch(() => {});
+    }).catch((e) => console.warn("[settings] 读取提示音开关失败", e));
     const off = onHostEvent<boolean>("sound-enabled", (on) => setSoundOn(on !== false));
     return () => {
       alive = false;
@@ -691,8 +691,14 @@ export function SettingsView({
     };
   }, []);
   const pickSound = (next: boolean) => {
-    setSoundOn(next); // 乐观置位:壳广播会回来盖一次,失败则由它纠回
-    void setSoundEnabled(next).catch(() => void getSoundEnabled().then(setSoundOn).catch(() => {}));
+    setSoundOn(next); // 乐观置位:壳广播会回来盖一次,失败则回滚并报错
+    setErr("");
+    void setSoundEnabled(next).catch((e) => {
+      // 静默回滚会让按钮看着像坏了(命令没在 ACL 里放行就是这个症状):
+      // 把壳的原话摆出来,下次同类故障一眼可诊
+      setSoundOn(!next);
+      setErr("提示音开关切换失败: " + (e instanceof Error ? e.message : String(e)));
+    });
   };
 
   // 登录态由 Shell 持有:账号页 BaizhiCard 与模型/MCP 页的引导条共用

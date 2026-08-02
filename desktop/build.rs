@@ -13,6 +13,13 @@ fn main() {
 
     // 为应用自定义命令生成 ACL 权限(allow-<command>):
     // capability 中引用的每个自定义命令都必须在此登记。
+    //
+    // 新增一条命令要同时动三处:main.rs 的 invoke_handler、这里、以及
+    // tauri.conf.json 里**用得到它的每个** capability。两个方向的失手代价
+    // 不对称:capability 里名字写错是编译期硬错(UnknownPermission),而漏加
+    // capability 只在运行期被 ACL 拒掉——UI 侧若把 invoke 的报错 catch 掉,
+    // 症状就是"按钮点了没反应",编译与测试全绿。桌宠页与主窗口是两个
+    // capability,只给一边放行同样是这个症状。
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new().commands(&[
@@ -22,6 +29,8 @@ fn main() {
                 "host_info",
                 "show_main",
                 "pet_native_render",
+                "sound_enabled",
+                "set_sound_enabled",
                 "update_check",
                 "update_install",
                 "open_extension_dir",

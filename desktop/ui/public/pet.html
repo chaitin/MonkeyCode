@@ -255,7 +255,7 @@
   // 每次启动仍要挨一声。取不到(命令异常)按默认"开"继续,不拖住状态渲染。
   invoke('sound_enabled')
     .then((on) => { soundEnabled = on !== false; })
-    .catch(() => {})
+    .catch((e) => console.warn('[pet] 读取提示音开关失败,按开处理', e))
     .then(snapshot);
 
   // ---- 交互:拖动(位移阈值)与点击(唤回主窗口) ----
