@@ -6,6 +6,7 @@ import {
   modelsToConfig,
   replaceSourceGroup,
   sortModelsBySource,
+  syncedName,
   validateMcpNames,
 } from "./settingsConfig";
 import { SOURCE_BAIZHI, SOURCE_MONKEYCODE, type HostModel } from "./types";
@@ -60,6 +61,25 @@ describe("modelsToConfig", () => {
     const [saved] = modelsToConfig([lockedMember], 0);
     expect(saved.locked).toBe(true);
     expect(saved.owner).toBe("public");
+  });
+});
+
+describe("syncedName(同步条目的落盘名)", () => {
+  it("百智云缀来源;会员再缀服务端配置 id(同批重名靠它区分)", () => {
+    expect(syncedName("deepseek-v3", SOURCE_BAIZHI)).toBe("deepseek-v3@baizhi");
+    expect(syncedName("深度求索", SOURCE_MONKEYCODE, "cfg-9")).toBe("深度求索@monkeycode#cfg-9");
+    // 同名两条 → 落盘名互不相同,不再有条目因重名被丢
+    expect(syncedName("同名", SOURCE_MONKEYCODE, "c1")).not.toBe(syncedName("同名", SOURCE_MONKEYCODE, "c2"));
+    // 服务端没给 id(不该发生)时退回只缀来源,至少跨来源不撞
+    expect(syncedName("无 id", SOURCE_MONKEYCODE)).toBe("无 id@monkeycode");
+  });
+
+  it("重同步不叠加后缀;自定义条目与空名不动", () => {
+    expect(syncedName("深度求索@monkeycode#cfg-9", SOURCE_MONKEYCODE, "cfg-9")).toBe("深度求索@monkeycode#cfg-9");
+    // 服务端换了配置 id:按新 id 重缀,不是叠加
+    expect(syncedName("深度求索@monkeycode#old", SOURCE_MONKEYCODE, "new")).toBe("深度求索@monkeycode#new");
+    expect(syncedName("手工模型")).toBe("手工模型");
+    expect(syncedName("  ", SOURCE_BAIZHI)).toBe("");
   });
 });
 

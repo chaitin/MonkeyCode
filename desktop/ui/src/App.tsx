@@ -45,6 +45,7 @@ import { CHANGE_KIND, changeTag, FilesDrawer, type FsAdapter } from "./filesdraw
 import { IconFolder, IconX } from "./icons";
 import { inspectMcAccount } from "./mcaccount";
 import { workspaceRelativePath } from "./markdownPaths";
+import { sameModelName } from "./modelMenu";
 import { NewTaskView, type NewTaskPrefill } from "./newtask";
 import { isProjectArchived, readArchivedProjects, updateArchivedProjects } from "./projectArchive";
 import { initialChat, reduceBatch, type ChatState } from "./reduce";
@@ -676,7 +677,12 @@ export default function App() {
 
   // ===== 派生状态 =====
   const currentMeta = sessions.find((m) => m.id === session.id);
-  const currentModel = session.model || models.find((m) => m.default && !m.locked)?.name || "";
+  // 会话记的名字可能是加来源后缀之前的裸名:先落到当下的真实条目上,
+  // 选择器高亮、思考档回查、切模型才不会齐齐落空(壳侧 model_id_of 同款兜底)
+  const sessionModelEntry = session.model
+    ? models.find((m) => m.name === session.model) ?? models.find((m) => sameModelName(m.name, session.model))
+    : undefined;
+  const currentModel = sessionModelEntry?.name || session.model || models.find((m) => m.default && !m.locked)?.name || "";
   const menuModels: ModelInfo[] = modelMenuList(models, session.model); // 下线模型兜底,无 source 归「自定义」组
   const openPerm = [...session.chat.items].reverse().find((it) => it.kind === "perm" && it.state === "open") as
     | Extract<LogItem, { kind: "perm" }>

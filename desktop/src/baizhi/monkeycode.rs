@@ -751,18 +751,32 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
     let mut keyed: Vec<(u8, i64, String, Value)> = Vec::new();
     let mut notes = Vec::new();
     let mut seen = std::collections::HashSet::new();
+    let mut dup_names = 0usize; // 同批重名:不再丢弃,只提示(落盘名靠 id 区分)
+    // 跳过计数:同步条数对不上时,消息里要能说清差额去哪了(逐条列会太长)
+    let (mut alien_owner, mut placeholder) = (0usize, 0usize);
     for it in items {
         let s = |k: &str| it.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
         let owner = match it.pointer("/owner/type").and_then(Value::as_str) {
             Some(o @ ("public" | "private" | "team")) => o,
-            _ => continue,
+            // owner 整个缺席按 public 收:服务端该字段是 omitempty,且只在模型
+            // 挂着 user 边时才填(backend domain/model.go Model::From),会员内置
+            // 模型来自内部 hook,这一层不保证带上——丢掉它们就是"同步的模型不全"。
+            // UI 早就容缺(memberCategory 把无 owner 归「付费」),两侧口径就此对齐
+            None if it.get("owner").map_or(true, Value::is_null) => "public",
+            // 认不出的归属类型(将来新增的第四种)才跳过,且要出 note
+            _ => {
+                alien_owner += 1;
+                continue;
+            }
         };
+        // 服务端标了隐藏就是刻意不给用户看的,静默跳过——报个数只是噪音
         if it.get("is_hidden").and_then(Value::as_bool).unwrap_or(false) {
             continue;
         }
         let (id, model) = (s("id"), s("model"));
         if id.is_empty() || model.is_empty() || is_builtin_placeholder(&model) {
-            continue; // 占位/残缺条目不是可调用模型,静默跳过
+            placeholder += 1; // 占位/残缺条目不是可调用模型
+            continue;
         }
         // 超档 ≠ 排除:展示但禁选(静默,不出 note——菜单灰态即是外显)
         let locked = !plan_allows_model(&model, plan);
@@ -771,13 +785,13 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
             notes.push(format!("模型 {model} 使用了本版本不支持的协议「{itype}」,已跳过"));
             continue;
         };
+        // remark 是后台人起的备注,同批重复很正常。以前撞了就丢第二条(表现
+        // 为"同步的模型不全");现在原样收下,由 UI 侧 syncedName 用这里带出去
+        // 的服务端配置 id 拼出唯一落盘名(展示层剥掉),不再有条目因重名蒸发
         let name = { let n = s("remark"); if n.is_empty() { model.clone() } else { n } };
-        if !seen.insert(name.clone()) {
-            notes.push(format!("条目 {name} 与同批条目重名,已跳过"));
-            continue;
-        }
         let mut entry = json!({
             "name": name.clone(),
+            "id": id.clone(),
             "provider": provider,
             "base_url": "",
             "api_key": "",
@@ -814,8 +828,20 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
         if owner != "public" && it.get("thinking_enabled").and_then(Value::as_bool) == Some(false) {
             entry["think"] = json!("off");
         }
+        if !seen.insert(name.clone()) {
+            dup_names += 1;
+        }
         let weight = it.get("weight").and_then(Value::as_i64).unwrap_or(0);
         keyed.push((member_section_rank(&model, owner), weight, name, entry));
+    }
+    if dup_names > 0 {
+        notes.push(format!("{dup_names} 条模型与同批条目重名,已按服务端配置区分收录"));
+    }
+    if alien_owner > 0 {
+        notes.push(format!("{alien_owner} 条模型的归属类型无法识别,已跳过"));
+    }
+    if placeholder > 0 {
+        notes.push(format!("{placeholder} 条档位占位/字段残缺的条目未同步"));
     }
     keyed.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then(a.2.cmp(&b.2)));
     (keyed.into_iter().map(|(_, _, _, e)| e).collect(), notes)
@@ -826,13 +852,18 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
 /// note,重新同步可恢复)。返回 {models, notes}(与 baizhi_sync 返回形状
 /// 平行;不碰 config.json)。
 pub async fn mc_member_models_sync(svc: &Service) -> BzResult<Value> {
-    let out = mc_call(svc, reqwest::Method::GET, "/api/v1/users/models", None).await?;
+    // 服务端是游标分页,limit 缺省只给 100(backend handler List);显式要 200,
+    // 还有下一页就出 note——宁可说清楚,也不让用户对着少掉的条目猜
+    let out = mc_call(svc, reqwest::Method::GET, "/api/v1/users/models?limit=200", None).await?;
     let items = out
         .get("models")
         .and_then(Value::as_array)
         .cloned()
         .ok_or_else(|| other("模型列表响应格式异常"))?;
     let mut notes = Vec::new();
+    if out.pointer("/page/has_next_page").and_then(Value::as_bool) == Some(true) {
+        notes.push("服务端模型超过 200 条,本次只同步了前 200 条".to_string());
+    }
     let plan = match mc_call(svc, reqwest::Method::GET, "/api/v1/users/subscription", None).await {
         Ok(v) => v.get("plan").and_then(Value::as_str).unwrap_or("").to_string(),
         Err(e) => {
@@ -1133,9 +1164,10 @@ mod local_models_tests {
             // 隐藏条目 → 静默跳过
             json!({ "id": "cfg-6", "remark": "隐藏", "model": "hidden-model", "interface_type": "anthropic",
                     "owner": pub_owner(), "is_hidden": true }),
-            // 与首条重名 → 跳过 + note
+            // 与首条重名 → 照常收录(落盘名由 UI 用 id 区分),只出提示
             json!({ "id": "cfg-7", "remark": "旗舰模型", "model": "m-dup", "interface_type": "anthropic", "owner": pub_owner() }),
-            // 团队条目 → 收录;归属缺失/未知 → 跳过
+            // 团队条目 → 收录;owner 整个缺席 → 按 public 收录(服务端 omitempty,
+            // 内部 hook 的会员内置模型不保证带);认不出的归属类型 → 跳过 + note
             json!({ "id": "cfg-8", "remark": "团队", "model": "team-model", "interface_type": "anthropic",
                     "owner": { "type": "team", "name": "翼龙组" } }),
             json!({ "id": "cfg-9", "remark": "无主", "model": "orphan", "interface_type": "anthropic" }),
@@ -1143,7 +1175,15 @@ mod local_models_tests {
                     "owner": { "type": "galaxy" } }),
         ];
         let (models, notes) = local_model_entries(&items, "ultra");
-        assert_eq!(models.len(), 4, "{models:?}");
+        assert_eq!(models.len(), 6, "同批重名不再丢条目: {models:?}");
+        // 服务端配置 id 随条目带出:UI 侧靠它拼唯一落盘名
+        assert_eq!(models[0].get("id").and_then(Value::as_str), Some("cfg-1"));
+        let dups: Vec<_> = models
+            .iter()
+            .filter(|m| m.get("name").and_then(Value::as_str) == Some("旗舰模型"))
+            .filter_map(|m| m.get("id").and_then(Value::as_str))
+            .collect();
+        assert_eq!(dups, vec!["cfg-1", "cfg-7"], "重名两条都在,靠 id 区分");
         let m0 = &models[0];
         assert_eq!(m0.get("name").and_then(Value::as_str), Some("旗舰模型"));
         assert_eq!(m0.get("provider").and_then(Value::as_str), Some("anthropic"));
@@ -1156,7 +1196,13 @@ mod local_models_tests {
         assert_eq!(m0.get("context_window").and_then(Value::as_i64), Some(200_000));
         assert_eq!(m0.get("max_output").and_then(Value::as_i64), Some(16_384));
         assert_eq!(m0.get("vision").and_then(Value::as_bool), Some(true));
-        let m1 = &models[1];
+        let by = |name: &str| {
+            models
+                .iter()
+                .find(|m| m.get("name").and_then(Value::as_str) == Some(name))
+                .unwrap_or_else(|| panic!("条目 {name} 应被收录: {models:?}"))
+        };
+        let m1 = by("mc-gpt");
         assert_eq!(m1.get("name").and_then(Value::as_str), Some("mc-gpt"));
         assert_eq!(m1.get("model").and_then(Value::as_str), Some("mc-gpt"), "remark 空时 name==model,与百智云同构");
         assert_eq!(m1.get("provider").and_then(Value::as_str), Some("openai"));
@@ -1166,18 +1212,27 @@ mod local_models_tests {
         // 对 private/team(用户自配)标 false 时须写 off
         assert!(m1.get("think").is_none(), "public 标 false 也不压 off");
         assert!(m0.get("think").is_none(), "未标注的模型跟随产品默认档");
-        let m2 = &models[2];
+        // 无主条目按 public 收:排在付费节(节序 3),在私有/团队之前
+        let orphan = models.iter().find(|m| m.get("name").and_then(Value::as_str) == Some("无主")).expect("无主条目应被收录");
+        assert_eq!(orphan.get("owner").and_then(Value::as_str), Some("public"));
+        let m2 = by("私有");
         assert_eq!(m2.get("name").and_then(Value::as_str), Some("私有"));
         assert_eq!(m2.get("owner").and_then(Value::as_str), Some("private"));
         assert_eq!(m2.get("think").and_then(Value::as_str), Some("off"), "私有条目标 false 须尊重");
-        let m3 = &models[3];
+        let m3 = by("团队");
         assert_eq!(m3.get("owner").and_then(Value::as_str), Some("team"));
         assert_eq!(m0.get("owner").and_then(Value::as_str), Some("public"));
         assert!(
-            !models.iter().any(|m| matches!(m.get("name").and_then(Value::as_str), Some("无主" | "未知主"))),
-            "归属缺失/未知必须跳过: {models:?}"
+            !models.iter().any(|m| m.get("name").and_then(Value::as_str) == Some("未知主")),
+            "认不出的归属类型仍要跳过: {models:?}"
         );
-        assert_eq!(notes.len(), 2, "未知协议/重名各一条 note: {notes:?}");
+        // 未知协议 1 + 重名提示 1 + 两类跳过计数(归属不明 1 / 占位 1);
+        // 隐藏条目静默跳过,不出 note
+        assert_eq!(notes.len(), 4, "{notes:?}");
+        assert!(notes.iter().any(|n| n.contains("与同批条目重名,已按服务端配置区分收录")), "{notes:?}");
+        assert!(!notes.iter().any(|n| n.contains("隐藏")), "隐藏条目不该出 note: {notes:?}");
+        assert!(notes.iter().any(|n| n.contains("归属类型无法识别")), "{notes:?}");
+        assert!(notes.iter().any(|n| n.contains("占位")), "{notes:?}");
     }
 
     #[test]

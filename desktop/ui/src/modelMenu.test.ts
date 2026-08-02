@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   filterModels,
+  sameModelName,
+  stripSourceSuffix,
   groupMemberSections,
   memberCategory,
   modelDisplay,
@@ -109,6 +111,35 @@ describe("filterModels(tab 内过滤)", () => {
     // 导航由 tab 承担,组名不再是匹配面
     expect(filterModels(items, "会员")).toEqual([]);
     expect(filterModels(items, "不存在")).toEqual([]);
+  });
+});
+
+describe("同步条目落盘名的来源后缀(寻址用,展示一律剥掉)", () => {
+  it("stripSourceSuffix 剥来源后缀与会员条目的 #配置 id;剥空回落原名", () => {
+    expect(stripSourceSuffix("deepseek-v3@baizhi")).toBe("deepseek-v3");
+    expect(stripSourceSuffix("深度求索@monkeycode#cfg-9")).toBe("深度求索");
+    expect(stripSourceSuffix("深度求索@monkeycode")).toBe("深度求索");
+    // 手工条目原样;名字里本来就有 @ 的、形似后缀的都不误伤
+    expect(stripSourceSuffix("my@model")).toBe("my@model");
+    expect(stripSourceSuffix("@baizhi")).toBe("@baizhi");
+    expect(stripSourceSuffix("x@monkeycode-plus")).toBe("x@monkeycode-plus");
+    // id 的字符集不归我们管,# 之后放行(与壳侧 strip_source_suffix 同口径)
+    expect(stripSourceSuffix("深度求索@monkeycode#a@b")).toBe("深度求索");
+  });
+
+  it("sameModelName:带不带后缀算同一条(存量引用靠它落到新条目上)", () => {
+    expect(sameModelName("深度求索", "深度求索@monkeycode#cfg-9")).toBe(true);
+    expect(sameModelName("deepseek-v3@baizhi", "deepseek-v3")).toBe(true);
+    expect(sameModelName("深度求索", "别的模型")).toBe(false);
+  });
+
+  it("modelDisplay 剥后缀后再剥档位前缀;filterModels 按展示名匹配", () => {
+    expect(
+      modelDisplay({ name: "monkeycode-pro/deepseek@monkeycode#c1", model: "monkeycode-pro/deepseek", source: SOURCE_MONKEYCODE }),
+    ).toEqual({ label: "deepseek", tier: "专业" });
+    const items = [{ ...m("深度求索@monkeycode#c1", SOURCE_MONKEYCODE), model: "mc-ds" }];
+    expect(filterModels(items, "深度")).toEqual(items);
+    expect(filterModels(items, "monkeycode")).toEqual([]); // 后缀不参与匹配
   });
 });
 
