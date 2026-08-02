@@ -30,9 +30,8 @@ import { IconBack, IconGear, IconGlobe, IconMonitor, IconPlus, IconSpark } from 
 import { BaizhiLogo } from "./baizhi";
 import logoUrl from "./logo.png";
 import { Field, Section, input, select, whiteBtn } from "./settings-ui";
-import { builtinTierLabel } from "./cloud";
 import { mcModelsRevoke, mcModelsSync } from "./cloudapi";
-import { stripTierPrefix } from "./modelMenu";
+import { memberCategory, stripTierPrefix } from "./modelMenu";
 import {
   dedupeModelsByName,
   emptyMcp,
@@ -626,6 +625,11 @@ export function SettingsView({
   const [defaultIdx, setDefaultIdx] = useState(0);
   const [advOpen, setAdvOpen] = useState<Record<number, boolean>>({});
   const [expanded, setExpanded] = useState<number | null>(null); // 展开编辑的模型(真实索引)
+  // 行操作区(设为默认/删除)显隐认的模型行索引。WKWebView 里托管行的
+  // :hover 与 mouseleave 都可能不到达(操作区粘着不消失),所以判据不取
+  // 「行有没有收到离开事件」,而取**最后一次指针落在哪一行**:见下方
+  // useEffect,指针在页面里再动一下,陈旧的高亮就自愈
+  const [hoverRow, setHoverRow] = useState<number | null>(null);
   const [baizhiOpen, setBaizhiOpen] = useState(true); // 百智云组(账号优先,默认展开)
   const [mcModelsOpen, setMcModelsOpen] = useState(true); // MonkeyCode 会员模型组(默认展开)
   const [mcps, setMcps] = useState<McpEntry[]>([]);
@@ -700,6 +704,29 @@ export function SettingsView({
       setErr("提示音开关切换失败: " + (e instanceof Error ? e.message : String(e)));
     });
   };
+
+  // 悬停行的唯一判据:指针每动一次就按落点重算(data-model-row 打在行上)。
+  // 不依赖行自己的 mouseenter/mouseleave——WKWebView 下托管行的离开事件可能
+  // 压根不到,操作区就永远留在屏上;按落点算则指针挪到任何地方都会归位。
+  // 滚动与窗口失焦另清:WebKit 滚动后不重算 hover,指针没动就不会有 move。
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const el = e.target instanceof Element ? e.target.closest("[data-model-row]") : null;
+      const idx = el instanceof HTMLElement ? Number(el.dataset.modelRow) : NaN;
+      setHoverRow(Number.isInteger(idx) ? idx : null);
+    };
+    const clear = () => setHoverRow(null);
+    document.addEventListener("mousemove", onMove, true);
+    document.addEventListener("mouseleave", clear);
+    window.addEventListener("scroll", clear, true);
+    window.addEventListener("blur", clear);
+    return () => {
+      document.removeEventListener("mousemove", onMove, true);
+      document.removeEventListener("mouseleave", clear);
+      window.removeEventListener("scroll", clear, true);
+      window.removeEventListener("blur", clear);
+    };
+  }, []);
 
   // 登录态由 Shell 持有:账号页 BaizhiCard 与模型/MCP 页的引导条共用
   const [bzStatus, setBzStatus] = useState<BaizhiStatus | null>(null);
@@ -1191,13 +1218,17 @@ export function SettingsView({
     return (
       <>
         <div
-          className={managed ? "hrow" : "hrow hv2"}
+          // 托管行也带 hv2:悬停时整行背景变一次,行区域必被重绘。少了这条
+          // (改前托管行只有 .hrow),取消悬停时只有子元素 opacity 变,
+          // WKWebView 漏掉这次重绘,操作区的像素留在屏上抹不掉
+          className="hrow hv2"
+          data-model-row={i}
           onClick={managed ? undefined : () => setExpanded(isOpen ? null : i)}
           style={{ display: "flex", alignItems: "center", gap: 8, height: 40, padding: "0 14px", cursor: managed ? "default" : "pointer", userSelect: "none" }}
         >
-          {/* 托管行内不放任何 title 原生 tooltip:webkit 系 WebView 弹出
-              tooltip 会吞 mouseleave,行的 :hover 粘住,「设为默认/删除」
-              移开不消失(styles.css .hrow:hover .row-acts) */}
+          {/* 行内不放任何 title 原生 tooltip:webkit 系 WebView 弹出的 tooltip
+              是原生层,盖住行时页面收不到 mousemove,悬停态停在原地不动
+              ——操作区(下方 row-acts)就跟着粘住 */}
           <span
             className="ellipsis"
             style={{ fontSize: 12.5, fontFamily: MONO, color: m.name.trim() ? "var(--t1)" : "var(--t5)", minWidth: 0 }}
@@ -1206,13 +1237,10 @@ export function SettingsView({
           </span>
           <span style={pill}>{m.provider || "anthropic"}</span>
           {managed && (
-            // 档位即托管:会员条目必有档位/归属语境,一枚药丸承载两层信息
+            // 分类药丸:词汇与模型选择器的会员分节同出 memberCategory,
+            // 一个条目在两处只有一个叫法(基础/专业/旗舰/付费/我的/团队)
             <span style={{ ...pill, background: "var(--accBg)", color: "var(--accTx)" }}>
-              {(() => {
-                const tier = builtinTierLabel(m.model);
-                if (tier) return `${tier}会员`;
-                return m.owner === "private" ? "我的" : m.owner === "team" ? "团队" : "托管";
-              })()}
+              {memberCategory(m)}
             </span>
           )}
           {managed && m.locked && (
@@ -1223,7 +1251,23 @@ export function SettingsView({
             <span style={{ flex: "none", fontSize: 11, fontWeight: 700, color: "var(--accTx)", whiteSpace: "nowrap" }}>✓ 默认</span>
           )}
           <span style={{ flex: 1 }} />
-          <span className="row-acts" style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, flex: "none" }}>
+          {/* 内联样式压过 .hrow:hover .row-acts,显隐只认 state。visibility 与
+              opacity 一起翻:光靠 opacity 变 0,WKWebView 会漏掉重绘把像素留在
+              屏上(visibility 是渲染树层面的变化,重绘必然发生);占位仍在,
+              所以行尾的 ▸ 不会随显隐左右跳 */}
+          <span
+            className="row-acts"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              fontSize: 12,
+              flex: "none",
+              opacity: hoverRow === i ? 1 : 0,
+              visibility: hoverRow === i ? "visible" : "hidden",
+              pointerEvents: hoverRow === i ? "auto" : "none",
+            }}
+          >
             {/* 锁定条目不物化进引擎,默认落它头上等于没有默认 → 不给入口 */}
             {i !== defaultIdx && !m.locked && (
               <span

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   filterModels,
   groupMemberSections,
+  memberCategory,
   modelDisplay,
   modelDisplayByName,
   modelMenuTabs,
@@ -108,6 +109,18 @@ describe("filterModels(tab 内过滤)", () => {
     // 导航由 tab 承担,组名不再是匹配面
     expect(filterModels(items, "会员")).toEqual([]);
     expect(filterModels(items, "不存在")).toEqual([]);
+  });
+});
+
+describe("memberCategory(设置页药丸与分节共用的分类词汇)", () => {
+  it("档位优先于 owner;公共非档位与旧同步条目都归付费", () => {
+    expect(memberCategory({ model: "monkeycode-basic/b", owner: "public" })).toBe("基础");
+    expect(memberCategory({ model: "monkeycode-pro/p", owner: "public" })).toBe("专业");
+    expect(memberCategory({ model: "monkeycode-ultra/u", owner: "private" })).toBe("旗舰");
+    expect(memberCategory({ model: "some-model", owner: "public" })).toBe("付费");
+    expect(memberCategory({ model: "another-model" })).toBe("付费"); // 改造前同步的条目无 owner
+    expect(memberCategory({ model: "my-model", owner: "private" })).toBe("我的");
+    expect(memberCategory({ model: "team-model", owner: "team" })).toBe("团队");
   });
 });
 
