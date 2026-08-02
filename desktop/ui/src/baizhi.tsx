@@ -6,11 +6,10 @@ import {
   baizhiLogin,
   baizhiLogout,
   baizhiSendCode,
-  baizhiSync,
   baizhiWechatPoll,
   baizhiWechatStart,
 } from "./baizhiapi";
-import type { BaizhiStatus, BaizhiSyncResult, SyncApplyResult } from "./types";
+import type { BaizhiStatus } from "./types";
 import { MONO } from "./components";
 import { Field, input, whiteBtn } from "./settings-ui";
 import baizhiLogoUrl from "./baizhi-logo.png";
@@ -45,9 +44,10 @@ export function BaizhiCard({
   status,
   statusErr,
   refreshStatus,
-  onSynced,
+  syncing,
+  syncMsg,
+  onSync,
   onLoggedIn,
-  knownKeys,
 }: {
   /** 登录态(宿主查询并持有;null=读取中) */
   status: BaizhiStatus | null;
@@ -55,12 +55,16 @@ export function BaizhiCard({
   statusErr: string;
   /** 让宿主重新查询登录态(登录/登出/扫码成功后调用) */
   refreshStatus: () => Promise<void>;
-  /** 同步结果并入设置表单;返回跨组撞名被跳过的名字(外显提示用) */
-  onSynced: (r: BaizhiSyncResult) => SyncApplyResult;
+  /** 同步的进行态与结果文案。同步流水线(拉取→并入表单→自动保存)整体在
+   * SettingsView:登录会同时起百智云与 MonkeyCode 两路同步,任一路先落地都会
+   * 把分区切到模型页(mergeSyncedModels),本卡随之卸载——挂在卡里的收尾会把
+   * 这一路已经拉到的模型与 MCP 一起丢掉,只剩先到的那一组 */
+  syncing: boolean;
+  syncMsg: { text: string; color: string } | null;
+  onSync: () => void;
   /** 真实登录事件(短信/扫码成功各一次)。宿主据此顺带连上 MonkeyCode
    * ——只报边沿,不报 status 快照:后者每次打开设置都会翻转 */
   onLoggedIn?: () => void;
-  knownKeys: () => string[];
 }) {
   const [mode, setMode] = useState<"wechat" | "phone">("wechat");
   const [phone, setPhone] = useState("");
@@ -71,8 +75,6 @@ export function BaizhiCard({
   const [err, setErr] = useState("");
   const [qr, setQr] = useState("");
   const [wxState, setWxState] = useState<WxState>("loading");
-  const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<{ text: string; color: string } | null>(null);
   const mounted = useRef(true);
   const wxGen = useRef(0); // 代号:模式切换/重新获取/卸载时作废旧轮询循环
 
@@ -105,13 +107,13 @@ export function BaizhiCard({
         }
         if (res.status === "ok") {
           await refreshStatus();
-          // 登录成功即自动同步(用户拍板,免手动点)。不能用 live() 甄别:
-          // loggedIn 翻转会触发拉码 effect 的 cleanup 使 gen 作废,而这里
-          // 恰恰是登录成功之后
-          if (mounted.current) {
-            onLoggedIn?.();
-            void doSync();
-          }
+          // 登录成功即自动同步(用户拍板,免手动点)。两个回调都在宿主
+          // (SettingsView),这里不再补 mounted 判据:refreshStatus 期间另一路
+          // 同步可能落地并切分区把本卡卸载,漏掉就等于登录了却什么都不同步。
+          // 也不能用 live() 甄别——loggedIn 翻转会触发拉码 effect 的 cleanup
+          // 使 gen 作废,而这里恰恰是登录成功之后
+          onLoggedIn?.();
+          onSync();
           return;
         }
         setWxState(res.status); // expired / canceled → 引导重新获取
@@ -172,11 +174,10 @@ export function BaizhiCard({
     try {
       await baizhiLogin(phone.trim(), code.trim());
       await refreshStatus();
-      if (mounted.current) {
-        setCode("");
-        onLoggedIn?.();
-        void doSync(); // 登录成功即自动同步(用户拍板,免手动点)
-      }
+      if (mounted.current) setCode("");
+      // 同上:登录成功即自动同步,两个回调在宿主,卡是否还挂着都要走
+      onLoggedIn?.();
+      onSync();
     } catch (e) {
       if (mounted.current) setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -191,41 +192,6 @@ export function BaizhiCard({
       await refreshStatus();
     } catch (e) {
       if (mounted.current) setErr(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  // 同步即全量导入(用户拍板,不再逐条挑选):结果整组并入设置表单,
-  // 交保存条落盘重启;不想要的条目可在模型页删除(重同步会恢复)
-  const doSync = async () => {
-    setSyncMsg(null);
-    setSyncing(true);
-    try {
-      const r = await baizhiSync(knownKeys());
-      if (!mounted.current) return;
-      if (!r.models.length && !Object.keys(r.mcp_servers ?? {}).length) {
-        setSyncMsg({ text: "没有拉取到可用的模型" + (r.notes?.length ? `(${r.notes.join(";")})` : ""), color: "var(--err)" });
-        return;
-      }
-      const applied = onSynced(r);
-      const parts = [`已同步 ${r.models.length - applied.skipped.length} 个模型`];
-      if (Object.keys(r.mcp_servers ?? {}).length) parts.push("MCP 条目");
-      if (r.key_created) parts.push(`已在网关新建密钥「${r.key_name || "MonkeyCode"}」`);
-      parts.push(
-        applied.autoSaved
-          ? "正在保存并重启内核…"
-          : applied.blocked === "busy"
-            ? "有任务正在执行,空闲后请手动保存(保存会重启内核)"
-            : applied.blocked === "dirty"
-              ? "表单有未保存的修改,请核对后手动保存"
-              : "已切到模型页,核对后保存",
-      );
-      // 跨组撞名先到先得:跳过必须外显,否则"少了几个模型"查无对证
-      if (applied.skipped.length) parts.push(`与现有条目同名已跳过: ${applied.skipped.join("、")}(想改用百智云通道请删除原条目后重新同步)`);
-      setSyncMsg({ text: parts.join("、"), color: "var(--ok)" });
-    } catch (e) {
-      if (mounted.current) setSyncMsg({ text: e instanceof Error ? e.message : String(e), color: "var(--err)" });
-    } finally {
-      if (mounted.current) setSyncing(false);
     }
   };
 
@@ -253,7 +219,7 @@ export function BaizhiCard({
           {err && <span style={{ fontSize: 12, color: "var(--err)", flex: "none" }}>{err}</span>}
           <button
             className="hv-acc"
-            onClick={() => !syncing && void doSync()}
+            onClick={() => !syncing && onSync()}
             style={{ ...whiteBtn, flex: "none", gap: 6, background: "var(--acc)", borderColor: "var(--acc)", color: "var(--onAcc)", opacity: syncing ? 0.7 : 1, cursor: syncing ? "default" : "pointer" }}
           >
             {syncing && (
