@@ -34,12 +34,14 @@ export function CloudModelGroups({
             {group.badge && <span style={{ flex: "none", fontSize: 9.5, color: "var(--t6)" }}>{group.badge}</span>}
           </span>
           {group.models.map((model) => (
-            // 组头已表达档位,条目不再带档位 tag;hover 兜底完整展示名
+            // 组头已表达档位,条目不再带档位 tag;hover 兜底完整展示名。
+            // locked(超会员档)灰态禁选,title 说明解锁路径
             <ModelMenuItem
               key={model.id}
               label={groupedCloudModelLabel(model)}
-              title={cloudModelLabel(model)}
+              title={model.locked ? `${cloudModelLabel(model)} · 当前会员档不可用,升级会员后可用` : cloudModelLabel(model)}
               selected={model.id === selectedId}
+              disabled={model.locked}
               onClick={() => onPick(model)}
             />
           ))}

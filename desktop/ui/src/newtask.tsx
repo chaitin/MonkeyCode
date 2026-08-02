@@ -818,6 +818,7 @@ export function NewTaskView({
                   groups={cloudModelGroups}
                   selectedId={cloudModelId}
                   onPick={(cloudModel) => {
+                    if (cloudModel.locked) return;
                     setCloudModelId(cloudModel.id!);
                     if (cloudModel.owner?.type === "public") setCloudHostId(PUBLIC_CLOUD_HOST_ID);
                     setCloudPicker(null);

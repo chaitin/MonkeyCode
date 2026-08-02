@@ -1,7 +1,8 @@
-// 斜杠指令(Agent 上报的 available_commands)选择器:composer 上的 / 按钮
-// + 上弹菜单。移动端是底部「使用技能」面板,桌面遵循自己的交互语言——
+// 技能(Agent 上报的 available_commands,即斜杠指令)选择器:composer 上的
+// 「使用技能」按钮 + 上弹菜单。入口措辞与移动端「使用技能」对齐(纯 / 图标
+// 普通用户看不懂),交互保留桌面双路径——
 //   1. 直接在输入框敲 `/` 即就地补全(↑↓ 选择、↩/⇥ 填入、Esc 关掉),
-//   2. 不记得指令名时点 composer 左侧的 / 按钮浏览全部。
+//   2. 不记得指令名时点「使用技能」按钮浏览全部。
 // 两条路径共用同一份状态(useSlashCommands),菜单只有一个。
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type RefObject } from "react";
 import { isImeEnter } from "./composer";
@@ -126,7 +127,7 @@ export function useSlashCommands(opts: {
   };
 }
 
-/** composer 左侧的 / 按钮 + 上弹指令菜单(整体自带定位锚点) */
+/** composer 左侧的「使用技能」按钮 + 上弹菜单(整体自带定位锚点) */
 export function SlashCommandMenu({ h, count }: { h: SlashCommandsHandle; count: number }) {
   const { anchorRef, menuMaxHeight } = useUpwardMenuHeight<HTMLSpanElement>(h.open, 320);
   const disabled = count === 0;
@@ -134,11 +135,22 @@ export function SlashCommandMenu({ h, count }: { h: SlashCommandsHandle; count: 
     <span ref={anchorRef} style={{ position: "relative", display: "flex", flex: "none" }}>
       <button
         className="hv2 icon-btn"
-        title={disabled ? "Agent 尚未上报可用指令(环境就绪后自动同步)" : `斜杠指令(${count})· 在输入框直接敲 / 也可唤起`}
+        title={disabled ? "Agent 尚未上报可用技能(环境就绪后自动同步)" : `使用技能(${count})· 在输入框直接敲 / 也可唤起`}
         onClick={h.toggle}
-        style={{ width: 24, height: 24, borderRadius: 7, background: h.open ? "var(--hov)" : "transparent", opacity: disabled ? 0.4 : 1 }}
+        style={{
+          height: 24,
+          padding: "0 7px",
+          gap: 4,
+          borderRadius: 7,
+          background: h.open ? "var(--hov)" : "transparent",
+          fontSize: 11.5,
+          fontWeight: 500,
+          color: "var(--t3)",
+          opacity: disabled ? 0.4 : 1,
+        }}
       >
-        <IconSlash size={13} color="var(--t3)" />
+        <IconSlash size={12} color="var(--t3)" />
+        使用技能
       </button>
       {h.open && (
         <>

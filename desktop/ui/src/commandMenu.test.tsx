@@ -40,16 +40,18 @@ describe("SlashCommandMenu", () => {
     expect(html).toContain("无匹配指令");
   });
 
-  it("关闭态只渲染触发按钮;有指令时 title 提示可直接敲 /", () => {
+  it("关闭态只渲染触发按钮;按钮带「使用技能」文字,title 提示可直接敲 /", () => {
     const html = renderToStaticMarkup(<SlashCommandMenu h={handle({ open: false, list })} count={2} />);
     expect(html).not.toContain("↑↓ 选择");
-    expect(html).toContain("斜杠指令(2)");
+    // 按钮可见文字(纯 / 图标普通用户看不懂,措辞与移动端对齐)
+    expect(html).toContain(">使用技能</button>");
+    expect(html).toContain("使用技能(2)");
     expect(html).toContain("在输入框直接敲 / 也可唤起");
   });
 
-  it("Agent 还没上报指令时按钮灰态并说明原因", () => {
+  it("Agent 还没上报技能时按钮灰态并说明原因", () => {
     const html = renderToStaticMarkup(<SlashCommandMenu h={handle({ open: false })} count={0} />);
     expect(html).toContain("opacity:0.4");
-    expect(html).toContain("尚未上报可用指令");
+    expect(html).toContain("尚未上报可用技能");
   });
 });

@@ -5,7 +5,7 @@
 // 核心刻意不触 React(副作用经 CloudCoreIO 注入),故无需 DOM/renderHook。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { b64decode } from "./codec";
-import { cloudInitialSource, createCloudTaskCore, type CloudCoreIO } from "./useCloudTask";
+import { cloudInitialSource, cloudStatusHealthy, createCloudTaskCore, type CloudCoreIO } from "./useCloudTask";
 import type { CloudTaskDetail } from "./types";
 
 // ---- 假 Tauri 壳:cloud_ws_open 按脚本决定成败;事件按 pipe 精确投递 ----
@@ -131,6 +131,20 @@ describe("云端任务首屏数据源", () => {
     expect(cloudInitialSource("finished")).toBe("rounds");
     expect(cloudInitialSource("error")).toBe("rounds");
     expect(cloudInitialSource("pending")).toBe("pending");
+  });
+});
+
+describe("连接状态行健康判定(composer 健康时隐藏指示)", () => {
+  it("健康文案命中白名单,过渡/异常态判为需外显", () => {
+    expect(cloudStatusHealthy("已连接云端")).toBe(true);
+    expect(cloudStatusHealthy("已就绪,可继续对话")).toBe(true);
+    expect(cloudStatusHealthy("本轮已结束,可继续对话")).toBe(true);
+    expect(cloudStatusHealthy("已结束,只读回放")).toBe(true);
+
+    expect(cloudStatusHealthy("加载中…")).toBe(false);
+    expect(cloudStatusHealthy("连接云端…")).toBe(false);
+    expect(cloudStatusHealthy("⚠ 云端连接断开(x),2 秒后自动重连…")).toBe(false);
+    expect(cloudStatusHealthy("消息未送达,已重新排队")).toBe(false);
   });
 });
 
@@ -276,6 +290,40 @@ describe("云端投递状态机:排队与自动投递", () => {
     await vi.advanceTimersByTimeAsync(150);
     expect(out.queued).toBe("");
     expect(sentUserInputs()).toEqual(["唤醒后见"]);
+  });
+
+  it("唤醒序列 hibernated → offline → online(后端误判中间态):仍视为唤醒完成并投递", async () => {
+    // 后端会把唤醒中的 VM 短暂误判为 offline:offline 帧把 hibernated 镜像
+    // 清掉,若只认镜像,随后的 online 不触发唤醒完成 → 队列永久卡死
+    opens = [false, false, false, true];
+    const { core, out } = makeCore();
+    core.handleInfo({ id: "task-1", virtualmachine: { status: "hibernated" } } as CloudTaskDetail);
+    core.noteHibernated(true);
+    core.send("穿过误判");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2100);
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(out.queued).toBe("穿过误判"); // 连败暂停,压在队里
+    // 误判中间态:详情帧闪过 offline,hook 每帧镜像随之清掉 hibernated
+    //(发送失败路径自身会 bump epoch,故用相对计数)
+    const bumpsBefore = out.epochBumps;
+    core.handleInfo({ id: "task-1", virtualmachine: { status: "offline" } } as CloudTaskDetail);
+    core.noteHibernated(false);
+    expect(out.epochBumps).toBe(bumpsBefore);
+    // 真正唤醒完成:按"上次非 online → 本次 online"转变触发
+    core.handleInfo({ id: "task-1", virtualmachine: { status: "online" } } as CloudTaskDetail);
+    expect(out.epochBumps).toBe(bumpsBefore + 1);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(out.queued).toBe("");
+    expect(sentUserInputs()).toEqual(["穿过误判"]);
+  });
+
+  it("首帧即 online 与 online → online:不触发 attach 重建(不随轮询抖)", () => {
+    const { core, out } = makeCore();
+    // 健康任务首帧就是 online:误 bump 会让 attach 拆建、整轮重放
+    core.handleInfo({ id: "task-1", virtualmachine: { status: "online" } } as CloudTaskDetail);
+    core.handleInfo({ id: "task-1", virtualmachine: { status: "online" } } as CloudTaskDetail);
+    expect(out.epochBumps).toBe(0);
   });
 
   it("任务结束还压着队列 → 外显提醒并清空,不静默丢", async () => {

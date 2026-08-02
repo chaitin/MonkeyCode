@@ -22,6 +22,7 @@ import {
   mcTaskOptions,
   mcTaskRounds,
   mcTaskStop,
+  WAKE_CALL_TIMEOUT_MS,
   type CloudConn,
   type CloudUserInput,
 } from "./cloudapi";
@@ -44,6 +45,12 @@ export function cloudInitialSource(status: string): "attach" | "rounds" | "pendi
   if (status === "finished" || status === "error") return "rounds";
   return "pending";
 }
+
+/** 连接状态行的健康文案白名单:健康时 composer 不渲染状态指示(混在
+ * 工具栏里是常驻噪音),异常/过渡态才外显。用白名单而非异常名单:
+ * 未来新增的异常文案默认可见,不会被静默吞掉。 */
+const HEALTHY_STATUS = new Set(["已连接云端", "已就绪,可继续对话", "本轮已结束,可继续对话", "已结束,只读回放"]);
+export const cloudStatusHealthy = (status: string) => HEALTHY_STATUS.has(status);
 
 // ==================== 状态机核心(非 React,可单测) ====================
 
@@ -101,6 +108,7 @@ export function createCloudTaskCore(
   let taskStatus = "pending"; // 详情状态的渲染期镜像(原 statusRef)
   // VM 状态:云环境空闲会休眠(hibernated);休眠期间发送入队,唤醒后自动投递
   let hibernated = false;
+  let lastVmStatus: string | null = null; // 上次详情帧的 VM 状态(null=尚未观测)
   // attach 已收束/放弃(onIdle):不再自动重建;发消息(mode=new)或唤醒重新武装
   let attachIdle = false;
   let sendFails = 0; // 连续投递失败计数(超限暂停自动重试)
@@ -317,17 +325,24 @@ export function createCloudTaskCore(
       hibernated = h;
     },
 
-    /** 详情刷新回调:VM 唤醒完成时,休眠期间压着的排队消息可以投递了;
-     * attach 也重新武装(唤醒 = 新的活动窗口,给一次重建机会——按转变
-     * 触发,不随轮询抖) */
+    /** 详情刷新回调:VM 回到 online 视为唤醒完成,休眠期间压着的排队消息
+     * 可以投递了;attach 也重新武装(唤醒 = 新的活动窗口)。按"上次非
+     * online → 本次 online"的转变检测而非只看 hibernated 镜像——后端会把
+     * 唤醒中的 VM 短暂误判为 offline(hibernated → offline → online),
+     * offline 帧会清掉镜像,只看镜像会让排队消息永久卡死、attach 不重建。
+     * lastVmStatus !== null 守卫:首帧即 online 的健康任务不触发(否则
+     * attach 拆建一次,服务端把当前轮整轮重放);online → online 不随轮询抖。 */
     handleInfo(info: CloudTaskDetail) {
-      if (info.virtualmachine?.status === "online" && hibernated) {
-        hibernated = false;
-        attachIdle = false;
-        sendFails = 0;
-        io.bumpAttachEpoch();
-        setTimeout(trySendQueued, 100);
-      }
+      const vm = info.virtualmachine?.status ?? "";
+      const cameOnline = vm === "online" && lastVmStatus !== null && lastVmStatus !== "online";
+      const wake = vm === "online" && (cameOnline || hibernated);
+      lastVmStatus = vm;
+      if (!wake) return;
+      hibernated = false;
+      attachIdle = false;
+      sendFails = 0;
+      io.bumpAttachEpoch();
+      setTimeout(trySendQueued, 100);
     },
 
     /** attach effect 主体:守卫通过则建连并返回 true(effect 据此注册 cleanup)。 */
@@ -356,6 +371,7 @@ export function createCloudTaskCore(
       live = [];
       attachIdle = false;
       sendFails = 0;
+      lastVmStatus = null;
     },
 
     /** REST 播种历史(进入任务时已完成轮次) */
@@ -573,6 +589,8 @@ export function useCloudTask(
 
   // 状态轮询:pending/休眠唤醒中 3s(盯状态翻转),processing 10s(刷新元数据)
   const vmWaking = taskStatus === "processing" && vmStatus === "hibernated";
+  const vmWakingRef = useRef(false);
+  vmWakingRef.current = vmWaking; // 渲染期镜像(控制流回调长期持有,不能闭包渲染值)
   useEffect(() => {
     if (ended) return;
     const fast = taskStatus === "pending" || vmWaking;
@@ -587,8 +605,15 @@ export function useCloudTask(
   useEffect(() => {
     if (ended || !vmId) return;
     // 控制流放弃自动重连(连不上/反复断开)时外显;恢复(ok=true)清掉。
-    // 之后任何经它的操作(切模型/端口列表)会触发懒重连
-    const ctrl = connectCloudControl(id, { onStatus: (text, ok) => setErr(ok ? "" : text) });
+    // 之后任何经它的操作(切模型/端口列表)会触发懒重连。
+    // 唤醒期间拨号必然连败,"环境离线"与标题栏"环境唤醒中"同屏矛盾:压掉,
+    // 唤醒完成后由下方 effect 复活通道
+    const ctrl = connectCloudControl(id, {
+      onStatus: (text, ok) => {
+        if (ok) setErr("");
+        else if (!vmWakingRef.current) setErr(text);
+      },
+    });
     ctrlRef.current = ctrl;
     // 连接触发唤醒后,尽快让轮询看到状态翻转
     const t = setTimeout(() => void refreshInfo(), 1500);
@@ -598,6 +623,18 @@ export function useCloudTask(
       ctrlRef.current = null;
     };
   }, [id, ended, vmId, refreshInfo]);
+
+  // 唤醒完成:控制通道若在唤醒期间连败放弃,用一次轻量 call 触发懒重连
+  // (cloudapi 在 call() 入口武装 offline 懒重连),恢复保活;失败静默。
+  // 刻意不把 vmWaking 挂进上方 ctrl effect 依赖:拆建连接会 reject 唤醒中
+  // 在途的 switch_model 等长等待 call
+  const prevWakingRef = useRef(false);
+  useEffect(() => {
+    if (prevWakingRef.current && !vmWaking && ctrlRef.current) {
+      void ctrlRef.current.call("port_forward_list", {}, { timeoutMs: WAKE_CALL_TIMEOUT_MS }).catch(() => undefined);
+    }
+    prevWakingRef.current = vmWaking;
+  }, [vmWaking]);
 
   // 运行中:WS attach 跟看(内核代理带 monkeycode 会话拨云端)。
   // 依赖刻意不含 vmWaking:vmStatus 由轮询刷新,抖动会反复拆建连接,
@@ -723,6 +760,8 @@ export function useCloudTask(
   };
   const switchModel = async (modelId: string) => {
     if (switching || modelId === meta?.model?.id) return;
+    // locked(超会员档)条目只展示不可切:菜单层已禁选,这里兜底防旁路
+    if (cloudGroups?.some((g) => g.models.some((m) => m.id === modelId && m.locked))) return;
     setSwitching(true);
     setErr("");
     // 优先复用常驻控制连接;不在(结束态等)才临时建一条
@@ -734,7 +773,7 @@ export function useCloudTask(
       await ctrl.call(
         "switch_model",
         { model_id: modelId, load_session: true },
-        { timeoutMs: 90_000, timeoutMsg: "操作超时——云端环境可能在唤醒中,切换可能已生效" },
+        { timeoutMs: WAKE_CALL_TIMEOUT_MS, timeoutMsg: "操作超时——云端环境可能在唤醒中,切换可能已生效" },
       );
     } catch (e) {
       setErr("切换模型失败: " + (e instanceof Error ? e.message : String(e)));
@@ -753,7 +792,8 @@ export function useCloudTask(
     const shared = ctrlRef.current;
     const ctrl = shared ?? connectCloudControl(id);
     ctrl
-      .call<{ ports?: PortInfo[] }>("port_forward_list")
+      // 唤醒路径同样给足余量:默认 15s 在唤醒期间必超时,菜单会误显"没有开放的端口"
+      .call<{ ports?: PortInfo[] }>("port_forward_list", {}, { timeoutMs: WAKE_CALL_TIMEOUT_MS, timeoutMsg: "云端环境可能在唤醒中,端口检测超时" })
       .then((r) => setPorts(r.ports ?? []))
       .catch(() => setPorts([]))
       .finally(() => {

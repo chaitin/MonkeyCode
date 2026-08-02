@@ -33,4 +33,22 @@ describe("CloudModelGroups(newtask 建任务 / cloudtask 切换共用)", () => {
     expect(html).toContain('aria-current="true"');
     expect(html).toContain("内部 GPT");
   });
+
+  it("locked(超会员档)条目灰态禁选,title 说明解锁路径", () => {
+    const lockedGroups: McCloudModelGroup[] = [
+      {
+        key: "monkeycode-ultra",
+        label: "旗舰模型",
+        badge: "旗舰会员免费",
+        models: [{ id: "u1", model: "monkeycode-ultra/gemini", locked: true }],
+      },
+    ];
+    const html = renderToStaticMarkup(<CloudModelGroups groups={lockedGroups} onPick={vi.fn()} />);
+
+    expect(html).toContain("旗舰模型");
+    expect(html).toContain("disabled");
+    expect(html).toContain("opacity:0.55");
+    expect(html).toContain('class="menu-item"'); // 不带 hv,悬停无高亮
+    expect(html).toContain("当前会员档不可用,升级会员后可用");
+  });
 });

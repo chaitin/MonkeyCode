@@ -11,6 +11,8 @@ export interface McCloudModel {
   is_default?: boolean;
   is_hidden?: boolean;
   owner?: { type?: "private" | "public" | "team"; id?: string; name?: string };
+  /** 超会员档:展示但禁选(升级解锁);usableCloudModels 派生,非服务端字段 */
+  locked?: boolean;
 }
 
 export interface McCloudModelGroup {
@@ -176,10 +178,12 @@ const byWeightThenName = (a: McCloudModel, b: McCloudModel) => {
   return w !== 0 ? w : (a.model || "").localeCompare(b.model || "");
 };
 
-/** 可选模型:有 id、非裸内置占位项、未隐藏、会员档允许。 */
+/** 可选模型:有 id、非裸内置占位项、未隐藏。超会员档不再剔除,打 locked
+ * 灰态展示(对齐本地选择器与 Web 端 canUseModelBySubscription 的做法)。 */
 export function usableCloudModels(models: McCloudModel[], plan?: string): McCloudModel[] {
   return models
-    .filter((m) => m.id && m.model && !m.is_hidden && !BUILTIN_META.has(m.model.toLowerCase()) && planAllowsModel(m, plan))
+    .filter((m) => m.id && m.model && !m.is_hidden && !BUILTIN_META.has(m.model.toLowerCase()))
+    .map((m) => (planAllowsModel(m, plan) ? m : { ...m, locked: true }))
     .sort(byWeightThenName);
 }
 
@@ -214,9 +218,10 @@ export function groupCloudModels(models: McCloudModel[], plan?: string): McCloud
   ].filter((group) => group.models.length > 0);
 }
 
-/** 默认模型:会员档匹配的内置档 weight 最高 → 公共模型 → 任意可用。 */
+/** 默认模型:会员档匹配的内置档 weight 最高 → 公共模型 → 任意可用。
+ * locked 条目只展示不参与默认值(宁空不默认选禁用项)。 */
 export function pickDefaultCloudModel(models: McCloudModel[], plan?: string): string {
-  const pool = usableCloudModels(models, plan);
+  const pool = usableCloudModels(models, plan).filter((m) => !m.locked);
   const planBuiltin = plan === "pro" ? "monkeycode-pro" : plan === "flagship" || plan === "ultra" ? "monkeycode-ultra" : "monkeycode-basic";
   const planModel = pool
     .filter((m) => builtinName(m.model) === planBuiltin)
