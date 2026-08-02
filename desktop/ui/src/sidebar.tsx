@@ -24,7 +24,7 @@ import logoUrl from "./logo.png";
 import { isProjectArchived, projectArchiveKey } from "./projectArchive";
 import { applyProjectOrder, persistProjectOrder, readProjectOrder, reorderProjects } from "./projectOrder";
 import { MacBrandBand, MacWindowControls } from "./titlebar";
-import type { CloudProject, CloudTask, EngineStatus, McConnectionState, SessionMeta } from "./types";
+import type { CloudProject, CloudProjectTasks, CloudTask, EngineStatus, McConnectionState, SessionMeta } from "./types";
 
 export interface ProjectGroup {
   dir: string;
@@ -666,6 +666,8 @@ export function Sidebar({
   cloudTasks,
   cloudHistory = [],
   cloudProjects = [],
+  cloudProjectTasks = {},
+  onLoadCloudProjectTasks,
   activeCloudId,
   cloudSyncing,
   cloudError,
@@ -704,6 +706,9 @@ export function Sidebar({
   cloudTasks: CloudTask[];
   cloudHistory?: CloudTask[];
   cloudProjects?: CloudProject[];
+  /** 项目 id → 展开时按需拉到的任务;缺省项 = 还没拉过 */
+  cloudProjectTasks?: Record<string, CloudProjectTasks>;
+  onLoadCloudProjectTasks?: (project: CloudProject) => void;
   activeCloudId?: string | null;
   cloudSyncing?: boolean;
   cloudError?: string;
@@ -734,6 +739,9 @@ export function Sidebar({
   const [chatArchiveOpen, setChatArchiveOpen] = useState(() => localStorage.getItem("mc.archivedOpen") === "1");
   const [projectArchiveOpen, setProjectArchiveOpen] = useState(() => localStorage.getItem("mc.projectArchiveOpen") === "1");
   const [cloudHistoryOpen, setCloudHistoryOpen] = useState(() => localStorage.getItem("mc.cloudHistoryOpen") === "1");
+  // 没有运行中任务的云端项目默认收起(展开也只有一行占位),这里记的是用户
+  // 显式点开的那些。不持久化:开着的项目每次启动都要重新拉一遍任务,不值当
+  const [openedCloudProjects, setOpenedCloudProjects] = useState<Set<string>>(new Set());
   const [projectOrder, setProjectOrder] = useState<string[]>(readProjectOrder);
   // 冷启动宽限:starting/attempt=0 持续超过 3s 才亮引擎卡——快速启动不闪卡,
   // WSL 预热/慢盘的长启动期不再零反馈(横幅对这段刻意留白,见 engineBanner.ts)
@@ -779,6 +787,16 @@ export function Sidebar({
       if (next.has(dir)) next.delete(dir);
       else next.add(dir);
       storeSet("mc.collapsedGroups", next);
+      return next;
+    });
+  };
+  // 没有在跑任务的云端项目:默认收起,这里记显式点开的(展开后由上面的
+  // 按需拉取补内容)。与 collapsed 分开存,免得两套默认态互相打架
+  const toggleCloudProject = (key: string) => {
+    setOpenedCloudProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -922,14 +940,37 @@ export function Sidebar({
   }
   const filteredCloudTasks = cloudTasks.filter(matchesCloud);
   const filteredCloudHistory = cloudHistory.filter(matchesCloud);
-  const filteredCloudProjects: { project: CloudProject; tasks: CloudTask[] }[] = [];
+  // 项目列表接口每个项目只捎带 ≤3 条**运行中**的任务(后端按 pending/processing
+  // 过滤),历史任务一条都没有——所以"项目下没任务"多半只是"此刻没有在跑的"。
+  // 展开时按 project_id 单拉一次(loaded),拉到就以它为准。
+  const filteredCloudProjects: { project: CloudProject; tasks: CloudTask[]; key: string; open: boolean; state?: CloudProjectTasks }[] = [];
   for (const project of cloudProjects) {
     const projectMatch = !norm || `${project.name ?? ""} ${project.full_name ?? ""} ${project.repo_url ?? ""}`.toLocaleLowerCase().includes(norm);
-    const tasks = [...(project.tasks ?? [])]
+    const state = project.id ? cloudProjectTasks[project.id] : undefined;
+    const running = project.tasks ?? [];
+    const tasks = [...(state?.tasks ?? running)]
       .sort((a, b) => Number(b.created_at ?? 0) - Number(a.created_at ?? 0))
       .filter((task) => projectMatch || matchesCloud(task));
-    if (projectMatch || tasks.length > 0) filteredCloudProjects.push({ project, tasks });
+    if (!projectMatch && tasks.length === 0) continue;
+    const key = `cloud:${project.id || project.repo_url || project.name || filteredCloudProjects.length}`;
+    // 有在跑的任务就默认展开(和以前一样,collapsed 记显式收起的);其余默认
+    // 收起,openedCloudProjects 记显式点开的——一屏项目全摊开只有噪音
+    const open = !!norm || (running.length > 0 ? !collapsed.has(key) : openedCloudProjects.has(key));
+    filteredCloudProjects.push({ project, tasks, key, open, state });
   }
+  // 展开着的项目按需补拉任务(App 侧缓存去重,拉过/在途的不重发)。搜索期间
+  // 全部临时展开,那时不拉:一次搜索不该顺带打一串请求。
+  const pendingTaskLoads = norm || space !== "cloud"
+    ? []
+    : filteredCloudProjects.filter((e) => e.open && e.project.id && !e.state).map((e) => e.project.id as string);
+  const pendingTaskLoadKey = pendingTaskLoads.join(",");
+  useEffect(() => {
+    if (!onLoadCloudProjectTasks || !pendingTaskLoadKey) return;
+    for (const id of pendingTaskLoadKey.split(",")) {
+      const project = cloudProjects.find((p) => p.id === id);
+      if (project) onLoadCloudProjectTasks(project);
+    }
+  }, [pendingTaskLoadKey]);
 
   const sessionRow = (meta: SessionMeta, archived: boolean, depth = 0) => (
     <SessionRow
@@ -1069,22 +1110,26 @@ export function Sidebar({
         {filteredCloudProjects.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 1, borderTop: "1px solid var(--line2)", marginTop: 9, paddingTop: 8 }}>
             <span style={{ padding: "3px 9px 4px", color: "var(--t5)", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.35 }}>项目</span>
-            {filteredCloudProjects.map(({ project, tasks }, index) => {
-              const key = `cloud:${project.id || project.repo_url || project.name || index}`;
+            {filteredCloudProjects.map(({ project, tasks, key, open, state }) => {
               const name = project.name || project.full_name || "未命名项目";
+              const running = (project.tasks ?? []).length;
               return (
                 <ProjectGroup
                   key={key}
                   name={name}
-                  detail={`${project.repo_url || project.full_name || "云端项目"}\n${tasks.length} 个任务`}
+                  detail={`${project.repo_url || project.full_name || "云端项目"}\n${state?.tasks ? `${tasks.length} 个任务` : running ? `${running} 个进行中` : "展开查看任务"}`}
                   project
-                  expanded={!!norm || !collapsed.has(key)}
-                  onToggle={() => toggleGroup(key)}
+                  expanded={open}
+                  onToggle={() => (running > 0 ? toggleGroup(key) : toggleCloudProject(key))}
                   onNewTask={() => onNewCloudTask(project)}
                 >
                   {tasks.length > 0
                     ? tasks.map((task) => cloudTaskRow(task, 1))
-                    : <span style={{ padding: "3px 12px 5px 38px", color: "var(--t6)", fontSize: 10.5 }}>暂无任务</span>}
+                    : (
+                      <span style={{ padding: "3px 12px 5px 38px", color: state?.error ? "var(--warn)" : "var(--t6)", fontSize: 10.5 }}>
+                        {state?.loading || (!state && running === 0) ? "加载中…" : state?.error ? `任务加载失败：${state.error}` : "暂无任务"}
+                      </span>
+                    )}
                 </ProjectGroup>
               );
             })}
