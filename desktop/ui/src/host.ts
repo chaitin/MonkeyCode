@@ -108,6 +108,20 @@ export async function saveHostConfig(config: HostConfig): Promise<void> {
   await invoke("save_config", { config });
 }
 
+/** 事件提示音开关(桌宠页那五种音效的总闸)。真值在壳的 config.json,与
+ * 托盘「任务提示音」同源;非壳环境(浏览器模式没有桌宠也就没有音效)返回
+ * 开,设置页不渲染这一项。 */
+export async function getSoundEnabled(): Promise<boolean> {
+  if (!tauri()?.core?.invoke) return true;
+  return invoke<boolean>("sound_enabled");
+}
+
+/** 切换提示音:与主题一样点一下即生效并落盘,不进保存条、不重启引擎。
+ * 壳会广播 sound-enabled 让桌宠页与托盘勾选态一起跟上。 */
+export async function setSoundEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_sound_enabled", { enabled });
+}
+
 /** 在文件管理器中定位随桌面包分发的浏览器扩展目录(用户在扩展管理页
  * 「加载已解压的扩展程序」时选它)。返回目录路径;非壳环境返回 null。 */
 export async function openExtensionDir(): Promise<string | null> {

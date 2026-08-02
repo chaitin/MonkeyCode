@@ -68,6 +68,15 @@ struct UiIntent(Mutex<Option<String>>);
 /// 桌宠开关的运行时缓存(真值落 config.json)。
 struct PetEnabled(AtomicBool);
 
+/// 事件提示音开关的运行时缓存(真值落 config.json)。音效由桌宠页 pet.html
+/// 播放,开关由设置页与托盘两处切换,故运行时真值收在壳里,变更经
+/// `sound-enabled` 事件广播给两个 webview。
+struct SoundEnabled(AtomicBool);
+
+/// 托盘的提示音勾选项。设置页切换时要把托盘勾选态改过来,否则两处显示会打架;
+/// 托盘创建失败(无托盘宿主)时为 None,设置页照常工作。
+struct TraySoundItem(Mutex<Option<CheckMenuItem<tauri::Wry>>>);
+
 /// 桌宠位置暂存:Moved 事件在拖动中高频触发,不能逐次写盘;
 /// 退出与托盘开关切换时经 persist_pet_prefs 落盘。
 struct PetPos(Mutex<Option<(i32, i32)>>);
@@ -1081,6 +1090,34 @@ fn persist_pet_prefs(app: &AppHandle) {
     }
 }
 
+/// 提示音开关当前值(桌宠页启动时读一次;设置页渲染开关用)。
+#[tauri::command]
+fn sound_enabled(app: AppHandle) -> bool {
+    app.state::<SoundEnabled>().0.load(Ordering::Relaxed)
+}
+
+/// 设置页切换提示音。与主题一样点一下即生效:不进保存条、不重启引擎。
+#[tauri::command]
+fn set_sound_enabled(app: AppHandle, enabled: bool) {
+    apply_sound_enabled(&app, enabled);
+}
+
+/// 提示音开关的唯一落点(设置页命令与托盘勾选项共用):更新运行时真值 →
+/// 同步托盘勾选态 → 广播给桌宠页与设置页 → 落盘。
+///
+/// 广播先于落盘:静音是用户此刻就要的效果,写盘失败(磁盘满/权限)不该让
+/// 本次静音也失效——下次启动回到旧值即可,而不是"点了没反应"。
+fn apply_sound_enabled(app: &AppHandle, enabled: bool) {
+    app.state::<SoundEnabled>().0.store(enabled, Ordering::Relaxed);
+    if let Some(item) = app.state::<TraySoundItem>().0.lock_ok().as_ref() {
+        let _ = item.set_checked(enabled);
+    }
+    let _ = app.emit("sound-enabled", enabled);
+    if let Err(e) = config::update_config_json(app, |cfg| cfg.sound_enabled = enabled) {
+        eprintln!("[desktop] 提示音开关保存失败: {e}");
+    }
+}
+
 fn main() {
     eprintln!("[desktop] main 进入");
     // Linux:桌宠依赖 set_position / always_on_top / skip_taskbar,这些在
@@ -1108,6 +1145,8 @@ fn main() {
         .manage(TrayReady(AtomicBool::new(true)))
         .manage(UiIntent(Mutex::new(None)))
         .manage(PetEnabled(AtomicBool::new(true)))
+        .manage(SoundEnabled(AtomicBool::new(true)))
+        .manage(TraySoundItem(Mutex::new(None)))
         .manage(PetPos(Mutex::new(None)))
         .manage(EngineApply(Mutex::new(())))
         .manage(BrowserMcpRefresh(AtomicU64::new(0)))
@@ -1122,6 +1161,8 @@ fn main() {
             show_main,
             open_devtools,
             pet_native_render,
+            sound_enabled,
+            set_sound_enabled,
             update_check,
             update_install,
             open_extension_dir,
@@ -1203,12 +1244,15 @@ fn main() {
             app.state::<PetEnabled>()
                 .0
                 .store(cfg.pet_enabled, Ordering::Relaxed);
+            app.state::<SoundEnabled>()
+                .0
+                .store(cfg.sound_enabled, Ordering::Relaxed);
             *app.state::<PetPos>()
                 .0
                 .lock_ok() = cfg.pet_pos;
 
             // 托盘失败只降级(无托盘宿主的桌面环境),不阻塞
-            if let Err(e) = setup_tray(app.handle(), cfg.pet_enabled) {
+            if let Err(e) = setup_tray(app.handle(), cfg.pet_enabled, cfg.sound_enabled) {
                 eprintln!("[desktop] 托盘创建失败(关窗将直接退出): {e}");
                 app.state::<TrayReady>().0.store(false, Ordering::Relaxed);
             }
@@ -1335,7 +1379,7 @@ fn main() {
 }
 
 /// 创建托盘:菜单(显示窗口/设置/退出)+ 左键单击恢复窗口。
-fn setup_tray(app: &AppHandle, pet_enabled: bool) -> tauri::Result<()> {
+fn setup_tray(app: &AppHandle, pet_enabled: bool, sound_enabled: bool) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
     let pet = CheckMenuItem::with_id(
@@ -1346,9 +1390,19 @@ fn setup_tray(app: &AppHandle, pet_enabled: bool) -> tauri::Result<()> {
         pet_enabled,
         None::<&str>,
     )?;
+    let sound = CheckMenuItem::with_id(
+        app,
+        "toggle-sound",
+        "任务提示音",
+        true,
+        sound_enabled,
+        None::<&str>,
+    )?;
+    // 设置页切换时要回改这个勾选项(见 apply_sound_enabled)
+    *app.state::<TraySoundItem>().0.lock_ok() = Some(sound.clone());
     let update = MenuItem::with_id(app, "check-update", "检查更新", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出 MonkeyCode", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &settings, &pet, &update, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &settings, &pet, &sound, &update, &quit])?;
     let tray = TrayIconBuilder::new()
         .icon(tray_icon())
         .tooltip("MonkeyCode")
@@ -1375,6 +1429,12 @@ fn setup_tray(app: &AppHandle, pet_enabled: bool) -> tauri::Result<()> {
                     .store(enabled, Ordering::Relaxed);
                 persist_pet_prefs(app);
                 set_pet_visible(app, enabled);
+            }
+            // 提示音开关:CheckMenuItem 已自翻勾选态,apply 里的 set_checked 是
+            // 幂等回写(设置页那条路径才真正需要它)
+            "toggle-sound" => {
+                let enabled = !app.state::<SoundEnabled>().0.load(Ordering::Relaxed);
+                apply_sound_enabled(app, enabled);
             }
             "check-update" => {
                 let app = app.clone();

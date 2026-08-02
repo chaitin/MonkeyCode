@@ -127,8 +127,12 @@ folded.jsonl",TS 钉住 `reduceBatch(raw) ≡ reduceBatch(folded)`
 ~/.ohmyagent;WSL 模式下引擎数据仍留宿主侧,该路径经 wslpath 翻成 guest
 形态注入;扩展完成配对后 mcp.json 才注入 mc-browser 内置条目,URL/Bearer
 进程级新发,WSL 下另要求 networking-mode=mirrored;首次配对/重置配对在
-所有前台/后台任务空闲后自动重启 Agent 刷新工具集)。壳自有偏好(桌宠)走
-原子 read-modify-write,只写权威、不触发物化。
+所有前台/后台任务空闲后自动重启 Agent 刷新工具集)。壳自有偏好(桌宠、
+提示音)走原子 read-modify-write,只写权威、不触发物化——它们不在设置页
+表单里,表单保存必须从磁盘合并这几个字段,否则被 serde 默认值打回。
+提示音 `sound_enabled` 有设置页与托盘两个入口,壳持运行时真值并经
+`sound-enabled` 事件广播,音效本身由桌宠页 pet.html 播放(桌宠隐藏后
+webview 仍在跑,所以"关桌宠"不等于"静音",两个开关独立)。
 
 模型物化按**别名**作键,每条恒写 8 键:`type/model/base_url/api_key/
 context_window/supports_images/max_output/thinking`。桌面缺省显式压过
