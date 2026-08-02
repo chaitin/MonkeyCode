@@ -272,7 +272,8 @@ export function CloudTaskView({
         </HeaderMenu>
       </ViewHeader>
 
-      {/* ==== 对话流:列宽/内距/滚动条预留与 ChatView 一致 ==== */}
+      {/* ==== 对话流:列宽公式与滚动条预留同 ChatView;内距 36px 是本视图自己的
+              尺度,与下方 composer 对齐即可(ChatView 那边是 30px) ==== */}
       <div
         ref={h.scrollRef}
         onWheel={h.onWheel}
