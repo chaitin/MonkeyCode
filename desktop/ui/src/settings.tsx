@@ -4,7 +4,7 @@
 // 配置所有权在壳(写盘 0600/env 注入/重启内核),本视图只负责渲染与编辑,
 // 经 Tauri IPC get_config/save_config 读写;保存成功后壳会重启内核并把
 // 整个页面导航到新内核 URL(本组件随之卸载)。
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { BaizhiCard } from "./baizhi";
 import { baizhiStatus, baizhiSync } from "./baizhiapi";
 import {
@@ -26,11 +26,12 @@ import {
 } from "./host";
 import { engineCaps } from "./session";
 import { MONO } from "./components";
-import { IconBack, IconGear, IconGlobe, IconMonitor, IconPlus, IconSpark } from "./icons";
+import { IconBack, IconCalendar, IconCheck, IconCopy, IconCrown, IconGear, IconGlobe, IconMonitor, IconPlus, IconSpark } from "./icons";
+import { copyText } from "./markdown";
 import { BaizhiLogo } from "./baizhi";
 import logoUrl from "./logo.png";
 import { Field, Section, input, select, whiteBtn } from "./settings-ui";
-import { mcModelsRevoke, mcModelsSync } from "./cloudapi";
+import { mcCheckin, mcModelsRevoke, mcModelsSync, mcUsage as fetchMcUsage } from "./cloudapi";
 import { memberCategory, sameModelName, stripSourceSuffix, stripTierPrefix } from "./modelMenu";
 import {
   dedupeModelsByName,
@@ -60,9 +61,11 @@ import {
   type EngineCaps,
   type HostModel,
   type McConnectionState,
+  type McUsage,
   type SyncApplyResult,
   type UpdateStatus,
 } from "./types";
+import { CHECKIN_REWARD, INVITE_REWARD, usageView, type UsageAvatar } from "./mcusage";
 
 // ---- 关于卡(版本 + 检查更新;仅桌面壳) ----
 
@@ -368,11 +371,209 @@ function mcIdentity(s: McConnectionState): string {
   return u?.name || u?.username || u?.email || u?.id || "MonkeyCode 用户";
 }
 
+/** 邀请人头像堆叠(缺图/加载失败退回首字母)。 */
+function InviteeStack({ avatars }: { avatars: UsageAvatar[] }) {
+  const [broken, setBroken] = useState<Record<string, boolean>>({});
+  if (avatars.length === 0) return null;
+  return (
+    <span style={{ display: "flex", flex: "none" }}>
+      {avatars.map((a, i) => (
+        <span
+          key={a.key}
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 99,
+            marginLeft: i ? -7 : 0,
+            border: "1.5px solid var(--card)",
+            background: "var(--hov2)",
+            color: "var(--t4)",
+            fontSize: 9.5,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          {a.url && !broken[a.key] ? (
+            <img
+              src={a.url}
+              alt=""
+              draggable={false}
+              onError={() => setBroken((cur) => ({ ...cur, [a.key]: true }))}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            a.initial
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** 签到按钮三态:已签到=低调 chip,可签到=主按钮,进行中=禁用。
+ * checkedIn 为 null(没取到签到态)时调用方整个不渲染本组件。 */
+function CheckinButton({ checkedIn, busy, onClick }: { checkedIn: boolean; busy: boolean; onClick: () => void }) {
+  if (checkedIn) {
+    return (
+      <span style={{ ...whiteBtn, flex: "none", cursor: "default", boxShadow: "none", background: "var(--hov)", borderColor: "transparent", color: "var(--t4)" }}>
+        <IconCheck size={10} color="var(--ok)" strokeWidth={1.8} />
+        今日已签到
+      </span>
+    );
+  }
+  return (
+    <button
+      className="hv-acc"
+      disabled={busy}
+      onClick={onClick}
+      style={{
+        ...whiteBtn,
+        flex: "none",
+        background: "var(--acc)",
+        borderColor: "var(--acc)",
+        color: "var(--onAcc)",
+        opacity: busy ? 0.7 : 1,
+        cursor: busy ? "default" : "pointer",
+      }}
+    >
+      {busy ? (
+        <span style={{ width: 11, height: 11, border: "1.5px solid var(--onAcc)", borderTopColor: "transparent", borderRadius: "50%", animation: "mcspin .9s linear infinite", display: "inline-block" }} />
+      ) : (
+        <IconCalendar size={12} color="var(--onAcc)" />
+      )}
+      {busy ? "签到中…" : `签到 +${CHECKIN_REWARD}`}
+    </button>
+  );
+}
+
+/** 账号权益块(对齐移动端「我的」页:会员等级 + 今日额度 + 积分 + 签到 + 邀请)。
+ * 只在已关联时渲染;一路数据都拿不到就整块不出现——空进度条比不显示
+ * 更容易被读成"额度为 0"。 */
+export function McUsagePanel({
+  usage,
+  userId,
+  onCheckin,
+}: {
+  usage: McUsage | null;
+  /** 云端账号 id(拼邀请链接);缺失时不给邀请入口 */
+  userId?: string;
+  /** 签到:null=成功,string=错误文案。成功后宿主会重拉权益刷新余额 */
+  onCheckin: () => Promise<string | null>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+  }, []);
+
+  const view = usageView(usage, userId);
+  if (!view) return null;
+  const q = view.quota;
+  // 余额见底才转警示色:额度是每日重置的,平时用掉大半属正常
+  const low = !!q && q.total > 0 && q.ratio <= 0.1;
+  const invite = view.invite;
+
+  const doCheckin = async () => {
+    if (busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      // 重复签到/验证码失败等由服务端文案外显,不吞
+      setErr((await onCheckin().catch((e) => (e instanceof Error ? e.message : String(e)))) ?? "");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyInvite = () => {
+    if (!invite?.link) return;
+    copyText(invite.link);
+    setCopied(true);
+    if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(() => setCopied(false), 1800);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: 11, borderTop: "1px solid var(--line2)" }}>
+      {/* 会员等级 + 有效期 · 签到(主行动) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ flex: "none", display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 99, fontSize: 11, fontWeight: 700, color: "var(--accTx)", background: "var(--accBg)" }}>
+          <IconCrown size={12} color="var(--accTx)" />
+          {view.planText}
+        </span>
+        {view.expiryText && <span style={{ fontSize: 11.5, color: "var(--t5)" }}>{view.expiryText}</span>}
+        <span style={{ flex: 1 }} />
+        {view.checkedIn !== null && <CheckinButton checkedIn={view.checkedIn} busy={busy} onClick={() => void doCheckin()} />}
+      </div>
+
+      {/* 今日额度 */}
+      {q && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11.5, color: "var(--t4)", fontWeight: 600 }}>今日额度 · 免费模型</span>
+            <span style={{ flex: 1 }} />
+            <span style={{ fontSize: 11.5, fontFamily: MONO, color: low ? "var(--warn)" : "var(--t5)" }}>{q.text}</span>
+          </div>
+          <div style={{ height: 5, borderRadius: 99, background: "var(--track)", overflow: "hidden" }}>
+            <div
+              style={{
+                height: "100%",
+                width: `${q.total > 0 ? Math.max(2, q.ratio * 100) : 0}%`,
+                borderRadius: 99,
+                background: low ? "var(--warn)" : "var(--acc)",
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 积分余额 · 邀请 */}
+      {(view.credits !== null || invite) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 9, borderTop: "1px solid var(--line2)" }}>
+          {view.credits !== null && (
+            <span style={{ flex: "none", display: "flex", flexDirection: "column", gap: 1 }}>
+              <span style={{ fontSize: 11, color: "var(--t5)" }}>积分余额</span>
+              <span style={{ fontSize: 17, fontWeight: 800, fontFamily: MONO, letterSpacing: -0.3, color: "var(--accTx)" }}>{view.credits}</span>
+            </span>
+          )}
+          <span style={{ flex: 1 }} />
+          {invite && (
+            <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <InviteeStack avatars={invite.avatars} />
+              <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 12, color: "var(--t3)", fontWeight: 600 }}>已邀请 {invite.count} 人</span>
+                <span style={{ fontSize: 11, color: "var(--t5)" }}>每邀请一位 +{INVITE_REWARD.toLocaleString("zh-CN")} 积分</span>
+              </span>
+              {/* 复制按钮定宽:文案在「复制邀请链接 / 已复制」之间切换,
+                  不定宽会让整个右对齐的邀请簇跟着抽动一下 */}
+              {invite.link && (
+                <button className="hv" onClick={copyInvite} title={invite.link} style={{ ...whiteBtn, flex: "none", minWidth: 116, justifyContent: "center" }}>
+                  {copied ? <IconCheck size={10} color="var(--ok)" strokeWidth={1.8} /> : <IconCopy size={12} color="var(--t3)" />}
+                  {copied ? "已复制" : "复制邀请链接"}
+                </button>
+              )}
+            </span>
+          )}
+        </div>
+      )}
+
+      {err && <span className="selectable" style={{ fontSize: 11.5, color: "var(--err)", lineHeight: 1.6 }}>{err}</span>}
+    </div>
+  );
+}
+
 /** MonkeyCode 云端任务关联卡。百智云只是显式连接时的授权前提,
  * 两者状态和退出操作互不代替。已关联时可把会员内置模型同步为本地任务
  * 可用的条目。 */
 function MonkeyCodeAccountCard({
   connection,
+  usage,
+  onCheckin,
   baizhiLoggedIn,
   onConnect,
   onPasswordLogin,
@@ -384,6 +585,10 @@ function MonkeyCodeAccountCard({
   onLogoClick,
 }: {
   connection: McConnectionState;
+  /** 账号权益(额度/签到/邀请);null=尚未拉到,已关联但缺数据时整块隐藏 */
+  usage: McUsage | null;
+  /** 每日签到:null=成功,string=错误文案 */
+  onCheckin: () => Promise<string | null>;
   baizhiLoggedIn: boolean;
   onConnect: () => void;
   /** 账号密码直连登录:null=成功,string=错误文案(表单本地展示,
@@ -521,6 +726,7 @@ function MonkeyCodeAccountCard({
       </div>
       <span style={{ fontSize: 11.5, color: connection.error ? "var(--err)" : "var(--t5)", lineHeight: 1.6 }}>{message}</span>
       {syncMsg && <span style={{ fontSize: 12, color: syncMsg.color, lineHeight: 1.6 }}>{syncMsg.text}</span>}
+      {connected && <McUsagePanel usage={usage} userId={connection.user?.id} onCheckin={onCheckin} />}
       {/* 第二条登录路径:MonkeyCode 账号密码(不经百智云,私有化/未绑百智账号可用) */}
       {(connection.phase === "disconnected" || connection.phase === "error") && (
         <>
@@ -1032,6 +1238,37 @@ export function SettingsView({
       setMcSyncing(false);
     }
   };
+
+  // ---- 账号权益(额度/签到/邀请)----
+  // 只在设置页可见,所以只在本视图挂载期间拉一次,不挂进 App 的 30 秒云端
+  // 轮询——那等于为一块看不见的面板长期空跑四个云端请求。状态放
+  // SettingsView 而非账号卡内:同步会把分区切到模型页,卡会随之卸载。
+  const [mcUsage, setMcUsage] = useState<McUsage | null>(null);
+  const refreshMcUsage = useCallback(async () => {
+    // 全失败(会话失效/自建部署一个权益端点都没有)就当没有权益可展示,
+    // 面板整块不出现——这里没有比"不显示"更有用的降级
+    setMcUsage(await fetchMcUsage().catch(() => null));
+  }, []);
+  useEffect(() => {
+    if (mcConnection.phase !== "connected") {
+      setMcUsage(null);
+      return;
+    }
+    void refreshMcUsage();
+  }, [mcConnection.phase, refreshMcUsage]);
+
+  /** 每日签到(壳内完成 PoW 验证码)。成功后重拉权益,+100 积分与
+   * 「今日已签到」一次刷出;失败文案交卡片就地展示(重复签到等属业务
+   * 提示,写进全局连接态会让侧栏冒出「连接失败」)。 */
+  const checkinMc = useCallback(async (): Promise<string | null> => {
+    try {
+      await mcCheckin();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    await refreshMcUsage();
+    return null;
+  }, [refreshMcUsage]);
 
   // 连上就自动同步会员模型:只认**本页发起的连接**(点连接、账号密码登录、
   // 百智云登录顺带连)的升起沿——启动时恢复的既连状态、侧栏重试都不触发,
@@ -1820,6 +2057,8 @@ export function SettingsView({
       <Section label="MonkeyCode">
         <MonkeyCodeAccountCard
           connection={mcConnection}
+          usage={mcUsage}
+          onCheckin={checkinMc}
           baizhiLoggedIn={loggedIn}
           // 卡内发起的两条连接路径都标记"连上即自动同步"(卡自己不再持有
           // 这个意图——它会被百智云同步的切分区动作卸载掉)

@@ -81,6 +81,8 @@ fn main() {
                 "mc_login",
                 "mc_password_login",
                 "mc_logout",
+                "mc_usage",
+                "mc_checkin",
                 "mc_models_sync",
                 "mc_models_revoke",
                 "mc_tasks",
