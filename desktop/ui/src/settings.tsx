@@ -6,7 +6,7 @@
 // 整个页面导航到新内核 URL(本组件随之卸载)。
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { BaizhiCard } from "./baizhi";
-import { baizhiStatus } from "./baizhiapi";
+import { baizhiStatus, baizhiSync } from "./baizhiapi";
 import {
   getBrowserExtStatus,
   getHostConfig,
@@ -881,6 +881,60 @@ export function SettingsView({
     return { skipped: merged?.skipped ?? [], autoSaved: !blocked, blocked };
   };
 
+  // ---- 百智云同步流水线(拉取 → 并入表单 → 自动保存)----
+  // 与会员模型同款放在 SettingsView 而非账号卡内:登录会同时起两路同步,
+  // 谁先落地谁就把分区切到模型页(mergeSyncedModels)并卸载账号卡——挂在卡里
+  // 时,晚到的这一路回来只看到自己已被卸载,整份 {models, mcp_servers} 连同
+  // 报错一起被丢掉(表现为"登录后只同步到会员模型")。
+  const [bzSyncing, setBzSyncing] = useState(false);
+  const [bzSyncMsg, setBzSyncMsg] = useState<{ text: string; color: string } | null>(null);
+  // 同步即全量导入(用户拍板,不再逐条挑选):结果整组并入设置表单,
+  // 交保存条落盘重启;不想要的条目可在模型页删除(重同步会恢复)
+  const syncBaizhi = async () => {
+    if (bzSyncing) return;
+    setBzSyncMsg(null);
+    setBzSyncing(true);
+    try {
+      // 已持有的明文密钥交给内核复用(免在网关重复建 key);基准取此刻的表单
+      const knownKeys = formRef.current.models.map((m) => m.api_key.trim()).filter((k) => k.startsWith("sk-"));
+      const r = await baizhiSync(knownKeys);
+      const hasMcp = !!Object.keys(r.mcp_servers ?? {}).length;
+      if (!r.models.length && !hasMcp) {
+        setBzSyncMsg({
+          text: "没有拉取到可用的模型" + (r.notes?.length ? `(${r.notes.join(";")})` : ""),
+          color: "var(--err)",
+        });
+        return;
+      }
+      const applied = applySynced(r);
+      const parts = [`已同步 ${r.models.length - applied.skipped.length} 个模型`];
+      if (hasMcp) parts.push("MCP 条目");
+      if (r.key_created) parts.push(`已在网关新建密钥「${r.key_name || "MonkeyCode"}」`);
+      // 内核的诊断信息必须外显(与会员模型同步一致)。MCP 那半边的失败原因
+      // 全在 notes 里(未开通 Agent 工具包/没有可用服务/密钥取不到),此前只在
+      // "模型和 MCP 都为空"时才展示 —— 模型拉到了而 MCP 没有时静默无声,
+      // 用户只看到"MCP 没同步过来"却查无对证
+      if (r.notes?.length) parts.push(...r.notes);
+      parts.push(
+        applied.autoSaved
+          ? "正在保存并重启内核…"
+          : applied.blocked === "busy"
+            ? "有任务正在执行,空闲后请手动保存(保存会重启内核)"
+            : applied.blocked === "dirty"
+              ? "表单有未保存的修改,请核对后手动保存"
+              : "已切到模型页,核对后保存",
+      );
+      // 跨组撞名先到先得:跳过必须外显,否则"少了几个模型"查无对证
+      if (applied.skipped.length)
+        parts.push(`与现有条目同名已跳过: ${applied.skipped.join("、")}(想改用百智云通道请删除原条目后重新同步)`);
+      setBzSyncMsg({ text: parts.join("、"), color: "var(--ok)" });
+    } catch (e) {
+      setBzSyncMsg({ text: e instanceof Error ? e.message : String(e), color: "var(--err)" });
+    } finally {
+      setBzSyncing(false);
+    }
+  };
+
   // ---- MonkeyCode 会员模型同步流水线(拉取 → 并入表单 → 自动保存)----
   // 放在 SettingsView 而非账号卡内:百智云同步成功会把分区切到模型页,
   // 账号卡随之卸载,挂在卡里的"连上就自动同步"会在最关键的一步失效。
@@ -1650,9 +1704,10 @@ export function SettingsView({
           status={bzStatus}
           statusErr={bzErr}
           refreshStatus={refreshBz}
-          onSynced={applySynced}
+          syncing={bzSyncing}
+          syncMsg={bzSyncMsg}
+          onSync={() => void syncBaizhi()}
           onLoggedIn={onBaizhiLoggedIn}
-          knownKeys={() => models.map((m) => m.api_key.trim()).filter((k) => k.startsWith("sk-"))}
         />
       </Section>
       <Section label="MonkeyCode">
