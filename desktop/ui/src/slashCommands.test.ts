@@ -1,6 +1,6 @@
 // 斜杠指令补全的纯逻辑单测:什么算"正在敲指令"、过滤排序、回填文本。
 import { describe, expect, it } from "vitest";
-import { commandText, filterCommands, nextActive, slashQuery } from "./slashCommands";
+import { commandText, filterCommands, nextActive, slashQuery, withCommandSeparator } from "./slashCommands";
 import type { SlashCommand } from "./types";
 
 const cmd = (name: string, description?: string, hint?: string): SlashCommand => ({
@@ -53,8 +53,8 @@ describe("commandText", () => {
     expect(commandText(cmd("review", "", "<file>"))).toBe("/review ");
   });
 
-  it("无参数的原样填入,按 ↩ 可直接发出", () => {
-    expect(commandText(cmd("compact"))).toBe("/compact");
+  it("无参数的也补空格:云端靠它把指令名与参数分开,缺了就是普通文本", () => {
+    expect(commandText(cmd("compact"))).toBe("/compact ");
   });
 });
 
@@ -68,5 +68,26 @@ describe("nextActive", () => {
   it("空列表恒为 0(不产生 NaN 下标)", () => {
     expect(nextActive(0, 1, 0)).toBe(0);
     expect(nextActive(3, -1, 0)).toBe(0);
+  });
+});
+
+describe("withCommandSeparator(发送前补指令分隔符)", () => {
+  const cmds = [cmd("project-wiki"), cmd("compact")];
+
+  it("整条消息恰好是已知指令名 → 补一个尾随空格(云端靠它分隔指令与参数)", () => {
+    expect(withCommandSeparator("/project-wiki", cmds)).toBe("/project-wiki ");
+    expect(withCommandSeparator("/compact", cmds)).toBe("/compact ");
+  });
+
+  it("已经带空格/参数的原样,不叠加", () => {
+    expect(withCommandSeparator("/project-wiki ", cmds)).toBe("/project-wiki ");
+    expect(withCommandSeparator("/compact 只压缩最近几轮", cmds)).toBe("/compact 只压缩最近几轮");
+  });
+
+  it("未知指令与普通文本一概不动(句中的 /path 不该被误伤)", () => {
+    expect(withCommandSeparator("/不存在的指令", cmds)).toBe("/不存在的指令");
+    expect(withCommandSeparator("看下 src/main.rs", cmds)).toBe("看下 src/main.rs");
+    expect(withCommandSeparator("/", cmds)).toBe("/");
+    expect(withCommandSeparator("", cmds)).toBe("");
   });
 });
