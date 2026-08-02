@@ -22,7 +22,7 @@ function ThoughtView({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const md = thoughtMarkdown(text);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "92%" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div
         onClick={() => setOpen(!open)}
         style={{
@@ -319,11 +319,15 @@ function ItemView({
           attachments={item.attachments}
         />
       );
+    // 模型侧产出(正文/思考/工具卡)一律占满内容轨,不再自缩 92%:轨宽已由
+    // COL_MAX 的 920 封顶管住行长,再缩一次只会让带边框的工具卡比 composer
+    // 右缘短一截(宽屏约 69px),看着像没对齐;左右泳道由气泡的底色/描边/右对齐
+    // 区分,不靠这点留白。省下的宽度给代码块与表格(二者均 overflow-x: auto)。
     case "agent":
       return (
         <div
           className="mc-message-row"
-          style={{ position: "relative", maxWidth: "92%", wordBreak: "break-word", animation: "mcin .25s ease" }}
+          style={{ position: "relative", wordBreak: "break-word", animation: "mcin .25s ease" }}
         >
           <Markdown text={item.text} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />
           <MessageTime timestamp={item.timestamp} align="start" />
@@ -405,7 +409,7 @@ export function LogList({
       }
       const grouped = group.length > 1;
       out.push(
-        <div className={grouped ? "card tool-stack" : undefined} key={"g" + (keyBase + start)} style={{ display: "flex", flexDirection: "column", gap: grouped ? 0 : 8, maxWidth: "92%" }}>
+        <div className={grouped ? "card tool-stack" : undefined} key={"g" + (keyBase + start)} style={{ display: "flex", flexDirection: "column", gap: grouped ? 0 : 8 }}>
           {group.map((t, j) => (
             <ToolCard
               key={t.tcId || j}
