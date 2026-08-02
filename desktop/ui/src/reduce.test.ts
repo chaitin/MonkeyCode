@@ -511,6 +511,15 @@ describe("轮次与系统帧", () => {
     expect(s.items.filter((it) => it.kind === "sys")).toHaveLength(2);
   });
 
+  it("model_update 的系统行剥寻址后缀与会员档位前缀,状态仍存原始名", () => {
+    const s = run([acp({ sessionUpdate: "model_update", model: "monkeycode-pro/deepseek@monkeycode#cfg-9" })]);
+    expect(s.items.at(-1)).toEqual({ kind: "sys", text: "模型已切换为 deepseek" });
+    expect(s.model).toBe("monkeycode-pro/deepseek@monkeycode#cfg-9");
+
+    const remark = run([acp({ sessionUpdate: "model_update", model: "深度求索@monkeycode#cfg-9" })]);
+    expect(remark.items.at(-1)).toEqual({ kind: "sys", text: "模型已切换为 深度求索" });
+  });
+
   it("think_update 回写档位并留系统行,空档位显示为默认", () => {
     const s = run([acp({ sessionUpdate: "think_update", think: "high" })]);
     expect(s.think).toBe("high");
