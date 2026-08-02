@@ -4,7 +4,7 @@
 // repo_file_diff(与 web 控制台 task-file-explorer 同一套 kind 与字段),
 // 差异是 base64 内容解码、entry_mode 判目录、读取上限与唤醒超时余量。
 import { useEffect, useRef, useState } from "react";
-import { connectCloudControl, mcFileUpload, type CloudControl } from "./cloudapi";
+import { connectCloudControl, mcFileUpload, WAKE_CALL_TIMEOUT_MS, type CloudControl } from "./cloudapi";
 import { readDataURL } from "./cloudUpload";
 import { startDownload } from "./downloads";
 import { pickSaveFile } from "./host";
@@ -22,8 +22,8 @@ const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 上传上限 10MB(对齐 web 控制
 const vmPath = (dir: string, name: string) => "/workspace/" + (dir ? dir + "/" : "") + name;
 
 // 控制流 call 默认 15s 超时,但拨号会触发休眠 VM 唤醒(以分钟计):
-// 抽屉打开即发的列表/改动调用给足唤醒余量,免得唤醒期间必然超时
-const WAKE_CALL_OPTS = { timeoutMs: 90_000, timeoutMsg: "云端环境可能在唤醒中,响应超时,请稍后重试" };
+// 抽屉内所有调用给足唤醒余量,免得唤醒期间必然超时
+const WAKE_CALL_OPTS = { timeoutMs: WAKE_CALL_TIMEOUT_MS, timeoutMsg: "云端环境可能在唤醒中,响应超时,请稍后重试" };
 
 export function CloudFilesDrawer({
   taskId,
@@ -81,19 +81,19 @@ export function CloudFilesDrawer({
     },
     readFile: async (en) => {
       if ((en.size ?? 0) > MAX_FILE_SIZE) return { plain: `文件较大(${fmtSize(en.size)}),请在网页控制台查看` };
-      const r = await ensureCtrl().call<{ content?: string }>("repo_read_file", {
-        path: en.path,
-        offset: 0,
-        length: MAX_FILE_SIZE,
-      });
+      const r = await ensureCtrl().call<{ content?: string }>(
+        "repo_read_file",
+        { path: en.path, offset: 0, length: MAX_FILE_SIZE },
+        WAKE_CALL_OPTS,
+      );
       return { content: r.content ? b64decode(r.content) : "" };
     },
     diff: async (path) => {
-      const r = await ensureCtrl().call<{ diff?: string }>("repo_file_diff", {
-        path,
-        unified: true,
-        context_lines: 20,
-      });
+      const r = await ensureCtrl().call<{ diff?: string }>(
+        "repo_file_diff",
+        { path, unified: true, context_lines: 20 },
+        WAKE_CALL_OPTS,
+      );
       return r.diff || "(无差异)";
     },
     diffTransientKind: "plain",

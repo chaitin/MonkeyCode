@@ -18,7 +18,7 @@ import { Composer, QueuedChip, RunningBar } from "./composer";
 import { IconCloud, IconFile, IconGlobe, IconMonitor, IconPaperclip, IconStop, IconX } from "./icons";
 import { useUpwardMenuHeight } from "./menuPosition";
 import { useNativeFileDrop } from "./nativeDrop";
-import { useCloudTask } from "./useCloudTask";
+import { cloudStatusHealthy, useCloudTask } from "./useCloudTask";
 
 const STATUS_LABEL: Record<string, { text: string; color: string }> = {
   pending: { text: "排队中", color: "var(--warn)" },
@@ -367,7 +367,7 @@ export function CloudTaskView({
                   : running
                     ? "补充说明…运行中发送会排队"
                     : h.commands.length > 0
-                      ? "继续对话…输入 / 唤起指令,可粘贴或拖入附件"
+                      ? "继续对话…输入 / 使用技能,可粘贴或拖入附件"
                       : "继续对话…粘贴或拖入图片、文件可作为附件"
             }
             sendActive={!!h.input.trim()}
@@ -471,15 +471,19 @@ export function CloudTaskView({
                 >
                   <IconPaperclip size={13} color="var(--t3)" />
                 </button>
-                {/* 斜杠指令:点开浏览全部,或在输入框直接敲 / 就地补全 */}
+                {/* 使用技能(斜杠指令):点开浏览全部,或在输入框直接敲 / 就地补全 */}
                 <SlashCommandMenu h={slash} count={h.commands.length} />
-                <span
-                  title={`${h.status} · 任务运行在云端服务器,关掉客户端也会继续`}
-                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--t5)", minWidth: 0 }}
-                >
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: h.connected ? "var(--ok)" : "var(--t6)", flex: "none" }} />
-                  <span className="ellipsis">{h.status}</span>
-                </span>
+                {/* 连接状态:健康时隐藏(常驻"已连接云端"没有信息量),
+                    过渡/异常态才外显(断线重连、消息未送达等) */}
+                {!cloudStatusHealthy(h.status) && (
+                  <span
+                    title={`${h.status} · 任务运行在云端服务器,关掉客户端也会继续`}
+                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--t5)", minWidth: 0 }}
+                  >
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: h.connected ? "var(--ok)" : "var(--t6)", flex: "none" }} />
+                    <span className="ellipsis">{h.status}</span>
+                  </span>
+                )}
                 <span style={{ flex: 1 }} />
                 {/* 云端模型切换(经控制流 switch_model,保留会话上下文;执行中禁用) */}
                 {/* 包裹层接住 trigger 的 maxWidth:100%(与本地 ModelPicker 同款
@@ -504,6 +508,7 @@ export function CloudTaskView({
                             groups={h.cloudGroups}
                             selectedId={meta?.model?.id}
                             onPick={(m) => {
+                              if (m.locked) return;
                               setModelOpen(false);
                               void h.switchModel(m.id!);
                             }}

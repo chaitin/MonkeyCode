@@ -56,6 +56,7 @@ describe("云端创建选项", () => {
     expect(groups.map((group) => group.label)).toEqual([
       "基础模型",
       "专业模型",
+      "旗舰模型",
       "付费模型",
       "我的模型",
       "研发团队",
@@ -64,6 +65,21 @@ describe("云端创建选项", () => {
     expect(groups.flatMap((group) => group.models).map((model) => model.id)).not.toContain("meta");
     expect(groupedCloudModelLabel(models[1])).toBe("claude");
     expect(pickDefaultCloudModel(models, "pro")).toBe("pro");
+  });
+
+  it("超会员档模型展示但打 locked,默认值不落在灰条目上", () => {
+    const groups = groupCloudModels(models, "pro");
+
+    const ultra = groups.find((group) => group.label === "旗舰模型")?.models ?? [];
+    expect(ultra.map((model) => model.id)).toEqual(["ultra"]);
+    expect(ultra[0].locked).toBe(true);
+    expect(groups.find((group) => group.label === "专业模型")?.models[0].locked).toBeUndefined();
+
+    // 订阅读取失败(plan="")时专业/旗舰全灰而非消失,默认值回落基础档
+    expect(groupCloudModels(models, "").map((g) => g.label)).toContain("旗舰模型");
+    expect(pickDefaultCloudModel(models, "")).toBe("basic");
+    // 只剩超档模型时宁空不默认选禁用项
+    expect(pickDefaultCloudModel([models[3]], "basic")).toBe("");
   });
 
   it("手动仓库兼容 HTTPS 和 SSH 地址，并生成简短名称", () => {

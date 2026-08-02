@@ -396,6 +396,9 @@ export interface CloudControl {
 
 const CONTROL_CALL_TIMEOUT_MS = 15_000;
 
+/** 经"休眠唤醒"路径的控制流 call 余量:冷唤醒以分钟计,90s 仍偏紧 */
+export const WAKE_CALL_TIMEOUT_MS = 180_000;
+
 /** 连接云端任务控制流(内核代理)。长生命周期;断线按 stream 同族参数
  * 指数退避重连,连续拨号失败/反复断开达上限后放弃自动重连(经 onStatus
  * 外显"环境离线"),下一次 call() 到来时再重新拨号(懒重连)——此前固定
