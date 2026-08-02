@@ -4,13 +4,15 @@
 // 渲染复用本地会话的帧归约链(reduceBatch → LogList):云端帧与本地 Frame 同构。
 import { useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import { openExternal } from "./host";
-import type { CloudTask, CloudTaskDetail } from "./types";
+import type { CloudTask } from "./types";
 import { cloudModelLabel, groupedCloudModelLabel } from "./cloud";
 import { CloudFilesDrawer } from "./cloudfiles";
 import { CloudTerminal } from "./cloudterm";
 import { MAX_CLOUD_ATTS } from "./cloudUpload";
 import { COL_MAX, ModelPickerTrigger } from "./chat";
 import { CloudModelGroups } from "./cloudModelMenu";
+import { CloudStartupCard } from "./cloudStartup";
+import { SlashCommandMenu, useSlashCommands } from "./commandMenu";
 import { HeaderFilesButton, HeaderMenu, LogList, TaskPanel, ViewHeader, type MenuState } from "./components";
 import { Composer, QueuedChip, RunningBar } from "./composer";
 import { IconCloud, IconFile, IconGlobe, IconMonitor, IconPaperclip, IconStop, IconX } from "./icons";
@@ -24,26 +26,6 @@ const STATUS_LABEL: Record<string, { text: string; color: string }> = {
   error: { text: "出错", color: "var(--err)" },
   finished: { text: "已完成", color: "var(--t4)" },
 };
-
-/** VM 准备进度:取 conditions 最后一项(对齐移动端 taskConditionInfo) */
-function vmCondition(meta: CloudTaskDetail | null): string {
-  const conds = meta?.virtualmachine?.conditions;
-  const last = conds?.[conds.length - 1];
-  if (!last) return "云端开发环境准备中…";
-  const label: Record<string, string> = {
-    Scheduled: "已调度",
-    ImagePulled: "拉取镜像",
-    ProjectCloned: "克隆代码",
-    ImageBuilt: "构建镜像",
-    ContainerCreated: "创建容器",
-    ContainerStarted: "启动容器",
-    Ready: "环境就绪",
-    Failed: "环境启动失败",
-  };
-  const name = label[last.type ?? ""] ?? last.type ?? "准备中";
-  const pct = typeof last.progress === "number" && last.progress > 0 ? ` ${last.progress}%` : "";
-  return `云端开发环境:${name}${pct}${last.message ? ` — ${last.message}` : ""}`;
-}
 
 export function CloudTaskView({
   task,
@@ -112,6 +94,16 @@ export function CloudTaskView({
     onDragging: setDragging,
     onFiles: (files) => h.addFiles(files),
     onError: (msg) => h.notify("⚠ 附件上传失败: " + msg),
+  });
+
+  // 斜杠指令(Agent 上报):composer 左侧 / 按钮,或在输入框直接敲 / 就地补全
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const slash = useSlashCommands({
+    commands: h.commands,
+    input: h.input,
+    setInput: h.setInput,
+    inputRef,
+    enabled: !ended,
   });
 
   // 云端模型下拉开合(列表加载/切换在 hook)
@@ -272,38 +264,40 @@ export function CloudTaskView({
         </HeaderMenu>
       </ViewHeader>
 
-      {/* ==== 对话流:列宽公式与滚动条预留同 ChatView;内距 36px 是本视图自己的
-              尺度,与下方 composer 对齐即可(ChatView 那边是 30px) ==== */}
-      <div
-        ref={h.scrollRef}
-        onWheel={h.onWheel}
-        onScroll={h.onScroll}
-        style={{ flex: 1, overflowY: "auto", overflowX: "hidden", minHeight: 0, scrollbarGutter: "stable both-edges" }}
-      >
-        <div style={{ maxWidth: COL_MAX, margin: "0 auto", padding: "26px 36px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
-          {h.cursor && (
-            <button
-              className="hv"
-              onClick={() => void h.loadEarlier()}
-              style={{ alignSelf: "center", border: "1px solid var(--line)", background: "var(--card)", color: "var(--t3)", fontSize: 11.5, borderRadius: 8, padding: "4px 14px", cursor: "pointer", boxShadow: "var(--cardSh)" }}
-            >
-              {h.loadingEarlier ? "加载中…" : "加载更早的对话"}
-            </button>
-          )}
-          {taskStatus === "pending" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 13px", borderRadius: 9, background: "var(--warnBg)", border: "1px solid var(--warnBd2)", fontSize: 12.5, color: "var(--warnT)" }}>
-              <span className="spinner" style={{ width: 12, height: 12, borderColor: "var(--warn)", borderTopColor: "transparent" }} />
-              {vmCondition(meta)}
-            </div>
-          )}
-          {chat.items.length === 0 && taskStatus !== "pending" && (
-            <div style={{ padding: "40px 0", textAlign: "center", fontSize: 12.5, color: "var(--t5)" }}>
-              {ended ? "没有可回放的对话记录。" : h.status}
-            </div>
-          )}
-          <LogList items={chat.items} onPermAnswer={() => {}} onAskAnswer={ended ? undefined : h.answerAsk} workdir="/workspace" />
+      {/* ==== 启动页(pending):VM 准备是以分钟计的过程,给足过程感 ====
+          此时必然还没有任何对话(首轮要等环境就绪才开跑),整屏让给启动卡 */}
+      {taskStatus === "pending" ? (
+        <div style={{ flex: 1, overflowY: "auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 36px" }}>
+          <CloudStartupCard meta={meta} queued={!!queued} />
         </div>
-      </div>
+      ) : (
+        /* ==== 对话流:列宽公式与滚动条预留同 ChatView;内距 36px 是本视图自己的
+                尺度,与下方 composer 对齐即可(ChatView 那边是 30px) ==== */
+        <div
+          ref={h.scrollRef}
+          onWheel={h.onWheel}
+          onScroll={h.onScroll}
+          style={{ flex: 1, overflowY: "auto", overflowX: "hidden", minHeight: 0, scrollbarGutter: "stable both-edges" }}
+        >
+          <div style={{ maxWidth: COL_MAX, margin: "0 auto", padding: "26px 36px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
+            {h.cursor && (
+              <button
+                className="hv"
+                onClick={() => void h.loadEarlier()}
+                style={{ alignSelf: "center", border: "1px solid var(--line)", background: "var(--card)", color: "var(--t3)", fontSize: 11.5, borderRadius: 8, padding: "4px 14px", cursor: "pointer", boxShadow: "var(--cardSh)" }}
+              >
+                {h.loadingEarlier ? "加载中…" : "加载更早的对话"}
+              </button>
+            )}
+            {chat.items.length === 0 && (
+              <div style={{ padding: "40px 0", textAlign: "center", fontSize: 12.5, color: "var(--t5)" }}>
+                {ended ? "没有可回放的对话记录。" : h.status}
+              </div>
+            )}
+            <LogList items={chat.items} onPermAnswer={() => {}} onAskAnswer={ended ? undefined : h.answerAsk} workdir="/workspace" />
+          </div>
+        </div>
+      )}
 
       {/* ==== 运行条 + 终端卡 + composer:与 ChatView 同列宽同出血 ==== */}
       <div style={{ flex: "none", maxWidth: COL_MAX, width: "calc(100% - 16px)", margin: "0 auto", padding: "0 36px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -372,12 +366,16 @@ export function CloudTaskView({
                   ? "环境唤醒中…现在发送会排队,唤醒后自动送达"
                   : running
                     ? "补充说明…运行中发送会排队"
-                    : "继续对话…粘贴或拖入图片、文件可作为附件"
+                    : h.commands.length > 0
+                      ? "继续对话…输入 / 唤起指令,可粘贴或拖入附件"
+                      : "继续对话…粘贴或拖入图片、文件可作为附件"
             }
             sendActive={!!h.input.trim()}
             onChange={h.setInput}
             onSend={h.send}
             onPaste={onPaste}
+            onKeyDown={slash.onKeyDown}
+            inputRef={inputRef}
             above={
               (h.atts.length > 0 || h.uploading > 0) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "10px 12px 0" }}>
@@ -473,6 +471,8 @@ export function CloudTaskView({
                 >
                   <IconPaperclip size={13} color="var(--t3)" />
                 </button>
+                {/* 斜杠指令:点开浏览全部,或在输入框直接敲 / 就地补全 */}
+                <SlashCommandMenu h={slash} count={h.commands.length} />
                 <span
                   title={`${h.status} · 任务运行在云端服务器,关掉客户端也会继续`}
                   style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--t5)", minWidth: 0 }}

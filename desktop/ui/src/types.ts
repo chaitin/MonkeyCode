@@ -152,6 +152,15 @@ export interface AcpUpdate {
   mode?: string;
   /** 工具产出的图片(截图/读图)在工作区的相对路径 */
   images?: string[];
+  /** available_commands_update:Agent 上报的可用斜杠指令(全量重发) */
+  availableCommands?: SlashCommand[];
+}
+
+/** Agent 上报的斜杠指令(/compact、/review 等技能;input.hint 是参数提示) */
+export interface SlashCommand {
+  name: string;
+  description?: string;
+  input?: { hint?: string | null } | null;
 }
 
 /** tool_call_update{status:in_progress} 的执行期进度载荷 */

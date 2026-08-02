@@ -521,6 +521,30 @@ describe("轮次与系统帧", () => {
     expect(back.items.at(-1)).toEqual({ kind: "sys", text: "思考深度已调整为「默认」" });
   });
 
+  it("available_commands_update 只回写指令清单,不进对话流", () => {
+    const s = run([
+      acp({
+        sessionUpdate: "available_commands_update",
+        availableCommands: [
+          { name: "compact", description: "压缩上下文" },
+          { name: "review", input: { hint: "<file>" } },
+        ],
+      }),
+    ]);
+    expect(s.commands.map((c) => c.name)).toEqual(["compact", "review"]);
+    expect(s.items).toEqual([]);
+  });
+
+  it("指令清单是全量重发:后一帧整体替换,空清单即清空", () => {
+    const s = run([
+      acp({ sessionUpdate: "available_commands_update", availableCommands: [{ name: "a" }, { name: "" }] }),
+      acp({ sessionUpdate: "available_commands_update", availableCommands: [{ name: "b" }] }),
+    ]);
+    expect(s.commands.map((c) => c.name)).toEqual(["b"]);
+    // 缺字段/无名条目一律丢弃(菜单里的空指令点不出东西)
+    expect(run([acp({ sessionUpdate: "available_commands_update" })]).commands).toEqual([]);
+  });
+
   it("compact_status 与 llm_call_retry 渲染系统行", () => {
     const s = run([
       acp({ sessionUpdate: "compact_status", status: "started" }),
