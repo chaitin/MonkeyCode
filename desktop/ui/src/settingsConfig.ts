@@ -1,8 +1,8 @@
 // 设置页的纯配置映射:表单草稿 ⇄ 内核 config.json / mcp.json 形态。
 // 与渲染无关(不引入 React),从 settings.tsx 拆出来:视图只管交互,
 // 往返语义(字段白名单、extra 透传、整组替换、名称校验)集中在此并被单测直接盯住。
-import { modelSourceRank } from "./modelMenu";
-import type { HostConfig, HostModel } from "./types";
+import { modelSourceRank, stripSourceSuffix } from "./modelMenu";
+import { SOURCE_BAIZHI, SOURCE_MONKEYCODE, type HostConfig, type HostModel } from "./types";
 
 // ---- MCP 编辑模型与序列化(与内核 mcp.json 的 mcpServers 同构,壳不解释) ----
 
@@ -135,13 +135,53 @@ export function modelsToConfig(models: HostModel[], defaultIdx: number): HostMod
 }
 export const emptyMcp = (): McpEntry => ({ name: "", type: "http", url: "", command: "", args: "", kv: "" });
 
+/** 同步条目的落盘名 = 原名 + 来源后缀(@baizhi / @monkeycode[#配置 id])。
+ *
+ * 名字是引擎寻址键(settings.models 以名字为键的 Map),两个同步来源的目录里
+ * 撞名是常态——同一批底座模型,两边 remark 起的名字往往一模一样。加后缀让键
+ * 天然唯一,于是不必再为撞名丢条目(旧行为:后来者整条跳过,表现为"同步的
+ * 会员模型不全")。
+ *
+ * 恒定加、不按"撞了才加":后缀若取决于对面组此刻有没有同名条目,名字就会随
+ * 对面通道上下架漂移,而会话/记忆都按名引用,漂移即失联。
+ * 自定义条目是用户自己取的名,一律不动。
+ *
+ * 后缀纯属寻址,不进展示——所有展示面走 modelMenu.stripSourceSuffix。 */
+const SOURCE_SUFFIX: Record<string, string> = {
+  [SOURCE_BAIZHI]: `@${SOURCE_BAIZHI}`,
+  [SOURCE_MONKEYCODE]: `@${SOURCE_MONKEYCODE}`,
+};
+
+export function syncedName(name: string, source?: string, id?: string): string {
+  const base = stripSourceSuffix(name.trim()).trim(); // 重同步不叠加后缀
+  const suffix = source ? SOURCE_SUFFIX[source] : undefined;
+  if (!base || !suffix) return base;
+  // 会员条目再缀服务端配置 id:名字取自 remark(后台人起的备注),同一批里
+  // 重名很正常,只靠来源后缀两条还是同名 → 仍会丢掉一条。id 由条目自身决定,
+  // 不受同批其他条目影响,所以名字既唯一又不会因别的条目增删而改变。
+  // 百智云条目的 name 本就是模型 id(sync.rs),组内天然唯一,不必再缀。
+  const entryId = source === SOURCE_MONKEYCODE ? id?.trim() : "";
+  return entryId ? `${base}${suffix}#${entryId}` : `${base}${suffix}`;
+}
+
+/** 改名保后缀:后缀由同步决定(来源 + 会员条目的配置 id),用户在设置页
+ * 改的只是展示名。原后缀原样接回去——编辑框既不显示它,也不该由用户维持。
+ * 手工条目没有后缀,等同普通改名。 */
+export function renameKeepingSuffix(stored: string, nextDisplay: string): string {
+  const cur = stored.trim();
+  const suffix = cur.slice(stripSourceSuffix(cur).length);
+  const base = nextDisplay.trim();
+  return base ? `${base}${suffix}` : base;
+}
+
 /** 同步来源组整组替换(模型与 MCP、百智云与 MonkeyCode 共用语义):
  * 非本组条目(手工条目与其他 source 组)原样保留,本组(source 匹配)替换为
  * 本次同步集合——下架的旧同步条目随之移除(重同步清理)。
  * 跨组撞名一律先到先得:名称是引擎寻址键(会话/记忆按名引用),不同来源的
  * 同名条目是不同通道甚至不同计费主体,同步是登录后自动发生的,绝不静默
  * 换通道;后来者跳过,由调用方外显跳过名单(想换通道:删除原条目再重同步)。
- * 先到先得也保证名字跨多次同步稳定,不随对面通道上下架漂移。 */
+ * 模型走 syncedName 加来源后缀后,这条基本只在"自定义条目取了带后缀的名字"
+ * 时才触发,留着当兜底;MCP 名无后缀,仍然实打实靠它。 */
 export function replaceSourceGroup<T extends { name: string; source?: string }>(
   cur: T[],
   synced: T[],

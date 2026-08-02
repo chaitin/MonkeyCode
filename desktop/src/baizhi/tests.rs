@@ -841,7 +841,8 @@ async fn mc_member_models_sync_and_revoke_contract() {
                       "owner": { "type": "private" } },
                     { "id": "cfg-6", "remark": "团队的", "model": "team-model", "interface_type": "anthropic",
                       "owner": { "type": "team", "name": "翼龙组" } },
-                    // 归属缺失/未知 → 形状不明,仍跳过(静默)
+                    // owner 整个缺席 → 按 public 收(服务端 omitempty,内部 hook 的
+                    // 会员内置模型不保证带);认不出的归属类型才跳过
                     { "id": "cfg-7", "remark": "无主", "model": "orphan", "interface_type": "anthropic" },
                     { "id": "cfg-8", "remark": "未知主", "model": "alien", "interface_type": "anthropic",
                       "owner": { "type": "galaxy" } }
@@ -867,7 +868,7 @@ async fn mc_member_models_sync_and_revoke_contract() {
     let out = super::sync_member_models(&svc, &tmp.0).await.map_err(|e| e.msg()).unwrap();
     let models = out.get("models").and_then(Value::as_array).unwrap();
     // 输出按节序排序:专业(档位)→ 旗舰(档位,locked)→ 付费 → 我的 → 团队
-    assert_eq!(models.len(), 5, "仅协议/占位/无主条目被过滤,超档转 locked、私有/团队收录: {models:?}");
+    assert_eq!(models.len(), 6, "仅协议/占位/归属不明被过滤,超档转 locked、私有/团队/无主收录: {models:?}");
     let m0 = &models[0];
     assert_eq!(m0.get("name").and_then(Value::as_str), Some("专业模型"));
     assert_eq!(m0.get("provider").and_then(Value::as_str), Some("anthropic"));
@@ -896,21 +897,24 @@ async fn mc_member_models_sync_and_revoke_contract() {
     assert_eq!(models[2].get("model").and_then(Value::as_str), Some("mc-gpt"));
     assert_eq!(models[2].get("provider").and_then(Value::as_str), Some("openai"));
     assert_eq!(models[2].get("api_key").and_then(Value::as_str), Some(""));
+    // owner 缺席的条目按 public 收,与 mc-gpt 同在付费节(按 name 排序在其后)
+    assert_eq!(models[3].get("name").and_then(Value::as_str), Some("无主"));
+    assert_eq!(models[3].get("owner").and_then(Value::as_str), Some("public"));
     // 私有/团队条目:收录、归属标注、不锁(非内置命名不受档位门限)
-    let m3 = &models[3];
-    assert_eq!(m3.get("name").and_then(Value::as_str), Some("我的"));
-    assert_eq!(m3.get("owner").and_then(Value::as_str), Some("private"));
-    assert!(m3.get("locked").is_none());
-    assert_eq!(models[4].get("name").and_then(Value::as_str), Some("团队的"));
-    assert_eq!(models[4].get("owner").and_then(Value::as_str), Some("team"));
-    // 归属缺失/未知(cfg-7/8)不得出现
+    let m4 = &models[4];
+    assert_eq!(m4.get("name").and_then(Value::as_str), Some("我的"));
+    assert_eq!(m4.get("owner").and_then(Value::as_str), Some("private"));
+    assert!(m4.get("locked").is_none());
+    assert_eq!(models[5].get("name").and_then(Value::as_str), Some("团队的"));
+    assert_eq!(models[5].get("owner").and_then(Value::as_str), Some("team"));
+    // 认不出的归属类型(cfg-8)仍跳过
     assert!(
-        !models.iter().any(|m| m.get("name").and_then(Value::as_str) == Some("无主")
-            || m.get("name").and_then(Value::as_str) == Some("未知主")),
-        "归属缺失/未知的条目必须跳过"
+        !models.iter().any(|m| m.get("name").and_then(Value::as_str) == Some("未知主")),
+        "认不出的归属类型必须跳过"
     );
     let notes = out.get("notes").and_then(Value::as_array).unwrap();
-    assert_eq!(notes.len(), 1, "仅未知协议一条 note(锁定与私有收录都静默): {notes:?}");
+    assert_eq!(notes.len(), 2, "未知协议 + 归属不明各一条(锁定与私有收录都静默): {notes:?}");
+    assert!(notes.iter().any(|n| n.as_str().is_some_and(|s| s.contains("归属类型无法识别"))), "{notes:?}");
     // 本机记录承载物化所需的全部字段(含 base_url 快照,同源 /v1)
     let stored = super::stored_ohmyagent_key(&tmp.0).unwrap();
     assert_eq!(stored.get("api_key").and_then(Value::as_str), Some("omk-1"));

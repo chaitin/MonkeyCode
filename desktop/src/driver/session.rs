@@ -144,6 +144,24 @@ fn valid_think(level: &str) -> bool {
     matches!(level, "" | "off" | "low" | "medium" | "high")
 }
 
+/// 剥同步条目落盘名的来源后缀:`@baizhi` / `@monkeycode[#<服务端配置 id>]`
+/// (为什么有这个后缀见 ui/src/settingsConfig.ts syncedName)。
+/// 只用于**宽松比对**存量引用,寻址仍以配置里的原名为准。
+fn strip_source_suffix(name: &str) -> &str {
+    for marker in ["@baizhi", "@monkeycode"] {
+        // 从右往左找:名字本身可能含 @,只认结尾那一段后缀
+        if let Some(at) = name.rfind(marker) {
+            let (base, tail) = name.split_at(at);
+            let rest = &tail[marker.len()..];
+            // 后缀之后要么到头,要么只剩 `#<id>`(会员条目的区分位)
+            if !base.is_empty() && (rest.is_empty() || rest.starts_with('#')) {
+                return base;
+            }
+        }
+    }
+    name
+}
+
 /// 档位 → session/setThinking 参数。
 fn think_rpc_params(engine_id: &str, level: &str) -> Value {
     if level == "off" {
@@ -158,6 +176,26 @@ fn check_session_id(id: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("非法会话 id: {id:?}"))
+    }
+}
+
+#[cfg(test)]
+mod source_suffix_tests {
+    use super::strip_source_suffix;
+
+    /// 存量引用(加后缀之前建的会话、记忆里的默认模型)记的都是裸名,
+    /// 全靠这层比对落到新条目上——会员条目的 `#<配置 id>` 尾巴必须一起剥,
+    /// 漏了它等于所有会员模型的老会话开不起来。
+    #[test]
+    fn strips_source_marker_with_optional_config_id() {
+        assert_eq!(strip_source_suffix("深度求索@monkeycode#cfg-9"), "深度求索");
+        assert_eq!(strip_source_suffix("深度求索@monkeycode"), "深度求索");
+        assert_eq!(strip_source_suffix("deepseek-v3@baizhi"), "deepseek-v3");
+        // 手工条目原样;名字里本来就有 @ 或形似后缀的不误伤
+        assert_eq!(strip_source_suffix("my@model"), "my@model");
+        assert_eq!(strip_source_suffix("@baizhi"), "@baizhi");
+        assert_eq!(strip_source_suffix("x@monkeycode-plus"), "x@monkeycode-plus");
+        assert_eq!(strip_source_suffix("普通模型"), "普通模型");
     }
 }
 
@@ -1539,11 +1577,16 @@ impl OhmyDriver {
                 .map(|m| m.name.clone())
                 .ok_or_else(|| "尚未配置可用模型,请先在设置中添加".into());
         }
+        // 精确没中再按宽松口径找一次:同步条目的落盘名带来源后缀
+        //(ui/src/settingsConfig.ts syncedName),而加后缀之前建的会话、
+        // 记忆里的默认模型记的都是裸名——不兜这一次,升级后老会话一律
+        // "未知模型",连恢复都进不去
         let m = self
             .0
             .models
             .iter()
             .find(|m| m.name == name)
+            .or_else(|| self.0.models.iter().find(|m| strip_source_suffix(&m.name) == strip_source_suffix(name)))
             .ok_or_else(|| format!("未知模型 {name:?}"))?;
         if m.locked {
             return Err(format!("模型 {name:?} 当前会员档不可用,升级后重新同步"));

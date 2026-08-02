@@ -40,6 +40,7 @@ import {
   modelDisplayByName,
   modelMenuTabs,
   shouldShowModelExtras,
+  stripSourceSuffix,
 } from "./modelMenu";
 import { useNativeFileDrop } from "./nativeDrop";
 import { workspaceRelativePath } from "./markdownPaths";
@@ -319,7 +320,7 @@ export function ModelPicker({
         key={m.name}
         label={d.label}
         tag={noTag ? undefined : d.tier}
-        title={m.locked ? `${m.name} · 当前会员档不可用,升级后重新同步` : m.name}
+        title={m.locked ? `${stripSourceSuffix(m.name)} · 当前会员档不可用,升级后重新同步` : stripSourceSuffix(m.name)}
         selected={m.name === current}
         disabled={m.locked}
         hint={m.default ? "默认" : undefined}
@@ -337,7 +338,7 @@ export function ModelPicker({
         label={modelDisplayByName(models, current).label}
         open={open}
         disabled={disabled}
-        title={disabled ? "轮次执行中,结束后可切换" : `${current || "选择模型"} · 点击切换(下一轮生效)`}
+        title={disabled ? "轮次执行中,结束后可切换" : `${stripSourceSuffix(current) || "选择模型"} · 点击切换(下一轮生效)`}
         onClick={() => {
           if (disabled) return;
           setFilter("");

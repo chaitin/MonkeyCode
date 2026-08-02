@@ -379,6 +379,9 @@ export interface BaizhiSyncedModel {
   think?: string;
   vision?: boolean;
   source: string; // "baizhi" | "monkeycode"
+  /** monkeycode 同步:服务端模型配置 id。落盘名靠它区分同批重名的条目
+   * (见 settingsConfig.syncedName),不进 HostModel、不落 config.json */
+  id?: string;
   /** monkeycode 同步:超出会员档的条目(展示禁选,升级后重同步解锁) */
   locked?: boolean;
   /** monkeycode 同步:服务端归属(public/private/team) */

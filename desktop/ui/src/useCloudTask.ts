@@ -30,6 +30,7 @@ import { groupCloudModels, type McCloudModelGroup } from "./cloud";
 import { MAX_CLOUD_ATTS, uploadCloudFile, type CloudUploadedAtt } from "./cloudUpload";
 import { frameData } from "./codec";
 import { answerAsk as applyAskAnswer, initialChat, reduceBatch, type ChatState } from "./reduce";
+import { withCommandSeparator } from "./slashCommands";
 import type { CloudAttachment, CloudTask, CloudTaskDetail, Frame, SlashCommand } from "./types";
 
 /** cursor 帧载荷:attach 下发时 data 既有裸 JSON 对象也有 base64(JSON)
@@ -680,8 +681,13 @@ export function useCloudTask(
   };
 
   const send = () => {
-    const text = input.trim();
-    if (!text || ended) return;
+    // 发原文,不 trim:云端按 `/name args` 解析斜杠指令,指令名后那个空格是
+    // 分隔符——抹掉它,技能就只是一句普通文本(Web 侧同样原样发,见
+    // frontend chat-inputbox sendInputSnapshot)。空判断仍按 trim 走。
+    // 光敲了指令名就发(没走菜单补全)的,替他把分隔符补上:整条消息恰好是
+    // 一条已知指令时才补,免得把普通文本里的 /path 也动了。
+    const text = withCommandSeparator(input, commands);
+    if (!text.trim() || ended) return;
     // 上传还没落定就发送,消息会带着半套附件出门:拦下并外显
     if (uploading > 0) {
       setErr("附件上传中,请稍候再发送");

@@ -31,15 +31,17 @@ import { BaizhiLogo } from "./baizhi";
 import logoUrl from "./logo.png";
 import { Field, Section, input, select, whiteBtn } from "./settings-ui";
 import { mcModelsRevoke, mcModelsSync } from "./cloudapi";
-import { memberCategory, stripTierPrefix } from "./modelMenu";
+import { memberCategory, sameModelName, stripSourceSuffix, stripTierPrefix } from "./modelMenu";
 import {
   dedupeModelsByName,
   emptyMcp,
   emptyModel,
   payloadOf,
+  renameKeepingSuffix,
   replaceSourceGroup,
   serversToMcps,
   sortModelsBySource,
+  syncedName,
   validateMcpNames,
   type McpEntry,
 } from "./settingsConfig";
@@ -857,7 +859,9 @@ export function SettingsView({
     const models = formRef.current.models;
     const defaultName = models[formRef.current.defaultIdx]?.name?.trim() ?? "";
     const synced: HostModel[] = syncedModels.map((sm) => ({
-      name: sm.name,
+      // 落盘名带来源后缀(展示层剥掉):两个同步来源撞名是常态,而名字是引擎
+      // 寻址键——不加后缀就只能丢掉后来者,即"同步的模型不全"。见 syncedName
+      name: syncedName(sm.name, source, sm.id),
       provider: sm.provider,
       base_url: sm.base_url,
       api_key: sm.api_key,
@@ -871,14 +875,18 @@ export function SettingsView({
       owner: sm.owner,
     }));
     const outside = new Set(models.filter((m) => m.source !== source && m.name.trim()).map((m) => m.name.trim()));
-    const skipped = synced.map((m) => m.name.trim()).filter((n) => outside.has(n));
+    // 跳过名单外显给用户看,报的是展示名(带 @source 的落盘名是实现细节)
+    const skipped = synced.filter((m) => outside.has(m.name.trim())).map((m) => stripSourceSuffix(m.name.trim()));
     // 整组替换后同样按来源排序:会员组不落在列表尾部,与载入/选择器一致
     const next = sortModelsBySource(replaceSourceGroup(models, synced, source));
     setModels(next);
     // 索引大位移:默认模型按名字重新定位(被移除则回退第一项),折叠态复位;
     // 降档重同步后原默认可能变锁定 → 挪到首个未锁条目(锁定条目不物化,
     // default 落它头上等于没有默认)
+    // 精确没中再按宽松口径找一次:加后缀前落盘的默认项记的是裸名,不这么兜
+    // 一次,升级后第一次同步会把默认模型悄悄挪到列表第一条
     let di = next.findIndex((m) => m.name.trim() === defaultName);
+    if (di < 0) di = next.findIndex((m) => sameModelName(m.name, defaultName));
     if (di < 0 || next[di]?.locked) di = next.findIndex((m) => !m.locked);
     di = di >= 0 ? di : 0;
     setDefaultIdx(di);
@@ -1114,7 +1122,7 @@ export function SettingsView({
     for (const m of ms) {
       const managed = m.source === SOURCE_MONKEYCODE;
       if (!m.name.trim() || !m.model.trim() || (!managed && (!m.base_url.trim() || !m.api_key.trim()))) {
-        setErr(`模型「${m.name.trim() || "未命名"}」信息不完整(需名称/接口地址/API Key/模型标识)`);
+        setErr(`模型「${stripSourceSuffix(m.name.trim()) || "未命名"}」信息不完整(需名称/接口地址/API Key/模型标识)`);
         setActive("models");
         return false;
       }
@@ -1129,7 +1137,7 @@ export function SettingsView({
     }
     for (const [n, list] of byName) {
       if (list.length > 1) {
-        setErr(`模型名称重复: ${n}(${list.map((m) => modelSourceLabel(m.source)).join("、")}各一条;名称是模型的唯一标识,请删除或改名其一)`);
+        setErr(`模型名称重复: ${stripSourceSuffix(n)}(${list.map((m) => modelSourceLabel(m.source)).join("、")}各一条;名称是模型的唯一标识,请删除或改名其一)`);
         setActive("models");
         return false;
       }
@@ -1140,7 +1148,7 @@ export function SettingsView({
       const cw = m.context_window ?? 200000;
       if (m.max_output && m.max_output >= cw * 0.1) {
         setErr(
-          `模型「${m.name.trim()}」的最大输出(${m.max_output.toLocaleString()})需小于上下文窗口(${cw.toLocaleString()})的 10%,建议不超过 8%(${Math.floor(cw * 0.08).toLocaleString()})`,
+          `模型「${stripSourceSuffix(m.name.trim())}」的最大输出(${m.max_output.toLocaleString()})需小于上下文窗口(${cw.toLocaleString()})的 10%,建议不超过 8%(${Math.floor(cw * 0.08).toLocaleString()})`,
         );
         setActive("models");
         return false;
@@ -1233,7 +1241,9 @@ export function SettingsView({
             className="ellipsis"
             style={{ fontSize: 12.5, fontFamily: MONO, color: m.name.trim() ? "var(--t1)" : "var(--t5)", minWidth: 0 }}
           >
-            {(managed ? stripTierPrefix(m.name.trim()) : m.name.trim()) || "未命名模型"}
+            {/* 同步条目一律剥来源后缀,会员条目再剥档位前缀:落盘名是寻址键,
+                不往用户脸上糊。手工条目的名字原样(用户自己取的) */}
+            {(managed ? stripTierPrefix(stripSourceSuffix(m.name.trim())) : stripSourceSuffix(m.name.trim())) || "未命名模型"}
           </span>
           <span style={pill}>{m.provider || "anthropic"}</span>
           {managed && (
@@ -1312,7 +1322,15 @@ export function SettingsView({
     <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "4px 14px 14px" }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 12 }}>
         <Field label="名称">
-          <input style={input} value={m.name} placeholder="如: 主力模型" onChange={(e) => patchModel(i, { name: e.target.value })} className="hv-bd" />
+          {/* 同步条目(百智云组可展开编辑)在输入框里也只见短名:剥后缀显示、
+              写回时按来源补回去,落盘名恒带后缀这一不变量不靠用户维持 */}
+          <input
+            style={input}
+            value={stripSourceSuffix(m.name)}
+            placeholder="如: 主力模型"
+            onChange={(e) => patchModel(i, { name: renameKeepingSuffix(m.name, e.target.value) })}
+            className="hv-bd"
+          />
         </Field>
         <Field label="协议">
           <select style={select} value={m.provider || "anthropic"} onChange={(e) => patchModel(i, { provider: e.target.value })}>

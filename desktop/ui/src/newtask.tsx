@@ -12,7 +12,7 @@ import { mcTaskCreate, mcTaskOptions } from "./cloudapi";
 import { inDesktopShell, pickDirectory, workdirPickBase } from "./host";
 import { useUpwardMenuHeight } from "./menuPosition";
 import { useNativeFileDrop } from "./nativeDrop";
-import { readLastTaskModel, rememberLastTaskModel } from "./modelMenu";
+import { readLastTaskModel, rememberLastTaskModel, sameModelName } from "./modelMenu";
 import { createSession } from "./session";
 import type { CloudTask } from "./types";
 import {
@@ -166,8 +166,13 @@ export function NewTaskView({
   // 时常为空,初始化时校验会让记忆永远失效。locked(超会员档展示专用)
   // 条目全链路跳过——它不在引擎 settings 里,派生到它会话建不起来
   const [pickedModel, setPickedModel] = useState(() => readLastTaskModel());
+  // 记忆里的名字可能是加来源后缀之前的裸名:精确没中按宽松口径再找一次,
+  // 找到就用**当下条目的真名**(记忆值本身已不是有效的引擎寻址键)
+  const rememberedEntry = pickedModel
+    ? models.find((m) => m.name === pickedModel) ?? models.find((m) => sameModelName(m.name, pickedModel))
+    : undefined;
   const model =
-    (pickedModel && models.some((m) => m.name === pickedModel && !m.locked) ? pickedModel : "") ||
+    (rememberedEntry && !rememberedEntry.locked ? rememberedEntry.name : "") ||
     models.find((m) => m.default && !m.locked)?.name ||
     models.find((m) => !m.locked)?.name ||
     "";

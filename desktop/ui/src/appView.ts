@@ -2,6 +2,7 @@
 // 快捷键路由。全部是无副作用函数(不触 React/DOM),供 App.tsx 与单测共用
 // ——快捷键这一块尤其吃亏于"藏在 860 行组件里的 40 行 if 链":⏎ 允许 /
 // esc 拒绝都是不可逆动作,守卫改错没有任何东西会拦住(见 appView.test.ts)。
+import { sameModelName } from "./modelMenu";
 import type { CloudTask, ModelInfo, SessionMeta } from "./types";
 
 export type AppMainView = "new" | "session" | "settings" | "cloud";
@@ -34,7 +35,8 @@ export function windowContextLabel(
 /** 模型菜单清单:会话在用的模型已从配置里下线时补一条兜底项,
  * 否则下拉里选不中当前模型(无 source 归「自定义」组) */
 export function modelMenuList(models: ModelInfo[], sessionModel: string): ModelInfo[] {
-  return sessionModel && !models.some((m) => m.name === sessionModel)
+  // 宽松比较:老会话记的是加来源后缀之前的裸名,那不算"模型已下线"
+  return sessionModel && !models.some((m) => m.name === sessionModel || sameModelName(m.name, sessionModel))
     ? [...models, { name: sessionModel, default: false }]
     : models;
 }

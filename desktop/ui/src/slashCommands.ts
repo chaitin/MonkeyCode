@@ -27,14 +27,25 @@ export function filterCommands(commands: SlashCommand[], query: string): SlashCo
   return [...prefix, ...rest];
 }
 
-/** 选中指令后的输入框内容:带参数提示的补一个空格(光标随即等着填参数),
- * 无参数的原样——用户按 ↩ 即可直接发出。 */
+/** 选中指令后的输入框内容:一律补一个尾随空格。
+ * 有参数提示的,光标随即等着填参数;没参数的也要补——云端按 `/name args`
+ * 解析,指令名后的空格是分隔符,缺了它整条消息会被当普通文本(本地会话这一路
+ * 发送前会 trim,补不补都一样)。 */
 export function commandText(cmd: SlashCommand): string {
-  return cmd.input?.hint ? `/${cmd.name} ` : `/${cmd.name}`;
+  return `/${cmd.name} `;
 }
 
 /** 键盘导航后的高亮下标(列表为空回 0;上下越界回绕) */
 export function nextActive(active: number, delta: number, length: number): number {
   if (length <= 0) return 0;
   return (active + delta + length) % length;
+}
+
+/** 发送前补指令分隔符:整条消息恰好是 `/<已知指令名>`(前后无参数)时补一个
+ * 尾随空格,其余原样。云端按 `/name args` 解析,缺了这个空格整条消息会被当成
+ * 普通文本;而句中的 /path、未知的 /xxx 都不该被动。 */
+export function withCommandSeparator(input: string, commands: SlashCommand[]): string {
+  const q = slashQuery(input);
+  if (q === null || !q) return input;
+  return commands.some((c) => c.name === q) ? `${input} ` : input;
 }
