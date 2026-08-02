@@ -156,6 +156,31 @@ fn open_log_dir(app: AppHandle) -> Result<String, String> {
     Ok(dir.to_string_lossy().into_owned())
 }
 
+/// 导出引擎最新日志:保存对话框另存一份 ohmyagent.log(引擎 stderr 全量)。
+/// 横幅/侧栏卡里的 15 行 tail 不够排查时,用户从设置页一键拿到完整现场当
+/// 报障附件。async:blocking_save_file 不能占主线程。用户取消返回 None。
+#[tauri::command]
+async fn export_engine_log(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let src = config::config_dir(&app)?.join("ohmyagent.log");
+    if !src.is_file() {
+        return Err("引擎日志不存在(引擎尚未启动过)".into());
+    }
+    let Some(dest) = app
+        .dialog()
+        .file()
+        .set_file_name("ohmyagent.log")
+        .blocking_save_file()
+    else {
+        return Ok(None);
+    };
+    let dest = dest
+        .into_path()
+        .map_err(|e| format!("无效的保存路径: {e}"))?;
+    std::fs::copy(&src, &dest).map_err(|e| format!("导出失败: {e}"))?;
+    Ok(Some(dest.to_string_lossy().into_owned()))
+}
+
 // ==================== 引擎生命周期(契约 6)====================
 
 /// 生命周期状态的唯一出口:落状态 + 广播。所有转移都必须经它,否则 UI 会
@@ -1101,6 +1126,7 @@ fn main() {
             update_install,
             open_extension_dir,
             open_log_dir,
+            export_engine_log,
             list_wsl_distros,
             engine_restart,
             probe_log,
@@ -1121,8 +1147,13 @@ fn main() {
             driver::session_close,
             driver::session_send,
             driver::session_call,
-            driver::upload_file,
+            driver::upload_begin,
+            driver::upload_file_path,
             driver::upload_read,
+            uploads::upload_chunk,
+            uploads::upload_finish,
+            uploads::upload_abort,
+            uploads::stat_dropped_file,
             uploads::read_dropped_file,
             baizhi::baizhi_status,
             baizhi::baizhi_send_code,
@@ -1133,7 +1164,10 @@ fn main() {
             baizhi::baizhi_sync,
             baizhi::mc_status,
             baizhi::mc_login,
+            baizhi::mc_password_login,
             baizhi::mc_logout,
+            baizhi::mc_models_sync,
+            baizhi::mc_models_revoke,
             baizhi::mc_tasks,
             baizhi::mc_projects,
             baizhi::mc_task_info,
@@ -1152,18 +1186,20 @@ fn main() {
             baizhi::monkeycode::cloud_ws_close
         ])
         .setup(|app| {
-            // 百智云/云端服务(壳级单例;凭证 cookie 与配置同目录)
-            let cfg_dir = config::config_dir(app.handle()).map_err(std::io::Error::other)?;
-            app.manage(baizhi::BaizhiState(std::sync::Arc::new(
-                baizhi::Service::new(cfg_dir),
-            )));
-
             // 配置损坏且无有效备份时绝不能按默认值继续并覆写；仍创建错误页
             // 让用户看见可行动诊断。托盘/桌宠只使用内存中的安全默认值。
             let (cfg, config_error) = match load_config(app.handle()) {
                 Ok(cfg) => (cfg, None),
                 Err(e) => (DesktopConfig::default(), Some(e)),
             };
+
+            // 百智云/云端服务(壳级单例;凭证 cookie 与配置同目录)。晚于
+            // 配置加载:MonkeyCode 服务地址可由设置指定(mc_base_url,重启
+            // 应用生效);配置损坏时按默认值落官方云,错误页照常外显。
+            let cfg_dir = config::config_dir(app.handle()).map_err(std::io::Error::other)?;
+            app.manage(baizhi::BaizhiState(std::sync::Arc::new(
+                baizhi::Service::new(cfg_dir, &cfg),
+            )));
             app.state::<PetEnabled>()
                 .0
                 .store(cfg.pet_enabled, Ordering::Relaxed);

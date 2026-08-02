@@ -25,7 +25,7 @@ import {
   type CloudConn,
   type CloudUserInput,
 } from "./cloudapi";
-import { usableCloudModels, type McCloudModel } from "./cloud";
+import { groupCloudModels, type McCloudModelGroup } from "./cloud";
 import { MAX_CLOUD_ATTS, uploadCloudFile, type CloudUploadedAtt } from "./cloudUpload";
 import { frameData } from "./codec";
 import { answerAsk as applyAskAnswer, initialChat, reduceBatch, type ChatState } from "./reduce";
@@ -431,8 +431,8 @@ export interface CloudTaskHandle {
   cursor: { cursor: string; hasMore: boolean } | null;
   loadingEarlier: boolean;
   loadEarlier(): Promise<void>;
-  /** 云端可用模型(null = 未加载;loadModels 惰性拉取) */
-  cloudModels: McCloudModel[] | null;
+  /** 云端可用模型分组(null = 未加载/拉取失败可重试;loadModels 惰性拉取) */
+  cloudGroups: McCloudModelGroup[] | null;
   switching: boolean;
   loadModels(): void;
   switchModel(modelId: string): Promise<void>;
@@ -692,14 +692,22 @@ export function useCloudTask(
     }
   };
 
-  // 切换模型:经控制流调 switch_model(load_session 保留会话上下文)
-  const [cloudModels, setCloudModels] = useState<McCloudModel[] | null>(null);
+  // 切换模型:经控制流调 switch_model(load_session 保留会话上下文)。
+  // 存分组投影(与 newtask 建任务菜单同一分类:档位/付费/我的/团队)
+  const [cloudGroups, setCloudGroups] = useState<McCloudModelGroup[] | null>(null);
   const [switching, setSwitching] = useState(false);
+  const modelsInFlight = useRef(false);
   const loadModels = () => {
-    if (cloudModels) return;
+    // 幂等靠 inFlight ref 而非「已有值」:失败保持 null,重开菜单可重试
+    //(旧实现失败缓存 [],一次失败本次挂载就永远「没有可用模型」)
+    if (cloudGroups !== null || modelsInFlight.current) return;
+    modelsInFlight.current = true;
     mcTaskOptions()
-      .then((o) => setCloudModels(usableCloudModels(o.models, o.plan)))
-      .catch(() => setCloudModels([]));
+      .then((o) => setCloudGroups(groupCloudModels(o.models, o.plan)))
+      .catch(() => undefined)
+      .finally(() => {
+        modelsInFlight.current = false;
+      });
   };
   const switchModel = async (modelId: string) => {
     if (switching || modelId === meta?.model?.id) return;
@@ -773,7 +781,7 @@ export function useCloudTask(
     cursor,
     loadingEarlier,
     loadEarlier,
-    cloudModels,
+    cloudGroups,
     switching,
     loadModels,
     switchModel,

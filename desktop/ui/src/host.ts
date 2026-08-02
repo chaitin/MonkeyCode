@@ -72,10 +72,11 @@ export async function workdirPickBase(): Promise<string | undefined> {
   return undefined;
 }
 
-/** 目录是否属于当前内核运行环境。WSL 模式认 guest 形态(/… 或 \\wsl$ UNC);
- * 本机模式下这些形态是 WSL 会话的遗留——Windows 壳上滤掉(macOS/Linux 本机
- * 的 / 开头是正常路径,只滤 UNC)。新任务的"最近目录/默认目录"按此过滤,
- * 切换运行环境后不再预填一个必然失败的路径。 */
+/** 目录是否属于当前内核运行环境。WSL 模式下 guest 形态(/… 或 \\wsl$ UNC)、
+ * Windows 盘符(壳映射为 /mnt/<盘>/…)与 ~ 形态(展开为 guest 家目录)全都
+ * 可归一化,均放行;本机模式下 guest 形态是 WSL 会话的遗留——Windows 壳上
+ * 滤掉(macOS/Linux 本机的 / 开头是正常路径,只滤 UNC)。新任务的"最近
+ * 目录/默认目录"按此过滤,切换运行环境后不再预填一个必然失败的路径。 */
 export function workdirMatchesEnv(
   dir: string,
   kernelEnv: string,
@@ -84,7 +85,7 @@ export function workdirMatchesEnv(
   const wsl = kernelEnv.startsWith("wsl:");
   const posix = dir.startsWith("/");
   const unc = /^\\\\wsl(\$|\.localhost)\\/i.test(dir);
-  if (wsl) return posix || unc;
+  if (wsl) return posix || unc || /^[a-zA-Z]:[\\/]/.test(dir) || dir.startsWith("~");
   return windowsShell ? !posix && !unc : !unc;
 }
 
@@ -99,8 +100,9 @@ export async function getHostConfig(): Promise<HostConfig | null> {
   return invoke<HostConfig>("get_config");
 }
 
-/** 保存应用配置:壳写盘(0600)并重启引擎;resolve 后调用方整页刷新
- * (location.reload())以复位所有状态并重连。 */
+/** 保存应用配置:壳写盘(0600)并重启引擎;引擎 Ready 后 App 经
+ * engine-status 统一路径免刷新重连(重拉模型/会话 + 重开当前会话),
+ * 调用方只需把自己的表单态重建为最新盘态。 */
 export async function saveHostConfig(config: HostConfig): Promise<void> {
   if (!tauri()?.core?.invoke) throw new Error("浏览器模式下配置只读,请在桌面应用中修改");
   await invoke("save_config", { config });
@@ -111,6 +113,19 @@ export async function saveHostConfig(config: HostConfig): Promise<void> {
 export async function openExtensionDir(): Promise<string | null> {
   if (!tauri()?.core?.invoke) return null;
   return invoke<string>("open_extension_dir");
+}
+
+/** 在文件管理器中定位引擎日志目录(ohmyagent.log、.prev 与崩溃留存
+ * crash-N 都在这)。返回目录路径;非壳环境返回 null。 */
+export async function openLogDir(): Promise<string | null> {
+  if (!tauri()?.core?.invoke) return null;
+  return invoke<string>("open_log_dir");
+}
+
+/** 导出引擎最新日志:系统保存对话框另存一份 ohmyagent.log(引擎 stderr
+ * 全量,报障附件用)。返回保存路径;用户取消返回 null。 */
+export async function exportEngineLog(): Promise<string | null> {
+  return invoke<string | null>("export_engine_log");
 }
 
 /** 枚举 WSL 发行版(设置页「运行环境」下拉)。非壳环境、非 Windows 或

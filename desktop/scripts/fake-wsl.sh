@@ -45,6 +45,10 @@ case "${1:-}" in
         # networking_mode 独立探测(mcp.json 物化时)
         printf '%s\n' "${FAKE_WSL_NETWORKING:-nat}"
         ;;
+      *"pwd -P"*)
+        # ensure_guest_dir(workdir 判定/创建 + canonical 化):本机恒等,真执行
+        exec "$@"
+        ;;
       *)
         echo "fake-wsl: 未知 /bin/sh -c 脚本: $script" >&2
         exit 1

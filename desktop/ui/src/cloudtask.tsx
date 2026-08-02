@@ -5,11 +5,12 @@
 import { useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import { openExternal } from "./host";
 import type { CloudTask, CloudTaskDetail } from "./types";
-import { cloudModelLabel } from "./cloud";
+import { cloudModelLabel, groupedCloudModelLabel } from "./cloud";
 import { CloudFilesDrawer } from "./cloudfiles";
 import { CloudTerminal } from "./cloudterm";
 import { MAX_CLOUD_ATTS } from "./cloudUpload";
-import { COL_MAX, ModelMenuItem, ModelPickerTrigger } from "./chat";
+import { COL_MAX, ModelPickerTrigger } from "./chat";
+import { CloudModelGroups } from "./cloudModelMenu";
 import { HeaderFilesButton, HeaderMenu, LogList, TaskPanel, ViewHeader, type MenuState } from "./components";
 import { Composer, QueuedChip, RunningBar } from "./composer";
 import { IconCloud, IconFile, IconGlobe, IconMonitor, IconPaperclip, IconStop, IconX } from "./icons";
@@ -107,6 +108,7 @@ export function CloudTaskView({
   };
   useNativeFileDrop({
     enabled: !ended,
+    wantContent: true, // 云端附件要上行对象存储,必须拿字节(整包 20MB 限)
     onDragging: setDragging,
     onFiles: (files) => h.addFiles(files),
     onError: (msg) => h.notify("⚠ 附件上传失败: " + msg),
@@ -479,11 +481,16 @@ export function CloudTaskView({
                 </span>
                 <span style={{ flex: 1 }} />
                 {/* 云端模型切换(经控制流 switch_model,保留会话上下文;执行中禁用) */}
-                <span ref={modelAnchorRef} style={{ position: "relative", flex: "none" }}>
+                {/* 包裹层接住 trigger 的 maxWidth:100%(与本地 ModelPicker 同款
+                    收缩语义):长云端模型名截断而不是撑破 composer 行 */}
+                <span
+                  ref={modelAnchorRef}
+                  style={{ position: "relative", display: "flex", flex: "0 1 auto", minWidth: 0, maxWidth: 220 }}
+                >
                   <ModelPickerTrigger
-                    label={h.switching ? "切换中…" : cloudModelLabel(meta?.model)}
+                    label={h.switching ? "切换中…" : meta?.model ? groupedCloudModelLabel(meta.model) : ""}
                     open={modelOpen}
-                    title={running ? "执行中不可切换模型" : "切换云端模型"}
+                    title={running ? "执行中不可切换模型" : `${cloudModelLabel(meta?.model) || "云端模型"} · 点击切换`}
                     disabled={running || h.switching}
                     onClick={openModelPicker}
                   />
@@ -491,21 +498,20 @@ export function CloudTaskView({
                     <>
                       <div className="backdrop" onClick={() => setModelOpen(false)} />
                       <div className="pop model-menu" style={{ position: "absolute", bottom: 30, right: 0, maxHeight: modelMenuMaxHeight, overflowY: "auto" }}>
-                        {(h.cloudModels ?? []).map((m) => (
-                          <ModelMenuItem
-                            key={m.id}
-                            label={cloudModelLabel(m)}
-                            selected={m.id === meta?.model?.id}
-                            onClick={() => {
+                        {h.cloudGroups !== null && (
+                          <CloudModelGroups
+                            groups={h.cloudGroups}
+                            selectedId={meta?.model?.id}
+                            onPick={(m) => {
                               setModelOpen(false);
                               void h.switchModel(m.id!);
                             }}
                           />
-                        ))}
-                        {h.cloudModels === null && (
+                        )}
+                        {h.cloudGroups === null && (
                           <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>加载中…</span>
                         )}
-                        {h.cloudModels !== null && h.cloudModels.length === 0 && (
+                        {h.cloudGroups !== null && h.cloudGroups.length === 0 && (
                           <span style={{ fontSize: 11.5, color: "var(--t6)", padding: "6px 9px" }}>没有可用模型</span>
                         )}
                       </div>

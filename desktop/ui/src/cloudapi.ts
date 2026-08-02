@@ -4,7 +4,7 @@
 import { b64encode, frameData } from "./codec";
 import type { McTaskOptions } from "./cloud";
 import { invoke, listenAsync } from "./ipc";
-import type { CloudAttachment, CloudProjectsResp, CloudTaskDetail, CloudTasksResp, Frame, McStatus, McUser, WsCloseInfo } from "./types";
+import type { CloudAttachment, CloudProjectsResp, CloudTaskDetail, CloudTasksResp, Frame, McModelsSyncResult, McStatus, McUser, WsCloseInfo } from "./types";
 
 // ==================== 云端 REST(壳命令代理) ====================
 
@@ -14,7 +14,19 @@ export const mcStatus = () => invoke<McStatus>("mc_status");
  * 未登录百智云或百智会话失效时报错。 */
 export const mcLogin = () => invoke<{ ok: boolean; user?: McUser }>("mc_login");
 
+/** 账号密码直连登录(不经百智云):壳内自动完成 PoW 验证码,明文密码经
+ * TLS 直发服务端(后端 bcrypt 比对),不落盘不留存;会话与桥接登录同构。 */
+export const mcPasswordLogin = (email: string, password: string) =>
+  invoke<{ ok: boolean; user?: McUser }>("mc_password_login", { email, password });
+
 export const mcLogout = () => invoke<{ ok: boolean }>("mc_logout");
+
+/** 同步会员内置模型为本地条目(不碰配置,返回值经设置表单落盘)。 */
+export const mcModelsSync = () => invoke<McModelsSyncResult>("mc_models_sync");
+
+/** 断开 MonkeyCode 账号时调用(从未同步过为 no-op;失败时本地记录保留
+ * 供下次重试)。须在 mcLogout 之前调用——请求走 mc 会话。 */
+export const mcModelsRevoke = () => invoke<{ ok: boolean }>("mc_models_revoke");
 
 export const mcTasks = (
   page = 1,

@@ -17,10 +17,16 @@ export type { PermOutcome, SessionStatus, WireFrame };
  * 字符串常量 ts-rs 覆盖不了,保留手写。 */
 export const SOURCE_BAIZHI = "baizhi";
 
+/** MonkeyCode 会员模型同步条目的 source 值(壳侧赋值在
+ * desktop/src/baizhi/monkeycode.rs 的 SOURCE_MONKEYCODE,两侧改动需同步)。 */
+export const SOURCE_MONKEYCODE = "monkeycode";
+
 /** source → 分组展示名(未知来源兜底显示原值)。 */
 export function modelSourceLabel(source?: string): string {
   if (!source) return "自定义";
-  return source === SOURCE_BAIZHI ? "百智云" : source;
+  if (source === SOURCE_BAIZHI) return "百智云";
+  if (source === SOURCE_MONKEYCODE) return "MonkeyCode 会员";
+  return source;
 }
 
 /** GET /api/models 返回的可选模型 */
@@ -29,6 +35,12 @@ export interface ModelInfo {
   default: boolean;
   /** 条目来源("baizhi"=百智云同步);缺省=手工添加,UI 按它分组 */
   source?: string;
+  /** 底层模型串。name 可能是 remark 别名,判会员档位(monkeycode-…)靠它 */
+  model?: string;
+  /** 超出会员档的展示专用条目:菜单灰态禁选(引擎 settings 里没有它) */
+  locked?: boolean;
+  /** 会员条目的服务端归属(public/private/team),会员 tab 按它分节 */
+  owner?: string;
   /** 模型设置的思考深度默认档(low/medium/high;缺省/"" = 关闭)。
    * composer 未显式选档时按它显示生效档位 */
   think?: string;
@@ -54,6 +66,10 @@ export interface HostModel {
   vision?: boolean;
   /** 条目来源("baizhi"=百智云同步);缺省=手工添加。重同步时按它整组替换 */
   source?: string;
+  /** 超出会员档的展示专用条目(会员同步打标):壳物化时跳过,UI 禁选 */
+  locked?: boolean;
+  /** 会员条目的服务端归属(public/private/team) */
+  owner?: string;
 }
 
 /** 壳持有的应用配置(经 Tauri IPC get_config/save_config 读写)。 */
@@ -63,6 +79,15 @@ export interface HostConfig {
   mcp_servers: Record<string, unknown>;
   /** 内核运行环境:空/缺省 = 本机;"wsl:<发行版>" = 在 WSL 中运行(仅 Windows) */
   kernel_env?: string;
+  /** MonkeyCode 服务地址(自建/私有化部署;空/缺省 = 官方云)。环境变量
+   * MC_DESKTOP_MONKEYCODE_URL 优先;修改保存后需重启应用生效 */
+  mc_base_url?: string;
+  /** MonkeyCode 测试环境反向代理的 HTTP Basic Auth("user:pass",空 = 无;
+   * 对齐 mobile 的 mc.basicAuth)。仅 MonkeyCode 域的请求附头;重启应用生效 */
+  mc_basic_auth?: string;
+  /** 模型请求地址(llmproxy,会员模型的 LLM 调用打这里)。空/缺省 =
+   * {服务地址}/v1;拆分部署时单独指定 */
+  mc_llm_base_url?: string;
 }
 
 // SessionStatus:见文件头——gen/SessionStatus.ts(ts-rs 生成)复用,
@@ -339,8 +364,25 @@ export interface BaizhiSyncedModel {
   api_key: string;
   model: string;
   context_window?: number;
+  max_output?: number;
+  /** 思考深度档;monkeycode 同步在服务端标注不支持思考时下发 "off"
+   * (压掉产品默认「低」,免得首个请求带思考参数被上游拒) */
+  think?: string;
   vision?: boolean;
-  source: string; // "baizhi"
+  source: string; // "baizhi" | "monkeycode"
+  /** monkeycode 同步:超出会员档的条目(展示禁选,升级后重同步解锁) */
+  locked?: boolean;
+  /** monkeycode 同步:服务端归属(public/private/team) */
+  owner?: string;
+}
+
+/** 同步条目并入设置表单后的结果(同步卡提示用):autoSaved=已触发自动
+ * 保存(随后内核重启+整页刷新);blocked=未自动保存的原因(dirty=表单有
+ * 未保存修改,busy=有任务在跑,不能隐式重启内核)。 */
+export interface SyncApplyResult {
+  skipped: string[];
+  autoSaved: boolean;
+  blocked?: "dirty" | "busy";
 }
 
 export interface BaizhiSyncResult {
@@ -348,6 +390,14 @@ export interface BaizhiSyncResult {
   mcp_servers: Record<string, Record<string, unknown>>;
   key_created: boolean; // 本次是否在网关新建了密钥(false=复用已有)
   key_name?: string; // 使用的密钥在网关里的名字(撞名时是 MonkeyCode-N)
+  notes?: string[];
+}
+
+/** mc_models_sync 返回:会员内置模型 → 本地条目(已带 source="monkeycode",
+ * 条目 model 字段是服务端模型名)。 */
+export interface McModelsSyncResult {
+  models: BaizhiSyncedModel[];
+  /** 被跳过条目的原因(未知协议/重名等),同步提示里外显 */
   notes?: string[];
 }
 

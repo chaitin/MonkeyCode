@@ -66,6 +66,22 @@ pub struct DesktopConfig {
     /// 内核运行环境:空 = 本机;"wsl:<发行版>" = 在 WSL 中运行(仅 Windows)。
     #[serde(default)]
     pub kernel_env: String,
+    /// MonkeyCode 服务地址(自建/私有化部署;空 = 官方云)。环境变量
+    /// MC_DESKTOP_MONKEYCODE_URL 优先于本字段(开发/联调逃生门)。修改
+    /// 保存后需**重启应用**生效:云端服务(baizhi::Service)在应用启动
+    /// 时按此构造一次,设置页保存只重启引擎、不重建它。
+    #[serde(default)]
+    pub mc_base_url: String,
+    /// MonkeyCode 测试环境反向代理的 HTTP Basic Auth("user:pass",空 =
+    /// 无;对齐 mobile 的 mc.basicAuth)。仅对 MonkeyCode 域的请求附
+    /// Authorization 头;同样重启应用生效。
+    #[serde(default)]
+    pub mc_basic_auth: String,
+    /// 模型请求地址(llmproxy,会员模型的 LLM 调用打这里;服务端
+    /// LLMProxy.BaseURL 的客户端镜像)。空 = 默认 {服务地址}/v1;拆分
+    /// 部署(模型代理独立域名/端口,或绕开反代鉴权)时单独指定。
+    #[serde(default)]
+    pub mc_llm_base_url: String,
     /// 已废弃(单引擎化后忽略):历史 config.json 兼容保留,不再消费。
     #[serde(default = "default_engine")]
     pub agent_engine: String,
@@ -89,6 +105,9 @@ impl Default for DesktopConfig {
             models: json_array(),
             mcp_servers: json_object(),
             kernel_env: String::new(),
+            mc_base_url: String::new(),
+            mc_basic_auth: String::new(),
+            mc_llm_base_url: String::new(),
             agent_engine: default_engine(),
             pet_enabled: true,
             pet_pos: None,
@@ -402,6 +421,43 @@ fn thinking_config(effort: &str) -> serde_json::Value {
     serde_json::json!({ "enabled": true, "effort": effort })
 }
 
+/// url 的主机是否就是 MonkeyCode 服务主机——Basic Auth 的作用域判定,与
+/// baizhi::Service::mc_basic_header 同语义:模型请求地址指向其他主机(拆分
+/// 部署)时,不得把 MC 的反代凭证嵌进去泄漏给第三方主机。**刻意不解析
+/// MC_DESKTOP_MONKEYCODE_URL 环境变量**:测试并行读写该变量会互相踩,且
+/// 判定从严(拿不准就不嵌)是安全的方向;纯环境变量改地址的开发场景在
+/// 设置里补同样的服务地址即可。
+fn on_mc_host(url: &str, mc_base_url: &str) -> bool {
+    let mc = mc_base_url.trim().trim_end_matches('/');
+    let mc = if mc.is_empty() { crate::baizhi::DEFAULT_MONKEYCODE_URL } else { mc };
+    let (Ok(a), Ok(b)) = (reqwest::Url::parse(url), reqwest::Url::parse(mc)) else {
+        return false;
+    };
+    a.host_str() == b.host_str() && a.port_or_known_default() == b.port_or_known_default()
+}
+
+/// 反代 Basic Auth 嵌进 base_url 的 userinfo(https://user:pass@host/…)。
+/// Go 引擎的 http 客户端在 Authorization 为空时按 userinfo 自动补 Basic 头
+/// (net/http client.send);anthropic 协议用 x-api-key 携带模型密钥、
+/// Authorization 空闲,恰好接住,llmproxy 也优先读 X-Api-Key——三方咬合。
+/// openai 系协议引擎自身占用 Authorization(Bearer),Basic 无从附加,
+/// 反代环境下该类条目仍不可用(引擎侧限制)。url 库对 userinfo 自动
+/// 百分号转义;解析失败原样返回(请求时报错外显)。
+fn with_basic_userinfo(base_url: &str, user_pass: &str) -> String {
+    let Ok(mut u) = reqwest::Url::parse(base_url) else {
+        return base_url.to_string();
+    };
+    let (user, pass) = match user_pass.split_once(':') {
+        Some((user, pass)) => (user, Some(pass)),
+        None => (user_pass, None),
+    };
+    if u.set_username(user).is_err() {
+        return base_url.to_string();
+    }
+    let _ = u.set_password(pass);
+    u.to_string()
+}
+
 /// 壳清单 → <engine_config_dir>/settings.json + mcp.json。
 ///
 /// 映射:HostModel{name,provider,base_url,api_key,model,…} → 以别名为键的
@@ -424,17 +480,56 @@ fn write_ohmyagent_config(
 
     let empty = vec![];
     let models_arr = cfg.models.as_array().unwrap_or(&empty);
+
+    // MonkeyCode 会员条目的 base_url/api_key 在物化时从应用配置目录
+    //(= 引擎目录的父目录,见 baizhi::OHMYAGENT_KEY_FILE)补齐。
+    let is_monkeycode = |m: &serde_json::Value| {
+        m.get("source").and_then(|v| v.as_str()) == Some(crate::baizhi::monkeycode::SOURCE_MONKEYCODE)
+    };
+    // locked = 超出会员档的展示专用条目(同步层打标):整条不物化。
+    // 只认会员条目上的标记,手编条目的杂散 locked 忽略。
+    let is_locked_member = |m: &serde_json::Value| {
+        is_monkeycode(m) && m.get("locked").and_then(|v| v.as_bool()).unwrap_or(false)
+    };
+    let mc_key = models_arr
+        .iter()
+        .any(|m| is_monkeycode(m) && !is_locked_member(m))
+        .then(|| dir.parent().and_then(crate::baizhi::stored_ohmyagent_key))
+        .flatten();
+    let mc_key_field = |k: &str| {
+        mc_key
+            .as_ref()
+            .and_then(|v| v.get(k))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+
     let mut models_out = serde_json::Map::new();
     let mut default_model = String::new();
     for m in models_arr {
+        if is_locked_member(m) {
+            continue; // 展示专用:引擎 settings 不该有它,default 回退自然跳过
+        }
         let get = |k: &str| m.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let (name, provider, base_url, api_key, model) = (
-            get("name"),
-            get("provider"),
-            get("base_url"),
-            get("api_key"),
-            get("model"),
-        );
+        let (name, provider, model) = (get("name"), get("provider"), get("model"));
+        // 会员条目由壳补齐(本机记录缺失时照常物化,请求时报错外显,不静默
+        // 丢条目)。地址:设置里显式指定(拆分部署)优先、立即生效,否则用
+        // 本机快照;配了测试环境反代 Basic Auth 时嵌进 userinfo(见
+        // with_basic_userinfo)
+        let (base_url, api_key) = if is_monkeycode(m) {
+            let llm = cfg.mc_llm_base_url.trim().trim_end_matches('/');
+            let mut b = if llm.is_empty() { mc_key_field("base_url") } else { llm.to_string() };
+            let basic = cfg.mc_basic_auth.trim();
+            // Basic Auth 只嵌给 MonkeyCode 主机:模型地址指向别的主机时嵌入
+            // 等于把反代凭证泄漏给第三方(host 门与 mc_basic_header 同语义)
+            if !b.is_empty() && !basic.is_empty() && on_mc_host(&b, &cfg.mc_base_url) {
+                b = with_basic_userinfo(&b, basic);
+            }
+            (b, mc_key_field("api_key"))
+        } else {
+            (get("base_url"), get("api_key"))
+        };
         if name.is_empty() || model.is_empty() {
             continue;
         }
@@ -482,11 +577,17 @@ fn write_ohmyagent_config(
         }
     }
 
-    let settings = serde_json::json!({
+    let mut settings = serde_json::json!({
         "default_model": default_model,
         "permission_mode": "auto",
         "models": models_out,
     });
+    // 顶层字段,引擎按需使用;对全部模型生效,其他网关忽略无副作用。
+    // 无会员条目时不写。
+    let secret = mc_key_field("signing_secret");
+    if !secret.is_empty() {
+        settings["signing_secret"] = serde_json::json!(secret);
+    }
     atomic_write_private(
         &dir.join("settings.json"),
         &serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?,
@@ -747,6 +848,160 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.join("settings.json")).unwrap()).unwrap();
         assert_eq!(settings["permission_mode"], "auto");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// MonkeyCode 会员条目的 base_url/api_key 在 config.json 里是空占位,
+    /// 物化时从应用配置目录的本机记录补齐;顶层 signing_secret 同源。
+    /// 无会员条目时不写 secret。
+    #[test]
+    fn ohmyagent_config_injects_proxy_credentials_for_monkeycode_entries() {
+        let root = test_dir("signing-secret");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join(crate::baizhi::OHMYAGENT_KEY_FILE),
+            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","base_url":"https://mc.example.com/v1"}"#,
+        )
+        .unwrap();
+        let engine_dir = root.join("ohmyagent");
+        let mc_cfg = DesktopConfig {
+            models: serde_json::json!([
+                {
+                    "name": "会员模型", "provider": "anthropic",
+                    "base_url": "", "api_key": "",
+                    "model": "cfg-1", "source": "monkeycode"
+                },
+                {
+                    "name": "自定义", "provider": "anthropic",
+                    "base_url": "https://direct.example.com", "api_key": "sk-direct", "model": "m"
+                }
+            ]),
+            ..Default::default()
+        };
+
+        write_ohmyagent_config(&engine_dir, &mc_cfg, None).unwrap();
+
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["signing_secret"], "sec-9");
+        assert_eq!(settings["models"]["会员模型"]["api_key"], "omk-1");
+        assert_eq!(settings["models"]["会员模型"]["base_url"], "https://mc.example.com/v1");
+        // 非会员条目不受注入影响
+        assert_eq!(settings["models"]["自定义"]["api_key"], "sk-direct");
+        assert_eq!(settings["models"]["自定义"]["base_url"], "https://direct.example.com");
+
+        // 配置了反代 Basic Auth:嵌进会员条目 base_url 的 userinfo(Go 引擎
+        // 在 Authorization 空闲时自动补 Basic 头;特殊字符需百分号转义)。
+        // host 门:凭证只嵌给 MonkeyCode 主机,服务地址须与之匹配;
+        // 非会员条目不受影响
+        let basic_cfg = DesktopConfig {
+            mc_base_url: "https://mc.example.com".into(),
+            mc_basic_auth: "user:p@ss".into(),
+            ..mc_cfg.clone()
+        };
+        write_ohmyagent_config(&engine_dir, &basic_cfg, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["models"]["会员模型"]["base_url"], "https://user:p%40ss@mc.example.com/v1");
+        assert_eq!(settings["models"]["自定义"]["base_url"], "https://direct.example.com");
+
+        // 显式模型请求地址(拆分部署):物化直接采用设置值(尾斜杠归一,
+        // 不等重新同步刷新 Key 快照)
+        let llm_cfg = DesktopConfig { mc_llm_base_url: "https://llm.example.com/v1/".into(), ..mc_cfg.clone() };
+        write_ohmyagent_config(&engine_dir, &llm_cfg, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["models"]["会员模型"]["base_url"], "https://llm.example.com/v1");
+
+        // 模型地址指向第三方主机 + 配了 Basic:**不得**把 MC 反代凭证嵌给
+        // 第三方(host 门,与 mc_basic_header 同语义);指回 MC 主机则照嵌
+        let split_cfg = DesktopConfig {
+            mc_base_url: "https://mc.example.com".into(),
+            mc_basic_auth: "user:p@ss".into(),
+            mc_llm_base_url: "https://llm.example.com/v1".into(),
+            ..mc_cfg.clone()
+        };
+        write_ohmyagent_config(&engine_dir, &split_cfg, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(
+            settings["models"]["会员模型"]["base_url"], "https://llm.example.com/v1",
+            "第三方主机不得携带 MC 反代凭证"
+        );
+        let same_host_cfg = DesktopConfig {
+            mc_llm_base_url: "https://mc.example.com/llm/v1".into(),
+            ..split_cfg.clone()
+        };
+        write_ohmyagent_config(&engine_dir, &same_host_cfg, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["models"]["会员模型"]["base_url"], "https://user:p%40ss@mc.example.com/llm/v1");
+
+        // 无会员条目:即便 Key 文件在,也不写顶层 secret
+        let plain_cfg = DesktopConfig {
+            models: serde_json::json!([{
+                "name": "自定义", "provider": "anthropic",
+                "base_url": "https://x", "api_key": "k", "model": "m"
+            }]),
+            ..Default::default()
+        };
+        write_ohmyagent_config(&engine_dir, &plain_cfg, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert!(settings.get("signing_secret").is_none());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// locked(超会员档展示专用)会员条目:不进引擎 settings、default 回退
+    /// 到未锁条目;全锁时零条目物化,不写顶层 secret;手编条目上的杂散
+    /// locked 忽略(skip 只认会员条目)。
+    #[test]
+    fn ohmyagent_config_skips_locked_member_entries() {
+        let root = test_dir("locked-members");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join(crate::baizhi::OHMYAGENT_KEY_FILE),
+            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","base_url":"https://mc.example.com/v1"}"#,
+        )
+        .unwrap();
+        let engine_dir = root.join("ohmyagent");
+        let cfg = DesktopConfig {
+            models: serde_json::json!([
+                { "name": "旗舰模型", "provider": "anthropic", "base_url": "", "api_key": "",
+                  "model": "monkeycode-ultra/x", "source": "monkeycode", "locked": true, "default": true },
+                { "name": "专业模型", "provider": "anthropic", "base_url": "", "api_key": "",
+                  "model": "monkeycode-pro/y", "source": "monkeycode" },
+                // 手编条目带杂散 locked:不是会员条目,照常物化
+                { "name": "手编", "provider": "anthropic", "base_url": "https://x", "api_key": "k",
+                  "model": "m", "locked": true }
+            ]),
+            ..Default::default()
+        };
+        write_ohmyagent_config(&engine_dir, &cfg, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert!(settings["models"].get("旗舰模型").is_none(), "locked 会员条目不得物化");
+        assert_eq!(settings["models"]["专业模型"]["api_key"], "omk-1", "未锁会员条目照常注入");
+        assert_eq!(settings["models"]["手编"]["api_key"], "k", "杂散 locked 的手编条目不受影响");
+        assert_eq!(settings["default_model"], "专业模型", "default 落在被 skip 条目时回退首个物化条目");
+        assert_eq!(settings["signing_secret"], "sec-9");
+
+        // 全部会员条目均 locked:零条目物化,不写顶层 signing_secret
+        let all_locked = DesktopConfig {
+            models: serde_json::json!([
+                { "name": "旗舰模型", "provider": "anthropic", "base_url": "", "api_key": "",
+                  "model": "monkeycode-ultra/x", "source": "monkeycode", "locked": true },
+                { "name": "自定义", "provider": "anthropic", "base_url": "https://x", "api_key": "k", "model": "m" }
+            ]),
+            ..Default::default()
+        };
+        write_ohmyagent_config(&engine_dir, &all_locked, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert!(settings.get("signing_secret").is_none(), "全锁时不写顶层 secret");
+        assert!(settings["models"].get("旗舰模型").is_none());
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

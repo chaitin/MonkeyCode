@@ -12,7 +12,7 @@
 //     拼装为 SessionHandle(形状不变)。
 import { useCallback, useEffect, useRef, useState } from "react";
 import { connect, sessionFrame, sessionHistory, sessionOutline, sessionSend, type Conn, type HistoryPage } from "./session";
-import { uploadFile, uploadFileURL } from "./uploads";
+import { nativePathOf, uploadFilePath, uploadFileStream, uploadFileURL } from "./uploads";
 import { b64decode, b64encode } from "./codec";
 import {
   answerAsk as applyAskAnswer,
@@ -40,21 +40,44 @@ export type PermAction = "allow" | "always" | "persist" | "deny";
 const LAST_SESSION_KEY = "mc.lastSession";
 export const lastSessionId = () => localStorage.getItem(LAST_SESSION_KEY);
 
-/** 单附件上传:File → base64 → 壳命令落盘工作区 uploads 目录,返回附件
- * 描述(超限/读取/上传失败抛出)。会话内 addFiles 与新建会话的首条消息
- * 附件共用。 */
-async function uploadAtt(sid: string, f: File): Promise<Attachment> {
-  if (f.size > 20 * 1024 * 1024) throw new Error(`${f.name || "文件"} 过大(上限 20MB)`);
-  const dataURL = await new Promise<string>((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result as string);
-    r.onerror = () => reject(new Error("读取文件失败"));
-    r.readAsDataURL(f);
-  });
-  const b64 = dataURL.slice(dataURL.indexOf(",") + 1);
+/** 预览缩略图只为小图整读 dataURL:大文件整读会撑爆 webview 内存,而
+ * 上传本身是分块的,预览缺席不该拖垮上传。 */
+const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
+
+/** 上传中附件的进度外显(composer 附件区渲染;完成即出列转正式 chip) */
+export interface UploadingAtt {
+  id: number;
+  name: string;
+  /** 0-100;-1 = 不确定(路径直拷/空文件,无分块回调) */
+  pct: number;
+}
+
+/** 单附件上传:落盘工作区 uploads 目录,返回附件描述(失败抛出),大小
+ * 不设限——path-backed 占位 File(Linux 原生拖拽,见 uploads.ts)由壳按
+ * 路径直拷,其余分块过 IPC(onProgress 逐块回调,进度外显用)。会话内
+ * addFiles 与新建会话的首条消息附件共用。 */
+async function uploadAtt(
+  sid: string,
+  f: File,
+  onProgress?: (sentBytes: number, totalBytes: number) => void,
+): Promise<Attachment> {
   const isImage = f.type.startsWith("image/");
-  const { path } = await uploadFile(sid, f.name, f.type, b64);
-  return { path, isImage, name: f.name || path.split("/").pop() || "", preview: isImage ? dataURL : undefined };
+  const native = nativePathOf(f);
+  if (native) {
+    const { path } = await uploadFilePath(sid, native);
+    return { path, isImage, name: f.name || path.split("/").pop() || "" };
+  }
+  let preview: string | undefined;
+  if (isImage && f.size <= PREVIEW_MAX_BYTES) {
+    preview = await new Promise<string | undefined>((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = () => resolve(undefined); // 预览读不出不阻断上传
+      r.readAsDataURL(f);
+    });
+  }
+  const { path } = await uploadFileStream(sid, f, onProgress);
+  return { path, isImage, name: f.name || path.split("/").pop() || "", preview };
 }
 
 /** 附件行:send() 与新建会话首条消息共用的「[图片]/[文件] 路径」约定 */
@@ -81,6 +104,8 @@ export interface SessionCoreIO {
   setQueued(text: string | null): void;
   /** 待发送附件镜像 */
   setAtts(atts: Attachment[]): void;
+  /** 上传中附件的进度镜像(在途入列、完成/失败出列) */
+  setUploads(list: UploadingAtt[]): void;
   setChanges(list: FileChange[] | null): void;
   /** null = 尚未探测/查询失败 */
   setIsGitRepo(v: boolean | null): void;
@@ -144,6 +169,30 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
     atts = v;
     io.setAtts(v);
   };
+  // 上传中附件(进度外显):仅内存态,不入暂存——切会话即清镜像,在途上传
+  // 的收尾回调按 id 过滤,清空后无害
+  let uploads: UploadingAtt[] = [];
+  let uploadSeq = 0;
+  const setUploads = (v: UploadingAtt[]) => {
+    uploads = v;
+    io.setUploads(v);
+  };
+  /** 上传并外显进度:入列(路径直拷无分块回调,pct=-1 转圈)→ 分块回调
+   * 刷新百分比 → 完成/失败出列。附件本体 chip 由调用方在成功后入 atts。 */
+  async function uploadWithProgress(forSid: string, f: File): Promise<Attachment> {
+    const id = ++uploadSeq;
+    const name = f.name || "文件";
+    setUploads([...uploads, { id, name, pct: nativePathOf(f) || f.size === 0 ? -1 : 0 }]);
+    try {
+      return await uploadAtt(forSid, f, (sent, total) => {
+        // 封顶 99:最后一块落地后还有 finish(改名)在途,100% 由出列表达
+        const pct = Math.min(99, Math.floor((sent / total) * 100));
+        setUploads(uploads.map((u) => (u.id === id ? { ...u, pct } : u)));
+      });
+    } finally {
+      setUploads(uploads.filter((u) => u.id !== id));
+    }
+  }
   /** 把当前会话的排队/附件写回暂存(空则清条目);open/close 复位前调用 */
   const stashCurrent = () => {
     if (!sid) return;
@@ -179,7 +228,10 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
   }
 
   // 排队的输入:运行结束后自动发送。乐观出队、失败回队(内容不丢),
-  // 下一个时机(新帧到达/断线重连/用户再发送)重投。此前用「running/queued
+  // 下一个时机(新帧到达/断线重连/用户再发送)重投。失败回队之所以安全,
+  // 靠的是壳的 session_send 契约:Err ⟺ 消息未入会话(引擎接了活但本轮
+  // 随即失败回 Ok,错误走 task-error 帧)——否则回队重投会把已落对话流的
+  // 消息再发一遍。此前用「running/queued
   // 依赖快照」当闸门,快照在发送成功前就被消费——一旦投递失败(引擎未就绪
   // 等),之后每批帧都在闸门处提前返回,消息卡死在队列里直到被切会话清掉
   function flushQueued() {
@@ -226,7 +278,7 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
         const lines: string[] = [];
         for (const f of pf.files) {
           try {
-            const a = await uploadAtt(pf.sid, f);
+            const a = await uploadWithProgress(pf.sid, f);
             lines.push(attLine(a));
           } catch (e) {
             io.notify("⚠ 附件上传失败: " + (e instanceof Error ? e.message : String(e)));
@@ -367,6 +419,9 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       const saved = stash.get(id);
       setQueued(saved?.queued ?? null);
       setAtts(saved?.atts ?? []);
+      // 进度条只属于当前视图:切会话即清,在途上传的收尾回调按 id 过滤,
+      // 空列表上过滤仍是空,完成的附件走 addFiles 的纪元守卫归原会话
+      setUploads([]);
       historyLoaded = false;
       io.setChanges(null);
       io.setIsGitRepo(null);
@@ -405,6 +460,7 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
       io.setConnected(false);
       setQueued(null);
       setAtts([]);
+      setUploads([]);
       io.setChanges(null);
       io.setIsGitRepo(null);
       io.setChangesErr("");
@@ -498,10 +554,17 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
 
     async addFiles(files: File[]) {
       if (!sid) return;
+      const forSid = sid;
       for (const f of files) {
         try {
-          const a = await uploadAtt(sid, f);
-          setAtts([...atts, a]);
+          const a = await uploadWithProgress(forSid, f);
+          // 大文件上传耗时可观,期间可能已切会话:附件只归原会话
+          // (与首条消息附件同款纪元守卫),否则会落进当前会话的 composer
+          if (sid === forSid) setAtts([...atts, a]);
+          else {
+            const prev = stash.get(forSid);
+            stash.set(forSid, { queued: prev?.queued ?? null, atts: [...(prev?.atts ?? []), a] });
+          }
         } catch (e) {
           io.notify("⚠ 附件上传失败: " + (e instanceof Error ? e.message : String(e)));
         }
@@ -663,6 +726,8 @@ export interface SessionHandle {
   input: string;
   queued: string | null;
   atts: Attachment[];
+  /** 上传中的附件(进度外显;完成即转入 atts) */
+  uploads: UploadingAtt[];
   changes: FileChange[] | null;
   /** null = 尚未探测；false 时文件抽屉不展示“改动”页。 */
   isGitRepo: boolean | null;
@@ -744,6 +809,7 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
   const [input, setInput] = useState("");
   const [queued, setQueued] = useState<string | null>(null);
   const [atts, setAtts] = useState<Attachment[]>([]);
+  const [uploads, setUploads] = useState<UploadingAtt[]>([]);
   const [changes, setChanges] = useState<FileChange[] | null>(null);
   const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null);
   const [changesErr, setChangesErr] = useState("");
@@ -767,6 +833,7 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
       setInput,
       setQueued,
       setAtts,
+      setUploads,
       setChanges,
       setIsGitRepo,
       setChangesErr,
@@ -798,6 +865,7 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
     input,
     queued,
     atts,
+    uploads,
     changes,
     isGitRepo,
     changesErr,

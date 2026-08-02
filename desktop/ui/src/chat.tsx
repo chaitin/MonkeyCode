@@ -29,14 +29,22 @@ import {
   type MenuState,
   type OutlineEntry,
 } from "./components";
-import { Composer, QueuedChip, RunningBar } from "./composer";
+import { Composer, QueuedChip, RunningBar, UploadingChip } from "./composer";
 import { IconArchive, IconChat, IconCheck, IconChevronDown, IconFolder, IconInfo, IconPencil, IconShield, IconTaskDone, IconX } from "./icons";
 import logoUrl from "./logo.png";
 import { useUpwardMenuHeight } from "./menuPosition";
+import {
+  filterModels,
+  groupMemberSections,
+  modelDisplay,
+  modelDisplayByName,
+  modelMenuTabs,
+  shouldShowModelExtras,
+} from "./modelMenu";
 import { useNativeFileDrop } from "./nativeDrop";
 import { workspaceRelativePath } from "./markdownPaths";
 import type { SessionHandle } from "./useSession";
-import { modelSourceLabel, type LogItem, type ModelInfo, type SessionMeta, type SessionNotice, type Usage } from "./types";
+import { SOURCE_MONKEYCODE, type LogItem, type ModelInfo, type SessionMeta, type SessionNotice, type Usage } from "./types";
 
 // IME 守卫随 composer 收敛到 composer.tsx;从这转口保持既有引用面
 // (sidebar/newtask 均 import 自 ./chat)
@@ -143,32 +151,60 @@ function PermPill({ yolo, onToggle }: { yolo: boolean; onToggle: () => void }) {
   );
 }
 
-/** 模型菜单的共享选项行:本地/云端统一为整行 hover + 当前项勾选。 */
+/** 模型菜单的共享选项行:本地/云端统一为整行 hover + 当前项勾选。
+ * tag = 会员档位药丸(基础/专业/旗舰);title 缺省 = label,展示短名的
+ * 条目传完整原名做 hover 兜底;disabled = 灰态禁选(超会员档的锁定条目)。 */
 export function ModelMenuItem({
   label,
   selected,
+  tag,
   hint,
+  title,
+  disabled,
   onClick,
 }: {
   label: string;
   selected: boolean;
+  tag?: string;
   hint?: string;
+  title?: string;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
-      className="hv menu-item"
+      className={disabled ? "menu-item" : "hv menu-item"}
       aria-current={selected ? "true" : undefined}
-      onClick={onClick}
+      disabled={disabled}
+      title={title ?? label}
+      onClick={disabled ? undefined : onClick}
       style={{
         width: "100%",
         minWidth: 0,
         padding: "7px 10px",
         color: selected ? "var(--accTx)" : "var(--t2)",
         fontWeight: selected ? 600 : 400,
+        opacity: disabled ? 0.55 : 1,
+        cursor: disabled ? "default" : undefined,
       }}
     >
       <span className="ellipsis" style={{ flex: 1, minWidth: 0 }}>{label}</span>
+      {tag && (
+        <span
+          style={{
+            flex: "none",
+            fontSize: 10,
+            fontWeight: 600,
+            padding: "1px 6px",
+            borderRadius: 4,
+            background: "var(--hov)",
+            color: "var(--t4)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {tag}
+        </span>
+      )}
       {hint && <span style={{ flex: "none", fontSize: 11, color: "var(--t5)", fontWeight: 400 }}>{hint}</span>}
       {selected && <IconCheck size={11} color="var(--accTx)" strokeWidth={1.6} />}
     </button>
@@ -208,7 +244,11 @@ export function ModelPickerTrigger({
         color: disabled ? "var(--t5)" : "var(--t3)",
         cursor: disabled ? "default" : "pointer",
         fontWeight: 500,
-        maxWidth: 220,
+        // 宽度上限由各使用处的包裹层给(newtask/chat/cloudtask 语境不同);
+        // 自身可收缩到 0——composer 行寸土寸金,长模型名靠 ellipsis 截断,
+        // 不能把「开始任务/发送」按钮挤出卡片
+        maxWidth: "100%",
+        minWidth: 0,
         opacity: disabled ? 0.6 : 1,
       }}
     >
@@ -232,34 +272,76 @@ export function ModelPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  // 来源 tab:null =「跟随当前模型的来源」渲染期派生,仅用户点击才落
+  // 具体值——models 异步晚到/刷新时不会停在错误来源
+  const [tab, setTab] = useState<string | null>(null);
   const { anchorRef, menuMaxHeight } = useUpwardMenuHeight<HTMLDivElement>(open, 370);
 
-  const q = filter.trim().toLowerCase();
-  const shown = q ? models.filter((m) => m.name.toLowerCase().includes(q)) : models;
-  // 按来源分桶:「自定义」(无 source)恒在前,其余组按首次出现顺序
-  const groups: { label: string; items: ModelInfo[] }[] = [];
-  for (const m of shown) {
-    const label = modelSourceLabel(m.source);
-    let g = groups.find((x) => x.label === label);
-    if (!g) {
-      g = { label, items: [] };
-      if (!m.source) groups.unshift(g);
-      else groups.push(g);
-    }
-    g.items.push(m);
-  }
-  const showFilter = models.length > 10;
+  // 过滤框在模型多时才有意义;tab 行只要 ≥2 来源就恒显(它是来源间唯一导航)
+  const showExtras = shouldShowModelExtras(models.length);
+  const tabs = modelMenuTabs(models);
+  // 当前来源归一必须 `|| ""`:自定义的 tab key 是空串,`??` 会把它吞成会员
+  const currentSource = models.find((m) => m.name === current)?.source || "";
+  const wantTab = tab ?? currentSource;
+  const activeTab = tabs.some((t) => t.key === wantTab) ? wantTab : (tabs[0]?.key ?? "");
+  const showTabs = tabs.length >= 2;
+  // 过滤在 tab 内;会员 tab 按档位/付费/我的/团队分节(节头表达档位,
+  // 条目不再带药丸),其余来源平铺
+  const tabItems = filterModels(models.filter((m) => (m.source || "") === activeTab), filter);
+  const memberSections = activeTab === SOURCE_MONKEYCODE ? groupMemberSections(tabItems) : null;
+
+  // Esc 关闭必须在 window **capture** 阶段拦截:App 的全局快捷键挂在冒泡
+  // 阶段,会话视图存在待审批时 Esc 是不可逆的拒绝(appView.ts)——菜单
+  // 开着时这一下只能归菜单,stopImmediatePropagation 保证审批处理器不跑。
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      setOpen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open]);
+
+  const pick = (name: string) => {
+    setOpen(false);
+    onPick(name);
+  };
+
+  // 条目渲染收口:会员 tab 分节内省略档位药丸(节头已表达);locked
+  // 条目灰态禁选,title 说明解锁路径
+  const itemOf = (m: ModelInfo, noTag = false) => {
+    const d = modelDisplay(m);
+    return (
+      <ModelMenuItem
+        key={m.name}
+        label={d.label}
+        tag={noTag ? undefined : d.tier}
+        title={m.locked ? `${m.name} · 当前会员档不可用,升级后重新同步` : m.name}
+        selected={m.name === current}
+        disabled={m.locked}
+        hint={m.default ? "默认" : undefined}
+        onClick={() => pick(m.name)}
+      />
+    );
+  };
 
   return (
-    <div ref={anchorRef} style={{ position: "relative", flex: "none" }}>
+    <div
+      ref={anchorRef}
+      style={{ position: "relative", display: "flex", flex: "0 1 auto", minWidth: 0, maxWidth: 220 }}
+    >
       <ModelPickerTrigger
-        label={current}
+        label={modelDisplayByName(models, current).label}
         open={open}
         disabled={disabled}
-        title={disabled ? "轮次执行中,结束后可切换" : "切换模型(下一轮生效)"}
+        title={disabled ? "轮次执行中,结束后可切换" : `${current || "选择模型"} · 点击切换(下一轮生效)`}
         onClick={() => {
           if (disabled) return;
           setFilter("");
+          setTab(null); // 打开时回到「跟随当前模型来源」
           setOpen(!open);
         }}
       />
@@ -267,7 +349,7 @@ export function ModelPicker({
         <>
           <div className="backdrop" onClick={() => setOpen(false)} />
           <div className="pop model-menu" style={{ position: "absolute", bottom: 30, right: 0, maxHeight: menuMaxHeight, overflow: "hidden" }}>
-            {showFilter && (
+            {showExtras && (
               <div style={{ padding: "6px 8px 4px" }}>
                 <input
                   autoFocus
@@ -289,31 +371,54 @@ export function ModelPicker({
                 />
               </div>
             )}
+            {showTabs && (
+              <div style={{ display: "flex", gap: 2, padding: "2px 8px 4px" }}>
+                {tabs.map((t) => (
+                  // span 而非 button:不进 Tab 焦点序、无键盘处理,不与 Esc
+                  // 的 window capture 及过滤框 autoFocus 抢交互
+                  <span
+                    key={t.key}
+                    onClick={() => setTab(t.key)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      height: 20,
+                      padding: "0 8px",
+                      borderRadius: 10,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      userSelect: "none",
+                      background: activeTab === t.key ? "var(--hov)" : "transparent",
+                      color: activeTab === t.key ? "var(--accTx)" : "var(--t5)",
+                    }}
+                  >
+                    {t.label}
+                  </span>
+                ))}
+              </div>
+            )}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-              {groups.length === 0 && (
-                <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--t5)" }}>无匹配模型</div>
-              )}
-              {groups.map((g) => (
-                <div key={g.label}>
-                  {(groups.length > 1 || g.label !== "自定义") && (
-                    <div style={{ padding: "6px 10px 3px", fontSize: 10.5, fontWeight: 700, color: "var(--t5)", letterSpacing: 0.4 }}>
-                      {g.label}
-                    </div>
-                  )}
-                  {g.items.map((m) => (
-                    <ModelMenuItem
-                      key={m.name}
-                      label={m.name}
-                      selected={m.name === current}
-                      hint={m.default ? "默认" : undefined}
-                      onClick={() => {
-                        setOpen(false);
-                        onPick(m.name);
-                      }}
-                    />
-                  ))}
+              {tabItems.length === 0 && (
+                <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--t5)" }}>
+                  {models.length === 0 ? "尚未配置模型" : "无匹配模型"}
                 </div>
-              ))}
+              )}
+              {/* 会员 tab:档位/付费/我的/团队分节,节头恒显(每节都承载语义);
+                  其余来源平铺(单一来源下组头是冗余) */}
+              {memberSections !== null
+                ? memberSections.map((s) => (
+                    <div key={s.label}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px 3px" }}>
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 10.5, fontWeight: 700, color: "var(--t5)", letterSpacing: 0.4 }}>
+                          {s.label}
+                        </span>
+                        {s.badge && <span style={{ flex: "none", fontSize: 9.5, color: "var(--t6)" }}>{s.badge}</span>}
+                      </div>
+                      {s.items.map((m) => itemOf(m, true))}
+                    </div>
+                  ))
+                : tabItems.map((m) => itemOf(m))}
             </div>
           </div>
         </>
@@ -494,7 +599,7 @@ export function ChatView({
   onDelete: () => void;
   onRename: (title: string) => void;
 }) {
-  const { chat, input, queued, atts, yolo } = session;
+  const { chat, input, queued, atts, uploads, yolo } = session;
   const changesCount = session.changes?.length ?? 0;
   const logRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true); // 用户是否停留在底部(自动跟随滚动)
@@ -1010,7 +1115,7 @@ export function ChatView({
           onSend={sendAndFollow}
           onPaste={onPaste}
           above={
-            (chat.running || atts.length > 0) && (
+            (chat.running || atts.length > 0 || uploads.length > 0) && (
               <>
                 {chat.running && (
                   <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--line2)", borderRadius: "13px 13px 0 0", background: "var(--accBgSoft)" }}>
@@ -1021,7 +1126,10 @@ export function ChatView({
                     />
                   </div>
                 )}
-                {atts.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "10px 12px 0" }}>
+                {(atts.length > 0 || uploads.length > 0) && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "10px 12px 0" }}>
+                {uploads.map((u) => (
+                  <UploadingChip key={u.id} name={u.name} pct={u.pct} />
+                ))}
                 {atts.map((a, i) => (
                   <span key={a.path} style={{ position: "relative", display: "flex" }}>
                     {a.isImage ? (

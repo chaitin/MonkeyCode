@@ -464,6 +464,35 @@ async fn e2e_wsl_smoke_full_lifecycle() {
         "~ 应展开为 guest 家目录"
     );
 
+    // 软链工作区:存在性判定在 guest 内做(ensure_guest_dir),不再被宿主
+    // \\wsl$ 的符号链接求值限制误报"目录不存在";sidecar 存 canonical 形态
+    #[cfg(unix)]
+    {
+        let target = home.join("link-target");
+        std::fs::create_dir_all(&target).unwrap();
+        let link = home.join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let meta = driver
+            .session_create(&link.to_string_lossy(), "测试模型", false)
+            .await
+            .expect("软链建会话");
+        let sid3 = meta.get("id").and_then(|v| v.as_str()).unwrap();
+        let stored = driver.0.read_sidecar(sid3);
+        assert_eq!(
+            stored.get("workdir").and_then(|v| v.as_str()),
+            std::fs::canonicalize(&target).unwrap().to_str(),
+            "软链 workdir 应解为 canonical 目标"
+        );
+    }
+
+    // 目录真不存在(create=false):错误文案必须含"目录不存在"
+    // (前端 offerCreate 按此匹配给"创建"入口)
+    let err = driver
+        .session_create(&home.join("no-such-dir").to_string_lossy(), "测试模型", false)
+        .await
+        .expect_err("不存在目录应报错");
+    assert!(err.contains("目录不存在"), "文案契约(offerCreate 匹配): {err}");
+
     // 优雅停止:stdin EOF 经中继(fake 直执)透传,引擎自退,不走 pkill
     driver.stop();
     let _ = std::fs::remove_dir_all(&home);
@@ -2145,4 +2174,25 @@ fn journal_writer_drops_escaping_ids_without_stalling_the_barrier() {
         "合法 id 的帧日志被误伤",
     );
     let _ = std::fs::remove_dir_all(inner.data_dir.parent().unwrap());
+}
+
+/// 清单解析对 model/locked/owner 字段必须容缺(unwrap_or 而非 ?):旧条目
+/// 没有这些字段,用 ? 会让整条从 models_list 消失;locked 缺省 false =
+/// 旧数据照常可选。正常条目原样透传,UI 靠 model 判会员档位(name 可能是
+/// remark 别名)、靠 locked/owner 做灰态与分节。
+#[test]
+fn parse_manifest_models_tolerates_missing_model_field() {
+    let models = parse_manifest_models(&json!([
+        { "name": "旧手编条目", "provider": "anthropic" },
+        { "name": "会员别名", "source": "monkeycode", "model": "monkeycode-pro/deepseek-pro",
+          "locked": true, "owner": "public" },
+    ]));
+    assert_eq!(models.len(), 2, "缺 model 的条目不能被丢弃");
+    assert_eq!(models[0].model, "");
+    assert!(!models[0].locked, "缺 locked 的旧条目必须照常可选");
+    assert_eq!(models[0].owner, "");
+    assert_eq!(models[1].model, "monkeycode-pro/deepseek-pro");
+    assert_eq!(models[1].source, "monkeycode");
+    assert!(models[1].locked);
+    assert_eq!(models[1].owner, "public");
 }

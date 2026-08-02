@@ -143,6 +143,28 @@ async fn mc_user(svc: &Service) -> BzResult<Value> {
     Ok(user)
 }
 
+/// 账号密码直连登录(参考 mobile:POST /api/v1/users/password-login,免鉴权)。
+/// 与百智云桥接互为替代:服务端走同一个 Session.Save,cookie 同名
+/// (monkeycode_ai_session)落 mc 罐,下游任务/会员模型全部通用。
+/// 流程:MC 域 PoW 验证码 → 登录 → status 权威确认(与桥接同款收尾)。
+/// password 发**明文**(HTTPS;服务端 bcrypt 比对——domain.TeamLoginReq 注释
+/// 里的"MD5 加密后的值"已过时,mobile/web 前端都发明文,勿做前端哈希)。
+/// 服务端把密码错/用户不存在等业务失败统一折叠为「登录失败」(code 10606),
+/// 经 ENV_MC 解包原样透传。
+pub async fn login_monkeycode_password(svc: &Service, email: &str, password: &str) -> BzResult<Value> {
+    // 验证码打 MonkeyCode 域;罐传 mc——罐决定 Set-Cookie 吸收方向,
+    // 用百智罐会把 mc 域 cookie 混进百智罐,破坏双罐隔离
+    let captcha = svc.captcha_token_at(&svc.ep.monkeycode, &svc.mc, "MonkeyCode ").await?;
+    mc_call(
+        svc,
+        reqwest::Method::POST,
+        "/api/v1/users/password-login",
+        Some(&json!({ "email": email, "password": password, "captcha_token": captcha })),
+    )
+    .await?;
+    confirm_mc_login(svc).await
+}
+
 /// 云端会话状态:有会话时返回用户信息。
 pub async fn mc_status(svc: &Service) -> BzResult<(bool, Value)> {
     if svc.mc.is_empty() {
@@ -456,6 +478,9 @@ pub async fn mc_file_upload(svc: &Service, vm_id: &str, path: &str, data: Vec<u8
     if let Some(h) = svc.mc.header(&url) {
         req = req.header(reqwest::header::COOKIE, h);
     }
+    if let Some(b) = svc.mc_basic_header(&url) {
+        req = req.header(reqwest::header::AUTHORIZATION, b);
+    }
     let resp = req.send().await.map_err(|e| other(format!("上传失败: {e}")))?;
     let status = resp.status().as_u16();
     let body = resp.bytes().await.map_err(|e| other(format!("读取响应失败: {e}")))?;
@@ -563,6 +588,9 @@ async fn do_file_download(
     if let Some(h) = svc.mc.header(&url) {
         req = req.header(reqwest::header::COOKIE, h);
     }
+    if let Some(b) = svc.mc_basic_header(&url) {
+        req = req.header(reqwest::header::AUTHORIZATION, b);
+    }
     let resp = req.send().await.map_err(|e| other(format!("下载失败: {e}")))?;
     let status = resp.status().as_u16();
     if !(200..300).contains(&status) {
@@ -623,14 +651,209 @@ async fn do_file_download(
     Ok(written)
 }
 
+// ==================== 会员模型本地同步 ====================
+
+/// 会员模型同步条目的 source 标记(UI 按它分组/整组替换,config.rs 物化
+/// 按它决定是否注入 signing_secret;对应 ui/src/types.ts 的
+/// SOURCE_MONKEYCODE,两侧改动需同步)。
+pub(crate) const SOURCE_MONKEYCODE: &str = "monkeycode";
+
+/// 服务端 interface_type → 本地条目 provider(ui/src/types.ts 词汇)。
+/// 未知协议返回 None 由调用方跳过:config.rs route_of 对未知 provider
+/// 一律兜底 anthropic,透传会把新协议条目错误物化成 anthropic 请求。
+fn provider_of_interface(interface_type: &str) -> Option<&'static str> {
+    match interface_type {
+        "openai_chat" => Some("openai"),
+        "openai_responses" => Some("openai_responses"),
+        "anthropic" => Some("anthropic"),
+        _ => None,
+    }
+}
+
+/// 裸档位占位条目(服务端会员档位的占位项,非可调用模型;对齐
+/// ui/src/cloud.ts 的 BUILTIN_META)。
+fn is_builtin_placeholder(model: &str) -> bool {
+    matches!(
+        model.to_ascii_lowercase().as_str(),
+        "monkeycode-basic" | "monkeycode-pro" | "monkeycode-ultra"
+    )
+}
+
+/// 会员条目的节序(与 ui groupMemberSections / Web 分组同序,两侧改动需
+/// 同步):基础 0 → 专业 1 → 旗舰 2 → 付费(public 非档位)3 → 我的 4 →
+/// 团队 5。同步输出按它排序,配置顺序即设置页/选择器的展示顺序。
+fn member_section_rank(model: &str, owner: &str) -> u8 {
+    let n = model.to_ascii_lowercase();
+    if n.starts_with("monkeycode-basic") {
+        0
+    } else if n.starts_with("monkeycode-pro") {
+        1
+    } else if n.starts_with("monkeycode-ultra") {
+        2
+    } else if owner == "private" {
+        4
+    } else if owner == "team" {
+        5
+    } else {
+        3
+    }
+}
+
+/// 会员档位是否覆盖该模型(按内置命名前缀,与 ui/src/cloud.ts 的
+/// planAllowsModel 同一规则,两侧改动需同步):basic 档与非内置命名恒可用,
+/// pro 前缀要 pro/flagship/ultra 档,ultra 前缀要 flagship/ultra 档。
+fn plan_allows_model(model: &str, plan: &str) -> bool {
+    let n = model.to_ascii_lowercase();
+    if n.starts_with("monkeycode-ultra") {
+        matches!(plan, "flagship" | "ultra")
+    } else if n.starts_with("monkeycode-pro") {
+        matches!(plan, "pro" | "flagship" | "ultra")
+    } else {
+        true
+    }
+}
+
+/// POST /api/v1/users/ohmyagent/api-keys(无请求参数)。三个字段都必需,
+/// 缺任一即在此快失败,别拖到对话时变成难解释的上游报错。
+pub async fn mc_ohmyagent_key_create(svc: &Service) -> BzResult<Value> {
+    let out = mc_call(svc, reqwest::Method::POST, "/api/v1/users/ohmyagent/api-keys", None).await?;
+    let has = |k: &str| out.get(k).and_then(Value::as_str).map(|s| !s.is_empty()).unwrap_or(false);
+    if !has("id") || !has("api_key") || !has("signing_secret") {
+        return Err(other("同步准备失败:服务端响应缺少必要字段"));
+    }
+    Ok(out)
+}
+
+/// DELETE /api/v1/users/ohmyagent/api-keys/{id}。
+pub async fn mc_ohmyagent_key_delete(svc: &Service, id: &str) -> BzResult<()> {
+    mc_call(
+        svc,
+        reqwest::Method::DELETE,
+        &format!("/api/v1/users/ohmyagent/api-keys/{}", urlencode(id)),
+        None,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// users/models 条目 → 本地模型条目(ui/src/types.ts HostModel 词汇)。
+/// 收 owner.type ∈ {public, private, team}(未知/缺失跳过——形状不明的
+/// 条目宁缺勿滥);会员档未覆盖的内置模型**不再剔除**,改打 `locked: true`
+/// (UI 灰态展示禁选,物化层跳过,升级会员重同步后解锁,对齐 Web 的
+/// canUseModelBySubscription 灰态)。请求的 model 字段传**服务端模型名**
+/// ——swagger 写"传模型配置 ID"是过时文档,后端实际按模型名解析(后端
+/// 同学确认);私有/团队模型属于该用户,同样按名解析。base_url/api_key
+/// 为空占位,物化时由壳补齐(config.rs write_ohmyagent_config)。
+/// 逐条容错,不拖垮整批。
+fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>) {
+    // (节序, weight, name, entry):映射后统一排序——节序 → weight 降序
+    // (服务端权重,容缺按 0,与 cloud.ts byWeightThenName 同款)→ name
+    let mut keyed: Vec<(u8, i64, String, Value)> = Vec::new();
+    let mut notes = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for it in items {
+        let s = |k: &str| it.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
+        let owner = match it.pointer("/owner/type").and_then(Value::as_str) {
+            Some(o @ ("public" | "private" | "team")) => o,
+            _ => continue,
+        };
+        if it.get("is_hidden").and_then(Value::as_bool).unwrap_or(false) {
+            continue;
+        }
+        let (id, model) = (s("id"), s("model"));
+        if id.is_empty() || model.is_empty() || is_builtin_placeholder(&model) {
+            continue; // 占位/残缺条目不是可调用模型,静默跳过
+        }
+        // 超档 ≠ 排除:展示但禁选(静默,不出 note——菜单灰态即是外显)
+        let locked = !plan_allows_model(&model, plan);
+        let itype = s("interface_type");
+        let Some(provider) = provider_of_interface(&itype) else {
+            notes.push(format!("模型 {model} 使用了本版本不支持的协议「{itype}」,已跳过"));
+            continue;
+        };
+        let name = { let n = s("remark"); if n.is_empty() { model.clone() } else { n } };
+        if !seen.insert(name.clone()) {
+            notes.push(format!("条目 {name} 与同批条目重名,已跳过"));
+            continue;
+        }
+        let mut entry = json!({
+            "name": name.clone(),
+            "provider": provider,
+            "base_url": "",
+            "api_key": "",
+            "model": model,
+            "source": SOURCE_MONKEYCODE,
+            "owner": owner,
+        });
+        if locked {
+            entry["locked"] = json!(true); // omit-false:解锁条目不携带该字段
+        }
+        let num = |k: &str| it.get(k).and_then(Value::as_i64).filter(|&n| n > 0);
+        let context_window = num("context_limit");
+        if let Some(cw) = context_window {
+            entry["context_window"] = json!(cw);
+        }
+        if let Some(mo) = num("output_limit") {
+            // 引擎在上下文占用 90% 时自动压缩,设置页保存校验要求
+            // max_output < context_window 的 10%(settings.tsx save());
+            // 越界值直接丢弃落引擎默认,否则同步条目会把整次保存拦死。
+            let cw = context_window.unwrap_or(200_000);
+            if (mo as f64) < (cw as f64) * 0.1 {
+                entry["max_output"] = json!(mo);
+            }
+        }
+        if it.get("support_image").and_then(Value::as_bool).unwrap_or(false) {
+            entry["vision"] = json!(true);
+        }
+        // thinking_enabled 对 public 条目刻意忽略(用户拍板):会员内置
+        // 模型来自服务端内部 hook,该字段并不可靠(漏填即 false),照抄会
+        // 把支持思考的模型默认压成关闭。统一跟随产品默认档「低」(config.rs
+        // 未配置时物化 thinking low),真不支持的由用户在设置页调 off。
+        // 私有/团队条目是用户自己配置的,标了不支持就该尊重——否则默认档
+        // 「低」的首个请求就会被上游拒。
+        if owner != "public" && it.get("thinking_enabled").and_then(Value::as_bool) == Some(false) {
+            entry["think"] = json!("off");
+        }
+        let weight = it.get("weight").and_then(Value::as_i64).unwrap_or(0);
+        keyed.push((member_section_rank(&model, owner), weight, name, entry));
+    }
+    keyed.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then(a.2.cmp(&b.2)));
+    (keyed.into_iter().map(|(_, _, _, e)| e).collect(), notes)
+}
+
+/// 同步会员模型:模型清单来自 GET /api/v1/users/models(超出订阅档的
+/// 内置模型标 locked 展示禁选;订阅读取失败可容忍,进阶档全部锁定并出
+/// note,重新同步可恢复)。返回 {models, notes}(与 baizhi_sync 返回形状
+/// 平行;不碰 config.json)。
+pub async fn mc_member_models_sync(svc: &Service) -> BzResult<Value> {
+    let out = mc_call(svc, reqwest::Method::GET, "/api/v1/users/models", None).await?;
+    let items = out
+        .get("models")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| other("模型列表响应格式异常"))?;
+    let mut notes = Vec::new();
+    let plan = match mc_call(svc, reqwest::Method::GET, "/api/v1/users/subscription", None).await {
+        Ok(v) => v.get("plan").and_then(Value::as_str).unwrap_or("").to_string(),
+        Err(e) => {
+            notes.push(format!("订阅信息读取失败({}),进阶档模型已按不可用锁定,重新同步可恢复", e.msg()));
+            String::new()
+        }
+    };
+    let (models, mut map_notes) = local_model_entries(&items, &plan);
+    notes.append(&mut map_notes);
+    Ok(json!({ "models": models, "notes": notes }))
+}
+
 /// MonkeyCode 云端包壳 {code,message,data}。401 不看响应体直接判会话失效:
-/// 恢复动作是"重新同步云端账号"(桥接登录),与百智云的"重新登录"不同。
+/// 恢复动作是到设置中重新连接(百智云桥接或账号密码登录皆可),文案保持
+/// 中性不偏向某一种登录方式。
 pub(crate) const ENV_MC: Envelope = Envelope {
     label: "MonkeyCode ", // 尾部空格:拉丁词与中文文案之间的排版间隔
     code_ok: code_is_zero,
     check_success: false,
     redirect_msg: None,
-    fixed_401: Some("MonkeyCode 会话已失效,请重新同步云端账号"),
+    fixed_401: Some("MonkeyCode 会话已失效,请在设置中重新连接"),
     whole_body_fallback: false,
 };
 
@@ -734,7 +957,7 @@ pub async fn cloud_ws_open(
     }
     let svc = &bz.0;
     if svc.mc.is_empty() {
-        return Err("MonkeyCode 会话缺失,请先同步云端账号".into());
+        return Err("MonkeyCode 会话缺失,请先在设置中连接 MonkeyCode 账号".into());
     }
     let (https_url, ws_url) = pipe_urls(svc, &kind, &id, &params)?;
 
@@ -747,6 +970,14 @@ pub async fn cloud_ws_open(
             req.headers_mut().insert(
                 "Cookie",
                 h.parse().map_err(|_| "cookie 头构造失败".to_string())?,
+            );
+        }
+        // 测试环境反代的 Basic Auth 对 WS 升级请求同样生效(对齐 mobile 的
+        // 带头 WebSocket;业务鉴权走 cookie,Authorization 头空闲)
+        if let Some(b) = svc.mc_basic_header(&u) {
+            req.headers_mut().insert(
+                "Authorization",
+                b.parse().map_err(|_| "Basic Auth 头构造失败".to_string())?,
             );
         }
     }
@@ -848,4 +1079,183 @@ pub async fn cloud_ws_close(pipes: State<'_, CloudPipes>, pipe: String) -> Resul
         let _ = entry.tx.send(PipeMsg::Close);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod local_models_tests {
+    use super::*;
+
+    #[test]
+    fn interface_type_vocabulary_pinned() {
+        // 服务端 openai_chat ↔ 本地 openai 的词汇差异是唯一改名点;
+        // 未知协议必须拒绝(route_of 的 anthropic 兜底不适用于它们)
+        assert_eq!(provider_of_interface("openai_chat"), Some("openai"));
+        assert_eq!(provider_of_interface("openai_responses"), Some("openai_responses"));
+        assert_eq!(provider_of_interface("anthropic"), Some("anthropic"));
+        assert_eq!(provider_of_interface("grpc_v2"), None);
+        assert_eq!(provider_of_interface(""), None);
+    }
+
+    #[test]
+    fn plan_tier_rule_matches_cloud_picker() {
+        // 与 ui/src/cloud.ts planAllowsModel 同一规则(前缀配档)
+        assert!(plan_allows_model("monkeycode-basic-x", "basic"));
+        assert!(plan_allows_model("some-other-model", ""));
+        assert!(!plan_allows_model("monkeycode-pro-x", "basic"));
+        assert!(plan_allows_model("monkeycode-pro-x", "pro"));
+        assert!(plan_allows_model("monkeycode-pro-x", "flagship"));
+        assert!(!plan_allows_model("monkeycode-ultra-x", "pro"));
+        assert!(plan_allows_model("monkeycode-ultra-x", "ultra"));
+        assert!(plan_allows_model("Monkeycode-Pro-X", "pro"), "档位前缀不区分大小写");
+    }
+
+    fn pub_owner() -> Value {
+        json!({ "type": "public" })
+    }
+
+    #[test]
+    fn entry_mapping_filters_and_field_renames() {
+        let items = vec![
+            json!({ "id": "cfg-1", "remark": "旗舰模型", "model": "monkeycode-ultra-x", "interface_type": "anthropic",
+                    "owner": pub_owner(), "context_limit": 200_000, "output_limit": 16_384, "support_image": true }),
+            // remark 空回退模型名;openai_chat → openai;thinking_enabled
+            // 服务端标 false(该字段不可靠,同步须忽略)
+            json!({ "id": "cfg-2", "remark": "", "model": "mc-gpt", "interface_type": "openai_chat",
+                    "owner": pub_owner(), "thinking_enabled": false }),
+            // 未知协议 → 跳过 + note
+            json!({ "id": "cfg-3", "remark": "新协议", "model": "m-new", "interface_type": "grpc_v2", "owner": pub_owner() }),
+            // 裸档位占位 → 静默跳过
+            json!({ "id": "cfg-4", "remark": "专业档", "model": "monkeycode-ultra", "interface_type": "anthropic", "owner": pub_owner() }),
+            // 私有条目(用户在服务端自配)→ 收录,标注 thinking_enabled:false
+            // 时须尊重(用户自己标的,不同于 public 的不可靠内部 hook)
+            json!({ "id": "cfg-5", "remark": "私有", "model": "my-model", "interface_type": "anthropic",
+                    "owner": { "type": "private" }, "thinking_enabled": false }),
+            // 隐藏条目 → 静默跳过
+            json!({ "id": "cfg-6", "remark": "隐藏", "model": "hidden-model", "interface_type": "anthropic",
+                    "owner": pub_owner(), "is_hidden": true }),
+            // 与首条重名 → 跳过 + note
+            json!({ "id": "cfg-7", "remark": "旗舰模型", "model": "m-dup", "interface_type": "anthropic", "owner": pub_owner() }),
+            // 团队条目 → 收录;归属缺失/未知 → 跳过
+            json!({ "id": "cfg-8", "remark": "团队", "model": "team-model", "interface_type": "anthropic",
+                    "owner": { "type": "team", "name": "翼龙组" } }),
+            json!({ "id": "cfg-9", "remark": "无主", "model": "orphan", "interface_type": "anthropic" }),
+            json!({ "id": "cfg-10", "remark": "未知主", "model": "alien", "interface_type": "anthropic",
+                    "owner": { "type": "galaxy" } }),
+        ];
+        let (models, notes) = local_model_entries(&items, "ultra");
+        assert_eq!(models.len(), 4, "{models:?}");
+        let m0 = &models[0];
+        assert_eq!(m0.get("name").and_then(Value::as_str), Some("旗舰模型"));
+        assert_eq!(m0.get("provider").and_then(Value::as_str), Some("anthropic"));
+        // model 字段 = 服务端模型名(swagger 的"配置 ID"是过时文档);
+        // base_url/api_key 为空占位,物化时由壳补齐
+        assert_eq!(m0.get("model").and_then(Value::as_str), Some("monkeycode-ultra-x"));
+        assert_eq!(m0.get("api_key").and_then(Value::as_str), Some(""));
+        assert_eq!(m0.get("base_url").and_then(Value::as_str), Some(""));
+        assert_eq!(m0.get("source").and_then(Value::as_str), Some("monkeycode"));
+        assert_eq!(m0.get("context_window").and_then(Value::as_i64), Some(200_000));
+        assert_eq!(m0.get("max_output").and_then(Value::as_i64), Some(16_384));
+        assert_eq!(m0.get("vision").and_then(Value::as_bool), Some(true));
+        let m1 = &models[1];
+        assert_eq!(m1.get("name").and_then(Value::as_str), Some("mc-gpt"));
+        assert_eq!(m1.get("model").and_then(Value::as_str), Some("mc-gpt"), "remark 空时 name==model,与百智云同构");
+        assert_eq!(m1.get("provider").and_then(Value::as_str), Some("openai"));
+        assert!(m1.get("vision").is_none());
+        assert!(m1.get("context_window").is_none());
+        // thinking_enabled 对 public 忽略(不可靠内部 hook,漏填即 false),
+        // 对 private/team(用户自配)标 false 时须写 off
+        assert!(m1.get("think").is_none(), "public 标 false 也不压 off");
+        assert!(m0.get("think").is_none(), "未标注的模型跟随产品默认档");
+        let m2 = &models[2];
+        assert_eq!(m2.get("name").and_then(Value::as_str), Some("私有"));
+        assert_eq!(m2.get("owner").and_then(Value::as_str), Some("private"));
+        assert_eq!(m2.get("think").and_then(Value::as_str), Some("off"), "私有条目标 false 须尊重");
+        let m3 = &models[3];
+        assert_eq!(m3.get("owner").and_then(Value::as_str), Some("team"));
+        assert_eq!(m0.get("owner").and_then(Value::as_str), Some("public"));
+        assert!(
+            !models.iter().any(|m| matches!(m.get("name").and_then(Value::as_str), Some("无主" | "未知主"))),
+            "归属缺失/未知必须跳过: {models:?}"
+        );
+        assert_eq!(notes.len(), 2, "未知协议/重名各一条 note: {notes:?}");
+    }
+
+    #[test]
+    fn plan_gating_marks_higher_tiers_locked() {
+        let items = vec![
+            json!({ "id": "c1", "model": "monkeycode-basic-a", "interface_type": "anthropic", "owner": pub_owner() }),
+            json!({ "id": "c2", "model": "monkeycode-pro-a", "interface_type": "anthropic", "owner": pub_owner() }),
+            json!({ "id": "c3", "model": "monkeycode-ultra-a", "interface_type": "anthropic", "owner": pub_owner() }),
+        ];
+        let (models, notes) = local_model_entries(&items, "pro");
+        let names: Vec<_> = models.iter().filter_map(|m| m.get("model").and_then(Value::as_str)).collect();
+        assert_eq!(
+            names,
+            vec!["monkeycode-basic-a", "monkeycode-pro-a", "monkeycode-ultra-a"],
+            "超档条目保留(展示禁选),不再剔除"
+        );
+        assert!(models[0].get("locked").is_none(), "档内条目无 locked(omit-false)");
+        assert!(models[1].get("locked").is_none());
+        assert_eq!(models[2].get("locked").and_then(Value::as_bool), Some(true), "ultra 超出 pro 档 → locked");
+        assert!(notes.is_empty(), "锁定静默不出 note(菜单灰态即外显)");
+    }
+
+    #[test]
+    fn empty_plan_locks_all_tiers_but_not_custom() {
+        // 订阅读取失败(plan="")的降级路径:内置档全锁、非内置命名
+        // (私有/团队/付费自定义)不受档位门限
+        let items = vec![
+            json!({ "id": "c1", "model": "monkeycode-pro-a", "interface_type": "anthropic", "owner": pub_owner() }),
+            json!({ "id": "c2", "model": "some-model", "interface_type": "anthropic", "owner": { "type": "private" } }),
+        ];
+        let (models, _) = local_model_entries(&items, "");
+        assert_eq!(models[0].get("locked").and_then(Value::as_bool), Some(true));
+        assert!(models[1].get("locked").is_none(), "非内置命名不锁");
+    }
+
+    #[test]
+    fn entries_sorted_by_section_then_weight_then_name() {
+        // 乱序输入 → 节序(基础→专业→旗舰→付费→我的→团队)→ 节内
+        // weight 降序(容缺按 0)→ name 升序;配置顺序即展示顺序
+        let items = vec![
+            json!({ "id": "c1", "model": "team-x", "interface_type": "anthropic", "owner": { "type": "team" } }),
+            json!({ "id": "c2", "model": "my-x", "interface_type": "anthropic", "owner": { "type": "private" } }),
+            json!({ "id": "c3", "model": "paid-low", "interface_type": "anthropic", "owner": pub_owner(), "weight": 1 }),
+            json!({ "id": "c4", "model": "paid-high", "interface_type": "anthropic", "owner": pub_owner(), "weight": 9 }),
+            json!({ "id": "c5", "model": "monkeycode-ultra/u", "interface_type": "anthropic", "owner": pub_owner() }),
+            json!({ "id": "c6", "model": "monkeycode-basic/b", "interface_type": "anthropic", "owner": pub_owner() }),
+            json!({ "id": "c7", "model": "paid-a", "interface_type": "anthropic", "owner": pub_owner(), "weight": 1 }),
+        ];
+        let (models, _) = local_model_entries(&items, "ultra");
+        let names: Vec<_> = models.iter().filter_map(|m| m.get("name").and_then(Value::as_str)).collect();
+        assert_eq!(
+            names,
+            vec![
+                "monkeycode-basic/b",
+                "monkeycode-ultra/u",
+                "paid-high",
+                "paid-a",
+                "paid-low",
+                "my-x",
+                "team-x",
+            ],
+            "同权重(paid-a/paid-low 均 1)按 name 兜底"
+        );
+    }
+
+    #[test]
+    fn oversize_max_output_dropped() {
+        // 设置页保存校验要求 max_output < context_window×10%,
+        // 越界的同步值必须丢弃,否则整次保存被拦死
+        let items = vec![
+            json!({ "id": "c1", "model": "m-a", "interface_type": "anthropic", "owner": pub_owner(),
+                    "context_limit": 100_000, "output_limit": 10_000 }),
+            // 无 context_limit 时按引擎默认 200k 判定:32768 < 20000 不成立 → 丢弃
+            json!({ "id": "c2", "model": "m-b", "interface_type": "anthropic", "owner": pub_owner(),
+                    "output_limit": 32_768 }),
+        ];
+        let (models, _) = local_model_entries(&items, "");
+        assert!(models[0].get("max_output").is_none(), "10000 >= 100000×10%,应丢弃");
+        assert!(models[1].get("max_output").is_none(), "32768 >= 200000×10%,应丢弃");
+    }
 }

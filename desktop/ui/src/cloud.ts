@@ -61,6 +61,21 @@ function builtinName(model?: string): string | undefined {
   return undefined;
 }
 
+/** 底层模型串 → 会员档位短词(基础/专业/旗舰),判不出返回 undefined。
+ * 与 Web getBuiltinModelName 同款前缀口径;本地/云端选择器的档位药丸共用。 */
+export function builtinTierLabel(model?: string): string | undefined {
+  switch (builtinName(model)) {
+    case "monkeycode-basic":
+      return "基础";
+    case "monkeycode-pro":
+      return "专业";
+    case "monkeycode-ultra":
+      return "旗舰";
+    default:
+      return undefined;
+  }
+}
+
 /** 内置模型名翻译为中文档位(基础/专业/旗舰模型)。 */
 function translateBuiltinNames(text: string): string {
   return text
