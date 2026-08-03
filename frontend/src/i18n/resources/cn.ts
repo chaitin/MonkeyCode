@@ -4320,6 +4320,7 @@ const cn = {
       expired: "问题已过期",
       custom: "其他 - 自定义",
       customPlaceholder: "请输入其他答案",
+      other: "其他",
       submit: "提交",
       submitIncomplete: "提交 (未完成)",
     },

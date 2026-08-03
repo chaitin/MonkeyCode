@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useTranslation } from "react-i18next"
+import { getAskUserOptionDisplayLabel } from "./ask-user-option-label"
 
 type AskUserQuestionStatus = "pending" | "queued" | "submitting" | "completed" | "expired"
 
@@ -189,7 +190,7 @@ export const AskUserQuestionMessageItem = ({ message, onResponse }: { message: M
                         htmlFor={`${message.data.askId}-${questionIndex}-${option.label}`}
                         className={cn("font-normal truncate", (!isInteractive && !isCheckboxChecked(questionIndex, option.label)) ? "text-muted-foreground/50" : "")}
                       >
-                        {option.label}
+                        {getAskUserOptionDisplayLabel(option.label, t("taskDetail.askUser.other"))}
                       </Label>
                     </Field>
                   ))}
@@ -262,7 +263,7 @@ export const AskUserQuestionMessageItem = ({ message, onResponse }: { message: M
                         htmlFor={`${message.data.askId}-${questionIndex}-${option.label}`}
                         className={cn("font-normal truncate", (!isInteractive && selectedRadioValue !== option.label) ? "text-muted-foreground/50" : "")}
                       >
-                        {option.label}
+                        {getAskUserOptionDisplayLabel(option.label, t("taskDetail.askUser.other"))}
                       </FieldLabel>
                     </Field>
                   ))}
