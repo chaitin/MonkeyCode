@@ -1234,7 +1234,9 @@ export function Sidebar({
         </button>
       </div>
 
-      <aside className="mc-sidebar-panel" style={{ width: 232, flex: "none", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--side)", borderRight: "1px solid var(--line)" }}>
+      {/* 栏宽在 styles.css(.mc-sidebar-panel + --sideW):窄窗要收窄,且要与
+          Windows 自绘标题栏同列共用同一个令牌,写死在这里两层就会错开 */}
+      <aside className="mc-sidebar-panel" style={{ flex: "none", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--side)", borderRight: "1px solid var(--line)" }}>
         <MacBrandBand />
         <PanelHeader title={panel.title} detail={panel.detail}>{panel.actions}</PanelHeader>
         <SearchBox value={query} placeholder={panel.placeholder} onChange={setQuery} />

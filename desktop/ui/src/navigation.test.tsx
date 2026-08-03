@@ -18,10 +18,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("一级导航栏的栏宽归属", () => {
-  // 栏宽随窗宽收窄、底色与右分隔线都在 CSS(styles.css .mc-nav-rail 与
-  // ::after),写进内联样式会静默盖掉这些规则。mac 自绘红绿灯也依赖
-  // 62px 栏宽收纳整组圆点,宽度被内联锁死的话窄窗下会挤压变形。
+describe("双层侧栏的栏宽归属", () => {
+  // 栏宽随窗宽收窄(--railW/--sideW)、底色与右分隔线都在 CSS(styles.css
+  // .mc-nav-rail 与 ::after、.mc-sidebar-panel),写进内联样式会静默盖掉这些
+  // 规则:mac 自绘红绿灯依赖 62px 栏宽收纳整组圆点,窄窗下会挤压变形;
+  // Windows 自绘标题栏同列也读同一组令牌,内联写死则两层竖线会错开。
   it("栏宽、右边线与底色不写在内联样式里,留给 CSS 按平台与窗宽决定", () => {
     const html = renderToStaticMarkup(
       <Sidebar
@@ -55,6 +56,10 @@ describe("一级导航栏的栏宽归属", () => {
     expect(rail![1]).not.toMatch(/(^|;)\s*width:/);
     expect(rail![1]).not.toMatch(/border-right/);
     expect(rail![1]).not.toMatch(/background/);
+
+    const panel = /<aside class="mc-sidebar-panel" style="([^"]*)"/.exec(html);
+    expect(panel, "找不到 mc-sidebar-panel").not.toBeNull();
+    expect(panel![1]).not.toMatch(/(^|;)\s*width:/);
   });
 });
 

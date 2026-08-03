@@ -182,13 +182,13 @@ export default function TitleBar({ layout = "sidebar" }: { layout?: "sidebar" | 
         <>
           <span
             data-tauri-drag-region=""
-            style={{ width: 62, height: "100%", flex: "none", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--rail)", borderRight: "1px solid var(--line2)" }}
+            style={{ width: "var(--railW)", height: "100%", flex: "none", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--rail)", borderRight: "1px solid var(--line2)" }}
           >
             <img src={logoUrl} alt="" draggable={false} style={{ width: 19, height: 19, borderRadius: 5, pointerEvents: "none" }} />
           </span>
           <span
             data-tauri-drag-region=""
-            style={{ width: 232, height: "100%", flex: "none", display: "flex", alignItems: "center", gap: 6, padding: "0 14px", overflow: "hidden", background: "var(--side)", borderRight: "1px solid var(--line)" }}
+            style={{ width: "var(--sideW)", height: "100%", flex: "none", display: "flex", alignItems: "center", gap: 6, padding: "0 14px", overflow: "hidden", background: "var(--side)", borderRight: "1px solid var(--line)" }}
           >
             <Brand />
           </span>
@@ -196,7 +196,7 @@ export default function TitleBar({ layout = "sidebar" }: { layout?: "sidebar" | 
       ) : (
         <span
           data-tauri-drag-region=""
-          style={{ width: 168, height: "100%", flex: "none", display: "flex", alignItems: "center", gap: 6, padding: "0 14px", overflow: "hidden", background: "var(--side)", borderRight: "1px solid var(--line)" }}
+          style={{ width: "var(--setNavW)", height: "100%", flex: "none", display: "flex", alignItems: "center", gap: 6, padding: "0 14px", overflow: "hidden", background: "var(--side)", borderRight: "1px solid var(--line)" }}
         >
           <Brand logo />
         </span>
