@@ -103,21 +103,21 @@ func TestPrivateNetworkBlockCanBeConfiguredByEnv(t *testing.T) {
 	}
 }
 
-func TestLoginCaptchaCanBeConfiguredByEnv(t *testing.T) {
+func TestCaptchaCanBeConfiguredByEnv(t *testing.T) {
 	cfg, err := Init(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Security.LoginCaptchaEnabled {
-		t.Fatal("security.login_captcha_enabled = false, want true")
+	if !cfg.Security.CaptchaEnabled {
+		t.Fatal("security.captcha_enabled = false, want true")
 	}
 
-	t.Setenv("MCAI_SECURITY_LOGIN_CAPTCHA_ENABLED", "false")
+	t.Setenv("MCAI_SECURITY_CAPTCHA_ENABLED", "false")
 	cfg, err = Init(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Security.LoginCaptchaEnabled {
-		t.Fatal("security.login_captcha_enabled = true, want false")
+	if cfg.Security.CaptchaEnabled {
+		t.Fatal("security.captcha_enabled = true, want false")
 	}
 }

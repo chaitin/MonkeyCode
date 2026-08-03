@@ -5,6 +5,7 @@ import { Field } from "@/components/ui/field";
 import { FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { useAppRuntime } from "@/components/app-runtime-provider";
 import { captchaChallenge, isValidEmail } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { useState } from "react";
@@ -15,6 +16,7 @@ import { toast } from "sonner";
 
 export default function FindPasswordPage() {
   const { t } = useTranslation();
+  const { captchaEnabled } = useAppRuntime();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -26,8 +28,8 @@ export default function FindPasswordPage() {
 
     setLoading(true);
 
-    const token = await captchaChallenge();
-    if (token) {
+    const token = await captchaChallenge(captchaEnabled);
+    if (token !== null) {
       await apiRequest('v1UsersPasswordsResetRequestUpdate', { 
         emails: [email],
         captcha_token: token

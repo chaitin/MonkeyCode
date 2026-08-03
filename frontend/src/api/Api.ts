@@ -384,7 +384,7 @@ export interface DomainCheckByConfigReq {
 }
 
 export interface DomainCheckInReq {
-  captcha_token: string;
+  captcha_token?: string;
 }
 
 export interface DomainCheckInResp {
@@ -1227,7 +1227,7 @@ export interface DomainRepositoryItem {
 
 export interface DomainResetUserPasswordEmailReq {
   /** 验证码Token */
-  captcha_token: string;
+  captcha_token?: string;
   /** 发送重置密码邮件的邮箱列表 */
   emails: string[];
 }
@@ -1466,7 +1466,7 @@ export interface DomainTeamImage {
 
 export interface DomainTeamLoginReq {
   /** 验证码Token */
-  captcha_token: string;
+  captcha_token?: string;
   /** 用户邮箱 */
   email: string;
   /** 用户密码（MD5加密后的值） */
@@ -2010,10 +2010,10 @@ export interface GithubComChaitinMonkeyCodeBackendDomainServerConfig {
    */
   latest_version?: string;
   /**
-   * LoginCaptchaEnabled 登录时是否启用 captcha 验证。
+   * CaptchaEnabled 是否启用 captcha 验证。
    * @example true
    */
-  login_captcha_enabled?: boolean;
+  captcha_enabled?: boolean;
   /**
    * Region SaaS 区域，国内 SaaS 返回 cn，海外 SaaS 返回 global。
    * @example "cn"

@@ -485,7 +485,10 @@ export function isValidEmail(email: string): boolean {
 }
 
 
-export async function captchaChallenge(): Promise<string | null> {
+export async function captchaChallenge(enabled = true): Promise<string | null> {
+  if (!enabled) {
+    return ''
+  }
   try {
     const cap = new Cap({
       apiEndpoint: '/api/v1/public/captcha/'

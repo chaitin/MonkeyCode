@@ -31,8 +31,8 @@ type ServerConfig struct {
 	CurrentVersion string `json:"current_version,omitempty" example:"v1.2.3"`
 	// LatestVersion 最新可用版本。
 	LatestVersion string `json:"latest_version,omitempty" example:"v1.2.4"`
-	// LoginCaptchaEnabled 登录时是否启用 captcha 验证。
-	LoginCaptchaEnabled bool `json:"login_captcha_enabled" example:"true"`
+	// CaptchaEnabled 是否启用 captcha 验证。
+	CaptchaEnabled bool `json:"captcha_enabled" example:"true"`
 }
 
 type ServerConfigProvider interface {

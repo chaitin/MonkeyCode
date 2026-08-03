@@ -242,7 +242,7 @@ func oauthErrorCode(err error) string {
 //	@Router			/api/v1/users/password-login [post]
 func (h *AuthHandler) PasswordLogin(c *web.Context, req domain.TeamLoginReq) error {
 	ctx := c.Request().Context()
-	if h.config.Security.LoginCaptchaEnabled && !h.captcha.ValidateToken(ctx, req.CaptchaToken) {
+	if !h.captcha.ValidateToken(ctx, req.CaptchaToken) {
 		return errcode.ErrForbidden
 	}
 

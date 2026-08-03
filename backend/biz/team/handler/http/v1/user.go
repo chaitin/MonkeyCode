@@ -97,7 +97,7 @@ func NewTeamGroupUserHandler(i *do.Injector) (*TeamGroupUserHandler, error) {
 //	@Router			/api/v1/teams/users/login [post]
 func (h *TeamGroupUserHandler) Login(c *web.Context, req domain.TeamLoginReq) error {
 	ctx := c.Request().Context()
-	if h.config.Security.LoginCaptchaEnabled && !h.captcha.ValidateToken(ctx, req.CaptchaToken) {
+	if !h.captcha.ValidateToken(ctx, req.CaptchaToken) {
 		return errcode.ErrForbidden
 	}
 
