@@ -4320,6 +4320,7 @@ const en = {
       expired: "Question expired",
       custom: "Other - custom",
       customPlaceholder: "Enter another answer",
+      other: "Other",
       submit: "Submit",
       submitIncomplete: "Submit (incomplete)",
     },
