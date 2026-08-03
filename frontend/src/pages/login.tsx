@@ -54,6 +54,7 @@ export default function LoginPage({
   const { t } = useTranslation()
   const { reloadAuth, serverConfig } = useAppRuntime()
   const serverRegion = serverConfig?.region as string | undefined
+  const loginCaptchaEnabled = serverConfig?.login_captcha_enabled !== false
   const isCnRegion = serverRegion === "cn"
   const isGlobalRegion = serverRegion === "global"
   const inviterId = typeof window !== 'undefined' ? (localStorage.getItem('ic') || '') : ''
@@ -116,12 +117,12 @@ export default function LoginPage({
 
     setLogging(true)
 
-    const token = await captchaChallenge();
-    if (token) {
+    const token = loginCaptchaEnabled ? await captchaChallenge() : '';
+    if (!loginCaptchaEnabled || token) {
       await apiRequest('v1UsersPasswordLoginCreate', {
         email: userEmail.trim(),
         password: userPassword.trim(),
-        captcha_token: token,
+        captcha_token: token || '',
       }, [], async (resp) => {
         if (resp.code === 0) {
           localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ email: userEmail.trim(), password: userPassword.trim() }))
@@ -172,13 +173,13 @@ export default function LoginPage({
 
     setLogging(true)
 
-    const token = await captchaChallenge();
-    if (token) {
+    const token = loginCaptchaEnabled ? await captchaChallenge() : '';
+    if (!loginCaptchaEnabled || token) {
 
       await apiRequest('v1TeamsUsersLoginCreate', {
         email: teamManagerEmail.trim(),
         password: teamManagerPassword.trim(),
-        captcha_token: token,
+        captcha_token: token || '',
       }, [], (resp) => {
         if (resp.code === 0) {
           localStorage.setItem(MANAGER_STORAGE_KEY, JSON.stringify({ email: teamManagerEmail.trim(), password: teamManagerPassword.trim() }))

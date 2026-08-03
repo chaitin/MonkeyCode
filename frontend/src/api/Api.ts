@@ -2010,6 +2010,11 @@ export interface GithubComChaitinMonkeyCodeBackendDomainServerConfig {
    */
   latest_version?: string;
   /**
+   * LoginCaptchaEnabled 登录时是否启用 captcha 验证。
+   * @example true
+   */
+  login_captcha_enabled?: boolean;
+  /**
    * Region SaaS 区域，国内 SaaS 返回 cn，海外 SaaS 返回 global。
    * @example "cn"
    */
