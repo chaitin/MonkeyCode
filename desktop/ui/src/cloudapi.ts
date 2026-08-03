@@ -4,7 +4,7 @@
 import { b64encode, frameData } from "./codec";
 import type { McTaskOptions } from "./cloud";
 import { invoke, listenAsync } from "./ipc";
-import type { CloudAttachment, CloudProjectsResp, CloudTaskDetail, CloudTasksResp, Frame, McModelsSyncResult, McStatus, McUsage, McUser, WsCloseInfo } from "./types";
+import type { CloudAttachment, CloudProjectsResp, CloudTaskDetail, CloudTasksResp, CloudUserInputsResp, Frame, McModelsSyncResult, McStatus, McUsage, McUser, WsCloseInfo } from "./types";
 
 // ==================== 云端 REST(壳命令代理) ====================
 
@@ -59,6 +59,10 @@ export const mcTaskRounds = (id: string, cursor = "", limit = 1) =>
     cursor,
     limit,
   });
+
+/** 提问索引(倒序,cursor 向更早翻;大纲数据源,content 已解码明文)。 */
+export const mcTaskUserInputs = (id: string, cursor = "", limit = 100) =>
+  invoke<CloudUserInputsResp>("mc_task_user_inputs", { id, cursor, limit });
 
 /** 终止云端任务(区别于流上行 user-cancel:那只中断当前执行)。 */
 export const mcTaskStop = (id: string) => invoke<{ ok: boolean }>("mc_task_stop", { id });

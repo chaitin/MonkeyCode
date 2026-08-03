@@ -755,6 +755,20 @@ pub async fn mc_task_rounds(
 }
 
 #[tauri::command]
+pub async fn mc_task_user_inputs(
+    bz: State<'_, BaizhiState>,
+    id: String,
+    cursor: Option<String>,
+    limit: Option<u32>,
+) -> Result<Value, String> {
+    // 后端上限 100;大纲一次多拿些,减少全量拉取的往返数
+    let limit = limit.unwrap_or(100).clamp(1, 100);
+    monkeycode::mc_task_user_inputs(&bz.0, &id, cursor.as_deref().unwrap_or(""), limit)
+        .await
+        .map_err(BzErr::msg)
+}
+
+#[tauri::command]
 pub async fn mc_task_stop(bz: State<'_, BaizhiState>, id: String) -> Result<Value, String> {
     monkeycode::mc_task_stop(&bz.0, &id).await.map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))

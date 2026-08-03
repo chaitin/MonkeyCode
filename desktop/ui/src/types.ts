@@ -499,6 +499,23 @@ export interface CloudTasksResp {
   page_info?: { total?: number; total_count?: number };
 }
 
+/** 云端任务提问索引条目(GET users/tasks/user-inputs;大纲数据源)。
+ * content 已是解码明文(超 500 字符截断);timestamp 纳秒,与 chunk.timestamp
+ * 对齐——大纲靠时间戳与帧流对表(seq 仅 ClickHouse 存储有,不可依赖)。 */
+export interface CloudUserInputItem {
+  id?: string;
+  content?: string;
+  timestamp?: number;
+  seq?: number;
+  truncated?: boolean;
+}
+
+export interface CloudUserInputsResp {
+  items?: CloudUserInputItem[];
+  next_cursor?: string;
+  has_more?: boolean;
+}
+
 /** 云端项目；列表接口与 Web 侧栏一致，会附带项目下的最近任务。 */
 export interface CloudProject {
   id?: string;

@@ -27,6 +27,7 @@ import {
   type CloudUserInput,
 } from "./cloudapi";
 import { groupCloudModels, type McCloudModelGroup } from "./cloud";
+import { withCloudOutlineAnchors } from "./cloudOutline";
 import { MAX_CLOUD_ATTS, uploadCloudFile, type CloudUploadedAtt } from "./cloudUpload";
 import { frameData } from "./codec";
 import { answerAsk as applyAskAnswer, initialChat, reduceBatch, type ChatState } from "./reduce";
@@ -462,6 +463,8 @@ export interface CloudTaskHandle {
   scrollRef: RefObject<HTMLDivElement>;
   onWheel(e: { deltaY: number }): void;
   onScroll(): void;
+  /** 解除贴底跟随(大纲跳转等程序滚动前调用,否则下一批帧又拽回底部) */
+  unpin(): void;
 }
 
 export function useCloudTask(
@@ -508,8 +511,10 @@ export function useCloudTask(
   const coreRef = useRef<CloudTaskCore | null>(null);
   if (!coreRef.current) {
     const io: CloudCoreIO = {
-      applyFrames: (frames) => setChat((s) => reduceBatch(s, frames)),
-      rebuildChat: (frames) => setChat(reduceBatch(initialChat, frames)),
+      // 归约边界统一给 user-input 帧盖大纲锚(seq=时间戳锚);core 存原始帧,
+      // WS 去重水位与回放缓存不受影响
+      applyFrames: (frames) => setChat((s) => reduceBatch(s, withCloudOutlineAnchors(frames))),
+      rebuildChat: (frames) => setChat(reduceBatch(initialChat, withCloudOutlineAnchors(frames))),
       applyAskAnswer: (askId, answers) => setChat((s) => applyAskAnswer(s, askId, answers)),
       setStatus,
       setConnected,
@@ -539,7 +544,7 @@ export function useCloudTask(
   const label = task.title || task.summary || task.content || meta?.title || meta?.summary || "云端任务";
 
   const rebuild = useCallback(() => {
-    setChat(reduceBatch(initialChat, core.frames()));
+    setChat(reduceBatch(initialChat, withCloudOutlineAnchors(core.frames())));
   }, [core]);
 
   const refreshInfo = useCallback(async () => {
@@ -853,6 +858,9 @@ export function useCloudTask(
     onScroll: () => {
       const el = scrollRef.current;
       if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 40) pinnedRef.current = true;
+    },
+    unpin: () => {
+      pinnedRef.current = false;
     },
   };
 }
