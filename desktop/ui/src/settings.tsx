@@ -43,8 +43,10 @@ import {
   serversToMcps,
   sortModelsBySource,
   syncedName,
+  syncResultTail,
   validateMcpNames,
   type McpEntry,
+  type SyncMsg,
 } from "./settingsConfig";
 import { readAccent, readTheme, setAccent, setTheme, type AccentKey, type Theme } from "./theme";
 import { ACCENTS } from "./gen/accents";
@@ -1156,7 +1158,7 @@ export function SettingsView({
   // 时,晚到的这一路回来只看到自己已被卸载,整份 {models, mcp_servers} 连同
   // 报错一起被丢掉(表现为"登录后只同步到会员模型")。
   const [bzSyncing, setBzSyncing] = useState(false);
-  const [bzSyncMsg, setBzSyncMsg] = useState<{ text: string; color: string } | null>(null);
+  const [bzSyncMsg, setBzSyncMsg] = useState<SyncMsg | null>(null);
   // 同步即全量导入(用户拍板,不再逐条挑选):结果整组并入设置表单,
   // 交保存条落盘重启;不想要的条目可在模型页删除(重同步会恢复)
   const syncBaizhi = async () => {
@@ -1184,19 +1186,14 @@ export function SettingsView({
       // "模型和 MCP 都为空"时才展示 —— 模型拉到了而 MCP 没有时静默无声,
       // 用户只看到"MCP 没同步过来"却查无对证
       if (r.notes?.length) parts.push(...r.notes);
-      parts.push(
-        applied.autoSaved
-          ? "正在保存并重启内核…"
-          : applied.blocked === "busy"
-            ? "有任务正在执行,空闲后请手动保存(保存会重启内核)"
-            : applied.blocked === "dirty"
-              ? "表单有未保存的修改,请核对后手动保存"
-              : "已切到模型页,核对后保存",
-      );
-      // 跨组撞名先到先得:跳过必须外显,否则"少了几个模型"查无对证
+      // 附加说明 = 内核诊断 + 跨组撞名的跳过名单(必须外显,否则"少了几个
+      // 模型"查无对证);它们决定这条消息值不值得在离开分区后留着
+      const hasNotes = !!r.notes?.length || applied.skipped.length > 0 || r.key_created;
+      const { tail, transient } = syncResultTail({ ...applied, hasNotes });
+      if (tail) parts.push(tail);
       if (applied.skipped.length)
         parts.push(`与现有条目同名已跳过: ${applied.skipped.join("、")}(想改用百智云通道请删除原条目后重新同步)`);
-      setBzSyncMsg({ text: parts.join("、"), color: "var(--ok)" });
+      setBzSyncMsg({ text: parts.join("、"), color: "var(--ok)", transient });
     } catch (e) {
       setBzSyncMsg({ text: e instanceof Error ? e.message : String(e), color: "var(--err)" });
     } finally {
@@ -1208,7 +1205,18 @@ export function SettingsView({
   // 放在 SettingsView 而非账号卡内:百智云同步成功会把分区切到模型页,
   // 账号卡随之卸载,挂在卡里的"连上就自动同步"会在最关键的一步失效。
   const [mcSyncing, setMcSyncing] = useState(false);
-  const [mcSyncMsg, setMcSyncMsg] = useState<{ text: string; color: string } | null>(null);
+  const [mcSyncMsg, setMcSyncMsg] = useState<SyncMsg | null>(null);
+
+  // 同步消息的保质期:同步成功会当场把分区切到模型页,transient 的那条
+  // (纯成功、既无待办也无附加说明)到这里就作废——留着的话,用户下次点回
+  // 账号看到的是一句针对早已结束的动作的反馈。失败消息不受影响:出错不切
+  // 分区,用户就在账号页看着。判据见 syncResultTail。
+  useEffect(() => {
+    if (active === "account") return;
+    setBzSyncMsg((m) => (m?.transient ? null : m));
+    setMcSyncMsg((m) => (m?.transient ? null : m));
+  }, [active]);
+
   const syncMcModels = async () => {
     if (mcSyncing) return;
     setMcSyncMsg(null);
@@ -1223,14 +1231,11 @@ export function SettingsView({
       const applied = applySyncedModels(r.models, SOURCE_MONKEYCODE);
       if (applied.skipped.length) notes.push(`与现有条目同名已跳过: ${applied.skipped.join("、")}`);
       const count = r.models.length - applied.skipped.length;
-      const tail = applied.autoSaved
-        ? ",正在保存并重启内核…"
-        : applied.blocked === "busy"
-          ? ";有任务正在执行,空闲后请手动保存(保存会重启内核)"
-          : ";表单有未保存的修改,请核对后手动保存";
+      const { tail, transient } = syncResultTail({ ...applied, hasNotes: notes.length > 0 });
       setMcSyncMsg({
-        text: `已同步 ${count} 个会员模型` + (notes.length ? `(${notes.join(";")})` : "") + tail,
+        text: `已同步 ${count} 个会员模型` + (notes.length ? `(${notes.join(";")})` : "") + (tail ? `;${tail}` : ""),
         color: "var(--ok)",
+        transient,
       });
     } catch (e) {
       setMcSyncMsg({ text: e instanceof Error ? e.message : String(e), color: "var(--err)" });
