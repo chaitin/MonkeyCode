@@ -15,11 +15,14 @@ export interface McAccountSnapshot {
   taskError?: string;
 }
 
-/** 与 Web 侧栏一致：快速任务和历史任务只保留最近 5 条。 */
-function recentTasks(response: CloudTasksResp): CloudTask[] {
-  return [...(response.tasks ?? [])]
-    .sort((a, b) => Number(b.created_at ?? 0) - Number(a.created_at ?? 0))
-    .slice(0, 5);
+/** 快速任务与 Web 侧栏一致只保留最近 5 条(顶层平铺,多了是噪音);
+ * 历史任务在可折叠分组里,一页(50 条)全展示——切 5 条会让更早的任务
+ * 从桌面上彻底消失,连搜索都搜不到。 */
+function recentTasks(response: CloudTasksResp, cap?: number): CloudTask[] {
+  const sorted = [...(response.tasks ?? [])].sort(
+    (a, b) => Number(b.created_at ?? 0) - Number(a.created_at ?? 0),
+  );
+  return cap === undefined ? sorted : sorted.slice(0, cap);
 }
 
 export async function inspectMcAccount(
@@ -41,7 +44,7 @@ export async function inspectMcAccount(
     .map((result) => result.reason instanceof Error ? result.reason.message : String(result.reason));
   return {
     status,
-    ...(active.status === "fulfilled" ? { tasks: recentTasks(active.value) } : {}),
+    ...(active.status === "fulfilled" ? { tasks: recentTasks(active.value, 5) } : {}),
     ...(historical.status === "fulfilled" ? { historicalTasks: recentTasks(historical.value) } : {}),
     ...(projects.status === "fulfilled" ? { projects: projects.value.projects ?? [] } : {}),
     ...(errors.length ? { taskError: errors.join("；") } : {}),
