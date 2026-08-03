@@ -89,6 +89,7 @@ fn main() {
                 "mc_projects",
                 "mc_task_info",
                 "mc_task_rounds",
+                "mc_task_user_inputs",
                 "mc_task_stop",
                 "mc_task_delete",
                 "mc_task_create",

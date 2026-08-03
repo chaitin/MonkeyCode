@@ -10,6 +10,7 @@ export { LogList } from "./logView";
 export {
   OutlineNav,
   OUTLINE_JUMP_INSET,
+  mergeLiveOutline,
   outlineActiveSeq,
   outlineEntries,
   type OutlineEntry,

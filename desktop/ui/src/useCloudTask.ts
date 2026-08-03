@@ -27,6 +27,7 @@ import {
   type CloudUserInput,
 } from "./cloudapi";
 import { groupCloudModels, type McCloudModelGroup } from "./cloud";
+import { framesHaveAnchor, withCloudOutlineAnchors } from "./cloudOutline";
 import { MAX_CLOUD_ATTS, uploadCloudFile, type CloudUploadedAtt } from "./cloudUpload";
 import { frameData } from "./codec";
 import { answerAsk as applyAskAnswer, initialChat, reduceBatch, type ChatState } from "./reduce";
@@ -450,6 +451,8 @@ export interface CloudTaskHandle {
   cursor: { cursor: string; hasMore: boolean } | null;
   loadingEarlier: boolean;
   loadEarlier(): Promise<void>;
+  /** 把历史翻到某大纲锚已加载(大纲跳转用;返回是否找到)。 */
+  ensureLoaded(anchorSeq: number): Promise<boolean>;
   /** 云端可用模型分组(null = 未加载/拉取失败可重试;loadModels 惰性拉取) */
   cloudGroups: McCloudModelGroup[] | null;
   switching: boolean;
@@ -462,6 +465,8 @@ export interface CloudTaskHandle {
   scrollRef: RefObject<HTMLDivElement>;
   onWheel(e: { deltaY: number }): void;
   onScroll(): void;
+  /** 解除贴底跟随(大纲跳转等程序滚动前调用,否则下一批帧又拽回底部) */
+  unpin(): void;
 }
 
 export function useCloudTask(
@@ -480,7 +485,16 @@ export function useCloudTask(
   const [connected, setConnected] = useState(false);
   const [input, setInput] = useState("");
   const [cursor, setCursor] = useState<{ cursor: string; hasMore: boolean } | null>(null);
+  // 游标的权威读写走 ref,state 只是渲染镜像:大纲跳转的补页循环跨多次
+  // await,读 state 闭包会拿到旧游标(重复拉同一页/误判"无进展"提前放弃)
+  const cursorRef = useRef<{ cursor: string; hasMore: boolean } | null>(null);
+  const applyCursor = (c: { cursor: string; hasMore: boolean } | null) => {
+    cursorRef.current = c;
+    setCursor(c);
+  };
   const [loadingEarlier, setLoadingEarlier] = useState(false);
+  // 翻页互斥同理走 ref:state 闭包在连续 await 间是陈旧的
+  const loadingEarlierRef = useRef(false);
   const [err, setErr] = useState("");
   const [queued, setQueuedState] = useState("");
   const [queuedAtts, setQueuedAttsState] = useState<CloudAttachment[]>([]);
@@ -508,12 +522,16 @@ export function useCloudTask(
   const coreRef = useRef<CloudTaskCore | null>(null);
   if (!coreRef.current) {
     const io: CloudCoreIO = {
-      applyFrames: (frames) => setChat((s) => reduceBatch(s, frames)),
-      rebuildChat: (frames) => setChat(reduceBatch(initialChat, frames)),
+      // 归约边界统一给 user-input 帧盖大纲锚(seq=时间戳锚);core 存原始帧,
+      // WS 去重水位与回放缓存不受影响
+      applyFrames: (frames) => setChat((s) => reduceBatch(s, withCloudOutlineAnchors(frames))),
+      rebuildChat: (frames) => setChat(reduceBatch(initialChat, withCloudOutlineAnchors(frames))),
       applyAskAnswer: (askId, answers) => setChat((s) => applyAskAnswer(s, askId, answers)),
       setStatus,
       setConnected,
-      setCursorIfEmpty: (c, hasMore) => setCursor((prev) => prev ?? { cursor: c, hasMore }),
+      setCursorIfEmpty: (c, hasMore) => {
+        if (!cursorRef.current) applyCursor({ cursor: c, hasMore });
+      },
       setQueued: (text, queueAtts) => {
         setQueuedState(text);
         setQueuedAttsState(queueAtts);
@@ -539,7 +557,7 @@ export function useCloudTask(
   const label = task.title || task.summary || task.content || meta?.title || meta?.summary || "云端任务";
 
   const rebuild = useCallback(() => {
-    setChat(reduceBatch(initialChat, core.frames()));
+    setChat(reduceBatch(initialChat, withCloudOutlineAnchors(core.frames())));
   }, [core]);
 
   const refreshInfo = useCallback(async () => {
@@ -560,7 +578,7 @@ export function useCloudTask(
   useEffect(() => {
     core.resetForTask();
     setChat(initialChat);
-    setCursor(null);
+    applyCursor(null);
     setErr("");
     setInput("");
     setAtts([]);
@@ -575,7 +593,7 @@ export function useCloudTask(
           const r = await mcTaskRounds(id, "", 1);
           if (!alive) return;
           core.seedHistory(r.frames ?? []);
-          setCursor(r.next_cursor ? { cursor: r.next_cursor, hasMore: !!r.has_more } : null);
+          applyCursor(r.next_cursor ? { cursor: r.next_cursor, hasMore: !!r.has_more } : null);
           rebuild();
           setStatus("已结束,只读回放");
         } catch (e) {
@@ -664,20 +682,56 @@ export function useCloudTask(
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [chat]);
 
+  /** 往前翻并推进游标(权威游标在 ref,连续调用不受渲染时序影响)。 */
+  const fetchEarlier = async (limit: number) => {
+    const cur = cursorRef.current;
+    if (!cur) return;
+    const r = await mcTaskRounds(id, cur.cursor, limit);
+    core.prependHistory(r.frames ?? []);
+    applyCursor(r.next_cursor && r.has_more !== false ? { cursor: r.next_cursor, hasMore: !!r.has_more } : null);
+    pinnedRef.current = false;
+    rebuild();
+  };
+
   const loadEarlier = async () => {
-    if (!cursor || loadingEarlier) return;
+    if (!cursorRef.current || loadingEarlierRef.current) return;
+    loadingEarlierRef.current = true;
     setLoadingEarlier(true);
     try {
-      const r = await mcTaskRounds(id, cursor.cursor, 1);
-      core.prependHistory(r.frames ?? []);
-      setCursor(r.next_cursor && r.has_more !== false ? { cursor: r.next_cursor, hasMore: !!r.has_more } : null);
-      pinnedRef.current = false;
-      rebuild();
+      await fetchEarlier(1);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
+      loadingEarlierRef.current = false;
       setLoadingEarlier(false);
     }
+  };
+
+  /** 大纲跳转:把历史一直往前翻到该锚的 user-input 帧已加载(或翻完/失败)。
+   * 判定读 core 的帧集而非 DOM——prepend 后帧立即可查,不赌 React 提交时序;
+   * 大步长(一次 10 轮,壳上限)减少跳到很早提问时的串行往返。返回是否找到。 */
+  const ensureLoaded = async (anchorSeq: number): Promise<boolean> => {
+    const found = () => framesHaveAnchor(core.frames(), anchorSeq);
+    if (found()) return true;
+    // 手动"加载更早"在途时稍候(它很快),拿不到独占就放弃本次预加载
+    for (let i = 0; i < 30 && loadingEarlierRef.current; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (loadingEarlierRef.current) return found();
+    loadingEarlierRef.current = true;
+    setLoadingEarlier(true);
+    try {
+      // 200 × 10 轮的护栏:防坏游标空转;正常任务远在其内
+      for (let i = 0; i < 200 && cursorRef.current && !found(); i++) {
+        await fetchEarlier(10);
+      }
+    } catch (e) {
+      setErr("加载更早的对话失败: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      loadingEarlierRef.current = false;
+      setLoadingEarlier(false);
+    }
+    return found();
   };
 
   const send = () => {
@@ -840,6 +894,7 @@ export function useCloudTask(
     cursor,
     loadingEarlier,
     loadEarlier,
+    ensureLoaded,
     cloudGroups,
     switching,
     loadModels,
@@ -853,6 +908,9 @@ export function useCloudTask(
     onScroll: () => {
       const el = scrollRef.current;
       if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 40) pinnedRef.current = true;
+    },
+    unpin: () => {
+      pinnedRef.current = false;
     },
   };
 }

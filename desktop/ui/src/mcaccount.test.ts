@@ -43,7 +43,7 @@ describe("inspectMcAccount", () => {
     expect(result.historicalTasks).toEqual([]);
   });
 
-  it("快速任务和历史任务按时间倒序且最多展示五条", async () => {
+  it("快速任务倒序截 5 条,历史任务倒序全保留(不再切 5 条)", async () => {
     const source = Array.from({ length: 7 }, (_, index) => ({
       id: `task-${index}`,
       status: "finished" as const,
@@ -57,6 +57,8 @@ describe("inspectMcAccount", () => {
     );
 
     expect(result.tasks?.map((task) => task.id)).toEqual(["task-6", "task-5", "task-4", "task-3", "task-2"]);
-    expect(result.historicalTasks?.map((task) => task.id)).toEqual(["task-6", "task-5", "task-4", "task-3", "task-2"]);
+    expect(result.historicalTasks?.map((task) => task.id)).toEqual([
+      "task-6", "task-5", "task-4", "task-3", "task-2", "task-1", "task-0",
+    ]);
   });
 });

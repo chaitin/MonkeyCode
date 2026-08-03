@@ -315,6 +315,17 @@ pub async fn mc_task_rounds(svc: &Service, id: &str, cursor: &str, limit: u32) -
     }))
 }
 
+/// 云端任务提问索引(倒序,cursor 向更早翻页;{items, next_cursor, has_more}
+/// 原样透传 UI)。content 已是解码明文(超 500 字符截断),timestamp 纳秒、
+/// 与 chunk.timestamp 对齐——UI 的提问大纲靠它与帧流对表。
+pub async fn mc_task_user_inputs(svc: &Service, id: &str, cursor: &str, limit: u32) -> BzResult<Value> {
+    let mut path = format!("/api/v1/users/tasks/user-inputs?id={}&limit={limit}", urlencode(id));
+    if !cursor.is_empty() {
+        path.push_str(&format!("&cursor={}", urlencode(cursor)));
+    }
+    mc_call(svc, reqwest::Method::GET, &path, None).await
+}
+
 /// 终止云端任务(区别于 WS 上行 user-cancel:那只中断当前执行)。
 pub async fn mc_task_stop(svc: &Service, id: &str) -> BzResult<()> {
     mc_call(svc, reqwest::Method::PUT, "/api/v1/users/tasks/stop", Some(&json!({ "id": id })))

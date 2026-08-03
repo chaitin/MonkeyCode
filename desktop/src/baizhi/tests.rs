@@ -747,6 +747,10 @@ async fn cloud_sidebar_and_task_actions_contract() {
             ("GET", "/api/v1/users/projects") => {
                 Resp::json(200, json!({ "code": 0, "data": { "projects": [{"id": "p1"}] } }))
             }
+            ("GET", "/api/v1/users/tasks/user-inputs") => Resp::json(
+                200,
+                json!({ "code": 0, "data": { "items": [{"id": "user-input-1", "content": "你好", "timestamp": 1_722_000_000_000_000_000_i64}], "next_cursor": "c2", "has_more": true } }),
+            ),
             ("PUT", "/api/v1/users/tasks/stop") | ("DELETE", "/api/v1/users/tasks/t1") => {
                 Resp::json(200, json!({ "code": 0, "data": {} }))
             }
@@ -767,6 +771,11 @@ async fn cloud_sidebar_and_task_actions_contract() {
     assert_eq!(tasks.pointer("/tasks/0/id").and_then(Value::as_str), Some("t1"));
     let projects = super::monkeycode::mc_projects(&svc).await.map_err(|e| e.msg()).unwrap();
     assert_eq!(projects.pointer("/projects/0/id").and_then(Value::as_str), Some("p1"));
+    // 提问索引(云端大纲):{items, next_cursor, has_more} 原样透传
+    let inputs = super::monkeycode::mc_task_user_inputs(&svc, "t1", "c1", 100).await.map_err(|e| e.msg()).unwrap();
+    assert_eq!(inputs.pointer("/items/0/content").and_then(Value::as_str), Some("你好"));
+    assert_eq!(inputs.get("next_cursor").and_then(Value::as_str), Some("c2"));
+    assert_eq!(inputs.get("has_more").and_then(Value::as_bool), Some(true));
     super::monkeycode::mc_task_stop(&svc, "t1").await.map_err(|e| e.msg()).unwrap();
     super::monkeycode::mc_task_delete(&svc, "t1").await.map_err(|e| e.msg()).unwrap();
 
@@ -776,6 +785,13 @@ async fn cloud_sidebar_and_task_actions_contract() {
     assert!(list.1.contains("project_id=p%2F1"));
     assert!(list.1.contains("quick_start=true"));
     assert!(requests.iter().any(|(method, path, _)| method == "GET" && path == "/api/v1/users/projects?limit=50"));
+    assert!(requests.iter().any(|(method, path, _)| {
+        method == "GET"
+            && path.starts_with("/api/v1/users/tasks/user-inputs?")
+            && path.contains("id=t1")
+            && path.contains("limit=100")
+            && path.contains("cursor=c1")
+    }));
     assert!(requests.iter().any(|(method, path, body)| method == "PUT" && path == "/api/v1/users/tasks/stop" && body.get("id").and_then(Value::as_str) == Some("t1")));
     assert!(requests.iter().any(|(method, path, _)| method == "DELETE" && path == "/api/v1/users/tasks/t1"));
 }

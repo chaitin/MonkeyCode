@@ -3,7 +3,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { OutlineNav, OUTLINE_JUMP_INSET, outlineActiveSeq, outlineEntries } from "./components";
+import { OutlineNav, OUTLINE_JUMP_INSET, mergeLiveOutline, outlineActiveSeq, outlineEntries } from "./components";
+import type { LogItem } from "./types";
 import type { OutlineItem } from "./useSession";
 
 const item = (over: Partial<OutlineItem> = {}): OutlineItem => ({
@@ -53,6 +54,42 @@ describe("outlineEntries", () => {
     ]);
     expect(entries.map((e) => e.seq)).toEqual([1, 5]);
     expect(entries[0].label).toBe("第一问");
+  });
+});
+
+describe("mergeLiveOutline", () => {
+  const user = (seq: number, text: string, timestamp?: number): LogItem => ({
+    kind: "user",
+    text,
+    seq,
+    ...(timestamp !== undefined ? { timestamp } : {}),
+  });
+
+  it("刚发出的提问(目录里还没有)从对话流补进大纲尾部", () => {
+    const merged = mergeLiveOutline([item({ seq: 1, text: "第一问" })], [
+      user(1, "第一问"),
+      { kind: "agent", text: "回答" },
+      user(9, "最新一问", 1722_000_000_000),
+    ]);
+    expect(merged.map((it) => it.seq)).toEqual([1, 9]);
+    expect(merged[1]).toEqual({ seq: 9, offset: 0, text: "最新一问", timestamp: 1722_000_000_000 });
+  });
+
+  it("目录已有的条目以目录为准(带真实翻页偏移),不重复", () => {
+    const merged = mergeLiveOutline([item({ seq: 1, offset: 1024 })], [user(1, "第一问")]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].offset).toBe(1024);
+  });
+
+  it("无 seq 的用户条目(旧记录)与非用户条目都不进大纲", () => {
+    const noSeq: LogItem = { kind: "user", text: "旧记录" };
+    const merged = mergeLiveOutline([], [noSeq, { kind: "sys", text: "— 本轮结束 —" }]);
+    expect(merged).toEqual([]);
+  });
+
+  it("没有新增时原样返回目录(引用不变,memo 不空转)", () => {
+    const items = [item()];
+    expect(mergeLiveOutline(items, [user(1, "第一问")])).toBe(items);
   });
 });
 

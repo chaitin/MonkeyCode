@@ -11,9 +11,10 @@ import { CloudTerminal } from "./cloudterm";
 import { MAX_CLOUD_ATTS } from "./cloudUpload";
 import { COL_MAX, ModelPickerTrigger } from "./chat";
 import { CloudModelGroups } from "./cloudModelMenu";
+import { useCloudOutlineNav } from "./cloudOutline";
 import { CloudStartupCard } from "./cloudStartup";
 import { SlashCommandMenu, useSlashCommands } from "./commandMenu";
-import { HeaderFilesButton, HeaderMenu, LogList, TaskPanel, ViewHeader, type MenuState } from "./components";
+import { HeaderFilesButton, HeaderMenu, LogList, OutlineNav, TaskPanel, ViewHeader, type MenuState } from "./components";
 import { Composer, QueuedChip, RunningBar } from "./composer";
 import { IconCloud, IconFile, IconGlobe, IconMonitor, IconPaperclip, IconStop, IconX } from "./icons";
 import { useUpwardMenuHeight } from "./menuPosition";
@@ -105,6 +106,9 @@ export function CloudTaskView({
     inputRef,
     enabled: !ended,
   });
+
+  // 提问大纲(REST 索引 + 实时用户消息;交互复用本地 OutlineNav)
+  const nav = useCloudOutlineNav(h.id, chat.items, h);
 
   // 云端模型下拉开合(列表加载/切换在 hook)
   const [modelOpen, setModelOpen] = useState(false);
@@ -276,7 +280,10 @@ export function CloudTaskView({
         <div
           ref={h.scrollRef}
           onWheel={h.onWheel}
-          onScroll={h.onScroll}
+          onScroll={() => {
+            h.onScroll();
+            nav.onScrollTick();
+          }}
           style={{ flex: 1, overflowY: "auto", overflowX: "hidden", minHeight: 0, scrollbarGutter: "stable both-edges" }}
         >
           <div style={{ maxWidth: COL_MAX, margin: "0 auto", padding: "26px 36px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
@@ -529,6 +536,9 @@ export function CloudTaskView({
           />
         )}
       </div>
+
+      {/* ==== 提问大纲(与本地会话同款点列+浮窗;启动页没有对话流,不挂)==== */}
+      {taskStatus !== "pending" && <OutlineNav entries={nav.entries} activeSeq={nav.activeSeq} onJump={nav.onJump} />}
 
       {/* ==== 云端文件抽屉(共享 FilesDrawer 浮层,数据经控制流适配;
           上传只对未结束任务开放——结束态 VM 已回收,写不进去)==== */}
