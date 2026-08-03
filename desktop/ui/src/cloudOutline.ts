@@ -74,8 +74,10 @@ export function useCloudOutline(id: string, items: LogItem[]): OutlineEntry[] {
         cursor = r.next_cursor;
       }
       if (alive) setRest(cloudOutlineItems(all));
-    })().catch(() => {
-      /* 大纲缺席可接受,任务回放不受影响 */
+    })().catch((e: unknown) => {
+      // 大纲缺席可接受(降级为只有实时条目),但失败必须留痕:上次命令没进
+      // capabilities 白名单,invoke 被拒就是被这里的静默吞掉才难查的
+      console.warn("[cloud-outline] 提问索引拉取失败:", e);
     });
     return () => {
       alive = false;

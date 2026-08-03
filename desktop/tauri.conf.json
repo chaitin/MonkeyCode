@@ -93,6 +93,7 @@
             "allow-mc-projects",
             "allow-mc-task-info",
             "allow-mc-task-rounds",
+            "allow-mc-task-user-inputs",
             "allow-mc-task-stop",
             "allow-mc-task-delete",
             "allow-mc-task-create",
