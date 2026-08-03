@@ -6,6 +6,7 @@
 // 点本身不响应点击:6px 的目标太小,误点代价是整屏跳走。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ATT_LINE } from "./logView";
+import type { LogItem } from "./types";
 import type { OutlineItem } from "./useSession";
 
 export interface OutlineEntry {
@@ -34,6 +35,24 @@ export function outlineActiveSeq(
     if (item.seq !== undefined && Number.isFinite(item.seq)) seq = item.seq;
   }
   return seq;
+}
+
+/** 大纲目录 + 对话流里的实时用户消息 → 合并视图。
+ *
+ * 目录(壳的 session_outline / 云端 user-inputs 索引)是磁盘/服务端数据,
+ * 刚发出的提问要等落盘/轮末物化才进得去——帧落盘还是异步写线程,回显到达
+ * 时读盘未必看得见。最新一条只能从已归约的对话流里拿:凡带 seq 的用户
+ * 条目且目录里没有的,按流内顺序补到尾部(它们必然是最新的几条,天然有序)。
+ * 同 seq 以目录为准:目录条目带真实翻页偏移,流内补的只有 0。 */
+export function mergeLiveOutline(items: OutlineItem[], logItems: LogItem[]): OutlineItem[] {
+  const seen = new Set(items.map((it) => it.seq));
+  const tail: OutlineItem[] = [];
+  for (const it of logItems) {
+    if (it.kind !== "user" || it.seq === undefined || seen.has(it.seq)) continue;
+    seen.add(it.seq);
+    tail.push({ seq: it.seq, offset: 0, text: it.text, ...(it.timestamp !== undefined ? { timestamp: it.timestamp } : {}) });
+  }
+  return tail.length ? [...items, ...tail] : items;
 }
 
 function hhmm(ts?: number): string {

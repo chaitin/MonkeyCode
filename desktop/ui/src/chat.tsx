@@ -23,6 +23,7 @@ import {
   OUTLINE_JUMP_INSET,
   TaskPanel,
   ViewHeader,
+  mergeLiveOutline,
   outlineActiveSeq,
   outlineEntries,
   useRenameDraft,
@@ -664,7 +665,11 @@ export function ChatView({
   }, [chat.items]);
 
   // ==== 提问大纲 ====
-  const outline = useMemo(() => outlineEntries(session.outline), [session.outline]);
+  // 壳目录 + 流内实时用户消息合并:刚发的提问不等轮末物化就进大纲
+  const outline = useMemo(
+    () => outlineEntries(mergeLiveOutline(session.outline, chat.items)),
+    [session.outline, chat.items],
+  );
   const [activeSeq, setActiveSeq] = useState<number | undefined>(undefined);
   const activeRaf = useRef(0);
   // 当前视口所在的提问 = 视口顶部之上最后一条用户气泡。判定沿用 saveAnchor
