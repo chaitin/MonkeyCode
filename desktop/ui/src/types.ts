@@ -428,6 +428,49 @@ export interface McStatus {
   user?: McUser;
 }
 
+/** 钱包(字段与移动端 /api/v1/users/wallet 一致)。 */
+export interface McWallet {
+  /** 积分余额(展示需 /1000,与移动端「积分」口径一致) */
+  balance?: number;
+  /** 每日免费模型剩余 tokens */
+  daily_token_balance?: number;
+  /** 每日免费模型 tokens 上限 */
+  daily_token_limit?: number;
+}
+
+export interface McSubscription {
+  /** "basic" | "pro" | "ultra" | "flagship" */
+  plan?: string;
+  expires_at?: string;
+  auto_renew?: boolean;
+  source?: string;
+}
+
+export interface McInvitation {
+  id?: string;
+  name?: string;
+  /** 可能是相对路径,按 McUsage.base_url 补全 */
+  avatar_url?: string;
+  credits?: number;
+  invited_at?: number;
+}
+
+export interface McInvitations {
+  count?: number;
+  items?: McInvitation[];
+}
+
+/** mc_usage 返回:各路各自可能为 null(私有化部署只有订阅端点)。 */
+export interface McUsage {
+  /** 云端服务完整基址(含协议/端口):邀请链接与相对头像地址的解析基准 */
+  base_url?: string;
+  wallet: McWallet | null;
+  subscription: McSubscription | null;
+  /** 当天是否已签到;null = 本次没取到(不等于"未签到") */
+  checked_in: boolean | null;
+  invitations: McInvitations | null;
+}
+
 /** MonkeyCode 云端账号在 UI 中的独立关联状态。
  * 百智云登录只提供桥接授权,不会再隐式把本状态推进到 connected。 */
 export interface McConnectionState {

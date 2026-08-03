@@ -1,5 +1,7 @@
 // MonkeyCode 账号探测只读取既有会话和任务,刻意不接收登录函数。
 // 因此启动、聚焦和定时刷新都不可能隐式用百智云账号创建 MonkeyCode 会话。
+// 账号权益(额度/签到/邀请)不在这里:它只在设置页可见,挂进这条 30 秒
+// 轮询等于为一块看不见的面板长期空跑请求,改由设置页挂载时自取。
 import { mcProjects, mcStatus, mcTasks } from "./cloudapi";
 import type { CloudProject, CloudProjectsResp, CloudTask, CloudTasksResp, McStatus } from "./types";
 

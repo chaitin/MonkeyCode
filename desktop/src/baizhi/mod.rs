@@ -615,6 +615,19 @@ pub async fn mc_logout(bz: State<'_, BaizhiState>) -> Result<Value, String> {
     Ok(json!({ "ok": true }))
 }
 
+/// 账号权益(额度/会员/签到态/邀请一次取回;单路缺席按 null 降级,见 mc_usage)。
+#[tauri::command]
+pub async fn mc_usage(bz: State<'_, BaizhiState>) -> Result<Value, String> {
+    monkeycode::mc_usage(&bz.0).await.map_err(BzErr::msg)
+}
+
+/// 每日签到(壳内自动完成 PoW 验证码)。成功后 UI 重拉 mc_usage 刷新余额。
+#[tauri::command]
+pub async fn mc_checkin(bz: State<'_, BaizhiState>) -> Result<Value, String> {
+    monkeycode::mc_checkin(&bz.0).await.map_err(BzErr::msg)?;
+    Ok(json!({ "ok": true }))
+}
+
 // ==================== 会员模型本地同步 ====================
 
 pub(crate) const OHMYAGENT_KEY_FILE: &str = "monkeycode-ohmyagent-key.json";

@@ -231,6 +231,41 @@ export function sortModelsBySource<T extends { source?: string }>(list: T[]): T[
   return [...list].sort((a, b) => modelSourceRank(a.source) - modelSourceRank(b.source));
 }
 
+/** 同步结果消息(账号卡就地外显)。 */
+export interface SyncMsg {
+  text: string;
+  color: string;
+  /** 只是这次点击的即时反馈,离开分区即作废;见 syncResultTail */
+  transient?: boolean;
+}
+
+/**
+ * 同步结果消息的收尾语与生命周期(百智云/会员模型两条同步流水线共用)。
+ *
+ * 自动保存这一路**不写进行时**:同步成功会当场把分区切到模型页
+ * (mergeSyncedModels),消息所在的账号卡随之退出视野——"正在保存并重启
+ * 内核…"根本来不及被看到,却会在用户下次点回账号时以早已过期的状态出现
+ * (保存那会儿就结束了)。保存与重启另有保存条/引擎横幅各自外显。
+ *
+ * transient:消息只剩这次点击的即时反馈(既没有待办、也没有附加说明),
+ * 离开分区即作废;带待办(需手动保存)或附加说明(跳过名单、内核诊断)的
+ * 留着——那些话在用户切回来时依然成立。
+ *
+ * autoSaved 的语义是"会被写下去"(本次直接存,或搭上在途保存的补存循环),
+ * 见 SyncApplyResult。
+ */
+export function syncResultTail(p: {
+  autoSaved: boolean;
+  blocked?: "dirty" | "busy";
+  /** 消息里是否还带着附加说明(跳过名单、内核 notes 等) */
+  hasNotes: boolean;
+}): { tail: string; transient: boolean } {
+  if (p.autoSaved) return { tail: "", transient: !p.hasNotes };
+  if (p.blocked === "busy") return { tail: "有任务正在执行,空闲后请手动保存(保存会重启内核)", transient: false };
+  if (p.blocked === "dirty") return { tail: "表单有未保存的修改,请核对后手动保存", transient: false };
+  return { tail: "已切到模型页,核对后保存", transient: false };
+}
+
 // 归一化保存载荷:save() 与 dirty 比较共用同一形态(名称 trim、default 重算、MCP 序列化)
 export const payloadOf = (ms: HostModel[], di: number, mc: McpEntry[], ke: string, mcUrl: string, mcBasic: string, mcLlm: string): HostConfig => ({
   // 显式列出内核支持的字段，避免旧版/实验 UI 字段只写进 config.json、

@@ -780,6 +780,104 @@ async fn cloud_sidebar_and_task_actions_contract() {
     assert!(requests.iter().any(|(method, path, _)| method == "DELETE" && path == "/api/v1/users/tasks/t1"));
 }
 
+/// 账号权益契约:钱包/订阅/签到态/邀请四路并发取回,单路缺席(私有化部署
+/// 只有订阅端点,其余 404)按 null 降级而不牵连其余;全部失败才整体报错。
+/// 签到态取不到时是 null 而非 false——否则会误催已签到的用户。
+#[tokio::test(flavor = "multi_thread")]
+async fn mc_usage_contract() {
+    let saas = Arc::new(AtomicBool::new(true)); // false = 只留订阅端点的自建部署
+    let sub_ok = Arc::new(AtomicBool::new(true));
+    let (o, s) = (saas.clone(), sub_ok.clone());
+    let (url, _stop) = serve(Arc::new(move |req: Req| match req.path.split('?').next().unwrap() {
+        "/api/v1/users/wallet" if o.load(Ordering::Relaxed) => Resp::json(
+            200,
+            json!({ "code": 0, "data": { "balance": 12_345_678, "daily_token_balance": 400_000, "daily_token_limit": 1_000_000 } }),
+        ),
+        "/api/v1/users/wallet/checkin" if o.load(Ordering::Relaxed) => {
+            Resp::json(200, json!({ "code": 0, "data": { "checked_in": true } }))
+        }
+        "/api/v1/users/invitations" if o.load(Ordering::Relaxed) => Resp::json(
+            200,
+            json!({ "code": 0, "data": { "count": 2, "items": [{ "id": "u2", "name": "阿茂" }] } }),
+        ),
+        "/api/v1/users/subscription" if s.load(Ordering::Relaxed) => {
+            Resp::json(200, json!({ "code": 0, "data": { "plan": "pro", "auto_renew": false } }))
+        }
+        _ => Resp::json(404, json!({ "code": 404, "message": "not found" })),
+    }));
+    let svc = Service::test_service(Endpoints {
+        account: url.clone(),
+        model_gateway: url.clone(),
+        mcp_gateway: url.clone(),
+        monkeycode: url.clone(),
+    });
+
+    let usage = super::monkeycode::mc_usage(&svc).await.map_err(|e| e.msg()).unwrap();
+    assert_eq!(usage.pointer("/wallet/balance").and_then(Value::as_i64), Some(12_345_678));
+    assert_eq!(usage.pointer("/subscription/plan").and_then(Value::as_str), Some("pro"));
+    assert_eq!(usage.get("checked_in").and_then(Value::as_bool), Some(true));
+    assert_eq!(usage.pointer("/invitations/count").and_then(Value::as_i64), Some(2));
+    // 邀请链接与相对头像地址的解析基准,必须是完整基址(含协议/端口)
+    assert_eq!(usage.get("base_url").and_then(Value::as_str), Some(url.as_str()));
+
+    // 私有化部署:只剩订阅端点,会员等级照常可见,其余按 null 降级
+    saas.store(false, Ordering::Relaxed);
+    let usage = super::monkeycode::mc_usage(&svc).await.map_err(|e| e.msg()).unwrap();
+    assert!(usage.get("wallet").unwrap().is_null());
+    assert!(usage.get("checked_in").unwrap().is_null(), "签到态取不到时不能退化成 false");
+    assert!(usage.get("invitations").unwrap().is_null());
+    assert_eq!(usage.pointer("/subscription/plan").and_then(Value::as_str), Some("pro"));
+
+    // 四路都不可用 = 真故障,如实报错
+    sub_ok.store(false, Ordering::Relaxed);
+    assert!(super::monkeycode::mc_usage(&svc).await.is_err());
+}
+
+/// 签到契约:壳内先取 MonkeyCode 域 PoW 验证码,再带 captcha_token POST
+/// 签到端点(与账密登录同一套验证码,全程不碰百智罐)。PoW 求解本身由
+/// monkeycode_password_login_contract 按协议校验,这里只盯签到这一跳。
+#[tokio::test(flavor = "multi_thread")]
+async fn mc_checkin_contract() {
+    let captured: Arc<Mutex<Vec<(String, String, Value)>>> = Arc::new(Mutex::new(Vec::new()));
+    let cap = captured.clone();
+    let (url, _stop) = serve(Arc::new(move |req: Req| {
+        let body = body_json(&req.body);
+        cap.lock().unwrap().push((req.method.clone(), req.path.clone(), body.clone()));
+        match (req.method.as_str(), req.path.split('?').next().unwrap()) {
+            // go-cap:201 + 裸结构(不套 {code,data} 包壳)
+            ("POST", "/api/v1/public/captcha/challenge") => {
+                Resp::json(201, json!({ "challenge": { "c": 1, "s": 32, "d": 1 }, "token": "mc-chtok" }))
+            }
+            ("POST", "/api/v1/public/captcha/redeem") => {
+                Resp::json(201, json!({ "success": true, "token": "mc-captoken" }))
+            }
+            ("POST", "/api/v1/users/wallet/checkin") => {
+                if body.get("captcha_token").and_then(Value::as_str) != Some("mc-captoken") {
+                    return Resp::json(403, json!({ "code": 403, "message": "禁止访问" }));
+                }
+                Resp::json(200, json!({ "code": 0, "data": { "credits": 100 } }))
+            }
+            _ => Resp::json(404, json!({ "code": 404, "message": "not found" })),
+        }
+    }));
+    let svc = Service::test_service(Endpoints {
+        account: url.clone(),
+        model_gateway: url.clone(),
+        mcp_gateway: url.clone(),
+        monkeycode: url,
+    });
+
+    super::monkeycode::mc_checkin(&svc).await.map_err(|e| e.msg()).unwrap();
+
+    let requests = captured.lock().unwrap();
+    assert!(requests.iter().any(|(m, p, _)| m == "POST" && p == "/api/v1/public/captcha/challenge"));
+    assert!(requests
+        .iter()
+        .any(|(m, p, b)| m == "POST" && p == "/api/v1/users/wallet/checkin" && b.get("captcha_token").is_some()));
+    // 百智罐不该被这条链路碰到(双罐隔离)
+    assert!(svc.store.is_empty());
+}
+
 // ==================== 会员模型本地同步 ====================
 
 /// 会员模型同步/删除契约(对齐服务端 swagger【用户】OhMyAgent 分组):

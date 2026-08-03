@@ -7,6 +7,7 @@ import {
   replaceSourceGroup,
   sortModelsBySource,
   syncedName,
+  syncResultTail,
   validateMcpNames,
 } from "./settingsConfig";
 import { SOURCE_BAIZHI, SOURCE_MONKEYCODE, type HostModel } from "./types";
@@ -199,5 +200,33 @@ describe("MCP name validation", () => {
       "MCP 名称重复: github",
       null,
     ]);
+  });
+});
+
+/** 回归:同步成功会当场把分区切到模型页,账号卡随之退出视野。此前消息里
+ * 写着「正在保存并重启内核…」,那句话在卡里根本来不及被看到,却会在用户
+ * 下次点回账号时以早已过期的状态出现(保存那会儿就结束了)。 */
+describe("syncResultTail", () => {
+  it("自动保存不写进行时,纯成功消息离开分区即作废", () => {
+    expect(syncResultTail({ autoSaved: true, hasNotes: false })).toEqual({ tail: "", transient: true });
+  });
+
+  it("带附加说明(跳过名单/内核诊断)的留着:切回账号时那些话依然成立", () => {
+    expect(syncResultTail({ autoSaved: true, hasNotes: true })).toEqual({ tail: "", transient: false });
+  });
+
+  it("需要用户动手的收尾语原样保留,且不作废", () => {
+    expect(syncResultTail({ autoSaved: false, blocked: "busy", hasNotes: false })).toEqual({
+      tail: "有任务正在执行,空闲后请手动保存(保存会重启内核)",
+      transient: false,
+    });
+    expect(syncResultTail({ autoSaved: false, blocked: "dirty", hasNotes: true })).toEqual({
+      tail: "表单有未保存的修改,请核对后手动保存",
+      transient: false,
+    });
+    expect(syncResultTail({ autoSaved: false, hasNotes: false })).toEqual({
+      tail: "已切到模型页,核对后保存",
+      transient: false,
+    });
   });
 });

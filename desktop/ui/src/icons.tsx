@@ -395,3 +395,40 @@ export function IconBack({ size = 10, color = "var(--t1)", style }: IconProps) {
     </svg>
   );
 }
+
+// 以下三个与移动端 Icons(24 视框、1.7 描边)同路径,保证两端同一形状。
+
+/** 皇冠(会员等级) */
+export function IconCrown({ size = 13, color = "var(--accTx)", style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ ...base, ...style }}>
+      <path d="M12 6l4 6l5-4l-2 10h-14l-2-10l5 4z" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 日历(每日签到) */
+export function IconCalendar({ size = 13, color = "var(--t3)", style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ ...base, ...style }}>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" stroke={color} strokeWidth="1.7" strokeLinejoin="round" />
+      <path d="M3.5 9.5h17M8 3v4M16 3v4" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** 复制(叠放的两个方框) */
+export function IconCopy({ size = 12, color = "var(--t3)", style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ ...base, ...style }}>
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2.2" stroke={color} strokeWidth="1.7" strokeLinejoin="round" />
+      <path
+        d="M5.5 15.5H5A1.5 1.5 0 0 1 3.5 14V5A1.5 1.5 0 0 1 5 3.5h9A1.5 1.5 0 0 1 15.5 5v.5"
+        stroke={color}
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

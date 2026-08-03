@@ -4,7 +4,7 @@
 import { b64encode, frameData } from "./codec";
 import type { McTaskOptions } from "./cloud";
 import { invoke, listenAsync } from "./ipc";
-import type { CloudAttachment, CloudProjectsResp, CloudTaskDetail, CloudTasksResp, Frame, McModelsSyncResult, McStatus, McUser, WsCloseInfo } from "./types";
+import type { CloudAttachment, CloudProjectsResp, CloudTaskDetail, CloudTasksResp, Frame, McModelsSyncResult, McStatus, McUsage, McUser, WsCloseInfo } from "./types";
 
 // ==================== 云端 REST(壳命令代理) ====================
 
@@ -20,6 +20,12 @@ export const mcPasswordLogin = (email: string, password: string) =>
   invoke<{ ok: boolean; user?: McUser }>("mc_password_login", { email, password });
 
 export const mcLogout = () => invoke<{ ok: boolean }>("mc_logout");
+
+/** 账号权益(额度/会员/签到态/邀请)。壳侧各路并发且各自容错,全失败才 reject。 */
+export const mcUsage = () => invoke<McUsage>("mc_usage");
+
+/** 每日签到(壳内自动完成 PoW 验证码)。成功后调用方重拉 mcUsage 刷新余额。 */
+export const mcCheckin = () => invoke<{ ok: boolean }>("mc_checkin");
 
 /** 同步会员内置模型为本地条目(不碰配置,返回值经设置表单落盘)。 */
 export const mcModelsSync = () => invoke<McModelsSyncResult>("mc_models_sync");

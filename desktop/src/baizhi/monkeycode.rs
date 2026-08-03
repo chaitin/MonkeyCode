@@ -185,6 +185,65 @@ pub fn mc_host(svc: &Service) -> String {
         .unwrap_or_else(|| svc.ep.monkeycode.clone())
 }
 
+/// 钱包(积分余额 + 每日免费模型 token 额度)。官方云才有这个端点,
+/// 私有化部署会 404。
+async fn mc_wallet(svc: &Service) -> BzResult<Value> {
+    mc_call(svc, reqwest::Method::GET, "/api/v1/users/wallet", None).await
+}
+
+/// 会员订阅(等级/到期/续费来源)。开源版后端固定返回基础状态。
+async fn mc_subscription(svc: &Service) -> BzResult<Value> {
+    mc_call(svc, reqwest::Method::GET, "/api/v1/users/subscription", None).await
+}
+
+/// 当天是否已签到。
+async fn mc_checkin_status(svc: &Service) -> BzResult<Value> {
+    mc_call(svc, reqwest::Method::GET, "/api/v1/users/wallet/checkin", None).await
+}
+
+/// 邀请记录({count, items})。头像地址可能是相对路径,由 UI 按 base_url 补全。
+async fn mc_invitations(svc: &Service) -> BzResult<Value> {
+    mc_call(svc, reqwest::Method::GET, "/api/v1/users/invitations?page=1&size=50", None).await
+}
+
+/// 账号权益总览:额度、会员、签到态、邀请记录并发取回。单路失败按缺省
+/// (null)降级——私有化部署只有订阅端点,其余都 404,此时仍要能看到会员
+/// 等级。全部失败才报错(会话失效/网络不通这类真故障)。
+/// base_url 一并回传:邀请链接和相对头像地址都要以它为解析基准,UI 自己
+/// 按主机名拼 https:// 会在自建 http/带端口部署上拼错。
+pub async fn mc_usage(svc: &Service) -> BzResult<Value> {
+    let (wallet, subscription, checkin, invitations) = tokio::join!(
+        mc_wallet(svc),
+        mc_subscription(svc),
+        mc_checkin_status(svc),
+        mc_invitations(svc)
+    );
+    if wallet.is_err() && subscription.is_err() && checkin.is_err() && invitations.is_err() {
+        return Err(wallet.unwrap_err());
+    }
+    Ok(json!({
+        "base_url": svc.ep.monkeycode,
+        "wallet": wallet.unwrap_or(Value::Null),
+        "subscription": subscription.unwrap_or(Value::Null),
+        // 取不到时给 null,与"确定没签到"(false)区分——否则会误催已签到的用户
+        "checked_in": checkin.ok().and_then(|v| v.get("checked_in").and_then(Value::as_bool)),
+        "invitations": invitations.unwrap_or(Value::Null),
+    }))
+}
+
+/// 每日签到(每天 1 次;与账密登录同一套 MonkeyCode 域 PoW 验证码)。
+/// 重复签到等业务失败由服务端包壳原样透传。
+pub async fn mc_checkin(svc: &Service) -> BzResult<Value> {
+    let captcha = svc.captcha_token_at(&svc.ep.monkeycode, &svc.mc, "MonkeyCode ").await?;
+    mc_call(
+        svc,
+        reqwest::Method::POST,
+        "/api/v1/users/wallet/checkin",
+        Some(&json!({ "captcha_token": captcha })),
+    )
+    .await
+}
+
 /// 云端任务列表({tasks, page_info} 原样透传 UI)。project_id / quick_start
 /// 与 Web 侧栏筛选一致：项目内任务、未关联项目的快速任务分别查询。
 pub async fn mc_tasks(

@@ -1207,6 +1207,8 @@ fn main() {
             baizhi::mc_login,
             baizhi::mc_password_login,
             baizhi::mc_logout,
+            baizhi::mc_usage,
+            baizhi::mc_checkin,
             baizhi::mc_models_sync,
             baizhi::mc_models_revoke,
             baizhi::mc_tasks,

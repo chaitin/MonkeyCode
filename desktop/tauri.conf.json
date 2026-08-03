@@ -85,6 +85,8 @@
             "allow-mc-login",
             "allow-mc-password-login",
             "allow-mc-logout",
+            "allow-mc-usage",
+            "allow-mc-checkin",
             "allow-mc-models-sync",
             "allow-mc-models-revoke",
             "allow-mc-tasks",
