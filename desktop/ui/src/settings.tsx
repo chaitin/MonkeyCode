@@ -1894,8 +1894,9 @@ export function SettingsView({
 
   return (
     <div style={{ flex: 1, display: "flex", minHeight: 0, animation: "mcin .25s ease" }}>
-      {/* 左侧分类导航(设置态占满主窗口,此为最左栏) */}
-      <div style={{ width: 168, flex: "none", background: "var(--side)", borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 2, padding: "0 10px 12px" }}>
+      {/* 左侧分类导航(设置态占满主窗口,此为最左栏)。栏宽走 --setNavW 令牌:
+          Windows 自绘标题栏的设置态同列共用它,两层的竖分隔线才不会错开 */}
+      <div style={{ width: "var(--setNavW)", flex: "none", background: "var(--side)", borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 2, padding: "0 10px 12px" }}>
         {/* macOS 壳:自绘红绿灯落在最左栏顶部(与主侧栏同一组件,切换不跳动) */}
         <MacWindowControls />
         <div

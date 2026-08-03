@@ -595,6 +595,18 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   background: var(--card) !important;
 }
 
+/* 左侧各栏的栏宽令牌:一处定义,多处消费。
+ * 消费方分两层且必须逐列对齐——下层是内容区的栏(.mc-nav-rail、
+ * .mc-sidebar-panel、设置页左导航),上层是 Windows 自绘标题栏里与它们
+ * 同列的几段(titlebar.tsx)。栏宽随窗宽收窄(下方媒体查询),数值一旦在
+ * 标题栏那侧另写一份,窗口缩到 1080px 以下时两层的竖分隔线就会错开
+ * ——所以两层只认这组令牌,不写字面值。 */
+:root {
+  --railW: 62px;      /* 一级空间导航 */
+  --sideW: 232px;     /* 二级内容侧栏 */
+  --setNavW: 168px;   /* 设置页左导航(设置态占满主窗口,此为最左栏) */
+}
+
 /* 一级空间导航的栏宽、底色与右分隔线。
  *
  * mac 的红绿灯已是 UI 自绘的 10px 替身(titlebar.tsx MacWindowControls,
@@ -602,13 +614,15 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
  * 贯通到顶,三端同构。曾为原生红绿灯越界做过"顶部 50px 染色"和"整面
  * 同色去线"两轮让位,均随自绘方案退役;若将来恢复原生红绿灯,这段历史
  * 见 git log(缩放键会压在栏边界上,须重新处理)。
- * 栏宽随窗宽收窄(下方媒体查询),写进内联样式会盖掉规则,
- * navigation.test 有守护断言。data-platform 在 ui/src/main.tsx 落到根节点。 */
+ * 栏宽走令牌,写死进内联样式会盖掉规则,navigation.test 有守护断言。
+ * data-platform 在 ui/src/main.tsx 落到根节点。 */
 .mc-nav-rail {
-  width: 62px;
+  width: var(--railW);
   position: relative;
   background: var(--rail);
 }
+/* 二级内容侧栏的栏宽同样归 CSS(其余外观仍在 sidebar.tsx 内联) */
+.mc-sidebar-panel { width: var(--sideW); }
 .mc-nav-rail::after {
   content: "";
   position: absolute;
@@ -650,9 +664,12 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 .mac-light-glyph { opacity: 0; display: block; }
 .mac-lights:hover .mac-light-glyph { opacity: 1; }
 
+/* 窄窗收窄:只改令牌,两层(内容区栏 + Windows 自绘标题栏同列)一起跟着走 */
 @media (max-width: 1080px) {
-  .mc-nav-rail { width: 58px; }
-  .mc-sidebar-panel { width: 220px !important; }
+  :root {
+    --railW: 58px;
+    --sideW: 220px;
+  }
 }
 
 /* 代码预览高亮(highlight.js 输出;注释复用文字灰阶令牌) */
