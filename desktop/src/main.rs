@@ -1210,6 +1210,8 @@ fn main() {
             preview::preview_reload,
             preview::preview_set_zoom,
             preview::preview_destroy,
+            preview::preview_result_show,
+            preview::preview_result_hide,
             preview::preview_picker_toggle,
             preview::preview_element_apply,
             preview::preview_element_undo,

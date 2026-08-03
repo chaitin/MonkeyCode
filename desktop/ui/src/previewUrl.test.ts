@@ -24,6 +24,10 @@ describe("latestPreviewUrl", () => {
     expect(latestPreviewUrl([agent("预览地址：**http://127.0.0.1:8080/index.html**")])).toBe("http://127.0.0.1:8080/index.html");
   });
 
+  it("不把 Markdown 标记后的中文括号说明识别为 URL", () => {
+    expect(latestPreviewUrl([agent("http://localhost:8081/gomoku.html**（返回")])).toBe("http://localhost:8081/gomoku.html");
+  });
+
   it("支持 IPv6 loopback", () => {
     expect(latestPreviewUrl([agent("http://[::1]:8080/")])).toBe("http://[::1]:8080/");
   });

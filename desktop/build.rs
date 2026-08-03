@@ -77,6 +77,8 @@ fn main() {
                 "preview_reload",
                 "preview_set_zoom",
                 "preview_destroy",
+                "preview_result_show",
+                "preview_result_hide",
                 "preview_picker_toggle",
                 "preview_element_apply",
                 "preview_element_undo",

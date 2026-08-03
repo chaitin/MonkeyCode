@@ -104,6 +104,12 @@ export const previewNavigate = (url: string) => invoke<void>("preview_navigate",
 export const previewReload = () => invoke<void>("preview_reload");
 export const previewSetZoom = (scale: number) => invoke<void>("preview_set_zoom", { scale });
 export const previewDestroy = () => invoke<void>("preview_destroy");
+export const previewResultShow = (dataUrl: string, status: string, commentCount: number) => invoke<void>("preview_result_show", { dataUrl, status, commentCount });
+export const previewResultHide = () => invoke<void>("preview_result_hide");
+export type PreviewResultAction = "download" | "send" | "close";
+export const onPreviewResultActionAsync = (cb: (action: PreviewResultAction) => void | Promise<void>) => listenAsync("preview-result-action", (payload) => {
+  if (payload === "download" || payload === "send" || payload === "close") void cb(payload);
+});
 
 export type ElementSnapshot = {
   selector: string; text: string; tag: string;
@@ -130,8 +136,10 @@ export const previewSaveHtml = (sessionId: string, path: string, html: string) =
 export type PreviewCaptureMode = "viewport" | "full";
 export const previewCapture = (mode: PreviewCaptureMode, requestId: string) => invoke<void>("preview_capture", { mode, requestId });
 export const onPreviewCaptured = (cb: (value: { requestId: string; dataUrl: string; clipboardError?: string | null }) => void) => onHostEvent("preview-captured", cb);
+export const onPreviewCapturedAsync = (cb: (value: { requestId: string; dataUrl: string; clipboardError?: string | null }) => void) => listenAsync("preview-captured", (payload) => cb(payload as { requestId: string; dataUrl: string; clipboardError?: string | null }));
 export type PreviewCaptureError = { requestId: string; error: string };
 export const onPreviewCaptureError = (cb: (value: PreviewCaptureError) => void) => onHostEvent<PreviewCaptureError>("preview-capture-error", cb);
+export const onPreviewCaptureErrorAsync = (cb: (value: PreviewCaptureError) => void) => listenAsync("preview-capture-error", (payload) => cb(payload as PreviewCaptureError));
 export const onPreviewElementPicked = (cb: (snapshot: ElementSnapshot) => void) => onHostEvent<ElementSnapshot>("preview-element-picked", cb);
 export const onPreviewPickerError = (cb: (error: string) => void) => onHostEvent<string>("preview-picker-error", cb);
 

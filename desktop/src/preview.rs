@@ -1,5 +1,5 @@
-use base64::Engine as _;
 use crate::driver::DriverHost;
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::path::{Component, Path, PathBuf};
@@ -14,6 +14,7 @@ use tauri::{
 
 const LABEL: &str = "design-preview";
 const RESULT_SCHEME: &str = "monkeycode-picker";
+const PREVIEW_RESULT_SCHEME: &str = "monkeycode-preview-result";
 const MAX_RESULT_BYTES: usize = 32 * 1024;
 const SERIALIZE_SCHEME: &str = "monkeycode-serialize";
 const SERIALIZE_JS: &str = r#"(()=>{window.__mcSerialize=async id=>{try{const html='<!doctype html>\n'+new XMLSerializer().serializeToString(document.documentElement);if(new TextEncoder().encode(html).length>8388608)throw Error('HTML 超过 8 MiB 限制');const n=4000,total=Math.ceil(html.length/n);for(let i=0;i<total;i++){location.href=`monkeycode-serialize://${id}?index=${i}&total=${total}&data=${encodeURIComponent(html.slice(i*n,(i+1)*n))}`;await new Promise(r=>setTimeout(r,0))}}catch(e){location.href=`monkeycode-serialize://${id}?error=${encodeURIComponent(String(e?.message||e))}`}}})()"#;
@@ -74,8 +75,53 @@ fn serialize_result(url: &Url) -> Option<Result<Option<(String, String)>, String
 }
 
 const CAPTURE_SCHEME: &str = "monkeycode-capture";
+const MAX_CAPTURE_PIXELS: f64 = 80_000_000.0;
 const MAX_CAPTURE_BYTES: usize = 24 * 1024 * 1024;
 const MAX_CAPTURE_CHUNK: usize = 24 * 1024;
+
+fn validate_capture_size(width: f64, height: f64) -> Result<(f64, f64), String> {
+    if !width.is_finite()
+        || !height.is_finite()
+        || width < 1.0
+        || height < 1.0
+        || width * height > MAX_CAPTURE_PIXELS
+    {
+        return Err("页面尺寸无效或超过 8000 万像素".into());
+    }
+    Ok((width, height))
+}
+
+#[derive(Debug, PartialEq)]
+struct FullCaptureSizePlan {
+    capture: (f64, f64),
+    restore: (f64, f64),
+}
+
+fn full_capture_size_plan(
+    original: (f64, f64),
+    page: (f64, f64),
+) -> Result<FullCaptureSizePlan, String> {
+    let capture = (page.0.ceil(), page.1.ceil());
+    validate_capture_size(capture.0, capture.1)?;
+    Ok(FullCaptureSizePlan {
+        capture,
+        restore: original,
+    })
+}
+
+fn png_data_url(bytes: &[u8]) -> Result<String, String> {
+    const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+    if !bytes.starts_with(PNG_SIGNATURE) {
+        return Err("原生截图未生成有效 PNG".into());
+    }
+    if bytes.len() > MAX_CAPTURE_BYTES {
+        return Err("截图数据超过 24 MiB".into());
+    }
+    Ok(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
 #[derive(Default)]
 struct CaptureParts {
     total: usize,
@@ -156,8 +202,8 @@ fn copy_capture_to_clipboard(data_url: &str) -> Result<(), String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(encoded)
         .map_err(|e| format!("截图解码失败: {e}"))?;
-    let image = tauri::image::Image::from_bytes(&bytes)
-        .map_err(|e| format!("截图读取失败: {e}"))?;
+    let image =
+        tauri::image::Image::from_bytes(&bytes).map_err(|e| format!("截图读取失败: {e}"))?;
     arboard::Clipboard::new()
         .and_then(|mut clipboard| {
             clipboard.set_image(arboard::ImageData {
@@ -302,9 +348,69 @@ fn picker_result(url: &Url) -> Option<Result<ElementSnapshot, String>> {
     )
 }
 
+fn preview_result_action(url: &Url) -> Option<&'static str> {
+    if url.scheme() != PREVIEW_RESULT_SCHEME {
+        return None;
+    }
+    if url.path() != "" && url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
+        return None;
+    }
+    match url.host_str() {
+        Some("download") => Some("download"),
+        Some("send") => Some("send"),
+        Some("close") => Some("close"),
+        _ => None,
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewResultCard<'a> {
+    data_url: &'a str,
+    status: &'a str,
+    comment_count: usize,
+}
+
+const PREVIEW_RESULT_JS: &str = r#"(()=>{
+const id='__monkeycode_preview_result_host';
+const remove=()=>{const old=document.getElementById(id);if(old?.dataset.monkeycodePreviewResult==='1')old.remove()};
+window.__mcPreviewResultHide=remove;
+window.__mcPreviewResultShow=data=>{
+ remove();
+ const host=document.createElement('div');host.id=id;host.dataset.monkeycodePreviewResult='1';host.style.cssText='all:initial;position:fixed;right:14px;bottom:14px;width:240px;z-index:2147483647;display:block;pointer-events:auto;';
+ const root=host.attachShadow({mode:'closed'}),card=document.createElement('section');card.setAttribute('aria-label','截图结果');
+ const style=document.createElement('style');style.textContent=':host{all:initial}*{box-sizing:border-box}section{position:relative;width:240px;padding:10px;border:1px solid #3b414b;border-radius:10px;background:#20242b;color:#f2f4f7;box-shadow:0 8px 28px rgba(0,0,0,.38);font:12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{display:flex;gap:9px;align-items:center;padding-right:22px}img{width:72px;height:50px;object-fit:cover;object-position:top;border-radius:6px;background:#111317}strong,small{display:block}small{margin-top:2px;color:#9aa3af}.actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:9px}button{height:29px;border:1px solid #4a5260;border-radius:6px;background:#292e37;color:#e6e9ee;cursor:pointer;font:inherit}button:hover{background:#343b46}.close{position:absolute;right:7px;top:7px;width:24px;height:24px;border:0;background:transparent;font-size:18px}.status{margin:8px 1px 0;color:#9bd7b6;overflow-wrap:anywhere}';
+ const header=document.createElement('header'),img=document.createElement('img'),text=document.createElement('div'),title=document.createElement('strong'),count=document.createElement('small');img.src=data.dataUrl;img.alt='截图缩略图';title.textContent='截图已就绪';count.textContent=String(data.commentCount)+' 条评论';text.append(title,count);header.append(img,text);
+ const actions=document.createElement('div');actions.className='actions';for(const [action,label] of [['download','下载'],['send','发送到对话']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.addEventListener('click',()=>{location.href='monkeycode-preview-result://'+action});actions.append(button)}
+ const close=document.createElement('button');close.type='button';close.className='close';close.setAttribute('aria-label','关闭');close.textContent='×';close.addEventListener('click',()=>{location.href='monkeycode-preview-result://close'});
+ const status=document.createElement('div');status.className='status';status.setAttribute('role','status');status.textContent=data.status;
+ card.append(header,actions,status,close);root.append(style,card);document.documentElement.append(host)
+};
+})()"#;
+
 const CAPTURE_JS: &str = r#"(()=>{const send=(id,q)=>{location.href=`monkeycode-capture://${id}?${q}`};window.__mcPreviewCapture=async(mode,id)=>{try{const root=document.documentElement,body=document.body;const w=mode==='full'?Math.max(root.scrollWidth,body?.scrollWidth||0,root.clientWidth):innerWidth;const h=mode==='full'?Math.max(root.scrollHeight,body?.scrollHeight||0,root.clientHeight):innerHeight;if(w<1||h<1||w*h>80000000)throw Error('页面尺寸无效或超过 8000 万像素');const clone=root.cloneNode(true);const sourceCanvases=[...root.querySelectorAll('canvas')],clonedCanvases=[...clone.querySelectorAll('canvas')];for(let i=0;i<clonedCanvases.length;i++){const source=sourceCanvases[i],canvas=clonedCanvases[i];if(!source||!canvas)continue;const image=document.createElement('img');image.src=source.toDataURL('image/png');image.width=source.width;image.height=source.height;for(const attr of canvas.attributes)image.setAttribute(attr.name,attr.value);image.style.cssText=canvas.style.cssText;canvas.replaceWith(image)}clone.querySelectorAll('script').forEach(x=>x.remove());clone.setAttribute('xmlns','http://www.w3.org/1999/xhtml');if(mode==='viewport'){clone.style.width=`${w}px`;clone.style.height=`${h}px`;clone.style.overflow='hidden';const b=clone.querySelector('body');if(b)b.style.transform=`translate(${-scrollX}px,${-scrollY}px)`}const xml=new XMLSerializer().serializeToString(clone);const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%">${xml}</foreignObject></svg>`;const img=new Image;await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(Error('页面含无法序列化的跨域资源'));img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg)});const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');if(!ctx)throw Error('Canvas 不可用');ctx.drawImage(img,0,0);const png=c.toDataURL('image/png');const chunkSize=16000,total=Math.ceil(png.length/chunkSize);if(total<1||total>2048)throw Error('截图超过 24 MiB 限制');for(let i=0;i<total;i++){send(id,`index=${i}&total=${total}&data=${encodeURIComponent(png.slice(i*chunkSize,(i+1)*chunkSize))}`);await new Promise(ok=>setTimeout(ok,0))}}catch(e){send(id,`error=${encodeURIComponent(String(e?.message||e))}`)}}})()"#;
 
-const PICKER_JS: &str = r#"(()=>{if(window.__mcPicker)return;const S=window.__mcPicker={active:false,hover:null,selected:null,undo:[]};const cssEscape=(s)=>window.CSS&&CSS.escape?CSS.escape(s):s.replace(/[^a-zA-Z0-9_-]/g,c=>'\\'+c);const selector=(el)=>{if(el.id)return '#'+cssEscape(el.id);const parts=[];for(let n=el;n&&n.nodeType===1&&n!==document.documentElement;n=n.parentElement){let p=n.tagName.toLowerCase();if(n.classList.length)p+='.'+[...n.classList].slice(0,2).map(cssEscape).join('.');const peers=n.parentElement?[...n.parentElement.children].filter(x=>x.tagName===n.tagName):[];if(peers.length>1)p+=`:nth-of-type(${peers.indexOf(n)+1})`;parts.unshift(p);if(document.querySelectorAll(parts.join(' > ')).length===1)break}return parts.join(' > ')};const outline=(el,on)=>{if(!el)return;if(on){el.dataset.mcPickerOutline=el.style.outline;el.style.outline='2px solid #16b364';el.style.outlineOffset='-2px'}else{el.style.outline=el.dataset.mcPickerOutline||'';delete el.dataset.mcPickerOutline}};const pickTarget=(e)=>{const path=typeof e.composedPath==='function'?e.composedPath():[];const el=path.find(x=>x instanceof HTMLElement||x instanceof SVGElement);return el instanceof Element?el:e.target instanceof Element?e.target:null};addEventListener('pointerover',e=>{if(!S.active)return;outline(S.hover,false);S.hover=pickTarget(e);outline(S.hover,true)},true);addEventListener('click',e=>{if(!S.active)return;e.preventDefault();e.stopImmediatePropagation();outline(S.hover,false);S.active=false;S.selected=S.hover||pickTarget(e);const el=S.selected;if(!el)return;const r=el.getBoundingClientRect(),c=getComputedStyle(el);const data={selector:selector(el),text:(el.textContent||'').slice(0,16384),tag:el.tagName.toLowerCase(),bounds:{x:r.x,y:r.y,width:r.width,height:r.height},styles:{color:c.color,backgroundColor:c.backgroundColor,fontSize:c.fontSize,opacity:c.opacity,width:c.width,height:c.height,paddingTop:c.paddingTop,paddingRight:c.paddingRight,paddingBottom:c.paddingBottom,paddingLeft:c.paddingLeft,marginTop:c.marginTop,marginRight:c.marginRight,marginBottom:c.marginBottom,marginLeft:c.marginLeft,borderTopWidth:c.borderTopWidth,borderRightWidth:c.borderRightWidth,borderBottomWidth:c.borderBottomWidth,borderLeftWidth:c.borderLeftWidth,borderStyle:c.borderStyle,borderColor:c.borderColor,borderRadius:c.borderRadius}};location.href='monkeycode-picker://result?data='+encodeURIComponent(JSON.stringify(data))},true);S.toggle=(on)=>{S.active=on;outline(S.hover,false);S.hover=null;document.documentElement.style.cursor=on?'crosshair':''};S.apply=(edit)=>{const el=document.querySelector(edit.selector);if(!el)throw Error('元素已不存在');const prop=edit.property;if(prop==='delete'){const parent=el.parentNode,next=el.nextSibling;S.undo.push({el,prop,parent,next});el.remove();return}const before=prop==='text'?el.textContent:el.style[prop];S.undo.push({el,prop,before});if(prop==='text')el.textContent=edit.value;else el.style[prop]=edit.value};S.undoOne=()=>{const x=S.undo.pop();if(!x)return false;if(x.prop==='delete'){x.parent.insertBefore(x.el,x.next);return true}if(x.prop==='text')x.el.textContent=x.before;else x.el.style[x.prop]=x.before;return true}})()"#;
+const PICKER_JS: &str = r#"(()=>{
+if(window.__mcPicker)return;
+const S=window.__mcPicker={active:false,hover:null,selected:null,undo:[]};
+const originalOutline=new WeakMap();
+const restoreProperty=(style,name,value,priority)=>{if(value)style.setProperty(name,value,priority);else style.removeProperty(name)};
+const cssEscape=(s)=>window.CSS&&CSS.escape?CSS.escape(s):s.replace(/[^a-zA-Z0-9_-]/g,c=>'\\'+c);
+const selector=(el)=>{if(el.id)return '#'+cssEscape(el.id);const parts=[];for(let n=el;n&&n.nodeType===1&&n!==document.documentElement;n=n.parentElement){let p=n.tagName.toLowerCase();if(n.classList.length)p+='.'+[...n.classList].slice(0,2).map(cssEscape).join('.');const peers=n.parentElement?[...n.parentElement.children].filter(x=>x.tagName===n.tagName):[];if(peers.length>1)p+=`:nth-of-type(${peers.indexOf(n)+1})`;parts.unshift(p);if(document.querySelectorAll(parts.join(' > ')).length===1)break}return parts.join(' > ')};
+const outline=(el,on)=>{if(!el)return;if(on){if(!originalOutline.has(el))originalOutline.set(el,[el.style.getPropertyValue('outline'),el.style.getPropertyPriority('outline'),el.style.getPropertyValue('outline-offset'),el.style.getPropertyPriority('outline-offset')]);el.style.setProperty('outline','2px solid #16b364','important');el.style.setProperty('outline-offset','-2px','important')}else{const before=originalOutline.get(el);if(!before)return;restoreProperty(el.style,'outline',before[0],before[1]);restoreProperty(el.style,'outline-offset',before[2],before[3]);originalOutline.delete(el)}};
+const eventTarget=(e)=>{const path=typeof e.composedPath==='function'?e.composedPath():[];const el=path.find(x=>x instanceof Element);return el instanceof Element?el:e.target instanceof Element?e.target:null};
+const containsPoint=(el,x,y)=>{const style=getComputedStyle(el);if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse')return false;return [...el.getClientRects()].some(r=>r.width>0&&r.height>0&&x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom)};
+const pickTarget=(root,x,y)=>{if(!root)return null;let best=root,bestDepth=0,bestArea=Infinity;const stack=[...root.children].map(el=>[el,1]);while(stack.length){const [child,depth]=stack.pop();if(!containsPoint(child,x,y))continue;const r=child.getBoundingClientRect(),area=Math.max(0,r.width*r.height);if(depth>bestDepth||(depth===bestDepth&&area<=bestArea)){best=child;bestDepth=depth;bestArea=area}for(const nested of child.children)stack.push([nested,depth+1])}return best};
+const updateHover=(root,x,y)=>{const next=pickTarget(root,x,y);if(next===S.hover)return;outline(S.hover,false);S.hover=next;outline(S.hover,true)};
+let hoverFrame=0,pendingHover=null,cursorBefore=null;
+const stopHoverFrame=()=>{if(hoverFrame)cancelAnimationFrame(hoverFrame);hoverFrame=0;pendingHover=null};
+const setActive=(on)=>{if(on&&!S.active){const style=document.documentElement.style;cursorBefore=[style.getPropertyValue('cursor'),style.getPropertyPriority('cursor')];style.setProperty('cursor','crosshair','important')}else if(!on&&S.active){const style=document.documentElement.style;if(cursorBefore)restoreProperty(style,'cursor',cursorBefore[0],cursorBefore[1]);cursorBefore=null;stopHoverFrame()}S.active=on;if(!on){outline(S.hover,false);S.hover=null}};
+addEventListener('pointermove',e=>{if(!S.active)return;pendingHover={root:eventTarget(e),x:e.clientX,y:e.clientY};if(hoverFrame)return;hoverFrame=requestAnimationFrame(()=>{hoverFrame=0;const point=pendingHover;pendingHover=null;if(S.active&&point)updateHover(point.root,point.x,point.y)})},true);
+addEventListener('click',e=>{if(!S.active)return;e.preventDefault();e.stopImmediatePropagation();stopHoverFrame();updateHover(eventTarget(e),e.clientX,e.clientY);const el=S.hover;outline(el,false);S.hover=null;setActive(false);S.selected=el;if(!el)return;const r=el.getBoundingClientRect(),c=getComputedStyle(el);const data={selector:selector(el),text:(el.textContent||'').slice(0,16384),tag:el.tagName.toLowerCase(),bounds:{x:r.x,y:r.y,width:r.width,height:r.height},styles:{color:c.color,backgroundColor:c.backgroundColor,fontSize:c.fontSize,opacity:c.opacity,width:c.width,height:c.height,paddingTop:c.paddingTop,paddingRight:c.paddingRight,paddingBottom:c.paddingBottom,paddingLeft:c.paddingLeft,marginTop:c.marginTop,marginRight:c.marginRight,marginBottom:c.marginBottom,marginLeft:c.marginLeft,borderTopWidth:c.borderTopWidth,borderRightWidth:c.borderRightWidth,borderBottomWidth:c.borderBottomWidth,borderLeftWidth:c.borderLeftWidth,borderStyle:c.borderStyle,borderColor:c.borderColor,borderRadius:c.borderRadius}};location.href='monkeycode-picker://result?data='+encodeURIComponent(JSON.stringify(data))},true);
+S.toggle=setActive;
+S.apply=(edit)=>{const el=document.querySelector(edit.selector);if(!el)throw Error('元素已不存在');const prop=edit.property;if(prop==='delete'){const parent=el.parentNode,next=el.nextSibling;S.undo.push({el,prop,parent,next});el.remove();return}const before=prop==='text'?el.textContent:el.style[prop];S.undo.push({el,prop,before});if(prop==='text')el.textContent=edit.value;else el.style[prop]=edit.value};
+S.undoOne=()=>{const x=S.undo.pop();if(!x)return false;if(x.prop==='delete'){x.parent.insertBefore(x.el,x.next);return true}if(x.prop==='text')x.el.textContent=x.before;else x.el.style[x.prop]=x.before;return true}
+})()"#;
 
 #[tauri::command]
 pub fn preview_create(app: AppHandle, url: String, bounds: PreviewBounds) -> Result<(), String> {
@@ -324,7 +430,13 @@ pub fn preview_create(app: AppHandle, url: String, bounds: PreviewBounds) -> Res
         .add_child(
             WebviewBuilder::new(LABEL, WebviewUrl::External(url))
                 .on_navigation(move |url| {
-                    if let Some(result) = serialize_result(url) {
+                    if let Some(action) = preview_result_action(url) {
+                        let _ = callback_app.emit_to("main", "preview-result-action", action);
+                        false
+                    } else if url.scheme() == PREVIEW_RESULT_SCHEME {
+                        // Never let malformed or unknown result actions navigate the preview.
+                        false
+                    } else if let Some(result) = serialize_result(url) {
                         match result { Ok(Some((request_id, html))) => { let _=callback_app.emit_to("main","preview-serialized",serde_json::json!({"requestId":request_id,"html":html})); }, Ok(None)=>{}, Err(error)=>{let _=callback_app.emit_to("main","preview-serialized-error",serde_json::json!({"requestId":url.host_str().unwrap_or(""),"error":error}));} }
                         false
                     } else if let Some(result) = capture_result(url) {
@@ -418,6 +530,42 @@ pub fn preview_destroy(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 #[tauri::command]
+pub fn preview_result_show(
+    app: AppHandle,
+    data_url: String,
+    status: String,
+    comment_count: usize,
+) -> Result<(), String> {
+    if !data_url.starts_with("data:image/png;base64,")
+        || data_url.len() > MAX_CAPTURE_BYTES * 4 / 3 + 64
+        || status.chars().count() > 500
+        || comment_count > 100_000
+    {
+        return Err("截图结果卡参数无效".into());
+    }
+    let card = PreviewResultCard {
+        data_url: &data_url,
+        status: &status,
+        comment_count,
+    };
+    let data = serde_json::to_string(&card).map_err(|e| e.to_string())?;
+    webview(&app)?
+        .eval(format!(
+            "{PREVIEW_RESULT_JS};window.__mcPreviewResultShow({data})"
+        ))
+        .map_err(|e| format!("显示截图结果卡失败: {e}"))
+}
+
+#[tauri::command]
+pub fn preview_result_hide(app: AppHandle) -> Result<(), String> {
+    webview(&app)?
+        .eval(format!(
+            "{PREVIEW_RESULT_JS};window.__mcPreviewResultHide()"
+        ))
+        .map_err(|e| format!("隐藏截图结果卡失败: {e}"))
+}
+
+#[tauri::command]
 pub fn preview_picker_toggle(app: AppHandle, enabled: bool) -> Result<(), String> {
     let arg = serde_json::to_string(&enabled).unwrap();
     webview(&app)?
@@ -430,11 +578,27 @@ pub fn preview_element_apply(app: AppHandle, edit: ElementEdit) -> Result<(), St
         || !(edit.property == "delete"
             || edit.property == "text"
             || [
-                "color", "backgroundColor", "fontSize", "opacity", "width", "height",
-                "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
-                "marginTop", "marginRight", "marginBottom", "marginLeft",
-                "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
-                "borderStyle", "borderColor", "borderRadius",
+                "color",
+                "backgroundColor",
+                "fontSize",
+                "opacity",
+                "width",
+                "height",
+                "paddingTop",
+                "paddingRight",
+                "paddingBottom",
+                "paddingLeft",
+                "marginTop",
+                "marginRight",
+                "marginBottom",
+                "marginLeft",
+                "borderTopWidth",
+                "borderRightWidth",
+                "borderBottomWidth",
+                "borderLeftWidth",
+                "borderStyle",
+                "borderColor",
+                "borderRadius",
             ]
             .contains(&edit.property.as_str()))
         || if edit.property == "text" {
@@ -532,6 +696,194 @@ pub async fn preview_save_html(
     std::fs::write(target, html).map_err(|e| format!("保存 HTML 失败: {e}"))
 }
 
+#[cfg(target_os = "macos")]
+mod native_capture {
+    use super::{full_capture_size_plan, png_data_url, validate_capture_size, LABEL};
+    use block2::RcBlock;
+    use objc2::{rc::Retained, runtime::AnyObject, AnyThread, MainThreadMarker};
+    use objc2_app_kit::{
+        NSBitmapImageFileType, NSBitmapImageRep, NSBitmapImageRepPropertyKey, NSImage,
+    };
+    use objc2_foundation::{NSDictionary, NSError, NSString};
+    use objc2_web_kit::{WKSnapshotConfiguration, WKWebView};
+    use serde::Deserialize;
+    use tauri::{AppHandle, Emitter, Manager};
+
+    #[derive(Deserialize)]
+    struct PageSize {
+        width: f64,
+        height: f64,
+    }
+
+    fn error_text(error: *mut NSError, fallback: &str) -> String {
+        if error.is_null() {
+            fallback.into()
+        } else {
+            // SAFETY: WebKit guarantees that NSError lives for the completion callback.
+            unsafe { (&*error).localizedDescription().to_string() }
+        }
+    }
+
+    fn emit_error(app: &AppHandle, request_id: &str, error: String) {
+        let _ = app.emit_to(
+            "main",
+            "preview-capture-error",
+            serde_json::json!({"requestId": request_id, "error": error}),
+        );
+    }
+
+    fn image_data_url(image: &NSImage) -> Result<String, String> {
+        let tiff = image
+            .TIFFRepresentation()
+            .ok_or("原生截图无法转换为 TIFF")?;
+        let bitmap = NSBitmapImageRep::initWithData(NSBitmapImageRep::alloc(), &tiff)
+            .ok_or("原生截图无法创建位图")?;
+        let properties = NSDictionary::<NSBitmapImageRepPropertyKey, AnyObject>::dictionary();
+        // SAFETY: The dictionary is empty and therefore contains no incorrectly typed values.
+        let png = unsafe {
+            bitmap.representationUsingType_properties(NSBitmapImageFileType::PNG, &properties)
+        }
+        .ok_or("原生截图无法编码 PNG")?;
+        png_data_url(&png.to_vec())
+    }
+
+    fn snapshot(
+        view: Retained<WKWebView>,
+        app: AppHandle,
+        request_id: String,
+        original_frame: Option<objc2_foundation::NSRect>,
+    ) {
+        let mtm = MainThreadMarker::new().expect("WKWebView callback must run on the main thread");
+        // SAFETY: construction occurs on the main thread required by WebKit.
+        let configuration = unsafe { WKSnapshotConfiguration::new(mtm) };
+        // WK requires the configured rect to be contained in the current view bounds.
+        unsafe {
+            configuration.setRect(view.bounds());
+            configuration.setAfterScreenUpdates(true);
+        }
+        let restore_view = view.clone();
+        let completion = RcBlock::new(move |image: *mut NSImage, error: *mut NSError| {
+            if let Some(frame) = original_frame {
+                restore_view.setFrame(frame);
+            }
+            if image.is_null() {
+                emit_error(&app, &request_id, error_text(error, "WKWebView 未返回截图"));
+                return;
+            }
+            // SAFETY: WebKit guarantees NSImage lives for the completion callback.
+            let result = image_data_url(unsafe { &*image });
+            match result {
+                Ok(data_url) => {
+                    // Deliver the result before the best-effort clipboard operation.
+                    let _ = app.emit_to(
+                        "main",
+                        "preview-captured",
+                        serde_json::json!({"requestId": request_id, "dataUrl": data_url}),
+                    );
+                    if let Err(error) = super::copy_capture_to_clipboard(&data_url) {
+                        eprintln!("design preview clipboard copy failed: {error}");
+                    }
+                }
+                Err(error) => emit_error(&app, &request_id, error),
+            }
+        });
+        // SAFETY: view/configuration are valid main-thread WebKit objects; WebKit copies the block.
+        unsafe {
+            view.takeSnapshotWithConfiguration_completionHandler(Some(&configuration), &completion);
+        }
+    }
+
+    pub(super) fn start(app: AppHandle, mode: String, request_id: String) -> Result<(), String> {
+        let Some(webview) = app.get_webview(LABEL) else {
+            emit_error(&app, &request_id, "预览尚未创建".into());
+            return Ok(());
+        };
+        let callback_app = app.clone();
+        let dispatch_app = app.clone();
+        let dispatch_id = request_id.clone();
+        let result = webview.with_webview(move |platform| {
+            // SAFETY: Tauri's macOS inner handle is the live WKWebView and this callback runs
+            // on its main UI thread. Retaining it keeps it valid through async completions.
+            let Some(view) = (unsafe {
+                Retained::<WKWebView>::retain(platform.inner().cast::<WKWebView>())
+            }) else {
+                emit_error(&callback_app, &request_id, "无法获取 WKWebView".into());
+                return;
+            };
+            if mode == "viewport" {
+                let bounds = view.bounds();
+                if let Err(error) = validate_capture_size(bounds.size.width, bounds.size.height) {
+                    emit_error(&callback_app, &request_id, error);
+                } else {
+                    snapshot(view, callback_app, request_id, None);
+                }
+                return;
+            }
+
+            let size_view = view.clone();
+            let size_app = callback_app.clone();
+            let size_id = request_id.clone();
+            let completion = RcBlock::new(move |value: *mut AnyObject, error: *mut NSError| {
+                if value.is_null() {
+                    emit_error(
+                        &size_app,
+                        &size_id,
+                        error_text(error, "无法读取完整页面尺寸"),
+                    );
+                    return;
+                }
+                // The script explicitly returns a JSON string.
+                let raw = unsafe { &*(value.cast::<NSString>()) }.to_string();
+                let size = match serde_json::from_str::<PageSize>(&raw) {
+                    Ok(size) => size,
+                    Err(error) => {
+                        emit_error(
+                            &size_app,
+                            &size_id,
+                            format!("完整页面尺寸格式无效: {error}"),
+                        );
+                        return;
+                    }
+                };
+                let original = size_view.frame();
+                let plan = match full_capture_size_plan(
+                    (original.size.width, original.size.height),
+                    (size.width, size.height),
+                ) {
+                    Ok(plan) => plan,
+                    Err(error) => {
+                        emit_error(&size_app, &size_id, error);
+                        return;
+                    }
+                };
+                let mut expanded = original;
+                expanded.size.width = plan.capture.0;
+                expanded.size.height = plan.capture.1;
+                let mut restore = original;
+                restore.size.width = plan.restore.0;
+                restore.size.height = plan.restore.1;
+                size_view.setFrame(expanded);
+                snapshot(size_view.clone(), size_app.clone(), size_id.clone(), Some(restore));
+            });
+            let script = NSString::from_str(
+                "JSON.stringify({width:Math.max(document.documentElement.scrollWidth,document.body?.scrollWidth||0,document.documentElement.clientWidth),height:Math.max(document.documentElement.scrollHeight,document.body?.scrollHeight||0,document.documentElement.clientHeight)})",
+            );
+            // SAFETY: valid main-thread WebKit object and copied completion block.
+            unsafe {
+                view.evaluateJavaScript_completionHandler(&script, Some(&completion));
+            }
+        });
+        if let Err(error) = result {
+            emit_error(
+                &dispatch_app,
+                &dispatch_id,
+                format!("启动 WKWebView 原生截图失败: {error}"),
+            );
+        }
+        Ok(())
+    }
+}
+
 #[tauri::command]
 pub fn preview_capture(app: AppHandle, mode: String, request_id: String) -> Result<(), String> {
     if !matches!(mode.as_str(), "viewport" | "full")
@@ -540,16 +892,23 @@ pub fn preview_capture(app: AppHandle, mode: String, request_id: String) -> Resu
     {
         return Err("截图参数无效".into());
     }
-    captures()
-        .lock()
-        .map_err(|_| "截图状态锁损坏")?
-        .remove(&request_id);
-    let mode = serde_json::to_string(&mode).unwrap();
-    let id = serde_json::to_string(&request_id).unwrap();
-    let js = format!("{CAPTURE_JS};window.__mcPreviewCapture({mode},{id})");
-    webview(&app)?
-        .eval(js)
-        .map_err(|e| format!("启动页面截图失败: {e}"))
+    #[cfg(target_os = "macos")]
+    {
+        return native_capture::start(app, mode, request_id);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        captures()
+            .lock()
+            .map_err(|_| "截图状态锁损坏")?
+            .remove(&request_id);
+        let mode = serde_json::to_string(&mode).unwrap();
+        let id = serde_json::to_string(&request_id).unwrap();
+        let js = format!("{CAPTURE_JS};window.__mcPreviewCapture({mode},{id})");
+        webview(&app)?
+            .eval(js)
+            .map_err(|e| format!("启动页面截图失败: {e}"))
+    }
 }
 
 #[cfg(test)]
@@ -571,6 +930,28 @@ mod tests {
         assert!(!valid_text_value(&"x".repeat(32 * 1024 + 1)));
     }
     #[test]
+    fn capture_size_limit_and_png_data_url() {
+        assert_eq!(
+            validate_capture_size(10_000.0, 8_000.0).unwrap(),
+            (10_000.0, 8_000.0)
+        );
+        assert!(validate_capture_size(10_001.0, 8_000.0).is_err());
+        assert!(validate_capture_size(f64::NAN, 20.0).is_err());
+        let plan = full_capture_size_plan((640.0, 480.0), (1200.2, 900.1)).unwrap();
+        assert_eq!(plan.capture, (1201.0, 901.0));
+        assert_eq!(plan.restore, (640.0, 480.0));
+        assert!(png_data_url(b"not png").is_err());
+        let png = b"\x89PNG\r\n\x1a\nbytes";
+        let url = png_data_url(png).unwrap();
+        let encoded = url.strip_prefix("data:image/png;base64,").unwrap();
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .unwrap(),
+            png
+        );
+    }
+    #[test]
     fn capture_rejects_bad_id() {
         let u = Url::parse("monkeycode-capture://bad?index=0&total=1&data=x").unwrap();
         assert!(capture_result(&u).unwrap().is_err());
@@ -579,6 +960,21 @@ mod tests {
     fn serialization_rejects_bad_transport() {
         let u = Url::parse("monkeycode-serialize://bad?index=0&total=1&data=x").unwrap();
         assert!(serialize_result(&u).unwrap().is_err());
+    }
+    #[test]
+    fn preview_result_action_is_strictly_whitelisted() {
+        for action in ["download", "send", "close"] {
+            let url = Url::parse(&format!("monkeycode-preview-result://{action}")).unwrap();
+            assert_eq!(preview_result_action(&url), Some(action));
+        }
+        for raw in [
+            "monkeycode-preview-result://open",
+            "monkeycode-preview-result://copy/extra",
+            "monkeycode-preview-result://copy?next=send",
+            "https://copy/",
+        ] {
+            assert_eq!(preview_result_action(&Url::parse(raw).unwrap()), None);
+        }
     }
     #[test]
     fn html_target_rejects_unsafe_paths() {

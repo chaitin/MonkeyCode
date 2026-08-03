@@ -53,6 +53,8 @@
             "allow-preview-reload",
             "allow-preview-set-zoom",
             "allow-preview-destroy",
+            "allow-preview-result-show",
+            "allow-preview-result-hide",
             "allow-preview-picker-toggle",
             "allow-preview-element-apply",
             "allow-preview-element-undo",

@@ -962,6 +962,12 @@ select option { background: var(--pop); color: var(--t1); }
 .preview-close { color: #8c929c; }
 .preview-close:hover:not(:disabled) { color: #ff8d8d; background: rgba(239,68,68,.12); }
 .preview-error { flex: none; padding: 6px 10px; background: var(--errBg); color: var(--err); font-size: 11.5px; }
+.preview-capture-pending {
+  min-height: 34px; flex: none; display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 5px 10px; border-bottom: 1px solid rgba(245,158,11,.3); background: rgba(245,158,11,.12); color: #facc75; font-size: 11.5px;
+}
+.preview-capture-pending button { padding: 3px 9px; border: 1px solid rgba(250,204,117,.45); border-radius: 5px; background: rgba(0,0,0,.18); color: inherit; cursor: pointer; }
+.preview-divider.disabled { cursor: wait; }
 .preview-workspace { flex: 1; min-width: 0; min-height: 0; display: flex; background: #111317; }
 .preview-viewport-wrap { flex: 1; min-width: 0; min-height: 0; display: flex; justify-content: center; align-items: flex-start; background: var(--bg); }
 .preview-slot { min-width: 1px; min-height: 1px; position: relative; background: var(--card); box-shadow: 0 0 0 1px rgba(255,255,255,.035); }
@@ -1032,22 +1038,6 @@ select option { background: var(--pop); color: var(--t1); }
 .preview-annotation-composer span { flex: none; color: var(--t3); font-size: 12px; }
 .preview-annotation-composer button { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 13px; border: 1px solid var(--accBd); border-radius: 17px; background: var(--accBg); color: var(--accTx); font-weight: 650; }
 .preview-annotation-composer small { position: absolute; right: 12px; bottom: 48px; padding: 4px 8px; border-radius: 5px; background: var(--dangerBg); color: var(--danger); }
-.preview-annotation-ready {
-  position: absolute; right: 14px; bottom: 14px; z-index: 5; width: 220px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
-  padding: 7px; border: 1px solid #3c424c; border-radius: 10px; background: rgba(28,31,37,.96); color: #bfc5ce;
-  font-size: 11px; box-shadow: 0 12px 32px rgba(0,0,0,.34); pointer-events: auto;
-}
-.preview-result-thumbnail { width: 100%; max-height: 120px; object-fit: cover; object-position: top; border-radius: 6px; background: #111317; }
-.preview-result-copy { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; color: #79d5a5; }
-.preview-result-copy > span { display: flex; min-width: 0; flex-direction: column; color: #858d99; font-size: 9.5px; }
-.preview-result-copy strong { color: #d7dbe1; font-size: 11px; }
-.preview-result-actions { width: 100%; display: flex; gap: 5px; }
-.preview-result-actions > button { height: 28px; flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--btnBd); border-radius: 6px; background: var(--card); color: var(--t2); cursor: pointer; }
-.preview-result-actions > button:hover:not(:disabled) { color: var(--accTx); border-color: var(--accBd); background: var(--accBg); }
-.preview-result-actions .preview-send-agent { flex: 1.6; }
-.preview-result-status { width: 100%; color: var(--t4); font-size: 10px; }
-.preview-result-close { position: absolute; top: 9px; right: 9px; background: rgba(20,22,26,.8) !important; }
-.preview-send-agent { height: 28px; }
 
 /* Design 工作台沿用 MonkeyCode 主题令牌，不单独制造一套深色界面。 */
 .preview-pane { background: var(--bg); border-left-color: var(--line); }
@@ -1136,11 +1126,6 @@ select option { background: var(--pop); color: var(--t1); }
 .preview-tool-group { border-color: var(--line); background: var(--card); }
 .preview-annotation-cancel { border-color: var(--btnBd); background: var(--card); color: var(--t2); }
 .preview-canvas-scroll { background: var(--side); }
-.preview-annotation-ready { border-color: var(--line); background: var(--panel); color: var(--t2); box-shadow: var(--shadow); }
-.preview-result-copy { color: var(--accTx); }
-.preview-result-copy > span { color: var(--t4); }
-.preview-result-copy strong { color: var(--t1); }
-.preview-annotation-ready .preview-icon-button { color: var(--t3); border-color: var(--line); background: var(--card); }
 
 @container (max-width: 520px) {
   .preview-address:not(.preview-address-row) { flex-basis: 80px; min-width: 64px; }

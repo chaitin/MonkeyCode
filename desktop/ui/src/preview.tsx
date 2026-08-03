@@ -15,7 +15,8 @@ import {
   previewElementApply,
   previewElementUndo,
   previewPickerToggle,
-  previewCapture, onPreviewCaptured, onPreviewCaptureError,
+  previewCapture, onPreviewCapturedAsync, onPreviewCaptureErrorAsync,
+  previewResultHide, previewResultShow, onPreviewResultActionAsync,
   previewSerialize, onPreviewSerializedAsync, onPreviewSerializedErrorAsync,
   type PreviewCaptureMode,
   type ElementEdit,
@@ -23,7 +24,17 @@ import {
   type PreviewBounds,
 } from "./host";
 
+import {
+  previewCaptureButtonDisabled,
+  previewCapturePending,
+  previewNativeShouldHide,
+  transitionPreviewCapture,
+  type PreviewCaptureState as CaptureState,
+} from "./previewCaptureState";
+import { dispatchPreviewResultAction } from "./previewResultAction";
+
 const DEFAULT_URL = "http://localhost:3000";
+const CAPTURE_TIMEOUT_MS = 20_000;
 type Viewport = "desktop" | "tablet" | "mobile";
 const viewportSizes: Record<Viewport, { width?: number; height?: number }> = {
   desktop: {},
@@ -148,9 +159,9 @@ export function DesignPreview({
   const [selected, setSelected] = useState<ElementSnapshot | null>(null);
   const [commentText, setCommentText] = useState("");
   const [undoCount, setUndoCount] = useState(0);
-  const [capture, setCapture] = useState<{ requestId: string; dataUrl?: string; purpose: "screenshot" | "mark" } | null>(null);
+  const [capture, setCapture] = useState<CaptureState | null>(null);
+  const [captureListenersReady, setCaptureListenersReady] = useState(false);
   const [annotatedPreview, setAnnotatedPreview] = useState<AnnotatedPreview | null>(null);
-  const [annotatedPreviewUrl, setAnnotatedPreviewUrl] = useState("");
   const [edits, setEdits] = useState<Array<{selector:string;property:ElementEdit["property"];before:string;after:string}>>([]);
   const [sending, setSending] = useState(false);
   const [source, setSource] = useState(""), [sourceLoading, setSourceLoading] = useState(false), [sourceError, setSourceError] = useState("");
@@ -159,10 +170,21 @@ export function DesignPreview({
   const rootRef = useRef<HTMLDivElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
   const created = useRef(false);
+  const mounted = useRef(true);
+  const captureRef = useRef<CaptureState | null>(null);
+  const annotatedPreviewRef = useRef<AnnotatedPreview | null>(null);
+  const previewResultDataUrlRef = useRef("");
+  const obscuredRef = useRef(obscured);
   const generation = useRef(0);
   const dragging = useRef(false);
   const stopDragging = useRef<() => void>(() => {});
   const shell = inDesktopShell();
+  const capturePending = previewCapturePending(capture);
+  const nativeOverlayVisible = previewNativeShouldHide(capture);
+  const captureButtonDisabled = previewCaptureButtonDisabled(shell, captureListenersReady, capture);
+  captureRef.current = capture;
+  annotatedPreviewRef.current = annotatedPreview;
+  obscuredRef.current = obscured;
 
   const bounds = (): PreviewBounds | null => {
     const rect = slotRef.current?.getBoundingClientRect();
@@ -188,7 +210,9 @@ export function DesignPreview({
           await previewSetBounds(next);
         }
         if (generation.current !== currentGeneration) return;
-        if (obscured || dragging.current || mode === "code" || !!capture) await previewHide();
+        // WKWebView must remain visible while its asynchronous capture script runs.
+        // Hide it only when React is about to display a captured-image overlay.
+        if (obscured || dragging.current || mode === "code" || nativeOverlayVisible) await previewHide();
         else await previewShow();
         if (generation.current === currentGeneration) setError("");
       } catch (e) {
@@ -206,7 +230,7 @@ export function DesignPreview({
       ro.disconnect();
       window.removeEventListener("resize", sync);
     };
-  }, [open, shell, paneWidth, viewport, obscured, mode, !!capture]);
+  }, [open, shell, paneWidth, viewport, obscured, mode, nativeOverlayVisible]);
 
   useEffect(() => {
     const nextUrl = suggestedUrl ?? DEFAULT_URL;
@@ -217,24 +241,40 @@ export function DesignPreview({
   }, [sessionId]);
 
   useEffect(() => {
-    if (!suggestedUrl || suggestedUrl === url) return;
+    if (!suggestedUrl || suggestedUrl === url || captureRef.current) return;
     setUrl(suggestedUrl);
     setDraft(suggestedUrl);
     setPicking(false);
     setSelected(null);
     setUndoCount(0);
     setEdits([]);
-    if (open && shell && created.current) {
+    if (open && shell && created.current && !captureRef.current) {
       void previewNavigate(suggestedUrl).then(() => setError("")).catch((e) => setError(String(e)));
     }
-  }, [suggestedUrl]);
+  }, [suggestedUrl, capturePending]);
 
   useEffect(() => {
-    if (!annotatedPreview) { setAnnotatedPreviewUrl(""); return; }
-    const objectUrl = URL.createObjectURL(annotatedPreview.blob);
-    setAnnotatedPreviewUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [annotatedPreview]);
+    if (!annotatedPreview || !shell || !created.current) {
+      previewResultDataUrlRef.current = "";
+      return;
+    }
+    let cancelled = false;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (cancelled || typeof reader.result !== "string") return;
+      previewResultDataUrlRef.current = reader.result;
+      void previewResultShow(reader.result, sendStatus || "截图已就绪", annotatedPreview.comments.length)
+        .catch((e) => { if (!cancelled) setError(`显示截图结果失败：${String(e)}`); });
+    };
+    reader.onerror = () => { if (!cancelled) setError("截图结果读取失败"); };
+    reader.readAsDataURL(annotatedPreview.blob);
+    return () => {
+      cancelled = true;
+      reader.abort();
+      previewResultDataUrlRef.current = "";
+      void previewResultHide().catch(() => {});
+    };
+  }, [annotatedPreview, shell]);
 
   const copyImageToClipboard=async(blob:Blob)=>{await navigator.clipboard.write([new ClipboardItem({"image/png":blob})])};
 
@@ -246,7 +286,7 @@ export function DesignPreview({
     void Promise.all([fetch(capture.dataUrl).then((response) => response.blob()), new Promise<{width:number;height:number}>((resolve,reject)=>{image.onload=()=>resolve({width:image.naturalWidth,height:image.naturalHeight});image.onerror=()=>reject(new Error("截图尺寸读取失败"));})]).then(([blob,size]) => {
       if (cancelled) return;
       finishAnnotation({ blob, file: new File([blob], "full-page.png", { type: "image/png" }), comments: [], ...size });
-    }).catch((e) => { if (!cancelled) { setCapture(null); setError(String(e)); restorePreview(); } });
+    }).catch((e) => { if (!cancelled) { captureRef.current = null; setCapture(null); setError(String(e)); restorePreview(); } });
     return () => { cancelled = true; };
   }, [capture?.dataUrl, capture?.purpose]);
 
@@ -257,27 +297,85 @@ export function DesignPreview({
   }, [open, shell]);
 
   useEffect(
-    () => () => {
-      generation.current += 1;
-      stopDragging.current();
-      created.current = false;
-      if (shell) void previewDestroy().catch(() => {});
+    () => {
+      mounted.current = true;
+      return () => {
+        mounted.current = false;
+        generation.current += 1;
+        stopDragging.current();
+        created.current = false;
+        if (shell) void previewDestroy().catch(() => {});
+      };
     },
     [shell],
   );
 
   useEffect(() => {
     if (!shell) return;
-    const offPicked = onPreviewElementPicked((snapshot) => { setSelected(snapshot); setPicking(false); });
-    const offError = onPreviewPickerError(setError);
-    const offCapture = onPreviewCaptured((value) => {
-      setCapture((current) => current?.requestId === value.requestId ? { ...current, dataUrl: value.dataUrl } : current);
-      setSendStatus(value.clipboardError ? `自动复制失败：${value.clipboardError}` : "截图已复制到剪贴板");
-      setError("");
-    });
-    const offCaptureError = onPreviewCaptureError((value) => { setCapture((current) => { if (current?.requestId !== value.requestId) return current; setError(value.error); if (!obscured) void previewShow().catch(()=>{}); return null; }); });
-    return () => { offPicked(); offError(); offCapture(); offCaptureError(); };
-  }, [shell, obscured]);
+    let disposed = false;
+    const offs: Array<() => void> = [];
+    setCaptureListenersReady(false);
+    const offPicked = onPreviewElementPicked((snapshot) => { if (!disposed) { setSelected(snapshot); setPicking(false); } });
+    const offPickerError = onPreviewPickerError((value) => { if (!disposed) setError(value); });
+    offs.push(offPicked, offPickerError);
+
+    void (async () => {
+      try {
+        const offCapture = await onPreviewCapturedAsync(async (value) => {
+          if (disposed || captureRef.current?.requestId !== value.requestId) return;
+          try {
+            // The capture script has completed; hiding is safe only from this point on.
+            await previewHide();
+            if (disposed || captureRef.current?.requestId !== value.requestId) return;
+            const completed = transitionPreviewCapture(captureRef.current, { type: "captured", requestId: value.requestId, dataUrl: value.dataUrl });
+            if (!completed) return;
+            captureRef.current = completed;
+            setCapture(completed);
+            setSendStatus(value.clipboardError ? `自动复制失败：${value.clipboardError}` : "截图已复制到剪贴板");
+            setError("");
+          } catch (e) {
+            if (disposed || captureRef.current?.requestId !== value.requestId) return;
+            captureRef.current = null;
+            setCapture(null);
+            setError(String(e));
+            restorePreview();
+          }
+        });
+        if (disposed) { offCapture(); return; }
+        offs.push(offCapture);
+        const offCaptureError = await onPreviewCaptureErrorAsync((value) => {
+          if (disposed || captureRef.current?.requestId !== value.requestId) return;
+          captureRef.current = null;
+          setCapture(null);
+          setError(value.error);
+          restorePreview();
+        });
+        if (disposed) { offCaptureError(); return; }
+        offs.push(offCaptureError);
+        setCaptureListenersReady(true);
+      } catch (e) {
+        if (!disposed) setError(`截图事件监听失败：${String(e)}`);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      for (const off of offs.splice(0)) off();
+    };
+  }, [shell]);
+
+  useEffect(() => {
+    if (!capturePending || !capture) return;
+    const requestId = capture.requestId;
+    const timer = window.setTimeout(() => {
+      if (captureRef.current?.requestId !== requestId || captureRef.current.dataUrl) return;
+      captureRef.current = null;
+      setCapture(null);
+      setError("截图超时，请确认页面已加载完成后重试");
+      restorePreview();
+    }, CAPTURE_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [capturePending, capture?.requestId]);
 
   const resetPageState = () => { setPicking(false); setPickerPurpose(null); setSelected(null); setCommentText(""); setUndoCount(0); setEdits([]); };
   const togglePicker = async (purpose: "comment" | "edit") => {
@@ -335,34 +433,83 @@ export function DesignPreview({
     }
   };
 
-  const beginCapture = async (mode: PreviewCaptureMode, purpose: "screenshot" | "mark") => { const requestId=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,"0")).join("");try{setAnnotatedPreview(null);setCapture({requestId,purpose});setError("");setSendStatus("");await previewPickerToggle(false);setPicking(false);setPickerPurpose(null);await previewCapture(mode,requestId);await previewHide()}catch(e){setCapture(null);setError(String(e));if (!obscured) void previewShow().catch(()=>{})} };
-  const cancelCapture = () => { setCapture(null); if (!obscured) void previewShow().catch((e)=>setError(String(e))); };
+  const beginCapture = async (captureMode: PreviewCaptureMode, purpose: "screenshot" | "mark") => {
+    if (!shell || !captureListenersReady) {
+      setError("截图功能仍在初始化，请稍候重试");
+      return;
+    }
+    if (captureRef.current) return;
+    const requestId = Array.from(crypto.getRandomValues(new Uint8Array(16)), x => x.toString(16).padStart(2, "0")).join("");
+    const pending: CaptureState = { requestId, purpose };
+    captureRef.current = pending;
+    setCapture(pending);
+    setAnnotatedPreview(null);
+    setMode("preview");
+    setError("");
+    setSendStatus("");
+    try {
+      await previewResultHide().catch(() => {});
+      previewResultDataUrlRef.current = "";
+      await previewPickerToggle(false);
+      if (captureRef.current?.requestId !== requestId) return;
+      setPicking(false);
+      setPickerPurpose(null);
+      const nextBounds = bounds();
+      if (!nextBounds) throw new Error("预览区域尚未就绪");
+      await previewSetBounds(nextBounds);
+      if (captureRef.current?.requestId !== requestId) return;
+      await previewShow();
+      if (captureRef.current?.requestId !== requestId) return;
+      await previewCapture(captureMode, requestId);
+      // Do not hide here: on macOS a hidden WKWebView suspends the capture script.
+    } catch (e) {
+      if (captureRef.current?.requestId !== requestId) return;
+      captureRef.current = null;
+      setCapture(null);
+      setError(String(e));
+      restorePreview();
+    }
+  };
+  const cancelCapture = () => {
+    if (!captureRef.current) return;
+    captureRef.current = null;
+    setCapture(null);
+    setSendStatus("");
+    restorePreview();
+  };
 
   const dismissAnnotatedPreview = () => {
+    previewResultDataUrlRef.current = "";
+    if (shell && created.current) void previewResultHide().catch(() => {});
     setAnnotatedPreview(null);
-    if (!obscured && shell) void previewShow().catch((e) => setError(String(e)));
+    restorePreview();
   };
 
   const restorePreview = () => {
-    if (!shell || obscured || mode === "code") return;
+    if (!shell || obscuredRef.current) return;
     requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!mounted.current) return;
       const next = bounds();
       if (!next || !created.current) return;
       void previewSetBounds(next)
         .then(() => previewShow())
-        .catch((e) => setError(String(e)));
+        .catch((e) => { if (mounted.current) setError(String(e)); });
     }));
   };
 
   const finishAnnotation = (result: AnnotatedPreview) => {
     setAnnotatedPreview(result);
+    captureRef.current = null;
     setCapture(null);
+    void copyImageToClipboard(result.blob)
+      .then(() => updateResultStatus("截图已复制到剪贴板"))
+      .catch((e) => updateResultStatus(`自动复制失败：${e instanceof Error ? e.message : String(e)}`));
     restorePreview();
   };
 
   const navigate = async (e: FormEvent) => {
     e.preventDefault();
-    if (!shell) return;
+    if (!shell || captureRef.current) return;
     const nextUrl = /^https?:\/\//i.test(draft.trim()) ? draft.trim() : `http://${draft.trim()}`;
     try {
       await previewNavigate(nextUrl);
@@ -376,9 +523,13 @@ export function DesignPreview({
   };
 
   const close = async () => {
+    captureRef.current = null;
+    setCapture(null);
+    setAnnotatedPreview(null);
     generation.current += 1;
     if (shell && created.current) {
       try {
+        await previewResultHide().catch(() => {});
         await previewDestroy();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -426,7 +577,7 @@ export function DesignPreview({
   };
 
   const download=(blob:Blob,name:string)=>{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
-  const copyAnnotatedPreview=async()=>{if(!annotatedPreview)return;try{await copyImageToClipboard(annotatedPreview.blob);setSendStatus("图片已复制到剪贴板")}catch(e){setSendStatus(`复制失败：${e instanceof Error?e.message:String(e)}`)}};
+  const updateResultStatus=(status:string)=>{setSendStatus(status);const result=annotatedPreviewRef.current,dataUrl=previewResultDataUrlRef.current;if(shell&&result&&dataUrl)void previewResultShow(dataUrl,status,result.comments.length).catch((e)=>setError(String(e)))};
   const artifacts=()=>{const comments=annotatedPreview?.comments??[];const json=JSON.stringify({url,selectors:[...new Set(edits.map(x=>x.selector))],edits,comments},null,2);const report=`# 设计反馈\n\n- URL: ${url}\n\n## 元素修改\n${edits.map(x=>`- \`${x.selector}\` ${x.property}: \`${x.before}\` → \`${x.after}\``).join("\n")||"无"}\n\n## 评论\n${comments.map(x=>`- ${x.text} (${x.selector||"无选择器"}, ${x.x.toFixed(3)}, ${x.y.toFixed(3)})`).join("\n")||"无"}\n`;return{json,report,comments}};
   const commentFiles=()=>{if(!selected) return [];const data={url,comment:commentText.trim(),element:selected};return [new File([JSON.stringify(data,null,2)],"element-comment.json",{type:"application/json"}),new File([`# 元素注释\n\n- URL: ${url}\n- 选择器: \`${selected.selector}\`\n- 元素: \`${selected.tag}\`\n\n${commentText.trim()}\n`],"element-comment.md",{type:"text/markdown"})]};
   const submitComment=async(action:"queue"|"send")=>{if(!selected||!commentText.trim())return;setSending(true);setSendStatus("");try{const files=commentFiles();if(action==="queue"){await onQueueAgent(files);setSendStatus("已加入对话附件")}else{await onSendAgent(files,`请处理这个页面元素的注释。\nURL: ${url}\n选择器: ${selected.selector}\n元素: ${selected.tag}\n评论: ${commentText.trim()}`);setSendStatus("已发送给 Agent")}setSelected(null);setCommentText("");setPickerPurpose(null)}catch(e){setSendStatus(`${action==="queue"?"加入队列":"发送"}失败：${String(e)}`)}finally{setSending(false)}};
@@ -448,60 +599,63 @@ export function DesignPreview({
   };
   const openDemo=()=>{try{const target=new URL(url);if(!["http:","https:"].includes(target.protocol))throw new Error("演示仅支持 HTTP 地址");openExternal(target.href);setError("")}catch(e){setError(e instanceof Error?e.message:String(e))}};
   const openCode=()=>{setMode("code");void loadSource()};
-  const sendAnnotatedResult=async(result:AnnotatedPreview,message:string)=>{const json=JSON.stringify({url,comments:result.comments},null,2);const report=`# 截图标注\n\n- URL: ${url}\n\n${result.comments.map(x=>`- ${x.text} (${x.x.toFixed(3)}, ${x.y.toFixed(3)})`).join("\n")||"无文字标注"}\n`;await onSendAgent([result.file,new File([json],"design-comments.json",{type:"application/json"}),new File([report],"design-feedback.md",{type:"text/markdown"})],message||`请根据截图中的标注修改页面。\nURL: ${url}`);setCapture(null);setSendStatus("已发送给 Agent");restorePreview()};
+  const sendAnnotatedResult=async(result:AnnotatedPreview,message:string)=>{const json=JSON.stringify({url,comments:result.comments},null,2);const report=`# 截图标注\n\n- URL: ${url}\n\n${result.comments.map(x=>`- ${x.text} (${x.x.toFixed(3)}, ${x.y.toFixed(3)})`).join("\n")||"无文字标注"}\n`;await onSendAgent([result.file,new File([json],"design-comments.json",{type:"application/json"}),new File([report],"design-feedback.md",{type:"text/markdown"})],message||`请根据截图中的标注修改页面。\nURL: ${url}`);captureRef.current=null;setCapture(null);setSendStatus("已发送给 Agent");restorePreview()};
+  const sendReadyPreview=async()=>{const result=annotatedPreviewRef.current;if(!result||sending)return;const a=artifacts();const files=[result.file,new File([a.json],"design-comments.json",{type:"application/json"}),new File([a.report],"design-feedback.md",{type:"text/markdown"})];setSending(true);updateResultStatus("正在发送给 Agent…");try{await onSendAgent(files,`请根据以下设计预览反馈修改项目。\nURL: ${url}\n选择器: ${[...new Set(edits.map(x=>x.selector))].join(", ")||"无"}\n元素修改: ${JSON.stringify(edits)}\n评论: ${JSON.stringify(a.comments)}\n附件路径将在本消息中列出：annotated-preview.png、design-comments.json、design-feedback.md。`);updateResultStatus("已发送到对话")}catch(e){updateResultStatus(`发送失败：${String(e)}`)}finally{setSending(false)}};
+
+  useEffect(()=>{
+    if(!shell)return;
+    let disposed=false,off=()=>{};
+    void onPreviewResultActionAsync(async action=>{
+      if(disposed)return;
+      await dispatchPreviewResultAction(action,{
+        download:async()=>{const result=annotatedPreviewRef.current;if(!result)return;try{download(result.blob,"annotated-preview.png");updateResultStatus("图片已下载")}catch(e){updateResultStatus(`下载失败：${String(e)}`)}},
+        send:sendReadyPreview,
+        close:async()=>dismissAnnotatedPreview(),
+      });
+    }).then(unlisten=>{if(disposed)unlisten();else off=unlisten}).catch(e=>{if(!disposed)setError(`截图结果事件监听失败：${String(e)}`)});
+    return()=>{disposed=true;off()};
+  },[shell,url,edits,sending]);
 
   return (
     <div ref={rootRef} className="preview-root">
       <div className="preview-host-pane" style={{ flex: open ? `1 1 ${100 - paneWidth}%` : "1" }}>{children}</div>
       {open && (
         <>
-          <div className="preview-divider" onPointerDown={startResize}/>
+          <div className={`preview-divider${capture ? " disabled" : ""}`} onPointerDown={(e) => { if (!capture) startResize(e); }}/>
           <section className="preview-pane" style={{ width: `${paneWidth}%` }}>
             <form className="preview-address preview-address-row" onSubmit={navigate}>
               <Icon name="globe" size={14}/>
-              <input aria-label="预览地址" value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false}/>
-              <IconButton icon="arrow" label="打开地址" type="submit"/>
+              <input aria-label="预览地址" value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false} disabled={!!capture}/>
+              <IconButton icon="arrow" label="打开地址" type="submit" disabled={!!capture}/>
             </form>
             {!capture?.dataUrl && <header className="preview-toolbar" role="toolbar" aria-label="设计预览工具栏">
-              <IconButton icon="refresh" label="刷新预览" onClick={() => void previewReload().then(() => { resetPageState(); setError(""); }).catch((e) => setError(String(e)))} disabled={!shell}/>
+              <IconButton icon="refresh" label="刷新预览" onClick={() => void previewReload().then(() => { resetPageState(); setError(""); }).catch((e) => setError(String(e)))} disabled={!shell || capturePending}/>
               <div className="preview-mode-tabs" aria-label="查看模式">
-                <button type="button" className={mode === "preview" ? "active" : ""} onClick={() => setMode("preview")}>预览</button>
-                <button type="button" className={mode === "code" ? "active" : ""} onClick={openCode}>代码</button>
+                <button type="button" className={mode === "preview" ? "active" : ""} onClick={() => setMode("preview")} disabled={capturePending}>预览</button>
+                <button type="button" className={mode === "code" ? "active" : ""} onClick={openCode} disabled={capturePending}>代码</button>
               </div>
               <IconButton icon="demo" label="在浏览器中演示" onClick={openDemo}/>
               <div className="preview-tool-divider"/>
               <div className="preview-device-picker">
                 <Icon name={viewport}/><span>{viewport === "desktop" ? "桌面端" : viewport === "tablet" ? "平板端" : "手机端"}</span>
                 <div className="preview-device-options">
-                  {(["desktop", "tablet", "mobile"] as Viewport[]).map((item) => <IconButton key={item} icon={item} label={item === "desktop" ? "桌面视口" : item === "tablet" ? "平板视口" : "手机视口"} className={viewport === item ? "active" : ""} onClick={() => { setViewport(item); setMode("preview"); }}/>) }
+                  {(["desktop", "tablet", "mobile"] as Viewport[]).map((item) => <IconButton key={item} icon={item} label={item === "desktop" ? "桌面视口" : item === "tablet" ? "平板视口" : "手机视口"} className={viewport === item ? "active" : ""} disabled={capturePending} onClick={() => { setViewport(item); setMode("preview"); }}/>) }
                 </div>
               </div>
               <div className="preview-toolbar-spacer"/>
-              <IconButton icon="image" label="截取完整页面" onClick={() => void beginCapture("full", "screenshot")} disabled={!shell || !!capture}/>
-              <IconButton icon="comment" label={picking && pickerPurpose === "comment" ? "停止注释" : "注释元素"} className={picking && pickerPurpose === "comment" ? "active" : ""} onClick={() => { setMode("preview"); void togglePicker("comment"); }} disabled={!shell}/>
-              <IconButton icon="pen" label="标记截图" onClick={() => void beginCapture("viewport", "mark")} disabled={!shell || !!capture}/>
-              <IconButton icon="edit" label={picking && pickerPurpose === "edit" ? "停止编辑" : "编辑元素"} className={picking && pickerPurpose === "edit" ? "active" : ""} onClick={() => { setMode("preview"); void togglePicker("edit"); }} disabled={!shell}/>
-              <IconButton icon="undo" label={undoCount ? `撤销修改（${undoCount}）` : "撤销修改"} onClick={() => void undo()} disabled={!shell || undoCount === 0}/>
+              <IconButton icon="image" label="截取完整页面" onClick={() => void beginCapture("full", "screenshot")} disabled={captureButtonDisabled}/>
+              <IconButton icon="comment" label={picking && pickerPurpose === "comment" ? "停止注释" : "注释元素"} className={picking && pickerPurpose === "comment" ? "active" : ""} onClick={() => { setMode("preview"); void togglePicker("comment"); }} disabled={!shell || capturePending}/>
+              <IconButton icon="pen" label="标记截图" onClick={() => void beginCapture("viewport", "mark")} disabled={captureButtonDisabled}/>
+              <IconButton icon="edit" label={picking && pickerPurpose === "edit" ? "停止编辑" : "编辑元素"} className={picking && pickerPurpose === "edit" ? "active" : ""} onClick={() => { setMode("preview"); void togglePicker("edit"); }} disabled={!shell || capturePending}/>
+              <IconButton icon="undo" label={undoCount ? `撤销修改（${undoCount}）` : "撤销修改"} onClick={() => void undo()} disabled={!shell || undoCount === 0 || capturePending}/>
               <label className="preview-zoom" title="输入预览缩放比例">
-                <input type="number" min="10" max="500" step="1" inputMode="numeric" aria-label="预览缩放比例" value={zoomDraft} onChange={(e)=>setZoomDraft(e.target.value)} onFocus={(e)=>e.currentTarget.select()} onBlur={()=>{const value=Number(zoomDraft);if(Number.isFinite(value))void changeZoom(value);else setZoomDraft(String(zoom))}} onKeyDown={(e)=>{if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur()}else if(e.key==="Escape"){setZoomDraft(String(zoom));e.currentTarget.blur()}}}/>
+                <input type="number" min="10" max="500" step="1" inputMode="numeric" aria-label="预览缩放比例" value={zoomDraft} disabled={capturePending} onChange={(e)=>setZoomDraft(e.target.value)} onFocus={(e)=>e.currentTarget.select()} onBlur={()=>{const value=Number(zoomDraft);if(Number.isFinite(value))void changeZoom(value);else setZoomDraft(String(zoom))}} onKeyDown={(e)=>{if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur()}else if(e.key==="Escape"){setZoomDraft(String(zoom));e.currentTarget.blur()}}}/>
                 <span aria-hidden="true">%</span>
               </label>
               <IconButton icon="close" label="关闭设计预览" className="preview-close" onClick={close}/>
             </header>}
+            {capturePending && <div className="preview-capture-pending" role="status"><span>截图处理中，请保持页面打开…</span><button type="button" onClick={cancelCapture}>取消截图</button></div>}
             {error && <div className="preview-error" role="status">{error}</div>}
-            {annotatedPreview && !capture && (
-              <div className="preview-annotation-ready">
-                {annotatedPreviewUrl && <img className="preview-result-thumbnail" src={annotatedPreviewUrl} alt="标注截图缩略图"/>}
-                <div className="preview-result-copy"><Icon name="check"/><span><strong>标注已就绪</strong>{annotatedPreview.comments.length} 条评论</span></div>
-                <div className="preview-result-actions">
-                  <button type="button" onClick={() => void copyAnnotatedPreview()}>复制</button>
-                  <button type="button" onClick={() => download(annotatedPreview.blob, "annotated-preview.png")}>下载</button>
-                  <button type="button" className="preview-send-agent" disabled={sending} onClick={async () => { const a = artifacts(); const files = [annotatedPreview.file, new File([a.json], "design-comments.json", { type: "application/json" }), new File([a.report], "design-feedback.md", { type: "text/markdown" })]; setSending(true); setSendStatus(""); try { await onSendAgent(files, `请根据以下设计预览反馈修改项目。\nURL: ${url}\n选择器: ${[...new Set(edits.map(x => x.selector))].join(", ") || "无"}\n元素修改: ${JSON.stringify(edits)}\n评论: ${JSON.stringify(a.comments)}\n附件路径将在本消息中列出：annotated-preview.png、design-comments.json、design-feedback.md。`); setSendStatus("已发送给 Agent"); } catch (e) { setSendStatus(`发送失败：${String(e)}`); } finally { setSending(false); } }}><Icon name="send"/>{sending ? "发送中…" : "发送 Agent"}</button>
-                </div>
-                {sendStatus && <span className="preview-result-status" role="status">{sendStatus}</span>}
-                <IconButton icon="close" label="关闭标注结果" className="preview-result-close" onClick={dismissAnnotatedPreview}/>
-              </div>
-            )}
             <div className="preview-workspace">
               <div className="preview-viewport-wrap">
                 <div

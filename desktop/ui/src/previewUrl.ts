@@ -1,6 +1,6 @@
 import type { LogItem } from "./types";
 
-const LOCAL_URL = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?[^\s<>"'`，。；！？]*/gi;
+const LOCAL_URL = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?[^\s<>"'`，。；！？（）]*/gi;
 
 export function latestPreviewUrl(items: LogItem[]): string | null {
   for (let index = items.length - 1; index >= 0; index -= 1) {
