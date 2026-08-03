@@ -516,11 +516,24 @@ pub fn preview_set_zoom(app: AppHandle, scale: f64) -> Result<(), String> {
     if !scale.is_finite() || !(0.1..=5.0).contains(&scale) {
         return Err("缩放比例必须在 10% 到 500% 之间".into());
     }
-    webview(&app)?
-        .eval(format!(
-            "(()=>{{const target=document.getElementById('root')||document.body.firstElementChild||document.body;if(!target)throw new Error('找不到页面根元素');const root=document.documentElement,body=document.body,w=root.clientWidth,h=root.clientHeight,s={scale};target.style.setProperty('width',w+'px','important');target.style.setProperty('min-height',h+'px','important');target.style.setProperty('transform','scale('+s+')','important');target.style.setProperty('transform-origin','0 0','important');target.style.setProperty('margin-left',(s<1?(w-w*s)/2:0)+'px','important');body.style.setProperty('width',Math.max(w,w*s)+'px','important');body.style.setProperty('min-height',Math.max(h,h*s)+'px','important');body.style.setProperty('overflow','visible','important');root.style.setProperty('overflow','auto','important');target.dataset.mcZoom=String(s)}})()"
+    let view = webview(&app)?;
+    #[cfg(target_os = "macos")]
+    {
+        view.eval("(()=>{const target=document.querySelector('[data-mc-zoom]');if(!target)return;for(const name of ['width','min-height','transform','transform-origin','margin-left'])target.style.removeProperty(name);delete target.dataset.mcZoom;for(const name of ['width','min-height','overflow'])document.body.style.removeProperty(name);document.documentElement.style.removeProperty('overflow')})()")
+            .map_err(|e| e.to_string())?;
+        view.with_webview(move |platform| unsafe {
+            let wk: &objc2_web_kit::WKWebView = &*platform.inner().cast();
+            wk.setPageZoom(scale);
+        })
+        .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        view.eval(format!(
+            "(()=>{{const target=document.getElementById('root')||document.body.firstElementChild||document.body;if(!target)throw new Error('找不到页面根元素');const root=document.documentElement,body=document.body,w=root.clientWidth,h=root.clientHeight,s={scale};target.style.setProperty('width',w+'px','important');target.style.setProperty('min-height',h+'px','important');target.style.setProperty('transform','scale('+s+')','important');target.style.setProperty('transform-origin','50% 50%','important');target.style.removeProperty('margin-left');body.style.setProperty('width',Math.max(w,w*s)+'px','important');body.style.setProperty('min-height',Math.max(h,h*s)+'px','important');body.style.setProperty('overflow','visible','important');root.style.setProperty('overflow','auto','important');target.dataset.mcZoom=String(s)}})()"
         ))
         .map_err(|e| e.to_string())
+    }
 }
 #[tauri::command]
 pub fn preview_destroy(app: AppHandle) -> Result<(), String> {
