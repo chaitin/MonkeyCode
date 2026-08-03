@@ -27,10 +27,9 @@ class ReleaseVersionTest(unittest.TestCase):
             )
             lock = '[[package]]\nname = "monkeycode-desktop"\nversion = "1.0.0"\n'
             (root / "Cargo.lock").write_text(lock, encoding="utf-8")
-            (root / "Cargo.lock.win7").write_text(lock, encoding="utf-8")
 
             self.assertEqual(apply_version(root, "v26072208"), "26072208.0.0")
-            for name in ("tauri.conf.json", "Cargo.toml", "Cargo.lock", "Cargo.lock.win7"):
+            for name in ("tauri.conf.json", "Cargo.toml", "Cargo.lock"):
                 self.assertIn("26072208.0.0", (root / name).read_text(encoding="utf-8"))
 
 

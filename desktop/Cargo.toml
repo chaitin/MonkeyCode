@@ -1,7 +1,7 @@
 [package]
 name = "monkeycode-desktop"
 # 版本 = YYMMDDNN(日期+两位序号)占主版本位,与 tauri.conf.json 保持一致
-version = "26071401.0.0"
+version = "26081014.0.0"
 description = "MonkeyCode 本地桌面客户端(Tauri 壳 + ohmyagent 引擎)"
 edition = "2021"
 
@@ -24,7 +24,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 
 # 引擎驱动层:壳直连 agent 内核(REST/WS/stdio),UI 只经 Tauri IPC
-# rustls 而非系统 openssl:Win7/老发行版无需系统 TLS 依赖
+# rustls 而非系统 openssl:老发行版无需系统 TLS 依赖
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
 tokio = { version = "1", features = ["sync", "time", "macros", "io-util", "process", "fs"] }
 # rustls-tls-webpki-roots 不能少:云端桥拨的是 wss,缺 TLS feature 时
@@ -55,8 +55,8 @@ tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e
 # 隐藏原生红绿灯要向 NSWindow 发消息(标准按钮尺寸不可调,UI 自绘 10px 替身)
 objc2 = "0.6"
 
-# Windows 桌宠不再交给 WebView2 绘制:Win7 不支持透明 WebView
-# 背景,改用 UpdateLayeredWindow 直接提交预乘 alpha 位图。
+# Windows 桌宠不交给 WebView2 绘制,用 UpdateLayeredWindow 直接提交
+# 预乘 alpha 位图(见 native_pet.rs 头注释,全 Windows 版本共用一套)。
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
   "Win32_Foundation",

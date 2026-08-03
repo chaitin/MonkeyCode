@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """汇集 updater 发布物:重命名为带版本文件名 + 生成对应平台的更新清单。
 
-用法: gen-latest-json.py [macos|windows|win7|linux]   (缺省 macos)
+用法: gen-latest-json.py [macos|windows|linux]   (缺省 macos)
 
-四条更新通道各自独立,清单由对应平台的发布构建产出,互不协调:
+三条更新通道各自独立,清单由对应平台的发布构建产出,互不协调:
   macos   → latest.json          (darwin 双架构,universal .app.tar.gz)
   windows → latest-windows.json  (windows-x86_64,NSIS setup exe)
-  win7    → latest-win7.json     (windows-x86_64,NSIS setup exe,捆 WebView2)
   linux   → latest-linux.json    (linux-x86_64,**只有 AppImage**)
 
 Linux 只发 AppImage:updater 在 Linux 是把新包原地覆盖当前 AppImage 文件
@@ -45,13 +44,11 @@ if platform == "macos":
     manifest_name = "latest.json"
     # universal 包同时服务两种架构,两个 target key 指向同一 URL
     targets = ["darwin-aarch64", "darwin-x86_64"]
-elif platform in ("windows", "win7"):
+elif platform == "windows":
     bundle = ROOT / "target/release/bundle"
     src = bundle / f"nsis/MonkeyCode_{version}_x64-setup.exe"
-    # win7 包重命名区分通道(OSS 同目录),minisign 签名只关心内容与文件名无关
-    suffix = "-win7" if platform == "win7" else ""
-    name = f"MonkeyCode_{short}_x64-setup{suffix}.exe"
-    manifest_name = f"latest-{platform}.json"
+    name = f"MonkeyCode_{short}_x64-setup.exe"
+    manifest_name = "latest-windows.json"
     targets = ["windows-x86_64"]
 elif platform == "linux":
     bundle = ROOT / "target/release/bundle"
@@ -61,7 +58,7 @@ elif platform == "linux":
     manifest_name = "latest-linux.json"
     targets = ["linux-x86_64"]
 else:
-    sys.exit(f"未知平台: {platform}(可选 macos/windows/win7/linux)")
+    sys.exit(f"未知平台: {platform}(可选 macos/windows/linux)")
 
 sig = pathlib.Path(str(src) + ".sig")
 if not src.exists() or not sig.exists():

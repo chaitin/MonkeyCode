@@ -1,101 +1,220 @@
 #!/usr/bin/env python3
-"""Fail when the dark theme drifts from the light token set.
+"""主题契约守卫(daisyUI 版,盯 ui-next —— 即 tauri.conf.json 实际打包的那套)。
 
-深色主题的设计是"只填令牌值、组件零改动"(ui/src/styles.css 头部注释):
-`:root` 定义全部令牌,`[data-theme="dark"]` 逐个覆盖同名令牌。这条不变量破了
-不会有编译错误——深色下某个颜色悄悄回落成浅色值,而开发几乎总在浅色下写
-代码,肉眼永远看不见。"加新令牌只改 :root"是最容易漏的一步。
+配色由 daisyUI 提供:内置 35 套经 `@plugin "daisyui"` 的 themes 清单启用,
+品牌两套(monkeycode / monkeycode-dark)由 `@plugin "daisyui/theme"` 块声明。
+这里盯几条仍然会静默烂掉的契约:
 
-放在 scripts/ 而不是 vitest:检查对象是 CSS 源文本这一静态文件契约,与
-check_command_contract.py / check_bundle_configs.py 同类;而 vitest 默认把
-CSS 导入 stub 成空串(`?raw` 拿不到内容),浏览器工程也不该为读文件引
-@types/node。
+1. index.html 的首帧防闪底色 ↔ app.css 里对应主题块的 --color-base-100。
+   那两个 hex 是全仓唯一走不了 var() 的颜色:app.css 由 main.tsx 引入,
+   首帧时还没到,只能写死在 index.html 的 <style> 里。漂了不报错,只是启动
+   闪一帧另一个颜色,没人会注意到。
+   **值从 app.css 现取,不再另设常量**——旧版把同一个颜色抄在 index.html、
+   脚本常量、daisyUI 主题源三个地方,改一处忘两处是迟早的事。
+2. 深色规则的选择器必须覆盖 prefersdark 那套主题名,否则系统深色首启走的是
+   浅色底。规则同时也匹配内置 `dark`(刻意共用一条),故再核一遍内置 dark 的
+   base-100 与我们的值没有差太远——共用是近似,不是可以无限漂。
+3. 同步内联脚本必须在,且读 mc.theme + mc.themeBg:带 type="module" 的脚本是
+   defer 的,赶不上首帧;35 套主题不可能像 light/dark 那样把底色写死进 <style>,
+   非品牌主题的首帧底色全靠 mc.themeBg 缓存。
+4. @theme 块内不许重复声明同一令牌(后写的静默盖掉先写的)。
+
+放在 scripts/ 而不是 vitest:检查对象是静态文件契约,与
+check_command_contract.py / check_bundle_configs.py 同类。
 """
 
 from __future__ import annotations
 
+import math
 import pathlib
 import re
 import sys
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-STYLES = ROOT / "ui/src/styles.css"
-INDEX_HTML = ROOT / "ui/index.html"
-LIGHT_SELECTOR = ":root"
-DARK_SELECTOR = '[data-theme="dark"]'
-# 深色块曾经只有一行 TODO 注释(切换是 no-op)。给个下限,防它被清空后
-# "集合一致"因为两边都空而假成立。
-MIN_TOKENS = 50
+# 出货的那套(tauri.conf.json 的 beforeBuildCommand.cwd)。旧 desktop/ui 已冻结、
+# 待 P9 删除,不再守——**守错工程等于没有守卫**。
+UI = ROOT / "ui-next"
+STYLES = UI / "src/styles/app.css"
+INDEX_HTML = UI / "index.html"
+DAISYUI_THEME_DIR = UI / "node_modules/daisyui/theme"
+
+# 内置 dark 与品牌 monkeycode-dark 共用同一条防闪规则(见模块注释第 2 条),
+# 允许的最大单通道差值。取 24/255:肉眼在启动瞬间分辨不出,再大就是可见闪色。
+SHARED_DARK_TOLERANCE = 24
 
 
-def tokens_of(css: str, selector: str) -> list[str]:
-    """按出现顺序取某选择器块内声明的令牌名。自定义属性块不嵌套,取到首个
-    `}` 即整块。"""
-    block = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
-    if not block:
-        raise ValueError(f"{STYLES.name} 中找不到选择器块:{selector}")
-    return re.findall(r"^\s*(--[\w-]+)\s*:", block.group(1), re.M)
+def oklch_to_hex(ll: float, c: float, h_deg: float) -> str:
+    """OKLCH → sRGB hex(标准矩阵;超色域按 clamp 处理,与浏览器一致)。"""
+    h = math.radians(h_deg)
+    a, b = c * math.cos(h), c * math.sin(h)
+    l_ = (ll + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m_ = (ll - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s_ = (ll - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    rgb = (
+        4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
+        -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
+        -0.0041960863 * l_ - 0.7034186147 * m_ + 1.7076147010 * s_,
+    )
+
+    def gamma(x: float) -> float:
+        x = min(1.0, max(0.0, x))
+        return 12.92 * x if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055
+
+    return "#%02x%02x%02x" % tuple(round(gamma(v) * 255) for v in rgb)
+
+
+def parse_oklch(value: str) -> tuple[float, float, float] | None:
+    """"oklch(25.33% .016 252.42)" → (0.2533, 0.016, 252.42)。"""
+    found = re.match(r"oklch\(\s*([\d.]+)%\s+([\d.]+)\s+([\d.]+)\s*\)", value.strip())
+    if not found:
+        return None
+    return float(found.group(1)) / 100, float(found.group(2)), float(found.group(3))
+
+
+def rgb_of(hex_color: str) -> tuple[int, int, int]:
+    h = hex_color.lstrip("#")
+    if len(h) == 3:
+        h = "".join(ch * 2 for ch in h)
+    return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+
+
+def theme_blocks(css: str) -> list[dict[str, str]]:
+    """取所有 `@plugin "daisyui/theme" { ... }` 块,解析成 键→值 字典
+    (name/default/prefersdark 与各 --color-* 令牌同处一块)。"""
+    blocks: list[dict[str, str]] = []
+    for body in re.findall(r'@plugin\s+"daisyui/theme"\s*\{([^}]*)\}', css):
+        decls: dict[str, str] = {}
+        for key, value in re.findall(r"^\s*([\w-]+)\s*:\s*([^;]+);", body, re.M):
+            decls[key.strip()] = value.strip()
+        blocks.append(decls)
+    return blocks
+
+
+def brand_backgrounds(css: str) -> tuple[dict[str, str], list[str]]:
+    """→ ({"light": hex, "dark": hex}, errors)。light = default:true 那套,
+    dark = prefersdark:true 那套(名字也一并带出,供选择器覆盖检查)。"""
+    errors: list[str] = []
+    out: dict[str, str] = {}
+    names: dict[str, str] = {}
+    for flag, slot in (("default", "light"), ("prefersdark", "dark")):
+        found = [b for b in theme_blocks(css) if b.get(flag) == "true"]
+        if len(found) != 1:
+            errors.append(f"app.css 里 {flag}: true 的主题块有 {len(found)} 个,应恰好 1 个")
+            continue
+        block = found[0]
+        bg = block.get("--color-base-100", "")
+        names[slot] = block.get("name", "").strip('"')
+        if not re.fullmatch(r"#[0-9a-fA-F]{3,6}", bg):
+            errors.append(
+                f'主题 {names[slot]!r} 的 --color-base-100 是 {bg!r},不是 hex:'
+                f"首帧防闪底色只能写字面量进 index.html,请在 app.css 里用 hex 声明"
+            )
+            continue
+        out[slot] = bg.lower()
+    return out, errors + ([] if len(out) == 2 else [])
+
+
+def prefersdark_name(css: str) -> str:
+    for block in theme_blocks(css):
+        if block.get("prefersdark") == "true":
+            return block.get("name", "").strip('"')
+    return ""
+
+
+def check_theme_block_dupes(css: str) -> list[str]:
+    """@theme 与各主题块内重复声明同一令牌:后写的静默盖掉先写的。"""
+    labelled: list[tuple[str, str]] = [
+        ("@theme", body) for body in re.findall(r"@theme\s*\{([^}]*)\}", css)
+    ]
+    for body in re.findall(r'@plugin\s+"daisyui/theme"\s*\{([^}]*)\}', css):
+        name = re.search(r"^\s*name\s*:\s*(.+);", body, re.M)
+        labelled.append((f"主题块 {name.group(1).strip() if name else '?'}", body))
+
+    errors: list[str] = []
+    for label, body in labelled:
+        seq = re.findall(r"^\s*(--[\w-]+)\s*:", body, re.M)
+        if dupes := sorted({t for t in seq if seq.count(t) > 1}):
+            errors.append(f"{label} 内重复声明: {', '.join(dupes)}")
+    return errors
+
+
+def check_boot_background(
+    index_html: pathlib.Path = INDEX_HTML, styles: pathlib.Path = STYLES
+) -> list[str]:
+    """index.html 首帧防闪底色 ↔ app.css 主题块的 base-100,逐字一致。"""
+    css = styles.read_text(encoding="utf-8")
+    boot, errors = brand_backgrounds(css)
+    html = index_html.read_text(encoding="utf-8")
+
+    for key, rule in (
+        ("light", r"^\s*html, body \{ background: (#[0-9a-fA-F]{3,6}); \}"),
+        ("dark", r'^\s*html\[data-theme="dark"\][^{]*\{ background: (#[0-9a-fA-F]{3,6}); \}'),
+    ):
+        found = re.search(rule, html, re.M)
+        if not found:
+            errors.append(f"index.html 缺首帧防闪底色规则({key} 档)")
+            continue
+        if key not in boot:
+            continue
+        if found.group(1).lower() != boot[key]:
+            errors.append(
+                f"index.html 的首帧底色 {found.group(1)} 与 app.css 中该档主题的"
+                f" base-100({boot[key]})不一致:启动会闪一帧另一个颜色"
+            )
+
+    # 深色规则必须覆盖 prefersdark 那套主题名,否则系统深色首启走浅色底
+    dark_rule = re.search(r'^\s*html\[data-theme="dark"\][^{]*\{[^}]*\}', html, re.M)
+    name = prefersdark_name(css)
+    if dark_rule and name and f'data-theme="{name}"' not in dark_rule.group(0):
+        errors.append(
+            f"index.html 的深色防闪规则没有覆盖 prefersdark 主题 {name!r}:"
+            f"系统深色下首启会闪一帧浅色底"
+        )
+
+    if "<script>" not in html or "mc.theme" not in html:
+        errors.append("index.html 缺同步内联脚本(按 mc.theme 在首帧前落 data-theme)")
+    if "mc.themeBg" not in html:
+        errors.append(
+            "index.html 的首帧脚本没有读 mc.themeBg:内置 35 套主题的底色写不进 "
+            "<style>,只能靠这份缓存,漏了就是换过主题的用户每次启动闪一帧品牌色"
+        )
+    return errors
+
+
+def check_daisyui_source(
+    theme_dir: pathlib.Path = DAISYUI_THEME_DIR, styles: pathlib.Path = STYLES
+) -> list[str]:
+    """内置 dark 与品牌深色共用一条防闪规则(模块注释第 2 条):共用是刻意的
+    近似,但不能无限漂。没装 node_modules 时跳过(CI 的 npm ci 之后必在)。"""
+    if not theme_dir.is_dir():
+        return []
+    source = theme_dir / "dark.css"
+    if not source.is_file():
+        return [f"daisyUI 主题文件缺失: {source}"]
+    found = re.search(r"--color-base-100:\s*([^;]+);", source.read_text(encoding="utf-8"))
+    if not found:
+        return [f"{source} 里找不到 --color-base-100"]
+    parsed = parse_oklch(found.group(1))
+    if parsed is None:
+        return [f"{source} 的 --color-base-100 不是可解析的 oklch: {found.group(1)}"]
+    builtin = oklch_to_hex(*parsed)
+    boot, errors = brand_backgrounds(styles.read_text(encoding="utf-8"))
+    if errors or "dark" not in boot:
+        return []  # 上游已报,不重复
+    delta = max(abs(a - b) for a, b in zip(rgb_of(builtin), rgb_of(boot["dark"])))
+    if delta > SHARED_DARK_TOLERANCE:
+        return [
+            f"内置 dark 主题的 base-100({builtin})与品牌深色({boot['dark']})"
+            f"相差 {delta}/255,超出共用防闪规则的容差 {SHARED_DARK_TOLERANCE}:"
+            f"index.html 该给 [data-theme=\"dark\"] 单列一条规则了"
+        ]
+    return []
 
 
 def check(styles: pathlib.Path = STYLES) -> list[str]:
     css = styles.read_text(encoding="utf-8")
-    light = tokens_of(css, LIGHT_SELECTOR)
-    dark = tokens_of(css, DARK_SELECTOR)
-    errors: list[str] = []
-
-    if missing := sorted(set(light) - set(dark)):
-        errors.append(
-            f"深色块缺令牌(深色下会回落成浅色值): {', '.join(missing)}"
-        )
-    if extra := sorted(set(dark) - set(light)):
-        errors.append(f"深色块多出 :root 没有的令牌: {', '.join(extra)}")
-    for name, seq in (("’:root’", light), ("深色块", dark)):
-        if dupes := sorted({t for t in seq if seq.count(t) > 1}):
-            errors.append(f"{name} 重复声明同一令牌: {', '.join(dupes)}")
-    if len(dark) < MIN_TOKENS:
-        errors.append(
-            f"深色块只有 {len(dark)} 个令牌(下限 {MIN_TOKENS}):"
-            f"主题切换很可能又退化成 no-op"
-        )
-    errors += check_boot_background(css)
-    return errors
-
-
-def value_of(css: str, selector: str, token: str) -> str | None:
-    block = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
-    if not block:
-        return None
-    found = re.search(rf"^\s*{re.escape(token)}\s*:\s*([^;]+);", block.group(1), re.M)
-    return found.group(1).split("/*")[0].strip() if found else None
-
-
-def check_boot_background(css: str, index_html: pathlib.Path = INDEX_HTML) -> list[str]:
-    """index.html 的首帧防闪底色必须与 --bg 逐字对齐。
-
-    那两个值是**唯一**不能走 var() 的颜色:styles.css 由 main.tsx 引入,首帧时
-    还没到。代价是它们会随 --bg 漂——漂了不报错,只是深色启动闪一帧浅色(这条
-    规则原本就是为防它而写的),没人会注意到。曾经它只写死了浅色一档。"""
-    html = index_html.read_text(encoding="utf-8")
-    errors: list[str] = []
-    for selector, token, rule in (
-        (LIGHT_SELECTOR, "--bg", r"^\s*html, body \{ background: (#[0-9a-fA-F]{3,6}); \}"),
-        (DARK_SELECTOR, "--bg", r'^\s*html\[data-theme="dark"\][^{]*\{ background: (#[0-9a-fA-F]{3,6}); \}'),
-    ):
-        want = value_of(css, selector, token)
-        found = re.search(rule, html, re.M)
-        if not found:
-            errors.append(f"index.html 缺首帧防闪底色规则(对应 {selector} 的 {token})")
-        elif want and found.group(1).lower() != want.lower():
-            errors.append(
-                f"index.html 的首帧底色 {found.group(1)} 与 {selector} 的 {token} "
-                f"({want})不一致:深色启动会闪一帧另一个颜色"
-            )
-    # 属性得在首帧之前落上,否则上面两档规则都命不中。判据就是"有一个不带任何
-    # 属性的 <script>":带 type="module" 的是 defer,轮到它时首帧已经画完了。
-    if "<script>" not in html or "mc.theme" not in html:
-        errors.append("index.html 缺同步内联脚本(按 mc.theme 在首帧前落 data-theme)")
-    return errors
+    return check_theme_block_dupes(css) + check_boot_background(styles=styles) + check_daisyui_source(styles=styles)
 
 
 def main() -> int:

@@ -371,6 +371,9 @@ impl OhmyDriver {
         // reader 线程:逐行路由(RPC 应答 / 通知)
         let inner_r = inner.clone();
         let crash_log = log_path.clone();
+        // 崩溃 tail 取「引擎自己的运行日志优先」那份(engine_log_file):
+        // stderr 正常跑一轮是 0 字节,只认它的话横幅里那 15 行永远是空的
+        let crash_cfg_dir = cfg_dir.clone();
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
@@ -436,8 +439,10 @@ impl OhmyDriver {
             if !inner_r.transport.stopped.load(Ordering::Relaxed) {
                 inner_r.reconcile_all("引擎进程异常退出"); // 运行中会话本地收尾,不留永久 running
                 inner_r.flush_batch(); // 收尾帧要立刻到 UI,不等 flusher 的下一拍
-                let tail = super::log_tail(&crash_log, 15);
-                preserve_crash_log(&crash_log);
+                let tail = super::engine_log_file(&crash_cfg_dir)
+                    .map(|p| super::log_tail(&p, 15))
+                    .unwrap_or_default();
+                preserve_crash_log(&crash_log); // stderr 那份照旧留档(崩溃现场可能只在它里面)
                 eprintln!("[desktop] ohmyagent 引擎异常退出");
                 // 置位收摊:flusher 只认 stopped 退出,不置位它会永远持有
                 // Arc<Inner>——每崩一次就泄漏一整份会话状态与 journal 写线程,

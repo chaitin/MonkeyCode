@@ -275,6 +275,36 @@ mod chat_workdir_tests {
             .join("chat-workspaces")
     }
 
+    /// 对话工作区在 WSL 下**不能**用宿主视角验存在性——这条把当年的失败
+    /// 现场固定下来(2026-08-09 用户报障:选了 WSL 内核后开普通对话必报
+    /// 「工作区目录不存在: /mnt/c/Users/…/chat-workspaces/chat-xxxx」)。
+    ///
+    /// 成因:chat 根落在 Windows 侧,guest 形态是 /mnt/c/…;旧代码把它交给
+    /// 「guest 路径 → \\wsl$\<发行版>\… 」的宿主视角去 is_dir(),包出来是
+    /// 下面这个串——Windows 穿不过 WSL 共享上的 drvfs 挂载点,于是壳刚
+    /// create_dir 成功的目录被判成不存在。本机模式恰好等价,所以只在
+    /// Windows+WSL 上现形,Linux 冒烟(guest==host)也复现不了。
+    #[test]
+    fn host_view_of_a_chat_workdir_under_wsl_is_an_unusable_unc_path() {
+        let guest = "/mnt/c/Users/phxa1/AppData/Local/com.chaitin.baizhi.monkeycode\
+                     /chat-workspaces/chat-3a6c477966006def8049";
+        let host_view = crate::wsl::host_fs_view("Ubuntu-22.04", guest);
+        // 只在 Windows 上才拼 UNC(其余平台恒等,见 wsl::host_fs_view)
+        if cfg!(windows) {
+            assert!(
+                host_view.to_string_lossy().starts_with(r"\\wsl$\Ubuntu-22.04\mnt\c\"),
+                "宿主视角会把 chat 的 guest 路径包成穿不过去的 UNC: {host_view:?}"
+            );
+        }
+        // 平台无关的那半条:chat 目录由 create_chat_workdir_in 在宿主建成
+        // 才返回 Ok,所以根本不需要二次验存在——session_create_with_kind 的
+        // (Some(_), _) 分支直接放行,别再引入任何"视角转换"
+        let root = test_root("wsl-chat");
+        let made = create_chat_workdir_in(&root).unwrap();
+        assert!(made.is_dir(), "壳建完即存在,无需再验");
+        let _ = std::fs::remove_dir_all(root.parent().unwrap());
+    }
+
     #[test]
     fn creates_an_isolated_managed_directory_for_each_chat() {
         let root = test_root("create");
@@ -490,6 +520,8 @@ impl OhmyDriver {
                 json!({
                     "id": id,
                     "title": meta.get("title").and_then(|v| v.as_str()).unwrap_or(""),
+                    // 用户改过名(session_patch title):头部标题优先级用
+                    "title_custom": meta.get("title_custom").and_then(|v| v.as_bool()).unwrap_or(false),
                     // 引擎每轮生成的会话摘要(顶栏副标题展示;不参与命名)
                     "summary": meta.get("summary").and_then(|v| v.as_str()).unwrap_or(""),
                     "workdir": meta.get("workdir").and_then(|v| v.as_str()).unwrap_or(""),
@@ -539,19 +571,32 @@ impl OhmyDriver {
             Some(path) => self.0.chat_workdir_for_engine(path),
             None => self.0.resolve_workdir(workdir)?,
         };
-        // 本地项目 + WSL:存在性判定/按需创建/软链 canonical 化在 guest 内
-        // 一次完成(见 wsl::ensure_guest_dir——\\wsl$ 对 guest 符号链接不可
-        // 求值,宿主视角会把软链工作区误报为不存在)。对话工作区由壳刚在
-        // 宿主创建、恒为真实目录,与本机模式一致走宿主视角。
+        // 存在性判定按"谁建的、在哪一侧"分三条路:
+        //
+        // - **对话工作区:不验**。create_chat_workdir_in 刚在宿主
+        //   std::fs::create_dir 成功才走得到这儿,建不出来早已带错返回。
+        //   **尤其不能拿 workdir_owned 去验**——它此时已是 guest 形态
+        //   (chat_workdir_for_engine 换过前缀),而 workdir_fs_view 在 WSL 下
+        //   会把任何 guest 路径包成 \\wsl$\<发行版>\…;chat 根落在 Windows 侧
+        //   (/mnt/c/Users/…/AppData/Local/…),包出来就是
+        //   \\wsl$\<发行版>\mnt\c\Users\…——Windows 穿不过 WSL 共享上的 drvfs
+        //   挂载点,于是刚建好的目录被判成"不存在",WSL 下普通对话必然开不了
+        //   (2026-08-09 用户报障)。本机模式下这条路径恰好等价,所以只在
+        //   Windows+WSL 上现形。
+        // - **本地项目 + WSL**:存在性判定/按需创建/软链 canonical 化在 guest
+        //   内一次完成(见 wsl::ensure_guest_dir——\\wsl$ 对 guest 符号链接不可
+        //   求值,宿主视角会把软链工作区误报为不存在)。
+        // - **本地项目 + 本机**:宿主视角直接判。
         let workdir_owned = match (&chat_workdir, &self.0.wsl) {
+            (Some(_), _) => workdir_owned,
             (None, Some(w)) => {
                 crate::wsl::ensure_guest_dir(&w.distro, &workdir_owned, create_dir)?
             }
-            _ => {
-                let fs_view = self.0.workdir_fs_view(&workdir_owned);
-                if !fs_view.is_dir() {
+            (None, None) => {
+                let host = Path::new(&workdir_owned);
+                if !host.is_dir() {
                     if create_dir {
-                        std::fs::create_dir_all(&fs_view)
+                        std::fs::create_dir_all(host)
                             .map_err(|e| format!("创建工作区目录失败: {e}"))?;
                     } else {
                         return Err(format!("工作区目录不存在: {workdir_owned}"));
@@ -999,22 +1044,54 @@ impl OhmyDriver {
         Ok(json!({ "ok": true }))
     }
 
+    /// 首条用户消息的首行(≤40 字符,与 session_send 的自动标题同口径)。
+    /// 清空标题时用它回填:回落链「用户改名 > summary > 首句」在没有
+    /// summary 的会话上也得有着落,不能落成空白标题。找不到返回空串
+    /// (会话尚未物化;title 留空,下次发消息 session_send 会自动补首句)。
+    fn first_user_line(&self, id: &str) -> String {
+        let Some(dir) = self.0.session_dir(id) else { return String::new() };
+        for (_, line) in fold::scan_lines(&dir.join("replay.jsonl")) {
+            for entry in fold::outline_of_line(0, &line) {
+                // 大纲条目的 content 是 base64(与帧内一致,见 fold::outline_entry)
+                let Some(b64) = entry.get("content").and_then(|v| v.as_str()) else { continue };
+                let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64) else { continue };
+                let Ok(text) = String::from_utf8(bytes) else { continue };
+                let head: String = text.lines().next().unwrap_or("").trim().chars().take(40).collect();
+                if !head.is_empty() {
+                    return head;
+                }
+            }
+        }
+        String::new()
+    }
+
     pub async fn session_patch(&self, id: &str, patch: Value) -> Result<Value, String> {
         check_session_id(id)?;
-        self.write_sidecar(id, |m| {
-            if let Some(t) = patch.get("title").and_then(|v| v.as_str()) {
-                // 按字符截断:String::truncate 是字节索引,中文标题在非字符
-                // 边界截断会 panic
-                let t: String = t.trim().chars().take(80).collect();
+        // 空标题 = 撤销自定义,回落自动链(用户定案 2026-08-06「清空想用回
+        // summary」):摘掉 title_custom 让 UI 回到 summary 优先,title 本身
+        // 重填首句——摘了标记但 title 还留着旧改名值的话,无 summary 的会话
+        // 会继续显示那个被撤销的名字
+        let title = patch.get("title").and_then(|v| v.as_str()).map(|t| {
+            // 按字符截断:String::truncate 是字节索引,中文标题在非字符边界截断会 panic
+            let t: String = t.trim().chars().take(80).collect();
+            if t.is_empty() { (self.first_user_line(id), false) } else { (t, true) }
+        });
+        if let Some((t, custom)) = title.clone() {
+            self.write_sidecar(id, |m| {
                 m["title"] = json!(t);
-            }
+                // 用户改名标记:UI 标题优先级(用户改名 > summary > 首句自动
+                // 标题)靠它区分前后两者——title 字段本身分不出来
+                m["title_custom"] = json!(custom);
+            });
+        }
+        self.write_sidecar(id, |m| {
             if let Some(a) = patch.get("archived").and_then(|v| v.as_bool()) {
                 m["archived"] = json!(a);
             }
         });
-        if let Some(t) = patch.get("title").and_then(|v| v.as_str()) {
+        if let Some((t, _)) = title {
             if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
-                s.title = t.to_string();
+                s.title = t;
             }
         }
         Ok(json!({ "ok": true }))
@@ -1687,14 +1764,13 @@ impl Inner {
         }
     }
 
-    /// workdir 的宿主文件系统视角(存在性判定/按需创建):WSL 模式经
-    /// \\wsl$ UNC(冒烟时恒等),本机原样。
-    pub(super) fn workdir_fs_view(&self, workdir: &str) -> PathBuf {
-        match &self.wsl {
-            Some(w) => crate::wsl::host_fs_view(&w.distro, workdir),
-            None => PathBuf::from(workdir),
-        }
-    }
+    // workdir_fs_view 已删(2026-08-09):它做的是"把 guest workdir 包成
+    // \\wsl$\<发行版>\… 的宿主视角",而 WSL 下**没有一条路该这么验目录**——
+    // 本地项目走 wsl::ensure_guest_dir(在 guest 内 cd+pwd -P,顺带解软链),
+    // 对话工作区壳刚在宿主建好、根本不用验。留着只会让人再写出
+    // \\wsl$\<发行版>\mnt\c\… 这种 Windows 穿不过去的路径(见
+    // session_create_with_kind 里的三分支注释)。宿主侧文件操作请直接用
+    // wsl::host_fs_view。
 
     /// chat 会话 workdir 的会话面形态:目录由壳在宿主创建
     /// (chat_workspaces_dir 下),WSL 模式下存 sidecar/传引擎的字符串换成

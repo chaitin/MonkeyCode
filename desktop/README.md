@@ -1,6 +1,6 @@
 # desktop — MonkeyCode 本地桌面客户端(Tauri 壳)
 
-单引擎架构:壳(Rust)承载 UI(`ui/` React SPA,构建产物随壳分发)与
+单引擎架构:壳(Rust)承载 UI(`ui-next/` React SPA,构建产物随壳分发)与
 全部平台服务(百智云/云端任务/文件浏览/上传/浏览器扩展桥/装机遥测),
 引擎 **ohmyagent** 是壳拉起的 stdio JSON-RPC 子进程(独立上游仓库,
 不 fork,版本经仓库根 agent/ submodule 钉死)。
@@ -13,21 +13,27 @@
 
 前置:Rust 工具链、Node 22、Go 1.26+(编译引擎)、Linux 需 webkit2gtk。
 
+**UI 工程是 `ui-next/`**——`tauri.conf.json` 的 `beforeBuildCommand.cwd` 指的
+就是它,`make macos/windows/linux` 打进包里的也是它的产物。`ui/` 是待退役的
+旧工程,已不参与打包,别拿它去生成 uidist:两个工程的 outDir 同为
+`../uidist` 且都 `emptyOutDir`,后 build 的那个生效,建错了的症状是
+"改了半天跑起来还是旧界面"。
+
 ```bash
 # 引擎源码位置(独立仓库)
 export OHMYAGENT_SRC=~/dev/chaitin/ai/monkeycode/ohmyagent
 
-cd ui && npm ci && npm run build   # 生成 uidist(cargo build 的前置)
+cd ui-next && npm ci && npm run build   # 生成 uidist(cargo build 的前置)
 cd .. && cargo build && ./target/debug/monkeycode-desktop
 
-# HMR 开发(devUrl overlay)
-npx tauri dev --config tauri.dev.conf.json
+# HMR 开发(devUrl overlay;dev-next 的 devUrl 指 1421、cwd 指 ui-next)
+npx tauri dev --config tauri.dev-next.conf.json
 
 # 测试(含浏览器桥假扩展、MCP 冒烟)。E2E 标 #[ignore]:缺引擎时如实报
 # ignored,不冒充 passed;显式选中后缺二进制即硬失败。
 cargo test
 MC_OHMYAGENT_BIN=$OHMYAGENT_SRC/bin/ohmyagent cargo test e2e_ -- --ignored --test-threads=1
-cd ui && npm test
+cd ui-next && npm test
 ```
 
 开发运行找不到引擎时,壳按 `MC_OHMYAGENT_BIN` → 应用同目录 → PATH
@@ -55,7 +61,7 @@ make linux-release    # + 签名 updater 产物
 Linux 自更新只对 AppImage 生效(updater 是原地替换 AppImage 文件);
 deb/rpm 由 apt/dnf 升级,壳侧对非 AppImage 运行不提示更新。
 更新检查统一走 UI 侧节流闸门(挂载/切前台触发 + 30 分钟节流 + 4 小时
-兜底,ui/src/updateGate.ts)。
+兜底,ui-next/src/features/update/useUpdate.ts)。
 
 引擎 sidecar 由 make 从 `OHMYAGENT_SRC` 编译。externalBin 声明在各平台
 overlay 而非基础配置(基础配置带 sidecar 会让普通 `cargo check` 也强依赖
@@ -63,9 +69,8 @@ overlay 而非基础配置(基础配置带 sidecar 会让普通 `cargo check` �
 (`scripts/check_bundle_configs.py`,CI 同跑)强制,缺二进制打包直接失败。
 Windows 包另经 bundle.resources 附带 `ohmyagent-linux`(WSL 运行环境用,
 externalBin 装不下第二平台),nsis 配置缺它同样被守卫拦下。
-CI:desktop-{check,macos,windows,win7,linux}.yml
-(check 跑契约守卫脚本与两侧测试;win7 通道用 go-win7 补丁工具链 +
-固定版 WebView2)。
+CI:desktop-{check,macos,windows,linux}.yml
+(check 跑契约守卫脚本与两侧测试)。
 
 ## WSL 运行环境(Windows)
 

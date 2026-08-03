@@ -1,0 +1,106 @@
+/* 自定义 CSS 白名单之三:markdown 渲染产物(marked 输出的裸 HTML 打不了
+ * Tailwind 类,只能选择器兜住;一律 .md/.mdi/.md-code/.md-scroll 前缀)。
+ * 配色全部经 daisyUI 变量,双主题自动跟随。
+ * Tailwind preflight 清零了 h1-h6/列表/hr 的浏览器默认样式,这里显式补齐。 */
+
+.md {
+  /* 与应用正文基准同值(0.875rem=14px;标题/代码按 em 随动) */
+  font-size: 0.875rem;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  color: color-mix(in oklab, var(--color-base-content) 92%, var(--color-base-100));
+}
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 1.1em 0 0.5em;
+  color: var(--color-base-content);
+}
+.md h1 { font-size: 1.35em; }
+.md h2 { font-size: 1.2em; }
+.md h3 { font-size: 1.08em; }
+.md h4, .md h5, .md h6 { font-size: 1em; }
+
+.md p { margin: 0 0 0.7em; }
+.md ul, .md ol { margin: 0 0 0.7em; padding-inline-start: 1.4em; display: flex; flex-direction: column; gap: 0.25em; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md ul ul { list-style: circle; }
+.md li > ul, .md li > ol { margin-bottom: 0; margin-top: 0.25em; }
+.md hr { border: 0; border-top: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent); margin: 0.9em 0; }
+.md strong { font-weight: 600; color: var(--color-base-content); }
+.md blockquote {
+  border-inline-start: 3px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
+  margin: 0 0 0.7em;
+  padding-inline-start: 0.9em;
+  color: color-mix(in oklab, var(--color-base-content) 60%, var(--color-base-100));
+}
+.md img { max-width: 100%; height: auto; border-radius: var(--radius-box); }
+.md a { color: var(--color-primary); }
+.md a:hover { text-decoration: underline; }
+
+.md pre {
+  background: color-mix(in oklab, var(--color-base-content) 5%, transparent);
+  border-radius: var(--radius-box);
+  padding: 0.7em 1em;
+  overflow-x: auto;
+  font: 0.78rem/1.7 var(--font-mono);
+}
+.md code {
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  border-radius: var(--radius-field);
+  padding: 0.1em 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+.md pre code { background: transparent; padding: 0; font-size: inherit; }
+.mdi code {
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  border-radius: var(--radius-field);
+  padding: 0 0.3em;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+/* 代码块容器:复制按钮悬停浮现(按钮本体是 daisyUI btn,注入时带类) */
+.md-code { position: relative; margin: 0.8em 0; }
+.md-code pre { margin: 0; }
+.md-code:hover [data-md-copy], .md-code [data-md-copy]:focus-visible { opacity: 1; }
+
+/* 代码高亮 token 配色:不用 hljs 官方主题 CSS(只分深浅两套,跟不上 35 套
+ * daisyUI 主题)。语义色给色相身份、base-content 掺混归一(oklab):
+ * 浅色主题把荧光压成墨色、深色主题把饱和提成粉彩,对比度由 base-content
+ * 兜底——语义色原色全强度直上会在激进主题(荧光/糖果系)里变成大色块
+ * (2026-08-05 用户报丑的根因)。关键字带字重,单色系主题也保区分度。
+ * markdown 代码块与文件预览(CodeView)共用。 */
+.hljs { color: color-mix(in oklab, var(--color-base-content) 88%, var(--color-base-100)); }
+.hljs-comment, .hljs-quote { color: color-mix(in oklab, var(--color-base-content) 45%, var(--color-base-100)); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-meta, .hljs-doctag {
+  color: color-mix(in oklab, var(--color-primary) 60%, var(--color-base-content));
+  font-weight: 600;
+}
+.hljs-string, .hljs-regexp, .hljs-addition { color: color-mix(in oklab, var(--color-success) 55%, var(--color-base-content)); }
+.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet,
+.hljs-built_in, .hljs-variable, .hljs-template-variable { color: color-mix(in oklab, var(--color-secondary) 55%, var(--color-base-content)); }
+.hljs-title, .hljs-section, .hljs-type, .hljs-function { color: color-mix(in oklab, var(--color-accent) 55%, var(--color-base-content)); }
+.hljs-attr, .hljs-attribute, .hljs-name, .hljs-selector-id,
+.hljs-selector-class, .hljs-tag { color: color-mix(in oklab, var(--color-warning) 50%, var(--color-base-content)); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 700; }
+.hljs-deletion {
+  color: color-mix(in oklab, var(--color-error) 60%, var(--color-base-content));
+  background: color-mix(in oklab, var(--color-error) 10%, transparent);
+}
+
+.md-scroll { max-width: 100%; margin: 0.8em 0; overflow-x: auto; overscroll-behavior-x: contain; }
+.md-scroll:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-primary) 40%, transparent); outline-offset: 2px; }
+.md-scroll table { width: auto; max-width: 100%; border-collapse: collapse; }
+.md th, .md td {
+  padding: 0.3em 0.75em;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
+  vertical-align: top;
+}
+.md th { font-weight: 600; text-align: start; }

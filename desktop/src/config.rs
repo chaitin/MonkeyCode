@@ -522,13 +522,16 @@ fn write_ohmyagent_config(
         }
         let get = |k: &str| m.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
         let (name, provider, model) = (get("name"), get("provider"), get("model"));
-        // 会员条目由壳补齐(本机记录缺失时照常物化,请求时报错外显,不静默
-        // 丢条目)。地址:设置里显式指定(拆分部署)优先、立即生效,否则用
-        // 本机快照;配了测试环境反代 Basic Auth 时嵌进 userinfo(见
-        // with_basic_userinfo)
+        // 会员条目的密钥由壳补齐(本机记录缺失时照常物化,请求时报错外显,
+        // 不静默丢条目);配了测试环境反代 Basic Auth 时嵌进 userinfo
+        // (见 with_basic_userinfo)
         let (base_url, api_key) = if is_monkeycode(m) {
-            let llm = cfg.mc_llm_base_url.trim().trim_end_matches('/');
-            let mut b = if llm.is_empty() { mc_key_field("base_url") } else { llm.to_string() };
+            // 地址按当前配置现算(baizhi::resolve_mc_llm 单一出处):设置里显式
+            // 指定 > 官方云代理子域 > {服务地址}/v1。**不读 Key 文件里的
+            // base_url 快照**——那是建 Key 当时的地址,默认值一改(如官方云
+            // 从主域挪到 proxy 子域)老机器会一直打旧地址,直到下次重新同步
+            let server = crate::baizhi::Endpoints::resolve(&cfg.mc_base_url).monkeycode;
+            let mut b = crate::baizhi::resolve_mc_llm(&cfg.mc_llm_base_url, &server);
             let basic = cfg.mc_basic_auth.trim();
             // Basic Auth 只嵌给 MonkeyCode 主机:模型地址指向别的主机时嵌入
             // 等于把反代凭证泄漏给第三方(host 门与 mc_basic_header 同语义)
@@ -897,7 +900,12 @@ mod tests {
             serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
         assert_eq!(settings["signing_secret"], "sec-9");
         assert_eq!(settings["models"]["会员模型"]["api_key"], "omk-1");
-        assert_eq!(settings["models"]["会员模型"]["base_url"], "https://mc.example.com/v1");
+        // 官方云(未配服务地址):模型请求打独立代理子域,**不跟随** Key 文件
+        // 里 https://mc.example.com/v1 的旧快照(2026-08-07 用户定案)
+        assert_eq!(
+            settings["models"]["会员模型"]["base_url"],
+            crate::baizhi::DEFAULT_MONKEYCODE_LLM_URL
+        );
         // 非会员条目不受注入影响
         assert_eq!(settings["models"]["自定义"]["api_key"], "sk-direct");
         assert_eq!(settings["models"]["自定义"]["base_url"], "https://direct.example.com");

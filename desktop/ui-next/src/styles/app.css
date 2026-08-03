@@ -1,0 +1,259 @@
+/* 样式入口:Tailwind 4 + daisyUI 5(内置 light/dark 主题)。
+ *
+ * 样式宪法(强制优先级链,详见 tasks/todo.md 引用的计划文件):
+ *   daisyUI 组件类 → daisyUI 语义色 + Tailwind 工具类 → @theme 令牌 → 白名单自定义 CSS
+ * 自定义 CSS 白名单仅四处:本文件的 @theme 段、chrome.css(滚动条+keyframes)、
+ * md.css(markdown 渲染产物,P3b 引入)、term.css(xterm 岛,P7 引入)。
+ * 白名单外新增自定义类,PR 里必须回答"为什么 daisyUI + 工具类表达不了"。
+ *
+ * 语义色规则:面三档 base-100/200/300;文字只用 base-content 四档透明度
+ * (100%/70%/50%/35%);primary 只表品牌/主操作/选中;success/warning/error
+ * 只表状态;TSX 禁裸 hex/oklch;禁手写 dark: 双色(daisyUI 变量天生双主题)。
+ *
+ * 深浅切换:document.documentElement.dataset.theme = "light" | "dark"
+ * (src/lib/theme.ts;首帧由 index.html 内联脚本同步落)。 */
+
+@import "tailwindcss";
+/* 主题体系:两套品牌自定义主题(monkeycode 浅/深,绿 primary + 微绿灰基底/
+ * slate 深底,开发者工具审美)+ 全量 35 套 daisyUI 内置主题可选。
+ * 清单必须与 src/lib/theme.ts::THEMES 一致——那边有测试读本文件对表
+ * (含下方 @plugin "daisyui/theme" 块的 name)。 */
+@plugin "daisyui" {
+  themes:
+    light, dark, abyss, acid, aqua, autumn, black,
+    bumblebee, business, caramellatte, cmyk, coffee, corporate, cupcake,
+    cyberpunk, dim, dracula, emerald, fantasy, forest, garden, halloween,
+    lemonade, lofi, luxury, night, nord, pastel, retro, silk, sunset,
+    synthwave, valentine, winter, wireframe;
+}
+
+/* 品牌浅色(缺省):微绿调中性灰基底,品牌绿只做 primary/选中,克制点缀 */
+@plugin "daisyui/theme" {
+  name: "monkeycode";
+  default: true;
+  color-scheme: light;
+  --color-base-100: #fcfdfc;
+  --color-base-200: #f3f6f4;
+  --color-base-300: #e6ebe8;
+  --color-base-content: #1b211d;
+  --color-primary: #16b364;
+  --color-primary-content: #ffffff;
+  --color-secondary: #475569;
+  --color-secondary-content: #f8fafc;
+  --color-accent: #0d9488;
+  --color-accent-content: #ffffff;
+  --color-neutral: #1e293b;
+  --color-neutral-content: #f8fafc;
+  --color-info: #0284c7;
+  --color-info-content: #ffffff;
+  --color-success: #16a34a;
+  --color-success-content: #ffffff;
+  --color-warning: #d97706;
+  --color-warning-content: #ffffff;
+  --color-error: #dc2626;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.4375rem;
+  --radius-box: 0.625rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* 品牌深色(系统深色偏好缺省):slate 基底 + 提亮一档的品牌绿(深底上
+ * #16b364 白字只有 2.7:1,提亮后配深墨字,对比达标) */
+@plugin "daisyui/theme" {
+  name: "monkeycode-dark";
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #171e2b;
+  --color-base-200: #121826;
+  --color-base-300: #0e1421;
+  --color-base-content: #e2e8f0;
+  --color-primary: #2dd482;
+  --color-primary-content: #05271a;
+  --color-secondary: #94a3b8;
+  --color-secondary-content: #0f172a;
+  --color-accent: #2dd4bf;
+  --color-accent-content: #042f2a;
+  --color-neutral: #334155;
+  --color-neutral-content: #f1f5f9;
+  --color-info: #38bdf8;
+  --color-info-content: #082f49;
+  --color-success: #4ade80;
+  --color-success-content: #052e16;
+  --color-warning: #fbbf24;
+  --color-warning-content: #451a03;
+  --color-error: #f87171;
+  --color-error-content: #450a0a;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.4375rem;
+  --radius-box: 0.625rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+/* 不提供 dark: 变体:主题有 35 套、深色系 14 套,按 data-theme=dark 绑定的
+ * dark: 会漏掉其余深色主题,按 prefers-color-scheme 的默认 dark: 又不跟主题走。
+ * 配色一律经 daisyUI 语义变量(天生随主题),深浅结构差异用 JS 判主题。 */
+
+@theme {
+  /* HarmonyOS Sans SC 经 /fonts/ webfont 随应用加载(public/fonts/fonts.css),
+   * 不依赖本机安装;显式列出各平台回退,泛型解析各 WebView 不一 */
+  --font-sans: "HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "HarmonyOS Sans SC", ui-monospace, Menlo, Consolas, "Courier New", "Microsoft YaHei", monospace;
+  /* 布局列宽令牌(w-rail / w-side):三列宽度的唯一出处,不写字面值 */
+  --spacing-rail: 62px;
+  --spacing-side: 232px;
+  /* 平台约定色:不跟主题走。mac 红绿灯三色 = 系统本色;caption-close =
+   * Windows 11 官方关闭键 hover 红(Win10 是 #e81123,Win11 起改这个值) */
+  --color-mac-close: #ff5f57;
+  --color-mac-min: #febc2e;
+  --color-mac-zoom: #28c840;
+  --color-caption-close: #c42b1c;
+}
+
+@layer base {
+  /* 自绘窗框条的高度,**固定定位覆盖层的唯一避让依据**(LAYOUT §1)。
+   * 平台判据走根节点的 data-platform(main.tsx 启动时 applyPlatformAttr 落)。
+   *
+   * 为什么要一个变量:此前每个覆盖层各自手算一次偏移(FilesDrawer 的 top-9、
+   * toast 的 mt-13),换个平台就错——toast 在 Windows 上从 68px 起、压住主区
+   * 头右侧的动作钮,根因就是那 52 是照 mac 算的。凡 fixed 且贴顶的,一律读
+   * 本变量,不许再手算。 */
+  :root {
+    --chrome-h: 0px;
+  }
+  [data-platform="windows"],
+  [data-platform="linux"] {
+    --chrome-h: 28px;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    /* 与 text-sm/menu 默认档同值(0.875rem=14px):13px 卡在 Tailwind 阶梯
+     * 12/14 之间,任何字号类都打不到,裸文本自成一档是"不统一"的根源
+     * (2026-08-06 报障)。收成 12(辅助)/14(正文)两档主力 */
+    font-size: 0.875rem;
+    overflow: hidden;
+    /* 桌面壳手感:chrome 默认不可选中;可复制内容(消息/代码/输入框)由
+     * 各 feature 按处放开(select-text),外加下面这条**类型级白名单** */
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* 可选中白名单(旧 UI styles.css 同款,ui-next 首版只留了逐处 select-text
+   * 而漏掉诊断类文本)。逐处放开治不了这一**类**:引擎崩溃横幅的崩溃原因与
+   * 日志尾、保存失败文案、角落 toast 里的壳侧报错——恰恰是最需要复制进工单
+   * 的那些,一个都没放开。配合 shellChrome 拦掉原生右键、contextMenu 对非
+   * 输入元素只在有选区时才给「复制」项,用户在横幅上鼠标划不动、右键也不
+   * 弹菜单,只能照屏幕手抄。
+   * pre/code:代码块、日志尾、工具输出;[role=alert]/[role=status]:所有
+   * 外显的报错与状态行(横幅/保存条/toast 统一走这两个 role)。
+   * 输入类控件本不受影响(UA 表对 input/textarea 显式声明 text,元素自身有
+   * 声明就不继承),这里一并写上是为了不依赖 UA 表的实现细节。 */
+  pre,
+  code,
+  input,
+  textarea,
+  [contenteditable="true"],
+  [role="alert"],
+  [role="status"] {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+}
+
+/* ================================================================
+ * 统一视觉调整(主题层;§8 约定的"最后统一调"入口)。
+ * 只经 daisyUI 组件自暴露的 CSS 变量调形态,不写散落覆写。
+ * ================================================================ */
+
+/* 侧栏/菜单选中态:daisyUI 默认取 neutral(多数主题为近黑,选中行成黑块,
+ * 见 2026-08-04 截图反馈)。改为 primary 淡底 + 正文色,全部主题通用,
+ * 与旧 UI 的 accSel(primary 9%)同语言。 */
+.menu {
+  --menu-active-bg: color-mix(in oklab, var(--color-primary) 12%, var(--color-base-100));
+  --menu-active-fg: var(--color-base-content);
+}
+
+/* 模态从窗框条下缘起(LAYOUT §1/§2):daisyUI 的 .modal 是 fixed + inset:0,
+ * scrim 会盖住 Windows/Linux 的自绘窗框——三键点不动、窗框还被压暗。与
+ * FilesDrawer 同口径做结构性避让,不入 z 层竞赛。
+ *
+ * **必须写在这里(无层区),不能放进 @layer base**:daisyUI 的 .modal 落在
+ * `daisyui.l1.l2.l3` 层,该层在产物里出现得比 base 晚 → 优先级更高,写在
+ * base 里的 top 会被它的 inset:0 悄悄吃掉(改完样式照旧、没有任何报错)。
+ * 无层规则胜过一切层规则,所以本文件的全局组件微调一律待在这一段。
+ * chromeHeight.test.ts 钉着这条位置约束。 */
+.modal {
+  top: var(--chrome-h);
+}
+
+/* 对话列宽(消息流与 composer 共用的那一条中线;LAYOUT §5)。
+ *
+ * 原先是死的 max-w-3xl(768px):1920 窗口下主区有 1626px,内容列只占 768,
+ * 左右各空 429——过半是空的,2560 屏更夸张(用户报障 2026-08-10「全屏之后
+ * 好像很窄」)。但也不能一放到底:768 差不多是 90 西文字符 / 45 汉字的行长,
+ * 纯正文再宽就开始费眼。
+ *
+ * 所以是「地板 + 比例 + 天花板」三段,而不是断点跳变:
+ * - 地板 48rem(768):窄窗与今天完全一致,列还是填满,不会比现在更挤;
+ * - 中段 92%:跟着主区连续变宽,始终留 4% 的呼吸边,没有某个窗宽下文字贴边;
+ * - 天花板 64rem(1024):正文行长的上界,再宽就该拆两栏而不是继续拉长。
+ * 百分比按容器算(不是 100vw),所以侧栏宽度/折叠状态怎么变都不用跟着改。
+ *
+ * 想整体加宽/收窄只动这一行的 64rem——四处用点(本地/云端 × 消息流/composer)
+ * 共用它,分头改一定会让两条列错开中线。 */
+.chat-measure {
+  max-width: min(64rem, max(48rem, 92%));
+}
+
+/* 消息流行的渲染剪枝(LogList data-chat-items 的直接子行)。
+ *
+ * 为什么必须有(2026-08-10 用户报障「运行中打字非常卡」,Safari 时间线实锤):
+ * 长会话回放窗口最多 3000 帧,整个历史都在图层树里,WebKit 每次合成要在
+ * 主线程走一遍——录制里单次 composite 200~260ms,15s 里 9.9s 全花在这;
+ * 而运行中永远有东西在动(状态点 pulse/ping、loading-dots、流式文本),
+ * 每一动就是一次全量合成,打字的光标与回显也得排在后面。JS 侧的行级 memo
+ * (LogList「性能契约」)治不了这个:合成成本只看**参与渲染的内容量**。
+ *
+ * content-visibility:auto 让视口外的行跳过布局/绘制/图层参与,合成收敛到
+ * O(视口);视口外的动画(其他轮次的 pulse 点)也随之停摆,少一批无谓的
+ * 失效源。三个配套事实:
+ * - contain-intrinsic-size 的 auto 关键字:行渲染过一次后记住真实尺寸,
+ *   估高只在首次(未渲染过)时生效——贴底打开长会话时,视口上方的行用
+ *   60px 估高,滚上去逐行落成真实值;锚点恢复本就有 200ms×15 轮询 + RO
+ *   兜底(ChatView startRestore),晚到的高度修正会被它们吸收;
+ * - 几何 API 照常工作:itemTops/getBoundingClientRect 读到的是估高盒,
+ *   序列单调性不破;大纲跳转 scrollIntoView 会强制目标行渲染;
+ * - display:none 的占位行(锚定 perm/合并模型行)不受影响,结构契约
+ *   (直接子元素与 items 一一对应)是纯 CSS 之外的事,一个节点没动。
+ * 旧 WebKit/WebView2 不认识该属性时整条规则静默失效,退回现状,无兼容风险。 */
+[data-chat-items] > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
+}
+
+/* 远行降档(LogList 的分带 effect 打 data-far):auto 不是免费的——当前版
+ * WebKit(26.x)每次渲染更新对**每个** auto 元素重估视口相关性,几千行会话
+ * 里打字每键 70~180ms(2026-08-10 用户 26.2 复测 + WKWebView 二分:2400 行
+ * 基线 72ms/键,全列 hidden 零慢帧,仅留视口带 auto 同样干净)。hidden =
+ * 静态跳过零跟踪;占位尺寸沿用上面的 contain-intrinsic-size(渲染过的行有
+ * 记忆尺寸,没渲染过的 60px 估高,与 auto 跳过态同一口径)。 */
+[data-chat-items] > [data-far] {
+  content-visibility: hidden;
+}
+
+/* ⚠️ 此处不得再有 `[data-chat-items] > :hover { content-visibility: visible }`
+ * 一类按 hover 解除剪枝的规则(2026-08-10 定案)。它当初是为救被 paint
+ * containment 裁掉的 MessageTime(时间悬在行盒上方的块间空隙),但代价是
+ * 让**每一行**的 containment 都成为 hover 依赖:旧版 WebKit 的 hover 失效
+ * 是悲观全量算法,打字每键引发一次 hover 链重估,就把全会话所有行盒统统
+ * 标脏——用户机器 recording5 实锤:2375 行 × 每键全量重画,~600ms 样式
+ * 重算 + ~700ms 合成,一键一付。新 WebKit 精确 diff 无感,开发机复现不出,
+ * 线上老系统必炸。现在时间戳画进行盒内部(LogList 的块间距从 margin 改
+ * padding,时间落在 padding 带里),剪枝不再需要任何 hover 例外。 */

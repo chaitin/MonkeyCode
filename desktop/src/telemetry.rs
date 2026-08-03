@@ -160,7 +160,7 @@ pub fn start(app: &AppHandle) {
 /// 跨天按设备聚合,Matomo 后台做不了。
 pub fn mark_used(app: &AppHandle) {
     // 记"已标记到哪天"而不是一个 bool:跨天要自动放行。
-    // Mutex::new 是 const fn(1.63+),不能用 LazyLock——win7 通道锁在 1.77。
+    // Mutex::new 是 const fn,静态初始化即可,无需 LazyLock。
     static MARKED_DAY: Mutex<Option<String>> = Mutex::new(None);
     let today = utc_day();
     {

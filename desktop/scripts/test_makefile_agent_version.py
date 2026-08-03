@@ -55,12 +55,10 @@ class MakefileAgentVersionTest(unittest.TestCase):
             linker_value = f"-X main.Version={commit}"
             self.assertEqual(dry_run.count(linker_value), 2)
 
-    def test_windows_release_workflows_embed_agent_commit_hash(self) -> None:
-        for name in ("desktop-windows.yml", "desktop-win7.yml"):
-            with self.subTest(workflow=name):
-                workflow = (WORKSPACE_ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
-                self.assertIn('AGENT_VERSION="$(git rev-parse --short HEAD)"', workflow)
-                self.assertIn("-X main.Version=${AGENT_VERSION}", workflow)
+    def test_windows_release_workflow_embeds_agent_commit_hash(self) -> None:
+        workflow = (WORKSPACE_ROOT / ".github" / "workflows" / "desktop-windows.yml").read_text(encoding="utf-8")
+        self.assertIn('AGENT_VERSION="$(git rev-parse --short HEAD)"', workflow)
+        self.assertIn("-X main.Version=${AGENT_VERSION}", workflow)
 
 
 if __name__ == "__main__":

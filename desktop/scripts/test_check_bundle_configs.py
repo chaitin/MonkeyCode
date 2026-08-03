@@ -41,12 +41,12 @@ class BundleConfigContractTest(unittest.TestCase):
             self.assertIn("tauri.conf.json", errors[0])
 
     def test_pure_overlay_needs_no_sidecar(self) -> None:
-        # win7 那类只叠 resources/endpoints 的 overlay 不独立打包。
+        # 只叠 resources/endpoints 的 overlay(如 tauri.release.conf.json)不独立打包。
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
             write(root, "tauri.conf.json", {"active": False})
             write(root, "bundle.win.conf.json", {"active": True, "externalBin": [SIDECAR]})
-            write(root, "bundle.win7.conf.json", {"resources": {"ucrt/*": "./"}})
+            write(root, "bundle.extra.conf.json", {"resources": {"extras/*": "./"}})
             self.assertEqual(check(root), [])
 
     # ---- WSL 引擎不变量 ----

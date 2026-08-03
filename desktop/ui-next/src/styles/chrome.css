@@ -1,0 +1,56 @@
+/* 自定义 CSS 白名单之二:滚动条 + keyframes(上限 5 个)。
+ * daisyUI/Tailwind 不管滚动条;颜色引 daisyUI 变量,双主题自动跟随。 */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  /* scrollbar 本体默认白底:track 透明还不够,常驻滚道(overflow-y-scroll)
+   * 会在容器右缘露出白条(2026-08-05 用户报障) */
+  background: transparent;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--color-base-content) 38%, transparent);
+  background-clip: content-box;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--color-base-content) 22%, transparent) transparent;
+}
+
+/* 无滚条的滚动容器(窄轨道用):目前只有提问大纲的点列——20px 宽的轨道
+ * 画不下 8px 滚条,滚条一出就把点挤没。
+ * ⚠️ 必须写在这里,不能在组件里用 Tailwind 工具类:本文件是**无层**引入的
+ * (main.tsx 直接 import,不在 @layer 内),而工具类在 @layer utilities 里
+ * ——无层规则整体盖过分层规则,组件侧的 `[scrollbar-width:none]` 会被上面
+ * 那条 `*` 静默吃掉(2026-08-07 排查大纲溢出时发现)。同理,任何想覆盖
+ * 上面滚条样式的地方都得回到本文件。 */
+.mc-no-scrollbar {
+  scrollbar-width: none;
+}
+.mc-no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* keyframes 配额 1/5:提问大纲跳转后目标气泡的闪光
+ * (LogList 经 Tailwind 任意值 animate-[mc-flash_1s_ease] 引用)。 */
+@keyframes mc-flash {
+  0% {
+    background-color: color-mix(in oklab, var(--color-primary) 22%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}

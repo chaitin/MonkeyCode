@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<!-- 占位页:仅在内核启动失败时展示错误;正常流程直接打开内核 UI。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MonkeyCode</title>
+<style>
+  :root {
+    --bg:#131316; --card:rgba(255,255,255,.04); --card2:rgba(255,255,255,.07);
+    --cardh:rgba(255,255,255,.09); --line:rgba(255,255,255,.05);
+    --t1:#fafafa; --t2:#d8d8de; --t3:#a1a1ac; --t4:#71717c;
+    --amber:#10b981; --amberT:#34d399; --onAmber:#04130c;
+    --err:#f87171; --codeBg:rgba(0,0,0,.35);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; height:100vh; display:flex; align-items:center; justify-content:center;
+         background:var(--bg); color:var(--t2);
+         font:13.5px/1.8 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  .box { max-width:460px; padding:32px; display:flex; flex-direction:column;
+         align-items:center; gap:10px; text-align:center; animation:mcin .25s ease; }
+  .logo { width:52px; height:52px; border-radius:14px; }
+  h2 { margin:4px 0 0; font-size:18px; font-weight:700; color:var(--t1); letter-spacing:-.01em; }
+  .err { margin:6px 0 0; padding:9px 13px; background:var(--codeBg); border-radius:9px;
+         font:12.5px/1.7 ui-monospace,Menlo,monospace; color:var(--err); word-break:break-all; }
+  .hint { color:var(--t4); font-size:12px; line-height:1.7; margin:4px 0 0; }
+  .row { display:flex; gap:8px; margin-top:14px; }
+  button { padding:8px 22px; background:var(--amber); color:var(--onAmber);
+           border:0; border-radius:9px; cursor:pointer; font:600 12.5px/1.6 inherit; }
+  button.ghost { background:var(--card2); color:var(--t2); }
+  button:hover { opacity:.85; }
+  button:disabled { opacity:.5; cursor:default; }
+  @keyframes mcin { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+</style>
+</head>
+<body>
+<div class="box">
+  <!-- 真产品 logo(public/logo.png,与 UI 内 src/logo.png 同源拷贝);
+       此前是 🐒 emoji,各平台渲染不一且非品牌形象 -->
+  <img class="logo" src="/logo.png" alt="MonkeyCode" />
+
+  <h2>启动失败</h2>
+  <p class="err" id="msg">未知错误</p>
+  <p class="hint">内核未能启动。常见原因是模型配置不可用或安装不完整——
+     可直接重试;仍失败请看完整日志,或重新安装应用。</p>
+  <div class="row">
+    <button id="retry">重试启动</button>
+    <button class="ghost" id="logs">打开日志目录</button>
+  </div>
+</div>
+<script>
+  // 这一页此前是死路一条(只有一句"请重新安装"),而落到这里的原因里
+  // 至少有一半是可自行恢复的(配置写坏、引擎一次性起不来)。壳的
+  // engine_restart 是幂等的,直接给用户按钮,别让人只能重装。
+  const m = decodeURIComponent(location.hash.slice(1) || '');
+  if (m) document.getElementById('msg').textContent = m;
+  const invoke = (cmd) => window.__TAURI__?.core?.invoke?.(cmd);
+  const retry = document.getElementById('retry');
+  retry.onclick = () => {
+    retry.disabled = true;
+    retry.textContent = '启动中…';
+    Promise.resolve(invoke('engine_restart'))
+      // 起来了就换回正常 UI;失败则把新错误显示出来并允许再试
+      .then(() => { location.replace('index.html'); })
+      .catch((e) => {
+        document.getElementById('msg').textContent = String(e);
+        retry.disabled = false;
+        retry.textContent = '重试启动';
+      });
+  };
+  document.getElementById('logs').onclick = () => { void invoke('open_log_dir'); };
+</script>
+</body>
+</html>
