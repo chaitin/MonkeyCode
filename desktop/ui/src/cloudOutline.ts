@@ -40,6 +40,12 @@ export function withCloudOutlineAnchors(frames: Frame[]): Frame[] {
   });
 }
 
+/** 帧集里是否已有该锚的 user-input(大纲跳转的补页终止条件):读内存帧集
+ * 而非 DOM,prepend 后立即可判,不依赖 React 提交时序。 */
+export function framesHaveAnchor(frames: Frame[], anchorSeq: number): boolean {
+  return frames.some((f) => f.type === "user-input" && cloudOutlineAnchor(f.timestamp) === anchorSeq);
+}
+
 /** REST 索引页(倒序)→ 正序 OutlineItem。没有时间戳的条目丢弃:
  * 没锚就定位不了,留着只会是点不动的死条目。offset 云端无意义,恒 0。 */
 export function cloudOutlineItems(items: CloudUserInputItem[]): OutlineItem[] {
@@ -89,21 +95,20 @@ export function useCloudOutline(id: string, items: LogItem[]): OutlineEntry[] {
 /** 大纲交互对视图的依赖面(CloudTaskHandle 的窄投影,避免反向依赖)。 */
 export interface CloudOutlineNavHost {
   scrollRef: RefObject<HTMLDivElement | null>;
-  cursor: { cursor: string; hasMore: boolean } | null;
-  loadEarlier(): Promise<void>;
+  /** 把历史翻到某锚已加载(补页循环在 hook 内,游标经 ref 推进) */
+  ensureLoaded(anchorSeq: number): Promise<boolean>;
   unpin(): void;
-  notify(text: string): void;
 }
 
 /** 云端视图的大纲交互:当前项跟踪(滚动/帧批 rAF 节流重算,同 ChatView)
- * 与跳转。目标气泡不在 DOM 时逐轮「加载更早」再定位——游标无进展即放弃,
- * 防坏游标空转(与 Web 的 MAX_PAGES 护栏同款,上限 200 轮)。 */
+ * 与跳转。目标气泡不在 DOM 时先 ensureLoaded 补齐历史(useCloudTask 内
+ * 大步长翻页),再重试定位——重试吸收 React 提交延迟,与本地 jumpWithRetry
+ * 同款。 */
 export function useCloudOutlineNav(id: string, items: LogItem[], host: CloudOutlineNavHost) {
   const entries = useCloudOutline(id, items);
   const [activeSeq, setActiveSeq] = useState<number | undefined>(undefined);
   const raf = useRef(0);
-  // host 的成员(cursor/loadEarlier)每次渲染都是新值:跳转的补页循环跨多次
-  // 渲染,必须经 ref 取最新,否则拿着旧游标重复拉同一页
+  // host 每次渲染都是新对象:跳转跨 await,经 ref 取最新
   const hostRef = useRef(host);
   hostRef.current = host;
 
@@ -154,20 +159,22 @@ export function useCloudOutlineNav(id: string, items: LogItem[], host: CloudOutl
     return true;
   };
 
+  // 帧已在内存但 React 可能还没提交到 DOM:重试吸收提交延迟(同 ChatView)
+  const jumpWithRetry = (seq: number, tries = 12) => {
+    if (jumpToSeq(seq)) return;
+    if (tries <= 0) {
+      // 走到这只剩坏数据(无时间戳的旧帧对不上锚):留痕即可,不打扰用户
+      console.warn("[cloud-outline] 跳转目标未定位到:", seq);
+      return;
+    }
+    window.setTimeout(() => jumpWithRetry(seq, tries - 1), 32);
+  };
+
   const onJump = (e: OutlineEntry) =>
     void (async () => {
       if (jumpToSeq(e.seq)) return;
-      let prev = "";
-      for (let i = 0; i < 200; i++) {
-        const cur = hostRef.current.cursor;
-        if (!cur || cur.cursor === prev) break;
-        prev = cur.cursor;
-        await hostRef.current.loadEarlier();
-        // 等一帧让前插的轮次进 DOM,再找目标
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        if (jumpToSeq(e.seq)) return;
-      }
-      hostRef.current.notify("未能定位到该条提问(更早的记录可能不完整)");
+      await hostRef.current.ensureLoaded(e.seq);
+      jumpWithRetry(e.seq);
     })();
 
   return { entries, activeSeq, onJump, onScrollTick: scheduleActive };

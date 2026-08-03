@@ -2,7 +2,7 @@
 // 交互(跳转补页/当前项跟踪)是 DOM 滚动逻辑,靠手动验收 + 本地大纲既有用例守。
 import { describe, expect, it } from "vitest";
 
-import { cloudOutlineAnchor, cloudOutlineItems, withCloudOutlineAnchors } from "./cloudOutline";
+import { cloudOutlineAnchor, cloudOutlineItems, framesHaveAnchor, withCloudOutlineAnchors } from "./cloudOutline";
 import { mergeLiveOutline } from "./outline";
 import type { Frame, LogItem } from "./types";
 
@@ -48,6 +48,22 @@ describe("withCloudOutlineAnchors", () => {
   it("缺时间戳的 user-input 保持原样,不喂 0 锚", () => {
     const f: Frame = { type: "user-input", seq: 3 };
     expect(withCloudOutlineAnchors([f])[0]).toBe(f);
+  });
+});
+
+describe("framesHaveAnchor", () => {
+  it("REST 索引锚(纳秒)能在毫秒时间戳的帧集里找到同一条提问", () => {
+    const frames: Frame[] = [
+      { type: "task-started", timestamp: MS },
+      { type: "user-input", timestamp: MS },
+    ];
+    const restAnchor = cloudOutlineAnchor(NS)!;
+    expect(framesHaveAnchor(frames, restAnchor)).toBe(true);
+  });
+
+  it("非 user-input 帧与无时间戳帧不参与判定", () => {
+    expect(framesHaveAnchor([{ type: "task-started", timestamp: MS }], Math.floor(MS / 10))).toBe(false);
+    expect(framesHaveAnchor([{ type: "user-input" }], Math.floor(MS / 10))).toBe(false);
   });
 });
 
