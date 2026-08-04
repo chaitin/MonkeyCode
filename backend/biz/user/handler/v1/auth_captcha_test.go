@@ -1,16 +1,19 @@
 package v1
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/GoYoko/web"
 	"github.com/labstack/echo/v4"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/captcha"
@@ -31,9 +34,10 @@ func TestPasswordLoginCaptchaToggle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			usecase := &passwordLoginUsecaseStub{}
 			h := &AuthHandler{
+				config:  &config.Config{Security: config.Security{CaptchaEnabled: tt.enabled}},
 				logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 				usecase: usecase,
-				captcha: captcha.NewCaptcha(tt.enabled),
+				captcha: captcha.NewCaptcha(),
 			}
 
 			err := h.PasswordLogin(testWebContext(), domain.TeamLoginReq{})
@@ -42,6 +46,38 @@ func TestPasswordLoginCaptchaToggle(t *testing.T) {
 			}
 			if usecase.called != tt.called {
 				t.Fatalf("PasswordLogin usecase called = %v, want %v", usecase.called, tt.called)
+			}
+		})
+	}
+}
+
+func TestPasswordLoginAcceptsEmptyCaptchaTokenWhenDisabled(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "missing", body: `{"email":"user@example.com","password":"password"}`},
+		{name: "empty", body: `{"email":"user@example.com","password":"password","captcha_token":""}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usecase := &passwordLoginUsecaseStub{}
+			h := &AuthHandler{
+				config:  &config.Config{Security: config.Security{CaptchaEnabled: false}},
+				logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+				usecase: usecase,
+				captcha: captcha.NewCaptcha(),
+			}
+			w := web.New()
+			w.POST("/login", web.BindHandler(h.PasswordLogin))
+
+			req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(tt.body))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			w.Echo().ServeHTTP(httptest.NewRecorder(), req)
+
+			if !usecase.called {
+				t.Fatal("PasswordLogin usecase was not called")
 			}
 		})
 	}
