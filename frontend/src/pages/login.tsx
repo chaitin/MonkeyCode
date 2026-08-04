@@ -52,7 +52,7 @@ export default function LoginPage({
   const [defaultOIDCConfig, setDefaultOIDCConfig] = React.useState<DomainTeamOIDCPublicConfigResp | null>(null)
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { reloadAuth, serverConfig } = useAppRuntime()
+  const { captchaEnabled, reloadAuth, serverConfig } = useAppRuntime()
   const serverRegion = serverConfig?.region as string | undefined
   const isCnRegion = serverRegion === "cn"
   const isGlobalRegion = serverRegion === "global"
@@ -116,12 +116,12 @@ export default function LoginPage({
 
     setLogging(true)
 
-    const token = await captchaChallenge();
-    if (token) {
+    const token = await captchaChallenge(captchaEnabled);
+    if (token !== null) {
       await apiRequest('v1UsersPasswordLoginCreate', {
         email: userEmail.trim(),
         password: userPassword.trim(),
-        captcha_token: token,
+        captcha_token: token || '',
       }, [], async (resp) => {
         if (resp.code === 0) {
           localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ email: userEmail.trim(), password: userPassword.trim() }))
@@ -172,13 +172,13 @@ export default function LoginPage({
 
     setLogging(true)
 
-    const token = await captchaChallenge();
-    if (token) {
+    const token = await captchaChallenge(captchaEnabled);
+    if (token !== null) {
 
       await apiRequest('v1TeamsUsersLoginCreate', {
         email: teamManagerEmail.trim(),
         password: teamManagerPassword.trim(),
-        captcha_token: token,
+        captcha_token: token || '',
       }, [], (resp) => {
         if (resp.code === 0) {
           localStorage.setItem(MANAGER_STORAGE_KEY, JSON.stringify({ email: teamManagerEmail.trim(), password: teamManagerPassword.trim() }))

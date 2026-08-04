@@ -12418,6 +12418,11 @@
         "domain.ServerConfig": {
             "type": "object",
             "properties": {
+                "captcha_enabled": {
+                    "description": "CaptchaEnabled 是否启用 captcha 验证。",
+                    "type": "boolean",
+                    "example": true
+                },
                 "current_version": {
                     "description": "CurrentVersion 当前服务版本。",
                     "type": "string",

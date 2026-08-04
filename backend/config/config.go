@@ -98,6 +98,7 @@ type Config struct {
 
 type Security struct {
 	BlockPrivateNetwork bool `mapstructure:"block_private_network"`
+	CaptchaEnabled      bool `mapstructure:"captcha_enabled"`
 }
 
 type ReviewAgent struct {
@@ -332,6 +333,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("server.addr", ":8888")
 	v.SetDefault("server.base_url", "")
 	v.SetDefault("security.block_private_network", false)
+	v.SetDefault("security.captcha_enabled", true)
 	v.SetDefault("loki.addr", "http://monkeycode-ai-loki:3100")
 	v.SetDefault("clickhouse.addr", "")
 	v.SetDefault("clickhouse.database", "")

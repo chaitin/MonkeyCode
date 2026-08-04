@@ -16,6 +16,7 @@ import { captchaChallenge } from "@/utils/common";
 import { toast } from "sonner";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
+import { useAppRuntime } from "@/components/app-runtime-provider";
 
 interface TeamMembersCardProps {
   members: any[];
@@ -34,6 +35,7 @@ const ADD_MEMBER_ERROR_MATCHERS = {
 
 export default function TeamMembersCard({ members, memberLimit, usedSeats, groups, onRefreshMembers, onRefreshGroups }: TeamMembersCardProps) {
   const { t } = useTranslation();
+  const { captchaEnabled } = useAppRuntime();
   const isOfflineEdition = import.meta.env.VITE_APP_EDITION === "offline";
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [emails, setEmails] = useState("");
@@ -191,8 +193,8 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
         }
       })
     } else {
-      const captchaToken = await captchaChallenge();
-      if (!captchaToken) {
+      const captchaToken = await captchaChallenge(captchaEnabled);
+      if (captchaToken === null) {
         toast.error(t("managerMembers.toast.captchaFailed"));
         setResettingPassword(false);
         return;

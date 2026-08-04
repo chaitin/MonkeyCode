@@ -27,6 +27,7 @@ export type RuntimeAuthState = {
 type AppRuntimeContextValue = {
   serverConfig: ServerConfig | null;
   serverConfigLoading: boolean;
+  captchaEnabled: boolean;
   auth: RuntimeAuthState;
   reloadServerConfig: () => Promise<ServerConfig | null>;
   reloadAuth: () => Promise<RuntimeAuthState>;
@@ -121,6 +122,7 @@ export function AppRuntimeProvider({ children }: { children: ReactNode }) {
     () => ({
       serverConfig,
       serverConfigLoading,
+      captchaEnabled: serverConfig?.captcha_enabled !== false,
       auth,
       reloadServerConfig,
       reloadAuth,

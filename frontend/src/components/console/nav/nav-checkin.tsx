@@ -7,9 +7,11 @@ import { apiRequest } from "@/utils/requestUtils"
 import { Gift } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
+import { useAppRuntime } from "@/components/app-runtime-provider"
 
 export default function NavCheckin() {
   const { t } = useTranslation()
+  const { captchaEnabled } = useAppRuntime()
   const { checkedInToday, reloadCheckinStatus, reloadWallet } = useCommonData()
   const [submitting, setSubmitting] = React.useState(false)
 
@@ -20,8 +22,8 @@ export default function NavCheckin() {
 
     setSubmitting(true)
 
-    const captchaToken = await captchaChallenge()
-    if (!captchaToken) {
+    const captchaToken = await captchaChallenge(captchaEnabled)
+    if (captchaToken === null) {
       toast.error(t("consoleShell.rewards.toast.captchaFailed"))
       setSubmitting(false)
       return

@@ -74,7 +74,8 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 
 	// Captcha
 	do.Provide(i, func(i *do.Injector) (*captcha.Captcha, error) {
-		return captcha.NewCaptcha(), nil
+		cfg := do.MustInvoke[*config.Config](i)
+		return captcha.NewCaptcha(cfg.Security.CaptchaEnabled), nil
 	})
 
 	do.Provide(i, email.NewSMTPClient)

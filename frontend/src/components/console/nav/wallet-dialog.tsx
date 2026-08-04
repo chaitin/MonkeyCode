@@ -38,7 +38,7 @@ type WalletSectionId = (typeof WALLET_NAV)[number]["id"]
 
 export default function WalletDialog() {
   const { t } = useTranslation()
-  const { serverConfig } = useAppRuntime()
+  const { captchaEnabled, serverConfig } = useAppRuntime()
   const pricingRegion = getPricingRegion(serverConfig?.region)
   const isGlobalRegion = serverConfig?.region === "global"
   const [open, setOpen] = useState(false)
@@ -353,8 +353,8 @@ export default function WalletDialog() {
 
     setIsCheckinSubmitting(true)
 
-    const captchaToken = await captchaChallenge()
-    if (!captchaToken) {
+    const captchaToken = await captchaChallenge(captchaEnabled)
+    if (captchaToken === null) {
       toast.error(t("walletDialog.toast.captchaFailed"))
       setIsCheckinSubmitting(false)
       return

@@ -36,9 +36,11 @@ import {
 import { captchaChallenge } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { useTranslation } from "react-i18next";
+import { useAppRuntime } from "@/components/app-runtime-provider";
 
 export default function TeamManagerManager() {
   const { t } = useTranslation();
+  const { captchaEnabled } = useAppRuntime();
   const isOfflineEdition = import.meta.env.VITE_APP_EDITION === "offline";
   const [managers, setManagers] = useState<any[]>([]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -195,8 +197,8 @@ export default function TeamManagerManager() {
         }
       });
     } else {
-      const captchaToken = await captchaChallenge();
-      if (!captchaToken) {
+      const captchaToken = await captchaChallenge(captchaEnabled);
+      if (captchaToken === null) {
         toast.error(t("managerAdmins.toast.captchaFailed"));
         setResettingPassword(false);
         return;
