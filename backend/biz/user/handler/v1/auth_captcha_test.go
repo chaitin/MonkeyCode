@@ -13,6 +13,7 @@ import (
 	"github.com/GoYoko/web"
 	"github.com/labstack/echo/v4"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/captcha"
@@ -33,9 +34,10 @@ func TestPasswordLoginCaptchaToggle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			usecase := &passwordLoginUsecaseStub{}
 			h := &AuthHandler{
+				config:  &config.Config{Security: config.Security{CaptchaEnabled: tt.enabled}},
 				logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 				usecase: usecase,
-				captcha: captcha.NewCaptcha(tt.enabled),
+				captcha: captcha.NewCaptcha(),
 			}
 
 			err := h.PasswordLogin(testWebContext(), domain.TeamLoginReq{})
@@ -62,9 +64,10 @@ func TestPasswordLoginAcceptsEmptyCaptchaTokenWhenDisabled(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			usecase := &passwordLoginUsecaseStub{}
 			h := &AuthHandler{
+				config:  &config.Config{Security: config.Security{CaptchaEnabled: false}},
 				logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 				usecase: usecase,
-				captcha: captcha.NewCaptcha(false),
+				captcha: captcha.NewCaptcha(),
 			}
 			w := web.New()
 			w.POST("/login", web.BindHandler(h.PasswordLogin))
