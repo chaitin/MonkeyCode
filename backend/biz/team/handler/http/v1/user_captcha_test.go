@@ -1,10 +1,12 @@
 package v1
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -42,6 +44,37 @@ func TestTeamLoginCaptchaToggle(t *testing.T) {
 			}
 			if usecase.called != tt.called {
 				t.Fatalf("Login usecase called = %v, want %v", usecase.called, tt.called)
+			}
+		})
+	}
+}
+
+func TestTeamLoginAcceptsEmptyCaptchaTokenWhenDisabled(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "missing", body: `{"email":"admin@example.com","password":"password"}`},
+		{name: "empty", body: `{"email":"admin@example.com","password":"password","captcha_token":""}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usecase := &teamLoginUsecaseStub{}
+			h := &TeamGroupUserHandler{
+				logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+				usecase: usecase,
+				captcha: captcha.NewCaptcha(false),
+			}
+			w := web.New()
+			w.POST("/login", web.BindHandler(h.Login))
+
+			req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(tt.body))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			w.Echo().ServeHTTP(httptest.NewRecorder(), req)
+
+			if !usecase.called {
+				t.Fatal("Login usecase was not called")
 			}
 		})
 	}
