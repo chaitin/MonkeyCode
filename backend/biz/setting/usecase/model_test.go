@@ -18,7 +18,7 @@ func TestGetProviderModelListMiniMax(t *testing.T) {
 		t.Fatalf("GetProviderModelList() error = %v", err)
 	}
 
-	want := []string{"MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1", "MiniMax-M2"}
+	want := []string{"MiniMax-M3", "MiniMax-M2.7"}
 	if len(resp.Models) != len(want) {
 		t.Fatalf("model count = %d, want %d", len(resp.Models), len(want))
 	}

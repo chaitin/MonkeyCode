@@ -329,8 +329,5 @@ var ModelProviderBrandModelsList = map[consts.ModelProvider][]ProviderModelListI
 	consts.ModelProviderMiniMax: {
 		{Model: "MiniMax-M3"},
 		{Model: "MiniMax-M2.7"},
-		{Model: "MiniMax-M2.5"},
-		{Model: "MiniMax-M2.1"},
-		{Model: "MiniMax-M2"},
 	},
 }
