@@ -79,6 +79,8 @@ export default function Terminal({
   const [connecting, setConnecting] = React.useState(false);
   const [connected, setConnected] = React.useState(false);
   const pingLooper = React.useRef<number | null>(null);
+  const resizeFrame = React.useRef<number | null>(null);
+  const lastReportedSize = React.useRef('');
 
   React.useEffect(() => {
     onConnectionStatusChanged?.(connecting ? 'connecting' : connected ? 'connected' : 'disconnected');
@@ -87,19 +89,33 @@ export default function Terminal({
   const handleResize = () => {
     if (xtermInstance.current) {
       fitAddonRef.current?.fit();
-      // readyState 1 means the websocket is open.
-      if (websocketInstance.current && websocketInstance.current.readyState === 1) {
-        websocketInstance.current.send(JSON.stringify({
-          type: "resize",
-          data: JSON.stringify({
-            row: xtermInstance.current?.rows,
-            col: xtermInstance.current?.cols
+      if (websocketInstance.current && websocketInstance.current.readyState === WebSocket.OPEN) {
+        const nextSize = `${xtermInstance.current.cols}x${xtermInstance.current.rows}`;
+        if (nextSize === lastReportedSize.current) return;
+
+        websocketInstance.current.send(
+          JSON.stringify({
+            type: "resize",
+            data: JSON.stringify({
+              row: xtermInstance.current.rows,
+              col: xtermInstance.current.cols
+            })
           })
-        }));
+        );
+        lastReportedSize.current = nextSize;
       }
     }
   };
 
+  const scheduleResize = () => {
+    if (resizeFrame.current !== null) {
+      cancelAnimationFrame(resizeFrame.current);
+    }
+    resizeFrame.current = requestAnimationFrame(() => {
+      resizeFrame.current = null;
+      handleResize();
+    });
+  };
 
   React.useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -121,13 +137,17 @@ export default function Terminal({
     if (!terminalDiv.current) return;
 
     const resizeObserver = new ResizeObserver(() => {
-      handleResize();
+      scheduleResize();
     });
 
     resizeObserver.observe(terminalDiv.current);
 
     return () => {
       resizeObserver.disconnect();
+      if (resizeFrame.current !== null) {
+        cancelAnimationFrame(resizeFrame.current);
+        resizeFrame.current = null;
+      }
     };
   }, []);
 
@@ -142,6 +162,11 @@ export default function Terminal({
   }, [validTheme])
 
   const resetTerminal = () => {
+    if (resizeFrame.current !== null) {
+      cancelAnimationFrame(resizeFrame.current);
+      resizeFrame.current = null;
+    }
+    lastReportedSize.current = '';
     if (xtermInstance.current) {
       xtermInstance.current.dispose();
       xtermInstance.current = null;
@@ -228,12 +253,7 @@ export default function Terminal({
         setConnected(true);
         xtermInstance.current?.focus();
         // Trigger resize after the DOM has updated.
-        requestAnimationFrame(() => {
-          handleResize();
-        });
-      } else if (data.type === 'resize') {
-        const { col, row } = JSON.parse(data.data);
-        xtermInstance.current?.resize(col, row);
+        scheduleResize();
       } else if (data.type === 'error') {
         toast.error(t("common.terminal.serverError", { message: data.data }));
       }
