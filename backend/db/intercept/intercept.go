@@ -63,6 +63,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachinerecyclerecord"
 )
 
 // The Query interface represents an operation that queries a graph.
@@ -1579,6 +1580,33 @@ func (f TraverseVirtualMachine) Traverse(ctx context.Context, q db.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *db.VirtualMachineQuery", q)
 }
 
+// The VirtualMachineRecycleRecordFunc type is an adapter to allow the use of ordinary function as a Querier.
+type VirtualMachineRecycleRecordFunc func(context.Context, *db.VirtualMachineRecycleRecordQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f VirtualMachineRecycleRecordFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.VirtualMachineRecycleRecordQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.VirtualMachineRecycleRecordQuery", q)
+}
+
+// The TraverseVirtualMachineRecycleRecord type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseVirtualMachineRecycleRecord func(context.Context, *db.VirtualMachineRecycleRecordQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseVirtualMachineRecycleRecord) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseVirtualMachineRecycleRecord) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.VirtualMachineRecycleRecordQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.VirtualMachineRecycleRecordQuery", q)
+}
+
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q db.Query) (Query, error) {
 	switch q := q.(type) {
@@ -1690,6 +1718,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.UserIdentityQuery, predicate.UserIdentity, useridentity.OrderOption]{typ: db.TypeUserIdentity, tq: q}, nil
 	case *db.VirtualMachineQuery:
 		return &query[*db.VirtualMachineQuery, predicate.VirtualMachine, virtualmachine.OrderOption]{typ: db.TypeVirtualMachine, tq: q}, nil
+	case *db.VirtualMachineRecycleRecordQuery:
+		return &query[*db.VirtualMachineRecycleRecordQuery, predicate.VirtualMachineRecycleRecord, virtualmachinerecyclerecord.OrderOption]{typ: db.TypeVirtualMachineRecycleRecord, tq: q}, nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", q)
 	}

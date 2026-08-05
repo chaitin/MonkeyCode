@@ -142,3 +142,31 @@ func TestPollOncePreservesJobForRetryAfterMaxAttempts(t *testing.T) {
 		t.Fatalf("job preserved = %v, err = %v, want removed", ok, err)
 	}
 }
+
+func TestPollOncePreservesRefreshedJob(t *testing.T) {
+	ctx := context.Background()
+	srv := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	queue := NewRedisDelayQueue[string](rdb, slog.Default())
+	if _, err := queue.Enqueue(ctx, "recycle", "old", time.Now(), "vm-1"); err != nil {
+		t.Fatal(err)
+	}
+	refreshedAt := time.Now().Add(time.Hour).Truncate(time.Millisecond)
+
+	if err := queue.pollOnce(ctx, "recycle", func(context.Context, *Job[string]) error {
+		if _, err := queue.Enqueue(ctx, "recycle", "refreshed", refreshedAt, "vm-1"); err != nil {
+			return err
+		}
+		return ErrJobRescheduled
+	}); err != nil {
+		t.Fatal(err)
+	}
+	job, runAt, ok, err := queue.GetJobInfo(ctx, "recycle", "vm-1")
+	if err != nil || !ok {
+		t.Fatalf("refreshed job ok = %v, err = %v", ok, err)
+	}
+	if job.Payload != "refreshed" || !runAt.Equal(refreshedAt) || job.Attempts != 0 {
+		t.Fatalf("job = %+v, run at = %v", job, runAt)
+	}
+}

@@ -167,3 +167,6 @@ type UserIdentity func(*sql.Selector)
 
 // VirtualMachine is the predicate function for virtualmachine builders.
 type VirtualMachine func(*sql.Selector)
+
+// VirtualMachineRecycleRecord is the predicate function for virtualmachinerecyclerecord builders.
+type VirtualMachineRecycleRecord func(*sql.Selector)

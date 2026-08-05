@@ -60,6 +60,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachinerecyclerecord"
 	"github.com/chaitin/MonkeyCode/backend/ent/schema"
 	"github.com/google/uuid"
 )
@@ -1346,6 +1347,16 @@ func init() {
 	virtualmachineDescUpdatedAt := virtualmachineFields[24].Descriptor()
 	// virtualmachine.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	virtualmachine.DefaultUpdatedAt = virtualmachineDescUpdatedAt.Default.(func() time.Time)
+	virtualmachinerecyclerecordFields := schema.VirtualMachineRecycleRecord{}.Fields()
+	_ = virtualmachinerecyclerecordFields
+	// virtualmachinerecyclerecordDescRemoteDeleted is the schema descriptor for remote_deleted field.
+	virtualmachinerecyclerecordDescRemoteDeleted := virtualmachinerecyclerecordFields[7].Descriptor()
+	// virtualmachinerecyclerecord.DefaultRemoteDeleted holds the default value on creation for the remote_deleted field.
+	virtualmachinerecyclerecord.DefaultRemoteDeleted = virtualmachinerecyclerecordDescRemoteDeleted.Default.(bool)
+	// virtualmachinerecyclerecordDescCreatedAt is the schema descriptor for created_at field.
+	virtualmachinerecyclerecordDescCreatedAt := virtualmachinerecyclerecordFields[9].Descriptor()
+	// virtualmachinerecyclerecord.DefaultCreatedAt holds the default value on creation for the created_at field.
+	virtualmachinerecyclerecord.DefaultCreatedAt = virtualmachinerecyclerecordDescCreatedAt.Default.(func() time.Time)
 }
 
 const (
