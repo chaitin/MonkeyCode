@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/vmrecycle"
 )
@@ -85,10 +86,16 @@ type lifecycleRecyclerStub struct {
 	err    error
 	calls  int
 	vmID   string
+	method consts.VMRecycleMethod
 }
 
-func (s *lifecycleRecyclerStub) Recycle(_ context.Context, vmID string) (vmrecycle.Result, error) {
+func (s *lifecycleRecyclerStub) Recycle(_ context.Context, vmID string, method consts.VMRecycleMethod) (vmrecycle.Result, error) {
 	s.calls++
 	s.vmID = vmID
+	s.method = method
 	return s.result, s.err
+}
+
+func (s *lifecycleRecyclerStub) ForceRecycle(context.Context, string, consts.VMRecycleMethod) (vmrecycle.Result, error) {
+	return vmrecycle.Result{}, errors.New("not implemented")
 }

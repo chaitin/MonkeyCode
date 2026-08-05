@@ -27,9 +27,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
-	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 	"github.com/chaitin/MonkeyCode/backend/pkg/random"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/vmrecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/vmstatus"
 	"github.com/chaitin/MonkeyCode/backend/templates"
 )
@@ -44,6 +44,7 @@ type HostUsecase struct {
 	userRepo         domain.UserRepo
 	girepo           domain.GitIdentityRepo
 	vmexpireQueue    *delayqueue.VMExpireQueue
+	recycler         vmrecycle.Recycler
 	privilegeChecker domain.PrivilegeChecker // 可选，由内部项目通过 WithPrivilegeChecker 注入
 	tokenProvider    *gituc.TokenProvider
 }
@@ -59,6 +60,7 @@ func NewHostUsecase(i *do.Injector) (domain.HostUsecase, error) {
 		userRepo:      do.MustInvoke[domain.UserRepo](i),
 		girepo:        do.MustInvoke[domain.GitIdentityRepo](i),
 		vmexpireQueue: do.MustInvoke[*delayqueue.VMExpireQueue](i),
+		recycler:      do.MustInvoke[vmrecycle.Recycler](i),
 		tokenProvider: do.MustInvoke[*gituc.TokenProvider](i),
 	}
 
@@ -109,36 +111,8 @@ func (h *HostUsecase) vmexpireConsumer() {
 		err := h.vmexpireQueue.StartConsumer(context.Background(), VM_EXPIRE_QUEUE_KEY, func(ctx context.Context, job *delayqueue.Job[*domain.VmExpireInfo]) error {
 			innerLogger := logger.With("job", job)
 			innerLogger.InfoContext(ctx, "received expired virtualmachine")
-
-			ctx = entx.SkipSoftDelete(ctx)
-			vm, err := h.repo.GetVirtualMachine(ctx, job.Payload.VmID)
-			if err != nil {
-				innerLogger.ErrorContext(ctx, "failed to get vm", "error", err)
-				return nil
-			}
-
-			if err := h.taskflow.VirtualMachiner().Delete(ctx, &taskflow.DeleteVirtualMachineReq{
-				UserID: vm.UserID.String(),
-				HostID: vm.HostID,
-				ID:     vm.EnvironmentID,
-			}); err != nil {
-				innerLogger.ErrorContext(ctx, "failed to delete vm", "error", err)
-			}
-
-			if err := h.repo.UpdateVirtualMachine(ctx, vm.ID, func(vmuo *db.VirtualMachineUpdateOne) error {
-				vmuo.SetIsRecycled(true)
-				return nil
-			}); err != nil {
-				innerLogger.ErrorContext(ctx, "failed to update vm", "error", err)
-				return err
-			}
-
-			if err := h.markRecycledTasksFinished(ctx, vm); err != nil {
-				innerLogger.ErrorContext(ctx, "failed to finish recycled tasks", "error", err)
-				return err
-			}
-
-			return nil
+			_, err := h.recycler.ForceRecycle(ctx, job.Payload.VmID, consts.VMRecycleMethodExpired)
+			return err
 		})
 
 		h.logger.With("error", err, "index", index).WarnContext(context.Background(), "start consumer error retrying...")
@@ -534,15 +508,13 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 // DeleteVM 删除虚拟机
 func (h *HostUsecase) DeleteVM(ctx context.Context, uid uuid.UUID, hostID, vmID string) error {
 	h.logger.InfoContext(ctx, "delete vm", "vmID", vmID, "user_id", uid, "host_id", hostID)
+	if _, err := h.repo.GetVirtualMachineWithUser(ctx, uid, vmID); err != nil {
+		return err
+	}
+	if _, err := h.recycler.ForceRecycle(ctx, vmID, consts.VMRecycleMethodManualDelete); err != nil {
+		return err
+	}
 	return h.repo.DeleteVirtualMachine(ctx, uid, hostID, vmID, func(vm *db.VirtualMachine) error {
-		if err := h.taskflow.VirtualMachiner().Delete(ctx, &taskflow.DeleteVirtualMachineReq{
-			UserID: uid.String(),
-			HostID: vm.HostID,
-			ID:     vm.EnvironmentID,
-		}); err != nil {
-			h.logger.ErrorContext(ctx, "failed to delete vm", "error", err)
-		}
-
 		// 清理 expired_at 过期队列中的残留任务
 		_ = h.vmexpireQueue.Remove(ctx, VM_EXPIRE_QUEUE_KEY, vm.ID)
 

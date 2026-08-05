@@ -369,9 +369,10 @@ func (a *TaskUsecase) Stop(ctx context.Context, user *domain.User, id uuid.UUID)
 		// 通过 lifecycle 回收 VM
 		if vm := tk.VirtualMachine; vm != nil {
 			if err := a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStateRecycled, lifecycle.VMMetadata{
-				VMID:   vm.ID,
-				TaskID: &id,
-				UserID: user.ID,
+				VMID:          vm.ID,
+				TaskID:        &id,
+				UserID:        user.ID,
+				RecycleMethod: consts.VMRecycleMethodTaskStop,
 			}); err != nil {
 				a.logger.WarnContext(ctx, "vm recycle transition failed", "error", err, "vm_id", vm.ID)
 			}
@@ -1069,9 +1070,10 @@ func (a *TaskUsecase) Delete(ctx context.Context, user *domain.User, id uuid.UUI
 		vm := vms[0]
 		if !vm.IsRecycled {
 			if err := a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStateRecycled, lifecycle.VMMetadata{
-				VMID:   vm.ID,
-				TaskID: &id,
-				UserID: user.ID,
+				VMID:          vm.ID,
+				TaskID:        &id,
+				UserID:        user.ID,
+				RecycleMethod: consts.VMRecycleMethodTaskDelete,
 			}); err != nil {
 				a.logger.WarnContext(ctx, "vm recycle transition failed on delete", "error", err, "vm_id", vm.ID)
 			}

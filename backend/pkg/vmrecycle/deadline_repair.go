@@ -72,11 +72,12 @@ func (r *deadlineRepairer) Repair(ctx context.Context, vmID string) (DeadlineRep
 
 	recycleAt := r.now().Add(time.Duration(policy.EffectiveRecycleSeconds) * time.Second)
 	payload := &domain.VmIdleInfo{
-		UID:       vm.UserID,
-		VmID:      vm.ID,
-		HostID:    vm.HostID,
-		EnvID:     vm.EnvironmentID,
-		RecycleAt: recycleAt,
+		UID:           vm.UserID,
+		VmID:          vm.ID,
+		HostID:        vm.HostID,
+		EnvID:         vm.EnvironmentID,
+		RecycleAt:     recycleAt,
+		RecycleMethod: consts.VMRecycleMethodIdle,
 	}
 	_, added, err := r.queue.EnqueueIfMissing(ctx, RecycleQueueKey, payload, recycleAt, vm.ID)
 	if err != nil {

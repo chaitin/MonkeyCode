@@ -11,6 +11,18 @@ const (
 	Forever   VirtualmachineTTLKind = "forever"
 )
 
+type VMRecycleMethod string
+
+const (
+	VMRecycleMethodIdle         VMRecycleMethod = "idle"
+	VMRecycleMethodTaskStop     VMRecycleMethod = "task_stop"
+	VMRecycleMethodTaskDelete   VMRecycleMethod = "task_delete"
+	VMRecycleMethodExpired      VMRecycleMethod = "expired"
+	VMRecycleMethodManualDelete VMRecycleMethod = "manual_delete"
+	VMRecycleMethodForce        VMRecycleMethod = "force"
+	VMRecycleMethodLifecycle    VMRecycleMethod = "lifecycle"
+)
+
 type HostStatus string
 
 const (

@@ -37,6 +37,7 @@ func TestRecyclerRecyclesVMAndCleansLocalState(t *testing.T) {
 	hostRepo := &recycleHostRepoStub{vm: vm}
 	taskRepo := &recycleTaskRepoStub{}
 	vmClient := &recycleVMStub{}
+	recorder := &recycleRecorderStub{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	sleepQueue := delayqueue.NewVMSleepQueue(rdb, logger)
 	notifyQueue := delayqueue.NewVMNotifyQueue(rdb, logger)
@@ -52,6 +53,7 @@ func TestRecyclerRecyclesVMAndCleansLocalState(t *testing.T) {
 		notifyQueue:  notifyQueue,
 		recycleQueue: recycleQueue,
 		expireQueue:  expireQueue,
+		recorder:     recorder,
 		now:          func() time.Time { return time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC) },
 	}
 	payload := &domain.VmIdleInfo{VmID: vm.ID}
@@ -80,7 +82,7 @@ func TestRecyclerRecyclesVMAndCleansLocalState(t *testing.T) {
 		}
 	}
 
-	result, err := r.Recycle(ctx, vm.ID)
+	result, err := r.Recycle(ctx, vm.ID, consts.VMRecycleMethodIdle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +94,16 @@ func TestRecyclerRecyclesVMAndCleansLocalState(t *testing.T) {
 	}
 	if hostRepo.updateCalls != 1 || !vm.IsRecycled {
 		t.Fatalf("update calls = %d, recycled = %v", hostRepo.updateCalls, vm.IsRecycled)
+	}
+	if len(recorder.records) != 1 {
+		t.Fatalf("records = %d, want 1", len(recorder.records))
+	}
+	record := recorder.records[0]
+	if record.VMID != vm.ID || record.Method != consts.VMRecycleMethodIdle || !record.RemoteDeleted || !record.RecycledAt.Equal(r.now()) {
+		t.Fatalf("record = %+v", record)
+	}
+	if len(record.TaskIDs) != 2 {
+		t.Fatalf("record task ids = %v", record.TaskIDs)
 	}
 	if len(taskRepo.updated) != 1 || taskRepo.updated[0] != processingTaskID {
 		t.Fatalf("updated tasks = %v, want [%s]", taskRepo.updated, processingTaskID)
@@ -116,7 +128,7 @@ func TestRecyclerAlreadyRecycledSkipsRemoteDeleteAndRepairsCleanup(t *testing.T)
 	vm := &db.VirtualMachine{ID: "vm-recycled", IsRecycled: true, Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{ID: uuid.New(), Status: consts.TaskStatusProcessing}}}}
 	r, _, taskRepo, vmClient := newStubRecycler(t, vm)
 
-	result, err := r.Recycle(context.Background(), vm.ID)
+	result, err := r.Recycle(context.Background(), vm.ID, consts.VMRecycleMethodIdle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +150,7 @@ func TestRecyclerRemoteFailureDoesNotMarkOrClean(t *testing.T) {
 	vmClient.err = wantErr
 	queues := r.sleepQueue.(*recycleQueueStub)
 
-	result, err := r.Recycle(context.Background(), vm.ID)
+	result, err := r.Recycle(context.Background(), vm.ID, consts.VMRecycleMethodIdle)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("error = %v, want %v", err, wantErr)
 	}
@@ -155,7 +167,7 @@ func TestRecyclerTreatsMissingRemoteEnvironmentAsDeleted(t *testing.T) {
 	r, hostRepo, taskRepo, vmClient := newStubRecycler(t, vm)
 	vmClient.err = errors.New("recv err failed to stop environment: environment not found: env-1")
 
-	result, err := r.Recycle(context.Background(), vm.ID)
+	result, err := r.Recycle(context.Background(), vm.ID, consts.VMRecycleMethodIdle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,14 +193,7 @@ func TestForceRecyclerContinuesAfterOpaqueRemoteDeleteFailure(t *testing.T) {
 	}
 	r, hostRepo, taskRepo, vmClient := newStubRecycler(t, vm)
 	vmClient.err = errors.New(`HTTP 500: {"code":500,"message":"服务器错误 [trace_id: test]"}`)
-	forceRecycler, ok := any(r).(interface {
-		ForceRecycle(context.Context, string) (Result, error)
-	})
-	if !ok {
-		t.Fatal("recycler must support force recycle")
-	}
-
-	result, err := forceRecycler.ForceRecycle(context.Background(), vm.ID)
+	result, err := r.ForceRecycle(context.Background(), vm.ID, consts.VMRecycleMethodForce)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +214,7 @@ func TestRecyclerRetriesCleanupWithoutDeletingRemoteAgain(t *testing.T) {
 	sleepQueue := r.sleepQueue.(*recycleQueueStub)
 	sleepQueue.err = errors.New("redis unavailable")
 
-	result, err := r.Recycle(context.Background(), vm.ID)
+	result, err := r.Recycle(context.Background(), vm.ID, consts.VMRecycleMethodIdle)
 	if err == nil || result.Status != StatusRecycled {
 		t.Fatalf("first result = %+v, error = %v", result, err)
 	}
@@ -221,7 +226,7 @@ func TestRecyclerRetriesCleanupWithoutDeletingRemoteAgain(t *testing.T) {
 	}
 
 	sleepQueue.err = nil
-	result, err = r.Recycle(context.Background(), vm.ID)
+	result, err = r.Recycle(context.Background(), vm.ID, consts.VMRecycleMethodIdle)
 	if err != nil || result.Status != StatusAlreadyRecycled {
 		t.Fatalf("retry result = %+v, error = %v", result, err)
 	}
@@ -240,7 +245,7 @@ func TestRecyclerReturnsInProgressWhenLockExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := r.Recycle(context.Background(), vm.ID)
+	_, err := r.Recycle(context.Background(), vm.ID, consts.VMRecycleMethodIdle)
 	if !errors.Is(err, ErrInProgress) {
 		t.Fatalf("error = %v, want ErrInProgress", err)
 	}
@@ -253,7 +258,7 @@ func TestRecyclerReturnsNotFoundResult(t *testing.T) {
 	r, _, _, _ := newStubRecycler(t, nil)
 	r.hostRepo.(*recycleHostRepoStub).err = &db.NotFoundError{}
 
-	result, err := r.Recycle(context.Background(), "missing-vm")
+	result, err := r.Recycle(context.Background(), "missing-vm", consts.VMRecycleMethodIdle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,6 +335,16 @@ type recycleTaskRepoStub struct {
 	domain.TaskRepo
 	updated []uuid.UUID
 	err     error
+}
+
+type recycleRecorderStub struct {
+	records []Record
+	err     error
+}
+
+func (s *recycleRecorderStub) Create(_ context.Context, record Record) error {
+	s.records = append(s.records, record)
+	return s.err
 }
 
 func (s *recycleTaskRepoStub) Update(_ context.Context, _ *domain.User, id uuid.UUID, _ func(*db.TaskUpdateOne) error) error {

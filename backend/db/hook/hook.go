@@ -657,6 +657,18 @@ func (f VirtualMachineFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.VirtualMachineMutation", m)
 }
 
+// The VirtualMachineRecycleRecordFunc type is an adapter to allow the use of ordinary
+// function as VirtualMachineRecycleRecord mutator.
+type VirtualMachineRecycleRecordFunc func(context.Context, *db.VirtualMachineRecycleRecordMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f VirtualMachineRecycleRecordFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.VirtualMachineRecycleRecordMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.VirtualMachineRecycleRecordMutation", m)
+}
+
 // Condition is a hook condition function.
 type Condition func(context.Context, db.Mutation) bool
 

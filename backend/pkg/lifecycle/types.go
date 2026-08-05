@@ -5,6 +5,8 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+
+	"github.com/chaitin/MonkeyCode/backend/consts"
 )
 
 // State 状态类型约束（支持 string 及其派生类型）
@@ -48,8 +50,9 @@ const (
 
 // VMMetadata 虚拟机元数据
 type VMMetadata struct {
-	VMID   string     `json:"vm_id"`
-	TaskID *uuid.UUID `json:"task_id"`
-	UserID uuid.UUID  `json:"user_id"`
-	Region string     `json:"region,omitempty"`
+	VMID          string                 `json:"vm_id"`
+	TaskID        *uuid.UUID             `json:"task_id"`
+	UserID        uuid.UUID              `json:"user_id"`
+	Region        string                 `json:"region,omitempty"`
+	RecycleMethod consts.VMRecycleMethod `json:"recycle_method,omitempty"`
 }

@@ -1962,6 +1962,37 @@ var (
 			},
 		},
 	}
+	// VirtualmachineRecycleRecordsColumns holds the columns for the "virtualmachine_recycle_records" table.
+	VirtualmachineRecycleRecordsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "virtualmachine_id", Type: field.TypeString, Unique: true},
+		{Name: "environment_id", Type: field.TypeString},
+		{Name: "host_id", Type: field.TypeString},
+		{Name: "user_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "task_ids", Type: field.TypeJSON},
+		{Name: "method", Type: field.TypeString},
+		{Name: "remote_deleted", Type: field.TypeBool, Default: false},
+		{Name: "recycled_at", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// VirtualmachineRecycleRecordsTable holds the schema information for the "virtualmachine_recycle_records" table.
+	VirtualmachineRecycleRecordsTable = &schema.Table{
+		Name:       "virtualmachine_recycle_records",
+		Columns:    VirtualmachineRecycleRecordsColumns,
+		PrimaryKey: []*schema.Column{VirtualmachineRecycleRecordsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "virtualmachinerecyclerecord_method_recycled_at",
+				Unique:  false,
+				Columns: []*schema.Column{VirtualmachineRecycleRecordsColumns[6], VirtualmachineRecycleRecordsColumns[8]},
+			},
+			{
+				Name:    "virtualmachinerecyclerecord_user_id_recycled_at",
+				Unique:  false,
+				Columns: []*schema.Column{VirtualmachineRecycleRecordsColumns[4], VirtualmachineRecycleRecordsColumns[8]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AgentPluginsTable,
@@ -2018,6 +2049,7 @@ var (
 		UsersTable,
 		UserIdentitiesTable,
 		VirtualmachinesTable,
+		VirtualmachineRecycleRecordsTable,
 	}
 )
 
@@ -2263,5 +2295,8 @@ func init() {
 	VirtualmachinesTable.ForeignKeys[3].RefTable = UsersTable
 	VirtualmachinesTable.Annotation = &entsql.Annotation{
 		Table: "virtualmachines",
+	}
+	VirtualmachineRecycleRecordsTable.Annotation = &entsql.Annotation{
+		Table: "virtualmachine_recycle_records",
 	}
 }
