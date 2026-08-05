@@ -3,7 +3,7 @@
 import { b64decode, frameData } from "./codec";
 import { stripSourceSuffix, stripTierPrefix } from "./modelMenu";
 import { toolContentText, toolResultText } from "./toolDetails";
-import type { AcpUpdate, AskQuestion, Frame, LogItem, PermOutcome, PlanEntry, SlashCommand, SubEntry, ToolProgress, Usage } from "./types";
+import type { AcpUpdate, AskQuestion, DesignSelectionAction, DesignSelectionResponse, DesignTemplateItem, Frame, LogItem, PermOutcome, PlanEntry, SlashCommand, SubEntry, ToolProgress, Usage } from "./types";
 
 export interface ChatState {
   items: LogItem[];
@@ -89,10 +89,12 @@ function push(s: ChatState, item: LogItem): ChatState {
   return { ...s, items: [...s.items, item], streamKind: "" };
 }
 
-/** 轮次结束:未答复的审批卡片与提问卡片过期 */
+/** 轮次结束:所有尚未答复的交互卡片过期 */
 function expirePerms(items: LogItem[]): LogItem[] {
   return items.map((it) =>
-    (it.kind === "perm" || it.kind === "ask") && it.state === "open" ? { ...it, state: "expired" } : it,
+    (it.kind === "perm" || it.kind === "ask" || it.kind === "design-template-selection") && it.state === "open"
+      ? { ...it, state: "expired" }
+      : it,
   );
 }
 
@@ -428,6 +430,72 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
   }
 }
 
+function normalizeDesignRequest(raw: unknown): Extract<LogItem, { kind: "design-template-selection" }> | null {
+  const data = unknownRecord(raw);
+  if (!data || typeof data.request_id !== "string" || !data.request_id || !Array.isArray(data.items)) return null;
+  const items: DesignTemplateItem[] = [];
+  for (const value of data.items) {
+    const item = unknownRecord(value);
+    if (!item || typeof item.id !== "string" || !item.id || typeof item.title !== "string" || !item.title || typeof item.image !== "string" || !item.image) continue;
+    items.push({
+      id: item.id,
+      title: item.title,
+      image: item.image,
+      ...(typeof item.description === "string" ? { description: item.description } : {}),
+      ...(typeof item.recommended === "boolean" ? { recommended: item.recommended } : {}),
+    });
+  }
+  const actions = unknownRecord(data.actions);
+  const allowedActions = data.actions === undefined
+    ? { select: true, next: true, direct: true, cancel: true }
+    : {
+        select: actions?.select === true,
+        next: actions?.next === true,
+        direct: actions?.direct === true,
+        cancel: actions?.cancel === true,
+      };
+  const refinement = unknownRecord(data.refinement);
+  return {
+    kind: "design-template-selection",
+    requestId: data.request_id,
+    ...(typeof data.title === "string" ? { title: data.title } : {}),
+    ...(typeof data.description === "string" ? { description: data.description } : {}),
+    items,
+    allowedActions,
+    ...(refinement && typeof refinement.enabled === "boolean"
+      ? { refinement: { enabled: refinement.enabled, ...(typeof refinement.placeholder === "string" ? { placeholder: refinement.placeholder } : {}) } }
+      : {}),
+    state: "open",
+  };
+}
+
+function upsertDesignRequest(s: ChatState, request: Extract<LogItem, { kind: "design-template-selection" }>): ChatState {
+  const index = s.items.findIndex((item) => item.kind === "design-template-selection" && item.requestId === request.requestId);
+  if (index < 0) return push(s, request);
+  const items = s.items.slice();
+  const previous = items[index] as Extract<LogItem, { kind: "design-template-selection" }>;
+  // 历史重放/通知重发可以补全请求内容，但不得把终态卡重新打开。
+  items[index] = previous.state === "open" ? request : { ...request, ...previous };
+  return { ...s, items, streamKind: "" };
+}
+
+export function applyDesignSelectionResponse(s: ChatState, response: DesignSelectionResponse): ChatState {
+  return {
+    ...s,
+    items: s.items.map((item) =>
+      item.kind === "design-template-selection" && item.requestId === response.request_id && item.state === "open"
+        ? {
+            ...item,
+            state: "responded",
+            action: response.action,
+            ...(response.selected_id ? { selectedId: response.selected_id } : {}),
+            ...(response.refinement_text ? { refinementText: response.refinement_text } : {}),
+          }
+        : item,
+    ),
+  };
+}
+
 export function reduceFrame(s: ChatState, f: Frame): ChatState {
   switch (f.type) {
     case "task-started":
@@ -474,6 +542,32 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         // 有才写:undefined/空数组键会污染测试的全等比较,语义上也该缺席
         ...(atts.length ? { attachments: atts } : {}),
       });
+    }
+    case "design-template-selection-request": {
+      const request = normalizeDesignRequest(frameData<unknown>(f));
+      return request ? upsertDesignRequest(s, request) : s;
+    }
+    case "design-selection-respond": {
+      const data = frameData<{ request_id?: string; action?: string; selected_id?: string; refinement_text?: string }>(f);
+      if (!data?.request_id || !["select", "next", "direct", "cancel"].includes(data.action ?? "")) return s;
+      return applyDesignSelectionResponse(s, {
+        request_id: data.request_id,
+        action: data.action as DesignSelectionAction,
+        ...(typeof data.selected_id === "string" ? { selected_id: data.selected_id } : {}),
+        ...(typeof data.refinement_text === "string" ? { refinement_text: data.refinement_text } : {}),
+      });
+    }
+    case "design-selection-cancelled": {
+      const data = frameData<{ request_id?: string; reason?: string }>(f);
+      if (!data?.request_id) return s;
+      return {
+        ...s,
+        items: s.items.map((item) =>
+          item.kind === "design-template-selection" && item.requestId === data.request_id && item.state === "open"
+            ? { ...item, state: "cancelled", ...(typeof data.reason === "string" ? { reason: data.reason } : {}) }
+            : item,
+        ),
+      };
     }
     case "permission-req": {
       const data = frameData<{ id?: string; title?: string; tool?: string; tool_call_id?: string }>(f);

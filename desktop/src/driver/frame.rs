@@ -189,6 +189,26 @@ pub fn ask_user_question(request_id: &str, questions: &Value, seq: u64) -> Value
     )
 }
 
+/// Phase 1 设计模板选择请求。载荷保持引擎协议原形，UI 与 journal 回放
+/// 共用同一份数据，不借用 AskUserQuestion 工具帧。
+pub fn design_template_selection_request(payload: &Value, seq: u64) -> Value {
+    build("design-template-selection-request", None, Some(payload.clone()), seq)
+}
+
+/// 用户对设计模板选择请求的原子答复回显。
+pub fn design_selection_respond(payload: &Value, seq: u64) -> Value {
+    build("design-selection-respond", None, Some(payload.clone()), seq)
+}
+
+/// 引擎取消尚未答复的设计模板选择请求。
+pub fn design_selection_cancelled(request_id: &str, reason: &str, seq: u64) -> Value {
+    let mut data = json!({ "request_id": request_id });
+    if !reason.is_empty() {
+        data["reason"] = json!(reason);
+    }
+    build("design-selection-cancelled", None, Some(data), seq)
+}
+
 // ==================== ACP session update 帧 ====================
 
 pub fn agent_text(delta: &str, seq: u64) -> Value {

@@ -4,7 +4,8 @@ import { useState, type CSSProperties } from "react";
 import { MONO } from "./fonts";
 import { IconCheck } from "./icons";
 import { localizedToolTitleText, toolDisplayName } from "./toolLabels";
-import type { LogItem } from "./types";
+import { UploadImg } from "./uploadMedia";
+import type { DesignSelectionAction, DesignSelectionResponse, LogItem } from "./types";
 
 /** 审批答复回调(独立审批卡与工具卡内嵌按钮行共用签名) */
 export type PermAnswerFn = (id: string, action: "allow" | "always" | "persist" | "deny") => void;
@@ -99,6 +100,120 @@ export function PermCard({
         <span title={item.title}>{title}</span>
       </div>
       <PermActions id={item.id} onAnswer={onAnswer} />
+    </div>
+  );
+}
+
+const DESIGN_ACTION_LABEL: Record<DesignSelectionAction, string> = {
+  select: "已选择",
+  next: "已请求换一批",
+  direct: "已选择直接开发",
+  cancel: "已取消选择",
+};
+
+/** Phase 1 专用设计模板选择卡。图片沿用会话 uploads 回读能力，不把本地路径
+ * 直接交给 webview。业务提交 Promise 成功前保持开放态，并以 submitting
+ * 锁住全部操作，防止重复响应同一个 request。 */
+export function DesignTemplateSelectionCard({
+  item,
+  uploadUrl,
+  onRespond,
+}: {
+  item: Extract<LogItem, { kind: "design-template-selection" }>;
+  uploadUrl?: (path: string) => Promise<string>;
+  onRespond?: (response: DesignSelectionResponse) => Promise<boolean>;
+}) {
+  const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [refinement, setRefinement] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  if (item.state !== "open") {
+    const selected = item.items.find((candidate) => candidate.id === item.selectedId);
+    const label = item.state === "responded"
+      ? DESIGN_ACTION_LABEL[item.action ?? "cancel"]
+      : item.state === "cancelled" ? "选择请求已取消" : "选择请求已过期";
+    return (
+      <div style={{ display: "flex", justifyContent: "center", gap: 7, color: "var(--t5)", fontSize: 11.5 }}>
+        <IconCheck size={11} color="var(--t5)" />
+        <span>{label}{selected ? ` · ${selected.title}` : ""}{item.reason ? ` · ${item.reason}` : ""}</span>
+      </div>
+    );
+  }
+
+  const submit = async (action: DesignSelectionAction) => {
+    if (submitting || !onRespond || !item.allowedActions[action] || (action === "select" && !selectedId)) return;
+    const text = refinement.trim();
+    const response: DesignSelectionResponse = {
+      request_id: item.requestId,
+      action,
+      ...(action === "select" && selectedId ? { selected_id: selectedId } : {}),
+      ...(text ? { refinement_text: text } : {}),
+    };
+    setSubmitting(true);
+    try {
+      await onRespond(response);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const interactive = !!onRespond && !submitting;
+  const selectable = interactive && item.allowedActions.select;
+  const buttonStyle: CSSProperties = {
+    height: 30,
+    border: "1px solid var(--line)",
+    borderRadius: 8,
+    padding: "0 13px",
+    background: "var(--card)",
+    color: "var(--t2)",
+    fontSize: 12,
+    fontWeight: 650,
+    cursor: interactive ? "pointer" : "default",
+    opacity: submitting ? 0.6 : 1,
+  };
+
+  return (
+    <div style={{ width: "100%", maxWidth: 680, border: "1px solid var(--cardBd)", borderRadius: 13, background: "var(--card)", boxShadow: "var(--cardSh)", padding: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 750, color: "var(--t1)" }}>{item.title || "选择设计"}</div>
+      {item.description && <div style={{ marginTop: 4, color: "var(--t4)", fontSize: 12.5, lineHeight: 1.5 }}>{item.description}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 13 }}>
+        {item.items.map((candidate) => {
+          const active = selectedId === candidate.id;
+          return (
+            <button
+              key={candidate.id}
+              type="button"
+              disabled={!selectable}
+              aria-pressed={active}
+              onClick={() => setSelectedId(candidate.id)}
+              style={{ position: "relative", padding: 0, overflow: "hidden", textAlign: "left", border: `1.5px solid ${active ? "var(--acc)" : "var(--line)"}`, borderRadius: 10, background: active ? "var(--accBgSoft)" : "var(--card)", cursor: selectable ? "pointer" : "default" }}
+            >
+              {candidate.recommended && <span style={{ position: "absolute", zIndex: 1, top: 7, right: 7, borderRadius: 999, padding: "2px 7px", background: "var(--acc)", color: "var(--onAcc)", fontSize: 10, fontWeight: 700 }}>推荐</span>}
+              {uploadUrl ? (
+                <UploadImg load={() => uploadUrl(candidate.image)} alt={candidate.title} style={{ display: "block", width: "100%", aspectRatio: "4 / 3", objectFit: "cover", background: "var(--hov)" }} />
+              ) : <div style={{ width: "100%", aspectRatio: "4 / 3", background: "var(--hov)" }} />}
+              <span style={{ display: "block", padding: "9px 10px" }}>
+                <span style={{ display: "block", color: "var(--t1)", fontSize: 12.5, fontWeight: 700 }}>{candidate.title}</span>
+                {candidate.description && <span style={{ display: "block", marginTop: 3, color: "var(--t5)", fontSize: 11, lineHeight: 1.4 }}>{candidate.description}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {item.allowedActions.next && item.refinement?.enabled && (
+        <input
+          value={refinement}
+          disabled={!interactive}
+          onChange={(event) => setRefinement(event.target.value)}
+          placeholder={item.refinement.placeholder || "补充你的设计条件（可选）"}
+          style={{ boxSizing: "border-box", width: "100%", marginTop: 12, border: "1px solid var(--inputBd)", borderRadius: 8, background: "var(--inputBg)", color: "var(--t1)", padding: "8px 10px", fontSize: 12.5, outline: "none" }}
+        />
+      )}
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line2)" }}>
+        {item.allowedActions.cancel && <button type="button" disabled={!interactive} onClick={() => void submit("cancel")} style={buttonStyle}>取消</button>}
+        {item.allowedActions.direct && <button type="button" disabled={!interactive} onClick={() => void submit("direct")} style={buttonStyle}>直接开发</button>}
+        {item.allowedActions.next && <button type="button" disabled={!interactive} onClick={() => void submit("next")} style={buttonStyle}>换一批</button>}
+        {item.allowedActions.select && <button type="button" disabled={!interactive || !selectedId} onClick={() => void submit("select")} style={{ ...buttonStyle, borderColor: "var(--acc)", background: selectedId ? "var(--acc)" : "var(--hov)", color: selectedId ? "var(--onAcc)" : "var(--t5)", cursor: interactive && selectedId ? "pointer" : "default" }}>{submitting ? "提交中…" : "选择"}</button>}
+      </div>
     </div>
   );
 }

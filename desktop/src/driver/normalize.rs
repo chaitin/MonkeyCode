@@ -12,7 +12,35 @@ use serde_json::{json, Value};
 
 use super::frame::{self, PermOutcome, SessionStatus};
 use super::ohmy::Inner;
+use super::session::PendingDesignSelection;
 use crate::util::LockExt;
+
+/// 验证专用设计选择协议的最小结构，并提取响应校验需要的模板 id 集合。
+fn validate_design_selection_request(
+    params: &Value,
+) -> Result<(String, String, std::collections::HashSet<String>), ()> {
+    let request_id = params.get("request_id").and_then(Value::as_str).filter(|v| !v.is_empty()).ok_or(())?;
+    let session_id = params.get("session_id").and_then(Value::as_str).filter(|v| !v.is_empty()).ok_or(())?;
+    for key in ["title", "description"] {
+        if params.get(key).is_some_and(|v| !v.is_string() && !v.is_null()) {
+            return Err(());
+        }
+    }
+    let items = params.get("items").and_then(Value::as_array).ok_or(())?;
+    let mut item_ids = std::collections::HashSet::new();
+    for item in items {
+        let id = item.get("id").and_then(Value::as_str).filter(|v| !v.is_empty()).ok_or(())?;
+        item.get("title").and_then(Value::as_str).filter(|v| !v.is_empty()).ok_or(())?;
+        item.get("image").and_then(Value::as_str).filter(|v| !v.is_empty()).ok_or(())?;
+        if item.get("description").is_some_and(|v| !v.is_string() && !v.is_null())
+            || item.get("recommended").is_some_and(|v| !v.is_boolean() && !v.is_null())
+            || !item_ids.insert(id.to_string())
+        {
+            return Err(());
+        }
+    }
+    Ok((request_id.to_string(), session_id.to_string(), item_ids))
+}
 
 impl Inner {
     /// stdio 通知路由(reader 线程调用)。
@@ -80,6 +108,67 @@ impl Inner {
                 if let Some(sid) = sid {
                     self.emit_session_ask(&sid, false);
                 }
+            }
+            "design/template-selection/request" => {
+                let Ok((req_id, engine_sid, item_ids)) = validate_design_selection_request(&params) else {
+                    eprintln!("[desktop] 无效的设计模板选择请求,已忽略: {params}");
+                    return;
+                };
+                let sid = self.shell_sid_of(&engine_sid);
+                if sid.is_empty() || !self.sess.sessions.lock_ok().contains_key(&sid) {
+                    return;
+                }
+                let mut pending = self.sess.pending_design_selections.lock_ok();
+                if let Some(current) = pending.get(&sid) {
+                    // 引擎重发同一个 request 只确认既有状态，不重复产帧。
+                    if current.request_id == req_id {
+                        return;
+                    }
+                    eprintln!(
+                        "[desktop] 会话已有设计模板选择请求,拒绝覆盖: sid={sid} current={} incoming={req_id}",
+                        current.request_id
+                    );
+                    return;
+                }
+                // request_id 是响应关联键，生命周期内只登记一次；终态后的
+                // 重发也只确认旧事实，不能复活已响应/取消的卡片。
+                let mut seen = self.sess.seen_design_selection_requests.lock_ok();
+                if seen.contains(&req_id) {
+                    return;
+                }
+                if pending.values().any(|current| current.request_id == req_id) {
+                    eprintln!("[desktop] 设计模板选择 request_id 跨会话重复,已忽略: {req_id}");
+                    return;
+                }
+                seen.insert(req_id.clone());
+                pending.insert(sid.clone(), PendingDesignSelection {
+                    request_id: req_id,
+                    item_ids,
+                    responding: false,
+                });
+                self.push_frame(&sid, |seq| frame::design_template_selection_request(&params, seq));
+                drop(pending);
+                self.emit_session_ask(&sid, true);
+            }
+            "design/selection/cancelled" => {
+                let req_id = params.get("request_id").and_then(Value::as_str).unwrap_or("");
+                let engine_sid = params.get("session_id").and_then(Value::as_str).unwrap_or("");
+                if req_id.is_empty() || engine_sid.is_empty() {
+                    return;
+                }
+                let sid = self.shell_sid_of(engine_sid);
+                let mut pending = self.sess.pending_design_selections.lock_ok();
+                let matches_current = pending.get(&sid)
+                    .is_some_and(|current| current.request_id == req_id);
+                if !matches_current {
+                    // 特别包括旧请求的迟到 cancelled：绝不删除该会话的新请求。
+                    return;
+                }
+                pending.remove(&sid);
+                let reason = params.get("reason").and_then(Value::as_str).unwrap_or("");
+                self.push_frame(&sid, |seq| frame::design_selection_cancelled(req_id, reason, seq));
+                drop(pending);
+                self.emit_session_ask(&sid, false);
             }
             "turn/stopped" => {
                 let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));

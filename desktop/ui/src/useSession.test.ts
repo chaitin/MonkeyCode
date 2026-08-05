@@ -903,6 +903,32 @@ describe("本地会话核心:审批与提问答复", () => {
       payload: { request_id: "ask-1", answers_json: JSON.stringify({ "选哪个?": "A" }), cancelled: false },
     });
   });
+
+  it("设计选择失败不更新卡片，也不把健康连接误标成断开；成功后才收起", async () => {
+    const { core, out } = makeCore();
+    await openAndSettle(core);
+    pushFrames("s1", [frame("design-template-selection-request", {
+      request_id: "design-1",
+      items: [{ id: "clean", title: "简洁", image: "uploads/clean.png" }],
+    })]);
+    const design = () => out.chat.items.find((item) => item.kind === "design-template-selection") as Extract<LogItem, { kind: "design-template-selection" }>;
+    expect(design().state).toBe("open");
+    expect(out.connected).toBe(true);
+
+    sendFail = true;
+    expect(await core.answerDesignSelection({ request_id: "design-1", action: "select", selected_id: "clean" })).toBe(false);
+    expect(design().state).toBe("open");
+    expect(out.connected).toBe(true);
+    expect(out.status).toBe("已连接");
+
+    sendFail = false;
+    expect(await core.answerDesignSelection({ request_id: "design-1", action: "select", selected_id: "clean" })).toBe(true);
+    expect(sent.at(-1)).toEqual({
+      ftype: "design/selection/respond",
+      payload: { request_id: "design-1", action: "select", selected_id: "clean" },
+    });
+    expect(design()).toMatchObject({ state: "responded", action: "select", selectedId: "clean" });
+  });
 });
 
 describe("本地会话核心:模型与权限模式切换", () => {
