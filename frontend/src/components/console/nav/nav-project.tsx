@@ -407,10 +407,15 @@ export default function NavProject() {
           </SidebarMenu>
       )}
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
+          <AlertDialogHeader
+            role="region"
+            tabIndex={0}
+            aria-label={t("navProject.deleteTask.title")}
+            className="min-h-0 overflow-y-auto overscroll-contain outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset"
+          >
             <AlertDialogTitle>{t("navProject.deleteTask.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="break-words [overflow-wrap:anywhere]">
               {t("navProject.deleteTask.description", { task: getTaskDisplayName(taskToDelete) })}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -430,10 +435,15 @@ export default function NavProject() {
         </AlertDialogContent>
       </AlertDialog>
       <AlertDialog open={!!taskToStop} onOpenChange={(open) => !open && setTaskToStop(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
+          <AlertDialogHeader
+            role="region"
+            tabIndex={0}
+            aria-label={t("navProject.stopTask.title")}
+            className="min-h-0 overflow-y-auto overscroll-contain outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset"
+          >
             <AlertDialogTitle>{t("navProject.stopTask.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="break-words [overflow-wrap:anywhere]">
               {t("navProject.stopTask.description", { task: getTaskDisplayName(taskToStop) })}
             </AlertDialogDescription>
           </AlertDialogHeader>

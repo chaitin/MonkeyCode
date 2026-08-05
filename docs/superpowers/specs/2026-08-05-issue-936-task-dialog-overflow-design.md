@@ -5,7 +5,7 @@
 - 日期：2026-08-05
 - Issue：https://github.com/chaitin/MonkeyCode/issues/936
 - 分支：`260805-fix-936-stop-dialog-overflow`
-- 状态：设计已确认，等待书面规格复核
+- 状态：设计已确认并完成实施
 
 ## 问题
 
@@ -59,8 +59,10 @@ Header 增加：
 - `min-h-0`
 - `overflow-y-auto`
 - `overscroll-contain`
+- `role="region"`、`tabIndex={0}` 和本地化 `aria-label`
+- 可见的 `focus-visible` 焦点环
 
-长任务名称只在 Header 内滚动，滚动到边界时保持弹窗上下文稳定。
+长任务名称只在 Header 内滚动，滚动到边界时保持弹窗上下文稳定。键盘用户可以聚焦该区域并使用方向键、Page Up 或 Page Down 浏览完整内容。
 
 ### AlertDialogDescription
 
@@ -88,7 +90,7 @@ Description 增加：
 新增一个聚焦布局契约的 TypeScript 测试，读取 `nav-project.tsx` 并验证：
 
 1. 终止和删除两个 `AlertDialogContent` 都具有视口最大高度、双行网格和内容裁剪。
-2. 两个 Header 都具有可收缩、垂直滚动和 overscroll 约束。
+2. 两个 Header 都具有可收缩、垂直滚动、overscroll 约束和键盘焦点入口。
 3. 两个 Description 都具有单词断行和任意位置断行。
 4. Footer 位于 Header 之后，保持独立操作区。
 
