@@ -64,6 +64,7 @@ fn main() {
                 "upload_abort",
                 "upload_file_path",
                 "upload_read",
+                "design_template_preview_read",
                 "stat_dropped_file",
                 "read_dropped_file",
                 "cloud_ws_open",

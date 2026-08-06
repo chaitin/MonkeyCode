@@ -759,3 +759,83 @@ describe("大字段护栏标记透传", () => {
     expect(tool.out).toContain("前 1KB");
   });
 });
+
+
+describe("Phase 1 设计模板选择", () => {
+  const request = frame("design-template-selection-request", {
+    request_id: "design-1",
+    title: "选择模板",
+    description: "挑选一个方向",
+    items: [
+      { id: "clean", title: "简洁", image: "uploads/clean.png", recommended: true },
+      { id: "bold", title: "醒目", image: "uploads/bold.png", description: "高对比" },
+    ],
+    refinement: { enabled: true, placeholder: "补充条件" },
+  });
+
+  it("正规化请求并对同 request_id 原位 upsert", () => {
+    const first = reduceFrame(initialChat, request);
+    const next = reduceFrame(first, frame("design-template-selection-request", {
+      ...(request.data as object),
+      title: "更新后的标题",
+    }));
+    expect(next.items).toHaveLength(1);
+    expect(next.items[0]).toMatchObject({
+      kind: "design-template-selection",
+      requestId: "design-1",
+      title: "更新后的标题",
+      state: "open",
+      allowedActions: { select: true, next: true, direct: true, cancel: true },
+      refinement: { enabled: true, placeholder: "补充条件" },
+    });
+  });
+
+  it("正规化显式 actions，未列出的动作保持禁止", () => {
+    const state = reduceFrame(initialChat, frame("design-template-selection-request", {
+      ...(request.data as object),
+      actions: { select: true, next: false },
+    }));
+    expect(state.items[0]).toMatchObject({
+      allowedActions: { select: true, next: false, direct: false, cancel: false },
+    });
+  });
+
+  it("响应与引擎取消进入终态且重复请求不能复活", () => {
+    const responded = reduceFrame(
+      reduceFrame(initialChat, request),
+      frame("design-selection-respond", { request_id: "design-1", action: "select", selected_id: "clean", refinement_text: "更亮" }),
+    );
+    expect(responded.items[0]).toMatchObject({ state: "responded", action: "select", selectedId: "clean", refinementText: "更亮" });
+    expect(reduceFrame(responded, request).items[0]).toMatchObject({ state: "responded", selectedId: "clean" });
+
+    const cancelled = reduceFrame(
+      reduceFrame(initialChat, request),
+      frame("design-selection-cancelled", { request_id: "design-1", reason: "任务已变化" }),
+    );
+    expect(cancelled.items[0]).toMatchObject({ state: "cancelled", reason: "任务已变化" });
+  });
+
+  it("兼容 image 字段并正规化 html/image preview", () => {
+    const state = reduceFrame(initialChat, frame("design-template-selection-request", {
+      request_id: "dynamic",
+      items: [
+        { id: "html", title: "动态", preview: { type: "html", path: ".monkeycode/design-template-previews/html/index.html" } },
+        { id: "new-image", title: "新图片", preview: { type: "image", path: "uploads/new.png" } },
+        { id: "legacy", title: "旧图片", image: "uploads/legacy.png" },
+        { id: "bad", title: "非法", preview: { type: "video", path: "x" } },
+      ],
+    }));
+    expect(state.items[0]).toMatchObject({
+      items: [
+        { id: "html", preview: { type: "html", path: ".monkeycode/design-template-previews/html/index.html" } },
+        { id: "new-image", preview: { type: "image", path: "uploads/new.png" } },
+        { id: "legacy", image: "uploads/legacy.png" },
+      ],
+    });
+  });
+
+  it("task ended 使开放请求过期", () => {
+    const ended = reduceFrame(reduceFrame(initialChat, request), frame("task-ended"));
+    expect(ended.items[0]).toMatchObject({ kind: "design-template-selection", state: "expired" });
+  });
+});

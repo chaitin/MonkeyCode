@@ -597,6 +597,12 @@ fn write_ohmyagent_config(
     if !secret.is_empty() {
         settings["signing_secret"] = serde_json::json!(secret);
     }
+    #[cfg(debug_assertions)]
+    if let Some(package_path) = std::env::var_os("MC_MONKEYDESIGN_PACKAGE_PATH") {
+        settings["monkeydesign"] = serde_json::json!({
+            "package_path": package_path.to_string_lossy(),
+        });
+    }
     atomic_write_private(
         &dir.join("settings.json"),
         &serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?,

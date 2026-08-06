@@ -1,7 +1,7 @@
 // 本地会话域:会话 CRUD、全局会话事件、引擎能力/崩溃/重启、本地会话流
 // (connect)。IPC 原语在 ipc.ts,载荷纯数据类型在 types.ts。
 import { invoke, listen, listenAsync } from "./ipc";
-import type { EngineCaps, EngineStatus, Frame, ModelInfo, SessionEvent, SessionMeta } from "./types";
+import type { DesignSelectionResponse, EngineCaps, EngineStatus, Frame, ModelInfo, SessionEvent, SessionMeta } from "./types";
 
 // ==================== 会话管理 ====================
 
@@ -85,6 +85,15 @@ export async function sessionSend(id: string, ftype: string, payload: unknown): 
     return false;
   }
 }
+
+/** 设计模板选择是业务回执，不借 Conn.send 的连接故障提示通道。校验失败或
+ * 请求已终态只返回 false，不能把仍然健康的会话误标成断开。 */
+export const respondDesignSelection = (id: string, payload: DesignSelectionResponse) =>
+  sessionSend(id, "design/selection/respond", payload);
+
+/** 受控读取当前工作区固定模板缓存根中的独立 HTML bundle。 */
+export const readDesignTemplatePreview = (id: string, path: string) =>
+  invoke<string>("design_template_preview_read", { id, path });
 
 /** 往前翻页:cursor 之前的最多 limit 轮(形状与云端 mcTaskRounds 一致) */
 export const sessionHistory = (id: string, cursor: number, limit = 1) =>

@@ -214,6 +214,44 @@ export interface CloudAttachment {
   filename: string;
 }
 
+/** 设计模板动态预览。image 继续走现有工作区图片回读；html 只能走壳的
+ * 固定模板缓存根读取命令。 */
+export interface DesignTemplatePreview {
+  type: "html" | "image";
+  path: string;
+}
+
+/** 设计模板选择协议中的候选模板。image 是旧版兼容字段。 */
+export interface DesignTemplateItem {
+  id: string;
+  title: string;
+  image?: string;
+  preview?: DesignTemplatePreview;
+  description?: string;
+  recommended?: boolean;
+}
+
+export interface DesignSelectionRefinement {
+  enabled: boolean;
+  placeholder?: string;
+}
+
+export type DesignSelectionAction = "select" | "next" | "direct" | "cancel";
+
+export interface DesignSelectionActions {
+  select: boolean;
+  next: boolean;
+  direct: boolean;
+  cancel: boolean;
+}
+
+export interface DesignSelectionResponse {
+  request_id: string;
+  action: DesignSelectionAction;
+  selected_id?: string;
+  refinement_text?: string;
+}
+
 /** 对话流里的一条渲染项 */
 export type LogItem =
   | {
@@ -275,7 +313,22 @@ export type LogItem =
       toolCallId?: string;
     }
   /** AI 提问卡片(云端 ask_user_question;askId 即回传 reply 的 request_id) */
-  | { kind: "ask"; askId: string; state: "open" | "done" | "expired"; questions: AskQuestion[] };
+  | { kind: "ask"; askId: string; state: "open" | "done" | "expired"; questions: AskQuestion[] }
+  /** Phase 1 专用设计模板选择卡，不借用通用问答协议。 */
+  | {
+      kind: "design-template-selection";
+      requestId: string;
+      title?: string;
+      description?: string;
+      items: DesignTemplateItem[];
+      allowedActions: DesignSelectionActions;
+      refinement?: DesignSelectionRefinement;
+      state: "open" | "responded" | "cancelled" | "expired";
+      action?: DesignSelectionAction;
+      selectedId?: string;
+      refinementText?: string;
+      reason?: string;
+    };
 
 export interface FileChange {
   status: "A" | "M" | "D";

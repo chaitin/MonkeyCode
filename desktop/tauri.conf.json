@@ -11,7 +11,7 @@
     "windows": [],
     "macOSPrivateApi": true,
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'self' blob:",
       "dangerousDisableAssetCspModification": [
         "style-src"
       ],
@@ -85,6 +85,7 @@
             "allow-upload-abort",
             "allow-upload-file-path",
             "allow-upload-read",
+            "allow-design-template-preview-read",
             "allow-stat-dropped-file",
             "allow-read-dropped-file",
             "allow-cloud-ws-open",

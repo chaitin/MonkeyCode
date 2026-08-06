@@ -49,15 +49,26 @@ pub enum EngineStatus {
     /// 未启动:冷启动前、或应用退出/重启的中间态。
     Stopped,
     /// 正在拉起。attempt>0 表示这是崩溃后的第几次自动重试。
-    Starting { attempt: u32 },
-    Ready { version: String },
+    Starting {
+        attempt: u32,
+    },
+    Ready {
+        version: String,
+    },
     /// 非 stop() 引发的退出。retry_in_ms=Some 表示正在退避等待自动重启,
     /// None 表示已熔断,只能人工重启。
     /// retry_in_ms 用 u32:u64 经 ts-rs 会生成 `bigint`,而 Tauri IPC 送到 UI
     /// 的是普通 JS number,类型与运行时对不上(退避上限 16s,u32 绰绰有余)。
-    Crashed { detail: String, log_tail: String, attempt: u32, retry_in_ms: Option<u32> },
+    Crashed {
+        detail: String,
+        log_tail: String,
+        attempt: u32,
+        retry_in_ms: Option<u32>,
+    },
     /// 启动失败:二进制缺失、配置物化失败、握手超时、协议版本不匹配。
-    Failed { error: String },
+    Failed {
+        error: String,
+    },
 }
 
 impl EngineStatus {
@@ -68,7 +79,10 @@ impl EngineStatus {
         match self {
             EngineStatus::Starting { attempt: 0 } => "引擎正在启动,请稍候".into(),
             EngineStatus::Starting { .. } => "引擎正在自动重启,请稍候".into(),
-            EngineStatus::Crashed { retry_in_ms: Some(_), .. } => "引擎已退出,正在自动重启".into(),
+            EngineStatus::Crashed {
+                retry_in_ms: Some(_),
+                ..
+            } => "引擎已退出,正在自动重启".into(),
             EngineStatus::Crashed { .. } => "引擎已退出,请点顶部横幅重启".into(),
             EngineStatus::Failed { error } => format!("引擎未运行: {error}"),
             // Ready 而句柄为空是不可达的(同锁维护),兜底给通用文案
@@ -80,7 +94,10 @@ impl EngineStatus {
     /// 两种都不退进程(托盘可用时 ExitRequested 一律 prevent_exit),区别只在
     /// 有没有任务要护着;销毁那条依赖 show_any_window 能把窗口重建回来。
     pub fn alive(&self) -> bool {
-        matches!(self, EngineStatus::Ready { .. } | EngineStatus::Starting { .. })
+        matches!(
+            self,
+            EngineStatus::Ready { .. } | EngineStatus::Starting { .. }
+        )
     }
 }
 
@@ -91,7 +108,11 @@ impl EngineStatus {
 /// 首次,attempt 永远停在 1、退避永远是 1s、熔断永远触发不到——自动重启
 /// 直接退化成 1s 一次的死循环。
 pub fn next_retry(attempt: u32, uptime: Duration) -> Option<(u32, Duration)> {
-    let used = if uptime >= ENGINE_STABLE_UPTIME { 0 } else { attempt };
+    let used = if uptime >= ENGINE_STABLE_UPTIME {
+        0
+    } else {
+        attempt
+    };
     if used >= ENGINE_MAX_RETRY {
         return None;
     }
@@ -121,7 +142,9 @@ pub struct DriverLease<'a> {
 
 impl Deref for DriverLease<'_> {
     type Target = OhmyDriver;
-    fn deref(&self) -> &Self::Target { &self.engine }
+    fn deref(&self) -> &Self::Target {
+        &self.engine
+    }
 }
 
 impl Drop for DriverLease<'_> {
@@ -134,7 +157,9 @@ impl Drop for DriverLease<'_> {
 
 /// 持有期间 get 拒绝新命令；已有命令在 guard 创建前已排空。
 #[must_use]
-pub struct DriverApplyGuard<'a> { host: &'a DriverHost }
+pub struct DriverApplyGuard<'a> {
+    host: &'a DriverHost,
+}
 
 impl Drop for DriverApplyGuard<'_> {
     fn drop(&mut self) {
@@ -159,8 +184,12 @@ impl DriverHost {
 
     pub fn get(&self) -> Result<DriverLease<'_>, String> {
         let mut state = self.state.lock_ok();
-        if state.applying { return Err("引擎配置正在应用，请稍后重试".into()); }
-        let Some(engine) = state.engine.clone() else { return Err(state.status.unavailable()) };
+        if state.applying {
+            return Err("引擎配置正在应用，请稍后重试".into());
+        }
+        let Some(engine) = state.engine.clone() else {
+            return Err(state.status.unavailable());
+        };
         state.leases += 1;
         Ok(DriverLease { host: self, engine })
     }
@@ -197,7 +226,10 @@ impl DriverHost {
         while state.leases != 0 {
             state = self.idle.wait(state).unwrap_or_else(|e| e.into_inner());
         }
-        let running = state.engine.as_ref().is_some_and(OhmyDriver::has_running_sessions);
+        let running = state
+            .engine
+            .as_ref()
+            .is_some_and(OhmyDriver::has_running_sessions);
         if running {
             state.applying = false;
             self.idle.notify_all();
@@ -342,7 +374,13 @@ pub async fn session_create(
         return Err(format!("不支持的会话类型: {kind}"));
     }
     host.get()?
-        .session_create_with_kind(&workdir, &model, create_dir, kind, think.as_deref().unwrap_or(""))
+        .session_create_with_kind(
+            &workdir,
+            &model,
+            create_dir,
+            kind,
+            think.as_deref().unwrap_or(""),
+        )
         .await
 }
 
@@ -352,7 +390,11 @@ pub async fn session_delete(host: State<'_, DriverHost>, id: String) -> Result<V
 }
 
 #[tauri::command]
-pub async fn session_patch(host: State<'_, DriverHost>, id: String, patch: Value) -> Result<Value, String> {
+pub async fn session_patch(
+    host: State<'_, DriverHost>,
+    id: String,
+    patch: Value,
+) -> Result<Value, String> {
     host.get()?.session_patch(&id, patch).await
 }
 
@@ -382,7 +424,11 @@ pub async fn session_history(
 
 /// 回读单帧原文:物化时截断的工具大字段,展开卡片时按 seq 取全文。
 #[tauri::command]
-pub async fn session_frame(host: State<'_, DriverHost>, id: String, seq: u64) -> Result<Value, String> {
+pub async fn session_frame(
+    host: State<'_, DriverHost>,
+    id: String,
+    seq: u64,
+) -> Result<Value, String> {
     host.get()?.session_frame(&id, seq).await
 }
 
@@ -431,9 +477,14 @@ pub async fn session_call(
     let engine = host.get()?;
     if kind.starts_with("repo_") {
         let workdir = engine.session_workdir(&id).await?;
-        let ctx = RepoCtx { workdir, wsl_distro: engine.wsl_distro() };
+        let ctx = RepoCtx {
+            workdir,
+            wsl_distro: engine.wsl_distro(),
+        };
         // git/fs 是阻塞操作,丢 blocking 池;15s 超时防文件面板永久转圈
-        let task = tauri::async_runtime::spawn_blocking(move || crate::repo::dispatch(&ctx, &kind, &payload));
+        let task = tauri::async_runtime::spawn_blocking(move || {
+            crate::repo::dispatch(&ctx, &kind, &payload)
+        });
         return match tokio::time::timeout(std::time::Duration::from_secs(15), task).await {
             Ok(r) => r.map_err(|e| format!("repo 查询失败: {e}")),
             Err(_) => Err("repo 查询超时(15s)".into()),
@@ -481,7 +532,11 @@ pub async fn upload_file_path(
 }
 
 #[tauri::command]
-pub async fn upload_read(host: State<'_, DriverHost>, id: String, path: String) -> Result<String, String> {
+pub async fn upload_read(
+    host: State<'_, DriverHost>,
+    id: String,
+    path: String,
+) -> Result<String, String> {
     let engine = host.get()?;
     let workdir = engine.session_workdir(&id).await?;
     let distro = engine.wsl_distro();
@@ -490,6 +545,22 @@ pub async fn upload_read(host: State<'_, DriverHost>, id: String, path: String) 
     })
     .await
     .map_err(|e| format!("读取失败: {e}"))?
+}
+
+#[tauri::command]
+pub async fn design_template_preview_read(
+    host: State<'_, DriverHost>,
+    id: String,
+    path: String,
+) -> Result<String, String> {
+    let engine = host.get()?;
+    let workdir = engine.session_workdir(&id).await?;
+    let distro = engine.wsl_distro();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::uploads::read_design_template_html(&workdir, distro.as_deref(), &path)
+    })
+    .await
+    .map_err(|e| format!("读取模板预览失败: {e}"))?
 }
 
 #[cfg(test)]
@@ -501,10 +572,19 @@ mod lifecycle_tests {
     fn backoff_grows_then_trips_the_breaker() {
         let crashed_fast = Duration::from_secs(1);
         let delays: Vec<u64> = (0..ENGINE_MAX_RETRY)
-            .map(|n| next_retry(n, crashed_fast).expect("未到上限应继续重试").1.as_secs())
+            .map(|n| {
+                next_retry(n, crashed_fast)
+                    .expect("未到上限应继续重试")
+                    .1
+                    .as_secs()
+            })
             .collect();
         assert_eq!(delays, vec![1, 2, 4, 8, 16]);
-        assert_eq!(next_retry(ENGINE_MAX_RETRY, crashed_fast), None, "用尽即熔断");
+        assert_eq!(
+            next_retry(ENGINE_MAX_RETRY, crashed_fast),
+            None,
+            "用尽即熔断"
+        );
     }
 
     /// 每次重试都要真的递增,否则退避永远停在第一档。
@@ -542,7 +622,10 @@ mod lifecycle_tests {
     /// 状态决定关窗语义:崩溃/熔断态不该再假装最小化到托盘。
     #[test]
     fn only_live_phases_keep_the_window_in_the_tray() {
-        assert!(EngineStatus::Ready { version: "v".into() }.alive());
+        assert!(EngineStatus::Ready {
+            version: "v".into()
+        }
+        .alive());
         assert!(EngineStatus::Starting { attempt: 1 }.alive());
         assert!(!EngineStatus::Stopped.alive());
         assert!(!EngineStatus::Failed { error: "x".into() }.alive());
@@ -567,9 +650,11 @@ mod lifecycle_tests {
         };
         assert!(crashed(Some(1000)).unavailable().contains("正在自动重启"));
         assert!(crashed(None).unavailable().contains("请点顶部横幅重启"));
-        assert!(EngineStatus::Failed { error: "找不到二进制".into() }
-            .unavailable()
-            .contains("找不到二进制"));
+        assert!(EngineStatus::Failed {
+            error: "找不到二进制".into()
+        }
+        .unavailable()
+        .contains("找不到二进制"));
     }
 
     /// 过期实例的死讯不得动到当前引擎——这是"启动超时残留的孤儿进程日后
@@ -578,13 +663,21 @@ mod lifecycle_tests {
     fn a_stale_instance_exit_cannot_evict_the_live_engine() {
         let host = DriverHost::new();
         // 不起真进程:take_instance 的判定只看实例号,用状态侧模拟即可
-        assert!(host.take_instance(41).is_none(), "空 host 上任何实例都摘不到");
-        host.set_status(EngineStatus::Ready { version: "v".into() });
+        assert!(
+            host.take_instance(41).is_none(),
+            "空 host 上任何实例都摘不到"
+        );
+        host.set_status(EngineStatus::Ready {
+            version: "v".into(),
+        });
         assert!(
             host.take_instance(41).is_none(),
             "句柄不在位时不得把状态改成 Stopped"
         );
-        assert!(host.status().alive(), "状态必须原样保留,交给真正的收尾方处理");
+        assert!(
+            host.status().alive(),
+            "状态必须原样保留,交给真正的收尾方处理"
+        );
     }
 
     /// 崩溃摘句柄后,借引擎的命令必须拿到崩溃态的文案而不是通用的"未运行"。
@@ -598,7 +691,9 @@ mod lifecycle_tests {
             retry_in_ms: Some(2000),
         });
         assert!(!host.running(), "崩溃态不算存活");
-        let Err(err) = host.get() else { panic!("句柄已摘,不该借得出引擎") };
+        let Err(err) = host.get() else {
+            panic!("句柄已摘,不该借得出引擎")
+        };
         assert!(err.contains("自动重启"), "文案应说明壳正在处理: {err}");
     }
 }

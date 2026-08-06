@@ -28,7 +28,10 @@ use serde_json::{json, Value};
 /// rename_all 小写与 as_str 一致(两处同改才算改)。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../ui/src/gen/", rename_all = "lowercase"))]
+#[cfg_attr(
+    test,
+    ts(export, export_to = "../ui/src/gen/", rename_all = "lowercase")
+)]
 pub enum SessionStatus {
     Created,
     Running,
@@ -57,7 +60,10 @@ impl SessionStatus {
 /// ts-rs 导出 → ui/src/gen/PermOutcome.ts(rename_all 小写与 as_str 一致)。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../ui/src/gen/", rename_all = "lowercase"))]
+#[cfg_attr(
+    test,
+    ts(export, export_to = "../ui/src/gen/", rename_all = "lowercase")
+)]
 pub enum PermOutcome {
     Approved,
     Denied,
@@ -125,7 +131,12 @@ fn build(ftype: &str, kind: Option<&str>, payload: Option<Value>, seq: u64) -> V
 }
 
 fn acp(update: Value, seq: u64) -> Value {
-    build("task-running", Some("acp_event"), Some(json!({ "update": update })), seq)
+    build(
+        "task-running",
+        Some("acp_event"),
+        Some(json!({ "update": update })),
+        seq,
+    )
 }
 
 // ==================== 顶层帧 ====================
@@ -144,7 +155,12 @@ pub fn task_error(msg: &str, seq: u64) -> Value {
 
 /// 用户输入回显(content 为 base64 文本,与云端上行格式一致)。
 pub fn user_input(text: &str, seq: u64) -> Value {
-    build("user-input", None, Some(json!({ "content": b64_text(text) })), seq)
+    build(
+        "user-input",
+        None,
+        Some(json!({ "content": b64_text(text) })),
+        seq,
+    )
 }
 
 /// tool_call_id:引擎透传的 provider 工具调用 id(permissionToolCallId cap,
@@ -159,7 +175,12 @@ pub fn permission_req(id: &str, tool: &str, title: &str, tool_call_id: &str, seq
 }
 
 pub fn permission_resolved(id: &str, outcome: PermOutcome, seq: u64) -> Value {
-    build("permission-resolved", None, Some(json!({ "id": id, "outcome": outcome.as_str() })), seq)
+    build(
+        "permission-resolved",
+        None,
+        Some(json!({ "id": id, "outcome": outcome.as_str() })),
+        seq,
+    )
 }
 
 /// 提问卡答复回显(回放可见答案;request_id 即 askId)。
@@ -167,7 +188,9 @@ pub fn reply_question(request_id: &str, answers_json: &str, cancelled: bool, seq
     build(
         "reply-question",
         None,
-        Some(json!({ "request_id": request_id, "answers_json": answers_json, "cancelled": cancelled })),
+        Some(
+            json!({ "request_id": request_id, "answers_json": answers_json, "cancelled": cancelled }),
+        ),
         seq,
     )
 }
@@ -189,14 +212,45 @@ pub fn ask_user_question(request_id: &str, questions: &Value, seq: u64) -> Value
     )
 }
 
+/// Phase 1 设计模板选择请求。载荷保持引擎协议原形，UI 与 journal 回放
+/// 共用同一份数据，不借用 AskUserQuestion 工具帧。
+pub fn design_template_selection_request(payload: &Value, seq: u64) -> Value {
+    build(
+        "design-template-selection-request",
+        None,
+        Some(payload.clone()),
+        seq,
+    )
+}
+
+/// 用户对设计模板选择请求的原子答复回显。
+pub fn design_selection_respond(payload: &Value, seq: u64) -> Value {
+    build("design-selection-respond", None, Some(payload.clone()), seq)
+}
+
+/// 引擎取消尚未答复的设计模板选择请求。
+pub fn design_selection_cancelled(request_id: &str, reason: &str, seq: u64) -> Value {
+    let mut data = json!({ "request_id": request_id });
+    if !reason.is_empty() {
+        data["reason"] = json!(reason);
+    }
+    build("design-selection-cancelled", None, Some(data), seq)
+}
+
 // ==================== ACP session update 帧 ====================
 
 pub fn agent_text(delta: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": delta } }), seq)
+    acp(
+        json!({ "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": delta } }),
+        seq,
+    )
 }
 
 pub fn agent_thought(delta: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "agent_thought_chunk", "content": { "type": "text", "text": delta } }), seq)
+    acp(
+        json!({ "sessionUpdate": "agent_thought_chunk", "content": { "type": "text", "text": delta } }),
+        seq,
+    )
 }
 
 /// TodoWrite 计划清单(引擎 todo_update 事件的 todos 数组,条目
@@ -248,29 +302,47 @@ pub fn tool_call_failed(tc_id: &str, raw_output: &str, seq: u64) -> Value {
 /// 上下文用量(环形指示):used = 当前 Agent 历史 + system prompt 的
 /// token 估算，size = 模型上下文预算；不使用含子代理的整轮累计用量。
 pub fn usage_update(used: i64, size: i64, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "usage_update", "used": used, "size": size }), seq)
+    acp(
+        json!({ "sessionUpdate": "usage_update", "used": used, "size": size }),
+        seq,
+    )
 }
 
 pub fn compact_status(status: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "compact_status", "status": status }), seq)
+    acp(
+        json!({ "sessionUpdate": "compact_status", "status": status }),
+        seq,
+    )
 }
 
 /// 后台子代理完成通知(📌):独立系统行。不复用 agent_text——它会被
 /// reduce.ts 并进正在流式的模型正文气泡,通知与模型的话混作一团。
 pub fn task_note(text: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "task_notification", "text": text }), seq)
+    acp(
+        json!({ "sessionUpdate": "task_notification", "text": text }),
+        seq,
+    )
 }
 
 pub fn model_update(model: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "model_update", "model": model }), seq)
+    acp(
+        json!({ "sessionUpdate": "model_update", "model": model }),
+        seq,
+    )
 }
 
 /// 会话思考档位变更(""=跟随模型默认);与 model_update 同形,UI 据此
 /// 同步 composer 的思考深度选择器。
 pub fn think_update(think: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "think_update", "think": think }), seq)
+    acp(
+        json!({ "sessionUpdate": "think_update", "think": think }),
+        seq,
+    )
 }
 
 pub fn permission_mode_update(mode: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "permission_mode_update", "mode": mode }), seq)
+    acp(
+        json!({ "sessionUpdate": "permission_mode_update", "mode": mode }),
+        seq,
+    )
 }

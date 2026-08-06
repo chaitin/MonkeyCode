@@ -12,7 +12,77 @@ use serde_json::{json, Value};
 
 use super::frame::{self, PermOutcome, SessionStatus};
 use super::ohmy::Inner;
+use super::session::PendingDesignSelection;
 use crate::util::LockExt;
+
+/// 验证专用设计选择协议的最小结构，并提取响应校验需要的模板 id 集合。
+fn validate_design_selection_request(
+    params: &Value,
+) -> Result<(String, String, std::collections::HashSet<String>), ()> {
+    let request_id = params
+        .get("request_id")
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+        .ok_or(())?;
+    let session_id = params
+        .get("session_id")
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+        .ok_or(())?;
+    for key in ["title", "description"] {
+        if params
+            .get(key)
+            .is_some_and(|v| !v.is_string() && !v.is_null())
+        {
+            return Err(());
+        }
+    }
+    let items = params.get("items").and_then(Value::as_array).ok_or(())?;
+    let mut item_ids = std::collections::HashSet::new();
+    for item in items {
+        let id = item
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .ok_or(())?;
+        item.get("title")
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .ok_or(())?;
+        let image = item.get("image");
+        if image.is_some_and(|v| !v.is_string() && !v.is_null()) {
+            return Err(());
+        }
+        let has_image = image.and_then(Value::as_str).is_some_and(|v| !v.is_empty());
+        let has_preview = match item.get("preview") {
+            None | Some(Value::Null) => false,
+            Some(preview) => {
+                let preview_type = preview.get("type").and_then(Value::as_str).ok_or(())?;
+                preview
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .filter(|v| !v.is_empty())
+                    .ok_or(())?;
+                if !matches!(preview_type, "html" | "image") {
+                    return Err(());
+                }
+                true
+            }
+        };
+        if (!has_image && !has_preview)
+            || item
+                .get("description")
+                .is_some_and(|v| !v.is_string() && !v.is_null())
+            || item
+                .get("recommended")
+                .is_some_and(|v| !v.is_boolean() && !v.is_null())
+            || !item_ids.insert(id.to_string())
+        {
+            return Err(());
+        }
+    }
+    Ok((request_id.to_string(), session_id.to_string(), item_ids))
+}
 
 impl Inner {
     /// stdio 通知路由(reader 线程调用)。
@@ -20,9 +90,22 @@ impl Inner {
         match method {
             "event/stream" => self.handle_event(params),
             "permission/request" => {
-                let req_id = params.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
-                let tool = params.get("tool").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let req_id = params
+                    .get("request_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let sid = self.shell_sid_of(
+                    params
+                        .get("session_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
+                );
+                let tool = params
+                    .get("tool")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let input = params.get("input").cloned().unwrap_or(Value::Null);
                 if req_id.is_empty() || sid.is_empty() {
                     return;
@@ -32,59 +115,200 @@ impl Inner {
                 // permissionRemember cap 出现后审批记忆归引擎(命令段粒度
                 // 规则,记住后引擎根本不再发 request),壳侧工具名粒度的
                 // 自动放行(记住一次 Bash 放行所有命令)随之停用
-                if !self.has_cap("permissionRemember") && self.sess.perm_remember.lock_ok().contains(&tool) {
-                    self.respond_rpc("permission/respond", json!({ "request_id": req_id, "approved": true }));
+                if !self.has_cap("permissionRemember")
+                    && self.sess.perm_remember.lock_ok().contains(&tool)
+                {
+                    self.respond_rpc(
+                        "permission/respond",
+                        json!({ "request_id": req_id, "approved": true }),
+                    );
                     return;
                 }
                 let title = perm_title(&tool, &input);
                 // provider 工具调用 id 原样透传(UI 把审批锚到对应工具卡);
                 // 旧引擎/空 id 不带字段,UI 回退独立审批卡
-                let tc_id =
-                    params.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                self.sess.pending_perms.lock_ok().insert(req_id.clone(), sid.clone());
-                self.sess.perm_tools.lock_ok().insert(req_id.clone(), tool.clone());
-                self.push_frame(&sid, |seq| frame::permission_req(&req_id, &tool, &title, &tc_id, seq));
+                let tc_id = params
+                    .get("tool_call_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                self.sess
+                    .pending_perms
+                    .lock_ok()
+                    .insert(req_id.clone(), sid.clone());
+                self.sess
+                    .perm_tools
+                    .lock_ok()
+                    .insert(req_id.clone(), tool.clone());
+                self.push_frame(&sid, |seq| {
+                    frame::permission_req(&req_id, &tool, &title, &tc_id, seq)
+                });
                 self.emit_session_ask(&sid, true);
             }
             "permission/cancelled" => {
-                let req_id = params.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
-                let reason = params.get("reason").and_then(|v| v.as_str()).unwrap_or("cancelled");
+                let req_id = params
+                    .get("request_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let sid = self.shell_sid_of(
+                    params
+                        .get("session_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
+                );
+                let reason = params
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("cancelled");
                 self.sess.perm_tools.lock_ok().remove(&req_id);
                 if !sid.is_empty() {
                     self.resolve_perm(
                         &sid,
                         &req_id,
-                        if reason == "timeout" { PermOutcome::Timeout } else { PermOutcome::Cancelled },
+                        if reason == "timeout" {
+                            PermOutcome::Timeout
+                        } else {
+                            PermOutcome::Cancelled
+                        },
                     );
                 }
             }
             "question/request" => {
-                let req_id = params.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
+                let req_id = params
+                    .get("request_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let sid = self.shell_sid_of(
+                    params
+                        .get("session_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
+                );
                 let questions = params.get("questions").cloned().unwrap_or(json!([]));
                 if req_id.is_empty() || sid.is_empty() {
                     return;
                 }
-                self.sess.pending_questions
+                self.sess
+                    .pending_questions
                     .lock_ok()
                     .insert(req_id.clone(), (sid.clone(), questions.clone()));
                 // kind=acp_ask_user_question 即一等公民提问卡标记,reduce.ts 据此
                 // 直接消费 rawInput.questions,不走 tool_call 的标题启发式
-                self.push_frame(&sid, |seq| frame::ask_user_question(&req_id, &questions, seq));
+                self.push_frame(&sid, |seq| {
+                    frame::ask_user_question(&req_id, &questions, seq)
+                });
                 self.emit_session_ask(&sid, true);
             }
             "question/cancelled" => {
-                let req_id = params.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let sid = self.sess.pending_questions.lock_ok().remove(&req_id).map(|(s, _)| s);
+                let req_id = params
+                    .get("request_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let sid = self
+                    .sess
+                    .pending_questions
+                    .lock_ok()
+                    .remove(&req_id)
+                    .map(|(s, _)| s);
                 if let Some(sid) = sid {
                     self.emit_session_ask(&sid, false);
                 }
             }
+            "design/template-selection/request" => {
+                let Ok((req_id, engine_sid, item_ids)) = validate_design_selection_request(&params)
+                else {
+                    eprintln!("[desktop] 无效的设计模板选择请求,已忽略: {params}");
+                    return;
+                };
+                let sid = self.shell_sid_of(&engine_sid);
+                if sid.is_empty() || !self.sess.sessions.lock_ok().contains_key(&sid) {
+                    return;
+                }
+                let mut pending = self.sess.pending_design_selections.lock_ok();
+                if let Some(current) = pending.get(&sid) {
+                    // 引擎重发同一个 request 只确认既有状态，不重复产帧。
+                    if current.request_id == req_id {
+                        return;
+                    }
+                    eprintln!(
+                        "[desktop] 会话已有设计模板选择请求,拒绝覆盖: sid={sid} current={} incoming={req_id}",
+                        current.request_id
+                    );
+                    return;
+                }
+                // request_id 是响应关联键，生命周期内只登记一次；终态后的
+                // 重发也只确认旧事实，不能复活已响应/取消的卡片。
+                let mut seen = self.sess.seen_design_selection_requests.lock_ok();
+                if seen.contains(&req_id) {
+                    return;
+                }
+                if pending.values().any(|current| current.request_id == req_id) {
+                    eprintln!("[desktop] 设计模板选择 request_id 跨会话重复,已忽略: {req_id}");
+                    return;
+                }
+                seen.insert(req_id.clone());
+                pending.insert(
+                    sid.clone(),
+                    PendingDesignSelection {
+                        request_id: req_id,
+                        item_ids,
+                        responding: false,
+                    },
+                );
+                self.push_frame(&sid, |seq| {
+                    frame::design_template_selection_request(&params, seq)
+                });
+                drop(pending);
+                self.emit_session_ask(&sid, true);
+            }
+            "design/selection/cancelled" => {
+                let req_id = params
+                    .get("request_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let engine_sid = params
+                    .get("session_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if req_id.is_empty() || engine_sid.is_empty() {
+                    return;
+                }
+                let sid = self.shell_sid_of(engine_sid);
+                let mut pending = self.sess.pending_design_selections.lock_ok();
+                let matches_current = pending
+                    .get(&sid)
+                    .is_some_and(|current| current.request_id == req_id);
+                if !matches_current {
+                    // 特别包括旧请求的迟到 cancelled：绝不删除该会话的新请求。
+                    return;
+                }
+                pending.remove(&sid);
+                let reason = params.get("reason").and_then(Value::as_str).unwrap_or("");
+                self.push_frame(&sid, |seq| {
+                    frame::design_selection_cancelled(req_id, reason, seq)
+                });
+                drop(pending);
+                self.emit_session_ask(&sid, false);
+            }
             "turn/stopped" => {
-                let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
-                let stop_reason = params.get("stop_reason").and_then(|v| v.as_str()).unwrap_or("complete");
-                let err = params.get("error").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let sid = self.shell_sid_of(
+                    params
+                        .get("session_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
+                );
+                let stop_reason = params
+                    .get("stop_reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("complete");
+                let err = params
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 if sid.is_empty() {
                     // 认不出会话 = 这一轮壳侧永远收不了尾(会话卡 running,
                     // 输入/删除/切模型全锁死)。静默丢弃过一次就再也查不出来,
@@ -125,8 +349,11 @@ impl Inner {
                 }
                 // 引擎的工具错误路径不发 tool_result(错误只进模型消息),
                 // 未闭合的 tool_call 在此补 failed 帧,否则 UI 永远转圈
-                let tool_msg =
-                    if stop_reason == "interrupted" { "已中断" } else { "执行失败(引擎未回传详情)" };
+                let tool_msg = if stop_reason == "interrupted" {
+                    "已中断"
+                } else {
+                    "执行失败(引擎未回传详情)"
+                };
                 for (tc, _name) in open {
                     self.push_frame(&sid, |seq| frame::tool_call_failed(&tc, tool_msg, seq));
                 }
@@ -169,7 +396,10 @@ impl Inner {
     /// event/stream 事件归一化 → Frame。
     pub(super) fn handle_event(&self, event: Value) {
         let etype = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        let raw = event.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+        let raw = event
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         if raw.is_empty() {
             return;
         }
@@ -180,7 +410,8 @@ impl Inner {
         // 不产 task_error——否则 UI 先报"任务出错"随后任务又正常完成;
         // 仅记日志。终止性 error(无 kind)走下方常规分支不变。早于子代理
         // 认领判断返回:不为一条重试日志物化子会话
-        if etype == "error" && data.get("kind").and_then(|v| v.as_str()) == Some("transient_retry") {
+        if etype == "error" && data.get("kind").and_then(|v| v.as_str()) == Some("transient_retry")
+        {
             let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("");
             eprintln!("[desktop] 引擎瞬时错误,自动重试中: {msg}");
             return;
@@ -240,7 +471,10 @@ impl Inner {
                 let full = data.get("text").and_then(|v| v.as_str()).unwrap_or("");
                 let acc = {
                     let mut sessions = self.sess.sessions.lock_ok();
-                    sessions.get_mut(&sid).map(|s| std::mem::take(&mut s.model_text)).unwrap_or_default()
+                    sessions
+                        .get_mut(&sid)
+                        .map(|s| std::mem::take(&mut s.model_text))
+                        .unwrap_or_default()
                 };
                 if full.is_empty() || !self.has_cap("modelDoneText") {
                     // 兼容尾巴:旧引擎 model_done 无 text,无从对账
@@ -271,7 +505,11 @@ impl Inner {
                     .or_else(|| data.get("id").and_then(|v| v.as_str()))
                     .unwrap_or("")
                     .to_string();
-                let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("工具调用").to_string();
+                let name = data
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("工具调用")
+                    .to_string();
                 let input = data.get("input").cloned().unwrap_or(Value::Null);
                 let title = perm_title(&name, &input);
                 if !tc_id.is_empty() {
@@ -285,9 +523,15 @@ impl Inner {
                             .and_then(|v| v.as_str())
                             .unwrap_or("子代理")
                             .to_string();
-                        let prompt =
-                            input.get("prompt").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        self.sub.agent_inputs.lock_ok().insert(tc_id.clone(), (desc, prompt));
+                        let prompt = input
+                            .get("prompt")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        self.sub
+                            .agent_inputs
+                            .lock_ok()
+                            .insert(tc_id.clone(), (desc, prompt));
                     }
                 }
                 self.push_frame(&sid, |seq| frame::tool_call(&tc_id, &title, &input, seq));
@@ -298,20 +542,37 @@ impl Inner {
             // 保证)——暂存到 tc_id,随后 tool_result 闭合工具卡时消费。
             // 后台子代理不发此事件(其结果走 task_notification)
             "agent_result" => {
-                let tc = event.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("");
+                let tc = event
+                    .get("tool_call_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if !tc.is_empty() {
-                    let status =
-                        data.get("status").and_then(|v| v.as_str()).unwrap_or("completed").to_string();
-                    let content =
-                        data.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    self.sub.agent_results.lock_ok().insert(tc.to_string(), (status, content));
+                    let status = data
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("completed")
+                        .to_string();
+                    let content = data
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    self.sub
+                        .agent_results
+                        .lock_ok()
+                        .insert(tc.to_string(), (status, content));
                 }
             }
             "tool_result" => {
-                let tc_id = event.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let tc_id = event
+                    .get("tool_call_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let content = data.get("content").and_then(|v| v.as_str()).unwrap_or("");
                 let name = self
-                    .sess.sessions
+                    .sess
+                    .sessions
                     .lock_ok()
                     .get_mut(&sid)
                     .and_then(|s| s.open_tools.remove(&tc_id));
@@ -319,7 +580,9 @@ impl Inner {
                 // is_error);兼容尾巴:旧引擎无错误位,只能按 b02fc77 约定
                 // 嗅探 "Error: " 前缀(误伤正常输出恰以此开头的工具)
                 let mut is_error = if self.has_cap("structuredToolResult") {
-                    data.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false)
+                    data.get("is_error")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
                 } else {
                     content.starts_with("Error: ")
                 };
@@ -329,14 +592,16 @@ impl Inner {
                 // 走下面的退回解析会 unwrap_or 把整段原始 JSON 灌进卡),
                 // 其余退回解析截断 500 字符的 {status,…,content} JSON——
                 // 可能破损,解析失败原样退回(兼容尾巴)
-                let stashed =
-                    if tc_id.is_empty() { None } else { self.sub.agent_results.lock_ok().remove(&tc_id) };
+                let stashed = if tc_id.is_empty() {
+                    None
+                } else {
+                    self.sub.agent_results.lock_ok().remove(&tc_id)
+                };
                 let is_agent = name.as_deref() == Some("Agent");
                 if is_agent && stashed.is_none() && !is_error {
-                    if let Some(resp) = serde_json::from_str::<Value>(content)
-                        .ok()
-                        .filter(|v| v.get("status").and_then(|s| s.as_str()) == Some("async_launched"))
-                    {
+                    if let Some(resp) = serde_json::from_str::<Value>(content).ok().filter(|v| {
+                        v.get("status").and_then(|s| s.as_str()) == Some("async_launched")
+                    }) {
                         // 子代理还活着:不关路由,登记后台,友好文案闭卡
                         self.background_agent_launched(&sid, &tc_id, &resp);
                         return;
@@ -355,7 +620,11 @@ impl Inner {
                         }
                         None if !is_error => serde_json::from_str::<Value>(content)
                             .ok()
-                            .and_then(|v| v.get("content").and_then(|c| c.as_str()).map(str::to_string))
+                            .and_then(|v| {
+                                v.get("content")
+                                    .and_then(|c| c.as_str())
+                                    .map(str::to_string)
+                            })
                             .unwrap_or_else(|| content.to_string()),
                         None => content.to_string(),
                     }
@@ -395,7 +664,9 @@ impl Inner {
                         // 反查不到(壳重启丢登记/SendMessage 续跑的二次完成/
                         // 旧引擎):整段外显兜底,剥包装标签防 markdown 吞块
                         let inner = super::subagent::strip_notification_tags(&msg);
-                        self.push_frame(&sid, |seq| frame::agent_text(&format!("\n\n📌 {inner}\n\n"), seq));
+                        self.push_frame(&sid, |seq| {
+                            frame::agent_text(&format!("\n\n📌 {inner}\n\n"), seq)
+                        });
                     }
                     return;
                 }
@@ -404,7 +675,10 @@ impl Inner {
             // TodoWrite 全量清单:引擎专发 todo_update 事件供 host 渲染实时
             // 勾选卡(tool_result 只有截断 500 字符的纯文本,不能用来渲染)
             "todo_update" => {
-                let todos = data.get("todos").cloned().unwrap_or_else(|| serde_json::json!([]));
+                let todos = data
+                    .get("todos")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!([]));
                 self.push_frame(&sid, |seq| frame::plan(&todos, seq));
             }
             // 主循环在每次模型调用收到 provider usage 时发一次；压缩/清空
@@ -423,7 +697,11 @@ impl Inner {
             "session_summary" => {
                 // 上限防御:引擎的提示词卡在 60 字符,但落盘/渲染不该指望
                 // 对端守约;按字符截断(String::truncate 是字节索引,中文会 panic)
-                let raw = data.get("summary").and_then(|v| v.as_str()).unwrap_or("").trim();
+                let raw = data
+                    .get("summary")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
                 let summary: String = raw.chars().take(120).collect();
                 if summary.is_empty() {
                     return;
@@ -431,7 +709,11 @@ impl Inner {
                 // 子代理子会话没有列表行也没有顶栏(引擎侧压根不给它们生成,
                 // 这里是防御)。判据 parent 与 sessions_list 的过滤同源
                 let meta = self.read_sidecar(&sid);
-                if meta.get("parent").and_then(|v| v.as_str()).is_some_and(|p| !p.is_empty()) {
+                if meta
+                    .get("parent")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|p| !p.is_empty())
+                {
                     return;
                 }
                 self.write_sidecar_keep_updated(&sid, |m| m["summary"] = json!(summary.as_str()));
@@ -448,7 +730,10 @@ impl Inner {
                 self.push_frame(&sid, |seq| frame::compact_status("ended", seq));
             }
             "error" => {
-                let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("未知错误");
+                let msg = data
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知错误");
                 self.push_frame(&sid, |seq| frame::task_error(msg, seq));
             }
             // turn_done:轮次边界以 turn/stopped 为准
@@ -462,11 +747,17 @@ impl Inner {
 /// window 出现即表示这是一条上下文快照，used 缺省按 0 处理（清空语义）。
 fn context_usage_fields(v: &Value) -> Option<(i64, i64)> {
     if let Some(window) = v.get("context_window").and_then(Value::as_i64) {
-        return Some((v.get("context_used").and_then(Value::as_i64).unwrap_or(0), window));
+        return Some((
+            v.get("context_used").and_then(Value::as_i64).unwrap_or(0),
+            window,
+        ));
     }
     let legacy = v.get("context")?;
     Some((
-        legacy.get("used_tokens").and_then(Value::as_i64).unwrap_or(0),
+        legacy
+            .get("used_tokens")
+            .and_then(Value::as_i64)
+            .unwrap_or(0),
         legacy.get("window_tokens").and_then(Value::as_i64)?,
     ))
 }
@@ -479,7 +770,9 @@ pub(super) fn extract_upload_paths(content: &str) -> Vec<String> {
     let mut rest = content;
     while let Some(i) = rest.find(".monkeycode/uploads/") {
         let tail = &rest[i..];
-        let end = tail.find(|c: char| c.is_whitespace() || c == ')' || c == '"' || c == ',').unwrap_or(tail.len());
+        let end = tail
+            .find(|c: char| c.is_whitespace() || c == ')' || c == '"' || c == ',')
+            .unwrap_or(tail.len());
         let p = &tail[..end];
         // 该字段契约是"工具产出图片":docx/json 等附件路径进了 images 会被
         // UI 塞进 <img> 渲染成裂图(octet-stream 数据 URL 解不出位图)
@@ -497,10 +790,18 @@ pub(super) fn extract_upload_paths(content: &str) -> Vec<String> {
 pub(super) fn perm_title(tool: &str, input: &Value) -> String {
     // description 兜底:Agent/任务类工具的 3-5 词任务描述作卡片标签
     // (与引擎 TUI 的子代理活动面板同源,6a61cfd)
-    let arg = ["file_path", "path", "command", "pattern", "url", "cwd", "description"]
-        .iter()
-        .find_map(|k| input.get(k).and_then(|v| v.as_str()))
-        .unwrap_or("");
+    let arg = [
+        "file_path",
+        "path",
+        "command",
+        "pattern",
+        "url",
+        "cwd",
+        "description",
+    ]
+    .iter()
+    .find_map(|k| input.get(k).and_then(|v| v.as_str()))
+    .unwrap_or("");
     if arg.is_empty() {
         tool.to_string()
     } else {

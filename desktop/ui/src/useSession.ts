@@ -11,18 +11,19 @@
 //   useSession —— React 侧:state 持有与镜像回写、notice 定时器、卸载断开,
 //     拼装为 SessionHandle(形状不变)。
 import { useCallback, useEffect, useRef, useState } from "react";
-import { connect, sessionFrame, sessionHistory, sessionOutline, sessionSend, type Conn, type HistoryPage } from "./session";
+import { connect, readDesignTemplatePreview, respondDesignSelection, sessionFrame, sessionHistory, sessionOutline, sessionSend, type Conn, type HistoryPage } from "./session";
 import { nativePathOf, uploadFilePath, uploadFileStream, uploadFileURL } from "./uploads";
 import { b64decode, b64encode } from "./codec";
 import {
   answerAsk as applyAskAnswer,
+  applyDesignSelectionResponse,
   answerPerm as applyPermAnswer,
   initialChat,
   prependBatch,
   reduceBatch,
   type ChatState,
 } from "./reduce";
-import type { Attachment, FileChange, FileEntry, Frame, SessionNotice } from "./types";
+import type { Attachment, DesignSelectionResponse, FileChange, FileEntry, Frame, SessionNotice } from "./types";
 
 /** 提问大纲的一条(壳的 session_outline 投影;text 已解 base64) */
 export interface OutlineItem {
@@ -616,6 +617,20 @@ export function createSessionCore(io: SessionCoreIO, openConn: typeof connect = 
         });
     },
 
+    // 专用设计选择答复走免连接状态副作用的 bridge。壳拒绝业务载荷时卡片
+    // 保持 open，用户可修正/重试；只有 IPC 成功后才收起 UI。
+    async answerDesignSelection(response: DesignSelectionResponse): Promise<boolean> {
+      const forSid = sid;
+      if (!forSid) return false;
+      const ok = await respondDesignSelection(forSid, response);
+      if (!ok) {
+        io.notify("设计选择提交失败，请重试");
+        return false;
+      }
+      if (sid === forSid) setChat(applyDesignSelectionResponse(chat, response));
+      return true;
+    },
+
     async switchModel(name: string) {
       if (!conn || !name || name === chat.model) return;
       try {
@@ -759,6 +774,8 @@ export interface SessionHandle {
   loadFrame(seq: number): Promise<Frame>;
   /** 已上传附件/工作区图片的回读 URL(无会话时 undefined) */
   uploadUrl?: (path: string) => Promise<string>;
+  /** 固定模板缓存根中的 HTML bundle 回读(无会话时 undefined) */
+  designPreviewHtml?: (path: string) => Promise<string>;
 
   /** 打开会话并接上 WS;firstMessage 在连接就绪后自动发出(新建会话的
    * 首个任务);firstFiles 此刻上传落盘,按 send() 同款「[图片] 路径」
@@ -783,6 +800,8 @@ export interface SessionHandle {
   answerPerm(id: string, action: PermAction): void;
   /** 答复 AI 提问卡(reply-question 上行;发送成功后乐观回写 UI) */
   answerAsk(askId: string, answers: Record<string, string | string[]>): void;
+  /** Phase 1 设计模板选择；失败保留开放态，成功后才更新卡片。 */
+  answerDesignSelection(response: DesignSelectionResponse): Promise<boolean>;
   switchModel(name: string): Promise<void>;
   /** 会话级思考档位(""=跟随模型默认;经引擎 session/setThinking RPC) */
   setThink(level: string): Promise<void>;
@@ -892,6 +911,7 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
     outline,
     loadFrame: core.loadFrame,
     uploadUrl: id ? (p: string) => uploadFileURL(id, p) : undefined,
+    designPreviewHtml: id ? (p: string) => readDesignTemplatePreview(id, p) : undefined,
     open: core.open,
     close: core.close,
     setInput,
@@ -905,6 +925,7 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
     removeAtt: core.removeAtt,
     answerPerm: core.answerPerm,
     answerAsk: core.answerAsk,
+    answerDesignSelection: core.answerDesignSelection,
     switchModel: core.switchModel,
     setThink: core.setThink,
     toggleYolo: core.toggleYolo,

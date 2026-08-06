@@ -1092,8 +1092,10 @@ export function ChatView({
               keyBase={chat.keyBase}
               onPermAnswer={session.answerPerm}
               onAskAnswer={session.answerAsk}
+              onDesignSelection={session.answerDesignSelection}
               onOpenChild={onOpenChild}
               uploadUrl={session.uploadUrl}
+              designPreviewHtml={session.designPreviewHtml}
               onLocalLink={revealMarkdownLink}
               workdir={workdir}
               loadFullTool={session.loadFrame}

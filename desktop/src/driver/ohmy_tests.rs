@@ -19,7 +19,6 @@ use crate::driver::session::{SessionState, SessionsState};
 use crate::driver::subagent::SubagentState;
 use crate::driver::transport::{find_ohmyagent, spawn_journal_writer, JournalMsg, TransportState};
 
-
 /// E2E 串行锁:限制真实引擎 + 假 LLM 的并发资源占用。async-aware 锁不会
 /// 阻塞 tokio worker，也没有一次断言失败毒化其余 E2E 的问题。
 static E2E_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -53,7 +52,10 @@ fn sse_head() -> Vec<String> {
 
 fn sse_tail(stop_reason: &str) -> Vec<String> {
     vec![
-        sse_event("content_block_stop", json!({"type":"content_block_stop","index":0})),
+        sse_event(
+            "content_block_stop",
+            json!({"type":"content_block_stop","index":0}),
+        ),
         sse_event(
             "message_delta",
             json!({"type":"message_delta","delta":{"stop_reason":stop_reason},"usage":{"output_tokens":5}}),
@@ -278,7 +280,10 @@ async fn e2e_chat_normalization() {
     let (driver, home) = e2e_setup("chat", 0);
 
     let workdir = home.to_string_lossy().into_owned();
-    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let meta = driver
+        .session_create(&workdir, "测试模型", false)
+        .await
+        .expect("建会话");
     // 契约 5:新建未运行的会话是 created(不是 finished)
     assert_eq!(meta.get("status").and_then(|v| v.as_str()), Some("created"));
     assert_eq!(meta.get("kind").and_then(|v| v.as_str()), Some("local"));
@@ -286,19 +291,31 @@ async fn e2e_chat_normalization() {
     driver.session_open(&sid).await.expect("打开会话");
 
     let payload = json!({ "content": frame::b64_text("写个 hello world") });
-    driver.session_send(&sid, "user-input", payload).await.expect("发送");
+    driver
+        .session_send(&sid, "user-input", payload)
+        .await
+        .expect("发送");
 
     // 轮询帧日志直到 task-ended(假 LLM 一轮即完)
     let mut journal: Vec<Value> = vec![];
     for _ in 0..100 {
         tokio::time::sleep(Duration::from_millis(100)).await;
         journal = driver.read_journal(&sid);
-        if journal.iter().any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended")) {
+        if journal
+            .iter()
+            .any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
+        {
             break;
         }
     }
-    let types: Vec<&str> = journal.iter().filter_map(|f| f.get("type").and_then(|v| v.as_str())).collect();
-    assert!(types.contains(&"task-started"), "缺 task-started: {types:?}");
+    let types: Vec<&str> = journal
+        .iter()
+        .filter_map(|f| f.get("type").and_then(|v| v.as_str()))
+        .collect();
+    assert!(
+        types.contains(&"task-started"),
+        "缺 task-started: {types:?}"
+    );
     assert!(types.contains(&"user-input"), "缺 user-input: {types:?}");
     assert!(types.contains(&"task-ended"), "缺 task-ended: {types:?}");
     // agent 文本增量以 acp_event 形态出现,data 内联对象是 agent_message_chunk
@@ -306,36 +323,52 @@ async fn e2e_chat_normalization() {
         if f.get("kind").and_then(|v| v.as_str()) != Some("acp_event") {
             return false;
         }
-        let Some(v) = f.get("data").filter(|d| d.is_object()) else { return false };
-        v.get("update").and_then(|u| u.get("sessionUpdate")).and_then(|s| s.as_str())
+        let Some(v) = f.get("data").filter(|d| d.is_object()) else {
+            return false;
+        };
+        v.get("update")
+            .and_then(|u| u.get("sessionUpdate"))
+            .and_then(|s| s.as_str())
             == Some("agent_message_chunk")
-            && v["update"]["content"]["text"].as_str().map(|t| t.contains("任务完成")).unwrap_or(false)
+            && v["update"]["content"]["text"]
+                .as_str()
+                .map(|t| t.contains("任务完成"))
+                .unwrap_or(false)
     });
     assert!(has_text, "缺 agent 文本帧: {journal:?}");
     // usage 事件会在模型正文尚未结束时先把主 Agent 当前 context 推给
     // composer；turn/stopped 的扁平字段随后再给轮后权威快照。
-    let first_text = journal.iter().position(|f| {
-        acp_update(f).is_some_and(|u| {
-            u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("agent_message_chunk")
-        })
-    }).expect("缺 agent 文本位置");
-    let first_usage = journal.iter().position(|f| {
-        acp_update(f).is_some_and(|u| {
-            u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("usage_update")
-        })
-    }).expect("缺上下文占用位置");
-    assert!(first_usage < first_text, "usage 未在流式对话过程中更新: {journal:?}");
-    let has_usage = journal
+    let first_text = journal
         .iter()
-        .filter_map(acp_update)
-        .any(|u| {
-            u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("usage_update")
-                && u.get("used").and_then(|v| v.as_i64()).unwrap_or(0) > 0
-                && u.get("size").and_then(|v| v.as_i64()) == Some(200000)
-        });
+        .position(|f| {
+            acp_update(f).is_some_and(|u| {
+                u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("agent_message_chunk")
+            })
+        })
+        .expect("缺 agent 文本位置");
+    let first_usage = journal
+        .iter()
+        .position(|f| {
+            acp_update(f).is_some_and(|u| {
+                u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("usage_update")
+            })
+        })
+        .expect("缺上下文占用位置");
+    assert!(
+        first_usage < first_text,
+        "usage 未在流式对话过程中更新: {journal:?}"
+    );
+    let has_usage = journal.iter().filter_map(acp_update).any(|u| {
+        u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("usage_update")
+            && u.get("used").and_then(|v| v.as_i64()).unwrap_or(0) > 0
+            && u.get("size").and_then(|v| v.as_i64()) == Some(200000)
+    });
     assert!(has_usage, "缺上下文占用帧: {journal:?}");
     // seq 单调
-    let seqs: Vec<u64> = journal.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
+    let seqs: Vec<u64> = journal
+        .iter()
+        .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
+        .collect();
     assert!(seqs.windows(2).all(|w| w[0] < w[1]), "seq 不单调: {seqs:?}");
 
     // 会话列表(sidecar 权威):标题取首条输入；一轮结束后会话空闲可继续，
@@ -343,19 +376,37 @@ async fn e2e_chat_normalization() {
     let list = driver.sessions_list().await.unwrap();
     let items = list.as_array().unwrap();
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].get("status").and_then(|v| v.as_str()), Some("idle"));
+    assert_eq!(
+        items[0].get("status").and_then(|v| v.as_str()),
+        Some("idle")
+    );
     assert_eq!(items[0].get("kind").and_then(|v| v.as_str()), Some("local"));
-    assert!(items[0].get("title").and_then(|v| v.as_str()).unwrap_or("").contains("hello world"));
+    assert!(items[0]
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .contains("hello world"));
 
     // 会话摘要:引擎每轮异步生成(与轮次收尾无时序保证,轮询等它落盘),
     // 只进 summary 字段——标题仍是首条输入,不被摘要改写。
     let mut items = items.clone();
     for _ in 0..50 {
-        if !items[0].get("summary").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+        if !items[0]
+            .get("summary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .is_empty()
+        {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
-        items = driver.sessions_list().await.unwrap().as_array().unwrap().clone();
+        items = driver
+            .sessions_list()
+            .await
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .clone();
     }
     assert_eq!(
         items[0].get("summary").and_then(|v| v.as_str()),
@@ -363,7 +414,11 @@ async fn e2e_chat_normalization() {
         "会话摘要未落 sidecar: {items:?}"
     );
     assert!(
-        items[0].get("title").and_then(|v| v.as_str()).unwrap_or("").contains("hello world"),
+        items[0]
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .contains("hello world"),
         "摘要不该改写标题: {items:?}"
     );
 
@@ -384,7 +439,9 @@ async fn e2e_chat_normalization() {
         .expect("切思考档位");
     let list = driver.sessions_list().await.unwrap();
     assert_eq!(
-        list.as_array().unwrap()[0].get("think").and_then(|v| v.as_str()),
+        list.as_array().unwrap()[0]
+            .get("think")
+            .and_then(|v| v.as_str()),
         Some("high"),
         "思考档位未落 sidecar: {list:?}"
     );
@@ -395,8 +452,14 @@ async fn e2e_chat_normalization() {
 
     // sessionQuery 通路:resume 可用性经 session/exists RPC 判定
     // (存在/不存在两侧;壳不再探测引擎存储的文件布局)
-    assert!(driver.engine_session_exists(&sid).await, "跑过一轮的会话应 resume 可用");
-    assert!(!driver.engine_session_exists("no-such-session").await, "未知会话应为 false");
+    assert!(
+        driver.engine_session_exists(&sid).await,
+        "跑过一轮的会话应 resume 可用"
+    );
+    assert!(
+        !driver.engine_session_exists("no-such-session").await,
+        "未知会话应为 false"
+    );
 
     driver.stop();
 }
@@ -434,28 +497,45 @@ async fn e2e_wsl_smoke_full_lifecycle() {
 
     // fake-wsl 下 guest == host,本机绝对路径即 guest 路径
     let workdir = home.to_string_lossy().into_owned();
-    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let meta = driver
+        .session_create(&workdir, "测试模型", false)
+        .await
+        .expect("建会话");
     let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
     driver.session_open(&sid).await.expect("打开会话");
     let payload = json!({ "content": frame::b64_text("wsl 冒烟") });
-    driver.session_send(&sid, "user-input", payload).await.expect("发送");
+    driver
+        .session_send(&sid, "user-input", payload)
+        .await
+        .expect("发送");
 
     let mut journal: Vec<Value> = vec![];
     for _ in 0..100 {
         tokio::time::sleep(Duration::from_millis(100)).await;
         journal = driver.read_journal(&sid);
-        if journal.iter().any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended")) {
+        if journal
+            .iter()
+            .any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
+        {
             break;
         }
     }
-    let types: Vec<&str> =
-        journal.iter().filter_map(|f| f.get("type").and_then(|v| v.as_str())).collect();
-    assert!(types.contains(&"task-started"), "缺 task-started: {types:?}");
+    let types: Vec<&str> = journal
+        .iter()
+        .filter_map(|f| f.get("type").and_then(|v| v.as_str()))
+        .collect();
+    assert!(
+        types.contains(&"task-started"),
+        "缺 task-started: {types:?}"
+    );
     assert!(types.contains(&"task-ended"), "缺 task-ended: {types:?}");
 
     // "~" 展开到 guest 家目录(prepare 采集;fake 下即本机 $HOME),
     // 而不是宿主 expand_tilde——只建会话不写盘,不污染真实主目录
-    let meta = driver.session_create("~", "测试模型", false).await.expect("~ 建会话");
+    let meta = driver
+        .session_create("~", "测试模型", false)
+        .await
+        .expect("~ 建会话");
     let sid2 = meta.get("id").and_then(|v| v.as_str()).unwrap();
     let stored = driver.0.read_sidecar(sid2);
     assert_eq!(
@@ -488,10 +568,17 @@ async fn e2e_wsl_smoke_full_lifecycle() {
     // 目录真不存在(create=false):错误文案必须含"目录不存在"
     // (前端 offerCreate 按此匹配给"创建"入口)
     let err = driver
-        .session_create(&home.join("no-such-dir").to_string_lossy(), "测试模型", false)
+        .session_create(
+            &home.join("no-such-dir").to_string_lossy(),
+            "测试模型",
+            false,
+        )
         .await
         .expect_err("不存在目录应报错");
-    assert!(err.contains("目录不存在"), "文案契约(offerCreate 匹配): {err}");
+    assert!(
+        err.contains("目录不存在"),
+        "文案契约(offerCreate 匹配): {err}"
+    );
 
     // 优雅停止:stdin EOF 经中继(fake 直执)透传,引擎自退,不走 pkill
     driver.stop();
@@ -512,7 +599,10 @@ async fn e2e_wsl_prepare_failure_surfaces() {
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(home.join("shellcfg")).unwrap();
     let ctx: Arc<dyn ShellCtx> = Arc::new(TestCtx::new(home.join("shellcfg")));
-    let cfg = DesktopConfig { kernel_env: "wsl:broken".into(), ..Default::default() };
+    let cfg = DesktopConfig {
+        kernel_env: "wsl:broken".into(),
+        ..Default::default()
+    };
     let err = match OhmyDriver::start_with(ctx, &cfg) {
         Ok(driver) => {
             driver.stop();
@@ -520,7 +610,10 @@ async fn e2e_wsl_prepare_failure_surfaces() {
         }
         Err(e) => e,
     };
-    assert!(err.contains("broken") && err.contains("wsl --shutdown"), "缺排查文案: {err}");
+    assert!(
+        err.contains("broken") && err.contains("wsl --shutdown"),
+        "缺排查文案: {err}"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -537,19 +630,37 @@ async fn e2e_stop_reconciles_running_session() {
     let (driver, home) = e2e_setup("stop", 8000);
 
     let workdir = home.to_string_lossy().into_owned();
-    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let meta = driver
+        .session_create(&workdir, "测试模型", false)
+        .await
+        .expect("建会话");
     let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
     driver.session_open(&sid).await.expect("打开会话");
     let payload = json!({ "content": frame::b64_text("会被挂住的任务") });
-    driver.session_send(&sid, "user-input", payload).await.expect("发送");
+    driver
+        .session_send(&sid, "user-input", payload)
+        .await
+        .expect("发送");
 
     driver.stop();
 
     let journal = driver.read_journal(&sid);
-    let types: Vec<&str> = journal.iter().filter_map(|f| f.get("type").and_then(|v| v.as_str())).collect();
-    assert!(types.contains(&"task-started"), "缺 task-started: {types:?}");
-    assert!(types.contains(&"task-error"), "停止未补 task-error: {types:?}");
-    assert!(types.contains(&"task-ended"), "停止未补 task-ended: {types:?}");
+    let types: Vec<&str> = journal
+        .iter()
+        .filter_map(|f| f.get("type").and_then(|v| v.as_str()))
+        .collect();
+    assert!(
+        types.contains(&"task-started"),
+        "缺 task-started: {types:?}"
+    );
+    assert!(
+        types.contains(&"task-error"),
+        "停止未补 task-error: {types:?}"
+    );
+    assert!(
+        types.contains(&"task-ended"),
+        "停止未补 task-ended: {types:?}"
+    );
     let meta = driver.0.read_sidecar(&sid);
     assert_eq!(
         meta.get("status").and_then(|v| v.as_str()),
@@ -559,7 +670,11 @@ async fn e2e_stop_reconciles_running_session() {
 }
 
 /// 轮询帧日志直到谓词命中(100ms × 150 = 15s 上限)。
-async fn wait_journal(driver: &OhmyDriver, sid: &str, pred: impl Fn(&[Value]) -> bool) -> Vec<Value> {
+async fn wait_journal(
+    driver: &OhmyDriver,
+    sid: &str,
+    pred: impl Fn(&[Value]) -> bool,
+) -> Vec<Value> {
     let mut journal = vec![];
     for _ in 0..150 {
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -589,7 +704,10 @@ async fn e2e_outline_two_identical_messages() {
     let (driver, home) = e2e_setup("outline-dup", 0);
 
     let workdir = home.to_string_lossy().into_owned();
-    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let meta = driver
+        .session_create(&workdir, "测试模型", false)
+        .await
+        .expect("建会话");
     let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
     driver.session_open(&sid).await.expect("打开会话");
 
@@ -602,7 +720,10 @@ async fn e2e_outline_two_identical_messages() {
         let stop = poll_stop.clone();
         tokio::spawn(async move {
             while !stop.load(Ordering::Relaxed) {
-                let snap = driver.session_outline(&sid).await.unwrap_or_else(|_| json!([]));
+                let snap = driver
+                    .session_outline(&sid)
+                    .await
+                    .unwrap_or_else(|_| json!([]));
                 let seqs: Vec<u64> = snap
                     .as_array()
                     .cloned()
@@ -618,10 +739,16 @@ async fn e2e_outline_two_identical_messages() {
     };
 
     let payload = json!({ "content": frame::b64_text("一样的消息") });
-    driver.session_send(&sid, "user-input", payload.clone()).await.expect("发送 1");
+    driver
+        .session_send(&sid, "user-input", payload.clone())
+        .await
+        .expect("发送 1");
     let ended = |n: usize| {
         move |j: &[Value]| {
-            j.iter().filter(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended")).count() >= n
+            j.iter()
+                .filter(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
+                .count()
+                >= n
         }
     };
     let journal = wait_journal(&driver, &sid, ended(1)).await;
@@ -629,7 +756,10 @@ async fn e2e_outline_two_identical_messages() {
     // 第二条同文本消息。task-ended 帧与内存 running=false 之间可能有
     // 极短间隙,忙碌守卫命中就稍等重试
     for i in 0..50 {
-        match driver.session_send(&sid, "user-input", payload.clone()).await {
+        match driver
+            .session_send(&sid, "user-input", payload.clone())
+            .await
+        {
             Ok(_) => break,
             Err(e) if i < 49 => {
                 let _ = e;
@@ -648,24 +778,35 @@ async fn e2e_outline_two_identical_messages() {
         .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
         .collect();
     assert_eq!(input_seqs.len(), 2, "user-input 帧数不对: {journal:?}");
-    assert_ne!(input_seqs[0], input_seqs[1], "两条 user-input 撞 seq: {input_seqs:?}");
+    assert_ne!(
+        input_seqs[0], input_seqs[1],
+        "两条 user-input 撞 seq: {input_seqs:?}"
+    );
 
     // 大纲与 journal 对表:两条、seq 一致且唯一
     let outline = driver.session_outline(&sid).await.expect("大纲");
     let entries = outline.as_array().cloned().unwrap_or_default();
-    let outline_seqs: Vec<u64> =
-        entries.iter().filter_map(|e| e.get("seq").and_then(|v| v.as_u64())).collect();
+    let outline_seqs: Vec<u64> = entries
+        .iter()
+        .filter_map(|e| e.get("seq").and_then(|v| v.as_u64()))
+        .collect();
     assert_eq!(outline_seqs, input_seqs, "大纲 seq 与帧不对表: {entries:?}");
 
     // 重开会话(seq 水位恢复路径)后再发第三条同文本消息,仍不得撞 seq
     driver.session_close(&sid).await;
     driver.session_open(&sid).await.expect("重开会话");
-    driver.session_send(&sid, "user-input", payload.clone()).await.expect("发送 3");
+    driver
+        .session_send(&sid, "user-input", payload.clone())
+        .await
+        .expect("发送 3");
     let journal = wait_journal(&driver, &sid, ended(3)).await;
     assert!(ended(3)(&journal), "第三轮未结束: {journal:?}");
     let outline = driver.session_outline(&sid).await.expect("大纲 2");
     let entries = outline.as_array().cloned().unwrap_or_default();
-    let seqs: Vec<u64> = entries.iter().filter_map(|e| e.get("seq").and_then(|v| v.as_u64())).collect();
+    let seqs: Vec<u64> = entries
+        .iter()
+        .filter_map(|e| e.get("seq").and_then(|v| v.as_u64()))
+        .collect();
     let uniq: HashSet<u64> = seqs.iter().copied().collect();
     assert_eq!(seqs.len(), 3, "大纲条目数不对: {entries:?}");
     assert_eq!(uniq.len(), seqs.len(), "大纲出现重复 seq: {seqs:?}");
@@ -679,7 +820,10 @@ async fn e2e_outline_two_identical_messages() {
         &std::fs::read(home.join("shellcfg/ohmyagent/settings.json")).unwrap(),
     )
     .unwrap();
-    let base_url = settings["models"]["测试模型"]["base_url"].as_str().unwrap().to_string();
+    let base_url = settings["models"]["测试模型"]["base_url"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let ctx: Arc<dyn ShellCtx> = Arc::new(TestCtx::new(home.join("shellcfg")));
     let cfg = DesktopConfig {
         models: json!([{ "name": "测试模型", "provider": "anthropic",
@@ -689,7 +833,10 @@ async fn e2e_outline_two_identical_messages() {
     let driver = OhmyDriver::start_with(ctx, &cfg).expect("重启引擎");
     driver.session_open(&sid).await.expect("重启后打开会话");
     for i in 0..50 {
-        match driver.session_send(&sid, "user-input", payload.clone()).await {
+        match driver
+            .session_send(&sid, "user-input", payload.clone())
+            .await
+        {
             Ok(_) => break,
             Err(e) if i < 49 => {
                 let _ = e;
@@ -701,13 +848,22 @@ async fn e2e_outline_two_identical_messages() {
     let journal = wait_journal(&driver, &sid, ended(4)).await;
     assert!(ended(4)(&journal), "重启后一轮未结束: {journal:?}");
     // 全 journal 无重复 seq(水位回卷会让新帧撞上老帧,大纲两个点同亮)
-    let all_seqs: Vec<u64> =
-        journal.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
+    let all_seqs: Vec<u64> = journal
+        .iter()
+        .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
+        .collect();
     let uniq: HashSet<u64> = all_seqs.iter().copied().collect();
-    assert_eq!(uniq.len(), all_seqs.len(), "重启后 seq 回卷撞号: {all_seqs:?}");
+    assert_eq!(
+        uniq.len(),
+        all_seqs.len(),
+        "重启后 seq 回卷撞号: {all_seqs:?}"
+    );
     let outline = driver.session_outline(&sid).await.expect("重启后大纲");
     let entries = outline.as_array().cloned().unwrap_or_default();
-    let seqs: Vec<u64> = entries.iter().filter_map(|e| e.get("seq").and_then(|v| v.as_u64())).collect();
+    let seqs: Vec<u64> = entries
+        .iter()
+        .filter_map(|e| e.get("seq").and_then(|v| v.as_u64()))
+        .collect();
     let uniq: HashSet<u64> = seqs.iter().copied().collect();
     assert_eq!(seqs.len(), 4, "重启后大纲条目数不对: {entries:?}");
     assert_eq!(uniq.len(), seqs.len(), "重启后大纲重复 seq: {seqs:?}");
@@ -726,25 +882,40 @@ async fn e2e_send_during_replay_recovery_does_not_reuse_seqs() {
     let (driver, home) = e2e_setup("seq-recover", 0);
 
     let workdir = home.to_string_lossy().into_owned();
-    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let meta = driver
+        .session_create(&workdir, "测试模型", false)
+        .await
+        .expect("建会话");
     let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
     driver.session_open(&sid).await.expect("打开会话");
     let payload = json!({ "content": frame::b64_text("第一轮") });
-    driver.session_send(&sid, "user-input", payload.clone()).await.expect("发送");
+    driver
+        .session_send(&sid, "user-input", payload.clone())
+        .await
+        .expect("发送");
     let ended = |n: usize| {
         move |j: &[Value]| {
-            j.iter().filter(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended")).count() >= n
+            j.iter()
+                .filter(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
+                .count()
+                >= n
         }
     };
     let journal = wait_journal(&driver, &sid, ended(1)).await;
     assert!(ended(1)(&journal), "第一轮未结束: {journal:?}");
-    let base_seq =
-        journal.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).max().unwrap();
+    let base_seq = journal
+        .iter()
+        .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
+        .max()
+        .unwrap();
     driver.stop();
 
     // 数据面伪造长历史(壳自己的帧格式,seq 顺延):把 replay_open 的
     // 恢复窗口拉长到肉眼可见,让竞态必然暴露
-    let events = home.join("shellcfg/ohmy-sessions").join(&sid).join("events.jsonl");
+    let events = home
+        .join("shellcfg/ohmy-sessions")
+        .join(&sid)
+        .join("events.jsonl");
     let mut buf = String::new();
     let mut seq = base_seq;
     for i in 0..15000u32 {
@@ -760,7 +931,10 @@ async fn e2e_send_during_replay_recovery_does_not_reuse_seqs() {
     }
     {
         use std::io::Write as _;
-        let mut f = std::fs::OpenOptions::new().append(true).open(&events).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&events)
+            .unwrap();
         f.write_all(buf.as_bytes()).unwrap();
     }
 
@@ -769,7 +943,10 @@ async fn e2e_send_during_replay_recovery_does_not_reuse_seqs() {
         &std::fs::read(home.join("shellcfg/ohmyagent/settings.json")).unwrap(),
     )
     .unwrap();
-    let base_url = settings["models"]["测试模型"]["base_url"].as_str().unwrap().to_string();
+    let base_url = settings["models"]["测试模型"]["base_url"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let ctx: Arc<dyn ShellCtx> = Arc::new(TestCtx::new(home.join("shellcfg")));
     let cfg = DesktopConfig {
         models: json!([{ "name": "测试模型", "provider": "anthropic",
@@ -786,7 +963,10 @@ async fn e2e_send_during_replay_recovery_does_not_reuse_seqs() {
     tokio::time::sleep(Duration::from_millis(30)).await;
     let payload = json!({ "content": frame::b64_text("恢复期间的输入") });
     for i in 0..200 {
-        match driver.session_send(&sid, "user-input", payload.clone()).await {
+        match driver
+            .session_send(&sid, "user-input", payload.clone())
+            .await
+        {
             Ok(_) => break,
             Err(e) if i < 199 => {
                 let _ = e;
@@ -800,9 +980,17 @@ async fn e2e_send_during_replay_recovery_does_not_reuse_seqs() {
     assert!(ended(15002)(&journal), "恢复后一轮未结束");
 
     // 不变式:全 journal 无重复 seq——水位恢复前编号会撞上旧帧
-    let all: Vec<u64> = journal.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
+    let all: Vec<u64> = journal
+        .iter()
+        .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
+        .collect();
     let uniq: HashSet<u64> = all.iter().copied().collect();
-    assert_eq!(uniq.len(), all.len(), "恢复期间发送与旧帧撞 seq(重复 {} 个)", all.len() - uniq.len());
+    assert_eq!(
+        uniq.len(),
+        all.len(),
+        "恢复期间发送与旧帧撞 seq(重复 {} 个)",
+        all.len() - uniq.len()
+    );
 
     // 大纲同样不得出现重复 seq
     let outline = driver.session_outline(&sid).await.expect("大纲");
@@ -814,7 +1002,12 @@ async fn e2e_send_during_replay_recovery_does_not_reuse_seqs() {
         .filter_map(|e| e.get("seq").and_then(|v| v.as_u64()))
         .collect();
     let uniq: HashSet<u64> = seqs.iter().copied().collect();
-    assert_eq!(uniq.len(), seqs.len(), "大纲重复 seq: {}", seqs.len() - uniq.len());
+    assert_eq!(
+        uniq.len(),
+        seqs.len(),
+        "大纲重复 seq: {}",
+        seqs.len() - uniq.len()
+    );
 
     driver.stop();
 }
@@ -828,26 +1021,41 @@ async fn e2e_ask_user_question_flow() {
     let _g = e2e_lock().await;
     let steps = vec![
         sse_tool_use("tu_1", "ToolSearch", &json!({ "query": "AskUserQuestion" })),
-        sse_tool_use("tu_2", "AskUserQuestion", &json!({ "questions": [{
+        sse_tool_use(
+            "tu_2",
+            "AskUserQuestion",
+            &json!({ "questions": [{
             "question": "选哪个?", "header": "选择",
             "options": [{"label":"A","description":"甲"},{"label":"B","description":"乙"}],
-            "multiSelect": false }] })),
+            "multiSelect": false }] }),
+        ),
         sse_text("好的,按 A 处理"),
     ];
     let (driver, home) = e2e_setup_steps("ask", 0, steps);
     let workdir = home.to_string_lossy().into_owned();
-    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let meta = driver
+        .session_create(&workdir, "测试模型", false)
+        .await
+        .expect("建会话");
     let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
     driver.session_open(&sid).await.expect("打开会话");
-    driver.session_call(&sid, "session_set_mode", json!({ "mode": "yolo" })).await.expect("yolo");
     driver
-        .session_send(&sid, "user-input", json!({ "content": frame::b64_text("问我一个问题") }))
+        .session_call(&sid, "session_set_mode", json!({ "mode": "yolo" }))
+        .await
+        .expect("yolo");
+    driver
+        .session_send(
+            &sid,
+            "user-input",
+            json!({ "content": frame::b64_text("问我一个问题") }),
+        )
         .await
         .expect("发送");
 
     // 提问卡帧落日志,取 request_id
     let journal = wait_journal(&driver, &sid, |j| {
-        j.iter().any(|f| f.get("kind").and_then(|v| v.as_str()) == Some("acp_ask_user_question"))
+        j.iter()
+            .any(|f| f.get("kind").and_then(|v| v.as_str()) == Some("acp_ask_user_question"))
     })
     .await;
     let req_id = journal
@@ -874,11 +1082,14 @@ async fn e2e_ask_user_question_flow() {
         .await
         .expect("答复");
     let journal = wait_journal(&driver, &sid, |j| {
-        j.iter().any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
+        j.iter()
+            .any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
     })
     .await;
-    let types: Vec<&str> =
-        journal.iter().filter_map(|f| f.get("type").and_then(|v| v.as_str())).collect();
+    let types: Vec<&str> = journal
+        .iter()
+        .filter_map(|f| f.get("type").and_then(|v| v.as_str()))
+        .collect();
     assert!(types.contains(&"reply-question"), "缺答案回显帧: {types:?}");
     assert!(types.contains(&"task-ended"), "轮次未完成: {types:?}");
     driver.stop();
@@ -887,7 +1098,9 @@ async fn e2e_ask_user_question_flow() {
 /// 裸 Inner 没跑过 system/ready,版本为空;句柄生命周期测试只关心状态与
 /// 句柄的原子性,给个占位的就绪态即可。
 fn ready_status() -> crate::driver::EngineStatus {
-    crate::driver::EngineStatus::Ready { version: String::new() }
+    crate::driver::EngineStatus::Ready {
+        version: String::new(),
+    }
 }
 
 /// 构造裸 Inner(不起引擎进程):journal 写线程 + 会话表,专测回放窗口
@@ -898,11 +1111,23 @@ fn bare_inner(tag: &str) -> Arc<Inner> {
 
 /// 同 bare_inner,另给一份壳事件缓冲(断言 session-event 用)。
 fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
+    let (inner, events, _stdin_rx) = bare_inner_events_and_stdin(tag);
+    (inner, events)
+}
+
+/// 设计响应测试还需要观察 RPC，并直接向 pending oneshot 投递引擎应答。
+fn bare_inner_events_and_stdin(
+    tag: &str,
+) -> (
+    Arc<Inner>,
+    EmittedEvents,
+    mpsc::UnboundedReceiver<Option<String>>,
+) {
     let home = std::env::temp_dir().join(format!("ohmy-journal-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let data_dir = home.join("ohmy-sessions");
     std::fs::create_dir_all(&data_dir).unwrap();
-    let (stdin_tx, _stdin_rx) = mpsc::unbounded_channel();
+    let (stdin_tx, stdin_rx) = mpsc::unbounded_channel();
     let ctx = TestCtx::new(home.clone());
     let events = ctx.1.clone();
     let inner = Arc::new(Inner {
@@ -926,6 +1151,8 @@ fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
             perm_remember: StdMutex::new(HashSet::new()),
             pending_questions: StdMutex::new(HashMap::new()),
             pending_perms: StdMutex::new(HashMap::new()),
+            pending_design_selections: StdMutex::new(HashMap::new()),
+            seen_design_selection_requests: StdMutex::new(HashSet::new()),
             perm_tools: StdMutex::new(HashMap::new()),
             resume: StdMutex::new(HashMap::new()),
         },
@@ -942,7 +1169,7 @@ fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
         perm_persist_path: home.join("perm.json"),
         wsl: None,
     });
-    (inner, events)
+    (inner, events, stdin_rx)
 }
 
 fn bare_session(sid: &str) -> SessionState {
@@ -965,6 +1192,361 @@ fn bare_session(sid: &str) -> SessionState {
     }
 }
 
+fn design_request(request_id: &str, sid: &str) -> Value {
+    json!({
+        "request_id": request_id, "session_id": sid, "title": "选择模板",
+        "items": [
+            { "id": "clean", "title": "简洁", "image": "clean.png", "recommended": true },
+            { "id": "bold", "title": "醒目", "image": "bold.png", "description": "高对比" }
+        ],
+        "refinement": { "enabled": true, "placeholder": "继续调整" }
+    })
+}
+
+fn frame_types(inner: &Inner, sid: &str) -> Vec<String> {
+    inner.journal_barrier();
+    std::fs::read_to_string(inner.data_dir.join(sid).join("events.jsonl"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|frame| {
+            frame
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+async fn answer_next_rpc(
+    inner: &Inner,
+    stdin_rx: &mut mpsc::UnboundedReceiver<Option<String>>,
+    error: Option<&str>,
+) -> Value {
+    let line = stdin_rx
+        .recv()
+        .await
+        .expect("缺 RPC 上行")
+        .expect("收到停止哨兵");
+    let request: Value = serde_json::from_str(&line).expect("RPC 上行不是 JSON");
+    let id = request["id"].as_i64().expect("RPC 缺 id");
+    let response = match error {
+        Some(message) => {
+            json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32000, "message": message } })
+        }
+        None => json!({ "jsonrpc": "2.0", "id": id, "result": {} }),
+    };
+    inner
+        .transport
+        .pending
+        .lock()
+        .unwrap()
+        .remove(&id)
+        .expect("RPC pending 等待者不存在")
+        .send(response)
+        .expect("RPC 调用方已提前退出");
+    request
+}
+
+#[test]
+fn design_request_accepts_dynamic_preview_and_keeps_legacy_image_compatibility() {
+    let inner = bare_inner("design-preview-shape");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification("design/template-selection/request", json!({
+        "request_id": "preview-1", "session_id": "s1",
+        "items": [
+            { "id": "dynamic", "title": "动态", "preview": { "type": "html", "path": ".monkeycode/design-template-previews/dynamic/index.html" } },
+            { "id": "image", "title": "新图片", "preview": { "type": "image", "path": "image.png" } },
+            { "id": "legacy", "title": "旧图片", "image": "legacy.png" }
+        ]
+    }));
+    assert_eq!(
+        inner.sess.pending_design_selections.lock().unwrap()["s1"]
+            .item_ids
+            .len(),
+        3
+    );
+}
+
+#[test]
+fn design_request_is_idempotent_and_cannot_overwrite_a_session_pending_request() {
+    let inner = bare_inner("design-request-idempotent");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-2", "s1"),
+    );
+    let pending = inner.sess.pending_design_selections.lock().unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending["s1"].request_id, "req-1");
+    drop(pending);
+    assert_eq!(
+        frame_types(&inner, "s1")
+            .iter()
+            .filter(|kind| *kind == "design-template-selection-request")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn late_design_cancel_does_not_remove_the_new_request() {
+    let inner = bare_inner("design-late-cancel");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("old", "s1"),
+    );
+    inner.handle_notification(
+        "design/selection/cancelled",
+        json!({ "request_id": "old", "session_id": "s1" }),
+    );
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("new", "s1"),
+    );
+    inner.handle_notification(
+        "design/selection/cancelled",
+        json!({ "request_id": "old", "session_id": "s1" }),
+    );
+    assert_eq!(
+        inner.sess.pending_design_selections.lock().unwrap()["s1"].request_id,
+        "new"
+    );
+    assert_eq!(
+        frame_types(&inner, "s1")
+            .iter()
+            .filter(|kind| *kind == "design-selection-cancelled")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn design_response_validates_and_atomically_consumes_the_pending_request() {
+    let (inner, _events, mut stdin_rx) = bare_inner_events_and_stdin("design-response");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    let driver = OhmyDriver(inner.clone());
+    assert!(driver
+        .session_send(
+            "s1",
+            "design/selection/respond",
+            json!({ "request_id": "req-1", "action": "select", "selected_id": "missing" })
+        )
+        .await
+        .is_err());
+    assert!(inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .contains_key("s1"));
+    let rpc_inner = inner.clone();
+    let responder =
+        tokio::spawn(async move { answer_next_rpc(&rpc_inner, &mut stdin_rx, None).await });
+    driver.session_send("s1", "design/selection/respond",
+        json!({ "request_id": "req-1", "action": "select", "selected_id": "clean", "refinement_text": "更亮" }))
+        .await.unwrap();
+    assert_eq!(
+        responder.await.unwrap()["method"],
+        "design/selection/respond"
+    );
+    assert!(!inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .contains_key("s1"));
+    assert!(driver
+        .session_send(
+            "s1",
+            "design/selection/respond",
+            json!({ "request_id": "req-1", "action": "select", "selected_id": "clean" })
+        )
+        .await
+        .is_err());
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    assert!(inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        frame_types(&inner, "s1")
+            .iter()
+            .filter(|kind| *kind == "design-selection-respond")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn design_rpc_rejection_keeps_pending_open_and_writes_no_success_frame() {
+    let (inner, _events, mut stdin_rx) = bare_inner_events_and_stdin("design-rpc-rejected");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    let driver = OhmyDriver(inner.clone());
+    let rpc_inner = inner.clone();
+    let responder = tokio::spawn(async move {
+        answer_next_rpc(&rpc_inner, &mut stdin_rx, Some("selection rejected")).await
+    });
+    let error = driver
+        .session_send(
+            "s1",
+            "design/selection/respond",
+            json!({ "request_id": "req-1", "action": "select", "selected_id": "clean" }),
+        )
+        .await
+        .expect_err("引擎拒绝必须返回 Err");
+    responder.await.unwrap();
+    assert_eq!(error, "selection rejected");
+    let pending = inner.sess.pending_design_selections.lock().unwrap();
+    assert_eq!(pending["s1"].request_id, "req-1");
+    assert!(!pending["s1"].responding);
+    drop(pending);
+    assert_eq!(
+        frame_types(&inner, "s1")
+            .iter()
+            .filter(|kind| *kind == "design-selection-respond")
+            .count(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn design_response_rejects_a_concurrent_duplicate_while_rpc_is_in_flight() {
+    let (inner, _events, mut stdin_rx) =
+        bare_inner_events_and_stdin("design-response-double-click");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    let driver = OhmyDriver(inner.clone());
+    let first_driver = driver.clone();
+    let first = tokio::spawn(async move {
+        first_driver
+            .session_send(
+                "s1",
+                "design/selection/respond",
+                json!({ "request_id": "req-1", "action": "select", "selected_id": "clean" }),
+            )
+            .await
+    });
+    let line = stdin_rx
+        .recv()
+        .await
+        .expect("首个响应未发 RPC")
+        .expect("收到停止哨兵");
+    let request: Value = serde_json::from_str(&line).unwrap();
+    assert!(inner.sess.pending_design_selections.lock().unwrap()["s1"].responding);
+    let duplicate = driver
+        .session_send(
+            "s1",
+            "design/selection/respond",
+            json!({ "request_id": "req-1", "action": "select", "selected_id": "clean" }),
+        )
+        .await
+        .expect_err("在途响应期间的重复点击必须拒绝");
+    assert!(duplicate.contains("正在处理中"));
+    let id = request["id"].as_i64().unwrap();
+    inner
+        .transport
+        .pending
+        .lock()
+        .unwrap()
+        .remove(&id)
+        .unwrap()
+        .send(json!({ "jsonrpc": "2.0", "id": id, "result": {} }))
+        .unwrap();
+    first.await.unwrap().expect("首个响应应在引擎确认后成功");
+    assert!(!inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .contains_key("s1"));
+    assert_eq!(
+        frame_types(&inner, "s1")
+            .iter()
+            .filter(|kind| *kind == "design-selection-respond")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn reconcile_clears_pending_design_selection_and_records_cancellation() {
+    let inner = bare_inner("design-reconcile");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    inner.reconcile_all("engine stopped");
+    assert!(inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .is_empty());
+    assert!(frame_types(&inner, "s1").contains(&"design-selection-cancelled".to_string()));
+}
+
 #[test]
 fn concurrent_sidecar_updates_do_not_lose_fields() {
     let inner = bare_inner("sidecar-race");
@@ -976,12 +1558,16 @@ fn concurrent_sidecar_updates_do_not_lose_fields() {
         workers.push(std::thread::spawn(move || {
             start.wait();
             inner.write_sidecar("s1", |meta| {
-                meta.as_object_mut().unwrap().insert(format!("field_{i}"), json!(i));
+                meta.as_object_mut()
+                    .unwrap()
+                    .insert(format!("field_{i}"), json!(i));
             });
         }));
     }
     start.wait();
-    for worker in workers { worker.join().unwrap(); }
+    for worker in workers {
+        worker.join().unwrap();
+    }
 
     let meta = inner.read_sidecar("s1");
     for i in 0..32u64 {
@@ -1002,7 +1588,12 @@ async fn sessions_list_treats_legacy_finished_as_idle() {
     });
 
     let list = OhmyDriver(inner).sessions_list().await.unwrap();
-    let legacy = list.as_array().unwrap().iter().find(|item| item["id"] == "legacy").unwrap();
+    let legacy = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == "legacy")
+        .unwrap();
     assert_eq!(legacy["status"], "idle");
     assert_eq!(legacy["turns"], 3);
 }
@@ -1020,25 +1611,64 @@ fn browser_context_resolves_explicit_sessions_without_rejecting_concurrency() {
         sessions.insert("s2".into(), two);
     }
     let driver = OhmyDriver(inner.clone());
-    assert_eq!(driver.browser_workdir_for("s1").as_deref(), Some("/workspace/one"));
-    assert_eq!(driver.browser_workdir_for("s2").as_deref(), Some("/workspace/two"));
-    assert_eq!(driver.single_running_workdir(), None, "多任务时仅停用旧式落盘兜底");
+    assert_eq!(
+        driver.browser_workdir_for("s1").as_deref(),
+        Some("/workspace/one")
+    );
+    assert_eq!(
+        driver.browser_workdir_for("s2").as_deref(),
+        Some("/workspace/two")
+    );
+    assert_eq!(
+        driver.single_running_workdir(),
+        None,
+        "多任务时仅停用旧式落盘兜底"
+    );
 
-    inner.sess.sessions.lock().unwrap().get_mut("s2").unwrap().running = false;
-    assert_eq!(driver.single_running_workdir().as_deref(), Some("/workspace/one"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .get_mut("s2")
+        .unwrap()
+        .running = false;
+    assert_eq!(
+        driver.single_running_workdir().as_deref(),
+        Some("/workspace/one")
+    );
 
     // 即使没有子会话流，显式后台登记也继续归属父 workspace，并阻止维护重启。
-    inner.sess.sessions.lock().unwrap().get_mut("s1").unwrap().running = false;
-    inner.sub.background_agents.lock().unwrap()
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .get_mut("s1")
+        .unwrap()
+        .running = false;
+    inner
+        .sub
+        .background_agents
+        .lock()
+        .unwrap()
         .insert("agent-1".into(), ("s1".into(), "tc-1".into()));
-    assert_eq!(driver.single_running_workdir().as_deref(), Some("/workspace/one"));
+    assert_eq!(
+        driver.single_running_workdir().as_deref(),
+        Some("/workspace/one")
+    );
     assert!(driver.has_running_sessions());
 }
 
 #[test]
 fn public_caps_follow_the_ready_handshake() {
     let inner = bare_inner("caps");
-    inner.transport.engine_caps.lock().unwrap().insert("turn/stopped".into());
+    inner
+        .transport
+        .engine_caps
+        .lock()
+        .unwrap()
+        .insert("turn/stopped".into());
     let driver = OhmyDriver(inner);
     let caps = crate::driver::caps(&driver, false);
     assert!(!caps.browser_ext);
@@ -1069,7 +1699,9 @@ fn driver_host_maintenance_drains_leases_and_closes_the_command_gate() {
 
     assert!(acquired_rx.recv_timeout(Duration::from_millis(30)).is_err());
     drop(lease);
-    acquired_rx.recv_timeout(Duration::from_secs(1)).expect("维护应在 lease 释放后进入");
+    acquired_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("维护应在 lease 释放后进入");
     let error = match host.get() {
         Err(error) => error,
         Ok(_) => panic!("维护期间不应发放新 lease"),
@@ -1087,7 +1719,8 @@ fn idle_maintenance_does_not_churn_the_command_gate_while_work_is_running() {
     inner
         .sess
         .sessions
-        .lock().unwrap()
+        .lock()
+        .unwrap()
         .insert("s1".into(), bare_session("s1"));
     host.set(OhmyDriver(inner), ready_status());
 
@@ -1102,7 +1735,12 @@ fn idle_maintenance_does_not_churn_the_command_gate_while_work_is_running() {
 #[test]
 fn replay_window_no_frame_loss() {
     let inner = bare_inner("replay");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
     // 预置 50 帧历史(opened=false → 只落盘)
     for _ in 0..50 {
         inner.push_frame("s1", |seq| json!({ "type": "t", "seq": seq }));
@@ -1118,31 +1756,50 @@ fn replay_window_no_frame_loss() {
     std::thread::sleep(Duration::from_millis(5)); // 让并发流先跑起来
     let replay = inner.replay_open("s1");
     pusher.join().unwrap();
-    let rseqs: Vec<u64> =
-        replay.frames.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
+    let rseqs: Vec<u64> = replay
+        .frames
+        .iter()
+        .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
+        .collect();
     assert!(rseqs.len() >= 50, "回放至少含预置帧: {}", rseqs.len());
     assert_eq!(rseqs.first(), Some(&1));
-    assert!(rseqs.windows(2).all(|w| w[1] == w[0] + 1), "回放帧 seq 不连续: {rseqs:?}");
+    assert!(
+        rseqs.windows(2).all(|w| w[1] == w[0] + 1),
+        "回放帧 seq 不连续: {rseqs:?}"
+    );
     // opened=true 之后的帧全部进 batch,与回放结果无缝衔接
     let batched: Vec<u64> = inner
-        .sess.batch
-        .lock().unwrap()
+        .sess
+        .batch
+        .lock()
+        .unwrap()
         .get("s1")
-        .map(|v| v.iter().filter_map(|f| f.get("seq").and_then(|x| x.as_u64())).collect())
+        .map(|v| {
+            v.iter()
+                .filter_map(|f| f.get("seq").and_then(|x| x.as_u64()))
+                .collect()
+        })
         .unwrap_or_default();
     let mut all = rseqs;
     all.extend(batched);
-    assert_eq!(all, (1..=250).collect::<Vec<u64>>(), "回放+缓冲拼接有缺口/重复");
+    assert_eq!(
+        all,
+        (1..=250).collect::<Vec<u64>>(),
+        "回放+缓冲拼接有缺口/重复"
+    );
     // 落盘侧同样完整:屏障后日志恰 250 行且 seq 连续(写线程按投递序追加)
     inner.journal_barrier();
-    let data =
-        std::fs::read_to_string(inner.data_dir.join("s1").join("events.jsonl")).unwrap();
+    let data = std::fs::read_to_string(inner.data_dir.join("s1").join("events.jsonl")).unwrap();
     let jseqs: Vec<u64> = data
         .lines()
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
         .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
         .collect();
-    assert_eq!(jseqs, (1..=250).collect::<Vec<u64>>(), "journal 落盘不完整/乱序");
+    assert_eq!(
+        jseqs,
+        (1..=250).collect::<Vec<u64>>(),
+        "journal 落盘不完整/乱序"
+    );
 }
 
 /// 删除路径契约:journal_close(wait=true) 先排空该会话余帧、关句柄,
@@ -1150,14 +1807,22 @@ fn replay_window_no_frame_loss() {
 #[test]
 fn journal_close_drains_before_delete() {
     let inner = bare_inner("close");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
     for _ in 0..20 {
         inner.push_frame("s1", |seq| json!({ "type": "t", "seq": seq }));
     }
     inner.sess.sessions.lock().unwrap().remove("s1"); // 删除路径先摘会话,不再产新帧
     inner.journal_close("s1", true);
     let dir = inner.data_dir.join("s1");
-    let n = std::fs::read_to_string(dir.join("events.jsonl")).unwrap().lines().count();
+    let n = std::fs::read_to_string(dir.join("events.jsonl"))
+        .unwrap()
+        .lines()
+        .count();
     assert_eq!(n, 20, "close 前入队的帧须全部落盘");
     std::fs::remove_dir_all(&dir).expect("句柄已关,目录可删");
     assert!(!dir.exists());
@@ -1171,23 +1836,38 @@ async fn e2e_subagent_progress() {
     require_ohmyagent();
     let _g = e2e_lock().await;
     let steps = vec![
-        sse_tool_use("tu_1", "Agent", &json!({ "prompt": "调查并汇报", "description": "调查任务" })),
+        sse_tool_use(
+            "tu_1",
+            "Agent",
+            &json!({ "prompt": "调查并汇报", "description": "调查任务" }),
+        ),
         sse_text("子代理调查结果:一切正常\n"),
         sse_text("父任务完成"),
     ];
     let (driver, home) = e2e_setup_steps("sub", 0, steps);
     let workdir = home.to_string_lossy().into_owned();
-    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let meta = driver
+        .session_create(&workdir, "测试模型", false)
+        .await
+        .expect("建会话");
     let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
     driver.session_open(&sid).await.expect("打开会话");
-    driver.session_call(&sid, "session_set_mode", json!({ "mode": "yolo" })).await.expect("yolo");
     driver
-        .session_send(&sid, "user-input", json!({ "content": frame::b64_text("派个子代理") }))
+        .session_call(&sid, "session_set_mode", json!({ "mode": "yolo" }))
+        .await
+        .expect("yolo");
+    driver
+        .session_send(
+            &sid,
+            "user-input",
+            json!({ "content": frame::b64_text("派个子代理") }),
+        )
         .await
         .expect("发送");
 
     let journal = wait_journal(&driver, &sid, |j| {
-        j.iter().any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
+        j.iter()
+            .any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
     })
     .await;
     // Agent 工具卡存在且完成;标题带 description 标签(TUI 面板同源)
@@ -1200,13 +1880,18 @@ async fn e2e_subagent_progress() {
     let agent_titled = journal.iter().filter_map(acp_update).any(|u| {
         u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("tool_call")
             && u.get("toolCallId").and_then(|v| v.as_str()) == Some("tu_1")
-            && u.get("title").and_then(|v| v.as_str()).map(|t| t.contains("调查任务")).unwrap_or(false)
+            && u.get("title")
+                .and_then(|v| v.as_str())
+                .map(|t| t.contains("调查任务"))
+                .unwrap_or(false)
     });
     assert!(agent_titled, "Agent 卡标题缺 description 标签: {journal:?}");
     // 子代理文本行以 progress feed 形态挂在 Agent 工具卡上
     let has_sub_text = journal.iter().filter_map(acp_update).any(|u| {
         u.get("toolCallId").and_then(|v| v.as_str()) == Some("tu_1")
-            && u.get("progress").and_then(|p| p.get("kind")).and_then(|v| v.as_str())
+            && u.get("progress")
+                .and_then(|p| p.get("kind"))
+                .and_then(|v| v.as_str())
                 == Some("subagent_text")
             && u.get("progress")
                 .and_then(|p| p.get("line"))
@@ -1227,7 +1912,9 @@ async fn e2e_subagent_progress() {
             if p.get("kind").and_then(|v| v.as_str()) != Some("child_session") {
                 return None;
             }
-            p.get("childSessionId").and_then(|v| v.as_str()).map(String::from)
+            p.get("childSessionId")
+                .and_then(|v| v.as_str())
+                .map(String::from)
         })
         .expect("缺 child_session 链接");
     let ctypes: Vec<String> = driver
@@ -1262,23 +1949,39 @@ async fn e2e_perm_remember_engine_rules() {
     // git push 不在引擎安全命令白名单 → default 模式必弹审批;
     // 同一命令连发两次:第一次批准并记住,第二次考验引擎侧规则
     let steps = vec![
-        sse_tool_use("tu_1", "Bash", &json!({ "command": "git push origin main" })),
-        sse_tool_use("tu_2", "Bash", &json!({ "command": "git push origin main" })),
+        sse_tool_use(
+            "tu_1",
+            "Bash",
+            &json!({ "command": "git push origin main" }),
+        ),
+        sse_tool_use(
+            "tu_2",
+            "Bash",
+            &json!({ "command": "git push origin main" }),
+        ),
         sse_text("推送完成"),
     ];
     let (driver, home) = e2e_setup_steps("perm", 0, steps);
     let workdir = home.to_string_lossy().into_owned();
-    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let meta = driver
+        .session_create(&workdir, "测试模型", false)
+        .await
+        .expect("建会话");
     let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
     driver.session_open(&sid).await.expect("打开会话");
     driver
-        .session_send(&sid, "user-input", json!({ "content": frame::b64_text("推送代码") }))
+        .session_send(
+            &sid,
+            "user-input",
+            json!({ "content": frame::b64_text("推送代码") }),
+        )
         .await
         .expect("发送");
 
     // 首个 Bash 调用弹审批卡
     let journal = wait_journal(&driver, &sid, |j| {
-        j.iter().any(|f| f.get("type").and_then(|v| v.as_str()) == Some("permission-req"))
+        j.iter()
+            .any(|f| f.get("type").and_then(|v| v.as_str()) == Some("permission-req"))
     })
     .await;
     let req_data = journal
@@ -1287,8 +1990,11 @@ async fn e2e_perm_remember_engine_rules() {
         .filter_map(|f| f.get("data").cloned())
         .next()
         .unwrap_or_default();
-    let req_id =
-        req_data.get("id").and_then(|i| i.as_str()).map(String::from).unwrap_or_default();
+    let req_id = req_data
+        .get("id")
+        .and_then(|i| i.as_str())
+        .map(String::from)
+        .unwrap_or_default();
     assert!(!req_id.is_empty(), "未收到审批卡帧: {journal:?}");
     // permissionToolCallId 透传:引擎审批请求带 provider 工具调用 id,
     // 壳原样进帧(UI 据此把审批按钮锚到 tool_call 帧建的那张工具卡)
@@ -1309,11 +2015,14 @@ async fn e2e_perm_remember_engine_rules() {
         .expect("审批");
 
     let journal = wait_journal(&driver, &sid, |j| {
-        j.iter().any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
+        j.iter()
+            .any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
     })
     .await;
-    let types: Vec<&str> =
-        journal.iter().filter_map(|f| f.get("type").and_then(|v| v.as_str())).collect();
+    let types: Vec<&str> = journal
+        .iter()
+        .filter_map(|f| f.get("type").and_then(|v| v.as_str()))
+        .collect();
     assert!(types.contains(&"task-ended"), "轮次未完成: {types:?}");
     // 引擎侧规则生效:二次同命令不再弹卡,审批卡帧全程只出现一次
     let perm_reqs = types.iter().filter(|t| **t == "permission-req").count();
@@ -1321,9 +2030,15 @@ async fn e2e_perm_remember_engine_rules() {
     // 规则由引擎持久化到项目设置(命令段粒度 Bash(git push *))
     let rules =
         std::fs::read_to_string(home.join(".ohmyagent").join("settings.json")).unwrap_or_default();
-    assert!(rules.contains("Bash(git push"), "项目设置缺命令段规则: {rules}");
+    assert!(
+        rules.contains("Bash(git push"),
+        "项目设置缺命令段规则: {rules}"
+    );
     // 壳侧持久化文件停用(旧路径才写 ohmy-perm-remember.json)
-    assert!(!driver.0.perm_persist_path.exists(), "壳侧审批记忆文件不应再写");
+    assert!(
+        !driver.0.perm_persist_path.exists(),
+        "壳侧审批记忆文件不应再写"
+    );
     driver.stop();
 }
 
@@ -1333,8 +2048,18 @@ async fn e2e_perm_remember_engine_rules() {
 #[test]
 fn model_done_reconciles_dropped_deltas() {
     let inner = bare_inner("mdone");
-    inner.transport.engine_caps.lock().unwrap().insert("modelDoneText".into());
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    inner
+        .transport
+        .engine_caps
+        .lock()
+        .unwrap()
+        .insert("modelDoneText".into());
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
     let ev = |t: &str, data: Value| json!({ "type": t, "session_id": "s1", "data": data });
     inner.handle_event(ev("model_start", Value::Null));
     inner.handle_event(ev("model_delta", json!({ "text": "你好" })));
@@ -1345,8 +2070,7 @@ fn model_done_reconciles_dropped_deltas() {
     inner.handle_event(ev("model_delta", json!({ "text": "abc" })));
     inner.handle_event(ev("model_done", json!({ "text": "xyz" })));
     inner.journal_barrier();
-    let data =
-        std::fs::read_to_string(inner.data_dir.join("s1").join("events.jsonl")).unwrap();
+    let data = std::fs::read_to_string(inner.data_dir.join("s1").join("events.jsonl")).unwrap();
     let texts: Vec<String> = data
         .lines()
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
@@ -1364,7 +2088,12 @@ fn model_done_reconciles_dropped_deltas() {
 #[test]
 fn session_summary_lands_in_sidecar_without_touching_title_or_order() {
     let (inner, events) = bare_inner_events("summary");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
     inner.write_sidecar("s1", |m| m["title"] = json!("首条消息截断而来的标题"));
     let updated_before = inner.read_sidecar("s1").get("updated_at").cloned().unwrap();
     // 时间戳是毫秒:同毫秒内写两次会让"没刷新"这条断言白过
@@ -1374,25 +2103,54 @@ fn session_summary_lands_in_sidecar_without_touching_title_or_order() {
         "data": { "summary": "  修复登录流程  " } }));
 
     let meta = inner.read_sidecar("s1");
-    assert_eq!(meta.get("summary").and_then(Value::as_str), Some("修复登录流程"), "摘要未落盘: {meta}");
+    assert_eq!(
+        meta.get("summary").and_then(Value::as_str),
+        Some("修复登录流程"),
+        "摘要未落盘: {meta}"
+    );
     assert_eq!(
         meta.get("title").and_then(Value::as_str),
         Some("首条消息截断而来的标题"),
         "摘要不该改标题: {meta}"
     );
-    assert_eq!(meta.get("updated_at"), Some(&updated_before), "摘要不该刷 updated_at: {meta}");
+    assert_eq!(
+        meta.get("updated_at"),
+        Some(&updated_before),
+        "摘要不该刷 updated_at: {meta}"
+    );
 
     let session_events = |events: &EmittedEvents| -> Vec<Value> {
-        events.lock().unwrap().iter().filter(|(n, _)| n == "session-event").map(|(_, p)| p.clone()).collect()
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(n, _)| n == "session-event")
+            .map(|(_, p)| p.clone())
+            .collect()
     };
     let emitted = session_events(&events);
     assert_eq!(emitted.len(), 1, "应只发一条会话事件: {emitted:?}");
-    assert_eq!(emitted[0]["type"].as_str(), Some("session-summary"), "事件类型不符: {emitted:?}");
-    assert_eq!(emitted[0]["summary"].as_str(), Some("修复登录流程"), "事件缺摘要: {emitted:?}");
+    assert_eq!(
+        emitted[0]["type"].as_str(),
+        Some("session-summary"),
+        "事件类型不符: {emitted:?}"
+    );
+    assert_eq!(
+        emitted[0]["summary"].as_str(),
+        Some("修复登录流程"),
+        "事件缺摘要: {emitted:?}"
+    );
 
     // 空摘要忽略(不覆盖已有的),子代理子会话(sidecar 带 parent)不落也不发
-    inner.handle_event(json!({ "type": "session_summary", "session_id": "s1", "data": { "summary": "   " } }));
-    inner.sess.sessions.lock().unwrap().insert("child".into(), bare_session("child"));
+    inner.handle_event(
+        json!({ "type": "session_summary", "session_id": "s1", "data": { "summary": "   " } }),
+    );
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("child".into(), bare_session("child"));
     inner.write_sidecar("child", |m| m["parent"] = json!("s1"));
     inner.handle_event(json!({ "type": "session_summary", "session_id": "child",
         "data": { "summary": "子代理的摘要" } }));
@@ -1401,8 +2159,15 @@ fn session_summary_lands_in_sidecar_without_touching_title_or_order() {
         Some("修复登录流程"),
         "空摘要不该覆盖已有摘要"
     );
-    assert!(inner.read_sidecar("child").get("summary").is_none(), "子会话不该落摘要");
-    assert_eq!(session_events(&events).len(), 1, "空摘要/子会话不该再发事件");
+    assert!(
+        inner.read_sidecar("child").get("summary").is_none(),
+        "子会话不该落摘要"
+    );
+    assert_eq!(
+        session_events(&events).len(),
+        1,
+        "空摘要/子会话不该再发事件"
+    );
 }
 
 /// event/stream usage 只用 context_* 更新事件所属 Agent 的上下文环：
@@ -1429,12 +2194,16 @@ fn streaming_usage_updates_emitting_agent_without_parent_leak() {
             "context_used": 45_678, "context_window": 64_000 } }));
 
     let usage_of = |sid: &str| {
-        journal_frames(&inner, sid).iter().filter_map(acp_update)
+        journal_frames(&inner, sid)
+            .iter()
+            .filter_map(acp_update)
             .filter(|u| u.get("sessionUpdate").and_then(Value::as_str) == Some("usage_update"))
-            .map(|u| (
-                u.get("used").and_then(Value::as_i64).unwrap_or(-1),
-                u.get("size").and_then(Value::as_i64).unwrap_or(-1),
-            ))
+            .map(|u| {
+                (
+                    u.get("used").and_then(Value::as_i64).unwrap_or(-1),
+                    u.get("size").and_then(Value::as_i64).unwrap_or(-1),
+                )
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(usage_of("main"), vec![(1_234, 200_000)]);
@@ -1452,23 +2221,33 @@ fn turn_stopped_accepts_flat_and_legacy_context_shapes() {
         sessions.insert("legacy".into(), bare_session("legacy"));
     }
 
-    inner.handle_notification("turn/stopped", json!({
-        "session_id": "flat", "stop_reason": "complete",
-        "context_used": 2_345, "context_window": 200_000
-    }));
-    inner.handle_notification("turn/stopped", json!({
-        "session_id": "legacy", "stop_reason": "complete",
-        "context": { "used_tokens": 3_456, "window_tokens": 128_000 }
-    }));
+    inner.handle_notification(
+        "turn/stopped",
+        json!({
+            "session_id": "flat", "stop_reason": "complete",
+            "context_used": 2_345, "context_window": 200_000
+        }),
+    );
+    inner.handle_notification(
+        "turn/stopped",
+        json!({
+            "session_id": "legacy", "stop_reason": "complete",
+            "context": { "used_tokens": 3_456, "window_tokens": 128_000 }
+        }),
+    );
 
     let last_usage = |sid: &str| {
-        journal_frames(&inner, sid).iter().filter_map(acp_update)
+        journal_frames(&inner, sid)
+            .iter()
+            .filter_map(acp_update)
             .filter(|u| u.get("sessionUpdate").and_then(Value::as_str) == Some("usage_update"))
             .last()
-            .map(|u| (
-                u.get("used").and_then(Value::as_i64).unwrap_or(-1),
-                u.get("size").and_then(Value::as_i64).unwrap_or(-1),
-            ))
+            .map(|u| {
+                (
+                    u.get("used").and_then(Value::as_i64).unwrap_or(-1),
+                    u.get("size").and_then(Value::as_i64).unwrap_or(-1),
+                )
+            })
     };
     assert_eq!(last_usage("flat"), Some((2_345, 200_000)));
     assert_eq!(last_usage("legacy"), Some((3_456, 128_000)));
@@ -1480,27 +2259,50 @@ fn turn_stopped_accepts_flat_and_legacy_context_shapes() {
 #[test]
 fn structured_tool_result_and_agent_result() {
     let inner = bare_inner("sres");
-    inner.transport.engine_caps.lock().unwrap().insert("structuredToolResult".into());
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
-    let ev = |t: &str, tc: &str, data: Value| {
-        json!({ "type": t, "session_id": "s1", "tool_call_id": tc, "data": data })
-    };
+    inner
+        .transport
+        .engine_caps
+        .lock()
+        .unwrap()
+        .insert("structuredToolResult".into());
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    let ev = |t: &str, tc: &str, data: Value| json!({ "type": t, "session_id": "s1", "tool_call_id": tc, "data": data });
     // is_error=true 但内容无 "Error: " 前缀 → 仍判失败
-    inner.handle_event(ev("tool_call", "tc1", json!({ "name": "Bash", "input": { "command": "x" } })));
-    inner.handle_event(ev("tool_result", "tc1", json!({ "tool": "Bash", "content": "exit 1", "is_error": true })));
+    inner.handle_event(ev(
+        "tool_call",
+        "tc1",
+        json!({ "name": "Bash", "input": { "command": "x" } }),
+    ));
+    inner.handle_event(ev(
+        "tool_result",
+        "tc1",
+        json!({ "tool": "Bash", "content": "exit 1", "is_error": true }),
+    ));
     // Agent:agent_result 全量内容(远超 500 截断)为权威,tool_result
     // 侧只回了截断破损的半截 JSON
-    inner.handle_event(ev("tool_call", "tc2", json!({ "name": "Agent", "input": { "description": "d", "prompt": "p" } })));
+    inner.handle_event(ev(
+        "tool_call",
+        "tc2",
+        json!({ "name": "Agent", "input": { "description": "d", "prompt": "p" } }),
+    ));
     let full = "结".repeat(600);
     inner.handle_event(ev(
         "agent_result",
         "tc2",
         json!({ "status": "completed", "agentId": "a1", "agentType": "explore", "content": full }),
     ));
-    inner.handle_event(ev("tool_result", "tc2", json!({ "tool": "Agent", "content": "{\"status\":\"comp", "is_error": false })));
+    inner.handle_event(ev(
+        "tool_result",
+        "tc2",
+        json!({ "tool": "Agent", "content": "{\"status\":\"comp", "is_error": false }),
+    ));
     inner.journal_barrier();
-    let data =
-        std::fs::read_to_string(inner.data_dir.join("s1").join("events.jsonl")).unwrap();
+    let data = std::fs::read_to_string(inner.data_dir.join("s1").join("events.jsonl")).unwrap();
     let updates: Vec<Value> = data
         .lines()
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
@@ -1511,12 +2313,19 @@ fn structured_tool_result_and_agent_result() {
         .iter()
         .find(|u| u.get("toolCallId").and_then(|v| v.as_str()) == Some("tc1"))
         .expect("缺 tc1 收尾帧");
-    assert_eq!(tc1.get("status").and_then(|v| v.as_str()), Some("failed"), "is_error 未判失败");
+    assert_eq!(
+        tc1.get("status").and_then(|v| v.as_str()),
+        Some("failed"),
+        "is_error 未判失败"
+    );
     let tc2 = updates
         .iter()
         .find(|u| u.get("toolCallId").and_then(|v| v.as_str()) == Some("tc2"))
         .expect("缺 tc2 收尾帧");
-    assert_eq!(tc2.get("status").and_then(|v| v.as_str()), Some("completed"));
+    assert_eq!(
+        tc2.get("status").and_then(|v| v.as_str()),
+        Some("completed")
+    );
     assert_eq!(
         tc2.get("rawOutput").and_then(|v| v.as_str()),
         Some(full.as_str()),
@@ -1534,7 +2343,10 @@ fn upload_path_extraction_keeps_only_images() {
                    忽略 .monkeycode/uploads/.gitignore 与重复 .monkeycode/uploads/browser-1.png";
     assert_eq!(
         crate::driver::normalize::extract_upload_paths(content),
-        [".monkeycode/uploads/browser-1.png", ".monkeycode/uploads/cat.JPG"]
+        [
+            ".monkeycode/uploads/browser-1.png",
+            ".monkeycode/uploads/cat.JPG"
+        ]
     );
 }
 
@@ -1548,15 +2360,29 @@ fn unstamped_subagent_event_not_claimed() {
     s.open_tools.insert("tc1".into(), "Agent".into());
     inner.sess.sessions.lock().unwrap().insert("s1".into(), s);
     // 旧启发式条件齐备(运行中 + 未闭合 Agent 工具)也不认领
-    inner.handle_event(json!({ "type": "model_delta", "session_id": "child9", "data": { "text": "hi" } }));
-    assert!(!inner.sess.sessions.lock().unwrap().contains_key("child9"), "无戳记事件不应物化子会话");
+    inner.handle_event(
+        json!({ "type": "model_delta", "session_id": "child9", "data": { "text": "hi" } }),
+    );
+    assert!(
+        !inner.sess.sessions.lock().unwrap().contains_key("child9"),
+        "无戳记事件不应物化子会话"
+    );
     assert!(inner.sub.subagents.lock().unwrap().is_empty());
     // 带戳记则精确认领
     inner.handle_event(json!({ "type": "model_delta", "session_id": "child9",
         "parent_session_id": "s1", "parent_tool_call_id": "tc1", "data": { "text": "hi" } }));
-    assert!(inner.sess.sessions.lock().unwrap().contains_key("child9"), "带戳记事件应认领");
+    assert!(
+        inner.sess.sessions.lock().unwrap().contains_key("child9"),
+        "带戳记事件应认领"
+    );
     assert_eq!(
-        inner.sub.subagents.lock().unwrap().get("child9").map(|r| r.parent_tc.clone()),
+        inner
+            .sub
+            .subagents
+            .lock()
+            .unwrap()
+            .get("child9")
+            .map(|r| r.parent_tc.clone()),
         Some("tc1".into())
     );
 }
@@ -1587,7 +2413,13 @@ fn async_launched_json(agent_id: &str, name: &str, desc: &str) -> String {
     .unwrap()
 }
 
-fn notification_message(agent_id: &str, name: &str, desc: &str, status: &str, result: &str) -> String {
+fn notification_message(
+    agent_id: &str,
+    name: &str,
+    desc: &str,
+    status: &str,
+    result: &str,
+) -> String {
     format!(
         "<task-notification>\nBackground agent {agent_id} (name: {name}) [plan] finished with status: {status}\nTask: {desc}\nResult:\n{result}\n</task-notification>"
     )
@@ -1609,11 +2441,19 @@ fn journal_frames(inner: &Inner, sid: &str) -> Vec<Value> {
 #[test]
 fn backgrounded_subagent_survives_and_backfills() {
     let inner = bare_inner("bg");
-    inner.transport.engine_caps.lock().unwrap().insert("structuredToolResult".into());
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
-    let ev = |t: &str, tc: &str, data: Value| {
-        json!({ "type": t, "session_id": "s1", "tool_call_id": tc, "data": data })
-    };
+    inner
+        .transport
+        .engine_caps
+        .lock()
+        .unwrap()
+        .insert("structuredToolResult".into());
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    let ev = |t: &str, tc: &str, data: Value| json!({ "type": t, "session_id": "s1", "tool_call_id": tc, "data": data });
     inner.handle_event(ev(
         "tool_call",
         "tc1",
@@ -1623,7 +2463,10 @@ fn backgrounded_subagent_survives_and_backfills() {
     inner.handle_event(json!({ "type": "model_delta", "session_id": "child1",
         "parent_session_id": "s1", "parent_tool_call_id": "tc1",
         "parent_description": "设计解耦接口方案", "data": { "text": "调查中…\n" } }));
-    assert!(inner.sess.sessions.lock().unwrap().contains_key("child1"), "子代理未认领");
+    assert!(
+        inner.sess.sessions.lock().unwrap().contains_key("child1"),
+        "子代理未认领"
+    );
     // 显式后台:tool_result 回 async_launched JSON(无 content 字段)
     inner.handle_event(ev(
         "tool_result",
@@ -1632,21 +2475,38 @@ fn backgrounded_subagent_survives_and_backfills() {
     ));
     {
         let subs = inner.sub.subagents.lock().unwrap();
-        let r = subs.get("child1").expect("async_launched 不得清掉活着的子代理路由");
+        let r = subs
+            .get("child1")
+            .expect("async_launched 不得清掉活着的子代理路由");
         assert!(r.background, "路由未标记后台");
     }
     assert!(
-        inner.sub.background_agents.lock().unwrap().contains_key("a1"),
+        inner
+            .sub
+            .background_agents
+            .lock()
+            .unwrap()
+            .contains_key("a1"),
         "后台代理未登记"
     );
     // 父轮收尾:后台子会话跨轮存活,不得按中断收尾
-    inner.handle_notification("turn/stopped", json!({ "session_id": "s1", "stop_reason": "complete" }));
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "complete" }),
+    );
     assert!(
         inner.sub.subagents.lock().unwrap().contains_key("child1"),
         "turn/stopped 不得收掉后台子代理路由"
     );
     assert!(
-        inner.sess.sessions.lock().unwrap().get("child1").map(|s| s.running).unwrap_or(false),
+        inner
+            .sess
+            .sessions
+            .lock()
+            .unwrap()
+            .get("child1")
+            .map(|s| s.running)
+            .unwrap_or(false),
         "后台子会话应保持 running"
     );
     // 后台期间子代理继续流式 → 仍投喂父卡进度窗
@@ -1659,8 +2519,14 @@ fn backgrounded_subagent_survives_and_backfills() {
         "status": "completed",
         "message": notification_message("a1", "bd", "设计解耦接口方案", "completed", "最终结论正文"),
     }}));
-    assert!(inner.sub.background_agents.lock().unwrap().is_empty(), "登记未消费");
-    assert!(inner.sub.subagents.lock().unwrap().is_empty(), "通知后路由未清");
+    assert!(
+        inner.sub.background_agents.lock().unwrap().is_empty(),
+        "登记未消费"
+    );
+    assert!(
+        inner.sub.subagents.lock().unwrap().is_empty(),
+        "通知后路由未清"
+    );
 
     let frames = journal_frames(&inner, "s1");
     let tc1_finals: Vec<Value> = frames
@@ -1672,11 +2538,27 @@ fn backgrounded_subagent_survives_and_backfills() {
                 && u.get("status").and_then(|v| v.as_str()) != Some("in_progress")
         })
         .collect();
-    assert_eq!(tc1_finals.len(), 2, "应有两次终态帧(转后台文案 + 结果回填): {tc1_finals:?}");
-    let first = tc1_finals[0].get("rawOutput").and_then(|v| v.as_str()).unwrap_or("");
-    assert!(first.contains("已转入后台"), "async_launched 卡应是友好文案: {first}");
-    assert!(!first.contains("async_launched"), "原始 JSON 不得灌卡: {first}");
-    assert_eq!(tc1_finals[1].get("status").and_then(|v| v.as_str()), Some("completed"));
+    assert_eq!(
+        tc1_finals.len(),
+        2,
+        "应有两次终态帧(转后台文案 + 结果回填): {tc1_finals:?}"
+    );
+    let first = tc1_finals[0]
+        .get("rawOutput")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    assert!(
+        first.contains("已转入后台"),
+        "async_launched 卡应是友好文案: {first}"
+    );
+    assert!(
+        !first.contains("async_launched"),
+        "原始 JSON 不得灌卡: {first}"
+    );
+    assert_eq!(
+        tc1_finals[1].get("status").and_then(|v| v.as_str()),
+        Some("completed")
+    );
     assert_eq!(
         tc1_finals[1].get("rawOutput").and_then(|v| v.as_str()),
         Some("最终结论正文"),
@@ -1689,17 +2571,26 @@ fn backgrounded_subagent_survives_and_backfills() {
         .find(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification"))
         .expect("缺 📌 系统行帧");
     let note_text = note.get("text").and_then(|v| v.as_str()).unwrap_or("");
-    assert!(note_text.contains("bd") && note_text.contains("已完成"), "📌 文案不符: {note_text}");
+    assert!(
+        note_text.contains("bd") && note_text.contains("已完成"),
+        "📌 文案不符: {note_text}"
+    );
     // 通知全文不得以 agent_text 混进模型正文气泡
     let leaked = frames.iter().filter_map(acp_update).any(|u| {
         u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("agent_message_chunk")
-            && u["content"]["text"].as_str().map(|t| t.contains("Background agent")).unwrap_or(false)
+            && u["content"]["text"]
+                .as_str()
+                .map(|t| t.contains("Background agent"))
+                .unwrap_or(false)
     });
     assert!(!leaked, "通知全文混进了正文气泡");
     // 后台期间的流式行仍进父卡进度窗
     let fed = frames.iter().filter_map(acp_update).any(|u| {
         u.get("toolCallId").and_then(|v| v.as_str()) == Some("tc1")
-            && u["progress"]["line"].as_str().map(|l| l.contains("结论已成")).unwrap_or(false)
+            && u["progress"]["line"]
+                .as_str()
+                .map(|l| l.contains("结论已成"))
+                .unwrap_or(false)
     });
     assert!(fed, "后台期间的子代理进度未进父卡");
     // 子会话按 Finished 收尾
@@ -1707,9 +2598,15 @@ fn backgrounded_subagent_survives_and_backfills() {
         .iter()
         .filter_map(|f| f.get("type").and_then(|v| v.as_str()).map(String::from))
         .collect();
-    assert!(ctypes.iter().any(|t| t == "task-ended"), "子会话未收尾: {ctypes:?}");
+    assert!(
+        ctypes.iter().any(|t| t == "task-ended"),
+        "子会话未收尾: {ctypes:?}"
+    );
     assert_eq!(
-        inner.read_sidecar("child1").get("status").and_then(|v| v.as_str()),
+        inner
+            .read_sidecar("child1")
+            .get("status")
+            .and_then(|v| v.as_str()),
         Some("finished"),
         "子会话 sidecar 未落 finished"
     );
@@ -1720,21 +2617,35 @@ fn backgrounded_subagent_survives_and_backfills() {
 #[test]
 fn backgrounded_subagent_error_marks_card_failed() {
     let inner = bare_inner("bgerr");
-    inner.transport.engine_caps.lock().unwrap().insert("structuredToolResult".into());
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
-    let ev = |t: &str, tc: &str, data: Value| {
-        json!({ "type": t, "session_id": "s1", "tool_call_id": tc, "data": data })
-    };
-    inner.handle_event(ev("tool_call", "tc1", json!({ "name": "Agent", "input": { "description": "d", "prompt": "p" } })));
+    inner
+        .transport
+        .engine_caps
+        .lock()
+        .unwrap()
+        .insert("structuredToolResult".into());
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    let ev = |t: &str, tc: &str, data: Value| json!({ "type": t, "session_id": "s1", "tool_call_id": tc, "data": data });
+    inner.handle_event(ev(
+        "tool_call",
+        "tc1",
+        json!({ "name": "Agent", "input": { "description": "d", "prompt": "p" } }),
+    ));
     inner.handle_event(ev(
         "tool_result",
         "tc1",
         json!({ "tool": "Agent", "content": async_launched_json("a2", "", "d"), "is_error": false }),
     ));
-    inner.handle_event(json!({ "type": "task_notification", "session_id": "s1", "data": {
-        "agent_id": "a2", "name": "", "description": "d", "status": "error",
-        "message": notification_message("a2", "", "d", "error", "provider 炸了"),
-    }}));
+    inner.handle_event(
+        json!({ "type": "task_notification", "session_id": "s1", "data": {
+            "agent_id": "a2", "name": "", "description": "d", "status": "error",
+            "message": notification_message("a2", "", "d", "error", "provider 炸了"),
+        }}),
+    );
     let frames = journal_frames(&inner, "s1");
     let failed = frames
         .iter()
@@ -1744,13 +2655,20 @@ fn backgrounded_subagent_error_marks_card_failed() {
                 && u.get("status").and_then(|v| v.as_str()) == Some("failed")
         })
         .expect("缺 failed 回填帧");
-    assert_eq!(failed.get("rawOutput").and_then(|v| v.as_str()), Some("provider 炸了"));
+    assert_eq!(
+        failed.get("rawOutput").and_then(|v| v.as_str()),
+        Some("provider 炸了")
+    );
     let note = frames
         .iter()
         .filter_map(acp_update)
         .find(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification"))
         .expect("缺 📌 系统行帧");
-    assert!(note.get("text").and_then(|v| v.as_str()).unwrap_or("").contains("执行失败"));
+    assert!(note
+        .get("text")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .contains("执行失败"));
 }
 
 /// 反查不到登记(壳重启丢内存/SendMessage 续跑二次完成)的 task_notification:
@@ -1759,11 +2677,18 @@ fn backgrounded_subagent_error_marks_card_failed() {
 #[test]
 fn task_notification_without_registry_falls_back_stripped() {
     let inner = bare_inner("bgfb");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
-    inner.handle_event(json!({ "type": "task_notification", "session_id": "s1", "data": {
-        "agent_id": "unknown", "status": "completed",
-        "message": notification_message("unknown", "x", "d", "completed", "正文内容"),
-    }}));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_event(
+        json!({ "type": "task_notification", "session_id": "s1", "data": {
+            "agent_id": "unknown", "status": "completed",
+            "message": notification_message("unknown", "x", "d", "completed", "正文内容"),
+        }}),
+    );
     let frames = journal_frames(&inner, "s1");
     let text = frames
         .iter()
@@ -1772,8 +2697,14 @@ fn task_notification_without_registry_falls_back_stripped() {
         .filter_map(|u| u["content"]["text"].as_str().map(String::from))
         .next()
         .expect("缺兜底外显帧");
-    assert!(text.contains("📌") && text.contains("正文内容"), "兜底外显不完整: {text}");
-    assert!(!text.contains("<task-notification>"), "包装标签未剥: {text}");
+    assert!(
+        text.contains("📌") && text.contains("正文内容"),
+        "兜底外显不完整: {text}"
+    );
+    assert!(
+        !text.contains("<task-notification>"),
+        "包装标签未剥: {text}"
+    );
 }
 
 /// E2E:当前引擎的 run_in_background 只收紧子代理工具集为只读，调用仍
@@ -1786,27 +2717,42 @@ async fn e2e_readonly_subagent_stays_synchronous() {
     let steps = vec![
         // req0 父轮:只读 Agent;req1 子代理应答;
         // req2 父轮继续 Bash;req3 父轮收尾。
-        sse_tool_use("tu_1", "Agent", &json!({
-            "prompt": "深入调查并汇报", "description": "后台调查任务",
-            "name": "bg-worker", "run_in_background": true
-        })),
+        sse_tool_use(
+            "tu_1",
+            "Agent",
+            &json!({
+                "prompt": "深入调查并汇报", "description": "后台调查任务",
+                "name": "bg-worker", "run_in_background": true
+            }),
+        ),
         sse_text("子代理最终结论:一切正常\n"),
         sse_tool_use("tu_2", "Bash", &json!({ "command": "echo ok" })),
         sse_text("父任务收尾完成"),
     ];
     let (driver, home) = e2e_setup_steps("bg", 2000, steps);
     let workdir = home.to_string_lossy().into_owned();
-    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let meta = driver
+        .session_create(&workdir, "测试模型", false)
+        .await
+        .expect("建会话");
     let sid = meta.get("id").and_then(|v| v.as_str()).unwrap().to_string();
     driver.session_open(&sid).await.expect("打开会话");
-    driver.session_call(&sid, "session_set_mode", json!({ "mode": "yolo" })).await.expect("yolo");
     driver
-        .session_send(&sid, "user-input", json!({ "content": frame::b64_text("派个子代理") }))
+        .session_call(&sid, "session_set_mode", json!({ "mode": "yolo" }))
+        .await
+        .expect("yolo");
+    driver
+        .session_send(
+            &sid,
+            "user-input",
+            json!({ "content": frame::b64_text("派个子代理") }),
+        )
         .await
         .expect("发送");
 
     let journal = wait_journal(&driver, &sid, |j| {
-        j.iter().any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
+        j.iter()
+            .any(|f| f.get("type").and_then(|v| v.as_str()) == Some("task-ended"))
     })
     .await;
     let tu1_finals: Vec<Value> = journal
@@ -1818,15 +2764,27 @@ async fn e2e_readonly_subagent_stays_synchronous() {
                 && u.get("status").and_then(|v| v.as_str()) != Some("in_progress")
         })
         .collect();
-    assert_eq!(tu1_finals.len(), 1, "同步 Agent 应只有一次终态帧: {journal:?}");
-    assert_eq!(tu1_finals[0].get("status").and_then(|v| v.as_str()), Some("completed"));
+    assert_eq!(
+        tu1_finals.len(),
+        1,
+        "同步 Agent 应只有一次终态帧: {journal:?}"
+    );
+    assert_eq!(
+        tu1_finals[0].get("status").and_then(|v| v.as_str()),
+        Some("completed")
+    );
     assert!(
-        tu1_finals[0].get("rawOutput").and_then(|v| v.as_str()).unwrap_or("").contains("子代理最终结论"),
+        tu1_finals[0]
+            .get("rawOutput")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .contains("子代理最终结论"),
         "同步结果未回填父卡: {tu1_finals:?}"
     );
-    let has_note = journal.iter().filter_map(acp_update).any(|u| {
-        u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification")
-    });
+    let has_note = journal
+        .iter()
+        .filter_map(acp_update)
+        .any(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification"));
     assert!(!has_note, "同步 Agent 不应产生后台完成通知: {journal:?}");
     assert!(driver.0.sub.background_agents.lock().unwrap().is_empty());
     driver.stop();
@@ -1857,20 +2815,34 @@ fn push_one_turn(inner: &Arc<Inner>, sid: &str, prompt: &str, chunks: usize) {
 fn prompt_of(f: &Value) -> String {
     use base64::Engine as _;
     let b64 = f["data"]["content"].as_str().unwrap();
-    String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b64).unwrap()).unwrap()
+    String::from_utf8(
+        base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .unwrap(),
+    )
+    .unwrap()
 }
 
 fn replay_lines(inner: &Arc<Inner>, sid: &str) -> Vec<Value> {
     let path = inner.data_dir.join(sid).join("replay.jsonl");
     std::fs::read_to_string(path)
-        .map(|t| t.lines().filter_map(|l| serde_json::from_str(l).ok()).collect())
+        .map(|t| {
+            t.lines()
+                .filter_map(|l| serde_json::from_str(l).ok())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
 #[test]
 fn a_finished_turn_is_materialised_as_one_folded_line() {
     let inner = bare_inner("materialize");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), idle_session("s1"));
 
     push_one_turn(&inner, "s1", "问题", 300);
     inner.journal_barrier();
@@ -1881,11 +2853,17 @@ fn a_finished_turn_is_materialised_as_one_folded_line() {
     // user-input + task-started + 300 碎片折成 1 帧 + task-ended
     assert_eq!(frames.len(), 4, "折叠后应只剩 4 帧: {frames:?}");
     assert_eq!(
-        frames[2]["data"]["update"]["content"]["text"].as_str().unwrap().chars().count(),
+        frames[2]["data"]["update"]["content"]["text"]
+            .as_str()
+            .unwrap()
+            .chars()
+            .count(),
         300
     );
     // src_end 必须精确落在这一轮最后一帧写完的位置
-    let events = std::fs::metadata(inner.data_dir.join("s1").join("events.jsonl")).unwrap().len();
+    let events = std::fs::metadata(inner.data_dir.join("s1").join("events.jsonl"))
+        .unwrap()
+        .len();
     assert_eq!(turns[0]["src_end"].as_u64(), Some(events));
     assert_eq!(turns[0]["to"].as_u64(), Some(303));
 }
@@ -1893,7 +2871,12 @@ fn a_finished_turn_is_materialised_as_one_folded_line() {
 #[test]
 fn reopening_reads_the_folded_window_not_the_raw_journal() {
     let inner = bare_inner("window");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), idle_session("s1"));
     push_one_turn(&inner, "s1", "问题", 500);
     inner.journal_barrier();
 
@@ -1915,21 +2898,44 @@ fn an_unmaterialised_legacy_journal_is_migrated_on_first_open_and_only_once() {
     let mut lines = String::new();
     for turn in 0..2 {
         for f in [
-            frame::user_input(&format!("第 {turn} 问"), { seq += 1; seq }),
-            frame::task_started({ seq += 1; seq }),
+            frame::user_input(&format!("第 {turn} 问"), {
+                seq += 1;
+                seq
+            }),
+            frame::task_started({
+                seq += 1;
+                seq
+            }),
         ] {
             lines.push_str(&f.to_string());
             lines.push('\n');
         }
         for _ in 0..200 {
-            lines.push_str(&frame::agent_thought("字", { seq += 1; seq }).to_string());
+            lines.push_str(
+                &frame::agent_thought("字", {
+                    seq += 1;
+                    seq
+                })
+                .to_string(),
+            );
             lines.push('\n');
         }
-        lines.push_str(&frame::task_ended({ seq += 1; seq }).to_string());
+        lines.push_str(
+            &frame::task_ended({
+                seq += 1;
+                seq
+            })
+            .to_string(),
+        );
         lines.push('\n');
     }
     std::fs::write(dir.join("events.jsonl"), &lines).unwrap();
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), idle_session("s1"));
 
     let first = inner.replay_open("s1");
     inner.journal_barrier();
@@ -1949,7 +2955,12 @@ fn an_unmaterialised_legacy_journal_is_migrated_on_first_open_and_only_once() {
 #[test]
 fn the_open_window_keeps_only_the_newest_turns_and_pages_back_from_the_cursor() {
     let inner = bare_inner("paging");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), idle_session("s1"));
     for i in 0..(crate::driver::fold::TAIL_TURNS + 5) {
         push_one_turn(&inner, "s1", &format!("第 {i} 问"), 3);
     }
@@ -1959,7 +2970,11 @@ fn the_open_window_keeps_only_the_newest_turns_and_pages_back_from_the_cursor() 
 
     let turns = replay_lines(&inner, "s1");
     assert_eq!(turns.len(), crate::driver::fold::TAIL_TURNS + 5);
-    assert_eq!(w.frames.len(), crate::driver::fold::TAIL_TURNS * 4, "只回最近 TAIL_TURNS 轮");
+    assert_eq!(
+        w.frames.len(),
+        crate::driver::fold::TAIL_TURNS * 4,
+        "只回最近 TAIL_TURNS 轮"
+    );
     assert!(w.has_more, "前面还有 5 轮");
     assert!(w.cursor > 0);
     // 窗口第一帧是第 5 问(0..24 共 25 轮,尾 20 轮从第 5 轮起)
@@ -1979,7 +2994,12 @@ fn the_open_window_keeps_only_the_newest_turns_and_pages_back_from_the_cursor() 
 #[test]
 fn a_turn_still_running_stays_raw_and_is_not_materialised_early() {
     let inner = bare_inner("openturn");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), idle_session("s1"));
     push_one_turn(&inner, "s1", "已完成", 5);
     // 未闭合轮:没有 task-ended
     inner.push_frame("s1", |seq| frame::user_input("进行中", seq));
@@ -1994,8 +3014,11 @@ fn a_turn_still_running_stays_raw_and_is_not_materialised_early() {
         s.running = true; // 运行中:补录必须让路
     }
     let w = inner.replay_open("s1");
-    let seqs: Vec<u64> =
-        w.frames.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
+    let seqs: Vec<u64> = w
+        .frames
+        .iter()
+        .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
+        .collect();
     // 已物化轮折成 user-input(1) + started(2) + 正文(3) + ended(8),
     // 后接未物化尾巴 9/10/11——折叠帧取首帧 seq,两段无缝衔接
     assert_eq!(seqs, vec![1, 2, 3, 8, 9, 10, 11]);
@@ -2017,29 +3040,51 @@ fn a_journal_killed_mid_turn_is_repaired_on_cold_open() {
     let mut seq = 0u64;
     let mut lines = String::new();
     for f in [
-        frame::user_input("被打断的一轮", { seq += 1; seq }),
-        frame::task_started({ seq += 1; seq }),
-        frame::agent_thought("想到一半", { seq += 1; seq }),
+        frame::user_input("被打断的一轮", {
+            seq += 1;
+            seq
+        }),
+        frame::task_started({
+            seq += 1;
+            seq
+        }),
+        frame::agent_thought("想到一半", {
+            seq += 1;
+            seq
+        }),
     ] {
         lines.push_str(&f.to_string());
         lines.push('\n');
     }
     std::fs::write(dir.join("events.jsonl"), &lines).unwrap();
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), idle_session("s1"));
 
     let w = inner.replay_open("s1");
-    let types: Vec<&str> =
-        w.frames.iter().filter_map(|f| f["type"].as_str()).collect();
+    let types: Vec<&str> = w.frames.iter().filter_map(|f| f["type"].as_str()).collect();
     assert_eq!(
         types.last().copied(),
         Some("task-ended"),
         "窗口必须以终态帧收口,否则 UI 永远转圈: {types:?}"
     );
-    assert!(types.contains(&"task-error"), "补的收尾要说明原因: {types:?}");
+    assert!(
+        types.contains(&"task-error"),
+        "补的收尾要说明原因: {types:?}"
+    );
     // seq 必须接在最后一帧之后,不能与历史撞号
-    let seqs: Vec<u64> =
-        w.frames.iter().filter_map(|f| f.get("seq").and_then(|v| v.as_u64())).collect();
-    assert!(seqs.windows(2).all(|p| p[0] < p[1]), "seq 必须严格递增: {seqs:?}");
+    let seqs: Vec<u64> = w
+        .frames
+        .iter()
+        .filter_map(|f| f.get("seq").and_then(|v| v.as_u64()))
+        .collect();
+    assert!(
+        seqs.windows(2).all(|p| p[0] < p[1]),
+        "seq 必须严格递增: {seqs:?}"
+    );
 
     // 落盘同样收口:第二次打开不再重复补(已闭合就不满足补的条件)
     inner.journal_barrier();
@@ -2057,7 +3102,12 @@ fn a_journal_killed_mid_turn_is_repaired_on_cold_open() {
 #[test]
 fn a_live_running_turn_is_never_cold_repaired() {
     let inner = bare_inner("liverepair");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), idle_session("s1"));
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), idle_session("s1"));
     inner.push_frame("s1", |seq| frame::user_input("进行中", seq));
     inner.push_frame("s1", frame::task_started);
     if let Some(s) = inner.sess.sessions.lock().unwrap().get_mut("s1") {
@@ -2067,7 +3117,10 @@ fn a_live_running_turn_is_never_cold_repaired() {
 
     let w = inner.replay_open("s1");
     let types: Vec<&str> = w.frames.iter().filter_map(|f| f["type"].as_str()).collect();
-    assert!(!types.contains(&"task-ended"), "运行中会话不该被补收尾: {types:?}");
+    assert!(
+        !types.contains(&"task-ended"),
+        "运行中会话不该被补收尾: {types:?}"
+    );
 }
 
 /// cancel 看门狗的认轮守卫:到期时若已开了新的一轮,不得误杀。
@@ -2095,7 +3148,14 @@ fn the_cancel_watchdog_only_reconciles_its_own_turn() {
     assert!(!matches(6), "上一轮的看门狗不得动到当前轮");
 
     // 轮次收尾后即使 turn 相同也不再和解(running 已落)
-    inner.sess.sessions.lock().unwrap().get_mut("s1").unwrap().running = false;
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .get_mut("s1")
+        .unwrap()
+        .running = false;
     assert!(!matches(7));
 }
 
@@ -2112,19 +3172,39 @@ async fn session_commands_refuse_ids_that_escape_the_session_root() {
     let inner = bare_inner("path-traversal");
     let driver = OhmyDriver(inner.clone());
 
-    for evil in ["..", "../..", "../../..", "a/../..", "/etc", "foo/bar", "x\\y", ".", ""] {
-        assert!(inner.session_dir(evil).is_none(), "sidecar 目录构造放行了 {evil:?}");
-        assert!(inner.engine_session_dir(evil).is_none(), "引擎目录构造放行了 {evil:?}");
+    for evil in [
+        "..", "../..", "../../..", "a/../..", "/etc", "foo/bar", "x\\y", ".", "",
+    ] {
+        assert!(
+            inner.session_dir(evil).is_none(),
+            "sidecar 目录构造放行了 {evil:?}"
+        );
+        assert!(
+            inner.engine_session_dir(evil).is_none(),
+            "引擎目录构造放行了 {evil:?}"
+        );
 
         let err = driver
             .session_delete(evil)
             .await
             .expect_err("删除必须对逃逸 id 直接失败,它的终点是 remove_dir_all");
-        assert!(err.contains("非法会话 id"), "{evil:?} 的错误文案不对: {err}");
-        assert!(driver.session_open(evil).await.is_err(), "打开也不该放行 {evil:?}");
-        assert!(driver.session_frame(evil, 1).await.is_err(), "回读也不该放行 {evil:?}");
         assert!(
-            driver.session_patch(evil, json!({ "title": "x" })).await.is_err(),
+            err.contains("非法会话 id"),
+            "{evil:?} 的错误文案不对: {err}"
+        );
+        assert!(
+            driver.session_open(evil).await.is_err(),
+            "打开也不该放行 {evil:?}"
+        );
+        assert!(
+            driver.session_frame(evil, 1).await.is_err(),
+            "回读也不该放行 {evil:?}"
+        );
+        assert!(
+            driver
+                .session_patch(evil, json!({ "title": "x" }))
+                .await
+                .is_err(),
             "sidecar 写也不该放行 {evil:?}",
         );
     }
@@ -2168,7 +3248,11 @@ fn journal_writer_drops_escaping_ids_without_stalling_the_barrier() {
     // 带 ack 的 Close 同理
     inner.journal_close("1f2e3d4c", true);
 
-    assert!(!outside.exists(), "非法 id 在会话根之外建了目录: {}", outside.display());
+    assert!(
+        !outside.exists(),
+        "非法 id 在会话根之外建了目录: {}",
+        outside.display()
+    );
     assert!(
         inner.data_dir.join("1f2e3d4c/events.jsonl").is_file(),
         "合法 id 的帧日志被误伤",
