@@ -25,6 +25,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  useAlertDialogActionNavigation,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -131,8 +132,9 @@ export default function TaskDetailPage() {
   const historyLoadedRef = React.useRef(false)
   const chatScrollRef = React.useRef<HTMLDivElement | null>(null)
   const chatInputRef = React.useRef<TaskChatInputBoxHandle>(null)
-  const restartAgentCancelRef = React.useRef<HTMLButtonElement>(null)
-  const restartAgentConfirmRef = React.useRef<HTMLButtonElement>(null)
+  const modelSwitchDialogNavigation = useAlertDialogActionNavigation()
+  const resetContextDialogNavigation = useAlertDialogActionNavigation()
+  const restartAgentDialogNavigation = useAlertDialogActionNavigation()
   const chatContentRef = React.useRef<HTMLDivElement | null>(null)
   const taskMessageListRef = React.useRef<TaskMessageVirtualListHandle | null>(null)
   const taskFileExplorerRef = React.useRef<TaskFileExplorerHandle | null>(null)
@@ -1019,19 +1021,6 @@ export default function TaskDetailPage() {
     setRestartAgentDialogOpen(true)
   }, [canInput])
 
-  const handleRestartAgentDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "ArrowLeft") {
-      event.preventDefault()
-      restartAgentCancelRef.current?.focus()
-      return
-    }
-
-    if (event.key === "ArrowRight") {
-      event.preventDefault()
-      restartAgentConfirmRef.current?.focus()
-    }
-  }
-
   const handleConfirmRestartAgent = React.useCallback(async () => {
     if (restartAgentSubmitting) return
 
@@ -1578,7 +1567,7 @@ export default function TaskDetailPage() {
           }
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent onKeyDown={modelSwitchDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.page.dialogs.switchModel.title")}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1588,8 +1577,9 @@ export default function TaskDetailPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={modelSwitchSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel ref={modelSwitchDialogNavigation.cancelRef} disabled={modelSwitchSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
+              ref={modelSwitchDialogNavigation.confirmRef}
               type="button"
               onClick={() => {
                 void handleConfirmModelSwitch()
@@ -1609,7 +1599,7 @@ export default function TaskDetailPage() {
           setResetContextDialogOpen(open)
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent onKeyDown={resetContextDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.page.dialogs.resetContext.title")}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1617,8 +1607,9 @@ export default function TaskDetailPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={resetContextSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel ref={resetContextDialogNavigation.cancelRef} disabled={resetContextSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
+              ref={resetContextDialogNavigation.confirmRef}
               type="button"
               onClick={() => {
                 void handleConfirmResetContext()
@@ -1638,7 +1629,7 @@ export default function TaskDetailPage() {
           setRestartAgentDialogOpen(open)
         }}
       >
-        <AlertDialogContent onKeyDown={handleRestartAgentDialogKeyDown}>
+        <AlertDialogContent onKeyDown={restartAgentDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {restartAgentClearContext
@@ -1652,9 +1643,9 @@ export default function TaskDetailPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel ref={restartAgentCancelRef} disabled={restartAgentSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel ref={restartAgentDialogNavigation.cancelRef} disabled={restartAgentSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
-              ref={restartAgentConfirmRef}
+              ref={restartAgentDialogNavigation.confirmRef}
               type="button"
               onClick={() => {
                 void handleConfirmRestartAgent()

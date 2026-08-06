@@ -10,6 +10,22 @@ function AlertDialog({
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
 }
 
+function useAlertDialogActionNavigation() {
+  const cancelRef = React.useRef<HTMLButtonElement>(null)
+  const confirmRef = React.useRef<HTMLButtonElement>(null)
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault()
+      cancelRef.current?.focus()
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault()
+      confirmRef.current?.focus()
+    }
+  }
+
+  return { cancelRef, confirmRef, onKeyDown }
+}
+
 function AlertDialogTrigger({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
@@ -194,4 +210,5 @@ export {
   AlertDialogPortal,
   AlertDialogTitle,
   AlertDialogTrigger,
+  useAlertDialogActionNavigation,
 }
