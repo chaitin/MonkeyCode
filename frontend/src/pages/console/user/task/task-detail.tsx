@@ -25,10 +25,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  useAlertDialogActionNavigation,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useDialogActionNavigation } from "@/components/ui/dialog-action-navigation"
 import { CircularProgress } from "@/components/ui/circular-progress"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
@@ -132,9 +132,10 @@ export default function TaskDetailPage() {
   const historyLoadedRef = React.useRef(false)
   const chatScrollRef = React.useRef<HTMLDivElement | null>(null)
   const chatInputRef = React.useRef<TaskChatInputBoxHandle>(null)
-  const modelSwitchDialogNavigation = useAlertDialogActionNavigation()
-  const resetContextDialogNavigation = useAlertDialogActionNavigation()
-  const restartAgentDialogNavigation = useAlertDialogActionNavigation()
+  const modelSwitchDialogNavigation = useDialogActionNavigation()
+  const resetContextDialogNavigation = useDialogActionNavigation()
+  const restartAgentDialogNavigation = useDialogActionNavigation()
+  const publishWebsiteDialogNavigation = useDialogActionNavigation()
   const chatContentRef = React.useRef<HTMLDivElement | null>(null)
   const taskMessageListRef = React.useRef<TaskMessageVirtualListHandle | null>(null)
   const taskFileExplorerRef = React.useRef<TaskFileExplorerHandle | null>(null)
@@ -1782,7 +1783,7 @@ export default function TaskDetailPage() {
       </Dialog>
       {canPublishWebsite && (
         <Dialog open={publishConfirmDialogOpen} onOpenChange={setPublishConfirmDialogOpen}>
-          <DialogContent>
+          <DialogContent onKeyDown={publishWebsiteDialogNavigation.onKeyDown}>
             <DialogHeader>
               <DialogTitle>{t("taskDetail.page.dialogs.publishWebsite.title")}</DialogTitle>
               <DialogDescription>
@@ -1790,10 +1791,10 @@ export default function TaskDetailPage() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setPublishConfirmDialogOpen(false)}>
+              <Button ref={publishWebsiteDialogNavigation.cancelRef} variant="outline" onClick={() => setPublishConfirmDialogOpen(false)}>
                 {t("taskDetail.common.cancel")}
               </Button>
-              <Button onClick={handleConfirmPublishWebsite}>
+              <Button ref={publishWebsiteDialogNavigation.confirmRef} onClick={handleConfirmPublishWebsite}>
                 {t("taskDetail.page.dialogs.publishWebsite.confirm")}
               </Button>
             </DialogFooter>

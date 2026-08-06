@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { useDialogActionNavigation } from "@/components/ui/dialog-action-navigation"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconAlertCircle, IconCloudOff, IconPlus, IconReload, IconTerminal2, IconX } from "@tabler/icons-react"
 import { useCallback, useEffect, useState } from "react"
@@ -39,6 +40,7 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
   const [titles, setTitles] = useState<Record<string, string>>({})
   const [closeDialogOpen, setCloseDialogOpen] = useState(false)
   const [sessionToClose, setSessionToClose] = useState<string | null>(null)
+  const closeDialogNavigation = useDialogActionNavigation()
 
   const fetchSessions = useCallback(async (): Promise<DomainTerminal[]> => {
     if (!envid) return []
@@ -260,14 +262,14 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
       </div>
 
       <AlertDialog open={closeDialogOpen} onOpenChange={setCloseDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent onKeyDown={closeDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.terminal.closeTitle")}</AlertDialogTitle>
             <AlertDialogDescription>{t("taskDetail.terminal.closeDescription")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setCloseDialogOpen(false)}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => sessionToClose && handleDeleteSession(sessionToClose)}>
+            <AlertDialogCancel ref={closeDialogNavigation.cancelRef} onClick={() => setCloseDialogOpen(false)}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction ref={closeDialogNavigation.confirmRef} onClick={() => sessionToClose && handleDeleteSession(sessionToClose)}>
               {t("taskDetail.terminal.confirmClose")}
             </AlertDialogAction>
           </AlertDialogFooter>

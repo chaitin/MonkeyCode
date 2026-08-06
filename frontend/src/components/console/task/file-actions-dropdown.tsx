@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { useDialogActionNavigation } from "@/components/ui/dialog-action-navigation"
 import { IconCopy, IconDotsVertical, IconDownload, IconFile, IconFolder, IconReload, IconTrash, IconTransfer, IconUpload } from "@tabler/icons-react"
 import { nativeDownloadFile, normalizePath } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
@@ -59,6 +60,7 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
   const [moveFileDialogOpen, setMoveFileDialogOpen] = useState(false)
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false)
   const [downloadFileHandle, setDownloadFileHandle] = useState<FileSystemFileHandle | null>(null)
+  const deleteDialogNavigation = useDialogActionNavigation()
 
   const isDirectory = file.entry_mode === RepoFileEntryMode.RepoEntryModeTree
   const filePath = normalizePath('/workspace/' + file.path)
@@ -181,7 +183,7 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
       </DropdownMenu>
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()} onKeyDown={deleteDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.fileActions.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -189,8 +191,8 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("taskDetail.common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>{t("taskDetail.fileActions.confirmDelete")}</AlertDialogAction>
+            <AlertDialogCancel ref={deleteDialogNavigation.cancelRef}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction ref={deleteDialogNavigation.confirmRef} onClick={handleDelete}>{t("taskDetail.fileActions.confirmDelete")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

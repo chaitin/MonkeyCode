@@ -6,8 +6,9 @@ import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
 import type { AvailableCommand, AvailableCommands, TaskStreamStatus, TaskUserInput, TaskUserInputPayload } from "./task-shared"
 import { Button } from "@/components/ui/button"
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, useAlertDialogActionNavigation } from "@/components/ui/alert-dialog"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { useDialogActionNavigation } from "@/components/ui/dialog-action-navigation"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { isCompressibleImageFile, MAX_TASK_UPLOAD_FILE_SIZE_BYTES, MAX_TASK_UPLOAD_FILE_SIZE_LABEL, TaskFileUploadDialog, TaskUploadedFileItem, TaskUploadFileTooLargeError, uploadTaskFile, type TaskUploadedFile } from "./task-file-upload"
@@ -140,7 +141,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   const fileInputRef = useRef<HTMLInputElement>(null)
   const quickInputContainerRef = useRef<HTMLDivElement>(null)
   const quickInputMeasureRef = useRef<HTMLDivElement>(null)
-  const slashCommandDialogNavigation = useAlertDialogActionNavigation()
+  const slashCommandDialogNavigation = useDialogActionNavigation()
   const dragDepthRef = useRef(0)
   const nextAttachmentFileIndexRef = useRef(1)
   const autoSendingQueuedInputRef = useRef(false)
