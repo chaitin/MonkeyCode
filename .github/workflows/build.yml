@@ -35,6 +35,10 @@ jobs:
         working-directory: frontend
         run: pnpm run test:online-preview
 
+      - name: Build Chrome 85 offline edition
+        working-directory: frontend
+        run: pnpm run build:offline
+
       - name: Build
         working-directory: frontend
         run: pnpm run build:online
