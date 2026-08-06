@@ -153,7 +153,12 @@ export default function CreateDefaultTaskDialog({
       ? storedParams.imageId
       : selectImage(images, true)
 
-    setSelectedImageId(nextImageId)
+    setSelectedImageId((currentImageId) => {
+      if (currentImageId && images.some((image) => image.id === currentImageId)) {
+        return currentImageId
+      }
+      return nextImageId
+    })
 
     if (user.role === ConstsUserRole.UserRoleSubAccount) {
       const nextHostId = hosts.some((host) => host.id === storedParams.hostId && host.status === ConstsHostStatus.HostStatusOnline)
@@ -162,37 +167,51 @@ export default function CreateDefaultTaskDialog({
           ? (hosts.find((host) => host.id && host.status === ConstsHostStatus.HostStatusOnline)?.id || "")
           : selectHost(hosts, true)
 
-      setSelectedHostId(nextHostId)
+      setSelectedHostId((currentHostId) => {
+        const currentHostIsValid = currentHostId === "public_host"
+          || hosts.some((host) => host.id === currentHostId && host.status === ConstsHostStatus.HostStatusOnline)
+        return currentHostIsValid ? currentHostId : nextHostId
+      })
       return
     }
 
-    setSelectedHostId(selectHost(hosts, false))
+    const nextHostId = selectHost(hosts, false)
+    setSelectedHostId((currentHostId) => {
+      const currentHostIsValid = currentHostId === "public_host"
+        || hosts.some((host) => host.id === currentHostId && host.status === ConstsHostStatus.HostStatusOnline)
+      return currentHostIsValid ? currentHostId : nextHostId
+    })
   }, [hosts, images, user.role])
+
+  const resetDraft = () => {
+    modelTouchedRef.current = false
+    setContent("")
+    setCodeDropdownOpen(false)
+    setSkillPopoverOpen(false)
+    setSearchInput("")
+    setSelectedRepo("")
+    setSelectedRepoDisplayName("")
+    setSelectedRepoFromMyRepos(false)
+    setSelectedZipFile(null)
+    setSelectedSkill(
+      skillList.length > 0
+        ? filterSelectableSkillIds(defaultSkills, skillList)
+        : defaultSkills
+    )
+    setActiveSkillTag(ALL_SKILLS_TAG)
+    setAdvancedOptionsOpen(false)
+    setSelectedModelId("")
+    setSelectedHostId("")
+    setSelectedImageId("")
+    setSelectedIdentityId("")
+    setBranch("")
+  }
 
   useEffect(() => {
     if (!open) {
-
-      modelTouchedRef.current = false
-      setContent("")
       setCodeDropdownOpen(false)
       setSkillPopoverOpen(false)
       setSearchInput("")
-      setSelectedRepo("")
-      setSelectedRepoDisplayName("")
-      setSelectedRepoFromMyRepos(false)
-      setSelectedZipFile(null)
-      setSelectedSkill(
-        skillList.length > 0
-          ? filterSelectableSkillIds(defaultSkills, skillList)
-          : defaultSkills
-      )
-      setActiveSkillTag(ALL_SKILLS_TAG)
-      setAdvancedOptionsOpen(false)
-      setSelectedModelId("")
-      setSelectedHostId("")
-      setSelectedImageId("")
-      setSelectedIdentityId("")
-      setBranch("")
       return
     }
 
@@ -408,6 +427,7 @@ export default function CreateDefaultTaskDialog({
         toast.success(t("taskWorkflow.toast.taskStarted"))
         reloadProjects()
         reloadUnlinkedTasks()
+        resetDraft()
         onOpenChange(false)
         navigate(`/console/task/${resp.data?.id}`)
       } else if (resp.code === 10811) {
@@ -418,6 +438,11 @@ export default function CreateDefaultTaskDialog({
     })
 
     setCreatingTask(false)
+  }
+
+  const handleCancel = () => {
+    resetDraft()
+    onOpenChange(false)
   }
 
   const handleZipFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
@@ -767,7 +792,7 @@ export default function CreateDefaultTaskDialog({
         </div>
 
         <DialogFooter className="shrink-0 border-t pt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={handleCancel}>
             {t("taskWorkflow.dialog.params.cancel")}
           </Button>
           <Button onClick={handleConfirmExecute} disabled={!content.trim() || creatingTask || contentTooLong}>
