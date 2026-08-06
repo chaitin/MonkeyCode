@@ -80,11 +80,15 @@ test("模型列表暂不可用或用户尚未完成选择时保持空值", () =>
   }), "")
 })
 
-test("侧边栏启动任务弹窗关闭时重置模型操作状态", () => {
+test("侧边栏启动任务弹窗关闭时保留草稿并关闭临时控件", () => {
   assert.match(
     dialogSource,
-    /if \(!open\) \{[\s\S]*?modelTouchedRef\.current = false[\s\S]*?setSelectedModelId\(""\)/,
+    /if \(!open\) \{[\s\S]*?setCodeDropdownOpen\(false\)[\s\S]*?setSkillPopoverOpen\(false\)[\s\S]*?setSearchInput\(""\)/,
   )
+  assert.doesNotMatch(dialogSource, /if \(!open\) \{[\s\S]*?setContent\(""\)/)
+  assert.match(dialogSource, /const resetDraft = \(\) => \{[\s\S]*?setContent\(""\)/)
+  assert.match(dialogSource, /const handleCancel = \(\) => \{[\s\S]*?resetDraft\(\)[\s\S]*?onOpenChange\(false\)/)
+  assert.match(dialogSource, /resetDraft\(\)[\s\S]*?onOpenChange\(false\)[\s\S]*?navigate\(`\/console\/task/)
 })
 
 test("侧边栏启动任务弹窗提交用户最后选择的模型", () => {
