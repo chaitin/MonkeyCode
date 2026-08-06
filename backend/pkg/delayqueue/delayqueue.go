@@ -50,6 +50,8 @@ const (
 // ErrRetryAfterMaxAttempts 让已耗尽普通尝试次数的任务继续保留并重试。
 var ErrRetryAfterMaxAttempts = errors.New("retry delay queue job after max attempts")
 
+var ErrJobRescheduled = errors.New("delay queue job rescheduled")
+
 // NewRedisDelayQueue 创建延迟队列（泛型）
 func NewRedisDelayQueue[T any](rdb *redis.Client, logger *slog.Logger, opts ...Option[T]) *RedisDelayQueue[T] {
 	q := &RedisDelayQueue[T]{
@@ -239,6 +241,10 @@ func (q *RedisDelayQueue[T]) pollOnce(ctx context.Context, queue string, handler
 			continue
 		}
 		if err := handler(ctx, job); err != nil {
+			if errors.Is(err, ErrJobRescheduled) {
+				q.logger.Debug("delayqueue job rescheduled", "queue", queue, "id", id)
+				continue
+			}
 			q.logger.Warn("handle job failed, will requeue", "queue", queue, "id", id, "attempts", job.Attempts+1, "err", err)
 			job.Attempts++
 			retryAfterMaxAttempts := errors.Is(err, ErrRetryAfterMaxAttempts)

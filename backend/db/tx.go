@@ -122,6 +122,8 @@ type Tx struct {
 	UserIdentity *UserIdentityClient
 	// VirtualMachine is the client for interacting with the VirtualMachine builders.
 	VirtualMachine *VirtualMachineClient
+	// VirtualMachineRecycleRecord is the client for interacting with the VirtualMachineRecycleRecord builders.
+	VirtualMachineRecycleRecord *VirtualMachineRecycleRecordClient
 
 	// lazily loaded.
 	client     *Client
@@ -307,6 +309,7 @@ func (tx *Tx) init() {
 	tx.User = NewUserClient(tx.config)
 	tx.UserIdentity = NewUserIdentityClient(tx.config)
 	tx.VirtualMachine = NewVirtualMachineClient(tx.config)
+	tx.VirtualMachineRecycleRecord = NewVirtualMachineRecycleRecordClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

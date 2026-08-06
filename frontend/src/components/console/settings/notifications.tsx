@@ -58,7 +58,9 @@ import { Spinner } from "@/components/ui/spinner"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { WechatMpBindDialog } from "@/components/console/wechat-mp-bind-dialog"
 import { useCommonData } from "@/components/console/data-provider"
+import { useAppRuntime } from "@/components/app-runtime-provider"
 import { IS_ONLINE_EDITION } from "@/utils/edition"
+import { shouldShowWechatMp } from "@/utils/wechat-mp"
 import { useTranslation } from "react-i18next"
 
 /** Receiver type used by the UI; wechat_work maps to the API wecom kind. */
@@ -103,6 +105,8 @@ function getReceiverTypeIcon(type: ReceiverType): React.ReactNode {
 export default function Notifications() {
   const { t } = useTranslation()
   const { user, reloadUser } = useCommonData()
+  const { serverConfig } = useAppRuntime()
+  const showWechatMp = shouldShowWechatMp(IS_ONLINE_EDITION, serverConfig?.region)
   const [channels, setChannels] = useState<DomainNotifyChannel[]>([])
   const [eventTypes, setEventTypes] = useState<ConstsNotifyEventTypeInfo[]>([])
   const [loadingChannels, setLoadingChannels] = useState(true)
@@ -456,7 +460,7 @@ export default function Notifications() {
         </Button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-        {IS_ONLINE_EDITION && wechatMpStatusCard}
+        {showWechatMp && wechatMpStatusCard}
         {loadingChannels ? (
           loadingContent
         ) : channels.length > 0 ? (
@@ -605,7 +609,7 @@ export default function Notifications() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {IS_ONLINE_EDITION && (
+      {showWechatMp && (
         <>
           <WechatMpBindDialog
             open={wechatMpBindDialogOpen}

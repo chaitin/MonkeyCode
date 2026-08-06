@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -333,6 +334,133 @@ func TestRecycleJobRetriesMarkWithoutDeletingRemotelyAgain(t *testing.T) {
 	}
 }
 
+func TestRecycleJobReschedulesForRecentPostgresActivity(t *testing.T) {
+	now := time.Now()
+	taskID := uuid.New()
+	vm := &db.VirtualMachine{
+		ID: "vm-recent-pg",
+		Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{
+			ID: taskID,
+		}}},
+	}
+	taskRepo := &recycleGuardTaskRepoStub{task: &db.Task{ID: taskID, LastActiveAt: now.Add(-time.Minute)}}
+	recycler := &idleRecyclerStub{}
+	r := newRecycleGuardRefresher(t, vm, taskRepo, &taskLogActivityStub{latest: now.Add(-2 * time.Hour)}, recycler)
+	if err := r.redis.Set(context.Background(), "vm:idle:debounce:"+vm.ID+":activity", "1", time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	err := r.handleRecycleJob(context.Background(), &delayqueue.Job[*domain.VmIdleInfo]{
+		Payload: &domain.VmIdleInfo{VmID: vm.ID, RecycleMethod: consts.VMRecycleMethodIdle},
+	})
+	if !errors.Is(err, delayqueue.ErrJobRescheduled) {
+		t.Fatalf("error = %v, want rescheduled", err)
+	}
+	if recycler.calls != 0 || taskRepo.calls != 1 {
+		t.Fatalf("recycle calls = %d, task calls = %d", recycler.calls, taskRepo.calls)
+	}
+	if _, _, ok, err := r.recycleQueue.GetJobInfo(context.Background(), vmrecycle.RecycleQueueKey, vm.ID); err != nil || !ok {
+		t.Fatalf("rescheduled job ok = %v, err = %v", ok, err)
+	}
+}
+
+func TestRecycleJobReschedulesForRecentClickHouseActivity(t *testing.T) {
+	now := time.Now()
+	taskID := uuid.New()
+	vm := &db.VirtualMachine{
+		ID: "vm-recent-clickhouse",
+		Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{
+			ID: taskID,
+		}}},
+	}
+	taskRepo := &recycleGuardTaskRepoStub{task: &db.Task{ID: taskID, LastActiveAt: now.Add(-2 * time.Hour)}}
+	recycler := &idleRecyclerStub{}
+	r := newRecycleGuardRefresher(t, vm, taskRepo, &taskLogActivityStub{latest: now.Add(-time.Minute)}, recycler)
+
+	err := r.handleRecycleJob(context.Background(), &delayqueue.Job[*domain.VmIdleInfo]{
+		Payload: &domain.VmIdleInfo{VmID: vm.ID, RecycleMethod: consts.VMRecycleMethodIdle},
+	})
+	if !errors.Is(err, delayqueue.ErrJobRescheduled) {
+		t.Fatalf("error = %v, want rescheduled", err)
+	}
+	if recycler.calls != 0 || taskRepo.calls != 0 {
+		t.Fatalf("recycle calls = %d, task calls = %d", recycler.calls, taskRepo.calls)
+	}
+}
+
+func TestRecycleJobKeepsRetryingWhenActivityCheckFails(t *testing.T) {
+	taskID := uuid.New()
+	vm := &db.VirtualMachine{
+		ID: "vm-activity-check-error",
+		Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{
+			ID: taskID,
+		}}},
+	}
+	wantErr := errors.New("clickhouse unavailable")
+	recycler := &idleRecyclerStub{}
+	r := newRecycleGuardRefresher(t, vm, &recycleGuardTaskRepoStub{}, &taskLogActivityStub{err: wantErr}, recycler)
+
+	err := r.handleRecycleJob(context.Background(), &delayqueue.Job[*domain.VmIdleInfo]{
+		Payload: &domain.VmIdleInfo{VmID: vm.ID, RecycleMethod: consts.VMRecycleMethodIdle},
+	})
+	if !errors.Is(err, wantErr) || !errors.Is(err, delayqueue.ErrRetryAfterMaxAttempts) {
+		t.Fatalf("error = %v, want activity and persistent retry errors", err)
+	}
+	if recycler.calls != 0 {
+		t.Fatalf("recycle calls = %d, want 0", recycler.calls)
+	}
+}
+
+func TestRecycleJobContinuesWhenBothActivityChecksAreStale(t *testing.T) {
+	now := time.Now()
+	taskID := uuid.New()
+	vm := &db.VirtualMachine{
+		ID: "vm-stale-activity",
+		Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{
+			ID: taskID,
+		}}},
+	}
+	recycler := &idleRecyclerStub{}
+	r := newRecycleGuardRefresher(t, vm,
+		&recycleGuardTaskRepoStub{task: &db.Task{ID: taskID, LastActiveAt: now.Add(-2 * time.Hour)}},
+		&taskLogActivityStub{latest: now.Add(-2 * time.Hour)},
+		recycler,
+	)
+
+	if err := r.handleRecycleJob(context.Background(), &delayqueue.Job[*domain.VmIdleInfo]{
+		Payload: &domain.VmIdleInfo{VmID: vm.ID, RecycleMethod: consts.VMRecycleMethodIdle},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if recycler.calls != 1 {
+		t.Fatalf("recycle calls = %d, want 1", recycler.calls)
+	}
+}
+
+func TestRecycleJobRepairsAlreadyRecycledVM(t *testing.T) {
+	vm := &db.VirtualMachine{ID: "vm-already-recycled", IsRecycled: true}
+	recycler := &idleRecyclerStub{}
+	r := newRecycleGuardRefresher(t, vm, &recycleGuardTaskRepoStub{}, &taskLogActivityStub{}, recycler)
+
+	if err := r.handleRecycleJob(context.Background(), &delayqueue.Job[*domain.VmIdleInfo]{
+		Payload: &domain.VmIdleInfo{VmID: vm.ID, RecycleMethod: consts.VMRecycleMethodIdle},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if recycler.calls != 1 {
+		t.Fatalf("recycle calls = %d, want repair call", recycler.calls)
+	}
+}
+
+func newRecycleGuardRefresher(t *testing.T, vm *db.VirtualMachine, taskRepo domain.TaskRepo, activity taskLogActivityReader, recycler vmrecycle.Recycler) *vmIdleRefresher {
+	t.Helper()
+	r := newQueueTestVMIdleRefresher(newTestRedis(t), &refreshHostRepoStub{vm: vm})
+	r.taskRepo = taskRepo
+	r.taskLogActivity = activity
+	r.recycler = recycler
+	return r
+}
+
 func newQueueTestVMIdleRefresher(redisClient *redis.Client, repo domain.HostRepo) *vmIdleRefresher {
 	logger := slog.Default()
 	return &vmIdleRefresher{
@@ -409,9 +537,41 @@ type idleRecyclerStub struct {
 	calls int
 }
 
-func (s *idleRecyclerStub) Recycle(_ context.Context, vmID string) (vmrecycle.Result, error) {
+type recycleGuardTaskRepoStub struct {
+	domain.TaskRepo
+	task  *db.Task
+	err   error
+	calls int
+}
+
+func (s *recycleGuardTaskRepoStub) GetByID(context.Context, uuid.UUID) (*db.Task, error) {
+	s.calls++
+	return s.task, s.err
+}
+
+type taskLogActivityStub struct {
+	latest time.Time
+	ok     bool
+	err    error
+}
+
+func (s *taskLogActivityStub) LatestTaskLogTime(context.Context, uuid.UUID) (time.Time, bool, error) {
+	if s.err != nil {
+		return time.Time{}, false, s.err
+	}
+	if !s.ok && s.latest.IsZero() {
+		return time.Time{}, false, nil
+	}
+	return s.latest, true, nil
+}
+
+func (s *idleRecyclerStub) Recycle(_ context.Context, vmID string, _ consts.VMRecycleMethod) (vmrecycle.Result, error) {
 	s.calls++
 	return vmrecycle.Result{VMID: vmID}, s.err
+}
+
+func (s *idleRecyclerStub) ForceRecycle(context.Context, string, consts.VMRecycleMethod) (vmrecycle.Result, error) {
+	return vmrecycle.Result{}, errors.New("not implemented")
 }
 
 type refreshTeamPolicyRepoStub struct {

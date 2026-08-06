@@ -70,6 +70,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachinerecyclerecord"
 
 	stdsql "database/sql"
 )
@@ -187,6 +188,8 @@ type Client struct {
 	UserIdentity *UserIdentityClient
 	// VirtualMachine is the client for interacting with the VirtualMachine builders.
 	VirtualMachine *VirtualMachineClient
+	// VirtualMachineRecycleRecord is the client for interacting with the VirtualMachineRecycleRecord builders.
+	VirtualMachineRecycleRecord *VirtualMachineRecycleRecordClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -252,6 +255,7 @@ func (c *Client) init() {
 	c.User = NewUserClient(c.config)
 	c.UserIdentity = NewUserIdentityClient(c.config)
 	c.VirtualMachine = NewVirtualMachineClient(c.config)
+	c.VirtualMachineRecycleRecord = NewVirtualMachineRecycleRecordClient(c.config)
 }
 
 type (
@@ -342,62 +346,63 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                       ctx,
-		config:                    cfg,
-		AgentPlugin:               NewAgentPluginClient(cfg),
-		AgentPluginRepo:           NewAgentPluginRepoClient(cfg),
-		AgentPluginVersion:        NewAgentPluginVersionClient(cfg),
-		AgentRule:                 NewAgentRuleClient(cfg),
-		AgentRuleVersion:          NewAgentRuleVersionClient(cfg),
-		AgentSkill:                NewAgentSkillClient(cfg),
-		AgentSkillGroupBinding:    NewAgentSkillGroupBindingClient(cfg),
-		AgentSkillRepo:            NewAgentSkillRepoClient(cfg),
-		AgentSkillVersion:         NewAgentSkillVersionClient(cfg),
-		AgentSyncJob:              NewAgentSyncJobClient(cfg),
-		Audit:                     NewAuditClient(cfg),
-		GitBot:                    NewGitBotClient(cfg),
-		GitBotTask:                NewGitBotTaskClient(cfg),
-		GitBotUser:                NewGitBotUserClient(cfg),
-		GitIdentity:               NewGitIdentityClient(cfg),
-		GitTask:                   NewGitTaskClient(cfg),
-		Host:                      NewHostClient(cfg),
-		Image:                     NewImageClient(cfg),
-		MCPTool:                   NewMCPToolClient(cfg),
-		MCPToolCall:               NewMCPToolCallClient(cfg),
-		MCPUpstream:               NewMCPUpstreamClient(cfg),
-		MCPUserToolSetting:        NewMCPUserToolSettingClient(cfg),
-		Model:                     NewModelClient(cfg),
-		ModelApiKey:               NewModelApiKeyClient(cfg),
-		ModelPricing:              NewModelPricingClient(cfg),
-		NotifyChannel:             NewNotifyChannelClient(cfg),
-		NotifySendLog:             NewNotifySendLogClient(cfg),
-		NotifySubscription:        NewNotifySubscriptionClient(cfg),
-		Project:                   NewProjectClient(cfg),
-		ProjectCollaborator:       NewProjectCollaboratorClient(cfg),
-		ProjectGitBot:             NewProjectGitBotClient(cfg),
-		ProjectIssue:              NewProjectIssueClient(cfg),
-		ProjectIssueComment:       NewProjectIssueCommentClient(cfg),
-		ProjectTask:               NewProjectTaskClient(cfg),
-		Task:                      NewTaskClient(cfg),
-		TaskModelSwitch:           NewTaskModelSwitchClient(cfg),
-		TaskUsageStat:             NewTaskUsageStatClient(cfg),
-		TaskVirtualMachine:        NewTaskVirtualMachineClient(cfg),
-		Team:                      NewTeamClient(cfg),
-		TeamExtensionImageArchive: NewTeamExtensionImageArchiveClient(cfg),
-		TeamGroup:                 NewTeamGroupClient(cfg),
-		TeamGroupHost:             NewTeamGroupHostClient(cfg),
-		TeamGroupImage:            NewTeamGroupImageClient(cfg),
-		TeamGroupMCPUpstream:      NewTeamGroupMCPUpstreamClient(cfg),
-		TeamGroupMember:           NewTeamGroupMemberClient(cfg),
-		TeamGroupModel:            NewTeamGroupModelClient(cfg),
-		TeamHost:                  NewTeamHostClient(cfg),
-		TeamImage:                 NewTeamImageClient(cfg),
-		TeamMember:                NewTeamMemberClient(cfg),
-		TeamModel:                 NewTeamModelClient(cfg),
-		TeamOIDCConfig:            NewTeamOIDCConfigClient(cfg),
-		User:                      NewUserClient(cfg),
-		UserIdentity:              NewUserIdentityClient(cfg),
-		VirtualMachine:            NewVirtualMachineClient(cfg),
+		ctx:                         ctx,
+		config:                      cfg,
+		AgentPlugin:                 NewAgentPluginClient(cfg),
+		AgentPluginRepo:             NewAgentPluginRepoClient(cfg),
+		AgentPluginVersion:          NewAgentPluginVersionClient(cfg),
+		AgentRule:                   NewAgentRuleClient(cfg),
+		AgentRuleVersion:            NewAgentRuleVersionClient(cfg),
+		AgentSkill:                  NewAgentSkillClient(cfg),
+		AgentSkillGroupBinding:      NewAgentSkillGroupBindingClient(cfg),
+		AgentSkillRepo:              NewAgentSkillRepoClient(cfg),
+		AgentSkillVersion:           NewAgentSkillVersionClient(cfg),
+		AgentSyncJob:                NewAgentSyncJobClient(cfg),
+		Audit:                       NewAuditClient(cfg),
+		GitBot:                      NewGitBotClient(cfg),
+		GitBotTask:                  NewGitBotTaskClient(cfg),
+		GitBotUser:                  NewGitBotUserClient(cfg),
+		GitIdentity:                 NewGitIdentityClient(cfg),
+		GitTask:                     NewGitTaskClient(cfg),
+		Host:                        NewHostClient(cfg),
+		Image:                       NewImageClient(cfg),
+		MCPTool:                     NewMCPToolClient(cfg),
+		MCPToolCall:                 NewMCPToolCallClient(cfg),
+		MCPUpstream:                 NewMCPUpstreamClient(cfg),
+		MCPUserToolSetting:          NewMCPUserToolSettingClient(cfg),
+		Model:                       NewModelClient(cfg),
+		ModelApiKey:                 NewModelApiKeyClient(cfg),
+		ModelPricing:                NewModelPricingClient(cfg),
+		NotifyChannel:               NewNotifyChannelClient(cfg),
+		NotifySendLog:               NewNotifySendLogClient(cfg),
+		NotifySubscription:          NewNotifySubscriptionClient(cfg),
+		Project:                     NewProjectClient(cfg),
+		ProjectCollaborator:         NewProjectCollaboratorClient(cfg),
+		ProjectGitBot:               NewProjectGitBotClient(cfg),
+		ProjectIssue:                NewProjectIssueClient(cfg),
+		ProjectIssueComment:         NewProjectIssueCommentClient(cfg),
+		ProjectTask:                 NewProjectTaskClient(cfg),
+		Task:                        NewTaskClient(cfg),
+		TaskModelSwitch:             NewTaskModelSwitchClient(cfg),
+		TaskUsageStat:               NewTaskUsageStatClient(cfg),
+		TaskVirtualMachine:          NewTaskVirtualMachineClient(cfg),
+		Team:                        NewTeamClient(cfg),
+		TeamExtensionImageArchive:   NewTeamExtensionImageArchiveClient(cfg),
+		TeamGroup:                   NewTeamGroupClient(cfg),
+		TeamGroupHost:               NewTeamGroupHostClient(cfg),
+		TeamGroupImage:              NewTeamGroupImageClient(cfg),
+		TeamGroupMCPUpstream:        NewTeamGroupMCPUpstreamClient(cfg),
+		TeamGroupMember:             NewTeamGroupMemberClient(cfg),
+		TeamGroupModel:              NewTeamGroupModelClient(cfg),
+		TeamHost:                    NewTeamHostClient(cfg),
+		TeamImage:                   NewTeamImageClient(cfg),
+		TeamMember:                  NewTeamMemberClient(cfg),
+		TeamModel:                   NewTeamModelClient(cfg),
+		TeamOIDCConfig:              NewTeamOIDCConfigClient(cfg),
+		User:                        NewUserClient(cfg),
+		UserIdentity:                NewUserIdentityClient(cfg),
+		VirtualMachine:              NewVirtualMachineClient(cfg),
+		VirtualMachineRecycleRecord: NewVirtualMachineRecycleRecordClient(cfg),
 	}, nil
 }
 
@@ -415,62 +420,63 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                       ctx,
-		config:                    cfg,
-		AgentPlugin:               NewAgentPluginClient(cfg),
-		AgentPluginRepo:           NewAgentPluginRepoClient(cfg),
-		AgentPluginVersion:        NewAgentPluginVersionClient(cfg),
-		AgentRule:                 NewAgentRuleClient(cfg),
-		AgentRuleVersion:          NewAgentRuleVersionClient(cfg),
-		AgentSkill:                NewAgentSkillClient(cfg),
-		AgentSkillGroupBinding:    NewAgentSkillGroupBindingClient(cfg),
-		AgentSkillRepo:            NewAgentSkillRepoClient(cfg),
-		AgentSkillVersion:         NewAgentSkillVersionClient(cfg),
-		AgentSyncJob:              NewAgentSyncJobClient(cfg),
-		Audit:                     NewAuditClient(cfg),
-		GitBot:                    NewGitBotClient(cfg),
-		GitBotTask:                NewGitBotTaskClient(cfg),
-		GitBotUser:                NewGitBotUserClient(cfg),
-		GitIdentity:               NewGitIdentityClient(cfg),
-		GitTask:                   NewGitTaskClient(cfg),
-		Host:                      NewHostClient(cfg),
-		Image:                     NewImageClient(cfg),
-		MCPTool:                   NewMCPToolClient(cfg),
-		MCPToolCall:               NewMCPToolCallClient(cfg),
-		MCPUpstream:               NewMCPUpstreamClient(cfg),
-		MCPUserToolSetting:        NewMCPUserToolSettingClient(cfg),
-		Model:                     NewModelClient(cfg),
-		ModelApiKey:               NewModelApiKeyClient(cfg),
-		ModelPricing:              NewModelPricingClient(cfg),
-		NotifyChannel:             NewNotifyChannelClient(cfg),
-		NotifySendLog:             NewNotifySendLogClient(cfg),
-		NotifySubscription:        NewNotifySubscriptionClient(cfg),
-		Project:                   NewProjectClient(cfg),
-		ProjectCollaborator:       NewProjectCollaboratorClient(cfg),
-		ProjectGitBot:             NewProjectGitBotClient(cfg),
-		ProjectIssue:              NewProjectIssueClient(cfg),
-		ProjectIssueComment:       NewProjectIssueCommentClient(cfg),
-		ProjectTask:               NewProjectTaskClient(cfg),
-		Task:                      NewTaskClient(cfg),
-		TaskModelSwitch:           NewTaskModelSwitchClient(cfg),
-		TaskUsageStat:             NewTaskUsageStatClient(cfg),
-		TaskVirtualMachine:        NewTaskVirtualMachineClient(cfg),
-		Team:                      NewTeamClient(cfg),
-		TeamExtensionImageArchive: NewTeamExtensionImageArchiveClient(cfg),
-		TeamGroup:                 NewTeamGroupClient(cfg),
-		TeamGroupHost:             NewTeamGroupHostClient(cfg),
-		TeamGroupImage:            NewTeamGroupImageClient(cfg),
-		TeamGroupMCPUpstream:      NewTeamGroupMCPUpstreamClient(cfg),
-		TeamGroupMember:           NewTeamGroupMemberClient(cfg),
-		TeamGroupModel:            NewTeamGroupModelClient(cfg),
-		TeamHost:                  NewTeamHostClient(cfg),
-		TeamImage:                 NewTeamImageClient(cfg),
-		TeamMember:                NewTeamMemberClient(cfg),
-		TeamModel:                 NewTeamModelClient(cfg),
-		TeamOIDCConfig:            NewTeamOIDCConfigClient(cfg),
-		User:                      NewUserClient(cfg),
-		UserIdentity:              NewUserIdentityClient(cfg),
-		VirtualMachine:            NewVirtualMachineClient(cfg),
+		ctx:                         ctx,
+		config:                      cfg,
+		AgentPlugin:                 NewAgentPluginClient(cfg),
+		AgentPluginRepo:             NewAgentPluginRepoClient(cfg),
+		AgentPluginVersion:          NewAgentPluginVersionClient(cfg),
+		AgentRule:                   NewAgentRuleClient(cfg),
+		AgentRuleVersion:            NewAgentRuleVersionClient(cfg),
+		AgentSkill:                  NewAgentSkillClient(cfg),
+		AgentSkillGroupBinding:      NewAgentSkillGroupBindingClient(cfg),
+		AgentSkillRepo:              NewAgentSkillRepoClient(cfg),
+		AgentSkillVersion:           NewAgentSkillVersionClient(cfg),
+		AgentSyncJob:                NewAgentSyncJobClient(cfg),
+		Audit:                       NewAuditClient(cfg),
+		GitBot:                      NewGitBotClient(cfg),
+		GitBotTask:                  NewGitBotTaskClient(cfg),
+		GitBotUser:                  NewGitBotUserClient(cfg),
+		GitIdentity:                 NewGitIdentityClient(cfg),
+		GitTask:                     NewGitTaskClient(cfg),
+		Host:                        NewHostClient(cfg),
+		Image:                       NewImageClient(cfg),
+		MCPTool:                     NewMCPToolClient(cfg),
+		MCPToolCall:                 NewMCPToolCallClient(cfg),
+		MCPUpstream:                 NewMCPUpstreamClient(cfg),
+		MCPUserToolSetting:          NewMCPUserToolSettingClient(cfg),
+		Model:                       NewModelClient(cfg),
+		ModelApiKey:                 NewModelApiKeyClient(cfg),
+		ModelPricing:                NewModelPricingClient(cfg),
+		NotifyChannel:               NewNotifyChannelClient(cfg),
+		NotifySendLog:               NewNotifySendLogClient(cfg),
+		NotifySubscription:          NewNotifySubscriptionClient(cfg),
+		Project:                     NewProjectClient(cfg),
+		ProjectCollaborator:         NewProjectCollaboratorClient(cfg),
+		ProjectGitBot:               NewProjectGitBotClient(cfg),
+		ProjectIssue:                NewProjectIssueClient(cfg),
+		ProjectIssueComment:         NewProjectIssueCommentClient(cfg),
+		ProjectTask:                 NewProjectTaskClient(cfg),
+		Task:                        NewTaskClient(cfg),
+		TaskModelSwitch:             NewTaskModelSwitchClient(cfg),
+		TaskUsageStat:               NewTaskUsageStatClient(cfg),
+		TaskVirtualMachine:          NewTaskVirtualMachineClient(cfg),
+		Team:                        NewTeamClient(cfg),
+		TeamExtensionImageArchive:   NewTeamExtensionImageArchiveClient(cfg),
+		TeamGroup:                   NewTeamGroupClient(cfg),
+		TeamGroupHost:               NewTeamGroupHostClient(cfg),
+		TeamGroupImage:              NewTeamGroupImageClient(cfg),
+		TeamGroupMCPUpstream:        NewTeamGroupMCPUpstreamClient(cfg),
+		TeamGroupMember:             NewTeamGroupMemberClient(cfg),
+		TeamGroupModel:              NewTeamGroupModelClient(cfg),
+		TeamHost:                    NewTeamHostClient(cfg),
+		TeamImage:                   NewTeamImageClient(cfg),
+		TeamMember:                  NewTeamMemberClient(cfg),
+		TeamModel:                   NewTeamModelClient(cfg),
+		TeamOIDCConfig:              NewTeamOIDCConfigClient(cfg),
+		User:                        NewUserClient(cfg),
+		UserIdentity:                NewUserIdentityClient(cfg),
+		VirtualMachine:              NewVirtualMachineClient(cfg),
+		VirtualMachineRecycleRecord: NewVirtualMachineRecycleRecordClient(cfg),
 	}, nil
 }
 
@@ -512,6 +518,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMCPUpstream,
 		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
 		c.TeamModel, c.TeamOIDCConfig, c.User, c.UserIdentity, c.VirtualMachine,
+		c.VirtualMachineRecycleRecord,
 	} {
 		n.Use(hooks...)
 	}
@@ -533,6 +540,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMCPUpstream,
 		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
 		c.TeamModel, c.TeamOIDCConfig, c.User, c.UserIdentity, c.VirtualMachine,
+		c.VirtualMachineRecycleRecord,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -649,6 +657,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserIdentity.mutate(ctx, m)
 	case *VirtualMachineMutation:
 		return c.VirtualMachine.mutate(ctx, m)
+	case *VirtualMachineRecycleRecordMutation:
+		return c.VirtualMachineRecycleRecord.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("db: unknown mutation type %T", m)
 	}
@@ -10660,6 +10670,139 @@ func (c *VirtualMachineClient) mutate(ctx context.Context, m *VirtualMachineMuta
 	}
 }
 
+// VirtualMachineRecycleRecordClient is a client for the VirtualMachineRecycleRecord schema.
+type VirtualMachineRecycleRecordClient struct {
+	config
+}
+
+// NewVirtualMachineRecycleRecordClient returns a client for the VirtualMachineRecycleRecord from the given config.
+func NewVirtualMachineRecycleRecordClient(c config) *VirtualMachineRecycleRecordClient {
+	return &VirtualMachineRecycleRecordClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `virtualmachinerecyclerecord.Hooks(f(g(h())))`.
+func (c *VirtualMachineRecycleRecordClient) Use(hooks ...Hook) {
+	c.hooks.VirtualMachineRecycleRecord = append(c.hooks.VirtualMachineRecycleRecord, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `virtualmachinerecyclerecord.Intercept(f(g(h())))`.
+func (c *VirtualMachineRecycleRecordClient) Intercept(interceptors ...Interceptor) {
+	c.inters.VirtualMachineRecycleRecord = append(c.inters.VirtualMachineRecycleRecord, interceptors...)
+}
+
+// Create returns a builder for creating a VirtualMachineRecycleRecord entity.
+func (c *VirtualMachineRecycleRecordClient) Create() *VirtualMachineRecycleRecordCreate {
+	mutation := newVirtualMachineRecycleRecordMutation(c.config, OpCreate)
+	return &VirtualMachineRecycleRecordCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of VirtualMachineRecycleRecord entities.
+func (c *VirtualMachineRecycleRecordClient) CreateBulk(builders ...*VirtualMachineRecycleRecordCreate) *VirtualMachineRecycleRecordCreateBulk {
+	return &VirtualMachineRecycleRecordCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *VirtualMachineRecycleRecordClient) MapCreateBulk(slice any, setFunc func(*VirtualMachineRecycleRecordCreate, int)) *VirtualMachineRecycleRecordCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &VirtualMachineRecycleRecordCreateBulk{err: fmt.Errorf("calling to VirtualMachineRecycleRecordClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*VirtualMachineRecycleRecordCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &VirtualMachineRecycleRecordCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for VirtualMachineRecycleRecord.
+func (c *VirtualMachineRecycleRecordClient) Update() *VirtualMachineRecycleRecordUpdate {
+	mutation := newVirtualMachineRecycleRecordMutation(c.config, OpUpdate)
+	return &VirtualMachineRecycleRecordUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *VirtualMachineRecycleRecordClient) UpdateOne(_m *VirtualMachineRecycleRecord) *VirtualMachineRecycleRecordUpdateOne {
+	mutation := newVirtualMachineRecycleRecordMutation(c.config, OpUpdateOne, withVirtualMachineRecycleRecord(_m))
+	return &VirtualMachineRecycleRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *VirtualMachineRecycleRecordClient) UpdateOneID(id uuid.UUID) *VirtualMachineRecycleRecordUpdateOne {
+	mutation := newVirtualMachineRecycleRecordMutation(c.config, OpUpdateOne, withVirtualMachineRecycleRecordID(id))
+	return &VirtualMachineRecycleRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for VirtualMachineRecycleRecord.
+func (c *VirtualMachineRecycleRecordClient) Delete() *VirtualMachineRecycleRecordDelete {
+	mutation := newVirtualMachineRecycleRecordMutation(c.config, OpDelete)
+	return &VirtualMachineRecycleRecordDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *VirtualMachineRecycleRecordClient) DeleteOne(_m *VirtualMachineRecycleRecord) *VirtualMachineRecycleRecordDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *VirtualMachineRecycleRecordClient) DeleteOneID(id uuid.UUID) *VirtualMachineRecycleRecordDeleteOne {
+	builder := c.Delete().Where(virtualmachinerecyclerecord.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &VirtualMachineRecycleRecordDeleteOne{builder}
+}
+
+// Query returns a query builder for VirtualMachineRecycleRecord.
+func (c *VirtualMachineRecycleRecordClient) Query() *VirtualMachineRecycleRecordQuery {
+	return &VirtualMachineRecycleRecordQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeVirtualMachineRecycleRecord},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a VirtualMachineRecycleRecord entity by its id.
+func (c *VirtualMachineRecycleRecordClient) Get(ctx context.Context, id uuid.UUID) (*VirtualMachineRecycleRecord, error) {
+	return c.Query().Where(virtualmachinerecyclerecord.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *VirtualMachineRecycleRecordClient) GetX(ctx context.Context, id uuid.UUID) *VirtualMachineRecycleRecord {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *VirtualMachineRecycleRecordClient) Hooks() []Hook {
+	return c.hooks.VirtualMachineRecycleRecord
+}
+
+// Interceptors returns the client interceptors.
+func (c *VirtualMachineRecycleRecordClient) Interceptors() []Interceptor {
+	return c.inters.VirtualMachineRecycleRecord
+}
+
+func (c *VirtualMachineRecycleRecordClient) mutate(ctx context.Context, m *VirtualMachineRecycleRecordMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&VirtualMachineRecycleRecordCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&VirtualMachineRecycleRecordUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&VirtualMachineRecycleRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&VirtualMachineRecycleRecordDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown VirtualMachineRecycleRecord mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
@@ -10672,8 +10815,8 @@ type (
 		ProjectTask, Task, TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team,
 		TeamExtensionImageArchive, TeamGroup, TeamGroupHost, TeamGroupImage,
 		TeamGroupMCPUpstream, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
-		TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
-		VirtualMachine []ent.Hook
+		TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity, VirtualMachine,
+		VirtualMachineRecycleRecord []ent.Hook
 	}
 	inters struct {
 		AgentPlugin, AgentPluginRepo, AgentPluginVersion, AgentRule, AgentRuleVersion,
@@ -10685,8 +10828,8 @@ type (
 		ProjectTask, Task, TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team,
 		TeamExtensionImageArchive, TeamGroup, TeamGroupHost, TeamGroupImage,
 		TeamGroupMCPUpstream, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
-		TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
-		VirtualMachine []ent.Interceptor
+		TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity, VirtualMachine,
+		VirtualMachineRecycleRecord []ent.Interceptor
 	}
 )
 

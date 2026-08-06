@@ -9,6 +9,7 @@ import (
 
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/vmrecycle"
@@ -36,12 +37,16 @@ func (h *VMRecycleHook) OnStateChange(ctx context.Context, vmID string, _, to VM
 	if to != VMStateRecycled {
 		return nil
 	}
+	method := metadata.RecycleMethod
+	if method == "" {
+		method = consts.VMRecycleMethodLifecycle
+	}
 
-	if _, err := h.recycler.Recycle(ctx, vmID); err == nil {
+	if _, err := h.recycler.Recycle(ctx, vmID, method); err == nil {
 		return nil
 	} else {
 		h.logger.WarnContext(ctx, "vm recycle failed, enqueueing retry", "vm_id", vmID, "error", err)
-		payload := &domain.VmIdleInfo{UID: metadata.UserID, VmID: vmID}
+		payload := &domain.VmIdleInfo{UID: metadata.UserID, VmID: vmID, RecycleMethod: method}
 		if metadata.TaskID != nil {
 			payload.TaskID = metadata.TaskID.String()
 		}

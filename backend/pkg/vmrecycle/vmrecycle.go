@@ -49,12 +49,8 @@ type Result struct {
 }
 
 type Recycler interface {
-	Recycle(ctx context.Context, vmID string) (Result, error)
-}
-
-type ForceRecycler interface {
-	Recycler
-	ForceRecycle(ctx context.Context, vmID string) (Result, error)
+	Recycle(ctx context.Context, vmID string, method consts.VMRecycleMethod) (Result, error)
+	ForceRecycle(ctx context.Context, vmID string, method consts.VMRecycleMethod) (Result, error)
 }
 
 type removableQueue interface {
@@ -76,6 +72,7 @@ type recycler struct {
 	notifyQueue  notifyQueue
 	recycleQueue removableQueue
 	expireQueue  removableQueue
+	recorder     Recorder
 	now          func() time.Time
 }
 
@@ -90,20 +87,24 @@ func NewRecycler(i *do.Injector) (Recycler, error) {
 		notifyQueue:  do.MustInvoke[*delayqueue.VMNotifyQueue](i),
 		recycleQueue: do.MustInvoke[*delayqueue.VMRecycleQueue](i),
 		expireQueue:  do.MustInvoke[*delayqueue.VMExpireQueue](i),
+		recorder:     do.MustInvoke[Recorder](i),
 		now:          time.Now,
 	}, nil
 }
 
-func (r *recycler) Recycle(ctx context.Context, vmID string) (Result, error) {
-	return r.recycle(ctx, vmID, false)
+func (r *recycler) Recycle(ctx context.Context, vmID string, method consts.VMRecycleMethod) (Result, error) {
+	return r.recycle(ctx, vmID, method, false)
 }
 
-func (r *recycler) ForceRecycle(ctx context.Context, vmID string) (Result, error) {
-	return r.recycle(ctx, vmID, true)
+func (r *recycler) ForceRecycle(ctx context.Context, vmID string, method consts.VMRecycleMethod) (Result, error) {
+	return r.recycle(ctx, vmID, method, true)
 }
 
-func (r *recycler) recycle(ctx context.Context, vmID string, ignoreRemoteDeleteFailure bool) (Result, error) {
+func (r *recycler) recycle(ctx context.Context, vmID string, method consts.VMRecycleMethod, ignoreRemoteDeleteFailure bool) (Result, error) {
 	result := Result{VMID: vmID}
+	if method == "" {
+		method = consts.VMRecycleMethodLifecycle
+	}
 	token, err := r.acquire(ctx, vmID)
 	if err != nil {
 		return result, err
@@ -120,6 +121,8 @@ func (r *recycler) recycle(ctx context.Context, vmID string, ignoreRemoteDeleteF
 		return result, fmt.Errorf("get vm %s: %w", vmID, err)
 	}
 	result.TaskIDs = taskIDs(vm)
+	remoteDeleted := vm.IsRecycled
+	recycledAt := r.now()
 
 	if vm.IsRecycled {
 		result.Status = StatusAlreadyRecycled
@@ -129,7 +132,8 @@ func (r *recycler) recycle(ctx context.Context, vmID string, ignoreRemoteDeleteF
 			HostID: vm.HostID,
 			ID:     vm.EnvironmentID,
 		})
-		if deleteErr != nil && !taskflow.IsVirtualMachineNotFound(deleteErr) {
+		remoteDeleted = deleteErr == nil || taskflow.IsVirtualMachineNotFound(deleteErr)
+		if !remoteDeleted {
 			if !ignoreRemoteDeleteFailure {
 				return result, fmt.Errorf("%w: delete vm %s: %w", ErrRemoteDelete, vmID, deleteErr)
 			}
@@ -142,6 +146,20 @@ func (r *recycler) recycle(ctx context.Context, vmID string, ignoreRemoteDeleteF
 			return result, fmt.Errorf("mark vm %s recycled: %w", vmID, err)
 		}
 		result.Status = StatusRecycled
+	}
+	if r.recorder != nil {
+		if err := r.recorder.Create(ctx, Record{
+			VMID:          vm.ID,
+			EnvironmentID: vm.EnvironmentID,
+			HostID:        vm.HostID,
+			UserID:        vm.UserID,
+			TaskIDs:       result.TaskIDs,
+			Method:        method,
+			RemoteDeleted: remoteDeleted,
+			RecycledAt:    recycledAt,
+		}); err != nil {
+			return result, fmt.Errorf("record vm %s recycle: %w", vmID, err)
+		}
 	}
 
 	if err := r.cleanup(ctx, vm); err != nil {

@@ -67,6 +67,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachinerecyclerecord"
 	"github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/google/uuid"
 )
@@ -80,60 +81,61 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAgentPlugin               = "AgentPlugin"
-	TypeAgentPluginRepo           = "AgentPluginRepo"
-	TypeAgentPluginVersion        = "AgentPluginVersion"
-	TypeAgentRule                 = "AgentRule"
-	TypeAgentRuleVersion          = "AgentRuleVersion"
-	TypeAgentSkill                = "AgentSkill"
-	TypeAgentSkillGroupBinding    = "AgentSkillGroupBinding"
-	TypeAgentSkillRepo            = "AgentSkillRepo"
-	TypeAgentSkillVersion         = "AgentSkillVersion"
-	TypeAgentSyncJob              = "AgentSyncJob"
-	TypeAudit                     = "Audit"
-	TypeGitBot                    = "GitBot"
-	TypeGitBotTask                = "GitBotTask"
-	TypeGitBotUser                = "GitBotUser"
-	TypeGitIdentity               = "GitIdentity"
-	TypeGitTask                   = "GitTask"
-	TypeHost                      = "Host"
-	TypeImage                     = "Image"
-	TypeMCPTool                   = "MCPTool"
-	TypeMCPToolCall               = "MCPToolCall"
-	TypeMCPUpstream               = "MCPUpstream"
-	TypeMCPUserToolSetting        = "MCPUserToolSetting"
-	TypeModel                     = "Model"
-	TypeModelApiKey               = "ModelApiKey"
-	TypeModelPricing              = "ModelPricing"
-	TypeNotifyChannel             = "NotifyChannel"
-	TypeNotifySendLog             = "NotifySendLog"
-	TypeNotifySubscription        = "NotifySubscription"
-	TypeProject                   = "Project"
-	TypeProjectCollaborator       = "ProjectCollaborator"
-	TypeProjectGitBot             = "ProjectGitBot"
-	TypeProjectIssue              = "ProjectIssue"
-	TypeProjectIssueComment       = "ProjectIssueComment"
-	TypeProjectTask               = "ProjectTask"
-	TypeTask                      = "Task"
-	TypeTaskModelSwitch           = "TaskModelSwitch"
-	TypeTaskUsageStat             = "TaskUsageStat"
-	TypeTaskVirtualMachine        = "TaskVirtualMachine"
-	TypeTeam                      = "Team"
-	TypeTeamExtensionImageArchive = "TeamExtensionImageArchive"
-	TypeTeamGroup                 = "TeamGroup"
-	TypeTeamGroupHost             = "TeamGroupHost"
-	TypeTeamGroupImage            = "TeamGroupImage"
-	TypeTeamGroupMCPUpstream      = "TeamGroupMCPUpstream"
-	TypeTeamGroupMember           = "TeamGroupMember"
-	TypeTeamGroupModel            = "TeamGroupModel"
-	TypeTeamHost                  = "TeamHost"
-	TypeTeamImage                 = "TeamImage"
-	TypeTeamMember                = "TeamMember"
-	TypeTeamModel                 = "TeamModel"
-	TypeTeamOIDCConfig            = "TeamOIDCConfig"
-	TypeUser                      = "User"
-	TypeUserIdentity              = "UserIdentity"
-	TypeVirtualMachine            = "VirtualMachine"
+	TypeAgentPlugin                 = "AgentPlugin"
+	TypeAgentPluginRepo             = "AgentPluginRepo"
+	TypeAgentPluginVersion          = "AgentPluginVersion"
+	TypeAgentRule                   = "AgentRule"
+	TypeAgentRuleVersion            = "AgentRuleVersion"
+	TypeAgentSkill                  = "AgentSkill"
+	TypeAgentSkillGroupBinding      = "AgentSkillGroupBinding"
+	TypeAgentSkillRepo              = "AgentSkillRepo"
+	TypeAgentSkillVersion           = "AgentSkillVersion"
+	TypeAgentSyncJob                = "AgentSyncJob"
+	TypeAudit                       = "Audit"
+	TypeGitBot                      = "GitBot"
+	TypeGitBotTask                  = "GitBotTask"
+	TypeGitBotUser                  = "GitBotUser"
+	TypeGitIdentity                 = "GitIdentity"
+	TypeGitTask                     = "GitTask"
+	TypeHost                        = "Host"
+	TypeImage                       = "Image"
+	TypeMCPTool                     = "MCPTool"
+	TypeMCPToolCall                 = "MCPToolCall"
+	TypeMCPUpstream                 = "MCPUpstream"
+	TypeMCPUserToolSetting          = "MCPUserToolSetting"
+	TypeModel                       = "Model"
+	TypeModelApiKey                 = "ModelApiKey"
+	TypeModelPricing                = "ModelPricing"
+	TypeNotifyChannel               = "NotifyChannel"
+	TypeNotifySendLog               = "NotifySendLog"
+	TypeNotifySubscription          = "NotifySubscription"
+	TypeProject                     = "Project"
+	TypeProjectCollaborator         = "ProjectCollaborator"
+	TypeProjectGitBot               = "ProjectGitBot"
+	TypeProjectIssue                = "ProjectIssue"
+	TypeProjectIssueComment         = "ProjectIssueComment"
+	TypeProjectTask                 = "ProjectTask"
+	TypeTask                        = "Task"
+	TypeTaskModelSwitch             = "TaskModelSwitch"
+	TypeTaskUsageStat               = "TaskUsageStat"
+	TypeTaskVirtualMachine          = "TaskVirtualMachine"
+	TypeTeam                        = "Team"
+	TypeTeamExtensionImageArchive   = "TeamExtensionImageArchive"
+	TypeTeamGroup                   = "TeamGroup"
+	TypeTeamGroupHost               = "TeamGroupHost"
+	TypeTeamGroupImage              = "TeamGroupImage"
+	TypeTeamGroupMCPUpstream        = "TeamGroupMCPUpstream"
+	TypeTeamGroupMember             = "TeamGroupMember"
+	TypeTeamGroupModel              = "TeamGroupModel"
+	TypeTeamHost                    = "TeamHost"
+	TypeTeamImage                   = "TeamImage"
+	TypeTeamMember                  = "TeamMember"
+	TypeTeamModel                   = "TeamModel"
+	TypeTeamOIDCConfig              = "TeamOIDCConfig"
+	TypeUser                        = "User"
+	TypeUserIdentity                = "UserIdentity"
+	TypeVirtualMachine              = "VirtualMachine"
+	TypeVirtualMachineRecycleRecord = "VirtualMachineRecycleRecord"
 )
 
 // AgentPluginMutation represents an operation that mutates the AgentPlugin nodes in the graph.
@@ -57926,4 +57928,806 @@ func (m *VirtualMachineMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown VirtualMachine edge %s", name)
+}
+
+// VirtualMachineRecycleRecordMutation represents an operation that mutates the VirtualMachineRecycleRecord nodes in the graph.
+type VirtualMachineRecycleRecordMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	virtualmachine_id *string
+	environment_id    *string
+	host_id           *string
+	user_id           *uuid.UUID
+	task_ids          *[]uuid.UUID
+	appendtask_ids    []uuid.UUID
+	method            *consts.VMRecycleMethod
+	remote_deleted    *bool
+	recycled_at       *time.Time
+	created_at        *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*VirtualMachineRecycleRecord, error)
+	predicates        []predicate.VirtualMachineRecycleRecord
+}
+
+var _ ent.Mutation = (*VirtualMachineRecycleRecordMutation)(nil)
+
+// virtualmachinerecyclerecordOption allows management of the mutation configuration using functional options.
+type virtualmachinerecyclerecordOption func(*VirtualMachineRecycleRecordMutation)
+
+// newVirtualMachineRecycleRecordMutation creates new mutation for the VirtualMachineRecycleRecord entity.
+func newVirtualMachineRecycleRecordMutation(c config, op Op, opts ...virtualmachinerecyclerecordOption) *VirtualMachineRecycleRecordMutation {
+	m := &VirtualMachineRecycleRecordMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeVirtualMachineRecycleRecord,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withVirtualMachineRecycleRecordID sets the ID field of the mutation.
+func withVirtualMachineRecycleRecordID(id uuid.UUID) virtualmachinerecyclerecordOption {
+	return func(m *VirtualMachineRecycleRecordMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *VirtualMachineRecycleRecord
+		)
+		m.oldValue = func(ctx context.Context) (*VirtualMachineRecycleRecord, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().VirtualMachineRecycleRecord.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withVirtualMachineRecycleRecord sets the old VirtualMachineRecycleRecord of the mutation.
+func withVirtualMachineRecycleRecord(node *VirtualMachineRecycleRecord) virtualmachinerecyclerecordOption {
+	return func(m *VirtualMachineRecycleRecordMutation) {
+		m.oldValue = func(context.Context) (*VirtualMachineRecycleRecord, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m VirtualMachineRecycleRecordMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m VirtualMachineRecycleRecordMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of VirtualMachineRecycleRecord entities.
+func (m *VirtualMachineRecycleRecordMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *VirtualMachineRecycleRecordMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *VirtualMachineRecycleRecordMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().VirtualMachineRecycleRecord.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetVirtualmachineID sets the "virtualmachine_id" field.
+func (m *VirtualMachineRecycleRecordMutation) SetVirtualmachineID(s string) {
+	m.virtualmachine_id = &s
+}
+
+// VirtualmachineID returns the value of the "virtualmachine_id" field in the mutation.
+func (m *VirtualMachineRecycleRecordMutation) VirtualmachineID() (r string, exists bool) {
+	v := m.virtualmachine_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVirtualmachineID returns the old "virtualmachine_id" field's value of the VirtualMachineRecycleRecord entity.
+// If the VirtualMachineRecycleRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineRecycleRecordMutation) OldVirtualmachineID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVirtualmachineID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVirtualmachineID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVirtualmachineID: %w", err)
+	}
+	return oldValue.VirtualmachineID, nil
+}
+
+// ResetVirtualmachineID resets all changes to the "virtualmachine_id" field.
+func (m *VirtualMachineRecycleRecordMutation) ResetVirtualmachineID() {
+	m.virtualmachine_id = nil
+}
+
+// SetEnvironmentID sets the "environment_id" field.
+func (m *VirtualMachineRecycleRecordMutation) SetEnvironmentID(s string) {
+	m.environment_id = &s
+}
+
+// EnvironmentID returns the value of the "environment_id" field in the mutation.
+func (m *VirtualMachineRecycleRecordMutation) EnvironmentID() (r string, exists bool) {
+	v := m.environment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironmentID returns the old "environment_id" field's value of the VirtualMachineRecycleRecord entity.
+// If the VirtualMachineRecycleRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineRecycleRecordMutation) OldEnvironmentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironmentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironmentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironmentID: %w", err)
+	}
+	return oldValue.EnvironmentID, nil
+}
+
+// ResetEnvironmentID resets all changes to the "environment_id" field.
+func (m *VirtualMachineRecycleRecordMutation) ResetEnvironmentID() {
+	m.environment_id = nil
+}
+
+// SetHostID sets the "host_id" field.
+func (m *VirtualMachineRecycleRecordMutation) SetHostID(s string) {
+	m.host_id = &s
+}
+
+// HostID returns the value of the "host_id" field in the mutation.
+func (m *VirtualMachineRecycleRecordMutation) HostID() (r string, exists bool) {
+	v := m.host_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHostID returns the old "host_id" field's value of the VirtualMachineRecycleRecord entity.
+// If the VirtualMachineRecycleRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineRecycleRecordMutation) OldHostID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHostID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHostID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHostID: %w", err)
+	}
+	return oldValue.HostID, nil
+}
+
+// ResetHostID resets all changes to the "host_id" field.
+func (m *VirtualMachineRecycleRecordMutation) ResetHostID() {
+	m.host_id = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *VirtualMachineRecycleRecordMutation) SetUserID(u uuid.UUID) {
+	m.user_id = &u
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *VirtualMachineRecycleRecordMutation) UserID() (r uuid.UUID, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the VirtualMachineRecycleRecord entity.
+// If the VirtualMachineRecycleRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineRecycleRecordMutation) OldUserID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (m *VirtualMachineRecycleRecordMutation) ClearUserID() {
+	m.user_id = nil
+	m.clearedFields[virtualmachinerecyclerecord.FieldUserID] = struct{}{}
+}
+
+// UserIDCleared returns if the "user_id" field was cleared in this mutation.
+func (m *VirtualMachineRecycleRecordMutation) UserIDCleared() bool {
+	_, ok := m.clearedFields[virtualmachinerecyclerecord.FieldUserID]
+	return ok
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *VirtualMachineRecycleRecordMutation) ResetUserID() {
+	m.user_id = nil
+	delete(m.clearedFields, virtualmachinerecyclerecord.FieldUserID)
+}
+
+// SetTaskIds sets the "task_ids" field.
+func (m *VirtualMachineRecycleRecordMutation) SetTaskIds(u []uuid.UUID) {
+	m.task_ids = &u
+	m.appendtask_ids = nil
+}
+
+// TaskIds returns the value of the "task_ids" field in the mutation.
+func (m *VirtualMachineRecycleRecordMutation) TaskIds() (r []uuid.UUID, exists bool) {
+	v := m.task_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskIds returns the old "task_ids" field's value of the VirtualMachineRecycleRecord entity.
+// If the VirtualMachineRecycleRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineRecycleRecordMutation) OldTaskIds(ctx context.Context) (v []uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskIds: %w", err)
+	}
+	return oldValue.TaskIds, nil
+}
+
+// AppendTaskIds adds u to the "task_ids" field.
+func (m *VirtualMachineRecycleRecordMutation) AppendTaskIds(u []uuid.UUID) {
+	m.appendtask_ids = append(m.appendtask_ids, u...)
+}
+
+// AppendedTaskIds returns the list of values that were appended to the "task_ids" field in this mutation.
+func (m *VirtualMachineRecycleRecordMutation) AppendedTaskIds() ([]uuid.UUID, bool) {
+	if len(m.appendtask_ids) == 0 {
+		return nil, false
+	}
+	return m.appendtask_ids, true
+}
+
+// ResetTaskIds resets all changes to the "task_ids" field.
+func (m *VirtualMachineRecycleRecordMutation) ResetTaskIds() {
+	m.task_ids = nil
+	m.appendtask_ids = nil
+}
+
+// SetMethod sets the "method" field.
+func (m *VirtualMachineRecycleRecordMutation) SetMethod(crm consts.VMRecycleMethod) {
+	m.method = &crm
+}
+
+// Method returns the value of the "method" field in the mutation.
+func (m *VirtualMachineRecycleRecordMutation) Method() (r consts.VMRecycleMethod, exists bool) {
+	v := m.method
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMethod returns the old "method" field's value of the VirtualMachineRecycleRecord entity.
+// If the VirtualMachineRecycleRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineRecycleRecordMutation) OldMethod(ctx context.Context) (v consts.VMRecycleMethod, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMethod is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMethod requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMethod: %w", err)
+	}
+	return oldValue.Method, nil
+}
+
+// ResetMethod resets all changes to the "method" field.
+func (m *VirtualMachineRecycleRecordMutation) ResetMethod() {
+	m.method = nil
+}
+
+// SetRemoteDeleted sets the "remote_deleted" field.
+func (m *VirtualMachineRecycleRecordMutation) SetRemoteDeleted(b bool) {
+	m.remote_deleted = &b
+}
+
+// RemoteDeleted returns the value of the "remote_deleted" field in the mutation.
+func (m *VirtualMachineRecycleRecordMutation) RemoteDeleted() (r bool, exists bool) {
+	v := m.remote_deleted
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRemoteDeleted returns the old "remote_deleted" field's value of the VirtualMachineRecycleRecord entity.
+// If the VirtualMachineRecycleRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineRecycleRecordMutation) OldRemoteDeleted(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRemoteDeleted is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRemoteDeleted requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRemoteDeleted: %w", err)
+	}
+	return oldValue.RemoteDeleted, nil
+}
+
+// ResetRemoteDeleted resets all changes to the "remote_deleted" field.
+func (m *VirtualMachineRecycleRecordMutation) ResetRemoteDeleted() {
+	m.remote_deleted = nil
+}
+
+// SetRecycledAt sets the "recycled_at" field.
+func (m *VirtualMachineRecycleRecordMutation) SetRecycledAt(t time.Time) {
+	m.recycled_at = &t
+}
+
+// RecycledAt returns the value of the "recycled_at" field in the mutation.
+func (m *VirtualMachineRecycleRecordMutation) RecycledAt() (r time.Time, exists bool) {
+	v := m.recycled_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRecycledAt returns the old "recycled_at" field's value of the VirtualMachineRecycleRecord entity.
+// If the VirtualMachineRecycleRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineRecycleRecordMutation) OldRecycledAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRecycledAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRecycledAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRecycledAt: %w", err)
+	}
+	return oldValue.RecycledAt, nil
+}
+
+// ResetRecycledAt resets all changes to the "recycled_at" field.
+func (m *VirtualMachineRecycleRecordMutation) ResetRecycledAt() {
+	m.recycled_at = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *VirtualMachineRecycleRecordMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *VirtualMachineRecycleRecordMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the VirtualMachineRecycleRecord entity.
+// If the VirtualMachineRecycleRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineRecycleRecordMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *VirtualMachineRecycleRecordMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the VirtualMachineRecycleRecordMutation builder.
+func (m *VirtualMachineRecycleRecordMutation) Where(ps ...predicate.VirtualMachineRecycleRecord) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the VirtualMachineRecycleRecordMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *VirtualMachineRecycleRecordMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.VirtualMachineRecycleRecord, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *VirtualMachineRecycleRecordMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *VirtualMachineRecycleRecordMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (VirtualMachineRecycleRecord).
+func (m *VirtualMachineRecycleRecordMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *VirtualMachineRecycleRecordMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.virtualmachine_id != nil {
+		fields = append(fields, virtualmachinerecyclerecord.FieldVirtualmachineID)
+	}
+	if m.environment_id != nil {
+		fields = append(fields, virtualmachinerecyclerecord.FieldEnvironmentID)
+	}
+	if m.host_id != nil {
+		fields = append(fields, virtualmachinerecyclerecord.FieldHostID)
+	}
+	if m.user_id != nil {
+		fields = append(fields, virtualmachinerecyclerecord.FieldUserID)
+	}
+	if m.task_ids != nil {
+		fields = append(fields, virtualmachinerecyclerecord.FieldTaskIds)
+	}
+	if m.method != nil {
+		fields = append(fields, virtualmachinerecyclerecord.FieldMethod)
+	}
+	if m.remote_deleted != nil {
+		fields = append(fields, virtualmachinerecyclerecord.FieldRemoteDeleted)
+	}
+	if m.recycled_at != nil {
+		fields = append(fields, virtualmachinerecyclerecord.FieldRecycledAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, virtualmachinerecyclerecord.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *VirtualMachineRecycleRecordMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case virtualmachinerecyclerecord.FieldVirtualmachineID:
+		return m.VirtualmachineID()
+	case virtualmachinerecyclerecord.FieldEnvironmentID:
+		return m.EnvironmentID()
+	case virtualmachinerecyclerecord.FieldHostID:
+		return m.HostID()
+	case virtualmachinerecyclerecord.FieldUserID:
+		return m.UserID()
+	case virtualmachinerecyclerecord.FieldTaskIds:
+		return m.TaskIds()
+	case virtualmachinerecyclerecord.FieldMethod:
+		return m.Method()
+	case virtualmachinerecyclerecord.FieldRemoteDeleted:
+		return m.RemoteDeleted()
+	case virtualmachinerecyclerecord.FieldRecycledAt:
+		return m.RecycledAt()
+	case virtualmachinerecyclerecord.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *VirtualMachineRecycleRecordMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case virtualmachinerecyclerecord.FieldVirtualmachineID:
+		return m.OldVirtualmachineID(ctx)
+	case virtualmachinerecyclerecord.FieldEnvironmentID:
+		return m.OldEnvironmentID(ctx)
+	case virtualmachinerecyclerecord.FieldHostID:
+		return m.OldHostID(ctx)
+	case virtualmachinerecyclerecord.FieldUserID:
+		return m.OldUserID(ctx)
+	case virtualmachinerecyclerecord.FieldTaskIds:
+		return m.OldTaskIds(ctx)
+	case virtualmachinerecyclerecord.FieldMethod:
+		return m.OldMethod(ctx)
+	case virtualmachinerecyclerecord.FieldRemoteDeleted:
+		return m.OldRemoteDeleted(ctx)
+	case virtualmachinerecyclerecord.FieldRecycledAt:
+		return m.OldRecycledAt(ctx)
+	case virtualmachinerecyclerecord.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown VirtualMachineRecycleRecord field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *VirtualMachineRecycleRecordMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case virtualmachinerecyclerecord.FieldVirtualmachineID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVirtualmachineID(v)
+		return nil
+	case virtualmachinerecyclerecord.FieldEnvironmentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironmentID(v)
+		return nil
+	case virtualmachinerecyclerecord.FieldHostID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHostID(v)
+		return nil
+	case virtualmachinerecyclerecord.FieldUserID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case virtualmachinerecyclerecord.FieldTaskIds:
+		v, ok := value.([]uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskIds(v)
+		return nil
+	case virtualmachinerecyclerecord.FieldMethod:
+		v, ok := value.(consts.VMRecycleMethod)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMethod(v)
+		return nil
+	case virtualmachinerecyclerecord.FieldRemoteDeleted:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRemoteDeleted(v)
+		return nil
+	case virtualmachinerecyclerecord.FieldRecycledAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRecycledAt(v)
+		return nil
+	case virtualmachinerecyclerecord.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown VirtualMachineRecycleRecord field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *VirtualMachineRecycleRecordMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *VirtualMachineRecycleRecordMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *VirtualMachineRecycleRecordMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown VirtualMachineRecycleRecord numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *VirtualMachineRecycleRecordMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(virtualmachinerecyclerecord.FieldUserID) {
+		fields = append(fields, virtualmachinerecyclerecord.FieldUserID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *VirtualMachineRecycleRecordMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *VirtualMachineRecycleRecordMutation) ClearField(name string) error {
+	switch name {
+	case virtualmachinerecyclerecord.FieldUserID:
+		m.ClearUserID()
+		return nil
+	}
+	return fmt.Errorf("unknown VirtualMachineRecycleRecord nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *VirtualMachineRecycleRecordMutation) ResetField(name string) error {
+	switch name {
+	case virtualmachinerecyclerecord.FieldVirtualmachineID:
+		m.ResetVirtualmachineID()
+		return nil
+	case virtualmachinerecyclerecord.FieldEnvironmentID:
+		m.ResetEnvironmentID()
+		return nil
+	case virtualmachinerecyclerecord.FieldHostID:
+		m.ResetHostID()
+		return nil
+	case virtualmachinerecyclerecord.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case virtualmachinerecyclerecord.FieldTaskIds:
+		m.ResetTaskIds()
+		return nil
+	case virtualmachinerecyclerecord.FieldMethod:
+		m.ResetMethod()
+		return nil
+	case virtualmachinerecyclerecord.FieldRemoteDeleted:
+		m.ResetRemoteDeleted()
+		return nil
+	case virtualmachinerecyclerecord.FieldRecycledAt:
+		m.ResetRecycledAt()
+		return nil
+	case virtualmachinerecyclerecord.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown VirtualMachineRecycleRecord field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *VirtualMachineRecycleRecordMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *VirtualMachineRecycleRecordMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *VirtualMachineRecycleRecordMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *VirtualMachineRecycleRecordMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *VirtualMachineRecycleRecordMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *VirtualMachineRecycleRecordMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *VirtualMachineRecycleRecordMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown VirtualMachineRecycleRecord unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *VirtualMachineRecycleRecordMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown VirtualMachineRecycleRecord edge %s", name)
 }

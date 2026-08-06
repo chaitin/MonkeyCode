@@ -11,6 +11,18 @@ const (
 	Forever   VirtualmachineTTLKind = "forever"
 )
 
+type VMRecycleMethod string
+
+const (
+	VMRecycleMethodIdle         VMRecycleMethod = "idle"          // 空闲超时回收
+	VMRecycleMethodTaskStop     VMRecycleMethod = "task_stop"     // 停止任务回收
+	VMRecycleMethodTaskDelete   VMRecycleMethod = "task_delete"   // 删除任务回收
+	VMRecycleMethodExpired      VMRecycleMethod = "expired"       // 虚拟机到期回收
+	VMRecycleMethodManualDelete VMRecycleMethod = "manual_delete" // 用户手动删除
+	VMRecycleMethodForce        VMRecycleMethod = "force"         // 强制回收
+	VMRecycleMethodLifecycle    VMRecycleMethod = "lifecycle"     // 生命周期状态回收
+)
+
 type HostStatus string
 
 const (

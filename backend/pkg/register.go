@@ -196,6 +196,7 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		return delayqueue.NewVMExpireQueue(r, l), nil
 	})
 
+	do.Provide(i, vmrecycle.NewRecorder)
 	do.Provide(i, vmrecycle.NewRecycler)
 	do.Provide(i, vmrecycle.NewAnalyzer)
 	do.Provide(i, vmrecycle.NewDeadlineRepairer)

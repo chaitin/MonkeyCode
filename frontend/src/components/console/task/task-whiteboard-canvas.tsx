@@ -180,7 +180,7 @@ const whiteboardOptions: TldrawProps["options"] = {
   maxPages: 1,
 }
 
-const TLDRAW_LICENSE_KEY = "tldraw-2026-08-08/WyJCYnVSQWlYTSIsWyIqIl0sMTYsIjIwMjYtMDgtMDgiXQ.JBexbWbLhgcyqZptkI3d/OgtUbOZS0fcOTFtQlotMojqut13MT/B0LuvXTe9nlTFBHCS1nH3xDiD+dS34QYbgQ"
+const TLDRAW_LICENSE_KEY = "tldraw-2026-11-12/WyJJYXcxVTdxdCIsWyIqIl0sMTYsIjIwMjYtMTEtMTIiXQ.SPqFw4ko8j+su8540ak65Xqe9iEE7V8iP/ciZOJnX0sPm0bgmy+DxJLv4WZ/uhYmJVV6L2ieVPE6W5SE6B94pw"
 const TLDRAW_ASSET_URLS = getAssetUrls({
   baseUrl: `${import.meta.env.BASE_URL.replace(/\/$/, "")}/tldraw`,
 })
