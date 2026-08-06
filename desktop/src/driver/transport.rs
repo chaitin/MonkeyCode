@@ -24,6 +24,16 @@ use crate::config::DesktopConfig;
 use crate::util::LockExt;
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
+const SESSION_CREATE_TIMEOUT: Duration = Duration::from_secs(120);
+
+fn rpc_timeout(method: &str) -> Duration {
+    if method == "session/create" {
+        SESSION_CREATE_TIMEOUT
+    } else {
+        RPC_TIMEOUT
+    }
+}
+
 const FRAME_FLUSH_MS: u64 = 30;
 /// 支持的引擎 stdio 协议版本(system/ready.protocolVersion,stdio.go)。
 /// 上游契约:该值**仅在不兼容变更时**改动(新增功能走 capabilities 宣告),
@@ -536,7 +546,8 @@ impl OhmyDriver {
 
     pub(super) async fn rpc(&self, method: &str, params: Value) -> Result<Value, String> {
         // 引擎已收摊就别再登记等待者。stdin_tx 是 unbounded 通道,writer 线程
-        // 早退后 send 依然"成功",于是这条请求会挂到 RPC_TIMEOUT(30s)才报错——
+        // 早退后 send 依然"成功",于是普通请求会挂到 RPC_TIMEOUT(30s)才报错——
+        // session/create 因首次加载引擎资源可能较慢,使用独立的 120s 预算。
         // 崩溃瞬间在途的命令因此白等半分钟。reader 清 pending 与本次登记之间
         // 的窗口就是靠这个标志收口的。
         if self.0.transport.stopped.load(Ordering::Relaxed) {
@@ -550,12 +561,13 @@ impl OhmyDriver {
             self.0.transport.pending.lock_ok().remove(&id);
             return Err("引擎已退出".into());
         }
-        let resp = match tokio::time::timeout(RPC_TIMEOUT, rx).await {
+        let timeout = rpc_timeout(method);
+        let resp = match tokio::time::timeout(timeout, rx).await {
             Ok(Ok(v)) => v,
             Ok(Err(_)) => return Err("引擎已退出".into()),
             Err(_) => {
                 self.0.transport.pending.lock_ok().remove(&id);
-                return Err(format!("{method} 超时"));
+                return Err(format!("{method} 超时({}s)", timeout.as_secs()));
             }
         };
         if let Some(err) = resp.get("error").filter(|e| !e.is_null()) {
@@ -776,6 +788,21 @@ fn engine_env_additions() -> Vec<(String, String)> {
 #[cfg(not(unix))]
 fn engine_env_additions() -> Vec<(String, String)> {
     Vec::new()
+}
+
+#[cfg(test)]
+mod rpc_timeout_tests {
+    use super::*;
+
+    #[test]
+    fn session_create_has_extended_timeout() {
+        assert_eq!(rpc_timeout("session/create"), Duration::from_secs(120));
+    }
+
+    #[test]
+    fn ordinary_rpc_keeps_default_timeout() {
+        assert_eq!(rpc_timeout("session/send"), Duration::from_secs(30));
+    }
 }
 
 #[cfg(test)]
