@@ -9,6 +9,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { useDialogActionNavigation } from "@/components/ui/dialog-action-navigation"
 import { MAX_TASK_UPLOAD_FILE_SIZE_LABEL } from "./task-file-upload"
 
 interface TaskLongContentDialogProps {
@@ -29,6 +30,7 @@ export function TaskLongContentDialog({
   onConfirm,
 }: TaskLongContentDialogProps) {
   const { t } = useTranslation()
+  const dialogNavigation = useDialogActionNavigation()
 
   return (
     <AlertDialog
@@ -38,7 +40,7 @@ export function TaskLongContentDialog({
         onOpenChange(nextOpen)
       }}
     >
-      <AlertDialogContent>
+      <AlertDialogContent onKeyDown={dialogNavigation.onKeyDown}>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("taskDetail.chat.longContent.title")}</AlertDialogTitle>
           <AlertDialogDescription>
@@ -53,6 +55,7 @@ export function TaskLongContentDialog({
         </div>
         <AlertDialogFooter>
           <Button
+            ref={dialogNavigation.cancelRef}
             type="button"
             variant="outline"
             autoFocus
@@ -62,6 +65,7 @@ export function TaskLongContentDialog({
             {t("taskDetail.common.cancel")}
           </Button>
           <Button
+            ref={dialogNavigation.confirmRef}
             type="button"
             disabled={converting}
             onClick={() => void onConfirm()}

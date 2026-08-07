@@ -8,6 +8,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { useDialogActionNavigation } from "@/components/ui/dialog-action-navigation"
 import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
 import React from "react"
@@ -40,6 +41,7 @@ export function TaskWhiteboardDialog({
   const [submitting, setSubmitting] = React.useState(false)
   const [resetDialogOpen, setResetDialogOpen] = React.useState(false)
   const editorRef = React.useRef<TldrawEditor | null>(null)
+  const resetDialogNavigation = useDialogActionNavigation()
 
   const handleSubmit = React.useCallback(async () => {
     if (submitting) return
@@ -159,7 +161,7 @@ export function TaskWhiteboardDialog({
           setResetDialogOpen(nextOpen)
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent onKeyDown={resetDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.whiteboard.clearTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -167,8 +169,9 @@ export function TaskWhiteboardDialog({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel ref={resetDialogNavigation.cancelRef} disabled={submitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
+              ref={resetDialogNavigation.confirmRef}
               type="button"
               variant="destructive"
               disabled={submitting}
