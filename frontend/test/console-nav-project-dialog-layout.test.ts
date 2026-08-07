@@ -22,7 +22,7 @@ function assertDialogLayout(stateName: string, titleKey: string) {
 
   assert.match(
     dialogSource,
-    /<AlertDialogContent[^>]*className="max-h-\[calc\(100dvh-2rem\)\] grid-rows-\[minmax\(0,1fr\)_auto\] overflow-hidden"[^>]*>/,
+    /<AlertDialogContent className="max-h-\[calc\(100dvh-2rem\)\] grid-rows-\[minmax\(0,1fr\)_auto\] overflow-hidden">/,
   )
   assert.ok(
     dialogSource.includes(

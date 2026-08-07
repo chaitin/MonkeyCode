@@ -11,7 +11,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { useDialogActionNavigation } from "@/components/ui/dialog-action-navigation";
 import { HoverCard, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Item, ItemContent, ItemFooter, ItemHeader, ItemTitle } from "@/components/ui/item";
 import { Separator } from "@/components/ui/separator";
@@ -45,8 +44,6 @@ export default function TasksPage() {
   const [deleting, setDeleting] = useState(false)
   const [taskToStop, setTaskToStop] = useState<DomainProjectTask | null>(null)
   const [stopping, setStopping] = useState(false)
-  const deleteTaskDialogNavigation = useDialogActionNavigation()
-  const stopTaskDialogNavigation = useDialogActionNavigation()
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const loadingRef = useRef(false)
   // Open Design handoff: od-web carries the prompt in the #od-task= fragment.
@@ -278,7 +275,7 @@ export default function TasksPage() {
         {loading && <Spinner className="size-6" />}
       </div>
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
-        <AlertDialogContent onKeyDown={deleteTaskDialogNavigation.onKeyDown}>
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("consoleTasks.dialog.delete.title")}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -286,9 +283,8 @@ export default function TasksPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel ref={deleteTaskDialogNavigation.cancelRef} disabled={deleting}>{t("consoleTasks.dialog.common.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("consoleTasks.dialog.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              ref={deleteTaskDialogNavigation.confirmRef}
               onClick={(e) => {
                 e.preventDefault()
                 handleConfirmDeleteTask()
@@ -302,7 +298,7 @@ export default function TasksPage() {
         </AlertDialogContent>
       </AlertDialog>
       <AlertDialog open={!!taskToStop} onOpenChange={(open) => !open && setTaskToStop(null)}>
-        <AlertDialogContent onKeyDown={stopTaskDialogNavigation.onKeyDown}>
+        <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>{t("consoleTasks.dialog.stop.title")}</AlertDialogTitle>
               <AlertDialogDescription>
@@ -310,9 +306,8 @@ export default function TasksPage() {
               </AlertDialogDescription>
             </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel ref={stopTaskDialogNavigation.cancelRef} disabled={stopping}>{t("consoleTasks.dialog.common.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={stopping}>{t("consoleTasks.dialog.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              ref={stopTaskDialogNavigation.confirmRef}
               onClick={(e) => {
                 e.preventDefault()
                 handleConfirmStopTask()

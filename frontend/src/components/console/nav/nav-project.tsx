@@ -21,7 +21,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { useDialogActionNavigation } from "@/components/ui/dialog-action-navigation"
 import { useCommonData } from "../data-provider"
 import { IconChevronDown, IconChevronRight, IconDots, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader, IconPlus, IconPointFilled } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
@@ -105,8 +104,6 @@ export default function NavProject() {
   const [deleting, setDeleting] = useState(false)
   const [taskToStop, setTaskToStop] = useState<DomainProjectTask | null>(null)
   const [stopping, setStopping] = useState(false)
-  const deleteTaskDialogNavigation = useDialogActionNavigation()
-  const stopTaskDialogNavigation = useDialogActionNavigation()
   const [historyExpanded, setHistoryExpanded] = useState(false)
 
   const { projects, reloadProjects, unlinkedTasks, reloadUnlinkedTasks, historicalTasks, reloadHistoricalTasks } = useCommonData()
@@ -410,7 +407,7 @@ export default function NavProject() {
           </SidebarMenu>
       )}
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
-        <AlertDialogContent onKeyDown={deleteTaskDialogNavigation.onKeyDown} className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
           <AlertDialogHeader
             role="region"
             tabIndex={0}
@@ -423,9 +420,8 @@ export default function NavProject() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel ref={deleteTaskDialogNavigation.cancelRef} disabled={deleting}>{t("navProject.common.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("navProject.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              ref={deleteTaskDialogNavigation.confirmRef}
               onClick={(e) => {
                 e.preventDefault()
                 handleConfirmDeleteTask()
@@ -439,7 +435,7 @@ export default function NavProject() {
         </AlertDialogContent>
       </AlertDialog>
       <AlertDialog open={!!taskToStop} onOpenChange={(open) => !open && setTaskToStop(null)}>
-        <AlertDialogContent onKeyDown={stopTaskDialogNavigation.onKeyDown} className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
           <AlertDialogHeader
             role="region"
             tabIndex={0}
@@ -452,9 +448,8 @@ export default function NavProject() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel ref={stopTaskDialogNavigation.cancelRef} disabled={stopping}>{t("navProject.common.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={stopping}>{t("navProject.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              ref={stopTaskDialogNavigation.confirmRef}
               onClick={(e) => {
                 e.preventDefault()
                 handleConfirmStopTask()

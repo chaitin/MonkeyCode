@@ -14,7 +14,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
-import { useDialogActionNavigation } from "@/components/ui/dialog-action-navigation"
 import { HoverCard, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Item, ItemContent, ItemDescription, ItemFooter, ItemHeader, ItemTitle } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
@@ -53,7 +52,6 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
   const [tasksInitialLoading, setTasksInitialLoading] = useState(true)
   const [taskToDelete, setTaskToDelete] = useState<DomainProjectTask | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const deleteTaskDialogNavigation = useDialogActionNavigation()
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const tasksLoadingRef = useRef(false)
 
@@ -288,7 +286,7 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
         {tasksLoading && <Spinner className="size-6" />}
       </div>
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
-        <AlertDialogContent onKeyDown={deleteTaskDialogNavigation.onKeyDown}>
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("projectOverview.tasks.delete.title")}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -296,9 +294,8 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel ref={deleteTaskDialogNavigation.cancelRef} disabled={deleting}>{t("projectOverview.common.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("projectOverview.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              ref={deleteTaskDialogNavigation.confirmRef}
               onClick={(e) => {
                 e.preventDefault()
                 handleConfirmDeleteTask()
