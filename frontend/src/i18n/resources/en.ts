@@ -1902,7 +1902,7 @@ const en = {
       docsFull: "Documentation",
       openSource: "Open Source",
       openSourceRepo: "Open Source Repo",
-      showcase: "Showcase",
+      showcase: "Gallery",
       client: "Clients",
       selfHosting: "Self-hosting",
       toggleMenu: "Toggle navigation menu",
