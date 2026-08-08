@@ -14,6 +14,7 @@
   <a href="https://monkeycode-ai.net/">Try Online</a> ·
   <a href="#self-hosted-deployment">Self-Hosted Deployment</a> ·
   <a href="https://discord.gg/2pPmuyr4pP">Discord</a> ·
+  <a href="https://monkeycode-ai.gallery/">Community Gallery</a> ·
   <a href="./readme.cn.md">中文</a>
 </p>
 

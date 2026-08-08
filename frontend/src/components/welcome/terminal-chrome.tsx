@@ -8,7 +8,10 @@ import { Link } from "react-router-dom";
 const DOCS_LINK = "https://monkeycode.docs.baizhi.cloud/";
 const GITHUB_LINK = "https://github.com/chaitin/MonkeyCode/";
 const FORUM_LINK = "https://bbs.baizhi.cloud/";
-const SHOWCASE_LINK = "https://showcase.monkeycode-ai.online/";
+const SHOWCASE_LINK: Record<string, string> = {
+  cn: "https://showcase.monkeycode-ai.online/",
+  en: "https://monkeycode-ai.gallery/",
+};
 const SELF_HOSTING_PAGE_PATH = "/self-hosting";
 const CHAITIN_LINK = "https://www.chaitin.cn/";
 const BAIZHI_LINK = "https://www.baizhi.cloud/";
@@ -93,7 +96,7 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
   const { auth, serverConfig } = useAppRuntime();
   const isLoggedIn = auth.status === "authenticated";
   const isGlobalRegion = serverConfig?.region === "global";
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [isScrolled, setIsScrolled] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const inviterId = typeof window !== "undefined" ? localStorage.getItem("ic") || "" : "";
@@ -101,7 +104,7 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
   const navPrefix = homeAnchors ? "" : "/";
 
   const pageNav = [
-    { labelKey: "welcomeShell.nav.showcase", href: SHOWCASE_LINK, external: true },
+    { labelKey: "welcomeShell.nav.showcase", href: SHOWCASE_LINK[i18n.language], external: true },
     { labelKey: "welcomeShell.nav.client", href: `${navPrefix}#desktop-client` },
     { labelKey: "welcomeShell.nav.selfHosting", href: SELF_HOSTING_PAGE_PATH },
   ];
