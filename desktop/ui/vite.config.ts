@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -12,7 +13,7 @@ import { defineConfig } from "vite";
 // 配置:tauri-build 给所有 debug 构建打 cfg(dev),主配置带 devUrl 会让
 // 直接 cargo run 的调试二进制去连不存在的 dev server。
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     port: 1420,
     strictPort: true,

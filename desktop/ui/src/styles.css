@@ -1,393 +1,187 @@
-/* 设计令牌与全局样式,取自「MonkeyCode 桌面应用设计」(浅色绿调):
- * 一次性布局与间距仍以内联样式写在组件里,数值与设计稿逐一对应;
- * 这里放变量、跨组件复用原语、hover 工具类、keyframes、滚动条与 markdown 渲染产物。
+/* 全局样式:Tailwind 4 + daisyUI 5(内置 light/dark 主题)。
  *
- * 兼容红线:Win7 上 WebView2 停在 Chromium 109。颜色一律经 :root 令牌 +
- * var() 引用,禁止 color-mix()/相对颜色语法/CSS 嵌套/light-dark()(均 >109);
- * 透明变体各开独立令牌,不做运行时颜色计算。
+ * 最低基线 = evergreen WebView2 / WKWebView / WebKitGTK 2.4x,颜色可用
+ * oklch()/color-mix()。(Win7/Chromium 109 通道已退役,原「禁新特性」红线作废。)
  *
- * 外观是正交的两维,都落在根节点属性上(见 ui/src/theme.ts):
- *   data-theme  深浅——:root(浅) / [data-theme="dark"]
- *   data-accent 主题色——缺省即默认绿,其余见文件末尾的生成块
- * 另有一维不是偏好而是环境,由 ui/src/main.tsx 落上:
- *   data-platform 宿主平台——目前只有 "mac",用于给原生红绿灯让位(.mc-nav-rail)
- * 主题色那几十个色值由 scripts/gen_accent_tokens.py 算好写死(运行时算不了色),
- * 改它请改脚本后重新生成,别手改生成块。 */
+ * 深浅切换:document.documentElement.dataset.theme = "light" | "dark"
+ * (见 ui/src/theme.ts;daisyUI 按 data-theme 取值选主题)。
+ * data-platform 由 ui/src/main.tsx 落根节点(mac 红绿灯让位,见 .mc-nav-rail)。
+ *
+ * 文件分四段:
+ *   1. Tailwind/daisyUI 接入与字体
+ *   2. 【迁移桥接】旧令牌名 → daisyUI 变量的别名(S9 收尾时整段删除)
+ *   3. 长期自定义令牌(终端岛/高亮/平台约定色——daisyUI 语义色管不到的)
+ *   4. 保留的组件样式(markdown 产物/布局契约/交互显隐/滚动条等,逐步随
+ *      视图迁移瘦身;.hv/.pop/.card 等旧原语在全部视图迁完后删除) */
+
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+}
+/* Tailwind 的 dark: 前缀绑到 daisyUI 的 data-theme="dark"(官方推荐写法) */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme {
+  /* HarmonyOS Sans SC 经 /fonts/ webfont 随应用加载(fonts.css),不依赖本机安装 */
+  --font-sans: "HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "HarmonyOS Sans SC", ui-monospace, Menlo, Consolas, "Courier New", "Microsoft YaHei", monospace;
+}
+
+/* ================================================================
+ * 2.【迁移桥接令牌】旧令牌名 → daisyUI 主题变量(经 color-mix 派生)。
+ * 作用:未迁移视图里的 var(--旧名) 在两个主题下都取到 daisyUI 配色,
+ * 半迁移期间新旧写法同源取色。视图迁移时应改用 daisyUI 类/变量;
+ * S9 收尾 grep 清零后整段删除。别在新代码里引用这些名字。
+ * ================================================================ */
 :root {
-  --bg: #fcfdfc;            /* 主区底色 */
-  --rail: #edf1ee;          /* 一级空间导航 */
-  --side: #f6f8f6;          /* 二级内容侧栏 */
-  --railSel: rgba(255, 255, 255, 0.9);
-  --macLightIdle: #d5d9d6;  /* 自绘红绿灯失焦灰(mac 原生失焦按钮同档) */
-  --sidebarInput: rgba(255, 255, 255, 0.88);
-  --line: rgba(30, 40, 35, 0.1);
-  --line2: rgba(30, 40, 35, 0.065);
-  --t1: #1d221f;            /* 标题/正文强调 */
-  --t2: #2a302b;            /* 正文 */
-  --t3: #59605a;            /* 次级文字/图标 */
-  --t4: #7b827c;            /* 分组标题/弱文字 */
-  --t5: #8a918b;            /* 更弱 */
-  --t6: #a8afa9;            /* 最弱/占位 */
-  --t7: #c4c9c3;            /* 装饰性符号(分隔点) */
-  --tDis: #b3b9b2;          /* 禁用态文字 */
-  /* 品牌绿 = 移动端 ACCENTS['清新绿'].fill;该 fill 在浅/深两色下同值(见
-   * mobile/src/theme.tsx:makeTheme——只有 acTx / acGhost 随模式变),所以两个
-   * 主题块里的 --acc 也保持同值,不在浅色本地压深一档。
-   *
-   * ⚠️ 分工照移动端 ac / acTx 两档,别混用:
-   *   --acc   面与线:按钮底、徽章底、滑块、focus 描边、虚线拖放框、进度环。
-   *   --accTx 浅底上的文字与小图标:链接、状态字、徽章文字、勾选标记。
-   * fill 是给 --onAcc 白字垫底的,直接当文字色用在 --bg 上只有 2.74:1。 */
-  --acc: #16b364;           /* 品牌绿 */
-  --accH: #1dcc74;          /* 品牌绿 hover(ac + (ac − ac2),沿点缀色阶外推一步) */
-  --accTx: #0b8f4d;         /* 品牌绿文字(移动端 acTx = 清新绿 txL;对 --bg 4.1:1) */
-  --accBg: rgba(22, 179, 100, 0.12);
-  --accBd: rgba(22, 179, 100, 0.2);
-  --accBg2: rgba(22, 179, 100, 0.15); /* 激活底(比 --accBg 深一档,设置齿轮) */
-  --onAcc: #fff;
-  --ok: #28a866;
-  --okBg: rgba(40, 168, 102, 0.13);
-  --err: #c2503e;
-  --errBg: rgba(194, 80, 62, 0.09);
-  --warn: #a16207;
-  --warnBg: rgba(232, 193, 90, 0.14);
-  --warnBd: rgba(161, 98, 7, 0.35);
-  --card: #ffffff;
-  --cardBd: rgba(30, 40, 35, 0.1);
-  --cardSh: 0 1px 2px rgba(20, 35, 27, 0.04);
-  --hov: rgba(80, 95, 87, 0.065);
-  --hov2: rgba(80, 95, 87, 0.1);
-  --hov3: rgba(80, 95, 87, 0.15);
-  --pop: #fcfdfd;
-  --shadow: 0 8px 28px rgba(30, 45, 38, 0.2);
-  --codeBg: rgba(30, 40, 35, 0.05);
-  --userBg: #e9f2ec;
-  --addBg: rgba(40, 168, 102, 0.08);
-  --addT: #1c7a4b;
-  --delBg: rgba(194, 80, 62, 0.08);
-  --delT: #a63d2e;
-  /* -- 以下为组件内联字面量收敛的语义令牌 -- */
-  --scrim: rgba(20, 30, 25, 0.25);        /* 抽屉遮罩 */
-  --scrim2: rgba(20, 30, 25, 0.35);       /* 弹窗遮罩 */
-  --scrim3: rgba(20, 30, 25, 0.55);       /* 图片查看遮罩 */
-  --panel: rgba(255, 255, 255, 0.92);     /* 浮起面板(composer/新任务卡) */
-  --panel2: rgba(255, 255, 255, 0.7);     /* 次级浮面(排队 chip) */
-  --headerBg: rgba(255, 255, 255, 0.42);  /* 视图标题栏薄雾底(内容自其下滚过) */
-  --panelSh: 0 6px 24px rgba(30, 45, 38, 0.075), 0 1px 2px rgba(30, 45, 38, 0.035);
-  --panelShLg: 0 12px 40px rgba(30, 45, 38, 0.1), 0 2px 4px rgba(30, 45, 38, 0.035);
-  --shadowLg: 0 24px 70px rgba(30, 45, 38, 0.3);   /* 模态弹窗/大图查看 */
-  --inputBg: #fdfdfc;
-  --inputBd: rgba(30, 40, 35, 0.13);
-  --btnBd: rgba(30, 40, 35, 0.15);        /* 白底按钮/pill 描边 */
-  --dashBd: rgba(30, 40, 35, 0.22);       /* 空态虚线框 */
-  --errBd: rgba(194, 80, 62, 0.3);        /* 危险动作描边 */
-  --accBd2: rgba(22, 179, 100, 0.3);      /* 强调描边(加号按钮) */
-  --accBgSoft: rgba(22, 179, 100, 0.07);  /* 极浅强调底(拖放区/hover) */
-  --accSel: rgba(22, 179, 100, 0.085);    /* 侧栏/设置导航选中行浅色底 */
-  --accSelT: #24523d;                     /* 浅选中底上的主文字/图标 */
-  --accSelDim: #66786e;                   /* 浅选中底上的次级文字/图标 */
-  --accSh: 0 2px 8px rgba(22, 179, 100, 0.25); /* 主按钮投影 */
-  --warnBd2: rgba(161, 98, 7, 0.18);      /* 软警示描边(云端提示条) */
-  --warnT: #7c5210;                       /* 警示正文 */
-  --notice: #e8913a;                      /* 更新提醒圆点 */
-  --track: var(--hov3);                   /* 用量圆环底轨(缺省跟随中性灰刻度) */
-  --segBg: var(--hov);                    /* 分段控件槽底(缺省跟随中性灰刻度) */
-  --segSh: 0 1px 3px rgba(0, 0, 0, 0.12); /* 分段控件滑块投影 */
-  --linkH: #166b46;                       /* 链接 hover */
-  --sbThumb: rgba(110, 120, 115, 0.22);   /* 滚动条 */
-  --sbThumbH: rgba(110, 120, 115, 0.38);
-  /* 终端岛(云端 VM 终端卡):两个主题下都是一块深色面,所以岛内一律走移动端的
-   * 深色刻度,不掺浅色令牌。termBg / termTx / termAcc 直接取移动端同名令牌
-   * (mobile/src/theme.tsx 的 lightBase / darkBase 各有一份);移动端没有的
-   * 面板头与次级文字,按深色主题那套内插规则补:头底 = termBg 上叠一档
-   * (步长取移动端 bg→bg2),分隔线 = 深色主描边刻度,两档次级文字 = 深色 tx2/tx3。 */
-  --termBg: #1c1d20;                      /* 终端底(移动端 lightBase.termBg) */
-  --termHdr: #26272b;                     /* 面板头底(termBg + bg→bg2 的步长) */
-  --termBd: rgba(255, 255, 255, 0.12);    /* 头/体分隔(深色面上的主描边刻度) */
-  --termTx: #d6d7d2;                      /* 终端输出/面板标题(移动端 lightBase.termTx) */
-  --termTx2: #9fa0a0;                     /* 面板头图标与提示(移动端深色 tx2) */
-  --termTx3: #6c6d70;                     /* 面板头副标题(移动端深色 tx3) */
-  --termAcc: #6fe6a3;                     /* 岛内点缀(移动端 termAcc,两主题同值) */
-  /* 平台/功能约定色:不属于本调色板,两个主题同值,也不跟主题色走。
-   * 收进令牌只为满足"颜色一律经令牌"这条红线,并把"为什么不跟随主题"写在这。 */
-  --capClose: #e81123;                    /* 窗口关闭键 hover:Windows caption 官方红 */
-  --capCloseTx: #ffffff;                  /* 同上,红底上的字形色 */
-  --qrBg: #ffffff;                        /* 二维码衬底:要白底才扫得出,深色下也不反相 */
-  /* 代码高亮配色(GitHub Light 系;深色主题在 data-theme 块重定义) */
-  --hlKw: #cf222e;   /* 关键字 */
-  --hlStr: #0a3069;  /* 字符串/正则 */
-  --hlNum: #0550ae;  /* 数字/字面量/内建 */
-  --hlFn: #8250df;   /* 函数/类型/标题 */
-  --hlAttr: #953800; /* 属性/标签名 */
+  /* 面色 */
+  --bg: var(--color-base-100);
+  --rail: var(--color-base-300);
+  --side: var(--color-base-200);
+  --card: var(--color-base-100);
+  --pop: var(--color-base-100);
+  --inputBg: var(--color-base-100);
+  --railSel: color-mix(in oklab, var(--color-base-100) 90%, transparent);
+  --sidebarInput: color-mix(in oklab, var(--color-base-100) 88%, transparent);
+  --panel: color-mix(in oklab, var(--color-base-100) 92%, transparent);
+  --panel2: color-mix(in oklab, var(--color-base-100) 70%, transparent);
+  --headerBg: color-mix(in oklab, var(--color-base-100) 42%, transparent);
+  --userBg: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100));
+  --codeBg: color-mix(in oklab, var(--color-base-content) 5%, transparent);
+  /* 文字八档(旧 t1-t7/tDis → base-content 与底色按比例混合) */
+  --t1: var(--color-base-content);
+  --t2: color-mix(in oklab, var(--color-base-content) 92%, var(--color-base-100));
+  --t3: color-mix(in oklab, var(--color-base-content) 70%, var(--color-base-100));
+  --t4: color-mix(in oklab, var(--color-base-content) 55%, var(--color-base-100));
+  --t5: color-mix(in oklab, var(--color-base-content) 48%, var(--color-base-100));
+  --t6: color-mix(in oklab, var(--color-base-content) 35%, var(--color-base-100));
+  --t7: color-mix(in oklab, var(--color-base-content) 22%, var(--color-base-100));
+  --tDis: color-mix(in oklab, var(--color-base-content) 30%, var(--color-base-100));
+  /* 线与中性叠加 */
+  --line: color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  --line2: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+  --cardBd: color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  --inputBd: color-mix(in oklab, var(--color-base-content) 13%, transparent);
+  --btnBd: color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  --dashBd: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  --hov: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  --hov2: color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  --hov3: color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  --sbThumb: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  --sbThumbH: color-mix(in oklab, var(--color-base-content) 38%, transparent);
+  --track: var(--hov3);
+  --segBg: var(--hov);
+  /* 强调(旧品牌绿族 → primary) */
+  --acc: var(--color-primary);
+  --accH: color-mix(in oklab, var(--color-primary) 88%, white);
+  --accTx: var(--color-primary);
+  --onAcc: var(--color-primary-content);
+  --accBg: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  --accBg2: color-mix(in oklab, var(--color-primary) 15%, transparent);
+  --accBgSoft: color-mix(in oklab, var(--color-primary) 7%, transparent);
+  --accBd: color-mix(in oklab, var(--color-primary) 20%, transparent);
+  --accBd2: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  --accSel: color-mix(in oklab, var(--color-primary) 9%, transparent);
+  --accSelT: color-mix(in oklab, var(--color-primary) 45%, var(--color-base-content));
+  --accSelDim: var(--t4);
+  --accSh: 0 2px 8px color-mix(in oklab, var(--color-primary) 25%, transparent);
+  --linkH: color-mix(in oklab, var(--color-primary) 75%, var(--color-base-content));
+  /* 语义色 */
+  --ok: var(--color-success);
+  --okBg: color-mix(in oklab, var(--color-success) 13%, transparent);
+  --addBg: color-mix(in oklab, var(--color-success) 10%, transparent);
+  --addT: var(--color-success);
+  --err: var(--color-error);
+  --errBg: color-mix(in oklab, var(--color-error) 9%, transparent);
+  --errBd: color-mix(in oklab, var(--color-error) 30%, transparent);
+  --delBg: color-mix(in oklab, var(--color-error) 8%, transparent);
+  --delT: var(--color-error);
+  --warn: var(--color-warning);
+  --warnT: var(--color-warning);
+  --warnBg: color-mix(in oklab, var(--color-warning) 14%, transparent);
+  --warnBd: color-mix(in oklab, var(--color-warning) 35%, transparent);
+  --warnBd2: color-mix(in oklab, var(--color-warning) 18%, transparent);
+  --notice: var(--color-warning);
+  /* 遮罩与投影(浅色档;深色档在下方覆写) */
+  --scrim: rgb(0 0 0 / 0.3);
+  --scrim2: rgb(0 0 0 / 0.45);
+  --scrim3: rgb(0 0 0 / 0.6);
+  --shadow: 0 8px 28px rgb(0 0 0 / 0.2);
+  --shadowLg: 0 24px 70px rgb(0 0 0 / 0.3);
+  --cardSh: 0 1px 2px rgb(0 0 0 / 0.04);
+  --panelSh: 0 6px 24px rgb(0 0 0 / 0.075), 0 1px 2px rgb(0 0 0 / 0.035);
+  --panelShLg: 0 12px 40px rgb(0 0 0 / 0.1), 0 2px 4px rgb(0 0 0 / 0.035);
+  --segSh: 0 1px 3px rgb(0 0 0 / 0.12);
 }
-
-/* 深色主题:只填这里的令牌值,组件零改动。
- * 切换方式:document.documentElement.dataset.theme = "dark" | ""(见 theme.ts)。
- *
- * 取值对齐移动端设计令牌 mobile/src/theme.tsx:面色/文字/线条/语义色取 `darkBase`,
- * 强调色取 ACCENTS['清新绿'] 经 makeTheme 推导的 ac / ac2 / acInk / acTx /
- * acGhost / acLine。移动端只有 4 档面色、3 档文字,桌面这里有 76 个令牌,缺口按
- * 同一条内插规则补齐(改值时请沿用,别打破角色关系):
- *
- * 内插规则:桌面令牌先按浅色同名令牌的"角色"定位,再落到移动端同角色的令牌上;
- * 移动端没有对位刻度时,在其相邻两档之间线性内插,需要更暗/更亮一档时沿移动端
- * 自己的刻度方向外推一步——不引入移动端调色板之外的色相。
- * 1. 面色:层级次序沿用浅色的 rail < side < bg < inputBg < card < pop(凹陷的
- *    导航更暗、浮起的面更亮)。bg / card / pop = 移动端 bg / bg2 / bg3(移动端的
- *    卡与浮层就是 bg2,其上再叠一层用 bg3);要比 bg 更暗的 rail 取移动端自己
- *    最暗的面 termBg #101113,side = rail↔bg 中点,inputBg = bg↔bg2 中点
- *    (输入框在卡内是凹的、对 bg 是浮的)。bg4 落在 hov 叠在 card 上的位置。
- * 2. 文字:t1 / t3 / t6 = 移动端 tx / tx2 / tx3;t2 在 tx→tx2 上取 25%(使
- *    t2:t1 的对比度比 0.83 与浅色一致),t4 / t5 三等分 tx2→tx3,t7 / tDis 继续
- *    内插到 bg4。八档在最亮常规底(--userBg #153127,其次 --pop)上依次约
- *    12.0 / 10.0 / 5.3 / 4.3 / 3.4 / 2.7 / 2.0 / 2.3:1:正文档 t1/t2/t3 过 WCAG
- *    AA 4.5:1,t4/t5(分组标题/弱文字,浅色同位只有 3.9 / 3.2:1)过 3:1,t6 占位、
- *    t7 装饰符、tDis 禁用态按 WCAG 豁免项处理。每一档都比浅色同位更宽裕,因此没有
- *    哪一档需要在移动端值之上再提亮。
- * 3. 强调/语义色直接取移动端令牌:acc=ac、accBg=acGhost、accBd=acLine、
- *    onAcc=acInk、linkH/accSelT=acTx、ok/addT=add、err=red、del*=del、
- *    warn*=amber、userBg=acGhost 压成不透明(移动端的用户气泡就是 acGhost+acLine)。
- *    移动端只给一档时不再拆两档(--warn 与 --warnT、--ok 与 --addT 同值:#f0b454
- *    在最亮常规底上已有 7.6:1,不需要浅色那样再分出一档更深的正文色);--notice
- *    也落在 amber 上,深色调色板里没有独立的橙。需要比 ac 更亮一档的 hover 取
- *    ac + (ac − ac2) = #1dcc74,沿移动端自己的点缀色阶外推一步。
- *    ⚠️ --onAcc 照移动端 acInk 用白色,白字对 #16b364 只有 2.74:1(浅色同值
- *    同比)。这是设计稿自己的配对,桌面两个主题保持一致;要过 3:1 得在设计侧改
- *    acInk 或 ac,不在桌面本地偷偷翻成深色字、也不把浅色的 ac 单独压深。
- * 4. 中性叠加层只用移动端已有的白色 alpha 刻度(line 0.07 / track 0.09 /
- *    line2 0.12 / glassBrd 0.13 / glassHi 0.16),按浅色同族令牌的强弱次序落位;
- *    刻度之外的(dashBd / sbThumbH / panel2 / headerBg)按浅色同族的比例外推或
- *    内插。注意移动端 line/line2 的强弱与桌面 --line/--line2 相反,这里按角色对位:
- *    桌面主描边 --line = 移动端 line2。
- * 5. 遮罩与投影一律纯黑,不透明度锚在移动端 shCard 0.5 / shLift 0.7;几何
- *    (offset/blur)是桌面自己的布局约定,不动。--codeBg 取纯黑 0.3,叠在 --bg 上
- *    正好落到移动端的 termBg(代码/终端底色)。不做运行时颜色计算(Chromium 109)。
- * 6. 代码高亮移动端没有对应令牌,继续用 GitHub Dark 官方色阶,与浅色的
- *    GitHub Light 成对。 */
+/* 桥接令牌的深色覆写:结构上无法用同一条 color-mix 表达的少数几个
+ * (白雾面在深色下是低透明度亮膜、投影/遮罩整体加重) */
 [data-theme="dark"] {
-  color-scheme: dark; /* 原生滚动条/勾选框/下拉跟随深色,不然是白块 */
-  --bg: #15161a;            /* 主区底色(移动端 bg) */
-  --rail: #101113;          /* 一级空间导航(移动端 termBg:调色板里最暗的面) */
-  --side: #131417;          /* 二级内容侧栏(rail↔bg 中点) */
-  --railSel: rgba(255, 255, 255, 0.09);   /* 移动端 track 刻度;叠在 rail 上≈bg3 */
-  --macLightIdle: #3f4443;  /* 自绘红绿灯失焦灰(深色) */
-  --sidebarInput: rgba(255, 255, 255, 0.07); /* 移动端 line 刻度(比 railSel 弱一档) */
-  --line: rgba(255, 255, 255, 0.12);      /* 主描边=移动端 line2(强弱按角色对位) */
-  --line2: rgba(255, 255, 255, 0.07);     /* 更细的分隔=移动端 line */
-  --t1: #edeeec;            /* 标题/正文强调(移动端 tx) */
-  --t2: #dadad9;            /* 正文(tx→tx2 25%) */
-  --t3: #9fa0a0;            /* 次级文字/图标(移动端 tx2) */
-  --t4: #8e8f90;            /* 分组标题/弱文字(tx2→tx3 1/3) */
-  --t5: #7d7e80;            /* 更弱(tx2→tx3 2/3) */
-  --t6: #6c6d70;            /* 最弱/占位(移动端 tx3) */
-  --t7: #57595d;            /* 装饰性符号(分隔点;tx3→bg4 35%) */
-  --tDis: #626367;          /* 禁用态文字(tx3→bg4 17.5%) */
-  --acc: #16b364;           /* 品牌绿(移动端 清新绿 fill) */
-  --accH: #1dcc74;          /* 品牌绿 hover(ac + (ac − ac2),沿点缀色阶外推一步) */
-  --accTx: #46e08a;         /* 品牌绿文字(移动端 acTx = 清新绿 txD;与 linkH/accSelT 同值) */
-  --accBg: rgba(22, 179, 100, 0.17);      /* 移动端 acGhost */
-  --accBd: rgba(22, 179, 100, 0.3);       /* 移动端 acLine */
-  --accBg2: rgba(22, 179, 100, 0.21); /* 激活底(比 --accBg 深一档,设置齿轮) */
-  --onAcc: #ffffff;         /* 移动端 acInk;白字对绿底仅 2.74:1,见头部第 3 条 */
-  --ok: #45cf86;            /* 移动端 add */
-  --okBg: rgba(69, 207, 134, 0.17);       /* 成功底取 acGhost 的 0.17 刻度 */
-  --err: #f0746a;           /* 移动端 red */
-  --errBg: rgba(240, 116, 106, 0.13);     /* 移动端 redGhost */
-  --warn: #f0b454;          /* 移动端 amber */
-  --warnBg: rgba(240, 180, 84, 0.15);     /* 移动端 amberGhost */
-  --warnBd: rgba(240, 180, 84, 0.3);      /* 描边落在 acLine 的 0.3 刻度 */
-  --card: #1f2025;          /* 移动端 bg2(其卡/浮层面) */
-  --cardBd: rgba(255, 255, 255, 0.12);    /* 与 --line 同档 */
-  --cardSh: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --hov: rgba(255, 255, 255, 0.07);       /* 移动端 line 刻度;叠在 card 上≈bg4 */
-  --hov2: rgba(255, 255, 255, 0.12);      /* 移动端 line2 刻度 */
-  --hov3: rgba(255, 255, 255, 0.16);      /* 移动端 glassHi 刻度 */
-  --pop: #282a30;           /* 移动端 bg3(浮层再叠一层) */
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);         /* 纯黑,锚 shCard 0.5 */
-  --codeBg: rgba(0, 0, 0, 0.3);           /* 叠在 --bg 上≈移动端 termBg */
-  --userBg: #153127;        /* 移动端用户气泡 acGhost 叠在 bg 上压成不透明 */
-  --addBg: rgba(69, 207, 134, 0.13);      /* 移动端 addBg */
-  --addT: #45cf86;                        /* 移动端 add */
-  --delBg: rgba(240, 128, 121, 0.12);     /* 移动端 delBg */
-  --delT: #f08079;                        /* 移动端 del */
-  /* -- 以下为组件内联字面量收敛的语义令牌 -- */
-  --scrim: rgba(0, 0, 0, 0.5);            /* 抽屉遮罩(锚 shCard 0.5) */
-  --scrim2: rgba(0, 0, 0, 0.66);          /* 弹窗遮罩(锚 glassVeil 0.66) */
-  --scrim3: rgba(0, 0, 0, 0.8);           /* 图片查看遮罩(shLift 0.7 上再压一档) */
-  --panel: rgba(255, 255, 255, 0.07);     /* 浮起面板(composer/新任务卡) */
-  --panel2: rgba(255, 255, 255, 0.05);    /* 次级浮面(排队 chip) */
-  /* 标题栏在浅色下是 42% 白雾;深色不能照搬(会变成一条亮白横带),按浅色
-     headerBg:panel = 0.46 的比例落到 --panel 之下,保住"内容从其下滚过"的层次感 */
-  --headerBg: rgba(255, 255, 255, 0.03);  /* 视图标题栏薄雾底 */
-  --panelSh: 0 6px 24px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --panelShLg: 0 12px 40px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.35);
-  --shadowLg: 0 24px 70px rgba(0, 0, 0, 0.7);      /* 模态弹窗/大图查看(锚 shLift) */
-  --inputBg: #1a1b20;                     /* bg↔bg2 中点 */
-  --inputBd: rgba(255, 255, 255, 0.13);   /* 移动端 glassBrd 刻度 */
-  --btnBd: rgba(255, 255, 255, 0.16);     /* 白底按钮/pill 描边(移动端 glassHi 刻度) */
-  --dashBd: rgba(255, 255, 255, 0.23);    /* 空态虚线框(glassHi 按浅色 dashBd:btnBd 外推) */
-  --errBd: rgba(240, 116, 106, 0.3);      /* 危险动作描边 */
-  --accBd2: rgba(22, 179, 100, 0.45);     /* 强调描边(加号按钮;acLine×1.5) */
-  --accBgSoft: rgba(22, 179, 100, 0.1);   /* 极浅强调底(拖放区/hover) */
-  --accSel: rgba(22, 179, 100, 0.12);     /* 侧栏/设置导航选中行浅色底 */
-  --accSelT: #46e08a;                     /* 浅选中底上的主文字/图标(移动端 acTx) */
-  --accSelDim: #59a67d;                   /* 浅选中底上的次级文字/图标(acTx↔tx3 中点) */
-  --accSh: 0 2px 8px rgba(22, 179, 100, 0.3); /* 主按钮投影(acLine 的 0.3) */
-  --warnBd2: rgba(240, 180, 84, 0.15);    /* 软警示描边(云端提示条) */
-  --warnT: #f0b454;                       /* 警示正文(移动端只有一档 amber) */
-  --notice: #f0b454;                      /* 更新提醒圆点(深色调色板无独立橙) */
-  --track: rgba(255, 255, 255, 0.09);     /* 用量圆环底轨(移动端有 track 令牌) */
-  --segBg: var(--hov);                    /* 分段控件槽底(缺省跟随中性灰刻度) */
-  --segSh: 0 1px 3px rgba(0, 0, 0, 0.5);  /* 分段控件滑块投影(锚 shCard 0.5) */
-  --linkH: #46e08a;                       /* 链接 hover(移动端 acTx) */
-  --sbThumb: rgba(255, 255, 255, 0.16);   /* 滚动条(移动端 sb #ffffff + glassHi 刻度) */
-  --sbThumbH: rgba(255, 255, 255, 0.28);  /* 按浅色 sbThumbH:sbThumb 外推 */
-  /* 终端岛:同浅色块的推导,只是底与文字换成移动端 darkBase 的那一份;
-   * 岛内次级文字/分隔线本就取自深色刻度,两个主题同值。 */
-  --termBg: #101113;                      /* 终端底(移动端 darkBase.termBg,= --rail) */
-  --termHdr: #15161a;                     /* 面板头底(termBg 上叠一档 = 移动端 bg) */
-  --termBd: rgba(255, 255, 255, 0.12);    /* 头/体分隔(= --line) */
-  --termTx: #cdceca;                      /* 终端输出/面板标题(移动端 darkBase.termTx) */
-  --termTx2: #9fa0a0;                     /* 面板头图标与提示(移动端 tx2) */
-  --termTx3: #6c6d70;                     /* 面板头副标题(移动端 tx3) */
-  --termAcc: #6fe6a3;                     /* 岛内点缀(移动端 termAcc,两主题同值) */
-  /* 平台/功能约定色:与浅色同值(理由见浅色块),列在这里是为了过令牌对齐检查 */
-  --capClose: #e81123;                    /* 窗口关闭键 hover:Windows caption 官方红 */
-  --capCloseTx: #ffffff;                  /* 同上,红底上的字形色 */
-  --qrBg: #ffffff;                        /* 二维码衬底:要白底才扫得出,深色下也不反相 */
-  /* 代码高亮配色(GitHub Dark 系,与浅色的 GitHub Light 成对;移动端无对应令牌) */
-  --hlKw: #ff7b72;   /* 关键字 */
-  --hlStr: #a5d6ff;  /* 字符串/正则 */
-  --hlNum: #79c0ff;  /* 数字/字面量/内建 */
-  --hlFn: #d2a8ff;   /* 函数/类型/标题 */
-  --hlAttr: #ffa657; /* 属性/标签名 */
+  --railSel: color-mix(in oklab, var(--color-base-content) 9%, transparent);
+  --sidebarInput: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+  --panel: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+  --panel2: color-mix(in oklab, var(--color-base-content) 5%, transparent);
+  --headerBg: color-mix(in oklab, var(--color-base-content) 3%, transparent);
+  --userBg: color-mix(in oklab, var(--color-primary) 16%, var(--color-base-100));
+  --codeBg: rgb(0 0 0 / 0.3);
+  --scrim: rgb(0 0 0 / 0.5);
+  --scrim2: rgb(0 0 0 / 0.66);
+  --scrim3: rgb(0 0 0 / 0.8);
+  --shadow: 0 8px 28px rgb(0 0 0 / 0.5);
+  --shadowLg: 0 24px 70px rgb(0 0 0 / 0.7);
+  --cardSh: 0 1px 2px rgb(0 0 0 / 0.3);
+  --panelSh: 0 6px 24px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.3);
+  --panelShLg: 0 12px 40px rgb(0 0 0 / 0.6), 0 2px 4px rgb(0 0 0 / 0.35);
+  --segSh: 0 1px 3px rgb(0 0 0 / 0.5);
 }
 
-/* BEGIN generated accents — scripts/gen_accent_tokens.py 生成,勿手改 */
-/* 主题色 = 样板(绿)的整套令牌在 OKLCH 里绕色相轴旋转到目标色相:OKLab 的
- * L 与 C 不动,只换色相,所以四个色感知上一样轻重,派生关系(hover/文字/
- * 选中/投影/气泡)自动跟着走,默认绿一个字节都不用改(旋转 0° 是恒等)。
- * 色相取自移动端 ACCENTS 的 fill。默认绿不在这里——它就是 :root/深色块本身,
- * 对应 data-accent 属性缺省(见 ui/src/theme.ts)。
- * 权重说明:[data-theme=dark][data-accent=x] 是 (0,2,0),压得住 (0,1,0) 的
- * 深色块;浅色块 [data-accent=x] 与深色块同权重,靠位置在后取胜。
- * 括号里的比值是生成时实测的 WCAG 对比度(等 L 不等于等对比度,两套加权
- * 不同)。样板绿是 白字/--acc 2.74:1、--accTx/--bg 4.08:1(浅),2.74:1、10.58:1(深);
- * 生成色不应比它更差,更差就说明该色相在这个 L 上被色域压过了彩度。 */
-
-[data-accent="blue"] {   /* 天空蓝 · 浅色(白字/--acc 2.90:1,--accTx/--bg 4.30:1) */
-  --acc: #0f9ef5;
-  --accH: #54b4ff;
-  --accTx: #007ec5;
-  --accBg: rgba(15, 158, 245, 0.12);
-  --accBd: rgba(15, 158, 245, 0.2);
-  --accBg2: rgba(15, 158, 245, 0.15);
-  --accBd2: rgba(15, 158, 245, 0.3);
-  --accBgSoft: rgba(15, 158, 245, 0.07);
-  --accSel: rgba(15, 158, 245, 0.085);
-  --accSelT: #2e4969;
-  --accSelDim: #687482;
-  --accSh: 0 2px 8px rgba(15, 158, 245, 0.25);
-  --linkH: #2a5d90;
-  --userBg: #e9f0f8;
+/* ================================================================
+ * 3. 长期自定义令牌:daisyUI 语义色覆盖不到、重写后仍保留的。
+ * ================================================================ */
+:root {
+  /* 平台/功能约定色:两个主题同值,不跟主题走 */
+  --capClose: #e81123;   /* 窗口关闭键 hover:Windows caption 官方红 */
+  --capCloseTx: #ffffff;
+  --qrBg: #ffffff;       /* 二维码衬底:要白底才扫得出,深色下也不反相 */
+  /* mac 自绘红绿灯失焦灰(原生失焦按钮同档) */
+  --macLightIdle: #d5d9d6;
+  /* 终端岛(云端 VM 终端卡):两个主题下都是一块深色面。xterm 只认具体色值
+   * (不吃 oklch 变量),cloudterm.tsx 经 getComputedStyle 读取,保持 hex。 */
+  --termBg: #1c1d20;
+  --termHdr: #26272b;
+  --termBd: rgba(255, 255, 255, 0.12);
+  --termTx: #d6d7d2;
+  --termTx2: #9fa0a0;
+  --termTx3: #6c6d70;
+  --termAcc: #6fe6a3;
+  /* 代码高亮(GitHub Light 系;深色块重定义为 GitHub Dark) */
+  --hlKw: #cf222e;
+  --hlStr: #0a3069;
+  --hlNum: #0550ae;
+  --hlFn: #8250df;
+  --hlAttr: #953800;
+}
+[data-theme="dark"] {
+  --macLightIdle: #3f4443;
+  --termBg: #101113;
+  --termHdr: #15161a;
+  --termTx: #cdceca;
+  --hlKw: #ff7b72;
+  --hlStr: #a5d6ff;
+  --hlNum: #79c0ff;
+  --hlFn: #d2a8ff;
+  --hlAttr: #ffa657;
 }
 
-[data-theme="dark"][data-accent="blue"] {   /* 天空蓝 · 深色(白字/--acc 2.90:1,--accTx/--bg 10.01:1) */
-  --acc: #0f9ef5;
-  --accH: #54b4ff;
-  --accTx: #86c7ff;
-  --accBg: rgba(15, 158, 245, 0.17);
-  --accBd: rgba(15, 158, 245, 0.3);
-  --accBg2: rgba(15, 158, 245, 0.21);
-  --accBd2: rgba(15, 158, 245, 0.45);
-  --accBgSoft: rgba(15, 158, 245, 0.1);
-  --accSel: rgba(15, 158, 245, 0.12);
-  --accSelT: #86c7ff;
-  --accSelDim: #6398ce;
-  --accSh: 0 2px 8px rgba(15, 158, 245, 0.3);
-  --linkH: #86c7ff;
-  --userBg: #1f2b3e;
-}
+/* ================================================================
+ * 4. 保留的组件样式(不入 cascade layer:未分层规则压得住 preflight,
+ * 与旧文件的层叠语义一致)。
+ * ================================================================ */
 
-[data-accent="purple"] {   /* 葡萄紫 · 浅色(白字/--acc 3.15:1,--accTx/--bg 4.63:1) */
-  --acc: #b277e5;
-  --accH: #c98cff;
-  --accTx: #8e5eb9;
-  --accBg: rgba(178, 119, 229, 0.12);
-  --accBd: rgba(178, 119, 229, 0.2);
-  --accBg2: rgba(178, 119, 229, 0.15);
-  --accBd2: rgba(178, 119, 229, 0.3);
-  --accBgSoft: rgba(178, 119, 229, 0.07);
-  --accSel: rgba(178, 119, 229, 0.085);
-  --accSelT: #543d5f;
-  --accSelDim: #796f7e;
-  --accSh: 0 2px 8px rgba(178, 119, 229, 0.25);
-  --linkH: #6d4982;
-  --userBg: #f2edf6;
-}
-
-[data-theme="dark"][data-accent="purple"] {   /* 葡萄紫 · 深色(白字/--acc 3.15:1,--accTx/--bg 9.45:1) */
-  --acc: #b277e5;
-  --accH: #c98cff;
-  --accTx: #d6a9ff;
-  --accBg: rgba(178, 119, 229, 0.17);
-  --accBd: rgba(178, 119, 229, 0.3);
-  --accBg2: rgba(178, 119, 229, 0.21);
-  --accBd2: rgba(178, 119, 229, 0.45);
-  --accBgSoft: rgba(178, 119, 229, 0.1);
-  --accSel: rgba(178, 119, 229, 0.12);
-  --accSelT: #d6a9ff;
-  --accSelDim: #a881bf;
-  --accSh: 0 2px 8px rgba(178, 119, 229, 0.3);
-  --linkH: #d6a9ff;
-  --userBg: #342436;
-}
-
-[data-accent="orange"] {   /* 蜜橘橙 · 浅色(白字/--acc 3.10:1,--accTx/--bg 4.58:1) */
-  --acc: #e27502;
-  --accH: #ff8814;
-  --accTx: #b55c00;
-  --accBg: rgba(226, 117, 2, 0.12);
-  --accBd: rgba(226, 117, 2, 0.2);
-  --accBg2: rgba(226, 117, 2, 0.15);
-  --accBd2: rgba(226, 117, 2, 0.3);
-  --accBgSoft: rgba(226, 117, 2, 0.07);
-  --accSel: rgba(226, 117, 2, 0.085);
-  --accSelT: #5f4021;
-  --accSelDim: #7f7064;
-  --accSh: 0 2px 8px rgba(226, 117, 2, 0.25);
-  --linkH: #824b15;
-  --userBg: #f6eee7;
-}
-
-[data-theme="dark"][data-accent="orange"] {   /* 蜜橘橙 · 深色(白字/--acc 3.10:1,--accTx/--bg 9.59:1) */
-  --acc: #e27502;
-  --accH: #ff8814;
-  --accTx: #ffa96a;
-  --accBg: rgba(226, 117, 2, 0.17);
-  --accBd: rgba(226, 117, 2, 0.3);
-  --accBg2: rgba(226, 117, 2, 0.21);
-  --accBd2: rgba(226, 117, 2, 0.45);
-  --accBgSoft: rgba(226, 117, 2, 0.1);
-  --accSel: rgba(226, 117, 2, 0.12);
-  --accSelT: #ffa96a;
-  --accSelDim: #c08452;
-  --accSh: 0 2px 8px rgba(226, 117, 2, 0.3);
-  --linkH: #ffa96a;
-  --userBg: #372714;
-}
-/* END generated accents */
-
-* { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 
 body {
-  margin: 0;
-  /* HarmonyOS Sans SC 经 /fonts/ webfont 随应用加载(fonts.css),不依赖本机安装;
-   * 降级链:HarmonyOS Sans → 苹方 → 微软雅黑 → sans-serif */
-  font-family: "HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
-  background: var(--bg);
-  color: var(--t1);
+  background: var(--color-base-100);
+  color: var(--color-base-content);
   font-size: 13px;
   overflow: hidden;
   /* 桌面壳手感:chrome(侧栏/标题栏/按钮)默认不可选中,内容区按下方白名单放开。
@@ -410,14 +204,14 @@ input, textarea, [contenteditable="true"],
 
 a { color: var(--accTx); text-decoration: none; }
 a:hover { color: var(--linkH); text-decoration: underline; }
-input, textarea, select, button { font-family: inherit; }
 textarea::placeholder, input::placeholder { color: var(--t6); }
 
-/* ---- 复用原语(重复内联样式的收敛点;尺寸/定位等实例差异由使用处内联覆写) ---- */
+/* ---- 复用原语(重复内联样式的收敛点;尺寸/定位等实例差异由使用处内联覆写)。
+ * 【迁移期桥接】视图迁移时改用 daisyUI 组件类;全部迁完后本节删除。 ---- */
 
-/* 单行截断 */
+/* 单行截断(迁移目标:truncate) */
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 图标按钮底座(宽高/圆角随使用处) */
+/* 图标按钮底座(迁移目标:btn btn-ghost btn-square) */
 .icon-btn {
   border: none;
   background: transparent;
@@ -431,7 +225,7 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 }
 /* 点击外部关闭弹层的透明遮罩 */
 .backdrop { position: fixed; inset: 0; z-index: 29; }
-/* 弹出面板(菜单/下拉/气泡;定位由使用处给出) */
+/* 弹出面板(迁移目标:menu / dropdown-content + shadow) */
 .pop {
   background: var(--pop);
   border: 1px solid var(--line);
@@ -443,7 +237,6 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   z-index: 30;
   animation: mcin 0.15s ease;
 }
-/* 弹出菜单项 */
 .menu-item {
   border: none;
   background: transparent;
@@ -458,10 +251,10 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   text-align: left;
   white-space: nowrap;
 }
-/* 本地/云端模型下拉共用尺寸；具体定位由各 composer 给出。
+/* 本地/云端模型下拉共用尺寸;具体定位由各 composer 给出。
    max-width 防长模型名撑破菜单(条目自带 ellipsis + title 兜底)。 */
 .model-menu { min-width: 220px; max-width: 320px; border-radius: 9px; }
-/* 白卡底座(工具/计划卡 padding 11px 14px 在使用处;设置卡用 .card-lg) */
+/* 白卡底座(迁移目标:card + border 工具类) */
 .card {
   background: var(--card);
   border: 1px solid var(--cardBd);
@@ -488,14 +281,10 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 }
 .tool-stack > .tool-card + .tool-card { border-top: 1px solid var(--line2); }
 .card-lg { border-radius: 11px; padding: 16px; }
-/* 骨架屏占位块(加载态;宽高由使用处内联) */
-.skeleton {
-  background: var(--hov);
-  border-radius: 6px;
-  animation: mcpulse 1.4s ease infinite;
-  flex: none;
-}
-/* 运行中加载圆环 */
+/* 骨架屏:底与脉动动画由 daisyUI 同名 .skeleton 提供;这里只补桌面端用法
+ * 需要的两条(flex 行内不被压缩、圆角对齐旧观感;宽高由使用处内联) */
+.skeleton { flex: none; border-radius: 6px; }
+/* 运行中加载圆环(迁移目标:loading loading-spinner) */
 .spinner {
   width: 13px;
   height: 13px;
@@ -507,6 +296,7 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 }
 
 @keyframes mcspin { to { transform: rotate(360deg); } }
+/* mcpulse 不再服务 .skeleton(daisyUI 接管),但 toolCard/downloadsBar 仍内联引用 */
 @keyframes mcpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @keyframes mcin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes mcslide { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -522,8 +312,8 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 ::-webkit-scrollbar-thumb:hover { background: var(--sbThumbH); background-clip: content-box; }
 * { scrollbar-width: thin; scrollbar-color: var(--sbThumb) transparent; }
 
-/* hover 态(设计稿经 style-hover 表达,这里等价成工具类;
- * WKWebView 下组件对关键交互仍以状态控制 hover,类是浏览器模式的补充) */
+/* hover 态工具类。【迁移期桥接】迁移目标:hover: 前缀工具类;
+ * WKWebView 下组件对关键交互仍以状态控制 hover,类是浏览器模式的补充 */
 .hv:hover { background: var(--hov) !important; }
 .hv2:hover { background: var(--hov2) !important; }
 .hv3:hover { background: var(--hov3) !important; }
@@ -534,8 +324,8 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 .hv-acc:hover { background: var(--accH) !important; }
 .hv-accbg:hover { background: var(--accBgSoft) !important; }
 
-/* 项目行快捷入口覆盖在行尾，不参与排版；鼠标经过项目或键盘聚焦按钮时
- * 才显现，避免常驻操作槽挤压标题，也不再出现一块突兀的白底。 */
+/* 项目行快捷入口覆盖在行尾,不参与排版;鼠标经过项目或键盘聚焦按钮时
+ * 才显现,避免常驻操作槽挤压标题,也不再出现一块突兀的白底。 */
 .project-quick-add {
   opacity: 0;
   pointer-events: none;
@@ -589,7 +379,7 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 .mc-ask-option:focus-visible { box-shadow: 0 0 0 2px var(--accBg2); }
 .mc-ask-input:focus { border-color: var(--acc) !important; }
 
-/* 双层侧栏：输入框聚焦时只加强边界，不引入第三层投影。 */
+/* 双层侧栏:输入框聚焦时只加强边界,不引入第三层投影。 */
 .mc-sidebar-panel label:focus-within {
   border-color: var(--accBd2) !important;
   background: var(--card) !important;
@@ -739,28 +529,44 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 .resize-handle.dragging::after,
 .resize-handle-h:hover::after,
 .resize-handle-h.dragging::after {
-  background: var(--acc);
+  background: var(--color-primary);
   opacity: 1;
 }
 
-/* markdown 渲染产物(无法内联) */
+/* markdown 渲染产物(无法内联)。
+ * 注意:Tailwind preflight 把 h1-h6/列表的浏览器默认样式清零了,
+ * 旧文件里靠默认值的部分(标题字号字重、列表圆点)在这里显式补齐。 */
 .md { font-size: 13.5px; line-height: 1.8; color: var(--t2); }
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 16px 0 8px;
+}
+.md h1 { font-size: 1.4em; }
+.md h2 { font-size: 1.25em; }
+.md h3 { font-size: 1.1em; }
+.md h4, .md h5, .md h6 { font-size: 1em; }
 .md ul, .md ol { margin: 0 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md ul ul { list-style: circle; }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+.md strong { font-weight: 600; }
 .md p { margin: 0 0 10px; }
 .md pre {
   background: var(--codeBg);
   border-radius: 9px;
   padding: 10px 14px;
   overflow-x: auto;
-  font: 12px/1.7 "JetBrains Mono", "HarmonyOS Sans SC", ui-monospace, Menlo, Consolas, "Courier New", "Microsoft YaHei", monospace;
+  font: 12px/1.7 var(--font-mono);
 }
 .md code {
   background: var(--codeBg);
   border-radius: 4px;
   padding: 1px 5px;
-  font-family: "JetBrains Mono", "HarmonyOS Sans SC", ui-monospace, Menlo, Consolas, "Courier New", "Microsoft YaHei", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .md pre code { background: transparent; padding: 0; }
@@ -811,6 +617,7 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
   border: 1px solid var(--line);
   vertical-align: top;
 }
+.md th { font-weight: 600; text-align: left; }
 .md-table-cell {
   min-width: 8ch;
   white-space: normal;
@@ -820,7 +627,7 @@ textarea::placeholder, input::placeholder { color: var(--t6); }
 .md blockquote { border-left: 3px solid var(--line); margin-left: 0; padding-left: 12px; color: var(--t4); }
 .md img { max-width: 100%; height: auto; border-radius: 9px; }
 
-select option { background: var(--pop); color: var(--t1); }
+select option { background: var(--color-base-100); color: var(--color-base-content); }
 
 /* ==== 提问大纲(正文左缘的点列 / 悬停展开的浮窗)==== */
 .mc-outline-rail {
@@ -847,11 +654,11 @@ select option { background: var(--pop); color: var(--t1); }
   transition: background 0.12s ease, transform 0.12s ease;
 }
 .mc-outline-dot[data-outline-current="true"] {
-  background: var(--acc);
+  background: var(--color-primary);
   transform: scale(1.35);
 }
 .mc-outline-rail:hover > .mc-outline-dot { background: var(--t5); }
-.mc-outline-rail:hover > .mc-outline-dot[data-outline-current="true"] { background: var(--acc); }
+.mc-outline-rail:hover > .mc-outline-dot[data-outline-current="true"] { background: var(--color-primary); }
 .mc-outline-panel {
   position: absolute;
   /* 浮在点列**右侧**,不盖住它:盖住就等于把触发源换成浮窗自己,指针不在

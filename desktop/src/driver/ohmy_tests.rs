@@ -493,6 +493,37 @@ async fn e2e_wsl_smoke_full_lifecycle() {
         .expect_err("不存在目录应报错");
     assert!(err.contains("目录不存在"), "文案契约(offerCreate 匹配): {err}");
 
+    // 普通对话 + WSL:工作区由壳在**宿主**建(create_chat_workdir_in),
+    // sidecar/引擎侧存 guest 形态(guest_chat_root 前缀)。
+    // 存在性判定不得再走宿主视角:真 Windows 上 guest 形态是
+    // /mnt/c/Users/…/chat-workspaces/chat-xxxx,包成
+    // \\wsl$\<发行版>\mnt\c\Users\… 后 Windows 穿不过 WSL 共享上的 drvfs
+    // 挂载点,刚建好的目录被判成"不存在",WSL 下普通对话必然开不了
+    // (2026-08-09 用户报障)。fake-wsl 下 guest==host,所以这里锁的是
+    // "建得起来 + 存 guest 形态";那条 UNC 误判只在真 Windows 上现形,
+    // 防线是 session_create_with_kind 里 (Some(_), _) 那条显式分支。
+    let meta = driver
+        .session_create_with_kind("", "测试模型", false, "chat", "")
+        .await
+        .expect("WSL 下建普通对话");
+    let sid4 = meta.get("id").and_then(|v| v.as_str()).unwrap();
+    let chat_dir = driver
+        .0
+        .read_sidecar(sid4)
+        .get("workdir")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let guest_chat_root = driver.0.wsl.as_ref().expect("WSL 上下文").guest_chat_root.clone();
+    assert!(
+        chat_dir.starts_with(&guest_chat_root),
+        "对话 workdir 应落在 guest chat 根({guest_chat_root})下: {chat_dir}"
+    );
+    assert!(
+        chat_dir.rsplit('/').next().is_some_and(|n| n.starts_with("chat-")),
+        "对话 workdir 末段应是受管的 chat-<标识>: {chat_dir}"
+    );
+
     // 优雅停止:stdin EOF 经中继(fake 直执)透传,引擎自退,不走 pkill
     driver.stop();
     let _ = std::fs::remove_dir_all(&home);

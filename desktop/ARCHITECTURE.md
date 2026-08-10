@@ -7,7 +7,7 @@
 
 ```
 ┌───────────────────────────────────────────────┐
-│  ui/  (React SPA,构建产物 uidist/ 随壳分发)    │
+│ ui-next/ (React SPA,构建产物 uidist/ 随壳分发) │
 │  只经 Tauri IPC 与壳对话:invoke 上行 + 事件下行 │
 └──────────────────────┬────────────────────────┘
                        │ Tauri IPC
@@ -49,7 +49,7 @@
 | 角色 | 位置 |
 |---|---|
 | 产帧(壳,引擎事件归一化) | src/driver/frame.rs(唯一入口,禁手拼 JSON) |
-| 消费(UI) | ui/src/types.ts + reduce.ts(Frame/SessionStatus/PermOutcome/EngineStatus 由 ts-rs 自 frame.rs 生成到 ui/src/gen/,types.ts 复用) |
+| 消费(UI) | ui-next/src/lib/protocol/{types,reduce}.ts(Frame/SessionStatus/PermOutcome/EngineStatus 由 ts-rs 自 frame.rs 生成到 ui/src/gen/ 并同步一份到 ui-next/src/gen/(genSync.test.ts 钉字节一致),types.ts 复用) |
 
 帧结构 `{type, kind?, data?(内联 JSON), timestamp(ms), seq}`——data 的
 base64 双重编码已去除,只剩存量 journal 与云端帧两条兼容边界;
@@ -64,14 +64,14 @@ usage_update/compact_status/task_notification(后台子代理完成通知)/
 model_update/think_update(会话思考档变更)/permission_mode_update`。
 `llm_call_retry` 仅云端流产出,壳不产,UI 归约兼容。
 
-改词汇的顺序:frame.rs 是唯一权威(ts-rs 重新生成 ui/src/gen/),与
+改词汇的顺序:frame.rs 是唯一权威(ts-rs 重新生成 ui/src/gen/,ui-next/src/gen/ 随之同步),与
 types.ts/reduce.ts 同一 PR 内同步,reduce.test.ts 补对应归约断言。
 
 **折叠是等价变换**(driver/fold.rs):journal 是「一 token 一帧」,回放前把
 相邻同类流式碎片合并回一帧(usage/plan 每轮只留最后一条,其余原样)。
 规则只增不改词汇。等价性由两侧守:Rust 钉住"折叠输出 == fixtures/replay/
 folded.jsonl",TS 钉住 `reduceBatch(raw) ≡ reduceBatch(folded)`
-(ui/src/foldEquivalence.test.ts)。素材换了跑
+(ui-next/src/lib/protocol/foldEquivalence.test.ts)。素材换了跑
 `cargo test regenerate_fold_fixture -- --ignored` 重生成。云端管道帧(ping/cursor/call-response)
 是传输层词汇,不属对话流(遗留:归属待正式定义,见审计清单)。
 
@@ -96,7 +96,7 @@ folded.jsonl",TS 钉住 `reduceBatch(raw) ≡ reduceBatch(folded)`
   `session-event`、`engine-status`(契约 6)、`open-settings`、`open-session`、
   `browser-mcp-reloaded`(配对后引擎已带新工具集,UI 整页刷新)、
   `browser-mcp-refresh-timeout`(等任务空闲超时放弃,UI 提示手动重启;
-  见 main.rs `BROWSER_MCP_REFRESH_DEADLINE`)。UI 侧清单同在 ui/src/ipc.ts。
+  见 main.rs `BROWSER_MCP_REFRESH_DEADLINE`)。UI 侧清单同在 ui-next/src/lib/ipc/。
 - `session_open` 返回**尾部回放窗口** `{frames, cursor, has_more}`——历史走
   返回值不走事件(返回值天生有序);更早的按 cursor 走 `session_history`
   (形状对齐云端 `mc_task_rounds`),`session_outline` 给全量提问目录,
@@ -176,7 +176,7 @@ Windows 不得用不能覆盖既有目标的裸 `std::fs::rename`。
 
 ## 契约 5:会话状态机
 
-状态词汇(Rust `frame::SessionStatus`,ts-rs 生成 ui/src/gen/SessionStatus.ts):
+状态词汇(Rust `frame::SessionStatus`,ts-rs 生成 ui/src/gen/SessionStatus.ts,ui-next/src/gen/ 同步一份):
 `created → running → idle | finished | interrupted | error`
 - `created` = 新建未运行,**不是完成**(否则侧栏/桌宠按完成渲染)。
 - `idle` = 当前轮正常结束、会话空闲可继续;`finished` 留给真正结束的
@@ -364,10 +364,10 @@ interactive:true,引擎给持久 Task 工具族)、会话思考档 session/setTh
 
 ## 开发与构建产物
 
-uidist/ 是纯生成物不入库;壳静态页与 webfonts 在 ui/public/。
+uidist/ 是纯生成物不入库;壳静态页与 webfonts 在 ui-next/public/。
 引擎 sidecar 来自独立 ohmyagent 仓库:本地打包缺省用仓库根
 agent/ submodule(`export OHMYAGENT_SRC=...` 可覆盖),CI 同源。
-externalBin 只能落在打包 overlay(`bundle.{macos,windows,win7,linux}.conf.json`):
+externalBin 只能落在打包 overlay(`bundle.{macos,windows,linux}.conf.json`):
 tauri_build 在编译期就为宿主 triple 解析 sidecar,基础配置一带上,每个
 开发者的 `cargo check` 都要先编出 `binaries/ohmyagent-<host-triple>`。
 同理**不能**用 `tauri.<平台>.conf.json` 这个名字——它是 Tauri 的平台自动

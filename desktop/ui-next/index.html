@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MonkeyCode</title>
+    <!-- webfont 由内核宿主在 /fonts/ 下静态提供(uidist/fonts,随二进制嵌入);
+         vite dev 模式下该路径由 public/ 提供 -->
+    <link rel="stylesheet" href="/fonts/fonts.css" />
+    <style>
+      /* 首帧防闪的静态兜底(首次启动、mc.themeBg 缓存尚不存在时生效)。
+         两档值 = daisyUI light/dark 主题 --color-base-100 的换算 hex
+         (oklch(100% 0 0) / oklch(25.33% 0.016 252.42)),升级 daisyUI 时需重对,
+         scripts/check_theme_tokens.py 盯着这两个值(切换后接管本文件)。
+         其余 33 套主题的首帧底色走下方脚本的 mc.themeBg 缓存(内联样式盖过这里)。 */
+      html, body { background: #fcfdfc; }
+      html[data-theme="dark"], html[data-theme="dark"] body,
+      html[data-theme="monkeycode-dark"], html[data-theme="monkeycode-dark"] body { background: #171e2b; }
+    </style>
+    <script>
+      /* 同步执行,先于首帧落属性:<script type="module"> 是 defer 的,main.tsx 里的
+         applyStoredTheme() 赶不上第一次绘制,换主题的用户会先闪一帧白色。
+         mc.theme 存 daisyUI 主题名(35 选 1);脏值交给 applyStoredTheme 矫正,
+         这里先原样落上(daisyUI 对未知值自动回落缺省主题,首帧不至于花)。
+         mc.themeBg 是 theme.ts 在每次换主题后缓存的该主题 base-100 色值,
+         内联到 html 上,让非 light/dark 主题的首帧底色也正确。
+         mc.theme === "mc-custom" 时是用户自定义主题:整套调色板由 mc.themeCustomCss
+         提供,data-theme 落 light/dark 只是给 --size-field/--depth/--noise 这些非
+         颜色变量兜底。这里必须同步把样式插进去——只落属性不插样式的话,首帧会拿
+         light/dark 的原色渲染:底色对了(themeBg 兜着)、主色圆角全不对,比不做防闪
+         更显眼。CSS 用缓存而不在此现算:调色板配方(OKLCH 亮度阶梯、色相旋转角度)
+         在 lib/customTheme.ts,抄一份到这里就是两个真值源。
+         键名与回落规则跟 src/lib/theme.ts 一致(同样的检查器盯着)。 */
+      try {
+        var mcTheme = localStorage.getItem("mc.theme") || "monkeycode";
+        if (mcTheme === "mc-custom") {
+          var mcCss = localStorage.getItem("mc.themeCustomCss");
+          var mcCfg = JSON.parse(localStorage.getItem("mc.themeCustom") || "null");
+          if (mcCss && mcCfg && mcCfg.mode) {
+            document.documentElement.dataset.theme = mcCfg.mode;
+            document.documentElement.setAttribute("data-mc-custom", "");
+            var mcStyle = document.createElement("style");
+            mcStyle.id = "mc-custom-theme"; /* 与 lib/theme.ts 同 id:那边复用本元素,不会插第二份 */
+            mcStyle.textContent = mcCss;
+            document.head.appendChild(mcStyle);
+          } else {
+            document.documentElement.dataset.theme = "monkeycode"; /* 配置残缺:与 readTheme 的回落一致 */
+          }
+        } else {
+          document.documentElement.dataset.theme = mcTheme;
+        }
+        var mcThemeBg = localStorage.getItem("mc.themeBg");
+        if (mcThemeBg) document.documentElement.style.background = mcThemeBg;
+      } catch (e) {
+        document.documentElement.dataset.theme = "monkeycode"; /* 存储不可读:按浅色走,与 readTheme 的回落一致 */
+      }
+    </script>
+  </head>
+  <!-- 全局关内核拼写检查/自动纠正:三个属性都按 HTML 语义向后代继承,
+       挂 body 一次覆盖所有输入框(WebKitGTK 默认开启,技术输入被画线改词) -->
+  <body spellcheck="false" autocorrect="off" autocapitalize="off">
+    <div id="root"></div>
+    <script>
+      /* 启动故障可见化:壳内 devtools 未必打得开,任何未捕获异常/未处理
+         rejection 直接画到屏幕上(否则就是一块无从下手的白屏)。
+         正常运行零成本;React 挂上后的运行期错误也会兜住。 */
+      (function () {
+        var shown = false;
+        function show(kind, msg, extra) {
+          try {
+            var box = document.getElementById("mc-boot-error");
+            if (!box) {
+              box = document.createElement("pre");
+              box.id = "mc-boot-error";
+              box.style.cssText =
+                "position:fixed;left:8px;right:8px;bottom:8px;max-height:45vh;overflow:auto;" +
+                "margin:0;padding:10px 12px;border-radius:8px;z-index:99999;" +
+                "background:#3b0d0d;color:#ffd7d7;font:12px/1.5 monospace;white-space:pre-wrap";
+              document.body.appendChild(box);
+            }
+            if (!shown) {
+              box.textContent = "[MonkeyCode 启动异常] 请把以下内容发给开发者:\n";
+              shown = true;
+            }
+            box.textContent += "\n" + kind + ": " + msg + (extra ? "\n" + extra : "") + "\n";
+          } catch (_) {}
+        }
+        window.addEventListener("error", function (e) {
+          var msg = (e && e.message) || String(e);
+          /* ResizeObserver 的「循环未送达」不进陷阱:它是规范允许的良性节流
+             信号(RO 回调改了布局,本帧剩余通知顺延到下一帧,什么都没丢),
+             不是故障。消息流的 content-visibility 让滚动/贴底对齐会改变行的
+             实现状态、行高随之落定,ChatView 的贴底 RO 因此必然周期性触发
+             这条——不滤掉就是把正常运行画成「启动异常」(2026-08-10 报障)。
+             两种措辞都要挡:WebKit/Firefox 是 "loop completed with undelivered
+             notifications",老 Blink(WebView2)是 "loop limit exceeded"。 */
+          if (typeof msg === "string" && msg.indexOf("ResizeObserver loop") !== -1) return;
+          show("error", msg, e && e.error && e.error.stack);
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e && e.reason;
+          show("unhandledrejection", (r && (r.message || r)) || String(r), r && r.stack);
+        });
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

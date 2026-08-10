@@ -147,6 +147,59 @@ def check(root: pathlib.Path = ROOT) -> list[str]:
             "没有任何配置置 bundle.active=true:打包入口丢失,"
             "sidecar 不变量无从校验"
         )
+    errors += version_ldflag_errors()
+    return errors
+
+
+# 引擎版本注入用的**全限定**符号路径。Go 链接器对不存在的 -X 符号静默忽略,
+# 所以写错既不报错也没产物差异,只是引擎一路退回 buildinfo.Version 的缺省
+# "dev" —— 设置·关于显示 dev、User-Agent 报 "ohmyagent dev"、--version 也是
+# dev(2026-08-09 用户报障:五处构建全写的 `-X main.Version=`,而 package main
+# 里根本没有 Version 变量)。这条守卫盯两头:构建脚本用的符号路径,与 agent
+# 源码里真实的变量位置,必须对得上。
+VERSION_SYMBOL = "github.com/chaitin/ohmyagent/internal/buildinfo.Version"
+# 谁在注入版本(相对仓库根)。新增打包路径请一并登记。
+VERSION_INJECTORS = (
+    "desktop/Makefile",
+    ".github/workflows/desktop-windows.yml",
+    ".github/workflows/desktop-linux.yml",
+)
+
+
+def version_ldflag_errors() -> list[str]:
+    repo = ROOT.parent
+    errors: list[str] = []
+
+    # 1) agent 源码里那个变量还在不在原处(改了包路径/变量名,注入就会哑火)
+    src = repo / "agent/internal/buildinfo/version.go"
+    if not src.exists():
+        # agent 是 submodule,没检出就跳过这半条(本地 cargo check 不该因此红)
+        return errors
+    if "var Version" not in src.read_text(encoding="utf-8"):
+        errors.append(
+            f"{src.relative_to(repo)} 里找不到 `var Version`:"
+            f"版本注入的符号 {VERSION_SYMBOL} 已失效,引擎会退回 \"dev\""
+        )
+
+    # 2) 每个注入点都得用全限定符号,且不许再出现 `-X main.Version=`
+    for name in VERSION_INJECTORS:
+        path = repo / name
+        if not path.exists():
+            errors.append(f"{name} 不存在:版本注入守卫的登记表过期了")
+            continue
+        text = path.read_text(encoding="utf-8")
+        # 注释里复盘这个坑是允许的,只看真正的构建行(-X ... 后面直接跟符号)
+        for line in text.splitlines():
+            stripped = line.lstrip()
+            if stripped.startswith("#") or stripped.startswith("//"):
+                continue
+            if "-X main.Version=" in line:
+                errors.append(
+                    f"{name} 用了 `-X main.Version=`:package main 没有 Version 变量,"
+                    f"Go 链接器会静默忽略,引擎版本退回 \"dev\"。改用 {VERSION_SYMBOL}"
+                )
+        if "-ldflags" in text and VERSION_SYMBOL not in text:
+            errors.append(f"{name} 注入版本却没用全限定符号 {VERSION_SYMBOL}")
     return errors
 
 

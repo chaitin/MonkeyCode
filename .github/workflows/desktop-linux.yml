@@ -78,7 +78,7 @@ jobs:
           AGENT_VERSION="$(git rev-parse --short HEAD)"
           echo "ohmyagent version: ${AGENT_VERSION}"
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
-            -ldflags "-s -w -X main.Version=${AGENT_VERSION}" \
+            -ldflags "-s -w -X github.com/chaitin/ohmyagent/internal/buildinfo.Version=${AGENT_VERSION}" \
             -o "$GITHUB_WORKSPACE/desktop/binaries/ohmyagent-x86_64-unknown-linux-gnu" ./cmd/ohmyagent
 
       - name: Check bundle config contract

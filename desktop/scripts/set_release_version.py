@@ -41,7 +41,7 @@ def replace_once(text: str, pattern: str, replacement: str, label: str) -> str:
 
 
 def apply_version(root: pathlib.Path, tag: str) -> str:
-    """更新 Tauri、Cargo manifest 与主/Win7 lockfile，返回内部 SemVer。"""
+    """更新 Tauri、Cargo manifest 与 lockfile，返回内部 SemVer。"""
     version = release_version(tag)
     updates: dict[pathlib.Path, str] = {}
 
@@ -62,14 +62,13 @@ def apply_version(root: pathlib.Path, tag: str) -> str:
     )
 
     package_pattern = r'(^name = "monkeycode-desktop"\nversion = ")[^"]+("$)'
-    for name in ("Cargo.lock", "Cargo.lock.win7"):
-        lock = root / name
-        updates[lock] = replace_once(
-            lock.read_text(encoding="utf-8"),
-            package_pattern,
-            rf"\g<1>{version}\g<2>",
-            str(lock),
-        )
+    lock = root / "Cargo.lock"
+    updates[lock] = replace_once(
+        lock.read_text(encoding="utf-8"),
+        package_pattern,
+        rf"\g<1>{version}\g<2>",
+        str(lock),
+    )
 
     # 所有文件都能精确定位后再落盘，避免中途失败留下半套版本。
     for path, text in updates.items():

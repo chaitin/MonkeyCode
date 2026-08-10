@@ -873,18 +873,17 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
             entry["locked"] = json!(true); // omit-false:解锁条目不携带该字段
         }
         let num = |k: &str| it.get(k).and_then(Value::as_i64).filter(|&n| n > 0);
-        let context_window = num("context_limit");
-        if let Some(cw) = context_window {
+        if let Some(cw) = num("context_limit") {
             entry["context_window"] = json!(cw);
         }
+        // 服务端配的输出上限原样收下(2026-08-06 用户定案):此前按
+        // 「max_output < context_window×10%」丢弃越界值,是为迁就设置页那条
+        // 同口径的保存校验(否则同步条目把整次保存拦死)。那条校验已撤,这里
+        // 再丢就是净损失——服务端 output_limit 默认 32000、窗口默认 200000,
+        // 恰好 16% 必被丢,表现为「同步回来没有 max_output」,落引擎默认反而
+        // 可能高于服务端本意
         if let Some(mo) = num("output_limit") {
-            // 引擎在上下文占用 90% 时自动压缩,设置页保存校验要求
-            // max_output < context_window 的 10%(settings.tsx save());
-            // 越界值直接丢弃落引擎默认,否则同步条目会把整次保存拦死。
-            let cw = context_window.unwrap_or(200_000);
-            if (mo as f64) < (cw as f64) * 0.1 {
-                entry["max_output"] = json!(mo);
-            }
+            entry["max_output"] = json!(mo);
         }
         if it.get("support_image").and_then(Value::as_bool).unwrap_or(false) {
             entry["vision"] = json!(true);
@@ -1369,18 +1368,26 @@ mod local_models_tests {
     }
 
     #[test]
-    fn oversize_max_output_dropped() {
-        // 设置页保存校验要求 max_output < context_window×10%,
-        // 越界的同步值必须丢弃,否则整次保存被拦死
+    fn limits_synced_verbatim() {
+        // 窗口/输出上限原样同步:服务端默认 200000/32000(占 16%)曾被
+        // 「<窗口 10%」的旧规则丢掉,表现为同步回来没有 max_output
         let items = vec![
             json!({ "id": "c1", "model": "m-a", "interface_type": "anthropic", "owner": pub_owner(),
-                    "context_limit": 100_000, "output_limit": 10_000 }),
-            // 无 context_limit 时按引擎默认 200k 判定:32768 < 20000 不成立 → 丢弃
+                    "context_limit": 200_000, "output_limit": 32_000 }),
             json!({ "id": "c2", "model": "m-b", "interface_type": "anthropic", "owner": pub_owner(),
-                    "output_limit": 32_768 }),
+                    "context_limit": 128_000, "output_limit": 16_384 }),
+            // 服务端没给(内置 hook 常缺):两项都不落,物化时用产品默认
+            json!({ "id": "c3", "model": "m-c", "interface_type": "anthropic", "owner": pub_owner(),
+                    "context_limit": 0, "output_limit": 0 }),
         ];
         let (models, _) = local_model_entries(&items, "");
-        assert!(models[0].get("max_output").is_none(), "10000 >= 100000×10%,应丢弃");
-        assert!(models[1].get("max_output").is_none(), "32768 >= 200000×10%,应丢弃");
+        let by = |name: &str| {
+            models.iter().find(|m| m.get("model").and_then(Value::as_str) == Some(name)).expect("条目应在")
+        };
+        assert_eq!(by("m-a").get("context_window").and_then(Value::as_i64), Some(200_000));
+        assert_eq!(by("m-a").get("max_output").and_then(Value::as_i64), Some(32_000));
+        assert_eq!(by("m-b").get("max_output").and_then(Value::as_i64), Some(16_384));
+        assert!(by("m-c").get("context_window").is_none());
+        assert!(by("m-c").get("max_output").is_none());
     }
 }

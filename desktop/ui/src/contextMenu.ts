@@ -27,7 +27,7 @@ function replaceSelection(el: Editable, text: string) {
 function paste(el: Editable) {
   const legacy = () => {
     el.focus();
-    document.execCommand("paste"); // Win7 WebView2 无异步 clipboard API 时的兜底
+    document.execCommand("paste"); // WebKitGTK 缺 readText / WKWebView 权限被拒时的兜底
   };
   if (!navigator.clipboard?.readText) return legacy();
   navigator.clipboard.readText().then((text) => {

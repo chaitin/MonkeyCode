@@ -48,8 +48,7 @@ import {
   type McpEntry,
   type SyncMsg,
 } from "./settingsConfig";
-import { readAccent, readTheme, setAccent, setTheme, type AccentKey, type Theme } from "./theme";
-import { ACCENTS } from "./gen/accents";
+import { readTheme, setTheme, type Theme } from "./theme";
 import { updateGate } from "./updateGate";
 import { MacWindowControls } from "./titlebar";
 import {
@@ -882,12 +881,6 @@ export function SettingsView({
   const pickTheme = (next: Theme) => {
     setTheme(next);
     setThemeState(next);
-  };
-  // 主题色同理,与深浅两维正交(见 theme.ts)
-  const [accent, setAccentState] = useState<AccentKey>(readAccent);
-  const pickAccent = (next: AccentKey) => {
-    setAccent(next);
-    setAccentState(next);
   };
   // 提示音也不进保存条(壳侧即时落盘,不重启内核),但真值在 config.json 而非
   // localStorage:桌宠是另一个 webview,得由壳广播才能一起静音。托盘那个勾选项
@@ -1942,38 +1935,6 @@ export function SettingsView({
 
   const themeBtn = (value: Theme, label: string) => segBtn(label, theme === value, () => pickTheme(value));
 
-  /** 主题色色板一枚。圆点用该色**自己**的 --acc(gen/accents.ts 里生成的
-   *  swatch),不能写 var(--acc)——那是"当前选中的色",四枚会长得一模一样。 */
-  const accentBtn = (key: AccentKey, label: string, swatch: string) => {
-    const on = accent === key;
-    return (
-      <button
-        key={key}
-        type="button"
-        aria-pressed={on}
-        onClick={() => pickAccent(key)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          height: 26,
-          padding: "0 11px 0 8px",
-          borderRadius: 13,
-          cursor: "pointer",
-          fontSize: 12,
-          fontWeight: 600,
-          border: `1.5px solid ${on ? swatch : "var(--btnBd)"}`,
-          background: on ? "var(--card)" : "transparent",
-          color: on ? "var(--t1)" : "var(--t4)",
-          boxShadow: on ? "var(--cardSh)" : "none",
-        }}
-      >
-        <span style={{ width: 12, height: 12, borderRadius: "50%", background: swatch, flex: "none" }} />
-        {label}
-      </button>
-    );
-  };
-
   const generalSection = () => (
     <>
       <Section label="外观">
@@ -1984,10 +1945,6 @@ export function SettingsView({
               {themeBtn("dark", "深色")}
             </div>
             <span style={{ fontSize: 12, color: "var(--t5)" }}>切换立即生效并记在本机,不影响内核配置。</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "var(--t4)", flex: "none", marginRight: 2 }}>主题色</span>
-            {ACCENTS.map((a) => accentBtn(a.key, a.label, a.swatch))}
           </div>
         </div>
       </Section>

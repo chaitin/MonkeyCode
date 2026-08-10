@@ -23,6 +23,28 @@ const DEFAULT_MODEL_GATEWAY: &str = "https://ai-models.app.baizhi.cloud";
 const DEFAULT_MCP_GATEWAY: &str = "https://agent-toolkit.app.baizhi.cloud";
 /// MonkeyCode 官方云地址(config.rs 的 Basic Auth 作用域判定也用它)。
 pub(crate) const DEFAULT_MONKEYCODE_URL: &str = "https://monkeycode-ai.com";
+/// 官方云的模型请求地址:llmproxy 走独立子域,不与主服务同域。
+pub(crate) const DEFAULT_MONKEYCODE_LLM_URL: &str = "https://proxy.monkeycode-ai.com/v1";
+
+/// 模型请求地址(llmproxy)的单一出处(2026-08-07 用户定案):
+/// - 设置里显式填了「模型请求地址」→ 原样用它(拆分部署的逃生门,立即生效);
+/// - 否则服务地址就是官方云 → 独立代理子域 proxy.monkeycode-ai.com/v1;
+/// - 否则(自建/私有化/联调)→ 跟随服务地址 {服务地址}/v1:开源后端把
+///   llmproxy 挂在主服务的 /v1 下(backend/biz/llmproxy/register.go),同域即达。
+///
+/// `monkeycode` 传已解析的服务地址(Endpoints::resolve 之后,含环境变量覆盖):
+/// 环境变量指向联调环境时按自建处理,不会误发官方代理域。
+pub(crate) fn resolve_mc_llm(mc_llm_base_url: &str, monkeycode: &str) -> String {
+    let explicit = mc_llm_base_url.trim().trim_end_matches('/');
+    if !explicit.is_empty() {
+        return explicit.to_string();
+    }
+    let server = monkeycode.trim().trim_end_matches('/');
+    if server == DEFAULT_MONKEYCODE_URL {
+        return DEFAULT_MONKEYCODE_LLM_URL.to_string();
+    }
+    format!("{server}/v1")
+}
 
 /// 百智云服务地址。模型与 MCP 服务固定走官方云;账号和 MonkeyCode 地址可覆盖。
 pub struct Endpoints {
@@ -124,7 +146,7 @@ impl Service {
                 .build()
                 .expect("构建 HTTP 客户端失败")
         };
-        let mc_llm = format!("{}/v1", ep.monkeycode);
+        let mc_llm = resolve_mc_llm("", &ep.monkeycode);
         Self {
             ep,
             http: Some(mk(10)),
@@ -150,9 +172,7 @@ impl Service {
                 .ok()
         };
         let ep = Endpoints::resolve(&cfg.mc_base_url);
-        // 模型请求地址:设置值(拆分部署)优先,空则默认与服务同源 /v1
-        let llm = cfg.mc_llm_base_url.trim().trim_end_matches('/');
-        let mc_llm = if llm.is_empty() { format!("{}/v1", ep.monkeycode) } else { llm.to_string() };
+        let mc_llm = resolve_mc_llm(&cfg.mc_llm_base_url, &ep.monkeycode);
         Self {
             ep,
             http: mk(30),

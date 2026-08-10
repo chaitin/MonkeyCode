@@ -133,6 +133,34 @@ fn endpoints_resolve_honors_configured_mc_base_url() {
     std::env::remove_var("MC_DESKTOP_MONKEYCODE_URL");
 }
 
+/// 模型请求地址(llmproxy)的解析口径,2026-08-07 用户定案:官方云走独立
+/// 代理子域,自建看用户填没填——填了用填的,没填跟随服务地址 /v1。
+#[test]
+fn mc_llm_resolution_prefers_proxy_on_official_cloud() {
+    use super::{resolve_mc_llm, DEFAULT_MONKEYCODE_LLM_URL, DEFAULT_MONKEYCODE_URL};
+    assert_eq!(resolve_mc_llm("", DEFAULT_MONKEYCODE_URL), DEFAULT_MONKEYCODE_LLM_URL);
+    assert_eq!(
+        resolve_mc_llm("", "https://monkeycode-ai.com/"),
+        DEFAULT_MONKEYCODE_LLM_URL,
+        "尾斜杠归一后仍认作官方云"
+    );
+    assert_eq!(
+        resolve_mc_llm("", "https://self.example.com"),
+        "https://self.example.com/v1",
+        "自建未填:跟随服务地址(开源后端 llmproxy 挂在主服务 /v1)"
+    );
+    assert_eq!(
+        resolve_mc_llm(" https://llm.self.example.com/v1/ ", "https://self.example.com"),
+        "https://llm.self.example.com/v1",
+        "自建填了:原样用(trim + 尾斜杠归一)"
+    );
+    assert_eq!(
+        resolve_mc_llm("https://llm.example.com/v1", DEFAULT_MONKEYCODE_URL),
+        "https://llm.example.com/v1",
+        "显式值压过官方云默认"
+    );
+}
+
 /// ai-models 真机契约:控制台只管密钥;模型清单用该密钥请求
 /// /api/anthropic/models。清单按 Anthropic data/has_more 分页,条目标识为 id。
 #[tokio::test(flavor = "multi_thread")]

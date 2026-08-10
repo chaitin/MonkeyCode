@@ -154,14 +154,37 @@ fn open_extension_dir(app: AppHandle) -> Result<String, String> {
     Ok(dir.to_string_lossy().into_owned())
 }
 
-/// 在文件管理器中定位引擎日志目录(app_config_dir:ohmyagent.log、
-/// ohmyagent.log.prev 与崩溃留存 ohmyagent.crash-N.log 都在这)。
-/// 启动失败页与设置页共用:引擎起不来时,横幅里的 15 行 tail 往往不够,
-/// 得让用户能一步拿到完整日志。
+/// 在文件管理器中定位**程序本体**(关于页的隐藏排障入口)。
+///
+/// 这里刻意用 reveal(父目录里选中)而不是 open:macOS 的 .app 是个"目录",
+/// open 它等于**再启动一次应用**;Windows/Linux 上目标是可执行文件,open
+/// 同样是执行它。要的是"看见它在哪",所以是选中而非打开。
+/// macOS 的可执行文件埋在 <应用>.app/Contents/MacOS/ 里,直接选中它等于把
+/// 用户丢进包内部——往上找到 .app 那一层选中应用本体(开发构建没有 .app
+/// 祖先,自然回落到可执行文件)。
+#[tauri::command]
+fn open_app_dir() -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("无法定位程序路径: {e}"))?;
+    let target = exe
+        .ancestors()
+        .find(|p| p.extension().and_then(|s| s.to_str()) == Some("app"))
+        .unwrap_or(exe.as_path());
+    tauri_plugin_opener::reveal_item_in_dir(target).map_err(|e| format!("定位程序失败: {e}"))?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
+/// 在文件管理器中定位应用存储目录(app_config_dir)。这里同时是引擎日志的
+/// 落点(ohmyagent.log[.prev]、崩溃留存 ohmyagent.crash-N.log,以及引擎自己
+/// 按运行分文件写的 ohmyagent/logs/*.log)与配置/会话/cookie 的家,所以
+/// 引擎横幅的「打开日志目录」与关于页的「打开存储目录」是同一处、同一命令。
+/// 引擎起不来时横幅里的 15 行 tail 往往不够,得让用户一步拿到完整现场。
 #[tauri::command]
 fn open_log_dir(app: AppHandle) -> Result<String, String> {
     let dir = config::config_dir(&app)?;
-    tauri_plugin_opener::reveal_item_in_dir(&dir).map_err(|e| format!("打开目录失败: {e}"))?;
+    // open_path 而非 reveal_item_in_dir:reveal 的语义是「在**父目录**里选中
+    // 该项」,对目录就是停在 Application Support 里高亮一个文件夹,用户还得
+    // 自己双击进去(2026-08-07 用户报障)。这里要的是直接进到目录内
+    tauri_plugin_opener::open_path(&dir, None::<&str>).map_err(|e| format!("打开目录失败: {e}"))?;
     Ok(dir.to_string_lossy().into_owned())
 }
 
@@ -171,16 +194,24 @@ fn open_log_dir(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 async fn export_engine_log(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let src = config::config_dir(&app)?.join("ohmyagent.log");
-    if !src.is_file() {
-        return Err("引擎日志不存在(引擎尚未启动过)".into());
+    let cfg_dir = config::config_dir(&app)?;
+    // 引擎自己的运行日志优先,壳接的 stderr 只是兜底(driver::engine_log_file)
+    let Some(src) = driver::engine_log_file(&cfg_dir) else {
+        return Err("暂无引擎日志(引擎尚未启动过,或本轮运行没有任何输出)".into());
+    };
+    let file_name = src
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("ohmyagent.log")
+        .to_string();
+    // 起始目录落系统「下载」:不给 set_directory 时,对话框的落点由平台
+    // 自行决定(Windows 上是进程 CWD——安装目录,用户根本找不到自己存哪了),
+    // 与云端文件下载的 pickSaveFile 同一口径;拿不到目录就交回平台默认
+    let mut picker = app.dialog().file().set_file_name(&file_name);
+    if let Ok(dir) = app.path().download_dir() {
+        picker = picker.set_directory(dir);
     }
-    let Some(dest) = app
-        .dialog()
-        .file()
-        .set_file_name("ohmyagent.log")
-        .blocking_save_file()
-    else {
+    let Some(dest) = picker.blocking_save_file() else {
         return Ok(None);
     };
     let dest = dest
@@ -512,6 +543,60 @@ fn open_devtools(window: tauri::WebviewWindow) {
     window.open_devtools();
 }
 
+/// Windows 窗体系统菜单(移动/大小/最小化/最大化/关闭)。壳在 Windows 走
+/// decorations(false),原生标题栏连同它的右键菜单一起没了;UI 侧窗框条的
+/// 右键与左端应用图标点击都落到这儿,把菜单补回来(Win95 起的老规矩,
+/// VS Code / Windows Terminal 至今保留)。
+///
+/// 为什么不走 WM_NCHITTEST/HTSYSMENU 让系统自己弹:WebView2 子窗口铺满整个
+/// 客户区,非客户区命中测试根本到不了咱们这层。改由 UI 报指针位、壳主动
+/// TrackPopupMenu,绕开这件事。
+///
+/// 弹出位置取**指针的物理屏幕坐标**(Tauri 的 cursor_position),不收 UI 传的
+/// clientX/clientY:那是 CSS 像素,在 150% 缩放的屏上要乘 scale 再做客户区→
+/// 屏幕换算,两步都能错;而系统菜单本就该弹在指针处,直接问壳最稳。
+///
+/// TPM_RETURNCMD 让 TrackPopupMenu 同步返回选中项,再 PostMessage 交回窗口
+/// 自己执行——不用 SendMessage:那会在菜单的模态消息循环里重入窗口过程。
+/// 非 Windows 是空操作(mac 有原生菜单栏;GTK 侧无对等 API,图标纯展示)。
+#[tauri::command]
+fn window_system_menu(window: tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetSystemMenu, PostMessageW, SetForegroundWindow, TrackPopupMenu, TPM_RETURNCMD,
+            TPM_RIGHTBUTTON, WM_SYSCOMMAND,
+        };
+        let (Ok(hwnd), Ok(pos)) = (window.hwnd(), window.cursor_position()) else {
+            return;
+        };
+        unsafe {
+            let menu = GetSystemMenu(hwnd, false);
+            if menu.is_invalid() {
+                return;
+            }
+            // 菜单要求窗口在前台,否则点别处不会自动收起(MSDN TrackPopupMenu 注)
+            let _ = SetForegroundWindow(hwnd);
+            let cmd = TrackPopupMenu(
+                menu,
+                TPM_RETURNCMD | TPM_RIGHTBUTTON,
+                pos.x as i32,
+                pos.y as i32,
+                Some(0),
+                hwnd,
+                None,
+            );
+            // TPM_RETURNCMD 下返回值是命令 id,0 = 用户没选(点空处/Esc)
+            if cmd.0 != 0 {
+                let _ = PostMessageW(Some(hwnd), WM_SYSCOMMAND, WPARAM(cmd.0 as usize), LPARAM(0));
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = window;
+}
+
 /// Windows 隐藏状态页→原生 layered window 的视觉快照。
 /// 非 Windows 继续由 pet.html 自己渲染,命令保留为跨平台空操作,
 /// 使同一份内置页不需分叉打包。
@@ -730,8 +815,20 @@ async fn check_update(app: AppHandle) {
 fn is_internal_url(url: &tauri::Url) -> bool {
     match url.scheme() {
         "tauri" => true,
-        // Windows 下 Tauri app 页面以 http(s)://tauri.localhost 承载
-        "http" | "https" => matches!(url.host_str(), Some("tauri.localhost")),
+        "http" | "https" => {
+            // Windows 下 Tauri app 页面以 http(s)://tauri.localhost 承载
+            if matches!(url.host_str(), Some("tauri.localhost")) {
+                return true;
+            }
+            // dev 构建:`tauri dev` 的 devUrl 是 http://localhost:<port>(vite),
+            // 初始加载同样走本守卫,不放行就是一扇纯白窗口。发布版无 devUrl,
+            // 不放行 localhost,守卫语义不变。
+            #[cfg(dev)]
+            if matches!(url.host_str(), Some("localhost") | Some("127.0.0.1")) {
+                return true;
+            }
+            false
+        }
         _ => false,
     }
 }
@@ -795,8 +892,17 @@ fn create_main_window(app: &AppHandle, page: &str) {
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .hidden_title(true);
     }
-    // Windows:去原生装饰栏,UI 侧自绘 36px 标题栏(拖拽区 + 窗口按钮)
-    #[cfg(target_os = "windows")]
+    // Windows / Linux:去原生装饰栏,UI 侧自绘 32px 扁平窗框条(拖拽区 +
+    // caption 三键 + 左端应用图标),见 ui-next 的 TitleBar。
+    //
+    // Linux 一并走 CSD(2026-08-08):保留原生装饰栏的话,mac/Windows 精心画的
+    // 那条窗框在 Linux 上会被换成 Adwaita/Breeze 的条——三端里唯一不受我们
+    // 控制的那端恰恰最显眼。VS Code(titleBarStyle 在 Linux 默认 custom)、
+    // Slack、Discord、Spotify 一律如此;GNOME 自己的 libadwaita 更是 CSD 优先。
+    // 代价:WM 的 resize 边/右键标题菜单/部分平铺手势没了,resize 由 UI 侧
+    // 边缘热区经 start_resize_dragging 补回(ResizeEdges.tsx);GNOME 用户若把
+    // button-layout 设成靠左,我们仍在右边。
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         builder = builder.decorations(false);
     }
@@ -1160,12 +1266,14 @@ fn main() {
             host_info,
             show_main,
             open_devtools,
+            window_system_menu,
             pet_native_render,
             sound_enabled,
             set_sound_enabled,
             update_check,
             update_install,
             open_extension_dir,
+            open_app_dir,
             open_log_dir,
             export_engine_log,
             list_wsl_distros,
@@ -1403,9 +1511,13 @@ fn setup_tray(app: &AppHandle, pet_enabled: bool, sound_enabled: bool) -> tauri:
     )?;
     // 设置页切换时要回改这个勾选项(见 apply_sound_enabled)
     *app.state::<TraySoundItem>().0.lock_ok() = Some(sound.clone());
+    // 重启引擎:引擎正常跑着时界面上原本没有任何入口(横幅只在崩溃/启动
+     // 失败时才出),而「改了设置外的东西要重启才生效」的提示到处都在指它。
+    // 托盘这一份还兼顾引擎卡死到 UI 都不响应的场景(2026-08-07 用户报障)
+    let restart_engine = MenuItem::with_id(app, "restart-engine", "重启引擎", true, None::<&str>)?;
     let update = MenuItem::with_id(app, "check-update", "检查更新", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出 MonkeyCode", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &settings, &pet, &sound, &update, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &settings, &pet, &sound, &restart_engine, &update, &quit])?;
     let tray = TrayIconBuilder::new()
         .icon(tray_icon())
         .tooltip("MonkeyCode")
@@ -1438,6 +1550,16 @@ fn setup_tray(app: &AppHandle, pet_enabled: bool, sound_enabled: bool) -> tauri:
             "toggle-sound" => {
                 let enabled = !app.state::<SoundEnabled>().0.load(Ordering::Relaxed);
                 apply_sound_enabled(app, enabled);
+            }
+            // 与命令 engine_restart 同一例程:失败只进壳日志(托盘没有外显位),
+            // UI 侧照常经 engine-status 事件看到状态流转
+            "restart-engine" => {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = engine_restart(app).await {
+                        eprintln!("[desktop] 托盘重启引擎失败: {e}");
+                    }
+                });
             }
             "check-update" => {
                 let app = app.clone();

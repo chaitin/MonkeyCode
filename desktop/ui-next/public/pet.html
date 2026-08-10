@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<!-- 桌宠状态页:macOS/Linux 直接作为透明置顶小窗;
+     Windows(含 Win7)上隐藏运行,只承担状态聚合与音效,画面推送给壳的原生 layered window。
+     形象:官方吉祥物 52 帧精灵图(pet-sprite.webp,88px@2x),
+     CSS steps 逐帧播放——待机慢速打盹、运行中正面敲键盘、等审批定格
+     摇晃、离线定格在低头睡着帧并灰化。
+     数据流:sessions_list 命令取快照 → session-event 壳事件持续更新
+     (壳聚合引擎状态,引擎重启对本页透明);快照失败视为引擎离线,
+     3s 重试,另有 10s 周期性快照兜底探活。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MonkeyCode 桌宠</title>
+<style>
+  * { box-sizing:border-box; user-select:none; -webkit-user-select:none; }
+  html, body { margin:0; background:transparent; overflow:hidden; }
+  body {
+    width:116px; height:120px; display:flex; flex-direction:column;
+    align-items:center; justify-content:flex-end;
+    font:11px/1.4 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    cursor:grab;
+  }
+  body:active { cursor:grabbing; }
+
+  /* ---- 气泡 ---- */
+  #bubble {
+    max-width:112px; padding:4px 9px; border-radius:9px; margin-bottom:2px;
+    background:rgba(19,19,22,.88); color:#d8d8de; text-align:center;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; position:relative;
+    opacity:0; transform:translateY(4px); transition:opacity .2s, transform .2s;
+  }
+  #bubble::after {  /* 小尾巴 */
+    content:""; position:absolute; left:50%; bottom:-4px; margin-left:-4px;
+    border:4px solid transparent; border-top-color:rgba(19,19,22,.88); border-bottom:0;
+  }
+  body.has-bubble #bubble { opacity:1; transform:none; }
+  #bubble.ok  { background:rgba(5,150,105,.92); color:#eafff5; }
+  #bubble.ok::after { border-top-color:rgba(5,150,105,.92); }
+  #bubble.warn { background:rgba(161,98,7,.92); color:#fff7e0; }
+  #bubble.warn::after { border-top-color:rgba(161,98,7,.92); }
+  #bubble.err { background:rgba(185,52,52,.92); color:#ffecec; }
+  #bubble.err::after { border-top-color:rgba(185,52,52,.92); }
+
+  /* ---- 吉祥物精灵图:52 帧横条。
+         帧段:1-7 无所事事 / 8-37 正面敲键盘 / 38-44 看通知 / 45-51 庆祝 / 52 睡着。
+         各状态在自己的帧段内 steps 循环;庆祝只播一遍后定格末姿势 ---- */
+  #wrap { width:88px; height:88px; }
+  #sprite {
+    width:88px; height:88px;
+    background:url(pet-sprite.webp) 0 0 / 4576px 88px no-repeat;
+  }
+  @keyframes idle-loop   { from { background-position-x:0; }       to { background-position-x:-616px; } }
+  @keyframes work-loop   { from { background-position-x:-616px; }  to { background-position-x:-3256px; } }
+  @keyframes notify-loop { from { background-position-x:-3256px; } to { background-position-x:-3872px; } }
+  @keyframes cheer-once  { from { background-position-x:-3872px; } to { background-position-x:-4488px; } }
+
+  /* 空闲 7 帧全是独立姿势(非补间)。桌宠挂在余光位,动作越频繁越抢注意力,
+     而空闲正是最不该抢注意力的状态:2.5s/姿势 ≈ 人发呆时的小动作节奏 */
+  body.st-idle      #sprite { animation:idle-loop 17.5s steps(7) infinite; }
+  body.st-running   #sprite { animation:work-loop 4.8s steps(30) infinite; }
+  body.st-waiting   #sprite { animation:notify-loop 1.6s steps(7) infinite; }
+  /* 庆祝:播一遍(帧 45-51),动画结束回落到基准位 = 末帧叉腰挺胸,撑满气泡时长 */
+  body.st-celebrate #sprite { background-position-x:-4400px; animation:cheer-once 1.4s steps(7); }
+  body.st-offline   #sprite {
+    background-position-x:-4488px; /* 第 52 帧:完全低头睡着 */
+    filter:grayscale(.7) brightness(.92); opacity:.85;
+  }
+</style>
+</head>
+<body class="st-offline">
+  <div id="bubble"></div>
+  <div id="wrap"><div id="sprite"></div></div>
+
+<script>
+  const invoke = window.__TAURI__.core.invoke;
+  const bubble = document.getElementById('bubble');
+  const sprite = document.getElementById('sprite');
+  const nativeWindowsPet = /Windows/i.test(navigator.userAgent || '');
+
+  function syncNative(state, tone, text, sessionId) {
+    if (!nativeWindowsPet) return;
+    invoke('pet_native_render', {
+      state,
+      tone: tone || '',
+      text: text || '',
+      sessionId: sessionId || null,
+    }).catch(() => {});
+  }
+
+  // 事件音效:桌宠被用户隐藏时 webview 仍在运行,所以音效仍会响——想要安静
+  // 得关提示音开关(设置页「通用与更新 → 提示音」或托盘「任务提示音」),
+  // 它与桌宠显示开关彼此独立。真值在壳(config.json 的 sound_enabled),
+  // 这里启动读一次、之后跟 sound-enabled 事件走。
+  // 同一音效 2s 内只响一次,避免并发叠音。
+  let soundEnabled = true;
+  window.__TAURI__.event.listen('sound-enabled', (evt) => {
+    soundEnabled = evt.payload !== false;
+  });
+  const sounds = {
+    start: new Audio('sound-app-start.mp3'),      // 应用启动(首次连上内核)
+    end: new Audio('sound-task-end.mp3'),         // 轮次完成
+    error: new Audio('sound-task-error.mp3'),     // 任务出错
+    ask: new Audio('sound-permission.mp3'),       // 请求审批
+    idle: new Audio('sound-idle.mp3'),            // 持续空闲满 10 分钟
+  };
+  for (const a of Object.values(sounds)) a.volume = 0.7;
+  const lastPlay = {};
+  function play(key) {
+    if (!soundEnabled) return;
+    const now = Date.now();
+    if (now - (lastPlay[key] || 0) < 2000) return;
+    lastPlay[key] = now;
+    const a = sounds[key];
+    a.currentTime = 0;
+    a.play().catch(() => {}); // 自动播放被平台策略拦下时静默放弃
+  }
+  let startPlayed = false; // 启动音只在首次连上时响,内核重启重连不再响
+
+  // 空闲提醒:完全空闲(无运行/无待审批且在线)持续满 10 分钟响一次;
+  // 任何内核事件都会走 render 重置计时,持续空闲则每 10 分钟再响
+  const IDLE_MS = 10 * 60 * 1000;
+  let idleTimer = null;
+  function armIdle(idle) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+    if (!idle) return;
+    idleTimer = setTimeout(() => {
+      play('idle');
+      armIdle(true);
+    }, IDLE_MS);
+  }
+
+  // ---- 聚合状态:会话表(快照 + 事件增量) ----
+  const sessions = new Map(); // id -> { status, waiting, touchedAt }
+  let retryTimer = null;
+  let flash = null; // { tone, text, sessionId } 终态闪现,几秒后回落
+  let flashTimer = null;
+  let clickSessionId = null;
+
+  function setBubble(tone, text) {
+    bubble.className = tone || '';
+    bubble.textContent = text || '';
+    document.body.classList.toggle('has-bubble', !!text);
+  }
+
+  function render(offline) {
+    if (offline) {
+      armIdle(false);
+      document.body.className = 'st-offline';
+      setBubble('', '内核休息中 Zzz');
+      clickSessionId = null;
+      syncNative('offline', '', '内核休息中 Zzz', null);
+      return;
+    }
+    let running = 0, waiting = 0, runningTarget = null, waitingTarget = null, waitingAt = -1;
+    for (const [id, s] of sessions) {
+      if (s.waiting) {
+        waiting++;
+        if ((s.touchedAt || 0) > waitingAt) {
+          waitingAt = s.touchedAt || 0;
+          waitingTarget = id;
+        }
+      } else if (s.status === 'running') {
+        running++;
+        runningTarget = id;
+      }
+    }
+    armIdle(running === 0 && waiting === 0);
+    const state = flash && flash.cheer
+      ? 'celebrate'
+      : waiting ? 'waiting' : running ? 'running' : 'idle';
+    const tone = flash ? flash.tone : waiting ? 'warn' : running ? 'ok' : '';
+    const text = flash ? flash.text
+      : waiting ? '等你审批!'
+      : running ? running + ' 个任务运行中' : '';
+    clickSessionId = flash && flash.sessionId
+      ? flash.sessionId
+      : waitingTarget || (running === 1 ? runningTarget : null);
+    document.body.className = 'st-' + state;
+    setBubble(tone, text);
+    syncNative(state, tone, text, clickSessionId);
+  }
+
+  /** cheer=true 时闪现期间播庆祝动作(仅任务完成用) */
+  function showFlash(tone, text, cheer, sessionId) {
+    flash = { tone, text, cheer, sessionId };
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { flash = null; render(false); }, 4000);
+    render(false);
+  }
+
+  function retry() {
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(snapshot, 3000);
+  }
+
+  let online = false;
+  async function snapshot() {
+    let list;
+    try {
+      list = await invoke('sessions_list');
+    } catch {
+      online = false;
+      render(true);
+      return retry();
+    }
+    sessions.clear();
+    for (const m of list) {
+      sessions.set(m.id, {
+        status: m.status,
+        waiting: !!m.waiting_ask,
+        touchedAt: Date.parse(m.updated_at || '') || 0,
+      });
+    }
+    online = true;
+    render(false);
+    if (!startPlayed) {
+      startPlayed = true;
+      play('start');
+    }
+  }
+
+  // 壳事件:引擎重启对本页透明(监听器挂在壳上,始终有效)
+  window.__TAURI__.event.listen('session-event', (evt) => {
+    const e = evt.payload;
+    if (!e || !e.id) return;
+    const s = sessions.get(e.id) || { status: '', waiting: false, touchedAt: 0 };
+    s.touchedAt = Date.now();
+    if (e.type === 'session-status') {
+      s.status = e.status;
+      if (e.status === 'idle') {
+        showFlash('ok', '「' + (e.title || '任务') + '」已回复', false, e.id);
+        play('end');
+      } else if (e.status === 'finished') {
+        showFlash('ok', '「' + (e.title || '任务') + '」完成 ✓', true, e.id);
+        play('end');
+      } else if (e.status === 'error') {
+        showFlash('err', '「' + (e.title || '任务') + '」出错 ✗', false, e.id);
+        play('error');
+      }
+    } else if (e.type === 'session-ask') {
+      s.waiting = !!e.open;
+      if (e.open) play('ask');
+    } else {
+      return;
+    }
+    sessions.set(e.id, s);
+    online = true;
+    render(false);
+  });
+
+  // 周期性快照兜底:探活(引擎停了没有任何事件外显)+ 收敛漏掉的状态
+  setInterval(() => { if (online) snapshot(); }, 10000);
+  // 首次快照会放启动音,所以先把开关取回来再快照:否则关掉提示音的用户
+  // 每次启动仍要挨一声。取不到(命令异常)按默认"开"继续,不拖住状态渲染。
+  invoke('sound_enabled')
+    .then((on) => { soundEnabled = on !== false; })
+    .catch((e) => console.warn('[pet] 读取提示音开关失败,按开处理', e))
+    .then(snapshot);
+
+  // ---- 交互:拖动(位移阈值)与点击(唤回主窗口) ----
+  // macOS 不能走原生 startDragging:tao 在 mac 上用 performWindowDragWithEvent,
+  // 它只认"当下正在处理的 mousedown 事件"——阈值方案到 mousemove 才发起,
+  // 事件已过期,原生拖拽静默失败(窗口不动,松手还被判成点击)。
+  // mac 改为手动移窗(setPosition 跟随鼠标);Windows/Linux 保留原生拖拽
+  // (WM_NCLBUTTONDOWN/合成器语义,按住期间任何时刻发起都有效,且更顺滑)。
+  const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
+  const petWin = () => window.__TAURI__.window.getCurrentWindow();
+  let down = null, dragged = false, winPos = null;
+
+  // macOS 的透明 NSPanel 默认仍按完整矩形吃鼠标。按精灵图当前帧的 alpha
+  // 和气泡实际形状做命中检测；光标落在透明像素时临时开启穿透。
+  // 穿透后页面收不到 mousemove，所以用全局光标位置低频探测重新进入热区。
+  const MAC_HIT_POLL_MS = 50;
+  const SPRITE_CSS_SIZE = 88;
+  const SPRITE_SOURCE_SIZE = 176;
+  const SPRITE_FRAMES = 52;
+  const SPRITE_ALPHA_HIT = 20;
+  let macSpriteMasks = null;
+  let macWindowOrigin = null;
+  let macCursorScale = window.devicePixelRatio || 1;
+  let macOriginUpdatedAt = 0;
+  let macIgnoring = null;
+  let macHitPollBusy = false;
+
+  function buildMacSpriteMasks() {
+    if (!isMac) return;
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = SPRITE_CSS_SIZE;
+      canvas.height = SPRITE_CSS_SIZE;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      const masks = [];
+      for (let frame = 0; frame < SPRITE_FRAMES; frame++) {
+        ctx.clearRect(0, 0, SPRITE_CSS_SIZE, SPRITE_CSS_SIZE);
+        ctx.drawImage(image,
+          frame * SPRITE_SOURCE_SIZE, 0, SPRITE_SOURCE_SIZE, SPRITE_SOURCE_SIZE,
+          0, 0, SPRITE_CSS_SIZE, SPRITE_CSS_SIZE);
+        const rgba = ctx.getImageData(0, 0, SPRITE_CSS_SIZE, SPRITE_CSS_SIZE).data;
+        const alpha = new Uint8Array(SPRITE_CSS_SIZE * SPRITE_CSS_SIZE);
+        for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4 + 3];
+        masks.push(alpha);
+      }
+      macSpriteMasks = masks;
+    };
+    image.src = 'pet-sprite.webp';
+  }
+
+  function inRoundedRect(x, y, rect, radius) {
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) return false;
+    const cx = Math.max(rect.left + radius, Math.min(x, rect.right - radius));
+    const cy = Math.max(rect.top + radius, Math.min(y, rect.bottom - radius));
+    const dx = x - cx, dy = y - cy;
+    return dx * dx + dy * dy <= radius * radius;
+  }
+
+  function inBubble(x, y) {
+    if (!bubble.textContent) return false;
+    const rect = bubble.getBoundingClientRect();
+    if (inRoundedRect(x, y, rect, 9)) return true;
+    // ::after 的 8×4 三角尾巴不在 getBoundingClientRect 内。
+    const tailY = y - rect.bottom;
+    return tailY >= 0 && tailY < 4 && Math.abs(x - (rect.left + rect.right) / 2) <= 4 - tailY;
+  }
+
+  function inSpritePixel(x, y) {
+    const rect = sprite.getBoundingClientRect();
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) return false;
+    // 图片尚未解码时先以 88×88 兜底，避免启动瞬间宠物完全点不到。
+    if (!macSpriteMasks) return true;
+    const backgroundX = Number.parseFloat(getComputedStyle(sprite).backgroundPositionX) || 0;
+    const frame = Math.max(0, Math.min(SPRITE_FRAMES - 1,
+      Math.round(-backgroundX / SPRITE_CSS_SIZE)));
+    const px = Math.max(0, Math.min(SPRITE_CSS_SIZE - 1, Math.floor(x - rect.left)));
+    const py = Math.max(0, Math.min(SPRITE_CSS_SIZE - 1, Math.floor(y - rect.top)));
+    return macSpriteMasks[frame][py * SPRITE_CSS_SIZE + px] >= SPRITE_ALPHA_HIT;
+  }
+
+  function inMacPetHotRegion(x, y) {
+    return inBubble(x, y) || inSpritePixel(x, y);
+  }
+
+  async function setMacMouseIgnoring(ignore) {
+    if (!isMac || down || macIgnoring === ignore) return;
+    macIgnoring = ignore;
+    try {
+      await petWin().setIgnoreCursorEvents(ignore);
+    } catch {
+      macIgnoring = null;
+    }
+  }
+
+  async function pollMacHotRegion() {
+    if (!isMac || down || macHitPollBusy) return;
+    macHitPollBusy = true;
+    try {
+      const now = Date.now();
+      if (!macWindowOrigin || now - macOriginUpdatedAt > 1000) {
+        const [origin, primary] = await Promise.all([
+          petWin().outerPosition(),
+          window.__TAURI__.window.primaryMonitor(),
+        ]);
+        macWindowOrigin = origin;
+        macCursorScale = primary && primary.scaleFactor || 1;
+        macOriginUpdatedAt = now;
+      }
+      const cursor = await window.__TAURI__.window.cursorPosition();
+      // Tao 的全局光标按主屏 scaleFactor 返回，窗口位置按当前屏幕返回；
+      // 分别还原为逻辑坐标，兼容 Retina + 普通屏混用。
+      const windowScale = window.devicePixelRatio || 1;
+      const x = cursor.x / macCursorScale - macWindowOrigin.x / windowScale;
+      const y = cursor.y / macCursorScale - macWindowOrigin.y / windowScale;
+      await setMacMouseIgnoring(!inMacPetHotRegion(x, y));
+    } catch {
+      // 旧系统偶发取不到全局光标时保持上次状态，下一轮重试。
+    } finally {
+      macHitPollBusy = false;
+    }
+  }
+
+  document.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    down = { x: e.screenX, y: e.screenY };
+    dragged = false;
+    winPos = null;
+    if (isMac) petWin().outerPosition().then((p) => {
+      winPos = p;
+      macWindowOrigin = p;
+      macOriginUpdatedAt = Date.now();
+    }).catch(() => {});
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (isMac && !down) setMacMouseIgnoring(!inMacPetHotRegion(e.clientX, e.clientY));
+    if (!down) return;
+    const dx = e.screenX - down.x, dy = e.screenY - down.y;
+    if (!dragged && Math.abs(dx) + Math.abs(dy) <= 4) return;
+    dragged = true;
+    if (isMac) {
+      if (!winPos) return; // outerPosition 未返回前先不动
+      const s = window.devicePixelRatio || 1; // screenX 是逻辑坐标,窗口位置是物理像素
+      const x = Math.round(winPos.x + dx * s), y = Math.round(winPos.y + dy * s);
+      macWindowOrigin = { x, y };
+      macOriginUpdatedAt = Date.now();
+      petWin().setPosition(new window.__TAURI__.dpi.PhysicalPosition(x, y));
+    } else {
+      down = null; // OS 接管拖动后 mouseup 不可靠,直接终结本次手势
+      petWin().startDragging();
+    }
+  });
+  document.addEventListener('mouseup', () => {
+    if (down && !dragged) invoke('show_main', { sessionId: clickSessionId });
+    down = null;
+  });
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
+  if (isMac) {
+    buildMacSpriteMasks();
+    pollMacHotRegion();
+    setInterval(pollMacHotRegion, MAC_HIT_POLL_MS);
+  }
+</script>
+</body>
+</html>

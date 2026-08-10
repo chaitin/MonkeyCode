@@ -44,7 +44,13 @@ impl RepoCtx {
         {
             return Err(format!("路径 {rel} 超出工作区"));
         }
-        let joined = self.fs_root().join(rel);
+        // join("") 会补一个尾分隔符(C:\proj → C:\proj\):工作区根(rel = "")
+        // 正走这条,而带尾分隔符的路径交给 Windows 的 shell 解析会失败,表现是
+        // 侧栏「打开文件夹」开到默认位置(2026-08-08 用户报障)。空 rel 直接用根。
+        // 另:相对路径按内核协议一律 `/` 拼(list_files 出的就是),Windows 上
+        // join 完会留下混合分隔符(C:\proj\src/a.ts);按 components 重组归一到
+        // 平台分隔符——交给 shell API / 文件管理器的路径必须是规范形态
+        let joined: PathBuf = if rel.is_empty() { self.fs_root() } else { self.fs_root().join(rel).components().collect() };
         // 第二道:符号链接不受组件校验约束——工作区里一个指向外部的链接就能
         // 把这套"只读浏览"带出工作区(link/passwd 之类)。路径已存在时做一次
         // 实解析边界校验,标准与 uploads.rs::read_data_url 对齐;不存在时留给
@@ -237,33 +243,37 @@ fn file_diff(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
 }
 
 /// 在系统文件管理器中定位路径:目录直接打开,文件在父目录中选中。
-/// WSL 模式路径已经是 UNC,explorer 直接可开。
+///
+/// 一律走 tauri_plugin_opener(与壳内其它「打开/定位」同一机制,见
+/// main.rs 的 open_log_dir/open_app_dir),不再自己拼 explorer 命令行。
+/// explorer.exe 的失败方式是**静默开默认文件夹**(不报错、不退非零码),
+/// 只要参数它没看懂就是这个结果——2026-08-08 用户报障「侧栏点打开文件夹,
+/// 开出来是文档/此电脑」就是这么来的(直接诱因见 resolve 里的尾分隔符)。
+/// 而经命令行喂它本身就不稳:Rust 按 CommandLineToArgvW 规则转义(带空格
+/// 加引号、引号前的反斜杠翻倍),explorer 用的却是自己那套解析,两边对不上;
+/// 目录名形如 /e、/select,… 时参数还会被当成 explorer 的选项。插件那边:
+/// 目录走 PowerShell Start-Process(路径经环境变量传,根本不过命令行),
+/// 文件走 SHOpenFolderAndSelectItems(shell API,同样不过命令行),整类
+/// 转义/引号问题随之消失,顺带 mac/Linux 也不用各留一条分支。
+///
+/// WSL 模式的文件是唯一例外:路径是 \\wsl$ UNC,select 在那上面定位不到
+/// (见 16dfce86),退回打开所在目录——少一个选中高亮,但位置是对的。
 fn reveal(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
     let p = ctx.resolve(rel)?;
     let md = std::fs::metadata(&p).map_err(|e| format!("路径不存在: {e}"))?;
-    let r = if cfg!(target_os = "macos") {
-        if md.is_dir() {
-            Command::new("open").arg(&p).spawn()
-        } else {
-            Command::new("open").arg("-R").arg(&p).spawn()
-        }
-    } else if cfg!(windows) {
-        if md.is_dir() {
-            Command::new("explorer").arg(&p).spawn()
-        } else if ctx.wsl_distro.is_some() {
-            // explorer 的 /select 吃不了 \\wsl$ UNC:不报错,但打开的是默认
-            // 文件夹而非目标。WSL 模式退回打开所在目录,少选中高亮但位置对
-            let dir = p.parent().map(Path::to_path_buf).unwrap_or_else(|| p.clone());
-            Command::new("explorer").arg(&dir).spawn()
-        } else {
-            Command::new("explorer").arg(format!("/select,{}", p.display())).spawn()
-        }
+    let open_dir = if md.is_dir() {
+        Some(p.clone())
+    } else if ctx.wsl_distro.is_some() {
+        Some(p.parent().map(Path::to_path_buf).unwrap_or_else(|| p.clone()))
     } else {
-        let dir = if md.is_dir() { p.clone() } else { p.parent().unwrap_or(&p).to_path_buf() };
-        Command::new("xdg-open").arg(&dir).spawn()
+        None
     };
-    // Start 不等退出:explorer.exe 成功也返回非零码,等待会误报错误
-    r.map_err(|e| format!("打开文件管理器失败: {e}"))?;
+    match open_dir {
+        Some(dir) => tauri_plugin_opener::open_path(&dir, None::<&str>)
+            .map_err(|e| format!("打开文件管理器失败: {e}"))?,
+        None => tauri_plugin_opener::reveal_item_in_dir(&p)
+            .map_err(|e| format!("定位文件失败: {e}"))?,
+    }
     Ok(json!({ "ok": true }))
 }
 
@@ -305,6 +315,35 @@ mod tests {
         assert!(ctx.resolve("../escape").is_err());
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 工作区根(rel = "")解析出的路径不许带尾分隔符:`join("")` 会补一个,
+    /// 而带尾分隔符的路径交给 Windows 的 shell 解析会失败——explorer 认不出
+    /// 就不报错直接开默认文件夹,现象是侧栏「打开文件夹」开到了「文档/此电脑」
+    /// (2026-08-08 用户报障)。只有根这条会踩(文件路径不以分隔符结尾),
+    /// 所以必须单独钉住。
+    #[test]
+    fn resolve_root_has_no_trailing_separator() {
+        let dir = std::env::temp_dir().join(format!("mc-repo-root-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ctx = RepoCtx { workdir: dir.to_string_lossy().into_owned(), wsl_distro: None };
+
+        let root = ctx.resolve("").unwrap();
+        assert_eq!(root, dir, "根路径应恒等于工作区,不多一个尾分隔符");
+        let s = root.to_string_lossy();
+        assert!(
+            !s.ends_with(std::path::MAIN_SEPARATOR) && !s.ends_with('/'),
+            "根路径不该以分隔符结尾: {s}"
+        );
+
+        // 相对路径按 `/` 拼进来(内核协议口径),解析后归一到平台分隔符:
+        // 混合分隔符的路径喂给 shell API / 文件管理器同样定位不到
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src/a.ts"), b"x").unwrap();
+        assert_eq!(ctx.resolve("src/a.ts").unwrap(), dir.join("src").join("a.ts"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

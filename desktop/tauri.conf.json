@@ -1,11 +1,14 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MonkeyCode",
-  "version": "26071401.0.0",
+  "version": "26081014.0.0",
   "identifier": "com.chaitin.baizhi.monkeycode",
   "build": {
     "frontendDist": "uidist",
-    "beforeBuildCommand": "npm ci && npm run build"
+    "beforeBuildCommand": {
+      "script": "npm ci && npm run build",
+      "cwd": "ui-next"
+    }
   },
   "app": {
     "windows": [],
@@ -25,6 +28,7 @@
           "permissions": [
             "core:default",
             "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
             "core:window:allow-minimize",
             "core:window:allow-toggle-maximize",
             "core:window:allow-internal-toggle-maximize",
@@ -43,8 +47,10 @@
             "allow-update-install",
             "allow-open-extension-dir",
             "allow-open-log-dir",
+            "allow-open-app-dir",
             "allow-export-engine-log",
             "allow-open-devtools",
+    "allow-window-system-menu",
             "allow-list-wsl-distros",
             "allow-wsl-workdir-base",
             "allow-engine-status",

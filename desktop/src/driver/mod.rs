@@ -283,6 +283,41 @@ pub fn caps(engine: &OhmyDriver, browser_ext: bool) -> Caps {
     }
 }
 
+/// 引擎日志的真实落点(报障导出与崩溃 tail 的单一出处)。
+///
+/// 两处都要看:引擎自己按运行分文件写 `<config_dir>/ohmyagent/logs/ohmyagent-*.log`
+/// (健康运行的全部现场都在这);壳接的 stderr `ohmyagent.log` 只在引擎连
+/// 日志器都没起来时才有内容(动态库缺失、panic、wsl.exe 自身报错)——正常
+/// 跑一轮它是 0 字节,此前导出/崩溃 tail 都只认它,于是拿到的是**空文件**
+/// (2026-08-07 用户报障「导出的日志是空白的」)。
+///
+/// 取「非空里最新」的那个:健康运行落引擎自己的日志;起都起不来时 stderr
+/// 才是唯一现场,且它此时必然比上一轮的引擎日志新。全空返回 None(引擎没
+/// 启动过,或本轮什么都没写)——宁可如实报"没有日志",不给一个空文件。
+pub fn engine_log_file(cfg_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut best: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+    let mut consider = |p: std::path::PathBuf| {
+        let Ok(md) = std::fs::metadata(&p) else { return };
+        if !md.is_file() || md.len() == 0 {
+            return; // 空文件不是现场
+        }
+        let t = md.modified().unwrap_or(std::time::UNIX_EPOCH);
+        if best.as_ref().is_none_or(|(bt, _)| t > *bt) {
+            best = Some((t, p));
+        }
+    };
+    if let Ok(entries) = std::fs::read_dir(cfg_dir.join("ohmyagent").join("logs")) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("log") {
+                consider(p);
+            }
+        }
+    }
+    consider(cfg_dir.join("ohmyagent.log"));
+    best.map(|(_, p)| p)
+}
+
 /// 日志尾部(崩溃外显用;文件缺失返回空)。
 pub fn log_tail(path: &std::path::Path, lines: usize) -> String {
     std::fs::read(path)
