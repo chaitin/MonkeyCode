@@ -461,6 +461,41 @@ describe("聊天视图", () => {
     expect(ops.filter((o) => o.cmd === "session_history")).toHaveLength(2);
   });
 
+  it("提问大纲:连续跳转由同一日志容器执行两次不同目标滚动", async () => {
+    stubShell({
+      frames: [
+        { type: "user-input", data: { content: b64encode("第一问") }, timestamp: 1, seq: 1 },
+        { type: "user-input", data: { content: b64encode("第二问") }, timestamp: 2, seq: 9 },
+      ],
+      outline: [
+        { seq: 1, offset: 0, content: b64encode("第一问"), timestamp: 1 },
+        { seq: 9, offset: 4, content: b64encode("第二问"), timestamp: 2 },
+      ],
+    });
+    const { container } = render(<ChatView meta={{ ...META, id: "s-outline-scroll" }} />);
+    await screen.findByText("第一问");
+    const log = container.querySelector("[data-chat-log]") as HTMLElement;
+    const first = log.querySelector('[data-user-seq="1"]') as HTMLElement;
+    const second = log.querySelector('[data-user-seq="9"]') as HTMLElement;
+    let currentTop = 20;
+    const assignedTops: number[] = [];
+    Object.defineProperty(log, "scrollTop", {
+      configurable: true,
+      get: () => currentTop,
+      set: (top: number) => { currentTop = top; assignedTops.push(top); },
+    });
+    vi.spyOn(log, "getBoundingClientRect").mockReturnValue({ top: 100 } as DOMRect);
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue({ top: 180 } as DOMRect);
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue({ top: 360 } as DOMRect);
+    const nav = await screen.findByRole("navigation", { name: "提问大纲" });
+    fireEvent.mouseEnter(nav.firstElementChild!);
+    await userEvent.click(within(nav).getByText("第一问"));
+    fireEvent.mouseEnter(nav.firstElementChild!);
+    await userEvent.click(within(nav).getByText("第二问"));
+
+    expect(assignedTops).toEqual([100, 360]);
+  });
+
   it("提问大纲 activeSeq 冒烟:面板给当前项 aria-current(jsdom 几何全 0 → 最后一条已加载提问)", async () => {
     stubShell({
       outline: [

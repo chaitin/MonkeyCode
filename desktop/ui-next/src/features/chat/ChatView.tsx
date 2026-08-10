@@ -481,11 +481,15 @@ export function ChatView({
   );
   /** 定位到某次提问;锚还没渲染进 DOM 返回 false。 */
   const jumpToSeq = (seq: number): boolean => {
-    const node = scrollRef.current?.querySelector<HTMLElement>(`[data-user-seq="${seq}"]`);
-    if (!node) return false;
+    const log = scrollRef.current;
+    const node = log?.querySelector<HTMLElement>(`[data-user-seq="${seq}"]`);
+    if (!log || !node) return false;
     finishRestore(); // 跳转接管滚动:进行中的锚点恢复轮询不许再拽回去
     pinnedRef.current = false;
-    node.scrollIntoView?.({ block: "start" });
+    // 明确只滚消息日志。scrollIntoView 会自行挑选可滚祖先，消息区新增
+    // wrapper 后可能滚到 wrapper，后续点击便不再改变真正日志的 scrollTop。
+    const top = log.scrollTop + node.getBoundingClientRect().top - log.getBoundingClientRect().top;
+    log.scrollTop = top;
     setFlashSeq(seq);
     window.clearTimeout(flashTimer.current);
     flashTimer.current = window.setTimeout(() => setFlashSeq(null), FLASH_MS);
