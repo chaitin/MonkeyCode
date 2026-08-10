@@ -18,7 +18,10 @@
 //   browser-mcp-refresh-timeout    等任务空闲超时放弃刷新(提示手动重启)
 
 interface TauriGlobal {
-  core?: { invoke?: (cmd: string, args?: unknown) => Promise<unknown> };
+  core?: {
+    invoke?: (cmd: string, args?: unknown) => Promise<unknown>;
+    convertFileSrc?: (path: string, protocol?: string) => string;
+  };
   event?: {
     listen?: (name: string, cb: (e: { payload: unknown }) => void) => Promise<() => void>;
   };
@@ -40,6 +43,13 @@ export function invoke<T>(cmd: string, args?: unknown): Promise<T> {
   const inv = tauri()?.core?.invoke;
   if (!inv) return Promise.reject(new Error("非桌面壳环境"));
   return inv(cmd, args) as Promise<T>;
+}
+
+/** 将壳端已逐文件加入 asset scope 的绝对路径转换成 WebView URL。 */
+export function convertFileSrc(path: string): string {
+  const convert = tauri()?.core?.convertFileSrc;
+  if (!convert) throw new Error("非桌面壳环境");
+  return convert(path, "asset");
 }
 
 /** 订阅壳事件;返回退订函数。listen 的注册是异步的,退订经 promise 链兜底。 */

@@ -549,6 +549,7 @@ pub async fn upload_read(
 
 #[tauri::command]
 pub async fn design_template_preview_read(
+    app: AppHandle,
     host: State<'_, DriverHost>,
     id: String,
     path: String,
@@ -556,11 +557,31 @@ pub async fn design_template_preview_read(
     let engine = host.get()?;
     let workdir = engine.session_workdir(&id).await?;
     let distro = engine.wsl_distro();
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::uploads::read_design_template_html(&workdir, distro.as_deref(), &path)
+    let app_cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("定位应用缓存目录失败: {e}"))?;
+    let output_root = crate::uploads::prepare_design_template_preview_root(&app_cache_dir)?;
+    let generated = tauri::async_runtime::spawn_blocking(move || {
+        crate::uploads::render_design_template_preview(
+            &workdir,
+            distro.as_deref(),
+            &path,
+            &output_root,
+        )
+        .map_err(|error| {
+            eprintln!("[desktop] 模板预览生成失败: sid={id} path={path} error={error}");
+            error
+        })
     })
     .await
-    .map_err(|e| format!("读取模板预览失败: {e}"))?
+    .map_err(|e| format!("生成模板预览失败: {e}"))??;
+    // Never grant a directory/workspace scope: each command invocation exposes
+    // exactly the generated, CSP-hardened file it just validated.
+    app.asset_protocol_scope()
+        .allow_file(&generated)
+        .map_err(|e| format!("放行模板预览渲染文件失败: {e}"))?;
+    Ok(generated.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]

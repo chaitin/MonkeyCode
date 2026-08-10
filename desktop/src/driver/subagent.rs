@@ -110,16 +110,23 @@ impl Inner {
                 None
             }
         };
-        let Some((psid, ptc, workdir, model_name)) = claimed else { return false };
+        let Some((psid, ptc, workdir, model_name)) = claimed else {
+            return false;
+        };
         let (mut title, prompt) = self
-            .sub.agent_inputs
+            .sub
+            .agent_inputs
             .lock_ok()
             .get(&ptc)
             .cloned()
             .unwrap_or_else(|| ("子代理".into(), String::new()));
         // 事件戳的 parent_description 优先(939e03e):后台代理跨轮续跑时
         // tc_id 暂存可能已清,戳记恒在
-        if let Some(d) = event.get("parent_description").and_then(|v| v.as_str()).filter(|d| !d.is_empty()) {
+        if let Some(d) = event
+            .get("parent_description")
+            .and_then(|v| v.as_str())
+            .filter(|d| !d.is_empty())
+        {
             title = d.to_string();
         }
         self.sess.sessions.lock_ok().insert(
@@ -152,13 +159,19 @@ impl Inner {
         // 认领晚于 async_launched 的情形(后台子代理首个转发事件稍后才到):
         // 登记表已有该父工具的后台标记,路由生来即后台,跨轮存活
         let background = self
-            .sub.background_agents
+            .sub
+            .background_agents
             .lock_ok()
             .values()
             .any(|(s, tc)| s == &psid && tc == &ptc);
         self.sub.subagents.lock_ok().insert(
             child_sid.to_string(),
-            SubagentRoute { parent_sid: psid.clone(), parent_tc: ptc.clone(), line_buf: String::new(), background },
+            SubagentRoute {
+                parent_sid: psid.clone(),
+                parent_tc: ptc.clone(),
+                line_buf: String::new(),
+                background,
+            },
         );
         // 子会话回放形状与主会话一致:user-input(任务)→ task-started → …
         if !prompt.is_empty() {
@@ -179,7 +192,8 @@ impl Inner {
     /// 子代理事件在父卡进度窗的内联预览(完整对话在子会话本体)。
     pub(super) fn subagent_feed(&self, child_sid: &str, etype: &str, event: &Value, data: &Value) {
         let Some((psid, ptc)) = self
-            .sub.subagents
+            .sub
+            .subagents
             .lock_ok()
             .get(child_sid)
             .map(|r| (r.parent_sid.clone(), r.parent_tc.clone()))
@@ -207,7 +221,11 @@ impl Inner {
                 });
             }
             "tool_result" => {
-                let tc_id = event.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let tc_id = event
+                    .get("tool_call_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 self.push_frame(&psid, |seq| {
                     frame::tool_call_progress(
                         &ptc,
@@ -220,7 +238,9 @@ impl Inner {
                 let text = data.get("text").and_then(|v| v.as_str()).unwrap_or("");
                 let lines = {
                     let mut subs = self.sub.subagents.lock_ok();
-                    let Some(r) = subs.get_mut(child_sid) else { return };
+                    let Some(r) = subs.get_mut(child_sid) else {
+                        return;
+                    };
                     r.line_buf.push_str(text);
                     let mut out = Vec::new();
                     while let Some(pos) = r.line_buf.find('\n') {
@@ -234,12 +254,19 @@ impl Inner {
                 };
                 for line in lines {
                     self.push_frame(&psid, |seq| {
-                        frame::tool_call_progress(&ptc, json!({ "kind": "subagent_text", "line": line }), seq)
+                        frame::tool_call_progress(
+                            &ptc,
+                            json!({ "kind": "subagent_text", "line": line }),
+                            seq,
+                        )
                     });
                 }
             }
             "error" => {
-                let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("子代理出错");
+                let msg = data
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("子代理出错");
                 self.push_frame(&psid, |seq| {
                     frame::tool_call_progress(
                         &ptc,
@@ -280,7 +307,12 @@ impl Inner {
             let closing = subs
                 .iter_mut()
                 .filter(|(_, r)| r.parent_sid == sid && r.parent_tc == tc_id)
-                .map(|(child, r)| (child.clone(), std::mem::take(&mut r.line_buf).trim().to_string()))
+                .map(|(child, r)| {
+                    (
+                        child.clone(),
+                        std::mem::take(&mut r.line_buf).trim().to_string(),
+                    )
+                })
                 .collect();
             subs.retain(|_, r| !(r.parent_sid == sid && r.parent_tc == tc_id));
             closing
@@ -288,7 +320,11 @@ impl Inner {
         for (child, tail) in closing {
             if !tail.is_empty() {
                 self.push_frame(sid, |seq| {
-                    frame::tool_call_progress(tc_id, json!({ "kind": "subagent_text", "line": tail }), seq)
+                    frame::tool_call_progress(
+                        tc_id,
+                        json!({ "kind": "subagent_text", "line": tail }),
+                        seq,
+                    )
                 });
             }
             self.close_child(&child, status);
@@ -300,7 +336,12 @@ impl Inner {
     /// include_background=false(turn/stopped)放过后台代理——它们的子循环
     /// 跨轮存活,收尾归 task_notification;true(引擎不再服务的和解)全关,
     /// 后台登记一并清除(通知永远不会来了)。
-    pub(super) fn close_children_of_session(&self, sid: &str, status: SessionStatus, include_background: bool) {
+    pub(super) fn close_children_of_session(
+        &self,
+        sid: &str,
+        status: SessionStatus,
+        include_background: bool,
+    ) {
         let children: Vec<String> = {
             let mut subs = self.sub.subagents.lock_ok();
             let children = subs
@@ -315,7 +356,10 @@ impl Inner {
             self.close_child(&child, status);
         }
         if include_background {
-            self.sub.background_agents.lock_ok().retain(|_, (s, _)| s != sid);
+            self.sub
+                .background_agents
+                .lock_ok()
+                .retain(|_, (s, _)| s != sid);
         }
     }
 
@@ -328,12 +372,14 @@ impl Inner {
         let get = |k: &str| resp.get(k).and_then(|v| v.as_str()).unwrap_or("");
         let agent_id = get("agentId");
         if !agent_id.is_empty() {
-            self.sub.background_agents
+            self.sub
+                .background_agents
                 .lock_ok()
                 .insert(agent_id.to_string(), (sid.to_string(), tc_id.to_string()));
         }
         if let Some(r) = self
-            .sub.subagents
+            .sub
+            .subagents
             .lock_ok()
             .values_mut()
             .find(|r| r.parent_sid == sid && r.parent_tc == tc_id)
@@ -341,9 +387,12 @@ impl Inner {
             r.background = true;
         }
         let label = agent_label(get("name"), get("description"), agent_id);
-        let text =
-            format!("⏳ 子代理已转入后台继续执行({label}),完成后结果将回填此卡,并在对话流以 📌 通知");
-        self.push_frame(sid, |seq| frame::tool_call_completed(tc_id, &text, &[], seq));
+        let text = format!(
+            "⏳ 子代理已转入后台继续执行({label}),完成后结果将回填此卡,并在对话流以 📌 通知"
+        );
+        self.push_frame(sid, |seq| {
+            frame::tool_call_completed(tc_id, &text, &[], seq)
+        });
     }
 
     /// task_notification 收尾后台代理:按 agent_id 反查父卡,Result 正文
@@ -375,7 +424,9 @@ impl Inner {
             self.push_frame(&psid, |seq| frame::tool_call_failed(&ptc, &result, seq));
         } else {
             let images = super::normalize::extract_upload_paths(&result);
-            self.push_frame(&psid, |seq| frame::tool_call_completed(&ptc, &result, &images, seq));
+            self.push_frame(&psid, |seq| {
+                frame::tool_call_completed(&ptc, &result, &images, seq)
+            });
         }
         let label = agent_label(get("name"), get("description"), agent_id);
         let note = match status {

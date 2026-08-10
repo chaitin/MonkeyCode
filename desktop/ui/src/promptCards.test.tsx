@@ -1,6 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { createDesignTemplateBlobUrl, DesignTemplateSelectionCard } from "./promptCards";
+import {
+  DESIGN_PREVIEW_DESKTOP,
+  DESIGN_PREVIEW_FALLBACK_SCALE,
+  designPreviewLayout,
+  DesignTemplateSelectionCard,
+  loadDesignPreviewSource,
+  loadDesignPreviewSourceWithRetry,
+  visibleDesignPreviewLayout,
+} from "./promptCards";
 import type { LogItem } from "./types";
 
 const openItem: Extract<LogItem, { kind: "design-template-selection" }> = {
@@ -19,17 +27,68 @@ const openItem: Extract<LogItem, { kind: "design-template-selection" }> = {
 };
 
 describe("DesignTemplateSelectionCard", () => {
-  it("把可信 HTML 包装成 UTF-8 blob URL，供 opaque sandbox iframe 导航", () => {
-    const create = vi.spyOn(URL, "createObjectURL").mockImplementation((value) => {
-      if (!(value instanceof Blob)) throw new Error("expected HTML Blob");
-      expect(value.type).toBe("text/html;charset=utf-8");
-      expect(value.size).toBeGreaterThan(0);
-      return "blob:design-preview";
-    });
+  it("按固定桌面画布等比缩放并在响应式卡片中居中", () => {
+    expect(DESIGN_PREVIEW_DESKTOP).toEqual({ width: 1440, height: 900 });
+    expect(designPreviewLayout(288, 180)).toEqual({ scale: 0.2, left: 0, top: 0 });
+    expect(designPreviewLayout(300, 150)).toEqual({ scale: 1 / 6, left: 30, top: 0 });
+    expect(designPreviewLayout(0, 150)).toEqual({ scale: 0, left: 0, top: 0 });
+  });
 
-    expect(createDesignTemplateBlobUrl("<script>window.previewRan = true</script>")).toBe("blob:design-preview");
-    expect(create).toHaveBeenCalledOnce();
-    create.mockRestore();
+  it("WebView 首次测量为零时仍使用可见的安全缩放", () => {
+    expect(visibleDesignPreviewLayout({ scale: 0, left: 0, top: 0 })).toEqual({
+      scale: DESIGN_PREVIEW_FALLBACK_SCALE,
+      left: 0,
+      top: 0,
+    });
+    expect(visibleDesignPreviewLayout({ scale: 0.2, left: 5, top: 3 })).toEqual({ scale: 0.2, left: 5, top: 3 });
+  });
+
+  it("为预览卡输出确定的初始加载态，且不在卡片尺寸下挂载 iframe", () => {
+    const html = renderToStaticMarkup(
+      <DesignTemplateSelectionCard item={openItem} loadHtml={async () => "<main>styled</main>"} onRespond={vi.fn(async () => true)} />,
+    );
+    expect(html).toContain("data-preview-state=\"idle\"");
+    expect(html).toContain("aspect-ratio:16 / 10");
+    expect(html).not.toContain("<iframe");
+  });
+
+  it("动态 HTML 使用逐文件放行的 asset URL，不使用 srcDoc/blob/data", () => {
+    const source = "asset://localhost/rendered-template-previews/preview.html";
+    const html = renderToStaticMarkup(
+      <iframe sandbox="allow-scripts" referrerPolicy="no-referrer" src={source} width={DESIGN_PREVIEW_DESKTOP.width} height={DESIGN_PREVIEW_DESKTOP.height} />,
+    );
+    expect(html).toContain("src=\"asset://localhost/rendered-template-previews/preview.html\"");
+    expect(html).toContain("sandbox=\"allow-scripts\"");
+    expect(html).toContain("referrerPolicy=\"no-referrer\"");
+    expect(html).not.toContain("srcDoc=");
+    expect(html).not.toContain("src=\"blob:");
+    expect(html).not.toContain("src=\"data:");
+    expect(html).not.toContain("allow-same-origin");
+  });
+
+  it("把读取失败和空 HTML 统一判为不可用", async () => {
+    await expect(loadDesignPreviewSource(async () => { throw new Error("missing"); }, "stale/index.html", "html")).rejects.toThrow("missing");
+    await expect(loadDesignPreviewSource(async () => "  \n", "empty/index.html", "html")).rejects.toThrow("preview unavailable");
+    await expect(loadDesignPreviewSource(async () => "<main>styled</main>", "ok/index.html", "html")).resolves.toContain("styled");
+  });
+
+  it("预览文件短暂不可见时重试读取", async () => {
+    let calls = 0;
+    const loader = vi.fn(async () => {
+      calls += 1;
+      if (calls < 3) throw new Error("missing");
+      return "<main>ready</main>";
+    });
+    const sleep = vi.fn(async () => {});
+    await expect(loadDesignPreviewSourceWithRetry(loader, "late/index.html", "html", 3, 0, sleep)).resolves.toContain("ready");
+    expect(loader).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("持续缺失时在有限次数后失败", async () => {
+    const loader = vi.fn(async () => { throw new Error("missing"); });
+    await expect(loadDesignPreviewSourceWithRetry(loader, "missing/index.html", "html", 3, 0, async () => {})).rejects.toThrow("missing");
+    expect(loader).toHaveBeenCalledTimes(3);
   });
 
   it("独立渲染设计网格、推荐标记和全部业务动作", () => {
@@ -44,6 +103,8 @@ describe("DesignTemplateSelectionCard", () => {
     expect(html).toContain("取消");
     expect(html).toContain("data-preview-type=\"image\"");
     expect(html).toContain("data-preview-type=\"html\"");
+    expect(html).toContain("display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start");
+    expect(html).toContain("appearance:none");
     // 服务端渲染时仍是占位，进入视口后才会挂 iframe。
     expect(html).not.toContain("<iframe");
     expect(html).toContain(">选择</button>");

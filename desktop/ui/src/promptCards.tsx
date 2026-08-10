@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { MONO } from "./fonts";
 import { IconCheck } from "./icons";
 import { localizedToolTitleText, toolDisplayName } from "./toolLabels";
-import { UploadImg } from "./uploadMedia";
 import type { DesignSelectionAction, DesignSelectionResponse, LogItem } from "./types";
 
 /** 审批答复回调(独立审批卡与工具卡内嵌按钮行共用签名) */
@@ -113,11 +112,63 @@ const DESIGN_ACTION_LABEL: Record<DesignSelectionAction, string> = {
 
 type DesignPreviewState =
   | { status: "idle" | "loading" }
-  | { status: "ready"; url: string }
+  | { status: "rendering" | "ready"; source: string; token: number }
   | { status: "error" };
 
-export function createDesignTemplateBlobUrl(html: string): string {
-  return URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+export const DESIGN_PREVIEW_DESKTOP = { width: 1440, height: 900 } as const;
+export const DESIGN_PREVIEW_TIMEOUT_MS = 10_000;
+
+export interface DesignPreviewLayout {
+  scale: number;
+  left: number;
+  top: number;
+}
+
+/** Fit a real desktop layout into the thumbnail without changing its responsive breakpoint. */
+export function designPreviewLayout(width: number, height: number): DesignPreviewLayout {
+  if (!(width > 0) || !(height > 0)) return { scale: 0, left: 0, top: 0 };
+  const scale = Math.min(width / DESIGN_PREVIEW_DESKTOP.width, height / DESIGN_PREVIEW_DESKTOP.height);
+  return {
+    scale,
+    left: (width - DESIGN_PREVIEW_DESKTOP.width * scale) / 2,
+    top: (height - DESIGN_PREVIEW_DESKTOP.height * scale) / 2,
+  };
+}
+
+export const DESIGN_PREVIEW_FALLBACK_SCALE = 0.1;
+
+export function visibleDesignPreviewLayout(layout: DesignPreviewLayout): DesignPreviewLayout {
+  return layout.scale > 0 ? layout : { scale: DESIGN_PREVIEW_FALLBACK_SCALE, left: 0, top: 0 };
+}
+
+export async function loadDesignPreviewSource(
+  loader: (path: string) => Promise<string>,
+  path: string,
+  type: "html" | "image",
+): Promise<string> {
+  const content = await loader(path);
+  if (!content || (type === "html" && !content.trim())) throw new Error("preview unavailable");
+  return content;
+}
+
+export async function loadDesignPreviewSourceWithRetry(
+  loader: (path: string) => Promise<string>,
+  path: string,
+  type: "html" | "image",
+  attempts = 8,
+  delayMs = 250,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<string> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await loadDesignPreviewSource(loader, path, type);
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 < attempts) await sleep(delayMs);
+    }
+  }
+  throw lastError;
 }
 
 /** 候选进入视口附近才读取/挂载预览。iframe 不接受指针事件，选择仍由外层
@@ -136,8 +187,11 @@ export function DesignTemplatePreview({
   loadHtml?: (path: string) => Promise<string>;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const timeout = useRef<ReturnType<typeof setTimeout>>();
+  const requestToken = useRef(0);
   const [mounted, setMounted] = useState(false);
   const [preview, setPreview] = useState<DesignPreviewState>({ status: "idle" });
+  const [layout, setLayout] = useState<DesignPreviewLayout>({ scale: 0, left: 0, top: 0 });
 
   useEffect(() => {
     const node = host.current;
@@ -160,52 +214,115 @@ export function DesignTemplatePreview({
   }, [mounted]);
 
   useEffect(() => {
-    if (!mounted || type !== "html") return;
-    if (!loadHtml) {
+    if (!mounted) return;
+    const node = host.current;
+    if (!node) return;
+    const measure = () => {
+      const next = designPreviewLayout(node.clientWidth, node.clientHeight);
+      setLayout((current) => current.scale === next.scale && current.left === next.left && current.top === next.top ? current : next);
+    };
+    measure();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(measure);
+      observer.observe(node);
+      return () => observer.disconnect();
+    }
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const loader = type === "html" ? loadHtml : uploadUrl;
+    if (!loader) {
       setPreview({ status: "error" });
       return;
     }
     let alive = true;
-    let objectUrl: string | undefined;
+    const token = ++requestToken.current;
     setPreview({ status: "loading" });
+    timeout.current = setTimeout(() => {
+      if (!alive || requestToken.current !== token) return;
+      alive = false;
+      setPreview({ status: "error" });
+    }, DESIGN_PREVIEW_TIMEOUT_MS);
     Promise.resolve()
-      .then(() => loadHtml(path))
+      .then(() => loadDesignPreviewSourceWithRetry(loader, path, type))
       .then(
-        (html) => {
-          if (!alive) return;
-          try {
-            objectUrl = createDesignTemplateBlobUrl(html);
-            setPreview({ status: "ready", url: objectUrl });
-          } catch {
-            setPreview({ status: "error" });
-          }
+        (source) => {
+          if (!alive || requestToken.current !== token) return;
+          setPreview({ status: "rendering", source, token });
         },
-        () => alive && setPreview({ status: "error" }),
+        () => {
+          if (!alive || requestToken.current !== token) return;
+          clearTimeout(timeout.current);
+          alive = false;
+          setPreview({ status: "error" });
+        },
       );
     return () => {
       alive = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      clearTimeout(timeout.current);
     };
-  }, [loadHtml, mounted, path, type]);
+  }, [loadHtml, mounted, path, type, uploadUrl]);
+
+  const markReady = (token: number) => {
+    setPreview((current) => {
+      if (current.status !== "rendering" || current.token !== token) return current;
+      clearTimeout(timeout.current);
+      return { ...current, status: "ready" };
+    });
+  };
+  const markUnavailable = (token: number) => {
+    setPreview((current) => {
+      if (current.status !== "rendering" || current.token !== token) return current;
+      clearTimeout(timeout.current);
+      return { status: "error" };
+    });
+  };
+  const pending = preview.status === "idle" || preview.status === "loading" || preview.status === "rendering";
+  const visibleLayout = visibleDesignPreviewLayout(layout);
 
   return (
-    <div ref={host} data-preview-type={type} data-preview-state={type === "html" ? preview.status : undefined} style={{ width: "100%", aspectRatio: "4 / 3", overflow: "hidden", background: "var(--hov)", pointerEvents: "none" }}>
-      {mounted && type === "image" && uploadUrl && (
-        <UploadImg load={() => uploadUrl(path)} alt={title} style={{ display: "block", width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }} />
+    <div ref={host} data-preview-type={type} data-preview-state={preview.status} style={{ position: "relative", width: "100%", aspectRatio: "16 / 10", overflow: "hidden", background: "var(--hov)", pointerEvents: "none" }}>
+      {mounted && type === "image" && (preview.status === "rendering" || preview.status === "ready") && (
+        <img src={preview.source} alt={title} onLoad={() => markReady(preview.token)} onError={() => markUnavailable(preview.token)} style={{ display: "block", width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }} />
       )}
-      {mounted && type === "html" && preview.status === "ready" && (
+      {mounted && type === "html" && (preview.status === "rendering" || preview.status === "ready") && (
         <iframe
           title={`${title} 动态预览`}
           sandbox="allow-scripts"
           referrerPolicy="no-referrer"
-          src={preview.url}
+          src={preview.source}
+          onLoad={() => markReady(preview.token)}
+          onError={() => markUnavailable(preview.token)}
           tabIndex={-1}
-          style={{ display: "block", width: "100%", height: "100%", border: 0, pointerEvents: "none" }}
+          width={DESIGN_PREVIEW_DESKTOP.width}
+          height={DESIGN_PREVIEW_DESKTOP.height}
+          data-desktop-viewport={`${DESIGN_PREVIEW_DESKTOP.width}x${DESIGN_PREVIEW_DESKTOP.height}`}
+          style={{
+            position: "absolute",
+            left: visibleLayout.left / visibleLayout.scale,
+            top: visibleLayout.top / visibleLayout.scale,
+            display: "block",
+            width: DESIGN_PREVIEW_DESKTOP.width,
+            height: DESIGN_PREVIEW_DESKTOP.height,
+            border: 0,
+            background: "white",
+            opacity: preview.status === "ready" ? 1 : 0,
+            pointerEvents: "none",
+            zoom: visibleLayout.scale,
+          }}
         />
       )}
-      {mounted && type === "html" && preview.status === "error" && (
-        <span style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", color: "var(--t5)", fontSize: 11.5 }}>
-          动态预览加载失败
+      {mounted && pending && (
+        <span aria-label="正在载入模板预览" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--t5)", fontSize: 11.5 }}>
+          正在载入预览…
+        </span>
+      )}
+      {mounted && preview.status === "error" && (
+        <span role="status" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--t5)", fontSize: 11.5 }}>
+          预览不可用
         </span>
       )}
     </div>
@@ -288,7 +405,7 @@ export function DesignTemplateSelectionCard({
               disabled={!selectable}
               aria-pressed={active}
               onClick={() => setSelectedId(candidate.id)}
-              style={{ position: "relative", padding: 0, overflow: "hidden", textAlign: "left", border: `1.5px solid ${active ? "var(--acc)" : "var(--line)"}`, borderRadius: 10, background: active ? "var(--accBgSoft)" : "var(--card)", cursor: selectable ? "pointer" : "default" }}
+              style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", padding: 0, overflow: "hidden", textAlign: "left", border: `1.5px solid ${active ? "var(--acc)" : "var(--line)"}`, borderRadius: 10, background: active ? "var(--accBgSoft)" : "var(--card)", cursor: selectable ? "pointer" : "default", appearance: "none", WebkitAppearance: "none" }}
             >
               {candidate.recommended && <span style={{ position: "absolute", zIndex: 1, top: 7, right: 7, borderRadius: 999, padding: "2px 7px", background: "var(--acc)", color: "var(--onAcc)", fontSize: 10, fontWeight: 700 }}>推荐</span>}
               {(() => {

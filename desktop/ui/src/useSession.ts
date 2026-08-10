@@ -887,6 +887,9 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
   // 卸载即断开
   useEffect(() => () => core.dispose(), [core]);
 
+  const sessionUploadUrl = useCallback((path: string) => uploadFileURL(id!, path), [id]);
+  const sessionDesignPreviewHtml = useCallback((path: string) => readDesignTemplatePreview(id!, path), [id]);
+
   return {
     id,
     chat,
@@ -910,8 +913,8 @@ export function useSession(opts: { onSessionsChanged?: () => void } = {}): Sessi
     ensureLoaded: core.ensureLoaded,
     outline,
     loadFrame: core.loadFrame,
-    uploadUrl: id ? (p: string) => uploadFileURL(id, p) : undefined,
-    designPreviewHtml: id ? (p: string) => readDesignTemplatePreview(id, p) : undefined,
+    uploadUrl: id ? sessionUploadUrl : undefined,
+    designPreviewHtml: id ? sessionDesignPreviewHtml : undefined,
     open: core.open,
     close: core.close,
     setInput,

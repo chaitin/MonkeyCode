@@ -38,8 +38,12 @@ pub trait ShellCtx: Send + Sync + 'static {
 
     /// 引擎进程的 home/cwd 与额外环境。生产默认跟随当前用户；测试替身可
     /// 逐子进程注入隔离目录，禁止通过 set_var 污染并行测试进程。
-    fn process_home(&self) -> Option<PathBuf> { crate::config::home_dir() }
-    fn engine_env_overrides(&self) -> Vec<(String, OsString)> { Vec::new() }
+    fn process_home(&self) -> Option<PathBuf> {
+        crate::config::home_dir()
+    }
+    fn engine_env_overrides(&self) -> Vec<(String, OsString)> {
+        Vec::new()
+    }
 
     /// 引擎进程非 stop() 退出(reader 读到 stdout EOF)。driver 只负责**报告**
     /// 事实,摘句柄/置崩溃态/退避重启这些策略全在壳侧(main.rs),transport
@@ -70,13 +74,19 @@ pub struct OhmyDriver(pub(super) Arc<Inner>);
 
 impl OhmyDriver {
     /// system/ready 的增量能力是引擎/壳协商的唯一事实来源。
-    pub fn has_capability(&self, capability: &str) -> bool { self.0.has_cap(capability) }
+    pub fn has_capability(&self, capability: &str) -> bool {
+        self.0.has_cap(capability)
+    }
 
     /// system/ready 宣告的内核版本；发布产物为 Agent commit hash。
-    pub fn version(&self) -> String { self.0.transport.engine_version.lock_ok().clone() }
+    pub fn version(&self) -> String {
+        self.0.transport.engine_version.lock_ok().clone()
+    }
 
     /// 引擎进程实例号:壳用它判定退出通知是否来自当前这一个。
-    pub fn instance(&self) -> u64 { self.0.transport.instance }
+    pub fn instance(&self) -> u64 {
+        self.0.transport.instance
+    }
 
     /// WSL 运行环境的发行版名(本机模式 None)。repo/uploads 的
     /// wsl_distro 参数从这里接回,不再翻配置。
@@ -94,7 +104,9 @@ impl OhmyDriver {
     /// (\\wsl$\<发行版>\home\<用户>;Linux 冒烟恒等)。本机模式 None。
     pub fn wsl_workdir_base(&self) -> Option<String> {
         self.0.wsl.as_ref().map(|w| {
-            crate::wsl::host_fs_view(&w.distro, &w.guest_home).to_string_lossy().into_owned()
+            crate::wsl::host_fs_view(&w.distro, &w.guest_home)
+                .to_string_lossy()
+                .into_owned()
         })
     }
 }
@@ -163,20 +175,38 @@ pub(super) struct ManifestModel {
 
 /// 清单模型解析(壳 models.json 词汇:name/provider/base_url/api_key/model/…)。
 pub(super) fn parse_manifest_models(models: &Value) -> Vec<ManifestModel> {
-    let Some(arr) = models.as_array() else { return vec![] };
+    let Some(arr) = models.as_array() else {
+        return vec![];
+    };
     arr.iter()
         .filter_map(|m| {
             let name = m.get("name").and_then(|v| v.as_str())?.to_string();
             Some(ManifestModel {
                 name,
                 default: m.get("default").and_then(|v| v.as_bool()).unwrap_or(false),
-                source: m.get("source").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                think: m.get("think").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                source: m
+                    .get("source")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                think: m
+                    .get("think")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 // unwrap_or 而非 ?:旧条目可能没有这些字段,缺省不能让
                 // 整条从选择器消失(locked 缺省 false = 旧数据照常可选)
-                model: m.get("model").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                model: m
+                    .get("model")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 locked: m.get("locked").and_then(|v| v.as_bool()).unwrap_or(false),
-                owner: m.get("owner").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                owner: m
+                    .get("owner")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
             })
         })
         .collect()

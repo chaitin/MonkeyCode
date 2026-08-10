@@ -15,7 +15,7 @@ tauri-build = { version = "2", features = [] }
 # devtools:release 包保留 WebView 控制台能力(内部分发,非 App Store,
 # 无私有 API 顾虑;线上排障全靠它)。右键菜单已改壳内自绘、不暴露"检查
 # 元素",入口是 UI 侧快捷键 F12 / Ctrl|Cmd+Shift+I → open_devtools 命令
-tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api", "devtools", "unstable"] }
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api", "devtools", "unstable", "protocol-asset"] }
 getrandom = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

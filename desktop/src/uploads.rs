@@ -11,6 +11,7 @@ use std::sync::{Mutex, OnceLock};
 
 use base64::Engine as _;
 use serde_json::{json, Value};
+use sha2::Digest as _;
 
 use crate::util::LockExt;
 
@@ -20,6 +21,7 @@ use crate::util::LockExt;
 const UPLOAD_MAX_BYTES: usize = 20 * 1024 * 1024;
 
 pub(crate) const DESIGN_TEMPLATE_PREVIEW_ROOT: &str = ".monkeycode/design/template-previews";
+pub(crate) const DESIGN_TEMPLATE_RENDERED_ROOT: &str = "rendered-template-previews";
 const DESIGN_TEMPLATE_FILE_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const DESIGN_TEMPLATE_TOTAL_MAX_BYTES: u64 = 32 * 1024 * 1024;
 // The iframe has an opaque origin (sandbox without allow-same-origin). Every local
@@ -435,7 +437,7 @@ pub fn read_design_template_html(
     let mut candidate = root.join(relative);
     reject_symlink(&workspace, &candidate)?;
     if std::fs::symlink_metadata(&candidate)
-        .map_err(|e| format!("读取模板预览失败: {e}"))?
+        .map_err(|e| format!("读取模板预览 {} 失败: {e}", candidate.display()))?
         .is_dir()
     {
         candidate = candidate.join("index.html");
@@ -477,9 +479,232 @@ pub fn read_design_template_html(
     let html = String::from_utf8(bytes).map_err(|_| "模板预览 HTML 必须是 UTF-8".to_string())?;
     let html = inliner.rewrite_html(&html, canonical.parent().ok_or("模板预览入口无父目录")?)?;
     // First parser token: even malformed bundles cannot execute before the policy.
-    let policy =
-        format!(r#"<meta http-equiv="Content-Security-Policy" content="{DESIGN_TEMPLATE_CSP}">"#);
-    Ok(format!("{policy}{html}"))
+    Ok(format!("{}{html}", design_template_csp_meta()))
+}
+
+/// Create the dedicated Desktop-owned rendering directory below an AppHandle cache/data
+/// directory. The caller supplies only a Tauri-resolved private base, never Agent input.
+pub fn prepare_design_template_preview_root(app_cache_dir: &Path) -> Result<PathBuf, String> {
+    if !app_cache_dir.is_absolute() {
+        return Err("模板预览应用缓存根必须是绝对路径".into());
+    }
+    std::fs::create_dir_all(app_cache_dir).map_err(|e| format!("创建应用缓存目录失败: {e}"))?;
+    let cache_meta = std::fs::symlink_metadata(app_cache_dir)
+        .map_err(|e| format!("检查应用缓存目录失败: {e}"))?;
+    if cache_meta.file_type().is_symlink() || !cache_meta.is_dir() {
+        return Err("模板预览应用缓存根不允许符号链接或非目录".into());
+    }
+
+    let rendered_root = app_cache_dir.join(DESIGN_TEMPLATE_RENDERED_ROOT);
+    match std::fs::symlink_metadata(&rendered_root) {
+        Ok(meta) if meta.file_type().is_symlink() || !meta.is_dir() => {
+            return Err("模板预览渲染缓存根不允许符号链接或非目录".into());
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::create_dir(&rendered_root)
+                .map_err(|e| format!("创建模板预览渲染缓存目录失败: {e}"))?;
+        }
+        Err(e) => return Err(format!("检查模板预览渲染缓存目录失败: {e}")),
+    }
+    set_private_directory_permissions(&rendered_root)?;
+
+    let canonical_base =
+        std::fs::canonicalize(app_cache_dir).map_err(|e| format!("应用缓存根无效: {e}"))?;
+    let canonical_root = std::fs::canonicalize(&rendered_root)
+        .map_err(|e| format!("模板预览渲染缓存根无效: {e}"))?;
+    if canonical_root.parent() != Some(canonical_base.as_path())
+        || canonical_root.file_name().and_then(|v| v.to_str())
+            != Some(DESIGN_TEMPLATE_RENDERED_ROOT)
+    {
+        return Err("模板预览渲染缓存根未位于专用应用缓存目录".into());
+    }
+    Ok(canonical_root)
+}
+
+/// Materialize the rewritten bundle outside Agent's integrity-checked source cache.
+/// `output_root` must be the dedicated root returned by
+/// `prepare_design_template_preview_root`. Source bytes remain confined to `workdir`.
+pub fn render_design_template_preview(
+    workdir: &str,
+    wsl_distro: Option<&str>,
+    path: &str,
+    output_root: &Path,
+) -> Result<PathBuf, String> {
+    let workspace = uploads_root(workdir, wsl_distro)?;
+    let rendered_root = secure_render_cache_root(&workspace, output_root)?;
+    let html = read_design_template_html(workdir, wsl_distro, path)?;
+    if !html.starts_with(&design_template_csp_meta()) {
+        return Err("模板预览缺少预期 CSP".into());
+    }
+
+    let mut source_hasher = sha2::Sha256::new();
+    source_hasher.update(path.trim().as_bytes());
+    let source_key = format!("{:x}", source_hasher.finalize());
+    let mut output_hasher = sha2::Sha256::new();
+    output_hasher.update(html.as_bytes());
+    let output_key = format!("{:x}", output_hasher.finalize());
+    let target = rendered_root.join(format!("{source_key}-{output_key}.html"));
+
+    if generated_file_matches(&rendered_root, &target, &output_key)? {
+        harden_generated_file(&target)?;
+        return Ok(target);
+    }
+
+    static NEXT_RENDER_TEMP: AtomicU64 = AtomicU64::new(1);
+    let temp = rendered_root.join(format!(
+        ".{source_key}-{}-{}.tmp",
+        std::process::id(),
+        NEXT_RENDER_TEMP.fetch_add(1, Ordering::Relaxed)
+    ));
+    let write_result = (|| -> Result<(), String> {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&temp)
+            .map_err(|e| format!("创建模板预览渲染缓存失败: {e}"))?;
+        file.write_all(html.as_bytes())
+            .map_err(|e| format!("写入模板预览渲染缓存失败: {e}"))?;
+        file.sync_all()
+            .map_err(|e| format!("同步模板预览渲染缓存失败: {e}"))?;
+        drop(file);
+        // Publish an already read-only inode, so no writable pathname is ever exposed.
+        harden_generated_file(&temp)?;
+        match std::fs::rename(&temp, &target) {
+            Ok(()) => Ok(()),
+            Err(first) => {
+                if generated_file_matches(&rendered_root, &target, &output_key)? {
+                    harden_generated_file(&target)?;
+                    return Ok(());
+                }
+                let target_meta = std::fs::symlink_metadata(&target);
+                if let Ok(meta) = target_meta {
+                    if meta.is_dir() && !meta.file_type().is_symlink() {
+                        return Err("模板预览渲染目标被目录占用".into());
+                    }
+                    std::fs::remove_file(&target)
+                        .map_err(|e| format!("移除被篡改的模板预览缓存失败: {e}"))?;
+                }
+                std::fs::rename(&temp, &target)
+                    .map_err(|e| format!("发布模板预览渲染缓存失败: {first}; 重试失败: {e}"))
+            }
+        }
+    })();
+    let _ = std::fs::remove_file(&temp);
+    write_result?;
+    if !generated_file_matches(&rendered_root, &target, &output_key)? {
+        return Err("模板预览渲染缓存校验失败".into());
+    }
+    harden_generated_file(&target)?;
+    Ok(target)
+}
+
+fn design_template_csp_meta() -> String {
+    format!(r#"<meta http-equiv="Content-Security-Policy" content="{DESIGN_TEMPLATE_CSP}">"#)
+}
+
+fn secure_render_cache_root(workspace: &Path, output_root: &Path) -> Result<PathBuf, String> {
+    if !output_root.is_absolute()
+        || output_root.file_name().and_then(|v| v.to_str()) != Some(DESIGN_TEMPLATE_RENDERED_ROOT)
+    {
+        return Err("模板预览渲染缓存必须是专用绝对路径".into());
+    }
+    let meta = std::fs::symlink_metadata(output_root)
+        .map_err(|e| format!("检查模板预览渲染缓存根失败: {e}"))?;
+    if meta.file_type().is_symlink() || !meta.is_dir() {
+        return Err("模板预览渲染缓存根不允许符号链接或非目录".into());
+    }
+    let canonical_workspace =
+        std::fs::canonicalize(workspace).map_err(|e| format!("工作区路径无效: {e}"))?;
+    let canonical_root =
+        std::fs::canonicalize(output_root).map_err(|e| format!("模板预览渲染缓存根无效: {e}"))?;
+    if canonical_root.starts_with(&canonical_workspace)
+        || canonical_workspace.starts_with(&canonical_root)
+    {
+        return Err("模板预览渲染缓存不得位于工作区内或包含工作区".into());
+    }
+    set_private_directory_permissions(&canonical_root)?;
+    Ok(canonical_root)
+}
+
+fn generated_file_matches(root: &Path, path: &Path, expected_hash: &str) -> Result<bool, String> {
+    if path.parent() != Some(root) {
+        return Err("模板预览渲染缓存超出生成根".into());
+    }
+    let meta = match std::fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(format!("检查模板预览渲染缓存失败: {e}")),
+    };
+    if meta.file_type().is_symlink() || !meta.is_file() {
+        return Ok(false);
+    }
+    let canonical =
+        std::fs::canonicalize(path).map_err(|e| format!("模板预览渲染缓存路径无效: {e}"))?;
+    if canonical.parent() != Some(root) {
+        return Err("模板预览渲染缓存超出生成根".into());
+    }
+    let bytes = std::fs::read(&canonical).map_err(|e| format!("读取模板预览渲染缓存失败: {e}"))?;
+    if !bytes.starts_with(design_template_csp_meta().as_bytes()) {
+        return Ok(false);
+    }
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(&bytes);
+    Ok(format!("{:x}", hasher.finalize()) == expected_hash)
+}
+
+#[cfg(unix)]
+fn set_private_directory_permissions(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+        .map_err(|e| format!("收紧模板预览缓存目录权限失败: {e}"))?;
+    let mode = std::fs::symlink_metadata(path)
+        .map_err(|e| format!("检查模板预览缓存目录权限失败: {e}"))?
+        .mode()
+        & 0o777;
+    if mode != 0o700 {
+        return Err(format!("模板预览缓存目录权限不安全: {mode:o}"));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_private_directory_permissions(_path: &Path) -> Result<(), String> {
+    Ok(())
+}
+
+fn harden_generated_file(path: &Path) -> Result<(), String> {
+    let meta =
+        std::fs::symlink_metadata(path).map_err(|e| format!("检查模板预览渲染文件失败: {e}"))?;
+    if meta.file_type().is_symlink() || !meta.is_file() {
+        return Err("模板预览渲染文件不允许符号链接或非文件".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o400))
+            .map_err(|e| format!("收紧模板预览渲染文件权限失败: {e}"))?;
+        let mode = std::fs::symlink_metadata(path)
+            .map_err(|e| format!("检查模板预览渲染文件权限失败: {e}"))?
+            .mode()
+            & 0o777;
+        if mode != 0o400 {
+            return Err(format!("模板预览渲染文件权限不安全: {mode:o}"));
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let mut permissions = meta.permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(path, permissions)
+            .map_err(|e| format!("收紧模板预览渲染文件权限失败: {e}"))?;
+    }
+    Ok(())
 }
 
 struct BundleInliner<'a> {
@@ -491,7 +716,8 @@ struct BundleInliner<'a> {
 
 impl BundleInliner<'_> {
     fn read_file(&mut self, path: &Path) -> Result<Vec<u8>, String> {
-        let meta = std::fs::metadata(path).map_err(|e| format!("读取模板预览资源失败: {e}"))?;
+        let meta = std::fs::metadata(path)
+            .map_err(|e| format!("读取模板预览资源 {} 失败: {e}", path.display()))?;
         if !meta.is_file() || meta.len() > DESIGN_TEMPLATE_FILE_MAX_BYTES {
             return Err("模板预览资源不是文件或超过 8 MiB".into());
         }
@@ -502,7 +728,7 @@ impl BundleInliner<'_> {
         if self.total > DESIGN_TEMPLATE_TOTAL_MAX_BYTES {
             return Err("模板预览 bundle 依赖超过 32 MiB".into());
         }
-        std::fs::read(path).map_err(|e| format!("读取模板预览资源失败: {e}"))
+        std::fs::read(path).map_err(|e| format!("读取模板预览资源 {} 失败: {e}", path.display()))
     }
 
     fn resolve(&self, base: &Path, url: &str) -> Result<Option<PathBuf>, String> {
@@ -518,6 +744,9 @@ impl BundleInliner<'_> {
         }
         let path_part = url.split(['?', '#']).next().unwrap_or("");
         let decoded = percent_decode_path(path_part)?;
+        if decoded.starts_with('#') {
+            return Ok(None);
+        }
         let requested = Path::new(&decoded);
         if requested.is_absolute() {
             return Err("模板预览资源路径不允许 absolute".into());
@@ -773,7 +1002,7 @@ fn reject_symlink(anchor: &Path, candidate: &Path) -> Result<(), String> {
     for component in relative.components() {
         current.push(component.as_os_str());
         if std::fs::symlink_metadata(&current)
-            .map_err(|e| format!("读取模板预览失败: {e}"))?
+            .map_err(|e| format!("读取模板预览路径 {} 失败: {e}", current.display()))?
             .file_type()
             .is_symlink()
         {
@@ -982,6 +1211,207 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires MONKEYCODE_PREVIEW_WORKDIR and MONKEYCODE_PREVIEW_PATH"]
+    fn design_template_runtime_fixture_is_renderable() {
+        let workdir = std::env::var("MONKEYCODE_PREVIEW_WORKDIR").unwrap();
+        let path = std::env::var("MONKEYCODE_PREVIEW_PATH").unwrap();
+        let temporary_cache;
+        let output_root = if let Ok(root) = std::env::var("MONKEYCODE_PREVIEW_OUTPUT_ROOT") {
+            let requested = PathBuf::from(root);
+            assert_eq!(
+                requested.file_name().and_then(|v| v.to_str()),
+                Some(DESIGN_TEMPLATE_RENDERED_ROOT),
+                "MONKEYCODE_PREVIEW_OUTPUT_ROOT must end in {DESIGN_TEMPLATE_RENDERED_ROOT}"
+            );
+            prepare_design_template_preview_root(requested.parent().unwrap()).unwrap()
+        } else {
+            temporary_cache = TempDir::new();
+            prepare_design_template_preview_root(&temporary_cache.0).unwrap()
+        };
+        let generated =
+            render_design_template_preview(&workdir, None, &path, &output_root).unwrap();
+        let html = std::fs::read_to_string(&generated).unwrap();
+        assert!(html.starts_with("<meta http-equiv=\"Content-Security-Policy\""));
+        assert!(html.len() > 1024, "rendered preview is unexpectedly empty");
+        assert!(!generated.starts_with(Path::new(&workdir)));
+        if let Ok(expected) = std::env::var("MONKEYCODE_PREVIEW_EXPECTED_BYTES") {
+            assert_eq!(html.len(), expected.parse::<usize>().unwrap());
+        }
+        eprintln!("generated={} bytes={}", generated.display(), html.len());
+        if let Ok(output) = std::env::var("MONKEYCODE_PREVIEW_OUTPUT") {
+            std::fs::copy(&generated, output).unwrap();
+        }
+    }
+
+    #[test]
+    fn rendered_template_cache_is_private_hardened_rebuilt_and_invalidated() {
+        let tmp = TempDir::new();
+        let workspace = tmp.0.join("workspace");
+        let source = workspace
+            .join(DESIGN_TEMPLATE_PREVIEW_ROOT)
+            .join("digest/source");
+        std::fs::create_dir_all(&source).unwrap();
+        let entry = source.join("example.html");
+        std::fs::write(&entry, "<main>first</main>").unwrap();
+        let output_root =
+            prepare_design_template_preview_root(&tmp.0.join("desktop-app-cache")).unwrap();
+
+        let first = render_design_template_preview(
+            &workspace.to_string_lossy(),
+            None,
+            "digest/source/example.html",
+            &output_root,
+        )
+        .unwrap();
+        assert!(first.starts_with(&output_root));
+        assert!(!first.starts_with(&workspace));
+        let first_html = std::fs::read_to_string(&first).unwrap();
+        assert!(first_html.starts_with("<meta http-equiv=\"Content-Security-Policy\""));
+        for directive in [
+            "default-src 'none'",
+            "connect-src 'none'",
+            "frame-src 'none'",
+            "navigate-to 'none'",
+            "form-action 'none'",
+        ] {
+            assert!(first_html.contains(directive), "missing {directive}");
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            assert_eq!(
+                std::fs::metadata(&output_root)
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700
+            );
+            assert_eq!(
+                std::fs::metadata(&first).unwrap().permissions().mode() & 0o777,
+                0o400
+            );
+        }
+
+        let stable = render_design_template_preview(
+            &workspace.to_string_lossy(),
+            None,
+            "digest/source/example.html",
+            &output_root,
+        )
+        .unwrap();
+        assert_eq!(stable, first);
+
+        // The path is content-addressed, so corrupting an existing cache entry must
+        // rebuild the same pathname from confined source rather than serving tampering.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&first, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        #[cfg(windows)]
+        {
+            let mut permissions = std::fs::metadata(&first).unwrap().permissions();
+            permissions.set_readonly(false);
+            std::fs::set_permissions(&first, permissions).unwrap();
+        }
+        std::fs::write(&first, "<script>tampered()</script>").unwrap();
+        let rebuilt = render_design_template_preview(
+            &workspace.to_string_lossy(),
+            None,
+            "digest/source/example.html",
+            &output_root,
+        )
+        .unwrap();
+        assert_eq!(rebuilt, first);
+        assert_eq!(std::fs::read_to_string(&rebuilt).unwrap(), first_html);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let outside = tmp.0.join("outside-tamper.html");
+            std::fs::write(&outside, "outside").unwrap();
+            std::fs::remove_file(&first).unwrap();
+            symlink(&outside, &first).unwrap();
+            let rebuilt_symlink = render_design_template_preview(
+                &workspace.to_string_lossy(),
+                None,
+                "digest/source/example.html",
+                &output_root,
+            )
+            .unwrap();
+            assert_eq!(rebuilt_symlink, first);
+            assert_eq!(std::fs::read_to_string(&rebuilt_symlink).unwrap(), first_html);
+            assert_eq!(std::fs::read_to_string(outside).unwrap(), "outside");
+        }
+
+        std::fs::write(&entry, "<main>changed</main>").unwrap();
+        let changed = render_design_template_preview(
+            &workspace.to_string_lossy(),
+            None,
+            "digest/source/example.html",
+            &output_root,
+        )
+        .unwrap();
+        assert_ne!(changed, first);
+        assert!(std::fs::read_to_string(changed)
+            .unwrap()
+            .contains("changed"));
+    }
+
+    #[test]
+    fn rendered_template_rejects_arbitrary_workspace_and_symlink_roots() {
+        let tmp = TempDir::new();
+        let workspace = tmp.0.join("workspace");
+        let source = workspace
+            .join(DESIGN_TEMPLATE_PREVIEW_ROOT)
+            .join("digest/source");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("index.html"), "<main>safe</main>").unwrap();
+
+        let arbitrary = tmp.0.join("arbitrary-output");
+        std::fs::create_dir(&arbitrary).unwrap();
+        assert!(render_design_template_preview(
+            &workspace.to_string_lossy(),
+            None,
+            "digest/source/index.html",
+            &arbitrary,
+        )
+        .unwrap_err()
+        .contains("专用绝对路径"));
+
+        let workspace_root =
+            prepare_design_template_preview_root(&workspace.join("desktop-cache")).unwrap();
+        assert!(render_design_template_preview(
+            &workspace.to_string_lossy(),
+            None,
+            "digest/source/index.html",
+            &workspace_root,
+        )
+        .unwrap_err()
+        .contains("不得位于工作区"));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let real = prepare_design_template_preview_root(&tmp.0.join("real-cache")).unwrap();
+            let link_parent = tmp.0.join("linked-cache");
+            std::fs::create_dir(&link_parent).unwrap();
+            let linked = link_parent.join(DESIGN_TEMPLATE_RENDERED_ROOT);
+            symlink(&real, &linked).unwrap();
+            assert!(render_design_template_preview(
+                &workspace.to_string_lossy(),
+                None,
+                "digest/source/index.html",
+                &linked,
+            )
+            .unwrap_err()
+            .contains("符号链接"));
+        }
+    }
+
+    #[test]
     fn design_template_bundle_inlines_nested_css_font_image_and_script() {
         let tmp = TempDir::new();
         let root = tmp.0.join(DESIGN_TEMPLATE_PREVIEW_ROOT).join("card");
@@ -989,7 +1419,7 @@ mod tests {
         std::fs::create_dir_all(root.join("scripts")).unwrap();
         std::fs::create_dir_all(root.join("images")).unwrap();
         std::fs::create_dir_all(root.join("fonts")).unwrap();
-        std::fs::write(root.join("index.html"), r#"<link rel="stylesheet" href="styles/main.css"><style>.inline{background:url('images/card.png')}</style><img src="images/card.png"><script src="scripts/app.js"></script><script type="module">import './scripts/nested.js'</script>"#).unwrap();
+        std::fs::write(root.join("index.html"), r#"<link rel="stylesheet" href="styles/main.css"><style>.inline{background:url('images/card.png')}.noise{background-image:url("data:image/svg+xml,<svg><rect filter='url(%23n)'/></svg>")}</style><img src="images/card.png"><script src="scripts/app.js"></script><script type="module">import './scripts/nested.js'</script>"#).unwrap();
         std::fs::write(
             root.join("styles/main.css"),
             r#"@import "nested/theme.css"; .hero{background:url('../images/card.png')}"#,
@@ -1026,6 +1456,7 @@ mod tests {
         assert!(html.contains("data:text/css;base64,"));
         assert!(html.contains("data:text/javascript;base64,"));
         assert!(html.contains("data:image/png;base64,"));
+        assert!(html.contains("filter='url(%23n)'"));
         assert!(!html.contains("styles/main.css"));
         assert!(!html.contains("scripts/app.js"));
         let script_b64 = html
