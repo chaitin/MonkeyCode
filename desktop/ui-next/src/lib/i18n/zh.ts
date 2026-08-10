@@ -241,7 +241,7 @@ export const zh = {
   "settings.about.install": "下载更新",
   "settings.about.installing": "更新中…",
   "settings.about.checkFailed": "检查更新失败",
-  "settings.about.restartHint": "重启会中断正在运行的任务;浏览器工具、MCP 等改动需重启后生效(托盘菜单里也有同一入口)。",
+  "settings.about.installHint": "安装完成后应用将自动重启。",
   // 关于页的隐藏排障入口(连点版本号解锁);「打开扩展目录」的常驻入口在
   // 设置·浏览器分区,键沿用同一条
   "settings.about.openAppDir": "打开程序目录",

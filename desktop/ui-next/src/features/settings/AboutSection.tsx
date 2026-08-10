@@ -17,7 +17,6 @@ import { useEffect, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { exportEngineLog } from "@/lib/ipc/config";
-import { engineRestart } from "@/lib/ipc/engine";
 import { hostInfo, openAppDir, openLogDir, type HostInfo } from "@/lib/ipc/host";
 import { updateInstall } from "@/lib/ipc/update";
 import { checkUpdateNow, useUpdateInfo } from "@/features/update/useUpdate";
@@ -36,12 +35,11 @@ export function AboutSection() {
   // 接下来 30 分钟的回焦复查一起闸掉了(两条路共用 update.ts 的模块级闸门)
   const update = useUpdateInfo();
   const [phase, setPhase] = useState<"idle" | "checking" | "installing">("idle");
-  const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  const [msg, setMsg] = useState<{ text: string; error?: boolean; updateAvailable?: boolean } | null>(null);
   // 连点解锁计数:不落盘、不跨挂载(离开设置页即复位)——隐藏入口就该
   // 每次都要重新解一遍,免得某次排障之后按钮永久留在别人的关于页上
   const [taps, setTaps] = useState(0);
   const unlocked = taps >= UNLOCK_TAPS;
-  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -65,7 +63,10 @@ export function AboutSection() {
     }
     setMsg(
       s.available
-        ? { text: t("settings.about.available", { latest: s.latest ?? "", current: s.current }) }
+        ? {
+            text: t("settings.about.available", { latest: s.latest ?? "", current: s.current }),
+            updateAvailable: true,
+          }
         : { text: t("settings.about.upToDate", { current: s.current }) },
     );
   };
@@ -79,22 +80,6 @@ export function AboutSection() {
       // 失败:复位忙态,失败文案外显(与侧栏 useUpdate 同一语义)
       setPhase("idle");
       setMsg({ text: t("update.failed", { reason: errMsg(e) }), error: true });
-    }
-  };
-
-  // 重启引擎:引擎横幅只在崩溃/启动失败时才出,正常跑着时界面上原本没有
-  // 任何入口,而「保存设置或重启引擎即可生效」这类提示到处都在指它
-  // (2026-08-07 用户报障「哪里可以重启引擎」)。托盘菜单里另有一份
-  const restartEngine = async () => {
-    setRestarting(true);
-    setMsg(null);
-    try {
-      await engineRestart();
-      setMsg({ text: t("engine.restartDone") });
-    } catch (e) {
-      setMsg({ text: errMsg(e), error: true });
-    } finally {
-      setRestarting(false);
     }
   };
 
@@ -158,39 +143,41 @@ export function AboutSection() {
       {msg && (
         <div
           role={msg.error ? "alert" : "status"}
-          className={msg.error ? "alert alert-error alert-soft py-1.5 text-xs" : "alert alert-success alert-soft py-1.5 text-xs"}
+          className={
+            msg.error
+              ? "alert alert-error alert-soft py-1.5 text-xs"
+              : msg.updateAvailable
+                ? "alert alert-info alert-soft py-1.5 text-xs"
+                : "alert alert-success alert-soft py-1.5 text-xs"
+          }
         >
-          {msg.text}
+          <span>
+            {msg.text}
+            {msg.updateAvailable && <> {t("settings.about.installHint")}</>}
+          </span>
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn btn-sm" disabled={restarting} onClick={() => void restartEngine()}>
-          {restarting && <span className="loading loading-spinner loading-xs" aria-hidden />}
-          {restarting ? t("engine.restarting") : t("engine.restart")}
-        </button>
-        {/* 连点版本号解锁的排障入口(常态不占位)。失败就地外显:壳的 Err
-            是中文,吞掉就成了「点了没反应」 */}
-        {unlocked && (
-          <>
-            <button type="button" className="btn btn-sm" onClick={() => void runDiag(openAppDir)}>
-              {t("settings.about.openAppDir")}
-            </button>
-            <button type="button" className="btn btn-sm" onClick={() => void runDiag(openLogDir)}>
-              {t("settings.about.openDataDir")}
-            </button>
-            {/* 另存一份引擎日志当报障附件:取消(返回 null)不出提示 */}
-            <button
-              type="button"
-              className="btn btn-sm"
-              title={t("settings.about.exportLogHint")}
-              onClick={() => void runDiag(exportEngineLog, (dest) => (dest ? t("settings.about.exportDone") : null))}
-            >
-              {t("settings.about.exportLog")}
-            </button>
-          </>
-        )}
-      </div>
-      <p className="px-1 text-xs text-base-content/50">{t("settings.about.restartHint")}</p>
+      {unlocked && (
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 连点版本号解锁的排障入口。失败就地外显:壳的 Err 是中文,
+              吞掉就成了「点了没反应」 */}
+          <button type="button" className="btn btn-sm" onClick={() => void runDiag(openAppDir)}>
+            {t("settings.about.openAppDir")}
+          </button>
+          <button type="button" className="btn btn-sm" onClick={() => void runDiag(openLogDir)}>
+            {t("settings.about.openDataDir")}
+          </button>
+          {/* 另存一份引擎日志当报障附件:取消(返回 null)不出提示 */}
+          <button
+            type="button"
+            className="btn btn-sm"
+            title={t("settings.about.exportLogHint")}
+            onClick={() => void runDiag(exportEngineLog, (dest) => (dest ? t("settings.about.exportDone") : null))}
+          >
+            {t("settings.about.exportLog")}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
