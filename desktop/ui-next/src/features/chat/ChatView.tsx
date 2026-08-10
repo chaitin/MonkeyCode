@@ -799,6 +799,9 @@ export function ChatView({
         </div>
       )}
 
+      {/* 大纲与消息/空态共用一个定位区域；footer 动态增高时该区域同步收缩，
+          大纲不会侵入输入框。 */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
       {empty ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6">
           <img src="/logo.png" alt="" aria-hidden className="h-13 w-13 rounded-2xl shadow-sm" />
@@ -855,9 +858,8 @@ export function ChatView({
       </div>
       )}
 
-      {/* 大纲挂在视图根(高度恒定的参照物),不挂日志视口:下方任务面板/
-          排队条长高会压矮视口,居中点列跟着跳 */}
       <OutlineNav entries={entries} activeSeq={activeSeq ?? undefined} onJump={onJump} />
+      </div>
 
       <footer className="shrink-0 border-t border-base-300 p-3">
         <div className="mx-auto flex chat-measure flex-col gap-2">

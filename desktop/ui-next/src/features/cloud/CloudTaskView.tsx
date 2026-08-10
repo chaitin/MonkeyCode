@@ -614,6 +614,8 @@ export function CloudTaskView({
         </div>
       )}
 
+      {/* 大纲的 absolute 包含块只覆盖消息/空态；header/footer 均在区域外。 */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
       {pending ? (
         // 启动页:VM 准备是以分钟计的过程,整屏让给时间线(此时必无对话)。
         // 居中用 m-auto 而**不是** items-center/justify-center(LAYOUT §5):
@@ -675,8 +677,8 @@ export function CloudTaskView({
         </div>
       )}
 
-      {/* 大纲挂在视图根(高度恒定的参照物),不挂日志视口(与 ChatView 同理) */}
       {!pending && <OutlineNav entries={entries} activeSeq={activeAnchor ?? undefined} onJump={onJumpOutline} />}
+      </div>
 
       {/* 云端文件:右滑抽屉,受控开合手法与 FilesDrawer 统一(scrim 点击关 +
           Esc 关,见上方 effect);面板挂在主区内(absolute,参照 relative main),

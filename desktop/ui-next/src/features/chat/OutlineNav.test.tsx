@@ -110,7 +110,13 @@ describe("点列限高的载体", () => {
     expect(shell.className).not.toMatch(/max-h-/);
     expect(rail.className).toContain("overflow-y-auto");
     expect(rail.className).toContain("mc-no-scrollbar");
-    // 百分比 max-height 在内容撑高的 dropdown 里解析成 none,必须用视口单位
-    expect(rail.className).toMatch(/max-h-\[\d+vh\]/);
+    // 外壳用消息区域的明确高度作为百分比限高基准，但保持 overflow visible
+    expect(shell.className).toContain("h-full");
+    expect(rail.className).toContain("max-h-full");
+    expect(rail.className).not.toMatch(/vh/);
+    fireEvent.mouseEnter(shell);
+    const panel = container.querySelector(".dropdown-content") as HTMLElement;
+    expect(panel.className).toContain("max-h-full");
+    expect(panel.className).not.toMatch(/vh/);
   });
 });
