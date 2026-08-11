@@ -1,7 +1,8 @@
 // 会话控制面的补充命令封装(sessions.ts 已冻结,新命令进本文件):
-// - session_call:切模型/思考档/权限模式,接收端 = 壳侧 driver/session.rs::
-//   session_call(session_set_model {model:展示名} / session_set_think
-//   {think:off|low|medium|high} / session_set_mode {mode:default|yolo});
+// - session_call:切模型/思考档/权限模式/手动压缩,接收端 = 壳侧
+//   driver/session.rs::session_call(session_set_model {model:展示名} /
+//   session_set_think {think:off|low|medium|high} / session_set_mode
+//   {mode:default|yolo} / session_compact {});
 //   应答 {result}/{error} 同构,error 转 reject 让调用方外显。
 //   注:模型/思考档运行中壳会拒绝(引擎限制),权限模式可热切。
 // - session_outline:提问大纲全量目录(user-input 帧投影),条目 content
@@ -30,6 +31,13 @@ export function sessionSetThink(id: string, think: string): Promise<void> {
 
 export function sessionSetMode(id: string, mode: string): Promise<void> {
   return sessionCall(id, "session_set_mode", { mode });
+}
+
+/** 手动压缩上下文(session_compact)。壳/引擎 ack 即返回——压缩异步跑,
+ * 进度与完成经帧外显(task_started → compact_status → task_ended);
+ * reject = 压缩没起来(忙碌/旧引擎无能力/会话未打开),调用方外显。 */
+export function sessionCompact(id: string): Promise<void> {
+  return sessionCall(id, "session_compact", {});
 }
 
 /** 提问大纲的一条(壳投影 + 本层解码;seq 与 UserItem.seq / DOM 的

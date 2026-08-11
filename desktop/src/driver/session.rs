@@ -1466,6 +1466,49 @@ impl OhmyDriver {
                 self.push_frame(id, |seq| frame::permission_mode_update(mode, seq));
                 Ok(json!({ "result": { "mode": mode } }))
             }
+            // 手动压缩上下文:引擎 ack 只表示已接活(LLM 摘要可能超 RPC 超时,
+            // 引擎异步跑),完成经 compaction/usage 事件 + turn/stopped 收尾——
+            // 壳按一轮任务管生命周期,压缩期间忙碌态成立,取消按钮可打断。
+            "session_compact" => {
+                if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
+                    return Err("执行中不能压缩上下文,请先取消当前任务".into());
+                }
+                if !self.session_created(id) {
+                    // 未在引擎侧物化的会话先 resume:压缩对象是引擎内存里的历史
+                    let mode = self.session_mode(id);
+                    let model_id = self.model_id_of(&self.session_model_name(id))?;
+                    self.create_resumed(id, &model_id, &mode).await?;
+                    self.apply_session_think(id, &self.engine_id(id)).await;
+                }
+                if !self.has_cap("session/compact") {
+                    return Err("当前引擎版本不支持手动压缩,请升级引擎".into());
+                }
+                // 乐观开轮(同 user-input:引擎收到即起跑,事件可能先于 ack 到达,
+                // 忙碌态与 task_started 不能依赖 ack 时序);turn 自增让取消
+                // 看门狗把这次压缩当独立一轮对表
+                if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
+                    s.running = true;
+                    s.turn += 1;
+                }
+                self.push_frame(id, frame::task_started);
+                self.emit_session_event(id, SessionStatus::Running.as_str());
+                match self
+                    .rpc("session/compact", json!({ "session_id": self.engine_id(id) }))
+                    .await
+                {
+                    Ok(_) => Ok(json!({ "result": { "status": "ok" } })),
+                    Err(e) => {
+                        // 引擎没接活:关掉乐观开的轮,错误经 Err 走 ErrorBar 外显
+                        // (不落 task-error 帧,免得同一条错误双份展示)
+                        if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
+                            s.running = false;
+                        }
+                        self.push_frame(id, frame::task_ended);
+                        self.emit_session_event(id, SessionStatus::Idle.as_str());
+                        Err(e)
+                    }
+                }
+            }
             other => Ok(json!({ "error": format!("ohmyagent 引擎不支持 {other}") })),
         }
     }

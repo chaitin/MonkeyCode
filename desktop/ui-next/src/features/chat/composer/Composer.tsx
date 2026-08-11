@@ -80,13 +80,25 @@ export function Composer({
   }, []);
 
   // ==== 斜杠指令面板(首字符 / 就地补全) ====
+  // 本地会话内置指令:引擎不产 available_commands_update 帧(该帧目前只有
+  // 云端在喂),没有内置表的话本地面板永远弹不出来。/compact 的执行在
+  // useComposer.send() 拦截(经 session_call 直达壳,不进消息通道);同名
+  // 时内置项优先,引擎将来若下发 compact 不会出现双条目。
+  const builtinCommands = useMemo<SlashCommand[]>(
+    () => [{ name: "compact", description: t("chat.cmd.compact") }],
+    [t],
+  );
+  const commands = useMemo(
+    () => [...builtinCommands, ...state.commands.filter((c) => !builtinCommands.some((b) => b.name === c.name))],
+    [builtinCommands, state.commands],
+  );
   const [slashSuppressed, setSlashSuppressed] = useState(false);
   const [active, setActive] = useState(0);
   const query = slashQuery(ctl.draft);
-  const slashOpen = query !== null && !slashSuppressed && state.commands.length > 0;
-  const list = useMemo(() => filterCommands(state.commands, query ?? ""), [state.commands, query]);
+  const slashOpen = query !== null && !slashSuppressed && commands.length > 0;
+  const list = useMemo(() => filterCommands(commands, query ?? ""), [commands, query]);
   const act = Math.min(active, Math.max(0, list.length - 1));
-  useEffect(() => setActive(0), [query, state.commands]);
+  useEffect(() => setActive(0), [query, commands]);
   // `/` 段被清掉 → 解除压制,下次敲 / 照常补全
   useEffect(() => {
     if (query === null) setSlashSuppressed(false);
