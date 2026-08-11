@@ -22,6 +22,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { trackBasicConcurrencyUpgradeEvent } from "@/lib/matomo"
 import { apiRequest } from "@/utils/requestUtils"
 import { hasProSubscription } from "@/utils/common"
 import { useAppRuntime } from "@/components/app-runtime-provider"
@@ -211,7 +212,10 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     }
 
     reloadSubscription()
-  }, [open, reloadSubscription])
+    if (!hasAdvancedPlan) {
+      trackBasicConcurrencyUpgradeEvent(user?.id || "", "subscription_plan_dialog_viewed")
+    }
+  }, [hasAdvancedPlan, open, reloadSubscription, user?.id])
 
   useEffect(() => {
     if (!open) {
@@ -259,10 +263,16 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     }, [], (resp) => {
       const paymentUrl = resp.data?.url
       if (resp.code === 0 && paymentUrl) {
+        if (!hasAdvancedPlan) {
+          trackBasicConcurrencyUpgradeEvent(user?.id || "", "subscription_checkout_created", plan, selectedOrderTotal)
+        }
         setConfirmSubscriptionPlan(null)
         onOpenChange(false)
         window.open(paymentUrl, "_blank", "noopener,noreferrer")
       } else {
+        if (!hasAdvancedPlan) {
+          trackBasicConcurrencyUpgradeEvent(user?.id || "", "subscription_checkout_failed", plan)
+        }
         toast.error(resp.message || t(isRenewingCurrentPlan ? "subscriptionPlan.toast.renewFailed" : "subscriptionPlan.toast.subscribeFailed", { plan: planLabel }))
       }
     })
@@ -327,8 +337,13 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                           "flex h-full w-full flex-col rounded-md border bg-background p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/40",
                           isSelected && "border-primary bg-primary/5",
                         )}
-                          onClick={() => setSelectedAccountPlanId(plan.id)}
-                        >
+                        onClick={() => {
+                          setSelectedAccountPlanId(plan.id)
+                          if (!hasAdvancedPlan) {
+                            trackBasicConcurrencyUpgradeEvent(user?.id || "", "subscription_plan_selected", plan.id)
+                          }
+                        }}
+                      >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2 font-medium">
                             <IconCrown className={cn("size-4", isSelected ? "text-primary" : "text-muted-foreground")} />

@@ -3959,7 +3959,9 @@ const cn = {
       empty: "暂无运行中的任务",
       unnamedTask: "未命名任务",
       stop: "终止",
-      upgrade: "升级专业会员或旗舰会员，可支持同时运行 3 个任务",
+      upgradeTitle: "解锁更高任务并发",
+      upgradeDescription: "升级专业会员或旗舰会员，最多可同时运行 3 个开发任务。",
+      upgradeAction: "查看会员套餐",
     },
     voice: {
       microphoneDenied: "无法访问麦克风，请检查权限设置",
