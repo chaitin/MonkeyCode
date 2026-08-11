@@ -64,8 +64,12 @@ describe("OutlineNav 交互", () => {
     const onJump = vi.fn();
     render(<OutlineNav entries={entries} onJump={onJump} />);
     const nav = screen.getByRole("navigation", { name: "提问大纲" });
-    expect(screen.queryByText("第一问")).toBeNull(); // 未悬停不浮面板
+    expect(screen.queryByText("第一问")).toBeNull();
     fireEvent.mouseEnter(nav.firstElementChild!);
+    expect(screen.queryByText("第一问")).toBeNull(); // 点列外的空白轨道不触发展开
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-rail]")!);
+    expect(screen.queryByText("第一问")).toBeNull(); // 点列自身的 padding / gap 也不触发
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
     expect(screen.getByText("第一问")).toBeTruthy();
     expect(screen.getByText("(空消息)")).toBeTruthy();
     fireEvent.click(screen.getByText("第一问"));
@@ -80,26 +84,45 @@ describe("OutlineNav 交互", () => {
       [{ kind: "user", text: "刚发的提问", seq: 9 }],
     );
     render(<OutlineNav entries={merged} onJump={onJump} />);
-    fireEvent.mouseEnter(screen.getByRole("navigation", { name: "提问大纲" }).firstElementChild!);
+    fireEvent.mouseEnter(screen.getByRole("navigation", { name: "提问大纲" }).querySelector("[data-outline-dot]")!);
     fireEvent.click(screen.getByText("刚发的提问"));
     expect(onJump).toHaveBeenCalledWith(9, undefined);
   });
 
   it("activeSeq 当前项:面板内该条 aria-current=true,其余不带", () => {
     render(<OutlineNav entries={entries} activeSeq={5} onJump={() => {}} />);
-    fireEvent.mouseEnter(screen.getByRole("navigation", { name: "提问大纲" }).firstElementChild!);
+    fireEvent.mouseEnter(screen.getByRole("navigation", { name: "提问大纲" }).querySelector("[data-outline-dot]")!);
     expect(screen.getByText("(空消息)").closest("button")?.getAttribute("aria-current")).toBe("true");
     expect(screen.getByText("第一问").closest("button")?.getAttribute("aria-current")).toBeNull();
   });
 });
 
-// 限高/滚动的载体是结构契约,不是样式偏好:挂错一层就整列溢出到 composer
-// 之下(2026-08-07 用户报障)。jsdom 量不了几何,这里钉「挂在谁身上」。
-describe("点列限高的载体", () => {
+// 点列仍保留限高，极小窗口下不会溢出到 composer；长会话则只展示
+// 当前轮附近的点，完整条目保留在展开面板中。
+describe("长对话点列压缩", () => {
   const many = outlineEntriesOf(
     Array.from({ length: 40 }, (_, i) => ({ seq: i + 1, offset: i * 10, text: `问题 ${i + 1}` })),
     [],
   );
+
+  it("常驻点列最多显示 12 条；无当前项时展示最新条目，展开面板仍保留全部", () => {
+    const { container } = render(<OutlineNav entries={many} onJump={() => {}} />);
+    const dots = [...container.querySelectorAll("[data-outline-dot]")];
+    expect(dots).toHaveLength(12);
+    expect(dots.map((dot) => dot.getAttribute("data-outline-dot"))).toEqual(
+      Array.from({ length: 12 }, (_, i) => String(i + 29)),
+    );
+
+    fireEvent.mouseEnter(container.querySelector("[data-outline-dot]")!);
+    expect(container.querySelectorAll(".dropdown-content li")).toHaveLength(40);
+  });
+
+  it("有当前项时点列围绕当前轮截取", () => {
+    const { container } = render(<OutlineNav entries={many} activeSeq={20} onJump={() => {}} />);
+    const dots = [...container.querySelectorAll("[data-outline-dot]")];
+    expect(dots).toHaveLength(12);
+    expect(dots.some((dot) => dot.getAttribute("data-outline-dot") === "20")).toBe(true);
+  });
 
   it("限高 + 纵滚 + 藏滚条都在点列自身,dropdown 外壳不带 overflow", () => {
     const { container } = render(<OutlineNav entries={many} onJump={() => {}} />);
@@ -114,7 +137,7 @@ describe("点列限高的载体", () => {
     expect(shell.className).toContain("h-full");
     expect(rail.className).toContain("max-h-full");
     expect(rail.className).not.toMatch(/vh/);
-    fireEvent.mouseEnter(shell);
+    fireEvent.mouseEnter(rail.querySelector("[data-outline-dot]")!);
     const panel = container.querySelector(".dropdown-content") as HTMLElement;
     expect(panel.className).toContain("max-h-full");
     expect(panel.className).not.toMatch(/vh/);

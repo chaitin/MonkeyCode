@@ -51,9 +51,12 @@ describe("anchorScrollTop(恢复:锚点 → scrollTop,越界钳制)", () => {
 });
 
 describe("outlineActiveSeq(视口当前提问判定,移植旧 outline.tsx)", () => {
-  it("空列表/全部还在顶线之下回 null", () => {
+  it("空列表回 null", () => {
     expect(outlineActiveSeq([], 0)).toBeNull();
-    expect(outlineActiveSeq([{ seq: 1, top: 100 }], 0)).toBeNull();
+  });
+
+  it("滚动到顶部且首条受容器内边距下移时，首条仍是当前项", () => {
+    expect(outlineActiveSeq([{ seq: 1, top: 48 }], 0)).toBe(1);
   });
 
   it("取顶线之上最后一条的 seq", () => {

@@ -58,12 +58,13 @@ export const OUTLINE_JUMP_INSET = 12;
 
 /** 视口当前所在的提问 = 视口顶线(含 INSET)之上最后一条条目的 seq;
  * 给布局的亚像素取整留 1px 余量,避免恰好对齐时来回跳。seqTops 按文档序
- * 传入;无命中(列表为空/全部还在顶线之下)回 null。 */
+ * 传入;若首条因容器内边距/顶部控件仍在顶线之下,它就是当前项;仅空列表
+ * 回 null。 */
 export function outlineActiveSeq(seqTops: Array<{ seq: number; top: number }>, viewportTop: number): number | null {
   let seq: number | null = null;
   for (const item of seqTops) {
     if (item.top - viewportTop > OUTLINE_JUMP_INSET + 1) break;
     seq = item.seq;
   }
-  return seq;
+  return seq ?? seqTops[0]?.seq ?? null;
 }

@@ -445,7 +445,7 @@ describe("聊天视图", () => {
     render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
     const nav = await screen.findByRole("navigation", { name: "提问大纲" });
-    fireEvent.mouseEnter(nav.firstElementChild!);
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
     // 目录条目在,正文里还没有(在更早的历史页里)
     expect(screen.getByText("最早的问题")).toBeTruthy();
     expect(ops.some((o) => o.cmd === "session_history")).toBe(false);
@@ -488,9 +488,9 @@ describe("聊天视图", () => {
     vi.spyOn(first, "getBoundingClientRect").mockReturnValue({ top: 180 } as DOMRect);
     vi.spyOn(second, "getBoundingClientRect").mockReturnValue({ top: 360 } as DOMRect);
     const nav = await screen.findByRole("navigation", { name: "提问大纲" });
-    fireEvent.mouseEnter(nav.firstElementChild!);
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
     await userEvent.click(within(nav).getByText("第一问"));
-    fireEvent.mouseEnter(nav.firstElementChild!);
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
     await userEvent.click(within(nav).getByText("第二问"));
 
     expect(assignedTops).toEqual([100, 360]);
@@ -506,7 +506,7 @@ describe("聊天视图", () => {
     render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
     const nav = await screen.findByRole("navigation", { name: "提问大纲" });
-    fireEvent.mouseEnter(nav.firstElementChild!);
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
     // DOM 里只有 seq=1 的气泡(seq=9 未加载),它就是滚动跟踪的当前项
     await waitFor(() =>
       expect(screen.getByText("第一问").closest("button")?.getAttribute("aria-current")).toBe("true"),

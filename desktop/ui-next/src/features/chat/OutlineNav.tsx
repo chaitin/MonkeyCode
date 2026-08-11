@@ -15,6 +15,7 @@ import type { ChatItem } from "@/lib/protocol/types";
 import { fmtClock } from "@/lib/util/fmt";
 
 const MAX_LABEL = 60;
+const MAX_RAIL_DOTS = 12;
 
 export interface OutlineEntry {
   /** 与 UserItem.seq / DOM 的 data-user-seq 对表。 */
@@ -106,6 +107,14 @@ export const OutlineNav = memo(function OutlineNav({
     e.label ||
     (e.attCount > 0 ? t("chat.outline.attachments", { count: e.attCount }) : t("chat.outline.emptyMsg"));
 
+  const activeIndex = entries.findIndex((e) => e.seq === activeSeq);
+  const railCenter = activeIndex >= 0 ? activeIndex : entries.length - 1;
+  const railStart = Math.min(
+    Math.max(0, railCenter - Math.floor(MAX_RAIL_DOTS / 2)),
+    entries.length - Math.min(entries.length, MAX_RAIL_DOTS),
+  );
+  const railEntries = entries.slice(railStart, railStart + MAX_RAIL_DOTS);
+
   return (
     <nav
       aria-label={t("chat.outline.label")}
@@ -116,13 +125,21 @@ export const OutlineNav = memo(function OutlineNav({
           受消息区域约束，不再拿 viewport 高度估算。 */}
       <div
         className={`dropdown dropdown-right dropdown-center pointer-events-auto flex h-full items-center ${open ? "dropdown-open" : ""}`}
-        onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
       >
-        <div className="mc-no-scrollbar flex max-h-full flex-col items-center gap-1.5 overflow-x-hidden overflow-y-auto px-1.5 py-2">
-          {entries.map((e) => (
+        <div
+          data-outline-rail
+          className="mc-no-scrollbar flex max-h-full flex-col items-center gap-1.5 overflow-x-hidden overflow-y-auto px-1.5 py-2"
+        >
+          {railEntries.map((e) => (
             // 当前点满不透明度、其余压暗:只用透明度差表达「在哪」,不换色
-            <span key={e.seq} aria-hidden className={`status shrink-0${e.seq === activeSeq ? "" : " opacity-40"}`} />
+            <span
+              key={e.seq}
+              data-outline-dot={e.seq}
+              aria-hidden
+              className={`status shrink-0${e.seq === activeSeq ? "" : " opacity-40"}`}
+              onMouseEnter={() => setOpen(true)}
+            />
           ))}
         </div>
         {open && (
