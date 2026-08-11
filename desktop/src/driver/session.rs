@@ -31,6 +31,11 @@ const CANCEL_GRACE_EXTRA_MS: u64 = 10_000;
 /// 冷修复补的错误文案。用户视角要能看懂"上一次不是我取消的,是应用没了"。
 const COLD_REPAIR_REASON: &str = "上次运行未正常结束(应用被强制退出),已按中断收尾";
 
+/// session/compact 的同步应答要等整段历史的 LLM 摘要跑完,30s 常规 RPC
+/// 预算远不够;放宽到大历史 + 慢模型也装得下的量级。超时只是本地放弃,
+/// 引擎侧压缩不回滚(见 session_compact 分支注释)。
+const COMPACT_RPC_TIMEOUT: Duration = Duration::from_secs(300);
+
 /// 普通对话不绑定用户项目，但引擎仍要求 cwd。每个新对话创建一个独立的
 /// 受管工作目录，根目录由 Tauri 按平台解析为本应用的 local data 目录。
 fn create_chat_workdir_in(root: &Path) -> Result<PathBuf, String> {
@@ -1466,9 +1471,12 @@ impl OhmyDriver {
                 self.push_frame(id, |seq| frame::permission_mode_update(mode, seq));
                 Ok(json!({ "result": { "mode": mode } }))
             }
-            // 手动压缩上下文:引擎 ack 只表示已接活(LLM 摘要可能超 RPC 超时,
-            // 引擎异步跑),完成经 compaction/usage 事件 + turn/stopped 收尾——
-            // 壳按一轮任务管生命周期,压缩期间忙碌态成立,取消按钮可打断。
+            // 手动压缩上下文:引擎**同步应答**(stdio.go handleSessionCompact,
+            // ForceCompact 跑完才回,成功携 context_used/window,全程不发
+            // turn/stopped)——应答即轮次边界,成败都在本分支就地收轮。
+            // 压缩期间引擎占忙碌位(sendMessage 被拒、cancel 可打断,打断
+            // 表现为本 RPC 返回错误);compaction/usage 事件先于应答到达,
+            // compact_status 系统行由事件通路照常外显。
             "session_compact" => {
                 if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
                     return Err("执行中不能压缩上下文,请先取消当前任务".into());
@@ -1483,26 +1491,44 @@ impl OhmyDriver {
                 if !self.has_cap("session/compact") {
                     return Err("当前引擎版本不支持手动压缩,请升级引擎".into());
                 }
-                // 乐观开轮(同 user-input:引擎收到即起跑,事件可能先于 ack 到达,
-                // 忙碌态与 task_started 不能依赖 ack 时序);turn 自增让取消
-                // 看门狗把这次压缩当独立一轮对表
+                // 乐观开轮:事件先于应答到达,忙碌态与 task_started 不能等
+                // RPC 返回;turn 自增让取消看门狗把这次压缩当独立一轮对表
                 if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
                     s.running = true;
                     s.turn += 1;
                 }
                 self.push_frame(id, frame::task_started);
                 self.emit_session_event(id, SessionStatus::Running.as_str());
-                match self
-                    .rpc("session/compact", json!({ "session_id": self.engine_id(id) }))
-                    .await
-                {
-                    Ok(_) => Ok(json!({ "result": { "status": "ok" } })),
-                    Err(e) => {
-                        // 引擎没接活:关掉乐观开的轮,错误经 Err 走 ErrorBar 外显
-                        // (不落 task-error 帧,免得同一条错误双份展示)
-                        if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
-                            s.running = false;
+                // 应答要等整段历史的 LLM 摘要,30s 常规预算不够,单独放宽。
+                // 超时是本地放弃:引擎可能仍在压缩并事后成功,期间上行会被
+                // 引擎忙碌守卫拒绝,错误如实外显,不做本地和解
+                let r = self
+                    .rpc_with_timeout(
+                        "session/compact",
+                        json!({ "session_id": self.engine_id(id) }),
+                        COMPACT_RPC_TIMEOUT,
+                    )
+                    .await;
+                if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
+                    s.running = false;
+                }
+                match r {
+                    Ok(resp) => {
+                        // 应答携带压缩后的权威上下文快照(usage 事件先行,
+                        // 这里兜底对齐,防事件被引擎重启等原因吞掉)
+                        if let (Some(used), Some(window)) = (
+                            resp.get("context_used").and_then(Value::as_i64),
+                            resp.get("context_window").and_then(Value::as_i64),
+                        ) {
+                            self.0.push_usage(id, used, window);
                         }
+                        self.push_frame(id, frame::task_ended);
+                        self.emit_session_event(id, SessionStatus::Idle.as_str());
+                        Ok(json!({ "result": { "status": "ok" } }))
+                    }
+                    Err(e) => {
+                        // 失败/被取消/超时:关轮,错误经 Err 走 ErrorBar 外显
+                        // (不落 task-error 帧,免得同一条错误双份展示)
                         self.push_frame(id, frame::task_ended);
                         self.emit_session_event(id, SessionStatus::Idle.as_str());
                         Err(e)

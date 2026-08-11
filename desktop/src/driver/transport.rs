@@ -538,8 +538,20 @@ impl OhmyDriver {
     // ==================== JSON-RPC ====================
 
     pub(super) async fn rpc(&self, method: &str, params: Value) -> Result<Value, String> {
+        self.rpc_with_timeout(method, params, RPC_TIMEOUT).await
+    }
+
+    /// 同 rpc,但放宽等待预算——仅供**引擎同步应答且本身耗时**的方法
+    /// (如 session/compact:应答要等整段历史的 LLM 摘要跑完)。常规命令
+    /// 一律走 rpc:预算越长,引擎挂死时用户等白屏的时间就越久。
+    pub(super) async fn rpc_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> Result<Value, String> {
         // 引擎已收摊就别再登记等待者。stdin_tx 是 unbounded 通道,writer 线程
-        // 早退后 send 依然"成功",于是这条请求会挂到 RPC_TIMEOUT(30s)才报错——
+        // 早退后 send 依然"成功",于是这条请求会挂到超时才报错——
         // 崩溃瞬间在途的命令因此白等半分钟。reader 清 pending 与本次登记之间
         // 的窗口就是靠这个标志收口的。
         if self.0.transport.stopped.load(Ordering::Relaxed) {
@@ -553,7 +565,7 @@ impl OhmyDriver {
             self.0.transport.pending.lock_ok().remove(&id);
             return Err("引擎已退出".into());
         }
-        let resp = match tokio::time::timeout(RPC_TIMEOUT, rx).await {
+        let resp = match tokio::time::timeout(timeout, rx).await {
             Ok(Ok(v)) => v,
             Ok(Err(_)) => return Err("引擎已退出".into()),
             Err(_) => {
