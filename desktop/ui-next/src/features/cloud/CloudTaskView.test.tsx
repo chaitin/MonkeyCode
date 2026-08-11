@@ -318,8 +318,9 @@ describe("CloudTaskView", () => {
     render(<CloudTaskView task={{ id: "t6", status: "finished" }} />);
     await screen.findByText("第二问"); // 初始窗口只有最新一轮
     const nav = await screen.findByRole("navigation", { name: "提问大纲" });
-    // 悬停点列浮出条目面板:全量目录(含未加载的更早提问)与回放窗口合并去重
-    fireEvent.mouseEnter(nav.firstElementChild!);
+    // 悬停到点上浮出条目面板(7e86e9e9 起面板只在点上展开,不再整列悬停):
+    // 全量目录(含未加载的更早提问)与回放窗口合并去重
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
     const panelEntries = screen.getAllByText(/第[一二].*问/).filter((el) => el.closest("nav"));
     expect(panelEntries.map((el) => el.textContent)).toEqual(["第一问", "第一点五问", "第二问"]);
 
