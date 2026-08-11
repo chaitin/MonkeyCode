@@ -426,7 +426,9 @@ export function ChatView({
     // title 重填首句);只有「本就没改过名又提交空」才是纯空转。
     // 落盘后必须主动重拉:壳侧 session_patch 不广播 session-event,
     // 不拉就没有任何信号回流(标题看着「改了没反应」)
-    const noop = next === meta.title || (!next && !meta.title_custom);
+    // 旧版本的用户改名只写 title、没有 title_custom；即使文本未变也要
+    // 发一次 patch 补上标记，否则头部仍按“未改名”优先显示 summary。
+    const noop = next ? next === meta.title && Boolean(meta.title_custom) : !meta.title_custom;
     if (!noop)
       void sessionPatch(meta.id, { title: next })
         .catch((e: unknown) => onActionError?.("notice.renameFailed", e instanceof Error ? e.message : String(e)))
