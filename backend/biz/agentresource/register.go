@@ -20,14 +20,13 @@ import (
 // ProvideAgentResource wires the agent-resource module. The ObjectStore is
 // picked from whichever bucket block is configured:
 //
-//   - object_storage.enabled = true  → AWS-SDK-v2 client (any S3-compatible
-//     store: MinIO, RustFS, real AWS). Reuses the same client avatar / repo /
-//     spec / temp uploads use, so single SDK in the binary.
-//   - aliyun.public_oss.bucket set    → aliyun-oss-go-sdk client. AWS SDK's
+//   - aliyun.public_oss configured   → aliyun-oss-go-sdk client. AWS SDK's
 //     SigV4 signer is incompatible with Aliyun OSS (SignatureDoesNotMatch +
-//     bucket double-prefix in path-style URLs), so we wire a native client
-//     just for this code path. Existing pkg/oss.Client is untouched; avatar
-//     etc. still go through the AWS SDK path when object_storage is on.
+//     bucket double-prefix in path-style URLs), so we check Aliyun first and
+//     use the native SDK. This is independent of object_storage; other modules
+//     (uploader, avatar, etc.) still use object_storage when it's on.
+//   - object_storage.enabled = true  → AWS-SDK-v2 client (any S3-compatible
+//     store: MinIO, RustFS, real AWS).
 //   - neither configured              → nil ObjectStore. Resolver downgrades
 //     to noopObjectStore; fetch/presign each fail and the per-asset skip
 //     pipeline keeps the task creating without rule/skill/plugin assets.
@@ -40,24 +39,24 @@ func ProvideAgentResource(i *do.Injector) {
 		cfg := do.MustInvoke[*config.Config](i)
 		logger := do.MustInvoke[*slog.Logger](i)
 
-		// Primary: ObjectStorage block — AWS-SDK-v2 client.
-		if cfg.ObjectStorage.Enabled {
-			opt := oss.S3Option{
-				ForcePathStyle: cfg.ObjectStorage.ForcePathStyle,
-				InitBucket:     cfg.ObjectStorage.InitBucket,
-			}
-			client, err := oss.NewS3Compatible(context.Background(), cfg.ObjectStorage, opt)
+		// Primary: aliyun.public_oss — native aliyun-oss-go-sdk client.
+		if pub := cfg.Aliyun.PublicOSS; pub.Bucket != "" && pub.Endpoint != "" {
+			logger.Info("agentresource: using aliyun.public_oss (native SDK)",
+				"endpoint", pub.Endpoint, "bucket", pub.Bucket)
+			client, err := oss.NewAliyunOSS(pub)
 			if err != nil {
 				return nil, err
 			}
 			return client, nil
 		}
 
-		// Fallback: aliyun.public_oss — native aliyun-oss-go-sdk client.
-		if pub := cfg.Aliyun.PublicOSS; pub.Bucket != "" && pub.Endpoint != "" {
-			logger.Info("agentresource: using aliyun.public_oss (native SDK)",
-				"endpoint", pub.Endpoint, "bucket", pub.Bucket)
-			client, err := oss.NewAliyunOSS(pub)
+		// Fallback: ObjectStorage block — AWS-SDK-v2 client.
+		if cfg.ObjectStorage.Enabled {
+			opt := oss.S3Option{
+				ForcePathStyle: cfg.ObjectStorage.ForcePathStyle,
+				InitBucket:     cfg.ObjectStorage.InitBucket,
+			}
+			client, err := oss.NewS3Compatible(context.Background(), cfg.ObjectStorage, opt)
 			if err != nil {
 				return nil, err
 			}
