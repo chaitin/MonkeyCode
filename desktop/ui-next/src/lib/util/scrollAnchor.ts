@@ -27,6 +27,30 @@ export function anchorScrollTop(tops: number[], anchor: number, offset: number):
   return Math.max(0, tops[i]! + offset);
 }
 
+// ==== 程序性滚动标记 ====
+// 贴底跟随的解除必须认得「用户向上滚」,但 scroll 事件不带来源:align 贴底、
+// 分带补偿(reconcileFarRows)、markdown 升格补偿、锚点恢复都会改 scrollTop。
+// 凡代码写 scrollTop 都在**写入后**记下落点,onScroll 拿事件时刻的位置对表:
+// 仍停在程序落点(±2px)= 程序滚动;偏离了 = 用户已接管。按落点对表而不是
+// 计数:浏览器会把连发的程序写合并成一个事件,计数必然残留,残留会把之后
+// 真正的用户滚动误判成程序滚(2026-08-11 切会话恢复位置报障的教训)。
+const progTargets = new WeakMap<Element, number>();
+
+/** 程序写 scrollTop **之后**调用:记录本次写入的实际落点(clamp 后值)。 */
+export function markProgrammaticScroll(el: Element) {
+  progTargets.set(el, (el as HTMLElement).scrollTop);
+}
+
+/** onScroll 查询:当前位置仍在最近一次程序落点上(±2px 容布局微调)则视为
+ * 程序滚动;一旦偏离即清除标记,后续事件都按用户滚动处理。 */
+export function consumeProgrammaticScroll(el: Element): boolean {
+  const target = progTargets.get(el);
+  if (target === undefined) return false;
+  if (Math.abs((el as HTMLElement).scrollTop - target) <= 2) return true;
+  progTargets.delete(el);
+  return false;
+}
+
 /** 大纲跳转后,目标气泡与日志视口顶部之间保留的呼吸空间。「当前项」判定
  * 必须使用同一条线,否则目标停在这条线时仍会把上一问标成当前(移植旧
  * outline.tsx,B10 大纲高亮/offset 补页消费)。 */

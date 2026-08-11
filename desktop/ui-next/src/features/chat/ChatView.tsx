@@ -30,7 +30,13 @@ import { repoChanges, repoReveal } from "@/lib/ipc/repo";
 import { sessionFrame, sessionPatch, type SessionMeta } from "@/lib/ipc/sessions";
 import { onNativeFileDrop, uploadFileURL } from "@/lib/ipc/uploads";
 import { workspaceRelativePath } from "@/lib/util/markdownPaths";
-import { anchorScrollTop, findAnchor, outlineActiveSeq } from "@/lib/util/scrollAnchor";
+import {
+  anchorScrollTop,
+  consumeProgrammaticScroll,
+  findAnchor,
+  markProgrammaticScroll,
+  outlineActiveSeq,
+} from "@/lib/util/scrollAnchor";
 import { createImeGuard } from "@/lib/util/slash";
 import { useEscLayer } from "@/lib/util/escLayer";
 import { useDismiss } from "@/lib/util/useDismiss";
@@ -88,6 +94,7 @@ export function ChatView({
   composerRef.current = composer;
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true); // 用户是否停留在底部(自动跟随滚动)
+  const lastScrollTop = useRef(0); // 上一次 scroll 事件的位置(判滚动方向)
   // 待恢复的锚点;回放期间每批都重新对齐(上方内容变高也不漂),用户主动滚动后交还控制权
   const restoreRef = useRef<{ anchor: number; offset: number } | null>(null);
   const restoreTimer = useRef(0);
@@ -122,6 +129,14 @@ export function ChatView({
     return tops;
   };
 
+  // 程序写 scrollTop 的唯一出口:值真的变了才打标记(没变不发 scroll 事件,
+  // 白记一笔会把之后的用户滚动误判成程序滚)。onScroll 靠标记区分来源
+  const setScrollTop = (el: HTMLElement, v: number) => {
+    const before = el.scrollTop;
+    el.scrollTop = v;
+    if (el.scrollTop !== before) markProgrammaticScroll(el);
+  };
+
   // 自动滚动:优先对齐待恢复锚点,否则贴底跟随。锚点条目还没回放出来时
   // 先不动(停在已回放内容的开头),出来后逐批对齐
   const align = () => {
@@ -130,9 +145,9 @@ export function ChatView({
     const a = restoreRef.current;
     if (a) {
       const tops = itemTops(el);
-      if (a.anchor < tops.length) el.scrollTop = anchorScrollTop(tops, a.anchor, a.offset);
+      if (a.anchor < tops.length) setScrollTop(el, anchorScrollTop(tops, a.anchor, a.offset));
     } else if (pinnedRef.current) {
-      el.scrollTop = el.scrollHeight;
+      setScrollTop(el, el.scrollHeight);
     }
   };
 
@@ -174,7 +189,12 @@ export function ChatView({
     const el = scrollRef.current;
     if (!el || !el.isConnected || restoreRef.current) return;
     const { anchor, offset } = findAnchor(itemTops(el), el.scrollTop);
-    scrollMemo.set(meta.id, { anchor, offset, pinned: pinnedRef.current });
+    // pinned 按几何兜底:人在底部就是贴底,写档不依赖旗标推断——旗标的
+    // 置位要看事件方向与程序滚动判定,快滚到底的最后一发事件被判成程序
+    // 滚动时旗标会漏置,切回来就不去底部了(2026-08-11 报障「滚到底再
+    // 切回来落在中间」)
+    const pinned = pinnedRef.current || el.scrollHeight - el.scrollTop - el.clientHeight < PIN_THRESHOLD;
+    scrollMemo.set(meta.id, { anchor, offset, pinned });
   };
 
   // 会话切换/挂载:复位跟随状态并取出记忆位置(不显式复位的话 pinnedRef
@@ -188,6 +208,8 @@ export function ChatView({
       restoreRef.current = null;
       align();
     }
+    // 方向判定基线跟着新会话走,免得首个 scroll 事件拿旧会话位置比出假「上滚」
+    lastScrollTop.current = scrollRef.current?.scrollTop ?? 0;
     return () => {
       saveAnchor();
       finishRestore();
@@ -248,13 +270,40 @@ export function ChatView({
     });
   };
 
-  // scroll 事件只做「贴底 → 跟随」的单向判定,离底不在这里判:程序滚动
-  // 同样发 scroll 事件,回放中一批内容长高就会把跟随误判成用户离底(实测
-  // 卡在中途)。离底判定只认用户真实输入(onWheel 上滚/右缘 mousedown)
+  // scroll 事件按来源判定贴底跟随(2026-08-11 报障「上滚到 user-input 突然
+  // 回滚」的根因修复):此前只做「进入贴底 → 跟随」的单向判定,离底只认
+  // wheel/右缘 mousedown——拖滚动条/PageUp 这类输入完全不解除跟随,而
+  // WebKit 拖动初期的插值滚动还会擦着底部区把 pinned 又置回 true;此时分带
+  // 兑现行高触发内容轨 RO → align 一把吸回底部,吸底事件再次自我钉住,
+  // 用户被困在底部(WebKit 复现:snaps=2,scrollTop 全程出不去)。
+  // 现在凡代码写 scrollTop 都打标记(setScrollTop/分带补偿),这里逐事件
+  // 消费:未标记的向上滚动 = 用户意图,解除跟随并终止锚点恢复,任何输入
+  // 方式都覆盖;向上事件即使擦着底部区也不重新钉住。原先担心的「回放中
+  // 内容长高误判离底」不复存在——纯内容增高不发 scroll 事件,程序贴底又
+  // 都带标记
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < PIN_THRESHOLD) pinnedRef.current = true;
+    const prog = consumeProgrammaticScroll(el);
+    const dy = el.scrollTop - lastScrollTop.current;
+    lastScrollTop.current = el.scrollTop;
+    if (!prog && dy < -1 && el.scrollHeight - el.scrollTop - el.clientHeight > 2) {
+      // 真离底才解除跟随。距底 >2px 这一条不可省:内容收缩引发的浏览器
+      // clamp 也是「未标记的向上事件」,但它的落点永远**正好在新的最底部**
+      // ——切回会话的回放期,分带把远行收成 60px 占位,scrollHeight 一缩
+      // 就是一发 clamp;当用户离底处理会把贴底跟随掐死在回放半路,最终
+      // 停在中间(2026-08-11 报障)。人还在底部就不算离开。
+      // 这里也不取消锚点恢复:恢复期同样有 clamp,真实用户接管由 wheel /
+      // 右缘 mousedown 显式终止(finishRestore)
+      pinnedRef.current = false;
+    } else if (dy > 1 && el.scrollHeight - el.scrollTop - el.clientHeight < PIN_THRESHOLD) {
+      // 向下滚进底部区恢复跟随。方向门槛(dy>1)不可省:拖动初期 WebKit 的
+      // 插值事件会擦着底部区,无方向判定会把刚解除的跟随又钉回去(吸底
+      // 陷阱)。不要求「非程序滚动」:程序性下滚落到底部区(align 贴底、
+      // 跳转到末轮)时恢复跟随本就是正确语义,而落点误判会让真实用户滚到
+      // 底后旗标漏置一拍
+      pinnedRef.current = true;
+    }
     scheduleSave();
     scheduleActive();
     // 滚动停止后布局仍会微调一次(不发 scroll 事件),停稳后补一次写档
@@ -316,7 +365,7 @@ export function ChatView({
     finishRestore();
     pinnedRef.current = true;
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) setScrollTop(el, el.scrollHeight);
   };
 
   // markdown 工作区文件链接:判界(工作区外拒绝)→ repo_reveal 文件管理器
@@ -489,7 +538,7 @@ export function ChatView({
     // 明确只滚消息日志。scrollIntoView 会自行挑选可滚祖先，消息区新增
     // wrapper 后可能滚到 wrapper，后续点击便不再改变真正日志的 scrollTop。
     const top = log.scrollTop + node.getBoundingClientRect().top - log.getBoundingClientRect().top;
-    log.scrollTop = top;
+    setScrollTop(log, top);
     setFlashSeq(seq);
     window.clearTimeout(flashTimer.current);
     flashTimer.current = window.setTimeout(() => setFlashSeq(null), FLASH_MS);
