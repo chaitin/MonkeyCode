@@ -73,7 +73,7 @@ function rowTrailing(meta: SessionMeta, t: T, attention: boolean): { tone: strin
  * 成了没人读的孤儿键——tooltip 只插值 trailing?.label,而这三种状态压根不给
  * trailing。结果是「已停止 / 可继续 / 尚未开始」在界面上无处可查:被引擎崩溃
  * 打断的后台任务,行上没点、tooltip 里也没词,彻底隐身。 */
-function rowStatusLabel(meta: SessionMeta, t: T): string {
+export function rowStatusLabel(meta: SessionMeta, t: T): string {
   if (meta.waiting_ask) return t("status.waitingAsk");
   switch (meta.status) {
     case "running":

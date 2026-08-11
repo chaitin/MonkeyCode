@@ -83,6 +83,7 @@ export function NewTaskModal({
   initialDir,
   initialCloudProject,
   initialKind,
+  initialText,
   onOpenSettings,
 }: {
   open: boolean;
@@ -103,6 +104,9 @@ export function NewTaskModal({
    *  开出来就该是会话页签,而不是每次都退回本地任务)。带目录/带云端项目
    *  的预填是更强的意图,优先级在它之上 */
   initialKind?: SessionKind | "cloud";
+  /** 首条消息预填(待办「派发成任务」把正文带进来);仅本地/会话页签消费,
+   *  云端页签的描述住在 NewCloudTask 自己的 state 里,不受它影响 */
+  initialText?: string;
 }) {
   const { t } = useI18n();
   const [kind, setKind] = useState<SessionKind | "cloud">("local");
@@ -150,9 +154,10 @@ export function NewTaskModal({
     if (!open) return;
     let alive = true;
     // 每次打开都是一次全新的创建流:清掉上一次的草稿与错误态
+    // (待办派发带 initialText 时以它起步,仍可改)
     dirTouched.current = false;
     setDirMenu(false);
-    setText("");
+    setText(initialText ?? "");
     setThink("");
     setError("");
     setOfferCreate(false);
@@ -207,7 +212,7 @@ export function NewTaskModal({
     return () => {
       alive = false;
     };
-  }, [open, initialDir, initialCloudProject, initialKind]);
+  }, [open, initialDir, initialCloudProject, initialKind, initialText]);
 
   const pickDir = (p: string) => {
     dirTouched.current = true;

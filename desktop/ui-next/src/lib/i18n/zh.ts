@@ -25,6 +25,7 @@ export const zh = {
   "rail.local": "本地任务",
   "rail.cloud": "云端任务",
   "rail.chat": "本地会话",
+  "rail.todo": "待办",
   "rail.settings": "设置",
 
   "sidebar.label": "会话列表",
@@ -115,6 +116,24 @@ export const zh = {
   "main.welcome.detail": "从左侧选择会话,或新建一个任务。",
   "main.shellInfo": "壳 {version} · 引擎 {engine}",
   "main.engineNotReady": "未就绪",
+
+  // 待办覆盖视图(收集箱 + 调度台;TodoView)
+  "todo.close": "关闭",
+  "todo.add": "添加",
+  "todo.addPlaceholder": "记一件要做的事,Enter 添加",
+  "todo.empty.title": "还没有待办",
+  "todo.empty.detail": "把想让 Agent 做的事先记下来;每一条都能随时派发成本地或云端任务。",
+  "todo.doneSection": "已完成 · {n}",
+  "todo.dispatch": "派发成任务",
+  "todo.editAction": "编辑",
+  "todo.editHint": "点击编辑",
+  "todo.delete": "删除",
+  "todo.deleteConfirm": "确认删除(不可恢复)",
+  "todo.markDone": "标记完成",
+  "todo.markUndone": "标记未完成",
+  "todo.openTask": "打开关联任务",
+  "todo.openCloud": "到云端任务空间查看",
+  "todo.linkGone": "关联任务已被删除",
 
   "settings.appearance.theme": "外观主题",
   "settings.appearance.language": "语言",
@@ -343,6 +362,10 @@ export const zh = {
   "notice.deleteFailed": "删除失败:{reason}",
   // 点了一条过期提醒/托盘意图,目标已经不在了:必须给回话,否则主区空白一片
   "notice.openMissing": "无法打开:对应的任务或会话可能已被删除",
+  // 待办落盘失败必须外显(乐观状态还在,但重启即丢);加载失败更要说——
+  // todos.json 损坏时静默空表会被下一次变更的全量落盘覆盖
+  "notice.todoLoadFailed": "待办加载失败:{reason}",
+  "notice.todoSaveFailed": "待办保存失败:{reason}",
 
   "downloads.cancel": "取消下载",
   "downloads.dismiss": "关闭",

@@ -77,6 +77,9 @@ fn main() {
                 "cloud_ws_open",
                 "cloud_ws_send",
                 "cloud_ws_close",
+                // 待办清单(todos.rs)
+                "todos_load",
+                "todos_save",
                 // 百智云/云端(baizhi/)
                 "baizhi_status",
                 "baizhi_send_code",

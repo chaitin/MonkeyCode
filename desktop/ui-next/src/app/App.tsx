@@ -7,7 +7,7 @@
 //   侧栏 attention 高亮;
 // - D8 增量自愈:session-event/意图指向未知 id → 重拉全表再选中;
 // - H9 意图消费:open-* 事件送达即 takeUiIntent 消费壳侧副本,防刷新重放。
-import { IconAlertCircle, IconCircleCheck, IconCloud, IconFolderCode, IconHelpCircle, IconMessages, IconPlayerStop, IconSend, IconSettings, IconWorld, IconX } from "@tabler/icons-react";
+import { IconAlertCircle, IconChecklist, IconCircleCheck, IconCloud, IconFolderCode, IconHelpCircle, IconMessages, IconPlayerStop, IconSend, IconSettings, IconWorld, IconX } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 
 import { ChatView } from "@/features/chat/ChatView";
@@ -17,6 +17,8 @@ import { EngineBanner } from "@/features/engine/EngineBanner";
 import { NewTaskModal } from "@/features/newtask/NewTaskModal";
 import { SettingsView } from "@/features/settings/SettingsView";
 import { Sidebar } from "@/features/sidebar/Sidebar";
+import { TodoView } from "@/features/todo/TodoView";
+import { useTodos } from "@/features/todo/useTodos";
 import { ResizeEdges } from "@/features/titlebar/ResizeEdges";
 import { MacWindowControls, TitleBar } from "@/features/titlebar/TitleBar";
 import { windowContextLabel } from "@/app/shellChrome";
@@ -33,6 +35,7 @@ import {
 import { inDesktopShell, listen } from "@/lib/ipc/ipc";
 import { afterEngineReady, engineRestart, engineStatus, onEngineStatus, type EngineStatus } from "@/lib/ipc/engine";
 import type { CloudProject, CloudTask } from "@/lib/ipc/cloudtasks";
+import type { TodoItem } from "@/lib/ipc/todos";
 import {
   modelsList,
   onSessionEvent,
@@ -117,6 +120,8 @@ function SpaceRail({
   onChange,
   settingsOpen,
   onToggleSettings,
+  todoOpen,
+  onToggleTodo,
 }: {
   space: Space;
   /** 各空间「等待确认」的会话数(0 不出徽标);云端任务不在壳的会话表里,恒 0 */
@@ -124,6 +129,9 @@ function SpaceRail({
   onChange: (s: Space) => void;
   settingsOpen: boolean;
   onToggleSettings: () => void;
+  /** 待办**不是空间**,是设置同款的覆盖视图开关(侧栏保持原空间列表不动) */
+  todoOpen: boolean;
+  onToggleTodo: () => void;
 }) {
   const { t } = useI18n();
   const labels: Record<Space, string> = { local: t("rail.local"), cloud: t("rail.cloud"), chat: t("rail.chat") };
@@ -194,6 +202,19 @@ function SpaceRail({
             </div>
           );
         })}
+        {/* 待办:开关态覆盖视图(aria-pressed 同设置),不入空间枚举——
+            没有自己的侧栏列表,点开只换主区,选中态与空间高亮互不排斥 */}
+        <div className="tooltip tooltip-right" data-tip={t("rail.todo")}>
+          <button
+            type="button"
+            aria-label={t("rail.todo")}
+            aria-pressed={todoOpen}
+            className={`btn btn-ghost btn-square size-11 ${todoOpen ? "btn-active" : ""}`}
+            onClick={onToggleTodo}
+          >
+            <IconChecklist size={18} stroke={1.75} aria-hidden />
+          </button>
+        </div>
       </div>
       <div className="pb-2">
         {/* tooltip 外包一层同上;size-11 为 rail 结构尺寸 */}
@@ -292,9 +313,17 @@ export function App() {
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(readLastSession);
   // 新建任务视图:null=关;dir 携带「在此项目新建」的预填目录(本地),
-  // cloudProject 携带云端项目组头的预选项目(直接落云端页签)
-  const [creating, setCreating] = useState<{ dir?: string; cloudProject?: CloudProject } | null>(null);
+  // cloudProject 携带云端项目组头的预选项目(直接落云端页签);
+  // text/todoId 是待办派发链:text 预填首条消息,todoId 供创建成功后回链
+  const [creating, setCreating] = useState<{
+    dir?: string;
+    cloudProject?: CloudProject;
+    text?: string;
+    todoId?: string;
+  } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 待办覆盖视图(设置同款开关;派发打开新建视图时**不关它**,取消创建即回来)
+  const [todoOpen, setTodoOpen] = useState(false);
   const [cloudTask, setCloudTask] = useState<CloudTask | null>(null);
   const [cloudReload, setCloudReload] = useState(0);
   const [notices, setNotices] = useState<SessionNotice[]>([]);
@@ -334,6 +363,20 @@ export function App() {
     shellTimers.current.add(timer);
   };
 
+  // 待办清单(TodoView 消费;载入/落盘失败走壳级提示外显原因)
+  const todoOps = useTodos((kind, reason) =>
+    pushShell(kind === "load" ? "notice.todoLoadFailed" : "notice.todoSaveFailed", "error", {
+      params: { reason },
+    }),
+  );
+
+  /** 待办「派发成任务」:开新建视图预填正文,todoId 供创建成功后回链。
+   *  刻意不关 todoOpen——新建视图渲染优先级在待办之上,取消创建即回到清单。 */
+  const dispatchTodo = (item: TodoItem) => {
+    setSettingsOpen(false);
+    setCreating({ text: item.content, todoId: item.id });
+  };
+
   const clearNoticeTimer = (id: string) => {
     const timer = noticeTimers.current.get(id);
     if (timer === undefined) return;
@@ -362,9 +405,10 @@ export function App() {
   const setSpace = (next: Space) => {
     setSpaceState(next);
     writeSpace(next);
-    // 桌面客户端心智:点导航永远切走当前覆盖视图(设置/新建),不会"没反应"
+    // 桌面客户端心智:点导航永远切走当前覆盖视图(设置/新建/待办),不会"没反应"
     setSettingsOpen(false);
     setCreating(null);
+    setTodoOpen(false);
   };
 
   /** 摘掉某会话的提醒与侧栏 attention(打开它即视为已读)。 */
@@ -549,13 +593,13 @@ export function App() {
   // 任务时窗口切换器里仍挂着上一个本地会话的标题)
   useEffect(() => {
     const label = windowContextLabel(
-      { settingsOpen, creating: !!creating, cloudSpace: space === "cloud" },
+      { settingsOpen, creating: !!creating, todoOpen, cloudSpace: space === "cloud" },
       cloudTask,
       space === "cloud" ? null : current,
       t,
     );
     setWindowTitle(`${label} — ${t("app.name")}`);
-  }, [current, settingsOpen, creating, space, cloudTask, t]);
+  }, [current, settingsOpen, creating, todoOpen, space, cloudTask, t]);
 
   const select = (meta: SessionMeta) => {
     setCurrentId(meta.id);
@@ -563,6 +607,7 @@ export function App() {
     dismissSession(meta.id);
     setSettingsOpen(false);
     setCreating(null);
+    setTodoOpen(false);
   };
 
   /** 删除会话(侧栏右键与 ChatView ⋯ 菜单共用一套):成功才清 composer 留档、
@@ -611,7 +656,15 @@ export function App() {
       <ResizeEdges />
       <EngineBanner />
       <div className="flex min-h-0 flex-1">
-        <SpaceRail space={space} waiting={waiting} onChange={setSpace} settingsOpen={settingsOpen} onToggleSettings={() => { setCreating(null); setSettingsOpen((v) => !v); }} />
+        <SpaceRail
+          space={space}
+          waiting={waiting}
+          onChange={setSpace}
+          settingsOpen={settingsOpen}
+          onToggleSettings={() => { setCreating(null); setTodoOpen(false); setSettingsOpen((v) => !v); }}
+          todoOpen={todoOpen}
+          onToggleTodo={() => { setCreating(null); setSettingsOpen(false); setTodoOpen((v) => !v); }}
+        />
         <Sidebar
           space={space}
           sessions={sessions}
@@ -626,6 +679,7 @@ export function App() {
               setCloudTask(task);
               setSettingsOpen(false);
               setCreating(null);
+              setTodoOpen(false);
             },
             reloadKey: cloudReload,
             onDeleted: (id) => {
@@ -635,10 +689,12 @@ export function App() {
             onRefresh: () => setCloudReload((n) => n + 1),
             onOpenSettings: () => {
               setCreating(null);
+              setTodoOpen(false);
               setSettingsOpen(true); // 设置初始分区即「账号」,直达连接入口
             },
             onNewTaskIn: (project) => {
               setSettingsOpen(false);
+              setTodoOpen(false);
               setCreating({ cloudProject: project });
             },
           }}
@@ -646,10 +702,12 @@ export function App() {
             onSelect: select,
             onNewTask: () => {
               setSettingsOpen(false);
+              setTodoOpen(false);
               setCreating({});
             },
             onNewTaskIn: (workdir) => {
               setSettingsOpen(false);
+              setTodoOpen(false);
               setCreating({ dir: workdir });
             },
             // 改名/归档同理:成功才重拉,失败给原因(旧 UI「⚠ 重命名失败:
@@ -675,6 +733,7 @@ export function App() {
             open
             initialDir={creating.dir}
             initialCloudProject={creating.cloudProject}
+            initialText={creating.text}
             // 侧栏 ＋ 属于当前空间:rail 停在哪个空间,新建就默认开哪个页签
             initialKind={space}
             recentDirs={recentDirs}
@@ -686,16 +745,30 @@ export function App() {
             }}
             onClose={() => setCreating(null)}
             onCreated={(meta) => {
+              // 待办派发链:创建成功即回链去向(状态词回显靠会话表回查)
+              if (creating.todoId)
+                todoOps.markDispatched(creating.todoId, meta.kind === "chat" ? "chat" : "local", meta.id);
               refresh();
               select(meta);
               if (meta.kind === "chat") setSpace("chat");
               else setSpace("local");
             }}
             onCloudCreated={(task) => {
+              if (creating.todoId) todoOps.markDispatched(creating.todoId, "cloud", task.id);
               setSpace("cloud");
               setCloudTask(task);
               setCloudReload((n) => n + 1);
             }}
+          />
+        ) : todoOpen ? (
+          <TodoView
+            todos={todoOps.todos}
+            sessions={sessions}
+            ops={todoOps}
+            onDispatch={dispatchTodo}
+            onOpenSession={(id) => void openSessionById(id)}
+            onOpenCloud={() => setSpace("cloud")}
+            onClose={() => setTodoOpen(false)}
           />
         ) : space === "cloud" && cloudTask ? (
           <CloudTaskView

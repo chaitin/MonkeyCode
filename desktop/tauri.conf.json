@@ -84,6 +84,8 @@
             "allow-cloud-ws-open",
             "allow-cloud-ws-send",
             "allow-cloud-ws-close",
+            "allow-todos-load",
+            "allow-todos-save",
             "allow-baizhi-status",
             "allow-baizhi-send-code",
             "allow-baizhi-login",
