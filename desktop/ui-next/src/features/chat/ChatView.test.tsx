@@ -322,10 +322,10 @@ describe("聊天视图", () => {
     expect(screen.getByText("修复登录")).toBeTruthy();
   });
 
-  it("D4 改名守卫:Esc 放弃;空/未变不提交;失焦提交;IME 选字回车不提交", async () => {
+  it("D4 改名守卫:Esc 放弃;未变不提交;失焦提交;IME 选字回车不提交", async () => {
     const { ops } = stubShell();
-    render(<ChatView meta={META} />);
-    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    render(<ChatView meta={{ ...META, title_custom: true }} />);
+    await waitFor(() => expect(screen.getByText("修复登录")).toBeTruthy());
     const patches = () => ops.filter((o) => o.cmd === "session_patch");
     const open = () => {
       fireEvent.doubleClick(screen.getByText("修复登录"));
@@ -339,12 +339,8 @@ describe("聊天视图", () => {
     expect(patches()).toHaveLength(0);
     expect(screen.queryByRole("textbox", { name: "会话标题" })).toBeNull();
 
-    // 未变/空白:Enter 收编辑态但不发 patch
+    // 未变:Enter 收编辑态但不发 patch
     input = open();
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(patches()).toHaveLength(0);
-    input = open();
-    fireEvent.change(input, { target: { value: "   " } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(patches()).toHaveLength(0);
 
@@ -624,6 +620,32 @@ describe("聊天视图", () => {
     const patches = ops.filter((o) => o.cmd === "session_patch");
     expect(patches[0]?.args).toEqual({ id: "s1", patch: { title: "新标题" } });
     await waitFor(() => expect(patched).toBe(1)); // 落盘后主动重拉,meta 才会流回来
+  });
+
+  it("未自定义标题时清空输入不提交", async () => {
+    const { ops } = stubShell();
+    render(<ChatView meta={META} />);
+    await userEvent.click(screen.getByRole("button", { name: "会话标题" }));
+    const input = screen.getByRole("textbox", { name: "会话标题" });
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(ops.filter((o) => o.cmd === "session_patch")).toHaveLength(0);
+  });
+
+  it("旧版自定义标题缺 title_custom:重新确认已有标题仍发 patch 补标记", async () => {
+    const { ops } = stubShell();
+    render(<ChatView meta={{ ...META, title: "用户设置的标题", summary: "引擎生成的摘要" }} />);
+    await waitFor(() => expect(screen.getByText("引擎生成的摘要")).toBeTruthy());
+
+    await userEvent.click(screen.getByRole("button", { name: "会话标题" }));
+    const input = screen.getByRole("textbox", { name: "会话标题" }) as HTMLInputElement;
+    expect(input.value).toBe("用户设置的标题");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(ops.filter((o) => o.cmd === "session_patch")[0]?.args).toEqual({
+      id: "s1",
+      patch: { title: "用户设置的标题" },
+    });
   });
 
   it("铅笔的悬停区贴合标题,不横跨整条 header", async () => {
