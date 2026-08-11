@@ -129,6 +129,24 @@ describe("聊天视图", () => {
     expect(hist?.args).toEqual({ id: "s1", cursor: 7, limit: 3 });
   });
 
+  it("滚近顶部(一屏内)自动补一页更早历史,无需点按钮", async () => {
+    const { ops } = stubShell({ hasMore: true });
+    const { container } = render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    const log = container.querySelector<HTMLElement>("[data-chat-log]")!;
+    // happy-dom 无布局:手动给出「距顶不足一屏」的几何
+    Object.defineProperty(log, "clientHeight", { value: 500, configurable: true });
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+    await waitFor(() => expect(screen.getByText("更早的问题")).toBeTruthy());
+    expect(ops.find((o) => o.cmd === "session_history")).toBeTruthy();
+    // 没有更早历史后(has_more:false)不再重复触发
+    const calls = ops.filter((o) => o.cmd === "session_history").length;
+    fireEvent.scroll(log);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(ops.filter((o) => o.cmd === "session_history").length).toBe(calls);
+  });
+
   it("发送:user-input 帧 content 走 base64;失败不丢草稿", async () => {
     const { ops } = stubShell();
     render(<ChatView meta={META} />);

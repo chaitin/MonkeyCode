@@ -306,6 +306,14 @@ export function ChatView({
     }
     scheduleSave();
     scheduleActive();
+    // 滚近顶部(一屏内)自动补一页更早历史(2026-08-12 需求;此前只有顶部
+    // 手动按钮,按钮保留兜底)。loadEarlier 自带 busyRef 防重入;前插按元素
+    // 锚定保位后 scrollTop 被推离阈值,天然不连环,一页不足一屏才串行续页。
+    // 恢复期禁止:切会话恢复的锚点是**条目下标**,此刻前插会让下标整体
+    // 错位,恢复就对到错的条目上
+    if (hasMore && !loadingEarlier && !restoreRef.current && el.scrollTop < el.clientHeight) {
+      void onLoadEarlier();
+    }
     // 滚动停止后布局仍会微调一次(不发 scroll 事件),停稳后补一次写档
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(saveAnchor, 600);
