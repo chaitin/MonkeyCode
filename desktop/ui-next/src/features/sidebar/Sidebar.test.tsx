@@ -70,6 +70,18 @@ describe("侧栏(local 空间)", () => {
     expect(acts.onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "修复登录" }));
   });
 
+  it("项目图标随开合切换:展开 folder-open,收起 folder", async () => {
+    render(<Sidebar space="local" sessions={SESSIONS} currentId={null} actions={actions()} />);
+    const label = screen.getByText("alpha");
+    const summary = label.closest("summary") as HTMLElement;
+    expect(summary.querySelector(".tabler-icon-folder-open")).toBeTruthy();
+
+    await userEvent.click(label);
+    expect(detailsOf("alpha").open).toBe(false);
+    expect(summary.querySelector(".tabler-icon-folder")).toBeTruthy();
+    expect(summary.querySelector(".tabler-icon-folder-open")).toBeNull();
+  });
+
   it("用户改过名的行:改名压过摘要(title_custom;与 ChatView 头部同一优先级)", () => {
     const renamed = SESSIONS.map((s) => (s.id === "修复登录" ? { ...s, title_custom: true } : s));
     render(<Sidebar space="local" sessions={renamed} currentId={null} actions={actions()} />);

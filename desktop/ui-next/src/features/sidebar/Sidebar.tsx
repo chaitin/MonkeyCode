@@ -10,7 +10,7 @@
 //   btn、右键菜单走 lib/contextMenu(menu 皮相)。
 // 行交互:右键 = 行菜单(重命名/归档/删除二段确认)。
 // 行/组头/小节折叠的呈现件收口在 listKit(三列表统一,不做两套)。
-import { IconArchive, IconFolder, IconInbox, IconMessages, IconPlus, IconRefresh } from "@tabler/icons-react";
+import { IconArchive, IconFolder, IconFolderOpen, IconInbox, IconMessages, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import { CloudTaskList, useCloudProjects, useCloudTasks, type CloudTasksFeed } from "@/features/cloud/CloudTaskList";
@@ -277,7 +277,7 @@ function ProjectDetails({
               的 summary 加上它会把该行及下方整体顶下去 2px,指示线一出一进
               列表就上下跳 */}
           {dropTarget && <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary" />}
-          <GroupLabel icon={IconFolder} name={group.name} />
+          <GroupLabel icon={collapsed ? IconFolder : IconFolderOpen} name={group.name} />
           {waiting > 0 && <span className="badge badge-warning badge-xs">{waiting}</span>}
           {/* 快捷钮常驻占位、hover 只切可见性:插入式显隐会挤动项目名,鼠标一进一出就抖 */}
           {!archivedProject && (
