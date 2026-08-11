@@ -91,9 +91,10 @@ describe("斜杠指令面板", () => {
     await userEvent.type(box, "/");
     const panel = await screen.findByRole("listbox", { name: "斜杠指令" });
     expect(panel).toBeTruthy();
+    // 内置 /compact 排头(与引擎下发的同名条目去重),引擎清单接在其后
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
-      expect.stringContaining("/add-context"),
       expect.stringContaining("/compact"),
+      expect.stringContaining("/add-context"),
       expect.stringContaining("/review"),
     ]);
 
@@ -116,6 +117,44 @@ describe("斜杠指令面板", () => {
     expect(screen.queryByRole("listbox")).toBeNull(); // 填入即收起
     expect(document.activeElement).toBe(box); // 焦点还给输入框
     expect(sends(ops, "user-input")).toHaveLength(0); // 这一下 ↩ 不是发送
+  });
+
+  it("本地内置 /compact:引擎不下发命令表也弹面板;确认后走 session_call session_compact,不进消息通道", async () => {
+    const { ops } = stubShell();
+    render(<ChatView meta={META} />);
+    const box = await ready();
+    // 不喂 COMMANDS_FRAME:本地会话引擎不产 available_commands_update
+
+    await userEvent.type(box, "/");
+    expect(await screen.findByRole("listbox", { name: "斜杠指令" })).toBeTruthy();
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      expect.stringContaining("/compact"),
+    ]);
+
+    await userEvent.keyboard("{Enter}"); // 填入 "/compact "
+    expect((box as HTMLTextAreaElement).value).toBe("/compact ");
+    await userEvent.keyboard("{Enter}"); // 这一下才是执行
+    await waitFor(() => expect(calls(ops, "session_compact")).toHaveLength(1));
+    expect(calls(ops, "session_compact")[0]?.args?.id).toBe("s1");
+    expect(sends(ops, "user-input")).toHaveLength(0); // 指令不发消息
+    expect((box as HTMLTextAreaElement).value).toBe(""); // 已接受,清草稿
+  });
+
+  it("运行中 /compact:拦截外显错误、留住草稿,不上行也不排队", async () => {
+    const { ops, emit } = stubShell();
+    render(<ChatView meta={META} />);
+    const box = await ready();
+    emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
+    await waitFor(() => expect(screen.getByText("思考中")).toBeTruthy());
+
+    await userEvent.type(box, "/compact");
+    await userEvent.keyboard("{Enter}"); // 面板确认,填入
+    await userEvent.keyboard("{Enter}"); // 执行 → 忙碌拦截
+    expect(await screen.findByText("任务执行中,无法压缩上下文")).toBeTruthy();
+    expect(calls(ops, "session_compact")).toHaveLength(0);
+    expect(sends(ops, "user-input")).toHaveLength(0);
+    expect((box as HTMLTextAreaElement).value).toBe("/compact "); // 草稿不丢
+    expect(screen.queryByText("已排队")).toBeNull(); // 不落排队槽
   });
 
   it("Esc 关闭(capture,阻断全局链:不误拒待决审批);段落清掉后恢复补全", async () => {

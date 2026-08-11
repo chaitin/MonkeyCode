@@ -14,7 +14,7 @@
 // LogList 函数体里只许留 O(n) 的**廉价**扫描(join/分组/锚定表);逐条目的
 // 昂贵计算(presentToolCall、splitAttachments、markdown)一律待在行组件内,
 // 靠 memo 只在该行变化时才跑。
-import { IconChevronRight, IconFile as FileIcon, IconSparkles } from "@tabler/icons-react";
+import { IconArrowsMinimize, IconChevronRight, IconFile as FileIcon, IconSparkles } from "@tabler/icons-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Markdown, MarkdownInline } from "@/components/markdown/Markdown";
@@ -253,10 +253,16 @@ function renderItem(item: ChatItem, o: RenderOpts) {
       // 这一支祖先链上没有任何放开点;旧 UI 的白名单点名了「系统行」)。
       return (
         <div
-          className={`badge badge-ghost badge-sm h-auto max-w-full self-center py-0.5 whitespace-normal select-text ${
+          className={`badge badge-ghost badge-sm h-auto max-w-full gap-1 self-center py-0.5 whitespace-normal select-text ${
             item.error ? "text-error" : "text-base-content/40"
           }`}
         >
+          {/* 压缩行的图标走组件而非文案字符:字符图标(旧 ⟳)在部分平台被
+              渲染成彩色 emoji,与系统行的灰阶气质打架;Tabler 线条图标
+              单色随文字颜色,与全 UI 同一套图标语言 */}
+          {item.tag === "compact" && (
+            <IconArrowsMinimize size={14} stroke={1.75} aria-hidden className="shrink-0" />
+          )}
           {sysText(item, o.t)}
         </div>
       );

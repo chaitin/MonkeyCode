@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { t } from "@/lib/i18n";
+import { sessionCompact } from "@/lib/ipc/controls";
 import { sessionSend } from "@/lib/ipc/sessions";
 import { attLineOf } from "@/lib/protocol/attLine";
 import {
@@ -200,6 +201,23 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   const send = useCallback((): boolean => {
     const text = [draft.trim(), ...atts.map(attLine)].filter(Boolean).join("\n");
     if (!text) return false;
+    // /compact 是控制指令不是消息:直达壳的 session_call,不得进排队槽
+    // (排队会在轮后把「/compact」当普通文本发给模型)。忙时外显错误并留
+    // 住草稿;接受后不乐观落帧——压缩生命周期由壳外显(task_started +
+    // 实时 compact_status(started) → task_ended)。reject ⟺ 压缩没起来
+    // (忙碌/旧引擎无能力/会话未打开),走 ErrorBar;开轮后的失败壳按
+    // user-input 同契约经 task-error 帧收进对话流,不再 reject。
+    if (draft.trim() === "/compact" && atts.length === 0) {
+      if (running || sendingRef.current || queued) {
+        notifyError(t("chat.compact.busy"));
+        return false;
+      }
+      setDraft("");
+      void sessionCompact(sessionId).catch((e: unknown) => {
+        notifyError(t("chat.compact.failed", { reason: e instanceof Error ? e.message : String(e) }));
+      });
+      return true;
+    }
     if (running || sendingRef.current || queued) {
       // 单槽排队,后发覆盖先发(chip 可见,最新一条为准);用户主动再发
       // 也解除失败抑制,flush effect 在空闲时立即补投
