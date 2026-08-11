@@ -444,7 +444,21 @@ impl Inner {
                 if data.get("kind").and_then(|v| v.as_str()) == Some("micro") {
                     return;
                 }
-                self.push_frame(&sid, |seq| frame::compact_status("started", seq));
+                // 引擎只有"压缩完成"这一个事件。手动压缩(compacting 在飞,
+                // 判据不看 kind:LLM 失败会降级成 local_fallback)发起时壳已
+                // 实时落过 "started",这里只补收尾——再合成一对的话"正在
+                // 压缩/压缩完成"会同刻蹦出两条。自动压缩没有发起方落帧,
+                // 保持事后补一对的旧形态,记录读起来仍有始有终。
+                let manual = self
+                    .sess
+                    .sessions
+                    .lock_ok()
+                    .get(&sid)
+                    .map(|s| s.compacting)
+                    .unwrap_or(false);
+                if !manual {
+                    self.push_frame(&sid, |seq| frame::compact_status("started", seq));
+                }
                 self.push_frame(&sid, |seq| frame::compact_status("ended", seq));
             }
             "error" => {

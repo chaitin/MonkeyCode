@@ -980,6 +980,7 @@ fn bare_session(sid: &str) -> SessionState {
     SessionState {
         seq: 0,
         running: true,
+        compacting: false,
         turn: 1,
         created: true,
         engine_id: sid.to_string(),
@@ -1356,6 +1357,32 @@ async fn e2e_perm_remember_engine_rules() {
     // 壳侧持久化文件停用(旧路径才写 ohmy-perm-remember.json)
     assert!(!driver.0.perm_persist_path.exists(), "壳侧审批记忆文件不应再写");
     driver.stop();
+}
+
+/// 压缩状态行:引擎只有"压缩完成"一个事件。自动压缩事后补 started+ended
+/// 一对(记录有始有终);手动压缩(compacting 在飞)发起时壳已实时落过
+/// started,事件只补 ended——否则"正在压缩/压缩完成"同刻蹦出两条。
+/// 判据不看 kind:手动的 LLM 失败会降级成 local_fallback。micro 不落帧。
+#[test]
+fn compaction_frames_skip_started_while_manual_compact_in_flight() {
+    let inner = bare_inner("compactline");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    let ev = |data: Value| json!({ "type": "compaction", "session_id": "s1", "data": data });
+    inner.handle_event(ev(json!({ "kind": "auto", "tokens_saved": 10 })));
+    inner.handle_event(ev(json!({ "kind": "micro", "cleared": 3 })));
+    inner.sess.sessions.lock().unwrap().get_mut("s1").unwrap().compacting = true;
+    inner.handle_event(ev(json!({ "kind": "local_fallback", "tokens_saved": 10 })));
+    inner.journal_barrier();
+    let data =
+        std::fs::read_to_string(inner.data_dir.join("s1").join("events.jsonl")).unwrap();
+    let statuses: Vec<String> = data
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter_map(|f| acp_update(&f))
+        .filter(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("compact_status"))
+        .filter_map(|u| u.get("status").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+    assert_eq!(statuses, vec!["started", "ended", "ended"], "压缩状态行序列不符");
 }
 
 /// modelDoneText 全文对账:delta 被背压丢弃时,model_done 的权威全文

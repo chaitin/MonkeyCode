@@ -203,8 +203,10 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     if (!text) return false;
     // /compact 是控制指令不是消息:直达壳的 session_call,不得进排队槽
     // (排队会在轮后把「/compact」当普通文本发给模型)。忙时外显错误并留
-    // 住草稿;接受后不乐观落帧——压缩生命周期由壳外显(task_started →
-    // compact_status → task_ended),失败 reject 走 ErrorBar。
+    // 住草稿;接受后不乐观落帧——压缩生命周期由壳外显(task_started +
+    // 实时 compact_status(started) → task_ended)。reject ⟺ 压缩没起来
+    // (忙碌/旧引擎无能力/会话未打开),走 ErrorBar;开轮后的失败壳按
+    // user-input 同契约经 task-error 帧收进对话流,不再 reject。
     if (draft.trim() === "/compact" && atts.length === 0) {
       if (running || sendingRef.current || queued) {
         notifyError(t("chat.compact.busy"));

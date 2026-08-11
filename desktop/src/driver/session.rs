@@ -365,6 +365,10 @@ pub(super) struct SessionState {
     /// 帧序号(回放续接:打开时取日志行数)
     pub(super) seq: u64,
     pub(super) running: bool,
+    /// 手动压缩在飞(session_compact 从开轮到应答返回)。normalize 的
+    /// compaction 事件据此区分:手动壳侧发起时已实时落 compact_status
+    /// "started",事件只补 "ended";自动压缩仍事后补一对。
+    pub(super) compacting: bool,
     /// 轮次序号(每次开轮 +1)。只用来给异步兜底认轮:cancel 看门狗到期时
     /// 会话可能已经收尾并开了新的一轮,拿它比对才不会误杀新轮次。
     pub(super) turn: u64,
@@ -646,6 +650,7 @@ impl OhmyDriver {
             SessionState {
                 seq: 0,
                 running: false,
+                compacting: false,
                 turn: 0,
                 created: true,
                 engine_id: sid.clone(),
@@ -716,6 +721,7 @@ impl OhmyDriver {
                 let entry = sessions.entry(id.to_string()).or_insert(SessionState {
                     seq: 0,
                     running: false,
+                    compacting: false,
                     turn: 0,
                     created: is_child,
                     engine_id: engine_id.clone(),
@@ -1492,12 +1498,17 @@ impl OhmyDriver {
                     return Err("当前引擎版本不支持手动压缩,请升级引擎".into());
                 }
                 // 乐观开轮:事件先于应答到达,忙碌态与 task_started 不能等
-                // RPC 返回;turn 自增让取消看门狗把这次压缩当独立一轮对表
+                // RPC 返回;turn 自增让取消看门狗把这次压缩当独立一轮对表。
+                // compacting 标记让 normalize 知道 "started" 已在此实时落过
+                // (引擎只有"压缩完成"一个事件,不标记的话事件又合成一对,
+                // "正在压缩/压缩完成"同刻蹦出两条)。
                 if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
                     s.running = true;
+                    s.compacting = true;
                     s.turn += 1;
                 }
                 self.push_frame(id, frame::task_started);
+                self.push_frame(id, |seq| frame::compact_status("started", seq));
                 self.emit_session_event(id, SessionStatus::Running.as_str());
                 // 应答要等整段历史的 LLM 摘要,30s 常规预算不够,单独放宽。
                 // 超时是本地放弃:引擎可能仍在压缩并事后成功,期间上行会被
@@ -1511,6 +1522,7 @@ impl OhmyDriver {
                     .await;
                 if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
                     s.running = false;
+                    s.compacting = false;
                 }
                 match r {
                     Ok(resp) => {
@@ -1527,11 +1539,14 @@ impl OhmyDriver {
                         Ok(json!({ "result": { "status": "ok" } }))
                     }
                     Err(e) => {
-                        // 失败/被取消/超时:关轮,错误经 Err 走 ErrorBar 外显
-                        // (不落 task-error 帧,免得同一条错误双份展示)
+                        // 失败/被取消/超时:与 user-input 同契约——轮已开、
+                        // "正在压缩"已落对话流,错误也走帧收进对话流闭合记录
+                        // (走 Err/ErrorBar 的话,对话流里悬着一条"正在压缩"
+                        // 没有下文),命令本身回 Ok。
+                        self.push_frame(id, |seq| frame::task_error(&e, seq));
                         self.push_frame(id, frame::task_ended);
-                        self.emit_session_event(id, SessionStatus::Idle.as_str());
-                        Err(e)
+                        self.emit_session_event(id, SessionStatus::Error.as_str());
+                        Ok(json!({ "result": { "status": "error" } }))
                     }
                 }
             }

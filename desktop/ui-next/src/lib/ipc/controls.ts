@@ -33,9 +33,10 @@ export function sessionSetMode(id: string, mode: string): Promise<void> {
   return sessionCall(id, "session_set_mode", { mode });
 }
 
-/** 手动压缩上下文(session_compact)。壳/引擎 ack 即返回——压缩异步跑,
- * 进度与完成经帧外显(task_started → compact_status → task_ended);
- * reject = 压缩没起来(忙碌/旧引擎无能力/会话未打开),调用方外显。 */
+/** 手动压缩上下文(session_compact)。resolve 在压缩完成后(引擎同步
+ * 应答);进度与结果经帧外显(task_started + compact_status(started) →
+ * task_ended,失败走 task-error 帧)。reject 仅当压缩没起来(忙碌/旧
+ * 引擎无能力/会话未打开),调用方外显。 */
 export function sessionCompact(id: string): Promise<void> {
   return sessionCall(id, "session_compact", {});
 }
