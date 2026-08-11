@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FrameSender } from "@/lib/ipc/approvals";
 import { createChatState } from "@/lib/protocol/reduce";
 import type { ChatItem, ChatState } from "@/lib/protocol/types";
-import { LogList } from "./LogList";
+import { LogList, reconcileFarRows } from "./LogList";
 
 afterEach(() => {
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
@@ -494,5 +494,140 @@ describe("远行降档(data-far 分带,性能契约)", () => {
     const { container } = render(<LogList state={withItems(items)} sessionId="s1" />);
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
     expect(container.querySelectorAll("[data-far]")).toHaveLength(0);
+  });
+});
+
+describe("LogList 远行高度兑现", () => {
+  function fixture(top = 100, height = 500) {
+    const log = document.createElement("div");
+    log.dataset.chatLog = "";
+    const root = document.createElement("div");
+    root.dataset.chatItems = "";
+    log.append(root);
+    document.body.append(log);
+    Object.defineProperty(log, "getBoundingClientRect", {
+      value: () => ({ top, bottom: top + height, height }),
+    });
+    return { log, root };
+  }
+
+  it("非零 top 日志容器中，上方长行兑现后视觉锚点不变且恢复 overflowAnchor", () => {
+    const { log, root } = fixture();
+    const upper = document.createElement("div");
+    const anchor = document.createElement("div");
+    upper.dataset.far = "";
+    anchor.dataset.near = "";
+    root.append(upper, anchor);
+    log.scrollTop = 100;
+    log.style.overflowAnchor = "auto";
+    Object.defineProperty(upper, "getBoundingClientRect", {
+      value: () => ({ top: 20, bottom: upper.hasAttribute("data-near") ? 280 : 80 }),
+    });
+    Object.defineProperty(anchor, "getBoundingClientRect", {
+      value: () => {
+        const top = 120 + (upper.hasAttribute("data-near") ? 200 : 0) - (log.scrollTop - 100);
+        return { top, bottom: top + 80 };
+      },
+    });
+
+    reconcileFarRows(root, 9999);
+
+    expect(log.scrollTop).toBe(300);
+    expect(anchor.getBoundingClientRect().top).toBe(120);
+    expect(log.style.overflowAnchor).toBe("auto");
+    log.remove();
+  });
+
+  it("探顶的未兑现占位行自身长高时,钉视口内首条行界补偿(上滚回滚报障)", () => {
+    const { log, root } = fixture();
+    const poke = document.createElement("div"); // 60px 占位,顶部探进视口
+    const reading = document.createElement("div"); // 用户正在读的行
+    poke.dataset.far = "";
+    reading.dataset.near = "";
+    root.append(poke, reading);
+    log.scrollTop = 100;
+    Object.defineProperty(poke, "getBoundingClientRect", {
+      value: () => {
+        const top = 60 - (log.scrollTop - 100);
+        return { top, bottom: top + (poke.hasAttribute("data-near") ? 1000 : 60) };
+      },
+    });
+    Object.defineProperty(reading, "getBoundingClientRect", {
+      value: () => {
+        const top = 120 + (poke.hasAttribute("data-near") ? 940 : 0) - (log.scrollTop - 100);
+        return { top, bottom: top + 80 };
+      },
+    });
+
+    reconcileFarRows(root, 9999);
+
+    // 锚点若取首个相交行(poke),其 top 不因自身长高移动,delta 恒为 0,
+    // reading 会被推到视口外——正是报障的「突然回滚」。
+    expect(log.scrollTop).toBe(1040);
+    expect(reading.getBoundingClientRect().top).toBe(120);
+    log.remove();
+  });
+
+  it("一次读取所有行后才批量写，多行分类不受前行兑现影响且使用日志视口高度", () => {
+    const { log, root } = fixture(200, 100);
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    first.dataset.far = "";
+    second.dataset.far = "";
+    root.append(first, second);
+    Object.defineProperty(first, "getBoundingClientRect", { value: () => ({ top: 50, bottom: 80 }) });
+    Object.defineProperty(second, "getBoundingClientRect", {
+      value: () => ({
+        // 若实现边测边写，first 已 near，第二行会漂进带内；快照应保持原始 550。
+        top: first.hasAttribute("data-near") ? 250 : 550,
+        bottom: first.hasAttribute("data-near") ? 280 : 580,
+      }),
+    });
+
+    reconcileFarRows(root, 10_000);
+
+    expect(first.hasAttribute("data-near")).toBe(true);
+    expect(second.hasAttribute("data-far")).toBe(true);
+    expect(second.hasAttribute("data-near")).toBe(false);
+    log.remove();
+  });
+
+  it("稳定 pass 不写 scrollTop，也不触发二次布局", () => {
+    const { log, root } = fixture();
+    const row = document.createElement("div");
+    row.dataset.near = "";
+    root.append(row);
+    let rectReads = 0;
+    Object.defineProperty(row, "getBoundingClientRect", {
+      value: () => {
+        rectReads++;
+        return { top: 120, bottom: 180 };
+      },
+    });
+    let scrollWrites = 0;
+    Object.defineProperty(log, "scrollTop", {
+      get: () => 40,
+      set: () => { scrollWrites++; },
+    });
+
+    reconcileFarRows(root);
+
+    expect(rectReads).toBe(1);
+    expect(scrollWrites).toBe(0);
+    expect(log.style.overflowAnchor).toBe("");
+    log.remove();
+  });
+
+  it("锚点跳过 display:none 的零盒", () => {
+    const { log, root } = fixture();
+    const zero = document.createElement("div");
+    const visible = document.createElement("div");
+    root.append(zero, visible);
+    Object.defineProperty(zero, "getBoundingClientRect", { value: () => ({ top: 0, bottom: 0 }) });
+    Object.defineProperty(visible, "getBoundingClientRect", { value: () => ({ top: 120, bottom: 180 }) });
+    reconcileFarRows(root);
+    expect(visible.hasAttribute("data-near")).toBe(true);
+    expect(log.style.overflowAnchor).toBe("");
+    log.remove();
   });
 });
