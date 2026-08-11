@@ -58,7 +58,20 @@ test("Matomo 在识别用户后记录 Console 页面且避免重复 PV", async (
     ["resetUserId"],
   ]);
 
+  assert.equal(
+    trackSubscriptionConversion("concurrency_limit_viewed", "basic"),
+    true,
+  );
+  assert.deepEqual(queue.at(-1), [
+    "trackEvent",
+    "subscription_conversion",
+    "concurrency_limit_viewed",
+    "basic",
+  ]);
+
+  const queueLengthBeforeJourneyStart = queue.length;
   assert.equal(startBasicConcurrencyUpgradeJourney("user-1"), true);
+  assert.equal(queue.length, queueLengthBeforeJourneyStart);
   assert.deepEqual(queue.at(-1), [
     "trackEvent",
     "subscription_conversion",

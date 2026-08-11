@@ -16,7 +16,9 @@ test("会员转化漏斗覆盖并发弹窗、套餐下单和订阅生效", () =>
   const dataProvider = readSource("../src/components/console/data-provider.tsx");
 
   assert.match(concurrentLimitDialog, /startBasicConcurrencyUpgradeJourney/);
+  assert.match(concurrentLimitDialog, /trackSubscriptionConversion\("concurrency_limit_viewed", "basic"\)/);
   assert.match(concurrentLimitDialog, /"concurrency_limit_upgrade_clicked"/);
+  assert.match(concurrentLimitDialog, /startBasicConcurrencyUpgradeJourney\(user\.id \|\| ""\)/);
   assert.match(concurrentLimitDialog, /const isBasicPlan = subscription\?\.plan === "basic"/);
   assert.match(concurrentLimitDialog, /\{isBasicPlan && \(/);
   assert.match(concurrentLimitDialog, /detail: \{ section: "plan" \}/);
@@ -25,6 +27,7 @@ test("会员转化漏斗覆盖并发弹窗、套餐下单和订阅生效", () =>
   assert.match(subscriptionPlanDialog, /"subscription_plan_selected"/);
   assert.match(subscriptionPlanDialog, /"subscription_checkout_created"/);
   assert.match(subscriptionPlanDialog, /"subscription_checkout_failed"/);
+  assert.match(subscriptionPlanDialog, /const isBasicPlan = subscription\?\.plan === "basic"/);
   assert.match(dataProvider, /trackPaidSubscriptionObserved/);
   assert.doesNotMatch(subscriptionPlanDialog, /trackSubscriptionConversion/);
 });

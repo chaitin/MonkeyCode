@@ -178,6 +178,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const isProPlan = subscription?.plan === "pro"
   const isFlagshipPlan = subscription?.plan === "flagship" || subscription?.plan === "ultra"
   const hasAdvancedPlan = hasProSubscription(subscription)
+  const isBasicPlan = subscription?.plan === "basic"
   const isTeamUser = !!user?.team?.id
   const triggerPlanLabel = t(`subscriptionPlan.plans.${normalizeAccountPlanId(subscription?.plan)}.name`)
   const isRenewingCurrentPlan = confirmSubscriptionPlan === "pro"
@@ -212,10 +213,10 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     }
 
     reloadSubscription()
-    if (!hasAdvancedPlan) {
+    if (isBasicPlan) {
       trackBasicConcurrencyUpgradeEvent(user?.id || "", "subscription_plan_dialog_viewed")
     }
-  }, [hasAdvancedPlan, open, reloadSubscription, user?.id])
+  }, [isBasicPlan, open, reloadSubscription, user?.id])
 
   useEffect(() => {
     if (!open) {
@@ -263,14 +264,14 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     }, [], (resp) => {
       const paymentUrl = resp.data?.url
       if (resp.code === 0 && paymentUrl) {
-        if (!hasAdvancedPlan) {
+        if (isBasicPlan) {
           trackBasicConcurrencyUpgradeEvent(user?.id || "", "subscription_checkout_created", plan, selectedOrderTotal)
         }
         setConfirmSubscriptionPlan(null)
         onOpenChange(false)
         window.open(paymentUrl, "_blank", "noopener,noreferrer")
       } else {
-        if (!hasAdvancedPlan) {
+        if (isBasicPlan) {
           trackBasicConcurrencyUpgradeEvent(user?.id || "", "subscription_checkout_failed", plan)
         }
         toast.error(resp.message || t(isRenewingCurrentPlan ? "subscriptionPlan.toast.renewFailed" : "subscriptionPlan.toast.subscribeFailed", { plan: planLabel }))

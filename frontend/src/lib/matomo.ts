@@ -138,7 +138,7 @@ export function startBasicConcurrencyUpgradeJourney(userId: string) {
   } catch {
     // Session-level attribution still applies when storage is unavailable.
   }
-  return trackSubscriptionConversion("concurrency_limit_viewed", "basic");
+  return true;
 }
 
 export function trackBasicConcurrencyUpgradeEvent(

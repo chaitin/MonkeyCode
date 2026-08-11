@@ -5,7 +5,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { useCommonData } from "@/components/console/data-provider"
 import { getTaskDisplayName, hasProSubscription } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { startBasicConcurrencyUpgradeJourney, trackBasicConcurrencyUpgradeEvent } from "@/lib/matomo"
+import { startBasicConcurrencyUpgradeJourney, trackBasicConcurrencyUpgradeEvent, trackSubscriptionConversion } from "@/lib/matomo"
 import { IconArrowRight, IconCrown, IconPlayerStopFilled } from "@tabler/icons-react"
 import { useCallback, useState, useEffect } from "react"
 import { toast } from "sonner"
@@ -61,10 +61,10 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
   }, [open, loadRunningTasks])
 
   useEffect(() => {
-    if (open && subscription?.plan === "basic" && user.id) {
-      startBasicConcurrencyUpgradeJourney(user.id)
+    if (open && isBasicPlan && user.id) {
+      trackSubscriptionConversion("concurrency_limit_viewed", "basic")
     }
-  }, [open, subscription?.plan, user.id])
+  }, [isBasicPlan, open, user.id])
 
   const handleStop = async (taskId: string) => {
     setStoppingId(taskId)
@@ -83,6 +83,7 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
   const handleUpgradePlan = () => {
     if (!isBasicPlan) return
 
+    startBasicConcurrencyUpgradeJourney(user.id || "")
     trackBasicConcurrencyUpgradeEvent(user.id || "", "concurrency_limit_upgrade_clicked", "basic")
     onOpenChange(false)
     window.setTimeout(() => {
