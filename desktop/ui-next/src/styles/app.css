@@ -225,9 +225,9 @@
  * O(视口);视口外的动画(其他轮次的 pulse 点)也随之停摆,少一批无谓的
  * 失效源。三个配套事实:
  * - contain-intrinsic-size 的 auto 关键字:行渲染过一次后记住真实尺寸,
- *   估高只在首次(未渲染过)时生效——贴底打开长会话时,视口上方的行用
- *   60px 估高,滚上去逐行落成真实值;锚点恢复本就有 200ms×15 轮询 + RO
- *   兜底(ChatView startRestore),晚到的高度修正会被它们吸收;
+ *   估高只在首次(未渲染过)时生效。根因是上滚首次经过长回答时，基础 auto
+ *   先用 60px，远行 hidden 又延后真实高度兑现；LogList 因此预物化约五屏并
+ *   在关闭原生 overflow-anchor 的事务里手动补偿；
  * - 几何 API 照常工作:itemTops/getBoundingClientRect 读到的是估高盒,
  *   序列单调性不破;大纲跳转 scrollIntoView 会强制目标行渲染;
  * - display:none 的占位行(锚定 perm/合并模型行)不受影响,结构契约
@@ -244,6 +244,11 @@
  * 基线 72ms/键,全列 hidden 零慢帧,仅留视口带 auto 同样干净)。hidden =
  * 静态跳过零跟踪;占位尺寸沿用上面的 contain-intrinsic-size(渲染过的行有
  * 记忆尺寸,没渲染过的 60px 估高,与 auto 跳过态同一口径)。 */
+[data-chat-items] > [data-near] {
+  /* 仅有限视口带（约五屏）强制兑现真实高度；全列仍不参与同步布局。 */
+  content-visibility: visible;
+}
+
 [data-chat-items] > [data-far] {
   content-visibility: hidden;
 }

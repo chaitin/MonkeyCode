@@ -276,6 +276,12 @@ export function Markdown({
   // 已渲染的消息里复制按钮会一直是旧语言
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const html = useMemo(() => (near ? renderMarkdown(throttled) : ""), [near, throttled, locale]);
+  // 升格引起的行高突变(占位原文 vs 解析产物,差值可达千 px 级)不在这里
+  // 补偿:按因补偿曾试过一版,在「占位提交时记升格前高度」——但行在视口外
+  // 被 content-visibility 跳过时占位没有盒子,记到的是 0,升格时按「新高
+  // − 0」整块过量补偿,反把视图推飞(2026-08-11 报障二度复发的根因)。
+  // 现在由 LogList 的**位移安全网**统一兜:RO 盯内容列,绘制前按视口锚点
+  // 行的实际位移校正 scrollTop——量实际位移而非自报高度差,天然幂等。
   const cache = useRef(new Map<string, string>());
   // 本地图异步注入:流式重渲同一条消息时按路径缓存,不重复回读
   useEffect(() => {

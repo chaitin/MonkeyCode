@@ -43,6 +43,17 @@ async function unlock() {
 }
 
 describe("关于页更新(H5)", () => {
+  it("发现更新使用信息提示，并明确安装后自动重启应用", async () => {
+    stubShell();
+    render(<AboutSection />);
+    await userEvent.click(screen.getByRole("button", { name: "检查更新" }));
+
+    const status = await screen.findByRole("status");
+    expect(status.className).toContain("alert-info");
+    expect(status.className).not.toContain("alert-success");
+    expect(status.textContent).toContain("安装完成后应用将自动重启");
+  });
+
   it("安装失败:复位忙态、外显失败文案,按钮可重试", async () => {
     stubShell({ failInstall: "签名校验失败" });
     render(<AboutSection />);
@@ -103,6 +114,7 @@ describe("隐藏排障入口(连点版本号解锁)", () => {
     stubShell();
     render(<AboutSection />);
     await screen.findByText(/应用 1\.0/);
+    expect(screen.queryByRole("button", { name: "重启引擎" })).toBeNull();
     expect(screen.queryByRole("button", { name: "导出日志" })).toBeNull();
     expect(screen.queryByRole("button", { name: "打开扩展目录" })).toBeNull();
     expect(screen.queryByRole("button", { name: "打开程序目录" })).toBeNull();

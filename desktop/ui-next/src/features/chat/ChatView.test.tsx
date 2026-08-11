@@ -129,6 +129,24 @@ describe("聊天视图", () => {
     expect(hist?.args).toEqual({ id: "s1", cursor: 7, limit: 3 });
   });
 
+  it("滚近顶部(一屏内)自动补一页更早历史,无需点按钮", async () => {
+    const { ops } = stubShell({ hasMore: true });
+    const { container } = render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    const log = container.querySelector<HTMLElement>("[data-chat-log]")!;
+    // happy-dom 无布局:手动给出「距顶不足一屏」的几何
+    Object.defineProperty(log, "clientHeight", { value: 500, configurable: true });
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+    await waitFor(() => expect(screen.getByText("更早的问题")).toBeTruthy());
+    expect(ops.find((o) => o.cmd === "session_history")).toBeTruthy();
+    // 没有更早历史后(has_more:false)不再重复触发
+    const calls = ops.filter((o) => o.cmd === "session_history").length;
+    fireEvent.scroll(log);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(ops.filter((o) => o.cmd === "session_history").length).toBe(calls);
+  });
+
   it("发送:user-input 帧 content 走 base64;失败不丢草稿", async () => {
     const { ops } = stubShell();
     render(<ChatView meta={META} />);
@@ -445,7 +463,7 @@ describe("聊天视图", () => {
     render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
     const nav = await screen.findByRole("navigation", { name: "提问大纲" });
-    fireEvent.mouseEnter(nav.firstElementChild!);
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
     // 目录条目在,正文里还没有(在更早的历史页里)
     expect(screen.getByText("最早的问题")).toBeTruthy();
     expect(ops.some((o) => o.cmd === "session_history")).toBe(false);
@@ -461,6 +479,41 @@ describe("聊天视图", () => {
     expect(ops.filter((o) => o.cmd === "session_history")).toHaveLength(2);
   });
 
+  it("提问大纲:连续跳转由同一日志容器执行两次不同目标滚动", async () => {
+    stubShell({
+      frames: [
+        { type: "user-input", data: { content: b64encode("第一问") }, timestamp: 1, seq: 1 },
+        { type: "user-input", data: { content: b64encode("第二问") }, timestamp: 2, seq: 9 },
+      ],
+      outline: [
+        { seq: 1, offset: 0, content: b64encode("第一问"), timestamp: 1 },
+        { seq: 9, offset: 4, content: b64encode("第二问"), timestamp: 2 },
+      ],
+    });
+    const { container } = render(<ChatView meta={{ ...META, id: "s-outline-scroll" }} />);
+    await screen.findByText("第一问");
+    const log = container.querySelector("[data-chat-log]") as HTMLElement;
+    const first = log.querySelector('[data-user-seq="1"]') as HTMLElement;
+    const second = log.querySelector('[data-user-seq="9"]') as HTMLElement;
+    let currentTop = 20;
+    const assignedTops: number[] = [];
+    Object.defineProperty(log, "scrollTop", {
+      configurable: true,
+      get: () => currentTop,
+      set: (top: number) => { currentTop = top; assignedTops.push(top); },
+    });
+    vi.spyOn(log, "getBoundingClientRect").mockReturnValue({ top: 100 } as DOMRect);
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue({ top: 180 } as DOMRect);
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue({ top: 360 } as DOMRect);
+    const nav = await screen.findByRole("navigation", { name: "提问大纲" });
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
+    await userEvent.click(within(nav).getByText("第一问"));
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
+    await userEvent.click(within(nav).getByText("第二问"));
+
+    expect(assignedTops).toEqual([100, 360]);
+  });
+
   it("提问大纲 activeSeq 冒烟:面板给当前项 aria-current(jsdom 几何全 0 → 最后一条已加载提问)", async () => {
     stubShell({
       outline: [
@@ -471,7 +524,7 @@ describe("聊天视图", () => {
     render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
     const nav = await screen.findByRole("navigation", { name: "提问大纲" });
-    fireEvent.mouseEnter(nav.firstElementChild!);
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
     // DOM 里只有 seq=1 的气泡(seq=9 未加载),它就是滚动跟踪的当前项
     await waitFor(() =>
       expect(screen.getByText("第一问").closest("button")?.getAttribute("aria-current")).toBe("true"),
