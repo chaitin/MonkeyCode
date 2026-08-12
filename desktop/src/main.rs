@@ -720,6 +720,10 @@ fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, Strin
     let mut builder = app
         .updater_builder()
         .timeout(Duration::from_secs(30))
+        // latest*.json 原地覆盖发布；安装前的二次检查不能复用旧清单。
+        .header("Cache-Control", "no-cache, no-store, max-age=0")
+        .and_then(|builder| builder.header("Pragma", "no-cache"))
+        .map_err(|e| format!("初始化更新请求头失败: {e}"))?
         // Windows 安装器路径由插件直接退进程(不走 RunEvent::Exit),
         // 必须先在这里回收引擎进程,否则 ohmyagent.exe 占用文件导致 NSIS 安装失败
         .on_before_exit(move || {
