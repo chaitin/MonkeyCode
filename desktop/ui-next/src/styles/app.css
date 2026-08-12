@@ -180,6 +180,16 @@
   --menu-active-fg: var(--color-base-content);
 }
 
+/* 表单标签(daisyUI fieldset-legend)防竖排:WebKit 对 fieldset 的
+ * rendered legend 走特殊布局路径,display:grid 的 .fieldset 里 legend
+ * 宽度塌到 min-content——中文标签一字一行竖排、"API Key" 断成两行
+ * (2026-08-12 模型设置页截图报障;Chromium 正常,仅 WKWebView 现形)。
+ * nowrap 让 min-content = 整行,收缩宽度怎么算都不再竖排;legend 均为
+ * 短词标签,不会真溢出。 */
+.fieldset-legend {
+  white-space: nowrap;
+}
+
 /* 对话流运行指示(loading-dots)提速:daisyUI 把节奏烧死在 SVG mask 的
  * dur 里(1.05s/圈),没有自暴露变量可调,只能同款 SVG 改 dur=0.7s 整体
  * 覆盖——是本段「只调变量」约定的唯一例外(2026-08-11 反馈「跳的有点慢」)。
