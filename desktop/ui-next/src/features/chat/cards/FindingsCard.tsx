@@ -187,7 +187,9 @@ export function FindingsCard({
     // 空态统一形态:图标 + 标题档,居中
     return (
       <div className="flex flex-col items-center gap-1.5 px-3 py-8 text-center">
-        <IconShieldCheck size={20} stroke={1.75} className="text-base-content/30" aria-hidden />
+        {/* success 色而非中性灰:「未发现问题」是成功结论,盾牌是这卡唯一
+            的状态显影,灰色读起来像"没启用"(2026-08-12 反馈) */}
+        <IconShieldCheck size={20} stroke={1.75} className="text-success" aria-hidden />
         <div className="text-sm font-semibold">{t("chat.findings.empty")}</div>
       </div>
     );
