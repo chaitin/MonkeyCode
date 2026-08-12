@@ -971,6 +971,7 @@ fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
         engine_dir: home.join("ohmyagent"),
         chat_workspaces_dir: home.join("local-data/chat-workspaces"),
         perm_persist_path: home.join("perm.json"),
+        stats: crate::stats::UsageStats::new(&home),
         wsl: None,
     });
     (inner, events)
@@ -1497,6 +1498,49 @@ fn streaming_usage_updates_emitting_agent_without_parent_leak() {
     };
     assert_eq!(usage_of("main"), vec![(1_234, 200_000)]);
     assert_eq!(usage_of("child"), vec![(45_678, 64_000)]);
+}
+
+/// usage 事件里的 input/output tokens 会记入本地用量统计(按天/会话/模型),
+/// 纯 context 快照(无 input/output)不重复记账;模型归属取会话当前 model_name。
+#[test]
+fn usage_events_accumulate_into_daily_stats() {
+    let inner = bare_inner("usage-stats");
+    {
+        let mut sessions = inner.sess.sessions.lock().unwrap();
+        let mut main = bare_session("main");
+        main.model_name = "glm-4.5".into();
+        main.title = "重构登录".into();
+        sessions.insert("main".into(), main);
+    }
+
+    inner.handle_event(json!({ "type": "usage", "session_id": "main", "seq": 1,
+        "data": { "input_tokens": 900, "output_tokens": 20,
+            "context_used": 1_234, "context_window": 200_000 } }));
+    // 同一调用的 message_start/message_delta 第二个事件没有 input/output → 不记账
+    inner.handle_event(json!({ "type": "usage", "session_id": "main", "seq": 2,
+        "data": { "context_used": 1_234, "context_window": 200_000 } }));
+    inner.handle_event(json!({ "type": "usage", "session_id": "main", "seq": 3,
+        "data": { "input_tokens": 40_000, "output_tokens": 5_000,
+            "context_used": 45_678, "context_window": 64_000 } }));
+
+    let snap = inner.stats.snapshot();
+    assert_eq!(snap["totals"]["input_tokens"], 40_900, "{snap}");
+    assert_eq!(snap["totals"]["output_tokens"], 5_020, "{snap}");
+    assert_eq!(snap["totals"]["calls"], 2, "纯 context 快照不应计调用次数: {snap}");
+
+    let today = crate::stats::today();
+    assert_eq!(snap["days"][0]["date"], today, "{snap}");
+    assert_eq!(snap["days"][0]["input_tokens"], 40_900, "{snap}");
+
+    assert_eq!(snap["models"][0]["model"], "glm-4.5", "{snap}");
+    assert_eq!(snap["models"][0]["input_tokens"], 40_900, "{snap}");
+
+    let sess = &snap["sessions"][0];
+    assert_eq!(sess["session_id"], "main", "{snap}");
+    assert_eq!(sess["title"], "重构登录", "{snap}");
+    assert!(sess["parent"].is_null(), "{snap}");
+    assert_eq!(sess["input_tokens"], 40_900, "{snap}");
+    assert_eq!(sess["days"][0]["output_tokens"], 5_020, "{snap}");
 }
 
 /// 最新 Agent 将 turn/stopped 与 usage 统一成扁平字段；旧版嵌套形状仍

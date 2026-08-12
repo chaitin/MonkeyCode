@@ -42,6 +42,7 @@ describe("windowContextLabel(原生窗口标题的上下文)", () => {
         "rail.cloud": "云端任务",
         "rail.chat": "本地会话",
         "rail.local": "本地任务",
+        "rail.stats": "用量统计",
         "main.welcome.title": "开始一个任务",
       }) as Record<string, string>
     )[k] ?? k) as Parameters<typeof windowContextLabel>[3];
@@ -49,16 +50,18 @@ describe("windowContextLabel(原生窗口标题的上下文)", () => {
     settingsOpen: false,
     creating: false,
     cloudSpace: false,
+    statsSpace: false,
     ...over,
   });
 
   // 优先级 = 主区分支的渲染优先级;此前标题只认 current,开着本地任务切到
   // 设置/新建/云端任务时,窗口切换器里仍挂着上一个本地会话的标题
-  it("按主区渲染优先级取:设置 > 新建 > 云端 > 本地会话 > 欢迎页", () => {
+  it("按主区渲染优先级取:设置 > 新建 > 云端 > 用量统计 > 本地会话 > 欢迎页", () => {
     const cur = { title: "重构登录页", kind: "local" };
     expect(windowContextLabel(view({ settingsOpen: true }), null, cur, t)).toBe("设置");
     expect(windowContextLabel(view({ creating: true }), null, cur, t)).toBe("新建任务");
     expect(windowContextLabel(view({ cloudSpace: true }), { title: "修 CI" }, cur, t)).toBe("修 CI");
+    expect(windowContextLabel(view({ statsSpace: true }), null, cur, t)).toBe("用量统计");
     expect(windowContextLabel(view(), null, cur, t)).toBe("重构登录页");
     expect(windowContextLabel(view(), null, null, t)).toBe("开始一个任务");
   });

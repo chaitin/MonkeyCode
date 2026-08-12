@@ -27,10 +27,10 @@ export function isDevtoolsHotkey(e: Pick<KeyboardEvent, "code" | "key" | "ctrlKe
  *  优先级 = 主区分支的渲染优先级(App.tsx 的三元链):设置 > 新建 > 云端任务
  *  > 本地会话 > 欢迎页。 */
 export function windowContextLabel(
-  view: { settingsOpen: boolean; creating: boolean; cloudSpace: boolean },
+  view: { settingsOpen: boolean; creating: boolean; cloudSpace: boolean; statsSpace: boolean },
   cloudTask: { title?: string; summary?: string; content?: string } | null,
   current: { title?: string; kind?: string } | null,
-  t: (k: "settings.title" | "create.title" | "rail.cloud" | "rail.chat" | "rail.local" | "main.welcome.title") => string,
+  t: (k: "settings.title" | "create.title" | "rail.cloud" | "rail.chat" | "rail.local" | "rail.stats" | "main.welcome.title") => string,
 ): string {
   if (view.settingsOpen) return t("settings.title");
   if (view.creating) return t("create.title");
@@ -38,6 +38,7 @@ export function windowContextLabel(
     if (!cloudTask) return t("main.welcome.title");
     return cloudTask.title || cloudTask.summary || cloudTask.content || t("rail.cloud");
   }
+  if (view.statsSpace) return t("rail.stats");
   if (current) return current.title || t(current.kind === "chat" ? "rail.chat" : "rail.local");
   return t("main.welcome.title");
 }
