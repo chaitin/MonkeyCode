@@ -66,23 +66,47 @@
          正常运行零成本;React 挂上后的运行期错误也会兜住。 */
       (function () {
         var shown = false;
+        /* 手动关闭后本次运行不再重弹:反复触发的运行期错误会立刻把刚关的
+           框顶回来,「关闭」就成了摆设——用户已经看过/复制过,弹一次就够 */
+        var dismissed = false;
         function show(kind, msg, extra) {
           try {
+            if (dismissed) return;
             var box = document.getElementById("mc-boot-error");
+            var body;
             if (!box) {
-              box = document.createElement("pre");
+              box = document.createElement("div");
               box.id = "mc-boot-error";
               box.style.cssText =
-                "position:fixed;left:8px;right:8px;bottom:8px;max-height:45vh;overflow:auto;" +
-                "margin:0;padding:10px 12px;border-radius:8px;z-index:99999;" +
-                "background:#3b0d0d;color:#ffd7d7;font:12px/1.5 monospace;white-space:pre-wrap";
+                "position:fixed;left:8px;right:8px;bottom:8px;border-radius:8px;z-index:99999;" +
+                "background:#3b0d0d;color:#ffd7d7;font:12px/1.5 monospace";
+              var close = document.createElement("button");
+              close.textContent = "×";
+              close.setAttribute("aria-label", "关闭");
+              close.style.cssText =
+                "position:absolute;top:2px;right:6px;border:0;background:none;color:#ffd7d7;" +
+                "font:16px/1 monospace;cursor:pointer;padding:4px";
+              close.onclick = function () {
+                dismissed = true;
+                box.remove();
+              };
+              body = document.createElement("pre");
+              /* user-select 内联写死:app.css 全局禁选,而这个框恰恰要
+                 「把内容发给开发者」——不依赖任何样式表加载成功 */
+              body.style.cssText =
+                "margin:0;padding:10px 32px 10px 12px;max-height:45vh;overflow:auto;" +
+                "white-space:pre-wrap;user-select:text;-webkit-user-select:text";
+              box.appendChild(close);
+              box.appendChild(body);
               document.body.appendChild(box);
+            } else {
+              body = box.lastChild;
             }
             if (!shown) {
-              box.textContent = "[MonkeyCode 启动异常] 请把以下内容发给开发者:\n";
+              body.textContent = "[MonkeyCode 启动异常] 请把以下内容发给开发者:\n";
               shown = true;
             }
-            box.textContent += "\n" + kind + ": " + msg + (extra ? "\n" + extra : "") + "\n";
+            body.textContent += "\n" + kind + ": " + msg + (extra ? "\n" + extra : "") + "\n";
           } catch (_) {}
         }
         window.addEventListener("error", function (e) {
