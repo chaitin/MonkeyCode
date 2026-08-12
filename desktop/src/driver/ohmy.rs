@@ -97,6 +97,11 @@ impl OhmyDriver {
             crate::wsl::host_fs_view(&w.distro, &w.guest_home).to_string_lossy().into_owned()
         })
     }
+
+    /// 本地会话 token 用量统计快照(按天/会话/模型聚合)。
+    pub fn usage_stats(&self) -> Value {
+        self.0.stats.snapshot()
+    }
 }
 
 /// WSL 运行环境上下文(kernel_env=wsl:* 时随引擎启动填入;一次 prepare
@@ -138,6 +143,8 @@ pub(super) struct Inner {
     pub(super) chat_workspaces_dir: PathBuf,
     /// 壳侧审批记忆持久化路径(兼容尾巴,配对 SessionsState::perm_remember)
     pub(super) perm_persist_path: PathBuf,
+    /// 本地会话 token 用量统计(按天/会话/模型;usage 事件记账,落盘 usage-stats.json)
+    pub(super) stats: crate::stats::UsageStats,
     /// WSL 运行环境上下文(本机模式 None;见 WslCtx)
     pub(super) wsl: Option<WslCtx>,
 }

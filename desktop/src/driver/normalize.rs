@@ -415,6 +415,7 @@ impl Inner {
                 if let Some((used, window)) = context_usage_fields(&data) {
                     self.push_usage(&sid, used, window);
                 }
+                self.record_usage(&sid, &data);
             }
             // 会话摘要:引擎每轮用户消息后异步生成一句 ≤60 字的对话摘要
             // (随对话演进改写,后一轮覆盖前一轮),只给顶层会话生成。
@@ -468,6 +469,36 @@ impl Inner {
             // turn_done:轮次边界以 turn/stopped 为准
             _ => {}
         }
+    }
+
+    /// usage 事件里的 input/output tokens → 用量统计(按天/会话/模型)。
+    /// 引擎每次模型调用发一个 usage 事件,input/output 为该调用全量,直接
+    /// 累加进对应桶。模型取会话当前 model_name——运行中不可切模型,归属
+    /// 可靠。只记 input/output 非 0 的事件(纯 context 快照不记账)。
+    pub(super) fn record_usage(&self, sid: &str, data: &Value) {
+        let input = data.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let output = data.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        if input == 0 && output == 0 {
+            return;
+        }
+        // 跨组嵌套仅 subagents → sessions 一条(见 ohmy.rs::Inner),先取子代理
+        let parent = self.sub.subagents.lock_ok().get(sid).map(|r| r.parent_sid.clone());
+        let (model, title) = {
+            let sessions = self.sess.sessions.lock_ok();
+            match sessions.get(sid) {
+                Some(s) => (s.model_name.clone(), s.title.clone()),
+                None => (String::new(), String::new()),
+            }
+        };
+        self.stats.record(
+            &crate::stats::today(),
+            sid,
+            &title,
+            &model,
+            parent.as_deref(),
+            input,
+            output,
+        );
     }
 }
 

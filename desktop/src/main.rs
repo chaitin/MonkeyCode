@@ -19,6 +19,7 @@ mod driver;
 #[cfg(target_os = "windows")]
 mod native_pet;
 mod repo;
+mod stats;
 mod telemetry;
 mod uploads;
 mod util;
@@ -1289,6 +1290,7 @@ fn main() {
             driver::session_delete,
             driver::session_patch,
             driver::models_list,
+            driver::usage_stats,
             driver::session_open,
             driver::session_history,
             driver::session_outline,

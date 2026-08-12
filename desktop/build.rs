@@ -53,6 +53,7 @@ fn main() {
                 "session_delete",
                 "session_patch",
                 "models_list",
+                "usage_stats",
                 "session_open",
                 "session_history",
                 "session_outline",

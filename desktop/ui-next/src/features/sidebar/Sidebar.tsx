@@ -352,13 +352,17 @@ function Overview({
   onRefresh?: () => void;
 }) {
   const { t } = useI18n();
-  const title = t(space === "cloud" ? "rail.cloud" : space === "chat" ? "rail.chat" : "rail.local");
+  const title = t(
+    space === "cloud" ? "rail.cloud" : space === "chat" ? "rail.chat" : space === "stats" ? "rail.stats" : "rail.local",
+  );
   const desc = t(
     space === "cloud"
       ? "sidebar.overview.cloud.desc"
       : space === "chat"
         ? "sidebar.overview.chat.desc"
-        : "sidebar.overview.local.desc",
+        : space === "stats"
+          ? "sidebar.overview.stats.desc"
+          : "sidebar.overview.local.desc",
   );
   // 统计口径 = **看得见的列表**。项目级归档也要排除(旧 UI sidebar.tsx 先
   // activeLocalAll = 过滤掉 isProjectArchived 再统计):只按会话级 m.archived
@@ -388,7 +392,7 @@ function Overview({
     if (running > 0) stats.push({ text: t("sidebar.overview.running", { n: String(running) }), cls: "text-primary" });
     if (queued > 0) stats.push({ text: t("sidebar.overview.queued", { n: String(queued) }), cls: "text-warning" });
   }
-  if (space !== "cloud") {
+  if (space === "local" || space === "chat") {
     const running = pool.filter((m) => m.status === "running").length;
     const waiting = pool.filter((m) => m.waiting_ask).length;
     if (running > 0) stats.push({ text: t("sidebar.overview.running", { n: String(running) }), cls: "text-primary" });
@@ -540,6 +544,11 @@ export function Sidebar({
   };
 
   const body = () => {
+    if (space === "stats") {
+      // 用量统计空间没有会话列表,侧栏只留概览块
+      return null;
+    }
+
     if (space === "cloud") {
       return (
         <CloudTaskList
@@ -690,6 +699,7 @@ export function Sidebar({
           title={t("sidebar.newTask")}
           className="btn btn-primary btn-square btn-xs"
           onClick={actions.onNewTask}
+          disabled={space === "stats"}
         >
           <IconPlus size={14} stroke={2} aria-hidden />
         </button>
