@@ -1903,7 +1903,8 @@ const en = {
       openSource: "Open Source",
       openSourceRepo: "Open Source Repo",
       showcase: "Gallery",
-      client: "Clients",
+      desktopClient: "Desktop client",
+      mobileClient: "Mobile client",
       selfHosting: "Self-hosting",
       toggleMenu: "Toggle navigation menu",
     },
@@ -2111,8 +2112,8 @@ const en = {
         body: "GLM, Kimi, MiniMax, Qwen, DeepSeek, and other major models are connected. Switch by task type or choose one manually.",
       },
       mobile: {
-        title: "Native mobile support",
-        body: "Deep support for iOS and Android, with real-time sync between desktop and mobile. Let the agent keep running tasks even while you are commuting.",
+        title: "Desktop and mobile collaboration",
+        body: "MonkeyWork handles local files, browser actions, and office tasks on desktop, while mobile lets you check progress and continue conversations so work keeps moving across devices.",
       },
       openSource: {
         title: "Fully open source",
@@ -2197,6 +2198,16 @@ const en = {
         governance: "Centrally manage team members, development environments, AI models, and task workflows for governance and auditability.",
         integration: "Connect existing enterprise models, Git platforms, and environment hosts to fit internal engineering infrastructure.",
         offline: "Install online or offline for teams with network isolation, compliance requirements, or local compute resources.",
+      },
+    },
+    monkeyCodeWork: {
+      cardTitle: "Put AI directly into your desktop workflow",
+      cardBody: "MonkeyWork supports both development and everyday office tasks. Select a working folder and describe the goal to let AI handle authorized local files, or continue MonkeyCode cloud tasks across devices.",
+      advantages: {
+        localFiles: "Authorize a local working folder so AI can read, create, and modify code, documents, and assets without uploading them first.",
+        cloudTasks: "Connect your MonkeyCode account to view and continue cloud tasks from the web and mobile apps on desktop.",
+        modelsAndTools: "Use MonkeyCode account models, Baizhi Cloud model resources, custom models, and MCP services.",
+        browser: "Pair the browser extension to read page content and assist with opening pages, clicking, entering information, and taking screenshots.",
       },
     },
     compare: {

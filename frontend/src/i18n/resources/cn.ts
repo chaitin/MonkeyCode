@@ -1903,7 +1903,8 @@ const cn = {
       openSource: "开源",
       openSourceRepo: "开源仓库",
       showcase: "作品集",
-      client: "客户端",
+      desktopClient: "桌面客户端",
+      mobileClient: "移动客户端",
       selfHosting: "私有化",
       toggleMenu: "切换导航菜单",
     },
@@ -2111,8 +2112,8 @@ const cn = {
         body: "GLM、Kimi、MiniMax、Qwen、DeepSeek 等都已接入，按任务类型切换，也能手动指定。",
       },
       mobile: {
-        title: "移动端原生支持",
-        body: "深度适配 iOS / Android，PC 和手机数据实时同步。通勤路上也能把任务交给 Agent 继续跑。",
+        title: "桌面办公与移动端协同",
+        body: "MonkeyWork 可在桌面端处理本地文件、连接浏览器并完成办公任务；移动端可随时查看进度、继续对话，让任务在不同设备间持续推进。",
       },
       openSource: {
         title: "完全开源",
@@ -2144,9 +2145,9 @@ const cn = {
         stack: ["OWASP Top 10", "依赖 CVE", "SAST 规则"],
       },
       paper: {
-        title: "写毕业论文",
-        body: "帮你查文献、列提纲、补实验代码、跑数据、画图、排版 LaTeX，从选题到定稿都能接力。",
-        stack: ["文献检索", "实验脚本", "LaTeX 排版"],
+        title: "整理文档",
+        body: "读取本地 Word、PDF、Markdown 等资料，自动总结、改写、翻译并整理内容，快速生成报告、方案和会议纪要。",
+        stack: ["文档总结", "内容改写", "报告生成"],
       },
       data: {
         title: "数据分析",
@@ -2154,9 +2155,9 @@ const cn = {
         stack: ["Pandas / Polars", "Matplotlib", "自动写结论"],
       },
       research: {
-        title: "产品 / 技术调研",
-        body: "AI 拉公开资料、跑 benchmark、出对比报告，带引用链接，适合做技术选型和产品预研。",
-        stack: ["公开资料聚合", "横向对比", "带引用"],
+        title: "处理网页任务",
+        body: "连接浏览器后，协助读取网页、收集资料、填写信息、点击操作和截图，减少重复的桌面办公流程。",
+        stack: ["资料收集", "网页操作", "办公自动化"],
       },
     },
     mobile: {
@@ -2197,6 +2198,16 @@ const cn = {
         governance: "统一管理团队成员、开发环境、AI 模型和任务流程，便于研发负责人做治理和审计。",
         integration: "支持对接企业已有的大模型、Git 平台和开发环境宿主机，适配内部研发基础设施。",
         offline: "可按在线或离线方式安装，适合有网络隔离、合规要求或本地算力资源的团队。",
+      },
+    },
+    monkeyCodeWork: {
+      cardTitle: "让 AI 直接参与你的桌面工作",
+      cardBody: "MonkeyWork 同时面向开发和日常办公。选择一个工作目录并描述目标，AI 就能在授权范围内处理本地文件；需要跨设备继续时，也可以接续 MonkeyCode 云端任务。",
+      advantages: {
+        localFiles: "授权本地工作目录后，可读取、创建和修改其中的代码、文档与素材，无需提前上传文件。",
+        cloudTasks: "绑定 MonkeyCode 账号后，可在桌面端查看并继续网页端和移动端的云端任务。",
+        modelsAndTools: "支持使用 MonkeyCode 账号模型、百智云模型资源、自定义模型以及 MCP 服务。",
+        browser: "配对浏览器扩展后，可读取网页内容，并协助打开页面、点击、输入信息和截图。",
       },
     },
     compare: {

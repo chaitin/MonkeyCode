@@ -56,7 +56,7 @@ const featureItems = [
   },
   {
     key: "04",
-    cmd: "--mobile --cross-device",
+    cmd: "--work --cross-device",
     i18nKey: "mobile",
   },
   {
@@ -85,7 +85,7 @@ const useCaseItems = [
     key: "security",
   },
   {
-    tag: "paper",
+    tag: "office",
     key: "paper",
   },
   {
@@ -93,7 +93,7 @@ const useCaseItems = [
     key: "data",
   },
   {
-    tag: "research",
+    tag: "automation",
     key: "research",
   },
 ] as const;
@@ -135,6 +135,7 @@ const desktopClientItems = [
 ] as const;
 
 const selfHostingAdvantageKeys = ["dataBoundary", "governance", "integration", "offline"] as const;
+const monkeyCodeWorkAdvantageKeys = ["localFiles", "cloudTasks", "modelsAndTools", "browser"] as const;
 
 const compareColumns = ["MonkeyCode", "Cursor", "Claude Code", "Codex"] as const;
 
@@ -384,6 +385,7 @@ export default function TerminalNativePage() {
   const [openFaq, setOpenFaq] = React.useState(0);
   const [billingPeriod, setBillingPeriod] = React.useState<BillingPeriod>("monthly");
   const selfHostingAdvantages = selfHostingAdvantageKeys.map((key) => t(`terminalNative.selfHosting.advantages.${key}`));
+  const monkeyCodeWorkAdvantages = monkeyCodeWorkAdvantageKeys.map((key) => t(`terminalNative.monkeyCodeWork.advantages.${key}`));
   const testimonialItems = testimonialKeys.map((key) => ({
     key,
     quote: String(t(`terminalNative.testimonials.items.${key}.quote`)),
@@ -568,6 +570,29 @@ export default function TerminalNativePage() {
                 </a>
               </div>
             ))}
+          </div>
+          <div className="mt-6">
+            <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6">
+                <div className="text-[10px] tracking-[0.12em] text-[var(--a-accent)]">$ monkey work --local</div>
+                <h4 className="mt-3 text-2xl font-semibold tracking-[-0.02em] text-[var(--a-fg)]">
+                  {t("terminalNative.monkeyCodeWork.cardTitle")}
+                </h4>
+                <p className="mt-4 text-sm leading-7 text-[var(--a-fg-dim)]">
+                  {t("terminalNative.monkeyCodeWork.cardBody")}
+                </p>
+              </div>
+              <div className="grid gap-px overflow-hidden rounded-md border border-[var(--a-line)] bg-[var(--a-line)]">
+                {monkeyCodeWorkAdvantages.map((item, index) => (
+                  <div key={item} className="flex gap-4 bg-[var(--a-panel)] p-5">
+                    <span className="mt-1 text-[11px] tracking-[0.12em] text-[var(--a-accent)]">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <p className="text-sm leading-7 text-[var(--a-fg-dim)]">{item}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </SectionShell>
 
