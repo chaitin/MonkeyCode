@@ -31,6 +31,7 @@ test("Matomo 在识别用户后记录 Console 页面且避免重复 PV", async (
     startBasicConcurrencyUpgradeJourney,
     trackMatomoAuthenticated,
     trackBasicConcurrencyUpgradeEvent,
+    trackBasicConcurrencyUpgradeGoal,
     trackPaidSubscriptionObserved,
     trackSubscriptionConversion,
   } = await import("../src/lib/matomo.ts");
@@ -108,6 +109,11 @@ test("Matomo 在识别用户后记录 Console 页面且避免重复 PV", async (
     "pro",
     99,
   ]);
+
+  assert.equal(trackBasicConcurrencyUpgradeGoal("user-1", 99), true);
+  assert.deepEqual(queue.at(-1), ["trackGoal", 3, 99]);
+  assert.equal(trackBasicConcurrencyUpgradeGoal("paid-user", 99), false);
+  assert.equal(trackBasicConcurrencyUpgradeGoal("user-1", Number.NaN), false);
 
   assert.equal(trackPaidSubscriptionObserved("user-1", "basic"), false);
   assert.equal(

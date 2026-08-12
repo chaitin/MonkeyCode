@@ -11,6 +11,7 @@ let lastObservedUrl = getCurrentUrl();
 const paidSubscriptionFingerprints = new Map<string, string>();
 const basicConcurrencyUpgradeStartedAt = new Map<string, number>();
 const SUBSCRIPTION_CONVERSION_CATEGORY = "subscription_conversion";
+const BASIC_CONCURRENCY_UPGRADE_GOAL_ID = 3;
 const PAID_SUBSCRIPTION_STORAGE_PREFIX = "matomo_paid_subscription_observed:";
 const BASIC_CONCURRENCY_UPGRADE_STORAGE_PREFIX =
   "matomo_basic_concurrency_upgrade_started_at:";
@@ -151,6 +152,23 @@ export function trackBasicConcurrencyUpgradeEvent(
     return false;
   }
   return trackSubscriptionConversion(action, name, value);
+}
+
+export function trackBasicConcurrencyUpgradeGoal(
+  userId: string,
+  revenue: number,
+) {
+  if (!hasActiveBasicConcurrencyUpgradeJourney(userId)) {
+    return false;
+  }
+
+  const queue = getMatomoQueue();
+  if (!queue || !Number.isFinite(revenue) || revenue < 0) {
+    return false;
+  }
+
+  queue.push(["trackGoal", BASIC_CONCURRENCY_UPGRADE_GOAL_ID, revenue]);
+  return true;
 }
 
 export function trackPaidSubscriptionObserved(

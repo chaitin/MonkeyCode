@@ -26,6 +26,7 @@ test("会员转化漏斗覆盖并发弹窗、套餐下单和订阅生效", () =>
   assert.match(subscriptionPlanDialog, /"subscription_plan_dialog_viewed"/);
   assert.match(subscriptionPlanDialog, /"subscription_plan_selected"/);
   assert.match(subscriptionPlanDialog, /"subscription_checkout_created"/);
+  assert.match(subscriptionPlanDialog, /trackBasicConcurrencyUpgradeGoal\(user\?\.id \|\| "", selectedOrderTotal\)/);
   assert.match(subscriptionPlanDialog, /"subscription_checkout_failed"/);
   assert.match(subscriptionPlanDialog, /const isBasicPlan = subscription\?\.plan === "basic"/);
   assert.match(dataProvider, /trackPaidSubscriptionObserved/);
