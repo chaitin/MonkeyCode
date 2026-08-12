@@ -260,6 +260,29 @@ describe("侧栏(local 空间)", () => {
     expect(screen.queryByRole("textbox", { name: "重命名" })).toBeNull();
   });
 
+  it("旧版自定义标题缺 title_custom:右键重命名原文确认也发 onRename 补标记", async () => {
+    // 行里显示的是 summary、输入框预填的是原 title——旧口径把「文本未变」
+    // 当空转拦下,标记永远补不上(头部 4ab809db 修过,侧栏漏了同一条)
+    const acts = actions();
+    render(<Sidebar space="local" sessions={SESSIONS} currentId={null} actions={acts} />);
+    const menu = contextMenuOf(rowOf("修复了闪退,补了用例"));
+    await userEvent.click(within(menu).getByText("重命名"));
+    const input = screen.getByRole("textbox", { name: "重命名" }) as HTMLInputElement;
+    expect(input.value).toBe("修复登录");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(acts.onRename).toHaveBeenCalledWith(expect.objectContaining({ id: "修复登录" }), "修复登录");
+  });
+
+  it("已带 title_custom 的行:原文确认是纯空转,不发 onRename", async () => {
+    const acts = actions();
+    const renamed = SESSIONS.map((s) => (s.id === "修复登录" ? { ...s, title_custom: true } : s));
+    render(<Sidebar space="local" sessions={renamed} currentId={null} actions={acts} />);
+    const menu = contextMenuOf(rowOf("修复登录"));
+    await userEvent.click(within(menu).getByText("重命名"));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "重命名" }), { key: "Enter" });
+    expect(acts.onRename).not.toHaveBeenCalled();
+  });
+
   it("项目组头:hover 快捷「在此项目新建任务」带项目目录回调", async () => {
     const acts = actions();
     render(<Sidebar space="local" sessions={SESSIONS} currentId={null} actions={acts} />);
