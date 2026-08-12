@@ -113,6 +113,14 @@ describe("发现列表渲染", () => {
     expect(screen.getByText("失败场景")).toBeTruthy();
   });
 
+  it("超长文件名截中段:保尾部扩展名与行号,tooltip 留完整路径(挤扁摘要列的截图报障)", () => {
+    const long = "Nsfocus_VPT_Model_OneClick_Interactive_FIXED_V2_NO_TIME_DECAY_ASSET20_RISK45.py";
+    render(<FindingsCard report={{ findings: [{ file: `deep/${long}`, line: 355, summary: "x" }] }} />);
+    const el = screen.getByText(/…/);
+    expect(el.textContent).toBe("Nsfocus_VPT_Model_OneClick…ET20_RISK45.py:355");
+    expect(el.getAttribute("title")).toBe(`deep/${long}:355`);
+  });
+
   it("未知 outcome 枚举原样外显,不无声吞掉", () => {
     render(<FindingsCard report={{ findings: [{ file: "a.ts", summary: "x", outcome: "deferred" }] }} />);
     expect(screen.getByText("deferred")).toBeTruthy();

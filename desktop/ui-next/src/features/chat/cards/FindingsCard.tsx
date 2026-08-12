@@ -110,7 +110,14 @@ function FindingRow({ finding, onOpenFile }: { finding: ReviewFinding; onOpenFil
     .filter(Boolean)
     .join("\n\n");
   const filename = finding.file.split(/[\\/]/).pop() ?? "";
-  const location = filename ? (finding.line ? `${filename}:${finding.line}` : filename) : "";
+  // 超长文件名截中段:行内 file:line 是 nowrap 的 flex 项,不设上限会把
+  // 整行挤爆——flex-1 的摘要列被压成一字一行的竖排(2026-08-12 截图报障,
+  // 现场 basename 70+ 字符)。截中段而非 CSS 尾部省略:尾部的扩展名与
+  // :行号恰是定位的关键;完整路径一直在 title/tooltip 里。按码点切,
+  // 中文文件名不撕裂代理对
+  const chars = Array.from(filename);
+  const shown = chars.length > 44 ? `${chars.slice(0, 26).join("")}…${chars.slice(-14).join("")}` : filename;
+  const location = shown ? (finding.line ? `${shown}:${finding.line}` : shown) : "";
   const dot = statusDot(
     finding.verdict === "CONFIRMED" ? "fail" : finding.verdict === "PLAUSIBLE" ? "warn" : "idle",
   );
@@ -136,7 +143,9 @@ function FindingRow({ finding, onOpenFile }: { finding: ReviewFinding; onOpenFil
           <button
             type="button"
             title={finding.file + (finding.line ? `:${finding.line}` : "")}
-            className="link link-hover font-mono whitespace-nowrap text-base-content/50"
+            // truncate + 上限是窄窗口的兜底(JS 截中段管的是常规宽度):
+            // overflow-hidden 让 flex 最小尺寸归零,永远轮不到摘要列被挤扁
+            className="link link-hover max-w-[50%] truncate font-mono text-base-content/50"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -146,7 +155,7 @@ function FindingRow({ finding, onOpenFile }: { finding: ReviewFinding; onOpenFil
             {location}
           </button>
         ) : (
-          <span title={finding.file + (finding.line ? `:${finding.line}` : "")} className="font-mono whitespace-nowrap text-base-content/50">
+          <span title={finding.file + (finding.line ? `:${finding.line}` : "")} className="max-w-[50%] truncate font-mono text-base-content/50">
             {location}
           </span>
         ))}
