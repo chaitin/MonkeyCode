@@ -106,6 +106,9 @@ check-ohmy-src:
 		  echo "或指向别处检出: export OHMYAGENT_SRC=/path/to/ohmyagent"; exit 1; }
 	@[ -n "$(AGENT_VERSION)" ] || \
 		{ echo "错误: 无法读取引擎提交哈希($(OHMYAGENT_SRC))"; exit 1; }
+	@[ -d "$(CURDIR)/../plugins/skills" ] || \
+		{ echo "错误: 内置技能库不存在(bundle.resources 引用它,打包会失败)。初始化 submodule:"; \
+		  echo "  git submodule update --init plugins"; exit 1; }
 
 # 双架构编译引擎 sidecar。universal 打包会按架构各编译一遍,每遍的
 # tauri_build 都要求存在 <name>-<本架构 triple> 文件,最终 bundle 阶段

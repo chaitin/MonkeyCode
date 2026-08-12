@@ -972,6 +972,10 @@ fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
         chat_workspaces_dir: home.join("local-data/chat-workspaces"),
         perm_persist_path: home.join("perm.json"),
         wsl: None,
+        skills_builtin_dir: None,
+        skills_user_dir: home.join("skills"),
+        skills_defaults_path: home.join("skills-defaults.json"),
+        skills_gate: tokio::sync::Mutex::new(()),
     });
     (inner, events)
 }

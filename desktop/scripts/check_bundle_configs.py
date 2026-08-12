@@ -33,6 +33,13 @@ SIDECAR = "binaries/ohmyagent"
 # Windows 包必须附带 WSL 运行环境用的 Linux 引擎(bundle.resources 单文件
 # 映射,落安装根;externalBin 走 <name>-<triple> 精确解析装不下第二平台)。
 WSL_SIDECAR = "binaries/ohmyagent-linux"
+# 内置技能库(仓库根 plugins/ submodule = MonkeyCodeOfficialPlugins 的
+# skills/,随包分发、随更新替换;壳按会话物化给引擎,src/skills.rs)。校验的是 resources
+# 的**目标名** "skills"(运行时按 Resource "skills" 解析,源路径可迁移)。
+# 漏配的平台不报错,只是技能列表恒空——静默残废,必须强制。源目录是否已
+# 检出不在此查:CI 的 check 工作流不初始化该 submodule,打包侧由
+# Makefile check-ohmy-src 与 tauri bundle 的硬错误兜底。
+SKILLS_RESOURCE = "skills"
 # Tauri 按平台自动合并的文件名(tauri-utils/src/config/parse.rs 的
 # ConfigFormat::into_platform_file_name)。这些名字**一存在就生效**,无需
 # --config —— 打包专属配置绝不能用它们,否则会被并进该平台上的每次
@@ -139,6 +146,13 @@ def check(root: pathlib.Path = ROOT) -> list[str]:
             errors.append(
                 f"{path.name} 打 nsis 但 resources 不含 {WSL_SIDECAR!r}:"
                 f"该配置能打出不支持 WSL 运行环境的 Windows 包"
+            )
+        # 技能不变量:任何打包入口都必须带内置技能库(dev 有仓库回退,
+        # 打出来的包没有回退,漏配即该平台技能功能静默残废)。
+        if SKILLS_RESOURCE not in resources.values():
+            errors.append(
+                f"{path.name} 置了 bundle.active=true 但 resources 没有目标为 "
+                f"{SKILLS_RESOURCE!r} 的条目:该配置能打出不带内置技能库的包"
             )
         errors += icon_errors(root, path.name, bundle)
 

@@ -60,6 +60,12 @@ fn main() {
                 "session_close",
                 "session_send",
                 "session_call",
+                // 技能库(skills.rs;会话级启用走 session_call 的
+                // session_set_skills,不是独立命令)
+                "skills_list",
+                "skills_save",
+                "skills_delete",
+                "skills_set_default",
                 "upload_begin",
                 "upload_chunk",
                 "upload_finish",

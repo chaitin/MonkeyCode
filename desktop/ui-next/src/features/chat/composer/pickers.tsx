@@ -1,19 +1,21 @@
-// 轻量下拉选择器三件套:会话 composer 与新建任务页共用同一形态
+// 轻量下拉选择器:会话 composer 与新建任务页共用同一形态
 // (btn-ghost 文字触发器 + rounded-box 菜单),模型选择的过滤框/来源 tab/
 // 会员分节逻辑收口在此,两处不再各写一份。
 // - ModelMenu:模型切换(过滤/来源 tab/会员分节/锁定灰态,纯逻辑在
 //   lib/models/modelMenu);
 // - ThinkMenu:思考深度(档位 + hint 副文案;levels 可配,新建任务页多一档
 //   ""=跟随模型默认);
-// - OptionMenu:通用平铺单选(云端任务的宿主机/镜像等)。
+// - OptionMenu:通用平铺单选(云端任务的宿主机/镜像等);
+// - SkillsMenu:会话技能启用集(唯一的多选:勾选不关菜单,整单全量提交)。
 // 关闭胶水统一 useDismiss(外点 pointerdown + Esc;不用 onBlur,WebKitGTK
 // 点按钮不移焦点会误关)。
-import { IconChevronDown } from "@tabler/icons-react";
+import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 import { useRef, useState } from "react";
 
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { useUpwardMenuHeight } from "@/lib/util/menuHeight";
 import type { ModelInfo } from "@/lib/ipc/sessions";
+import { defaultEnabledSkills, type SkillInfo } from "@/lib/ipc/skills";
 import {
   filterModels,
   groupMemberSections,
@@ -299,6 +301,162 @@ export function ThinkMenu({
             );
           })}
         </ul>
+      )}
+    </div>
+  );
+}
+
+/** 会话技能启用集(多选)。与单选菜单的两点差异:勾选**不关**菜单
+ * (一次会话常要调多个),条目用 checkbox 语义(aria-checked);每次勾选
+ * 都全量提交(壳侧 session_set_skills 是全量声明,不是增量 patch)。
+ * enabled=null 表示"缺省集"(官方四件套 + 用户技能,defaultEnabledSkills;
+ * 与壳侧物化规则一致),首次勾选变更时展开成显式名单提交。 */
+export function SkillsMenu({
+  skills,
+  enabled,
+  onChange,
+  disabled = false,
+  title,
+  align = "end",
+}: {
+  skills: SkillInfo[];
+  /** 启用名单;null = 全部启用 */
+  enabled: string[] | null;
+  /** 勾选变更(已展开为显式全量名单) */
+  onChange: (next: string[]) => void;
+  disabled?: boolean;
+  title?: string;
+  align?: "start" | "end";
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(open, boxRef, () => setOpen(false));
+  const { anchorRef, maxHeight: menuMax } = useUpwardMenuHeight<HTMLButtonElement>(open);
+  const enabledSet = new Set(enabled ?? defaultEnabledSkills(skills));
+  const toggle = (name: string) => {
+    const next = new Set(enabledSet);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    // 按库序输出稳定名单(Set 的插入序会随点击历史漂移,sidecar 里存的
+    // 快照与展示序一致才好对账)
+    onChange(skills.map((s) => s.name).filter((n) => next.has(n)));
+  };
+  // 来源 tab + 过滤(与 ModelMenu 同构,用户定案 2026-08-12:分节改 tab)。
+  // tab 只在两种来源都有条目时出现(单来源没有导航意义);过滤在 tab 内,
+  // 名字/描述子串匹配(官方库几十个,没有过滤框全靠滚)
+  const isUserSkill = (s: SkillInfo) => s.source === "user";
+  const tabs = [
+    { key: "builtin", label: t("skill.source.builtin") },
+    { key: "user", label: t("skill.source.custom") },
+  ].filter((it) => skills.some((s) => isUserSkill(s) === (it.key === "user")));
+  const showTabs = tabs.length >= 2;
+  const wantTab = tab ?? "builtin";
+  const activeTab = tabs.some((it) => it.key === wantTab) ? wantTab : (tabs[0]?.key ?? "builtin");
+  const q = filter.trim().toLowerCase();
+  const items = skills.filter(
+    (s) =>
+      isUserSkill(s) === (activeTab === "user") &&
+      (!q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)),
+  );
+  const showFilter = shouldShowModelExtras(skills.length);
+  const openMenu = () => {
+    setFilter("");
+    setTab(null); // 打开时回到内置 tab(条目主体)
+    setOpen(true);
+  };
+  // 单行条目:只放名字,描述走 li 的 title 悬停(行内塞副文案两行太高太吵,
+  // 2026-08-12 用户定案)。启用态 = 行尾对勾(用户定案行尾;不用 checkbox
+  // 控件:主题大圆角下它渲染成粗边圆圈,一列全勾像一排单选钮)。未启用留
+  // invisible 占位保持名字截断宽度一致,文字降色作第二信号
+  const itemOf = (s: SkillInfo) => {
+    const on = enabledSet.has(s.name);
+    return (
+      <li key={s.name} title={s.description || undefined}>
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={on}
+          className="flex items-center gap-2"
+          onClick={() => toggle(s.name)}
+        >
+          <span className={`min-w-0 flex-1 truncate text-xs ${on ? "" : "text-base-content/60"}`}>
+            {s.name}
+          </span>
+          <IconCheck
+            size={14}
+            stroke={2.25}
+            aria-hidden
+            className={`shrink-0 text-primary ${on ? "" : "invisible"}`}
+          />
+        </button>
+      </li>
+    );
+  };
+  return (
+    <div
+      ref={boxRef}
+      className={`dropdown dropdown-top shrink-0 ${align === "end" ? "dropdown-end" : ""} ${open ? "dropdown-open" : ""}`}
+    >
+      <Trigger
+        open={open}
+        disabled={disabled}
+        title={title}
+        ariaLabel={t("chat.skills.label")}
+        anchorRef={anchorRef}
+        onToggle={() => (open ? setOpen(false) : openMenu())}
+      >
+        {/* 交集计数:启用集快照可能带着已从库移除的技能名(仓库删技能 +
+            应用更新的场景),直接取 size 会虚报 */}
+        {t("chat.skills.trigger", { n: skills.filter((s) => enabledSet.has(s.name)).length })}
+      </Trigger>
+      {open && (
+        // 结构同 ModelMenu:过滤框固定在顶,条目列表单独内滚
+        <div
+          style={{ maxHeight: menuMax }}
+          className="dropdown-content flex w-64 flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+        >
+          {showFilter && (
+            <input
+              aria-label={t("chat.skills.filter")}
+              placeholder={t("chat.skills.filter")}
+              className="input input-xs mb-1 w-full shrink-0"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          )}
+          {showTabs && (
+            <div role="tablist" aria-label={t("chat.skills.sourceTabs")} className="tabs tabs-border tabs-xs shrink-0">
+              {tabs.map((it) => (
+                <button
+                  key={it.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={it.key === activeTab}
+                  className={`tab ${it.key === activeTab ? "tab-active" : ""}`}
+                  onClick={() => setTab(it.key)}
+                >
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <ul
+            aria-label={t("chat.skills.label")}
+            className="menu w-full flex-nowrap [&_li]:flex-nowrap overflow-x-hidden overflow-y-auto p-0"
+          >
+            {items.length === 0 && (
+              <li className="menu-disabled">
+                <span className="text-xs whitespace-normal">
+                  {skills.length === 0 ? t("chat.skills.empty") : t("chat.skills.noMatch")}
+                </span>
+              </li>
+            )}
+            {items.map(itemOf)}
+          </ul>
+        </div>
       )}
     </div>
   );

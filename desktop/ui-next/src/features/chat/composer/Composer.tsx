@@ -17,16 +17,17 @@ import {
 
 import { useI18n } from "@/lib/i18n";
 import { useEscLayer } from "@/lib/util/escLayer";
-import { sessionSetMode, sessionSetModel, sessionSetThink } from "@/lib/ipc/controls";
+import { sessionSetMode, sessionSetModel, sessionSetSkills, sessionSetThink } from "@/lib/ipc/controls";
 import { afterEngineReady } from "@/lib/ipc/engine";
 import { modelMenuList, resolveModelName } from "@/lib/models/modelMenu";
 import { modelsList, type ModelInfo, type SessionMeta } from "@/lib/ipc/sessions";
+import { defaultEnabledSkills, skillsList, type SkillInfo } from "@/lib/ipc/skills";
 import { pickAttachmentPaths } from "@/lib/ipc/uploads";
 import type { ChatState, SlashCommand } from "@/lib/protocol/types";
 import { fmtK } from "@/lib/util/fmt";
 import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } from "@/lib/util/slash";
 import { ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing } from "./composerKit";
-import { ModelMenu, ThinkMenu } from "./pickers";
+import { ModelMenu, SkillsMenu, ThinkMenu } from "./pickers";
 import type { ComposerCtl } from "./useComposer";
 
 // 模型/思考档下拉的形态与逻辑收口在 ./pickers(新建任务页共用同一组件);
@@ -79,14 +80,55 @@ export function Composer({
     };
   }, []);
 
+  // ==== 会话技能(库 + 本会话启用集) ====
+  // 库一次拉取(纯壳侧文件读取,不吃引擎重启闸门);失败保留上一份,
+  // 口径同上方 modelsList。启用集以 sidecar 快照(meta.skills)起步,
+  // 变更走 session_set_skills(壳 destroy+resume 重建),成功后本地即为
+  // 真值——壳不产技能帧,不能指望 ChatState 回写。
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void skillsList()
+      .then((list) => {
+        if (alive && Array.isArray(list)) setSkills(list);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const [enabledSkills, setEnabledSkills] = useState<string[] | null>(meta.skills ?? null);
+  // 切会话跟随该会话的 sidecar 快照;不依赖 meta 引用(列表轮询的旧值
+  // 会打回刚勾选的乐观状态)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => setEnabledSkills(meta.skills ?? null), [sessionId]);
+  const pickSkills = (next: string[]) => {
+    const prev = enabledSkills;
+    setEnabledSkills(next);
+    void sessionSetSkills(sessionId, next).catch((e) => {
+      setEnabledSkills(prev);
+      ctl.notifyError(t("chat.skills.failed", { reason: errText(e) }));
+    });
+  };
+  // null = 缺省集(与 SkillsMenu、壳侧物化同一规则,lib/ipc/skills.ts)
+  const enabledSkillList = useMemo(() => {
+    const on = enabledSkills ?? defaultEnabledSkills(skills);
+    return skills.filter((s) => on.includes(s.name));
+  }, [skills, enabledSkills]);
+
   // ==== 斜杠指令面板(首字符 / 就地补全) ====
   // 本地会话内置指令:引擎不产 available_commands_update 帧(该帧目前只有
   // 云端在喂),没有内置表的话本地面板永远弹不出来。/compact 的执行在
   // useComposer.send() 拦截(经 session_call 直达壳,不进消息通道);同名
   // 时内置项优先,引擎将来若下发 compact 不会出现双条目。
+  // 已启用技能也进面板:引擎原生支持 `/技能名 参数` 斜杠展开(消息进模型前
+  // 确定性替换),这里只做补全,发送按普通文本走 user-input。
   const builtinCommands = useMemo<SlashCommand[]>(
-    () => [{ name: "compact", description: t("chat.cmd.compact") }],
-    [t],
+    () => [
+      { name: "compact", description: t("chat.cmd.compact") },
+      ...enabledSkillList.map((s) => ({ name: s.name, description: s.description })),
+    ],
+    [t, enabledSkillList],
   );
   const commands = useMemo(
     () => [...builtinCommands, ...state.commands.filter((c) => !builtinCommands.some((b) => b.name === c.name))],
@@ -333,6 +375,13 @@ export function Composer({
           </button>
           <span className="min-w-0 flex-1" />
 
+          <SkillsMenu
+            skills={skills}
+            enabled={enabledSkills}
+            onChange={pickSkills}
+            disabled={state.running}
+            title={state.running ? t("chat.switchWhileRunning") : t("chat.skills.tip")}
+          />
           <ThinkMenu
             current={effThink}
             onPick={pickThink}

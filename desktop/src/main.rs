@@ -19,6 +19,7 @@ mod driver;
 #[cfg(target_os = "windows")]
 mod native_pet;
 mod repo;
+mod skills;
 mod telemetry;
 mod uploads;
 mod util;
@@ -1429,6 +1430,10 @@ fn main() {
             driver::session_close,
             driver::session_send,
             driver::session_call,
+            skills::skills_list,
+            skills::skills_save,
+            skills::skills_delete,
+            skills::skills_set_default,
             driver::upload_begin,
             driver::upload_file_path,
             driver::upload_read,

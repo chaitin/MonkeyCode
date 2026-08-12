@@ -9,7 +9,8 @@
       "binaries/ohmyagent"
     ],
     "resources": {
-      "../browser-extension/dist": "browser-extension"
+      "../browser-extension/dist": "browser-extension",
+      "../plugins/skills": "skills"
     },
     "icon": [
       "icons/icon.icns",

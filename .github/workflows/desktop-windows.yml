@@ -55,7 +55,7 @@ jobs:
         run: |
           [ -n "$OHMYAGENT_REPO_TOKEN" ] || { echo "::error::OHMYAGENT_REPO_TOKEN 未配置,引擎无法进包"; exit 1; }
           git config --global url."https://x-access-token:${OHMYAGENT_REPO_TOKEN}@github.com/".insteadOf "git@github.com:"
-          git submodule update --init agent
+          git submodule update --init agent plugins
           cd agent
           AGENT_VERSION="$(git rev-parse --short HEAD)"
           echo "ohmyagent version: ${AGENT_VERSION}"

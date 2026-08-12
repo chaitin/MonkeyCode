@@ -1,3 +1,6 @@
 [submodule "agent"]
 	path = agent
 	url = git@github.com:chaitin/OhMyAgent.git
+[submodule "MonkeyCodeOfficialPlugins"]
+	path = plugins
+	url = https://github.com/chaitin/MonkeyCodeOfficialPlugins.git
