@@ -924,11 +924,18 @@ pub async fn mc_member_models_sync(svc: &Service) -> BzResult<Value> {
     // 服务端是游标分页,limit 缺省只给 100(backend handler List);显式要 200,
     // 还有下一页就出 note——宁可说清楚,也不让用户对着少掉的条目猜
     let out = mc_call(svc, reqwest::Method::GET, "/api/v1/users/models?limit=200", None).await?;
+    // out 为 Null 单独翻译成"会话失效":会话过期若不是标准 401(有 fixed_401
+    // 兜住)而是 2xx 登录页/空 data,unwrap_envelope 的 2xx 宽容分支会折成
+    // Null——报"格式异常"让用户摸不着头脑(同 sync.rs console_items,
+    // 2026-08-12 反馈)。真正的契约漂移(结构对不上)才报格式异常
+    if out.is_null() {
+        return Err(BzErr::Unauthorized("MonkeyCode 会话已失效,请在设置中重新连接".into()));
+    }
     let items = out
         .get("models")
         .and_then(Value::as_array)
         .cloned()
-        .ok_or_else(|| other("模型列表响应格式异常"))?;
+        .ok_or_else(|| other(format!("模型列表响应格式异常: {}", super::snippet(&out.to_string(), 120))))?;
     let mut notes = Vec::new();
     if out.pointer("/page/has_next_page").and_then(Value::as_bool) == Some(true) {
         notes.push("服务端模型超过 200 条,本次只同步了前 200 条".to_string());
