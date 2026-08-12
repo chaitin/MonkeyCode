@@ -8,7 +8,7 @@
 
 use serde_json::{json, Value};
 
-use super::{clean_message, code_is_zero, other, unwrap_envelope, BzErr, BzResult, Envelope, Service};
+use super::{clean_message, code_is_zero, other, snippet, unwrap_envelope, BzErr, BzResult, Envelope, Service};
 
 /// 同步新建密钥的名字(网关控制台里用户可见)。
 const SYNC_KEY_NAME: &str = "MonkeyCode";
@@ -34,12 +34,15 @@ pub async fn sync(svc: &Service, known_keys: &[String]) -> BzResult<Value> {
     }))
 }
 
-/// ai-models 包壳:{data,error};成功 data 直接是数组,不再套 items 分页对象。
+/// ai-models 包壳:{data,error};成功 data 是数组(新版)或 {items,total}
+/// 分页对象(旧版部署,见 console_items 两代兼容)。
+/// 控制台接口靠 cookie 鉴权,3xx 即被踢去登录页——给明确文案,
+/// 别让用户对着"HTTP 302"猜。
 pub(crate) const ENV_CONSOLE: Envelope = Envelope {
     label: "网关",
     code_ok: code_is_zero,
     check_success: false,
-    redirect_msg: None,
+    redirect_msg: Some("百智云登录已失效,请重新登录后再同步"),
     fixed_401: None,
     whole_body_fallback: false,
 };
@@ -63,15 +66,41 @@ async fn console_call(svc: &Service, method: reqwest::Method, path: &str, body: 
             };
         }
     }
-    unwrap_envelope(&data, status, &ENV_CONSOLE)
+    let out = unwrap_envelope(&data, status, &ENV_CONSOLE);
+    // 解包成 Null = 响应不是预期 JSON(登录页 HTML/空 data):原文留痕到
+    // stderr,报障时终端启动就能看到网关到底回了什么(壳没有自己的日志文件)
+    if matches!(&out, Ok(v) if v.is_null()) {
+        eprintln!(
+            "[desktop] 网关 {path} 非预期响应(HTTP {status}): {}",
+            snippet(&String::from_utf8_lossy(&data), 200)
+        );
+    }
+    out
 }
 
-/// ai-models 控制台列表(当前用于 API key)的 data 必须直接是数组;
-/// 契约漂移时报错,不能静默当作空列表。
+/// ai-models 控制台列表(当前用于 API key)的 data:新契约直接是数组,
+/// 旧版部署套 {items,total} 分页对象、数组在 items 里(2026-08-12 用户
+/// 现场实锤,两代服务端并存)——两代都收;契约漂移时报错,不能静默当作
+/// 空列表。
+///
+/// data 为 Null 单独翻译成"登录失效":cookie 过期后网关常回 2xx 的
+/// 登录页 HTML 或空 data,unwrap_envelope 对 2xx 宽容地折成 Null
+/// (改那两个宽容分支会伤及"2xx 空体即成功"的端点)——落到这儿十有
+/// 八九是会话没了,报"响应格式异常"只会让用户摸不着头脑。
 fn console_items(data: &Value) -> BzResult<Vec<Value>> {
-    data.as_array()
-        .cloned()
-        .ok_or_else(|| other("模型服务列表响应格式异常"))
+    if data.is_null() {
+        return Err(BzErr::Unauthorized("百智云登录已失效,请重新登录后再同步".into()));
+    }
+    if let Some(arr) = data.as_array().or_else(|| data.get("items").and_then(Value::as_array)) {
+        return Ok(arr.clone());
+    }
+    // 真契约漂移:带上实际结构定位,但对象只报字段名——密钥列表响应含
+    // 明文 api_key,原文进弹窗会随报障截图外传
+    let shape = match data.as_object() {
+        Some(o) => format!("对象字段: {}", o.keys().cloned().collect::<Vec<_>>().join(",")),
+        None => snippet(&data.to_string(), 120),
+    };
+    Err(other(format!("模型服务列表响应格式异常({shape})")))
 }
 
 fn api_key_secret(item: &Value) -> &str {

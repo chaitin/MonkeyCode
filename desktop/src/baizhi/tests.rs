@@ -233,6 +233,86 @@ async fn ai_models_sync_contract() {
     assert_eq!(models[0].get("api_key").and_then(Value::as_str), Some("sk-live"));
 }
 
+/// 控制台密钥列表的旧版契约:data 套 {items,total} 分页对象、数组在
+/// items 里(2026-08-12 用户现场,两代服务端并存)。必须兼容,否则这类
+/// 部署上同步永远"响应格式异常";已持有的密钥照常识别复用,不重复创建。
+#[tokio::test(flavor = "multi_thread")]
+async fn console_api_keys_items_wrapper_contract() {
+    let (url, _stop) = serve(Arc::new(|req: Req| {
+        match (req.method.as_str(), req.path.as_str()) {
+            ("GET", "/api/console/api-keys") => Resp::json(
+                200,
+                json!({ "data": { "items": [
+                    { "id": "key-1", "name": "MonkeyCode", "api_key": "sk-live", "status": "active" }
+                ], "total": 1 } }),
+            ),
+            ("GET", "/api/anthropic/models") => Resp::json(
+                200,
+                json!({ "data": [{ "id": "coding-model", "type": "model" }], "has_more": false }),
+            ),
+            _ => Resp::json(404, json!({ "error": { "message": "not found" } })),
+        }
+    }));
+    let svc = Service::test_service(Endpoints {
+        account: url.clone(),
+        model_gateway: url.clone(),
+        mcp_gateway: url.clone(),
+        monkeycode: url.clone(),
+    });
+    let synced = super::sync::sync(&svc, &["sk-live".to_string()]).await.map_err(|e| e.msg()).unwrap();
+    assert_eq!(synced.get("key_created").and_then(Value::as_bool), Some(false), "items 包裹形态下应识别并复用既有密钥");
+    let models = synced.get("models").and_then(Value::as_array).unwrap();
+    assert_eq!(models[0].get("name").and_then(Value::as_str), Some("coding-model"));
+}
+
+/// cookie 失效的真实形态必须翻译成"登录失效",不能报"响应格式异常"
+/// (2026-08-12 反馈):控制台/云端过期后常回 2xx 登录页 HTML(unwrap_envelope
+/// 对 2xx 宽容折成 Null)或 302 踢登录页,两种都不是标准 401。
+#[tokio::test(flavor = "multi_thread")]
+async fn expired_session_reports_relogin_not_format_error() {
+    let login_page = || Resp {
+        status: 200,
+        headers: vec![("Content-Type".into(), "text/html".into())],
+        body: b"<!doctype html><html>login</html>".to_vec(),
+    };
+    let endpoints = |url: &str| Endpoints {
+        account: url.to_string(),
+        model_gateway: url.to_string(),
+        mcp_gateway: url.to_string(),
+        monkeycode: url.to_string(),
+    };
+
+    // 百智云控制台:200 + 登录页 HTML
+    let (url, _stop) = serve(Arc::new(move |req: Req| match (req.method.as_str(), req.path.as_str()) {
+        ("GET", "/api/console/api-keys") => login_page(),
+        _ => Resp::json(404, json!({})),
+    }));
+    let err = super::sync::sync(&Service::test_service(endpoints(&url)), &[]).await.err().expect("应失败").msg();
+    assert!(err.contains("百智云登录已失效"), "{err}");
+
+    // 百智云控制台:302 踢去登录页
+    let (url, _stop) = serve(Arc::new(|req: Req| match (req.method.as_str(), req.path.as_str()) {
+        ("GET", "/api/console/api-keys") => Resp::redirect("/login"),
+        _ => Resp::json(404, json!({})),
+    }));
+    let err = super::sync::sync(&Service::test_service(endpoints(&url)), &[]).await.err().expect("应失败").msg();
+    assert!(err.contains("百智云登录已失效"), "{err}");
+
+    // MonkeyCode:users/models 回 200 + 登录页 HTML
+    let (url, _stop) = serve(Arc::new(move |req: Req| {
+        match (req.method.as_str(), req.path.split('?').next().unwrap()) {
+            ("GET", "/api/v1/users/models") => login_page(),
+            _ => Resp::json(404, json!({})),
+        }
+    }));
+    let err = super::monkeycode::mc_member_models_sync(&Service::test_service(endpoints(&url)))
+        .await
+        .err()
+        .expect("应失败")
+        .msg();
+    assert!(err.contains("MonkeyCode 会话已失效"), "{err}");
+}
+
 /// prng 复刻(服务端独立校验 PoW 解;与 pow.rs 实现同协议)。
 fn prng(seed: &str, length: usize) -> String {
     let mut hash: u32 = 0x811c9dc5;
@@ -620,6 +700,9 @@ fn envelope_policies_pinned() {
     assert!(v.is_null());
     let m = unauthorized(unwrap_envelope(br#"{}"#, 401, &ENV_CONSOLE));
     assert!(m.contains("会话已失效"), "{m}");
+    // 控制台 cookie 鉴权:3xx = 被踢去登录页,给"登录失效"而非裸 HTTP 状态码
+    let m = err_msg(unwrap_envelope(b"", 302, &ENV_CONSOLE));
+    assert!(m.contains("登录已失效"), "{m}");
 
     // MCP 网关:3xx = 未开通;code 认 "ok"/0/200,其余字符串/类型判失败
     let m = err_msg(unwrap_envelope(b"", 302, &ENV_MCP));

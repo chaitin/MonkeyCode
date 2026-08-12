@@ -514,6 +514,18 @@ pub fn clean_message(msg: &str) -> String {
         .to_string()
 }
 
+/// 诊断片段:非预期响应的原文截断(契约漂移/登录页嗅探的报错与日志用),
+/// 按字符截断避免撕裂多字节。
+pub(crate) fn snippet(text: &str, max_chars: usize) -> String {
+    let t = text.trim();
+    if t.chars().count() <= max_chars {
+        t.to_string()
+    } else {
+        let cut: String = t.chars().take(max_chars).collect();
+        format!("{cut}…")
+    }
+}
+
 pub fn http_error(status: u16, body: &[u8], label: &str) -> BzErr {
     if status == 401 {
         return BzErr::Unauthorized(format!("{label}会话已失效,请重新登录"));
