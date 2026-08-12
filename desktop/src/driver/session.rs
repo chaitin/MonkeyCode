@@ -809,7 +809,10 @@ impl OhmyDriver {
 
     /// 引擎侧会话恢复。有历史则 resume 带全参(缺参会回落进程默认值);
     /// 空会话 resume 必失败,改全新 create 换绑 engine_id(壳 sid 不变)。
-    /// 模型已从配置移除时不带 model,退化引擎默认(不阻断打开)。
+    /// 记录模型 locked(会员到期降档)照常携带——条目仍在引擎 settings 里
+    /// (config.rs 物化全部条目),档位权限由服务端把关;已从配置移除则
+    /// 不带 model 退化引擎默认;引擎侧仍拒(壳快照与引擎 settings 口径
+    /// 分叉的兜底)去掉 model 重试一次。恢复不因模型失效而打不开。
     async fn resume_engine(
         &self,
         id: &str,
@@ -838,10 +841,27 @@ impl OhmyDriver {
             mode,
         );
         let model_name = meta.get("model_name").and_then(|v| v.as_str()).unwrap_or("");
-        if let Ok(model_id) = self.model_id_of(model_name) {
-            params["model"] = json!(model_id);
-        }
-        let result = self.rpc("session/create", params).await?;
+        let with_model = match self.model_id_of_any(model_name) {
+            Ok(model_id) => {
+                params["model"] = json!(model_id);
+                true
+            }
+            Err(_) => false,
+        };
+        let result = match self.rpc("session/create", params.clone()).await {
+            Ok(r) => r,
+            // 壳的模型快照(引擎启动时定格)与引擎 settings 可能口径分叉,
+            // 壳放行的模型引擎未必有 provider:去掉 model 重试一次回落
+            // 引擎默认,与「模型已删除」同款降级——不让恢复卡死在死模型上
+            Err(e) if with_model => {
+                eprintln!("[desktop] 会话 {id} 按记录模型恢复失败,回落引擎默认模型重试: {e}");
+                if let Some(p) = params.as_object_mut() {
+                    p.remove("model");
+                }
+                self.rpc("session/create", params).await?
+            }
+            Err(e) => return Err(e),
+        };
         // 换绑来的 engine_id 会成为 <engine_dir>/sessions/<id> 的目录名(删会话
         // 时被 remove_dir_all),同样只收单段安全名;畸形值保留原 id 不换绑
         if let Some(e) = result
@@ -1370,8 +1390,16 @@ impl OhmyDriver {
     }
 
     pub async fn session_call(&self, id: &str, kind: &str, payload: Value) -> Result<Value, String> {
-        // 同 session_send:引擎侧查询/切换都得等后台 resume 落地
-        self.ensure_engine_ready(id).await?;
+        // 同 session_send:引擎侧查询/切换都得等后台 resume 落地。
+        // 唯独切模型不吃 resume 失败:恢复失败时会话未建成,正好走下方
+        // 未建成分支带新选模型重建——这是原模型失效后用户仅剩的自救入口,
+        // 堵死就只能续费或手改配置了。其余命令照旧上抛
+        let ready = self.ensure_engine_ready(id).await;
+        if let Err(e) = &ready {
+            if kind != "session_set_model" {
+                return Err(e.clone());
+            }
+        }
         match kind {
             "session_set_model" => {
                 let name = payload.get("model").and_then(|v| v.as_str()).unwrap_or("");
@@ -1401,6 +1429,13 @@ impl OhmyDriver {
                 // 引擎切模型会把思考态重置为新模型默认档,重放会话已选档位
                 self.apply_session_think(id, &self.engine_id(id)).await;
                 self.push_frame(id, |seq| frame::model_update(name, seq));
+                // resume 失败后的自救成功:恢复失败横幅还挂在会话上,就地改报已连接
+                if ready.is_err() {
+                    self.0.app.emit_json(
+                        &format!("conn-status:{id}"),
+                        json!({ "text": "已连接", "connected": true }),
+                    );
+                }
                 Ok(json!({ "result": { "model": name } }))
             }
             // 会话级思考档位:经引擎 session/setThinking 下发(loop 内存态,
@@ -1417,7 +1452,7 @@ impl OhmyDriver {
                 }
                 if !self.session_created(id) {
                     let mode = self.session_mode(id);
-                    let model_id = self.model_id_of(&self.session_model_name(id))?;
+                    let model_id = self.model_id_of_any(&self.session_model_name(id))?;
                     self.create_resumed(id, &model_id, &mode).await?;
                 }
                 self.rpc("session/setThinking", think_rpc_params(&self.engine_id(id), level))
@@ -1431,7 +1466,7 @@ impl OhmyDriver {
                 // 父模式,969311a 起热切对后续子代理同样生效)。
                 let mode = payload.get("mode").and_then(|v| v.as_str()).unwrap_or("default");
                 if !self.session_created(id) {
-                    let model_id = self.model_id_of(&self.session_model_name(id))?;
+                    let model_id = self.model_id_of_any(&self.session_model_name(id))?;
                     self.create_resumed(id, &model_id, mode).await?;
                     self.apply_session_think(id, &self.engine_id(id)).await;
                 } else if self.has_cap("session/switchMode") {
@@ -1445,7 +1480,7 @@ impl OhmyDriver {
                     if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
                         return Err("当前引擎版本较旧,执行中不能切换权限模式,请先取消任务".into());
                     }
-                    let model_id = self.model_id_of(&self.session_model_name(id))?;
+                    let model_id = self.model_id_of_any(&self.session_model_name(id))?;
                     self.recreate_fallback(id, &model_id, mode).await?;
                     self.apply_session_think(id, &self.engine_id(id)).await;
                 }
@@ -1490,7 +1525,7 @@ impl OhmyDriver {
                 if !self.session_created(id) {
                     // 未在引擎侧物化的会话先 resume:压缩对象是引擎内存里的历史
                     let mode = self.session_mode(id);
-                    let model_id = self.model_id_of(&self.session_model_name(id))?;
+                    let model_id = self.model_id_of_any(&self.session_model_name(id))?;
                     self.create_resumed(id, &model_id, &mode).await?;
                     self.apply_session_think(id, &self.engine_id(id)).await;
                 }
@@ -1720,14 +1755,25 @@ impl OhmyDriver {
 
     // ==================== 辅助 ====================
 
-    /// 模型选择键:e792858 起 settings.models 按**别名**作键,引擎双解析
-    /// (别名优先,wire id 回退)——但同 wire id 多网关会撞 wireIndex,
-    /// 壳一律传别名。locked(超会员档展示专用)条目必须拒:它不在引擎
-    /// settings 里,放行会让 resume 带上不存在的键,会话直接打不开;
-    /// 报错后调用方按「模型已删除」同款语义降级(resume 省略参数回落
-    /// 默认模型)。default/首条回退同样滤 locked(旧 config 的 default
-    /// 可能落在降档后的锁定行)。
+    /// 模型选择键(严格版,显式选模型用:新建会话/切换模型)。locked
+    /// (超会员档)条目拒绝——UI 灰态禁选,显式落在会员档不允许的模型上
+    /// 只会在发消息时吃服务端拒绝,前置报错更友好。
     fn model_id_of(&self, name: &str) -> Result<String, String> {
+        self.resolve_model(name, false)
+    }
+
+    /// 模型选择键(宽松版,恢复/重建已有会话用)。locked 条目照常放行:
+    /// 引擎 settings 物化全部条目(config.rs),会员档权限由服务端把关——
+    /// 会员到期不能让老会话打不开,进去后用户可自行切换模型。
+    fn model_id_of_any(&self, name: &str) -> Result<String, String> {
+        self.resolve_model(name, true)
+    }
+
+    /// e792858 起 settings.models 按**别名**作键,引擎双解析(别名优先,
+    /// wire id 回退)——但同 wire id 多网关会撞 wireIndex,壳一律传别名。
+    /// default/首条回退恒滤 locked(旧 config 的 default 可能落在降档后的
+    /// 锁定行,不默认选禁用项)。
+    fn resolve_model(&self, name: &str, allow_locked: bool) -> Result<String, String> {
         if name.is_empty() {
             return self
                 .0
@@ -1749,7 +1795,7 @@ impl OhmyDriver {
             .find(|m| m.name == name)
             .or_else(|| self.0.models.iter().find(|m| strip_source_suffix(&m.name) == strip_source_suffix(name)))
             .ok_or_else(|| format!("未知模型 {name:?}"))?;
-        if m.locked {
+        if m.locked && !allow_locked {
             return Err(format!("模型 {name:?} 当前会员档不可用,升级后重新同步"));
         }
         Ok(m.name.clone())

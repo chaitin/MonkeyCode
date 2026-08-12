@@ -495,14 +495,17 @@ fn write_ohmyagent_config(
     let is_monkeycode = |m: &serde_json::Value| {
         m.get("source").and_then(|v| v.as_str()) == Some(crate::baizhi::monkeycode::SOURCE_MONKEYCODE)
     };
-    // locked = 超出会员档的展示专用条目(同步层打标):整条不物化。
+    // locked = 超出会员档的条目(同步层打标):**照常物化**——会员档权限由
+    // 服务端把关,引擎 settings 缺了条目反而让老会话(会员到期前选的模型)
+    // 一打开就 "unknown model",连恢复都进不去。locked 只影响 default 回退
+    // (不默认选禁用项)与显式选择(session.rs model_id_of 拒绝)。
     // 只认会员条目上的标记,手编条目的杂散 locked 忽略。
     let is_locked_member = |m: &serde_json::Value| {
         is_monkeycode(m) && m.get("locked").and_then(|v| v.as_bool()).unwrap_or(false)
     };
     let mc_key = models_arr
         .iter()
-        .any(|m| is_monkeycode(m) && !is_locked_member(m))
+        .any(is_monkeycode)
         .then(|| dir.parent().and_then(crate::baizhi::stored_ohmyagent_key))
         .flatten();
     let mc_key_field = |k: &str| {
@@ -517,9 +520,6 @@ fn write_ohmyagent_config(
     let mut models_out = serde_json::Map::new();
     let mut default_model = String::new();
     for m in models_arr {
-        if is_locked_member(m) {
-            continue; // 展示专用:引擎 settings 不该有它,default 回退自然跳过
-        }
         let get = |k: &str| m.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
         let (name, provider, model) = (get("name"), get("provider"), get("model"));
         // 会员条目的密钥由壳补齐(本机记录缺失时照常物化,请求时报错外显,
@@ -583,8 +583,10 @@ fn write_ohmyagent_config(
             _ => thinking_config(DEFAULT_MODEL_THINK),
         };
         models_out.insert(name.clone(), entry);
+        // default/首条回退滤 locked(降档后 config 的 default 可能落在锁定行,
+        // 宁可换成首个可用条目也不默认选禁用项;session.rs 空名回退同口径)
         let is_default = m.get("default").and_then(|v| v.as_bool()).unwrap_or(false);
-        if default_model.is_empty() || is_default {
+        if !is_locked_member(m) && (default_model.is_empty() || is_default) {
             default_model = name; // 别名即选择键(session/create、switchModel 同)
         }
     }
@@ -972,11 +974,11 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// locked(超会员档展示专用)会员条目:不进引擎 settings、default 回退
-    /// 到未锁条目;全锁时零条目物化,不写顶层 secret;手编条目上的杂散
-    /// locked 忽略(skip 只认会员条目)。
+    /// locked(超会员档)会员条目:**照常物化**(缺条目会让到期前选它的
+    /// 老会话恢复即 "unknown model";档位权限归服务端把关),但 default
+    /// 回退滤 locked;全锁时 secret 照写(条目在,请求得能签)。
     #[test]
-    fn ohmyagent_config_skips_locked_member_entries() {
+    fn ohmyagent_config_materializes_locked_member_entries() {
         let root = test_dir("locked-members");
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
@@ -1001,13 +1003,13 @@ mod tests {
         write_ohmyagent_config(&engine_dir, &cfg, None).unwrap();
         let settings: serde_json::Value =
             serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
-        assert!(settings["models"].get("旗舰模型").is_none(), "locked 会员条目不得物化");
+        assert_eq!(settings["models"]["旗舰模型"]["api_key"], "omk-1", "locked 会员条目照常物化并注入密钥");
         assert_eq!(settings["models"]["专业模型"]["api_key"], "omk-1", "未锁会员条目照常注入");
         assert_eq!(settings["models"]["手编"]["api_key"], "k", "杂散 locked 的手编条目不受影响");
-        assert_eq!(settings["default_model"], "专业模型", "default 落在被 skip 条目时回退首个物化条目");
+        assert_eq!(settings["default_model"], "专业模型", "default 落在 locked 条目时回退首个未锁条目");
         assert_eq!(settings["signing_secret"], "sec-9");
 
-        // 全部会员条目均 locked:零条目物化,不写顶层 signing_secret
+        // 全部会员条目均 locked:条目照常物化,secret 照写,default 落未锁的自定义条目
         let all_locked = DesktopConfig {
             models: serde_json::json!([
                 { "name": "旗舰模型", "provider": "anthropic", "base_url": "", "api_key": "",
@@ -1019,8 +1021,9 @@ mod tests {
         write_ohmyagent_config(&engine_dir, &all_locked, None).unwrap();
         let settings: serde_json::Value =
             serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
-        assert!(settings.get("signing_secret").is_none(), "全锁时不写顶层 secret");
-        assert!(settings["models"].get("旗舰模型").is_none());
+        assert_eq!(settings["signing_secret"], "sec-9", "有会员条目(含全锁)就写顶层 secret");
+        assert_eq!(settings["models"]["旗舰模型"]["api_key"], "omk-1");
+        assert_eq!(settings["default_model"], "自定义", "default 不落在 locked 条目上");
         let _ = fs::remove_dir_all(&root);
     }
 

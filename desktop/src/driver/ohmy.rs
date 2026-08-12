@@ -153,8 +153,10 @@ pub(super) struct ManifestModel {
     /// 底层模型串(条目 "model" 字段)。name 可能是 remark 别名,UI 判
     /// 会员档位(monkeycode-{basic|pro|ultra}/…)只能靠它。
     pub(super) model: String,
-    /// 超出会员档的展示专用条目:引擎 settings 里没有它(物化跳过),
-    /// 选择键解析必须拒绝(见 session.rs model_id_of),UI 灰态禁选。
+    /// 超出会员档的条目:引擎 settings 照常物化(档位权限归服务端把关,
+    /// 缺条目会让到期前选它的老会话恢复即 unknown model);显式选择拒绝
+    /// (session.rs model_id_of),恢复/重建已有会话放行(model_id_of_any),
+    /// UI 灰态禁选。
     pub(super) locked: bool,
     /// 会员条目的服务端归属(public/private/team;非会员条目为空),
     /// UI 会员 tab 按它分「付费/我的/团队」节。
