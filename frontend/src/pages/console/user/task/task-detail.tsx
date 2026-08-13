@@ -151,7 +151,7 @@ export default function TaskDetailPage() {
   const previewDialogOpenRef = React.useRef(false)
   const showPreparing = useShouldShowPreparing(task)
   const taskInteractive = task?.status === ConstsTaskStatus.TaskStatusProcessing
-  const canPublishWebsite = !IS_OFFLINE_EDITION && serverConfig?.region === "cn"
+  const canPublishWebsite = !IS_OFFLINE_EDITION
   const envid = task?.virtualmachine?.id
   const cancelledRef = React.useRef(false)
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1042,10 +1042,10 @@ export default function TaskDetailPage() {
   }, [restartAgentClearContext, restartAgentSubmitting, t])
 
   const handleConfirmPublishWebsite = React.useCallback(() => {
-    chatInputRef.current?.submitPublishWebsite()
+    chatInputRef.current?.submitPublishWebsite(serverConfig?.region)
     setPublishConfirmDialogOpen(false)
     setPreviewDialogOpen(false)
-  }, [])
+  }, [serverConfig?.region])
 
   const showHistoryLoadButton = historyCursorReady && (!historyLoaded || historyHasMore)
 
