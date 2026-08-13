@@ -80,6 +80,11 @@ fn main() {
                 // 待办清单(todos.rs)
                 "todos_load",
                 "todos_save",
+                "todo_upload_begin",
+                "todo_upload_path",
+                "todo_upload_read",
+                "todo_upload_delete",
+                "todo_uploads_dir",
                 // 百智云/云端(baizhi/)
                 "baizhi_status",
                 "baizhi_send_code",

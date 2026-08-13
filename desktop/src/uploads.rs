@@ -31,7 +31,7 @@ fn image_ext(media_type: &str) -> Option<&'static str> {
 }
 
 /// 清洗上传文件名:去路径、去首尾点、白名单字符;超长或清空后为空返回 None。
-fn sanitize_name(name: &str) -> Option<String> {
+pub(crate) fn sanitize_name(name: &str) -> Option<String> {
     let base = name.replace('\\', "/");
     let base = base.rsplit('/').next().unwrap_or("");
     let cleaned: String = base
@@ -203,6 +203,13 @@ static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
 /// (清洗后);无名按时间戳兜底;重名追加序号。
 pub fn begin(workdir: &str, wsl_distro: Option<&str>, name: &str, media_type: &str) -> Result<u64, String> {
     let dir = ensure_uploads_dir(workdir, wsl_distro)?;
+    begin_in_dir(dir, ".monkeycode/uploads/", name, media_type)
+}
+
+/// begin 的目录参数化本体(待办图片走 config_dir/todo-uploads,与会话工作区
+/// 共用同一张句柄表与 chunk/finish/abort 命令面):rel = rel_prefix + 落盘名,
+/// 即 finish 回给 UI 的引用路径——会话通道是工作区相对路径,待办是裸文件名。
+pub(crate) fn begin_in_dir(dir: PathBuf, rel_prefix: &str, name: &str, media_type: &str) -> Result<u64, String> {
     let fname = reserve_name(&dir, sanitize_name(name).unwrap_or_else(|| fallback_name(media_type)));
     let part = dir.join(format!("{fname}.part"));
     // create_new:与并发 begin 争抢同名时硬失败而不是互写
@@ -214,7 +221,7 @@ pub fn begin(workdir: &str, wsl_distro: Option<&str>, name: &str, media_type: &s
     let h = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
     pending().lock_ok().insert(
         h,
-        PendingUpload { file, part, dest: dir.join(&fname), rel: format!(".monkeycode/uploads/{fname}") },
+        PendingUpload { file, part, dest: dir.join(&fname), rel: format!("{rel_prefix}{fname}") },
     );
     Ok(h)
 }
@@ -255,17 +262,22 @@ pub fn abort(handle: u64) {
 /// 按源路径直拷进 uploads 目录(Linux 原生拖拽给真实路径):内容零穿越
 /// IPC,大小不设限。返回 {path: 工作区相对路径}。
 pub fn save_from_path(workdir: &str, wsl_distro: Option<&str>, src: &str) -> Result<Value, String> {
+    let dir = ensure_uploads_dir(workdir, wsl_distro)?;
+    save_from_path_in_dir(dir, ".monkeycode/uploads/", src)
+}
+
+/// save_from_path 的目录参数化本体(与 begin_in_dir 同一组;rel 语义同)。
+pub(crate) fn save_from_path_in_dir(dir: PathBuf, rel_prefix: &str, src: &str) -> Result<Value, String> {
     let sp = Path::new(src);
     let meta = std::fs::metadata(sp).map_err(|e| format!("读取源文件失败: {e}"))?;
     if !meta.is_file() {
         return Err("只支持拖入文件(不支持目录)".into());
     }
-    let dir = ensure_uploads_dir(workdir, wsl_distro)?;
     let name = sp.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let media = image_mime(sp).unwrap_or("");
     let fname = reserve_name(&dir, sanitize_name(name).unwrap_or_else(|| fallback_name(media)));
     std::fs::copy(sp, dir.join(&fname)).map_err(|e| format!("复制文件失败: {e}"))?;
-    Ok(json!({ "path": format!(".monkeycode/uploads/{fname}") }))
+    Ok(json!({ "path": format!("{rel_prefix}{fname}") }))
 }
 
 /// 原生拖拽文件的元数据(路径直拷通道的探针:UI 拿它造 path-backed 占位
@@ -372,12 +384,16 @@ mod tests {
 
     impl TempDir {
         fn new() -> Self {
+            // 纳秒戳在并行测试线程下可能同刻撞名(共用目录 → 互踩/互删,
+            // 偶发挂):再叠一个进程内自增号,唯一性不再赌时钟分辨率
+            static SEQ: AtomicU64 = AtomicU64::new(0);
             let nonce = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
+            let seq = SEQ.fetch_add(1, Ordering::Relaxed);
             let path = std::env::temp_dir()
-                .join(format!("monkeycode-uploads-{}-{nonce}", std::process::id()));
+                .join(format!("monkeycode-uploads-{}-{nonce}-{seq}", std::process::id()));
             std::fs::create_dir_all(&path).unwrap();
             Self(path)
         }
@@ -426,6 +442,27 @@ mod tests {
         abort(h1);
         assert!(!tmp.0.join(".monkeycode/uploads/a.txt.part").exists(), "abort 未删半成品");
         abort(h1); // 幂等
+    }
+
+    /// 待办图片通道的底座:目录参数化 + 空 rel_prefix 时分块/直拷都回
+    /// **裸文件名**(todos.rs 的命令面建立在这个语义上,存进 todos.json 的
+    /// 就是它)。
+    #[test]
+    fn dir_parameterized_upload_returns_bare_names() {
+        let tmp = TempDir::new();
+        let dir = tmp.0.join("todo-uploads");
+        std::fs::create_dir_all(&dir).unwrap();
+        let h = begin_in_dir(dir.clone(), "", "shot.png", "image/png").unwrap();
+        chunk(h, &b64(b"png-bytes")).unwrap();
+        assert_eq!(finish(h).unwrap()["path"], "shot.png");
+        assert_eq!(std::fs::read(dir.join("shot.png")).unwrap(), b"png-bytes");
+
+        let src = tmp.0.join("photo.jpg");
+        std::fs::write(&src, b"jpg").unwrap();
+        let lossy = src.to_string_lossy();
+        assert_eq!(save_from_path_in_dir(dir.clone(), "", &lossy).unwrap()["path"], "photo.jpg");
+        // 重名让位与会话通道同一套
+        assert_eq!(save_from_path_in_dir(dir, "", &lossy).unwrap()["path"], "photo-2.jpg");
     }
 
     /// 路径直拷:复制进 uploads、保留文件名、重名追加序号、目录拒绝。
