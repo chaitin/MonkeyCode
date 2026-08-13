@@ -5,7 +5,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { useCommonData } from "@/components/console/data-provider"
 import { getTaskDisplayName, hasProSubscription } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconPlayerStopFilled } from "@tabler/icons-react"
+import { startBasicConcurrencyUpgradeJourney, trackBasicConcurrencyUpgradeEvent, trackSubscriptionConversion } from "@/lib/matomo"
+import { IconArrowRight, IconCrown, IconPlayerStopFilled } from "@tabler/icons-react"
 import { useCallback, useState, useEffect } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
@@ -23,8 +24,9 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [loading, setLoading] = useState(false)
   const [stoppingId, setStoppingId] = useState<string | null>(null)
-  const { subscription } = useCommonData()
+  const { subscription, user } = useCommonData()
   const hasAdvancedPlan = hasProSubscription(subscription)
+  const isBasicPlan = subscription?.plan === "basic"
   const planLabel = (() => {
     switch (subscription?.plan) {
       case "flagship":
@@ -58,6 +60,12 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
     return () => window.clearTimeout(timer)
   }, [open, loadRunningTasks])
 
+  useEffect(() => {
+    if (open && isBasicPlan && user.id) {
+      trackSubscriptionConversion("concurrency_limit_viewed", "basic")
+    }
+  }, [isBasicPlan, open, user.id])
+
   const handleStop = async (taskId: string) => {
     setStoppingId(taskId)
     await apiRequest("v1UsersTasksStopUpdate", { id: taskId }, [], (resp) => {
@@ -73,10 +81,14 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
   }
 
   const handleUpgradePlan = () => {
+    if (!isBasicPlan) return
+
+    startBasicConcurrencyUpgradeJourney(user.id || "")
+    trackBasicConcurrencyUpgradeEvent(user.id || "", "concurrency_limit_upgrade_clicked", "basic")
     onOpenChange(false)
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-        detail: { section: "account" },
+        detail: { section: "plan" },
       }))
     }, 0)
   }
@@ -119,15 +131,25 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
             ))
           )}
         </div>
-        {!hasAdvancedPlan && (
-          <div className="text-sm">
-            <button
-              type="button"
-              className="text-primary underline-offset-4 hover:underline"
-              onClick={handleUpgradePlan}
-            >
-              {t("taskWorkflow.concurrentLimit.upgrade")}
-            </button>
+        {isBasicPlan && (
+          <div className="mt-2 rounded-lg border border-primary/25 bg-primary/5 p-3">
+            <div className="flex items-start gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <IconCrown className="size-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  {t("taskWorkflow.concurrentLimit.upgradeTitle")}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {t("taskWorkflow.concurrentLimit.upgradeDescription")}
+                </p>
+              </div>
+            </div>
+            <Button className="mt-3 w-full" onClick={handleUpgradePlan}>
+              {t("taskWorkflow.concurrentLimit.upgradeAction")}
+              <IconArrowRight className="size-4" />
+            </Button>
           </div>
         )}
       </DialogContent>

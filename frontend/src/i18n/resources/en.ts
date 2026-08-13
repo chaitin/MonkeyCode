@@ -3970,7 +3970,9 @@ const en = {
       empty: "No running tasks",
       unnamedTask: "Untitled task",
       stop: "Stop",
-      upgrade: "Upgrade to Pro or Ultra to run up to 3 tasks at the same time",
+      upgradeTitle: "Unlock more concurrent tasks",
+      upgradeDescription: "Upgrade to Pro or Ultra to run up to 3 development tasks at the same time.",
+      upgradeAction: "View membership plans",
     },
     voice: {
       microphoneDenied: "Cannot access the microphone. Please check permissions.",
