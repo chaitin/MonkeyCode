@@ -36,6 +36,15 @@ export function CloudComposer({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const imeRef = useRef(createImeGuard());
 
+  // 挂载即聚焦:云端任务视图按 task.id 挂 key(CloudTaskView),切任务 =
+  // 整棵重建,挂载这一下正是「切换完任务」;重进同一任务(如关设置页)也
+  // 在挂载路径上,焦点落输入框同样合理——回到任务就是要继续干活
+  useEffect(() => {
+    taRef.current?.focus();
+    // 只挂载时一次;切换任务由整棵重建表达,不依赖 props 变化
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 模型清单预取(幂等;失败保持 null,悬停菜单区再触发即重试)
   const { loadModels } = h;
   useEffect(() => loadModels(), [loadModels]);

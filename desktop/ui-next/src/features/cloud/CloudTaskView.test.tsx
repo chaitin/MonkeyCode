@@ -100,6 +100,20 @@ describe("CloudTaskView", () => {
     expect(screen.getByText("终止任务")).toBeTruthy();
   });
 
+  it("进入任务:composer 输入框自动获得焦点(切换任务即可直接开打)", async () => {
+    stubShell((cmd) => {
+      switch (cmd) {
+        case "mc_task_info":
+          return Promise.resolve({ id: "t3", status: "processing", title: "跑着的任务" });
+        default:
+          return Promise.resolve({});
+      }
+    });
+    render(<CloudTaskView task={{ id: "t3", title: "跑着的任务", status: "processing" }} />);
+    const composer = await screen.findByLabelText<HTMLTextAreaElement>("消息输入");
+    await waitFor(() => expect(document.activeElement).toBe(composer));
+  });
+
   // 居中容器 + overflow-y-auto:内容高过容器时向两端等量溢出,顶端那截
   // 滚不回去(步骤多、窗口矮时正好看不到最前面几步)。LAYOUT §5 另要求
   // overflow-y 必须搭 overflow-x-hidden

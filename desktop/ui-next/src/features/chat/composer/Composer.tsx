@@ -56,6 +56,16 @@ export function Composer({
   const imeRef = useRef(createImeGuard());
   const [models, setModels] = useState<ModelInfo[]>([]);
 
+  // 切会话后焦点落到输入框:切换任务即可直接开打。首挂载与「重点当前会话」
+  // (id 未变)不抢焦点——前者应用刚启动、用户可能在读侧栏,后者点行只是
+  // 重新锚定;引擎自愈的 epoch 重建也走首挂载路径,不在切换语义里
+  const prevSidRef = useRef(sessionId);
+  useEffect(() => {
+    if (prevSidRef.current === sessionId) return;
+    prevSidRef.current = sessionId;
+    taRef.current?.focus();
+  }, [sessionId]);
+
   // 模型清单一次拉取(锁定项禁选;浏览器模式为空,触发器仍显当前名)。
   // 失败保留上一份而不是清空:modelsList 自 2026-08-09 起会**抛**(此前吞成
   // [],把 afterEngineReady 的重试变成了死代码),而引擎重启期这一拉必然
