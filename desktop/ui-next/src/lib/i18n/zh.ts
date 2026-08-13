@@ -39,6 +39,7 @@ export const zh = {
   "sidebar.overview.cloud.desc": "丢给云端机器,你可以关电脑",
   "sidebar.overview.projects": "{n} 项目",
   "sidebar.overview.tasks": "{n} 任务",
+  "sidebar.overview.todos": "{n} 待办",
   "sidebar.overview.chats": "{n} 会话",
   "sidebar.overview.running": "{n} 运行中",
   "sidebar.overview.waiting": "{n} 等待确认",
@@ -117,16 +118,13 @@ export const zh = {
   "main.shellInfo": "壳 {version} · 引擎 {engine}",
   "main.engineNotReady": "未就绪",
 
-  // 待办覆盖视图(收集箱 + 调度台;TodoView)
-  "todo.close": "关闭",
+  // 待办(侧栏待办组:收集箱 + 调度台)
   "todo.add": "添加",
   "todo.addPlaceholder": "记一件要做的事,Enter 添加",
   "todo.empty.title": "还没有待办",
-  "todo.empty.detail": "把想让 Agent 做的事先记下来;每一条都能随时派发成本地或云端任务。",
-  "todo.doneSection": "已完成 · {n}",
+  "todo.done": "已完成",
   "todo.dispatch": "派发成任务",
   "todo.editAction": "编辑",
-  "todo.editHint": "点击编辑",
   "todo.delete": "删除",
   "todo.deleteConfirm": "确认删除(不可恢复)",
   "todo.markDone": "标记完成",
@@ -134,6 +132,10 @@ export const zh = {
   "todo.openTask": "打开关联任务",
   "todo.openCloud": "到云端任务空间查看",
   "todo.linkGone": "关联任务已被删除",
+  "todo.attach": "添加图片",
+  "todo.viewImages": "查看图片",
+  "todo.imageRemove": "移除图片 {name}",
+  "todo.stagedHint": "已附 {n} 张图,随添加一并挂上",
 
   "settings.appearance.theme": "外观主题",
   "settings.appearance.language": "语言",
@@ -366,6 +368,7 @@ export const zh = {
   // todos.json 损坏时静默空表会被下一次变更的全量落盘覆盖
   "notice.todoLoadFailed": "待办加载失败:{reason}",
   "notice.todoSaveFailed": "待办保存失败:{reason}",
+  "notice.todoUploadFailed": "待办图片上传失败:{reason}",
 
   "downloads.cancel": "取消下载",
   "downloads.dismiss": "关闭",

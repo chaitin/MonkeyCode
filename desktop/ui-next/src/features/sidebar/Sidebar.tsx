@@ -10,16 +10,21 @@
 //   btn、右键菜单走 lib/contextMenu(menu 皮相)。
 // 行交互:右键 = 行菜单(重命名/归档/删除二段确认)。
 // 行/组头/小节折叠的呈现件收口在 listKit(三列表统一,不做两套)。
-import { IconArchive, IconFolder, IconFolderOpen, IconInbox, IconMessages, IconPlus, IconRefresh } from "@tabler/icons-react";
-import { useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { IconArchive, IconChecklist, IconCircleCheck, IconFolder, IconFolderOpen, IconInbox, IconMessages, IconPhoto, IconPlus, IconRefresh, IconX } from "@tabler/icons-react";
+import { useCallback, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
+import { Lightbox, UploadImg } from "@/components/media/UploadImg";
 import { CloudTaskList, useCloudProjects, useCloudTasks, type CloudTasksFeed } from "@/features/cloud/CloudTaskList";
-import { GroupLabel, levelPad, ListRow, NEST_NO_GUIDE, SectionFold } from "@/features/sidebar/listKit";
+import { GroupLabel, levelPad, ListRow, NEST_NO_GUIDE, SectionFold, StatusDot } from "@/features/sidebar/listKit";
+import type { TodoOps } from "@/features/todo/useTodos";
 import { Brand } from "@/features/titlebar/TitleBar";
 import { useUpdate } from "@/features/update/useUpdate";
 import { openMenu, type MenuItem } from "@/lib/contextMenu";
 import { useI18n } from "@/lib/i18n";
 import type { SessionMeta } from "@/lib/ipc/sessions";
+import { todoUploadURL, type TodoItem } from "@/lib/ipc/todos";
+import { pickImageFiles } from "@/lib/ipc/uploads";
 import {
   groupSessions,
   projectKey,
@@ -34,8 +39,26 @@ import {
   writeSessionArchivesOpen,
   type ProjectGroup,
 } from "@/lib/util/projects";
-import type { Space } from "@/lib/util/prefs";
+import { readFold, writeFold, type Space } from "@/lib/util/prefs";
 import { renameIsNoop } from "@/lib/util/rename";
+
+/** 待办组的接线(App 提供):清单数据 + 变更 ops + 派发/跳转出口。 */
+export interface TodoWiring {
+  todos: TodoItem[];
+  ops: Pick<TodoOps, "add" | "edit" | "toggle" | "remove" | "addImages" | "removeImage">;
+  /** 派发成任务:App 打开新建任务视图并预填正文(带 todoId 回链) */
+  onDispatch: (item: TodoItem) => void;
+  onOpenSession: (id: string) => void;
+  onOpenCloud: () => void;
+}
+
+/** 剪贴板 file item 里的图片(截图粘贴;非图文件不收——待办附件只收图)。 */
+function imageFilesOfPaste(e: ClipboardEvent<HTMLInputElement>): File[] {
+  return [...(e.clipboardData?.items ?? [])]
+    .filter((it) => it.kind === "file" && it.type.startsWith("image/"))
+    .map((it) => it.getAsFile())
+    .filter((f): f is File => !!f);
+}
 
 export interface SidebarActions {
   onSelect: (meta: SessionMeta) => void;
@@ -51,6 +74,10 @@ type T = ReturnType<typeof useI18n>["t"];
 
 /** 拖拽「移到末尾」的落区标记(项目 key 是目录路径,不会与之相撞)。 */
 const END_DROP_KEY = "\0end";
+
+/** 待办组在 mc.collapsedGroups 里的注册 key(\0 哨兵同 END_DROP_KEY,
+ * 不会与目录路径相撞;沿用项目组的「默认展开」语义与持久化管道)。 */
+const TODO_GROUP_KEY = "\0todos";
 
 /** 行尾状态点(用户定案 2026-08-05「文字换状态图标」):仅要紧态给彩点,
  * 静默态无点(轮次进 tooltip);状态词进点的 title/aria。attention(D3
@@ -343,6 +370,7 @@ function Overview({
   space,
   sessions,
   archivedProjects,
+  todoCount = 0,
   cloud,
   onRefresh,
 }: {
@@ -350,6 +378,9 @@ function Overview({
   sessions: SessionMeta[];
   /** 已归档项目 key 集:统计口径必须与看得见的列表一致(见 pool) */
   archivedProjects: ReadonlySet<string>;
+  /** 未完成待办数(仅本地空间入统计行;0 不出——与运行中/等待确认同款
+   *  「仅 >0 时出现」,没在用待办的人不看「0 待办」的常驻噪音) */
+  todoCount?: number;
   cloud?: { feed: CloudTasksFeed; projects: import("@/lib/ipc/cloudtasks").CloudProject[] };
   /** 云端列表刷新(概览块右上;整表故障条也用它重试) */
   onRefresh?: () => void;
@@ -378,6 +409,7 @@ function Overview({
     const projects = new Set(pool.map((m) => projectKey(m.workdir))).size;
     stats.push({ text: t("sidebar.overview.projects", { n: String(projects) }) });
     stats.push({ text: t("sidebar.overview.tasks", { n: String(pool.length) }) });
+    if (todoCount > 0) stats.push({ text: t("sidebar.overview.todos", { n: String(todoCount) }) });
   } else if (space === "chat") {
     stats.push({ text: t("sidebar.overview.chats", { n: String(pool.length) }) });
   } else if (space === "cloud" && cloud && cloud.feed.tasks !== null) {
@@ -460,12 +492,345 @@ function EmptySlate({ icon, title, detail }: { icon: ReactNode; title: string; d
   );
 }
 
+/** 待办行(组内 L1;完成行在「已完成」小节 L2):单行正文安静行 + 行尾
+ * 图片角标(有图才出)与要紧态状态点(派发去向回查会话表,rowTrailing
+ * 同色语)。行点击 = 已派发跳关联任务(云端切空间),未派发进行内编辑;
+ * 完成/编辑/加图/派发/删除(二段)统一走右键。编辑态 = 改名同款行内
+ * input,粘贴截图直接挂到本条。 */
+function TodoRowItem({
+  item,
+  todo,
+  sessions,
+  level = 1,
+  editing,
+  onEditStart,
+  onEditEnd,
+  onViewImages,
+}: {
+  item: TodoItem;
+  todo: TodoWiring;
+  sessions: SessionMeta[];
+  level?: number;
+  editing: boolean;
+  onEditStart: () => void;
+  onEditEnd: () => void;
+  /** 点行尾图片角标看图(Lightbox 状态归 TodoSection,一次只开一份) */
+  onViewImages: () => void;
+}) {
+  const { t } = useI18n();
+  const done = item.status === "done";
+  const cloud = item.dispatched_kind === "cloud";
+  // 本地/会话去向:从壳的会话表回查活体(期间被删则 meta 缺席,链子挂空)
+  const meta =
+    item.dispatched_kind && !cloud ? sessions.find((s) => s.id === item.dispatched_id) : undefined;
+  if (editing) {
+    return (
+      <li>
+        <div className={`min-h-8 p-1 ${levelPad(level)}`}>
+          <input
+            type="text"
+            aria-label={t("todo.editAction")}
+            className="input input-xs w-full"
+            defaultValue={item.content}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+              if (e.nativeEvent.isComposing) return; // IME 组字回车不提交
+              if (e.key === "Escape") return onEditEnd();
+              if (e.key !== "Enter") return;
+              const content = e.currentTarget.value.trim();
+              if (content && content !== item.content) todo.ops.edit(item.id, content);
+              onEditEnd();
+            }}
+            // 编辑态粘贴截图 = 直接挂到本条(上传编排在 useTodos,成败外显)
+            onPaste={(e) => {
+              const files = imageFilesOfPaste(e);
+              if (!files.length) return;
+              e.preventDefault();
+              todo.ops.addImages(item.id, files);
+            }}
+            onBlur={onEditEnd}
+          />
+        </div>
+      </li>
+    );
+  }
+  const linkWord = cloud
+    ? t("cloud.view.badge")
+    : meta
+      ? rowStatusLabel(meta, t)
+      : item.dispatched_kind
+        ? t("todo.linkGone")
+        : "";
+  const trailing = meta ? rowTrailing(meta, t, false) : null;
+  const jump = cloud ? todo.onOpenCloud : meta ? () => todo.onOpenSession(meta.id) : undefined;
+  const images = item.images ?? [];
+  // 完成走右键首项:行首勾选件两版都试过(checkbox-xs 太重像单选钮表单、
+  // 14px 圆圈钮仍嫌多),2026-08-12 用户复盘定案「不需要前面的小圆点」——
+  // 行回归与会话行同款的纯文字安静行,行管理统一收进右键
+  const menuItems: MenuItem[] = [
+    { label: done ? t("todo.markUndone") : t("todo.markDone"), run: () => todo.ops.toggle(item.id) },
+    { label: t("todo.editAction"), run: onEditStart },
+    {
+      label: t("todo.attach"),
+      run: () => void pickImageFiles(t("todo.attach")).then((files) => files.length && todo.ops.addImages(item.id, files)),
+    },
+    ...(images.length ? [{ label: t("todo.viewImages"), run: onViewImages }] : []),
+    ...(!item.dispatched_kind && !done
+      ? [{ label: t("todo.dispatch"), run: () => todo.onDispatch(item) }]
+      : []),
+    ...(jump ? [{ label: cloud ? t("todo.openCloud") : t("todo.openTask"), run: jump }] : []),
+    { label: t("todo.delete"), confirm: t("todo.deleteConfirm"), danger: true, run: () => todo.ops.remove(item.id) },
+  ];
+  return (
+    <li>
+      <a
+        className={`flex min-w-0 items-center gap-2 ${levelPad(level)}`}
+        title={[item.content, linkWord, t("sidebar.row.hint")].filter(Boolean).join("\n")}
+        onClick={() => (jump ? jump() : onEditStart())}
+        onContextMenu={(e: MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openMenu({ x: e.clientX, y: e.clientY }, menuItems);
+        }}
+      >
+        <span className={`min-w-0 flex-1 truncate ${done ? "text-base-content/55 line-through" : ""}`}>
+          {item.content}
+        </span>
+        {/* 图片角标:13px 安静灰,停传播点开 Lightbox(不触发行点击) */}
+        {images.length > 0 && (
+          <button
+            type="button"
+            aria-label={t("todo.viewImages")}
+            title={t("todo.viewImages")}
+            className="shrink-0 cursor-pointer text-base-content/40 transition-colors hover:text-base-content/70"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewImages();
+            }}
+          >
+            <IconPhoto size={13} stroke={1.75} aria-hidden />
+          </button>
+        )}
+        {trailing && <StatusDot {...trailing} />}
+      </a>
+    </li>
+  );
+}
+
+/** 待办图片查看:Lightbox 内竖排本条全部图片(单图放大的同一形态,多图免
+ * 翻页逻辑),各图右上 × 移除;图删光即整体关闭(条件渲染在调用方)。 */
+function TodoImagesLightbox({
+  item,
+  onClose,
+  onRemove,
+}: {
+  item: TodoItem;
+  onClose: () => void;
+  onRemove: (name: string) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <Lightbox alt={item.content} onClose={onClose}>
+      <div className="flex max-h-[80vh] flex-col gap-3 overflow-x-hidden overflow-y-auto">
+        {(item.images ?? []).map((name) => (
+          <div key={name} className="relative">
+            <UploadImg
+              load={() => todoUploadURL(name)}
+              alt={name}
+              title={name}
+              className="max-h-[70vh] max-w-full rounded-box object-contain"
+            />
+            <button
+              type="button"
+              aria-label={t("todo.imageRemove", { name })}
+              className="btn btn-circle btn-xs absolute -end-1.5 -top-1.5 size-4.5 min-h-0 border-base-300 bg-base-100 p-0"
+              onClick={() => onRemove(name)}
+            >
+              <IconX size={10} stroke={2} aria-hidden />
+            </button>
+          </div>
+        ))}
+      </div>
+    </Lightbox>
+  );
+}
+
+/** 待办组(本地空间列表顶部)。2026-08-12 用户二次定案:「先不需要右侧的
+ * 页面,只在 sidebar 实现添加和其他操作」——主区待办视图已删,收集/勾选/
+ * 派发全在这一组里完成。形态 = 项目组同款(details 区块标签 + hover「+」,
+ * 折叠注册进 mc.collapsedGroups 哨兵 key);「+」开行内添加输入(Enter 连续
+ * 记多条,Esc/失焦收起);「已完成」收进小节折叠(Archive 小节同构,默认
+ * 收起,mc.todoDoneOpen)。 */
+function TodoSection({
+  todo,
+  sessions,
+  collapsed,
+  onToggleCollapsed,
+}: {
+  todo: TodoWiring;
+  sessions: SessionMeta[];
+  collapsed: boolean;
+  onToggleCollapsed: (key: string, open: boolean) => void;
+}) {
+  const { t } = useI18n();
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // 添加行粘贴的截图暂存(随 Enter 一并挂上;收起输入即弃):不出预览 chips
+  // ——侧栏行宽摆不下,给一句「已附 N 张图」的文字回执就够
+  const [staged, setStaged] = useState<File[]>([]);
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const closeViewer = useCallback(() => setViewingId(null), []);
+  const [doneOpen, setDoneOpen] = useState<boolean>(() => readFold("mc.todoDoneOpen"));
+  const pending = todo.todos.filter((i) => i.status !== "done");
+  const finished = todo.todos.filter((i) => i.status === "done");
+  // 图删光即整体关闭(条件渲染兜底,Lightbox 卸载时 esc 层随之出栈)
+  const viewing = todo.todos.find((i) => i.id === viewingId);
+  const row = (item: TodoItem, level: number) => (
+    <TodoRowItem
+      key={item.id}
+      item={item}
+      todo={todo}
+      sessions={sessions}
+      level={level}
+      editing={editingId === item.id}
+      onEditStart={() => setEditingId(item.id)}
+      onEditEnd={() => setEditingId(null)}
+      onViewImages={() => setViewingId(item.id)}
+    />
+  );
+  return (
+    <li>
+      <details
+        open={!collapsed}
+        onToggle={(e) => {
+          if (e.target !== e.currentTarget) return; // toggle 合成冒泡守卫
+          onToggleCollapsed(TODO_GROUP_KEY, e.currentTarget.open);
+        }}
+      >
+        <summary className="group relative flex items-center after:hidden" title={t("rail.todo")}>
+          <GroupLabel icon={IconChecklist} name={t("rail.todo")} />
+          {/* 快捷添加:常驻占位 hover 显形(项目组头「+」同款,§6.2 铁律);
+              组收着时先展开再开输入,不然输入行加在看不见的地方 */}
+          <button
+            type="button"
+            aria-label={t("todo.add")}
+            title={t("todo.add")}
+            className="btn btn-ghost btn-square btn-xs invisible group-hover:visible group-focus-within:visible"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (collapsed) onToggleCollapsed(TODO_GROUP_KEY, true);
+              setAdding(true);
+            }}
+          >
+            <IconPlus size={14} stroke={1.75} aria-hidden />
+          </button>
+        </summary>
+        {/* 收起即卸载(details 残留占位的 webview 坑,§6.2) */}
+        {!collapsed && (
+          <ul className={`ms-0 min-w-0 ps-0 pb-1.5 ${NEST_NO_GUIDE}`}>
+            {adding && (
+              <li className="flex-col items-stretch">
+                <div className={`min-h-8 p-1 ${levelPad(1)}`}>
+                  <input
+                    type="text"
+                    aria-label={t("todo.add")}
+                    placeholder={t("todo.addPlaceholder")}
+                    className="input input-xs w-full"
+                    autoFocus
+                    onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                      if (e.nativeEvent.isComposing) return;
+                      if (e.key === "Escape") return setAdding(false);
+                      if (e.key !== "Enter") return;
+                      const content = e.currentTarget.value.trim();
+                      if (content) {
+                        todo.ops.add(content, staged.length ? staged : undefined);
+                        setStaged([]); // 暂存图归第一条,连着记的后续条目不重复挂
+                      }
+                      e.currentTarget.value = ""; // 连着记几条不用重开输入
+                    }}
+                    // 粘贴截图 = 暂存,随 Enter 挂上这条新待办
+                    onPaste={(e) => {
+                      const files = imageFilesOfPaste(e);
+                      if (!files.length) return;
+                      e.preventDefault();
+                      setStaged((prev) => [...prev, ...files]);
+                    }}
+                    onBlur={() => {
+                      setAdding(false);
+                      setStaged([]); // 收起输入即弃(还没上传,无孤儿文件)
+                    }}
+                  />
+                </div>
+                {/* pointer-events-none:menu 会给 li 的直接子节点补悬停底,
+                    一句静态回执不该有悬停态 */}
+                {staged.length > 0 && (
+                  <div className={`${levelPad(1)} pointer-events-none pb-1 text-xs text-base-content/40`}>
+                    {t("todo.stagedHint", { n: String(staged.length) })}
+                  </div>
+                )}
+              </li>
+            )}
+            {pending.map((i) => row(i, 1))}
+            {/* 空组给一句轻引导(menu-disabled 官方禁用形态,不吃点击) */}
+            {pending.length === 0 && !adding && (
+              <li className="menu-disabled">
+                <span className={`${levelPad(1)} text-xs`}>{t("todo.empty.title")}</span>
+              </li>
+            )}
+            {finished.length > 0 && (
+              <li>
+                <details
+                  open={doneOpen}
+                  onToggle={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    const next = e.currentTarget.open;
+                    if (next === doneOpen) return;
+                    setDoneOpen(next);
+                    writeFold("mc.todoDoneOpen", next);
+                  }}
+                >
+                  {/* Archive 小节同构:10px 图标行首、去尾箭头、标签不带计数 */}
+                  <summary className="flex items-center gap-2 ps-6 text-xs text-base-content/40 after:hidden">
+                    <IconCircleCheck size={10} stroke={1.75} aria-hidden className="shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{t("todo.done")}</span>
+                  </summary>
+                  {doneOpen && (
+                    <ul className={`ms-0 min-w-0 ps-0 pb-1 ${NEST_NO_GUIDE}`}>
+                      {finished.map((i) => row(i, 2))}
+                    </ul>
+                  )}
+                </details>
+              </li>
+            )}
+          </ul>
+        )}
+      </details>
+      {/* portal 到 body:.menu 的行样式选择器命中 li 的**直接子节点**
+          (padding/悬停底),modal 留在 li 里整层覆盖会被当菜单行染色;
+          fixed 定位不依赖 DOM 位置,--chrome-h 顶偏移取根级变量不受影响 */}
+      {viewing &&
+        (viewing.images?.length ?? 0) > 0 &&
+        createPortal(
+          <TodoImagesLightbox
+            item={viewing}
+            onClose={closeViewer}
+            onRemove={(name) => todo.ops.removeImage(viewing.id, name)}
+          />,
+          document.body,
+        )}
+    </li>
+  );
+}
+
 export function Sidebar({
   space,
   sessions,
   currentId,
   actions,
   attentionIds,
+  todo,
   cloud,
 }: {
   space: Space;
@@ -474,6 +839,10 @@ export function Sidebar({
   actions: SidebarActions;
   /** 后台提醒未读的会话 id 集(D3):命中行状态点转警示色 + 行高亮 */
   attentionIds?: Set<string>;
+  /** 待办组(仅本地任务空间,列表顶部):清单本体就在侧栏里,添加/勾选/
+   *  编辑/派发/删除全在组内完成,主区不再有待办页(2026-08-12 用户二次
+   *  定案「先不需要右侧的页面」,推翻同日「钉住行入口 + 覆盖视图」版) */
+  todo?: TodoWiring;
   /** 云端空间的数据接线(App 提供;缺省时云端页为空列表) */
   cloud?: {
     currentId: string | null;
@@ -558,16 +927,31 @@ export function Sidebar({
       );
     }
 
+    // 待办组(仅本地空间;2026-08-12 定案清单本体进侧栏,§4):项目组同款
+    // details,折叠走 mc.collapsedGroups 哨兵 key,与项目组同一条持久化管道
+    const todoSection = space !== "chat" && todo && (
+      <TodoSection
+        todo={todo}
+        sessions={sessions}
+        collapsed={collapsed.has(TODO_GROUP_KEY)}
+        onToggleCollapsed={toggleCollapsed}
+      />
+    );
+
     const pool = sessions.filter((m) => (space === "chat" ? m.kind === "chat" : m.kind !== "chat"));
     if (pool.length === 0) {
       const chat = space === "chat";
       const EmptyIcon = chat ? IconMessages : IconInbox;
       return (
-        <EmptySlate
-          icon={<EmptyIcon size={20} stroke={1.75} className="text-base-content/30" aria-hidden />}
-          title={t(chat ? "sidebar.empty.chat.title" : "sidebar.empty.local.title")}
-          detail={t(chat ? "sidebar.empty.chat.detail" : "sidebar.empty.local.detail")}
-        />
+        <>
+          {/* 空态也保留待办组:没有任何会话 ≠ 没有要记的事 */}
+          {todoSection && <ul className="menu w-full flex-nowrap p-0 [&_li]:flex-nowrap">{todoSection}</ul>}
+          <EmptySlate
+            icon={<EmptyIcon size={20} stroke={1.75} className="text-base-content/30" aria-hidden />}
+            title={t(chat ? "sidebar.empty.chat.title" : "sidebar.empty.local.title")}
+            detail={t(chat ? "sidebar.empty.chat.detail" : "sidebar.empty.local.detail")}
+          />
+        </>
       );
     }
 
@@ -617,6 +1001,7 @@ export function Sidebar({
     };
     return (
       <ul className="menu w-full flex-nowrap p-0 [&_li]:flex-nowrap">
+        {todoSection}
         {grouped.projects.map((group) => (
           <ProjectDetails
             key={group.key}
@@ -705,6 +1090,7 @@ export function Sidebar({
         space={space}
         sessions={sessions}
         archivedProjects={archivedProjects}
+        todoCount={todo?.todos.filter((i) => i.status !== "done").length ?? 0}
         cloud={{ feed: cloudFeed, projects: cloudProjects }}
         onRefresh={cloud?.onRefresh}
       />

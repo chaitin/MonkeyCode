@@ -84,6 +84,7 @@ export function NewTaskModal({
   initialCloudProject,
   initialKind,
   initialText,
+  initialFiles,
   onOpenSettings,
 }: {
   open: boolean;
@@ -107,6 +108,10 @@ export function NewTaskModal({
   /** 首条消息预填(待办「派发成任务」把正文带进来);仅本地/会话页签消费,
    *  云端页签的描述住在 NewCloudTask 自己的 state 里,不受它影响 */
   initialText?: string;
+  /** 附件预填(待办派发带图:path-backed File,建完会话后按路径直拷)。
+   *  与 initialText 同命:仅本地/会话页签消费,云端任务不支持附件——落云端
+   *  时图片不上行,留在待办条目上 */
+  initialFiles?: File[];
 }) {
   const { t } = useI18n();
   const [kind, setKind] = useState<SessionKind | "cloud">("local");
@@ -161,9 +166,15 @@ export function NewTaskModal({
     setThink("");
     setError("");
     setOfferCreate(false);
+    // 附件区从预填起步(待办派发带图;无预填即空):上一次的暂存连预览一起清
     setAtts((prev) => {
       for (const a of prev) if (a.preview) URL.revokeObjectURL(a.preview);
-      return [];
+      return (initialFiles ?? []).map((file) => ({
+        file,
+        name: file.name || t("common.unnamedFile"),
+        // path-backed 占位 File 是 0 字节,不建 objectURL(下面 addFiles 同注)
+        preview: file.type.startsWith("image/") && file.size > 0 ? URL.createObjectURL(file) : undefined,
+      }));
     });
     dragDepth.current = 0;
     setDragging(false);
@@ -212,7 +223,8 @@ export function NewTaskModal({
     return () => {
       alive = false;
     };
-  }, [open, initialDir, initialCloudProject, initialKind, initialText]);
+    // t 是模块级函数(useI18n 头注),身份恒稳,不会催动重置
+  }, [open, initialDir, initialCloudProject, initialKind, initialText, initialFiles, t]);
 
   const pickDir = (p: string) => {
     dirTouched.current = true;

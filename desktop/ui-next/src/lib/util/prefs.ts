@@ -48,8 +48,9 @@ export function rememberLastTaskModel(model: string): void {
   }
 }
 
-/** 侧栏折叠段开合态("1"/"0" 取值 = 旧 UI 契约):归档会话 / 归档项目 / 云端历史。 */
-export type FoldKey = "mc.archivedOpen" | "mc.projectArchiveOpen" | "mc.cloudHistoryOpen";
+/** 侧栏折叠段开合态("1"/"0" 取值 = 旧 UI 契约):归档会话 / 归档项目 /
+ * 云端历史 / 待办组内「已完成」小节(ui-next 新增,默认收起)。 */
+export type FoldKey = "mc.archivedOpen" | "mc.projectArchiveOpen" | "mc.cloudHistoryOpen" | "mc.todoDoneOpen";
 
 export function readFold(key: FoldKey): boolean {
   try {
