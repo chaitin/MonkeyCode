@@ -922,7 +922,9 @@ export function ChatView({
       <OutlineNav entries={entries} activeSeq={activeSeq ?? undefined} onJump={onJump} />
       </div>
 
-      <footer className="shrink-0 border-t border-base-300 p-3">
+      {/* 无上边线(2026-08-13 用户定案):composer 卡自带边框已是分界,
+          再压一条通栏线是双重描边;云端视图同款 */}
+      <footer className="shrink-0 p-3">
         <div className="mx-auto flex chat-measure flex-col gap-2">
           {state.plan.length > 0 && <TaskPanel entries={state.plan} />}
           <Composer sessionId={meta.id} state={state} meta={meta} ctl={composer} onAfterSend={followBottom} />

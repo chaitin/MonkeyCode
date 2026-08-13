@@ -552,7 +552,7 @@ export function Sidebar({
       return (
         <>
           {/* 空态也保留待办组:没有任何会话 ≠ 没有要记的事 */}
-          {todoSection && <ul className="menu w-full flex-nowrap p-0 [&_li]:flex-nowrap">{todoSection}</ul>}
+          {todoSection && <ul className="menu menu-sm w-full flex-nowrap p-0 [&_li]:flex-nowrap">{todoSection}</ul>}
           <EmptySlate
             icon={<EmptyIcon size={20} stroke={1.75} className="text-base-content/30" aria-hidden />}
             title={t(chat ? "sidebar.empty.chat.title" : "sidebar.empty.local.title")}
@@ -566,7 +566,7 @@ export function Sidebar({
       const active = pool.filter((m) => !m.archived);
       const archived = pool.filter((m) => m.archived);
       return (
-        <ul className="menu w-full flex-nowrap p-0 [&_li]:flex-nowrap">
+        <ul className="menu menu-sm w-full flex-nowrap p-0 [&_li]:flex-nowrap">
           {rows(active, p)}
           {archived.length > 0 && (
             <SectionFold label={t("sidebar.archivedChats")} foldKey="mc.archivedOpen">
@@ -607,7 +607,7 @@ export function Sidebar({
       return !(next.length === visibleKeys.length && next.every((k, i) => k === visibleKeys[i]));
     };
     return (
-      <ul className="menu w-full flex-nowrap p-0 [&_li]:flex-nowrap">
+      <ul className="menu menu-sm w-full flex-nowrap p-0 [&_li]:flex-nowrap">
         {todoSection}
         {grouped.projects.map((group) => (
           <ProjectDetails

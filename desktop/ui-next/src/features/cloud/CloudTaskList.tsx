@@ -473,7 +473,7 @@ export function CloudTaskList({
   };
 
   return (
-    <ul className="menu w-full flex-nowrap p-0 [&_li]:flex-nowrap">
+    <ul className="menu menu-sm w-full flex-nowrap p-0 [&_li]:flex-nowrap">
       {/* 进行中任务裸行置顶(同 chat 平铺行,不设区标签):彩点/尾注已自带
           「正在进行」语义,区标签反而多一层杂讯 */}
       {activeRows.map((task) => (
