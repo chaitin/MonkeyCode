@@ -59,6 +59,29 @@ describe("useTodos 图片编排", () => {
     expect(lastSavedItems(calls)?.[0]?.images).toBeUndefined();
   });
 
+  it("reorder:挪到目标之前并全量落盘;不动 updated_at,原位落点不写盘", async () => {
+    const stored = ["t1", "t2", "t3"].map((id) => ({
+      id,
+      content: id,
+      status: "pending",
+      created_at: "2026-08-13T00:00:00Z",
+      updated_at: "2026-08-13T00:00:00Z",
+    })) as TodoItem[];
+    const calls = stubShell({ todos_load: () => Promise.resolve(stored) });
+    const { result } = renderHook(() => useTodos(vi.fn()));
+    await waitFor(() => expect(result.current.todos).toHaveLength(3));
+
+    act(() => result.current.reorder("t3", "t1"));
+    const saved = lastSavedItems(calls);
+    expect(saved?.map((i) => i.id)).toEqual(["t3", "t1", "t2"]);
+    // 排序是清单的事,不是条目变更:updated_at 原样
+    expect(saved?.every((i) => i.updated_at === "2026-08-13T00:00:00Z")).toBe(true);
+
+    const savesBefore = calls.filter((c) => c.cmd === "todos_save").length;
+    act(() => result.current.reorder("t3", "t1")); // 已在 t1 之前 = 原位
+    expect(calls.filter((c) => c.cmd === "todos_save").length).toBe(savesBefore);
+  });
+
   it("removeImage 摘名并清文件;remove 连带清理条目全部图片", async () => {
     const stored: TodoItem = {
       id: "t1",

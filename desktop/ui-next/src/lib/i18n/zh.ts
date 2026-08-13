@@ -123,7 +123,10 @@ export const zh = {
   "todo.addPlaceholder": "记一件要做的事,Enter 添加",
   "todo.empty.title": "还没有待办",
   "todo.done": "已完成",
-  "todo.dispatch": "派发成任务",
+  // 文案两易(2026-08-13 用户两轮定案):「派发成任务」太行话,「交给
+  // Agent」也别扭——落定「启动任务」,与本地任务/新建任务同一套词汇。
+  // 动作本体 = 开新建任务视图预填正文与图片
+  "todo.dispatch": "启动任务",
   "todo.editAction": "编辑",
   "todo.delete": "删除",
   "todo.deleteConfirm": "确认删除(不可恢复)",
@@ -133,9 +136,11 @@ export const zh = {
   "todo.openCloud": "到云端任务空间查看",
   "todo.linkGone": "关联任务已被删除",
   "todo.attach": "添加图片",
-  "todo.viewImages": "查看图片",
   "todo.imageRemove": "移除图片 {name}",
+  "todo.imageCount": "{n} 张图",
   "todo.stagedHint": "已附 {n} 张图,随添加一并挂上",
+  "todo.detail": "待办详情",
+  "todo.dragHint": "拖动可调整顺序",
 
   "settings.appearance.theme": "外观主题",
   "settings.appearance.language": "语言",

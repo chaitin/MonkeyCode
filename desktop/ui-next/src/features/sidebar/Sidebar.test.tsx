@@ -6,9 +6,10 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { TodoWiring } from "@/features/todo/TodoSection";
 import type { SessionMeta } from "@/lib/ipc/sessions";
 import type { TodoItem } from "@/lib/ipc/todos";
-import type { SidebarActions, TodoWiring } from "./Sidebar";
+import type { SidebarActions } from "./Sidebar";
 import { Sidebar } from "./Sidebar";
 
 afterEach(() => {
@@ -48,7 +49,7 @@ const todoItem = (over: Partial<TodoItem> = {}): TodoItem => ({
 function todoWiring(over: Partial<TodoWiring> = {}): TodoWiring {
   return {
     todos: [],
-    ops: { add: vi.fn(), edit: vi.fn(), toggle: vi.fn(), remove: vi.fn(), addImages: vi.fn(), removeImage: vi.fn() },
+    ops: { add: vi.fn(), edit: vi.fn(), toggle: vi.fn(), remove: vi.fn(), reorder: vi.fn(), addImages: vi.fn(), removeImage: vi.fn() },
     onDispatch: vi.fn(),
     onOpenSession: vi.fn(),
     onOpenCloud: vi.fn(),
@@ -346,24 +347,22 @@ describe("侧栏(local 空间)", () => {
     expect(screen.getByText("还没有本地项目")).toBeTruthy();
   });
 
-  it("待办行:点未派发行进行内编辑,Enter 提交;右键 = 标记完成/编辑/派发/删除(二段);概览统计出待办数", async () => {
+  it("待办行右键 = 标记完成/派发/删除(编辑与图片项已收编进详情弹窗);概览统计出待办数", async () => {
     const todo = todoWiring({ todos: [todoItem({ content: "修登录页" })] });
     render(<Sidebar space="local" sessions={SESSIONS} currentId={null} actions={actions()} todo={todo} />);
     // 行首无勾选件(2026-08-12 用户定案「不需要前面的小圆点」),完成走右键首项
     const menu0 = contextMenuOf(screen.getByText("修登录页"));
+    expect(within(menu0).queryByText("编辑")).toBeNull(); // 点行即编辑,菜单不再重复
+    expect(within(menu0).queryByText("添加图片")).toBeNull();
     await userEvent.click(within(menu0).getByText("标记完成"));
     expect(todo.ops.toggle).toHaveBeenCalledWith("t1");
     // 概览统计行:任务数之后跟未完成待办数(仅 >0 时出现)
     expect(screen.getByText("1 待办")).toBeTruthy();
 
-    await userEvent.click(screen.getByText("修登录页"));
-    const box = screen.getByRole("textbox", { name: "编辑" });
-    await userEvent.clear(box);
-    await userEvent.type(box, "修注册页{Enter}");
-    expect(todo.ops.edit).toHaveBeenCalledWith("t1", "修注册页");
-
+    // 文案两易落定「启动任务」(2026-08-13:「派发成任务」行话、「交给
+    // Agent」别扭,用户定案)
     const menu = contextMenuOf(screen.getByText("修登录页"));
-    await userEvent.click(within(menu).getByText("派发成任务"));
+    await userEvent.click(within(menu).getByText("启动任务"));
     expect(todo.onDispatch).toHaveBeenCalledWith(expect.objectContaining({ id: "t1" }));
     const menu2 = contextMenuOf(screen.getByText("修登录页"));
     await userEvent.click(within(menu2).getByText("删除"));
@@ -371,7 +370,7 @@ describe("侧栏(local 空间)", () => {
     expect(todo.ops.remove).toHaveBeenCalledWith("t1");
   });
 
-  it("已派发行:行尾状态点(词进 aria)、点行跳回会话;完成行沉入「已完成」小节(契约键预置展开)", async () => {
+  it("已派发行:行尾状态点(词进 aria);详情弹窗状态章点击跳回会话;完成行沉入「已完成」小节", async () => {
     localStorage.setItem("mc.todoDoneOpen", "1");
     const todo = todoWiring({
       todos: [
@@ -384,7 +383,10 @@ describe("侧栏(local 空间)", () => {
     // 圈定在待办行内断:s-run 的会话行自己也有一颗运行点
     const row = screen.getByText("修登录页").closest("a") as HTMLElement;
     expect(within(row).getByRole("img", { name: "运行中" })).toBeTruthy();
+    // 点行开详情弹窗(2026-08-13 用户定案);跳关联任务走弹窗里的状态章
     await userEvent.click(screen.getByText("修登录页"));
+    const dialog = await screen.findByRole("dialog", { name: "待办详情" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /运行中/ }));
     expect(todo.onOpenSession).toHaveBeenCalledWith("s-run");
     // 完成行在「已完成」小节内,划线降档由类承担,这里断内容可见 + 右键
     // 首项反转为「标记未完成」(= 完成态本身)
@@ -393,7 +395,7 @@ describe("侧栏(local 空间)", () => {
     expect(within(doneMenu).getByText("标记未完成")).toBeTruthy();
   });
 
-  it("待办图片:右键「添加图片」滤非图路径;行尾角标开 Lightbox,× 走 removeImage;添加行粘贴随 Enter 挂上", async () => {
+  it("待办详情弹窗:正文 Enter 提交;加图滤非图;点图放大;× 移除;添加行粘贴随 Enter 挂上", async () => {
     stubShell((cmd) => {
       if (cmd === "plugin:dialog|open") return Promise.resolve(["/tmp/截图.png", "/tmp/notes.txt"]);
       if (cmd === "todo_upload_read") return Promise.resolve("data:image/png;base64,AA==");
@@ -401,18 +403,26 @@ describe("侧栏(local 空间)", () => {
     });
     const todo = todoWiring({ todos: [todoItem({ content: "修登录页", images: ["shot.png"] })] });
     render(<Sidebar space="local" sessions={SESSIONS} currentId={null} actions={actions()} todo={todo} />);
+    await userEvent.click(screen.getByText("修登录页"));
+    const dialog = await screen.findByRole("dialog", { name: "待办详情" });
 
-    // 右键「添加图片」:系统选图,非图片路径滤掉
-    const menu = contextMenuOf(screen.getByText("修登录页"));
-    await userEvent.click(within(menu).getByText("添加图片"));
+    // 开弹窗即聚焦正文输入:粘贴事件只送达焦点所在处,不聚焦截图贴不进来
+    // (2026-08-13 用户报障)
+    const box = within(dialog).getByRole("textbox", { name: "编辑" });
+    expect(document.activeElement).toBe(box);
+    await userEvent.clear(box);
+    await userEvent.type(box, "修注册页{Enter}");
+    expect(todo.ops.edit).toHaveBeenCalledWith("t1", "修注册页");
+
+    // 「添加图片」:系统选图,非图片路径滤掉
+    await userEvent.click(within(dialog).getByRole("button", { name: "添加图片" }));
     await waitFor(() => expect(todo.ops.addImages).toHaveBeenCalled());
     const [, files] = vi.mocked(todo.ops.addImages).mock.calls[0] as [string, File[]];
     expect(files.map((f) => f.name)).toEqual(["截图.png"]);
 
-    // 行尾图片角标 → Lightbox 竖排看图,× 移除
-    await userEvent.click(screen.getByRole("button", { name: "查看图片" }));
-    const dialog = await screen.findByRole("dialog", { name: "修登录页" });
-    expect(await within(dialog).findByAltText("shot.png")).toBeTruthy();
+    // 缩略图:点图放大(嵌套 Lightbox),悬停 × 移除
+    await userEvent.click(await within(dialog).findByAltText("shot.png"));
+    expect(await screen.findByRole("dialog", { name: "shot.png" })).toBeTruthy();
     await userEvent.click(within(dialog).getByRole("button", { name: "移除图片 shot.png" }));
     expect(todo.ops.removeImage).toHaveBeenCalledWith("t1", "shot.png");
 
@@ -428,6 +438,32 @@ describe("侧栏(local 空间)", () => {
     expect(screen.getByText(/已附 1 张图/)).toBeTruthy();
     await userEvent.type(input, "带图待办{Enter}");
     expect(todo.ops.add).toHaveBeenCalledWith("带图待办", [shot]);
+  });
+
+  it("待办拖拽排序:拖到目标行之前落 reorder;原位落点不调用(2026-08-13 用户要求)", () => {
+    const todo = todoWiring({
+      todos: [
+        todoItem({ id: "t1", content: "第一件" }),
+        todoItem({ id: "t2", content: "第二件" }),
+        todoItem({ id: "t3", content: "第三件" }),
+      ],
+    });
+    render(<Sidebar space="local" sessions={SESSIONS} currentId={null} actions={actions()} todo={todo} />);
+    const rowA = screen.getByText("第一件").closest("a") as HTMLElement;
+    const liC = screen.getByText("第三件").closest("li") as HTMLElement;
+    fireEvent.dragStart(rowA);
+    fireEvent.dragOver(liC);
+    fireEvent.drop(liC);
+    expect(todo.ops.reorder).toHaveBeenCalledWith("t1", "t3");
+    fireEvent.dragEnd(rowA);
+
+    // 拖到紧邻的下一行之前 = 原位:不画线也不落盘(willMove 预判)
+    vi.mocked(todo.ops.reorder).mockClear();
+    fireEvent.dragStart(rowA);
+    const liB = screen.getByText("第二件").closest("li") as HTMLElement;
+    fireEvent.dragOver(liB);
+    fireEvent.drop(liB);
+    expect(todo.ops.reorder).not.toHaveBeenCalled();
   });
 });
 
