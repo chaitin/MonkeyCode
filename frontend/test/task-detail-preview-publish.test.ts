@@ -16,9 +16,11 @@ const chatInputSource = readFileSync(
 
 test("任务详情预览弹窗支持确认后自动发送发布指令", () => {
   assert.match(chatInputSource, /export interface TaskChatInputBoxHandle/);
-  assert.match(chatInputSource, /submitPublishWebsite: \(\) => void/);
+  assert.match(chatInputSource, /submitPublishWebsite: \(region\?: string\) => void/);
   assert.match(chatInputSource, /React\.useImperativeHandle\(ref/);
-  assert.match(chatInputSource, /content: t\("taskDetail\.chat\.commands\.publishPrompt"\)/);
+  assert.match(chatInputSource, /region === "global"/);
+  assert.match(chatInputSource, /Use the publish-website skill to publish the current app/);
+  assert.match(chatInputSource, /使用 publish-website 技能发布当前应用/);
   assert.match(chatInputSource, /submitInputSnapshot\(publishInput\)/);
   assert.doesNotMatch(chatInputSource, /setContent\(t\("taskDetail\.chat\.commands\.publishPrompt"\)\)/);
   assert.doesNotMatch(chatInputSource, /requestPublishWebsite/);
@@ -27,10 +29,10 @@ test("任务详情预览弹窗支持确认后自动发送发布指令", () => {
 
   assert.match(pageSource, /TaskChatInputBoxHandle/);
   assert.match(pageSource, /useAppRuntime/);
-  assert.match(pageSource, /const canPublishWebsite = !IS_OFFLINE_EDITION && serverConfig\?\.region === "cn"/);
+  assert.match(pageSource, /const canPublishWebsite = !IS_OFFLINE_EDITION/);
   assert.match(pageSource, /chatInputRef/);
   assert.match(pageSource, /publishConfirmDialogOpen/);
-  assert.match(pageSource, /chatInputRef\.current\?\.submitPublishWebsite\(\)/);
+  assert.match(pageSource, /chatInputRef\.current\?\.submitPublishWebsite\(serverConfig\?\.region\)/);
   assert.doesNotMatch(pageSource, /requestPublishWebsite/);
   assert.match(pageSource, /<Dialog open=\{publishConfirmDialogOpen\} onOpenChange=\{setPublishConfirmDialogOpen\}>/);
   assert.doesNotMatch(pageSource, /<AlertDialog open=\{publishConfirmDialogOpen\}/);
