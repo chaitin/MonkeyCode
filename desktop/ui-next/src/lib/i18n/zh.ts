@@ -25,6 +25,7 @@ export const zh = {
   "rail.local": "本地任务",
   "rail.cloud": "云端任务",
   "rail.chat": "本地会话",
+  "rail.todo": "待办",
   "rail.settings": "设置",
 
   "sidebar.label": "会话列表",
@@ -38,6 +39,7 @@ export const zh = {
   "sidebar.overview.cloud.desc": "丢给云端机器,你可以关电脑",
   "sidebar.overview.projects": "{n} 项目",
   "sidebar.overview.tasks": "{n} 任务",
+  "sidebar.overview.todos": "{n} 待办",
   "sidebar.overview.chats": "{n} 会话",
   "sidebar.overview.running": "{n} 运行中",
   "sidebar.overview.waiting": "{n} 等待确认",
@@ -115,6 +117,30 @@ export const zh = {
   "main.welcome.detail": "从左侧选择会话,或新建一个任务。",
   "main.shellInfo": "壳 {version} · 引擎 {engine}",
   "main.engineNotReady": "未就绪",
+
+  // 待办(侧栏待办组:收集箱 + 调度台)
+  "todo.add": "添加",
+  "todo.addPlaceholder": "记一件要做的事,Enter 添加",
+  "todo.empty.title": "还没有待办",
+  "todo.done": "已完成",
+  // 文案两易(2026-08-13 用户两轮定案):「派发成任务」太行话,「交给
+  // Agent」也别扭——落定「启动任务」,与本地任务/新建任务同一套词汇。
+  // 动作本体 = 开新建任务视图预填正文与图片
+  "todo.dispatch": "启动任务",
+  "todo.editAction": "编辑",
+  "todo.delete": "删除",
+  "todo.deleteConfirm": "确认删除(不可恢复)",
+  "todo.markDone": "标记完成",
+  "todo.markUndone": "标记未完成",
+  "todo.openTask": "打开关联任务",
+  "todo.openCloud": "到云端任务空间查看",
+  "todo.linkGone": "关联任务已被删除",
+  "todo.attach": "添加图片",
+  "todo.imageRemove": "移除图片 {name}",
+  "todo.imageCount": "{n} 张图",
+  "todo.stagedHint": "已附 {n} 张图,随添加一并挂上",
+  "todo.detail": "待办详情",
+  "todo.dragHint": "拖动可调整顺序",
 
   "settings.appearance.theme": "外观主题",
   "settings.appearance.language": "语言",
@@ -343,6 +369,11 @@ export const zh = {
   "notice.deleteFailed": "删除失败:{reason}",
   // 点了一条过期提醒/托盘意图,目标已经不在了:必须给回话,否则主区空白一片
   "notice.openMissing": "无法打开:对应的任务或会话可能已被删除",
+  // 待办落盘失败必须外显(乐观状态还在,但重启即丢);加载失败更要说——
+  // todos.json 损坏时静默空表会被下一次变更的全量落盘覆盖
+  "notice.todoLoadFailed": "待办加载失败:{reason}",
+  "notice.todoSaveFailed": "待办保存失败:{reason}",
+  "notice.todoUploadFailed": "待办图片上传失败:{reason}",
 
   "downloads.cancel": "取消下载",
   "downloads.dismiss": "关闭",

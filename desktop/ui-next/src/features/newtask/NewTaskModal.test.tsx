@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { pathBackedFile } from "@/lib/ipc/uploads";
 import { b64encode } from "@/lib/protocol/codec";
 import { resetEscLayersForTest } from "@/lib/util/escLayer";
 import { NewTaskModal } from "./NewTaskModal";
@@ -370,5 +371,26 @@ describe("首条消息附件", () => {
     const sent = calls.find((c) => c.cmd === "session_send");
     expect((sent?.args?.payload as { content: string }).content).toBe(b64encode("带个附件"));
     expect(calls.filter((c) => c.cmd === "upload_begin").length).toBe(1); // 只剩一个附件
+  });
+
+  it("initialFiles 预填附件区(待办派发带图):建会话后按路径直拷并入附件行", async () => {
+    const calls = stubShell({
+      upload_file_path: () => Promise.resolve({ path: ".monkeycode/uploads/shot.png" }),
+    });
+    // 待办图片是 path-backed 占位 File(0 字节):chip 出名字条,不建 objectURL
+    const staged = pathBackedFile("/cfg/todo-uploads/shot.png", "shot.png", "image/*");
+    render(
+      <NewTaskModal open onClose={() => {}} onCreated={() => {}} initialText="看这张图" initialFiles={[staged]} />,
+    );
+    expect(await screen.findByTitle("shot.png")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "session_send")).toBe(true));
+    // 路径直拷通道:src = 待办附件的绝对路径;附件行并进首条消息
+    const copied = calls.find((c) => c.cmd === "upload_file_path");
+    expect(copied?.args?.src).toBe("/cfg/todo-uploads/shot.png");
+    const sent = calls.find((c) => c.cmd === "session_send");
+    expect((sent?.args?.payload as { content: string }).content).toBe(
+      b64encode("看这张图\n[图片] .monkeycode/uploads/shot.png"),
+    );
   });
 });

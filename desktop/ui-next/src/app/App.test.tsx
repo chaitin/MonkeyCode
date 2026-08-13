@@ -156,6 +156,7 @@ function stubShell(
         if (failure) return Promise.reject(new Error(failure));
         if (cmd === "sessions_list") return Promise.resolve(opts.sessions ?? []);
         if (cmd === "models_list") return Promise.resolve(opts.models ?? [{ name: "m", default: true }]);
+        if (cmd === "todos_load") return Promise.resolve([]); // 侧栏待办组挂载即消费,回 null 会被判契约漂移
         if (cmd === "take_ui_intent") return Promise.resolve(opts.intent ?? null);
         if (cmd === "engine_status") return Promise.resolve({ phase: "ready", version: "1" });
         if (cmd === "session_open") return Promise.resolve({ frames: [], cursor: 0, has_more: false });
@@ -633,7 +634,9 @@ describe("侧栏排序跟得上后台活动", () => {
     });
     render(<App />);
     const groups = () =>
-      [...document.querySelectorAll("aside details > summary")].map((el) => el.textContent ?? "");
+      [...document.querySelectorAll("aside details > summary")]
+        .map((el) => el.textContent ?? "")
+        .filter((s) => !s.includes("待办")); // 待办组恒定置顶(2026-08-12),项目「浮顶」语义在其后
     await waitFor(() => expect(groups()[0]).toContain("alpha"));
     const listBefore = shell.count("sessions_list");
 
@@ -652,7 +655,9 @@ describe("侧栏排序跟得上后台活动", () => {
     });
     render(<App />);
     const groups = () =>
-      [...document.querySelectorAll("aside details > summary")].map((el) => el.textContent ?? "");
+      [...document.querySelectorAll("aside details > summary")]
+        .map((el) => el.textContent ?? "")
+        .filter((s) => !s.includes("待办")); // 待办组恒定置顶(2026-08-12),项目「浮顶」语义在其后
     await waitFor(() => expect(groups()[0]).toContain("alpha"));
 
     act(() => shell.emit("session-event", { type: "session-ask", id: "旧的", title: "旧的", open: true }));

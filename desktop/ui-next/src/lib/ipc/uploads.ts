@@ -30,20 +30,15 @@ export interface UploadStreamOptions {
   chunkBytes?: number;
 }
 
-/** 分块上传文件内容到会话工作区 .monkeycode/uploads/,返回工作区相对路径。
- * 原始文件名尽量保留(壳清洗);剪贴板截图可为空名。失败/取消时 abort
+/** 按已开句柄推完内容并收尾(会话 upload_begin 与待办 todo_upload_begin
+ * 两个开档命令面共用这条循环与壳侧句柄表):任一块失败/取消即 upload_abort
  * 销档,错误原样上抛(取消抛 AbortError)。 */
-export async function uploadFileStream(
-  sessionId: string,
+export async function streamToHandle(
+  handle: number,
   f: File,
   opts: UploadStreamOptions = {},
 ): Promise<{ path: string }> {
   const chunkBytes = opts.chunkBytes ?? CHUNK_BYTES;
-  const { handle } = await invoke<{ handle: number }>("upload_begin", {
-    id: sessionId,
-    name: f.name,
-    mediaType: f.type,
-  });
   try {
     for (let off = 0; off < f.size; off += chunkBytes) {
       if (opts.signal?.aborted) throw new DOMException("upload aborted", "AbortError");
@@ -57,6 +52,22 @@ export async function uploadFileStream(
     void invoke("upload_abort", { handle }).catch(() => {});
     throw e;
   }
+}
+
+/** 分块上传文件内容到会话工作区 .monkeycode/uploads/,返回工作区相对路径。
+ * 原始文件名尽量保留(壳清洗);剪贴板截图可为空名。失败/取消时 abort
+ * 销档,错误原样上抛(取消抛 AbortError)。 */
+export async function uploadFileStream(
+  sessionId: string,
+  f: File,
+  opts: UploadStreamOptions = {},
+): Promise<{ path: string }> {
+  const { handle } = await invoke<{ handle: number }>("upload_begin", {
+    id: sessionId,
+    name: f.name,
+    mediaType: f.type,
+  });
+  return streamToHandle(handle, f, opts);
 }
 
 /** 按源路径把本地文件直拷进会话 uploads 目录(内容零穿越 IPC)。 */
@@ -104,6 +115,17 @@ export async function pickAttachmentPaths(title?: string): Promise<string[]> {
  * 附件行 [图片]/[文件] 前缀与 chip 展示按此分流)。 */
 export function isImagePath(path: string): boolean {
   return /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(path);
+}
+
+/** 系统对话框选图:非图片路径直接滤掉(待办附件只收图),包成 path-backed
+ * 占位 File(内容由壳按路径直拷,不进 webview)。composer/新建任务收所有
+ * 类型,不经此门。 */
+export async function pickImageFiles(title?: string): Promise<File[]> {
+  const paths = await pickAttachmentPaths(title);
+  return paths.filter(isImagePath).map((p) => {
+    const name = p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
+    return pathBackedFile(p, name, "image/*");
+  });
 }
 
 export interface NativeDropHandlers {

@@ -21,6 +21,7 @@ mod native_pet;
 mod repo;
 mod skills;
 mod telemetry;
+mod todos;
 mod uploads;
 mod util;
 mod wsl;
@@ -1393,6 +1394,7 @@ fn main() {
         .manage(EngineSupervisor::new())
         .manage(baizhi::monkeycode::CloudPipes::new())
         .manage(baizhi::monkeycode::DownloadCtl::new())
+        .manage(todos::TodosStore::new())
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
@@ -1473,7 +1475,14 @@ fn main() {
             baizhi::mc_terminal_list,
             baizhi::monkeycode::cloud_ws_open,
             baizhi::monkeycode::cloud_ws_send,
-            baizhi::monkeycode::cloud_ws_close
+            baizhi::monkeycode::cloud_ws_close,
+            todos::todos_load,
+            todos::todos_save,
+            todos::todo_upload_begin,
+            todos::todo_upload_path,
+            todos::todo_upload_read,
+            todos::todo_upload_delete,
+            todos::todo_uploads_dir
         ])
         .setup(|app| {
             // 配置损坏且无有效备份时绝不能按默认值继续并覆写；仍创建错误页

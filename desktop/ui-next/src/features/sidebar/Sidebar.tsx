@@ -15,6 +15,8 @@ import { useState, type DragEvent, type KeyboardEvent, type MouseEvent, type Rea
 
 import { CloudTaskList, useCloudProjects, useCloudTasks, type CloudTasksFeed } from "@/features/cloud/CloudTaskList";
 import { GroupLabel, levelPad, ListRow, NEST_NO_GUIDE, SectionFold } from "@/features/sidebar/listKit";
+import { rowStatusLabel, rowTrailing } from "@/features/sidebar/sessionStatus";
+import { TODO_GROUP_KEY, TodoSection, type TodoWiring } from "@/features/todo/TodoSection";
 import { Brand } from "@/features/titlebar/TitleBar";
 import { useUpdate } from "@/features/update/useUpdate";
 import { openMenu, type MenuItem } from "@/lib/contextMenu";
@@ -47,48 +49,11 @@ export interface SidebarActions {
   onNewTaskIn: (workdir: string) => void;
 }
 
-type T = ReturnType<typeof useI18n>["t"];
-
 /** 拖拽「移到末尾」的落区标记(项目 key 是目录路径,不会与之相撞)。 */
 const END_DROP_KEY = "\0end";
 
-/** 行尾状态点(用户定案 2026-08-05「文字换状态图标」):仅要紧态给彩点,
- * 静默态无点(轮次进 tooltip);状态词进点的 title/aria。attention(D3
- * 后台提醒未读)也在此:终态用警示点点出来,点开行即消。 */
-function rowTrailing(meta: SessionMeta, t: T, attention: boolean): { tone: string; label: string; pulse?: boolean } | null {
-  // pulse = 进行中的活态(点 + 扩散环);未读/出错是静态终态,给静点即可
-  if (meta.waiting_ask) return { tone: "status-warning", label: t("status.waitingAsk"), pulse: true };
-  if (attention) return { tone: "status-warning", label: t("status.attention") };
-  if (meta.status === "running") return { tone: "status-primary", label: t("status.running"), pulse: true };
-  if (meta.status === "error") return { tone: "status-error", label: t("status.error") };
-  return null;
-}
-
-/** 行状态词(与旧 UI sidebar.rowStatus 同一张表):**每种状态都有词**,
- * 要紧态另由 rowTrailing 给一个彩点,静默态就只剩这个词——它进行 tooltip,
- * 不上行(LAYOUT §6.1「文字状态词不上行」、「终态词收进行 tooltip」)。
- *
- * 为什么补这个函数:§6.1 承诺的是「安静的状态词搬进 tooltip」,而实现里只有
- * status.turns 搬过去了,status.interrupted / idle / notStarted 三条在 zh.ts 里
- * 成了没人读的孤儿键——tooltip 只插值 trailing?.label,而这三种状态压根不给
- * trailing。结果是「已停止 / 可继续 / 尚未开始」在界面上无处可查:被引擎崩溃
- * 打断的后台任务,行上没点、tooltip 里也没词,彻底隐身。 */
-function rowStatusLabel(meta: SessionMeta, t: T): string {
-  if (meta.waiting_ask) return t("status.waitingAsk");
-  switch (meta.status) {
-    case "running":
-      return t("status.running");
-    case "error":
-      return t("status.error");
-    case "interrupted":
-      return t("status.interrupted");
-    case "idle":
-    case "finished": // 旧版壳顶层会话的「一轮结束」;新壳一律回 idle
-      return t("status.idle");
-    default:
-      return meta.turns > 0 ? t("status.idle") : t("status.notStarted");
-  }
-}
+// 行状态语汇(rowTrailing/rowStatusLabel)已迁 sessionStatus.ts:待办组
+// (features/todo/TodoSection)按同一张表回查关联会话,留在本文件会成环。
 
 interface RowPlumbing {
   currentId: string | null;
@@ -343,6 +308,7 @@ function Overview({
   space,
   sessions,
   archivedProjects,
+  todoCount = 0,
   cloud,
   onRefresh,
 }: {
@@ -350,6 +316,9 @@ function Overview({
   sessions: SessionMeta[];
   /** 已归档项目 key 集:统计口径必须与看得见的列表一致(见 pool) */
   archivedProjects: ReadonlySet<string>;
+  /** 未完成待办数(仅本地空间入统计行;0 不出——与运行中/等待确认同款
+   *  「仅 >0 时出现」,没在用待办的人不看「0 待办」的常驻噪音) */
+  todoCount?: number;
   cloud?: { feed: CloudTasksFeed; projects: import("@/lib/ipc/cloudtasks").CloudProject[] };
   /** 云端列表刷新(概览块右上;整表故障条也用它重试) */
   onRefresh?: () => void;
@@ -378,6 +347,7 @@ function Overview({
     const projects = new Set(pool.map((m) => projectKey(m.workdir))).size;
     stats.push({ text: t("sidebar.overview.projects", { n: String(projects) }) });
     stats.push({ text: t("sidebar.overview.tasks", { n: String(pool.length) }) });
+    if (todoCount > 0) stats.push({ text: t("sidebar.overview.todos", { n: String(todoCount) }) });
   } else if (space === "chat") {
     stats.push({ text: t("sidebar.overview.chats", { n: String(pool.length) }) });
   } else if (space === "cloud" && cloud && cloud.feed.tasks !== null) {
@@ -460,12 +430,14 @@ function EmptySlate({ icon, title, detail }: { icon: ReactNode; title: string; d
   );
 }
 
+
 export function Sidebar({
   space,
   sessions,
   currentId,
   actions,
   attentionIds,
+  todo,
   cloud,
 }: {
   space: Space;
@@ -474,6 +446,10 @@ export function Sidebar({
   actions: SidebarActions;
   /** 后台提醒未读的会话 id 集(D3):命中行状态点转警示色 + 行高亮 */
   attentionIds?: Set<string>;
+  /** 待办组(仅本地任务空间,列表顶部):清单本体就在侧栏里,添加/勾选/
+   *  编辑/派发/删除全在组内完成,主区不再有待办页(2026-08-12 用户二次
+   *  定案「先不需要右侧的页面」,推翻同日「钉住行入口 + 覆盖视图」版) */
+  todo?: TodoWiring;
   /** 云端空间的数据接线(App 提供;缺省时云端页为空列表) */
   cloud?: {
     currentId: string | null;
@@ -558,16 +534,31 @@ export function Sidebar({
       );
     }
 
+    // 待办组(仅本地空间;2026-08-12 定案清单本体进侧栏,§4):项目组同款
+    // details,折叠走 mc.collapsedGroups 哨兵 key,与项目组同一条持久化管道
+    const todoSection = space !== "chat" && todo && (
+      <TodoSection
+        todo={todo}
+        sessions={sessions}
+        collapsed={collapsed.has(TODO_GROUP_KEY)}
+        onToggleCollapsed={toggleCollapsed}
+      />
+    );
+
     const pool = sessions.filter((m) => (space === "chat" ? m.kind === "chat" : m.kind !== "chat"));
     if (pool.length === 0) {
       const chat = space === "chat";
       const EmptyIcon = chat ? IconMessages : IconInbox;
       return (
-        <EmptySlate
-          icon={<EmptyIcon size={20} stroke={1.75} className="text-base-content/30" aria-hidden />}
-          title={t(chat ? "sidebar.empty.chat.title" : "sidebar.empty.local.title")}
-          detail={t(chat ? "sidebar.empty.chat.detail" : "sidebar.empty.local.detail")}
-        />
+        <>
+          {/* 空态也保留待办组:没有任何会话 ≠ 没有要记的事 */}
+          {todoSection && <ul className="menu menu-sm w-full flex-nowrap p-0 [&_li]:flex-nowrap">{todoSection}</ul>}
+          <EmptySlate
+            icon={<EmptyIcon size={20} stroke={1.75} className="text-base-content/30" aria-hidden />}
+            title={t(chat ? "sidebar.empty.chat.title" : "sidebar.empty.local.title")}
+            detail={t(chat ? "sidebar.empty.chat.detail" : "sidebar.empty.local.detail")}
+          />
+        </>
       );
     }
 
@@ -575,7 +566,7 @@ export function Sidebar({
       const active = pool.filter((m) => !m.archived);
       const archived = pool.filter((m) => m.archived);
       return (
-        <ul className="menu w-full flex-nowrap p-0 [&_li]:flex-nowrap">
+        <ul className="menu menu-sm w-full flex-nowrap p-0 [&_li]:flex-nowrap">
           {rows(active, p)}
           {archived.length > 0 && (
             <SectionFold label={t("sidebar.archivedChats")} foldKey="mc.archivedOpen">
@@ -616,7 +607,8 @@ export function Sidebar({
       return !(next.length === visibleKeys.length && next.every((k, i) => k === visibleKeys[i]));
     };
     return (
-      <ul className="menu w-full flex-nowrap p-0 [&_li]:flex-nowrap">
+      <ul className="menu menu-sm w-full flex-nowrap p-0 [&_li]:flex-nowrap">
+        {todoSection}
         {grouped.projects.map((group) => (
           <ProjectDetails
             key={group.key}
@@ -705,6 +697,7 @@ export function Sidebar({
         space={space}
         sessions={sessions}
         archivedProjects={archivedProjects}
+        todoCount={todo?.todos.filter((i) => i.status !== "done").length ?? 0}
         cloud={{ feed: cloudFeed, projects: cloudProjects }}
         onRefresh={cloud?.onRefresh}
       />

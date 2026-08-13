@@ -17,6 +17,7 @@ import { EngineBanner } from "@/features/engine/EngineBanner";
 import { NewTaskModal } from "@/features/newtask/NewTaskModal";
 import { SettingsView } from "@/features/settings/SettingsView";
 import { Sidebar } from "@/features/sidebar/Sidebar";
+import { useTodos } from "@/features/todo/useTodos";
 import { ResizeEdges } from "@/features/titlebar/ResizeEdges";
 import { MacWindowControls, TitleBar } from "@/features/titlebar/TitleBar";
 import { windowContextLabel } from "@/app/shellChrome";
@@ -33,6 +34,8 @@ import {
 import { inDesktopShell, listen } from "@/lib/ipc/ipc";
 import { afterEngineReady, engineRestart, engineStatus, onEngineStatus, type EngineStatus } from "@/lib/ipc/engine";
 import type { CloudProject, CloudTask } from "@/lib/ipc/cloudtasks";
+import { todoUploadsDir, type TodoItem } from "@/lib/ipc/todos";
+import { pathBackedFile } from "@/lib/ipc/uploads";
 import {
   modelsList,
   onSessionEvent,
@@ -194,6 +197,9 @@ function SpaceRail({
             </div>
           );
         })}
+        {/* 待办的 rail 独立开关**已撤**(2026-08-12 用户定案,推翻 08-11 版):
+            用户反馈「不应该单独一个 tab」——待办改为本地任务空间侧栏列表顶部
+            的组(Sidebar todo 接线,清单本体在组内),rail 只留空间与设置 */}
       </div>
       <div className="pb-2">
         {/* tooltip 外包一层同上;size-11 为 rail 结构尺寸 */}
@@ -292,8 +298,16 @@ export function App() {
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(readLastSession);
   // 新建任务视图:null=关;dir 携带「在此项目新建」的预填目录(本地),
-  // cloudProject 携带云端项目组头的预选项目(直接落云端页签)
-  const [creating, setCreating] = useState<{ dir?: string; cloudProject?: CloudProject } | null>(null);
+  // cloudProject 携带云端项目组头的预选项目(直接落云端页签);
+  // text/todoId/files 是待办派发链:text 预填首条消息,todoId 供创建成功后
+  // 回链,files 是待办图片包成的 path-backed File(建完会话按路径直拷)
+  const [creating, setCreating] = useState<{
+    dir?: string;
+    cloudProject?: CloudProject;
+    text?: string;
+    todoId?: string;
+    files?: File[];
+  } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [cloudTask, setCloudTask] = useState<CloudTask | null>(null);
   const [cloudReload, setCloudReload] = useState(0);
@@ -332,6 +346,35 @@ export function App() {
       setShellNotices((list) => list.filter((n) => n.id !== id));
     }, kind === "error" ? SHELL_ERROR_MS : SHELL_NOTICE_MS);
     shellTimers.current.add(timer);
+  };
+
+  // 待办清单(侧栏待办组消费,2026-08-12 定案清单本体进侧栏、主区无待办页;
+  // 载入/落盘/图片上传失败走壳级提示外显原因)
+  const todoOps = useTodos((kind, reason) =>
+    pushShell(
+      kind === "load"
+        ? "notice.todoLoadFailed"
+        : kind === "upload"
+          ? "notice.todoUploadFailed"
+          : "notice.todoSaveFailed",
+      "error",
+      { params: { reason } },
+    ),
+  );
+
+  /** 待办「派发成任务」:开新建视图预填正文,todoId 供创建成功后回链
+   *  (清单在侧栏,视图开合不影响它)。带图的待办把图片包成 path-backed
+   *  File 一并预填(建完会话后壳按路径直拷进工作区);拿目录失败只带正文
+   *  开视图,派发不因图卡死。 */
+  const dispatchTodo = (item: TodoItem) => {
+    setSettingsOpen(false);
+    const openView = (files?: File[]) => setCreating({ text: item.content, todoId: item.id, files });
+    const names = item.images ?? [];
+    if (!names.length) return openView();
+    void todoUploadsDir().then(
+      (dir) => openView(names.map((n) => pathBackedFile(`${dir}/${n}`, n, "image/*"))),
+      () => openView(),
+    );
   };
 
   const clearNoticeTimer = (id: string) => {
@@ -544,7 +587,7 @@ export function App() {
 
   const current = sessions.find((m) => m.id === currentId) ?? null;
 
-  // 标题跟随**主区实际渲染的那个视图**,四个状态都要进依赖(见
+  // 标题跟随**主区实际渲染的那个视图**,各状态都要进依赖(见
   // shellChrome.windowContextLabel 头注:此前只认 current,切设置/新建/云端
   // 任务时窗口切换器里仍挂着上一个本地会话的标题)
   useEffect(() => {
@@ -611,12 +654,27 @@ export function App() {
       <ResizeEdges />
       <EngineBanner />
       <div className="flex min-h-0 flex-1">
-        <SpaceRail space={space} waiting={waiting} onChange={setSpace} settingsOpen={settingsOpen} onToggleSettings={() => { setCreating(null); setSettingsOpen((v) => !v); }} />
+        <SpaceRail
+          space={space}
+          waiting={waiting}
+          onChange={setSpace}
+          settingsOpen={settingsOpen}
+          onToggleSettings={() => { setCreating(null); setSettingsOpen((v) => !v); }}
+        />
         <Sidebar
           space={space}
           sessions={sessions}
           currentId={currentId}
           attentionIds={attentionIds}
+          // 待办组接线(2026-08-12 定案清单本体进侧栏):数据 + 变更 ops +
+          // 派发/跳转出口;跳关联任务与点会话行同一条 openSessionById 链
+          todo={{
+            todos: todoOps.todos,
+            ops: todoOps,
+            onDispatch: dispatchTodo,
+            onOpenSession: (id) => void openSessionById(id),
+            onOpenCloud: () => setSpace("cloud"),
+          }}
           cloud={{
             currentId: cloudTask?.id ?? null,
             // 与本地 select 同口径:点列表永远切走覆盖视图(设置/新建)。
@@ -675,6 +733,8 @@ export function App() {
             open
             initialDir={creating.dir}
             initialCloudProject={creating.cloudProject}
+            initialText={creating.text}
+            initialFiles={creating.files}
             // 侧栏 ＋ 属于当前空间:rail 停在哪个空间,新建就默认开哪个页签
             initialKind={space}
             recentDirs={recentDirs}
@@ -686,12 +746,16 @@ export function App() {
             }}
             onClose={() => setCreating(null)}
             onCreated={(meta) => {
+              // 待办派发链:创建成功即回链去向(状态词回显靠会话表回查)
+              if (creating.todoId)
+                todoOps.markDispatched(creating.todoId, meta.kind === "chat" ? "chat" : "local", meta.id);
               refresh();
               select(meta);
               if (meta.kind === "chat") setSpace("chat");
               else setSpace("local");
             }}
             onCloudCreated={(task) => {
+              if (creating.todoId) todoOps.markDispatched(creating.todoId, "cloud", task.id);
               setSpace("cloud");
               setCloudTask(task);
               setCloudReload((n) => n + 1);
