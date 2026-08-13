@@ -44,27 +44,33 @@ export function Composer({
   meta,
   ctl,
   onAfterSend,
+  focusRequest = 0,
+  onFocusRequestHandled,
 }: {
   sessionId: string;
   state: ChatState;
   meta: SessionMeta;
   ctl: ComposerCtl;
   onAfterSend?: () => void;
+  focusRequest?: number;
+  onFocusRequestHandled?: (request: number) => void;
 }) {
   const { t } = useI18n();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const imeRef = useRef(createImeGuard());
   const [models, setModels] = useState<ModelInfo[]>([]);
 
-  // 切会话后焦点落到输入框:切换任务即可直接开打。首挂载与「重点当前会话」
-  // (id 未变)不抢焦点——前者应用刚启动、用户可能在读侧栏,后者点行只是
-  // 重新锚定;引擎自愈的 epoch 重建也走首挂载路径,不在切换语义里
+  // 切会话后焦点落到输入框:sessionId 处理同实例内切换;focusRequest 处理
+  // 设置/新建/云端视图切回时的重挂载。请求消费后由 App 清零,避免引擎
+  // epoch 自愈重挂载重复抢焦点。启动时两者都没有变化,不抢焦点。
   const prevSidRef = useRef(sessionId);
   useEffect(() => {
-    if (prevSidRef.current === sessionId) return;
+    const switchedSession = prevSidRef.current !== sessionId;
     prevSidRef.current = sessionId;
+    if (!switchedSession && focusRequest === 0) return;
     taRef.current?.focus();
-  }, [sessionId]);
+    if (focusRequest !== 0) onFocusRequestHandled?.(focusRequest);
+  }, [sessionId, focusRequest, onFocusRequestHandled]);
 
   // 模型清单一次拉取(锁定项禁选;浏览器模式为空,触发器仍显当前名)。
   // 失败保留上一份而不是清空:modelsList 自 2026-08-09 起会**抛**(此前吞成

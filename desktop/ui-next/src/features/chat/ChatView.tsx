@@ -67,9 +67,13 @@ export function ChatView({
   onDeleted,
   onPatched,
   onActionError,
+  focusRequest = 0,
+  onFocusRequestHandled,
 }: {
   meta: SessionMeta;
   epoch?: number;
+  focusRequest?: number;
+  onFocusRequestHandled?: (request: number) => void;
   /** ⋯ 菜单二段确认后的删除动作:通知 App 走与侧栏同一套删除流程 */
   onDeleted?: () => void;
   /** 改名/归档落盘后通知 App 重拉列表:壳侧 session_patch 不广播
@@ -927,7 +931,15 @@ export function ChatView({
       <footer className="shrink-0 p-3">
         <div className="mx-auto flex chat-measure flex-col gap-2">
           {state.plan.length > 0 && <TaskPanel entries={state.plan} />}
-          <Composer sessionId={meta.id} state={state} meta={meta} ctl={composer} onAfterSend={followBottom} />
+          <Composer
+            sessionId={meta.id}
+            state={state}
+            meta={meta}
+            ctl={composer}
+            onAfterSend={followBottom}
+            focusRequest={focusRequest}
+            onFocusRequestHandled={onFocusRequestHandled}
+          />
         </div>
       </footer>
       {drawerOpen && (

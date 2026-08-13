@@ -430,16 +430,29 @@ describe("覆盖视图开着时点侧栏(设置/新建永远让位)", () => {
   const openSettings = () => userEvent.click(screen.getByRole("button", { name: "设置" }));
   const openCreate = async () => userEvent.click(await screen.findByRole("button", { name: "新建任务" }));
 
-  it("本地空间:设置页/新建页开着时点任务,都切到该任务", async () => {
+  it("本地空间:设置页/新建页开着时点任务,都切到该任务并聚焦输入框", async () => {
     stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
     render(<App />);
     await openSettings();
     await userEvent.click(await screen.findByText("任务一"));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "设置" })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "消息输入" })));
 
     await openCreate();
     await userEvent.click(await screen.findByText("任务一"));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "新建任务" })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "消息输入" })));
+  });
+
+  it("从云端空间切回已有本地任务,聚焦输入框", async () => {
+    localStorage.setItem("mc.lastSession", "s1");
+    stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+    render(<App />);
+    await waitFor(() => expect(rowOf("任务一")).toBeTruthy());
+
+    await userEvent.click(screen.getByRole("button", { name: "云端任务" }));
+    await userEvent.click(screen.getByRole("button", { name: "本地任务" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "消息输入" })));
   });
 
   // 云端 onSelect 曾只 setCloudTask、不收覆盖视图,于是设置页开着时点云端任务

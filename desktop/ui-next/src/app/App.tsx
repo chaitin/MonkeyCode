@@ -8,7 +8,7 @@
 // - D8 增量自愈:session-event/意图指向未知 id → 重拉全表再选中;
 // - H9 意图消费:open-* 事件送达即 takeUiIntent 消费壳侧副本,防刷新重放。
 import { IconAlertCircle, IconCircleCheck, IconCloud, IconFolderCode, IconHelpCircle, IconMessages, IconPlayerStop, IconSend, IconSettings, IconWorld, IconX } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ChatView } from "@/features/chat/ChatView";
 import { CloudTaskView } from "@/features/cloud/CloudTaskView";
@@ -225,9 +225,13 @@ function MainArea({
   onDelete,
   onPatched,
   onActionError,
+  focusRequest,
+  onFocusRequestHandled,
 }: {
   current: SessionMeta | null;
   epoch: number;
+  focusRequest: number;
+  onFocusRequestHandled: (request: number) => void;
   onDelete: (meta: SessionMeta) => void;
   /** 视图内改名/归档落盘后重拉列表(壳 session_patch 不广播事件) */
   onPatched: () => void;
@@ -262,6 +266,8 @@ function MainArea({
         key={epoch}
         meta={current}
         epoch={epoch}
+        focusRequest={focusRequest}
+        onFocusRequestHandled={onFocusRequestHandled}
         onDeleted={() => onDelete(current)}
         onPatched={onPatched}
         onActionError={onActionError}
@@ -311,6 +317,15 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [cloudTask, setCloudTask] = useState<CloudTask | null>(null);
   const [cloudReload, setCloudReload] = useState(0);
+  // 用户选任务时递增,跨设置/新建/云端视图重挂 Composer 也能收到聚焦意图;
+  // Composer 消费后清零,引擎 epoch 自愈重挂载不会误把旧意图再执行一遍。
+  const [composerFocusRequest, setComposerFocusRequest] = useState(0);
+  const focusSeqRef = useRef(0);
+  const requestComposerFocus = () => setComposerFocusRequest(++focusSeqRef.current);
+  const handleComposerFocus = useCallback(
+    (request: number) => setComposerFocusRequest((current) => (current === request ? 0 : current)),
+    [],
+  );
   const [notices, setNotices] = useState<SessionNotice[]>([]);
   const [shellNotices, setShellNotices] = useState<ShellNotice[]>([]);
   // 提示内「重启引擎」的在途态(同一时刻只会有一条带动作的提示)
@@ -403,6 +418,9 @@ export function App() {
   const refresh = () => void afterEngineReady(sessionsList).then(setSessions).catch(() => {});
 
   const setSpace = (next: Space) => {
+    if ((space === "cloud" || settingsOpen || creating) && next !== "cloud" && currentIdRef.current) {
+      requestComposerFocus();
+    }
     setSpaceState(next);
     writeSpace(next);
     // 桌面客户端心智:点导航永远切走当前覆盖视图(设置/新建),不会"没反应"
@@ -601,6 +619,7 @@ export function App() {
   }, [current, settingsOpen, creating, space, cloudTask, t]);
 
   const select = (meta: SessionMeta) => {
+    if (meta.id !== currentId || settingsOpen || creating || space === "cloud") requestComposerFocus();
     setCurrentId(meta.id);
     writeLastSession(meta.id);
     dismissSession(meta.id);
@@ -775,6 +794,8 @@ export function App() {
           <MainArea
             current={space === "cloud" ? null : current}
             epoch={epoch}
+            focusRequest={composerFocusRequest}
+            onFocusRequestHandled={handleComposerFocus}
             onDelete={removeSession}
             onPatched={refresh}
             onActionError={(key, reason) => pushShell(key, "error", { params: { reason } })}
