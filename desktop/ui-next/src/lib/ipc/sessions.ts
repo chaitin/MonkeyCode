@@ -28,6 +28,9 @@ export interface SessionMeta {
   think?: string;
   /** 权限模式("yolo" 全放行;缺省 = default) */
   mode?: string;
+  /** 技能启用集(名字数组;null/缺省 = 缺省集,规则见
+   * lib/ipc/skills.ts::defaultEnabledSkills,与壳侧物化一致) */
+  skills?: string[] | null;
   turns: number;
   status: string;
   /** 有待答复的审批请求(运行时状态,不落盘) */

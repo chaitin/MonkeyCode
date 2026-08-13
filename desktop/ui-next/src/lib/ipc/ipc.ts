@@ -38,13 +38,27 @@ export function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<
   return core.invoke(cmd, args) as Promise<T>;
 }
 
+/** 解绑失败一律吞掉:Tauri 注入脚本对"解绑已不存在的监听"会抛
+ *  `listeners[eventId].handlerId` 取空(StrictMode 双挂载/HMR 换模块的
+ *  时序都会撞上,注册与解绑各是一次异步 IPC,句柄可能已被内核侧回收)。
+ *  监听已经不在了,解绑撞空是无害终态——不兜底的话它顺着被 void 丢弃的
+ *  promise 链变成 unhandledrejection,被 index.html 的全局陷阱画成
+ *  「启动异常」糊用户一脸(2026-08-12 报障,3 条对应 tauri://drag-* 三监听)。 */
+function safeOff(off: () => unknown): void {
+  try {
+    void Promise.resolve(off()).catch(() => {});
+  } catch {
+    // 同步抛也是同一类"已解绑"信号
+  }
+}
+
 /** 订阅壳事件;非壳环境返回 no-op 退订。退订函数同步可用(经 promise 链兜底)。 */
 export function listen<T>(name: string, cb: (payload: T) => void): () => void {
   const event = tauri()?.event;
   if (!event) return () => {};
   const pending = event.listen(name, (e) => cb(e.payload as T));
   return () => {
-    void pending.then((off) => off());
+    void pending.then((off) => safeOff(off)).catch(() => {});
   };
 }
 
@@ -53,5 +67,6 @@ export function listen<T>(name: string, cb: (payload: T) => void): () => void {
 export async function listenAsync<T>(name: string, cb: (payload: T) => void): Promise<() => void> {
   const event = tauri()?.event;
   if (!event) return () => {};
-  return event.listen(name, (e) => cb(e.payload as T));
+  const off = await event.listen(name, (e) => cb(e.payload as T));
+  return () => safeOff(off);
 }

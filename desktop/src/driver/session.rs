@@ -538,6 +538,9 @@ impl OhmyDriver {
                     "model": meta.get("model_name").and_then(|v| v.as_str()).unwrap_or(""),
                     "think": meta.get("think").and_then(|v| v.as_str()).unwrap_or(""),
                     "mode": meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default"),
+                    // 技能启用集(null = 缺省集:旧会话无此字段,UI 侧按
+                    // defaultEnabledSkills 同一规则推,见 skills.rs)
+                    "skills": meta.get("skills").cloned().unwrap_or(Value::Null),
                     "turns": turns,
                     "status": status,
                     "archived": meta.get("archived").and_then(|v| v.as_bool()).unwrap_or(false),
@@ -615,6 +618,12 @@ impl OhmyDriver {
             }
         };
         let workdir = workdir_owned.as_str();
+        // 技能:创建前把启用集物化到引擎技能目录(新会话取缺省集:官方
+        // 四件套 + 用户技能),并把 create RPC 圈进技能闸——引擎 catalog 按
+        // 创建时刻的目录内容定格,物化与创建被并发的另一次创建插队就会
+        // 拿错技能集(skills.rs 头注)
+        let skills_lock = self.0.skills_gate.lock().await;
+        let skills = self.materialize_skills(None).await?;
         let result = match self
             .rpc(
                 "session/create",
@@ -630,6 +639,7 @@ impl OhmyDriver {
                 return Err(e);
             }
         };
+        drop(skills_lock);
         // 引擎返回的 session_id 直接成为 sidecar 目录名,校验标准与 IPC 入参
         // 一致:引擎是子进程不是信任边界,一个畸形 id 同样能穿越出 data_dir
         let sid = match result
@@ -672,6 +682,8 @@ impl OhmyDriver {
             m["workdir"] = json!(workdir);
             m["kind"] = json!(kind);
             m["think"] = json!(think);
+            // 技能启用集快照(resume/重建按它物化;session_set_skills 改写)
+            m["skills"] = json!(skills);
             m["status"] = json!(SessionStatus::Created.as_str());
         });
         // 创建即下发所选档位(引擎新会话按模型默认档起步)
@@ -848,6 +860,13 @@ impl OhmyDriver {
             }
             Err(_) => false,
         };
+        // 技能物化(闸内圈住 create;含下方去模型重试)。失败降级不失败恢复:
+        // 磁盘异常时目录可能残留上一会话的技能集(catalog 与勾选短暂错位),
+        // 但会话本身要能恢复——错误进日志,不进 conn-status
+        let skills_lock = self.0.skills_gate.lock().await;
+        if let Err(e) = self.materialize_skills(skills_of_meta(meta)).await {
+            eprintln!("[desktop] 会话 {id} 技能物化失败,按现有目录恢复: {e}");
+        }
         let result = match self.rpc("session/create", params.clone()).await {
             Ok(r) => r,
             // 壳的模型快照(引擎启动时定格)与引擎 settings 可能口径分叉,
@@ -862,6 +881,8 @@ impl OhmyDriver {
             }
             Err(e) => return Err(e),
         };
+        // catalog 已随 create 定格,后续 seq_gate 等待不该再占技能闸
+        drop(skills_lock);
         // 换绑来的 engine_id 会成为 <engine_dir>/sessions/<id> 的目录名(删会话
         // 时被 remove_dir_all),同样只收单段安全名;畸形值保留原 id 不换绑
         if let Some(e) = result
@@ -1512,6 +1533,35 @@ impl OhmyDriver {
                 self.push_frame(id, |seq| frame::permission_mode_update(mode, seq));
                 Ok(json!({ "result": { "mode": mode } }))
             }
+            // 会话技能启用集:引擎无 skills 协议,唯一生效路径是"重写引擎
+            // 技能目录 + destroy/resume 重建让 catalog 重扫"(web 版运行中改
+            // 技能同样是重启保会话的语义)。空数组是合法值 = 全部停用。
+            "session_set_skills" => {
+                let names: Vec<String> = payload
+                    .get("skills")
+                    .and_then(|v| v.as_array())
+                    .ok_or("缺少 skills 列表")?
+                    .iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect();
+                // 重建只在空闲时安全(与旧引擎切模式的回退同一约束)
+                if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
+                    return Err("执行中不能切换,请先取消当前任务".into());
+                }
+                // 先落 sidecar:重建路径(create_resumed)物化时读的就是它;
+                // 重建失败也保留用户意图,下次 resume 按新集生效
+                self.write_sidecar(id, |m| m["skills"] = json!(names));
+                let mode = self.session_mode(id);
+                let model_id = self.model_id_of_any(&self.session_model_name(id))?;
+                if !self.session_created(id) {
+                    self.create_resumed(id, &model_id, &mode).await?;
+                } else {
+                    self.recreate_fallback(id, &model_id, &mode).await?;
+                }
+                // 重建回落模型默认思考档,重放会话已选档位(切模型同款)
+                self.apply_session_think(id, &self.engine_id(id)).await;
+                Ok(json!({ "result": { "skills": names } }))
+            }
             // 手动压缩上下文:引擎**同步应答**(stdio.go handleSessionCompact,
             // ForceCompact 跑完才回,成功携 context_used/window,全程不发
             // turn/stopped)——应答即轮次边界,成败都在本分支就地收轮。
@@ -1612,7 +1662,13 @@ impl OhmyDriver {
             Some(model_id),
             mode,
         );
+        // 技能物化 + create 圈进技能闸(session_create_with_kind 同理)。
+        // 这条路承接 session_set_skills 的重建:物化失败必须外显——吞掉的话
+        // 用户以为改完了,引擎拿到的还是旧技能集
+        let skills_lock = self.0.skills_gate.lock().await;
+        self.materialize_skills(self.session_skills(id)).await?;
         let result = self.rpc("session/create", params).await?;
+        drop(skills_lock);
         // 同 resume_engine:换绑的 engine_id 是目录名,畸形值不接受
         let new_eng = result
             .get("session_id")
@@ -1691,6 +1747,33 @@ impl OhmyDriver {
 
     fn session_created(&self, id: &str) -> bool {
         self.0.sess.sessions.lock_ok().get(id).map(|s| s.created).unwrap_or(false)
+    }
+
+    /// 会话技能启用集重写到引擎技能目录(skills.rs::materialize,阻塞盘 I/O
+    /// 走 blocking 池)。调用方负责持 skills_gate 并圈住随后的 create RPC。
+    async fn materialize_skills(&self, enabled: Option<Vec<String>>) -> Result<Vec<String>, String> {
+        let engine_dir = self.0.engine_dir.clone();
+        let builtin = self.0.skills_builtin_dir.clone();
+        let user = self.0.skills_user_dir.clone();
+        let defaults = self.0.skills_defaults_path.clone();
+        tokio::task::spawn_blocking(move || {
+            crate::skills::materialize(
+                &engine_dir,
+                builtin.as_deref(),
+                &user,
+                &defaults,
+                enabled.as_deref(),
+            )
+        })
+        .await
+        .map_err(|e| format!("技能物化任务失败: {e}"))?
+    }
+
+    /// sidecar 记录的技能启用集;None = 缺省集(官方四件套 + 用户技能,
+    /// skills::DEFAULT_ENABLED)——旧会话无此字段的兜底,也是新会话的
+    /// 初始语义,session_create 时落成显式快照。
+    fn session_skills(&self, id: &str) -> Option<Vec<String>> {
+        skills_of_meta(&self.read_sidecar(id))
     }
 
     /// 出站 RPC 用的引擎会话 id(通常 == 壳 sid;空会话重建后换绑,
@@ -2357,6 +2440,14 @@ impl Inner {
 }
 
 /// 壳模式词汇 → ohmyagent permission_mode
+/// meta/sidecar 的 skills 字段 → 启用集(非数组/缺失 = None = 缺省集,
+/// 语义见 skills::materialize)。
+fn skills_of_meta(meta: &Value) -> Option<Vec<String>> {
+    meta.get("skills")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+}
+
 fn ohmy_mode_of(mode: &str) -> &'static str {
     match mode {
         "yolo" => "bypassPermissions",

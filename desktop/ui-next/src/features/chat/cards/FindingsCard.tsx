@@ -162,11 +162,14 @@ function FindingRow({ finding, onOpenFile }: { finding: ReviewFinding; onOpenFil
       {outcome && <span className={outcome.cls}>{outcome.key ? t(outcome.key) : outcome.raw}</span>}
     </>
   );
-  if (!detail) return <div className="flex items-center gap-2 text-xs">{row}</div>;
+  // 两种行同给 py-1:collapse-title 默认 padding:1rem 会把每行撑出近 40px
+  // 行距(2026-08-12 截图报障),压到 py-1/ps-0 与无展开行同一节奏;
+  // pe 不动,留给 collapse-arrow 的 3rem 箭头位
+  if (!detail) return <div className="flex items-center gap-2 py-1 text-xs">{row}</div>;
   return (
     <details className="collapse collapse-arrow text-xs">
-      <summary className="collapse-title flex items-center gap-2">{row}</summary>
-      <div className="collapse-content">
+      <summary className="collapse-title flex min-h-0 items-center gap-2 py-1 ps-0">{row}</summary>
+      <div className="collapse-content pb-2">
         <Markdown source={detail} className="opacity-80" />
       </div>
     </details>

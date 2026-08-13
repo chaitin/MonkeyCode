@@ -3,9 +3,9 @@
 // DesktopConfig 是应用权威配置；引擎 settings.json/mcp.json 只是可重建的
 // 派生物。所有权威配置读改写经 ConfigStore 串行，并使用同目录临时文件
 // 原子替换；损坏的主文件只允许从有效备份恢复，绝不能静默退成默认配置后
-// 覆盖用户的模型/API Key。pet_*(托盘切换)、sound_enabled(设置页/托盘即时
-// 开关)与 telemetry_enabled(仅改文件)都不在设置页表单里，设置页保存时必须
-// 从磁盘合并，否则会被默认值打回。
+// 覆盖用户的模型/API Key。pet_*、main_window_state(窗口事件)、sound_enabled
+// (设置页/托盘即时开关)与 telemetry_enabled(仅改文件)都不在设置页表单里，
+// 设置页保存时必须从磁盘合并，否则会被默认值打回。
 
 use std::ffi::OsString;
 use std::fs;
@@ -57,6 +57,18 @@ fn default_engine() -> String {
     String::new() // 字段已废弃,仅兼容旧 config.json 反序列化
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MainWindowState {
+    /// 窗口外框左上角，物理像素（可跨多显示器为负坐标）。
+    pub x: i32,
+    pub y: i32,
+    /// 客户区逻辑尺寸，不随显示器缩放比例变化。
+    pub width: u32,
+    pub height: u32,
+    #[serde(default)]
+    pub maximized: bool,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DesktopConfig {
     #[serde(default = "json_array")]
@@ -97,6 +109,9 @@ pub struct DesktopConfig {
     /// 桌宠窗口位置(物理像素;拖动后记忆)
     #[serde(default)]
     pub pet_pos: Option<(i32, i32)>,
+    /// 主窗口正常态的位置、大小与最大化状态。
+    #[serde(default)]
+    pub main_window_state: Option<MainWindowState>,
     /// 装机统计开关。**刻意不做任何 UI**:载荷只有随机设备标识、版本、系统和
     /// 一个"用没用"的布尔,不含可关联到人的信息,装机计数不需要征求同意。留这个
     /// 字段是给客户合规问卷的出口(改 config.json 一行即可关),不是给普通用户的
@@ -118,6 +133,7 @@ impl Default for DesktopConfig {
             pet_enabled: true,
             sound_enabled: true,
             pet_pos: None,
+            main_window_state: None,
             telemetry_enabled: true,
         }
     }
@@ -386,6 +402,7 @@ fn merge_shell_prefs(incoming: DesktopConfig, disk: &DesktopConfig) -> DesktopCo
         pet_enabled: disk.pet_enabled,
         sound_enabled: disk.sound_enabled,
         pet_pos: disk.pet_pos,
+        main_window_state: disk.main_window_state,
         telemetry_enabled: disk.telemetry_enabled,
         ..incoming
     }
@@ -826,6 +843,13 @@ mod tests {
             pet_enabled: false,
             sound_enabled: false,
             pet_pos: Some((12, 34)),
+            main_window_state: Some(MainWindowState {
+                x: 56,
+                y: 78,
+                width: 1200,
+                height: 800,
+                maximized: true,
+            }),
             telemetry_enabled: false,
             ..Default::default()
         };
@@ -842,6 +866,7 @@ mod tests {
         assert!(!merged.pet_enabled);
         assert!(!merged.sound_enabled, "提示音开关同样不在表单里,必须保留关闭态");
         assert_eq!(merged.pet_pos, Some((12, 34)));
+        assert_eq!(merged.main_window_state, disk.main_window_state);
         assert_eq!(merged.kernel_env, "wsl:Ubuntu", "表单字段仍应生效");
     }
 

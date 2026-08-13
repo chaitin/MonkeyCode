@@ -19,6 +19,7 @@ mod driver;
 #[cfg(target_os = "windows")]
 mod native_pet;
 mod repo;
+mod skills;
 mod telemetry;
 mod uploads;
 mod util;
@@ -32,7 +33,10 @@ use std::time::{Duration, Instant};
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, Window, WindowEvent,
+};
 #[cfg(target_os = "macos")]
 use tauri_nspanel::{tauri_panel, StyleMask, WebviewWindowExt as _};
 
@@ -80,6 +84,36 @@ struct TraySoundItem(Mutex<Option<CheckMenuItem<tauri::Wry>>>);
 /// 桌宠位置暂存:Moved 事件在拖动中高频触发,不能逐次写盘;
 /// 退出与托盘开关切换时经 persist_pet_prefs 落盘。
 struct PetPos(Mutex<Option<(i32, i32)>>);
+
+struct MainWindowRuntime(Mutex<Option<config::MainWindowState>>);
+
+#[derive(Clone, Copy)]
+struct MainWindowRestore {
+    bounds: Option<config::MainWindowState>,
+    maximized: bool,
+}
+
+#[derive(Clone, Copy)]
+struct DisplayArea {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    scale_factor: f64,
+}
+
+impl From<&tauri::window::Monitor> for DisplayArea {
+    fn from(monitor: &tauri::window::Monitor) -> Self {
+        let work_area = monitor.work_area();
+        Self {
+            x: work_area.position.x,
+            y: work_area.position.y,
+            width: work_area.size.width,
+            height: work_area.size.height,
+            scale_factor: monitor.scale_factor(),
+        }
+    }
+}
 
 /// 配置物化/Agent 重启串行锁。设置保存、手动恢复与浏览器配对变化都可能
 /// 触发同一事务，必须避免两个 Agent 进程交错启停。
@@ -720,9 +754,16 @@ fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, Strin
     let mut builder = app
         .updater_builder()
         .timeout(Duration::from_secs(30))
+        // latest*.json 原地覆盖发布；安装前的二次检查不能复用旧清单。
+        .header("Cache-Control", "no-cache, no-store, max-age=0")
+        .and_then(|builder| builder.header("Pragma", "no-cache"))
+        .map_err(|e| format!("初始化更新请求头失败: {e}"))?
         // Windows 安装器路径由插件直接退进程(不走 RunEvent::Exit),
-        // 必须先在这里回收引擎进程,否则 ohmyagent.exe 占用文件导致 NSIS 安装失败
+        // 必须先保存窗口状态并回收引擎进程,否则位置会丢失且
+        // ohmyagent.exe 占用文件会导致 NSIS 安装失败
         .on_before_exit(move || {
+            #[cfg(target_os = "windows")]
+            persist_main_window_state(&handle);
             if let Some(engine) = handle.state::<DriverHost>().take() {
                 engine.stop();
             }
@@ -874,6 +915,11 @@ fn create_main_window(app: &AppHandle, page: &str) {
             }
             internal
         });
+    let restored = restorable_main_window_state(app);
+    if let Some(state) = restored.and_then(|restore| restore.bounds) {
+        builder = builder.inner_size(state.width as f64, state.height as f64);
+    }
+    builder = builder.visible(false);
     // Windows/macOS:Tauri 原生拖放处理器会在窗口层吞掉文件拖拽,HTML5 的
     // drag/drop 事件到不了页面(对话区拖入图片/文件依赖 DOM 事件),禁用后
     // 由 UI 侧统一处理。Linux 相反:WebKitGTK 在 wry 窗口里的 HTML5 拖拽
@@ -913,7 +959,9 @@ fn create_main_window(app: &AppHandle, page: &str) {
         builder = builder.initialization_script(include_str!("probe.js"));
     }
     #[cfg(not(target_os = "macos"))]
-    let _ = builder.build();
+    if let Ok(win) = builder.build() {
+        finish_main_window_creation(&win, restored);
+    }
     #[cfg(target_os = "macos")]
     if let Ok(win) = builder.build() {
         hide_native_window_buttons(&win);
@@ -928,6 +976,91 @@ fn create_main_window(app: &AppHandle, page: &str) {
                 hide_native_window_buttons(&w);
             }
         });
+        finish_main_window_creation(&win, restored);
+    }
+}
+
+fn finish_main_window_creation(window: &WebviewWindow, restored: Option<MainWindowRestore>) {
+    if let Some(restore) = restored {
+        if let Some(state) = restore.bounds {
+            let _ = window.set_position(PhysicalPosition::new(state.x, state.y));
+        }
+        if restore.maximized {
+            let _ = window.maximize();
+        }
+    }
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+fn restorable_main_window_state(app: &AppHandle) -> Option<MainWindowRestore> {
+    let state = (*app.state::<MainWindowRuntime>().0.lock_ok())?;
+    let monitors = app.available_monitors().ok()?;
+    let displays: Vec<_> = monitors.iter().map(DisplayArea::from).collect();
+    Some(MainWindowRestore {
+        bounds: window_state_on_available_display(state, &displays).then_some(state),
+        maximized: state.maximized,
+    })
+}
+
+fn window_state_on_available_display(
+    state: config::MainWindowState,
+    displays: &[DisplayArea],
+) -> bool {
+    displays.iter().any(|display| {
+        let physical_width = (state.width as f64 * display.scale_factor).round() as i64;
+        let physical_height = (state.height as f64 * display.scale_factor).round() as i64;
+        let right = state.x as i64 + physical_width;
+        let bottom = state.y as i64 + physical_height;
+        let display_right = display.x as i64 + display.width as i64;
+        let display_bottom = display.y as i64 + display.height as i64;
+        (state.x as i64) >= display.x as i64
+            && (state.y as i64) >= display.y as i64
+            && right <= display_right
+            && bottom <= display_bottom
+    })
+}
+
+fn update_main_window_runtime(app: &AppHandle, window: &Window) {
+    if window.label() != "main"
+        || window.is_minimized().unwrap_or(false)
+        || window.is_fullscreen().unwrap_or(false)
+    {
+        return;
+    }
+    let maximized = window.is_maximized().unwrap_or(false);
+    let state = app.state::<MainWindowRuntime>();
+    let mut runtime = state.0.lock_ok();
+    if maximized {
+        if let Some(state) = runtime.as_mut() {
+            state.maximized = true;
+        }
+        return;
+    }
+    let (Ok(position), Ok(size), Ok(scale_factor)) = (
+        window.outer_position(),
+        window.inner_size(),
+        window.scale_factor(),
+    ) else {
+        return;
+    };
+    let logical = size.to_logical::<f64>(scale_factor);
+    *runtime = Some(config::MainWindowState {
+        x: position.x,
+        y: position.y,
+        width: logical.width.round().max(1.0) as u32,
+        height: logical.height.round().max(1.0) as u32,
+        maximized: false,
+    });
+}
+
+fn persist_main_window_state(app: &AppHandle) {
+    let state = *app.state::<MainWindowRuntime>().0.lock_ok();
+    let Some(state) = state else {
+        return;
+    };
+    if let Err(e) = config::update_config_json(app, |cfg| cfg.main_window_state = Some(state)) {
+        eprintln!("[desktop] 保存主窗口状态失败: {e}");
     }
 }
 
@@ -1254,6 +1387,7 @@ fn main() {
         .manage(SoundEnabled(AtomicBool::new(true)))
         .manage(TraySoundItem(Mutex::new(None)))
         .manage(PetPos(Mutex::new(None)))
+        .manage(MainWindowRuntime(Mutex::new(None)))
         .manage(EngineApply(Mutex::new(())))
         .manage(BrowserMcpRefresh(AtomicU64::new(0)))
         .manage(EngineSupervisor::new())
@@ -1296,6 +1430,10 @@ fn main() {
             driver::session_close,
             driver::session_send,
             driver::session_call,
+            skills::skills_list,
+            skills::skills_save,
+            skills::skills_delete,
+            skills::skills_set_default,
             driver::upload_begin,
             driver::upload_file_path,
             driver::upload_read,
@@ -1344,6 +1482,7 @@ fn main() {
                 Ok(cfg) => (cfg, None),
                 Err(e) => (DesktopConfig::default(), Some(e)),
             };
+            *app.state::<MainWindowRuntime>().0.lock_ok() = cfg.main_window_state;
 
             // 百智云/云端服务(壳级单例;凭证 cookie 与配置同目录)。晚于
             // 配置加载:MonkeyCode 服务地址可由设置指定(mc_base_url,重启
@@ -1447,7 +1586,12 @@ fn main() {
                         .0
                         .lock_ok()
                         .replace((pos.x, pos.y));
+                } else {
+                    update_main_window_runtime(window.app_handle(), window);
                 }
+            }
+            if matches!(event, WindowEvent::Resized(_)) {
+                update_main_window_runtime(window.app_handle(), window);
             }
             // 主窗口:引擎在跑且托盘可用时关窗只隐藏(任务继续跑);引擎不在位
             // (崩溃/退避中/启动失败)则放行销毁——那时没有任务要护着,留一个
@@ -1479,6 +1623,7 @@ fn main() {
             }
             RunEvent::Exit => {
                 persist_pet_prefs(app); // 拖动位置只在退出/开关切换时落盘
+                persist_main_window_state(app);
                 #[cfg(target_os = "windows")]
                 native_pet::shutdown(app);
                 if let Some(engine) = app.state::<DriverHost>().take() {
@@ -1605,7 +1750,140 @@ fn show_any_window(app: &AppHandle) {
 
 #[cfg(test)]
 mod ui_intent_tests {
-    use super::open_session_intent;
+    use super::{config, open_session_intent, window_state_on_available_display, DisplayArea};
+
+    #[test]
+    fn restores_window_on_negative_coordinate_monitor() {
+        let state = config::MainWindowState {
+            x: -1200,
+            y: 100,
+            width: 900,
+            height: 700,
+            maximized: false,
+        };
+        let displays = [DisplayArea {
+            x: -1440,
+            y: 0,
+            width: 1920,
+            height: 900,
+            scale_factor: 1.0,
+        }];
+        assert!(window_state_on_available_display(state, &displays));
+    }
+
+    #[test]
+    fn rejects_window_when_saved_monitor_is_gone() {
+        let state = config::MainWindowState {
+            x: 2200,
+            y: 100,
+            width: 900,
+            height: 700,
+            maximized: false,
+        };
+        let displays = [DisplayArea {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            scale_factor: 1.0,
+        }];
+        assert!(!window_state_on_available_display(state, &displays));
+    }
+
+    #[test]
+    fn rejects_window_with_only_a_thin_edge_visible() {
+        let state = config::MainWindowState {
+            x: 0,
+            y: -799,
+            width: 1200,
+            height: 800,
+            maximized: false,
+        };
+        let displays = [DisplayArea {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            scale_factor: 1.0,
+        }];
+        assert!(!window_state_on_available_display(state, &displays));
+    }
+
+    #[test]
+    fn rejects_window_when_titlebar_is_above_work_area() {
+        let state = config::MainWindowState {
+            x: 100,
+            y: -1,
+            width: 1200,
+            height: 800,
+            maximized: false,
+        };
+        let displays = [DisplayArea {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            scale_factor: 1.0,
+        }];
+        assert!(!window_state_on_available_display(state, &displays));
+    }
+
+    #[test]
+    fn rejects_window_with_only_caption_buttons_visible() {
+        let state = config::MainWindowState {
+            x: -1062,
+            y: 100,
+            width: 1200,
+            height: 800,
+            maximized: false,
+        };
+        let displays = [DisplayArea {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            scale_factor: 1.0,
+        }];
+        assert!(!window_state_on_available_display(state, &displays));
+    }
+
+    #[test]
+    fn accepts_window_fully_inside_work_area() {
+        let state = config::MainWindowState {
+            x: 100,
+            y: 100,
+            width: 1200,
+            height: 800,
+            maximized: false,
+        };
+        let displays = [DisplayArea {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            scale_factor: 1.0,
+        }];
+        assert!(window_state_on_available_display(state, &displays));
+    }
+
+    #[test]
+    fn detects_visible_window_using_monitor_scale() {
+        let state = config::MainWindowState {
+            x: 100,
+            y: 100,
+            width: 800,
+            height: 600,
+            maximized: false,
+        };
+        let displays = [DisplayArea {
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1440,
+            scale_factor: 2.0,
+        }];
+        assert!(window_state_on_available_display(state, &displays));
+    }
 
     #[test]
     fn session_intent_accepts_normal_id_and_rejects_invalid_input() {

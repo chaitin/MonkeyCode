@@ -33,6 +33,12 @@ export function sessionSetMode(id: string, mode: string): Promise<void> {
   return sessionCall(id, "session_set_mode", { mode });
 }
 
+/** 会话技能启用集(全量声明,空数组 = 全部停用)。壳侧 destroy+resume
+ * 重建引擎会话让技能目录重扫,所以仅空闲可调,resolve 在重建完成后。 */
+export function sessionSetSkills(id: string, skills: string[]): Promise<void> {
+  return sessionCall(id, "session_set_skills", { skills });
+}
+
 /** 手动压缩上下文(session_compact)。resolve 在压缩完成后(引擎同步
  * 应答);进度与结果经帧外显(task_started + compact_status(started) →
  * task_ended,失败走 task-error 帧)。reject 仅当压缩没起来(忙碌/旧

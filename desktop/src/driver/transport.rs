@@ -311,6 +311,9 @@ impl OhmyDriver {
         // ready 信道携带握手结果:Ok=就绪,Err=协议版本不兼容(启动失败外显)
         let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
+        // 在 app 交给 Inner 前取内置技能目录(随引擎实例定格;更新替换资源
+        // 会伴随应用重启,不存在跑着跑着路径失效)
+        let app_builtin_skills = app.skills_builtin_dir();
         let inner = Arc::new(Inner {
             app,
             transport: TransportState {
@@ -347,6 +350,10 @@ impl OhmyDriver {
             chat_workspaces_dir,
             perm_persist_path,
             wsl: wsl_ctx,
+            skills_builtin_dir: app_builtin_skills,
+            skills_user_dir: crate::skills::user_dir(&cfg_dir),
+            skills_defaults_path: crate::skills::defaults_path(&cfg_dir),
+            skills_gate: tokio::sync::Mutex::new(()),
         });
 
         // writer 线程:串行写 stdin;收到 None 哨兵或通道关闭即丢弃 stdin

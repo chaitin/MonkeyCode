@@ -35,6 +35,7 @@ import {
   type ProjectGroup,
 } from "@/lib/util/projects";
 import type { Space } from "@/lib/util/prefs";
+import { renameIsNoop } from "@/lib/util/rename";
 
 export interface SidebarActions {
   onSelect: (meta: SessionMeta) => void;
@@ -108,9 +109,11 @@ function SessionRow({ meta, p, level }: { meta: SessionMeta; p: RowPlumbing; lev
       if (e.key === "Escape") return p.onRenameEnd();
       if (e.key !== "Enter") return;
       const title = e.currentTarget.value.trim();
-      // 空提交 = 撤销自定义、回落自动链(壳摘 title_custom 并重填首句);
-      // 只有「本就没改过名又提交空」才是纯空转,与头部改名同一口径
-      if (title !== meta.title && !(!title && !meta.title_custom)) p.actions.onRename(meta, title);
+      // 空转判定收口在 lib/util/rename:此前这里还是旧口径「文本未变即
+      // 空转」,而旧版自定义标题缺 title_custom、行里显示的是 summary,
+      // 用户按预填原文确认被当空转拦下,标记永远补不上——头部 4ab809db
+      // 修过,侧栏漏了同一条(2026-08-12 用户报障)
+      if (!renameIsNoop(title, meta)) p.actions.onRename(meta, title);
       p.onRenameEnd();
     };
     return (
