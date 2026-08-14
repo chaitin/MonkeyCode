@@ -1,13 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FrameSender } from "@/lib/ipc/approvals";
 import { createChatState } from "@/lib/protocol/reduce";
 import type { ChatItem, ChatState } from "@/lib/protocol/types";
 import { LogList, reconcileFarRows } from "./LogList";
 
+const mermaidRender = vi.hoisted(() => vi.fn(async () => ({ svg: "<svg></svg>" })));
+vi.mock("mermaid", () => ({ default: { initialize: vi.fn(), render: mermaidRender } }));
+
 afterEach(() => {
+  mermaidRender.mockClear();
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
 });
 
@@ -152,6 +156,17 @@ describe("思考块(thoughtMarkdown 修复)", () => {
     // 修复生效 = 两个独立的加粗段(吞并时会渲成含 ** 字面量的单个 strong)
     expect(screen.getAllByText("先看日志").some((el) => el.tagName === "STRONG")).toBe(true);
     expect(screen.getAllByText("再改代码").some((el) => el.tagName === "STRONG")).toBe(true);
+  });
+
+  it("thought 流结束前暂缓 Mermaid 渲染", async () => {
+    const item: ChatItem = { kind: "thought", text: "思考\n\n```mermaid\ngraph TD\nA-->B\n```" };
+    const streaming = { ...withItems([item]), streamKind: "thought" as const };
+    const { rerender } = render(<LogList state={streaming} sessionId="s1" />);
+    await Promise.resolve();
+    expect(mermaidRender).not.toHaveBeenCalled();
+
+    rerender(<LogList state={{ ...streaming, streamKind: "" }} sessionId="s1" />);
+    await waitFor(() => expect(mermaidRender).toHaveBeenCalledTimes(1));
   });
 
   it("折叠态摘要行也过 markdown:引擎首行几乎都是 **小标题**,当纯文本贴就是字面量星号", () => {
