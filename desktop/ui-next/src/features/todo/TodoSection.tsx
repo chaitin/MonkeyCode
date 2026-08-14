@@ -94,9 +94,7 @@ function TodoRow({
   const images = item.images ?? [];
   const menuItems: MenuItem[] = [
     { label: done ? t("todo.markUndone") : t("todo.markDone"), run: () => todo.ops.toggle(item.id) },
-    ...(!item.dispatched_kind && !done
-      ? [{ label: t("todo.dispatch"), run: () => todo.onDispatch(item) }]
-      : []),
+    ...(!done ? [{ label: t("todo.dispatch"), run: () => todo.onDispatch(item) }] : []),
     ...(jump ? [{ label: cloud ? t("todo.openCloud") : t("todo.openTask"), run: jump }] : []),
     { label: t("todo.delete"), confirm: t("todo.deleteConfirm"), danger: true, run: () => todo.ops.remove(item.id) },
   ];
@@ -265,7 +263,7 @@ function TodoDetailModal({
                 <span className="badge badge-ghost badge-sm text-base-content/40">{linkWord}</span>
               ))}
             <span className="flex-1" />
-            {!item.dispatched_kind && !done && (
+            {!done && (
               <button
                 type="button"
                 className="btn btn-primary btn-sm"

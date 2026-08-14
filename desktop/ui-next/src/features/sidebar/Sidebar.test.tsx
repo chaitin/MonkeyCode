@@ -408,9 +408,14 @@ describe("侧栏(local 空间)", () => {
     // 圈定在待办行内断:s-run 的会话行自己也有一颗运行点
     const row = screen.getByText("修登录页").closest("a") as HTMLElement;
     expect(within(row).getByRole("img", { name: "运行中" })).toBeTruthy();
+    // 已派发仍可重新启动:第一次若选错项目目录,可再创建并把关联更新到新任务
+    const dispatchedMenu = contextMenuOf(row);
+    await userEvent.click(within(dispatchedMenu).getByText("启动任务"));
+    expect(todo.onDispatch).toHaveBeenCalledWith(expect.objectContaining({ id: "t1" }));
     // 点行开详情弹窗(2026-08-13 用户定案);跳关联任务走弹窗里的状态章
     await userEvent.click(screen.getByText("修登录页"));
     const dialog = await screen.findByRole("dialog", { name: "待办详情" });
+    expect(within(dialog).getByRole("button", { name: "启动任务" })).toBeTruthy();
     await userEvent.click(within(dialog).getByRole("button", { name: /运行中/ }));
     expect(todo.onOpenSession).toHaveBeenCalledWith("s-run");
     // 完成行在「已完成」小节内,划线降档由类承担,这里断内容可见 + 右键
