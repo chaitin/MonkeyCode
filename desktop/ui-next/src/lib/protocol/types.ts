@@ -25,6 +25,8 @@ export interface AcpUpdate {
   toolCallId?: string;
   title?: string;
   kind?: string;
+  /** 该条消息的 token 用量(壳侧 usage 事件挂到 agent_message 帧上) */
+  usage?: { input_tokens?: number; output_tokens?: number };
   status?: string;
   rawInput?: unknown;
   rawOutput?: unknown;
@@ -133,6 +135,8 @@ export interface AgentItem {
   text: string;
   /** 首个流式分片时间(Unix ms;旧记录可缺省) */
   timestamp?: number;
+  /** 本条消息的 token 用量(壳侧 usage 事件挂帧,回放/重启后可见) */
+  usage?: { input_tokens?: number; output_tokens?: number };
 }
 
 /** 思考块(流式聚合成一项)。 */

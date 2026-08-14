@@ -8,6 +8,7 @@
 // 旧「浮窗跟随指针高度」不做——dropdown 锚定已确定面板落点。
 import { memo, useEffect, useRef, useState } from "react";
 
+import { fmtCompact } from "@/features/sidebar/listKit";
 import { useI18n } from "@/lib/i18n";
 import type { OutlineItem } from "@/lib/ipc/controls";
 import { ATT_LINE } from "@/lib/protocol/attLine";
@@ -29,6 +30,8 @@ export interface OutlineEntry {
   attCount: number;
   /** 当天 HH:MM,跨天带日期(fmtClock);无可靠时间为空。 */
   time: string;
+  /** 该轮助手回复的 token 用量(壳侧 usage 挂帧;已加载进流的轮次才有) */
+  usage?: { input_tokens?: number; output_tokens?: number };
 }
 
 /** 目录 + 流内实时用户消息 → 合并去重的大纲条目。
@@ -37,6 +40,27 @@ export interface OutlineEntry {
  * 跳转锚,两条同 seq 只能定位到同一气泡。目录条目带真实翻页 offset,
  * 流内补的没有(undefined)。 */
 export function outlineEntriesOf(outline: OutlineItem[], items: readonly ChatItem[]): OutlineEntry[] {
+  // 每条用户提问 → 其回合内各助手回复的 token 用量合计(usage 事件挂帧,
+  // 仅已加载进流的轮次有数据)。agent 项不带所属用户 seq,按「用户项之后到
+  // 下一条用户项之前的所有 agent 项」聚合。
+  const usageBySeq = new Map<number, { input_tokens?: number; output_tokens?: number }>();
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it || it.kind !== "user") continue;
+    if (it.seq === undefined) continue;
+    let input = 0;
+    let output = 0;
+    for (let j = i + 1; j < items.length; j++) {
+      const nj = items[j];
+      if (!nj || nj.kind === "user") break;
+      if (nj.kind === "agent" && nj.usage) {
+        input += nj.usage.input_tokens ?? 0;
+        output += nj.usage.output_tokens ?? 0;
+      }
+    }
+    if (input + output > 0) usageBySeq.set(it.seq, { input_tokens: input, output_tokens: output });
+  }
+
   const merged: Array<{ seq: number; text: string; timestamp?: number; offset?: number }> = [...outline];
   const seen = new Set(outline.map((o) => o.seq));
   for (const it of items) {
@@ -57,12 +81,14 @@ export function outlineEntriesOf(outline: OutlineItem[], items: readonly ChatIte
     }
     const text = body.join(" ").replace(/\s+/g, " ").trim();
     const label = text.length > MAX_LABEL ? `${text.slice(0, MAX_LABEL)}…` : text;
+    const usage = usageBySeq.get(it.seq);
     out.push({
       seq: it.seq,
       label,
       attCount,
       time: fmtClock(it.timestamp),
       ...(it.offset !== undefined ? { offset: it.offset } : {}),
+      ...(usage ? { usage } : {}),
     });
   }
   return out;
@@ -159,6 +185,14 @@ export const OutlineNav = memo(function OutlineNav({
                   }}
                 >
                   <span className="min-w-0 flex-1 truncate text-left text-xs">{labelOf(e)}</span>
+                  {e.usage && (e.usage.input_tokens ?? 0) + (e.usage.output_tokens ?? 0) > 0 && (
+                    <span
+                      className="shrink-0 font-mono text-[10px] opacity-60"
+                      title={`${t("stats.input")} ${(e.usage.input_tokens ?? 0).toLocaleString("en-US")} · ${t("stats.output")} ${(e.usage.output_tokens ?? 0).toLocaleString("en-US")}`}
+                    >
+                      ↑{fmtCompact(e.usage.input_tokens ?? 0)} ↓{fmtCompact(e.usage.output_tokens ?? 0)}
+                    </span>
+                  )}
                   {e.time && <span className="shrink-0 text-[10px] opacity-50">{e.time}</span>}
                 </button>
               </li>

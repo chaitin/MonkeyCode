@@ -20,6 +20,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Markdown, MarkdownInline } from "@/components/markdown/Markdown";
 import { downloadUpload, Lightbox, UploadImg } from "@/components/media/UploadImg";
 import { useI18n } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import type { FrameSender } from "@/lib/ipc/approvals";
 import { openExternal } from "@/lib/ipc/host";
 import { isImagePath } from "@/lib/ipc/uploads";
@@ -29,6 +30,7 @@ import { markProgrammaticScroll } from "@/lib/util/scrollAnchor";
 import type { ChatItem, ChatState, Frame, PermItem } from "@/lib/protocol/types";
 import { presentToolCall } from "@/lib/tools/toolLabels";
 import { thoughtMarkdown, thoughtSummary } from "@/lib/util/thoughtMarkdown";
+import { fmtCompact } from "@/features/sidebar/listKit";
 import { AskCard } from "./cards/AskCard";
 import { PermCard } from "./cards/PermCard";
 import { statusDot } from "./cards/statusDot";
@@ -197,14 +199,26 @@ function renderItem(item: ChatItem, o: RenderOpts) {
   switch (item.kind) {
     case "user":
       return <UserBubble item={item} flash={o.flash} uploadUrl={o.uploadUrl} />;
-    case "agent":
+    case "agent": {
+      const u = item.usage;
+      const hasUsage = !!u && (u.input_tokens ?? 0) + (u.output_tokens ?? 0) > 0;
       // 时间绝对定位在块顶空隙(悬停显影,不占流式高度)
       return (
         <div className="group relative flex flex-col">
           <MessageTime timestamp={item.timestamp} className="absolute -top-3.5 start-0" />
           <Markdown source={item.text} localImageUrl={o.uploadUrl} onLocalLink={o.onLocalLink} />
+          {/* 本条消息的 token 用量(壳侧 usage 事件挂帧;回放/重启后可见) */}
+          {hasUsage && (
+            <div
+              className="mt-1 self-start rounded bg-base-200/70 px-1.5 py-px font-mono text-[10px] leading-4 text-base-content/45"
+              title={`${t("stats.input")} ${(u!.input_tokens ?? 0).toLocaleString("en-US")} · ${t("stats.output")} ${(u!.output_tokens ?? 0).toLocaleString("en-US")}`}
+            >
+              ↑{fmtCompact(u!.input_tokens ?? 0)} ↓{fmtCompact(u!.output_tokens ?? 0)}
+            </div>
+          )}
         </div>
       );
+    }
     case "thought":
       // 与助手块同构:时间线在块顶空隙
       return (

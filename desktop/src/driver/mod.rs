@@ -396,6 +396,12 @@ pub async fn models_list(host: State<'_, DriverHost>) -> Result<Value, String> {
     host.get()?.models_list().await
 }
 
+/// 本地会话 token 用量统计(按天/会话/模型聚合,usage 事件记账)。
+#[tauri::command]
+pub async fn usage_stats(host: State<'_, DriverHost>) -> Result<Value, String> {
+    Ok(host.get()?.usage_stats())
+}
+
 /// 打开会话:返回尾部回放窗口 `{frames, cursor, has_more}`。历史走返回值
 /// 而非 `frames:{sid}` 事件——返回值天生有序,不必依赖"监听先于命令"。
 #[tauri::command]

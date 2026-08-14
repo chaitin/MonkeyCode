@@ -11,12 +11,13 @@
 // 行交互:右键 = 行菜单(重命名/归档/删除二段确认)。
 // 行/组头/小节折叠的呈现件收口在 listKit(三列表统一,不做两套)。
 import { IconArchive, IconFolder, IconFolderOpen, IconInbox, IconMessages, IconPlus, IconRefresh } from "@tabler/icons-react";
-import { useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import { CloudTaskList, useCloudProjects, useCloudTasks, type CloudTasksFeed } from "@/features/cloud/CloudTaskList";
-import { GroupLabel, levelPad, ListRow, NEST_NO_GUIDE, SectionFold } from "@/features/sidebar/listKit";
+import { GroupLabel, fmtCompact, levelPad, ListRow, NEST_NO_GUIDE, SectionFold, showTokenPopover } from "@/features/sidebar/listKit";
 import { rowStatusLabel, rowTrailing } from "@/features/sidebar/sessionStatus";
 import { TODO_GROUP_KEY, TodoSection, type TodoWiring } from "@/features/todo/TodoSection";
+import { buildSessionUsageMap, sumUsage, usageStats, type TokenUsage } from "@/lib/ipc/usageStats";
 import { Brand } from "@/features/titlebar/TitleBar";
 import { useUpdate } from "@/features/update/useUpdate";
 import { openMenu, type MenuItem } from "@/lib/contextMenu";
@@ -62,6 +63,8 @@ interface RowPlumbing {
   renamingId: string | null;
   onRenameStart: (id: string) => void;
   onRenameEnd: () => void;
+  /** 会话 id → 该会话(含归并的子代理)的 token 用量 */
+  usage: ReadonlyMap<string, TokenUsage>;
 }
 
 function SessionRow({ meta, p, level }: { meta: SessionMeta; p: RowPlumbing; level?: number }) {
@@ -139,6 +142,7 @@ function SessionRow({ meta, p, level }: { meta: SessionMeta; p: RowPlumbing; lev
     <ListRow
       primary={primary}
       trailing={trailing}
+      usage={p.usage.get(meta.id) ?? null}
       tooltip={tooltip}
       level={level}
       active={meta.id === p.currentId}
@@ -188,6 +192,11 @@ function ProjectDetails({
 }) {
   const { t } = useI18n();
   const waiting = group.sessions.filter((s) => s.waiting_ask).length;
+  // 文件夹级 token 合计:本组全部任务(含归档)的用量合并
+  const groupUsage = sumUsage(
+    [...group.sessions.map((s) => s.id), ...group.archivedSessions.map((s) => s.id)],
+    p.usage,
+  );
   const menuItems: MenuItem[] = [
     ...(archivedProject ? [] : [{ label: t("sidebar.project.newTaskIn"), run: () => p.actions.onNewTaskIn(group.key) }]),
     {
@@ -247,6 +256,21 @@ function ProjectDetails({
           {dropTarget && <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary" />}
           <GroupLabel icon={collapsed ? IconFolder : IconFolderOpen} name={group.name} />
           {waiting > 0 && <span className="badge badge-warning badge-xs">{waiting}</span>}
+          {/* 文件夹 token 合计:点击弹明细(输入/输出/调用 + 按模型) */}
+          {groupUsage && groupUsage.input + groupUsage.output > 0 && (
+            <button
+              type="button"
+              className="shrink-0 rounded bg-base-200/70 px-1 font-mono text-[10px] leading-4 text-base-content/55 hover:text-base-content"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showTokenPopover({ x: e.clientX, y: e.clientY }, groupUsage);
+              }}
+            >
+              {fmtCompact(groupUsage.input + groupUsage.output)}
+            </button>
+          )}
           {/* 快捷钮常驻占位、hover 只切可见性:插入式显隐会挤动项目名,鼠标一进一出就抖 */}
           {!archivedProject && (
             <button
@@ -472,6 +496,20 @@ export function Sidebar({
   // dragOverKey 取此值 = 悬停在列表末尾的收尾落区(项目 key 是路径,不会撞)
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  // 会话列表变化时重拉一次用量(usage 事件由壳记账,聚合后按会话给徽标)
+  const [usageMap, setUsageMap] = useState<ReadonlyMap<string, TokenUsage>>(new Map());
+  useEffect(() => {
+    let alive = true;
+    void usageStats()
+      .then((data) => {
+        if (!alive) return;
+        setUsageMap(buildSessionUsageMap(data.sessions));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [sessions]);
 
   // 云端数据源(hook 无条件调用;非云端空间 enabled=false 不拉取):
   // 概览统计与列表共用同一份 feed,重新进入云端经 enabled 翻转刷新
@@ -486,6 +524,7 @@ export function Sidebar({
     renamingId,
     onRenameStart: setRenamingId,
     onRenameEnd: () => setRenamingId(null),
+    usage: usageMap,
   };
 
   const toggleCollapsed = (key: string, open: boolean) => {

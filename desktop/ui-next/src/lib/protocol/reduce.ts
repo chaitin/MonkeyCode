@@ -105,15 +105,38 @@ function lastToolIndex(items: readonly ChatItem[], tcId: string): number {
 
 /** 追加流式文本:streamKind 未断且末项同类则并入,否则新开一项。
  * timestamp 只记在首个分片上(agent/thought 都要块级时间显影)。 */
-function appendStream(s: ChatState, kind: "agent" | "thought", text: string, timestamp?: number): ChatState {
+function appendStream(
+  s: ChatState,
+  kind: "agent" | "thought",
+  text: string,
+  timestamp?: number,
+  usage?: { input_tokens?: number; output_tokens?: number },
+): ChatState {
   const items = s.items.slice();
   const last = items.at(-1);
   if (s.streamKind === kind && last && last.kind === kind) {
-    items[items.length - 1] = { ...last, text: last.text + text };
+    // 合并流式分片;usage 只在该消息的收尾分片上出现,并入末项
+    items[items.length - 1] = { ...last, text: last.text + text, ...(usage ? { usage } : {}) };
   } else {
-    items.push({ kind, text, ...(timestamp !== undefined ? { timestamp } : {}) });
+    items.push({
+      kind,
+      text,
+      ...(timestamp !== undefined ? { timestamp } : {}),
+      ...(usage ? { usage } : {}),
+    });
   }
   return { ...s, items, streamKind: kind };
+}
+
+/** session-usage 实时补丁:把用量挂到最后一条助手消息上(壳在 usage 事件
+ * 晚于流式帧时单独发 session-usage;回放路径则靠帧内 usage 字段走 appendStream)。 */
+export function patchLastAgentUsage(s: ChatState, input: number, output: number): ChatState {
+  const items = s.items.slice();
+  const last = items.at(-1);
+  if (last?.kind === "agent") {
+    items[items.length - 1] = { ...last, usage: { input_tokens: input, output_tokens: output } };
+  }
+  return { ...s, items };
 }
 
 /** 追加非流式项并断流(下一个文本分片必须新开气泡,不得并进旧项)。 */
@@ -378,7 +401,7 @@ function stripSourceSuffix(name: string): string {
 function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
   switch (u.sessionUpdate) {
     case "agent_message_chunk":
-      return appendStream(s, "agent", toolContentText(u.content), timestamp);
+      return appendStream(s, "agent", toolContentText(u.content), timestamp, u.usage);
     case "agent_thought_chunk":
       return appendStream(s, "thought", toolContentText(u.content), timestamp);
     case "tool_call": {

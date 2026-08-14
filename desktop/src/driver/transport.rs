@@ -349,6 +349,7 @@ impl OhmyDriver {
             engine_dir,
             chat_workspaces_dir,
             perm_persist_path,
+            stats: crate::stats::UsageStats::new(&cfg_dir),
             wsl: wsl_ctx,
             skills_builtin_dir: app_builtin_skills,
             skills_user_dir: crate::skills::user_dir(&cfg_dir),

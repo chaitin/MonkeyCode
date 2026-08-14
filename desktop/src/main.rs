@@ -20,6 +20,7 @@ mod driver;
 mod native_pet;
 mod repo;
 mod skills;
+mod stats;
 mod telemetry;
 mod todos;
 mod uploads;
@@ -1425,6 +1426,7 @@ fn main() {
             driver::session_delete,
             driver::session_patch,
             driver::models_list,
+            driver::usage_stats,
             driver::session_open,
             driver::session_history,
             driver::session_outline,

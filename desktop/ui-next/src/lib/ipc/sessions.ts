@@ -58,6 +58,9 @@ export interface SessionEvent {
   status?: string;
   open?: boolean;
   summary?: string;
+  /** session-usage:该会话最近一次模型调用的 token 用量 */
+  input?: number;
+  output?: number;
 }
 
 /** ⚠️ 壳内失败要**抛**给调用方。

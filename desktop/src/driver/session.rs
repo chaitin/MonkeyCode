@@ -2314,6 +2314,17 @@ impl Inner {
         );
     }
 
+    /// 该会话最近一次模型调用的 token 用量(session-event 事件,不落帧):
+    /// UI 实时把用量补到当前回合的助手消息与大纲条目上(帧管线里 usage 事件
+    /// 晚于流式帧,实时路径走这里;回放路径靠 attach_usage 挂在帧上)。
+    pub(super) fn emit_session_usage(&self, sid: &str, input: u64, output: u64) {
+        let title = self.sess.sessions.lock_ok().get(sid).map(|s| s.title.clone()).unwrap_or_default();
+        self.app.emit_json(
+            "session-event",
+            json!({ "type": "session-usage", "id": sid, "title": title, "input": input, "output": output }),
+        );
+    }
+
     pub(super) fn emit_session_ask(&self, sid: &str, open: bool) {
         let title = self.sess.sessions.lock_ok().get(sid).map(|s| s.title.clone()).unwrap_or_default();
         self.app.emit_json(

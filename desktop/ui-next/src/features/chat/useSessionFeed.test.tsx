@@ -254,7 +254,9 @@ describe("useSessionFeed:窗口与实时帧的先后、监听生命周期、打�
     const { unmount } = renderHook(() => useSessionFeed("s1"));
     unmount(); // 一次 IPC 往返之内切走/卸载:注册还在途中
     release();
-    await waitFor(() => expect([...offs].sort()).toEqual(["conn-status:s1", "frames:s1"]));
+    await waitFor(() =>
+      expect([...offs].sort()).toEqual(["conn-status:s1", "frames:s1", "session-event"]),
+    );
   });
 
   it("session_open 失败:openError 外显(壳只在成功路径 emit conn-status,不显就是空会话)", async () => {

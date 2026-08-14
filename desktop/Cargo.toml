@@ -39,7 +39,7 @@ cookie = "0.18"
 regex = "1"
 # cookie 罐过期时间的 RFC3339 解析。time 本就在依赖树里(cookie 的 Expires
 # 解析),显式声明 + parsing feature,替代手写历算(严格校验月/日范围)
-time = { version = "0.3", features = ["parsing"] }
+time = { version = "0.3", features = ["parsing", "local-offset"] }
 
 [dev-dependencies]
 # baizhi 集成测试:假服务端 + async 测试运行时
