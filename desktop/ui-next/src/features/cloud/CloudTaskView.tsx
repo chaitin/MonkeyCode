@@ -700,7 +700,8 @@ export function CloudTaskView({
         </>
       )}
 
-      <footer className="shrink-0 border-t border-base-300 p-3">
+      {/* 无上边线:与 ChatView composer 同款(2026-08-13 用户定案) */}
+      <footer className="shrink-0 p-3">
         <div className="mx-auto flex chat-measure flex-col gap-2">
           {/* 终端卡:外壳走 card card-border 官方形态,头部条普通 base 底 +
               结构线;深色只留给 xterm 本体(term.css 白名单) */}

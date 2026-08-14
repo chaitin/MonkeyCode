@@ -24,8 +24,9 @@ export function isDevtoolsHotkey(e: Pick<KeyboardEvent, "code" | "key" | "ctrlKe
  *  MainArea 拿的是 `current={space === "cloud" ? null : current}`,标题却没做
  *  同样的收敛(切空间也不清 currentId)。
  *
- *  优先级 = 主区分支的渲染优先级(App.tsx 的三元链):设置 > 新建 > 云端任务
- *  > 本地会话 > 欢迎页。 */
+ *  优先级 = 主区分支的渲染优先级(App.tsx 的三元链):设置 > 新建 > 云端
+ *  任务 > 本地会话 > 欢迎页。(待办不再入链:2026-08-12 定案清单本体进
+ *  侧栏,主区没有待办视图了。) */
 export function windowContextLabel(
   view: { settingsOpen: boolean; creating: boolean; cloudSpace: boolean },
   cloudTask: { title?: string; summary?: string; content?: string } | null,

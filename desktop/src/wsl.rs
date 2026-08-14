@@ -115,9 +115,9 @@ pub fn decode_wsl_output(bytes: &[u8]) -> String {
     s.replace('\u{feff}', "").replace('\r', "")
 }
 
-/// 运行一次 wsl.exe 并收集输出(轮询 try_wait 实现超时;输出都是小体量,
-/// 管道缓冲足够,不会因未及时读取而阻塞子进程)。
-pub fn run_wsl(args: &[String], timeout: Duration) -> Result<String, String> {
+/// 运行一次 wsl.exe 并收集输出。环境采集需要原始 NUL 分隔 stdout，
+/// 因此字节收集与普通文本解码分开。
+pub fn run_wsl_bytes(args: &[String], timeout: Duration) -> Result<Vec<u8>, String> {
     let mut cmd = Command::new(wsl_exe());
     cmd.args(args)
         .env("WSL_UTF8", "1")
@@ -128,10 +128,26 @@ pub fn run_wsl(args: &[String], timeout: Duration) -> Result<String, String> {
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("启动 {} 失败: {e}", wsl_exe()))?;
+    let mut stdout = child.stdout.take().expect("piped stdout");
+    let mut stderr = child.stderr.take().expect("piped stderr");
+    let (stdout_tx, stdout_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut out = Vec::new();
+        use std::io::Read;
+        let _ = stdout.read_to_end(&mut out);
+        let _ = stdout_tx.send(out);
+    });
+    let (stderr_tx, stderr_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut out = Vec::new();
+        use std::io::Read;
+        let _ = stderr.read_to_end(&mut out);
+        let _ = stderr_tx.send(out);
+    });
     let deadline = Instant::now() + timeout;
-    loop {
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) => {
                 if Instant::now() > deadline {
                     let _ = child.kill();
@@ -145,15 +161,20 @@ pub fn run_wsl(args: &[String], timeout: Duration) -> Result<String, String> {
                 return Err(format!("等待 wsl 进程失败: {e}"));
             }
         }
-    }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    let stdout = decode_wsl_output(&out.stdout);
-    if !out.status.success() {
-        let stderr = decode_wsl_output(&out.stderr);
-        let msg = if stderr.trim().is_empty() { &stdout } else { &stderr };
-        return Err(format!("wsl 命令失败({}): {}", out.status, msg.trim()));
+    };
+    let stdout = stdout_rx.recv_timeout(Duration::from_millis(200)).unwrap_or_default();
+    let stderr = stderr_rx.recv_timeout(Duration::from_millis(200)).unwrap_or_default();
+    if !status.success() {
+        let stdout_text = decode_wsl_output(&stdout);
+        let stderr_text = decode_wsl_output(&stderr);
+        let msg = if stderr_text.trim().is_empty() { &stdout_text } else { &stderr_text };
+        return Err(format!("wsl 命令失败({status}): {}", msg.trim()));
     }
     Ok(stdout)
+}
+
+pub fn run_wsl(args: &[String], timeout: Duration) -> Result<String, String> {
+    run_wsl_bytes(args, timeout).map(|out| decode_wsl_output(&out))
 }
 
 /// 枚举 WSL 发行版(设置视图"运行环境"下拉用);未装 WSL/任何失败 → 空。

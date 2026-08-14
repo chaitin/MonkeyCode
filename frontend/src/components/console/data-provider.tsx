@@ -4,6 +4,7 @@ import { WechatMpBindDialog } from '@/components/console/wechat-mp-bind-dialog';
 import { getImageShortName } from '@/utils/common';
 import { IS_OFFLINE_EDITION } from '@/utils/edition';
 import { apiRequest } from '@/utils/requestUtils';
+import { identifyMatomoUser, trackPaidSubscriptionObserved } from '@/lib/matomo';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -363,7 +364,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     await apiRequest('v1UsersSubscriptionList', {}, [], (resp) => {
       if (resp.code === 0) {
-        setSubscription(resp.data || null)
+        const nextSubscription = resp.data || null
+        const userId = auth.user?.id
+        if (userId && nextSubscription) {
+          identifyMatomoUser(userId)
+          trackPaidSubscriptionObserved(userId, nextSubscription.plan, nextSubscription.expires_at)
+        }
+        setSubscription(nextSubscription)
       } else {
         toast.error(t("consoleDataProvider.toast.fetchSubscriptionFailed", { message: resp.message }))
       }
@@ -375,7 +382,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (showLoading) {
       setLoadingSubscription(false)
     }
-  }, [t])
+  }, [auth.user?.id, t])
 
   const fetchMembers = async () => {
     setLoadingMembers(true)

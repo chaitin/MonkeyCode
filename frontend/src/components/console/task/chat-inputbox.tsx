@@ -70,7 +70,7 @@ interface TaskChatInputBoxProps {
 }
 
 export interface TaskChatInputBoxHandle {
-  submitPublishWebsite: () => void
+  submitPublishWebsite: (region?: string) => void
 }
 
 type TaskQuickInputUpdater = (items: TaskQuickInputItem[]) => TaskQuickInputItem[]
@@ -340,15 +340,17 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     return true
   }, [inputLocked, isExecuting, queueInputSnapshot, queueSize, queuedInput, sendInputSnapshot, sending, t])
 
-  const submitPublishWebsite = React.useCallback(() => {
+  const submitPublishWebsite = React.useCallback((region?: string) => {
     const publishInput: QueuedTaskInput = {
-      content: t("taskDetail.chat.commands.publishPrompt"),
+      content: region === "global"
+        ? "Use the publish-website skill to publish the current app"
+        : "使用 publish-website 技能发布当前应用",
       uploadedFiles: [],
       nextAttachmentFileIndex: nextAttachmentFileIndexRef.current,
     }
 
     submitInputSnapshot(publishInput)
-  }, [submitInputSnapshot, t])
+  }, [submitInputSnapshot])
 
   React.useImperativeHandle(ref, () => ({
     submitPublishWebsite,

@@ -21,6 +21,7 @@ mod native_pet;
 mod repo;
 mod skills;
 mod telemetry;
+mod todos;
 mod uploads;
 mod util;
 mod wsl;
@@ -835,13 +836,15 @@ fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, Strin
         .map_err(|e| format!("初始化更新请求头失败: {e}"))?
         // Windows 安装器路径由插件直接退进程(不走 RunEvent::Exit),
         // 必须先保存窗口状态并回收引擎进程,否则位置会丢失且
-        // ohmyagent.exe 占用文件会导致 NSIS 安装失败
+        // ohmyagent.exe 占用文件会导致 NSIS 安装失败。自定义回调会覆盖
+        // updater_builder 默认的 Tauri 清理,所以最后还要显式移除托盘等资源。
         .on_before_exit(move || {
             #[cfg(target_os = "windows")]
             persist_main_window_state(&handle);
             if let Some(engine) = handle.state::<DriverHost>().take() {
                 engine.stop();
             }
+            handle.cleanup_before_exit();
         });
     // 本机测试覆盖清单地址(release 构建强制 https,http 清单只在 debug 下可用)
     if let Ok(url) = std::env::var("MC_UPDATE_MANIFEST") {
@@ -1484,6 +1487,7 @@ fn main() {
         .manage(EngineSupervisor::new())
         .manage(baizhi::monkeycode::CloudPipes::new())
         .manage(baizhi::monkeycode::DownloadCtl::new())
+        .manage(todos::TodosStore::new())
         .invoke_handler(tauri::generate_handler![
             get_config,
             import_background,
@@ -1574,7 +1578,14 @@ fn main() {
             baizhi::mc_terminal_list,
             baizhi::monkeycode::cloud_ws_open,
             baizhi::monkeycode::cloud_ws_send,
-            baizhi::monkeycode::cloud_ws_close
+            baizhi::monkeycode::cloud_ws_close,
+            todos::todos_load,
+            todos::todos_save,
+            todos::todo_upload_begin,
+            todos::todo_upload_path,
+            todos::todo_upload_read,
+            todos::todo_upload_delete,
+            todos::todo_uploads_dir
         ])
         .setup(|app| {
             // 配置损坏且无有效备份时绝不能按默认值继续并覆写；仍创建错误页
@@ -1718,6 +1729,10 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("启动 Tauri 失败")
         .run(|app, event| match event {
+            // macOS 点 Dock 图标只派发 Reopen。桌宠常驻时
+            // has_visible_windows=true，但它不能替代主窗口，仍应无条件唤回。
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { .. } => show_any_window(app),
             // 兜底:托盘可用时窗口全部关闭不结束进程(托盘常驻);
             // app.exit() 显式退出或托盘不可用时放行
             RunEvent::ExitRequested { api, code, .. }

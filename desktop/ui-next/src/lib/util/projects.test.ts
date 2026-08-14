@@ -89,6 +89,21 @@ describe("分组", () => {
     // beta(08-03)与 gamma(07-01)都未入序 → 按活跃度排最前;alpha 殿后
     expect(projects.map((p) => p.name)).toEqual(["beta", "gamma", "alpha"]);
   });
+
+  it("组内任务按最近活动(updated_at)倒序,不受传入顺序影响", () => {
+    // 增量补丁只改时间戳不改数组位置:最新活跃的会话不在数组最前,
+    // 组内顺序必须显式重排而非沿用输入序
+    const list = [
+      meta({ id: "a1", workdir: "/p/alpha", updated_at: "2026-08-01" }),
+      meta({ id: "a3", workdir: "/p/alpha", updated_at: "2026-08-03" }),
+      meta({ id: "a2", workdir: "/p/alpha", updated_at: "2026-08-02", archived: true }),
+      meta({ id: "a4", workdir: "/p/alpha", updated_at: "2026-08-04", archived: true }),
+    ];
+    const { projects } = groupSessions(list, [], new Set());
+    const alpha = projects[0];
+    expect(alpha?.sessions.map((s) => s.id)).toEqual(["a3", "a1"]);
+    expect(alpha?.archivedSessions.map((s) => s.id)).toEqual(["a4", "a2"]);
+  });
 });
 
 describe("折叠态契约键归一(旧 UI 写的是裸 workdir)", () => {

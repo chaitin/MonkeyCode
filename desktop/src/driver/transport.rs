@@ -693,19 +693,19 @@ fn migrate_legacy_sessions(engine_dir: &std::path::Path, legacy_home: Option<&st
 /// shell 取完整 env(VS Code 同款手法),进程级缓存(save_config 重启
 /// 引擎不反复起 shell)。Windows 的 GUI 进程本就继承完整用户环境,不需要。
 ///
-/// 合并策略见 engine_env_additions:**只补壳进程缺失的键**——GUI 会话
-/// 独有的值(如 launchd 的 SSH_AUTH_SOCK)不被登录 shell 的覆盖;
-/// PATH 例外,取"登录 shell 在前 + 壳独有段追加"的并集。终端启动开发时
-/// 登录 env 基本是当前 env 的子集,合并自然无感。
+/// 合并策略见 engine_env_additions:采集 shell 继承 GUI 环境后读取 rc，
+/// 因此发生变化的值视为用户明确覆盖；PATH 取“交互 shell 在前 + GUI
+/// 独有段追加”的并集。
 #[cfg(unix)]
 fn login_shell_env() -> &'static HashMap<String, String> {
     static CACHE: std::sync::OnceLock<HashMap<String, String>> = std::sync::OnceLock::new();
     CACHE.get_or_init(|| {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
-        // env -0 防值内换行;老 env 无 -0 时回退普通形态(值内换行的键会解坏,
-        // 解析层跳过坏行即可)。command 前缀绕开同名 alias/函数。
+        // bash/zsh 需要交互模式才能读取 .bashrc/.zshrc。采集进程与引擎
+        // stdio 分离,rc 的 banner 不会污染 JSON-RPC;marker 用于丢弃 banner。
+        let args = shell_env_capture_args(&shell);
         let mut child = match Command::new(&shell)
-            .args(["-lc", "command env -0 2>/dev/null || command env"])
+            .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -719,20 +719,23 @@ fn login_shell_env() -> &'static HashMap<String, String> {
         };
         // stdout 必须并发读:env 输出超过管道缓冲时,先 wait 后读会互相卡死
         let mut out = child.stdout.take().expect("piped");
-        let reader = std::thread::spawn(move || {
+        let (reader_tx, reader_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
             let mut buf = Vec::new();
             use std::io::Read;
             let _ = out.read_to_end(&mut buf);
-            buf
+            let _ = reader_tx.send(buf);
         });
         // 5s 超时:用户 profile 挂死(等输入/网络)不能拖住壳启动
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut timed_out = false;
         loop {
             match child.try_wait() {
                 Ok(Some(_)) => break,
                 Ok(None) if std::time::Instant::now() >= deadline => {
                     let _ = child.kill();
                     let _ = child.wait();
+                    timed_out = true;
                     eprintln!("[desktop] 登录 shell 5s 未返回(profile 挂死?),引擎环境不补齐");
                     break;
                 }
@@ -740,13 +743,37 @@ fn login_shell_env() -> &'static HashMap<String, String> {
                 Err(_) => break,
             }
         }
-        let buf = reader.join().unwrap_or_default();
-        let env = parse_env_output(&buf);
+        let buf = if timed_out {
+            return HashMap::new();
+        } else {
+            reader_rx.recv_timeout(Duration::from_millis(200)).unwrap_or_default()
+        };
+        let env = parse_shell_env_output(&buf);
         if !env.is_empty() {
             eprintln!("[desktop] 登录 shell 环境已解析({} 项)", env.len());
         }
         env
     })
+}
+
+const ENV_MARKER: &[u8] = b"\0__MONKEYCODE_ENV_BEGIN__\0";
+const ENV_CAPTURE: &str =
+    "command printf '\\0__MONKEYCODE_ENV_BEGIN__\\0'; command env -0 2>/dev/null || command env";
+
+fn shell_env_capture_args<'a>(shell: &'a str) -> Vec<&'a str> {
+    match std::path::Path::new(shell).file_name().and_then(|n| n.to_str()) {
+        // bash 登录 shell 不自动读 .bashrc:先读 profile,再进交互 shell。
+        Some("bash") => vec!["-lc", "exec \"$1\" -ic \"$2\"", "bash", shell, ENV_CAPTURE],
+        Some("zsh") => vec!["-ilc", ENV_CAPTURE],
+        _ => vec!["-lc", ENV_CAPTURE],
+    }
+}
+
+fn parse_shell_env_output(buf: &[u8]) -> HashMap<String, String> {
+    let Some(start) = buf.windows(ENV_MARKER.len()).rposition(|part| part == ENV_MARKER) else {
+        return HashMap::new();
+    };
+    parse_env_output(&buf[start + ENV_MARKER.len()..])
 }
 
 /// env(-0) 输出 → 键值表:优先按 NUL 分隔,无 NUL(回退形态)按行分隔;
@@ -782,7 +809,8 @@ fn merge_login_env(
                 }
             }
             out.push((k.clone(), parts.join(":")));
-        } else if !current.contains_key(k) {
+        } else if current.get(k) != Some(v) {
+            // 采集 shell 继承当前环境后再读取 rc；值发生变化说明 rc 明确覆盖。
             out.push((k.clone(), v.clone()));
         }
     }
@@ -820,7 +848,7 @@ mod login_env_tests {
     }
 
     #[test]
-    fn merge_only_fills_missing_and_unions_path() {
+    fn merge_uses_interactive_values_and_unions_path() {
         let login: HashMap<String, String> = [
             ("PATH", "/opt/homebrew/bin:/usr/bin"),
             ("HTTP_PROXY", "http://127.0.0.1:7890"),
@@ -840,8 +868,8 @@ mod login_env_tests {
         assert_eq!(out.get("PATH").map(String::as_str), Some("/opt/homebrew/bin:/usr/bin:/bin"));
         // 缺失键补上
         assert_eq!(out.get("HTTP_PROXY").map(String::as_str), Some("http://127.0.0.1:7890"));
-        // 壳已有的键不覆盖(GUI 会话的 SSH_AUTH_SOCK 保留)、噪音键不搬
-        assert!(!out.contains_key("SSH_AUTH_SOCK"));
+        // rc 中明确修改的值覆盖 GUI 环境，噪音键不搬
+        assert_eq!(out.get("SSH_AUTH_SOCK").map(String::as_str), Some("/login/sock"));
         assert!(!out.contains_key("PWD"));
     }
 
@@ -854,6 +882,30 @@ mod login_env_tests {
         assert_eq!(pick_login_shell("/usr/bin/fish"), "/bin/sh");
         assert_eq!(pick_login_shell("/bin/csh"), "/bin/sh");
         assert_eq!(pick_login_shell(""), "/bin/sh");
+    }
+
+    #[test]
+    fn interactive_capture_ignores_rc_output() {
+        assert_eq!(shell_env_capture_args("/bin/zsh")[0], "-ilc");
+        assert_eq!(shell_env_capture_args("/bin/bash")[0], "-lc");
+        let out = b"banner=bad\n{\"method\":\"system/ready\"}\n\0__MONKEYCODE_ENV_BEGIN__\0RC_VAR=a=b c\0";
+        let env = parse_shell_env_output(out);
+        assert_eq!(env.get("RC_VAR").map(String::as_str), Some("a=b c"));
+        assert!(!env.contains_key("banner"));
+    }
+
+    #[test]
+    fn wsl_baseline_matches_non_login_launcher() {
+        assert_eq!(wsl_capture_args("/bin/sh", false)[0], "-c");
+        assert_eq!(wsl_capture_args("/bin/zsh", true)[0], "-ilc");
+    }
+
+    #[test]
+    fn wsl_env_values_are_passed_as_arguments() {
+        assert!(valid_env_name("RC_VALUE"));
+        assert!(!valid_env_name("BAD-NAME"));
+        assert!(!wsl_engine_script().contains("eval"));
+        assert!(!wsl_engine_script().contains("RC_VALUE"));
     }
 
     #[test]
@@ -873,12 +925,60 @@ mod login_env_tests {
     }
 }
 
-/// 组装引擎启动命令。本机模式:直接执行 ohmyagent;WSL 模式
-/// (kernel_env=wsl:*):`wsl.exe -d <发行版> --exec <登录shell> -l -c
-/// 'cd "$1" && exec "$2" --stdio'`,stdio 经中继透传,协议/握手/日志
-/// 全部原样复用。env 装配秩序:补齐项 → 测试覆盖 → OHMYAGENT_CONFIG_DIR
-/// (恒最后,不被前两者影响——历史 bug:登录 shell 若 export 同名变量
-/// 会把私有配置指走)。
+fn valid_env_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!(chars.next(), Some('_' | 'a'..='z' | 'A'..='Z'))
+        && chars.all(|c| matches!(c, '_' | 'a'..='z' | 'A'..='Z' | '0'..='9'))
+}
+
+fn wsl_capture_args<'a>(shell: &'a str, interactive: bool) -> Vec<&'a str> {
+    if interactive {
+        shell_env_capture_args(shell)
+    } else {
+        // 与最终 `/bin/sh -c` 启动器一致，不读 profile；否则 profile 中的
+        // 变量会被误判为基础环境并从注入差量中删掉。
+        vec!["-c", ENV_CAPTURE]
+    }
+}
+
+fn capture_wsl_env(distro: &str, shell: &str, interactive: bool) -> Result<HashMap<String, String>, String> {
+    let mut args = vec!["-d".into(), distro.into(), "--exec".into(), shell.into()];
+    args.extend(wsl_capture_args(shell, interactive).into_iter().map(String::from));
+    let out = crate::wsl::run_wsl_bytes(&args, Duration::from_secs(5))?;
+    let env = parse_shell_env_output(&out);
+    if env.is_empty() {
+        Err(format!("WSL shell 环境采集结果为空({shell})"))
+    } else {
+        Ok(env)
+    }
+}
+
+fn wsl_shell_env(distro: &str, shell: &str) -> Result<Vec<String>, String> {
+    let baseline = capture_wsl_env(distro, "/bin/sh", false)?;
+    let captured = capture_wsl_env(distro, shell, true)?;
+    const SKIP: [&str; 6] = ["PWD", "OLDPWD", "SHLVL", "_", "WSL_INTEROP", "WSL_DISTRO_NAME"];
+    Ok(captured.into_iter()
+        .filter(|(key, value)| {
+            valid_env_name(key)
+                && !SKIP.contains(&key.as_str())
+                && baseline.get(key) != Some(value)
+        })
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect())
+}
+
+fn wsl_engine_script() -> &'static str {
+    r#"cd -- "$1" || exit 1
+bin=$2
+shift 2
+for entry do export "$entry" || exit 1; done
+export OHMYAGENT_CONFIG_DIR="$PWD"
+exec "$bin" --stdio"#
+}
+
+/// 组装引擎启动命令。本机模式直接执行 ohmyagent。WSL 模式先独立采集
+/// 登录 shell 的交互环境，再用干净的 /bin/sh 启动引擎，避免 rc 输出污染
+/// stdio 协议；OHMYAGENT_CONFIG_DIR 在 guest 启动脚本中最后设置。
 fn build_engine_command(
     cfg: &DesktopConfig,
     app: &dyn ShellCtx,
@@ -928,24 +1028,23 @@ fn build_engine_command(
     let prep = crate::wsl::prepare(distro, &[bin.as_path(), engine_dir, chat_workspaces_dir])?;
     let [guest_bin, guest_engine_dir, guest_chat_root]: [String; 3] =
         prep.paths.try_into().map_err(|_| "WSL 路径翻译数量异常".to_string())?;
-    // guest cwd 必须钉在引擎私有目录(同上本机分支的 ~/.ohmyagent 反向覆盖
-    // bug);wsl.exe 的 --cd 老版本没有,横竖要包登录 shell,cd 顺手做掉。
-    // 登录 shell(-l)读 profile,guest PATH 才带上 nvm/pyenv 等——引擎
-    // spawn 的 MCP stdio 子进程(npx …)依赖它。
+    // 先在独立进程中读交互 rc,再用干净 /bin/sh 启动引擎；rc 输出不会
+    // 进入 JSON-RPC stdout。环境值是独立 argv，不经 eval/字符串拼接。
     let shell = pick_login_shell(&prep.login_shell);
+    let shell_env = match wsl_shell_env(distro, &shell) {
+        Ok(env) => env,
+        Err(e) => {
+            eprintln!("[desktop] WSL shell 环境采集失败,按基础环境启动: {e}");
+            Vec::new()
+        }
+    };
     let mut cmd = Command::new(crate::wsl::wsl_exe());
-    cmd.args(["-d", distro, "--exec", &shell, "-l", "-c"])
-        .arg(r#"cd "$1" && exec "$2" --stdio"#)
+    cmd.args(["-d", distro, "--exec", "/bin/sh", "-c", wsl_engine_script()])
         .args(["mc-engine", &guest_engine_dir, &guest_bin])
+        .args(shell_env)
         .envs(engine_env_additions())
         .envs(app.engine_env_overrides())
-        // wsl.exe 自身的报错走 UTF-8,不往 ohmyagent.log 里混 UTF-16
-        // (log_tail 的整块 NUL 嗅探会把混合日志整份解坏)
-        .env("WSL_UTF8", "1")
-        // wsl.exe 不透传任意环境变量,白名单点名;/u = 仅 Win→WSL 方向
-        // 且值已是 Linux 路径,不再翻译
-        .env("WSLENV", "OHMYAGENT_CONFIG_DIR/u")
-        .env("OHMYAGENT_CONFIG_DIR", &guest_engine_dir);
+        .env("WSL_UTF8", "1");
     let bin_name = bin
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
