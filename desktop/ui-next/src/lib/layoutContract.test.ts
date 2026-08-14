@@ -19,7 +19,7 @@ function sources(dir: string = SRC): string[] {
   return out;
 }
 
-const rel = (p: string) => p.slice(SRC.length + 1);
+const rel = (p: string) => p.slice(SRC.length + 1).replace(/\\/g, "/");
 
 describe("LAYOUT §6.2 menu 截断铁律", () => {
   // daisyUI 5 的 `.menu` **和** `.menu :where(li)` 都是 `flex-flow: column wrap`

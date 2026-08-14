@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionMeta } from "@/lib/ipc/sessions";
 import {
+  groupLocalSessions,
   groupSessions,
   projectKey,
   projectName,
@@ -9,6 +10,7 @@ import {
   readProjectOrder,
   reorderKeys,
   writeProjectOrder,
+  type CustomGroup,
 } from "./projects";
 
 let store: Map<string, string>;
@@ -105,5 +107,37 @@ describe("折叠态契约键归一(旧 UI 写的是裸 workdir)", () => {
     expect([...readSessionArchivesOpen()]).toEqual(["/p/b"]);
     writeSessionArchivesOpen(new Set(["/p/b/"]));
     expect(JSON.parse(store.get("mc.sessionArchivesOpen") ?? "")).toEqual(["/p/b"]);
+  });
+});
+
+describe("自定义分组 groupLocalSessions", () => {
+  const customGroups: CustomGroup[] = [
+    { id: "g1", name: "甲组", createdAt: 1 },
+    { id: "g2", name: "乙组", createdAt: 2 },
+  ];
+
+  it("项目级归组:分配给自定义组的项目其会话脱离自动项目分组", () => {
+    const sessions = [
+      meta({ id: "s1", workdir: "/p/proj" }),
+      meta({ id: "s2", workdir: "/p/proj" }),
+      meta({ id: "s3", workdir: "/p/other" }),
+    ];
+    const r = groupLocalSessions(sessions, [], new Set(), customGroups, { "/p/proj": "g1" }, new Set());
+    const g1 = r.custom.find((g) => g.id === "g1")!;
+    expect(g1.projects[0]!.sessions.map((s) => s.id)).toEqual(["s1", "s2"]);
+    // 未归组的项目仍走自动项目分组
+    expect(r.projects[0]!.key).toBe("/p/other");
+    expect(r.assigned.has("/p/proj")).toBe(true);
+  });
+
+  it("置顶项目排最前;空分组不渲染", () => {
+    const sessions = [
+      meta({ id: "s1", workdir: "/p/b" }),
+      meta({ id: "s2", workdir: "/p/a" }),
+      meta({ id: "s3", workdir: "/p/g" }),
+    ];
+    const r = groupLocalSessions(sessions, [], new Set(), customGroups, { "/p/g": "g1" }, new Set(["/p/b"]));
+    expect(r.projects[0]!.key).toBe("/p/b"); // 置顶在前
+    expect(r.custom.filter((g) => g.projects.length).map((g) => g.id)).toEqual(["g1"]);
   });
 });

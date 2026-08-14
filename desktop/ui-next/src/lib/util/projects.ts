@@ -119,6 +119,75 @@ export interface ProjectGroup {
   archivedSessions: SessionMeta[];
 }
 
+/** 自定义分组(仅 local 空间):用户手动建的分组文件夹,项目(文件夹)可移入归组。 */
+export interface CustomGroup {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+const CUSTOM_GROUPS_KEY = "mc.customGroups";
+const PROJECT_GROUPS_KEY = "mc.projectGroups";
+const PINNED_PROJECTS_KEY = "mc.pinnedProjects";
+
+export function readCustomGroups(): CustomGroup[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(CUSTOM_GROUPS_KEY) || "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter(
+      (g): g is CustomGroup => typeof g === "object" && g !== null && typeof (g as CustomGroup).id === "string" && typeof (g as CustomGroup).name === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function writeCustomGroups(groups: readonly CustomGroup[]): void {
+  try {
+    localStorage.setItem(CUSTOM_GROUPS_KEY, JSON.stringify(groups));
+  } catch {
+    // 只丢持久化
+  }
+}
+
+/** 项目(归一 key)→ 自定义分组 id 映射。 */
+export function readProjectGroups(): Record<string, string> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(PROJECT_GROUPS_KEY) || "{}");
+    if (typeof value !== "object" || value === null) return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(value)) if (typeof v === "string") out[k] = v;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function writeProjectGroups(map: Record<string, string>): void {
+  try {
+    localStorage.setItem(PROJECT_GROUPS_KEY, JSON.stringify(map));
+  } catch {
+    // 只丢持久化
+  }
+}
+
+/** 置顶项目(归一 key 集合):置顶项目排在最前。 */
+export function readPinnedProjects(): Set<string> {
+  return new Set(readStringArray(PINNED_PROJECTS_KEY));
+}
+
+export function writePinnedProjects(keys: ReadonlySet<string>): void {
+  try {
+    localStorage.setItem(PINNED_PROJECTS_KEY, JSON.stringify([...keys]));
+  } catch {
+    // 只丢持久化
+  }
+}
+
+export function newGroupId(): string {
+  return `g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export interface GroupedSessions {
   projects: ProjectGroup[];
   archivedProjects: ProjectGroup[];
@@ -167,4 +236,89 @@ export function groupSessions(
   const archived: ProjectGroup[] = [];
   for (const group of all) (archivedProjects.has(group.key) ? archived : projects).push(group);
   return { projects, archivedProjects: archived };
+}
+
+export interface CustomGrouped {
+  /** 自定义分组:含其成员项目(项目 key + 组内项目分组) */
+  custom: (CustomGroup & { projects: ProjectGroup[] })[];
+  projects: ProjectGroup[];
+  archivedProjects: ProjectGroup[];
+  /** 已分配给自定义分组的项目 key(从自动项目分组里剔除) */
+  assigned: ReadonlySet<string>;
+}
+
+/** 置顶项目排最前。 */
+function pinFirstKeys(keys: readonly string[], pinned: ReadonlySet<string>): string[] {
+  const pinnedList: string[] = [];
+  const rest: string[] = [];
+  for (const k of keys) (pinned.has(k) ? pinnedList : rest).push(k);
+  return [...pinnedList, ...rest];
+}
+
+/** local 空间分组:自定义分组优先(项目分配进自定义组则脱离自动项目分组)。
+ *  projectGroups: 项目 key → 自定义组 id;置顶作用于项目(组)级。 */
+export function groupLocalSessions(
+  sessions: readonly SessionMeta[],
+  order: readonly string[],
+  archivedProjects: ReadonlySet<string>,
+  customGroups: readonly CustomGroup[],
+  projectGroups: Record<string, string>,
+  pinnedProjects: ReadonlySet<string>,
+): CustomGrouped {
+  // 按项目聚合所有会话(未区分归档,项目级决定归属)
+  const byProject = new Map<string, SessionMeta[]>();
+  for (const meta of sessions) {
+    const key = projectKey(meta.workdir);
+    let list = byProject.get(key);
+    if (!list) {
+      list = [];
+      byProject.set(key, list);
+    }
+    list.push(meta);
+  }
+  const buildProject = (key: string): ProjectGroup => {
+    const members = byProject.get(key) ?? [];
+    const name = projectName(key);
+    return {
+      key,
+      name,
+      sessions: members.filter((m) => !m.archived),
+      archivedSessions: members.filter((m) => m.archived),
+    };
+  };
+
+  const assigned = new Set<string>();
+  const byGroup = new Map<string, string[]>();
+  for (const key of byProject.keys()) {
+    const gid = projectGroups[key];
+    if (!gid) continue;
+    assigned.add(key);
+    let list = byGroup.get(gid);
+    if (!list) {
+      list = [];
+      byGroup.set(gid, list);
+    }
+    list.push(key);
+  }
+
+  const custom = customGroups.map((g) => {
+    const keys = pinFirstKeys(byGroup.get(g.id) ?? [], pinnedProjects);
+    return { ...g, projects: keys.map(buildProject) };
+  });
+  // 空分组也保留(用户刚建、还没放项目时分组必须可见)
+
+  // 未分配自定义组的项目 → 走原自动项目分组(上游排序:活跃排前 + 手动序)。
+  // 置顶项目再提到最前,保持 groupSessions 的相对顺序。
+  const { projects: allProjects, archivedProjects: archived } = groupSessions(
+    sessions.filter((m) => !assigned.has(projectKey(m.workdir))),
+    order,
+    archivedProjects,
+  );
+  const projects = [...allProjects].sort((a, b) => {
+    const pa = pinnedProjects.has(a.key) ? 0 : 1;
+    const pb = pinnedProjects.has(b.key) ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return allProjects.indexOf(a) - allProjects.indexOf(b);
+  });
+  return { custom, projects, archivedProjects: archived, assigned };
 }
