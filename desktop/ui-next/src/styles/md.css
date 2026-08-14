@@ -12,6 +12,12 @@
 }
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
+/* 流式正文的稳定块多一层 memo 容器；首尾收边要落到容器里的真实 Markdown
+ * 节点，否则每个流式回答底部会凭空多出一段段落 margin。 */
+.md > [data-md-stable-chunk]:first-child > :first-child,
+.md > [data-md-stream-tail]:first-child > :first-child { margin-top: 0; }
+.md > [data-md-stable-chunk]:last-child > :last-child,
+.md > [data-md-stream-tail]:last-child > :last-child { margin-bottom: 0; }
 
 .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
   font-weight: 600;

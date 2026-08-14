@@ -49,7 +49,7 @@ describe("Markdown 视口懒渲染", () => {
     expect(container.textContent).not.toContain("**");
   });
 
-  it("消息流内观察的是所在行(content-visibility 剪枝单元),不是自身", () => {
+  it("消息流内观察的是所在虚拟行，不是正文内部节点", () => {
     const { container } = render(
       <div data-chat-items="">
         <div data-row="">
@@ -60,7 +60,7 @@ describe("Markdown 视口懒渲染", () => {
       </div>,
     );
     const row = container.querySelector("[data-row]")!;
-    // 剪枝行的后代不参与布局,几何不可靠;必须锚在行盒上(见组件头注)
+    // 行盒是窗口测量与预热的共同边界，必须锚在它上面(见组件头注)
     expect(observed).toContain(row);
     expect(observed).not.toContain(container.querySelector(".md"));
     enter([row]);

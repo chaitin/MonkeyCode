@@ -6,12 +6,14 @@
 // activeSeq 当前项:点列以不透明度差加重当前点,面板项 menu-active +
 // aria-current,打开时当前项滚入视野(移植旧 outline.tsx)。形态差异:
 // 旧「浮窗跟随指针高度」不做——dropdown 锚定已确定面板落点。
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import type { OutlineItem } from "@/lib/ipc/controls";
 import { ATT_LINE } from "@/lib/protocol/attLine";
 import type { ChatItem } from "@/lib/protocol/types";
+import type { ChatState } from "@/lib/protocol/types";
+import { timelineDeltaOf } from "@/lib/protocol/reduce";
 import { fmtClock } from "@/lib/util/fmt";
 
 const MAX_LABEL = 60;
@@ -68,14 +70,59 @@ export function outlineEntriesOf(outline: OutlineItem[], items: readonly ChatIte
   return out;
 }
 
+/** agent/thought 流式尾部更新不可能改变提问目录，直接复用上次结果；只有
+ * user 行增删改或目录接口返回新值时才重新扫描。 */
+type ItemProjector = (items: readonly ChatItem[]) => readonly ChatItem[];
+const outlineProjectionCache = new WeakMap<
+  ChatState,
+  { outline: OutlineItem[]; projector?: ItemProjector; entries: OutlineEntry[] }
+>();
+
+function outlineEntriesIncremental(
+  outline: OutlineItem[],
+  state: ChatState,
+  projector?: ItemProjector,
+): OutlineEntry[] {
+  const hit = outlineProjectionCache.get(state);
+  if (hit?.outline === outline && hit.projector === projector) return hit.entries;
+  const delta = timelineDeltaOf(state);
+  const previous = delta ? outlineProjectionCache.get(delta.from) : undefined;
+  if (previous?.outline === outline && previous.projector === projector && delta) {
+    let affectsUsers = delta.kind === "prepend" || delta.kind === "reset";
+    for (const index of delta.changed) {
+      if (delta.from.items[index]?.kind === "user" || state.items[index]?.kind === "user") affectsUsers = true;
+    }
+    if (delta.kind === "append") {
+      for (let index = delta.from.items.length; index < state.items.length; index++) {
+        if (state.items[index]?.kind === "user") affectsUsers = true;
+      }
+    }
+    if (!affectsUsers) {
+      const next = { outline, ...(projector ? { projector } : {}), entries: previous.entries };
+      outlineProjectionCache.set(state, next);
+      return next.entries;
+    }
+  }
+  const entries = outlineEntriesOf(outline, projector ? projector(state.items) : state.items);
+  outlineProjectionCache.set(state, { outline, ...(projector ? { projector } : {}), entries });
+  return entries;
+}
+
+export function useOutlineEntries(
+  outline: OutlineItem[],
+  state: ChatState,
+  projector?: ItemProjector,
+): OutlineEntry[] {
+  return useMemo(() => outlineEntriesIncremental(outline, state, projector), [outline, state, projector]);
+}
+
 /** 点列常驻 + 悬停浮出面板(daisyUI dropdown 外壳,受控 dropdown-open)。
  * dropdown-right 让面板紧贴点列右缘、无空隙,指针点列↔面板不离开容器,
  * 容器级 mouseenter/leave 即可管开合(mouseleave 把绝对定位子面板算在内),
  * 旧 200ms 延时收起随空隙一起退役。
  *
- * memo:ChatView 每次按键都因草稿态重渲(useComposer 在彼处),长会话的
- * 大纲上千条,不拦的话每键全量重建一遍点列+面板(空闲打字的 O(轮数)
- * 底噪,2026-08-10)。前提是调用方三个 props 全稳定:entries 已 useMemo,
+ * memo:流式帧仍会高频更新 ChatView；长会话的大纲上千条，不拦的话每批
+ * 都全量重建点列+面板。前提是调用方三个 props 全稳定:entries 已增量缓存,
  * activeSeq 是 state,onJump 必须 useCallback/ref 包稳(见 ChatView)。 */
 export const OutlineNav = memo(function OutlineNav({
   entries,

@@ -13,7 +13,7 @@
 //   ①feed.historyLoaded —— 首份历史归约前 running 不可信,不许抢投;
 //   ②stateSid === sessionId —— 切会话那一帧里 queued 还属于上一个会话;
 //   ③sendingRef —— 上行在途(壳已收、回显帧未到)期间不许第二条直发。
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { t } from "@/lib/i18n";
 import { sessionCompact } from "@/lib/ipc/controls";
@@ -405,20 +405,37 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     setQueued(null);
   }, [clearRetry]);
 
-  return {
-    draft,
-    setDraft,
-    queued,
-    clearQueued,
-    atts,
-    removeAtt,
-    uploads,
-    error,
-    dismissError,
-    notifyError,
-    send,
-    stop,
-    addFiles,
-    addPaths,
-  };
+  return useMemo(
+    () => ({
+      draft,
+      setDraft,
+      queued,
+      clearQueued,
+      atts,
+      removeAtt,
+      uploads,
+      error,
+      dismissError,
+      notifyError,
+      send,
+      stop,
+      addFiles,
+      addPaths,
+    }),
+    [
+      draft,
+      queued,
+      clearQueued,
+      atts,
+      removeAtt,
+      uploads,
+      error,
+      dismissError,
+      notifyError,
+      send,
+      stop,
+      addFiles,
+      addPaths,
+    ],
+  );
 }

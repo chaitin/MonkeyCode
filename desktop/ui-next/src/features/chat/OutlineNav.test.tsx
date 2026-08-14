@@ -1,9 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { OutlineItem } from "@/lib/ipc/controls";
-import type { ChatItem } from "@/lib/protocol/types";
-import { OutlineNav, outlineEntriesOf } from "./OutlineNav";
+import { b64encode } from "@/lib/protocol/codec";
+import { createChatState, reduceBatch } from "@/lib/protocol/reduce";
+import type { ChatItem, ChatState, Frame } from "@/lib/protocol/types";
+import { OutlineNav, outlineEntriesOf, useOutlineEntries } from "./OutlineNav";
 
 describe("outlineEntriesOf:目录 + 流内实时合并", () => {
   it("流内带 seq 的用户消息补到目录尾部;同 seq 以目录为准去重", () => {
@@ -43,6 +45,35 @@ describe("outlineEntriesOf:目录 + 流内实时合并", () => {
     expect(entries[0]?.attCount).toBe(2);
     expect(entries[1]?.label).toBe("看看这个");
     expect(entries[2]?.label).toBe(`${"长".repeat(60)}…`);
+  });
+
+  it("agent 流式/追加复用目录引用，只有 user 变化才重算", () => {
+    const outline: OutlineItem[] = [];
+    const first: ChatState = {
+      ...createChatState(),
+      items: [{ kind: "user", text: "第一问", seq: 1 }],
+      lastSeq: 1,
+    };
+    const { result, rerender } = renderHook(({ state }) => useOutlineEntries(outline, state), {
+      initialProps: { state: first },
+    });
+    const entries = result.current;
+    const agentFrame: Frame = {
+      type: "task-running",
+      kind: "acp_event",
+      data: { update: { sessionUpdate: "agent_message_chunk", content: { text: "回答" } } },
+      seq: 2,
+    };
+    const second = reduceBatch(first, [agentFrame]);
+    rerender({ state: second });
+    expect(result.current).toBe(entries);
+
+    const third = reduceBatch(second, [
+      { type: "user-input", data: { content: b64encode("第二问") }, seq: 3 },
+    ]);
+    rerender({ state: third });
+    expect(result.current).not.toBe(entries);
+    expect(result.current.map((entry) => entry.label)).toEqual(["第一问", "第二问"]);
   });
 });
 

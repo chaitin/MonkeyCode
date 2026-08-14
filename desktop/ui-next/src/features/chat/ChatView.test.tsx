@@ -388,7 +388,10 @@ describe("聊天视图", () => {
     await userEvent.click(await screen.findByRole("button", { name: "查看子会话" }));
 
     // 浮层出现,子会话遵守铁律:frames:c1 监听先于 session_open(id=c1)
-    expect(await screen.findByRole("dialog", { name: "子代理会话" })).toBeTruthy();
+    const childDialog = await screen.findByRole("dialog", { name: "子代理会话" });
+    // 子会话也可能有上千行；滚动层必须加入动态窗口协议，否则只挂载尾窗，
+    // 向上滚动时 LogList 收不到事件，较早内容永远不可达。
+    expect(childDialog.querySelector("[data-chat-log]")).toBeTruthy();
     const childOpenAt = ops.findIndex((o) => o.op === "invoke" && o.cmd === "session_open" && o.args?.id === "c1");
     const childFramesAt = ops.findIndex((o) => o.op === "listen" && o.cmd === "frames:c1");
     expect(childOpenAt).toBeGreaterThanOrEqual(0);

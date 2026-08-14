@@ -6,7 +6,7 @@
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import { Marked } from "marked";
-import { startTransition, useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
+import { memo, startTransition, useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
 
 import { t, useI18n } from "@/lib/i18n";
 import { openMenu } from "@/lib/contextMenu";
@@ -394,15 +394,12 @@ function useThrottled(value: string, ms: number): string {
   return v;
 }
 
-/** 视口懒渲染(2026-08-10 用户报障「点进长任务很卡、CPU 100%」):挂载即跑
- * 完整管线(marked+hljs+DOMPurify+innerHTML)乘上 3000 帧窗口,打开长会话
- * 就是数秒满核——content-visibility 免掉的只有布局/绘制,免不掉挂载解析,
- * 这里补上另一半:视口外(含上下各 1.5 屏预热带)的消息先渲原文占位,
- * 所在行滚近了才升格解析。共享一个 IntersectionObserver,不给 3000 条
- * 消息各建一个实例。
- * ⚠️ 观察目标是**所在消息行**(data-chat-items 直接子行)而不是自身:
- * 被 content-visibility 剪枝的行其后代不参与布局,自身几何不可靠;行盒
- * (估高)恒存在。不在消息流里(设置页/弹层等无该祖先)则观察自身。 */
+/** 视口懒渲染(2026-08-10 用户报障「点进长任务很卡、CPU 100%」):即使
+ * 时间线已窗口化，一个 overscan 窗仍可能同时挂上百段 Markdown。视口外
+ * 的已挂载行先放轻量原文占位，进入上下 1.5 屏预热带才跑 marked/hljs/
+ * DOMPurify。共享一个 IntersectionObserver，不给每段正文各建实例。
+ * 观察目标提升到所在虚拟行，行盒的几何比正文内部节点稳定；不在消息流里
+ * （设置页/弹层等无该祖先）则观察自身。 */
 type NearCb = () => void;
 const nearCbs = new Map<Element, Set<NearCb>>();
 let nearIO: IntersectionObserver | null = null;
@@ -467,13 +464,13 @@ function useNearViewport(root: RefObject<HTMLDivElement | null>): boolean {
 
 /** 占位原文的截断上限:占位只为近似撑高与快速滚过时的过渡观感,几十 KB
  *  原文全塞进文本节点又是一份不小的挂载成本。真实高度差(截断/无图/无
- *  高亮)由既有的晚到高度修正机制吸收——contain-intrinsic-size auto 记忆
- *  + ChatView 锚点轮询/RO,与图片解码、loadFullTool 晚到同一条路。 */
+ *  高亮)由动态窗口的行级 ResizeObserver 写回高度树，并按稳定行锚补偿；
+ *  与图片解码、loadFullTool 晚到走同一条修正路径。 */
 const PLACEHOLDER_MAX_CHARS = 4_000;
 
 /** 块级 markdown(消息正文)。localImageUrl/onLocalLink 缺省时行为与
  * 纯外链版完全一致(本地图不加载、本地链接点击无动作)。 */
-export function Markdown({
+function StaticMarkdown({
   source,
   className,
   localImageUrl,
@@ -491,8 +488,8 @@ export function Markdown({
 }) {
   const { locale } = useI18n(); // 复制按钮文案随 locale 重渲
   const root = useRef<HTMLDivElement>(null);
-  // 视口外挂起解析(见 useNearViewport 头注);升格后不回退——已建好的
-  // DOM 留着比反复拆装便宜,视口外的静置成本已由 content-visibility 兜住
+  // 视口外挂起解析(见 useNearViewport 头注);升格后不回退——虚拟行离开
+  // 窗口时会整体卸载，窗口内反复拆装解析 DOM 反而更贵
   const near = useNearViewport(root);
   // 流式节流(见 useThrottled 头注):首渲染立即解析,此后源文本变化至多
   // 每 150ms 放行一次——静态消息(历史窗口挂载)source 不变,零影响。
@@ -507,11 +504,8 @@ export function Markdown({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const html = useMemo(() => (near ? renderMarkdown(throttled) : ""), [near, throttled, locale]);
   // 升格引起的行高突变(占位原文 vs 解析产物,差值可达千 px 级)不在这里
-  // 补偿:按因补偿曾试过一版,在「占位提交时记升格前高度」——但行在视口外
-  // 被 content-visibility 跳过时占位没有盒子,记到的是 0,升格时按「新高
-  // − 0」整块过量补偿,反把视图推飞(2026-08-11 报障二度复发的根因)。
-  // 现在由 LogList 的**位移安全网**统一兜:RO 盯内容列,绘制前按视口锚点
-  // 行的实际位移校正 scrollTop——量实际位移而非自报高度差,天然幂等。
+  // 各自补偿；动态高度窗口的行级 ResizeObserver 会更新 Fenwick 高度树，
+  // 并仅在变化位于阅读锚点上方时按真实 delta 校正 scrollTop。
   const cache = useRef(new Map<string, string>());
   const localImageUrlRef = useRef(localImageUrl);
   useEffect(() => {
@@ -558,6 +552,131 @@ export function Markdown({
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
+}
+
+const STREAM_CHUNK_MIN = 1_024;
+const STREAM_TAIL_PARSE_MAX = 16_384;
+
+export interface StreamingMarkdownSegments {
+  stable: string[];
+  tail: string;
+  /** 未闭合 fenced code 不跑 marked/highlight，直接以 code 文本呈现。 */
+  plainTail: boolean;
+}
+
+/** 把已经闭合的 Markdown 块封存成稳定片段。只在空行或 fenced code 结束处
+ * 切分，永不切进代码围栏；最终停流仍由 StaticMarkdown 做一次规范全文解析。 */
+export function segmentStreamingMarkdown(source: string): StreamingMarkdownSegments {
+  const stable: string[] = [];
+  let chunkStart = 0;
+  let offset = 0;
+  let fence: { char: string; size: number } | null = null;
+  for (const match of source.matchAll(/.*(?:\n|$)/g)) {
+    const line = match[0];
+    if (!line) continue;
+    const body = line.replace(/\r?\n$/, "");
+    const marker = body.match(/^\s{0,3}(`{3,}|~{3,})/i)?.[1];
+    let closedFence = false;
+    if (marker) {
+      if (!fence) fence = { char: marker[0]!, size: marker.length };
+      else if (marker[0] === fence.char && marker.length >= fence.size && /^\s{0,3}(`{3,}|~{3,})\s*$/.test(body)) {
+        fence = null;
+        closedFence = true;
+      }
+    }
+    offset += line.length;
+    const blankBoundary = !fence && body.trim() === "" && offset - chunkStart >= STREAM_CHUNK_MIN;
+    if (closedFence || blankBoundary) {
+      stable.push(source.slice(chunkStart, offset));
+      chunkStart = offset;
+    }
+  }
+  const tail = source.slice(chunkStart);
+  return { stable, tail, plainTail: fence !== null || tail.length > STREAM_TAIL_PARSE_MAX };
+}
+
+const MarkdownChunk = memo(function MarkdownChunk({ source, locale }: { source: string; locale: string }) {
+  // locale 参与 key 义:复制按钮文案烤进 HTML。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const html = useMemo(() => renderMarkdown(source), [source, locale]);
+  return <div data-md-stable-chunk="" dangerouslySetInnerHTML={{ __html: html }} />;
+});
+
+function StreamingMarkdown({
+  source,
+  className,
+  localImageUrl,
+  onLocalLink,
+}: {
+  source: string;
+  className?: string;
+  localImageUrl?: (path: string) => Promise<string>;
+  onLocalLink?: (path: string) => void;
+}) {
+  const { locale } = useI18n();
+  const root = useRef<HTMLDivElement>(null);
+  const near = useNearViewport(root);
+  const sampled = useThrottled(source, source.length > 100_000 ? 600 : 120);
+  const segments = useMemo(() => segmentStreamingMarkdown(sampled), [sampled]);
+  const tailHtml = useMemo(
+    () => (near && !segments.plainTail && segments.tail ? renderMarkdown(segments.tail) : ""),
+    // locale 会改变 renderMarkdown 内部烤入 HTML 的复制按钮文案。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [near, segments, locale],
+  );
+  const cache = useRef(new Map<string, string>());
+  const localImageUrlRef = useRef(localImageUrl);
+  useEffect(() => {
+    localImageUrlRef.current = localImageUrl;
+  }, [localImageUrl]);
+  useEffect(() => {
+    const container = root.current;
+    if (!container || !near) return;
+    let cancelled = false;
+    hydrateLocalImages(container, localImageUrlRef.current, () => cancelled, cache.current).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [segments, tailHtml, near]);
+
+  if (!near) {
+    return (
+      <div ref={root} className={`md select-text whitespace-pre-wrap break-words ${className ?? ""}`}>
+        {source.slice(0, PLACEHOLDER_MAX_CHARS)}
+      </div>
+    );
+  }
+  return (
+    <div
+      ref={root}
+      data-md-stream=""
+      className={`md select-text ${className ?? ""}`}
+      onClick={(event) => onContainerClick(event, onLocalLink)}
+      onContextMenu={onContainerContextMenu}
+    >
+      {segments.stable.map((chunk, index) => (
+        <MarkdownChunk key={index} source={chunk} locale={locale} />
+      ))}
+      {segments.tail &&
+        (segments.plainTail ? (
+          <pre data-md-stream-plain="" className="whitespace-pre-wrap break-words"><code>{segments.tail}</code></pre>
+        ) : (
+          <div data-md-stream-tail="" dangerouslySetInnerHTML={{ __html: tailHtml }} />
+        ))}
+    </div>
+  );
+}
+
+/** 流式与静态是两个独立子组件，deferMermaid 翻转时不会违反 Hook 顺序；
+ * 停流后静态组件做一次完整规范解析，确保引用链接/跨块列表等最终语义一致。 */
+export function Markdown(props: {
+  source: string;
+  className?: string;
+  localImageUrl?: (path: string) => Promise<string>;
+  onLocalLink?: (path: string) => void;
+  deferMermaid?: boolean;
+}) {
+  return props.deferMermaid ? <StreamingMarkdown {...props} /> : <StaticMarkdown {...props} />;
 }
 
 /** 行内 markdown(摘要行/子代理 feed):只解析行内语法,保持单行布局。 */

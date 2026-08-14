@@ -232,53 +232,15 @@
   max-width: min(64rem, max(48rem, 92%));
 }
 
-/* 消息流行的渲染剪枝(LogList data-chat-items 的直接子行)。
- *
- * 为什么必须有(2026-08-10 用户报障「运行中打字非常卡」,Safari 时间线实锤):
- * 长会话回放窗口最多 3000 帧,整个历史都在图层树里,WebKit 每次合成要在
- * 主线程走一遍——录制里单次 composite 200~260ms,15s 里 9.9s 全花在这;
- * 而运行中永远有东西在动(状态点 pulse/ping、loading-dots、流式文本),
- * 每一动就是一次全量合成,打字的光标与回显也得排在后面。JS 侧的行级 memo
- * (LogList「性能契约」)治不了这个:合成成本只看**参与渲染的内容量**。
- *
- * content-visibility:auto 让视口外的行跳过布局/绘制/图层参与,合成收敛到
- * O(视口);视口外的动画(其他轮次的 pulse 点)也随之停摆,少一批无谓的
- * 失效源。三个配套事实:
- * - contain-intrinsic-size 的 auto 关键字:行渲染过一次后记住真实尺寸,
- *   估高只在首次(未渲染过)时生效。根因是上滚首次经过长回答时，基础 auto
- *   先用 60px，远行 hidden 又延后真实高度兑现；LogList 因此预物化约五屏并
- *   在关闭原生 overflow-anchor 的事务里手动补偿；
- * - 几何 API 照常工作:itemTops/getBoundingClientRect 读到的是估高盒,
- *   序列单调性不破;大纲跳转 scrollIntoView 会强制目标行渲染;
- * - display:none 的占位行(锚定 perm/合并模型行)不受影响,结构契约
- *   (直接子元素与 items 一一对应)是纯 CSS 之外的事,一个节点没动。
- * 旧 WebKit/WebView2 不认识该属性时整条规则静默失效,退回现状,无兼容风险。 */
-[data-chat-items] > * {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 60px;
+/* 消息流是真窗口化：只有视口附近至多 160 行进入 DOM。spacer 只承担高度，
+ * 不参与命中/选择；不再对几千个 content-visibility 节点付 WebKit 跟踪成本。 */
+[data-virtual-spacer] {
+  flex: none;
+  pointer-events: none;
 }
 
-/* 远行降档(LogList 的分带 effect 打 data-far):auto 不是免费的——当前版
- * WebKit(26.x)每次渲染更新对**每个** auto 元素重估视口相关性,几千行会话
- * 里打字每键 70~180ms(2026-08-10 用户 26.2 复测 + WKWebView 二分:2400 行
- * 基线 72ms/键,全列 hidden 零慢帧,仅留视口带 auto 同样干净)。hidden =
- * 静态跳过零跟踪;占位尺寸沿用上面的 contain-intrinsic-size(渲染过的行有
- * 记忆尺寸,没渲染过的 60px 估高,与 auto 跳过态同一口径)。 */
-[data-chat-items] > [data-near] {
-  /* 仅有限视口带（约五屏）强制兑现真实高度；全列仍不参与同步布局。 */
-  content-visibility: visible;
+/* 行测量后的锚点补偿由 useTimelineWindow 统一负责。关掉浏览器自己的
+ * overflow anchor，避免 WebKit 先自动补一次、应用层再按真实 delta 补一次。 */
+[data-chat-log] {
+  overflow-anchor: none;
 }
-
-[data-chat-items] > [data-far] {
-  content-visibility: hidden;
-}
-
-/* ⚠️ 此处不得再有 `[data-chat-items] > :hover { content-visibility: visible }`
- * 一类按 hover 解除剪枝的规则(2026-08-10 定案)。它当初是为救被 paint
- * containment 裁掉的 MessageTime(时间悬在行盒上方的块间空隙),但代价是
- * 让**每一行**的 containment 都成为 hover 依赖:旧版 WebKit 的 hover 失效
- * 是悲观全量算法,打字每键引发一次 hover 链重估,就把全会话所有行盒统统
- * 标脏——用户机器 recording5 实锤:2375 行 × 每键全量重画,~600ms 样式
- * 重算 + ~700ms 合成,一键一付。新 WebKit 精确 diff 无感,开发机复现不出,
- * 线上老系统必炸。现在时间戳画进行盒内部(LogList 的块间距从 margin 改
- * padding,时间落在 padding 带里),剪枝不再需要任何 hover 例外。 */

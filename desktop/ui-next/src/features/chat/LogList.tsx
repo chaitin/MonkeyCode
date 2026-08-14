@@ -1,8 +1,6 @@
-// 消息流条目分发:按 ChatItem 判别渲染(tool/perm/ask 是 cards/ 下的正式卡)。
-// 结构契约:本组件的直接子元素序列与 state.items 一一对应(不加包裹层),
-// key = itemKey(state, i)——"加载更早"前插时 keyBase 左移,已渲染项不重挂载。
-// 审批锚定:perm 带 toolCallId 且流里有同 id 工具卡时,按钮行嵌进那张卡
-// (permAnchors),独立审批项保留占位 div 但 display:none——契约不平移。
+// 消息流条目分发:协议 items 先投影成真正有视觉盒的稳定 DisplayRow，再由
+// 动态高度窗口只挂载视口附近的行。加载更早时 keyBase 保证既有 row key 不变；
+// 锚定审批、合并模型行和折叠工具成员不再制造 display:none 占位节点。
 //
 // 性能契约(2026-08-10 用户报障「长会话非常卡」):流式期间壳每 ~30ms 推一批
 // 帧,state 整体换新——LogList 自身的 memo 只挡得住 composer 打字,挡不住
@@ -11,11 +9,11 @@
 //   appendStream/mergeToolInState 的 slice+单点覆写),未变的行按引用比对
 //   直接跳过——每批帧只重渲染流式尾部那一两行;
 // - 传给行的回调必须是稳定引用(ChatView 侧 useCallback,见彼处注释)。
-// LogList 函数体里只许留 O(n) 的**廉价**扫描(join/分组/锚定表);逐条目的
-// 昂贵计算(presentToolCall、splitAttachments、markdown)一律待在行组件内,
-// 靠 memo 只在该行变化时才跑。
+// O(n) 的投影(join/分组/锚定表)只允许出现在结构变化；token 流式快路复用
+// 布局骨架。逐条目的昂贵计算(presentToolCall、splitAttachments、markdown)
+// 一律待在行组件内，靠 memo 只在该行变化时才跑。
 import { IconArrowsMinimize, IconChevronRight, IconFile as FileIcon, IconSparkles } from "@tabler/icons-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, memo, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { Markdown, MarkdownInline } from "@/components/markdown/Markdown";
 import { downloadUpload, Lightbox, UploadImg } from "@/components/media/UploadImg";
@@ -24,8 +22,7 @@ import type { FrameSender } from "@/lib/ipc/approvals";
 import { openExternal } from "@/lib/ipc/host";
 import { isImagePath } from "@/lib/ipc/uploads";
 import { splitAttachments } from "@/lib/protocol/attLine";
-import { itemKey, permAnchors, THINK_KEY } from "@/lib/protocol/reduce";
-import { markProgrammaticScroll } from "@/lib/util/scrollAnchor";
+import { THINK_KEY } from "@/lib/protocol/reduce";
 import type { ChatItem, ChatState, Frame, PermItem } from "@/lib/protocol/types";
 import { presentToolCall } from "@/lib/tools/toolLabels";
 import { thoughtMarkdown, thoughtSummary } from "@/lib/util/thoughtMarkdown";
@@ -34,6 +31,8 @@ import { PermCard } from "./cards/PermCard";
 import { statusDot } from "./cards/statusDot";
 import { ToolCard } from "./cards/ToolCard";
 import { MessageTime } from "./MessageTime";
+import { useTimelineProjection } from "./timeline/useTimelineProjection";
+import { useTimelineWindow } from "./timeline/useTimelineWindow";
 
 /** 用户气泡:正文 + 附件呈现(旧 UI logView 的信息布局)。附件两个来源互斥:
  * 本地会话走正文附件行约定(uploadUrl 回读工作区,点图看大图/点文件下载),
@@ -316,12 +315,9 @@ const Row = memo(function Row({
     // 包裹 div 自身是 flex 列:系统行等条目的 self-center 才有对齐上下文
     // (包裹层是块级时 align-self 无效,居中丢失)。
     // 块间距用 padding 不用 margin:MessageTime 悬在块顶空隙(内层 -top-3.5),
-    // 间距若是 margin,时间就画在本行盒**外**——content-visibility 的 paint
-    // containment 会把它裁掉。此前用「:hover 解除剪枝」救(814d0453),但那
-    // 让每一行的 containment 都随 hover 翻转:旧 WebKit 的 hover 失效是悲观
-    // 全量版,打字每键重估 hover 链就把全会话行盒统统标脏(2026-08-10
-    // recording5:2375 行 × 每键全量重画,600ms 重算/键)。padding 让时间
-    // 画在盒内,剪枝规则不再需要任何 hover 例外。首行(gap=false 且非
+    // 间距若是 margin,时间会画在虚拟行测量盒之外，ResizeObserver 记不到
+    // 这段高度，累计后滚动映射会漂。padding 让时间与留白都落在行盒内。
+    // 首行(gap=false 且非
     // join)给 pt-3.5 刚好容下时间行;join 行零距契约不变(不渲时间)。
     <div className={`flex flex-col ${gap ? "pt-4" : joinPrev ? "" : "pt-3.5"}`}>
       {renderItem(item, { t, perm, flash, streaming, joinPrev, joinNext, ...shared })}
@@ -412,83 +408,15 @@ const GroupHead = memo(
   },
 );
 
-/** 远行分带的预物化事务。根因是基础 content-visibility:auto 的首次 60px
- * 估高，而 data-far:hidden 会把兑现推迟到滚入视口；所以先用同一份几何快照
- * 分类，再批量把约五屏切成 visible，最后只用一个非零可见行手动锚定。 */
-export function reconcileFarRows(root: HTMLElement, fallbackVh = window.innerHeight, bandScreens = 2, compensate = true) {
-  const scroller = root.closest<HTMLElement>("[data-chat-log]");
-  const viewport = scroller?.getBoundingClientRect();
-  const viewportTop = viewport?.top ?? 0;
-  const viewportBottom = viewport?.bottom ?? fallbackVh;
-  const viewportHeight = viewport?.height || viewportBottom - viewportTop || fallbackVh;
-  if (!viewportHeight) return;
-
-  // 必须先读完再写：前行由 hidden 切 visible 时会改变后续行的 rect。
-  const rows = Array.from(root.children, (el) => {
-    const node = el as HTMLElement;
-    return { node, rect: node.getBoundingClientRect() };
-  });
-  // 锚点优先取「首个 top 落在视口内的行」(用户正在读的第一条完整行界),
-  // 没有(单行盖满视口)才回落到首个相交行。不能只取相交行:上滚时从视口
-  // 顶探进来的常是未兑现的 60px 占位行,它切 visible 后的增量全落在自己
-  // top 之下——钉它的 top 位移恒为零,补偿失效,正在读的内容被整段推下
-  // 视口(报障 2026-08-11「上滚到 user-input 突然回滚,得再滚一遍才见到
-  // 更早的消息」)。钉视口内第一条行界,上方(含探顶行自身)的兑现增量
-  // 全部折进 scrollTop。
-  const visibleRows = rows.filter(
-    ({ rect }) => rect.bottom > rect.top && rect.bottom > viewportTop && rect.top < viewportBottom,
-  );
-  const anchor = visibleRows.find(({ rect }) => rect.top >= viewportTop) ?? visibleRows[0];
-  const lo = viewportTop - bandScreens * viewportHeight;
-  const hi = viewportBottom + bandScreens * viewportHeight;
-  const changes = rows.flatMap(({ node, rect }) => {
-    const near = !(rect.bottom < lo || rect.top > hi);
-    const changed = near
-      ? !node.hasAttribute("data-near") || node.hasAttribute("data-far")
-      : node.hasAttribute("data-near") || !node.hasAttribute("data-far");
-    return changed ? [{ node, near }] : [];
-  });
-  if (!changes.length) return;
-
-  const oldOverflowAnchor = scroller?.style.overflowAnchor;
-  if (scroller) scroller.style.overflowAnchor = "none";
-  try {
-    for (const { node, near } of changes) {
-      node.toggleAttribute("data-near", near);
-      node.toggleAttribute("data-far", !near);
-    }
-    // 仅状态改变时二次读布局；这次读取也负责同步兑现 visible 行。
-    if (scroller && anchor && compensate) {
-      const delta = anchor.node.getBoundingClientRect().top - anchor.rect.top;
-      if (delta) {
-        // 补偿是程序滚动:写入后记落点,免得 ChatView.onScroll 把它当用户
-        // 上滚解除贴底跟随(负 delta 即向上写)
-        scroller.scrollTop += delta;
-        markProgrammaticScroll(scroller);
-      }
-    } else {
-      root.getBoundingClientRect();
-    }
-  } finally {
-    if (scroller) scroller.style.overflowAnchor = oldOverflowAnchor ?? "";
-  }
+export interface LogListHandle {
+  resolveKey(key: string): string | null;
+  ensureKey(key: string): boolean;
+  ensureRawIndex(rawIndex: number): boolean;
+  ensureUserSeq(seq: number): boolean;
+  activeUser(): Extract<ChatItem, { kind: "user" }> | null;
 }
 
-// memo:打字时 ChatView 每键重渲染(composer 草稿状态在那),消息流不能
-// 跟着整列重排(长会话逐键重渲染几百张 markdown 卡 = 输入卡顿)。前提是
-// 调用方传稳定引用回调(ChatView 侧 useCallback,见彼处注释)。
-export const LogList = memo(function LogList({
-  state,
-  sessionId,
-  flashSeq,
-  sendFrame,
-  readonly,
-  onOpenChildSession,
-  uploadUrl,
-  onLocalLink,
-  workdir,
-  loadFullTool,
-}: {
+interface LogListProps {
   state: ChatState;
   sessionId: string;
   /** 大纲跳转的目标 user seq:命中的气泡播放一次 mc-flash 闪光。 */
@@ -508,176 +436,20 @@ export const LogList = memo(function LogList({
   workdir?: string;
   /** 工具卡大字段回读通道(按帧 seq 取原帧);缺省只展示截断头部。 */
   loadFullTool?: (seq: number) => Promise<Frame>;
-}) {
-  // ==== 远行降档(hidden 窗口化) ====
-  // content-visibility:auto 不是免费的:当前版 WebKit(26.x)每次渲染更新要对
-  // **每个** auto 元素重估一遍视口相关性,几千行的会话里打字每键 70~180ms
-  // (2026-08-10 用户 26.2 复测 + WKWebView 全真复现二分实锤:2400 行基线
-  // 每键 72ms,全列改 hidden 后零慢帧,仅留 40 行 auto 同样干净)。
-  // 所以只有视口 ±FAR_BAND_SCREENS 屏内的行强制 visible 预物化,更远的
-  // 打 data-far 降 hidden(静态跳过,零跟踪;app.css 收口样式);滚动/追加时
-  // rAF 节流重分带。尚未跑过首轮分带时才短暂落在基础 auto 状态。
-  // 直接改 DOM 属性不走 React state:分带是渲染层优化不是数据,走 state 会
-  // 让每次滚动重渲整列。行被 React 重建时属性丢失 → 默认回 auto,渲染后的
-  // 调度 effect 会立即补一轮分带。jsdom 无几何(rect 全零)时全部视作带内,
-  // 测试环境天然 no-op。代价:hidden 行退出查找/无障碍树,滚回带内即恢复
-  // (auto 的跳过态本就只有占位,实际损失仅辅助技术读远端历史,可接受)。
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const farPassRef = useRef<() => void>(() => {});
-  useEffect(() => {
-    let raf = 0;
-    // ⚠️ 此处不得再引入「滚轮手势期冻结分带」(2026-08-11 试过一版,教训):
-    // 冻结期间视口冲出已兑现带,整屏落在 hidden 行上就是白屏。当初冻结是
-    // 防「兑现补偿与原生滚轮平滑动画打架」的假想敌——后来实锤回弹真凶是
-    // markdown 升格(已由下方位移安全网兜住),而 pass 内补偿与安全网都在
-    // 绘制前完成,WebKit 复现环境里滚轮期间照常分带 0 回滚。滚动中任何
-    // 输入方式都必须能即时兑现行高,唯一的特例是拖滚动条的**补偿**(见
-    // pass 内注释)。
-    let dragging = false;
-    const pass = () => {
-      raf = 0;
-      const root = rootRef.current;
-      if (!root) return;
-      // 拖滚动条期间分带照跑(不兑现就白屏),但不写 scrollTop 补偿:浏览器
-      // 每次 mousemove 都按拇指位置重设 scrollTop,补偿必被覆盖还互相打架。
-      // 拖拽本就是粗粒度定位,兑现引起的少量映射漂移可接受,松手后的常规
-      // pass 再做带补偿的收口
-      reconcileFarRows(root, undefined, undefined, !dragging);
-    };
-    let lastPass = 0;
-    let trail = 0;
-    const schedule = () => {
-      if (!raf) raf = requestAnimationFrame(pass);
-    };
-    // 渲染驱动的分带降频到 250ms(带尾随补扫):流式期间每 30ms 一批帧、
-    // 每批一次 LogList 重渲,每渲染都全量扫 rect 的话,O(行数) 的扫描费又
-    // 回到了每帧——2400 行流式每批中位 15ms 里它占大头(2026-08-10 复现
-    // 量化)。带宽 ±2 屏,慢 250ms 毫无感知;滚动/缩放驱动的分带仍走
-    // schedule 即时挡,快速滚动不吃这个延迟。
-    const scheduleLazy = () => {
-      if (raf) return;
-      if (performance.now() - lastPass > 250) {
-        lastPass = performance.now();
-        schedule();
-        return;
-      }
-      window.clearTimeout(trail);
-      trail = window.setTimeout(() => {
-        lastPass = performance.now();
-        schedule();
-      }, 275);
-    };
-    farPassRef.current = scheduleLazy;
-    schedule();
+}
 
-    // ==== 位移安全网(中央滚动锚定,2026-08-11 定案)====
-    // 行高在滚动中被多类异步动作改变:分带兑现、markdown 懒升格(占位↔解析
-    // 差千 px 级)、图片晚到、loadFullTool 回填、字体重排。任何一处发生在
-    // 视口顶线之上而无补偿,读者视野就被推移(「上滚到 user-input 回弹」一
-    // 案的家族根源)。按因补偿各有各的量测陷阱(升格补偿曾因占位在
-    // content-visibility 跳过态下量到 0 高而整块过量补偿,报障二度复发),
-    // 所以收口成一张网:RO 盯内容列(任何行高变化必然反映为列高变化,回调
-    // 落在布局后、绘制前),按「视口内第一条行界」的**实际位移**校正
-    // scrollTop。量实际位移而非各处自报高度差 → 幂等可叠加:分带 pass 已
-    // 自行补偿的,这里量到位移为 0 自动不动;漏网之鱼被兜住,单帧内完成,
-    // 肉眼无感。三种让位:贴底跟随区(align 主导贴底)、拖滚动条中(浏览器
-    // 按拇指位置主导)、锚点节点失联(React 重建)时只重记不校正。
-    const PIN_ZONE = 40; // 与 ChatView PIN_THRESHOLD 同口径:贴底区交给 align
-    let netAnchor: { node: Element; offset: number } | null = null;
-    const scrollerOf = () => rootRef.current?.closest<HTMLElement>("[data-chat-log]") ?? null;
-    const recordAnchor = () => {
-      const root = rootRef.current;
-      const scroller = scrollerOf();
-      netAnchor = null;
-      if (!root || !scroller) return;
-      const view = scroller.getBoundingClientRect();
-      let fallback: { node: Element; offset: number } | null = null;
-      for (const el of root.children) {
-        const r = el.getBoundingClientRect();
-        if (r.bottom <= r.top) continue; // display:none 占位
-        if (r.top > view.bottom) break;
-        if (r.bottom <= view.top) continue;
-        if (r.top >= view.top) {
-          netAnchor = { node: el, offset: r.top - view.top };
-          return;
-        }
-        fallback ??= { node: el, offset: r.top - view.top }; // 单行盖满视口时退而钉相交行
-      }
-      netAnchor = fallback;
-    };
-    let anchorRaf = 0;
-    const scheduleAnchor = () => {
-      if (!anchorRaf)
-        anchorRaf = requestAnimationFrame(() => {
-          anchorRaf = 0;
-          recordAnchor();
-        });
-    };
-    const netFix = () => {
-      const scroller = scrollerOf();
-      const a = netAnchor;
-      if (!scroller) return;
-      // 贴底跟随区(align 主导)与拖拽中(拇指主导)不校正也不扫描:流式
-      // 期间列高每批都变,RO 跟着每 30ms 一响,这里做 O(行数) 重记就把
-      // 性能坑挖回来了。锚点由下一次真实滚动事件重记
-      if (dragging || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < PIN_ZONE) {
-        netAnchor = null;
-        return;
-      }
-      if (!a || !a.node.isConnected) {
-        recordAnchor();
-        return;
-      }
-      const delta = a.node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - a.offset;
-      // 1px 容布局亚像素取整;超出即校正,绘制前生效
-      if (Math.abs(delta) > 1) {
-        scroller.scrollTop += delta;
-        markProgrammaticScroll(scroller);
-      }
-    };
-    let netRO: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined" && rootRef.current) {
-      netRO = new ResizeObserver(netFix);
-      netRO.observe(rootRef.current);
-    }
-    recordAnchor();
-    // 拖滚动条侦测:右缘 mousedown→mouseup(WebKit 会把滚动条上的
-    // mousedown 派发给宿主元素,Playwright 实测确认)
-    const onMouseDown = (e: MouseEvent) => {
-      const scroller = (e.target as Element | null)?.closest?.("[data-chat-log]");
-      if (scroller && e.clientX > scroller.getBoundingClientRect().right - 18) dragging = true;
-    };
-    const onMouseUp = () => {
-      if (!dragging) return;
-      dragging = false;
-      schedule(); // 松手补一趟带补偿的收口 pass
-    };
-    // scroll 不冒泡但可捕获:窗口级捕获覆盖任意滚动容器(主视图/子会话弹窗)。
-    // 滚动同时重记安全网锚点:用户滚到哪,钉的就是哪条行界
-    const onScroll = () => {
-      schedule();
-      scheduleAnchor();
-    };
-    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    window.addEventListener("resize", schedule);
-    window.addEventListener("mousedown", onMouseDown, { capture: true, passive: true });
-    window.addEventListener("mouseup", onMouseUp, { capture: true, passive: true });
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-      if (anchorRaf) cancelAnimationFrame(anchorRaf);
-      window.clearTimeout(trail);
-      netRO?.disconnect();
-      window.removeEventListener("scroll", onScroll, { capture: true });
-      window.removeEventListener("resize", schedule);
-      window.removeEventListener("mousedown", onMouseDown, { capture: true });
-      window.removeEventListener("mouseup", onMouseUp, { capture: true });
-    };
-  }, []);
-  // 每次渲染后补一轮分带:流式追加/前插历史/组开合都会改行集或行高
-  useEffect(() => {
-    farPassRef.current();
-  });
-
+const LogListSession = forwardRef<LogListHandle, LogListProps>(function LogListSession({
+  state,
+  sessionId,
+  flashSeq,
+  sendFrame,
+  readonly,
+  onOpenChildSession,
+  uploadUrl,
+  onLocalLink,
+  workdir,
+  loadFullTool,
+}: LogListProps, ref) {
   // 长工具组折叠的展开记录(键 = 组首条目的 itemKey,keyBase 感知,前插
   // 不漂移);仅内存,切会话重挂即复位。open/closed 双集合:用户手动开合
   // 优先于「运行中默认展开、终态默认收起」的推导
@@ -701,142 +473,69 @@ export const LogList = memo(function LogList({
       });
     }
   }, []);
-  const anchors = permAnchors(state.items);
-  // 有工具卡承接的 perm 一律不独立渲染:未决嵌进那张卡(anchors),已决由
-  // 工具卡自身的 run/ok/fail 流转代言(types.ts::PermItem.toolCallId 契约)
-  const toolIds = new Set<string>();
-  for (const it of state.items) if (it.kind === "tool" && it.tcId) toolIds.add(it.tcId);
-  const isHidden = (it: ChatItem) => it.kind === "perm" && !!it.toolCallId && toolIds.has(it.toolCallId);
-  // 被合并的连续模型行(相邻同 tag 只渲最后一条,reduce 文案已是终值)
-  const mergedModelAt = (i: number) => {
-    const it = state.items[i];
-    const nx = state.items[i + 1];
-    return it?.kind === "sys" && it.tag === "model" && nx?.kind === "sys" && nx.tag === "model";
-  };
-  const hiddenAt = (i: number) => isHidden(state.items[i]!) || mergedModelAt(i);
-  // 相邻工具卡共享外框(旧 tool-stack):joinNext 要越过隐藏占位看下一个
-  // 可见条目;DOM 仍与 items 一一对应,合并靠边框塌陷不加包裹层
-  const nextVisibleIsTool = (i: number) => {
-    for (let j = i + 1; j < state.items.length; j++) {
-      if (hiddenAt(j)) continue;
-      return state.items[j]!.kind === "tool";
-    }
-    return false;
-  };
-  // 工具组聚合(用户定案 2026-08-05 二次:整串收一个块,头部给动作统计
-  // 「N 步 · 读取 ×3 · 写入 ×2」):同组可见工具卡 ≥ AGG_MIN 时聚合——
-  // 运行中/有待审批的组默认展开(要看得到当前动作与审批按钮),终态组
-  // 默认收起;点头部行开合(思考块同交互),用户手动开合优先于默认。
-  // 被收卡保 hidden 占位,DOM 仍与 items 一一对应
-  const AGG_MIN = 3;
-  const stackInfo = new Map<number, { start: number; len: number; pos: number; members: number[] }>();
-  {
-    let members: number[] = [];
-    const flush = () => {
-      const start = members[0];
-      if (start !== undefined) {
-        const shared = members;
-        shared.forEach((idx, pos) => stackInfo.set(idx, { start, len: shared.length, pos, members: shared }));
-      }
-      members = [];
-    };
-    state.items.forEach((it, i) => {
-      if (hiddenAt(i)) return; // 隐藏占位不断组
-      if (it.kind === "tool") members.push(i);
-      else flush();
-    });
-    flush();
-  }
-  const groupActive = (members: number[]) =>
-    members.some((idx) => {
-      const it = state.items[idx];
-      return it?.kind === "tool" && (it.status === "run" || anchors.get(it.tcId)?.state === "open");
-    });
+  const projection = useTimelineProjection(state, { openGroups, closedGroups, flashSeq });
+  const rows = projection.rows;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const virtual = useTimelineWindow(projection.layoutRows, rootRef);
+  useImperativeHandle(
+    ref,
+    () => ({
+      resolveKey: virtual.resolveKey,
+      ensureKey: virtual.ensureKey,
+      ensureRawIndex: virtual.ensureRawIndex,
+      ensureUserSeq: virtual.ensureUserSeq,
+      activeUser: virtual.activeUser,
+    }),
+    [virtual.resolveKey, virtual.ensureKey, virtual.ensureRawIndex, virtual.ensureUserSeq, virtual.activeUser],
+  );
   // 行级稳定引用集(每个 prop 自身稳定,对象本身逐渲染新造没关系——memo
   // 比的是展开后的单个 prop)
   const shared: RowShared = { sessionId, sendFrame, readonly, onOpenChildSession, uploadUrl, onLocalLink, workdir, loadFullTool };
-  const permOf = (it: ChatItem) => (it.kind === "tool" ? anchors.get(it.tcId) : undefined);
-
-  // 条目节奏:消息块之间放宽(16px);组内工具卡零距(共享外框)。以包裹层
-  // margin 实现(隐藏占位 display:none 不吃 margin)——结构契约不变。
-  // 行内容一律走 memo 的 Row/GroupHead;这层 map 只算 join/gap/分组这些
-  // 廉价标量,昂贵渲染留在行组件内按引用比对跳过(文件头「性能契约」)
-  let prevVisible: ChatItem | null = null;
   return (
-    // data-chat-items:app.css 给直接子行挂 content-visibility(视口外的行
-    // 不参与布局/绘制/图层树),长会话的合成成本从 O(全部历史) 收敛到
-    // O(视口)——2026-08-10 Safari 时间线实锤:15s 录制里 9.9s 在 composite,
-    // 单次 200ms+,JS 反而只占 0.2s(行级 memo 已把它砍掉)。详见 app.css 注释
     <div ref={rootRef} data-chat-items="" className="flex flex-col">
-      {state.items.map((item, i) => {
-        if (isHidden(item) && item.kind === "perm") {
-          return <div key={itemKey(state, i)} className="hidden" data-perm-id={item.id} />;
-        }
-        if (mergedModelAt(i)) {
-          return <div key={itemKey(state, i)} className="hidden" aria-hidden />;
-        }
-        const joinPrev = item.kind === "tool" && prevVisible?.kind === "tool";
-        const joinNext = item.kind === "tool" && nextVisibleIsTool(i);
-        const gap = prevVisible !== null && !joinPrev;
-        prevVisible = item;
-
-        // 工具组聚合:组首渲染摘要头(+ 展开时的成员卡),其余成员在收起
-        // 态保 hidden 占位
-        const stack = item.kind === "tool" ? stackInfo.get(i) : undefined;
-        if (stack && stack.len >= AGG_MIN) {
-          const stackKey = itemKey(state, stack.start);
-          const expanded = closedGroups.has(stackKey)
-            ? false
-            : openGroups.has(stackKey) || groupActive(stack.members);
-          if (stack.pos > 0) {
-            if (!expanded) return <div key={itemKey(state, i)} className="hidden" aria-hidden />;
-            return (
-              <Row key={itemKey(state, i)} item={item} perm={permOf(item)} joinPrev joinNext={joinNext} gap={false} {...shared} />
-            );
-          }
-          // 组首:摘要头(状态点 = 组内最要紧态;失败数着色外显)。
-          // active/failCount 是廉价扫描,留在这层;presentToolCall 摘要在
-          // GroupHead 内按成员引用缓存
-          const memberItems = stack.members.map((idx) => state.items[idx]!);
-          const failCount = memberItems.filter((it) => it.kind === "tool" && it.status === "fail").length;
-          return (
+      <div data-virtual-spacer="top" aria-hidden style={{ height: virtual.topHeight }} />
+      {rows.slice(virtual.start, virtual.end).map((row) => (
+        <div key={row.key} data-virtual-row="" data-row-key={row.key} data-raw-index={row.rawIndex} className="flex flex-col">
+          {row.type === "group" ? (
             <GroupHead
-              key={itemKey(state, i)}
-              item={item}
-              members={memberItems}
-              active={groupActive(stack.members)}
-              failCount={failCount}
-              expanded={expanded}
-              stackKey={stackKey}
+              item={row.item}
+              members={row.members}
+              active={row.active}
+              failCount={row.failCount}
+              expanded={row.expanded}
+              stackKey={row.stackKey}
               onToggle={toggleGroup}
-              gap={gap}
-              joinNext={joinNext}
-              perm={permOf(item)}
+              gap={row.gap}
+              joinNext={row.joinNext}
+              perm={row.perm}
               {...shared}
             />
-          );
-        }
-        return (
-          <Row
-            key={itemKey(state, i)}
-            item={item}
-            perm={permOf(item)}
-            flash={item.kind === "user" && item.seq !== undefined && item.seq === flashSeq}
-            streaming={
-              i === state.items.length - 1 &&
-              (item.kind === "agent" || item.kind === "thought") &&
-              state.streamKind === item.kind
-            }
-            joinPrev={joinPrev}
-            joinNext={joinNext}
-            gap={gap}
-            {...shared}
-          />
-        );
-      })}
+          ) : (
+            <Row
+              item={row.item}
+              perm={row.perm}
+              flash={row.flash}
+              streaming={row.streaming}
+              joinPrev={row.joinPrev}
+              joinNext={row.joinNext}
+              gap={row.gap}
+              {...shared}
+            />
+          )}
+        </div>
+      ))}
+      <div data-virtual-spacer="bottom" aria-hidden style={{ height: virtual.bottomHeight }} />
       {state.running && (
         <span className="loading loading-dots loading-sm mt-3 text-base-content/40" aria-hidden />
       )}
     </div>
   );
 });
+
+// 同一个 ChatView 会在 sessionId 切换时复用实例；内部 key 强制重建窗口、
+// 实测高度与工具组开合状态，避免相同数字 row key 把上一会话缓存带过来。
+const LogListInner = forwardRef<LogListHandle, LogListProps>(function LogList(props, ref) {
+  return <LogListSession key={props.sessionId} {...props} ref={ref} />;
+});
+
+export const LogList = memo(LogListInner);

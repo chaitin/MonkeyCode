@@ -29,7 +29,7 @@ export function anchorScrollTop(tops: number[], anchor: number, offset: number):
 
 // ==== 程序性滚动标记 ====
 // 贴底跟随的解除必须认得「用户向上滚」,但 scroll 事件不带来源:align 贴底、
-// 分带补偿(reconcileFarRows)、markdown 升格补偿、锚点恢复都会改 scrollTop。
+// 动态行高锚点补偿、markdown 升格补偿、锚点恢复都会改 scrollTop。
 // 凡代码写 scrollTop 都在**写入后**记下落点,onScroll 拿事件时刻的位置对表:
 // 仍停在程序落点(±2px)= 程序滚动;偏离了 = 用户已接管。按落点对表而不是
 // 计数:浏览器会把连发的程序写合并成一个事件,计数必然残留,残留会把之后

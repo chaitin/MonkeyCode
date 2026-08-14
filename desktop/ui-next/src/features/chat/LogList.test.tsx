@@ -1,3 +1,4 @@
+import { createRef } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -5,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FrameSender } from "@/lib/ipc/approvals";
 import { createChatState } from "@/lib/protocol/reduce";
 import type { ChatItem, ChatState } from "@/lib/protocol/types";
-import { LogList, reconcileFarRows } from "./LogList";
+import { LogList, type LogListHandle } from "./LogList";
+import { TIMELINE_MAX_RENDERED_ROWS } from "./timeline/useTimelineWindow";
 
 const mermaidRender = vi.hoisted(() => vi.fn(async () => ({ svg: "<svg></svg>" })));
 vi.mock("mermaid", () => ({ default: { initialize: vi.fn(), render: mermaidRender } }));
@@ -31,8 +33,8 @@ describe("LogList 锚定分发", () => {
     // 按钮行只出现一次(在工具卡里),独立警示卡不存在
     expect(screen.getAllByRole("button", { name: "允许" })).toHaveLength(1);
     expect(screen.queryByRole("alert")).toBeNull();
-    // 结构契约:直接子元素仍与 items 一一对应(被锚定项是占位 div)
-    expect(container.firstElementChild?.children).toHaveLength(2);
+    // 锚定审批没有视觉盒,窗口模型不再为它制造 hidden 占位
+    expect(container.querySelectorAll("[data-virtual-row]")).toHaveLength(1);
   });
 
   it("无锚(缺 toolCallId / 找不到同 id 工具卡)渲染独立审批卡", () => {
@@ -94,7 +96,7 @@ describe("LogList 系统行按 tag 分流", () => {
     expect(screen.getByTitle("— 本轮结束 —")).toBeTruthy();
   });
 
-  it("连续模型切换只渲最后一条;被合并行保占位,结构契约不平移", () => {
+  it("连续模型切换只渲最后一条;被合并行不制造空 DOM", () => {
     const state = withItems([
       { kind: "sys", text: "模型已切换为 A", tag: "model" },
       { kind: "sys", text: "模型已切换为 B", tag: "model" },
@@ -104,8 +106,7 @@ describe("LogList 系统行按 tag 分流", () => {
     expect(screen.queryByText("模型已切换为 A")).toBeNull();
     expect(screen.queryByText("模型已切换为 B")).toBeNull();
     expect(screen.getByText("模型已切换为 C")).toBeTruthy();
-    // 直接子元素仍与 items 一一对应(被合并项是占位 div)
-    expect(container.firstElementChild?.children).toHaveLength(3);
+    expect(container.querySelectorAll("[data-virtual-row]")).toHaveLength(1);
   });
 
   it("模型行被其他条目隔断即各自成段,不跨条目合并", () => {
@@ -198,8 +199,7 @@ describe("LogList 只读回放(readonly,子会话浮层)", () => {
     const { container } = render(<LogList state={state} sessionId="c1" readonly />);
     expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
     expect(screen.queryByText("需要确认")).toBeNull();
-    // 结构契约不平移:被锚定项仍是占位 div
-    expect(container.firstElementChild?.children).toHaveLength(2);
+    expect(container.querySelectorAll("[data-virtual-row]")).toHaveLength(1);
   });
 
   it("open 提问卡按只读摘要渲染,不出作答表单", () => {
@@ -365,8 +365,7 @@ describe("工具组聚合(摘要头 + 开合)", () => {
   it("≥3 张终态组:默认收成摘要头「N 步 · 动作 ×N」;点开合", async () => {
     const state = withItems(tools(4));
     const { container } = render(<LogList state={state} sessionId="s1" />);
-    // 结构契约:包裹层仍与 items 一一对应
-    expect(container.firstElementChild?.children).toHaveLength(4);
+    expect(container.querySelectorAll("[data-virtual-row]")).toHaveLength(1);
     const header = screen.getByRole("button", { name: "工具调用组" });
     expect(header.textContent).toContain("4 步");
     expect(header.textContent).toContain("执行命令 ×4");
@@ -375,7 +374,7 @@ describe("工具组聚合(摘要头 + 开合)", () => {
     await userEvent.click(header);
     expect(screen.getByText("step1")).toBeTruthy();
     expect(screen.getByText("step4")).toBeTruthy();
-    expect(container.firstElementChild?.children).toHaveLength(4);
+    expect(container.querySelectorAll("[data-virtual-row]")).toHaveLength(4);
 
     await userEvent.click(screen.getByRole("button", { name: "工具调用组" }));
     expect(screen.queryByText("step1")).toBeNull();
@@ -407,6 +406,18 @@ describe("工具组聚合(摘要头 + 开合)", () => {
     expect(screen.queryByRole("button", { name: "工具调用组" })).toBeNull();
     expect(screen.getByText("step1")).toBeTruthy();
     expect(screen.getByText("step2")).toBeTruthy();
+  });
+
+  it("切会话重置工具组与虚拟窗口缓存，不让相同 row key 串状态", async () => {
+    const first = withItems(tools(4));
+    const { rerender } = render(<LogList state={first} sessionId="s1" />);
+    await userEvent.click(screen.getByRole("button", { name: "工具调用组" }));
+    expect(screen.getByText("step1")).toBeTruthy();
+
+    // 两个会话都从 keyBase=0 起步，数字 key 完全相同；新会话仍应回到默认收起。
+    rerender(<LogList state={withItems(tools(4))} sessionId="s2" />);
+    expect(screen.queryByText("step1")).toBeNull();
+    expect(screen.getByRole("button", { name: "工具调用组" }).getAttribute("aria-expanded")).toBe("false");
   });
 });
 
@@ -478,171 +489,45 @@ describe("行级 memo(性能契约,2026-08-10 用户报障「长会话非常卡�
   });
 });
 
-describe("远行降档(data-far 分带,性能契约)", () => {
-  // c-v:auto 的视口相关性跟踪按元素计费,几千行会话打字每键 70~180ms
-  // (2026-08-10 定案,机制见 LogList 分带 effect 头注)。这里 mock 行几何
-  // 钉住分带行为:视口 ±2 屏内保留 auto(无属性),更远打 data-far。
-  it("视口带内的行无 data-far,远行有;滚动语义由 rect 决定", async () => {
-    const items: ChatItem[] = Array.from({ length: 8 }, (_, i) => ({
+describe("动态高度窗口化(性能契约)", () => {
+  it("一万条历史只挂载有界窗口，不再留下 data-far/hidden 节点", () => {
+    const items: ChatItem[] = Array.from({ length: 10_000 }, (_, i) => ({
       kind: "agent" as const,
       text: `第 ${i} 条`,
     }));
     const { container } = render(<LogList state={withItems(items)} sessionId="s1" />);
-    const root = container.firstElementChild!;
-    expect(root.children).toHaveLength(8);
-    // jsdom innerHeight=768;带 = [-1536, 2304]。行高 400,按 top 摆位:
-    // bottom < -1536 的远上方(0~3)与 top > 2304 的远下方(7)打标,
-    // 4/5/6 在带内保留 auto
-    const tops = [-9000, -8600, -5000, -3000, 0, 300, 700, 2500];
-    [...root.children].forEach((el, i) => {
-      (el as HTMLElement).getBoundingClientRect = () =>
-        ({ top: tops[i]!, bottom: tops[i]! + 400, left: 0, right: 100, width: 100, height: 400 }) as DOMRect;
-    });
-    window.dispatchEvent(new Event("scroll"));
-    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-    const marked = [...root.children].map((el) => el.hasAttribute("data-far"));
-    expect(marked).toEqual([true, true, true, true, false, false, false, true]);
+    const mounted = container.querySelectorAll("[data-virtual-row]");
+    expect(mounted.length).toBeGreaterThan(0);
+    expect(mounted.length).toBeLessThanOrEqual(TIMELINE_MAX_RENDERED_ROWS);
+    expect(container.querySelectorAll("[data-far], .hidden")).toHaveLength(0);
+    expect((container.querySelector('[data-virtual-spacer="top"]') as HTMLElement).style.height).not.toBe("0px");
   });
 
-  it("jsdom 默认零几何 = 全部视作带内,不打标(测试环境 no-op 契约)", async () => {
-    const items: ChatItem[] = [{ kind: "agent", text: "甲" }, { kind: "agent", text: "乙" }];
-    const { container } = render(<LogList state={withItems(items)} sessionId="s1" />);
-    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-    expect(container.querySelectorAll("[data-far]")).toHaveLength(0);
-  });
-});
-
-describe("LogList 远行高度兑现", () => {
-  function fixture(top = 100, height = 500) {
-    const log = document.createElement("div");
-    log.dataset.chatLog = "";
-    const root = document.createElement("div");
-    root.dataset.chatItems = "";
-    log.append(root);
-    document.body.append(log);
-    Object.defineProperty(log, "getBoundingClientRect", {
-      value: () => ({ top, bottom: top + height, height }),
-    });
-    return { log, root };
-  }
-
-  it("非零 top 日志容器中，上方长行兑现后视觉锚点不变且恢复 overflowAnchor", () => {
-    const { log, root } = fixture();
-    const upper = document.createElement("div");
-    const anchor = document.createElement("div");
-    upper.dataset.far = "";
-    anchor.dataset.near = "";
-    root.append(upper, anchor);
-    log.scrollTop = 100;
-    log.style.overflowAnchor = "auto";
-    Object.defineProperty(upper, "getBoundingClientRect", {
-      value: () => ({ top: 20, bottom: upper.hasAttribute("data-near") ? 280 : 80 }),
-    });
-    Object.defineProperty(anchor, "getBoundingClientRect", {
-      value: () => {
-        const top = 120 + (upper.hasAttribute("data-near") ? 200 : 0) - (log.scrollTop - 100);
-        return { top, bottom: top + 80 };
-      },
-    });
-
-    reconcileFarRows(root, 9999);
-
-    expect(log.scrollTop).toBe(300);
-    expect(anchor.getBoundingClientRect().top).toBe(120);
-    expect(log.style.overflowAnchor).toBe("auto");
-    log.remove();
+  it("imperative ensure 用稳定 seq 把远端行换进窗口", async () => {
+    const items: ChatItem[] = Array.from({ length: 500 }, (_, i) => ({
+      kind: "user" as const,
+      text: `问题 ${i}`,
+      seq: i + 1,
+    }));
+    const ref = createRef<LogListHandle>();
+    const { container } = render(<LogList ref={ref} state={withItems(items)} sessionId="s1" />);
+    expect(screen.queryByText("问题 0")).toBeNull(); // 初始窗口贴近尾部
+    expect(ref.current?.ensureUserSeq(1)).toBe(true);
+    await waitFor(() => expect(screen.getByText("问题 0")).toBeTruthy());
+    expect(container.querySelectorAll("[data-virtual-row]").length).toBeLessThanOrEqual(TIMELINE_MAX_RENDERED_ROWS);
   });
 
-  it("探顶的未兑现占位行自身长高时,钉视口内首条行界补偿(上滚回滚报障)", () => {
-    const { log, root } = fixture();
-    const poke = document.createElement("div"); // 60px 占位,顶部探进视口
-    const reading = document.createElement("div"); // 用户正在读的行
-    poke.dataset.far = "";
-    reading.dataset.near = "";
-    root.append(poke, reading);
-    log.scrollTop = 100;
-    Object.defineProperty(poke, "getBoundingClientRect", {
-      value: () => {
-        const top = 60 - (log.scrollTop - 100);
-        return { top, bottom: top + (poke.hasAttribute("data-near") ? 1000 : 60) };
-      },
-    });
-    Object.defineProperty(reading, "getBoundingClientRect", {
-      value: () => {
-        const top = 120 + (poke.hasAttribute("data-near") ? 940 : 0) - (log.scrollTop - 100);
-        return { top, bottom: top + 80 };
-      },
-    });
-
-    reconcileFarRows(root, 9999);
-
-    // 锚点若取首个相交行(poke),其 top 不因自身长高移动,delta 恒为 0,
-    // reading 会被推到视口外——正是报障的「突然回滚」。
-    expect(log.scrollTop).toBe(1040);
-    expect(reading.getBoundingClientRect().top).toBe(120);
-    log.remove();
-  });
-
-  it("一次读取所有行后才批量写，多行分类不受前行兑现影响且使用日志视口高度", () => {
-    const { log, root } = fixture(200, 100);
-    const first = document.createElement("div");
-    const second = document.createElement("div");
-    first.dataset.far = "";
-    second.dataset.far = "";
-    root.append(first, second);
-    Object.defineProperty(first, "getBoundingClientRect", { value: () => ({ top: 50, bottom: 80 }) });
-    Object.defineProperty(second, "getBoundingClientRect", {
-      value: () => ({
-        // 若实现边测边写，first 已 near，第二行会漂进带内；快照应保持原始 550。
-        top: first.hasAttribute("data-near") ? 250 : 550,
-        bottom: first.hasAttribute("data-near") ? 280 : 580,
-      }),
-    });
-
-    reconcileFarRows(root, 10_000);
-
-    expect(first.hasAttribute("data-near")).toBe(true);
-    expect(second.hasAttribute("data-far")).toBe(true);
-    expect(second.hasAttribute("data-near")).toBe(false);
-    log.remove();
-  });
-
-  it("稳定 pass 不写 scrollTop，也不触发二次布局", () => {
-    const { log, root } = fixture();
-    const row = document.createElement("div");
-    row.dataset.near = "";
-    root.append(row);
-    let rectReads = 0;
-    Object.defineProperty(row, "getBoundingClientRect", {
-      value: () => {
-        rectReads++;
-        return { top: 120, bottom: 180 };
-      },
-    });
-    let scrollWrites = 0;
-    Object.defineProperty(log, "scrollTop", {
-      get: () => 40,
-      set: () => { scrollWrites++; },
-    });
-
-    reconcileFarRows(root);
-
-    expect(rectReads).toBe(1);
-    expect(scrollWrites).toBe(0);
-    expect(log.style.overflowAnchor).toBe("");
-    log.remove();
-  });
-
-  it("锚点跳过 display:none 的零盒", () => {
-    const { log, root } = fixture();
-    const zero = document.createElement("div");
-    const visible = document.createElement("div");
-    root.append(zero, visible);
-    Object.defineProperty(zero, "getBoundingClientRect", { value: () => ({ top: 0, bottom: 0 }) });
-    Object.defineProperty(visible, "getBoundingClientRect", { value: () => ({ top: 120, bottom: 180 }) });
-    reconcileFarRows(root);
-    expect(visible.hasAttribute("data-near")).toBe(true);
-    expect(log.style.overflowAnchor).toBe("");
-    log.remove();
+  it("收起工具组把成员稳定 key 解析到可见组头，滚动恢复不会失锚", () => {
+    const items: ChatItem[] = Array.from({ length: 4 }, (_, index) => ({
+      kind: "tool" as const,
+      tcId: `t${index}`,
+      title: "Bash",
+      status: "ok",
+      out: "",
+    }));
+    const ref = createRef<LogListHandle>();
+    render(<LogList ref={ref} state={withItems(items)} sessionId="s1" />);
+    expect(ref.current?.resolveKey("2")).toBe("0");
+    expect(ref.current?.ensureKey("2")).toBe(true);
   });
 });

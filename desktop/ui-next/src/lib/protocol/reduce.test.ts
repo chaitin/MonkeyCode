@@ -16,6 +16,7 @@ import {
   prependHistory,
   reduceBatch,
   reduceFrame,
+  timelineDeltaOf,
 } from "./reduce";
 import type { AcpUpdate, AskItem, ChatItem, ChatState, Frame, PermItem, SysItem, ToolItem, ToolProgress } from "./types";
 
@@ -66,6 +67,45 @@ describe("流式文本聚合", () => {
     ]);
     expect(s.items.map((it) => it.kind)).toEqual(["agent", "tool", "agent"]);
     expect((s.items[2] as Extract<ChatItem, { kind: "agent" }>).text).toBe("后");
+  });
+});
+
+describe("时间线增量 sidecar", () => {
+  it("纯流式批次精确标记尾行，不为万级历史重新做全量投影", () => {
+    const items: ChatItem[] = [
+      ...Array.from({ length: 10_000 }, (_, index) => ({ kind: "sys" as const, text: String(index) })),
+      { kind: "agent", text: "前" },
+    ];
+    const previous: ChatState = { ...createChatState(), items, streamKind: "agent" };
+    const next = reduceBatch(previous, [
+      acp({ sessionUpdate: "agent_message_chunk", content: { text: "后" } }),
+    ]);
+    expect(next.items.at(-1)).toEqual({ kind: "agent", text: "前后" });
+    expect(timelineDeltaOf(next)).toEqual({
+      from: previous,
+      kind: "update",
+      changed: [10_000],
+    });
+  });
+
+  it("只改会话元数据时标记 meta 且 changed 为空", () => {
+    const previous: ChatState = {
+      ...createChatState(),
+      items: Array.from({ length: 2_000 }, (_, index) => ({ kind: "sys" as const, text: String(index) })),
+    };
+    const next = reduceBatch(previous, [acp({ sessionUpdate: "usage_update", used: 1, size: 10 })]);
+    expect(timelineDeltaOf(next)).toEqual({ from: previous, kind: "meta", changed: [] });
+  });
+
+  it("连续快照只保留直接前驱，不把流式状态串成强引用长链", () => {
+    const first = reduceBatch(createChatState(), [
+      acp({ sessionUpdate: "agent_message_chunk", content: { text: "一" } }),
+    ]);
+    const second = reduceBatch(first, [
+      acp({ sessionUpdate: "agent_message_chunk", content: { text: "二" } }),
+    ]);
+    expect(timelineDeltaOf(first)).toBeUndefined();
+    expect(timelineDeltaOf(second)?.from).toBe(first);
   });
 });
 
