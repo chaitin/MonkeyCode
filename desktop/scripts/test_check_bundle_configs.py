@@ -9,8 +9,6 @@ from check_bundle_configs import SIDECAR, WSL_SIDECAR, check
 
 
 def write(root: pathlib.Path, name: str, bundle: dict) -> None:
-    if bundle.get("active"):
-        bundle = {**bundle, "resources": {"../plugins/skills": "skills", **bundle.get("resources", {})}}
     (root / name).write_text(json.dumps({"bundle": bundle}), encoding="utf-8")
 
 
@@ -59,7 +57,7 @@ class BundleConfigContractTest(unittest.TestCase):
         root = self.nsis_root(nsis={"installerIcon": "icons/icon.ico",
                                     "uninstallerIcon": "icons/icon.ico"})
         cfg = json.loads((root / "bundle.windows.conf.json").read_text(encoding="utf-8"))
-        del cfg["bundle"]["resources"][WSL_SIDECAR]
+        del cfg["bundle"]["resources"]
         (root / "bundle.windows.conf.json").write_text(json.dumps(cfg), encoding="utf-8")
         errors = check(root)
         self.assertEqual(len(errors), 1, errors)
