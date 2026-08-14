@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,6 +28,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  document.documentElement.style.colorScheme = "";
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
 });
 
@@ -56,6 +57,60 @@ describe("markdown 渲染", () => {
     const diagram = container.querySelector<HTMLElement>(".md-mermaid");
     expect(diagram?.textContent).toBe("流程图");
     expect(mermaidMock.bindFunctions).toHaveBeenCalledWith(diagram);
+  });
+
+  it("暗色模式使用 Mermaid dark 主题", async () => {
+    document.documentElement.style.colorScheme = "dark";
+    render(<Markdown source={"```mermaid\ngraph TD\nA-->B\n```"} />);
+    await waitFor(() =>
+      expect(mermaidMock.initialize).toHaveBeenCalledWith(expect.objectContaining({ theme: "dark" })),
+    );
+  });
+
+  it("Mermaid 右键菜单可复制 PNG 与 SVG 源码", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    const write = vi.fn(() => Promise.resolve());
+    Object.defineProperty(window.navigator, "clipboard", { value: { write, writeText }, configurable: true });
+    let pngTypes: string[] = [];
+    let pngBlob: Promise<Blob> | undefined;
+    class MockClipboardItem {
+      constructor(items: Record<string, Promise<Blob>>) {
+        pngTypes = Object.keys(items);
+        pngBlob = items["image/png"];
+      }
+    }
+    class MockImage {
+      onload: (() => void) | null = null;
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal("ClipboardItem", MockClipboardItem);
+    vi.stubGlobal("Image", MockImage);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mermaid");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      scale: vi.fn(),
+      fillStyle: "",
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => {
+      callback(new Blob(["png"], { type: "image/png" }));
+    });
+
+    render(<Markdown source={"```mermaid\ngraph TD\nA-->B\n```"} />);
+    const svg = await screen.findByTestId("mermaid-svg");
+    fireEvent.contextMenu(svg, { clientX: 20, clientY: 30 });
+    expect((screen.getByRole("button", { name: "复制图片" }) as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: "复制 SVG 源码" }));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("<svg"));
+
+    fireEvent.contextMenu(svg, { clientX: 20, clientY: 30 });
+    await userEvent.click(screen.getByRole("button", { name: "复制图片" }));
+    expect(pngTypes).toEqual(["image/png"]);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect((await pngBlob)?.type).toBe("image/png");
   });
 
   it("保留 Mermaid architecture 图中的 foreignObject 内容", async () => {

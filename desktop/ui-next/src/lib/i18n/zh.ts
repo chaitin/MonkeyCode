@@ -385,6 +385,9 @@ export const zh = {
 
   "md.copy": "复制",
   "md.copied": "已复制",
+  "md.copyImage": "复制图片",
+  "md.copySvg": "复制 SVG 源码",
+  "md.copyImageUnsupported": "当前环境不支持复制图片",
 
   "chat.thought": "思考",
   "chat.permission": "审批",

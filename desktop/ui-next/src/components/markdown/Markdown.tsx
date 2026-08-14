@@ -9,6 +9,7 @@ import { Marked } from "marked";
 import { startTransition, useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
 
 import { t, useI18n } from "@/lib/i18n";
+import { openMenu } from "@/lib/contextMenu";
 import { openExternal } from "@/lib/ipc/host";
 import { copyText } from "@/lib/util/clipboard";
 import { resolveMarkdownResource } from "@/lib/util/markdownPaths";
@@ -131,6 +132,7 @@ async function renderMermaidDiagrams(
     startOnLoad: false,
     securityLevel: "strict",
     suppressErrorRendering: true,
+    theme: getComputedStyle(root).colorScheme.includes("dark") ? "dark" : "default",
   });
 
   for (const diagram of diagrams) {
@@ -151,6 +153,87 @@ async function renderMermaidDiagrams(
       if (!cancelled() && diagram.isConnected) diagram.removeAttribute("aria-busy");
     }
   }
+}
+
+function mermaidSvgSize(svg: SVGSVGElement): { width: number; height: number } {
+  const viewBox = svg.viewBox?.baseVal;
+  const rect = svg.getBoundingClientRect();
+  return {
+    width: Math.max(1, viewBox?.width || rect.width || Number.parseFloat(svg.getAttribute("width") ?? "") || 1),
+    height: Math.max(1, viewBox?.height || rect.height || Number.parseFloat(svg.getAttribute("height") ?? "") || 1),
+  };
+}
+
+function serializeMermaidSvg(svg: SVGSVGElement, size?: { width: number; height: number }): string {
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  if (size) {
+    clone.setAttribute("width", String(size.width));
+    clone.setAttribute("height", String(size.height));
+  }
+  const foreground = getComputedStyle(svg.closest(".md-mermaid") ?? svg).color || "#333";
+  const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+  style.textContent = `.flowchart-link,.edgePath .path{stroke:${foreground}!important}.arrowheadPath,.arrowMarkerPath,.root .anchor path{fill:${foreground}!important;stroke:${foreground}!important}`;
+  clone.prepend(style);
+  return new XMLSerializer().serializeToString(clone);
+}
+
+async function mermaidPngBlob(svg: SVGSVGElement): Promise<Blob> {
+  const size = mermaidSvgSize(svg);
+  const source = serializeMermaidSvg(svg, size);
+  const url = URL.createObjectURL(new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const next = new Image();
+      next.onload = () => resolve(next);
+      next.onerror = () => reject(new Error("SVG decode failed"));
+      next.src = url;
+    });
+    const scale = Math.max(0.1, Math.min(2, window.devicePixelRatio || 1, 8192 / size.width, 8192 / size.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(size.width * scale);
+    canvas.height = Math.ceil(size.height * scale);
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas is unavailable");
+    context.scale(scale, scale);
+    const diagramStyle = getComputedStyle(svg.closest(".md-mermaid") ?? svg);
+    const background = diagramStyle.getPropertyValue("--color-base-100").trim() || diagramStyle.backgroundColor || "#fff";
+    context.fillStyle = "#fff";
+    context.fillStyle = background;
+    context.fillRect(0, 0, size.width, size.height);
+    context.drawImage(image, 0, 0, size.width, size.height);
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("PNG encode failed"))), "image/png");
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function copyMermaidPng(svg: SVGSVGElement): void {
+  if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) return;
+  const item = new ClipboardItem({ "image/png": mermaidPngBlob(svg) });
+  navigator.clipboard.write([item]).catch(() => {});
+}
+
+function onContainerContextMenu(e: MouseEvent<HTMLElement>) {
+  if (!(e.target instanceof Element)) return;
+  const svg = e.target.closest<SVGSVGElement>(".md-mermaid svg");
+  if (!svg) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const copyImageSupported = typeof ClipboardItem !== "undefined" && Boolean(navigator.clipboard?.write);
+  openMenu(
+    { x: e.clientX, y: e.clientY },
+    [
+      {
+        label: t("md.copyImage"),
+        run: () => copyMermaidPng(svg),
+        disabledReason: copyImageSupported ? undefined : t("md.copyImageUnsupported"),
+      },
+      { label: t("md.copySvg"), run: () => copyText(serializeMermaidSvg(svg)) },
+    ],
+  );
 }
 
 function makeMarked(): Marked {
@@ -471,6 +554,7 @@ export function Markdown({
       ref={root}
       className={`md select-text ${className ?? ""}`}
       onClick={(e) => onContainerClick(e, onLocalLink)}
+      onContextMenu={onContainerContextMenu}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
