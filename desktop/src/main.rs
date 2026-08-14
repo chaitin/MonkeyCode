@@ -1623,6 +1623,10 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("启动 Tauri 失败")
         .run(|app, event| match event {
+            // macOS 点 Dock 图标只派发 Reopen。桌宠常驻时
+            // has_visible_windows=true，但它不能替代主窗口，仍应无条件唤回。
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { .. } => show_any_window(app),
             // 兜底:托盘可用时窗口全部关闭不结束进程(托盘常驻);
             // app.exit() 显式退出或托盘不可用时放行
             RunEvent::ExitRequested { api, code, .. }
