@@ -347,6 +347,31 @@ describe("侧栏(local 空间)", () => {
     expect(screen.getByText("还没有本地项目")).toBeTruthy();
   });
 
+  it("待办输入兼容 WKWebView IME 时序:compositionend 后的 Enter 不新增也不保存编辑", async () => {
+    const addingTodo = todoWiring();
+    const first = render(
+      <Sidebar space="local" sessions={SESSIONS} currentId={null} actions={actions()} todo={addingTodo} />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "添加" }));
+    const addInput = screen.getByRole("textbox", { name: "添加" }) as HTMLInputElement;
+    fireEvent.change(addInput, { target: { value: "english" } });
+    fireEvent.compositionEnd(addInput);
+    fireEvent.keyDown(addInput, { key: "Enter" });
+    expect(addingTodo.ops.add).not.toHaveBeenCalled();
+    expect(addInput.value).toBe("english");
+    first.unmount();
+
+    const editingTodo = todoWiring({ todos: [todoItem({ content: "原待办" })] });
+    render(<Sidebar space="local" sessions={SESSIONS} currentId={null} actions={actions()} todo={editingTodo} />);
+    await userEvent.click(screen.getByText("原待办"));
+    const editInput = await screen.findByRole("textbox", { name: "编辑" });
+    fireEvent.change(editInput, { target: { value: "english" } });
+    fireEvent.compositionEnd(editInput);
+    fireEvent.keyDown(editInput, { key: "Enter" });
+    expect(editingTodo.ops.edit).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(editInput);
+  });
+
   it("待办行右键 = 标记完成/派发/删除(编辑与图片项已收编进详情弹窗);概览统计出待办数", async () => {
     const todo = todoWiring({ todos: [todoItem({ content: "修登录页" })] });
     render(<Sidebar space="local" sessions={SESSIONS} currentId={null} actions={actions()} todo={todo} />);
