@@ -419,8 +419,8 @@ export function NewTaskModal({
   const dirName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
   const KIND_META = [
     { k: "local" as const, icon: IconFolderCode, label: t("create.kind.local") },
-    { k: "chat" as const, icon: IconMessages, label: t("create.kind.chat") },
     { k: "cloud" as const, icon: IconCloud, label: t("create.kind.cloud") },
+    { k: "chat" as const, icon: IconMessages, label: t("create.kind.chat") },
   ];
   const onTextKey = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Enter" || e.shiftKey) return;
