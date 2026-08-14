@@ -370,6 +370,9 @@ export const en: Record<MessageKey, string> = {
 
   "md.copy": "Copy",
   "md.copied": "Copied",
+  "md.copyImage": "Copy image",
+  "md.copySvg": "Copy SVG source",
+  "md.copyImageUnsupported": "Copying images is not supported in this environment",
 
   "chat.thought": "Thinking",
   "chat.permission": "Approval",

@@ -124,8 +124,9 @@ export interface GroupedSessions {
   archivedProjects: ProjectGroup[];
 }
 
-/** local 空间分组:按项目聚合 → 未入手动序的按最近活跃排在最前、其后按手动序
- *  → 项目归档与会话归档各自折叠。传入前先按空间过滤(kind)。 */
+/** local 空间分组:按项目聚合 → 组内任务按最近活动(updated_at)倒序 →
+ * 未入手动序的项目按组内最近活跃排在最前、其后按手动序 → 项目归档与会话
+ * 归档各自折叠。传入前先按空间过滤(kind)。 */
 export function groupSessions(
   sessions: readonly SessionMeta[],
   order: readonly string[],
@@ -140,6 +141,16 @@ export function groupSessions(
       byProject.set(key, group);
     }
     (meta.archived ? group.archivedSessions : group.sessions).push(meta);
+  }
+
+  // 项目内任务按最近活动(updated_at)倒序:壳侧 sessions_list 本就按
+  // updated_at 倒序返回,但 App 的增量补丁只改时间戳不动数组位置
+  // (App.tsx onSessionEvent),后台任务一收尾组内顺序就停在事件之前——
+  // 项目组浮上去了,任务本身还埋在组里旧位置。RFC3339 同格式字符串可直比。
+  const byActivity = (a: SessionMeta, b: SessionMeta) => (b.updated_at ?? "").localeCompare(a.updated_at ?? "");
+  for (const group of byProject.values()) {
+    group.sessions.sort(byActivity);
+    group.archivedSessions.sort(byActivity);
   }
 
   const activity = (group: ProjectGroup): string =>

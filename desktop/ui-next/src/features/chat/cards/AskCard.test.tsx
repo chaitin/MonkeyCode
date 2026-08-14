@@ -97,6 +97,22 @@ describe("AI 提问卡", () => {
     expect(JSON.parse(payload.answers_json)).toEqual({ "选哪个方案?": "方案 B", "要哪些依赖?": ["x", "y"] });
   });
 
+  it("选择答案后按 Enter 提交", async () => {
+    const calls = stubShell();
+    render(<AskCard item={SINGLE} sessionId="s1" />);
+
+    const option = screen.getByRole("radio", { name: /方案 A/ });
+    await userEvent.click(option);
+    await userEvent.keyboard("{Enter}");
+
+    const sent = calls.find((c) => c.cmd === "session_send");
+    expect(sent?.args?.payload).toEqual({
+      request_id: "q1",
+      answers_json: JSON.stringify({ "选哪个方案?": "方案 A" }),
+      cancelled: false,
+    });
+  });
+
   it("「其他」自定义:勾选后出输入框,内容为空不可提交,提交带自定义文本", async () => {
     const calls = stubShell();
     render(<AskCard item={SINGLE} sessionId="s1" />);

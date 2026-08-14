@@ -9,6 +9,7 @@ import { Marked } from "marked";
 import { startTransition, useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
 
 import { t, useI18n } from "@/lib/i18n";
+import { openMenu } from "@/lib/contextMenu";
 import { openExternal } from "@/lib/ipc/host";
 import { copyText } from "@/lib/util/clipboard";
 import { resolveMarkdownResource } from "@/lib/util/markdownPaths";
@@ -21,6 +22,219 @@ const escapeHtml = (s: string) =>
  *  50KB ≈ 一千多行代码,正常粘贴/工具输出够用;超限的是日志转储一类,
  *  高亮本来也读不出层次,原样等宽展示即可。 */
 const HLJS_MAX_CHARS = 50_000;
+const EMPTY_IMAGE_DATA_URL = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+const MERMAID_IMAGE_SOURCE_RE = /(\bimg\s*:\s*)(["'])(.*?)\2/g;
+type LocalImageUrl = (path: string) => Promise<string>;
+let mermaidRenderId = 0;
+
+function ensureMermaidStyleSheet() {
+  const scope = globalThis as unknown as Record<string, unknown>;
+  const NativeStyleSheet = scope.CSSStyleSheet;
+  if (typeof NativeStyleSheet === "function") {
+    try {
+      Reflect.construct(NativeStyleSheet, []);
+      return;
+    } catch {
+      // Safari 16.4 之前暴露 CSSStyleSheet，但不能直接构造。
+    }
+  }
+  class MermaidStyleSheet {
+    cssRules: Array<{ cssText: string }> = [];
+    insertRule(cssText: string, index = this.cssRules.length) {
+      this.cssRules.splice(index, 0, { cssText });
+      return index;
+    }
+  }
+  Object.defineProperty(scope, "CSSStyleSheet", {
+    configurable: true,
+    writable: true,
+    value: MermaidStyleSheet,
+  });
+}
+
+async function resolveMermaidImageSources(
+  source: string,
+  localImageUrl: LocalImageUrl | undefined,
+  cache: Map<string, string>,
+): Promise<string> {
+  const matches = [...source.matchAll(MERMAID_IMAGE_SOURCE_RE)];
+  const replacements = await Promise.all(
+    matches.map(async (match) => {
+      const resource = resolveMarkdownResource(match[3] ?? "");
+      if (resource.kind !== "local") return null;
+      let url = cache.get(resource.path) ?? EMPTY_IMAGE_DATA_URL;
+      if (!cache.has(resource.path) && localImageUrl) {
+        try {
+          url = await localImageUrl(resource.path);
+          cache.set(resource.path, url);
+        } catch {
+          // 图片失败不能拖垮整张 Mermaid 图；透明像素保留节点布局。
+        }
+      }
+      return { index: match.index ?? 0, length: match[0].length, value: `${match[1]}${match[2]}${url}${match[2]}` };
+    }),
+  );
+  let rewritten = source;
+  for (const replacement of replacements.reverse()) {
+    if (!replacement) continue;
+    rewritten = `${rewritten.slice(0, replacement.index)}${replacement.value}${rewritten.slice(replacement.index + replacement.length)}`;
+  }
+  return rewritten;
+}
+
+async function hydrateLocalImages(
+  root: ParentNode,
+  localImageUrl: LocalImageUrl | undefined,
+  cancelled: () => boolean,
+  cache: Map<string, string>,
+) {
+  if (!localImageUrl) return;
+  await Promise.all(
+    [...root.querySelectorAll<HTMLImageElement>("img[data-mc-local-src]")].map(async (img) => {
+      const path = img.dataset.mcLocalSrc;
+      if (!path || img.dataset.mdLoaded === "1") return;
+      img.dataset.mdLoaded = "1";
+      const cached = cache.get(path);
+      if (cached) {
+        img.src = cached;
+        return;
+      }
+      img.setAttribute("aria-busy", "true");
+      try {
+        const url = await localImageUrl(path);
+        if (cancelled() || !img.isConnected) return;
+        cache.set(path, url);
+        img.src = url;
+        img.removeAttribute("aria-busy");
+      } catch (error) {
+        if (cancelled() || !img.isConnected) return;
+        img.removeAttribute("aria-busy");
+        img.removeAttribute("data-md-loaded");
+        img.title = t("md.localImageFailed", { reason: error instanceof Error ? error.message : String(error) });
+      }
+    }),
+  );
+}
+
+async function renderMermaidDiagrams(
+  root: HTMLElement,
+  localImageUrl: LocalImageUrl | undefined,
+  imageCache: Map<string, string>,
+  cancelled: () => boolean,
+): Promise<void> {
+  const diagrams = [...root.querySelectorAll<HTMLElement>("[data-md-mermaid]")];
+  if (diagrams.length === 0) return;
+
+  ensureMermaidStyleSheet();
+  const { default: mermaid } = await import("mermaid");
+  if (cancelled()) return;
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    suppressErrorRendering: true,
+    theme: getComputedStyle(root).colorScheme.includes("dark") ? "dark" : "default",
+  });
+
+  for (const diagram of diagrams) {
+    if (cancelled()) return;
+    try {
+      const source = await resolveMermaidImageSources(diagram.textContent ?? "", localImageUrl, imageCache);
+      if (cancelled() || !diagram.isConnected) return;
+      const { svg, bindFunctions } = await mermaid.render(`mc-mermaid-${++mermaidRenderId}`, source);
+      if (cancelled() || !diagram.isConnected) return;
+      // strict 模式已由 Mermaid 清洗；再次用纯 SVG profile 会删掉 architecture 的 foreignObject 正文。
+      diagram.innerHTML = svg;
+      normalizeResourceUrls(diagram);
+      await hydrateLocalImages(diagram, localImageUrl, cancelled, imageCache);
+      if (cancelled() || !diagram.isConnected) return;
+      bindFunctions?.(diagram);
+      diagram.removeAttribute("aria-busy");
+    } catch {
+      if (!cancelled() && diagram.isConnected) diagram.removeAttribute("aria-busy");
+    }
+  }
+}
+
+function mermaidSvgSize(svg: SVGSVGElement): { width: number; height: number } {
+  const viewBox = svg.viewBox?.baseVal;
+  const rect = svg.getBoundingClientRect();
+  return {
+    width: Math.max(1, viewBox?.width || rect.width || Number.parseFloat(svg.getAttribute("width") ?? "") || 1),
+    height: Math.max(1, viewBox?.height || rect.height || Number.parseFloat(svg.getAttribute("height") ?? "") || 1),
+  };
+}
+
+function serializeMermaidSvg(svg: SVGSVGElement, size?: { width: number; height: number }): string {
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  if (size) {
+    clone.setAttribute("width", String(size.width));
+    clone.setAttribute("height", String(size.height));
+  }
+  const foreground = getComputedStyle(svg.closest(".md-mermaid") ?? svg).color || "#333";
+  const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+  style.textContent = `.flowchart-link,.edgePath .path{stroke:${foreground}!important}.arrowheadPath,.arrowMarkerPath,.root .anchor path{fill:${foreground}!important;stroke:${foreground}!important}`;
+  clone.prepend(style);
+  return new XMLSerializer().serializeToString(clone);
+}
+
+async function mermaidPngBlob(svg: SVGSVGElement): Promise<Blob> {
+  const size = mermaidSvgSize(svg);
+  const source = serializeMermaidSvg(svg, size);
+  const url = URL.createObjectURL(new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const next = new Image();
+      next.onload = () => resolve(next);
+      next.onerror = () => reject(new Error("SVG decode failed"));
+      next.src = url;
+    });
+    const scale = Math.max(0.1, Math.min(2, window.devicePixelRatio || 1, 8192 / size.width, 8192 / size.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(size.width * scale);
+    canvas.height = Math.ceil(size.height * scale);
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas is unavailable");
+    context.scale(scale, scale);
+    const diagramStyle = getComputedStyle(svg.closest(".md-mermaid") ?? svg);
+    const background = diagramStyle.getPropertyValue("--color-base-100").trim() || diagramStyle.backgroundColor || "#fff";
+    context.fillStyle = "#fff";
+    context.fillStyle = background;
+    context.fillRect(0, 0, size.width, size.height);
+    context.drawImage(image, 0, 0, size.width, size.height);
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("PNG encode failed"))), "image/png");
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function copyMermaidPng(svg: SVGSVGElement): void {
+  if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) return;
+  const item = new ClipboardItem({ "image/png": mermaidPngBlob(svg) });
+  navigator.clipboard.write([item]).catch(() => {});
+}
+
+function onContainerContextMenu(e: MouseEvent<HTMLElement>) {
+  if (!(e.target instanceof Element)) return;
+  const svg = e.target.closest<SVGSVGElement>(".md-mermaid svg");
+  if (!svg) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const copyImageSupported = typeof ClipboardItem !== "undefined" && Boolean(navigator.clipboard?.write);
+  openMenu(
+    { x: e.clientX, y: e.clientY },
+    [
+      {
+        label: t("md.copyImage"),
+        run: () => copyMermaidPng(svg),
+        disabledReason: copyImageSupported ? undefined : t("md.copyImageUnsupported"),
+      },
+      { label: t("md.copySvg"), run: () => copyText(serializeMermaidSvg(svg)) },
+    ],
+  );
+}
 
 function makeMarked(): Marked {
   const m = new Marked({ gfm: true, breaks: true, async: false });
@@ -31,6 +245,9 @@ function makeMarked(): Marked {
         // ```bash {1,3} 里空格后面那些元信息一并给过来),而 hljs.getLanguage
         // 认的是纯语言名——不切首词的话这类围栏一律降级成无高亮
         const name = (lang ?? "").trim().split(/\s+/)[0] ?? "";
+        if (name.toLowerCase() === "mermaid") {
+          return `<div class="md-mermaid" data-md-mermaid="true" aria-busy="true"><pre><code>${escapeHtml(text)}</code></pre></div>`;
+        }
         const language = name && text.length <= HLJS_MAX_CHARS && hljs.getLanguage(name) ? name : null;
         const body = language ? hljs.highlight(text, { language }).value : escapeHtml(text);
         // data-md-copy 携带原文(escape 过),复制走它而不是回读高亮 DOM
@@ -75,14 +292,17 @@ const parser = makeMarked();
  * 清一遍,标记就重新只有本组件能打(净化在打标之后,顺序不能反——file:
  * 等地址会被净化器移除)。 */
 const LOCAL_MARKS = ["data-mc-local-src", "data-mc-local-href"] as const;
+const XLINK_NS = "http://www.w3.org/1999/xlink";
 
-export function renderMarkdown(source: string): string {
-  const template = document.createElement("template");
-  template.innerHTML = parser.parse(source) as string;
+function linkHref(link: Element): string {
+  return link.getAttribute("href") ?? link.getAttributeNS(XLINK_NS, "href") ?? "";
+}
+
+function normalizeResourceUrls(root: ParentNode) {
   for (const mark of LOCAL_MARKS) {
-    for (const el of template.content.querySelectorAll(`[${mark}]`)) el.removeAttribute(mark);
+    for (const el of root.querySelectorAll(`[${mark}]`)) el.removeAttribute(mark);
   }
-  for (const img of template.content.querySelectorAll<HTMLImageElement>("img[src]")) {
+  for (const img of root.querySelectorAll<HTMLImageElement>("img[src]")) {
     img.loading = "lazy";
     img.referrerPolicy = "no-referrer";
     const res = resolveMarkdownResource(img.getAttribute("src") || "");
@@ -93,15 +313,22 @@ export function renderMarkdown(source: string): string {
       img.setAttribute("src", res.src);
     }
   }
-  for (const a of template.content.querySelectorAll<HTMLAnchorElement>("a[href]")) {
-    const res = resolveMarkdownResource(a.getAttribute("href") || "");
+  for (const link of root.querySelectorAll("a[href], a[xlink\\:href]")) {
+    const res = resolveMarkdownResource(linkHref(link));
+    link.removeAttributeNS(XLINK_NS, "href");
     if (res.kind === "local") {
-      a.dataset.mcLocalHref = res.path;
-      a.setAttribute("href", "#");
+      link.setAttribute("data-mc-local-href", res.path);
+      link.setAttribute("href", "#");
     } else if (res.kind === "url") {
-      a.setAttribute("href", res.src);
+      link.setAttribute("href", res.src);
     }
   }
+}
+
+export function renderMarkdown(source: string): string {
+  const template = document.createElement("template");
+  template.innerHTML = parser.parse(source) as string;
+  normalizeResourceUrls(template.content);
   // target/rel 交给点击代理,净化时保守放行 data-*(复制按钮原文载荷与本地标记)
   return DOMPurify.sanitize(template.innerHTML, { USE_PROFILES: { html: true } });
 }
@@ -126,16 +353,16 @@ function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: strin
     }, 1500);
     return;
   }
-  const link = target.closest<HTMLAnchorElement>("a[href]");
+  const link = target.closest("a");
   if (link) {
     // 契约:webview 不导航——工作区文件走 reveal 回调,其余交系统浏览器
     e.preventDefault();
-    const local = link.dataset.mcLocalHref;
+    const local = link.getAttribute("data-mc-local-href");
     if (local) {
       onLocalLink?.(local);
       return;
     }
-    openExternal(link.getAttribute("href") ?? "");
+    openExternal(linkHref(link));
   }
 }
 
@@ -251,6 +478,7 @@ export function Markdown({
   className,
   localImageUrl,
   onLocalLink,
+  deferMermaid = false,
 }: {
   source: string;
   className?: string;
@@ -258,6 +486,8 @@ export function Markdown({
   localImageUrl?: (path: string) => Promise<string>;
   /** 本地链接点击代理(reveal 到文件管理器等)。 */
   onLocalLink?: (path: string) => void;
+  /** 流式正文尚未稳定时暂缓图表渲染，避免无法取消的旧任务积压。 */
+  deferMermaid?: boolean;
 }) {
   const { locale } = useI18n(); // 复制按钮文案随 locale 重渲
   const root = useRef<HTMLDivElement>(null);
@@ -283,39 +513,32 @@ export function Markdown({
   // 现在由 LogList 的**位移安全网**统一兜:RO 盯内容列,绘制前按视口锚点
   // 行的实际位移校正 scrollTop——量实际位移而非自报高度差,天然幂等。
   const cache = useRef(new Map<string, string>());
+  const localImageUrlRef = useRef(localImageUrl);
+  useEffect(() => {
+    localImageUrlRef.current = localImageUrl;
+  }, [localImageUrl]);
   // 本地图异步注入:流式重渲同一条消息时按路径缓存,不重复回读
   useEffect(() => {
-    if (!localImageUrl || !root.current) return;
-    let alive = true;
-    for (const img of root.current.querySelectorAll<HTMLImageElement>("img[data-mc-local-src]")) {
-      const path = img.dataset.mcLocalSrc;
-      if (!path) continue;
-      const cached = cache.current.get(path);
-      if (cached) {
-        img.src = cached;
-        continue;
-      }
-      img.setAttribute("aria-busy", "true");
-      localImageUrl(path).then(
-        (url) => {
-          if (!alive) return;
-          cache.current.set(path, url);
-          img.src = url;
-          img.removeAttribute("aria-busy");
-        },
-        (err) => {
-          if (!alive) return;
-          img.removeAttribute("aria-busy");
-          img.title = t("md.localImageFailed", { reason: err instanceof Error ? err.message : String(err) });
-        },
-      );
-    }
+    const container = root.current;
+    if (!container) return;
+    let cancelled = false;
+    hydrateLocalImages(container, localImageUrlRef.current, () => cancelled, cache.current).catch(() => {});
     return () => {
-      alive = false;
+      cancelled = true;
     };
-    // localImageUrl 随父组件渲染生成新闭包;同一条消息只按 HTML 变化重跑
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html]);
+  useEffect(() => {
+    const container = root.current;
+    if (deferMermaid || !container) return;
+    let cancelled = false;
+    renderMermaidDiagrams(container, localImageUrlRef.current, cache.current, () => cancelled).catch(() => {
+      if (cancelled) return;
+      for (const diagram of container.querySelectorAll("[data-md-mermaid]")) diagram.removeAttribute("aria-busy");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [html, deferMermaid]);
   if (!near) {
     // 占位:原文按正文排版近似撑高。key 强制换节点,不让 React 在同一个
     // div 上做 children ↔ dangerouslySetInnerHTML 的原地切换
@@ -331,6 +554,7 @@ export function Markdown({
       ref={root}
       className={`md select-text ${className ?? ""}`}
       onClick={(e) => onContainerClick(e, onLocalLink)}
+      onContextMenu={onContainerContextMenu}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

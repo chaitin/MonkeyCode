@@ -70,6 +70,15 @@
 .md-code pre { margin: 0; }
 .md-code:hover [data-md-copy], .md-code [data-md-copy]:focus-visible { opacity: 1; }
 
+.md-mermaid { max-width: 100%; margin: 0.8em 0; overflow-x: auto; color: var(--color-base-content); }
+.md-mermaid pre { margin: 0; }
+.md-mermaid svg { display: block; width: 100%; min-width: 24rem; height: auto; margin: 0 auto; }
+.md-mermaid .flowchart-link,
+.md-mermaid .edgePath .path { stroke: var(--color-base-content) !important; }
+.md-mermaid .arrowheadPath,
+.md-mermaid .arrowMarkerPath,
+.md-mermaid .root .anchor path { fill: var(--color-base-content) !important; stroke: var(--color-base-content) !important; }
+
 /* 代码高亮 token 配色:不用 hljs 官方主题 CSS(只分深浅两套,跟不上 35 套
  * daisyUI 主题)。语义色给色相身份、base-content 掺混归一(oklab):
  * 浅色主题把荧光压成墨色、深色主题把饱和提成粉彩,对比度由 base-content

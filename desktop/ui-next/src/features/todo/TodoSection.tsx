@@ -8,7 +8,7 @@
 // 段 HTML5 拖拽排序(项目组同款,2026-08-13 用户要求);「已完成」小节折叠;
 // 行 = 纯文字安静行 + 行尾图片角标(被动指示)+ 要紧态状态点。
 import { IconChecklist, IconCircleCheck, IconPhoto, IconPlus, IconX } from "@tabler/icons-react";
-import { useCallback, useEffect, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { Lightbox, UploadImg } from "@/components/media/UploadImg";
@@ -21,6 +21,7 @@ import { todoUploadURL, type TodoItem } from "@/lib/ipc/todos";
 import { pickImageFiles } from "@/lib/ipc/uploads";
 import { pushEscLayer } from "@/lib/util/escLayer";
 import { readFold, writeFold } from "@/lib/util/prefs";
+import { createImeGuard } from "@/lib/util/slash";
 import type { TodoOps } from "./useTodos";
 
 /** 待办组的接线(App 提供):清单数据 + 变更 ops + 派发/跳转出口。 */
@@ -93,9 +94,7 @@ function TodoRow({
   const images = item.images ?? [];
   const menuItems: MenuItem[] = [
     { label: done ? t("todo.markUndone") : t("todo.markDone"), run: () => todo.ops.toggle(item.id) },
-    ...(!item.dispatched_kind && !done
-      ? [{ label: t("todo.dispatch"), run: () => todo.onDispatch(item) }]
-      : []),
+    ...(!done ? [{ label: t("todo.dispatch"), run: () => todo.onDispatch(item) }] : []),
     ...(jump ? [{ label: cloud ? t("todo.openCloud") : t("todo.openTask"), run: jump }] : []),
     { label: t("todo.delete"), confirm: t("todo.deleteConfirm"), danger: true, run: () => todo.ops.remove(item.id) },
   ];
@@ -167,6 +166,7 @@ function TodoDetailModal({
   onClose: () => void;
 }) {
   const { t } = useI18n();
+  const ime = useRef(createImeGuard());
   const [zoom, setZoom] = useState<string | null>(null);
   const closeZoom = useCallback(() => setZoom(null), []);
   useEffect(() => {
@@ -211,9 +211,10 @@ function TodoDetailModal({
             className="input input-sm w-full"
             defaultValue={item.content}
             autoFocus
+            onCompositionEnd={(e) => ime.current.markEnd(e.timeStamp)}
             onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-              if (e.nativeEvent.isComposing) return; // IME 组字回车不提交
               if (e.key !== "Enter") return;
+              if (ime.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
               commit(e.currentTarget.value);
               e.currentTarget.blur();
             }}
@@ -262,7 +263,7 @@ function TodoDetailModal({
                 <span className="badge badge-ghost badge-sm text-base-content/40">{linkWord}</span>
               ))}
             <span className="flex-1" />
-            {!item.dispatched_kind && !done && (
+            {!done && (
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
@@ -301,6 +302,7 @@ export function TodoSection({
   onToggleCollapsed: (key: string, open: boolean) => void;
 }) {
   const { t } = useI18n();
+  const addIme = useRef(createImeGuard());
   const [adding, setAdding] = useState(false);
   // 添加行粘贴的截图暂存(随 Enter 一并挂上;收起输入即弃):不出预览 chips
   // ——侧栏行宽摆不下,给一句「已附 N 张图」的文字回执就够
@@ -391,10 +393,12 @@ export function TodoSection({
                     placeholder={t("todo.addPlaceholder")}
                     className="input input-xs w-full"
                     autoFocus
+                    onCompositionEnd={(e) => addIme.current.markEnd(e.timeStamp)}
                     onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                       if (e.nativeEvent.isComposing) return;
                       if (e.key === "Escape") return setAdding(false);
                       if (e.key !== "Enter") return;
+                      if (addIme.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
                       const content = e.currentTarget.value.trim();
                       if (content) {
                         todo.ops.add(content, staged.length ? staged : undefined);
