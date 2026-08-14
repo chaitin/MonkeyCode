@@ -353,6 +353,7 @@ export const zh = {
   "downloads.canceled": "已取消",
 
   "md.copy": "复制",
+  "md.open": "打开",
   "md.copied": "已复制",
 
   "chat.thought": "思考",

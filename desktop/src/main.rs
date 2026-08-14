@@ -31,6 +31,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use tauri::image::Image;
+use sha2::Digest;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
@@ -59,7 +60,78 @@ tauri_panel! {
     })
 }
 
-// ==================== 状态 ====================
+/// Import a user background into app local data, never expose arbitrary file paths.
+#[tauri::command]
+fn import_background(app: AppHandle, path: String) -> Result<String, String> {
+    use std::fs;
+    let source = std::path::Path::new(&path);
+    let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() { "png" | "jpg" | "jpeg" | "webp" | "gif" => {}, _ => return Err("仅支持 PNG、JPEG、WebP 或 GIF 图片".into()) };
+    const MAX: u64 = 10 * 1024 * 1024;
+    let meta = fs::metadata(source).map_err(|e| format!("无法读取图片: {e}"))?;
+    if !meta.is_file() || meta.len() > MAX { return Err("图片必须是文件且不超过 10 MB".into()); }
+    let bytes = fs::read(source).map_err(|e| format!("读取图片失败: {e}"))?;
+    let dir = app.path().app_local_data_dir().map_err(|e| format!("无法定位本地数据目录: {e}"))?.join("backgrounds");
+    fs::create_dir_all(&dir).map_err(|e| format!("创建背景目录失败: {e}"))?;
+    let id = format!("{:x}.{}", sha2::Sha256::digest(&bytes).iter().fold(0u64, |a, &b| a.wrapping_mul(257).wrapping_add(b as u64)), ext);
+    fs::write(dir.join(&id), bytes).map_err(|e| format!("保存背景失败: {e}"))?;
+    Ok(id)
+}
+
+#[tauri::command]
+fn get_background(app: AppHandle, id: String) -> Result<Option<String>, String> {
+    if id.len() > 80 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') { return Ok(None); }
+    let ext = id.rsplit('.').next().unwrap_or("");
+    let mime = match ext { "png" => "image/png", "jpg" | "jpeg" => "image/jpeg", "webp" => "image/webp", "gif" => "image/gif", _ => return Ok(None) };
+    let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("backgrounds");
+    let path = dir.join(&id);
+    let bytes = match std::fs::read(path) { Ok(b) if b.len() <= 10 * 1024 * 1024 => b, _ => return Ok(None) };
+    use base64::Engine as _;
+    Ok(Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes))))
+}
+
+#[tauri::command]
+fn clear_background(app: AppHandle, id: String) -> Result<(), String> {
+    if id.len() <= 80 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') { let _ = std::fs::remove_file(app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("backgrounds").join(id)); }
+    Ok(())
+}
+
+
+
+/// Custom event sounds live in app-local data; configuration stores only opaque IDs.
+const SOUND_EVENTS: &[&str] = &["start", "end", "error", "ask", "idle"];
+const MAX_SOUND_BYTES: u64 = 15 * 1024 * 1024;
+fn valid_sound_id(id: &str) -> bool { id.len() <= 80 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') }
+#[tauri::command]
+fn import_sound(app: AppHandle, path: String) -> Result<String, String> { use std::fs; let source = std::path::Path::new(&path); let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase(); if !matches!(ext.as_str(), "mp3" | "wav" | "ogg") { return Err("仅支持 MP3、WAV 或 OGG 音频".into()); } let meta = fs::metadata(source).map_err(|e| format!("无法读取音频: {e}"))?; if !meta.is_file() || meta.len() > MAX_SOUND_BYTES { return Err("音频必须是文件且不超过 15 MB".into()); } let bytes = fs::read(source).map_err(|e| format!("读取音频失败: {e}"))?; let id = format!("{:x}.{}", sha2::Sha256::digest(&bytes).iter().fold(0u64, |a, &b| a.wrapping_mul(257).wrapping_add(b as u64)), ext); let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("sounds"); fs::create_dir_all(&dir).map_err(|e| format!("创建音频目录失败: {e}"))?; fs::write(dir.join(&id), bytes).map_err(|e| format!("保存音频失败: {e}"))?; Ok(id) }
+#[tauri::command]
+fn get_sound(app: AppHandle, id: String) -> Result<Option<String>, String> { if !valid_sound_id(&id) { return Ok(None); } let mime = match id.rsplit('.').next().unwrap_or("") { "mp3" => "audio/mpeg", "wav" => "audio/wav", "ogg" => "audio/ogg", _ => return Ok(None) }; let path = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("sounds").join(&id); let bytes = match std::fs::read(path) { Ok(b) if b.len() <= MAX_SOUND_BYTES as usize => b, _ => return Ok(None) }; use base64::Engine as _; Ok(Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))) }
+#[tauri::command]
+fn clear_sound(app: AppHandle, id: String) -> Result<(), String> { if valid_sound_id(&id) { let _ = std::fs::remove_file(app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("sounds").join(&id)); } Ok(()) }
+#[tauri::command]
+fn sound_ids(app: AppHandle) -> Result<std::collections::BTreeMap<String, String>, String> { Ok(load_config(&app)?.sound_ids) }
+#[tauri::command]
+fn set_sound_id(app: AppHandle, event: String, id: Option<String>) -> Result<(), String> {
+    if !SOUND_EVENTS.contains(&event.as_str()) {
+        return Err("未知提示音事件".into());
+    }
+    if let Some(ref id) = id {
+        if !valid_sound_id(id) || !matches!(id.rsplit('.').next(), Some("mp3" | "wav" | "ogg")) {
+            return Err("无效音频标识".into());
+        }
+    }
+    config::update_config_json(&app, |cfg| {
+        if let Some(id) = id.as_ref() {
+            cfg.sound_ids.insert(event.clone(), id.clone());
+        } else {
+            cfg.sound_ids.remove(&event);
+        }
+    })?;
+    // pet 与 Windows 的隐藏 pet-service 都是独立 WebView；配置落盘后主动通知，
+    // 使其无需重建窗口即可仅刷新变更的那一个音源。
+    let _ = app.emit("sound-ids-changed", serde_json::json!({ "event": event, "id": id }));
+    Ok(())
+}
 
 /// 托盘是否可用;不可用时关窗直接退出(否则窗口藏起来就找不回了)。
 struct TrayReady(AtomicBool);
@@ -76,6 +148,9 @@ struct PetEnabled(AtomicBool);
 /// 播放,开关由设置页与托盘两处切换,故运行时真值收在壳里,变更经
 /// `sound-enabled` 事件广播给两个 webview。
 struct SoundEnabled(AtomicBool);
+
+/// 应用启动提示音开关的运行时缓存。
+struct AppStartSoundEnabled(AtomicBool);
 
 /// 托盘的提示音勾选项。设置页切换时要把托盘勾选态改过来,否则两处显示会打架;
 /// 托盘创建失败(无托盘宿主)时为 None,设置页照常工作。
@@ -1341,7 +1416,22 @@ fn set_sound_enabled(app: AppHandle, enabled: bool) {
     apply_sound_enabled(&app, enabled);
 }
 
-/// 提示音开关的唯一落点(设置页命令与托盘勾选项共用):更新运行时真值 →
+/// 应用启动提示音开关命令。
+#[tauri::command]
+fn app_start_sound_enabled(app: AppHandle) -> bool {
+    app.state::<AppStartSoundEnabled>().0.load(Ordering::Relaxed)
+}
+
+#[tauri::command]
+fn set_app_start_sound_enabled(app: AppHandle, enabled: bool) {
+    app.state::<AppStartSoundEnabled>().0.store(enabled, Ordering::Relaxed);
+    let _ = app.emit("app-start-sound-enabled", enabled);
+    if let Err(e) = config::update_config_json(&app, |cfg| cfg.app_start_sound_enabled = enabled) {
+        eprintln!("[desktop] 应用启动提示音开关保存失败: {e}");
+    }
+}
+
+
 /// 同步托盘勾选态 → 广播给桌宠页与设置页 → 落盘。
 ///
 /// 广播先于落盘:静音是用户此刻就要的效果,写盘失败(磁盘满/权限)不该让
@@ -1385,6 +1475,7 @@ fn main() {
         .manage(UiIntent(Mutex::new(None)))
         .manage(PetEnabled(AtomicBool::new(true)))
         .manage(SoundEnabled(AtomicBool::new(true)))
+        .manage(AppStartSoundEnabled(AtomicBool::new(true)))
         .manage(TraySoundItem(Mutex::new(None)))
         .manage(PetPos(Mutex::new(None)))
         .manage(MainWindowRuntime(Mutex::new(None)))
@@ -1395,6 +1486,14 @@ fn main() {
         .manage(baizhi::monkeycode::DownloadCtl::new())
         .invoke_handler(tauri::generate_handler![
             get_config,
+            import_background,
+            get_background,
+            clear_background,
+            import_sound,
+            get_sound,
+            clear_sound,
+            sound_ids,
+            set_sound_id,
             save_config,
             take_ui_intent,
             host_info,
@@ -1402,6 +1501,8 @@ fn main() {
             open_devtools,
             window_system_menu,
             pet_native_render,
+            app_start_sound_enabled,
+            set_app_start_sound_enabled,
             sound_enabled,
             set_sound_enabled,
             update_check,
@@ -1497,6 +1598,9 @@ fn main() {
             app.state::<SoundEnabled>()
                 .0
                 .store(cfg.sound_enabled, Ordering::Relaxed);
+            app.state::<AppStartSoundEnabled>()
+                .0
+                .store(cfg.app_start_sound_enabled, Ordering::Relaxed);
             *app.state::<PetPos>()
                 .0
                 .lock_ok() = cfg.pet_pos;

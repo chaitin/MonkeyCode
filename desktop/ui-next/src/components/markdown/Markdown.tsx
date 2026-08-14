@@ -11,7 +11,7 @@ import { startTransition, useEffect, useMemo, useRef, useState, type MouseEvent,
 import { t, useI18n } from "@/lib/i18n";
 import { openExternal } from "@/lib/ipc/host";
 import { copyText } from "@/lib/util/clipboard";
-import { resolveMarkdownResource } from "@/lib/util/markdownPaths";
+import { absoluteLocalPathCodeBlock, resolveMarkdownResource } from "@/lib/util/markdownPaths";
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -33,9 +33,12 @@ function makeMarked(): Marked {
         const name = (lang ?? "").trim().split(/\s+/)[0] ?? "";
         const language = name && text.length <= HLJS_MAX_CHARS && hljs.getLanguage(name) ? name : null;
         const body = language ? hljs.highlight(text, { language }).value : escapeHtml(text);
+        const path = absoluteLocalPathCodeBlock(text);
+        const open = path ? `<button type="button" class="btn btn-xs absolute top-1.5 right-14 z-1 opacity-0" data-md-open-path="${escapeHtml(path)}">${escapeHtml(t("md.open"))}</button>` : "";
         // data-md-copy 携带原文(escape 过),复制走它而不是回读高亮 DOM
         return (
           `<div class="md-code">` +
+          open +
           `<button type="button" class="btn btn-xs absolute top-1.5 right-1.5 z-1 opacity-0" data-md-copy="${escapeHtml(text)}">${escapeHtml(t("md.copy"))}</button>` +
           `<pre><code class="hljs${language ? ` language-${language}` : ""}">${body}</code></pre>` +
           `</div>`
@@ -106,8 +109,14 @@ export function renderMarkdown(source: string): string {
   return DOMPurify.sanitize(template.innerHTML, { USE_PROFILES: { html: true } });
 }
 
-function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: string) => void) {
+function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: string) => void, onOpenPath?: (path: string) => void) {
   const target = e.target as HTMLElement;
+  const openBtn = target.closest<HTMLElement>("[data-md-open-path]");
+  if (openBtn) {
+    e.preventDefault();
+    onOpenPath?.(openBtn.getAttribute("data-md-open-path") ?? "");
+    return;
+  }
   const copyBtn = target.closest<HTMLElement>("[data-md-copy]");
   if (copyBtn) {
     e.preventDefault();
@@ -251,6 +260,7 @@ export function Markdown({
   className,
   localImageUrl,
   onLocalLink,
+  onOpenPath,
 }: {
   source: string;
   className?: string;
@@ -258,6 +268,8 @@ export function Markdown({
   localImageUrl?: (path: string) => Promise<string>;
   /** 本地链接点击代理(reveal 到文件管理器等)。 */
   onLocalLink?: (path: string) => void;
+  /** 代码块中的完整绝对路径打开代理。 */
+  onOpenPath?: (path: string) => void;
 }) {
   const { locale } = useI18n(); // 复制按钮文案随 locale 重渲
   const root = useRef<HTMLDivElement>(null);
@@ -330,7 +342,7 @@ export function Markdown({
       key="md"
       ref={root}
       className={`md select-text ${className ?? ""}`}
-      onClick={(e) => onContainerClick(e, onLocalLink)}
+      onClick={(e) => onContainerClick(e, onLocalLink, onOpenPath)}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

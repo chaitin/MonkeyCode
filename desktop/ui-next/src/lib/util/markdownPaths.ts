@@ -42,6 +42,17 @@ export function resolveMarkdownResource(src: string): MarkdownResource {
   return { kind: "local", path: decoded };
 }
 
+/** 代码块只能是一条明确的本地绝对路径时才显示「打开」。不从日志或代码
+ * 中模糊抽取路径，避免把普通代码块变成文件系统操作入口。 */
+export function absoluteLocalPathCodeBlock(text: string): string | null {
+  const path = text.trim();
+  if (!path || /[\r\n\0]/.test(path)) return null;
+  if (/^[a-z]:[\\/]+/i.test(path)) return path;
+  if (/^\\\\[^\\/]+[\\/][^\\/]+(?:[\\/].*)?$/.test(path)) return path;
+  if (/^\/(?!\/)/.test(path)) return path;
+  return null;
+}
+
 /** 把已识别的本地链接收敛为工作区相对路径,供 repo_reveal 使用。
  * 工作区外绝对路径返回 null;最终的组件级/符号链接校验仍由壳负责。 */
 export function workspaceRelativePath(path: string, workdir: string): string | null {

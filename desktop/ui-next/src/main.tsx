@@ -5,6 +5,7 @@ import { App } from "@/app/App";
 import { installShellChrome } from "@/app/shellChrome";
 import { applyPlatformAttr } from "@/lib/ipc/host";
 import { applyStoredTheme } from "@/lib/theme";
+import { restoreBackground, restoreBackgroundTransparency } from "@/lib/background";
 import "@/styles/app.css";
 import "@/styles/chrome.css";
 import "@/styles/md.css";
@@ -12,6 +13,11 @@ import "@/styles/term.css";
 
 // 首帧主题由 index.html 内联脚本落;这里兜底(脚本被 CSP 之类挡掉时)
 applyStoredTheme();
+restoreBackgroundTransparency();
+void restoreBackground().then((restored) => {
+  // 壳启动时 IPC 可能尚未就绪；一次短暂重试避免背景只在下次启动才出现。
+  if (!restored) window.setTimeout(() => { void restoreBackground(); }, 500);
+});
 // data-platform 落根节点(mac 红绿灯让位等平台分支的依据)
 applyPlatformAttr();
 // 壳级 chrome:右键拦截换自绘文本菜单、F12 devtools(浏览器模式不装)

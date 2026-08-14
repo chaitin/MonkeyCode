@@ -15,6 +15,14 @@ import {
 
 export { CUSTOM_THEME, type CustomTheme } from "./customTheme";
 
+const BG_KEY = "mc.backgroundId";
+export function getBackgroundId(): string | null { return localStorage.getItem(BG_KEY); }
+export function setBackgroundId(id: string | null): void {
+  if (id) localStorage.setItem(BG_KEY, id); else localStorage.removeItem(BG_KEY);
+  window.dispatchEvent(new CustomEvent("mc-background-changed", { detail: id }));
+}
+
+
 const THEME_KEY = "mc.theme";
 const THEME_BG_KEY = "mc.themeBg";
 /** 自定义主题的配置(JSON)与渲染产物(CSS 文本)。

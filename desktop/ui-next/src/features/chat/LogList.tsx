@@ -202,7 +202,7 @@ function renderItem(item: ChatItem, o: RenderOpts) {
       return (
         <div className="group relative flex flex-col">
           <MessageTime timestamp={item.timestamp} className="absolute -top-3.5 start-0" />
-          <Markdown source={item.text} localImageUrl={o.uploadUrl} onLocalLink={o.onLocalLink} />
+          <Markdown source={item.text} localImageUrl={o.uploadUrl} onLocalLink={o.onLocalLink} onOpenPath={o.onLocalLink} />
         </div>
       );
     case "thought":

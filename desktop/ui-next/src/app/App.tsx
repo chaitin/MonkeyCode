@@ -263,7 +263,7 @@ function MainArea({
     );
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col bg-base-100">
+    <main className="mc-main-surface flex min-w-0 flex-1 flex-col">
       <div data-tauri-drag-region="" className="h-13 shrink-0 border-b border-base-300" />
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-6">
       <img src="/logo.png" alt="" className="h-16 w-16 rounded-2xl shadow-sm" aria-hidden />

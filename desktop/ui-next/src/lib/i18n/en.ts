@@ -344,6 +344,7 @@ export const en: Record<MessageKey, string> = {
   "downloads.canceled": "Canceled",
 
   "md.copy": "Copy",
+  "md.open": "Open",
   "md.copied": "Copied",
 
   "chat.thought": "Thinking",
