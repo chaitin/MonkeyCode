@@ -1,7 +1,7 @@
 // 本机 UI 偏好(mc.* 命名空间,键名与取值格式 = 旧 UI 契约)。
 // 模块顶层不碰 localStorage,只用 getItem/setItem。
 
-export type Space = "local" | "cloud" | "chat";
+export type Space = "local" | "cloud" | "chat" | "stats";
 
 /** 启动落点恒为本地任务(用户定案 2026-08-09:「应用打开后默认选本地项目,
  *  不要选云端项目」)。所以**没有 readSpace** ——上次停在哪儿不再决定这次开在
