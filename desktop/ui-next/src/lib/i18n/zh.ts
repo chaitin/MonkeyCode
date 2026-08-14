@@ -317,7 +317,7 @@ export const zh = {
   "account.server.llmBaseUrlPlaceholder": "留空:官方云走 proxy.monkeycode-ai.com/v1,自建走 服务地址/v1",
   "account.server.llmBaseUrlHint": "模型代理(llmproxy)的地址;拆分部署或模型流量绕开反代鉴权时单独指定",
   "account.server.hint":
-    "指向自建/私有化 MonkeyCode 服务,保存后需重启应用生效。环境变量 MC_DESKTOP_MONKEYCODE_URL 优先于地址设置。切换服务地址后需重新连接账号并重新同步会员模型;仅改模型请求地址无需重新同步。",
+    "指向自建/私有化 MonkeyCode 服务,保存后立即生效。环境变量 MC_DESKTOP_MONKEYCODE_URL 优先于地址设置。切换服务地址后需重新连接账号并重新同步会员模型;仅改模型请求地址无需重新同步。",
 
   "settings.browser.statusLoading": "读取状态中…",
   "settings.browser.statusError": "状态读取失败:{reason}",

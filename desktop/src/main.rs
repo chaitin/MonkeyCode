@@ -487,7 +487,10 @@ async fn save_config(app: AppHandle, config: DesktopConfig) -> Result<(), String
         reset_engine_supervision(&app);
         // 壳自有偏好的合并与写盘在 ConfigStore 的同一事务内完成。
         let config = save_ui_config_files(&app, config, browser::mcp_endpoint(&app))?;
-        restart_engine_locked(&app, &config)
+        restart_engine_locked(&app, &config)?;
+        let pipes = app.state::<baizhi::monkeycode::CloudPipes>();
+        app.state::<baizhi::BaizhiState>().apply_config(&config, &pipes);
+        Ok(())
     })
     .await
     .map_err(|e| format!("保存失败: {e}"))?
@@ -504,7 +507,10 @@ async fn engine_restart(app: AppHandle) -> Result<(), String> {
         reset_engine_supervision(&app);
         let config = load_config(&app)?;
         materialize_engine_config(&app, &config, browser::mcp_endpoint(&app))?;
-        restart_engine_locked(&app, &config)
+        restart_engine_locked(&app, &config)?;
+        let pipes = app.state::<baizhi::monkeycode::CloudPipes>();
+        app.state::<baizhi::BaizhiState>().apply_config(&config, &pipes);
+        Ok(())
     })
     .await
     .map_err(|e| format!("重启失败: {e}"))?
@@ -1511,12 +1517,10 @@ fn main() {
             *app.state::<MainWindowRuntime>().0.lock_ok() = cfg.main_window_state;
 
             // 百智云/云端服务(壳级单例;凭证 cookie 与配置同目录)。晚于
-            // 配置加载:MonkeyCode 服务地址可由设置指定(mc_base_url,重启
-            // 应用生效);配置损坏时按默认值落官方云,错误页照常外显。
+            // 配置加载:MonkeyCode 服务地址由设置指定,保存后替换服务快照;
+            // 配置损坏时按默认值落官方云,错误页照常外显。
             let cfg_dir = config::config_dir(app.handle()).map_err(std::io::Error::other)?;
-            app.manage(baizhi::BaizhiState(std::sync::Arc::new(
-                baizhi::Service::new(cfg_dir, &cfg),
-            )));
+            app.manage(baizhi::BaizhiState::new(baizhi::Service::new(cfg_dir, &cfg)));
             app.state::<PetEnabled>()
                 .0
                 .store(cfg.pet_enabled, Ordering::Relaxed);

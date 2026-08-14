@@ -176,13 +176,16 @@ export const mcModelsRevoke = () => invoke<{ ok: boolean }>("mc_models_revoke");
  *  mcModelsRevoke)。吊销失败(如断网)不阻断登出——本地必须能断开,
  *  壳保留记录待下次重连后再次断开即收敛;失败信息以 warning 返回给
  *  调用方外显。登出本身失败(浏览器模式)照常上抛。 */
-export async function disconnectMc(): Promise<{ warning?: string }> {
+export async function disconnectMc(
+  isCurrent: () => boolean = () => true,
+): Promise<{ warning?: string; cancelled?: boolean }> {
   let warning: string | undefined;
   try {
     await mcModelsRevoke();
   } catch (e) {
     warning = e instanceof Error ? e.message : String(e);
   }
+  if (!isCurrent()) return { cancelled: true };
   await mcLogout();
   return warning === undefined ? {} : { warning };
 }

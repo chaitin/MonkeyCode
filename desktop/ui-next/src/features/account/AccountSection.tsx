@@ -298,6 +298,8 @@ function McCard({
   onMcDisconnected,
   onResult,
   autoSyncToken = 0,
+  serviceGeneration,
+  isServiceGenerationCurrent,
   onLogoClick,
 }: {
   status: McStatus | null;
@@ -308,7 +310,7 @@ function McCard({
   bridgeErr: string;
   onChanged: () => Promise<void>;
   /** 账密登录/点「连接」成功:宿主刷新状态并起一次会员模型同步(与桥接登录同待遇) */
-  onLoggedIn: () => Promise<void>;
+  onLoggedIn: (generation: number) => Promise<void>;
   /** 断开成功后清掉会员模型组(宿主 applyMcDisconnect) */
   onMcDisconnected?: () => SyncApplied | undefined | void;
   /** 同步结果交宿主并入设置草稿;回执带跳过名单与自动保存结论(卡内外显) */
@@ -317,17 +319,28 @@ function McCard({
   onLogoClick?: () => void;
   /** 登录/桥接真实事件的自动同步信号(语义同 BaizhiCard.autoSyncToken) */
   autoSyncToken?: number;
+  /** MonkeyCode 服务代次；旧代次请求完成后不得再修改新服务状态或配置。 */
+  serviceGeneration: number;
+  isServiceGenerationCurrent: (generation: number) => boolean;
 }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState<"connect" | "disconnect" | "sync" | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
   const [pwOpen, setPwOpen] = useState(false);
+  const isCurrentService = () => isServiceGenerationCurrent(serviceGeneration);
+
+  useEffect(() => {
+    setBusy(null);
+    setMsg(null);
+    setPwOpen(false);
+  }, [serviceGeneration]);
 
   const connect = async () => {
     setBusy("connect");
     setMsg(null);
     try {
       await mcLogin();
+      if (!isCurrentService()) return;
       // 走 onLoggedIn 而不是 onChanged:连上之后**必须起一次会员模型同步**
       // (旧 UI settings.tsx 三个「连上即自动同步」触发点之一,这处漏迁)。
       // 只刷状态的话:①从没同步过的用户点「连接」,卡片翻成已登录、用量面板
@@ -335,11 +348,11 @@ function McCard({
       // 已删掉本机 monkeycode-ohmyagent-key.json,而**重建它的唯一路径**是
       // mc_models_sync → sync_member_models → ensure_ohmyagent_key,不起同步
       // 就是「断开→重连」之后 key 文件仍然缺失,模型还在、却怎么用都鉴权失败。
-      await onLoggedIn();
+      await onLoggedIn(serviceGeneration);
     } catch (e) {
-      setMsg({ text: errMsg(e), error: true });
+      if (isCurrentService()) setMsg({ text: errMsg(e), error: true });
     } finally {
-      setBusy(null);
+      if (isCurrentService()) setBusy(null);
     }
   };
 
@@ -347,8 +360,10 @@ function McCard({
     setBusy("disconnect");
     setMsg(null);
     try {
-      const { warning } = await disconnectMc();
+      const { warning, cancelled } = await disconnectMc(isCurrentService);
+      if (cancelled || !isCurrentService()) return;
       await onChanged();
+      if (!isCurrentService()) return;
       // 第四步:把已同步的会员模型从配置里清掉(旧 UI disconnectMcWithCleanup)。
       // 壳侧只删网关 key 与本机 Key 文件,配置里的条目得 UI 自己收——不收的话
       // 那组模型原样留在列表里(会员行没有删除按钮)、还很可能正是默认模型,
@@ -358,9 +373,9 @@ function McCard({
       if (warning) setMsg({ text: warning + cleaned, error: true });
       else if (cleaned) setMsg({ text: cleaned.trimStart() });
     } catch (e) {
-      setMsg({ text: errMsg(e), error: true });
+      if (isCurrentService()) setMsg({ text: errMsg(e), error: true });
     } finally {
-      setBusy(null);
+      if (isCurrentService()) setBusy(null);
     }
   };
 
@@ -369,6 +384,7 @@ function McCard({
     setMsg(null);
     try {
       const r: McModelsSyncResult = await mcModelsSync();
+      if (!isCurrentService()) return;
       const notes = r.notes?.length ? ` ${r.notes.join(t("common.semiSep"))}` : "";
       // 空结果按失败说(旧 UI 同款,理由同 BaizhiCard.sync):没有会员权益时
       // 「已获取 0 个会员模型…保存后生效」看着像成功;且不往下并入,免得
@@ -381,9 +397,9 @@ function McCard({
       const skipped = applied && applied.skipped.length ? ` ${t("account.sync.skipped", { names: applied.skipped.join(t("common.listSep")) })}` : "";
       setMsg({ text: t("account.mc.syncDone", { models: r.models.length }) + syncOutcome(t, applied) + notes + skipped });
     } catch (e) {
-      setMsg({ text: errMsg(e), error: true });
+      if (isCurrentService()) setMsg({ text: errMsg(e), error: true });
     } finally {
-      setBusy(null);
+      if (isCurrentService()) setBusy(null);
     }
   };
 
@@ -442,7 +458,9 @@ function McCard({
         {pwOpen ? (
           <div className="flex max-w-sm flex-col gap-2 border-t border-base-300 pt-3">
             <p className="text-xs text-base-content/60">{t("account.pw.hint")}</p>
-            <PasswordForm onLoggedIn={onLoggedIn} />
+            <PasswordForm onLoggedIn={async () => {
+              if (isCurrentService()) await onLoggedIn(serviceGeneration);
+            }} />
             <button
               type="button"
               className="btn btn-link btn-xs self-start px-0 font-normal text-base-content/50 no-underline hover:text-base-content"
@@ -517,8 +535,7 @@ const UNLOCK_CLICKS = 6;
 
 /** 自建/私有化部署地址(账号分区末尾的高级块)。默认隐藏:连点 MonkeyCode
  *  卡图标 6 次解锁,解锁态持久;已配置过任一项的用户恒可见——否则升级后
- *  自己的配置凭空消失(旧 UI 同款门禁)。三项都进保存条,但壳在启动时才
- *  构造云端服务,故保存后还要**重启应用**才生效。 */
+ *  自己的配置凭空消失(旧 UI 同款门禁)。三项保存后由壳立即替换云端服务快照。 */
 function ServerConfigBlock({
   draft,
   onDraft,
@@ -574,6 +591,7 @@ export function AccountSection({
   onMcDisconnected,
   draft,
   onDraft,
+  refreshKey = 0,
 }: {
   /** 同步结果并入设置草稿(SettingsView.applySync);回执含跳过名单与自动保存结论 */
   onSyncResult?: (r: BaizhiSyncResult | McModelsSyncResult) => SyncApplied | undefined | void;
@@ -583,6 +601,8 @@ export function AccountSection({
   /** 设置草稿:自建部署三项在本分区编辑(缺席则不渲染高级块) */
   draft?: SettingsDraft | null;
   onDraft?: (up: (d: SettingsDraft) => SettingsDraft) => void;
+  /** 已保存的 MonkeyCode 传输配置变化后递增,触发状态重查。 */
+  refreshKey?: number;
 } = {}) {
   const { t } = useI18n();
   const inShell = inDesktopShell();
@@ -615,6 +635,14 @@ export function AccountSection({
   const [statusErr, setStatusErr] = useState("");
   const [bridgeErr, setBridgeErr] = useState("");
   const alive = useRef(true);
+  const refreshGeneration = useRef(0);
+  const appliedRefreshKey = useRef(refreshKey);
+  const serviceGenerationRef = useRef(refreshKey);
+  serviceGenerationRef.current = refreshKey;
+  const isServiceGenerationCurrent = useCallback(
+    (generation: number) => serviceGenerationRef.current === generation,
+    [],
+  );
 
   useEffect(() => {
     alive.current = true;
@@ -624,8 +652,9 @@ export function AccountSection({
   }, []);
 
   const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
     const [b, m] = await Promise.allSettled([baizhiStatus(), mcStatus()]);
-    if (!alive.current) return;
+    if (!alive.current || generation !== refreshGeneration.current) return;
     // 单路失败不拖垮另一路:失败信息合并外显,成功的一路照常渲染
     const errs: string[] = [];
     if (b.status === "fulfilled") setBz(b.value);
@@ -641,8 +670,15 @@ export function AccountSection({
   }, []);
 
   useEffect(() => {
-    if (inShell) void refresh();
-  }, [inShell, refresh]);
+    if (!inShell) return;
+    if (appliedRefreshKey.current !== refreshKey) {
+      appliedRefreshKey.current = refreshKey;
+      mcRef.current = null;
+      setMc(null);
+      setStatusErr("");
+    }
+    void refresh();
+  }, [inShell, refresh, refreshKey]);
 
   // 登录真实事件的自动同步信号(0 = 无;只在下面两个登录回调里 bump,
   // 打开设置读到既有登录态不触发)——「登录成功即自动同步」是旧 UI 用户
@@ -655,9 +691,11 @@ export function AccountSection({
    *  MonkeyCode(同一账号的 OAuth,登录一次两边都通),桥接成功顺带起
    *  会员模型同步。 */
   const onBaizhiLoggedIn = useCallback(async () => {
+    const serviceGeneration = serviceGenerationRef.current;
     setBridgeErr("");
     await refresh();
     setBzSyncToken((n) => n + 1);
+    if (!isServiceGenerationCurrent(serviceGeneration)) return;
     // **已连就不打扰**(旧 UI settings.tsx:1288「已连/连接中/读取中一律不打扰」,
     // ui-next 漏迁)。「MC 已连 + 百智云未登录」是本仓测试自己钉住的可达状态:
     // 用户先用账密连了 A 账号(私有化/公司账号常见),之后在同一页登录百智云
@@ -669,18 +707,22 @@ export function AccountSection({
     if (mcRef.current?.logged_in) return;
     try {
       await mcLogin();
+      if (!isServiceGenerationCurrent(serviceGeneration)) return;
       await refresh();
+      if (!isServiceGenerationCurrent(serviceGeneration)) return;
       setMcSyncToken((n) => n + 1);
     } catch (e) {
+      if (!isServiceGenerationCurrent(serviceGeneration)) return;
       if (alive.current) setBridgeErr(errMsg(e));
       await refresh();
     }
-  }, [refresh]);
+  }, [isServiceGenerationCurrent, refresh]);
 
-  const onMcLoggedIn = useCallback(async () => {
+  const onMcLoggedIn = useCallback(async (generation: number) => {
     await refresh();
+    if (!isServiceGenerationCurrent(generation)) return;
     setMcSyncToken((n) => n + 1);
-  }, [refresh]);
+  }, [isServiceGenerationCurrent, refresh]);
 
   if (!inShell) {
     return (
@@ -736,6 +778,8 @@ export function AccountSection({
               onMcDisconnected={onMcDisconnected}
               onResult={onSyncResult}
               autoSyncToken={mcSyncToken}
+              serviceGeneration={refreshKey}
+              isServiceGenerationCurrent={isServiceGenerationCurrent}
               onLogoClick={onLogoClick}
             />
           </div>

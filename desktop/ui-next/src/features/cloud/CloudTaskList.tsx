@@ -69,6 +69,8 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
   // 反向则让路:前台在跑时后台这一拍直接跳过(下一拍还会来)。
   const inFlight = useRef(false);
   const bgFlight = useRef(false);
+  const generationRef = useRef(0);
+  const appliedReloadRef = useRef<{ enabled: boolean; reloadKey: number } | null>(null);
 
   const fetchPage = useCallback(async (page: number, mode: PageMode) => {
     if (!inDesktopShell()) {
@@ -76,6 +78,7 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
       setTasks((prev) => prev ?? []);
       return;
     }
+    const generation = generationRef.current;
     const bg = mode === "merge";
     const busy = bg ? bgFlight : inFlight;
     if (busy.current || (bg && inFlight.current)) return;
@@ -86,6 +89,7 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
     setError("");
     try {
       const r = await mcTasks(page, PAGE_SIZE);
+      if (generation !== generationRef.current) return;
       setUnauthorized(false); // 连上了(设置里刚连接完再回来)
       const batch = r.tasks ?? [];
       setTotal(r.page_info?.total ?? r.page_info?.total_count ?? null);
@@ -103,11 +107,13 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
         return [...batch, ...prev.filter((task) => !fresh.has(task.id))];
       });
     } catch (e) {
+      if (generation !== generationRef.current) return;
       // 会话失效/未登录不是"加载失败":回查一次登录态确证(壳的 401 文案
       // 是中文串,按串匹配太脆),据此分流成「未连接」状态而非红底报错
       // 只认**明确**的未登录信号:拿不到状态/字段缺失时不许吞掉原错误
       // (否则一切故障都被粉饰成「未连接」,真问题无从诊断)
       const st = await mcStatus().catch(() => null);
+      if (generation !== generationRef.current) return;
       if (st?.logged_in === false) {
         setUnauthorized(true);
         setError("");
@@ -116,13 +122,28 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
         setError(e instanceof Error ? e.message : String(e));
       }
     } finally {
-      busy.current = false;
-      if (!bg) setLoading(false);
+      if (generation === generationRef.current) {
+        busy.current = false;
+        if (!bg) setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (!enabled) return;
+    const applied = appliedReloadRef.current;
+    if (applied?.enabled === enabled && applied.reloadKey === reloadKey) return;
+    appliedReloadRef.current = { enabled, reloadKey };
+    generationRef.current += 1;
+    inFlight.current = false;
+    bgFlight.current = false;
+    setTasks(null);
+    setTotal(null);
+    setError("");
+    setUnauthorized(false);
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     void fetchPage(1, "replace");
   }, [fetchPage, reloadKey, enabled]);
 
@@ -165,6 +186,7 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
 export function useCloudProjects(reloadKey = 0, enabled = true): CloudProject[] {
   const [projects, setProjects] = useState<CloudProject[]>([]);
   useEffect(() => {
+    setProjects([]);
     if (!inDesktopShell() || !enabled) return;
     let alive = true;
     mcProjects()
@@ -295,7 +317,11 @@ export function CloudTaskList({
 
   // 分组懒拉缓存(键 = 项目 id);重拉键翻转即作废
   const [groupTasks, setGroupTasks] = useState<Record<string, GroupTasksState>>({});
-  useEffect(() => setGroupTasks({}), [reloadKey]);
+  const groupGeneration = useRef(0);
+  useEffect(() => {
+    groupGeneration.current += 1;
+    setGroupTasks({});
+  }, [reloadKey]);
   // 组开合(历史小节的契约键持久化在 SectionFold 内)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   // 行动作(删除/终止)失败原因,已格式化;新动作发起时清空
@@ -304,12 +330,17 @@ export function CloudTaskList({
   const loadGroup = useCallback(
     (projectId: string) => {
       if (groupTasks[projectId]) return; // 拉过/在途
+      const generation = groupGeneration.current;
       setGroupTasks((prev) => ({ ...prev, [projectId]: { loading: true } }));
       mcTasks(1, PAGE_SIZE, "", { projectId })
-        .then((r) => setGroupTasks((prev) => ({ ...prev, [projectId]: { tasks: r.tasks ?? [] } })))
-        .catch((e: unknown) =>
-          setGroupTasks((prev) => ({ ...prev, [projectId]: { error: e instanceof Error ? e.message : String(e) } })),
-        );
+        .then((r) => {
+          if (generation !== groupGeneration.current) return;
+          setGroupTasks((prev) => ({ ...prev, [projectId]: { tasks: r.tasks ?? [] } }));
+        })
+        .catch((e: unknown) => {
+          if (generation !== groupGeneration.current) return;
+          setGroupTasks((prev) => ({ ...prev, [projectId]: { error: e instanceof Error ? e.message : String(e) } }));
+        });
     },
     [groupTasks],
   );

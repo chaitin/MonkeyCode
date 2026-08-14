@@ -304,7 +304,7 @@ export const en: Record<MessageKey, string> = {
   "account.server.llmBaseUrlHint":
     "Address of the model proxy (llmproxy); set it separately for split deployments or to bypass proxy auth for model traffic",
   "account.server.hint":
-    "Points at a self-hosted MonkeyCode service; restart the app after saving for it to take effect. MC_DESKTOP_MONKEYCODE_URL overrides this setting. After changing the service URL, reconnect the account and re-sync member models; changing only the model endpoint needs no re-sync.",
+    "Points at a self-hosted MonkeyCode service and takes effect immediately after saving. MC_DESKTOP_MONKEYCODE_URL overrides this setting. After changing the service URL, reconnect the account and re-sync member models; changing only the model endpoint needs no re-sync.",
 
   "settings.browser.statusLoading": "Reading status…",
   "settings.browser.statusError": "Failed to read status: {reason}",

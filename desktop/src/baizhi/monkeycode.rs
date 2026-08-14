@@ -1013,12 +1013,55 @@ impl CloudPipes {
         Ok(gen)
     }
 
+    fn claim_with_service(
+        &self,
+        bz: &super::BaizhiState,
+        pipe: &str,
+        tx: mpsc::UnboundedSender<PipeMsg>,
+    ) -> Result<(Arc<Service>, u64), String> {
+        let current = bz.0.lock_ok();
+        let gen = self.claim(pipe, tx)?;
+        Ok((Arc::clone(&current), gen))
+    }
+
+    pub(crate) fn close_all(&self) {
+        let entries = {
+            let mut map = self.pipes.lock_ok();
+            std::mem::take(&mut *map)
+        };
+        for entry in entries.into_values() {
+            let _ = entry.tx.send(PipeMsg::Close);
+        }
+    }
+
     /// 按代次摘除:仅当注册项仍是自己那一代才删——连接失败/转发任务收尾
     /// 只清理自己的占位,不碰后来者。
     fn remove_gen(&self, pipe: &str, gen: u64) {
         let mut map = self.pipes.lock_ok();
         if map.get(pipe).map(|e| e.gen) == Some(gen) {
             map.remove(pipe);
+        }
+    }
+}
+
+struct PipeReservation<'a> {
+    pipes: &'a CloudPipes,
+    pipe: String,
+    gen: u64,
+    active: bool,
+}
+
+impl PipeReservation<'_> {
+    fn commit(mut self) -> u64 {
+        self.active = false;
+        self.gen
+    }
+}
+
+impl Drop for PipeReservation<'_> {
+    fn drop(&mut self) {
+        if self.active {
+            self.pipes.remove_gen(&self.pipe, self.gen);
         }
     }
 }
@@ -1062,11 +1105,21 @@ pub async fn cloud_ws_open(
     if pipe.is_empty() || pipe.len() > 64 {
         return Err("pipe id 非法".into());
     }
-    let svc = &bz.0;
+    // 服务快照与管道占位共享 BaizhiState 锁,配置切换只能关闭完整的旧代次。
+    // 构建或连接失败时 reservation 自动撤销占位。
+    let (tx, mut rx) = mpsc::unbounded_channel::<PipeMsg>();
+    let (svc, my_gen) = pipes.claim_with_service(&bz, &pipe, tx)?;
+    let reservation = PipeReservation {
+        pipes: &pipes,
+        pipe: pipe.clone(),
+        gen: my_gen,
+        active: true,
+    };
+
     if svc.mc.is_empty() {
         return Err("MonkeyCode 会话缺失,请先在设置中连接 MonkeyCode 账号".into());
     }
-    let (https_url, ws_url) = pipe_urls(svc, &kind, &id, &params)?;
+    let (https_url, ws_url) = pipe_urls(&svc, &kind, &id, &params)?;
 
     let mut req = ws_url
         .clone()
@@ -1089,12 +1142,6 @@ pub async fn cloud_ws_open(
         }
     }
 
-    // 连接前先占位(检查+insert 同锁):并发的第二次 open 同名 pipe 立即
-    // 报错,而不是各自跨过 20s 连接窗口后互相覆盖/互删(TOCTOU)。
-    // 副作用是连接期间 cloud_ws_send 的帧会入队缓冲,连上后按序发出。
-    let (tx, mut rx) = mpsc::unbounded_channel::<PipeMsg>();
-    let my_gen = pipes.claim(&pipe, tx)?;
-
     // 读上限:云端工具输出帧可以很大(Go 侧代理为此把下行上限提到 32MB,
     // "默认 32KB 必炸");tungstenite 默认 max_frame_size 16MiB 不够,放宽到
     // 64MiB(消息级同步放宽),超限会断流并陷入重连循环
@@ -1110,20 +1157,19 @@ pub async fn cloud_ws_open(
     .await
     {
         // 失败必须落壳日志:UI 只拿到 invoke 错误串,循环重连时无从追查;
-        // 并且要移除自己的占位(按代次,不误删期间 close+重开的新连接)
+        // reservation 会按代次移除自己的占位,不误删后来者。
         Err(_) => {
-            pipes.remove_gen(&pipe, my_gen);
             eprintln!("[desktop] 云端 WS({kind}) 连接超时 url={ws_url}");
             return Err("连接云端任务流超时".into());
         }
         Ok(Err(e)) => {
-            pipes.remove_gen(&pipe, my_gen);
             let msg = format!("连接云端任务流失败: {e}");
             eprintln!("[desktop] 云端 WS({kind}) {msg} url={ws_url}");
             return Err(msg);
         }
         Ok(Ok((ws, _))) => ws,
     };
+    let my_gen = reservation.commit();
 
     let pipe_id = pipe;
     let pid = pipe_id.clone();
@@ -1191,6 +1237,53 @@ pub async fn cloud_ws_close(pipes: State<'_, CloudPipes>, pipe: String) -> Resul
 #[cfg(test)]
 mod local_models_tests {
     use super::*;
+    use crate::baizhi::Endpoints;
+
+    #[test]
+    fn service_switch_closes_old_claim_without_closing_new_claim() {
+        let state = super::super::BaizhiState::new(Service::test_service(Endpoints {
+            account: "https://account.example.com".into(),
+            model_gateway: "https://models.example.com".into(),
+            mcp_gateway: "https://mcp.example.com".into(),
+            monkeycode: "https://old.example.com".into(),
+        }));
+        let pipes = CloudPipes::new();
+        let (old_tx, mut old_rx) = mpsc::unbounded_channel();
+        let (old, _) = pipes.claim_with_service(&state, "old", old_tx).unwrap();
+        assert_eq!(old.ep.monkeycode, "https://old.example.com");
+
+        let cfg = crate::config::DesktopConfig {
+            mc_base_url: "https://new.example.com".into(),
+            mc_basic_auth: "new-auth".into(),
+            ..Default::default()
+        };
+        let expected_monkeycode = Endpoints::resolve(&cfg.mc_base_url).monkeycode;
+        state.apply_config(&cfg, &pipes);
+        assert!(matches!(old_rx.try_recv(), Ok(PipeMsg::Close)));
+
+        let (new_tx, mut new_rx) = mpsc::unbounded_channel();
+        let (new, _) = pipes.claim_with_service(&state, "new", new_tx).unwrap();
+        assert_eq!(new.ep.monkeycode, expected_monkeycode);
+        assert!(matches!(new_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn close_all_disconnects_existing_cloud_pipes() {
+        let pipes = CloudPipes::new();
+        let (first_tx, mut first_rx) = mpsc::unbounded_channel();
+        let first_gen = pipes.claim("first", first_tx).unwrap();
+        let (second_tx, mut second_rx) = mpsc::unbounded_channel();
+        pipes.claim("second", second_tx).unwrap();
+
+        pipes.close_all();
+
+        assert!(matches!(first_rx.try_recv(), Ok(PipeMsg::Close)));
+        assert!(matches!(second_rx.try_recv(), Ok(PipeMsg::Close)));
+        let (replacement_tx, _replacement_rx) = mpsc::unbounded_channel();
+        let replacement_gen = pipes.claim("first", replacement_tx).unwrap();
+        pipes.remove_gen("first", first_gen);
+        assert_eq!(pipes.pipes.lock_ok().get("first").map(|entry| entry.gen), Some(replacement_gen));
+    }
 
     #[test]
     fn interface_type_vocabulary_pinned() {

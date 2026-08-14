@@ -80,10 +80,10 @@ export interface HostConfig {
   /** 内核运行环境:空/缺省 = 本机;"wsl:<发行版>" = 在 WSL 中运行(仅 Windows) */
   kernel_env?: string;
   /** MonkeyCode 服务地址(自建/私有化部署;空/缺省 = 官方云)。环境变量
-   * MC_DESKTOP_MONKEYCODE_URL 优先;修改保存后需重启应用生效 */
+   * MC_DESKTOP_MONKEYCODE_URL 优先;保存后立即生效 */
   mc_base_url?: string;
   /** MonkeyCode 测试环境反向代理的 HTTP Basic Auth("user:pass",空 = 无;
-   * 对齐 mobile 的 mc.basicAuth)。仅 MonkeyCode 域的请求附头;重启应用生效 */
+   * 对齐 mobile 的 mc.basicAuth)。仅 MonkeyCode 域的请求附头;保存后立即生效 */
   mc_basic_auth?: string;
   /** 模型请求地址(llmproxy,会员模型的 LLM 调用打这里)。空/缺省 =
    * {服务地址}/v1;拆分部署时单独指定 */

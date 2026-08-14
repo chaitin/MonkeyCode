@@ -65,6 +65,54 @@ describe("账号分区:门与登录面板", () => {
     expect(screen.queryByRole("tab")).toBeNull();
   });
 
+  it("refreshKey 变化后刷新服务状态并丢弃旧请求的迟到结果", async () => {
+    let mcCalls = 0;
+    let resolveOld: ((value: ReturnType<typeof mcIn>) => void) | undefined;
+    const oldResponse = new Promise<ReturnType<typeof mcIn>>((resolve) => {
+      resolveOld = resolve;
+    });
+    stubShell({
+      baizhi_status: bzOut,
+      mc_status: () => {
+        mcCalls += 1;
+        return mcCalls === 1
+          ? oldResponse
+          : { logged_in: true, host: "new.example.com", user: { id: "u2", name: "新服务用户" } };
+      },
+      mc_usage: () => null,
+    });
+
+    const { rerender } = render(<AccountSection refreshKey={0} />);
+    await waitFor(() => expect(mcCalls).toBe(1));
+    rerender(<AccountSection refreshKey={1} />);
+    await screen.findByText("new.example.com");
+    resolveOld?.(mcIn());
+    await act(async () => undefined);
+
+    expect(screen.queryByText("monkeycode-ai.com")).toBeNull();
+    expect(screen.getByText("new.example.com")).toBeDefined();
+  });
+
+  it("服务切换后的状态查询失败时不保留旧服务账号", async () => {
+    let mcCalls = 0;
+    stubShell({
+      baizhi_status: bzOut,
+      mc_status: () => {
+        mcCalls += 1;
+        if (mcCalls === 1) return mcIn();
+        throw new Error("新服务不可达");
+      },
+      mc_usage: () => null,
+    });
+
+    const { rerender } = render(<AccountSection refreshKey={0} />);
+    await screen.findByText("monkeycode-ai.com");
+    rerender(<AccountSection refreshKey={1} />);
+
+    await waitFor(() => expect(screen.queryByText("monkeycode-ai.com")).toBeNull());
+    expect(await screen.findByText(/登录状态读取失败:新服务不可达/)).toBeDefined();
+  });
+
   it("未登录默认微信 tab:自动拉码展示二维码与「待扫」提示", async () => {
     stubShell({
       baizhi_status: bzOut,
@@ -229,6 +277,51 @@ describe("短信验证码登录", () => {
     expect(calls.find((c) => c.cmd === "baizhi_login")?.args).toEqual({ phone: "13800000000", code: "654321" });
     expect(calls.some((c) => c.cmd === "mc_login")).toBe(true);
   });
+  it("百智登录后的旧状态刷新跨服务切换时不得继续桥接 MonkeyCode", async () => {
+    let bzCalls = 0;
+    let mcCalls = 0;
+    let resolveOldBz: ((value: ReturnType<typeof bzIn>) => void) | undefined;
+    let resolveOldMc: ((value: ReturnType<typeof mcOut>) => void) | undefined;
+    const oldBz = new Promise<ReturnType<typeof bzIn>>((resolve) => {
+      resolveOldBz = resolve;
+    });
+    const oldMc = new Promise<ReturnType<typeof mcOut>>((resolve) => {
+      resolveOldMc = resolve;
+    });
+    const { calls } = stubShell({
+      baizhi_status: () => {
+        bzCalls += 1;
+        if (bzCalls === 1) return bzOut();
+        if (bzCalls === 2) return oldBz;
+        return bzIn();
+      },
+      mc_status: () => {
+        mcCalls += 1;
+        if (mcCalls === 1) return mcOut();
+        if (mcCalls === 2) return oldMc;
+        return mcOut();
+      },
+      baizhi_wechat_start: never,
+      baizhi_send_code: () => ({ ok: true }),
+      baizhi_login: () => ({ ok: true }),
+      mc_login: () => ({ ok: true }),
+    });
+
+    const { rerender } = render(<AccountSection refreshKey={0} />);
+    await userEvent.click(await screen.findByRole("tab", { name: "短信验证码" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "手机号" }), "13800000000");
+    await userEvent.type(screen.getByRole("textbox", { name: "短信验证码" }), "654321");
+    await userEvent.click(screen.getByRole("button", { name: "登录" }));
+    await waitFor(() => expect(bzCalls).toBe(2));
+
+    rerender(<AccountSection refreshKey={1} />);
+    await waitFor(() => expect(bzCalls).toBe(3));
+    resolveOldBz?.(bzIn());
+    resolveOldMc?.(mcOut());
+    await act(async () => undefined);
+
+    expect(calls.some((c) => c.cmd === "mc_login")).toBe(false);
+  });
 });
 
 describe("MonkeyCode 账号密码登录入口", () => {
@@ -249,6 +342,36 @@ describe("MonkeyCode 账号密码登录入口", () => {
     render(<AccountSection />);
     expect(await screen.findByRole("button", { name: "连接 MonkeyCode 云端" })).toBeDefined();
     expect(screen.getByRole("button", { name: "使用 MonkeyCode 账号密码登录" })).toBeDefined();
+  });
+
+  it("旧服务连接流程跨过状态刷新后不得触发新服务会员同步", async () => {
+    let statusCalls = 0;
+    let resolveOldRefresh: ((value: ReturnType<typeof mcIn>) => void) | undefined;
+    const oldRefresh = new Promise<ReturnType<typeof mcIn>>((resolve) => {
+      resolveOldRefresh = resolve;
+    });
+    const { calls } = stubShell({
+      baizhi_status: bzIn,
+      mc_status: () => {
+        statusCalls += 1;
+        if (statusCalls === 1) return mcOut();
+        if (statusCalls === 2) return oldRefresh;
+        return mcIn();
+      },
+      mc_login: () => ({ ok: true }),
+      mc_usage: () => null,
+      mc_models_sync: () => ({ models: [{ name: "新服务模型" }] }),
+    });
+
+    const { rerender } = render(<AccountSection refreshKey={0} />);
+    await userEvent.click(await screen.findByRole("button", { name: "连接 MonkeyCode 云端" }));
+    await waitFor(() => expect(statusCalls).toBe(2));
+    rerender(<AccountSection refreshKey={1} />);
+    await screen.findByText("云端用户");
+    resolveOldRefresh?.(mcIn());
+    await act(async () => undefined);
+
+    expect(calls.some((c) => c.cmd === "mc_models_sync")).toBe(false);
   });
 
   it("空提交拦截;正确提交 mc_password_login 原样携带 email/password", async () => {
@@ -359,6 +482,29 @@ describe("已登录:用量面板/签到/同步/断开", () => {
     expect(screen.getByRole("button", { name: "签到 +100" })).toBeDefined();
   });
 
+  it("服务切换前发出的会员模型同步迟到后不得并入新服务配置", async () => {
+    let resolveOld: ((value: { models: Array<Record<string, unknown>> }) => void) | undefined;
+    const oldSync = new Promise<{ models: Array<Record<string, unknown>> }>((resolve) => {
+      resolveOld = resolve;
+    });
+    const usage = { current: usageFixture() };
+    const onSyncResult = vi.fn();
+    stubShell({
+      ...connectedHandlers(usage),
+      mc_models_sync: () => oldSync,
+    });
+
+    const { rerender } = render(<AccountSection refreshKey={0} onSyncResult={onSyncResult} />);
+    await userEvent.click(await screen.findByRole("button", { name: "同步会员模型" }));
+    rerender(<AccountSection refreshKey={1} onSyncResult={onSyncResult} />);
+    resolveOld?.({ models: [{ name: "旧服务模型", source: "monkeycode" }] });
+    await act(async () => undefined);
+
+    expect(onSyncResult).not.toHaveBeenCalled();
+    expect(((await screen.findByRole("button", { name: "同步会员模型" })) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("同步中...")).toBeNull();
+  });
+
   it("同步按钮:baizhi_sync 携带 knownKeys,mc_models_sync 结果提示条数与 note", async () => {
     const usage = { current: usageFixture() };
     const { calls } = stubShell({
@@ -450,6 +596,28 @@ describe("已登录:用量面板/签到/同步/断开", () => {
     const logoutAt = names.indexOf("mc_logout");
     expect(revokeAt).toBeGreaterThanOrEqual(0);
     expect(logoutAt).toBeGreaterThan(revokeAt);
+  });
+
+  it("服务切换时旧断开流程不得在吊销完成后登出新服务", async () => {
+    let resolveRevoke: (() => void) | undefined;
+    const revoke = new Promise<void>((resolve) => {
+      resolveRevoke = resolve;
+    });
+    const usage = { current: usageFixture() };
+    const { calls } = stubShell({
+      ...connectedHandlers(usage),
+      mc_models_revoke: () => revoke,
+      mc_logout: () => ({ ok: true }),
+    });
+
+    const { rerender } = render(<AccountSection refreshKey={0} />);
+    await userEvent.click(await screen.findByRole("button", { name: "断开连接" }));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "mc_models_revoke")).toBe(true));
+    rerender(<AccountSection refreshKey={1} />);
+    resolveRevoke?.();
+    await act(async () => undefined);
+
+    expect(calls.some((c) => c.cmd === "mc_logout")).toBe(false);
   });
 
   it("断开时吊销失败:不阻断登出(仍按序走 mc_logout),失败信息外显", async () => {

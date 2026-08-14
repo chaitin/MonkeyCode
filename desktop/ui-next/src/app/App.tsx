@@ -746,7 +746,14 @@ export function App() {
           }}
         />
         {settingsOpen ? (
-          <SettingsView onClose={() => setSettingsOpen(false)} hasRunningTask={sessions.some((s) => s.status === "running")} />
+          <SettingsView
+            onClose={() => setSettingsOpen(false)}
+            hasRunningTask={sessions.some((s) => s.status === "running")}
+            onCloudTransportChanged={() => {
+              setCloudTask(null);
+              setCloudReload((n) => n + 1);
+            }}
+          />
         ) : creating ? (
           <NewTaskModal
             open

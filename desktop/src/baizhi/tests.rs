@@ -118,19 +118,81 @@ fn official_model_and_mcp_gateways_are_pinned() {
 }
 
 /// MonkeyCode 服务地址解析:环境变量 > 设置值 > 官方云;设置值 trim +
-/// 尾斜杠归一。该环境变量只有生产路径(Service::new)消费,其余测试
-/// 不读它,本测试内设/删无交叉。
+/// MonkeyCode 地址优先级与尾斜杠归一纯函数,不触碰进程环境。
 #[test]
 fn endpoints_resolve_honors_configured_mc_base_url() {
-    std::env::remove_var("MC_DESKTOP_MONKEYCODE_URL");
-    let ep = Endpoints::resolve("https://self.example.com/");
-    assert_eq!(ep.monkeycode, "https://self.example.com", "设置值生效且尾斜杠归一");
-    let ep = Endpoints::resolve("  ");
-    assert_eq!(ep.monkeycode, "https://monkeycode-ai.com", "空白设置回落官方云");
-    std::env::set_var("MC_DESKTOP_MONKEYCODE_URL", "https://env.example.com");
-    let ep = Endpoints::resolve("https://self.example.com");
-    assert_eq!(ep.monkeycode, "https://env.example.com", "环境变量优先(开发/联调逃生门)");
-    std::env::remove_var("MC_DESKTOP_MONKEYCODE_URL");
+    assert_eq!(
+        super::resolve_monkeycode("https://self.example.com/", None),
+        "https://self.example.com",
+        "设置值生效且尾斜杠归一"
+    );
+    assert_eq!(super::resolve_monkeycode("  ", None), "https://monkeycode-ai.com", "空白设置回落官方云");
+    assert_eq!(
+        super::resolve_monkeycode("https://self.example.com", Some("https://env.example.com")),
+        "https://env.example.com",
+        "环境变量优先(开发/联调逃生门)"
+    );
+}
+
+#[test]
+fn baizhi_state_reconfigures_without_losing_runtime_state() {
+    let svc = Service::test_service(Endpoints {
+        account: "https://account.example.com".into(),
+        model_gateway: "https://models.example.com".into(),
+        mcp_gateway: "https://mcp.example.com".into(),
+        monkeycode: "https://old.example.com".into(),
+    });
+    svc.mc.update(
+        &reqwest::Url::parse("https://old.example.com/").unwrap(),
+        &["mc_session=old; Path=/".into()],
+    );
+    let state = super::BaizhiState::new(svc);
+    let old = state.service();
+    let cfg = crate::config::DesktopConfig {
+        mc_base_url: "https://new.example.com/".into(),
+        mc_basic_auth: "user:pass".into(),
+        mc_llm_base_url: "https://llm.example.com/v1/".into(),
+        ..Default::default()
+    };
+
+    let expected_monkeycode = Endpoints::resolve(&cfg.mc_base_url).monkeycode;
+    let pipes = super::monkeycode::CloudPipes::new();
+    assert!(state.apply_config(&cfg, &pipes), "服务地址或鉴权变化应要求关闭旧云端连接");
+    let new = state.service();
+    assert_eq!(old.ep.monkeycode, "https://old.example.com", "在途请求继续使用稳定旧快照");
+    assert_eq!(new.ep.monkeycode, expected_monkeycode);
+    assert_eq!(new.mc_llm, "https://llm.example.com/v1");
+    assert_eq!(new.mc_basic.as_deref(), Some("Basic dXNlcjpwYXNz"));
+    assert!(Arc::ptr_eq(&old.store, &new.store), "切换配置不能复制 cookie 罐");
+    assert!(Arc::ptr_eq(&old.mc, &new.mc), "切换配置不能丢失 MonkeyCode 会话");
+    assert!(Arc::ptr_eq(&old.wx, &new.wx), "切换配置不能中断扫码状态");
+}
+
+#[test]
+fn stale_service_response_cannot_overwrite_current_monkeycode_cookie() {
+    let svc = Service::test_service(Endpoints {
+        account: "https://account.example.com".into(),
+        model_gateway: "https://models.example.com".into(),
+        mcp_gateway: "https://mcp.example.com".into(),
+        monkeycode: "http://localhost:8000".into(),
+    });
+    let state = super::BaizhiState::new(svc);
+    let old = state.service();
+    let cfg = crate::config::DesktopConfig {
+        mc_base_url: "http://localhost:9000".into(),
+        mc_basic_auth: "new-auth".into(),
+        ..Default::default()
+    };
+    let pipes = super::monkeycode::CloudPipes::new();
+
+    state.apply_config(&cfg, &pipes);
+    let current = state.service();
+    let current_url = reqwest::Url::parse(&format!("{}/", current.ep.monkeycode)).unwrap();
+    let old_url = reqwest::Url::parse(&format!("{}/", old.ep.monkeycode)).unwrap();
+    current.update_response_cookies(&current.mc, &current_url, &["session=new; Path=/".into()]);
+    old.update_response_cookies(&old.mc, &old_url, &["session=old; Path=/".into()]);
+
+    assert_eq!(current.mc.header(&current_url).as_deref(), Some("session=new"));
 }
 
 /// 模型请求地址(llmproxy)的解析口径,2026-08-07 用户定案:官方云走独立
