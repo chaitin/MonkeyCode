@@ -201,8 +201,7 @@ pub(super) struct TurnFold {
 }
 
 impl TurnFold {
-    pub(super) fn push(&mut self, f: &Value) {
-        let seq = frame_seq(f);
+    pub(super) fn push(&mut self, f: &Value) {        let seq = frame_seq(f);
         if self.out.is_empty() {
             self.from = seq;
         }
@@ -252,6 +251,25 @@ impl TurnFold {
     fn push_opaque(&mut self, nf: Value) {
         self.out.push(nf);
         self.tail = None;
+    }
+
+    /// usage 事件(input/output tokens)挂到本轮最后一条 agent_message 帧上,
+    /// 供 UI 在每条助手消息旁展示其 token 用量。provider 在同一次模型调用
+    /// 的头尾可能各发一次 usage,后到者覆盖前值(取该调用的最终计数)。
+    pub(super) fn attach_usage(&mut self, input: u64, output: u64) {
+        for f in self.out.iter_mut().rev() {
+            let Some(data) = f.get("data") else { continue };
+            if session_update(data) != Some("agent_message_chunk") {
+                continue;
+            }
+            if let Some(update) = f.get_mut("data").and_then(|d| d.get_mut("update")).and_then(|u| u.as_object_mut()) {
+                update.insert(
+                    "usage".into(),
+                    json!({ "input_tokens": input, "output_tokens": output }),
+                );
+            }
+            break;
+        }
     }
 
     pub(super) fn is_empty(&self) -> bool {

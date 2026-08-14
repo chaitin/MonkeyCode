@@ -24,10 +24,13 @@ import {
 } from "react";
 
 import { useApprovalHotkeys } from "@/app/shortcuts";
+
+import { fmtCompact, showTokenPopover } from "@/features/sidebar/listKit";
 import { useI18n } from "@/lib/i18n";
 import { sessionOutline, type OutlineItem } from "@/lib/ipc/controls";
 import { repoChanges, repoReveal } from "@/lib/ipc/repo";
 import { sessionFrame, sessionPatch, type SessionMeta } from "@/lib/ipc/sessions";
+import { buildSessionUsageMap, usageStats, type TokenUsage } from "@/lib/ipc/usageStats";
 import { onNativeFileDrop, uploadFileURL } from "@/lib/ipc/uploads";
 import { workspaceRelativePath } from "@/lib/util/markdownPaths";
 import {
@@ -86,6 +89,20 @@ export function ChatView({
   const { state, conn, historyLoaded, openError, hasMore, loadingEarlier, earlierError, loadEarlier, ensureLoaded } =
     useSessionFeed(meta.id, epoch);
   useApprovalHotkeys(state, meta.id);
+  // 头部 token 用量:会话切换时抓一次(usage 事件由壳记账;子代理已归并进父任务)
+  const [usage, setUsage] = useState<TokenUsage | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void usageStats()
+      .then((data) => {
+        if (!alive) return;
+        setUsage(buildSessionUsageMap(data.sessions).get(meta.id) ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [meta.id]);
   // lastSeq 也喂给 composer:帧到达才是"上行已被壳接收"的可信信号
   // (useComposer 的 ComposerFeed 头注写了三个信号各自兜住的故障)
   const composer = useComposer(meta.id, { running: state.running, historyLoaded, lastSeq: state.lastSeq });
@@ -617,6 +634,7 @@ export function ChatView({
       alive = false;
     };
   }, [changesToken, meta.id]);
+
   const dragDepth = useRef(0);
   const onDragEnter = (e: DragEvent<HTMLElement>) => {
     if (![...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) return;
@@ -743,6 +761,18 @@ export function ChatView({
             </h1>
           )}
         </div>
+        {/* 任务 token 用量:标题右侧,点击弹明细(输入/输出/调用 + 按模型) */}
+        {usage && usage.input + usage.output > 0 && (
+          <button
+            type="button"
+            aria-label={t("stats.title")}
+            title={t("stats.title")}
+            className="shrink-0 rounded bg-base-200/70 px-1.5 font-mono text-[11px] leading-5 text-base-content/55 hover:text-base-content"
+            onClick={(e) => showTokenPopover({ x: e.clientX, y: e.clientY }, usage)}
+          >
+            {fmtCompact(usage.input + usage.output)}
+          </button>
+        )}
         {/* §7:indicator 壳与徽标是头部非交互子节点,必须各自带拖拽属性 */}
         <div data-tauri-drag-region="" className={changesCount > 0 ? "indicator" : undefined}>
           {changesCount > 0 && (

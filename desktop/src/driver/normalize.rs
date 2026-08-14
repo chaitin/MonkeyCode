@@ -415,6 +415,19 @@ impl Inner {
                 if let Some((used, window)) = context_usage_fields(&data) {
                     self.push_usage(&sid, used, window);
                 }
+                self.record_usage(&sid, &data);
+                // 挂到本轮最后一条 agent_message 帧:每条助手消息显示其 token
+                // 用量。usage 事件是每次模型调用的全量,同帧后到覆盖前值。
+                let input = data.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let output = data.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                if input > 0 || output > 0 {
+                    if let Some(sess) = self.sess.sessions.lock_ok().get_mut(&sid) {
+                        sess.fold.attach_usage(input, output);
+                    }
+                    // 实时路径:usage 晚于流式帧,单独补发 session-usage 事件,
+                    // UI 据此把用量补到最后一条助手消息与大纲条目上。
+                    self.emit_session_usage(&sid, input, output);
+                }
             }
             // 会话摘要:引擎每轮用户消息后异步生成一句 ≤60 字的对话摘要
             // (随对话演进改写,后一轮覆盖前一轮),只给顶层会话生成。
@@ -468,6 +481,36 @@ impl Inner {
             // turn_done:轮次边界以 turn/stopped 为准
             _ => {}
         }
+    }
+
+    /// usage 事件里的 input/output tokens → 用量统计(按天/会话/模型)。
+    /// 引擎每次模型调用发一个 usage 事件,input/output 为该调用全量,直接
+    /// 累加进对应桶。模型取会话当前 model_name——运行中不可切模型,归属
+    /// 可靠。只记 input/output 非 0 的事件(纯 context 快照不记账)。
+    pub(super) fn record_usage(&self, sid: &str, data: &Value) {
+        let input = data.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let output = data.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        if input == 0 && output == 0 {
+            return;
+        }
+        // 跨组嵌套仅 subagents → sessions 一条(见 ohmy.rs::Inner),先取子代理
+        let parent = self.sub.subagents.lock_ok().get(sid).map(|r| r.parent_sid.clone());
+        let (model, title) = {
+            let sessions = self.sess.sessions.lock_ok();
+            match sessions.get(sid) {
+                Some(s) => (s.model_name.clone(), s.title.clone()),
+                None => (String::new(), String::new()),
+            }
+        };
+        self.stats.record(
+            &crate::stats::today(),
+            sid,
+            &title,
+            &model,
+            parent.as_deref(),
+            input,
+            output,
+        );
     }
 }
 

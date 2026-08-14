@@ -7,11 +7,12 @@ import { startTransition, useCallback, useEffect, useRef, useState } from "react
 
 import type { Frame } from "@/lib/protocol/types";
 import { afterEngineReady } from "@/lib/ipc/engine";
-import { createChatState, prependHistory, reduceBatch } from "@/lib/protocol/reduce";
+import { createChatState, patchLastAgentUsage, prependHistory, reduceBatch } from "@/lib/protocol/reduce";
 import type { ChatState } from "@/lib/protocol/types";
 import {
   onConnStatus,
   onFrames,
+  onSessionEvent,
   sessionClose,
   sessionHistory,
   sessionOpen,
@@ -126,6 +127,14 @@ export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
     const connP = onConnStatus(id, (s) => {
       if (alive) setConn(s);
     });
+    // session-usage:usage 事件晚于流式帧,壳单独补发;这里把用量实时挂到
+    // 最后一条助手消息上(大纲与消息徽标随之出现,无需重开会话)。
+    const usageOff = onSessionEvent((e) => {
+      if (!alive || e.type !== "session-usage" || e.id !== id) return;
+      const input = e.input ?? 0;
+      const output = e.output ?? 0;
+      if (input > 0 || output > 0) setState((s) => patchLastAgentUsage(s, input, output));
+    });
     void (async () => {
       try {
         await Promise.all([framesP, connP]);
@@ -182,6 +191,7 @@ export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
       alive = false;
       void framesP.then((f) => f()).catch(() => {});
       void connP.then((f) => f()).catch(() => {});
+      usageOff();
       void sessionClose(id);
     };
   }, [id, epoch]);
