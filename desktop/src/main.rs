@@ -1360,17 +1360,32 @@ fn apply_sound_enabled(app: &AppHandle, enabled: bool) {
     }
 }
 
+#[cfg(any(target_os = "linux", test))]
+fn default_linux_gdk_backend(
+    wayland_display: Option<&std::ffi::OsStr>,
+    session_type: Option<&std::ffi::OsStr>,
+) -> &'static str {
+    match session_type.and_then(std::ffi::OsStr::to_str) {
+        Some(value) if value.eq_ignore_ascii_case("wayland") => "wayland",
+        Some(value) if value.eq_ignore_ascii_case("x11") => "x11",
+        _ if wayland_display.is_some_and(|value| !value.is_empty()) => "wayland",
+        _ => "x11",
+    }
+}
+
 fn main() {
     eprintln!("[desktop] main 进入");
-    // Linux:桌宠依赖 set_position / always_on_top / skip_taskbar,这些在
-    // Wayland 协议里不存在,tao 全部静默 no-op——桌宠会被合成器扔到任意
-    // 位置(实测直接叠在主窗口上)、压不住层级,一被遮挡就"消失"。
-    // 优先 X11(Wayland 会话经 XWayland 承接,三项能力全恢复),保留
-    // wayland 兜底(纯 Wayland 无 X 的环境);用户显式设 GDK_BACKEND 则不动。
-    // 必须在任何 GTK 初始化(tauri::Builder)之前设置。
+    // Linux 根据登录会话选择原生后端，避免 Wayland 会话经 XWayland 渲染时
+    // 出现异常高 CPU。原生 Wayland 无法保证桌宠定位和置顶，需要时可显式
+    // 设置 GDK_BACKEND=x11。必须在任何 GTK 初始化之前完成选择。
     #[cfg(target_os = "linux")]
     if std::env::var_os("GDK_BACKEND").is_none() {
-        std::env::set_var("GDK_BACKEND", "x11,wayland");
+        let wayland_display = std::env::var_os("WAYLAND_DISPLAY");
+        let session_type = std::env::var_os("XDG_SESSION_TYPE");
+        std::env::set_var(
+            "GDK_BACKEND",
+            default_linux_gdk_backend(wayland_display.as_deref(), session_type.as_deref()),
+        );
     }
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -1909,5 +1924,34 @@ mod ui_intent_tests {
         assert!(open_session_intent("").is_none());
         assert!(open_session_intent("bad\nid").is_none());
         assert!(open_session_intent(&"x".repeat(513)).is_none());
+    }
+}
+
+#[cfg(test)]
+mod linux_gdk_backend_tests {
+    use super::default_linux_gdk_backend;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn selects_backend_from_linux_session_environment() {
+        assert_eq!(
+            default_linux_gdk_backend(
+                Some(OsStr::new("wayland-0")),
+                Some(OsStr::new("wayland")),
+            ),
+            "wayland"
+        );
+        assert_eq!(
+            default_linux_gdk_backend(
+                Some(OsStr::new("wayland-0")),
+                Some(OsStr::new("x11")),
+            ),
+            "x11"
+        );
+        assert_eq!(
+            default_linux_gdk_backend(Some(OsStr::new("wayland-0")), None),
+            "wayland"
+        );
+        assert_eq!(default_linux_gdk_backend(None, None), "x11");
     }
 }
