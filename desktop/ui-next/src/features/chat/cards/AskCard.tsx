@@ -1,11 +1,12 @@
 // AI 提问卡:每题 radio(单选)/checkbox(多选)+ 可选"其他"自定义输入,
 // 全部作答才可提交;提交/跳过发 reply-question(壳回推回显帧,归约置 done)。
 // 已答收成只读摘要,expired 收成一行弱提示。提交先本地乐观收卡,失败回滚。
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { localFrameSender, sendAskAnswersVia, sendAskCancelVia, type FrameSender } from "@/lib/ipc/approvals";
 import type { AskItem, AskQuestion } from "@/lib/protocol/types";
+import { createImeGuard } from "@/lib/util/slash";
 
 /** 自定义答案在选中集合里的占位键(对齐 mobile askAnswers.ts;不上行)。 */
 const CUSTOM_KEY = "__monkeycode_custom_answer__";
@@ -73,6 +74,15 @@ export function AskCard({
   const { t } = useI18n();
   const [selected, setSelected] = useState<Record<number, string[]>>({});
   const [custom, setCustom] = useState<Record<number, string>>({});
+  const customIme = useRef(new Map<number, ReturnType<typeof createImeGuard>>());
+  const imeFor = (qi: number) => {
+    let guard = customIme.current.get(qi);
+    if (!guard) {
+      guard = createImeGuard();
+      customIme.current.set(qi, guard);
+    }
+    return guard;
+  };
   /** 乐观提交的答案(回显帧回来前先收卡);null = 还在作答 */
   const [sent, setSent] = useState<Answers | null>(null);
 
@@ -130,13 +140,23 @@ export function AskCard({
     setSent(answers);
     void sendAskAnswersVia(send, item.askId, answers).catch(() => setSent(null));
   };
+  const submitOnEnter = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    if (e.nativeEvent.isComposing) return;
+    if (e.target instanceof HTMLInputElement && e.target.type === "text") {
+      const qi = Number(e.target.dataset.questionIndex);
+      if (imeFor(qi).isImeEnter(e.timeStamp, false)) return;
+    }
+    e.preventDefault();
+    submit();
+  };
   const cancel = () => {
     setSent({});
     void sendAskCancelVia(send, item.askId).catch(() => setSent(null));
   };
 
   return (
-    <div className="card card-border bg-base-100">
+    <div className="card card-border bg-base-100" onKeyDown={submitOnEnter}>
       <div className="flex flex-col gap-3 p-3">
         <div className="text-xs font-semibold">{t("chat.ask.title")}</div>
         {item.questions.map((q, qi) => {
@@ -182,6 +202,8 @@ export function AskCard({
                   className="input input-sm w-full text-xs"
                   placeholder={t("chat.ask.customPlaceholder")}
                   value={custom[qi] ?? ""}
+                  data-question-index={qi}
+                  onCompositionEnd={(e) => imeFor(qi).markEnd(e.timeStamp)}
                   onChange={(e) => setCustom((prev) => ({ ...prev, [qi]: e.target.value }))}
                 />
               )}
