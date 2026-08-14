@@ -51,6 +51,9 @@ jobs:
   docker:
     if: github.event_name == 'push'
     needs: build
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

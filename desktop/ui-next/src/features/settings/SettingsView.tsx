@@ -470,7 +470,7 @@ function GeneralSection() {
     void getAppStartSoundEnabled().then((on) => {
       if (alive) setStartSoundOn(on);
     });
-    void getSoundIds().then((ids) => { if (alive) setSoundIds(ids); }).catch(() => undefined);
+    void getSoundIds().then((ids) => { if (alive) setSoundIds(ids ?? {}); }).catch(() => undefined);
 
     const off = onSoundEnabled(setSoundOn);
     const offStart = onAppStartSoundEnabled(setStartSoundOn);
@@ -627,7 +627,7 @@ function GeneralSection() {
         {inDesktopShell() && (
           <>
             <SettingRow label={t("settings.general.sound")} hint={t("settings.general.soundHint")}>
-              <input type="checkbox" className="toggle toggle-sm shrink-0" checked={soundOn} onChange={(e) => pickSound(e.target.checked)} />
+              <input type="checkbox" className="toggle toggle-sm shrink-0" aria-label={t("settings.general.sound")} checked={soundOn} onChange={(e) => pickSound(e.target.checked)} />
             </SettingRow>
             <SettingRow label="软件启动提示音" hint="单独控制应用启动时的提示音，不影响其他提示音">
               <input type="checkbox" className="toggle toggle-sm shrink-0" checked={startSoundOn} onChange={(e) => pickStartSound(e.target.checked)} />
