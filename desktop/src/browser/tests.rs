@@ -204,7 +204,9 @@ async fn mcp_oversized_headers_are_dropped_and_server_survives() {
     {
         let mut conn = tokio::net::TcpStream::connect(&addr).await.unwrap();
         conn.write_all(b"POST /mcp HTTP/1.1\r\nX-Flood: ").await.unwrap();
-        conn.write_all(&vec![b'A'; 1024 * 1024]).await.unwrap();
+        if let Err(e) = conn.write_all(&vec![b'A'; 1024 * 1024]).await {
+            assert!(matches!(e.kind(), std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionAborted), "超限连接关闭应只产生预期 socket 错误: {e}");
+        }
         let _ = conn.flush().await;
         let mut buf = Vec::new();
         // 关键断言是"服务端**主动**关了连接",而不仅仅是"没应答":无上限时
@@ -216,8 +218,7 @@ async fn mcp_oversized_headers_are_dropped_and_server_survives() {
         // 会被机器负载影响的位置。
         let closed = tokio::time::timeout(std::time::Duration::from_secs(15), conn.read_to_end(&mut buf)).await;
         assert!(closed.is_ok(), "超限连接应被服务端及时关闭(EOF),而不是挂着等 CRLF");
-        let resp = String::from_utf8_lossy(&buf);
-        assert!(!resp.contains("jsonrpc"), "超长头不应得到 JSON-RPC 应答: {resp}");
+        assert!(buf.is_empty(), "超长头不应收到 HTTP 应答: {}", String::from_utf8_lossy(&buf));
     }
 
     // 服务端未被拖死,正常请求照常受理

@@ -446,14 +446,19 @@ fn read_http_request(conn: &mut TcpStream) -> Option<HttpReq> {
     // 一直长到把内存吃光;头条数也没有上限。体量上限只管到 body,管不到这里。
     let mut head = reader.by_ref().take(MAX_HEADER_BYTES as u64);
     let mut line = String::new();
-    head.read_line(&mut line).ok()?;
+    let n = head.read_line(&mut line).ok()?;
+    if n == 0 || !line.ends_with('\n') { return None; }
     let method = line.split_whitespace().next()?.to_string();
     let mut bearer = None;
     let mut mcp_session_id = None;
     let mut content_len = 0usize;
+    let mut headers_complete = false;
     for _ in 0..MAX_HEADERS {
         let mut h = String::new();
-        if head.read_line(&mut h).is_err() || h.trim().is_empty() {
+        let n = head.read_line(&mut h).ok()?;
+        if n == 0 || !h.ends_with('\n') { return None; }
+        if h.trim().is_empty() {
+            headers_complete = true;
             break;
         }
         let lower = h.to_ascii_lowercase();
@@ -472,6 +477,7 @@ fn read_http_request(conn: &mut TcpStream) -> Option<HttpReq> {
             }
         }
     }
+    if !headers_complete { return None; }
     // 体量上限 4MB:工具入参不会更大,防异常端灌爆内存
     if content_len > 4 * 1024 * 1024 {
         return None;
