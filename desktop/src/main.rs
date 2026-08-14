@@ -761,13 +761,15 @@ fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, Strin
         .map_err(|e| format!("初始化更新请求头失败: {e}"))?
         // Windows 安装器路径由插件直接退进程(不走 RunEvent::Exit),
         // 必须先保存窗口状态并回收引擎进程,否则位置会丢失且
-        // ohmyagent.exe 占用文件会导致 NSIS 安装失败
+        // ohmyagent.exe 占用文件会导致 NSIS 安装失败。自定义回调会覆盖
+        // updater_builder 默认的 Tauri 清理,所以最后还要显式移除托盘等资源。
         .on_before_exit(move || {
             #[cfg(target_os = "windows")]
             persist_main_window_state(&handle);
             if let Some(engine) = handle.state::<DriverHost>().take() {
                 engine.stop();
             }
+            handle.cleanup_before_exit();
         });
     // 本机测试覆盖清单地址(release 构建强制 https,http 清单只在 debug 下可用)
     if let Ok(url) = std::env::var("MC_UPDATE_MANIFEST") {
