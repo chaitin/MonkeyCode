@@ -761,6 +761,13 @@ describe("服务版本选择", () => {
     expect(screen.getByRole("button", { name: "保存生效" })).toBeDefined();
   });
 
+  it("已登录后不再展示版本切换(切版本 = 断开连接回登录页再选)", async () => {
+    stubShell({ baizhi_status: bzIn, mc_status: mcIn, mc_usage: () => null });
+    render(<AccountSection draft={emptyDraft()} onDraft={() => {}} />);
+    await screen.findByText("云端用户");
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+
   it("拿不到草稿(浏览器只读/配置载入失败)时版本选择器不渲染,登录页照常", async () => {
     stubShell({ baizhi_status: bzOut, mc_status: mcOut });
     render(<AccountSection />);

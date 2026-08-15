@@ -152,14 +152,15 @@ export function UsagePanel({ userId }: { userId?: string }) {
         </div>
       )}
 
-      {/* 积分余额 · 签到 · 邀请归同一块:签到与邀请都是获取积分的路径 */}
+      {/* 积分余额 · 签到 · 邀请归同一块:签到与邀请都是获取积分的路径。
+          整行底对齐:大数字、签到钮、邀请簇共享一条基线,不再各浮各的 */}
       {(vm.credits !== null || vm.invite || checkinBtn) && (
-        <div className="flex items-center gap-3 border-t border-base-300 pt-3">
+        <div className="flex items-end gap-3 border-t border-base-300 pt-3">
           {vm.credits !== null && (
             <span className="flex shrink-0 flex-col gap-0.5">
               <span className="text-xs text-base-content/50">{t("account.usage.creditsTitle")}</span>
               {/* 大数字用正文色:积分是余额陈述不是行动号召,主色留给品牌/选中 */}
-              <span className="font-mono text-lg font-extrabold tracking-tight tabular-nums">
+              <span className="font-mono text-lg font-extrabold leading-none tracking-tight tabular-nums">
                 {vm.credits.toLocaleString()}
               </span>
             </span>
@@ -167,7 +168,7 @@ export function UsagePanel({ userId }: { userId?: string }) {
           {checkinBtn}
           <span className="flex-1" />
           {vm.invite && (
-            <span className="flex min-w-0 items-center gap-2.5">
+            <span className="flex min-w-0 items-end gap-2.5">
               <InviteeStack avatars={vm.invite.avatars} />
               <span className="flex min-w-0 flex-col gap-0.5 text-end">
                 <span className="text-xs font-semibold text-base-content/70">

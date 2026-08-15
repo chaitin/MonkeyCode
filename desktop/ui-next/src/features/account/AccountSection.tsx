@@ -24,7 +24,7 @@
 //   百智云同步把表单此刻持有的网关密钥(knownApiKeys)一并交给壳复用,
 //   不传的话每同步一次就在用户网关账号里多建一把密钥。
 import { IconCheck, IconCopy, IconExternalLink } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import {
@@ -137,7 +137,13 @@ function syncOutcome(t: T, applied: SyncApplied | undefined | void): string {
 function MsgLine({ msg }: { msg: Msg }) {
   if (!msg) return null;
   return (
-    <span role={msg.error ? "alert" : "status"} className={msg.error ? "text-xs text-error" : "text-xs text-base-content/60"}>
+    // 长结果(如百智云同步的 MCP 服务清单)钳两行,悬停看全文——操作留言
+    // 不该在卡里铺成一面墙
+    <span
+      role={msg.error ? "alert" : "status"}
+      title={msg.text}
+      className={`line-clamp-2 text-xs ${msg.error ? "text-error" : "text-base-content/60"}`}
+    >
       {msg.text}
     </span>
   );
@@ -593,8 +599,6 @@ function McCard({
       <div className="border-t border-base-300 pt-3">
         <UsagePanel userId={user?.id} />
       </div>
-      {/* 已连接时切了版本选择:身份卡还是旧服务的真实状态,附注待保存 */}
-      {!editionReady && <div className="border-t border-base-300 pt-3">{editionPending}</div>}
       <MsgLine msg={msg} />
     </AccountCard>
   );
@@ -724,20 +728,6 @@ function EditionSelector({
   );
 }
 
-/** 已登录形态下的独立「服务版本」块(带组头卡壳,承载 EditionSelector)。 */
-function EditionBlock(props: ComponentProps<typeof EditionSelector>) {
-  const { t } = useI18n();
-  return (
-    <div className="flex flex-col gap-1.5">
-      <h3 className="px-1 text-xs font-bold text-base-content/60">{t("account.edition.title")}</h3>
-      <div className="card card-border bg-base-100">
-        <div className="p-4">
-          <EditionSelector {...props} />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function AccountSection({
   onSyncResult,
@@ -908,18 +898,9 @@ export function AccountSection({
       {!loaded && !statusErr && <span className="text-xs text-base-content/50">{t("account.loading")}</span>}
       {loaded && (
         <>
-          {/* 已登录:版本块独立成组置顶;未登录:选择器并入下方登录卡——
-              整页就是「带版本切换的登录页」,不摆组头与「未连接」账号壳 */}
-          {mcConnected && showEdition && (
-            <EditionBlock
-              draft={draft!}
-              onDraft={onDraft!}
-              edition={selectedEdition}
-              onPick={setEditionChoice}
-              onApplyDraft={onApplyDraft}
-              saveBusy={saveBusy}
-            />
-          )}
+          {/* 版本选择只在登录页出现(并入登录卡):登录后切版本 = 换账号,
+              正路是「断开连接」回登录页再选,已登录视图不摆切换器
+              (2026-08-15 用户定案) */}
           {/* MonkeyCode 账号(唯一的账号概念):微信/短信只是国内版经百智云
               OAuth 登录 MonkeyCode 的方式 */}
           <div className="flex flex-col gap-1.5">
