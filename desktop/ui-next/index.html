@@ -50,7 +50,7 @@
           document.documentElement.dataset.theme = mcTheme;
         }
         var mcThemeBg = localStorage.getItem("mc.themeBg");
-        if (mcThemeBg) document.documentElement.style.background = mcThemeBg;
+        if (mcThemeBg) document.documentElement.style.backgroundColor = mcThemeBg;
       } catch (e) {
         document.documentElement.dataset.theme = "monkeycode"; /* 存储不可读:按浅色走,与 readTheme 的回落一致 */
       }

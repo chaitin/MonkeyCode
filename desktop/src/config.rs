@@ -7,6 +7,7 @@
 // (设置页/托盘即时开关)与 telemetry_enabled(仅改文件)都不在设置页表单里，
 // 设置页保存时必须从磁盘合并，否则会被默认值打回。
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io::Write as _;
@@ -106,6 +107,12 @@ pub struct DesktopConfig {
     /// 音效(pet.html 隐藏后仍在跑),两个开关彼此独立。
     #[serde(default = "default_true")]
     pub sound_enabled: bool,
+    /// 仅应用启动提示音开关;独立于任务事件提示音,不在设置页表单里。
+    #[serde(default = "default_true")]
+    pub app_start_sound_enabled: bool,
+    /// 每种事件对应的用户自定义音频 ID；缺失或文件不可用时桌宠使用内置音。
+    #[serde(default)]
+    pub sound_ids: BTreeMap<String, String>,
     /// 桌宠窗口位置(物理像素;拖动后记忆)
     #[serde(default)]
     pub pet_pos: Option<(i32, i32)>,
@@ -132,6 +139,8 @@ impl Default for DesktopConfig {
             agent_engine: default_engine(),
             pet_enabled: true,
             sound_enabled: true,
+            app_start_sound_enabled: true,
+            sound_ids: BTreeMap::new(),
             pet_pos: None,
             main_window_state: None,
             telemetry_enabled: true,
@@ -401,6 +410,8 @@ fn merge_shell_prefs(incoming: DesktopConfig, disk: &DesktopConfig) -> DesktopCo
     DesktopConfig {
         pet_enabled: disk.pet_enabled,
         sound_enabled: disk.sound_enabled,
+        app_start_sound_enabled: disk.app_start_sound_enabled,
+        sound_ids: disk.sound_ids.clone(),
         pet_pos: disk.pet_pos,
         main_window_state: disk.main_window_state,
         telemetry_enabled: disk.telemetry_enabled,

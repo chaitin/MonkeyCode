@@ -653,7 +653,7 @@ export function ChatView({
 
   return (
     <main
-      className="relative flex min-w-0 flex-1 flex-col bg-base-100"
+      className="mc-main-surface relative flex min-w-0 flex-1 flex-col"
       onDragEnter={onDragEnter}
       onDragOver={(e) => e.preventDefault()}
       onDragLeave={onDragLeave}

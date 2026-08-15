@@ -14,6 +14,16 @@
  * (src/lib/theme.ts;首帧由 index.html 内联脚本同步落)。 */
 
 @import "tailwindcss";
+
+html { background-color: var(--color-base-100); background-image: var(--mc-background-image, none); background-size: cover; background-position: center; background-attachment: fixed; }
+
+/* 主内容阅读层只覆盖主区，透明度由背景设置控制（0=不透明，100=完全透明）。 */
+.mc-main-surface {
+  background-color: color-mix(in oklab, var(--color-base-100) var(--mc-main-surface-opacity, 100%), transparent);
+  background-image: var(--mc-background-image, none);
+  background-position: center;
+  background-size: cover;
+}
 /* 主题体系:两套品牌自定义主题(monkeycode 浅/深,绿 primary + 微绿灰基底/
  * slate 深底,开发者工具审美)+ 全量 35 套 daisyUI 内置主题可选。
  * 清单必须与 src/lib/theme.ts::THEMES 一致——那边有测试读本文件对表

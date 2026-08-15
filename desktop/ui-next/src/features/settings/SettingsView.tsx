@@ -13,16 +13,28 @@ import { resolveShortcut } from "@/app/shortcuts";
 import { LOCALES, setLocale, useI18n } from "@/lib/i18n";
 import {
   getConfig,
+  clearBackground,
+  clearSound,
+  getSoundIds,
+  getSound,
   getSoundEnabled,
+  importBackground,
+  importSound,
+  pickBackgroundPath,
+  pickSoundPath,
+  getAppStartSoundEnabled,
+  setAppStartSoundEnabled,
+  onAppStartSoundEnabled,
   listWslDistros,
   onSoundEnabled,
   saveConfig,
   setSoundEnabled,
+  setSoundId,
   type DesktopConfig,
 } from "@/lib/ipc/config";
-import { isWindowsShell } from "@/lib/ipc/host";
-import { inDesktopShell } from "@/lib/ipc/ipc";
-import { readCustomTheme, readTheme, setCustomTheme, setTheme, THEMES, CUSTOM_THEME, type CustomTheme, type Theme } from "@/lib/theme";
+import { clearAppliedBackground, getBackgroundTransparency, restoreBackground, setBackgroundTransparency } from "@/lib/background";
+import { isWindowsShell } from "@/lib/ipc/host";import { inDesktopShell } from "@/lib/ipc/ipc";
+import { getBackgroundId, setBackgroundId, readCustomTheme, readTheme, setCustomTheme, setTheme, THEMES, CUSTOM_THEME, type CustomTheme, type Theme } from "@/lib/theme";
 import { customThemeVars, randomTheme, roleHex, COLOR_ROLES, DEFAULT_CUSTOM, BORDER_RANGE, RADIUS_RANGE, SIZE_RANGE, type ColorRole } from "@/lib/customTheme";
 import { useDismiss } from "@/lib/util/useDismiss";
 import { useEscLayer } from "@/lib/util/escLayer";
@@ -432,6 +444,22 @@ function GeneralSection() {
   // 没配过就给一份默认草稿:编辑器要有初值,选中「自定义」当场就该看到效果
   const [custom, setCustom] = useState<CustomTheme>(() => readCustomTheme() ?? DEFAULT_CUSTOM);
   const [soundOn, setSoundOn] = useState(true);
+  const [startSoundOn, setStartSoundOn] = useState(true);
+  const [backgroundId, setBackground] = useState<string | null>(() => getBackgroundId());
+  const [backgroundTransparency, setBackgroundTransparencyState] = useState(() => getBackgroundTransparency());
+  const [soundIds, setSoundIds] = useState<Record<string, string>>({});
+  const [soundError, setSoundError] = useState("");
+  // 试听可在读取自定义 data URL 时又点另一项；令牌确保晚到的请求不能抢播。
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const previewTokenRef = useRef(0);
+  const stopPreview = () => {
+    const audio = previewAudioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+    previewAudioRef.current = null;
+  };
+  const [backgroundError, setBackgroundError] = useState("");
 
   useEffect(() => {
     if (!inDesktopShell()) return;
@@ -439,17 +467,125 @@ function GeneralSection() {
     void getSoundEnabled().then((on) => {
       if (alive) setSoundOn(on);
     });
-    // 托盘勾选项是同一开关的另一入口,订阅广播让两处显示不打架
+    void getAppStartSoundEnabled().then((on) => {
+      if (alive) setStartSoundOn(on);
+    });
+    void getSoundIds().then((ids) => { if (alive) setSoundIds(ids ?? {}); }).catch(() => undefined);
+
     const off = onSoundEnabled(setSoundOn);
+    const offStart = onAppStartSoundEnabled(setStartSoundOn);
     return () => {
       alive = false;
       off();
+      offStart();
+    };
+  }, []);
+
+  useEffect(() => {
+    // 离开设置页同样终止试听，避免不可见页面继续发声。
+    return () => {
+      previewTokenRef.current++;
+      const audio = previewAudioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+        previewAudioRef.current = null;
+      }
     };
   }, []);
 
   const pickSound = (next: boolean) => {
     setSoundOn(next); // 乐观置位:壳广播会回来盖一次,失败则回滚
     void setSoundEnabled(next).catch(() => setSoundOn(!next));
+  };
+
+  const pickStartSound = (next: boolean) => {
+    setStartSoundOn(next);
+    void setAppStartSoundEnabled(next).catch(() => setStartSoundOn(!next));
+  };
+
+  const SOUND_EVENTS = [
+    { event: "start", label: "启动", builtIn: "/sound-app-start.mp3" },
+    { event: "end", label: "任务完成", builtIn: "/sound-task-end.mp3" },
+    { event: "error", label: "错误", builtIn: "/sound-task-error.mp3" },
+    { event: "ask", label: "审批", builtIn: "/sound-permission.mp3" },
+    { event: "idle", label: "空闲", builtIn: "/sound-idle.mp3" },
+  ] as const;
+  const showImportError = (e: unknown, setError: (message: string) => void) => {
+    const message = errMsg(e);
+    setError(message);
+    if (message.includes("不超过")) window.alert(message);
+  };
+
+  const chooseCustomSound = async (event: string) => {
+    try {
+      setSoundError("");
+      const path = await pickSoundPath();
+      if (!path) return;
+      const previous = soundIds[event];
+      const id = await importSound(path);
+      await setSoundId(event, id);
+      setSoundIds((ids) => ({ ...ids, [event]: id }));
+      if (previous && previous !== id) void clearSound(previous);
+    } catch (e) { showImportError(e, setSoundError); }
+  };
+  const previewSound = async (event: string, builtIn: string) => {
+    // 先停再读：get_sound 是异步 IPC，不能让先点的请求在后面回来抢播。
+    const token = ++previewTokenRef.current;
+    stopPreview();
+    try {
+      setSoundError("");
+      // 自定义音由壳转换为 data URL；未设置自定义音时直接试听随包内置音。
+      const source = soundIds[event] ? await getSound(soundIds[event]) : builtIn;
+      if (token !== previewTokenRef.current || !source) return;
+      const audio = new Audio(source);
+      audio.volume = 0.7;
+      previewAudioRef.current = audio;
+      void audio.play().catch(() => {
+        if (previewAudioRef.current === audio) previewAudioRef.current = null;
+      });
+    } catch (e) {
+      if (token === previewTokenRef.current) setSoundError(errMsg(e));
+    }
+  };
+  const removeCustomSound = async (event: string) => {
+    const id = soundIds[event];
+    try {
+      await setSoundId(event, null);
+      setSoundIds((ids) => { const next = { ...ids }; delete next[event]; return next; });
+      if (id) void clearSound(id);
+    } catch (e) { setSoundError(errMsg(e)); }
+  };
+
+  const setBackgroundTransparencyValue = (value: number) => {
+    const next = setBackgroundTransparency(value);
+    setBackgroundTransparencyState(next);
+  };
+
+  const pickBackground = async () => {
+    try {
+      setBackgroundError("");
+      const path = await pickBackgroundPath();
+      if (!path) return;
+      const previous = backgroundId;
+      const id = await importBackground(path);
+      setBackgroundId(id);
+      setBackground(id);
+      if (!await restoreBackground()) throw new Error("背景图片加载失败，请重试");
+      // 新选图片不能因默认 0%（阅读层完全不透明）而看不见；之后仍可调回 0–100%。
+      if (getBackgroundTransparency() === 0) {
+        setBackgroundTransparencyValue(20);
+      }
+      if (previous && previous !== id) void clearBackground(previous);
+    } catch (e) {
+      showImportError(e, setBackgroundError);
+    }
+  };
+  const removeBackground = () => {
+    if (backgroundId) void clearBackground(backgroundId);
+    setBackgroundId(null);
+    setBackground(null);
+    clearAppliedBackground();
   };
 
   const pickTheme = (next: Theme) => {
@@ -489,18 +625,57 @@ function GeneralSection() {
           </div>
         </SettingRow>
         {inDesktopShell() && (
-          <SettingRow label={t("settings.general.sound")} hint={t("settings.general.soundHint")}>
-            <input
-              type="checkbox"
-              className="toggle toggle-sm shrink-0"
-              aria-label={t("settings.general.sound")}
-              checked={soundOn}
-              onChange={(e) => pickSound(e.target.checked)}
-            />
-          </SettingRow>
+          <>
+            <SettingRow label={t("settings.general.sound")} hint={t("settings.general.soundHint")}>
+              <input type="checkbox" className="toggle toggle-sm shrink-0" aria-label={t("settings.general.sound")} checked={soundOn} onChange={(e) => pickSound(e.target.checked)} />
+            </SettingRow>
+            <SettingRow label="软件启动提示音" hint="单独控制应用启动时的提示音，不影响其他提示音">
+              <input type="checkbox" className="toggle toggle-sm shrink-0" checked={startSoundOn} onChange={(e) => pickStartSound(e.target.checked)} />
+            </SettingRow>
+            <div className="px-4 py-3">
+              <div className="mb-2 text-sm font-medium">自定义提示音</div>
+              <div className="flex flex-col gap-2">
+                {SOUND_EVENTS.map(({ event, label, builtIn }) => (
+                  <div key={event} className="flex items-center justify-between gap-3 text-xs">
+                    <span>{label}<span className="ml-1 text-base-content/45">{soundIds[event] ? "自定义" : "内置"}</span></span>
+                    <span className="flex gap-1">
+                      <button type="button" className="btn btn-xs" onClick={() => void chooseCustomSound(event)}>选择</button>
+                      <button type="button" className="btn btn-ghost btn-xs" onClick={() => void previewSound(event, builtIn)}>试听</button>
+                      {soundIds[event] && <button type="button" className="btn btn-ghost btn-xs" onClick={() => void removeCustomSound(event)}>移除</button>}
+                    </span>
+                  </div>
+                ))}
+                {soundError && <span role="alert" className="text-xs text-error">{soundError}</span>}
+              </div>
+            </div>
+          </>
         )}
       </div>
-      <p className="text-xs text-base-content/50">{t("settings.appearance.hint")}</p>
+        <SettingRow label="背景图片" hint="仅保存在本机，可随时移除">
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex gap-2">
+              <button type="button" className="btn btn-sm" onClick={() => void pickBackground()}>选择图片</button>
+              {backgroundId && <button type="button" className="btn btn-sm btn-ghost" onClick={removeBackground}>移除</button>}
+            </div>
+            {backgroundError && <span role="alert" className="max-w-64 text-xs text-error">{backgroundError}</span>}
+          </div>
+        </SettingRow>
+        <SettingRow label="背景透明度" hint="0% 为主内容背景不透明，100% 为完全透明">
+          <div className="flex w-56 items-center gap-3">
+            <input
+              type="range"
+              className="range range-sm flex-1"
+              min="0"
+              max="100"
+              step="1"
+              value={backgroundTransparency}
+              aria-label="背景透明度"
+              onChange={(e) => setBackgroundTransparencyValue(Number(e.target.value))}
+            />
+            <output className="w-10 text-right text-sm tabular-nums">{backgroundTransparency}%</output>
+          </div>
+        </SettingRow>
+
     </section>
   );
 }
@@ -840,7 +1015,7 @@ export function SettingsView({
   };
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-base-100">
+    <main className="mc-main-surface flex min-h-0 min-w-0 flex-1 flex-col">
       <header data-tauri-drag-region="" data-view-header="" className="flex h-13 shrink-0 items-center gap-2 border-b border-base-300 px-4">
         <h1 data-tauri-drag-region="" className="text-sm font-semibold">{t("settings.title")}</h1>
         <span data-tauri-drag-region="" className="flex-1" />

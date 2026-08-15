@@ -14,7 +14,7 @@
     "windows": [],
     "macOSPrivateApi": true,
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'",
       "dangerousDisableAssetCspModification": [
         "style-src"
       ],
@@ -28,7 +28,7 @@
           "permissions": [
             "core:default",
             "core:window:allow-start-dragging",
-    "core:window:allow-start-resize-dragging",
+            "core:window:allow-start-resize-dragging",
             "core:window:allow-minimize",
             "core:window:allow-toggle-maximize",
             "core:window:allow-internal-toggle-maximize",
@@ -38,6 +38,16 @@
             "core:window:allow-is-fullscreen",
             "core:window:allow-close",
             "allow-get-config",
+            "allow-import-background",
+            "allow-get-background",
+            "allow-clear-background",
+            "allow-import-sound",
+            "allow-get-sound",
+            "allow-clear-sound",
+            "allow-sound-ids",
+            "allow-set-sound-id",
+            "allow-app-start-sound-enabled",
+            "allow-set-app-start-sound-enabled",
             "allow-save-config",
             "allow-take-ui-intent",
             "allow-host-info",
@@ -50,7 +60,7 @@
             "allow-open-app-dir",
             "allow-export-engine-log",
             "allow-open-devtools",
-    "allow-window-system-menu",
+            "allow-window-system-menu",
             "allow-list-wsl-distros",
             "allow-wsl-workdir-base",
             "allow-engine-status",
@@ -146,7 +156,10 @@
             "allow-sessions-list",
             "allow-show-main",
             "allow-pet-native-render",
-            "allow-sound-enabled"
+            "allow-sound-enabled",
+            "allow-get-sound",
+            "allow-sound-ids",
+            "allow-app-start-sound-enabled"
           ]
         }
       ]

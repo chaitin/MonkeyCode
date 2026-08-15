@@ -55,6 +55,9 @@ export interface DesktopConfig {
   pet_enabled?: boolean;
   /** 提示音真值走 sound_enabled/set_sound_enabled 即时命令,不进保存条 */
   sound_enabled?: boolean;
+  app_start_sound_enabled?: boolean;
+  /** 五类事件(start/end/error/ask/idle)对应的自定义音频资源 ID。 */
+  sound_ids?: Record<string, string>;
   pet_pos?: [number, number] | null;
   telemetry_enabled?: boolean;
 }
@@ -90,7 +93,50 @@ export function onSoundEnabled(cb: (enabled: boolean) => void): () => void {
   return listen<boolean>("sound-enabled", (on) => cb(on !== false));
 }
 
-/** 枚举 WSL 发行版(运行环境下拉)。非 Windows/未装 WSL/失败均空数组。 */
+export async function getAppStartSoundEnabled(): Promise<boolean> {
+  if (!inDesktopShell()) return true;
+  return invoke<boolean>("app_start_sound_enabled");
+}
+export async function setAppStartSoundEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_app_start_sound_enabled", { enabled });
+}
+export function onAppStartSoundEnabled(cb: (enabled: boolean) => void): () => void {
+  return listen<boolean>("app-start-sound-enabled", (on) => cb(on !== false));
+}
+
+/** 导入、读取和移除本机自定义提示音（壳只返回 data URL，不暴露原路径）。 */
+export async function importSound(path: string): Promise<string> {
+  if (!inDesktopShell()) throw new Error("自定义提示音仅支持桌面应用");
+  return invoke<string>("import_sound", { path });
+}
+export async function pickSoundPath(): Promise<string | null> {
+  if (!inDesktopShell()) return null;
+  const result = await invoke<string | string[] | null>("plugin:dialog|open", { options: { multiple: false, directory: false, filters: [{ name: "音频", extensions: ["mp3", "wav", "ogg"] }] } });
+  return Array.isArray(result) ? result[0] ?? null : result;
+}
+export async function getSound(id: string): Promise<string | null> { return inDesktopShell() ? invoke<string | null>("get_sound", { id }) : null; }
+export async function clearSound(id: string): Promise<void> { if (inDesktopShell()) await invoke("clear_sound", { id }); }
+export async function getSoundIds(): Promise<Record<string, string>> { return inDesktopShell() ? invoke<Record<string, string>>("sound_ids") : {}; }
+export async function setSoundId(event: string, id: string | null): Promise<void> { if (inDesktopShell()) await invoke("set_sound_id", { event, id }); }
+
+
+export async function importBackground(path: string): Promise<string> {
+  if (!inDesktopShell()) throw new Error("背景图片仅支持桌面应用");
+  return invoke<string>("import_background", { path });
+}
+export async function pickBackgroundPath(): Promise<string | null> {
+  if (!inDesktopShell()) return null;
+  const result = await invoke<string | string[] | null>("plugin:dialog|open", { options: { multiple: false, directory: false, filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }] } });
+  return Array.isArray(result) ? result[0] ?? null : result;
+}
+export async function getBackground(id: string): Promise<string | null> {
+  if (!inDesktopShell()) return null;
+  return invoke<string | null>("get_background", { id });
+}
+export async function clearBackground(id: string): Promise<void> {
+  if (inDesktopShell()) await invoke("clear_background", { id });
+}
+
 export function listWslDistros(): Promise<string[]> {
   if (!inDesktopShell()) return Promise.resolve([]);
   return invoke<string[]>("list_wsl_distros").catch(() => []);
