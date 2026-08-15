@@ -42,7 +42,6 @@ export function CloudComposer({
   useEffect(() => {
     taRef.current?.focus();
     // 只挂载时一次;切换任务由整棵重建表达,不依赖 props 变化
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 模型清单预取(幂等;失败保持 null,悬停菜单区再触发即重试)

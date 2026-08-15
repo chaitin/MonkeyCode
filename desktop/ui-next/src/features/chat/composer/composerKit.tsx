@@ -124,10 +124,9 @@ const TA_METRICS = "textarea min-h-10 w-full border-0 text-sm";
  * 拉伸填满;max-h-40(160px)封顶后 textarea 内滚。
  *
  * 为什么不是「写 height:auto → 读 scrollHeight」的 JS 量高(2026-08-10
- * recording4 定案):那是每次按键一记同步强制样式刷新。WKWebKit 的预绘制
- * 重算会**跳过** content-visibility 折叠行(几千行的会话里这是全部身家),
- * 但 JS 强制读必须当场把整棵被跳过的树结清——daisyUI 的 :has() 规则族让
- * 每次按键都有广域样式失效,于是每个键都重付 ~230ms(28/28 次长重算全部
+ * recording4 定案):那是每次按键一记同步强制样式刷新。当时的全量历史 DOM
+ * 即使用 content-visibility 剪枝，JS 强制读也会让 WKWebKit 当场结清布局；
+ * daisyUI 的 :has() 规则族又扩大样式失效，于是每个键都重付 ~230ms(28/28 次长重算全部
  * 嵌在 input 派发内,采样 342/342 命中量高回调)。WKWebView 对照实验:
  * 同样的失效交给自然重算 6ms,JS 强制读 94~200ms。打字路径上禁止任何
  * 同步布局读,量高这件事整个取消——副本模式连测量都不存在。 */

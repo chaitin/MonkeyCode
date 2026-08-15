@@ -6,8 +6,11 @@
 // permission_mode_update 帧,ChatState 是唯一真值。
 import { IconClock, IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
 import {
+  forwardRef,
+  memo,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -23,7 +26,8 @@ import { modelMenuList, resolveModelName } from "@/lib/models/modelMenu";
 import { modelsList, type ModelInfo, type SessionMeta } from "@/lib/ipc/sessions";
 import { defaultEnabledSkills, skillsList, type SkillInfo } from "@/lib/ipc/skills";
 import { pickAttachmentPaths } from "@/lib/ipc/uploads";
-import type { ChatState, SlashCommand } from "@/lib/protocol/types";
+import type { ChatState, SlashCommand, Usage } from "@/lib/protocol/types";
+import { timelineDeltaOf } from "@/lib/protocol/reduce";
 import { fmtK } from "@/lib/util/fmt";
 import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } from "@/lib/util/slash";
 import { ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing } from "./composerKit";
@@ -38,25 +42,107 @@ function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export function Composer({
-  sessionId,
-  state,
-  meta,
-  ctl,
-  onAfterSend,
-  focusRequest = 0,
-  onFocusRequestHandled,
-}: {
+/** Composer 真正需要的会话投影。草稿更新不得携带整份 ChatState 重走
+ * ChatView/时间线；items 的全量派生也只在 items 引用变化时算一次。 */
+export interface ComposerPresentation {
+  running: boolean;
+  usage: Usage | null;
+  model: string;
+  think: string;
+  permMode: string;
+  commands: SlashCommand[];
+  openPermission: boolean;
+  toolRunning: boolean;
+  roundNo: number;
+}
+
+interface ComposerCounts {
+  users: number;
+  openPermissions: number;
+  runningTools: number;
+}
+
+const presentationCache = new WeakMap<ChatState, { presentation: ComposerPresentation; counts: ComposerCounts }>();
+const countItem = (counts: ComposerCounts, item: ChatState["items"][number] | undefined, direction: 1 | -1) => {
+  if (item?.kind === "user") counts.users += direction;
+  else if (item?.kind === "perm" && item.state === "open") counts.openPermissions += direction;
+  else if (item?.kind === "tool" && item.status === "run") counts.runningTools += direction;
+};
+
+export function composerPresentationOf(state: ChatState): ComposerPresentation {
+  const hit = presentationCache.get(state);
+  if (hit) return hit.presentation;
+  const delta = timelineDeltaOf(state);
+  const previous = delta ? presentationCache.get(delta.from) : undefined;
+  let counts: ComposerCounts;
+  if (previous && delta && delta.kind !== "prepend" && delta.kind !== "reset") {
+    counts = { ...previous.counts };
+    for (const index of delta.changed) {
+      countItem(counts, delta.from.items[index], -1);
+      countItem(counts, state.items[index], 1);
+    }
+    if (delta.kind === "append") {
+      for (let index = delta.from.items.length; index < state.items.length; index++) countItem(counts, state.items[index], 1);
+    }
+  } else {
+    counts = { users: 0, openPermissions: 0, runningTools: 0 };
+    for (const item of state.items) countItem(counts, item, 1);
+  }
+  const nextPresentation: ComposerPresentation = {
+    running: state.running,
+    usage: state.usage,
+    model: state.model,
+    think: state.think,
+    permMode: state.permMode,
+    commands: state.commands,
+    openPermission: counts.openPermissions > 0,
+    toolRunning: counts.runningTools > 0,
+    roundNo: Math.max(1, counts.users),
+  };
+  const old = previous?.presentation;
+  const presentation =
+    old &&
+    old.running === nextPresentation.running &&
+    old.usage === nextPresentation.usage &&
+    old.model === nextPresentation.model &&
+    old.think === nextPresentation.think &&
+    old.permMode === nextPresentation.permMode &&
+    old.commands === nextPresentation.commands &&
+    old.openPermission === nextPresentation.openPermission &&
+    old.toolRunning === nextPresentation.toolRunning &&
+    old.roundNo === nextPresentation.roundNo
+      ? old
+      : nextPresentation;
+  presentationCache.set(state, { presentation, counts });
+  return presentation;
+}
+
+export interface ComposerInputHandle {
+  focus(): void;
+}
+
+interface ComposerProps {
   sessionId: string;
-  state: ChatState;
+  presentation: ComposerPresentation;
   meta: SessionMeta;
   ctl: ComposerCtl;
   onAfterSend?: () => void;
   focusRequest?: number;
   onFocusRequestHandled?: (request: number) => void;
-}) {
+}
+
+const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Composer({
+  sessionId,
+  presentation,
+  meta,
+  ctl,
+  onAfterSend,
+  focusRequest = 0,
+  onFocusRequestHandled,
+}: ComposerProps, ref) {
   const { t } = useI18n();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  useImperativeHandle(ref, () => ({ focus: () => taRef.current?.focus() }), []);
   const imeRef = useRef(createImeGuard());
   const [models, setModels] = useState<ModelInfo[]>([]);
 
@@ -147,8 +233,8 @@ export function Composer({
     [t, enabledSkillList],
   );
   const commands = useMemo(
-    () => [...builtinCommands, ...state.commands.filter((c) => !builtinCommands.some((b) => b.name === c.name))],
-    [builtinCommands, state.commands],
+    () => [...builtinCommands, ...presentation.commands.filter((c) => !builtinCommands.some((b) => b.name === c.name))],
+    [builtinCommands, presentation.commands],
   );
   const [slashSuppressed, setSlashSuppressed] = useState(false);
   const [active, setActive] = useState(0);
@@ -187,11 +273,11 @@ export function Composer({
   // 严格比对的话下拉里一项都选不中、来源 tab 也算成空串停在「自定义」,
   // modelThink 同样查不到 → 思考档触发器回落「低」给出错读数。
   // modelMenuList:模型被删/改名后补一条兜底项,否则连"当前用的是哪条"都看不出。
-  const currentModel = resolveModelName(models, state.model || meta.model);
+  const currentModel = resolveModelName(models, presentation.model || meta.model);
   const menuModels = modelMenuList(models, currentModel);
   const modelThink = models.find((m) => m.name === currentModel)?.think;
-  const effThink = state.think || meta.think || modelThink || "low";
-  const mode = state.permMode || meta.mode || "default";
+  const effThink = presentation.think || meta.think || modelThink || "low";
+  const mode = presentation.permMode || meta.mode || "default";
   const yolo = mode === "yolo";
 
   const pickModel = (name: string) => {
@@ -279,20 +365,19 @@ export function Composer({
   };
 
   // ==== 运行态文案 ====
-  const openPerm = state.items.some((it) => it.kind === "perm" && it.state === "open");
-  const anyToolRunning = state.items.some((it) => it.kind === "tool" && it.status === "run");
-  const runningLabel = openPerm
+  const runningLabel = presentation.openPermission
     ? t("chat.running.waitPerm")
-    : anyToolRunning
+    : presentation.toolRunning
       ? t("chat.running.acting")
       : t("chat.running.thinking");
   // 运行条 detail:「第 N 轮 · X tokens」(旧 UI RunningBar 同款;轮数 = user 项计数)
-  const roundNo = Math.max(1, state.items.filter((it) => it.kind === "user").length);
   const runningDetail =
-    t("chat.running.round", { round: roundNo }) +
-    (state.usage && state.usage.used > 0 ? ` · ${fmtK(state.usage.used)} tokens` : "");
+    t("chat.running.round", { round: presentation.roundNo }) +
+    (presentation.usage && presentation.usage.used > 0 ? ` · ${fmtK(presentation.usage.used)} tokens` : "");
   const usagePct =
-    state.usage && state.usage.size > 0 ? Math.round((state.usage.used / state.usage.size) * 100) : null;
+    presentation.usage && presentation.usage.size > 0
+      ? Math.round((presentation.usage.used / presentation.usage.size) * 100)
+      : null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -326,7 +411,7 @@ export function Composer({
         )}
 
         {/* 运行条:一行紧凑态——spinner + 文案 + 停止 icon 按钮 */}
-        {state.running && <RunBar label={runningLabel} detail={runningDetail} stopLabel={t("chat.stop")} onStop={ctl.stop} />}
+        {presentation.running && <RunBar label={runningLabel} detail={runningDetail} stopLabel={t("chat.stop")} onStop={ctl.stop} />}
 
         {(ctl.uploads.length > 0 || ctl.atts.length > 0) && (
           <div className="flex flex-wrap gap-2 px-3 pt-2">
@@ -356,7 +441,7 @@ export function Composer({
         <ComposerTextarea
           taRef={taRef}
           aria-label={t("chat.composer")}
-          placeholder={state.running ? t("chat.composerPlaceholderRunning") : t("chat.composerPlaceholder")}
+          placeholder={presentation.running ? t("chat.composerPlaceholderRunning") : t("chat.composerPlaceholder")}
           value={ctl.draft}
           onChange={(e) => ctl.setDraft(e.target.value)}
           onCompositionEnd={(e) => imeRef.current.markEnd(e.timeStamp)}
@@ -395,21 +480,21 @@ export function Composer({
             skills={skills}
             enabled={enabledSkills}
             onChange={pickSkills}
-            disabled={state.running}
-            title={state.running ? t("chat.switchWhileRunning") : t("chat.skills.tip")}
+            disabled={presentation.running}
+            title={presentation.running ? t("chat.switchWhileRunning") : t("chat.skills.tip")}
           />
           <ThinkMenu
             current={effThink}
             onPick={pickThink}
-            disabled={state.running}
-            title={state.running ? t("chat.switchWhileRunning") : t("chat.think.tip")}
+            disabled={presentation.running}
+            title={presentation.running ? t("chat.switchWhileRunning") : t("chat.think.tip")}
           />
           <ModelMenu
             models={menuModels}
             current={currentModel}
             onPick={pickModel}
-            disabled={state.running}
-            title={state.running ? t("chat.switchWhileRunning") : t("chat.model.tip")}
+            disabled={presentation.running}
+            title={presentation.running ? t("chat.switchWhileRunning") : t("chat.model.tip")}
           />
 
           {/* 布局规范:上下文用量是输入侧元信息,归 composer 集群右端
@@ -418,11 +503,11 @@ export function Composer({
             pct={usagePct}
             label={t("chat.contextUsage")}
             tip={
-              usagePct !== null && state.usage
+              usagePct !== null && presentation.usage
                 ? t("chat.usageTip", {
                     pct: usagePct,
-                    used: fmtK(state.usage.used),
-                    size: fmtK(state.usage.size),
+                    used: fmtK(presentation.usage.used),
+                    size: fmtK(presentation.usage.size),
                   })
                 : t("chat.usageEmpty")
             }
@@ -441,4 +526,8 @@ export function Composer({
       </ComposerCard>
     </div>
   );
-}
+});
+
+/** ChatState 的流式尾部变化会让 LocalComposerHost 轻量重跑，但只要输入态与
+ * ComposerPresentation 没变，输入框子树完全跳过提交。 */
+export const Composer = memo(ComposerImpl);

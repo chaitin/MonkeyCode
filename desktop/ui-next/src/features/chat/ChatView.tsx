@@ -1,21 +1,17 @@
 // 聊天视图:header(标题+摘要+连接态)+ 消息流(贴底跟随/滚动记忆/加载
 // 更早保位)+ 提问大纲(左缘点列,跳转补页)+ 任务面板 + 全功能 composer。
-// 滚动策略(旧 UI chat.tsx 的滚动纪律移植):
-// - 贴底判定单向:scroll 事件只做「进入贴底 → 跟随」;解除跟随只认真实
-//   用户输入(wheel 上滚 / 右缘 mousedown 拖滚动条),程序滚动不误判;
-// - 会话滚动记忆:卸载/切会话写档「视口顶条目 + 条目内偏移 + pinned」,
-//   回来按锚点恢复(纯函数在 lib/util/scrollAnchor,几何可测);
-// - 「加载更早」前插保位记**元素**,提交后 layoutEffect 对齐回原视口位。
+// 滚动策略:
+// - 程序 scrollTop 全部留落点标记，未标记的向上滚动才解除贴底；
+// - 会话滚动记忆保存「稳定 row key + 条目内偏移 + pinned」；
+// - 「加载更早」前插同样按稳定 key，在提交后 layoutEffect 对齐原视口位。
 // 大纲跳转:锚(data-user-seq)不在 DOM 时按条目 offset 走 ensureLoaded
 // 精确补页(session_history 以 offset 为终点,不盲翻),补页提交前的空窗
-// 用短时重试兜(旧 chat.tsx jumpWithRetry 语义);大纲当前项 activeSeq 由
-// rAF 节流的滚动跟踪算出(lib/util/scrollAnchor.outlineActiveSeq)。
+// 用短时重试兜；当前项由虚拟高度索引 O(1) 反查最近的用户行。
 import { IconDots, IconFolderOpen, IconPencil, IconX } from "@tabler/icons-react";
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type DragEvent,
@@ -31,20 +27,16 @@ import { sessionFrame, sessionPatch, type SessionMeta } from "@/lib/ipc/sessions
 import { onNativeFileDrop, uploadFileURL } from "@/lib/ipc/uploads";
 import { workspaceRelativePath } from "@/lib/util/markdownPaths";
 import {
-  anchorScrollTop,
   consumeProgrammaticScroll,
-  findAnchor,
   markProgrammaticScroll,
-  outlineActiveSeq,
 } from "@/lib/util/scrollAnchor";
 import { renameIsNoop } from "@/lib/util/rename";
 import { createImeGuard } from "@/lib/util/slash";
 import { useEscLayer } from "@/lib/util/escLayer";
 import { useDismiss } from "@/lib/util/useDismiss";
-import { Composer } from "./composer/Composer";
-import { useComposer } from "./composer/useComposer";
-import { LogList } from "./LogList";
-import { OutlineNav, outlineEntriesOf } from "./OutlineNav";
+import { LocalComposerHost, type LocalComposerHandle } from "./composer/LocalComposerHost";
+import { LogList, type LogListHandle } from "./LogList";
+import { OutlineNav, useOutlineEntries } from "./OutlineNav";
 import { TaskPanel } from "./TaskPanel";
 import { FilesDrawer } from "@/features/files/FilesDrawer";
 import { useSessionFeed } from "./useSessionFeed";
@@ -59,7 +51,7 @@ const FLASH_MS = 1100; // 与 chrome.css mc-flash 动画时长对齐(略长于 1
 // 工具结果合并进先前条目、折叠态重置都会改变上方内容高度,像素值会漂,
 // 锚点跟着条目走才对得上"看到哪了"。ChatView 本身会因设置页等视图切换
 // 整体卸载重挂,记忆只能存在模块级(旧 UI chat.tsx 同款设计,理由随迁)。
-const scrollMemo = new Map<string, { anchor: number; offset: number; pinned: boolean }>();
+const scrollMemo = new Map<string, { rowKey: string; offset: number; pinned: boolean }>();
 
 export function ChatView({
   meta,
@@ -90,57 +82,36 @@ export function ChatView({
   const { state, conn, historyLoaded, openError, hasMore, loadingEarlier, earlierError, loadEarlier, ensureLoaded } =
     useSessionFeed(meta.id, epoch);
   useApprovalHotkeys(state, meta.id);
-  // lastSeq 也喂给 composer:帧到达才是"上行已被壳接收"的可信信号
-  // (useComposer 的 ComposerFeed 头注写了三个信号各自兜住的故障)
-  const composer = useComposer(meta.id, { running: state.running, historyLoaded, lastSeq: state.lastSeq });
-  // 稳定引用:传给 memo 化 LogList 的回调、拖拽/原生落盘回调都经它取最新
-  // ctl,不随 composer 对象每渲染换新
-  const composerRef = useRef(composer);
-  composerRef.current = composer;
+  // composer 自己持有草稿/附件/上传状态；父层只留一个稳定命令端口给拖拽与
+  // Markdown 错误。打字从此不会再重渲 ChatView 和时间线。
+  const composerRef = useRef<LocalComposerHandle>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<LogListHandle>(null);
   const pinnedRef = useRef(true); // 用户是否停留在底部(自动跟随滚动)
   const lastScrollTop = useRef(0); // 上一次 scroll 事件的位置(判滚动方向)
   // 待恢复的锚点;回放期间每批都重新对齐(上方内容变高也不漂),用户主动滚动后交还控制权
-  const restoreRef = useRef<{ anchor: number; offset: number } | null>(null);
+  const restoreRef = useRef<{ rowKey: string; offset: number } | null>(null);
   const restoreTimer = useRef(0);
   const restoreTicks = useRef(0);
   const restoreRO = useRef<ResizeObserver | null>(null);
   const saveTimer = useRef(0);
 
-  // 滚动容器 → 条目列:LogList 根节点恒为内容轨(firstElementChild)的
-  // 最后一个子元素,其 children 与 state.items 一一对应(LogList 结构契约)
-  const itemColOf = () => scrollRef.current?.firstElementChild?.lastElementChild ?? null;
-  // 各条目相对滚动内容的 top 序列(content 坐标,与当前 scrollTop 无关)。
-  //
-  // 隐藏占位必须**继承前一条的 top**,不能按自己的矩形算:LogList 为守住
-  // 「DOM 子节点与 state.items 一一对应」的结构契约(锚点是 items 下标),
-  // 给若干条目留了 `display:none` 的占位。它们的 rect 全零,直接减 base 得到
-  // 的是 `scrollTop - elRect.top` —— 一个恒小于视口顶、看起来却完全合法的数。
-  // 锚点一旦落到这种条目上,恢复时反算出 `scrollTop = scrollTop`,15 轮 200ms
-  // 轮询与 ResizeObserver 兜底全成空转,表现为「长会话往上翻过历史,切走再
-  // 切回来有时不回原位,而是停在已加载历史的最顶端」。
-  // 继承前一条的 top 在几何上也正是对的:零高度元素就落在相邻内容的那个位置,
-  // 序列保持单调,findAnchor 的「下一条 top 即本条底边」推导照常成立。
-  const itemTops = (el: HTMLElement): number[] => {
-    const col = itemColOf();
-    if (!col) return [];
-    const base = el.getBoundingClientRect().top - el.scrollTop;
-    const tops: number[] = [];
-    for (const kid of Array.from(col.children)) {
-      const r = kid.getBoundingClientRect();
-      const noBox = r.width === 0 && r.height === 0; // display:none 占位
-      tops.push(noBox ? (tops[tops.length - 1] ?? 0) : r.top - base);
+  const rowNode = (rowKey: string): HTMLElement | null => {
+    const root = scrollRef.current;
+    if (!root) return null;
+    for (const node of root.querySelectorAll<HTMLElement>("[data-virtual-row]")) {
+      if (node.dataset.rowKey === rowKey) return node;
     }
-    return tops;
+    return null;
   };
 
   // 程序写 scrollTop 的唯一出口:值真的变了才打标记(没变不发 scroll 事件,
   // 白记一笔会把之后的用户滚动误判成程序滚)。onScroll 靠标记区分来源
-  const setScrollTop = (el: HTMLElement, v: number) => {
+  const setScrollTop = useCallback((el: HTMLElement, v: number) => {
     const before = el.scrollTop;
     el.scrollTop = v;
     if (el.scrollTop !== before) markProgrammaticScroll(el);
-  };
+  }, []);
 
   // 自动滚动:优先对齐待恢复锚点,否则贴底跟随。锚点条目还没回放出来时
   // 先不动(停在已回放内容的开头),出来后逐批对齐
@@ -149,29 +120,35 @@ export function ChatView({
     if (!el) return;
     const a = restoreRef.current;
     if (a) {
-      const tops = itemTops(el);
-      if (a.anchor < tops.length) setScrollTop(el, anchorScrollTop(tops, a.anchor, a.offset));
+      listRef.current?.ensureKey(a.rowKey);
+      const visibleKey = listRef.current?.resolveKey(a.rowKey) ?? a.rowKey;
+      const node = rowNode(visibleKey);
+      if (node) {
+        const delta = node.getBoundingClientRect().top - el.getBoundingClientRect().top + a.offset;
+        setScrollTop(el, el.scrollTop + delta);
+      }
     } else if (pinnedRef.current) {
       setScrollTop(el, el.scrollHeight);
     }
   };
 
   // 恢复完成/用户接管:轮询与 RO 兜底一并解除,交还滚动控制权
-  const finishRestore = () => {
+  const finishRestore = useCallback(() => {
     restoreRef.current = null;
     window.clearInterval(restoreTimer.current);
     restoreTimer.current = 0;
     restoreRO.current?.disconnect();
     restoreRO.current = null;
-  };
+  }, []);
 
   // 锚点恢复:立即对齐 + 200ms 轮询校准若干次——内容分批物化、渲染后布局
   // 还会无事件地微调(实测 ~6px,RO 也抓不到这种再分配),对齐到位后只是
   // 零修正的空转;另挂 ResizeObserver 监听内容列兜底(图片解码/字体加载
   // 会把位置顶漂几 px,不经过 items 变化)。恢复结束二者一并解除。
-  const startRestore = (anchor: number, offset: number) => {
+  const startRestore = (rowKey: string, offset: number) => {
     finishRestore();
-    restoreRef.current = { anchor, offset };
+    restoreRef.current = { rowKey, offset };
+    listRef.current?.ensureKey(rowKey);
     align();
     restoreTicks.current = 0;
     restoreTimer.current = window.setInterval(() => {
@@ -181,7 +158,7 @@ export function ChatView({
       }
       align();
     }, 200);
-    const col = itemColOf();
+    const col = scrollRef.current?.querySelector<HTMLElement>("[data-chat-items]");
     if (col && typeof ResizeObserver !== "undefined") {
       restoreRO.current = new ResizeObserver(align);
       restoreRO.current.observe(col);
@@ -193,13 +170,24 @@ export function ChatView({
   const saveAnchor = () => {
     const el = scrollRef.current;
     if (!el || !el.isConnected || restoreRef.current) return;
-    const { anchor, offset } = findAnchor(itemTops(el), el.scrollTop);
+    const viewportTop = el.getBoundingClientRect().top;
+    let anchor: HTMLElement | null = null;
+    for (const row of el.querySelectorAll<HTMLElement>("[data-virtual-row]")) {
+      const rect = row.getBoundingClientRect();
+      if (rect.bottom > viewportTop) {
+        anchor = row;
+        break;
+      }
+    }
+    const rowKey = anchor?.dataset.rowKey;
+    if (!anchor || !rowKey) return;
+    const offset = viewportTop - anchor.getBoundingClientRect().top;
     // pinned 按几何兜底:人在底部就是贴底,写档不依赖旗标推断——旗标的
     // 置位要看事件方向与程序滚动判定,快滚到底的最后一发事件被判成程序
     // 滚动时旗标会漏置,切回来就不去底部了(2026-08-11 报障「滚到底再
     // 切回来落在中间」)
     const pinned = pinnedRef.current || el.scrollHeight - el.scrollTop - el.clientHeight < PIN_THRESHOLD;
-    scrollMemo.set(meta.id, { anchor, offset, pinned });
+    scrollMemo.set(meta.id, { rowKey, offset, pinned });
   };
 
   // 会话切换/挂载:复位跟随状态并取出记忆位置(不显式复位的话 pinnedRef
@@ -208,7 +196,7 @@ export function ChatView({
   useLayoutEffect(() => {
     const saved = scrollMemo.get(meta.id);
     pinnedRef.current = saved ? saved.pinned : true; // 首次打开默认贴底
-    if (saved && !saved.pinned) startRestore(saved.anchor, saved.offset);
+    if (saved && !saved.pinned) startRestore(saved.rowKey, saved.offset);
     else {
       restoreRef.current = null;
       align();
@@ -224,6 +212,7 @@ export function ChatView({
       window.cancelAnimationFrame(saveRaf.current);
       saveRaf.current = 0;
     };
+    // 本 effect 是 session 边沿；这些函数只读 refs，随普通帧重跑会误写档。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta.id]);
 
@@ -262,10 +251,8 @@ export function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empty]);
 
-  // 写档走 rAF 节流(scheduleActive 同款):saveAnchor 里的 itemTops 要对
-  // **每个**条目 getBoundingClientRect,而 scroll 事件一帧能来好几发——长会话
-  // 里逐事件同步跑就是滚动卡顿的直接来源之一(2026-08-10 用户报障「很卡」)。
-  // 每帧至多一次,语义不变:帧间的多发本来就写同一个档
+  // 写档走 rAF 节流(scheduleActive 同款):现在只扫至多 160 个已挂载虚拟行，
+  // 但 scroll 事件一帧仍会来多发；每帧至多保存一次即可。
   const saveRaf = useRef(0);
   const scheduleSave = () => {
     if (saveRaf.current) return;
@@ -278,10 +265,10 @@ export function ChatView({
   // scroll 事件按来源判定贴底跟随(2026-08-11 报障「上滚到 user-input 突然
   // 回滚」的根因修复):此前只做「进入贴底 → 跟随」的单向判定,离底只认
   // wheel/右缘 mousedown——拖滚动条/PageUp 这类输入完全不解除跟随,而
-  // WebKit 拖动初期的插值滚动还会擦着底部区把 pinned 又置回 true;此时分带
-  // 兑现行高触发内容轨 RO → align 一把吸回底部,吸底事件再次自我钉住,
+  // WebKit 拖动初期的插值滚动还会擦着底部区把 pinned 又置回 true;此时行高
+  // 测量触发内容轨 RO → align 一把吸回底部,吸底事件再次自我钉住,
   // 用户被困在底部(WebKit 复现:snaps=2,scrollTop 全程出不去)。
-  // 现在凡代码写 scrollTop 都打标记(setScrollTop/分带补偿),这里逐事件
+  // 现在凡代码写 scrollTop 都打标记(setScrollTop/虚拟行锚点补偿),这里逐事件
   // 消费:未标记的向上滚动 = 用户意图,解除跟随并终止锚点恢复,任何输入
   // 方式都覆盖;向上事件即使擦着底部区也不重新钉住。原先担心的「回放中
   // 内容长高误判离底」不复存在——纯内容增高不发 scroll 事件,程序贴底又
@@ -295,7 +282,7 @@ export function ChatView({
     if (!prog && dy < -1 && el.scrollHeight - el.scrollTop - el.clientHeight > 2) {
       // 真离底才解除跟随。距底 >2px 这一条不可省:内容收缩引发的浏览器
       // clamp 也是「未标记的向上事件」,但它的落点永远**正好在新的最底部**
-      // ——切回会话的回放期,分带把远行收成 60px 占位,scrollHeight 一缩
+      // ——切回会话的回放/测量期,估高被真实行高替换、scrollHeight 一缩
       // 就是一发 clamp;当用户离底处理会把贴底跟随掐死在回放半路,最终
       // 停在中间(2026-08-11 报障)。人还在底部就不算离开。
       // 这里也不取消锚点恢复:恢复期同样有 clamp,真实用户接管由 wheel /
@@ -339,7 +326,7 @@ export function ChatView({
   // 「加载更早」的位置保持:前插会把所有条目往下推,记像素没用,记**元素**
   // ——keyBase 稳定 key 保证 React 不会把既有条目换成新节点,前插提交后按
   // 同一元素重新对齐,视口纹丝不动
-  const prependAnchor = useRef<{ node: Element; offset: number } | null>(null);
+  const prependAnchor = useRef<{ rowKey: string; offset: number } | null>(null);
   const onLoadEarlier = async () => {
     pinnedRef.current = false;
     // 锚点必须由 loadEarlier 在前插**写入前**同步回调,不能"先记再 await":
@@ -349,13 +336,13 @@ export function ChatView({
     // 的 beforeApply 正是为此存在
     await loadEarlier(() => {
       const el = scrollRef.current;
-      const col = itemColOf();
-      if (!el || !col) return;
+      if (!el) return;
       const elTop = el.getBoundingClientRect().top;
-      for (const kid of Array.from(col.children)) {
+      for (const kid of el.querySelectorAll<HTMLElement>("[data-virtual-row]")) {
         const r = kid.getBoundingClientRect();
         if (r.bottom > elTop) {
-          prependAnchor.current = { node: kid, offset: elTop - r.top };
+          const rowKey = kid.dataset.rowKey;
+          if (rowKey) prependAnchor.current = { rowKey, offset: elTop - r.top };
           break;
         }
       }
@@ -366,26 +353,23 @@ export function ChatView({
     const pa = prependAnchor.current;
     if (!pa) return;
     prependAnchor.current = null;
-    const col = itemColOf();
-    const idx = col ? Array.prototype.indexOf.call(col.children, pa.node) : -1;
-    if (idx >= 0) startRestore(idx, pa.offset);
+    startRestore(pa.rowKey, pa.offset);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.items]);
 
   // 发送被接受(发出或排队)即回到贴底跟随:这次发送本身就是回到当前轮次
   // 的明确意图,立即结束锚点恢复并重新贴底
-  const followBottom = () => {
+  const followBottom = useCallback(() => {
     finishRestore();
     pinnedRef.current = true;
     const el = scrollRef.current;
     if (el) setScrollTop(el, el.scrollHeight);
-  };
+  }, [finishRestore, setScrollTop]);
 
   // markdown 工作区文件链接:判界(工作区外拒绝)→ repo_reveal 文件管理器
   // 定位;失败走 composer 提示条(§3:会话内操作失败的法定位置)。
-  // useCallback + 下面两个回读通道同理:LogList 已 memo,打字每敲一键
-  // ChatView 都重渲染,内联箭头函数会把整条消息流(每条 markdown 卡)
-  // 一起拖着重渲染——输入手感卡顿的根因。
+  // useCallback + 下面两个回读通道同理:LogList 的每一行都按这些函数引用
+  // 做 memo，比对稳定才能让流式更新只落到真正变化的尾行。
   // meta 经 ref 读:这三个回调是**每一行** memo 的 props,依赖数组里挂
   // meta.id 就等于身份跟着切会话换——新 meta 首渲染那一拍,旧会话的整列
   // 行 memo 全体失效,先把马上要卸载的旧列表白重渲染一遍(长会话几百 ms,
@@ -397,11 +381,11 @@ export function ChatView({
     (path: string) => {
       const rel = workspaceRelativePath(path, metaRef.current.workdir);
       if (rel === null) {
-        composerRef.current.notifyError(t("chat.revealOutside"));
+        composerRef.current?.notifyError(t("chat.revealOutside"));
         return;
       }
       void repoReveal(metaRef.current.id, rel).catch((e: unknown) => {
-        composerRef.current.notifyError(t("chat.revealFailed", { reason: e instanceof Error ? e.message : String(e) }));
+        composerRef.current?.notifyError(t("chat.revealFailed", { reason: e instanceof Error ? e.message : String(e) }));
       });
     },
     [t],
@@ -494,7 +478,7 @@ export function ChatView({
       alive = false;
     };
   }, [state.running, meta.id]);
-  const entries = useMemo(() => outlineEntriesOf(outline, state.items), [outline, state.items]);
+  const entries = useOutlineEntries(outline, state);
 
   // ==== 当前项跟踪:视口顶所在的提问(rAF 节流——流式期间每批帧都重算
   // 会把点列刷成动画;判定纯函数在 lib/util/scrollAnchor,与跳转 INSET
@@ -502,13 +486,7 @@ export function ChatView({
   const [activeSeq, setActiveSeq] = useState<number | null>(null);
   const activeRaf = useRef(0);
   const updateActive = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const seqTops = Array.from(el.querySelectorAll<HTMLElement>("[data-user-seq]"), (node) => ({
-      seq: Number(node.dataset.userSeq),
-      top: node.getBoundingClientRect().top,
-    })).filter((it) => Number.isFinite(it.seq));
-    setActiveSeq(outlineActiveSeq(seqTops, el.getBoundingClientRect().top));
+    setActiveSeq(listRef.current?.activeUser()?.seq ?? null);
   };
   const scheduleActive = () => {
     if (activeRaf.current) return;
@@ -544,7 +522,10 @@ export function ChatView({
   const jumpToSeq = (seq: number): boolean => {
     const log = scrollRef.current;
     const node = log?.querySelector<HTMLElement>(`[data-user-seq="${seq}"]`);
-    if (!log || !node) return false;
+    if (!log || !node) {
+      listRef.current?.ensureUserSeq(seq);
+      return false;
+    }
     finishRestore(); // 跳转接管滚动:进行中的锚点恢复轮询不许再拽回去
     pinnedRef.current = false;
     // 明确只滚消息日志。scrollIntoView 会自行挑选可滚祖先，消息区新增
@@ -565,9 +546,8 @@ export function ChatView({
     if (jumpToSeq(seq) || tries <= 0) return;
     jumpTimer.current = window.setTimeout(() => jumpWithRetry(seq, tries - 1), 32);
   };
-  // onJump 必须引用稳定:OutlineNav 是 memo 的(大纲上千条,ChatView 每键
-  // 因草稿态重渲,不拦就是空闲打字的 O(轮数) 底噪)——实现走 ref 取最新,
-  // 外壳 useCallback 恒定
+  // onJump 必须引用稳定:OutlineNav 是 memo 的，大纲上千条时流式批次不能
+  // 因回调身份变化把整个面板重建——实现走 ref 取最新,外壳 useCallback 恒定
   const onJumpImpl = (seq: number, offset?: number) => {
     if (jumpToSeq(seq)) return;
     // 更早的提问还没加载:按它那一轮的 offset 精确补页再定位(session_history
@@ -640,7 +620,7 @@ export function ChatView({
     dragDepth.current = 0;
     setDragging(false);
     const files = [...(e.dataTransfer?.files ?? [])];
-    if (files.length) void composerRef.current.addFiles(files);
+    if (files.length) void composerRef.current?.addFiles(files);
   };
   // Linux 壳:WebKitGTK 的 HTML5 拖拽拿不到 File,走壳原生 tauri://drag-*
   // (mac/Windows 壳禁用原生处理器,监听永不触发)
@@ -648,8 +628,8 @@ export function ChatView({
     () =>
       onNativeFileDrop({
         onDragging: setDragging,
-        onFiles: (files) => void composerRef.current.addFiles(files),
-        onError: (m) => composerRef.current.notifyError(t("chat.uploadFailed", { reason: m })),
+        onFiles: (files) => void composerRef.current?.addFiles(files),
+        onError: (m) => composerRef.current?.notifyError(t("chat.uploadFailed", { reason: m })),
       }),
     // t 稳定(模块级函数);按会话重订阅即可
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -910,6 +890,7 @@ export function ChatView({
             </p>
           )}
           <LogList
+            ref={listRef}
             state={state}
             sessionId={meta.id}
             flashSeq={flashSeq ?? undefined}
@@ -931,11 +912,12 @@ export function ChatView({
       <footer className="shrink-0 p-3">
         <div className="mx-auto flex chat-measure flex-col gap-2">
           {state.plan.length > 0 && <TaskPanel entries={state.plan} />}
-          <Composer
+          <LocalComposerHost
+            ref={composerRef}
             sessionId={meta.id}
             state={state}
+            historyLoaded={historyLoaded}
             meta={meta}
-            ctl={composer}
             onAfterSend={followBottom}
             focusRequest={focusRequest}
             onFocusRequestHandled={onFocusRequestHandled}
@@ -999,7 +981,7 @@ function ChildSessionModal({ id, workdir, onClose }: { id: string; workdir?: str
             <IconX size={14} stroke={1.75} aria-hidden />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <div data-chat-log="" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
           <LogList state={state} sessionId={id} readonly uploadUrl={uploadUrl} workdir={workdir} loadFullTool={loadFullTool} />
         </div>
       </div>

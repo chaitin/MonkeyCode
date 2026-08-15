@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Markdown, renderMarkdown } from "./Markdown";
+import { Markdown, renderMarkdown, segmentStreamingMarkdown } from "./Markdown";
 
 const mermaidMock = vi.hoisted(() => ({
   initialize: vi.fn(),
@@ -300,5 +300,25 @@ describe("本地资源(工作区图片/文件链接)", () => {
     const { container } = render(<Markdown source={"| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 | 3 |"} />);
     const tds = [...container.querySelectorAll("td")].map((td) => td.getAttribute("align"));
     expect(tds).toEqual(["left", "center", "right"]);
+  });
+
+  it("流式正文封存完整块，只替换活跃尾块", async () => {
+    const prefix = `**稳定块**${"甲".repeat(1100)}\n\n`;
+    expect(segmentStreamingMarkdown(prefix + "尾部").stable).toEqual([prefix]);
+    const { container, rerender } = render(<Markdown source={prefix + "尾部"} deferMermaid />);
+    const stableNode = await screen.findByText("稳定块");
+    rerender(<Markdown source={prefix + "尾部继续增长"} deferMermaid />);
+    await screen.findByText(/尾部继续增长/);
+    expect(screen.getByText("稳定块")).toBe(stableNode);
+    expect(container.querySelectorAll("[data-md-stable-chunk]")).toHaveLength(1);
+  });
+
+  it("未闭合代码围栏流式期走纯文本，不反复高亮；闭合后只解析一次稳定块", async () => {
+    const { container, rerender } = render(<Markdown source={"```ts\nconst a = 1;"} deferMermaid />);
+    expect(container.querySelector("[data-md-stream-plain]")).toBeTruthy();
+    expect(container.querySelector(".hljs-keyword")).toBeNull();
+    rerender(<Markdown source={"```ts\nconst a = 1;\n```"} deferMermaid />);
+    await waitFor(() => expect(container.querySelector(".hljs-keyword")).toBeTruthy());
+    expect(container.querySelector("[data-md-stream-plain]")).toBeNull();
   });
 });
