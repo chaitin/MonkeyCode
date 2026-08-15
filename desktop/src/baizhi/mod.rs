@@ -26,10 +26,15 @@ const DEFAULT_MCP_GATEWAY: &str = "https://agent-toolkit.app.baizhi.cloud";
 pub(crate) const DEFAULT_MONKEYCODE_URL: &str = "https://monkeycode-ai.com";
 /// 官方云的模型请求地址:llmproxy 走独立子域,不与主服务同域。
 pub(crate) const DEFAULT_MONKEYCODE_LLM_URL: &str = "https://proxy.monkeycode-ai.com/v1";
+/// MonkeyCode 国际版官方云地址(设置页版本选择写入 mc_base_url 的值,
+/// 与 ui-next settingsForm.ts 的 MC_INTL_URL 保持一致)。
+pub(crate) const INTL_MONKEYCODE_URL: &str = "https://monkeycode-ai.net";
+/// 国际版官方云的模型请求地址(llmproxy 同样走独立子域)。
+pub(crate) const INTL_MONKEYCODE_LLM_URL: &str = "https://proxy.monkeycode-ai.net/v1";
 
 /// 模型请求地址(llmproxy)的单一出处(2026-08-07 用户定案):
 /// - 设置里显式填了「模型请求地址」→ 原样用它(拆分部署的逃生门,立即生效);
-/// - 否则服务地址就是官方云 → 独立代理子域 proxy.monkeycode-ai.com/v1;
+/// - 否则服务地址就是官方云(国内/国际)→ 各自的独立代理子域;
 /// - 否则(自建/私有化/联调)→ 跟随服务地址 {服务地址}/v1:开源后端把
 ///   llmproxy 挂在主服务的 /v1 下(backend/biz/llmproxy/register.go),同域即达。
 ///
@@ -43,6 +48,9 @@ pub(crate) fn resolve_mc_llm(mc_llm_base_url: &str, monkeycode: &str) -> String 
     let server = monkeycode.trim().trim_end_matches('/');
     if server == DEFAULT_MONKEYCODE_URL {
         return DEFAULT_MONKEYCODE_LLM_URL.to_string();
+    }
+    if server == INTL_MONKEYCODE_URL {
+        return INTL_MONKEYCODE_LLM_URL.to_string();
     }
     format!("{server}/v1")
 }
@@ -412,7 +420,9 @@ impl Service {
         let token = ch.get("token").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let challenge: pow::Challenge = serde_json::from_value(ch.get("challenge").cloned().unwrap_or(Value::Null))
             .map_err(|_| other("验证码质询响应格式异常"))?;
-        if token.is_empty() || challenge.c == 0 {
+        // valid() 同时给 c/s/d 设上界:参数来自服务端,超界值要么是恶意
+        // 要么是协议破损,放进爆破只会钉死 blocking 线程(见 pow.rs)
+        if token.is_empty() || !challenge.valid() {
             return Err(other("验证码质询响应格式异常"));
         }
         // SHA-256 爆破是 CPU 密集,丢 blocking 池

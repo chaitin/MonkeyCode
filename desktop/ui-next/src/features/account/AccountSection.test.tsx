@@ -325,16 +325,20 @@ describe("短信验证码登录", () => {
 });
 
 describe("MonkeyCode 账号密码登录入口", () => {
-  it("全未登录:MonkeyCode 组照出,入口归本卡;不摆「连接」死钮(桥接要百智云会话)", async () => {
+  it("全未登录(国内版):纯登录页——三 tab 齐备,无组头/「未连接」壳/「连接」死钮,百智云组不出现", async () => {
     stubShell({ baizhi_status: bzOut, mc_status: mcOut, baizhi_wechat_start: never });
     render(<AccountSection />);
-    expect(await screen.findByText("MonkeyCode 云端")).toBeDefined();
+    // 微信/短信是经百智云 OAuth 登录 MonkeyCode 的方式,与账密同卡同 tab 序
+    expect(await screen.findByRole("tab", { name: "微信扫码" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "短信验证码" })).toBeDefined();
+    // 登录前没有账号可陈列:不摆「MonkeyCode 云端」组头与「未连接」账号卡壳
+    expect(screen.queryByText("MonkeyCode 云端")).toBeNull();
+    expect(screen.queryByText("未连接")).toBeNull();
     expect(screen.queryByRole("button", { name: "连接 MonkeyCode 云端" })).toBeNull();
-    // 展开 → 收起:表单在 MonkeyCode 卡内,不再挂在百智云登录卡下方
-    await userEvent.click(screen.getByRole("button", { name: "使用 MonkeyCode 账号密码登录" }));
+    await userEvent.click(screen.getByRole("tab", { name: "账号密码" }));
     expect(screen.getByRole("textbox", { name: "邮箱" })).toBeDefined();
-    await userEvent.click(screen.getByRole("button", { name: "收起" }));
-    expect(screen.queryByRole("textbox", { name: "邮箱" })).toBeNull();
+    // 两头都未登录时百智云组不出现:登录职责已收进登录页
+    expect(screen.queryByText("百智云服务")).toBeNull();
   });
 
   it("百智云已登录、MC 未连:出「连接」主钮,账密入口仍在同一张卡", async () => {
@@ -388,7 +392,7 @@ describe("MonkeyCode 账号密码登录入口", () => {
       mc_models_sync: () => ({ models: [{ name: "m", base_url: "https://m", api_key: "k", model: "m", source: "monkeycode" }] }),
     });
     render(<AccountSection />);
-    await userEvent.click(await screen.findByRole("button", { name: "使用 MonkeyCode 账号密码登录" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "账号密码" }));
 
     await userEvent.click(screen.getByRole("button", { name: "登录" }));
     expect(screen.getByRole("alert").textContent).toContain("请输入邮箱和密码");
@@ -399,10 +403,40 @@ describe("MonkeyCode 账号密码登录入口", () => {
     await userEvent.click(screen.getByRole("button", { name: "登录" }));
     expect(await screen.findByText("云端用户")).toBeDefined();
     expect(calls.find((c) => c.cmd === "mc_password_login")?.args).toEqual({ email: "a@b.c", password: "p w" });
-    // MC 已连、百智云未登录:补百智云登录入口但不再给账密入口
-    expect(screen.queryByRole("button", { name: "使用 MonkeyCode 账号密码登录" })).toBeNull();
+    // MC 已连、百智云未登录:登录 tabs 收起,百智云组降级为可选登录入口
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.getByRole("button", { name: "登录百智云" })).toBeDefined();
     // 账密直连同样是登录真实事件:会员模型自动同步
     await waitFor(() => expect(calls.some((c) => c.cmd === "mc_models_sync")).toBe(true));
+  });
+});
+
+describe("百智云增值登录(国内版,MC 已连)", () => {
+  it("可选入口展开后仅微信/短信(登的是百智云,不带账密 tab);登录后不重复桥接", async () => {
+    let bzLogged = false;
+    const { calls } = stubShell({
+      baizhi_status: () => (bzLogged ? bzIn() : bzOut()),
+      mc_status: mcIn,
+      mc_usage: () => null,
+      baizhi_wechat_start: never,
+      baizhi_send_code: () => ({ ok: true }),
+      baizhi_login: () => {
+        bzLogged = true;
+        return { ok: true };
+      },
+      mc_login: () => ({ ok: true }),
+      baizhi_sync: () => ({ models: [{}], mcp_servers: {}, key_created: false }),
+    });
+    render(<AccountSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "登录百智云" }));
+    expect(screen.queryByRole("tab", { name: "账号密码" })).toBeNull();
+    await userEvent.click(screen.getByRole("tab", { name: "短信验证码" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "手机号" }), "13800000000");
+    await userEvent.type(screen.getByRole("textbox", { name: "短信验证码" }), "654321");
+    await userEvent.click(screen.getByRole("button", { name: "登录" }));
+    expect(await screen.findByText("张三")).toBeDefined();
+    // 已连不打扰:这条路只为模型/MCP 同步,不得重桥接换掉现有 MC 账号
+    expect(calls.some((c) => c.cmd === "mc_login")).toBe(false);
   });
 });
 
@@ -643,44 +677,118 @@ describe("已登录:用量面板/签到/同步/断开", () => {
   });
 });
 
-describe("自建部署配置(彩蛋解锁)", () => {
-  it("默认隐藏;连点 MonkeyCode 卡图标 6 次解锁并记住", async () => {
+describe("服务版本选择", () => {
+  it("默认国内版;选国际版写入官方国际地址并清空私有化随行配置", async () => {
     stubShell({ baizhi_status: bzOut, mc_status: mcOut });
-    const { unmount } = render(<AccountSection draft={emptyDraft()} onDraft={() => {}} />);
-    // 卡渲染出来再点(logo 是 aria-hidden 的装饰图,按 DOM 取)
-    await screen.findByText("MonkeyCode 云端");
-    expect(screen.queryByText("自建部署")).toBeNull();
-    const logo = document.querySelector('img[src="/logo.png"]')!;
-    for (let i = 0; i < 5; i++) fireEvent.click(logo);
-    expect(screen.queryByText("自建部署")).toBeNull(); // 差一下不解锁
-    fireEvent.click(logo);
-    expect(await screen.findByText("自建部署")).toBeDefined();
-    expect(localStorage.getItem("mc.serverConfigUnlocked")).toBe("1");
-
-    // 解锁态持久:重新挂载直接可见
-    unmount();
-    render(<AccountSection draft={emptyDraft()} onDraft={() => {}} />);
-    expect(await screen.findByText("自建部署")).toBeDefined();
+    let draft: SettingsDraft = { ...emptyDraft(), mcBasicAuth: "user:pass", mcLlmBaseUrl: "https://llm.old/v1" };
+    const onDraft = (up: (d: SettingsDraft) => SettingsDraft) => {
+      draft = up(draft);
+    };
+    render(<AccountSection draft={draft} onDraft={onDraft} />);
+    expect(((await screen.findByRole("radio", { name: "国内版" })) as HTMLInputElement).checked).toBe(true);
+    await userEvent.click(screen.getByRole("radio", { name: "国际版" }));
+    expect(draft.mcBaseUrl).toBe("https://monkeycode-ai.net");
+    expect(draft.mcBasicAuth).toBe("");
+    expect(draft.mcLlmBaseUrl).toBe("");
   });
 
-  it("已配置过任一项则恒可见(不解锁也不会让存量配置消失),编辑写回草稿", async () => {
+  it("存量私有地址:默认选中私有化且字段可见,编辑写回草稿", async () => {
     stubShell({ baizhi_status: bzOut, mc_status: mcOut });
     let draft: SettingsDraft = { ...emptyDraft(), mcBaseUrl: "https://self.host" };
     const onDraft = (up: (d: SettingsDraft) => SettingsDraft) => {
       draft = up(draft);
     };
     render(<AccountSection draft={draft} onDraft={onDraft} />);
-    expect(await screen.findByText("自建部署")).toBeDefined();
+    expect(((await screen.findByRole("radio", { name: "私有化部署" })) as HTMLInputElement).checked).toBe(true);
     const input = screen.getByLabelText("模型请求地址(可选)");
     await userEvent.type(input, "x");
     expect(draft.mcLlmBaseUrl).toBe("x");
   });
 
-  it("拿不到草稿(浏览器只读/配置载入失败)时整块不渲染", async () => {
-    localStorage.setItem("mc.serverConfigUnlocked", "1");
+  it("官方档不露私有化字段;选私有化展开字段且不清用户草稿", async () => {
+    stubShell({ baizhi_status: bzOut, mc_status: mcOut });
+    let draft: SettingsDraft = emptyDraft();
+    const onDraft = (up: (d: SettingsDraft) => SettingsDraft) => {
+      draft = up(draft);
+    };
+    render(<AccountSection draft={draft} onDraft={onDraft} />);
+    await screen.findByRole("radio", { name: "国内版" });
+    expect(screen.queryByLabelText("服务地址")).toBeNull();
+    await userEvent.click(screen.getByRole("radio", { name: "私有化部署" }));
+    expect(screen.getByLabelText("服务地址")).toBeDefined();
+    expect(draft.mcBaseUrl).toBe(""); // 地址留给用户填,选中动作不写草稿
+    // 登录卡同步撤下国内版 tabs,提示先填地址再保存
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.getByText(/填写服务地址并保存后登录/)).toBeDefined();
+  });
+
+  it("从官方版切私有化:不碰草稿(保存条不弹),官方地址不回显进字段,不误报「版本切换未生效」", async () => {
+    stubShell({ baizhi_status: bzOut, mc_status: mcOut });
+    let draft: SettingsDraft = { ...emptyDraft(), mcBaseUrl: "https://monkeycode-ai.net" };
+    const onDraft = vi.fn((up: (d: SettingsDraft) => SettingsDraft) => {
+      draft = up(draft);
+    });
+    render(<AccountSection draft={draft} onDraft={onDraft} savedMcBaseUrl="https://monkeycode-ai.net" />);
+    await userEvent.click(await screen.findByRole("radio", { name: "私有化部署" }));
+
+    expect(onDraft).not.toHaveBeenCalled(); // 光点选不写草稿,表单不脏
+    expect((screen.getByLabelText("服务地址") as HTMLInputElement).value).toBe(""); // 官方地址不预填误导
+    expect(screen.queryByText(/版本切换未生效/)).toBeNull(); // 「重试」兜底只留给官方版落盘失败
+    expect(screen.getByText(/填写服务地址并保存后登录/)).toBeDefined();
+  });
+
+  it("点选国际版即自动落盘:立即触发保存并撤下微信码,私有化不自动落盘", async () => {
+    stubShell({ baizhi_status: bzOut, mc_status: mcOut, baizhi_wechat_start: never });
+    let draft: SettingsDraft = emptyDraft();
+    const onDraft = (up: (d: SettingsDraft) => SettingsDraft) => {
+      draft = up(draft);
+    };
+    const onApplyDraft = vi.fn();
+    render(<AccountSection draft={draft} onDraft={onDraft} savedMcBaseUrl="" onApplyDraft={onApplyDraft} />);
+    expect(await screen.findByRole("tab", { name: "微信扫码" })).toBeDefined();
+    await userEvent.click(screen.getByRole("radio", { name: "国际版" }));
+    // 点选即保存生效(2026-08-15 用户定案:不再有「保存并切换」一步)
+    expect(onApplyDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ mcBaseUrl: "https://monkeycode-ai.net", mcBasicAuth: "", mcLlmBaseUrl: "" }),
+    );
+    // 形态立即跟选择走,落盘期间不给旧服务的登录表单
+    expect(screen.queryByRole("tab")).toBeNull();
+
+    // 私有化要先填地址,点选不自动落盘(交给字段下的「保存」钮)
+    onApplyDraft.mockClear();
+    await userEvent.click(screen.getByRole("radio", { name: "私有化部署" }));
+    expect(onApplyDraft).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "保存生效" })).toBeDefined();
+  });
+
+  it("拿不到草稿(浏览器只读/配置载入失败)时版本选择器不渲染,登录页照常", async () => {
     stubShell({ baizhi_status: bzOut, mc_status: mcOut });
     render(<AccountSection />);
-    await screen.findByText("MonkeyCode 云端");
-    expect(screen.queryByText("自建部署")).toBeNull();
+    await screen.findByRole("tab", { name: "微信扫码" });
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+});
+
+describe("非国内版的登录方式裁剪", () => {
+  it("国际版:无微信/短信 tab、无「连接」桥接钮,仅账密表单;百智云组整组隐藏", async () => {
+    stubShell({ baizhi_status: bzIn, mc_status: mcOut });
+    render(<AccountSection savedMcBaseUrl="https://monkeycode-ai.net" />);
+    await screen.findByRole("textbox", { name: "邮箱" });
+    expect(screen.queryByRole("button", { name: "连接 MonkeyCode 云端" })).toBeNull();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "邮箱" })).toBeDefined();
+    // 国际版未接百智云:即便存在旧百智云会话,增值组也整组隐藏
+    expect(screen.queryByText("百智云服务")).toBeNull();
+    expect(screen.queryByText("张三")).toBeNull();
+  });
+
+  it("私有化:仅账密登录、百智云已登录也不出桥接钮;百智云服务组保留(同步仍可用)", async () => {
+    stubShell({ baizhi_status: bzIn, mc_status: mcOut, mc_usage: () => null });
+    render(<AccountSection savedMcBaseUrl="https://self.host" />);
+    await screen.findByRole("textbox", { name: "邮箱" });
+    expect(screen.queryByRole("button", { name: "连接 MonkeyCode 云端" })).toBeNull();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(await screen.findByText("张三")).toBeDefined();
+    expect(screen.getByRole("button", { name: "同步模型与 MCP" })).toBeDefined();
   });
 });

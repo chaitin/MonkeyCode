@@ -39,6 +39,7 @@ import { SOURCE_BAIZHI, SOURCE_MONKEYCODE } from "@/lib/models/modelMenu";
 import {
   buildPayload,
   draftFromConfig,
+  MC_CN_URL,
   mergeSyncedMcps,
   mergeSyncedModels,
   payloadEquals,
@@ -558,7 +559,7 @@ function EnvSection({
 
 function monkeyCodeTransportKey(config: DesktopConfig): string {
   const trimmedBase = (config.mc_base_url ?? "").trim();
-  const base = trimmedBase ? trimmedBase.replace(/\/+$/, "") : "https://monkeycode-ai.com";
+  const base = trimmedBase ? trimmedBase.replace(/\/+$/, "") : MC_CN_URL;
   const basic = (config.mc_basic_auth ?? "").trim();
   return `${base}\n${basic}`;
 }
@@ -592,6 +593,10 @@ export function SettingsView({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [accountRefreshKey, setAccountRefreshKey] = useState(0);
+  // 账号分区的版本点选/私有化「保存生效」触发的静默落盘:在途期间不渲染
+  // 保存条——用户视角里「切换版本」不该出现任何「保存」字样(2026-08-15
+  // 用户定案);失败才回落保存条外显错误
+  const [inlineSaving, setInlineSaving] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -839,6 +844,18 @@ export function SettingsView({
             draft={draft}
             onDraft={updateDraft}
             refreshKey={accountRefreshKey}
+            savedMcBaseUrl={cfg?.mc_base_url ?? ""}
+            // 版本点选即静默落盘:savingRef 防重入(save 自身不防并发);
+            // inlineSaving 让保存条在途不出现。与已保存配置无差异就跳过
+            // ——按载荷对比(与脏判定同口径):点回当前生效的版本不值得
+            // 白写一次盘、白重启一次引擎
+            onApplyDraft={(d) => {
+              if (savingRef.current) return;
+              if (cfg && baseline && payloadEquals(buildPayload(cfg, d), baseline)) return;
+              setInlineSaving(true);
+              void save(d).finally(() => setInlineSaving(false));
+            }}
+            saveBusy={saving}
           />
         );
       case "models":
@@ -903,8 +920,8 @@ export function SettingsView({
               {body()}
             </div>
           </div>
-          {/* 保存条:结构线贴底 */}
-          {dirty && (
+          {/* 保存条:结构线贴底。版本切换的静默落盘在途不出现(见 inlineSaving) */}
+          {dirty && !inlineSaving && (
             <div className="flex shrink-0 items-center gap-2 border-t border-base-300 bg-base-100 px-4 py-2">
               <span className="text-xs text-base-content/70">{t("settings.save.dirty")}</span>
               {saveError && (

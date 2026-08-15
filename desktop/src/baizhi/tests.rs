@@ -199,12 +199,21 @@ fn stale_service_response_cannot_overwrite_current_monkeycode_cookie() {
 /// 代理子域,自建看用户填没填——填了用填的,没填跟随服务地址 /v1。
 #[test]
 fn mc_llm_resolution_prefers_proxy_on_official_cloud() {
-    use super::{resolve_mc_llm, DEFAULT_MONKEYCODE_LLM_URL, DEFAULT_MONKEYCODE_URL};
+    use super::{
+        resolve_mc_llm, DEFAULT_MONKEYCODE_LLM_URL, DEFAULT_MONKEYCODE_URL, INTL_MONKEYCODE_LLM_URL,
+        INTL_MONKEYCODE_URL,
+    };
     assert_eq!(resolve_mc_llm("", DEFAULT_MONKEYCODE_URL), DEFAULT_MONKEYCODE_LLM_URL);
     assert_eq!(
         resolve_mc_llm("", "https://monkeycode-ai.com/"),
         DEFAULT_MONKEYCODE_LLM_URL,
         "尾斜杠归一后仍认作官方云"
+    );
+    assert_eq!(resolve_mc_llm("", INTL_MONKEYCODE_URL), INTL_MONKEYCODE_LLM_URL);
+    assert_eq!(
+        resolve_mc_llm("", "https://monkeycode-ai.net/"),
+        INTL_MONKEYCODE_LLM_URL,
+        "国际版官方云同样走独立代理子域"
     );
     assert_eq!(
         resolve_mc_llm("", "https://self.example.com"),

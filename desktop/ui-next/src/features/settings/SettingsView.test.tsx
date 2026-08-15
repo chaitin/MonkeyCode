@@ -96,14 +96,76 @@ describe("设置视图:导航与载入", () => {
     expect(screen.getByText("默认")).toBeDefined(); // 主力行的默认徽标
   });
 
-  it("导航含「账号」,点击挂载账号分区(登录 tab 可见)", async () => {
-    stubShell(); // 未知命令(baizhi_status 等)回 null,分区按未登录形态渲染
+  it("导航含「账号」,点击挂载账号分区(国内版登录 tab 可见)", async () => {
+    // 未知命令(baizhi_status 等)回 null,分区按未登录形态渲染;
+    // mc_base_url 置空 = 官方云国内版——登录方式按生效版本裁剪,
+    // baseConfig 的私有地址会走仅账密形态(AccountSection 自有测试钉住)
+    stubShell({ config: { ...baseConfig, mc_base_url: "" } });
     render(<SettingsView onClose={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "账号" }));
     expect(await screen.findByRole("tab", { name: "微信扫码" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "短信验证码" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "账号密码" })).toBeDefined();
     // 拉码命令回 null → 状态机按失败收束,给出重试入口(不留悬空 loading)
     expect(await screen.findByRole("button", { name: "重新获取二维码" })).toBeDefined();
+  });
+
+  it("账号分区点选国际版:静默落盘生效,全程不露保存条,登录方式随即翻为仅账密", async () => {
+    let resolveSave: (() => void) | undefined;
+    const { calls } = stubShell({
+      config: { ...baseConfig, mc_base_url: "" },
+      save: () =>
+        new Promise<null>((res) => {
+          resolveSave = () => res(null);
+        }),
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    await screen.findByRole("tab", { name: "微信扫码" });
+    await userEvent.click(screen.getByRole("radio", { name: "国际版" }));
+    // 点选即保存(用户视角没有「保存」这回事):落盘在途,微信码撤下、
+    // 保存条不闪现(2026-08-15 用户报障:能看到保存按钮一闪而过)
+    await waitFor(() => expect(calls.some((c) => c.cmd === "save_config")).toBe(true));
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByRole("button", { name: "放弃" })).toBeNull();
+    expect(screen.queryByText(/有未保存的修改/)).toBeNull();
+
+    resolveSave?.();
+    const saved = calls.find((c) => c.cmd === "save_config")?.args?.config as DesktopConfig;
+    expect(saved.mc_base_url).toBe("https://monkeycode-ai.net");
+    // 保存即真值:生效版本翻为国际版,登录区变为仅账密表单;保存条依旧不出现
+    expect(await screen.findByRole("textbox", { name: "邮箱" })).toBeDefined();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByText(/有未保存的修改/)).toBeNull();
+  });
+
+  it("切到私有化再点回国内版(配置本就是国内版):不触发保存,登录 tabs 直接回来", async () => {
+    const { calls } = stubShell({ config: { ...baseConfig, mc_base_url: "" } });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    await screen.findByRole("tab", { name: "微信扫码" });
+    await userEvent.click(screen.getByRole("radio", { name: "私有化部署" }));
+    expect(screen.queryByRole("tab")).toBeNull();
+    await userEvent.click(screen.getByRole("radio", { name: "国内版" }));
+    // 与已保存配置无差异:按载荷对比跳过落盘,不白重启引擎
+    expect(await screen.findByRole("tab", { name: "微信扫码" })).toBeDefined();
+    expect(screen.queryByText(/版本切换未生效/)).toBeNull();
+    expect(calls.some((c) => c.cmd === "save_config")).toBe(false);
+  });
+
+  it("国际版配置下切私有化再点国内版:保存条不弹,直接落盘切换,不误报「版本切换未生效」", async () => {
+    const { calls } = stubShell({ config: { ...baseConfig, mc_base_url: "https://monkeycode-ai.net" } });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    await screen.findByRole("textbox", { name: "邮箱" }); // 国际版 = 账密表单
+    await userEvent.click(screen.getByRole("radio", { name: "私有化部署" }));
+    expect(screen.queryByText(/有未保存的修改/)).toBeNull(); // 光点选不弄脏表单
+    await userEvent.click(screen.getByRole("radio", { name: "国内版" }));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "save_config")).toBe(true));
+    const saved = calls.find((c) => c.cmd === "save_config")?.args?.config as DesktopConfig;
+    expect(saved.mc_base_url).toBe("");
+    expect(await screen.findByRole("tab", { name: "微信扫码" })).toBeDefined();
+    expect(screen.queryByText(/版本切换未生效/)).toBeNull();
   });
 
   it("返回按钮回调 onClose", async () => {
