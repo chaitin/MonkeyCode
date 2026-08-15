@@ -10,11 +10,11 @@
 //   btn、右键菜单走 lib/contextMenu(menu 皮相)。
 // 行交互:右键 = 行菜单(重命名/归档/删除二段确认)。
 // 行/组头/小节折叠的呈现件收口在 listKit(三列表统一,不做两套)。
-import { IconArchive, IconFolder, IconFolderOpen, IconInbox, IconMessages, IconPlus, IconRefresh } from "@tabler/icons-react";
-import { useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { IconArchive, IconFolder, IconFolderOpen, IconInbox, IconMessages, IconPin, IconPlus, IconRefresh } from "@tabler/icons-react";
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import { CloudTaskList, useCloudProjects, useCloudTasks, type CloudTasksFeed } from "@/features/cloud/CloudTaskList";
-import { GroupLabel, levelPad, ListRow, NEST_NO_GUIDE, SectionFold } from "@/features/sidebar/listKit";
+import { fmtCompact, GroupLabel, levelPad, ListRow, NEST_NO_GUIDE, SectionFold, showTokenPopover } from "@/features/sidebar/listKit";
 import { rowStatusLabel, rowTrailing } from "@/features/sidebar/sessionStatus";
 import { TODO_GROUP_KEY, TodoSection, type TodoWiring } from "@/features/todo/TodoSection";
 import { Brand } from "@/features/titlebar/TitleBar";
@@ -22,18 +22,27 @@ import { useUpdate } from "@/features/update/useUpdate";
 import { openMenu, type MenuItem } from "@/lib/contextMenu";
 import { useI18n } from "@/lib/i18n";
 import type { SessionMeta } from "@/lib/ipc/sessions";
+import { buildSessionUsageMap, sumUsage, usageStats, type TokenUsage } from "@/lib/ipc/usageStats";
 import {
-  groupSessions,
+  groupLocalSessions,
+  newGroupId,
   projectKey,
   readArchivedProjects,
   readCollapsedGroups,
+  readCustomGroups,
+  readPinnedProjects,
+  readProjectGroups,
   readProjectOrder,
   readSessionArchivesOpen,
   reorderKeys,
   writeArchivedProjects,
   writeCollapsedGroups,
+  writeCustomGroups,
+  writePinnedProjects,
+  writeProjectGroups,
   writeProjectOrder,
   writeSessionArchivesOpen,
+  type CustomGroup,
   type ProjectGroup,
 } from "@/lib/util/projects";
 import type { Space } from "@/lib/util/prefs";
@@ -56,12 +65,15 @@ const END_DROP_KEY = "\0end";
 // (features/todo/TodoSection)按同一张表回查关联会话,留在本文件会成环。
 
 interface RowPlumbing {
+  space: string;
   currentId: string | null;
   actions: SidebarActions;
   attentionIds?: Set<string>;
   renamingId: string | null;
   onRenameStart: (id: string) => void;
   onRenameEnd: () => void;
+  /** 会话 id → 该会话(含归并的子代理)的 token 用量 */
+  usage: ReadonlyMap<string, TokenUsage>;
 }
 
 function SessionRow({ meta, p, level }: { meta: SessionMeta; p: RowPlumbing; level?: number }) {
@@ -167,8 +179,14 @@ function ProjectDetails({
   onToggleArchOpen,
   onProjectArchiveToggle,
   archivedProject,
+  nested,
   drag,
   dropTarget,
+  customGroups,
+  projectGroups,
+  assignProject,
+  pinnedProjects,
+  toggleProjectPin,
 }: {
   group: ProjectGroup;
   p: RowPlumbing;
@@ -178,6 +196,8 @@ function ProjectDetails({
   onToggleArchOpen: (key: string) => void;
   onProjectArchiveToggle: (key: string) => void;
   archivedProject: boolean;
+  /** 在自定义分组内渲染(缩进对齐组头,与顶层项目区分) */
+  nested?: boolean;
   drag?: {
     onDragStart: (key: string) => void;
     onDragOver: (key: string) => void;
@@ -185,10 +205,45 @@ function ProjectDetails({
     onDropBefore: (key: string | null) => void;
   };
   dropTarget?: boolean;
+  customGroups?: readonly CustomGroup[];
+  projectGroups?: Readonly<Record<string, string>>;
+  assignProject?: (key: string, gid: string | null) => void;
+  pinnedProjects?: ReadonlySet<string>;
+  toggleProjectPin?: (key: string) => void;
 }) {
   const { t } = useI18n();
   const waiting = group.sessions.filter((s) => s.waiting_ask).length;
+  const menuPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const menuItems: MenuItem[] = [
+    // 项目置顶(仅 local;右键整个项目置顶,置顶排最前)
+    ...(p.space === "local" && pinnedProjects && toggleProjectPin
+      ? [
+          {
+            label: pinnedProjects.has(group.key) ? t("sidebar.group.unpin") : t("sidebar.group.pinProject"),
+            run: () => toggleProjectPin(group.key),
+          },
+        ]
+      : []),
+    // 移到自定义分组(子菜单,分组再多不撑爆右键):点开二级菜单选组
+    ...(p.space === "local" && customGroups && assignProject
+      ? [
+          {
+            label: `${t("sidebar.group.moveTo")} ▸`,
+            run: () => {
+              const pos = menuPosRef.current ?? { x: 0, y: 0 };
+              openMenu(pos, [
+                ...customGroups.map((g) => ({
+                  label: g.id === projectGroups?.[group.key] ? `✓ ${g.name}` : g.name,
+                  run: () => assignProject(group.key, g.id),
+                })),
+                ...(projectGroups?.[group.key]
+                  ? [{ label: t("sidebar.group.moveOut"), run: () => assignProject(group.key, null) }]
+                  : []),
+              ]);
+            },
+          },
+        ]
+      : []),
     ...(archivedProject ? [] : [{ label: t("sidebar.project.newTaskIn"), run: () => p.actions.onNewTaskIn(group.key) }]),
     {
       label: archivedProject ? t("sidebar.project.unarchive") : t("sidebar.project.archive"),
@@ -230,7 +285,7 @@ function ProjectDetails({
             分区」的手法,项目数一多就把列表撑散)。层级信号交给缩进与组头
             小标签,不再靠 mb/pb 调间距(引导竖线已撤,用户定案 2026-08-10) */}
         <summary
-          className={`group relative flex items-center after:hidden ${archivedProject ? "ps-6" : ""}`}
+          className={`group relative flex items-center gap-2 after:hidden ${archivedProject ? "ps-6" : nested ? "ps-6" : ""}`}
           title={[group.key, t("sidebar.project.hint"), drag ? t("sidebar.project.dragHint") : ""].filter(Boolean).join("\n")}
           draggable={!!drag}
           onDragStart={() => drag?.onDragStart(group.key)}
@@ -238,6 +293,7 @@ function ProjectDetails({
           onContextMenu={(e: MouseEvent) => {
             e.preventDefault();
             e.stopPropagation();
+            menuPosRef.current = { x: e.clientX, y: e.clientY };
             openMenu({ x: e.clientX, y: e.clientY }, menuItems);
           }}
         >
@@ -246,6 +302,9 @@ function ProjectDetails({
               列表就上下跳 */}
           {dropTarget && <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary" />}
           <GroupLabel icon={collapsed ? IconFolder : IconFolderOpen} name={group.name} />
+          {pinnedProjects?.has(group.key) && (
+            <IconPin size={11} stroke={2} className="shrink-0 text-warning" aria-label={t("sidebar.group.pinned")} />
+          )}
           {waiting > 0 && <span className="badge badge-warning badge-xs">{waiting}</span>}
           {/* 快捷钮常驻占位、hover 只切可见性:插入式显隐会挤动项目名,鼠标一进一出就抖 */}
           {!archivedProject && (
@@ -295,6 +354,268 @@ function ProjectDetails({
               </details>
             </li>
           )}
+        </ul>
+      </details>
+    </li>
+  );
+}
+
+/** 自定义分组折叠块:组头 = 文件夹图标 + 名称 + token 合计 + 菜单;
+ *  成员是「项目」,以普通行样式展示(非完整项目头,展开看任务)。 */
+function CustomGroupSection({
+  group,
+  p,
+  collapsedSet,
+  onToggleCollapsed,
+  onProjectArchiveToggle,
+  onDelete,
+  onRename,
+  assignProject,
+  customGroups,
+  projectGroups,
+  pinnedProjects,
+  toggleProjectPin,
+  draggedKey,
+  drag,
+}: {
+  group: CustomGroup & { projects: ProjectGroup[] };
+  p: RowPlumbing;
+  /** 完整折叠键集合:组自身用 `cg:` 键,组内项目用 `cp:` 键 */
+  collapsedSet: ReadonlySet<string>;
+  onToggleCollapsed: (key: string, open: boolean) => void;
+  onProjectArchiveToggle: (key: string) => void;
+  onDelete: () => void;
+  onRename: (id: string, name: string) => void;
+  assignProject: (key: string, gid: string | null) => void;
+  customGroups: readonly CustomGroup[];
+  projectGroups: Readonly<Record<string, string>>;
+  pinnedProjects: ReadonlySet<string>;
+  toggleProjectPin: (key: string) => void;
+  /** 正在被拖拽的项目 key(仅拖拽中非空):组头作为落点,放下即移入该组 */
+  draggedKey: string | null;
+  /** 拖拽句柄(透传给组内项目行) */
+  drag?: {
+    onDragStart: (key: string) => void;
+    onDragEnd: () => void;
+  };
+}) {
+  const { t } = useI18n();
+  const [dragOverGroup, setDragOverGroup] = useState(false);
+  const groupUsage = sumUsage(
+    group.projects.flatMap((proj) => [...proj.sessions.map((s) => s.id), ...proj.archivedSessions.map((s) => s.id)]),
+    p.usage,
+  );
+  const menuItems: MenuItem[] = [
+    {
+      label: t("sidebar.group.rename"),
+      run: () => {
+        const name = window.prompt(t("sidebar.group.rename"), group.name);
+        if (name && name.trim()) onRename(group.id, name.trim());
+      },
+    },
+    { label: t("sidebar.group.delete"), danger: true, run: onDelete },
+  ];
+  const groupCollapsed = collapsedSet.has("cg:" + group.id);
+  return (
+    <li>
+      <details
+        open={!groupCollapsed}
+        onToggle={(e) => {
+          if (e.target !== e.currentTarget) return;
+          onToggleCollapsed("cg:" + group.id, e.currentTarget.open);
+        }}
+      >
+        <summary
+          className={`group relative flex min-h-8 items-center gap-2 after:hidden ${dragOverGroup ? "rounded-box bg-primary/10 ring-1 ring-primary/30" : ""}`}
+          title={[group.name, t("sidebar.group.hint"), draggedKey ? t("sidebar.group.dropHint") : ""].filter(Boolean).join("\n")}
+          onContextMenu={(e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openMenu({ x: e.clientX, y: e.clientY }, menuItems);
+          }}
+          onDragOver={(e: DragEvent) => {
+            if (!draggedKey) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (!dragOverGroup) setDragOverGroup(true);
+          }}
+          onDragLeave={() => setDragOverGroup(false)}
+          onDrop={(e: DragEvent) => {
+            if (!draggedKey) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOverGroup(false);
+            assignProject(draggedKey, group.id);
+            drag?.onDragEnd(); // 立即清掉 draggedKey,否则源行卸载后落点残留
+          }}
+        >
+          <GroupLabel icon={groupCollapsed ? IconFolder : IconFolderOpen} name={group.name} />
+          {groupUsage && groupUsage.input + groupUsage.output > 0 && (
+            <button
+              type="button"
+              className="shrink-0 rounded bg-base-200/70 px-1 font-mono text-[10px] leading-4 text-base-content/55 hover:text-base-content"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showTokenPopover({ x: e.clientX, y: e.clientY }, groupUsage);
+              }}
+            >
+              {fmtCompact(groupUsage.input + groupUsage.output)}
+            </button>
+          )}
+        </summary>
+        <ul className={`ms-0 min-w-0 ps-0 pb-1.5 ${NEST_NO_GUIDE}`}>
+          {group.projects.map((proj) => (
+            <GroupProjectRow
+              key={proj.key}
+              proj={proj}
+              p={p}
+              collapsed={collapsedSet.has("cp:" + proj.key)}
+              onToggleCollapsed={onToggleCollapsed}
+              pinnedProjects={pinnedProjects}
+              toggleProjectPin={toggleProjectPin}
+              onProjectArchiveToggle={onProjectArchiveToggle}
+              customGroups={customGroups}
+              projectGroups={projectGroups}
+              assignProject={assignProject}
+              drag={drag}
+            />
+          ))}
+          {/* 拖动本组项目时显示「移出分组」落点:拖到这里即回到不分组 */}
+          {group.projects.some((proj) => proj.key === draggedKey) && (
+            <li>
+              <div
+                className="mx-2 my-1 flex min-h-8 items-center justify-center rounded-box border border-dashed border-base-content/25 text-[11px] text-base-content/50 hover:border-error hover:text-error"
+                onDragOver={(e: DragEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDrop={(e: DragEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (draggedKey) {
+                    assignProject(draggedKey, null);
+                    drag?.onDragEnd(); // 立即清掉 draggedKey,避免落点残留
+                  }
+                }}
+              >
+                {t("sidebar.group.dropOut")}
+              </div>
+            </li>
+          )}
+        </ul>
+      </details>
+    </li>
+  );
+}
+
+/** 自定义分组内的项目行:普通行样式(小文件夹图标 + 名称 + token),展开看任务。
+ *  右键:置顶/移到其他分组/移出/归档。 */
+function GroupProjectRow({
+  proj,
+  p,
+  collapsed,
+  onToggleCollapsed,
+  pinnedProjects,
+  toggleProjectPin,
+  onProjectArchiveToggle,
+  customGroups,
+  projectGroups,
+  assignProject,
+  drag,
+}: {
+  proj: ProjectGroup;
+  p: RowPlumbing;
+  collapsed: boolean;
+  onToggleCollapsed: (key: string, open: boolean) => void;
+  pinnedProjects: ReadonlySet<string>;
+  toggleProjectPin: (key: string) => void;
+  onProjectArchiveToggle: (key: string) => void;
+  customGroups: readonly CustomGroup[];
+  projectGroups: Readonly<Record<string, string>>;
+  assignProject: (key: string, gid: string | null) => void;
+  /** 拖拽句柄:拖到其他分组=换组,拖到顶部项目区=移出分组 */
+  drag?: {
+    onDragStart: (key: string) => void;
+    onDragEnd: () => void;
+  };
+}) {
+  const { t } = useI18n();
+  const usage = sumUsage(
+    [...proj.sessions.map((s) => s.id), ...proj.archivedSessions.map((s) => s.id)],
+    p.usage,
+  );
+  const menuItems: MenuItem[] = [
+    ...(p.space === "local"
+      ? [
+          {
+            label: pinnedProjects.has(proj.key) ? t("sidebar.group.unpin") : t("sidebar.group.pinProject"),
+            run: () => toggleProjectPin(proj.key),
+          },
+          // 移到分组(子菜单)
+          {
+            label: `${t("sidebar.group.moveTo")} ▸`,
+            run: () => {
+              const pos = menuPosRef.current ?? { x: 0, y: 0 };
+              openMenu(pos, [
+                ...customGroups
+                  .filter((g) => g.id !== projectGroups?.[proj.key])
+                  .map((g) => ({ label: g.name, run: () => assignProject(proj.key, g.id) })),
+                { label: t("sidebar.group.moveOut"), run: () => assignProject(proj.key, null) },
+              ]);
+            },
+          },
+        ]
+      : []),
+    { label: t("sidebar.project.archive"), run: () => onProjectArchiveToggle(proj.key) },
+  ];
+  const menuPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  return (
+    <li>
+      <details
+        open={!collapsed}
+        onToggle={(e) => {
+          if (e.target !== e.currentTarget) return;
+          onToggleCollapsed("cp:" + proj.key, e.currentTarget.open);
+        }}
+      >
+        <summary
+          className="flex min-h-8 items-center gap-2 ps-6 text-xs after:hidden"
+          title={proj.key}
+          draggable={!!drag}
+          onDragStart={() => drag?.onDragStart(proj.key)}
+          onDragEnd={() => drag?.onDragEnd()}
+          onContextMenu={(e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            menuPosRef.current = { x: e.clientX, y: e.clientY };
+            openMenu({ x: e.clientX, y: e.clientY }, menuItems);
+          }}
+        >
+          <IconFolderOpen size={12} stroke={1.75} aria-hidden className="shrink-0 text-base-content/40" />
+          <span className="min-w-0 flex-1 truncate text-base-content/70">{proj.name}</span>
+          {pinnedProjects.has(proj.key) && (
+            <IconPin size={10} stroke={2} className="shrink-0 text-warning" aria-label={t("sidebar.group.pinned")} />
+          )}
+          {usage && usage.input + usage.output > 0 && (
+            <button
+              type="button"
+              className="shrink-0 rounded bg-base-200/70 px-1 font-mono text-[10px] leading-4 text-base-content/55 hover:text-base-content"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showTokenPopover({ x: e.clientX, y: e.clientY }, usage);
+              }}
+            >
+              {fmtCompact(usage.input + usage.output)}
+            </button>
+          )}
+        </summary>
+        <ul className={`ms-0 min-w-0 ps-0 pb-1 ${NEST_NO_GUIDE}`}>
+          {rows(proj.sessions, p, 2)}
+          {proj.archivedSessions.length > 0 && rows(proj.archivedSessions, p, 2)}
         </ul>
       </details>
     </li>
@@ -361,7 +682,7 @@ function Overview({
     if (running > 0) stats.push({ text: t("sidebar.overview.running", { n: String(running) }), cls: "text-primary" });
     if (queued > 0) stats.push({ text: t("sidebar.overview.queued", { n: String(queued) }), cls: "text-warning" });
   }
-  if (space !== "cloud") {
+  if (space === "local" || space === "chat") {
     const running = pool.filter((m) => m.status === "running").length;
     const waiting = pool.filter((m) => m.waiting_ask).length;
     if (running > 0) stats.push({ text: t("sidebar.overview.running", { n: String(running) }), cls: "text-primary" });
@@ -472,6 +793,57 @@ export function Sidebar({
   // dragOverKey 取此值 = 悬停在列表末尾的收尾落区(项目 key 是路径,不会撞)
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  // 自定义分组(仅 local):分组列表 / 项目→组映射 / 置顶项目
+  const [customGroups, setCustomGroups] = useState<CustomGroup[]>(readCustomGroups);
+  const [projectGroups, setProjectGroups] = useState<Record<string, string>>(readProjectGroups);
+  const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(readPinnedProjects);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+
+  const commitCustomGroups = (next: CustomGroup[]) => {
+    setCustomGroups(next);
+    writeCustomGroups(next);
+  };
+  const createGroup = (name: string) => {
+    commitCustomGroups([...customGroups, { id: newGroupId(), name, createdAt: Date.now() }]);
+  };
+  const renameGroup = (id: string, name: string) => {
+    commitCustomGroups(customGroups.map((g) => (g.id === id ? { ...g, name } : g)));
+  };
+  const deleteGroup = (id: string) => {
+    commitCustomGroups(customGroups.filter((g) => g.id !== id));
+    const nextMap = { ...projectGroups };
+    for (const [key, gid] of Object.entries(nextMap)) if (gid === id) delete nextMap[key];
+    setProjectGroups(nextMap);
+    writeProjectGroups(nextMap);
+  };
+  const assignProject = (key: string, gid: string | null) => {
+    const nextMap = { ...projectGroups };
+    if (gid === null) delete nextMap[key];
+    else nextMap[key] = gid;
+    setProjectGroups(nextMap);
+    writeProjectGroups(nextMap);
+  };
+  const toggleProjectPin = (key: string) => {
+    const next = new Set(pinnedProjects);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setPinnedProjects(next);
+    writePinnedProjects(next);
+  };
+  // 会话列表变化时重拉一次用量(usage 事件由壳记账,聚合后按会话给徽标)
+  const [usageMap, setUsageMap] = useState<ReadonlyMap<string, TokenUsage>>(new Map());
+  useEffect(() => {
+    let alive = true;
+    void usageStats()
+      .then((data) => {
+        if (!alive) return;
+        setUsageMap(buildSessionUsageMap(data.sessions)); // 子代理已归入父任务
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [sessions]);
 
   // 云端数据源(hook 无条件调用;非云端空间 enabled=false 不拉取):
   // 概览统计与列表共用同一份 feed,重新进入云端经 enabled 翻转刷新
@@ -480,12 +852,14 @@ export function Sidebar({
   const cloudProjects = useCloudProjects(cloud?.reloadKey ?? 0, cloudEnabled);
 
   const p: RowPlumbing = {
+    space,
     currentId,
     actions,
     attentionIds,
     renamingId,
     onRenameStart: setRenamingId,
     onRenameEnd: () => setRenamingId(null),
+    usage: usageMap,
   };
 
   const toggleCollapsed = (key: string, open: boolean) => {
@@ -577,7 +951,7 @@ export function Sidebar({
       );
     }
 
-    const grouped = groupSessions(pool, order, archivedProjects);
+    const grouped = groupLocalSessions(pool, order, archivedProjects, customGroups, projectGroups, pinnedProjects);
     const visibleKeys = grouped.projects.map((g) => g.key);
     const drag = {
       onDragStart: (key: string) => setDraggedKey(key),
@@ -590,6 +964,12 @@ export function Sidebar({
       onDropBefore: (before: string | null) => {
         setDragOverKey(null);
         if (!draggedKey || draggedKey === before) return;
+        // 拖的是分组内项目 → 落到顶部项目区 = 移出分组
+        if (!visibleKeys.includes(draggedKey)) {
+          assignProject(draggedKey, null);
+          setDraggedKey(null);
+          return;
+        }
         const next = reorderKeys(visibleKeys, draggedKey, before);
         setDraggedKey(null);
         // 结果与原序相同就什么都不做:拖到自己正下方那个组头时,
@@ -607,7 +987,61 @@ export function Sidebar({
       return !(next.length === visibleKeys.length && next.every((k, i) => k === visibleKeys[i]));
     };
     return (
-      <ul className="menu menu-sm w-full flex-nowrap p-0 [&_li]:flex-nowrap">
+      <>
+        {/* 自定义分组:新建输入 + 分组列表(项目在组内) */}
+        <div className="flex items-center gap-1 px-2 pb-0.5 pt-1">
+          <span className="min-w-0 flex-1 truncate text-[10px] uppercase tracking-wide text-base-content/35">
+            {t("sidebar.group.title")}
+          </span>
+          <button
+            type="button"
+            aria-label={t("sidebar.group.new")}
+            title={t("sidebar.group.new")}
+            className="btn btn-ghost btn-square btn-xs"
+            onClick={() => setCreatingGroup((v) => !v)}
+          >
+            <IconPlus size={14} stroke={1.75} aria-hidden />
+          </button>
+        </div>
+        {creatingGroup && (
+          <div className="px-2 pb-1">
+            <input
+              autoFocus
+              placeholder={t("sidebar.group.name")}
+              className="input input-bordered input-xs w-full"
+              onBlur={() => setCreatingGroup(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const v = (e.target as HTMLInputElement).value.trim();
+                  if (v) createGroup(v);
+                  setCreatingGroup(false);
+                } else if (e.key === "Escape") {
+                  setCreatingGroup(false);
+                }
+              }}
+            />
+          </div>
+        )}
+        <ul className="menu menu-sm w-full flex-nowrap p-0 [&_li]:flex-nowrap">
+        {grouped.custom.map((g) => (
+          <CustomGroupSection
+            key={g.id}
+            group={g}
+            p={p}
+            assignProject={assignProject}
+            customGroups={customGroups}
+            projectGroups={projectGroups}
+            pinnedProjects={pinnedProjects}
+            toggleProjectPin={toggleProjectPin}
+            collapsedSet={collapsed}
+            onToggleCollapsed={toggleCollapsed}
+            onProjectArchiveToggle={toggleProjectArchive}
+            onDelete={() => deleteGroup(g.id)}
+            onRename={renameGroup}
+            draggedKey={draggedKey}
+            drag={drag}
+          />
+        ))}
         {todoSection}
         {grouped.projects.map((group) => (
           <ProjectDetails
@@ -622,6 +1056,11 @@ export function Sidebar({
             archivedProject={false}
             drag={drag}
             dropTarget={dragOverKey === group.key && willMove(group.key)}
+            customGroups={customGroups}
+            projectGroups={projectGroups}
+            assignProject={assignProject}
+            pinnedProjects={pinnedProjects}
+            toggleProjectPin={toggleProjectPin}
           />
         ))}
         {/* 收尾落区:拖拽中才出现的一条 12px 空行。没有它就**排不到末位**——
@@ -664,11 +1103,17 @@ export function Sidebar({
                 onToggleArchOpen={toggleSessionArchOpen}
                 onProjectArchiveToggle={toggleProjectArchive}
                 archivedProject
+                customGroups={customGroups}
+                projectGroups={projectGroups}
+                assignProject={assignProject}
+                pinnedProjects={pinnedProjects}
+                toggleProjectPin={toggleProjectPin}
               />
             ))}
           </SectionFold>
         )}
-      </ul>
+        </ul>
+      </>
     );
   };
 

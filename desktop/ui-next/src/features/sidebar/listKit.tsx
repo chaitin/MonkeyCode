@@ -13,11 +13,95 @@
 // - SectionFold 小节折叠:Archive 形小节头(10px 图标行首、无计数),
 //   开合走 prefs 契约键持久化,收起即卸载(部分 webview 里 details 收起
 //   后嵌套 ul 残留占位空间)。
-import { IconArchive, type TablerIcon } from "@tabler/icons-react";
+import { IconArchive, IconPin, type TablerIcon } from "@tabler/icons-react";
 import { useState, type MouseEvent, type ReactNode } from "react";
 
 import { openMenu, type MenuItem } from "@/lib/contextMenu";
+import { t } from "@/lib/i18n";
+import type { TokenUsage } from "@/lib/ipc/usageStats";
+import { pushEscLayer } from "@/lib/util/escLayer";
 import { readFold, writeFold, type FoldKey } from "@/lib/util/prefs";
+
+const fmt = (n: number): string => n.toLocaleString("en-US");
+
+/** 紧凑数字:12.3k / 1.2M(行宽紧,徽标只放得下短格式) */
+export const fmtCompact = (n: number): string => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(n);
+};
+
+let tokenPopCleanup: (() => void) | null = null;
+
+function closeTokenPop() {
+  tokenPopCleanup?.();
+}
+
+/** 分组/项目头 token 用量弹窗:命令式 fixed 定位(行容器 overflow-hidden 会裁
+ * 掉普通 dropdown,与 openMenu 同一套机制)。点击徽标弹出,点外部/Esc 关。 */
+export function showTokenPopover(pos: { x: number; y: number }, usage: TokenUsage) {
+  closeTokenPop();
+  const backdrop = document.createElement("div");
+  backdrop.className = "fixed inset-0 z-40";
+  const box = document.createElement("div");
+  box.className = "fixed z-50 w-60 rounded-box border border-base-300 bg-base-100 p-3 shadow-lg";
+
+  const title = document.createElement("div");
+  title.className = "mb-1.5 text-xs font-semibold";
+  title.textContent = t("sidebar.row.tokens");
+  box.appendChild(title);
+
+  const summary = document.createElement("div");
+  summary.className = "mb-2 text-[11px] text-base-content/70";
+  summary.textContent = `${t("sidebar.row.tokens.input")} ${fmt(usage.input)} · ${t("sidebar.row.tokens.output")} ${fmt(usage.output)} · ${t("sidebar.row.tokens.calls")} ${fmt(usage.calls)}`;
+  box.appendChild(summary);
+
+  if (usage.models.length > 0) {
+    const sep = document.createElement("div");
+    sep.className = "border-t border-base-300 pt-1.5";
+    const head = document.createElement("div");
+    head.className = "mb-0.5 text-[10px] text-base-content/50";
+    head.textContent = t("sidebar.row.tokens.byModel");
+    sep.appendChild(head);
+    for (const m of usage.models) {
+      const row = document.createElement("div");
+      row.className = "flex items-center justify-between gap-2 text-[11px]";
+      const name = document.createElement("span");
+      name.className = "min-w-0 truncate font-mono text-base-content/70";
+      name.textContent = m.model;
+      const val = document.createElement("span");
+      val.className = "shrink-0 tabular-nums text-base-content/60";
+      val.textContent = fmt(m.input_tokens + m.output_tokens);
+      row.append(name, val);
+      sep.appendChild(row);
+    }
+    box.appendChild(sep);
+  }
+
+  backdrop.addEventListener("mousedown", closeTokenPop);
+  backdrop.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    closeTokenPop();
+  });
+  const popEsc = pushEscLayer(() => {
+    closeTokenPop();
+    return true;
+  });
+  window.addEventListener("resize", closeTokenPop);
+  window.addEventListener("blur", closeTokenPop);
+  tokenPopCleanup = () => {
+    tokenPopCleanup = null;
+    popEsc();
+    window.removeEventListener("resize", closeTokenPop);
+    window.removeEventListener("blur", closeTokenPop);
+    backdrop.remove();
+    box.remove();
+  };
+  document.body.append(backdrop, box);
+  const rect = box.getBoundingClientRect();
+  box.style.left = `${Math.max(0, Math.min(pos.x, window.innerWidth - rect.width - 8))}px`;
+  box.style.top = `${Math.max(0, Math.min(pos.y, window.innerHeight - rect.height - 8))}px`;
+}
 
 // 嵌套 ul 的缩进引导竖线:**已撤**(用户定案 2026-08-10「本地会话项目列表的
 // 竖线都去掉,包括 archive 的列表」;三列表同取此件,云端/对话一并去,§6.2
@@ -75,6 +159,7 @@ export function levelPad(level = 0): string {
 export function ListRow({
   primary,
   trailing,
+  pinned,
   tooltip,
   level = 0,
   active,
@@ -88,6 +173,8 @@ export function ListRow({
    * (用户定案 2026-08-05「文字换状态图标」),进点的 title/aria-label。
    * pulse = 进行中的活态(运行中/等待确认),渲染成「实心点 + 扩散环」 */
   trailing?: { tone: string; label: string; pulse?: boolean } | null;
+  /** 置顶:行首小图钉标记 */
+  pinned?: boolean;
   tooltip: string;
   /** 缩进级(见 LEVELS):0 = 平铺行,1 = 项目内任务行,依此类推 */
   level?: number;
@@ -117,7 +204,10 @@ export function ListRow({
         }}
       >
         {/* 活跃行走正文色(不覆写);归档降到 /55,选中态不降——选中就该看清 */}
-        <span className={`min-w-0 flex-1 truncate ${archived && !active ? "text-base-content/55" : ""}`}>{primary}</span>
+        <span className={`min-w-0 flex-1 truncate ${archived && !active ? "text-base-content/55" : ""}`}>
+          {pinned && <IconPin size={10} stroke={2} className="-mt-px me-0.5 inline text-warning" aria-hidden />}
+          {primary}
+        </span>
         {trailing && <StatusDot {...trailing} />}
       </a>
     </li>
