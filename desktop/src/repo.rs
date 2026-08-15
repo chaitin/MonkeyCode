@@ -172,6 +172,50 @@ fn read_file(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
     Ok(json!({ "path": rel, "content": String::from_utf8_lossy(&data) }))
 }
 
+/// git 输出路径的 C 风格引号还原。core.quotepath=false 只关闭对**非 ASCII
+/// 字节**的转义;文件名含双引号、反斜杠或控制字符时 git 仍输出 C 风格引号串
+/// (如 "a\"b.txt")——只剥外层引号会留下字面转义符,拼出不存在的路径,
+/// 文件面板对该条目的 diff/读取全部失败。
+fn unquote_git_path(s: &str) -> String {
+    let Some(inner) = s.strip_prefix('"').and_then(|t| t.strip_suffix('"')) else {
+        return s.to_string();
+    };
+    let bytes = inner.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'\\' || i + 1 >= bytes.len() {
+            out.push(bytes[i]);
+            i += 1;
+            continue;
+        }
+        i += 1;
+        match bytes[i] {
+            b'n' => { out.push(b'\n'); i += 1; }
+            b't' => { out.push(b'\t'); i += 1; }
+            b'r' => { out.push(b'\r'); i += 1; }
+            b'a' => { out.push(0x07); i += 1; }
+            b'b' => { out.push(0x08); i += 1; }
+            b'f' => { out.push(0x0c); i += 1; }
+            b'v' => { out.push(0x0b); i += 1; }
+            // 控制字符即使 quotepath=false 也走最多三位八进制
+            b'0'..=b'7' => {
+                let mut val: u32 = 0;
+                let mut n = 0;
+                while n < 3 && i < bytes.len() && bytes[i].is_ascii_digit() && bytes[i] <= b'7' {
+                    val = val * 8 + u32::from(bytes[i] - b'0');
+                    i += 1;
+                    n += 1;
+                }
+                out.push(val as u8);
+            }
+            // 含 \" 与 \\:转义符后原样收字符
+            c => { out.push(c); i += 1; }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// 相对 HEAD 的变更列表(含未跟踪文件)，同时返回工作区是否属于 git 仓库。
 /// 路径统一为相对 workdir(porcelain 输出仓库根相对路径,须剥前缀);
 /// quotepath 关闭,否则非 ASCII 文件名被转成八进制转义乱码。
@@ -191,11 +235,14 @@ fn file_changes(ctx: &RepoCtx) -> Result<(Value, bool), String> {
         }
         let code = line[..2].trim();
         let mut path = line[3..].trim().to_string();
-        // 处理重命名 "old -> new"
-        if let Some(i) = path.find(" -> ") {
-            path = path[i + 4..].to_string();
+        // 重命名/拷贝行才有 "old -> new"(porcelain v1 只在 R/C 状态输出箭头):
+        // 无差别按箭头截断会把名字里恰好含 " -> " 的普通文件截成错误路径
+        if code.contains('R') || code.contains('C') {
+            if let Some(i) = path.find(" -> ") {
+                path = path[i + 4..].to_string();
+            }
         }
-        path = path.trim_matches('"').to_string();
+        path = unquote_git_path(&path);
         // 仓库根相对 → workdir 相对(前缀之外的条目丢弃,双保险)
         if !prefix.is_empty() {
             match path.strip_prefix(&prefix) {
@@ -280,6 +327,25 @@ fn reveal(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 用例与真实 git porcelain 输出对拍(quotepath=false 下非 ASCII 裸输出,
+    /// 双引号/反斜杠/控制字符仍走 C 转义,含空格的名字也会被整体加引号)。
+    #[test]
+    fn unquote_git_path_restores_c_escapes() {
+        let cases: &[(&str, &str)] = &[
+            (r#""a\"b.txt""#, r#"a"b.txt"#),
+            (r#""tab\there""#, "tab\there"),
+            (r#""back\\""#, r"back\"),
+            (r#""\346\227\245.txt""#, "日.txt"),   // 八进制 UTF-8 三连
+            (r#""\0501.txt""#, "(1.txt"),          // 3 位八进制后紧跟普通数字
+            (r#""a -> b.txt""#, "a -> b.txt"),     // 空格名必被引号包裹
+            ("plain.txt", "plain.txt"),            // 未加引号原样通过
+            ("日.txt", "日.txt"),                  // quotepath=false 的裸非 ASCII
+        ];
+        for (input, want) in cases {
+            assert_eq!(unquote_git_path(input), *want, "input: {input}");
+        }
+    }
 
     /// 组件级校验挡不住符号链接:工作区内一条指向外部的链接,足以让只读
     /// 文件浏览读到工作区外的文件。与 uploads.rs::read_data_url 同标准,

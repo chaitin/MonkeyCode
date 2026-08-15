@@ -207,10 +207,13 @@ impl BrowserSession {
         // 失败只跳过。
         let mut oopif: Vec<String> = Vec::new();
         if let Ok(frames) = self.0.cdp.frames_list(tab).await {
+            let mut missed = false;
+            let listed = !frames.is_empty();
             for f in frames {
                 let Ok((mut f_meta, f_refs)) =
                     self.collect_frame(tab, Some(&f.session_id), &group).await
                 else {
+                    missed = true;
                     continue;
                 };
                 for it in &mut f_meta.items {
@@ -220,8 +223,13 @@ impl BrowserSession {
                 refs.extend(f_refs);
                 oopif.push(f.session_id.clone());
             }
-            // 顶层跨源 iframe 已展开;仅当无法枚举时才提示"未包含"
-            meta.cross_origin_iframes = 0;
+            // 只有列到了子会话且全部采集成功才清零计数:有跳过、或页面明明
+            // 有跨源 iframe 而扩展一个子会话都没 attach 上(SW 重启丢表、旧版
+            // Chrome 无 flat session)时,必须保留"内容未包含"的提示——否则
+            // 模型会把"没采到"当"页面上不存在"。
+            if listed && !missed {
+                meta.cross_origin_iframes = 0;
+            }
         }
 
         {
@@ -475,7 +483,10 @@ impl BrowserSession {
 			this.focus();
 			if (clear) {
 				if ('value' in this && typeof this.select === 'function') { this.select(); }
-				else if (this.isContentEditable) { document.execCommand('selectAll', false, null); }
+				// 同源 iframe 内的元素经主 frame 上下文执行,裸 document 恒指顶层
+				// 文档,selectAll 会落在错误的 selection 上(iframe 里清空静默失败,
+				// insertText 变成插入而非覆盖);跟 COLLECT_JS 一样按 ownerDocument 走
+				else if (this.isContentEditable) { this.ownerDocument.execCommand('selectAll', false, null); }
 			}
 			return true;
 		}",

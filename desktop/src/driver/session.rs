@@ -1029,6 +1029,11 @@ impl OhmyDriver {
                 return Err("会话正在执行,请先取消".into());
             }
         }
+        // 后台 resume 可能仍在飞:它收尾时会 write_sidecar(create_dir_all 会把
+        // 刚删的目录重建成幽灵条目)并换绑 engine_id。先等它落地(成败都行,
+        // 失败照常删),下面取的 created/engine_id 才是 resume 实际绑定的终值,
+        // 引擎侧 destroy 的也是那个会话,不会留孤儿。
+        let _ = self.ensure_engine_ready(id).await;
         let meta = self.read_sidecar(id);
         let chat_workdir = (meta.get("kind").and_then(|v| v.as_str()) == Some("chat"))
             .then(|| {
@@ -1039,12 +1044,31 @@ impl OhmyDriver {
                     .and_then(|path| managed_chat_workdir(&self.0.chat_workspaces_dir, &path))
             })
             .flatten();
-        let created = self.0.sess.sessions.lock_ok().get(id).map(|s| s.created).unwrap_or(false);
-        let eng = self.engine_id(id);
+        // 等待与快照必须原子衔接:上面的 watch 唤醒同样会放行排队中的
+        // session_send(两者等的是同一个 resume watch)。running 复检、
+        // created/engine_id 快照、摘表在同一次加锁里完成——send 先开了轮,
+        // 这里如实拒绝;这里先摘了表,send 的开轮守卫拿到 None 报「会话
+        // 未打开」。两种交错都不会再有新轮或新的 sidecar 写落在删除之后
+        // (send 的错误路径 write_sidecar 会 create_dir_all,晚于目录删除
+        // 就是幽灵条目)。
+        let (created, eng) = {
+            let mut sessions = self.0.sess.sessions.lock_ok();
+            if sessions.get(id).map(|s| s.running).unwrap_or(false) {
+                return Err("会话正在执行,请先取消".into());
+            }
+            match sessions.remove(id) {
+                Some(s) => (s.created, s.engine_id),
+                None => (false, String::new()),
+            }
+        };
+        // 表中无登记(从未打开)时按 sidecar 兜底,与 engine_id() 同一回退链
+        let eng = if eng.is_empty() { self.engine_id(id) } else { eng };
         if created {
             let _ = self.rpc("session/destroy", json!({ "session_id": eng })).await;
         }
-        self.0.sess.sessions.lock_ok().remove(id);
+        // resume 的 watch 条目随会话一并摘除:此表此前只增不删,删掉的会话
+        // 会在表里永久残留
+        self.0.sess.resume.lock_ok().remove(id);
         // 文件级删除(目录扫描 + 逐 sidecar 读 + 递归删)挪到阻塞线程,
         // 不占 tokio 运行时(对齐 driver/mod.rs 的 spawn_blocking 纪律)。
         // 会话已从 sessions 移除 → 不会再有新帧入队;journal_close 带 ack
@@ -1587,10 +1611,20 @@ impl OhmyDriver {
                 // compacting 标记让 normalize 知道 "started" 已在此实时落过
                 // (引擎只有"压缩完成"一个事件,不标记的话事件又合成一对,
                 // "正在压缩/压缩完成"同刻蹦出两条)。
-                if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
-                    s.running = true;
-                    s.compacting = true;
-                    s.turn += 1;
+                {
+                    let mut sessions = self.0.sess.sessions.lock_ok();
+                    if let Some(s) = sessions.get_mut(id) {
+                        // 开头的空闲检查与此处隔着 create_resumed 的 RPC 往返,
+                        // 并发 user-input 可能已原子开轮:再检查须与置位同锁,
+                        // 否则会覆盖消息轮的 running,压缩失败路径还会把那一轮
+                        // 误收尾(task_error/task_ended 落进别人的轮)。
+                        if s.running {
+                            return Err("执行中不能压缩上下文,请先取消当前任务".into());
+                        }
+                        s.running = true;
+                        s.compacting = true;
+                        s.turn += 1;
+                    }
                 }
                 self.push_frame(id, frame::task_started);
                 self.push_frame(id, |seq| frame::compact_status("started", seq));
@@ -1605,11 +1639,12 @@ impl OhmyDriver {
                         COMPACT_RPC_TIMEOUT,
                     )
                     .await;
-                if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
-                    s.running = false;
-                    s.compacting = false;
-                }
-                match r {
+                // 收尾帧要落在**本轮仍持有 running** 时:先清忙碌位再补帧,
+                // 并发 user-input 可在两次加锁的间隙原子开轮,本轮的
+                // task_error/task_ended 会以更高 seq 关进别人刚开的轮。
+                // 状态事件放在清位之后:UI 收到空闲/错误信号时忙碌位已放开,
+                // 排队消息立刻重投也不会撞上尚未清的 running。
+                let (status, result) = match r {
                     Ok(resp) => {
                         // 应答携带压缩后的权威上下文快照(usage 事件先行,
                         // 这里兜底对齐,防事件被引擎重启等原因吞掉)
@@ -1620,8 +1655,7 @@ impl OhmyDriver {
                             self.0.push_usage(id, used, window);
                         }
                         self.push_frame(id, frame::task_ended);
-                        self.emit_session_event(id, SessionStatus::Idle.as_str());
-                        Ok(json!({ "result": { "status": "ok" } }))
+                        (SessionStatus::Idle, json!({ "result": { "status": "ok" } }))
                     }
                     Err(e) => {
                         // 失败/被取消/超时:与 user-input 同契约——轮已开、
@@ -1630,10 +1664,15 @@ impl OhmyDriver {
                         // 没有下文),命令本身回 Ok。
                         self.push_frame(id, |seq| frame::task_error(&e, seq));
                         self.push_frame(id, frame::task_ended);
-                        self.emit_session_event(id, SessionStatus::Error.as_str());
-                        Ok(json!({ "result": { "status": "error" } }))
+                        (SessionStatus::Error, json!({ "result": { "status": "error" } }))
                     }
+                };
+                if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
+                    s.running = false;
+                    s.compacting = false;
                 }
+                self.emit_session_event(id, status.as_str());
+                Ok(result)
             }
             other => Ok(json!({ "error": format!("ohmyagent 引擎不支持 {other}") })),
         }
@@ -1815,6 +1854,12 @@ impl OhmyDriver {
     /// destroy + 重建实现切换(仅空闲时安全):模式切换的常规路径
     /// (子代理权限顶棚只在构建时生效)与旧引擎无 switch RPC 的回退。
     async fn recreate_fallback(&self, id: &str, model_id: &str, mode: &str) -> Result<(), String> {
+        // 调用方的空闲检查与走到这里之间隔着 sidecar 写盘等 await 点,并发
+        // user-input 可能已原子开轮;destroy 打在执行中的轮上会把它连根拆掉。
+        // 贴着 destroy 再查一次,把窗口缩到一次 RPC 派发以内。
+        if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
+            return Err("执行中不能切换,请先取消当前任务".into());
+        }
         // destroy 容错:引擎侧可能已无此会话(崩溃重启后),不阻断重建
         let _ = self.rpc("session/destroy", json!({ "session_id": self.engine_id(id) })).await;
         if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
@@ -2119,6 +2164,28 @@ impl Inner {
     /// 老会话首次打开(无 replay.jsonl,from = 0)即一次性迁移;进程崩溃
     /// 残留的完整轮即补录。流式单遍,不把整份日志读进内存——23MB 的
     /// 病态 journal 也只占一行的内存。返回是否写入过内容。
+    /// 补录期间会话是否仍然空闲(无累积折叠帧、无运行中轮次)。replay_open
+    /// 的 idle 快照取在扫描之前,而扫描可跨数 MB 日志:期间并发 user-input
+    /// 可以合法开轮,新轮已落盘的帧会被扫描读到。物化前在 sessions 锁内
+    /// 复验,不空闲即放弃剩余补录——活轮的帧留给它自己的轮末物化,否则
+    /// 同一批帧会在 replay.jsonl 里出现两行,此后每次打开都重复渲染。
+    ///
+    /// 中止的安全性依赖两条非局部不变量,改动它们时必须回看这里:
+    /// ① 父会话开轮全程被 ensure_engine_ready/seq_gate 闸在 replay_open
+    ///    之后——保证"必有一次完整补录先于任何开轮",中止遗留的残段总会
+    ///    被下一次空闲打开续扫;② 子代理子会话的 sid 每次运行新生成,不跨
+    ///    重启复用。任一松动,活轮轮末的 Materialize{src_end: None}(写线程
+    ///    取当前文件长度)会把未补录区间整段划入"已消费",旧轮从回放中
+    ///    静默消失。
+    fn still_idle(&self, sid: &str) -> bool {
+        self.sess
+            .sessions
+            .lock_ok()
+            .get(sid)
+            .map(|s| s.fold.is_empty() && !s.running)
+            .unwrap_or(true)
+    }
+
     fn catch_up(&self, sid: &str, events: &Path, from: u64) -> bool {
         use std::io::{BufRead as _, BufReader, Seek as _, SeekFrom};
         let Ok(mut f) = std::fs::File::open(events) else { return false };
@@ -2144,6 +2211,9 @@ impl Inner {
                     let end = fold::is_turn_end(&v);
                     acc.push(&v);
                     if end {
+                        if !self.still_idle(sid) {
+                            return wrote;
+                        }
                         let _ = self.transport.journal_tx.send(JournalMsg::Materialize {
                             sid: sid.to_string(),
                             turn: acc.take(),
@@ -2154,9 +2224,10 @@ impl Inner {
                 }
             }
         }
-        // 末尾未闭合的一段也物化:补录只在会话空闲时做,它不会再有新帧,
-        // 留着只会每次打开重折一遍
-        if !acc.is_empty() {
+        // 末尾未闭合的一段也物化:空闲复验通过时它必然来自更早的进程,不会
+        // 再有新帧,留着只会每次打开重折一遍;复验不过则是活轮的进行时,留给
+        // 它自己的轮末物化
+        if !acc.is_empty() && self.still_idle(sid) {
             let _ = self.transport.journal_tx.send(JournalMsg::Materialize {
                 sid: sid.to_string(),
                 turn: acc.take(),
@@ -2224,6 +2295,7 @@ impl Inner {
         let mut pos = src_end;
         let mut raw: Vec<Value> = Vec::new();
         read_journal_tail(&events, &mut pos, &mut raw);
+        let mut seen_seq = 0;
         let mut sessions = self.sess.sessions.lock_ok();
         if let Some(s) = sessions.get_mut(sid) {
             self.journal_barrier();
@@ -2239,11 +2311,12 @@ impl Inner {
                 high = high.max(raw.len() as u64);
             }
             s.seq = s.seq.max(high);
+            seen_seq = s.seq;
         }
         drop(sessions);
         frames.extend(fold::fold_frames(&raw));
         if idle && fold::unterminated(&frames) {
-            frames.extend(self.repair_unterminated(sid));
+            frames.extend(self.repair_unterminated(sid, seen_seq));
         }
         ReplayWindow { frames, cursor, has_more }
     }
@@ -2260,10 +2333,18 @@ impl Inner {
     ///
     /// 补的两帧直接返回给本次回放窗口,**不入批量缓冲**:窗口是 session_open
     /// 的返回值,再经 frames:{sid} 投一次会让 UI 重复归约出两条收尾。
-    fn repair_unterminated(&self, sid: &str) -> Vec<Value> {
+    fn repair_unterminated(&self, sid: &str, seen_seq: u64) -> Vec<Value> {
         let (err, end) = {
             let mut sessions = self.sess.sessions.lock_ok();
             let Some(s) = sessions.get_mut(sid) else { return Vec::new() };
+            // idle 快照与走到这里之间在锁外折叠过尾帧:期间并发 user-input
+            // 可能已合法开轮(running/fold 非空),甚至整轮已收尾(seq 必然
+            // 前进)。此时日志尾部的"未闭合"是活轮的进行时或已由它自己
+            // 闭合——补刀会把 task_error/task_ended 注进别人的轮,take 还会
+            // 偷走活轮已累积的折叠帧。任一迹象即放弃冷修复。
+            if s.running || !s.fold.is_empty() || s.seq != seen_seq {
+                return Vec::new();
+            }
             s.seq += 1;
             let err = frame::task_error(COLD_REPAIR_REASON, s.seq);
             s.seq += 1;

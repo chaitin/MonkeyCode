@@ -384,7 +384,21 @@ impl OhmyDriver {
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
-                let Ok(line) = line else { break };
+                let line = match line {
+                    Ok(line) => line,
+                    // 非 UTF-8 行(旧版 wsl.exe 忽略 WSL_UTF8 时的 UTF-16 中继
+                    // 文本、引擎意外的二进制输出)只是这一行脏,流还活着:
+                    // lines() 已把该行消费掉,跳过继续读。当 EOF 处理会把活
+                    // 引擎误判为崩溃,并强制中断所有运行中会话。
+                    Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                        eprintln!("[desktop] 引擎 stdout 出现非 UTF-8 行,已跳过");
+                        continue;
+                    }
+                    Err(e) => {
+                        eprintln!("[desktop] 引擎 stdout 读取错误,按进程退出收尾: {e}");
+                        break;
+                    }
+                };
                 if line.trim().is_empty() {
                     continue;
                 }
@@ -455,8 +469,12 @@ impl OhmyDriver {
                 // Arc<Inner>——每崩一次就泄漏一整份会话状态与 journal 写线程,
                 // 自动重启下这个泄漏会按崩溃次数累积
                 inner_r.transport.stopped.store(true, Ordering::Relaxed);
-                // 回收子进程:Rust 的 Child::drop **不** wait,不收就是僵尸
+                // 回收子进程:Rust 的 Child::drop **不** wait,不收就是僵尸。
+                // 先 kill 再 wait——走到这里也可能是 stdout 读错误而进程仍
+                // 活着(真退出时 kill 是无害空操作),裸 wait 会永久阻塞:
+                // reader 线程挂死,on_engine_exit 永不触发,自动重启失效。
                 if let Some(mut child) = inner_r.transport.child.lock_ok().take() {
+                    let _ = child.kill();
                     let _ = child.wait();
                 }
                 // WSL 模式:stdout EOF 只证明 wsl.exe 中继死了,guest 引擎

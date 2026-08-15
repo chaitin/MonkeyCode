@@ -23,7 +23,7 @@ use windows::Win32::Graphics::Gdi::{
     DT_SINGLELINE, DT_VCENTER, FW_NORMAL, HGDIOBJ, OUT_DEFAULT_PRECIS, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetCapture, ReleaseCapture, SetCapture};
 use crate::util::LockExt;
 use windows::Win32::UI::Shell::{
     DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass, SUBCLASSPROC,
@@ -32,8 +32,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetWindowRect, KillTimer,
     LoadCursorW, PostMessageW, RegisterClassExW, SetTimer, SetWindowPos, ShowWindow,
     UpdateLayeredWindow, HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_APP, WM_DPICHANGED,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCDESTROY, WM_SIZE, WM_TIMER, WNDCLASSEXW,
+    SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_APP,
+    WM_CAPTURECHANGED, WM_DPICHANGED, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCDESTROY,
+    WM_SIZE, WM_TIMER, WNDCLASSEXW,
     WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
@@ -732,6 +733,15 @@ unsafe extern "system" fn window_proc(
         WM_MOUSEMOVE => {
             let mut mouse = pet.mouse.lock_ok();
             if mouse.down {
+                // 捕获在手是拖拽的硬前置。WM_CAPTURECHANGED 的复位有一个
+                // 无法消除的空窗:下方 SetWindowPos 泵消息期间夺捕获,
+                // try_lock 失败即跳过且消息不再来。这里按真值校验兜底:
+                // 捕获已失就地复位,绝不按过期基准移窗
+                if GetCapture() != hwnd {
+                    mouse.down = false;
+                    mouse.dragged = false;
+                    return LRESULT(0);
+                }
                 let mut cursor = POINT::default();
                 if windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut cursor).is_ok() {
                     let dx = cursor.x - mouse.cursor.x;
@@ -763,6 +773,20 @@ unsafe extern "system" fn window_proc(
             if clicked {
                 let target = pet.visual.lock_ok().target_session_id.clone();
                 crate::show_main_session(&pet.app, target.as_deref());
+            }
+            return LRESULT(0);
+        }
+        WM_CAPTURECHANGED => {
+            // 捕获可被系统/其他窗口异步夺走(Win 键弹开始菜单、系统模态循环
+            // 触发 WM_CANCELMODE 等),之后 WM_LBUTTONUP 不再投递本窗:不在
+            // 这里复位 down,松开鼠标后光标只要滑过桌宠就会按过期的
+            // origin/cursor 基准"无按键拖动"并瞬移。
+            // 必须 try_lock:WM_LBUTTONUP 持锁调 ReleaseCapture 时本消息被
+            // **同步**重入投递(文档明言自己 Release 也会收到),lock 会在
+            // 同线程上自锁死;那条路径 down 已复位,跳过正确。
+            if let Ok(mut mouse) = pet.mouse.try_lock() {
+                mouse.down = false;
+                mouse.dragged = false;
             }
             return LRESULT(0);
         }

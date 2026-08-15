@@ -593,6 +593,15 @@ impl DownloadCtl {
 /// 进度事件节流间隔:够手感流畅,也不会让 IPC 事件刷屏。
 const DL_PROGRESS_EVERY: Duration = Duration::from_millis(150);
 
+/// 下载读等待的心跳间隔:把 stream.next() 的无限等待切成小段,每拍检查
+/// 取消旗标(否则取消只在块间生效,连接停摆时永远收不到下一块)。
+const DL_READ_TICK: Duration = Duration::from_secs(1);
+
+/// 连续无数据判连接停摆的上限。下载刻意不设总超时(大 zip 慢网会被掐,
+/// 见函数头注释),但 TCP 半开(切网/合盖休眠、NAT 静默丢映射)时流会
+/// 永久 pending:健康的流式 zip 不会整两分钟一个字节都不给。
+const DL_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
+
 /// 从云端任务 VM 工作区下载文件/目录到本地(对齐 web 控制台文件树的
 /// "下载":GET /api/v1/users/files/download,目录由服务端打成 zip)。
 /// 流式写入 dest,不整包过内存/IPC;失败/取消清掉残件。返回写入字节数。
@@ -688,7 +697,31 @@ async fn do_file_download(
     let mut stream = resp.bytes_stream();
     let mut written: u64 = 0;
     let mut last_emit = Instant::now();
-    while let Some(chunk) = stream.next().await {
+    let mut idle = Duration::ZERO;
+    loop {
+        // StreamExt::next 可安全取消(未 Ready 不消费数据):select 心跳把
+        // 无限读等待切成 1s 小段,停摆的连接上取消旗标也能及时生效
+        let next = tokio::select! {
+            next = stream.next() => next,
+            _ = tokio::time::sleep(DL_READ_TICK) => {
+                idle += DL_READ_TICK;
+                if !cancel.load(Ordering::Relaxed) && idle < DL_IDLE_TIMEOUT {
+                    continue;
+                }
+                drop(file);
+                let _ = tokio::fs::remove_file(dest).await; // 残件不留
+                return if cancel.load(Ordering::Relaxed) {
+                    Err(other("下载已取消"))
+                } else {
+                    Err(other(format!(
+                        "下载中断: 连接停摆,连续 {}s 未收到数据",
+                        DL_IDLE_TIMEOUT.as_secs()
+                    )))
+                };
+            }
+        };
+        idle = Duration::ZERO;
+        let Some(chunk) = next else { break };
         if cancel.load(Ordering::Relaxed) {
             drop(file);
             let _ = tokio::fs::remove_file(dest).await; // 取消不留残件
