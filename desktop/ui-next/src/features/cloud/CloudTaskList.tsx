@@ -318,32 +318,62 @@ export function CloudTaskList({
   // 分组懒拉缓存(键 = 项目 id);重拉键翻转即作废
   const [groupTasks, setGroupTasks] = useState<Record<string, GroupTasksState>>({});
   const groupGeneration = useRef(0);
-  useEffect(() => {
-    groupGeneration.current += 1;
-    setGroupTasks({});
-  }, [reloadKey]);
   // 组开合(历史小节的契约键持久化在 SectionFold 内)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   // 行动作(删除/终止)失败原因,已格式化;新动作发起时清空
   const [actionErr, setActionErr] = useState("");
 
+  const fetchGroup = useCallback((projectId: string, generation: number) => {
+    mcTasks(1, PAGE_SIZE, "", { projectId })
+      .then((r) => {
+        if (generation !== groupGeneration.current) return;
+        setGroupTasks((prev) => ({ ...prev, [projectId]: { tasks: r.tasks ?? [] } }));
+      })
+      .catch((e: unknown) => {
+        if (generation !== groupGeneration.current) return;
+        setGroupTasks((prev) => ({ ...prev, [projectId]: { error: e instanceof Error ? e.message : String(e) } }));
+      });
+  }, []);
+
   const loadGroup = useCallback(
     (projectId: string) => {
       if (groupTasks[projectId]) return; // 拉过/在途
-      const generation = groupGeneration.current;
       setGroupTasks((prev) => ({ ...prev, [projectId]: { loading: true } }));
-      mcTasks(1, PAGE_SIZE, "", { projectId })
-        .then((r) => {
-          if (generation !== groupGeneration.current) return;
-          setGroupTasks((prev) => ({ ...prev, [projectId]: { tasks: r.tasks ?? [] } }));
-        })
-        .catch((e: unknown) => {
-          if (generation !== groupGeneration.current) return;
-          setGroupTasks((prev) => ({ ...prev, [projectId]: { error: e instanceof Error ? e.message : String(e) } }));
-        });
+      fetchGroup(projectId, groupGeneration.current);
     },
-    [groupTasks],
+    [groupTasks, fetchGroup],
   );
+
+  // 作废分组缓存并**立即重拉仍展开的组**:已展开的 details 不会再触发
+  // onToggle(loadGroup 的唯一常规入口),只清不拉会让它们当场变成一片
+  // 空白——没有行、没有 spinner、没有「暂无任务」,看起来像任务全被删了,
+  // 只能手动折叠再展开才能恢复
+  // 重拉集合读镜像 ref 而非闭包:invalidateGroups 会从命令式快照里被调用
+  // (右键菜单把 run 回调冻结进裸 DOM,mcTaskStop 的 .then 更是在网络往返
+  // 之后),闭包里的 openGroups 停在点击时刻——终止在途期间新展开的组
+  // 会被整表替换抹掉且不在重拉集合里,恰好复现本函数要消灭的「展开组
+  // 空白」。ref 永远取调用时刻的现值。
+  const openSetRef = useRef<string[]>([]);
+  useEffect(() => {
+    openSetRef.current = forceOpen ? projects.map((p) => p.id ?? "") : [...openGroups];
+  }, [forceOpen, projects, openGroups]);
+  const invalidateGroups = useCallback(() => {
+    groupGeneration.current += 1;
+    const generation = groupGeneration.current;
+    const open = openSetRef.current;
+    setGroupTasks(() => {
+      const next: Record<string, GroupTasksState> = {};
+      for (const projectId of open) next[projectId] = { loading: true };
+      return next;
+    });
+    for (const projectId of open) fetchGroup(projectId, generation);
+  }, [fetchGroup]);
+  useEffect(() => {
+    invalidateGroups();
+    // 只认 reloadKey 边沿:invalidateGroups 的身份随 openGroups/projects 变,
+    // 进依赖会把「展开一个组」也当成重拉信号
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey]);
 
   // 搜索强制展开:未拉过的组顺势懒拉(命中不能藏在没拉过的组里)
   useEffect(() => {
@@ -376,8 +406,8 @@ export function CloudTaskList({
     setActionErr("");
     void mcTaskStop(task.id)
       .then(() => {
-        // 状态翻转(active→history),分组缓存作废,整表重拉
-        setGroupTasks({});
+        // 状态翻转(active→history),分组缓存作废并重拉展开组,整表重拉
+        invalidateGroups();
         feed.refresh();
       })
       .catch((e: unknown) => {

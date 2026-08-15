@@ -294,7 +294,7 @@ function MainArea({
 }
 
 export function App() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   // 启动恒落本地任务(用户定案 2026-08-09),不恢复上次所在空间:云端可能
   // 未登录/断网,拿它当开机首屏每次都是一个坏屏幕;而且此前只要建过一次
   // 云端任务(onCloudCreated 里 setSpace("cloud")),启动空间就被永久改成
@@ -607,7 +607,10 @@ export function App() {
 
   // 标题跟随**主区实际渲染的那个视图**,各状态都要进依赖(见
   // shellChrome.windowContextLabel 头注:此前只认 current,切设置/新建/云端
-  // 任务时窗口切换器里仍挂着上一个本地会话的标题)
+  // 任务时窗口切换器里仍挂着上一个本地会话的标题)。
+  // locale 必须显式进依赖:t 是模块级函数、身份恒定,切界面语言时其余
+  // 依赖也全部不变——不认 locale 的话原生窗口标题会停留在旧语言,直到
+  // 下一次切会话/开设置才被顺带纠正
   useEffect(() => {
     const label = windowContextLabel(
       { settingsOpen, creating: !!creating, cloudSpace: space === "cloud" },
@@ -616,7 +619,7 @@ export function App() {
       t,
     );
     setWindowTitle(`${label} — ${t("app.name")}`);
-  }, [current, settingsOpen, creating, space, cloudTask, t]);
+  }, [current, settingsOpen, creating, space, cloudTask, t, locale]);
 
   const select = (meta: SessionMeta) => {
     if (meta.id !== currentId || settingsOpen || creating || space === "cloud") requestComposerFocus();

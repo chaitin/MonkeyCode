@@ -33,9 +33,18 @@ export function parseTermFrame(text: string): TermFrame | null {
   }
 }
 
-/** 下行 data 帧 → 终端字节(base64 → Uint8Array,直接喂 xterm.write)。 */
+/** 下行 data 帧 → 终端字节(base64 → Uint8Array,直接喂 xterm.write)。
+ *  坏 base64 返回空字节——契约与 parseTermFrame 对齐:终端流里偶发脏数据
+ *  (截断帧/URL-safe 变体/服务端异常输出)丢弃即可。裸 atob 会同步抛
+ *  InvalidCharacterError,沿 Tauri listen 派发链变成未捕获错误,被
+ *  index.html 的全局陷阱画成整屏「启动异常」诊断面板(safeOff 头注记录的
+ *  2026-08-12 报障即同型事故)。 */
 export function termBytes(dataB64: string): Uint8Array {
-  return Uint8Array.from(atob(dataB64), (c) => c.charCodeAt(0));
+  try {
+    return Uint8Array.from(atob(dataB64), (c) => c.charCodeAt(0));
+  } catch {
+    return new Uint8Array(0);
+  }
 }
 
 /** 复用优先挑 terminal_id:VM 已有会话重连第一个;列表为空/拉取失败才新建。 */

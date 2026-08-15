@@ -190,10 +190,18 @@ export function ChatView({
     scrollMemo.set(meta.id, { rowKey, offset, pinned });
   };
 
+  // 大纲跳转/闪光的句柄先于会话边沿 effect 声明(下方 cleanup 要清它们,
+  // 声明在后会构成「使用先于声明」);逻辑本体在下方「大纲跳转」段
+  const [flashSeq, setFlashSeq] = useState<number | null>(null);
+  const flashTimer = useRef(0);
+  const jumpTimer = useRef(0);
+  const metaIdRef = useRef(meta.id);
+
   // 会话切换/挂载:复位跟随状态并取出记忆位置(不显式复位的话 pinnedRef
   // 会带着上一会话的值进入新会话);cleanup 时 DOM 仍在,写档旧会话位置,
   // 并把旧会话的轮询定时器/RO 清干净
   useLayoutEffect(() => {
+    metaIdRef.current = meta.id; // 跳转链的会话身份基准(见 jumpWithRetry)
     const saved = scrollMemo.get(meta.id);
     pinnedRef.current = saved ? saved.pinned : true; // 首次打开默认贴底
     if (saved && !saved.pinned) startRestore(saved.rowKey, saved.offset);
@@ -211,6 +219,13 @@ export function ChatView({
       // DOM,闭包里的 meta.id 却还是旧会话——不取消就把上面刚写好的档冲掉
       window.cancelAnimationFrame(saveRaf.current);
       saveRaf.current = 0;
+      // 大纲跳转的重试链/闪光同属旧会话:seq 是各会话独立的帧序号,跨会话
+      // 必然撞号,残留的轮询会在新会话 DOM 里查到同号 [data-user-seq],把
+      // 新会话的视口拽到无关消息上并打断它的锚点恢复(卸载专用 effect 只
+      // 管卸载,切会话是同一实例复用,必须在这里清)
+      window.clearTimeout(jumpTimer.current);
+      window.clearTimeout(flashTimer.current);
+      setFlashSeq(null);
     };
     // 本 effect 是 session 边沿；这些函数只读 refs，随普通帧重跑会误写档。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -302,8 +317,18 @@ export function ChatView({
     // 手动按钮,按钮保留兜底)。loadEarlier 自带 busyRef 防重入;前插按元素
     // 锚定保位后 scrollTop 被推离阈值,天然不连环,一页不足一屏才串行续页。
     // 恢复期禁止:切会话恢复的锚点是**条目下标**,此刻前插会让下标整体
-    // 错位,恢复就对到错的条目上
-    if (hasMore && !loadingEarlier && !restoreRef.current && el.scrollTop < el.clientHeight) {
+    // 错位,恢复就对到错的条目上。
+    // 贴底跟随中也禁止:内容不足两屏时贴底位置本身就距顶不足一屏,进会话
+    // 的首次 align 贴底就满足触发条件——而 onLoadEarlier 第一行会清掉
+    // pinnedRef(那是手动按钮"去看历史"的语义),流式新内容从此不再跟随。
+    // 贴底的人没有在看历史,自动补页对它无意义
+    if (
+      hasMore &&
+      !loadingEarlier &&
+      !restoreRef.current &&
+      !pinnedRef.current &&
+      el.scrollTop < el.clientHeight
+    ) {
       void onLoadEarlier();
     }
     // 滚动停止后布局仍会微调一次(不发 scroll 事件),停稳后补一次写档
@@ -508,9 +533,7 @@ export function ChatView({
   );
 
   // ==== 大纲跳转:offset 精确补页 + 目标气泡闪光 ====
-  const [flashSeq, setFlashSeq] = useState<number | null>(null);
-  const flashTimer = useRef(0);
-  const jumpTimer = useRef(0);
+  // (flashSeq/flashTimer/jumpTimer/metaIdRef 声明在会话边沿 effect 之前)
   useEffect(
     () => () => {
       window.clearTimeout(flashTimer.current);
@@ -541,19 +564,24 @@ export function ChatView({
   // jumpWithRetry 随迁);重试耗尽 = 坏 seq/历史被清,放弃不空转。
   // 预算 ~3s:跳转补页的前插走 startTransition(useSessionFeed),大页
   // (50 轮)的时间切片提交可达一两秒——老预算 12×32ms 会在提交完成前
-  // 放弃,表现成「点大纲没反应」。轮询本身是零成本空查
-  const jumpWithRetry = (seq: number, tries = 90) => {
+  // 放弃,表现成「点大纲没反应」。轮询本身是零成本空查。
+  // 整条链锁定发起时的会话:切会话时定时器会被清(meta.id cleanup),但
+  // ensureLoaded 的 promise 延续仍会重新挂链——sid 不再匹配即作废,不许
+  // 旧会话的跳转落到新会话的同号 seq 上
+  const jumpWithRetry = (seq: number, sid: string, tries = 90) => {
+    if (metaIdRef.current !== sid) return;
     if (jumpToSeq(seq) || tries <= 0) return;
-    jumpTimer.current = window.setTimeout(() => jumpWithRetry(seq, tries - 1), 32);
+    jumpTimer.current = window.setTimeout(() => jumpWithRetry(seq, sid, tries - 1), 32);
   };
   // onJump 必须引用稳定:OutlineNav 是 memo 的，大纲上千条时流式批次不能
   // 因回调身份变化把整个面板重建——实现走 ref 取最新,外壳 useCallback 恒定
   const onJumpImpl = (seq: number, offset?: number) => {
     if (jumpToSeq(seq)) return;
+    const sid = meta.id;
     // 更早的提问还没加载:按它那一轮的 offset 精确补页再定位(session_history
     // 以 offset 为终点);流内新条目无 offset(按理已在 DOM),只走重试兜底
-    if (offset !== undefined) void ensureLoaded(offset).then(() => jumpWithRetry(seq));
-    else jumpWithRetry(seq);
+    if (offset !== undefined) void ensureLoaded(offset).then(() => jumpWithRetry(seq, sid));
+    else jumpWithRetry(seq, sid);
   };
   const onJumpRef = useRef(onJumpImpl);
   onJumpRef.current = onJumpImpl;

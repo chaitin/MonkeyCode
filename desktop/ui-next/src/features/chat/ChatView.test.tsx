@@ -134,8 +134,13 @@ describe("聊天视图", () => {
     const { container } = render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
     const log = container.querySelector<HTMLElement>("[data-chat-log]")!;
-    // happy-dom 无布局:手动给出「距顶不足一屏」的几何
+    // happy-dom 无布局:手动给出几何。自动补页只服务真正离底看历史的人
+    // (贴底跟随中不触发,否则会窃取 pinned 旗标),所以要先滚到底建立
+    // 方向基线,再向上滚进「距顶不足一屏」
     Object.defineProperty(log, "clientHeight", { value: 500, configurable: true });
+    Object.defineProperty(log, "scrollHeight", { value: 2000, configurable: true });
+    log.scrollTop = 1500;
+    fireEvent.scroll(log);
     log.scrollTop = 100;
     fireEvent.scroll(log);
     await waitFor(() => expect(screen.getByText("更早的问题")).toBeTruthy());
@@ -145,6 +150,24 @@ describe("聊天视图", () => {
     fireEvent.scroll(log);
     await new Promise((r) => setTimeout(r, 30));
     expect(ops.filter((o) => o.cmd === "session_history").length).toBe(calls);
+  });
+
+  it("贴底跟随中不自动补页(内容不足两屏时进场贴底就距顶不足一屏)", async () => {
+    const { ops } = stubShell({ hasMore: true });
+    const { container } = render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    const log = container.querySelector<HTMLElement>("[data-chat-log]")!;
+    // 内容 800 / 视口 500:贴底位 scrollTop=300,天然落在「距顶不足一屏」;
+    // 自动补页若不豁免贴底态,onLoadEarlier 第一行会清掉 pinnedRef,
+    // 流式新内容从此不再跟随
+    Object.defineProperty(log, "clientHeight", { value: 500, configurable: true });
+    Object.defineProperty(log, "scrollHeight", { value: 800, configurable: true });
+    log.scrollTop = 300;
+    fireEvent.scroll(log); // 距底 0px,dy 向下:贴底跟随成立
+    await new Promise((r) => setTimeout(r, 30));
+    expect(ops.some((o) => o.cmd === "session_history")).toBe(false);
+    // 手动兜底入口仍在
+    expect(screen.getByRole("button", { name: "加载更早" })).toBeTruthy();
   });
 
   it("发送:user-input 帧 content 走 base64;失败不丢草稿", async () => {
