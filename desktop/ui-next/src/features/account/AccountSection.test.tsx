@@ -99,17 +99,19 @@ describe("账号分区:门与登录面板", () => {
       baizhi_status: bzOut,
       mc_status: () => {
         mcCalls += 1;
-        if (mcCalls === 1) return mcIn();
+        // 账号 host 用独立值:cn 行自己的域名标签恒在,断言要指向的是
+        // 「旧服务账号的 host」而不是行标签
+        if (mcCalls === 1) return { logged_in: true, host: "old.example.com", user: { id: "u1", name: "云端用户" } };
         throw new Error("新服务不可达");
       },
       mc_usage: () => null,
     });
 
     const { rerender } = render(<AccountSection refreshKey={0} />);
-    await screen.findByText("monkeycode-ai.com");
+    await screen.findByText("old.example.com");
     rerender(<AccountSection refreshKey={1} />);
 
-    await waitFor(() => expect(screen.queryByText("monkeycode-ai.com")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("old.example.com")).toBeNull());
     expect(await screen.findByText(/登录状态读取失败:新服务不可达/)).toBeDefined();
   });
 
@@ -222,7 +224,7 @@ describe("短信验证码登录", () => {
   it("手机号无效:就地报错,不发 baizhi_send_code", async () => {
     const { calls } = stubShell(smsHandlers());
     render(<AccountSection />);
-    await userEvent.click(await screen.findByRole("tab", { name: "短信验证码" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "短信" }));
     await userEvent.type(screen.getByRole("textbox", { name: "手机号" }), "123");
     await userEvent.click(screen.getByRole("button", { name: "获取验证码" }));
     expect(screen.getByRole("alert").textContent).toContain("请输入有效的手机号");
@@ -233,7 +235,7 @@ describe("短信验证码登录", () => {
     const { calls } = stubShell(smsHandlers());
     render(<AccountSection />);
     // 导航与输入走真时钟(findBy/waitFor 不吃假时钟),读秒段再切假时钟
-    await userEvent.click(await screen.findByRole("tab", { name: "短信验证码" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "短信" }));
     await userEvent.type(screen.getByRole("textbox", { name: "手机号" }), "13800000000");
 
     vi.useFakeTimers();
@@ -269,7 +271,7 @@ describe("短信验证码登录", () => {
       mc_usage: () => null,
     });
     render(<AccountSection />);
-    await userEvent.click(await screen.findByRole("tab", { name: "短信验证码" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "短信" }));
     await userEvent.type(screen.getByRole("textbox", { name: "手机号" }), "13800000000");
     await userEvent.type(screen.getByRole("textbox", { name: "短信验证码" }), "654321");
     await userEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -308,7 +310,7 @@ describe("短信验证码登录", () => {
     });
 
     const { rerender } = render(<AccountSection refreshKey={0} />);
-    await userEvent.click(await screen.findByRole("tab", { name: "短信验证码" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "短信" }));
     await userEvent.type(screen.getByRole("textbox", { name: "手机号" }), "13800000000");
     await userEvent.type(screen.getByRole("textbox", { name: "短信验证码" }), "654321");
     await userEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -330,12 +332,12 @@ describe("MonkeyCode 账号密码登录入口", () => {
     render(<AccountSection />);
     // 微信/短信是经百智云 OAuth 登录 MonkeyCode 的方式,与账密同卡同 tab 序
     expect(await screen.findByRole("tab", { name: "微信扫码" })).toBeDefined();
-    expect(screen.getByRole("tab", { name: "短信验证码" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "短信" })).toBeDefined();
     // 登录前没有账号可陈列:不摆「MonkeyCode 云端」组头与「未连接」账号卡壳
     expect(screen.queryByText("MonkeyCode 云端")).toBeNull();
     expect(screen.queryByText("未连接")).toBeNull();
     expect(screen.queryByRole("button", { name: "连接 MonkeyCode 云端" })).toBeNull();
-    await userEvent.click(screen.getByRole("tab", { name: "账号密码" }));
+    await userEvent.click(screen.getByRole("tab", { name: "密码" }));
     expect(screen.getByRole("textbox", { name: "邮箱" })).toBeDefined();
     // 两头都未登录时百智云组不出现:登录职责已收进登录页
     expect(screen.queryByText("百智云服务")).toBeNull();
@@ -392,7 +394,7 @@ describe("MonkeyCode 账号密码登录入口", () => {
       mc_models_sync: () => ({ models: [{ name: "m", base_url: "https://m", api_key: "k", model: "m", source: "monkeycode" }] }),
     });
     render(<AccountSection />);
-    await userEvent.click(await screen.findByRole("tab", { name: "账号密码" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "密码" }));
 
     await userEvent.click(screen.getByRole("button", { name: "登录" }));
     expect(screen.getByRole("alert").textContent).toContain("请输入邮箱和密码");
@@ -429,8 +431,8 @@ describe("百智云增值登录(国内版,MC 已连)", () => {
     });
     render(<AccountSection />);
     await userEvent.click(await screen.findByRole("button", { name: "登录百智云" }));
-    expect(screen.queryByRole("tab", { name: "账号密码" })).toBeNull();
-    await userEvent.click(screen.getByRole("tab", { name: "短信验证码" }));
+    expect(screen.queryByRole("tab", { name: "密码" })).toBeNull();
+    await userEvent.click(screen.getByRole("tab", { name: "短信" }));
     await userEvent.type(screen.getByRole("textbox", { name: "手机号" }), "13800000000");
     await userEvent.type(screen.getByRole("textbox", { name: "短信验证码" }), "654321");
     await userEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -489,7 +491,9 @@ describe("已登录:用量面板/签到/同步/断开", () => {
     // 积分改 stats 大数值卡:标题与数值分节点
     expect(screen.getByText("积分")).toBeDefined();
     expect(screen.getByText("12")).toBeDefined();
-    expect(screen.getByText("已邀请 2 人")).toBeDefined();
+    // 邀请瓷片:标题与人数分节点(2026-08-16 服务列表布局)
+    expect(screen.getByText("已邀请")).toBeDefined();
+    expect(screen.getByText("2 人")).toBeDefined();
     // 邀请链接收进复制按钮(title 露全链接),不再明文铺链接
     expect(screen.getByTitle("https://mc.example/?ic=u1")).toBeDefined();
     expect(screen.getByRole("button", { name: "复制邀请链接" })).toBeDefined();
@@ -761,11 +765,46 @@ describe("服务版本选择", () => {
     expect(screen.getByRole("button", { name: "保存生效" })).toBeDefined();
   });
 
-  it("已登录后不再展示版本切换(切版本 = 断开连接回登录页再选)", async () => {
+  it("已登录:列表保留,其它服务给「切换到此服务」而非 radio", async () => {
     stubShell({ baizhi_status: bzIn, mc_status: mcIn, mc_usage: () => null });
     render(<AccountSection draft={emptyDraft()} onDraft={() => {}} />);
     await screen.findByText("云端用户");
     expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "切换到此服务" })).toHaveLength(2);
+    expect(screen.getByText("切换后需重新登录并同步会员模型")).toBeDefined();
+  });
+
+  it("切换到此服务:先断开(吊销→登出,不保留旧会话)再落盘切换", async () => {
+    let mcConnected = true;
+    const { calls } = stubShell({
+      baizhi_status: bzOut,
+      mc_status: () => (mcConnected ? mcIn() : mcOut()),
+      mc_usage: () => null,
+      mc_models_revoke: () => ({ ok: true }),
+      mc_logout: () => {
+        mcConnected = false;
+        return { ok: true };
+      },
+      baizhi_wechat_start: never,
+    });
+    let draft: SettingsDraft = emptyDraft();
+    const onDraft = (up: (d: SettingsDraft) => SettingsDraft) => {
+      draft = up(draft);
+    };
+    const onApplyDraft = vi.fn();
+    render(<AccountSection draft={draft} onDraft={onDraft} onApplyDraft={onApplyDraft} />);
+    await screen.findByText("云端用户");
+
+    // 行序 cn/intl/private,cn 已连——第一个切换钮是国际版行
+    await userEvent.click(screen.getAllByRole("button", { name: "切换到此服务" })[0]!);
+    await waitFor(() =>
+      expect(onApplyDraft).toHaveBeenCalledWith(expect.objectContaining({ mcBaseUrl: "https://monkeycode-ai.net" })),
+    );
+    const names = calls.map((c) => c.cmd);
+    const revokeAt = names.indexOf("mc_models_revoke");
+    const logoutAt = names.indexOf("mc_logout");
+    expect(revokeAt).toBeGreaterThanOrEqual(0); // 切换复用断开流程:吊销先于登出
+    expect(logoutAt).toBeGreaterThan(revokeAt);
   });
 
   it("拿不到草稿(浏览器只读/配置载入失败)时版本选择器不渲染,登录页照常", async () => {

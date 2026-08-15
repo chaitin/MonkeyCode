@@ -35,8 +35,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** 微信扫码卡:二维码 + 状态遮罩。 */
-function WechatTab({ onLoggedIn }: { onLoggedIn: () => void }) {
+/** 微信扫码卡:二维码 + 状态遮罩。导出给服务行的登录窗格直用。 */
+export function WechatTab({ onLoggedIn }: { onLoggedIn: () => void }) {
   const { t } = useI18n();
   const [snap, setSnap] = useState<WechatSnapshot>(WECHAT_IDLE);
   const flowRef = useRef<WechatFlow | null>(null);
@@ -100,8 +100,8 @@ function WechatTab({ onLoggedIn }: { onLoggedIn: () => void }) {
   );
 }
 
-/** 短信验证码卡:手机号 + 验证码 + 60s 倒计时发码按钮。 */
-function SmsTab({ onLoggedIn }: { onLoggedIn: () => void }) {
+/** 短信验证码卡:手机号 + 验证码 + 60s 倒计时发码按钮。导出同 WechatTab。 */
+export function SmsTab({ onLoggedIn }: { onLoggedIn: () => void }) {
   const { t } = useI18n();
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -280,17 +280,15 @@ export function PasswordForm({ onLoggedIn }: { onLoggedIn: () => void }) {
 
 export function LoginPanel({
   onBaizhiLoggedIn,
-  passwordTab,
 }: {
-  /** 百智云真实登录事件(短信/扫码成功各一次);宿主刷新状态并顺带桥接 */
+  /** 百智云真实登录事件(短信/扫码成功各一次);宿主刷新状态并顺带桥接。
+   *  仅百智云增值登录用(微信/短信两 tab);MonkeyCode 服务行的登录 tabs
+   *  由 ServiceCard 自排(tab 在行头,窗格直用 WechatTab/SmsTab)。 */
   onBaizhiLoggedIn: () => void;
-  /** 出现「账号密码」第三 tab(MonkeyCode 直连,不经百智云);仅国内版
-   *  登录卡传入,百智云增值登录(只为同步)不带 */
-  passwordTab?: { onLoggedIn: () => void | Promise<void> };
 }) {
   const { t } = useI18n();
-  const [mode, setMode] = useState<"wechat" | "sms" | "password">("wechat");
-  const tab = (key: "wechat" | "sms" | "password", label: string) => (
+  const [mode, setMode] = useState<"wechat" | "sms">("wechat");
+  const tab = (key: "wechat" | "sms", label: string) => (
     <button
       type="button"
       role="tab"
@@ -307,17 +305,8 @@ export function LoginPanel({
       <div role="tablist" className="tabs tabs-border">
         {tab("wechat", t("account.tab.wechat"))}
         {tab("sms", t("account.tab.sms"))}
-        {passwordTab && tab("password", t("account.tab.password"))}
       </div>
-      {mode === "wechat" ? (
-        <WechatTab onLoggedIn={onBaizhiLoggedIn} />
-      ) : mode === "sms" ? (
-        <SmsTab onLoggedIn={onBaizhiLoggedIn} />
-      ) : passwordTab ? (
-        <div className="py-2">
-          <PasswordForm onLoggedIn={() => void passwordTab.onLoggedIn()} />
-        </div>
-      ) : null}
+      {mode === "wechat" ? <WechatTab onLoggedIn={onBaizhiLoggedIn} /> : <SmsTab onLoggedIn={onBaizhiLoggedIn} />}
     </div>
   );
 }

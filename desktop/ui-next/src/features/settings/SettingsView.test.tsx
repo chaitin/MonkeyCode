@@ -104,8 +104,8 @@ describe("设置视图:导航与载入", () => {
     render(<SettingsView onClose={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "账号" }));
     expect(await screen.findByRole("tab", { name: "微信扫码" })).toBeDefined();
-    expect(screen.getByRole("tab", { name: "短信验证码" })).toBeDefined();
-    expect(screen.getByRole("tab", { name: "账号密码" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "短信" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "密码" })).toBeDefined();
     // 拉码命令回 null → 状态机按失败收束,给出重试入口(不留悬空 loading)
     expect(await screen.findByRole("button", { name: "重新获取二维码" })).toBeDefined();
   });
