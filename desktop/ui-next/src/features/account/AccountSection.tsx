@@ -501,7 +501,9 @@ function ServiceCard({
     return (
       <div
         key={r}
-        className={`flex flex-col border-s-4 ${active ? "border-primary bg-primary/5" : "border-transparent"}`}
+        // 选中态 = 左侧主题色条 + 展开,不整块铺色:mock 就是纯底 + 色条,
+        // 大面积淡色块会把登录表单泡在色汤里(2026-08-16 用户报障「丑」)
+        className={`flex flex-col border-s-4 ${active ? "border-primary" : "border-transparent"}`}
       >
         <div className="flex items-center gap-3 px-4 py-3.5">
           {!connected && showSelector && (
@@ -594,7 +596,7 @@ function ServiceCard({
           </div>
         </div>
         {active && (
-          <div className="px-4 pb-4">
+          <div className="px-4 pb-5">
             {rowConnected ? (
               <div className="flex flex-col gap-3">
                 <UsagePanel userId={user?.id} />
