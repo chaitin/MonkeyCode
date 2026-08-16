@@ -183,6 +183,8 @@ export const en: Record<MessageKey, string> = {
   "settings.desc.about": "Version, updates and diagnostics",
   "settings.browserReadonly": "Configuration is read-only in browser mode; edit it in the desktop app.",
   "settings.loadFailed": "Failed to load configuration: {message}",
+  "settings.general.uiScale": "UI zoom",
+  "settings.general.uiScaleHint": "Scales every interface element together — text, icons, controls, terminal. Applies immediately.",
   "settings.general.sound": "Event sounds",
   "settings.general.soundHint": "Play a sound on task completion, errors and approval requests; applies immediately.",
   "settings.models.add": "Add model",

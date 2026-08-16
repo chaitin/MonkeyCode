@@ -23,6 +23,7 @@ import {
 import { isWindowsShell } from "@/lib/ipc/host";
 import { inDesktopShell } from "@/lib/ipc/ipc";
 import { readCustomTheme, readTheme, setCustomTheme, setTheme, THEMES, CUSTOM_THEME, type CustomTheme, type Theme } from "@/lib/theme";
+import { readUiScale, setUiScale, UI_SCALES, type UiScale } from "@/lib/uiScale";
 import { customThemeVars, randomTheme, roleHex, COLOR_ROLES, DEFAULT_CUSTOM, BORDER_RANGE, RADIUS_RANGE, SIZE_RANGE, type ColorRole } from "@/lib/customTheme";
 import { useDismiss } from "@/lib/util/useDismiss";
 import { useEscLayer } from "@/lib/util/escLayer";
@@ -433,6 +434,11 @@ function GeneralSection() {
   // 没配过就给一份默认草稿:编辑器要有初值,选中「自定义」当场就该看到效果
   const [custom, setCustom] = useState<CustomTheme>(() => readCustomTheme() ?? DEFAULT_CUSTOM);
   const [soundOn, setSoundOn] = useState(true);
+  const [uiScale, setUiScaleState] = useState<UiScale>(() => readUiScale());
+  const pickUiScale = (s: UiScale) => {
+    setUiScaleState(s);
+    setUiScale(s);
+  };
 
   useEffect(() => {
     if (!inDesktopShell()) return;
@@ -487,6 +493,13 @@ function GeneralSection() {
         <SettingRow label={t("settings.appearance.language")}>
           <div role="radiogroup" aria-label={t("settings.appearance.language")} className="join shrink-0">
             {LOCALES.map((l) => seg(l.label, locale === l.value, () => setLocale(l.value)))}
+          </div>
+        </SettingRow>
+        {/* 界面缩放:WebView 页面 zoom,文字/图标/控件/终端同比例缩放
+            (用户定案 2026-08-16「所有组件跟着变」);点即生效,不进保存条 */}
+        <SettingRow label={t("settings.general.uiScale")} hint={t("settings.general.uiScaleHint")}>
+          <div role="radiogroup" aria-label={t("settings.general.uiScale")} className="join shrink-0">
+            {UI_SCALES.map((s) => seg(`${Math.round(s * 100)}%`, uiScale === s, () => pickUiScale(s)))}
           </div>
         </SettingRow>
         {inDesktopShell() && (

@@ -193,6 +193,8 @@ export const zh = {
   "settings.desc.about": "版本、更新与诊断",
   "settings.browserReadonly": "浏览器模式下配置只读,请在桌面应用中修改。",
   "settings.loadFailed": "配置加载失败:{message}",
+  "settings.general.uiScale": "界面缩放",
+  "settings.general.uiScaleHint": "整体缩放全部界面元素(文字、图标、控件、终端),切换立即生效。",
   "settings.general.sound": "事件提示音",
   "settings.general.soundHint": "任务完成、出错、等待审批时播放提示音,切换立即生效。",
   "settings.models.add": "添加模型",

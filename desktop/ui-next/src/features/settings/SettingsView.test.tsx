@@ -663,6 +663,24 @@ describe("同步自动保存(旧 UI autoSaveDecision 随迁)", () => {
   });
 });
 
+describe("界面缩放", () => {
+  it("通用页四档点即生效:落 localStorage 并调 WebView setZoom,不进保存条", async () => {
+    stubShell();
+    const setZoom = vi.fn(() => Promise.resolve());
+    (window as unknown as { __TAURI__: { webview?: unknown } }).__TAURI__.webview = {
+      getCurrentWebview: () => ({ setZoom }),
+    };
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "110%" }));
+    expect(setZoom).toHaveBeenCalledWith(1.1);
+    expect(localStorage.getItem("mc.uiScale")).toBe("1.1");
+    // 点即生效偏好,不弄脏表单
+    expect(screen.queryByText(/有未保存的修改/)).toBeNull();
+  });
+});
+
 describe("提示音双向同步", () => {
   it("初值来自 sound_enabled;切换发 set_sound_enabled;壳广播回来盖一次", async () => {
     const { calls, listeners } = stubShell({ sound: false });
