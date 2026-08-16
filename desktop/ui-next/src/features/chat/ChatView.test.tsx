@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -534,6 +534,68 @@ describe("聊天视图", () => {
     await userEvent.click(within(nav).getByText("第二问"));
 
     expect(assignedTops).toEqual([100, 360]);
+  });
+
+  it("提问大纲:跳到早期消息后切走再切回,自动补回该历史锚点而不是只剩顶部空白", async () => {
+    const first = { ...META, id: "s-outline-return", title: "长任务" };
+    const other = { ...META, id: "s-outline-other", title: "另一个任务" };
+    // 超过虚拟窗口上限:若恢复锚点仍拿本次打开才稳定的 row key,切回后会
+    // 渲染尾窗 + 顶部大块 spacer；scrollTop 又停在 0,画面就只剩「加载更早」。
+    const tail = Array.from({ length: 200 }, (_, index) => ({
+      type: "user-input",
+      data: { content: b64encode(`尾部问题 ${index}`) },
+      timestamp: 100 + index,
+      seq: 100 + index,
+    }));
+    const earlyPage = {
+      frames: [{ type: "user-input", data: { content: b64encode("最早的问题") }, timestamp: 1, seq: 1 }],
+      next_cursor: 0,
+      has_more: false,
+    };
+    const { ops } = stubShell({
+      hasMore: true,
+      frames: tail,
+      outline: [
+        { seq: 1, offset: 0, content: b64encode("最早的问题"), timestamp: 1 },
+        { seq: 299, offset: 7, content: b64encode("尾部问题 199"), timestamp: 299 },
+      ],
+      historyPages: [{ ...earlyPage }, { ...earlyPage }],
+    });
+    const view = render(<ChatView meta={first} />);
+    await screen.findByText("尾部问题 199");
+    const nav = await screen.findByRole("navigation", { name: "提问大纲" });
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
+    await userEvent.click(within(nav).getByText("最早的问题"));
+
+    const earlyBubble = await waitFor(() => {
+      const node = view.container.querySelector<HTMLElement>('[data-user-seq="1"]');
+      expect(node).toBeTruthy();
+      return node!;
+    });
+    const earlyRow = earlyBubble.closest<HTMLElement>("[data-virtual-row]")!;
+    const log = view.container.querySelector<HTMLElement>("[data-chat-log]")!;
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 600 },
+      scrollHeight: { configurable: true, value: 20_000 },
+    });
+    vi.spyOn(log, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 600, height: 600 } as DOMRect);
+    vi.spyOn(earlyRow, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 60, height: 60 } as DOMRect);
+    fireEvent.scroll(log);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30))); // rAF 节流的滚动记忆落盘
+
+    view.rerender(<ChatView meta={other} />);
+    await waitFor(() =>
+      expect(ops.filter((o) => o.cmd === "session_open" && o.args?.id === other.id)).toHaveLength(1),
+    );
+    // 等另一个任务的尾窗真正提交；否则 A→B→A 三次 transition 会在测试里
+    // 合并成一次，观察不到用户实际已经切走后的恢复路径。
+    await waitFor(() => expect(view.container.querySelector('[data-user-seq="1"]')).toBeNull());
+    view.rerender(<ChatView meta={first} />);
+
+    await waitFor(() =>
+      expect(ops.filter((o) => o.cmd === "session_history" && o.args?.id === first.id)).toHaveLength(2),
+    );
+    await waitFor(() => expect(view.container.querySelector('[data-user-seq="1"]')).toBeTruthy());
   });
 
   it("提问大纲 activeSeq 冒烟:面板给当前项 aria-current(jsdom 几何全 0 → 最后一条已加载提问)", async () => {

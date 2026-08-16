@@ -44,14 +44,24 @@ import { useSessionFeed } from "./useSessionFeed";
 const PIN_THRESHOLD = 40; // 距底多少像素内算"贴底"(scroll 只做进入贴底的单向判定)
 const SCROLLBAR_EDGE = 18; // 视口右缘按下算滚动条拖拽意图,解除跟随
 const RESTORE_POLLS = 15; // 锚点恢复的轮询校准次数(200ms 一次,3s 内收敛)
+const RESTORE_WAIT_POLLS = 150; // 历史补页/大窗口 transition 最多等 30s,随后回退尾部
 const FLASH_MS = 1100; // 与 chrome.css mc-flash 动画时长对齐(略长于 1s)
 
 // 各会话的滚动位置记忆:切走再切回仍在原位;贴底离开的会话回来仍贴底。
-// 记「视口顶部的条目序号 + 条目内偏移」而非 scrollTop 像素:历史分批回放、
-// 工具结果合并进先前条目、折叠态重置都会改变上方内容高度,像素值会漂,
-// 锚点跟着条目走才对得上"看到哪了"。ChatView 本身会因设置页等视图切换
-// 整体卸载重挂,记忆只能存在模块级(旧 UI chat.tsx 同款设计,理由随迁)。
-const scrollMemo = new Map<string, { rowKey: string; offset: number; pinned: boolean }>();
+// rowKey 只在**同一次打开**里稳定:加载更早会同步左移 keyBase,既有节点不换；
+// 但切回任务会从尾窗重新归约,keyBase 又从 0 开始,旧 rowKey 已经不是同一条。
+// 因此跨打开另存最近一条 user-input 的稳定 seq + 它到视口顶的偏移,并带上
+// 大纲给出的 replay offset；切回时先按 offset 补齐历史,再按 seq 恢复。旧记录
+// 没 seq/大纲尚未到时才退回 rowKey。ChatView 会因设置页等视图切换整体卸载,
+// 记忆只能存在模块级(旧 UI chat.tsx 同款设计,理由随迁)。
+interface ScrollAnchor {
+  rowKey: string;
+  offset: number;
+  userSeq?: number;
+  userOffset?: number;
+  historyOffset?: number;
+}
+const scrollMemo = new Map<string, ScrollAnchor & { pinned: boolean }>();
 
 export function ChatView({
   meta,
@@ -87,12 +97,15 @@ export function ChatView({
   const composerRef = useRef<LocalComposerHandle>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<LogListHandle>(null);
+  const outlineOffsetsRef = useRef(new Map<number, number>());
   const pinnedRef = useRef(true); // 用户是否停留在底部(自动跟随滚动)
   const lastScrollTop = useRef(0); // 上一次 scroll 事件的位置(判滚动方向)
   // 待恢复的锚点;回放期间每批都重新对齐(上方内容变高也不漂),用户主动滚动后交还控制权
-  const restoreRef = useRef<{ rowKey: string; offset: number } | null>(null);
+  const restoreRef = useRef<ScrollAnchor | null>(null);
   const restoreTimer = useRef(0);
   const restoreTicks = useRef(0);
+  const restoreWaitTicks = useRef(0);
+  const restoreLoadRef = useRef<string | null>(null);
   const restoreRO = useRef<ResizeObserver | null>(null);
   const saveTimer = useRef(0);
 
@@ -115,21 +128,36 @@ export function ChatView({
 
   // 自动滚动:优先对齐待恢复锚点,否则贴底跟随。锚点条目还没回放出来时
   // 先不动(停在已回放内容的开头),出来后逐批对齐
-  const align = () => {
+  const align = (): boolean => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el) return false;
     const a = restoreRef.current;
     if (a) {
+      // 跨任务重开优先认稳定 user seq。目标历史尚未补回时绝不能把旧
+      // rowKey 映射到本次尾窗的“最近数字键”:那会把错误位置当恢复成功,
+      // 正是长任务切回后只剩顶部 spacer/「加载更早」的来源。
+      if (a.userSeq !== undefined && a.userOffset !== undefined) {
+        if (!listRef.current?.ensureUserSeq(a.userSeq)) return false;
+        const bubble = el.querySelector<HTMLElement>(`[data-user-seq="${a.userSeq}"]`);
+        const row = bubble?.closest<HTMLElement>("[data-virtual-row]");
+        if (!row) return false; // ensureUserSeq 已切窗口,下一次 layout/轮询再对齐
+        const delta = row.getBoundingClientRect().top - el.getBoundingClientRect().top + a.userOffset;
+        setScrollTop(el, el.scrollTop + delta);
+        return true;
+      }
       listRef.current?.ensureKey(a.rowKey);
       const visibleKey = listRef.current?.resolveKey(a.rowKey) ?? a.rowKey;
       const node = rowNode(visibleKey);
       if (node) {
         const delta = node.getBoundingClientRect().top - el.getBoundingClientRect().top + a.offset;
         setScrollTop(el, el.scrollTop + delta);
+        return true;
       }
     } else if (pinnedRef.current) {
       setScrollTop(el, el.scrollHeight);
+      return true;
     }
+    return false;
   };
 
   // 恢复完成/用户接管:轮询与 RO 兜底一并解除,交还滚动控制权
@@ -145,19 +173,35 @@ export function ChatView({
   // 还会无事件地微调(实测 ~6px,RO 也抓不到这种再分配),对齐到位后只是
   // 零修正的空转;另挂 ResizeObserver 监听内容列兜底(图片解码/字体加载
   // 会把位置顶漂几 px,不经过 items 变化)。恢复结束二者一并解除。
-  const startRestore = (rowKey: string, offset: number) => {
+  const startRestore = (anchor: ScrollAnchor) => {
     finishRestore();
-    restoreRef.current = { rowKey, offset };
-    listRef.current?.ensureKey(rowKey);
-    align();
+    restoreRef.current = anchor;
+    if (anchor.userSeq !== undefined) listRef.current?.ensureUserSeq(anchor.userSeq);
+    else listRef.current?.ensureKey(anchor.rowKey);
+    const ready = align();
     restoreTicks.current = 0;
+    restoreWaitTicks.current = 0;
     restoreTimer.current = window.setInterval(() => {
-      if (!restoreRef.current || ++restoreTicks.current > RESTORE_POLLS) {
+      if (!restoreRef.current) {
         finishRestore();
         return;
       }
-      align();
+      if (align()) {
+        restoreWaitTicks.current = 0;
+        if (++restoreTicks.current > RESTORE_POLLS) finishRestore();
+        return;
+      }
+      // session_open 的长窗口与大纲补页都走 transition,Promise 返回不等于
+      // DOM 已提交。只在真正命中锚点后才开始 3s 校准预算；等待阶段另给
+      // 30s 上限。到上限后宁可回到最新消息,也不能永久停在虚拟顶 spacer。
+      restoreTicks.current = 0;
+      if (++restoreWaitTicks.current > RESTORE_WAIT_POLLS) {
+        finishRestore();
+        pinnedRef.current = true;
+        align();
+      }
     }, 200);
+    if (ready) restoreTicks.current = 1;
     const col = scrollRef.current?.querySelector<HTMLElement>("[data-chat-items]");
     if (col && typeof ResizeObserver !== "undefined") {
       restoreRO.current = new ResizeObserver(align);
@@ -182,12 +226,33 @@ export function ChatView({
     const rowKey = anchor?.dataset.rowKey;
     if (!anchor || !rowKey) return;
     const offset = viewportTop - anchor.getBoundingClientRect().top;
+    // rowKey 跨 session_open 会漂；若当前阅读位置能归属到一条带 seq 的用户
+    // 消息,同时记住那条稳定锚及其到视口顶的距离。大纲 offset 让切回时无需
+    // 人再点一次「加载更早」就能补到对应轮次。
+    const activeUser = listRef.current?.activeUser();
+    const userSeq = activeUser?.seq;
+    const userBubble = userSeq === undefined
+      ? null
+      : el.querySelector<HTMLElement>(`[data-user-seq="${userSeq}"]`);
+    const userRow = userBubble?.closest<HTMLElement>("[data-virtual-row]");
+    const prior = scrollMemo.get(meta.id);
+    const stable = userSeq !== undefined && userRow
+      ? {
+          userSeq,
+          userOffset: viewportTop - userRow.getBoundingClientRect().top,
+          ...(outlineOffsetsRef.current.get(userSeq) !== undefined
+            ? { historyOffset: outlineOffsetsRef.current.get(userSeq)! }
+            : prior?.userSeq === userSeq && prior.historyOffset !== undefined
+              ? { historyOffset: prior.historyOffset }
+              : {}),
+        }
+      : {};
     // pinned 按几何兜底:人在底部就是贴底,写档不依赖旗标推断——旗标的
     // 置位要看事件方向与程序滚动判定,快滚到底的最后一发事件被判成程序
     // 滚动时旗标会漏置,切回来就不去底部了(2026-08-11 报障「滚到底再
     // 切回来落在中间」)
     const pinned = pinnedRef.current || el.scrollHeight - el.scrollTop - el.clientHeight < PIN_THRESHOLD;
-    scrollMemo.set(meta.id, { rowKey, offset, pinned });
+    scrollMemo.set(meta.id, { rowKey, offset, pinned, ...stable });
   };
 
   // 大纲跳转/闪光的句柄先于会话边沿 effect 声明(下方 cleanup 要清它们,
@@ -202,9 +267,10 @@ export function ChatView({
   // 并把旧会话的轮询定时器/RO 清干净
   useLayoutEffect(() => {
     metaIdRef.current = meta.id; // 跳转链的会话身份基准(见 jumpWithRetry)
+    restoreLoadRef.current = null;
     const saved = scrollMemo.get(meta.id);
     pinnedRef.current = saved ? saved.pinned : true; // 首次打开默认贴底
-    if (saved && !saved.pinned) startRestore(saved.rowKey, saved.offset);
+    if (saved && !saved.pinned) startRestore(saved);
     else {
       restoreRef.current = null;
       align();
@@ -240,8 +306,10 @@ export function ChatView({
   // scrollTop 不动,于是正好停在离底「一个面板高」的地方(用户报障
   // 2026-08-06:进本地会话不贴底)。这一档必须在绘制前修,交给下面的 RO
   // 会晚一帧,肉眼是一次跳动
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useLayoutEffect(align, [state.items, state.running, state.plan]);
+  useLayoutEffect(() => {
+    align();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.items, state.running, state.plan]);
 
   // 尺寸兜底:贴底跟随原先**只**在 items/running 变化时对齐,可高度变化的
   // 来源远不止 items——两头都得盯住,漏一头就停在离底几十像素的地方:
@@ -303,7 +371,7 @@ export function ChatView({
       // 这里也不取消锚点恢复:恢复期同样有 clamp,真实用户接管由 wheel /
       // 右缘 mousedown 显式终止(finishRestore)
       pinnedRef.current = false;
-    } else if (dy > 1 && el.scrollHeight - el.scrollTop - el.clientHeight < PIN_THRESHOLD) {
+    } else if (!restoreRef.current && dy > 1 && el.scrollHeight - el.scrollTop - el.clientHeight < PIN_THRESHOLD) {
       // 向下滚进底部区恢复跟随。方向门槛(dy>1)不可省:拖动初期 WebKit 的
       // 插值事件会擦着底部区,无方向判定会把刚解除的跟随又钉回去(吸底
       // 陷阱)。不要求「非程序滚动」:程序性下滚落到底部区(align 贴底、
@@ -378,7 +446,7 @@ export function ChatView({
     const pa = prependAnchor.current;
     if (!pa) return;
     prependAnchor.current = null;
-    startRestore(pa.rowKey, pa.offset);
+    startRestore(pa);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.items]);
 
@@ -483,8 +551,12 @@ export function ChatView({
   useEffect(() => {
     let alive = true;
     setOutline([]);
+    outlineOffsetsRef.current = new Map();
     void sessionOutline(meta.id).then((items) => {
-      if (alive) setOutline(items);
+      if (alive) {
+        outlineOffsetsRef.current = new Map(items.map((item) => [item.seq, item.offset]));
+        setOutline(items);
+      }
     });
     return () => {
       alive = false;
@@ -497,13 +569,44 @@ export function ChatView({
     if (!was || state.running) return;
     let alive = true;
     void sessionOutline(meta.id).then((items) => {
-      if (alive) setOutline(items);
+      if (alive) {
+        outlineOffsetsRef.current = new Map(items.map((item) => [item.seq, item.offset]));
+        setOutline(items);
+      }
     });
     return () => {
       alive = false;
     };
   }, [state.running, meta.id]);
   const entries = useOutlineEntries(outline, state);
+
+  // 切回一个停在早期历史的任务时,session_open 只给尾部窗口。等尾窗落地后
+  // 用记忆里的稳定 user seq 找大纲 offset 并自动补页；补页提交后上方的
+  // state.items layoutEffect + startRestore 轮询会把该 user 行挂载并对齐。
+  // 同一锚只发起一次,会话切换由 metaIdRef/restoreLoadRef 双重作废旧续程。
+  useEffect(() => {
+    if (!historyLoaded) return;
+    const anchor = restoreRef.current;
+    if (!anchor || anchor.userSeq === undefined || anchor.userOffset === undefined) return;
+    if (listRef.current?.ensureUserSeq(anchor.userSeq)) {
+      align();
+      return;
+    }
+    const historyOffset = anchor.historyOffset ?? outlineOffsetsRef.current.get(anchor.userSeq);
+    if (historyOffset === undefined) return;
+    anchor.historyOffset = historyOffset;
+    const sid = meta.id;
+    const token = `${sid}:${anchor.userSeq}:${historyOffset}`;
+    if (restoreLoadRef.current === token) return;
+    restoreLoadRef.current = token;
+    void ensureLoaded(historyOffset).then(() => {
+      if (metaIdRef.current === sid) align();
+    });
+    // align 只读 refs；outline 变化让尚未带 historyOffset 的旧记忆获得补页锚；
+    // items 也必须入依赖:ensureLoaded 的 Promise 会早于 startTransition 的
+    // DOM 提交结束；页真正挂载后靠 items 再查一次并完成精确对齐。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyLoaded, meta.id, ensureLoaded, outline, state.items]);
 
   // ==== 当前项跟踪:视口顶所在的提问(rAF 节流——流式期间每批帧都重算
   // 会把点列刷成动画;判定纯函数在 lib/util/scrollAnchor,与跳转 INSET

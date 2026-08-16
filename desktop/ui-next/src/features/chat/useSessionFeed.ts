@@ -58,7 +58,11 @@ export interface SessionFeed {
 export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
   const [state, setState] = useState<ChatState>(createChatState);
   const [conn, setConn] = useState<ConnStatus | null>(null);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
+  // 不用裸 boolean：组件实例会跨任务复用，id 改变后的第一次 render 仍会
+  // 看到上一任务的 state。把“已加载”绑定到会话/引擎代次，切换那一帧就能
+  // 同步变 false，避免调用方拿新 id 配旧 cursor/state 做恢复或投递。
+  const [loadedHistory, setLoadedHistory] = useState<{ id: string; epoch: number } | null>(null);
+  const historyLoaded = id !== null && loadedHistory?.id === id && loadedHistory.epoch === epoch;
   const [openError, setOpenError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -97,7 +101,7 @@ export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
   useEffect(() => {
     setState(createChatState());
     setConn(null);
-    setHistoryLoaded(false);
+    setLoadedHistory(null);
     setOpenError(null);
     setHasMore(false);
     setEarlierError(null);
@@ -163,7 +167,7 @@ export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
           setState((s) => reduceBatch(s, [...(win.frames as Frame[]), ...buffered]));
           // 窗口落地后 running 才可信:composer 的排队补投闸门等这一下;
           // 与 items 同一个 transition,可见即可信
-          setHistoryLoaded(true);
+          setLoadedHistory({ id, epoch });
         });
       } catch (e) {
         // 壳只在**成功**路径 emit conn-status(driver/session.rs::open),失败
