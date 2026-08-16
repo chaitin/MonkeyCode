@@ -266,7 +266,7 @@ export function NewCloudTask({
               </button>
             </li>
             <li aria-hidden className="my-1 border-t border-base-300" />
-            <li aria-hidden className="px-2 pt-1 pb-0.5 text-[10px] font-bold tracking-wider text-base-content/40">
+            <li aria-hidden className="px-2 pt-1 pb-0.5 text-2xs font-bold tracking-wider text-base-content/40">
               {t("cloud.new.repoManual")}
             </li>
             <li className="flex items-center gap-1.5 px-2 pb-1">
@@ -295,14 +295,14 @@ export function NewCloudTask({
               </button>
             </li>
             {repoErr && (
-              <li role="alert" className="px-2 pb-1 text-[10px] text-error">
+              <li role="alert" className="px-2 pb-1 text-2xs text-error">
                 {repoErr}
               </li>
             )}
             {projects.length > 0 && (
               <>
                 <li aria-hidden className="my-1 border-t border-base-300" />
-                <li aria-hidden className="px-2 pt-1 pb-0.5 text-[10px] font-bold tracking-wider text-base-content/40">
+                <li aria-hidden className="px-2 pt-1 pb-0.5 text-2xs font-bold tracking-wider text-base-content/40">
                   {t("cloud.new.repoProjects")}
                 </li>
                 {projects.map((p) => (
@@ -318,7 +318,7 @@ export function NewCloudTask({
                       <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
                         <span className="max-w-full truncate text-xs font-medium">{projectLabel(p)}</span>
                         {p.repo_url && (
-                          <span className="max-w-full truncate font-mono text-[10px] text-base-content/50">{p.repo_url}</span>
+                          <span className="max-w-full truncate font-mono text-2xs text-base-content/50">{p.repo_url}</span>
                         )}
                       </span>
                       {project?.id === p.id && <IconCheck size={12} stroke={2} aria-hidden className="shrink-0 text-primary" />}

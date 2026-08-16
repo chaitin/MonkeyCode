@@ -24,7 +24,7 @@ function InviteeStack({ avatars }: { avatars: UsageAvatar[] }) {
       {avatars.map((a) => (
         <span
           key={a.key}
-          className="-ms-1.5 flex size-6 items-center justify-center overflow-hidden rounded-full border border-base-100 bg-base-300 text-[10px] font-semibold text-base-content/60 first:ms-0"
+          className="-ms-1.5 flex size-6 items-center justify-center overflow-hidden rounded-full border border-base-100 bg-base-300 text-2xs font-semibold text-base-content/60 first:ms-0"
         >
           {a.url && !broken[a.key] ? (
             <img

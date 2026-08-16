@@ -206,7 +206,7 @@ export const OutlineNav = memo(function OutlineNav({
                   }}
                 >
                   <span className="min-w-0 flex-1 truncate text-left text-xs">{labelOf(e)}</span>
-                  {e.time && <span className="shrink-0 text-[10px] opacity-50">{e.time}</span>}
+                  {e.time && <span className="shrink-0 text-2xs opacity-50">{e.time}</span>}
                 </button>
               </li>
             ))}

@@ -643,7 +643,7 @@ export function CloudTaskView({
               且要讲清「现在就能输入,连上自动发」。机器离线是第三种:
               它不会自己回来,不能拿唤醒动画吊着 */}
           {!h.ended && h.waking && <span className="loading loading-spinner loading-sm text-base-content/40" aria-hidden />}
-          <p className="max-w-md text-center text-base font-bold">
+          <p className="max-w-md text-center text-lg font-bold">
             {t(emptyKey(emptyState, "title"))}
           </p>
           <p className="max-w-md text-center text-xs leading-relaxed text-base-content/60">

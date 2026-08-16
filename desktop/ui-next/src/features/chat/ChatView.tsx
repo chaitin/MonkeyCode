@@ -878,7 +878,7 @@ export function ChatView({
       {empty ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6">
           <img src="/logo.png" alt="" aria-hidden className="h-13 w-13 rounded-2xl shadow-sm" />
-          <p className="max-w-md text-center text-base font-bold">
+          <p className="max-w-md text-center text-lg font-bold">
             {emptyChat ? (
               t("chat.empty.chatTitle")
             ) : (

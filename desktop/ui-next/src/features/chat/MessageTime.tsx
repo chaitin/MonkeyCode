@@ -15,7 +15,7 @@ export function MessageTime({ timestamp, className = "" }: { timestamp?: number;
     <time
       dateTime={date.toISOString()}
       title={date.toLocaleString()}
-      className={`text-[10px] text-base-content/40 tabular-nums opacity-0 transition-opacity select-none group-hover:opacity-100 ${className}`}
+      className={`text-2xs text-base-content/40 tabular-nums opacity-0 transition-opacity select-none group-hover:opacity-100 ${className}`}
     >
       {label}
     </time>

@@ -114,7 +114,7 @@ function ColorTile({ role, hex, overridden, resetLabel, seed, seedHint, onPick, 
   return (
     <div className="group/tile relative flex items-center gap-2 rounded-field border border-base-300 bg-base-100 py-1.5 pe-2 ps-1.5">
       <span aria-hidden className="size-5 shrink-0 rounded-field border border-base-content/10" style={{ background: hex }} />
-      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-base-content/70">{role}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-xs text-base-content/70">{role}</span>
       {seed && (
         <span title={seedHint} className="shrink-0 text-base-content/35">
           <IconWand size={13} stroke={1.75} aria-hidden />
@@ -174,8 +174,8 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
     <label className="flex flex-col gap-1">
       <span className="flex items-baseline gap-1.5 text-xs">
         <span className="text-base-content/70">{label}</span>
-        <span className="min-w-0 flex-1 truncate text-[10px] text-base-content/35">{hint}</span>
-        <span className="shrink-0 font-mono text-[10px] text-base-content/50 tabular-nums">{`${value[key]}${unit}`}</span>
+        <span className="min-w-0 flex-1 truncate text-2xs text-base-content/35">{hint}</span>
+        <span className="shrink-0 font-mono text-2xs text-base-content/50 tabular-nums">{`${value[key]}${unit}`}</span>
       </span>
       <input
         type="range"
@@ -200,7 +200,7 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
         onChange={(e) => set({ [key]: e.target.checked } as Partial<CustomTheme>)}
       />
       <span className="text-base-content/70">{label}</span>
-      <span className="min-w-0 truncate text-[10px] text-base-content/35">{hint}</span>
+      <span className="min-w-0 truncate text-2xs text-base-content/35">{hint}</span>
     </label>
   );
 
@@ -263,8 +263,8 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
           <input className="input input-xs w-28" defaultValue="input" aria-hidden tabIndex={-1} readOnly />
           <input type="checkbox" className="toggle toggle-xs" defaultChecked aria-hidden tabIndex={-1} readOnly />
           <input type="checkbox" className="checkbox checkbox-xs" defaultChecked aria-hidden tabIndex={-1} readOnly />
-          <span className="rounded-box bg-base-200 px-2 py-1 text-[10px] text-base-content/60">base-200</span>
-          <span className="rounded-box bg-base-300 px-2 py-1 text-[10px] text-base-content/60">base-300</span>
+          <span className="rounded-box bg-base-200 px-2 py-1 text-2xs text-base-content/60">base-200</span>
+          <span className="rounded-box bg-base-300 px-2 py-1 text-2xs text-base-content/60">base-300</span>
         </div>
       </div>
 

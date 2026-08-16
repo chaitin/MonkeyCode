@@ -102,6 +102,13 @@
    * 不依赖本机安装;显式列出各平台回退,泛型解析各 WebView 不一 */
   --font-sans: "HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", "HarmonyOS Sans SC", ui-monospace, Menlo, Consolas, "Courier New", "Microsoft YaHei", monospace;
+  /* 字号阶梯的第 4 档(微标):时间戳/徽片/大纲导航等高密度 chrome 专用。
+   * 注册成 token 后全应用禁写任意值字号(text-[Npx]);完整阶梯只有四档
+   * —— 2xs(10 微标)/ xs(12 辅助)/ body=sm(14 正文)/ lg(18 标题),
+   * 阶梯口径见下方 body font-size 注释;markdown(md.css)与终端(term.css)
+   * 是独立相对域,不占档 */
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 0.875rem;
   /* 布局列宽令牌(w-rail / w-side):三列宽度的唯一出处,不写字面值 */
   --spacing-rail: 62px;
   --spacing-side: 232px;
@@ -136,7 +143,14 @@
   body {
     /* 与 text-sm/menu 默认档同值(0.875rem=14px):13px 卡在 Tailwind 阶梯
      * 12/14 之间,任何字号类都打不到,裸文本自成一档是"不统一"的根源
-     * (2026-08-06 报障)。收成 12(辅助)/14(正文)两档主力 */
+     * (2026-08-06 报障)。
+     *
+     * 字号阶梯(2026-08-16 用户定案,全应用只许这四档):
+     *   text-lg  18px 标题/欢迎语/权益大数字(最大档,text-xl+ 禁用)
+     *   (默认)  14px 正文——一切常规 UI 文字,显式写时用 text-sm
+     *   text-xs  12px 辅助——副行/说明/表单标签
+     *   text-2xs 10px 微标——时间戳/徽片/大纲导航(@theme 注册,禁 text-[Npx])
+     * 例外域:markdown(md.css 相对 em 阶梯)与终端(term.css)。 */
     font-size: 0.875rem;
     overflow: hidden;
     /* 桌面壳手感:chrome 默认不可选中;可复制内容(消息/代码/输入框)由

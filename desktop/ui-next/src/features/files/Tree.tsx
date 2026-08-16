@@ -160,7 +160,7 @@ export function Tree({
                 </span>
               )
             ) : (
-              <span className="shrink-0 font-mono text-[10px] text-base-content/35 tabular-nums">
+              <span className="shrink-0 font-mono text-2xs text-base-content/35 tabular-nums">
                 {fmtSize(en.size)}
               </span>
             )}
