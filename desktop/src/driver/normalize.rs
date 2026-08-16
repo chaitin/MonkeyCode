@@ -92,16 +92,20 @@ impl Inner {
                     eprintln!("[desktop] turn/stopped 无法映射到壳会话,已丢弃: {params}");
                     return;
                 }
-                let (was_running, open) = {
+                let (was_running, open, compacting, terminal_error_seen) = {
                     let mut sessions = self.sess.sessions.lock_ok();
                     match sessions.get_mut(&sid) {
                         Some(s) => {
                             let was = s.running;
                             s.running = false;
+                            let compacting = std::mem::take(&mut s.compacting);
+                            s.manual_compact = false;
+                            s.cancel_requested_turn = None;
+                            let terminal_error_seen = std::mem::take(&mut s.terminal_error_seen);
                             s.model_text.clear(); // 对账累积不跨轮(model_done 缺席的残留)
-                            (was, std::mem::take(&mut s.open_tools))
+                            (was, std::mem::take(&mut s.open_tools), compacting, terminal_error_seen)
                         }
-                        None => (false, HashMap::new()),
+                        None => (false, HashMap::new(), false, false),
                     }
                 };
                 // 中断轮次可能留下已暂存未被 tool_result 消费的 agent_result
@@ -130,6 +134,12 @@ impl Inner {
                 for (tc, _name) in open {
                     self.push_frame(&sid, |seq| frame::tool_call_failed(&tc, tool_msg, seq));
                 }
+                // 压缩开始后若没有最终 compaction 事件，不能把历史永久停在
+                // “正在压缩”。轮次终态负责补 cancelled/failed，而不是谎报成功。
+                if compacting {
+                    let compact_status = if stop_reason == "interrupted" { "cancelled" } else { "failed" };
+                    self.push_frame(&sid, |seq| frame::compact_status(compact_status, seq));
+                }
                 // 轮后用权威快照收口。新引擎与 usage 事件统一为顶层
                 // context_used/context_window；嵌套 context 仅留给旧引擎回放。
                 if let Some((used, window)) = context_usage_fields(&params) {
@@ -147,7 +157,7 @@ impl Inner {
                         SessionStatus::Error
                     }
                 };
-                if stop_reason == "error" && !err.is_empty() {
+                if stop_reason == "error" && !err.is_empty() && !terminal_error_seen {
                     self.push_frame(&sid, |seq| frame::task_error(&err, seq));
                 }
                 self.push_frame(&sid, frame::task_ended);
@@ -175,26 +185,9 @@ impl Inner {
         }
         let sid = self.shell_sid_of(raw);
         let data = event.get("data").cloned().unwrap_or(Value::Null);
-        // provider 瞬时错误(kind=transient_retry,loop.go 的
-        // isTransientProviderErr 重试路径)引擎自动退避重试后继续跑,
-        // 不产 task_error——否则 UI 先报"任务出错"随后任务又正常完成;
-        // 仅记日志。终止性 error(无 kind)走下方常规分支不变。早于子代理
-        // 认领判断返回:不为一条重试日志物化子会话
-        if etype == "error" && data.get("kind").and_then(|v| v.as_str()) == Some("transient_retry") {
-            let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("");
-            eprintln!("[desktop] 引擎瞬时错误,自动重试中: {msg}");
-            return;
-        }
-        // 未知 session_id = 上游转发的子代理事件(子循环随机 id):
-        // 认领并物化为壳侧子会话,后续事件走正常帧路径;认领不到(迟到)丢弃
-        if !self.sess.sessions.lock_ok().contains_key(&sid) && !self.claim_subagent(&sid, &event) {
-            return;
-        }
-        // eventSeq:事件带会话内单调 seq(被背压丢弃的 delta 仍占号),
-        // 空洞即丢帧信号,记日志外显(文本缺口由 model_done 对账补齐,
-        // 此处只负责"发生过丢弃"的可观测性);seq 回落视为引擎侧会话
-        // 重建(destroy+create 换绑)后重新起算,水位跟随重置。
-        // 旧引擎不带 seq 字段,自然跳过——无需 caps 门控
+        // eventSeq 要在任何语义过滤之前推进。重试/兼容事件虽然不落 UI 帧，
+        // 仍真实占用了引擎序号；先 return 会把下一条正常事件误报成背压丢帧。
+        // 未知子会话此刻尚未物化，首条被过滤的重试无需建立水位。
         if let Some(eseq) = event.get("seq").and_then(|v| v.as_u64()).filter(|s| *s > 0) {
             if let Some(s) = self.sess.sessions.lock_ok().get_mut(&sid) {
                 if s.last_event_seq > 0 && eseq > s.last_event_seq + 1 {
@@ -204,6 +197,40 @@ impl Inner {
                         eseq - s.last_event_seq - 1
                     );
                 }
+                s.last_event_seq = eseq;
+            }
+        }
+        // provider 瞬时错误(kind=transient_retry,loop.go 的
+        // isTransientProviderErr 重试路径)引擎自动退避重试后继续跑,
+        // 不产 task_error——否则 UI 先报"任务出错"随后任务又正常完成;
+        // 仅记日志。终止性 error(无 kind)走下方常规分支不变。早于子代理
+        // 认领判断返回:不为一条重试日志物化子会话
+        if etype == "error" {
+            let kind = data.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+            let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("");
+            if kind == "transient_retry" || kind == "empty_response_retry" {
+                eprintln!("[desktop] 引擎瞬时错误,自动重试中: {msg}");
+                return;
+            }
+            // c3564b4..a08db70 之间的引擎把摘要失败后转本地截断上报成
+            // error(kind=compaction_fallback)。这是压缩进度而非轮次失败：
+            // 本地截断完成后 agent 还会继续请求模型。若落 task-error，UI
+            // 会提前清 running，出现“执行中消失但 agent 仍在工作”。
+            // 新引擎已改发 compaction(status=fallback)，这里保留旧版兼容。
+            if kind == "compaction_fallback" {
+                eprintln!("[desktop] 上下文摘要失败,引擎正回退本地压缩: {msg}");
+                return;
+            }
+        }
+        // 未知 session_id = 上游转发的子代理事件(子循环随机 id):
+        // 认领并物化为壳侧子会话,后续事件走正常帧路径;认领不到(迟到)丢弃
+        if !self.sess.sessions.lock_ok().contains_key(&sid) && !self.claim_subagent(&sid, &event) {
+            return;
+        }
+        // 首条事件刚刚物化了子会话时，上面的预过滤阶段还没有 SessionState；
+        // 在这里补记起始水位，后续空洞仍能准确观测。
+        if let Some(eseq) = event.get("seq").and_then(|v| v.as_u64()).filter(|s| *s > 0) {
+            if let Some(s) = self.sess.sessions.lock_ok().get_mut(&sid).filter(|s| s.last_event_seq == 0) {
                 s.last_event_seq = eseq;
             }
         }
@@ -415,6 +442,28 @@ impl Inner {
                 if let Some((used, window)) = context_usage_fields(&data) {
                     self.push_usage(&sid, used, window);
                 }
+                // applyCompaction 的 wire 顺序是 final compaction → usage →
+                // session/compact RPC 应答。手动操作以 usage 作为事件通路的
+                // 最后一帧再收轮：这样 RPC 应答丢失/超时仍可完成，又不会把
+                // usage 落到 task-ended 之后形成一段无头回放。
+                let finish_manual = {
+                    let mut sessions = self.sess.sessions.lock_ok();
+                    match sessions.get_mut(&sid) {
+                        Some(s) if s.running && s.manual_compact && !s.compacting => {
+                            s.running = false;
+                            s.manual_compact = false;
+                            s.cancel_requested_turn = None;
+                            s.terminal_error_seen = false;
+                            true
+                        }
+                        _ => false,
+                    }
+                };
+                if finish_manual {
+                    self.push_frame(&sid, frame::task_ended);
+                    self.write_sidecar(&sid, |m| m["status"] = json!(SessionStatus::Idle.as_str()));
+                    self.emit_session_event(&sid, SessionStatus::Idle.as_str());
+                }
             }
             // 会话摘要:引擎每轮用户消息后异步生成一句 ≤60 字的对话摘要
             // (随对话演进改写,后一轮覆盖前一轮),只给顶层会话生成。
@@ -439,31 +488,101 @@ impl Inner {
             }
             // 微压缩(kind=micro)只是清空旧 tool_result,不调模型也与"接近
             // 上限"无关,且触发频繁;不落帧,免得对话流反复刷压缩提示。
-            // 其余 kind(auto/manual/partial/local_fallback)才是整体压缩。
+            // 整体压缩协议:starting → 可选 fallback → 最终计量，手动操作
+            // 还可能以 failed/cancelled 结束。旧引擎只发最终计量，仍需补 started。
             "compaction" => {
                 if data.get("kind").and_then(|v| v.as_str()) == Some("micro") {
                     return;
                 }
-                // 引擎只有"压缩完成"这一个事件。手动压缩(compacting 在飞,
-                // 判据不看 kind:LLM 失败会降级成 local_fallback)发起时壳已
-                // 实时落过 "started",这里只补收尾——再合成一对的话"正在
-                // 压缩/压缩完成"会同刻蹦出两条。自动压缩没有发起方落帧,
-                // 保持事后补一对的旧形态,记录读起来仍有始有终。
-                let manual = self
-                    .sess
-                    .sessions
-                    .lock_ok()
-                    .get(&sid)
-                    .map(|s| s.compacting)
-                    .unwrap_or(false);
-                if !manual {
+                let status = data.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                if status == "starting" || status == "fallback" {
+                    // starting 是新协议；fallback 是可恢复的中间态，不能补
+                    // ended，更不能生成 task-error。若 starting 因旧版/丢帧
+                    // 漏过，fallback 自己补 started，生命周期仍然闭合。
+                    let first = {
+                        let mut sessions = self.sess.sessions.lock_ok();
+                        match sessions.get_mut(&sid) {
+                            Some(s) => {
+                                let first = !s.compacting;
+                                s.compacting = true;
+                                first
+                            }
+                            None => true,
+                        }
+                    };
+                    if first {
+                        self.push_frame(&sid, |seq| frame::compact_status("started", seq));
+                    }
+                    if status == "fallback" {
+                        let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("");
+                        eprintln!("[desktop] 上下文摘要失败,引擎正回退本地压缩: {msg}");
+                    }
+                    return;
+                }
+
+                if status == "failed" || status == "cancelled" {
+                    let (had_started, finish_manual) = {
+                        let mut sessions = self.sess.sessions.lock_ok();
+                        match sessions.get_mut(&sid) {
+                            Some(s) => {
+                                let had_started = std::mem::take(&mut s.compacting);
+                                let finish_manual = s.manual_compact && s.running;
+                                if finish_manual {
+                                    s.running = false;
+                                    s.manual_compact = false;
+                                    s.cancel_requested_turn = None;
+                                    s.terminal_error_seen = false;
+                                }
+                                (had_started, finish_manual)
+                            }
+                            None => (false, false),
+                        }
+                    };
+                    if !had_started {
+                        self.push_frame(&sid, |seq| frame::compact_status("started", seq));
+                    }
+                    self.push_frame(&sid, |seq| frame::compact_status(status, seq));
+                    if finish_manual {
+                        let session_status = if status == "cancelled" {
+                            SessionStatus::Interrupted
+                        } else {
+                            let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("上下文压缩失败");
+                            self.push_frame(&sid, |seq| frame::task_error(msg, seq));
+                            SessionStatus::Error
+                        };
+                        self.push_frame(&sid, frame::task_ended);
+                        self.write_sidecar(&sid, |m| m["status"] = json!(session_status.as_str()));
+                        self.emit_session_event(&sid, session_status.as_str());
+                    }
+                    return;
+                }
+
+                // 无 status（以及未来显式 completed）都是最终事件。新协议
+                // starting 已实时落过；手动压缩由 session_compact 预先落过；
+                // 旧协议两者都没有，此处补 started 后再统一落 ended。
+                let had_started = {
+                    let mut sessions = self.sess.sessions.lock_ok();
+                    match sessions.get_mut(&sid) {
+                        Some(s) => std::mem::take(&mut s.compacting),
+                        None => false,
+                    }
+                };
+                if !had_started {
                     self.push_frame(&sid, |seq| frame::compact_status("started", seq));
                 }
                 self.push_frame(&sid, |seq| frame::compact_status("ended", seq));
             }
             "error" => {
                 let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("未知错误");
-                self.push_frame(&sid, |seq| frame::task_error(msg, seq));
+                let terminal = data.get("terminal").and_then(|v| v.as_bool()).unwrap_or(true);
+                if terminal {
+                    if let Some(s) = self.sess.sessions.lock_ok().get_mut(&sid) {
+                        s.terminal_error_seen = true;
+                    }
+                }
+                // error 事件可立即展示，但它不是空闲信号。即使 terminal=true，
+                // 也必须等 turn/stopped；手动压缩失败则由 compaction 终态收尾。
+                self.push_frame(&sid, |seq| frame::task_error_pending(msg, seq));
             }
             // turn_done:轮次边界以 turn/stopped 为准
             _ => {}

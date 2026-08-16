@@ -515,13 +515,23 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
       return { ...s, commands: (u.availableCommands ?? []).filter((c) => !!c?.name) };
     case "usage_update":
       return { ...s, usage: { used: u.used ?? 0, size: u.size ?? 0 } };
-    case "compact_status":
+    case "compact_status": {
+      const key: MessageKey =
+        u.status === "started"
+          ? "chat.sys.compacting"
+          : u.status === "failed"
+            ? "chat.sys.compactFailed"
+            : u.status === "cancelled"
+              ? "chat.sys.compactCancelled"
+              : "chat.sys.compacted";
       return pushItem(s, {
         kind: "sys",
         tag: "compact",
         text: "",
-        key: u.status === "started" ? "chat.sys.compacting" : "chat.sys.compacted",
+        key,
+        ...(u.status === "failed" ? { error: true } : {}),
       });
+    }
     case "model_update": {
       // 系统行外显短名(先剥 @来源#配置id 的寻址后缀,再剥会员档位前缀);
       // 状态 model 保持原始名——它是按 name 回查模型/think 档的键
@@ -583,13 +593,16 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         items: [...expireOpenAsks(s.items), { kind: "sys", tag: "turn-end", text: "", key: "chat.sys.turnEnd" }],
       };
     case "task-error": {
-      const data = frameData<{ error?: string }>(f);
+      const data = frameData<{ error?: string; terminal?: boolean }>(f);
+      const terminal = data?.terminal !== false;
       return {
         ...s,
-        running: false,
+        // 本地引擎先发 error 事件、稍后才发权威 turn/stopped。terminal=false
+        // 只负责即时展示，不能提前放开输入/排队闸；云端旧帧缺字段仍终止。
+        running: terminal ? false : s.running,
         streamKind: "",
         items: [
-          ...expireOpenAsks(s.items),
+          ...(terminal ? expireOpenAsks(s.items) : s.items),
           data?.error
             ? { kind: "sys" as const, tag: "error" as const, text: "", key: "chat.sys.error" as const, params: { reason: data.error }, error: true }
             : { kind: "sys" as const, tag: "error" as const, text: "", key: "chat.sys.errorUnknown" as const, error: true },

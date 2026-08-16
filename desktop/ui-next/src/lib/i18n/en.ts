@@ -399,6 +399,8 @@ export const en: Record<MessageKey, string> = {
   "chat.sys.retry": "Model call retry #{attempt}: {message}",
   "chat.sys.compacting": "Compacting context…",
   "chat.sys.compacted": "Context compacted",
+  "chat.sys.compactFailed": "Context compaction failed",
+  "chat.sys.compactCancelled": "Context compaction cancelled",
   "chat.sys.yolo": "⚡ YOLO mode on: actions run without asking",
   "chat.sys.modeDefault": "Back to the default permission mode",
   "chat.sys.error": "✗ {reason}",

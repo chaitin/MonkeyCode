@@ -413,6 +413,8 @@ export const zh = {
   "chat.sys.retry": "模型调用重试 #{attempt}: {message}",
   "chat.sys.compacting": "正在压缩上下文…",
   "chat.sys.compacted": "上下文压缩完成",
+  "chat.sys.compactFailed": "上下文压缩失败",
+  "chat.sys.compactCancelled": "上下文压缩已取消",
   "chat.sys.yolo": "⚡ 已开启 YOLO 模式:所有操作不再询问,直接执行",
   "chat.sys.modeDefault": "已恢复默认权限模式",
   "chat.sys.error": "✗ {reason}",

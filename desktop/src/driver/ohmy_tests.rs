@@ -401,6 +401,88 @@ async fn e2e_chat_normalization() {
     driver.stop();
 }
 
+/// 手动压缩全链路:真实 agent 先完成一轮对话，再经 session/compact 发出
+/// starting → 最终 compaction → usage。Desktop 必须只展示一对压缩状态，
+/// 且在 usage 入账后恰好结束一次压缩轮，不能提前清掉执行中状态。
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
+async fn e2e_manual_compaction_lifecycle() {
+    require_ohmyagent();
+    let _g = e2e_lock().await;
+    let (driver, home) = e2e_setup_steps(
+        "manual-compact",
+        0,
+        vec![sse_text("第一轮完成"), sse_text("压缩后的对话摘要")],
+    );
+
+    let workdir = home.to_string_lossy().into_owned();
+    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let sid = meta.get("id").and_then(Value::as_str).unwrap().to_string();
+    driver.session_open(&sid).await.expect("打开会话");
+    driver
+        .session_send(&sid, "user-input", json!({ "content": frame::b64_text("先聊一轮再压缩") }))
+        .await
+        .expect("发送");
+
+    let first = wait_journal(&driver, &sid, |journal| {
+        journal.iter().filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended")).count()
+            == 1
+    })
+    .await;
+    assert_eq!(
+        first
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1,
+        "首轮未正常结束: {first:?}"
+    );
+
+    driver.session_call(&sid, "session_compact", json!({})).await.expect("手动压缩");
+    let journal = wait_journal(&driver, &sid, |journal| {
+        journal.iter().filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended")).count()
+            == 2
+            && journal.iter().filter_map(acp_update).any(|u| {
+                u.get("sessionUpdate").and_then(Value::as_str) == Some("compact_status")
+                    && u.get("status").and_then(Value::as_str) == Some("ended")
+            })
+    })
+    .await;
+
+    let compact_statuses: Vec<String> = journal
+        .iter()
+        .filter_map(acp_update)
+        .filter(|u| u.get("sessionUpdate").and_then(Value::as_str) == Some("compact_status"))
+        .filter_map(|u| u.get("status").and_then(Value::as_str).map(String::from))
+        .collect();
+    assert_eq!(compact_statuses, vec!["started", "ended"], "压缩状态重复或未闭合");
+    assert_eq!(
+        journal
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        2,
+        "对话轮与压缩轮都只能各结束一次"
+    );
+    assert!(
+        journal.iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-error")),
+        "成功压缩不应产生 task-error: {journal:?}"
+    );
+    let sessions = driver.0.sess.sessions.lock().unwrap();
+    let state = sessions.get(&sid).expect("会话状态");
+    assert!(!state.running, "压缩完成后仍残留 running");
+    assert!(!state.compacting, "压缩完成后仍残留 compacting");
+    assert!(!state.manual_compact, "压缩完成后仍残留 manual_compact");
+    drop(sessions);
+    assert_eq!(
+        driver.0.read_sidecar(&sid).get("status").and_then(Value::as_str),
+        Some("idle"),
+        "压缩完成后 sidecar 未回到 idle"
+    );
+
+    driver.stop();
+}
+
 /// WSL 运行环境冒烟:经 MC_WSL_EXE 假脚本走完整条 WSL spawn 链路——
 /// find_ohmyagent_linux(MC_OHMYAGENT_LINUX_BIN)→ prepare(home/登录
 /// shell/网络模式/路径翻译解析)→ 登录 shell 包装 spawn → 握手 → 会话
@@ -985,7 +1067,10 @@ fn bare_session(sid: &str) -> SessionState {
         seq: 0,
         running: true,
         compacting: false,
+        manual_compact: false,
+        terminal_error_seen: false,
         turn: 1,
+        cancel_requested_turn: None,
         created: true,
         engine_id: sid.to_string(),
         opened: false,
@@ -1363,30 +1448,183 @@ async fn e2e_perm_remember_engine_rules() {
     driver.stop();
 }
 
-/// 压缩状态行:引擎只有"压缩完成"一个事件。自动压缩事后补 started+ended
-/// 一对(记录有始有终);手动压缩(compacting 在飞)发起时壳已实时落过
-/// started,事件只补 ended——否则"正在压缩/压缩完成"同刻蹦出两条。
-/// 判据不看 kind:手动的 LLM 失败会降级成 local_fallback。micro 不落帧。
+/// 压缩状态行兼容三代协议：
+/// - 新引擎 starting → 可选 fallback → final，只外显一对 started/ended；
+/// - 旧引擎仅 final，壳补齐 started/ended；
+/// - 手动压缩由壳先落 started，引擎 final 只补 ended。
+/// 过渡版的 error(kind=compaction_fallback)同样是非终止进度，不能落
+/// task-error 清掉 UI running。micro 仍不落帧。
 #[test]
-fn compaction_frames_skip_started_while_manual_compact_in_flight() {
+fn compaction_frames_normalize_new_legacy_and_manual_lifecycles() {
     let inner = bare_inner("compactline");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
-    let ev = |data: Value| json!({ "type": "compaction", "session_id": "s1", "data": data });
-    inner.handle_event(ev(json!({ "kind": "auto", "tokens_saved": 10 })));
-    inner.handle_event(ev(json!({ "kind": "micro", "cleared": 3 })));
-    inner.sess.sessions.lock().unwrap().get_mut("s1").unwrap().compacting = true;
-    inner.handle_event(ev(json!({ "kind": "local_fallback", "tokens_saved": 10 })));
+    for sid in ["new", "legacy", "manual"] {
+        inner.sess.sessions.lock().unwrap().insert(sid.into(), bare_session(sid));
+    }
+    let ev = |sid: &str, data: Value| json!({ "type": "compaction", "session_id": sid, "data": data });
+
+    // 新协议：重复 starting 也只开一次；fallback 保持生命周期进行中，
+    // 最终计量事件才闭合。过渡版 fallback error 不得变 task-error。
+    inner.handle_event(ev("new", json!({ "kind": "auto", "status": "starting" })));
+    inner.handle_event(ev("new", json!({ "kind": "auto", "status": "starting" })));
+    inner.handle_event(ev(
+        "new",
+        json!({ "kind": "local_fallback", "status": "fallback", "error": "summary failed" }),
+    ));
+    inner.handle_event(json!({
+        "type": "error",
+        "session_id": "new",
+        "data": { "kind": "compaction_fallback", "error": "legacy summary failed" }
+    }));
+    inner.handle_event(ev("new", json!({ "kind": "micro", "cleared": 3 })));
+    inner.handle_event(ev("new", json!({ "kind": "local_fallback", "tokens_saved": 10 })));
+
+    // 旧协议只有最终事件；壳仍给历史记录补齐有始有终的一对。
+    inner.handle_event(ev("legacy", json!({ "kind": "auto", "tokens_saved": 10 })));
+
+    // 手动压缩的 started 由 session_compact 发起时实时落下；新引擎随后
+    // 再发 starting 也去重。final 后等紧随其后的 usage 才 task-ended，
+    // 防 usage 落到轮外；RPC 应答丢失也能靠该事件序列收尾。
+    {
+        let mut sessions = inner.sess.sessions.lock().unwrap();
+        sessions.get_mut("manual").unwrap().compacting = true;
+        sessions.get_mut("manual").unwrap().manual_compact = true;
+    }
+    inner.push_frame("manual", |seq| frame::compact_status("started", seq));
+    inner.handle_event(ev("manual", json!({ "kind": "manual", "status": "starting" })));
+    inner.handle_event(ev("manual", json!({ "kind": "manual", "tokens_saved": 10 })));
+    assert!(inner.sess.sessions.lock().unwrap()["manual"].running, "usage 前不得提前结束手动压缩");
+    inner.handle_event(json!({
+        "type": "usage",
+        "session_id": "manual",
+        "data": { "context_used": 100, "context_window": 1000 }
+    }));
+
     inner.journal_barrier();
-    let data =
-        std::fs::read_to_string(inner.data_dir.join("s1").join("events.jsonl")).unwrap();
-    let statuses: Vec<String> = data
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .filter_map(|f| acp_update(&f))
-        .filter(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("compact_status"))
-        .filter_map(|u| u.get("status").and_then(|v| v.as_str()).map(String::from))
+    let frames = |sid: &str| -> Vec<Value> {
+        std::fs::read_to_string(inner.data_dir.join(sid).join("events.jsonl"))
+            .unwrap()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .collect()
+    };
+    let statuses = |sid: &str| -> Vec<String> {
+        frames(sid)
+            .iter()
+            .filter_map(acp_update)
+            .filter(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("compact_status"))
+            .filter_map(|u| u.get("status").and_then(|v| v.as_str()).map(String::from))
+            .collect()
+    };
+    for sid in ["new", "legacy", "manual"] {
+        assert_eq!(statuses(sid), vec!["started", "ended"], "{sid} 压缩状态行序列不符");
+    }
+    assert!(
+        frames("new").iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-error")),
+        "可恢复的 compaction fallback 不应终止 UI 轮次"
+    );
+    let sessions = inner.sess.sessions.lock().unwrap();
+    assert!(sessions["new"].running, "fallback 后 agent 仍执行，壳不得清 running");
+    assert!(!sessions["new"].compacting, "最终事件后压缩生命周期应闭合");
+    assert!(!sessions["manual"].running, "手动压缩 final+usage 后必须收轮");
+    drop(sessions);
+    assert_eq!(
+        frames("manual")
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1,
+        "事件通路只能完成手动压缩一次"
+    );
+}
+
+/// error/stream 负责即时展示，不是空闲信号；同一错误的 turn/stopped 只
+/// 收 running 并补 task-ended，不得再落第二条红字。被过滤的重试事件仍须
+/// 推进 eventSeq 水位，否则下一条正常事件会被误判成背压丢帧。
+#[test]
+fn error_event_waits_for_turn_stopped_and_deduplicates_terminal_summary() {
+    let inner = bare_inner("error-lifecycle");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+
+    inner.handle_event(json!({
+        "type": "error", "session_id": "s1", "seq": 10,
+        "data": { "kind": "empty_response_retry", "terminal": false, "error": "retrying" }
+    }));
+    assert_eq!(inner.sess.sessions.lock().unwrap()["s1"].last_event_seq, 10);
+
+    inner.handle_event(json!({
+        "type": "error", "session_id": "s1", "seq": 11,
+        "data": { "terminal": true, "error": "quota exhausted" }
+    }));
+    {
+        let sessions = inner.sess.sessions.lock().unwrap();
+        assert!(sessions["s1"].running, "error 事件不能先于 turn/stopped 清 running");
+        assert!(sessions["s1"].terminal_error_seen);
+        assert_eq!(sessions["s1"].last_event_seq, 11);
+    }
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "error", "error": "quota exhausted" }),
+    );
+    inner.journal_barrier();
+
+    let frames = journal_frames(&inner, "s1");
+    let errors: Vec<&Value> = frames
+        .iter()
+        .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-error"))
         .collect();
-    assert_eq!(statuses, vec!["started", "ended", "ended"], "压缩状态行序列不符");
+    assert_eq!(errors.len(), 1, "event error 与 stopped 摘要不得重复渲染");
+    assert_eq!(errors[0].pointer("/data/terminal").and_then(Value::as_bool), Some(false));
+    assert_eq!(
+        frames
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1
+    );
+    assert!(!inner.sess.sessions.lock().unwrap()["s1"].running);
+}
+
+#[test]
+fn manual_compaction_failed_and_cancelled_are_distinct_terminal_states() {
+    let (inner, events) = bare_inner_events("compact-terminal");
+    for sid in ["failed", "cancelled"] {
+        let mut session = bare_session(sid);
+        session.compacting = true;
+        session.manual_compact = true;
+        inner.sess.sessions.lock().unwrap().insert(sid.into(), session);
+        inner.push_frame(sid, frame::task_started);
+        inner.push_frame(sid, |seq| frame::compact_status("started", seq));
+    }
+    inner.handle_event(json!({
+        "type": "compaction", "session_id": "failed",
+        "data": { "kind": "manual", "status": "failed", "error": "disk full" }
+    }));
+    inner.handle_event(json!({
+        "type": "compaction", "session_id": "cancelled",
+        "data": { "kind": "manual", "status": "cancelled", "error": "context canceled" }
+    }));
+    inner.journal_barrier();
+
+    let failed = journal_frames(&inner, "failed");
+    let cancelled = journal_frames(&inner, "cancelled");
+    assert!(failed.iter().any(|f| f.get("type").and_then(Value::as_str) == Some("task-error")));
+    assert!(cancelled.iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-error")));
+    assert_eq!(
+        failed.iter().filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended")).count(),
+        1
+    );
+    assert_eq!(
+        cancelled
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1
+    );
+    assert!(events.lock().unwrap().iter().any(|(name, payload)| {
+        name == "session-event"
+            && payload.get("id").and_then(Value::as_str) == Some("cancelled")
+            && payload.get("status").and_then(Value::as_str) == Some("interrupted")
+    }));
 }
 
 /// modelDoneText 全文对账:delta 被背压丢弃时,model_done 的权威全文
