@@ -343,10 +343,12 @@ describe("MonkeyCode 账号密码登录入口", () => {
     expect(screen.queryByText("百智云服务")).toBeNull();
   });
 
-  it("百智云已登录、MC 未连:出「连接」主钮,账密入口仍在同一张卡", async () => {
+  it("百智云已登录、MC 未连:说明行 + 「连接」主钮,账密入口仍在同一张卡", async () => {
     stubShell({ baizhi_status: bzIn, mc_status: mcOut, mc_usage: () => null });
     render(<AccountSection />);
     expect(await screen.findByRole("button", { name: "连接 MonkeyCode 云端" })).toBeDefined();
+    // 按钮的存在理由外显:拿现有百智云会话一键换 MonkeyCode 会话
+    expect(screen.getByText(/已登录百智云,可用当前账号一键连接/)).toBeDefined();
     expect(screen.getByRole("button", { name: "使用 MonkeyCode 账号密码登录" })).toBeDefined();
   });
 

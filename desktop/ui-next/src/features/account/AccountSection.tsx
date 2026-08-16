@@ -452,6 +452,10 @@ function ServiceCard({
     if (baizhiLoggedIn) {
       return (
         <>
+          {/* 这颗按钮的存在理由必须说:拿现有百智云会话一键换 MonkeyCode
+              会话,不用重扫码——不说的话按钮显得莫名其妙(2026-08-16 用户问
+              「这个页面状态是啥意思」) */}
+          <p className="text-xs text-base-content/60">{t("account.mc.bridgeHint")}</p>
           <button
             type="button"
             className="btn btn-primary btn-sm w-full"

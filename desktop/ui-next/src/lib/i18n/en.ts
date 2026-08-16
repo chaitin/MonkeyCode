@@ -822,6 +822,7 @@ export const en: Record<MessageKey, string> = {
   "account.baizhi.keyCreated": "Created a new gateway key “{name}”. ",
   "account.baizhi.syncEmpty": "No usable models were returned",
   "account.baizhi.logout": "Sign out",
+  "account.mc.bridgeHint": "Signed in to Baizhi Cloud — connect with the current account in one click, or use email & password below to switch accounts.",
   "account.mc.connect": "Connect MonkeyCode Cloud",
   "account.mc.connecting": "Connecting…",
   "account.mc.connectFailed": "Auto-connect failed: {message}",

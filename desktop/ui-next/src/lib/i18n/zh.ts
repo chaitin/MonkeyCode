@@ -842,6 +842,7 @@ export const zh = {
   "account.baizhi.keyCreated": "已在网关新建密钥「{name}」。",
   "account.baizhi.syncEmpty": "没有拉取到可用的模型",
   "account.baizhi.logout": "退出登录",
+  "account.mc.bridgeHint": "已登录百智云,可用当前账号一键连接;换账号走下方账号密码。",
   "account.mc.connect": "连接 MonkeyCode 云端",
   "account.mc.connecting": "连接中…",
   "account.mc.connectFailed": "自动连接失败:{message}",
