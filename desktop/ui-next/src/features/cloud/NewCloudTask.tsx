@@ -32,6 +32,7 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { mcTaskCreate, mcTaskOptions, type CloudProject, type CloudTaskDetail, type McTaskOptions } from "@/lib/ipc/cloudtasks";
 import { createImeGuard } from "@/lib/util/slash";
+import { useMcTransport } from "@/lib/mcTransport";
 
 export function NewCloudTask({
   onCreated,
@@ -52,6 +53,7 @@ export function NewCloudTask({
   active?: boolean;
 }) {
   const { t } = useI18n();
+  const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();
   const [options, setOptions] = useState<McTaskOptions | null>(null);
   const [loadErr, setLoadErr] = useState("");
   // 云端连接三态:null = 还在查(此时什么都不拉、也不报错),true/false 已定。
@@ -88,13 +90,22 @@ export function NewCloudTask({
   // 浏览器模式 mcStatus 返回 null:当作未连接,面板给未连接空态而非报错
   useEffect(() => {
     let alive = true;
+    const expectedTransport = transportGeneration;
+    queueMicrotask(() => {
+      if (!alive || !isTransportCurrent(expectedTransport)) return;
+      setOptions(null);
+      setConnected(null);
+      setLoadErr("");
+      setBusy(false);
+      setError("");
+    });
     void mcStatus()
       .then((st) => {
-        if (!alive) return;
+        if (!alive || !isTransportCurrent(expectedTransport)) return;
         setConnected(!!st?.logged_in);
         if (!st?.logged_in) return;
         return mcTaskOptions().then((o) => {
-          if (!alive) return;
+          if (!alive || !isTransportCurrent(expectedTransport)) return;
           setOptions(o);
           const model = pickDefaultCloudModel(o.models, o.plan);
           setModelId(model);
@@ -105,14 +116,14 @@ export function NewCloudTask({
       .catch((e: unknown) => {
         // mc_status 自己抛(网络故障)时不敢断言未连接:按连接态走,让选项
         // 加载失败的原文照常外显,不把一切故障都粉饰成「未连接」
-        if (!alive) return;
+        if (!alive || !isTransportCurrent(expectedTransport)) return;
         setConnected((cur) => cur ?? true);
         setLoadErr(e instanceof Error ? e.message : String(e));
       });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [transportGeneration, isTransportCurrent]);
 
   // 外部预选项目改变(侧栏另一个项目组头再点「+」,面板已挂载不会重建):
   // 换预选即覆盖当前关联,手输地址一并让位——预选是用户刚刚的明确指令
@@ -196,6 +207,7 @@ export function NewCloudTask({
     }
     setBusy(true);
     setError("");
+    const expectedTransport = transportGeneration;
     try {
       const task = await mcTaskCreate({
         content: content.trim(),
@@ -207,11 +219,12 @@ export function NewCloudTask({
         repo_url: project?.repo_url || repoUrl || undefined,
         project_id: project?.id || undefined,
       });
+      if (!isTransportCurrent(expectedTransport)) return;
       onCreated(task);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (isTransportCurrent(expectedTransport)) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      if (isTransportCurrent(expectedTransport)) setBusy(false);
     }
   };
 

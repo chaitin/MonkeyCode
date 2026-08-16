@@ -11,6 +11,7 @@ pub mod wechat;
 #[cfg(test)]
 mod tests;
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::Duration;
 
@@ -209,7 +210,7 @@ impl Service {
         }
     }
 
-    fn reconfigured(&self, cfg: &crate::config::DesktopConfig) -> Self {
+    fn reconfigured(&self, cfg: &crate::config::DesktopConfig) -> (Self, bool) {
         let resolved = Endpoints::resolve(&cfg.mc_base_url);
         let ep = Endpoints {
             account: self.ep.account.clone(),
@@ -227,16 +228,47 @@ impl Service {
         } else {
             self.mc_cookie_snapshot
         };
+        (
+            Self {
+                ep,
+                http: self.http.clone(),
+                lp: self.lp.clone(),
+                store: Arc::clone(&self.store),
+                mc: Arc::clone(&self.mc),
+                mc_cookie_generation: Arc::clone(&self.mc_cookie_generation),
+                mc_cookie_snapshot,
+                mc_basic,
+                mc_llm,
+                wx: Arc::clone(&self.wx),
+            },
+            transport_changed,
+        )
+    }
+
+    /// 清会话时也推进 Cookie 代次。这样登出前已经发出的请求即使稍后才
+    /// 带着 Set-Cookie 返回,也不能把刚清空的当前会话重新写回来。
+    fn logged_out(&self) -> Self {
+        let mc_cookie_snapshot = {
+            let mut generation = self.mc_cookie_generation.lock_ok();
+            *generation = generation.wrapping_add(1);
+            self.mc.clear();
+            *generation
+        };
         Self {
-            ep,
+            ep: Endpoints {
+                account: self.ep.account.clone(),
+                model_gateway: self.ep.model_gateway.clone(),
+                mcp_gateway: self.ep.mcp_gateway.clone(),
+                monkeycode: self.ep.monkeycode.clone(),
+            },
             http: self.http.clone(),
             lp: self.lp.clone(),
             store: Arc::clone(&self.store),
             mc: Arc::clone(&self.mc),
             mc_cookie_generation: Arc::clone(&self.mc_cookie_generation),
             mc_cookie_snapshot,
-            mc_basic,
-            mc_llm,
+            mc_basic: self.mc_basic.clone(),
+            mc_llm: self.mc_llm.clone(),
             wx: Arc::clone(&self.wx),
         }
     }
@@ -611,15 +643,62 @@ pub fn http_error(status: u16, body: &[u8], label: &str) -> BzErr {
 
 // ==================== Tauri 命令 ====================
 
-pub struct BaizhiState(StdMutex<Arc<Service>>);
+pub struct BaizhiState {
+    service: StdMutex<Arc<Service>>,
+    /// 仅服务地址或 Basic Auth 变化时推进,供 UI 丢弃旧 transport 的异步结果。
+    transport_generation: AtomicU64,
+    /// 同一时刻只允许一条会员 Key 生命周期操作跨越网络等待。
+    member_ops: tokio::sync::Mutex<()>,
+    /// 配置切换与 Key 文件最终提交共用的同步边界,消除 check-then-write。
+    member_commit: StdMutex<()>,
+}
 
 impl BaizhiState {
     pub fn new(service: Service) -> Self {
-        Self(StdMutex::new(Arc::new(service)))
+        Self {
+            service: StdMutex::new(Arc::new(service)),
+            transport_generation: AtomicU64::new(0),
+            member_ops: tokio::sync::Mutex::new(()),
+            member_commit: StdMutex::new(()),
+        }
     }
 
     pub fn service(&self) -> Arc<Service> {
-        Arc::clone(&self.0.lock_ok())
+        self.service_snapshot().0
+    }
+
+    fn service_snapshot(&self) -> (Arc<Service>, u64) {
+        let current = self.service.lock_ok();
+        (
+            Arc::clone(&current),
+            self.transport_generation.load(Ordering::SeqCst),
+        )
+    }
+
+    /// UI 发起操作时携带它看到的壳代次。即使命令先在异步互斥锁上排队，
+    /// 真正开始网络请求时也不能悄悄改为操作已经切入的新服务。
+    fn service_snapshot_if_current(&self, expected_generation: Option<u64>) -> Option<(Arc<Service>, u64)> {
+        let current = self.service.lock_ok();
+        let generation = self.transport_generation.load(Ordering::SeqCst);
+        if expected_generation.is_some_and(|expected| expected != generation) {
+            return None;
+        }
+        Some((Arc::clone(&current), generation))
+    }
+
+    pub(crate) fn with_current_service<T>(&self, f: impl FnOnce(&Arc<Service>) -> T) -> T {
+        let current = self.service.lock_ok();
+        f(&current)
+    }
+
+    fn is_current(&self, expected_generation: u64) -> bool {
+        let _current = self.service.lock_ok();
+        self.transport_generation.load(Ordering::SeqCst) == expected_generation
+    }
+
+    #[cfg(test)]
+    pub fn transport_generation(&self) -> u64 {
+        self.transport_generation.load(Ordering::SeqCst)
     }
 
     /// 更新后续 IPC 使用的服务快照。在途请求持有旧 Arc,不会被切换打断。
@@ -628,15 +707,61 @@ impl BaizhiState {
         &self,
         cfg: &crate::config::DesktopConfig,
         pipes: &monkeycode::CloudPipes,
-    ) -> bool {
-        let mut current = self.0.lock_ok();
-        let next = Arc::new(current.reconfigured(cfg));
-        let transport_changed = current.ep.monkeycode != next.ep.monkeycode || current.mc_basic != next.mc_basic;
+    ) -> Option<u64> {
+        let _commit = self.member_commit.lock_ok();
+        let mut current = self.service.lock_ok();
+        let (next, transport_changed) = current.reconfigured(cfg);
+        let next = Arc::new(next);
         *current = next;
         if transport_changed {
+            let generation = self.transport_generation.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
+            // service 锁保持到管道关闭完成:新 claim 不会插进 swap 与 close_all 之间。
             pipes.close_all();
+            Some(generation)
+        } else {
+            None
         }
-        transport_changed
+    }
+
+    /// Key 文件的比较并交换。校验当前 transport 代次、文件旧内容与最终提交在
+    /// member_commit 锁内完成,配置切换不可能夹在校验与写盘/删除之间。
+    fn commit_member_key(
+        &self,
+        expected_generation: u64,
+        path: &std::path::Path,
+        expected_file: Option<&[u8]>,
+        replacement: Option<&[u8]>,
+    ) -> BzResult<()> {
+        let _commit = self.member_commit.lock_ok();
+        let _current = self.service.lock_ok();
+        if self.transport_generation.load(Ordering::SeqCst) != expected_generation {
+            return Err(other("服务配置已切换,旧服务的会员密钥结果已丢弃,请重试"));
+        }
+        let actual = read_optional_file(path)?;
+        if actual.as_deref() != expected_file {
+            return Err(other("会员密钥文件已被更新,本次旧结果未写入,请重试"));
+        }
+        match replacement {
+            Some(data) => crate::config::atomic_write_private(path, data).map_err(other),
+            None => match std::fs::remove_file(path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(other(format!("删除会员密钥失败: {e}"))),
+            },
+        }
+    }
+
+    /// 只在断开流程开始时捕获的 transport 仍是当前代次时清 Cookie。清理与服务
+    /// 校验原子化,并推进 Cookie 代次以拦截登出前的迟到 Set-Cookie。
+    fn logout_if_current(&self, expected_generation: u64, pipes: &monkeycode::CloudPipes) -> bool {
+        let _commit = self.member_commit.lock_ok();
+        let mut current = self.service.lock_ok();
+        if self.transport_generation.load(Ordering::SeqCst) != expected_generation {
+            return false;
+        }
+        *current = Arc::new(current.logged_out());
+        pipes.close_all();
+        true
     }
 }
 
@@ -704,7 +829,11 @@ pub async fn baizhi_sync(bz: State<'_, BaizhiState>, known_keys: Option<Vec<Stri
 pub async fn mc_status(bz: State<'_, BaizhiState>) -> Result<Value, String> {
     let svc = bz.service();
     let (logged_in, user) = monkeycode::mc_status(&svc).await.map_err(BzErr::msg)?;
-    let mut resp = json!({ "logged_in": logged_in, "host": monkeycode::mc_host(&svc) });
+    let mut resp = json!({
+        "logged_in": logged_in,
+        "host": monkeycode::mc_host(&svc),
+        "base_url": svc.ep.monkeycode,
+    });
     if !user.is_null() {
         resp["user"] = user;
     }
@@ -741,8 +870,13 @@ pub async fn mc_password_login(bz: State<'_, BaizhiState>, email: String, passwo
 }
 
 #[tauri::command]
-pub async fn mc_logout(bz: State<'_, BaizhiState>) -> Result<Value, String> {
-    bz.service().mc.clear();
+pub async fn mc_logout(
+    bz: State<'_, BaizhiState>,
+    pipes: State<'_, monkeycode::CloudPipes>,
+) -> Result<Value, String> {
+    let _op = bz.member_ops.lock().await;
+    let (_, generation) = bz.service_snapshot();
+    bz.logout_if_current(generation, &pipes);
     Ok(json!({ "ok": true }))
 }
 
@@ -763,80 +897,221 @@ pub async fn mc_checkin(bz: State<'_, BaizhiState>) -> Result<Value, String> {
 
 pub(crate) const OHMYAGENT_KEY_FILE: &str = "monkeycode-ohmyagent-key.json";
 
-/// 已落盘的记录(要求 id 与 api_key 齐全,损坏视为无)。
-pub(crate) fn stored_ohmyagent_key(cfg_dir: &std::path::Path) -> Option<Value> {
-    let data = std::fs::read(cfg_dir.join(OHMYAGENT_KEY_FILE)).ok()?;
-    let v: Value = serde_json::from_slice(&data).ok()?;
+fn read_optional_file(path: &std::path::Path) -> BzResult<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Ok(data) => Ok(Some(data)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(other(format!("读取会员密钥失败: {e}"))),
+    }
+}
+
+fn parse_ohmyagent_key(data: &[u8]) -> Option<Value> {
+    let v: Value = serde_json::from_slice(data).ok()?;
     let has = |k: &str| v.get(k).and_then(Value::as_str).map(|s| !s.is_empty()).unwrap_or(false);
     (has("id") && has("api_key")).then_some(v)
 }
 
+/// 已落盘的记录(要求 id 与 api_key 齐全,损坏视为无)。
+pub(crate) fn stored_ohmyagent_key(cfg_dir: &std::path::Path) -> Option<Value> {
+    let data = std::fs::read(cfg_dir.join(OHMYAGENT_KEY_FILE)).ok()?;
+    parse_ohmyagent_key(&data)
+}
+
+fn mc_transport_fingerprint(server: &str, basic: Option<&str>) -> String {
+    use sha2::{Digest as _, Sha256};
+    let mut hash = Sha256::new();
+    hash.update(b"monkeycode-transport-v1\0");
+    hash.update(server.as_bytes());
+    hash.update(b"\0");
+    hash.update(basic.unwrap_or("").as_bytes());
+    let digest = hash.finalize();
+    format!("{digest:x}")
+}
+
+fn ohmyagent_key_matches_transport(key: &Value, server: &str, llm: &str, basic: Option<&str>) -> bool {
+    let expected = mc_transport_fingerprint(server, basic);
+    if let Some(stored) = key.get("transport").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        return stored == expected;
+    }
+
+    // 旧版文件没有 transport。没有 Basic 时尚可用 server(再老版本用
+    // base_url)确认身份;配置了 Basic 后无法证明是同一套反代凭证,宁可要求
+    // 重新同步,也不能把别的服务签发的 key 注入当前引擎。
+    if basic.is_some() {
+        return false;
+    }
+    if let Some(stored) = key.get("server").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        return stored == server;
+    }
+    key.get("base_url").and_then(Value::as_str).filter(|s| !s.is_empty()) == Some(llm)
+}
+
+pub(crate) fn ohmyagent_key_matches_config(key: &Value, cfg: &crate::config::DesktopConfig) -> bool {
+    let ep = Endpoints::resolve(&cfg.mc_base_url);
+    let llm = resolve_mc_llm(&cfg.mc_llm_base_url, &ep.monkeycode);
+    let basic = basic_header_value(&cfg.mc_basic_auth);
+    ohmyagent_key_matches_transport(key, &ep.monkeycode, &llm, basic.as_deref())
+}
+
+fn stamp_ohmyagent_key(mut key: Value, svc: &Service) -> Value {
+    key["server"] = json!(svc.ep.monkeycode);
+    key["base_url"] = json!(svc.mc_llm);
+    key["transport"] = json!(mc_transport_fingerprint(&svc.ep.monkeycode, svc.mc_basic.as_deref()));
+    key
+}
+
 /// 取本机记录,没有就创建并立刻落盘。`server` 变化(切换了服务地址)作废
-/// 重建,仅 `base_url` 变化则原地刷新;旧文件缺 `server` 时按 base_url 宽松判定。
+/// 重建,仅 `base_url` 变化则原地刷新。新记录同时绑定服务地址与 Basic Auth。
+#[cfg(test)]
 async fn ensure_ohmyagent_key(svc: &Service, cfg_dir: &std::path::Path) -> BzResult<Value> {
-    let server = svc.ep.monkeycode.as_str();
-    let llm = svc.mc_llm.as_str();
     let persist = |k: &Value| {
         crate::config::atomic_write_private(&cfg_dir.join(OHMYAGENT_KEY_FILE), k.to_string().as_bytes())
             .map_err(other)
     };
-    if let Some(mut k) = stored_ohmyagent_key(cfg_dir) {
-        let stored_server = k.get("server").and_then(Value::as_str).unwrap_or("").to_string();
-        let stored_llm = k.get("base_url").and_then(Value::as_str).unwrap_or("").to_string();
-        let same_server = if stored_server.is_empty() {
-            stored_llm.is_empty() || stored_llm == llm // 旧文件:凭 base_url 宽松判定
-        } else {
-            stored_server == server
-        };
-        if same_server {
-            if stored_server != server || stored_llm != llm {
-                k["server"] = json!(server);
-                k["base_url"] = json!(llm);
-                persist(&k)?;
-            }
+    if let Some(k) = stored_ohmyagent_key(cfg_dir) {
+        if ohmyagent_key_matches_transport(&k, &svc.ep.monkeycode, &svc.mc_llm, svc.mc_basic.as_deref()) {
+            let k = stamp_ohmyagent_key(k, svc);
+            persist(&k)?;
             return Ok(k);
         }
-        // 服务器已切换,落到下方重建
     }
-    let mut k = monkeycode::mc_ohmyagent_key_create(svc).await?;
-    k["server"] = json!(server);
-    k["base_url"] = json!(llm);
+    let k = stamp_ohmyagent_key(monkeycode::mc_ohmyagent_key_create(svc).await?, svc);
     persist(&k)?;
     Ok(k)
 }
 
+/// 生产命令使用的带代次 + 文件身份检查版本。网络等待前记住原文件,
+/// 等待后通过 BaizhiState 的 CAS 提交；切服或外部改写都会使旧结果失效。
+async fn ensure_ohmyagent_key_current(
+    bz: &BaizhiState,
+    svc: &Arc<Service>,
+    transport_generation: u64,
+    cfg_dir: &std::path::Path,
+) -> BzResult<Value> {
+    let path = cfg_dir.join(OHMYAGENT_KEY_FILE);
+    let before = read_optional_file(&path)?;
+    if let Some(k) = before.as_deref().and_then(parse_ohmyagent_key) {
+        if ohmyagent_key_matches_transport(&k, &svc.ep.monkeycode, &svc.mc_llm, svc.mc_basic.as_deref()) {
+            let stamped = stamp_ohmyagent_key(k, svc);
+            let data = serde_json::to_vec(&stamped).map_err(|e| other(format!("序列化会员密钥失败: {e}")))?;
+            if before.as_deref() != Some(data.as_slice()) {
+                bz.commit_member_key(transport_generation, &path, before.as_deref(), Some(&data))?;
+            } else if !bz.is_current(transport_generation) {
+                return Err(other("服务配置已切换,旧服务的会员密钥结果已丢弃,请重试"));
+            }
+            return Ok(stamped);
+        }
+    }
+
+    let key = stamp_ohmyagent_key(monkeycode::mc_ohmyagent_key_create(svc).await?, svc);
+    let data = serde_json::to_vec(&key).map_err(|e| other(format!("序列化会员密钥失败: {e}")))?;
+    bz.commit_member_key(transport_generation, &path, before.as_deref(), Some(&data))?;
+    Ok(key)
+}
+
 /// 同步会员内置模型(命令的可测内核:tests.rs 以 TempDir 直调)。
+#[cfg(test)]
 pub(crate) async fn sync_member_models(svc: &Service, cfg_dir: &std::path::Path) -> BzResult<Value> {
     ensure_ohmyagent_key(svc, cfg_dir).await?;
     monkeycode::mc_member_models_sync(svc).await
 }
 
 /// 删成功才移除本地记录;删失败(如断网)保留记录,下次断开重试即收敛。
+#[cfg(test)]
 pub(crate) async fn revoke_member_models(svc: &Service, cfg_dir: &std::path::Path) -> BzResult<()> {
     let Some(key) = stored_ohmyagent_key(cfg_dir) else {
         return Ok(()); // 从未同步过,无可删
     };
+    if !ohmyagent_key_matches_transport(&key, &svc.ep.monkeycode, &svc.mc_llm, svc.mc_basic.as_deref()) {
+        return Ok(());
+    }
     let id = key.get("id").and_then(Value::as_str).unwrap_or("");
     monkeycode::mc_ohmyagent_key_delete(svc, id).await?;
     let _ = std::fs::remove_file(cfg_dir.join(OHMYAGENT_KEY_FILE));
     Ok(())
 }
 
+async fn revoke_member_models_current(
+    bz: &BaizhiState,
+    svc: &Arc<Service>,
+    transport_generation: u64,
+    cfg_dir: &std::path::Path,
+) -> BzResult<()> {
+    let path = cfg_dir.join(OHMYAGENT_KEY_FILE);
+    let before = read_optional_file(&path)?;
+    let Some(key) = before.as_deref().and_then(parse_ohmyagent_key) else {
+        return Ok(());
+    };
+    if !ohmyagent_key_matches_transport(&key, &svc.ep.monkeycode, &svc.mc_llm, svc.mc_basic.as_deref()) {
+        return Ok(());
+    }
+    let id = key.get("id").and_then(Value::as_str).unwrap_or("");
+    monkeycode::mc_ohmyagent_key_delete(svc, id).await?;
+    bz.commit_member_key(transport_generation, &path, before.as_deref(), None)
+}
+
 /// 同步 MonkeyCode 会员内置模型为本地条目(source="monkeycode")。与
 /// baizhi_sync 同款语义:不碰 config.json,纯返回 {models, notes}。
 #[tauri::command]
-pub async fn mc_models_sync(app: tauri::AppHandle, bz: State<'_, BaizhiState>) -> Result<Value, String> {
+pub async fn mc_models_sync(
+    app: tauri::AppHandle,
+    bz: State<'_, BaizhiState>,
+    expected_generation: Option<u64>,
+) -> Result<Value, String> {
     let cfg_dir = crate::config::config_dir(&app)?;
-    sync_member_models(&bz.service(), &cfg_dir).await.map_err(BzErr::msg)
+    let _op = bz.member_ops.lock().await;
+    let Some((svc, transport_generation)) = bz.service_snapshot_if_current(expected_generation) else {
+        return Err("服务配置已切换,本次会员模型同步已取消,请重试".into());
+    };
+    ensure_ohmyagent_key_current(&bz, &svc, transport_generation, &cfg_dir).await.map_err(BzErr::msg)?;
+    let models = monkeycode::mc_member_models_sync(&svc).await.map_err(BzErr::msg)?;
+    if !bz.is_current(transport_generation) {
+        return Err("服务配置已切换,旧服务的模型结果已丢弃,请重试".into());
+    }
+    Ok(models)
 }
 
 /// 断开 MonkeyCode 账号时调用(从未同步过直接成功)。须在清除 mc 会话
 /// 之前调用——请求走 mc 会话认证。
 #[tauri::command]
-pub async fn mc_models_revoke(app: tauri::AppHandle, bz: State<'_, BaizhiState>) -> Result<Value, String> {
+pub async fn mc_models_revoke(
+    app: tauri::AppHandle,
+    bz: State<'_, BaizhiState>,
+    expected_generation: Option<u64>,
+) -> Result<Value, String> {
     let cfg_dir = crate::config::config_dir(&app)?;
-    revoke_member_models(&bz.service(), &cfg_dir).await.map_err(BzErr::msg)?;
+    let _op = bz.member_ops.lock().await;
+    let Some((svc, transport_generation)) = bz.service_snapshot_if_current(expected_generation) else {
+        return Err("服务配置已切换,本次会员密钥吊销已取消,请重试".into());
+    };
+    revoke_member_models_current(&bz, &svc, transport_generation, &cfg_dir).await.map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))
+}
+
+/// 吊销会员 Key + 清会话的一体化断开命令。整个流程捕获同一 transport 代次;
+/// 若等待吊销期间切了服务,最后的原子校验会拒绝清掉新服务 Cookie。
+#[tauri::command]
+pub async fn mc_disconnect(
+    app: tauri::AppHandle,
+    bz: State<'_, BaizhiState>,
+    pipes: State<'_, monkeycode::CloudPipes>,
+    expected_generation: u64,
+) -> Result<Value, String> {
+    let cfg_dir = crate::config::config_dir(&app)?;
+    let _op = bz.member_ops.lock().await;
+    let Some((svc, transport_generation)) = bz.service_snapshot_if_current(Some(expected_generation)) else {
+        return Ok(json!({ "ok": false, "cancelled": true }));
+    };
+    let warning = revoke_member_models_current(&bz, &svc, transport_generation, &cfg_dir)
+        .await
+        .err()
+        .map(BzErr::msg);
+    let current = bz.logout_if_current(transport_generation, &pipes);
+    Ok(json!({
+        "ok": current,
+        "cancelled": !current,
+        "warning": warning,
+    }))
 }
 
 #[tauri::command]

@@ -1052,9 +1052,10 @@ impl CloudPipes {
         pipe: &str,
         tx: mpsc::UnboundedSender<PipeMsg>,
     ) -> Result<(Arc<Service>, u64), String> {
-        let current = bz.0.lock_ok();
-        let gen = self.claim(pipe, tx)?;
-        Ok((Arc::clone(&current), gen))
+        bz.with_current_service(|current| {
+            let gen = self.claim(pipe, tx)?;
+            Ok((Arc::clone(current), gen))
+        })
     }
 
     pub(crate) fn close_all(&self) {

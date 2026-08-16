@@ -17,6 +17,7 @@ import { useI18n } from "@/lib/i18n";
 import { inDesktopShell } from "@/lib/ipc/ipc";
 import { mcStatus } from "@/lib/ipc/account";
 import { mcProjects, mcTaskDelete, mcTasks, mcTaskStop, type CloudProject, type CloudTask } from "@/lib/ipc/cloudtasks";
+import { useMcTransport } from "@/lib/mcTransport";
 
 const PAGE_SIZE = 20;
 
@@ -57,6 +58,7 @@ type PageMode = "replace" | "append" | "merge";
  * 重新进入云端经 enabled 翻转刷新)。
  * 自动刷新:窗口重获焦点 + 30s 轮询(仅 enabled 时挂,离开即拆)。 */
 export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
+  const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();
   const [tasks, setTasks] = useState<CloudTask[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -70,7 +72,7 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
   const inFlight = useRef(false);
   const bgFlight = useRef(false);
   const generationRef = useRef(0);
-  const appliedReloadRef = useRef<{ enabled: boolean; reloadKey: number } | null>(null);
+  const appliedReloadRef = useRef<{ enabled: boolean; reloadKey: number; transportGeneration: number } | null>(null);
 
   const fetchPage = useCallback(async (page: number, mode: PageMode) => {
     if (!inDesktopShell()) {
@@ -79,6 +81,8 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
       return;
     }
     const generation = generationRef.current;
+    const expectedTransport = transportGeneration;
+    const current = () => generation === generationRef.current && isTransportCurrent(expectedTransport);
     const bg = mode === "merge";
     const busy = bg ? bgFlight : inFlight;
     if (busy.current || (bg && inFlight.current)) return;
@@ -89,7 +93,7 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
     setError("");
     try {
       const r = await mcTasks(page, PAGE_SIZE);
-      if (generation !== generationRef.current) return;
+      if (!current()) return;
       setUnauthorized(false); // 连上了(设置里刚连接完再回来)
       const batch = r.tasks ?? [];
       setTotal(r.page_info?.total ?? r.page_info?.total_count ?? null);
@@ -107,13 +111,13 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
         return [...batch, ...prev.filter((task) => !fresh.has(task.id))];
       });
     } catch (e) {
-      if (generation !== generationRef.current) return;
+      if (!current()) return;
       // 会话失效/未登录不是"加载失败":回查一次登录态确证(壳的 401 文案
       // 是中文串,按串匹配太脆),据此分流成「未连接」状态而非红底报错
       // 只认**明确**的未登录信号:拿不到状态/字段缺失时不许吞掉原错误
       // (否则一切故障都被粉饰成「未连接」,真问题无从诊断)
       const st = await mcStatus().catch(() => null);
-      if (generation !== generationRef.current) return;
+      if (!current()) return;
       if (st?.logged_in === false) {
         setUnauthorized(true);
         setError("");
@@ -122,17 +126,21 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
         setError(e instanceof Error ? e.message : String(e));
       }
     } finally {
-      if (generation === generationRef.current) {
+      if (current()) {
         busy.current = false;
         if (!bg) setLoading(false);
       }
     }
-  }, []);
+  }, [transportGeneration, isTransportCurrent]);
 
   useEffect(() => {
     const applied = appliedReloadRef.current;
-    if (applied?.enabled === enabled && applied.reloadKey === reloadKey) return;
-    appliedReloadRef.current = { enabled, reloadKey };
+    if (
+      applied?.enabled === enabled &&
+      applied.reloadKey === reloadKey &&
+      applied.transportGeneration === transportGeneration
+    ) return;
+    appliedReloadRef.current = { enabled, reloadKey, transportGeneration };
     generationRef.current += 1;
     inFlight.current = false;
     bgFlight.current = false;
@@ -145,7 +153,7 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
       return;
     }
     void fetchPage(1, "replace");
-  }, [fetchPage, reloadKey, enabled]);
+  }, [fetchPage, reloadKey, enabled, transportGeneration]);
 
   // 自动刷新(旧 UI App.tsx:329-340 的两条,ui-next 此前整个漏掉):
   // ① 窗口重获焦点即刷——网页/手机端刚派发的任务,切回桌面就该看得见;
@@ -184,14 +192,16 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
 /** 项目列表(mc_projects;每项目捎带 ≤3 条运行中任务)。失败降级为空
  * (列表退回平铺形态,任务本身不受影响),但必须留痕便于诊断。 */
 export function useCloudProjects(reloadKey = 0, enabled = true): CloudProject[] {
+  const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();
   const [projects, setProjects] = useState<CloudProject[]>([]);
   useEffect(() => {
     setProjects([]);
     if (!inDesktopShell() || !enabled) return;
     let alive = true;
+    const expectedTransport = transportGeneration;
     mcProjects()
       .then((r) => {
-        if (alive) setProjects((r.projects ?? []).filter((p) => !!p.id));
+        if (alive && isTransportCurrent(expectedTransport)) setProjects((r.projects ?? []).filter((p) => !!p.id));
       })
       .catch((e: unknown) => {
         console.warn("[cloud-projects] 项目列表拉取失败:", e);
@@ -199,7 +209,7 @@ export function useCloudProjects(reloadKey = 0, enabled = true): CloudProject[] 
     return () => {
       alive = false;
     };
-  }, [reloadKey, enabled]);
+  }, [reloadKey, enabled, transportGeneration, isTransportCurrent]);
   return projects;
 }
 
@@ -313,6 +323,7 @@ export function CloudTaskList({
   onNewTaskIn?: (project: CloudProject) => void;
 }) {
   const { t } = useI18n();
+  const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();
   const forceOpen = query !== "";
 
   // 分组懒拉缓存(键 = 项目 id);重拉键翻转即作废
@@ -324,16 +335,17 @@ export function CloudTaskList({
   const [actionErr, setActionErr] = useState("");
 
   const fetchGroup = useCallback((projectId: string, generation: number) => {
+    const expectedTransport = transportGeneration;
     mcTasks(1, PAGE_SIZE, "", { projectId })
       .then((r) => {
-        if (generation !== groupGeneration.current) return;
+        if (generation !== groupGeneration.current || !isTransportCurrent(expectedTransport)) return;
         setGroupTasks((prev) => ({ ...prev, [projectId]: { tasks: r.tasks ?? [] } }));
       })
       .catch((e: unknown) => {
-        if (generation !== groupGeneration.current) return;
+        if (generation !== groupGeneration.current || !isTransportCurrent(expectedTransport)) return;
         setGroupTasks((prev) => ({ ...prev, [projectId]: { error: e instanceof Error ? e.message : String(e) } }));
       });
-  }, []);
+  }, [transportGeneration, isTransportCurrent]);
 
   const loadGroup = useCallback(
     (projectId: string) => {
@@ -383,8 +395,10 @@ export function CloudTaskList({
 
   const handleDelete = (task: CloudTask) => {
     setActionErr("");
+    const expectedTransport = transportGeneration;
     void mcTaskDelete(task.id)
       .then(() => {
+        if (!isTransportCurrent(expectedTransport)) return;
         // 分组缓存就地剔除(展开着的组不必等重拉),整表重拉刷新置顶/历史
         setGroupTasks((prev) => {
           const next: Record<string, GroupTasksState> = {};
@@ -397,6 +411,7 @@ export function CloudTaskList({
         onDeleted?.(task.id);
       })
       .catch((e: unknown) => {
+        if (!isTransportCurrent(expectedTransport)) return;
         // 服务端会拒绝仍在运行/虚拟机尚在线的任务:原因外显,不静默
         setActionErr(t("cloud.list.deleteFailed", { reason: e instanceof Error ? e.message : String(e) }));
       });
@@ -404,13 +419,16 @@ export function CloudTaskList({
 
   const handleStop = (task: CloudTask) => {
     setActionErr("");
+    const expectedTransport = transportGeneration;
     void mcTaskStop(task.id)
       .then(() => {
+        if (!isTransportCurrent(expectedTransport)) return;
         // 状态翻转(active→history),分组缓存作废并重拉展开组,整表重拉
         invalidateGroups();
         feed.refresh();
       })
       .catch((e: unknown) => {
+        if (!isTransportCurrent(expectedTransport)) return;
         setActionErr(t("cloud.err.stopFailed", { reason: e instanceof Error ? e.message : String(e) }));
       });
   };

@@ -204,8 +204,21 @@ async fn mcp_oversized_headers_are_dropped_and_server_survives() {
     {
         let mut conn = tokio::net::TcpStream::connect(&addr).await.unwrap();
         conn.write_all(b"POST /mcp HTTP/1.1\r\nX-Flood: ").await.unwrap();
-        conn.write_all(&vec![b'A'; 1024 * 1024]).await.unwrap();
-        let _ = conn.flush().await;
+        // 服务端读到 32KB 上限就会主动关连接；客户端仍在写剩余 1MB 时
+        // 收到 BrokenPipe/Reset 正是期望结果，不能把它当成测试失败。
+        if let Err(e) = conn.write_all(&vec![b'A'; 1024 * 1024]).await {
+            assert!(
+                matches!(
+                    e.kind(),
+                    std::io::ErrorKind::BrokenPipe
+                        | std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::ConnectionAborted
+                ),
+                "超限连接只应因服务端主动关闭而写失败: {e}"
+            );
+        } else {
+            let _ = conn.flush().await;
+        }
         let mut buf = Vec::new();
         // 关键断言是"服务端**主动**关了连接",而不仅仅是"没应答":无上限时
         // 服务端会一直等 CRLF、把头读到内存里,直到它自己 30s 读超时才罢手,

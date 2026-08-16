@@ -1,11 +1,12 @@
 // 新建云端任务:三选器默认值、locked 禁选、提交契约(假壳 invoke)。
 // 三选器为 composer 同款菜单(pickers.OptionMenu):触发器 button 文本 =
 // 当前选中项展示名,列表 list 与触发器同可及名(role 区分)。
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NewCloudTask } from "./NewCloudTask";
+import { McTransportProvider } from "@/lib/mcTransport";
 
 const OPTIONS = {
   models: [
@@ -32,6 +33,7 @@ function stubShell(
   created: Record<string, unknown>[] = [],
   options: Record<string, unknown> = OPTIONS,
   status: unknown = { logged_in: true, host: "mc.example.com" },
+  createResult?: Promise<unknown>,
 ) {
   (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
     core: {
@@ -40,7 +42,7 @@ function stubShell(
         if (cmd === "mc_task_options") return Promise.resolve(options);
         if (cmd === "mc_task_create") {
           created.push(args ?? {});
-          return Promise.resolve({ id: "new-task", status: "pending" });
+          return createResult ?? Promise.resolve({ id: "new-task", status: "pending" });
         }
         return Promise.resolve({});
       },
@@ -96,13 +98,41 @@ describe("NewCloudTask", () => {
     expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: "new-task" }));
   });
 
+  it("创建请求完成前切换服务:丢弃旧服务迟到的 task,不回填 App", async () => {
+    let resolveCreate: ((task: unknown) => void) | undefined;
+    const pending = new Promise<unknown>((resolve) => {
+      resolveCreate = resolve;
+    });
+    stubShell([], OPTIONS, { logged_in: true, host: "old.example.com" }, pending);
+    const onCreated = vi.fn();
+    let current = 0;
+    const isCurrent = (generation: number) => generation === current;
+    const { rerender } = render(
+      <McTransportProvider generation={0} isCurrent={isCurrent}>
+        <NewCloudTask onCreated={onCreated} />
+      </McTransportProvider>,
+    );
+    await screen.findByRole("button", { name: "模型" });
+    await userEvent.type(screen.getByLabelText("任务描述"), "旧服务任务");
+    await userEvent.click(screen.getByText("创建"));
+
+    current = 1;
+    rerender(
+      <McTransportProvider generation={1} isCurrent={isCurrent}>
+        <NewCloudTask onCreated={onCreated} />
+      </McTransportProvider>,
+    );
+    await act(async () => resolveCreate?.({ id: "old-task", status: "pending" }));
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
   it("默认不关联仓库:提交不带 repo_url/project_id", async () => {
     const created: Record<string, unknown>[] = [];
     stubShell(created);
     render(<NewCloudTask onCreated={() => {}} />);
     expect(await screen.findByRole("button", { name: "关联仓库" })).toBeDefined();
     expect(screen.getByRole("button", { name: "关联仓库" }).textContent).toContain("不关联仓库");
-    await userEvent.type(screen.getByLabelText("任务描述"), "随便聊聊");
+    await userEvent.type(await screen.findByLabelText("任务描述"), "随便聊聊");
     await userEvent.click(screen.getByText("创建"));
     const req = created[0]!.req as Record<string, unknown>;
     expect(req.repo_url).toBeUndefined();

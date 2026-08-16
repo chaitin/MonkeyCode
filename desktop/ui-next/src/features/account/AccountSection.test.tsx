@@ -451,6 +451,26 @@ describe("已登录:用量面板/签到/同步/断开", () => {
     mc_usage: () => usage.current,
   });
 
+  it("私有服务链接使用完整 base_url,保留 http、端口与部署路径", async () => {
+    const opened: string[] = [];
+    stubShell({
+      baizhi_status: bzOut,
+      mc_status: () => ({
+        logged_in: true,
+        host: "localhost",
+        base_url: "http://localhost:8000/private/team-a",
+        user: { id: "u1", name: "云端用户" },
+      }),
+      mc_usage: () => null,
+      "plugin:opener|open_url": (args) => {
+        opened.push(String(args?.url));
+      },
+    });
+    render(<AccountSection savedMcBaseUrl="http://localhost:8000/private/team-a" />);
+    await userEvent.click(await screen.findByText("localhost:8000/private/team-a"));
+    expect(opened).toEqual(["http://localhost:8000/private/team-a"]);
+  });
+
   it("身份副行:主机名 + 用户 ID(长串按 头8…尾6 掩码),点击复制完整原值", async () => {
     const longId = "5f8a12c3-9b4d-4e7a-8c1f-0a2b3c4d9d21";
     const writeText = vi.fn(() => Promise.resolve());
@@ -536,6 +556,7 @@ describe("已登录:用量面板/签到/同步/断开", () => {
 
     const { rerender } = render(<AccountSection refreshKey={0} onSyncResult={onSyncResult} />);
     await userEvent.click(await screen.findByRole("button", { name: "同步会员模型" }));
+    expect((screen.getByRole("button", { name: "断开连接" }) as HTMLButtonElement).disabled).toBe(true);
     rerender(<AccountSection refreshKey={1} onSyncResult={onSyncResult} />);
     resolveOld?.({ models: [{ name: "旧服务模型", source: "monkeycode" }] });
     await act(async () => undefined);
@@ -615,15 +636,14 @@ describe("已登录:用量面板/签到/同步/断开", () => {
     expect(onSyncResult).not.toHaveBeenCalled();
   });
 
-  it("断开连接:mc_models_revoke 先于 mc_logout(顺序钉死),断开后回连接入口", async () => {
+  it("断开连接:只调用壳内原子 mc_disconnect,断开后回连接入口", async () => {
     let mcConnected = true;
     const usage = { current: usageFixture() };
     const { calls } = stubShell({
       baizhi_status: bzIn,
       mc_status: () => (mcConnected ? mcIn() : mcOut()),
       mc_usage: () => usage.current,
-      mc_models_revoke: () => ({ ok: true }),
-      mc_logout: () => {
+      mc_disconnect: () => {
         mcConnected = false;
         return { ok: true };
       },
@@ -631,54 +651,49 @@ describe("已登录:用量面板/签到/同步/断开", () => {
     render(<AccountSection />);
     await userEvent.click(await screen.findByRole("button", { name: "断开连接" }));
     expect(await screen.findByRole("button", { name: "连接 MonkeyCode 云端" })).toBeDefined();
-    const names = calls.map((c) => c.cmd);
-    const revokeAt = names.indexOf("mc_models_revoke");
-    const logoutAt = names.indexOf("mc_logout");
-    expect(revokeAt).toBeGreaterThanOrEqual(0);
-    expect(logoutAt).toBeGreaterThan(revokeAt);
+    expect(calls.filter((c) => c.cmd === "mc_disconnect")).toHaveLength(1);
   });
 
-  it("服务切换时旧断开流程不得在吊销完成后登出新服务", async () => {
-    let resolveRevoke: (() => void) | undefined;
-    const revoke = new Promise<void>((resolve) => {
-      resolveRevoke = resolve;
+  it("服务切换时壳取消旧断开,UI 不刷新新服务状态", async () => {
+    let resolveDisconnect: (() => void) | undefined;
+    const disconnect = new Promise<void>((resolve) => {
+      resolveDisconnect = resolve;
     });
     const usage = { current: usageFixture() };
     const { calls } = stubShell({
       ...connectedHandlers(usage),
-      mc_models_revoke: () => revoke,
-      mc_logout: () => ({ ok: true }),
+      mc_disconnect: async () => {
+        await disconnect;
+        return { ok: false, cancelled: true };
+      },
     });
 
     const { rerender } = render(<AccountSection refreshKey={0} />);
     await userEvent.click(await screen.findByRole("button", { name: "断开连接" }));
-    await waitFor(() => expect(calls.some((c) => c.cmd === "mc_models_revoke")).toBe(true));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "mc_disconnect")).toBe(true));
     rerender(<AccountSection refreshKey={1} />);
-    resolveRevoke?.();
+    resolveDisconnect?.();
     await act(async () => undefined);
 
-    expect(calls.some((c) => c.cmd === "mc_logout")).toBe(false);
+    expect(calls.filter((c) => c.cmd === "mc_disconnect")).toHaveLength(1);
   });
 
-  it("断开时吊销失败:不阻断登出(仍按序走 mc_logout),失败信息外显", async () => {
+  it("断开时吊销失败:壳仍完成登出并把 warning 外显", async () => {
     let mcConnected = true;
     const usage = { current: usageFixture() };
     const { calls } = stubShell({
       baizhi_status: bzIn,
       mc_status: () => (mcConnected ? mcIn() : mcOut()),
       mc_usage: () => usage.current,
-      mc_models_revoke: () => {
-        throw new Error("网络不可达");
-      },
-      mc_logout: () => {
+      mc_disconnect: () => {
         mcConnected = false;
-        return { ok: true };
+        return { ok: true, warning: "网络不可达" };
       },
     });
     render(<AccountSection />);
     await userEvent.click(await screen.findByRole("button", { name: "断开连接" }));
     expect(await screen.findByRole("button", { name: "连接 MonkeyCode 云端" })).toBeDefined();
-    expect(calls.map((c) => c.cmd)).toContain("mc_logout");
+    expect(calls.map((c) => c.cmd)).toContain("mc_disconnect");
     expect((await screen.findByRole("alert")).textContent).toContain("网络不可达");
   });
 });
@@ -709,6 +724,34 @@ describe("服务版本选择", () => {
     const input = screen.getByLabelText("模型请求地址(可选)");
     await userEvent.type(input, "x");
     expect(draft.mcLlmBaseUrl).toBe("x");
+  });
+
+  it("私有 A 改成私有 B 或更换 Basic 后,保存完成前不得显示旧服务登录表单", async () => {
+    stubShell({ baizhi_status: bzOut, mc_status: mcOut });
+    const draft: SettingsDraft = {
+      ...emptyDraft(),
+      mcBaseUrl: "http://localhost:9000/team-b",
+      mcBasicAuth: "b:secret",
+    };
+    const props = {
+      draft,
+      onDraft: () => {},
+      savedMcBaseUrl: "http://localhost:8000/team-a",
+      savedMcBasicAuth: "a:secret",
+    };
+    const { rerender } = render(<AccountSection {...props} />);
+    await screen.findByRole("radio", { name: "私有化部署" });
+    expect(screen.queryByRole("textbox", { name: "邮箱" })).toBeNull();
+    expect(screen.getByText(/填写服务地址并保存后登录/)).toBeDefined();
+
+    rerender(
+      <AccountSection
+        {...props}
+        savedMcBaseUrl={draft.mcBaseUrl}
+        savedMcBasicAuth={draft.mcBasicAuth}
+      />,
+    );
+    expect(await screen.findByRole("textbox", { name: "邮箱" })).toBeDefined();
   });
 
   it("官方档不露私有化字段;选私有化展开字段且不清用户草稿", async () => {
@@ -776,14 +819,13 @@ describe("服务版本选择", () => {
     expect(screen.getByText("切换后需重新登录并同步会员模型")).toBeDefined();
   });
 
-  it("切换到此服务:先断开(吊销→登出,不保留旧会话)再落盘切换", async () => {
+  it("切换到此服务:先由壳原子断开,再落盘切换", async () => {
     let mcConnected = true;
     const { calls } = stubShell({
       baizhi_status: bzOut,
       mc_status: () => (mcConnected ? mcIn() : mcOut()),
       mc_usage: () => null,
-      mc_models_revoke: () => ({ ok: true }),
-      mc_logout: () => {
+      mc_disconnect: () => {
         mcConnected = false;
         return { ok: true };
       },
@@ -803,10 +845,7 @@ describe("服务版本选择", () => {
       expect(onApplyDraft).toHaveBeenCalledWith(expect.objectContaining({ mcBaseUrl: "https://monkeycode-ai.net" })),
     );
     const names = calls.map((c) => c.cmd);
-    const revokeAt = names.indexOf("mc_models_revoke");
-    const logoutAt = names.indexOf("mc_logout");
-    expect(revokeAt).toBeGreaterThanOrEqual(0); // 切换复用断开流程:吊销先于登出
-    expect(logoutAt).toBeGreaterThan(revokeAt);
+    expect(names.indexOf("mc_disconnect")).toBeGreaterThanOrEqual(0);
   });
 
   it("拿不到草稿(浏览器只读/配置载入失败)时版本选择器不渲染,登录页照常", async () => {

@@ -46,6 +46,7 @@ import { frameData } from "@/lib/protocol/codec";
 import { createChatState, prependHistory, reduceBatch } from "@/lib/protocol/reduce";
 import type { ChatState, Frame, SlashCommand } from "@/lib/protocol/types";
 import { withCommandSeparator } from "@/lib/util/slash";
+import { useMcTransport } from "@/lib/mcTransport";
 
 /** 任务详情决定首屏数据源。运行中只能由 attach 回放当前轮;若同时用 REST
  * rounds 播种,迟到的 REST 快照会覆盖 attach 已归档的当前轮。 */
@@ -161,6 +162,7 @@ export function useCloudTask(
   opts: { onTasksChanged?: () => void } = {},
 ): CloudTaskHandle {
   const id = task.id;
+  const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();
   const [meta, setMeta] = useState<CloudTaskDetail | null>(null);
   const [chat, setChat] = useState<ChatState>(createChatState);
   const [status, setStatus] = useState<StreamStatus | null>(null);
@@ -331,7 +333,12 @@ export function useCloudTask(
       setConnected(ok);
     },
     // 一轮结束:刷新详情并让侧栏列表同步
-    onEnded: () => void refreshInfo().then(() => onTasksChangedRef.current?.()),
+    onEnded: () => {
+      const expectedTransport = transportGeneration;
+      void refreshInfo().then(() => {
+        if (isTransportCurrent(expectedTransport)) onTasksChangedRef.current?.();
+      });
+    },
     // 断线重连(降级 attach)会整轮回放当前轮:清本地当前轮缓存,回放为权威
     onReconnect: () => {
       liveRef.current = [];
@@ -718,12 +725,17 @@ export function useCloudTask(
   };
 
   const stopTask = async () => {
+    const expectedTransport = transportGeneration;
     try {
       await mcTaskStop(id);
+      if (!isTransportCurrent(expectedTransport)) return;
       await refreshInfo();
+      if (!isTransportCurrent(expectedTransport)) return;
       onTasksChangedRef.current?.();
     } catch (e) {
-      setErr(t("cloud.err.stopFailed", { reason: e instanceof Error ? e.message : String(e) }));
+      if (isTransportCurrent(expectedTransport)) {
+        setErr(t("cloud.err.stopFailed", { reason: e instanceof Error ? e.message : String(e) }));
+      }
     }
   };
 

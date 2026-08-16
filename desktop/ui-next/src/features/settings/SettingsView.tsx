@@ -27,6 +27,7 @@ import { readUiScale, setUiScale, UI_SCALES, type UiScale } from "@/lib/uiScale"
 import { customThemeVars, randomTheme, roleHex, COLOR_ROLES, DEFAULT_CUSTOM, BORDER_RANGE, RADIUS_RANGE, SIZE_RANGE, type ColorRole } from "@/lib/customTheme";
 import { useDismiss } from "@/lib/util/useDismiss";
 import { useEscLayer } from "@/lib/util/escLayer";
+import { useMcTransport } from "@/lib/mcTransport";
 import { baizhiStatus } from "@/lib/ipc/account";
 import { AccountSection, type SyncApplied } from "@/features/account/AccountSection";
 import { engineCaps } from "@/lib/ipc/approvals";
@@ -40,7 +41,6 @@ import { SOURCE_BAIZHI, SOURCE_MONKEYCODE } from "@/lib/models/modelMenu";
 import {
   buildPayload,
   draftFromConfig,
-  MC_CN_URL,
   mergeSyncedMcps,
   mergeSyncedModels,
   payloadEquals,
@@ -473,10 +473,16 @@ function GeneralSection() {
     setCustomTheme(next);
     setThemeState(CUSTOM_THEME);
   };
-  const seg = (label: string, on: boolean, onClick: () => void) => (
-    <button key={label} type="button" className={`btn btn-sm join-item ${on ? "btn-active" : "text-base-content/60"}`} onClick={onClick}>
-      {label}
-    </button>
+  const seg = (group: string, label: string, on: boolean, onChange: () => void) => (
+    <input
+      key={label}
+      type="radio"
+      name={group}
+      className={`btn btn-sm join-item ${on ? "btn-active" : "text-base-content/60"}`}
+      aria-label={label}
+      checked={on}
+      onChange={onChange}
+    />
   );
 
   return (
@@ -492,14 +498,16 @@ function GeneralSection() {
         </div>
         <SettingRow label={t("settings.appearance.language")}>
           <div role="radiogroup" aria-label={t("settings.appearance.language")} className="join shrink-0">
-            {LOCALES.map((l) => seg(l.label, locale === l.value, () => setLocale(l.value)))}
+            {LOCALES.map((l) => seg("settings-language", l.label, locale === l.value, () => setLocale(l.value)))}
           </div>
         </SettingRow>
         {/* 界面缩放:WebView 页面 zoom,文字/图标/控件/终端同比例缩放
             (用户定案 2026-08-16「所有组件跟着变」);点即生效,不进保存条 */}
         <SettingRow label={t("settings.general.uiScale")} hint={t("settings.general.uiScaleHint")}>
           <div role="radiogroup" aria-label={t("settings.general.uiScale")} className="join shrink-0">
-            {UI_SCALES.map((s) => seg(`${Math.round(s * 100)}%`, uiScale === s, () => pickUiScale(s)))}
+            {UI_SCALES.map((s) =>
+              seg("settings-ui-scale", `${Math.round(s * 100)}%`, uiScale === s, () => pickUiScale(s)),
+            )}
           </div>
         </SettingRow>
         {inDesktopShell() && (
@@ -570,26 +578,17 @@ function EnvSection({
   );
 }
 
-function monkeyCodeTransportKey(config: DesktopConfig): string {
-  const trimmedBase = (config.mc_base_url ?? "").trim();
-  const base = trimmedBase ? trimmedBase.replace(/\/+$/, "") : MC_CN_URL;
-  const basic = (config.mc_basic_auth ?? "").trim();
-  return `${base}\n${basic}`;
-}
-
 export function SettingsView({
   onClose,
   hasRunningTask = false,
-  onCloudTransportChanged,
 }: {
   onClose: () => void;
   /** 有本地会话在跑(status==="running"):同步后不自动保存重启引擎,
    * 隐式踹掉运行中的轮次不可接受;回退保存条由用户择机保存(旧 UI 同款口径) */
   hasRunningTask?: boolean;
-  /** MonkeyCode 服务地址或 Basic Auth 保存生效后,让壳级云数据切换代次。 */
-  onCloudTransportChanged?: () => void;
 }) {
   const { t } = useI18n();
+  const { generation: mcTransportGeneration, isCurrent: isMcTransportCurrent } = useMcTransport();
   // 离开确认(旧 UI App.tsx settingsDirty + window.confirm 的 daisyUI 版):
   // 脏表单直接退出 = 静默丢弃全部未保存编辑,必须先问一句
   const [leaveAsk, setLeaveAsk] = useState(false);
@@ -605,7 +604,6 @@ export function SettingsView({
   const [bzLoggedIn, setBzLoggedIn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [accountRefreshKey, setAccountRefreshKey] = useState(0);
   // 账号分区的版本点选/私有化「保存生效」触发的静默落盘:在途期间不渲染
   // 保存条——用户视角里「切换版本」不该出现任何「保存」字样(2026-08-15
   // 用户定案);失败才回落保存条外显错误
@@ -782,17 +780,10 @@ export function SettingsView({
     setSaving(true);
     savingRef.current = true;
     setSaveError("");
-    let savedTransportKey = monkeyCodeTransportKey(conf);
     try {
       for (let round = 0; ; round++) {
         const p = buildPayload(conf, d);
         await saveConfig(p);
-        const nextTransportKey = monkeyCodeTransportKey(p);
-        if (nextTransportKey !== savedTransportKey) {
-          savedTransportKey = nextTransportKey;
-          setAccountRefreshKey((n) => n + 1);
-          onCloudTransportChanged?.();
-        }
         // 保存即真值:壳按载荷写盘(壳自有偏好以磁盘合并,不在本类型内)
         setCfg(p);
         // 在途期间草稿没再变:表单态重建为已保存形态,保存条随之收起;
@@ -856,8 +847,10 @@ export function SettingsView({
             onMcDisconnected={applyMcDisconnect}
             draft={draft}
             onDraft={updateDraft}
-            refreshKey={accountRefreshKey}
+            refreshKey={mcTransportGeneration}
+            isRefreshKeyCurrent={isMcTransportCurrent}
             savedMcBaseUrl={cfg?.mc_base_url ?? ""}
+            savedMcBasicAuth={cfg?.mc_basic_auth ?? ""}
             // 版本点选即静默落盘:savingRef 防重入(save 自身不防并发);
             // inlineSaving 让保存条在途不出现。与已保存配置无差异就跳过
             // ——按载荷对比(与脏判定同口径):点回当前生效的版本不值得

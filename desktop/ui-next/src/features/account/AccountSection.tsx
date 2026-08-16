@@ -18,8 +18,8 @@
 // - 两路登录态挂载时并发自取(baizhi_status / mc_status),不进全局轮询;
 // - 百智云登录成功顺带桥接 MonkeyCode(mc_login 走同一账号的 OAuth),
 //   桥接失败不阻断——国内版行保留手动「连接」入口;
-// - 断开 MonkeyCode 必须先吊销会员模型密钥再清会话(disconnectMc 收口,
-//   顺序由 lib 与本组件测试双重钉住);「切换到此服务」复用同一断开流程;
+// - 断开 MonkeyCode 的吊销、代次校验、清会话由壳内 mc_disconnect 原子收口;
+//   「切换到此服务」复用同一断开流程,旧服务不得清掉刚切入的新会话;
 // - 同步(baizhi_sync / mc_models_sync)结果经 onSyncResult 交
 //   SettingsView.applySync 并入草稿;干净表单+无任务在跑时那边自动保存,
 //   否则回退保存条——结果行按 autoSaved/blocked 说明白落到哪一步了;
@@ -275,10 +275,10 @@ function ServiceCard({
     setBusy("disconnect");
     setMsg(null);
     try {
-      const { warning, cancelled } = await disconnectMc(isCurrentService);
-      if (cancelled || !isCurrentService()) return;
+      const { warning, cancelled } = await disconnectMc(serviceGeneration);
+      if (cancelled || !isCurrentService()) return false;
       await onChanged();
-      if (!isCurrentService()) return;
+      if (!isCurrentService()) return false;
       // 把已同步的会员模型从配置里清掉(旧 UI disconnectMcWithCleanup)。
       // 壳侧只删网关 key 与本机 Key 文件,配置里的条目得 UI 自己收——不收的话
       // 那组模型原样留在列表里(会员行没有删除按钮)、还很可能正是默认模型,
@@ -287,19 +287,20 @@ function ServiceCard({
       const cleaned = applied ? t("account.mc.modelsCleared") + syncOutcome(t, applied) : "";
       if (warning) setMsg({ text: warning + cleaned, error: true });
       else if (cleaned) setMsg({ text: cleaned.trimStart() });
+      return true;
     } catch (e) {
       if (isCurrentService()) setMsg({ text: errMsg(e), error: true });
+      return false;
     } finally {
       if (isCurrentService()) setBusy(null);
     }
   };
 
-  /** 「切换到此服务」= 断开(吊销→登出→清会员模型)后选中目标版本。
+  /** 「切换到此服务」= 壳内原子断开后清会员模型、再选中目标版本。
    *  不保留旧会话(2026-08-16 用户定案:同一时间只用一个服务);官方目标
    *  经 onSelectEdition 顺带静默落盘,私有化目标切到地址表单待填。 */
   const switchService = async (next: McEdition) => {
-    await disconnect();
-    if (!isCurrentService()) return;
+    if (!(await disconnect()) || !isCurrentService()) return;
     onSelectEdition(next);
   };
 
@@ -307,7 +308,7 @@ function ServiceCard({
     setBusy("sync");
     setMsg(null);
     try {
-      const r: McModelsSyncResult = await mcModelsSync();
+      const r: McModelsSyncResult = await mcModelsSync(serviceGeneration);
       if (!isCurrentService()) return;
       const notes = r.notes?.length ? ` ${r.notes.join(t("common.semiSep"))}` : "";
       // 空结果按失败说(旧 UI 同款):没有会员权益时「已获取 0 个会员模型…
@@ -461,7 +462,7 @@ function ServiceCard({
           <button
             type="button"
             className="btn btn-primary btn-sm w-full"
-            disabled={busy === "connect"}
+            disabled={busy !== null || saveBusy}
             onClick={() => void connect()}
           >
             {busy === "connect" && <span className="loading loading-spinner loading-xs" aria-hidden />}
@@ -535,7 +536,7 @@ function ServiceCard({
                 // 副行 = 身份的次级事实:主机名(可点开网页)+ 昵称 + 用户 ID
                 // (可复制);会员档位与有效期归下方权益面板首行,不挤在这一行
                 <>
-                  {status?.host && <DomainLink url={status.host} />}
+                  {(status?.base_url || status?.host) && <DomainLink url={status.base_url || status.host} />}
                   <span aria-hidden className="shrink-0 text-base-content/30">
                     ·
                   </span>
@@ -559,14 +560,14 @@ function ServiceCard({
           <div className="flex shrink-0 items-center gap-1.5">
             {rowConnected ? (
               <>
-                <button type="button" className="btn btn-sm" disabled={busy === "sync"} onClick={() => void sync()}>
+                <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void sync()}>
                   {busy === "sync" && <span className="loading loading-spinner loading-xs" aria-hidden />}
                   {busy === "sync" ? t("account.syncing") : t("account.mc.sync")}
                 </button>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm text-base-content/60"
-                  disabled={busy === "disconnect"}
+                  disabled={busy !== null || saveBusy}
                   onClick={() => void disconnect()}
                 >
                   {busy === "disconnect" ? t("account.mc.disconnecting") : t("account.mc.disconnect")}
@@ -790,6 +791,8 @@ export function AccountSection({
   onDraft,
   refreshKey = 0,
   savedMcBaseUrl = "",
+  savedMcBasicAuth = "",
+  isRefreshKeyCurrent,
   onApplyDraft,
   saveBusy = false,
 }: {
@@ -806,6 +809,10 @@ export function AccountSection({
   /** 已保存生效的 MonkeyCode 服务地址(SettingsView 传 cfg.mc_base_url)。
    *  行的**形态**跟所选版本即时走,登录**动作**只在选择 = 生效时可用。 */
   savedMcBaseUrl?: string;
+  /** 已保存的 Basic Auth；私有 A→私有 B 时不能只比较 edition 枚举。 */
+  savedMcBasicAuth?: string;
+  /** 壳事件会先推进 App ref、后触发本组件重渲染；该守卫覆盖这段窗口。 */
+  isRefreshKeyCurrent?: (generation: number) => boolean;
   /** 立即保存指定草稿(SettingsView.save(target)):版本点选/私有化「保存
    *  生效」钮直接落盘。缺席则退化为只写草稿,由保存条兜底。 */
   onApplyDraft?: (d: SettingsDraft) => void;
@@ -821,7 +828,11 @@ export function AccountSection({
   const [editionChoice, setEditionChoice] = useState<McEdition | null>(null);
   const draftEdition = draft ? mcEditionOf(draft.mcBaseUrl) : savedEdition;
   const selectedEdition = editionChoice ?? draftEdition;
-  const editionReady = selectedEdition === savedEdition;
+  const transportReady =
+    !draft ||
+    (draft.mcBaseUrl.trim() === savedMcBaseUrl.trim() &&
+      draft.mcBasicAuth.trim() === savedMcBasicAuth.trim());
+  const editionReady = selectedEdition === savedEdition && transportReady;
   /** onBaizhiLoggedIn 是稳定回调,经 ref 读最新版本结论,免整链换引用。 */
   const savedEditionRef = useRef(savedEdition);
   savedEditionRef.current = savedEdition;
@@ -839,8 +850,10 @@ export function AccountSection({
   const serviceGenerationRef = useRef(refreshKey);
   serviceGenerationRef.current = refreshKey;
   const isServiceGenerationCurrent = useCallback(
-    (generation: number) => serviceGenerationRef.current === generation,
-    [],
+    (generation: number) =>
+      serviceGenerationRef.current === generation &&
+      (isRefreshKeyCurrent?.(generation) ?? true),
+    [isRefreshKeyCurrent],
   );
 
   useEffect(() => {

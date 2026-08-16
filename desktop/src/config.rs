@@ -523,7 +523,8 @@ fn write_ohmyagent_config(
         .iter()
         .any(is_monkeycode)
         .then(|| dir.parent().and_then(crate::baizhi::stored_ohmyagent_key))
-        .flatten();
+        .flatten()
+        .filter(|key| crate::baizhi::ohmyagent_key_matches_config(key, cfg));
     let mc_key_field = |k: &str| {
         mc_key
             .as_ref()
@@ -901,7 +902,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(
             root.join(crate::baizhi::OHMYAGENT_KEY_FILE),
-            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","base_url":"https://mc.example.com/v1"}"#,
+            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","server":"https://monkeycode-ai.com","base_url":"https://mc.example.com/v1"}"#,
         )
         .unwrap();
         let engine_dir = root.join("ohmyagent");
@@ -935,6 +936,19 @@ mod tests {
         // 非会员条目不受注入影响
         assert_eq!(settings["models"]["自定义"]["api_key"], "sk-direct");
         assert_eq!(settings["models"]["自定义"]["base_url"], "https://direct.example.com");
+
+        // Key 明确属于官方云时，切到另一套私有服务不能继续注入 api_key /
+        // signing_secret。服务地址相同但 Basic 身份不同也由 transport 指纹
+        // 拦截（baizhi 单测另钉指纹判据）。
+        let other_transport = DesktopConfig {
+            mc_base_url: "https://other.example.com".into(),
+            ..mc_cfg.clone()
+        };
+        write_ohmyagent_config(&engine_dir, &other_transport, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["models"]["会员模型"]["api_key"], "");
+        assert!(settings.get("signing_secret").is_none());
 
         // 配置了反代 Basic Auth:嵌进会员条目 base_url 的 userinfo(Go 引擎
         // 在 Authorization 空闲时自动补 Basic 头;特殊字符需百分号转义)。
@@ -1008,7 +1022,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(
             root.join(crate::baizhi::OHMYAGENT_KEY_FILE),
-            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","base_url":"https://mc.example.com/v1"}"#,
+            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","server":"https://monkeycode-ai.com","base_url":"https://mc.example.com/v1"}"#,
         )
         .unwrap();
         let engine_dir = root.join("ohmyagent");

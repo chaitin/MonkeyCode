@@ -157,7 +157,7 @@ fn baizhi_state_reconfigures_without_losing_runtime_state() {
 
     let expected_monkeycode = Endpoints::resolve(&cfg.mc_base_url).monkeycode;
     let pipes = super::monkeycode::CloudPipes::new();
-    assert!(state.apply_config(&cfg, &pipes), "服务地址或鉴权变化应要求关闭旧云端连接");
+    assert!(state.apply_config(&cfg, &pipes).is_some(), "服务地址或鉴权变化应要求关闭旧云端连接");
     let new = state.service();
     assert_eq!(old.ep.monkeycode, "https://old.example.com", "在途请求继续使用稳定旧快照");
     assert_eq!(new.ep.monkeycode, expected_monkeycode);
@@ -166,6 +166,81 @@ fn baizhi_state_reconfigures_without_losing_runtime_state() {
     assert!(Arc::ptr_eq(&old.store, &new.store), "切换配置不能复制 cookie 罐");
     assert!(Arc::ptr_eq(&old.mc, &new.mc), "切换配置不能丢失 MonkeyCode 会话");
     assert!(Arc::ptr_eq(&old.wx, &new.wx), "切换配置不能中断扫码状态");
+
+    let llm_only = crate::config::DesktopConfig {
+        mc_llm_base_url: "https://another-llm.example.com/v1".into(),
+        ..cfg
+    };
+    assert!(state.apply_config(&llm_only, &pipes).is_none(), "只换 LLM 地址不是 cloud transport 切换");
+    assert_eq!(state.transport_generation(), 1, "地址 + Basic 的单一判据只应推进一次代次");
+    assert_eq!(state.service().mc_llm, "https://another-llm.example.com/v1");
+}
+
+#[test]
+fn member_key_transport_binds_server_and_basic_identity() {
+    let server = "https://private.example.com";
+    let llm = "https://private.example.com/v1";
+    let one = "Basic dXNlcjpvbmU=";
+    let two = "Basic dXNlcjp0d28=";
+    let key = json!({
+        "id": "k1",
+        "api_key": "secret",
+        "transport": super::mc_transport_fingerprint(server, Some(one)),
+    });
+    assert!(super::ohmyagent_key_matches_transport(&key, server, llm, Some(one)));
+    assert!(!super::ohmyagent_key_matches_transport(&key, server, llm, Some(two)));
+    assert!(!super::ohmyagent_key_matches_transport(
+        &key,
+        "https://other.example.com",
+        "https://other.example.com/v1",
+        Some(one),
+    ));
+
+    let legacy = json!({ "id": "k1", "api_key": "secret", "server": server, "base_url": llm });
+    assert!(super::ohmyagent_key_matches_transport(&legacy, server, llm, None));
+    assert!(!super::ohmyagent_key_matches_transport(&legacy, server, llm, Some(one)));
+}
+
+#[test]
+fn stale_member_key_commit_and_logout_cannot_touch_new_service() {
+    let svc = Service::test_service(Endpoints {
+        account: "https://account.example.com".into(),
+        model_gateway: "https://models.example.com".into(),
+        mcp_gateway: "https://mcp.example.com".into(),
+        monkeycode: "https://old.example.com".into(),
+    });
+    let state = super::BaizhiState::new(svc);
+    let (_old, old_generation) = state.service_snapshot();
+    let pipes = super::monkeycode::CloudPipes::new();
+    let cfg = crate::config::DesktopConfig {
+        mc_base_url: "https://new.example.com".into(),
+        ..Default::default()
+    };
+    state.apply_config(&cfg, &pipes);
+    let (current, current_generation) = state.service_snapshot();
+    assert!(
+        state.service_snapshot_if_current(Some(old_generation)).is_none(),
+        "排队中的旧代次命令不得在拿锁后改为操作新服务"
+    );
+    let current_url = reqwest::Url::parse("https://new.example.com/").unwrap();
+    current.mc.update(&current_url, &["session=new; Path=/".into()]);
+
+    let dir = std::env::temp_dir().join(format!("mc-stale-key-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(super::OHMYAGENT_KEY_FILE);
+    assert!(state
+        .commit_member_key(old_generation, &path, None, Some(br#"{"id":"old","api_key":"old"}"#))
+        .is_err());
+    assert!(!path.exists(), "旧服务迟到的创建结果不得写入新服务 Key 文件");
+    assert!(!state.logout_if_current(old_generation, &pipes), "旧断开不得清理当前新服务");
+    assert_eq!(current.mc.header(&current_url).as_deref(), Some("session=new"));
+
+    std::fs::write(&path, b"first").unwrap();
+    std::fs::write(&path, b"replacement").unwrap();
+    assert!(state.commit_member_key(current_generation, &path, Some(b"first"), None).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), b"replacement", "文件身份变化后不得误删替代者");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

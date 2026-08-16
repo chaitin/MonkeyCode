@@ -360,6 +360,20 @@ pub fn engine_exited(app: &AppHandle, instance: u64, detail: &str, log_tail: &st
     }
 }
 
+/// 将盘上配置应用到壳侧云 transport，并在真正变化的同一条路径上通知 UI。
+/// 通知发生在后续物化/引擎重启之前：即使引擎启动失败，账号和云任务也不会
+/// 继续展示旧服务数据。所有配置应用入口都必须经这里，避免遗漏某条恢复路径。
+fn apply_cloud_config(app: &AppHandle, config: &DesktopConfig) -> bool {
+    let pipes = app.state::<baizhi::monkeycode::CloudPipes>();
+    let Some(generation) = app.state::<baizhi::BaizhiState>().apply_config(config, &pipes) else {
+        return false;
+    };
+    if let Err(e) = app.emit("monkeycode-transport-changed", generation) {
+        eprintln!("[desktop] 通知 UI 云服务切换失败: {e}");
+    }
+    true
+}
+
 /// 退避后自动重启。失败与崩溃在退避上同权,继续退避直到熔断。
 fn schedule_engine_retry(app: &AppHandle, delay: Duration) {
     let generation = app.state::<EngineSupervisor>().generation.load(Ordering::SeqCst);
@@ -384,8 +398,7 @@ fn schedule_engine_retry(app: &AppHandle, delay: Duration) {
             load_config(&app).and_then(|config| {
                 // 壳侧云端快照跟随盘上权威配置(配置未变时为 no-op):失败的
                 // 保存/重启可能留下快照落后于盘的分裂态,自动重启在此自愈。
-                let pipes = app.state::<baizhi::monkeycode::CloudPipes>();
-                app.state::<baizhi::BaizhiState>().apply_config(&config, &pipes);
+                apply_cloud_config(&app, &config);
                 materialize_engine_config(&app, &config, browser::mcp_endpoint(&app))?;
                 restart_engine_locked(&app, &config)
             })
@@ -464,8 +477,7 @@ fn schedule_browser_mcp_refresh(app: &AppHandle) {
             // 新值，本线程却拿旧快照随后覆盖回去。
             let result = load_config(&app).and_then(|config| {
                 // 同 schedule_engine_retry:壳侧云端快照跟随盘上配置,自愈分裂态。
-                let pipes = app.state::<baizhi::monkeycode::CloudPipes>();
-                app.state::<baizhi::BaizhiState>().apply_config(&config, &pipes);
+                apply_cloud_config(&app, &config);
                 materialize_engine_config(&app, &config, browser::mcp_endpoint(&app))?;
                 restart_engine_locked(&app, &config)
             });
@@ -498,8 +510,7 @@ async fn save_config(app: AppHandle, config: DesktopConfig) -> Result<(), String
         // 是纯内存操作不会失败,而 restart_engine_locked 失败会早退——若快照
         // 切换排在其后,失败路径会留下「盘上/引擎是新地址、壳侧云端打旧地址」
         // 的分裂态,且两条自动恢复路径都不会替本命令收这个尾。
-        let pipes = app.state::<baizhi::monkeycode::CloudPipes>();
-        app.state::<baizhi::BaizhiState>().apply_config(&config, &pipes);
+        apply_cloud_config(&app, &config);
         restart_engine_locked(&app, &config)?;
         Ok(())
     })
@@ -519,8 +530,7 @@ async fn engine_restart(app: AppHandle) -> Result<(), String> {
         let config = load_config(&app)?;
         // 快照切换先于重启,理由同 save_config;此处配置未变时是纯 no-op,
         // 但能自愈此前失败路径遗留的「壳侧快照落后于盘上配置」分裂态。
-        let pipes = app.state::<baizhi::monkeycode::CloudPipes>();
-        app.state::<baizhi::BaizhiState>().apply_config(&config, &pipes);
+        apply_cloud_config(&app, &config);
         materialize_engine_config(&app, &config, browser::mcp_endpoint(&app))?;
         restart_engine_locked(&app, &config)?;
         Ok(())
@@ -1495,6 +1505,7 @@ fn main() {
             baizhi::mc_checkin,
             baizhi::mc_models_sync,
             baizhi::mc_models_revoke,
+            baizhi::mc_disconnect,
             baizhi::mc_tasks,
             baizhi::mc_projects,
             baizhi::mc_task_info,

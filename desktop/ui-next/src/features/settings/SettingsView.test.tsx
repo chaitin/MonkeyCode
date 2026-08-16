@@ -673,11 +673,25 @@ describe("界面缩放", () => {
     render(<SettingsView onClose={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "通用" }));
 
-    await userEvent.click(screen.getByRole("button", { name: "110%" }));
+    const scale110 = screen.getByRole("radio", { name: "110%" }) as HTMLInputElement;
+    await userEvent.click(scale110);
+    expect(scale110.checked).toBe(true);
     expect(setZoom).toHaveBeenCalledWith(1.1);
     expect(localStorage.getItem("mc.uiScale")).toBe("1.1");
     // 点即生效偏好,不弄脏表单
     expect(screen.queryByText(/有未保存的修改/)).toBeNull();
+  });
+
+  it("缩放档是原生 radio group,方向键可切换", async () => {
+    stubShell();
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    const scale100 = screen.getByRole("radio", { name: "100%" }) as HTMLInputElement;
+    // user-event 的 radio 方向键实现用 CSS.escape；jsdom 未提供该浏览器 API。
+    vi.stubGlobal("CSS", { escape: (value: string) => value });
+    scale100.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect((screen.getByRole("radio", { name: "110%" }) as HTMLInputElement).checked).toBe(true);
   });
 });
 
