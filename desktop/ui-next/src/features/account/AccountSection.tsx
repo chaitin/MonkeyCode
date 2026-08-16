@@ -151,13 +151,15 @@ function MsgLine({ msg }: { msg: Msg }) {
   );
 }
 
-/** 官方云域名(去 scheme):副行展示 + 官网外链一体。 */
+/** 域名链接:副行展示 + 打开网页一体。状态接口回的 host 是裸域名,
+ *  打开时补 https;展示恒去 scheme。 */
 function DomainLink({ url }: { url: string }) {
+  const href = /^https?:\/\//.test(url) ? url : `https://${url}`;
   return (
     <button
       type="button"
       className="inline-flex min-w-0 cursor-pointer items-center gap-1 font-mono text-xs text-base-content/50 transition-colors hover:text-base-content"
-      onClick={() => openExternal(url)}
+      onClick={() => openExternal(href)}
     >
       <span className="truncate">{url.replace(/^https?:\/\//, "")}</span>
       <IconExternalLink size={11} stroke={1.75} aria-hidden className="shrink-0" />
@@ -530,10 +532,10 @@ function ServiceCard({
             </div>
             <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-base-content/50">
               {rowConnected ? (
-                // 副行 = 身份的次级事实:主机名 + 昵称 + 用户 ID(可复制);
-                // 会员档位与有效期归下方权益面板首行,不挤在这一行
+                // 副行 = 身份的次级事实:主机名(可点开网页)+ 昵称 + 用户 ID
+                // (可复制);会员档位与有效期归下方权益面板首行,不挤在这一行
                 <>
-                  <span className="truncate font-mono">{status?.host}</span>
+                  {status?.host && <DomainLink url={status.host} />}
                   <span aria-hidden className="shrink-0 text-base-content/30">
                     ·
                   </span>
@@ -732,7 +734,7 @@ function BaizhiRow({
             <span className="badge badge-success badge-soft badge-xs shrink-0">{t("account.loggedIn")}</span>
           </div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-base-content/50">
-            <span className="truncate font-mono">{status.host}</span>
+            <DomainLink url={status.host} />
             {name && (
               <>
                 <span aria-hidden className="shrink-0 text-base-content/30">
