@@ -8,6 +8,11 @@ const en = {
     },
   },
   common: {
+    language: {
+      switch: "Switch language",
+      cn: "中文",
+      en: "English",
+    },
     theme: {
       toggle: "Toggle theme",
       light: "Light mode",

@@ -25,7 +25,10 @@ test("中英文资源结构保持完整一致", () => {
 })
 
 test("英文资源不包含未翻译中文", () => {
-  const allowedChineseIdentifiers = new Set(["welcomeShell.footer.icp"])
+  const allowedChineseIdentifiers = new Set([
+    "common.language.cn",
+    "welcomeShell.footer.icp",
+  ])
 
   for (const [key, value] of collectLeaves(en)) {
     if (!allowedChineseIdentifiers.has(key)) {

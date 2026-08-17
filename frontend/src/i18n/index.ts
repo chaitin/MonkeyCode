@@ -2,7 +2,7 @@ import i18n from "i18next"
 import { initReactI18next } from "react-i18next"
 
 import { patchDocumentMeta } from "./document-meta"
-import { initLanguage, type AppLanguage } from "./language"
+import { applyLanguage, initLanguage, type AppLanguage } from "./language"
 import cn from "./resources/cn"
 import en from "./resources/en"
 
@@ -16,6 +16,8 @@ const resources = {
 } as const
 
 export async function initI18n(language: AppLanguage = initLanguage()) {
+  applyLanguage(language)
+
   if (i18n.isInitialized) {
     await i18n.changeLanguage(language)
     syncDocumentMeta()
