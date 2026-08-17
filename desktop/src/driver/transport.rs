@@ -270,6 +270,19 @@ impl OhmyDriver {
         // 目录先建好:本机分支 cwd 要用,WSL 分支 prepare 的 wslpath 要翻译它们
         std::fs::create_dir_all(&engine_dir)
             .map_err(|e| format!("创建引擎运行目录失败({}): {e}", engine_dir.display()))?;
+        // 旧版 Desktop 把会话启用集写到全局 user skills 目录。新版 Agent
+        // 使用 sessions/<id>/skills;旧派生目录残留会以 user 级重新对所有
+        // 会话可见。清理失败只是多背旧技能集一轮,不阻断启动(与上方
+        // migrate_legacy_sessions 同款尽力而为),错误进日志。
+        let legacy_skills_dir = engine_dir.join("skills");
+        if legacy_skills_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&legacy_skills_dir) {
+                eprintln!(
+                    "[desktop] 清理旧版全局技能目录失败({}): {e}",
+                    legacy_skills_dir.display()
+                );
+            }
+        }
         let (mut cmd, wsl_ctx) =
             build_engine_command(cfg, app.as_ref(), &engine_dir, &chat_workspaces_dir)?;
         cmd.stdin(Stdio::piped())

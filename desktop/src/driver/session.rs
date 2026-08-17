@@ -384,8 +384,9 @@ pub(super) struct SessionState {
     pub(super) cancel_requested_turn: Option<u64>,
     /// 本进程内已 session/create(resume)过
     pub(super) created: bool,
-    /// 引擎侧会话 id(通常 == 壳 sid;空会话无法 resume 时壳会 destroy +
-    /// 全新 create,引擎发新 id——壳 sid/目录/UI 通道保持不变,仅此别名换绑。
+    /// 引擎侧会话 id(通常 == 壳 sid。恢复/重建一律按原 id resume
+    /// (materialize_skills 确保 transcript),正常不再换绑;仅引擎回显
+    /// 异常 id 的守卫路径会更新此别名——壳 sid/目录/UI 通道恒不变。
     /// 出站 RPC 用它,入站事件经 shell_sid_of 反查;sidecar 持久化)
     pub(super) engine_id: String,
     /// UI 是否在听 frames:{sid}(未打开时帧只入日志不 emit)
@@ -666,13 +667,14 @@ impl OhmyDriver {
             }
         };
         let workdir = workdir_owned.as_str();
-        // 技能:创建前把启用集物化到引擎技能目录(新会话取缺省集:官方
-        // 四件套 + 用户技能),并把 create RPC 圈进技能闸——引擎 catalog 按
-        // 创建时刻的目录内容定格,物化与创建被并发的另一次创建插队就会
-        // 拿错技能集(skills.rs 头注)
-        let skills_lock = self.0.skills_gate.lock().await;
-        let skills = self.materialize_skills(None).await?;
-        let result = match self
+        // Agent 的 session skills 目录以引擎生成的 session_id 命名。新会话
+        // 创建前还不知道该 id,因此先创建空 loop 取得 id,再物化缺省集并
+        // destroy + resume;最终 loop 从一开始就只看到自己的技能快照。
+        // resume 成立的引擎契约:create 在构建 loop 时即落一条
+        // execution-mode 记录(root.go buildAgentLoopCore),transcript
+        // 文件已存在,零消息 resume 照常成功——materialize_skills 的
+        // transcript 确保是对它的兜底,两条腿都在。
+        let initial = match self
             .rpc(
                 "session/create",
                 engine_session_create_params(workdir, None, Some(&model_id), "default"),
@@ -687,10 +689,9 @@ impl OhmyDriver {
                 return Err(e);
             }
         };
-        drop(skills_lock);
         // 引擎返回的 session_id 直接成为 sidecar 目录名,校验标准与 IPC 入参
-        // 一致:引擎是子进程不是信任边界,一个畸形 id 同样能穿越出 data_dir
-        let sid = match result
+        // 一致:引擎是子进程不是信任边界,畸形 id 不能穿越出 sessions 目录。
+        let sid = match initial
             .get("session_id")
             .and_then(|v| v.as_str())
             .filter(|id| valid_session_id(id))
@@ -703,6 +704,48 @@ impl OhmyDriver {
                 return Err("session/create 未返回可用的 session_id".into());
             }
         };
+        let skills_lock = self.0.skills_gate.lock().await;
+        let skills = match self.materialize_skills(&sid, None).await {
+            Ok(skills) => skills,
+            Err(e) => {
+                let _ = self.rpc("session/destroy", json!({ "session_id": &sid })).await;
+                drop(skills_lock);
+                if let Some(path) = &chat_workdir {
+                    let _ = std::fs::remove_dir_all(path);
+                }
+                return Err(e);
+            }
+        };
+        if let Err(e) = self.rpc("session/destroy", json!({ "session_id": &sid })).await {
+            drop(skills_lock);
+            if let Some(path) = &chat_workdir {
+                let _ = std::fs::remove_dir_all(path);
+            }
+            return Err(e);
+        }
+        let result = match self
+            .rpc(
+                "session/create",
+                engine_session_create_params(workdir, Some(&sid), Some(&model_id), "default"),
+            )
+            .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                drop(skills_lock);
+                if let Some(path) = &chat_workdir {
+                    let _ = std::fs::remove_dir_all(path);
+                }
+                return Err(e);
+            }
+        };
+        drop(skills_lock);
+        if result.get("session_id").and_then(|v| v.as_str()) != Some(sid.as_str()) {
+            if let Some(path) = &chat_workdir {
+                let _ = std::fs::remove_dir_all(path);
+            }
+            return Err("session/create 恢复后返回了不同的 session_id".into());
+        }
         self.0.sess.sessions.lock_ok().insert(
             sid.clone(),
             SessionState {
@@ -880,8 +923,11 @@ impl OhmyDriver {
         });
     }
 
-    /// 引擎侧会话恢复。有历史则 resume 带全参(缺参会回落进程默认值);
-    /// 空会话 resume 必失败,改全新 create 换绑 engine_id(壳 sid 不变)。
+    /// 引擎侧会话恢复。一律 resume 带全参(缺参会回落进程默认值):
+    /// materialize_skills 会先确保 transcript 存在,引擎存储被清理过的
+    /// 空会话 resume 零记录照常成功(等价同 id 的全新创建),技能也物化在
+    /// 同一个 id 下——不再有"空会话改全新 create 换绑 engine_id"的分支
+    /// (那条路会让技能落在旧 id 目录,恢复出的 loop 一个技能都没有)。
     /// 记录模型 locked(会员到期降档)照常携带——条目仍在引擎 settings 里
     /// (config.rs 物化全部条目),档位权限由服务端把关;已从配置移除则
     /// 不带 model 退化引擎默认;引擎侧仍拒(壳快照与引擎 settings 口径
@@ -893,8 +939,10 @@ impl OhmyDriver {
         mut engine_id: String,
         seq_gate: tokio::sync::oneshot::Receiver<()>,
     ) -> Result<(), String> {
+        // engine_id 可能来自 sidecar(engine_id 字段),一律 resume 后它会
+        // 直达引擎侧的路径拼接——损坏的 sidecar 不能把畸形 id 送过去
+        check_session_id(&engine_id)?;
         let mode = meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default");
-        let has_history = self.engine_session_exists(&engine_id).await;
         let mut workdir = meta.get("workdir").and_then(|v| v.as_str()).unwrap_or("").to_string();
         if workdir.is_empty() {
             // 兼容没有 workdir 的旧 sidecar；不能留空让引擎隐式继承
@@ -907,12 +955,8 @@ impl OhmyDriver {
             // 经 conn-status 外显,好过把另一环境的 cwd 塞给引擎后工具全空转
             workdir = self.0.resolve_workdir(&workdir)?;
         }
-        let mut params = engine_session_create_params(
-            &workdir,
-            has_history.then_some(engine_id.as_str()),
-            None,
-            mode,
-        );
+        let mut params =
+            engine_session_create_params(&workdir, Some(engine_id.as_str()), None, mode);
         let model_name = meta.get("model_name").and_then(|v| v.as_str()).unwrap_or("");
         let with_model = match self.model_id_of_any(model_name) {
             Ok(model_id) => {
@@ -922,10 +966,11 @@ impl OhmyDriver {
             Err(_) => false,
         };
         // 技能物化(闸内圈住 create;含下方去模型重试)。失败降级不失败恢复:
-        // 磁盘异常时目录可能残留上一会话的技能集(catalog 与勾选短暂错位),
-        // 但会话本身要能恢复——错误进日志,不进 conn-status
+        // 磁盘异常时本会话目录可能保留旧技能集(catalog 与勾选短暂错位),
+        // 但会话本身要能恢复——错误进日志,不进 conn-status。若失败叠加
+        // transcript 本就缺失,随后的 resume 会明确报错,经 conn-status 外显
         let skills_lock = self.0.skills_gate.lock().await;
-        if let Err(e) = self.materialize_skills(skills_of_meta(meta)).await {
+        if let Err(e) = self.materialize_skills(&engine_id, skills_of_meta(meta)).await {
             eprintln!("[desktop] 会话 {id} 技能物化失败,按现有目录恢复: {e}");
         }
         let result = match self.rpc("session/create", params.clone()).await {
@@ -1669,9 +1714,10 @@ impl OhmyDriver {
                 self.push_frame(id, |seq| frame::permission_mode_update(mode, seq));
                 Ok(json!({ "result": { "mode": mode } }))
             }
-            // 会话技能启用集:引擎无 skills 协议,唯一生效路径是"重写引擎
-            // 技能目录 + destroy/resume 重建让 catalog 重扫"(web 版运行中改
-            // 技能同样是重启保会话的语义)。空数组是合法值 = 全部停用。
+            // 会话技能启用集:引擎无 skills 协议,唯一生效路径是"重写该会话
+            // 的 session skills 目录 + destroy/resume 重建让 catalog 重扫"
+            // (web 版运行中改技能同样是重启保会话的语义)。只动本会话目录,
+            // 其他会话不受影响。空数组是合法值 = 全部停用。
             "session_set_skills" => {
                 let names: Vec<String> = payload
                     .get("skills")
@@ -1860,13 +1906,13 @@ impl OhmyDriver {
         }
     }
 
-    /// 会话在引擎中(重)建:有历史则 resume 带全参(缺参会回落进程默认值);
-    /// 空会话(存储中无此会话,经 engine_session_exists 判定)resume 必失败,
-    /// 改全新 create——
-    /// 引擎发新 id,壳 sid/目录/UI 通道不变,engine_id 换绑并落 sidecar。
+    /// 会话在引擎中(重)建:一律 resume 带全参(缺参会回落进程默认值)。
+    /// 同 resume_engine:materialize_skills 先确保 transcript 存在,引擎
+    /// 存储被清理过的空会话 resume 零记录照常成功,engine_id 不再换绑——
+    /// 换绑会让技能落在旧 id 目录,session_set_skills 假成功而新 loop
+    /// 没有技能。引擎回显异常 id 时的守卫照旧。
     async fn create_resumed(&self, id: &str, model_id: &str, mode: &str) -> Result<(), String> {
         let eng = self.engine_id(id);
-        let has_history = self.engine_session_exists(&eng).await;
         let mut workdir =
             self.0.sess.sessions.lock_ok().get(id).map(|s| s.workdir.clone()).unwrap_or_default();
         if workdir.is_empty() {
@@ -1877,17 +1923,13 @@ impl OhmyDriver {
             // 同 resume_engine:登记值可能属于另一运行环境,按当前环境归一化
             workdir = self.0.resolve_workdir(&workdir)?;
         }
-        let params = engine_session_create_params(
-            &workdir,
-            has_history.then_some(eng.as_str()),
-            Some(model_id),
-            mode,
-        );
+        let params =
+            engine_session_create_params(&workdir, Some(eng.as_str()), Some(model_id), mode);
         // 技能物化 + create 圈进技能闸(session_create_with_kind 同理)。
         // 这条路承接 session_set_skills 的重建:物化失败必须外显——吞掉的话
         // 用户以为改完了,引擎拿到的还是旧技能集
         let skills_lock = self.0.skills_gate.lock().await;
-        self.materialize_skills(self.session_skills(id)).await?;
+        self.materialize_skills(&eng, self.session_skills(id)).await?;
         let result = self.rpc("session/create", params).await?;
         drop(skills_lock);
         // 同 resume_engine:换绑的 engine_id 是目录名,畸形值不接受
@@ -1969,16 +2011,34 @@ impl OhmyDriver {
         self.0.sess.sessions.lock_ok().get(id).map(|s| s.created).unwrap_or(false)
     }
 
-    /// 会话技能启用集重写到引擎技能目录(skills.rs::materialize,阻塞盘 I/O
-    /// 走 blocking 池)。调用方负责持 skills_gate 并圈住随后的 create RPC。
-    async fn materialize_skills(&self, enabled: Option<Vec<String>>) -> Result<Vec<String>, String> {
-        let engine_dir = self.0.engine_dir.clone();
+    /// 会话技能启用集重写到 Agent 的 session skills 目录(skills.rs::materialize,
+    /// 阻塞盘 I/O 走 blocking 池)。engine_id 拼路径前按会话 id 口径校验。
+    ///
+    /// 顺手确保 messages.jsonl 存在(append+create,绝不截断):引擎 resume
+    /// 只要求 transcript 可读,零记录照常成功(store.Rebuild 空文件不报错)。
+    /// 调用方因此可以对任何 engine_id 一律 resume——引擎存储被清理过的
+    /// 会话按原 id 空历史重建,技能与 id 始终同目录,不再有换绑分支。
+    async fn materialize_skills(
+        &self,
+        engine_id: &str,
+        enabled: Option<Vec<String>>,
+    ) -> Result<Vec<String>, String> {
+        check_session_id(engine_id)?;
+        let Some(dir) = self.0.engine_session_dir(engine_id) else {
+            return Err(format!("非法引擎会话 id: {engine_id}"));
+        };
         let builtin = self.0.skills_builtin_dir.clone();
         let user = self.0.skills_user_dir.clone();
         let defaults = self.0.skills_defaults_path.clone();
         tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(&dir).map_err(|e| format!("创建引擎会话目录失败: {e}"))?;
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(dir.join("messages.jsonl"))
+                .map_err(|e| format!("确保会话 transcript 失败: {e}"))?;
             crate::skills::materialize(
-                &engine_dir,
+                &dir.join("skills"),
                 builtin.as_deref(),
                 &user,
                 &defaults,
@@ -1996,7 +2056,7 @@ impl OhmyDriver {
         skills_of_meta(&self.read_sidecar(id))
     }
 
-    /// 出站 RPC 用的引擎会话 id(通常 == 壳 sid;空会话重建后换绑,
+    /// 出站 RPC 用的引擎会话 id(通常 == 壳 sid;守卫路径换绑过则不同,
     /// 未加载时回退 sidecar 记录)。
     fn engine_id(&self, id: &str) -> String {
         if let Some(e) = self.0.sess.sessions.lock_ok().get(id).map(|s| s.engine_id.clone()) {
@@ -2014,10 +2074,10 @@ impl OhmyDriver {
         self.0.has_cap(cap)
     }
 
-    /// resume 可用性判定(session/create 带 resume 前的存在性检查)。
-    /// sessionQuery cap:调 session/exists,会话存储布局归引擎私有;
-    /// 兼容尾巴:旧引擎(或查询意外失败时保守回退)探测
-    /// sessions/<id>/messages.jsonl——引擎存储格式的隐式契约仅剩此处。
+    /// 引擎侧会话存在性(session/exists,旧引擎回退文件探测)。生产路径
+    /// 已不消费——materialize_skills 确保 transcript 后一律 resume,存在
+    /// 与否不再改变走法;留作 e2e 对引擎存储契约的断言入口。
+    #[cfg(test)]
     pub(super) async fn engine_session_exists(&self, eng: &str) -> bool {
         if self.has_cap("sessionQuery") {
             match self.rpc("session/exists", json!({ "session_id": eng })).await {
@@ -2699,7 +2759,7 @@ impl Inner {
     }
 
     /// 入站事件的壳会话反查(引擎 session_id → 壳 sid)。通常同名;
-    /// 空会话重建换绑后不同。未命中原样返回(供子代理未知 id 认领)。
+    /// 守卫路径换绑过则不同。未命中原样返回(供子代理未知 id 认领)。
     pub(super) fn shell_sid_of(&self, engine: &str) -> String {
         self.sess.sessions
             .lock_ok()
