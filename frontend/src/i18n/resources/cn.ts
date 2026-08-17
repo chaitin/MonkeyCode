@@ -2087,11 +2087,12 @@ const cn = {
   },
   terminalNative: {
     hero: {
-      tagline: "在线 AI 开发平台",
-      description: "免费使用，无需安装，内置云端开发环境，并支持业内最全的顶尖大模型。无论是开发项目、做调研、写文档，还是分析数据、处理任务，打开浏览器就能随时开始，让 AI 持续帮你推进工作。",
+      tagline: "一站式 AI 办公开发平台",
+      description: "从网页开始协作与开发，调研、写作、编码和任务推进可以在同一平台连续完成；本地代码、文件和环境可由 MonkeyWork 接力处理，移动端随时跟进，企业也可私有化部署。",
     },
     actions: {
       start: "开始使用",
+      desktopClient: "桌面客户端",
       mobileClient: "手机客户端",
     },
     features: {

@@ -32,9 +32,14 @@ export function detectLanguageFromBrowser(language: string | null | undefined = 
 }
 
 export function resolveInitialLanguage(
+  queryLanguage: string | null | undefined,
   cookieLanguage: string | null | undefined,
   browserLanguage: string | null | undefined = "",
 ): AppLanguage {
+  if (isAppLanguage(queryLanguage)) {
+    return queryLanguage
+  }
+
   if (isAppLanguage(cookieLanguage)) {
     return cookieLanguage
   }
@@ -89,9 +94,17 @@ export function applyLanguage(language: AppLanguage) {
 }
 
 export function initLanguage(): AppLanguage {
-  const language = resolveInitialLanguage(readLanguageCookie(), getBrowserLanguage())
+  const language = resolveInitialLanguage(readLanguageQueryParam(), readLanguageCookie(), getBrowserLanguage())
   applyLanguage(language)
   return language
+}
+
+function readLanguageQueryParam(): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined
+  }
+
+  return new URLSearchParams(window.location.search).get("lang") || undefined
 }
 
 function getDocumentCookie(): string {
