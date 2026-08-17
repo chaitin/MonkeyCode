@@ -14,7 +14,7 @@
 //   开合走 prefs 契约键持久化,收起即卸载(部分 webview 里 details 收起
 //   后嵌套 ul 残留占位空间)。
 import { IconArchive, type TablerIcon } from "@tabler/icons-react";
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 
 import { openMenu, type MenuItem } from "@/lib/contextMenu";
 import { readFold, writeFold, type FoldKey } from "@/lib/util/prefs";
@@ -57,13 +57,18 @@ const ATTENTION_BAR =
   "before:absolute before:inset-y-1 before:w-0.5 before:rounded-full before:bg-warning before:content-['']";
 
 /** 行缩进阶梯(§6.2「缩进进行内、行底满宽」——嵌套 margin 会把 hover/选中底
- * 压窄错位):基准 item padding 12px,每级 +12px(= 组头图标宽)。
+ * 压窄错位):基准 item padding 12px,**每级 +20px**(= 头部图标 12 +
+ * gap-2 8)。这样每级**行文字与其父头文字同线**:组头文字 = 12+20 = 32 =
+ * L1 行;组内小节头文字 = 32+20 = 52 = L2 行。2026-08-18 用户报障「好几条
+ * 对齐线,好乱」定案——旧阶梯 +12/头文字 +20 双增量并存,32/40、44/50
+ * 两对"差一点对齐"的近失误全并进 20px 网格(小节头 10px 图标要坐 12px
+ * 定宽槽,增量才恒 20)。
  * pad 与 bar 必须成对改:bar = 该级文字左缘 - 8px,拆开写迟早对不齐。 */
 const LEVELS = [
-  { pad: "", bar: "before:start-1" }, //      L0 文字 12px(chat 平铺行)
-  { pad: "ps-6", bar: "before:start-4" }, //  L1 文字 24px(项目内任务行)
-  { pad: "ps-9", bar: "before:start-7" }, //  L2 文字 36px(项目内归档行)
-  { pad: "ps-12", bar: "before:start-10" }, // L3 文字 48px(归档项目内的归档行)
+  { pad: "", bar: "before:start-1" }, //       L0 文字 12px(平铺行)
+  { pad: "ps-8", bar: "before:start-6" }, //   L1 文字 32px = 组头文字线
+  { pad: "ps-13", bar: "before:start-11" }, // L2 文字 52px = 组内小节头文字线
+  { pad: "ps-18", bar: "before:start-16" }, // L3 文字 72px
 ] as const;
 
 /** 缩进级 → 行内起始 padding 类(给非 ListRow 的同列元素对齐用,如改名输入框)。 */
@@ -82,6 +87,8 @@ export function ListRow({
   attention,
   onSelect,
   menuItems,
+  onDragStart,
+  dataId,
 }: {
   primary: string;
   /** 行尾状态点:仅要紧态给(tone = 纯 status-* 语义色);状态词不上行
@@ -101,6 +108,10 @@ export function ListRow({
   attention?: boolean;
   onSelect: () => void;
   menuItems: MenuItem[];
+  /** HTML5 拖拽透传(工作台任务列行拖进格装载;不传即不可拖)。 */
+  onDragStart?: (e: DragEvent<HTMLAnchorElement>) => void;
+  /** 行定位锚(data-row-id;焦点格换人时任务列 scrollIntoView 用)。 */
+  dataId?: string;
 }) {
   const lv = LEVELS[level] ?? LEVELS[0];
   return (
@@ -108,7 +119,10 @@ export function ListRow({
       <a
         className={`relative flex min-w-0 items-center gap-2 overflow-hidden transition-colors duration-150 ${lv.pad} ${active ? "menu-active" : ""}${attention ? ` ${ATTENTION_BAR} ${lv.bar}` : ""}`}
         data-attention={attention ? "" : undefined}
+        data-row-id={dataId}
         title={tooltip}
+        draggable={onDragStart ? true : undefined}
+        onDragStart={onDragStart}
         onClick={onSelect}
         onContextMenu={(e: MouseEvent) => {
           e.preventDefault();
@@ -191,8 +205,11 @@ export function SectionFold({
         }}
       >
         {/* Archive 形小节头:图标行首(与组头 Folder 同构)、去 menu 默认尾箭头 */}
+        {/* 10px 图标坐 12px 定宽槽:小节头文字与子行同线(20px 网格) */}
         <summary className="flex items-center gap-2 text-xs text-base-content/50 after:hidden">
-          <Icon size={10} stroke={1.75} aria-hidden className="shrink-0" />
+          <span className="inline-flex w-3 shrink-0 justify-center">
+            <Icon size={10} stroke={1.75} aria-hidden />
+          </span>
           <span className="min-w-0 flex-1 truncate">{label}</span>
         </summary>
         {/* 收起即卸载:防 details 收起后嵌套 ul 残留占位空间 */}

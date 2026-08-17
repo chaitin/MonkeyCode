@@ -73,6 +73,7 @@ function absPath(workdir: string, rel: string): string {
 export function FilesDrawer({
   sessionId,
   workdir = "",
+  variant = "global",
   onClose,
   initialTab = "files",
   refreshToken = 0,
@@ -80,6 +81,8 @@ export function FilesDrawer({
   sessionId: string;
   /** 会话工作目录:定位失败时兜底复制的绝对路径由它拼(缺省则只复制相对路径) */
   workdir?: string;
+  /** pane = 格内 absolute(参照格 relative 根);global = 旧全局 fixed。 */
+  variant?: "global" | "pane";
   onClose: () => void;
   /** 打开时落在哪个 tab(聊天区改动徽标可直达「改动」) */
   initialTab?: Tab;
@@ -319,11 +322,22 @@ export function FilesDrawer({
 
   return (
     <>
-      <div aria-hidden className={`fixed ${TOP} inset-x-0 bottom-0 z-30 bg-base-content/20`} onClick={onClose} />
+      {/* pane 变体(2026-08-19 用户报障「云端在格内,本地为啥全局」):
+          scrim/面板改 absolute 挂在格里(参照格的 relative 根),与云端
+          CloudFiles 面板同构;global 形态留给整页 ChatView(壳内留档路径) */}
+      <div
+        aria-hidden
+        className={variant === "pane" ? "absolute inset-0 z-10 bg-base-content/20" : `fixed ${TOP} inset-x-0 bottom-0 z-30 bg-base-content/20`}
+        onClick={onClose}
+      />
       <section
         aria-label={t("files.label")}
         style={{ width }}
-        className={`fixed ${TOP} right-0 bottom-0 z-40 flex max-w-[90vw] flex-col border-l border-base-300 bg-base-100 shadow-xl`}
+        className={
+          variant === "pane"
+            ? "absolute inset-y-0 right-0 z-20 flex max-w-[85%] flex-col border-l border-base-300 bg-base-100 shadow-xl"
+            : `fixed ${TOP} right-0 bottom-0 z-40 flex max-w-[90vw] flex-col border-l border-base-300 bg-base-100 shadow-xl`
+        }
       >
         <div
           role="separator"

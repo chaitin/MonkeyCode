@@ -7,7 +7,7 @@
 // 组内:hover「+」行内添加(Enter 连续记,粘贴截图随 Enter 挂上);未完成
 // 段 HTML5 拖拽排序(项目组同款,2026-08-13 用户要求);「已完成」小节折叠;
 // 行 = 纯文字安静行 + 行尾图片角标(被动指示)+ 要紧态状态点。
-import { IconChecklist, IconCircleCheck, IconPhoto, IconPlus, IconX } from "@tabler/icons-react";
+import { IconChecks, IconClipboardList, IconPhoto, IconPlus, IconX } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
@@ -31,7 +31,9 @@ export interface TodoWiring {
   /** 派发成任务:App 打开新建任务视图并预填正文与图片(带 todoId 回链) */
   onDispatch: (item: TodoItem) => void;
   onOpenSession: (id: string) => void;
-  onOpenCloud: () => void;
+  /** 云端派发件的跳转(带云端任务 id;工作台主壳里 = 装载入格。旧壳
+   *  时代无参、只切云端空间——空间已死,id 随契约升级带出)。 */
+  onOpenCloud: (id?: string) => void;
 }
 
 /** 待办组在 mc.collapsedGroups 里的注册 key(\0 哨兵,不会与目录路径相撞;
@@ -90,7 +92,7 @@ function TodoRow({
   const meta =
     item.dispatched_kind && !cloud ? sessions.find((s) => s.id === item.dispatched_id) : undefined;
   const trailing = meta ? rowTrailing(meta, t, false) : null;
-  const jump = cloud ? todo.onOpenCloud : meta ? () => todo.onOpenSession(meta.id) : undefined;
+  const jump = cloud ? () => todo.onOpenCloud(item.dispatched_id) : meta ? () => todo.onOpenSession(meta.id) : undefined;
   const images = item.images ?? [];
   const menuItems: MenuItem[] = [
     { label: done ? t("todo.markUndone") : t("todo.markDone"), run: () => todo.ops.toggle(item.id) },
@@ -182,7 +184,7 @@ function TodoDetailModal({
   const meta =
     item.dispatched_kind && !cloud ? sessions.find((s) => s.id === item.dispatched_id) : undefined;
   const trailing = meta ? rowTrailing(meta, t, false) : null;
-  const jump = cloud ? todo.onOpenCloud : meta ? () => todo.onOpenSession(meta.id) : undefined;
+  const jump = cloud ? () => todo.onOpenCloud(item.dispatched_id) : meta ? () => todo.onOpenSession(meta.id) : undefined;
   const linkWord = linkWordOf(item, meta, t);
   const images = item.images ?? [];
   const commit = (value: string) => {
@@ -363,7 +365,7 @@ export function TodoSection({
         }}
       >
         <summary className="group relative flex items-center after:hidden" title={t("rail.todo")}>
-          <GroupLabel icon={IconChecklist} name={t("rail.todo")} />
+          <GroupLabel icon={IconClipboardList} name={t("rail.todo")} />
           {/* 快捷添加:常驻占位 hover 显形(项目组头「+」同款,§6.2 铁律);
               组收着时先展开再开输入,不然输入行加在看不见的地方 */}
           <button
@@ -380,6 +382,13 @@ export function TodoSection({
           >
             <IconPlus size={14} stroke={1.75} aria-hidden />
           </button>
+          {/* 未完成计数殿后(2026-08-20 用户「数字和+调换位置」;非"N 项目
+              N 任务"那类废统计) */}
+          {todo.todos.filter((i) => i.status !== "done").length > 0 && (
+            <span className="badge badge-ghost badge-xs">
+              {todo.todos.filter((i) => i.status !== "done").length}
+            </span>
+          )}
         </summary>
         {/* 收起即卸载(details 残留占位的 webview 坑,§6.2) */}
         {!collapsed && (
@@ -471,7 +480,7 @@ export function TodoSection({
                 >
                   {/* Archive 小节同构:10px 图标行首、去尾箭头、标签不带计数 */}
                   <summary className="flex items-center gap-2 ps-6 text-xs text-base-content/40 after:hidden">
-                    <IconCircleCheck size={10} stroke={1.75} aria-hidden className="shrink-0" />
+                    <IconChecks size={10} stroke={1.75} aria-hidden className="shrink-0" />
                     <span className="min-w-0 flex-1 truncate">{t("todo.done")}</span>
                   </summary>
                   {doneOpen && (

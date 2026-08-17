@@ -112,8 +112,9 @@
   /* 布局列宽令牌(w-rail / w-side):三列宽度的唯一出处,不写字面值 */
   --spacing-rail: 62px;
   --spacing-side: 232px;
-  /* 平台约定色:不跟主题走。mac 红绿灯三色 = 系统本色;caption-close =
-   * Windows 11 官方关闭键 hover 红(Win10 是 #e81123,Win11 起改这个值) */
+  /* 平台约定色:不跟主题走。mac 红绿灯三色 = 系统本色(自绘小灯 2026-08-20
+   * 回归:原生尺寸不可调、用户嫌大);caption-close = Windows 11 官方关闭键
+   * hover 红(Win10 是 #e81123,Win11 起改这个值) */
   --color-mac-close: #ff5f57;
   --color-mac-min: #febc2e;
   --color-mac-zoom: #28c840;
@@ -244,6 +245,25 @@
  * 共用它,分头改一定会让两条列错开中线。 */
 .chat-measure {
   max-width: min(64rem, max(48rem, 92%));
+}
+
+/* mac 红绿灯净空:自绘小灯由 App 固定浮在窗口左上(2026-08-20 回归——
+ * 原生尺寸不可调、用户嫌大;2026-08-18 曾回原生,一来一回都记档),
+ * **占住窗口左上角的那条 chrome**(显式挂 data-mac-lights-clear:任务列
+ * 在场是列顶 chrome 行,收起是主区视图头,设置覆盖视图是页头——不能按
+ * data-view-header 一刀切,列在场时主区头不贴左缘)让出左端 64px。
+ * **必须写在无层区**:头部自带的 px-4 在 @layer utilities,分层样式打不过
+ * 无层样式,搁进 @layer base 会被 px-4 原样压回 16px(Chrome 实测)。 */
+[data-platform="mac"] [data-mac-lights-clear] {
+  padding-left: 64px;
+}
+
+/* 分屏格内的对话列宽(ChatView variant="pane" 的消息流与 composer 共用):
+ * 同一个 64rem 天花板、同一个 92% 呼吸边,**没有 48rem 地板**——地板是给
+ * 全宽主区设计的下限;四分格在 1080p 只有 ~790px 宽,768px 地板会把内容
+ * 顶出横向滚动(LAYOUT §5 列级容器禁横滚)。两条列的天花板要一起动。 */
+.chat-measure-pane {
+  max-width: min(64rem, 92%);
 }
 
 /* 消息流是真窗口化：只有视口附近至多 160 行进入 DOM。spacer 只承担高度，

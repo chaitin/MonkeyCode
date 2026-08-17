@@ -33,8 +33,14 @@ export function noticeForQueuedDelivery(sessionId: string, text: string): Sessio
   return { sessionId, title: excerpt, kind: "queued" };
 }
 
-export function noticeForSessionEvent(e: SessionEvent, currentId: string | null): SessionNotice | null {
-  if (e.id === currentId) return null;
+export function noticeForSessionEvent(
+  e: SessionEvent,
+  currentId: string | null,
+  /** 分屏沉浸时的"在场"口径:在任何可见格 = 用户就在现场,不提醒
+   *  (设计「屏外任务路由」);普通视图缺省仍按"当前会话"判。 */
+  visibleIds?: ReadonlySet<string>,
+): SessionNotice | null {
+  if (visibleIds ? visibleIds.has(e.id) : e.id === currentId) return null;
   if (e.type === "session-ask") {
     return e.open ? { sessionId: e.id, title: e.title, kind: "ask" } : null;
   }

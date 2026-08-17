@@ -12,9 +12,12 @@
 //      base-200 色块紧贴着下面又一个 base-200 侧栏头,那才是「两个 header」
 //      的真正成因(2026-08-08 定案)。窗框本来就该跟内容断开,整条单色;
 //   ③ 不带底边线——有线就成了 header 基线。
-// - mac 壳隐藏原生红绿灯(TitleBarStyle::Overlay),MacWindowControls 自绘
-//   10px 圆点(悬停整组浮现字形、窗口失焦整组退灰;绿点 ⌥ 点击最大化、
-//   否则全屏)。渲染位置在 NavRail 顶部(App 拼装),mac 不渲染本条。
+// - mac 壳隐藏原生红绿灯(TitleBarStyle::Overlay + 壳侧 setHidden),
+//   MacWindowControls 自绘 10px 圆点(悬停整组浮现字形、窗口失焦整组
+//   退灰;绿点 ⌥ 点击最大化、否则全屏)。自绘版 2026-08-18 曾退役回原生,
+//   2026-08-20 用户「原生太大」再反转——原生尺寸系统私有不可调。渲染
+//   位置:App 固定浮在窗口左上(工作台各形态与设置覆盖视图共用一份),
+//   mac 不渲染本条;贴角 chrome 的让位见 app.css 净空规则。
 // - 拖拽热区铁律:Tauri 按事件目标**自身**的 data-tauri-drag-region 判定,
 //   不继承——条内每个可见的非交互子节点都要单独带;交互按钮不许带。
 //   带该属性的区域双击 = 切换最大化(Tauri 原生行为,无需自绑)。
@@ -239,4 +242,3 @@ export function MacWindowControls({ compact = false }: { compact?: boolean } = {
     </div>
   );
 }
-
