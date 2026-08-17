@@ -483,6 +483,54 @@ async fn e2e_manual_compaction_lifecycle() {
     driver.stop();
 }
 
+/// c046713 Agent 在取消中的 provider 请求返回后会先发无 kind error，
+/// 再发 interrupted turn/stopped。Desktop 必须保持执行态直到 stopped，
+/// 且用户主动取消不能在对话流里留下失败红字。
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
+async fn e2e_legacy_agent_cancel_has_single_clean_terminal() {
+    require_ohmyagent();
+    let _g = e2e_lock().await;
+    let (driver, home) = e2e_setup("legacy-cancel", 3000);
+
+    let workdir = home.to_string_lossy().into_owned();
+    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let sid = meta.get("id").and_then(Value::as_str).unwrap().to_string();
+    driver.session_open(&sid).await.expect("打开会话");
+    driver
+        .session_send(&sid, "user-input", json!({ "content": frame::b64_text("开始一个慢任务") }))
+        .await
+        .expect("发送");
+    // 等主模型请求进入 HTTP 等待，再触发当前 Agent 的 context-canceled
+    // error 路径；仅取消本地乐观开轮会覆盖不到这个兼容分支。
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    driver.session_send(&sid, "user-cancel", json!({})).await.expect("取消");
+
+    let journal = wait_journal(&driver, &sid, |journal| {
+        journal.iter().any(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+    })
+    .await;
+    assert!(
+        journal.iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-error")),
+        "用户取消被旧 Agent 的 context error 渲染成失败: {journal:?}"
+    );
+    assert_eq!(
+        journal
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1,
+        "取消轮必须恰好收尾一次"
+    );
+    assert!(!driver.0.sess.sessions.lock().unwrap()[&sid].running);
+    assert_eq!(
+        driver.0.read_sidecar(&sid).get("status").and_then(Value::as_str),
+        Some("interrupted")
+    );
+
+    driver.stop();
+}
+
 /// WSL 运行环境冒烟:经 MC_WSL_EXE 假脚本走完整条 WSL spawn 链路——
 /// find_ohmyagent_linux(MC_OHMYAGENT_LINUX_BIN)→ prepare(home/登录
 /// shell/网络模式/路径翻译解析)→ 登录 shell 包装 spawn → 握手 → 会话
@@ -1582,6 +1630,119 @@ fn error_event_waits_for_turn_stopped_and_deduplicates_terminal_summary() {
         1
     );
     assert!(!inner.sess.sessions.lock().unwrap()["s1"].running);
+}
+
+/// 回退后的 Agent 在用户取消 provider 请求时会额外发一条无 kind error，
+/// 随后才发 interrupted turn/stopped。Desktop 应把它视为取消过程噪声，
+/// 不能展示红字，也不能抢先清 running。
+#[test]
+fn legacy_cancel_error_is_suppressed_until_interrupted_stop() {
+    let inner = bare_inner("legacy-cancel-error");
+    let mut session = bare_session("s1");
+    session.cancel_requested_turn = Some(session.turn);
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+
+    inner.handle_event(json!({
+        "type": "error", "session_id": "s1", "seq": 1,
+        "data": { "error": "context canceled" }
+    }));
+    {
+        let sessions = inner.sess.sessions.lock().unwrap();
+        assert!(sessions["s1"].running, "取消 error 不能先于 stopped 清 running");
+        assert!(!sessions["s1"].terminal_error_seen, "取消 error 不应登记成终止错误");
+    }
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "interrupted" }),
+    );
+    inner.journal_barrier();
+
+    let frames = journal_frames(&inner, "s1");
+    assert!(frames.iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-error")));
+    assert_eq!(
+        frames
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1
+    );
+    assert!(!inner.sess.sessions.lock().unwrap()["s1"].running);
+}
+
+/// 旧 Agent 的持久化失败沿用普通 error 形状，但主循环仍继续。稳定前缀
+/// 必须兼容为 terminal=false；否则 error 收尾探针会反过来取消健康任务。
+#[test]
+fn legacy_persistence_error_warns_without_stopping_turn() {
+    let inner = bare_inner("legacy-persist-warning");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+
+    inner.handle_event(json!({
+        "type": "error", "session_id": "s1", "seq": 1,
+        "data": { "error": "session persist failed: disk is read-only" }
+    }));
+    inner.journal_barrier();
+
+    let sessions = inner.sess.sessions.lock().unwrap();
+    assert!(sessions["s1"].running);
+    assert!(!sessions["s1"].terminal_error_seen);
+    drop(sessions);
+    let frames = journal_frames(&inner, "s1");
+    let warning = frames
+        .iter()
+        .find(|f| f.get("type").and_then(Value::as_str) == Some("task-error"))
+        .expect("持久化告警应即时外显");
+    assert_eq!(warning.pointer("/data/terminal").and_then(Value::as_bool), Some(false));
+    assert!(frames.iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-ended")));
+}
+
+/// Desktop 为旧 Agent 漏失的 turn/stopped 补收尾时携带本地轮号。检查与
+/// 清 running 必须同锁完成，迟到探针不能把用户随后开启的新轮关掉。
+#[test]
+fn legacy_error_probe_completion_is_scoped_to_original_turn() {
+    let inner = bare_inner("legacy-error-probe");
+    for sid in ["owned", "stale"] {
+        inner.sess.sessions.lock().unwrap().insert(sid.into(), bare_session(sid));
+        inner.handle_event(json!({
+            "type": "error", "session_id": sid,
+            "data": { "error": "initialize tool context: missing root" }
+        }));
+    }
+    {
+        let mut sessions = inner.sess.sessions.lock().unwrap();
+        let stale = sessions.get_mut("stale").unwrap();
+        stale.turn += 1;
+        stale.terminal_error_seen = false;
+    }
+
+    for sid in ["owned", "stale"] {
+        inner.handle_notification(
+            "turn/stopped",
+            json!({
+                "session_id": sid,
+                "stop_reason": "error",
+                "error": "initialize tool context: missing root",
+                "_desktop_turn": 1,
+            }),
+        );
+    }
+    inner.journal_barrier();
+
+    let sessions = inner.sess.sessions.lock().unwrap();
+    assert!(!sessions["owned"].running, "原轮仍归探针所有时应完成收尾");
+    assert!(sessions["stale"].running, "迟到探针误关了新轮");
+    drop(sessions);
+    assert_eq!(
+        journal_frames(&inner, "owned")
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1
+    );
+    assert!(
+        journal_frames(&inner, "stale")
+            .iter()
+            .all(|f| f.get("type").and_then(Value::as_str) != Some("task-ended"))
+    );
 }
 
 #[test]

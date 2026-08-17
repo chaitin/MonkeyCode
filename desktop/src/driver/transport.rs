@@ -575,6 +575,18 @@ impl OhmyDriver {
         params: Value,
         timeout: Duration,
     ) -> Result<Value, String> {
+        let (id, rx) = self.begin_rpc(method, params)?;
+        self.await_rpc_response(method, id, rx, timeout).await
+    }
+
+    /// 同步登记并写出 RPC，返回等待端。通常直接用 rpc_with_timeout；只有
+    /// reader 正在处理终止 error、必须在放行下一条 turn/stopped 前把 cancel
+    /// 排进 stdin 时才拆成 begin + await，避免迟到探针误取消下一轮。
+    pub(super) fn begin_rpc(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<(i64, oneshot::Receiver<Value>), String> {
         // 引擎已收摊就别再登记等待者。stdin_tx 是 unbounded 通道,writer 线程
         // 早退后 send 依然"成功",于是这条请求会挂到超时才报错——
         // 崩溃瞬间在途的命令因此白等半分钟。reader 清 pending 与本次登记之间
@@ -590,6 +602,18 @@ impl OhmyDriver {
             self.0.transport.pending.lock_ok().remove(&id);
             return Err("引擎已退出".into());
         }
+        Ok((id, rx))
+    }
+
+    /// 等待 begin_rpc 的既有请求并解析 JSON-RPC 结果。超时时按 id 摘掉
+    /// pending，迟到应答会被 reader 安全忽略。
+    pub(super) async fn await_rpc_response(
+        &self,
+        method: &str,
+        id: i64,
+        rx: oneshot::Receiver<Value>,
+        timeout: Duration,
+    ) -> Result<Value, String> {
         let resp = match tokio::time::timeout(timeout, rx).await {
             Ok(Ok(v)) => v,
             Ok(Err(_)) => return Err("引擎已退出".into()),

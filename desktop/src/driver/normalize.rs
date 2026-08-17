@@ -7,16 +7,19 @@
 // ohmyagent/internal/transport/{stdio,protocol}.go 与 types/events.go。
 
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
 use super::frame::{self, PermOutcome, SessionStatus};
-use super::ohmy::Inner;
+use super::ohmy::{Inner, OhmyDriver};
 use crate::util::LockExt;
 
 impl Inner {
     /// stdio 通知路由(reader 线程调用)。
-    pub(super) fn handle_notification(&self, method: &str, params: Value) {
+    pub(super) fn handle_notification(self: &Arc<Self>, method: &str, params: Value) {
         match method {
             "event/stream" => self.handle_event(params),
             "permission/request" => {
@@ -85,6 +88,9 @@ impl Inner {
                 let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
                 let stop_reason = params.get("stop_reason").and_then(|v| v.as_str()).unwrap_or("complete");
                 let err = params.get("error").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                // 仅 Desktop 为旧 Agent 补收尾时携带。真实协议没有该字段；
+                // 把轮号检查放进同一把 sessions 锁，避免迟到的探针误关新轮。
+                let expected_turn = params.get("_desktop_turn").and_then(|v| v.as_u64());
                 if sid.is_empty() {
                     // 认不出会话 = 这一轮壳侧永远收不了尾(会话卡 running,
                     // 输入/删除/切模型全锁死)。静默丢弃过一次就再也查不出来,
@@ -92,9 +98,10 @@ impl Inner {
                     eprintln!("[desktop] turn/stopped 无法映射到壳会话,已丢弃: {params}");
                     return;
                 }
-                let (was_running, open, compacting, terminal_error_seen) = {
+                let closed = {
                     let mut sessions = self.sess.sessions.lock_ok();
                     match sessions.get_mut(&sid) {
+                        Some(s) if expected_turn.is_some_and(|turn| s.turn != turn) => None,
                         Some(s) => {
                             let was = s.running;
                             s.running = false;
@@ -103,10 +110,16 @@ impl Inner {
                             s.cancel_requested_turn = None;
                             let terminal_error_seen = std::mem::take(&mut s.terminal_error_seen);
                             s.model_text.clear(); // 对账累积不跨轮(model_done 缺席的残留)
-                            (was, std::mem::take(&mut s.open_tools), compacting, terminal_error_seen)
+                            Some((was, std::mem::take(&mut s.open_tools), compacting, terminal_error_seen))
                         }
-                        None => (false, HashMap::new(), false, false),
+                        None => Some((false, HashMap::new(), false, false)),
                     }
+                };
+                let Some((was_running, open, compacting, terminal_error_seen)) = closed else {
+                    eprintln!(
+                        "[desktop] 旧 Agent error 收尾探针已过期,忽略: sid={sid} expected_turn={expected_turn:?}"
+                    );
+                    return;
                 };
                 // 中断轮次可能留下已暂存未被 tool_result 消费的 agent_result
                 if !open.is_empty() {
@@ -177,7 +190,7 @@ impl Inner {
     }
 
     /// event/stream 事件归一化 → Frame。
-    pub(super) fn handle_event(&self, event: Value) {
+    pub(super) fn handle_event(self: &Arc<Self>, event: Value) {
         let etype = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
         let raw = event.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
         if raw.is_empty() {
@@ -219,6 +232,19 @@ impl Inner {
             // 新引擎已改发 compaction(status=fallback)，这里保留旧版兼容。
             if kind == "compaction_fallback" {
                 eprintln!("[desktop] 上下文摘要失败,引擎正回退本地压缩: {msg}");
+                return;
+            }
+            // c046713 及更早版本在取消中的 provider 调用返回后会先发一条
+            // 无 kind 的 error，再以 interrupted turn/stopped 收尾。用户已经
+            // 明确取消时这不是失败提示，也不能启动下面的终止错误探针。
+            let cancelling = self
+                .sess
+                .sessions
+                .lock_ok()
+                .get(&sid)
+                .is_some_and(|s| s.running && s.cancel_requested_turn == Some(s.turn));
+            if cancelling {
+                eprintln!("[desktop] 已忽略旧 Agent 取消过程中的 error: {msg}");
                 return;
             }
         }
@@ -574,20 +600,99 @@ impl Inner {
             }
             "error" => {
                 let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("未知错误");
-                let terminal = data.get("terminal").and_then(|v| v.as_bool()).unwrap_or(true);
-                if terminal {
-                    if let Some(s) = self.sess.sessions.lock_ok().get_mut(&sid) {
+                let kind = data.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+                let terminal = !legacy_nonterminal_error(&data, kind, msg);
+                let is_child = self.sub.subagents.lock_ok().contains_key(&sid);
+                let probe = if terminal {
+                    let mut sessions = self.sess.sessions.lock_ok();
+                    sessions.get_mut(&sid).and_then(|s| {
                         s.terminal_error_seen = true;
-                    }
-                }
+                        (s.running && !is_child).then(|| (s.turn, s.engine_id.clone()))
+                    })
+                } else {
+                    None
+                };
                 // error 事件可立即展示，但它不是空闲信号。即使 terminal=true，
-                // 也必须等 turn/stopped；手动压缩失败则由 compaction 终态收尾。
+                // 也优先等 turn/stopped；旧 Agent 漏发时由 cancel 探针确认后
+                // 补收尾。手动压缩失败则由 compaction/RPC 终态收尾。
                 self.push_frame(&sid, |seq| frame::task_error_pending(msg, seq));
+                if let Some((turn, engine_id)) = probe {
+                    self.spawn_legacy_terminal_error_probe(sid.clone(), engine_id, turn, msg.to_string());
+                }
             }
             // turn_done:轮次边界以 turn/stopped 为准
             _ => {}
         }
     }
+
+    /// 兼容只发 terminal error、不发 turn/stopped 的旧 Agent。cancel 在
+    /// Agent 空闲时是无副作用查询(stopped=true)；请求必须在 reader 仍处理
+    /// error、UI 尚未可能开启下一轮时同步排入 stdin，避免异步探针误取消新轮。
+    /// 只有 Agent 明确 stopped=true（或会话已不存在）才补本地收尾；
+    /// stopped=false/超时继续保持 running，绝不重现“Agent 仍工作但状态没了”。
+    fn spawn_legacy_terminal_error_probe(
+        self: &Arc<Self>,
+        sid: String,
+        engine_id: String,
+        turn: u64,
+        error: String,
+    ) {
+        // 裸单元测试没有进程；真实进程句柄已被 stop() 摘走时也由停机和解。
+        if self.transport.child.lock_ok().is_none() {
+            return;
+        }
+        let inner = self.clone();
+        let grace_ms = self.transport.shutdown_grace_ms.load(Ordering::Relaxed).max(0) as u64;
+        let driver = OhmyDriver(inner.clone());
+        let pending = driver.begin_rpc("cancel", json!({ "session_id": engine_id }));
+        let (request_id, response_rx) = match pending {
+            Ok(pending) => pending,
+            Err(probe_error) => {
+                eprintln!("[desktop] 旧 Agent error 收尾探针无法发出,等待引擎终态: sid={sid}: {probe_error}");
+                return;
+            }
+        };
+        tauri::async_runtime::spawn(async move {
+            let response = driver
+                .await_rpc_response(
+                    "cancel",
+                    request_id,
+                    response_rx,
+                    Duration::from_millis(grace_ms.saturating_add(3_000)),
+                )
+                .await;
+            let confirmed_stopped = matches!(
+                &response,
+                Ok(value) if value.get("stopped").and_then(Value::as_bool) == Some(true)
+            ) || matches!(&response, Err(message) if message.starts_with("Session not found:"));
+            if !confirmed_stopped {
+                eprintln!(
+                    "[desktop] 旧 Agent error 收尾探针未确认停止,继续保持 running: sid={sid}: {response:?}"
+                );
+                return;
+            }
+            inner.handle_notification(
+                "turn/stopped",
+                json!({
+                    "session_id": sid,
+                    "stop_reason": "error",
+                    "error": error,
+                    "_desktop_turn": turn,
+                }),
+            );
+        });
+    }
+}
+
+/// 回退后的 Agent 没有 terminal 字段，以下三类持久化错误却不会停止当前
+/// turn；按稳定前缀兼容，避免为一条告警发送 cancel。新协议若显式给
+/// terminal=false 或 kind=persistence_warning，同样走非终止分支。
+fn legacy_nonterminal_error(data: &Value, kind: &str, message: &str) -> bool {
+    data.get("terminal").and_then(Value::as_bool) == Some(false)
+        || kind == "persistence_warning"
+        || message.starts_with("persist stop_reason failed:")
+        || message.starts_with("session persist failed:")
+        || message.starts_with("persist remembered permission rule failed:")
 }
 
 /// 上下文占用字段防腐层。13c8adc 起所有新入口统一为扁平
