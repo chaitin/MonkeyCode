@@ -25,6 +25,27 @@ const HISTORY_PAGE = 3; // 每次"加载更早"取的轮数窗口(壳侧 cursor 
  *  ——2026-08-10 用户 profile 里那一串 0.5~2.6s 的 message handler 正是它。 */
 const JUMP_PAGE = 50;
 
+/** session_open 的独立用量快照转成普通协议帧，复用 reducer 的单一状态
+ * 写入口。无 seq = 不抬水位；顺序放在回放窗口之后、等待期间实时帧之前：
+ * 它修正历史里的旧版伪 0，真正的新 usage 仍可在后面覆盖。 */
+function openUsageFrame(used: number | undefined, window: number | undefined): Frame[] {
+  if (
+    used === undefined ||
+    window === undefined ||
+    !Number.isFinite(used) ||
+    !Number.isFinite(window) ||
+    used < 0 ||
+    window <= 0
+  ) {
+    return [];
+  }
+  return [{
+    type: "task-running",
+    kind: "acp_event",
+    data: { update: { sessionUpdate: "usage_update", used, size: window } },
+  }];
+}
+
 export interface SessionFeed {
   state: ChatState;
   conn: ConnStatus | null;
@@ -163,8 +184,9 @@ export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
         // transition 期间的实时帧继续攒在 pendingRef,提交后一次补投;
         // reduceBatch 按 seq 水位去重,补投里与窗口批重叠的帧是无害空转
         const buffered = pendingRef.current ?? [];
+        const usageSnapshot = openUsageFrame(win.context_used, win.context_window);
         startTransition(() => {
-          setState((s) => reduceBatch(s, [...(win.frames as Frame[]), ...buffered]));
+          setState((s) => reduceBatch(s, [...(win.frames as Frame[]), ...usageSnapshot, ...buffered]));
           // 窗口落地后 running 才可信:composer 的排队补投闸门等这一下;
           // 与 items 同一个 transition,可见即可信
           setLoadedHistory({ id, epoch });

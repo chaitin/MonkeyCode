@@ -453,6 +453,44 @@ pub(super) struct ReplayWindow {
     pub(super) has_more: bool,
 }
 
+/// session/create 的上下文快照。Agent 恢复历史时为了避免 create 阶段重算
+/// token，会只返回 context_window、刻意省略 context_used；缺字段绝不能按 0
+/// 解释，否则会把回放里正确的用量覆盖掉。
+pub(super) fn create_response_context_usage(result: &Value) -> Option<(i64, i64)> {
+    let used = result.get("context_used").and_then(Value::as_i64)?;
+    let window = result.get("context_window").and_then(Value::as_i64)?;
+    (used >= 0 && window > 0).then_some((used, window))
+}
+
+fn frame_context_usage(frame: &Value) -> Option<(i64, i64)> {
+    let update = frame.pointer("/data/update")?;
+    if update.get("sessionUpdate").and_then(Value::as_str) != Some("usage_update") {
+        return None;
+    }
+    let used = update.get("used").and_then(Value::as_i64)?;
+    let window = update.get("size").and_then(Value::as_i64)?;
+    (used >= 0 && window > 0).then_some((used, window))
+}
+
+/// 打开会话的用量快照：本进程缓存优先；缓存缺失或被旧版 resume 的伪 0
+/// 污染时，从回放窗口倒序找最近一次正值。真实上下文包含 system prompt，
+/// 已完成过请求的会话不应因一次“字段缺失”倒退成 0。
+pub(super) fn restored_context_usage(
+    cached: Option<(i64, i64)>,
+    frames: &[Value],
+) -> Option<(i64, i64)> {
+    cached
+        .filter(|(used, window)| *used > 0 && *window > 0)
+        .or_else(|| {
+            frames
+                .iter()
+                .rev()
+                .filter_map(frame_context_usage)
+                .find(|(used, _)| *used > 0)
+        })
+        .or(cached.filter(|(used, window)| *used >= 0 && *window > 0))
+}
+
 /// 从 pos 起补读日志新增部分,解析出的帧追加到 out,pos 前移。
 /// 只消费到最后一个完整行:并发追加下可能读到半行(writeln 非单次
 /// syscall),半行留待下次补读,绝不把破损 JSON 吞掉或错位 pos;
@@ -800,11 +838,18 @@ impl OhmyDriver {
                 json!({ "text": "正在恢复会话…", "connected": false }),
             );
         }
-        Ok(json!({
+        let cached_usage = self.0.sess.sessions.lock_ok().get(id).and_then(|s| s.context_usage);
+        let restored_usage = restored_context_usage(cached_usage, &window.frames);
+        let mut response = json!({
             "frames": window.frames,
             "cursor": window.cursor,
             "has_more": window.has_more,
-        }))
+        });
+        if let Some((used, context_window)) = restored_usage {
+            response["context_used"] = json!(used);
+            response["context_window"] = json!(context_window);
+        }
+        Ok(response)
     }
 
     /// 后台 resume:引擎握手挪出打开路径。结果经 watch 广播给
@@ -931,12 +976,12 @@ impl OhmyDriver {
         }
         // resume 重建 loop,思考档位回落到模型默认,重放会话已选档位
         self.apply_session_think(id, &engine_id).await;
-        // resume 结果带恢复历史的占用估计,立即可显示(296176a)
-        self.0.push_usage(
-            id,
-            result.get("context_used").and_then(|v| v.as_i64()).unwrap_or(0),
-            result.get("context_window").and_then(|v| v.as_i64()).unwrap_or(0),
-        );
+        // Agent 的 resume 结果会省略 context_used（避免 create 阶段重算
+        // token）。只有两个字段都明确存在才更新；回放快照已由 session_open
+        // 恢复，绝不能用字段缺失合成的 0 覆盖它。
+        if let Some((used, window)) = create_response_context_usage(&result) {
+            self.0.push_usage(id, used, window);
+        }
         Ok(())
     }
 
@@ -1860,12 +1905,11 @@ impl OhmyDriver {
             let e = new_eng.clone();
             self.write_sidecar(id, |m| m["engine_id"] = json!(e));
         }
-        // resume 结果带恢复历史的占用估计(296176a)
-        self.0.push_usage(
-            id,
-            result.get("context_used").and_then(|v| v.as_i64()).unwrap_or(0),
-            result.get("context_window").and_then(|v| v.as_i64()).unwrap_or(0),
-        );
+        // 同 resume_engine：字段缺失不是 0。切模型/技能触发的重建也不得
+        // 把 composer 已显示的上下文占用清空。
+        if let Some((used, window)) = create_response_context_usage(&result) {
+            self.0.push_usage(id, used, window);
+        }
         Ok(())
     }
 

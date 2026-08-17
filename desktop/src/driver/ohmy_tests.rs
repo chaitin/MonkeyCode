@@ -15,7 +15,9 @@ use tokio::sync::mpsc;
 use super::*;
 use crate::config::DesktopConfig;
 use crate::driver::frame;
-use crate::driver::session::{SessionState, SessionsState};
+use crate::driver::session::{
+    create_response_context_usage, restored_context_usage, SessionState, SessionsState,
+};
 use crate::driver::subagent::SubagentState;
 use crate::driver::transport::{find_ohmyagent, spawn_journal_writer, JournalMsg, TransportState};
 
@@ -1900,6 +1902,62 @@ fn streaming_usage_updates_emitting_agent_without_parent_leak() {
     };
     assert_eq!(usage_of("main"), vec![(1_234, 200_000)]);
     assert_eq!(usage_of("child"), vec![(45_678, 64_000)]);
+}
+
+/// Agent 的 resume 契约会给 context_window、刻意省略 context_used。
+/// Desktop 不能把缺字段当 0；已经被旧版伪 0 污染的窗口则回退到最近一次
+/// 正值，让切回本地任务时无需再发一轮对话就能恢复 composer 上下文环。
+#[test]
+fn resume_usage_omission_does_not_overwrite_replayed_context() {
+    assert_eq!(
+        create_response_context_usage(&json!({ "context_window": 200_000 })),
+        None
+    );
+    assert_eq!(
+        create_response_context_usage(&json!({
+            "context_used": 45_678,
+            "context_window": 200_000,
+        })),
+        Some((45_678, 200_000))
+    );
+
+    let frames = vec![
+        frame::usage_update(45_678, 200_000, 8),
+        frame::usage_update(0, 200_000, 9),
+    ];
+    assert_eq!(restored_context_usage(None, &frames), Some((45_678, 200_000)));
+    assert_eq!(
+        restored_context_usage(Some((0, 200_000)), &frames),
+        Some((45_678, 200_000))
+    );
+    // 本进程内若已有更新的正值缓存，以缓存为准，不让旧回放倒灌。
+    assert_eq!(
+        restored_context_usage(Some((50_000, 200_000)), &frames),
+        Some((50_000, 200_000))
+    );
+}
+
+#[tokio::test]
+async fn session_open_returns_recovered_usage_after_legacy_zero_tail() {
+    let inner = bare_inner("open-usage-recovery");
+    let mut session = bare_session("s1");
+    session.running = false;
+    session.context_usage = Some((0, 200_000)); // 旧版 resume 已污染的内存快照
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+
+    inner.push_frame("s1", frame::task_started);
+    inner.push_frame("s1", |seq| frame::usage_update(45_678, 200_000, seq));
+    inner.push_frame("s1", frame::task_ended);
+    inner.journal_barrier();
+    // 旧版在空闲 resume 后追加的孤立伪 0；它晚于正确轮次，普通 reducer
+    // 会因此显示 0，session_open 快照必须把正确值重新盖回来。
+    inner.push_frame("s1", |seq| frame::usage_update(0, 200_000, seq));
+    inner.journal_barrier();
+
+    let driver = OhmyDriver(inner);
+    let opened = driver.session_open("s1").await.expect("打开会话");
+    assert_eq!(opened.get("context_used").and_then(Value::as_i64), Some(45_678));
+    assert_eq!(opened.get("context_window").and_then(Value::as_i64), Some(200_000));
 }
 
 /// 最新 Agent 将 turn/stopped 与 usage 统一成扁平字段；旧版嵌套形状仍
