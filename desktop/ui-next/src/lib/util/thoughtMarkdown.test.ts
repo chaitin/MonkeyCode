@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { thoughtMarkdown, thoughtSummary } from "./thoughtMarkdown";
+import { thoughtLiveSummary, thoughtMarkdown, thoughtSummary } from "./thoughtMarkdown";
 
 describe("thoughtMarkdown(流式 **** 连拼修复)", () => {
   it("相邻加粗标题的 **** 拆成段落边界", () => {
@@ -26,15 +26,34 @@ describe("thoughtSummary(折叠态摘要行源文)", () => {
     expect(thoughtSummary("**看日志**")).toBe("**看日志**");
   });
 
-  it("截断切开 ** 时补齐:否则 marked 会把整行连同前导 ** 原样吐出", () => {
-    // 上限内闭合不了 → 末尾补一个 **,强调仍成对
-    expect(thoughtSummary("**" + "长".repeat(100) + "**", 10)).toBe("**" + "长".repeat(8) + "**");
-    // 截断点落在完整的一对之后 → 不该多补
-    expect(thoughtSummary("**abc** 余下正文", 7)).toBe("**abc**");
+  it("不按字符数截断，交给卡片实际宽度的 CSS；上游孤立 ** 仍补齐", () => {
+    const long = "**" + "长".repeat(100) + "**";
+    expect(thoughtSummary(long)).toBe(long);
+    expect(thoughtSummary("**尚未闭合")).toBe("**尚未闭合**");
   });
 
   it("空输入与无内容行给空串", () => {
     expect(thoughtSummary("")).toBe("");
     expect(thoughtSummary("\n  \n")).toBe("");
+  });
+});
+
+describe("thoughtLiveSummary(流式折叠态跟随尾部)", () => {
+  it("取最新非空行而不是首行", () => {
+    expect(thoughtLiveSummary("第一步:读取文件\n第二步:核对调用链\n\n")).toBe("第二步:核对调用链");
+  });
+
+  it("整段无换行且持续增长时截取移动尾窗并标省略", () => {
+    expect(thoughtLiveSummary(`开头${"甲".repeat(20)}最新进度`, 8)).toBe("…甲甲甲甲最新进度");
+    expect(thoughtLiveSummary(`开头${"甲".repeat(20)}最新进度完成`, 8)).toBe("…甲甲最新进度完成");
+  });
+
+  it("短的最新加粗标题保留 markdown，截进孤立闭合标记时补齐", () => {
+    expect(thoughtLiveSummary("旧内容\n**正在验证**")).toBe("**正在验证**");
+    expect(thoughtLiveSummary(`**${"长".repeat(20)}完成**`, 6)).toBe("…**长长完成**");
+  });
+
+  it("尾窗不切开 emoji surrogate pair", () => {
+    expect(thoughtLiveSummary("很长的分析过程🐛完成", 4)).toBe("…🐛完成");
   });
 });

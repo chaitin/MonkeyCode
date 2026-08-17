@@ -25,7 +25,7 @@ import { splitAttachments } from "@/lib/protocol/attLine";
 import { THINK_KEY } from "@/lib/protocol/reduce";
 import type { ChatItem, ChatState, Frame, PermItem } from "@/lib/protocol/types";
 import { presentToolCall } from "@/lib/tools/toolLabels";
-import { thoughtMarkdown, thoughtSummary } from "@/lib/util/thoughtMarkdown";
+import { thoughtLiveSummary, thoughtMarkdown, thoughtSummary } from "@/lib/util/thoughtMarkdown";
 import { AskCard } from "./cards/AskCard";
 import { PermCard } from "./cards/PermCard";
 import { statusDot } from "./cards/statusDot";
@@ -125,14 +125,24 @@ function UserBubble({
 
 function ThoughtBlock({ item, streaming }: { item: Extract<ChatItem, { kind: "thought" }>; streaming?: boolean }) {
   const { t } = useI18n();
-  // 正文过 thoughtMarkdown:流式裸拼的相邻加粗标题(****)先补成段落边界
-  const md = thoughtMarkdown(item.text);
-  const summary = thoughtSummary(md);
+  const [open, setOpen] = useState(false);
+  // 折叠流式态只处理固定大小的最新尾窗：头部随当前进度更新，且不会每
+  // 30ms 为不可见正文重解析整段 Markdown。用户展开后才物化完整内容；
+  // 流结束则回到稳定的首行摘要，历史记录仍保持原来的阅读语义。
+  const summary = streaming
+    ? thoughtLiveSummary(item.text)
+    : thoughtSummary(thoughtMarkdown(item.text));
+  const md = open ? thoughtMarkdown(item.text) : "";
   return (
     // 思考块走官方 collapse 形态(native details);展开指示与工具卡统一为
     // 行尾 ChevronRight(open 态转 90°,弃 collapse-arrow 的另一套箭头语言,
     // 用户定案 2026-08-05);时间与其他块一致 hover 显影(group 在 details 上)
-    <details className="group collapse border border-base-300 bg-base-200">
+    <details
+      className="group collapse border border-base-300 bg-base-200"
+      data-thought-streaming={streaming ? "true" : undefined}
+      aria-busy={streaming || undefined}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       {/* ps-2.5 是对齐算出来的,不是随手取的:daisyUI .collapse-title 自带
           padding:1rem,只覆 py/pe 会留下 16px 的左内距,而工具卡/组头是 px-3
           (12px)+ 8px 状态点 → 点心在 16px。这里 12px 的 IconSparkles 要让图标中心
@@ -158,7 +168,7 @@ function ThoughtBlock({ item, streaming }: { item: Extract<ChatItem, { kind: "th
           自带的 1rem 内距把条子推进卡内,任何圆角口径都不碰边。 */}
       <div className="collapse-content text-xs">
         <div className="border-s-2 border-base-300 ps-3">
-          <Markdown source={md} className="opacity-80" deferMermaid={streaming} />
+          {open && <Markdown source={md} className="opacity-80" deferMermaid={streaming} />}
         </div>
       </div>
     </details>
