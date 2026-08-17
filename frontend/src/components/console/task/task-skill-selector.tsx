@@ -98,8 +98,8 @@ function SkillItem({ skill, selectedSkills, onSkillChange }: SkillItemProps) {
     >
       <Checkbox checked={isChecked} disabled={isDisabled} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 text-sm">
-          <span className="truncate">{skill.name}</span>
+        <div className="flex min-w-0 items-center gap-1.5 text-sm">
+          <span className="min-w-0 flex-1 truncate">{skill.name}</span>
           {isForceDelivery && (
             <Tooltip>
               <TooltipTrigger asChild>
