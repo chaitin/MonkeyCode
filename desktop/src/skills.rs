@@ -1,24 +1,16 @@
 // 技能库(skills):壳侧对引擎 SKILL.md 技能的管理与物化。
 //
-// 引擎(ohmyagent)没有任何"启用/禁用技能"的协议入口——它只在
-// session/create 时扫描固定目录(<cwd>/.ohmyagent/skills、
-// $OHMYAGENT_CONFIG_DIR/skills、系统目录、二进制内置),每个技能是
-// `<name>/SKILL.md`(frontmatter 只认 name/description/paths,description
-// 必须单行)。因此壳的控制手段只有文件系统:
+// 引擎在 session/create 时扫描固定目录,每个技能是 `<name>/SKILL.md`
+// (frontmatter 只认 name/description/paths,description 必须单行)。Desktop
+// 使用 Agent 的 session scope 控制每个会话的启用集:
 //
 // - **技能库(权威)**:内置技能随包分发(bundle.resources "skills",
 //   dev 回退仓库内 desktop/skills/),用户技能在 <app_config_dir>/skills/
 //   (壳 UI 增删改,本模块的 skills_* 命令)。同名时用户技能覆盖内置。
-// - **按会话物化(派生)**:driver 在每次引擎 session/create 之前,把该
-//   会话启用的技能子集整体重写到 <engine_dir>/skills/(引擎的 user 级
-//   来源;引擎目录在宿主侧,WSL 模式经 wslpath 注入,两种运行环境同路)。
-//   引擎 catalog 是会话创建时的快照,所以"本会话启用哪些"就由创建前
-//   目录里有什么决定;中途改选择 = destroy + resume 重建(session.rs)。
-//
-// 已知取舍:引擎技能目录是全局一份,多个会话并发且选择不同时,后创建的
-// 会话会重写目录——先前会话的 catalog 不变(快照),但它启用而新会话未启用
-// 的技能正文已被移走,届时 Skill 工具加载报错(引擎友好提示,不致崩)。
-// 换按会话目录只有 cwd 一条路,会污染用户项目,不做。
+// - **按会话物化(派生)**:driver 把启用子集整体重写到
+//   <engine_dir>/sessions/<engine-session-id>/skills/。引擎 catalog 是会话
+//   创建时的快照,所以中途改选择仍需 destroy + resume 重建 loop,但不会
+//   改写其他会话正在使用的技能文件。
 //
 // 技能内容不进 config.json 事务:与 telemetry.json 同理,库本身就是
 // 一目录一文件的权威,坏一个技能只影响它自己。
@@ -239,23 +231,22 @@ pub fn list(builtin: Option<&Path>, user: &Path, defaults: &Path) -> Vec<SkillIn
 
 // ==================== 按会话物化 ====================
 
-/// 把启用子集整体重写到 <engine_dir>/skills/(引擎 user 级来源)。
+/// 把启用子集整体重写到 Agent 的 session skills 目录。
 /// enabled=None 表示"缺省集"(新会话初始;旧 sidecar 无 skills 字段):
 /// 出厂规则 ⊕ defaults 文件的显式开关(is_default_enabled)。返回实际物化
 /// 的技能名(sidecar 落这份快照)。目标目录是纯派生物,整删整建;技能名
 /// 经 valid_skill_name 才可能进库,拼路径安全。
 pub fn materialize(
-    engine_dir: &Path,
+    target: &Path,
     builtin: Option<&Path>,
     user: &Path,
     defaults: &Path,
     enabled: Option<&[String]>,
 ) -> Result<Vec<String>, String> {
-    let target = engine_dir.join("skills");
     if target.exists() {
-        fs::remove_dir_all(&target).map_err(|e| format!("清理引擎技能目录失败: {e}"))?;
+        fs::remove_dir_all(target).map_err(|e| format!("清理会话技能目录失败: {e}"))?;
     }
-    fs::create_dir_all(&target).map_err(|e| format!("创建引擎技能目录失败: {e}"))?;
+    fs::create_dir_all(target).map_err(|e| format!("创建会话技能目录失败: {e}"))?;
     let prefs = load_default_prefs(defaults);
     let mut done = Vec::new();
     for s in scan_store(builtin, user) {
@@ -435,10 +426,12 @@ mod tests {
     }
 
     #[test]
-    fn materialize_writes_enabled_subset_and_wipes_stale() {
+    fn materialize_writes_enabled_subset_and_keeps_sessions_isolated() {
         let builtin = test_dir("mat-builtin");
         let user = test_dir("mat-user");
         let engine = test_dir("mat-engine");
+        let first = engine.join("sessions/first/skills");
+        let second = engine.join("sessions/second/skills");
         put_skill(&builtin, "a", "A");
         put_skill(&user, "b", "B");
         // 辅助资源一并拷贝
@@ -447,18 +440,19 @@ mod tests {
 
         let nodefaults = user.join("no-defaults.json");
         let both =
-            materialize(&engine, Some(&builtin), &user, &nodefaults, Some(&["a".into(), "b".into()]))
+            materialize(&first, Some(&builtin), &user, &nodefaults, Some(&["a".into(), "b".into()]))
                 .unwrap();
         assert_eq!(both, vec!["a", "b"]);
-        assert!(engine.join("skills/b/references/x.md").is_file());
+        assert!(first.join("b/references/x.md").is_file());
 
         let only_b =
-            materialize(&engine, Some(&builtin), &user, &nodefaults, Some(&["b".into()])).unwrap();
+            materialize(&second, Some(&builtin), &user, &nodefaults, Some(&["b".into()])).unwrap();
         assert_eq!(only_b, vec!["b"]);
-        assert!(!engine.join("skills/a").exists(), "未启用的技能必须被清走");
+        assert!(first.join("a").exists(), "更新另一会话不得改写已有会话");
+        assert!(!second.join("a").exists(), "未启用的技能不得写入当前会话");
         // 启用名单里有已删除的技能名:跳过不报错(会话 sidecar 可能引用旧名)
         let gone = materialize(
-            &engine,
+            &second,
             Some(&builtin),
             &user,
             &nodefaults,
@@ -466,23 +460,24 @@ mod tests {
         )
         .unwrap();
         assert_eq!(gone, vec!["b"]);
+        assert!(first.join("a").exists(), "重写当前会话仍不得影响其他会话");
     }
 
     #[test]
     fn default_set_is_factory_rule_overridden_by_prefs() {
         let builtin = test_dir("def-builtin");
         let user = test_dir("def-user");
-        let engine = test_dir("def-engine");
+        let target = test_dir("def-target");
         put_skill(&builtin, "feature-design", "官方默认项");
         put_skill(&builtin, "tailwindcss-helper", "官方非默认项");
         put_skill(&user, "my-skill", "用户技能出厂默认启用");
 
         // 无开关文件:纯出厂规则
         let def =
-            materialize(&engine, Some(&builtin), &user, &user.join("no-defaults.json"), None)
+            materialize(&target, Some(&builtin), &user, &user.join("no-defaults.json"), None)
                 .unwrap();
         assert_eq!(def, vec!["feature-design", "my-skill"]);
-        assert!(!engine.join("skills/tailwindcss-helper").exists());
+        assert!(!target.join("tailwindcss-helper").exists());
 
         // 显式开关压过出厂:关掉官方默认项、打开非默认项与用户技能关闭
         let prefs_path = test_dir("def-prefs").join("skills-defaults.json");
@@ -491,7 +486,7 @@ mod tests {
             r#"{"feature-design": false, "tailwindcss-helper": true, "my-skill": false}"#,
         )
         .unwrap();
-        let def = materialize(&engine, Some(&builtin), &user, &prefs_path, None).unwrap();
+        let def = materialize(&target, Some(&builtin), &user, &prefs_path, None).unwrap();
         assert_eq!(def, vec!["tailwindcss-helper"]);
         // list() 的 default_enabled 与物化同一解析
         let infos = list(Some(&builtin), &user, &prefs_path);

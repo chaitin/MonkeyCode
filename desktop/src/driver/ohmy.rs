@@ -152,9 +152,8 @@ pub(super) struct Inner {
     pub(super) skills_builtin_dir: Option<PathBuf>,
     pub(super) skills_user_dir: PathBuf,
     pub(super) skills_defaults_path: PathBuf,
-    /// 技能物化闸:<engine_dir>/skills 是全局一份,"重写目录 → session/create"
-    /// 必须成对不被并发创建打断(引擎 catalog 按创建时刻的目录内容定格)。
-    /// tokio Mutex——守卫要跨 create RPC 的 await 持有。
+    /// 技能物化闸:同一会话的"重写目录 → session/create"必须成对,
+    /// 避免并发切换互相覆盖。目录本身已按 engine session id 隔离。
     pub(super) skills_gate: tokio::sync::Mutex<()>,
 }
 
