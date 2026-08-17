@@ -1,19 +1,32 @@
-// 设置页「账号」分区:百智云账号(短信/微信扫码登录、模型与 MCP 同步)+
-// MonkeyCode 云账号(桥接/账密登录、用量/签到/邀请、会员模型同步)。
+// 设置页「账号」分区。形态(2026-08-16 用户定案的服务列表布局):登录前后
+// 同一个「服务三选一」手风琴列表——国内版 / 国际版 / 私有化部署三行,
+// 选中(生效)的行展开:
+//
+// - 未登录:选中行展开登录方式(国内版 = 行头 tabs 微信扫码/短信/密码,
+//   微信与短信都是**经百智云 OAuth** 登录 MonkeyCode,成功后自动桥接;
+//   国际版 = 邮箱账密;私有化 = 地址三项 + 保存生效 + 账密),未选中行右侧
+//   一句灰字标注各自的登录方式;点行(radio)即切换,官方版当场静默落盘。
+// - 已登录:选中行展开权益(会员徽标/有效期 + 额度/积分/邀请三瓷片),
+//   其余行给「切换到此服务」——**切换不保留旧会话**(2026-08-16 用户定案):
+//   先走断开(吊销会员模型密钥 → 登出 → 清配置里的会员模型),再切换落盘,
+//   随后按新服务的登录方式重新登录。卡头一句「切换后需重新登录并同步会员
+//   模型」是唯一的说明文案。
+// - 百智云归「其它账号」卡(增值:模型与 MCP 同步;国际版整卡隐藏):
+//   会话在给同步/退出;MonkeyCode 已连而百智云未登录给可选登录入口。
 //
 // 状态语义:
 // - 两路登录态挂载时并发自取(baizhi_status / mc_status),不进全局轮询;
 // - 百智云登录成功顺带桥接 MonkeyCode(mc_login 走同一账号的 OAuth),
-//   桥接失败不阻断——MonkeyCode 卡保留手动「连接」入口;
-// - 断开 MonkeyCode 必须先吊销会员模型密钥再清会话(disconnectMc 收口,
-//   顺序由 lib 与本组件测试双重钉住);
+//   桥接失败不阻断——国内版行保留手动「连接」入口;
+// - 断开 MonkeyCode 的吊销、代次校验、清会话由壳内 mc_disconnect 原子收口;
+//   「切换到此服务」复用同一断开流程,旧服务不得清掉刚切入的新会话;
 // - 同步(baizhi_sync / mc_models_sync)结果经 onSyncResult 交
 //   SettingsView.applySync 并入草稿;干净表单+无任务在跑时那边自动保存,
 //   否则回退保存条——结果行按 autoSaved/blocked 说明白落到哪一步了;
 //   百智云同步把表单此刻持有的网关密钥(knownApiKeys)一并交给壳复用,
 //   不传的话每同步一次就在用户网关账号里多建一把密钥。
-import { IconCheck, IconCopy } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { IconCheck, IconCopy, IconExternalLink } from "@tabler/icons-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import {
@@ -29,10 +42,11 @@ import {
   type McStatus,
   mcModelsSync,
 } from "@/lib/ipc/account";
+import { openExternal } from "@/lib/ipc/host";
 import { inDesktopShell } from "@/lib/ipc/ipc";
 import { copyText } from "@/lib/util/clipboard";
-import type { SettingsDraft } from "@/features/settings/settingsForm";
-import { LoginPanel, PasswordForm } from "./LoginPanel";
+import { MC_CN_URL, MC_INTL_URL, mcEditionOf, type McEdition, type SettingsDraft } from "@/features/settings/settingsForm";
+import { LoginPanel, PasswordForm, SmsTab, WechatTab } from "./LoginPanel";
 import { UsagePanel } from "./UsagePanel";
 
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -125,64 +139,511 @@ function syncOutcome(t: T, applied: SyncApplied | undefined | void): string {
 function MsgLine({ msg }: { msg: Msg }) {
   if (!msg) return null;
   return (
-    <span role={msg.error ? "alert" : "status"} className={msg.error ? "text-xs text-error" : "text-xs text-base-content/60"}>
+    // 长结果(如百智云同步的 MCP 服务清单)钳两行,悬停看全文——操作留言
+    // 不该在卡里铺成一面墙
+    <span
+      role={msg.error ? "alert" : "status"}
+      title={msg.text}
+      className={`line-clamp-2 text-xs ${msg.error ? "text-error" : "text-base-content/60"}`}
+    >
       {msg.text}
     </span>
   );
 }
 
-/** 账号卡壳(旧 UI 设置屏同款形态):logo + 标题/状态徽标 + 副行在左,
- *  动作钮靠右;扩展内容(用量面板/提示行)另起一行。 */
-function AccountCard({
-  logo,
-  onLogoClick,
-  title,
-  badge,
-  subtitle,
-  actions,
-  children,
-}: {
-  logo: string;
-  /** 连点 logo 的彩蛋钩子(自建部署配置解锁;不传即普通装饰图) */
-  onLogoClick?: () => void;
-  title: string;
-  badge?: ReactNode;
-  subtitle?: ReactNode;
-  actions?: ReactNode;
-  children?: ReactNode;
-}) {
+/** 域名链接:副行展示 + 打开网页一体。状态接口回的 host 是裸域名,
+ *  打开时补 https;展示恒去 scheme。 */
+function DomainLink({ url }: { url: string }) {
+  const href = /^https?:\/\//.test(url) ? url : `https://${url}`;
   return (
-    <div className="card card-border bg-base-100">
-      <div className="flex flex-col gap-3 p-4">
-        <div className="flex items-center gap-3">
-          {/* 彩蛋钩子挂在图上就够:它不是功能入口,不进 tab 序、不报可及名 */}
-          <img
-            src={logo}
-            alt=""
-            aria-hidden
-            draggable={false}
-            className="h-9 w-9 shrink-0 rounded-lg"
-            onClick={onLogoClick}
-          />
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-sm font-semibold">{title}</span>
-              {badge}
+    <button
+      type="button"
+      className="inline-flex min-w-0 cursor-pointer items-center gap-1 font-mono text-xs text-base-content/50 transition-colors hover:text-base-content"
+      onClick={() => openExternal(href)}
+    >
+      <span className="truncate">{url.replace(/^https?:\/\//, "")}</span>
+      <IconExternalLink size={11} stroke={1.75} aria-hidden className="shrink-0" />
+    </button>
+  );
+}
+
+const EDITION_ORDER: McEdition[] = ["cn", "intl", "private"];
+
+/** MonkeyCode 服务卡:登录前后同一张「三选一」列表,生效行展开。
+ *  行为逻辑(连接/断开/同步/自动同步/代次守卫)与旧账号卡同一套。 */
+function ServiceCard({
+  status,
+  baizhiLoggedIn,
+  edition,
+  editionReady,
+  showSelector,
+  draft,
+  onDraft,
+  onSelectEdition,
+  onApplyDraft,
+  onRetryApply,
+  saveBusy = false,
+  bridgeErr,
+  onChanged,
+  onLoggedIn,
+  onBaizhiLoggedIn,
+  onMcDisconnected,
+  onResult,
+  autoSyncToken = 0,
+  serviceGeneration,
+  isServiceGenerationCurrent,
+}: {
+  status: McStatus | null;
+  /** 百智云是否已登录:国内版据此在登录态二选一——已登录给「连接」重试钮
+   *  (桥接要拿百智云会话去换 MonkeyCode 会话),未登录给登录 tabs */
+  baizhiLoggedIn: boolean;
+  /** **所选**服务版本(展开的行,立即跟手) */
+  edition: McEdition;
+  /** 所选版本已保存生效。false 时不给登录表单——表单登的是已保存的旧服务 */
+  editionReady: boolean;
+  /** 有设置草稿上下文才给选择能力(radio/切换钮);没有则只渲染生效行 */
+  showSelector: boolean;
+  draft?: SettingsDraft | null;
+  onDraft?: (up: (d: SettingsDraft) => SettingsDraft) => void;
+  /** 选中某版本(宿主 pick 管线:官方版顺带静默落盘) */
+  onSelectEdition: (next: McEdition) => void;
+  /** 私有化「保存生效」直接落盘当前草稿 */
+  onApplyDraft?: (d: SettingsDraft) => void;
+  /** 罕见路径:官方版自动落盘失败后重试(重新提交当前草稿) */
+  onRetryApply?: () => void;
+  saveBusy?: boolean;
+  /** 百智云登录后自动桥接的失败信息(不阻断,行内外显并留手动重试) */
+  bridgeErr: string;
+  onChanged: () => Promise<void>;
+  /** 账密登录/点「连接」成功:宿主刷新状态并起一次会员模型同步(与桥接登录同待遇) */
+  onLoggedIn: (generation: number) => Promise<void>;
+  /** 微信/短信(百智云 OAuth)登录成功:宿主刷新并自动桥接(仅国内版) */
+  onBaizhiLoggedIn: () => void;
+  /** 断开成功后清掉会员模型组(宿主 applyMcDisconnect) */
+  onMcDisconnected?: () => SyncApplied | undefined | void;
+  /** 同步结果交宿主并入设置草稿;回执带跳过名单与自动保存结论(行内外显) */
+  onResult?: (r: McModelsSyncResult) => SyncApplied | undefined | void;
+  /** 登录/桥接真实事件的自动同步信号 */
+  autoSyncToken?: number;
+  /** MonkeyCode 服务代次；旧代次请求完成后不得再修改新服务状态或配置。 */
+  serviceGeneration: number;
+  isServiceGenerationCurrent: (generation: number) => boolean;
+}) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState<"connect" | "disconnect" | "sync" | null>(null);
+  const [msg, setMsg] = useState<Msg>(null);
+  // 国内版登录方式(行头 tabs);桥接重试态里账密作折叠后备
+  const [loginMode, setLoginMode] = useState<"wechat" | "sms" | "password">("wechat");
+  const [pwOpen, setPwOpen] = useState(false);
+  const isCurrentService = () => isServiceGenerationCurrent(serviceGeneration);
+
+  useEffect(() => {
+    setBusy(null);
+    setMsg(null);
+    setLoginMode("wechat");
+    setPwOpen(false);
+  }, [serviceGeneration]);
+
+  // 换版本选择即清操作留言:断开/同步的结果行属于上一个语境,挂在新版本的
+  // 行里读起来像无主噪音(2026-08-15 用户报障:切版本后旧提示一直赖着)
+  useEffect(() => {
+    setMsg(null);
+  }, [edition]);
+
+  const connect = async () => {
+    setBusy("connect");
+    setMsg(null);
+    try {
+      await mcLogin();
+      if (!isCurrentService()) return;
+      // 走 onLoggedIn 而不是 onChanged:连上之后**必须起一次会员模型同步**
+      // (旧 UI settings.tsx 三个「连上即自动同步」触发点之一,这处漏迁)。
+      // 只刷状态的话:①从没同步过的用户点「连接」,行翻成已登录、权益面板
+      // 也出来了,模型页「会员模型」组却仍然空着;②更硬的一种——断开时壳
+      // 已删掉本机 monkeycode-ohmyagent-key.json,而**重建它的唯一路径**是
+      // mc_models_sync → sync_member_models → ensure_ohmyagent_key,不起同步
+      // 就是「断开→重连」之后 key 文件仍然缺失,模型还在、却怎么用都鉴权失败。
+      await onLoggedIn(serviceGeneration);
+    } catch (e) {
+      if (isCurrentService()) setMsg({ text: errMsg(e), error: true });
+    } finally {
+      if (isCurrentService()) setBusy(null);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy("disconnect");
+    setMsg(null);
+    try {
+      const { warning, cancelled } = await disconnectMc(serviceGeneration);
+      if (cancelled || !isCurrentService()) return false;
+      await onChanged();
+      if (!isCurrentService()) return false;
+      // 把已同步的会员模型从配置里清掉(旧 UI disconnectMcWithCleanup)。
+      // 壳侧只删网关 key 与本机 Key 文件,配置里的条目得 UI 自己收——不收的话
+      // 那组模型原样留在列表里(会员行没有删除按钮)、还很可能正是默认模型,
+      // 断开后新建对话直接发消息就鉴权失败,应用内无路可走。
+      const applied = onMcDisconnected?.();
+      const cleaned = applied ? t("account.mc.modelsCleared") + syncOutcome(t, applied) : "";
+      if (warning) setMsg({ text: warning + cleaned, error: true });
+      else if (cleaned) setMsg({ text: cleaned.trimStart() });
+      return true;
+    } catch (e) {
+      if (isCurrentService()) setMsg({ text: errMsg(e), error: true });
+      return false;
+    } finally {
+      if (isCurrentService()) setBusy(null);
+    }
+  };
+
+  /** 「切换到此服务」= 壳内原子断开后清会员模型、再选中目标版本。
+   *  不保留旧会话(2026-08-16 用户定案:同一时间只用一个服务);官方目标
+   *  经 onSelectEdition 顺带静默落盘,私有化目标切到地址表单待填。 */
+  const switchService = async (next: McEdition) => {
+    if (!(await disconnect()) || !isCurrentService()) return;
+    onSelectEdition(next);
+  };
+
+  const sync = async () => {
+    setBusy("sync");
+    setMsg(null);
+    try {
+      const r: McModelsSyncResult = await mcModelsSync(serviceGeneration);
+      if (!isCurrentService()) return;
+      const notes = r.notes?.length ? ` ${r.notes.join(t("common.semiSep"))}` : "";
+      // 空结果按失败说(旧 UI 同款):没有会员权益时「已获取 0 个会员模型…
+      // 保存后生效」看着像成功;且不往下并入,免得一次 no-op 合并白白触发
+      // 自动保存重启引擎
+      if (!r.models.length) {
+        setMsg({ text: t("account.mc.syncEmpty") + notes, error: true });
+        return;
+      }
+      const applied = onResult?.(r);
+      const skipped = applied && applied.skipped.length ? ` ${t("account.sync.skipped", { names: applied.skipped.join(t("common.listSep")) })}` : "";
+      setMsg({ text: t("account.mc.syncDone", { models: r.models.length }) + syncOutcome(t, applied) + notes + skipped });
+    } catch (e) {
+      if (isCurrentService()) setMsg({ text: errMsg(e), error: true });
+    } finally {
+      if (isCurrentService()) setBusy(null);
+    }
+  };
+
+  const connected = !!status?.logged_in;
+  const user = status?.user;
+  const userName = user?.name || user?.username || user?.email || t("account.loggedIn");
+
+  // 登录/桥接即自动同步(语义同 BaizhiRow)。依赖必须与守卫一致:守卫读
+  // connected 却只依赖 token,靠的是 onBaizhiLoggedIn 里 refresh 与 bump 被
+  // React 批到同一次提交——一旦 connected 晚一次提交才翻真(状态刷新与
+  // bump 分批、mc_status 慢一步),effect 早跑完了,这一路同步就永远不发生。
+  // 补依赖后要防重复:同一个 token 只认一次边沿,connected 反复翻转不重发
+  const syncedToken = useRef(0);
+  useEffect(() => {
+    if (autoSyncToken > 0 && connected && syncedToken.current !== autoSyncToken) {
+      syncedToken.current = autoSyncToken;
+      void sync();
+    }
+    // sync 每渲染新引用但行为稳定,只认 token/连接态边沿
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSyncToken, connected]);
+
+  const guardedPasswordLogin = async () => {
+    if (isCurrentService()) await onLoggedIn(serviceGeneration);
+  };
+
+  const rowTitle = (r: McEdition) =>
+    r === "cn" ? t("account.edition.cn") : r === "intl" ? t("account.edition.intl") : t("account.edition.private");
+  const rowHint = (r: McEdition) =>
+    r === "cn"
+      ? t("account.edition.cnMethods")
+      : r === "intl"
+        ? t("account.edition.intlMethods")
+        : t("account.edition.privateMethods");
+
+  /** 私有化三项 + 保存生效(选中私有化行的展开区恒在;官方预填不回显)。 */
+  const privateFields = draft && onDraft && (
+    <>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium">{t("account.server.baseUrl")}</span>
+        <input
+          className="input input-sm w-full font-mono"
+          // 官方地址不回显:它不是私有地址,预填只会误导;真私有配置照常
+          value={mcEditionOf(draft.mcBaseUrl) === "private" ? draft.mcBaseUrl : ""}
+          placeholder={t("account.server.baseUrlPlaceholder")}
+          onChange={(e) => onDraft((d) => ({ ...d, mcBaseUrl: e.target.value }))}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium">{t("account.server.basicAuth")}</span>
+        <input
+          type="password"
+          className="input input-sm w-full font-mono"
+          value={draft.mcBasicAuth}
+          placeholder="user:pass"
+          title={t("account.server.basicAuthHint")}
+          onChange={(e) => onDraft((d) => ({ ...d, mcBasicAuth: e.target.value }))}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium">{t("account.server.llmBaseUrl")}</span>
+        <input
+          className="input input-sm w-full font-mono"
+          value={draft.mcLlmBaseUrl}
+          placeholder={t("account.server.llmBaseUrlPlaceholder")}
+          title={t("account.server.llmBaseUrlHint")}
+          onChange={(e) => onDraft((d) => ({ ...d, mcLlmBaseUrl: e.target.value }))}
+        />
+      </label>
+      <p className="text-xs leading-relaxed text-base-content/60">{t("account.server.hint")}</p>
+      {onApplyDraft && (
+        <button
+          type="button"
+          className="btn btn-primary btn-sm self-start"
+          disabled={saveBusy}
+          onClick={() => onApplyDraft(draft)}
+        >
+          {saveBusy && <span className="loading loading-spinner loading-xs" aria-hidden />}
+          {t("account.edition.apply")}
+        </button>
+      )}
+    </>
+  );
+
+  /** 选中行的登录区(未连接)。私有化行地址字段恒在,其余按生效与否分流。 */
+  const loginContent = (r: McEdition) => {
+    if (r === "private") {
+      return (
+        <>
+          {privateFields}
+          {saveBusy ? (
+            <p className="flex items-center gap-2 text-xs text-base-content/60">
+              <span className="loading loading-spinner loading-xs" aria-hidden />
+              {t("account.edition.switching")}
+            </p>
+          ) : editionReady ? (
+            <div className="border-t border-base-300 pt-3">
+              <PasswordForm onLoggedIn={guardedPasswordLogin} />
             </div>
-            {subtitle && (
-              <div className="flex min-w-0 items-center gap-1.5 text-xs text-base-content/60">{subtitle}</div>
+          ) : (
+            <p className="text-xs text-base-content/60">{t("account.edition.needServerUrl")}</p>
+          )}
+        </>
+      );
+    }
+    if (!editionReady) {
+      // 正常路径:点官方版即自动落盘,这里只闪一下「切换中」;仅自动落盘
+      // 失败(校验不过/写盘失败)才给「重试」兜底——表单跟着选择走、动作
+      // 却打旧服务是登错服务器,宁可让位
+      return saveBusy ? (
+        <p className="flex items-center gap-2 text-xs text-base-content/60">
+          <span className="loading loading-spinner loading-xs" aria-hidden />
+          {t("account.edition.switching")}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-base-content/60">{t("account.edition.notApplied")}</p>
+          {onRetryApply && (
+            <button type="button" className="btn btn-sm self-start" onClick={onRetryApply}>
+              {t("account.edition.retry")}
+            </button>
+          )}
+        </div>
+      );
+    }
+    if (r === "intl") return <PasswordForm onLoggedIn={guardedPasswordLogin} />;
+    // 国内版:有百智云会话 = 「连接」重试 + 账密后备;否则按行头 tabs 出窗格
+    if (baizhiLoggedIn) {
+      return (
+        <>
+          {/* 这颗按钮的存在理由必须说:拿现有百智云会话一键换 MonkeyCode
+              会话,不用重扫码——不说的话按钮显得莫名其妙(2026-08-16 用户问
+              「这个页面状态是啥意思」) */}
+          <p className="text-xs text-base-content/60">{t("account.mc.bridgeHint")}</p>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm w-full"
+            disabled={busy !== null || saveBusy}
+            onClick={() => void connect()}
+          >
+            {busy === "connect" && <span className="loading loading-spinner loading-xs" aria-hidden />}
+            {busy === "connect" ? t("account.mc.connecting") : t("account.mc.connect")}
+          </button>
+          {/* 账密登录:不经百智云的手动路径(桥接失败/换账号) */}
+          {pwOpen ? (
+            <div className="flex flex-col gap-2 border-t border-base-300 pt-3">
+              <PasswordForm onLoggedIn={guardedPasswordLogin} />
+              <button
+                type="button"
+                className="btn btn-link btn-xs self-start px-0 font-normal text-base-content/50 no-underline hover:text-base-content"
+                onClick={() => setPwOpen(false)}
+              >
+                {t("account.pw.collapse")}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-link btn-xs self-start px-0 font-normal text-base-content/50 no-underline hover:text-base-content"
+              onClick={() => setPwOpen(true)}
+            >
+              {t("account.pw.entry")}
+            </button>
+          )}
+        </>
+      );
+    }
+    return loginMode === "wechat" ? (
+      <WechatTab onLoggedIn={onBaizhiLoggedIn} />
+    ) : loginMode === "sms" ? (
+      <SmsTab onLoggedIn={onBaizhiLoggedIn} />
+    ) : (
+      <PasswordForm onLoggedIn={guardedPasswordLogin} />
+    );
+  };
+
+  const renderRow = (r: McEdition) => {
+    const active = r === edition;
+    const rowConnected = active && connected;
+    const showTabs = active && !connected && r === "cn" && editionReady && !baizhiLoggedIn;
+    return (
+      <div
+        key={r}
+        // 选中态 = 左侧主题色条 + 展开,不整块铺色:mock 就是纯底 + 色条,
+        // 大面积淡色块会把登录表单泡在色汤里(2026-08-16 用户报障「丑」)
+        className={`flex flex-col border-s-4 ${active ? "border-primary" : "border-transparent"}`}
+      >
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          {!connected && showSelector && (
+            <input
+              type="radio"
+              name="mc-edition"
+              className="radio radio-primary radio-sm shrink-0"
+              aria-label={rowTitle(r)}
+              checked={active}
+              disabled={saveBusy}
+              onChange={() => onSelectEdition(r)}
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-semibold">{rowTitle(r)}</span>
+              {rowConnected && (
+                <span className="badge badge-success badge-soft badge-xs shrink-0">{t("account.loggedIn")}</span>
+              )}
+            </div>
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-base-content/50">
+              {rowConnected ? (
+                // 副行 = 身份的次级事实:主机名(可点开网页)+ 昵称 + 用户 ID
+                // (可复制);会员档位与有效期归下方权益面板首行,不挤在这一行
+                <>
+                  {(status?.base_url || status?.host) && <DomainLink url={status.base_url || status.host} />}
+                  <span aria-hidden className="shrink-0 text-base-content/30">
+                    ·
+                  </span>
+                  <span className="truncate">{userName}</span>
+                  {user?.id && (
+                    <>
+                      <span aria-hidden className="shrink-0 text-base-content/30">
+                        ·
+                      </span>
+                      <UserIdChip id={user.id} />
+                    </>
+                  )}
+                </>
+              ) : r === "private" ? (
+                <span className="truncate">{t("account.edition.privateSubtitle")}</span>
+              ) : (
+                <DomainLink url={r === "intl" ? MC_INTL_URL : MC_CN_URL} />
+              )}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {rowConnected ? (
+              <>
+                <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void sync()}>
+                  {busy === "sync" && <span className="loading loading-spinner loading-xs" aria-hidden />}
+                  {busy === "sync" ? t("account.syncing") : t("account.mc.sync")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm text-base-content/60"
+                  disabled={busy !== null || saveBusy}
+                  onClick={() => void disconnect()}
+                >
+                  {busy === "disconnect" ? t("account.mc.disconnecting") : t("account.mc.disconnect")}
+                </button>
+              </>
+            ) : showTabs ? (
+              <div role="tablist" className="tabs tabs-border tabs-sm">
+                {(["wechat", "sms", "password"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="tab"
+                    className={loginMode === m ? "tab tab-active" : "tab"}
+                    aria-selected={loginMode === m}
+                    onClick={() => setLoginMode(m)}
+                  >
+                    {t(m === "wechat" ? "account.tab.wechat" : m === "sms" ? "account.tab.sms" : "account.tab.password")}
+                  </button>
+                ))}
+              </div>
+            ) : !active && connected && showSelector ? (
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={busy !== null || saveBusy}
+                onClick={() => void switchService(r)}
+              >
+                {t("account.service.switchTo")}
+              </button>
+            ) : !active ? (
+              <span className="text-xs text-base-content/40">{rowHint(r)}</span>
+            ) : null}
+          </div>
+        </div>
+        {active && (
+          <div className="px-4 pb-5">
+            {rowConnected ? (
+              <div className="flex flex-col gap-3">
+                <UsagePanel userId={user?.id} />
+                <MsgLine msg={msg} />
+              </div>
+            ) : (
+              <div className="mx-auto flex w-full max-w-sm flex-col gap-2.5 pt-1">
+                {bridgeErr && (
+                  <span role="alert" className="text-xs text-error">
+                    {t("account.mc.connectFailed", { message: bridgeErr })}
+                  </span>
+                )}
+                {loginContent(r)}
+                <MsgLine msg={msg} />
+              </div>
             )}
           </div>
-          {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
-        </div>
-        {children}
+        )}
       </div>
+    );
+  };
+
+  // 无设置草稿上下文(浏览器只读/配置载入失败)给不了切换能力:只渲染生效行
+  const rows = showSelector ? EDITION_ORDER : EDITION_ORDER.filter((r) => r === edition);
+
+  return (
+    <div className="card card-border overflow-hidden bg-base-100">
+      {connected && showSelector && (
+        <div className="flex items-center justify-between gap-3 border-b border-base-300 bg-base-200/40 px-4 py-2">
+          <span className="text-xs font-semibold text-base-content/70">{t("account.service.title")}</span>
+          <span className="truncate text-xs text-base-content/40">{t("account.service.switchNote")}</span>
+        </div>
+      )}
+      <div className="divide-y divide-base-300">{rows.map(renderRow)}</div>
     </div>
   );
 }
 
-/** 百智云账号卡(已登录形态)。 */
-function BaizhiCard({
+/** 百智云行(其它账号卡内,已登录形态):同步模型与 MCP + 退出。 */
+function BaizhiRow({
   status,
   knownKeys,
   onChanged,
@@ -193,10 +654,10 @@ function BaizhiCard({
   /** 表单此刻持有的网关明文密钥(见 knownApiKeys):交壳复用,免重复建 key */
   knownKeys: string[];
   onChanged: () => Promise<void>;
-  /** 同步结果交宿主并入设置草稿;回执带跳过名单与自动保存结论(卡内外显) */
+  /** 同步结果交宿主并入设置草稿;回执带跳过名单与自动保存结论(行内外显) */
   onResult?: (r: BaizhiSyncResult) => SyncApplied | undefined | void;
   /** 登录真实事件的自动同步信号(宿主 bump;0 = 无,打开设置读到既有登录态
-   * 不触发)。卡在登录后才挂载,同步逻辑又在卡内,登录瞬间够不着——经
+   * 不触发)。行在登录后才挂载,同步逻辑又在行内,登录瞬间够不着——经
    * token 延迟触发(旧 UI「登录成功即自动同步」用户拍板行为的 ui-next 版) */
   autoSyncToken?: number;
 }) {
@@ -226,9 +687,9 @@ function BaizhiCard({
       const applied = onResult?.(r);
       const skipped = applied && applied.skipped.length ? ` ${t("account.sync.skipped", { names: applied.skipped.join(t("common.listSep")) })}` : "";
       // 首次同步会在**用户自己的网关账号**里新建并启用一把推理密钥。这件事
-      // 必须说(旧 UI settings.tsx:1176 有这句,ui-next 只解析不渲染):不说的话
-      // 用户日后在网关后台看到这把来路不明的 key,很可能当成多余项删掉,本地
-      // 百智云模型随即集体鉴权失败,而现场与那次同步之间没有任何线索可连
+      // 必须说(旧 UI settings.tsx:1176 有这句):不说的话用户日后在网关后台
+      // 看到这把来路不明的 key,很可能当成多余项删掉,本地百智云模型随即
+      // 集体鉴权失败,而现场与那次同步之间没有任何线索可连
       const keyLine = r.key_created ? ` ${t("account.baizhi.keyCreated", { name: r.key_name || "MonkeyCode" })}` : "";
       setMsg({
         text:
@@ -256,22 +717,36 @@ function BaizhiCard({
   };
 
   // 登录即自动同步:token 变化(含挂载时已非 0——refresh 与 bump 同批提交
-  // 时卡首挂载就带着新值)触发一次;sync 自带 syncing 态,不需再防抖
+  // 时行首挂载就带着新值)触发一次;sync 自带 syncing 态,不需再防抖
   useEffect(() => {
     if (autoSyncToken > 0) void sync();
     // sync 每渲染新引用但行为稳定,只认 token 边沿
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSyncToken]);
 
+  const name = profileName(status.profile);
   return (
-    <AccountCard
-      logo="/baizhi-logo.png"
-      // 组头已表明「百智云账号」,卡头显登录身份,不再重复产品名
-      title={profileName(status.profile) || t("account.loggedIn")}
-      badge={<span className="badge badge-success badge-soft badge-xs shrink-0">{t("account.loggedIn")}</span>}
-      subtitle={<span className="truncate font-mono text-xs text-base-content/50">{status.host}</span>}
-      actions={
-        <>
+    <div className="flex flex-col gap-2 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <img src="/baizhi-logo.png" alt="" aria-hidden draggable={false} className="h-9 w-9 shrink-0 rounded-lg" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-semibold">{t("account.baizhi.title")}</span>
+            <span className="badge badge-success badge-soft badge-xs shrink-0">{t("account.loggedIn")}</span>
+          </div>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-base-content/50">
+            <DomainLink url={status.host} />
+            {name && (
+              <>
+                <span aria-hidden className="shrink-0 text-base-content/30">
+                  ·
+                </span>
+                <span className="truncate">{name}</span>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
           <button type="button" className="btn btn-sm" disabled={syncing} onClick={() => void sync()}>
             {syncing && <span className="loading loading-spinner loading-xs" aria-hidden />}
             {syncing ? t("account.syncing") : t("account.baizhi.sync")}
@@ -279,292 +754,32 @@ function BaizhiCard({
           <button type="button" className="btn btn-ghost btn-sm text-base-content/60" onClick={() => void logout()}>
             {t("account.baizhi.logout")}
           </button>
-        </>
-      }
-    >
-      <MsgLine msg={msg} />
-    </AccountCard>
-  );
-}
-
-/** MonkeyCode 云账号卡:未连=连接入口;已连=账号信息 + 用量面板 +
- *  会员模型同步 + 断开(先 revoke 再 logout)。 */
-function McCard({
-  status,
-  baizhiLoggedIn,
-  bridgeErr,
-  onChanged,
-  onLoggedIn,
-  onMcDisconnected,
-  onResult,
-  autoSyncToken = 0,
-  onLogoClick,
-}: {
-  status: McStatus | null;
-  /** 百智云是否已登录:决定「连接」主钮出不出(桥接要拿百智云会话去换
-   *  MonkeyCode 会话,未登录时点它必失败,不摆这个死钮) */
-  baizhiLoggedIn: boolean;
-  /** 百智云登录后自动桥接的失败信息(不阻断,卡内外显并留手动重试) */
-  bridgeErr: string;
-  onChanged: () => Promise<void>;
-  /** 账密登录/点「连接」成功:宿主刷新状态并起一次会员模型同步(与桥接登录同待遇) */
-  onLoggedIn: () => Promise<void>;
-  /** 断开成功后清掉会员模型组(宿主 applyMcDisconnect) */
-  onMcDisconnected?: () => SyncApplied | undefined | void;
-  /** 同步结果交宿主并入设置草稿;回执带跳过名单与自动保存结论(卡内外显) */
-  onResult?: (r: McModelsSyncResult) => SyncApplied | undefined | void;
-  /** 连点卡图标的彩蛋钩子(自建部署配置解锁),由分区计数 */
-  onLogoClick?: () => void;
-  /** 登录/桥接真实事件的自动同步信号(语义同 BaizhiCard.autoSyncToken) */
-  autoSyncToken?: number;
-}) {
-  const { t } = useI18n();
-  const [busy, setBusy] = useState<"connect" | "disconnect" | "sync" | null>(null);
-  const [msg, setMsg] = useState<Msg>(null);
-  const [pwOpen, setPwOpen] = useState(false);
-
-  const connect = async () => {
-    setBusy("connect");
-    setMsg(null);
-    try {
-      await mcLogin();
-      // 走 onLoggedIn 而不是 onChanged:连上之后**必须起一次会员模型同步**
-      // (旧 UI settings.tsx 三个「连上即自动同步」触发点之一,这处漏迁)。
-      // 只刷状态的话:①从没同步过的用户点「连接」,卡片翻成已登录、用量面板
-      // 也出来了,模型页「会员模型」组却仍然空着;②更硬的一种——断开时壳
-      // 已删掉本机 monkeycode-ohmyagent-key.json,而**重建它的唯一路径**是
-      // mc_models_sync → sync_member_models → ensure_ohmyagent_key,不起同步
-      // 就是「断开→重连」之后 key 文件仍然缺失,模型还在、却怎么用都鉴权失败。
-      await onLoggedIn();
-    } catch (e) {
-      setMsg({ text: errMsg(e), error: true });
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const disconnect = async () => {
-    setBusy("disconnect");
-    setMsg(null);
-    try {
-      const { warning } = await disconnectMc();
-      await onChanged();
-      // 第四步:把已同步的会员模型从配置里清掉(旧 UI disconnectMcWithCleanup)。
-      // 壳侧只删网关 key 与本机 Key 文件,配置里的条目得 UI 自己收——不收的话
-      // 那组模型原样留在列表里(会员行没有删除按钮)、还很可能正是默认模型,
-      // 断开后新建对话直接发消息就鉴权失败,应用内无路可走。
-      const applied = onMcDisconnected?.();
-      const cleaned = applied ? t("account.mc.modelsCleared") + syncOutcome(t, applied) : "";
-      if (warning) setMsg({ text: warning + cleaned, error: true });
-      else if (cleaned) setMsg({ text: cleaned.trimStart() });
-    } catch (e) {
-      setMsg({ text: errMsg(e), error: true });
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const sync = async () => {
-    setBusy("sync");
-    setMsg(null);
-    try {
-      const r: McModelsSyncResult = await mcModelsSync();
-      const notes = r.notes?.length ? ` ${r.notes.join(t("common.semiSep"))}` : "";
-      // 空结果按失败说(旧 UI 同款,理由同 BaizhiCard.sync):没有会员权益时
-      // 「已获取 0 个会员模型…保存后生效」看着像成功;且不往下并入,免得
-      // 一次 no-op 合并白白触发自动保存重启引擎
-      if (!r.models.length) {
-        setMsg({ text: t("account.mc.syncEmpty") + notes, error: true });
-        return;
-      }
-      const applied = onResult?.(r);
-      const skipped = applied && applied.skipped.length ? ` ${t("account.sync.skipped", { names: applied.skipped.join(t("common.listSep")) })}` : "";
-      setMsg({ text: t("account.mc.syncDone", { models: r.models.length }) + syncOutcome(t, applied) + notes + skipped });
-    } catch (e) {
-      setMsg({ text: errMsg(e), error: true });
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const connected = !!status?.logged_in;
-  const user = status?.user;
-  const userName = user?.name || user?.username || user?.email || t("account.loggedIn");
-
-  // 登录/桥接即自动同步(语义同 BaizhiCard)。依赖必须与守卫一致:守卫读
-  // connected 却只依赖 token,靠的是 onBaizhiLoggedIn 里 refresh 与 bump 被
-  // React 批到同一次提交——一旦 connected 晚一次提交才翻真(状态刷新与
-  // bump 分批、mc_status 慢一步),effect 早跑完了,这一路同步就永远不发生。
-  // 补依赖后要防重复:同一个 token 只认一次边沿,connected 反复翻转不重发
-  const syncedToken = useRef(0);
-  useEffect(() => {
-    if (autoSyncToken > 0 && connected && syncedToken.current !== autoSyncToken) {
-      syncedToken.current = autoSyncToken;
-      void sync();
-    }
-    // sync 每渲染新引用但行为稳定,只认 token/连接态边沿
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSyncToken, connected]);
-
-  if (!connected) {
-    return (
-      <AccountCard
-        logo="/logo.png"
-        onLogoClick={onLogoClick}
-        title={t("account.notConnected")}
-        subtitle={
-          <span className="truncate">
-            {baizhiLoggedIn ? t("account.mc.notConnected") : t("account.mc.notConnectedIdle")}
-          </span>
-        }
-        actions={
-          baizhiLoggedIn && (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={busy === "connect"}
-              onClick={() => void connect()}
-            >
-              {busy === "connect" && <span className="loading loading-spinner loading-xs" aria-hidden />}
-              {busy === "connect" ? t("account.mc.connecting") : t("account.mc.connect")}
-            </button>
-          )
-        }
-      >
-        {bridgeErr && (
-          <span role="alert" className="text-xs text-error">
-            {t("account.mc.connectFailed", { message: bridgeErr })}
-          </span>
-        )}
-        {/* 账密登录:不经百智云的手动路径(桥接失败/私有化/换账号)。入口与
-            表单都在本卡内——它登的是 MonkeyCode 账号,挂在百智云登录卡下方
-            是把两块账号串到一处(用户报障 2026-08-06) */}
-        {pwOpen ? (
-          <div className="flex max-w-sm flex-col gap-2 border-t border-base-300 pt-3">
-            <p className="text-xs text-base-content/60">{t("account.pw.hint")}</p>
-            <PasswordForm onLoggedIn={onLoggedIn} />
-            <button
-              type="button"
-              className="btn btn-link btn-xs self-start px-0 font-normal text-base-content/50 no-underline hover:text-base-content"
-              onClick={() => setPwOpen(false)}
-            >
-              {t("account.pw.collapse")}
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="btn btn-link btn-xs self-start px-0 font-normal text-base-content/50 no-underline hover:text-base-content"
-            onClick={() => setPwOpen(true)}
-          >
-            {t("account.pw.entry")}
-          </button>
-        )}
-        <MsgLine msg={msg} />
-      </AccountCard>
-    );
-  }
-  return (
-    <AccountCard
-      logo="/logo.png"
-      onLogoClick={onLogoClick}
-      // 组头已表明「MonkeyCode 云端」,卡头显登录身份
-      title={userName}
-      badge={<span className="badge badge-success badge-soft badge-xs shrink-0">{t("account.loggedIn")}</span>}
-      subtitle={
-        // 副行 = 身份的次级事实:主机名 + 用户 ID(移动端把 ID 摆在邮箱行
-        // 下方同一身份块,桌面卡是横向的,并入同一行)
-        <>
-          <span className="truncate font-mono text-xs text-base-content/50">{status?.host}</span>
-          {user?.id && (
-            <>
-              <span aria-hidden className="shrink-0 text-base-content/30">
-                ·
-              </span>
-              <UserIdChip id={user.id} />
-            </>
-          )}
-        </>
-      }
-      actions={
-        <>
-          <button type="button" className="btn btn-sm" disabled={busy === "sync"} onClick={() => void sync()}>
-            {busy === "sync" && <span className="loading loading-spinner loading-xs" aria-hidden />}
-            {busy === "sync" ? t("account.syncing") : t("account.mc.sync")}
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm text-base-content/60"
-            disabled={busy === "disconnect"}
-            onClick={() => void disconnect()}
-          >
-            {busy === "disconnect" ? t("account.mc.disconnecting") : t("account.mc.disconnect")}
-          </button>
-        </>
-      }
-    >
-      {/* 权益面板归卡内次级区块,分隔线切开身份行与权益块 */}
-      <div className="border-t border-base-300 pt-3">
-        <UsagePanel userId={user?.id} />
-      </div>
-      <MsgLine msg={msg} />
-    </AccountCard>
-  );
-}
-
-const SERVER_CFG_KEY = "mc.serverConfigUnlocked";
-const UNLOCK_CLICKS = 6;
-
-/** 自建/私有化部署地址(账号分区末尾的高级块)。默认隐藏:连点 MonkeyCode
- *  卡图标 6 次解锁,解锁态持久;已配置过任一项的用户恒可见——否则升级后
- *  自己的配置凭空消失(旧 UI 同款门禁)。三项都进保存条,但壳在启动时才
- *  构造云端服务,故保存后还要**重启应用**才生效。 */
-function ServerConfigBlock({
-  draft,
-  onDraft,
-}: {
-  draft: SettingsDraft;
-  onDraft: (up: (d: SettingsDraft) => SettingsDraft) => void;
-}) {
-  const { t } = useI18n();
-  return (
-    <div className="flex flex-col gap-1.5">
-      <h3 className="px-1 text-xs font-bold text-base-content/60">{t("account.server.title")}</h3>
-      <div className="card card-border bg-base-100">
-        <div className="flex flex-col gap-3 p-4">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium">{t("account.server.baseUrl")}</span>
-            <input
-              className="input input-sm w-full font-mono"
-              value={draft.mcBaseUrl}
-              placeholder={t("account.server.baseUrlPlaceholder")}
-              onChange={(e) => onDraft((d) => ({ ...d, mcBaseUrl: e.target.value }))}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium">{t("account.server.basicAuth")}</span>
-            <input
-              type="password"
-              className="input input-sm w-full font-mono"
-              value={draft.mcBasicAuth}
-              placeholder="user:pass"
-              title={t("account.server.basicAuthHint")}
-              onChange={(e) => onDraft((d) => ({ ...d, mcBasicAuth: e.target.value }))}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium">{t("account.server.llmBaseUrl")}</span>
-            <input
-              className="input input-sm w-full font-mono"
-              value={draft.mcLlmBaseUrl}
-              placeholder={t("account.server.llmBaseUrlPlaceholder")}
-              title={t("account.server.llmBaseUrlHint")}
-              onChange={(e) => onDraft((d) => ({ ...d, mcLlmBaseUrl: e.target.value }))}
-            />
-          </label>
-          <p className="text-xs leading-relaxed text-base-content/60">{t("account.server.hint")}</p>
         </div>
       </div>
+      <MsgLine msg={msg} />
+    </div>
+  );
+}
+
+/** 百智云可选登录行(MC 已连、百智云未登录):默认折叠——微信 tab 挂载
+ *  即拉码,不该在没人要登录时就去拉二维码。不带账密 tab:这里登的是
+ *  百智云(为模型/MCP 同步),账密是 MonkeyCode 的登录方式。已连不打扰
+ *  守卫(onBaizhiLoggedIn 里 mcRef 判断)保证这条路不会重桥接换掉账号。 */
+function BaizhiOptInRow({ onBaizhiLoggedIn }: { onBaizhiLoggedIn: () => void }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-2 px-4 py-3">
+      <p className="text-xs text-base-content/60">{t("account.baizhi.optInHint")}</p>
+      {open ? (
+        <div className="mx-auto w-full max-w-sm">
+          <LoginPanel onBaizhiLoggedIn={onBaizhiLoggedIn} />
+        </div>
+      ) : (
+        <button type="button" className="btn btn-sm self-start" onClick={() => setOpen(true)}>
+          {t("account.baizhi.optIn")}
+        </button>
+      )}
     </div>
   );
 }
@@ -574,38 +789,53 @@ export function AccountSection({
   onMcDisconnected,
   draft,
   onDraft,
+  refreshKey = 0,
+  savedMcBaseUrl = "",
+  savedMcBasicAuth = "",
+  isRefreshKeyCurrent,
+  onApplyDraft,
+  saveBusy = false,
 }: {
   /** 同步结果并入设置草稿(SettingsView.applySync);回执含跳过名单与自动保存结论 */
   onSyncResult?: (r: BaizhiSyncResult | McModelsSyncResult) => SyncApplied | undefined | void;
   /** 断开 MonkeyCode 成功后清掉会员模型组(SettingsView.applyMcDisconnect);
    *  回执同 onSyncResult。缺席(浏览器模式/独立渲染)则只断连不清模型。 */
   onMcDisconnected?: () => SyncApplied | undefined | void;
-  /** 设置草稿:自建部署三项在本分区编辑(缺席则不渲染高级块) */
+  /** 设置草稿:服务版本与私有化三项在本分区编辑(缺席则只渲染生效行) */
   draft?: SettingsDraft | null;
   onDraft?: (up: (d: SettingsDraft) => SettingsDraft) => void;
+  /** 已保存的 MonkeyCode 传输配置变化后递增,触发状态重查。 */
+  refreshKey?: number;
+  /** 已保存生效的 MonkeyCode 服务地址(SettingsView 传 cfg.mc_base_url)。
+   *  行的**形态**跟所选版本即时走,登录**动作**只在选择 = 生效时可用。 */
+  savedMcBaseUrl?: string;
+  /** 已保存的 Basic Auth；私有 A→私有 B 时不能只比较 edition 枚举。 */
+  savedMcBasicAuth?: string;
+  /** 壳事件会先推进 App ref、后触发本组件重渲染；该守卫覆盖这段窗口。 */
+  isRefreshKeyCurrent?: (generation: number) => boolean;
+  /** 立即保存指定草稿(SettingsView.save(target)):版本点选/私有化「保存
+   *  生效」钮直接落盘。缺席则退化为只写草稿,由保存条兜底。 */
+  onApplyDraft?: (d: SettingsDraft) => void;
+  saveBusy?: boolean;
 } = {}) {
   const { t } = useI18n();
   const inShell = inDesktopShell();
-  // 自建部署块的解锁态:存量配置恒可见,否则连点 logo 6 次解锁并落盘
-  const [unlocked, setUnlocked] = useState(() => {
-    try {
-      return localStorage.getItem(SERVER_CFG_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const logoClicks = useRef(0);
-  const onLogoClick = () => {
-    if (++logoClicks.current < UNLOCK_CLICKS) return;
-    setUnlocked(true);
-    try {
-      localStorage.setItem(SERVER_CFG_KEY, "1");
-    } catch {
-      // 存储不可写:本次会话仍解锁,不值得外显
-    }
-  };
-  const configured = !!(draft && (draft.mcBaseUrl.trim() || draft.mcBasicAuth.trim() || draft.mcLlmBaseUrl.trim()));
-  const showServerCfg = !!draft && !!onDraft && (unlocked || configured);
+  const showSelector = !!draft && !!onDraft;
+  const savedEdition = mcEditionOf(savedMcBaseUrl);
+  // 版本选择提升到本层:服务行与登录区共用同一份,选择一变行立即换形态
+  // (微信码当场撤下),而不是等保存。「刚选私有化、地址还没填」从草稿
+  // 推不出来,所以选择态不能只靠 mcBaseUrl 推导
+  const [editionChoice, setEditionChoice] = useState<McEdition | null>(null);
+  const draftEdition = draft ? mcEditionOf(draft.mcBaseUrl) : savedEdition;
+  const selectedEdition = editionChoice ?? draftEdition;
+  const transportReady =
+    !draft ||
+    (draft.mcBaseUrl.trim() === savedMcBaseUrl.trim() &&
+      draft.mcBasicAuth.trim() === savedMcBasicAuth.trim());
+  const editionReady = selectedEdition === savedEdition && transportReady;
+  /** onBaizhiLoggedIn 是稳定回调,经 ref 读最新版本结论,免整链换引用。 */
+  const savedEditionRef = useRef(savedEdition);
+  savedEditionRef.current = savedEdition;
   const [bz, setBz] = useState<BaizhiStatus | null>(null);
   const [mc, setMc] = useState<McStatus | null>(null);
   /** mc 的最新值(由 refresh 就地写):异步流程里紧接着 await refresh() 判连接
@@ -615,6 +845,16 @@ export function AccountSection({
   const [statusErr, setStatusErr] = useState("");
   const [bridgeErr, setBridgeErr] = useState("");
   const alive = useRef(true);
+  const refreshGeneration = useRef(0);
+  const appliedRefreshKey = useRef(refreshKey);
+  const serviceGenerationRef = useRef(refreshKey);
+  serviceGenerationRef.current = refreshKey;
+  const isServiceGenerationCurrent = useCallback(
+    (generation: number) =>
+      serviceGenerationRef.current === generation &&
+      (isRefreshKeyCurrent?.(generation) ?? true),
+    [isRefreshKeyCurrent],
+  );
 
   useEffect(() => {
     alive.current = true;
@@ -624,8 +864,9 @@ export function AccountSection({
   }, []);
 
   const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
     const [b, m] = await Promise.allSettled([baizhiStatus(), mcStatus()]);
-    if (!alive.current) return;
+    if (!alive.current || generation !== refreshGeneration.current) return;
     // 单路失败不拖垮另一路:失败信息合并外显,成功的一路照常渲染
     const errs: string[] = [];
     if (b.status === "fulfilled") setBz(b.value);
@@ -641,8 +882,15 @@ export function AccountSection({
   }, []);
 
   useEffect(() => {
-    if (inShell) void refresh();
-  }, [inShell, refresh]);
+    if (!inShell) return;
+    if (appliedRefreshKey.current !== refreshKey) {
+      appliedRefreshKey.current = refreshKey;
+      mcRef.current = null;
+      setMc(null);
+      setStatusErr("");
+    }
+    void refresh();
+  }, [inShell, refresh, refreshKey]);
 
   // 登录真实事件的自动同步信号(0 = 无;只在下面两个登录回调里 bump,
   // 打开设置读到既有登录态不触发)——「登录成功即自动同步」是旧 UI 用户
@@ -655,9 +903,14 @@ export function AccountSection({
    *  MonkeyCode(同一账号的 OAuth,登录一次两边都通),桥接成功顺带起
    *  会员模型同步。 */
   const onBaizhiLoggedIn = useCallback(async () => {
+    const serviceGeneration = serviceGenerationRef.current;
     setBridgeErr("");
     await refresh();
     setBzSyncToken((n) => n + 1);
+    if (!isServiceGenerationCurrent(serviceGeneration)) return;
+    // 仅国内版自动桥接:国际版未接百智云 OAuth,私有化不桥接——非国内版
+    // 的百智云登录只为模型/MCP 同步(UI 上也只从增值入口可达,这里兜底)
+    if (savedEditionRef.current !== "cn") return;
     // **已连就不打扰**(旧 UI settings.tsx:1288「已连/连接中/读取中一律不打扰」,
     // ui-next 漏迁)。「MC 已连 + 百智云未登录」是本仓测试自己钉住的可达状态:
     // 用户先用账密连了 A 账号(私有化/公司账号常见),之后在同一页登录百智云
@@ -669,22 +922,47 @@ export function AccountSection({
     if (mcRef.current?.logged_in) return;
     try {
       await mcLogin();
+      if (!isServiceGenerationCurrent(serviceGeneration)) return;
       await refresh();
+      if (!isServiceGenerationCurrent(serviceGeneration)) return;
       setMcSyncToken((n) => n + 1);
     } catch (e) {
+      if (!isServiceGenerationCurrent(serviceGeneration)) return;
       if (alive.current) setBridgeErr(errMsg(e));
       await refresh();
     }
-  }, [refresh]);
+  }, [isServiceGenerationCurrent, refresh]);
 
-  const onMcLoggedIn = useCallback(async () => {
+  const onMcLoggedIn = useCallback(async (generation: number) => {
     await refresh();
+    if (!isServiceGenerationCurrent(generation)) return;
     setMcSyncToken((n) => n + 1);
-  }, [refresh]);
+  }, [isServiceGenerationCurrent, refresh]);
+
+  /** 选中版本(服务行 radio 与「切换到此服务」共用):官方版当场静默落盘,
+   *  私有化只切形态待填地址。「与已保存配置无差异就跳过」由 SettingsView
+   *  按载荷对比判定(草稿对比在这里会误判——草稿可能带着未保存的旧编辑)。 */
+  const selectEdition = useCallback(
+    (next: McEdition) => {
+      setEditionChoice(next);
+      if (next === "private" || !draft || !onDraft) return;
+      const apply = (d: SettingsDraft): SettingsDraft => ({
+        ...d,
+        mcBaseUrl: next === "intl" ? MC_INTL_URL : "",
+        mcBasicAuth: "",
+        mcLlmBaseUrl: "",
+      });
+      onDraft(apply);
+      onApplyDraft?.(apply(draft));
+    },
+    [draft, onDraft, onApplyDraft],
+  );
+
+  const mcConnected = !!mc?.logged_in;
 
   if (!inShell) {
     return (
-      <section aria-label={t("settings.nav.account")} className="flex max-w-xl flex-col gap-3">
+      <section aria-label={t("settings.nav.account")} className="flex max-w-2xl flex-col gap-3">
         <div role="alert" className="alert alert-warning alert-soft max-w-md text-xs">
           {t("account.browserOnly")}
         </div>
@@ -693,7 +971,7 @@ export function AccountSection({
   }
 
   return (
-    <section aria-label={t("settings.nav.account")} className="flex max-w-xl flex-col gap-3">
+    <section aria-label={t("settings.nav.account")} className="flex max-w-2xl flex-col gap-3">
       {statusErr && (
         <div role="alert" className="alert alert-error alert-soft max-w-md text-xs">
           <span>{t("account.statusFailed", { message: statusErr })}</span>
@@ -705,55 +983,51 @@ export function AccountSection({
       {!loaded && !statusErr && <span className="text-xs text-base-content/50">{t("account.loading")}</span>}
       {loaded && (
         <>
-          {/* 百智云组(主路径):已登录成账号卡,未登录成登录卡 */}
-          <div className="flex flex-col gap-1.5">
-            <h3 className="px-1 text-xs font-bold text-base-content/60">{t("account.baizhi.title")}</h3>
-            {bz?.logged_in ? (
-              <BaizhiCard
-                status={bz}
-                knownKeys={knownApiKeys(draft)}
-                onChanged={refresh}
-                onResult={onSyncResult}
-                autoSyncToken={bzSyncToken}
-              />
-            ) : (
-              <BaizhiLoginCard>
-                <LoginPanel onBaizhiLoggedIn={() => void onBaizhiLoggedIn()} />
-              </BaizhiLoginCard>
-            )}
-          </div>
-          {/* MonkeyCode 组恒在(2026-08-06 用户定案):两个账号 = 两块,
-              MonkeyCode 的连接/账密登录入口都在本块内。未登录时卡里不摆
-              「连接」死钮——桥接需要百智云会话,只留账密登录这条手动路径 */}
-          <div className="flex flex-col gap-1.5">
-            <h3 className="px-1 text-xs font-bold text-base-content/60">{t("account.mc.title")}</h3>
-            <McCard
-              status={mc}
-              baizhiLoggedIn={!!bz?.logged_in}
-              bridgeErr={bridgeErr}
-              onChanged={refresh}
-              onLoggedIn={onMcLoggedIn}
-              onMcDisconnected={onMcDisconnected}
-              onResult={onSyncResult}
-              autoSyncToken={mcSyncToken}
-              onLogoClick={onLogoClick}
-            />
-          </div>
-          {showServerCfg && <ServerConfigBlock draft={draft!} onDraft={onDraft!} />}
+          <ServiceCard
+            status={mc}
+            baizhiLoggedIn={!!bz?.logged_in}
+            edition={selectedEdition}
+            editionReady={editionReady}
+            showSelector={showSelector}
+            draft={draft}
+            onDraft={onDraft}
+            onSelectEdition={selectEdition}
+            onApplyDraft={onApplyDraft}
+            onRetryApply={onApplyDraft && draft ? () => onApplyDraft(draft) : undefined}
+            saveBusy={saveBusy}
+            bridgeErr={bridgeErr}
+            onChanged={refresh}
+            onLoggedIn={onMcLoggedIn}
+            onBaizhiLoggedIn={() => void onBaizhiLoggedIn()}
+            onMcDisconnected={onMcDisconnected}
+            onResult={onSyncResult}
+            autoSyncToken={mcSyncToken}
+            serviceGeneration={refreshKey}
+            isServiceGenerationCurrent={isServiceGenerationCurrent}
+          />
+          {/* 百智云归「其它账号」(增值:模型/MCP 同步;国际版整卡隐藏):
+              会话在给同步;MC 已连而百智云未登录给可选登录入口——两头都
+              没登录时不出现,登录职责在上面的服务卡内 */}
+          {savedEdition !== "intl" && (bz?.logged_in || mcConnected) && (
+            <div className="card card-border overflow-hidden bg-base-100">
+              <div className="border-b border-base-300 bg-base-200/40 px-4 py-2 text-xs font-semibold text-base-content/70">
+                {t("account.others.title")}
+              </div>
+              {bz?.logged_in ? (
+                <BaizhiRow
+                  status={bz}
+                  knownKeys={knownApiKeys(draft)}
+                  onChanged={refresh}
+                  onResult={onSyncResult}
+                  autoSyncToken={bzSyncToken}
+                />
+              ) : (
+                <BaizhiOptInRow onBaizhiLoggedIn={() => void onBaizhiLoggedIn()} />
+              )}
+            </div>
+          )}
         </>
       )}
     </section>
-  );
-}
-
-/** 百智云未登录卡壳:纯卡片承载登录面板(组头已表明身份,卡内不再放头)。 */
-function BaizhiLoginCard({ children }: { children: ReactNode }) {
-  return (
-    <div className="card card-border bg-base-100">
-      {/* 登录面板居中:卡宽 > 面板宽,靠左会剩一大块死白 */}
-      <div className="p-4">
-        <div className="mx-auto w-full max-w-sm">{children}</div>
-      </div>
-    </div>
   );
 }

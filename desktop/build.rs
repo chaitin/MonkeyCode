@@ -101,6 +101,7 @@ fn main() {
                 "mc_checkin",
                 "mc_models_sync",
                 "mc_models_revoke",
+                "mc_disconnect",
                 "mc_tasks",
                 "mc_projects",
                 "mc_task_info",

@@ -87,6 +87,8 @@ export interface McStatus {
   logged_in: boolean;
   /** 云端主机名(如 monkeycode-ai.com) */
   host: string;
+  /** 完整服务根地址,保留 http/https、端口及部署路径。 */
+  base_url?: string;
   user?: McUser;
 }
 
@@ -166,23 +168,29 @@ export async function mcUsage(): Promise<McUsage | null> {
 export const mcCheckin = () => invoke<{ ok: boolean }>("mc_checkin");
 
 /** 同步会员内置模型(不落盘,纯返回)。 */
-export const mcModelsSync = () => invoke<McModelsSyncResult>("mc_models_sync");
+export const mcModelsSync = (expectedGeneration?: number) =>
+  invoke<McModelsSyncResult>(
+    "mc_models_sync",
+    expectedGeneration === undefined ? undefined : { expectedGeneration },
+  );
 
 /** 吊销会员模型密钥。须在 mcLogout **之前**调用——请求走 mc 会话认证,
  *  会话一清就没法删了(壳会保留本地记录待重连后收敛)。 */
-export const mcModelsRevoke = () => invoke<{ ok: boolean }>("mc_models_revoke");
+export const mcModelsRevoke = (expectedGeneration?: number) =>
+  invoke<{ ok: boolean }>(
+    "mc_models_revoke",
+    expectedGeneration === undefined ? undefined : { expectedGeneration },
+  );
 
-/** 断开 MonkeyCode:先吊销会员模型密钥、再清会话,顺序不可倒置(见
- *  mcModelsRevoke)。吊销失败(如断网)不阻断登出——本地必须能断开,
- *  壳保留记录待下次重连后再次断开即收敛;失败信息以 warning 返回给
- *  调用方外显。登出本身失败(浏览器模式)照常上抛。 */
-export async function disconnectMc(): Promise<{ warning?: string }> {
-  let warning: string | undefined;
-  try {
-    await mcModelsRevoke();
-  } catch (e) {
-    warning = e instanceof Error ? e.message : String(e);
-  }
-  await mcLogout();
-  return warning === undefined ? {} : { warning };
+/** 断开 MonkeyCode。吊销 Key、校验服务代次、清 Cookie 都在壳内完成；
+ *  UI 不再做可被切服插入的 check-then-invoke。 */
+export async function disconnectMc(expectedGeneration: number): Promise<{ warning?: string; cancelled?: boolean }> {
+  const result = await invoke<{ ok: boolean; warning?: string | null; cancelled?: boolean }>(
+    "mc_disconnect",
+    { expectedGeneration },
+  );
+  return {
+    ...(result.warning ? { warning: result.warning } : {}),
+    ...(result.cancelled ? { cancelled: true } : {}),
+  };
 }

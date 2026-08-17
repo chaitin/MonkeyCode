@@ -118,7 +118,7 @@ export function SkillsSection() {
           onChange={(e) => setEdit({ ...edit, name: e.target.value })}
         />
         {edit.editing === null && (
-          <p className="text-[10px] text-base-content/50">{t("settings.skills.nameHint")}</p>
+          <p className="text-2xs text-base-content/50">{t("settings.skills.nameHint")}</p>
         )}
       </fieldset>
       <fieldset className="fieldset gap-1.5">
@@ -290,9 +290,9 @@ export function SkillsSection() {
                     ) : (
                       <>
                         {!isUser && (
-                          <p className="mb-2 text-[10px] text-base-content/50">{t("settings.skills.readonlyHint")}</p>
+                          <p className="mb-2 text-2xs text-base-content/50">{t("settings.skills.readonlyHint")}</p>
                         )}
-                        <pre className="max-h-64 overflow-auto rounded-box bg-base-200/60 p-3 font-mono text-[11px] whitespace-pre-wrap">
+                        <pre className="max-h-64 overflow-auto rounded-box bg-base-200/60 p-3 font-mono text-xs whitespace-pre-wrap">
                           {s.content}
                         </pre>
                       </>

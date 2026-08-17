@@ -128,7 +128,10 @@ impl Inner {
                 seq: 0,
                 running: true,
                 compacting: false,
+                manual_compact: false,
+                terminal_error_seen: false,
                 turn: 1,
+                cancel_requested_turn: None,
                 created: true, // 壳侧会话,无引擎实体,open 不做 resume RPC
                 engine_id: child_sid.to_string(),
                 opened: false,
@@ -261,6 +264,10 @@ impl Inner {
             match sessions.get_mut(child_sid) {
                 Some(s) if s.running => {
                     s.running = false;
+                    s.compacting = false;
+                    s.manual_compact = false;
+                    s.terminal_error_seen = false;
+                    s.cancel_requested_turn = None;
                     true
                 }
                 _ => false,

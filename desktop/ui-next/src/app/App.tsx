@@ -48,6 +48,7 @@ import { noticeForQueuedDelivery, noticeForSessionEvent, type NoticeKind, type S
 import { deliverQueued, dropStash } from "@/features/chat/composer/stash";
 import { readLastSession, writeLastSession, writeSpace, type Space } from "@/lib/util/prefs";
 import { projectKey, readArchivedProjects } from "@/lib/util/projects";
+import { McTransportProvider } from "@/lib/mcTransport";
 
 // 统一图标族:@tabler/icons-react(2026-08-07 由 lucide 换过来;组件名
 // 一律 Icon 前缀,线宽属性是 stroke 不是 strokeWidth)
@@ -294,7 +295,7 @@ function MainArea({
 }
 
 export function App() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   // 启动恒落本地任务(用户定案 2026-08-09),不恢复上次所在空间:云端可能
   // 未登录/断网,拿它当开机首屏每次都是一个坏屏幕;而且此前只要建过一次
   // 云端任务(onCloudCreated 里 setSpace("cloud")),启动空间就被永久改成
@@ -317,6 +318,14 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [cloudTask, setCloudTask] = useState<CloudTask | null>(null);
   const [cloudReload, setCloudReload] = useState(0);
+  const [mcTransportGeneration, setMcTransportGeneration] = useState(0);
+  // 事件回调先同步推进 ref,再触发 React render；旧 Promise 在同一 tick
+  // 落地时也会立即判成 stale,不会钻进 state 更新窗口。
+  const mcTransportGenerationRef = useRef(0);
+  const isMcTransportCurrent = useCallback(
+    (generation: number) => mcTransportGenerationRef.current === generation,
+    [],
+  );
   // 用户选任务时递增,跨设置/新建/云端视图重挂 Composer 也能收到聚焦意图;
   // Composer 消费后清零,引擎 epoch 自愈重挂载不会误把旧意图再执行一遍。
   const [composerFocusRequest, setComposerFocusRequest] = useState(0);
@@ -504,6 +513,14 @@ export function App() {
     const offMcpTimeout = listen<void>("browser-mcp-refresh-timeout", () =>
       pushShell("browser.mcpTimeout", "warn", { action: "restart" }),
     );
+    const offMcTransport = listen<number>("monkeycode-transport-changed", (generation) => {
+      const next = Number.isFinite(generation) ? generation : mcTransportGenerationRef.current + 1;
+      if (next <= mcTransportGenerationRef.current) return;
+      mcTransportGenerationRef.current = next;
+      setMcTransportGeneration(next);
+      setCloudTask(null);
+      setCloudReload((n) => n + 1);
+    });
     refresh();
     // D5 首启向导:桌面壳里模型清单为空 → 自动打开设置页。只在挂载时判一次:
     // 用户关掉设置页不再纠缠,配好模型后自然不会再触发。
@@ -564,6 +581,7 @@ export function App() {
       offOpenSettings();
       offMcpReloaded();
       offMcpTimeout();
+      offMcTransport();
       shellTimers.current.forEach(window.clearTimeout);
       shellTimers.current.clear();
       noticeTimers.current.forEach(window.clearTimeout);
@@ -607,7 +625,10 @@ export function App() {
 
   // 标题跟随**主区实际渲染的那个视图**,各状态都要进依赖(见
   // shellChrome.windowContextLabel 头注:此前只认 current,切设置/新建/云端
-  // 任务时窗口切换器里仍挂着上一个本地会话的标题)
+  // 任务时窗口切换器里仍挂着上一个本地会话的标题)。
+  // locale 必须显式进依赖:t 是模块级函数、身份恒定,切界面语言时其余
+  // 依赖也全部不变——不认 locale 的话原生窗口标题会停留在旧语言,直到
+  // 下一次切会话/开设置才被顺带纠正
   useEffect(() => {
     const label = windowContextLabel(
       { settingsOpen, creating: !!creating, cloudSpace: space === "cloud" },
@@ -616,7 +637,7 @@ export function App() {
       t,
     );
     setWindowTitle(`${label} — ${t("app.name")}`);
-  }, [current, settingsOpen, creating, space, cloudTask, t]);
+  }, [current, settingsOpen, creating, space, cloudTask, t, locale]);
 
   const select = (meta: SessionMeta) => {
     if (meta.id !== currentId || settingsOpen || creating || space === "cloud") requestComposerFocus();
@@ -668,6 +689,7 @@ export function App() {
   })();
 
   return (
+    <McTransportProvider generation={mcTransportGeneration} isCurrent={isMcTransportCurrent}>
     <div className="flex h-full flex-col text-base-content">
       {isCustomChromeShell() && <TitleBar />}
       <ResizeEdges />
@@ -746,7 +768,10 @@ export function App() {
           }}
         />
         {settingsOpen ? (
-          <SettingsView onClose={() => setSettingsOpen(false)} hasRunningTask={sessions.some((s) => s.status === "running")} />
+          <SettingsView
+            onClose={() => setSettingsOpen(false)}
+            hasRunningTask={sessions.some((s) => s.status === "running")}
+          />
         ) : creating ? (
           <NewTaskModal
             open
@@ -900,5 +925,6 @@ export function App() {
       )}
       <DownloadsDock />
     </div>
+    </McTransportProvider>
   );
 }

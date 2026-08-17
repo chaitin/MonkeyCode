@@ -399,11 +399,21 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
       return { ...s, commands: (u.availableCommands ?? []).filter((c) => !!c?.name) };
     case "usage_update":
       return { ...s, usage: { used: u.used ?? 0, size: u.size ?? 0 } };
-    case "compact_status":
+    case "compact_status": {
+      const text =
+        u.status === "started"
+          ? "⟳ 上下文接近上限,正在压缩…"
+          : u.status === "failed"
+            ? "✗ 上下文压缩失败"
+            : u.status === "cancelled"
+              ? "⟳ 上下文压缩已取消"
+              : "⟳ 上下文压缩完成";
       return push(s, {
         kind: "sys",
-        text: u.status === "started" ? "⟳ 上下文接近上限,正在压缩…" : "⟳ 上下文压缩完成",
+        text,
+        ...(u.status === "failed" ? { error: true } : {}),
       });
+    }
     case "model_update": {
       // 系统行外显短名(先剥 @来源#配置id 的寻址后缀,再剥会员档位前缀,
       // 与 modelMenu.modelDisplay 同序);状态 model 保持原始名——它是
@@ -444,12 +454,16 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         items: [...expirePerms(s.items), { kind: "sys", text: "— 本轮结束 —" }],
       };
     case "task-error": {
-      const data = frameData<{ error?: string }>(f);
+      const data = frameData<{ error?: string; terminal?: boolean }>(f);
+      const terminal = data?.terminal !== false;
       return {
         ...s,
-        running: false,
+        running: terminal ? false : s.running,
         streamKind: "",
-        items: [...expirePerms(s.items), { kind: "sys", text: "✗ " + (data?.error || "未知错误"), error: true }],
+        items: [
+          ...(terminal ? expirePerms(s.items) : s.items),
+          { kind: "sys", text: "✗ " + (data?.error || "未知错误"), error: true },
+        ],
       };
     }
     case "user-input": {

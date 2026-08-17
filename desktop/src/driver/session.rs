@@ -32,8 +32,8 @@ const CANCEL_GRACE_EXTRA_MS: u64 = 10_000;
 const COLD_REPAIR_REASON: &str = "上次运行未正常结束(应用被强制退出),已按中断收尾";
 
 /// session/compact 的同步应答要等整段历史的 LLM 摘要跑完,30s 常规 RPC
-/// 预算远不够;放宽到大历史 + 慢模型也装得下的量级。超时只是本地放弃,
-/// 引擎侧压缩不回滚(见 session_compact 分支注释)。
+/// 预算远不够;放宽到大历史 + 慢模型也装得下的量级。到期后必须 cancel
+/// 并继续保持 running，直到事件终态/明确 stopped/看门狗之一原子收轮。
 const COMPACT_RPC_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// 普通对话不绑定用户项目，但引擎仍要求 cwd。每个新对话创建一个独立的
@@ -365,13 +365,23 @@ pub(super) struct SessionState {
     /// 帧序号(回放续接:打开时取日志行数)
     pub(super) seq: u64,
     pub(super) running: bool,
-    /// 手动压缩在飞(session_compact 从开轮到应答返回)。normalize 的
-    /// compaction 事件据此区分:手动壳侧发起时已实时落 compact_status
-    /// "started",事件只补 "ended";自动压缩仍事后补一对。
+    /// 已向 UI 外显 compact_status("started")、尚未收到最终 compaction
+    /// 事件。手动压缩由壳发起时置位；新引擎自动压缩的 starting 事件也
+    /// 置位。旧引擎只有最终事件时仍可据此补齐 started + ended。
     pub(super) compacting: bool,
+    /// 当前 running 轮是否由 session_compact 打开。手动压缩的最终
+    /// compaction 事件本身就是权威完成信号：即使同步 RPC 应答超时或丢失，
+    /// 事件通路也能原子收轮，不会留下 Desktop/Agent 忙碌态分裂。
+    pub(super) manual_compact: bool,
+    /// 本轮是否已把终止性 error 事件渲染给用户。turn/stopped.error 会携带
+    /// 同一摘要，只在此前没见过 error 时兜底补一条，避免双重红字。
+    pub(super) terminal_error_seen: bool,
     /// 轮次序号(每次开轮 +1)。只用来给异步兜底认轮:cancel 看门狗到期时
     /// 会话可能已经收尾并开了新的一轮,拿它比对才不会误杀新轮次。
     pub(super) turn: u64,
+    /// 用户明确请求取消的轮次。手动压缩没有 turn/stopped，只能用该标记
+    /// 将其 context canceled 应答归为 Interrupted，而不是错误。
+    pub(super) cancel_requested_turn: Option<u64>,
     /// 本进程内已 session/create(resume)过
     pub(super) created: bool,
     /// 引擎侧会话 id(通常 == 壳 sid;空会话无法 resume 时壳会 destroy +
@@ -441,6 +451,44 @@ pub(super) struct ReplayWindow {
     pub(super) frames: Vec<Value>,
     pub(super) cursor: u64,
     pub(super) has_more: bool,
+}
+
+/// session/create 的上下文快照。Agent 恢复历史时为了避免 create 阶段重算
+/// token，会只返回 context_window、刻意省略 context_used；缺字段绝不能按 0
+/// 解释，否则会把回放里正确的用量覆盖掉。
+pub(super) fn create_response_context_usage(result: &Value) -> Option<(i64, i64)> {
+    let used = result.get("context_used").and_then(Value::as_i64)?;
+    let window = result.get("context_window").and_then(Value::as_i64)?;
+    (used >= 0 && window > 0).then_some((used, window))
+}
+
+fn frame_context_usage(frame: &Value) -> Option<(i64, i64)> {
+    let update = frame.pointer("/data/update")?;
+    if update.get("sessionUpdate").and_then(Value::as_str) != Some("usage_update") {
+        return None;
+    }
+    let used = update.get("used").and_then(Value::as_i64)?;
+    let window = update.get("size").and_then(Value::as_i64)?;
+    (used >= 0 && window > 0).then_some((used, window))
+}
+
+/// 打开会话的用量快照：本进程缓存优先；缓存缺失或被旧版 resume 的伪 0
+/// 污染时，从回放窗口倒序找最近一次正值。真实上下文包含 system prompt，
+/// 已完成过请求的会话不应因一次“字段缺失”倒退成 0。
+pub(super) fn restored_context_usage(
+    cached: Option<(i64, i64)>,
+    frames: &[Value],
+) -> Option<(i64, i64)> {
+    cached
+        .filter(|(used, window)| *used > 0 && *window > 0)
+        .or_else(|| {
+            frames
+                .iter()
+                .rev()
+                .filter_map(frame_context_usage)
+                .find(|(used, _)| *used > 0)
+        })
+        .or(cached.filter(|(used, window)| *used >= 0 && *window > 0))
 }
 
 /// 从 pos 起补读日志新增部分,解析出的帧追加到 out,pos 前移。
@@ -661,7 +709,10 @@ impl OhmyDriver {
                 seq: 0,
                 running: false,
                 compacting: false,
+                manual_compact: false,
+                terminal_error_seen: false,
                 turn: 0,
+                cancel_requested_turn: None,
                 created: true,
                 engine_id: sid.clone(),
                 opened: false,
@@ -734,7 +785,10 @@ impl OhmyDriver {
                     seq: 0,
                     running: false,
                     compacting: false,
+                    manual_compact: false,
+                    terminal_error_seen: false,
                     turn: 0,
+                    cancel_requested_turn: None,
                     created: is_child,
                     engine_id: engine_id.clone(),
                     opened: false,
@@ -784,11 +838,18 @@ impl OhmyDriver {
                 json!({ "text": "正在恢复会话…", "connected": false }),
             );
         }
-        Ok(json!({
+        let cached_usage = self.0.sess.sessions.lock_ok().get(id).and_then(|s| s.context_usage);
+        let restored_usage = restored_context_usage(cached_usage, &window.frames);
+        let mut response = json!({
             "frames": window.frames,
             "cursor": window.cursor,
             "has_more": window.has_more,
-        }))
+        });
+        if let Some((used, context_window)) = restored_usage {
+            response["context_used"] = json!(used);
+            response["context_window"] = json!(context_window);
+        }
+        Ok(response)
     }
 
     /// 后台 resume:引擎握手挪出打开路径。结果经 watch 广播给
@@ -915,12 +976,12 @@ impl OhmyDriver {
         }
         // resume 重建 loop,思考档位回落到模型默认,重放会话已选档位
         self.apply_session_think(id, &engine_id).await;
-        // resume 结果带恢复历史的占用估计,立即可显示(296176a)
-        self.0.push_usage(
-            id,
-            result.get("context_used").and_then(|v| v.as_i64()).unwrap_or(0),
-            result.get("context_window").and_then(|v| v.as_i64()).unwrap_or(0),
-        );
+        // Agent 的 resume 结果会省略 context_used（避免 create 阶段重算
+        // token）。只有两个字段都明确存在才更新；回放快照已由 session_open
+        // 恢复，绝不能用字段缺失合成的 0 覆盖它。
+        if let Some((used, window)) = create_response_context_usage(&result) {
+            self.0.push_usage(id, used, window);
+        }
         Ok(())
     }
 
@@ -1029,6 +1090,11 @@ impl OhmyDriver {
                 return Err("会话正在执行,请先取消".into());
             }
         }
+        // 后台 resume 可能仍在飞:它收尾时会 write_sidecar(create_dir_all 会把
+        // 刚删的目录重建成幽灵条目)并换绑 engine_id。先等它落地(成败都行,
+        // 失败照常删),下面取的 created/engine_id 才是 resume 实际绑定的终值,
+        // 引擎侧 destroy 的也是那个会话,不会留孤儿。
+        let _ = self.ensure_engine_ready(id).await;
         let meta = self.read_sidecar(id);
         let chat_workdir = (meta.get("kind").and_then(|v| v.as_str()) == Some("chat"))
             .then(|| {
@@ -1039,12 +1105,31 @@ impl OhmyDriver {
                     .and_then(|path| managed_chat_workdir(&self.0.chat_workspaces_dir, &path))
             })
             .flatten();
-        let created = self.0.sess.sessions.lock_ok().get(id).map(|s| s.created).unwrap_or(false);
-        let eng = self.engine_id(id);
+        // 等待与快照必须原子衔接:上面的 watch 唤醒同样会放行排队中的
+        // session_send(两者等的是同一个 resume watch)。running 复检、
+        // created/engine_id 快照、摘表在同一次加锁里完成——send 先开了轮,
+        // 这里如实拒绝;这里先摘了表,send 的开轮守卫拿到 None 报「会话
+        // 未打开」。两种交错都不会再有新轮或新的 sidecar 写落在删除之后
+        // (send 的错误路径 write_sidecar 会 create_dir_all,晚于目录删除
+        // 就是幽灵条目)。
+        let (created, eng) = {
+            let mut sessions = self.0.sess.sessions.lock_ok();
+            if sessions.get(id).map(|s| s.running).unwrap_or(false) {
+                return Err("会话正在执行,请先取消".into());
+            }
+            match sessions.remove(id) {
+                Some(s) => (s.created, s.engine_id),
+                None => (false, String::new()),
+            }
+        };
+        // 表中无登记(从未打开)时按 sidecar 兜底,与 engine_id() 同一回退链
+        let eng = if eng.is_empty() { self.engine_id(id) } else { eng };
         if created {
             let _ = self.rpc("session/destroy", json!({ "session_id": eng })).await;
         }
-        self.0.sess.sessions.lock_ok().remove(id);
+        // resume 的 watch 条目随会话一并摘除:此表此前只增不删,删掉的会话
+        // 会在表里永久残留
+        self.0.sess.resume.lock_ok().remove(id);
         // 文件级删除(目录扫描 + 逐 sidecar 读 + 递归删)挪到阻塞线程,
         // 不占 tokio 运行时(对齐 driver/mod.rs 的 spawn_blocking 纪律)。
         // 会话已从 sessions 移除 → 不会再有新帧入队;journal_close 带 ack
@@ -1203,7 +1288,7 @@ impl OhmyDriver {
                 }
                 // 忙碌守卫:执行中不再开轮(UI 侧已排队,这里兜底;
                 // 不能靠引擎拒绝——乐观帧先落,误开轮会污染回放)
-                {
+                let opened_turn = {
                     let mut sessions = self.0.sess.sessions.lock_ok();
                     let Some(s) = sessions.get_mut(id) else {
                         return Err("会话未打开".into());
@@ -1212,11 +1297,18 @@ impl OhmyDriver {
                         return Err("当前会话已有任务在执行,请等待完成或先取消".into());
                     }
                     s.running = true;
+                    // 上一轮若在压缩中异常失联，新的真实轮次不能继承那条
+                    // 未闭合的 UI 生命周期；本轮 starting 会按需重新置位。
+                    s.compacting = false;
+                    s.manual_compact = false;
+                    s.terminal_error_seen = false;
+                    s.cancel_requested_turn = None;
                     s.turn += 1;
                     if s.title.is_empty() {
                         s.title = text.lines().next().unwrap_or("").chars().take(40).collect();
                     }
-                }
+                    s.turn
+                };
                 // 本地先行落帧:sendMessage 的 ack 与首批事件在 stdout 上没有
                 // 先后保证(引擎收到即起 goroutine 跑轮,快模型下整轮事件可能
                 // 先于 ack 到达),回显与开轮不能依赖 ack 时序。
@@ -1255,10 +1347,31 @@ impl OhmyDriver {
                         // (用户看到"已发出却仍在排队"),且 task-ended 帧一到又
                         // 触发重投,再落一条重复回显。错误经 task-error 帧与
                         // session-status(error) 事件外显,不靠命令返回值
-                        if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
-                            s.running = false;
+                        let (owns_turn, compacting, terminal_error_seen) = {
+                            let mut sessions = self.0.sess.sessions.lock_ok();
+                            match sessions.get_mut(id) {
+                                Some(s) if s.running && s.turn == opened_turn => {
+                                    s.running = false;
+                                    let compacting = std::mem::take(&mut s.compacting);
+                                    s.manual_compact = false;
+                                    s.cancel_requested_turn = None;
+                                    let terminal_error_seen = std::mem::take(&mut s.terminal_error_seen);
+                                    (true, compacting, terminal_error_seen)
+                                }
+                                _ => (false, false, false),
+                            }
+                        };
+                        // EOF 和解可能已原子收掉本轮；RPC 等待者随后醒来时不得
+                        // 再写一组 error/end，也不能误关期间新开的下一轮。
+                        if !owns_turn {
+                            return Ok(());
                         }
-                        self.push_frame(id, |seq| frame::task_error(&e, seq));
+                        if compacting {
+                            self.push_frame(id, |seq| frame::compact_status("failed", seq));
+                        }
+                        if !terminal_error_seen {
+                            self.push_frame(id, |seq| frame::task_error(&e, seq));
+                        }
                         self.push_frame(id, frame::task_ended);
                         // 同上:sidecar 落盘走阻塞线程
                         {
@@ -1277,7 +1390,18 @@ impl OhmyDriver {
                 }
             }
             "user-cancel" => {
-                let turn = self.0.sess.sessions.lock_ok().get(id).map(|s| s.turn).unwrap_or(0);
+                let turn = {
+                    let mut sessions = self.0.sess.sessions.lock_ok();
+                    match sessions.get_mut(id) {
+                        Some(s) => {
+                            if s.running {
+                                s.cancel_requested_turn = Some(s.turn);
+                            }
+                            s.turn
+                        }
+                        None => 0,
+                    }
+                };
                 // 引擎应答是确认而非前提:cancel 无应答(挂死/超时)时本地和解,
                 // 否则会话永卡 running;引擎若事后仍发 turn/stopped,
                 // 幂等守卫(was_running)会吞掉迟到的收尾
@@ -1391,11 +1515,23 @@ impl OhmyDriver {
     /// 取消后引擎正常收尾、用户又发了新消息,看门狗到期时会话同样是 running,
     /// 不认轮就把无辜的新一轮打断了。
     fn spawn_cancel_watchdog(&self, id: &str, turn: u64) {
+        let grace = self.0.transport.shutdown_grace_ms.load(Ordering::Relaxed).max(0) as u64;
+        self.spawn_turn_watchdog(
+            id,
+            turn,
+            Duration::from_millis(grace + CANCEL_GRACE_EXTRA_MS),
+            "取消后引擎未在期限内停止,已本地中断",
+        );
+    }
+
+    /// 同一轮仍在运行才执行的通用和解看门狗。手动压缩 RPC 超时已经在
+    /// cancel 内等待过引擎自宣 grace，只需再给额外余量；普通用户取消则由
+    /// spawn_cancel_watchdog 传入完整 grace + 余量。
+    fn spawn_turn_watchdog(&self, id: &str, turn: u64, delay: Duration, reason: &'static str) {
         let me = self.clone();
         let sid = id.to_string();
-        let grace = self.0.transport.shutdown_grace_ms.load(Ordering::Relaxed).max(0) as u64;
         tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(grace + CANCEL_GRACE_EXTRA_MS)).await;
+            tokio::time::sleep(delay).await;
             let stale = me
                 .0
                 .sess.sessions
@@ -1404,8 +1540,8 @@ impl OhmyDriver {
                 .map(|s| s.running && s.turn == turn)
                 .unwrap_or(false);
             if stale {
-                eprintln!("[desktop] 取消后引擎未在期限内停止,本地和解: sid={sid} turn={turn}");
-                me.0.reconcile_session(&sid, "取消后引擎未在期限内停止,已本地中断");
+                eprintln!("[desktop] {reason}: sid={sid} turn={turn}");
+                me.0.reconcile_session(&sid, reason);
             }
         });
     }
@@ -1564,7 +1700,8 @@ impl OhmyDriver {
             }
             // 手动压缩上下文:引擎**同步应答**(stdio.go handleSessionCompact,
             // ForceCompact 跑完才回,成功携 context_used/window,全程不发
-            // turn/stopped)——应答即轮次边界,成败都在本分支就地收轮。
+            // turn/stopped)。新引擎的 compaction 终态 + usage 可独立收轮，
+            // 旧引擎仍以 RPC 应答兜底；两条路径靠 turn 所有权保证只完成一次。
             // 压缩期间引擎占忙碌位(sendMessage 被拒、cancel 可打断,打断
             // 表现为本 RPC 返回错误);compaction/usage 事件先于应答到达,
             // compact_status 系统行由事件通路照常外显。
@@ -1584,16 +1721,32 @@ impl OhmyDriver {
                 }
                 // 乐观开轮:事件先于应答到达,忙碌态与 task_started 不能等
                 // RPC 返回;turn 自增让取消看门狗把这次压缩当独立一轮对表。
-                // compacting 标记让 normalize 知道 "started" 已在此实时落过
-                // (引擎只有"压缩完成"一个事件,不标记的话事件又合成一对,
-                // "正在压缩/压缩完成"同刻蹦出两条)。
-                if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
-                    s.running = true;
-                    s.compacting = true;
-                    s.turn += 1;
-                }
+                // compacting 标记让 normalize 知道 "started" 已在此实时落过；
+                // 新引擎再发 starting 会去重，旧引擎仅 final 也不会补出第二对。
+                let compact_turn = {
+                    let mut sessions = self.0.sess.sessions.lock_ok();
+                    if let Some(s) = sessions.get_mut(id) {
+                        // 开头的空闲检查与此处隔着 create_resumed 的 RPC 往返,
+                        // 并发 user-input 可能已原子开轮:再检查须与置位同锁,
+                        // 否则会覆盖消息轮的 running,压缩失败路径还会把那一轮
+                        // 误收尾(task_error/task_ended 落进别人的轮)。
+                        if s.running {
+                            return Err("执行中不能压缩上下文,请先取消当前任务".into());
+                        }
+                        s.running = true;
+                        s.compacting = true;
+                        s.manual_compact = true;
+                        s.terminal_error_seen = false;
+                        s.cancel_requested_turn = None;
+                        s.turn += 1;
+                        s.turn
+                    } else {
+                        return Err("会话未打开".into());
+                    }
+                };
                 self.push_frame(id, frame::task_started);
                 self.push_frame(id, |seq| frame::compact_status("started", seq));
+                self.write_sidecar(id, |m| m["status"] = json!(SessionStatus::Running.as_str()));
                 self.emit_session_event(id, SessionStatus::Running.as_str());
                 // 应答要等整段历史的 LLM 摘要,30s 常规预算不够,单独放宽。
                 // 超时是本地放弃:引擎可能仍在压缩并事后成功,期间上行会被
@@ -1605,35 +1758,103 @@ impl OhmyDriver {
                         COMPACT_RPC_TIMEOUT,
                     )
                     .await;
-                if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
-                    s.running = false;
-                    s.compacting = false;
-                }
-                match r {
-                    Ok(resp) => {
-                        // 应答携带压缩后的权威上下文快照(usage 事件先行,
-                        // 这里兜底对齐,防事件被引擎重启等原因吞掉)
-                        if let (Some(used), Some(window)) = (
-                            resp.get("context_used").and_then(Value::as_i64),
-                            resp.get("context_window").and_then(Value::as_i64),
-                        ) {
-                            self.0.push_usage(id, used, window);
+
+                // 300s 只代表壳的应答预算耗尽，不代表 Agent 已停。仍持有本轮
+                // 时先发 cancel；若引擎明确 stopped=false，保持 UI running，
+                // 等迟到的 compaction+usage 或看门狗收口，绝不假装已空闲。
+                if matches!(&r, Err(e) if e == "session/compact 超时") {
+                    let still_owned = self
+                        .0
+                        .sess
+                        .sessions
+                        .lock_ok()
+                        .get(id)
+                        .is_some_and(|s| s.running && s.turn == compact_turn);
+                    if still_owned {
+                        match self.rpc("cancel", json!({ "session_id": self.engine_id(id) })).await {
+                            Ok(resp) if !resp.get("stopped").and_then(Value::as_bool).unwrap_or(false) => {
+                                self.spawn_turn_watchdog(
+                                    id,
+                                    compact_turn,
+                                    Duration::from_millis(CANCEL_GRACE_EXTRA_MS),
+                                    "上下文压缩超时且取消后仍未停止,已本地中断",
+                                );
+                                return Ok(json!({ "result": { "status": "cancelling" } }));
+                            }
+                            Err(cancel_err) => {
+                                self.0.reconcile_session(
+                                    id,
+                                    &format!("上下文压缩超时且取消未获引擎应答,已本地中断({cancel_err})"),
+                                );
+                                return Ok(json!({ "result": { "status": "error" } }));
+                            }
+                            _ => {}
                         }
-                        self.push_frame(id, frame::task_ended);
-                        self.emit_session_event(id, SessionStatus::Idle.as_str());
-                        Ok(json!({ "result": { "status": "ok" } }))
+                    }
+                }
+
+                // 应答携带压缩后的权威上下文快照(usage 事件先行,这里兜底
+                // 对齐)。先写 usage，再原子收轮，避免 task-ended 后出现孤帧。
+                if let Ok(resp) = &r {
+                    if let (Some(used), Some(window)) = (
+                        resp.get("context_used").and_then(Value::as_i64),
+                        resp.get("context_window").and_then(Value::as_i64),
+                    ) {
+                        self.0.push_usage(id, used, window);
+                    }
+                }
+
+                let (owns_turn, compacting, user_cancelled, terminal_error_seen) = {
+                    let mut sessions = self.0.sess.sessions.lock_ok();
+                    match sessions.get_mut(id) {
+                        Some(s) if s.running && s.turn == compact_turn => {
+                            let compacting = std::mem::take(&mut s.compacting);
+                            let user_cancelled = s.cancel_requested_turn == Some(compact_turn);
+                            let terminal_error_seen = std::mem::take(&mut s.terminal_error_seen);
+                            s.running = false;
+                            s.manual_compact = false;
+                            s.cancel_requested_turn = None;
+                            (true, compacting, user_cancelled, terminal_error_seen)
+                        }
+                        _ => (false, false, false, false),
+                    }
+                };
+                // compaction/usage 终态或 EOF reconcile 已经完成本轮。RPC 只回
+                // 命令结果，不再追加帧/状态，解决崩溃与迟到应答的双收尾竞态。
+                if !owns_turn {
+                    return Ok(match r {
+                        Ok(_) => json!({ "result": { "status": "ok" } }),
+                        Err(_) => json!({ "result": { "status": "closed" } }),
+                    });
+                }
+
+                let (status, result) = match r {
+                    Ok(_) => {
+                        if compacting {
+                            self.push_frame(id, |seq| frame::compact_status("ended", seq));
+                        }
+                        (SessionStatus::Idle, json!({ "result": { "status": "ok" } }))
+                    }
+                    Err(_) if user_cancelled => {
+                        if compacting {
+                            self.push_frame(id, |seq| frame::compact_status("cancelled", seq));
+                        }
+                        (SessionStatus::Interrupted, json!({ "result": { "status": "cancelled" } }))
                     }
                     Err(e) => {
-                        // 失败/被取消/超时:与 user-input 同契约——轮已开、
-                        // "正在压缩"已落对话流,错误也走帧收进对话流闭合记录
-                        // (走 Err/ErrorBar 的话,对话流里悬着一条"正在压缩"
-                        // 没有下文),命令本身回 Ok。
-                        self.push_frame(id, |seq| frame::task_error(&e, seq));
-                        self.push_frame(id, frame::task_ended);
-                        self.emit_session_event(id, SessionStatus::Error.as_str());
-                        Ok(json!({ "result": { "status": "error" } }))
+                        if compacting {
+                            self.push_frame(id, |seq| frame::compact_status("failed", seq));
+                        }
+                        if !terminal_error_seen {
+                            self.push_frame(id, |seq| frame::task_error(&e, seq));
+                        }
+                        (SessionStatus::Error, json!({ "result": { "status": "error" } }))
                     }
-                }
+                };
+                self.push_frame(id, frame::task_ended);
+                self.write_sidecar(id, |m| m["status"] = json!(status.as_str()));
+                self.emit_session_event(id, status.as_str());
+                Ok(result)
             }
             other => Ok(json!({ "error": format!("ohmyagent 引擎不支持 {other}") })),
         }
@@ -1684,12 +1905,11 @@ impl OhmyDriver {
             let e = new_eng.clone();
             self.write_sidecar(id, |m| m["engine_id"] = json!(e));
         }
-        // resume 结果带恢复历史的占用估计(296176a)
-        self.0.push_usage(
-            id,
-            result.get("context_used").and_then(|v| v.as_i64()).unwrap_or(0),
-            result.get("context_window").and_then(|v| v.as_i64()).unwrap_or(0),
-        );
+        // 同 resume_engine：字段缺失不是 0。切模型/技能触发的重建也不得
+        // 把 composer 已显示的上下文占用清空。
+        if let Some((used, window)) = create_response_context_usage(&result) {
+            self.0.push_usage(id, used, window);
+        }
         Ok(())
     }
 
@@ -1815,6 +2035,12 @@ impl OhmyDriver {
     /// destroy + 重建实现切换(仅空闲时安全):模式切换的常规路径
     /// (子代理权限顶棚只在构建时生效)与旧引擎无 switch RPC 的回退。
     async fn recreate_fallback(&self, id: &str, model_id: &str, mode: &str) -> Result<(), String> {
+        // 调用方的空闲检查与走到这里之间隔着 sidecar 写盘等 await 点,并发
+        // user-input 可能已原子开轮;destroy 打在执行中的轮上会把它连根拆掉。
+        // 贴着 destroy 再查一次,把窗口缩到一次 RPC 派发以内。
+        if self.0.sess.sessions.lock_ok().get(id).map(|s| s.running).unwrap_or(false) {
+            return Err("执行中不能切换,请先取消当前任务".into());
+        }
         // destroy 容错:引擎侧可能已无此会话(崩溃重启后),不阻断重建
         let _ = self.rpc("session/destroy", json!({ "session_id": self.engine_id(id) })).await;
         if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
@@ -2119,6 +2345,28 @@ impl Inner {
     /// 老会话首次打开(无 replay.jsonl,from = 0)即一次性迁移;进程崩溃
     /// 残留的完整轮即补录。流式单遍,不把整份日志读进内存——23MB 的
     /// 病态 journal 也只占一行的内存。返回是否写入过内容。
+    /// 补录期间会话是否仍然空闲(无累积折叠帧、无运行中轮次)。replay_open
+    /// 的 idle 快照取在扫描之前,而扫描可跨数 MB 日志:期间并发 user-input
+    /// 可以合法开轮,新轮已落盘的帧会被扫描读到。物化前在 sessions 锁内
+    /// 复验,不空闲即放弃剩余补录——活轮的帧留给它自己的轮末物化,否则
+    /// 同一批帧会在 replay.jsonl 里出现两行,此后每次打开都重复渲染。
+    ///
+    /// 中止的安全性依赖两条非局部不变量,改动它们时必须回看这里:
+    /// ① 父会话开轮全程被 ensure_engine_ready/seq_gate 闸在 replay_open
+    ///    之后——保证"必有一次完整补录先于任何开轮",中止遗留的残段总会
+    ///    被下一次空闲打开续扫;② 子代理子会话的 sid 每次运行新生成,不跨
+    ///    重启复用。任一松动,活轮轮末的 Materialize{src_end: None}(写线程
+    ///    取当前文件长度)会把未补录区间整段划入"已消费",旧轮从回放中
+    ///    静默消失。
+    fn still_idle(&self, sid: &str) -> bool {
+        self.sess
+            .sessions
+            .lock_ok()
+            .get(sid)
+            .map(|s| s.fold.is_empty() && !s.running)
+            .unwrap_or(true)
+    }
+
     fn catch_up(&self, sid: &str, events: &Path, from: u64) -> bool {
         use std::io::{BufRead as _, BufReader, Seek as _, SeekFrom};
         let Ok(mut f) = std::fs::File::open(events) else { return false };
@@ -2144,6 +2392,9 @@ impl Inner {
                     let end = fold::is_turn_end(&v);
                     acc.push(&v);
                     if end {
+                        if !self.still_idle(sid) {
+                            return wrote;
+                        }
                         let _ = self.transport.journal_tx.send(JournalMsg::Materialize {
                             sid: sid.to_string(),
                             turn: acc.take(),
@@ -2154,9 +2405,10 @@ impl Inner {
                 }
             }
         }
-        // 末尾未闭合的一段也物化:补录只在会话空闲时做,它不会再有新帧,
-        // 留着只会每次打开重折一遍
-        if !acc.is_empty() {
+        // 末尾未闭合的一段也物化:空闲复验通过时它必然来自更早的进程,不会
+        // 再有新帧,留着只会每次打开重折一遍;复验不过则是活轮的进行时,留给
+        // 它自己的轮末物化
+        if !acc.is_empty() && self.still_idle(sid) {
             let _ = self.transport.journal_tx.send(JournalMsg::Materialize {
                 sid: sid.to_string(),
                 turn: acc.take(),
@@ -2224,6 +2476,7 @@ impl Inner {
         let mut pos = src_end;
         let mut raw: Vec<Value> = Vec::new();
         read_journal_tail(&events, &mut pos, &mut raw);
+        let mut seen_seq = 0;
         let mut sessions = self.sess.sessions.lock_ok();
         if let Some(s) = sessions.get_mut(sid) {
             self.journal_barrier();
@@ -2239,11 +2492,12 @@ impl Inner {
                 high = high.max(raw.len() as u64);
             }
             s.seq = s.seq.max(high);
+            seen_seq = s.seq;
         }
         drop(sessions);
         frames.extend(fold::fold_frames(&raw));
         if idle && fold::unterminated(&frames) {
-            frames.extend(self.repair_unterminated(sid));
+            frames.extend(self.repair_unterminated(sid, seen_seq));
         }
         ReplayWindow { frames, cursor, has_more }
     }
@@ -2260,10 +2514,18 @@ impl Inner {
     ///
     /// 补的两帧直接返回给本次回放窗口,**不入批量缓冲**:窗口是 session_open
     /// 的返回值,再经 frames:{sid} 投一次会让 UI 重复归约出两条收尾。
-    fn repair_unterminated(&self, sid: &str) -> Vec<Value> {
+    fn repair_unterminated(&self, sid: &str, seen_seq: u64) -> Vec<Value> {
         let (err, end) = {
             let mut sessions = self.sess.sessions.lock_ok();
             let Some(s) = sessions.get_mut(sid) else { return Vec::new() };
+            // idle 快照与走到这里之间在锁外折叠过尾帧:期间并发 user-input
+            // 可能已合法开轮(running/fold 非空),甚至整轮已收尾(seq 必然
+            // 前进)。此时日志尾部的"未闭合"是活轮的进行时或已由它自己
+            // 闭合——补刀会把 task_error/task_ended 注进别人的轮,take 还会
+            // 偷走活轮已累积的折叠帧。任一迹象即放弃冷修复。
+            if s.running || !s.fold.is_empty() || s.seq != seen_seq {
+                return Vec::new();
+            }
             s.seq += 1;
             let err = frame::task_error(COLD_REPAIR_REASON, s.seq);
             s.seq += 1;
@@ -2346,13 +2608,18 @@ impl Inner {
     /// task-ended),sidecar 落 interrupted;不和解会永久卡"执行中"
     /// (不能发/不能删/不能切,重启也救不回)。
     pub(super) fn reconcile_session(&self, sid: &str, reason: &str) {
-        let open = {
+        let (open, compacting, user_cancelled) = {
             let mut sessions = self.sess.sessions.lock_ok();
             match sessions.get_mut(sid) {
                 Some(s) if s.running => {
                     s.running = false;
+                    let compacting = std::mem::take(&mut s.compacting);
+                    let user_cancelled = s.cancel_requested_turn == Some(s.turn);
+                    s.manual_compact = false;
+                    s.terminal_error_seen = false;
+                    s.cancel_requested_turn = None;
                     s.model_text.clear();
-                    std::mem::take(&mut s.open_tools)
+                    (std::mem::take(&mut s.open_tools), compacting, user_cancelled)
                 }
                 _ => return,
             }
@@ -2368,6 +2635,10 @@ impl Inner {
         self.close_children_of_session(sid, SessionStatus::Interrupted, true);
         for (tc, _name) in open {
             self.push_frame(sid, |seq| frame::tool_call_failed(&tc, "已中断", seq));
+        }
+        if compacting {
+            let status = if user_cancelled { "cancelled" } else { "failed" };
+            self.push_frame(sid, |seq| frame::compact_status(status, seq));
         }
         self.push_frame(sid, |seq| frame::task_error(reason, seq));
         self.push_frame(sid, frame::task_ended);

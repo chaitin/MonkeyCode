@@ -93,6 +93,24 @@ export function serversToMcps(servers: Record<string, unknown>): McpEntry[] {
   });
 }
 
+// ---- MonkeyCode 服务版本 ----
+
+/** 官方云(国内)地址;mcBaseUrl 留空即它,写显式值也认(壳侧同口径)。 */
+export const MC_CN_URL = "https://monkeycode-ai.com";
+/** 官方云(国际)地址;与壳侧 baizhi::INTL_MONKEYCODE_URL 保持一致。 */
+export const MC_INTL_URL = "https://monkeycode-ai.net";
+
+/** 服务版本是 mcBaseUrl 三类取值的 UI 表达,不另设配置字段:
+ *  "" 或官方国内地址 = 国内版;官方国际地址 = 国际版;其余 = 私有化。 */
+export type McEdition = "cn" | "intl" | "private";
+
+export function mcEditionOf(mcBaseUrl: string): McEdition {
+  const base = mcBaseUrl.trim().replace(/\/+$/, "");
+  if (!base || base === MC_CN_URL) return "cn";
+  if (base === MC_INTL_URL) return "intl";
+  return "private";
+}
+
 // ---- 草稿 ----
 
 export interface SettingsDraft {
@@ -102,8 +120,8 @@ export interface SettingsDraft {
   mcps: McpEntry[];
   /** "" = 本机;"wsl:<发行版>" */
   kernelEnv: string;
-  /** 自建/私有化部署(账号分区的高级块;"" = 官方云)。壳在启动时构造云端
-   *  服务,故这三项保存后要**重启应用**才生效——文案在设置页说明 */
+  /** MonkeyCode 服务地址(账号分区的版本选择块;"" = 官方云国内版,
+   *  MC_INTL_URL = 国际版,其余 = 私有化),保存后立即生效 */
   mcBaseUrl: string;
   /** 测试环境反代的 HTTP Basic Auth("user:pass") */
   mcBasicAuth: string;

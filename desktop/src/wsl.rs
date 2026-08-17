@@ -162,7 +162,22 @@ pub fn run_wsl_bytes(args: &[String], timeout: Duration) -> Result<Vec<u8>, Stri
             }
         }
     };
-    let stdout = stdout_rx.recv_timeout(Duration::from_millis(200)).unwrap_or_default();
+    // 进程已退出,EOF 必然到来,唯一等的是读取线程被调度并排空管道缓冲。
+    // WSL VM 冷启动期间宿主负载很高,旧的 200ms 窗口会被真实超过——输出
+    // 被静默当成空,下游 prepare/ensure_guest_dir 按"结果异常"报误导性
+    // 错误且无法复现。给足调度预算;真超时(如孙进程长期持有管道写端)
+    // 明确报错,不拿空输出冒充成功结果。
+    const OUTPUT_DRAIN: Duration = Duration::from_secs(5);
+    let stdout = match stdout_rx.recv_timeout(OUTPUT_DRAIN) {
+        Ok(out) => out,
+        Err(_) => {
+            return Err(format!(
+                "wsl 输出读取超时({}s,进程已退出但 stdout 未排空): {}",
+                OUTPUT_DRAIN.as_secs(),
+                args.join(" ")
+            ));
+        }
+    };
     let stderr = stderr_rx.recv_timeout(Duration::from_millis(200)).unwrap_or_default();
     if !status.success() {
         let stdout_text = decode_wsl_output(&stdout);

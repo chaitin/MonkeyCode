@@ -197,13 +197,13 @@ export function SlashPanel({
             onClick={() => onPick(c)}
           >
             <span className="font-mono text-xs font-bold">/{c.name}</span>
-            {c.input?.hint && <span className="font-mono text-[10px] opacity-50">{c.input.hint}</span>}
+            {c.input?.hint && <span className="font-mono text-2xs opacity-50">{c.input.hint}</span>}
             {c.description && <span className="min-w-0 flex-1 truncate text-xs opacity-60">{c.description}</span>}
           </button>
         </li>
       ))}
       <li className="menu-disabled mt-1 border-t border-base-300">
-        <span className="text-[10px]">{t("chat.slash.hint")}</span>
+        <span className="text-2xs">{t("chat.slash.hint")}</span>
       </li>
     </ul>
   );

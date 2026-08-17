@@ -147,7 +147,7 @@ export function createCloudTaskCore(
       if (f.type === "task-started" || f.type === "user-input") running = true;
       // 被拒/出错:本轮没开起来,放行排队投递。回显之后只等到 task-error
       // (云端不会再补 task-ended)时,不清 running 就是队列永久卡死
-      if (f.type === "task-error") running = false;
+      if (f.type === "task-error" && frameData<{ terminal?: boolean }>(f)?.terminal !== false) running = false;
       if (f.type === "task-ended") turnEnded = true;
       frames.push(f);
     }

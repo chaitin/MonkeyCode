@@ -209,7 +209,11 @@ describe("CloudTaskView", () => {
         case "mc_task_info":
           return Promise.resolve({ id: "t9", status: "processing", virtualmachine: { id: "vm9", status: "running" } });
         case "mc_status":
-          return Promise.resolve({ logged_in: true, host: "mc.example.com" });
+          return Promise.resolve({
+            logged_in: true,
+            host: "localhost",
+            base_url: "http://localhost:8000/private/team-a",
+          });
         case "cloud_ws_open":
           return Promise.resolve(null);
         case "plugin:opener|open_url":
@@ -222,9 +226,9 @@ describe("CloudTaskView", () => {
     render(<CloudTaskView task={{ id: "t9", status: "processing" }} />);
     await userEvent.click(await screen.findByRole("button", { name: "任务操作" }));
 
-    // 控制台入口:host 取自 mc_status,拿不到就不该出这一项(见下一用例)
+    // 控制台入口用完整 base_url,保留 http、端口与私有部署路径。
     await userEvent.click(await screen.findByRole("menuitem", { name: /在浏览器打开/ }));
-    expect(opened).toEqual(["https://mc.example.com/console/task/t9"]);
+    expect(opened).toEqual(["http://localhost:8000/private/team-a/console/task/t9"]);
   });
 
   it("⋯ 菜单:无云端主机名不出「在浏览器打开」(不给死链);无开放端口给交代", async () => {

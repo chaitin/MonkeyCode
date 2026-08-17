@@ -63,12 +63,12 @@ export function Changes({
                 return <spec.icon size={14} stroke={1.75} aria-hidden className={`shrink-0 ${spec.tone}`} />;
               })()}
               <span className={`shrink-0 ${deleted ? "line-through opacity-60" : ""}`}>{basename(c.path)}</span>
-              <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-base-content/40">{dir}</span>
+              <span className="min-w-0 flex-1 truncate font-mono text-2xs text-base-content/40">{dir}</span>
               {(c.additions ?? 0) > 0 && (
-                <span className="shrink-0 font-mono text-[10px] text-success tabular-nums">+{c.additions}</span>
+                <span className="shrink-0 font-mono text-2xs text-success tabular-nums">+{c.additions}</span>
               )}
               {(c.deletions ?? 0) > 0 && (
-                <span className="shrink-0 font-mono text-[10px] text-error tabular-nums">-{c.deletions}</span>
+                <span className="shrink-0 font-mono text-2xs text-error tabular-nums">-{c.deletions}</span>
               )}
               {meta ? (
                 <span className={`badge badge-soft badge-xs shrink-0 ${meta.badgeClass}`}>{t(meta.labelKey)}</span>

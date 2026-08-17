@@ -23,9 +23,11 @@ import {
 import { isWindowsShell } from "@/lib/ipc/host";
 import { inDesktopShell } from "@/lib/ipc/ipc";
 import { readCustomTheme, readTheme, setCustomTheme, setTheme, THEMES, CUSTOM_THEME, type CustomTheme, type Theme } from "@/lib/theme";
+import { readUiScale, setUiScale, UI_SCALES, type UiScale } from "@/lib/uiScale";
 import { customThemeVars, randomTheme, roleHex, COLOR_ROLES, DEFAULT_CUSTOM, BORDER_RANGE, RADIUS_RANGE, SIZE_RANGE, type ColorRole } from "@/lib/customTheme";
 import { useDismiss } from "@/lib/util/useDismiss";
 import { useEscLayer } from "@/lib/util/escLayer";
+import { useMcTransport } from "@/lib/mcTransport";
 import { baizhiStatus } from "@/lib/ipc/account";
 import { AccountSection, type SyncApplied } from "@/features/account/AccountSection";
 import { engineCaps } from "@/lib/ipc/approvals";
@@ -113,7 +115,7 @@ function ColorTile({ role, hex, overridden, resetLabel, seed, seedHint, onPick, 
   return (
     <div className="group/tile relative flex items-center gap-2 rounded-field border border-base-300 bg-base-100 py-1.5 pe-2 ps-1.5">
       <span aria-hidden className="size-5 shrink-0 rounded-field border border-base-content/10" style={{ background: hex }} />
-      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-base-content/70">{role}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-xs text-base-content/70">{role}</span>
       {seed && (
         <span title={seedHint} className="shrink-0 text-base-content/35">
           <IconWand size={13} stroke={1.75} aria-hidden />
@@ -173,8 +175,8 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
     <label className="flex flex-col gap-1">
       <span className="flex items-baseline gap-1.5 text-xs">
         <span className="text-base-content/70">{label}</span>
-        <span className="min-w-0 flex-1 truncate text-[10px] text-base-content/35">{hint}</span>
-        <span className="shrink-0 font-mono text-[10px] text-base-content/50 tabular-nums">{`${value[key]}${unit}`}</span>
+        <span className="min-w-0 flex-1 truncate text-2xs text-base-content/35">{hint}</span>
+        <span className="shrink-0 font-mono text-2xs text-base-content/50 tabular-nums">{`${value[key]}${unit}`}</span>
       </span>
       <input
         type="range"
@@ -199,7 +201,7 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
         onChange={(e) => set({ [key]: e.target.checked } as Partial<CustomTheme>)}
       />
       <span className="text-base-content/70">{label}</span>
-      <span className="min-w-0 truncate text-[10px] text-base-content/35">{hint}</span>
+      <span className="min-w-0 truncate text-2xs text-base-content/35">{hint}</span>
     </label>
   );
 
@@ -262,8 +264,8 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
           <input className="input input-xs w-28" defaultValue="input" aria-hidden tabIndex={-1} readOnly />
           <input type="checkbox" className="toggle toggle-xs" defaultChecked aria-hidden tabIndex={-1} readOnly />
           <input type="checkbox" className="checkbox checkbox-xs" defaultChecked aria-hidden tabIndex={-1} readOnly />
-          <span className="rounded-box bg-base-200 px-2 py-1 text-[10px] text-base-content/60">base-200</span>
-          <span className="rounded-box bg-base-300 px-2 py-1 text-[10px] text-base-content/60">base-300</span>
+          <span className="rounded-box bg-base-200 px-2 py-1 text-2xs text-base-content/60">base-200</span>
+          <span className="rounded-box bg-base-300 px-2 py-1 text-2xs text-base-content/60">base-300</span>
         </div>
       </div>
 
@@ -432,6 +434,11 @@ function GeneralSection() {
   // 没配过就给一份默认草稿:编辑器要有初值,选中「自定义」当场就该看到效果
   const [custom, setCustom] = useState<CustomTheme>(() => readCustomTheme() ?? DEFAULT_CUSTOM);
   const [soundOn, setSoundOn] = useState(true);
+  const [uiScale, setUiScaleState] = useState<UiScale>(() => readUiScale());
+  const pickUiScale = (s: UiScale) => {
+    setUiScaleState(s);
+    setUiScale(s);
+  };
 
   useEffect(() => {
     if (!inDesktopShell()) return;
@@ -466,10 +473,16 @@ function GeneralSection() {
     setCustomTheme(next);
     setThemeState(CUSTOM_THEME);
   };
-  const seg = (label: string, on: boolean, onClick: () => void) => (
-    <button key={label} type="button" className={`btn btn-sm join-item ${on ? "btn-active" : "text-base-content/60"}`} onClick={onClick}>
-      {label}
-    </button>
+  const seg = (group: string, label: string, on: boolean, onChange: () => void) => (
+    <input
+      key={label}
+      type="radio"
+      name={group}
+      className={`btn btn-sm join-item ${on ? "btn-active" : "text-base-content/60"}`}
+      aria-label={label}
+      checked={on}
+      onChange={onChange}
+    />
   );
 
   return (
@@ -485,7 +498,16 @@ function GeneralSection() {
         </div>
         <SettingRow label={t("settings.appearance.language")}>
           <div role="radiogroup" aria-label={t("settings.appearance.language")} className="join shrink-0">
-            {LOCALES.map((l) => seg(l.label, locale === l.value, () => setLocale(l.value)))}
+            {LOCALES.map((l) => seg("settings-language", l.label, locale === l.value, () => setLocale(l.value)))}
+          </div>
+        </SettingRow>
+        {/* 界面缩放:WebView 页面 zoom,文字/图标/控件/终端同比例缩放
+            (用户定案 2026-08-16「所有组件跟着变」);点即生效,不进保存条 */}
+        <SettingRow label={t("settings.general.uiScale")} hint={t("settings.general.uiScaleHint")}>
+          <div role="radiogroup" aria-label={t("settings.general.uiScale")} className="join shrink-0">
+            {UI_SCALES.map((s) =>
+              seg("settings-ui-scale", `${Math.round(s * 100)}%`, uiScale === s, () => pickUiScale(s)),
+            )}
           </div>
         </SettingRow>
         {inDesktopShell() && (
@@ -566,6 +588,7 @@ export function SettingsView({
   hasRunningTask?: boolean;
 }) {
   const { t } = useI18n();
+  const { generation: mcTransportGeneration, isCurrent: isMcTransportCurrent } = useMcTransport();
   // 离开确认(旧 UI App.tsx settingsDirty + window.confirm 的 daisyUI 版):
   // 脏表单直接退出 = 静默丢弃全部未保存编辑,必须先问一句
   const [leaveAsk, setLeaveAsk] = useState(false);
@@ -581,6 +604,10 @@ export function SettingsView({
   const [bzLoggedIn, setBzLoggedIn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  // 账号分区的版本点选/私有化「保存生效」触发的静默落盘:在途期间不渲染
+  // 保存条——用户视角里「切换版本」不该出现任何「保存」字样(2026-08-15
+  // 用户定案);失败才回落保存条外显错误
+  const [inlineSaving, setInlineSaving] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -820,6 +847,21 @@ export function SettingsView({
             onMcDisconnected={applyMcDisconnect}
             draft={draft}
             onDraft={updateDraft}
+            refreshKey={mcTransportGeneration}
+            isRefreshKeyCurrent={isMcTransportCurrent}
+            savedMcBaseUrl={cfg?.mc_base_url ?? ""}
+            savedMcBasicAuth={cfg?.mc_basic_auth ?? ""}
+            // 版本点选即静默落盘:savingRef 防重入(save 自身不防并发);
+            // inlineSaving 让保存条在途不出现。与已保存配置无差异就跳过
+            // ——按载荷对比(与脏判定同口径):点回当前生效的版本不值得
+            // 白写一次盘、白重启一次引擎
+            onApplyDraft={(d) => {
+              if (savingRef.current) return;
+              if (cfg && baseline && payloadEquals(buildPayload(cfg, d), baseline)) return;
+              setInlineSaving(true);
+              void save(d).finally(() => setInlineSaving(false));
+            }}
+            saveBusy={saving}
           />
         );
       case "models":
@@ -884,8 +926,8 @@ export function SettingsView({
               {body()}
             </div>
           </div>
-          {/* 保存条:结构线贴底 */}
-          {dirty && (
+          {/* 保存条:结构线贴底。版本切换的静默落盘在途不出现(见 inlineSaving) */}
+          {dirty && !inlineSaving && (
             <div className="flex shrink-0 items-center gap-2 border-t border-base-300 bg-base-100 px-4 py-2">
               <span className="text-xs text-base-content/70">{t("settings.save.dirty")}</span>
               {saveError && (

@@ -13,6 +13,17 @@ pub struct Challenge {
     pub d: usize,
 }
 
+impl Challenge {
+    /// 三个参数全部来自服务端响应,而 mc_base_url 可指向任意私有化部署:
+    /// 不设上界时,恶意/异常服务端可用超大 s 让 prng 分配 GB 级盐串,或用
+    /// 超大 c、d 把 blocking 线程钉在无法取消的 SHA-256 爆破上(用户每次
+    /// 重试登录/签到再钉一条)。上界取正常量级(go-cap 默认 c≈50、s≈32、
+    /// d≈4)的数倍冗余;d>16 在 MAX_NONCE 内命中概率为零,只会白跑。
+    pub fn valid(&self) -> bool {
+        (1..=128).contains(&self.c) && (1..=1024).contains(&self.s) && (1..=16).contains(&self.d)
+    }
+}
+
 /// FNV-1a 32 位哈希(按字节,对齐 JS charCodeAt(i)&0xff)。
 fn fnv1a32(seed: &str) -> u32 {
     let mut hash: u32 = 0x811c9dc5;

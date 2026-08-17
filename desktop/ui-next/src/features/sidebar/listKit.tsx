@@ -7,9 +7,9 @@
 //   tab 表达,行内不再重复)。
 // - 组头/小节头图标保留(Folder/History/Archive):组级标签要锚点,
 //   且一组只出一次不吃行宽。
-// - GroupLabel 区块标签:组头 12px 图标 + text-xs font-medium /50(比行
-//   小一档;行 14px 后从 11px 提到 12px,免得差距拉到 3px 显得过小),
-//   放进 summary(flex 覆写、after:hidden 去尾箭头)。
+// - GroupLabel 区块标签:组头 12px 图标 + 与行同档 14px 文字(font-medium
+//   /50 的安静形态;2026-08-16 用户定案:行回 14px 后组头字号跟进,从属
+//   靠浓淡与缩进),放进 summary(flex 覆写、after:hidden 去尾箭头)。
 // - SectionFold 小节折叠:Archive 形小节头(10px 图标行首、无计数),
 //   开合走 prefs 契约键持久化,收起即卸载(部分 webview 里 details 收起
 //   后嵌套 ul 残留占位空间)。
@@ -143,17 +143,18 @@ export function StatusDot({ tone, label, pulse }: { tone: string; label: string;
 }
 
 /** 区块标签(组头 summary 内容):图标裸放 flex 行(12px 图标不需要定宽
- * 槽,多包一层反而竖向对不齐),名称保留原大小写。
+ * 槽,多包一层反而竖向对不齐;图标不随字号放大——缩进几何按它算),
+ * 名称保留原大小写。
  *
- * 组头保持**安静的小标签**(用户定案 2026-08-04,2026-08-07 复核后维持):
- * 期间试过按旧 UI 换成「与行同字号 + font-semibold + 满色」的锚点形态
- * ——旧 UI 正是靠组头比行更重来表达从属——但用户定案回退,组头继续小一档、
- * 淡一档。层级改由缩进承担(§6.2)。**别再提锚点形态。** */
+ * 组头保持**安静形态**(淡色 /50 + font-medium,2026-08-04 定案的重量
+ * 口径不变,不是锚点形态);字号与行同档 14px(2026-08-16 用户定案:
+ * 列表行回 14px 后组头跟进——12px 组头挂在 14px 行上头显得过小)。
+ * 从属层级由缩进与浓淡承担(§6.2)。 */
 export function GroupLabel({ icon: Icon, name }: { icon: TablerIcon; name: string }) {
   return (
     <>
       <Icon size={12} stroke={1.75} className="shrink-0 text-base-content/40" aria-hidden />
-      <span className="min-w-0 flex-1 truncate text-xs font-medium text-base-content/50">{name}</span>
+      <span className="min-w-0 flex-1 truncate font-medium text-base-content/50">{name}</span>
     </>
   );
 }

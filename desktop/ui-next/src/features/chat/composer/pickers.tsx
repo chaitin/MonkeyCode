@@ -156,7 +156,7 @@ export function ModelMenu({
           <span className="min-w-0 flex-1 truncate text-xs">{d.label}</span>
           {!noTier && d.tier && <span className="badge badge-ghost badge-xs shrink-0">{d.tier}</span>}
           {m.locked && <span className="badge badge-warning badge-soft badge-xs shrink-0">{t("settings.models.lockedBadge")}</span>}
-          {m.default && <span className="shrink-0 text-[10px] opacity-50">{t("chat.model.default")}</span>}
+          {m.default && <span className="shrink-0 text-2xs opacity-50">{t("chat.model.default")}</span>}
         </button>
       </li>
     );
@@ -229,7 +229,7 @@ export function ModelMenu({
               ? memberSections.map((s) => [
                   <li key={`${s.label}-title`} className="menu-title flex flex-row items-baseline gap-2 text-xs">
                     <span className="min-w-0 flex-1 truncate">{s.label}</span>
-                    {s.badge && <span className="shrink-0 text-[10px] font-normal">{s.badge}</span>}
+                    {s.badge && <span className="shrink-0 text-2xs font-normal">{s.badge}</span>}
                   </li>,
                   ...s.items.map((m) => itemOf(m, true)),
                 ])
@@ -295,7 +295,7 @@ export function ThinkMenu({
                 >
                   <span className="text-xs">{t(THINK_KEY[level] ?? "chat.think.low")}</span>
                   {/* 档位副文案:一句话讲清速度/深度取舍(旧 UI hint 随迁) */}
-                  {hintKey && <span className="text-[10px] opacity-60">{t(hintKey)}</span>}
+                  {hintKey && <span className="text-2xs opacity-60">{t(hintKey)}</span>}
                 </button>
               </li>
             );
@@ -572,7 +572,7 @@ export function OptionMenu({
             ? sections.map((s) => [
                 <li key={`${s.key}-title`} className="menu-title flex flex-row items-baseline gap-2 text-xs">
                   <span className="min-w-0 flex-1 truncate">{s.label}</span>
-                  {s.badge && <span className="shrink-0 text-[10px] font-normal">{s.badge}</span>}
+                  {s.badge && <span className="shrink-0 text-2xs font-normal">{s.badge}</span>}
                 </li>,
                 ...s.options.map(itemOf),
               ])

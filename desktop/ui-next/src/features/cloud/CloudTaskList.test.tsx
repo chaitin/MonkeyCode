@@ -89,6 +89,53 @@ describe("CloudTaskList", () => {
     await screen.findByText("还没有云端项目或任务");
   });
 
+  it("reloadKey 切换后立即拉新服务并丢弃旧服务迟到响应", async () => {
+    let taskCalls = 0;
+    let resolveOld: ((value: { tasks: CloudTask[]; page_info: { total: number } }) => void) | undefined;
+    const oldResponse = new Promise<{ tasks: CloudTask[]; page_info: { total: number } }>((resolve) => {
+      resolveOld = resolve;
+    });
+    stubShell((cmd) => {
+      if (cmd !== "mc_tasks") return Promise.resolve({ projects: [] });
+      taskCalls += 1;
+      return taskCalls === 1
+        ? oldResponse
+        : Promise.resolve({ tasks: [{ id: "new", title: "新服务任务", status: "processing" }], page_info: { total: 1 } });
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} reloadKey={0} />);
+    await waitFor(() => expect(taskCalls).toBe(1));
+    rerender(<Harness currentId={null} onSelect={() => {}} reloadKey={1} />);
+    await screen.findByText("新服务任务");
+    resolveOld?.({ tasks: [{ id: "old", title: "旧服务任务", status: "processing" }], page_info: { total: 1 } });
+    await act(async () => undefined);
+
+    expect(screen.queryByText("旧服务任务")).toBeNull();
+    expect(screen.getByText("新服务任务")).toBeDefined();
+  });
+
+  it("reloadKey 切换时立即清空当前服务的旧任务", async () => {
+    let taskCalls = 0;
+    let resolveNew: ((value: { tasks: CloudTask[]; page_info: { total: number } }) => void) | undefined;
+    const newResponse = new Promise<{ tasks: CloudTask[]; page_info: { total: number } }>((resolve) => {
+      resolveNew = resolve;
+    });
+    stubShell((cmd) => {
+      if (cmd !== "mc_tasks") return Promise.resolve({ projects: [] });
+      taskCalls += 1;
+      return taskCalls === 1
+        ? Promise.resolve({ tasks: [{ id: "old", title: "旧服务任务", status: "processing" }], page_info: { total: 1 } })
+        : newResponse;
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} reloadKey={0} />);
+    await screen.findByText("旧服务任务");
+    rerender(<Harness currentId={null} onSelect={() => {}} reloadKey={1} />);
+    await waitFor(() => expect(screen.queryByText("旧服务任务")).toBeNull());
+    resolveNew?.({ tasks: [{ id: "new", title: "新服务任务", status: "processing" }], page_info: { total: 1 } });
+    await screen.findByText("新服务任务");
+  });
+
   it("首屏失败:错误 + 重试按钮可重拉", async () => {
     let calls = 0;
     stubShell((cmd) => {
@@ -124,6 +171,66 @@ describe("CloudTaskList", () => {
     await userEvent.click(screen.getByText("支付服务"));
     expect(await screen.findByText("项目内任务")).toBeTruthy();
     expect(calls.some((c) => c.cmd === "mc_tasks" && c.args?.projectId === "p1")).toBe(true);
+  });
+
+  it("reloadKey 切换时立即撤下旧服务项目", async () => {
+    let projectCalls = 0;
+    let taskCalls = 0;
+    let resolveNew: ((value: { projects: { id: string; name: string }[] }) => void) | undefined;
+    const newProjects = new Promise<{ projects: { id: string; name: string }[] }>((resolve) => {
+      resolveNew = resolve;
+    });
+    stubShell((cmd) => {
+      if (cmd === "mc_projects") {
+        projectCalls += 1;
+        return projectCalls === 1 ? Promise.resolve({ projects: [{ id: "old", name: "旧服务项目" }] }) : newProjects;
+      }
+      if (cmd === "mc_tasks") {
+        taskCalls += 1;
+        return Promise.resolve({ tasks: [], page_info: { total: 0 } });
+      }
+      return Promise.resolve({});
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} reloadKey={0} />);
+    await screen.findByText("旧服务项目");
+    rerender(<Harness currentId={null} onSelect={() => {}} reloadKey={1} />);
+    await waitFor(() => expect(taskCalls).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(screen.queryByText("旧服务项目")).toBeNull());
+    resolveNew?.({ projects: [{ id: "new", name: "新服务项目" }] });
+    await screen.findByText("新服务项目");
+  });
+
+  it("reloadKey 切换后项目组旧请求不得回灌,已展开的组立即重拉", async () => {
+    let resolveOldGroup: ((value: { tasks: CloudTask[] }) => void) | undefined;
+    const oldGroup = new Promise<{ tasks: CloudTask[] }>((resolve) => {
+      resolveOldGroup = resolve;
+    });
+    let groupCalls = 0;
+    stubShell((cmd, args) => {
+      if (cmd === "mc_projects") return Promise.resolve({ projects: [{ id: "p1", name: "同名项目" }] });
+      if (cmd === "mc_tasks" && args?.projectId === "p1") {
+        groupCalls += 1;
+        // 首拉挂起(稍后作为迟到的旧代响应回灌);reloadKey 边沿的重拉返回新数据
+        return groupCalls === 1
+          ? oldGroup
+          : Promise.resolve({ tasks: [{ id: "new-group", title: "新组任务", status: "finished" }] });
+      }
+      if (cmd === "mc_tasks") return Promise.resolve({ tasks: [], page_info: { total: 0 } });
+      return Promise.resolve({});
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} reloadKey={0} />);
+    await userEvent.click(await screen.findByText("同名项目"));
+    rerender(<Harness currentId={null} onSelect={() => {}} reloadKey={1} />);
+    // 已展开的 details 不会再触发 onToggle:重拉必须由 reloadKey 边沿驱动,
+    // 只清不拉会让展开中的组永久空白
+    await screen.findByText("新组任务");
+    resolveOldGroup?.({ tasks: [{ id: "old-group", title: "旧组任务", status: "finished" }] });
+    await act(async () => undefined);
+
+    expect(screen.queryByText("旧组任务")).toBeNull();
+    expect(screen.getByText("新组任务")).toBeTruthy();
   });
 
   it("行右键删除:二段确认 → mc_task_delete → 整表重拉 + onDeleted 回调", async () => {

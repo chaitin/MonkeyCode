@@ -473,6 +473,21 @@ describe("覆盖视图开着时点侧栏(设置/新建永远让位)", () => {
   });
 });
 
+describe("MonkeyCode transport 切换", () => {
+  it("壳事件立即清掉旧服务详情并重拉云任务列表", async () => {
+    const shell = stubShell({ cloudTasks: [{ id: "c1", title: "旧服务任务", status: "processing" }] });
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "云端任务" }));
+    await userEvent.click(await screen.findByText("旧服务任务"));
+    expect(await screen.findByRole("button", { name: "任务操作" })).toBeDefined();
+    const before = shell.count("mc_tasks");
+
+    act(() => shell.emit("monkeycode-transport-changed", 1));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "任务操作" })).toBeNull());
+    await waitFor(() => expect(shell.count("mc_tasks")).toBeGreaterThan(before));
+  });
+});
+
 describe("引擎重启后的重开要撞得过壳的 apply 闸门", () => {
   // 壳 restart_engine_locked 在 adopt_engine 里就发 Ready,而调用方(保存设置 /
   // 浏览器配对刷新)仍持着 EngineApply 锁——UI 一收到 Ready 就发的命令必然

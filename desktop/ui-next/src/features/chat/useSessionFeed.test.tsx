@@ -23,10 +23,25 @@ function userFrame(seq: number, text: string) {
   return { type: "user-input", data: { content: b64encode(text) }, timestamp: seq, seq };
 }
 
+function usageFrame(seq: number, used: number, size: number) {
+  return {
+    type: "task-running",
+    kind: "acp_event",
+    data: { update: { sessionUpdate: "usage_update", used, size } },
+    seq,
+  };
+}
+
 /** pages:session_history 按调用次序吐出的页(或 Error 表示该次失败)。 */
 function stubShell(
   pages: Array<{ frames?: unknown[]; next_cursor: number; has_more: boolean } | Error>,
-  open: { cursor: number; has_more: boolean } = { cursor: 100, has_more: true },
+  open: {
+    cursor: number;
+    has_more: boolean;
+    frames?: unknown[];
+    context_used?: number;
+    context_window?: number;
+  } = { cursor: 100, has_more: true },
 ) {
   const ops: Op[] = [];
   let historyCalls = 0;
@@ -64,6 +79,20 @@ describe("useSessionFeed:生命周期与翻页游标", () => {
     const openAt = ops.findIndex((o) => o.op === "invoke" && o.cmd === "session_open");
     expect(ops.findIndex((o) => o.op === "listen" && o.cmd === "frames:s1")).toBeLessThan(openAt);
     expect(ops.findIndex((o) => o.op === "listen" && o.cmd === "conn-status:s1")).toBeLessThan(openAt);
+  });
+
+  it("session_open 用量快照覆盖历史里的旧版伪 0，切任务即可恢复上下文环", async () => {
+    stubShell([], {
+      cursor: 0,
+      has_more: false,
+      frames: [usageFrame(8, 45_678, 200_000), usageFrame(9, 0, 200_000)],
+      context_used: 45_678,
+      context_window: 200_000,
+    });
+    const { result } = renderHook(() => useSessionFeed("s1"));
+
+    await waitFor(() => expect(result.current.historyLoaded).toBe(true));
+    expect(result.current.state.usage).toEqual({ used: 45_678, size: 200_000 });
   });
 
   it("loadEarlier:游标取 next_cursor(非 cursor),下一页从新游标翻", async () => {

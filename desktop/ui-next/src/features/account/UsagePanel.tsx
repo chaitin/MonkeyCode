@@ -24,7 +24,7 @@ function InviteeStack({ avatars }: { avatars: UsageAvatar[] }) {
       {avatars.map((a) => (
         <span
           key={a.key}
-          className="-ms-1.5 flex size-6 items-center justify-center overflow-hidden rounded-full border border-base-100 bg-base-300 text-[10px] font-semibold text-base-content/60 first:ms-0"
+          className="-ms-1.5 flex size-6 items-center justify-center overflow-hidden rounded-full border border-base-100 bg-base-300 text-2xs font-semibold text-base-content/60 first:ms-0"
         >
           {a.url && !broken[a.key] ? (
             <img
@@ -84,12 +84,13 @@ export function UsagePanel({ userId }: { userId?: string }) {
     }
   };
 
-  // 签到三态钮:可签/签到中/已签;checkedIn 没取到时整个不出现
+  // 签到三态钮:可签/签到中/已签;checkedIn 没取到时整个不出现。
+  // 链接样式:瓷片内的次级行动,不与主数字抢重量
   const checkinBtn =
     vm.checkedIn !== null ? (
       <button
         type="button"
-        className="btn btn-outline btn-xs"
+        className="btn btn-link btn-xs h-auto min-h-0 justify-start p-0 no-underline"
         disabled={checkinBusy || vm.checkedIn}
         onClick={() => void checkin()}
       >
@@ -114,9 +115,11 @@ export function UsagePanel({ userId }: { userId?: string }) {
   const q = vm.quota;
   const low = !!q && q.total > 0 && q.remaining / q.total <= 0.1;
 
+  const tile = "flex flex-col gap-1.5 rounded-box border border-base-300 bg-base-100 p-3";
+
   return (
-    <div className="flex flex-col gap-2.5" aria-label={t("account.usage.label")}>
-      {/* 会员行:档位皇冠章 + 有效期 */}
+    <div className="flex flex-col gap-3" aria-label={t("account.usage.label")}>
+      {/* 会员行:档位皇冠章 + 有效期(归权益面板首行,不挤在行头身份行) */}
       {vm.hasSubscription && (
         <div className="flex items-center gap-2">
           <span className={`badge badge-soft gap-1 font-bold ${vm.plan === "basic" ? "" : "badge-primary"}`}>
@@ -129,58 +132,57 @@ export function UsagePanel({ userId }: { userId?: string }) {
         </div>
       )}
 
-      {/* 今日额度:小标 + 等宽数字,细进度条 */}
-      {q && (
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-baseline gap-2">
-            <span className="text-xs font-semibold text-base-content/70">{t("account.usage.quota")}</span>
-            <span className="flex-1" />
-            <span className={`font-mono text-xs ${low ? "text-warning" : "text-base-content/50"}`}>
-              {q.total > 0
-                ? t("account.usage.quotaText", { remaining: q.remainingText, total: q.totalText })
-                : t("account.usage.quotaNone")}
-            </span>
-          </div>
-          {q.total > 0 && (
-            <progress
-              className={`progress h-1.5 w-full ${low ? "progress-warning" : "progress-primary"}`}
-              aria-label={t("account.usage.quota")}
-              value={q.remaining}
-              max={q.total}
-            />
+      {/* 额度 / 积分 / 邀请三瓷片(2026-08-16 用户定案的布局):签到与复制
+          邀请是各自瓷片内的次级行动;瓷片底色 base-100,在选中行的淡色底上
+          自然浮起 */}
+      {(q || vm.credits !== null || vm.invite) && (
+        <div className="grid gap-2.5 sm:grid-cols-3">
+          {q && (
+            <div className={tile}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs text-base-content/50">{t("account.usage.quota")}</span>
+                <span className={`font-mono text-xs ${low ? "text-warning" : "text-base-content/70"}`}>
+                  {q.total > 0
+                    ? t("account.usage.quotaText", { remaining: q.remainingText, total: q.totalText })
+                    : t("account.usage.quotaNone")}
+                </span>
+              </div>
+              {q.total > 0 && (
+                <progress
+                  className={`progress h-1.5 w-full ${low ? "progress-warning" : "progress-primary"}`}
+                  aria-label={t("account.usage.quota")}
+                  value={q.remaining}
+                  max={q.total}
+                />
+              )}
+            </div>
           )}
-        </div>
-      )}
-
-      {/* 积分余额 · 签到 · 邀请归同一块:签到与邀请都是获取积分的路径 */}
-      {(vm.credits !== null || vm.invite || checkinBtn) && (
-        <div className="flex items-center gap-3 border-t border-base-300 pt-3">
           {vm.credits !== null && (
-            <span className="flex shrink-0 flex-col gap-0.5">
+            <div className={tile}>
               <span className="text-xs text-base-content/50">{t("account.usage.creditsTitle")}</span>
               {/* 大数字用正文色:积分是余额陈述不是行动号召,主色留给品牌/选中 */}
-              <span className="font-mono text-lg font-extrabold tracking-tight tabular-nums">
+              <span className="font-mono text-lg font-extrabold leading-none tracking-tight tabular-nums">
                 {vm.credits.toLocaleString()}
               </span>
-            </span>
+              {checkinBtn}
+            </div>
           )}
-          {checkinBtn}
-          <span className="flex-1" />
           {vm.invite && (
-            <span className="flex min-w-0 items-center gap-2.5">
-              <InviteeStack avatars={vm.invite.avatars} />
-              <span className="flex min-w-0 flex-col gap-0.5 text-end">
-                <span className="text-xs font-semibold text-base-content/70">
-                  {t("account.usage.invite", { count: vm.invite.count })}
+            <div className={tile} title={t("account.usage.inviteReward", { reward: INVITE_REWARD.toLocaleString() })}>
+              <span className="text-xs text-base-content/50">{t("account.usage.inviteTitle")}</span>
+              <span className="flex items-center gap-2">
+                <span className="font-mono text-lg font-extrabold leading-none tracking-tight tabular-nums">
+                  {t("account.usage.inviteCount", { count: vm.invite.count })}
                 </span>
-                <span className="text-xs text-base-content/50">
-                  {t("account.usage.inviteReward", { reward: INVITE_REWARD.toLocaleString() })}
-                </span>
+                <InviteeStack avatars={vm.invite.avatars} />
               </span>
-              {/* 复制按钮定宽:文案在「复制邀请链接/已复制」间切换,不定宽
-                  会让整个右对齐的邀请簇跟着抽动 */}
               {vm.invite.link && (
-                <button type="button" className="btn btn-sm min-w-32 shrink-0" title={vm.invite.link} onClick={copyInvite}>
+                <button
+                  type="button"
+                  className="btn btn-link btn-xs h-auto min-h-0 justify-start gap-1 p-0 no-underline"
+                  title={vm.invite.link}
+                  onClick={copyInvite}
+                >
                   {copied ? (
                     <IconCheck size={12} stroke={2} aria-hidden className="text-success" />
                   ) : (
@@ -189,7 +191,7 @@ export function UsagePanel({ userId }: { userId?: string }) {
                   {copied ? t("account.usage.copied") : t("account.usage.copyInvite")}
                 </button>
               )}
-            </span>
+            </div>
           )}
         </div>
       )}

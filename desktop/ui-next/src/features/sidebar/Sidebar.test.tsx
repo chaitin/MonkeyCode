@@ -217,10 +217,10 @@ describe("侧栏(local 空间)", () => {
     expect(active.className).not.toContain("text-base-content/55"); // 活跃行走正文色
   });
 
-  it("组头维持安静小标签(用户定案:不走锚点形态)", () => {
+  it("组头维持安静形态:与行同档字号(2026-08-16 定案),淡色、非粗体,不走锚点形态", () => {
     render(<Sidebar space="local" sessions={SESSIONS} currentId={null} actions={actions()} />);
     const label = screen.getByText("alpha");
-    expect(label.className).toContain("text-xs");
+    expect(label.className).not.toContain("text-xs"); // 字号跟行走 14px 档,不再小一档
     expect(label.className).toContain("text-base-content/50");
     expect(label.className).not.toContain("font-semibold");
   });

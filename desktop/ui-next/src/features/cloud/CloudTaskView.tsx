@@ -39,6 +39,7 @@ import type { StreamStatus } from "@/lib/cloud/stream";
 import { onNativeFileDrop } from "@/lib/ipc/uploads";
 import { useEscLayer } from "@/lib/util/escLayer";
 import { useDismiss } from "@/lib/util/useDismiss";
+import { useMcTransport } from "@/lib/mcTransport";
 import { CloudComposer } from "./CloudComposer";
 import { CloudFiles } from "./CloudFiles";
 import { CloudTerminal } from "./CloudTerminal";
@@ -51,6 +52,18 @@ const AUTO_EARLIER_PX = 48; // 滚进距顶多少像素内自动补拉更早轮�
 const JUMP_MAX_PAGES = 80; // 大纲跳转补页上限(坏锚/游标不前进时不空转)
 const JUMP_STEP = 10; // 补页步长(轮/页;壳侧 mc_task_rounds 的 limit 上限)
 const FLASH_MS = 1100; // 与 chrome.css mc-flash 动画时长对齐(略长于 1s)
+
+export function mcConsoleTaskUrl(baseUrl: string, taskId: string): string {
+  try {
+    const url = new URL(baseUrl.trim());
+    url.pathname = `${url.pathname.replace(/\/+$/, "")}/console/task/${encodeURIComponent(taskId)}`;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
 
 /** 连接状态 → 外显文案;健康态(已连接/本轮结束)返回 null 不渲染——
  * 常驻"已连接云端"是噪音,异常/过渡态才值得占一行。 */
@@ -129,25 +142,32 @@ export function CloudTaskView({
   onDeleted?: () => void;
 }) {
   const { t } = useI18n();
+  const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();
   const h = useCloudTask(task, { onTasksChanged });
   const [termOpen, setTermOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   // 云端主机名:「在浏览器打开」拼控制台 URL 用。挂载拉一次(登录态本就
   // 在设置页维护,这里只借 host);拿不到就不出这一项,不给死链
-  const [mcHost, setMcHost] = useState("");
+  const [mcBaseUrl, setMcBaseUrl] = useState("");
   useEffect(() => {
     let alive = true;
+    const expectedTransport = transportGeneration;
+    queueMicrotask(() => {
+      if (alive && isTransportCurrent(expectedTransport)) setMcBaseUrl("");
+    });
     // catch 不能省:mc_status 会把网络故障抛成 Err(壳 baizhi/mod.rs),
     // 未捕获的 rejection 被 index.html 画成盖住整个应用的红色遮罩
     void mcStatus()
       .then((st) => {
-        if (alive && st?.host) setMcHost(st.host);
+        if (!alive || !isTransportCurrent(expectedTransport)) return;
+        const base = st?.base_url || (st?.host ? `https://${st.host}` : "");
+        if (base) setMcBaseUrl(base);
       })
       .catch(() => undefined); // 拿不到 host 就不出「在浏览器打开」,不给死链
     return () => {
       alive = false;
     };
-  }, []);
+  }, [transportGeneration, isTransportCurrent]);
 
   // ==== 头部 ⋯ 菜单(终止/删除):受控 dropdown,外点/Esc 即收;危险动作
   // 二段确认(首点换文案,再点才执行)——手法与 ChatView 头部菜单一致 ====
@@ -164,9 +184,13 @@ export function CloudTaskView({
 
   const doDelete = () => {
     closeMenu();
+    const expectedTransport = transportGeneration;
     void mcTaskDelete(h.id)
-      .then(() => onDeleted?.())
+      .then(() => {
+        if (isTransportCurrent(expectedTransport)) onDeleted?.();
+      })
       .catch((e: unknown) => {
+        if (!isTransportCurrent(expectedTransport)) return;
         // 服务端会拒绝仍在运行/虚拟机尚在线的任务:原因外显,不静默
         h.notifyErr(t("cloud.list.deleteFailed", { reason: e instanceof Error ? e.message : String(e) }));
       });
@@ -518,7 +542,7 @@ export function CloudTaskView({
             <ul role="menu" aria-label={t("cloud.view.menu")} className="dropdown-content menu z-40 w-56 flex-nowrap [&_li]:flex-nowrap rounded-box bg-base-100 p-2 shadow-sm">
               {/* 在浏览器打开:完整控制台(共享终端/文件下载/预览等桌面端
                   没做的部分都在那边)。拿不到 host 就不出这项,不给死链 */}
-              {mcHost && (
+              {mcBaseUrl && (
                 <li role="none">
                   <button
                     type="button"
@@ -526,7 +550,8 @@ export function CloudTaskView({
                     title={t("cloud.view.openConsoleTip")}
                     onClick={() => {
                       closeMenu();
-                      openExternal(`https://${mcHost}/console/task/${h.id}`);
+                      const url = mcConsoleTaskUrl(mcBaseUrl, h.id);
+                      if (url) openExternal(url);
                     }}
                   >
                     <IconWorld size={14} stroke={1.75} aria-hidden className="shrink-0 text-base-content/50" />
@@ -643,7 +668,7 @@ export function CloudTaskView({
               且要讲清「现在就能输入,连上自动发」。机器离线是第三种:
               它不会自己回来,不能拿唤醒动画吊着 */}
           {!h.ended && h.waking && <span className="loading loading-spinner loading-sm text-base-content/40" aria-hidden />}
-          <p className="max-w-md text-center text-base font-bold">
+          <p className="max-w-md text-center text-lg font-bold">
             {t(emptyKey(emptyState, "title"))}
           </p>
           <p className="max-w-md text-center text-xs leading-relaxed text-base-content/60">

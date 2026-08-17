@@ -537,7 +537,7 @@ export function NewTaskModal({
                         className="absolute start-2 top-full z-20 mt-1 flex w-96 max-w-[calc(100%-1rem)] flex-col rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg"
                       >
                         {recents.length > 0 && (
-                          <li aria-hidden className="px-2 pt-1 pb-0.5 text-[10px] font-bold tracking-wider text-base-content/40">
+                          <li aria-hidden className="px-2 pt-1 pb-0.5 text-2xs font-bold tracking-wider text-base-content/40">
                             {t("create.recentGroup")}
                           </li>
                         )}
@@ -553,7 +553,7 @@ export function NewTaskModal({
                               <IconFolder size={13} stroke={1.75} aria-hidden className="shrink-0 text-base-content/50" />
                               <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
                                 <span className="max-w-full truncate text-xs font-medium">{dirName(p)}</span>
-                                <span className="max-w-full truncate font-mono text-[10px] text-base-content/50">{p}</span>
+                                <span className="max-w-full truncate font-mono text-2xs text-base-content/50">{p}</span>
                               </span>
                               {p === dir && <IconCheck size={12} stroke={2} aria-hidden className="shrink-0 text-primary" />}
                             </button>

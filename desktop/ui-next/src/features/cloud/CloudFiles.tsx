@@ -385,7 +385,7 @@ export function CloudFiles({
                       return <spec.icon size={14} stroke={1.75} aria-hidden className={`shrink-0 ${spec.tone}`} />;
                     })()}
                     <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                    <span className="font-mono text-[10px] text-base-content/40 tabular-nums">{fmtSize(f.size)}</span>
+                    <span className="font-mono text-2xs text-base-content/40 tabular-nums">{fmtSize(f.size)}</span>
                   </button>
                 )}
                 {vmId && (

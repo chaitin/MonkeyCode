@@ -118,6 +118,9 @@ export interface SessionWindow {
   frames: Frame[];
   cursor: number;
   has_more: boolean;
+  /** Desktop 从本进程缓存/回放窗口恢复的上下文快照。旧壳可缺省。 */
+  context_used?: number;
+  context_window?: number;
 }
 
 /** ⚠️ session_history 的返回形状与 session_open **不同**:游标叫

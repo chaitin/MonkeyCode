@@ -384,7 +384,21 @@ impl OhmyDriver {
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
-                let Ok(line) = line else { break };
+                let line = match line {
+                    Ok(line) => line,
+                    // 非 UTF-8 行(旧版 wsl.exe 忽略 WSL_UTF8 时的 UTF-16 中继
+                    // 文本、引擎意外的二进制输出)只是这一行脏,流还活着:
+                    // lines() 已把该行消费掉,跳过继续读。当 EOF 处理会把活
+                    // 引擎误判为崩溃,并强制中断所有运行中会话。
+                    Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                        eprintln!("[desktop] 引擎 stdout 出现非 UTF-8 行,已跳过");
+                        continue;
+                    }
+                    Err(e) => {
+                        eprintln!("[desktop] 引擎 stdout 读取错误,按进程退出收尾: {e}");
+                        break;
+                    }
+                };
                 if line.trim().is_empty() {
                     continue;
                 }
@@ -455,8 +469,12 @@ impl OhmyDriver {
                 // Arc<Inner>——每崩一次就泄漏一整份会话状态与 journal 写线程,
                 // 自动重启下这个泄漏会按崩溃次数累积
                 inner_r.transport.stopped.store(true, Ordering::Relaxed);
-                // 回收子进程:Rust 的 Child::drop **不** wait,不收就是僵尸
+                // 回收子进程:Rust 的 Child::drop **不** wait,不收就是僵尸。
+                // 先 kill 再 wait——走到这里也可能是 stdout 读错误而进程仍
+                // 活着(真退出时 kill 是无害空操作),裸 wait 会永久阻塞:
+                // reader 线程挂死,on_engine_exit 永不触发,自动重启失效。
                 if let Some(mut child) = inner_r.transport.child.lock_ok().take() {
+                    let _ = child.kill();
                     let _ = child.wait();
                 }
                 // WSL 模式:stdout EOF 只证明 wsl.exe 中继死了,guest 引擎
@@ -557,6 +575,18 @@ impl OhmyDriver {
         params: Value,
         timeout: Duration,
     ) -> Result<Value, String> {
+        let (id, rx) = self.begin_rpc(method, params)?;
+        self.await_rpc_response(method, id, rx, timeout).await
+    }
+
+    /// 同步登记并写出 RPC，返回等待端。通常直接用 rpc_with_timeout；只有
+    /// reader 正在处理终止 error、必须在放行下一条 turn/stopped 前把 cancel
+    /// 排进 stdin 时才拆成 begin + await，避免迟到探针误取消下一轮。
+    pub(super) fn begin_rpc(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<(i64, oneshot::Receiver<Value>), String> {
         // 引擎已收摊就别再登记等待者。stdin_tx 是 unbounded 通道,writer 线程
         // 早退后 send 依然"成功",于是这条请求会挂到超时才报错——
         // 崩溃瞬间在途的命令因此白等半分钟。reader 清 pending 与本次登记之间
@@ -572,6 +602,18 @@ impl OhmyDriver {
             self.0.transport.pending.lock_ok().remove(&id);
             return Err("引擎已退出".into());
         }
+        Ok((id, rx))
+    }
+
+    /// 等待 begin_rpc 的既有请求并解析 JSON-RPC 结果。超时时按 id 摘掉
+    /// pending，迟到应答会被 reader 安全忽略。
+    pub(super) async fn await_rpc_response(
+        &self,
+        method: &str,
+        id: i64,
+        rx: oneshot::Receiver<Value>,
+        timeout: Duration,
+    ) -> Result<Value, String> {
         let resp = match tokio::time::timeout(timeout, rx).await {
             Ok(Ok(v)) => v,
             Ok(Err(_)) => return Err("引擎已退出".into()),
