@@ -2087,7 +2087,7 @@ const cn = {
   },
   terminalNative: {
     hero: {
-      tagline: "办公开发一体化 AI 平台",
+      tagline: "一站式 AI 办公开发平台",
       description: "从网页开始协作与开发，调研、写作、编码和任务推进可以在同一平台连续完成；本地代码、文件和环境可由 MonkeyWork 接力处理，移动端随时跟进，企业也可私有化部署。",
     },
     actions: {

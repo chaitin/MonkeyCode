@@ -2087,7 +2087,7 @@ const en = {
   },
   terminalNative: {
     hero: {
-      tagline: "AI platform for work and development",
+      tagline: "The all-in-one AI platform for work & code",
       description: "Start working right in the browser, with research, writing, development, and task execution flowing from the same workspace. When work needs local code, files, or runtime environments, hand it to MonkeyWork for continuous execution, keep up from mobile, and deploy privately inside the enterprise when needed.",
     },
     actions: {
