@@ -211,7 +211,7 @@ func PostURL[T any](ctx context.Context, rawURL string, body any, opts ...Opt) (
 
 	client := c.client
 	if client == nil {
-		client = otelhttp.DefaultClient
+		client = &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 	} else {
 		clientCopy := *client
 		client = &clientCopy
