@@ -8,6 +8,11 @@ const cn = {
     },
   },
   common: {
+    language: {
+      switch: "切换语言",
+      cn: "中文",
+      en: "English",
+    },
     theme: {
       toggle: "切换主题",
       light: "明亮模式",
