@@ -25,7 +25,7 @@ test("管理后台外壳使用 managerShell i18n key", () => {
   }
 
   assert.match(sourceFiles.languageToggle, /t\("common\.language\.switch"\)/);
-  assert.match(sourceFiles.languageToggle, /initI18n\(language\)/);
+  assert.match(sourceFiles.languageToggle, /setAppLanguage\(language\)/);
   assert.match(sourceFiles.sidebar, /t\("managerShell\.brand\.subtitle"\)/);
   assert.match(sourceFiles.navTeams, /t\("managerShell\.nav\.overview"\)/);
   assert.match(sourceFiles.navTeams, /t\("managerShell\.nav\.members"\)/);

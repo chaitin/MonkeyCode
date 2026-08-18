@@ -10,7 +10,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { initI18n } from "@/i18n"
+import { setAppLanguage } from "@/i18n"
 import { isAppLanguage, type AppLanguage } from "@/i18n/language"
 
 export function LanguageToggle() {
@@ -21,7 +21,7 @@ export function LanguageToggle() {
 
   const changeLanguage = (language: string) => {
     if (isAppLanguage(language) && language !== currentLanguage) {
-      void initI18n(language)
+      void setAppLanguage(language)
     }
   }
 

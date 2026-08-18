@@ -16,8 +16,6 @@ const resources = {
 } as const
 
 export async function initI18n(language: AppLanguage = initLanguage()) {
-  applyLanguage(language)
-
   if (i18n.isInitialized) {
     await i18n.changeLanguage(language)
     syncDocumentMeta()
@@ -34,6 +32,11 @@ export async function initI18n(language: AppLanguage = initLanguage()) {
   })
 
   syncDocumentMeta()
+}
+
+export async function setAppLanguage(language: AppLanguage) {
+  applyLanguage(language)
+  await initI18n(language)
 }
 
 function syncDocumentMeta() {
