@@ -14,6 +14,11 @@ test("套餐弹窗使用 subscriptionPlan i18n key", () => {
   assert.match(source, /t\("subscriptionPlan\.plans\.pro\.name"\)/);
   assert.match(source, /t\("subscriptionPlan\.features\.taskConcurrency\.label"\)/);
   assert.match(source, /t\("subscriptionPlan\.confirm\.renewTitle"\)/);
+  assert.match(source, /isStripeUpgradeTransition/);
+  assert.match(source, /subscription\?\.billing_interval === "year"/);
+  assert.match(source, /subscription\?\.payment_provider === "stripe"/);
+  assert.match(source, /t\("subscriptionPlan\.confirm\.upgradeDescription"/);
+  assert.match(source, /disabled=\{isStripeSubscription && currentBillingPeriod === "yearly"\}/);
   assert.doesNotMatch(source, cjkPattern);
 });
 
@@ -24,6 +29,10 @@ test("套餐弹窗提供中英文资源", () => {
   assert.equal(en.subscriptionPlan.plans.pro.name, "Pro");
   assert.equal(cn.subscriptionPlan.actions.subscribePlan, "开通{{plan}}");
   assert.equal(en.subscriptionPlan.actions.subscribePlan, "Subscribe to {{plan}}");
+  assert.equal(cn.subscriptionPlan.actions.upgrade, "升级");
+  assert.equal(en.subscriptionPlan.actions.upgrade, "Upgrade");
+  assert.match(cn.subscriptionPlan.confirm.upgradeDescription, /完整周期积分/);
+  assert.match(en.subscriptionPlan.confirm.upgradeDescription, /full-cycle credits/);
 });
 
 test("套餐弹窗使用固定设计高度并限制极小视口", () => {
