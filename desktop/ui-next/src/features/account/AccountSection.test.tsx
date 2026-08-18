@@ -48,6 +48,7 @@ const emptyDraft = (): SettingsDraft => ({
   mcBaseUrl: "",
   mcBasicAuth: "",
   mcLlmBaseUrl: "",
+  mcSkipTlsVerify: false,
 });
 
 const usageFixture = (): McUsage => ({
