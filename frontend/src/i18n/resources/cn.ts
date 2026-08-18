@@ -1625,6 +1625,7 @@ const cn = {
       currentPlan: "当前套餐",
       lifetime: "长期有效",
       validUntil: "{{date}} 前有效",
+      nextCharge: "下次扣款：{{date}}",
       upgrade: "开通高级会员",
       renew: "续费",
     },

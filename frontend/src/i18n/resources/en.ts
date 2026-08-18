@@ -1625,6 +1625,7 @@ const en = {
       currentPlan: "Current plan",
       lifetime: "Lifetime",
       validUntil: "Valid until {{date}}",
+      nextCharge: "Next charge: {{date}}",
       upgrade: "Upgrade membership",
       renew: "Renew",
     },
