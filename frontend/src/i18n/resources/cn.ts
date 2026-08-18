@@ -1521,7 +1521,7 @@ const cn = {
     featureValues: {
       oneTask: "1 个任务",
       threeTasks: "3 个任务",
-      dailyQuotaBasic: "每天 30M Token",
+      dailyQuotaBasic: "每天 10M Token",
       dailyQuotaPro: "每天 100M Token",
       dailyQuotaUltra: "每天 300M Token",
       modelScopeBasic: "基础模型",
@@ -2324,7 +2324,7 @@ const cn = {
         concurrency3: "3 个任务并发",
         cloud1c4g: "云开发环境 1C / 4G",
         cloud2c8g: "云开发环境 2C / 8G",
-        dailyQuotaBasic: "每日额度：每天 30M Token",
+        dailyQuotaBasic: "每日额度：每天 10M Token",
         dailyQuotaPro: "每日额度：每天 100M Token",
         dailyQuotaUltra: "每日额度：每天 300M Token",
         modelScopeBasic: "模型范围：基础模型",
