@@ -1543,6 +1543,7 @@ const en = {
       yearly: "Yearly",
       monthCount: "{{count}} month(s)",
       yearCount: "{{count}} year(s)",
+      proratedDifference: "Prorated difference",
     },
     status: {
       lifetime: "Lifetime",
@@ -1556,6 +1557,7 @@ const en = {
     },
     actions: {
       renew: "Renew",
+      upgrade: "Upgrade",
       subscribe: "subscribe to",
       subscribePlan: "Subscribe to {{plan}}",
     },
@@ -1565,13 +1567,19 @@ const en = {
       autoRenewFailed: "Failed to update auto-renewal",
       renewFailed: "Failed to renew {{plan}}",
       subscribeFailed: "Failed to subscribe to {{plan}}",
+      upgradeFailed: "Failed to upgrade to {{plan}}",
+      upgradeRequested: "Upgrade payment created",
+      subscriptionRequested: "Subscription payment created",
     },
     confirm: {
       renewTitle: "Confirm renewal",
       subscribeTitle: "Confirm subscription",
+      upgradeTitle: "Confirm upgrade",
       description: "Confirm {{action}} {{plan}} for {{period}}, total {{total}}?",
+      upgradeDescription: "Stripe will credit the unused time on your current subscription and charge the prorated difference immediately. After payment, {{plan}} for {{period}} starts immediately and grants the full-cycle credits.",
       renewAction: "Confirm renewal",
       subscribeAction: "Confirm subscription",
+      upgradeAction: "Confirm upgrade",
     },
   },
   navProject: {
@@ -1625,6 +1633,7 @@ const en = {
       currentPlan: "Current plan",
       lifetime: "Lifetime",
       validUntil: "Valid until {{date}}",
+      nextCharge: "Next charge: {{date}}",
       upgrade: "Upgrade membership",
       renew: "Renew",
     },
