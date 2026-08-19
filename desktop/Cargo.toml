@@ -30,6 +30,10 @@ tokio = { version = "1", features = ["sync", "time", "macros", "io-util", "proce
 # rustls-tls-webpki-roots 不能少:云端桥拨的是 wss,缺 TLS feature 时
 # connect_async 直接报 "TLS support not compiled in",所有云端 WS 秒败
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+# 私有化自签部署跳过证书验证:云端 WS 桥要手工构建免验证 rustls 配置
+# (reqwest 走内置 danger_accept_invalid_certs,不需要它)。版本与
+# reqwest/tungstenite 锁定的 rustls 同一 0.23 线,ring 后端已在依赖树里
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 futures-util = "0.3"
 base64 = "0.22"
 

@@ -49,6 +49,9 @@ export interface DesktopConfig {
   mc_basic_auth?: string;
   /** 模型请求地址(llmproxy);表单外字段,原样透传 */
   mc_llm_base_url?: string;
+  /** 跳过 MonkeyCode 服务的 TLS 证书验证(私有化自签证书;壳侧仅对
+   *  服务地址所在域生效,官方云恒验证) */
+  mc_skip_tls_verify?: boolean;
   /** 已废弃(单引擎化后壳忽略);历史 config.json 兼容,透传即可 */
   agent_engine?: string;
   /** 壳自有偏好:save_config 时壳以磁盘值合并,UI 透传不编辑 —— */

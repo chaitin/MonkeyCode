@@ -94,6 +94,11 @@ pub struct DesktopConfig {
     /// 部署(模型代理独立域名/端口,或绕开反代鉴权)时单独指定。
     #[serde(default)]
     pub mc_llm_base_url: String,
+    /// 跳过 MonkeyCode 服务的 TLS 证书验证(私有化部署自签证书用)。
+    /// 仅对服务地址所在域生效,且服务地址为官方云时恒不生效(壳侧双重
+    /// 判定,见 baizhi::Service);引擎侧 LLM 直连不受此开关影响。
+    #[serde(default)]
+    pub mc_skip_tls_verify: bool,
     /// 已废弃(单引擎化后忽略):历史 config.json 兼容保留,不再消费。
     #[serde(default = "default_engine")]
     pub agent_engine: String,
@@ -128,6 +133,7 @@ impl Default for DesktopConfig {
             mc_base_url: String::new(),
             mc_basic_auth: String::new(),
             mc_llm_base_url: String::new(),
+            mc_skip_tls_verify: false,
             agent_engine: default_engine(),
             pet_enabled: true,
             sound_enabled: true,
