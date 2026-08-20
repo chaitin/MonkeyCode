@@ -21,7 +21,7 @@
 // - 拖拽热区铁律:Tauri 按事件目标**自身**的 data-tauri-drag-region 判定,
 //   不继承——条内每个可见的非交互子节点都要单独带;交互按钮不许带。
 //   带该属性的区域双击 = 切换最大化(Tauri 原生行为,无需自绑)。
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 import { useI18n } from "@/lib/i18n";
 
@@ -106,7 +106,7 @@ export function Brand() {
 const CAPTION_BTN =
   "relative z-[1002] flex h-full w-[46px] cursor-default items-center justify-center text-base-content/70 transition-colors duration-150";
 
-export function TitleBar() {
+export function TitleBar({ leading = null }: { leading?: ReactNode } = {}) {
   const { t } = useI18n();
   const maximized = useMaximized();
   // 系统菜单只在 Windows 有(mac 不渲染本条;GTK 侧无对等 API,图标纯展示)
@@ -122,13 +122,18 @@ export function TitleBar() {
       onContextMenu={sysMenu}
       className="flex h-7 shrink-0 items-stretch bg-base-300 select-none"
     >
-      {/* 整条单色、无底边线、**除三键外什么都不放**(LAYOUT §1 三条铁律)。
-          品牌标记曾摆在这条左端(为的是别让窗口左上角空着一块深色方格),
-          2026-08-09 挪去 rail 角落格——那格在 Windows/Linux 上本来就是空的
-          (它存在的唯一理由是 mac 要在那儿放红绿灯),标记落进去两处空档一次
-          填平,这条也回归"只做 chrome"。
+      {/* 整条单色、无底边线、**除三键外不放品牌/视图信息**(LAYOUT §1 三条
+          铁律)。品牌标记曾摆在这条左端(为的是别让窗口左上角空着一块深色
+          方格),2026-08-09 挪去 rail 角落格——那格在 Windows/Linux 上本来
+          就是空的(它存在的唯一理由是 mac 要在那儿放红绿灯),标记落进去
+          两处空档一次填平,这条也回归"只做 chrome"。
+          leading = 左端寄宿位(2026-08-20 修订:任务列收起时工作台的
+          ☰/新建两颗**功能钮**经 App 的 slot 元素 portal 进来——此前它们
+          单开一行 h-10 顶条,用户报障「空了一行,好丑」。铁律拦的是品牌/
+          列色/底线这些"冒充 header"的东西,不拦功能 chrome)。
           系统菜单改由**本条右键**唤起:它是标题栏的东西,挂到侧栏图标上会变成
           「双击侧栏图标把应用关了」的陷阱 */}
+      {leading}
       <div data-tauri-drag-region="" className="flex-1" />
       <button
         type="button"

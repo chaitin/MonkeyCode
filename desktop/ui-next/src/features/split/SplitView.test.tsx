@@ -521,17 +521,18 @@ describe("分屏视图(树形布局)", () => {
     expect(within(pane).getByRole("button", { name: "最近目录" }).textContent).toContain("临时会话");
   });
 
-  it("任务列默认展开:新建主钮在列顶 chrome 行(2026-08-18 定案),点行走 place 路由(在场定位/空格装载)", async () => {
+  it("任务列默认展开:新建/列开关双钮在列内(2026-08-18 定案),点行走 place 路由(在场定位/空格装载)", async () => {
     stubShell();
     localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
     localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
     render(<Harness />);
     const list = screen.getByRole("complementary", { name: "选择任务" });
-    // 计数统计行已撤(2026-08-18 用户定案「没啥用」);「新建」主钮住列顶
-    // chrome 行(mac 净空标记与列开关同排);列在场时主区头不再有它
+    // 计数统计行已撤(2026-08-18 用户定案「没啥用」);列在场时主区头不再
+    // 有新建钮。列顶 chrome 行(mac 净空标记)只归 mac——非 mac 平台它是
+    // 空行挂两颗钮,双钮改住品牌行行尾(2026-08-20 用户报障「空了一行」)
     expect(within(list).queryByText(/\d+ 项目/)).toBeNull();
     expect(within(list).getByRole("button", { name: "新建任务" })).toBeTruthy();
-    expect(list.querySelector("[data-mac-lights-clear]")).not.toBeNull();
+    expect(list.querySelector("[data-mac-lights-clear]")).toBeNull();
     expect(within(list).getByRole("button", { name: "收起任务列" })).toBeTruthy();
     // 多格 + 列开:右侧无顶条(2026-08-19「整个 panel 浮上去」),画布
     // 自任拖窗面

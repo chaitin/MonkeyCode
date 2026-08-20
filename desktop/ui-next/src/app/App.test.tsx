@@ -67,6 +67,24 @@ describe("壳骨架(工作台即主界面,2026-08-18 换代)", () => {
     await userEvent.click(screen.getByRole("button", { name: "缩放" }));
     await waitFor(() => expect(shell.count("plugin:window|is_fullscreen")).toBe(1));
   });
+
+  // 2026-08-20 用户报障「两个操作空了一行,折叠后也空一行」:非 mac 下
+  // 列顶 chrome 行(存在理由 = mac 灯净空)整行省掉;列收起时 ☰/新建
+  // 借住自绘标题栏左端,不再单开 h-10 顶条
+  it("Windows 壳列收起:☰/新建借住标题栏左端,不再单开一行顶条", async () => {
+    stubShell();
+    vi.stubGlobal("navigator", { ...window.navigator, userAgent: "Windows NT 10.0" });
+    localStorage.setItem("mc.workbenchListHidden", "1");
+    const { container } = render(<App />);
+    const bar = container.querySelector("[data-window-titlebar]") as HTMLElement;
+    expect(bar).not.toBeNull();
+    expect(document.querySelector("[data-view-header]")).toBeNull(); // 顶条免开
+    await userEvent.click(within(bar).getByRole("button", { name: "展开任务列" }));
+    const list = screen.getByRole("complementary", { name: "选择任务" });
+    // 展开后双钮回列内品牌行,标题栏回归纯 chrome
+    expect(within(bar).queryByRole("button", { name: "收起任务列" })).toBeNull();
+    expect(within(list).getByRole("button", { name: "收起任务列" })).toBeTruthy();
+  });
 });
 
 describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () => {

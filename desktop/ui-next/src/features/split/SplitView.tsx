@@ -31,6 +31,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { createPortal } from "react-dom";
 
 import { ChatView } from "@/features/chat/ChatView";
 import { CloudTaskList, type CloudTasksFeed } from "@/features/cloud/CloudTaskList";
@@ -55,7 +56,7 @@ import { openMenu, type MenuItem } from "@/lib/contextMenu";
 import { groupSessions, projectKey, readArchivedProjects, readCollapsedGroups, readProjectOrder, readSessionArchivesOpen, reorderKeys, writeArchivedProjects, writeCollapsedGroups, writeProjectOrder, writeSessionArchivesOpen } from "@/lib/util/projects";
 import { Brand } from "@/features/titlebar/TitleBar";
 import { useUpdate } from "@/features/update/useUpdate";
-import { openExternal } from "@/lib/ipc/host";
+import { isMacShell, openExternal } from "@/lib/ipc/host";
 import { readFold, SPLIT_MAX_PANES, writeFold } from "@/lib/util/prefs";
 import { renameIsNoop } from "@/lib/util/rename";
 import { cloudSlotId, cloudTaskIdOf, firstEmptyIn, isCloudSlotId, LOAD_MIME, SWAP_MIME } from "./slots";
@@ -102,6 +103,7 @@ export function SplitView({
   recentDirs,
   cloud,
   admin,
+  titlebarSlot = null,
 }: {
   sessions: SessionMeta[];
   split: SplitStateApi;
@@ -139,6 +141,10 @@ export function SplitView({
   recentDirs: string[];
   cloud?: SplitCloudWiring;
   admin?: SplitAdminWiring;
+  /** Windows/Linux 自绘标题栏左端的寄宿位(App 经 TitleBar leading 供给):
+   *  列收起时 ☰/新建 portal 进去,不再单开一行 h-10 顶条(2026-08-20 用户
+   *  报障「收起后空一行」)。mac/浏览器无此条 → null,收起走 rightBar。 */
+  titlebarSlot?: HTMLElement | null;
 }) {
   const { t } = useI18n();
   // 「更换」= 原地重开装载卡;「新建」= 原地内嵌创建表单(kind 跟随发起处
@@ -236,7 +242,9 @@ export function SplitView({
   // 无论单格还是多格」:格永远是浮卡(单格融合 2026-08-18 版随之反转
   // 退役,格头回卡上),列开着时右侧无任何顶条,拖窗面由画布衬/卡缝
   // (grid 自带拖拽属性,不继承、格内交互不受扰)与列顶行接棒
-  const rightBar = !listOpen;
+  // 有自绘标题栏(Windows/Linux)时 ☰/新建 借住其左端(portal,见下),
+  // 顶条整行免开(2026-08-20 用户报障「收起后空了一行,好丑」)
+  const rightBar = !listOpen && !titlebarSlot;
   const focusedEntry = split.slots[split.focused] ?? null;
 
   /** 新建入口的落格路由(任务列底部钮/空格提示钮共用):优先叶序第一个
@@ -641,6 +649,34 @@ export function SplitView({
             错判,灯是大圆点,真机一眼即穿(2026-08-18 二次报障;壳侧挪灯
             API 实测无效,见 main.rs)。左列与本头同高同底色、无分隔线,
             拼成一体的 L 形 chrome;内容画布是独立的一块(data-split-grid) */}
+        {/* Windows/Linux 列收起:☰/新建 portal 进自绘标题栏左端——28px
+            条本来就在,再开一行 h-10 只装两颗钮是纯浪费(2026-08-20 用户
+            报障)。btn-xs 适配条高;列开着时双钮在品牌行,标题栏回归纯
+            chrome。mac/浏览器无标题栏条,仍走下方 rightBar */}
+        {!listOpen && titlebarSlot && createPortal(
+          <span className="flex h-full items-center gap-0.5 ps-1">
+            <button
+              type="button"
+              aria-label={t("split.listShow")}
+              title={t("split.listShow")}
+              aria-pressed={false}
+              className="btn btn-ghost btn-square btn-xs text-base-content/60"
+              onClick={toggleList}
+            >
+              <IconLayoutSidebar size={14} stroke={1.75} aria-hidden />
+            </button>
+            <button
+              type="button"
+              aria-label={t("split.newTask")}
+              title={t("split.newTask")}
+              className="btn btn-ghost btn-square btn-xs"
+              onClick={newTaskAction}
+            >
+              <IconPlus size={14} stroke={1.75} className="text-primary" aria-hidden />
+            </button>
+          </span>,
+          titlebarSlot,
+        )}
         {rightBar && (
           <header
             data-view-header=""
@@ -945,48 +981,64 @@ function WorkbenchList({
     ...(cloud ? [{ k: "cloud" as const, icon: IconCloud, label: "split.tabCloud" as MessageKey }] : []),
   ];
 
+  // ☰ 列开关 + 新建双钮(mac 住列顶 chrome 行,其余平台住品牌行行尾——
+  // 家不同、钮一致)。新建 = ☰ 同语汇的 ghost 方钮(2026-08-18 用户报障
+  // 「按钮丑」:soft-primary 色块是全 chrome 唯一大填充,违背「安静
+  // chrome、填充只归选中」),品牌感只落图标色;kind 跟当前 tab,新建即新格
+  const listActions = (
+    <>
+      <button
+        type="button"
+        aria-label={t("split.listHide")}
+        title={t("split.listHide")}
+        aria-pressed
+        className="btn btn-ghost btn-square btn-sm text-base-content/60"
+        onClick={onToggleList}
+      >
+        <IconLayoutSidebar size={16} stroke={1.75} aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label={t("split.newTask")}
+        title={t("split.newTask")}
+        className="btn btn-ghost btn-square btn-sm"
+        onClick={onNewTask}
+      >
+        <IconPlus size={16} stroke={1.75} className="text-primary" aria-hidden />
+      </button>
+    </>
+  );
+
   return (
     <aside
       aria-label={t("split.pickTitle")}
       style={width ? { width } : undefined}
       className="flex w-side shrink-0 flex-col border-e border-base-300 bg-base-200"
     >
-      {/* 列顶 chrome 行(参考图 2026-08-18):任务列整窗高后,mac 原生灯
-          与列开关住这儿(净空标记见 app.css);「新建」同日提级到主区
-          头部。整行拖拽区(§7:非交互子节点各自带) */}
-      <div data-tauri-drag-region="" data-mac-lights-clear="" className="flex h-10 shrink-0 items-center px-2">
-        {/* 左端让给 mac 灯,双钮整体靠右(2026-08-18 用户定案「都 float
-            到右边」):☰ 在内、新建收尾贴角 */}
-        <div data-tauri-drag-region="" className="min-w-0 flex-1" />
-        <button
-          type="button"
-          aria-label={t("split.listHide")}
-          title={t("split.listHide")}
-          aria-pressed
-          className="btn btn-ghost btn-square btn-sm text-base-content/60"
-          onClick={onToggleList}
-        >
-          <IconLayoutSidebar size={16} stroke={1.75} aria-hidden />
-        </button>
-        {/* 新建 = ☰ 同语汇的 ghost 方钮(2026-08-18 用户报障「按钮丑」:
-            soft-primary 色块是全 chrome 唯一大填充、又悬在行中,违背
-            「安静 chrome、填充只归选中」)。品牌感只落在图标色上;文字
-            入 tooltip/aria,发现性由组头 hover「+」与空格提示卡兜底。
-            kind 跟当前 tab,新建即新格 */}
-        <button
-          type="button"
-          aria-label={t("split.newTask")}
-          title={t("split.newTask")}
-          className="btn btn-ghost btn-square btn-sm"
-          onClick={onNewTask}
-        >
-          <IconPlus size={16} stroke={1.75} className="text-primary" aria-hidden />
-        </button>
-      </div>
+      {/* 列顶 chrome 行(参考图 2026-08-18)**只在 mac 渲染**:它存在的
+          理由是给原生灯让位(净空标记见 app.css)。Windows/Linux/浏览器
+          没有灯,这行就是一条空行挂两颗钮(2026-08-20 用户报障「空了
+          一行,好丑」)——双钮改并进品牌行行尾,整行省掉。
+          整行拖拽区(§7:非交互子节点各自带) */}
+      {isMacShell() && (
+        <div data-tauri-drag-region="" data-mac-lights-clear="" className="flex h-10 shrink-0 items-center px-2">
+          {/* 左端让给 mac 灯,双钮整体靠右(2026-08-18 用户定案「都 float
+              到右边」):☰ 在内、新建收尾贴角 */}
+          <div data-tauri-drag-region="" className="min-w-0 flex-1" />
+          {listActions}
+        </div>
+      )}
       {/* 品牌行(2026-08-18 用户定案「tab 上方加品牌」;旧侧栏头同款
-          Brand = 字标 + work 徽标,自带逐节点拖拽区) */}
-      <div data-tauri-drag-region="" className="flex items-center gap-2 ps-5 pe-4 pt-1 pb-2">
+          Brand = 字标 + work 徽标,自带逐节点拖拽区);非 mac 双钮住行尾
+          (chrome 行已省,见上) */}
+      <div data-tauri-drag-region="" className={`flex items-center gap-2 ps-5 pt-1 pb-2 ${isMacShell() ? "pe-4" : "pe-2 min-h-10"}`}>
         <Brand />
+        {!isMacShell() && (
+          <>
+            <span data-tauri-drag-region="" className="min-w-0 flex-1" />
+            {listActions}
+          </>
+        )}
       </div>
       {/* tab 盒式切换(形态五代:border 下划线 → box 白 pill → box 补轨
           → 文字级 → 回归 box,2026-08-20 用户「改成 box」):与换任务

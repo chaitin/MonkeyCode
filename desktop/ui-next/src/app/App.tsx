@@ -144,6 +144,9 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   const cloudFeed = useCloudTasks(cloudReload, true);
   const cloudProjects = useCloudProjects(cloudReload, true);
 
+  // Windows/Linux 自绘标题栏左端的寄宿位(TitleBar leading → SplitView
+  // 列收起时 portal ☰/新建;mac/浏览器恒 null)
+  const [titlebarSlot, setTitlebarSlot] = useState<HTMLElement | null>(null);
   // composer 聚焦意图(跨覆盖视图重挂仍送达;消费后清零)
   const [composerFocusRequest, setComposerFocusRequest] = useState(0);
   const focusSeqRef = useRef(0);
@@ -492,7 +495,9 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
 
   return (
     <div className="flex h-full flex-col text-base-content">
-      {isCustomChromeShell() && <TitleBar />}
+      {/* leading = 标题栏左端寄宿位:任务列收起时 SplitView 把 ☰/新建
+          portal 进来,免开一行 h-10 顶条(2026-08-20 用户报障「空一行」) */}
+      {isCustomChromeShell() && <TitleBar leading={<span ref={setTitlebarSlot} className="contents" />} />}
       {/* mac 自绘小灯:固定浮在窗口左上(h-10 行内垂直居中),工作台各
           形态与设置覆盖视图共用一份;贴角 chrome 经 data-mac-lights-clear
           让位 64px(app.css)。2026-08-20 回归:原生尺寸不可调、用户嫌大 */}
@@ -519,6 +524,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
             onAssign={assignToSlot}
             onLoadSession={loadEntry}
             onComposerIntent={requestComposerFocus}
+            titlebarSlot={titlebarSlot}
             onCreatedInSlot={(slot, meta, todoId) => {
               // 待办派发链:创建成功即回链去向(状态词回显靠会话表回查)
               if (todoId) todoOps.markDispatched(todoId, meta.kind === "chat" ? "chat" : "local", meta.id);
