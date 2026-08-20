@@ -21,6 +21,8 @@ export function CloudComposer({
   h,
   pending,
   onSend,
+  focusRequest = 0,
+  onFocusRequestHandled,
 }: {
   h: CloudTaskHandle;
   /** VM 启动中(task pending)。**输入框不禁用**:桌面侧不退化成只读等待页
@@ -30,6 +32,9 @@ export function CloudComposer({
   pending: boolean;
   /** 发送动作由视图包一层(发送前重新贴底),内容仍取 h.input */
   onSend: () => void;
+  /** 选格聚焦意图(本地 Composer 同款契约:消费后 App 清零) */
+  focusRequest?: number;
+  onFocusRequestHandled?: (request: number) => void;
 }) {
   const { t } = useI18n();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -43,6 +48,15 @@ export function CloudComposer({
     taRef.current?.focus();
     // 只挂载时一次;切换任务由整棵重建表达,不依赖 props 变化
   }, []);
+
+  // 选格聚焦(2026-08-20 用户「选中 panel 应 focus 到 composer」的云端半边:
+  // 点已装载的云端格不重挂,挂载聚焦覆盖不到):与本地 Composer 同一套
+  // request/handled 契约,消费后 App 清零,防引擎自愈重挂重复抢焦
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    taRef.current?.focus();
+    onFocusRequestHandled?.(focusRequest);
+  }, [focusRequest, onFocusRequestHandled]);
 
   // 模型清单预取(幂等;失败保持 null,悬停菜单区再触发即重试)
   const { loadModels } = h;

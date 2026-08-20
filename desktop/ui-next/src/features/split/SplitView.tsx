@@ -523,6 +523,8 @@ export function SplitView({
             menuRegister={paneMenuReg[slot]}
             hotkeysActive={focused}
             nativeDropEnabled={focused}
+            focusRequest={focused ? focusRequest : 0}
+            onFocusRequestHandled={onFocusRequestHandled}
             onTasksChanged={cloud?.onChanged}
             onDeleted={() => {
               cloud?.onDeleted(cloudTask.id);

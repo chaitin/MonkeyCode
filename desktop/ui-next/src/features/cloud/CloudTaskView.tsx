@@ -138,6 +138,8 @@ export function CloudTaskView({
   menuRegister,
   hotkeysActive = true,
   nativeDropEnabled = true,
+  focusRequest = 0,
+  onFocusRequestHandled,
   onTasksChanged,
   onDeleted,
 }: {
@@ -155,6 +157,10 @@ export function CloudTaskView({
   hotkeysActive?: boolean;
   /** Linux 原生拖放是 window 级事件；分屏时仅焦点格接收。 */
   nativeDropEnabled?: boolean;
+  /** 选格聚焦意图(仅焦点格收非零值;透传 CloudComposer,结束态无
+   *  composer 不消费,请求留给下一个能消费的格) */
+  focusRequest?: number;
+  onFocusRequestHandled?: (request: number) => void;
   /** 侧栏/新建入口带进来的任务(至少含 id;详情异步补全)。
    * 契约:App 以 task.id 为 key 挂载本视图(id 在一次挂载内不变)。 */
   task: CloudTask;
@@ -766,7 +772,7 @@ export function CloudTaskView({
           // gutter 两侧对称预留:与页脚 composer 列(无滚动条)共享同一条中线
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3 [scrollbar-gutter:stable_both-edges]"
         >
-          <div className="mx-auto flex chat-measure flex-col gap-3">
+          <div className={`mx-auto flex ${variant === "pane" ? "chat-measure-pane" : "chat-measure"} flex-col gap-3`}>
             {h.cursor && (
               <button
                 type="button"
@@ -815,7 +821,7 @@ export function CloudTaskView({
 
       {/* 无上边线:与 ChatView composer 同款(2026-08-13 用户定案) */}
       <footer className="shrink-0 p-3">
-        <div className="mx-auto flex chat-measure flex-col gap-2">
+        <div className={`mx-auto flex ${variant === "pane" ? "chat-measure-pane" : "chat-measure"} flex-col gap-2`}>
           {/* 终端卡:外壳走 card card-border 官方形态,头部条普通 base 底 +
               结构线;深色只留给 xterm 本体(term.css 白名单) */}
           {termOpen && h.vmId && !h.ended && (
@@ -849,7 +855,7 @@ export function CloudTaskView({
           ) : (
             <>
               {h.chat.plan.length > 0 && <TaskPanel entries={h.chat.plan} />}
-              <CloudComposer h={h} pending={pending} onSend={send} />
+              <CloudComposer h={h} pending={pending} onSend={send} focusRequest={focusRequest} onFocusRequestHandled={onFocusRequestHandled} />
             </>
           )}
         </div>

@@ -258,7 +258,8 @@
   padding-left: 64px;
 }
 
-/* 分屏格内的对话列宽(ChatView variant="pane" 的消息流与 composer 共用):
+/* 分屏格内的对话列宽(ChatView/CloudTaskView variant="pane" 的消息流与
+ * composer 共用):
  * 同一个 64rem 天花板、同一个 92% 呼吸边,**没有 48rem 地板**——地板是给
  * 全宽主区设计的下限;四分格在 1080p 只有 ~790px 宽,768px 地板会把内容
  * 顶出横向滚动(LAYOUT §5 列级容器禁横滚)。两条列的天花板要一起动。 */
