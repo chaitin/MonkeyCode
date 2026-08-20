@@ -47,6 +47,7 @@ import { noticeForQueuedDelivery, noticeForSessionEvent, type NoticeKind, type S
 import { deliverQueued, dropStash } from "@/features/chat/composer/stash";
 import { readLastSession } from "@/lib/util/prefs";
 import { projectKey, readArchivedProjects } from "@/lib/util/projects";
+import { McTransportProvider } from "@/lib/mcTransport";
 
 const NOTICE_TONE: Record<NoticeKind, string> = {
   ask: "alert-warning",
@@ -96,7 +97,30 @@ interface ShellNotice {
 const SHELL_NOTICE_MS = 6000;
 const SHELL_ERROR_MS = 8000;
 
+/** transport generation 必须在消费云 hooks 的组件外提供；若 Provider 只包在
+ * AppShell 的 return 里，AppShell 自己的 useCloudTasks 仍会读到 fallback。 */
 export function App() {
+  const [generation, setGeneration] = useState(0);
+  // 壳事件回调先同步推进 ref，再排 React render：同一 tick 落地的旧请求
+  // 也会立刻被判 stale，不能钻进状态提交窗口。
+  const generationRef = useRef(0);
+  const isCurrent = useCallback((candidate: number) => generationRef.current === candidate, []);
+  const advance = useCallback((incoming: number): boolean => {
+    const next = Number.isFinite(incoming) ? incoming : generationRef.current + 1;
+    if (next <= generationRef.current) return false;
+    generationRef.current = next;
+    setGeneration(next);
+    return true;
+  }, []);
+
+  return (
+    <McTransportProvider generation={generation} isCurrent={isCurrent}>
+      <AppShell onTransportChanged={advance} />
+    </McTransportProvider>
+  );
+}
+
+function AppShell({ onTransportChanged }: { onTransportChanged: (generation: number) => boolean }) {
   const { locale, t } = useI18n();
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   // 创建意图(待办派发「启动任务」):送进工作台走「新建即新格」;整页
@@ -282,9 +306,13 @@ export function App() {
       if (!id) return;
       void openSessionByIdRef.current(id);
     });
-    // MonkeyCode transport 切换(设置页换服务/登出):云端 feed 立即作废重拉。
-    // 格内 CloudTaskView 自持 transport generation 守卫,不需要壳层清格
-    const offTransport = listen<number>("monkeycode-transport-changed", () => setCloudReload((n) => n + 1));
+    // MonkeyCode transport 切换(设置页换服务/登出):先同步推进 generation
+    // 守卫，再清掉旧服务/账号命名空间的持久化云槽并重拉 feed。
+    const offTransport = listen<number>("monkeycode-transport-changed", (generation) => {
+      if (!onTransportChanged(generation)) return;
+      split.clearCloud();
+      setCloudReload((n) => n + 1);
+    });
     const offMcpReloaded = listen<void>("browser-mcp-reloaded", () => pushShell("browser.mcpReloaded", "info"));
     const offMcpTimeout = listen<void>("browser-mcp-refresh-timeout", () =>
       pushShell("browser.mcpTimeout", "warn", { action: "restart" }),

@@ -134,6 +134,56 @@ describe("文件抽屉", () => {
     expect(localStorage.getItem("mc.drawerWidth")).toBe(String(expected));
   });
 
+  it("pane 形态的宽度与预览分栏都以所在格边界计算", async () => {
+    stubShell({ list: { "": [entry("a.txt", "a.txt")] }, content: "hello" });
+    const { container } = render(
+      <div data-test-pane="">
+        <FilesDrawer variant="pane" sessionId="s1" onClose={() => {}} />
+      </div>,
+    );
+    const pane = container.querySelector<HTMLElement>("[data-test-pane]")!;
+    vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({
+      left: 100,
+      top: 50,
+      right: 900,
+      bottom: 650,
+      width: 800,
+      height: 600,
+      x: 100,
+      y: 50,
+      toJSON: () => ({}),
+    } as DOMRect);
+    await flush();
+
+    const panel = screen.getByRole("region", { name: "会话文件" });
+    fireEvent.mouseDown(screen.getByTitle("拖动调整宽度"));
+    fireEvent.mouseMove(window, { clientX: 350 });
+    fireEvent.mouseUp(window);
+    // pane 右沿 900 - 指针 350 = 550；旧实现会算成 window.innerWidth - 350。
+    expect(panel.style.width).toBe("550px");
+
+    await userEvent.click(await screen.findByRole("button", { name: /a\.txt/ }));
+    await screen.findByText("hello");
+    const splitHandle = screen.getByTitle("拖动调整列表/预览高度");
+    const list = splitHandle.previousElementSibling as HTMLElement;
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue({
+      left: 100,
+      top: 150,
+      right: 900,
+      bottom: 400,
+      width: 800,
+      height: 250,
+      x: 100,
+      y: 150,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.mouseDown(splitHandle);
+    fireEvent.mouseMove(window, { clientY: 600 });
+    fireEvent.mouseUp(window);
+    // pane.bottom 650 - list.top 150 - 预览最小 160 = 340。
+    expect(list.style.height).toBe("340px");
+  });
+
   // trackPointer 的收尾此前只挂在 mouseup 上,而 mouseup 不保证会来:抽屉在
   // 按住把手期间被卸载(它自己的 Esc 就能关掉自己、会话被删、切走视图),
   // 或者鼠标拖出 webview 才松开。泄漏的不只是 window 上那两条监听——body 的

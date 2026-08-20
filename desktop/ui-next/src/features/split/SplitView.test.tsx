@@ -14,21 +14,52 @@ afterEach(() => {
   localStorage.clear();
 });
 
+interface ShellCall {
+  cmd: string;
+  args?: Record<string, unknown>;
+}
+
 function stubShell() {
+  const calls: ShellCall[] = [];
+  const listeners = new Map<string, Set<(e: { payload: unknown }) => void>>();
   (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
     core: {
-      invoke: (cmd: string) => {
+      invoke: (cmd: string, args?: Record<string, unknown>) => {
+        calls.push({ cmd, args });
         if (cmd === "session_open") return Promise.resolve({ frames: [], cursor: 0, has_more: false });
         if (cmd === "session_outline") return Promise.resolve([]);
         if (cmd === "session_call") return Promise.resolve({ result: [], is_git_repo: true });
         if (cmd === "engine_status") return Promise.resolve({ phase: "ready" });
+        if (cmd === "session_create")
+          return Promise.resolve({
+            id: "created",
+            title: "新建成功",
+            workdir: "~/MonkeyCode",
+            model: "m",
+            turns: 0,
+            status: "idle",
+          });
+        if (cmd === "stat_dropped_file") return Promise.resolve({ name: "drop.txt", mediaType: "text/plain" });
+        if (cmd === "upload_file_path") return Promise.resolve({ path: ".monkeycode/uploads/drop.txt" });
         // 内嵌新建表单挂载即拉模型/配置(与整页形态同一份代码)
         if (cmd === "models_list") return Promise.resolve([{ name: "m", default: true }]);
         if (cmd === "get_config") return Promise.resolve({ models: [], mcp_servers: {} });
         return Promise.resolve(null);
       },
     },
-    event: { listen: () => Promise.resolve(() => {}) },
+    event: {
+      listen: (name: string, cb: (e: { payload: unknown }) => void) => {
+        const set = listeners.get(name) ?? new Set();
+        set.add(cb);
+        listeners.set(name, set);
+        return Promise.resolve(() => set.delete(cb));
+      },
+    },
+  };
+  return {
+    calls,
+    emit: (name: string, payload: unknown) => listeners.get(name)?.forEach((cb) => cb({ payload })),
+    listenerCount: (name: string) => listeners.get(name)?.size ?? 0,
   };
 }
 
@@ -281,6 +312,9 @@ describe("分屏视图(树形布局)", () => {
     const after = screen.getAllByRole("region");
     expect(within(after[0]!).getByTitle(/跑着的任务/)).toBeTruthy();
     expect(within(after[1]!).getByTitle(/已入格的任务/)).toBeTruthy();
+    // 被拖的是槽 0；交换后它视觉上到了右侧，但槽号仍是 0，焦点应跟着它。
+    expect(screen.getByRole("region", { name: "第 1 格" }).querySelector("[data-split-focus]")).not.toBeNull();
+    expect(screen.getByRole("region", { name: "第 2 格" }).querySelector("[data-split-focus]")).toBeNull();
   });
 
   it("布局模板钮退役(2026-08-18 用户定案「没啥用」——拆分/关闭本身就是布局手段):头部无布局组", () => {
@@ -393,6 +427,62 @@ describe("分屏视图(树形布局)", () => {
     await userEvent.click(within(pane).getByRole("button", { name: "取消" }));
     expect(screen.getAllByRole("region")).toHaveLength(2);
     expect(screen.queryByRole("heading", { name: "新建任务" })).toBeNull();
+  });
+
+  it("拆出的创建格成功后保留任务与 pane,onClose 只把取消当成收格", async () => {
+    const shell = stubShell();
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", "s2", null, null, null, null]));
+    render(<Harness />);
+    await userEvent.click(
+      within(screen.getByRole("complementary", { name: "选择任务" })).getByRole("button", { name: "新建任务" }),
+    );
+    const createdPane = screen.getByRole("region", { name: "第 3 格" });
+    await userEvent.click(within(createdPane).getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(shell.calls.some((c) => c.cmd === "session_create")).toBe(true));
+    await waitFor(() => expect(screen.getAllByRole("region")).toHaveLength(3));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]")[2]).toBe("created"));
+  });
+
+  it("六格全满时新建表单覆盖焦点格,不会把打开前已有会话误判成外部装载", async () => {
+    stubShell();
+    const sixTree = {
+      dir: "col",
+      ratio: 0.5,
+      a: { dir: "row", ratio: 0.5, a: { leaf: 0 }, b: { dir: "row", ratio: 0.5, a: { leaf: 1 }, b: { leaf: 2 } } },
+      b: { dir: "row", ratio: 0.5, a: { leaf: 3 }, b: { dir: "row", ratio: 0.5, a: { leaf: 4 }, b: { leaf: 5 } } },
+    };
+    const sessions = Array.from({ length: 6 }, (_, i) => meta({ id: `full-${i}`, title: `满格 ${i}` }));
+    localStorage.setItem("mc.splitTree", JSON.stringify(sixTree));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(sessions.map((s) => s.id)));
+    render(<Harness sessions={sessions} />);
+    await userEvent.click(
+      within(screen.getByRole("complementary", { name: "选择任务" })).getByRole("button", { name: "新建任务" }),
+    );
+    expect(screen.getAllByRole("region")).toHaveLength(6);
+    expect(within(screen.getByRole("region", { name: "第 1 格" })).getByRole("heading", { name: "新建任务" })).toBeTruthy();
+  });
+
+  it("Linux window 级原生文件拖放每次只投递给焦点 pane", async () => {
+    const shell = stubShell();
+    const sessions = [meta({ id: "left", title: "左格" }), meta({ id: "right", title: "右格" })];
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["left", "right", null, null, null, null]));
+    render(<Harness sessions={sessions} />);
+    await waitFor(() => expect(shell.listenerCount("tauri://drag-drop")).toBe(2));
+
+    shell.emit("tauri://drag-drop", { paths: ["/tmp/one.txt"] });
+    await waitFor(() => expect(shell.calls.filter((c) => c.cmd === "stat_dropped_file")).toHaveLength(1));
+    await waitFor(() =>
+      expect(shell.calls.some((c) => c.cmd === "upload_file_path" && c.args?.id === "left")).toBe(true),
+    );
+
+    fireEvent.pointerDown(screen.getByRole("region", { name: "第 2 格" }));
+    shell.emit("tauri://drag-drop", { paths: ["/tmp/two.txt"] });
+    await waitFor(() => expect(shell.calls.filter((c) => c.cmd === "stat_dropped_file")).toHaveLength(2));
+    await waitFor(() =>
+      expect(shell.calls.some((c) => c.cmd === "upload_file_path" && c.args?.id === "right")).toBe(true),
+    );
   });
 
   it("「临时会话」组:默认在待办之下、项目组之前;与项目组同快照拖动排序", async () => {

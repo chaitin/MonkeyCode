@@ -109,6 +109,7 @@ export function FilesDrawer({
   const [draggingS, setDraggingS] = useState(false);
   // 定位失败的兜底提示(成功无声——文件管理器窗口自己会跳出来)
   const [revealMsg, setRevealMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLDivElement>(null); // 分栏拖拽的定位基准
   const reqRef = useRef(0); // 切文件/tab/关闭时使旧异步读取结果失效
 
@@ -239,15 +240,35 @@ export function FilesDrawer({
   // 卸载兜底:拖拽中途被卸载时把 window 监听与 body 全局样式收回来
   useEffect(() => () => stopDragRef.current?.(), []);
 
+  /** pane 抽屉的坐标系是其定位父级（当前 ChatView 格），不能拿整个窗口算；
+   * global 形态仍以 viewport 为界。jsdom/尚未布局时退回 viewport。 */
+  const containingBounds = () => {
+    if (variant === "pane") {
+      const rect = panelRef.current?.parentElement?.getBoundingClientRect();
+      if (rect && rect.width > 0 && rect.height > 0) return rect;
+    }
+    return {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    };
+  };
+
   // 左缘拖拽调宽,松手落盘记忆
   const startWidthDrag = (e: ReactMouseEvent) => {
     e.preventDefault();
+    const bounds = containingBounds();
+    const max = Math.max(1, Math.round(bounds.width * (variant === "pane" ? 0.85 : 0.9)));
+    // 窄 pane 里 CSS 的 max-w-[85%] 优先于桌面抽屉的 420px 常规下限。
+    const min = Math.min(MIN_WIDTH, max);
     setDraggingW(true);
     trackPointer(
       "col-resize",
       (ev) => {
-        const max = Math.max(MIN_WIDTH, Math.round(window.innerWidth * 0.9));
-        setWidth(Math.min(Math.max(window.innerWidth - ev.clientX, MIN_WIDTH), max));
+        setWidth(Math.min(Math.max(bounds.right - ev.clientX, min), max));
       },
       () => {
         setDraggingW(false);
@@ -263,11 +284,12 @@ export function FilesDrawer({
   const startSplitDrag = (e: ReactMouseEvent) => {
     e.preventDefault();
     const top = listRef.current?.getBoundingClientRect().top ?? 0;
+    const bounds = containingBounds();
     setDraggingS(true);
     trackPointer(
       "row-resize",
       (ev) => {
-        const max = Math.max(window.innerHeight - top - PREVIEW_MIN, MIN_SPLIT);
+        const max = Math.max(bounds.bottom - top - PREVIEW_MIN, MIN_SPLIT);
         setSplit(Math.min(Math.max(ev.clientY - top, MIN_SPLIT), max));
       },
       () => {
@@ -331,6 +353,7 @@ export function FilesDrawer({
         onClick={onClose}
       />
       <section
+        ref={panelRef}
         aria-label={t("files.label")}
         style={{ width }}
         className={

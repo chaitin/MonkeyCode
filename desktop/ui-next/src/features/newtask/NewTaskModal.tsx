@@ -22,6 +22,7 @@ import { IconCheck, IconChevronDown, IconCloud, IconFile as FileIcon, IconFolder
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type ClipboardEvent as ReactClipboardEvent,
@@ -85,10 +86,12 @@ export function NewTaskModal({
   initialKind,
   initialText,
   initialFiles,
+  nativeDropEnabled = true,
   onOpenSettings,
 }: {
   open: boolean;
-  onClose: () => void;
+  /** 无参数 = 用户取消/退出；success = 创建已落地后的收尾。 */
+  onClose: (reason?: "success") => void;
   onCreated: (meta: SessionMeta) => void;
   onCloudCreated?: (task: CloudTaskDetail) => void;
   /** 云端页签未连接 MonkeyCode 时的出口(空态里的「去设置连接」)。不传的话
@@ -112,6 +115,8 @@ export function NewTaskModal({
    *  与 initialText 同命:仅本地/会话页签消费,云端任务不支持附件——落云端
    *  时图片不上行,留在待办条目上 */
   initialFiles?: File[];
+  /** Linux 原生拖放是 window 级事件；分屏时仅焦点格接收。 */
+  nativeDropEnabled?: boolean;
 }) {
   const { t } = useI18n();
   const [kind, setKind] = useState<SessionKind | "cloud">("local");
@@ -325,13 +330,16 @@ export function NewTaskModal({
   // Linux 壳:WebKitGTK 的 HTML5 拖拽拿不到 File,走壳原生 tauri://drag-*
   // (mac/Windows 壳禁用原生处理器,监听永不触发)。dropEnabled 判定放回调内:
   // 订阅始终挂着,切页签时不会漏掉拖拽中的事件
-  const dropEnabledRef = useRef(dropEnabled);
-  dropEnabledRef.current = dropEnabled;
+  const nativeDropIsEnabled = useEffectEvent(() => dropEnabled && nativeDropEnabled);
+  useEffect(() => {
+    if (!nativeDropEnabled) setDragging(false);
+  }, [nativeDropEnabled]);
   useEffect(
     () =>
       onNativeFileDrop({
-        onDragging: (on) => setDragging(on && dropEnabledRef.current),
-        onFiles: (files) => dropEnabledRef.current && addFiles(files),
+        enabled: nativeDropIsEnabled,
+        onDragging: (on) => setDragging(on && nativeDropIsEnabled()),
+        onFiles: (files) => nativeDropIsEnabled() && addFiles(files),
         onError: (m) => setError(m),
       }),
     [],
@@ -386,7 +394,7 @@ export function NewTaskModal({
         }
       }
       onCreated(meta);
-      onClose();
+      onClose("success");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -451,7 +459,7 @@ export function NewTaskModal({
           标题非交互,连同容器一起作拖窗面(§7 属性不继承逐节点挂) */}
       <header data-tauri-drag-region="" className="flex h-12 shrink-0 items-center gap-2 border-b border-base-300 px-4">
         <h1 data-tauri-drag-region="" className="min-w-0 flex-1 truncate text-sm font-medium">{t("create.title")}</h1>
-        <button type="button" aria-label={t("create.cancel")} className="btn btn-ghost btn-square btn-sm" onClick={onClose}>
+        <button type="button" aria-label={t("create.cancel")} className="btn btn-ghost btn-square btn-sm" onClick={() => onClose()}>
           <IconX size={16} stroke={1.75} aria-hidden />
         </button>
       </header>
@@ -497,7 +505,7 @@ export function NewTaskModal({
                   onOpenSettings={onOpenSettings}
                   onCreated={(task) => {
                     onCloudCreated?.(task);
-                    onClose();
+                    onClose("success");
                   }}
                 />
               </div>

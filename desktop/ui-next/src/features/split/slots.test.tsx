@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { readSplitSlots } from "@/lib/util/prefs";
-import { assign, eject, emptySlots, firstEmptyIn, prune, seed } from "./slots";
+import { assign, cloudSlotId, eject, ejectCloud, emptySlots, firstEmptyIn, prune, seed } from "./slots";
 
 afterEach(() => localStorage.clear());
 
@@ -20,6 +20,13 @@ describe("分屏槽位纯逻辑", () => {
     expect(eject(s, 0)[1]).toBe("b");
     expect(eject(s, 0)[0]).toBeNull();
     expect(eject(s, 3)).toBe(s);
+  });
+
+  it("ejectCloud 只清旧 transport 的云槽,保留本地槽;无云槽保引用", () => {
+    const localOnly = assign(emptySlots(), 0, "local-a");
+    expect(ejectCloud(localOnly)).toBe(localOnly);
+    const mixed = assign(assign(localOnly, 1, cloudSlotId("cloud-a")), 2, "local-b");
+    expect(ejectCloud(mixed)).toEqual(["local-a", null, "local-b", null, null, null]);
   });
 
   it("prune 按全表剪掉被删会话;无变化保引用(不触发白重渲/白落盘)", () => {

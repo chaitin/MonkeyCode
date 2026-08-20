@@ -31,6 +31,14 @@ export function eject(slots: Slots, index: number): Slots {
   return slots.map((s, i) => (i === index ? null : s));
 }
 
+/** MonkeyCode transport 切换后清掉全部云端槽位。task id 只在当前服务/
+ * 账号命名空间内有意义，持久化到下一代 transport 会把旧账号任务误装进
+ * 新账号。无云端槽时保留引用，避免白落盘。 */
+export function ejectCloud(slots: Slots): Slots {
+  if (slots.every((s) => !s || !isCloudSlotId(s))) return slots;
+  return slots.map((s) => (s && isCloudSlotId(s) ? null : s));
+}
+
 /** 会话表剪枝:被删会话的槽退回空槽。只许用**成功加载**的全表调用——
  *  失败时拿空表来剪等于把所有槽清空(与 App「失败不能用空结果覆盖列表」
  *  同一条铁律,守卫在调用方 refresh 的成功分支)。**云端槽位不剪**:

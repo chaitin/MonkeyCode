@@ -11,6 +11,7 @@ import { IconAlertTriangle, IconDots, IconFolderOpen, IconPencil, IconX } from "
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -70,6 +71,7 @@ export function ChatView({
   epoch = 0,
   variant = "full",
   hotkeysActive = true,
+  nativeDropEnabled = true,
   headerSlot = null,
   onDeleted,
   onPatched,
@@ -86,6 +88,8 @@ export function ChatView({
   variant?: "full" | "pane";
   /** 审批快捷键开关:分屏多格并存时只有焦点格为 true(shortcuts.ts 头注)。 */
   hotkeysActive?: boolean;
+  /** Linux 原生拖放是 window 级事件；分屏时仅焦点格接收。 */
+  nativeDropEnabled?: boolean;
   /** 格头「视图动作」插槽:文件钮 createPortal 进去(云端同构;格头唯一
    *  框架不写任务类型分支)。抽屉本体也随之入格(pane 变体)——「云端在
    *  格内、本地为啥全局」2026-08-19 用户报障。 */
@@ -780,9 +784,14 @@ export function ChatView({
   };
   // Linux 壳:WebKitGTK 的 HTML5 拖拽拿不到 File,走壳原生 tauri://drag-*
   // (mac/Windows 壳禁用原生处理器,监听永不触发)
+  const nativeDropIsEnabled = useEffectEvent(() => nativeDropEnabled);
+  useEffect(() => {
+    if (!nativeDropEnabled) setDragging(false);
+  }, [nativeDropEnabled]);
   useEffect(
     () =>
       onNativeFileDrop({
+        enabled: nativeDropIsEnabled,
         onDragging: setDragging,
         onFiles: (files) => void composerRef.current?.addFiles(files),
         onError: (m) => composerRef.current?.notifyError(t("chat.uploadFailed", { reason: m })),

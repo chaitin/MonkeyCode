@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { readSplitSlots, readSplitTreeRaw, writeSplitSlots, writeSplitTree } from "@/lib/util/prefs";
-import { assign, eject, firstEmptyIn, prune, seed, type Slots } from "./slots";
+import { assign, eject, ejectCloud, firstEmptyIn, isCloudSlotId, prune, seed, type Slots } from "./slots";
 import {
   leaves,
   PRESETS,
@@ -43,6 +43,8 @@ export interface SplitStateApi {
   toggleZoom: (index: number) => void;
   assignTo: (index: number, id: string) => void;
   ejectAt: (index: number) => void;
+  /** MonkeyCode 服务/账号切换后清掉旧 transport 的云端任务槽。 */
+  clearCloud: () => void;
   /** 首开播种(槽位全空时把当前会话带进首叶;见 slots.seed)。 */
   seedWith: (currentId: string | null) => void;
   /** 成功加载的会话全表剪枝(失败不许调,铁律见 slots.prune)。 */
@@ -98,7 +100,9 @@ export function useSplitState(): SplitStateApi {
 
   const swapPanes = useCallback((x: number, y: number) => {
     setTree((prev) => swapLeaves(prev, x, y));
-    setFocused(y); // 焦点跟着被拖的那格落位
+    // swapLeaves 交换的是树上的叶位置，槽号 x 仍属于被拖内容；焦点应
+    // 跟着它留在 x，而不是跳到 y（y 是目标旧内容）。
+    setFocused(x);
   }, []);
 
   const focus = useCallback((index: number) => setFocused(index), []);
@@ -115,6 +119,16 @@ export function useSplitState(): SplitStateApi {
 
   const ejectAt = useCallback((index: number) => {
     setSlots((prev) => eject(prev, index));
+  }, []);
+
+  const clearCloud = useCallback(() => {
+    const cur = snapRef.current;
+    setSlots((prev) => ejectCloud(prev));
+    // 放大的恰是旧云端槽时退出独占，否则清空后会把仍有效的本地格全藏住。
+    if (cur.zoomed !== null) {
+      const entry = cur.slots[cur.zoomed];
+      if (entry && isCloudSlotId(entry)) setZoomed(null);
+    }
   }, []);
 
   const seedWith = useCallback((currentId: string | null) => {
@@ -156,6 +170,7 @@ export function useSplitState(): SplitStateApi {
     toggleZoom,
     assignTo,
     ejectAt,
+    clearCloud,
     seedWith,
     pruneTo,
     place,

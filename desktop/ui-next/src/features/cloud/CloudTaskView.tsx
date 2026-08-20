@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -136,6 +137,7 @@ export function CloudTaskView({
   headerSlot = null,
   menuRegister,
   hotkeysActive = true,
+  nativeDropEnabled = true,
   onTasksChanged,
   onDeleted,
 }: {
@@ -151,6 +153,8 @@ export function CloudTaskView({
    *  注册一个「开菜单时取项」的函数;confirm 两击走 openMenu 现成机制。 */
   menuRegister?: (fn: (() => MenuItem[]) | null) => void;
   hotkeysActive?: boolean;
+  /** Linux 原生拖放是 window 级事件；分屏时仅焦点格接收。 */
+  nativeDropEnabled?: boolean;
   /** 侧栏/新建入口带进来的任务(至少含 id;详情异步补全)。
    * 契约:App 以 task.id 为 key 挂载本视图(id 在一次挂载内不变)。 */
   task: CloudTask;
@@ -246,9 +250,14 @@ export function CloudTaskView({
   };
   // Linux 壳:WebKitGTK 的 HTML5 拖拽拿不到 File,走壳原生 tauri://drag-*
   // (mac/Windows 壳禁用原生处理器,监听永不触发)。经 ref 取最新 handle
+  const nativeDropIsEnabled = useEffectEvent(() => nativeDropEnabled);
+  useEffect(() => {
+    if (!nativeDropEnabled) setDragging(false);
+  }, [nativeDropEnabled]);
   useEffect(
     () =>
       onNativeFileDrop({
+        enabled: nativeDropIsEnabled,
         // 云端附件要把字节上行对象存储(mc_upload),必须真读内容:默认的
         // path-backed 占位 File 是 0 字节,到 uploadCloudFile 会一律以
         // 「是空文件」告吹(旧 UI cloudtask.tsx:94 同一处 wantContent)

@@ -143,6 +143,14 @@ function stubShell(
         if (cmd === "mc_projects") return Promise.resolve({ projects: [] });
         if (cmd === "mc_tasks")
           return Promise.resolve({ tasks: opts.cloudTasks ?? [], page_info: { total: (opts.cloudTasks ?? []).length } });
+        if (cmd === "mc_task_info") {
+          const task = (opts.cloudTasks ?? []).find((x) => (x as { id?: string }).id === args?.id) as
+            | Record<string, unknown>
+            | undefined;
+          return Promise.resolve(task ?? { id: args?.id, status: "pending" });
+        }
+        if (cmd === "mc_task_rounds") return Promise.resolve({ frames: [] });
+        if (cmd === "mc_task_user_inputs") return Promise.resolve({ items: [] });
         return Promise.resolve(null);
       },
     },
@@ -381,6 +389,23 @@ describe("MonkeyCode transport 切换", () => {
     const before = shell.count("mc_tasks");
     act(() => shell.emit("monkeycode-transport-changed", 1));
     await waitFor(() => expect(shell.count("mc_tasks")).toBeGreaterThan(before));
+  });
+
+  it("推进 generation、刷新账号状态并清掉旧服务持久化云槽", async () => {
+    localStorage.setItem("mc.splitTree", JSON.stringify({ leaf: 0 }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["c:ct1", null, null, null, null, null]));
+    const shell = stubShell({ cloudTasks: [{ id: "ct1", title: "旧账号任务", status: "pending" }] });
+    render(<App />);
+    await waitFor(() => expect(shell.count("mc_task_info")).toBeGreaterThanOrEqual(1));
+
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    expect(await screen.findByRole("heading", { name: "设置" })).toBeTruthy();
+    await waitFor(() => expect(shell.count("mc_status")).toBeGreaterThanOrEqual(1));
+    const statusBefore = shell.count("mc_status");
+
+    act(() => shell.emit("monkeycode-transport-changed", 7));
+    await waitFor(() => expect(shell.count("mc_status")).toBeGreaterThan(statusBefore));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]")[0]).toBeNull());
   });
 });
 

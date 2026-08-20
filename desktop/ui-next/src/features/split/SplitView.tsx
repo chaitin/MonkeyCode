@@ -147,6 +147,9 @@ export function SplitView({
   const [creatingSlot, setCreatingSlot] = useState<{
     slot: number;
     kind: SessionKind | "cloud";
+    /** 打开表单时槽里的原值；满布局会覆盖已有格，不能把这份旧值误判成
+     * 后续外部装载并立即关掉表单。 */
+    entryAtOpen: string | null;
     dir?: string;
     spawned?: boolean;
     cloudProject?: CloudProject;
@@ -177,7 +180,9 @@ export function SplitView({
   // 「创建中」的槽时表单让位——否则表单盖住新装会话,spawned 取消还会
   // 连格收走(2026-08-20 审计,与 pick/换位两处同族)
   useEffect(() => {
-    if (creatingSlot && split.slots[creatingSlot.slot]) setCreatingSlot(null);
+    if (!creatingSlot) return;
+    const current = split.slots[creatingSlot.slot] ?? null;
+    if (current !== creatingSlot.entryAtOpen) setCreatingSlot(null);
   }, [split.slots, creatingSlot]);
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -240,7 +245,7 @@ export function SplitView({
   const openCreate = (kind: SessionKind | "cloud", slot?: number, extras?: CreateExtras) => {
     const target = slot ?? firstEmptyIn(split.slots, visibleLeaves) ?? (visibleLeaves.includes(split.focused) ? split.focused : (visibleLeaves[0] ?? 0));
     setSwapSlot(null);
-    setCreatingSlot({ slot: target, kind, ...extras });
+    setCreatingSlot({ slot: target, kind, entryAtOpen: split.slots[target] ?? null, ...extras });
   };
   /** 「新建即新格」(2026-08-18 用户定案「创建任务也是一个 panel」):列侧
    *  一切新建入口走此——有空格先用空格(它就是现成的新格),没有就把焦点
@@ -259,7 +264,7 @@ export function SplitView({
       const spawned = split.splitPane(split.focused, "col");
       if (spawned !== null) {
         setSwapSlot(null);
-        setCreatingSlot({ slot: spawned, kind, ...extras, spawned: true });
+        setCreatingSlot({ slot: spawned, kind, entryAtOpen: null, ...extras, spawned: true });
         return;
       }
     }
@@ -466,6 +471,7 @@ export function SplitView({
             initialFiles={creating.files}
             recentDirs={recentDirs}
             onOpenSettings={onOpenSettings}
+            nativeDropEnabled={focused}
             onCreated={(created) => {
               setCreatingSlot(null);
               setSwapSlot(null);
@@ -476,9 +482,9 @@ export function SplitView({
               setSwapSlot(null);
               onCloudCreatedInSlot(slot, task, creating.todoId);
             }}
-            onClose={() => {
-              // 专为创建拆出来的格,取消即收回(不留空格尾巴)
-              if (creating.spawned) split.closePane(slot);
+            onClose={(reason) => {
+              // 专为创建拆出来的格只在取消时收回；成功后任务已经落进该格。
+              if (reason !== "success" && creating.spawned) split.closePane(slot);
               setCreatingSlot(null);
             }}
           />
@@ -508,12 +514,15 @@ export function SplitView({
           )
         ) : cloudTask ? (
           <CloudTaskView
-            key={epoch}
+            // useCloudTask 的连接/ref 全按 task id 建立，id 改变必须整棵重挂；
+            // 本地引擎 epoch 与云端生命周期无关。
+            key={cloudTask.id}
             variant="pane"
             task={cloudTask}
             headerSlot={paneExtras[slot] ?? null}
             menuRegister={paneMenuReg[slot]}
             hotkeysActive={focused}
+            nativeDropEnabled={focused}
             onTasksChanged={cloud?.onChanged}
             onDeleted={() => {
               cloud?.onDeleted(cloudTask.id);
@@ -529,6 +538,7 @@ export function SplitView({
             epoch={epoch}
             headerSlot={paneExtras[slot] ?? null}
             hotkeysActive={focused}
+            nativeDropEnabled={focused}
             focusRequest={focused ? focusRequest : 0}
             onFocusRequestHandled={onFocusRequestHandled}
           />
