@@ -43,5 +43,11 @@ export function thoughtLiveSummary(text: string, max = 80): string {
     const insideStrong = (text.slice(0, start).match(/\*\*/g)?.length ?? 0) % 2 === 1;
     source = insideStrong ? `**${source}` : `${source}**`;
   }
+  // thoughtMarkdown 会把裸拼的 **** 补成段界(**A****B** → **A**\n\n**B**):
+  // 摘要要的是**最新**一段,多段时只留最后一段——行内渲染层不该收到换行
+  // (breaks 下 \n 画成 <br>,单行 truncate 拦不住,折叠卡两个标题上下堆,
+  // 2026-08-20 用户截图报障)。段界后是干净起步,不再当截断挂省略号。
+  const segments = source.split("\n").filter((l) => l.trim());
+  if (segments.length > 1) return segments[segments.length - 1]!;
   return `${truncated ? "…" : ""}${source}`;
 }
