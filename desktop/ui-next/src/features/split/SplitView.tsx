@@ -971,25 +971,25 @@ function WorkbenchList({
       <div data-tauri-drag-region="" className="flex items-center gap-2 ps-5 pe-4 pt-1 pb-2">
         <Brand />
       </div>
-      {/* tab 文字级切换(形态四代:border 下划线 → box 白 pill → box 补轨
-          → 文字级,2026-08-20 用户「还是有点大,不协调」收束):侧栏语言
-          全是安静文字层级(品牌/帽层/组头),盒形控件在这儿重量超编;
-          选中 = 实色加粗,未选中 = /45,落 20 内容线与品牌同列 */}
-      <div role="tablist" aria-label={t("split.pickTitle")} className="flex items-center gap-4 ps-5 pe-4 pb-1">
-        {TABS.map(({ k, label }) => (
-          <button
-            key={k}
-            type="button"
-            role="tab"
-            aria-selected={tab === k}
-            className={`text-xs whitespace-nowrap transition-colors duration-150 ${
-              tab === k ? "font-semibold text-base-content" : "font-medium text-base-content/45 hover:text-base-content/70"
-            }`}
-            onClick={() => onTabChange(k)}
-          >
-            {t(label)}
-          </button>
-        ))}
+      {/* tab 盒式切换(形态五代:border 下划线 → box 白 pill → box 补轨
+          → 文字级 → 回归 box,2026-08-20 用户「改成 box」):与换任务
+          装载卡的 tabs-box 同语汇,选中 = 白底 pill;侧栏底色即 base-200,
+          盒轨与列底同色隐形,只剩选中 pill 浮起,重量比带轨时代轻 */}
+      <div className="ps-4 pe-4 pb-1">
+        <div role="tablist" aria-label={t("split.pickTitle")} className="tabs tabs-box tabs-sm w-full">
+          {TABS.map(({ k, label }) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={tab === k}
+              className={`tab flex-1 px-1 text-xs whitespace-nowrap font-semibold transition-colors duration-150 ${tab === k ? "tab-active" : ""}`}
+              onClick={() => onTabChange(k)}
+            >
+              {t(label)}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-2 [scrollbar-gutter:stable]">
         {tab === "local" ? (
