@@ -1,6 +1,6 @@
 // 工具卡:状态点 + 「动作 + 目标」标题(lib/tools 语义层)+ 耗时;详情
 // 开关 = 标题行尾 chevron 图标钮(旧 UI 安静行设计:耗时/详情钮 hover 显影,
-// 常驻占位只切透明度,§6.2 铁律),详情 = 单一面板(diff 走 DiffView,
+// 常驻占位只切透明度,§6.2 铁律),详情 = 单一面板(diff/patch 走专用视图,
 // 其余单 pre,不再盒中盒);大字段凭 _meta.mcSrc.seq 按需回读原帧补全;
 // 相邻工具卡由 LogList 计算 joinPrev/joinNext 塌陷边框共享外框(旧
 // tool-stack 设计,DOM 仍与 items 一一对应不破结构契约);子代理进度窗、
@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 
 import { Markdown, MarkdownInline } from "@/components/markdown/Markdown";
 import { Lightbox, UploadImg } from "@/components/media/UploadImg";
+import { ApplyPatchView } from "@/features/files/ApplyPatchView";
 import { DiffView } from "@/features/files/DiffView";
 import { useI18n } from "@/lib/i18n";
 import type { FrameSender } from "@/lib/ipc/approvals";
@@ -94,12 +95,15 @@ function FeedRow({ entry, workdir }: { entry: SubEntry; workdir?: string }) {
 }
 
 /** 详情正文(单一面板内,容器管边框/底色/滚动,这里不再套盒):diff 复用
- * FilesDrawer 的 DiffView 行模型;command 收进一个 pre(cwd 弱化行 +
+ * FilesDrawer 的 DiffView 行模型;patch 按文件分段;command 收进一个 pre(cwd 弱化行 +
  * `$ 命令` + 空行 + 输出);text/json 单 pre。旧 UI 详情即单容器设计。 */
 const PRE_CLASS = "m-0 p-2.5 font-mono text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere select-text";
 
 function DetailBody({ detail }: { detail: ToolDetail }) {
   const { t } = useI18n();
+  if (detail.kind === "patch") {
+    return <ApplyPatchView text={detail.text} />;
+  }
   if (detail.kind === "diff") {
     return <DiffView text={detail.text} />;
   }
@@ -189,12 +193,6 @@ export function ToolCard({
   const visibleFeed = item.status === "run" ? feed.slice(-FEED_WINDOW) : [];
   const feedBase = feed.length - visibleFeed.length;
 
-  // 动作取标题,目标优先取完整 rawInput;path 型剥 workdir 前缀,
-  // 悬停 title 保留原始标题与完整目标
-  const presentation = presentToolCall(item.title, item.rawInput, { locale, toolKind: item.toolKind, meta: item._meta });
-  const fullTarget = presentation.target;
-  const target = presentation.targetKind === "path" ? stripWorkdir(fullTarget, workdir) : fullTarget;
-
   // 回读到全文后用全文渲染详情;没有护栏标记时 full 恒为 null,行为不变
   const shown = full
     ? {
@@ -204,6 +202,11 @@ export function ToolCard({
         ...(full.content !== undefined ? { content: full.content } : {}),
       }
     : item;
+  // 动作取标题,目标优先取完整 rawInput;path 型剥 workdir 前缀,
+  // 悬停 title 保留原始标题与完整目标。回读到全文后标题也随 shown 更新。
+  const presentation = presentToolCall(shown.title, shown.rawInput, { locale, toolKind: shown.toolKind, meta: shown._meta });
+  const fullTarget = presentation.target;
+  const target = presentation.targetKind === "path" ? stripWorkdir(fullTarget, workdir) : fullTarget;
   const findings = findingsReportFor(shown);
   const detail = !isAgentCard && shown.status !== "run" ? toolDetailFor(shown) : null;
   const fullResult = full ? toolResultText(full.rawOutput, full.content) : "";

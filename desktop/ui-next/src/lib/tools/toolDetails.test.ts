@@ -75,4 +75,9 @@ describe("统一工具详情", () => {
     const diff = "@@ -1,1 +1,1 @@\n-old\n+new";
     expect(toolDetailFor(tool({ rawOutput: { metadata: { diff } }, toolKind: "edit" }))).toEqual({ kind: "diff", text: diff });
   });
+
+  it("apply_patch 原始格式使用分段补丁详情", () => {
+    const patch = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch";
+    expect(toolDetailFor(tool({ title: "apply_patch", rawInput: { patch } }))).toEqual({ kind: "patch", text: patch });
+  });
 });

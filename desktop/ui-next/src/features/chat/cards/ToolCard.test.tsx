@@ -95,6 +95,22 @@ describe("工具卡", () => {
     expect(screen.getByText("const a = 2;")).toBeTruthy(); // 新增行
   });
 
+  it("apply_patch 标题展示文件，详情按文件分段并高亮增删内容", async () => {
+    const patch = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-const a = 1;\n+const a = 2;\n*** End Patch";
+    render(
+      <ToolCard
+        item={{ kind: "tool", tcId: "patch", title: "apply_patch", status: "ok", out: "", rawInput: { patch } }}
+        sessionId="s1"
+      />,
+    );
+    expect(screen.getByText("编辑文件")).toBeTruthy();
+    expect(screen.getByTitle("src/a.ts")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "展开工具详情" }));
+    expect(screen.getByText("Update File: src/a.ts")).toBeTruthy();
+    expect(screen.getByText("const a = 1;")).toBeTruthy();
+    expect(screen.getByText("const a = 2;")).toBeTruthy();
+  });
+
   it("运行中不出详情入口(终态才可回看入参/结果)", () => {
     render(<ToolCard item={{ ...BASE, status: "run", rawInput: { command: "x" } }} sessionId="s1" />);
     expect(screen.queryByRole("button", { name: "展开工具详情" })).toBeNull();
@@ -123,6 +139,33 @@ describe("工具卡", () => {
       (_, el) => el?.tagName === "PRE" && (el.textContent ?? "").includes("完整输出尾巴"),
     );
     expect(pre.textContent).not.toContain("截断头部…"); // 全文顶掉截断头部
+  });
+
+  it("apply_patch 回读完整入参后同步补齐标题中的文件", async () => {
+    const partial = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new";
+    const complete = `${partial}\n*** Add File: src/b.ts\n+export {}\n*** End Patch`;
+    const frame: Frame = {
+      type: "task-running",
+      data: { update: { sessionUpdate: "tool_call_update", rawInput: { patch: complete } } },
+    };
+    render(
+      <ToolCard
+        item={{
+          kind: "tool",
+          tcId: "patch-full",
+          title: "apply_patch",
+          status: "ok",
+          out: "",
+          rawInput: { patch: partial },
+          _meta: { mcSrc: { seq: 8 } },
+        }}
+        sessionId="s1"
+        loadFullTool={() => Promise.resolve(frame)}
+      />,
+    );
+    expect(screen.getByTitle("src/a.ts")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "展开工具详情" }));
+    expect(await screen.findByTitle("src/a.ts · src/b.ts")).toBeTruthy();
   });
 
   it("回读失败:行内外显错误(role=alert,带原因)", async () => {
