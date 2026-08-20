@@ -76,7 +76,7 @@ const NOTICE_TEXT: Record<NoticeKind, MessageKey> = {
 
 /** 后台会话提醒的存活时长(8s,LAYOUT §1 角落瞬态)。toast 到点消失;
  *  任务列行的 attention 高亮**不跟着走**——「未读」是持久状态,装进格
- *  才算读过(dismissSession)。 */
+ *  并**落焦**才算读过(dismissSession;多格下装着 ≠ 看着,2026-08-20)。 */
 const SESSION_NOTICE_MS = 8000;
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -164,7 +164,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   sessionsRef.current = sessions;
   // 工作台快照(active = 工作台真在渲染——设置/新建盖着时格子已卸载,
   // 可见集不作数;visibleIds = 可见格里的槽位条目):每次渲染就地刷新
-  const splitRef = useRef({ active: true, visibleIds: new Set<string>() });
+  const splitRef = useRef({ active: true, visibleIds: new Set<string>(), focusedId: null as string | null });
   const shellSeq = useRef(0);
   const shellTimers = useRef<Set<number>>(new Set());
   const noticeTimers = useRef<Map<string, number>>(new Map());
@@ -353,11 +353,18 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
       if (e.type === "session-status" && e.status) {
         deliverQueued(e.id, e.status, (sid, text) => pushNotice(noticeForQueuedDelivery(sid, text)));
       }
-      // D3:可见格集合 = "在场"(格里的会话就在眼前,toast 是噪音);
+      // D3:可见格不出 toast(格里的会话就在眼前,角落弹窗是噪音);
       // 设置/新建盖着时格子已卸载,可见集为空 → 一律提醒
       const sv = splitRef.current;
       const notice = noticeForSessionEvent(e, null, sv.active ? sv.visibleIds : new Set());
       if (notice) pushNotice(notice);
+      // 「在场」只对**焦点格**成立(2026-08-20 用户「多格下一轮结束/审批/
+      // 提问得让人知道」;此前可见即在场,非焦点格的这些事件被整个静默):
+      // 可见非焦点格的值得提醒事件落 attention——格头警示条与任务列行高亮
+      // 同源,落焦即消(下方 effect)——toast 仍免
+      else if (sv.active && sv.visibleIds.has(e.id) && e.id !== sv.focusedId && noticeForSessionEvent(e, null)) {
+        setAttentionIds((prev) => (prev.has(e.id) ? prev : new Set(prev).add(e.id)));
+      }
     });
     return () => {
       alive = false;
@@ -413,7 +420,17 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   splitRef.current = {
     active: splitActive,
     visibleIds: new Set(split.visibleIndices.map((i) => split.slots[i]).filter(Boolean) as string[]),
+    focusedId: split.slots[split.focused] ?? null,
   };
+
+  // 落焦即已读:焦点格会话的 attention 摘除(格头警示条/任务列行高亮同源)。
+  // attentionIds 也在依赖里:事件回调读的 splitRef 是上一帧快照,若误标了
+  // 刚落焦的格,下一渲染在此自愈
+  const focusedSlotEntry = split.slots[split.focused] ?? null;
+  useEffect(() => {
+    if (focusedSlotEntry && attentionIds.has(focusedSlotEntry)) dismissSession(focusedSlotEntry);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedSlotEntry, attentionIds]);
 
   // 原生窗口标题跟随焦点格(工作台即主壳:设置/新建覆盖时跟覆盖视图)
   useEffect(() => {

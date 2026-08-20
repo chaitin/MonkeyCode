@@ -387,8 +387,12 @@ export function SplitView({
   };
 
   const renderPane = (slot: number) => {
-    const { meta, cloudTask, headMeta } = slotHead(slot);
+    const { entry, meta, cloudTask, headMeta } = slotHead(slot);
     const focused = split.focused === slot;
+    // 格级未读(2026-08-20 用户「多格下轮结束/审批/提问要提醒」):可见非
+    // 焦点格的值得提醒事件由 App 落进 attentionIds,落焦即消;waiting_ask
+    // 按会话态兜底——焦点在场时收到的提问不产生未读,切走后这格仍在等人
+    const attention = !focused && !!entry && (!!admin?.attentionIds.has(entry) || !!meta?.waiting_ask);
     const creating = creatingSlot?.slot === slot ? creatingSlot : null;
     const loading = !creating && (!headMeta || swapSlot === slot);
     return (
@@ -416,6 +420,7 @@ export function SplitView({
             slot={slot}
             meta={headMeta}
             focused={focused && visible > 1}
+            attention={attention}
             onRename={admin && meta ? (title) => admin.onRename(meta, title) : undefined}
             extrasRef={paneExtrasRef[slot]}
             viewMenu={() => [
@@ -1351,6 +1356,7 @@ function PaneHeader({
   slot,
   meta,
   focused,
+  attention = false,
   onRename,
   extrasRef,
   viewMenu,
@@ -1367,6 +1373,10 @@ function PaneHeader({
   meta: SessionMeta | null;
   /** 多格并存时的焦点格:标题下划线表达(ring 环退役,2026-08-19)。 */
   focused: boolean;
+  /** 格级未读(可见非焦点格的轮结束/审批/提问,2026-08-20 用户「得让人
+   *  知道这个 panel 需要他操作」):头部左缘警示条(任务列 ATTENTION_BAR
+   *  同语言)+ 状态点走 attention 语义,落焦即消。 */
+  attention?: boolean;
   /** 双击标题/⋯菜单「重命名」(仅本地会话;旧单会话头能力回归,
    *  2026-08-19 用户报障「不能从 header 修改标题了」)。 */
   onRename?: (title: string) => void;
@@ -1392,15 +1402,22 @@ function PaneHeader({
   // hover 显隐就把整簇藏了——「点了点点点,header 选项消失」(2026-08-20
   // 用户报障)
   const [menuOpen, setMenuOpen] = useState(false);
-  const trailing = meta ? rowTrailing(meta, t, false) : null;
+  const trailing = meta ? rowTrailing(meta, t, attention) : null;
   const btn = "btn btn-ghost btn-square btn-sm text-base-content/60";
   const cluster = `flex shrink-0 items-center gap-2 ${
     swapping || zoomed || menuOpen ? "visible" : "invisible group-hover/pane:visible group-focus-within/pane:visible"
   }`;
   return (
     // 白底细头 h-12(右侧无顶条后它就是每格的视图头,2026-08-19 用户
-    // 「再大一点」;§7:拖拽属性不继承,空白区自任拖窗面)
-    <div data-tauri-drag-region="" className="flex h-12 shrink-0 items-center gap-2 border-b border-base-300 px-4">
+    // 「再大一点」;§7:拖拽属性不继承,空白区自任拖窗面)。未读态左缘
+    // 竖警示条:与任务列 ATTENTION_BAR 同语言,h-12 下 inset-y-2 取 32px
+    <div
+      data-tauri-drag-region=""
+      data-attention={attention ? "" : undefined}
+      className={`relative flex h-12 shrink-0 items-center gap-2 border-b border-base-300 px-4${
+        attention ? " before:absolute before:inset-y-2 before:start-1 before:w-0.5 before:rounded-full before:bg-warning before:content-['']" : ""
+      }`}
+    >
       {/* 12px 定宽槽:静默态无点也不让标题横移(§7:非交互节点自带拖窗) */}
       <span data-tauri-drag-region="" className="inline-flex w-3 shrink-0 justify-center">
         {trailing && <StatusDot {...trailing} />}

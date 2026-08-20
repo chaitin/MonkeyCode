@@ -533,6 +533,31 @@ describe("提醒的生命周期与失效跳转", () => {
     }
   });
 
+  // 多格在场口径(2026-08-20 用户「一轮结束/审批/提问得让人知道」):
+  // 「可见 = 在场」只对焦点格成立——此前非焦点格的这些事件被整个静默,
+  // 一轮结束了没有任何信号
+  it("可见非焦点格轮结束:不弹 toast,格头亮未读警示;落焦即消", async () => {
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", "s2", null, null, null, null]));
+    localStorage.setItem("mc.sidebarSpace", "local");
+    const shell = stubShell({
+      sessions: [sess({ id: "s1", title: "任务一" }), sess({ id: "s2", title: "后台任务" })],
+    });
+    render(<App />);
+    await waitFor(() => expect(shell.count("session_open")).toBe(2));
+
+    act(() => shell.emit("session-event", { type: "session-status", id: "s2", title: "后台任务", status: "idle" }));
+    const pane2 = screen.getByRole("region", { name: "第 2 格" });
+    await waitFor(() => expect(pane2.querySelector("[data-attention]")).not.toBeNull()); // 格头警示条
+    expect(screen.queryByText("「后台任务」已回复")).toBeNull(); // 格就在眼前,不弹 toast
+    expect(within(pane2).getByRole("img", { name: "有未读更新" })).toBeTruthy(); // 状态点走 attention 语义
+    expect(rowOf("后台任务").dataset.attention).toBeDefined(); // 任务列行同源高亮
+
+    fireEvent.pointerDown(pane2); // 落焦即已读
+    await waitFor(() => expect(pane2.querySelector("[data-attention]")).toBeNull());
+    expect(rowOf("后台任务").dataset.attention).toBeUndefined();
+  });
+
   // 引擎崩溃时壳对每个顶层会话发 interrupted(driver/session.rs 的
   // reconcile-all)。此前 notices.ts 漏了这一档,于是"跑着的后台任务全被打断"
   // 在界面上一声不吭:行是静默态(无点),提醒也没有
