@@ -570,7 +570,8 @@ export function DesignPreviewWorkbench({
   useEffect(() => {
     const generation = liveRef.current;
     const offPicked = onPreviewElementPicked((snapshot) => {
-      if (liveRef.current !== generation) return;
+      if (liveRef.current !== generation || !pickerRef.current) return;
+      pickerRef.current = false;
       const selection = ++elementSelectionRef.current;
       const selectedTarget = latestRef.current.targetKey;
       const showPicked = (preview: string | null) => {
@@ -686,8 +687,23 @@ export function DesignPreviewWorkbench({
     } catch (error) { report(error); }
   };
   const startCapture = async () => {
+    const pickerWasEnabled = pickerRef.current;
+    pickerRef.current = false;
+    elementSelectionRef.current += 1;
+    setPicker(false);
+    setPicked(null);
+    setPickedPreview(null);
+    setElementDraft(null);
+    setCommentText("");
+    setPickerPurpose(null);
     setStatus(t("design.preview.capturing"));
     try {
+      if (pickerWasEnabled) {
+        pickerCommandRef.current = pickerCommandRef.current
+          .catch(() => undefined)
+          .then(() => previewPickerToggle(false));
+        await pickerCommandRef.current;
+      }
       const result = await requestCapture("viewport");
       if (latestRef.current.sessionId !== sessionId) return;
       setCapture(result.dataUrl); setAnnotations([]); setTextDraft(null); setFeedbackText(""); setStatus(result.clipboardError ?? "");
