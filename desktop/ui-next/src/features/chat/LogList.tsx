@@ -27,6 +27,7 @@ import type { ChatItem, ChatState, Frame, PermItem } from "@/lib/protocol/types"
 import { presentToolCall } from "@/lib/tools/toolLabels";
 import { thoughtLiveSummary, thoughtMarkdown, thoughtSummary } from "@/lib/util/thoughtMarkdown";
 import { AskCard } from "./cards/AskCard";
+import { BackgroundAgentResultCard } from "./cards/BackgroundAgentResultCard";
 import { PermCard } from "./cards/PermCard";
 import { statusDot } from "./cards/statusDot";
 import { ToolCard } from "./cards/ToolCard";
@@ -62,7 +63,7 @@ function UserBubble({
   const thumb = "block max-h-28 max-w-36 cursor-zoom-in rounded-box";
   return (
     <div
-      className={`group chat chat-end relative rounded-box ${flash ? "animate-[mc-flash_1s_ease]" : ""}`}
+      className={`group chat chat-end relative rounded-box ${flash ? "motion-safe:animate-[mc-flash_1s_ease]" : ""}`}
       data-user-seq={item.seq}
     >
       {/* 时间绝对定位在块顶空隙里(§6.2 允许的另一形态):不占流式高度,
@@ -248,6 +249,13 @@ function renderItem(item: ChatItem, o: RenderOpts) {
             joinPrev={o.joinPrev}
             joinNext={o.joinNext}
           />
+        </div>
+      );
+    case "background-result":
+      return (
+        <div className="group relative flex flex-col">
+          <MessageTime timestamp={item.timestamp} className="absolute -top-3.5 start-0" />
+          <BackgroundAgentResultCard item={item} uploadUrl={o.uploadUrl} onLocalLink={o.onLocalLink} />
         </div>
       );
     case "perm":

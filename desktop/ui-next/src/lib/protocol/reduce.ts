@@ -268,6 +268,13 @@ function applyProgress(s: ChatState, tcId: string, p: ToolProgress): ChatState {
     case "child_session":
       patched = { ...prev, childSessionId: p.childSessionId };
       break;
+    case "background_agent":
+      patched = {
+        ...prev,
+        background: true,
+        ...(p.agentId ? { backgroundAgentId: p.agentId } : {}),
+      };
+      break;
     default:
       return s;
   }
@@ -297,7 +304,7 @@ function closeTool(s: ChatState, u: AcpUpdate, timestamp: number | undefined): C
 
   // 这句中文是**引擎的输出内容**(协议嗅探),不是界面文案——不进词典:
   // 翻译了就匹配不上上游了
-  if (raw.includes("子代理已转入后台继续执行")) {
+  if (raw.includes("子代理已转入后台继续执行") || raw.includes("后台代理已继续执行")) {
     // Agent 工具"转后台"的 completed 只是启动回执:卡片视觉上保持运行态,
     // 进度直播照常,真正的终态由后续补发帧回填
     items[idx] = { ...merged, status: "run", outKey: "chat.tool.bgRunning", out: "", result: undefined, lastLine: undefined, background: true };
@@ -497,17 +504,74 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
         params: { attempt: String(u.attempt ?? "?"), message: u.message ?? "" },
       });
     case "task_notification": {
-      // 后台子代理完成通知(📌):独立系统行。不能走流式追加——会把它
-      // 并进正在流式的模型正文气泡。已回填后台卡时通知信息重复:消费卡上
-      // 的 pending 标记,不再往对话流追加任何项
-      for (let i = s.items.length - 1; i >= 0; i--) {
-        const it = s.items[i];
-        if (!it || it.kind !== "tool" || !it.backgroundNoticePending) continue;
-        const items = s.items.slice();
-        items[i] = { ...it, backgroundNoticePending: false };
-        return { ...s, items, streamKind: "" };
+      // 新驱动为后台终态提供结构化字段，必须成为独立结果卡并断开正文流；
+      // 旧驱动只有 text，继续显示 notify 系统行。若显式后台工具卡刚完成，
+      // 消费它的去重标记，但结构化结果卡仍然追加（两者承担不同信息层级）。
+      const structured =
+        u.agentId !== undefined ||
+        u.agentName !== undefined ||
+        u.description !== undefined ||
+        u.status !== undefined ||
+        u.result !== undefined;
+      let base = s;
+      if (structured && u.agentId) {
+        for (let i = base.items.length - 1; i >= 0; i--) {
+          const it = base.items[i];
+          if (
+            !it ||
+            it.kind !== "tool" ||
+            it.status !== "run" ||
+            it.backgroundAgentId !== u.agentId
+          ) {
+            continue;
+          }
+          const failed = u.status === "error" || u.status === "failed" || u.status === "stopped";
+          const durationMs =
+            timestamp !== undefined && it.startedAt !== undefined && timestamp >= it.startedAt
+              ? timestamp - it.startedAt
+              : it.durationMs;
+          const items = base.items.slice();
+          items[i] = {
+            ...it,
+            status: failed ? "fail" : "ok",
+            outKey: failed ? "chat.tool.bgFailed" : "chat.tool.bgDone",
+            out: "",
+            lastLine: undefined,
+            backgroundNoticePending: false,
+            ...(durationMs !== undefined ? { durationMs } : {}),
+          };
+          base = { ...base, items, streamKind: "" };
+          break;
+        }
       }
-      return u.text ? pushItem(s, { kind: "sys", tag: "notify", text: u.text }) : s;
+      for (let i = base.items.length - 1; i >= 0; i--) {
+        const it = base.items[i];
+        if (
+          !it ||
+          it.kind !== "tool" ||
+          !it.backgroundNoticePending ||
+          (u.agentId && it.backgroundAgentId && it.backgroundAgentId !== u.agentId)
+        ) {
+          continue;
+        }
+        const items = base.items.slice();
+        items[i] = { ...it, backgroundNoticePending: false };
+        base = { ...base, items, streamKind: "" };
+        break;
+      }
+      if (structured) {
+        return pushItem(base, {
+          kind: "background-result",
+          agentId: u.agentId ?? "",
+          agentName: u.agentName ?? "",
+          description: u.description ?? "",
+          status: u.status ?? "",
+          result: u.result ?? "",
+          text: u.text ?? "",
+          ...(timestamp !== undefined ? { timestamp } : {}),
+        });
+      }
+      return u.text ? pushItem(base, { kind: "sys", tag: "notify", text: u.text }) : base;
     }
     case "available_commands_update":
       // 斜杠指令清单是"此刻"的会话状态(全量重发,不是对话内容):只回写

@@ -13,9 +13,11 @@
 // 合并(lib/cloud/outline),渲染复用本地 OutlineNav;跳转目标未加载时经
 // loadEarlier 大步长补页——effect 驱动(每页提交后重查),上限防死循环。
 import { IconDots, IconFolderOpen, IconTerminal2, IconWorld, IconX } from "@tabler/icons-react";
+import { createPortal } from "react-dom";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -26,10 +28,12 @@ import {
 
 import { useApprovalHotkeys } from "@/app/shortcuts";
 import { ErrorBar } from "@/features/chat/composer/composerKit";
+import { SendQueueList } from "@/features/chat/composer/SendQueueList";
 import { LogList, type LogListHandle } from "@/features/chat/LogList";
 import { OutlineNav, useOutlineEntries } from "@/features/chat/OutlineNav";
 import { TaskPanel } from "@/features/chat/TaskPanel";
 import { useI18n } from "@/lib/i18n";
+import type { MenuItem } from "@/lib/contextMenu";
 import { mcStatus } from "@/lib/ipc/account";
 import { openExternal } from "@/lib/ipc/host";
 import { mcTaskDelete, type CloudTask } from "@/lib/ipc/cloudtasks";
@@ -67,23 +71,6 @@ export function mcConsoleTaskUrl(baseUrl: string, taskId: string): string {
 
 /** 连接状态 → 外显文案;健康态(已连接/本轮结束)返回 null 不渲染——
  * 常驻"已连接云端"是噪音,异常/过渡态才值得占一行。 */
-/** 发送中的用户气泡(与 LogList 的 UserBubble 同形,降透明 + 转圈脚注)。
- *  云端回显到达即由真气泡取代(useCloudTask.sending 在首批帧到达时清空)。 */
-function PendingBubble({ content, waking }: { content: string; waking: boolean }) {
-  const { t } = useI18n();
-  return (
-    <div className="chat chat-end opacity-60" data-pending-send="">
-      <div className="chat-bubble max-w-[85%] bg-primary/10 text-sm whitespace-pre-wrap wrap-anywhere select-text">
-        {content}
-      </div>
-      <div className="chat-footer flex items-center gap-1.5 pt-1 text-xs text-base-content/60">
-        <span className="loading loading-spinner loading-xs" aria-hidden />
-        <span>{t(waking ? "cloud.send.waking" : "cloud.send.pending")}</span>
-      </div>
-    </div>
-  );
-}
-
 function statusText(
   t: ReturnType<typeof useI18n>["t"],
   status: StreamStatus | null,
@@ -130,9 +117,34 @@ function emptyKey(
 
 export function CloudTaskView({
   task,
+  variant = "full",
+  headerSlot = null,
+  menuRegister,
+  hotkeysActive = true,
+  nativeDropEnabled = true,
+  focusRequest = 0,
+  onFocusRequestHandled,
   onTasksChanged,
   onDeleted,
 }: {
+  /** pane = 工作台格内形态(2026-08-18 工作台升主界面,云端任务入格):
+   *  不渲染 h-13 视图头(标题/终端/文件/⋯ 收进格细头或后置),根退 div
+   *  (main 地标归工作台壳);审批快捷键只归焦点格。 */
+  variant?: "full" | "pane";
+  /** 格头「视图动作」插槽(SplitView 的 PaneHeader 提供;文件/终端两颗
+   *  可视钮 createPortal 进去——格头唯一通用框架,不写云端分支,
+   *  2026-08-19 用户定案「panel 都是通用的」)。 */
+  headerSlot?: HTMLElement | null;
+  /** 任务操作项并入格头唯一 ⋯ 菜单(双 ⋯ 沙雕,2026-08-19 用户报障):
+   *  注册一个「开菜单时取项」的函数;confirm 两击走 openMenu 现成机制。 */
+  menuRegister?: (fn: (() => MenuItem[]) | null) => void;
+  hotkeysActive?: boolean;
+  /** Linux 原生拖放是 window 级事件；分屏时仅焦点格接收。 */
+  nativeDropEnabled?: boolean;
+  /** 选格聚焦意图(仅焦点格收非零值;透传 CloudComposer,结束态无
+   *  composer 不消费,请求留给下一个能消费的格) */
+  focusRequest?: number;
+  onFocusRequestHandled?: (request: number) => void;
   /** 侧栏/新建入口带进来的任务(至少含 id;详情异步补全)。
    * 契约:App 以 task.id 为 key 挂载本视图(id 在一次挂载内不变)。 */
   task: CloudTask;
@@ -198,7 +210,7 @@ export function CloudTaskView({
 
   // 键盘审批(⏎ 允许 / esc 拒绝)经云端 WS 上行;终端聚焦时由 shortcuts
   // 的 inTerminal 守卫整体让路
-  useApprovalHotkeys(h.chat, h.id, h.sendFrame);
+  useApprovalHotkeys(h.chat, h.id, h.sendFrame, hotkeysActive);
 
   // ==== 拖拽附件(与 ChatView 同构):HTML5 计数配对 + 落区浮层;结束态
   // 只读不收 ====
@@ -228,9 +240,14 @@ export function CloudTaskView({
   };
   // Linux 壳:WebKitGTK 的 HTML5 拖拽拿不到 File,走壳原生 tauri://drag-*
   // (mac/Windows 壳禁用原生处理器,监听永不触发)。经 ref 取最新 handle
+  const nativeDropIsEnabled = useEffectEvent(() => nativeDropEnabled);
+  useEffect(() => {
+    if (!nativeDropEnabled) setDragging(false);
+  }, [nativeDropEnabled]);
   useEffect(
     () =>
       onNativeFileDrop({
+        enabled: nativeDropIsEnabled,
         // 云端附件要把字节上行对象存储(mc_upload),必须真读内容:默认的
         // path-backed 占位 File 是 0 字节,到 uploadCloudFile 会一律以
         // 「是空文件」告吹(旧 UI cloudtask.tsx:94 同一处 wantContent)
@@ -441,8 +458,7 @@ export function CloudTaskView({
   const emptyState = { ended: h.ended, waking: h.waking, failed: h.vmFailed, notReady: h.vmNotReady };
   // 空态带 !cursor 守卫:结束态首轮可能没有帧但仍有更早可翻,
   // 此时要保住「加载更早」入口,不能整屏换成空态
-  // 发送在途时不走空态:那条占位气泡就是当前唯一的内容,空态会把它盖掉
-  const showEmpty = !pending && h.chat.items.length === 0 && !h.cursor && !h.sending;
+  const showEmpty = !pending && h.chat.items.length === 0 && !h.cursor;
 
   // 尺寸兜底(与 ChatView 同法,两处口径必须一致):能改变高度的来源两头都要盯——
   // 视口(footer 长高:运行条/附件 chips/终端卡 h-64/textarea 自适应,顶部连接
@@ -468,36 +484,53 @@ export function CloudTaskView({
   const summary = task.summary || h.meta?.summary || "";
   const repoLine = [h.meta?.full_name, h.meta?.branch].filter(Boolean).join(" · ");
 
-  return (
-    <main
-      className="relative flex min-w-0 flex-1 flex-col bg-base-100"
-      onDragEnter={onDragEnter}
-      onDragOver={(e) => e.preventDefault()}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
-      {dragging && (
-        <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-box border-2 border-dashed border-primary bg-primary/10 text-sm font-semibold text-primary">
-          {t("chat.dropHint")}
-        </div>
-      )}
-      {/* §7 拖拽区铁律:头部每个非交互子节点单独带 data-tauri-drag-region
-          (云端无双击改名,h1 整个在拖拽区内) */}
-      <header data-view-header="" data-tauri-drag-region="" className="flex h-13 shrink-0 items-center gap-2 border-b border-base-300 px-4">
-        <div data-tauri-drag-region="" className="min-w-0 flex-1">
-          <h1 data-tauri-drag-region="" className="truncate text-sm leading-tight font-semibold" title={h.label}>
-            {h.label}
-          </h1>
-          {summary && summary !== h.label ? (
-            <p data-tauri-drag-region="" className="truncate text-xs leading-tight text-base-content/50">{summary}</p>
-          ) : repoLine ? (
-            <p data-tauri-drag-region="" title={repoLine} className="truncate font-mono text-xs leading-tight text-base-content/45">
-              {repoLine}
-            </p>
-          ) : (
-            <p data-tauri-drag-region="" className="truncate text-xs leading-tight text-base-content/45">{t("cloud.view.badge")}</p>
-          )}
-        </div>
+  // pane 形态:根退 div(main 地标归工作台壳),min-h-0 防格内溢出
+  // 格形态的任务操作项(格头 ⋯ 开菜单时现取,ref 读最新闭包):
+  // 在线预览用快照——openMenu 是静态清单,fetchPorts 开菜单时触发,
+  // 端口下一次打开可见(动态分节形态只归整页头 dropdown,折衷记档)
+  const paneMenuRef = useRef<() => MenuItem[]>(() => []);
+  paneMenuRef.current = () => {
+    h.fetchPorts();
+    const ports = h.ports;
+    return [
+      ...(mcBaseUrl
+        ? [
+            {
+              label: t("cloud.view.openConsole"),
+              run: () => {
+                const url = mcConsoleTaskUrl(mcBaseUrl, h.id);
+                if (url) openExternal(url);
+              },
+            },
+          ]
+        : []),
+      ...(!h.ended && h.vmId
+        ? ports === null
+          ? [{ label: t("cloud.view.preview"), disabledReason: t("cloud.view.previewLoading"), run: () => {} }]
+          : ports.filter((p) => p.access_url).length === 0
+            ? [{ label: t("cloud.view.preview"), disabledReason: t("cloud.view.previewEmpty"), run: () => {} }]
+            : ports
+                .filter((p) => p.access_url)
+                .map((p) => ({
+                  label: `${t("cloud.view.preview")} :${p.port}${p.label || p.process ? ` ${p.label || p.process}` : ""}`,
+                  run: () => openExternal(p.access_url!),
+                }))
+        : []),
+      ...(!h.ended ? [{ label: t("cloud.view.stop"), confirm: t("cloud.view.stopConfirm"), danger: true, run: () => void h.stopTask() }] : []),
+      { label: t("cloud.list.delete"), confirm: t("cloud.list.deleteConfirm"), danger: true, run: doDelete },
+    ];
+  };
+  useEffect(() => {
+    if (variant !== "pane" || !menuRegister) return;
+    menuRegister(() => paneMenuRef.current());
+    return () => menuRegister(null);
+  }, [variant, menuRegister]);
+
+  /** 头部动作簇(文件/终端两颗可视钮):整页头与格头插槽同一份 JSX——
+   *  格里经 createPortal 注入 PaneHeader 的通用插槽,不做第二套头;
+   *  任务操作菜单**不在此**(格里并入格头 ⋯,整页头单独渲染 dropdown)。 */
+  const headerActions = (
+    <>
         {/* 文件浏览走控制流(按 taskId 寻址,CloudFiles 懒建),不依赖 vmId
             ——结束态浏览最终快照、运行中即便详情未捎带 VM 也能看;vmId 只
             决定面板内上传/下载入口。仅 pending(VM 未建)禁用 */}
@@ -522,6 +555,42 @@ export function CloudTaskView({
             <IconTerminal2 size={16} stroke={1.75} aria-hidden />
           </button>
         )}
+    </>
+  );
+  const Root = variant === "pane" ? "div" : "main";
+  return (
+    <Root
+      className={`relative flex min-w-0 flex-1 flex-col ${variant === "pane" ? "min-h-0 bg-transparent" : "mc-workbench-surface-100"}`}
+      onDragEnter={onDragEnter}
+      onDragOver={(e) => e.preventDefault()}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging && (
+        <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-box border-2 border-dashed border-primary bg-primary/10 text-sm font-semibold text-primary">
+          {t("chat.dropHint")}
+        </div>
+      )}
+      {/* §7 拖拽区铁律:头部每个非交互子节点单独带 data-tauri-drag-region
+          (云端无双击改名,h1 整个在拖拽区内) */}
+      {variant === "pane" && headerSlot ? createPortal(headerActions, headerSlot) : null}
+      {variant !== "pane" && (
+      <header data-view-header="" data-tauri-drag-region="" className="flex h-13 shrink-0 items-center gap-2 border-b border-base-300 px-4">
+        <div data-tauri-drag-region="" className="min-w-0 flex-1">
+          <h1 data-tauri-drag-region="" className="truncate text-sm leading-tight font-semibold" title={h.label}>
+            {h.label}
+          </h1>
+          {summary && summary !== h.label ? (
+            <p data-tauri-drag-region="" className="truncate text-xs leading-tight text-base-content/50">{summary}</p>
+          ) : repoLine ? (
+            <p data-tauri-drag-region="" title={repoLine} className="truncate font-mono text-xs leading-tight text-base-content/45">
+              {repoLine}
+            </p>
+          ) : (
+            <p data-tauri-drag-region="" className="truncate text-xs leading-tight text-base-content/45">{t("cloud.view.badge")}</p>
+          )}
+        </div>
+        {headerActions}
         <div ref={menuBoxRef} className={`dropdown dropdown-end ${menuOpen ? "dropdown-open" : ""}`}>
           <button
             type="button"
@@ -637,13 +706,14 @@ export function CloudTaskView({
           )}
         </div>
       </header>
+      )}
 
       {/* 布局规范(LAYOUT §3):连接状态是内容级信息,以内嵌条挂在 header
           之下,恢复即消。形态 = 「header 的延长线」:同 px-4 内距、同
           border-b 分隔线、微量 warning 底,不用 alert 横幅 */}
       {connText && !h.ended && (
         <div role="status" className="flex shrink-0 items-center gap-2 border-b border-base-300 bg-warning/5 px-4 py-1.5 text-xs text-base-content/70">
-          <span aria-hidden className="status status-warning status-sm animate-pulse shrink-0" />
+          <span aria-hidden className="status status-warning status-sm motion-safe:animate-pulse shrink-0" />
           <span className="min-w-0 flex-1 truncate" title={connText}>{connText}</span>
         </div>
       )}
@@ -685,7 +755,7 @@ export function CloudTaskView({
           // gutter 两侧对称预留:与页脚 composer 列(无滚动条)共享同一条中线
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3 [scrollbar-gutter:stable_both-edges]"
         >
-          <div className="mx-auto flex chat-measure flex-col gap-3">
+          <div className={`mx-auto flex ${variant === "pane" ? "chat-measure-pane" : "chat-measure"} flex-col gap-3`}>
             {h.cursor && (
               <button
                 type="button"
@@ -701,10 +771,6 @@ export function CloudTaskView({
                 大纲跳转经 LogList 的虚拟索引把目标行挂载；结束态只读回放:
                 卡片不再渲染交互按钮 */}
             <LogList ref={listRef} state={h.chat} sessionId={h.id} sendFrame={h.sendFrame} flashSeq={flashSeq ?? undefined} readonly={h.ended} />
-            {/* 发送中的占位气泡:云端要等 WS 连上才回显这条(休眠机器先唤醒,
-                以分钟计)。不占位的话输入框一清、日志毫无变化,用户只能猜
-                消息是不是丢了(2026-08-06 用户报障) */}
-            {h.sending && <PendingBubble content={h.sending.content} waking={h.waking} />}
           </div>
         </div>
       )}
@@ -734,7 +800,7 @@ export function CloudTaskView({
 
       {/* 无上边线:与 ChatView composer 同款(2026-08-13 用户定案) */}
       <footer className="shrink-0 p-3">
-        <div className="mx-auto flex chat-measure flex-col gap-2">
+        <div className={`mx-auto flex ${variant === "pane" ? "chat-measure-pane" : "chat-measure"} flex-col gap-2`}>
           {/* 终端卡:外壳走 card card-border 官方形态,头部条普通 base 底 +
               结构线;深色只留给 xterm 本体(term.css 白名单) */}
           {termOpen && h.vmId && !h.ended && (
@@ -763,16 +829,30 @@ export function CloudTaskView({
             <>
               {/* 结束态 composer 不渲染,错误通道(如删除被拒)另给一条 */}
               {h.err && <ErrorBar text={h.err} onDismiss={h.clearErr} />}
+              <SendQueueList
+                pending={h.queue.pending}
+                inFlight={h.queue.inFlight}
+                blocked={h.queue.blocked}
+                onRemove={h.removeQueued}
+                onReorder={h.reorderQueued}
+                onResume={h.confirmQueue}
+                onDiscardUncertain={h.discardUncertain}
+                onStopAndClear={h.stopAndClearQueue}
+                attachmentName={(attachment) => attachment.filename}
+                attachmentIsImage={(attachment) => attachment.isImage}
+                loadAttachmentUrl={(attachment) => Promise.resolve(attachment.url)}
+                onOpenAttachment={(attachment) => openExternal(attachment.url)}
+              />
               <div className="py-1 text-center text-xs text-base-content/50">{t("cloud.view.readonly")}</div>
             </>
           ) : (
             <>
               {h.chat.plan.length > 0 && <TaskPanel entries={h.chat.plan} />}
-              <CloudComposer h={h} pending={pending} onSend={send} />
+              <CloudComposer h={h} pending={pending} onSend={send} focusRequest={focusRequest} onFocusRequestHandled={onFocusRequestHandled} />
             </>
           )}
         </div>
       </footer>
-    </main>
+    </Root>
   );
 }
