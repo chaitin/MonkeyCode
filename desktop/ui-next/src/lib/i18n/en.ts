@@ -947,5 +947,7 @@ export const en: Record<MessageKey, string> = {
   "ctx.copy": "Copy",
   "ctx.paste": "Paste",
   "ctx.selectAll": "Select all",
+  "ctx.copyImage": "Copy image",
+  "ctx.copyImageUnsupported": "Copying images is not supported in this environment",
 
 };

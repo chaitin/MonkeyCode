@@ -970,6 +970,8 @@ export const zh = {
   "ctx.copy": "复制",
   "ctx.paste": "粘贴",
   "ctx.selectAll": "全选",
+  "ctx.copyImage": "复制图片",
+  "ctx.copyImageUnsupported": "当前环境不支持复制图片",
 
 } as const;
 
