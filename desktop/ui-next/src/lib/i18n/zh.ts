@@ -218,6 +218,8 @@ export const zh = {
   "settings.background.fit.contain": "适应",
   "settings.background.fit.repeat": "平铺",
   "settings.background.readability": "当前不透明度可能降低文字和控件的可读性。",
+  "settings.background.storedUnavailable": "已保存的背景不可用：{detail}",
+  "settings.background.loadFailed": "背景加载失败：{detail}",
   "settings.background.hint": "支持 PNG、JPEG、WebP，最大 20 MiB；修改立即生效并记在本机。",
 
   "settings.title": "设置",

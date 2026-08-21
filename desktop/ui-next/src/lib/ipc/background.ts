@@ -10,6 +10,10 @@ export interface BackgroundAsset {
   dataUrl: string;
 }
 
+export interface StagedBackgroundAsset extends BackgroundAsset {
+  stagedId: string;
+}
+
 /** 原生单文件选择；取消或浏览器模式返回 null。 */
 export async function pickBackgroundPath(title: string): Promise<string | null> {
   if (!inDesktopShell()) return null;
@@ -26,8 +30,16 @@ export async function pickBackgroundPath(title: string): Promise<string | null> 
   return null;
 }
 
-export function importBackground(path: string): Promise<BackgroundAsset> {
-  return invoke<BackgroundAsset>("background_import", { path });
+export function importBackground(path: string): Promise<StagedBackgroundAsset> {
+  return invoke<StagedBackgroundAsset>("background_import", { path });
+}
+
+export function confirmBackground(stagedId: string): Promise<void> {
+  return invoke<void>("background_confirm", { stagedId });
+}
+
+export function discardBackground(stagedId: string): Promise<void> {
+  return invoke<void>("background_discard", { stagedId });
 }
 
 export function readBackgroundAsset(): Promise<BackgroundAsset | null> {

@@ -3,10 +3,12 @@
 //! 只接受实际字节为 PNG/JPEG/WebP 的静态图片，将其复制到应用私有数据目录；
 //! 元数据只保存受控 basename，读取时重新校验全部约束，绝不回读用户原路径。
 
-use std::fs;
-use std::io::Cursor;
+use std::collections::HashSet;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use base64::Engine as _;
 use image::{ImageFormat, ImageReader};
@@ -17,11 +19,15 @@ use tauri::AppHandle;
 const METADATA_VERSION: u8 = 1;
 const METADATA_FILE: &str = "current.v1.json";
 const ASSETS_DIR: &str = "assets";
+const PENDING_DIR: &str = "pending";
+const LOCK_FILE: &str = ".asset.lock";
 const MAX_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_EDGE: u32 = 16_384;
 const MAX_PIXELS: u64 = 50_000_000;
 const MAX_DECODE_ALLOC: u64 = 256 * 1024 * 1024;
 static CLEAR_SEQ: AtomicU64 = AtomicU64::new(0);
+static STAGE_SEQ: AtomicU64 = AtomicU64::new(0);
+static ASSET_MUTEX: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +38,14 @@ pub struct BackgroundAsset {
     pub width: u32,
     pub height: u32,
     pub data_url: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StagedBackgroundAsset {
+    #[serde(flatten)]
+    pub asset: BackgroundAsset,
+    pub staged_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -189,12 +203,41 @@ fn validate_regular_file(path: &Path) -> Result<u64, String> {
     Ok(metadata.len())
 }
 
+fn read_limited(mut reader: impl Read) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    reader
+        .by_ref()
+        .take(MAX_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("无法读取图片文件: {e}"))?;
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err("图片文件不能超过 20 MiB".into());
+    }
+    Ok(bytes)
+}
+
+fn read_regular_file(path: &Path) -> Result<Vec<u8>, String> {
+    let declared_len = validate_regular_file(path)?;
+    let file = File::open(path).map_err(|e| format!("无法读取图片文件: {e}"))?;
+    let opened = file
+        .metadata()
+        .map_err(|e| format!("无法读取图片文件元数据: {e}"))?;
+    if !opened.is_file() || opened.len() > MAX_BYTES {
+        return Err("请选择不超过 20 MiB 的普通图片文件".into());
+    }
+    let bytes = read_limited(file)?;
+    if bytes.len() as u64 != declared_len || bytes.len() as u64 != opened.len() {
+        return Err("图片文件读取期间发生变化或超过 20 MiB".into());
+    }
+    Ok(bytes)
+}
+
 fn checked_background_dirs(
     local_data_dir: &Path,
     create: bool,
-) -> Result<(PathBuf, PathBuf), String> {
+) -> Result<(PathBuf, PathBuf, PathBuf), String> {
     let root = background_dir(local_data_dir);
-    for dir in [&root, &root.join(ASSETS_DIR)] {
+    for dir in [&root, &root.join(ASSETS_DIR), &root.join(PENDING_DIR)] {
         match fs::symlink_metadata(dir) {
             Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
                 return Err(format!("背景资产目录 {} 不安全", dir.display()));
@@ -214,41 +257,146 @@ fn checked_background_dirs(
         }
     }
     let assets = root.join(ASSETS_DIR);
-    Ok((root, assets))
+    let pending = root.join(PENDING_DIR);
+    Ok((root, assets, pending))
 }
 
-fn cleanup_assets(dir: &Path, keep: Option<&str>) {
-    let Ok(entries) = fs::read_dir(dir.join(ASSETS_DIR)) else {
+fn with_asset_lock<T>(
+    local_data_dir: &Path,
+    action: impl FnOnce(&Path) -> Result<T, String>,
+) -> Result<T, String> {
+    // 文件锁负责跨进程，Mutex 负责同一进程中各 blocking worker（部分平台的
+    // advisory lock 对同进程多个 fd 不互斥）。panic 后仍恢复 guard。
+    let _process_guard = ASSET_MUTEX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (root, _, _) = checked_background_dirs(local_data_dir, true)?;
+    let lock_path = root.join(LOCK_FILE);
+    if let Ok(metadata) = fs::symlink_metadata(&lock_path) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err("背景资产锁文件不安全".into());
+        }
+    }
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(&lock_path)
+        .map_err(|e| format!("打开背景资产锁失败: {e}"))?;
+    lock.lock().map_err(|e| format!("锁定背景资产失败: {e}"))?;
+    action(&root)
+}
+
+fn metadata_filename(metadata: &ManagedMetadata) -> Option<String> {
+    let basename = Path::new(&metadata.filename)
+        .file_name()
+        .and_then(|name| name.to_str())?;
+    (basename == metadata.filename).then(|| metadata.filename.clone())
+}
+
+/// 必须在持有跨进程资产锁时调用。保留集始终从锁内的当前元数据和所有待确认
+/// 元数据重新推导，绝不使用某次导入开始时捕获的过期 keep。
+fn cleanup_assets_locked(root: &Path) {
+    let mut keep = HashSet::new();
+    let current = root.join(METADATA_FILE);
+    match fs::read(&current) {
+        Ok(raw) => match serde_json::from_slice::<ManagedMetadata>(&raw)
+            .ok()
+            .and_then(|metadata| metadata_filename(&metadata))
+        {
+            Some(filename) => {
+                keep.insert(filename);
+            }
+            // 当前权威元数据存在却无法解析时，宁可暂留孤儿也不能误删它可能引用的资产。
+            None => return,
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return,
+    }
+
+    let pending_dir = root.join(PENDING_DIR);
+    if let Ok(entries) = fs::read_dir(&pending_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(_) => return,
+            };
+            if file_type.is_symlink() || !file_type.is_file() {
+                continue;
+            }
+            let raw = match fs::read(&path) {
+                Ok(raw) => raw,
+                Err(_) => return,
+            };
+            match serde_json::from_slice::<ManagedMetadata>(&raw)
+                .ok()
+                .and_then(|metadata| metadata_filename(&metadata))
+            {
+                Some(filename) => {
+                    keep.insert(filename);
+                }
+                None => return,
+            }
+        }
+    }
+
+    let Ok(entries) = fs::read_dir(root.join(ASSETS_DIR)) else {
         return;
     };
     for entry in entries.flatten() {
-        let path = entry.path();
-        let name = path.file_name().and_then(|n| n.to_str());
-        if path.is_file() && name != keep {
-            let _ = fs::remove_file(path);
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        let name = entry.file_name();
+        if !file_type.is_dir() && !keep.contains(name.to_string_lossy().as_ref()) {
+            let _ = fs::remove_file(entry.path());
         }
     }
 }
 
-pub(crate) fn import_from(local_data_dir: &Path, source: &Path) -> Result<BackgroundAsset, String> {
-    let declared_len = validate_regular_file(source)?;
-    let bytes = fs::read(source).map_err(|e| format!("无法读取图片文件: {e}"))?;
-    if bytes.len() as u64 != declared_len || bytes.len() as u64 > MAX_BYTES {
-        return Err("图片文件读取期间发生变化或超过 20 MiB".into());
+fn managed_file_is_exact(path: &Path, expected: &[u8]) -> bool {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() != expected.len() as u64
+    {
+        return false;
     }
+    let Ok(existing) = read_regular_file(path) else {
+        return false;
+    };
+    existing == expected
+        && fs::symlink_metadata(path)
+            .is_ok_and(|after| !after.file_type().is_symlink() && after.is_file())
+}
+
+fn valid_staged_id(staged_id: &str) -> bool {
+    !staged_id.is_empty()
+        && staged_id.len() <= 160
+        && staged_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+fn pending_path(root: &Path, staged_id: &str) -> Result<PathBuf, String> {
+    if !valid_staged_id(staged_id) {
+        return Err("待确认背景标识无效".into());
+    }
+    Ok(root.join(PENDING_DIR).join(format!("{staged_id}.json")))
+}
+
+pub(crate) fn stage_from(
+    local_data_dir: &Path,
+    source: &Path,
+) -> Result<StagedBackgroundAsset, String> {
+    // 大文件读取本身也必须有硬上限，不能只信打开前的一次 metadata。
+    let bytes = read_regular_file(source)?;
     let (kind, width, height) = inspect(&bytes)?;
     let revision = sha256(&bytes);
     let filename = expected_filename(&revision, kind);
-    let (root, assets_dir) = checked_background_dirs(local_data_dir, true)?;
-    let asset_path = assets_dir.join(&filename);
-
-    // 资产先落盘，元数据最后原子提交。任何前置失败都不会改变旧元数据。
-    // 同 hash 文件也必须比对内容：托管副本可能被外部进程损坏或替换成
-    // symlink；只看 is_file 会跳过修复，当前会话拿到好 data URL、下次启动却坏。
-    let already_exact = fs::read(&asset_path).is_ok_and(|existing| existing == bytes);
-    if !already_exact {
-        crate::config::atomic_write_private(&asset_path, &bytes)?;
-    }
     let original_name = source
         .file_name()
         .and_then(|name| name.to_str())
@@ -266,41 +414,43 @@ pub(crate) fn import_from(local_data_dir: &Path, source: &Path) -> Result<Backgr
     };
     let encoded =
         serde_json::to_vec_pretty(&metadata).map_err(|e| format!("序列化背景元数据失败: {e}"))?;
-    if let Err(error) = crate::config::atomic_write_private(&root.join(METADATA_FILE), &encoded) {
-        // 新 revision 尚未成为权威资产，可以安全清掉；相同 revision 可能仍由旧元数据引用。
-        let old_uses_asset = fs::read(root.join(METADATA_FILE))
-            .ok()
-            .and_then(|raw| serde_json::from_slice::<ManagedMetadata>(&raw).ok())
-            .is_some_and(|old| old.filename == filename);
-        if !old_uses_asset {
-            let _ = fs::remove_file(&asset_path);
+
+    let staged_id = format!(
+        "{}-{}-{}",
+        std::process::id(),
+        STAGE_SEQ.fetch_add(1, Ordering::Relaxed),
+        revision
+    );
+    with_asset_lock(local_data_dir, |root| {
+        let asset_path = root.join(ASSETS_DIR).join(&filename);
+        // 判等前后都确认路径是普通非 symlink 文件；否则即使链接目标字节等值，
+        // 也必须用原子替换恢复为真正的托管副本。
+        if !managed_file_is_exact(&asset_path, &bytes) {
+            crate::config::atomic_write_private(&asset_path, &bytes)?;
         }
-        return Err(error);
-    }
-    cleanup_assets(&root, Some(&filename));
-    Ok(BackgroundAsset {
-        revision,
-        original_name,
-        mime: kind.mime.into(),
-        width,
-        height,
-        data_url: data_url(kind, &bytes),
+        let pending = pending_path(root, &staged_id)?;
+        if let Err(error) = crate::config::atomic_write_private(&pending, &encoded) {
+            cleanup_assets_locked(root);
+            return Err(error);
+        }
+        cleanup_assets_locked(root);
+        Ok(())
+    })?;
+
+    Ok(StagedBackgroundAsset {
+        asset: BackgroundAsset {
+            revision,
+            original_name,
+            mime: kind.mime.into(),
+            width,
+            height,
+            data_url: data_url(kind, &bytes),
+        },
+        staged_id,
     })
 }
 
-pub(crate) fn read_from(local_data_dir: &Path) -> Result<Option<BackgroundAsset>, String> {
-    let (root, _) = checked_background_dirs(local_data_dir, false)?;
-    let metadata_path = root.join(METADATA_FILE);
-    let raw = match fs::read(&metadata_path) {
-        Ok(raw) => raw,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            cleanup_assets(&root, None);
-            return Ok(None);
-        }
-        Err(error) => return Err(format!("读取背景元数据失败: {error}")),
-    };
-    let metadata: ManagedMetadata =
-        serde_json::from_slice(&raw).map_err(|e| format!("背景元数据损坏: {e}"))?;
+fn asset_from_metadata(root: &Path, metadata: ManagedMetadata) -> Result<BackgroundAsset, String> {
     if metadata.version != METADATA_VERSION {
         return Err(format!("不支持的背景元数据版本: {}", metadata.version));
     }
@@ -326,7 +476,7 @@ pub(crate) fn read_from(local_data_dir: &Path) -> Result<Option<BackgroundAsset>
     if len != metadata.byte_length {
         return Err("背景图片长度与元数据不一致".into());
     }
-    let bytes = fs::read(&asset_path).map_err(|e| format!("读取背景图片失败: {e}"))?;
+    let bytes = read_regular_file(&asset_path).map_err(|e| format!("读取背景图片失败: {e}"))?;
     let (actual_kind, width, height) = inspect(&bytes)?;
     if actual_kind != kind || width != metadata.width || height != metadata.height {
         return Err("背景图片格式或尺寸与元数据不一致".into());
@@ -334,52 +484,132 @@ pub(crate) fn read_from(local_data_dir: &Path) -> Result<Option<BackgroundAsset>
     if sha256(&bytes) != metadata.revision {
         return Err("背景图片内容校验失败".into());
     }
-    cleanup_assets(&root, Some(&metadata.filename));
-    Ok(Some(BackgroundAsset {
+    Ok(BackgroundAsset {
         revision: metadata.revision,
         original_name: metadata.original_name,
         mime: metadata.mime,
         width,
         height,
         data_url: data_url(kind, &bytes),
-    }))
+    })
+}
+
+pub(crate) fn confirm_from(local_data_dir: &Path, staged_id: &str) -> Result<(), String> {
+    with_asset_lock(local_data_dir, |root| {
+        let path = pending_path(root, staged_id)?;
+        let raw = fs::read(&path).map_err(|e| format!("读取待确认背景失败: {e}"))?;
+        let metadata: ManagedMetadata =
+            serde_json::from_slice(&raw).map_err(|e| format!("待确认背景元数据损坏: {e}"))?;
+        // 提交前重新验证托管资产，不能信任预解码期间一直未被篡改。
+        asset_from_metadata(root, metadata)?;
+        crate::config::atomic_write_private(&root.join(METADATA_FILE), &raw)?;
+        let _ = fs::remove_file(path);
+        cleanup_assets_locked(root);
+        Ok(())
+    })
+}
+
+pub(crate) fn discard_from(local_data_dir: &Path, staged_id: &str) -> Result<(), String> {
+    with_asset_lock(local_data_dir, |root| {
+        let path = pending_path(root, staged_id)?;
+        match fs::remove_file(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("丢弃待确认背景失败: {error}")),
+        }
+        cleanup_assets_locked(root);
+        Ok(())
+    })
+}
+
+pub(crate) fn read_from(local_data_dir: &Path) -> Result<Option<BackgroundAsset>, String> {
+    with_asset_lock(local_data_dir, |root| {
+        let metadata_path = root.join(METADATA_FILE);
+        let raw = match fs::read(&metadata_path) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                cleanup_assets_locked(root);
+                return Ok(None);
+            }
+            Err(error) => return Err(format!("读取背景元数据失败: {error}")),
+        };
+        let metadata: ManagedMetadata =
+            serde_json::from_slice(&raw).map_err(|e| format!("背景元数据损坏: {e}"))?;
+        let asset = asset_from_metadata(root, metadata)?;
+        cleanup_assets_locked(root);
+        Ok(Some(asset))
+    })
 }
 
 pub(crate) fn clear_from(local_data_dir: &Path) -> Result<(), String> {
-    let (root, _) = checked_background_dirs(local_data_dir, false)?;
-    let metadata = root.join(METADATA_FILE);
-    let tombstone = root.join(format!(
-        ".{METADATA_FILE}.clear-{}-{}",
-        std::process::id(),
-        CLEAR_SEQ.fetch_add(1, Ordering::Relaxed)
-    ));
-    match fs::rename(&metadata, &tombstone) {
-        Ok(()) => {
-            let _ = fs::remove_file(&tombstone);
+    with_asset_lock(local_data_dir, |root| {
+        let metadata = root.join(METADATA_FILE);
+        let tombstone = root.join(format!(
+            ".{METADATA_FILE}.clear-{}-{}",
+            std::process::id(),
+            CLEAR_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        match fs::rename(&metadata, &tombstone) {
+            Ok(()) => {
+                let _ = fs::remove_file(&tombstone);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("清除背景元数据失败: {error}")),
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(format!("清除背景元数据失败: {error}")),
-    }
-    cleanup_assets(&root, None);
-    Ok(())
+        // clear 同时使尚未确认的旧选择失效，防止其稍后复活已清除背景。
+        if let Ok(entries) = fs::read_dir(root.join(PENDING_DIR)) {
+            for entry in entries.flatten() {
+                if entry.file_type().is_ok_and(|kind| !kind.is_dir()) {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+        cleanup_assets_locked(root);
+        Ok(())
+    })
 }
 
 #[tauri::command]
-pub fn background_import(app: AppHandle, path: String) -> Result<BackgroundAsset, String> {
+pub async fn background_import(
+    app: AppHandle,
+    path: String,
+) -> Result<StagedBackgroundAsset, String> {
     let dir = crate::config::local_data_dir(&app)?;
-    import_from(&dir, Path::new(&path))
+    tauri::async_runtime::spawn_blocking(move || stage_from(&dir, Path::new(&path)))
+        .await
+        .map_err(|e| format!("背景导入任务失败: {e}"))?
 }
 
 #[tauri::command]
-pub fn background_read(app: AppHandle) -> Result<Option<BackgroundAsset>, String> {
+pub async fn background_confirm(app: AppHandle, staged_id: String) -> Result<(), String> {
     let dir = crate::config::local_data_dir(&app)?;
-    read_from(&dir)
+    tauri::async_runtime::spawn_blocking(move || confirm_from(&dir, &staged_id))
+        .await
+        .map_err(|e| format!("背景确认任务失败: {e}"))?
 }
 
 #[tauri::command]
-pub fn background_clear(app: AppHandle) -> Result<(), String> {
+pub async fn background_discard(app: AppHandle, staged_id: String) -> Result<(), String> {
     let dir = crate::config::local_data_dir(&app)?;
-    clear_from(&dir)
+    tauri::async_runtime::spawn_blocking(move || discard_from(&dir, &staged_id))
+        .await
+        .map_err(|e| format!("背景丢弃任务失败: {e}"))?
+}
+
+#[tauri::command]
+pub async fn background_read(app: AppHandle) -> Result<Option<BackgroundAsset>, String> {
+    let dir = crate::config::local_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || read_from(&dir))
+        .await
+        .map_err(|e| format!("背景读取任务失败: {e}"))?
+}
+
+#[tauri::command]
+pub async fn background_clear(app: AppHandle) -> Result<(), String> {
+    let dir = crate::config::local_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || clear_from(&dir))
+        .await
+        .map_err(|e| format!("背景清除任务失败: {e}"))?
 }
 
 #[cfg(test)]
@@ -420,6 +650,12 @@ mod tests {
         path
     }
 
+    fn import_and_confirm(local_data_dir: &Path, source: &Path) -> Result<BackgroundAsset, String> {
+        let staged = stage_from(local_data_dir, source)?;
+        confirm_from(local_data_dir, &staged.staged_id)?;
+        Ok(staged.asset)
+    }
+
     fn crc32(bytes: &[u8]) -> u32 {
         let mut crc = 0xffff_ffffu32;
         for &byte in bytes {
@@ -449,7 +685,7 @@ mod tests {
         ] {
             let dir = TestDir::new();
             let source = write_source(&dir.0, fake_name, &encoded(format, [1, 2, 3]));
-            let asset = import_from(&dir.0, &source).unwrap();
+            let asset = import_and_confirm(&dir.0, &source).unwrap();
             assert_eq!(asset.mime, mime);
             assert!(asset.data_url.starts_with(&format!("data:{mime};base64,")));
             assert_eq!(read_from(&dir.0).unwrap(), Some(asset));
@@ -460,7 +696,7 @@ mod tests {
     fn rejects_unsupported_truncated_and_too_large_files_without_replacing_old() {
         let dir = TestDir::new();
         let good = write_source(&dir.0, "good.png", &encoded(ImageFormat::Png, [1, 2, 3]));
-        let old = import_from(&dir.0, &good).unwrap();
+        let old = import_and_confirm(&dir.0, &good).unwrap();
         for (name, bytes) in [
             ("fake.png", b"not an image".to_vec()),
             (
@@ -469,12 +705,32 @@ mod tests {
             ),
         ] {
             let source = write_source(&dir.0, name, &bytes);
-            assert!(import_from(&dir.0, &source).is_err());
+            assert!(import_and_confirm(&dir.0, &source).is_err());
             assert_eq!(read_from(&dir.0).unwrap(), Some(old.clone()));
         }
         let huge = write_source(&dir.0, "huge.png", &vec![0; MAX_BYTES as usize + 1]);
-        assert!(import_from(&dir.0, &huge).unwrap_err().contains("20 MiB"));
+        assert!(import_and_confirm(&dir.0, &huge)
+            .unwrap_err()
+            .contains("20 MiB"));
         assert_eq!(read_from(&dir.0).unwrap(), Some(old));
+    }
+
+    #[test]
+    fn bounded_reader_stops_after_limit_plus_one_byte() {
+        struct EndlessZeros {
+            read: u64,
+        }
+        impl Read for EndlessZeros {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                buffer.fill(0);
+                self.read += buffer.len() as u64;
+                Ok(buffer.len())
+            }
+        }
+
+        let mut reader = EndlessZeros { read: 0 };
+        assert!(read_limited(&mut reader).unwrap_err().contains("20 MiB"));
+        assert!(reader.read <= MAX_BYTES + 1);
     }
 
     #[test]
@@ -485,14 +741,14 @@ mod tests {
             "edge.png",
             &png_with_header_dimensions(MAX_EDGE + 1, 1),
         );
-        let edge_error = import_from(&dir.0, &edge).unwrap_err();
+        let edge_error = import_and_confirm(&dir.0, &edge).unwrap_err();
         assert!(edge_error.contains("16384"), "{edge_error}");
         let pixels = write_source(
             &dir.0,
             "pixels.png",
             &png_with_header_dimensions(10_000, 5_001),
         );
-        let pixel_error = import_from(&dir.0, &pixels).unwrap_err();
+        let pixel_error = import_and_confirm(&dir.0, &pixels).unwrap_err();
         assert!(pixel_error.contains("50,000,000"), "{pixel_error}");
     }
 
@@ -515,9 +771,9 @@ mod tests {
     fn second_import_atomically_replaces_metadata_and_cleans_old_asset() {
         let dir = TestDir::new();
         let a = write_source(&dir.0, "a.png", &encoded(ImageFormat::Png, [1, 2, 3]));
-        let first = import_from(&dir.0, &a).unwrap();
+        let first = import_and_confirm(&dir.0, &a).unwrap();
         let b = write_source(&dir.0, "b.jpg", &encoded(ImageFormat::Jpeg, [9, 8, 7]));
-        let second = import_from(&dir.0, &b).unwrap();
+        let second = import_and_confirm(&dir.0, &b).unwrap();
         assert_ne!(first.revision, second.revision);
         assert_eq!(read_from(&dir.0).unwrap(), Some(second));
         let assets: Vec<_> = fs::read_dir(background_dir(&dir.0).join(ASSETS_DIR))
@@ -525,6 +781,50 @@ mod tests {
             .flatten()
             .collect();
         assert_eq!(assets.len(), 1);
+    }
+
+    #[test]
+    fn staged_import_preserves_current_until_confirm_and_discard_rolls_back() {
+        let dir = TestDir::new();
+        let old_source = write_source(&dir.0, "old.png", &encoded(ImageFormat::Png, [1, 2, 3]));
+        let old = import_and_confirm(&dir.0, &old_source).unwrap();
+        let next_source = write_source(&dir.0, "next.png", &encoded(ImageFormat::Png, [4, 5, 6]));
+
+        let rejected = stage_from(&dir.0, &next_source).unwrap();
+        assert_eq!(read_from(&dir.0).unwrap(), Some(old.clone()));
+        discard_from(&dir.0, &rejected.staged_id).unwrap();
+        assert_eq!(read_from(&dir.0).unwrap(), Some(old.clone()));
+
+        let accepted = stage_from(&dir.0, &next_source).unwrap();
+        assert_eq!(read_from(&dir.0).unwrap(), Some(old));
+        confirm_from(&dir.0, &accepted.staged_id).unwrap();
+        assert_eq!(read_from(&dir.0).unwrap(), Some(accepted.asset));
+    }
+
+    #[test]
+    fn cleanup_reloads_authoritative_metadata_instead_of_using_stale_keep() {
+        let dir = TestDir::new();
+        let a = write_source(&dir.0, "a.png", &encoded(ImageFormat::Png, [1, 2, 3]));
+        let first = import_and_confirm(&dir.0, &a).unwrap();
+        let b = write_source(&dir.0, "b.png", &encoded(ImageFormat::Png, [7, 8, 9]));
+        let current = import_and_confirm(&dir.0, &b).unwrap();
+
+        // 模拟旧导入在新元数据提交后才开始清理。清理函数没有 keep 参数，
+        // 必须重新读取 current.v1.json，因此只能保留 current。
+        with_asset_lock(&dir.0, |root| {
+            cleanup_assets_locked(root);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(read_from(&dir.0).unwrap(), Some(current.clone()));
+        assert!(!background_dir(&dir.0)
+            .join(ASSETS_DIR)
+            .join(format!("{}.png", first.revision))
+            .exists());
+        assert!(background_dir(&dir.0)
+            .join(ASSETS_DIR)
+            .join(format!("{}.png", current.revision))
+            .exists());
     }
 
     #[test]
@@ -555,17 +855,17 @@ mod tests {
 
         let dir = TestDir::new();
         let source = write_source(&dir.0, "x.png", &encoded(ImageFormat::Png, [1, 1, 1]));
-        let asset = import_from(&dir.0, &source).unwrap();
+        let asset = import_and_confirm(&dir.0, &source).unwrap();
         let asset_path = background_dir(&dir.0)
             .join(ASSETS_DIR)
             .join(format!("{}.png", asset.revision));
         fs::remove_file(&asset_path).unwrap();
         assert!(read_from(&dir.0).is_err());
-        import_from(&dir.0, &source).unwrap();
+        import_and_confirm(&dir.0, &source).unwrap();
         fs::write(&asset_path, encoded(ImageFormat::Png, [2, 2, 2])).unwrap();
         assert!(read_from(&dir.0).is_err());
         // 重新选择同一张原图必须修复同 hash 路径，不能因文件名已存在而跳过。
-        import_from(&dir.0, &source).unwrap();
+        import_and_confirm(&dir.0, &source).unwrap();
         assert_eq!(read_from(&dir.0).unwrap().unwrap().revision, asset.revision);
     }
 
@@ -573,10 +873,33 @@ mod tests {
     fn clear_is_idempotent() {
         let dir = TestDir::new();
         let source = write_source(&dir.0, "x.png", &encoded(ImageFormat::Png, [1, 2, 3]));
-        import_from(&dir.0, &source).unwrap();
+        import_and_confirm(&dir.0, &source).unwrap();
         clear_from(&dir.0).unwrap();
         clear_from(&dir.0).unwrap();
         assert_eq!(read_from(&dir.0).unwrap(), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn equal_symlinked_managed_asset_is_atomically_rewritten_as_regular_file() {
+        use std::os::unix::fs::symlink;
+
+        let dir = TestDir::new();
+        let bytes = encoded(ImageFormat::Png, [1, 2, 3]);
+        let source = write_source(&dir.0, "source.png", &bytes);
+        let first = import_and_confirm(&dir.0, &source).unwrap();
+        let managed = background_dir(&dir.0)
+            .join(ASSETS_DIR)
+            .join(format!("{}.png", first.revision));
+        let outside = write_source(&dir.0, "outside.png", &bytes);
+        fs::remove_file(&managed).unwrap();
+        symlink(&outside, &managed).unwrap();
+
+        import_and_confirm(&dir.0, &source).unwrap();
+        let metadata = fs::symlink_metadata(&managed).unwrap();
+        assert!(metadata.is_file());
+        assert!(!metadata.file_type().is_symlink());
+        assert_eq!(fs::read(outside).unwrap(), bytes);
     }
 
     #[cfg(unix)]
@@ -586,12 +909,12 @@ mod tests {
 
         let dir = TestDir::new();
         let first_source = write_source(&dir.0, "first.png", &encoded(ImageFormat::Png, [1, 2, 3]));
-        let first = import_from(&dir.0, &first_source).unwrap();
+        let first = import_and_confirm(&dir.0, &first_source).unwrap();
         let assets = background_dir(&dir.0).join(ASSETS_DIR);
         fs::set_permissions(&assets, fs::Permissions::from_mode(0o500)).unwrap();
         let second_source =
             write_source(&dir.0, "second.png", &encoded(ImageFormat::Png, [4, 5, 6]));
-        assert!(import_from(&dir.0, &second_source).is_err());
+        assert!(import_and_confirm(&dir.0, &second_source).is_err());
         fs::set_permissions(&assets, fs::Permissions::from_mode(0o700)).unwrap();
         assert_eq!(read_from(&dir.0).unwrap(), Some(first));
 

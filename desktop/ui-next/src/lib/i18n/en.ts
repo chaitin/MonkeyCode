@@ -204,6 +204,8 @@ export const en: Record<MessageKey, string> = {
   "settings.background.fit.contain": "Contain",
   "settings.background.fit.repeat": "Tile",
   "settings.background.readability": "This opacity may reduce the readability of text and controls.",
+  "settings.background.storedUnavailable": "Saved background unavailable: {detail}",
+  "settings.background.loadFailed": "Failed to load background: {detail}",
   "settings.background.hint": "Supports PNG, JPEG and WebP up to 20 MiB. Changes apply immediately and are remembered on this machine.",
 
   "settings.title": "Settings",

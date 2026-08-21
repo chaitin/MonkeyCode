@@ -18,18 +18,21 @@ applyStoredTheme();
 applyUiScale(readUiScale());
 // data-platform 落根节点(mac 红绿灯让位等平台分支的依据)
 applyPlatformAttr();
-// 背景资产由壳读取并预解码；等它收敛后才挂工作台，保证首个可见工作台帧稳定。
-await initializeStoredBackground();
-// 壳级 chrome:右键拦截换自绘文本菜单、F12 devtools(浏览器模式不装)
-installShellChrome();
+function mountApp(): void {
+  // 壳级 chrome:右键拦截换自绘文本菜单、F12 devtools(浏览器模式不装)
+  installShellChrome();
+  const root = document.getElementById("root");
+  if (!root) throw new Error("index.html 缺 #root 挂载点");
+  // StrictMode(仅开发期生效,生产构建被剥掉):双挂载能当场暴露 effect 不幂等、
+  // 清理漏做、"旧 id 短路"这类问题——ChatView/CloudTaskView 里多处注释记的正是
+  // 靠它抓到的坑。旧工程一直开着,ui-next 首版漏迁(2026-08-09 补回)。
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
 
-const root = document.getElementById("root");
-if (!root) throw new Error("index.html 缺 #root 挂载点");
-// StrictMode(仅开发期生效,生产构建被剥掉):双挂载能当场暴露 effect 不幂等、
-// 清理漏做、"旧 id 短路"这类问题——ChatView/CloudTaskView 里多处注释记的正是
-// 靠它抓到的坑。旧工程一直开着,ui-next 首版漏迁(2026-08-09 补回)。
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// 不使用顶层 await（macOS 11 的 Safari 14 WKWebView 无法解析），但仍等背景读取/
+// 预解码收敛后才挂工作台，保证工作台首次可见前已经初始化。
+void initializeStoredBackground().then(mountApp, mountApp);

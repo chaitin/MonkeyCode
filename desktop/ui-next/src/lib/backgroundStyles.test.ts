@@ -29,4 +29,10 @@ describe("工作台背景样式", () => {
     expect(css).toContain("--mc-surface-opacity: 100% !important");
     expect(css).toContain("--mc-background-blur: 0px !important");
   });
+
+  it("contain 按工作台内容框计算，blur=0/blur>0 都不会因 24px 缓冲区裁边", () => {
+    expect(css).toMatch(/\.mc-workbench-background\s*\{[^}]*inset: -24px;[^}]*padding: 24px;/s);
+    expect(css).toMatch(/\.mc-workbench-background\s*\{[^}]*box-sizing: border-box;/s);
+    expect(css).toMatch(/\.mc-workbench-background\s*\{[^}]*background-origin: content-box;/s);
+  });
 });

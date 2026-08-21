@@ -130,7 +130,7 @@ describe("背景运行时初始化", () => {
     values.set("mc.backgroundAssetPresent", "1");
     shellRead(new Error("missing"), true);
     const failed = await initializeStoredBackground();
-    expect(failed.error).toContain("已保存的背景不可用");
+    expect(failed.error).toEqual({ code: "storedAssetUnavailable", detail: "missing" });
 
     decode.mockResolvedValueOnce(undefined);
     await installBackground(asset);

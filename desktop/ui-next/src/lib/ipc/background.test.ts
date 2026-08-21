@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearBackgroundAsset,
+  confirmBackground,
+  discardBackground,
   importBackground,
   pickBackgroundPath,
   readBackgroundAsset,
@@ -44,12 +46,19 @@ describe("背景 IPC", () => {
       height: 1,
       dataUrl: "data:image/png;base64,AA==",
     } as const;
-    const invoke = shell((cmd) => (cmd === "plugin:dialog|open" ? "/tmp/wall.png" : cmd === "background_read" || cmd === "background_import" ? asset : null));
+    const staged = { ...asset, stagedId: "stage-1" };
+    const invoke = shell((cmd) =>
+      cmd === "plugin:dialog|open" ? "/tmp/wall.png" : cmd === "background_read" ? asset : cmd === "background_import" ? staged : null,
+    );
     expect(await pickBackgroundPath("Pick")).toBe("/tmp/wall.png");
-    expect(await importBackground("/tmp/wall.png")).toEqual(asset);
+    expect(await importBackground("/tmp/wall.png")).toEqual(staged);
+    await confirmBackground(staged.stagedId);
+    await discardBackground(staged.stagedId);
     expect(await readBackgroundAsset()).toEqual(asset);
     await clearBackgroundAsset();
     expect(invoke).toHaveBeenCalledWith("background_import", { path: "/tmp/wall.png" });
+    expect(invoke).toHaveBeenCalledWith("background_confirm", { stagedId: "stage-1" });
+    expect(invoke).toHaveBeenCalledWith("background_discard", { stagedId: "stage-1" });
     expect(invoke).toHaveBeenCalledWith("background_read", undefined);
     expect(invoke).toHaveBeenCalledWith("background_clear", undefined);
   });

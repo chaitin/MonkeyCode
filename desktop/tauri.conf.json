@@ -130,6 +130,8 @@
             "allow-engine-restart",
             "allow-probe-log",
             "allow-background-import",
+            "allow-background-confirm",
+            "allow-background-discard",
             "allow-background-read",
             "allow-background-clear"
           ]

@@ -11,10 +11,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { resolveShortcut } from "@/app/shortcuts";
 import {
+  applyDecodedBackground,
+  beginBackgroundOperation,
+  cancelBackgroundOperations,
+  decodeBackground,
   getBackgroundRuntimeState,
-  installBackground,
+  isBackgroundOperationCurrent,
   readBackgroundPreferences,
   removeAppliedBackground,
+  runBackgroundAssetOperation,
   setBackgroundPreferences,
   subscribeBackgroundRuntime,
   type BackgroundFit,
@@ -30,7 +35,13 @@ import {
   setSoundEnabled,
   type DesktopConfig,
 } from "@/lib/ipc/config";
-import { clearBackgroundAsset, importBackground, pickBackgroundPath } from "@/lib/ipc/background";
+import {
+  clearBackgroundAsset,
+  confirmBackground,
+  discardBackground,
+  importBackground,
+  pickBackgroundPath,
+} from "@/lib/ipc/background";
 import { isWindowsShell } from "@/lib/ipc/host";
 import { inDesktopShell } from "@/lib/ipc/ipc";
 import { readCustomTheme, readTheme, setCustomTheme, setTheme, THEMES, CUSTOM_THEME, type CustomTheme, type Theme } from "@/lib/theme";
@@ -449,8 +460,25 @@ function BackgroundEditor() {
   const [preferences, setPreferencesState] = useState<BackgroundPreferencesV1>(readBackgroundPreferences);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const mounted = useRef(true);
   const asset = runtime.asset;
-  const error = actionError || runtime.error || "";
+  const runtimeError = runtime.error
+    ? t(
+        runtime.error.code === "storedAssetUnavailable"
+          ? "settings.background.storedUnavailable"
+          : "settings.background.loadFailed",
+        { detail: runtime.error.detail },
+      )
+    : "";
+  const error = actionError || runtimeError;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      cancelBackgroundOperations();
+    };
+  }, []);
 
   const updatePreferences = (next: BackgroundPreferencesV1) => {
     setPreferencesState(next);
@@ -458,31 +486,55 @@ function BackgroundEditor() {
   };
 
   const choose = async () => {
+    const generation = beginBackgroundOperation();
     setActionError("");
     try {
       const path = await pickBackgroundPath(t("settings.background.pickTitle"));
-      if (!path) return;
+      if (!path || !isBackgroundOperationCurrent(generation)) return;
       setBusy(true);
-      const imported = await importBackground(path);
-      // installBackground 先预解码再提交；失败时旧预览和旧 DOM 背景都保留。
-      await installBackground(imported);
+      await runBackgroundAssetOperation(async () => {
+        if (!isBackgroundOperationCurrent(generation)) return;
+        const imported = await importBackground(path);
+        if (!isBackgroundOperationCurrent(generation)) {
+          await discardBackground(imported.stagedId).catch(() => undefined);
+          return;
+        }
+        try {
+          // Rust 尚未切换 current；WebView 解码成功后才确认磁盘事务。
+          await decodeBackground(imported);
+          if (!isBackgroundOperationCurrent(generation)) {
+            await discardBackground(imported.stagedId).catch(() => undefined);
+            return;
+          }
+          await confirmBackground(imported.stagedId);
+          // 更晚动作已开始时由它负责最终 UI，旧动作不能复活背景。
+          if (isBackgroundOperationCurrent(generation)) applyDecodedBackground(imported);
+        } catch (error) {
+          await discardBackground(imported.stagedId).catch(() => undefined);
+          throw error;
+        }
+      });
     } catch (e) {
-      setActionError(errMsg(e));
+      if (mounted.current && isBackgroundOperationCurrent(generation)) setActionError(errMsg(e));
     } finally {
-      setBusy(false);
+      if (mounted.current && isBackgroundOperationCurrent(generation)) setBusy(false);
     }
   };
 
   const clear = async () => {
+    const generation = beginBackgroundOperation();
     setActionError("");
     setBusy(true);
     try {
-      await clearBackgroundAsset();
-      removeAppliedBackground();
+      await runBackgroundAssetOperation(async () => {
+        if (!isBackgroundOperationCurrent(generation)) return;
+        await clearBackgroundAsset();
+        if (isBackgroundOperationCurrent(generation)) removeAppliedBackground();
+      });
     } catch (e) {
-      setActionError(errMsg(e));
+      if (mounted.current && isBackgroundOperationCurrent(generation)) setActionError(errMsg(e));
     } finally {
-      setBusy(false);
+      if (mounted.current && isBackgroundOperationCurrent(generation)) setBusy(false);
     }
   };
 

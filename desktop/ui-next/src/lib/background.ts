@@ -19,7 +19,12 @@ export const DEFAULT_BACKGROUND: BackgroundPreferencesV1 = {
 
 export interface BackgroundRuntimeState {
   asset: BackgroundAsset | null;
-  error: string | null;
+  error: BackgroundRuntimeError | null;
+}
+
+export interface BackgroundRuntimeError {
+  code: "storedAssetUnavailable" | "loadFailed";
+  detail: string;
 }
 
 export interface BackgroundInitResult extends BackgroundRuntimeState {
@@ -30,6 +35,8 @@ const PREFERENCES_KEY = "mc.backgroundPreferences";
 const PRESENT_KEY = "mc.backgroundAssetPresent";
 const listeners = new Set<() => void>();
 let runtimeState: BackgroundRuntimeState = { asset: null, error: null };
+let operationGeneration = 0;
+let operationTail: Promise<void> = Promise.resolve();
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 const finiteInRange = (value: unknown, min: number, max: number): value is number =>
@@ -127,14 +134,46 @@ function decodeDataUrl(dataUrl: string): Promise<void> {
   return image.decode();
 }
 
-/** 先预解码，成功后一次提交 DOM 与 UI；失败不会破坏此前已应用背景。 */
-export async function installBackground(asset: BackgroundAsset): Promise<void> {
-  await decodeDataUrl(asset.dataUrl);
+export function beginBackgroundOperation(): number {
+  operationGeneration += 1;
+  return operationGeneration;
+}
+
+export function cancelBackgroundOperations(): void {
+  operationGeneration += 1;
+}
+
+export function isBackgroundOperationCurrent(generation: number): boolean {
+  return generation === operationGeneration;
+}
+
+/** 跨 BackgroundEditor 实例串行化资产事务，确保后发动作不会被先发 IPC 尾部反压。 */
+export function runBackgroundAssetOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = operationTail.then(operation, operation);
+  operationTail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+export function decodeBackground(asset: BackgroundAsset): Promise<void> {
+  return decodeDataUrl(asset.dataUrl);
+}
+
+/** 只提交已预解码资产；设置页先确认 Rust 分阶段事务，再调用本函数。 */
+export function applyDecodedBackground(asset: BackgroundAsset): void {
   const root = document.documentElement;
   root.style.setProperty("--mc-background-image", `url("${asset.dataUrl}")`);
   root.dataset.mcBackground = "active";
   markPresent(true);
   publish({ asset, error: null });
+}
+
+/** 先预解码，成功后一次提交 DOM 与 UI；启动恢复沿用这条路径。 */
+export async function installBackground(asset: BackgroundAsset): Promise<void> {
+  await decodeDataUrl(asset.dataUrl);
+  applyDecodedBackground(asset);
 }
 
 export function removeAppliedBackground(): void {
@@ -145,11 +184,11 @@ export function removeAppliedBackground(): void {
   publish({ asset: null, error: null });
 }
 
-function failStoredBackground(message: string): void {
+function failStoredBackground(error: BackgroundRuntimeError): void {
   const root = document.documentElement;
   delete root.dataset.mcBackground;
   root.style.removeProperty("--mc-background-image");
-  publish({ asset: null, error: message });
+  publish({ asset: null, error });
 }
 
 /** React 挂载前执行；任何失败均保留主题实色后备，并把可恢复错误留给设置页。 */
@@ -165,9 +204,9 @@ export async function initializeStoredBackground(): Promise<BackgroundInitResult
     await installBackground(asset);
     return { preferences, asset, error: null };
   } catch (error) {
-    const message = errorMessage(error);
-    // 即便诊断标记不可用，IPC 明确失败也应外显；标记主要帮助错误文案说明这是存量资产。
-    failStoredBackground(hadStoredAsset() ? `已保存的背景不可用：${message}` : message);
+    const detail = errorMessage(error);
+    // 这里只发布结构化状态；面向用户的前缀由设置页按当前 locale 翻译。
+    failStoredBackground({ code: hadStoredAsset() ? "storedAssetUnavailable" : "loadFailed", detail });
     return { preferences, asset: null, error: runtimeState.error };
   }
 }
@@ -175,5 +214,7 @@ export async function initializeStoredBackground(): Promise<BackgroundInitResult
 /** 测试隔离模块级状态。 */
 export function resetBackgroundRuntimeForTest(): void {
   runtimeState = { asset: null, error: null };
+  operationGeneration = 0;
+  operationTail = Promise.resolve();
   listeners.clear();
 }

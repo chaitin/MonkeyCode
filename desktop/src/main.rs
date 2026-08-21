@@ -1467,6 +1467,8 @@ fn main() {
             engine_restart,
             probe_log,
             background::background_import,
+            background::background_confirm,
+            background::background_discard,
             background::background_read,
             background::background_clear,
             driver::engine_status,

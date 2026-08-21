@@ -51,3 +51,18 @@
   - [x] 4.1 确保所有测试通过,如有疑问请询问用户
     - 运行 Rust 背景模块测试、前端聚焦测试和 TypeScript 类型检查
     - 修复由本功能引入的失败并记录无法执行的验证项
+
+- [x] 5. 高强度 review 修复
+  - [x] 5.1 兼容旧 WKWebView 并移出主线程重活
+    - 启动入口不使用顶层 await，仍在 React 首次挂载前收敛背景初始化
+    - Tauri 背景命令改 async，并以 spawn_blocking 承载文件 I/O、图片解码和编码
+  - [x] 5.2 实现可确认、可丢弃的背景资产事务
+    - import 只写 staged 资产，WebView 预解码成功后 confirm 才切换 current
+    - 跨组件 generation 与串行队列保证 last action wins，解码失败/过期动作 discard
+  - [x] 5.3 加固并发清理与文件读取
+    - 使用跨进程文件锁，清理从锁内 current/pending 推导保留集
+    - 使用 MAX_BYTES+1 有界读取；等值 symlink 托管资产强制原子重写
+  - [x] 5.4 修复 contain 裁边与启动错误本地化
+    - 外扩层以 padding/content-box 保持 contain 按工作台原尺寸计算
+    - 启动错误发布结构化 code/detail，由 SettingsView i18n 翻译 UI 前缀
+  - [x] 5.5 补齐聚焦回归并执行 build/command contract

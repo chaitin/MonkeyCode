@@ -207,10 +207,16 @@ html[data-mc-background="active"] [data-split-grid].mc-workbench-surface-300 {
 .mc-workbench-background {
   display: none;
   position: absolute;
+  /* 24px 是 filter 的防光晕缓冲区；padding + content-box 让 background-size
+   * 仍按工作台原始尺寸计算。否则 contain 会按外扩后的大框缩放，再被工作台
+   * 裁掉四边（blur=0 和 blur>0 都不再是真正的完整显示）。 */
   inset: -24px;
+  box-sizing: border-box;
+  padding: 24px;
   z-index: 0;
   pointer-events: none;
   background-image: var(--mc-background-image);
+  background-origin: content-box;
   background-position: var(--mc-background-position);
   background-repeat: var(--mc-background-repeat);
   background-size: var(--mc-background-size);

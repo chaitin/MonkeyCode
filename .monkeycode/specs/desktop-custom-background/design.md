@@ -40,7 +40,7 @@ sequenceDiagram
 
   H->>H: 同步恢复主题底色
   M->>M: 读取并校验背景视觉偏好
-  M->>R: background_read()
+  M->>R: background_read()（async + blocking worker）
   alt 有有效图片
     R-->>M: BackgroundAsset(data URL)
     M->>M: 预解码图片并应用 CSS 变量
@@ -51,7 +51,7 @@ sequenceDiagram
   M->>U: createRoot().render()
 ```
 
-React 工作台在背景初始化完成后挂载，使有效背景在工作台第一次可见时已经生效。`index.html` 的现有主题首帧脚本继续作为等待期间的稳定后备底色，不把图片字节写入 localStorage。
+React 工作台在背景初始化完成后挂载，使有效背景在工作台第一次可见时已经生效；`main.tsx` 使用 Promise continuation 而非顶层 `await`，兼容 macOS 11 的 Safari 14 WKWebView。`index.html` 的现有主题首帧脚本继续作为等待期间的稳定后备底色，不把图片字节写入 localStorage。
 
 ## Components and Interfaces
 
@@ -73,33 +73,44 @@ pub struct BackgroundAsset {
     pub data_url: String,
 }
 
-#[tauri::command]
-pub fn background_import(app: AppHandle, path: String) -> Result<BackgroundAsset, String>;
+pub struct StagedBackgroundAsset {
+    pub asset: BackgroundAsset,
+    pub staged_id: String,
+}
 
 #[tauri::command]
-pub fn background_read(app: AppHandle) -> Result<Option<BackgroundAsset>, String>;
+pub async fn background_import(app: AppHandle, path: String) -> Result<StagedBackgroundAsset, String>;
 
 #[tauri::command]
-pub fn background_clear(app: AppHandle) -> Result<(), String>;
+pub async fn background_confirm(app: AppHandle, staged_id: String) -> Result<(), String>;
+
+#[tauri::command]
+pub async fn background_discard(app: AppHandle, staged_id: String) -> Result<(), String>;
+
+#[tauri::command]
+pub async fn background_read(app: AppHandle) -> Result<Option<BackgroundAsset>, String>;
+
+#[tauri::command]
+pub async fn background_clear(app: AppHandle) -> Result<(), String>;
 ```
 
 `background_import` 执行以下步骤：
 
-1. 使用文件元数据拒绝非普通文件和超过 20 MiB 的文件。
+1. 使用文件元数据拒绝非普通文件和超过 20 MiB 的文件，并通过 `take(MAX_BYTES + 1)` 有界读取，防止校验后的增长文件触发无界分配。
 2. 只根据实际字节格式识别 PNG、JPEG、WebP，不信任扩展名或调用方提供的 MIME。
 3. 使用 `image` 解码器读取尺寸并拒绝任一边超过 16,384 px、总像素超过 50,000,000 或无法解码的图片；限制解码内存，防止压缩炸弹。
-4. 计算 SHA-256 作为 revision，并写入 `background/assets/<revision>.<ext>.tmp`。
-5. 原子重命名资产，再原子替换 `background/current.v1.json`。
-6. 元数据提交后清理非当前 revision 的旧资产。
-7. 返回当前资产的受控 `data:image/...;base64,...` URL。
+4. 计算 SHA-256 作为 revision，原子写入 `background/assets/<revision>.<ext>`，再写入唯一的 `background/pending/<staged-id>.json`；此时不修改 current。
+5. 返回待确认资产的受控 `data:image/...;base64,...` URL，WebView 先预解码。
+6. 预解码成功后 `background_confirm` 才原子替换 `background/current.v1.json`；失败或操作过期则 `background_discard` 删除 pending，旧背景继续有效。
+7. 所有元数据提交与清理持有跨进程文件锁；清理在锁内重新读取 current/pending 推导保留集，不接受过期 keep。
 
-使用内容散列文件名而不是固定文件名，可保证崩溃发生在提交前时旧元数据仍指向旧图片；提交后的孤儿文件可在下次读取或导入时清理。
+使用内容散列文件名而不是固定文件名，可保证崩溃发生在确认前时旧元数据仍指向旧图片；确认后的孤儿文件可在下次读取或导入时清理。同步文件 I/O、图片解码与 base64 编码均通过 `tauri::async_runtime::spawn_blocking` 离开 Tauri 主线程。
 
 `background_read` 只读取服务自己生成的版本化元数据，校验文件名为单一 basename、文件位于背景目录内、大小和 MIME 仍符合限制，然后返回 data URL。损坏元数据、路径逃逸、缺失资产和解码失败均返回可外显错误，不读取任意用户路径。
 
 `background_clear` 先原子移除当前元数据，再尽力删除背景资产目录中的托管文件；删除失败不阻止前端立即恢复主题外观。
 
-在 `desktop/src/main.rs:1423-1426` 现有 Tauri builder 上无需新增插件；将三个命令登记到 `generate_handler!`（现有命令表起于 `desktop/src/main.rs:1448`）。在 `desktop/tauri.conf.json:21-132` 的主窗口 capability 中增加对应 allow 权限。主窗口 builder `desktop/src/main.rs:934-949` 保持不透明配置不变。
+在 `desktop/src/main.rs` 现有 Tauri builder 上无需新增插件；将五个命令登记到 `generate_handler!`，并在 `build.rs` 与 `desktop/tauri.conf.json` 主窗口 capability 中同步登记。主窗口 builder 保持不透明配置不变。
 
 ### 2. 前端 IPC 适配
 
@@ -115,8 +126,14 @@ export interface BackgroundAsset {
   dataUrl: string;
 }
 
+export interface StagedBackgroundAsset extends BackgroundAsset {
+  stagedId: string;
+}
+
 export function pickBackgroundPath(title: string): Promise<string | null>;
-export function importBackground(path: string): Promise<BackgroundAsset>;
+export function importBackground(path: string): Promise<StagedBackgroundAsset>;
+export function confirmBackground(stagedId: string): Promise<void>;
+export function discardBackground(stagedId: string): Promise<void>;
 export function readBackgroundAsset(): Promise<BackgroundAsset | null>;
 export function clearBackgroundAsset(): Promise<void>;
 ```
@@ -191,7 +208,7 @@ export function removeAppliedBackground(): void;
 - 不透明度低于 60% 时的可读性提示。
 - 导入失败或启动资产损坏时的 `role="alert"` 错误。
 
-选择图片的事务顺序为：选择路径 → Rust 验证并原子导入 → 浏览器预解码返回的 data URL → 应用背景 → 更新 UI。任一步失败都保持此前已经应用的图片和偏好。
+选择图片的事务顺序为：选择路径 → Rust 验证并写 staged 资产 → 浏览器预解码返回的 data URL → Rust 原子确认 current → 应用背景并更新 UI。解码失败会 discard staged，任一步失败都保持此前已经应用的图片和偏好。模块级 generation 与串行资产队列跨 `BackgroundEditor` 重挂存活，过期动作只做 discard，保证 last action wins。
 
 “清除”先调用 Rust；成功后移除运行时图片和存在标记。若删除托管文件失败，UI 外显错误并保持当前图片，避免界面与磁盘权威状态不一致。
 
@@ -230,7 +247,7 @@ html[data-mc-background="active"] .mc-workbench-surface-100 {
 
 pane 模式下 ChatView 和 CloudTaskView 根节点改为透明，因为 pane 外壳已经提供一层表面；非 pane 模式仍使用 `mc-workbench-surface-100`。这样避免两层 82% 表面叠加成约 97% 的不透明结果。
 
-背景层绝对定位并向工作台边界外扩 24 px，使用 `filter: blur(...)` 后由工作台根裁剪，避免模糊边缘出现透明光晕。填充映射为：
+背景层绝对定位并向工作台边界外扩 24 px，使用等宽 padding 和 `background-origin: content-box`，使图片仍按原工作台尺寸计算；这样既为 `filter: blur(...)` 留出防光晕缓冲，也不会让 contain 在 blur=0 或 blur>0 时按外扩框缩放后被裁边。填充映射为：
 
 | 偏好 | background-size | background-repeat | background-position |
 |---|---|---|---|
@@ -298,7 +315,7 @@ pane 模式下 ChatView 和 CloudTaskView 根节点改为透明，因为 pane �
 
 1. **无背景等价性**：托管资产不存在或未成功加载时，工作台所有结构表面的计算底色与改动前一致。
 2. **单层透明性**：每个任务列或 pane 内容区域至多经过一层可调工作台表面，Chat/Cloud pane 根不重复叠加。
-3. **原子替换性**：新图片在完整验证和资产落盘前不改变 `current.v1.json`；失败后旧资产继续可读。
+3. **原子替换性**：新图片在完整验证、WebView 预解码和 staged 确认前不改变 `current.v1.json`；失败后旧资产继续可读。
 4. **路径封闭性**：读取命令只能访问 `app_local_data_dir/background` 下由有效元数据推导出的 basename。
 5. **偏好有界性**：运行时不透明度恒在 `[0.35, 1]`，模糊度恒在 `[0, 20]`，填充值恒属于定义枚举。
 6. **主题一致性**：主题切换只改变 `--color-base-100/200/300`，背景参数和资产 revision 保持不变。
