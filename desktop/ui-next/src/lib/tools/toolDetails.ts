@@ -112,6 +112,16 @@ function editDiff(item: ToolItem): string {
   const path = stringAt(input, ["file_path", "filePath", "path"])
     ?? stringAt(response, ["filePath", "path"])
     ?? "untitled";
+  const edits = Array.isArray(input?.edits) ? input.edits : [];
+  const editPatches = edits.flatMap((value) => {
+    const edit = record(value);
+    const oldText = stringAt(edit, ["old_string", "oldString"]);
+    const newText = stringAt(edit, ["new_string", "newString"]);
+    if (oldText === undefined || newText === undefined || oldText === newText) return [];
+    return [unifiedReplacement(path, oldText, newText)];
+  });
+  if (editPatches.length) return editPatches.join("\n");
+
   const oldText = stringAt(input, ["old_string", "oldString"])
     ?? stringAt(response, ["oldString"]);
   const newText = stringAt(input, ["new_string", "newString", "content"])

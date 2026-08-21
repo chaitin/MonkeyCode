@@ -95,6 +95,30 @@ describe("工具卡", () => {
     expect(screen.getByText("const a = 2;")).toBeTruthy(); // 新增行
   });
 
+  it("详情面板 diff 型:Edit edits 批量替换不显示 Replaced 回执", async () => {
+    render(
+      <ToolCard
+        item={{
+          kind: "tool",
+          tcId: "edit-batch",
+          title: "Edit src/a.ts",
+          status: "ok",
+          out: "",
+          rawInput: {
+            file_path: "src/a.ts",
+            edits: [{ old_string: "const a = 1;", new_string: "const a = 2;", replace_all: true }],
+          },
+          rawOutput: "Replaced 3 occurrence(s) in src/a.ts",
+        }}
+        sessionId="s1"
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "展开工具详情" }));
+    expect(screen.getByText("const a = 1;")).toBeTruthy();
+    expect(screen.getByText("const a = 2;")).toBeTruthy();
+    expect(screen.queryByText(/Replaced 3 occurrence/)).toBeNull();
+  });
+
   it("apply_patch 标题展示文件，详情按文件分段并高亮增删内容", async () => {
     const patch = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-const a = 1;\n+const a = 2;\n*** End Patch";
     render(

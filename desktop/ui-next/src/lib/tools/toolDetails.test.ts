@@ -71,6 +71,26 @@ describe("统一工具详情", () => {
     expect(isUnifiedDiff(cloud.text)).toBe(true);
   });
 
+  it("本地 Edit edits 批量替换生成 diff，而不是退化成结果文本", () => {
+    const detail = toolDetailFor(tool({
+      title: "Edit src/a.ts",
+      rawInput: {
+        file_path: "src/a.ts",
+        edits: [
+          { old_string: "const a = 1", new_string: "const a = 2" },
+          { old_string: "const b = 1", new_string: "const b = 2", replace_all: true },
+        ],
+      },
+      rawOutput: "Replaced 3 occurrence(s) in src/a.ts",
+    }));
+    expect(detail?.kind).toBe("diff");
+    if (detail?.kind !== "diff") return;
+    expect(detail.text).toContain("-const a = 1");
+    expect(detail.text).toContain("+const a = 2");
+    expect(detail.text).toContain("-const b = 1");
+    expect(detail.text).toContain("+const b = 2");
+  });
+
   it("优先展示云端 apply patch 返回的真实 diff", () => {
     const diff = "@@ -1,1 +1,1 @@\n-old\n+new";
     expect(toolDetailFor(tool({ rawOutput: { metadata: { diff } }, toolKind: "edit" }))).toEqual({ kind: "diff", text: diff });
