@@ -16,14 +16,15 @@ const COMPLETED: BackgroundAgentResultItem = {
 };
 
 describe("BackgroundAgentResultCard", () => {
-  it("收起态显示标题、代理、状态、描述与首条摘要，点击后渲染完整 Markdown", async () => {
+  it("收起态仅显示单行标题、状态与描述，点击后渲染完整 Markdown", async () => {
     const user = userEvent.setup();
     render(<BackgroundAgentResultCard item={COMPLETED} />);
 
     expect(screen.getByText("子代理结果")).toBeTruthy();
     expect(screen.getByText("已完成")).toBeTruthy();
     expect(screen.getByText("检查升级风险")).toBeTruthy();
-    expect(screen.getByText("依赖调查员 · 第一条摘要")).toBeTruthy();
+    expect(screen.queryByText(/依赖调查员/)).toBeNull();
+    expect(screen.queryByText("第一条摘要")).toBeNull();
     expect(screen.queryByText("完整内容")).toBeNull();
 
     await user.click(screen.getByRole("button", { expanded: false }));
@@ -32,14 +33,13 @@ describe("BackgroundAgentResultCard", () => {
     expect(screen.getByText("完整内容")).toBeTruthy();
   });
 
-  it("失败状态显示失败语义文案，无名代理回退 agentId", () => {
+  it("失败状态显示失败语义文案", () => {
     render(
       <BackgroundAgentResultCard
         item={{ ...COMPLETED, agentName: "", agentId: "agent-error", status: "error", result: "执行中断" }}
       />,
     );
 
-    expect(screen.getByText("agent-error · 执行中断")).toBeTruthy();
     expect(screen.getByText("执行失败")).toBeTruthy();
   });
 

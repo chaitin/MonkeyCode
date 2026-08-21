@@ -63,8 +63,7 @@ export function BackgroundAgentResultCard({
     setCopied(true);
   };
 
-  const target = item.description.trim() || name;
-  const meta = [item.description.trim() ? name : "", summary].filter(Boolean).join(" · ");
+  const target = item.description.trim() || summary || name;
 
   return (
     <section className="card card-border overflow-hidden bg-base-100">
@@ -87,8 +86,6 @@ export function BackgroundAgentResultCard({
           className={`shrink-0 text-base-content/40 transition-transform ${open ? "rotate-90" : ""}`}
         />
       </button>
-
-      {!open && meta && <div className="truncate px-3 pb-2 ps-6 text-xs text-base-content/50">{meta}</div>}
 
       {open && (
         <div className="mx-3 mb-2 border-s-2 border-base-300 ps-3 text-sm">
