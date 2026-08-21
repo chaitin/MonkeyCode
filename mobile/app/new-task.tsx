@@ -15,6 +15,7 @@ import { Card, IconButton, MonkeyLogo, PickerSheet, PrimaryButton, type PickerOp
 import { useSpeechToText } from '@/speech/useSpeechToText';
 import { DEFAULT_SKILL_IDS, modelLabel, pickDefaultImage, pickDefaultModel, TASK_DEFAULTS } from '@/config';
 import { spacing, useTheme, type Theme } from '@/theme';
+import { clearNewTaskDraft, getNewTaskDraft, saveNewTaskDraft } from '@/new-task-draft';
 
 const SUGGESTIONS = ['修复一个线上 bug', '为这个仓库写单元测试', '重构这个模块', '解释这段代码做了什么'];
 
@@ -60,11 +61,11 @@ export default function NewTaskScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState(() => getNewTaskDraft().content ?? '');
   const [modelId, setModelId] = useState('');
   const [imageId, setImageId] = useState('');
-  const [repoKey, setRepoKey] = useState<string>(params.projectId || ''); // '' = 不关联仓库；project.id = 选中项目；MANUAL_REPO_KEY = 手动输入
-  const [manualRepo, setManualRepo] = useState(''); // 手动输入的 Git 仓库地址
+  const [repoKey, setRepoKey] = useState<string>(() => getNewTaskDraft().repoKey ?? params.projectId ?? ''); // '' = 不关联仓库；project.id = 选中项目；MANUAL_REPO_KEY = 手动输入
+  const [manualRepo, setManualRepo] = useState(() => getNewTaskDraft().manualRepo ?? ''); // 手动输入的 Git 仓库地址
   const [zipFile, setZipFile] = useState<PickedFile | null>(null); // 本地上传的 zip 包
   const zipPickingRef = useRef(false);
   const zipPickAfterDismissRef = useRef(false);
@@ -86,6 +87,11 @@ export default function NewTaskScreen() {
     if (speech.status === 'idle') speechBaseRef.current = content && !/\s$/.test(content) ? content + ' ' : content;
     speech.toggle();
   };
+
+  // 输入内容写回草稿缓存，返回后再进入新建任务时恢复（#851）
+  useEffect(() => {
+    saveNewTaskDraft({ content, repoKey, manualRepo });
+  }, [content, repoKey, manualRepo]);
 
   useEffect(() => {
     (async () => {
@@ -189,7 +195,10 @@ export default function NewTaskScreen() {
         resource: { ...TASK_DEFAULTS.resource },
         extra: { skill_ids: DEFAULT_SKILL_IDS, project_id: (!manualUrl && repoKey !== ZIP_REPO_KEY) ? selectedProject?.id : undefined },
       });
-      if (task?.id) router.replace(`/task/${task.id}`);
+      if (task?.id) {
+        clearNewTaskDraft();
+        router.replace(`/task/${task.id}`);
+      }
       else setError('任务创建成功但未返回 ID');
     } catch (e) {
       if (e instanceof ApiError && e.code === 10811) setLimitOpen(true);
