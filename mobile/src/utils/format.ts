@@ -9,15 +9,31 @@ export function formatTokens(n?: number): string {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
-/** 任务展示名：优先总结标题(summary)，其次 title，再次 content 首行。 */
+/** 轻量去除 Markdown 标记，得到纯文本展示名（仅作内容兜底，避免为展示名引入 remark 依赖）。 */
+function stripInlineMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*>+\s?/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** 任务展示名：优先标题(title)，其次摘要(summary)，再次内容纯文本。与 Web 端 getTaskDisplayName 对齐。 */
 export function taskDisplayName(task?: ProjectTask | null, fallback = '未命名任务'): string {
   if (!task) return fallback;
-  const summary = task.summary?.trim();
-  if (summary) return summary;
   const title = task.title?.trim();
   if (title) return title;
-  const content = task.content?.trim();
-  if (content) return content.split('\n')[0].slice(0, 60);
+  const summary = task.summary?.trim();
+  if (summary) return summary;
+  const content = stripInlineMarkdown(task.content || '');
+  if (content) return content;
   return fallback;
 }
 
