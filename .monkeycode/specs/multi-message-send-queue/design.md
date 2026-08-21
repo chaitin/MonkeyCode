@@ -1,6 +1,6 @@
 # 多条待发送消息队列
 
-Feature Name: `multi-message-send-queue`  
+Feature Name: `multi-message-send-queue`
 Updated: 2026-08-20
 
 ## Description
