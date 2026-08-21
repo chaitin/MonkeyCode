@@ -247,14 +247,16 @@ export function remove<A>(lane: SendQueueLane<A>, itemId: string): SendQueueLane
   const index = lane.pending.findIndex((item) => item.id === itemId);
   if (index < 0) return lane;
   const pending = [...lane.pending.slice(0, index), ...lane.pending.slice(index + 1)];
-  return {
-    ...lane,
-    pending,
-    blocked:
-      lane.blocked?.itemId === itemId || (pending.length === 0 && lane.blocked?.code === "user-paused")
-        ? null
-        : lane.blocked,
-  };
+  let blocked = lane.blocked;
+  if (blocked?.code === "user-paused") {
+    if (pending.length === 0) blocked = null;
+    else if (blocked.itemId === itemId) {
+      blocked = { code: blocked.code, message: blocked.message, at: blocked.at };
+    }
+  } else if (blocked?.itemId === itemId) {
+    blocked = null;
+  }
+  return { ...lane, pending, blocked };
 }
 
 /** 将 item 插到 beforeId 之前；beforeId=null 表示末尾。非法 ID 不改变队列。 */
@@ -333,7 +335,7 @@ export function nackHead<A>(
     ...lane,
     pending: [lane.inFlight.item, ...lane.pending],
     inFlight: null,
-    blocked: { ...reason, itemId },
+    blocked: lane.blocked?.code === "user-paused" ? { ...lane.blocked, itemId } : { ...reason, itemId },
   };
 }
 
@@ -343,12 +345,13 @@ const makesDeliveryUncertain = (code: SendQueueBlockCode) =>
 /** 暂停 lane；会令投递结果无法确认的原因同时把 in-flight 标成 uncertain。 */
 export function block<A>(lane: SendQueueLane<A>, reason: SendQueueBlock): SendQueueLane<A> {
   assertSendQueueLane(lane);
-  const inFlight =
-    lane.inFlight && makesDeliveryUncertain(reason.code)
-      ? { ...lane.inFlight, phase: "uncertain" as const }
-      : lane.inFlight;
-  if (lane.blocked === reason && inFlight === lane.inFlight) return lane;
-  return { ...lane, inFlight, blocked: reason };
+  const uncertain = makesDeliveryUncertain(reason.code);
+  const inFlight = lane.inFlight && uncertain ? { ...lane.inFlight, phase: "uncertain" as const } : lane.inFlight;
+  // 用户暂停是粘性意图；普通状态/传输错误不能悄悄把它降级成可自动恢复的 block。
+  // 只有投递不确定性优先外显，且 uncertain phase 本身仍会禁止自动恢复。
+  const blocked = lane.blocked?.code === "user-paused" && !uncertain ? lane.blocked : reason;
+  if (lane.blocked === blocked && inFlight === lane.inFlight) return lane;
+  return { ...lane, inFlight, blocked };
 }
 
 export function markUncertain<A>(
@@ -380,15 +383,13 @@ export function resumeAutomatic<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
 /** 用户停止当前轮时建立暂停屏障；已投递项仍由原回执状态机收尾。 */
 export function pausePending<A>(lane: SendQueueLane<A>, at = Date.now()): SendQueueLane<A> {
   assertSendQueueLane(lane);
-  if (lane.blocked !== null) return lane;
-  return block(lane, { code: "user-paused", message: "Paused by user", at });
-}
-
-/** 空队列取消时的短暂暂停屏障在当前轮结束后自行释放。 */
-export function releaseEmptyUserPause<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
-  assertSendQueueLane(lane);
-  if (lane.blocked?.code !== "user-paused" || lane.pending.length > 0) return lane;
-  return { ...lane, blocked: null };
+  if (lane.blocked?.code === "user-paused" || lane.inFlight?.phase === "uncertain") return lane;
+  return block(lane, {
+    code: "user-paused",
+    message: "Paused by user",
+    at,
+    ...(lane.blocked?.itemId ? { itemId: lane.blocked.itemId } : {}),
+  });
 }
 
 /** 清空尚未投递的消息，保留 in-flight 账本，避免迟到回执失配。 */

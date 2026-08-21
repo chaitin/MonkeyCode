@@ -26,7 +26,6 @@ import {
   pausePending,
   readSendQueueLane,
   recoverLaneAfterRestart,
-  releaseEmptyUserPause,
   remove,
   reorderBefore,
   resetSendQueueMemoryForTests,
@@ -219,14 +218,45 @@ describe("send queue pure transitions", () => {
     expect(claimHead(confirmResume(completed), { startedAt: 102 }).inFlight?.item.id).toBe("next");
   });
 
-  it("空队列取消建立短暂屏障，轮末仅在仍为空时释放", () => {
+  it("空队列取消也保持粘性暂停，后续入队不能自动补投", () => {
     const pausedEmpty = pausePending(emptySendQueueLane<string>(), 101);
     expect(pausedEmpty.blocked?.code).toBe("user-paused");
-    expect(releaseEmptyUserPause(pausedEmpty).blocked).toBeNull();
 
-    const queuedDuringCancel = enqueue(pausedEmpty, item("late"));
-    expect(releaseEmptyUserPause(queuedDuringCancel)).toBe(queuedDuringCancel);
-    expect(claimHead(queuedDuringCancel)).toBe(queuedDuringCancel);
+    const queuedAfterCancel = enqueue(pausedEmpty, item("late"));
+    expect(queuedAfterCancel.blocked?.code).toBe("user-paused");
+    expect(claimHead(queuedAfterCancel)).toBe(queuedAfterCancel);
+  });
+
+  it("用户暂停覆盖可恢复故障并保留失败项约束，但不覆盖 uncertain", () => {
+    const rejected = block(laneOf(item("failed"), item("later")), {
+      code: "send-rejected",
+      message: "failed",
+      at: 100,
+      itemId: "failed",
+    });
+    const pausedRejected = pausePending(rejected, 101);
+    expect(pausedRejected.blocked).toEqual({
+      code: "user-paused",
+      message: "Paused by user",
+      at: 101,
+      itemId: "failed",
+    });
+    expect(remove(pausedRejected, "failed")).toMatchObject({
+      pending: [{ id: "later" }],
+      blocked: { code: "user-paused", message: "Paused by user", at: 101 },
+    });
+
+    const uncertain = markUncertain(claimHead(laneOf(item("maybe")), { startedAt: 102 }));
+    expect(pausePending(uncertain, 103)).toBe(uncertain);
+
+    const sending = claimHead(laneOf(item("sending"), item("next")), { startedAt: 104 });
+    const pausedSending = pausePending(sending, 105);
+    expect(nackHead(pausedSending, "sending").blocked).toEqual({
+      code: "user-paused",
+      message: "Paused by user",
+      at: 105,
+      itemId: "sending",
+    });
   });
 
   it("清空暂停队列保留 in-flight，删除最后一项不留下暂停空壳", () => {

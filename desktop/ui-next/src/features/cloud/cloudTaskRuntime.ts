@@ -10,7 +10,6 @@ import {
   nackHead,
   pausePending,
   readSendQueueLane,
-  releaseEmptyUserPause,
   subscribeSendQueueLane,
   updateSendQueueLane,
   type CloudQueueAttachment,
@@ -320,7 +319,7 @@ export function createCloudTaskRuntime(
       closeStream();
       return;
     }
-    deps.updateLane(taskId, () => releaseEmptyUserPause(completed));
+    deps.updateLane(taskId, () => completed);
     invalidateDispatch();
     closeStream();
     roundState = "idle";
@@ -340,7 +339,6 @@ export function createCloudTaskRuntime(
       if (slot.mode === "attach") {
         if (isBusinessFrame(frame)) roundState = "busy";
         if (frame.type === "task-ended") {
-          deps.updateLane(taskId, releaseEmptyUserPause);
           roundState = "idle";
           closeStream();
           snapshot = { ...snapshot, reconciling: true };
@@ -418,9 +416,6 @@ export function createCloudTaskRuntime(
         return;
       }
       if (slot.mode === "attach") {
-        // attach 正常收束已确认当前没有活动轮次；清掉重启后可能残留的
-        // 空取消屏障，但只要期间已有新消息入队就继续保持用户暂停。
-        deps.updateLane(taskId, releaseEmptyUserPause);
         roundState = "idle";
         kick();
       }

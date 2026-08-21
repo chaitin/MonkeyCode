@@ -193,7 +193,7 @@ describe("CloudTaskRuntime", () => {
     expect(h.lane().pending.map((item) => item.id)).toEqual(["m1", "m2"]);
   });
 
-  it("空队列取消期间新增消息也会被暂停屏障拦住", async () => {
+  it("空队列取消在 task-ended 后仍保持暂停，后续新增消息不会补投", async () => {
     const h = makeHarness([]);
     h.runtime.acquire("view");
     await h.settle();
@@ -201,8 +201,9 @@ describe("CloudTaskRuntime", () => {
 
     await h.runtime.cancelRun();
     expect(h.lane().blocked?.code).toBe("user-paused");
-    h.enqueueMessage("取消期间新增");
     attach.handlers.onFrames?.([{ type: "task-ended", seq: 1, data: {} }]);
+    await h.settle();
+    h.enqueueMessage("取消后新增");
     await h.settle();
 
     expect(h.streams.map((stream) => stream.mode)).toEqual(["attach"]);
@@ -210,7 +211,7 @@ describe("CloudTaskRuntime", () => {
     expect(h.lane().blocked?.code).toBe("user-paused");
   });
 
-  it("attach 确认 idle 时清理重启后残留的空取消屏障", async () => {
+  it("空队列取消在 attach idle 后仍保持暂停，后续新增消息不会补投", async () => {
     const h = makeHarness([]);
     h.runtime.acquire("view");
     await h.settle();
@@ -220,8 +221,11 @@ describe("CloudTaskRuntime", () => {
     expect(h.lane().blocked?.code).toBe("user-paused");
     attach.handlers.onIdle?.();
     await h.settle();
+    h.enqueueMessage("取消后新增");
+    await h.settle();
 
-    expect(h.lane().blocked).toBeNull();
+    expect(h.lane().blocked?.code).toBe("user-paused");
+    expect(h.streams.map((stream) => stream.mode)).toEqual(["attach"]);
   });
 
   it("取消帧发送失败时仍保持暂停，避免意外续发", async () => {

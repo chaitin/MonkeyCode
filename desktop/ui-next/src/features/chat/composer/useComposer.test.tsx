@@ -141,7 +141,7 @@ describe("useComposer 本地持久 lane", () => {
     expect(sentText(sends(calls)[2]!)).toBe("三");
   });
 
-  it("停止时队列为空也建立取消屏障，轮末前新增消息不会意外补投", async () => {
+  it("停止时队列为空也保持粘性暂停，轮末后新增消息仍不会直接发送", async () => {
     const calls = stubShell();
     const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
       initialProps: { running: true },
@@ -149,12 +149,15 @@ describe("useComposer 本地持久 lane", () => {
 
     act(() => result.current.stop());
     expect(result.current.queue.blocked?.code).toBe("user-paused");
-    act(() => result.current.setDraft("取消期间新增"));
-    act(() => result.current.send());
     rerender({ running: false });
     await settle();
 
+    act(() => result.current.setDraft("取消后新增"));
+    act(() => result.current.send());
+    await settle();
+
     expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(0);
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["取消后新增"]);
     expect(result.current.queue.blocked?.code).toBe("user-paused");
   });
 

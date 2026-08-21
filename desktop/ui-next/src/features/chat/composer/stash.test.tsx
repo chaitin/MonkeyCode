@@ -6,6 +6,7 @@ import {
   enqueue,
   localSendQueueKey,
   localSendQueueTarget,
+  pausePending,
   readSendQueueLane,
   resetSendQueueMemoryForTests,
   updateSendQueueLane,
@@ -117,17 +118,41 @@ describe("deliverQueued 后台逐轮补投", () => {
     expect(lane.pending.map((item) => item.content)).toEqual(["失败项", "后续项"]);
   });
 
-  it("活跃会话由 useComposer 接管，App 事件不重复投递", async () => {
+  it("分屏多个活跃会话都由各自 useComposer 接管，卸载其中一个不影响另一个", async () => {
     const calls = stubShell();
-    enqueueFor("a", "现场消息");
-    const unbind = bindActiveComposer("a");
+    enqueueFor("a", "A 现场消息");
+    enqueueFor("b", "B 现场消息");
+    const unbindA = bindActiveComposer("a");
+    const unbindB = bindActiveComposer("b");
+
+    deliverQueued("a", "idle");
+    deliverQueued("b", "idle");
+    await flush();
+    expect(sends(calls)).toHaveLength(0);
+
+    unbindB();
     deliverQueued("a", "idle");
     await flush();
     expect(sends(calls)).toHaveLength(0);
-    unbind();
+
+    unbindA();
     deliverQueued("a", "idle");
     await flush();
     expect(sends(calls)).toHaveLength(1);
+    expect(textOf(sends(calls)[0]!)).toBe("A 现场消息");
+  });
+
+  it("后台状态归约不能解除用户主动暂停", async () => {
+    const calls = stubShell();
+    enqueueFor("a", "保持暂停");
+    updateSendQueueLane(localSendQueueTarget("a"), (lane) => pausePending(lane, 100));
+
+    deliverQueued("a", "running");
+    deliverQueued("a", "idle");
+    await flush();
+
+    expect(sends(calls)).toHaveLength(0);
+    expect(readSendQueueLane(localSendQueueTarget("a")).blocked?.code).toBe("user-paused");
   });
 
   it("删除后的迟到失败回调按 sid/item token 失效，不会复活 lane", async () => {

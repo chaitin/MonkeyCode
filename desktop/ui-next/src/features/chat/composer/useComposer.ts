@@ -37,7 +37,6 @@ import {
   markReceipt,
   nackHead,
   pausePending,
-  releaseEmptyUserPause,
   remove,
   reorderBefore,
   resumeAutomatic,
@@ -227,7 +226,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     if (!content && atts.length === 0) return false;
     // /compact 是控制指令，不得进入待发送 lane。
     if (content === "/compact" && atts.length === 0) {
-      if (running || sendingRef.current || queue.pending.length > 0 || queue.inFlight) {
+      if (running || sendingRef.current || queue.pending.length > 0 || queue.inFlight || queue.blocked) {
         notifyError(t("chat.compact.busy"));
         return false;
       }
@@ -238,7 +237,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       return true;
     }
 
-    if (running || sendingRef.current || queue.pending.length > 0 || queue.inFlight) {
+    if (running || sendingRef.current || queue.pending.length > 0 || queue.inFlight || queue.blocked) {
       // 忙碌/已有 lane 时结构化追加到队尾；附件行只在真正投递时生成。
       flushBlockedRef.current = false;
       clearRetry();
@@ -277,6 +276,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     running,
     queue.pending.length,
     queue.inFlight,
+    queue.blocked,
     sessionId,
     notifyError,
     clearRetry,
@@ -311,7 +311,6 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       const itemId = next.inFlight?.item.id;
       if (running && itemId) next = markReceipt(next, itemId);
       if (!running && wasRunning && itemId) next = completeTurn(next, itemId);
-      if (!running) next = releaseEmptyUserPause(next);
       return next;
     });
   }, [running, clearRetry, updateQueue]);

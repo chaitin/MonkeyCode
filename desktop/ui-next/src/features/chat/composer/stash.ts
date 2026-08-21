@@ -6,12 +6,12 @@ import { b64encode } from "@/lib/protocol/codec";
 import {
   claimHead,
   completeTurn,
-  confirmResume,
   dropLocalSendQueue,
   localSendQueueTarget,
   markReceipt,
   nackHead,
   readSendQueueLane,
+  resumeAutomatic,
   updateSendQueueLane,
   type LocalQueueAttachment,
   type SendQueueLane,
@@ -25,8 +25,9 @@ export interface StashEntry {
 
 const stash = new Map<string, StashEntry>();
 
-// 活跃 composer 自己依据 historyLoaded/stateSid/lastSeq/running 投递；App 只接管后台会话。
-let activeId: string | null = null;
+// 活跃 composer 自己依据 historyLoaded/stateSid/lastSeq/running 投递；分屏可同时
+// 挂载多个会话，App 只接管完全没有 composer owner 的后台会话。
+const activeComposers = new Map<string, number>();
 // 每个 sid 最多一个后台 IPC；值是稳定 item id，迟到回调必须同时匹配 sid 与 item。
 const dispatching = new Map<string, string>();
 
@@ -47,11 +48,16 @@ export function dropStash(id: string): void {
   dropLocalSendQueue(id);
 }
 
-/** useComposer 挂载/切会话时登记；返回注销函数。 */
+/** useComposer 挂载/切会话时登记；同一会话的重复 owner 用引用计数注销。 */
 export function bindActiveComposer(id: string): () => void {
-  activeId = id;
+  activeComposers.set(id, (activeComposers.get(id) ?? 0) + 1);
+  let bound = true;
   return () => {
-    if (activeId === id) activeId = null;
+    if (!bound) return;
+    bound = false;
+    const count = activeComposers.get(id) ?? 0;
+    if (count <= 1) activeComposers.delete(id);
+    else activeComposers.set(id, count - 1);
   };
 }
 
@@ -69,8 +75,8 @@ function advanceForStatus(
   const inFlightId = next.inFlight?.item.id;
 
   if (status === "running" || status === "created") {
-    // running 是可信开轮信号，也沿用旧规则解除一次明确失败暂停。
-    if (next.blocked && next.inFlight?.phase !== "uncertain") next = confirmResume(next);
+    // running 是可信开轮信号，只自动解除传输故障，不能覆盖用户主动暂停。
+    next = resumeAutomatic(next);
     return inFlightId ? markReceipt(next, inFlightId) : next;
   }
 
@@ -81,8 +87,8 @@ function advanceForStatus(
     return next;
   }
 
-  // 新的状态边沿/下一轮机会沿用旧实现语义解除明确失败阻塞；uncertain 必须用户确认。
-  if (next.blocked && next.inFlight?.phase !== "uncertain") next = confirmResume(next);
+  // 新的状态边沿只自动解除传输故障；用户暂停与 uncertain 必须显式确认。
+  next = resumeAutomatic(next);
   return claimHead(next, { phase: "awaiting-receipt" });
 }
 
@@ -91,7 +97,7 @@ function advanceForStatus(
  * 当前 in-flight 并领取一个队首。发送成功后仍等待下一组 session-status，绝不连投。
  */
 export function deliverQueued(id: string, status: string, onDelivered?: (id: string, text: string) => void): void {
-  if (id === activeId) return;
+  if (activeComposers.has(id)) return;
   const target = localSendQueueTarget(id);
   const before = readSendQueueLane<LocalQueueAttachment>(target);
   const result = updateSendQueueLane<LocalQueueAttachment>(target, (lane) => advanceForStatus(lane, status));
@@ -136,6 +142,6 @@ export function deliverQueued(id: string, status: string, onDelivered?: (id: str
 /** 仅供测试：清空模块级状态(stash、活跃登记与后台 token)。 */
 export function resetStashForTests(): void {
   stash.clear();
-  activeId = null;
+  activeComposers.clear();
   dispatching.clear();
 }
