@@ -514,6 +514,8 @@ export const en: Record<MessageKey, string> = {
   "chat.queuedHint": "Sends automatically when this turn ends",
   "chat.queuedCancel": "Cancel queued message",
   "chat.sendQueue.label": "Queued messages",
+  "chat.sendQueue.summary": "Queued {n}",
+  "chat.sendQueue.hint": "One message sends after each turn",
   "chat.sendQueue.sending": "Sending",
   "chat.sendQueue.uncertain": "Delivery status uncertain",
   "chat.sendQueue.drag": "Drag to reorder",

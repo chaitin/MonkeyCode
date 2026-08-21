@@ -99,16 +99,31 @@ export function SendQueueList<A>({
   };
 
   return (
-    <section aria-label={t("chat.sendQueue.label")} className="mb-2 rounded-box border border-base-300 bg-base-200/50 p-1.5">
-      <ul className="flex flex-col gap-1">
+    <section
+      aria-label={t("chat.sendQueue.label")}
+      className="mb-2 overflow-hidden rounded-xl bg-base-200/45 px-2 py-1.5"
+    >
+      {pending.length > 0 && (
+        <header className="flex h-7 min-w-0 items-center gap-1.5 px-1 text-xs text-base-content/50">
+          <span className="shrink-0 font-medium text-base-content/70">
+            {t("chat.sendQueue.summary", { n: pending.length })}
+          </span>
+          <span aria-hidden>·</span>
+          <span className="min-w-0 truncate">{t("chat.sendQueue.hint")}</span>
+        </header>
+      )}
+
+      <ol className="flex flex-col">
         {inFlight && (
-          <li className="flex min-w-0 items-center gap-2 rounded-btn bg-base-100 px-2 py-1.5">
+          <li className="flex min-h-9 min-w-0 items-center gap-2 rounded-lg bg-primary/5 px-2 text-sm">
             {uncertain ? (
               <IconX size={15} stroke={1.75} className="shrink-0 text-warning" aria-hidden />
             ) : (
               <span className="loading loading-spinner loading-xs shrink-0" aria-hidden />
             )}
-            <span className="sr-only">{t(uncertain ? "chat.sendQueue.uncertain" : "chat.sendQueue.sending")}</span>
+            <span className="shrink-0 text-xs font-medium text-base-content/55">
+              {t(uncertain ? "chat.sendQueue.uncertain" : "chat.sendQueue.sending")}
+            </span>
             <ItemSummary item={inFlight.item} />
             {uncertain && (
               <span className="flex shrink-0 items-center gap-1">
@@ -127,12 +142,12 @@ export function SendQueueList<A>({
           </li>
         )}
 
-        {pending.map((item) => {
+        {pending.map((item, index) => {
           const showIndicator = beforeId === item.id && willMove(item.id);
           return (
             <li
               key={item.id}
-              className="relative flex min-w-0 items-center gap-1 rounded-btn bg-base-100 px-1 py-1"
+              className="group relative flex min-h-9 min-w-0 items-center gap-1 border-t border-base-300/55 px-0.5 text-sm first:border-t-0 hover:bg-base-100/55"
               onDragOver={(event) => acceptInternalDrag(event, item.id)}
               onDrop={(event) => dropInternal(event, item.id)}
             >
@@ -148,7 +163,7 @@ export function SendQueueList<A>({
                 draggable
                 aria-label={t("chat.sendQueue.drag")}
                 title={t("chat.sendQueue.drag")}
-                className="btn btn-ghost btn-square btn-xs cursor-grab active:cursor-grabbing"
+                className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-6 cursor-grab text-base-content/30 hover:text-base-content/70 active:cursor-grabbing"
                 onDragStart={(event) => {
                   event.stopPropagation();
                   event.dataTransfer.effectAllowed = "move";
@@ -158,17 +173,20 @@ export function SendQueueList<A>({
                 }}
                 onDragEnd={finishDrag}
               >
-                <IconGripVertical size={15} stroke={1.75} aria-hidden />
+                <IconGripVertical size={14} stroke={1.75} aria-hidden />
               </button>
+              <span aria-hidden className="w-4 shrink-0 text-center text-[11px] tabular-nums text-base-content/35">
+                {index + 1}
+              </span>
               <ItemSummary item={item} />
               <button
                 type="button"
                 aria-label={t("chat.sendQueue.remove")}
                 title={t("chat.sendQueue.remove")}
-                className="btn btn-ghost btn-square btn-xs"
+                className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-7 shrink-0 text-base-content/35 opacity-50 hover:text-error hover:opacity-100 focus-visible:text-error focus-visible:opacity-100 group-hover:opacity-100"
                 onClick={() => onRemove(item.id)}
               >
-                <IconTrash size={14} stroke={1.75} aria-hidden />
+                <IconTrash size={13} stroke={1.75} aria-hidden />
               </button>
             </li>
           );
@@ -189,7 +207,7 @@ export function SendQueueList<A>({
             )}
           </li>
         )}
-      </ul>
+      </ol>
 
       {blocked && (
         <div role="alert" className="mt-1 flex min-w-0 items-center gap-2 px-2 py-1 text-xs text-warning">

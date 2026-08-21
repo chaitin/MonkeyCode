@@ -89,6 +89,8 @@ describe("SendQueueList", () => {
       />,
     );
 
+    expect(screen.getByText("待发送 2")).toBeTruthy();
+    expect(screen.getByText("每轮结束后发送一条")).toBeTruthy();
     expect(screen.getByText("发送中")).toBeTruthy();
     const lockedRow = screen.getByText("发送中消息").closest("li")!;
     expect(within(lockedRow).queryByRole("button", { name: "拖动调整顺序" })).toBeNull();
@@ -104,10 +106,10 @@ describe("SendQueueList", () => {
     render(<QueueHarness initial={[item("a", "第一条消息"), item("b", "第二条消息"), item("c", "第三条消息")]} />);
 
     dragBefore(2, "第一条消息");
-    expect(handles().map((handle) => handle.closest("li")?.textContent)).toEqual(["第三条消息", "第一条消息", "第二条消息"]);
+    expect(handles().map((handle) => handle.closest("li")?.textContent)).toEqual(["1第三条消息", "2第一条消息", "3第二条消息"]);
 
     dragBefore(0, "第二条消息");
-    expect(handles().map((handle) => handle.closest("li")?.textContent)).toEqual(["第一条消息", "第三条消息", "第二条消息"]);
+    expect(handles().map((handle) => handle.closest("li")?.textContent)).toEqual(["1第一条消息", "2第三条消息", "3第二条消息"]);
   });
 
   it("可拖到队尾，并逐项删除后保留其他项相对顺序", () => {
@@ -118,10 +120,10 @@ describe("SendQueueList", () => {
     fireEvent.dragOver(endZone, { dataTransfer: transfer });
     expect(endZone.querySelector("[data-send-queue-drop-indicator]")).not.toBeNull();
     fireEvent.drop(endZone, { dataTransfer: transfer });
-    expect(handles().map((handle) => handle.closest("li")?.textContent)).toEqual(["第二条消息", "第三条消息", "第一条消息"]);
+    expect(handles().map((handle) => handle.closest("li")?.textContent)).toEqual(["1第二条消息", "2第三条消息", "3第一条消息"]);
 
     fireEvent.click(screen.getAllByRole("button", { name: "删除待发送消息" })[1]!);
-    expect(handles().map((handle) => handle.closest("li")?.textContent)).toEqual(["第二条消息", "第一条消息"]);
+    expect(handles().map((handle) => handle.closest("li")?.textContent)).toEqual(["1第二条消息", "2第一条消息"]);
   });
 
   it("为 blocked 与 uncertain 暴露明确且互斥的恢复动作契约", () => {

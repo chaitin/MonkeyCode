@@ -532,6 +532,8 @@ export const zh = {
   "chat.queuedHint": "运行结束后自动发送",
   "chat.queuedCancel": "取消排队",
   "chat.sendQueue.label": "待发送消息队列",
+  "chat.sendQueue.summary": "待发送 {n}",
+  "chat.sendQueue.hint": "每轮结束后发送一条",
   "chat.sendQueue.sending": "发送中",
   "chat.sendQueue.uncertain": "投递状态待确认",
   "chat.sendQueue.drag": "拖动调整顺序",
