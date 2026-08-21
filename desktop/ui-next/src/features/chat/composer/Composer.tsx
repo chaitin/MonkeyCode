@@ -1,10 +1,10 @@
 // 全功能 composer:自适应高度输入(IME 守卫)+ 斜杠指令面板 + 附件
-// (对话框/粘贴;拖拽由 ChatView 转入 ctl.addFiles)+ 运行条/排队 chip +
+// (对话框/粘贴;拖拽由 ChatView 转入 ctl.addFiles)+ 运行条/待发送队列 +
 // 模型/思考档/权限模式控制。状态机在 useComposer,纯逻辑在 lib/util/slash。
 // 发送面契约见 useComposer 文件头;切模型/思考/模式经 lib/ipc/controls
 // (session_call),成功不乐观回写——壳会补 model_update / think_update /
 // permission_mode_update 帧,ChatState 是唯一真值。
-import { IconClock, IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
+import { IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
 import {
   forwardRef,
   memo,
@@ -31,6 +31,7 @@ import { timelineDeltaOf } from "@/lib/protocol/reduce";
 import { fmtK } from "@/lib/util/fmt";
 import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } from "@/lib/util/slash";
 import { ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing } from "./composerKit";
+import { SendQueueList } from "./SendQueueList";
 import { ModelMenu, SkillsMenu, ThinkMenu } from "./pickers";
 import type { ComposerCtl } from "./useComposer";
 
@@ -385,21 +386,16 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
           soft 底 + 14px 语义图标 + truncate 正文 + 右端关闭 */}
       {ctl.error && <ErrorBar text={ctl.error} onDismiss={ctl.dismissError} />}
 
-      {ctl.queued && (
-        <div className="alert alert-soft -mx-2.5 flex items-center gap-2 px-3 py-1.5 text-xs">
-          <IconClock size={14} stroke={1.75} aria-hidden className="shrink-0 text-base-content/50" />
-          <span className="shrink-0 font-medium">{t("chat.queued")}</span>
-          <span className="min-w-0 flex-1 truncate">{ctl.queued}</span>
-          <span className="shrink-0 text-base-content/50">{t("chat.queuedHint")}</span>
-          <button
-            type="button"
-            aria-label={t("chat.queuedCancel")}
-            className="btn btn-ghost btn-square btn-xs"
-            onClick={ctl.clearQueued}
-          >
-            <IconX size={14} stroke={1.75} aria-hidden />
-          </button>
-        </div>
+      {(ctl.queue.pending.length > 0 || ctl.queue.inFlight || ctl.queue.blocked) && (
+        <SendQueueList
+          pending={ctl.queue.pending}
+          inFlight={ctl.queue.inFlight}
+          blocked={ctl.queue.blocked}
+          onRemove={ctl.removeQueued}
+          onReorder={ctl.reorderQueued}
+          onResume={ctl.resumeQueue}
+          onDiscardUncertain={ctl.discardUncertainQueued}
+        />
       )}
 
       {/* 输入卡外框(形态收口在 composerKit:出血/聚焦边线/禁挂 dropdown 类

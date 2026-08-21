@@ -27,6 +27,7 @@ import type { ChatItem, ChatState, Frame, PermItem } from "@/lib/protocol/types"
 import { presentToolCall } from "@/lib/tools/toolLabels";
 import { thoughtLiveSummary, thoughtMarkdown, thoughtSummary } from "@/lib/util/thoughtMarkdown";
 import { AskCard } from "./cards/AskCard";
+import { BackgroundAgentResultCard } from "./cards/BackgroundAgentResultCard";
 import { PermCard } from "./cards/PermCard";
 import { statusDot } from "./cards/statusDot";
 import { ToolCard } from "./cards/ToolCard";
@@ -248,6 +249,13 @@ function renderItem(item: ChatItem, o: RenderOpts) {
             joinPrev={o.joinPrev}
             joinNext={o.joinNext}
           />
+        </div>
+      );
+    case "background-result":
+      return (
+        <div className="group relative flex flex-col">
+          <MessageTime timestamp={item.timestamp} className="absolute -top-3.5 start-0" />
+          <BackgroundAgentResultCard item={item} uploadUrl={o.uploadUrl} onLocalLink={o.onLocalLink} />
         </div>
       );
     case "perm":

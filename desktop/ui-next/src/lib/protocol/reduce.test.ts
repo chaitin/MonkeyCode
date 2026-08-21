@@ -291,15 +291,44 @@ describe("后台子代理(Agent 显式转后台)", () => {
     rawOutput: "⏳ 子代理已转入后台继续执行(bd),完成后结果将回填此卡",
   });
 
-  it("task_notification 渲染独立系统行,不并入流式中的正文气泡", () => {
+  it("结构化 task_notification 独立成结果卡,不并入流式中的正文气泡", () => {
+    const notification = acp({
+      sessionUpdate: "task_notification",
+      agentId: "bd",
+      agentName: "调查员",
+      description: "调查依赖",
+      status: "completed",
+      result: "最终结论",
+      text: "后台代理已完成",
+    });
+    notification.timestamp = 1234;
     const s = run([
       acp({ sessionUpdate: "agent_message_chunk", content: { text: "我先做别的" } }),
-      acp({ sessionUpdate: "task_notification", text: "📌 后台代理 bd 已完成,结果已回填其任务卡" }),
+      notification,
       acp({ sessionUpdate: "agent_message_chunk", content: { text: ",继续" } }),
+    ]);
+    expect(s.items.map((it) => it.kind)).toEqual(["agent", "background-result", "agent"]);
+    expect(s.items[1]).toMatchObject({
+      kind: "background-result",
+      agentId: "bd",
+      agentName: "调查员",
+      description: "调查依赖",
+      status: "completed",
+      result: "最终结论",
+      text: "后台代理已完成",
+      timestamp: 1234,
+    });
+  });
+
+  it("旧版纯 text task_notification 仍渲染独立系统行", () => {
+    const s = run([
+      acp({ sessionUpdate: "agent_message_chunk", content: { text: "前" } }),
+      acp({ sessionUpdate: "task_notification", text: "📌 后台代理 bd 已完成" }),
+      acp({ sessionUpdate: "agent_message_chunk", content: { text: "后" } }),
     ]);
     expect(s.items.map((it) => it.kind)).toEqual(["agent", "sys", "agent"]);
     expect((s.items[1] as SysItem).text).toContain("bd");
-    // 缺 text 忽略
+    // 无结构字段也无 text 时忽略
     expect(reduceFrame(s, acp({ sessionUpdate: "task_notification" })).items).toHaveLength(3);
   });
 
@@ -325,12 +354,20 @@ describe("后台子代理(Agent 显式转后台)", () => {
     expect(toolItem(s, "t1").feed).toEqual([{ kind: "text", text: "后台仍在跑" }]);
   });
 
-  it("后台终态只收起卡片并隐藏紧随其后的重复通知", () => {
+  it("后台终态保留工具卡并追加独立结构化结果卡", () => {
     const s = run([
       open,
       launched,
       acp({ sessionUpdate: "tool_call_update", toolCallId: "t1", status: "completed", rawOutput: "最终结论正文" }),
-      acp({ sessionUpdate: "task_notification", text: "📌 后台代理 bd 已完成,结果已回填其任务卡" }),
+      acp({
+        sessionUpdate: "task_notification",
+        agentId: "bd",
+        agentName: "调查员",
+        description: "调查依赖",
+        status: "completed",
+        result: "最终结论正文",
+        text: "📌 后台代理 bd 已完成",
+      }),
     ]);
     expect(toolItem(s, "t1")).toMatchObject({
       status: "ok",
@@ -338,7 +375,13 @@ describe("后台子代理(Agent 显式转后台)", () => {
       result: "最终结论正文",
       backgroundNoticePending: false,
     });
-    expect(s.items.map((it) => it.kind)).toEqual(["tool"]);
+    expect(s.items.map((it) => it.kind)).toEqual(["tool", "background-result"]);
+    expect(s.items[1]).toMatchObject({
+      kind: "background-result",
+      agentId: "bd",
+      description: "调查依赖",
+      result: "最终结论正文",
+    });
   });
 
   it("后台失败正文同样只保留在卡片数据里,重复终态不追加渲染项", () => {

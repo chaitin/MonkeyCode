@@ -84,6 +84,39 @@ impl Inner {
                     self.emit_session_ask(&sid, false);
                 }
             }
+            "turn/started" => {
+                // 用户发送由壳侧乐观开轮；只有通知触发的后台续跑需要在
+                // 引擎主动开轮时补齐 Desktop 生命周期。
+                if params.get("source").and_then(|v| v.as_str()) != Some("notification") {
+                    return;
+                }
+                let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
+                let opened = {
+                    let mut sessions = self.sess.sessions.lock_ok();
+                    match sessions.get_mut(&sid) {
+                        Some(s) if !s.running => {
+                            s.running = true;
+                            s.compacting = false;
+                            s.manual_compact = false;
+                            s.terminal_error_seen = false;
+                            s.cancel_requested_turn = None;
+                            s.model_text.clear();
+                            s.turn += 1;
+                            true
+                        }
+                        Some(_) => false,
+                        None => {
+                            eprintln!("[desktop] turn/started 无法映射到壳会话,已丢弃: {params}");
+                            return;
+                        }
+                    }
+                };
+                if opened {
+                    self.push_frame(&sid, frame::task_started);
+                    self.write_sidecar(&sid, |m| m["status"] = json!(SessionStatus::Running.as_str()));
+                    self.emit_session_event(&sid, SessionStatus::Running.as_str());
+                }
+            }
             "turn/stopped" => {
                 let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
                 let stop_reason = params.get("stop_reason").and_then(|v| v.as_str()).unwrap_or("complete");
@@ -385,6 +418,25 @@ impl Inner {
                 let stashed =
                     if tc_id.is_empty() { None } else { self.sub.agent_results.lock_ok().remove(&tc_id) };
                 let is_agent = name.as_deref() == Some("Agent");
+                if name.as_deref() == Some("SendMessage") && !is_error {
+                    let async_launched = data.get("status").and_then(Value::as_str) == Some("async_launched")
+                        || serde_json::from_str::<Value>(content)
+                            .ok()
+                            .and_then(|v| v.get("status").and_then(Value::as_str).map(str::to_string))
+                            .as_deref()
+                            == Some("async_launched");
+                    if async_launched {
+                        self.push_frame(&sid, |seq| {
+                            frame::tool_call_completed(
+                                &tc_id,
+                                "后台代理已继续执行，完成后将在对话中显示结果卡",
+                                &[],
+                                seq,
+                            )
+                        });
+                        return;
+                    }
+                }
                 if is_agent && stashed.is_none() && !is_error {
                     if let Some(resp) = serde_json::from_str::<Value>(content)
                         .ok()
@@ -439,17 +491,39 @@ impl Inner {
                     return;
                 }
                 if etype == "task_notification" {
-                    // 后台代理完成:登记在案 → Result 正文回填父 Agent 卡 +
-                    // 📌 系统行(独立渲染项)。旧行为把整段渲染消息当
-                    // agent_text 混进模型正文气泡——<task-notification>
-                    // 标签行被 markdown 当 HTML 块吞掉,Result 正文散落
-                    // 主流,看着像主/子代理消息交织
-                    if !self.background_agent_finished(&data, &msg) {
-                        // 反查不到(壳重启丢登记/SendMessage 续跑的二次完成/
-                        // 旧引擎):整段外显兜底,剥包装标签防 markdown 吞块
-                        let inner = super::subagent::strip_notification_tags(&msg);
-                        self.push_frame(&sid, |seq| frame::agent_text(&format!("\n\n📌 {inner}\n\n"), seq));
-                    }
+                    // 有登记时仍回填历史显式 Agent 卡；无论能否反查，结果都
+                    // 以结构化通知帧落到通知实际到达的会话，绝不混入助手正文。
+                    let result = super::subagent::notification_result(&msg)
+                        .unwrap_or_else(|| super::subagent::strip_notification_tags(&msg));
+                    self.background_agent_finished(&data, &result);
+                    let get = |key: &str| data.get(key).and_then(Value::as_str).unwrap_or("");
+                    let agent_id = get("agent_id");
+                    let agent_name = get("name");
+                    let description = get("description");
+                    let status = get("status");
+                    let label = if !agent_name.is_empty() {
+                        agent_name
+                    } else if !description.is_empty() {
+                        description
+                    } else {
+                        agent_id
+                    };
+                    let text = match status {
+                        "error" => format!("📌 后台代理 {label} 执行失败"),
+                        "stopped" => format!("📌 后台代理 {label} 已停止"),
+                        _ => format!("📌 后台代理 {label} 已完成"),
+                    };
+                    self.push_frame(&sid, |seq| {
+                        frame::background_result(
+                            agent_id,
+                            agent_name,
+                            description,
+                            status,
+                            &result,
+                            &text,
+                            seq,
+                        )
+                    });
                     return;
                 }
                 self.push_frame(&sid, |seq| frame::agent_text(&msg, seq));

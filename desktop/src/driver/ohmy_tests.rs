@@ -2121,6 +2121,84 @@ fn journal_frames(inner: &Inner, sid: &str) -> Vec<Value> {
         .collect()
 }
 
+#[test]
+fn notification_turn_started_opens_idle_session_once() {
+    let (inner, events) = bare_inner_events("notification-turn-started");
+    let mut session = bare_session("shell1");
+    session.engine_id = "engine1".into();
+    session.running = false;
+    session.compacting = true;
+    session.manual_compact = true;
+    session.terminal_error_seen = true;
+    session.cancel_requested_turn = Some(7);
+    session.model_text = "上一轮残留".into();
+    session.turn = 7;
+    inner.sess.sessions.lock().unwrap().insert("shell1".into(), session);
+
+    let started = json!({ "session_id": "engine1", "source": "notification" });
+    inner.handle_notification("turn/started", started.clone());
+    inner.handle_notification("turn/started", started);
+
+    let sessions = inner.sess.sessions.lock().unwrap();
+    let session = sessions.get("shell1").unwrap();
+    assert!(session.running);
+    assert!(!session.compacting && !session.manual_compact && !session.terminal_error_seen);
+    assert_eq!(session.cancel_requested_turn, None);
+    assert!(session.model_text.is_empty());
+    assert_eq!(session.turn, 8, "重复 started 不得重复开轮");
+    drop(sessions);
+
+    let started_count = journal_frames(&inner, "shell1")
+        .iter()
+        .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-started"))
+        .count();
+    assert_eq!(started_count, 1);
+    assert_eq!(
+        inner.read_sidecar("shell1").get("status").and_then(Value::as_str),
+        Some("running")
+    );
+    let running_events = events
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(name, payload)| {
+            name == "session-event"
+                && payload.get("id").and_then(Value::as_str) == Some("shell1")
+                && payload.get("status").and_then(Value::as_str) == Some("running")
+        })
+        .count();
+    assert_eq!(running_events, 1);
+}
+
+#[test]
+fn send_message_async_launched_closes_dispatch_card_with_friendly_text() {
+    let inner = bare_inner("send-message-async");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "sm1",
+        "data": { "name": "SendMessage", "input": { "agent_id": "a1", "message": "继续" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "sm1",
+        "data": { "tool": "SendMessage", "content": async_launched_json("a1", "bd", "继续执行"), "is_error": false }
+    }));
+
+    let completed = journal_frames(&inner, "s1")
+        .iter()
+        .filter_map(acp_update)
+        .find(|u| {
+            u.get("sessionUpdate").and_then(Value::as_str) == Some("tool_call_update")
+                && u.get("toolCallId").and_then(Value::as_str) == Some("sm1")
+                && u.get("status").and_then(Value::as_str) == Some("completed")
+        })
+        .expect("SendMessage 派发卡未正常闭合");
+    let output = completed.get("rawOutput").and_then(Value::as_str).unwrap_or("");
+    assert!(output.contains("后台代理已继续执行") && output.contains("结果卡"));
+    assert!(!output.contains("async_launched"));
+    assert!(inner.sub.background_agents.lock().unwrap().is_empty());
+    assert!(inner.sess.sessions.lock().unwrap()["s1"].open_tools.is_empty());
+}
+
 /// 后台子代理已流式认领时:async_launched 不把原始 JSON
 /// 灌卡、不关活着的子代理路由;turn/stopped 放过后台子会话(跨轮存活);
 /// task_notification 以 Result 正文回填父卡终态 + 📌 系统行 + 子会话收尾;
@@ -2201,14 +2279,19 @@ fn backgrounded_subagent_survives_and_backfills() {
         Some("最终结论正文"),
         "Result 正文未回填父卡"
     );
-    // 📌 系统行(task_notification 帧,独立渲染项)
+    // 结构化后台结果帧落在通知到达的会话
     let note = frames
         .iter()
         .filter_map(acp_update)
         .find(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification"))
-        .expect("缺 📌 系统行帧");
+        .expect("缺结构化后台结果帧");
     let note_text = note.get("text").and_then(|v| v.as_str()).unwrap_or("");
     assert!(note_text.contains("bd") && note_text.contains("已完成"), "📌 文案不符: {note_text}");
+    assert_eq!(note.get("agentId").and_then(Value::as_str), Some("a1"));
+    assert_eq!(note.get("agentName").and_then(Value::as_str), Some("bd"));
+    assert_eq!(note.get("description").and_then(Value::as_str), Some("设计解耦接口方案"));
+    assert_eq!(note.get("status").and_then(Value::as_str), Some("completed"));
+    assert_eq!(note.get("result").and_then(Value::as_str), Some("最终结论正文"));
     // 通知全文不得以 agent_text 混进模型正文气泡
     let leaked = frames.iter().filter_map(acp_update).any(|u| {
         u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("agent_message_chunk")
@@ -2234,7 +2317,7 @@ fn backgrounded_subagent_survives_and_backfills() {
     );
 }
 
-/// 后台代理失败(status=error)→ 父卡 failed 帧回填错误详情,📌 行报失败,
+/// 后台代理失败(status=error)→ 父卡 failed 帧回填错误详情,结构化结果帧报失败,
 /// 子会话按 error 收尾。
 #[test]
 fn backgrounded_subagent_error_marks_card_failed() {
@@ -2268,15 +2351,16 @@ fn backgrounded_subagent_error_marks_card_failed() {
         .iter()
         .filter_map(acp_update)
         .find(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification"))
-        .expect("缺 📌 系统行帧");
+        .expect("缺结构化后台结果帧");
     assert!(note.get("text").and_then(|v| v.as_str()).unwrap_or("").contains("执行失败"));
+    assert_eq!(note.get("status").and_then(Value::as_str), Some("error"));
+    assert_eq!(note.get("result").and_then(Value::as_str), Some("provider 炸了"));
 }
 
 /// 反查不到登记(壳重启丢内存/SendMessage 续跑二次完成)的 task_notification:
-/// 退回整段外显,但剥 <task-notification> 包装标签——markdown 会把标签行
-/// 当 HTML 块吞掉后半段(用户实测症状:Result: 后面正文丢失)。
+/// 仍落结构化结果帧，Result 正文不混入助手消息。
 #[test]
-fn task_notification_without_registry_falls_back_stripped() {
+fn task_notification_without_registry_is_structured_result() {
     let inner = bare_inner("bgfb");
     inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
     inner.handle_event(json!({ "type": "task_notification", "session_id": "s1", "data": {
@@ -2284,15 +2368,17 @@ fn task_notification_without_registry_falls_back_stripped() {
         "message": notification_message("unknown", "x", "d", "completed", "正文内容"),
     }}));
     let frames = journal_frames(&inner, "s1");
-    let text = frames
+    let note = frames
         .iter()
         .filter_map(acp_update)
-        .filter(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("agent_message_chunk"))
-        .filter_map(|u| u["content"]["text"].as_str().map(String::from))
-        .next()
-        .expect("缺兜底外显帧");
-    assert!(text.contains("📌") && text.contains("正文内容"), "兜底外显不完整: {text}");
-    assert!(!text.contains("<task-notification>"), "包装标签未剥: {text}");
+        .find(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification"))
+        .expect("缺结构化后台结果帧");
+    assert_eq!(note.get("agentId").and_then(Value::as_str), Some("unknown"));
+    assert_eq!(note.get("status").and_then(Value::as_str), Some("completed"));
+    assert_eq!(note.get("result").and_then(Value::as_str), Some("正文内容"));
+    assert!(frames.iter().filter_map(acp_update).all(|u| {
+        u.get("sessionUpdate").and_then(Value::as_str) != Some("agent_message_chunk")
+    }));
 }
 
 /// E2E:当前引擎的 run_in_background 只收紧子代理工具集为只读，调用仍

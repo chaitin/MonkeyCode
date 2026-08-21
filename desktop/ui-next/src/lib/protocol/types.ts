@@ -36,8 +36,12 @@ export interface AcpUpdate {
   /** llm_call_retry(仅云端流):第几次重试 */
   attempt?: number;
   message?: string;
-  /** task_notification(后台子代理完成 📌 系统行)的通知文本 */
+  /** task_notification(后台子代理完成)的兼容通知文本与结构化结果字段 */
   text?: string;
+  agentId?: string;
+  agentName?: string;
+  description?: string;
+  result?: string;
   used?: number;
   size?: number;
   progress?: ToolProgress;
@@ -227,8 +231,30 @@ export interface AskItem {
   questions: AskQuestion[];
 }
 
+/** 后台子代理的独立终态结果卡。字段保留上游原文，展示文案在组件内 i18n。 */
+export interface BackgroundAgentResultItem {
+  kind: "background-result";
+  agentId: string;
+  agentName: string;
+  description: string;
+  /** 上游状态词允许扩展，展示层只为已知终态提供语义色与翻译。 */
+  status: string;
+  result: string;
+  /** 旧通知的简短成品文本，仅作为结构化卡的辅助信息保留。 */
+  text: string;
+  timestamp?: number;
+}
+
 /** 对话流里的一条渲染项。 */
-export type ChatItem = UserItem | AgentItem | ThoughtItem | ToolItem | SysItem | PermItem | AskItem;
+export type ChatItem =
+  | UserItem
+  | AgentItem
+  | ThoughtItem
+  | ToolItem
+  | BackgroundAgentResultItem
+  | SysItem
+  | PermItem
+  | AskItem;
 
 // ==================== 会话状态(reduceBatch 的输入/输出) ====================
 

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent,
 
 import { ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing } from "@/features/chat/composer/composerKit";
 import { OptionMenu } from "@/features/chat/composer/pickers";
+import { SendQueueList } from "@/features/chat/composer/SendQueueList";
 import { useI18n } from "@/lib/i18n";
 import { groupedCloudModelLabel } from "@/lib/cloud/options";
 import { fmtK } from "@/lib/util/fmt";
@@ -109,7 +110,7 @@ export function CloudComposer({
       // IME 组合期(或 WKWebView 上组合刚结束 100ms 窗口内)的 Enter 是选字
       if (imeRef.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
       e.preventDefault();
-      if (inFlight) return; // 上一条还在拨号:回车与按钮同待遇
+      if (h.uploading > 0) return;
       onSend();
     }
   };
@@ -134,10 +135,6 @@ export function CloudComposer({
     // 复位 value:同一文件再次选择也要触发 change
     if (fileRef.current) fileRef.current.value = "";
   };
-
-  // 发送在途:mode=new 连接还在拨号(休眠机器要先唤醒,以分钟计),
-  // 云端尚未回显这条。此间禁止再次发送(见 useCloudTask.send 的同名拦截)
-  const inFlight = h.sending !== null;
 
   // 运行条 detail:云端没有轮次概念,给累计 tokens(详情统计,轮询刷新)
   const tokens = h.meta?.stats?.total_tokens ?? 0;
@@ -167,6 +164,17 @@ export function CloudComposer({
   return (
     <div className="flex flex-col gap-2">
       {h.err && <ErrorBar text={h.err} onDismiss={h.clearErr} />}
+
+      <SendQueueList
+        pending={h.queue.pending}
+        inFlight={h.queue.inFlight}
+        blocked={h.queue.blocked}
+        onRemove={h.removeQueued}
+        onReorder={h.reorderQueued}
+        onResume={h.confirmQueue}
+        onDiscardUncertain={h.discardUncertain}
+        onStopAndClear={h.stopAndClearQueue}
+      />
 
       <ComposerCard>
         {h.running && (
@@ -200,19 +208,6 @@ export function CloudComposer({
                 {t("cloud.attach.uploading")}
               </span>
             )}
-          </div>
-        )}
-
-        {/* 启动期押后的那条:整屏让给了启动时间线,占位气泡没有落脚处,
-            改在输入卡内给一条待发 chip(旧 UI QueuedChip「环境就绪后自动
-            发送」同位同义)——不外显的话输入框一清、屏幕毫无变化 */}
-        {pending && h.sending && (
-          <div className="flex flex-wrap items-center gap-2 px-3 pt-2">
-            <span title={h.sending.content} className="badge badge-ghost gap-1.5 text-xs">
-              <span className="loading loading-spinner loading-xs" aria-hidden />
-              <span className="max-w-60 truncate">{h.sending.content}</span>
-            </span>
-            <span className="text-xs text-base-content/60">{t("cloud.send.startupQueued")}</span>
           </div>
         )}
 
@@ -285,17 +280,16 @@ export function CloudComposer({
                 : t("chat.usageEmpty")
             }
           />
-          {/* 发送在途(mode=new 连接在拨号/唤醒机器):按钮转圈并禁用——
-              再点一次会掐掉在途连接,首条被弹回输入框挤掉刚打的字 */}
+          {/* 发送中不锁 composer；只有本条附件仍在上传时暂缓提交。 */}
           <button
             type="button"
             aria-label={t("chat.send")}
-            title={inFlight ? t("cloud.send.pending") : t("chat.sendTip")}
+            title={t("chat.sendTip")}
             className="btn btn-primary btn-square btn-sm shrink-0"
-            disabled={inFlight || !h.input.trim()}
+            disabled={h.uploading > 0 || !h.input.trim()}
             onClick={onSend}
           >
-            {inFlight ? (
+            {h.uploading > 0 ? (
               <span className="loading loading-spinner loading-xs" aria-hidden />
             ) : (
               <IconSend size={16} stroke={1.75} aria-hidden />

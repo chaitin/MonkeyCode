@@ -14,6 +14,7 @@ import { IconAlertCircle, IconCircleCheck, IconHelpCircle, IconPlayerStop, IconS
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useCloudProjects, useCloudTasks } from "@/features/cloud/CloudTaskList";
+import { CloudQueueCoordinatorProvider } from "@/features/cloud/CloudQueueCoordinator";
 import { DownloadsDock } from "@/features/downloads/DownloadsDock";
 import { EngineBanner } from "@/features/engine/EngineBanner";
 import { SettingsView } from "@/features/settings/SettingsView";
@@ -435,6 +436,13 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedSlotEntry, attentionIds]);
 
+  const handleCloudQueueAttention = useCallback((taskId: string) => {
+    const entry = cloudSlotId(taskId);
+    const current = splitRef.current;
+    if (current.active && current.focusedId === entry) return;
+    setAttentionIds((previous) => (previous.has(entry) ? previous : new Set(previous).add(entry)));
+  }, []);
+
   // 原生窗口标题跟随焦点格(工作台即主壳:设置/新建覆盖时跟覆盖视图)
   useEffect(() => {
     const focusedEntry = split.slots[split.focused];
@@ -494,7 +502,9 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   })();
 
   return (
-    <div className="flex h-full flex-col text-base-content">
+    <CloudQueueCoordinatorProvider onAttention={handleCloudQueueAttention}>
+      {(cloudQueue) => (
+      <div className="flex h-full flex-col text-base-content">
       {/* leading = 标题栏左端寄宿位:任务列收起时 SplitView 把 ☰/新建
           portal 进来,免开一行 h-10 顶条(2026-08-20 用户报障「空一行」) */}
       {isCustomChromeShell() && <TitleBar leading={<span ref={setTitlebarSlot} className="contents" />} />}
@@ -544,6 +554,9 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
               projects: cloudProjects,
               reloadKey: cloudReload,
               onDeleted: (id) => {
+                // CloudTaskList 只在服务端删除成功后触发；此时再停 runtime 并删
+                // lane/index。失败路径不会触碰协调器和用户待发送内容。
+                cloudQueue.dropTask(id);
                 setCloudReload((n) => n + 1);
                 // prune 只认本地全表、特意跳过云端条目——列表侧删除要显式
                 // 弹格,否则格里留幽灵任务(2026-08-20 审计)
@@ -662,6 +675,8 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
         </div>
       )}
       <DownloadsDock />
-    </div>
+      </div>
+      )}
+    </CloudQueueCoordinatorProvider>
   );
 }

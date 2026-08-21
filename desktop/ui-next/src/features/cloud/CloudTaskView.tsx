@@ -28,6 +28,7 @@ import {
 
 import { useApprovalHotkeys } from "@/app/shortcuts";
 import { ErrorBar } from "@/features/chat/composer/composerKit";
+import { SendQueueList } from "@/features/chat/composer/SendQueueList";
 import { LogList, type LogListHandle } from "@/features/chat/LogList";
 import { OutlineNav, useOutlineEntries } from "@/features/chat/OutlineNav";
 import { TaskPanel } from "@/features/chat/TaskPanel";
@@ -70,23 +71,6 @@ export function mcConsoleTaskUrl(baseUrl: string, taskId: string): string {
 
 /** 连接状态 → 外显文案;健康态(已连接/本轮结束)返回 null 不渲染——
  * 常驻"已连接云端"是噪音,异常/过渡态才值得占一行。 */
-/** 发送中的用户气泡(与 LogList 的 UserBubble 同形,降透明 + 转圈脚注)。
- *  云端回显到达即由真气泡取代(useCloudTask.sending 在首批帧到达时清空)。 */
-function PendingBubble({ content, waking }: { content: string; waking: boolean }) {
-  const { t } = useI18n();
-  return (
-    <div className="chat chat-end opacity-60" data-pending-send="">
-      <div className="chat-bubble max-w-[85%] bg-primary/10 text-sm whitespace-pre-wrap wrap-anywhere select-text">
-        {content}
-      </div>
-      <div className="chat-footer flex items-center gap-1.5 pt-1 text-xs text-base-content/60">
-        <span className="loading loading-spinner loading-xs" aria-hidden />
-        <span>{t(waking ? "cloud.send.waking" : "cloud.send.pending")}</span>
-      </div>
-    </div>
-  );
-}
-
 function statusText(
   t: ReturnType<typeof useI18n>["t"],
   status: StreamStatus | null,
@@ -474,8 +458,7 @@ export function CloudTaskView({
   const emptyState = { ended: h.ended, waking: h.waking, failed: h.vmFailed, notReady: h.vmNotReady };
   // 空态带 !cursor 守卫:结束态首轮可能没有帧但仍有更早可翻,
   // 此时要保住「加载更早」入口,不能整屏换成空态
-  // 发送在途时不走空态:那条占位气泡就是当前唯一的内容,空态会把它盖掉
-  const showEmpty = !pending && h.chat.items.length === 0 && !h.cursor && !h.sending;
+  const showEmpty = !pending && h.chat.items.length === 0 && !h.cursor;
 
   // 尺寸兜底(与 ChatView 同法,两处口径必须一致):能改变高度的来源两头都要盯——
   // 视口(footer 长高:运行条/附件 chips/终端卡 h-64/textarea 自适应,顶部连接
@@ -788,10 +771,6 @@ export function CloudTaskView({
                 大纲跳转经 LogList 的虚拟索引把目标行挂载；结束态只读回放:
                 卡片不再渲染交互按钮 */}
             <LogList ref={listRef} state={h.chat} sessionId={h.id} sendFrame={h.sendFrame} flashSeq={flashSeq ?? undefined} readonly={h.ended} />
-            {/* 发送中的占位气泡:云端要等 WS 连上才回显这条(休眠机器先唤醒,
-                以分钟计)。不占位的话输入框一清、日志毫无变化,用户只能猜
-                消息是不是丢了(2026-08-06 用户报障) */}
-            {h.sending && <PendingBubble content={h.sending.content} waking={h.waking} />}
           </div>
         </div>
       )}
@@ -850,6 +829,16 @@ export function CloudTaskView({
             <>
               {/* 结束态 composer 不渲染,错误通道(如删除被拒)另给一条 */}
               {h.err && <ErrorBar text={h.err} onDismiss={h.clearErr} />}
+              <SendQueueList
+                pending={h.queue.pending}
+                inFlight={h.queue.inFlight}
+                blocked={h.queue.blocked}
+                onRemove={h.removeQueued}
+                onReorder={h.reorderQueued}
+                onResume={h.confirmQueue}
+                onDiscardUncertain={h.discardUncertain}
+                onStopAndClear={h.stopAndClearQueue}
+              />
               <div className="py-1 text-center text-xs text-base-content/50">{t("cloud.view.readonly")}</div>
             </>
           ) : (

@@ -1,9 +1,26 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionMeta } from "@/lib/ipc/sessions";
+import {
+  cloudSendQueueTarget,
+  createSendQueueItem,
+  enqueue,
+  localSendQueueKey,
+  localSendQueueTarget,
+  readSendQueueLane,
+  resetSendQueueMemoryForTests,
+  updateSendQueueLane,
+  writeSendQueueLane,
+} from "@/features/chat/composer/sendQueue";
+import { resetStashForTests } from "@/features/chat/composer/stash";
 import { App } from "./App";
+
+beforeEach(() => {
+  resetSendQueueMemoryForTests();
+  resetStashForTests();
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -480,10 +497,54 @@ describe("会话列表拉取失败不能清空侧栏", () => {
   });
 });
 
+describe("本地持久队列的 App 级接线", () => {
+  it("后台 session-status 严格逐轮：一个轮末事件只投一个队首", async () => {
+    localStorage.setItem("mc.lastSession", "s1");
+    localStorage.setItem("mc.sidebarSpace", "local");
+    const target = localSendQueueTarget("s2");
+    updateSendQueueLane(target, (lane) => enqueue(lane, createSendQueueItem("第一条", [])));
+    updateSendQueueLane(target, (lane) => enqueue(lane, createSendQueueItem("第二条", [])));
+    const shell = stubShell({
+      sessions: [sess({ id: "s1", title: "当前任务" }), sess({ id: "s2", title: "后台任务" })],
+    });
+    render(<App />);
+    await waitFor(() => expect(shell.count("session_open")).toBe(1));
+
+    act(() => shell.emit("session-event", { type: "session-status", id: "s2", status: "idle" }));
+    await waitFor(() => expect(shell.count("session_send")).toBe(1));
+    act(() => shell.emit("session-event", { type: "session-status", id: "s2", status: "idle" }));
+    await act(() => Promise.resolve());
+    expect(shell.count("session_send")).toBe(1);
+
+    act(() => shell.emit("session-event", { type: "session-status", id: "s2", status: "running" }));
+    act(() => shell.emit("session-event", { type: "session-status", id: "s2", status: "idle" }));
+    await waitFor(() => expect(shell.count("session_send")).toBe(2));
+  });
+
+  it("会话删除成功清持久 lane", async () => {
+    localStorage.setItem("mc.lastSession", "s1");
+    localStorage.setItem("mc.sidebarSpace", "local");
+    const target = localSendQueueTarget("s1");
+    updateSendQueueLane(target, (lane) => enqueue(lane, createSendQueueItem("删除时清理", [])));
+    const shell = stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+    render(<App />);
+    await waitFor(() => expect(shell.count("session_open")).toBe(1));
+
+    const menu = contextMenuOf(rowOf("任务一"));
+    await userEvent.click(within(menu).getByText("删除"));
+    await userEvent.click(within(menu).getByText(/确认删除/));
+    await waitFor(() => expect(shell.count("session_delete")).toBe(1));
+    await waitFor(() => expect(localStorage.getItem(localSendQueueKey("s1"))).toBeNull());
+    expect(readSendQueueLane(target).pending).toEqual([]);
+  });
+});
+
 describe("会话操作失败必须外显(壳拒了就别装作成功)", () => {
   it("删除被拒:给出原因,且不撤选中、不重拉(旧 UI 同款:notify 后 return)", async () => {
     localStorage.setItem("mc.lastSession", "s1");
     localStorage.setItem("mc.sidebarSpace", "local");
+    const target = localSendQueueTarget("s1");
+    updateSendQueueLane(target, (lane) => enqueue(lane, createSendQueueItem("失败时保留", [])));
     const shell = stubShell({
       sessions: [sess({ id: "s1", title: "任务一" })],
       fail: { session_delete: "会话正在运行,请先停止" },
@@ -501,6 +562,9 @@ describe("会话操作失败必须外显(壳拒了就别装作成功)", () => {
     expect(rowOf("任务一")).toBeTruthy();
     expect(screen.queryByText("开始一个任务")).toBeNull();
     expect(shell.count("sessions_list")).toBe(listBefore);
+    const retained = readSendQueueLane(target);
+    expect([retained.inFlight?.item.content, ...retained.pending.map((item) => item.content)]).toContain("失败时保留");
+    expect(localStorage.getItem(localSendQueueKey("s1"))).not.toBeNull();
   });
 
   it("归档 / 重命名被拒:各自给出原因", async () => {
@@ -672,6 +736,38 @@ describe("新建入口", () => {
 });
 
 describe("点格与任务列联动(2026-08-19)", () => {
+  it("云端删除失败时 App 保留 runtime lane 与用户队列", async () => {
+    const target = cloudSendQueueTarget("h|u", "ct-delete");
+    writeSendQueueLane(target, enqueue(readSendQueueLane(target), createSendQueueItem("稍后发送", [])));
+    stubShell({
+      cloudTasks: [{ id: "ct-delete", title: "待删云端任务", status: "processing" }],
+      fail: { mc_task_delete: "仍有资源占用" },
+    });
+    render(<App />);
+    await userEvent.click(screen.getByRole("tab", { name: "云端" }));
+    const row = (await screen.findByText("待删云端任务")).closest("a") as HTMLElement;
+    fireEvent.contextMenu(row);
+    const menu = document.body.lastElementChild as HTMLElement;
+    await userEvent.click(within(menu).getByText("删除任务"));
+    await userEvent.click(within(menu).getByText("确认删除"));
+    await waitFor(() => expect(readSendQueueLane(target).pending).toHaveLength(1));
+  });
+
+  it("云端删除成功后 App 统一 dropTask 清 lane/index 并弹出工作台格", async () => {
+    const target = cloudSendQueueTarget("h|u", "ct-delete-ok");
+    writeSendQueueLane(target, enqueue(readSendQueueLane(target), createSendQueueItem("稍后发送", [])));
+    stubShell({ cloudTasks: [{ id: "ct-delete-ok", title: "可删云端任务", status: "processing" }] });
+    render(<App />);
+    await userEvent.click(screen.getByRole("tab", { name: "云端" }));
+    const row = (await screen.findByText("可删云端任务")).closest("a") as HTMLElement;
+    fireEvent.contextMenu(row);
+    const menu = document.body.lastElementChild as HTMLElement;
+    await userEvent.click(within(menu).getByText("删除任务"));
+    await userEvent.click(within(menu).getByText("确认删除"));
+    await waitFor(() => expect(readSendQueueLane(target).pending).toHaveLength(0));
+    expect(screen.getByRole("region", { name: "第 1 格" })).toBeTruthy();
+  });
+
   it("云端 tab 下点本地格:tab 切回「本地」", async () => {
     stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
     render(<App />);

@@ -355,11 +355,12 @@ impl Inner {
     }
 
     /// task_notification 收尾后台代理:按 agent_id 反查父卡,Result 正文
-    /// 回填工具卡终态(error → failed 帧),子会话按终态关闭,对话流落
-    /// 一条 📌 系统行(task_note 帧,独立渲染项不混模型气泡)。反查不到
+    /// 回填工具卡终态(error → failed 帧),子会话按终态关闭。结构化
+    /// 通知帧由 normalize 落到通知实际到达的会话,避免反查成功时重复。
+    /// 反查不到
     /// (壳重启丢登记/SendMessage 续跑的二次完成/旧引擎)返回 false,
-    /// 调用方整段外显兜底。
-    pub(super) fn background_agent_finished(&self, data: &Value, msg: &str) -> bool {
+    /// 调用方仍会落结构化结果帧。
+    pub(super) fn background_agent_finished(&self, data: &Value, result: &str) -> bool {
         let get = |k: &str| data.get(k).and_then(|v| v.as_str()).unwrap_or("");
         let agent_id = get("agent_id");
         if agent_id.is_empty() {
@@ -371,7 +372,6 @@ impl Inner {
             return false;
         };
         let status = get("status");
-        let result = notification_result(msg).unwrap_or_else(|| msg.to_string());
         let child_status = match status {
             "error" => SessionStatus::Error,
             "stopped" => SessionStatus::Interrupted,
@@ -380,18 +380,11 @@ impl Inner {
         // 先冲洗行缓冲/关子会话(残留尾行在终态帧之前落卡),再回填终态
         self.close_subagents_of(&psid, &ptc, child_status);
         if status == "error" {
-            self.push_frame(&psid, |seq| frame::tool_call_failed(&ptc, &result, seq));
+            self.push_frame(&psid, |seq| frame::tool_call_failed(&ptc, result, seq));
         } else {
-            let images = super::normalize::extract_upload_paths(&result);
-            self.push_frame(&psid, |seq| frame::tool_call_completed(&ptc, &result, &images, seq));
+            let images = super::normalize::extract_upload_paths(result);
+            self.push_frame(&psid, |seq| frame::tool_call_completed(&ptc, result, &images, seq));
         }
-        let label = agent_label(get("name"), get("description"), agent_id);
-        let note = match status {
-            "error" => format!("📌 后台代理 {label} 执行失败,详情见其任务卡"),
-            "stopped" => format!("📌 后台代理 {label} 已停止"),
-            _ => format!("📌 后台代理 {label} 已完成,结果已回填其任务卡"),
-        };
-        self.push_frame(&psid, |seq| frame::task_note(&note, seq));
         true
     }
 }
@@ -409,7 +402,7 @@ fn agent_label(name: &str, desc: &str, agent_id: &str) -> String {
 /// 从 task_notification 渲染消息里取 Result 正文。形状对表引擎
 /// notification.go::Render(固定:<task-notification>\n…\nResult:\n{正文}
 /// \n</task-notification>);解析不出返回 None,调用方退回全文。
-fn notification_result(msg: &str) -> Option<String> {
+pub(super) fn notification_result(msg: &str) -> Option<String> {
     let body = strip_notification_tags(msg);
     let idx = body.find("\nResult:\n")?;
     Some(body[idx + "\nResult:\n".len()..].trim().to_string())
