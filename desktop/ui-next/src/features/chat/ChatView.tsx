@@ -7,7 +7,7 @@
 // 大纲跳转:锚(data-user-seq)不在 DOM 时按条目 offset 走 ensureLoaded
 // 精确补页(session_history 以 offset 为终点,不盲翻),补页提交前的空窗
 // 用短时重试兜；当前项由虚拟高度索引 O(1) 反查最近的用户行。
-import { IconAlertTriangle, IconDots, IconFolderOpen, IconPencil, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconDots, IconFolderOpen, IconPencil } from "@tabler/icons-react";
 import {
   useCallback,
   useEffect,
@@ -35,9 +35,9 @@ import {
 } from "@/lib/util/scrollAnchor";
 import { renameIsNoop } from "@/lib/util/rename";
 import { createImeGuard } from "@/lib/util/slash";
-import { useEscLayer } from "@/lib/util/escLayer";
 import { useDismiss } from "@/lib/util/useDismiss";
 import { LocalComposerHost, type LocalComposerHandle } from "./composer/LocalComposerHost";
+import { DetailModal } from "./DetailModal";
 import { LogList, type LogListHandle } from "./LogList";
 import { OutlineNav, useOutlineEntries } from "./OutlineNav";
 import { TaskPanel } from "./TaskPanel";
@@ -1164,48 +1164,24 @@ export function ChatView({
 function ChildSessionModal({ id, workdir, onClose }: { id: string; workdir?: string; onClose: () => void }) {
   const { t } = useI18n();
   const { state } = useSessionFeed(id);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  // Esc 走统一层栈(lib/util/escLayer):浮层挂载时才入栈,层序保证它压过
-  // 视图级 Esc;返回 true = 消费即截断,不许漏给冒泡阶段的全局审批热键
-  // (esc = deny 不可逆)。自己挂 window capture 的老写法被层栈取代,理由
-  // 见 escLayer 头注:同阶段同 target 按**注册先后**触发,浮层永远输给
-  // 挂载即注册的视图级监听
-  useEscLayer(
-    true,
-    useCallback(() => {
-      onCloseRef.current();
-      return true;
-    }, []),
-  );
   // useCallback 稳定引用:LogList 已 memo,浮层每收一批帧就重渲染,内联箭头
   // 会把整列消息(每张工具卡的 effect)一起拖着重跑——主路径为此早就用了
   // useCallback(见上方 uploadUrl/loadFullTool),这里此前漏了
   const uploadUrl = useCallback((p: string) => uploadFileURL(id, p), [id]);
   const loadFullTool = useCallback((seq: number) => sessionFrame(id, seq), [id]);
   return (
-    <div className="modal modal-open" role="dialog" aria-label={t("chat.child.title")}>
-      <div className="modal-box flex max-h-[84vh] w-[min(860px,92vw)] max-w-[min(860px,92vw)] flex-col gap-3 p-5">
-        <div className="flex shrink-0 items-center gap-2">
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {t("chat.child.title")} <span className="font-mono text-xs text-base-content/50">{id}</span>
-          </h2>
-
-          <button
-            type="button"
-            aria-label={t("chat.dismiss")}
-            title={t("chat.dismiss")}
-            className="btn btn-ghost btn-square btn-xs"
-            onClick={onClose}
-          >
-            <IconX size={14} stroke={1.75} aria-hidden />
-          </button>
-        </div>
-        <div data-chat-log="" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-          <LogList state={state} sessionId={id} readonly uploadUrl={uploadUrl} workdir={workdir} loadFullTool={loadFullTool} />
-        </div>
+    <DetailModal
+      ariaLabel={t("chat.child.title")}
+      title={
+        <>
+          {t("chat.child.title")} <span className="font-mono text-xs text-base-content/50">{id}</span>
+        </>
+      }
+      onClose={onClose}
+    >
+      <div data-chat-log="" className="h-full">
+        <LogList state={state} sessionId={id} readonly uploadUrl={uploadUrl} workdir={workdir} loadFullTool={loadFullTool} />
       </div>
-      <div className="modal-backdrop cursor-pointer" onClick={onClose} aria-hidden />
-    </div>
+    </DetailModal>
   );
 }

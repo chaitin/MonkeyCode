@@ -5,7 +5,7 @@
 // close_*(工具闭合/轮次收尾时冲洗行缓冲并关闭子会话)。
 // 共享状态定义见 ohmy.rs::Inner。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex as StdMutex;
 
 use serde_json::{json, Value};
@@ -26,11 +26,28 @@ pub(super) struct SubagentRoute {
     pub(super) background: bool,
 }
 
+#[derive(Clone)]
+pub(super) struct AgentOrigin {
+    pub(super) parent_sid: String,
+    pub(super) parent_tc: String,
+}
+
+#[derive(Clone)]
+pub(super) struct ActiveContinuation {
+    pub(super) parent_sid: String,
+    pub(super) parent_tc: String,
+    pub(super) summary: String,
+    pub(super) message: String,
+    /// 同一续跑的同一 child 可能先后发多条事件；重开轮次/挂链接只做一次。
+    pub(super) opened_children: HashSet<String>,
+}
+
 /// 子代理态锁组:子会话路由与 Agent 工具入参/结果暂存。
-/// 含锁:subagents、agent_results、agent_inputs(均 StdMutex)。
+/// 含锁:subagents、agent_results、agent_inputs、agent_names、background_agents、
+/// agent_origins、agent_aliases、child_agents、active_continuations(均 StdMutex)。
 /// 加锁秩序(评审梳理,不得反向):subagents → sessions(SessionsState;
 /// reconcile_all/single_running_workdir 持 subagents 期间读 sessions 表,
-/// 反向嵌套禁止);agent_results/agent_inputs 点状取放,不与其他锁嵌套。
+/// 反向嵌套禁止);agent_results/agent_inputs/agent_names 点状取放,不与其他锁嵌套。
 pub(super) struct SubagentState {
     /// 子代理事件路由(child_sid → 父会话/父 Agent 工具)。上游把子循环事件
     /// 原样转发,session_id 是子循环的随机 id,归属经事件戳记的
@@ -45,13 +62,180 @@ pub(super) struct SubagentState {
     /// 父会话 Agent 工具入参暂存(tc_id → (description, prompt)),
     /// 子会话物化时作标题与首条输入
     pub(super) agent_inputs: StdMutex<HashMap<String, (String, String)>>,
+    /// Agent 工具可选 name 暂存(tc_id → name)，同步 agent_result 建 alias 后清理。
+    pub(super) agent_names: StdMutex<HashMap<String, String>>,
     /// 后台代理登记(agent_id → (父 sid, 父 Agent tc_id)):Agent 工具回
     /// async_launched(显式 run_in_background)时登记,task_notification 按
     /// agent_id 反查父卡回填最终结果并收尾;引擎不再服务时随会话和解清除
     pub(super) background_agents: StdMutex<HashMap<String, (String, String)>>,
+    /// 首次 Agent agent_result/async 应答建立的稳定身份(agent_id → 原始父 Agent 卡)。
+    pub(super) agent_origins: StdMutex<HashMap<String, AgentOrigin>>,
+    /// Agent 输入/应答里的 name，仅在其父会话内作为 SendMessage alias。
+    pub(super) agent_aliases: StdMutex<HashMap<(String, String), String>>,
+    /// 子循环身份跨轮保留；即使 task_notification 已删 route，续跑仍可反查。
+    pub(super) child_agents: StdMutex<HashMap<String, String>>,
+    /// SendMessage 已派发、等待 task_notification 的续跑(agent_id → 当前卡)。
+    pub(super) active_continuations: StdMutex<HashMap<String, ActiveContinuation>>,
 }
 
 impl Inner {
+    fn agent_id_for_origin(&self, parent_sid: &str, parent_tc: &str) -> Option<String> {
+        self.sub.agent_origins.lock_ok().iter()
+            .find(|(_, origin)| origin.parent_sid == parent_sid && origin.parent_tc == parent_tc)
+            .map(|(agent_id, _)| agent_id.clone())
+    }
+
+    /// Agent 获得稳定 agent_id 后统一登记 origin/name alias，并把已认领的
+    /// child route 补绑到该身份。同步 agent_result 与 async_launched 共用。
+    pub(super) fn register_agent_identity(
+        &self,
+        sid: &str,
+        tc_id: &str,
+        agent_id: &str,
+        name: &str,
+    ) {
+        if agent_id.is_empty() || tc_id.is_empty() { return; }
+        self.sub.agent_origins.lock_ok().entry(agent_id.to_string()).or_insert_with(|| AgentOrigin {
+            parent_sid: sid.to_string(), parent_tc: tc_id.to_string(),
+        });
+        if !name.is_empty() {
+            self.sub.agent_aliases.lock_ok()
+                .insert((sid.to_string(), name.to_string()), agent_id.to_string());
+        }
+        let children: Vec<String> = self.sub.subagents.lock_ok().iter()
+            .filter(|(_, route)| route.parent_sid == sid && route.parent_tc == tc_id)
+            .map(|(child, _)| child.clone()).collect();
+        let mut child_agents = self.sub.child_agents.lock_ok();
+        for child in children { child_agents.insert(child, agent_id.to_string()); }
+    }
+
+    /// SendMessage tool_call 一到就建立 provisional 路由。alias 按父会话隔离，
+    /// 避免两个会话恰好都把代理命名为同一个短名时串卡。
+    pub(super) fn register_continuation(&self, sid: &str, tc_id: &str, input: &Value) {
+        let addressed = input.get("agent_id").and_then(Value::as_str)
+            .or_else(|| input.get("to").and_then(Value::as_str)).unwrap_or("");
+        if addressed.is_empty() || tc_id.is_empty() { return; }
+        let agent_id = self.sub.agent_aliases.lock_ok()
+            .get(&(sid.to_string(), addressed.to_string())).cloned()
+            .unwrap_or_else(|| addressed.to_string());
+        let message = input.get("message").and_then(Value::as_str).unwrap_or("").to_string();
+        let summary = input.get("summary").and_then(Value::as_str).filter(|s| !s.is_empty())
+            .unwrap_or("继续执行").to_string();
+        let continuation = ActiveContinuation {
+            parent_sid: sid.to_string(), parent_tc: tc_id.to_string(),
+            summary: summary.clone(), message: message.clone(), opened_children: HashSet::new(),
+        };
+        // 同一 agent 尚有活跃续跑时，引擎会同步拒绝第二次 SendMessage；不能
+        // 让这张注定失败的 provisional 卡覆盖仍在执行的真实 route。
+        self.sub.active_continuations.lock_ok().entry(agent_id).or_insert(continuation);
+        self.sub.agent_inputs.lock_ok().insert(tc_id.to_string(), (summary, message));
+    }
+
+    /// async_launched 是 SendMessage 对目标 agent_id 的权威确认。若 tool_call
+    /// 阶段以 alias 暂存，这里把 active key 换成响应中的真实 id。
+    pub(super) fn confirm_continuation(&self, sid: &str, tc_id: &str, resp: &Value) {
+        let confirmed = resp.get("agentId").and_then(Value::as_str).unwrap_or("");
+        if confirmed.is_empty() { return; }
+        let mut active = self.sub.active_continuations.lock_ok();
+        let provisional = active.iter()
+            .find(|(_, c)| c.parent_sid == sid && c.parent_tc == tc_id)
+            .map(|(agent_id, _)| agent_id.clone());
+        if let Some(provisional) = provisional.filter(|id| id != confirmed) {
+            if let Some(continuation) = active.remove(&provisional) {
+                active.insert(confirmed.to_string(), continuation);
+            }
+        }
+    }
+
+    /// SendMessage 没有真正转后台时撤销该工具卡的 provisional active。
+    pub(super) fn cancel_continuation(&self, sid: &str, tc_id: &str) {
+        self.sub.active_continuations.lock_ok()
+            .retain(|_, c| !(c.parent_sid == sid && c.parent_tc == tc_id));
+        self.sub.agent_inputs.lock_ok().remove(tc_id);
+    }
+
+    /// 在 known-session 判断前调用。续跑子循环仍携带首次 Agent 的旧 parent
+    /// 戳记，因此先用 child identity 或旧 origin 找 agent，再把 route 改绑到
+    /// 当前 SendMessage 卡。返回值仅表示发生了续跑重绑。
+    pub(super) fn prepare_continuation_event(&self, child_sid: &str, event: &mut Value) -> bool {
+        let by_child = self.sub.child_agents.lock_ok().get(child_sid).cloned();
+        let agent_id = by_child.or_else(|| {
+            let parent = event.get("parent_session_id").and_then(Value::as_str).unwrap_or("");
+            let tc = event.get("parent_tool_call_id").and_then(Value::as_str).unwrap_or("");
+            if parent.is_empty() || tc.is_empty() { return None; }
+            self.agent_id_for_origin(&self.shell_sid_of(parent), tc)
+        });
+        let Some(agent_id) = agent_id else { return false };
+        let (continuation, first_for_child) = {
+            let mut active = self.sub.active_continuations.lock_ok();
+            let Some(c) = active.get_mut(&agent_id) else { return false };
+            let first = c.opened_children.insert(child_sid.to_string());
+            (c.clone(), first)
+        };
+        self.sub.child_agents.lock_ok().insert(child_sid.to_string(), agent_id);
+        if let Some(obj) = event.as_object_mut() {
+            obj.insert("parent_session_id".into(), json!(continuation.parent_sid));
+            obj.insert("parent_tool_call_id".into(), json!(continuation.parent_tc));
+            obj.insert("parent_description".into(), json!(continuation.summary));
+        }
+
+        let child_exists = self.sess.sessions.lock_ok().contains_key(child_sid);
+        if !child_exists {
+            // claim_subagent 将按上面重写后的戳记物化；此处若提前插 route，
+            // claim 的幂等快路径会误以为 SessionState 也已经存在。
+            return true;
+        }
+        {
+            let mut routes = self.sub.subagents.lock_ok();
+            match routes.get_mut(child_sid) {
+                Some(route) => {
+                    route.parent_sid = continuation.parent_sid.clone();
+                    route.parent_tc = continuation.parent_tc.clone();
+                    route.background = true;
+                    route.line_buf.clear();
+                }
+                None => { routes.insert(child_sid.to_string(), SubagentRoute {
+                    parent_sid: continuation.parent_sid.clone(), parent_tc: continuation.parent_tc.clone(),
+                    line_buf: String::new(), background: true,
+                }); }
+            }
+        }
+        if !first_for_child { return true; }
+        let reopened = {
+            let mut sessions = self.sess.sessions.lock_ok();
+            let Some(child) = sessions.get_mut(child_sid) else { return true };
+            if child.running { false } else {
+                child.running = true;
+                child.compacting = false;
+                child.manual_compact = false;
+                child.terminal_error_seen = false;
+                child.cancel_requested_turn = None;
+                child.open_tools.clear();
+                child.model_text.clear();
+                child.last_event_seq = 0;
+                child.turn += 1;
+                child.title = continuation.summary.clone();
+                true
+            }
+        };
+        if reopened {
+            if !continuation.message.is_empty() {
+                self.push_frame(child_sid, |seq| frame::user_input(&continuation.message, seq));
+            }
+            self.push_frame(child_sid, frame::task_started);
+            self.write_sidecar(child_sid, |m| {
+                m["parent"] = json!(continuation.parent_sid);
+                m["title"] = json!(continuation.summary);
+                m["status"] = json!(SessionStatus::Running.as_str());
+            });
+        }
+        self.push_frame(&continuation.parent_sid, |seq| frame::tool_call_progress(
+            &continuation.parent_tc,
+            json!({ "kind": "child_session", "childSessionId": child_sid }), seq,
+        ));
+        true
+    }
+
     /// 子代理认领 + 物化。上游 dab1b85 起事件自带 parent_session_id/
     /// parent_tool_call_id,精确认领;无戳记的事件**不认领**(旧的"运行中
     /// 且持有未闭合 Agent 工具的会话"猜测启发式已删——并发多 Agent 时会
@@ -155,15 +339,18 @@ impl Inner {
         });
         // 认领晚于 async_launched 的情形(后台子代理首个转发事件稍后才到):
         // 登记表已有该父工具的后台标记,路由生来即后台,跨轮存活
-        let background = self
-            .sub.background_agents
-            .lock_ok()
-            .values()
+        let explicitly_background = self.sub.background_agents.lock_ok().values()
             .any(|(s, tc)| s == &psid && tc == &ptc);
+        let continuing = self.sub.active_continuations.lock_ok().values()
+            .any(|c| c.parent_sid == psid && c.parent_tc == ptc);
+        let background = explicitly_background || continuing;
         self.sub.subagents.lock_ok().insert(
             child_sid.to_string(),
             SubagentRoute { parent_sid: psid.clone(), parent_tc: ptc.clone(), line_buf: String::new(), background },
         );
+        if let Some(agent_id) = self.agent_id_for_origin(&psid, &ptc) {
+            self.sub.child_agents.lock_ok().insert(child_sid.to_string(), agent_id);
+        }
         // 子会话回放形状与主会话一致:user-input(任务)→ task-started → …
         if !prompt.is_empty() {
             self.push_frame(child_sid, |seq| frame::user_input(&prompt, seq));
@@ -302,6 +489,7 @@ impl Inner {
             self.close_child(&child, status);
         }
         self.sub.agent_inputs.lock_ok().remove(tc_id);
+        self.sub.agent_names.lock_ok().remove(tc_id);
     }
 
     /// 会话轮次结束/和解:子代理路由失效,残留子会话按 status 收尾。
@@ -324,6 +512,15 @@ impl Inner {
         }
         if include_background {
             self.sub.background_agents.lock_ok().retain(|_, (s, _)| s != sid);
+            let continuation_tcs: Vec<String> = {
+                let mut active = self.sub.active_continuations.lock_ok();
+                let tcs = active.values().filter(|c| c.parent_sid == sid)
+                    .map(|c| c.parent_tc.clone()).collect();
+                active.retain(|_, c| c.parent_sid != sid);
+                tcs
+            };
+            let mut inputs = self.sub.agent_inputs.lock_ok();
+            for tc in continuation_tcs { inputs.remove(&tc); }
         }
     }
 
@@ -339,6 +536,10 @@ impl Inner {
             self.sub.background_agents
                 .lock_ok()
                 .insert(agent_id.to_string(), (sid.to_string(), tc_id.to_string()));
+            let input_name = self.sub.agent_names.lock_ok().remove(tc_id).unwrap_or_default();
+            let response_name = get("name");
+            let name = if response_name.is_empty() { input_name.as_str() } else { response_name };
+            self.register_agent_identity(sid, tc_id, agent_id, name);
         }
         if let Some(r) = self
             .sub.subagents
@@ -348,6 +549,13 @@ impl Inner {
         {
             r.background = true;
         }
+        self.push_frame(sid, |seq| {
+            frame::tool_call_progress(
+                tc_id,
+                serde_json::json!({ "kind": "background_agent", "agentId": agent_id, "status": "running" }),
+                seq,
+            )
+        });
         let label = agent_label(get("name"), get("description"), agent_id);
         let text =
             format!("⏳ 子代理已转入后台继续执行({label}),完成后结果将回填此卡,并在对话流以 📌 通知");
@@ -385,6 +593,23 @@ impl Inner {
             let images = super::normalize::extract_upload_paths(result);
             self.push_frame(&psid, |seq| frame::tool_call_completed(&ptc, result, &images, seq));
         }
+        true
+    }
+
+    /// 续跑通知只负责关闭当前 route/child 并清 active；完整结果由统一的
+    /// task_notification 独立结果卡承载，不能再次灌进 SendMessage 卡。
+    pub(super) fn continuation_finished(&self, data: &Value) -> bool {
+        let agent_id = data.get("agent_id").and_then(Value::as_str).unwrap_or("");
+        if agent_id.is_empty() { return false; }
+        let Some(continuation) = self.sub.active_continuations.lock_ok().remove(agent_id) else {
+            return false;
+        };
+        let status = match data.get("status").and_then(Value::as_str).unwrap_or("") {
+            "error" => SessionStatus::Error,
+            "stopped" => SessionStatus::Interrupted,
+            _ => SessionStatus::Finished,
+        };
+        self.close_subagents_of(&continuation.parent_sid, &continuation.parent_tc, status);
         true
     }
 }

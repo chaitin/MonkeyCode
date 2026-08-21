@@ -240,6 +240,36 @@ describe("工具卡", () => {
     expect(screen.queryByText("已允许")).toBeNull();
   });
 
+  it("后台派发卡在标题行显示运行状态，过程详情只在弹窗展示", async () => {
+    const feed: ToolItem["feed"] = [
+      { kind: "tool", id: "a", title: "Read", rawInput: { file_path: "/w/a.ts" }, status: "ok" },
+      { kind: "text", text: "正在继续检查" },
+    ];
+    render(
+      <ToolCard
+        item={{
+          ...BASE,
+          title: "SendMessage",
+          status: "run",
+          background: true,
+          outKey: "chat.tool.bgRunning",
+          feed,
+          lastLine: "等待下一步",
+        }}
+        sessionId="s1"
+      />,
+    );
+    expect(screen.getByText("后台运行中")).toBeTruthy();
+    expect(screen.queryByText("正在继续检查")).toBeNull();
+    expect(screen.queryByText("等待下一步")).toBeNull();
+
+    expect(screen.getByRole("button", { name: "查看子代理详情" })).toBeTruthy();
+    await userEvent.click(screen.getByText("后台运行中"));
+    expect(screen.getByRole("dialog", { name: "子代理详情" })).toBeTruthy();
+    expect(screen.getByText("正在继续检查")).toBeTruthy();
+    expect(screen.getByText("等待下一步")).toBeTruthy();
+  });
+
   it("childSessionId + onOpenChild:头部出「查看子会话」入口并回传 id", async () => {
     const opened: string[] = [];
     render(<ToolCard item={{ ...BASE, childSessionId: "c1" }} sessionId="s1" onOpenChild={(id) => opened.push(id)} />);
@@ -252,21 +282,35 @@ describe("工具卡", () => {
     expect(screen.queryByRole("button", { name: "查看子会话" })).toBeNull();
   });
 
-  it("子会话入口缺席但有结果:「查看结果/收起结果」切换,结果走 Markdown", async () => {
+  it("子会话入口缺席但有结果:点击后台卡打开弹窗，不在卡内展开 Markdown", async () => {
     const item: ToolItem = { ...BASE, title: "Agent 调查代码", status: "ok", background: true, result: "**结论**:一切正常" };
-    render(<ToolCard item={item} sessionId="s1" />);
+    const { container } = render(<ToolCard item={item} sessionId="s1" />);
     expect(screen.queryByText("结论")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "查看结果" }));
-    expect(screen.getByText("结论")).toBeTruthy(); // Markdown 加粗节点
-    await userEvent.click(screen.getByRole("button", { name: "收起结果" }));
-    expect(screen.queryByText("结论")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "查看子代理详情" }));
+    expect(screen.getByRole("dialog", { name: "子代理详情" })).toBeTruthy();
+    expect(screen.getByText("结论")).toBeTruthy();
+    expect(container.querySelector(".markdown-body")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog", { name: "子代理详情" })).toBeNull();
   });
 
-  it("有子会话入口时不出「查看结果」兜底(结果统一从子会话看)", () => {
-    const item: ToolItem = { ...BASE, title: "Agent 调查代码", status: "ok", childSessionId: "c1", result: "结论文本" };
-    render(<ToolCard item={item} sessionId="s1" onOpenChild={() => {}} />);
-    expect(screen.getByRole("button", { name: "查看子会话" })).toBeTruthy();
+  it("有子会话入口时不出结果兜底，后台卡直接打开真实子会话弹窗", async () => {
+    const opened: string[] = [];
+    const item: ToolItem = {
+      ...BASE,
+      title: "SendMessage",
+      status: "run",
+      background: true,
+      childSessionId: "c1",
+      result: "结论文本",
+    };
+    render(<ToolCard item={item} sessionId="s1" onOpenChild={(id) => opened.push(id)} />);
+    await userEvent.click(screen.getByRole("button", { name: "查看子会话" }));
+    expect(opened).toEqual(["c1"]);
     expect(screen.queryByRole("button", { name: "查看结果" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "子代理详情" })).toBeNull();
   });
 
   it("report_findings:渲染结构化发现列表", () => {

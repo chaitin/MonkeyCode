@@ -16,7 +16,7 @@ const COMPLETED: BackgroundAgentResultItem = {
 };
 
 describe("BackgroundAgentResultCard", () => {
-  it("收起态仅显示单行标题、状态与描述，点击后渲染完整 Markdown", async () => {
+  it("卡片仅显示单行摘要，点击后在弹窗渲染完整 Markdown", async () => {
     const user = userEvent.setup();
     render(<BackgroundAgentResultCard item={COMPLETED} />);
 
@@ -27,8 +27,9 @@ describe("BackgroundAgentResultCard", () => {
     expect(screen.queryByText("第一条摘要")).toBeNull();
     expect(screen.queryByText("完整内容")).toBeNull();
 
-    await user.click(screen.getByRole("button", { expanded: false }));
+    await user.click(screen.getByRole("button", { name: /子代理结果/ }));
 
+    expect(screen.getByRole("dialog", { name: "子代理结果" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "第一条摘要", level: 2 })).toBeTruthy();
     expect(screen.getByText("完整内容")).toBeTruthy();
   });
@@ -43,7 +44,7 @@ describe("BackgroundAgentResultCard", () => {
     expect(screen.getByText("执行失败")).toBeTruthy();
   });
 
-  it("展开后可复制完整结果", async () => {
+  it("弹窗中可复制完整结果，并可用 Esc 关闭", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
@@ -51,11 +52,14 @@ describe("BackgroundAgentResultCard", () => {
 
     try {
       render(<BackgroundAgentResultCard item={COMPLETED} />);
-      await user.click(screen.getByRole("button", { expanded: false }));
+      await user.click(screen.getByRole("button", { name: /子代理结果/ }));
       await user.click(screen.getByRole("button", { name: "复制结果" }));
 
       await waitFor(() => expect(writeText).toHaveBeenCalledWith(COMPLETED.result));
       expect(screen.getByRole("button", { name: "结果已复制" })).toBeTruthy();
+
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog", { name: "子代理结果" })).toBeNull();
     } finally {
       if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
       else delete (navigator as unknown as { clipboard?: unknown }).clipboard;

@@ -5,6 +5,7 @@ import { Markdown } from "@/components/markdown/Markdown";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import type { BackgroundAgentResultItem } from "@/lib/protocol/types";
 import { copyText } from "@/lib/util/clipboard";
+import { DetailModal } from "../DetailModal";
 import { statusDot, type DotTone } from "./statusDot";
 
 interface StatusPresentation {
@@ -51,7 +52,7 @@ export function BackgroundAgentResultCard({
   onLocalLink?: (path: string) => void;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const status = presentStatus(item.status);
   const summary = resultSummary(item.result);
@@ -70,8 +71,8 @@ export function BackgroundAgentResultCard({
       <button
         type="button"
         className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-start text-xs"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        aria-haspopup="dialog"
+        onClick={() => setDialogOpen(true)}
       >
         <span aria-hidden className={`shrink-0 ${statusDot(status.tone)}`} />
         <span className="shrink-0">{t("chat.backgroundResult.label")}</span>
@@ -83,21 +84,31 @@ export function BackgroundAgentResultCard({
           size={12}
           stroke={1.75}
           aria-hidden
-          className={`shrink-0 text-base-content/40 transition-transform ${open ? "rotate-90" : ""}`}
+          className="shrink-0 text-base-content/40"
         />
       </button>
 
-      {open && (
-        <div className="mx-3 mb-2 border-s-2 border-base-300 ps-3 text-sm">
-          <div className="mb-2 text-xs text-base-content/50">{name}</div>
-          <Markdown source={item.result} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />
-          <div className="mt-2 flex justify-end">
-            <button type="button" className="btn btn-ghost btn-xs gap-1" onClick={copyResult}>
-              {copied ? <IconCheck size={14} aria-hidden /> : <IconCopy size={14} aria-hidden />}
-              {copied ? t("chat.backgroundResult.copied") : t("chat.backgroundResult.copy")}
-            </button>
+      {dialogOpen && (
+        <DetailModal
+          ariaLabel={t("chat.backgroundResult.label")}
+          title={
+            <>
+              {t("chat.backgroundResult.label")} <span className="text-xs font-normal text-base-content/50">{target}</span>
+            </>
+          }
+          onClose={() => setDialogOpen(false)}
+        >
+          <div className="text-sm">
+            <div className="mb-3 text-xs text-base-content/50">{name}</div>
+            <Markdown source={item.result} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />
+            <div className="mt-3 flex justify-end">
+              <button type="button" className="btn btn-ghost btn-xs gap-1" onClick={copyResult}>
+                {copied ? <IconCheck size={14} aria-hidden /> : <IconCopy size={14} aria-hidden />}
+                {copied ? t("chat.backgroundResult.copied") : t("chat.backgroundResult.copy")}
+              </button>
+            </div>
           </div>
-        </div>
+        </DetailModal>
       )}
     </section>
   );

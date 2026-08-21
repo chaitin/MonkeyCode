@@ -1096,7 +1096,12 @@ fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
             subagents: StdMutex::new(HashMap::new()),
             agent_results: StdMutex::new(HashMap::new()),
             agent_inputs: StdMutex::new(HashMap::new()),
+            agent_names: StdMutex::new(HashMap::new()),
             background_agents: StdMutex::new(HashMap::new()),
+            agent_origins: StdMutex::new(HashMap::new()),
+            agent_aliases: StdMutex::new(HashMap::new()),
+            child_agents: StdMutex::new(HashMap::new()),
+            active_continuations: StdMutex::new(HashMap::new()),
         },
         models: vec![],
         data_dir,
@@ -1202,6 +1207,17 @@ fn browser_context_resolves_explicit_sessions_without_rejecting_concurrency() {
     inner.sess.sessions.lock().unwrap().get_mut("s1").unwrap().running = false;
     inner.sub.background_agents.lock().unwrap()
         .insert("agent-1".into(), ("s1".into(), "tc-1".into()));
+    assert_eq!(driver.single_running_workdir().as_deref(), Some("/workspace/one"));
+    assert!(driver.has_running_sessions());
+
+    // SendMessage 尚未收到通知且还没有 child 事件时，active continuation
+    // 同样是运行真值，不能被维护重启打断。
+    inner.sub.background_agents.lock().unwrap().clear();
+    inner.register_continuation(
+        "s1",
+        "send-1",
+        &json!({ "agent_id": "agent-1", "message": "继续" }),
+    );
     assert_eq!(driver.single_running_workdir().as_deref(), Some("/workspace/one"));
     assert!(driver.has_running_sessions());
 }
@@ -2183,9 +2199,19 @@ fn send_message_async_launched_closes_dispatch_card_with_friendly_text() {
         "data": { "tool": "SendMessage", "content": async_launched_json("a1", "bd", "继续执行"), "is_error": false }
     }));
 
-    let completed = journal_frames(&inner, "s1")
+    let updates: Vec<Value> = journal_frames(&inner, "s1").iter().filter_map(acp_update).collect();
+    let running = updates
         .iter()
-        .filter_map(acp_update)
+        .find(|u| {
+            u.get("toolCallId").and_then(Value::as_str) == Some("sm1")
+                && u.pointer("/progress/kind").and_then(Value::as_str) == Some("background_agent")
+        })
+        .expect("SendMessage 未生成后台运行状态");
+    assert_eq!(running.pointer("/progress/agentId").and_then(Value::as_str), Some("a1"));
+    assert_eq!(running.pointer("/progress/status").and_then(Value::as_str), Some("running"));
+
+    let completed = updates
+        .iter()
         .find(|u| {
             u.get("sessionUpdate").and_then(Value::as_str) == Some("tool_call_update")
                 && u.get("toolCallId").and_then(Value::as_str) == Some("sm1")
@@ -2197,6 +2223,312 @@ fn send_message_async_launched_closes_dispatch_card_with_friendly_text() {
     assert!(!output.contains("async_launched"));
     assert!(inner.sub.background_agents.lock().unwrap().is_empty());
     assert!(inner.sess.sessions.lock().unwrap()["s1"].open_tools.is_empty());
+}
+
+fn register_finished_agent(inner: &Arc<Inner>, tc: &str, agent_id: &str, name: &str) {
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": tc,
+        "data": { "name": "Agent", "input": { "description": format!("任务-{name}"), "prompt": "首次任务", "name": name } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": tc,
+        "data": { "tool": "Agent", "content": async_launched_json(agent_id, name, &format!("任务-{name}")), "is_error": false }
+    }));
+    inner.handle_event(json!({ "type": "task_notification", "session_id": "s1", "data": {
+        "agent_id": agent_id, "name": name, "description": format!("任务-{name}"), "status": "completed",
+        "message": notification_message(agent_id, name, &format!("任务-{name}"), "completed", "首次完成")
+    }}));
+}
+
+#[test]
+fn send_message_continuation_reopens_existing_child_and_routes_early_events() {
+    let inner = bare_inner("send-message-rebind-existing");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "agent-tc",
+        "data": { "name": "Agent", "input": { "description": "初次调查", "prompt": "首次任务", "name": "researcher" } }
+    }));
+    // 首轮 child 在 Agent async 应答前已出现；应答需补齐 child → agent identity。
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "child-existing", "tool_call_id": "read-1",
+        "parent_session_id": "s1", "parent_tool_call_id": "agent-tc",
+        "data": { "name": "Read", "input": { "file_path": "a.rs" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "agent-tc",
+        "data": { "tool": "Agent", "content": async_launched_json("agent-1", "researcher", "初次调查"), "is_error": false }
+    }));
+    inner.handle_event(json!({ "type": "task_notification", "session_id": "s1", "data": {
+        "agent_id": "agent-1", "name": "researcher", "description": "初次调查", "status": "completed",
+        "message": notification_message("agent-1", "researcher", "初次调查", "completed", "首次完成")
+    }}));
+    assert!(!inner.sess.sessions.lock().unwrap()["child-existing"].running);
+
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "send-tc",
+        "data": { "name": "SendMessage", "input": { "to": "researcher", "message": "继续检查测试", "summary": "检查测试" } }
+    }));
+    // 续跑事件故意早于 SendMessage tool_result，且仍带首次 Agent 的旧 tc。
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "child-existing", "tool_call_id": "bash-2",
+        "parent_session_id": "s1", "parent_tool_call_id": "agent-tc",
+        "data": { "name": "Bash", "input": { "command": "cargo test" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "child-existing", "tool_call_id": "bash-2",
+        "parent_session_id": "s1", "parent_tool_call_id": "agent-tc",
+        "data": { "tool": "Bash", "content": "ok", "is_error": false }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "send-tc",
+        "data": { "tool": "SendMessage", "content": async_launched_json("agent-1", "researcher", "检查测试"), "is_error": false }
+    }));
+
+    let route = inner
+        .sub
+        .subagents
+        .lock()
+        .unwrap()
+        .get("child-existing")
+        .map(|r| (r.parent_sid.clone(), r.parent_tc.clone(), r.background));
+    assert_eq!(route, Some(("s1".into(), "send-tc".into(), true)));
+    let child = &inner.sess.sessions.lock().unwrap()["child-existing"];
+    assert!(child.running);
+    assert_eq!(child.turn, 2, "终态 child 应只重开一轮");
+    let routed_statuses: Vec<String> = journal_frames(&inner, "s1")
+        .iter()
+        .filter_map(acp_update)
+        .filter(|u| {
+            u.get("toolCallId").and_then(Value::as_str) == Some("send-tc")
+                && u.pointer("/progress/id").and_then(Value::as_str) == Some("bash-2")
+        })
+        .filter_map(|u| u.pointer("/progress/status").and_then(Value::as_str).map(String::from))
+        .collect();
+    assert_eq!(
+        routed_statuses,
+        vec!["run", "ok"],
+        "续跑 tool_call/tool_result 未投喂当前 SendMessage 卡"
+    );
+    let child_types: Vec<String> = journal_frames(&inner, "child-existing")
+        .iter()
+        .filter_map(|f| f.get("type").and_then(Value::as_str).map(String::from))
+        .collect();
+    assert_eq!(
+        child_types
+            .iter()
+            .filter(|t| t.as_str() == "task-started")
+            .count(),
+        2
+    );
+    assert_eq!(
+        child_types
+            .iter()
+            .filter(|t| t.as_str() == "user-input")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn synchronous_agent_result_registers_name_for_early_continuation_events() {
+    let inner = bare_inner("send-message-rebind-sync-agent");
+    inner.transport.engine_caps.lock().unwrap().insert("structuredToolResult".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "sync-origin",
+        "data": { "name": "Agent", "input": {
+            "description": "同步调查", "prompt": "首次同步任务", "name": "sync-worker"
+        } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "sync-child", "tool_call_id": "read-first",
+        "parent_session_id": "s1", "parent_tool_call_id": "sync-origin",
+        "data": { "name": "Read", "input": { "file_path": "first.rs" } }
+    }));
+    // 同步 Agent 不走 background_agent_launched；agent_result 的 agentId 必须
+    // 结合 tool_call 暂存的 name 建立 origin/alias/child identity。
+    inner.handle_event(json!({
+        "type": "agent_result", "session_id": "s1", "tool_call_id": "sync-origin",
+        "data": { "agentId": "sync-agent-1", "status": "completed", "content": "首次同步完成" }
+    }));
+    assert_eq!(
+        inner.sub.agent_aliases.lock().unwrap()
+            .get(&("s1".to_string(), "sync-worker".to_string())).map(String::as_str),
+        Some("sync-agent-1")
+    );
+    assert_eq!(
+        inner.sub.child_agents.lock().unwrap().get("sync-child").map(String::as_str),
+        Some("sync-agent-1")
+    );
+    assert!(inner.sub.agent_names.lock().unwrap().is_empty());
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "sync-origin",
+        "data": { "tool": "Agent", "content": "截断结果", "is_error": false }
+    }));
+    assert!(!inner.sess.sessions.lock().unwrap()["sync-child"].running);
+
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "sync-send",
+        "data": { "name": "SendMessage", "input": {
+            "to": "sync-worker", "message": "继续同步调查", "summary": "同步续跑"
+        } }
+    }));
+    // 两条续跑过程事件都早于 SendMessage async_launched tool_result。
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "sync-child", "tool_call_id": "bash-next",
+        "parent_session_id": "s1", "parent_tool_call_id": "sync-origin",
+        "data": { "name": "Bash", "input": { "command": "cargo test" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "sync-child", "tool_call_id": "bash-next",
+        "parent_session_id": "s1", "parent_tool_call_id": "sync-origin",
+        "data": { "tool": "Bash", "content": "ok", "is_error": false }
+    }));
+    let statuses: Vec<String> = journal_frames(&inner, "s1").iter().filter_map(acp_update)
+        .filter(|u| u.get("toolCallId").and_then(Value::as_str) == Some("sync-send")
+            && u.pointer("/progress/id").and_then(Value::as_str) == Some("bash-next"))
+        .filter_map(|u| u.pointer("/progress/status").and_then(Value::as_str).map(String::from))
+        .collect();
+    assert_eq!(statuses, vec!["run", "ok"]);
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "sync-send",
+        "data": { "tool": "SendMessage", "content": async_launched_json(
+            "sync-agent-1", "sync-worker", "同步续跑"
+        ), "is_error": false }
+    }));
+    assert_eq!(inner.sub.subagents.lock().unwrap()["sync-child"].parent_tc, "sync-send");
+}
+
+#[test]
+fn send_message_continuation_claims_first_child_from_old_origin() {
+    let inner = bare_inner("send-message-rebind-first-child");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    register_finished_agent(&inner, "origin-tc", "agent-new-child", "planner");
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "send-new",
+        "data": { "name": "SendMessage", "input": { "to": "planner", "message": "补跑验证", "summary": "补跑验证" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "never-seen-child", "tool_call_id": "glob-1",
+        "parent_session_id": "s1", "parent_tool_call_id": "origin-tc",
+        "data": { "name": "Glob", "input": { "pattern": "**/*.rs" } }
+    }));
+
+    assert_eq!(
+        inner
+            .sub
+            .child_agents
+            .lock()
+            .unwrap()
+            .get("never-seen-child")
+            .map(String::as_str),
+        Some("agent-new-child")
+    );
+    let route = inner
+        .sub
+        .subagents
+        .lock()
+        .unwrap()
+        .get("never-seen-child")
+        .map(|r| (r.parent_tc.clone(), r.background));
+    assert_eq!(route, Some(("send-new".into(), true)));
+    assert_eq!(
+        inner.sess.sessions.lock().unwrap()["never-seen-child"].turn,
+        1
+    );
+}
+
+#[test]
+fn concurrent_agent_continuations_do_not_cross_send_message_cards() {
+    let inner = bare_inner("send-message-rebind-isolated");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    register_finished_agent(&inner, "origin-a", "agent-a", "alice");
+    register_finished_agent(&inner, "origin-b", "agent-b", "bob");
+    inner.handle_event(
+        json!({ "type": "tool_call", "session_id": "s1", "tool_call_id": "send-a",
+        "data": { "name": "SendMessage", "input": { "to": "alice", "message": "A继续" } } }),
+    );
+    inner.handle_event(
+        json!({ "type": "tool_call", "session_id": "s1", "tool_call_id": "send-b",
+        "data": { "name": "SendMessage", "input": { "to": "bob", "message": "B继续" } } }),
+    );
+    inner.handle_event(json!({ "type": "error", "session_id": "child-a",
+        "parent_session_id": "s1", "parent_tool_call_id": "origin-a", "data": { "error": "A错误" } }));
+    inner.handle_event(json!({ "type": "tool_call", "session_id": "child-b", "tool_call_id": "b-tool",
+        "parent_session_id": "s1", "parent_tool_call_id": "origin-b", "data": { "name": "Read", "input": {} } }));
+
+    let routes = inner.sub.subagents.lock().unwrap();
+    assert_eq!(routes["child-a"].parent_tc, "send-a");
+    assert_eq!(routes["child-b"].parent_tc, "send-b");
+}
+
+#[test]
+fn continuation_notification_clears_active_route_without_result_backfill() {
+    let inner = bare_inner("send-message-rebind-finish");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    register_finished_agent(&inner, "origin-f", "agent-f", "finisher");
+    inner.handle_event(
+        json!({ "type": "tool_call", "session_id": "s1", "tool_call_id": "send-f",
+        "data": { "name": "SendMessage", "input": { "to": "finisher", "message": "继续收尾" } } }),
+    );
+    inner.handle_event(json!({ "type": "tool_call", "session_id": "child-f", "tool_call_id": "tool-f",
+        "parent_session_id": "s1", "parent_tool_call_id": "origin-f", "data": { "name": "Read", "input": {} } }));
+    inner.handle_event(json!({ "type": "tool_result", "session_id": "s1", "tool_call_id": "send-f",
+        "data": { "tool": "SendMessage", "content": async_launched_json("agent-f", "finisher", "继续收尾"), "is_error": false } }));
+    assert!(inner
+        .sub
+        .active_continuations
+        .lock()
+        .unwrap()
+        .contains_key("agent-f"));
+    inner.handle_event(json!({ "type": "task_notification", "session_id": "s1", "data": {
+        "agent_id": "agent-f", "name": "finisher", "description": "继续收尾", "status": "completed",
+        "message": notification_message("agent-f", "finisher", "继续收尾", "completed", "续跑最终结果")
+    }}));
+
+    assert!(inner.sub.active_continuations.lock().unwrap().is_empty());
+    assert!(!inner.sub.subagents.lock().unwrap().contains_key("child-f"));
+    assert!(!inner.sess.sessions.lock().unwrap()["child-f"].running);
+    let send_finals: Vec<Value> = journal_frames(&inner, "s1")
+        .iter()
+        .filter_map(acp_update)
+        .filter(|u| {
+            u.get("toolCallId").and_then(Value::as_str) == Some("send-f")
+                && u.get("status")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| s != "in_progress")
+        })
+        .collect();
+    assert_eq!(
+        send_finals.len(),
+        1,
+        "通知不得把完整 result 再回填 SendMessage 卡"
+    );
+    assert!(!send_finals[0]
+        .get("rawOutput")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .contains("续跑最终结果"));
 }
 
 /// 后台子代理已流式认领时:async_launched 不把原始 JSON

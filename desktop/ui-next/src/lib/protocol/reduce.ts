@@ -268,6 +268,13 @@ function applyProgress(s: ChatState, tcId: string, p: ToolProgress): ChatState {
     case "child_session":
       patched = { ...prev, childSessionId: p.childSessionId };
       break;
+    case "background_agent":
+      patched = {
+        ...prev,
+        background: true,
+        ...(p.agentId ? { backgroundAgentId: p.agentId } : {}),
+      };
+      break;
     default:
       return s;
   }
@@ -297,7 +304,7 @@ function closeTool(s: ChatState, u: AcpUpdate, timestamp: number | undefined): C
 
   // 这句中文是**引擎的输出内容**(协议嗅探),不是界面文案——不进词典:
   // 翻译了就匹配不上上游了
-  if (raw.includes("子代理已转入后台继续执行")) {
+  if (raw.includes("子代理已转入后台继续执行") || raw.includes("后台代理已继续执行")) {
     // Agent 工具"转后台"的 completed 只是启动回执:卡片视觉上保持运行态,
     // 进度直播照常,真正的终态由后续补发帧回填
     items[idx] = { ...merged, status: "run", outKey: "chat.tool.bgRunning", out: "", result: undefined, lastLine: undefined, background: true };
@@ -507,12 +514,49 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
         u.status !== undefined ||
         u.result !== undefined;
       let base = s;
-      for (let i = s.items.length - 1; i >= 0; i--) {
-        const it = s.items[i];
-        if (!it || it.kind !== "tool" || !it.backgroundNoticePending) continue;
-        const items = s.items.slice();
+      if (structured && u.agentId) {
+        for (let i = base.items.length - 1; i >= 0; i--) {
+          const it = base.items[i];
+          if (
+            !it ||
+            it.kind !== "tool" ||
+            it.status !== "run" ||
+            it.backgroundAgentId !== u.agentId
+          ) {
+            continue;
+          }
+          const failed = u.status === "error" || u.status === "failed" || u.status === "stopped";
+          const durationMs =
+            timestamp !== undefined && it.startedAt !== undefined && timestamp >= it.startedAt
+              ? timestamp - it.startedAt
+              : it.durationMs;
+          const items = base.items.slice();
+          items[i] = {
+            ...it,
+            status: failed ? "fail" : "ok",
+            outKey: failed ? "chat.tool.bgFailed" : "chat.tool.bgDone",
+            out: "",
+            lastLine: undefined,
+            backgroundNoticePending: false,
+            ...(durationMs !== undefined ? { durationMs } : {}),
+          };
+          base = { ...base, items, streamKind: "" };
+          break;
+        }
+      }
+      for (let i = base.items.length - 1; i >= 0; i--) {
+        const it = base.items[i];
+        if (
+          !it ||
+          it.kind !== "tool" ||
+          !it.backgroundNoticePending ||
+          (u.agentId && it.backgroundAgentId && it.backgroundAgentId !== u.agentId)
+        ) {
+          continue;
+        }
+        const items = base.items.slice();
         items[i] = { ...it, backgroundNoticePending: false };
-        base = { ...s, items, streamKind: "" };
+        base = { ...base, items, streamKind: "" };
         break;
       }
       if (structured) {

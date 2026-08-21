@@ -64,7 +64,7 @@ export interface SlashCommand {
 
 /** tool_call_update{status:in_progress} 的执行期进度载荷。 */
 export interface ToolProgress {
-  kind: string; // subagent_tool | subagent_text | output | child_session
+  kind: string; // subagent_tool | subagent_text | output | child_session | background_agent
   id?: string;
   title?: string;
   /** subagent_tool 的完整结构化入参,避免从截断标题反推目标 */
@@ -72,6 +72,8 @@ export interface ToolProgress {
   status?: string; // run | ok | fail
   line?: string;
   childSessionId?: string;
+  /** background_agent:SendMessage 异步续跑目标。 */
+  agentId?: string;
 }
 
 /** 实时任务清单(plan 帧)的一条。 */
@@ -184,8 +186,10 @@ export interface ToolItem {
   lastLine?: string;
   /** 子代理子会话 ID(可打开完整回放) */
   childSessionId?: string;
-  /** Agent 工具已转后台,但子代理本身仍在运行 */
+  /** Agent 工具已转后台,或 SendMessage 派发的续跑仍在执行。 */
   background?: boolean;
+  /** 后台运行目标；用于把 task_notification 精确回写到 SendMessage 卡。 */
+  backgroundAgentId?: string;
   /** 后台终态已回填,等待吞掉紧随其后的重复 task_notification */
   backgroundNoticePending?: boolean;
 }

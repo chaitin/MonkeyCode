@@ -281,6 +281,77 @@ describe("执行期进度(in_progress progress)", () => {
   });
 });
 
+describe("SendMessage 后台续跑", () => {
+  const open = acp({
+    sessionUpdate: "tool_call",
+    toolCallId: "sm1",
+    title: "SendMessage",
+    status: "in_progress",
+    rawInput: { to: "worker", summary: "继续实现" },
+  });
+  const running = acp({
+    sessionUpdate: "tool_call_update",
+    toolCallId: "sm1",
+    status: "in_progress",
+    progress: { kind: "background_agent", agentId: "a1", status: "running" },
+  });
+  const launched = acp({
+    sessionUpdate: "tool_call_update",
+    toolCallId: "sm1",
+    status: "completed",
+    rawOutput: "后台代理已继续执行，完成后将在对话中显示结果卡",
+  });
+
+  it("派发回执保留运行态和 agentId", () => {
+    const s = run([open, running, launched]);
+    expect(toolItem(s, "sm1")).toMatchObject({
+      status: "run",
+      background: true,
+      backgroundAgentId: "a1",
+      outKey: "chat.tool.bgRunning",
+    });
+  });
+
+  it("匹配的完成通知关闭运行卡并在到达位置追加结果卡", () => {
+    const before = acp({ sessionUpdate: "agent_message_chunk", content: { text: "主代理继续工作" } });
+    const notification = acp({
+      sessionUpdate: "task_notification",
+      agentId: "a1",
+      agentName: "worker",
+      description: "继续实现",
+      status: "completed",
+      result: "续跑完成",
+      text: "后台代理已完成",
+    });
+    const s = run([open, running, launched, before, notification]);
+    expect(toolItem(s, "sm1")).toMatchObject({
+      status: "ok",
+      background: true,
+      backgroundAgentId: "a1",
+      outKey: "chat.tool.bgDone",
+    });
+    expect(toolItem(s, "sm1").result).toBeUndefined();
+    expect(s.items.map((it) => it.kind)).toEqual(["tool", "agent", "background-result"]);
+  });
+
+  it("其他 agent 的通知不会关闭当前运行卡", () => {
+    const s = run([
+      open,
+      running,
+      launched,
+      acp({
+        sessionUpdate: "task_notification",
+        agentId: "a2",
+        status: "error",
+        result: "另一个任务失败",
+        text: "后台代理执行失败",
+      }),
+    ]);
+    expect(toolItem(s, "sm1")).toMatchObject({ status: "run", backgroundAgentId: "a1" });
+    expect(s.items.at(-1)).toMatchObject({ kind: "background-result", agentId: "a2" });
+  });
+});
+
 describe("后台子代理(Agent 显式转后台)", () => {
   const open = acp({ sessionUpdate: "tool_call", toolCallId: "t1", title: "Agent 后台调查" });
   // 驱动侧 async_launched 的友好文案闭卡

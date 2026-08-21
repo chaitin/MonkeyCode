@@ -156,10 +156,12 @@ impl Inner {
                 };
                 // 中断轮次可能留下已暂存未被 tool_result 消费的 agent_result
                 if !open.is_empty() {
-                    let mut ar = self.sub.agent_results.lock_ok();
-                    for tc in open.keys() {
-                        ar.remove(tc);
+                    {
+                        let mut ar = self.sub.agent_results.lock_ok();
+                        for tc in open.keys() { ar.remove(tc); }
                     }
+                    let mut names = self.sub.agent_names.lock_ok();
+                    for tc in open.keys() { names.remove(tc); }
                 }
                 // 轮次收尾:残留子代理(未随工具闭合)按中断收尾;后台代理
                 // 除外——其子循环跨轮存活,收尾归 task_notification
@@ -223,14 +225,18 @@ impl Inner {
     }
 
     /// event/stream 事件归一化 → Frame。
-    pub(super) fn handle_event(self: &Arc<Self>, event: Value) {
-        let etype = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        let raw = event.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+    pub(super) fn handle_event(self: &Arc<Self>, mut event: Value) {
+        let etype = event.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let raw = event.get("session_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
         if raw.is_empty() {
             return;
         }
-        let sid = self.shell_sid_of(raw);
+        let sid = self.shell_sid_of(&raw);
         let data = event.get("data").cloned().unwrap_or(Value::Null);
+        // SendMessage 续跑沿用原 child sid 与首次 Agent 的 parent 戳记。
+        // 必须早于 transient error 过滤和 known-session 判断重绑，否则首条
+        // tool/error 可能在 SendMessage tool_result 之前到达并落回历史 Agent 卡。
+        self.prepare_continuation_event(&sid, &mut event);
         // eventSeq 要在任何语义过滤之前推进。重试/兼容事件虽然不落 UI 帧，
         // 仍真实占用了引擎序号；先 return 会把下一条正常事件误报成背压丢帧。
         // 未知子会话此刻尚未物化，首条被过滤的重试无需建立水位。
@@ -294,8 +300,8 @@ impl Inner {
             }
         }
         // 子代理事件在父卡进度窗同步一份内联预览(非子代理为 no-op)
-        self.subagent_feed(&sid, etype, &event, &data);
-        match etype {
+        self.subagent_feed(&sid, &etype, &event, &data);
+        match etype.as_str() {
             // user_message:引擎回显忽略——session_send 已本地先行落 user-input
             // 帧(ack 与事件无时序保证,双写会重复气泡)
             "user_message" => {}
@@ -374,6 +380,11 @@ impl Inner {
                         let prompt =
                             input.get("prompt").and_then(|v| v.as_str()).unwrap_or("").to_string();
                         self.sub.agent_inputs.lock_ok().insert(tc_id.clone(), (desc, prompt));
+                        if let Some(agent_name) = input.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()) {
+                            self.sub.agent_names.lock_ok().insert(tc_id.clone(), agent_name.to_string());
+                        }
+                    } else if name == "SendMessage" {
+                        self.register_continuation(&sid, &tc_id, &input);
                     }
                 }
                 self.push_frame(&sid, |seq| frame::tool_call(&tc_id, &title, &input, seq));
@@ -386,6 +397,13 @@ impl Inner {
             "agent_result" => {
                 let tc = event.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("");
                 if !tc.is_empty() {
+                    let stored_name = self.sub.agent_names.lock_ok().remove(tc);
+                    let agent_name = data.get("name").and_then(Value::as_str).filter(|n| !n.is_empty())
+                        .map(str::to_string).or(stored_name).unwrap_or_default();
+                    let agent_id = data.get("agentId").and_then(Value::as_str).unwrap_or("");
+                    if !agent_id.is_empty() {
+                        self.register_agent_identity(&sid, tc, agent_id, &agent_name);
+                    }
                     let status =
                         data.get("status").and_then(|v| v.as_str()).unwrap_or("completed").to_string();
                     let content =
@@ -418,14 +436,25 @@ impl Inner {
                 let stashed =
                     if tc_id.is_empty() { None } else { self.sub.agent_results.lock_ok().remove(&tc_id) };
                 let is_agent = name.as_deref() == Some("Agent");
-                if name.as_deref() == Some("SendMessage") && !is_error {
-                    let async_launched = data.get("status").and_then(Value::as_str) == Some("async_launched")
-                        || serde_json::from_str::<Value>(content)
-                            .ok()
-                            .and_then(|v| v.get("status").and_then(Value::as_str).map(str::to_string))
-                            .as_deref()
-                            == Some("async_launched");
-                    if async_launched {
+                if name.as_deref() == Some("SendMessage") {
+                    let response = if is_error {
+                        None
+                    } else if data.get("status").and_then(Value::as_str) == Some("async_launched") {
+                        Some(data.clone())
+                    } else {
+                        serde_json::from_str::<Value>(content).ok()
+                            .filter(|v| v.get("status").and_then(Value::as_str) == Some("async_launched"))
+                    };
+                    if let Some(response) = response {
+                        let agent_id = response.get("agentId").and_then(Value::as_str).unwrap_or("");
+                        self.confirm_continuation(&sid, &tc_id, &response);
+                        self.push_frame(&sid, |seq| {
+                            frame::tool_call_progress(
+                                &tc_id,
+                                json!({ "kind": "background_agent", "agentId": agent_id, "status": "running" }),
+                                seq,
+                            )
+                        });
                         self.push_frame(&sid, |seq| {
                             frame::tool_call_completed(
                                 &tc_id,
@@ -436,6 +465,7 @@ impl Inner {
                         });
                         return;
                     }
+                    self.cancel_continuation(&sid, &tc_id);
                 }
                 if is_agent && stashed.is_none() && !is_error {
                     if let Some(resp) = serde_json::from_str::<Value>(content)
@@ -495,7 +525,11 @@ impl Inner {
                     // 以结构化通知帧落到通知实际到达的会话，绝不混入助手正文。
                     let result = super::subagent::notification_result(&msg)
                         .unwrap_or_else(|| super::subagent::strip_notification_tags(&msg));
-                    self.background_agent_finished(&data, &result);
+                    if !self.continuation_finished(&data) {
+                        // 首次显式 Agent 维持原有完整结果回填；续跑结果只由
+                        // task_notification 独立卡承载，不复制进 SendMessage。
+                        self.background_agent_finished(&data, &result);
+                    }
                     let get = |key: &str| data.get(key).and_then(Value::as_str).unwrap_or("");
                     let agent_id = get("agent_id");
                     let agent_name = get("name");

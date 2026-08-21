@@ -12,6 +12,7 @@ import { Markdown, MarkdownInline } from "@/components/markdown/Markdown";
 import { Lightbox, UploadImg } from "@/components/media/UploadImg";
 import { ApplyPatchView } from "@/features/files/ApplyPatchView";
 import { DiffView } from "@/features/files/DiffView";
+import { DetailModal } from "../DetailModal";
 import { useI18n } from "@/lib/i18n";
 import type { FrameSender } from "@/lib/ipc/approvals";
 import { isImagePath } from "@/lib/ipc/uploads";
@@ -162,14 +163,14 @@ export function ToolCard({
   const { t, locale } = useI18n();
   const [zoom, setZoom] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [showAgentResult, setShowAgentResult] = useState(false);
+  const [agentDetailOpen, setAgentDetailOpen] = useState(false);
   // 大字段护栏的另一半:行内只有截断头部时,展开即按 seq 回读原帧补全。
   // 截断与回读必须成对存在——只截不读会把子代理的最终产出切掉半截。
   const srcSeq = (item._meta as { mcSrc?: { seq?: number } } | undefined)?.mcSrc?.seq;
   const [full, setFull] = useState<AcpUpdate | null>(null);
   const [fullErr, setFullErr] = useState("");
   const [loadingFull, setLoadingFull] = useState(false);
-  const wantFull = detailOpen || showAgentResult;
+  const wantFull = detailOpen || agentDetailOpen;
   useEffect(() => {
     if (!wantFull || srcSeq === undefined || full || loadingFull || fullErr || !loadFullTool) return;
     setLoadingFull(true);
@@ -190,7 +191,8 @@ export function ToolCard({
   const isAgentCard = !!(item.childSessionId || feed.length || item.background);
   const agentFinished = isAgentCard && item.status !== "run";
   const canOpenChild = !!(item.childSessionId && onOpenChild);
-  const visibleFeed = item.status === "run" ? feed.slice(-FEED_WINDOW) : [];
+  // 后台派发卡的过程详情统一放进弹窗；普通前台 Agent 仍保留原来的尾窗。
+  const visibleFeed = !item.background && item.status === "run" ? feed.slice(-FEED_WINDOW) : [];
   const feedBase = feed.length - visibleFeed.length;
 
   // 回读到全文后用全文渲染详情;没有护栏标记时 full 恒为 null,行为不变
@@ -213,7 +215,11 @@ export function ToolCard({
   // 极端情况下子会话入口缺失(云端只读流/旧 journal),保留按需展开兜底,
   // 但不默认把整段结果灌进卡片
   const agentResult = agentFinished ? (fullResult || item.result || "").trim() : "";
-  const summary = agentResult && !canOpenChild && showAgentResult ? agentResult : "";
+  const openAgentDetail = () => {
+    if (canOpenChild) onOpenChild!(item.childSessionId!);
+    else setAgentDetailOpen(true);
+  };
+  const hasAgentModal = item.background || (!!agentResult && !canOpenChild);
   return (
     <div
       className={`card card-border overflow-hidden bg-base-100 ${joinPrev ? "rounded-t-none" : ""} ${joinNext ? "rounded-b-none border-b-0" : ""}`}
@@ -223,8 +229,8 @@ export function ToolCard({
           2026-08-05);行内链接 stopPropagation 不触发切换;chevron 钮保留
           为无障碍/键盘开关并兼作指示,常驻显示 */}
       <div
-        className={`flex items-center gap-2 px-3 py-2 text-xs ${detail ? "cursor-pointer" : ""}`}
-        onClick={detail ? () => setDetailOpen((v) => !v) : undefined}
+        className={`flex items-center gap-2 px-3 py-2 text-xs ${detail || item.background ? "cursor-pointer" : ""}`}
+        onClick={detail ? () => setDetailOpen((v) => !v) : item.background ? openAgentDetail : undefined}
       >
         {perm ? (
           <IconHandStop size={14} stroke={1.75} aria-hidden className="shrink-0 text-warning" />
@@ -246,7 +252,16 @@ export function ToolCard({
             {duration}
           </span>
         )}
-        {item.childSessionId && onOpenChild && (
+        {item.background && item.outKey && (
+          <span
+            className={`shrink-0 ${
+              item.status === "run" ? "text-primary" : item.status === "fail" ? "text-error" : "text-base-content/50"
+            }`}
+          >
+            {t(item.outKey)}
+          </span>
+        )}
+        {item.childSessionId && onOpenChild && !item.background && (
           <button
             type="button"
             className="link link-hover link-primary shrink-0 text-xs font-semibold"
@@ -258,16 +273,32 @@ export function ToolCard({
             {t("chat.tool.childSession")}
           </button>
         )}
-        {agentResult && !canOpenChild && (
+        {agentResult && !canOpenChild && !item.background && (
           <button
             type="button"
             className="link link-hover shrink-0 text-xs font-semibold text-base-content/60"
+            aria-haspopup="dialog"
             onClick={(e) => {
               e.stopPropagation();
-              setShowAgentResult((v) => !v);
+              setAgentDetailOpen(true);
             }}
           >
-            {showAgentResult ? t("chat.tool.hideResult") : t("chat.tool.showResult")}
+            {t("chat.tool.showResult")}
+          </button>
+        )}
+        {item.background && (
+          <button
+            type="button"
+            aria-label={canOpenChild ? t("chat.tool.childSession") : t("chat.tool.agentDetailOpen")}
+            aria-haspopup="dialog"
+            title={canOpenChild ? t("chat.tool.childSession") : t("chat.tool.agentDetailOpen")}
+            className="shrink-0 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              openAgentDetail();
+            }}
+          >
+            <IconChevronRight size={12} stroke={1.75} aria-hidden className="text-base-content/40" />
           </button>
         )}
         {detail && (
@@ -306,18 +337,12 @@ export function ToolCard({
           ))}
         </div>
       )}
-      {item.status === "run" && item.lastLine && (
+      {!item.background && item.status === "run" && item.lastLine && (
         <div className="truncate px-3 pb-2 ps-6 text-xs text-base-content/50 italic">{item.lastLine}</div>
       )}
-      {item.status === "fail" && item.out && !summary && (
+      {item.status === "fail" && item.out && !agentResult && (
         <div role="alert" title={item.result || item.out} className="truncate px-3 pb-2 text-xs text-error">
           {item.out}
-        </div>
-      )}
-      {/* 子代理「查看结果」兜底:结果走 Markdown,结构线左缘与正文区分 */}
-      {summary && (
-        <div className="mx-3 mb-2 border-s-2 border-base-300 ps-3 text-sm">
-          <Markdown source={summary} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />
         </div>
       )}
       {/* 工具产出图片(截图/读图):缩略图点击看大图;裂图防御在 UploadImg */}
@@ -341,7 +366,7 @@ export function ToolCard({
         </Lightbox>
       )}
       {/* 大字段回读的 loading/失败态行内外显(展开详情或查看结果时触发) */}
-      {wantFull &&
+      {detailOpen &&
         (fullErr ? (
           <div role="alert" className="px-3 pb-2 text-xs text-error">
             {t("chat.tool.loadFullFailed", { reason: fullErr })}
@@ -361,6 +386,42 @@ export function ToolCard({
         >
           <DetailBody detail={detail} />
         </div>
+      )}
+      {agentDetailOpen && hasAgentModal && (
+        <DetailModal
+          ariaLabel={t("chat.tool.agentDetail")}
+          title={
+            <>
+              {t("chat.tool.agentDetail")} <span className="text-xs font-normal text-base-content/50">{presentation.action}</span>
+            </>
+          }
+          onClose={() => setAgentDetailOpen(false)}
+        >
+          <div className="flex flex-col gap-3 text-sm">
+            {feed.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-box border border-base-300 bg-base-200 p-3 text-xs">
+                {feed.map((entry, i) => (
+                  <FeedRow key={entry.kind === "tool" ? entry.id : `text-${i}`} entry={entry} workdir={workdir} />
+                ))}
+              </div>
+            )}
+            {item.lastLine && <MarkdownInline source={item.lastLine} className="text-base-content/60" />}
+            {fullErr ? (
+              <div role="alert" className="text-xs text-error">
+                {t("chat.tool.loadFullFailed", { reason: fullErr })}
+              </div>
+            ) : loadingFull ? (
+              <div role="status" className="flex items-center gap-2 text-xs text-base-content/50">
+                <span className="loading loading-spinner loading-xs" aria-hidden />
+                {t("chat.tool.loadingFull")}
+              </div>
+            ) : null}
+            {agentResult && <Markdown source={agentResult} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />}
+            {!feed.length && !item.lastLine && !agentResult && !loadingFull && !fullErr && (
+              <div className="text-sm text-base-content/50">{t("chat.tool.agentDetailEmpty")}</div>
+            )}
+          </div>
+        </DetailModal>
       )}
       {perm && (
         <div className="flex flex-col gap-2 border-t border-base-300 px-3 py-2">
