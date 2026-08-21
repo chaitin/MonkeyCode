@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  beginBackgroundOperation,
   DEFAULT_BACKGROUND,
   getBackgroundRuntimeState,
   initializeStoredBackground,
   installBackground,
   readBackgroundPreferences,
+  reconcileBackgroundRuntime,
   removeAppliedBackground,
   resetBackgroundRuntimeForTest,
   setBackgroundPreferences,
@@ -142,5 +144,33 @@ describe("背景运行时初始化", () => {
 
     removeAppliedBackground();
     expect(styles.has("--mc-background-image")).toBe(false);
+  });
+
+  it("权威状态预解码失败会清掉旧 UI，而预解码期间过期的恢复不能提交", async () => {
+    await installBackground(asset);
+    const next = { ...asset, revision: "b".repeat(64), dataUrl: "data:image/png;base64,BB==" };
+    shellRead(next);
+
+    decode.mockRejectedValueOnce(new Error("authoritative decode failed"));
+    await reconcileBackgroundRuntime(beginBackgroundOperation());
+    expect(getBackgroundRuntimeState()).toEqual({
+      asset: null,
+      error: { code: "loadFailed", detail: "authoritative decode failed" },
+    });
+    expect(styles.has("--mc-background-image")).toBe(false);
+
+    await installBackground(asset);
+    let resolveDecode!: () => void;
+    decode.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      resolveDecode = resolve;
+    }));
+    const recovery = reconcileBackgroundRuntime(beginBackgroundOperation());
+    await vi.waitFor(() => expect(decode).toHaveBeenCalledTimes(4));
+    beginBackgroundOperation();
+    resolveDecode();
+    await recovery;
+
+    expect(getBackgroundRuntimeState().asset).toEqual(asset);
+    expect(styles.get("--mc-background-image")).toContain(asset.dataUrl);
   });
 });

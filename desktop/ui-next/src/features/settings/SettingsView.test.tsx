@@ -856,6 +856,7 @@ describe("外观设置:自定义背景", () => {
         background_clear: () => {
           throw new Error("磁盘拒绝删除");
         },
+        background_read: () => backgroundAsset,
       },
     });
     render(<SettingsView onClose={() => {}} />);
@@ -885,11 +886,12 @@ describe("外观设置:自定义背景", () => {
   it("WebView 解码失败会丢弃 staged 导入，不确认磁盘事务且保留旧背景", async () => {
     stubImageDecode();
     await installBackground(backgroundAsset);
+    let decodeCalls = 0;
     vi.stubGlobal(
       "Image",
       class {
         src = "";
-        decode = () => Promise.reject(new Error("codec rejected"));
+        decode = () => decodeCalls++ === 0 ? Promise.reject(new Error("codec rejected")) : Promise.resolve();
       },
     );
     const { calls } = stubShell({
@@ -897,6 +899,7 @@ describe("外观设置:自定义背景", () => {
         "plugin:dialog|open": () => "/tmp/new.png",
         background_import: () => ({ ...stagedBackgroundAsset, stagedId: "decode-failed" }),
         background_discard: () => null,
+        background_read: () => backgroundAsset,
       },
     });
     render(<SettingsView onClose={() => {}} />);
@@ -940,6 +943,54 @@ describe("外观设置:自定义背景", () => {
     const clearIndex = calls.findIndex((call) => call.cmd === "background_clear");
     expect(discardIndex).toBeGreaterThan(-1);
     expect(clearIndex).toBeGreaterThan(discardIndex);
+  });
+
+  it("旧 choose 已提交但后发 clear 失败时，从 Rust current 恢复而不保留旧 UI", async () => {
+    stubImageDecode();
+    await installBackground(backgroundAsset);
+    const nextAsset = {
+      ...backgroundAsset,
+      revision: "b".repeat(64),
+      originalName: "next.png",
+      dataUrl: "data:image/png;base64,BB==",
+    };
+    let current: BackgroundAsset | null = backgroundAsset;
+    let commitConfirm!: () => void;
+    const { calls } = stubShell({
+      extra: {
+        "plugin:dialog|open": () => "/tmp/next.png",
+        background_import: () => ({ ...nextAsset, stagedId: "stage-next" }),
+        background_confirm: () => new Promise<void>((resolve) => {
+          commitConfirm = () => {
+            current = nextAsset;
+            resolve();
+          };
+        }),
+        background_clear: () => {
+          throw new Error("clear response failed");
+        },
+        background_read: () => current,
+      },
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "更换图片" }));
+    await waitFor(() => expect(calls.some((call) => call.cmd === "background_confirm")).toBe(true));
+
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "清除图片" }));
+    expect(calls.some((call) => call.cmd === "background_clear")).toBe(false);
+    await act(async () => commitConfirm());
+
+    expect((await screen.findByRole("alert")).textContent).toContain("clear response failed");
+    expect(screen.getByRole("img", { name: "自定义背景预览" }).getAttribute("src")).toBe(nextAsset.dataUrl);
+    expect(screen.getByText("next.png")).toBeDefined();
+    const confirmIndex = calls.findIndex((call) => call.cmd === "background_confirm");
+    const clearIndex = calls.findIndex((call) => call.cmd === "background_clear");
+    const readIndex = calls.findIndex((call) => call.cmd === "background_read");
+    expect(clearIndex).toBeGreaterThan(confirmIndex);
+    expect(readIndex).toBeGreaterThan(clearIndex);
   });
 
   it("英文界面用 i18n 前缀呈现结构化启动错误，不泄露硬编码中文 UI 文案", async () => {

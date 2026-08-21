@@ -191,6 +191,37 @@ function failStoredBackground(error: BackgroundRuntimeError): void {
   publish({ asset: null, error });
 }
 
+/**
+ * mutation 的 IPC 失败可能是“已提交但响应丢失”；重新读取 Rust current 才能判定
+ * 最终状态。读取和预解码期间若已有更新动作开始，旧恢复不得再提交 UI。
+ */
+export async function reconcileBackgroundRuntime(generation: number): Promise<void> {
+  if (!isBackgroundOperationCurrent(generation)) return;
+  let asset: BackgroundAsset | null;
+  try {
+    asset = await readBackgroundAsset();
+  } catch (error) {
+    if (isBackgroundOperationCurrent(generation)) {
+      failStoredBackground({ code: hadStoredAsset() ? "storedAssetUnavailable" : "loadFailed", detail: errorMessage(error) });
+    }
+    return;
+  }
+  if (!isBackgroundOperationCurrent(generation)) return;
+  if (!asset) {
+    removeAppliedBackground();
+    return;
+  }
+  try {
+    await decodeDataUrl(asset.dataUrl);
+  } catch (error) {
+    if (isBackgroundOperationCurrent(generation)) {
+      failStoredBackground({ code: "loadFailed", detail: errorMessage(error) });
+    }
+    return;
+  }
+  if (isBackgroundOperationCurrent(generation)) applyDecodedBackground(asset);
+}
+
 /** React 挂载前执行；任何失败均保留主题实色后备，并把可恢复错误留给设置页。 */
 export async function initializeStoredBackground(): Promise<BackgroundInitResult> {
   const preferences = readBackgroundPreferences();

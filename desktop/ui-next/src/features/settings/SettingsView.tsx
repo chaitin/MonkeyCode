@@ -18,6 +18,7 @@ import {
   getBackgroundRuntimeState,
   isBackgroundOperationCurrent,
   readBackgroundPreferences,
+  reconcileBackgroundRuntime,
   removeAppliedBackground,
   runBackgroundAssetOperation,
   setBackgroundPreferences,
@@ -511,6 +512,7 @@ function BackgroundEditor() {
           if (isBackgroundOperationCurrent(generation)) applyDecodedBackground(imported);
         } catch (error) {
           await discardBackground(imported.stagedId).catch(() => undefined);
+          await reconcileBackgroundRuntime(generation);
           throw error;
         }
       });
@@ -528,8 +530,13 @@ function BackgroundEditor() {
     try {
       await runBackgroundAssetOperation(async () => {
         if (!isBackgroundOperationCurrent(generation)) return;
-        await clearBackgroundAsset();
-        if (isBackgroundOperationCurrent(generation)) removeAppliedBackground();
+        try {
+          await clearBackgroundAsset();
+          if (isBackgroundOperationCurrent(generation)) removeAppliedBackground();
+        } catch (error) {
+          await reconcileBackgroundRuntime(generation);
+          throw error;
+        }
       });
     } catch (e) {
       if (mounted.current && isBackgroundOperationCurrent(generation)) setActionError(errMsg(e));
