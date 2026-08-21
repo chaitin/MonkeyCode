@@ -3,7 +3,7 @@
 // 又不想开 asset scope 到任意工作区,小图 base64 内联最稳)。Markdown 里的
 // 本地图片也走同一通道,但只放行工作区内的常见图片且限制体积。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -11,6 +11,7 @@ use std::sync::{Mutex, OnceLock};
 
 use base64::Engine as _;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use crate::util::LockExt;
 
@@ -18,6 +19,14 @@ use crate::util::LockExt;
 /// 内联返回,超限会撑爆 webview)。附件**上传**不受此限:分块(upload_begin/
 /// chunk/finish)与路径直拷(save_from_path)两条通道单块/零穿越,大小不设限。
 const UPLOAD_MAX_BYTES: usize = 20 * 1024 * 1024;
+
+pub(crate) const DESIGN_TEMPLATE_PREVIEW_ROOT: &str = ".monkeycode/design/template-previews";
+const DESIGN_TEMPLATE_FILE_MAX_BYTES: u64 = 8 * 1024 * 1024;
+const DESIGN_TEMPLATE_TOTAL_MAX_BYTES: u64 = 32 * 1024 * 1024;
+// The iframe has an opaque origin (sandbox without allow-same-origin). Every local
+// dependency is converted to a data URL, so neither `self` nor workspace asset
+// access is required. Network, nested frames and active navigation stay disabled.
+const DESIGN_TEMPLATE_CSP: &str = "default-src 'none'; script-src 'unsafe-inline' data:; style-src 'unsafe-inline' data:; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'";
 
 /// 常见图片 MIME → 扩展名(剪贴板图片无文件名时的命名兜底)。
 fn image_ext(media_type: &str) -> Option<&'static str> {
@@ -381,6 +390,15 @@ pub fn read_data_url(
     wsl_distro: Option<&str>,
     path: &str,
 ) -> Result<String, String> {
+    read_data_url_with_digest(workdir, wsl_distro, path, None)
+}
+
+pub fn read_data_url_with_digest(
+    workdir: &str,
+    wsl_distro: Option<&str>,
+    path: &str,
+    expected_digest: Option<&str>,
+) -> Result<String, String> {
     let raw = path.trim();
     if raw.is_empty() {
         return Err("图片路径为空".into());
@@ -418,10 +436,477 @@ pub fn read_data_url(
         ));
     }
     let data = std::fs::read(&p).map_err(|e| format!("读取失败: {e}"))?;
+    if let Some(expected) = expected_digest {
+        let actual = format!("sha256:{:x}", Sha256::digest(&data));
+        if actual != expected {
+            return Err(format!("图片摘要不匹配: expected={expected}, actual={actual}"));
+        }
+    }
     Ok(format!(
         "data:{mime};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(&data)
     ))
+}
+
+pub(crate) fn read_workspace_html_bundle(
+    workdir: &str,
+    wsl_distro: Option<&str>,
+    path: &str,
+) -> Result<String, String> {
+    let raw = path.trim();
+    let requested = Path::new(raw);
+    if raw.is_empty()
+        || requested.is_absolute()
+        || requested
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err("工作区 HTML 路径必须是无 traversal 的相对路径".into());
+    }
+    let workspace = uploads_root(workdir, wsl_distro)?;
+    let canonical_workspace =
+        std::fs::canonicalize(&workspace).map_err(|e| format!("工作区路径无效: {e}"))?;
+    let candidate = workspace.join(requested);
+    reject_symlink(&workspace, &candidate)?;
+    let canonical = checked_bundle_file(&workspace, &canonical_workspace, &candidate)?;
+    if bundle_mime(&canonical) != Some("text/html") {
+        return Err("工作区预览文件必须是 HTML".into());
+    }
+    let mut inliner = BundleInliner {
+        workspace: &canonical_workspace,
+        root: &canonical_workspace,
+        total: 0,
+        active_resources: HashSet::new(),
+    };
+    let bytes = inliner.read_file(&canonical)?;
+    let html = String::from_utf8(bytes).map_err(|_| "工作区 HTML 必须是 UTF-8".to_string())?;
+    let html = inliner.rewrite_html(&html, canonical.parent().ok_or("HTML 入口无父目录")?)?;
+    Ok(inject_bundle_csp(&html))
+}
+
+pub fn read_design_template_html(
+    workdir: &str,
+    wsl_distro: Option<&str>,
+    path: &str,
+) -> Result<String, String> {
+    let raw = path.trim();
+    let requested = Path::new(raw);
+    if raw.is_empty()
+        || requested.is_absolute()
+        || requested
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err("模板预览路径必须是无 traversal 的相对路径".into());
+    }
+    let workspace = uploads_root(workdir, wsl_distro)?;
+    let root = workspace.join(DESIGN_TEMPLATE_PREVIEW_ROOT);
+    reject_symlink(&workspace, &root)?;
+    let relative = requested
+        .strip_prefix(DESIGN_TEMPLATE_PREVIEW_ROOT)
+        .unwrap_or(requested);
+    let mut candidate = root.join(relative);
+    reject_symlink(&workspace, &candidate)?;
+    if std::fs::symlink_metadata(&candidate)
+        .map_err(|e| format!("读取模板预览失败: {e}"))?
+        .is_dir()
+    {
+        candidate = candidate.join("index.html");
+        reject_symlink(&workspace, &candidate)?;
+    }
+    let cache_root =
+        std::fs::canonicalize(&root).map_err(|e| format!("模板预览缓存根无效: {e}"))?;
+    // The first path component is the Agent-generated digest. Scope the whole
+    // dependency closure to that one bundle, not to sibling digest directories.
+    let digest = relative
+        .components()
+        .next()
+        .and_then(|c| match c {
+            std::path::Component::Normal(v) => Some(v),
+            _ => None,
+        })
+        .ok_or("模板预览缺少 digest")?;
+    let bundle_root_candidate = root.join(digest);
+    reject_symlink(&workspace, &bundle_root_candidate)?;
+    let canonical_root = std::fs::canonicalize(&bundle_root_candidate)
+        .map_err(|e| format!("模板预览 bundle 根无效: {e}"))?;
+    if !canonical_root.starts_with(&cache_root) || !canonical_root.is_dir() {
+        return Err("模板预览 bundle 根无效".into());
+    }
+    let canonical = checked_bundle_file(&workspace, &canonical_root, &candidate)?;
+    if bundle_mime(&canonical) != Some("text/html") {
+        return Err("模板预览 bundle 必须是 HTML".into());
+    }
+
+    let canonical_workspace =
+        std::fs::canonicalize(&workspace).map_err(|e| format!("工作区路径无效: {e}"))?;
+    let mut inliner = BundleInliner {
+        workspace: &canonical_workspace,
+        root: &canonical_root,
+        total: 0,
+        active_resources: HashSet::new(),
+    };
+    let bytes = inliner.read_file(&canonical)?;
+    let html = String::from_utf8(bytes).map_err(|_| "模板预览 HTML 必须是 UTF-8".to_string())?;
+    let html = inliner.rewrite_html(&html, canonical.parent().ok_or("模板预览入口无父目录")?)?;
+    Ok(inject_bundle_csp(&html))
+}
+
+/// Keep a document declaration as the first parser token while placing the policy
+/// before every executable HTML element. A run of leading comments is scanned so
+/// a following declaration remains ahead of the policy. BOM and leading HTML
+/// whitespace are preserved.
+fn inject_bundle_csp(html: &str) -> String {
+    let policy =
+        format!(r#"<meta http-equiv="Content-Security-Policy" content="{DESIGN_TEMPLATE_CSP}">"#);
+    let bom_len = usize::from(html.starts_with('\u{feff}')) * '\u{feff}'.len_utf8();
+    let html_whitespace = |byte: u8| matches!(byte, b'\t' | b'\n' | 0x0c | b'\r' | b' ');
+    let skip_whitespace = |mut at: usize| {
+        while html
+            .as_bytes()
+            .get(at)
+            .is_some_and(|byte| html_whitespace(*byte))
+        {
+            at += 1;
+        }
+        at
+    };
+    let token_start = skip_whitespace(bom_len);
+    let mut scan_at = token_start;
+
+    loop {
+        let token = &html[scan_at..];
+        if !token.starts_with("<!--") {
+            break;
+        }
+        let Some(end) = token[4..].find("-->") else {
+            break;
+        };
+        scan_at = skip_whitespace(scan_at + 4 + end + 3);
+    }
+
+    let token = &html[scan_at..];
+    if token
+        .get(..9)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<!doctype"))
+    {
+        let mut quote = None;
+        for (offset, byte) in token.as_bytes().iter().copied().enumerate() {
+            match (quote, byte) {
+                (None, b'\'' | b'"') => quote = Some(byte),
+                (Some(open), close) if open == close => quote = None,
+                (None, b'>') => {
+                    let insert_at = scan_at + offset + 1;
+                    return format!("{}{policy}{}", &html[..insert_at], &html[insert_at..]);
+                }
+                _ => {}
+            }
+        }
+    }
+    format!("{}{policy}{}", &html[..token_start], &html[token_start..])
+}
+
+struct BundleInliner<'a> {
+    workspace: &'a Path,
+    root: &'a Path,
+    total: u64,
+    active_resources: HashSet<PathBuf>,
+}
+
+impl BundleInliner<'_> {
+    fn read_file(&mut self, path: &Path) -> Result<Vec<u8>, String> {
+        let meta = std::fs::metadata(path).map_err(|e| format!("读取模板预览资源失败: {e}"))?;
+        if !meta.is_file() || meta.len() > DESIGN_TEMPLATE_FILE_MAX_BYTES {
+            return Err("模板预览资源不是文件或超过 8 MiB".into());
+        }
+        self.total = self
+            .total
+            .checked_add(meta.len())
+            .ok_or("模板预览 bundle 过大")?;
+        if self.total > DESIGN_TEMPLATE_TOTAL_MAX_BYTES {
+            return Err("模板预览 bundle 依赖超过 32 MiB".into());
+        }
+        std::fs::read(path).map_err(|e| format!("读取模板预览资源失败: {e}"))
+    }
+
+    fn resolve(&self, base: &Path, url: &str) -> Result<Option<PathBuf>, String> {
+        let url = url.trim();
+        if url.is_empty()
+            || url.starts_with('#')
+            || url.starts_with("data:")
+            || url.starts_with("blob:")
+            || url.starts_with("//")
+            || url.contains("://")
+        {
+            return Ok(None);
+        }
+        let path_part = url.split(['?', '#']).next().unwrap_or("");
+        let decoded = percent_decode_path(path_part)?;
+        let requested = Path::new(&decoded);
+        // A single leading slash is a site-root-relative URL (protocol-relative
+        // `//host` was excluded above). Its site root is deliberately the scoped
+        // bundle root: workspace previews use the workspace, while templates use
+        // only their digest directory.
+        let candidate = if let Some(root_relative) = decoded.strip_prefix('/') {
+            self.root.join(root_relative)
+        } else {
+            base.join(requested)
+        };
+        reject_symlink(self.workspace, &candidate)?;
+        Ok(Some(checked_bundle_file(
+            self.workspace,
+            self.root,
+            &candidate,
+        )?))
+    }
+
+    fn data_url(&mut self, base: &Path, url: &str) -> Result<Option<String>, String> {
+        let Some(path) = self.resolve(base, url)? else {
+            return Ok(None);
+        };
+        let mime = bundle_mime(&path)
+            .ok_or_else(|| format!("不支持的模板预览资源类型: {}", path.display()))?;
+        let mut bytes = self.read_file(&path)?;
+        if mime == "text/css" || mime == "text/javascript" {
+            if !self.active_resources.insert(path.clone()) {
+                return Err("模板预览资源不允许循环依赖".into());
+            }
+            let text = String::from_utf8(bytes)
+                .map_err(|_| format!("模板预览 {mime} 资源必须是 UTF-8"))?;
+            let parent = path.parent().ok_or("模板预览资源无父目录")?;
+            let rewritten = if mime == "text/css" {
+                self.rewrite_css(&text, parent)
+            } else {
+                self.rewrite_javascript(&text, parent)
+            };
+            self.active_resources.remove(&path);
+            bytes = rewritten?.into_bytes();
+        }
+        Ok(Some(format!(
+            "data:{mime};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        )))
+    }
+
+    fn rewrite_css(&mut self, css: &str, base: &Path) -> Result<String, String> {
+        let url_re = regex::Regex::new(r#"(?i)url\(\s*(['\"]?)([^'\")]+)['\"]?\s*\)"#)
+            .expect("static regex");
+        let mut out = replace_regex_result(css, &url_re, |caps| {
+            let original = caps.get(0).unwrap().as_str();
+            Ok(match self.data_url(base, caps.get(2).unwrap().as_str())? {
+                Some(url) => format!("url(\"{url}\")"),
+                None => original.to_string(),
+            })
+        })?;
+        // CSS permits bare @import "theme.css" in addition to @import url(...).
+        let import_re =
+            regex::Regex::new(r#"(?i)@import\s+(['\"])([^'\"]+)['\"]"#).expect("static regex");
+        out = replace_regex_result(&out, &import_re, |caps| {
+            let original = caps.get(0).unwrap().as_str();
+            Ok(match self.data_url(base, caps.get(2).unwrap().as_str())? {
+                Some(url) => format!("@import url(\"{url}\")"),
+                None => original.to_string(),
+            })
+        })?;
+        Ok(out)
+    }
+
+    fn rewrite_javascript(&mut self, script: &str, base: &Path) -> Result<String, String> {
+        // Static imports/exports and dynamic import() lose their filesystem base
+        // after the parent module becomes a data URL, so inline those edges too.
+        let static_re = regex::Regex::new(
+            r#"(?m)(\b(?:import|export)\s+(?:[^;\n'\"]*?\s+from\s+)?)(['\"])([^'\"]+)(['\"])"#,
+        )
+        .expect("static regex");
+        let mut out = replace_regex_result(script, &static_re, |caps| {
+            Ok(match self.data_url(base, caps.get(3).unwrap().as_str())? {
+                Some(data) => format!("{}{}{}{}", &caps[1], &caps[2], data, &caps[4]),
+                None => caps.get(0).unwrap().as_str().to_string(),
+            })
+        })?;
+        let dynamic_re = regex::Regex::new(r#"(?m)(\bimport\s*\(\s*)(['\"])([^'\"]+)(['\"])"#)
+            .expect("static regex");
+        out = replace_regex_result(&out, &dynamic_re, |caps| {
+            Ok(match self.data_url(base, caps.get(3).unwrap().as_str())? {
+                Some(data) => format!("{}{}{}{}", &caps[1], &caps[2], data, &caps[4]),
+                None => caps.get(0).unwrap().as_str().to_string(),
+            })
+        })?;
+        let asset_re = regex::Regex::new(
+            r#"(?m)(\bnew\s+URL\s*\(\s*)(['\"])([^'\"]+)(['\"])(\s*,\s*import\.meta\.url\s*\))"#,
+        )
+        .expect("static regex");
+        out = replace_regex_result(&out, &asset_re, |caps| {
+            Ok(match self.data_url(base, caps.get(3).unwrap().as_str())? {
+                Some(data) => format!("{}{}{}{}{}", &caps[1], &caps[2], data, &caps[4], &caps[5]),
+                None => caps.get(0).unwrap().as_str().to_string(),
+            })
+        })?;
+        Ok(out)
+    }
+
+    fn rewrite_html(&mut self, html: &str, base: &Path) -> Result<String, String> {
+        // Inline style/module blocks need a synthetic bundle base because the blob
+        // document itself has no local filesystem URL.
+        let style_tag_re =
+            regex::Regex::new(r#"(?is)(<style\b[^>]*>)(.*?)(</style\s*>)"#).expect("static regex");
+        let mut out = replace_regex_result(html, &style_tag_re, |caps| {
+            Ok(format!(
+                "{}{}{}",
+                &caps[1],
+                self.rewrite_css(&caps[2], base)?,
+                &caps[3]
+            ))
+        })?;
+        let script_tag_re = regex::Regex::new(r#"(?is)(<script\b[^>]*>)(.*?)(</script\s*>)"#)
+            .expect("static regex");
+        let script_src_re = regex::Regex::new(r"(?i)\bsrc\s*=").expect("static regex");
+        out = replace_regex_result(&out, &script_tag_re, |caps| {
+            if script_src_re.is_match(&caps[1]) {
+                return Ok(caps.get(0).unwrap().as_str().to_string());
+            }
+            Ok(format!(
+                "{}{}{}",
+                &caps[1],
+                self.rewrite_javascript(&caps[2], base)?,
+                &caps[3]
+            ))
+        })?;
+        let style_attr_re = regex::Regex::new(r#"(?i)(\bstyle\s*=\s*)(['\"])([^'\"]*)(['\"])"#)
+            .expect("static regex");
+        out = replace_regex_result(&out, &style_attr_re, |caps| {
+            Ok(format!(
+                "{}{}{}{}",
+                &caps[1],
+                &caps[2],
+                self.rewrite_css(&caps[3], base)?,
+                &caps[4]
+            ))
+        })?;
+        // href is rewritten only for stylesheets; ordinary links remain inert under
+        // sandbox/CSP. src/poster cover scripts, images, media and source elements.
+        let attr_re = regex::Regex::new(r#"(?i)(\b(?:src|poster)\s*=\s*)(['\"])([^'\"]+)(['\"])"#)
+            .expect("static regex");
+        out = replace_regex_result(&out, &attr_re, |caps| {
+            let url = caps.get(3).unwrap().as_str();
+            Ok(match self.data_url(base, url)? {
+                Some(data) => format!("{}{}{}{}", &caps[1], &caps[2], data, &caps[4]),
+                None => caps.get(0).unwrap().as_str().to_string(),
+            })
+        })?;
+        let href_re =
+            regex::Regex::new(r#"(?i)(\bhref\s*=\s*)(['\"])([^'\"]+\.css(?:[?#][^'\"]*)?)(['\"])"#)
+                .expect("static regex");
+        out = replace_regex_result(&out, &href_re, |caps| {
+            Ok(match self.data_url(base, caps.get(3).unwrap().as_str())? {
+                Some(data) => format!("{}{}{}{}", &caps[1], &caps[2], data, &caps[4]),
+                None => caps.get(0).unwrap().as_str().to_string(),
+            })
+        })?;
+        Ok(out)
+    }
+}
+
+fn replace_regex_result<F>(input: &str, re: &regex::Regex, mut replace: F) -> Result<String, String>
+where
+    F: FnMut(&regex::Captures<'_>) -> Result<String, String>,
+{
+    let mut out = String::with_capacity(input.len());
+    let mut end = 0;
+    for caps in re.captures_iter(input) {
+        let matched = caps.get(0).expect("capture zero");
+        out.push_str(&input[end..matched.start()]);
+        out.push_str(&replace(&caps)?);
+        end = matched.end();
+    }
+    out.push_str(&input[end..]);
+    Ok(out)
+}
+
+fn percent_decode_path(value: &str) -> Result<String, String> {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if i + 2 >= bytes.len() {
+                return Err("模板预览资源 URL 编码无效".into());
+            }
+            let hex = |b: u8| match b {
+                b'0'..=b'9' => Some(b - b'0'),
+                b'a'..=b'f' => Some(b - b'a' + 10),
+                b'A'..=b'F' => Some(b - b'A' + 10),
+                _ => None,
+            };
+            let hi = hex(bytes[i + 1]).ok_or("模板预览资源 URL 编码无效")?;
+            let lo = hex(bytes[i + 2]).ok_or("模板预览资源 URL 编码无效")?;
+            out.push(hi * 16 + lo);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).map_err(|_| "模板预览资源 URL 必须是 UTF-8".into())
+}
+
+fn checked_bundle_file(workspace: &Path, root: &Path, candidate: &Path) -> Result<PathBuf, String> {
+    reject_symlink(workspace, candidate)?;
+    let canonical =
+        std::fs::canonicalize(candidate).map_err(|e| format!("读取模板预览失败: {e}"))?;
+    if !canonical.starts_with(root) {
+        return Err(format!(
+            "模板预览路径超出缓存根: {} (root {})",
+            canonical.display(),
+            root.display()
+        ));
+    }
+    Ok(canonical)
+}
+
+fn bundle_mime(path: &Path) -> Option<&'static str> {
+    match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "html" | "htm" => Some("text/html"),
+        "css" => Some("text/css"),
+        "js" | "mjs" => Some("text/javascript"),
+        "json" => Some("application/json"),
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        "svg" => Some("image/svg+xml"),
+        "avif" => Some("image/avif"),
+        "ico" => Some("image/x-icon"),
+        "woff" => Some("font/woff"),
+        "woff2" => Some("font/woff2"),
+        "ttf" => Some("font/ttf"),
+        "otf" => Some("font/otf"),
+        "mp3" => Some("audio/mpeg"),
+        "wav" => Some("audio/wav"),
+        "ogg" => Some("audio/ogg"),
+        "mp4" => Some("video/mp4"),
+        "webm" => Some("video/webm"),
+        _ => None,
+    }
+}
+
+fn reject_symlink(anchor: &Path, candidate: &Path) -> Result<(), String> {
+    let relative = candidate
+        .strip_prefix(anchor)
+        .map_err(|_| "模板预览路径超出缓存根")?;
+    let mut current = anchor.to_path_buf();
+    for component in relative.components() {
+        current.push(component.as_os_str());
+        if std::fs::symlink_metadata(&current)
+            .map_err(|e| format!("读取模板预览失败: {e}"))?
+            .file_type()
+            .is_symlink()
+        {
+            return Err("模板预览路径不允许符号链接".into());
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -599,6 +1084,30 @@ mod tests {
     }
 
     #[test]
+    fn image_digest_must_match_actual_file_bytes_before_data_url_is_returned() {
+        let tmp = TempDir::new();
+        let image = tmp.0.join("verified.png");
+        let bytes = b"actual-image-bytes";
+        std::fs::write(&image, bytes).unwrap();
+        let workdir = tmp.0.to_string_lossy();
+        let expected = format!("sha256:{:x}", Sha256::digest(bytes));
+
+        assert!(
+            read_data_url_with_digest(&workdir, None, "verified.png", Some(&expected))
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
+        let error = read_data_url_with_digest(
+            &workdir,
+            None,
+            "verified.png",
+            Some("sha256:0000000000000000000000000000000000000000000000000000000000000000"),
+        )
+        .unwrap_err();
+        assert!(error.contains("图片摘要不匹配"));
+    }
+
+    #[test]
     fn markdown_image_rejects_outside_workspace_and_non_images() {
         let parent = TempDir::new();
         let workspace = parent.0.join("workspace");
@@ -649,6 +1158,265 @@ mod tests {
         assert!(read_dropped(&big.to_string_lossy())
             .unwrap_err()
             .contains("过大"));
+    }
+
+    #[test]
+    fn workspace_html_bundle_inlines_relative_and_root_relative_assets_and_rejects_escape() {
+        let tmp = TempDir::new();
+        std::fs::create_dir_all(tmp.0.join("site/assets")).unwrap();
+        std::fs::create_dir_all(tmp.0.join("assets")).unwrap();
+        std::fs::write(
+            tmp.0.join("site/index.html"),
+            "<link rel=\"stylesheet\" href=\"/assets/main.css\"><img src=\"/assets/a.png\"><script src=\"/assets/app.js\"></script><img src=\"assets/local.png\">",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.0.join("assets/main.css"),
+            "body{background:url(/assets/a.png)}",
+        )
+        .unwrap();
+        std::fs::write(tmp.0.join("assets/a.png"), b"root-png").unwrap();
+        std::fs::write(tmp.0.join("assets/app.js"), b"window.ready=true").unwrap();
+        std::fs::write(tmp.0.join("site/assets/local.png"), b"local-png").unwrap();
+        let html =
+            read_workspace_html_bundle(&tmp.0.to_string_lossy(), None, "site/index.html").unwrap();
+        assert!(html.starts_with("<meta http-equiv=\"Content-Security-Policy\""));
+        assert!(html.contains("data:text/css;base64,"));
+        assert!(html.contains("data:text/javascript;base64,"));
+        assert!(html.matches("data:image/png;base64,").count() >= 2);
+        assert!(
+            read_workspace_html_bundle(&tmp.0.to_string_lossy(), None, "../outside.html").is_err()
+        );
+        std::fs::write(tmp.0.join("escape.html"), "<img src=\"/../outside.png\">").unwrap();
+        std::fs::write(tmp.0.parent().unwrap().join("outside.png"), b"outside").unwrap();
+        assert!(read_workspace_html_bundle(&tmp.0.to_string_lossy(), None, "escape.html").is_err());
+    }
+
+    #[test]
+    fn bundle_csp_preserves_doctype_as_first_document_token() {
+        let tmp = TempDir::new();
+        std::fs::write(
+            tmp.0.join("index.html"),
+            "\u{feff}  <!DoCtYpE html><html><head><script>window.x=1</script></head></html>",
+        )
+        .unwrap();
+        let workspace =
+            read_workspace_html_bundle(&tmp.0.to_string_lossy(), None, "index.html").unwrap();
+        assert!(workspace.starts_with("\u{feff}  <!DoCtYpE html><meta "));
+        assert!(
+            workspace.find("Content-Security-Policy").unwrap()
+                < workspace.find("<script>").unwrap()
+        );
+
+        let root = tmp.0.join(DESIGN_TEMPLATE_PREVIEW_ROOT).join("card");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("index.html"),
+            "<!DOCTYPE html><html><body></body></html>",
+        )
+        .unwrap();
+        let template = read_design_template_html(&tmp.0.to_string_lossy(), None, "card").unwrap();
+        assert!(template.starts_with("<!DOCTYPE html><meta "));
+    }
+
+    #[test]
+    fn bundle_csp_scans_leading_comments_and_quoted_doctype_end_markers() {
+        let generated = "\u{feff} \n<!-- generated --><!-- second -->\r<!doctype html PUBLIC \"quoted > marker\" 'single > marker'><html></html>";
+        let bundled = inject_bundle_csp(generated);
+        let declaration = "<!doctype html PUBLIC \"quoted > marker\" 'single > marker'>";
+        assert!(bundled.starts_with("\u{feff} \n<!-- generated --><!-- second -->\r"));
+        assert!(bundled.find(declaration).unwrap() < bundled.find("<meta ").unwrap());
+        assert!(bundled.contains(&format!("{declaration}<meta ")));
+    }
+
+    #[test]
+    fn bundle_csp_without_doctype_precedes_leading_comment() {
+        let bundled = inject_bundle_csp(" \n<!-- generated --><html></html>");
+        assert!(bundled.starts_with(" \n<meta "));
+        assert!(bundled.find("<meta ").unwrap() < bundled.find("<!-- generated -->").unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn workspace_html_bundle_rejects_symlink_entry_and_resource() {
+        use std::os::unix::fs::symlink;
+        let tmp = TempDir::new();
+        std::fs::create_dir_all(tmp.0.join("site")).unwrap();
+        std::fs::write(tmp.0.join("site/index.html"), "<img src=\"linked.png\">").unwrap();
+        std::fs::write(tmp.0.join("site/image.png"), b"png").unwrap();
+        symlink(tmp.0.join("site/index.html"), tmp.0.join("entry.html")).unwrap();
+        symlink(tmp.0.join("site/image.png"), tmp.0.join("site/linked.png")).unwrap();
+        assert!(read_workspace_html_bundle(&tmp.0.to_string_lossy(), None, "entry.html").is_err());
+        assert!(
+            read_workspace_html_bundle(&tmp.0.to_string_lossy(), None, "site/index.html").is_err()
+        );
+    }
+
+    #[test]
+    fn design_template_bundle_inlines_nested_css_font_image_and_script() {
+        let tmp = TempDir::new();
+        let root = tmp.0.join(DESIGN_TEMPLATE_PREVIEW_ROOT).join("card");
+        std::fs::create_dir_all(root.join("styles/nested")).unwrap();
+        std::fs::create_dir_all(root.join("scripts")).unwrap();
+        std::fs::create_dir_all(root.join("images")).unwrap();
+        std::fs::create_dir_all(root.join("fonts")).unwrap();
+        std::fs::write(root.join("index.html"), r#"<link rel="stylesheet" href="/styles/main.css"><style>.inline{background:url('images/card.png')}</style><img src="/images/card.png"><script src="/scripts/app.js"></script><script type="module">import './scripts/nested.js'</script>"#).unwrap();
+        std::fs::write(
+            root.join("styles/main.css"),
+            r#"@import "nested/theme.css"; .hero{background:url('../images/card.png')}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("styles/nested/theme.css"),
+            r#"@font-face{font-family:demo;src:url('../../fonts/demo.woff2')}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("scripts/app.js"),
+            b"import './nested.js'; document.body.dataset.loaded='yes'",
+        )
+        .unwrap();
+        std::fs::write(root.join("scripts/nested.js"), b"window.nested=true").unwrap();
+        std::fs::write(root.join("images/card.png"), b"png-bytes").unwrap();
+        std::fs::write(root.join("fonts/demo.woff2"), b"woff-bytes").unwrap();
+
+        let html = read_design_template_html(&tmp.0.to_string_lossy(), None, "card").unwrap();
+        assert!(html.starts_with("<meta http-equiv=\"Content-Security-Policy\""));
+        for directive in [
+            "connect-src 'none'",
+            "frame-src 'none'",
+            "form-action 'none'",
+            "navigate-to 'none'",
+            "object-src 'none'",
+        ] {
+            assert!(
+                html.contains(directive),
+                "missing CSP directive {directive}"
+            );
+        }
+        assert!(html.contains("data:text/css;base64,"));
+        assert!(html.contains("data:text/javascript;base64,"));
+        assert!(html.contains("data:image/png;base64,"));
+        assert!(!html.contains("styles/main.css"));
+        assert!(!html.contains("scripts/app.js"));
+        let script_b64 = html
+            .split("data:text/javascript;base64,")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        let script = String::from_utf8(
+            base64::engine::general_purpose::STANDARD
+                .decode(script_b64)
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(
+            script.contains("data:text/javascript;base64,"),
+            "nested script was not inlined: {script}"
+        );
+
+        let css_b64 = html
+            .split("data:text/css;base64,")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        let css = String::from_utf8(
+            base64::engine::general_purpose::STANDARD
+                .decode(css_b64)
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(
+            css.contains("data:image/png;base64,"),
+            "CSS image was not inlined: {css}"
+        );
+        assert!(
+            css.contains("data:text/css;base64,"),
+            "nested CSS was not inlined: {css}"
+        );
+        let nested_b64 = css
+            .split("data:text/css;base64,")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        let nested = String::from_utf8(
+            base64::engine::general_purpose::STANDARD
+                .decode(nested_b64)
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(
+            nested.contains("data:font/woff2;base64,"),
+            "nested font was not inlined: {nested}"
+        );
+    }
+
+    #[test]
+    fn design_template_html_is_scoped_and_gets_strict_csp() {
+        let tmp = TempDir::new();
+        let root = tmp.0.join(DESIGN_TEMPLATE_PREVIEW_ROOT).join("card");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("index.html"),
+            "<html><head><title>x</title></head><body></body></html>",
+        )
+        .unwrap();
+        let html = read_design_template_html(&tmp.0.to_string_lossy(), None, "card").unwrap();
+        assert!(html.contains("connect-src 'none'"));
+        assert!(html.contains("navigate-to 'none'"));
+        assert!(html.find("Content-Security-Policy").unwrap() < html.find("<title>").unwrap());
+        assert!(
+            read_design_template_html(&tmp.0.to_string_lossy(), None, "../outside.html").is_err()
+        );
+        assert!(
+            read_design_template_html(&tmp.0.to_string_lossy(), None, "/tmp/outside.html").is_err()
+        );
+        let sibling = tmp.0.join(DESIGN_TEMPLATE_PREVIEW_ROOT).join("other");
+        std::fs::create_dir_all(&sibling).unwrap();
+        std::fs::write(sibling.join("secret.png"), b"secret").unwrap();
+        std::fs::write(root.join("index.html"), "<img src=\"../other/secret.png\">").unwrap();
+        assert!(
+            read_design_template_html(&tmp.0.to_string_lossy(), None, "card")
+                .unwrap_err()
+                .contains("超出缓存根")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn design_template_html_rejects_symlinks() {
+        use std::os::unix::fs::symlink;
+        let tmp = TempDir::new();
+        let root = tmp.0.join(DESIGN_TEMPLATE_PREVIEW_ROOT);
+        std::fs::create_dir_all(root.join("real")).unwrap();
+        std::fs::write(
+            root.join("real/index.html"),
+            "<img src=\"inside-link.png\">",
+        )
+        .unwrap();
+        std::fs::write(root.join("real/image.png"), b"png").unwrap();
+        symlink(
+            root.join("real/image.png"),
+            root.join("real/inside-link.png"),
+        )
+        .unwrap();
+        symlink(root.join("real"), root.join("linked")).unwrap();
+        assert!(
+            read_design_template_html(&tmp.0.to_string_lossy(), None, "linked")
+                .unwrap_err()
+                .contains("符号链接")
+        );
+        assert!(
+            read_design_template_html(&tmp.0.to_string_lossy(), None, "real")
+                .unwrap_err()
+                .contains("符号链接")
+        );
     }
 
     #[test]

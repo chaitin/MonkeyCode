@@ -396,6 +396,11 @@ pub async fn wsl_workdir_base(host: State<'_, DriverHost>) -> Result<Option<Stri
 }
 
 #[tauri::command]
+pub async fn resolve_runtime_path(host: State<'_, DriverHost>, path: String) -> Result<String, String> {
+    host.get()?.resolve_workdir(&path)
+}
+
+#[tauri::command]
 pub async fn sessions_list(host: State<'_, DriverHost>) -> Result<Value, String> {
     host.get()?.sessions_list().await
 }
@@ -578,15 +583,37 @@ pub async fn upload_read(
     host: State<'_, DriverHost>,
     id: String,
     path: String,
+    expected_digest: Option<String>,
 ) -> Result<String, String> {
     let engine = host.get()?;
     let workdir = engine.session_workdir(&id).await?;
     let distro = engine.wsl_distro();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::uploads::read_data_url(&workdir, distro.as_deref(), &path)
+        crate::uploads::read_data_url_with_digest(
+            &workdir,
+            distro.as_deref(),
+            &path,
+            expected_digest.as_deref(),
+        )
     })
     .await
     .map_err(|e| format!("读取失败: {e}"))?
+}
+
+#[tauri::command]
+pub async fn design_template_preview_read(
+    host: State<'_, DriverHost>,
+    id: String,
+    path: String,
+) -> Result<String, String> {
+    let engine = host.get()?;
+    let workdir = engine.session_workdir(&id).await?;
+    let distro = engine.wsl_distro();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::uploads::read_design_template_html(&workdir, distro.as_deref(), &path)
+    })
+    .await
+    .map_err(|e| format!("读取模板预览失败: {e}"))?
 }
 
 #[cfg(test)]

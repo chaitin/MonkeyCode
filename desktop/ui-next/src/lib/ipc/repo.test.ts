@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { repoChanges, repoFileDiff, repoListDir, repoReadFile, repoReveal } from "./repo";
+import { repoChanges, repoFileDiff, repoListDir, repoPreviewFiles, repoReadFile, repoReveal } from "./repo";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -62,6 +62,16 @@ describe("repo_* 会话查询", () => {
     await expect(repoListDir("s1", "gone")).rejects.toThrow("读取目录失败: no such dir");
     await expect(repoReadFile("s1", "gone")).rejects.toThrow();
     expect(await repoChanges("s1")).toEqual({ changes: [], isGitRepo: false });
+  });
+
+  it("异常外部形状安全降级或成为可捕获错误", async () => {
+    stubInvoke((_cmd, args) => {
+      if (args?.kind === "repo_file_changes") return Promise.resolve({ result: { stale: true } });
+      if (args?.kind === "repo_preview_files") return Promise.resolve({ result: { files: "not-an-array" } });
+      return Promise.resolve({});
+    });
+    expect(await repoChanges("s1")).toEqual({ changes: [], isGitRepo: false });
+    await expect(repoPreviewFiles("s1")).rejects.toThrow("Malformed repo_preview_files response");
   });
 
   it("命令层 reject(会话不存在/15s 超时)原样上抛", async () => {

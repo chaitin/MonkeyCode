@@ -7,6 +7,7 @@ afterEach(() => vi.unstubAllGlobals());
 function stubShell() {
   const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
   const listeners = new Map<string, (e: { payload: unknown }) => void>();
+  let unlistenCalls = 0;
   vi.stubGlobal("window", {
     __TAURI__: {
       core: {
@@ -18,12 +19,15 @@ function stubShell() {
       event: {
         listen: (name: string, cb: (e: { payload: unknown }) => void) => {
           listeners.set(name, cb);
-          return Promise.resolve(() => listeners.delete(name));
+          return Promise.resolve(() => {
+            unlistenCalls += 1;
+            listeners.delete(name);
+          });
         },
       },
     },
   });
-  return { calls, listeners };
+  return { calls, listeners, unlistenCalls: () => unlistenCalls };
 }
 
 describe("IPC 原语", () => {
@@ -42,22 +46,26 @@ describe("IPC 原语", () => {
   });
 
   it("listenAsync 注册完成后事件立即可达(监听先于命令的铁律依赖这一点)", async () => {
-    const { listeners } = stubShell();
+    const { listeners, unlistenCalls } = stubShell();
     const got: unknown[] = [];
     const off = await listenAsync("frames:s1", (p) => got.push(p));
     // 注册已生效:此刻壳若同步 emit,不会丢
     listeners.get("frames:s1")?.({ payload: [{ type: "task-started" }] });
     expect(got).toEqual([[{ type: "task-started" }]]);
     off();
+    off();
     expect(listeners.has("frames:s1")).toBe(false);
+    expect(unlistenCalls()).toBe(1);
   });
 
   it("listen 的同步退订经 promise 链兜底", async () => {
-    const { listeners } = stubShell();
+    const { listeners, unlistenCalls } = stubShell();
     const off = listen("engine-status", () => {});
     off(); // 注册 promise 尚未 resolve 时调用也不该炸
+    off();
     await Promise.resolve();
     await Promise.resolve();
     expect(listeners.has("engine-status")).toBe(false);
+    expect(unlistenCalls()).toBe(1);
   });
 });

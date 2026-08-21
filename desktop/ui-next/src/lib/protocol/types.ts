@@ -259,6 +259,67 @@ export interface BackgroundAgentResultItem {
   timestamp?: number;
 }
 
+/** 设计模板动态预览。HTML 仅可经后端受控回读。 */
+export interface DesignTemplatePreview {
+  type: "html" | "image";
+  path: string;
+}
+
+/** 设计模板选择请求中的候选项；image 是旧协议缩略图兼容字段。 */
+export interface DesignTemplateItem {
+  id: string;
+  title: string;
+  image?: string;
+  preview?: DesignTemplatePreview;
+  previewDigest?: string;
+  description?: string;
+  reason?: string;
+  recommended?: boolean;
+}
+
+export type DesignSelectionAction = "select" | "next" | "direct" | "cancel";
+
+export interface DesignSelectionActions {
+  select: boolean;
+  next: boolean;
+  direct: boolean;
+  cancel: boolean;
+}
+
+export interface DesignSelectionRefinement {
+  enabled: boolean;
+  placeholder?: string;
+}
+
+export interface DesignSelectionResponse {
+  request_id: string;
+  action: DesignSelectionAction;
+  selected_id?: string;
+  selected_preview_path?: string;
+  selected_preview_digest?: string;
+  refinement_text?: string;
+}
+
+export type DesignSelectionMode = "template" | "direction";
+
+export interface DesignTemplateSelectionItem {
+  kind: "design-template-selection";
+  requestId: string;
+  mode: DesignSelectionMode;
+  title?: string;
+  description?: string;
+  items: DesignTemplateItem[];
+  allowedActions: DesignSelectionActions;
+  refinement?: DesignSelectionRefinement;
+  state: "open" | "responded" | "cancelled" | "expired";
+  action?: DesignSelectionAction;
+  selectedId?: string;
+  selectedPreviewPath?: string;
+  selectedPreviewDigest?: string;
+  refinementText?: string;
+  reason?: string;
+}
+
 /** 对话流里的一条渲染项。 */
 export type ChatItem =
   | UserItem
@@ -266,6 +327,7 @@ export type ChatItem =
   | ThoughtItem
   | ToolItem
   | BackgroundAgentResultItem
+  | DesignTemplateSelectionItem
   | SysItem
   | PermItem
   | AskItem;

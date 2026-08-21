@@ -1377,6 +1377,8 @@ fn bare_inner_rpc(
             perm_remember: StdMutex::new(HashSet::new()),
             pending_questions: StdMutex::new(HashMap::new()),
             pending_perms: StdMutex::new(HashMap::new()),
+            pending_design_selections: StdMutex::new(HashMap::new()),
+            seen_design_selection_requests: StdMutex::new(HashSet::new()),
             perm_tools: StdMutex::new(HashMap::new()),
             resume: StdMutex::new(HashMap::new()),
         },
@@ -1425,6 +1427,17 @@ fn bare_inner_rpc_with_test_model(
         owner: String::new(),
     }];
     (inner, events, stdin_rx)
+}
+
+/// Design RPC tests use the same controllable bare transport helper.
+fn bare_inner_events_and_stdin(
+    tag: &str,
+) -> (
+    Arc<Inner>,
+    EmittedEvents,
+    mpsc::UnboundedReceiver<Option<String>>,
+) {
+    bare_inner_rpc(tag)
 }
 
 fn bare_session(sid: &str) -> SessionState {
@@ -1598,6 +1611,441 @@ async fn stale_resume_completion_does_not_clear_replacement_session() {
         }),
         "旧恢复向替代会话发送了已连接状态"
     );
+}
+
+fn design_request(request_id: &str, sid: &str) -> Value {
+    json!({
+        "request_id": request_id, "session_id": sid, "title": "选择模板",
+        "items": [
+            { "id": "clean", "title": "简洁", "image": "clean.png", "recommended": true },
+            { "id": "bold", "title": "醒目", "image": "bold.png", "description": "高对比" }
+        ],
+        "refinement": { "enabled": true, "placeholder": "继续调整" }
+    })
+}
+
+fn frame_types(inner: &Inner, sid: &str) -> Vec<String> {
+    inner.journal_barrier();
+    std::fs::read_to_string(inner.data_dir.join(sid).join("events.jsonl"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|frame| {
+            frame
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+async fn answer_next_rpc(
+    inner: &Inner,
+    stdin_rx: &mut mpsc::UnboundedReceiver<Option<String>>,
+    error: Option<&str>,
+) -> Value {
+    let line = stdin_rx
+        .recv()
+        .await
+        .expect("缺 RPC 上行")
+        .expect("收到停止哨兵");
+    let request: Value = serde_json::from_str(&line).expect("RPC 上行不是 JSON");
+    let id = request["id"].as_i64().expect("RPC 缺 id");
+    let response = match error {
+        Some(message) => {
+            json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32000, "message": message } })
+        }
+        None => json!({ "jsonrpc": "2.0", "id": id, "result": {} }),
+    };
+    inner
+        .transport
+        .pending
+        .lock()
+        .unwrap()
+        .remove(&id)
+        .expect("RPC pending 等待者不存在")
+        .send(response)
+        .expect("RPC 调用方已提前退出");
+    request
+}
+
+#[test]
+fn design_request_accepts_dynamic_preview_and_keeps_legacy_image_compatibility() {
+    let inner = bare_inner("design-preview-shape");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification("design/template-selection/request", json!({
+        "request_id": "preview-1", "session_id": "s1", "mode": "template",
+        "items": [
+            { "id": "dynamic", "title": "动态", "preview": { "type": "html", "path": ".monkeycode/design-template-previews/dynamic/index.html" } },
+            { "id": "image", "title": "新图片", "preview": { "type": "image", "path": "image.png" } },
+            { "id": "legacy", "title": "旧图片", "image": "legacy.png" }
+        ]
+    }));
+    assert_eq!(
+        inner.sess.pending_design_selections.lock().unwrap()["s1"]
+            .previews
+            .len(),
+        3
+    );
+}
+
+#[test]
+fn design_request_rejects_unknown_selection_mode() {
+    let inner = bare_inner("design-preview-mode");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        json!({
+            "request_id": "preview-1", "session_id": "s1", "mode": "unknown",
+            "items": [{ "id": "image", "title": "图片", "image": "image.png" }]
+        }),
+    );
+    assert!(inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn design_request_is_idempotent_and_cannot_overwrite_a_session_pending_request() {
+    let inner = bare_inner("design-request-idempotent");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-2", "s1"),
+    );
+    let pending = inner.sess.pending_design_selections.lock().unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending["s1"].request_id, "req-1");
+    drop(pending);
+    assert_eq!(
+        frame_types(&inner, "s1")
+            .iter()
+            .filter(|kind| *kind == "design-template-selection-request")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn late_design_cancel_does_not_remove_the_new_request() {
+    let inner = bare_inner("design-late-cancel");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("old", "s1"),
+    );
+    inner.handle_notification(
+        "design/selection/cancelled",
+        json!({ "request_id": "old", "session_id": "s1" }),
+    );
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("new", "s1"),
+    );
+    inner.handle_notification(
+        "design/selection/cancelled",
+        json!({ "request_id": "old", "session_id": "s1" }),
+    );
+    assert_eq!(
+        inner.sess.pending_design_selections.lock().unwrap()["s1"].request_id,
+        "new"
+    );
+    assert_eq!(
+        frame_types(&inner, "s1")
+            .iter()
+            .filter(|kind| *kind == "design-selection-cancelled")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn design_response_validates_and_atomically_consumes_the_pending_request() {
+    let (inner, _events, mut stdin_rx) = bare_inner_events_and_stdin("design-response");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    let driver = OhmyDriver(inner.clone());
+    assert!(driver
+        .session_send(
+            "s1",
+            "design/selection/respond",
+            json!({ "request_id": "req-1", "action": "select", "selected_id": "missing" })
+        )
+        .await
+        .is_err());
+    assert!(inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .contains_key("s1"));
+    let rpc_inner = inner.clone();
+    let responder =
+        tokio::spawn(async move { answer_next_rpc(&rpc_inner, &mut stdin_rx, None).await });
+    driver.session_send("s1", "design/selection/respond",
+        json!({ "request_id": "req-1", "action": "select", "selected_id": "clean", "refinement_text": "更亮" }))
+        .await.unwrap();
+    assert_eq!(
+        responder.await.unwrap()["method"],
+        "design/selection/respond"
+    );
+    assert!(!inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .contains_key("s1"));
+    assert!(driver
+        .session_send(
+            "s1",
+            "design/selection/respond",
+            json!({ "request_id": "req-1", "action": "select", "selected_id": "clean" })
+        )
+        .await
+        .is_err());
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    assert!(inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        frame_types(&inner, "s1")
+            .iter()
+            .filter(|kind| *kind == "design-selection-respond")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn digested_design_response_requires_exact_id_rendered_path_and_digest_binding() {
+    let (inner, _events, mut stdin_rx) = bare_inner_events_and_stdin("design-response-binding");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    let mut request = design_request("req-binding", "s1");
+    request["items"] = json!([
+        { "id": "clean", "title": "简洁", "image": "thumb.png", "preview": { "type": "html", "path": "ignored/index.html" }, "preview_digest": "sha-clean" },
+        { "id": "bold", "title": "醒目", "preview": { "type": "html", "path": "bold/index.html" }, "preview_digest": "sha-bold" }
+    ]);
+    inner.handle_notification("design/template-selection/request", request);
+    {
+        let pending = inner.sess.pending_design_selections.lock().unwrap();
+        assert_eq!(pending["s1"].previews["clean"].path, "thumb.png");
+        assert_eq!(pending["s1"].previews["bold"].path, "bold/index.html");
+    }
+    let driver = OhmyDriver(inner.clone());
+    for response in [
+        json!({ "request_id": "req-binding", "action": "select", "selected_id": "clean" }),
+        json!({ "request_id": "req-binding", "action": "select", "selected_id": "clean", "selected_preview_path": "ignored/index.html", "selected_preview_digest": "sha-clean" }),
+        json!({ "request_id": "req-binding", "action": "select", "selected_id": "clean", "selected_preview_path": "thumb.png", "selected_preview_digest": "sha-wrong" }),
+        json!({ "request_id": "req-binding", "action": "select", "selected_id": "bold", "selected_preview_path": "thumb.png", "selected_preview_digest": "sha-clean" }),
+    ] {
+        assert!(driver
+            .session_send("s1", "design/selection/respond", response)
+            .await
+            .is_err());
+    }
+    let rpc_inner = inner.clone();
+    let responder =
+        tokio::spawn(async move { answer_next_rpc(&rpc_inner, &mut stdin_rx, None).await });
+    driver
+        .session_send(
+            "s1",
+            "design/selection/respond",
+            json!({
+                "request_id": "req-binding", "action": "select", "selected_id": "clean",
+                "selected_preview_path": "thumb.png", "selected_preview_digest": "sha-clean"
+            }),
+        )
+        .await
+        .unwrap();
+    let rpc = responder.await.unwrap();
+    assert_eq!(rpc["params"]["selected_preview_path"], "thumb.png");
+    assert_eq!(rpc["params"]["selected_preview_digest"], "sha-clean");
+    inner.journal_barrier();
+    let replay = std::fs::read_to_string(inner.data_dir.join("s1").join("events.jsonl")).unwrap();
+    assert!(replay
+        .lines()
+        .any(|line| line.contains("selected_preview_path") && line.contains("sha-clean")));
+}
+
+#[tokio::test]
+async fn design_rpc_rejection_keeps_pending_open_and_writes_no_success_frame() {
+    let (inner, _events, mut stdin_rx) = bare_inner_events_and_stdin("design-rpc-rejected");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    let driver = OhmyDriver(inner.clone());
+    let rpc_inner = inner.clone();
+    let responder = tokio::spawn(async move {
+        answer_next_rpc(&rpc_inner, &mut stdin_rx, Some("selection rejected")).await
+    });
+    let error = driver
+        .session_send(
+            "s1",
+            "design/selection/respond",
+            json!({ "request_id": "req-1", "action": "select", "selected_id": "clean" }),
+        )
+        .await
+        .expect_err("引擎拒绝必须返回 Err");
+    responder.await.unwrap();
+    assert_eq!(error, "selection rejected");
+    let pending = inner.sess.pending_design_selections.lock().unwrap();
+    assert_eq!(pending["s1"].request_id, "req-1");
+    assert!(!pending["s1"].responding);
+    drop(pending);
+    assert_eq!(
+        frame_types(&inner, "s1")
+            .iter()
+            .filter(|kind| *kind == "design-selection-respond")
+            .count(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn design_response_rejects_a_concurrent_duplicate_while_rpc_is_in_flight() {
+    let (inner, _events, mut stdin_rx) =
+        bare_inner_events_and_stdin("design-response-double-click");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    let driver = OhmyDriver(inner.clone());
+    let first_driver = driver.clone();
+    let first = tokio::spawn(async move {
+        first_driver
+            .session_send(
+                "s1",
+                "design/selection/respond",
+                json!({ "request_id": "req-1", "action": "select", "selected_id": "clean" }),
+            )
+            .await
+    });
+    let line = stdin_rx
+        .recv()
+        .await
+        .expect("首个响应未发 RPC")
+        .expect("收到停止哨兵");
+    let request: Value = serde_json::from_str(&line).unwrap();
+    assert!(inner.sess.pending_design_selections.lock().unwrap()["s1"].responding);
+    let duplicate = driver
+        .session_send(
+            "s1",
+            "design/selection/respond",
+            json!({ "request_id": "req-1", "action": "select", "selected_id": "clean" }),
+        )
+        .await
+        .expect_err("在途响应期间的重复点击必须拒绝");
+    assert!(duplicate.contains("正在处理中"));
+    let id = request["id"].as_i64().unwrap();
+    inner
+        .transport
+        .pending
+        .lock()
+        .unwrap()
+        .remove(&id)
+        .unwrap()
+        .send(json!({ "jsonrpc": "2.0", "id": id, "result": {} }))
+        .unwrap();
+    first.await.unwrap().expect("首个响应应在引擎确认后成功");
+    assert!(!inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .contains_key("s1"));
+    assert_eq!(
+        frame_types(&inner, "s1")
+            .iter()
+            .filter(|kind| *kind == "design-selection-respond")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn reconcile_clears_pending_design_selection_and_records_cancellation() {
+    let inner = bare_inner("design-reconcile");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_notification(
+        "design/template-selection/request",
+        design_request("req-1", "s1"),
+    );
+    inner.reconcile_all("engine stopped");
+    assert!(inner
+        .sess
+        .pending_design_selections
+        .lock()
+        .unwrap()
+        .is_empty());
+    assert!(frame_types(&inner, "s1").contains(&"design-selection-cancelled".to_string()));
 }
 
 #[test]

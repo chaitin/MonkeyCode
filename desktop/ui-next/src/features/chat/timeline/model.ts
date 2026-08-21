@@ -186,6 +186,7 @@ export function estimateTimelineRow(row: TimelineRow): number {
       return 86;
     case "perm":
     case "ask":
+    case "design-template-selection":
       return 132;
     case "thought":
       return 58;

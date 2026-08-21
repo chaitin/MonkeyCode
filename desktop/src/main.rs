@@ -19,6 +19,7 @@ mod config;
 mod driver;
 #[cfg(target_os = "windows")]
 mod native_pet;
+mod preview;
 mod repo;
 mod skill_import;
 mod skill_transactions;
@@ -1539,7 +1540,10 @@ fn main() {
             default_linux_gdk_backend(wayland_display.as_deref(), session_type.as_deref()),
         );
     }
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().register_uri_scheme_protocol(
+        preview::ARTIFACT_SCHEME,
+        |_context, request| preview::artifact_protocol_response(request),
+    );
     // 必须是首个插件：Windows/Linux 托盘进程仍在时再次点击快捷方式，不启动
     // 第二套客户端/引擎，而是把第二次启动转给已有进程并唤回主窗口。
     #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -1599,6 +1603,7 @@ fn main() {
             driver::engine_status,
             driver::engine_caps,
             driver::wsl_workdir_base,
+            driver::resolve_runtime_path,
             browser::browser_status,
             browser::browser_repair,
             driver::sessions_list,
@@ -1627,11 +1632,29 @@ fn main() {
             driver::upload_begin,
             driver::upload_file_path,
             driver::upload_read,
+            driver::design_template_preview_read,
             uploads::upload_chunk,
             uploads::upload_finish,
             uploads::upload_abort,
             uploads::stat_dropped_file,
             uploads::read_dropped_file,
+            preview::preview_create,
+            preview::preview_create_artifact,
+            preview::preview_show,
+            preview::preview_hide,
+            preview::preview_set_bounds,
+            preview::preview_navigate,
+            preview::preview_reload,
+            preview::preview_set_zoom,
+            preview::preview_destroy,
+            preview::preview_result_show,
+            preview::preview_result_hide,
+            preview::preview_picker_toggle,
+            preview::preview_element_apply,
+            preview::preview_element_undo,
+            preview::preview_capture,
+            preview::preview_serialize,
+            preview::preview_save_html,
             baizhi::baizhi_status,
             baizhi::baizhi_send_code,
             baizhi::baizhi_login,

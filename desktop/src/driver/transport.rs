@@ -384,6 +384,8 @@ impl OhmyDriver {
                 perm_remember: StdMutex::new(perm_remember),
                 pending_questions: StdMutex::new(HashMap::new()),
                 pending_perms: StdMutex::new(HashMap::new()),
+                pending_design_selections: StdMutex::new(HashMap::new()),
+                seen_design_selection_requests: StdMutex::new(HashSet::new()),
                 perm_tools: StdMutex::new(HashMap::new()),
                 resume: StdMutex::new(HashMap::new()),
             },

@@ -124,6 +124,16 @@
   --color-caption-close-content: #fff;
 }
 
+@layer components {
+  .app-session-sidebar {
+    transition: width 160ms ease;
+  }
+
+  body:has([data-design-preview-open="true"]) .app-session-sidebar {
+    width: 160px;
+  }
+}
+
 @layer base {
   /* 自绘窗框条的高度,**固定定位覆盖层的唯一避让依据**(LAYOUT §1)。
    * 平台判据走根节点的 data-platform(main.tsx 启动时 applyPlatformAttr 落)。

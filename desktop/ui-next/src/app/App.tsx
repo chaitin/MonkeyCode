@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useCloudProjects, useCloudTasks } from "@/features/cloud/CloudTaskList";
 import { CloudQueueCoordinatorProvider } from "@/features/cloud/CloudQueueCoordinator";
+import { previewHide, previewShow } from "@/features/design/previewIpc";
 import { DownloadsDock } from "@/features/downloads/DownloadsDock";
 import { EngineBanner } from "@/features/engine/EngineBanner";
 import { SettingsNavigationProvider } from "@/features/settings/SettingsNavigationContext";
@@ -278,6 +279,12 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
       { params: { reason } },
     ),
   );
+  const handleTodoDetailOpenChange = useCallback((open: boolean) => {
+    void (open ? previewHide() : previewShow()).catch(() => {});
+  }, []);
+  useEffect(() => {
+    void (settingsOpen ? previewHide() : previewShow()).catch(() => {});
+  }, [settingsOpen]);
 
   /** 待办「启动任务」:创建意图送进工作台(新建即新格)预填正文,todoId
    *  供创建成功后回链。 */
@@ -680,6 +687,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
                 // 云端派发件的跳转:装载入格(工作台即主壳,没有"云端空间"
                 // 可切了;无 id 的存量件退化为无动作)
                 onOpenCloud: (id) => id && loadEntry(cloudSlotId(id)),
+                onDetailOpenChange: handleTodoDetailOpenChange,
               },
             }}
           />

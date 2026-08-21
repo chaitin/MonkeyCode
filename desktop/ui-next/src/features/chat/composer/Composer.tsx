@@ -4,7 +4,7 @@
 // 发送面契约见 useComposer 文件头;切模型/思考/模式经 lib/ipc/controls
 // (session_call),壳会补 model_update / think_update / permission_mode_update 帧，
 // ChatState 是最终真值；思考档仅在请求排队期间做临时视觉回显。
-import { IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
+import { IconFolder, IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
 import {
   forwardRef,
   memo,
@@ -30,6 +30,7 @@ import { sessionSetMode, sessionSetModel, sessionSetSkills, sessionSetThink } fr
 import { afterEngineReady } from "@/lib/ipc/engine";
 import { modelMenuList, resolveModelName } from "@/lib/models/modelMenu";
 import { modelsList, type ModelInfo, type SessionMeta } from "@/lib/ipc/sessions";
+import { pickDirectory, resolveRuntimePath, workdirPickBase } from "@/lib/ipc/host";
 import { defaultEnabledSkills, skillsList, type SkillInfo } from "@/lib/ipc/skills";
 import { pickAttachmentPaths, uploadFileURL } from "@/lib/ipc/uploads";
 import type { ChatState, SlashCommand, Usage } from "@/lib/protocol/types";
@@ -179,6 +180,10 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
 }: ComposerProps, ref) {
   const { t } = useI18n();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const sessionRef = useRef(sessionId);
+  sessionRef.current = sessionId;
+  const draftRef = useRef(ctl.draft);
+  draftRef.current = ctl.draft;
   useImperativeHandle(ref, () => ({ focus: () => taRef.current?.focus() }), []);
   const imeRef = useRef(createImeGuard());
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -578,6 +583,19 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
     });
   };
 
+  const pickMaterialsDirectory = () => {
+    const forSession = sessionId;
+    void workdirPickBase()
+      .then((base) => pickDirectory(base))
+      .then((path) => (path ? resolveRuntimePath(path) : null))
+      .then((path) => {
+        if (!path || sessionRef.current !== forSession) return;
+        const prefix = draftRef.current.trimEnd();
+        ctl.setDraft(`${prefix}${prefix ? "\n" : ""}${t("chat.materialsPath", { path })}`);
+        taRef.current?.focus();
+      });
+  };
+
   // ==== 运行态文案 ====
   const runningLabel = presentation.openPermission
     ? t("chat.running.waitPerm")
@@ -753,6 +771,15 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
             onClick={attach}
           >
             <IconPaperclip size={15} stroke={1.75} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={t("chat.materialsDirectory")}
+            title={t("chat.materialsDirectoryTip")}
+            className="btn btn-ghost btn-square btn-xs shrink-0 text-base-content/60"
+            onClick={pickMaterialsDirectory}
+          >
+            <IconFolder size={15} stroke={1.75} aria-hidden />
           </button>
           <button
             type="button"

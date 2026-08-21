@@ -50,6 +50,59 @@ function unwrap<T>(r: Envelope<T>, fallback: T): T {
   return r.result ?? fallback;
 }
 
+export interface RepoPreviewFile {
+  path: string;
+  kind: "html" | "image" | "text";
+  mime: string;
+  size: number;
+}
+
+export interface RepoPreviewFilesResult {
+  files: RepoPreviewFile[];
+  truncated: boolean;
+}
+
+export type RepoArtifact =
+  | { path: string; kind: "html" | "text"; mime: string; content: string }
+  | { path: string; kind: "image"; mime: string; dataUrl: string };
+
+interface WireArtifact {
+  path: string;
+  kind: "html" | "image" | "text";
+  mime: string;
+  content?: string;
+  data_url?: string;
+}
+
+function isPreviewFile(value: unknown): value is RepoPreviewFile {
+  if (!value || typeof value !== "object") return false;
+  const file = value as Partial<RepoPreviewFile>;
+  return typeof file.path === "string"
+    && (file.kind === "html" || file.kind === "image" || file.kind === "text")
+    && typeof file.mime === "string"
+    && typeof file.size === "number";
+}
+
+/** 有界扫描工作区内可预览 artifact。 */
+export async function repoPreviewFiles(id: string): Promise<RepoPreviewFilesResult> {
+  if (!inDesktopShell()) return { files: [], truncated: false };
+  const r = await call<unknown>(id, "repo_preview_files", {});
+  const value = unwrap<unknown>(r, { files: [], truncated: false });
+  if (!value || typeof value !== "object" || !Array.isArray((value as Partial<RepoPreviewFilesResult>).files)) {
+    throw new Error("Malformed repo_preview_files response");
+  }
+  const result = value as Partial<RepoPreviewFilesResult>;
+  return { files: result.files!.filter(isPreviewFile), truncated: result.truncated === true };
+}
+
+/** 安全读取 artifact；HTML 已受控内联，图片为 data URL，文本限 1 MiB。 */
+export async function repoArtifactRead(id: string, path: string): Promise<RepoArtifact> {
+  const r = await call<WireArtifact>(id, "repo_artifact_read", { path });
+  const value = unwrap(r, { path, kind: "text", mime: "text/plain", content: "" });
+  if (value.kind === "image") return { path: value.path, kind: "image", mime: value.mime, dataUrl: value.data_url ?? "" };
+  return { path: value.path, kind: value.kind, mime: value.mime, content: value.content ?? "" };
+}
+
 /** 列目录(单层,dir "" = 工作区根)。 */
 export async function repoListDir(id: string, dir: string): Promise<RepoEntry[]> {
   if (!inDesktopShell()) return [];
@@ -75,7 +128,12 @@ export async function repoFileDiff(id: string, path: string): Promise<string> {
 export async function repoChanges(id: string): Promise<RepoChangeSet> {
   if (!inDesktopShell()) return { changes: [], isGitRepo: false };
   const r = await call<RepoChange[]>(id, "repo_file_changes", {});
-  return { changes: unwrap(r, []), isGitRepo: r.is_git_repo ?? false };
+  const value = unwrap<unknown>(r, []);
+  return { changes: Array.isArray(value) ? value.filter((change): change is RepoChange => {
+    if (!change || typeof change !== "object") return false;
+    const item = change as Partial<RepoChange>;
+    return typeof item.path === "string" && typeof item.status === "string";
+  }) : [], isGitRepo: r.is_git_repo ?? false };
 }
 
 /** 在系统文件管理器中定位路径(动作类:浏览器模式随 invoke 一起 reject)。 */

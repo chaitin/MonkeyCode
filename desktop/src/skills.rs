@@ -32,20 +32,21 @@ const REVISION_FILE: &str = "skills.revision";
 const REVISION_FORMAT: u32 = 1;
 
 /// 内置技能的**出厂**缺省启用集:云端建任务的 MC_DEFAULT_SKILL_IDS 四件套
-/// (baizhi/monkeycode.rs)+ 桌面端补充的 publish-website(把本会话产出的
-/// Web 项目发布上线,官方库专为 pc-client 收录)。官方库全默认启用会把
-/// system prompt 塞满几十条 name+description,故其余按需勾选。用户自建
-/// 技能不受此表限制,出厂恒默认启用——亲手写的技能就是要用的；批量导入
-/// 会显式写入 false，只安装入库，等待用户主动设为默认。出厂规则之上是用户
-/// 显式开关(skills-defaults.json,见 load_default_prefs):
+/// (baizhi/monkeycode.rs)+ 桌面端补充的发布与设计流入口。设计流内部 Skill
+/// 由 workflow.json 依赖闭包自动物化，不作为用户可选项。
+/// 官方库全默认启用会把 system prompt 塞满几十条 name+description,故其余
+/// 按需勾选。用户自建技能不受此表限制,出厂恒默认启用——亲手写的技能就是
+/// 要用的；批量导入会显式写入 false，只安装入库，等待用户主动设为默认。
+/// 出厂规则之上是用户显式开关(skills-defaults.json,见 load_default_prefs):
 /// 没拨过的技能跟随出厂,拨过的以开关为准。解析结果经 skills_list 的
 /// default_enabled 字段下发,UI 不再自持一份规则镜像。
-pub const DEFAULT_ENABLED: [&str; 5] = [
+pub const DEFAULT_ENABLED: [&str; 6] = [
     "feature-design",
     "project-wiki",
     "feature-implementer",
     "implementation-planner",
     "publish-website",
+    "design-flow",
 ];
 
 /// 默认启用开关的持久化(<app_config_dir>/skills-defaults.json,
@@ -184,6 +185,26 @@ pub(crate) fn parse_frontmatter(text: &str) -> (Option<String>, Option<String>) 
         }
     }
     (name, description)
+}
+
+fn frontmatter_value(text: &str, wanted: &str) -> Option<String> {
+    let mut lines = text.lines();
+    if lines.next().map(str::trim) != Some("---") {
+        return None;
+    }
+    for line in lines {
+        if line.trim() == "---" {
+            break;
+        }
+        if line.starts_with(' ') || line.starts_with('\t') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else { continue };
+        if key.trim() == wanted {
+            return Some(value.trim().trim_matches('"').trim_matches('\'').to_string());
+        }
+    }
+    None
 }
 
 /// 展示描述:frontmatter description,缺省取正文首个非空行去掉 '#'
@@ -1082,6 +1103,8 @@ mod os_lock {
 
 struct StoreSkill {
     info: SkillInfo,
+    internal: bool,
+    owner: Option<String>,
 }
 
 /// 扫一个来源目录:<dir>/<name>/SKILL.md。坏条目(读不了/名字非法)跳过
@@ -1118,6 +1141,8 @@ fn scan_source(dir: &Path, source: &str, out: &mut Vec<StoreSkill>) {
             continue;
         }
         out.push(StoreSkill {
+            internal: frontmatter_value(&content, "visibility").as_deref() == Some("internal"),
+            owner: frontmatter_value(&content, "owner"),
             info: SkillInfo {
                 description: derive_description(&content),
                 name,
@@ -1143,6 +1168,12 @@ fn scan_store(builtin: Option<&Path>, user: &Path) -> Vec<StoreSkill> {
         .filter(|s| s.info.source == "builtin")
         .map(|s| s.info.name.clone())
         .collect();
+    let internal_builtin_names: std::collections::HashSet<String> = all
+        .iter()
+        .filter(|s| s.info.source == "builtin" && s.internal)
+        .map(|s| s.info.name.clone())
+        .collect();
+    all.retain(|s| s.info.source != "user" || !internal_builtin_names.contains(&s.info.name));
     for s in &mut all {
         s.info.overrides = s.info.source == "user" && builtin_names.contains(&s.info.name);
     }
@@ -1156,6 +1187,7 @@ fn list_unlocked(builtin: Option<&Path>, user: &Path, defaults: &Path) -> Vec<Sk
     let prefs = load_default_prefs(defaults);
     scan_store(builtin, user)
         .into_iter()
+        .filter(|s| !s.internal)
         .map(|s| {
             let mut info = s.info;
             info.default_enabled = is_default_enabled(&info.name, &info.source, &prefs);
@@ -1187,10 +1219,35 @@ fn ensure_plain_materialize_parent(parent: &Path) -> Result<(), String> {
     }
 }
 
+/// 入口 Skill 的 workflow.json 声明的依赖闭包(routes[].skills 与
+/// routes[].steps[].skills)。读不到或解析失败一律当作无依赖。
+fn workflow_dependencies(dir: &Path) -> Vec<String> {
+    let Ok(data) = fs::read(dir.join("workflow.json")) else { return Vec::new() };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data) else { return Vec::new() };
+    let mut dependencies = std::collections::BTreeSet::new();
+    for route in value.get("routes").and_then(|v| v.as_array()).into_iter().flatten() {
+        for skill in route.get("skills").and_then(|v| v.as_array()).into_iter().flatten() {
+            if let Some(name) = skill.as_str() {
+                dependencies.insert(name.to_string());
+            }
+        }
+        for step in route.get("steps").and_then(|v| v.as_array()).into_iter().flatten() {
+            for skill in step.get("skills").and_then(|v| v.as_array()).into_iter().flatten() {
+                if let Some(name) = skill.as_str() {
+                    dependencies.insert(name.to_string());
+                }
+            }
+        }
+    }
+    dependencies.into_iter().collect()
+}
+
 /// 会话技能物化：在同目录 sibling 里建好完整新树，旧树挪到 trash sibling
 /// 后一次 rename 就位，最后清理。技能目录是可重建缓存——中途崩溃最多留下
 /// 缺失的 target 或半份 sibling，下次物化会整树重建并清扫残留，不需要事务
 /// 日志或指纹复核。
+/// 返回的是**公开入口**的启用快照(sidecar 落这份);workflow 内部依赖只写入
+/// 目标目录,不进入 sidecar。
 fn materialize_unlocked(
     target: &Path,
     builtin: Option<&Path>,
@@ -1208,16 +1265,37 @@ fn materialize_unlocked(
     fs::create_dir(&temporary).map_err(|e| format!("创建会话技能临时目录失败: {e}"))?;
 
     let prefs = load_default_prefs(defaults);
+    let store = scan_store(builtin, user);
+    // 公开入口:非 internal 且被出厂规则/用户开关启用。internal Skill 不进这一层,
+    // 只能作为入口 workflow 的依赖被带出来(见下面 dependencies)。
+    let roots: std::collections::BTreeSet<String> = store
+        .iter()
+        .filter(|s| valid_skill_name(&s.info.name))
+        .filter(|s| !s.internal)
+        .filter(|s| match enabled {
+            Some(names) => names.contains(&s.info.name),
+            None => is_default_enabled(&s.info.name, &s.info.source, &prefs),
+        })
+        .map(|s| s.info.name.clone())
+        .collect();
+    // StoreSkill 不再存目录,按 source_root + name 重建(与物化拷贝同一口径)。
+    let mut dependencies = std::collections::BTreeSet::new();
+    for root in store.iter().filter(|s| roots.contains(&s.info.name)) {
+        let source_root = if root.info.source == "user" { Some(user) } else { builtin };
+        if let Some(source_root) = source_root {
+            dependencies.extend(workflow_dependencies(&source_root.join(&root.info.name)));
+        }
+    }
     let mut done = Vec::new();
     let generated = (|| {
-        for s in scan_store(builtin, user) {
+        for s in store {
             if !valid_skill_name(&s.info.name) {
                 continue;
             }
-            let on = match enabled {
-                Some(names) => names.contains(&s.info.name),
-                None => is_default_enabled(&s.info.name, &s.info.source, &prefs),
-            };
+            let on = roots.contains(&s.info.name)
+                || (dependencies.contains(&s.info.name)
+                    && (!s.internal
+                        || s.owner.as_deref().map_or(true, |owner| roots.contains(owner))));
             if !on {
                 continue;
             }
@@ -1232,7 +1310,10 @@ fn materialize_unlocked(
                 &temporary.join(&s.info.name),
             )
             .map_err(|e| format!("物化技能 {} 失败: {e}", s.info.name))?;
-            done.push(s.info.name);
+            // 只有公开入口进 sidecar 快照;内部依赖仅落盘。
+            if roots.contains(&s.info.name) {
+                done.push(s.info.name);
+            }
         }
         Ok::<(), String>(())
     })();
@@ -1757,9 +1838,9 @@ mod tests {
         let second = engine.join("sessions/second/skills");
         put_skill(&builtin, "a", "A");
         put_skill(&user, "b", "B");
-        // 辅助资源一并拷贝
-        fs::create_dir_all(user.join("b/references")).unwrap();
-        fs::write(user.join("b/references/x.md"), "ref").unwrap();
+        // references/ 的多层辅助资源一并递归拷贝
+        fs::create_dir_all(user.join("b/references/components")).unwrap();
+        fs::write(user.join("b/references/components/x.md"), "nested ref").unwrap();
 
         let nodefaults = user.join("no-defaults.json");
         let both = materialize_unlocked(
@@ -1771,7 +1852,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(both, vec!["a", "b"]);
-        assert!(first.join("b/references/x.md").is_file());
+        assert_eq!(
+            fs::read_to_string(first.join("b/references/components/x.md")).unwrap(),
+            "nested ref"
+        );
 
         let only_b = materialize_unlocked(
             &second,
@@ -1895,15 +1979,38 @@ mod tests {
     }
 
     #[test]
-    fn default_set_is_factory_rule_overridden_by_prefs() {
+    fn design_skills_are_factory_enabled_and_user_prefs_override_them() {
+        const INTERNAL_SKILLS: [&str; 10] = [
+            "design-generation",
+            "design-refinement",
+            "frontend-design",
+            "web-design-art-direction",
+            "image-generation",
+            "image-refinement",
+            "visual-design-foundations",
+            "web-component-design",
+            "react-native-design",
+            "headless-design-jury",
+        ];
+        assert!(DEFAULT_ENABLED.contains(&"design-flow"));
+        assert!(INTERNAL_SKILLS.iter().all(|name| !DEFAULT_ENABLED.contains(name)));
+
         let builtin = test_dir("def-builtin");
         let user = test_dir("def-user");
         let target = test_dir("def-target");
-        put_skill(&builtin, "feature-design", "官方默认项");
+        put_skill(&builtin, "design-flow", "---\nname: design-flow\n---\n入口");
+        for name in INTERNAL_SKILLS {
+            put_skill(&builtin, name, &format!("---\nname: {name}\nvisibility: internal\nowner: design-flow\n---\n内部"));
+        }
+        let steps: Vec<_> = INTERNAL_SKILLS.iter().map(|name| serde_json::json!({"skills": [name]})).collect();
+        fs::write(
+            builtin.join("design-flow/workflow.json"),
+            serde_json::to_vec(&serde_json::json!({"routes": [{"steps": steps}]})).unwrap(),
+        ).unwrap();
         put_skill(&builtin, "tailwindcss-helper", "官方非默认项");
         put_skill(&user, "my-skill", "用户技能出厂默认启用");
 
-        // 无开关文件:纯出厂规则
+        // 用户只选择公开入口，内部依赖仍自动物化，但不进入返回的显式启用集。
         let def = materialize_unlocked(
             &target,
             Some(&builtin),
@@ -1912,26 +2019,43 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(def, vec!["feature-design", "my-skill"]);
+        assert!(def.iter().any(|enabled| enabled == "design-flow"));
+        for name in INTERNAL_SKILLS {
+            assert!(!def.iter().any(|enabled| enabled == name));
+            assert!(target.join(name).join("SKILL.md").is_file());
+        }
+        assert!(def.iter().any(|enabled| enabled == "my-skill"));
         assert!(!target.join("tailwindcss-helper").exists());
 
-        // 显式开关压过出厂:关掉官方默认项、打开非默认项与用户技能关闭
+        let infos = list_unlocked(Some(&builtin), &user, &user.join("no-defaults.json"));
+        assert!(infos.iter().any(|skill| skill.name == "design-flow"));
+        assert!(INTERNAL_SKILLS.iter().all(|name| !infos.iter().any(|skill| skill.name == *name)));
+
+        // 关闭入口后不再物化它的内部依赖。
         let prefs_path = test_dir("def-prefs").join("skills-defaults.json");
         fs::write(
             &prefs_path,
-            r#"{"feature-design": false, "tailwindcss-helper": true, "my-skill": false}"#,
+            r#"{"design-flow": false, "tailwindcss-helper": true, "my-skill": false}"#,
         )
         .unwrap();
         let def = materialize_unlocked(&target, Some(&builtin), &user, &prefs_path, None).unwrap();
-        assert_eq!(def, vec!["tailwindcss-helper"]);
+        assert!(!def.iter().any(|enabled| enabled == "design-flow"));
+        assert!(def.iter().any(|enabled| enabled == "tailwindcss-helper"));
+        assert!(!def.iter().any(|enabled| enabled == "my-skill"));
+        assert!(!target.join("design-flow").exists());
+        assert!(INTERNAL_SKILLS.iter().all(|name| !target.join(name).exists()));
         // list_unlocked() 的 default_enabled 与物化同一解析
         let infos = list_unlocked(Some(&builtin), &user, &prefs_path);
-        let on: Vec<&str> = infos
-            .iter()
-            .filter(|s| s.default_enabled)
-            .map(|s| s.name.as_str())
-            .collect();
-        assert_eq!(on, vec!["tailwindcss-helper"]);
+        let enabled = |name: &str| {
+            infos
+                .iter()
+                .find(|skill| skill.name == name)
+                .map(|skill| skill.default_enabled)
+        };
+        assert_eq!(enabled("design-flow"), Some(false));
+        assert_eq!(enabled("design-generation"), None);
+        assert_eq!(enabled("tailwindcss-helper"), Some(true));
+        assert_eq!(enabled("my-skill"), Some(false));
     }
 
     #[test]

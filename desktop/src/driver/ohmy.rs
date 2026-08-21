@@ -109,6 +109,10 @@ impl OhmyDriver {
         self.0.wsl.as_ref().map(|w| w.networking.clone())
     }
 
+    pub fn resolve_workdir(&self, path: &str) -> Result<String, String> {
+        self.0.resolve_workdir(path)
+    }
+
     /// WSL 模式下目录选择对话框的初始位置:guest 家目录的宿主视角
     /// (\\wsl$\<发行版>\home\<用户>;Linux 冒烟恒等)。本机模式 None。
     pub fn wsl_workdir_base(&self) -> Option<String> {

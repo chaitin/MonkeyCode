@@ -126,6 +126,15 @@ describe("路径直拷与对话框选择", () => {
     expect(calls[0]).toEqual({ cmd: "upload_read", args: { id: "s1", path: ".monkeycode/uploads/截图.png" } });
   });
 
+  it("uploadFileURL 可选摘要按 expectedDigest 透传", async () => {
+    const calls = stubShell((cmd) => (cmd === "upload_read" ? "data:image/png;base64,AAA" : undefined));
+    await uploadFileURL("s1", "preview.png", "sha256:abc");
+    expect(calls[0]).toEqual({
+      cmd: "upload_read",
+      args: { id: "s1", path: "preview.png", expectedDigest: "sha256:abc" },
+    });
+  });
+
   it("pickAttachmentPaths:数组/单串/取消(null)/浏览器模式各形态收敛", async () => {
     stubShell((cmd) => (cmd === "plugin:dialog|open" ? ["/a.png", "/b.txt"] : undefined));
     expect(await pickAttachmentPaths("选择附件")).toEqual(["/a.png", "/b.txt"]);
