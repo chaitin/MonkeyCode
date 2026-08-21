@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 use tauri::AppHandle;
 
 const METADATA_VERSION: u8 = 1;
+const PENDING_ENVELOPE_VERSION: u8 = 1;
 const METADATA_FILE: &str = "current.v1.json";
 const ASSETS_DIR: &str = "assets";
 const PENDING_DIR: &str = "pending";
@@ -62,6 +63,14 @@ struct ManagedMetadata {
     width: u32,
     height: u32,
     byte_length: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PendingEnvelope {
+    version: u8,
+    owner_token: String,
+    metadata: ManagedMetadata,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -297,6 +306,13 @@ fn metadata_filename(metadata: &ManagedMetadata) -> Option<String> {
     (basename == metadata.filename).then(|| metadata.filename.clone())
 }
 
+fn pending_metadata_filename(raw: &[u8]) -> Option<String> {
+    let pending: PendingEnvelope = serde_json::from_slice(raw).ok()?;
+    (pending.version == PENDING_ENVELOPE_VERSION && valid_owner_token(&pending.owner_token))
+        .then_some(())?;
+    metadata_filename(&pending.metadata)
+}
+
 fn pending_is_expired(path: &Path, now: SystemTime) -> bool {
     // symlink_metadata 不跟随链接；时钟回拨或无法读取 mtime 时宁可延后回收。
     fs::symlink_metadata(path)
@@ -337,10 +353,7 @@ fn cleanup_assets_locked_at(root: &Path, now: SystemTime) {
             Ok(raw) => raw,
             Err(_) => return,
         };
-        match serde_json::from_slice::<ManagedMetadata>(&raw)
-            .ok()
-            .and_then(|metadata| metadata_filename(&metadata))
-        {
+        match pending_metadata_filename(&raw) {
             Some(filename) => {
                 keep.insert(filename);
             }
@@ -408,6 +421,10 @@ fn valid_staged_id(staged_id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
+fn valid_owner_token(owner_token: &str) -> bool {
+    owner_token.len() == 64 && owner_token.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 fn pending_path(root: &Path, staged_id: &str) -> Result<PathBuf, String> {
     if !valid_staged_id(staged_id) {
         return Err("待确认背景标识无效".into());
@@ -419,11 +436,15 @@ pub(crate) fn stage_from(
     local_data_dir: &Path,
     source: &Path,
     staged_id: &str,
+    owner_token: &str,
 ) -> Result<StagedBackgroundAsset, String> {
     // 调用方必须在 invoke 前就知道该 ID，才能在响应丢失时仍可 discard。
     // 在读取/解码大文件前拒绝路径型或超长 ID。
     if !valid_staged_id(staged_id) {
         return Err("待确认背景标识无效".into());
+    }
+    if !valid_owner_token(owner_token) {
+        return Err("待确认背景所有权令牌无效".into());
     }
     // 大文件读取本身也必须有硬上限，不能只信打开前的一次 metadata。
     let bytes = read_regular_file(source)?;
@@ -445,8 +466,13 @@ pub(crate) fn stage_from(
         height,
         byte_length: bytes.len() as u64,
     };
-    let encoded =
-        serde_json::to_vec_pretty(&metadata).map_err(|e| format!("序列化背景元数据失败: {e}"))?;
+    let pending_envelope = PendingEnvelope {
+        version: PENDING_ENVELOPE_VERSION,
+        owner_token: owner_token.to_string(),
+        metadata,
+    };
+    let encoded = serde_json::to_vec_pretty(&pending_envelope)
+        .map_err(|e| format!("序列化待确认背景元数据失败: {e}"))?;
 
     with_asset_lock(local_data_dir, |root| {
         cleanup_assets_locked(root);
@@ -529,29 +555,54 @@ fn asset_from_metadata(root: &Path, metadata: ManagedMetadata) -> Result<Backgro
     })
 }
 
-pub(crate) fn confirm_from(local_data_dir: &Path, staged_id: &str) -> Result<(), String> {
+pub(crate) fn confirm_from(
+    local_data_dir: &Path,
+    staged_id: &str,
+    owner_token: &str,
+) -> Result<(), String> {
+    if !valid_owner_token(owner_token) {
+        return Err("待确认背景所有权令牌无效".into());
+    }
     with_asset_lock(local_data_dir, |root| {
         let path = pending_path(root, staged_id)?;
         let raw = fs::read(&path).map_err(|e| format!("读取待确认背景失败: {e}"))?;
-        let metadata: ManagedMetadata =
+        let pending: PendingEnvelope =
             serde_json::from_slice(&raw).map_err(|e| format!("待确认背景元数据损坏: {e}"))?;
+        if pending.version != PENDING_ENVELOPE_VERSION || pending.owner_token != owner_token {
+            return Err("待确认背景事务所有权不匹配".into());
+        }
         // 提交前重新验证托管资产，不能信任预解码期间一直未被篡改。
-        asset_from_metadata(root, metadata)?;
-        crate::config::atomic_write_private(&root.join(METADATA_FILE), &raw)?;
+        asset_from_metadata(root, pending.metadata.clone())?;
+        let metadata = serde_json::to_vec_pretty(&pending.metadata)
+            .map_err(|e| format!("序列化背景元数据失败: {e}"))?;
+        crate::config::atomic_write_private(&root.join(METADATA_FILE), &metadata)?;
         let _ = fs::remove_file(path);
         cleanup_assets_locked(root);
         Ok(())
     })
 }
 
-pub(crate) fn discard_from(local_data_dir: &Path, staged_id: &str) -> Result<(), String> {
+pub(crate) fn discard_from(
+    local_data_dir: &Path,
+    staged_id: &str,
+    owner_token: &str,
+) -> Result<(), String> {
+    if !valid_owner_token(owner_token) {
+        return Err("待确认背景所有权令牌无效".into());
+    }
     with_asset_lock(local_data_dir, |root| {
         let path = pending_path(root, staged_id)?;
-        match fs::remove_file(path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(format!("丢弃待确认背景失败: {error}")),
+        let raw = match fs::read(&path) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(format!("读取待丢弃背景失败: {error}")),
+        };
+        let pending: PendingEnvelope =
+            serde_json::from_slice(&raw).map_err(|e| format!("待确认背景元数据损坏: {e}"))?;
+        if pending.version != PENDING_ENVELOPE_VERSION || pending.owner_token != owner_token {
+            return Err("待确认背景事务所有权不匹配".into());
         }
+        fs::remove_file(path).map_err(|error| format!("丢弃待确认背景失败: {error}"))?;
         cleanup_assets_locked(root);
         Ok(())
     })
@@ -609,25 +660,36 @@ pub async fn background_import(
     app: AppHandle,
     path: String,
     staged_id: String,
+    owner_token: String,
 ) -> Result<StagedBackgroundAsset, String> {
     let dir = crate::config::local_data_dir(&app)?;
-    tauri::async_runtime::spawn_blocking(move || stage_from(&dir, Path::new(&path), &staged_id))
-        .await
-        .map_err(|e| format!("背景导入任务失败: {e}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        stage_from(&dir, Path::new(&path), &staged_id, &owner_token)
+    })
+    .await
+    .map_err(|e| format!("背景导入任务失败: {e}"))?
 }
 
 #[tauri::command]
-pub async fn background_confirm(app: AppHandle, staged_id: String) -> Result<(), String> {
+pub async fn background_confirm(
+    app: AppHandle,
+    staged_id: String,
+    owner_token: String,
+) -> Result<(), String> {
     let dir = crate::config::local_data_dir(&app)?;
-    tauri::async_runtime::spawn_blocking(move || confirm_from(&dir, &staged_id))
+    tauri::async_runtime::spawn_blocking(move || confirm_from(&dir, &staged_id, &owner_token))
         .await
         .map_err(|e| format!("背景确认任务失败: {e}"))?
 }
 
 #[tauri::command]
-pub async fn background_discard(app: AppHandle, staged_id: String) -> Result<(), String> {
+pub async fn background_discard(
+    app: AppHandle,
+    staged_id: String,
+    owner_token: String,
+) -> Result<(), String> {
     let dir = crate::config::local_data_dir(&app)?;
-    tauri::async_runtime::spawn_blocking(move || discard_from(&dir, &staged_id))
+    tauri::async_runtime::spawn_blocking(move || discard_from(&dir, &staged_id, &owner_token))
         .await
         .map_err(|e| format!("背景丢弃任务失败: {e}"))?
 }
@@ -655,6 +717,10 @@ mod tests {
 
     static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
     static NEXT_STAGE: AtomicU64 = AtomicU64::new(0);
+    const TEST_OWNER_TOKEN: &str =
+        "0000000000000000000000000000000000000000000000000000000000000001";
+    const OTHER_OWNER_TOKEN: &str =
+        "0000000000000000000000000000000000000000000000000000000000000002";
 
     struct TestDir(PathBuf);
     impl TestDir {
@@ -693,12 +759,12 @@ mod tests {
             std::process::id(),
             NEXT_STAGE.fetch_add(1, Ordering::Relaxed)
         );
-        stage_from(local_data_dir, source, &staged_id)
+        stage_from(local_data_dir, source, &staged_id, TEST_OWNER_TOKEN)
     }
 
     fn import_and_confirm(local_data_dir: &Path, source: &Path) -> Result<BackgroundAsset, String> {
         let staged = stage(local_data_dir, source)?;
-        confirm_from(local_data_dir, &staged.staged_id)?;
+        confirm_from(local_data_dir, &staged.staged_id, TEST_OWNER_TOKEN)?;
         Ok(staged.asset)
     }
 
@@ -838,17 +904,17 @@ mod tests {
 
         let rejected = stage(&dir.0, &next_source).unwrap();
         assert_eq!(read_from(&dir.0).unwrap(), Some(old.clone()));
-        discard_from(&dir.0, &rejected.staged_id).unwrap();
+        discard_from(&dir.0, &rejected.staged_id, TEST_OWNER_TOKEN).unwrap();
         assert_eq!(read_from(&dir.0).unwrap(), Some(old.clone()));
 
         let accepted = stage(&dir.0, &next_source).unwrap();
         assert_eq!(read_from(&dir.0).unwrap(), Some(old));
-        confirm_from(&dir.0, &accepted.staged_id).unwrap();
+        confirm_from(&dir.0, &accepted.staged_id, TEST_OWNER_TOKEN).unwrap();
         assert_eq!(read_from(&dir.0).unwrap(), Some(accepted.asset));
     }
 
     #[test]
-    fn caller_staged_id_is_validated_and_collision_never_overwrites_pending() {
+    fn id_collision_cannot_discard_or_confirm_another_owners_pending_transaction() {
         let dir = TestDir::new();
         let first_bytes = encoded(ImageFormat::Png, [1, 2, 3]);
         let first_source = write_source(&dir.0, "first.png", &first_bytes);
@@ -856,18 +922,33 @@ mod tests {
         let second_source = write_source(&dir.0, "second.png", &second_bytes);
 
         for invalid in ["", "../escape", "slash/id", "下", &"a".repeat(161)] {
-            let error = stage_from(&dir.0, &first_source, invalid).unwrap_err();
+            let error = stage_from(&dir.0, &first_source, invalid, TEST_OWNER_TOKEN).unwrap_err();
             assert!(error.contains("标识无效"), "{error}");
         }
 
-        let first = stage_from(&dir.0, &first_source, "web-fixed-id").unwrap();
+        let first = stage_from(&dir.0, &first_source, "web-fixed-id", TEST_OWNER_TOKEN).unwrap();
         assert_eq!(first.staged_id, "web-fixed-id");
-        let collision = stage_from(&dir.0, &second_source, "web-fixed-id").unwrap_err();
-        assert!(collision.contains("已存在"), "{collision}");
+        assert!(stage_from(&dir.0, &second_source, "web-fixed-id", OTHER_OWNER_TOKEN,).is_err());
 
-        // 确认同名事务仍提交第一份内容，第二份资产也未因冲突被落盘。
-        confirm_from(&dir.0, "web-fixed-id").unwrap();
-        assert_eq!(read_from(&dir.0).unwrap(), Some(first.asset));
+        // 串联复现：B 的 import 因撞到 A 的 ID 失败，随后 catch 中携 B token 的
+        // discard/confirm 都不能删除或提交 A 的 pending；测试不识别任何错误文案。
+        assert!(discard_from(&dir.0, "web-fixed-id", OTHER_OWNER_TOKEN).is_err());
+        assert!(confirm_from(&dir.0, "web-fixed-id", OTHER_OWNER_TOKEN).is_err());
+        assert!(pending_path(&background_dir(&dir.0), "web-fixed-id")
+            .unwrap()
+            .exists());
+        assert_eq!(read_from(&dir.0).unwrap(), None);
+
+        // A 仍持有 token，响应丢失后可主动回收。随后复用已释放 ID 再导入、确认。
+        discard_from(&dir.0, "web-fixed-id", TEST_OWNER_TOKEN).unwrap();
+        assert!(!pending_path(&background_dir(&dir.0), "web-fixed-id")
+            .unwrap()
+            .exists());
+        let retried = stage_from(&dir.0, &first_source, "web-fixed-id", TEST_OWNER_TOKEN).unwrap();
+        assert_eq!(retried.asset, first.asset);
+        confirm_from(&dir.0, "web-fixed-id", TEST_OWNER_TOKEN).unwrap();
+        assert_eq!(read_from(&dir.0).unwrap(), Some(retried.asset));
+        // 第二份资产未因冲突被落盘。
         assert!(!background_dir(&dir.0)
             .join(ASSETS_DIR)
             .join(format!("{}.png", sha256(&second_bytes)))
@@ -879,7 +960,7 @@ mod tests {
         let dir = TestDir::new();
         let orphan_source =
             write_source(&dir.0, "orphan.png", &encoded(ImageFormat::Png, [1, 2, 3]));
-        let orphan = stage_from(&dir.0, &orphan_source, "orphan-stage").unwrap();
+        let orphan = stage_from(&dir.0, &orphan_source, "orphan-stage", TEST_OWNER_TOKEN).unwrap();
         let root = background_dir(&dir.0);
         let orphan_pending = pending_path(&root, "orphan-stage").unwrap();
         let now = SystemTime::now();
@@ -896,7 +977,7 @@ mod tests {
         let current = import_and_confirm(&dir.0, &current_source).unwrap();
         // 同一 current 资产也被另一个 abandoned pending 引用；过期只能删 pending，
         // 不能删仍由权威元数据引用的共享资产。
-        stage_from(&dir.0, &current_source, "shared-stage").unwrap();
+        stage_from(&dir.0, &current_source, "shared-stage", TEST_OWNER_TOKEN).unwrap();
 
         with_asset_lock(&dir.0, |root| {
             cleanup_assets_locked_at(root, now + PENDING_TTL * 2);

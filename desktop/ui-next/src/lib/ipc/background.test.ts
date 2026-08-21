@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearBackgroundAsset,
   confirmBackground,
+  createBackgroundOwnerToken,
   createBackgroundStagedId,
   discardBackground,
   discardBackgroundBestEffort,
@@ -56,14 +57,15 @@ describe("背景 IPC", () => {
       cmd === "plugin:dialog|open" ? "/tmp/wall.png" : cmd === "background_read" ? asset : cmd === "background_import" ? staged : null,
     );
     expect(await pickBackgroundPath("Pick")).toBe("/tmp/wall.png");
-    expect(await importBackground("/tmp/wall.png", staged.stagedId)).toEqual(staged);
-    await confirmBackground(staged.stagedId);
-    await discardBackground(staged.stagedId);
+    const ownerToken = "a".repeat(64);
+    expect(await importBackground("/tmp/wall.png", staged.stagedId, ownerToken)).toEqual(staged);
+    await confirmBackground(staged.stagedId, ownerToken);
+    await discardBackground(staged.stagedId, ownerToken);
     expect(await readBackgroundAsset()).toEqual(asset);
     await clearBackgroundAsset();
-    expect(invoke).toHaveBeenCalledWith("background_import", { path: "/tmp/wall.png", stagedId: "stage-1" });
-    expect(invoke).toHaveBeenCalledWith("background_confirm", { stagedId: "stage-1" });
-    expect(invoke).toHaveBeenCalledWith("background_discard", { stagedId: "stage-1" });
+    expect(invoke).toHaveBeenCalledWith("background_import", { path: "/tmp/wall.png", stagedId: "stage-1", ownerToken });
+    expect(invoke).toHaveBeenCalledWith("background_confirm", { stagedId: "stage-1", ownerToken });
+    expect(invoke).toHaveBeenCalledWith("background_discard", { stagedId: "stage-1", ownerToken });
     expect(invoke).toHaveBeenCalledWith("background_read", undefined);
     expect(invoke).toHaveBeenCalledWith("background_clear", undefined);
   });
@@ -73,6 +75,30 @@ describe("背景 IPC", () => {
     const second = createBackgroundStagedId();
     expect(first).toMatch(/^[A-Za-z0-9-]{1,160}$/);
     expect(second).toMatch(/^[A-Za-z0-9-]{1,160}$/);
+    expect(second).not.toBe(first);
+  });
+
+  it("调用前通过旧 WebKit 可用的 getRandomValues 生成独立 256-bit owner token", () => {
+    const getRandomValues = vi.fn((bytes: Uint8Array) => {
+      bytes.forEach((_, index) => {
+        bytes[index] = index;
+      });
+      return bytes;
+    });
+    vi.stubGlobal("crypto", { getRandomValues });
+    expect(createBackgroundOwnerToken()).toBe(
+      Array.from({ length: 32 }, (_, index) => index.toString(16).padStart(2, "0")).join(""),
+    );
+    expect(getRandomValues).toHaveBeenCalledOnce();
+  });
+
+  it("getRandomValues 不可用时降级令牌仍符合 Rust 规则且连续调用不同", () => {
+    vi.stubGlobal("crypto", undefined);
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const first = createBackgroundOwnerToken();
+    const second = createBackgroundOwnerToken();
+    expect(first).toMatch(/^[0-9a-f]{64}$/);
+    expect(second).toMatch(/^[0-9a-f]{64}$/);
     expect(second).not.toBe(first);
   });
 
@@ -89,15 +115,17 @@ describe("背景 IPC", () => {
       return null;
     });
 
-    expect(await discardBackgroundBestEffort("retry-once")).toBe(true);
+    const ownerToken = "b".repeat(64);
+    expect(await discardBackgroundBestEffort("retry-once", ownerToken)).toBe(true);
     expect(attempts.get("retry-once")).toBe(2);
     expect(warn).not.toHaveBeenCalled();
-    expect(await discardBackgroundBestEffort("ttl-fallback")).toBe(false);
+    expect(await discardBackgroundBestEffort("ttl-fallback", ownerToken)).toBe(false);
     expect(attempts.get("ttl-fallback")).toBe(2);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("pending TTL"),
       expect.objectContaining({ stagedId: "ttl-fallback" }),
     );
+    expect(invoke.mock.calls.every(([, args]) => args?.ownerToken === ownerToken)).toBe(true);
     expect(invoke).toHaveBeenCalledTimes(4);
   });
 });

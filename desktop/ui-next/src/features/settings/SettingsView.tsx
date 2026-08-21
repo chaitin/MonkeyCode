@@ -39,6 +39,7 @@ import {
 import {
   clearBackgroundAsset,
   confirmBackground,
+  createBackgroundOwnerToken,
   createBackgroundStagedId,
   discardBackgroundBestEffort,
   importBackground,
@@ -498,30 +499,31 @@ function BackgroundEditor() {
       await runBackgroundAssetOperation(async () => {
         if (!isBackgroundOperationCurrent(generation)) return;
         const stagedId = createBackgroundStagedId();
+        const ownerToken = createBackgroundOwnerToken();
         let imported: StagedBackgroundAsset;
         try {
-          imported = await importBackground(path, stagedId);
+          imported = await importBackground(path, stagedId, ownerToken);
         } catch (error) {
-          // Rust 可能已成功落盘但 IPC 响应丢失；调用前生成的 ID 仍可用于回收。
-          await discardBackgroundBestEffort(stagedId);
+          // Rust 可能已成功落盘但 IPC 响应丢失；调用前生成的 ID + token 仍可用于回收。
+          await discardBackgroundBestEffort(stagedId, ownerToken);
           throw error;
         }
         if (!isBackgroundOperationCurrent(generation)) {
-          await discardBackgroundBestEffort(stagedId);
+          await discardBackgroundBestEffort(stagedId, ownerToken);
           return;
         }
         try {
           // Rust 尚未切换 current；WebView 解码成功后才确认磁盘事务。
           await decodeBackground(imported);
           if (!isBackgroundOperationCurrent(generation)) {
-            await discardBackgroundBestEffort(stagedId);
+            await discardBackgroundBestEffort(stagedId, ownerToken);
             return;
           }
-          await confirmBackground(stagedId);
+          await confirmBackground(stagedId, ownerToken);
           // 更晚动作已开始时由它负责最终 UI，旧动作不能复活背景。
           if (isBackgroundOperationCurrent(generation)) applyDecodedBackground(imported);
         } catch (error) {
-          await discardBackgroundBestEffort(stagedId);
+          await discardBackgroundBestEffort(stagedId, ownerToken);
           await reconcileBackgroundRuntime(generation);
           throw error;
         }

@@ -841,7 +841,13 @@ describe("外观设置:自定义背景", () => {
     expect(document.documentElement.style.getPropertyValue("--mc-background-repeat")).toBe("repeat");
     expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
     expect(calls.some((call) => call.cmd === "save_config")).toBe(false);
-    expect(calls.some((call) => call.cmd === "background_confirm")).toBe(true);
+    const importCall = calls.find((call) => call.cmd === "background_import")!;
+    const confirmCall = calls.find((call) => call.cmd === "background_confirm")!;
+    expect(importCall.args?.ownerToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(confirmCall.args).toEqual({
+      stagedId: importCall.args?.stagedId,
+      ownerToken: importCall.args?.ownerToken,
+    });
   });
 
   it("更换导入失败保留旧预览并显示 alert；清除失败同样保留", async () => {
@@ -871,7 +877,7 @@ describe("外观设置:自定义背景", () => {
     expect(calls.some((call) => call.cmd === "background_clear")).toBe(true);
   });
 
-  it("导入已落盘但 IPC 响应丢失时仍用调用前 ID 重试 discard", async () => {
+  it("导入已落盘但 IPC 响应丢失时仍用调用前 ID 与 owner token 重试 discard", async () => {
     let discardAttempts = 0;
     const { calls } = stubShell({
       extra: {
@@ -893,11 +899,13 @@ describe("外观设置:自定义背景", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("IPC response lost");
     const importCall = calls.find((call) => call.cmd === "background_import")!;
     const stagedId = String(importCall.args?.stagedId);
+    const ownerToken = String(importCall.args?.ownerToken);
     expect(stagedId).toMatch(/^[A-Za-z0-9-]{1,160}$/);
-    expect(importCall.args).toEqual({ path: "/tmp/response-lost.png", stagedId });
+    expect(ownerToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(importCall.args).toEqual({ path: "/tmp/response-lost.png", stagedId, ownerToken });
     const discards = calls.filter((call) => call.cmd === "background_discard");
     expect(discards).toHaveLength(2);
-    expect(discards.every((call) => call.args?.stagedId === stagedId)).toBe(true);
+    expect(discards.every((call) => call.args?.stagedId === stagedId && call.args?.ownerToken === ownerToken)).toBe(true);
   });
 
   it("清除成功恢复无背景外观，偏好值仍保留并转为禁用", async () => {
