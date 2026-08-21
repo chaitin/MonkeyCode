@@ -227,8 +227,73 @@ export interface AskItem {
   questions: AskQuestion[];
 }
 
+/** 设计模板动态预览。HTML 仅可经后端受控回读。 */
+export interface DesignTemplatePreview {
+  type: "html" | "image";
+  path: string;
+}
+
+/** 设计模板选择请求中的候选项；image 是旧协议缩略图兼容字段。 */
+export interface DesignTemplateItem {
+  id: string;
+  title: string;
+  image?: string;
+  preview?: DesignTemplatePreview;
+  /** 预览内容摘要；用于把选择响应绑定到请求时的候选快照。 */
+  previewDigest?: string;
+  description?: string;
+  /** 模型给出的推荐理由，属于可信的 LLM 输出，可直接呈现。 */
+  reason?: string;
+  recommended?: boolean;
+}
+
+export type DesignSelectionAction = "select" | "next" | "direct" | "cancel";
+
+export interface DesignSelectionActions {
+  select: boolean;
+  next: boolean;
+  direct: boolean;
+  cancel: boolean;
+}
+
+export interface DesignSelectionRefinement {
+  enabled: boolean;
+  placeholder?: string;
+}
+
+/** design/selection/respond 上行及 design-selection-respond 回显的载荷。 */
+export interface DesignSelectionResponse {
+  request_id: string;
+  action: DesignSelectionAction;
+  selected_id?: string;
+  selected_preview_path?: string;
+  selected_preview_digest?: string;
+  refinement_text?: string;
+}
+
+export type DesignSelectionMode = "template" | "direction";
+
+/** 防御性正规化后的设计选择请求卡。 */
+export interface DesignTemplateSelectionItem {
+  kind: "design-template-selection";
+  requestId: string;
+  mode: DesignSelectionMode;
+  title?: string;
+  description?: string;
+  items: DesignTemplateItem[];
+  allowedActions: DesignSelectionActions;
+  refinement?: DesignSelectionRefinement;
+  state: "open" | "responded" | "cancelled" | "expired";
+  action?: DesignSelectionAction;
+  selectedId?: string;
+  selectedPreviewPath?: string;
+  selectedPreviewDigest?: string;
+  refinementText?: string;
+  reason?: string;
+}
+
 /** 对话流里的一条渲染项。 */
-export type ChatItem = UserItem | AgentItem | ThoughtItem | ToolItem | SysItem | PermItem | AskItem;
+export type ChatItem = UserItem | AgentItem | ThoughtItem | ToolItem | SysItem | PermItem | AskItem | DesignTemplateSelectionItem;
 
 // ==================== 会话状态(reduceBatch 的输入/输出) ====================
 

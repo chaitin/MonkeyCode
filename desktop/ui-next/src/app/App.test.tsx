@@ -105,6 +105,19 @@ describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () =
   });
 });
 
+describe("设计预览页面生命周期", () => {
+  it("切换主区页面时强制销毁原生预览", async () => {
+    const shell = stubShell();
+    render(<App />);
+    await waitFor(() => expect(shell.count("preview_destroy")).toBeGreaterThan(0));
+    const before = shell.count("preview_destroy");
+
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+
+    await waitFor(() => expect(shell.count("preview_destroy")).toBeGreaterThan(before));
+  });
+});
+
 /* ==================== 批 A:D1/D3/D5/D8/H9 的 App 级粘合 ==================== */
 
 const sess = (over: Partial<SessionMeta> & { id: string }): SessionMeta => ({

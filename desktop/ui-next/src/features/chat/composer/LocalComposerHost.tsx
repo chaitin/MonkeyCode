@@ -9,6 +9,7 @@ import { useComposer } from "./useComposer";
 
 export interface LocalComposerHandle {
   addFiles(files: File[]): Promise<void>;
+  sendWithFiles(text: string, files: File[]): Promise<boolean>;
   notifyError(message: string): void;
   focus(): void;
 }
@@ -38,10 +39,11 @@ export const LocalComposerHost = forwardRef<
     ref,
     () => ({
       addFiles: ctl.addFiles,
+      sendWithFiles: ctl.sendWithFiles,
       notifyError: ctl.notifyError,
       focus: () => inputRef.current?.focus(),
     }),
-    [ctl.addFiles, ctl.notifyError],
+    [ctl.addFiles, ctl.sendWithFiles, ctl.notifyError],
   );
 
   return (

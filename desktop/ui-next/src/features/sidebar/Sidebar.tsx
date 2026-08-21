@@ -673,7 +673,7 @@ export function Sidebar({
   };
 
   return (
-    <aside aria-label={t("sidebar.label")} className="flex w-side shrink-0 flex-col border-e border-base-300 bg-base-200">
+    <aside aria-label={t("sidebar.label")} className="app-session-sidebar flex w-side shrink-0 flex-col border-e border-base-300 bg-base-200">
       {/* 列头部:与 rail 角落/主区视图头部同一 h-13(52px)基线;空白处可拖拽窗口。
           左内距对齐下方内容竖线:概览块 px-5 = 列表区 p-2 + menu 行内距 12px = 20px */}
       <div data-tauri-drag-region="" className="flex h-13 shrink-0 items-center gap-1.5 border-b border-base-300 ps-5 pe-3">

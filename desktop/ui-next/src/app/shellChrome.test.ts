@@ -39,6 +39,7 @@ describe("windowContextLabel(原生窗口标题的上下文)", () => {
       ({
         "settings.title": "设置",
         "create.title": "新建任务",
+        "rail.todo": "待办",
         "rail.cloud": "云端任务",
         "rail.chat": "本地会话",
         "rail.local": "本地任务",

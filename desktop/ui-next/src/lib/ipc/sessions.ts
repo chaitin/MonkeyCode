@@ -144,6 +144,11 @@ export function sessionHistory(id: string, cursor: number, limit: number): Promi
   return invoke<HistoryPage>("session_history", { id, cursor, limit });
 }
 
+/** 受控读取当前会话工作区固定模板缓存根中的 HTML bundle。 */
+export function designTemplatePreviewRead(id: string, path: string): Promise<string> {
+  return invoke<string>("design_template_preview_read", { id, path });
+}
+
 /** 回读单帧原文(工具卡被截断的大字段按需取)。 */
 export function sessionFrame(id: string, seq: number): Promise<Frame> {
   return invoke<Frame>("session_frame", { id, seq });

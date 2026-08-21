@@ -216,6 +216,20 @@ describe("markdown 渲染", () => {
     expect(calls).toContain("plugin:opener|open_url");
   });
 
+  it("localhost links can be claimed while external links stay external", async () => {
+    const claimed: string[] = [];
+    const calls: string[] = [];
+    (window as unknown as { __TAURI__?: unknown }).__TAURI__ = { core: { invoke: (cmd: string) => { calls.push(cmd); return Promise.resolve(null); } } };
+    render(<Markdown source={"[local](http://localhost:5173/app?q=1#hero) [external](https://example.com)"} onUrlLink={(url) => {
+      if (!url.startsWith("http://localhost:")) return false;
+      claimed.push(url); return true;
+    }} />);
+    await userEvent.click(screen.getByRole("link", { name: "local" }));
+    await userEvent.click(screen.getByRole("link", { name: "external" }));
+    expect(claimed).toEqual(["http://localhost:5173/app?q=1#hero"]);
+    expect(calls).toContain("plugin:opener|open_url");
+  });
+
   it("净化:script 与事件属性被剥掉;表格包进横滚容器", () => {
     const html = renderMarkdown('<script>alert(1)</script><img src=x onerror=alert(1)>\n\n|a|b|\n|-|-|\n|1|2|');
     expect(html).not.toContain("<script");

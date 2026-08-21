@@ -220,3 +220,8 @@ export async function workdirPickBase(): Promise<string | undefined> {
   }
   return undefined;
 }
+
+export function resolveRuntimePath(path: string): Promise<string> {
+  if (!inDesktopShell()) return Promise.resolve(path);
+  return invoke<string>("resolve_runtime_path", { path });
+}

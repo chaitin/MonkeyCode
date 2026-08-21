@@ -333,7 +333,7 @@ export function renderMarkdown(source: string): string {
   return DOMPurify.sanitize(template.innerHTML, { USE_PROFILES: { html: true } });
 }
 
-function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: string) => void) {
+function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: string) => void, onUrlLink?: (url: string) => boolean) {
   const target = e.target as HTMLElement;
   const copyBtn = target.closest<HTMLElement>("[data-md-copy]");
   if (copyBtn) {
@@ -362,7 +362,9 @@ function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: strin
       onLocalLink?.(local);
       return;
     }
-    openExternal(linkHref(link));
+    const href = linkHref(link);
+    if (onUrlLink?.(href)) return;
+    openExternal(href);
   }
 }
 
@@ -475,6 +477,7 @@ function StaticMarkdown({
   className,
   localImageUrl,
   onLocalLink,
+  onUrlLink,
   deferMermaid = false,
 }: {
   source: string;
@@ -483,6 +486,8 @@ function StaticMarkdown({
   localImageUrl?: (path: string) => Promise<string>;
   /** 本地链接点击代理(reveal 到文件管理器等)。 */
   onLocalLink?: (path: string) => void;
+  /** Return true to claim an absolute URL (design preview intercept). */
+  onUrlLink?: (url: string) => boolean;
   /** 流式正文尚未稳定时暂缓图表渲染，避免无法取消的旧任务积压。 */
   deferMermaid?: boolean;
 }) {
@@ -547,7 +552,7 @@ function StaticMarkdown({
       key="md"
       ref={root}
       className={`md select-text ${className ?? ""}`}
-      onClick={(e) => onContainerClick(e, onLocalLink)}
+      onClick={(e) => onContainerClick(e, onLocalLink, onUrlLink)}
       onContextMenu={onContainerContextMenu}
       dangerouslySetInnerHTML={{ __html: html }}
     />
@@ -607,11 +612,13 @@ function StreamingMarkdown({
   className,
   localImageUrl,
   onLocalLink,
+  onUrlLink,
 }: {
   source: string;
   className?: string;
   localImageUrl?: (path: string) => Promise<string>;
   onLocalLink?: (path: string) => void;
+  onUrlLink?: (url: string) => boolean;
 }) {
   const { locale } = useI18n();
   const root = useRef<HTMLDivElement>(null);
@@ -651,7 +658,7 @@ function StreamingMarkdown({
       ref={root}
       data-md-stream=""
       className={`md select-text ${className ?? ""}`}
-      onClick={(event) => onContainerClick(event, onLocalLink)}
+      onClick={(event) => onContainerClick(event, onLocalLink, onUrlLink)}
       onContextMenu={onContainerContextMenu}
     >
       {segments.stable.map((chunk, index) => (
@@ -674,6 +681,7 @@ export function Markdown(props: {
   className?: string;
   localImageUrl?: (path: string) => Promise<string>;
   onLocalLink?: (path: string) => void;
+  onUrlLink?: (url: string) => boolean;
   deferMermaid?: boolean;
 }) {
   return props.deferMermaid ? <StreamingMarkdown {...props} /> : <StaticMarkdown {...props} />;

@@ -892,6 +892,26 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// 本地 MonkeyDesign Package 已退出 Desktop 默认配置物化；即使开发环境
+    /// 仍残留旧变量，settings 也不得再出现 monkeydesign.package_path。
+    #[test]
+    fn ohmyagent_config_does_not_inject_monkeydesign_package() {
+        let dir = test_dir("no-monkeydesign-package");
+        let _ = fs::remove_dir_all(&dir);
+        let previous = std::env::var_os("MC_MONKEYDESIGN_PACKAGE_PATH");
+        std::env::set_var("MC_MONKEYDESIGN_PACKAGE_PATH", "/legacy/MonkeyDesign");
+        let result = write_ohmyagent_config(&dir, &DesktopConfig::default(), None);
+        match previous {
+            Some(value) => std::env::set_var("MC_MONKEYDESIGN_PACKAGE_PATH", value),
+            None => std::env::remove_var("MC_MONKEYDESIGN_PACKAGE_PATH"),
+        }
+        result.unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(dir.join("settings.json")).unwrap()).unwrap();
+        assert!(settings.get("monkeydesign").is_none());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     /// MonkeyCode 会员条目的 base_url/api_key 在 config.json 里是空占位,
     /// 物化时从应用配置目录的本机记录补齐;顶层 signing_secret 同源。
     /// 无会员条目时不写 secret。

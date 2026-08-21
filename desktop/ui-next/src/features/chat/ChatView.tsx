@@ -7,11 +7,12 @@
 // 大纲跳转:锚(data-user-seq)不在 DOM 时按条目 offset 走 ensureLoaded
 // 精确补页(session_history 以 offset 为终点,不盲翻),补页提交前的空窗
 // 用短时重试兜；当前项由虚拟高度索引 O(1) 反查最近的用户行。
-import { IconDots, IconFolderOpen, IconPencil, IconX } from "@tabler/icons-react";
+import { IconBrowser, IconDots, IconFolderOpen, IconPencil, IconX } from "@tabler/icons-react";
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type DragEvent,
@@ -22,8 +23,8 @@ import {
 import { useApprovalHotkeys } from "@/app/shortcuts";
 import { useI18n } from "@/lib/i18n";
 import { sessionOutline, type OutlineItem } from "@/lib/ipc/controls";
-import { repoChanges, repoReveal } from "@/lib/ipc/repo";
-import { sessionFrame, sessionPatch, type SessionMeta } from "@/lib/ipc/sessions";
+import { repoChanges, repoPreviewFiles, repoReveal } from "@/lib/ipc/repo";
+import { designTemplatePreviewRead, sessionFrame, sessionPatch, type SessionMeta } from "@/lib/ipc/sessions";
 import { onNativeFileDrop, uploadFileURL } from "@/lib/ipc/uploads";
 import { workspaceRelativePath } from "@/lib/util/markdownPaths";
 import {
@@ -39,6 +40,9 @@ import { LogList, type LogListHandle } from "./LogList";
 import { OutlineNav, useOutlineEntries } from "./OutlineNav";
 import { TaskPanel } from "./TaskPanel";
 import { FilesDrawer } from "@/features/files/FilesDrawer";
+import { DesignPreviewWorkbench } from "@/features/design/DesignPreviewWorkbench";
+import { hasDesignRelatedChanges, rankPreviewFiles, selectTurnPreviewArtifact, targetForFile, touchedTurnChanges, turnWarrantsArtifactPreview, writtenToolPaths, type DesignPreviewTarget } from "@/features/design/previewArtifact";
+import { currentTurnAgentPreviewUrl, newestAgentPreviewUrl, normalizePreviewUrl } from "@/features/design/previewUrl";
 import { useSessionFeed } from "./useSessionFeed";
 
 const PIN_THRESHOLD = 40; // 距底多少像素内算"贴底"(scroll 只做进入贴底的单向判定)
@@ -92,8 +96,23 @@ export function ChatView({
   const { state, conn, historyLoaded, openError, hasMore, loadingEarlier, earlierError, loadEarlier, ensureLoaded } =
     useSessionFeed(meta.id, epoch);
   useApprovalHotkeys(state, meta.id);
-  // composer 自己持有草稿/附件/上传状态；父层只留一个稳定命令端口给拖拽与
-  // Markdown 错误。打字从此不会再重渲 ChatView 和时间线。
+  const detectedPreviewUrl = useMemo(() => newestAgentPreviewUrl(state.items), [state.items]);
+  const currentTurnPreviewUrl = useMemo(() => currentTurnAgentPreviewUrl(state.items), [state.items]);
+  const currentTurnText = useMemo(() => {
+    let user = "";
+    const agents: string[] = [];
+    for (let i = state.items.length - 1; i >= 0; i--) {
+      const item = state.items[i]!;
+      if (item.kind === "user") { user = item.text; break; }
+      if (item.kind === "agent") agents.unshift(item.text);
+    }
+    return { user, agent: agents.join("\n") };
+  }, [state.items]);
+  const [preview, setPreview] = useState<{ sessionId: string; target: DesignPreviewTarget } | null>(null);
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  const previewTarget = preview?.sessionId === meta.id ? preview.target : null;
+  // composer 自己持有草稿/附件/上传状态；父层只留一个稳定命令端口给拖拽、
+  // Markdown 错误和设计预览反馈。打字不再重渲 ChatView 和时间线。
   const composerRef = useRef<LocalComposerHandle>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<LogListHandle>(null);
@@ -300,6 +319,33 @@ export function ChatView({
   // 空态 = items 空且非 running(渲染分支与下方 RO 的重挂条件共用一个判定)
   const empty = state.items.length === 0 && !state.running;
 
+  const openInteractionId = useMemo(() => {
+    for (let i = state.items.length - 1; i >= 0; i--) {
+      const item = state.items[i]!;
+      if (item.kind === "design-template-selection" && item.state === "open") return `${meta.id}:design:${item.requestId}`;
+      if (item.kind === "ask" && item.state === "open") return `${meta.id}:ask:${item.askId}`;
+      if (item.kind === "perm" && item.state === "open") return `${meta.id}:perm:${item.id}`;
+    }
+    return "";
+  }, [meta.id, state.items]);
+  const revealedInteractionRef = useRef("");
+  useLayoutEffect(() => {
+    revealedInteractionRef.current = "";
+  }, [meta.id]);
+  // 阻塞式交互必须打断旧滚动锚点，否则 Agent 会等待视口外的卡片。
+  useLayoutEffect(() => {
+    if (!openInteractionId) {
+      revealedInteractionRef.current = "";
+      return;
+    }
+    if (revealedInteractionRef.current === openInteractionId) return;
+    revealedInteractionRef.current = openInteractionId;
+    finishRestore();
+    pinnedRef.current = true;
+    align();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openInteractionId]);
+
   // items 变化后赶在绘制前对齐(锚点恢复或贴底跟随)。
   // state.plan 也在依赖里:任务面板钉在 composer 上方(footer 内),plan 帧
   // 一到面板就撑高 footer,把 flex-1 的日志视口压矮同样多——内容没变、
@@ -483,7 +529,23 @@ export function ChatView({
     },
     [t],
   );
-  const uploadUrl = useCallback((p: string) => uploadFileURL(metaRef.current.id, p), []);
+  const openPreviewMarkdownLink = useCallback((raw: string): boolean => {
+    const url = normalizePreviewUrl(raw);
+    if (!url) return false;
+    setPreview({ sessionId: metaRef.current.id, target: { kind: "localhost", url } });
+    return true;
+  }, []);
+  // 设计流程不输出 localhost URL，而是把 HTML 写进工作区：手动打开预览时
+  // 退化为扫描工作区内可预览 HTML，取排序后第一个。
+  const openArtifactPreview = useCallback(async () => {
+    const sessionId = metaRef.current.id;
+    const result = await repoPreviewFiles(sessionId);
+    if (metaRef.current.id !== sessionId) return;
+    const html = rankPreviewFiles(result.files).find((file) => file.kind === "html");
+    if (html) setPreview({ sessionId, target: targetForFile(html) });
+  }, []);
+  const uploadUrl = useCallback((p: string, expectedDigest?: string) => uploadFileURL(metaRef.current.id, p, expectedDigest), []);
+  const loadDesignPreview = useCallback((p: string) => designTemplatePreviewRead(metaRef.current.id, p), []);
   const loadFullTool = useCallback((seq: number) => sessionFrame(metaRef.current.id, seq), []);
 
   // ==== 标题重命名(D4):h1 双击进输入态。提交只发 sessionPatch,不乐观
@@ -694,17 +756,68 @@ export function ChatView({
   const [dragging, setDragging] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [changesToken, setChangesToken] = useState(0);
-  const prevTurnEnded = useRef(false);
-  useEffect(() => {
-    // 轮次结束边沿:改动列表需要重拉(抽屉开着时立即,关着时下次打开取新)
-    if (state.turnEnded && !prevTurnEnded.current) setChangesToken((n) => n + 1);
-    prevTurnEnded.current = state.turnEnded;
-  }, [state.turnEnded]);
-  // 改动数徽标:轮末(changesToken 边沿)拉一次计数;浏览器模式 repoChanges
-  // 自身降级空值,失败静默归零(徽标是提示,不是错误面)。徽标 >0 时点
-  // 文件钮直达抽屉「改动」页。
   const [changesCount, setChangesCount] = useState(0);
+  const prevTurnEnded = useRef(false);
+  const changesGeneration = useRef(0);
+  const baselineRunning = useRef(false);
+  const baselineSession = useRef<string | null>(null);
+  const turnBaseline = useRef<{ sessionId: string; value: Promise<Awaited<ReturnType<typeof repoChanges>>> } | null>(null);
   useEffect(() => {
+    const sessionChanged = baselineSession.current !== meta.id;
+    if (sessionChanged) {
+      baselineSession.current = meta.id;
+      baselineRunning.current = false;
+      prevTurnEnded.current = false;
+      turnBaseline.current = null;
+      changesGeneration.current += 1;
+      // This render still carries useSessionFeed's previous-session state. Its
+      // earlier effect resets that state before the new session replay lands.
+      return;
+    }
+    const rising = state.running && !baselineRunning.current;
+    baselineRunning.current = state.running;
+    if (rising) turnBaseline.current = { sessionId: meta.id, value: repoChanges(meta.id) };
+  }, [meta.id, state.running]);
+  useEffect(() => {
+    const turnJustEnded = state.turnEnded && !prevTurnEnded.current;
+    prevTurnEnded.current = state.turnEnded;
+    if (!turnJustEnded) return;
+    setChangesToken((n) => n + 1);
+    const sessionId = meta.id;
+    const generation = ++changesGeneration.current;
+    if (currentTurnPreviewUrl) {
+      setPreview({ sessionId, target: { kind: "localhost", url: currentTurnPreviewUrl } });
+      setPreviewRefreshKey((key) => key + 1);
+    }
+    void repoChanges(sessionId).then(async (result) => {
+      if (changesGeneration.current !== generation || metaRef.current.id !== sessionId) return;
+      setChangesCount(result.changes.length);
+      if (currentTurnPreviewUrl) return;
+      const baseline = turnBaseline.current?.sessionId === sessionId
+        ? await turnBaseline.current.value.catch(() => ({ changes: result.changes, isGitRepo: result.isGitRepo }))
+        : { changes: result.changes, isGitRepo: result.isGitRepo };
+      if (changesGeneration.current !== generation || metaRef.current.id !== sessionId) return;
+      const lastUser = state.items.findLastIndex((item) => item.kind === "user");
+      const tools = state.items.slice(lastUser + 1).filter((item) => item.kind === "tool");
+      const touched = touchedTurnChanges(baseline.changes, result.changes, writtenToolPaths(tools), meta.workdir);
+      let artifact = selectTurnPreviewArtifact(touched, currentTurnText.user, currentTurnText.agent);
+      if (!artifact && hasDesignRelatedChanges(touched) && turnWarrantsArtifactPreview(currentTurnText.user, currentTurnText.agent, touched)) {
+        const files = await repoPreviewFiles(sessionId);
+        if (changesGeneration.current !== generation || metaRef.current.id !== sessionId) return;
+        artifact = selectTurnPreviewArtifact(touched, currentTurnText.user, currentTurnText.agent, files.files);
+      }
+      if (artifact && changesGeneration.current === generation && metaRef.current.id === sessionId) {
+        setPreview({ sessionId, target: targetForFile(artifact) });
+        setPreviewRefreshKey((key) => key + 1);
+      }
+    }).catch(() => {
+      if (changesGeneration.current === generation && metaRef.current.id === sessionId) setChangesCount(0);
+    });
+  }, [currentTurnPreviewUrl, currentTurnText, meta.id, state.items, state.turnEnded]);
+  // 改动数徽标与自动 artifact 选择共用上面的轮末查询，避免重复读取全工作区。
+  useEffect(() => {
+    changesGeneration.current += 1;
+    prevTurnEnded.current = false;
     setChangesCount(0); // 徽标属于会话,切走清零
     // 抽屉同属会话,切走一并收起(旧 UI App.tsx 五条切换路径一律 setDrawer(null))。
     // ChatView 的 key 只取 epoch,切会话走的是**同一实例**,不复位就会:文件树
@@ -717,21 +830,6 @@ export function ChatView({
     // 且可点)、壳意图 open-session(托盘/桌宠)、键盘 Tab 进侧栏行回车。
     setDrawerOpen(false);
   }, [meta.id]);
-  useEffect(() => {
-    if (changesToken === 0) return;
-    let alive = true;
-    repoChanges(meta.id).then(
-      (r) => {
-        if (alive) setChangesCount(r.changes.length);
-      },
-      () => {
-        if (alive) setChangesCount(0);
-      },
-    );
-    return () => {
-      alive = false;
-    };
-  }, [changesToken, meta.id]);
   const dragDepth = useRef(0);
   const onDragEnter = (e: DragEvent<HTMLElement>) => {
     if (![...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) return;
@@ -783,6 +881,7 @@ export function ChatView({
       : null;
 
   return (
+    <div data-design-preview-open={previewTarget ? "true" : undefined} className="flex min-w-0 flex-1 overflow-hidden">
     <main
       className="relative flex min-w-0 flex-1 flex-col bg-base-100"
       onDragEnter={onDragEnter}
@@ -833,7 +932,7 @@ export function ChatView({
                2026-08-06)。fit-content 让盒子贴合内容,长标题时仍回落到父宽,
                span 的 truncate 照常生效。悬停区因此 = 标题文字 + 铅笔自身的
                槽位(opacity-0 仍占位),正好是够得着按钮的最小范围 */
-            <h1 data-tauri-drag-region="" className="group/title flex w-fit min-w-0 items-center gap-1 text-sm leading-tight font-semibold">
+            <h1 data-tauri-drag-region="" className="group/title flex w-fit max-w-full min-w-0 items-center gap-1 text-sm leading-tight font-semibold">
               {/* 双击只挂在文字 span 上,且不带 data-tauri-drag-region:
                   Windows 壳把拖拽区双击吃成最大化,标题必须留在拖拽区之外 */}
               <span
@@ -858,8 +957,24 @@ export function ChatView({
             </h1>
           )}
         </div>
+        <button
+          data-header-action=""
+          type="button"
+          aria-label="Open design preview"
+          title={detectedPreviewUrl ?? "Open workspace design preview"}
+          className="btn btn-ghost btn-square btn-sm shrink-0 text-base-content/60"
+          onClick={() => {
+            if (detectedPreviewUrl) {
+              setPreview({ sessionId: meta.id, target: { kind: "localhost", url: detectedPreviewUrl } });
+            } else {
+              void openArtifactPreview();
+            }
+          }}
+        >
+          <IconBrowser size={16} stroke={1.75} aria-hidden />
+        </button>
         {/* §7:indicator 壳与徽标是头部非交互子节点,必须各自带拖拽属性 */}
-        <div data-tauri-drag-region="" className={changesCount > 0 ? "indicator" : undefined}>
+        <div data-header-action="" data-tauri-drag-region="" className={changesCount > 0 ? "indicator shrink-0" : "shrink-0"}>
           {changesCount > 0 && (
             /* 与 rail 徽标同一处方(App.tsx SpaceRail):默认锚点在 32px 按钮的
                角上,16px 图标居中,徽标就飘出去了(用户报障 2026-08-10
@@ -884,7 +999,7 @@ export function ChatView({
             <IconFolderOpen size={16} stroke={1.75} aria-hidden />
           </button>
         </div>
-        <div ref={menuBoxRef} className={`dropdown dropdown-end ${menuOpen ? "dropdown-open" : ""}`}>
+        <div data-header-action="" ref={menuBoxRef} className={`dropdown dropdown-end shrink-0 ${menuOpen ? "dropdown-open" : ""}`}>
           <button
             type="button"
             aria-label={t("chat.menu.label")}
@@ -1027,7 +1142,9 @@ export function ChatView({
             flashSeq={flashSeq ?? undefined}
             onOpenChildSession={setChildId}
             uploadUrl={uploadUrl}
+            loadDesignPreview={loadDesignPreview}
             onLocalLink={revealMarkdownLink}
+            onPreviewUrl={openPreviewMarkdownLink}
             workdir={meta.workdir}
             loadFullTool={loadFullTool}
           />
@@ -1066,6 +1183,18 @@ export function ChatView({
       )}
       {childId && <ChildSessionModal id={childId} workdir={meta.workdir} onClose={() => setChildId(null)} />}
     </main>
+    {previewTarget && (
+      <DesignPreviewWorkbench
+        key={meta.id}
+        sessionId={meta.id}
+        initialTarget={previewTarget}
+        refreshKey={previewRefreshKey}
+        composer={composerRef.current!}
+        obscured={drawerOpen || !!childId}
+        onClose={() => setPreview(null)}
+      />
+    )}
+    </div>
   );
 }
 
@@ -1092,7 +1221,8 @@ function ChildSessionModal({ id, workdir, onClose }: { id: string; workdir?: str
   // useCallback 稳定引用:LogList 已 memo,浮层每收一批帧就重渲染,内联箭头
   // 会把整列消息(每张工具卡的 effect)一起拖着重跑——主路径为此早就用了
   // useCallback(见上方 uploadUrl/loadFullTool),这里此前漏了
-  const uploadUrl = useCallback((p: string) => uploadFileURL(id, p), [id]);
+  const uploadUrl = useCallback((p: string, expectedDigest?: string) => uploadFileURL(id, p, expectedDigest), [id]);
+  const loadDesignPreview = useCallback((p: string) => designTemplatePreviewRead(id, p), [id]);
   const loadFullTool = useCallback((seq: number) => sessionFrame(id, seq), [id]);
   return (
     <div className="modal modal-open" role="dialog" aria-label={t("chat.child.title")}>
@@ -1113,7 +1243,7 @@ function ChildSessionModal({ id, workdir, onClose }: { id: string; workdir?: str
           </button>
         </div>
         <div data-chat-log="" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-          <LogList state={state} sessionId={id} readonly uploadUrl={uploadUrl} workdir={workdir} loadFullTool={loadFullTool} />
+          <LogList state={state} sessionId={id} readonly uploadUrl={uploadUrl} loadDesignPreview={loadDesignPreview} workdir={workdir} loadFullTool={loadFullTool} />
         </div>
       </div>
       <div className="modal-backdrop cursor-pointer" onClick={onClose} aria-hidden />

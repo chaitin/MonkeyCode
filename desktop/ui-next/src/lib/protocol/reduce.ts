@@ -10,6 +10,10 @@ import type {
   ChatAttachment,
   ChatItem,
   ChatState,
+  DesignSelectionAction,
+  DesignSelectionResponse,
+  DesignTemplateItem,
+  DesignTemplateSelectionItem,
   Frame,
   PermItem,
   PermOutcome,
@@ -175,10 +179,12 @@ function pushItem(s: ChatState, item: ChatItem): ChatState {
   return { ...s, items: [...s.items, item], streamKind: "" };
 }
 
-/** 轮次结束/出错:未答复的审批卡与提问卡过期(按钮不再可点)。 */
+/** 轮次结束/出错:所有未答复交互卡过期(按钮不再可点)。 */
 function expireOpenAsks(items: ChatItem[]): ChatItem[] {
   return items.map((it) =>
-    (it.kind === "perm" || it.kind === "ask") && it.state === "open" ? { ...it, state: "expired" } : it,
+    (it.kind === "perm" || it.kind === "ask" || it.kind === "design-template-selection") && it.state === "open"
+      ? { ...it, state: "expired" }
+      : it,
   );
 }
 
@@ -570,6 +576,88 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
 
 // ==================== 顶层帧归约 ====================
 
+function normalizeDesignRequest(raw: unknown): DesignTemplateSelectionItem | null {
+  const data = unknownRecord(raw);
+  if (!data || typeof data.request_id !== "string" || data.request_id.length === 0 || !Array.isArray(data.items)) return null;
+  const items: DesignTemplateItem[] = [];
+  for (const value of data.items) {
+    const candidate = unknownRecord(value);
+    if (!candidate || typeof candidate.id !== "string" || !candidate.id || typeof candidate.title !== "string" || !candidate.title) continue;
+    const rawPreview = unknownRecord(candidate.preview);
+    const preview = rawPreview
+      && (rawPreview.type === "html" || rawPreview.type === "image")
+      && typeof rawPreview.path === "string"
+      && rawPreview.path
+      ? { type: rawPreview.type, path: rawPreview.path } as const
+      : undefined;
+    const image = typeof candidate.image === "string" && candidate.image ? candidate.image : undefined;
+    // A card without any safely loadable visual is not a design candidate.
+    if (!preview && !image) continue;
+    items.push({
+      id: candidate.id,
+      title: candidate.title,
+      ...(image ? { image } : {}),
+      ...(preview ? { preview } : {}),
+      ...(typeof candidate.preview_digest === "string" && candidate.preview_digest ? { previewDigest: candidate.preview_digest } : {}),
+      ...(typeof candidate.description === "string" ? { description: candidate.description } : {}),
+      ...(typeof candidate.reason === "string" && candidate.reason ? { reason: candidate.reason } : {}),
+      ...(typeof candidate.recommended === "boolean" ? { recommended: candidate.recommended } : {}),
+    });
+  }
+  const actions = unknownRecord(data.actions);
+  const allowedActions = data.actions === undefined
+    ? { select: true, next: true, direct: true, cancel: true }
+    : {
+        select: actions?.select === true,
+        next: actions?.next === true,
+        direct: actions?.direct === true,
+        cancel: actions?.cancel === true,
+      };
+  const refinement = unknownRecord(data.refinement);
+  return {
+    kind: "design-template-selection",
+    requestId: data.request_id,
+    mode: data.mode === "template" ? "template" : "direction",
+    ...(typeof data.title === "string" ? { title: data.title } : {}),
+    ...(typeof data.description === "string" ? { description: data.description } : {}),
+    items,
+    allowedActions,
+    ...(refinement && typeof refinement.enabled === "boolean"
+      ? { refinement: { enabled: refinement.enabled, ...(typeof refinement.placeholder === "string" ? { placeholder: refinement.placeholder } : {}) } }
+      : {}),
+    state: "open",
+  };
+}
+
+function upsertDesignRequest(s: ChatState, request: DesignTemplateSelectionItem): ChatState {
+  const index = s.items.findIndex((item) => item.kind === "design-template-selection" && item.requestId === request.requestId);
+  if (index < 0) return pushItem(s, request);
+  const items = s.items.slice();
+  const previous = items[index] as DesignTemplateSelectionItem;
+  // Replayed/duplicated requests may refresh an open card, but never reopen a terminal one.
+  items[index] = previous.state === "open" ? request : { ...request, ...previous };
+  return { ...s, items, streamKind: "" };
+}
+
+export function applyDesignSelectionResponse(s: ChatState, response: DesignSelectionResponse): ChatState {
+  return {
+    ...s,
+    items: s.items.map((item) =>
+      item.kind === "design-template-selection" && item.requestId === response.request_id && item.state === "open"
+        ? {
+            ...item,
+            state: "responded",
+            action: response.action,
+            ...(response.selected_id ? { selectedId: response.selected_id } : {}),
+            ...(response.selected_preview_path ? { selectedPreviewPath: response.selected_preview_path } : {}),
+            ...(response.selected_preview_digest ? { selectedPreviewDigest: response.selected_preview_digest } : {}),
+            ...(response.refinement_text ? { refinementText: response.refinement_text } : {}),
+          }
+        : item,
+    ),
+  };
+}
+
 /** 单帧状态转移(不含 seq 去重——那是批次的事,见 reduceBatch)。 */
 export function reduceFrame(s: ChatState, f: Frame): ChatState {
   switch (f.type) {
@@ -629,6 +717,34 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         // 有才写:undefined/空数组键会污染测试的全等比较,语义上也该缺席
         ...(atts.length ? { attachments: atts } : {}),
       });
+    }
+    case "design-template-selection-request": {
+      const request = normalizeDesignRequest(frameData<unknown>(f));
+      return request ? upsertDesignRequest(s, request) : s;
+    }
+    case "design-selection-respond": {
+      const data = frameData<{ request_id?: string; action?: string; selected_id?: unknown; selected_preview_path?: unknown; selected_preview_digest?: unknown; refinement_text?: unknown }>(f);
+      if (!data?.request_id || !["select", "next", "direct", "cancel"].includes(data.action ?? "")) return s;
+      return applyDesignSelectionResponse(s, {
+        request_id: data.request_id,
+        action: data.action as DesignSelectionAction,
+        ...(typeof data.selected_id === "string" ? { selected_id: data.selected_id } : {}),
+        ...(typeof data.selected_preview_path === "string" ? { selected_preview_path: data.selected_preview_path } : {}),
+        ...(typeof data.selected_preview_digest === "string" ? { selected_preview_digest: data.selected_preview_digest } : {}),
+        ...(typeof data.refinement_text === "string" ? { refinement_text: data.refinement_text } : {}),
+      });
+    }
+    case "design-selection-cancelled": {
+      const data = frameData<{ request_id?: string; reason?: unknown }>(f);
+      if (!data?.request_id) return s;
+      return {
+        ...s,
+        items: s.items.map((item) =>
+          item.kind === "design-template-selection" && item.requestId === data.request_id && item.state === "open"
+            ? { ...item, state: "cancelled", ...(typeof data.reason === "string" ? { reason: data.reason } : {}) }
+            : item,
+        ),
+      };
     }
     case "permission-req": {
       const data = frameData<{ id?: string; title?: string; tool?: string; tool_call_id?: string }>(f);

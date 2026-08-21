@@ -32,6 +32,7 @@ export interface TodoWiring {
   onDispatch: (item: TodoItem) => void;
   onOpenSession: (id: string) => void;
   onOpenCloud: () => void;
+  onDetailOpenChange?: (open: boolean) => void;
 }
 
 /** 待办组在 mc.collapsedGroups 里的注册 key(\0 哨兵,不会与目录路径相撞;
@@ -316,6 +317,11 @@ export function TodoSection({
   const finished = todo.todos.filter((i) => i.status === "done");
   // 条目被删(右键删除)时弹窗随条目消失(条件渲染兜底)
   const detail = todo.todos.find((i) => i.id === detailId);
+  const detailOpen = !!detail;
+  useEffect(() => {
+    todo.onDetailOpenChange?.(detailOpen);
+    return () => todo.onDetailOpenChange?.(false);
+  }, [detailOpen, todo.onDetailOpenChange]);
 
   const pendingIds = pending.map((i) => i.id);
   /** 落点是否**真的会改变顺序**(不会就不画线、不落盘;项目组同一套判定)。 */

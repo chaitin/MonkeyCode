@@ -11,6 +11,7 @@ import { IconAlertCircle, IconCircleCheck, IconCloud, IconFolderCode, IconHelpCi
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ChatView } from "@/features/chat/ChatView";
+import { previewDestroy, previewHide, previewShow } from "@/features/design/previewIpc";
 import { CloudTaskView } from "@/features/cloud/CloudTaskView";
 import { DownloadsDock } from "@/features/downloads/DownloadsDock";
 import { EngineBanner } from "@/features/engine/EngineBanner";
@@ -385,6 +386,9 @@ export function App() {
       { params: { reason } },
     ),
   );
+  const handleTodoDetailOpenChange = useCallback((open: boolean) => {
+    void (open ? previewHide() : previewShow()).catch(() => {});
+  }, []);
 
   /** 待办「派发成任务」:开新建视图预填正文,todoId 供创建成功后回链
    *  (清单在侧栏,视图开合不影响它)。带图的待办把图片包成 path-backed
@@ -432,7 +436,7 @@ export function App() {
     }
     setSpaceState(next);
     writeSpace(next);
-    // 桌面客户端心智:点导航永远切走当前覆盖视图(设置/新建),不会"没反应"
+    // 桌面客户端心智:点导航永远切走当前覆盖视图(设置/新建/待办),不会"没反应"
     setSettingsOpen(false);
     setCreating(null);
   };
@@ -622,6 +626,16 @@ export function App() {
   }, []);
 
   const current = sessions.find((m) => m.id === currentId) ?? null;
+  const mainPageKey = settingsOpen
+    ? "settings"
+    : creating
+      ? "creating"
+      : space === "cloud"
+        ? `cloud:${cloudTask?.id ?? "list"}`
+        : `session:${currentId ?? "welcome"}`;
+  useEffect(() => {
+    void previewDestroy().catch(() => {});
+  }, [mainPageKey]);
 
   // 标题跟随**主区实际渲染的那个视图**,各状态都要进依赖(见
   // shellChrome.windowContextLabel 头注:此前只认 current,切设置/新建/云端
@@ -715,6 +729,7 @@ export function App() {
             onDispatch: dispatchTodo,
             onOpenSession: (id) => void openSessionById(id),
             onOpenCloud: () => setSpace("cloud"),
+            onDetailOpenChange: handleTodoDetailOpenChange,
           }}
           cloud={{
             currentId: cloudTask?.id ?? null,

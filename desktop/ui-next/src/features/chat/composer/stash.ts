@@ -1,83 +1,138 @@
-// 每会话 composer 暂存与后台补投(旧 useSession stash/deliverQueued 的移植):
-// - 切会话时草稿/排队/附件按 sid 留档,切回恢复(仅内存,重启即丢;上传中
-//   列表不入档——进度是瞬态,在途收尾回调按 id 过滤,清空无害);
-// - 后台会话轮结束(session-status 非 running/created)自动补投其暂存的排队
-//   消息——壳在 session_close 后仍按 id 持有会话,免连接可直投;
-// - 乐观出栈、失败回栈;恰好又开跑/多客户端抢先由壳的忙碌守卫兜底拒掉
-//   (壳契约 Err ⟺ 消息未入会话,回栈安全);
-// - 补投失败时用户恰好切了进来:经 bindActiveComposer 的通道回到活动队列槽
-//   (已排新内容则让位,单槽后发优先)。
+// 每会话 composer 暂存与统一的 FIFO 在途协调。
+// 队首在 IPC 提交和帧确认之间仍保留在 queue；模块级 flight 保证活动视图与
+// 后台投递对同一 sessionId 最多只有一个发送者，视图卸载也不会丢失所有权。
 import { sessionSend } from "@/lib/ipc/sessions";
 import { b64encode } from "@/lib/protocol/codec";
-import type { ComposerAtt } from "./useComposer";
+import { attLineOf } from "@/lib/protocol/attLine";
+import type { ComposerAtt, QueueItem } from "./useComposer";
 
 export interface StashEntry {
   draft: string;
-  queued: string | null;
+  queue: QueueItem[];
   atts: ComposerAtt[];
 }
 
-const stash = new Map<string, StashEntry>();
+interface QueueFlight {
+  item: QueueItem;
+  payload: string;
+  phase: "sending" | "accepted";
+  onAccepted?: (id: string, text: string) => void;
+  acceptedNotified: boolean;
+}
 
-// 活跃 composer 的登记:deliverQueued 靠它跳过当前会话(其排队由 useComposer
-// 自己的轮末 flush 负责),失败回投也靠它找回活动队列槽
-let activeId: string | null = null;
-let requeueActive: ((text: string) => boolean) | null = null;
+interface ActiveComposerBinding {
+  id: string;
+  confirmed(item: QueueItem): void;
+  failed(item: QueueItem, error: unknown): void;
+}
+
+const stash = new Map<string, StashEntry>();
+const flights = new Map<string, QueueFlight>();
+let active: ActiveComposerBinding | null = null;
 
 export function stashGet(id: string): StashEntry | undefined {
   return stash.get(id);
 }
 
-/** 空档不占条目(与旧实现同口径:全空即清)。 */
+/** 空档不占条目；复制数组，避免暂存与活动 composer 共享可变引用。 */
 export function stashSet(id: string, entry: StashEntry): void {
-  if (entry.draft || entry.queued || entry.atts.length) stash.set(id, entry);
-  else stash.delete(id);
+  if (entry.draft || entry.queue.length || entry.atts.length) {
+    stash.set(id, { ...entry, queue: [...entry.queue], atts: [...entry.atts] });
+  } else {
+    stash.delete(id);
+  }
 }
 
-/** 删除会话随之清档。 */
 export function dropStash(id: string): void {
   stash.delete(id);
+  flights.delete(id);
 }
 
-/** useComposer 挂载/切会话时登记;返回注销函数(React cleanup)。
- * requeue:补投失败且人已在现场时把消息放回活动队列槽,返回是否接住。 */
-export function bindActiveComposer(id: string, requeue: (text: string) => boolean): () => void {
-  activeId = id;
-  requeueActive = requeue;
-  return () => {
-    if (activeId === id) {
-      activeId = null;
-      requeueActive = null;
-    }
+export function queueFlightId(id: string): string | null {
+  return flights.get(id)?.item.id ?? null;
+}
+
+/** 登记活动 composer；返回当前共享 flight，供切入后台在途会话时立即锁定。 */
+export function bindActiveComposer(
+  id: string,
+  callbacks: Omit<ActiveComposerBinding, "id">,
+): { flightId: string | null; unbind(): void } {
+  const binding: ActiveComposerBinding = { id, ...callbacks };
+  active = binding;
+  return {
+    flightId: queueFlightId(id),
+    unbind: () => {
+      if (active === binding) active = null;
+    },
   };
 }
 
-/** 后台会话状态变更(App 的 session-event 接线):轮结束即补投暂存的排队
- * 消息;成功回调 onDelivered(出 toast + 侧栏 attention)。 */
-export function deliverQueued(id: string, status: string, onDelivered?: (id: string, text: string) => void): void {
-  if (status === "running" || status === "created") return; // 轮未结束
-  if (id === activeId) return; // 现场会话走 useComposer 自己的 flush
-  const entry = stash.get(id);
-  if (!entry?.queued) return;
-  const text = entry.queued;
-  stashSet(id, { ...entry, queued: null }); // 乐观出栈(draft/atts 留档)
-  void sessionSend(id, "user-input", { content: b64encode(text) }).then(
-    () => onDelivered?.(id, text),
+const payloadOf = (item: QueueItem) =>
+  [item.text.trim(), ...item.atts.map((att) => attLineOf(att.path, att.isImage))].filter(Boolean).join("\n");
+
+const notifyAccepted = (id: string, flight: QueueFlight) => {
+  if (flight.acceptedNotified) return;
+  flight.acceptedNotified = true;
+  flight.onAccepted?.(id, flight.payload);
+};
+
+/**
+ * 统一取得某会话队首的发送所有权。项目不出队，直到 confirmQueueFlight 收到
+ * 帧水位/运行状态确认；reject 只释放 flight，原项目天然仍在原位置。
+ */
+export function startQueueFlight(
+  id: string,
+  item: QueueItem,
+  onAccepted?: (id: string, text: string) => void,
+): boolean {
+  if (flights.has(id)) return false;
+  const payload = payloadOf(item);
+  flights.set(id, { item, payload, phase: "sending", onAccepted, acceptedNotified: false });
+  void sessionSend(id, "user-input", { content: b64encode(payload) }).then(
     () => {
-      // 失败回栈:补投期间用户切了进来 → 回活动队列槽;否则回暂存
-      // (期间又暂存了新排队则让位,单槽后发优先)
-      if (id === activeId && requeueActive?.(text)) return;
-      const prev = stash.get(id);
-      if (!prev?.queued) {
-        stash.set(id, { draft: prev?.draft ?? "", queued: text, atts: prev?.atts ?? [] });
-      }
+      const flight = flights.get(id);
+      if (!flight || flight.item.id !== item.id) return;
+      flight.phase = "accepted";
+      notifyAccepted(id, flight);
+    },
+    (error: unknown) => {
+      const flight = flights.get(id);
+      if (!flight || flight.item.id !== item.id) return;
+      flights.delete(id);
+      if (active?.id === id) active.failed(item, error);
     },
   );
+  return true;
 }
 
-/** 仅供测试:清空模块级状态(stash 与活跃登记)。 */
+/** 帧已确认队首物化：清 flight，并从 stash/活动视图中按稳定 id 移除。 */
+export function confirmQueueFlight(id: string): boolean {
+  const flight = flights.get(id);
+  if (!flight) return false;
+  notifyAccepted(id, flight);
+  flights.delete(id);
+  const entry = stash.get(id);
+  if (entry) stashSet(id, { ...entry, queue: entry.queue.filter((item) => item.id !== flight.item.id) });
+  if (active?.id === id) active.confirmed(flight.item);
+  return true;
+}
+
+/** 后台状态接线：running 是上一条 user-input 已物化的确认；其他可发送状态
+ * 仅在没有共享 flight 时尝试取得队首所有权。 */
+export function deliverQueued(id: string, status: string, onDelivered?: (id: string, text: string) => void): void {
+  const flight = flights.get(id);
+  if (flight) {
+    if (status === "running") confirmQueueFlight(id);
+    return;
+  }
+  if (status === "running" || status === "created" || active?.id === id) return;
+  const item = stash.get(id)?.queue[0];
+  if (item) startQueueFlight(id, item, onDelivered);
+}
+
+/** 仅供测试。 */
 export function resetStashForTests(): void {
   stash.clear();
-  activeId = null;
-  requeueActive = null;
+  flights.clear();
+  active = null;
 }

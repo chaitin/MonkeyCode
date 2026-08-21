@@ -5,6 +5,7 @@
 //   旧引擎回落壳侧工具名记忆集——UI 只负责如实上报动作档位;
 // - reply-question:{ request_id, answers_json, cancelled }。answers_json 是
 //   {问题: 答案} 的 JSON 字符串(多选为数组),壳回推 reply-question 回显帧。
+import type { DesignSelectionResponse } from "@/lib/protocol/types";
 import { inDesktopShell, invoke } from "./ipc";
 import { sessionSend } from "./sessions";
 
@@ -66,6 +67,14 @@ export function sendAskCancelVia(send: FrameSender, askId: string): Promise<void
 
 export function sendAskCancel(sessionId: string, askId: string): Promise<void> {
   return sendAskCancelVia(localFrameSender(sessionId), askId);
+}
+
+export function sendDesignSelectionVia(send: FrameSender, response: DesignSelectionResponse): Promise<void> {
+  return send("design/selection/respond", { ...response });
+}
+
+export function sendDesignSelection(sessionId: string, response: DesignSelectionResponse): Promise<void> {
+  return sendDesignSelectionVia(localFrameSender(sessionId), response);
 }
 
 /** 引擎能力表(对表壳侧 driver/mod.rs::Caps 的 serde 形状)。 */

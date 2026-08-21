@@ -22,7 +22,19 @@ interface Op {
   args?: Record<string, unknown>;
 }
 
-function stubShell({ models = [] }: { models?: ModelInfo[] } = {}) {
+function stubShell({
+  models = [],
+  directoryPath = null,
+  runtimePath,
+  directoryResult,
+  sendError,
+}: {
+  models?: ModelInfo[];
+  directoryPath?: string | null;
+  runtimePath?: string;
+  directoryResult?: Promise<string | null>;
+  sendError?: Error;
+} = {}) {
   const ops: Op[] = [];
   const listeners = new Map<string, (e: { payload: unknown }) => void>();
   (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
@@ -38,8 +50,13 @@ function stubShell({ models = [] }: { models?: ModelInfo[] } = {}) {
         }
         if (cmd === "models_list") return Promise.resolve(models);
         if (cmd === "session_call") return Promise.resolve({ result: {} });
+        if (cmd === "session_send" && args?.ftype === "user-input" && sendError) return Promise.reject(sendError);
         if (cmd === "upload_begin") return Promise.resolve({ handle: 9 });
         if (cmd === "upload_finish") return Promise.resolve({ path: ".monkeycode/uploads/shot.png" });
+        if (cmd === "plugin:dialog|open") return directoryResult ?? Promise.resolve(directoryPath);
+        if (cmd === "resolve_runtime_path") return Promise.resolve(runtimePath ?? directoryPath);
+        if (cmd === "wsl_workdir_base") return Promise.resolve(null);
+        if (cmd === "get_config") return Promise.resolve(null);
         return Promise.resolve(null);
       },
     },
@@ -80,6 +97,31 @@ const sends = (ops: Op[], ftype: string) =>
   ops.filter((o) => o.cmd === "session_send" && (o.args?.ftype as string) === ftype);
 const calls = (ops: Op[], kind: string) =>
   ops.filter((o) => o.cmd === "session_call" && (o.args?.kind as string) === kind);
+
+describe("设计资料目录", () => {
+  it("使用 Agent 运行环境中的路径", async () => {
+    stubShell({ directoryPath: "\\\\wsl$\\Ubuntu\\home\\me\\materials", runtimePath: "/home/me/materials" });
+    render(<ChatView meta={META} />);
+    const box = (await ready()) as HTMLTextAreaElement;
+    await userEvent.click(screen.getByRole("button", { name: "设计资料目录" }));
+    await waitFor(() => expect(box.value).toBe("设计资料目录：/home/me/materials"));
+  });
+
+  it("会话切换后丢弃旧会话的目录选择结果", async () => {
+    let resolveDirectory!: (path: string | null) => void;
+    const directoryResult = new Promise<string | null>((resolve) => {
+      resolveDirectory = resolve;
+    });
+    stubShell({ directoryResult });
+    const { rerender } = render(<ChatView meta={META} />);
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "设计资料目录" }));
+    rerender(<ChatView meta={{ ...META, id: "s2", title: "另一个会话" }} />);
+    resolveDirectory("/tmp/from-s1");
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "消息输入" })).toBeTruthy());
+    expect((screen.getByRole("textbox", { name: "消息输入" }) as HTMLTextAreaElement).value).not.toContain("/tmp/from-s1");
+  });
+});
 
 describe("斜杠指令面板", () => {
   it("敲 / 就地弹出;前缀过滤优先;↑↓ 循环;↩ 填入并保焦点;不发送消息", async () => {
@@ -446,7 +488,7 @@ describe("运行态 / 停止 / 排队", () => {
     expect(cancels[0]?.args?.payload).toEqual({});
   });
 
-  it("运行中发送进入单槽排队(chip 可取消);轮结束自动补投", async () => {
+  it("运行中连续发送按 FIFO 追加；面板管理后依次补投", async () => {
     const { ops, emit } = stubShell();
     render(<ChatView meta={META} />);
     const box = await ready();
@@ -454,15 +496,17 @@ describe("运行态 / 停止 / 排队", () => {
     await waitFor(() => expect(screen.getByText("思考中")).toBeTruthy());
 
     await userEvent.type(box, "补充问题{Enter}");
-    expect(screen.getByText("已排队")).toBeTruthy();
-    expect(screen.getByText("补充问题")).toBeTruthy();
-    expect((box as HTMLTextAreaElement).value).toBe("");
-    expect(sends(ops, "user-input")).toHaveLength(0); // 运行中不直发
-
-    // 后发覆盖先发(单槽语义)
     await userEvent.type(box, "换个问法{Enter}");
-    expect(screen.queryByText("补充问题")).toBeNull();
-    expect(screen.getByText("换个问法")).toBeTruthy();
+    expect(screen.getByText("队列 · 2 条待处理")).toBeTruthy();
+    expect(screen.getByText(/下一条.*补充问题/)).toBeTruthy();
+    expect((box as HTMLTextAreaElement).value).toBe("");
+    expect(sends(ops, "user-input")).toHaveLength(0);
+
+    await userEvent.click(screen.getByRole("button", { name: /队列 · 2 条待处理/ }));
+    const panel = screen.getByRole("region", { name: "待处理消息队列" });
+    expect(within(panel).getByText("补充问题")).toBeTruthy();
+    expect(within(panel).getByText("换个问法")).toBeTruthy();
+    await userEvent.click(within(panel).getByRole("button", { name: "将第 2 条前移" }));
 
     emit("frames:s1", [{ type: "task-ended", timestamp: 7, seq: 7 }]);
     await waitFor(() => {
@@ -470,20 +514,57 @@ describe("运行态 / 停止 / 排队", () => {
       expect(sent).toHaveLength(1);
       expect(b64decode((sent[0]?.args?.payload as { content: string }).content)).toBe("换个问法");
     });
-    expect(screen.queryByText("已排队")).toBeNull();
+    expect(screen.getByText("队列 · 2 条待处理")).toBeTruthy();
+    expect(screen.getByLabelText("正在发送")).toBeTruthy();
+    expect((within(panel).getByRole("button", { name: "编辑第 1 条" }) as HTMLButtonElement).disabled).toBe(true);
+
+    emit("frames:s1", [{ type: "task-started", timestamp: 8, seq: 8 }]);
+    await waitFor(() => expect(screen.getByText("队列 · 1 条待处理")).toBeTruthy());
+    emit("frames:s1", [{ type: "task-ended", timestamp: 9, seq: 9 }]);
+    await waitFor(() => {
+      const sent = sends(ops, "user-input");
+      expect(sent).toHaveLength(2);
+      expect(b64decode((sent[1]?.args?.payload as { content: string }).content)).toBe("补充问题");
+    });
+    expect(screen.getByText("队列 · 1 条待处理")).toBeTruthy();
+    emit("frames:s1", [{ type: "task-started", timestamp: 10, seq: 10 }]);
+    await waitFor(() => expect(screen.queryByRole("region", { name: "待处理消息队列" })).toBeNull());
   });
 
-  it("排队可取消:清掉后轮结束不补投", async () => {
+  it("自动补投失败显示 ErrorBar 并保留可重试项目", async () => {
+    const { emit } = stubShell({ sendError: new Error("后台繁忙") });
+    render(<ChatView meta={META} />);
+    const box = await ready();
+    emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
+    await waitFor(() => expect(screen.getByText("思考中")).toBeTruthy());
+    await userEvent.type(box, "失败也保留{Enter}");
+    emit("frames:s1", [{ type: "task-ended", timestamp: 7, seq: 7 }]);
+    await waitFor(() => expect(screen.getByText("发送失败:后台繁忙")).toBeTruthy());
+    expect(screen.getByText(/下一条.*失败也保留/)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: /队列 · 1 条待处理/ }));
+    expect((screen.getByRole("button", { name: "编辑第 1 条" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("展开后可内联编辑、校验空内容并删除目标项", async () => {
     const { ops, emit } = stubShell();
     render(<ChatView meta={META} />);
     const box = await ready();
     emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
     await waitFor(() => expect(screen.getByText("思考中")).toBeTruthy());
     await userEvent.type(box, "先排着{Enter}");
-    await userEvent.click(screen.getByRole("button", { name: "取消排队" }));
-    expect(screen.queryByText("已排队")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /队列 · 1 条待处理/ }));
+    await userEvent.click(screen.getByRole("button", { name: "编辑第 1 条" }));
+    const editor = screen.getByRole("textbox", { name: "编辑第 1 条消息" });
+    await userEvent.clear(editor);
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(screen.getByRole("alert").textContent).toBe("消息内容不能为空");
+    await userEvent.type(editor, "改过的消息");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(screen.getByText("改过的消息")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "删除第 1 条" }));
+    expect(screen.queryByRole("region", { name: "待处理消息队列" })).toBeNull();
     emit("frames:s1", [{ type: "task-ended", timestamp: 7, seq: 7 }]);
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(sends(ops, "user-input")).toHaveLength(0);
   });
 });

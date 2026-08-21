@@ -13,6 +13,29 @@ use serde_json::{json, Value};
 
 const MAX_FILE_BYTES: u64 = 1 << 20; // 单文件读取上限 1MB
 const MAX_LIST_ITEMS: usize = 2000;
+const MAX_PREVIEW_FILES: usize = 500;
+const MAX_PREVIEW_SCAN_ENTRIES: usize = 20_000;
+const MAX_PREVIEW_SCAN_DIRS: usize = 2_000;
+const MAX_PREVIEW_SCAN_DEPTH: usize = 12;
+
+fn preview_kind(path: &Path) -> Option<(&'static str, &'static str)> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "html" | "htm" => ("html", "text/html"),
+        "png" => ("image", "image/png"),
+        "jpg" | "jpeg" => ("image", "image/jpeg"),
+        "gif" => ("image", "image/gif"),
+        "webp" => ("image", "image/webp"),
+        "bmp" => ("image", "image/bmp"),
+        "svg" => ("image", "image/svg+xml"),
+        "avif" => ("image", "image/avif"),
+        "txt" | "md" | "markdown" | "css" | "scss" | "less" | "js" | "mjs" | "cjs" | "jsx"
+        | "ts" | "tsx" | "json" | "yaml" | "yml" | "toml" | "xml" | "csv" | "rs" | "go" | "py"
+        | "rb" | "java" | "kt" | "c" | "h" | "cpp" | "hpp" | "sh" | "zsh" | "fish" | "sql"
+        | "vue" | "svelte" => ("text", "text/plain"),
+        _ => return None,
+    })
+}
 
 /// 一次 repo 查询的执行环境。
 pub struct RepoCtx {
@@ -39,7 +62,10 @@ impl RepoCtx {
         let p = Path::new(rel);
         if p.is_absolute()
             || p.components().any(|c| {
-                matches!(c, std::path::Component::ParentDir | std::path::Component::Prefix(_))
+                matches!(
+                    c,
+                    std::path::Component::ParentDir | std::path::Component::Prefix(_)
+                )
             })
         {
             return Err(format!("路径 {rel} 超出工作区"));
@@ -50,7 +76,11 @@ impl RepoCtx {
         // 另:相对路径按内核协议一律 `/` 拼(list_files 出的就是),Windows 上
         // join 完会留下混合分隔符(C:\proj\src/a.ts);按 components 重组归一到
         // 平台分隔符——交给 shell API / 文件管理器的路径必须是规范形态
-        let joined: PathBuf = if rel.is_empty() { self.fs_root() } else { self.fs_root().join(rel).components().collect() };
+        let joined: PathBuf = if rel.is_empty() {
+            self.fs_root()
+        } else {
+            self.fs_root().join(rel).components().collect()
+        };
         // 第二道:符号链接不受组件校验约束——工作区里一个指向外部的链接就能
         // 把这套"只读浏览"带出工作区(link/passwd 之类)。路径已存在时做一次
         // 实解析边界校验,标准与 uploads.rs::read_data_url 对齐;不存在时留给
@@ -58,8 +88,8 @@ impl RepoCtx {
         if joined.exists() {
             let root = std::fs::canonicalize(self.fs_root())
                 .map_err(|e| format!("工作区路径无效: {e}"))?;
-            let real = std::fs::canonicalize(&joined)
-                .map_err(|e| format!("路径 {rel} 解析失败: {e}"))?;
+            let real =
+                std::fs::canonicalize(&joined).map_err(|e| format!("路径 {rel} 解析失败: {e}"))?;
             if !real.starts_with(&root) {
                 return Err(format!("路径 {rel} 超出工作区"));
             }
@@ -74,7 +104,8 @@ impl RepoCtx {
         let mut cmd = match &self.wsl_distro {
             Some(d) => {
                 let mut c = Command::new(crate::wsl::wsl_exe());
-                c.args(["-d", d, "--cd", &self.workdir, "--exec", "git"]).args(args);
+                c.args(["-d", d, "--cd", &self.workdir, "--exec", "git"])
+                    .args(args);
                 c
             }
             None => {
@@ -121,6 +152,8 @@ pub fn dispatch(ctx: &RepoCtx, kind: &str, payload: &Value) -> Value {
     let r = match kind {
         "repo_file_list" => list_files(ctx, path),
         "repo_read_file" => read_file(ctx, path),
+        "repo_preview_files" => preview_files(ctx),
+        "repo_artifact_read" => artifact_read(ctx, path),
         "repo_file_diff" => file_diff(ctx, path),
         "repo_reveal" => reveal(ctx, path),
         _ => Err(format!("未知 call kind: {kind}")),
@@ -148,7 +181,11 @@ fn list_files(ctx: &RepoCtx, dir: &str) -> Result<Value, String> {
         }
     }
     out.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-    let base = if dir.is_empty() { String::new() } else { format!("{}/", dir.trim_end_matches('/')) };
+    let base = if dir.is_empty() {
+        String::new()
+    } else {
+        format!("{}/", dir.trim_end_matches('/'))
+    };
     let entries: Vec<Value> = out
         .into_iter()
         .map(|(is_dir, name, size)| {
@@ -156,6 +193,110 @@ fn list_files(ctx: &RepoCtx, dir: &str) -> Result<Value, String> {
         })
         .collect();
     Ok(Value::Array(entries))
+}
+
+fn preview_files(ctx: &RepoCtx) -> Result<Value, String> {
+    const SKIP: &[&str] = &[".git", "node_modules", "target", "vendor", ".venv", "venv"];
+    let root = ctx.resolve("")?;
+    let mut pending = vec![(root, String::new(), 0usize)];
+    let mut files = Vec::new();
+    let mut scanned = 0usize;
+    let mut scanned_dirs = 0usize;
+    let mut truncated = false;
+    while let Some((dir, base, depth)) = pending.pop() {
+        scanned_dirs += 1;
+        if scanned_dirs > MAX_PREVIEW_SCAN_DIRS {
+            truncated = true;
+            break;
+        }
+        let entries = std::fs::read_dir(dir).map_err(|e| format!("扫描预览文件失败: {e}"))?;
+        for entry in entries.flatten() {
+            scanned += 1;
+            if scanned > MAX_PREVIEW_SCAN_ENTRIES {
+                truncated = true;
+                break;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if SKIP.contains(&name.as_str()) {
+                continue;
+            }
+            let Ok(md) = std::fs::symlink_metadata(entry.path()) else {
+                continue;
+            };
+            if md.file_type().is_symlink() {
+                continue;
+            }
+            let rel = if base.is_empty() {
+                name
+            } else {
+                format!("{base}/{name}")
+            };
+            if md.is_dir() {
+                if depth < MAX_PREVIEW_SCAN_DEPTH {
+                    pending.push((entry.path(), rel, depth + 1));
+                } else {
+                    truncated = true;
+                }
+                continue;
+            }
+            if let Some((kind, mime)) = preview_kind(&entry.path()) {
+                files.push(json!({ "path": rel, "kind": kind, "mime": mime, "size": md.len() }));
+                if files.len() >= MAX_PREVIEW_FILES {
+                    truncated = true;
+                    break;
+                }
+            }
+        }
+        if truncated {
+            break;
+        }
+    }
+    files.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
+    Ok(json!({ "files": files, "truncated": truncated }))
+}
+
+fn reject_artifact_symlink(ctx: &RepoCtx, rel: &str) -> Result<(), String> {
+    let mut current = ctx.fs_root();
+    for component in Path::new(rel).components() {
+        current.push(component.as_os_str());
+        if std::fs::symlink_metadata(&current)
+            .map_err(|e| format!("读取失败: {e}"))?
+            .file_type()
+            .is_symlink()
+        {
+            return Err("工作区预览不允许符号链接".into());
+        }
+    }
+    Ok(())
+}
+
+fn artifact_read(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
+    let p = ctx.resolve(rel)?;
+    reject_artifact_symlink(ctx, rel)?;
+    let md = std::fs::metadata(&p).map_err(|e| format!("读取失败: {e}"))?;
+    if !md.is_file() {
+        return Err(format!("{rel} 不是文件"));
+    }
+    let (kind, mime) = preview_kind(&p).ok_or("不支持的预览文件类型")?;
+    match kind {
+        "html" => Ok(json!({ "path": rel, "kind": kind, "mime": mime,
+            "content": crate::uploads::read_workspace_html_bundle(&ctx.workdir, ctx.wsl_distro.as_deref(), rel)? })),
+        "image" => Ok(json!({ "path": rel, "kind": kind, "mime": mime,
+            "data_url": crate::uploads::read_data_url(&ctx.workdir, ctx.wsl_distro.as_deref(), rel)? })),
+        _ => {
+            if md.len() > MAX_FILE_BYTES {
+                return Err(format!(
+                    "文件过大({} 字节),超过 {} 上限",
+                    md.len(),
+                    MAX_FILE_BYTES
+                ));
+            }
+            let bytes = std::fs::read(&p).map_err(|e| format!("读取失败: {e}"))?;
+            let content =
+                String::from_utf8(bytes).map_err(|_| "文本预览文件必须是 UTF-8".to_string())?;
+            Ok(json!({ "path": rel, "kind": kind, "mime": mime, "content": content }))
+        }
+    }
 }
 
 /// 读取文件内容(1MB 上限)。
@@ -166,7 +307,11 @@ fn read_file(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
         return Err(format!("{rel} 是目录"));
     }
     if md.len() > MAX_FILE_BYTES {
-        return Err(format!("文件过大({} 字节),超过 {} 上限", md.len(), MAX_FILE_BYTES));
+        return Err(format!(
+            "文件过大({} 字节),超过 {} 上限",
+            md.len(),
+            MAX_FILE_BYTES
+        ));
     }
     let data = std::fs::read(&p).map_err(|e| format!("读取失败: {e}"))?;
     Ok(json!({ "path": rel, "content": String::from_utf8_lossy(&data) }))
@@ -226,7 +371,12 @@ fn file_changes(ctx: &RepoCtx) -> Result<(Value, bool), String> {
     let mut changes = parse_status_porcelain_z(&out, &prefix);
     changes.sort_by(|a, b| a.0.cmp(&b.0));
     Ok((
-        Value::Array(changes.into_iter().map(|(p, s)| json!({ "path": p, "status": s })).collect()),
+        Value::Array(
+            changes
+                .into_iter()
+                .map(|(p, s)| json!({ "path": p, "status": s }))
+                .collect(),
+        ),
         true,
     ))
 }
@@ -244,11 +394,25 @@ fn file_diff(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
         }
     }
     // 未跟踪文件:git diff --no-index 生成新增 diff
-    let untracked = ctx.git(&["ls-files", "--others", "--exclude-standard", "--", rel]).unwrap_or_default();
+    let untracked = ctx
+        .git(&["ls-files", "--others", "--exclude-standard", "--", rel])
+        .unwrap_or_default();
     if !untracked.trim().is_empty() {
         // guest 内跑 git 时 null 设备始终是 /dev/null;仅本机 Windows 用 NUL
-        let null_dev = if ctx.wsl_distro.is_none() && cfg!(windows) { "NUL" } else { "/dev/null" };
-        let d = ctx.git_allow_fail(&["-c", "core.quotepath=false", "diff", "--no-index", "--", null_dev, rel]);
+        let null_dev = if ctx.wsl_distro.is_none() && cfg!(windows) {
+            "NUL"
+        } else {
+            "/dev/null"
+        };
+        let d = ctx.git_allow_fail(&[
+            "-c",
+            "core.quotepath=false",
+            "diff",
+            "--no-index",
+            "--",
+            null_dev,
+            rel,
+        ]);
         return Ok(json!({ "path": rel, "diff": d }));
     }
     Ok(json!({ "path": rel, "diff": "" }))
@@ -276,15 +440,20 @@ fn reveal(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
     let open_dir = if md.is_dir() {
         Some(p.clone())
     } else if ctx.wsl_distro.is_some() {
-        Some(p.parent().map(Path::to_path_buf).unwrap_or_else(|| p.clone()))
+        Some(
+            p.parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| p.clone()),
+        )
     } else {
         None
     };
     match open_dir {
         Some(dir) => tauri_plugin_opener::open_path(&dir, None::<&str>)
             .map_err(|e| format!("打开文件管理器失败: {e}"))?,
-        None => tauri_plugin_opener::reveal_item_in_dir(&p)
-            .map_err(|e| format!("定位文件失败: {e}"))?,
+        None => {
+            tauri_plugin_opener::reveal_item_in_dir(&p).map_err(|e| format!("定位文件失败: {e}"))?
+        }
     }
     Ok(json!({ "ok": true }))
 }
@@ -324,15 +493,27 @@ mod tests {
         symlink(base.join("outside-dir"), ws.join("leak-dir")).unwrap();
         symlink(ws.join("inside.txt"), ws.join("ok-link.txt")).unwrap();
 
-        let ctx = RepoCtx { workdir: ws.to_string_lossy().into_owned(), wsl_distro: None };
+        let ctx = RepoCtx {
+            workdir: ws.to_string_lossy().into_owned(),
+            wsl_distro: None,
+        };
 
-        assert!(ctx.resolve("leak.txt").is_err(), "指向外部文件的链接应被拒绝");
-        assert!(ctx.resolve("leak-dir").is_err(), "指向外部目录的链接应被拒绝");
+        assert!(
+            ctx.resolve("leak.txt").is_err(),
+            "指向外部文件的链接应被拒绝"
+        );
+        assert!(
+            ctx.resolve("leak-dir").is_err(),
+            "指向外部目录的链接应被拒绝"
+        );
         // 读文件与列目录是实际出口,必须一起挡住
         assert!(read_file(&ctx, "leak.txt").is_err());
         assert!(list_files(&ctx, "leak-dir").is_err());
         // 工作区内的链接与普通文件照常可用,不能误伤
-        assert!(ctx.resolve("ok-link.txt").is_ok(), "工作区内的链接不该被误挡");
+        assert!(
+            ctx.resolve("ok-link.txt").is_ok(),
+            "工作区内的链接不该被误挡"
+        );
         assert!(read_file(&ctx, "inside.txt").is_ok());
         // 尚不存在的路径仍按组件校验放行(file_diff 要为已删除文件出 diff)
         assert!(ctx.resolve("not-created-yet.txt").is_ok());
@@ -351,7 +532,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mc-repo-root-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let ctx = RepoCtx { workdir: dir.to_string_lossy().into_owned(), wsl_distro: None };
+        let ctx = RepoCtx {
+            workdir: dir.to_string_lossy().into_owned(),
+            wsl_distro: None,
+        };
 
         let root = ctx.resolve("").unwrap();
         assert_eq!(root, dir, "根路径应恒等于工作区,不多一个尾分隔符");
@@ -365,8 +549,88 @@ mod tests {
         // 混合分隔符的路径喂给 shell API / 文件管理器同样定位不到
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::write(dir.join("src/a.ts"), b"x").unwrap();
-        assert_eq!(ctx.resolve("src/a.ts").unwrap(), dir.join("src").join("a.ts"));
+        assert_eq!(
+            ctx.resolve("src/a.ts").unwrap(),
+            dir.join("src").join("a.ts")
+        );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn preview_scan_and_artifact_read_are_bounded_and_typed() {
+        let dir = std::env::temp_dir().join(format!("mc-preview-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("site/assets")).unwrap();
+        std::fs::create_dir_all(dir.join("node_modules")).unwrap();
+        std::fs::create_dir_all(dir.join("dist")).unwrap();
+        std::fs::create_dir_all(dir.join("build")).unwrap();
+        std::fs::write(
+            dir.join("site/index.html"),
+            "<link rel=\"stylesheet\" href=\"assets/a.css\">",
+        )
+        .unwrap();
+        std::fs::write(dir.join("site/assets/a.css"), "body{color:red}").unwrap();
+        std::fs::write(dir.join("note.txt"), "hello").unwrap();
+        std::fs::write(dir.join("node_modules/hidden.html"), "hidden").unwrap();
+        std::fs::write(dir.join("dist/index.html"), "dist").unwrap();
+        std::fs::write(dir.join("build/index.html"), "build").unwrap();
+        let ctx = RepoCtx {
+            workdir: dir.to_string_lossy().into_owned(),
+            wsl_distro: None,
+        };
+        let listed = dispatch(&ctx, "repo_preview_files", &json!({}));
+        let paths: Vec<_> = listed["result"]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["path"].as_str().unwrap())
+            .collect();
+        assert!(paths.contains(&"site/index.html"));
+        assert!(paths.contains(&"note.txt"));
+        assert!(paths.contains(&"dist/index.html"));
+        assert!(paths.contains(&"build/index.html"));
+        assert!(!paths.contains(&"node_modules/hidden.html"));
+        let html = dispatch(
+            &ctx,
+            "repo_artifact_read",
+            &json!({"path":"site/index.html"}),
+        );
+        assert!(html["result"]["content"]
+            .as_str()
+            .unwrap()
+            .contains("data:text/css;base64,"));
+        assert_eq!(
+            dispatch(&ctx, "repo_artifact_read", &json!({"path":"note.txt"}))["result"]["content"],
+            "hello"
+        );
+        assert!(
+            dispatch(&ctx, "repo_artifact_read", &json!({"path":"../bad.txt"}))["error"]
+                .is_string()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preview_scan_and_read_reject_symlinks() {
+        use std::os::unix::fs::symlink;
+        let dir = std::env::temp_dir().join(format!("mc-preview-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("real.html"), "ok").unwrap();
+        symlink(dir.join("real.html"), dir.join("linked.html")).unwrap();
+        let ctx = RepoCtx {
+            workdir: dir.to_string_lossy().into_owned(),
+            wsl_distro: None,
+        };
+        let listed = preview_files(&ctx).unwrap();
+        assert!(!listed["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["path"] == "linked.html"));
+        assert!(artifact_read(&ctx, "linked.html").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -392,7 +656,11 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mc-git-changes-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let initialized = Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap();
+        let initialized = Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&dir)
+            .status()
+            .unwrap();
         assert!(initialized.success());
         std::fs::write(dir.join("new.txt"), b"new").unwrap();
         let ctx = RepoCtx {
@@ -403,7 +671,10 @@ mod tests {
         let response = dispatch(&ctx, "repo_file_changes", &json!({}));
 
         assert_eq!(response["is_git_repo"], true);
-        assert_eq!(response["result"], json!([{ "path": "new.txt", "status": "A" }]));
+        assert_eq!(
+            response["result"],
+            json!([{ "path": "new.txt", "status": "A" }])
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

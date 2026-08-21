@@ -15,7 +15,7 @@ tauri-build = { version = "2", features = [] }
 # devtools:release 包保留 WebView 控制台能力(内部分发,非 App Store,
 # 无私有 API 顾虑;线上排障全靠它)。右键菜单已改壳内自绘、不暴露"检查
 # 元素",入口是 UI 侧快捷键 F12 / Ctrl|Cmd+Shift+I → open_devtools 命令
-tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api", "devtools"] }
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api", "devtools", "unstable"] }
 getrandom = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -32,6 +32,8 @@ tokio = { version = "1", features = ["sync", "time", "macros", "io-util", "proce
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 base64 = "0.22"
+percent-encoding = "2"
+arboard = "3"
 
 # 百智云/云端原生化(baizhi/):PoW 验证码、Set-Cookie 解析、微信页刮取
 sha2 = "0.10"
@@ -54,6 +56,11 @@ ts-rs = "12"
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e894383aa068ec5365a42994e3ac94ba1b6" }
 # 隐藏原生红绿灯要向 NSWindow 发消息(标准按钮尺寸不可调,UI 自绘 10px 替身)
 objc2 = "0.6"
+# 设计预览截图必须由 WKWebView 原生合成器输出，保留 Canvas/背景等动态内容。
+block2 = "0.6"
+objc2-web-kit = { version = "0.3.2", default-features = false, features = ["block2", "objc2-app-kit", "objc2-core-foundation", "WKSnapshotConfiguration", "WKWebView"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSBitmapImageRep", "NSImage", "NSImageRep", "NSResponder", "NSView"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSArray", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSObject", "NSString", "NSValue", "objc2-core-foundation"] }
 
 # Windows 桌宠不交给 WebView2 绘制,用 UpdateLayeredWindow 直接提交
 # 预乘 alpha 位图(见 native_pet.rs 头注释,全 Windows 版本共用一套)。
