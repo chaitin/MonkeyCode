@@ -31,6 +31,7 @@ import type { ChatState, SlashCommand, Usage } from "@/lib/protocol/types";
 import { timelineDeltaOf } from "@/lib/protocol/reduce";
 import { fmtK } from "@/lib/util/fmt";
 import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } from "@/lib/util/slash";
+import { insertNewlineAtSelection } from "@/lib/util/textarea";
 import { ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing } from "./composerKit";
 import { SendQueueList } from "./SendQueueList";
 import { ModelMenu, SkillsMenu, ThinkMenu } from "./pickers";
@@ -322,6 +323,13 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
   };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && e.ctrlKey && !e.altKey) {
+      if (imeRef.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      insertNewlineAtSelection(e.currentTarget, ctl.draft, ctl.setDraft);
+      return;
+    }
     // 斜杠面板优先:↑↓/↩/⇥ 归面板,不落到发送
     if (slashOpen) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {

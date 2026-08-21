@@ -16,6 +16,7 @@ import { openExternal } from "@/lib/ipc/host";
 import { fmtK } from "@/lib/util/fmt";
 import { useEscLayer } from "@/lib/util/escLayer";
 import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } from "@/lib/util/slash";
+import { insertNewlineAtSelection } from "@/lib/util/textarea";
 import type { SlashCommand } from "@/lib/protocol/types";
 import type { CloudTaskHandle } from "./useCloudTask";
 
@@ -93,6 +94,13 @@ export function CloudComposer({
   useEscLayer(slashOpen, escSlash);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && e.ctrlKey && !e.altKey) {
+      if (imeRef.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      insertNewlineAtSelection(e.currentTarget, h.input, h.setInput);
+      return;
+    }
     // 面板优先:↑↓/↩/⇥ 归面板,不落到发送
     if (slashOpen) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {

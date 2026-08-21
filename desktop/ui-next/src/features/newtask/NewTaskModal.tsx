@@ -52,6 +52,7 @@ import { attLineOf } from "@/lib/protocol/attLine";
 import { b64encode } from "@/lib/protocol/codec";
 import { THINK_KEY } from "@/lib/protocol/reduce";
 import { createImeGuard } from "@/lib/util/slash";
+import { insertNewlineAtSelection } from "@/lib/util/textarea";
 import { readLastTaskModel, rememberLastTaskModel } from "@/lib/util/prefs";
 import { DEFAULT_DIR, workdirMatchesEnv } from "@/lib/util/workdir";
 import { ModelMenu, ThinkMenu } from "@/features/chat/composer/pickers";
@@ -437,6 +438,11 @@ export function NewTaskModal({
     if (e.key !== "Enter" || e.shiftKey) return;
     if (ime.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
     e.preventDefault();
+    if (e.ctrlKey && !e.altKey) {
+      e.stopPropagation();
+      insertNewlineAtSelection(e.currentTarget, text, setText);
+      return;
+    }
     void submit();
   };
   // 只有格内一种形态(2026-08-18 用户定案「整页新建没用了」:创建即新格,

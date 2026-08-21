@@ -338,6 +338,21 @@ describe("CloudTaskView", () => {
     expect(screen.getByText("检测开放端口…")).toBeTruthy();
   });
 
+  it("云端 composer 的 Ctrl+Enter 插入换行,不触发发送", async () => {
+    stubShellWs((cmd) => {
+      if (cmd === "mc_task_info") {
+        return Promise.resolve({ id: "t-ctrl-enter", status: "processing", virtualmachine: { id: "vm-ctrl-enter", status: "running" } });
+      }
+      return Promise.resolve({});
+    });
+    renderCloud(<CloudTaskView task={{ id: "t-ctrl-enter", status: "processing" }} />);
+    const box = await screen.findByRole("textbox", { name: "消息输入" });
+
+    await userEvent.type(box, "第一行");
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    expect((box as HTMLTextAreaElement).value).toBe("第一行\n");
+  });
+
   it("云端 composer 斜杠指令:/ 弹面板(与本地同一件),↩ 填入;清单粘住不随重算空掉", async () => {
     const listeners = stubShellWs((cmd) => {
       switch (cmd) {
@@ -744,6 +759,12 @@ describe("CloudTaskView", () => {
 
     push({ type: "permission-req", seq: 3, data: { id: "p1", title: "npm test", tool: "Bash" } });
     await screen.findByRole("button", { name: "允许" });
+    const box = screen.getByRole("textbox", { name: "消息输入" });
+    await userEvent.click(box);
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    expect((box as HTMLTextAreaElement).value).toBe("\n");
+    expect(wsSends).toHaveLength(0); // Ctrl+Enter 归 composer,不冒泡误允许
+
     fireEvent.keyDown(window, { key: "Enter" });
     await waitFor(() => expect(wsSends.length).toBeGreaterThan(0));
     const frame = JSON.parse(String(wsSends[0]?.text)) as { type: string; data: string };

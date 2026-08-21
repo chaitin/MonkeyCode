@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -136,6 +136,35 @@ describe("新建任务", () => {
     expect(creates).toHaveLength(2);
     expect(creates[0]?.args).toMatchObject({ workdir: "/x/y", createDir: false });
     expect(creates[1]?.args).toMatchObject({ workdir: "/x/y", createDir: true });
+  });
+
+  it("首条消息支持 Ctrl+Enter 换行,普通 Enter 才创建并发送", async () => {
+    const calls = stubShell();
+    const onCreated = vi.fn();
+    render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
+    const box = screen.getByRole("textbox", { name: "首条消息" });
+
+    await userEvent.type(box, "第一行");
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    expect((box as HTMLTextAreaElement).value).toBe("第一行\n");
+    expect(calls.some((call) => call.cmd === "session_create")).toBe(false);
+
+    await userEvent.type(box, "第二行{Enter}");
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    const send = calls.find((call) => call.cmd === "session_send");
+    expect(send?.args).toEqual({ id: "s-new", ftype: "user-input", payload: { content: b64encode("第一行\n第二行") } });
+  });
+
+  it("Ctrl+Alt+Enter 不冒充 Ctrl+Enter,按原普通 Enter 路径创建", async () => {
+    const calls = stubShell();
+    const onCreated = vi.fn();
+    render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
+    const box = screen.getByRole("textbox", { name: "首条消息" });
+    await userEvent.type(box, "AltGr 输入");
+
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true, altKey: true });
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(calls.some((call) => call.cmd === "session_create")).toBe(true);
   });
 
   it("首条消息随建随发:session_create 成功后经 session_send 发 user-input(b64)", async () => {

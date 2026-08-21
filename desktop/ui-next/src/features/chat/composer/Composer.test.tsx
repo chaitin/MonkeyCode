@@ -502,6 +502,34 @@ describe("运行态 / 停止 / 排队", () => {
   });
 });
 
+describe("输入与发送键", () => {
+  it("Ctrl+Enter 插入换行且不发送,随后普通 Enter 发送多行正文", async () => {
+    const { ops } = stubShell();
+    render(<ChatView meta={META} />);
+    const box = await ready();
+
+    await userEvent.type(box, "第一行");
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    expect((box as HTMLTextAreaElement).value).toBe("第一行\n");
+    expect(sends(ops, "user-input")).toHaveLength(0);
+
+    await userEvent.type(box, "第二行{Enter}");
+    await waitFor(() => expect(sends(ops, "user-input")).toHaveLength(1));
+    expect(b64decode((sends(ops, "user-input")[0]?.args?.payload as { content: string }).content)).toBe("第一行\n第二行");
+  });
+
+  it("Ctrl+Alt+Enter 不冒充 Ctrl+Enter,按原普通 Enter 路径发送", async () => {
+    const { ops } = stubShell();
+    render(<ChatView meta={META} />);
+    const box = await ready();
+    await userEvent.type(box, "AltGr 输入");
+
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true, altKey: true });
+    await waitFor(() => expect(sends(ops, "user-input")).toHaveLength(1));
+    expect(b64decode((sends(ops, "user-input")[0]?.args?.payload as { content: string }).content)).toBe("AltGr 输入");
+  });
+});
+
 describe("附件与 IME", () => {
   it("粘贴文件:分块上传后 chip 入列;发送按附件行并入正文(壳只解 content)", async () => {
     const { ops } = stubShell();

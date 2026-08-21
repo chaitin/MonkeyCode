@@ -207,6 +207,22 @@ describe("聊天视图", () => {
     expect(sent?.args?.payload).toEqual({ id: "p1", approved: true, remember: false, persist: false });
   });
 
+  it("待决审批时 Ctrl+Enter 只在 composer 换行,不误允许", async () => {
+    const { ops, emit } = stubShell();
+    render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    emit("frames:s1", [
+      { type: "permission-req", data: { id: "p-ctrl-enter", title: "npm test", tool: "Bash" }, timestamp: 4, seq: 4 },
+    ]);
+    await waitFor(() => expect(screen.getByText("需要确认")).toBeTruthy());
+    const box = screen.getByRole("textbox", { name: "消息输入" });
+    await userEvent.click(box);
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+
+    expect((box as HTMLTextAreaElement).value).toBe("\n");
+    expect(ops.some((o) => o.cmd === "session_send" && (o.args?.ftype as string) === "permission-resp")).toBe(false);
+  });
+
   it("全局键盘审批:esc 拒绝;无待决审批时 ⏎/esc 不发任何帧", async () => {
     const { ops, emit } = stubShell();
     render(<ChatView meta={META} />);
