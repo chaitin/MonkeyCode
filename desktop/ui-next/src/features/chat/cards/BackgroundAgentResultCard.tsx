@@ -26,7 +26,7 @@ function presentStatus(status: string): StatusPresentation {
     return { tone: "run", key: "chat.backgroundResult.running", fallback: status, textClass: "text-primary" };
   }
   if (!normalized || ["completed", "complete", "done", "finished", "success", "succeeded", "ok"].includes(normalized)) {
-    return { tone: "ok", key: "chat.backgroundResult.completed", fallback: status, textClass: "text-success" };
+    return { tone: "ok", key: "chat.backgroundResult.completed", fallback: status, textClass: "text-base-content/50" };
   }
   return { tone: "idle", fallback: status, textClass: "text-base-content/60" };
 }
@@ -63,34 +63,38 @@ export function BackgroundAgentResultCard({
     setCopied(true);
   };
 
+  const target = item.description.trim() || name;
+  const meta = [item.description.trim() ? name : "", summary].filter(Boolean).join(" · ");
+
   return (
-    <section className="card card-border bg-base-100 text-sm">
+    <section className="card card-border overflow-hidden bg-base-100">
       <button
         type="button"
-        className="w-full cursor-pointer px-3 py-2 text-start"
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-start text-xs"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <span aria-hidden className={`shrink-0 ${statusDot(status.tone)}`} />
-          <span className="shrink-0">{t("chat.backgroundResult.label")}</span>
-          <span className="min-w-0 flex-1 truncate font-medium" title={name}>{name}</span>
-          <span className={`shrink-0 text-xs ${status.textClass}`}>{statusText}</span>
-          <IconChevronRight
-            size={16}
-            stroke={1.75}
-            aria-hidden
-            className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
-          />
+        <span aria-hidden className={`shrink-0 ${statusDot(status.tone)}`} />
+        <span className="shrink-0">{t("chat.backgroundResult.label")}</span>
+        <span className="min-w-0 flex-1 truncate text-base-content/60" title={target}>
+          {target}
         </span>
-        {item.description && <span className="mt-1 block truncate text-xs text-base-content/60">{item.description}</span>}
-        {summary && <span className="mt-1 block truncate text-xs text-base-content/75">{summary}</span>}
+        <span className={`shrink-0 ${status.textClass}`}>{statusText}</span>
+        <IconChevronRight
+          size={12}
+          stroke={1.75}
+          aria-hidden
+          className={`shrink-0 text-base-content/40 transition-transform ${open ? "rotate-90" : ""}`}
+        />
       </button>
 
+      {!open && meta && <div className="truncate px-3 pb-2 ps-6 text-xs text-base-content/50">{meta}</div>}
+
       {open && (
-        <div className="border-t border-base-300 px-3 py-3">
+        <div className="mx-3 mb-2 border-s-2 border-base-300 ps-3 text-sm">
+          <div className="mb-2 text-xs text-base-content/50">{name}</div>
           <Markdown source={item.result} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />
-          <div className="mt-3 flex justify-end">
+          <div className="mt-2 flex justify-end">
             <button type="button" className="btn btn-ghost btn-xs gap-1" onClick={copyResult}>
               {copied ? <IconCheck size={14} aria-hidden /> : <IconCopy size={14} aria-hidden />}
               {copied ? t("chat.backgroundResult.copied") : t("chat.backgroundResult.copy")}

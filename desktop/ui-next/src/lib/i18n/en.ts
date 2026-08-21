@@ -444,7 +444,7 @@ export const en: Record<MessageKey, string> = {
   "chat.tool.bgRunning": "Running in background",
   "chat.tool.bgDone": "Background run finished",
   "chat.tool.bgFailed": "Background run failed",
-  "chat.backgroundResult.label": "Background subagent",
+  "chat.backgroundResult.label": "Subagent result",
   "chat.backgroundResult.completed": "Completed",
   "chat.backgroundResult.failed": "Failed",
   "chat.backgroundResult.stopped": "Stopped",

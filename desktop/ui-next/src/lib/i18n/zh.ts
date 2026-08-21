@@ -461,7 +461,7 @@ export const zh = {
   "chat.tool.bgRunning": "后台运行中",
   "chat.tool.bgDone": "后台执行完成",
   "chat.tool.bgFailed": "后台执行失败",
-  "chat.backgroundResult.label": "后台子代理",
+  "chat.backgroundResult.label": "子代理结果",
   "chat.backgroundResult.completed": "已完成",
   "chat.backgroundResult.failed": "执行失败",
   "chat.backgroundResult.stopped": "已停止",

@@ -20,11 +20,10 @@ describe("BackgroundAgentResultCard", () => {
     const user = userEvent.setup();
     render(<BackgroundAgentResultCard item={COMPLETED} />);
 
-    expect(screen.getByText("后台子代理")).toBeTruthy();
-    expect(screen.getByText("依赖调查员")).toBeTruthy();
+    expect(screen.getByText("子代理结果")).toBeTruthy();
     expect(screen.getByText("已完成")).toBeTruthy();
     expect(screen.getByText("检查升级风险")).toBeTruthy();
-    expect(screen.getByText("第一条摘要")).toBeTruthy();
+    expect(screen.getByText("依赖调查员 · 第一条摘要")).toBeTruthy();
     expect(screen.queryByText("完整内容")).toBeNull();
 
     await user.click(screen.getByRole("button", { expanded: false }));
@@ -40,7 +39,7 @@ describe("BackgroundAgentResultCard", () => {
       />,
     );
 
-    expect(screen.getByText("agent-error")).toBeTruthy();
+    expect(screen.getByText("agent-error · 执行中断")).toBeTruthy();
     expect(screen.getByText("执行失败")).toBeTruthy();
   });
 
