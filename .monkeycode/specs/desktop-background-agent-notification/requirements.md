@@ -16,7 +16,7 @@ Agent `163a418` 已为自主后台通知轮提供 `turn/started { source: "notif
 ### 需求 2：后台任务派发
 
 1. `SendMessage` 返回 `async_launched` 时，Desktop 必须保存响应中的 `agentId`，不得展示原始 JSON。
-2. `SendMessage` 派发卡必须在后台执行期间保持运行态，并明确显示“后台运行中”；过程详情不得在卡片内行内展开，必须通过与子代理会话一致的只读弹窗查看。
+2. `SendMessage` 派发卡必须在后台执行期间保持运行态，以状态点和耗时表达生命周期；右侧动作必须与普通子代理卡一致：有 child 时显示蓝色“查看子会话”，否则显示蓝色详情入口，不得使用灰色状态文案加箭头。过程详情不得在卡片内行内展开。
 3. 对应 `task_notification` 到达时，必须按 `agentId` 将派发卡更新为完成或失败；其他 Agent 的通知不得误关该卡。
 4. 现有显式后台 `Agent` 卡仍可在完成通知到达时回填终态和 Result。
 5. 派发卡表示后台运行生命周期，最终正文仍以完成位置的新结果卡为准。
@@ -27,9 +27,9 @@ Agent `163a418` 已为自主后台通知轮提供 `turn/started { source: "notif
 ### 需求 3：后台结果卡
 
 1. 每条结构化 `task_notification` 都必须在通知到达位置生成独立结果卡。
-2. 结果卡必须显示子代理名称（缺省回退 agent ID）、任务描述、完成状态和 Result 摘要。
+2. 结果卡必须显示子代理名称（缺省回退 agent ID）、任务描述、完成状态点和 Result 摘要，右侧使用蓝色“查看结果”动作。
 3. 结果卡必须通过与子代理会话一致的只读弹窗展示完整 Markdown Result，不得在时间线卡片内行内展开或提供额外复制按钮。
-4. completed/error/stopped 必须使用可区分的状态文案和状态色。
+4. completed/error/stopped 必须使用可区分的状态色，并保留无障碍状态文案。
 5. Result 解析失败时必须保留剥除包装标签后的完整可见内容。
 6. 通知不得转换为 `agent_message_chunk`，不得与前后模型正文合并。
 7. 旧的仅含 text 的 `task_notification` 继续显示为独立系统行。

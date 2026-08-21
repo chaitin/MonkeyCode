@@ -225,12 +225,11 @@ export function ToolCard({
       className={`card card-border overflow-hidden bg-base-100 ${joinPrev ? "rounded-t-none" : ""} ${joinNext ? "rounded-b-none border-b-0" : ""}`}
       data-tool-id={item.tcId}
     >
-      {/* 标题行 = 详情开关(思考块同款交互:点击展开/再点收起,用户定案
-          2026-08-05);行内链接 stopPropagation 不触发切换;chevron 钮保留
-          为无障碍/键盘开关并兼作指示,常驻显示 */}
+      {/* 普通工具的标题行仍是详情开关；子代理类卡片统一只通过右侧文字动作
+          打开弹窗，避免同一组里出现“蓝色链接 / 灰色状态 + 箭头”两套语义。 */}
       <div
-        className={`flex items-center gap-2 px-3 py-2 text-xs ${detail || item.background ? "cursor-pointer" : ""}`}
-        onClick={detail ? () => setDetailOpen((v) => !v) : item.background ? openAgentDetail : undefined}
+        className={`flex items-center gap-2 px-3 py-2 text-xs ${detail ? "cursor-pointer" : ""}`}
+        onClick={detail ? () => setDetailOpen((v) => !v) : undefined}
       >
         {perm ? (
           <IconHandStop size={14} stroke={1.75} aria-hidden className="shrink-0 text-warning" />
@@ -252,16 +251,7 @@ export function ToolCard({
             {duration}
           </span>
         )}
-        {item.background && item.outKey && (
-          <span
-            className={`shrink-0 ${
-              item.status === "run" ? "text-primary" : item.status === "fail" ? "text-error" : "text-base-content/50"
-            }`}
-          >
-            {t(item.outKey)}
-          </span>
-        )}
-        {item.childSessionId && onOpenChild && !item.background && (
+        {item.childSessionId && onOpenChild && (
           <button
             type="button"
             className="link link-hover link-primary shrink-0 text-xs font-semibold"
@@ -286,19 +276,17 @@ export function ToolCard({
             {t("chat.tool.showResult")}
           </button>
         )}
-        {item.background && (
+        {item.background && !canOpenChild && (
           <button
             type="button"
-            aria-label={canOpenChild ? t("chat.tool.childSession") : t("chat.tool.agentDetailOpen")}
             aria-haspopup="dialog"
-            title={canOpenChild ? t("chat.tool.childSession") : t("chat.tool.agentDetailOpen")}
-            className="shrink-0 cursor-pointer"
+            className="link link-hover link-primary shrink-0 text-xs font-semibold"
             onClick={(e) => {
               e.stopPropagation();
               openAgentDetail();
             }}
           >
-            <IconChevronRight size={12} stroke={1.75} aria-hidden className="text-base-content/40" />
+            {t("chat.tool.agentDetailOpen")}
           </button>
         )}
         {detail && (

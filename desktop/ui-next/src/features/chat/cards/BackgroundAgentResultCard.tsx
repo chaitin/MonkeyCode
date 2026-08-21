@@ -1,4 +1,3 @@
-import { IconChevronRight } from "@tabler/icons-react";
 import { useState } from "react";
 
 import { Markdown } from "@/components/markdown/Markdown";
@@ -11,24 +10,23 @@ interface StatusPresentation {
   tone: DotTone;
   key?: MessageKey;
   fallback: string;
-  textClass: string;
 }
 
 function presentStatus(status: string): StatusPresentation {
   const normalized = status.trim().toLowerCase();
   if (["error", "failed", "failure"].includes(normalized)) {
-    return { tone: "fail", key: "chat.backgroundResult.failed", fallback: status, textClass: "text-error" };
+    return { tone: "fail", key: "chat.backgroundResult.failed", fallback: status };
   }
   if (["stopped", "cancelled", "canceled", "interrupted"].includes(normalized)) {
-    return { tone: "warn", key: "chat.backgroundResult.stopped", fallback: status, textClass: "text-warning" };
+    return { tone: "warn", key: "chat.backgroundResult.stopped", fallback: status };
   }
   if (["running", "in_progress", "in-progress", "started"].includes(normalized)) {
-    return { tone: "run", key: "chat.backgroundResult.running", fallback: status, textClass: "text-primary" };
+    return { tone: "run", key: "chat.backgroundResult.running", fallback: status };
   }
   if (!normalized || ["completed", "complete", "done", "finished", "success", "succeeded", "ok"].includes(normalized)) {
-    return { tone: "ok", key: "chat.backgroundResult.completed", fallback: status, textClass: "text-base-content/50" };
+    return { tone: "ok", key: "chat.backgroundResult.completed", fallback: status };
   }
-  return { tone: "idle", fallback: status, textClass: "text-base-content/60" };
+  return { tone: "idle", fallback: status };
 }
 
 /** 结果首条非空 Markdown 行，折叠态只做轻量标记清理，不解析完整正文。 */
@@ -61,25 +59,22 @@ export function BackgroundAgentResultCard({
 
   return (
     <section className="card card-border overflow-hidden bg-base-100">
-      <button
-        type="button"
-        className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-start text-xs"
-        aria-haspopup="dialog"
-        onClick={() => setDialogOpen(true)}
-      >
+      <div className="flex items-center gap-2 px-3 py-2 text-xs">
         <span aria-hidden className={`shrink-0 ${statusDot(status.tone)}`} />
+        <span className="sr-only">{statusText}</span>
         <span className="shrink-0">{t("chat.backgroundResult.label")}</span>
         <span className="min-w-0 flex-1 truncate text-base-content/60" title={target}>
           {target}
         </span>
-        <span className={`shrink-0 ${status.textClass}`}>{statusText}</span>
-        <IconChevronRight
-          size={12}
-          stroke={1.75}
-          aria-hidden
-          className="shrink-0 text-base-content/40"
-        />
-      </button>
+        <button
+          type="button"
+          className="link link-hover link-primary shrink-0 text-xs font-semibold"
+          aria-haspopup="dialog"
+          onClick={() => setDialogOpen(true)}
+        >
+          {t("chat.tool.showResult")}
+        </button>
+      </div>
 
       {dialogOpen && (
         <DetailModal

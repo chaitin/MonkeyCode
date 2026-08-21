@@ -264,7 +264,7 @@ describe("工具卡", () => {
     expect(screen.queryByText("已允许")).toBeNull();
   });
 
-  it("后台派发卡在标题行显示运行状态，过程详情只在弹窗展示", async () => {
+  it("后台派发卡使用与普通子代理一致的蓝色详情动作，过程不在卡内展开", async () => {
     const feed: ToolItem["feed"] = [
       { kind: "tool", id: "a", title: "Read", rawInput: { file_path: "/w/a.ts" }, status: "ok" },
       { kind: "text", text: "正在继续检查" },
@@ -283,12 +283,13 @@ describe("工具卡", () => {
         sessionId="s1"
       />,
     );
-    expect(screen.getByText("后台运行中")).toBeTruthy();
+    expect(screen.queryByText("后台运行中")).toBeNull();
     expect(screen.queryByText("正在继续检查")).toBeNull();
     expect(screen.queryByText("等待下一步")).toBeNull();
 
-    expect(screen.getByRole("button", { name: "查看子代理详情" })).toBeTruthy();
-    await userEvent.click(screen.getByText("后台运行中"));
+    const detailButton = screen.getByRole("button", { name: "查看子代理详情" });
+    expect(detailButton.className).toContain("link-primary");
+    await userEvent.click(detailButton);
     expect(screen.getByRole("dialog", { name: "子代理详情" })).toBeTruthy();
     expect(screen.getByText("正在继续检查")).toBeTruthy();
     expect(screen.getByText("等待下一步")).toBeTruthy();
@@ -331,7 +332,9 @@ describe("工具卡", () => {
       result: "结论文本",
     };
     render(<ToolCard item={item} sessionId="s1" onOpenChild={(id) => opened.push(id)} />);
-    await userEvent.click(screen.getByRole("button", { name: "查看子会话" }));
+    const childButton = screen.getByRole("button", { name: "查看子会话" });
+    expect(childButton.className).toContain("link-primary");
+    await userEvent.click(childButton);
     expect(opened).toEqual(["c1"]);
     expect(screen.queryByRole("button", { name: "查看结果" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "子代理详情" })).toBeNull();
