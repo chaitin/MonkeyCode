@@ -28,7 +28,7 @@ Agent `163a418` 已为自主后台通知轮提供 `turn/started { source: "notif
 
 1. 每条结构化 `task_notification` 都必须在通知到达位置生成独立结果卡。
 2. 结果卡必须显示子代理名称（缺省回退 agent ID）、任务描述、完成状态和 Result 摘要。
-3. 结果卡必须通过与子代理会话一致的只读弹窗展示完整 Markdown Result 和复制操作，不得在时间线卡片内行内展开。
+3. 结果卡必须通过与子代理会话一致的只读弹窗展示完整 Markdown Result，不得在时间线卡片内行内展开或提供额外复制按钮。
 4. completed/error/stopped 必须使用可区分的状态文案和状态色。
 5. Result 解析失败时必须保留剥除包装标签后的完整可见内容。
 6. 通知不得转换为 `agent_message_chunk`，不得与前后模型正文合并。

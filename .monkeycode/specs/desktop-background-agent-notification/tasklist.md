@@ -18,7 +18,7 @@
   - [x] 3.1 新增 `BackgroundAgentResultItem` 和结构化 ACP 字段
   - [x] 3.2 reducer 将结构化通知追加为独立 item，旧 text 通知保持系统行
   - [x] 3.3 新增 `BackgroundAgentResultCard` 的单行摘要和 Markdown 详情弹窗
-  - [x] 3.4 支持状态色、本地资源、复制结果和时间戳
+  - [x] 3.4 支持状态色、本地资源和时间戳
   - [x] 3.5 接入 LogList 与时间线高度估算
   - [x] 3.6 增加 reducer 和组件测试
 
@@ -32,7 +32,7 @@
 - [x] 5. 统一后台卡片详情弹窗
   - [x] 5.1 抽取并复用子代理会话的只读 `DetailModal` 外壳
   - [x] 5.2 后台 SendMessage 过程详情改为弹窗，卡片不再行内展示 feed/lastLine
-  - [x] 5.3 独立子代理结果卡改为弹窗展示 Markdown 与复制操作
+  - [x] 5.3 独立子代理结果卡改为弹窗展示 Markdown，不提供额外复制按钮
   - [x] 5.4 覆盖关闭按钮、Esc、真实 child 会话优先和行内隔离测试
 
 - [x] 6. 验证修复

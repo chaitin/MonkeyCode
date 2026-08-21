@@ -1,10 +1,9 @@
-import { IconCheck, IconChevronRight, IconCopy } from "@tabler/icons-react";
+import { IconChevronRight } from "@tabler/icons-react";
 import { useState } from "react";
 
 import { Markdown } from "@/components/markdown/Markdown";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import type { BackgroundAgentResultItem } from "@/lib/protocol/types";
-import { copyText } from "@/lib/util/clipboard";
 import { DetailModal } from "../DetailModal";
 import { statusDot, type DotTone } from "./statusDot";
 
@@ -53,16 +52,10 @@ export function BackgroundAgentResultCard({
 }) {
   const { t } = useI18n();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const status = presentStatus(item.status);
   const summary = resultSummary(item.result);
   const name = item.agentName.trim() || item.agentId;
   const statusText = status.key ? t(status.key) : status.fallback;
-
-  const copyResult = () => {
-    copyText(item.result);
-    setCopied(true);
-  };
 
   const target = item.description.trim() || summary || name;
 
@@ -101,12 +94,6 @@ export function BackgroundAgentResultCard({
           <div className="text-sm">
             <div className="mb-3 text-xs text-base-content/50">{name}</div>
             <Markdown source={item.result} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />
-            <div className="mt-3 flex justify-end">
-              <button type="button" className="btn btn-ghost btn-xs gap-1" onClick={copyResult}>
-                {copied ? <IconCheck size={14} aria-hidden /> : <IconCopy size={14} aria-hidden />}
-                {copied ? t("chat.backgroundResult.copied") : t("chat.backgroundResult.copy")}
-              </button>
-            </div>
           </div>
         </DetailModal>
       )}

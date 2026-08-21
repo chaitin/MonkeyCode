@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { BackgroundAgentResultItem } from "@/lib/protocol/types";
 import { BackgroundAgentResultCard } from "./BackgroundAgentResultCard";
@@ -44,25 +44,13 @@ describe("BackgroundAgentResultCard", () => {
     expect(screen.getByText("执行失败")).toBeTruthy();
   });
 
-  it("弹窗中可复制完整结果，并可用 Esc 关闭", async () => {
+  it("弹窗可用 Esc 关闭且不提供额外复制按钮", async () => {
     const user = userEvent.setup();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<BackgroundAgentResultCard item={COMPLETED} />);
+    await user.click(screen.getByRole("button", { name: /子代理结果/ }));
 
-    try {
-      render(<BackgroundAgentResultCard item={COMPLETED} />);
-      await user.click(screen.getByRole("button", { name: /子代理结果/ }));
-      await user.click(screen.getByRole("button", { name: "复制结果" }));
-
-      await waitFor(() => expect(writeText).toHaveBeenCalledWith(COMPLETED.result));
-      expect(screen.getByRole("button", { name: "结果已复制" })).toBeTruthy();
-
-      await user.keyboard("{Escape}");
-      expect(screen.queryByRole("dialog", { name: "子代理结果" })).toBeNull();
-    } finally {
-      if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
-      else delete (navigator as unknown as { clipboard?: unknown }).clipboard;
-    }
+    expect(screen.queryByRole("button", { name: "复制结果" })).toBeNull();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "子代理结果" })).toBeNull();
   });
 });
