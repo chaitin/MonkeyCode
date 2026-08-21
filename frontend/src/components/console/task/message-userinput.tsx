@@ -37,7 +37,7 @@ export const UserInputMessageItem = ({ message, fileLinkEnvid, onWorkspaceFileCl
   }
 
   return (
-    <div className="group/user-input relative inline-flex w-fit max-w-[80%] flex-col pb-7">
+    <div className="group/user-input relative inline-flex w-fit max-w-[80%] flex-col">
       <div className="flex flex-col rounded-md bg-accent/50 px-4 py-3 break-all">
         {content && (
           <div className="user-message-markdown break-all">
@@ -70,7 +70,7 @@ export const UserInputMessageItem = ({ message, fileLinkEnvid, onWorkspaceFileCl
         )}
       </div>
       {content && (
-        <div className="absolute bottom-0 right-0 flex justify-end opacity-0 transition-opacity group-hover/user-input:opacity-100 group-focus-within/user-input:opacity-100">
+        <div className="absolute right-1.5 top-1.5 flex opacity-0 transition-opacity group-hover/user-input:opacity-100 group-focus-within/user-input:opacity-100">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
