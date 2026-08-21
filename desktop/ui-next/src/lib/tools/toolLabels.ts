@@ -1,6 +1,8 @@
 // 工具语义层:工具名 → 本地化动作 + 结构化目标(纯函数,旧工程 toolLabels.ts
 // 整体移植)。映射表是数据不是 UI 胶水,因此不进 lib/i18n 字典;ToolLocale 与
 // lib/i18n 的 Locale 同形("zh-CN"|"en"),调用方传 getLocale() 即可。
+import { applyPatchPaths } from "./applyPatch";
+
 /** 工具展示语言。当前产品默认中文;设置页可直接传入 "en"。 */
 export type ToolLocale = "zh-CN" | "en";
 
@@ -24,6 +26,7 @@ const ZH_TOOL_LABELS: Record<string, string> = {
   EnterWorktree: "进入独立工作区",
   ExitWorktree: "退出独立工作区",
   Edit: "编辑文件",
+  apply_patch: "编辑文件",
   Read: "读取文件",
   Write: "写入文件",
   Glob: "查找文件",
@@ -216,6 +219,10 @@ function structuredTarget(
   const toolResponse = nestedInput(meta, ["claudeCode", "toolResponse"]);
   const metaPath = inputValue(inputRecord(toolResponse) ?? {}, "filePath")
     || inputValue(inputRecord(nestedInput(toolResponse, ["file"])) ?? {}, "filePath");
+  const patchPaths = applyPatchPaths(rawInput);
+  if (patchPaths.length) {
+    return { target: patchPaths.join(" · "), kind: patchPaths.length === 1 ? "path" : "text" };
+  }
 
   const mcp = mcpParts(rawTool);
   if (mcp && ["mc-browser", "browser", "playwright"].includes(mcp.service.toLowerCase())) {
@@ -407,7 +414,7 @@ export function presentToolCall(
     action: kindAction && !titleHasSpecificAction ? kindAction : base.action,
     target: structured?.target ?? base.target,
     targetKind: structured?.kind ?? (
-      base.rawTool === "Read" || base.rawTool === "Write" || base.rawTool === "Edit"
+      base.rawTool === "Read" || base.rawTool === "Write" || base.rawTool === "Edit" || base.rawTool === "apply_patch"
       || ["read", "edit", "create", "delete", "move"].includes(toolKind ?? "")
         ? "path"
         : toolKind === "execute" ? "code" : "text"

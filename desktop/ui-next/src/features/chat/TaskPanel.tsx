@@ -65,8 +65,11 @@ export function TaskPanel({ entries }: { entries: PlanEntry[] }) {
               <li key={e.id ?? i} className="flex items-start gap-2">
                 <input
                   type="checkbox"
-                  className="checkbox checkbox-xs mt-px shrink-0"
+                  className={`checkbox checkbox-xs mt-px shrink-0 ${e.status === "in_progress" ? "checkbox-primary" : ""}`}
                   checked={e.status === "completed"}
+                  ref={(node) => {
+                    if (node) node.indeterminate = e.status === "in_progress";
+                  }}
                   readOnly
                   aria-label={e.content}
                 />

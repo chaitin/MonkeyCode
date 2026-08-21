@@ -89,13 +89,19 @@ function buildItems(e: MouseEvent): MenuItem[] {
 let cleanup: (() => void) | null = null;
 
 function closeMenu() {
+  const cb = currentOnClose;
+  currentOnClose = null;
   cleanup?.();
+  cb?.();
 }
 
 /** 在任意位置弹命令式菜单(行右键等场景与文本菜单共用同一套机制)。 */
-export function openMenu(pos: { x: number; y: number }, items: MenuItem[]): void {
+let currentOnClose: (() => void) | null = null;
+
+export function openMenu(pos: { x: number; y: number }, items: MenuItem[], opts?: { onClose?: () => void }): void {
   closeMenu();
   if (!items.length) return;
+  currentOnClose = opts?.onClose ?? null;
 
   const backdrop = document.createElement("div");
   backdrop.className = "fixed inset-0 z-40";

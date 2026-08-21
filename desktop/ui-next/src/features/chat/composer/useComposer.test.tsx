@@ -1,24 +1,26 @@
-// composer 状态机的独立契约测试(此前只被 Composer.test 间接覆盖):
-// 切会话留档/恢复、排队单槽、失败不丢草稿、迟到回执的纪元守卫,以及
-// 补投三道闸(历史未落地不抢投 / 切会话不投错人 / 上行在途不直发)与
-// 失败后的退避重试。
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { b64encode } from "@/lib/protocol/codec";
-import { resetStashForTests, stashGet, stashSet } from "./stash";
+import { b64decode } from "@/lib/protocol/codec";
+import { localSendQueueTarget, readSendQueueLane, resetSendQueueMemoryForTests } from "./sendQueue";
+import { resetStashForTests, stashGet } from "./stash";
 import { useComposer, type ComposerFeed } from "./useComposer";
 
-function stubSend(impl: (cmd: string) => unknown) {
-  const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+interface Call {
+  cmd: string;
+  args?: Record<string, unknown>;
+}
+
+function stubShell(impl: (cmd: string, args?: Record<string, unknown>) => unknown = () => null) {
+  const calls: Call[] = [];
   (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
     core: {
       invoke: (cmd: string, args?: Record<string, unknown>) => {
         calls.push({ cmd, args });
         try {
-          return Promise.resolve(impl(cmd));
-        } catch (e) {
-          return Promise.reject(e);
+          return Promise.resolve(impl(cmd, args));
+        } catch (error) {
+          return Promise.reject(error);
         }
       },
     },
@@ -26,18 +28,23 @@ function stubSend(impl: (cmd: string) => unknown) {
   return calls;
 }
 
-/** 数据面默认信号:历史已落地、无新帧;各用例只覆写关心的那一项。 */
 const feed = (over: Partial<ComposerFeed> = {}): ComposerFeed => ({
   running: false,
   historyLoaded: true,
   lastSeq: 0,
   ...over,
 });
+const settle = () => act(async () => void (await Promise.resolve()));
+const sends = (calls: Call[]) => calls.filter((call) => call.cmd === "session_send");
+const sentText = (call: Call) => b64decode(String((call.args?.payload as { content?: string } | undefined)?.content ?? ""));
 
-/** 让在途的 IPC promise 与它引发的 setState 全部落地。 */
-const settle = () => act(async () => { await Promise.resolve(); });
+function queueTexts(id: string) {
+  return readSendQueueLane(localSendQueueTarget(id)).pending.map((item) => item.content);
+}
 
 beforeEach(() => {
+  localStorage.clear();
+  resetSendQueueMemoryForTests();
   resetStashForTests();
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
 });
@@ -46,256 +53,318 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("useComposer:跨会话留档/恢复", () => {
-  it("切会话留档草稿与排队,切回恢复;新会话是干净的", async () => {
-    stubSend(() => null);
-    const { result, rerender } = renderHook(({ id, running }) => useComposer(id, feed({ running })), {
-      initialProps: { id: "a", running: true },
-    });
-    // send 的闭包按渲染帧取 draft:setDraft 与 send 必须分属两个 act
-    act(() => result.current.setDraft("排我"));
-    act(() => {
-      result.current.send(); // running=true → 入单槽
-    });
-    act(() => result.current.setDraft("A 的草稿"));
-    expect(result.current.queued).toBe("排我");
-
-    rerender({ id: "b", running: false });
-    expect(result.current.draft).toBe("");
-    expect(result.current.queued).toBeNull();
-
-    rerender({ id: "a", running: true });
-    expect(result.current.draft).toBe("A 的草稿");
-    expect(result.current.queued).toBe("排我");
-  });
-
-  it("排队单槽:后发覆盖先发", () => {
-    stubSend(() => null);
+describe("useComposer 本地持久 lane", () => {
+  it("运行中连续提交三条按 FIFO 追加，不覆盖并清空草稿", () => {
+    stubShell();
     const { result } = renderHook(() => useComposer("a", feed({ running: true })));
-    act(() => result.current.setDraft("第一条"));
-    act(() => {
-      result.current.send();
-    });
-    act(() => result.current.setDraft("第二条"));
-    act(() => {
-      result.current.send();
-    });
-    expect(result.current.queued).toBe("第二条");
+
+    for (const text of ["第一条", "第二条", "第三条"]) {
+      act(() => result.current.setDraft(text));
+      act(() => expect(result.current.send()).toBe(true));
+      expect(result.current.draft).toBe("");
+    }
+
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["第一条", "第二条", "第三条"]);
+    expect(queueTexts("a")).toEqual(["第一条", "第二条", "第三条"]);
   });
 
-  it("发送失败不丢草稿(壳契约 Err ⟺ 未入会话)", async () => {
-    stubSend(() => {
-      throw new Error("engine down");
-    });
-    const { result } = renderHook(() => useComposer("a", feed()));
-    act(() => result.current.setDraft("要发的话"));
-    act(() => {
-      result.current.send(); // setDraft 已提交,本 act 里的 send 闭包是新 draft
-    });
-    expect(result.current.draft).toBe("");
-    await waitFor(() => expect(result.current.draft).toBe("要发的话"));
-  });
-
-  it("迟到的失败回执 + 已切会话:草稿回原会话留档,不污染当前会话", async () => {
-    stubSend(() => {
-      throw new Error("engine down");
-    });
-    const { result, rerender } = renderHook(({ id }) => useComposer(id, feed()), {
+  it("队列按会话隔离，草稿/当前附件仍只由 stash 恢复", () => {
+    stubShell();
+    const { result, rerender } = renderHook(({ id }) => useComposer(id, feed({ running: true })), {
       initialProps: { id: "a" },
     });
-    act(() => result.current.setDraft("迟到的话"));
-    act(() => {
-      result.current.send();
-    });
-    rerender({ id: "b" }); // 回执落地前切走
-    await waitFor(() => expect(stashGet("a")?.draft).toBe("迟到的话"));
+    act(() => result.current.setDraft("给 A 排队"));
+    act(() => result.current.send());
+    act(() => result.current.setDraft("A 草稿"));
+
+    rerender({ id: "b" });
     expect(result.current.draft).toBe("");
+    expect(result.current.queue.pending).toHaveLength(0);
+    act(() => result.current.setDraft("给 B 排队"));
+    act(() => result.current.send());
 
     rerender({ id: "a" });
-    expect(result.current.draft).toBe("迟到的话");
+    expect(result.current.draft).toBe("A 草稿");
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["给 A 排队"]);
+    expect(queueTexts("b")).toEqual(["给 B 排队"]);
   });
 
-  it("轮结束自动补投排队消息(payload 走 base64)", async () => {
-    const calls = stubSend(() => null);
+  it("入队结构化绑定附件并立即清附件，附件行仅在投递时生成", async () => {
+    const calls = stubShell((cmd, args) => {
+      if (cmd === "upload_file_path") return { path: String(args?.path ?? ".monkeycode/uploads/a.png") };
+      return null;
+    });
     const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
       initialProps: { running: true },
     });
-    act(() => result.current.setDraft("排队中"));
-    act(() => {
-      result.current.send();
+    await act(() => result.current.addPaths([".monkeycode/uploads/a.png"]));
+    act(() => result.current.setDraft("看图"));
+    act(() => result.current.send());
+
+    expect(result.current.atts).toEqual([]);
+    expect(result.current.queue.pending[0]).toMatchObject({
+      content: "看图",
+      attachments: [{ path: ".monkeycode/uploads/a.png", isImage: true }],
     });
+    expect(result.current.queue.pending[0]?.content).not.toContain("[图片]");
+
     rerender({ running: false });
+    await waitFor(() => expect(sends(calls)).toHaveLength(1));
+    expect(sentText(sends(calls)[0]!)).toBe("看图\n[图片] .monkeycode/uploads/a.png");
+  });
+
+  it("严格逐轮：每次 running true→false 只推进并发送一个队首", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(({ running, lastSeq }) => useComposer("a", feed({ running, lastSeq })), {
+      initialProps: { running: true, lastSeq: 0 },
+    });
+    for (const text of ["一", "二", "三"]) {
+      act(() => result.current.setDraft(text));
+      act(() => result.current.send());
+    }
+
+    rerender({ running: false, lastSeq: 0 });
+    await waitFor(() => expect(sends(calls)).toHaveLength(1));
+    expect(sentText(sends(calls)[0]!)).toBe("一");
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["二", "三"]);
+
+    rerender({ running: true, lastSeq: 1 });
+    await settle();
+    expect(sends(calls)).toHaveLength(1);
+    rerender({ running: false, lastSeq: 2 });
+    await waitFor(() => expect(sends(calls)).toHaveLength(2));
+    expect(sentText(sends(calls)[1]!)).toBe("二");
+
+    rerender({ running: true, lastSeq: 3 });
+    rerender({ running: false, lastSeq: 4 });
+    await waitFor(() => expect(sends(calls)).toHaveLength(3));
+    expect(sentText(sends(calls)[2]!)).toBe("三");
+  });
+
+  it("停止时队列为空也保持粘性暂停，轮末后新增消息仍不会直接发送", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
+      initialProps: { running: true },
+    });
+
+    act(() => result.current.stop());
+    expect(result.current.queue.blocked?.code).toBe("user-paused");
+    rerender({ running: false });
+    await settle();
+
+    act(() => result.current.setDraft("取消后新增"));
+    act(() => result.current.send());
+    await settle();
+
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(0);
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["取消后新增"]);
+    expect(result.current.queue.blocked?.code).toBe("user-paused");
+  });
+
+  it("用户主动停止会暂停剩余队列，新增消息不解锁，显式继续才补投", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
+      initialProps: { running: true },
+    });
+    for (const text of ["一", "二"]) {
+      act(() => result.current.setDraft(text));
+      act(() => result.current.send());
+    }
+
+    act(() => result.current.stop());
+    expect(result.current.queue.blocked?.code).toBe("user-paused");
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-cancel")).toHaveLength(1);
+
+    act(() => result.current.setDraft("三"));
+    act(() => result.current.send());
+    expect(result.current.queue.blocked?.code).toBe("user-paused");
+    expect(queueTexts("a")).toEqual(["一", "二", "三"]);
+
+    rerender({ running: false });
+    await settle();
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(0);
+
+    act(() => result.current.resumeQueue());
     await waitFor(() =>
-      expect(calls.some((c) => c.cmd === "session_send" && JSON.stringify(c.args).includes(b64encode("排队中")))).toBe(true),
+      expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(1),
     );
-    expect(result.current.queued).toBeNull();
-  });
-});
-
-describe("useComposer:排队补投的三道闸", () => {
-  const sends = (calls: Array<{ cmd: string; args?: Record<string, unknown> }>) =>
-    calls.filter((c) => c.cmd === "session_send");
-
-  it("切会话不把上一个会话的排队消息投进新会话", async () => {
-    const calls = stubSend(() => null);
-    const { result, rerender } = renderHook(({ id, running }) => useComposer(id, feed({ running })), {
-      initialProps: { id: "a", running: true },
-    });
-    act(() => result.current.setDraft("给 A 的话"));
-    act(() => {
-      result.current.send(); // running=true → 入单槽
-    });
-    expect(result.current.queued).toBe("给 A 的话");
-
-    // 切到空闲的 b:这一帧里 sessionId 已是 b,而 queued 还是 A 的
-    // (留档-恢复 effect 的 setState 要下一次渲染才回流)——补投 effect 与它
-    // 同一次提交,不对表就把 A 的话发进了 b
-    rerender({ id: "b", running: false });
-    await settle();
-    expect(sends(calls).filter((c) => c.args?.id === "b")).toHaveLength(0);
-
-    // 消息还在 A 的槽里,切回来照样在
-    rerender({ id: "a", running: true });
-    expect(result.current.queued).toBe("给 A 的话");
+    expect(sentText(sends(calls).find((call) => call.args?.ftype === "user-input")!)).toBe("一");
   });
 
-  it("首份历史落地前不抢投恢复出来的排队消息(running 还不可信)", async () => {
-    const calls = stubSend(() => null);
-    stashSet("a", { draft: "", queued: "切回来要补投的", atts: [] });
-    const { result, rerender } = renderHook(({ historyLoaded }) => useComposer("a", feed({ historyLoaded })), {
-      initialProps: { historyLoaded: false },
+  it("清空暂停队列后轮末不会补投", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
+      initialProps: { running: true },
     });
-    await settle();
-    // 恢复出来了,但会话可能正在后台跑轮:此刻直投必被壳的忙碌守卫拒掉
-    expect(result.current.queued).toBe("切回来要补投的");
-    expect(sends(calls)).toHaveLength(0);
+    act(() => result.current.setDraft("不要发送"));
+    act(() => result.current.send());
+    act(() => result.current.stop());
+    act(() => result.current.clearQueue());
 
-    rerender({ historyLoaded: true });
+    expect(result.current.queue.pending).toEqual([]);
+    expect(result.current.queue.blocked).toBeNull();
+    rerender({ running: false });
     await settle();
-    expect(sends(calls)).toHaveLength(1);
-    expect(result.current.queued).toBeNull();
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(0);
   });
 
-  it("上行在途(壳已 ack、回显帧未到)时第二条进队列;帧到达才补投", async () => {
-    const calls = stubSend(() => null);
-    const { result, rerender } = renderHook(({ lastSeq }) => useComposer("a", feed({ lastSeq })), {
-      initialProps: { lastSeq: 0 },
+  it("发送失败时同 ID 回队首并阻塞后续，退避到点只重试失败项", async () => {
+    vi.useFakeTimers();
+    const calls = stubShell((cmd) => {
+      if (cmd === "session_send") throw new Error("busy");
+      return null;
     });
-    act(() => result.current.setDraft("第一条"));
-    act(() => {
-      result.current.send(); // 空闲 → 直发
+    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
+      initialProps: { running: true },
     });
-    await settle(); // session_send 已 resolve = 引擎 ack,但回显帧还在路上
-    expect(sends(calls)).toHaveLength(1);
+    for (const text of ["失败项", "后续项"]) {
+      act(() => result.current.setDraft(text));
+      act(() => result.current.send());
+    }
+    const failedId = result.current.queue.pending[0]!.id;
 
-    act(() => result.current.setDraft("第二条"));
-    act(() => {
-      result.current.send();
-    });
-    // 此前 IPC 一 resolve 就摘在途标记,第二条直发撞壳的忙碌守卫,
-    // catch 静默把草稿放回输入框(用户看到"消息自己跳回来了")
-    expect(result.current.queued).toBe("第二条");
+    rerender({ running: false });
+    await settle();
     expect(sends(calls)).toHaveLength(1);
+    expect(result.current.queue.blocked?.itemId).toBe(failedId);
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["失败项", "后续项"]);
 
-    rerender({ lastSeq: 7 }); // 回显帧到达:这才是"上行已被壳接收"
+    await act(async () => vi.advanceTimersByTimeAsync(599));
+    expect(sends(calls)).toHaveLength(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
     await settle();
     expect(sends(calls)).toHaveLength(2);
-    expect(result.current.queued).toBeNull();
+    expect(sentText(sends(calls)[1]!)).toBe("失败项");
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["失败项", "后续项"]);
   });
-});
 
-describe("useComposer:补投失败后的重试", () => {
-  it("失败后 running 再也不变,退避重试仍把消息投出去(此前永久卡在 chip 里)", async () => {
-    vi.useFakeTimers();
-    let broken = true;
-    const calls = stubSend((cmd) => {
-      if (cmd === "session_send" && broken) throw new Error("engine busy");
+  it("historyLoaded 与 stateSid 守卫恢复队列，不会切会话投错", async () => {
+    stubShell();
+    const first = renderHook(() => useComposer("a", feed({ running: true })));
+    act(() => first.result.current.setDraft("只给 A"));
+    act(() => first.result.current.send());
+    first.unmount();
+    resetSendQueueMemoryForTests();
+
+    const calls = stubShell();
+    const { result, rerender } = renderHook(
+      ({ id, historyLoaded }) => useComposer(id, feed({ running: false, historyLoaded })),
+      { initialProps: { id: "a", historyLoaded: false } },
+    );
+    await settle();
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["只给 A"]);
+    expect(sends(calls)).toHaveLength(0);
+
+    rerender({ id: "b", historyLoaded: true });
+    await settle();
+    expect(sends(calls).filter((call) => call.args?.id === "b")).toHaveLength(0);
+  });
+
+  it("上行在途时后发消息入队，直到开轮并结束才自动投递", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(({ running, lastSeq }) => useComposer("a", feed({ running, lastSeq })), {
+      initialProps: { running: false, lastSeq: 0 },
+    });
+    act(() => result.current.setDraft("直发"));
+    act(() => result.current.send());
+    act(() => result.current.setDraft("排队"));
+    act(() => result.current.send());
+    expect(sends(calls)).toHaveLength(1);
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["排队"]);
+
+    rerender({ running: true, lastSeq: 1 });
+    await settle();
+    expect(sends(calls)).toHaveLength(1);
+    rerender({ running: false, lastSeq: 2 });
+    await waitFor(() => expect(sends(calls)).toHaveLength(2));
+    expect(sentText(sends(calls)[1]!)).toBe("排队");
+  });
+
+  it("删除和重排动作立即写回持久 lane", () => {
+    stubShell();
+    const { result } = renderHook(() => useComposer("a", feed({ running: true })));
+    for (const text of ["一", "二", "三"]) {
+      act(() => result.current.setDraft(text));
+      act(() => result.current.send());
+    }
+    const [one, two, three] = result.current.queue.pending;
+    act(() => result.current.reorderQueued(three!.id, one!.id));
+    act(() => result.current.removeQueued(two!.id));
+    expect(queueTexts("a")).toEqual(["三", "一"]);
+  });
+
+  it("/compact 忙时不入队且保留草稿，空闲时走控制 IPC", async () => {
+    const calls = stubShell();
+    const busy = renderHook(() => useComposer("a", feed({ running: true })));
+    act(() => busy.result.current.setDraft("/compact"));
+    act(() => expect(busy.result.current.send()).toBe(false));
+    expect(busy.result.current.draft).toBe("/compact");
+    expect(busy.result.current.queue.pending).toHaveLength(0);
+    busy.unmount();
+
+    const idle = renderHook(() => useComposer("b", feed()));
+    act(() => idle.result.current.setDraft("/compact"));
+    act(() => expect(idle.result.current.send()).toBe(true));
+    await settle();
+    expect(calls.filter((call) => call.cmd === "session_call" && call.args?.kind === "session_compact")).toHaveLength(1);
+    expect(sends(calls)).toHaveLength(0);
+  });
+
+  it("直接发送失败恢复原草稿，不污染切换后的会话", async () => {
+    let rejectSend: (error: Error) => void = () => {};
+    stubShell((cmd) => {
+      if (cmd === "session_send") return new Promise((_, reject) => (rejectSend = reject));
       return null;
     });
-    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
-      initialProps: { running: true },
-    });
-    act(() => result.current.setDraft("排一条"));
-    act(() => {
-      result.current.send();
-    });
-    expect(result.current.queued).toBe("排一条");
-
-    rerender({ running: false }); // 轮结束 → 补投 → 壳拒
-    await act(async () => {
-      await Promise.resolve();
-    });
-    const sends = () => calls.filter((c) => c.cmd === "session_send").length;
-    expect(sends()).toBe(1);
-    expect(result.current.queued).toBe("排一条"); // 失败回队
-
-    // 此后引擎恢复,但**没有任何 running 边沿**(壳一直没接活):
-    // 抑制闸只等 running 变化的话,这条消息永远发不出去
-    broken = false;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(800);
-    });
-    expect(sends()).toBe(2);
-    expect(result.current.queued).toBeNull();
+    const { result, rerender } = renderHook(({ id }) => useComposer(id, feed()), { initialProps: { id: "a" } });
+    act(() => result.current.setDraft("迟到的话"));
+    act(() => result.current.send());
+    rerender({ id: "b" });
+    await act(async () => rejectSend(new Error("down")));
+    expect(result.current.draft).toBe("");
+    expect(stashGet("a")?.draft).toBe("迟到的话");
   });
 
-  it("取消排队即撤销在途重试(定时器不该把已撤的消息再投一次)", async () => {
-    vi.useFakeTimers();
-    const calls = stubSend((cmd) => {
-      if (cmd === "session_send") throw new Error("engine busy");
+  it("队列投递失败时已切会话：按原 sid/item id 回队，不污染当前 lane", async () => {
+    let rejectSend: (error: Error) => void = () => {};
+    stubShell((cmd) => {
+      if (cmd === "session_send") return new Promise((_, reject) => (rejectSend = reject));
       return null;
     });
-    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
-      initialProps: { running: true },
-    });
-    act(() => result.current.setDraft("不要了"));
-    act(() => {
-      result.current.send();
-    });
-    rerender({ running: false });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(calls.filter((c) => c.cmd === "session_send")).toHaveLength(1);
+    const { result, rerender } = renderHook(
+      ({ id, running }) => useComposer(id, feed({ running })),
+      { initialProps: { id: "a", running: true } },
+    );
+    act(() => result.current.setDraft("A 的失败项"));
+    act(() => result.current.send());
+    const itemId = result.current.queue.pending[0]!.id;
+    rerender({ id: "a", running: false });
+    await settle();
+    rerender({ id: "b", running: false });
 
-    act(() => result.current.clearQueued());
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3000);
-    });
-    expect(calls.filter((c) => c.cmd === "session_send")).toHaveLength(1);
-    expect(result.current.queued).toBeNull();
+    await act(async () => rejectSend(new Error("late reject")));
+    const laneA = readSendQueueLane(localSendQueueTarget("a"));
+    expect(laneA.blocked?.itemId).toBe(itemId);
+    expect(laneA.pending.map((item) => item.content)).toEqual(["A 的失败项"]);
+    expect(result.current.queue.pending).toEqual([]);
+    expect(result.current.queue.blocked).toBeNull();
   });
-});
 
-describe("useComposer:附件上传的纪元守卫", () => {
-  it("上传落地时人已切走:附件归原会话留档,不落进当前 composer", async () => {
-    let finish: (v: { path: string }) => void = () => {};
-    const pending = new Promise<{ path: string }>((r) => {
-      finish = r;
-    });
-    (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
-      core: {
-        invoke: (cmd: string) => (cmd === "upload_file_path" ? pending : Promise.resolve(null)),
-      },
-    };
-    const { result, rerender } = renderHook(({ id }) => useComposer(id, feed()), {
-      initialProps: { id: "a" },
-    });
-    let done: Promise<void> = Promise.resolve();
+  it("上传完成时已切会话：附件只回原会话 stash", async () => {
+    let finish: (value: { path: string }) => void = () => {};
+    const pending = new Promise<{ path: string }>((resolve) => (finish = resolve));
+    stubShell((cmd) => (cmd === "upload_file_path" ? pending : null));
+    const { result, rerender } = renderHook(({ id }) => useComposer(id, feed()), { initialProps: { id: "a" } });
+    let uploading!: Promise<void>;
     act(() => {
-      done = result.current.addPaths(["/proj-a/图.png"]);
+      uploading = result.current.addPaths(["/tmp/a.png"]);
     });
-    rerender({ id: "b" }); // 大文件上传数秒,期间切走了
-
+    rerender({ id: "b" });
     await act(async () => {
-      finish({ path: ".monkeycode/uploads/图.png" });
-      await done;
+      finish({ path: ".monkeycode/uploads/a.png" });
+      await uploading;
     });
-    // 落进当前 composer 的话,path 是**旧工作区**的相对路径,发出去读不到
     expect(result.current.atts).toHaveLength(0);
-    expect(stashGet("a")?.atts.map((a) => a.path)).toEqual([".monkeycode/uploads/图.png"]);
-
-    rerender({ id: "a" });
-    expect(result.current.atts.map((a) => a.path)).toEqual([".monkeycode/uploads/图.png"]);
+    expect(stashGet("a")?.atts.map((att) => att.path)).toEqual([".monkeycode/uploads/a.png"]);
   });
 });

@@ -7,10 +7,11 @@
 // 大纲跳转:锚(data-user-seq)不在 DOM 时按条目 offset 走 ensureLoaded
 // 精确补页(session_history 以 offset 为终点,不盲翻),补页提交前的空窗
 // 用短时重试兜；当前项由虚拟高度索引 O(1) 反查最近的用户行。
-import { IconDots, IconFolderOpen, IconPencil, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconDots, IconFolderOpen, IconPencil } from "@tabler/icons-react";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -18,6 +19,8 @@ import {
   type MouseEvent as ReactMouseEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+
+import { createPortal } from "react-dom";
 
 import { useApprovalHotkeys } from "@/app/shortcuts";
 import { useI18n } from "@/lib/i18n";
@@ -32,9 +35,9 @@ import {
 } from "@/lib/util/scrollAnchor";
 import { renameIsNoop } from "@/lib/util/rename";
 import { createImeGuard } from "@/lib/util/slash";
-import { useEscLayer } from "@/lib/util/escLayer";
 import { useDismiss } from "@/lib/util/useDismiss";
 import { LocalComposerHost, type LocalComposerHandle } from "./composer/LocalComposerHost";
+import { DetailModal } from "./DetailModal";
 import { LogList, type LogListHandle } from "./LogList";
 import { OutlineNav, useOutlineEntries } from "./OutlineNav";
 import { TaskPanel } from "./TaskPanel";
@@ -66,6 +69,10 @@ const scrollMemo = new Map<string, ScrollAnchor & { pinned: boolean }>();
 export function ChatView({
   meta,
   epoch = 0,
+  variant = "full",
+  hotkeysActive = true,
+  nativeDropEnabled = true,
+  headerSlot = null,
   onDeleted,
   onPatched,
   onActionError,
@@ -74,6 +81,19 @@ export function ChatView({
 }: {
   meta: SessionMeta;
   epoch?: number;
+  /** pane = 分屏格内形态:细头由 SplitView 提供,故不渲染 52px 视图头
+   *  (标题/文件/⋯ 菜单随之隐去,管理动作回普通视图做)、不渲染提问大纲
+   *  (贴边点列在窄格里挤占行宽);列宽换 chat-measure-pane(无 48rem
+   *  地板,见 app.css)。数据面与交互(composer/审批/任务面板)全保留。 */
+  variant?: "full" | "pane";
+  /** 审批快捷键开关:分屏多格并存时只有焦点格为 true(shortcuts.ts 头注)。 */
+  hotkeysActive?: boolean;
+  /** Linux 原生拖放是 window 级事件；分屏时仅焦点格接收。 */
+  nativeDropEnabled?: boolean;
+  /** 格头「视图动作」插槽:文件钮 createPortal 进去(云端同构;格头唯一
+   *  框架不写任务类型分支)。抽屉本体也随之入格(pane 变体)——「云端在
+   *  格内、本地为啥全局」2026-08-19 用户报障。 */
+  headerSlot?: HTMLElement | null;
   focusRequest?: number;
   onFocusRequestHandled?: (request: number) => void;
   /** ⋯ 菜单二段确认后的删除动作:通知 App 走与侧栏同一套删除流程 */
@@ -89,9 +109,10 @@ export function ChatView({
   onActionError?: (key: "notice.renameFailed" | "notice.archiveFailed", reason: string) => void;
 }) {
   const { t } = useI18n();
+  const pane = variant === "pane";
   const { state, conn, historyLoaded, openError, hasMore, loadingEarlier, earlierError, loadEarlier, ensureLoaded } =
     useSessionFeed(meta.id, epoch);
-  useApprovalHotkeys(state, meta.id);
+  useApprovalHotkeys(state, meta.id, undefined, hotkeysActive);
   // composer 自己持有草稿/附件/上传状态；父层只留一个稳定命令端口给拖拽与
   // Markdown 错误。打字从此不会再重渲 ChatView 和时间线。
   const composerRef = useRef<LocalComposerHandle>(null);
@@ -546,6 +567,12 @@ export function ChatView({
     setChildId(null); // 切会话关掉上一个会话的子回放
   }, [meta.id]);
 
+  // pane 连接条的展开态(收/展是会话内瞬态;切会话回到收起)
+  const [stripOpen, setStripOpen] = useState(false);
+  useEffect(() => {
+    setStripOpen(false);
+  }, [meta.id]);
+
   // ==== 提问大纲:打开拉一次,轮结束(running 真→假)再拉(轮末才物化) ====
   const [outline, setOutline] = useState<OutlineItem[]>([]);
   useEffect(() => {
@@ -718,6 +745,8 @@ export function ChatView({
     setDrawerOpen(false);
   }, [meta.id]);
   useEffect(() => {
+    // 文件钮(格内经插槽自投)带改动数徽标,pane 也要拉(2026-08-20 用户
+    // 报障「文件夹上变动数字没了」——入格重构时门禁忘了拆)
     if (changesToken === 0) return;
     let alive = true;
     repoChanges(meta.id).then(
@@ -731,7 +760,7 @@ export function ChatView({
     return () => {
       alive = false;
     };
-  }, [changesToken, meta.id]);
+  }, [changesToken, meta.id, pane]);
   const dragDepth = useRef(0);
   const onDragEnter = (e: DragEvent<HTMLElement>) => {
     if (![...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) return;
@@ -755,9 +784,14 @@ export function ChatView({
   };
   // Linux 壳:WebKitGTK 的 HTML5 拖拽拿不到 File,走壳原生 tauri://drag-*
   // (mac/Windows 壳禁用原生处理器,监听永不触发)
+  const nativeDropIsEnabled = useEffectEvent(() => nativeDropEnabled);
+  useEffect(() => {
+    if (!nativeDropEnabled) setDragging(false);
+  }, [nativeDropEnabled]);
   useEffect(
     () =>
       onNativeFileDrop({
+        enabled: nativeDropIsEnabled,
         onDragging: setDragging,
         onFiles: (files) => void composerRef.current?.addFiles(files),
         onError: (m) => composerRef.current?.notifyError(t("chat.uploadFailed", { reason: m })),
@@ -782,9 +816,13 @@ export function ChatView({
       ? conn.text
       : null;
 
+  // pane 形态不当 <main>:分屏四格并存,页面只许一个 main 地标(SplitView
+  // 自己是 main);格外壳的 section/aria 由 SplitView 提供,这里退成 div。
+  // min-h-0:格是 flex 列(细头 + 本体),不加的话消息流把格撑破不出滚动
+  const Root = pane ? "div" : "main";
   return (
-    <main
-      className="relative flex min-w-0 flex-1 flex-col bg-base-100"
+    <Root
+      className={`relative flex min-w-0 flex-1 flex-col ${pane ? "min-h-0 bg-transparent" : "mc-workbench-surface-100"}`}
       onDragEnter={onDragEnter}
       onDragOver={(e) => e.preventDefault()}
       onDragLeave={onDragLeave}
@@ -796,6 +834,7 @@ export function ChatView({
         </div>
       )}
 
+      {!pane && (
       <header data-view-header="" data-tauri-drag-region="" className="flex h-13 shrink-0 items-center gap-2 border-b border-base-300 px-4">
         <div data-tauri-drag-region="" className="min-w-0 flex-1">
           {editingTitle ? (
@@ -958,6 +997,7 @@ export function ChatView({
           )}
         </div>
       </header>
+      )}
 
       {/* 布局规范:header 只放身份与动作;会话连接状态是内容级信息,
           以内嵌条挂在 header 之下,恢复即消。形态 = 「header 的延长线」:
@@ -968,12 +1008,30 @@ export function ChatView({
           位置):壳只在**成功**路径 emit conn-status,失败时 conn 恒为 null
           ——此前这一条整个不渲染,用户拿到的是没有任何解释的空会话。
           它不是"恢复中"而是已经落定的失败,故用 error 点且不呼吸 */}
-      {stripText !== null && (
-        <div role="status" className={`flex shrink-0 items-center gap-2 border-b border-base-300 px-4 py-1.5 text-xs text-base-content/70 ${openError ? "bg-error/5" : "bg-warning/5"}`}>
-          <span aria-hidden className={`status status-sm shrink-0 ${openError ? "status-error" : "status-warning animate-pulse"}`} />
-          <span className="min-w-0 flex-1 truncate" title={stripText}>{stripText}</span>
-        </div>
-      )}
+      {/* pane 形态默认收成角落小图标(工作台降噪定案 2026-08-18:四格各铺
+          一条几乎相同的长横幅是画面里最响的噪音):悬停看全文,点开展开成
+          原横幅、再点收回。全文恒在 title/aria,信息不丢只是不喊。 */}
+      {stripText !== null &&
+        (pane && !stripOpen ? (
+          <button
+            type="button"
+            aria-label={stripText}
+            title={stripText}
+            onClick={() => setStripOpen(true)}
+            className={`absolute end-2 top-2 z-10 btn btn-ghost btn-square btn-xs ${openError ? "text-error" : "text-warning"}`}
+          >
+            <IconAlertTriangle size={14} stroke={1.75} aria-hidden />
+          </button>
+        ) : (
+          <div
+            role="status"
+            className={`flex shrink-0 items-center gap-2 border-b border-base-300 px-4 py-1.5 text-xs text-base-content/70 ${openError ? "bg-error/5" : "bg-warning/5"} ${pane ? "cursor-pointer" : ""}`}
+            onClick={pane ? () => setStripOpen(false) : undefined}
+          >
+            <span aria-hidden className={`status status-sm shrink-0 ${openError ? "status-error" : "status-warning motion-safe:animate-pulse"}`} />
+            <span className="min-w-0 flex-1 truncate" title={stripText}>{stripText}</span>
+          </div>
+        ))}
 
       {/* 大纲与消息/空态共用一个定位区域；footer 动态增高时该区域同步收缩，
           大纲不会侵入输入框。 */}
@@ -1008,7 +1066,7 @@ export function ChatView({
         // 真中线)对不齐——对称留槽让两列共享同一条中线
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3 [scrollbar-gutter:stable_both-edges]"
       >
-        <div className="mx-auto flex chat-measure flex-col gap-3">
+        <div className={`mx-auto flex ${pane ? "chat-measure-pane" : "chat-measure"} flex-col gap-3`}>
           {hasMore && (
             <button type="button" className="btn btn-ghost btn-xs self-center" disabled={loadingEarlier} onClick={() => void onLoadEarlier()}>
               {loadingEarlier && <span className="loading loading-spinner loading-xs" aria-hidden />}
@@ -1035,28 +1093,59 @@ export function ChatView({
       </div>
       )}
 
+      {/* 大纲导航格内同样在(2026-08-19 用户报障「大纲没了」:左缘浮轨,
+          按格自适应) */}
       <OutlineNav entries={entries} activeSeq={activeSeq ?? undefined} onJump={onJump} />
       </div>
 
       {/* 无上边线(2026-08-13 用户定案):composer 卡自带边框已是分界,
           再压一条通栏线是双重描边;云端视图同款 */}
       <footer className="shrink-0 p-3">
-        <div className="mx-auto flex chat-measure flex-col gap-2">
-          {state.plan.length > 0 && <TaskPanel entries={state.plan} />}
-          <LocalComposerHost
-            ref={composerRef}
-            sessionId={meta.id}
-            state={state}
-            historyLoaded={historyLoaded}
-            meta={meta}
-            onAfterSend={followBottom}
-            focusRequest={focusRequest}
-            onFocusRequestHandled={onFocusRequestHandled}
-          />
+        <div className={`mx-auto flex ${pane ? "chat-measure-pane" : "chat-measure"} flex-col gap-2`}>
+          {(
+            <>
+              {state.plan.length > 0 && <TaskPanel entries={state.plan} />}
+              <LocalComposerHost
+                ref={composerRef}
+                sessionId={meta.id}
+                state={state}
+                historyLoaded={historyLoaded}
+                meta={meta}
+                onAfterSend={followBottom}
+                focusRequest={focusRequest}
+                onFocusRequestHandled={onFocusRequestHandled}
+              />
+            </>
+          )}
         </div>
       </footer>
+      {pane &&
+        headerSlot &&
+        createPortal(
+          <div className={changesCount > 0 ? "indicator" : undefined}>
+            {changesCount > 0 && (
+              <span
+                aria-hidden
+                className="indicator-item badge badge-primary badge-xs pointer-events-none [--indicator-e:5px] [--indicator-t:5px]"
+              >
+                {changesCount}
+              </span>
+            )}
+            <button
+              type="button"
+              aria-label={t("files.label")}
+              title={t("files.label")}
+              className={`btn btn-ghost btn-square btn-sm text-base-content/60 ${drawerOpen ? "btn-active" : ""}`}
+              onClick={() => setDrawerOpen((o) => !o)}
+            >
+              <IconFolderOpen size={16} stroke={1.75} aria-hidden />
+            </button>
+          </div>,
+          headerSlot,
+        )}
       {drawerOpen && (
         <FilesDrawer
+          variant={pane ? "pane" : "global"}
           sessionId={meta.id}
           workdir={meta.workdir}
           onClose={() => setDrawerOpen(false)}
@@ -1065,7 +1154,7 @@ export function ChatView({
         />
       )}
       {childId && <ChildSessionModal id={childId} workdir={meta.workdir} onClose={() => setChildId(null)} />}
-    </main>
+    </Root>
   );
 }
 
@@ -1075,48 +1164,24 @@ export function ChatView({
 function ChildSessionModal({ id, workdir, onClose }: { id: string; workdir?: string; onClose: () => void }) {
   const { t } = useI18n();
   const { state } = useSessionFeed(id);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  // Esc 走统一层栈(lib/util/escLayer):浮层挂载时才入栈,层序保证它压过
-  // 视图级 Esc;返回 true = 消费即截断,不许漏给冒泡阶段的全局审批热键
-  // (esc = deny 不可逆)。自己挂 window capture 的老写法被层栈取代,理由
-  // 见 escLayer 头注:同阶段同 target 按**注册先后**触发,浮层永远输给
-  // 挂载即注册的视图级监听
-  useEscLayer(
-    true,
-    useCallback(() => {
-      onCloseRef.current();
-      return true;
-    }, []),
-  );
   // useCallback 稳定引用:LogList 已 memo,浮层每收一批帧就重渲染,内联箭头
   // 会把整列消息(每张工具卡的 effect)一起拖着重跑——主路径为此早就用了
   // useCallback(见上方 uploadUrl/loadFullTool),这里此前漏了
   const uploadUrl = useCallback((p: string) => uploadFileURL(id, p), [id]);
   const loadFullTool = useCallback((seq: number) => sessionFrame(id, seq), [id]);
   return (
-    <div className="modal modal-open" role="dialog" aria-label={t("chat.child.title")}>
-      <div className="modal-box flex max-h-[84vh] w-[min(860px,92vw)] max-w-[min(860px,92vw)] flex-col gap-3 p-5">
-        <div className="flex shrink-0 items-center gap-2">
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {t("chat.child.title")} <span className="font-mono text-xs text-base-content/50">{id}</span>
-          </h2>
-
-          <button
-            type="button"
-            aria-label={t("chat.dismiss")}
-            title={t("chat.dismiss")}
-            className="btn btn-ghost btn-square btn-xs"
-            onClick={onClose}
-          >
-            <IconX size={14} stroke={1.75} aria-hidden />
-          </button>
-        </div>
-        <div data-chat-log="" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-          <LogList state={state} sessionId={id} readonly uploadUrl={uploadUrl} workdir={workdir} loadFullTool={loadFullTool} />
-        </div>
+    <DetailModal
+      ariaLabel={t("chat.child.title")}
+      title={
+        <>
+          {t("chat.child.title")} <span className="font-mono text-xs text-base-content/50">{id}</span>
+        </>
+      }
+      onClose={onClose}
+    >
+      <div data-chat-log="" className="h-full">
+        <LogList state={state} sessionId={id} readonly uploadUrl={uploadUrl} workdir={workdir} loadFullTool={loadFullTool} />
       </div>
-      <div className="modal-backdrop cursor-pointer" onClick={onClose} aria-hidden />
-    </div>
+    </DetailModal>
   );
 }

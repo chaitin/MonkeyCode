@@ -12,6 +12,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod background;
 mod baizhi;
 mod browser;
 mod config;
@@ -961,9 +962,13 @@ fn create_main_window(app: &AppHandle, page: &str) {
     {
         builder = builder.disable_drag_drop_handler();
     }
-    // macOS:标题栏悬浮融入侧栏(Overlay)。原生红绿灯在 build 后被
+    // macOS:标题栏悬浮融入内容(Overlay),原生红绿灯在 build 后被
     // hide_native_window_buttons 隐藏,UI 侧自绘 10px 小红绿灯替代
-    // (titlebar.tsx MacWindowControls),尺寸/间距/位置从此归 UI 管。
+    // (TitleBar::MacWindowControls,App 固定左上角渲染)。自绘版曾于
+    // 2026-08-18 退役回原生,2026-08-20 用户「原生太大,能小一点么」再
+    // 反转——原生按钮尺寸是系统私有绘制不可调,要小只能藏掉自绘。
+    // ⚠️ 别试 traffic_light_position:2.11.5(runtime-wry
+    // with_traffic_light_inset)在 Overlay 下实测灯纹丝不动,真机截图为证。
     #[cfg(target_os = "macos")]
     {
         builder = builder
@@ -1010,6 +1015,30 @@ fn create_main_window(app: &AppHandle, page: &str) {
         });
         finish_main_window_creation(&win, restored);
     }
+}
+
+/// macOS:隐藏原生红绿灯。AppKit 标准窗口按钮的尺寸与间距是系统私有绘制,
+/// 公开途径只能整组挪位置;要"更小的红绿灯"只能藏掉原生、UI 自绘替身
+/// (跨平台应用的通行做法)。NSWindow 消息须在主线程发。
+#[cfg(target_os = "macos")]
+fn hide_native_window_buttons(window: &tauri::WebviewWindow) {
+    let win = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        let Ok(ns_window) = win.ns_window() else {
+            return;
+        };
+        let ns_window = ns_window as *mut objc2::runtime::AnyObject;
+        // NSWindowButton: Close=0 / Miniaturize=1 / Zoom=2
+        for kind in 0usize..=2 {
+            unsafe {
+                let btn: *mut objc2::runtime::AnyObject =
+                    objc2::msg_send![ns_window, standardWindowButton: kind];
+                if !btn.is_null() {
+                    let _: () = objc2::msg_send![btn, setHidden: true];
+                }
+            }
+        }
+    });
 }
 
 fn finish_main_window_creation(window: &WebviewWindow, restored: Option<MainWindowRestore>) {
@@ -1094,30 +1123,6 @@ fn persist_main_window_state(app: &AppHandle) {
     if let Err(e) = config::update_config_json(app, |cfg| cfg.main_window_state = Some(state)) {
         eprintln!("[desktop] 保存主窗口状态失败: {e}");
     }
-}
-
-/// macOS:隐藏原生红绿灯。AppKit 标准窗口按钮的尺寸与间距是系统私有绘制,
-/// 公开途径只能整组挪位置;要"更小的红绿灯"只能藏掉原生、UI 自绘替身
-/// (跨平台应用的通行做法)。NSWindow 消息须在主线程发。
-#[cfg(target_os = "macos")]
-fn hide_native_window_buttons(window: &tauri::WebviewWindow) {
-    let win = window.clone();
-    let _ = window.run_on_main_thread(move || {
-        let Ok(ns_window) = win.ns_window() else {
-            return;
-        };
-        let ns_window = ns_window as *mut objc2::runtime::AnyObject;
-        // NSWindowButton: Close=0 / Miniaturize=1 / Zoom=2
-        for kind in 0usize..=2 {
-            unsafe {
-                let btn: *mut objc2::runtime::AnyObject =
-                    objc2::msg_send![ns_window, standardWindowButton: kind];
-                if !btn.is_null() {
-                    let _: () = objc2::msg_send![btn, setHidden: true];
-                }
-            }
-        }
-    });
 }
 
 // ==================== 桌宠 ====================
@@ -1461,6 +1466,11 @@ fn main() {
             list_wsl_distros,
             engine_restart,
             probe_log,
+            background::background_import,
+            background::background_confirm,
+            background::background_discard,
+            background::background_read,
+            background::background_clear,
             driver::engine_status,
             driver::engine_caps,
             driver::wsl_workdir_base,
