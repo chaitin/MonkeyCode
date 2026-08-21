@@ -11,8 +11,8 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
-import { Platform } from 'react-native';
 import { request } from './client';
+import { base64ToBytes } from '@/messages/base64';
 
 export const MAX_ATTACHMENTS = 3;
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB（与 Web MAX_UPLOAD_FILE_SIZE 一致）
@@ -218,19 +218,12 @@ async function ensureUnderLimit(img: PickedImage): Promise<{ uri: string; name: 
   return { uri, name: `${base}.jpg` };
 }
 
-/** 读取本地文件为 ArrayBuffer；RN 网络层发送 ArrayBuffer 时不会自动添加 Content-Type。 */
-function readLocalArrayBuffer(uri: string): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.responseType = 'arraybuffer';
-    xhr.onload = () => {
-      if (xhr.response instanceof ArrayBuffer) resolve(xhr.response);
-      else reject(new Error('读取本地文件失败'));
-    };
-    xhr.onerror = () => reject(new Error('读取本地文件失败'));
-    xhr.open('GET', uri, true);
-    xhr.send(null);
-  });
+/** 读取本地文件为 ArrayBuffer（iOS/Android 通用）。用 FileSystem 以 base64 读取再解码，
+ *  避免 RN 网络层（XHR）在 Android 上对 file:// 读取的兼容性问题。 */
+async function readLocalArrayBuffer(uri: string): Promise<ArrayBuffer> {
+  const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  const bytes = base64ToBytes(base64);
+  return bytes.buffer;
 }
 
 /** 本地文件：预签名 -> PUT 原始字节 -> 返回可访问 URL + 文件名。 */
@@ -248,24 +241,13 @@ export async function uploadFileWithPresignedUrl(file: PickedFile): Promise<Uplo
   const accessUrl = resp.data?.access_url;
   if (!uploadUrl || !accessUrl) throw new Error('获取上传地址失败：响应缺少 URL');
 
-  let status: number;
-  let responseBody = '';
-  if (Platform.OS === 'android') {
-    // Android 的 fetch(ArrayBuffer) 要求 Content-Type；原生二进制上传允许完全省略该 header。
-    const put = await FileSystem.uploadAsync(uploadUrl, file.uri, {
-      httpMethod: 'PUT',
-      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-    });
-    status = put.status;
-    responseBody = put.body ?? '';
-  } else {
-    // iOS 的 URLSession 文件上传会自动补 application/octet-stream，导致 OSS V1 签名不匹配。
-    // ArrayBuffer 请求不会补 Content-Type，与预签名时的请求头保持一致。
-    const body = await readLocalArrayBuffer(file.uri);
-    const put = await fetch(uploadUrl, { method: 'PUT', body, credentials: 'omit' });
-    status = put.status;
-    if (!put.ok) responseBody = await put.text().catch(() => '');
-  }
+  // 预签名直传要求请求头与签名时一致，即不能带 Content-Type。
+  // 统一走 fetch + ArrayBuffer：RN 网络层发送 ArrayBuffer 不会自动补 Content-Type（iOS/Android 一致），
+  // 避免 Android 端 FileSystem.uploadAsync 上传本地文件时的平台差异导致 OSS V1 签名不匹配（403）。
+  const body = await readLocalArrayBuffer(file.uri);
+  const put = await fetch(uploadUrl, { method: 'PUT', body, credentials: 'omit' });
+  const status = put.status;
+  const responseBody = !put.ok ? await put.text().catch(() => '') : '';
   if (status < 200 || status >= 300) {
     const code = responseBody.match(/<Code>([^<]*)<\/Code>/)?.[1] ?? '';
     const message = responseBody.match(/<Message>([^<]*)<\/Message>/)?.[1] ?? '';
