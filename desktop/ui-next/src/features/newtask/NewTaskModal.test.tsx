@@ -24,6 +24,10 @@ const DEFAULT_MODELS = [
   { name: "gpt-5", default: true },
   { name: "locked-pro", default: false, locked: true },
 ];
+const DEFAULT_SKILLS = [
+  { name: "feature-design", description: "设计功能", source: "builtin", content: "", default_enabled: true },
+  { name: "code-review", description: "审查代码", source: "builtin", content: "", default_enabled: false },
+];
 
 /** 壳桩:按命令名分发,overrides 可逐命令改写(如注入失败)。 */
 function stubShell(overrides: Record<string, (args?: Record<string, unknown>) => Promise<unknown>> = {}, models = DEFAULT_MODELS) {
@@ -35,6 +39,7 @@ function stubShell(overrides: Record<string, (args?: Record<string, unknown>) =>
         const over = overrides[cmd];
         if (over) return over(args);
         if (cmd === "models_list") return Promise.resolve(models);
+        if (cmd === "skills_list") return Promise.resolve(DEFAULT_SKILLS);
         if (cmd === "session_create")
           return Promise.resolve({ id: "s-new", title: "t", workdir: "/w", model: "gpt-5", turns: 0, status: "created", kind: (args?.kind as string) ?? "local" });
         return Promise.resolve(null);
@@ -211,6 +216,81 @@ describe("新建任务", () => {
     await userEvent.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
     expect(calls.find((c) => c.cmd === "session_create")?.args).toMatchObject({ think: "high" });
+  });
+
+  it("skills:加载期间不显示误导性的 0 个技能", async () => {
+    let resolveSkills: ((value: unknown) => void) | undefined;
+    stubShell({
+      skills_list: () =>
+        new Promise((resolve) => {
+          resolveSkills = resolve;
+        }),
+    });
+    render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
+
+    const trigger = screen.getByRole("button", { name: "会话技能" }) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(true);
+    expect(trigger.textContent).toContain("会话技能");
+    expect(trigger.textContent).not.toContain("·0");
+
+    await act(async () => resolveSkills?.(DEFAULT_SKILLS));
+    await waitFor(() => expect(screen.getByRole("button", { name: "会话技能" }).textContent).toContain("技能·1"));
+  });
+
+  it("skills:可在创建前多选,显式名单随 session_create 原子下发", async () => {
+    const calls = stubShell();
+    const onCreated = vi.fn();
+    render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "会话技能" }).textContent).toContain("技能·1"));
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    await userEvent.click(within(screen.getByRole("list", { name: "会话技能" })).getByRole("checkbox", { name: "code-review" }));
+    await userEvent.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(calls.find((c) => c.cmd === "session_create")?.args).toMatchObject({
+      skills: ["feature-design", "code-review"],
+    });
+  });
+
+  it("skills:全部取消时显式下发空数组,不回退默认集", async () => {
+    const calls = stubShell();
+    const onCreated = vi.fn();
+    render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "会话技能" }).textContent).toContain("技能·1"));
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    await userEvent.click(within(screen.getByRole("list", { name: "会话技能" })).getByRole("checkbox", { name: "feature-design" }));
+    await userEvent.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(calls.find((c) => c.cmd === "session_create")?.args).toMatchObject({ skills: [] });
+  });
+
+  it("skills:创建进行中禁用选择器,不会接受无法下发的后续修改", async () => {
+    let resolveCreate: ((value: unknown) => void) | undefined;
+    const calls = stubShell({
+      session_create: () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+    });
+    const onCreated = vi.fn();
+    render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "会话技能" }).textContent).toContain("技能·1"));
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    await userEvent.click(within(screen.getByRole("list", { name: "会话技能" })).getByRole("checkbox", { name: "code-review" }));
+    await userEvent.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "session_create")).toBe(true));
+
+    const trigger = screen.getByRole("button", { name: "会话技能" }) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(true);
+    await userEvent.click(trigger);
+    expect(screen.queryByRole("list", { name: "会话技能" })).toBeNull();
+
+    await act(async () =>
+      resolveCreate?.({ id: "s-new", title: "t", workdir: "/w", model: "gpt-5", turns: 0, status: "created", kind: "local" }),
+    );
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(calls.find((c) => c.cmd === "session_create")?.args).toMatchObject({
+      skills: ["feature-design", "code-review"],
+    });
   });
 
   it("最近目录:预填首项、下拉可选,WSL 遗留 UNC 目录在本机模式被过滤", async () => {

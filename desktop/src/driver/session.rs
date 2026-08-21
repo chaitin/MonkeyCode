@@ -606,7 +606,7 @@ impl OhmyDriver {
 
     #[cfg(test)]
     pub async fn session_create(&self, workdir: &str, model_name: &str, create_dir: bool) -> Result<Value, String> {
-        self.session_create_with_kind(workdir, model_name, create_dir, "local", "").await
+        self.session_create_with_kind(workdir, model_name, create_dir, "local", "", None).await
     }
 
     pub async fn session_create_with_kind(
@@ -616,6 +616,7 @@ impl OhmyDriver {
         create_dir: bool,
         kind: &str,
         think: &str,
+        enabled_skills: Option<Vec<String>>,
     ) -> Result<Value, String> {
         if !valid_think(think) {
             return Err(format!("不支持的思考档位: {think}"));
@@ -668,8 +669,8 @@ impl OhmyDriver {
         };
         let workdir = workdir_owned.as_str();
         // Agent 的 session skills 目录以引擎生成的 session_id 命名。新会话
-        // 创建前还不知道该 id,因此先创建空 loop 取得 id,再物化缺省集并
-        // destroy + resume;最终 loop 从一开始就只看到自己的技能快照。
+        // 创建前还不知道该 id,因此先创建空 loop 取得 id,再物化所选集(缺省
+        // 时走默认规则)并 destroy + resume;最终 loop 从一开始就只看到自己的技能快照。
         // resume 成立的引擎契约:create 在构建 loop 时即落一条
         // execution-mode 记录(root.go buildAgentLoopCore),transcript
         // 文件已存在,零消息 resume 照常成功——materialize_skills 的
@@ -705,7 +706,7 @@ impl OhmyDriver {
             }
         };
         let skills_lock = self.0.skills_gate.lock().await;
-        let skills = match self.materialize_skills(&sid, None).await {
+        let skills = match self.materialize_skills(&sid, enabled_skills).await {
             Ok(skills) => skills,
             Err(e) => {
                 let _ = self.rpc("session/destroy", json!({ "session_id": &sid })).await;
@@ -777,7 +778,7 @@ impl OhmyDriver {
             m["kind"] = json!(kind);
             m["think"] = json!(think);
             // 技能启用集快照(resume/重建按它物化;session_set_skills 改写)
-            m["skills"] = json!(skills);
+            m["skills"] = json!(&skills);
             m["status"] = json!(SessionStatus::Created.as_str());
         });
         // 创建即下发所选档位(引擎新会话按模型默认档起步)
@@ -785,7 +786,7 @@ impl OhmyDriver {
         Ok(json!({
             "id": sid, "title": "", "workdir": workdir, "model": model_name,
             "kind": kind, "mode": "default", "turns": 0, "think": think,
-            "status": SessionStatus::Created.as_str(),
+            "skills": skills, "status": SessionStatus::Created.as_str(),
         }))
     }
 

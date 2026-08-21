@@ -320,7 +320,7 @@ export function SkillsMenu({
   align = "end",
 }: {
   skills: SkillInfo[];
-  /** 启用名单;null = 全部启用 */
+  /** 启用名单;null = 按 default_enabled 推导默认集 */
   enabled: string[] | null;
   /** 勾选变更(已展开为显式全量名单) */
   onChange: (next: string[]) => void;
@@ -337,6 +337,7 @@ export function SkillsMenu({
   const { anchorRef, maxHeight: menuMax } = useUpwardMenuHeight<HTMLButtonElement>(open);
   const enabledSet = new Set(enabled ?? defaultEnabledSkills(skills));
   const toggle = (name: string) => {
+    if (disabled) return;
     const next = new Set(enabledSet);
     if (next.has(name)) next.delete(name);
     else next.add(name);
@@ -379,6 +380,7 @@ export function SkillsMenu({
           type="button"
           role="checkbox"
           aria-checked={on}
+          disabled={disabled}
           className="flex items-center gap-2"
           onClick={() => toggle(s.name)}
         >

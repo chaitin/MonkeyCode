@@ -635,7 +635,7 @@ async fn e2e_wsl_smoke_full_lifecycle() {
     // "建得起来 + 存 guest 形态";那条 UNC 误判只在真 Windows 上现形,
     // 防线是 session_create_with_kind 里 (Some(_), _) 那条显式分支。
     let meta = driver
-        .session_create_with_kind("", "测试模型", false, "chat", "")
+        .session_create_with_kind("", "测试模型", false, "chat", "", None)
         .await
         .expect("WSL 下建普通对话");
     let sid4 = meta.get("id").and_then(|v| v.as_str()).unwrap();

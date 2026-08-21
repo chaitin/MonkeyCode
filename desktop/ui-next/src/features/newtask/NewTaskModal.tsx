@@ -13,7 +13,8 @@
 //   首条消息之前逐个上传,再把「[图片]/[文件] <相对路径>」附件行并进正文
 //   (与 composer 同一条 attLine 约定)。单个附件上传失败与上面同一取舍:
 //   console.warn 后带着其余附件继续,不把已建好的会话卡在弹窗里
-// - think 档随 session_create 的 think 参数下发(""=跟随模型默认)
+// - think 档与 skills 启用名单随 session_create 原子下发(""=跟随模型默认;
+//   skills 缺省=默认集、空数组=停用全部 Desktop 任务技能),确保首轮消息直接使用所选技能
 // - 最近目录来自 props.recentDirs(App 从 sessions 的 workdir 派生),按内核
 //   运行环境过滤(lib/util/workdir);目录预填 = 过滤后首项,无则默认目录
 // - 模型记忆 mc.lastTaskModel(本地/对话共用);旧工程无 lastDir 持久化键,
@@ -39,6 +40,7 @@ import { afterEngineReady } from "@/lib/ipc/engine";
 import { isWindowsShell, pickDirectory, workdirPickBase } from "@/lib/ipc/host";
 import { sameModelName } from "@/lib/models/modelMenu";
 import { modelsList, sessionCreate, sessionSend, type ModelInfo, type SessionKind, type SessionMeta } from "@/lib/ipc/sessions";
+import { skillsList, type SkillInfo } from "@/lib/ipc/skills";
 import {
   isImagePath,
   nativePathOf,
@@ -55,7 +57,7 @@ import { createImeGuard } from "@/lib/util/slash";
 import { insertNewlineAtSelection } from "@/lib/util/textarea";
 import { readLastTaskModel, rememberLastTaskModel } from "@/lib/util/prefs";
 import { DEFAULT_DIR, workdirMatchesEnv } from "@/lib/util/workdir";
-import { ModelMenu, ThinkMenu } from "@/features/chat/composer/pickers";
+import { ModelMenu, SkillsMenu, ThinkMenu } from "@/features/chat/composer/pickers";
 import { NewCloudTask } from "@/features/cloud/NewCloudTask";
 import type { CloudProject, CloudTaskDetail } from "@/lib/ipc/cloudtasks";
 
@@ -144,6 +146,10 @@ export function NewTaskModal({
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [model, setModel] = useState("");
   const [think, setThink] = useState("");
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [skillsLoaded, setSkillsLoaded] = useState(false);
+  // null = 沿用壳侧默认集;首次勾选后展开成显式全量名单。
+  const [enabledSkills, setEnabledSkills] = useState<string[] | null>(null);
   const [kernelEnv, setKernelEnv] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -170,6 +176,8 @@ export function NewTaskModal({
     setDirMenu(false);
     setText(initialText ?? "");
     setThink("");
+    setEnabledSkills(null);
+    setSkillsLoaded(false);
     setError("");
     setOfferCreate(false);
     // 附件区从预填起步(待办派发带图;无预填即空):上一次的暂存连预览一起清
@@ -219,6 +227,15 @@ export function NewTaskModal({
           : undefined;
         const pick = byMemory || list.find((m) => m.default && !m.locked) || list.find((m) => !m.locked);
         if (pick) setModel(pick.name);
+      })
+      .catch(() => {});
+    // 技能库只读壳侧文件,不依赖引擎;失败保留上一份,不把瞬时读取失败
+    // 伪装成「没有技能」。
+    void skillsList()
+      .then((list) => {
+        if (!alive || !Array.isArray(list)) return;
+        setSkills(list);
+        setSkillsLoaded(true);
       })
       .catch(() => {});
     // 运行环境 → 最近目录过滤(默认目录恒为 DEFAULT_DIR:`~` 由壳按环境展开,
@@ -381,6 +398,8 @@ export function NewTaskModal({
         createDir: !chat && (forceCreateDir || workdir === DEFAULT_DIR),
         kind: chat ? "chat" : "local",
         think,
+        // 不传 = 壳按默认启用规则物化;[] 必须保留,表示显式停用全部 Desktop 任务技能。
+        ...(enabledSkills !== null ? { skills: enabledSkills } : {}),
       });
       if (model) rememberLastTaskModel(model);
       // 附件行与 composer 同口径并入正文(壳只解 content):正文在前、附件行在后
@@ -713,6 +732,28 @@ export function NewTaskModal({
                     title={t("create.think")}
                     align="start"
                   />
+                  {skillsLoaded ? (
+                    <SkillsMenu
+                      skills={skills}
+                      enabled={enabledSkills}
+                      onChange={setEnabledSkills}
+                      disabled={busy}
+                      title={t("chat.skills.label")}
+                      align="start"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm gap-1.5"
+                      disabled
+                      aria-label={t("chat.skills.label")}
+                      aria-busy="true"
+                      title={t("chat.skills.label")}
+                    >
+                      <span className="loading loading-spinner loading-xs" aria-hidden />
+                      {t("chat.skills.label")}
+                    </button>
+                  )}
                   <span className="flex-1" />
                   <button type="button" className="btn btn-primary btn-sm gap-1.5" disabled={busy} onClick={() => void submit()}>
                     {busy && <span className="loading loading-spinner loading-xs" aria-hidden />}
