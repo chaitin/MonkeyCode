@@ -871,6 +871,35 @@ describe("外观设置:自定义背景", () => {
     expect(calls.some((call) => call.cmd === "background_clear")).toBe(true);
   });
 
+  it("导入已落盘但 IPC 响应丢失时仍用调用前 ID 重试 discard", async () => {
+    let discardAttempts = 0;
+    const { calls } = stubShell({
+      extra: {
+        "plugin:dialog|open": () => "/tmp/response-lost.png",
+        background_import: () => {
+          throw new Error("IPC response lost");
+        },
+        background_discard: () => {
+          discardAttempts += 1;
+          if (discardAttempts === 1) throw new Error("temporary discard failure");
+          return null;
+        },
+      },
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "选择图片" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("IPC response lost");
+    const importCall = calls.find((call) => call.cmd === "background_import")!;
+    const stagedId = String(importCall.args?.stagedId);
+    expect(stagedId).toMatch(/^[A-Za-z0-9-]{1,160}$/);
+    expect(importCall.args).toEqual({ path: "/tmp/response-lost.png", stagedId });
+    const discards = calls.filter((call) => call.cmd === "background_discard");
+    expect(discards).toHaveLength(2);
+    expect(discards.every((call) => call.args?.stagedId === stagedId)).toBe(true);
+  });
+
   it("清除成功恢复无背景外观，偏好值仍保留并转为禁用", async () => {
     stubImageDecode();
     await installBackground(backgroundAsset);
@@ -894,11 +923,14 @@ describe("外观设置:自定义背景", () => {
         decode = () => decodeCalls++ === 0 ? Promise.reject(new Error("codec rejected")) : Promise.resolve();
       },
     );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { calls } = stubShell({
       extra: {
         "plugin:dialog|open": () => "/tmp/new.png",
         background_import: () => ({ ...stagedBackgroundAsset, stagedId: "decode-failed" }),
-        background_discard: () => null,
+        background_discard: () => {
+          throw new Error("discard unavailable");
+        },
         background_read: () => backgroundAsset,
       },
     });
@@ -908,8 +940,12 @@ describe("外观设置:自定义背景", () => {
 
     expect((await screen.findByRole("alert")).textContent).toContain("codec rejected");
     expect(screen.getByRole("img", { name: "自定义背景预览" }).getAttribute("src")).toBe(backgroundAsset.dataUrl);
-    expect(calls.some((call) => call.cmd === "background_discard")).toBe(true);
+    expect(calls.filter((call) => call.cmd === "background_discard")).toHaveLength(2);
     expect(calls.some((call) => call.cmd === "background_confirm")).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("pending TTL"),
+      expect.objectContaining({ stagedId: expect.stringMatching(/^[A-Za-z0-9-]{1,160}$/) }),
+    );
   });
 
   it("跨组件重挂后旧 choose 不能覆盖后发 clear，且后端资产操作保持同序", async () => {

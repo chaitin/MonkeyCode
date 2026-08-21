@@ -39,9 +39,11 @@ import {
 import {
   clearBackgroundAsset,
   confirmBackground,
-  discardBackground,
+  createBackgroundStagedId,
+  discardBackgroundBestEffort,
   importBackground,
   pickBackgroundPath,
+  type StagedBackgroundAsset,
 } from "@/lib/ipc/background";
 import { isWindowsShell } from "@/lib/ipc/host";
 import { inDesktopShell } from "@/lib/ipc/ipc";
@@ -495,23 +497,31 @@ function BackgroundEditor() {
       setBusy(true);
       await runBackgroundAssetOperation(async () => {
         if (!isBackgroundOperationCurrent(generation)) return;
-        const imported = await importBackground(path);
+        const stagedId = createBackgroundStagedId();
+        let imported: StagedBackgroundAsset;
+        try {
+          imported = await importBackground(path, stagedId);
+        } catch (error) {
+          // Rust 可能已成功落盘但 IPC 响应丢失；调用前生成的 ID 仍可用于回收。
+          await discardBackgroundBestEffort(stagedId);
+          throw error;
+        }
         if (!isBackgroundOperationCurrent(generation)) {
-          await discardBackground(imported.stagedId).catch(() => undefined);
+          await discardBackgroundBestEffort(stagedId);
           return;
         }
         try {
           // Rust 尚未切换 current；WebView 解码成功后才确认磁盘事务。
           await decodeBackground(imported);
           if (!isBackgroundOperationCurrent(generation)) {
-            await discardBackground(imported.stagedId).catch(() => undefined);
+            await discardBackgroundBestEffort(stagedId);
             return;
           }
-          await confirmBackground(imported.stagedId);
+          await confirmBackground(stagedId);
           // 更晚动作已开始时由它负责最终 UI，旧动作不能复活背景。
           if (isBackgroundOperationCurrent(generation)) applyDecodedBackground(imported);
         } catch (error) {
-          await discardBackground(imported.stagedId).catch(() => undefined);
+          await discardBackgroundBestEffort(stagedId);
           await reconcileBackgroundRuntime(generation);
           throw error;
         }

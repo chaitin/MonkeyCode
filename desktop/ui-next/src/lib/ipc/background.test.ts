@@ -3,13 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearBackgroundAsset,
   confirmBackground,
+  createBackgroundStagedId,
   discardBackground,
+  discardBackgroundBestEffort,
   importBackground,
   pickBackgroundPath,
   readBackgroundAsset,
 } from "./background";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 function shell(result: (cmd: string, args?: Record<string, unknown>) => unknown) {
   const invoke = vi.fn((cmd: string, args?: Record<string, unknown>) => Promise.resolve(result(cmd, args)));
@@ -51,15 +56,48 @@ describe("背景 IPC", () => {
       cmd === "plugin:dialog|open" ? "/tmp/wall.png" : cmd === "background_read" ? asset : cmd === "background_import" ? staged : null,
     );
     expect(await pickBackgroundPath("Pick")).toBe("/tmp/wall.png");
-    expect(await importBackground("/tmp/wall.png")).toEqual(staged);
+    expect(await importBackground("/tmp/wall.png", staged.stagedId)).toEqual(staged);
     await confirmBackground(staged.stagedId);
     await discardBackground(staged.stagedId);
     expect(await readBackgroundAsset()).toEqual(asset);
     await clearBackgroundAsset();
-    expect(invoke).toHaveBeenCalledWith("background_import", { path: "/tmp/wall.png" });
+    expect(invoke).toHaveBeenCalledWith("background_import", { path: "/tmp/wall.png", stagedId: "stage-1" });
     expect(invoke).toHaveBeenCalledWith("background_confirm", { stagedId: "stage-1" });
     expect(invoke).toHaveBeenCalledWith("background_discard", { stagedId: "stage-1" });
     expect(invoke).toHaveBeenCalledWith("background_read", undefined);
     expect(invoke).toHaveBeenCalledWith("background_clear", undefined);
+  });
+
+  it("调用前生成的 staged ID 符合 Rust 规则且同进程连续调用不冲突", () => {
+    const first = createBackgroundStagedId();
+    const second = createBackgroundStagedId();
+    expect(first).toMatch(/^[A-Za-z0-9-]{1,160}$/);
+    expect(second).toMatch(/^[A-Za-z0-9-]{1,160}$/);
+    expect(second).not.toBe(first);
+  });
+
+  it("discard 短暂失败重试一次，持续失败会记录 TTL 可恢复状态", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const attempts = new Map<string, number>();
+    const invoke = shell((cmd, args) => {
+      if (cmd !== "background_discard") return null;
+      const stagedId = String(args?.stagedId);
+      const count = (attempts.get(stagedId) ?? 0) + 1;
+      attempts.set(stagedId, count);
+      if (stagedId === "retry-once" && count === 1) throw new Error("temporary IPC failure");
+      if (stagedId === "ttl-fallback") throw new Error("persistent IPC failure");
+      return null;
+    });
+
+    expect(await discardBackgroundBestEffort("retry-once")).toBe(true);
+    expect(attempts.get("retry-once")).toBe(2);
+    expect(warn).not.toHaveBeenCalled();
+    expect(await discardBackgroundBestEffort("ttl-fallback")).toBe(false);
+    expect(attempts.get("ttl-fallback")).toBe(2);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("pending TTL"),
+      expect.objectContaining({ stagedId: "ttl-fallback" }),
+    );
+    expect(invoke).toHaveBeenCalledTimes(4);
   });
 });

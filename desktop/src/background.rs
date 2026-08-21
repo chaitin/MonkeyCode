@@ -9,6 +9,7 @@ use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, SystemTime};
 
 use base64::Engine as _;
 use image::{ImageFormat, ImageReader};
@@ -25,8 +26,10 @@ const MAX_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_EDGE: u32 = 16_384;
 const MAX_PIXELS: u64 = 50_000_000;
 const MAX_DECODE_ALLOC: u64 = 256 * 1024 * 1024;
+// WebView 正常预解码只需很短时间；保留一天避免误删仍在确认中的跨进程导入，
+// 同时让崩溃、重载或 IPC 响应丢失留下的 pending 最终可回收。
+const PENDING_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 static CLEAR_SEQ: AtomicU64 = AtomicU64::new(0);
-static STAGE_SEQ: AtomicU64 = AtomicU64::new(0);
 static ASSET_MUTEX: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -294,10 +297,57 @@ fn metadata_filename(metadata: &ManagedMetadata) -> Option<String> {
     (basename == metadata.filename).then(|| metadata.filename.clone())
 }
 
-/// 必须在持有跨进程资产锁时调用。保留集始终从锁内的当前元数据和所有待确认
-/// 元数据重新推导，绝不使用某次导入开始时捕获的过期 keep。
-fn cleanup_assets_locked(root: &Path) {
+fn pending_is_expired(path: &Path, now: SystemTime) -> bool {
+    // symlink_metadata 不跟随链接；时钟回拨或无法读取 mtime 时宁可延后回收。
+    fs::symlink_metadata(path)
+        .ok()
+        .filter(|metadata| !metadata.file_type().is_symlink() && metadata.is_file())
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|modified| now.duration_since(modified).ok())
+        .is_some_and(|age| age >= PENDING_TTL)
+}
+
+/// 必须在持有跨进程资产锁时调用。保留集始终从锁内的当前元数据和所有未过期
+/// 待确认元数据重新推导，绝不使用某次导入开始时捕获的过期 keep。
+fn cleanup_assets_locked_at(root: &Path, now: SystemTime) {
     let mut keep = HashSet::new();
+    let pending_dir = root.join(PENDING_DIR);
+    let entries = match fs::read_dir(&pending_dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => return,
+        };
+        if file_type.is_symlink() || !file_type.is_file() {
+            continue;
+        }
+        if pending_is_expired(&path, now) {
+            match fs::remove_file(&path) {
+                Ok(()) => continue,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                // 删除失败时仍按有效 pending 处理，绝不能误删它引用的资产。
+                Err(_) => {}
+            }
+        }
+        let raw = match fs::read(&path) {
+            Ok(raw) => raw,
+            Err(_) => return,
+        };
+        match serde_json::from_slice::<ManagedMetadata>(&raw)
+            .ok()
+            .and_then(|metadata| metadata_filename(&metadata))
+        {
+            Some(filename) => {
+                keep.insert(filename);
+            }
+            None => return,
+        }
+    }
+
     let current = root.join(METADATA_FILE);
     match fs::read(&current) {
         Ok(raw) => match serde_json::from_slice::<ManagedMetadata>(&raw)
@@ -314,33 +364,6 @@ fn cleanup_assets_locked(root: &Path) {
         Err(_) => return,
     }
 
-    let pending_dir = root.join(PENDING_DIR);
-    if let Ok(entries) = fs::read_dir(&pending_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let file_type = match entry.file_type() {
-                Ok(file_type) => file_type,
-                Err(_) => return,
-            };
-            if file_type.is_symlink() || !file_type.is_file() {
-                continue;
-            }
-            let raw = match fs::read(&path) {
-                Ok(raw) => raw,
-                Err(_) => return,
-            };
-            match serde_json::from_slice::<ManagedMetadata>(&raw)
-                .ok()
-                .and_then(|metadata| metadata_filename(&metadata))
-            {
-                Some(filename) => {
-                    keep.insert(filename);
-                }
-                None => return,
-            }
-        }
-    }
-
     let Ok(entries) = fs::read_dir(root.join(ASSETS_DIR)) else {
         return;
     };
@@ -353,6 +376,10 @@ fn cleanup_assets_locked(root: &Path) {
             let _ = fs::remove_file(entry.path());
         }
     }
+}
+
+fn cleanup_assets_locked(root: &Path) {
+    cleanup_assets_locked_at(root, SystemTime::now());
 }
 
 fn managed_file_is_exact(path: &Path, expected: &[u8]) -> bool {
@@ -391,7 +418,13 @@ fn pending_path(root: &Path, staged_id: &str) -> Result<PathBuf, String> {
 pub(crate) fn stage_from(
     local_data_dir: &Path,
     source: &Path,
+    staged_id: &str,
 ) -> Result<StagedBackgroundAsset, String> {
+    // 调用方必须在 invoke 前就知道该 ID，才能在响应丢失时仍可 discard。
+    // 在读取/解码大文件前拒绝路径型或超长 ID。
+    if !valid_staged_id(staged_id) {
+        return Err("待确认背景标识无效".into());
+    }
     // 大文件读取本身也必须有硬上限，不能只信打开前的一次 metadata。
     let bytes = read_regular_file(source)?;
     let (kind, width, height) = inspect(&bytes)?;
@@ -415,20 +448,22 @@ pub(crate) fn stage_from(
     let encoded =
         serde_json::to_vec_pretty(&metadata).map_err(|e| format!("序列化背景元数据失败: {e}"))?;
 
-    let staged_id = format!(
-        "{}-{}-{}",
-        std::process::id(),
-        STAGE_SEQ.fetch_add(1, Ordering::Relaxed),
-        revision
-    );
     with_asset_lock(local_data_dir, |root| {
+        cleanup_assets_locked(root);
+        let pending = pending_path(root, staged_id)?;
+        // 所有 MonkeyCode 进程都在同一文件锁内做存在性检查与写入；调用方 ID
+        // 冲突时绝不覆盖另一进程仍可能预解码/确认的事务。
+        match fs::symlink_metadata(&pending) {
+            Ok(_) => return Err("待确认背景标识已存在，请重试".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("检查待确认背景标识失败: {error}")),
+        }
         let asset_path = root.join(ASSETS_DIR).join(&filename);
         // 判等前后都确认路径是普通非 symlink 文件；否则即使链接目标字节等值，
         // 也必须用原子替换恢复为真正的托管副本。
         if !managed_file_is_exact(&asset_path, &bytes) {
             crate::config::atomic_write_private(&asset_path, &bytes)?;
         }
-        let pending = pending_path(root, &staged_id)?;
         if let Err(error) = crate::config::atomic_write_private(&pending, &encoded) {
             cleanup_assets_locked(root);
             return Err(error);
@@ -446,7 +481,7 @@ pub(crate) fn stage_from(
             height,
             data_url: data_url(kind, &bytes),
         },
-        staged_id,
+        staged_id: staged_id.to_string(),
     })
 }
 
@@ -573,9 +608,10 @@ pub(crate) fn clear_from(local_data_dir: &Path) -> Result<(), String> {
 pub async fn background_import(
     app: AppHandle,
     path: String,
+    staged_id: String,
 ) -> Result<StagedBackgroundAsset, String> {
     let dir = crate::config::local_data_dir(&app)?;
-    tauri::async_runtime::spawn_blocking(move || stage_from(&dir, Path::new(&path)))
+    tauri::async_runtime::spawn_blocking(move || stage_from(&dir, Path::new(&path), &staged_id))
         .await
         .map_err(|e| format!("背景导入任务失败: {e}"))?
 }
@@ -618,6 +654,7 @@ mod tests {
     use image::{DynamicImage, ImageBuffer, Rgb};
 
     static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
+    static NEXT_STAGE: AtomicU64 = AtomicU64::new(0);
 
     struct TestDir(PathBuf);
     impl TestDir {
@@ -650,8 +687,17 @@ mod tests {
         path
     }
 
+    fn stage(local_data_dir: &Path, source: &Path) -> Result<StagedBackgroundAsset, String> {
+        let staged_id = format!(
+            "test-{}-{}",
+            std::process::id(),
+            NEXT_STAGE.fetch_add(1, Ordering::Relaxed)
+        );
+        stage_from(local_data_dir, source, &staged_id)
+    }
+
     fn import_and_confirm(local_data_dir: &Path, source: &Path) -> Result<BackgroundAsset, String> {
-        let staged = stage_from(local_data_dir, source)?;
+        let staged = stage(local_data_dir, source)?;
         confirm_from(local_data_dir, &staged.staged_id)?;
         Ok(staged.asset)
     }
@@ -790,15 +836,80 @@ mod tests {
         let old = import_and_confirm(&dir.0, &old_source).unwrap();
         let next_source = write_source(&dir.0, "next.png", &encoded(ImageFormat::Png, [4, 5, 6]));
 
-        let rejected = stage_from(&dir.0, &next_source).unwrap();
+        let rejected = stage(&dir.0, &next_source).unwrap();
         assert_eq!(read_from(&dir.0).unwrap(), Some(old.clone()));
         discard_from(&dir.0, &rejected.staged_id).unwrap();
         assert_eq!(read_from(&dir.0).unwrap(), Some(old.clone()));
 
-        let accepted = stage_from(&dir.0, &next_source).unwrap();
+        let accepted = stage(&dir.0, &next_source).unwrap();
         assert_eq!(read_from(&dir.0).unwrap(), Some(old));
         confirm_from(&dir.0, &accepted.staged_id).unwrap();
         assert_eq!(read_from(&dir.0).unwrap(), Some(accepted.asset));
+    }
+
+    #[test]
+    fn caller_staged_id_is_validated_and_collision_never_overwrites_pending() {
+        let dir = TestDir::new();
+        let first_bytes = encoded(ImageFormat::Png, [1, 2, 3]);
+        let first_source = write_source(&dir.0, "first.png", &first_bytes);
+        let second_bytes = encoded(ImageFormat::Png, [9, 8, 7]);
+        let second_source = write_source(&dir.0, "second.png", &second_bytes);
+
+        for invalid in ["", "../escape", "slash/id", "下", &"a".repeat(161)] {
+            let error = stage_from(&dir.0, &first_source, invalid).unwrap_err();
+            assert!(error.contains("标识无效"), "{error}");
+        }
+
+        let first = stage_from(&dir.0, &first_source, "web-fixed-id").unwrap();
+        assert_eq!(first.staged_id, "web-fixed-id");
+        let collision = stage_from(&dir.0, &second_source, "web-fixed-id").unwrap_err();
+        assert!(collision.contains("已存在"), "{collision}");
+
+        // 确认同名事务仍提交第一份内容，第二份资产也未因冲突被落盘。
+        confirm_from(&dir.0, "web-fixed-id").unwrap();
+        assert_eq!(read_from(&dir.0).unwrap(), Some(first.asset));
+        assert!(!background_dir(&dir.0)
+            .join(ASSETS_DIR)
+            .join(format!("{}.png", sha256(&second_bytes)))
+            .exists());
+    }
+
+    #[test]
+    fn cleanup_keeps_short_pending_but_expires_abandoned_pending_and_orphan_assets() {
+        let dir = TestDir::new();
+        let orphan_source =
+            write_source(&dir.0, "orphan.png", &encoded(ImageFormat::Png, [1, 2, 3]));
+        let orphan = stage_from(&dir.0, &orphan_source, "orphan-stage").unwrap();
+        let root = background_dir(&dir.0);
+        let orphan_pending = pending_path(&root, "orphan-stage").unwrap();
+        let now = SystemTime::now();
+
+        with_asset_lock(&dir.0, |root| {
+            cleanup_assets_locked_at(root, now + PENDING_TTL / 2);
+            Ok(())
+        })
+        .unwrap();
+        assert!(orphan_pending.exists());
+
+        let current_source =
+            write_source(&dir.0, "current.png", &encoded(ImageFormat::Png, [7, 8, 9]));
+        let current = import_and_confirm(&dir.0, &current_source).unwrap();
+        // 同一 current 资产也被另一个 abandoned pending 引用；过期只能删 pending，
+        // 不能删仍由权威元数据引用的共享资产。
+        stage_from(&dir.0, &current_source, "shared-stage").unwrap();
+
+        with_asset_lock(&dir.0, |root| {
+            cleanup_assets_locked_at(root, now + PENDING_TTL * 2);
+            Ok(())
+        })
+        .unwrap();
+        assert!(!orphan_pending.exists());
+        assert!(!pending_path(&root, "shared-stage").unwrap().exists());
+        assert!(!root
+            .join(ASSETS_DIR)
+            .join(format!("{}.png", orphan.asset.revision))
+            .exists());
+        assert_eq!(read_from(&dir.0).unwrap(), Some(current));
     }
 
     #[test]
