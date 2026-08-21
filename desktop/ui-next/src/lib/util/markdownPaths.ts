@@ -34,27 +34,76 @@ export function resolveMarkdownResource(src: string): MarkdownResource {
       return { kind: "empty" };
     }
   }
-  const decoded = decodePath(value);
+  // 本地资源同样按 URL 语义取 pathname：只移除未编码的 query/fragment。
+  // 必须先切再 decode，否则合法文件名中的 `%3F`/`%23` 会被误切掉。
+  const rawPath = value.split(/[?#]/, 1)[0] ?? "";
+  const decoded = decodePath(rawPath);
   // Marked 会把 C:\path 编成 C:%5Cpath,须先 decode 再判断盘符。
   if (/^[a-z]:[\\/]/i.test(decoded)) return { kind: "local", path: decoded };
   // 其他显式协议交给净化器处理,不误当成本地文件。
   if (/^[a-z][a-z0-9+.-]*:/i.test(decoded)) return { kind: "url", src: value };
-  return { kind: "local", path: decoded };
+  return decoded ? { kind: "local", path: decoded } : { kind: "empty" };
+}
+
+function pathPrefix(path: string): { prefix: string; rest: string; absolute: boolean; windows: boolean } {
+  const slashed = path.replace(/\\/g, "/");
+  const drive = slashed.match(/^([a-z]:)\//i);
+  if (drive) {
+    return { prefix: drive[1]!, rest: slashed.slice(drive[0].length), absolute: true, windows: true };
+  }
+  if (slashed.startsWith("//")) return { prefix: "//", rest: slashed.slice(2), absolute: true, windows: true };
+  if (slashed.startsWith("/")) return { prefix: "/", rest: slashed.slice(1), absolute: true, windows: false };
+  return { prefix: "", rest: slashed, absolute: false, windows: false };
+}
+
+/** 纯词法归一化；路径试图越过其根时返回 null。 */
+function normalizePath(path: string): { path: string; absolute: boolean; windows: boolean } | null {
+  const { prefix, rest, absolute, windows } = pathPrefix(path);
+  const segments: string[] = [];
+  for (const part of rest.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (segments.length === 0) return null;
+      segments.pop();
+    } else {
+      segments.push(part);
+    }
+  }
+  const tail = segments.join("/");
+  const normalized = prefix === "/" || prefix === "//" ? prefix + tail : prefix ? `${prefix}/${tail}` : tail;
+  return { path: normalized, absolute, windows };
+}
+
+/** 按 Markdown 文件所在目录解析本地资源。相对 Markdown 路径以工作区根为
+ * 坐标，任何越过根的 `..` 都被词法拒绝；绝对资源保留为绝对路径，交给消费
+ * 方结合实际 workdir 或 `/workspace` 再收口。 */
+export function resolveMarkdownPath(markdownPath: string, resourcePath: string): string | null {
+  const resource = pathPrefix(resourcePath);
+  if (resource.absolute) return normalizePath(resourcePath)?.path ?? null;
+
+  const markdown = pathPrefix(markdownPath);
+  const slashedMarkdown = markdown.rest.replace(/\/+$/, "");
+  const slash = slashedMarkdown.lastIndexOf("/");
+  const dir = slash < 0 ? "" : slashedMarkdown.slice(0, slash);
+  const base = markdown.prefix === "/" || markdown.prefix === "//" ? markdown.prefix + dir : markdown.prefix ? `${markdown.prefix}/${dir}` : dir;
+  return normalizePath([base, resourcePath].filter(Boolean).join("/"))?.path ?? null;
 }
 
 /** 把已识别的本地链接收敛为工作区相对路径,供 repo_reveal 使用。
  * 工作区外绝对路径返回 null;最终的组件级/符号链接校验仍由壳负责。 */
 export function workspaceRelativePath(path: string, workdir: string): string | null {
-  const normalize = (v: string) => v.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
-  const target = normalize(path);
-  let root = normalize(workdir);
-  if (root.length > 1) root = root.replace(/\/$/, "");
-  if (!target || !root) return null;
-  const absolute = target.startsWith("/") || /^[a-z]:\//i.test(target);
-  if (!absolute) return target.replace(/^\.\//, "");
-  const windows = /^[a-z]:\//i.test(root);
-  const lhs = windows ? target.toLowerCase() : target;
-  root = windows ? root.toLowerCase() : root;
-  if (lhs === root) return "";
-  return lhs.startsWith(root + "/") ? target.slice(root.length + 1) : null;
+  const target = normalizePath(path);
+  if (!target || !target.path) return null;
+  // 相对路径已经按工作区根做过词法收口，不要求调用方一定知道 workdir。
+  if (!target.absolute) return target.path;
+
+  const rootPath = normalizePath(workdir);
+  if (!rootPath?.absolute || !rootPath.path) return null;
+  const root = rootPath.path !== "/" && !/^[a-z]:\/$/i.test(rootPath.path) ? rootPath.path.replace(/\/$/, "") : rootPath.path;
+  const insensitive = target.windows || rootPath.windows;
+  const lhs = insensitive ? target.path.toLowerCase() : target.path;
+  const rhs = insensitive ? root.toLowerCase() : root;
+  if (lhs === rhs) return "";
+  const boundary = rhs === "/" || /^[a-z]:\/$/i.test(rhs) ? rhs : rhs + "/";
+  return lhs.startsWith(boundary) ? target.path.slice(boundary.length) : null;
 }

@@ -23,6 +23,7 @@ function stubShell(opts: {
   changes?: unknown;
   content?: string;
   diff?: string;
+  imageUrl?: string;
   /** repo_reveal 的应答;缺省成功 */
   reveal?: unknown;
 }) {
@@ -30,6 +31,10 @@ function stubShell(opts: {
   (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
     core: {
       invoke: (cmd: string, args?: Record<string, unknown>) => {
+        if (cmd === "upload_read") {
+          calls.push({ kind: cmd, payload: args ?? {} });
+          return Promise.resolve(opts.imageUrl ?? "data:image/png;base64,AA==");
+        }
         if (cmd !== "session_call") return Promise.resolve(null);
         const kind = String(args?.kind);
         const payload = (args?.payload ?? {}) as Record<string, unknown>;
@@ -82,6 +87,41 @@ describe("文件抽屉", () => {
     await userEvent.click(await screen.findByRole("button", { name: /note\.txt/ }));
     expect(await screen.findByText("hello world")).toBeTruthy();
     expect(screen.getByText("1")).toBeTruthy(); // 行号
+  });
+
+  it("Markdown 相对图片走 upload_read,相对文件链接走 repo_reveal(workdir 缺省也可用)", async () => {
+    const calls = stubShell({
+      list: { "": [entry("README.md", "docs/README.md")] },
+      content: "![截图](./images/cat.png)\n\n[源码](../src/main.ts)",
+    });
+    render(<FilesDrawer sessionId="s1" onClose={() => {}} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /README\.md/ }));
+    const image = await screen.findByRole("img", { name: "截图" });
+    await waitFor(() => expect(image.getAttribute("src")).toBe("data:image/png;base64,AA=="));
+    expect(calls).toContainEqual({ kind: "upload_read", payload: { id: "s1", path: "docs/images/cat.png" } });
+
+    await userEvent.click(screen.getByRole("link", { name: "源码" }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ kind: "repo_reveal", payload: { path: "src/main.ts" } }),
+    );
+  });
+
+  it("Markdown 绝对资源只允许 workdir 内路径,工作区外不发 IPC", async () => {
+    const calls = stubShell({
+      list: { "": [entry("README.md", "README.md")] },
+      content: "![内图](/proj/alpha/images/cat.png)\n![外图](/proj/other/secret.png)\n\n[外链](/proj/other/secret.txt)",
+    });
+    render(<FilesDrawer sessionId="s1" workdir="/proj/alpha" onClose={() => {}} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /README\.md/ }));
+    await waitFor(() => expect(calls.some((c) => c.kind === "upload_read")).toBe(true));
+    expect(calls.filter((c) => c.kind === "upload_read")).toEqual([
+      { kind: "upload_read", payload: { id: "s1", path: "images/cat.png" } },
+    ]);
+    await userEvent.click(screen.getByRole("link", { name: "外链" }));
+    expect(calls.some((c) => c.kind === "repo_reveal" && c.payload.path === "/proj/other/secret.txt")).toBe(false);
+    expect(await screen.findByText("只能打开当前工作区内的文件")).toBeTruthy();
   });
 
   it("tab 切到改动(带计数 badge),点改动行出 diff 预览", async () => {

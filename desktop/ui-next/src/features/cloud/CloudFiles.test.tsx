@@ -1,5 +1,5 @@
 // 云端文件页:控制流列目录(注入假控制流)、目录导航、点行看正文、上传入口条件。
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -45,6 +45,31 @@ function fakeControl(): { ctl: CloudControl; calls: { kind: string; payload?: Re
 
 /** 注入面:借来的连接由宿主持有,组件不许关它。 */
 const lend = (ctrl: CloudControl, release = () => {}) => () => ({ ctrl, release });
+
+function scriptedControl(
+  markdown: string,
+  read: (path: string) => { content?: string; total_size?: number; is_truncated?: boolean } = () => ({}),
+): { ctl: CloudControl; calls: { kind: string; payload?: Record<string, unknown> }[] } {
+  const calls: { kind: string; payload?: Record<string, unknown> }[] = [];
+  const ctl: CloudControl = {
+    call<T>(kind: string, payload?: Record<string, unknown>): Promise<T> {
+      calls.push({ kind, payload });
+      if (kind === "repo_file_list") {
+        return Promise.resolve({ files: [{ name: "README.md", path: "docs/README.md", entry_mode: 1, size: 100 }] } as T);
+      }
+      if (kind === "repo_file_changes") return Promise.resolve({ changes: [] } as T);
+      if (kind === "repo_read_file") {
+        const path = String(payload?.path);
+        return Promise.resolve((path === "docs/README.md" ? { content: b64encode(markdown) } : read(path)) as T);
+      }
+      return Promise.resolve({} as T);
+    },
+    revive: vi.fn(),
+    close: vi.fn(),
+    isClosed: () => false,
+  };
+  return { ctl, calls };
+}
 
 describe("CloudFiles", () => {
   it("列目录:目录在前排序、.git 过滤、点目录下钻、返回上级", async () => {
@@ -97,11 +122,84 @@ describe("CloudFiles", () => {
     const { ctl, calls } = fakeControl();
     render(<CloudFiles taskId="t1" vmId="vm1" borrowControl={lend(ctl)} />);
     await userEvent.click(await screen.findByText("README.md"));
-    await screen.findByText("# 项目说明");
+    await screen.findByRole("heading", { name: "项目说明" });
     const read = calls.find((c) => c.kind === "repo_read_file");
     expect(read?.payload).toMatchObject({ path: "README.md", offset: 0, length: 1 << 20 });
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByText("# 项目说明")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "项目说明" })).toBeNull();
+  });
+
+  it("Markdown 相对图片保持原始 base64 并按扩展名生成 data URL,文件链接在同一预览打开", async () => {
+    const extensions = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"];
+    const markdown = [
+      ...extensions.map((ext) => `![${ext}](./images/pixel.${ext})`),
+      "[下一篇](./next.md)",
+    ].join("\n\n");
+    const rawBase64 = "/9j/AA==";
+    const { ctl, calls } = scriptedControl(markdown, (path) =>
+      path === "docs/next.md"
+        ? { content: b64encode("# 下一篇") }
+        : { content: rawBase64, total_size: 4, is_truncated: false },
+    );
+    render(<CloudFiles taskId="t1" borrowControl={lend(ctl)} />);
+    await userEvent.click(await screen.findByText("README.md"));
+
+    const mime: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      bmp: "image/bmp",
+      svg: "image/svg+xml",
+      avif: "image/avif",
+    };
+    for (const ext of extensions) {
+      const image = await screen.findByRole("img", { name: ext });
+      await waitFor(() => expect(image.getAttribute("src")).toBe(`data:${mime[ext]};base64,${rawBase64}`));
+      expect(calls).toContainEqual({
+        kind: "repo_read_file",
+        payload: { path: `docs/images/pixel.${ext}`, offset: 0, length: 1 << 20 },
+      });
+    }
+
+    await userEvent.click(screen.getByRole("link", { name: "下一篇" }));
+    expect(await screen.findByRole("heading", { name: "下一篇" })).toBeTruthy();
+    expect(calls).toContainEqual({
+      kind: "repo_read_file",
+      payload: { path: "docs/next.md", offset: 0, length: 1 << 20 },
+    });
+  });
+
+  it.each([
+    ["total_size 超限", { total_size: (1 << 20) + 1, content: b64encode("partial") }],
+    ["回包被截断", { is_truncated: true, content: b64encode("partial") }],
+  ])("Markdown 未知大小链接在%s时拒绝截断正文", async (_name, result) => {
+    const { ctl } = scriptedControl("[大文件](./big.txt)", () => result);
+    render(<CloudFiles taskId="t1" borrowControl={lend(ctl)} />);
+    await userEvent.click(await screen.findByText("README.md"));
+    await userEvent.click(await screen.findByRole("link", { name: "大文件" }));
+    expect(await screen.findByText(/文件较大/)).toBeTruthy();
+    expect(screen.queryByText("partial")).toBeNull();
+  });
+
+  it("Markdown 绝对路径仅接受 /workspace 内,逃逸及其他绝对路径不发请求", async () => {
+    const { ctl, calls } = scriptedControl(
+      "![允许](/workspace/assets/cat.png)\n![拒绝](/etc/secret.png)\n\n[逃逸](/workspace/../etc/secret.txt)",
+      () => ({ content: "AA==", total_size: 1 }),
+    );
+    render(<CloudFiles taskId="t1" borrowControl={lend(ctl)} />);
+    await userEvent.click(await screen.findByText("README.md"));
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        kind: "repo_read_file",
+        payload: { path: "assets/cat.png", offset: 0, length: 1 << 20 },
+      }),
+    );
+    await userEvent.click(screen.getByRole("link", { name: "逃逸" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("只能打开当前工作区内的文件");
+    const readPaths = calls.filter((call) => call.kind === "repo_read_file").map((call) => call.payload?.path);
+    expect(readPaths).toEqual(["docs/README.md", "assets/cat.png"]);
   });
 
   it("超限文件不发请求,给一句人话(整包要穿两层,大文件预览既慢又没用)", async () => {

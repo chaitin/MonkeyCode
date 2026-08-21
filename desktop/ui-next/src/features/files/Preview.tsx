@@ -1,11 +1,13 @@
 // 预览窗格:头部(文件名 + 全路径 + 改动徽标 + 关闭)+ 三态主体
 // (loading/error/ready),ready 再按模式分流——文件(空/二进制占位、
-// 代码高亮)与 diff(空 diff 占位、unified diff 渲染)。超限文件在壳侧
+// Markdown 渲染/代码高亮)与 diff(空 diff 占位、unified diff 渲染)。超限文件在壳侧
 // 以 {error} 拒绝,走 error 态外显原因。
 import { IconFolderOpen, IconX } from "@tabler/icons-react";
 
+import { Markdown } from "@/components/markdown/Markdown";
 import { useI18n } from "@/lib/i18n";
 import { isMacShell } from "@/lib/ipc/host";
+import { resolveMarkdownPath } from "@/lib/util/markdownPaths";
 import { CodeView } from "./CodeView";
 import { DiffView } from "./DiffView";
 import { basename, statusMeta } from "./status";
@@ -20,14 +22,23 @@ export interface PreviewModel {
   text: string;
 }
 
+export interface PreviewResourceAdapter {
+  /** 已按当前 Markdown 目录解析的工作区路径 → 图片 data URL。 */
+  localImageUrl?: (path: string) => Promise<string>;
+  /** 已按当前 Markdown 目录解析的工作区文件路径。 */
+  onLocalLink?: (path: string) => void;
+}
+
 export function Preview({
   model,
   status,
+  resources,
   onReveal,
   onClose,
 }: {
   model: PreviewModel;
   status?: string;
+  resources?: PreviewResourceAdapter;
   /** 在系统文件管理器中定位此文件(缺省则不渲染该入口) */
   onReveal?: () => void;
   onClose: () => void;
@@ -65,13 +76,13 @@ export function Preview({
           都靠 whitespace-pre-wrap+wrap-anywhere 折行、撑不宽,但这条不能赌
           ——将来任何一个不折行的预览体都会在这里长出横滚条 */}
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <PreviewBody model={model} />
+        <PreviewBody model={model} resources={resources} />
       </div>
     </div>
   );
 }
 
-function PreviewBody({ model }: { model: PreviewModel }) {
+function PreviewBody({ model, resources }: { model: PreviewModel; resources?: PreviewResourceAdapter }) {
   const { t } = useI18n();
   if (model.state === "loading") {
     return (
@@ -90,6 +101,32 @@ function PreviewBody({ model }: { model: PreviewModel }) {
   }
   if (!model.text) return <Placeholder text={t("files.preview.empty")} />;
   if (model.text.includes("\0")) return <Placeholder text={t("files.preview.binary")} />;
+  if (/\.(?:md|markdown)$/i.test(model.path)) {
+    const imageAdapter = resources?.localImageUrl;
+    const linkAdapter = resources?.onLocalLink;
+    const localImageUrl = imageAdapter
+      ? (path: string) => {
+          const resolved = resolveMarkdownPath(model.path, path);
+          return resolved === null ? Promise.reject(new Error(t("chat.revealOutside"))) : imageAdapter(resolved);
+        }
+      : undefined;
+    const onLocalLink = linkAdapter
+      ? (path: string) => {
+          const resolved = resolveMarkdownPath(model.path, path);
+          if (resolved !== null) linkAdapter(resolved);
+        }
+      : undefined;
+    return (
+      // 按文件路径重挂，避免同名相对图片跨目录复用上一份 Promise 缓存。
+      <Markdown
+        key={model.path}
+        source={model.text}
+        className="px-4 py-3"
+        localImageUrl={localImageUrl}
+        onLocalLink={onLocalLink}
+      />
+    );
+  }
   return <CodeView path={model.path} text={model.text} />;
 }
 
