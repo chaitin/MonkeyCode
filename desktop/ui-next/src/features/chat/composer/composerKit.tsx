@@ -106,9 +106,13 @@ export function UsageRing({ pct, tip, label }: { pct: number | null; tip: string
  * -mx-2.5 光学对齐(旧 UI 出血 10px 随迁):textarea 自带 ~12px 内距,
  * 硬边卡片与正文同宽会显得输入文字向右缩;向两侧出血后卡内文字左缘与
  * 对话文字几乎重合,卡片略宽于正文列。 */
-export function ComposerCard({ children }: { children: ReactNode }) {
+export function ComposerCard({ children, attachedTop = false }: { children: ReactNode; attachedTop?: boolean }) {
   return (
-    <div className="relative -mx-2.5 flex flex-col rounded-box border border-base-300 bg-base-100 shadow-sm transition-colors focus-within:border-base-content/25">
+    <div
+      className={`relative -mx-2.5 flex flex-col rounded-box border border-base-300 bg-base-100 shadow-sm transition-colors focus-within:border-base-content/25 ${
+        attachedTop ? "[border-top-left-radius:0] [border-top-right-radius:0]" : ""
+      }`}
+    >
       {children}
     </div>
   );

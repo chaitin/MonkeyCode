@@ -18,6 +18,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
+import { downloadUpload } from "@/components/media/UploadImg";
 import { useI18n } from "@/lib/i18n";
 import { useEscLayer } from "@/lib/util/escLayer";
 import { sessionSetMode, sessionSetModel, sessionSetSkills, sessionSetThink } from "@/lib/ipc/controls";
@@ -25,7 +26,7 @@ import { afterEngineReady } from "@/lib/ipc/engine";
 import { modelMenuList, resolveModelName } from "@/lib/models/modelMenu";
 import { modelsList, type ModelInfo, type SessionMeta } from "@/lib/ipc/sessions";
 import { defaultEnabledSkills, skillsList, type SkillInfo } from "@/lib/ipc/skills";
-import { pickAttachmentPaths } from "@/lib/ipc/uploads";
+import { pickAttachmentPaths, uploadFileURL } from "@/lib/ipc/uploads";
 import type { ChatState, SlashCommand, Usage } from "@/lib/protocol/types";
 import { timelineDeltaOf } from "@/lib/protocol/reduce";
 import { fmtK } from "@/lib/util/fmt";
@@ -395,13 +396,20 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
           onReorder={ctl.reorderQueued}
           onResume={ctl.resumeQueue}
           onDiscardUncertain={ctl.discardUncertainQueued}
+          attachmentName={(attachment) => attachment.name}
+          attachmentIsImage={(attachment) => attachment.isImage}
+          loadAttachmentUrl={(attachment) => uploadFileURL(sessionId, attachment.path)}
+          onOpenAttachment={(attachment) => {
+            if (!attachment.isImage) downloadUpload(() => uploadFileURL(sessionId, attachment.path), attachment.name);
+          }}
+          attachedToComposer
         />
       )}
 
       {/* 输入卡外框(形态收口在 composerKit:出血/聚焦边线/禁挂 dropdown 类
           的缘由见 ComposerCard 头注)。斜杠面板是卡内自绘浮层(绝对定位,
           焦点始终留在 textarea) */}
-      <ComposerCard>
+      <ComposerCard attachedTop={ctl.queue.pending.length > 0 || !!ctl.queue.inFlight || !!ctl.queue.blocked}>
         {slashOpen && (
           <SlashPanel list={list} active={act} onHover={setActive} onPick={pickCommand} />
         )}

@@ -12,6 +12,7 @@ import { OptionMenu } from "@/features/chat/composer/pickers";
 import { SendQueueList } from "@/features/chat/composer/SendQueueList";
 import { useI18n } from "@/lib/i18n";
 import { groupedCloudModelLabel } from "@/lib/cloud/options";
+import { openExternal } from "@/lib/ipc/host";
 import { fmtK } from "@/lib/util/fmt";
 import { useEscLayer } from "@/lib/util/escLayer";
 import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } from "@/lib/util/slash";
@@ -174,9 +175,14 @@ export function CloudComposer({
         onResume={h.confirmQueue}
         onDiscardUncertain={h.discardUncertain}
         onStopAndClear={h.stopAndClearQueue}
+        attachmentName={(attachment) => attachment.filename}
+        attachmentIsImage={(attachment) => attachment.isImage}
+        loadAttachmentUrl={(attachment) => Promise.resolve(attachment.url)}
+        onOpenAttachment={(attachment) => openExternal(attachment.url)}
+        attachedToComposer
       />
 
-      <ComposerCard>
+      <ComposerCard attachedTop={h.queue.pending.length > 0 || !!h.queue.inFlight || !!h.queue.blocked}>
         {h.running && (
           <RunBar
             label={t("cloud.view.running")}

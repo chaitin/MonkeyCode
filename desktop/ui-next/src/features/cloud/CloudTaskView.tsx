@@ -838,6 +838,10 @@ export function CloudTaskView({
                 onResume={h.confirmQueue}
                 onDiscardUncertain={h.discardUncertain}
                 onStopAndClear={h.stopAndClearQueue}
+                attachmentName={(attachment) => attachment.filename}
+                attachmentIsImage={(attachment) => attachment.isImage}
+                loadAttachmentUrl={(attachment) => Promise.resolve(attachment.url)}
+                onOpenAttachment={(attachment) => openExternal(attachment.url)}
               />
               <div className="py-1 text-center text-xs text-base-content/50">{t("cloud.view.readonly")}</div>
             </>

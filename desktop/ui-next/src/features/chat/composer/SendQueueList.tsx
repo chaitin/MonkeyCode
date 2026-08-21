@@ -1,6 +1,7 @@
 import { IconGripVertical, IconPaperclip, IconTrash, IconX } from "@tabler/icons-react";
 import { useState, type DragEvent } from "react";
 
+import { Lightbox, UploadImg } from "@/components/media/UploadImg";
 import { useI18n } from "@/lib/i18n";
 import type { SendQueueBlock, SendQueueInFlight, SendQueueItem } from "./sendQueue";
 
@@ -19,13 +20,29 @@ export interface SendQueueListProps<A> {
   onDiscardUncertain(id: string): void;
   /** 任务已结束/不存在时停止后台 runtime 并删除整个 lane。 */
   onStopAndClear?: () => void;
+  attachmentName?: (attachment: A) => string;
+  attachmentIsImage?: (attachment: A) => boolean;
+  loadAttachmentUrl?: (attachment: A) => Promise<string>;
+  onOpenAttachment?: (attachment: A) => void;
+  /** Composer 紧随其后时共享边界，避免队列再像一张独立业务卡。 */
+  attachedToComposer?: boolean;
 }
+
+const COLLAPSED_ITEMS = 3;
 
 function hasInternalDrag(dataTransfer: DataTransfer | null): boolean {
   return [...(dataTransfer?.types ?? [])].includes(SEND_QUEUE_DRAG_MIME);
 }
 
-function ItemSummary<A>({ item }: { item: SendQueueItem<A> }) {
+function ItemSummary<A>({
+  item,
+  attachmentsOpen,
+  onToggleAttachments,
+}: {
+  item: SendQueueItem<A>;
+  attachmentsOpen: boolean;
+  onToggleAttachments(): void;
+}) {
   const { t } = useI18n();
   return (
     <>
@@ -33,15 +50,84 @@ function ItemSummary<A>({ item }: { item: SendQueueItem<A> }) {
         {item.content}
       </span>
       {item.attachments.length > 0 && (
-        <span
-          className="flex shrink-0 items-center gap-1 text-xs text-base-content/60"
+        <button
+          type="button"
+          aria-expanded={attachmentsOpen}
+          aria-label={t(attachmentsOpen ? "chat.sendQueue.hideAttachments" : "chat.sendQueue.showAttachments", {
+            n: item.attachments.length,
+          })}
+          className="btn btn-ghost btn-xs h-7 min-h-7 shrink-0 gap-1 px-1.5 text-xs font-normal text-base-content/55"
           title={t("chat.sendQueue.attachments", { n: item.attachments.length })}
+          onClick={onToggleAttachments}
         >
           <IconPaperclip size={13} stroke={1.75} aria-hidden />
           <span>{item.attachments.length}</span>
-        </span>
+        </button>
       )}
     </>
+  );
+}
+
+function AttachmentImage<A>({ attachment, name, load }: { attachment: A; name: string; load: (attachment: A) => Promise<string> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <UploadImg
+        load={() => load(attachment)}
+        alt={name}
+        title={name}
+        className="h-10 w-10 cursor-zoom-in rounded-md object-cover"
+        onClick={() => setOpen(true)}
+      />
+      {open && (
+        <Lightbox alt={name} onClose={() => setOpen(false)}>
+          <UploadImg load={() => load(attachment)} alt={name} className="max-h-[84vh] max-w-full" />
+        </Lightbox>
+      )}
+    </>
+  );
+}
+
+function AttachmentList<A>({
+  attachments,
+  attachmentName,
+  attachmentIsImage,
+  loadAttachmentUrl,
+  onOpenAttachment,
+}: Pick<
+  SendQueueListProps<A>,
+  "attachmentName" | "attachmentIsImage" | "loadAttachmentUrl" | "onOpenAttachment"
+> & { attachments: A[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 px-10 pb-2 pt-1">
+      {attachments.map((attachment, index) => {
+        const name = attachmentName?.(attachment) || String(attachment);
+        if (attachmentIsImage?.(attachment) && loadAttachmentUrl) {
+          return <AttachmentImage key={`${name}-${index}`} attachment={attachment} name={name} load={loadAttachmentUrl} />;
+        }
+        const content = (
+          <>
+            <IconPaperclip size={12} stroke={1.75} aria-hidden className="shrink-0" />
+            <span className="max-w-48 truncate">{name}</span>
+          </>
+        );
+        return onOpenAttachment ? (
+          <button
+            key={`${name}-${index}`}
+            type="button"
+            className="btn btn-ghost btn-xs max-w-56 justify-start font-normal"
+            title={name}
+            onClick={() => onOpenAttachment(attachment)}
+          >
+            {content}
+          </button>
+        ) : (
+          <span key={`${name}-${index}`} className="flex h-6 max-w-56 items-center gap-1 px-2 text-xs text-base-content/60" title={name}>
+            {content}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -54,11 +140,20 @@ export function SendQueueList<A>({
   onResume,
   onDiscardUncertain,
   onStopAndClear,
+  attachmentName,
+  attachmentIsImage,
+  loadAttachmentUrl,
+  onOpenAttachment,
+  attachedToComposer = false,
 }: SendQueueListProps<A>) {
   const { t } = useI18n();
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [beforeId, setBeforeId] = useState<string | null | undefined>(undefined);
+  const [expanded, setExpanded] = useState(false);
+  const [attachmentsFor, setAttachmentsFor] = useState<string | null>(null);
   const ids = pending.map((item) => item.id);
+  const hiddenCount = Math.max(0, pending.length - COLLAPSED_ITEMS);
+  const visiblePending = expanded ? pending : pending.slice(0, COLLAPSED_ITEMS);
   const uncertain = inFlight?.phase === "uncertain";
   const terminalBlock = blocked?.code === "task-ended" || blocked?.code === "task-missing";
 
@@ -101,7 +196,11 @@ export function SendQueueList<A>({
   return (
     <section
       aria-label={t("chat.sendQueue.label")}
-      className="mb-2 overflow-hidden rounded-xl bg-base-200/45 px-2 py-1.5"
+      className={
+        attachedToComposer
+          ? "-mx-2.5 -mb-2 overflow-hidden rounded-xl rounded-b-none border border-b-0 border-base-300/70 bg-base-200/45 px-4 py-1.5"
+          : "overflow-hidden rounded-xl bg-base-200/45 px-2 py-1.5"
+      }
     >
       {pending.length > 0 && (
         <header className="flex h-7 min-w-0 items-center gap-1.5 px-1 text-xs text-base-content/50">
@@ -115,39 +214,54 @@ export function SendQueueList<A>({
 
       <ol className="flex flex-col">
         {inFlight && (
-          <li className="flex min-h-9 min-w-0 items-center gap-2 rounded-lg bg-primary/5 px-2 text-sm">
-            {uncertain ? (
-              <IconX size={15} stroke={1.75} className="shrink-0 text-warning" aria-hidden />
-            ) : (
-              <span className="loading loading-spinner loading-xs shrink-0" aria-hidden />
-            )}
-            <span className="shrink-0 text-xs font-medium text-base-content/55">
-              {t(uncertain ? "chat.sendQueue.uncertain" : "chat.sendQueue.sending")}
-            </span>
-            <ItemSummary item={inFlight.item} />
-            {uncertain && (
-              <span className="flex shrink-0 items-center gap-1">
-                <button type="button" className="btn btn-ghost btn-xs" onClick={onResume}>
-                  {t("chat.sendQueue.retry")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-xs text-error"
-                  onClick={() => onDiscardUncertain(inFlight.item.id)}
-                >
-                  {t("chat.sendQueue.discardUncertain")}
-                </button>
+          <li className="rounded-lg bg-primary/5 text-sm">
+            <div className="flex min-h-9 min-w-0 items-center gap-2 px-2">
+              {uncertain ? (
+                <IconX size={15} stroke={1.75} className="shrink-0 text-warning" aria-hidden />
+              ) : (
+                <span className="loading loading-spinner loading-xs shrink-0" aria-hidden />
+              )}
+              <span className="shrink-0 text-xs font-medium text-base-content/55">
+                {t(uncertain ? "chat.sendQueue.uncertain" : "chat.sendQueue.sending")}
               </span>
+              <ItemSummary
+                item={inFlight.item}
+                attachmentsOpen={attachmentsFor === inFlight.item.id}
+                onToggleAttachments={() => setAttachmentsFor((id) => (id === inFlight.item.id ? null : inFlight.item.id))}
+              />
+              {uncertain && (
+                <span className="flex shrink-0 items-center gap-1">
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={onResume}>
+                    {t("chat.sendQueue.retry")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs text-error"
+                    onClick={() => onDiscardUncertain(inFlight.item.id)}
+                  >
+                    {t("chat.sendQueue.discardUncertain")}
+                  </button>
+                </span>
+              )}
+            </div>
+            {attachmentsFor === inFlight.item.id && (
+              <AttachmentList
+                attachments={inFlight.item.attachments}
+                attachmentName={attachmentName}
+                attachmentIsImage={attachmentIsImage}
+                loadAttachmentUrl={loadAttachmentUrl}
+                onOpenAttachment={onOpenAttachment}
+              />
             )}
           </li>
         )}
 
-        {pending.map((item, index) => {
+        {visiblePending.map((item, index) => {
           const showIndicator = beforeId === item.id && willMove(item.id);
           return (
             <li
               key={item.id}
-              className="group relative flex min-h-9 min-w-0 items-center gap-1 border-t border-base-300/55 px-0.5 text-sm first:border-t-0 hover:bg-base-100/55"
+              className="group relative border-t border-base-300/55 text-sm first:border-t-0 hover:bg-base-100/55"
               onDragOver={(event) => acceptInternalDrag(event, item.id)}
               onDrop={(event) => dropInternal(event, item.id)}
             >
@@ -158,41 +272,68 @@ export function SendQueueList<A>({
                   className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary"
                 />
               )}
-              <button
-                type="button"
-                draggable
-                aria-label={t("chat.sendQueue.drag")}
-                title={t("chat.sendQueue.drag")}
-                className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-6 cursor-grab text-base-content/30 hover:text-base-content/70 active:cursor-grabbing"
-                onDragStart={(event) => {
-                  event.stopPropagation();
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData(SEND_QUEUE_DRAG_MIME, item.id);
-                  setDraggedId(item.id);
-                  setBeforeId(undefined);
-                }}
-                onDragEnd={finishDrag}
-              >
-                <IconGripVertical size={14} stroke={1.75} aria-hidden />
-              </button>
-              <span aria-hidden className="w-4 shrink-0 text-center text-[11px] tabular-nums text-base-content/35">
-                {index + 1}
-              </span>
-              <ItemSummary item={item} />
-              <button
-                type="button"
-                aria-label={t("chat.sendQueue.remove")}
-                title={t("chat.sendQueue.remove")}
-                className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-7 shrink-0 text-base-content/35 opacity-50 hover:text-error hover:opacity-100 focus-visible:text-error focus-visible:opacity-100 group-hover:opacity-100"
-                onClick={() => onRemove(item.id)}
-              >
-                <IconTrash size={13} stroke={1.75} aria-hidden />
-              </button>
+              <div className="flex min-h-9 min-w-0 items-center gap-1 px-0.5">
+                <button
+                  type="button"
+                  draggable
+                  aria-label={t("chat.sendQueue.drag")}
+                  title={t("chat.sendQueue.drag")}
+                  className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-6 cursor-grab text-base-content/30 hover:text-base-content/70 active:cursor-grabbing"
+                  onDragStart={(event) => {
+                    event.stopPropagation();
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData(SEND_QUEUE_DRAG_MIME, item.id);
+                    setDraggedId(item.id);
+                    setBeforeId(undefined);
+                  }}
+                  onDragEnd={finishDrag}
+                >
+                  <IconGripVertical size={14} stroke={1.75} aria-hidden />
+                </button>
+                <span aria-hidden className="w-4 shrink-0 text-center text-[11px] tabular-nums text-base-content/35">
+                  {index + 1}
+                </span>
+                <ItemSummary
+                  item={item}
+                  attachmentsOpen={attachmentsFor === item.id}
+                  onToggleAttachments={() => setAttachmentsFor((id) => (id === item.id ? null : item.id))}
+                />
+                <button
+                  type="button"
+                  aria-label={t("chat.sendQueue.remove")}
+                  title={t("chat.sendQueue.remove")}
+                  className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-7 shrink-0 text-base-content/35 opacity-0 hover:text-error hover:opacity-100 focus-visible:text-error focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                  onClick={() => onRemove(item.id)}
+                >
+                  <IconTrash size={13} stroke={1.75} aria-hidden />
+                </button>
+              </div>
+              {attachmentsFor === item.id && (
+                <AttachmentList
+                  attachments={item.attachments}
+                  attachmentName={attachmentName}
+                  attachmentIsImage={attachmentIsImage}
+                  loadAttachmentUrl={loadAttachmentUrl}
+                  onOpenAttachment={onOpenAttachment}
+                />
+              )}
             </li>
           );
         })}
 
-        {pending.length > 0 && (
+        {hiddenCount > 0 && (
+          <li className="border-t border-base-300/55 px-8 py-0.5">
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs h-7 min-h-7 px-2 font-normal text-base-content/55"
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {t(expanded ? "chat.sendQueue.collapse" : "chat.sendQueue.expand", { n: hiddenCount })}
+            </button>
+          </li>
+        )}
+
+        {pending.length > 0 && (expanded || hiddenCount === 0) && (
           <li
             aria-hidden
             className="relative h-1"

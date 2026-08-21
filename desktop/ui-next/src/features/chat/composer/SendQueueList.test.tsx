@@ -126,6 +126,63 @@ describe("SendQueueList", () => {
     expect(handles().map((handle) => handle.closest("li")?.textContent)).toEqual(["1第二条消息", "2第一条消息"]);
   });
 
+  it("超过三条默认折叠，并可展开其余项后再次收起", () => {
+    render(
+      <QueueHarness
+        initial={[
+          item("a", "第一条消息"),
+          item("b", "第二条消息"),
+          item("c", "第三条消息"),
+          item("d", "第四条消息"),
+          item("e", "第五条消息"),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("第三条消息")).toBeTruthy();
+    expect(screen.queryByText("第四条消息")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "展开其余 2 条" }));
+    expect(screen.getByText("第四条消息")).toBeTruthy();
+    expect(screen.getByText("第五条消息")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "收起" }));
+    expect(screen.queryByText("第四条消息")).toBeNull();
+  });
+
+  it("附件数可展开为文件名，图片可看大图、文件可执行打开动作", async () => {
+    interface Attachment {
+      name: string;
+      image: boolean;
+    }
+    const attachments: Attachment[] = [
+      { name: "设计图.png", image: true },
+      { name: "需求.pdf", image: false },
+    ];
+    const openAttachment = vi.fn();
+    render(
+      <SendQueueList
+        pending={[{ id: "with-atts", content: "带附件消息", attachments, createdAt: 1 }]}
+        inFlight={null}
+        blocked={null}
+        onRemove={() => {}}
+        onReorder={() => {}}
+        onResume={() => {}}
+        onDiscardUncertain={() => {}}
+        attachmentName={(attachment) => attachment.name}
+        attachmentIsImage={(attachment) => attachment.image}
+        loadAttachmentUrl={() => Promise.resolve("data:image/png;base64,AAA")}
+        onOpenAttachment={openAttachment}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 2 个附件" }));
+    expect(screen.getByText("需求.pdf")).toBeTruthy();
+    const image = await screen.findByRole("img", { name: "设计图.png" });
+    fireEvent.click(image);
+    expect(screen.getByRole("dialog", { name: "设计图.png" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "需求.pdf" }));
+    expect(openAttachment).toHaveBeenCalledWith(attachments[1]);
+  });
+
   it("为 blocked 与 uncertain 暴露明确且互斥的恢复动作契约", () => {
     const onResume = vi.fn();
     const onDiscard = vi.fn();
