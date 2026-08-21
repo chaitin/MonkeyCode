@@ -16,7 +16,10 @@ export default defineConfig({
         test: {
           name: "unit",
           environment: "node",
-          include: ["src/{lib,gen,app}/**/*.test.ts"],
+          include: [
+            "src/{lib,gen,app}/**/*.test.ts",
+            "src/features/{chat/composer,cloud}/**/*.test.ts",
+          ],
         },
       },
       {

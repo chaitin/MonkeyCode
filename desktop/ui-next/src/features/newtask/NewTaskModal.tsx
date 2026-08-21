@@ -22,6 +22,7 @@ import { IconCheck, IconChevronDown, IconCloud, IconFile as FileIcon, IconFolder
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type ClipboardEvent as ReactClipboardEvent,
@@ -85,10 +86,12 @@ export function NewTaskModal({
   initialKind,
   initialText,
   initialFiles,
+  nativeDropEnabled = true,
   onOpenSettings,
 }: {
   open: boolean;
-  onClose: () => void;
+  /** 无参数 = 用户取消/退出；success = 创建已落地后的收尾。 */
+  onClose: (reason?: "success") => void;
   onCreated: (meta: SessionMeta) => void;
   onCloudCreated?: (task: CloudTaskDetail) => void;
   /** 云端页签未连接 MonkeyCode 时的出口(空态里的「去设置连接」)。不传的话
@@ -112,6 +115,8 @@ export function NewTaskModal({
    *  与 initialText 同命:仅本地/会话页签消费,云端任务不支持附件——落云端
    *  时图片不上行,留在待办条目上 */
   initialFiles?: File[];
+  /** Linux 原生拖放是 window 级事件；分屏时仅焦点格接收。 */
+  nativeDropEnabled?: boolean;
 }) {
   const { t } = useI18n();
   const [kind, setKind] = useState<SessionKind | "cloud">("local");
@@ -185,6 +190,11 @@ export function NewTaskModal({
       dirTouched.current = true;
     } else if (initialCloudProject) {
       setKind("cloud");
+    } else if (initialKind === "chat") {
+      // chat 意图(临时会话组头「+」等)落本地页签的「临时会话」档
+      setKind("local");
+      setDir("");
+      dirTouched.current = true;
     } else {
       setKind(initialKind ?? "local");
     }
@@ -320,13 +330,16 @@ export function NewTaskModal({
   // Linux 壳:WebKitGTK 的 HTML5 拖拽拿不到 File,走壳原生 tauri://drag-*
   // (mac/Windows 壳禁用原生处理器,监听永不触发)。dropEnabled 判定放回调内:
   // 订阅始终挂着,切页签时不会漏掉拖拽中的事件
-  const dropEnabledRef = useRef(dropEnabled);
-  dropEnabledRef.current = dropEnabled;
+  const nativeDropIsEnabled = useEffectEvent(() => dropEnabled && nativeDropEnabled);
+  useEffect(() => {
+    if (!nativeDropEnabled) setDragging(false);
+  }, [nativeDropEnabled]);
   useEffect(
     () =>
       onNativeFileDrop({
-        onDragging: (on) => setDragging(on && dropEnabledRef.current),
-        onFiles: (files) => dropEnabledRef.current && addFiles(files),
+        enabled: nativeDropIsEnabled,
+        onDragging: (on) => setDragging(on && nativeDropIsEnabled()),
+        onFiles: (files) => nativeDropIsEnabled() && addFiles(files),
         onError: (m) => setError(m),
       }),
     [],
@@ -353,12 +366,9 @@ export function NewTaskModal({
 
   const submit = async (forceCreateDir = false) => {
     if (kind === "cloud" || busy) return;
-    const chat = kind === "chat";
+    // 会话 = 不选文件夹的任务:目录空即临时会话,无「必填」一说
+    const chat = kind === "local" && !dir.trim();
     const workdir = chat ? "" : dir.trim();
-    if (!chat && !workdir) {
-      setError(t("create.error.workdirRequired"));
-      return;
-    }
     setBusy(true);
     setError("");
     setOfferCreate(false);
@@ -384,7 +394,7 @@ export function NewTaskModal({
         }
       }
       onCreated(meta);
-      onClose();
+      onClose("success");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -417,10 +427,11 @@ export function NewTaskModal({
   if (!open) return null;
   const recents = (recentDirs ?? []).filter((p) => workdirMatchesEnv(p, kernelEnv, isWindowsShell())).slice(0, 6);
   const dirName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+  // 「本地会话」页签并入本地任务(2026-08-18 用户定案:会话 = 不选文件夹
+  // 的任务,差异只在目录选择器里的「临时会话」档)
   const KIND_META = [
     { k: "local" as const, icon: IconFolderCode, label: t("create.kind.local") },
     { k: "cloud" as const, icon: IconCloud, label: t("create.kind.cloud") },
-    { k: "chat" as const, icon: IconMessages, label: t("create.kind.chat") },
   ];
   const onTextKey = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Enter" || e.shiftKey) return;
@@ -428,9 +439,12 @@ export function NewTaskModal({
     e.preventDefault();
     void submit();
   };
+  // 只有格内一种形态(2026-08-18 用户定案「整页新建没用了」:创建即新格,
+  // 整页覆盖视图随之退役):根是 div(main 地标归 SplitView),头部不作
+  // 窗口拖拽面,无 hero 无视图级留白——格子的纵向空间给表单本体
   return (
-    <main
-      className="relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto bg-base-100"
+    <div
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto bg-base-100"
       onDragEnter={onDragEnter}
       onDragOver={(e) => dropEnabled && e.preventDefault()}
       onDragLeave={onDragLeave}
@@ -441,30 +455,25 @@ export function NewTaskModal({
           {t("chat.dropHint")}
         </div>
       )}
-      <header data-view-header="" data-tauri-drag-region="" className="flex h-13 shrink-0 items-center gap-2 border-b border-base-300 px-4">
-        <h1 data-tauri-drag-region="" className="min-w-0 flex-1 truncate text-sm font-semibold">{t("create.title")}</h1>
-        <button
-          type="button"
-          aria-label={t("create.cancel")}
-          className="btn btn-ghost btn-square btn-sm"
-          onClick={onClose}
-        >
+      {/* 页头与邻格细头同高同字(h-12/14px):并排时头带齐一条线;
+          标题非交互,连同容器一起作拖窗面(§7 属性不继承逐节点挂) */}
+      <header data-tauri-drag-region="" className="flex h-12 shrink-0 items-center gap-2 border-b border-base-300 px-4">
+        <h1 data-tauri-drag-region="" className="min-w-0 flex-1 truncate text-sm font-medium">{t("create.title")}</h1>
+        <button type="button" aria-label={t("create.cancel")} className="btn btn-ghost btn-square btn-sm" onClick={() => onClose()}>
           <IconX size={16} stroke={1.75} aria-hidden />
         </button>
       </header>
-      {/* 向导列(对齐旧工程新建任务屏):logo+标语的 hero → 类型页签 → 一张
-          大圆角输入卡承载全部配置——目录/描述/模型是"一件事",不拆散成表单 */}
-      <div className="mx-auto w-full max-w-xl px-6 pt-[max(1.5rem,calc(11vh-3.25rem))] pb-10">
+      {/* 向导列:类型页签 → 一张大圆角输入卡承载全部配置——目录/描述/模型
+          是"一件事",不拆散成表单(hero 随整页形态退役)。云端页签在格内
+          同样可用:云端任务本就能入格(CloudTaskView pane 变体) */}
+      {/* 光学偏上:上 2 : 下 3 弹性配重,内容落 ~40% 线(几何居中「太丑」,
+          2026-08-19 用户两轮定案);内容高过格时配重收缩为 0,照常顶对齐
+          滚动 */}
+      <div aria-hidden className="min-h-4 flex-[2]" />
+      <div className="mx-auto w-full max-w-xl px-4 pt-4 pb-6">
         <div className="flex flex-col gap-4">
-          <div className="mb-1 flex flex-col items-center gap-1.5">
-            <img src="/logo.png" alt="" aria-hidden draggable={false} className="h-13 w-13" />
-            <h2 className="mt-1 text-lg font-bold">
-              {kind === "chat" ? t("create.hero.chatTitle") : t("create.hero.taskTitle")}
-            </h2>
-            <p className="text-xs text-base-content/60">
-              {kind === "chat" ? t("create.hero.chatDetail") : t("create.hero.taskDetail")}
-            </p>
-          </div>
+          {/* logo 回归(2026-08-18 用户定案;只回 logo,标语不回) */}
+          <img src="/logo.png" alt="" aria-hidden draggable={false} className="mx-auto h-13 w-13" />
           <div role="tablist" aria-label={t("create.title")} className="tabs-box tabs tabs-sm mx-auto">
             {KIND_META.map(({ k, icon: Icon, label }) => (
               <button
@@ -496,16 +505,16 @@ export function NewTaskModal({
                   onOpenSettings={onOpenSettings}
                   onCreated={(task) => {
                     onCloudCreated?.(task);
-                    onClose();
+                    onClose("success");
                   }}
                 />
               </div>
             )}
             {kind !== "cloud" && (
               <>
-                {/* 卡头:本地任务是「在 × 文件夹里工作」句式触发器(富下拉:
-                    最近目录/系统选择/手输路径);本地会话是一行说明 */}
-                {kind === "local" ? (
+                {/* 卡头:「在 × 文件夹里工作」句式触发器(富下拉:临时会话/
+                    最近目录/系统选择/手输路径);空目录 = 临时会话档 */}
+                {kind === "local" && (
                   <div ref={dirBoxRef} className="relative px-2 pt-2">
                     <button
                       type="button"
@@ -514,7 +523,11 @@ export function NewTaskModal({
                       aria-expanded={dirMenu}
                       onClick={() => setDirMenu(!dirMenu)}
                     >
-                      <IconFolder size={14} stroke={1.75} aria-hidden className="shrink-0 text-base-content/60" />
+                      {dir.trim() ? (
+                        <IconFolder size={14} stroke={1.75} aria-hidden className="shrink-0 text-base-content/60" />
+                      ) : (
+                        <IconMessages size={14} stroke={1.75} aria-hidden className="shrink-0 text-base-content/60" />
+                      )}
                       {dir.trim() ? (
                         <>
                           <span className="shrink-0 text-xs text-base-content/50">{t("create.dirPre")}</span>
@@ -522,7 +535,7 @@ export function NewTaskModal({
                           <span className="shrink-0 text-xs text-base-content/50">{t("create.dirPost")}</span>
                         </>
                       ) : (
-                        <span className="text-xs text-base-content/50">{t("create.workdirPlaceholder")}</span>
+                        <span className="text-xs font-semibold">{t("create.dir.scratch")}</span>
                       )}
                       <IconChevronDown
                         size={12}
@@ -536,6 +549,20 @@ export function NewTaskModal({
                         aria-label={t("create.recentDirs")}
                         className="absolute start-2 top-full z-20 mt-1 flex w-96 max-w-[calc(100%-1rem)] flex-col rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg"
                       >
+                        {/* 临时会话档殿前:会话=不选文件夹的任务 */}
+                        <li>
+                          <button
+                            type="button"
+                            aria-current={!dir.trim() ? "true" : undefined}
+                            className={`btn btn-ghost btn-sm w-full justify-start gap-2 px-2 font-normal ${!dir.trim() ? "btn-active" : ""}`}
+                            onClick={() => pickDir("")}
+                          >
+                            <IconMessages size={13} stroke={1.75} aria-hidden className="shrink-0 text-base-content/50" />
+                            {t("create.dir.scratch")}
+                            {!dir.trim() && <IconCheck size={12} stroke={2} aria-hidden className="ms-auto shrink-0 text-primary" />}
+                          </button>
+                        </li>
+                        <li aria-hidden className="my-1 border-t border-base-300" />
                         {recents.length > 0 && (
                           <li aria-hidden className="px-2 pt-1 pb-0.5 text-2xs font-bold tracking-wider text-base-content/40">
                             {t("create.recentGroup")}
@@ -603,12 +630,6 @@ export function NewTaskModal({
                         </li>
                       </ul>
                     )}
-                  </div>
-                ) : (
-                  /* 与本地页文件夹触发器同高(mt-2 + h-8):切页签卡头不跳动 */
-                  <div className="mx-2 mt-2 flex h-8 items-center gap-2 px-2 text-xs text-base-content/50">
-                    <IconMessages size={13} stroke={1.75} aria-hidden />
-                    {t("create.hint.chat")}
                   </div>
                 )}
                 <textarea
@@ -716,6 +737,7 @@ export function NewTaskModal({
             ) : null)}
         </div>
       </div>
-    </main>
+      <div aria-hidden className="min-h-6 flex-[3]" />
+    </div>
   );
 }

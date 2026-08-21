@@ -171,6 +171,29 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 // (mc_upload 直传对象存储)。少了 wantContent 这一岔,云端侧拖进来的
 // 每个文件都是 0 字节,uploadCloudFile 一律以「是空文件」告吹。
 describe("onNativeFileDrop 内容分岔", () => {
+  it("enabled 门禁在 stat/read 之前拦截窗口级事件", async () => {
+    const { listeners, calls } = stubDropShell(() => ({ name: "a.txt", mediaType: "" }));
+    let enabled = false;
+    const got: File[][] = [];
+    const off = onNativeFileDrop({
+      enabled: () => enabled,
+      onDragging: () => {},
+      onFiles: (files) => got.push(files),
+    });
+    await settle();
+    listeners.get("tauri://drag-drop")?.({ payload: { paths: ["/tmp/a.txt"] } });
+    await settle();
+    expect(calls).toEqual([]);
+    expect(got).toEqual([]);
+
+    enabled = true;
+    listeners.get("tauri://drag-drop")?.({ payload: { paths: ["/tmp/a.txt"] } });
+    await settle();
+    expect(calls.map((c) => c.cmd)).toEqual(["stat_dropped_file"]);
+    expect(got).toHaveLength(1);
+    off();
+  });
+
   it("缺省:stat_dropped_file 造 path-backed 占位 File(0 字节 + 真实路径)", async () => {
     const { listeners, calls } = stubDropShell(() => ({ name: "笔记.txt", mediaType: "" }));
     const got: File[][] = [];

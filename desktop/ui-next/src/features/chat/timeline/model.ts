@@ -153,6 +153,8 @@ export function estimateTimelineRow(row: TimelineRow): number {
       return item.tag === "turn-end" ? 18 : 30;
     case "tool":
       return 58;
+    case "background-result":
+      return 86;
     case "perm":
     case "ask":
       return 132;

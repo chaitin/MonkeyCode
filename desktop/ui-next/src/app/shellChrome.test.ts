@@ -39,6 +39,7 @@ describe("windowContextLabel(原生窗口标题的上下文)", () => {
       ({
         "settings.title": "设置",
         "create.title": "新建任务",
+        "split.title": "工作台",
         "rail.cloud": "云端任务",
         "rail.chat": "本地会话",
         "rail.local": "本地任务",
@@ -59,6 +60,9 @@ describe("windowContextLabel(原生窗口标题的上下文)", () => {
     const cur = { title: "重构登录页", kind: "local" };
     expect(windowContextLabel(view({ settingsOpen: true }), null, cur, t)).toBe("设置");
     expect(windowContextLabel(view({ creating: true }), null, cur, t)).toBe("新建任务");
+    // 分屏在设置/新建之下、云端与会话之上(它盖住主区时标题不该还挂着会话)
+    expect(windowContextLabel(view({ splitOpen: true }), { title: "修 CI" }, cur, t)).toBe("工作台");
+    expect(windowContextLabel(view({ settingsOpen: true, splitOpen: true }), null, cur, t)).toBe("设置");
     expect(windowContextLabel(view({ cloudSpace: true }), { title: "修 CI" }, cur, t)).toBe("修 CI");
     expect(windowContextLabel(view(), null, cur, t)).toBe("重构登录页");
     expect(windowContextLabel(view(), null, null, t)).toBe("开始一个任务");

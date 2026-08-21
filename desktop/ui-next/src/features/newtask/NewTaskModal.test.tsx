@@ -51,15 +51,11 @@ async function openDirMenu() {
 }
 
 describe("新建任务", () => {
-  it("类型页签顺序与空间导轨一致", async () => {
+  it("类型页签只剩本地/云端(2026-08-18 定案:会话并入本地任务,差异在目录选择器)", async () => {
     stubShell();
     render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
     await waitFor(() => expect(screen.getByRole("button", { name: "模型" }).textContent).toContain("gpt-5"));
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual([
-      "本地任务",
-      "云端任务",
-      "本地会话",
-    ]);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["本地任务", "云端任务"]);
   });
 
   it("默认本地模式:目录预填 ~/MonkeyCode,模型取默认且锁定项禁选", async () => {
@@ -86,26 +82,28 @@ describe("新建任务", () => {
     expect(localStorage.getItem("mc.lastTaskModel")).toBe("gpt-5");
   });
 
-  it("对话模式:workdir 空串、createDir=false、无目录字段", async () => {
+  it("临时会话档:目录下拉选「不选文件夹」→ workdir 空串、createDir=false、kind=chat", async () => {
     const calls = stubShell();
     const onCreated = vi.fn();
     render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
-    await userEvent.click(screen.getByRole("tab", { name: "本地会话" }));
-    expect(screen.queryByRole("button", { name: "最近目录" })).toBeNull();
-    expect(screen.queryByRole("textbox", { name: "项目目录" })).toBeNull();
+    await openDirMenu();
+    await userEvent.click(screen.getByRole("button", { name: /临时会话/ }));
+    // 触发器切到临时会话档显示
+    expect(screen.getByRole("button", { name: "最近目录" }).textContent).toContain("临时会话");
     await userEvent.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
     const create = calls.find((c) => c.cmd === "session_create");
     expect(create?.args).toEqual({ workdir: "", model: "gpt-5", createDir: false, kind: "chat", think: "" });
   });
 
-  it("本地模式清空目录:前端拦截并提示,不发命令", async () => {
+  it("清空目录 = 临时会话档(会话=不选文件夹的任务,「必填」拦截退役):照建 kind=chat", async () => {
     const calls = stubShell();
-    render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
+    const onCreated = vi.fn();
+    render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
     await userEvent.clear(await openDirMenu());
     await userEvent.click(screen.getByRole("button", { name: "创建" }));
-    expect(screen.getByRole("alert").textContent).toContain("请先选择项目目录");
-    expect(calls.some((c) => c.cmd === "session_create")).toBe(false);
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(calls.find((c) => c.cmd === "session_create")?.args).toMatchObject({ workdir: "", kind: "chat" });
   });
 
   it("创建失败(非目录缺失):错误文案外显,无确认钮", async () => {

@@ -67,12 +67,14 @@ export function openPermIdOf(state: ChatState): string | null {
 
 /** 挂 window keydown 的薄 hook:仅在有待决审批时监听;同一张卡只发一次
  * (permission-resolved 帧回来前连按不重发),发送失败解除标记可重按。
- * sendFrame 可注入上行管道(云端任务经 stream WS);缺省 = 本地 sender。 */
-export function useApprovalHotkeys(state: ChatState, sessionId: string, sendFrame?: FrameSender): void {
+ * sendFrame 可注入上行管道(云端任务经 stream WS);缺省 = 本地 sender。
+ * enabled:分屏多格并存时**只许焦点格监听**——window 级 keydown 按实例
+ * 注册,不门控的话一次 ⏎ 会把每个格子的待审批一起应答(允许不可撤销)。 */
+export function useApprovalHotkeys(state: ChatState, sessionId: string, sendFrame?: FrameSender, enabled = true): void {
   const openPermId = openPermIdOf(state);
   const answeredRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!openPermId) return;
+    if (!openPermId || !enabled) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target instanceof HTMLElement ? e.target : null;
       const inputText =
@@ -98,5 +100,5 @@ export function useApprovalHotkeys(state: ChatState, sessionId: string, sendFram
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openPermId, sessionId, sendFrame]);
+  }, [openPermId, sessionId, sendFrame, enabled]);
 }

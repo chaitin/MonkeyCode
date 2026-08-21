@@ -3,12 +3,20 @@
 // uploads.rs 为准)。
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ModelInfo, SessionMeta } from "@/lib/ipc/sessions";
 import { b64decode, b64encode } from "@/lib/protocol/codec";
 import { pushEscLayer } from "@/lib/util/escLayer";
 import { ChatView } from "../ChatView";
+import { resetSendQueueMemoryForTests } from "./sendQueue";
+import { resetStashForTests } from "./stash";
+
+beforeEach(() => {
+  localStorage.clear();
+  resetSendQueueMemoryForTests();
+  resetStashForTests();
+});
 
 afterEach(() => {
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
@@ -446,7 +454,7 @@ describe("运行态 / 停止 / 排队", () => {
     expect(cancels[0]?.args?.payload).toEqual({});
   });
 
-  it("运行中发送进入单槽排队(chip 可取消);轮结束自动补投", async () => {
+  it("运行中连续发送追加队列；轮结束只补投一个队首", async () => {
     const { ops, emit } = stubShell();
     render(<ChatView meta={META} />);
     const box = await ready();
@@ -454,23 +462,29 @@ describe("运行态 / 停止 / 排队", () => {
     await waitFor(() => expect(screen.getByText("思考中")).toBeTruthy());
 
     await userEvent.type(box, "补充问题{Enter}");
-    expect(screen.getByText("已排队")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "待发送消息队列" })).toBeTruthy();
     expect(screen.getByText("补充问题")).toBeTruthy();
     expect((box as HTMLTextAreaElement).value).toBe("");
     expect(sends(ops, "user-input")).toHaveLength(0); // 运行中不直发
 
-    // 后发覆盖先发(单槽语义)
+    // 后发追加，不覆盖先发
     await userEvent.type(box, "换个问法{Enter}");
-    expect(screen.queryByText("补充问题")).toBeNull();
+    expect(screen.getByText("补充问题")).toBeTruthy();
     expect(screen.getByText("换个问法")).toBeTruthy();
 
     emit("frames:s1", [{ type: "task-ended", timestamp: 7, seq: 7 }]);
     await waitFor(() => {
       const sent = sends(ops, "user-input");
       expect(sent).toHaveLength(1);
-      expect(b64decode((sent[0]?.args?.payload as { content: string }).content)).toBe("换个问法");
+      expect(b64decode((sent[0]?.args?.payload as { content: string }).content)).toBe("补充问题");
     });
-    expect(screen.queryByText("已排队")).toBeNull();
+    expect(screen.getByText("换个问法")).toBeTruthy();
+    expect(screen.getByText("发送中")).toBeTruthy();
+
+    // 首帧即发送回执：该项已进入时间线，只保留内部逐轮锁，不再重复显示“发送中”。
+    emit("frames:s1", [{ type: "task-started", timestamp: 8, seq: 8 }]);
+    await waitFor(() => expect(screen.queryByText("发送中")).toBeNull());
+    expect(screen.getByText("换个问法")).toBeTruthy();
   });
 
   it("排队可取消:清掉后轮结束不补投", async () => {
@@ -480,8 +494,8 @@ describe("运行态 / 停止 / 排队", () => {
     emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
     await waitFor(() => expect(screen.getByText("思考中")).toBeTruthy());
     await userEvent.type(box, "先排着{Enter}");
-    await userEvent.click(screen.getByRole("button", { name: "取消排队" }));
-    expect(screen.queryByText("已排队")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "删除待发送消息" }));
+    expect(screen.queryByRole("region", { name: "待发送消息队列" })).toBeNull();
     emit("frames:s1", [{ type: "task-ended", timestamp: 7, seq: 7 }]);
     await new Promise((r) => setTimeout(r, 20));
     expect(sends(ops, "user-input")).toHaveLength(0);
