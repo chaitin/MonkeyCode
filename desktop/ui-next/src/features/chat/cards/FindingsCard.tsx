@@ -94,6 +94,8 @@ function outcomeBadge(outcome?: string): BadgeSpec | null {
       return { key: "chat.findings.skipped", cls: "badge badge-warning badge-soft badge-xs shrink-0" };
     case "no_change_needed":
       return { key: "chat.findings.noChange", cls: "badge badge-ghost badge-xs shrink-0" };
+    case "unresolved":
+      return { key: "chat.findings.unresolved", cls: "badge badge-ghost badge-xs shrink-0" };
   }
   // 未来枚举扩展时至少原样可见,不无声吞掉
   return outcome ? { key: null, raw: outcome, cls: "badge badge-ghost badge-xs shrink-0" } : null;

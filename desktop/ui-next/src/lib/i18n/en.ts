@@ -507,6 +507,7 @@ export const en: Record<MessageKey, string> = {
   "chat.findings.fixed": "Fixed",
   "chat.findings.skipped": "Skipped",
   "chat.findings.noChange": "No change needed",
+  "chat.findings.unresolved": "Unresolved",
   "chat.findings.failure": "Failure scenario",
   "chat.loadEarlier": "Load earlier",
   "chat.loadEarlierFailed": "Failed to load earlier messages: {reason}",

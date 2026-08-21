@@ -525,6 +525,7 @@ export const zh = {
   "chat.findings.fixed": "已修复",
   "chat.findings.skipped": "已跳过",
   "chat.findings.noChange": "无需修改",
+  "chat.findings.unresolved": "未解决",
   "chat.findings.failure": "失败场景",
   "chat.loadEarlier": "加载更早",
   "chat.loadEarlierFailed": "加载更早的对话失败:{reason}",

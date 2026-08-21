@@ -148,7 +148,13 @@ describe("发现列表渲染", () => {
     expect(screen.getByText("已跳过").classList.contains("shrink-0")).toBe(true);
   });
 
-  it("未知 outcome 枚举原样外显,不无声吞掉", () => {
+  it("unresolved outcome 汉化展示", () => {
+    render(<FindingsCard report={{ findings: [{ file: "a.ts", summary: "x", outcome: "unresolved" }] }} />);
+    expect(screen.getByText("未解决")).toBeTruthy();
+    expect(screen.queryByText("unresolved")).toBeNull();
+  });
+
+  it("其他未知 outcome 枚举原样外显,不无声吞掉", () => {
     render(<FindingsCard report={{ findings: [{ file: "a.ts", summary: "x", outcome: "deferred" }] }} />);
     expect(screen.getByText("deferred")).toBeTruthy();
   });
