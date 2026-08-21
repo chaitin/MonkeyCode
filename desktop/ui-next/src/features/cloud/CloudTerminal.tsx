@@ -2,8 +2,8 @@
 // 帧 {type,data};上行 data=base64(输入)/resize=JSON{row,col}/5s ping;
 // 下行 connected/data(base64→xterm)/resize/error/ping)。terminal_id 复用
 // 优先(pickTerminalId):每次新生成会把孤儿会话在 VM 里越堆越多。
-// 主题:终端岛恒深色面——令牌在 styles/term.css(--termBg/--termTx 固定
-// hex),挂载时经 getComputedStyle 解析喂给 xterm(它吃不了 var())。
+// 主题:终端岛恒深色面——颜色与字体令牌都在 styles/term.css，挂载时经
+// getComputedStyle 解析喂给 xterm(它吃不了 var())。
 import { useEffect, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -20,11 +20,20 @@ import {
 import type { CloudPipe } from "@/lib/cloud/pipes";
 import { useI18n } from "@/lib/i18n";
 
-/** 令牌 → 具体色值(term.css 还没随 main.tsx 接线时不至于白底黑字闪一下)。 */
-function readTermTheme(): { background: string; foreground: string } {
+/** CSS 令牌 → xterm options。令牌缺席时省略该项，让 xterm 使用库默认。 */
+function readTermOptions() {
   const css = getComputedStyle(document.documentElement);
-  const pick = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
-  return { background: pick("--termBg", "#1c1d20"), foreground: pick("--termTx", "#d6d7d2") };
+  const background = css.getPropertyValue("--termBg").trim();
+  const foreground = css.getPropertyValue("--termTx").trim();
+  const fontFamily = css.getPropertyValue("--font-mono").trim();
+  const theme = {
+    ...(background ? { background } : {}),
+    ...(foreground ? { foreground } : {}),
+  };
+  return {
+    ...(fontFamily ? { fontFamily } : {}),
+    ...(background || foreground ? { theme } : {}),
+  };
 }
 
 export function CloudTerminal({ vmId }: { vmId: string }) {
@@ -35,12 +44,18 @@ export function CloudTerminal({ vmId }: { vmId: string }) {
   useEffect(() => {
     const el = hostRef.current;
     if (!el) return;
+    const motionQuery = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)")
+      : null;
     const term = new Terminal({
       fontSize: 12.5,
-      fontFamily: '"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace',
-      cursorBlink: true,
-      theme: readTermTheme(),
+      cursorBlink: !motionQuery?.matches,
+      ...readTermOptions(),
     });
+    const syncCursorBlink = (event: MediaQueryListEvent) => {
+      term.options.cursorBlink = !event.matches;
+    };
+    motionQuery?.addEventListener("change", syncCursorBlink);
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
@@ -132,6 +147,7 @@ export function CloudTerminal({ vmId }: { vmId: string }) {
       closed = true;
       if (ping) clearInterval(ping);
       ro?.disconnect();
+      motionQuery?.removeEventListener("change", syncCursorBlink);
       offData.dispose();
       pipe?.close();
       term.dispose();

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -153,10 +153,15 @@ describe("文件抽屉", () => {
       y: 50,
       toJSON: () => ({}),
     } as DOMRect);
+    fireEvent(window, new Event("resize"));
     await flush();
 
     const panel = screen.getByRole("region", { name: "会话文件" });
-    fireEvent.mouseDown(screen.getByTitle("拖动调整宽度"));
+    const widthHandle = screen.getByTitle("拖动调整宽度");
+    await waitFor(() => expect(widthHandle.getAttribute("aria-valuemax")).toBe("680"));
+    expect(widthHandle.getAttribute("aria-valuemin")).toBe("420");
+    expect(widthHandle.getAttribute("aria-valuenow")).toBe("600");
+    fireEvent.mouseDown(widthHandle);
     fireEvent.mouseMove(window, { clientX: 350 });
     fireEvent.mouseUp(window);
     // pane 右沿 900 - 指针 350 = 550；旧实现会算成 window.innerWidth - 350。
@@ -177,11 +182,118 @@ describe("文件抽屉", () => {
       y: 150,
       toJSON: () => ({}),
     } as DOMRect);
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(splitHandle.getAttribute("aria-valuemax")).toBe("340"));
+    expect(splitHandle.getAttribute("aria-valuemin")).toBe("80");
+    expect(splitHandle.getAttribute("aria-valuenow")).toBe("250");
     fireEvent.mouseDown(splitHandle);
     fireEvent.mouseMove(window, { clientY: 600 });
     fireEvent.mouseUp(window);
     // pane.bottom 650 - list.top 150 - 预览最小 160 = 340。
     expect(list.style.height).toBe("340px");
+  });
+
+  it("窄 pane 的宽度 ARIA 使用实际可达边界，而不是存量目标宽度", async () => {
+    localStorage.setItem("mc.drawerWidth", "777");
+    stubShell({ list: { "": [] } });
+    const { container } = render(
+      <div data-test-pane="">
+        <FilesDrawer variant="pane" sessionId="s1" onClose={() => {}} />
+      </div>,
+    );
+    const pane = container.querySelector<HTMLElement>("[data-test-pane]")!;
+    vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 400,
+      bottom: 600,
+      width: 400,
+      height: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent(window, new Event("resize"));
+
+    const handle = screen.getByTitle("拖动调整宽度");
+    await waitFor(() => expect(handle.getAttribute("aria-valuenow")).toBe("340"));
+    expect(handle.getAttribute("aria-valuemin")).toBe("340");
+    expect(handle.getAttribute("aria-valuemax")).toBe("340");
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(localStorage.getItem("mc.drawerWidth")).toBe("340");
+    expect(handle.getAttribute("aria-valuenow")).toBe("340");
+  });
+
+  it("pane 被 CSS 上限夹窄后，首次 ArrowRight 从实测宽度继续缩窄", async () => {
+    stubShell({ list: { "": [] } });
+    const { container } = render(
+      <div data-test-pane="">
+        <FilesDrawer variant="pane" sessionId="s1" onClose={() => {}} />
+      </div>,
+    );
+    const pane = container.querySelector<HTMLElement>("[data-test-pane]")!;
+    vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 600,
+      bottom: 600,
+      width: 600,
+      height: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const panel = screen.getByRole("region", { name: "会话文件" });
+    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue({
+      left: 90,
+      top: 0,
+      right: 600,
+      bottom: 600,
+      width: 510,
+      height: 600,
+      x: 90,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent(window, new Event("resize"));
+    const handle = screen.getByTitle("拖动调整宽度");
+    await waitFor(() => expect(handle.getAttribute("aria-valuenow")).toBe("510"));
+
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(panel.style.width).toBe("494px");
+    expect(localStorage.getItem("mc.drawerWidth")).toBe("494");
+  });
+
+  it("自适应短列表按 ArrowUp 不反向增高，ARIA 跟随实测列表高度", async () => {
+    stubShell({ list: { "": [entry("a.txt", "a.txt")] }, content: "hello" });
+    render(<FilesDrawer sessionId="s1" onClose={() => {}} />);
+    await userEvent.click(await screen.findByRole("button", { name: /a\.txt/ }));
+    await screen.findByText("hello");
+    const handle = screen.getByTitle("拖动调整列表/预览高度");
+    const list = handle.previousElementSibling as HTMLElement;
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 100,
+      right: 600,
+      bottom: 140,
+      width: 600,
+      height: 40,
+      x: 0,
+      y: 100,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(handle.getAttribute("aria-valuenow")).toBe("40"));
+    expect(handle.getAttribute("aria-valuemin")).toBe("40");
+
+    fireEvent.keyDown(handle, { key: "ArrowUp" });
+    expect(list.style.height).toBe("");
+    expect(localStorage.getItem("mc.drawerSplit")).toBeNull();
+
+    fireEvent.keyDown(handle, { key: "ArrowDown" });
+    expect(list.style.height).toBe("80px");
+    expect(localStorage.getItem("mc.drawerSplit")).toBe("80");
+    await waitFor(() => expect(handle.getAttribute("aria-valuenow")).toBe("80"));
   });
 
   // trackPointer 的收尾此前只挂在 mouseup 上,而 mouseup 不保证会来:抽屉在

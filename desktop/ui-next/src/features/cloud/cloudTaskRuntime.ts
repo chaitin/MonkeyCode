@@ -8,7 +8,9 @@ import {
   markReceipt,
   markUncertain,
   nackHead,
+  pausePending,
   readSendQueueLane,
+  releaseEmptyUserPause,
   subscribeSendQueueLane,
   updateSendQueueLane,
   type CloudQueueAttachment,
@@ -58,6 +60,8 @@ export interface CloudTaskRuntime {
   /** 视图切离期间产生的事件批次；用于重新挂载后补齐同一 runtime 的帧。 */
   eventsSince?(sequence: number): readonly CloudRuntimeEvent[];
   sendFrame(type: string, payload?: unknown): Promise<void>;
+  /** 用户主动取消当前轮：先暂停剩余队列，再发送取消帧。 */
+  cancelRun(): Promise<void>;
   borrowControl(): { ctrl: CloudControl; release(): void };
   confirmResume(): void;
   invalidate(reason?: SendQueueBlock): void;
@@ -305,8 +309,8 @@ export function createCloudTaskRuntime(
   const finishTurn = (token: DispatchToken) => {
     if (!tokenMatches(token)) return;
     const lane = deps.readLane(taskId);
-    const next = completeTurn(lane, token.itemId);
-    if (next === lane) {
+    const completed = completeTurn(lane, token.itemId);
+    if (completed === lane) {
       setLaneBlock({
         code: "receipt-unknown",
         message: "Cloud round ended before its receipt could be confirmed",
@@ -316,7 +320,7 @@ export function createCloudTaskRuntime(
       closeStream();
       return;
     }
-    deps.updateLane(taskId, () => next);
+    deps.updateLane(taskId, () => releaseEmptyUserPause(completed));
     invalidateDispatch();
     closeStream();
     roundState = "idle";
@@ -336,6 +340,7 @@ export function createCloudTaskRuntime(
       if (slot.mode === "attach") {
         if (isBusinessFrame(frame)) roundState = "busy";
         if (frame.type === "task-ended") {
+          deps.updateLane(taskId, releaseEmptyUserPause);
           roundState = "idle";
           closeStream();
           snapshot = { ...snapshot, reconciling: true };
@@ -413,6 +418,9 @@ export function createCloudTaskRuntime(
         return;
       }
       if (slot.mode === "attach") {
+        // attach 正常收束已确认当前没有活动轮次；清掉重启后可能残留的
+        // 空取消屏障，但只要期间已有新消息入队就继续保持用户暂停。
+        deps.updateLane(taskId, releaseEmptyUserPause);
         roundState = "idle";
         kick();
       }
@@ -624,6 +632,11 @@ export function createCloudTaskRuntime(
       if (!current() || !stream?.conn) throw new Error("Cloud task stream is not connected");
       const ok = await stream.conn.send(type, payload);
       if (!ok) throw new Error("Cloud task stream rejected the frame");
+    },
+    async cancelRun() {
+      // 先落暂停再出 cancel；否则 task-ended 可能先触发 kick 并领取下一条。
+      deps.updateLane(taskId, (lane) => pausePending(lane, deps.clock.now()));
+      await runtime.sendFrame("user-cancel", {});
     },
     borrowControl() {
       if (disposed) throw new Error("CloudTaskRuntime is disposed");

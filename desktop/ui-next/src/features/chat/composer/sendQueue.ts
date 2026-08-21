@@ -30,7 +30,8 @@ export type SendQueueBlockCode =
   | "unauthorized"
   | "vm-failed"
   | "task-ended"
-  | "task-missing";
+  | "task-missing"
+  | "user-paused";
 
 export interface SendQueueBlock {
   code: SendQueueBlockCode;
@@ -123,6 +124,7 @@ const BLOCK_CODES = new Set<SendQueueBlockCode>([
   "vm-failed",
   "task-ended",
   "task-missing",
+  "user-paused",
 ]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -244,10 +246,14 @@ export function remove<A>(lane: SendQueueLane<A>, itemId: string): SendQueueLane
   assertSendQueueLane(lane);
   const index = lane.pending.findIndex((item) => item.id === itemId);
   if (index < 0) return lane;
+  const pending = [...lane.pending.slice(0, index), ...lane.pending.slice(index + 1)];
   return {
     ...lane,
-    pending: [...lane.pending.slice(0, index), ...lane.pending.slice(index + 1)],
-    blocked: lane.blocked?.itemId === itemId ? null : lane.blocked,
+    pending,
+    blocked:
+      lane.blocked?.itemId === itemId || (pending.length === 0 && lane.blocked?.code === "user-paused")
+        ? null
+        : lane.blocked,
   };
 }
 
@@ -362,6 +368,38 @@ export function confirmResume<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
   }
   if (lane.blocked === null) return lane;
   return { ...lane, blocked: null };
+}
+
+/** 自动恢复临时故障，但绝不替用户解除主动暂停或不确定投递。 */
+export function resumeAutomatic<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  if (lane.blocked?.code === "user-paused" || lane.inFlight?.phase === "uncertain") return lane;
+  return confirmResume(lane);
+}
+
+/** 用户停止当前轮时建立暂停屏障；已投递项仍由原回执状态机收尾。 */
+export function pausePending<A>(lane: SendQueueLane<A>, at = Date.now()): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  if (lane.blocked !== null) return lane;
+  return block(lane, { code: "user-paused", message: "Paused by user", at });
+}
+
+/** 空队列取消时的短暂暂停屏障在当前轮结束后自行释放。 */
+export function releaseEmptyUserPause<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  if (lane.blocked?.code !== "user-paused" || lane.pending.length > 0) return lane;
+  return { ...lane, blocked: null };
+}
+
+/** 清空尚未投递的消息，保留 in-flight 账本，避免迟到回执失配。 */
+export function clearPending<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  if (lane.pending.length === 0 && lane.blocked?.code !== "user-paused") return lane;
+  return {
+    ...lane,
+    pending: [],
+    blocked: lane.blocked?.code === "user-paused" ? null : lane.blocked,
+  };
 }
 
 /** 用户确认该不确定项不应重试。 */

@@ -141,6 +141,70 @@ describe("useComposer 本地持久 lane", () => {
     expect(sentText(sends(calls)[2]!)).toBe("三");
   });
 
+  it("停止时队列为空也建立取消屏障，轮末前新增消息不会意外补投", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
+      initialProps: { running: true },
+    });
+
+    act(() => result.current.stop());
+    expect(result.current.queue.blocked?.code).toBe("user-paused");
+    act(() => result.current.setDraft("取消期间新增"));
+    act(() => result.current.send());
+    rerender({ running: false });
+    await settle();
+
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(0);
+    expect(result.current.queue.blocked?.code).toBe("user-paused");
+  });
+
+  it("用户主动停止会暂停剩余队列，新增消息不解锁，显式继续才补投", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
+      initialProps: { running: true },
+    });
+    for (const text of ["一", "二"]) {
+      act(() => result.current.setDraft(text));
+      act(() => result.current.send());
+    }
+
+    act(() => result.current.stop());
+    expect(result.current.queue.blocked?.code).toBe("user-paused");
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-cancel")).toHaveLength(1);
+
+    act(() => result.current.setDraft("三"));
+    act(() => result.current.send());
+    expect(result.current.queue.blocked?.code).toBe("user-paused");
+    expect(queueTexts("a")).toEqual(["一", "二", "三"]);
+
+    rerender({ running: false });
+    await settle();
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(0);
+
+    act(() => result.current.resumeQueue());
+    await waitFor(() =>
+      expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(1),
+    );
+    expect(sentText(sends(calls).find((call) => call.args?.ftype === "user-input")!)).toBe("一");
+  });
+
+  it("清空暂停队列后轮末不会补投", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
+      initialProps: { running: true },
+    });
+    act(() => result.current.setDraft("不要发送"));
+    act(() => result.current.send());
+    act(() => result.current.stop());
+    act(() => result.current.clearQueue());
+
+    expect(result.current.queue.pending).toEqual([]);
+    expect(result.current.queue.blocked).toBeNull();
+    rerender({ running: false });
+    await settle();
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(0);
+  });
+
   it("发送失败时同 ID 回队首并阻塞后续，退避到点只重试失败项", async () => {
     vi.useFakeTimers();
     const calls = stubShell((cmd) => {

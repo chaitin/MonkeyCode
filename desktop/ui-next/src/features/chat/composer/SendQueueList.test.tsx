@@ -102,6 +102,39 @@ describe("SendQueueList", () => {
     expect(onRemove).toHaveBeenCalledWith("stable-second");
   });
 
+  it("收到回执后隐藏已出现在时间线的发送中项", () => {
+    render(
+      <SendQueueList
+        pending={[]}
+        inFlight={{ item: item("sent", "已经发送的消息"), phase: "awaiting-turn-end", startedAt: 2 }}
+        blocked={null}
+        onRemove={() => {}}
+        onReorder={() => {}}
+        onResume={() => {}}
+        onDiscardUncertain={() => {}}
+      />,
+    );
+
+    expect(screen.queryByRole("region", { name: "待发送消息队列" })).toBeNull();
+    expect(screen.queryByText("发送中")).toBeNull();
+  });
+
+  it("空队列取消屏障不渲染空暂停栏", () => {
+    render(
+      <SendQueueList
+        pending={[]}
+        inFlight={null}
+        blocked={{ code: "user-paused", message: "Paused by user", at: 3 }}
+        onRemove={() => {}}
+        onReorder={() => {}}
+        onResume={() => {}}
+        onDiscardUncertain={() => {}}
+        onClearQueue={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("region", { name: "待发送消息队列" })).toBeNull();
+  });
+
   it("按稳定 ID 向前和向后重排，并即时显示插入线", () => {
     render(<QueueHarness initial={[item("a", "第一条消息"), item("b", "第二条消息"), item("c", "第三条消息")]} />);
 
@@ -110,6 +143,49 @@ describe("SendQueueList", () => {
 
     dragBefore(0, "第二条消息");
     expect(handles().map((handle) => handle.closest("li")?.textContent)).toEqual(["1第一条消息", "2第三条消息", "3第二条消息"]);
+  });
+
+  it("拖拽把手支持 Alt+方向键重排，并消费对应键盘事件", () => {
+    const onReorder = vi.fn();
+    const bubbled = vi.fn();
+    render(
+      <div onKeyDown={bubbled}>
+        <SendQueueList
+          pending={[item("a", "第一条消息"), item("b", "第二条消息"), item("c", "第三条消息"), item("d", "第四条消息")]}
+          inFlight={null}
+          blocked={null}
+          onRemove={() => {}}
+          onReorder={onReorder}
+          onResume={() => {}}
+          onDiscardUncertain={() => {}}
+        />
+      </div>,
+    );
+
+    expect(handles()[1]?.getAttribute("aria-keyshortcuts")).toBe("Alt+ArrowUp Alt+ArrowDown");
+    expect(fireEvent.keyDown(handles()[1]!, { key: "ArrowUp", altKey: true })).toBe(false);
+    expect(onReorder).toHaveBeenLastCalledWith("b", "a");
+    expect(fireEvent.keyDown(handles()[1]!, { key: "ArrowDown", altKey: true })).toBe(false);
+    expect(onReorder).toHaveBeenLastCalledWith("b", "d");
+    expect(fireEvent.keyDown(handles()[2]!, { key: "ArrowDown", altKey: true })).toBe(false);
+    expect(onReorder).toHaveBeenLastCalledWith("c", null);
+    expect(bubbled).not.toHaveBeenCalled();
+  });
+
+  it("折叠队列的末个可见项向下移动时自动展开并保留焦点", () => {
+    render(
+      <QueueHarness
+        initial={[item("a", "第一条消息"), item("b", "第二条消息"), item("c", "第三条消息"), item("d", "第四条消息")]}
+      />,
+    );
+    const focused = handles()[2]!;
+    focused.focus();
+
+    fireEvent.keyDown(focused, { key: "ArrowDown", altKey: true });
+
+    expect(handles()).toHaveLength(4);
+    const moved = screen.getByText("第三条消息").closest("li")!;
+    expect(within(moved).getByRole("button", { name: "拖动调整顺序" })).toBe(document.activeElement);
   });
 
   it("可拖到队尾，并逐项删除后保留其他项相对顺序", () => {
@@ -224,6 +300,32 @@ describe("SendQueueList", () => {
     fireEvent.click(screen.getByRole("button", { name: "移除此消息" }));
     expect(onResume).toHaveBeenCalledTimes(2);
     expect(onDiscard).toHaveBeenCalledWith("uncertain-id");
+  });
+
+  it("用户暂停状态提供继续发送与二次确认清空", () => {
+    const onResume = vi.fn();
+    const onClearQueue = vi.fn();
+    render(
+      <SendQueueList
+        pending={[item("a", "第一条消息")]}
+        inFlight={null}
+        blocked={{ code: "user-paused", message: "Paused by user", at: 6 }}
+        onRemove={() => {}}
+        onReorder={() => {}}
+        onResume={onResume}
+        onDiscardUncertain={() => {}}
+        onClearQueue={onClearQueue}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain("队列已暂停");
+    expect(screen.queryByRole("button", { name: "恢复发送" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "继续发送" }));
+    expect(onResume).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "清空队列" }));
+    expect(onClearQueue).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认清空" }));
+    expect(onClearQueue).toHaveBeenCalledOnce();
   });
 
   it.each(["本地", "云端"])("内部排序不冒泡到%s附件拖放入口", (entry) => {

@@ -265,7 +265,7 @@ function TaskRow({
   onDelete: (task: CloudTask) => void;
   onStop: (task: CloudTask) => void;
   /** 行拖进格装载(工作台;不传即不可拖)。 */
-  onDragStart?: (e: DragEvent<HTMLAnchorElement>, task: CloudTask) => void;
+  onDragStart?: (e: DragEvent<HTMLButtonElement>, task: CloudTask) => void;
 }) {
   const { t } = useI18n();
   const label = cloudTaskLabel(task, t("cloud.list.untitled"));
@@ -328,7 +328,7 @@ export function CloudTaskList({
   /** 项目组头「在此项目新建任务」:App 打开新建视图并预选该云端项目 */
   onNewTaskIn?: (project: CloudProject) => void;
   /** 行拖进格装载(工作台 LOAD_MIME;不传即不可拖)。 */
-  onTaskDragStart?: (e: DragEvent<HTMLAnchorElement>, task: CloudTask) => void;
+  onTaskDragStart?: (e: DragEvent<HTMLButtonElement>, task: CloudTask) => void;
 }) {
   const { t } = useI18n();
   const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();

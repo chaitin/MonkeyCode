@@ -114,11 +114,14 @@
   --spacing-side: 232px;
   /* 平台约定色:不跟主题走。mac 红绿灯三色 = 系统本色(自绘小灯 2026-08-20
    * 回归:原生尺寸不可调、用户嫌大);caption-close = Windows 11 官方关闭键
-   * hover 红(Win10 是 #e81123,Win11 起改这个值) */
+   * hover 红(Win10 是 #e81123,Win11 起改这个值)。关闭键前景与 mac 灯内
+   * 字形也以平台 token 命名，避免组件散写通用黑白色。 */
   --color-mac-close: #ff5f57;
   --color-mac-min: #febc2e;
   --color-mac-zoom: #28c840;
+  --color-mac-control-glyph: rgb(0 0 0 / 60%);
   --color-caption-close: #c42b1c;
+  --color-caption-close-content: #fff;
 }
 
 @layer base {
@@ -131,6 +134,10 @@
    * 本变量,不许再手算。 */
   :root {
     --chrome-h: 0px;
+    /* 自绘窗口覆盖层：普通浮层 < Linux 拉伸热区 < caption 三键。 */
+    --z-window-overlay: 1000;
+    --z-resize-edge: 1001;
+    --z-window-controls: 1002;
   }
   [data-platform="windows"],
   [data-platform="linux"] {

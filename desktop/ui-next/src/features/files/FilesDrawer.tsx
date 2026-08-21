@@ -11,7 +11,7 @@
 // - Esc:走全局层栈 lib/util/escLayer(抽屉开着即占一层),层内再分两级
 //   ——预览开着先关预览,再一次才关抽屉;跨浮层的层级协调交给层栈本身。
 import { IconFolderOpen, IconX } from "@tabler/icons-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import { isMacShell } from "@/lib/ipc/host";
@@ -29,6 +29,15 @@ const DEFAULT_WIDTH = 600;
 const MAX_STORED_WIDTH = 1200; // 存量值的静态上限;拖拽时上限是窗宽 90%
 const MIN_SPLIT = 80;
 const PREVIEW_MIN = 160; // 分栏拖拽时预览区至少保留的高度
+
+interface ResizeGeometry {
+  widthMin: number;
+  widthMax: number;
+  widthNow: number;
+  splitMin: number;
+  splitMax: number;
+  splitNow: number;
+}
 
 type Tab = "files" | "changes";
 
@@ -107,6 +116,7 @@ export function FilesDrawer({
   const [split, setSplit] = useState(readSplit);
   const [draggingW, setDraggingW] = useState(false);
   const [draggingS, setDraggingS] = useState(false);
+  const [resizeGeometry, setResizeGeometry] = useState<ResizeGeometry | null>(null);
   // 定位失败的兜底提示(成功无声——文件管理器窗口自己会跳出来)
   const [revealMsg, setRevealMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -242,7 +252,7 @@ export function FilesDrawer({
 
   /** pane 抽屉的坐标系是其定位父级（当前 ChatView 格），不能拿整个窗口算；
    * global 形态仍以 viewport 为界。jsdom/尚未布局时退回 viewport。 */
-  const containingBounds = () => {
+  const containingBounds = useCallback(() => {
     if (variant === "pane") {
       const rect = panelRef.current?.parentElement?.getBoundingClientRect();
       if (rect && rect.width > 0 && rect.height > 0) return rect;
@@ -255,15 +265,20 @@ export function FilesDrawer({
       width: window.innerWidth,
       height: window.innerHeight,
     };
-  };
+  }, [variant]);
+
+  const widthLimits = useCallback(() => {
+    const bounds = containingBounds();
+    const max = Math.max(1, Math.round(bounds.width * (variant === "pane" ? 0.85 : 0.9)));
+    // 窄 pane 里 CSS 的 max-w-[85%] 优先于桌面抽屉的 420px 常规下限。
+    return { min: Math.min(MIN_WIDTH, max), max };
+  }, [containingBounds, variant]);
 
   // 左缘拖拽调宽,松手落盘记忆
   const startWidthDrag = (e: ReactMouseEvent) => {
     e.preventDefault();
     const bounds = containingBounds();
-    const max = Math.max(1, Math.round(bounds.width * (variant === "pane" ? 0.85 : 0.9)));
-    // 窄 pane 里 CSS 的 max-w-[85%] 优先于桌面抽屉的 420px 常规下限。
-    const min = Math.min(MIN_WIDTH, max);
+    const { min, max } = widthLimits();
     setDraggingW(true);
     trackPointer(
       "col-resize",
@@ -280,17 +295,59 @@ export function FilesDrawer({
     );
   };
 
+  const splitLimits = useCallback(() => {
+    const top = listRef.current?.getBoundingClientRect().top ?? 0;
+    const bounds = containingBounds();
+    return { min: MIN_SPLIT, max: Math.max(bounds.bottom - top - PREVIEW_MIN, MIN_SPLIT), top };
+  }, [containingBounds]);
+
+  // separator 的 ARIA 数值必须描述当前 pane 的真实几何，而不是整个窗口或
+  // localStorage 中尚未被 CSS max-width 夹取的目标值。ResizeObserver 让
+  // 分屏拖动、内容增减和预览开合后都同步更新；layout effect 保证首帧发布
+  // 给无障碍树前先完成一次测量。
+  useLayoutEffect(() => {
+    const sync = () => {
+      const widthRange = widthLimits();
+      const splitRange = splitLimits();
+      const panelWidth = panelRef.current?.getBoundingClientRect().width || Math.min(Math.max(width, widthRange.min), widthRange.max);
+      const measuredList = listRef.current?.getBoundingClientRect().height || split || splitRange.min;
+      const naturalSplitMin = split > 0 ? splitRange.min : Math.min(splitRange.min, Math.max(1, Math.round(measuredList)));
+      const next: ResizeGeometry = {
+        widthMin: widthRange.min,
+        widthMax: widthRange.max,
+        widthNow: Math.min(Math.max(Math.round(panelWidth), widthRange.min), widthRange.max),
+        splitMin: naturalSplitMin,
+        splitMax: splitRange.max,
+        splitNow: Math.min(Math.max(Math.round(measuredList), naturalSplitMin), splitRange.max),
+      };
+      setResizeGeometry((current) =>
+        current && Object.keys(next).every((key) => current[key as keyof ResizeGeometry] === next[key as keyof ResizeGeometry])
+          ? current
+          : next,
+      );
+    };
+    sync();
+    const targets = [panelRef.current?.parentElement, panelRef.current, listRef.current].filter(
+      (target): target is HTMLElement => target instanceof HTMLElement,
+    );
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(sync) : null;
+    targets.forEach((target) => observer?.observe(target));
+    window.addEventListener("resize", sync);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", sync);
+    };
+  }, [preview, split, splitLimits, width, widthLimits]);
+
   // 列表/预览分栏拖拽:以列表顶为基准算高度,预览区至少保留 PREVIEW_MIN
   const startSplitDrag = (e: ReactMouseEvent) => {
     e.preventDefault();
-    const top = listRef.current?.getBoundingClientRect().top ?? 0;
-    const bounds = containingBounds();
+    const { min, max, top } = splitLimits();
     setDraggingS(true);
     trackPointer(
       "row-resize",
       (ev) => {
-        const max = Math.max(bounds.bottom - top - PREVIEW_MIN, MIN_SPLIT);
-        setSplit(Math.min(Math.max(ev.clientY - top, MIN_SPLIT), max));
+        setSplit(Math.min(Math.max(ev.clientY - top, min), max));
       },
       () => {
         setDraggingS(false);
@@ -336,7 +393,6 @@ export function FilesDrawer({
   const listClass = preview
     ? `min-h-0 shrink-0 py-1 ${SCROLL} ${split > 0 ? "max-h-[calc(100%-190px)]" : "max-h-[38%]"}`
     : `min-h-0 flex-1 py-1 ${SCROLL}`;
-
   // 自绘窗框条(Windows/Linux)不入 z 层竞赛:抽屉整组(scrim + 面板)从窗框
   // 下缘起,结构性避让——三键与拖拽区恒可点,scrim 也不压暗窗框。高度读
   // --chrome-h(app.css,按 data-platform 落值),不在这儿手算平台偏移
@@ -365,9 +421,29 @@ export function FilesDrawer({
         <div
           role="separator"
           aria-orientation="vertical"
+          aria-valuemin={resizeGeometry?.widthMin}
+          aria-valuemax={resizeGeometry?.widthMax}
+          aria-valuenow={resizeGeometry?.widthNow}
+          tabIndex={0}
           title={t("files.resizeWidth")}
           onMouseDown={startWidthDrag}
-          className={`absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize ${draggingW ? "bg-primary/40" : "hover:bg-primary/20"}`}
+          onKeyDown={(e) => {
+            const delta = e.key === "ArrowLeft" ? 16 : e.key === "ArrowRight" ? -16 : 0;
+            if (delta === 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const { min, max } = widthLimits();
+            const measured = panelRef.current?.getBoundingClientRect().width ?? 0;
+            setWidth((current) => {
+              // pane 缩窄后 CSS max-width 可能已把可见宽度夹到 state 以下；
+              // 键盘必须从用户眼前的实际宽度起步，不能先空耗一次来归一化 state。
+              const base = measured > 0 ? Math.min(Math.max(Math.round(measured), min), max) : Math.min(Math.max(current, min), max);
+              const next = Math.min(Math.max(base + delta, min), max);
+              persist(WIDTH_KEY, next);
+              return next;
+            });
+          }}
+          className={`absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset ${draggingW ? "bg-primary/40" : "hover:bg-primary/20 focus-visible:bg-primary/20"}`}
         />
         <header className="flex shrink-0 items-center gap-2 border-b border-base-300 pl-2 pr-2">
           <div role="tablist" className="tabs tabs-border">
@@ -444,9 +520,31 @@ export function FilesDrawer({
             <div
               role="separator"
               aria-orientation="horizontal"
+              aria-valuemin={resizeGeometry?.splitMin}
+              aria-valuemax={resizeGeometry?.splitMax}
+              aria-valuenow={resizeGeometry?.splitNow}
+              tabIndex={0}
               title={t("files.resizeSplit")}
               onMouseDown={startSplitDrag}
-              className={`h-1.5 shrink-0 cursor-row-resize ${draggingS ? "bg-primary/40" : "hover:bg-primary/20"}`}
+              onKeyDown={(e) => {
+                const delta = e.key === "ArrowUp" ? -16 : e.key === "ArrowDown" ? 16 : 0;
+                if (delta === 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const { min, max } = splitLimits();
+                const measured = listRef.current?.getBoundingClientRect().height ?? 0;
+                setSplit((current) => {
+                  const base = current > 0 ? current : measured || Math.round(max * 0.38);
+                  // 默认自适应高度可以低于拖拽模式的 80px 下限；此时 ArrowUp
+                  // 已经没有向上的可调空间，不能反而把列表跳大到 80px。
+                  if (current === 0 && e.key === "ArrowUp" && base <= min) return current;
+                  const next = Math.min(Math.max(base + delta, min), max);
+                  if (next === current) return current;
+                  persist(SPLIT_KEY, next);
+                  return next;
+                });
+              }}
+              className={`h-1.5 shrink-0 cursor-row-resize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset ${draggingS ? "bg-primary/40" : "hover:bg-primary/20 focus-visible:bg-primary/20"}`}
             />
             <Preview
               model={preview}

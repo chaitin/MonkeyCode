@@ -63,7 +63,7 @@ function UserBubble({
   const thumb = "block max-h-28 max-w-36 cursor-zoom-in rounded-box";
   return (
     <div
-      className={`group chat chat-end relative rounded-box ${flash ? "animate-[mc-flash_1s_ease]" : ""}`}
+      className={`group chat chat-end relative rounded-box ${flash ? "motion-safe:animate-[mc-flash_1s_ease]" : ""}`}
       data-user-seq={item.seq}
     >
       {/* 时间绝对定位在块顶空隙里(§6.2 允许的另一形态):不占流式高度,

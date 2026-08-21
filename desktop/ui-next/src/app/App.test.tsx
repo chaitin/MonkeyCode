@@ -209,9 +209,9 @@ function stubShell(
   };
 }
 
-/** 侧栏行(菜单/属性都挂在 <a> 上;同名文字在主区头部也有一份,取侧栏那份)。 */
+/** 侧栏行(菜单/属性都挂在 button 上;同名文字在主区头部也有一份,取侧栏那份)。 */
 const rowOf = (text: string) =>
-  screen.getAllByText(text).map((el) => el.closest("a")).find(Boolean) as HTMLElement;
+  screen.getAllByText(text).map((el) => el.closest("button")).find(Boolean) as HTMLElement;
 
 /** 行右键后取命令式菜单(backdrop + menu 追加在 body 末尾)。 */
 const contextMenuOf = (el: HTMLElement): HTMLElement => {
@@ -683,7 +683,7 @@ describe("任务列排序跟得上后台活动", () => {
   // (「临时会话」哨兵组头也带 aria-expanded 且默认居首,活跃度排序只看
   // 项目组,滤掉它)
   const groups = () =>
-    [...document.querySelectorAll('aside a[aria-expanded]')]
+    [...document.querySelectorAll('aside button[aria-expanded]')]
       .map((el) => el.textContent ?? "")
       .filter((tx) => !tx.includes("临时会话"));
 
@@ -745,7 +745,7 @@ describe("点格与任务列联动(2026-08-19)", () => {
     });
     render(<App />);
     await userEvent.click(screen.getByRole("tab", { name: "云端" }));
-    const row = (await screen.findByText("待删云端任务")).closest("a") as HTMLElement;
+    const row = (await screen.findByText("待删云端任务")).closest("button") as HTMLElement;
     fireEvent.contextMenu(row);
     const menu = document.body.lastElementChild as HTMLElement;
     await userEvent.click(within(menu).getByText("删除任务"));
@@ -759,7 +759,7 @@ describe("点格与任务列联动(2026-08-19)", () => {
     stubShell({ cloudTasks: [{ id: "ct-delete-ok", title: "可删云端任务", status: "processing" }] });
     render(<App />);
     await userEvent.click(screen.getByRole("tab", { name: "云端" }));
-    const row = (await screen.findByText("可删云端任务")).closest("a") as HTMLElement;
+    const row = (await screen.findByText("可删云端任务")).closest("button") as HTMLElement;
     fireEvent.contextMenu(row);
     const menu = document.body.lastElementChild as HTMLElement;
     await userEvent.click(within(menu).getByText("删除任务"));
@@ -799,7 +799,7 @@ describe("点格与任务列联动(2026-08-19)", () => {
     stubShell({ cloudTasks: [{ id: "ct1", title: "云端任务一", status: "processing" }] });
     render(<App />);
     await userEvent.click(screen.getByRole("tab", { name: "云端" }));
-    const row = (await screen.findByText("云端任务一")).closest("a")!;
+    const row = (await screen.findByText("云端任务一")).closest("button")!;
     expect(row.getAttribute("draggable")).toBe("true");
   });
 });

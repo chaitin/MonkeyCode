@@ -66,7 +66,7 @@ export function DownloadsDock() {
   // 弹层关了(命中测试落到 .modal-backdrop)。旧 UI downloadsBar 就写着
   // 「zIndex: 80,压在文件抽屉(36)/缩放浮层(50)之上,下载去向任何页面都可见」
   return (
-    <div className="toast toast-end z-[1000]">
+    <div className="toast toast-end z-[var(--z-window-overlay)]">
       {downloads.map((d) => (
         <DownloadCard key={d.dlId} item={d} />
       ))}

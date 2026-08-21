@@ -162,6 +162,11 @@ export function CloudComposer({
   const usage = h.chat.usage;
   const usagePct = usage && usage.size > 0 ? Math.round((usage.used / usage.size) * 100) : null;
 
+  const queueVisible =
+    h.queue.pending.length > 0 ||
+    (!!h.queue.inFlight && h.queue.inFlight.phase !== "awaiting-turn-end") ||
+    (!!h.queue.blocked && h.queue.blocked.code !== "user-paused");
+
   return (
     <div className="flex flex-col gap-2">
       {h.err && <ErrorBar text={h.err} onDismiss={h.clearErr} />}
@@ -173,6 +178,7 @@ export function CloudComposer({
         onRemove={h.removeQueued}
         onReorder={h.reorderQueued}
         onResume={h.confirmQueue}
+        onClearQueue={h.clearQueue}
         onDiscardUncertain={h.discardUncertain}
         onStopAndClear={h.stopAndClearQueue}
         attachmentName={(attachment) => attachment.filename}
@@ -182,7 +188,7 @@ export function CloudComposer({
         attachedToComposer
       />
 
-      <ComposerCard attachedTop={h.queue.pending.length > 0 || !!h.queue.inFlight || !!h.queue.blocked}>
+      <ComposerCard attachedTop={queueVisible}>
         {h.running && (
           <RunBar
             label={t("cloud.view.running")}

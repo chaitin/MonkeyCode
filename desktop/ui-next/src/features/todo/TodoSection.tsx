@@ -123,8 +123,9 @@ function TodoRow({
         drag.onDropBefore(item.id);
       }}
     >
-      <a
-        className={`flex min-w-0 items-center gap-2 ${levelPad(level)}`}
+      <button
+        type="button"
+        className={`flex w-full min-w-0 items-center gap-2 text-start ${levelPad(level)}`}
         title={tooltip}
         draggable={!!drag}
         onDragStart={() => drag?.onDragStart(item.id)}
@@ -146,7 +147,7 @@ function TodoRow({
           <IconPhoto size={13} stroke={1.75} aria-hidden className="shrink-0 text-base-content/40" />
         )}
         {trailing && <StatusDot {...trailing} />}
-      </a>
+      </button>
     </li>
   );
 }

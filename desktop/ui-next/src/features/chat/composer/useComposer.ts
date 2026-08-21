@@ -26,6 +26,7 @@ import { b64encode } from "@/lib/protocol/codec";
 import { bindActiveComposer, stashGet, stashSet } from "./stash";
 import {
   claimHead,
+  clearPending,
   completeTurn,
   confirmResume,
   createSendQueueItem,
@@ -35,8 +36,11 @@ import {
   localSendQueueTarget,
   markReceipt,
   nackHead,
+  pausePending,
+  releaseEmptyUserPause,
   remove,
   reorderBefore,
+  resumeAutomatic,
   subscribeSendQueueLane,
   updateSendQueueLane,
   type LocalQueueAttachment,
@@ -69,6 +73,7 @@ export interface ComposerCtl {
   removeQueued(id: string): void;
   reorderQueued(id: string, beforeId: string | null): void;
   resumeQueue(): void;
+  clearQueue(): void;
   discardUncertainQueued(id: string): void;
   atts: ComposerAtt[];
   removeAtt(index: number): void;
@@ -214,7 +219,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   useEffect(() => {
     if (handledFlushTickRef.current === flushTick) return;
     handledFlushTickRef.current = flushTick;
-    updateQueue((lane) => (lane.blocked && lane.inFlight?.phase !== "uncertain" ? confirmResume(lane) : lane));
+    updateQueue(resumeAutomatic);
   }, [flushTick, updateQueue]);
 
   const send = useCallback((): boolean => {
@@ -237,7 +242,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       // 忙碌/已有 lane 时结构化追加到队尾；附件行只在真正投递时生成。
       flushBlockedRef.current = false;
       clearRetry();
-      updateQueue((lane) => enqueue(confirmResume(lane), createSendQueueItem(content, atts)));
+      updateQueue((lane) => enqueue(resumeAutomatic(lane), createSendQueueItem(content, atts)));
       setDraft("");
       setAtts([]);
       return true;
@@ -285,7 +290,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     flushBlockedRef.current = false;
     clearRetry();
     updateQueue((lane) => {
-      let next = lane.blocked && lane.inFlight?.phase !== "uncertain" ? confirmResume(lane) : lane;
+      let next = resumeAutomatic(lane);
       const inFlight = next.inFlight;
       if (inFlight && (inFlight.baselineSeq === undefined || lastSeq > inFlight.baselineSeq)) {
         next = markReceipt(next, inFlight.item.id);
@@ -302,10 +307,11 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     flushBlockedRef.current = false;
     clearRetry();
     updateQueue((lane) => {
-      let next = lane.blocked && lane.inFlight?.phase !== "uncertain" ? confirmResume(lane) : lane;
+      let next = resumeAutomatic(lane);
       const itemId = next.inFlight?.item.id;
       if (running && itemId) next = markReceipt(next, itemId);
       if (!running && wasRunning && itemId) next = completeTurn(next, itemId);
+      if (!running) next = releaseEmptyUserPause(next);
       return next;
     });
   }, [running, clearRetry, updateQueue]);
@@ -377,8 +383,13 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   ]);
 
   const stop = useCallback(() => {
+    // 用户停止与正常轮末必须分流：先持久化暂停，再发 cancel，避免 task-ended
+    // 边沿抢先领取下一条；空队列也需短暂设屏障，拦住取消完成前的新消息。
+    clearRetry();
+    flushBlockedRef.current = false;
+    updateQueue(pausePending);
     void sessionSend(sessionId, "user-cancel", {});
-  }, [sessionId]);
+  }, [clearRetry, sessionId, updateQueue]);
 
   /** 上传一个来源并入列附件;失败外显、不阻断后续文件。 */
   const uploadOne = useCallback(
@@ -484,6 +495,11 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     flushBlockedRef.current = false;
     updateQueue(confirmResume);
   }, [clearRetry, updateQueue]);
+  const clearQueue = useCallback(() => {
+    clearRetry();
+    flushBlockedRef.current = false;
+    updateQueue(clearPending);
+  }, [clearRetry, updateQueue]);
   const discardUncertainQueued = useCallback(
     (id: string) => updateQueue((lane) => discardUncertain(lane, id)),
     [updateQueue],
@@ -497,6 +513,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       removeQueued,
       reorderQueued,
       resumeQueue,
+      clearQueue,
       discardUncertainQueued,
       atts,
       removeAtt,
@@ -515,6 +532,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       removeQueued,
       reorderQueued,
       resumeQueue,
+      clearQueue,
       discardUncertainQueued,
       atts,
       removeAtt,

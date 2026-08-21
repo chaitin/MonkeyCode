@@ -381,13 +381,18 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
       ? Math.round((presentation.usage.used / presentation.usage.size) * 100)
       : null;
 
+  const queueVisible =
+    ctl.queue.pending.length > 0 ||
+    (!!ctl.queue.inFlight && ctl.queue.inFlight.phase !== "awaiting-turn-end") ||
+    (!!ctl.queue.blocked && ctl.queue.blocked.code !== "user-paused");
+
   return (
     <div className="flex flex-col gap-2">
       {/* composer 域的两条瞬态反馈,统一形态(错误条件收口在 composerKit):
           soft 底 + 14px 语义图标 + truncate 正文 + 右端关闭 */}
       {ctl.error && <ErrorBar text={ctl.error} onDismiss={ctl.dismissError} />}
 
-      {(ctl.queue.pending.length > 0 || ctl.queue.inFlight || ctl.queue.blocked) && (
+      {queueVisible && (
         <SendQueueList
           pending={ctl.queue.pending}
           inFlight={ctl.queue.inFlight}
@@ -395,6 +400,7 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
           onRemove={ctl.removeQueued}
           onReorder={ctl.reorderQueued}
           onResume={ctl.resumeQueue}
+          onClearQueue={ctl.clearQueue}
           onDiscardUncertain={ctl.discardUncertainQueued}
           attachmentName={(attachment) => attachment.name}
           attachmentIsImage={(attachment) => attachment.isImage}
@@ -409,7 +415,7 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
       {/* 输入卡外框(形态收口在 composerKit:出血/聚焦边线/禁挂 dropdown 类
           的缘由见 ComposerCard 头注)。斜杠面板是卡内自绘浮层(绝对定位,
           焦点始终留在 textarea) */}
-      <ComposerCard attachedTop={ctl.queue.pending.length > 0 || !!ctl.queue.inFlight || !!ctl.queue.blocked}>
+      <ComposerCard attachedTop={queueVisible}>
         {slashOpen && (
           <SlashPanel list={list} active={act} onHover={setActive} onPick={pickCommand} />
         )}

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
+  clearPending,
   cloudSendQueueTarget,
   createSendQueueItem,
   discardUncertain,
@@ -94,6 +95,7 @@ export interface CloudTaskHandle {
   removeQueued(id: string): void;
   reorderQueued(id: string, beforeId: string | null): void;
   confirmQueue(): void;
+  clearQueue(): void;
   discardUncertain(id: string): void;
   stopAndClearQueue(): void;
   waking: boolean;
@@ -363,7 +365,11 @@ export function useCloudTask(
   }, [runtimeTask]);
 
   const cancelRun = () => {
-    void sendFrame("user-cancel", {}).catch(() => setErr(t("cloud.err.cancelNotSent")));
+    if (!runtimeTask) {
+      setErr(t("cloud.err.cancelNotSent"));
+      return;
+    }
+    void runtimeTask.cancelRun().catch(() => setErr(t("cloud.err.cancelNotSent")));
   };
 
   const stopTask = async () => {
@@ -437,6 +443,7 @@ export function useCloudTask(
     removeQueued: (itemId) => { updateLane((lane) => remove(lane, itemId)); },
     reorderQueued: (itemId, beforeId) => { updateLane((lane) => reorderBefore(lane, itemId, beforeId)); },
     confirmQueue: () => runtimeTask?.confirmResume(),
+    clearQueue: () => { updateLane(clearPending); },
     discardUncertain: (itemId) => { updateLane((lane) => discardUncertain(lane, itemId)); },
     stopAndClearQueue: () => cloudQueue.dropTask(id),
     waking,

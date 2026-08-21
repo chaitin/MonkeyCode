@@ -480,6 +480,11 @@ describe("运行态 / 停止 / 排队", () => {
     });
     expect(screen.getByText("换个问法")).toBeTruthy();
     expect(screen.getByText("发送中")).toBeTruthy();
+
+    // 首帧即发送回执：该项已进入时间线，只保留内部逐轮锁，不再重复显示“发送中”。
+    emit("frames:s1", [{ type: "task-started", timestamp: 8, seq: 8 }]);
+    await waitFor(() => expect(screen.queryByText("发送中")).toBeNull());
+    expect(screen.getByText("换个问法")).toBeTruthy();
   });
 
   it("排队可取消:清掉后轮结束不补投", async () => {

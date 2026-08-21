@@ -713,7 +713,7 @@ export function CloudTaskView({
           border-b 分隔线、微量 warning 底,不用 alert 横幅 */}
       {connText && !h.ended && (
         <div role="status" className="flex shrink-0 items-center gap-2 border-b border-base-300 bg-warning/5 px-4 py-1.5 text-xs text-base-content/70">
-          <span aria-hidden className="status status-warning status-sm animate-pulse shrink-0" />
+          <span aria-hidden className="status status-warning status-sm motion-safe:animate-pulse shrink-0" />
           <span className="min-w-0 flex-1 truncate" title={connText}>{connText}</span>
         </div>
       )}

@@ -95,7 +95,7 @@ export function Brand() {
 /** caption 三键共用皮相:46×全条高(=28px)的**直角通高**块,触到窗口上下边。
  *  与视图头部那排 `btn-ghost btn-square btn-sm` 的圆角内缩胶囊形成形状对比
  *  ——眼睛靠"贴不贴边"分组,不靠间距硬撑(2026-08-08 定案)。 */
-// relative z-[1002]:必须压过 ResizeEdges(z-[1001])。Linux 走 CSD 后窗口内侧
+// relative --z-window-controls:必须压过 ResizeEdges(--z-resize-edge)。Linux 走 CSD 后窗口内侧
 // 补了 8 个透明拉伸热区,其中 NorthEast 的 12×12 **整块落在关闭键内部**、North
 // 又吃掉三键顶部 4px(28px 条高的 1/7,而这条刚因用户两次报障从 32 压到 28)。
 // 不抬 z 的话:把指针甩到右上角点关闭,窗口不关——原地点击的结果是 WM 起了
@@ -104,7 +104,7 @@ export function Brand() {
 // 拉伸,只让出三键这 138px。代价是窗口右上角那 12px 的对角拉伸没了——
 // 关窗远比从这一个角拉伸常用,右边缘(y>28)与其余三角都还在。
 const CAPTION_BTN =
-  "relative z-[1002] flex h-full w-[46px] cursor-default items-center justify-center text-base-content/70 transition-colors duration-150";
+  "relative z-[var(--z-window-controls)] flex h-full w-[46px] cursor-default items-center justify-center text-base-content/70 transition-[background-color,color] duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-base-content";
 
 export function TitleBar({ leading = null }: { leading?: ReactNode } = {}) {
   const { t } = useI18n();
@@ -138,7 +138,7 @@ export function TitleBar({ leading = null }: { leading?: ReactNode } = {}) {
       <button
         type="button"
         aria-label={t("titlebar.minimize")}
-        className={`${CAPTION_BTN} hover:bg-base-content/10`}
+        className={`${CAPTION_BTN} hover:bg-base-content/10 active:bg-base-content/20`}
         onClick={windowMinimize}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" {...CAPTION_GLYPH} aria-hidden>
@@ -148,7 +148,7 @@ export function TitleBar({ leading = null }: { leading?: ReactNode } = {}) {
       <button
         type="button"
         aria-label={maximized ? t("titlebar.restore") : t("titlebar.maximize")}
-        className={`${CAPTION_BTN} hover:bg-base-content/10`}
+        className={`${CAPTION_BTN} hover:bg-base-content/10 active:bg-base-content/20`}
         onClick={windowToggleMaximize}
       >
         {maximized ? (
@@ -166,7 +166,7 @@ export function TitleBar({ leading = null }: { leading?: ReactNode } = {}) {
       <button
         type="button"
         aria-label={t("titlebar.close")}
-        className={`${CAPTION_BTN} hover:bg-caption-close hover:text-white`}
+        className={`${CAPTION_BTN} hover:bg-caption-close hover:text-caption-close-content active:bg-caption-close active:text-caption-close-content active:brightness-75`}
         onClick={windowClose}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" {...CAPTION_GLYPH} aria-hidden>
@@ -222,12 +222,12 @@ export function MacWindowControls({ compact = false }: { compact?: boolean } = {
           type="button"
           aria-label={t(light.labelKey)}
           /* mac 惯例:窗口按钮不是手型;失焦整组退灰、悬停恢复本色并浮现字形 */
-          className="flex h-3.5 w-3.5 cursor-default items-center justify-center"
+          className="flex h-3.5 w-3.5 cursor-default items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-base-content active:scale-90"
           onClick={(e) => act(light.key, e.altKey)}
         >
           <span
             aria-hidden
-            className={`flex h-2.5 w-2.5 items-center justify-center rounded-full text-black/60 ${light.dot}`}
+            className={`flex h-2.5 w-2.5 items-center justify-center rounded-full text-mac-control-glyph ${light.dot}`}
           >
             <svg
               width="8"

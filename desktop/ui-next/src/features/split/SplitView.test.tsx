@@ -144,7 +144,7 @@ describe("分屏视图(树形布局)", () => {
     expect(within(loader).getByText("alpha").className).toContain("text-base-content/50");
     expect(loader.querySelector(".menu-title")).toBeNull();
     // 组内行缩一级(层级靠缩进,§6.2)
-    expect(within(loader).getByText("闲着的任务").closest("a")?.className).toContain("ps-8");
+    expect(within(loader).getByText("闲着的任务").closest("button")?.className).toContain("ps-8");
     // chat 收进本地 tab 的「临时会话」段(2026-08-18 撤并),不再单设 tab
     expect(within(loader).queryByRole("tab", { name: /本地会话/ })).toBeNull();
     expect(within(loader).getByText("临时会话")).toBeTruthy();
@@ -262,6 +262,15 @@ describe("分屏视图(树形布局)", () => {
     fireEvent.mouseUp(document);
     expect(aside.style.width).toBe("184px");
     await waitFor(() => expect(localStorage.getItem("mc.workbenchListWidth")).toBe("184"));
+    expect(handle.tabIndex).toBe(0);
+    expect(handle.getAttribute("aria-valuemin")).toBe("184");
+    expect(handle.getAttribute("aria-valuemax")).toBe("420");
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(aside.style.width).toBe("192px");
+    fireEvent.keyDown(handle, { key: "End" });
+    expect(aside.style.width).toBe("420px");
+    fireEvent.keyDown(handle, { key: "Home" });
+    expect(aside.style.width).toBe("184px");
     fireEvent.doubleClick(handle);
     expect(aside.style.width).toBe("232px");
   });
@@ -290,6 +299,13 @@ describe("分屏视图(树形布局)", () => {
     expect(saved.a.ratio).toBeCloseTo(0.75);
     expect(saved.b.ratio).toBe(0.5); // 右列不牵动
     expect(saved.ratio).toBe(0.5); // 贯通竖切不牵动
+    expect(handle.tabIndex).toBe(0);
+    expect(handle.getAttribute("aria-orientation")).toBe("horizontal");
+    expect(handle.getAttribute("aria-valuenow")).toBe("75");
+    fireEvent.keyDown(handle, { key: "ArrowDown" });
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").a.ratio).toBe(0.8);
+    fireEvent.keyDown(handle, { key: "ArrowUp" });
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").a.ratio).toBeCloseTo(0.75);
     fireEvent.doubleClick(container.querySelector('[data-split-handle="a"]')!);
     expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").a.ratio).toBe(0.5);
   });
@@ -499,9 +515,9 @@ describe("分屏视图(树形布局)", () => {
     expect(chatsHead.compareDocumentPosition(within(strip).getByText("alpha")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // 拖 alpha 落到临时会话之前:快照写盘且渲染序翻转
     const dt = fakeDT();
-    fireEvent.dragStart(within(strip).getByText("alpha").closest("a")!, { dataTransfer: dt });
-    fireEvent.dragOver(within(strip).getByText("临时会话").closest("a")!, { dataTransfer: dt });
-    fireEvent.drop(within(strip).getByText("临时会话").closest("a")!, { dataTransfer: dt });
+    fireEvent.dragStart(within(strip).getByText("alpha").closest("button")!, { dataTransfer: dt });
+    fireEvent.dragOver(within(strip).getByText("临时会话").closest("button")!, { dataTransfer: dt });
+    fireEvent.drop(within(strip).getByText("临时会话").closest("button")!, { dataTransfer: dt });
     expect(JSON.parse(localStorage.getItem("mc.projectOrder") ?? "[]")).toEqual(["/p/alpha", "\u0000chats"]);
     expect(
       within(strip).getByText("alpha").compareDocumentPosition(within(strip).getByText("临时会话")) &
@@ -539,7 +555,7 @@ describe("分屏视图(树形布局)", () => {
     expect(document.querySelector("[data-view-header]")).toBeNull();
     expect(document.querySelector("[data-split-grid]")!.hasAttribute("data-tauri-drag-region")).toBe(true);
     // 任务列**包含**已入格的 s1(装载卡才判重),在场信息进行 tooltip
-    const onBoardRow = within(list).getByText("已入格的任务").closest("a")!;
+    const onBoardRow = within(list).getByText("已入格的任务").closest("button")!;
     expect(onBoardRow.getAttribute("title")).toContain("已在工作台上");
     // 空格是轻提示卡,不再重复一份列表(左右两份列表像镜子)
     const emptyPane = screen.getByRole("region", { name: "第 2 格" });
@@ -566,8 +582,8 @@ describe("分屏视图(树形布局)", () => {
     const groupHeads = () =>
       within(strip)
         .getAllByText("MonkeyCode")
-        .map((n) => n.closest("a"))
-        .filter((a): a is HTMLAnchorElement => !!a && a.hasAttribute("aria-expanded"));
+        .map((n) => n.closest("button"))
+        .filter((a): a is HTMLButtonElement => !!a && a.hasAttribute("aria-expanded"));
     expect(groupHeads()).toHaveLength(2);
     expect(within(strip).queryByText(/MonkeyCode · /)).toBeNull();
     // waiting 徽标挂在「等待确认」那组(/y 组 m2)的组头
@@ -580,9 +596,16 @@ describe("分屏视图(树形布局)", () => {
     expect(headAfter.querySelector(".tabler-icon-folder-open")).toBeNull();
     expect(headAfter.querySelector(".tabler-icon-folder")).not.toBeNull();
     // hover「+」快捷新建:常驻占位(invisible 只切可见性),点它开内嵌预填
-    const plus = within(headAfter).getByRole("button", { name: "在此项目新建任务" });
+    const plus = within(headAfter.parentElement!).getByRole("button", { name: "在此项目新建任务" });
     expect(plus.className).toContain("invisible");
     expect(plus.className).toContain("group-hover/ghead:visible");
+    expect(headAfter.parentElement?.className).toContain("p-0");
+    expect(headAfter.parentElement?.className).toContain("gap-0");
+    expect(headAfter.className).toContain("min-h-8");
+    expect(plus.className).toContain("w-9");
+    // daisyUI menu 的 hover/padding 在外层容器；直接点该边缘也必须开合。
+    fireEvent.click(headAfter.parentElement!);
+    expect(groupHeads()[0]!.querySelector(".tabler-icon-folder-open")).not.toBeNull();
     await userEvent.click(plus);
     expect(await screen.findByRole("heading", { name: "新建任务" })).toBeTruthy();
   });
@@ -622,9 +645,9 @@ describe("分屏视图(树形布局)", () => {
     render(<Harness sessions={list} />);
     const strip = screen.getByRole("complementary", { name: "选择任务" });
     const dt = fakeDT();
-    fireEvent.dragStart(within(strip).getByText("alpha").closest("a")!, { dataTransfer: dt });
-    fireEvent.dragOver(within(strip).getByText("beta").closest("a")!, { dataTransfer: dt });
-    fireEvent.drop(within(strip).getByText("beta").closest("a")!, { dataTransfer: dt });
+    fireEvent.dragStart(within(strip).getByText("alpha").closest("button")!, { dataTransfer: dt });
+    fireEvent.dragOver(within(strip).getByText("beta").closest("button")!, { dataTransfer: dt });
+    fireEvent.drop(within(strip).getByText("beta").closest("button")!, { dataTransfer: dt });
     // alpha 挪到 beta 前?reorderKeys(dragged→before):alpha 落在 beta 之前
     // 「临时会话」哨兵键同一条快照入序(默认居首,项目相对序不受扰)
     expect(JSON.parse(localStorage.getItem("mc.projectOrder") ?? "[]")).toEqual(["\u0000chats", "/p/alpha", "/p/beta"]);
@@ -668,7 +691,7 @@ describe("分屏视图(树形布局)", () => {
     const list = screen.getByRole("complementary", { name: "选择任务" });
     const first = screen.getByRole("region", { name: "第 1 格" });
     const dt = fakeDT();
-    fireEvent.dragStart(within(list).getByText("跑着的任务").closest("a")!, { dataTransfer: dt });
+    fireEvent.dragStart(within(list).getByText("跑着的任务").closest("button")!, { dataTransfer: dt });
     fireEvent.dragOver(first, { dataTransfer: dt });
     expect(first.querySelector("[data-split-drop]")).not.toBeNull();
     fireEvent.drop(first, { dataTransfer: dt });

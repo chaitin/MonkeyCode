@@ -512,7 +512,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
           形态与设置覆盖视图共用一份;贴角 chrome 经 data-mac-lights-clear
           让位 64px(app.css)。2026-08-20 回归:原生尺寸不可调、用户嫌大 */}
       {isMacShell() && (
-        <div data-tauri-drag-region="" className="fixed top-0 left-1 z-[1000] flex h-10 items-center">
+        <div data-tauri-drag-region="" className="fixed top-0 left-1 z-[var(--z-window-overlay)] flex h-10 items-center">
           <MacWindowControls compact />
         </div>
       )}
@@ -596,7 +596,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
       {/* D3 后台会话提醒 + 壳级提示:共用角落栈(§3 法定位置) */}
       {(notices.length > 0 || shellNotices.length > 0) && (
         <div
-          className="toast toast-top toast-end z-[1000] mt-[calc(var(--chrome-h)+52px)]"
+          className="toast toast-top toast-end z-[var(--z-window-overlay)] mt-[calc(var(--chrome-h)+52px)]"
           aria-label={t("notice.label")}
         >
           {shellNotices.map((n) => (

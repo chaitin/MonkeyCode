@@ -152,7 +152,7 @@ function ColorTile({ role, hex, overridden, resetLabel, seed, seedHint, onPick, 
           type="button"
           title={resetLabel}
           aria-label={`${role} reset`}
-          className="btn btn-ghost btn-xs shrink-0 px-1 opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100"
+          className="btn btn-ghost btn-xs relative z-10 shrink-0 px-1 opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100"
           onClick={onReset}
         >
           <IconRotate size={12} stroke={1.75} aria-hidden />

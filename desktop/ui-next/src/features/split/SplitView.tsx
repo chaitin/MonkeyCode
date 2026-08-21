@@ -585,12 +585,32 @@ export function SplitView({
           role="separator"
           aria-orientation={vertical ? "vertical" : "horizontal"}
           aria-label={t("split.resize")}
+          aria-valuemin={20}
+          aria-valuemax={80}
+          aria-valuenow={Math.round(node.ratio * 100)}
+          tabIndex={0}
           title={t("split.resizeHint")}
-          className={`absolute z-30 ${
+          className={`absolute z-30 focus-visible:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset ${
             vertical ? "inset-y-0 w-2 -translate-x-1/2 cursor-col-resize" : "inset-x-0 h-2 -translate-y-1/2 cursor-row-resize"
           }`}
           style={vertical ? { left: `${node.ratio * 100}%` } : { top: `${node.ratio * 100}%` }}
           onMouseDown={startHandleDrag(path, node.dir)}
+          onKeyDown={(e) => {
+            const delta =
+              vertical && e.key === "ArrowLeft"
+                ? -0.05
+                : vertical && e.key === "ArrowRight"
+                  ? 0.05
+                  : !vertical && e.key === "ArrowUp"
+                    ? -0.05
+                    : !vertical && e.key === "ArrowDown"
+                      ? 0.05
+                      : 0;
+            if (delta === 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            split.setNodeRatio(path, clamp(node.ratio + delta));
+          }}
           onDoubleClick={() => split.setNodeRatio(path, 0.5)}
         >
           {/* 画布本体在背景启用时必须透明，否则 pane 的半透明表面会与
@@ -640,13 +660,28 @@ export function SplitView({
           role="separator"
           aria-orientation="vertical"
           aria-label={t("split.sideResize")}
+          aria-valuemin={SIDE_MIN}
+          aria-valuemax={SIDE_MAX}
+          aria-valuenow={sideWidth}
+          tabIndex={0}
           title={t("split.sideResize")}
-          className="relative z-30 -mx-1 w-2 shrink-0 cursor-col-resize"
+          className="relative z-30 -mx-1 w-2 shrink-0 cursor-col-resize focus-visible:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset"
           onMouseDown={(e) => {
             e.preventDefault();
             trackPointer("col-resize", (ev) => {
               setSideWidth(Math.min(Math.max(ev.clientX, SIDE_MIN), SIDE_MAX));
             });
+          }}
+          onKeyDown={(e) => {
+            let next: number | null = null;
+            if (e.key === "ArrowLeft") next = Math.max(SIDE_MIN, sideWidth - 8);
+            else if (e.key === "ArrowRight") next = Math.min(SIDE_MAX, sideWidth + 8);
+            else if (e.key === "Home") next = SIDE_MIN;
+            else if (e.key === "End") next = SIDE_MAX;
+            if (next === null) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setSideWidth(next);
           }}
           onDoubleClick={() => setSideWidth(SIDE_DEFAULT)}
         />
@@ -1121,11 +1156,13 @@ function WorkbenchList({
                         dropGroup(gk);
                       }}
                     >
-                      <a
-                        className="group/ghead relative flex min-w-0 items-center gap-2"
+                      <div
+                        className="group/ghead relative flex w-full min-w-0 items-stretch gap-0 p-0"
                         title={t("sidebar.project.dragHint")}
-                        aria-expanded={!collapsed.has(gk)}
                         draggable
+                        onClick={(e) => {
+                          if (e.target === e.currentTarget) setGroupOpen(gk, collapsed.has(gk));
+                        }}
                         onDragStart={(e) => {
                           setDraggedGroup(gk);
                           e.dataTransfer.effectAllowed = "move";
@@ -1135,23 +1172,35 @@ function WorkbenchList({
                           setDraggedGroup(null);
                           setDragOverGroup(null);
                         }}
-                        onClick={() => setGroupOpen(gk, collapsed.has(gk))}
                       >
                         {dragOverGroup === gk && draggedGroup !== gk && (
                           <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary" />
                         )}
-                        <GroupLabel icon={IconMessages} name={t("split.chatsGroup")} />
-                        {chats.filter((m) => m.waiting_ask).length > 0 && (
-                          <span className="badge badge-warning badge-xs">
-                            {chats.filter((m) => m.waiting_ask).length}
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-1 text-start"
+                          aria-expanded={!collapsed.has(gk)}
+                          onClick={() => setGroupOpen(gk, collapsed.has(gk))}
+                        >
+                          <GroupLabel icon={IconMessages} name={t("split.chatsGroup")} />
+                          {chats.filter((m) => m.waiting_ask).length > 0 && (
+                            <span className="badge badge-warning badge-xs">
+                              {chats.filter((m) => m.waiting_ask).length}
+                            </span>
+                          )}
+                          <IconChevronDown
+                            size={12}
+                            stroke={1.75}
+                            aria-hidden
+                            className={`shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(gk) ? "-rotate-90" : ""}`}
+                          />
+                        </button>
                         {/* 快捷钮常驻占位、hover 只切可见性(项目组头同款) */}
                         <button
                           type="button"
                           aria-label={t("split.newChat")}
                           title={t("split.newChat")}
-                          className="btn btn-ghost btn-square btn-xs invisible group-hover/ghead:visible group-focus-within/ghead:visible"
+                          className="btn btn-ghost btn-xs invisible h-8 min-h-8 w-9 shrink-0 group-hover/ghead:visible group-focus-within/ghead:visible"
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -1160,13 +1209,7 @@ function WorkbenchList({
                         >
                           <IconPlus size={14} stroke={1.75} aria-hidden />
                         </button>
-                        <IconChevronDown
-                          size={12}
-                          stroke={1.75}
-                          aria-hidden
-                          className={`shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(gk) ? "-rotate-90" : ""}`}
-                        />
-                      </a>
+                      </div>
                     </li>
                     {!collapsed.has(gk) && (
                       <>
@@ -1183,8 +1226,9 @@ function WorkbenchList({
                         {archivedChats.length > 0 && (
                           <>
                             <li>
-                              <a
-                                className={`flex min-w-0 items-center gap-2 text-xs text-base-content/50 ${levelPad(1)}`}
+                              <button
+                                type="button"
+                                className={`flex w-full min-w-0 items-center gap-2 text-start text-xs text-base-content/50 ${levelPad(1)}`}
                                 aria-expanded={chatArchivesOpen}
                                 onClick={toggleChatArchives}
                               >
@@ -1192,7 +1236,7 @@ function WorkbenchList({
                                   <IconArchive size={10} stroke={1.75} aria-hidden />
                                 </span>
                                 <span className="min-w-0 flex-1 truncate">{t("sidebar.archivedChats")}</span>
-                              </a>
+                              </button>
                             </li>
                             {chatArchivesOpen && archivedChats.map((m) => row(m, 2))}
                           </>
@@ -1220,11 +1264,13 @@ function WorkbenchList({
                       dropGroup(g.key);
                     }}
                   >
-                    <a
-                      className="group/ghead relative flex min-w-0 items-center gap-2"
+                    <div
+                      className="group/ghead relative flex w-full min-w-0 items-stretch gap-0 p-0"
                       title={[g.key, t("sidebar.project.hint"), t("sidebar.project.dragHint")].join("\n")}
-                      aria-expanded={!collapsed.has(g.key)}
                       draggable
+                      onClick={(e) => {
+                        if (e.target === e.currentTarget) setGroupOpen(g.key, collapsed.has(g.key));
+                      }}
                       onDragStart={(e) => {
                         setDraggedGroup(g.key);
                         e.dataTransfer.effectAllowed = "move";
@@ -1234,7 +1280,6 @@ function WorkbenchList({
                         setDraggedGroup(null);
                         setDragOverGroup(null);
                       }}
-                      onClick={() => setGroupOpen(g.key, collapsed.has(g.key))}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -1255,19 +1300,33 @@ function WorkbenchList({
                       {dragOverGroup === g.key && draggedGroup !== g.key && (
                         <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary" />
                       )}
-                      <GroupLabel icon={collapsed.has(g.key) ? IconFolder : IconFolderOpen} name={g.name} />
-                      {g.sessions.filter((m) => m.waiting_ask).length > 0 && (
-                        <span className="badge badge-warning badge-xs">
-                          {g.sessions.filter((m) => m.waiting_ask).length}
-                        </span>
-                      )}
+                      <button
+                        type="button"
+                        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-1 text-start"
+                        aria-expanded={!collapsed.has(g.key)}
+                        onClick={() => setGroupOpen(g.key, collapsed.has(g.key))}
+                      >
+                        <GroupLabel icon={collapsed.has(g.key) ? IconFolder : IconFolderOpen} name={g.name} />
+                        {g.sessions.filter((m) => m.waiting_ask).length > 0 && (
+                          <span className="badge badge-warning badge-xs">
+                            {g.sessions.filter((m) => m.waiting_ask).length}
+                          </span>
+                        )}
+                        {/* 开合 chevron 殿后常驻(2026-08-19 mockup:状态外显) */}
+                        <IconChevronDown
+                          size={12}
+                          stroke={1.75}
+                          aria-hidden
+                          className={`shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(g.key) ? "-rotate-90" : ""}`}
+                        />
+                      </button>
                       {/* 快捷钮常驻占位、hover 只切可见性(插入式显隐会挤动
                           项目名,鼠标一进一出就抖) */}
                       <button
                         type="button"
                         aria-label={t("sidebar.project.newTask")}
                         title={t("sidebar.project.newTask")}
-                        className="btn btn-ghost btn-square btn-xs invisible group-hover/ghead:visible group-focus-within/ghead:visible"
+                        className="btn btn-ghost btn-xs invisible h-8 min-h-8 w-9 shrink-0 group-hover/ghead:visible group-focus-within/ghead:visible"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -1276,14 +1335,7 @@ function WorkbenchList({
                       >
                         <IconPlus size={14} stroke={1.75} aria-hidden />
                       </button>
-                      {/* 开合 chevron 殿后常驻(2026-08-19 mockup:状态外显) */}
-                      <IconChevronDown
-                        size={12}
-                        stroke={1.75}
-                        aria-hidden
-                        className={`shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(g.key) ? "-rotate-90" : ""}`}
-                      />
-                    </a>
+                    </div>
                   </li>
                   {!collapsed.has(g.key) && g.sessions.map((m) => row(m, 1))}
                   {/* 项目内「已归档任务」小节(旧侧栏同构:Archive 头 L1、
@@ -1291,8 +1343,9 @@ function WorkbenchList({
                   {!collapsed.has(g.key) && g.archivedSessions.length > 0 && (
                     <>
                       <li>
-                        <a
-                          className={`flex min-w-0 items-center gap-2 text-xs text-base-content/50 ${levelPad(1)}`}
+                        <button
+                          type="button"
+                          className={`flex w-full min-w-0 items-center gap-2 text-start text-xs text-base-content/50 ${levelPad(1)}`}
                           aria-expanded={archivesOpen.has(g.key)}
                           onClick={() => toggleArchives(g.key)}
                         >
@@ -1300,7 +1353,7 @@ function WorkbenchList({
                             <IconArchive size={10} stroke={1.75} aria-hidden />
                           </span>
                           <span className="min-w-0 flex-1 truncate">{t("sidebar.archivedTasks")}</span>
-                        </a>
+                        </button>
                       </li>
                       {archivesOpen.has(g.key) && g.archivedSessions.map((m) => row(m, 2))}
                     </>
@@ -1321,8 +1374,9 @@ function WorkbenchList({
                 {grouped.archivedProjects.map((g) => (
                   <Fragment key={g.key}>
                     <li>
-                      <a
-                        className={`flex min-w-0 items-center gap-2 ${levelPad(1)}`}
+                      <button
+                        type="button"
+                        className={`flex w-full min-w-0 items-center gap-2 text-start ${levelPad(1)}`}
                         title={`${g.key}\n${t("sidebar.project.hint")}`}
                         aria-expanded={!collapsed.has(g.key)}
                         onClick={() => setGroupOpen(g.key, collapsed.has(g.key))}
@@ -1343,7 +1397,7 @@ function WorkbenchList({
                         }}
                       >
                         <GroupLabel icon={IconFolder} name={g.name} />
-                      </a>
+                      </button>
                     </li>
                     {!collapsed.has(g.key) &&
                       [...g.sessions, ...g.archivedSessions].map((m) => row(m, 2))}
@@ -1616,23 +1670,29 @@ function LoaderCard({
     const trailing = rowTrailing(m, t, false);
     return (
       <li key={m.id}>
-        <a
-          className={`flex min-w-0 items-center gap-2 ${levelPad(level)}`}
+        <button
+          type="button"
+          className={`flex w-full min-w-0 items-center gap-2 text-start ${levelPad(level)}`}
           title={[m.title, m.summary, m.workdir].filter(Boolean).join("\n")}
           onClick={() => onPick(m.id)}
         >
           <span className="min-w-0 flex-1 truncate">{m.title_custom ? m.title : m.summary || m.title}</span>
           {trailing && <StatusDot {...trailing} />}
-        </a>
+        </button>
       </li>
     );
   };
   const cloudRow = (c: CloudTask) => (
     <li key={c.id}>
-      <a className="flex min-w-0 items-center gap-2" title={c.title || c.summary || c.content || c.id} onClick={() => onPick(cloudSlotId(c.id))}>
+      <button
+        type="button"
+        className="flex w-full min-w-0 items-center gap-2 text-start"
+        title={c.title || c.summary || c.content || c.id}
+        onClick={() => onPick(cloudSlotId(c.id))}
+      >
         <span className="min-w-0 flex-1 truncate">{c.title || c.summary || c.content || c.id}</span>
         {c.status === "error" && <StatusDot tone="status-error" label={t("status.error")} />}
-      </a>
+      </button>
     </li>
   );
   const sectionLabel = (icon: typeof IconFolder, name: string) => (

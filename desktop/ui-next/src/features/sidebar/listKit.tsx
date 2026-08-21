@@ -76,7 +76,7 @@ export function levelPad(level = 0): string {
   return (LEVELS[level] ?? LEVELS[0]).pad;
 }
 
-/** 列表行(menu 的 li>a 载体)。 */
+/** 列表行(menu 的 li>button 载体)。 */
 export function ListRow({
   primary,
   trailing,
@@ -109,15 +109,16 @@ export function ListRow({
   onSelect: () => void;
   menuItems: MenuItem[];
   /** HTML5 拖拽透传(工作台任务列行拖进格装载;不传即不可拖)。 */
-  onDragStart?: (e: DragEvent<HTMLAnchorElement>) => void;
+  onDragStart?: (e: DragEvent<HTMLButtonElement>) => void;
   /** 行定位锚(data-row-id;焦点格换人时任务列 scrollIntoView 用)。 */
   dataId?: string;
 }) {
   const lv = LEVELS[level] ?? LEVELS[0];
   return (
     <li>
-      <a
-        className={`relative flex min-w-0 items-center gap-2 overflow-hidden transition-colors duration-150 ${lv.pad} ${active ? "menu-active" : ""}${attention ? ` ${ATTENTION_BAR} ${lv.bar}` : ""}`}
+      <button
+        type="button"
+        className={`relative flex w-full min-w-0 items-center gap-2 overflow-hidden text-start transition-colors duration-150 ${lv.pad} ${active ? "menu-active" : ""}${attention ? ` ${ATTENTION_BAR} ${lv.bar}` : ""}`}
         data-attention={attention ? "" : undefined}
         data-row-id={dataId}
         title={tooltip}
@@ -133,7 +134,7 @@ export function ListRow({
         {/* 活跃行走正文色(不覆写);归档降到 /55,选中态不降——选中就该看清 */}
         <span className={`min-w-0 flex-1 truncate ${archived && !active ? "text-base-content/55" : ""}`}>{primary}</span>
         {trailing && <StatusDot {...trailing} />}
-      </a>
+      </button>
     </li>
   );
 }

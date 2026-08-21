@@ -348,6 +348,7 @@ export interface CloudQueueTaskHandle {
   runtime: CloudTaskRuntime;
   snapshot: CloudTaskRuntimeSnapshot;
   sendFrame(type: string, payload?: unknown): Promise<void>;
+  cancelRun(): Promise<void>;
   borrowControl(): ReturnType<CloudTaskRuntime["borrowControl"]>;
   confirmResume(): void;
 }
@@ -384,6 +385,7 @@ export function useCloudQueueTask(taskId: string): CloudQueueTaskHandle | null {
       runtime,
       snapshot,
       sendFrame: runtime.sendFrame.bind(runtime),
+      cancelRun: runtime.cancelRun.bind(runtime),
       borrowControl: runtime.borrowControl.bind(runtime),
       confirmResume: runtime.confirmResume.bind(runtime),
     }) : null,

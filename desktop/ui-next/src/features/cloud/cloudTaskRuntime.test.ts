@@ -138,6 +138,10 @@ function makeHarness(contents = ["one", "two"]) {
     taskInfo,
     settle,
     lane: () => lane,
+    enqueueMessage: (content: string, id = "late") => {
+      lane = enqueue(lane, createSendQueueItem(content, [], { id, createdAt: clock.now() }));
+      for (const listener of laneListeners) listener();
+    },
     setDetail: (value: CloudTaskDetail) => {
       detail = value;
     },
@@ -167,6 +171,67 @@ describe("CloudTaskRuntime", () => {
       frames: [{ type: "assistant-text", seq: 2 }],
     });
     queueLease.release();
+  });
+
+  it("用户取消先暂停剩余队列，task-ended 后不自动补投", async () => {
+    const h = makeHarness();
+    h.runtime.acquire("queue");
+    await h.settle();
+    const attach = h.streams[0]!;
+    attach.send.mockImplementationOnce(async () => {
+      expect(h.lane().blocked?.code).toBe("user-paused");
+      return true;
+    });
+
+    await h.runtime.cancelRun();
+    expect(attach.send).toHaveBeenCalledWith("user-cancel", {});
+    expect(h.lane().blocked?.code).toBe("user-paused");
+
+    attach.handlers.onFrames?.([{ type: "task-ended", seq: 1, data: {} }]);
+    await h.settle();
+    expect(h.streams.map((stream) => stream.mode)).toEqual(["attach"]);
+    expect(h.lane().pending.map((item) => item.id)).toEqual(["m1", "m2"]);
+  });
+
+  it("空队列取消期间新增消息也会被暂停屏障拦住", async () => {
+    const h = makeHarness([]);
+    h.runtime.acquire("view");
+    await h.settle();
+    const attach = h.streams[0]!;
+
+    await h.runtime.cancelRun();
+    expect(h.lane().blocked?.code).toBe("user-paused");
+    h.enqueueMessage("取消期间新增");
+    attach.handlers.onFrames?.([{ type: "task-ended", seq: 1, data: {} }]);
+    await h.settle();
+
+    expect(h.streams.map((stream) => stream.mode)).toEqual(["attach"]);
+    expect(h.lane().pending.map((item) => item.id)).toEqual(["late"]);
+    expect(h.lane().blocked?.code).toBe("user-paused");
+  });
+
+  it("attach 确认 idle 时清理重启后残留的空取消屏障", async () => {
+    const h = makeHarness([]);
+    h.runtime.acquire("view");
+    await h.settle();
+    const attach = h.streams[0]!;
+
+    await h.runtime.cancelRun();
+    expect(h.lane().blocked?.code).toBe("user-paused");
+    attach.handlers.onIdle?.();
+    await h.settle();
+
+    expect(h.lane().blocked).toBeNull();
+  });
+
+  it("取消帧发送失败时仍保持暂停，避免意外续发", async () => {
+    const h = makeHarness();
+    h.runtime.acquire("queue");
+    await h.settle();
+    h.streams[0]!.send.mockResolvedValueOnce(false);
+
+    await expect(h.runtime.cancelRun()).rejects.toThrow("rejected");
+    expect(h.lane().blocked?.code).toBe("user-paused");
   });
 
   it("无视图时 attach 对表后逐轮 mode=new，且只按 receipt→task-ended 推进", async () => {

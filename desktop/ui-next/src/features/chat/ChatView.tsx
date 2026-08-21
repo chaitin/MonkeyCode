@@ -1028,7 +1028,7 @@ export function ChatView({
             className={`flex shrink-0 items-center gap-2 border-b border-base-300 px-4 py-1.5 text-xs text-base-content/70 ${openError ? "bg-error/5" : "bg-warning/5"} ${pane ? "cursor-pointer" : ""}`}
             onClick={pane ? () => setStripOpen(false) : undefined}
           >
-            <span aria-hidden className={`status status-sm shrink-0 ${openError ? "status-error" : "status-warning animate-pulse"}`} />
+            <span aria-hidden className={`status status-sm shrink-0 ${openError ? "status-error" : "status-warning motion-safe:animate-pulse"}`} />
             <span className="min-w-0 flex-1 truncate" title={stripText}>{stripText}</span>
           </div>
         ))}

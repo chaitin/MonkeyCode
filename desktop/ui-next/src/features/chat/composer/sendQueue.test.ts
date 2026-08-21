@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   block,
   claimHead,
+  clearPending,
   cloudSendQueueIndexKey,
   cloudSendQueueKey,
   cloudSendQueueTarget,
@@ -22,11 +23,14 @@ import {
   markReceipt,
   markUncertain,
   nackHead,
+  pausePending,
   readSendQueueLane,
   recoverLaneAfterRestart,
+  releaseEmptyUserPause,
   remove,
   reorderBefore,
   resetSendQueueMemoryForTests,
+  resumeAutomatic,
   stableCloudAccountScope,
   subscribeCloudQueueIndex,
   subscribeSendQueueLane,
@@ -202,6 +206,35 @@ describe("send queue pure transitions", () => {
     expect(claimHead(uncertain)).toBe(uncertain);
     expect(idsOf(confirmResume(uncertain))).toEqual(["a", "b"]);
     expect(discardUncertain(uncertain, "a")).toEqual({ ...uncertain, inFlight: null, blocked: null });
+  });
+
+  it("用户暂停会阻止自动补投，显式恢复后继续 FIFO", () => {
+    const claimed = markReceipt(claimHead(laneOf(item("sent"), item("next")), { startedAt: 100 }), "sent");
+    const paused = pausePending(claimed, 101);
+
+    expect(paused.blocked).toEqual({ code: "user-paused", message: "Paused by user", at: 101 });
+    const completed = completeTurn(paused, "sent");
+    expect(claimHead(completed)).toBe(completed);
+    expect(resumeAutomatic(completed)).toBe(completed);
+    expect(claimHead(confirmResume(completed), { startedAt: 102 }).inFlight?.item.id).toBe("next");
+  });
+
+  it("空队列取消建立短暂屏障，轮末仅在仍为空时释放", () => {
+    const pausedEmpty = pausePending(emptySendQueueLane<string>(), 101);
+    expect(pausedEmpty.blocked?.code).toBe("user-paused");
+    expect(releaseEmptyUserPause(pausedEmpty).blocked).toBeNull();
+
+    const queuedDuringCancel = enqueue(pausedEmpty, item("late"));
+    expect(releaseEmptyUserPause(queuedDuringCancel)).toBe(queuedDuringCancel);
+    expect(claimHead(queuedDuringCancel)).toBe(queuedDuringCancel);
+  });
+
+  it("清空暂停队列保留 in-flight，删除最后一项不留下暂停空壳", () => {
+    const claimed = claimHead(laneOf(item("sent"), item("next")), { startedAt: 100 });
+    const paused = pausePending(claimed, 101);
+
+    expect(clearPending(paused)).toEqual({ ...paused, pending: [], blocked: null });
+    expect(remove(paused, "next")).toEqual({ ...paused, pending: [], blocked: null });
   });
 
   it("recovers unsafe in-flight phases as blocked uncertain state", () => {
