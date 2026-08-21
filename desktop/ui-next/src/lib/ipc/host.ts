@@ -26,8 +26,9 @@ export function isLinuxShell(): boolean {
 }
 
 /** 「本端由 UI 自绘窗框条」的唯一判据(LAYOUT §1)。壳在 Windows/Linux 走
- *  decorations(false),UI 补 32px 扁平窗框;mac 走 TitleBarStyle::Overlay
- *  由 rail 角落承窗控,浏览器无窗体。组件里不要散写两个平台判断。 */
+ *  decorations(false),UI 补 32px 扁平窗框;mac 走 TitleBarStyle::Overlay,
+ *  原生红绿灯浮在工作台视图头左端(壳侧定位,UI 只让位),浏览器无窗体。
+ *  组件里不要散写两个平台判断。 */
 export function isCustomChromeShell(): boolean {
   return isWindowsShell() || isLinuxShell();
 }

@@ -62,7 +62,7 @@ export default function AddProjectDialog({
   const [name, setName] = useState("")
   const [selectedSource, setSelectedSource] = useState<string>("")
   const [selectedRepoValue, setSelectedRepoValue] = useState("")
-  // 持久化已选仓库，避免分页/搜索后当前页不含它时标签丢失
+  // Keep the selected repository visible when pagination or search removes it from the current page.
   const [selectedRepoOption, setSelectedRepoOption] = useState<RepoOption | null>(null)
   const [repoPopoverOpen, setRepoPopoverOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -112,7 +112,7 @@ export default function AddProjectDialog({
   const identityLabel = (identity: DomainGitIdentity) =>
     identity.remark || identity.username || identity.base_url || t("consoleProject.create.unnamedIdentity")
 
-  // 切换身份时清空已选仓库（仓库列表由 useIdentityRepos 自动按身份重新拉取）
+  // Clear the repository when the identity changes; the hook reloads repositories for that identity.
   useEffect(() => {
     setSelectedRepoValue("")
     setSelectedRepoOption(null)

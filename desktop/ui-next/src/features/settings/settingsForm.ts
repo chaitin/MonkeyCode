@@ -128,6 +128,9 @@ export interface SettingsDraft {
   /** 模型请求地址(llmproxy);"" = 官方云走 proxy 子域、自建走 {服务地址}/v1
    *  (口径在壳侧 baizhi::resolve_mc_llm) */
   mcLlmBaseUrl: string;
+  /** 跳过 MonkeyCode 服务的 TLS 证书验证(私有化自签证书;壳侧仅对
+   *  服务地址所在域生效,官方云恒验证) */
+  mcSkipTlsVerify: boolean;
 }
 
 export const emptyModel = (): HostModel => ({
@@ -181,6 +184,7 @@ export function draftFromConfig(cfg: DesktopConfig): SettingsDraft {
     mcBaseUrl: cfg.mc_base_url ?? "",
     mcBasicAuth: cfg.mc_basic_auth ?? "",
     mcLlmBaseUrl: cfg.mc_llm_base_url ?? "",
+    mcSkipTlsVerify: cfg.mc_skip_tls_verify ?? false,
   };
 }
 
@@ -221,6 +225,7 @@ export function buildPayload(base: DesktopConfig, draft: SettingsDraft): Desktop
     mc_base_url: draft.mcBaseUrl.trim(),
     mc_basic_auth: draft.mcBasicAuth.trim(),
     mc_llm_base_url: draft.mcLlmBaseUrl.trim(),
+    mc_skip_tls_verify: draft.mcSkipTlsVerify,
   };
 }
 

@@ -24,17 +24,18 @@ export function isDevtoolsHotkey(e: Pick<KeyboardEvent, "code" | "key" | "ctrlKe
  *  MainArea 拿的是 `current={space === "cloud" ? null : current}`,标题却没做
  *  同样的收敛(切空间也不清 currentId)。
  *
- *  优先级 = 主区分支的渲染优先级(App.tsx 的三元链):设置 > 新建 > 云端
- *  任务 > 本地会话 > 欢迎页。(待办不再入链:2026-08-12 定案清单本体进
+ *  优先级 = 主区分支的渲染优先级(App.tsx 的三元链):设置 > 新建 > 分屏 >
+ *  云端任务 > 本地会话 > 欢迎页。(待办不再入链:2026-08-12 定案清单本体进
  *  侧栏,主区没有待办视图了。) */
 export function windowContextLabel(
-  view: { settingsOpen: boolean; creating: boolean; cloudSpace: boolean },
+  view: { settingsOpen: boolean; creating: boolean; splitOpen?: boolean; cloudSpace: boolean },
   cloudTask: { title?: string; summary?: string; content?: string } | null,
   current: { title?: string; kind?: string } | null,
-  t: (k: "settings.title" | "create.title" | "rail.cloud" | "rail.chat" | "rail.local" | "main.welcome.title") => string,
+  t: (k: "settings.title" | "create.title" | "split.title" | "rail.cloud" | "rail.chat" | "rail.local" | "main.welcome.title") => string,
 ): string {
   if (view.settingsOpen) return t("settings.title");
   if (view.creating) return t("create.title");
+  if (view.splitOpen) return t("split.title");
   if (view.cloudSpace) {
     if (!cloudTask) return t("main.welcome.title");
     return cloudTask.title || cloudTask.summary || cloudTask.content || t("rail.cloud");

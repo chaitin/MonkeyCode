@@ -121,7 +121,40 @@ describe("发现列表渲染", () => {
     expect(el.getAttribute("title")).toBe(`deep/${long}:355`);
   });
 
-  it("未知 outcome 枚举原样外显,不无声吞掉", () => {
+  it("窄窗口:发现行保持单行,可变文本省略且徽标不被压扁", () => {
+    render(
+      <FindingsCard
+        report={{
+          findings: [
+            {
+              file: "desktop/ui-next/src/features/chat/cards/ToolCard.tsx",
+              line: 355,
+              summary: "长补丁标题遗漏后续文件移动",
+              category: "correctness",
+              verdict: "CONFIRMED",
+              outcome: "skipped",
+              failureScenario: "移动文件时遗漏内容",
+            },
+          ],
+        }}
+      />,
+    );
+    const summary = screen.getByText("长补丁标题遗漏后续文件移动");
+    const row = summary.closest("summary");
+    expect(row?.classList.contains("flex-wrap")).toBe(false);
+    expect(summary.classList.contains("truncate")).toBe(true);
+    expect(screen.getByText("correctness").classList.contains("truncate")).toBe(true);
+    expect(screen.getByText("已证实").classList.contains("shrink-0")).toBe(true);
+    expect(screen.getByText("已跳过").classList.contains("shrink-0")).toBe(true);
+  });
+
+  it("unresolved outcome 汉化展示", () => {
+    render(<FindingsCard report={{ findings: [{ file: "a.ts", summary: "x", outcome: "unresolved" }] }} />);
+    expect(screen.getByText("未解决")).toBeTruthy();
+    expect(screen.queryByText("unresolved")).toBeNull();
+  });
+
+  it("其他未知 outcome 枚举原样外显,不无声吞掉", () => {
     render(<FindingsCard report={{ findings: [{ file: "a.ts", summary: "x", outcome: "deferred" }] }} />);
     expect(screen.getByText("deferred")).toBeTruthy();
   });

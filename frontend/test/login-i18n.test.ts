@@ -20,10 +20,10 @@ test("登录页使用 i18n 翻译 key 渲染主要文案", () => {
   assert.match(loginSource, /t\("login\.toast\.missingCredentials"\)/);
 });
 
-test("登录页根据服务端 region=en 展示海外登录入口", () => {
+test("登录页根据服务端 region=global 展示海外登录入口", () => {
   assert.match(loginSource, /useAppRuntime/);
-  assert.match(loginSource, /serverRegion === "en"/);
-  assert.match(loginSource, /!isEnRegion/);
+  assert.match(loginSource, /serverRegion === "global"/);
+  assert.match(loginSource, /!IS_OFFLINE_EDITION && isGlobalRegion/);
 });
 
 test("登录页翻译资源提供中英文文案", () => {

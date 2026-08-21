@@ -176,6 +176,51 @@ fn baizhi_state_reconfigures_without_losing_runtime_state() {
     assert_eq!(state.service().mc_llm, "https://another-llm.example.com/v1");
 }
 
+/// 跳过 TLS 验证的作用域:仅私有化 mc 域;官方云与其他域恒验证;
+/// 开关翻转按 transport 切换处理(关旧长连接、推进代次)。
+#[test]
+fn tls_skip_scoped_to_private_mc_domain() {
+    let svc = Service::test_service(Endpoints {
+        account: "https://account.example.com".into(),
+        model_gateway: "https://models.example.com".into(),
+        mcp_gateway: "https://mcp.example.com".into(),
+        monkeycode: "https://old.example.com".into(),
+    });
+    let state = super::BaizhiState::new(svc);
+    let pipes = super::monkeycode::CloudPipes::new();
+    let u = |s: &str| reqwest::Url::parse(s).unwrap();
+
+    let cfg = crate::config::DesktopConfig {
+        mc_base_url: "https://self-signed.example.com".into(),
+        mc_skip_tls_verify: true,
+        ..Default::default()
+    };
+    assert!(state.apply_config(&cfg, &pipes).is_some());
+    let svc = state.service();
+    assert!(svc.tls_insecure_for(&u("https://self-signed.example.com/api/v1/public/captcha/challenge")));
+    assert!(svc.tls_insecure_for(&u("https://self-signed.example.com:443/x")), "known 默认端口等价");
+    assert!(!svc.tls_insecure_for(&u("https://self-signed.example.com:8443/x")), "端口不同即不同源");
+    assert!(!svc.tls_insecure_for(&u("https://account.example.com/api")), "百智域恒验证");
+    assert!(!svc.tls_insecure_for(&u("https://evil.example.com/")), "第三方域恒验证");
+    assert!(svc.http_insecure.is_some() && svc.lp_insecure.is_some(), "免验证客户端应已构建");
+
+    // 只翻开关(地址/Basic 不变)也是 transport 切换:免验证与验证客户端的
+    // 握手行为不同,在途长连接不得跨形态延续
+    let off = crate::config::DesktopConfig { mc_skip_tls_verify: false, ..cfg.clone() };
+    assert!(state.apply_config(&off, &pipes).is_some(), "开关翻转应推进 transport 代次");
+    let svc = state.service();
+    assert!(!svc.tls_insecure_for(&u("https://self-signed.example.com/x")));
+    assert!(svc.http_insecure.is_none() && svc.lp_insecure.is_none());
+
+    // 官方云 + 开关残留:恒不生效(开关只为私有化自签而设,不弱化官方域)
+    let official = crate::config::DesktopConfig { mc_base_url: String::new(), mc_skip_tls_verify: true, ..Default::default() };
+    assert!(state.apply_config(&official, &pipes).is_some());
+    let svc = state.service();
+    assert!(!svc.mc_skip_tls, "官方云地址下开关不得生效");
+    assert!(svc.http_insecure.is_none());
+    assert!(!svc.tls_insecure_for(&u(&format!("{}/api", super::DEFAULT_MONKEYCODE_URL))));
+}
+
 #[test]
 fn member_key_transport_binds_server_and_basic_identity() {
     let server = "https://private.example.com";

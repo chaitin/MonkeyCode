@@ -497,10 +497,13 @@ pub async fn mc_upload(svc: &Service, filename: &str, data: Vec<u8>) -> BzResult
     if upload_url.is_empty() || access_url.is_empty() {
         return Err(other("预签名应答缺少上传/访问地址"));
     }
-    // 直传走长超时客户端:2MB 在慢速网络下可能贴近 30s 普通超时
+    // 直传走长超时客户端:2MB 在慢速网络下可能贴近 30s 普通超时。
+    // 预签名地址按主机路由:单机私有化部署对象存储常与主服务同域,
+    // 自签证书场景同样要免验证;独立 OSS 域则照常验证
+    let upload_url = reqwest::Url::parse(&upload_url).map_err(|e| other(format!("上传地址异常: {e}")))?;
     let resp = svc
-        .lp()?
-        .put(&upload_url)
+        .lp_for(&upload_url)?
+        .put(upload_url)
         .body(data)
         .send()
         .await
@@ -544,7 +547,7 @@ pub async fn mc_file_upload(svc: &Service, vm_id: &str, path: &str, data: Vec<u8
     let form = reqwest::multipart::Form::new()
         .part("file", reqwest::multipart::Part::bytes(data).file_name(filename));
     // 长超时客户端:10MB 在慢速网络下会贴近 30s 普通超时
-    let mut req = svc.lp()?.post(url.clone()).multipart(form);
+    let mut req = svc.lp_for(&url)?.post(url.clone()).multipart(form);
     if let Some(h) = svc.mc.header(&url) {
         req = req.header(reqwest::header::COOKIE, h);
     }
@@ -658,11 +661,13 @@ async fn do_file_download(
         urlencode(filename)
     );
     let url = reqwest::Url::parse(&target).map_err(|e| other(format!("地址异常: {e}")))?;
-    let client = reqwest::Client::builder()
+    let mut cb = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|e| other(format!("HTTP 客户端构建失败: {e}")))?;
+        .connect_timeout(Duration::from_secs(15));
+    if svc.tls_insecure_for(&url) {
+        cb = cb.danger_accept_invalid_certs(true);
+    }
+    let client = cb.build().map_err(|e| other(format!("HTTP 客户端构建失败: {e}")))?;
     let mut req = client.get(url.clone());
     if let Some(h) = svc.mc.header(&url) {
         req = req.header(reqwest::header::COOKIE, h);
@@ -1006,6 +1011,78 @@ async fn mc_call(svc: &Service, method: reqwest::Method, path: &str, body: Optio
 
 // ==================== 云端 WS 桥 ====================
 
+/// 云端 WS 桥的 TLS connector:跳过证书验证生效且目标落在 mc 域时给
+/// 免验证 rustls 配置,否则 None(tungstenite 默认 webpki 验证)。
+fn ws_connector(svc: &Service, https_url: &str) -> Option<tokio_tungstenite::Connector> {
+    let url = reqwest::Url::parse(https_url).ok()?;
+    if !svc.tls_insecure_for(&url) {
+        return None;
+    }
+    insecure_rustls_config().map(tokio_tungstenite::Connector::Rustls)
+}
+
+/// 免验证 rustls 配置(进程内构建一次)。仅云端 WS 桥用——HTTP 侧
+/// reqwest 有内置 danger_accept_invalid_certs,不走这里。构建失败
+/// (密码学后端异常,实际不可达)返回 None,调用方退回默认验证
+/// connector:表现为证书错误,而不是把壳拖崩。
+fn insecure_rustls_config() -> Option<Arc<rustls::ClientConfig>> {
+    use std::sync::OnceLock;
+    static CFG: OnceLock<Option<Arc<rustls::ClientConfig>>> = OnceLock::new();
+    CFG.get_or_init(|| {
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let base = rustls::ClientConfig::builder_with_provider(Arc::clone(&provider))
+            .with_safe_default_protocol_versions()
+            .inspect_err(|e| eprintln!("[desktop] 免验证 TLS 配置构建失败: {e}"))
+            .ok()?;
+        Some(Arc::new(
+            base.dangerous()
+                .with_custom_certificate_verifier(Arc::new(NoCertVerify(provider)))
+                .with_no_client_auth(),
+        ))
+    })
+    .clone()
+}
+
+/// 放行一切服务器证书(私有化自签部署)。跳过的只是证书链与主机名校验,
+/// 握手签名验证照常执行,与 reqwest danger_accept_invalid_certs 同口径。
+#[derive(Debug)]
+struct NoCertVerify(Arc<rustls::crypto::CryptoProvider>);
+
+impl rustls::client::danger::ServerCertVerifier for NoCertVerify {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+        _server_name: &rustls::pki_types::ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls12_signature(message, cert, dss, &self.0.signature_verification_algorithms)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls13_signature(message, cert, dss, &self.0.signature_verification_algorithms)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.0.signature_verification_algorithms.supported_schemes()
+    }
+}
+
 enum PipeMsg {
     Text(String),
     Close,
@@ -1186,7 +1263,12 @@ pub async fn cloud_ws_open(
     };
     let ws = match tokio::time::timeout(
         Duration::from_secs(20),
-        tokio_tungstenite::connect_async_with_config(req, Some(ws_config), false),
+        tokio_tungstenite::connect_async_tls_with_config(
+            req,
+            Some(ws_config),
+            false,
+            ws_connector(&svc, &https_url),
+        ),
     )
     .await
     {

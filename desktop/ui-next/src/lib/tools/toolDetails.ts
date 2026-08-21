@@ -1,4 +1,4 @@
-// 工具卡详情模型:ToolItem → diff/command/text/json 四型二择(纯函数,旧工程
+// 工具卡详情模型:ToolItem → diff/patch/command/text/json 五型二择(纯函数,旧工程
 // toolDetails.ts 移植)。结果文本抽取复用 protocol/codec 的 toolResultText,
 // 不再自带副本;lib 层不产 UI 文案——command 型返回结构化 command/cwd/output
 // (output 可为空串),"命令输出为空"之类的提示由视图层按 locale 配文。
@@ -6,13 +6,15 @@
 // 渲染层可直接复用 FilesDrawer 的 diff 行模型。
 import { toolResultText } from "@/lib/protocol/codec";
 import type { ToolItem } from "@/lib/protocol/types";
+import { isApplyPatchText } from "./applyPatch";
 
 type UnknownRecord = Record<string, unknown>;
 
-/** 详情四型:diff = unified diff 文本;command = 结构化命令回显;
+/** 详情五型:diff = unified diff 文本;patch = apply_patch 原始补丁;command = 结构化命令回显;
  * text = 可读正文;json = 原始载荷兜底(pretty JSON)。 */
 export type ToolDetail =
   | { kind: "diff"; text: string }
+  | { kind: "patch"; text: string }
   | { kind: "command"; command: string; cwd: string; output: string }
   | { kind: "text"; text: string }
   | { kind: "json"; text: string };
@@ -110,6 +112,16 @@ function editDiff(item: ToolItem): string {
   const path = stringAt(input, ["file_path", "filePath", "path"])
     ?? stringAt(response, ["filePath", "path"])
     ?? "untitled";
+  const edits = Array.isArray(input?.edits) ? input.edits : [];
+  const editPatches = edits.flatMap((value) => {
+    const edit = record(value);
+    const oldText = stringAt(edit, ["old_string", "oldString"]);
+    const newText = stringAt(edit, ["new_string", "newString"]);
+    if (oldText === undefined || newText === undefined || oldText === newText) return [];
+    return [unifiedReplacement(path, oldText, newText)];
+  });
+  if (editPatches.length) return editPatches.join("\n");
+
   const oldText = stringAt(input, ["old_string", "oldString"])
     ?? stringAt(response, ["oldString"]);
   const newText = stringAt(input, ["new_string", "newString", "content"])
@@ -137,6 +149,7 @@ export function toolDetailFor(item: ToolItem): ToolDetail | null {
 
   if (isEdit && item.status !== "fail") {
     const diff = editDiff(item);
+    if (isApplyPatchText(diff)) return { kind: "patch", text: diff };
     if (diff.trim()) return { kind: "diff", text: diff };
   }
 

@@ -1,6 +1,6 @@
 // 工具卡:状态点 + 「动作 + 目标」标题(lib/tools 语义层)+ 耗时;详情
 // 开关 = 标题行尾 chevron 图标钮(旧 UI 安静行设计:耗时/详情钮 hover 显影,
-// 常驻占位只切透明度,§6.2 铁律),详情 = 单一面板(diff 走 DiffView,
+// 常驻占位只切透明度,§6.2 铁律),详情 = 单一面板(diff/patch 走专用视图,
 // 其余单 pre,不再盒中盒);大字段凭 _meta.mcSrc.seq 按需回读原帧补全;
 // 相邻工具卡由 LogList 计算 joinPrev/joinNext 塌陷边框共享外框(旧
 // tool-stack 设计,DOM 仍与 items 一一对应不破结构契约);子代理进度窗、
@@ -10,7 +10,9 @@ import { useEffect, useState } from "react";
 
 import { Markdown, MarkdownInline } from "@/components/markdown/Markdown";
 import { Lightbox, UploadImg } from "@/components/media/UploadImg";
+import { ApplyPatchView } from "@/features/files/ApplyPatchView";
 import { DiffView } from "@/features/files/DiffView";
+import { DetailModal } from "../DetailModal";
 import { useI18n } from "@/lib/i18n";
 import type { FrameSender } from "@/lib/ipc/approvals";
 import { isImagePath } from "@/lib/ipc/uploads";
@@ -94,12 +96,15 @@ function FeedRow({ entry, workdir }: { entry: SubEntry; workdir?: string }) {
 }
 
 /** 详情正文(单一面板内,容器管边框/底色/滚动,这里不再套盒):diff 复用
- * FilesDrawer 的 DiffView 行模型;command 收进一个 pre(cwd 弱化行 +
+ * FilesDrawer 的 DiffView 行模型;patch 按文件分段;command 收进一个 pre(cwd 弱化行 +
  * `$ 命令` + 空行 + 输出);text/json 单 pre。旧 UI 详情即单容器设计。 */
 const PRE_CLASS = "m-0 p-2.5 font-mono text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere select-text";
 
 function DetailBody({ detail }: { detail: ToolDetail }) {
   const { t } = useI18n();
+  if (detail.kind === "patch") {
+    return <ApplyPatchView text={detail.text} />;
+  }
   if (detail.kind === "diff") {
     return <DiffView text={detail.text} />;
   }
@@ -158,14 +163,14 @@ export function ToolCard({
   const { t, locale } = useI18n();
   const [zoom, setZoom] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [showAgentResult, setShowAgentResult] = useState(false);
+  const [agentDetailOpen, setAgentDetailOpen] = useState(false);
   // 大字段护栏的另一半:行内只有截断头部时,展开即按 seq 回读原帧补全。
   // 截断与回读必须成对存在——只截不读会把子代理的最终产出切掉半截。
   const srcSeq = (item._meta as { mcSrc?: { seq?: number } } | undefined)?.mcSrc?.seq;
   const [full, setFull] = useState<AcpUpdate | null>(null);
   const [fullErr, setFullErr] = useState("");
   const [loadingFull, setLoadingFull] = useState(false);
-  const wantFull = detailOpen || showAgentResult;
+  const wantFull = detailOpen || agentDetailOpen;
   useEffect(() => {
     if (!wantFull || srcSeq === undefined || full || loadingFull || fullErr || !loadFullTool) return;
     setLoadingFull(true);
@@ -186,14 +191,9 @@ export function ToolCard({
   const isAgentCard = !!(item.childSessionId || feed.length || item.background);
   const agentFinished = isAgentCard && item.status !== "run";
   const canOpenChild = !!(item.childSessionId && onOpenChild);
-  const visibleFeed = item.status === "run" ? feed.slice(-FEED_WINDOW) : [];
+  // 后台派发卡的过程详情统一放进弹窗；普通前台 Agent 仍保留原来的尾窗。
+  const visibleFeed = !item.background && item.status === "run" ? feed.slice(-FEED_WINDOW) : [];
   const feedBase = feed.length - visibleFeed.length;
-
-  // 动作取标题,目标优先取完整 rawInput;path 型剥 workdir 前缀,
-  // 悬停 title 保留原始标题与完整目标
-  const presentation = presentToolCall(item.title, item.rawInput, { locale, toolKind: item.toolKind, meta: item._meta });
-  const fullTarget = presentation.target;
-  const target = presentation.targetKind === "path" ? stripWorkdir(fullTarget, workdir) : fullTarget;
 
   // 回读到全文后用全文渲染详情;没有护栏标记时 full 恒为 null,行为不变
   const shown = full
@@ -204,21 +204,29 @@ export function ToolCard({
         ...(full.content !== undefined ? { content: full.content } : {}),
       }
     : item;
+  // 动作取标题,目标优先取完整 rawInput;path 型剥 workdir 前缀,
+  // 悬停 title 保留原始标题与完整目标。回读到全文后标题也随 shown 更新。
+  const presentation = presentToolCall(shown.title, shown.rawInput, { locale, toolKind: shown.toolKind, meta: shown._meta });
+  const fullTarget = presentation.target;
+  const target = presentation.targetKind === "path" ? stripWorkdir(fullTarget, workdir) : fullTarget;
   const findings = findingsReportFor(shown);
   const detail = !isAgentCard && shown.status !== "run" ? toolDetailFor(shown) : null;
   const fullResult = full ? toolResultText(full.rawOutput, full.content) : "";
   // 极端情况下子会话入口缺失(云端只读流/旧 journal),保留按需展开兜底,
   // 但不默认把整段结果灌进卡片
   const agentResult = agentFinished ? (fullResult || item.result || "").trim() : "";
-  const summary = agentResult && !canOpenChild && showAgentResult ? agentResult : "";
+  const openAgentDetail = () => {
+    if (canOpenChild) onOpenChild!(item.childSessionId!);
+    else setAgentDetailOpen(true);
+  };
+  const hasAgentModal = item.background || (!!agentResult && !canOpenChild);
   return (
     <div
       className={`card card-border overflow-hidden bg-base-100 ${joinPrev ? "rounded-t-none" : ""} ${joinNext ? "rounded-b-none border-b-0" : ""}`}
       data-tool-id={item.tcId}
     >
-      {/* 标题行 = 详情开关(思考块同款交互:点击展开/再点收起,用户定案
-          2026-08-05);行内链接 stopPropagation 不触发切换;chevron 钮保留
-          为无障碍/键盘开关并兼作指示,常驻显示 */}
+      {/* 普通工具的标题行仍是详情开关；子代理类卡片统一只通过右侧文字动作
+          打开弹窗，避免同一组里出现“蓝色链接 / 灰色状态 + 箭头”两套语义。 */}
       <div
         className={`flex items-center gap-2 px-3 py-2 text-xs ${detail ? "cursor-pointer" : ""}`}
         onClick={detail ? () => setDetailOpen((v) => !v) : undefined}
@@ -255,16 +263,30 @@ export function ToolCard({
             {t("chat.tool.childSession")}
           </button>
         )}
-        {agentResult && !canOpenChild && (
+        {agentResult && !canOpenChild && !item.background && (
           <button
             type="button"
             className="link link-hover shrink-0 text-xs font-semibold text-base-content/60"
+            aria-haspopup="dialog"
             onClick={(e) => {
               e.stopPropagation();
-              setShowAgentResult((v) => !v);
+              setAgentDetailOpen(true);
             }}
           >
-            {showAgentResult ? t("chat.tool.hideResult") : t("chat.tool.showResult")}
+            {t("chat.tool.showResult")}
+          </button>
+        )}
+        {item.background && !canOpenChild && (
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            className="link link-hover link-primary shrink-0 text-xs font-semibold"
+            onClick={(e) => {
+              e.stopPropagation();
+              openAgentDetail();
+            }}
+          >
+            {t("chat.tool.agentDetailOpen")}
           </button>
         )}
         {detail && (
@@ -303,18 +325,12 @@ export function ToolCard({
           ))}
         </div>
       )}
-      {item.status === "run" && item.lastLine && (
+      {!item.background && item.status === "run" && item.lastLine && (
         <div className="truncate px-3 pb-2 ps-6 text-xs text-base-content/50 italic">{item.lastLine}</div>
       )}
-      {item.status === "fail" && item.out && !summary && (
+      {item.status === "fail" && item.out && !agentResult && (
         <div role="alert" title={item.result || item.out} className="truncate px-3 pb-2 text-xs text-error">
           {item.out}
-        </div>
-      )}
-      {/* 子代理「查看结果」兜底:结果走 Markdown,结构线左缘与正文区分 */}
-      {summary && (
-        <div className="mx-3 mb-2 border-s-2 border-base-300 ps-3 text-sm">
-          <Markdown source={summary} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />
         </div>
       )}
       {/* 工具产出图片(截图/读图):缩略图点击看大图;裂图防御在 UploadImg */}
@@ -338,7 +354,7 @@ export function ToolCard({
         </Lightbox>
       )}
       {/* 大字段回读的 loading/失败态行内外显(展开详情或查看结果时触发) */}
-      {wantFull &&
+      {detailOpen &&
         (fullErr ? (
           <div role="alert" className="px-3 pb-2 text-xs text-error">
             {t("chat.tool.loadFullFailed", { reason: fullErr })}
@@ -358,6 +374,42 @@ export function ToolCard({
         >
           <DetailBody detail={detail} />
         </div>
+      )}
+      {agentDetailOpen && hasAgentModal && (
+        <DetailModal
+          ariaLabel={t("chat.tool.agentDetail")}
+          title={
+            <>
+              {t("chat.tool.agentDetail")} <span className="text-xs font-normal text-base-content/50">{presentation.action}</span>
+            </>
+          }
+          onClose={() => setAgentDetailOpen(false)}
+        >
+          <div className="flex flex-col gap-3 text-sm">
+            {feed.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-box border border-base-300 bg-base-200 p-3 text-xs">
+                {feed.map((entry, i) => (
+                  <FeedRow key={entry.kind === "tool" ? entry.id : `text-${i}`} entry={entry} workdir={workdir} />
+                ))}
+              </div>
+            )}
+            {item.lastLine && <MarkdownInline source={item.lastLine} className="text-base-content/60" />}
+            {fullErr ? (
+              <div role="alert" className="text-xs text-error">
+                {t("chat.tool.loadFullFailed", { reason: fullErr })}
+              </div>
+            ) : loadingFull ? (
+              <div role="status" className="flex items-center gap-2 text-xs text-base-content/50">
+                <span className="loading loading-spinner loading-xs" aria-hidden />
+                {t("chat.tool.loadingFull")}
+              </div>
+            ) : null}
+            {agentResult && <Markdown source={agentResult} localImageUrl={uploadUrl} onLocalLink={onLocalLink} />}
+            {!feed.length && !item.lastLine && !agentResult && !loadingFull && !fullErr && (
+              <div className="text-sm text-base-content/50">{t("chat.tool.agentDetailEmpty")}</div>
+            )}
+          </div>
+        </DetailModal>
       )}
       {perm && (
         <div className="flex flex-col gap-2 border-t border-base-300 px-3 py-2">

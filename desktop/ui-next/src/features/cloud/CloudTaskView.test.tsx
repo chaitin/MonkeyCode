@@ -4,12 +4,35 @@
 // 形态与 ChatView 同构(LAYOUT §3/§4/§7):头部图标钮 + ⋯ 菜单(终止/删除
 // 二段确认)、状态徽标不进头部、拖拽属性逐节点、运行条入输入卡、结束态
 // LogList 只读。
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { b64decode, b64encode } from "@/lib/protocol/codec";
+import {
+  cloudSendQueueTarget,
+  createSendQueueItem,
+  emptySendQueueLane,
+  enqueue,
+  writeSendQueueLane,
+} from "@/features/chat/composer/sendQueue";
+import { CloudQueueCoordinatorProvider } from "./CloudQueueCoordinator";
 import { CloudTaskView } from "./CloudTaskView";
+
+function renderCloud(ui: ReactElement) {
+  return render(
+    <CloudQueueCoordinatorProvider
+      loadIdentity={() => Promise.resolve({
+        logged_in: true,
+        base_url: "http://localhost:8000/private/team-a",
+        user: { id: "view-test-user" },
+      })}
+    >
+      {ui}
+    </CloudQueueCoordinatorProvider>,
+  );
+}
 
 type Invoke = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
@@ -37,9 +60,74 @@ function stubShellWs(invoke: Invoke) {
 
 afterEach(() => {
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
+  localStorage.clear();
 });
 
 describe("CloudTaskView", () => {
+  it("启动期可连续追加，草稿逐条清空且不旁路 transport", async () => {
+    let infoCalls = 0;
+    const streamModes: string[] = [];
+    stubShellWs((cmd, args) => {
+      if (cmd === "mc_task_info") {
+        infoCalls += 1;
+        return Promise.resolve({ id: "queue-start", status: "pending" });
+      }
+      if (cmd === "cloud_ws_open" && args?.kind === "stream") {
+        streamModes.push(String((args.params as { mode?: string })?.mode ?? ""));
+      }
+      return Promise.resolve({});
+    });
+    renderCloud(<CloudTaskView task={{ id: "queue-start", status: "pending" }} />);
+    const box = await screen.findByLabelText("消息输入");
+    await waitFor(() => expect(infoCalls).toBeGreaterThan(0));
+    fireEvent.change(box, { target: { value: "第一条" } });
+    await userEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect((box as HTMLTextAreaElement).value).toBe("");
+    fireEvent.change(box, { target: { value: "第二条" } });
+    await userEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("第一条")).toBeTruthy();
+    expect(screen.getByText("第二条")).toBeTruthy();
+    expect(streamModes).toEqual([]);
+  });
+
+  it("结束态异常队列提供停止并清除入口", async () => {
+    const accountScope = "http://localhost:8000/private/team-a|view-test-user";
+    writeSendQueueLane(cloudSendQueueTarget(accountScope, "terminal-queue"), {
+      ...enqueue(emptySendQueueLane(), createSendQueueItem("未发送", [])),
+      blocked: { code: "task-ended", message: "Task ended before queued messages were sent", at: 1 },
+    });
+    stubShellWs((cmd) => {
+      if (cmd === "mc_task_info") return Promise.resolve({ id: "terminal-queue", status: "finished" });
+      if (cmd === "mc_task_rounds") return Promise.resolve({ frames: [] });
+      return Promise.resolve({});
+    });
+    renderCloud(<CloudTaskView task={{ id: "terminal-queue", status: "finished" }} />);
+    expect(await screen.findByText("未发送")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "停止并清除队列" }));
+    await waitFor(() => expect(screen.queryByText("未发送")).toBeNull());
+    expect(Object.keys(localStorage).some((key) => key.includes("terminal-queue"))).toBe(false);
+  });
+
+  it("运行态零回显恢复为 uncertain，并明确提供重试或移除", async () => {
+    const accountScope = "http://localhost:8000/private/team-a|view-test-user";
+    const item = createSendQueueItem("可能已送达", [], { id: "uncertain-message", createdAt: 1 });
+    writeSendQueueLane(cloudSendQueueTarget(accountScope, "uncertain-queue"), {
+      version: 1,
+      pending: [],
+      inFlight: { item, phase: "uncertain", startedAt: 1 },
+      blocked: { code: "receipt-unknown", message: "No delivery receipt", at: 2 },
+    });
+    stubShellWs((cmd) => {
+      if (cmd === "mc_task_info") return Promise.resolve({ id: "uncertain-queue", status: "processing" });
+      return Promise.resolve({});
+    });
+    renderCloud(<CloudTaskView task={{ id: "uncertain-queue", status: "processing" }} />);
+    expect(await screen.findByText("可能已送达")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重试" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "移除此消息" }));
+    await waitFor(() => expect(screen.queryByText("可能已送达")).toBeNull());
+  });
+
   it("结束态:mc_task_rounds 回放经归约渲染,只读提示,无 composer", async () => {
     stubShell((cmd) => {
       switch (cmd) {
@@ -58,7 +146,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t1", title: "完结任务", status: "finished" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t1", title: "完结任务", status: "finished" }} />);
     await screen.findByText("部署到测试环境"); // 回放的用户消息(content 解 base64)
     // 轮次边界收敛为呼吸位:不渲染文字,全文留在 title(LogList turn-end 分流)
     expect(screen.queryByText("— 本轮结束 —")).toBeNull();
@@ -85,7 +173,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t2", title: "新任务", status: "pending" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t2", title: "新任务", status: "pending" }} />);
     await screen.findByText("正在拉取系统镜像…");
     expect(screen.getByText("30%")).toBeTruthy();
     // VM 建成以分钟计:退化成只读等待页就是让用户干等(旧 UI
@@ -109,7 +197,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t3", title: "跑着的任务", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t3", title: "跑着的任务", status: "processing" }} />);
     const composer = await screen.findByLabelText<HTMLTextAreaElement>("消息输入");
     await waitFor(() => expect(document.activeElement).toBe(composer));
   });
@@ -127,7 +215,7 @@ describe("CloudTaskView", () => {
           })
         : Promise.resolve({}),
     );
-    render(<CloudTaskView task={{ id: "t2b", status: "pending" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t2b", status: "pending" }} />);
     const box = (await screen.findByText("正在拉取系统镜像…")).closest(".overflow-y-auto") as HTMLElement;
     expect(box.className).toContain("overflow-x-hidden");
     expect(box.className).not.toContain("items-center");
@@ -158,7 +246,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t3", status: "finished" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t3", status: "finished" }} />);
     await screen.findByText("第二轮提问");
     const btn = await screen.findByText("加载更早");
     btn.click();
@@ -191,7 +279,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    const { container } = render(<CloudTaskView task={{ id: "t3b", status: "finished" }} />);
+    const { container } = renderCloud(<CloudTaskView task={{ id: "t3b", status: "finished" }} />);
     await screen.findByText("第二轮提问");
     const log = container.querySelector("[data-chat-log]") as HTMLElement;
     log.scrollTop = 0; // jsdom 默认即 0(落在距顶阈值内)
@@ -223,7 +311,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t9", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t9", status: "processing" }} />);
     await userEvent.click(await screen.findByRole("button", { name: "任务操作" }));
 
     // 控制台入口用完整 base_url,保留 http、端口与私有部署路径。
@@ -242,7 +330,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t10", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t10", status: "processing" }} />);
     await userEvent.click(await screen.findByRole("button", { name: "任务操作" }));
     expect(screen.queryByRole("menuitem", { name: /在浏览器打开/ })).toBeNull();
     // 端口检测走控制流(假壳不应答 call),菜单停在「检测中」而非空白
@@ -259,8 +347,9 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t11", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t11", status: "processing" }} />);
     const box = await screen.findByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect([...listeners.keys()].some((name) => name.startsWith("ws-msg:"))).toBe(true));
     // 指令清单经 available_commands_update 帧下发(与本地同一归约链)
     const push = (payload: unknown) => {
       for (const [name, cb] of listeners) if (name.startsWith("ws-msg:")) cb({ payload });
@@ -333,7 +422,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t6", status: "finished" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t6", status: "finished" }} />);
     await screen.findByText("第二问"); // 初始窗口只有最新一轮
     const nav = await screen.findByRole("navigation", { name: "提问大纲" });
     // 悬停到点上浮出条目面板(7e86e9e9 起面板只在点上展开,不再整列悬停):
@@ -368,7 +457,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t7", status: "finished" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t7", status: "finished" }} />);
     const btn = await screen.findByRole("button", { name: "云端文件" });
     await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false)); // vmId 到位才可用
     await userEvent.click(btn);
@@ -394,7 +483,7 @@ describe("CloudTaskView", () => {
         ? Promise.resolve({ id: "t8", status: "pending", virtualmachine: { id: "", conditions: [] } })
         : Promise.resolve({}),
     );
-    render(<CloudTaskView task={{ id: "t8", status: "pending" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t8", status: "pending" }} />);
     const btn = await screen.findByRole("button", { name: "云端文件" });
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
@@ -410,7 +499,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t8b", status: "finished" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t8b", status: "finished" }} />);
     const btn = await screen.findByRole("button", { name: "云端文件" });
     expect((btn as HTMLButtonElement).disabled).toBe(false);
     await userEvent.click(btn);
@@ -438,7 +527,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t4", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t4", status: "processing" }} />);
     await waitFor(() => expect(wsPipe).not.toBe("")); // attach 已拨通
     // 下行一张待答复审批卡(与本地 Frame 同构,喂同一条归约链)
     listeners.get(`ws-msg:${wsPipe}`)?.({
@@ -470,7 +559,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t5", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t5", status: "processing" }} />);
     await waitFor(() => expect(wsPipe).not.toBe(""));
     listeners.get(`ws-msg:${wsPipe}`)?.({
       payload: JSON.stringify({ type: "permission-req", seq: 1, data: { id: "p1", title: "npm test", tool: "Bash" } }),
@@ -492,7 +581,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t9", title: "完结任务", status: "finished" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t9", title: "完结任务", status: "finished" }} />);
     await screen.findByText(/只读回放/);
     const header = document.querySelector("[data-view-header]") as HTMLElement;
     expect(header.hasAttribute("data-tauri-drag-region")).toBe(true);
@@ -524,7 +613,7 @@ describe("CloudTaskView", () => {
       }
     });
     const onDeleted = vi.fn();
-    const { unmount } = render(<CloudTaskView task={{ id: "t10", status: "finished" }} onDeleted={onDeleted} />);
+    const { unmount } = renderCloud(<CloudTaskView task={{ id: "t10", status: "finished" }} onDeleted={onDeleted} />);
     await screen.findByText(/只读回放/);
     await userEvent.click(screen.getByRole("button", { name: "任务操作" }));
     await userEvent.click(screen.getByText("删除任务"));
@@ -536,7 +625,7 @@ describe("CloudTaskView", () => {
 
     // 被拒:结束态没有 composer,错误条独立渲染在 footer
     rejectDelete = true;
-    render(<CloudTaskView task={{ id: "t10", status: "finished" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t10", status: "finished" }} />);
     await screen.findByText(/只读回放/);
     await userEvent.click(screen.getByRole("button", { name: "任务操作" }));
     await userEvent.click(screen.getByText("删除任务"));
@@ -555,7 +644,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t11", status: "finished" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t11", status: "finished" }} />);
     await screen.findByText("没有可回放的对话记录");
     expect(screen.getByText(/需要继续这项工作/)).toBeTruthy();
     expect(document.querySelector('img[src="/logo.png"]')).toBeTruthy();
@@ -577,7 +666,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t12", status: "finished" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t12", status: "finished" }} />);
     await screen.findByText(/npm test/);
     expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
     expect(screen.queryByRole("button", { name: "拒绝" })).toBeNull();
@@ -601,7 +690,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    const { container } = render(<CloudTaskView task={{ id: "t13b", status: "processing" }} />);
+    const { container } = renderCloud(<CloudTaskView task={{ id: "t13b", status: "processing" }} />);
     await waitFor(() => expect(wsPipe).not.toBe(""));
     const push = (frame: Record<string, unknown>) =>
       listeners.get(`ws-msg:${wsPipe}`)?.({ payload: JSON.stringify(frame) });
@@ -635,7 +724,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t13", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t13", status: "processing" }} />);
     await waitFor(() => expect(wsPipe).not.toBe(""));
     const push = (frame: Record<string, unknown>) =>
       listeners.get(`ws-msg:${wsPipe}`)?.({ payload: JSON.stringify(frame) });
@@ -673,9 +762,8 @@ describe("CloudTaskView", () => {
     expect(ring.getAttribute("aria-valuenow")).toBe("16");
   });
 
-  it("附件:选文件经 mc_upload 出待发 chip,发送时随 user-input 出线({url,filename})", async () => {
-    const wsSends: { text?: unknown }[] = [];
-    stubShellWs((cmd, args) => {
+  it("附件:每条提交绑定自己的持久化引用，队列不保存 preview", async () => {
+    stubShellWs((cmd) => {
       switch (cmd) {
         case "mc_task_info":
           return Promise.resolve({ id: "t15", status: "processing" });
@@ -685,14 +773,11 @@ describe("CloudTaskView", () => {
           return Promise.resolve({ access_url: "https://oss/a.txt" });
         case "cloud_ws_open":
           return Promise.resolve({});
-        case "cloud_ws_send":
-          wsSends.push(args ?? {});
-          return Promise.resolve({});
         default:
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t15", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t15", status: "processing" }} />);
     const attachBtn = await screen.findByRole("button", { name: "附件" });
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     expect(attachBtn).toBeTruthy();
@@ -701,17 +786,18 @@ describe("CloudTaskView", () => {
 
     fireEvent.change(screen.getByLabelText("消息输入"), { target: { value: "带附件的一句" } });
     await userEvent.click(screen.getByRole("button", { name: "发送" }));
-    // mode=new 连上即上行首条输入:content 内层 b64,附件只带 {url, filename}
+    // 即使 runtime 尚在 attach 对表，本条也已经原子入持久化队列；草稿附件
+    // 清空后引用仍与该队列项绑定，且不会把 data URL preview 写进 localStorage。
     await waitFor(() => {
-      const sent = wsSends
-        .map((s) => JSON.parse(String(s.text)) as { type: string; data: string })
-        .find((f) => f.type === "user-input");
-      expect(sent).toBeTruthy();
-      const payload = JSON.parse(b64decode(sent!.data)) as { content: string; attachments: unknown };
-      expect(b64decode(payload.content)).toBe("带附件的一句");
-      expect(payload.attachments).toEqual([{ url: "https://oss/a.txt", filename: "a.txt" }]);
+      const lane = Object.keys(localStorage)
+        .filter((key) => key.includes("mc.sendQueue.v1.cloud.") && !key.includes(".index."))
+        .map((key) => JSON.parse(localStorage.getItem(key) ?? "null") as { pending?: Array<{ content: string; attachments: unknown[] }> })
+        .find((value) => value.pending?.some((item) => item.content === "带附件的一句"));
+      expect(lane?.pending?.[0]?.attachments).toEqual([
+        { url: "https://oss/a.txt", filename: "a.txt", isImage: false },
+      ]);
     });
-    expect(screen.queryByText("a.txt")).toBeNull(); // 发送后待发条清空
+    expect(screen.queryByText("a.txt")).toBeNull(); // composer 草稿附件已清
   });
 
   it("切换模型:菜单显当前模型,选项来自 mc_task_options,选中经控制流 switch_model(load_session)", async () => {
@@ -746,7 +832,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t16", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t16", status: "processing" }} />);
     // 触发器显当前模型(详情 remark)
     const trigger = await screen.findByRole("button", { name: "模型" });
     await waitFor(() => expect(trigger.textContent).toContain("旧模型"));
@@ -781,7 +867,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t17", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t17", status: "processing" }} />);
     // 没有这条,休眠任务打开后根本没人去唤醒机器(旧实现只在切模型/端口/文件时临时连)
     await waitFor(() => expect(kinds).toContain("control"));
   });
@@ -800,154 +886,13 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t18", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t18", status: "processing" }} />);
     await waitFor(() => expect([...listeners.keys()].some((k) => k.startsWith("ws-msg:"))).toBe(true));
     // 连接健康(connected)但机器休眠:状态条/空态仍要讲「唤醒」,不能一片安静
     await waitFor(() => expect(screen.getAllByText(/正在唤醒云端机器/).length).toBeGreaterThan(0));
     expect(screen.queryByText(/正在连接云端任务/)).toBeNull();
     // 输入框可用(唤醒期能打字,消息押后),占位文案说清会自动发出
     expect((screen.getByLabelText("消息输入") as HTMLTextAreaElement).disabled).toBe(false);
-  });
-
-  it("休眠机器:发送押后不上行,vm 转 online 后自动送出并让位给真气泡", async () => {
-    let vmStatus = "hibernated";
-    const streamModes: string[] = [];
-    const wsSends: { pipe?: unknown; text?: unknown }[] = [];
-    const listeners = stubShellWs((cmd, args) => {
-      switch (cmd) {
-        case "mc_task_info":
-          return Promise.resolve({
-            id: "t19",
-            status: "processing",
-            virtualmachine: { id: "vm1", status: vmStatus },
-          });
-        case "mc_task_options":
-          return Promise.resolve({ models: [] });
-        case "cloud_ws_open":
-          if (args?.kind === "stream") streamModes.push(String((args?.params as { mode?: string })?.mode ?? ""));
-          return Promise.resolve({});
-        case "cloud_ws_send":
-          wsSends.push(args ?? {});
-          return Promise.resolve({});
-        default:
-          return Promise.resolve({});
-      }
-    });
-    render(<CloudTaskView task={{ id: "t19", status: "processing" }} />);
-    await waitFor(() => expect(streamModes).toContain("attach"));
-
-    fireEvent.change(screen.getByLabelText("消息输入"), { target: { value: "醒了就跑这条" } });
-    await userEvent.click(screen.getByRole("button", { name: "发送" }));
-    // 占位气泡立刻上屏(否则输入框一清、日志无变化,用户以为消息丢了),
-    // 文案是「唤醒中,连上后自动发出」而不是「等待云端回应」
-    const ghost = await screen.findByText("醒了就跑这条");
-    expect(ghost.closest("[data-pending-send]")).toBeTruthy();
-    expect(screen.getByText("云端机器唤醒中,连上后自动发出…")).toBeTruthy();
-    // 押后期间不许再发(按钮禁用),更关键的是**没有** mode=new 上行:
-    // 机器睡着时上行只会被后端回显一下就石沉大海
-    await waitFor(() => expect((screen.getByRole("button", { name: "发送" }) as HTMLButtonElement).disabled).toBe(true));
-    expect(streamModes).not.toContain("new");
-    expect(wsSends.map((s) => JSON.parse(String(s.text)) as { type: string }).some((f) => f.type === "user-input")).toBe(false);
-
-    // 机器醒了:轮询(唤醒期 3s)看到 online → 这才建 mode=new 并上行
-    vmStatus = "online";
-    await vi.waitFor(() => expect(streamModes).toContain("new"), { timeout: 5000, interval: 50 });
-    await waitFor(() => {
-      const sent = wsSends
-        .map((s) => JSON.parse(String(s.text)) as { type: string; data: string })
-        .find((f) => f.type === "user-input");
-      expect(sent).toBeTruthy();
-      expect(b64decode((JSON.parse(b64decode(sent!.data)) as { content: string }).content)).toBe("醒了就跑这条");
-    });
-
-    // 云端回显这条 → 占位让位给真气泡
-    const msgKey = [...listeners.keys()].filter((k) => k.startsWith("ws-msg:")).pop()!;
-    listeners.get(msgKey)?.({
-      payload: JSON.stringify({ type: "user-input", seq: 1, timestamp: 1000, data: { content: b64encode("醒了就跑这条") } }),
-    });
-    await waitFor(() => expect(document.querySelector("[data-pending-send]")).toBeNull());
-    expect(screen.getByText("醒了就跑这条")).toBeTruthy();
-  });
-
-  it("机器迟迟不就绪:押后到上限即交还草稿,不把消息永远压在本地转圈", async () => {
-    // 假时钟直接推进到上限(真等 5 分钟没意义);全程 fireEvent + advanceTimersByTimeAsync,
-    // 不用 waitFor/userEvent——它们各自挂着真实计时器,与假时钟互相卡死
-    vi.useFakeTimers();
-    try {
-      const streamModes: string[] = [];
-      stubShellWs((cmd, args) => {
-        switch (cmd) {
-          case "mc_task_info":
-            // 唤醒失败/虚拟机回收:状态一直不翻到 online
-            return Promise.resolve({ id: "t21", status: "processing", virtualmachine: { id: "vm1", status: "hibernated" } });
-          case "cloud_ws_open":
-            if (args?.kind === "stream") streamModes.push(String((args?.params as { mode?: string })?.mode ?? ""));
-            return Promise.resolve({});
-          default:
-            return Promise.resolve({});
-        }
-      });
-      render(<CloudTaskView task={{ id: "t21", status: "processing" }} />);
-      await vi.advanceTimersByTimeAsync(50); // 详情落地 + attach 建连
-
-      fireEvent.change(screen.getByLabelText("消息输入"), { target: { value: "等不到就还我" } });
-      fireEvent.click(screen.getByRole("button", { name: "发送" }));
-      await vi.advanceTimersByTimeAsync(50);
-      expect(document.querySelector("[data-pending-send]")).toBeTruthy();
-
-      await vi.advanceTimersByTimeAsync(300_000); // 押后上限
-      // 草稿回到输入框(不是"到点照发":此刻上行只会被后端回显一下就丢,
-      // 看起来像发成功了,比转圈更坏),占位撤下,原因外显
-      expect((screen.getByLabelText("消息输入") as HTMLTextAreaElement).value).toBe("等不到就还我");
-      expect(document.querySelector("[data-pending-send]")).toBeNull();
-      expect(screen.getByText("云端机器迟迟没就绪,消息未发出,已放回输入框")).toBeTruthy();
-      expect(streamModes).not.toContain("new");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  // 后端只对 hibernated 调 Resume(task_control.go:160),而 vmstatus.Resolve
-  // 对已回收 / 带 Failed 条件 / 建成超 3 分钟仍探不到在线的机器一律给 offline
-  // ——把 offline 也算成"正在唤醒",就是对着一台没人会去救的机器显唤醒动画、
-  // 再把消息押住干等 5 分钟(2026-08-09)
-  // 控制流是**唯一**会唤醒休眠 VM 的通道,而它连败到上限会永久放弃自动重连
-  // (懒重连只挂在 call() 入口,而 call 只在开 ⋯ 菜单/切模型时才发)。于是
-  // 「网络抖 30 秒 → 通道悄悄退场 → 15 分钟后机器休眠 → 界面显示正在唤醒、
-  // 实际没人去唤醒」成了死结(2026-08-09)
-  it("控制流放弃后机器休眠:进入休眠的那一下复活通道(否则永远没人去唤醒它)", async () => {
-    vi.useFakeTimers();
-    try {
-      let vmStatus = "online";
-      const controlOpens: string[] = [];
-      stubShellWs((cmd, args) => {
-        switch (cmd) {
-          case "mc_task_info":
-            return Promise.resolve({ id: "t28", status: "processing", virtualmachine: { id: "vm1", status: vmStatus } });
-          case "cloud_ws_open":
-            if (args?.kind !== "control") return Promise.resolve({});
-            controlOpens.push(String(args?.pipe ?? ""));
-            return Promise.reject(new Error("unreachable")); // 网络不可达
-          default:
-            return Promise.resolve({});
-        }
-      });
-      render(<CloudTaskView task={{ id: "t28", status: "processing" }} />);
-      // 5 次拨号失败(退避 2/4/8/16s)后放弃自动重连
-      await vi.advanceTimersByTimeAsync(120_000);
-      const gaveUpAt = controlOpens.length;
-      expect(gaveUpAt).toBeGreaterThanOrEqual(5);
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(controlOpens).toHaveLength(gaveUpAt); // 确认真的不再自动重拨
-      // 控制通道死了要外显:它一断,保活与唤醒就都没了
-      expect(screen.getByText(/云端控制通道已断开/)).toBeTruthy();
-
-      vmStatus = "hibernated"; // 空闲久了,后端把机器睡了
-      await act(async () => void (await vi.advanceTimersByTimeAsync(11_000))); // 等下一拍轮询看到
-      expect(controlOpens.length).toBeGreaterThan(gaveUpAt); // 有人去唤醒了
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   // offline 的另一半:服务端确实给了 Failed 条件——这时才配说"启动失败、
@@ -966,136 +911,10 @@ describe("CloudTaskView", () => {
           })
         : Promise.resolve({}),
     );
-    render(<CloudTaskView task={{ id: "t22b", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t22b", status: "processing" }} />);
     await waitFor(() => expect(screen.getAllByText(/启动失败/).length).toBeGreaterThan(0));
     expect(screen.getAllByText(/镜像拉取超时/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/尚未上线/)).toBeNull();
-  });
-
-  it("机器 offline(非休眠):不谎称唤醒中,发送照常出门不押后", async () => {
-    const streamModes: string[] = [];
-    stubShellWs((cmd, args) => {
-      switch (cmd) {
-        case "mc_task_info":
-          return Promise.resolve({ id: "t22", status: "processing", virtualmachine: { id: "vm1", status: "offline" } });
-        case "cloud_ws_open":
-          if (args?.kind === "stream") streamModes.push(String((args?.params as { mode?: string })?.mode ?? ""));
-          return Promise.resolve({});
-        default:
-          return Promise.resolve({});
-      }
-    });
-    render(<CloudTaskView task={{ id: "t22", status: "processing" }} />);
-    await waitFor(() => expect(streamModes).toContain("attach"));
-    // 连接条讲实话:不是"正在唤醒";但也**不许断言已回收/启动失败**——
-    // 服务端的 offline 把"真回收""真失败""建成超 3 分钟还没上线"三件事挤在
-    // 一个枚举里(backend/pkg/vmstatus/status.go::Resolve),这个桩没给 Failed
-    // 条件,所以只能说"尚未上线"(2026-08-09 用户报障「明显是错的」)
-    await waitFor(() => expect(screen.getAllByText(/尚未上线/).length).toBeGreaterThan(0));
-    expect(screen.queryByText(/正在唤醒云端机器/)).toBeNull();
-    expect(screen.queryByText(/不会自动恢复/)).toBeNull();
-    expect(screen.queryByText(/启动失败/)).toBeNull();
-
-    fireEvent.change(screen.getByLabelText("消息输入"), { target: { value: "还是发出去试试" } });
-    await userEvent.click(screen.getByRole("button", { name: "发送" }));
-    // 不押后:直发(服务端才是权威,拒了会经 onSendFailed 交还草稿)
-    await waitFor(() => expect(streamModes).toContain("new"));
-  });
-
-  // 启动期押后(旧 UI cloudStartup「环境就绪即送达」):pending 时 VM 还没有,
-  // 直发只会掉进黑洞;环境就绪(task → processing)那一刻自动出门
-  it("启动期发送:押进出件箱 + 待发 chip,任务转 processing 即自动送出", async () => {
-    let taskStatus = "pending";
-    const streamModes: string[] = [];
-    const wsSends: { text?: unknown }[] = [];
-    stubShellWs((cmd, args) => {
-      switch (cmd) {
-        case "mc_task_info":
-          return Promise.resolve({ id: "t23", status: taskStatus, virtualmachine: { id: "vm1", status: "online" } });
-        case "cloud_ws_open":
-          if (args?.kind === "stream") streamModes.push(String((args?.params as { mode?: string })?.mode ?? ""));
-          return Promise.resolve({});
-        case "cloud_ws_send":
-          wsSends.push(args ?? {});
-          return Promise.resolve({});
-        default:
-          return Promise.resolve({});
-      }
-    });
-    render(<CloudTaskView task={{ id: "t23", status: "pending" }} />);
-    const box = await screen.findByLabelText("消息输入");
-    fireEvent.change(box, { target: { value: "先把活派下去" } });
-    await userEvent.click(screen.getByRole("button", { name: "发送" }));
-    // 启动页整屏是时间线,占位气泡没有落脚处:输入卡内给待发 chip
-    expect(await screen.findByText("环境就绪后自动发送")).toBeTruthy();
-    expect(screen.getByText("先把活派下去")).toBeTruthy();
-    expect(streamModes).not.toContain("new"); // 还没出门
-
-    taskStatus = "processing"; // 环境就绪
-    await vi.waitFor(() => expect(streamModes).toContain("new"), { timeout: 5000, interval: 50 });
-    await waitFor(() => {
-      const sent = wsSends
-        .map((s) => JSON.parse(String(s.text)) as { type: string; data: string })
-        .find((f) => f.type === "user-input");
-      expect(sent).toBeTruthy();
-      expect(b64decode((JSON.parse(b64decode(sent!.data)) as { content: string }).content)).toBe("先把活派下去");
-    });
-  });
-
-  // 唤醒完成要做的不止"把押后那条发出去":唤醒期间 attach 大概率已经连败收束,
-  // 不重新武装的话 attach effect 的守卫永远挡着,实时输出就此死掉
-  // (旧 UI useCloudTask.ts:337-348 的四件事)
-  it("唤醒完成:即便出件箱是空的,也要重新武装 attach(否则实时输出永久死掉)", async () => {
-    let vmStatus = "hibernated";
-    const streamOpens: string[] = [];
-    const listeners = stubShellWs((cmd, args) => {
-      switch (cmd) {
-        case "mc_task_info":
-          return Promise.resolve({ id: "t24", status: "processing", virtualmachine: { id: "vm1", status: vmStatus } });
-        case "cloud_ws_open":
-          if (args?.kind === "stream") streamOpens.push(String(args?.pipe ?? ""));
-          return Promise.resolve({});
-        default:
-          return Promise.resolve({});
-      }
-    });
-    render(<CloudTaskView task={{ id: "t24", status: "processing" }} />);
-    await waitFor(() => expect(streamOpens).toHaveLength(1));
-    // 唤醒期任务流被云端正常收束(零帧 Close 1000)→ 转"就绪",不再自动重建
-    listeners.get(`ws-closed:${streamOpens[0]}`)?.({ payload: { code: 1000 } });
-    await waitFor(() => expect(streamOpens).toHaveLength(1)); // 确认没有自动重连
-
-    vmStatus = "online"; // 机器醒了
-    await vi.waitFor(() => expect(streamOpens.length).toBeGreaterThan(1), { timeout: 5000, interval: 50 });
-  });
-
-  // 连上后一帧不回(socket 静静挂着):onFrames/onIdle/onSendFailed 一个都不会
-  // 来,发送态就永远悬着——按钮转圈到天荒地老,字已经离开输入框,再按发送还
-  // 被「上一条还在拨号」挡回来。旧 UI useCloudTask.ts:229 同位置有一道 15s 闸
-  it("已出门却零回执:15s 到点解除发送态并外显,不让按钮永远转圈", async () => {
-    vi.useFakeTimers();
-    try {
-      stubShellWs((cmd) =>
-        cmd === "mc_task_info"
-          ? Promise.resolve({ id: "t25", status: "processing", virtualmachine: { id: "vm1", status: "online" } })
-          : Promise.resolve({}),
-      );
-      render(<CloudTaskView task={{ id: "t25", status: "processing" }} />);
-      await vi.advanceTimersByTimeAsync(50);
-      fireEvent.change(screen.getByLabelText("消息输入"), { target: { value: "石沉大海的一句" } });
-      fireEvent.click(screen.getByRole("button", { name: "发送" }));
-      await vi.advanceTimersByTimeAsync(50);
-      expect((screen.getByRole("button", { name: "发送" }) as HTMLButtonElement).disabled).toBe(true);
-
-      await vi.advanceTimersByTimeAsync(15_000);
-      // 发送态解除(可以再发),内容不静默丢:原文进错误条由用户决定要不要重发
-      expect(document.querySelector("[data-pending-send]")).toBeNull();
-      expect(screen.getByText(/云端迟迟没有回应.*石沉大海的一句/)).toBeTruthy();
-      fireEvent.change(screen.getByLabelText("消息输入"), { target: { value: "再来一次" } });
-      expect((screen.getByRole("button", { name: "发送" }) as HTMLButtonElement).disabled).toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("模型清单拉取失败:原因外显(菜单永远空白且一句交代都没有是最坏的)", async () => {
@@ -1109,7 +928,7 @@ describe("CloudTaskView", () => {
           return Promise.resolve({});
       }
     });
-    render(<CloudTaskView task={{ id: "t26", status: "processing" }} />);
+    renderCloud(<CloudTaskView task={{ id: "t26", status: "processing" }} />);
     expect(await screen.findByText(/模型列表加载失败.*401 未登录/)).toBeTruthy();
   });
 
@@ -1133,7 +952,7 @@ describe("CloudTaskView", () => {
             return Promise.resolve({});
         }
       });
-      render(<CloudTaskView task={{ id: "t27", status: "processing" }} />);
+      renderCloud(<CloudTaskView task={{ id: "t27", status: "processing" }} />);
       await screen.findByLabelText("消息输入");
       await new Promise((r) => setTimeout(r, 20));
       expect(unhandled).toEqual([]);
@@ -1145,32 +964,14 @@ describe("CloudTaskView", () => {
     }
   });
 
-  it("押后期间任务结束:占位撤下,未发出的内容外显不静默丢", async () => {
-    let taskStatus = "processing";
-    stubShellWs((cmd) => {
-      switch (cmd) {
-        case "mc_task_info":
-          return Promise.resolve({
-            id: "t20",
-            status: taskStatus,
-            virtualmachine: { id: "vm1", status: "hibernated" },
-          });
-        case "mc_task_rounds":
-          return Promise.resolve({ frames: [], next_cursor: "", has_more: false });
-        default:
-          return Promise.resolve({});
-      }
-    });
-    render(<CloudTaskView task={{ id: "t20", status: "processing" }} />);
-    fireEvent.change(await screen.findByLabelText("消息输入"), { target: { value: "还没来得及发" } });
-    await userEvent.click(screen.getByRole("button", { name: "发送" }));
-    await screen.findByText("云端机器唤醒中,连上后自动发出…");
-
-    taskStatus = "finished"; // 云端跑完 / 被别处终止
-    await vi.waitFor(() => expect(screen.getByText(/任务已结束,这条还没来得及发出/)).toBeTruthy(), {
-      timeout: 5000,
-      interval: 50,
-    });
-    expect(document.querySelector("[data-pending-send]")).toBeNull();
+  it("背景表面单层:pane 根透明，独立形态提供工作台 100 表面", () => {
+    stubShell(() => Promise.resolve({ id: "surface", status: "pending" }));
+    const paneView = renderCloud(<CloudTaskView task={{ id: "surface" }} variant="pane" />);
+    const pane = paneView.container.querySelector(".bg-transparent") as HTMLElement;
+    expect(pane).toBeTruthy();
+    expect(pane.className).not.toContain("mc-workbench-surface-100");
+    paneView.unmount();
+    const fullView = renderCloud(<CloudTaskView task={{ id: "surface" }} />);
+    expect(fullView.container.querySelector(".mc-workbench-surface-100")).toBeTruthy();
   });
 });

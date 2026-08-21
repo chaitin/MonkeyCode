@@ -81,22 +81,24 @@ interface BadgeSpec {
 }
 
 function verdictBadge(verdict?: string): BadgeSpec | null {
-  if (verdict === "CONFIRMED") return { key: "chat.findings.confirmed", cls: "badge badge-error badge-soft badge-xs" };
-  if (verdict === "PLAUSIBLE") return { key: "chat.findings.plausible", cls: "badge badge-warning badge-soft badge-xs" };
+  if (verdict === "CONFIRMED") return { key: "chat.findings.confirmed", cls: "badge badge-error badge-soft badge-xs shrink-0" };
+  if (verdict === "PLAUSIBLE") return { key: "chat.findings.plausible", cls: "badge badge-warning badge-soft badge-xs shrink-0" };
   return null;
 }
 
 function outcomeBadge(outcome?: string): BadgeSpec | null {
   switch (outcome) {
     case "fixed":
-      return { key: "chat.findings.fixed", cls: "badge badge-success badge-soft badge-xs" };
+      return { key: "chat.findings.fixed", cls: "badge badge-success badge-soft badge-xs shrink-0" };
     case "skipped":
-      return { key: "chat.findings.skipped", cls: "badge badge-warning badge-soft badge-xs" };
+      return { key: "chat.findings.skipped", cls: "badge badge-warning badge-soft badge-xs shrink-0" };
     case "no_change_needed":
-      return { key: "chat.findings.noChange", cls: "badge badge-ghost badge-xs" };
+      return { key: "chat.findings.noChange", cls: "badge badge-ghost badge-xs shrink-0" };
+    case "unresolved":
+      return { key: "chat.findings.unresolved", cls: "badge badge-ghost badge-xs shrink-0" };
   }
   // 未来枚举扩展时至少原样可见,不无声吞掉
-  return outcome ? { key: null, raw: outcome, cls: "badge badge-ghost badge-xs" } : null;
+  return outcome ? { key: null, raw: outcome, cls: "badge badge-ghost badge-xs shrink-0" } : null;
 }
 
 function FindingRow({ finding, onOpenFile }: { finding: ReviewFinding; onOpenFile?: (path: string) => void }) {
@@ -127,13 +129,14 @@ function FindingRow({ finding, onOpenFile }: { finding: ReviewFinding; onOpenFil
     <>
       <span aria-hidden className={dot} />
       {verdict && <span className={verdict.cls}>{verdict.key ? t(verdict.key) : verdict.raw}</span>}
-      <MarkdownInline source={title} className="min-w-0 flex-1" />
+      {/* 单行紧凑展示:摘要可收缩并省略,不能被挤成一字一行。 */}
+      <MarkdownInline source={title} className="min-w-0 flex-1 truncate" />
       {/* 分类 chip(旧 findingsCard.tsx 摘要与 file:line 之间那枚 mono 标签):
           category 一路解析进 ReviewFinding 却从不进 JSX,发现条数一多就失去
           按类别(correctness / test-coverage / efficiency…)快速扫读的能力。
           引擎侧是自由字符串,不进词典、原样显示 */}
       {finding.category && (
-        <span className="badge badge-ghost badge-xs shrink-0 font-mono">{finding.category}</span>
+        <span className="badge badge-ghost badge-xs max-w-24 shrink-0 truncate font-mono">{finding.category}</span>
       )}
       {location &&
         (onOpenFile ? (
@@ -145,7 +148,7 @@ function FindingRow({ finding, onOpenFile }: { finding: ReviewFinding; onOpenFil
             title={finding.file + (finding.line ? `:${finding.line}` : "")}
             // truncate + 上限是窄窗口的兜底(JS 截中段管的是常规宽度):
             // overflow-hidden 让 flex 最小尺寸归零,永远轮不到摘要列被挤扁
-            className="link link-hover max-w-[50%] truncate font-mono text-base-content/50"
+            className="link link-hover max-w-[30%] truncate font-mono text-base-content/50"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -155,16 +158,16 @@ function FindingRow({ finding, onOpenFile }: { finding: ReviewFinding; onOpenFil
             {location}
           </button>
         ) : (
-          <span title={finding.file + (finding.line ? `:${finding.line}` : "")} className="max-w-[50%] truncate font-mono text-base-content/50">
+          <span title={finding.file + (finding.line ? `:${finding.line}` : "")} className="max-w-[30%] truncate font-mono text-base-content/50">
             {location}
           </span>
         ))}
       {outcome && <span className={outcome.cls}>{outcome.key ? t(outcome.key) : outcome.raw}</span>}
     </>
   );
-  // 两种行同给 py-1:collapse-title 默认 padding:1rem 会把每行撑出近 40px
-  // 行距(2026-08-12 截图报障),压到 py-1/ps-0 与无展开行同一节奏;
-  // pe 不动,留给 collapse-arrow 的 3rem 箭头位
+  // 保持单行:摘要/category/file 负责截断,状态徽标不收缩。两种行仍同给
+  // py-1;collapse-title 默认 padding:1rem 会把每行撑出近 40px 行距,
+  // 压到 py-1/ps-0 与无展开行同一节奏;pe 不动,留给箭头的 3rem 位置
   if (!detail) return <div className="flex items-center gap-2 py-1 text-xs">{row}</div>;
   return (
     <details className="collapse collapse-arrow text-xs">

@@ -394,6 +394,15 @@ function ServiceCard({
           onChange={(e) => onDraft((d) => ({ ...d, mcLlmBaseUrl: e.target.value }))}
         />
       </label>
+      <label className="flex cursor-pointer items-center gap-2" title={t("account.server.skipTlsVerifyHint")}>
+        <input
+          type="checkbox"
+          className="checkbox checkbox-xs"
+          checked={draft.mcSkipTlsVerify}
+          onChange={(e) => onDraft((d) => ({ ...d, mcSkipTlsVerify: e.target.checked }))}
+        />
+        <span className="text-xs">{t("account.server.skipTlsVerify")}</span>
+      </label>
       <p className="text-xs leading-relaxed text-base-content/60">{t("account.server.hint")}</p>
       {onApplyDraft && (
         <button
@@ -951,6 +960,9 @@ export function AccountSection({
         mcBaseUrl: next === "intl" ? MC_INTL_URL : "",
         mcBasicAuth: "",
         mcLlmBaseUrl: "",
+        // 免验证是私有化专属逃生门,跟私有地址一起清:官方云壳侧本就
+        // 不生效,留着只会在下次填私有地址时静默继承旧选择
+        mcSkipTlsVerify: false,
       });
       onDraft(apply);
       onApplyDraft?.(apply(draft));

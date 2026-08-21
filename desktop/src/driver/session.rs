@@ -1973,6 +1973,8 @@ impl OhmyDriver {
         // child SessionState；background_agents 才是其存活/父归属真值。
         let background_parents: Vec<String> = self.0.sub.background_agents.lock_ok()
             .values().map(|(parent_sid, _)| parent_sid.clone()).collect();
+        let continuation_parents: Vec<String> = self.0.sub.active_continuations.lock_ok()
+            .values().map(|continuation| continuation.parent_sid.clone()).collect();
         let subs = self.0.sub.subagents.lock_ok();
         let sessions = self.0.sess.sessions.lock_ok();
         let mut owners: HashMap<String, String> = HashMap::new();
@@ -1993,6 +1995,11 @@ impl OhmyDriver {
                 .map(|parent| parent.workdir.clone()).unwrap_or_default();
             owners.entry(parent_sid).or_insert(workdir);
         }
+        for parent_sid in continuation_parents {
+            let workdir = sessions.get(&parent_sid)
+                .map(|parent| parent.workdir.clone()).unwrap_or_default();
+            owners.entry(parent_sid).or_insert(workdir);
+        }
         let active: Vec<String> = owners.into_values().collect();
         match active.as_slice() {
             [workdir] if !workdir.is_empty() => Some(workdir.clone()),
@@ -2005,6 +2012,7 @@ impl OhmyDriver {
         let foreground = self.0.sess.sessions.lock_ok().values()
             .any(|session| session.running);
         foreground || !self.0.sub.background_agents.lock_ok().is_empty()
+            || !self.0.sub.active_continuations.lock_ok().is_empty()
     }
 
     fn session_created(&self, id: &str) -> bool {
@@ -2686,10 +2694,12 @@ impl Inner {
         };
         // 未闭合工具的 agent_result 暂存一并失效(与 turn/stopped 同纪律)
         if !open.is_empty() {
-            let mut ar = self.sub.agent_results.lock_ok();
-            for tc in open.keys() {
-                ar.remove(tc);
+            {
+                let mut ar = self.sub.agent_results.lock_ok();
+                for tc in open.keys() { ar.remove(tc); }
             }
+            let mut names = self.sub.agent_names.lock_ok();
+            for tc in open.keys() { names.remove(tc); }
         }
         // 引擎不再服务:后台代理连同子循环一起没了,一并收尾(含后台登记)
         self.close_children_of_session(sid, SessionStatus::Interrupted, true);
@@ -2731,6 +2741,16 @@ impl Inner {
         };
         for id in ids {
             self.reconcile_session(&id, reason);
+        }
+        // parent 轮次可能早已正常 stopped/idle，但后台 Agent 或 SendMessage
+        // continuation 仍在执行。reconcile_session 对 idle 会话会早退，故在
+        // “整个引擎不再服务”的边界再显式清一次这些存活登记与 child route。
+        let mut lingering: HashSet<String> = self.sub.background_agents.lock_ok().values()
+            .map(|(sid, _)| sid.clone()).collect();
+        lingering.extend(self.sub.active_continuations.lock_ok().values()
+            .map(|continuation| continuation.parent_sid.clone()));
+        for sid in lingering {
+            self.close_children_of_session(&sid, SessionStatus::Interrupted, true);
         }
     }
 
