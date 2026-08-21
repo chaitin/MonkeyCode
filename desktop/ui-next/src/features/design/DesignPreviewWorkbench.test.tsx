@@ -766,6 +766,48 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     expect(screen.queryByRole("dialog", { name: "Selected element" })).toBeNull();
   });
 
+  it("does not restore a stale element comment after marked feedback is sent", async () => {
+    mount();
+    await userEvent.click(screen.getByRole("button", { name: /Annotate/ }));
+    await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
+    act(() => events.get("preview-element-picked")?.({ payload: {
+      tag: "BUTTON",
+      selector: "button.tab:nth-of-type(1)",
+      text: "",
+      bounds: { x: 20, y: 40, width: 7, height: 7 },
+      styles: {},
+    } }));
+    expect(await screen.findByRole("dialog", { name: "Selected element" })).toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: /Mark/ }));
+    expect(screen.queryByRole("dialog", { name: "Selected element" })).toBeNull();
+    await userEvent.click(await screen.findByRole("button", { name: /^Send$/ }));
+
+    await waitFor(() => expect(composer.sendWithFiles).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("dialog", { name: "Selected element" })).toBeNull();
+  });
+
+  it("ignores an element selection delivered after marking starts", async () => {
+    mount();
+    await userEvent.click(screen.getByRole("button", { name: /Annotate/ }));
+    await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
+
+    await userEvent.click(screen.getByRole("button", { name: /Mark/ }));
+    expect(await screen.findByRole("img", { name: "Captured preview" })).toBeTruthy();
+    act(() => events.get("preview-element-picked")?.({ payload: {
+      tag: "BUTTON",
+      selector: "button.tab:nth-of-type(1)",
+      text: "",
+      bounds: { x: 20, y: 40, width: 7, height: 7 },
+      styles: {},
+    } }));
+
+    expect(screen.queryByRole("dialog", { name: "Selected element" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /^Send$/ }));
+    await waitFor(() => expect(composer.sendWithFiles).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("dialog", { name: "Selected element" })).toBeNull();
+  });
+
   it("toggles marking off and hides its toolbar when Mark is clicked again", async () => {
     mount();
     const mark = screen.getByRole("button", { name: /Mark/ });
