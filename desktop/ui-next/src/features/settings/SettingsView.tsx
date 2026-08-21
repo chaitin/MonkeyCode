@@ -14,9 +14,11 @@ import {
   applyDecodedBackground,
   beginBackgroundOperation,
   cancelBackgroundOperations,
+  customBackgroundEnabled,
   decodeBackground,
   getBackgroundRuntimeState,
   isBackgroundOperationCurrent,
+  initializeStoredBackground,
   readBackgroundPreferences,
   reconcileBackgroundRuntime,
   removeAppliedBackground,
@@ -94,11 +96,27 @@ function blurIfTyping(): boolean {
 }
 
 /** 设置行:左侧名称+说明、右侧控件,行间分隔线成组——桌面设置页惯例。 */
-function SettingRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+function SettingRow({
+  label,
+  hint,
+  onLabelClick,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  onLabelClick?: () => void;
+  children: ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between gap-6 px-4 py-3">
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-sm font-medium">{label}</span>
+        {onLabelClick ? (
+          <span data-background-unlock="" className="cursor-default text-sm font-medium" onClick={onLabelClick}>
+            {label}
+          </span>
+        ) : (
+          <span className="text-sm font-medium">{label}</span>
+        )}
         {hint && <span className="text-xs leading-relaxed text-base-content/50">{hint}</span>}
       </div>
       {children}
@@ -667,6 +685,9 @@ function GeneralSection() {
   const [theme, setThemeState] = useState<Theme>(readTheme);
   // 没配过就给一份默认草稿:编辑器要有初值,选中「自定义」当场就该看到效果
   const [custom, setCustom] = useState<CustomTheme>(() => readCustomTheme() ?? DEFAULT_CUSTOM);
+  const [backgroundUnlocked, setBackgroundUnlocked] = useState(false);
+  const backgroundUnlock = useRef({ count: 0, lastAt: 0 });
+  const backgroundVisible = customBackgroundEnabled() || backgroundUnlocked;
   const [soundOn, setSoundOn] = useState(true);
   const [uiScale, setUiScaleState] = useState<UiScale>(() => readUiScale());
   const pickUiScale = (s: UiScale) => {
@@ -691,6 +712,18 @@ function GeneralSection() {
   const pickSound = (next: boolean) => {
     setSoundOn(next); // 乐观置位:壳广播会回来盖一次,失败则回滚
     void setSoundEnabled(next).catch(() => setSoundOn(!next));
+  };
+
+  const unlockBackground = () => {
+    if (backgroundVisible || !inDesktopShell()) return;
+    const now = Date.now();
+    const state = backgroundUnlock.current;
+    state.count = now - state.lastAt <= 1_000 ? state.count + 1 : 1;
+    state.lastAt = now;
+    if (state.count < 5) return;
+    state.count = 0;
+    setBackgroundUnlocked(true);
+    void initializeStoredBackground();
   };
 
   const pickTheme = (next: Theme) => {
@@ -725,12 +758,12 @@ function GeneralSection() {
         {/* 自定义编辑器与主题行同格(不另起 SettingRow):它是这一行的展开态,
             分成两行会读成两个并列设置 */}
         <div>
-          <SettingRow label={t("settings.appearance.theme")}>
+          <SettingRow label={t("settings.appearance.theme")} onLabelClick={unlockBackground}>
             <ThemePicker theme={theme} custom={custom} onPick={pickTheme} />
           </SettingRow>
           {theme === CUSTOM_THEME && <CustomThemeEditor value={custom} onChange={editCustom} />}
         </div>
-        {inDesktopShell() && <BackgroundEditor />}
+        {backgroundVisible && inDesktopShell() && <BackgroundEditor />}
         <SettingRow label={t("settings.appearance.language")}>
           <div role="radiogroup" aria-label={t("settings.appearance.language")} className="join shrink-0">
             {LOCALES.map((l) => seg("settings-language", l.label, locale === l.value, () => setLocale(l.value)))}

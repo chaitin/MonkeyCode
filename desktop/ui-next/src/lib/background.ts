@@ -33,6 +33,10 @@ export interface BackgroundInitResult extends BackgroundRuntimeState {
 
 const PREFERENCES_KEY = "mc.backgroundPreferences";
 const PRESENT_KEY = "mc.backgroundAssetPresent";
+// 首版视觉与现有组件体系不协调，常规入口暂时隐藏；通过设置页“外观主题”
+// 标签的隐藏连击入口临时解锁，既不暴露给普通用户，也保留调试能力。
+const CUSTOM_BACKGROUND_ENABLED = false;
+let enabledOverrideForTest: boolean | null = null;
 const listeners = new Set<() => void>();
 let runtimeState: BackgroundRuntimeState = { asset: null, error: null };
 let operationGeneration = 0;
@@ -53,6 +57,15 @@ function normalize(value: unknown): BackgroundPreferencesV1 {
     blurPx: finiteInRange(object.blurPx, 0, 20) ? object.blurPx : DEFAULT_BACKGROUND.blurPx,
     fit: isFit(object.fit) ? object.fit : DEFAULT_BACKGROUND.fit,
   };
+}
+
+export function customBackgroundEnabled(): boolean {
+  return enabledOverrideForTest ?? CUSTOM_BACKGROUND_ENABLED;
+}
+
+/** 仅用于覆盖隐藏入口后的内部编辑器回归测试。 */
+export function setCustomBackgroundEnabledForTest(enabled: boolean): void {
+  enabledOverrideForTest = enabled;
 }
 
 export function readBackgroundPreferences(): BackgroundPreferencesV1 {
@@ -247,5 +260,6 @@ export function resetBackgroundRuntimeForTest(): void {
   runtimeState = { asset: null, error: null };
   operationGeneration = 0;
   operationTail = Promise.resolve();
+  enabledOverrideForTest = null;
   listeners.clear();
 }

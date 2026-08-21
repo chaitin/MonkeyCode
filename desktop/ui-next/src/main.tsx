@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "@/app/App";
 import { installShellChrome } from "@/app/shellChrome";
-import { initializeStoredBackground } from "@/lib/background";
+import { customBackgroundEnabled, initializeStoredBackground } from "@/lib/background";
 import { applyPlatformAttr } from "@/lib/ipc/host";
 import { applyStoredTheme } from "@/lib/theme";
 import { applyUiScale, readUiScale } from "@/lib/uiScale";
@@ -33,6 +33,7 @@ function mountApp(): void {
   );
 }
 
-// 不使用顶层 await（macOS 11 的 Safari 14 WKWebView 无法解析），但仍等背景读取/
-// 预解码收敛后才挂工作台，保证工作台首次可见前已经初始化。
-void initializeStoredBackground().then(mountApp, mountApp);
+// 不使用顶层 await（macOS 11 的 Safari 14 WKWebView 无法解析）。常规入口隐藏时
+// 同时跳过资产读取；从设置页隐藏连击入口解锁后再按需初始化。
+const backgroundReady = customBackgroundEnabled() ? initializeStoredBackground() : Promise.resolve();
+void backgroundReady.then(mountApp, mountApp);

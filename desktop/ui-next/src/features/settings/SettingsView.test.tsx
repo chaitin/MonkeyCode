@@ -1,8 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { initializeStoredBackground, installBackground, resetBackgroundRuntimeForTest } from "@/lib/background";
+import {
+  initializeStoredBackground,
+  installBackground,
+  resetBackgroundRuntimeForTest,
+  setCustomBackgroundEnabledForTest,
+} from "@/lib/background";
 import { setLocale } from "@/lib/i18n";
 import type { BackgroundAsset } from "@/lib/ipc/background";
 import type { DesktopConfig } from "@/lib/ipc/config";
@@ -774,7 +779,23 @@ describe("布局契约", () => {
   });
 });
 
-describe("外观设置:自定义背景", () => {
+describe("外观设置:自定义背景入口", () => {
+  it("功能关闭时隐藏入口，连续点击主题标签五次后临时解锁", async () => {
+    setCustomBackgroundEnabledForTest(false);
+    stubShell();
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    const hiddenTrigger = document.querySelector<HTMLElement>("[data-background-unlock]")!;
+    for (let i = 0; i < 4; i += 1) await userEvent.click(hiddenTrigger);
+    expect(screen.queryByRole("button", { name: "选择图片" })).toBeNull();
+    await userEvent.click(hiddenTrigger);
+    expect(await screen.findByRole("button", { name: "选择图片" })).toBeDefined();
+  });
+});
+
+describe("外观设置:自定义背景内部编辑器", () => {
+  beforeEach(() => setCustomBackgroundEnabledForTest(true));
+
   const backgroundAsset: BackgroundAsset = {
     revision: "a".repeat(64),
     originalName: "wall.png",
