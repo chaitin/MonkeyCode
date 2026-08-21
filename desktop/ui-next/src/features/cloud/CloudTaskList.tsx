@@ -9,7 +9,7 @@
 // 数据 hook(useCloudTasks/useCloudProjects)由 Sidebar 顶层调用后注入
 // props——概览统计与列表共用同一份 feed,enabled 仅云端空间为真。
 import { IconCloud, IconFolder, IconHistory, IconPlus } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 
 import { GroupLabel, ListRow, NEST_NO_GUIDE, SectionFold } from "@/features/sidebar/listKit";
 import type { MenuItem } from "@/lib/contextMenu";
@@ -255,6 +255,7 @@ function TaskRow({
   onSelect,
   onDelete,
   onStop,
+  onDragStart,
 }: {
   task: CloudTask;
   currentId: string | null;
@@ -263,6 +264,8 @@ function TaskRow({
   onSelect: (task: CloudTask) => void;
   onDelete: (task: CloudTask) => void;
   onStop: (task: CloudTask) => void;
+  /** 行拖进格装载(工作台;不传即不可拖)。 */
+  onDragStart?: (e: DragEvent<HTMLButtonElement>, task: CloudTask) => void;
 }) {
   const { t } = useI18n();
   const label = cloudTaskLabel(task, t("cloud.list.untitled"));
@@ -283,6 +286,8 @@ function TaskRow({
       active={task.id === currentId}
       onSelect={() => onSelect(task)}
       menuItems={menuItems}
+      onDragStart={onDragStart ? (e) => onDragStart(e, task) : undefined}
+      dataId={task.id}
     />
   );
 }
@@ -304,6 +309,7 @@ export function CloudTaskList({
   query = "",
   onOpenSettings,
   onNewTaskIn,
+  onTaskDragStart,
 }: {
   /** 列表数据源(useCloudTasks;Sidebar 供数——概览统计与列表同一份) */
   feed: CloudTasksFeed;
@@ -321,6 +327,8 @@ export function CloudTaskList({
   onOpenSettings?: () => void;
   /** 项目组头「在此项目新建任务」:App 打开新建视图并预选该云端项目 */
   onNewTaskIn?: (project: CloudProject) => void;
+  /** 行拖进格装载(工作台 LOAD_MIME;不传即不可拖)。 */
+  onTaskDragStart?: (e: DragEvent<HTMLButtonElement>, task: CloudTask) => void;
 }) {
   const { t } = useI18n();
   const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();
@@ -497,7 +505,7 @@ export function CloudTaskList({
           <li className="py-1 ps-6 pe-2 text-xs text-base-content/40">{t("cloud.list.groupEmpty")}</li>
         )}
         {rowsHit.map((task) => (
-          <TaskRow key={task.id} task={task} currentId={currentId} level={1} onSelect={onSelect} onDelete={handleDelete} onStop={handleStop} />
+          <TaskRow key={task.id} task={task} currentId={currentId} level={1} onSelect={onSelect} onDelete={handleDelete} onStop={handleStop} onDragStart={onTaskDragStart} />
         ))}
       </ul>
     );
@@ -556,7 +564,7 @@ export function CloudTaskList({
       {/* 进行中任务裸行置顶(同 chat 平铺行,不设区标签):彩点/尾注已自带
           「正在进行」语义,区标签反而多一层杂讯 */}
       {activeRows.map((task) => (
-        <TaskRow key={task.id} task={task} currentId={currentId} onSelect={onSelect} onDelete={handleDelete} onStop={handleStop} />
+        <TaskRow key={task.id} task={task} currentId={currentId} onSelect={onSelect} onDelete={handleDelete} onStop={handleStop} onDragStart={onTaskDragStart} />
       ))}
       {projects.map((project) =>
         projectGroup(project, project.id ?? "", project.name || project.full_name || t("cloud.list.untitledProject")),
@@ -565,7 +573,7 @@ export function CloudTaskList({
       {historyRows.length > 0 && (
         <SectionFold label={t("cloud.list.history")} icon={IconHistory} foldKey="mc.cloudHistoryOpen" forceOpen={forceOpen}>
           {historyRows.map((task) => (
-            <TaskRow key={task.id} task={task} currentId={currentId} level={1} onSelect={onSelect} onDelete={handleDelete} onStop={handleStop} />
+            <TaskRow key={task.id} task={task} currentId={currentId} level={1} onSelect={onSelect} onDelete={handleDelete} onStop={handleStop} onDragStart={onTaskDragStart} />
           ))}
           {feed.hasMore && (
             <li>

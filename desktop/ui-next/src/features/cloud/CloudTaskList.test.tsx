@@ -39,7 +39,7 @@ function contextMenuOf(el: HTMLElement): HTMLElement {
   return document.body.lastElementChild as HTMLElement;
 }
 
-const rowOf = (text: string) => screen.getByText(text).closest("a") as HTMLElement;
+const rowOf = (text: string) => screen.getByText(text).closest("button") as HTMLElement;
 
 describe("CloudTaskList", () => {
   it("进行中裸行置顶(无区标签、无常亮状态点——运行/排队是常态,词进 tooltip),历史收进「历史任务」小节(默认收起、收起即卸载);点击回调", async () => {

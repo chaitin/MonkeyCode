@@ -57,4 +57,14 @@ describe("后台会话提醒判定(D3)", () => {
   it("未选中任何会话(currentId=null)时,任何会话的事件都算后台", () => {
     expect(noticeForSessionEvent(ev({ status: "error" }), null)?.kind).toBe("error");
   });
+
+  // 分屏沉浸:可见格集合整体替换"当前会话"口径——格里的会话就在眼前,
+  // toast 是噪音;currentId 那时**不作数**(它被分屏盖着,不在屏上)
+  it("分屏可见集:在格内不提醒,屏外照提醒;currentId 不再豁免", () => {
+    const visible = new Set(["s2", "s3"]);
+    expect(noticeForSessionEvent(ev({ type: "session-ask", open: true }), "s1", visible)).toBeNull();
+    expect(noticeForSessionEvent(ev({ id: "s9", status: "error" }), "s1", visible)?.kind).toBe("error");
+    // currentId=s1 被分屏盖住,s1 自己的事件此刻属于"屏外"
+    expect(noticeForSessionEvent(ev({ id: "s1", status: "idle" }), "s1", visible)?.kind).toBe("done");
+  });
 });

@@ -8,6 +8,11 @@ const cn = {
     },
   },
   common: {
+    language: {
+      switch: "切换语言",
+      cn: "中文",
+      en: "English",
+    },
     theme: {
       toggle: "切换主题",
       light: "明亮模式",
@@ -1521,7 +1526,7 @@ const cn = {
     featureValues: {
       oneTask: "1 个任务",
       threeTasks: "3 个任务",
-      dailyQuotaBasic: "每天 30M Token",
+      dailyQuotaBasic: "每天 10M Token",
       dailyQuotaPro: "每天 100M Token",
       dailyQuotaUltra: "每天 300M Token",
       modelScopeBasic: "基础模型",
@@ -1538,6 +1543,7 @@ const cn = {
       yearly: "年付",
       monthCount: "{{count}} 个月",
       yearCount: "{{count}} 年",
+      proratedDifference: "按剩余价值计算差价",
     },
     status: {
       lifetime: "长期有效",
@@ -1551,6 +1557,7 @@ const cn = {
     },
     actions: {
       renew: "续费",
+      upgrade: "升级",
       subscribe: "开通",
       subscribePlan: "开通{{plan}}",
     },
@@ -1560,13 +1567,19 @@ const cn = {
       autoRenewFailed: "自动续费设置失败",
       renewFailed: "续费{{plan}}失败",
       subscribeFailed: "开通{{plan}}失败",
+      upgradeFailed: "升级到{{plan}}失败",
+      upgradeRequested: "升级差价账单已创建",
+      subscriptionRequested: "订阅账单已创建",
     },
     confirm: {
       renewTitle: "确认续费套餐",
       subscribeTitle: "确认开通套餐",
+      upgradeTitle: "确认升级订阅",
       description: "确认{{action}}{{plan}}，购买 {{period}}，合计 {{total}}？",
+      upgradeDescription: "Stripe 将抵扣当前订阅未使用时长并立即收取升级差价。支付成功后，{{plan}} {{period}}立即生效，并发放目标完整周期积分。",
       renewAction: "确认续费",
       subscribeAction: "确认开通",
+      upgradeAction: "确认升级",
     },
   },
   navProject: {
@@ -1620,6 +1633,7 @@ const cn = {
       currentPlan: "当前套餐",
       lifetime: "长期有效",
       validUntil: "{{date}} 前有效",
+      nextCharge: "下次扣款：{{date}}",
       upgrade: "开通高级会员",
       renew: "续费",
     },
@@ -2335,7 +2349,7 @@ const cn = {
         concurrency3: "3 个任务并发",
         cloud1c4g: "云开发环境 1C / 4G",
         cloud2c8g: "云开发环境 2C / 8G",
-        dailyQuotaBasic: "每日额度：每天 30M Token",
+        dailyQuotaBasic: "每日额度：每天 10M Token",
         dailyQuotaPro: "每日额度：每天 100M Token",
         dailyQuotaUltra: "每日额度：每天 300M Token",
         modelScopeBasic: "模型范围：基础模型",

@@ -129,6 +129,9 @@ export async function pickImageFiles(title?: string): Promise<File[]> {
 }
 
 export interface NativeDropHandlers {
+  /** 是否把这次窗口级原生事件交给该接收者。Linux 的事件没有 DOM 冒泡
+   * 路径，多 pane 必须在读文件前以焦点等宿主状态选出唯一接收者。 */
+  enabled?: () => boolean;
   onDragging(dragging: boolean): void;
   onFiles(files: File[]): void;
   onError?(message: string): void;
@@ -157,10 +160,18 @@ function fileOfDropped(r: { name?: string; mediaType?: string; data?: string }, 
  * mac/Windows 壳禁用了原生处理器走 DOM 事件,这里的监听永不触发,无副作用。
  * 返回退订函数。 */
 export function onNativeFileDrop(h: NativeDropHandlers): () => void {
+  const enabled = () => h.enabled?.() ?? true;
   const offs = [
-    listen("tauri://drag-enter", () => h.onDragging(true)),
-    listen("tauri://drag-leave", () => h.onDragging(false)),
+    listen("tauri://drag-enter", () => {
+      if (enabled()) h.onDragging(true);
+    }),
+    listen("tauri://drag-leave", () => {
+      if (enabled()) h.onDragging(false);
+    }),
     listen<{ paths?: string[] } | null>("tauri://drag-drop", (payload) => {
+      // 门禁必须在 stat/read 之前：只在 onFiles 回调处拦会让每个 pane
+      // 仍各读一遍文件，云端 wantContent 更会把大文件重复搬进内存。
+      if (!enabled()) return;
       h.onDragging(false);
       const paths = payload?.paths ?? [];
       if (!paths.length) return;

@@ -1,10 +1,13 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
 )
 
@@ -162,6 +166,48 @@ func TestWithInitialUserInputFallbackSkipsNonFirstTurn(t *testing.T) {
 	}
 	if entries[0].Event != "task-started" {
 		t.Fatalf("event = %q, want task-started", entries[0].Event)
+	}
+}
+
+func TestConsumeLiveStreamReturnsTaskLiveError(t *testing.T) {
+	cause := errors.New("taskflow websocket closed")
+	streamCh := make(chan *taskflow.TaskChunk)
+	streamErrCh := make(chan error, 1)
+	streamErrCh <- cause
+	close(streamCh)
+
+	err := (&TaskHandler{}).consumeLiveStream(context.Background(), nil, nil, streamCh, streamErrCh, 0)
+	if !errors.Is(err, cause) {
+		t.Fatalf("consumeLiveStream() error = %v, want cause %v", err, cause)
+	}
+	if !strings.Contains(err.Error(), "task live stream") {
+		t.Fatalf("consumeLiveStream() error = %q, want task live stream context", err)
+	}
+}
+
+func TestConsumeLiveStreamIgnoresErrorAfterContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	streamCh := make(chan *taskflow.TaskChunk)
+	streamErrCh := make(chan error, 1)
+	streamErrCh <- context.Canceled
+	close(streamCh)
+
+	if err := (&TaskHandler{}).consumeLiveStream(ctx, nil, nil, streamCh, streamErrCh, 0); err != nil {
+		t.Fatalf("consumeLiveStream() error = %v, want nil", err)
+	}
+}
+
+func TestWrapAttachStreamErrorPreservesCause(t *testing.T) {
+	cause := errors.New("tasklog provider unavailable: clickhouse")
+	err := wrapAttachStreamError(cause)
+
+	if !errors.Is(err, cause) {
+		t.Fatalf("wrapAttachStreamError() error = %v, want cause %v", err, cause)
+	}
+	if got, want := err.Error(), "failed to attach stream: tasklog provider unavailable: clickhouse"; got != want {
+		t.Fatalf("wrapAttachStreamError() error = %q, want %q", got, want)
 	}
 }
 

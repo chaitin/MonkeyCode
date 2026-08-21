@@ -8,7 +8,7 @@ describe("工具标题本地化", () => {
       "Agent", "Task", "AskUserQuestion", "Bash", "Cmd", "PowerShell",
       "SendUserMessage", "Brief", "Config", "CronCreate", "CronDelete", "CronList",
       "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree",
-      "Edit", "Read", "Write", "Glob", "Grep", "ListMcpResourcesTool",
+      "Edit", "apply_patch", "Read", "Write", "Glob", "Grep", "ListMcpResourcesTool",
       "ReadMcpResourceTool", "LSP", "NotebookEdit", "RemoteTrigger", "SendMessage",
       "Skill", "StructuredOutput", "TaskCreate", "TaskGet", "TaskList", "TaskOutput",
       "AgentOutputTool", "BashOutputTool", "TaskStop", "KillShell", "TaskUpdate",
@@ -55,6 +55,26 @@ describe("工具标题本地化", () => {
       action: "执行命令",
       target: command,
       targetKind: "code",
+    });
+  });
+
+  it("apply_patch 显示编辑动作与补丁中的文件", () => {
+    const patch = "*** Begin Patch\n*** Update File: src/app.ts\n@@\n-old\n+new\n*** End Patch";
+    expect(presentToolCall("apply_patch", { patch })).toEqual({
+      action: "编辑文件",
+      target: "src/app.ts",
+      targetKind: "path",
+      rawTool: "apply_patch",
+    });
+    expect(presentToolCall("Success. Updated the following files:", { patchText: patch }, { toolKind: "edit" })).toMatchObject({
+      action: "编辑文件",
+      target: "src/app.ts",
+      targetKind: "path",
+    });
+    const movePatch = "*** Begin Patch\n*** Update File: src/old.ts\n*** Move to: src/new.ts\n@@\n-old\n+new\n*** End Patch";
+    expect(presentToolCall("apply_patch", { patch: movePatch })).toMatchObject({
+      target: "src/old.ts · src/new.ts",
+      targetKind: "text",
     });
   });
 

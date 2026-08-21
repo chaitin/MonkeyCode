@@ -12,13 +12,16 @@
 //      base-200 色块紧贴着下面又一个 base-200 侧栏头,那才是「两个 header」
 //      的真正成因(2026-08-08 定案)。窗框本来就该跟内容断开,整条单色;
 //   ③ 不带底边线——有线就成了 header 基线。
-// - mac 壳隐藏原生红绿灯(TitleBarStyle::Overlay),MacWindowControls 自绘
-//   10px 圆点(悬停整组浮现字形、窗口失焦整组退灰;绿点 ⌥ 点击最大化、
-//   否则全屏)。渲染位置在 NavRail 顶部(App 拼装),mac 不渲染本条。
+// - mac 壳隐藏原生红绿灯(TitleBarStyle::Overlay + 壳侧 setHidden),
+//   MacWindowControls 自绘 10px 圆点(悬停整组浮现字形、窗口失焦整组
+//   退灰;绿点 ⌥ 点击最大化、否则全屏)。自绘版 2026-08-18 曾退役回原生,
+//   2026-08-20 用户「原生太大」再反转——原生尺寸系统私有不可调。渲染
+//   位置:App 固定浮在窗口左上(工作台各形态与设置覆盖视图共用一份),
+//   mac 不渲染本条;贴角 chrome 的让位见 app.css 净空规则。
 // - 拖拽热区铁律:Tauri 按事件目标**自身**的 data-tauri-drag-region 判定,
 //   不继承——条内每个可见的非交互子节点都要单独带;交互按钮不许带。
 //   带该属性的区域双击 = 切换最大化(Tauri 原生行为,无需自绑)。
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 import { useI18n } from "@/lib/i18n";
 
@@ -92,7 +95,7 @@ export function Brand() {
 /** caption 三键共用皮相:46×全条高(=28px)的**直角通高**块,触到窗口上下边。
  *  与视图头部那排 `btn-ghost btn-square btn-sm` 的圆角内缩胶囊形成形状对比
  *  ——眼睛靠"贴不贴边"分组,不靠间距硬撑(2026-08-08 定案)。 */
-// relative z-[1002]:必须压过 ResizeEdges(z-[1001])。Linux 走 CSD 后窗口内侧
+// relative --z-window-controls:必须压过 ResizeEdges(--z-resize-edge)。Linux 走 CSD 后窗口内侧
 // 补了 8 个透明拉伸热区,其中 NorthEast 的 12×12 **整块落在关闭键内部**、North
 // 又吃掉三键顶部 4px(28px 条高的 1/7,而这条刚因用户两次报障从 32 压到 28)。
 // 不抬 z 的话:把指针甩到右上角点关闭,窗口不关——原地点击的结果是 WM 起了
@@ -101,9 +104,9 @@ export function Brand() {
 // 拉伸,只让出三键这 138px。代价是窗口右上角那 12px 的对角拉伸没了——
 // 关窗远比从这一个角拉伸常用,右边缘(y>28)与其余三角都还在。
 const CAPTION_BTN =
-  "relative z-[1002] flex h-full w-[46px] cursor-default items-center justify-center text-base-content/70 transition-colors duration-150";
+  "relative z-[var(--z-window-controls)] flex h-full w-[46px] cursor-default items-center justify-center text-base-content/70 transition-[background-color,color] duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-base-content";
 
-export function TitleBar() {
+export function TitleBar({ leading = null }: { leading?: ReactNode } = {}) {
   const { t } = useI18n();
   const maximized = useMaximized();
   // 系统菜单只在 Windows 有(mac 不渲染本条;GTK 侧无对等 API,图标纯展示)
@@ -119,18 +122,23 @@ export function TitleBar() {
       onContextMenu={sysMenu}
       className="flex h-7 shrink-0 items-stretch bg-base-300 select-none"
     >
-      {/* 整条单色、无底边线、**除三键外什么都不放**(LAYOUT §1 三条铁律)。
-          品牌标记曾摆在这条左端(为的是别让窗口左上角空着一块深色方格),
-          2026-08-09 挪去 rail 角落格——那格在 Windows/Linux 上本来就是空的
-          (它存在的唯一理由是 mac 要在那儿放红绿灯),标记落进去两处空档一次
-          填平,这条也回归"只做 chrome"。
+      {/* 整条单色、无底边线、**除三键外不放品牌/视图信息**(LAYOUT §1 三条
+          铁律)。品牌标记曾摆在这条左端(为的是别让窗口左上角空着一块深色
+          方格),2026-08-09 挪去 rail 角落格——那格在 Windows/Linux 上本来
+          就是空的(它存在的唯一理由是 mac 要在那儿放红绿灯),标记落进去
+          两处空档一次填平,这条也回归"只做 chrome"。
+          leading = 左端寄宿位(2026-08-20 修订:任务列收起时工作台的
+          ☰/新建两颗**功能钮**经 App 的 slot 元素 portal 进来——此前它们
+          单开一行 h-10 顶条,用户报障「空了一行,好丑」。铁律拦的是品牌/
+          列色/底线这些"冒充 header"的东西,不拦功能 chrome)。
           系统菜单改由**本条右键**唤起:它是标题栏的东西,挂到侧栏图标上会变成
           「双击侧栏图标把应用关了」的陷阱 */}
+      {leading}
       <div data-tauri-drag-region="" className="flex-1" />
       <button
         type="button"
         aria-label={t("titlebar.minimize")}
-        className={`${CAPTION_BTN} hover:bg-base-content/10`}
+        className={`${CAPTION_BTN} hover:bg-base-content/10 active:bg-base-content/20`}
         onClick={windowMinimize}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" {...CAPTION_GLYPH} aria-hidden>
@@ -140,7 +148,7 @@ export function TitleBar() {
       <button
         type="button"
         aria-label={maximized ? t("titlebar.restore") : t("titlebar.maximize")}
-        className={`${CAPTION_BTN} hover:bg-base-content/10`}
+        className={`${CAPTION_BTN} hover:bg-base-content/10 active:bg-base-content/20`}
         onClick={windowToggleMaximize}
       >
         {maximized ? (
@@ -158,7 +166,7 @@ export function TitleBar() {
       <button
         type="button"
         aria-label={t("titlebar.close")}
-        className={`${CAPTION_BTN} hover:bg-caption-close hover:text-white`}
+        className={`${CAPTION_BTN} hover:bg-caption-close hover:text-caption-close-content active:bg-caption-close active:text-caption-close-content active:brightness-75`}
         onClick={windowClose}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" {...CAPTION_GLYPH} aria-hidden>
@@ -214,12 +222,12 @@ export function MacWindowControls({ compact = false }: { compact?: boolean } = {
           type="button"
           aria-label={t(light.labelKey)}
           /* mac 惯例:窗口按钮不是手型;失焦整组退灰、悬停恢复本色并浮现字形 */
-          className="flex h-3.5 w-3.5 cursor-default items-center justify-center"
+          className="flex h-3.5 w-3.5 cursor-default items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-base-content active:scale-90"
           onClick={(e) => act(light.key, e.altKey)}
         >
           <span
             aria-hidden
-            className={`flex h-2.5 w-2.5 items-center justify-center rounded-full text-black/60 ${light.dot}`}
+            className={`flex h-2.5 w-2.5 items-center justify-center rounded-full text-mac-control-glyph ${light.dot}`}
           >
             <svg
               width="8"
@@ -239,4 +247,3 @@ export function MacWindowControls({ compact = false }: { compact?: boolean } = {
     </div>
   );
 }
-

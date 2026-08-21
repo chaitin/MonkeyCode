@@ -1,10 +1,10 @@
 // 全功能 composer:自适应高度输入(IME 守卫)+ 斜杠指令面板 + 附件
-// (对话框/粘贴;拖拽由 ChatView 转入 ctl.addFiles)+ 运行条/排队 chip +
+// (对话框/粘贴;拖拽由 ChatView 转入 ctl.addFiles)+ 运行条/待发送队列 +
 // 模型/思考档/权限模式控制。状态机在 useComposer,纯逻辑在 lib/util/slash。
 // 发送面契约见 useComposer 文件头;切模型/思考/模式经 lib/ipc/controls
 // (session_call),成功不乐观回写——壳会补 model_update / think_update /
 // permission_mode_update 帧,ChatState 是唯一真值。
-import { IconClock, IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
+import { IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
 import {
   forwardRef,
   memo,
@@ -18,6 +18,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
+import { downloadUpload } from "@/components/media/UploadImg";
 import { useI18n } from "@/lib/i18n";
 import { useEscLayer } from "@/lib/util/escLayer";
 import { sessionSetMode, sessionSetModel, sessionSetSkills, sessionSetThink } from "@/lib/ipc/controls";
@@ -25,12 +26,13 @@ import { afterEngineReady } from "@/lib/ipc/engine";
 import { modelMenuList, resolveModelName } from "@/lib/models/modelMenu";
 import { modelsList, type ModelInfo, type SessionMeta } from "@/lib/ipc/sessions";
 import { defaultEnabledSkills, skillsList, type SkillInfo } from "@/lib/ipc/skills";
-import { pickAttachmentPaths } from "@/lib/ipc/uploads";
+import { pickAttachmentPaths, uploadFileURL } from "@/lib/ipc/uploads";
 import type { ChatState, SlashCommand, Usage } from "@/lib/protocol/types";
 import { timelineDeltaOf } from "@/lib/protocol/reduce";
 import { fmtK } from "@/lib/util/fmt";
 import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } from "@/lib/util/slash";
 import { ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing } from "./composerKit";
+import { SendQueueList } from "./SendQueueList";
 import { ModelMenu, SkillsMenu, ThinkMenu } from "./pickers";
 import type { ComposerCtl } from "./useComposer";
 
@@ -379,33 +381,41 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
       ? Math.round((presentation.usage.used / presentation.usage.size) * 100)
       : null;
 
+  const queueVisible =
+    ctl.queue.pending.length > 0 ||
+    (!!ctl.queue.inFlight && ctl.queue.inFlight.phase !== "awaiting-turn-end") ||
+    (!!ctl.queue.blocked && ctl.queue.blocked.code !== "user-paused");
+
   return (
     <div className="flex flex-col gap-2">
       {/* composer 域的两条瞬态反馈,统一形态(错误条件收口在 composerKit):
           soft 底 + 14px 语义图标 + truncate 正文 + 右端关闭 */}
       {ctl.error && <ErrorBar text={ctl.error} onDismiss={ctl.dismissError} />}
 
-      {ctl.queued && (
-        <div className="alert alert-soft -mx-2.5 flex items-center gap-2 px-3 py-1.5 text-xs">
-          <IconClock size={14} stroke={1.75} aria-hidden className="shrink-0 text-base-content/50" />
-          <span className="shrink-0 font-medium">{t("chat.queued")}</span>
-          <span className="min-w-0 flex-1 truncate">{ctl.queued}</span>
-          <span className="shrink-0 text-base-content/50">{t("chat.queuedHint")}</span>
-          <button
-            type="button"
-            aria-label={t("chat.queuedCancel")}
-            className="btn btn-ghost btn-square btn-xs"
-            onClick={ctl.clearQueued}
-          >
-            <IconX size={14} stroke={1.75} aria-hidden />
-          </button>
-        </div>
+      {queueVisible && (
+        <SendQueueList
+          pending={ctl.queue.pending}
+          inFlight={ctl.queue.inFlight}
+          blocked={ctl.queue.blocked}
+          onRemove={ctl.removeQueued}
+          onReorder={ctl.reorderQueued}
+          onResume={ctl.resumeQueue}
+          onClearQueue={ctl.clearQueue}
+          onDiscardUncertain={ctl.discardUncertainQueued}
+          attachmentName={(attachment) => attachment.name}
+          attachmentIsImage={(attachment) => attachment.isImage}
+          loadAttachmentUrl={(attachment) => uploadFileURL(sessionId, attachment.path)}
+          onOpenAttachment={(attachment) => {
+            if (!attachment.isImage) downloadUpload(() => uploadFileURL(sessionId, attachment.path), attachment.name);
+          }}
+          attachedToComposer
+        />
       )}
 
       {/* 输入卡外框(形态收口在 composerKit:出血/聚焦边线/禁挂 dropdown 类
           的缘由见 ComposerCard 头注)。斜杠面板是卡内自绘浮层(绝对定位,
           焦点始终留在 textarea) */}
-      <ComposerCard>
+      <ComposerCard attachedTop={queueVisible}>
         {slashOpen && (
           <SlashPanel list={list} active={act} onHover={setActive} onPick={pickCommand} />
         )}

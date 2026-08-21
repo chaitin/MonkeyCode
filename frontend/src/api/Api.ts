@@ -1375,9 +1375,15 @@ export interface DomainSubscribeReq {
 
 export interface DomainSubscriptionResp {
   auto_renew?: boolean;
+  billing_interval?: string;
+  billing_status?: string;
+  cancel_at_period_end?: boolean;
+  current_period_end?: string;
   /** 免费 Tokens 耗尽后是否继续启用积分消费模型，未配置时默认 true */
   enable_credit_consumption?: boolean;
   expires_at?: string;
+  grace_until?: string;
+  payment_provider?: string;
   /** "basic" | "pro" | "ultra" */
   plan?: string;
   /** "purchase" | "team_member" | "admin_grant" | "invitation" */

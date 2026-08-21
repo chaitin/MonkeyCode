@@ -284,6 +284,12 @@ function makeMarked(): Marked {
 
 const parser = makeMarked();
 
+/** 行内专用解析器:breaks **必须关**——breaks:true 把 \n 画成 <br>,而
+ * MarkdownInline 的消费方(思考摘要/发现标题/子代理行)全是单行 truncate
+ * 布局,nowrap 拦不住 <br>,一有换行摘要就叠成两行(2026-08-20 用户截图
+ * 报障:思考卡折叠态两个标题上下堆)。正文的软换行语义不变,仍走主 parser。 */
+const inlineParser = new Marked({ gfm: true, breaks: false, async: false });
+
 /** 本地资源标记属性:只能壳自己打,不能让正文内容自带。
  * DOMPurify 默认放行 `data-*`,而 marked 会原样透传正文里的裸 HTML——模型
  * 输出(或被渲染的文件内容)里写一个 `<img data-mc-local-src="...">`,就能
@@ -681,6 +687,6 @@ export function Markdown(props: {
 
 /** 行内 markdown(摘要行/子代理 feed):只解析行内语法,保持单行布局。 */
 export function MarkdownInline({ source, className }: { source: string; className?: string }) {
-  const html = useMemo(() => DOMPurify.sanitize(parser.parseInline(source) as string, { USE_PROFILES: { html: true } }), [source]);
+  const html = useMemo(() => DOMPurify.sanitize(inlineParser.parseInline(source) as string, { USE_PROFILES: { html: true } }), [source]);
   return <span className={`mdi ${className ?? ""}`} onClick={onContainerClick} dangerouslySetInnerHTML={{ __html: html }} />;
 }

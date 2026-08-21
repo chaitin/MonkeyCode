@@ -58,6 +58,23 @@ function normalizeSubscriptionPlan(plan?: string | null): SubscriptionPlanKey {
   return "basic"
 }
 
+function formatBillingDateTime(value: string | undefined, language: string) {
+  if (!value) {
+    return null
+  }
+
+  const parsed = dayjs(value)
+  if (!parsed.isValid()) {
+    return value
+  }
+
+  const locale = language === "cn" || language.startsWith("zh") ? "zh-CN" : "en-US"
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsed.toDate())
+}
+
 export default function NavBalance({
   variant = "sidebar",
   hideTrigger = false,
@@ -66,7 +83,7 @@ export default function NavBalance({
   onOpenChange,
   initialSection = "account",
 }: NavBalanceProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [dialogOpenInternal, setDialogOpenInternal] = useState(false);
   const [showSubscriptionPlanDialog, setShowSubscriptionPlanDialog] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -114,6 +131,12 @@ export default function NavBalance({
   const triggerPlanLabel = t(`consoleShell.rewards.plans.${normalizedSubscriptionPlan}`)
   const canRenewSubscription = normalizedSubscriptionPlan === "pro" || normalizedSubscriptionPlan === "ultra"
   const subscriptionExpiry = formatSubscriptionExpiry(subscription?.expires_at)
+  const nextChargeTime = subscription?.payment_provider === "stripe"
+    && subscription.billing_status === "active"
+    && subscription.auto_renew
+    && !subscription.cancel_at_period_end
+    ? formatBillingDateTime(subscription.current_period_end, i18n.resolvedLanguage || i18n.language)
+    : null
 
   const handleLogout = () => {
     apiRequest("v1UsersLogoutCreate", {}, [], (resp) => {
@@ -411,19 +434,24 @@ export default function NavBalance({
       <section className="divide-y divide-border/60 border-y border-border/60">
         {!IS_OFFLINE_EDITION && (
           <>
-            <div className="flex min-h-12 items-center justify-between gap-4 py-2">
-              <div className="min-w-0">
+            <div className="flex min-h-12 flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0 flex-1">
                 <div className="text-xs text-muted-foreground">{t("navBalance.plan.currentPlan")}</div>
-                <div className="mt-1 truncate text-sm font-medium">
-                  {triggerPlanLabel}
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                <div className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span className="text-sm font-medium">{triggerPlanLabel}</span>
+                  <span className="whitespace-nowrap text-xs font-normal text-muted-foreground">
                     {subscriptionExpiry
                       ? t("navBalance.plan.validUntil", { date: subscriptionExpiry })
                       : t("navBalance.plan.lifetime")}
                   </span>
                 </div>
+                {nextChargeTime ? (
+                  <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {t("navBalance.plan.nextCharge", { date: nextChargeTime })}
+                  </div>
+                ) : null}
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
                 <Button
                   variant="outline"
                   size="sm"

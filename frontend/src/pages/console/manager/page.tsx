@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 import ManagerSidebar from "@/components/manager/manager-sidebar"
 import { Fragment } from "react/jsx-runtime"
+import { LanguageToggle } from "@/components/language-toggle"
 import { ModeToggle } from "@/components/mode-toggle"
 import { useTranslation } from "react-i18next"
 
@@ -129,6 +130,7 @@ export default function ManagerConsolePage() {
               <RefreshCw className="h-[1.2rem] w-[1.2rem]" />
               {t("managerShell.actions.refresh")}
             </Button>
+            <LanguageToggle />
             <ModeToggle />
           </div>
         </header>
