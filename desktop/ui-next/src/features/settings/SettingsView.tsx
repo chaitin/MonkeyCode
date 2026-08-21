@@ -6,10 +6,20 @@
 //   sound-enabled 事件与托盘/桌宠双向同步);
 // - models/mcp/kernel_env 走保存条:save_config 全量写回(表单外字段从载入
 //   配置透传),壳保存后重启引擎——重启过程由全局引擎横幅外显,这里不管。
-import { IconAdjustmentsHorizontal, IconAlertTriangle, IconDice5, IconRotate, IconWand, IconBrain, IconCheck, IconChevronDown, IconInfoCircle, IconServer, IconSparkles, IconTerminal2, IconUser, IconWorld, type TablerIcon } from "@tabler/icons-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { IconAdjustmentsHorizontal, IconAlertTriangle, IconDice5, IconPhoto, IconRotate, IconTrash, IconWand, IconBrain, IconCheck, IconChevronDown, IconInfoCircle, IconServer, IconSparkles, IconTerminal2, IconUser, IconWorld, type TablerIcon } from "@tabler/icons-react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 
 import { resolveShortcut } from "@/app/shortcuts";
+import {
+  getBackgroundRuntimeState,
+  installBackground,
+  readBackgroundPreferences,
+  removeAppliedBackground,
+  setBackgroundPreferences,
+  subscribeBackgroundRuntime,
+  type BackgroundFit,
+  type BackgroundPreferencesV1,
+} from "@/lib/background";
 import { LOCALES, setLocale, useI18n } from "@/lib/i18n";
 import {
   getConfig,
@@ -20,6 +30,7 @@ import {
   setSoundEnabled,
   type DesktopConfig,
 } from "@/lib/ipc/config";
+import { clearBackgroundAsset, importBackground, pickBackgroundPath } from "@/lib/ipc/background";
 import { isWindowsShell } from "@/lib/ipc/host";
 import { inDesktopShell } from "@/lib/ipc/ipc";
 import { readCustomTheme, readTheme, setCustomTheme, setTheme, THEMES, CUSTOM_THEME, type CustomTheme, type Theme } from "@/lib/theme";
@@ -427,7 +438,159 @@ function ThemePicker({ theme, custom, onPick }: { theme: Theme; custom: CustomTh
   );
 }
 
-/** 通用:外观主题 / 语言 / 提示音(仅桌面壳)。 */
+/** 桌面专属背景编辑器：资产事务走 Rust，视觉参数点即生效且不进入引擎保存条。 */
+function BackgroundEditor() {
+  const { t } = useI18n();
+  const runtime = useSyncExternalStore(
+    subscribeBackgroundRuntime,
+    getBackgroundRuntimeState,
+    getBackgroundRuntimeState,
+  );
+  const [preferences, setPreferencesState] = useState<BackgroundPreferencesV1>(readBackgroundPreferences);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const asset = runtime.asset;
+  const error = actionError || runtime.error || "";
+
+  const updatePreferences = (next: BackgroundPreferencesV1) => {
+    setPreferencesState(next);
+    setBackgroundPreferences(next);
+  };
+
+  const choose = async () => {
+    setActionError("");
+    try {
+      const path = await pickBackgroundPath(t("settings.background.pickTitle"));
+      if (!path) return;
+      setBusy(true);
+      const imported = await importBackground(path);
+      // installBackground 先预解码再提交；失败时旧预览和旧 DOM 背景都保留。
+      await installBackground(imported);
+    } catch (e) {
+      setActionError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clear = async () => {
+    setActionError("");
+    setBusy(true);
+    try {
+      await clearBackgroundAsset();
+      removeAppliedBackground();
+    } catch (e) {
+      setActionError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fits: Array<{ value: BackgroundFit; label: string }> = [
+    { value: "cover", label: t("settings.background.fit.cover") },
+    { value: "contain", label: t("settings.background.fit.contain") },
+    { value: "repeat", label: t("settings.background.fit.repeat") },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-box border border-base-300 bg-base-200">
+          {asset ? (
+            <img src={asset.dataUrl} alt={t("settings.background.preview")} className="size-full object-cover" />
+          ) : (
+            <IconPhoto size={24} stroke={1.5} aria-hidden className="text-base-content/35" />
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium" title={asset?.originalName}>
+              {asset?.originalName ?? t("settings.background.none")}
+            </p>
+            {asset && <p className="text-xs text-base-content/50">{asset.width} × {asset.height} px</p>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void choose()}>
+              {busy && <span className="loading loading-spinner loading-xs" aria-hidden />}
+              {asset ? t("settings.background.replace") : t("settings.background.choose")}
+            </button>
+            {asset && (
+              <button type="button" className="btn btn-ghost btn-sm text-error" disabled={busy} onClick={() => void clear()}>
+                <IconTrash size={14} stroke={1.75} aria-hidden />
+                {t("settings.background.clear")}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {error && <div role="alert" className="alert alert-error alert-soft py-2 text-xs">{error}</div>}
+
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="flex items-center justify-between">
+          <span>{t("settings.background.opacity")}</span>
+          <span className="tabular-nums text-base-content/50">{Math.round(preferences.surfaceOpacity * 100)}%</span>
+        </span>
+        <input
+          type="range"
+          className="range range-xs"
+          aria-label={t("settings.background.opacity")}
+          min={35}
+          max={100}
+          step={1}
+          disabled={!asset || busy}
+          value={Math.round(preferences.surfaceOpacity * 100)}
+          onChange={(e) => updatePreferences({ ...preferences, surfaceOpacity: Number(e.target.value) / 100 })}
+        />
+      </label>
+      {preferences.surfaceOpacity < 0.6 && (
+        <div role="status" className="alert alert-warning alert-soft py-2 text-xs">
+          <IconAlertTriangle size={15} stroke={1.75} aria-hidden />
+          {t("settings.background.readability")}
+        </div>
+      )}
+
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="flex items-center justify-between">
+          <span>{t("settings.background.blur")}</span>
+          <span className="tabular-nums text-base-content/50">{preferences.blurPx} px</span>
+        </span>
+        <input
+          type="range"
+          className="range range-xs"
+          aria-label={t("settings.background.blur")}
+          min={0}
+          max={20}
+          step={1}
+          disabled={!asset || busy}
+          value={preferences.blurPx}
+          onChange={(e) => updatePreferences({ ...preferences, blurPx: Number(e.target.value) })}
+        />
+      </label>
+
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-xs">{t("settings.background.fit")}</span>
+        <div role="radiogroup" aria-label={t("settings.background.fit")} className="join shrink-0">
+          {fits.map(({ value, label }) => (
+            <input
+              key={value}
+              type="radio"
+              name="settings-background-fit"
+              className={`btn btn-sm join-item ${preferences.fit === value ? "btn-active" : "text-base-content/60"}`}
+              aria-label={label}
+              checked={preferences.fit === value}
+              disabled={!asset || busy}
+              onChange={() => updatePreferences({ ...preferences, fit: value })}
+            />
+          ))}
+        </div>
+      </div>
+      <p className="text-xs leading-relaxed text-base-content/50">{t("settings.background.hint")}</p>
+    </div>
+  );
+}
+
+/** 通用:外观主题 / 背景 / 语言 / 提示音(仅桌面壳)。 */
 function GeneralSection() {
   const { t, locale } = useI18n();
   const [theme, setThemeState] = useState<Theme>(readTheme);
@@ -496,6 +659,7 @@ function GeneralSection() {
           </SettingRow>
           {theme === CUSTOM_THEME && <CustomThemeEditor value={custom} onChange={editCustom} />}
         </div>
+        {inDesktopShell() && <BackgroundEditor />}
         <SettingRow label={t("settings.appearance.language")}>
           <div role="radiogroup" aria-label={t("settings.appearance.language")} className="join shrink-0">
             {LOCALES.map((l) => seg("settings-language", l.label, locale === l.value, () => setLocale(l.value)))}

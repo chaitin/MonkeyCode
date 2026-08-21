@@ -964,4 +964,14 @@ describe("CloudTaskView", () => {
     }
   });
 
+  it("背景表面单层:pane 根透明，独立形态提供工作台 100 表面", () => {
+    stubShell(() => Promise.resolve({ id: "surface", status: "pending" }));
+    const paneView = renderCloud(<CloudTaskView task={{ id: "surface" }} variant="pane" />);
+    const pane = paneView.container.querySelector(".bg-transparent") as HTMLElement;
+    expect(pane).toBeTruthy();
+    expect(pane.className).not.toContain("mc-workbench-surface-100");
+    paneView.unmount();
+    const fullView = renderCloud(<CloudTaskView task={{ id: "surface" }} />);
+    expect(fullView.container.querySelector(".mc-workbench-surface-100")).toBeTruthy();
+  });
 });

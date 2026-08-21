@@ -931,4 +931,15 @@ describe("聊天视图", () => {
     await userEvent.click(screen.getByRole("status"));
     expect(screen.queryByRole("status")).toBeNull();
   });
+
+  it("背景表面单层:pane 根透明，独立形态提供工作台 100 表面", () => {
+    stubShell();
+    const paneView = render(<ChatView meta={META} variant="pane" />);
+    const pane = paneView.container.firstElementChild as HTMLElement;
+    expect(pane.className).toContain("bg-transparent");
+    expect(pane.className).not.toContain("mc-workbench-surface-100");
+    paneView.unmount();
+    const full = render(<ChatView meta={META} />).container.firstElementChild as HTMLElement;
+    expect(full.className).toContain("mc-workbench-surface-100");
+  });
 });

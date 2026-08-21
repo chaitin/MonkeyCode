@@ -1,0 +1,179 @@
+import type { BackgroundAsset } from "./ipc/background";
+import { readBackgroundAsset } from "./ipc/background";
+
+export type BackgroundFit = "cover" | "contain" | "repeat";
+
+export interface BackgroundPreferencesV1 {
+  version: 1;
+  surfaceOpacity: number;
+  blurPx: number;
+  fit: BackgroundFit;
+}
+
+export const DEFAULT_BACKGROUND: BackgroundPreferencesV1 = {
+  version: 1,
+  surfaceOpacity: 0.82,
+  blurPx: 0,
+  fit: "cover",
+};
+
+export interface BackgroundRuntimeState {
+  asset: BackgroundAsset | null;
+  error: string | null;
+}
+
+export interface BackgroundInitResult extends BackgroundRuntimeState {
+  preferences: BackgroundPreferencesV1;
+}
+
+const PREFERENCES_KEY = "mc.backgroundPreferences";
+const PRESENT_KEY = "mc.backgroundAssetPresent";
+const listeners = new Set<() => void>();
+let runtimeState: BackgroundRuntimeState = { asset: null, error: null };
+
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+const finiteInRange = (value: unknown, min: number, max: number): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
+const isFit = (value: unknown): value is BackgroundFit => value === "cover" || value === "contain" || value === "repeat";
+
+function normalize(value: unknown): BackgroundPreferencesV1 {
+  const object = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    version: 1,
+    surfaceOpacity: finiteInRange(object.surfaceOpacity, 0.35, 1)
+      ? object.surfaceOpacity
+      : DEFAULT_BACKGROUND.surfaceOpacity,
+    blurPx: finiteInRange(object.blurPx, 0, 20) ? object.blurPx : DEFAULT_BACKGROUND.blurPx,
+    fit: isFit(object.fit) ? object.fit : DEFAULT_BACKGROUND.fit,
+  };
+}
+
+export function readBackgroundPreferences(): BackgroundPreferencesV1 {
+  try {
+    const raw = localStorage.getItem(PREFERENCES_KEY);
+    return normalize(raw === null ? null : JSON.parse(raw));
+  } catch {
+    return { ...DEFAULT_BACKGROUND };
+  }
+}
+
+function fitCss(fit: BackgroundFit): { size: string; repeat: string; position: string } {
+  switch (fit) {
+    case "contain":
+      return { size: "contain", repeat: "no-repeat", position: "center" };
+    case "repeat":
+      return { size: "auto", repeat: "repeat", position: "left top" };
+    case "cover":
+      return { size: "cover", repeat: "no-repeat", position: "center" };
+  }
+}
+
+export function applyBackgroundPreferences(preferences: BackgroundPreferencesV1): void {
+  const safe = normalize(preferences);
+  const fit = fitCss(safe.fit);
+  const style = document.documentElement.style;
+  style.setProperty("--mc-surface-opacity", `${safe.surfaceOpacity * 100}%`);
+  style.setProperty("--mc-background-blur", `${safe.blurPx}px`);
+  style.setProperty("--mc-background-size", fit.size);
+  style.setProperty("--mc-background-repeat", fit.repeat);
+  style.setProperty("--mc-background-position", fit.position);
+}
+
+/** 写盘失败不阻止当前会话即时生效。 */
+export function setBackgroundPreferences(next: BackgroundPreferencesV1): void {
+  const safe = normalize(next);
+  try {
+    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(safe));
+  } catch {
+    // 只丢持久化。
+  }
+  applyBackgroundPreferences(safe);
+}
+
+function publish(next: BackgroundRuntimeState): void {
+  runtimeState = next;
+  for (const listener of listeners) listener();
+}
+
+export function getBackgroundRuntimeState(): BackgroundRuntimeState {
+  return runtimeState;
+}
+
+export function subscribeBackgroundRuntime(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function markPresent(present: boolean): void {
+  try {
+    if (present) localStorage.setItem(PRESENT_KEY, "1");
+    else localStorage.removeItem(PRESENT_KEY);
+  } catch {
+    // 诊断标记不可写不影响运行时。
+  }
+}
+
+function hadStoredAsset(): boolean {
+  try {
+    return localStorage.getItem(PRESENT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function decodeDataUrl(dataUrl: string): Promise<void> {
+  const image = new Image();
+  image.src = dataUrl;
+  return image.decode();
+}
+
+/** 先预解码，成功后一次提交 DOM 与 UI；失败不会破坏此前已应用背景。 */
+export async function installBackground(asset: BackgroundAsset): Promise<void> {
+  await decodeDataUrl(asset.dataUrl);
+  const root = document.documentElement;
+  root.style.setProperty("--mc-background-image", `url("${asset.dataUrl}")`);
+  root.dataset.mcBackground = "active";
+  markPresent(true);
+  publish({ asset, error: null });
+}
+
+export function removeAppliedBackground(): void {
+  const root = document.documentElement;
+  delete root.dataset.mcBackground;
+  root.style.removeProperty("--mc-background-image");
+  markPresent(false);
+  publish({ asset: null, error: null });
+}
+
+function failStoredBackground(message: string): void {
+  const root = document.documentElement;
+  delete root.dataset.mcBackground;
+  root.style.removeProperty("--mc-background-image");
+  publish({ asset: null, error: message });
+}
+
+/** React 挂载前执行；任何失败均保留主题实色后备，并把可恢复错误留给设置页。 */
+export async function initializeStoredBackground(): Promise<BackgroundInitResult> {
+  const preferences = readBackgroundPreferences();
+  applyBackgroundPreferences(preferences);
+  try {
+    const asset = await readBackgroundAsset();
+    if (!asset) {
+      removeAppliedBackground();
+      return { preferences, asset: null, error: null };
+    }
+    await installBackground(asset);
+    return { preferences, asset, error: null };
+  } catch (error) {
+    const message = errorMessage(error);
+    // 即便诊断标记不可用，IPC 明确失败也应外显；标记主要帮助错误文案说明这是存量资产。
+    failStoredBackground(hadStoredAsset() ? `已保存的背景不可用：${message}` : message);
+    return { preferences, asset: null, error: runtimeState.error };
+  }
+}
+
+/** 测试隔离模块级状态。 */
+export function resetBackgroundRuntimeForTest(): void {
+  runtimeState = { asset: null, error: null };
+  listeners.clear();
+}

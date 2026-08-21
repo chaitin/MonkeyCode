@@ -421,7 +421,7 @@ export function SplitView({
         // 平铺分栏(2026-08-19 用户 mockup 终案,当日浮卡随之退役):白底
         // 通栏、1px 细线分隔(grid 底色透缝),细头恒在;焦点表达 = 细头
         // 标题下划线(比 ring 环安静,与 tab 同语汇)
-        className="group/pane relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-base-100"
+        className="mc-workbench-surface-100 group/pane relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       >
         {!creating && (
           <PaneHeader
@@ -592,13 +592,25 @@ export function SplitView({
           style={vertical ? { left: `${node.ratio * 100}%` } : { top: `${node.ratio * 100}%` }}
           onMouseDown={startHandleDrag(path, node.dir)}
           onDoubleClick={() => split.setNodeRatio(path, 0.5)}
-        />
+        >
+          {/* 画布本体在背景启用时必须透明，否则 pane 的半透明表面会与
+              画布叠成两层；真正的 1px 分隔面只画在把手中心。 */}
+          <span
+            aria-hidden
+            className={`mc-workbench-surface-300 pointer-events-none absolute ${
+              vertical
+                ? "inset-y-0 left-1/2 w-px -translate-x-1/2"
+                : "inset-x-0 top-1/2 h-px -translate-y-1/2"
+            }`}
+          />
+        </div>
       </div>
     );
   };
 
   return (
-    <main className="flex min-w-0 flex-1 bg-base-100">
+    <main className="relative flex min-w-0 flex-1 overflow-hidden bg-base-100">
+      <div className="mc-workbench-background" aria-hidden />
       {/* 参考图重排(2026-08-18):任务列升为**整窗高左列**(mac 灯与列
           开关住其顶部),头部只横跨主区;格区卡片化。 */}
       {listOpen && (
@@ -682,7 +694,7 @@ export function SplitView({
             data-view-header=""
             data-tauri-drag-region=""
             data-mac-lights-clear=""
-            className="flex h-10 shrink-0 items-center gap-2 px-4"
+            className="mc-workbench-surface-100 flex h-10 shrink-0 items-center gap-2 px-4"
           >
             {!listOpen && (
               <button
@@ -722,7 +734,7 @@ export function SplitView({
         {/* 平铺画布:bg 只为透出 1px 分隔线;无衬(2026-08-19 mockup 终案,
             浮卡的 12px 衬退役)。拖窗面 = 细头空白区(PaneHeader 自带拖拽
             属性)+ 列顶行 */}
-        <div data-split-grid="" data-tauri-drag-region="" className="flex min-h-0 min-w-0 flex-1 bg-base-300">
+        <div data-split-grid="" data-tauri-drag-region="" className="mc-workbench-surface-300 flex min-h-0 min-w-0 flex-1">
           {zoomedSlot !== null ? renderPane(zoomedSlot) : renderNode(split.tree, "")}
         </div>
       </div>
@@ -1013,7 +1025,7 @@ function WorkbenchList({
     <aside
       aria-label={t("split.pickTitle")}
       style={width ? { width } : undefined}
-      className="flex w-side shrink-0 flex-col border-e border-base-300 bg-base-200"
+      className="mc-workbench-surface-200 relative flex w-side shrink-0 flex-col border-e border-base-300"
     >
       {/* 列顶 chrome 行(参考图 2026-08-18)**只在 mac 渲染**:它存在的
           理由是给原生灯让位(净空标记见 app.css)。Windows/Linux/浏览器

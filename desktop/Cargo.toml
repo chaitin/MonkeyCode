@@ -36,6 +36,8 @@ tokio-tungstenite = { version = "0.24", default-features = false, features = ["c
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 futures-util = "0.3"
 base64 = "0.22"
+# 自定义背景:仅启用首版允许的三种静态图片解码器，关闭 GIF/AVIF 等额外格式。
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 
 # 百智云/云端原生化(baizhi/):PoW 验证码、Set-Cookie 解析、微信页刮取
 sha2 = "0.10"

@@ -182,6 +182,51 @@
   }
 }
 
+/* 工作台自定义背景的结构表面。不能全局改写 bg-base-*：设置、菜单、弹窗、
+ * 卡片和审批控件必须继续实色。无 active 属性时三类与原主题底色完全等价。 */
+.mc-workbench-surface-100 { background-color: var(--color-base-100); }
+.mc-workbench-surface-200 { background-color: var(--color-base-200); }
+.mc-workbench-surface-300 { background-color: var(--color-base-300); }
+
+html[data-mc-background="active"] .mc-workbench-surface-100 {
+  background-color: color-mix(in srgb, var(--color-base-100) var(--mc-surface-opacity), transparent);
+}
+html[data-mc-background="active"] .mc-workbench-surface-200 {
+  background-color: color-mix(in srgb, var(--color-base-200) var(--mc-surface-opacity), transparent);
+}
+html[data-mc-background="active"] .mc-workbench-surface-300 {
+  background-color: color-mix(in srgb, var(--color-base-300) var(--mc-surface-opacity), transparent);
+}
+/* grid 的底色原本只借 1px gap 当分隔线；背景启用后若它仍带半透明底，
+ * 每个 pane 会再叠一层 100 表面。分隔线已由 resize handle 内的 1px span
+ * 单独绘制，所以此时只让 grid 本体透出全局图片。 */
+html[data-mc-background="active"] [data-split-grid].mc-workbench-surface-300 {
+  background-color: transparent;
+}
+
+.mc-workbench-background {
+  display: none;
+  position: absolute;
+  inset: -24px;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--mc-background-image);
+  background-position: var(--mc-background-position);
+  background-repeat: var(--mc-background-repeat);
+  background-size: var(--mc-background-size);
+  filter: blur(var(--mc-background-blur));
+}
+html[data-mc-background="active"] .mc-workbench-background { display: block; }
+/* 绝对背景在 0 层；工作台根的直接结构子树统一压到其上。 */
+.mc-workbench-background ~ * { position: relative; z-index: 1; }
+
+@media (prefers-reduced-transparency: reduce), (prefers-reduced-motion: reduce) {
+  html[data-mc-background="active"] {
+    --mc-surface-opacity: 100% !important;
+    --mc-background-blur: 0px !important;
+  }
+}
+
 /* ================================================================
  * 统一视觉调整(主题层;§8 约定的"最后统一调"入口)。
  * 只经 daisyUI 组件自暴露的 CSS 变量调形态,不写散落覆写。

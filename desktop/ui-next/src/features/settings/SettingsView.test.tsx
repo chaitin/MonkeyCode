@@ -1,7 +1,9 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { installBackground, resetBackgroundRuntimeForTest } from "@/lib/background";
+import type { BackgroundAsset } from "@/lib/ipc/background";
 import type { DesktopConfig } from "@/lib/ipc/config";
 import { resetEscLayersForTest } from "@/lib/util/escLayer";
 import { SettingsView } from "./SettingsView";
@@ -14,6 +16,7 @@ const pressEsc = () =>
 
 afterEach(() => {
   resetEscLayersForTest(); // 模块级层栈跨用例会串
+  resetBackgroundRuntimeForTest();
   localStorage.clear();
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
   // UA 覆写(WSL 条件渲染用)按实例属性打的,删掉即回落 jsdom 原型 getter
@@ -767,5 +770,111 @@ describe("布局契约", () => {
     const menu = screen.getByRole("navigation", { name: "设置" }).querySelector("ul.menu")!;
     expect(menu.className).toContain("flex-nowrap");
     expect(menu.className).toContain("[&_li]:flex-nowrap");
+  });
+});
+
+describe("外观设置:自定义背景", () => {
+  const backgroundAsset: BackgroundAsset = {
+    revision: "a".repeat(64),
+    originalName: "wall.png",
+    mime: "image/png",
+    width: 1920,
+    height: 1080,
+    dataUrl: "data:image/png;base64,AA==",
+  };
+
+  const stubImageDecode = () =>
+    vi.stubGlobal(
+      "Image",
+      class {
+        src = "";
+        decode = () => Promise.resolve();
+      },
+    );
+
+  it("浏览器模式不展示桌面专属背景设置", async () => {
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    expect(screen.queryByRole("button", { name: "选择图片" })).toBeNull();
+    expect(screen.getByRole("main").className).toContain("bg-base-100");
+    expect(screen.getByRole("main").className).not.toContain("mc-workbench-surface");
+  });
+
+  it("无图片时保留参数值但禁用调节控件", async () => {
+    localStorage.setItem(
+      "mc.backgroundPreferences",
+      JSON.stringify({ version: 1, surfaceOpacity: 0.72, blurPx: 6, fit: "contain" }),
+    );
+    stubShell();
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    expect((screen.getByRole("slider", { name: "内容背景不透明度" }) as HTMLInputElement).value).toBe("72");
+    expect((screen.getByRole("slider", { name: "内容背景不透明度" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("slider", { name: "图片模糊" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("radio", { name: "适应" }) as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("选择有效图片后显示预览与尺寸；调节即时生效、不进入引擎保存条", async () => {
+    stubImageDecode();
+    const { calls } = stubShell({
+      extra: {
+        "plugin:dialog|open": () => "/tmp/wall.png",
+        background_import: () => backgroundAsset,
+      },
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "选择图片" }));
+    expect((await screen.findByRole("img", { name: "自定义背景预览" })).getAttribute("src")).toBe(backgroundAsset.dataUrl);
+    expect(screen.getByText("wall.png")).toBeDefined();
+    expect(screen.getByText("1920 × 1080 px")).toBeDefined();
+
+    fireEvent.change(screen.getByRole("slider", { name: "内容背景不透明度" }), { target: { value: "59" } });
+    expect(document.documentElement.style.getPropertyValue("--mc-surface-opacity")).toBe("59%");
+    expect(screen.getByRole("status").textContent).toContain("可读性");
+    fireEvent.change(screen.getByRole("slider", { name: "图片模糊" }), { target: { value: "7" } });
+    expect(document.documentElement.style.getPropertyValue("--mc-background-blur")).toBe("7px");
+    await userEvent.click(screen.getByRole("radio", { name: "平铺" }));
+    expect(document.documentElement.style.getPropertyValue("--mc-background-repeat")).toBe("repeat");
+    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+    expect(calls.some((call) => call.cmd === "save_config")).toBe(false);
+  });
+
+  it("更换导入失败保留旧预览并显示 alert；清除失败同样保留", async () => {
+    stubImageDecode();
+    await installBackground(backgroundAsset);
+    const { calls } = stubShell({
+      extra: {
+        "plugin:dialog|open": () => "/tmp/bad.png",
+        background_import: () => {
+          throw new Error("图片超过 20 MiB");
+        },
+        background_clear: () => {
+          throw new Error("磁盘拒绝删除");
+        },
+      },
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "更换图片" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("20 MiB");
+    expect(screen.getByRole("img", { name: "自定义背景预览" }).getAttribute("src")).toBe(backgroundAsset.dataUrl);
+
+    await userEvent.click(screen.getByRole("button", { name: "清除图片" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("磁盘拒绝删除");
+    expect(screen.getByRole("img", { name: "自定义背景预览" }).getAttribute("src")).toBe(backgroundAsset.dataUrl);
+    expect(calls.some((call) => call.cmd === "background_clear")).toBe(true);
+  });
+
+  it("清除成功恢复无背景外观，偏好值仍保留并转为禁用", async () => {
+    stubImageDecode();
+    await installBackground(backgroundAsset);
+    stubShell({ extra: { background_clear: () => null } });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "清除图片" }));
+    await waitFor(() => expect(screen.queryByRole("img", { name: "自定义背景预览" })).toBeNull());
+    expect(document.documentElement.dataset.mcBackground).toBeUndefined();
+    expect((screen.getByRole("slider", { name: "内容背景不透明度" }) as HTMLInputElement).disabled).toBe(true);
   });
 });

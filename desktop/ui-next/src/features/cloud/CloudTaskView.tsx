@@ -560,7 +560,7 @@ export function CloudTaskView({
   const Root = variant === "pane" ? "div" : "main";
   return (
     <Root
-      className={`relative flex min-w-0 flex-1 flex-col bg-base-100 ${variant === "pane" ? "min-h-0" : ""}`}
+      className={`relative flex min-w-0 flex-1 flex-col ${variant === "pane" ? "min-h-0 bg-transparent" : "mc-workbench-surface-100"}`}
       onDragEnter={onDragEnter}
       onDragOver={(e) => e.preventDefault()}
       onDragLeave={onDragLeave}

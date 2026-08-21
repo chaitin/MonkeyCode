@@ -679,4 +679,16 @@ describe("分屏视图(树形布局)", () => {
       expect(within(pane).queryByTitle(/已入格的任务/)).toBeNull();
     }
   });
+
+  it("工作台只有一层背景，任务列、pane 与画布使用显式语义表面", () => {
+    stubShell();
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    const { container } = render(<Harness />);
+    expect(container.querySelectorAll(".mc-workbench-background")).toHaveLength(1);
+    expect(container.querySelector(".mc-workbench-background")?.getAttribute("aria-hidden")).not.toBeNull();
+    expect(screen.getByRole("complementary", { name: "选择任务" }).className).toContain("mc-workbench-surface-200");
+    expect(screen.getByRole("region", { name: "第 1 格" }).className).toContain("mc-workbench-surface-100");
+    expect(container.querySelector<HTMLElement>("[data-split-grid]")?.className).toContain("mc-workbench-surface-300");
+    expect(container.querySelector("[data-split-handle] .mc-workbench-surface-300")).not.toBeNull();
+  });
 });

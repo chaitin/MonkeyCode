@@ -12,6 +12,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod background;
 mod baizhi;
 mod browser;
 mod config;
@@ -1465,6 +1466,9 @@ fn main() {
             list_wsl_distros,
             engine_restart,
             probe_log,
+            background::background_import,
+            background::background_read,
+            background::background_clear,
             driver::engine_status,
             driver::engine_caps,
             driver::wsl_workdir_base,
