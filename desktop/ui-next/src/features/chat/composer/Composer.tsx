@@ -157,8 +157,13 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
     const switchedSession = prevSidRef.current !== sessionId;
     prevSidRef.current = sessionId;
     if (!switchedSession && focusRequest === 0) return;
-    taRef.current?.focus();
-    if (focusRequest !== 0) onFocusRequestHandled?.(focusRequest);
+    // panel 在 pointerdown capture 发请求；WebView 的默认失焦发生在事件收尾，
+    // 同步 effect 里的 focus 会随即被抹掉。下一帧再落焦才是点击后的终态。
+    const raf = window.requestAnimationFrame(() => {
+      taRef.current?.focus();
+      if (focusRequest !== 0) onFocusRequestHandled?.(focusRequest);
+    });
+    return () => window.cancelAnimationFrame(raf);
   }, [sessionId, focusRequest, onFocusRequestHandled]);
 
   // 模型清单一次拉取(锁定项禁选;浏览器模式为空,触发器仍显当前名)。

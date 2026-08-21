@@ -788,11 +788,16 @@ describe("点格与任务列联动(2026-08-19)", () => {
     await userEvent.click(within(list).getByText("任务二"));
     void shell;
     const pane1 = screen.getByRole("region", { name: "第 1 格" });
-    // fireEvent.pointerDown 而非 userEvent.click:后者对非可聚焦目标会在
-    // React effect 之后补一次 blur(真实浏览器里默认失焦发生在 effect 前,
-    // 时序相反),把刚落到 composer 的焦点又抹掉——jsdom 假象,通道为准
-    fireEvent.pointerDown(within(pane1).getByTitle(/任务一/));
-    await waitFor(() => expect(document.activeElement).toBe(within(pane1).getByRole("textbox", { name: "消息输入" })));
+    const title = within(pane1).getByTitle(/任务一/);
+    fireEvent.pointerDown(title);
+    // 模拟桌面 WebView 在 pointerdown 的 React effect 之后执行默认失焦；
+    // 只发 pointerdown 会掩盖「effect 聚焦后又被 blur」的真机问题。
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.click(title);
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    expect(document.activeElement).toBe(within(pane1).getByRole("textbox", { name: "消息输入" }));
   });
 
   it("云端任务行可拖(LOAD_MIME 装载协议,与本地行同款)", async () => {

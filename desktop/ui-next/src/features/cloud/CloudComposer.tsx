@@ -57,8 +57,12 @@ export function CloudComposer({
   // request/handled 契约,消费后 App 清零,防引擎自愈重挂重复抢焦
   useEffect(() => {
     if (focusRequest === 0) return;
-    taRef.current?.focus();
-    onFocusRequestHandled?.(focusRequest);
+    // pointerdown 默认动作会在同步 effect 之后再次失焦，下一帧才是点击终态。
+    const raf = window.requestAnimationFrame(() => {
+      taRef.current?.focus();
+      onFocusRequestHandled?.(focusRequest);
+    });
+    return () => window.cancelAnimationFrame(raf);
   }, [focusRequest, onFocusRequestHandled]);
 
   // 模型清单预取(幂等;失败保持 null,悬停菜单区再触发即重试)
