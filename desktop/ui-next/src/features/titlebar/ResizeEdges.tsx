@@ -44,9 +44,9 @@ export function ResizeEdges() {
           // 确认期间,左右下三条边与左下右下两角热区被遮罩完全盖住,拖不动
           // 窗口,按下去反而把刚打开的弹层关了(命中落到 .modal-backdrop)。
           // 顶边与左上右上角因模态从 --chrome-h 起而幸存,所以只坏一半、更难发现。
-          // 唯一压在它之上的是 caption 三键(z-[1002],见 TitleBar.CAPTION_BTN):
+          // 唯一压在它之上的是 caption 三键(--z-window-controls,见 TitleBar.CAPTION_BTN):
           // 那处重叠必须让按钮赢,否则右上角点不了关闭。
-          className={`fixed z-[1001] ${cls}`}
+          className={`fixed z-[var(--z-resize-edge)] ${cls}`}
           onMouseDown={(e) => {
             if (e.button !== 0) return;
             e.preventDefault();

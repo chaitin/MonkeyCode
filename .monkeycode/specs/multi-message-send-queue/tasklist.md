@@ -1,0 +1,88 @@
+# 需求实施计划
+
+- [x] 1. 实现共享待发送队列领域层
+  - [x] 1.1 新增队列模型、纯状态转换和正确性守卫
+    - 在 `desktop/ui-next/src/features/chat/composer/sendQueue.ts` 定义稳定 ID、pending、in-flight、uncertain 和结构化 block
+    - 实现追加、删除、重排、领取队首、回显确认、轮次完成、失败回队、暂停与确认恢复
+    - 保证单目标最多一个 in-flight、消息 ID 不重复、失败项不被后续消息越过
+    - 对应需求 1、2、4、6；设计 Components 1、State Machines、Correctness Properties
+  - [x] 1.2 实现版本化持久化、账号隔离和订阅机制
+    - 实现 local/cloud 目标键、云端账号命名空间、云端非空队列索引和损坏数据容错
+    - 使用模块级订阅器向 React 与 App 级协调器发布 lane/index 变化
+    - 实现目标删除、账号/transport 失效和重启后 uncertain 恢复
+    - 对应需求 5、6；设计 Data Models、Error Handling
+  - [x] 1.3 编写共享队列与存储测试
+    - 覆盖 FIFO、删除、双向重排、claim/ack/nack、blocked/uncertain、序列化往返和错误数据
+    - 覆盖 local/cloud、账号命名空间、任务索引和删除隔离
+    - 为重排不变量、ID 唯一性和 pending/in-flight 互斥编写属性化表驱动测试
+    - 对应设计 Test Strategy“纯队列与存储”
+
+- [x] 2. 实现共享队列交互组件
+  - [x] 2.1 新增 `SendQueueList` 和国际化文案
+    - 展示锁定的发送中项、全部待发送项、正文摘要、附件数量和异常恢复动作
+    - 复用项目原生 HTML5 DnD 模式，实现专用把手、插入指示线、稳定 ID 重排和逐项删除
+    - 使用内部 MIME 区分排序拖动与附件文件拖放，不新增拖拽依赖
+    - 对应需求 3、4；设计 Components 2
+  - [x] 2.2 编写队列组件交互测试
+    - 覆盖向前/向后/末尾拖放、逐项删除、发送中锁定、长正文提示和附件计数
+    - 验证内部排序不会触发本地或云端文件上传入口
+    - 对应设计 Test Strategy“交互回归”
+
+- [x] 3. 接入本地会话多消息队列
+  - [x] 3.1 改造 `useComposer` 和本地 Composer
+    - 将单槽 queued 替换为结构化持久化 lane，入队时保留正文与附件，实际发送时再生成附件行
+    - 连续提交改为队尾追加；沿用历史加载、会话纪元、帧水位、发送在途和失败退避守卫
+    - 每次轮次结束只发送一个队首，失败时原项回队首并阻塞后续消息
+    - 用 `SendQueueList` 替换单条 queued chip，保留 `/compact` 的现有控制指令语义
+    - 对应需求 1、2、3、4、6；设计 Components 3
+  - [x] 3.2 改造本地后台补投与删除清理
+    - 从 `stash.ts` 移除单槽 queued，保留草稿和当前附件暂存
+    - 让 `deliverQueued` 按 session 状态事件逐轮领取一个队首，并使用目标 ID/消息 ID 守卫迟到回调
+    - 会话删除成功时同步删除持久化 lane
+    - 对应需求 2、5、6；设计 Components 3、Correctness Properties
+  - [x] 3.3 更新本地会话测试
+    - 覆盖连续三条不覆盖、逐轮发送、失败阻塞、退避、跨会话隔离、重启恢复和后台补投
+    - 覆盖拖动/删除持久化及 `/compact` 不入队
+    - 对应设计 Test Strategy“本地会话”
+
+- [x] 4. 检查点：验证共享队列和本地会话
+  - 确保相关测试、类型检查通过，如有疑问请询问用户
+
+- [x] 5. 实现 App 级云端任务 runtime 与协调器
+  - [x] 5.1 新增唯一 `CloudTaskRuntime`
+    - 封装详情轮询、control、VM 唤醒/保活、attach、mode=new、回显超时和 task-ended 推进
+    - 实现 view/queue 引用生命周期、reconciling 守卫、dispatch token 和迟到回调隔离
+    - 让 runtime 广播帧、详情和连接状态，并在无视图时执行最小后台归约
+    - 对应需求 2.6、2.7、5.7、6；设计 Components 4、State Machines
+  - [x] 5.2 新增 `CloudQueueCoordinator` 并接入 App
+    - 按账号命名空间和 task ID 维护唯一 runtime，由云端队列索引驱动后台实例
+    - 提供 Context 与 `useCloudQueueTask`，统一 runtime acquire、订阅、sendFrame、borrowControl 和异常确认
+    - 接入账号/transport generation 失效、App 级 attention、任务装载和删除成功清理
+    - 对应需求 2.7、5、6；设计 Components 4、Error Handling
+  - [x] 5.3 编写 runtime 与协调器测试
+    - 覆盖无视图逐轮发送、pending/hibernated 唤醒、attach 对表、mode-new 单次投递和 task-ended 推进
+    - 覆盖 control offline、send reject、无回显 uncertain、blocked 后确认恢复和任务终态
+    - 覆盖单 runtime、视图切换、资源释放、generation 失效、账号隔离、删除与迟到回调
+    - 对应设计 Test Strategy“云端任务”
+
+- [x] 6. 将云端任务视图迁移到共享 runtime 和队列
+  - [x] 6.1 改造 `useCloudTask` 的 transport 所有权
+    - 移除 hook 自有详情轮询、control、attach、mode-new 和单槽 outbox
+    - 订阅共享 runtime，把帧接入现有 ChatState/历史归约，并经 runtime 发送审批、提问和控制调用
+    - composer 提交统一先进入持久化队列，保留附件上传、模型、文件和任务操作 UI
+    - 对应需求 1、2、5、6；设计 Components 5
+  - [x] 6.2 改造云端 Composer、任务视图和删除路径
+    - 发送中仍允许继续录入并追加消息，用 `SendQueueList` 展示、排序和删除
+    - 在运行态与结束态展示 blocked/uncertain 横幅及确认继续、确认重试、停止并删除队列动作
+    - 任务删除成功通过 App 统一回调停止 runtime、删除 lane/index，再刷新列表与工作台格
+    - 对应需求 1、3、4、5.6、5.7；设计 Components 5、Error Handling
+  - [x] 6.3 更新云端视图与 App 集成测试
+    - 覆盖连续追加、附件绑定、后台轮次回到前台、结束态异常恢复和拖动/删除持久化
+    - 覆盖打开/切离/重开只有一套 transport，账号/transport 切换不会串队列
+    - 覆盖删除成功清理和失败保留，更新现有启动期押后与零回显用例
+    - 对应设计 Test Strategy“云端任务”“交互回归”
+
+- [x] 7. 完成全量验证
+  - 运行队列、本地 composer、云端 runtime/coordinator、CloudTaskView 和 App 的相关 Vitest 测试
+  - 运行 `npm run typecheck` 与受影响目录的 lint
+  - 确保所有测试通过，如有疑问请询问用户

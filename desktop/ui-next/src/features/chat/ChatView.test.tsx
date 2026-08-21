@@ -893,4 +893,53 @@ describe("聊天视图", () => {
     expect(tab.className).toContain("tab-active");
     expect(await screen.findByRole("button", { name: /a\.ts/ })).toBeTruthy();
   });
+
+  // 分屏格内形态(variant="pane"):细头/管理动作归 SplitView,数据面与
+  // composer 全保留。列宽换无地板的 chat-measure-pane(四分格 ~790px 时
+  // 768px 地板会顶出横滚);根不再是 main(四格并存,main 地标归 SplitView)
+  it("pane 变体:无 52px 视图头/大纲/文件抽屉入口,根非 main,列宽 chat-measure-pane", async () => {
+    const { ops } = stubShell();
+    const { container } = render(<ChatView meta={META} variant="pane" />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    expect(container.querySelector("[data-view-header]")).toBeNull();
+    expect(container.querySelector("main")).toBeNull();
+    expect(screen.queryByRole("button", { name: "会话文件" })).toBeNull();
+    expect(container.querySelector(".chat-measure")).toBeNull();
+    expect(container.querySelectorAll(".chat-measure-pane").length).toBeGreaterThan(0);
+    // 大纲点列不渲染(贴边点列在窄格里挤占行宽)
+    expect(container.querySelector("[data-outline-nav]") ?? screen.queryByRole("navigation", { name: /大纲|提问/ })).toBeNull();
+    // composer 仍在:数据面全功能保留是 pane 的立身之本
+    expect(screen.getByRole("textbox")).toBeTruthy();
+    // 改动计数在 pane 里不拉(无徽标无文件钮,白拉 = 4 格 × 每轮一次 IPC)
+    expect(ops.filter((o) => o.cmd === "session_call" && o.args?.kind === "repo_file_changes")).toHaveLength(0);
+  });
+
+  // 工作台降噪定案 2026-08-18:四格各铺一条几乎相同的长横幅是画面里最响的
+  // 噪音——pane 形态默认收成角落小图标(全文在 title/aria),点开展开原横幅
+  it("pane 变体:连接条默认收成小图标,点开展开、再点收回;full 形态不受影响", async () => {
+    const { emit } = stubShell();
+    render(<ChatView meta={META} variant="pane" />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    act(() => emit("conn-status:s1", { connected: false, text: "会话恢复失败: create provider" }));
+    // 收起态:无整行横幅,只有角落图标(aria 带全文)
+    expect(screen.queryByRole("status")).toBeNull();
+    const chip = await screen.findByRole("button", { name: /会话恢复失败/ });
+    await userEvent.click(chip);
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(screen.getByText(/create provider/)).toBeTruthy();
+    // 再点横幅收回图标
+    await userEvent.click(screen.getByRole("status"));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("背景表面单层:pane 根透明，独立形态提供工作台 100 表面", () => {
+    stubShell();
+    const paneView = render(<ChatView meta={META} variant="pane" />);
+    const pane = paneView.container.firstElementChild as HTMLElement;
+    expect(pane.className).toContain("bg-transparent");
+    expect(pane.className).not.toContain("mc-workbench-surface-100");
+    paneView.unmount();
+    const full = render(<ChatView meta={META} />).container.firstElementChild as HTMLElement;
+    expect(full.className).toContain("mc-workbench-surface-100");
+  });
 });
