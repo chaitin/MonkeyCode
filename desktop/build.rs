@@ -44,6 +44,12 @@ fn main() {
                 "engine_restart",
                 "engine_status",
                 "probe_log",
+                // 应用内自定义背景资产(background.rs)
+                "background_import",
+                "background_confirm",
+                "background_discard",
+                "background_read",
+                "background_clear",
                 // 引擎驱动层(driver/mod.rs)
                 "engine_caps",
                 "browser_status",

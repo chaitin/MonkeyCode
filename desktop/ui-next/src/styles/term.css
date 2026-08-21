@@ -2,8 +2,8 @@
  *
  * 为什么必须自定义 CSS:xterm 的 theme 是 JS 对象,吃不了 daisyUI 语义
  * 变量;且终端岛**恒为深色面**(不随 35 套主题翻转——浅色主题下的白底
- * 终端不可读)。令牌用固定 hex,组件挂载时经 getComputedStyle 解析后喂
- * 给 xterm theme(features/cloud/CloudTerminal.tsx::readTermTheme)。 */
+ * 终端不可读)。颜色令牌与 app.css 的全局等宽字体令牌都由组件挂载时经 getComputedStyle 解析后
+ * 喂给 xterm options(features/cloud/CloudTerminal.tsx::readTermOptions)。 */
 :root {
   --termBg: #1c1d20; /* 终端底色(xterm background + 卡片面) */
   --termTx: #d6d7d2; /* 终端前景(xterm foreground) */

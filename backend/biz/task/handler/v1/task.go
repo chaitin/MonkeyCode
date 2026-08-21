@@ -413,7 +413,9 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 		// 避免阻塞 readClientMessages 处理客户端输入
 		go func() {
 			if err := h.attachStream(ctx, cancel, wsConn, logger, task); err != nil {
-				h.writeError(wsConn, fmt.Errorf("failed to attach stream"))
+				err = wrapAttachStreamError(err)
+				logger.ErrorContext(ctx, "failed to attach stream", "error", err, "log_store", task.LogStore)
+				h.writeError(wsConn, err)
 			}
 		}()
 	}
@@ -426,18 +428,22 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, logger *slog.Logger, task *domain.Task) error {
 	taskID := task.ID.String()
 	taskCreatedAt := time.Unix(task.CreatedAt, 0)
+	streamCtx, stopStream := context.WithCancel(ctx)
+	defer stopStream()
 
 	// 先订阅实时流（触发 flush）
 	streamCh := make(chan *taskflow.TaskChunk, 100)
+	streamErrCh := make(chan error, 1)
 	go func() {
-		_ = h.taskflow.TaskLive(ctx, taskID, true, func(chunk *taskflow.TaskChunk) error {
+		err := h.taskflow.TaskLive(streamCtx, taskID, true, func(chunk *taskflow.TaskChunk) error {
 			select {
 			case streamCh <- chunk:
-			case <-ctx.Done():
-				return ctx.Err()
+			case <-streamCtx.Done():
+				return streamCtx.Err()
 			}
 			return nil
 		})
+		streamErrCh <- err
 		close(streamCh)
 	}()
 	attachNow := time.Now().UTC()
@@ -446,12 +452,14 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 	if err != nil {
 		return fmt.Errorf("query latest turn: %w", err)
 	}
-	h.writeCursor(wsConn, latestTurn.NextCursor, latestTurn.HasMore)
+	if err := h.writeCursor(wsConn, latestTurn.NextCursor, latestTurn.HasMore); err != nil {
+		return fmt.Errorf("write history cursor: %w", err)
+	}
 	latestTurn.Entries = h.withInitialUserInputFallback(task, latestTurn)
 
 	ended, err := h.replayLatestTurnHistory(wsConn, latestTurn.Entries)
 	if err != nil {
-		return err
+		return fmt.Errorf("replay latest turn history: %w", err)
 	}
 	if ended {
 		cancel(fmt.Errorf("attach ended task"))
@@ -459,8 +467,11 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 	}
 
 	// 消费实时流
-	h.consumeLiveStream(ctx, cancel, wsConn, streamCh, attachNow.UnixNano())
-	return nil
+	return h.consumeLiveStream(ctx, cancel, wsConn, streamCh, streamErrCh, attachNow.UnixNano())
+}
+
+func wrapAttachStreamError(err error) error {
+	return fmt.Errorf("failed to attach stream: %w", err)
 }
 
 func buildTaskStreamsFromLogEntries(entries []tasklog.Entry, logger *slog.Logger) ([]domain.TaskStream, bool) {
@@ -582,14 +593,18 @@ func (h *TaskHandler) replayLatestTurnHistory(wsConn *ws.WebsocketManager, entri
 	return ended, nil
 }
 
-func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, streamCh <-chan *taskflow.TaskChunk, historyEndNS int64) {
+func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, streamCh <-chan *taskflow.TaskChunk, streamErrCh <-chan error, historyEndNS int64) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case chunk, ok := <-streamCh:
 			if !ok {
-				return
+				err := <-streamErrCh
+				if err == nil || ctx.Err() != nil {
+					return nil
+				}
+				return fmt.Errorf("task live stream: %w", err)
 			}
 			if historyEndNS > 0 && chunk.Timestamp <= historyEndNS {
 				continue
@@ -601,11 +616,11 @@ func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.Canc
 				Seq:       chunk.Seq,
 				Timestamp: chunk.Timestamp / 1e6,
 			}); err != nil {
-				return
+				return fmt.Errorf("write live stream: %w", err)
 			}
 			if chunk.Event == "task-ended" {
 				cancel(errTurnEnded)
-				return
+				return nil
 			}
 		}
 	}
@@ -763,15 +778,15 @@ func (h *TaskHandler) writeError(wsConn *ws.WebsocketManager, err error) {
 }
 
 // writeCursor 向 WebSocket 发送 cursor 消息，通知前端可以通过 /rounds 接口加载更早的历史轮次
-func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, cursor string, hasMore bool) {
+func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, cursor string, hasMore bool) error {
 	if cursor == "" {
-		return
+		return nil
 	}
 	data, _ := json.Marshal(map[string]any{
 		"cursor":   cursor,
 		"has_more": hasMore,
 	})
-	wsConn.WriteJSON(domain.TaskStream{
+	return wsConn.WriteJSON(domain.TaskStream{
 		Type:      consts.TaskStreamTypeCursor,
 		Data:      data,
 		Timestamp: time.Now().UnixMilli(),

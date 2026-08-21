@@ -24,12 +24,14 @@ describe("任务面板", () => {
     expect(screen.getByText(/接下来:写文档/)).toBeTruthy();
   });
 
-  it("展开:限高清单,checkbox 只读态映射 completed;摘要行收起", async () => {
+  it("展开:checkbox 区分 pending/in_progress/completed 三态;摘要行收起", async () => {
     render(<TaskPanel entries={PLAN} />);
     await userEvent.click(screen.getByRole("button", { expanded: false }));
     expect(screen.getByRole("button", { expanded: true })).toBeTruthy();
     const boxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
     expect(boxes.map((b) => b.checked)).toEqual([true, false, false]);
+    expect(boxes.map((b) => b.indeterminate)).toEqual([false, true, false]);
+    expect(boxes[1]?.className).toContain("checkbox-primary");
     expect(boxes.map((b) => b.getAttribute("aria-label"))).toEqual(["读代码", "改代码", "跑测试"]);
     // 展开后摘要行不再重复"正在"
     expect(screen.queryByText(/正在:改代码/)).toBeNull();

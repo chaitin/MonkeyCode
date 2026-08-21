@@ -56,4 +56,10 @@ describe("thoughtLiveSummary(流式折叠态跟随尾部)", () => {
   it("尾窗不切开 emoji surrogate pair", () => {
     expect(thoughtLiveSummary("很长的分析过程🐛完成", 4)).toBe("…🐛完成");
   });
+
+  it("尾窗内的 **** 连拼:只留最新一段,不带省略号(段界起步是干净行)", () => {
+    // 修复注入换行导致折叠卡两个标题上下堆(2026-08-20 用户截图报障)
+    expect(thoughtLiveSummary("**Defining active task criteria****Refining tracking**")).toBe("**Refining tracking**");
+    expect(thoughtLiveSummary("**A****B****C**")).toBe("**C**");
+  });
 });

@@ -74,6 +74,33 @@ function normalizeAccountPlanId(plan?: string | null): PersonalAccountPlanId {
   return "basic"
 }
 
+function planRank(plan: PersonalAccountPlanId) {
+  if (plan === "ultra") {
+    return 2
+  }
+  if (plan === "pro") {
+    return 1
+  }
+  return 0
+}
+
+function billingPeriodRank(period: SubscriptionBillingPeriod) {
+  return period === "yearly" ? 2 : 1
+}
+
+function isStripeUpgradeTransition(
+  currentPlan: PersonalAccountPlanId,
+  currentPeriod: SubscriptionBillingPeriod,
+  targetPlan: PersonalAccountPlanId,
+  targetPeriod: SubscriptionBillingPeriod,
+) {
+  if (currentPlan === targetPlan && currentPeriod === targetPeriod) {
+    return false
+  }
+  return planRank(targetPlan) >= planRank(currentPlan)
+    && billingPeriodRank(targetPeriod) >= billingPeriodRank(currentPeriod)
+}
+
 export default function SubscriptionPlanDialog({ open, onOpenChange }: SubscriptionPlanDialogProps) {
   const { t } = useTranslation()
   const { serverConfig } = useAppRuntime()
@@ -180,12 +207,10 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const hasAdvancedPlan = hasProSubscription(subscription)
   const isBasicPlan = subscription?.plan === "basic"
   const isTeamUser = !!user?.team?.id
-  const triggerPlanLabel = t(`subscriptionPlan.plans.${normalizeAccountPlanId(subscription?.plan)}.name`)
-  const isRenewingCurrentPlan = confirmSubscriptionPlan === "pro"
-    ? isProPlan
-    : confirmSubscriptionPlan === "ultra"
-      ? isFlagshipPlan
-      : false
+  const currentAccountPlanId = normalizeAccountPlanId(subscription?.plan)
+  const currentBillingPeriod: SubscriptionBillingPeriod = subscription?.billing_interval === "year" ? "yearly" : "monthly"
+  const isStripeSubscription = subscription?.payment_provider === "stripe" && hasAdvancedPlan
+  const triggerPlanLabel = t(`subscriptionPlan.plans.${currentAccountPlanId}.name`)
   const confirmingPlanCard = accountPlanCards.find((plan) => plan.id === confirmSubscriptionPlan)
   const selectedAccountPlan = accountPlanCards.find((plan) => plan.id === selectedAccountPlanId) || accountPlanCards[0]
   const selectedAccountPlanFeatures = accountPlanComparisonRows.map((row) => ({
@@ -196,12 +221,32 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const selectedSubscriptionPlan = selectedAccountPlan.id === "basic" ? null : selectedAccountPlan.id
   const isSelectedCurrentPlan = selectedAccountPlan.id === "basic" ? !hasAdvancedPlan : selectedAccountPlan.id === "pro" ? isProPlan : selectedAccountPlan.id === "ultra" ? isFlagshipPlan : false
   const isSelectedPlanLoading = selectedAccountPlan.id === "pro" ? isProLoading : selectedAccountPlan.id === "ultra" ? isFlagshipLoading : false
-  const canSubscribeSelectedPlan = selectedSubscriptionPlan === "pro" ? !isFlagshipPlan : selectedSubscriptionPlan === "ultra"
+  const isSelectedStripeUpgrade = isStripeSubscription
+    && selectedSubscriptionPlan !== null
+    && isStripeUpgradeTransition(currentAccountPlanId, currentBillingPeriod, selectedSubscriptionPlan, selectedBillingPeriod)
+  const isConfirmingStripeUpgrade = isStripeSubscription
+    && confirmSubscriptionPlan !== null
+    && isStripeUpgradeTransition(currentAccountPlanId, currentBillingPeriod, confirmSubscriptionPlan, selectedBillingPeriod)
+  const isRenewingCurrentPlan = !isConfirmingStripeUpgrade && (confirmSubscriptionPlan === "pro"
+    ? isProPlan
+    : confirmSubscriptionPlan === "ultra"
+      ? isFlagshipPlan
+      : false)
+  const canSubscribeSelectedPlan = !isTeamUser && selectedSubscriptionPlan !== null && (isStripeSubscription
+    ? isSelectedStripeUpgrade
+    : selectedSubscriptionPlan === "pro"
+      ? !isFlagshipPlan
+      : selectedSubscriptionPlan === "ultra")
   const selectedPeriodAmount = selectedBillingPeriod === "monthly" ? selectedAccountPlan.monthlyAmount : selectedAccountPlan.yearlyAmount
   const selectedOrderTotal = selectedPeriodAmount * selectedPeriodCount
   const selectedOrderTotalLabel = formatRegionCurrency(selectedOrderTotal, pricingRegion)
+  const selectedPriceLabel = isSelectedStripeUpgrade ? t("subscriptionPlan.billing.proratedDifference") : selectedOrderTotalLabel
   const selectedPeriodUnit = selectedBillingPeriod === "monthly" ? ConstsSubscriptionPeriodUnit.PeriodMonth : ConstsSubscriptionPeriodUnit.PeriodYear
-  const subscriptionPeriodCounts = selectedBillingPeriod === "monthly" ? monthlyPeriodCounts : yearlyPeriodCounts
+  const subscriptionPeriodCounts = pricingRegion === "global"
+    ? [1]
+    : selectedBillingPeriod === "monthly"
+      ? monthlyPeriodCounts
+      : yearlyPeriodCounts
   const selectedPeriodCountLabel = selectedBillingPeriod === "monthly"
     ? t("subscriptionPlan.billing.monthCount", { count: selectedPeriodCount })
     : t("subscriptionPlan.billing.yearCount", { count: selectedPeriodCount })
@@ -227,13 +272,17 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     queueMicrotask(() => {
       if (active) {
         setSelectedAccountPlanId(isFlagshipPlan ? "ultra" : isProPlan ? "pro" : "basic")
+        if (isStripeSubscription) {
+          setSelectedBillingPeriod(currentBillingPeriod)
+          setSelectedPeriodCount(1)
+        }
       }
     })
 
     return () => {
       active = false
     }
-  }, [isFlagshipPlan, isProPlan, open])
+  }, [currentBillingPeriod, isFlagshipPlan, isProPlan, isStripeSubscription, open])
 
   const handleToggleAutoRenew = async (checked: boolean) => {
     if (!hasAdvancedPlan) {
@@ -263,19 +312,29 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       period_count: selectedPeriodCount,
     }, [], (resp) => {
       const paymentUrl = resp.data?.url
-      if (resp.code === 0 && paymentUrl) {
-        if (isBasicPlan) {
+      if (resp.code === 0) {
+        if (isBasicPlan && paymentUrl) {
           trackBasicConcurrencyUpgradeEvent(user?.id || "", "subscription_checkout_created", plan, selectedOrderTotal)
           trackBasicConcurrencyUpgradeGoal(user?.id || "", selectedOrderTotal)
         }
         setConfirmSubscriptionPlan(null)
         onOpenChange(false)
-        window.open(paymentUrl, "_blank", "noopener,noreferrer")
+        if (paymentUrl) {
+          window.open(paymentUrl, "_blank", "noopener,noreferrer")
+        } else {
+          toast.success(isConfirmingStripeUpgrade ? t("subscriptionPlan.toast.upgradeRequested") : t("subscriptionPlan.toast.subscriptionRequested"))
+          reloadSubscription()
+        }
       } else {
         if (isBasicPlan) {
           trackBasicConcurrencyUpgradeEvent(user?.id || "", "subscription_checkout_failed", plan)
         }
-        toast.error(resp.message || t(isRenewingCurrentPlan ? "subscriptionPlan.toast.renewFailed" : "subscriptionPlan.toast.subscribeFailed", { plan: planLabel }))
+        const errorKey = isConfirmingStripeUpgrade
+          ? "subscriptionPlan.toast.upgradeFailed"
+          : isRenewingCurrentPlan
+            ? "subscriptionPlan.toast.renewFailed"
+            : "subscriptionPlan.toast.subscribeFailed"
+        toast.error(resp.message || t(errorKey, { plan: planLabel }))
       }
     })
     setLoading(false)
@@ -433,31 +492,44 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                       }}
                     >
                       <TabsList className="h-8 bg-muted group-data-horizontal/tabs:h-8">
-                        <TabsTrigger value="monthly" className="h-7 px-3 text-xs">{t("subscriptionPlan.billing.monthly")}</TabsTrigger>
+                        <TabsTrigger
+                          value="monthly"
+                          className="h-7 px-3 text-xs"
+                          disabled={isStripeSubscription && currentBillingPeriod === "yearly"}
+                        >
+                          {t("subscriptionPlan.billing.monthly")}
+                        </TabsTrigger>
                         <TabsTrigger value="yearly" className="h-7 px-3 text-xs">{t("subscriptionPlan.billing.yearly")}</TabsTrigger>
                       </TabsList>
                     </Tabs>
-                    <Select
-                      value={String(selectedPeriodCount)}
-                      onValueChange={(value) => setSelectedPeriodCount(Number(value))}
-                    >
-                      <SelectTrigger className="w-24 bg-background" size="sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {subscriptionPeriodCounts.map((count) => (
-                          <SelectItem key={count} value={String(count)}>
-                            {selectedBillingPeriod === "monthly"
-                              ? t("subscriptionPlan.billing.monthCount", { count })
-                              : t("subscriptionPlan.billing.yearCount", { count })}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {pricingRegion !== "global" ? (
+                      <Select
+                        value={String(selectedPeriodCount)}
+                        onValueChange={(value) => setSelectedPeriodCount(Number(value))}
+                      >
+                        <SelectTrigger className="w-24 bg-background" size="sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {subscriptionPeriodCounts.map((count) => (
+                            <SelectItem key={count} value={String(count)}>
+                              {selectedBillingPeriod === "monthly"
+                                ? t("subscriptionPlan.billing.monthCount", { count })
+                                : t("subscriptionPlan.billing.yearCount", { count })}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-3">
                     <div className="flex min-w-20 items-end justify-end">
-                      <span className="text-xl font-semibold leading-none">{selectedOrderTotalLabel}</span>
+                      <span className={cn(
+                        "font-semibold",
+                        isSelectedStripeUpgrade ? "text-sm leading-5 text-muted-foreground" : "text-xl leading-none",
+                      )}>
+                        {selectedPriceLabel}
+                      </span>
                     </div>
                     {canSubscribeSelectedPlan ? (
                       <Button
@@ -466,13 +538,17 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                         disabled={isSelectedPlanLoading}
                       >
                         {isSelectedPlanLoading && <Spinner />}
-                        {isSelectedCurrentPlan
-                          ? t("subscriptionPlan.actions.renew")
-                          : t("subscriptionPlan.actions.subscribePlan", { plan: selectedAccountPlan.name })}
+                        {isSelectedStripeUpgrade
+                          ? t("subscriptionPlan.actions.upgrade")
+                          : isSelectedCurrentPlan
+                            ? t("subscriptionPlan.actions.renew")
+                            : t("subscriptionPlan.actions.subscribePlan", { plan: selectedAccountPlan.name })}
                       </Button>
                     ) : (
                       <div className="flex h-9 w-full items-center justify-center rounded-md border bg-background px-4 text-sm text-muted-foreground md:w-40">
-                        {isSelectedCurrentPlan ? t("subscriptionPlan.status.currentPlan") : t("subscriptionPlan.status.unavailable")}
+                        {isSelectedCurrentPlan && (!isStripeSubscription || selectedBillingPeriod === currentBillingPeriod)
+                          ? t("subscriptionPlan.status.currentPlan")
+                          : t("subscriptionPlan.status.unavailable")}
                       </div>
                     )}
                   </div>
@@ -485,15 +561,26 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       <AlertDialog open={confirmSubscriptionPlan !== null} onOpenChange={(nextOpen) => !nextOpen && setConfirmSubscriptionPlan(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{isRenewingCurrentPlan ? t("subscriptionPlan.confirm.renewTitle") : t("subscriptionPlan.confirm.subscribeTitle")}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isConfirmingStripeUpgrade
+                ? t("subscriptionPlan.confirm.upgradeTitle")
+                : isRenewingCurrentPlan
+                  ? t("subscriptionPlan.confirm.renewTitle")
+                  : t("subscriptionPlan.confirm.subscribeTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmingPlanCard
-                ? t("subscriptionPlan.confirm.description", {
-                    action: isRenewingCurrentPlan ? t("subscriptionPlan.actions.renew") : t("subscriptionPlan.actions.subscribe"),
-                    plan: confirmingPlanCard.name,
-                    period: selectedPeriodCountLabel,
-                    total: selectedOrderTotalLabel,
-                  })
+                ? isConfirmingStripeUpgrade
+                  ? t("subscriptionPlan.confirm.upgradeDescription", {
+                      plan: confirmingPlanCard.name,
+                      period: selectedPeriodCountLabel,
+                    })
+                  : t("subscriptionPlan.confirm.description", {
+                      action: isRenewingCurrentPlan ? t("subscriptionPlan.actions.renew") : t("subscriptionPlan.actions.subscribe"),
+                      plan: confirmingPlanCard.name,
+                      period: selectedPeriodCountLabel,
+                      total: selectedOrderTotalLabel,
+                    })
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -507,7 +594,11 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
               disabled={isProLoading || isFlagshipLoading}
             >
               {(isProLoading || isFlagshipLoading) && <Spinner className="mr-2 size-4" />}
-              {isRenewingCurrentPlan ? t("subscriptionPlan.confirm.renewAction") : t("subscriptionPlan.confirm.subscribeAction")}
+              {isConfirmingStripeUpgrade
+                ? t("subscriptionPlan.confirm.upgradeAction")
+                : isRenewingCurrentPlan
+                  ? t("subscriptionPlan.confirm.renewAction")
+                  : t("subscriptionPlan.confirm.subscribeAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

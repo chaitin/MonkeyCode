@@ -135,6 +135,14 @@ pub struct Service {
     http: Option<reqwest::Client>,
     /// 微信授权页/二维码/长轮询(长轮询最长挂 ~25s)
     lp: Option<reqwest::Client>,
+    /// 跳过 mc 域 TLS 证书验证已生效(设置开关开、且服务地址非官方云)。
+    /// 免验证只按 URL 作用于 mc 域(tls_insecure_for),百智/官方/第三方
+    /// 恒走验证客户端;云端 WS 桥与下载专用客户端也按它判定。
+    mc_skip_tls: bool,
+    /// http/lp 的免验证形态(仅 mc_skip_tls 时构建;构建失败同 http/lp
+    /// 降级为 None,mc 域请求报 TLS 后端错误而不是悄悄退回验证客户端)。
+    http_insecure: Option<reqwest::Client>,
+    lp_insecure: Option<reqwest::Client>,
     pub store: Arc<CookieStore>,
     pub mc: Arc<CookieStore>,
     mc_cookie_generation: Arc<StdMutex<u64>>,
@@ -156,6 +164,31 @@ fn basic_header_value(user_pass: &str) -> Option<String> {
     (!v.is_empty()).then(|| format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(v.as_bytes())))
 }
 
+/// 服务地址是否官方云(国内/国际)。跳过 TLS 验证的开关对官方云恒不
+/// 生效:它只为私有化自签证书而设,不能被拿来弱化官方域的传输安全。
+fn is_official_mc(monkeycode: &str) -> bool {
+    monkeycode == DEFAULT_MONKEYCODE_URL || monkeycode == INTL_MONKEYCODE_URL
+}
+
+/// API 短请求 / 长轮询客户端超时(秒;Service::new 与 reconfigured 共用)。
+const HTTP_TIMEOUT_SECS: u64 = 30;
+const LP_TIMEOUT_SECS: u64 = 40;
+
+/// API 客户端构建。失败只发生在 TLS 后端起不来时,降级为 None(语义见
+/// Service.http 字段注释)。insecure = 跳过证书链与主机名校验(私有化
+/// 自签部署的 mc 域专用;加密与完整性保持)。
+fn build_client(timeout: u64, insecure: bool) -> Option<reqwest::Client> {
+    let mut b = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(timeout));
+    if insecure {
+        b = b.danger_accept_invalid_certs(true);
+    }
+    b.build()
+        .inspect_err(|e| eprintln!("[desktop] HTTP 客户端构建失败(云端/账号功能不可用): {e}"))
+        .ok()
+}
+
 impl Service {
     /// 测试构造:端点可注入,cookie 仅内存。
     #[cfg(test)]
@@ -172,6 +205,9 @@ impl Service {
             ep,
             http: Some(mk(10)),
             lp: Some(mk(10)),
+            mc_skip_tls: false,
+            http_insecure: None,
+            lp_insecure: None,
             store: Arc::new(CookieStore::new(None)),
             mc: Arc::new(CookieStore::new(None)),
             mc_cookie_generation: Arc::new(StdMutex::new(0)),
@@ -186,20 +222,16 @@ impl Service {
         // 构建失败只发生在 TLS 后端初始化不了时。不 panic:壳在 setup 里
         // 构造本服务,GUI 子系统下 panic = 双击没反应、无任何线索。降级为
         // 云端/账号命令逐条报错,本地引擎会话不受影响。
-        let mk = |timeout: u64| {
-            reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .timeout(Duration::from_secs(timeout))
-                .build()
-                .inspect_err(|e| eprintln!("[desktop] HTTP 客户端构建失败(云端/账号功能不可用): {e}"))
-                .ok()
-        };
         let ep = Endpoints::resolve(&cfg.mc_base_url);
         let mc_llm = resolve_mc_llm(&cfg.mc_llm_base_url, &ep.monkeycode);
+        let mc_skip_tls = cfg.mc_skip_tls_verify && !is_official_mc(&ep.monkeycode);
         Self {
             ep,
-            http: mk(30),
-            lp: mk(40),
+            http: build_client(HTTP_TIMEOUT_SECS, false),
+            lp: build_client(LP_TIMEOUT_SECS, false),
+            mc_skip_tls,
+            http_insecure: mc_skip_tls.then(|| build_client(HTTP_TIMEOUT_SECS, true)).flatten(),
+            lp_insecure: mc_skip_tls.then(|| build_client(LP_TIMEOUT_SECS, true)).flatten(),
             store: Arc::new(CookieStore::new(Some(config_dir.join("baizhi-cookies.json")))),
             mc: Arc::new(CookieStore::new(Some(config_dir.join("monkeycode-cookies.json")))),
             mc_cookie_generation: Arc::new(StdMutex::new(0)),
@@ -220,7 +252,22 @@ impl Service {
         };
         let mc_llm = resolve_mc_llm(&cfg.mc_llm_base_url, &ep.monkeycode);
         let mc_basic = basic_header_value(&cfg.mc_basic_auth);
-        let transport_changed = self.ep.monkeycode != ep.monkeycode || self.mc_basic != mc_basic;
+        let mc_skip_tls = cfg.mc_skip_tls_verify && !is_official_mc(&ep.monkeycode);
+        // 开关翻转也算 transport 变化:免验证与验证客户端的握手行为不同,
+        // 在途请求/长连接不应跨形态延续(与地址/Basic 变化同待遇)。
+        let transport_changed = self.ep.monkeycode != ep.monkeycode
+            || self.mc_basic != mc_basic
+            || self.mc_skip_tls != mc_skip_tls;
+        let (http_insecure, lp_insecure) = if !mc_skip_tls {
+            (None, None)
+        } else if self.mc_skip_tls {
+            (self.http_insecure.clone(), self.lp_insecure.clone())
+        } else {
+            (
+                build_client(HTTP_TIMEOUT_SECS, true),
+                build_client(LP_TIMEOUT_SECS, true),
+            )
+        };
         let mc_cookie_snapshot = if transport_changed {
             let mut generation = self.mc_cookie_generation.lock_ok();
             *generation = generation.wrapping_add(1);
@@ -233,6 +280,9 @@ impl Service {
                 ep,
                 http: self.http.clone(),
                 lp: self.lp.clone(),
+                mc_skip_tls,
+                http_insecure,
+                lp_insecure,
                 store: Arc::clone(&self.store),
                 mc: Arc::clone(&self.mc),
                 mc_cookie_generation: Arc::clone(&self.mc_cookie_generation),
@@ -263,6 +313,9 @@ impl Service {
             },
             http: self.http.clone(),
             lp: self.lp.clone(),
+            mc_skip_tls: self.mc_skip_tls,
+            http_insecure: self.http_insecure.clone(),
+            lp_insecure: self.lp_insecure.clone(),
             store: Arc::clone(&self.store),
             mc: Arc::clone(&self.mc),
             mc_cookie_generation: Arc::clone(&self.mc_cookie_generation),
@@ -299,6 +352,43 @@ impl Service {
             .ok_or_else(|| other("HTTP 客户端初始化失败(系统 TLS 不可用),云端与账号功能暂不可用"))
     }
 
+    /// 该 URL 的请求是否跳过 TLS 证书验证:开关生效且落在 mc 域
+    /// (host/port 判定与 mc_basic_header 同口径)。云端 WS 桥与下载
+    /// 专用客户端也按它决定各自的免验证形态。
+    pub(crate) fn tls_insecure_for(&self, url: &reqwest::Url) -> bool {
+        if !self.mc_skip_tls {
+            return false;
+        }
+        let Ok(mc) = reqwest::Url::parse(&self.ep.monkeycode) else {
+            return false;
+        };
+        url.host_str() == mc.host_str() && url.port_or_known_default() == mc.port_or_known_default()
+    }
+
+    /// 按目标 URL 选 API 客户端:免验证只给 mc 域,百智/官方/第三方恒走
+    /// 验证客户端。免验证客户端缺席(TLS 后端异常)时报错,不悄悄退回
+    /// 验证客户端——那只会把"开关没生效"伪装成又一次证书错误。
+    fn http_for(&self, url: &reqwest::Url) -> BzResult<&reqwest::Client> {
+        if self.tls_insecure_for(url) {
+            return self
+                .http_insecure
+                .as_ref()
+                .ok_or_else(|| other("HTTP 客户端初始化失败(系统 TLS 不可用),云端与账号功能暂不可用"));
+        }
+        self.http()
+    }
+
+    /// http_for 的长轮询版(上传等长耗时请求用)。
+    fn lp_for(&self, url: &reqwest::Url) -> BzResult<&reqwest::Client> {
+        if self.tls_insecure_for(url) {
+            return self
+                .lp_insecure
+                .as_ref()
+                .ok_or_else(|| other("HTTP 客户端初始化失败(系统 TLS 不可用),云端与账号功能暂不可用"));
+        }
+        self.lp()
+    }
+
     // ==================== HTTP 基座 ====================
 
     fn update_response_cookies(&self, store: &CookieStore, url: &reqwest::Url, set_cookies: &[String]) {
@@ -324,7 +414,7 @@ impl Service {
     ) -> BzResult<(Vec<u8>, u16, Option<String>)> {
         let url = reqwest::Url::parse(target).map_err(|e| other(format!("地址异常: {e}")))?;
         let host = url.host_str().unwrap_or("").to_string();
-        let mut req = self.http()?.request(method, url.clone());
+        let mut req = self.http_for(&url)?.request(method, url.clone());
         if let Some(b) = body {
             req = req.json(b);
         }
