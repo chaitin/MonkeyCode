@@ -45,6 +45,7 @@ export enum ConstsModelProvider {
   ModelProviderMoonshot = "Moonshot",
   ModelProviderAzureOpenAI = "AzureOpenAI",
   ModelProviderBaiZhiCloud = "BaiZhiCloud",
+  ModelProviderMiniMax = "MiniMax",
   ModelProviderHunyuan = "Hunyuan",
   ModelProviderBaiLian = "BaiLian",
   ModelProviderVolcengine = "Volcengine",
@@ -6438,6 +6439,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
           | "Moonshot"
           | "AzureOpenAI"
           | "BaiZhiCloud"
+          | "MiniMax"
           | "Hunyuan"
           | "BaiLian"
           | "Volcengine"
