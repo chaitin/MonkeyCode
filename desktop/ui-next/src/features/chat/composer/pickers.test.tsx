@@ -6,7 +6,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { ModelMenu, OptionMenu } from "./pickers";
+import { ModelMenu, OptionMenu, SkillsMenu } from "./pickers";
 
 describe("OptionMenu:空清单也要说话", () => {
   it("options 为空:展开给「暂无可选项」,不是空盒子", async () => {
@@ -36,5 +36,51 @@ describe("OptionMenu:空清单也要说话", () => {
     render(<ModelMenu models={[]} current="" onPick={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "切换模型" }));
     expect(screen.getByRole("list", { name: "切换模型" }).textContent).toContain("尚未配置模型");
+  });
+});
+
+describe("窄 panel 下的 picker", () => {
+  it("模型触发器跟随 flex 项收窄且裁切内部内容", () => {
+    render(
+      <ModelMenu
+        models={[{ name: "a-very-long-model-name", default: true }]}
+        current="a-very-long-model-name"
+        onPick={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "a-very-long-model-name" });
+    expect(trigger.className).toContain("w-full");
+    expect(trigger.className).toContain("overflow-hidden");
+  });
+
+  it("技能菜单收窄并平移到所属 panel 内", async () => {
+    const { container } = render(
+      <div data-menu-inline-boundary="">
+        <SkillsMenu
+          skills={[
+            {
+              name: "feature-design",
+              description: "设计功能",
+              source: "builtin",
+              content: "",
+              default_enabled: true,
+            },
+          ]}
+          enabled={null}
+          onChange={vi.fn()}
+        />
+      </div>,
+    );
+    const boundary = container.querySelector<HTMLElement>("[data-menu-inline-boundary]")!;
+    const trigger = screen.getByRole("button", { name: "会话技能" });
+    vi.spyOn(boundary, "getBoundingClientRect").mockReturnValue({ left: 100, right: 300 } as DOMRect);
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({ left: 120, right: 180, top: 500 } as DOMRect);
+
+    await userEvent.click(trigger);
+
+    const menu = container.querySelector<HTMLElement>(".dropdown-content")!;
+    expect(menu.style.width).toBe("184px");
+    expect(menu.style.insetInlineStart).toBe("-12px");
+    expect(menu.style.insetInlineEnd).toBe("auto");
   });
 });

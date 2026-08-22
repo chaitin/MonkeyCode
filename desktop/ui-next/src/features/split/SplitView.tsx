@@ -406,6 +406,7 @@ export function SplitView({
     return (
       <section
         key={slot}
+        data-menu-inline-boundary=""
         aria-label={t("split.pane", { n: String(slot + 1) })}
         // capture 相:格内任意处按下即夺焦(含 composer/按钮,不拦事件)
         onPointerDownCapture={() => {

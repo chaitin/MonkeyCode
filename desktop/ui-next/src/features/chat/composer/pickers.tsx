@@ -13,7 +13,7 @@ import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 import { useRef, useState } from "react";
 
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { useUpwardMenuHeight } from "@/lib/util/menuHeight";
+import { useBoundedMenuInlineStyle, useUpwardMenuHeight } from "@/lib/util/menuHeight";
 import type { ModelInfo } from "@/lib/ipc/sessions";
 import { defaultEnabledSkills, type SkillInfo } from "@/lib/ipc/skills";
 import {
@@ -172,7 +172,7 @@ export function ModelMenu({
         disabled={disabled}
         title={title}
         ariaLabel={ariaLabel}
-        className="max-w-52"
+        className="w-full max-w-52 overflow-hidden"
         anchorRef={anchorRef}
         onToggle={() => (open ? setOpen(false) : openMenu())}
       >
@@ -335,6 +335,7 @@ export function SkillsMenu({
   const boxRef = useRef<HTMLDivElement | null>(null);
   useDismiss(open, boxRef, () => setOpen(false));
   const { anchorRef, maxHeight: menuMax } = useUpwardMenuHeight<HTMLButtonElement>(open);
+  const menuInlineStyle = useBoundedMenuInlineStyle(open, anchorRef, align, 256);
   const enabledSet = new Set(enabled ?? defaultEnabledSkills(skills));
   const toggle = (name: string) => {
     if (disabled) return;
@@ -417,7 +418,7 @@ export function SkillsMenu({
       {open && (
         // 结构同 ModelMenu:过滤框固定在顶,条目列表单独内滚
         <div
-          style={{ maxHeight: menuMax }}
+          style={{ maxHeight: menuMax, ...menuInlineStyle }}
           className="dropdown-content flex w-64 flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
         >
           {showFilter && (
