@@ -2,6 +2,7 @@
 // 拖格头换位、内嵌新建。ChatView 数据面在格内真实挂载,壳走最小 stub。
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionMeta } from "@/lib/ipc/sessions";
@@ -81,13 +82,14 @@ const SESSIONS: SessionMeta[] = [
 
 function Harness({ sessions = SESSIONS, onAssign }: { sessions?: SessionMeta[]; onAssign?: (slot: number, id: string) => void }) {
   const split = useSplitState();
+  const [focusRequest, setFocusRequest] = useState(0);
   return (
     <SplitView
       sessions={sessions}
       split={split}
       epoch={0}
-      focusRequest={0}
-      onFocusRequestHandled={() => {}}
+      focusRequest={focusRequest}
+      onFocusRequestHandled={() => setFocusRequest(0)}
       onAssign={(slot, id) => {
         onAssign?.(slot, id);
         split.assignTo(slot, id);
@@ -95,6 +97,7 @@ function Harness({ sessions = SESSIONS, onAssign }: { sessions?: SessionMeta[]; 
       onLoadSession={(id) => split.place(id)}
       onCreatedInSlot={(slot, created) => split.assignTo(slot, created.id)}
       onCloudCreatedInSlot={() => {}}
+      onComposerIntent={() => setFocusRequest((n) => n + 1)}
       onOpenSettings={() => {}}
       recentDirs={[]}
     />
@@ -196,6 +199,61 @@ describe("分屏视图(树形布局)", () => {
     const capMenu = document.body.lastElementChild as HTMLElement;
     expect((within(capMenu).getByText("右分屏").closest("button") as HTMLButtonElement).disabled).toBe(true);
     expect((within(capMenu).getByText("下分屏").closest("button") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("工作台快捷键只操作焦点格：聚焦、侧栏、两向分屏与六格上限", async () => {
+    stubShell();
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    render(<Harness />);
+    await screen.findByRole("textbox", { name: "消息输入" });
+
+    fireEvent.keyDown(window, { key: "l", code: "KeyL", ctrlKey: true });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "消息输入" })));
+
+    fireEvent.keyDown(window, { key: "b", code: "KeyB", ctrlKey: true });
+    expect(screen.queryByRole("complementary", { name: "选择任务" })).toBeNull();
+    fireEvent.keyDown(window, { key: "b", code: "KeyB", ctrlKey: true });
+    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "\\", code: "Backslash", ctrlKey: true });
+    expect(screen.getAllByRole("region")).toHaveLength(2);
+    fireEvent.keyDown(window, { key: "|", code: "Backslash", ctrlKey: true, shiftKey: true });
+    expect(screen.getAllByRole("region")).toHaveLength(3);
+    expect(screen.getByRole("region", { name: "第 3 格" }).querySelector("[data-split-focus]")).not.toBeNull();
+
+    for (let i = 0; i < 4; i++) fireEvent.keyDown(window, { key: "\\", code: "Backslash", ctrlKey: true });
+    expect(screen.getAllByRole("region")).toHaveLength(6);
+  });
+
+  it("Ctrl+N 沿用当前任务类型；侧栏帮助入口展示快捷键并由 Esc 关闭", async () => {
+    stubShell();
+    render(<Harness />);
+    fireEvent.keyDown(window, { key: "n", code: "KeyN", ctrlKey: true });
+    expect(screen.getByRole("heading", { name: "新建任务" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "键盘快捷键" }));
+    expect(screen.getByRole("dialog", { name: "键盘快捷键" })).toBeTruthy();
+    expect(screen.getByText("切换权限模式")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "键盘快捷键" })).toBeNull();
+  });
+
+  it("会话快捷键隔离到 split.focused：Shift+Tab 与 Ctrl+. 不会切另一格权限", async () => {
+    const shell = stubShell();
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", "s2", null, null, null, null]));
+    render(<Harness />);
+    await waitFor(() => expect(screen.getAllByRole("textbox", { name: "消息输入" })).toHaveLength(2));
+
+    fireEvent.keyDown(window, { key: "Tab", code: "Tab", shiftKey: true });
+    await waitFor(() => expect(shell.calls.filter((c) => c.cmd === "session_call")).toHaveLength(1));
+    expect(shell.calls.find((c) => c.cmd === "session_call")?.args?.id).toBe("s1");
+
+    fireEvent.pointerDown(screen.getByRole("region", { name: "第 2 格" }));
+    fireEvent.keyDown(window, { key: ".", code: "Period", ctrlKey: true });
+    await waitFor(() => expect(shell.calls.filter((c) => c.cmd === "session_call")).toHaveLength(2));
+    expect(shell.calls.filter((c) => c.cmd === "session_call")[1]?.args?.id).toBe("s2");
   });
 
   it("关闭格子:兄弟上位、槽位清档;最后一格不可关(钮置灰)", async () => {

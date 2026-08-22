@@ -79,4 +79,11 @@ describe("escLayer", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it("IME 组合中的 Escape 留给输入法", () => {
+    const handler = vi.fn(() => true);
+    pushEscLayer(handler);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true }));
+    expect(handler).not.toHaveBeenCalled();
+  });
 });

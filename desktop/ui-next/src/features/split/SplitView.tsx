@@ -24,16 +24,19 @@ import {
   IconFolderCode,
   IconFolderOpen,
   IconLayoutSidebar,
+  IconKeyboard,
   IconMessages,
   IconPlus,
   IconSettings,
   IconWorld,
   IconX,
 } from "@tabler/icons-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { ChatView } from "@/features/chat/ChatView";
+import { DetailModal } from "@/features/chat/DetailModal";
+import { appShortcutOfEvent, shortcutChord, type AppShortcutAction } from "@/app/shortcuts";
 import { CloudTaskList, type CloudTasksFeed } from "@/features/cloud/CloudTaskList";
 import { CloudTaskView } from "@/features/cloud/CloudTaskView";
 import { NewTaskModal } from "@/features/newtask/NewTaskModal";
@@ -164,6 +167,7 @@ export function SplitView({
     todoId?: string;
   } | null>(null);
   const [dropSlot, setDropSlot] = useState<number | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // 任务列宽度可拖(2026-08-20 用户「给一个最小的宽度就行」):最小 184
   // 保住 tab/行截断链,上限 420 不吃画布;缺省仍 --spacing-side(232)
   const [sideWidth, setSideWidth] = useState<number>(() => {
@@ -281,6 +285,37 @@ export function SplitView({
   const newTaskAction = () => {
     openCreateInNewPane(pickTab === "cloud" ? "cloud" : "local");
   };
+  const onWorkbenchShortcut = useEffectEvent((e: KeyboardEvent) => {
+    const action = appShortcutOfEvent(e);
+    let handled = true;
+    switch (action) {
+      case "new-task":
+        newTaskAction();
+        break;
+      case "focus-composer":
+        onComposerIntent?.();
+        break;
+      case "toggle-sidebar":
+        toggleList();
+        break;
+      case "split-right":
+        split.splitPane(split.focused, "col");
+        break;
+      case "split-down":
+        split.splitPane(split.focused, "row");
+        break;
+      default:
+        handled = false;
+    }
+    if (!handled) return;
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => onWorkbenchShortcut(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // App 侧创建意图(待办派发):seq 去重消费,走「新建即新格」同一条路
   const consumedCreateSeq = useRef(0);
   useEffect(() => {
@@ -630,7 +665,8 @@ export function SplitView({
   };
 
   return (
-    <main className="relative flex min-w-0 flex-1 overflow-hidden bg-base-100">
+    <>
+      <main className="relative flex min-w-0 flex-1 overflow-hidden bg-base-100">
       <div className="mc-workbench-background" aria-hidden />
       {/* 参考图重排(2026-08-18):任务列升为**整窗高左列**(mac 灯与列
           开关住其顶部),头部只横跨主区;格区卡片化。 */}
@@ -652,6 +688,7 @@ export function SplitView({
           onNewTaskInDir={(dir) => openCreateInNewPane("local", { dir })}
           onNewCloudIn={(project) => openCreateInNewPane("cloud", { cloudProject: project })}
           onOpenSettings={onOpenSettings}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
         />
       )}
       {/* 任务列拖宽把手:8px 透明骑列缘线(格分隔线同款;trackPointer
@@ -774,7 +811,44 @@ export function SplitView({
           {zoomedSlot !== null ? renderPane(zoomedSlot) : renderNode(split.tree, "")}
         </div>
       </div>
-    </main>
+      </main>
+      {shortcutsOpen && <ShortcutHelp onClose={() => setShortcutsOpen(false)} />}
+    </>
+  );
+}
+
+const SHORTCUT_HELP: ReadonlyArray<{
+  action: AppShortcutAction;
+  label: MessageKey;
+  context: MessageKey;
+}> = [
+  { action: "new-task", label: "shortcuts.newTask", context: "shortcuts.context.workbench" },
+  { action: "focus-composer", label: "shortcuts.focusComposer", context: "shortcuts.context.focused" },
+  { action: "open-settings", label: "shortcuts.openSettings", context: "shortcuts.context.app" },
+  { action: "toggle-sidebar", label: "shortcuts.toggleSidebar", context: "shortcuts.context.workbench" },
+  { action: "split-right", label: "shortcuts.splitRight", context: "shortcuts.context.focused" },
+  { action: "split-down", label: "shortcuts.splitDown", context: "shortcuts.context.focused" },
+  { action: "toggle-permission", label: "shortcuts.togglePermission", context: "shortcuts.context.local" },
+  { action: "stop-generation", label: "shortcuts.stopGeneration", context: "shortcuts.context.running" },
+];
+
+function ShortcutHelp({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
+  return (
+    <DetailModal ariaLabel={t("shortcuts.title")} title={t("shortcuts.title")} onClose={onClose}>
+      <p className="mb-3 text-xs text-base-content/60">{t("shortcuts.primaryHint")}</p>
+      <div className="divide-y divide-base-300 rounded-box border border-base-300">
+        {SHORTCUT_HELP.map((item) => (
+          <div key={item.action} className="flex items-center gap-3 px-3 py-2 text-xs">
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">{t(item.label)}</span>
+              <span className="block text-base-content/45">{t(item.context)}</span>
+            </span>
+            <kbd className="kbd kbd-sm shrink-0">{shortcutChord(item.action)}</kbd>
+          </div>
+        ))}
+      </div>
+    </DetailModal>
   );
 }
 
@@ -840,6 +914,7 @@ function WorkbenchList({
   onNewCloudIn,
   onNewTaskInDir,
   onOpenSettings,
+  onOpenShortcuts,
 }: {
   sessions: SessionMeta[];
   placed: ReadonlySet<string>;
@@ -864,6 +939,7 @@ function WorkbenchList({
   /** 组头「在此项目新建任务」(内嵌创建预填目录;旧侧栏能力)。 */
   onNewTaskInDir: (dir: string) => void;
   onOpenSettings: () => void;
+  onOpenShortcuts: () => void;
 }) {
   const { t, locale } = useI18n();
   // 项目组折叠:沿用 mc.collapsedGroups(与旧侧栏同键,升级不丢档);
@@ -1441,6 +1517,15 @@ function WorkbenchList({
         >
           <IconSettings size={16} stroke={1.75} aria-hidden />
           {t("rail.settings")}
+        </button>
+        <button
+          type="button"
+          aria-label={t("shortcuts.title")}
+          title={t("shortcuts.title")}
+          className="btn btn-ghost btn-square btn-sm text-base-content/60"
+          onClick={onOpenShortcuts}
+        >
+          <IconKeyboard size={16} stroke={1.75} aria-hidden />
         </button>
         <span className="min-w-0 flex-1" />
         <button

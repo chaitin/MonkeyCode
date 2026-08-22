@@ -848,7 +848,14 @@ export function CloudTaskView({
           ) : (
             <>
               {h.chat.plan.length > 0 && <TaskPanel entries={h.chat.plan} />}
-              <CloudComposer h={h} pending={pending} onSend={send} focusRequest={focusRequest} onFocusRequestHandled={onFocusRequestHandled} />
+              <CloudComposer
+                h={h}
+                pending={pending}
+                onSend={send}
+                hotkeysActive={hotkeysActive}
+                focusRequest={focusRequest}
+                onFocusRequestHandled={onFocusRequestHandled}
+              />
             </>
           )}
         </div>

@@ -66,6 +66,22 @@ export const zh = {
   "split.renameHint": "双击重命名",
   "split.dragSwap": "按住标题拖到别的格子可交换位置",
 
+  "shortcuts.title": "键盘快捷键",
+  "shortcuts.primaryHint": "主修饰键在 macOS 上为 Cmd，在 Windows/Linux 上为 Ctrl；快捷键只作用于当前焦点格。",
+  "shortcuts.newTask": "新建任务",
+  "shortcuts.focusComposer": "聚焦消息输入框",
+  "shortcuts.openSettings": "打开设置",
+  "shortcuts.toggleSidebar": "切换任务侧栏",
+  "shortcuts.splitRight": "向右分屏",
+  "shortcuts.splitDown": "向下分屏",
+  "shortcuts.togglePermission": "切换权限模式",
+  "shortcuts.stopGeneration": "停止当前运行",
+  "shortcuts.context.app": "应用内可用",
+  "shortcuts.context.workbench": "工作台可用",
+  "shortcuts.context.focused": "作用于焦点格",
+  "shortcuts.context.local": "仅焦点格中的本地会话",
+  "shortcuts.context.running": "仅焦点格中的运行中会话；浮层和审批优先",
+
   "sidebar.label": "会话列表",
   // 搜索行按用户指令撤下(LAYOUT §6),回归时原样复用这几条,故保留
   "sidebar.search": "搜索会话",

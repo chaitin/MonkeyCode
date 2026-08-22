@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { createChatState } from "@/lib/protocol/reduce";
 import type { ChatState, PermItem } from "@/lib/protocol/types";
-import { openPermIdOf, resolveShortcut, type ShortcutAction, type ShortcutCtx } from "./shortcuts";
+import {
+  openPermIdOf,
+  resolveAppShortcut,
+  resolveShortcut,
+  shortcutChord,
+  type AppShortcutCtx,
+  type ShortcutAction,
+  type ShortcutCtx,
+} from "./shortcuts";
 
 const ALLOW: ShortcutAction = { kind: "perm", id: "p1", approved: true };
 const DENY: ShortcutAction = { kind: "perm", id: "p1", approved: false };
@@ -18,6 +26,11 @@ describe("resolveShortcut(表驱动:允许/拒绝都不可逆,守卫逐条钉死
     ["⏎ 草稿只有空白 → 仍是允许", { key: "Enter", openPermId: "p1", targetTag: "TEXTAREA", inputText: "  " }, ALLOW],
     ["⏎ INPUT 有内容 → 不劫持", { key: "Enter", openPermId: "p1", targetTag: "INPUT", inputText: "x" }, NONE],
     ["⏎ IME 组合中 → 不消费(候选词交互)", { key: "Enter", openPermId: "p1", isComposing: true }, NONE],
+    ["Ctrl+⏎ → 不消费", { key: "Enter", openPermId: "p1", ctrlKey: true }, NONE],
+    ["Cmd+⏎ → 不消费", { key: "Enter", openPermId: "p1", metaKey: true }, NONE],
+    ["Alt+⏎ → 不消费", { key: "Enter", openPermId: "p1", altKey: true }, NONE],
+    ["Shift+⏎ → 不消费", { key: "Enter", openPermId: "p1", shiftKey: true }, NONE],
+    ["局部已消费 ⏎ → 不消费", { key: "Enter", openPermId: "p1", defaultPrevented: true }, NONE],
     ["⏎ SELECT 聚焦 → 允许(原生 select 不吃 ⏎)", { key: "Enter", openPermId: "p1", targetTag: "SELECT" }, ALLOW],
     // ---- Escape = 拒绝 ----
     ["esc 有待决审批(焦点在 body)→ 拒绝", { key: "Escape", openPermId: "p1" }, DENY],
@@ -37,6 +50,43 @@ describe("resolveShortcut(表驱动:允许/拒绝都不可逆,守卫逐条钉死
 
   it.each(table)("%s", (_name, ctx, expected) => {
     expect(resolveShortcut(ctx)).toEqual(expected);
+  });
+});
+
+describe("resolveAppShortcut", () => {
+  const key = (over: Partial<AppShortcutCtx>): AppShortcutCtx => ({ code: "", key: "", ...over });
+
+  it.each([
+    ["KeyN", "new-task"],
+    ["KeyL", "focus-composer"],
+    ["Comma", "open-settings"],
+    ["KeyB", "toggle-sidebar"],
+    ["Period", "toggle-permission"],
+    ["Backslash", "split-right"],
+  ] as const)("mac Cmd+%s", (code, action) => {
+    expect(resolveAppShortcut(key({ code, metaKey: true }), "mac")).toBe(action);
+    expect(resolveAppShortcut(key({ code, ctrlKey: true }), "mac")).toBeNull();
+  });
+
+  it("Windows/Linux 用 Ctrl，并区分两种分屏", () => {
+    expect(resolveAppShortcut(key({ code: "KeyN", ctrlKey: true }), "other")).toBe("new-task");
+    expect(resolveAppShortcut(key({ code: "Backslash", ctrlKey: true }), "other")).toBe("split-right");
+    expect(resolveAppShortcut(key({ code: "Backslash", ctrlKey: true, shiftKey: true }), "other")).toBe("split-down");
+    expect(resolveAppShortcut(key({ code: "KeyN", metaKey: true }), "other")).toBeNull();
+  });
+
+  it("权限 Shift+Tab 与停止 Esc 只接受精确修饰键，IME/已消费一律让路", () => {
+    expect(resolveAppShortcut(key({ code: "Tab", key: "Tab", shiftKey: true }), "other")).toBe("toggle-permission");
+    expect(resolveAppShortcut(key({ code: "Tab", key: "Tab", shiftKey: true, ctrlKey: true }), "other")).toBeNull();
+    expect(resolveAppShortcut(key({ code: "Escape", key: "Escape" }), "other")).toBe("stop-generation");
+    expect(resolveAppShortcut(key({ code: "Escape", key: "Escape", altKey: true }), "other")).toBeNull();
+    expect(resolveAppShortcut(key({ code: "KeyN", ctrlKey: true, isComposing: true }), "other")).toBeNull();
+    expect(resolveAppShortcut(key({ code: "KeyN", ctrlKey: true, defaultPrevented: true }), "other")).toBeNull();
+  });
+
+  it("展示文案随平台替换主修饰键", () => {
+    expect(shortcutChord("open-settings", "mac")).toBe("⌘+,");
+    expect(shortcutChord("split-down", "other")).toBe("Ctrl+Shift+\\");
   });
 });
 

@@ -19,6 +19,7 @@ import {
 } from "react";
 
 import { downloadUpload } from "@/components/media/UploadImg";
+import { appShortcutOfEvent } from "@/app/shortcuts";
 import { useI18n } from "@/lib/i18n";
 import { useEscLayer } from "@/lib/util/escLayer";
 import { sessionSetMode, sessionSetModel, sessionSetSkills, sessionSetThink } from "@/lib/ipc/controls";
@@ -130,6 +131,8 @@ interface ComposerProps {
   meta: SessionMeta;
   ctl: ComposerCtl;
   onAfterSend?: () => void;
+  /** 分屏中仅焦点格接收会话级快捷键。 */
+  hotkeysActive?: boolean;
   focusRequest?: number;
   onFocusRequestHandled?: (request: number) => void;
 }
@@ -140,6 +143,7 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
   meta,
   ctl,
   onAfterSend,
+  hotkeysActive = true,
   focusRequest = 0,
   onFocusRequestHandled,
 }: ComposerProps, ref) {
@@ -303,24 +307,36 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
   // 权限模式可运行中热切(壳侧支持;yolo 切入时壳自动放行挂起审批)
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  const stopRef = useRef(ctl.stop);
+  stopRef.current = ctl.stop;
   const toggleMode = () => {
     const next = modeRef.current === "yolo" ? "default" : "yolo";
     void sessionSetMode(sessionId, next).catch((e) => {
       ctl.notifyError(t("chat.mode.failed", { reason: errText(e) }));
     });
   };
-  // ⇧⇥ 与 pill 点击同一动作
+  // ⇧⇥ / 主修饰键+. 与 pill 点击同一动作；裸 Esc 在没有待审批时停止。
+  // 审批 hook 同样只在焦点格监听，openPermission 门控保证 deny/blur 优先。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Tab" || !e.shiftKey) return;
+      if (!hotkeysActive) return;
+      const action = appShortcutOfEvent(e);
+      if (action === "toggle-permission") {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleMode();
+        return;
+      }
+      if (action !== "stop-generation" || !presentation.running || presentation.openPermission) return;
       e.preventDefault();
-      toggleMode();
+      e.stopPropagation();
+      stopRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // toggleMode 经 modeRef 取最新值,处理器可长期持有
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, hotkeysActive, presentation.running, presentation.openPermission]);
 
   // ==== 发送 / 键盘 ====
   const submit = () => {

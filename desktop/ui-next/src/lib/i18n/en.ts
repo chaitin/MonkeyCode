@@ -58,6 +58,22 @@ export const en: Record<MessageKey, string> = {
   "split.renameHint": "Double-click to rename",
   "split.dragSwap": "Drag the title onto another pane to swap positions",
 
+  "shortcuts.title": "Keyboard shortcuts",
+  "shortcuts.primaryHint": "The primary modifier is Cmd on macOS and Ctrl on Windows/Linux. Shortcuts affect only the focused pane.",
+  "shortcuts.newTask": "New task",
+  "shortcuts.focusComposer": "Focus message input",
+  "shortcuts.openSettings": "Open settings",
+  "shortcuts.toggleSidebar": "Toggle task sidebar",
+  "shortcuts.splitRight": "Split right",
+  "shortcuts.splitDown": "Split down",
+  "shortcuts.togglePermission": "Toggle permission mode",
+  "shortcuts.stopGeneration": "Stop current run",
+  "shortcuts.context.app": "Available throughout the app",
+  "shortcuts.context.workbench": "Available in the workbench",
+  "shortcuts.context.focused": "Affects the focused pane",
+  "shortcuts.context.local": "Local session in the focused pane only",
+  "shortcuts.context.running": "Running session in the focused pane; overlays and approvals take priority",
+
   "sidebar.label": "Sessions",
   // 搜索行按用户指令撤下(LAYOUT §6),回归时原样复用这几条,故保留
   "sidebar.search": "Search sessions",

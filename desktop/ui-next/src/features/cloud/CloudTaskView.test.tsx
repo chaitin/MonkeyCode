@@ -783,6 +783,32 @@ describe("CloudTaskView", () => {
     expect(ring.getAttribute("aria-valuenow")).toBe("16");
   });
 
+  it("焦点云端会话用裸 Esc 复用 cancelRun", async () => {
+    const wsSends: { text?: unknown }[] = [];
+    let wsPipe = "";
+    const listeners = stubShellWs((cmd, args) => {
+      if (cmd === "mc_task_info") return Promise.resolve({ id: "t-esc", status: "processing" });
+      if (cmd === "cloud_ws_open") {
+        wsPipe = String(args?.pipe ?? "");
+        return Promise.resolve({});
+      }
+      if (cmd === "cloud_ws_send") {
+        wsSends.push(args ?? {});
+        return Promise.resolve({});
+      }
+      return Promise.resolve({});
+    });
+    renderCloud(<CloudTaskView task={{ id: "t-esc", status: "processing" }} />);
+    await waitFor(() => expect(wsPipe).not.toBe(""));
+    listeners.get(`ws-msg:${wsPipe}`)?.({ payload: JSON.stringify({ type: "task-started", seq: 1 }) });
+    await screen.findByText("云端执行中");
+
+    fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+    await waitFor(() => expect(wsSends).toHaveLength(1));
+    const frame = JSON.parse(String(wsSends[0]?.text)) as { type: string };
+    expect(frame.type).toBe("user-cancel");
+  });
+
   it("附件:每条提交绑定自己的持久化引用，队列不保存 preview", async () => {
     stubShellWs((cmd) => {
       switch (cmd) {

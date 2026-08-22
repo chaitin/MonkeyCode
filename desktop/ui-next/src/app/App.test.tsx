@@ -105,6 +105,14 @@ describe("壳骨架(工作台即主界面,2026-08-18 换代)", () => {
 });
 
 describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () => {
+  it("Ctrl+, 打开设置并保持幂等", () => {
+    render(<App />);
+    fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
+    expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy();
+    fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
+    expect(screen.getAllByRole("heading", { name: "设置" })).toHaveLength(1);
+  });
+
   it("设置齿轮沉在任务列底部(2026-08-18 定案),打开设置页、关闭回到工作台", async () => {
     render(<App />);
     const aside = screen.getByRole("complementary", { name: "选择任务" });

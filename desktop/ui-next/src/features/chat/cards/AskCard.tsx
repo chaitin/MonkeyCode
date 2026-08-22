@@ -141,13 +141,15 @@ export function AskCard({
     void sendAskAnswersVia(send, item.askId, answers).catch(() => setSent(null));
   };
   const submitOnEnter = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Enter" || e.shiftKey) return;
+    if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.nativeEvent.isComposing) return;
     if (e.target instanceof HTMLInputElement && e.target.type === "text") {
       const qi = Number(e.target.dataset.questionIndex);
       if (imeFor(qi).isImeEnter(e.timeStamp, false)) return;
     }
     e.preventDefault();
+    // window 冒泡阶段还有审批 Enter；提问卡既然接住，就不能再允许审批。
+    e.stopPropagation();
     submit();
   };
   const cancel = () => {

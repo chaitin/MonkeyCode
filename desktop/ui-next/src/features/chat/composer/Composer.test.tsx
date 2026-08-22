@@ -430,6 +430,24 @@ describe("picker 关闭胶水(WebKitGTK 焦点语义回归)", () => {
 });
 
 describe("运行态 / 停止 / 排队", () => {
+  it("裸 Esc 停止运行；有待审批时仍由审批优先", async () => {
+    const { ops, emit } = stubShell();
+    render(<ChatView meta={META} />);
+    await ready();
+    emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
+    await screen.findByText("思考中");
+    fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+    expect(sends(ops, "user-cancel")).toHaveLength(1);
+
+    emit("frames:s1", [
+      { type: "permission-req", data: { id: "p-stop", title: "npm test", tool: "Bash" }, timestamp: 6, seq: 6 },
+    ]);
+    await screen.findByText("需要确认");
+    fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+    expect(sends(ops, "permission-resp")).toHaveLength(1);
+    expect(sends(ops, "user-cancel")).toHaveLength(1);
+  });
+
   it("运行条:思考中 + 停止(user-cancel 帧);工具执行中换文案", async () => {
     const { ops, emit } = stubShell();
     render(<ChatView meta={META} />);

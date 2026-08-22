@@ -49,6 +49,7 @@ import { deliverQueued, dropStash } from "@/features/chat/composer/stash";
 import { readLastSession } from "@/lib/util/prefs";
 import { projectKey, readArchivedProjects } from "@/lib/util/projects";
 import { McTransportProvider } from "@/lib/mcTransport";
+import { appShortcutOfEvent } from "./shortcuts";
 
 const NOTICE_TONE: Record<NoticeKind, string> = {
   ask: "alert-warning",
@@ -162,6 +163,18 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   const [attentionIds, setAttentionIds] = useState<Set<string>>(new Set());
   // D1:引擎自愈的重开信号(格内 ChatView 经 useSessionFeed 依赖幂等重建连接)
   const [epoch, setEpoch] = useState(0);
+
+  // 应用级动作留在设置状态所有者；工作台与会话动作由各自组件处理。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (appShortcutOfEvent(e) !== "open-settings") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setSettingsOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // 事件回调挂一次,经 ref 读最新快照(闭包不攥旧状态)
   const sessionsRef = useRef<SessionMeta[]>(sessions);
