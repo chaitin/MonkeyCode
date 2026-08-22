@@ -206,7 +206,7 @@ impl Inner {
                     }
                 };
                 if stop_reason == "error" && !err.is_empty() && !terminal_error_seen {
-                    self.push_frame(&sid, |seq| frame::task_error(&err, seq));
+                    self.push_frame(&sid, |seq| frame::task_error_pending(&err, seq));
                 }
                 self.push_frame(&sid, frame::task_ended);
                 // sidecar 状态落盘(重启后列表可见;write_sidecar 一并刷 updated_at)
@@ -681,7 +681,7 @@ impl Inner {
                             SessionStatus::Interrupted
                         } else {
                             let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("上下文压缩失败");
-                            self.push_frame(&sid, |seq| frame::task_error(msg, seq));
+                            self.push_frame(&sid, |seq| frame::task_error_pending(msg, seq));
                             SessionStatus::Error
                         };
                         self.push_frame(&sid, frame::task_ended);

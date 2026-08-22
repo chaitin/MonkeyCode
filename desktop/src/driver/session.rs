@@ -1416,7 +1416,7 @@ impl OhmyDriver {
                             self.push_frame(id, |seq| frame::compact_status("failed", seq));
                         }
                         if !terminal_error_seen {
-                            self.push_frame(id, |seq| frame::task_error(&e, seq));
+                            self.push_frame(id, |seq| frame::task_error_pending(&e, seq));
                         }
                         self.push_frame(id, frame::task_ended);
                         // 同上:sidecar 落盘走阻塞线程
@@ -1893,7 +1893,7 @@ impl OhmyDriver {
                             self.push_frame(id, |seq| frame::compact_status("failed", seq));
                         }
                         if !terminal_error_seen {
-                            self.push_frame(id, |seq| frame::task_error(&e, seq));
+                            self.push_frame(id, |seq| frame::task_error_pending(&e, seq));
                         }
                         (SessionStatus::Error, json!({ "result": { "status": "error" } }))
                     }
@@ -2596,7 +2596,7 @@ impl Inner {
                 return Vec::new();
             }
             s.seq += 1;
-            let err = frame::task_error(COLD_REPAIR_REASON, s.seq);
+            let err = frame::task_error_pending(COLD_REPAIR_REASON, s.seq);
             s.seq += 1;
             let end = frame::task_ended(s.seq);
             for f in [&err, &end] {
@@ -2711,7 +2711,7 @@ impl Inner {
             let status = if user_cancelled { "cancelled" } else { "failed" };
             self.push_frame(sid, |seq| frame::compact_status(status, seq));
         }
-        self.push_frame(sid, |seq| frame::task_error(reason, seq));
+        self.push_frame(sid, |seq| frame::task_error_pending(reason, seq));
         self.push_frame(sid, frame::task_ended);
         self.write_sidecar(sid, |m| m["status"] = json!(SessionStatus::Interrupted.as_str()));
         self.emit_session_event(sid, SessionStatus::Interrupted.as_str());

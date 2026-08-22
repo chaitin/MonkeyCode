@@ -1650,6 +1650,32 @@ fn error_event_waits_for_turn_stopped_and_deduplicates_terminal_summary() {
     assert!(!inner.sess.sessions.lock().unwrap()["s1"].running);
 }
 
+/// turn/stopped 自带的错误摘要与紧随其后的 task-ended 属于同一轮收尾。
+/// error 帧即使先被 30ms flusher 发走也不能提前放开 UI 队列。
+#[test]
+fn stopped_error_summary_stays_pending_until_task_ended() {
+    let inner = bare_inner("stopped-error-summary");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "error", "error": "quota exhausted" }),
+    );
+    inner.journal_barrier();
+
+    let frames = journal_frames(&inner, "s1");
+    let error_index = frames
+        .iter()
+        .position(|f| f.get("type").and_then(Value::as_str) == Some("task-error"))
+        .expect("缺 task-error");
+    let end_index = frames
+        .iter()
+        .position(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+        .expect("缺 task-ended");
+    assert_eq!(frames[error_index].pointer("/data/terminal").and_then(Value::as_bool), Some(false));
+    assert!(error_index < end_index, "错误摘要必须先展示，再由 task-ended 唯一收轮");
+}
+
 /// 回退后的 Agent 在用户取消 provider 请求时会额外发一条无 kind error，
 /// 随后才发 interrupted turn/stopped。Desktop 应把它视为取消过程噪声，
 /// 不能展示红字，也不能抢先清 running。

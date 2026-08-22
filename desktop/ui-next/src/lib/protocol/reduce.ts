@@ -85,6 +85,8 @@ export function createChatState(): ChatState {
     permMode: "",
     commands: [],
     keyBase: 0,
+    lastTurnStartSeq: 0,
+    lastTerminalSeq: 0,
     lastSeq: 0,
   };
 }
@@ -646,6 +648,8 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         ...s,
         running: true,
         turnEnded: false,
+        lastTurnStartSeq:
+          typeof f.seq === "number" && f.seq > 0 ? Math.max(s.lastTurnStartSeq, f.seq) : s.lastTurnStartSeq,
         plan: s.plan.length > 0 && s.plan.every((e) => e.status === "completed") ? [] : s.plan,
       };
     case "task-ended":
@@ -654,6 +658,8 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         running: false,
         streamKind: "",
         turnEnded: true,
+        lastTerminalSeq:
+          typeof f.seq === "number" && f.seq > 0 ? Math.max(s.lastTerminalSeq, f.seq) : s.lastTerminalSeq,
         items: [...expireOpenAsks(s.items), { kind: "sys", tag: "turn-end", text: "", key: "chat.sys.turnEnd" }],
       };
     case "task-error": {
@@ -665,6 +671,10 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         // 只负责即时展示，不能提前放开输入/排队闸；云端旧帧缺字段仍终止。
         running: terminal ? false : s.running,
         streamKind: "",
+        lastTerminalSeq:
+          terminal && typeof f.seq === "number" && f.seq > 0
+            ? Math.max(s.lastTerminalSeq, f.seq)
+            : s.lastTerminalSeq,
         items: [
           ...(terminal ? expireOpenAsks(s.items) : s.items),
           data?.error

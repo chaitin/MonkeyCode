@@ -21,14 +21,21 @@ export const LocalComposerHost = forwardRef<
     historyLoaded: boolean;
     meta: SessionMeta;
     onAfterSend?: () => void;
+    hotkeysActive?: boolean;
     focusRequest?: number;
     onFocusRequestHandled?: (request: number) => void;
   }
 >(function LocalComposerHost(
-  { sessionId, state, historyLoaded, meta, onAfterSend, focusRequest, onFocusRequestHandled },
+  { sessionId, state, historyLoaded, meta, onAfterSend, hotkeysActive = true, focusRequest, onFocusRequestHandled },
   ref,
 ) {
-  const ctl = useComposer(sessionId, { running: state.running, historyLoaded, lastSeq: state.lastSeq });
+  const ctl = useComposer(sessionId, {
+    running: state.running,
+    historyLoaded,
+    lastSeq: state.lastSeq,
+    lastTurnStartSeq: state.lastTurnStartSeq,
+    lastTerminalSeq: state.lastTerminalSeq,
+  });
   const inputRef = useRef<ComposerInputHandle>(null);
   const presentation = useMemo(() => composerPresentationOf(state), [state]);
 
@@ -52,6 +59,7 @@ export const LocalComposerHost = forwardRef<
       meta={meta}
       ctl={ctl}
       onAfterSend={onAfterSend}
+      hotkeysActive={hotkeysActive}
       focusRequest={focusRequest}
       onFocusRequestHandled={onFocusRequestHandled}
     />
