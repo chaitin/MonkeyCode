@@ -6,7 +6,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { ModelMenu, OptionMenu, SkillsMenu } from "./pickers";
+import { ModelMenu, OptionMenu, SkillsMenu, ThinkMenu } from "./pickers";
 
 describe("OptionMenu:空清单也要说话", () => {
   it("options 为空:展开给「暂无可选项」,不是空盒子", async () => {
@@ -40,17 +40,43 @@ describe("OptionMenu:空清单也要说话", () => {
 });
 
 describe("窄 panel 下的 picker", () => {
-  it("模型触发器跟随 flex 项收窄且裁切内部内容", () => {
+  it("技能、思考、模型使用同一套收缩与截断规则", () => {
     render(
-      <ModelMenu
-        models={[{ name: "a-very-long-model-name", default: true }]}
-        current="a-very-long-model-name"
-        onPick={vi.fn()}
-      />,
+      <div className="flex min-w-0">
+        <SkillsMenu
+          skills={[
+            {
+              name: "feature-design",
+              description: "设计功能",
+              source: "builtin",
+              content: "",
+              default_enabled: true,
+            },
+          ]}
+          enabled={null}
+          onChange={vi.fn()}
+        />
+        <ThinkMenu current="high" ariaLabel="思考选择" onPick={vi.fn()} />
+        <ModelMenu
+          models={[{ name: "a-very-long-model-name", default: true }]}
+          current="a-very-long-model-name"
+          onPick={vi.fn()}
+        />
+      </div>,
     );
-    const trigger = screen.getByRole("button", { name: "a-very-long-model-name" });
-    expect(trigger.className).toContain("w-full");
-    expect(trigger.className).toContain("overflow-hidden");
+
+    const triggers = [
+      screen.getByRole("button", { name: "会话技能" }),
+      screen.getByRole("button", { name: "思考选择" }),
+      screen.getByRole("button", { name: "a-very-long-model-name" }),
+    ];
+    for (const trigger of triggers) {
+      expect(trigger.className).toContain("max-w-full");
+      expect(trigger.className).toContain("overflow-hidden");
+      expect(trigger.closest(".dropdown")?.className).toContain("min-w-0");
+      expect(trigger.closest(".dropdown")?.className).toContain("shrink");
+      expect(trigger.closest(".dropdown")?.className).not.toContain("shrink-0");
+    }
   });
 
   it("技能菜单收窄并平移到所属 panel 内", async () => {

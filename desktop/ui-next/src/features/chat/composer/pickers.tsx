@@ -172,7 +172,7 @@ export function ModelMenu({
         disabled={disabled}
         title={title}
         ariaLabel={ariaLabel}
-        className="w-full max-w-52 overflow-hidden"
+        className="min-w-0 max-w-full overflow-hidden"
         anchorRef={anchorRef}
         onToggle={() => (open ? setOpen(false) : openMenu())}
       >
@@ -270,10 +270,19 @@ export function ThinkMenu({
   return (
     <div
       ref={boxRef}
-      className={`dropdown dropdown-top shrink-0 ${align === "end" ? "dropdown-end" : ""} ${open ? "dropdown-open" : ""}`}
+      className={`dropdown dropdown-top min-w-0 shrink ${align === "end" ? "dropdown-end" : ""} ${open ? "dropdown-open" : ""}`}
     >
-      <Trigger open={open} disabled={disabled} title={title} ariaLabel={ariaLabel} onToggle={() => setOpen(!open)}>
-        {t("chat.think.trigger", { label: t(THINK_KEY[shown] ?? "chat.think.low") })}
+      <Trigger
+        open={open}
+        disabled={disabled}
+        title={title}
+        ariaLabel={ariaLabel}
+        className="min-w-0 max-w-full overflow-hidden"
+        onToggle={() => setOpen(!open)}
+      >
+        <span className="min-w-0 truncate">
+          {t("chat.think.trigger", { label: t(THINK_KEY[shown] ?? "chat.think.low") })}
+        </span>
       </Trigger>
       {open && (
         <ul
@@ -401,19 +410,22 @@ export function SkillsMenu({
   return (
     <div
       ref={boxRef}
-      className={`dropdown dropdown-top shrink-0 ${align === "end" ? "dropdown-end" : ""} ${open ? "dropdown-open" : ""}`}
+      className={`dropdown dropdown-top min-w-0 shrink ${align === "end" ? "dropdown-end" : ""} ${open ? "dropdown-open" : ""}`}
     >
       <Trigger
         open={open}
         disabled={disabled}
         title={title}
         ariaLabel={t("chat.skills.label")}
+        className="min-w-0 max-w-full overflow-hidden"
         anchorRef={anchorRef}
         onToggle={() => (open ? setOpen(false) : openMenu())}
       >
         {/* 交集计数:启用集快照可能带着已从库移除的技能名(仓库删技能 +
             应用更新的场景),直接取 size 会虚报 */}
-        {t("chat.skills.trigger", { n: skills.filter((s) => enabledSet.has(s.name)).length })}
+        <span className="min-w-0 truncate">
+          {t("chat.skills.trigger", { n: skills.filter((s) => enabledSet.has(s.name)).length })}
+        </span>
       </Trigger>
       {open && (
         // 结构同 ModelMenu:过滤框固定在顶,条目列表单独内滚
