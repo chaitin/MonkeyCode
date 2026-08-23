@@ -1,7 +1,7 @@
 // composer 全功能的集成测试:经 ChatView 挂载(真实 useSessionFeed/
 // useComposer 链路),假壳 IPC 断言发送面契约(载荷以壳侧 session.rs /
 // uploads.rs 为准)。
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,7 +30,13 @@ interface Op {
   args?: Record<string, unknown>;
 }
 
-function stubShell({ models = [] }: { models?: ModelInfo[] } = {}) {
+function stubShell({
+  models = [],
+  sessionCall,
+}: {
+  models?: ModelInfo[];
+  sessionCall?: (args?: Record<string, unknown>) => Promise<unknown>;
+} = {}) {
   const ops: Op[] = [];
   const listeners = new Map<string, (e: { payload: unknown }) => void>();
   (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
@@ -45,7 +51,7 @@ function stubShell({ models = [] }: { models?: ModelInfo[] } = {}) {
           });
         }
         if (cmd === "models_list") return Promise.resolve(models);
-        if (cmd === "session_call") return Promise.resolve({ result: {} });
+        if (cmd === "session_call") return sessionCall ? sessionCall(args) : Promise.resolve({ result: {} });
         if (cmd === "upload_begin") return Promise.resolve({ handle: 9 });
         if (cmd === "upload_finish") return Promise.resolve({ path: ".monkeycode/uploads/shot.png" });
         return Promise.resolve(null);
@@ -240,20 +246,66 @@ describe("模型 / 思考深度 / 权限模式", () => {
     expect(screen.queryByRole("list", { name: "切换模型" })).toBeNull();
   });
 
-  it("思考档:触发器显示生效档(会话档 > 模型默认档);四档带 hint 副文案;选择发 session_set_think", async () => {
+  it("模型组合菜单显示生效思考档，固定四档选择发 session_set_think 且不关闭菜单", async () => {
     const { ops } = stubShell({ models: MODELS });
     render(<ChatView meta={META} />);
     await ready();
-    // 会话未显式选档 → 跟随当前模型 m 配置的 medium
-    await userEvent.click(screen.getByRole("button", { name: "思考·中" }));
-    await screen.findByRole("list", { name: "思考深度" });
-    // 四档各带一句取舍说明(旧 UI THINK_LEVELS hint 随迁)
-    expect(screen.getByText("不思考,响应最快")).toBeTruthy();
-    expect(screen.getByText("简单任务,快速")).toBeTruthy();
-    expect(screen.getByText("日常任务,均衡")).toBeTruthy();
-    expect(screen.getByText("疑难任务,深入但更慢")).toBeTruthy();
-    await userEvent.click(screen.getByRole("button", { name: "高疑难任务,深入但更慢" }));
+    // 会话未显式选档 → 触发器展示当前模型 m 配置的 medium
+    const trigger = screen.getByRole("button", { name: "m" });
+    expect(trigger.textContent).toContain("· 中");
+    await userEvent.click(trigger);
+    const group = await screen.findByRole("radiogroup", { name: "思考深度" });
+    expect(within(group).getAllByRole("radio").map((item) => item.textContent)).toEqual(["关闭", "低", "中", "高"]);
+    await userEvent.click(within(group).getByRole("radio", { name: "高" }));
     expect(calls(ops, "session_set_think").map((o) => o.args?.payload)).toEqual([{ think: "high" }]);
+    expect(screen.getByRole("list", { name: "切换模型" })).toBeTruthy();
+  });
+
+  it("think_update 回写前快速改回原档，按点击顺序串行下发且最后选择不丢", async () => {
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    let thinkCalls = 0;
+    const { ops, emit } = stubShell({
+      models: MODELS,
+      sessionCall: (args) => {
+        if (args?.kind === "session_set_think" && thinkCalls++ === 0) {
+          return new Promise((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return Promise.resolve({ result: {} });
+      },
+    });
+    render(<ChatView meta={META} />);
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "m" }));
+    const group = await screen.findByRole("radiogroup", { name: "思考深度" });
+
+    await userEvent.click(within(group).getByRole("radio", { name: "高" }));
+    await userEvent.click(within(group).getByRole("radio", { name: "中" }));
+    expect(calls(ops, "session_set_think").map((o) => o.args?.payload)).toEqual([{ think: "high" }]);
+
+    await act(async () => resolveFirst?.({ result: {} }));
+    await waitFor(() =>
+      expect(calls(ops, "session_set_think").map((o) => o.args?.payload)).toEqual([
+        { think: "high" },
+        { think: "medium" },
+      ]),
+    );
+
+    const thinkFrame = (think: string, seq: number) => ({
+      type: "task-running",
+      kind: "acp_event",
+      data: { update: { sessionUpdate: "think_update", think } },
+      timestamp: seq,
+      seq,
+    });
+    act(() => emit("frames:s1", [thinkFrame("high", 8)]));
+    await screen.findByText("思考深度已调整为「高」"); // 确认旧回写已真正进入投影
+    expect(screen.getByRole("button", { name: "m" }).textContent).toContain("· 中"); // 最新选择遮住旧回写
+    act(() => emit("frames:s1", [thinkFrame("medium", 9)]));
+    await screen.findByText("思考深度已调整为「中」");
+    act(() => emit("frames:s1", [thinkFrame("off", 10)]));
+    await waitFor(() => expect(screen.getByRole("button", { name: "m" }).textContent).toContain("· 关闭")); // 已撤掉临时值
   });
 
   it("≥2 来源出 tabs(会员→百智云→自定义序,默认跟随当前模型来源);切 tab 换列表,选中发原名", async () => {
@@ -359,14 +411,17 @@ describe("模型 / 思考深度 / 权限模式", () => {
     ]);
   });
 
-  it("运行中:模型/思考触发器禁用(壳会拒绝,本地先不给点)", async () => {
+  it("运行中:组合触发器禁用，已展开菜单也立即关闭", async () => {
     const { emit } = stubShell({ models: MODELS });
     render(<ChatView meta={META} />);
     await ready();
+    await userEvent.click(screen.getByRole("button", { name: "m" }));
+    expect(await screen.findByRole("radiogroup", { name: "思考深度" })).toBeTruthy();
+
     emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
     await waitFor(() => {
       expect((screen.getByRole("button", { name: "m" }) as HTMLButtonElement).disabled).toBe(true);
-      expect((screen.getByRole("button", { name: "思考·中" }) as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.queryByRole("radiogroup", { name: "思考深度" })).toBeNull();
     });
   });
 });
@@ -393,12 +448,12 @@ describe("picker 关闭胶水(WebKitGTK 焦点语义回归)", () => {
     stubShell({ models: MODELS });
     render(<ChatView meta={META} />);
     const box = await ready();
-    await userEvent.click(screen.getByRole("button", { name: "思考·低" }));
-    const menu = await screen.findByRole("list", { name: "思考深度" });
-    fireEvent.pointerDown(menu); // 菜单内按下(还没 click)不许关——否则 click 落空
-    expect(screen.getByRole("list", { name: "思考深度" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "m" }));
+    const group = await screen.findByRole("radiogroup", { name: "思考深度" });
+    fireEvent.pointerDown(group); // 菜单内按下(还没 click)不许关——否则 click 落空
+    expect(screen.getByRole("radiogroup", { name: "思考深度" })).toBeTruthy();
     fireEvent.pointerDown(box); // 点回输入框 = 外点
-    expect(screen.queryByRole("list", { name: "思考深度" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "思考深度" })).toBeNull();
   });
 
   it("Esc 关闭菜单(window capture),不落到全局审批链", async () => {
@@ -409,20 +464,20 @@ describe("picker 关闭胶水(WebKitGTK 焦点语义回归)", () => {
       { type: "permission-req", data: { id: "p1", title: "npm test", tool: "Bash" }, timestamp: 3, seq: 3 },
     ]);
     await waitFor(() => expect(screen.getByText("需要确认")).toBeTruthy());
-    await userEvent.click(screen.getByRole("button", { name: "思考·低" }));
-    await screen.findByRole("list", { name: "思考深度" });
+    await userEvent.click(screen.getByRole("button", { name: "m" }));
+    await screen.findByRole("radiogroup", { name: "思考深度" });
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("list", { name: "思考深度" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "思考深度" })).toBeNull();
     expect(sends(ops, "permission-resp")).toHaveLength(0); // esc = deny 不可逆,不能漏
   });
 
-  it("结构守卫:思考/模型菜单不嵌进任何外层 dropdown(daisyUI 隐藏规则是后代选择器,外层关态会把内层菜单 display:none)", async () => {
+  it("结构守卫:模型组合菜单不嵌进任何外层 dropdown(daisyUI 隐藏规则是后代选择器,外层关态会把内层菜单 display:none)", async () => {
     stubShell({ models: MODELS });
     render(<ChatView meta={META} />);
     await ready();
-    await userEvent.click(screen.getByRole("button", { name: "思考·低" }));
-    const menu = await screen.findByRole("list", { name: "思考深度" });
-    const own = menu.closest(".dropdown");
+    await userEvent.click(screen.getByRole("button", { name: "m" }));
+    const group = await screen.findByRole("radiogroup", { name: "思考深度" });
+    const own = group.closest(".dropdown");
     expect(own?.classList.contains("dropdown-open")).toBe(true);
     // 自己的 picker 容器之上不得再有 .dropdown 祖先(输入卡不许当 dropdown 用)
     expect(own?.parentElement?.closest(".dropdown")).toBeNull();

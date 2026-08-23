@@ -604,7 +604,7 @@ export const zh = {
   "chat.slash.empty": "无匹配指令",
   "chat.slash.hint": "↑↓ 选择 · ↩ 填入 · Esc 关闭",
   "chat.model.label": "切换模型",
-  "chat.model.tip": "点击切换模型(下一轮生效)",
+  "chat.model.tip": "切换模型或调整思考深度(下一轮生效)",
   "chat.model.empty": "尚未配置模型",
   "chat.model.noMatch": "无匹配模型",
   "chat.option.empty": "暂无可选项",

@@ -2,8 +2,8 @@
 // (对话框/粘贴;拖拽由 ChatView 转入 ctl.addFiles)+ 运行条/待发送队列 +
 // 模型/思考档/权限模式控制。状态机在 useComposer,纯逻辑在 lib/util/slash。
 // 发送面契约见 useComposer 文件头;切模型/思考/模式经 lib/ipc/controls
-// (session_call),成功不乐观回写——壳会补 model_update / think_update /
-// permission_mode_update 帧,ChatState 是唯一真值。
+// (session_call),壳会补 model_update / think_update / permission_mode_update 帧，
+// ChatState 是最终真值；思考档仅在请求排队期间做临时视觉回显。
 import { IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
 import {
   forwardRef,
@@ -35,7 +35,7 @@ import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } f
 import { insertNewlineAtSelection } from "@/lib/util/textarea";
 import { ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing } from "./composerKit";
 import { SendQueueList } from "./SendQueueList";
-import { ModelMenu, SkillsMenu, ThinkMenu } from "./pickers";
+import { ModelMenu, SkillsMenu } from "./pickers";
 import type { ComposerCtl } from "./useComposer";
 
 // 模型/思考档下拉的形态与逻辑收口在 ./pickers(新建任务页共用同一组件);
@@ -53,6 +53,8 @@ export interface ComposerPresentation {
   usage: Usage | null;
   model: string;
   think: string;
+  /** 每次 think_update 都递增，即使批量归约后的最终档位与之前相同。 */
+  thinkRevision: number;
   permMode: string;
   commands: SlashCommand[];
   openPermission: boolean;
@@ -64,6 +66,7 @@ interface ComposerCounts {
   users: number;
   openPermissions: number;
   runningTools: number;
+  thinkUpdates: number;
 }
 
 const presentationCache = new WeakMap<ChatState, { presentation: ComposerPresentation; counts: ComposerCounts }>();
@@ -71,6 +74,7 @@ const countItem = (counts: ComposerCounts, item: ChatState["items"][number] | un
   if (item?.kind === "user") counts.users += direction;
   else if (item?.kind === "perm" && item.state === "open") counts.openPermissions += direction;
   else if (item?.kind === "tool" && item.status === "run") counts.runningTools += direction;
+  else if (item?.kind === "sys" && item.tag === "think") counts.thinkUpdates += direction;
 };
 
 export function composerPresentationOf(state: ChatState): ComposerPresentation {
@@ -89,7 +93,7 @@ export function composerPresentationOf(state: ChatState): ComposerPresentation {
       for (let index = delta.from.items.length; index < state.items.length; index++) countItem(counts, state.items[index], 1);
     }
   } else {
-    counts = { users: 0, openPermissions: 0, runningTools: 0 };
+    counts = { users: 0, openPermissions: 0, runningTools: 0, thinkUpdates: 0 };
     for (const item of state.items) countItem(counts, item, 1);
   }
   const nextPresentation: ComposerPresentation = {
@@ -97,6 +101,7 @@ export function composerPresentationOf(state: ChatState): ComposerPresentation {
     usage: state.usage,
     model: state.model,
     think: state.think,
+    thinkRevision: counts.thinkUpdates,
     permMode: state.permMode,
     commands: state.commands,
     openPermission: counts.openPermissions > 0,
@@ -110,6 +115,7 @@ export function composerPresentationOf(state: ChatState): ComposerPresentation {
     old.usage === nextPresentation.usage &&
     old.model === nextPresentation.model &&
     old.think === nextPresentation.think &&
+    old.thinkRevision === nextPresentation.thinkRevision &&
     old.permMode === nextPresentation.permMode &&
     old.commands === nextPresentation.commands &&
     old.openPermission === nextPresentation.openPermission &&
@@ -288,7 +294,20 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
   const currentModel = resolveModelName(models, presentation.model || meta.model);
   const menuModels = modelMenuList(models, currentModel);
   const modelThink = models.find((m) => m.name === currentModel)?.think;
-  const effThink = presentation.think || meta.think || modelThink || "low";
+  const actualThink = presentation.think || meta.think || modelThink || "low";
+  // 菜单内思考档不关闭，用户可能在首个 think_update 回来前继续改选。
+  // 临时值保证最后一次点击立即可见；串行队列保证壳侧应用顺序与点击顺序一致。
+  const [pendingThink, setPendingThink] = useState<string | null>(null);
+  const latestThinkRef = useRef<string | null>(null);
+  const thinkQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const effThink = pendingThink ?? actualThink;
+  useEffect(() => {
+    if (latestThinkRef.current !== actualThink) return;
+    latestThinkRef.current = null;
+    // think_update 才是确认点；thinkRevision 让 high→medium 同批回写且
+    // 最终值没变时也能撤掉临时值，不能改用 IPC 返回作为确认点。
+    setPendingThink(null);
+  }, [actualThink, presentation.thinkRevision]);
   const mode = presentation.permMode || meta.mode || "default";
   const yolo = mode === "yolo";
 
@@ -299,9 +318,20 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
     });
   };
   const pickThink = (level: string) => {
-    if (level === effThink) return;
-    void sessionSetThink(sessionId, level).catch((e) => {
-      ctl.notifyError(t("chat.think.failed", { reason: errText(e) }));
+    if (presentation.running || level === (latestThinkRef.current ?? actualThink)) return;
+    latestThinkRef.current = level;
+    setPendingThink(level);
+    thinkQueueRef.current = thinkQueueRef.current.then(async () => {
+      try {
+        await sessionSetThink(sessionId, level);
+      } catch (e) {
+        ctl.notifyError(t("chat.think.failed", { reason: errText(e) }));
+        // 旧请求失败不能清掉后续选择的临时回显。
+        if (latestThinkRef.current === level) {
+          latestThinkRef.current = null;
+          setPendingThink(null);
+        }
+      }
     });
   };
   // 权限模式可运行中热切(壳侧支持;yolo 切入时壳自动放行挂起审批)
@@ -490,7 +520,7 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
 
         {/* min-w-0:长模型名可收缩截断,不得把发送按钮挤出卡片。
             排布:左端 = 附件入口 + 模式 pill(用户定案 2026-08-06 对调,
-            附件贴左缘),右端 = 思考/模型/用量/发送(输入侧元信息与动作)。
+            附件贴左缘),右端 = 技能/模型与思考/用量/发送(输入侧元信息与动作)。
             ps-1 光学对齐:1px 边 + 4px + btn-xs 内距 8px = 13px,首个按钮
             的**内容**左缘与 textarea 文字(1px 边 + 12px 内距)重合——这排
             与输入文字/正文同一条竖线。pe-2:发送钮是实底色块没有幽灵内距,
@@ -522,16 +552,12 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
             disabled={presentation.running}
             title={presentation.running ? t("chat.switchWhileRunning") : t("chat.skills.tip")}
           />
-          <ThinkMenu
-            current={effThink}
-            onPick={pickThink}
-            disabled={presentation.running}
-            title={presentation.running ? t("chat.switchWhileRunning") : t("chat.think.tip")}
-          />
           <ModelMenu
             models={menuModels}
             current={currentModel}
             onPick={pickModel}
+            think={effThink}
+            onThinkPick={pickThink}
             disabled={presentation.running}
             title={presentation.running ? t("chat.switchWhileRunning") : t("chat.model.tip")}
           />

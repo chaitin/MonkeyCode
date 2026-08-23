@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ModelInfo } from "@/lib/ipc/sessions";
 import { pathBackedFile } from "@/lib/ipc/uploads";
 import { b64encode } from "@/lib/protocol/codec";
 import { resetEscLayersForTest } from "@/lib/util/escLayer";
@@ -20,7 +21,7 @@ afterEach(() => {
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
 });
 
-const DEFAULT_MODELS = [
+const DEFAULT_MODELS: ModelInfo[] = [
   { name: "gpt-5", default: true },
   { name: "locked-pro", default: false, locked: true },
 ];
@@ -30,7 +31,10 @@ const DEFAULT_SKILLS = [
 ];
 
 /** 壳桩:按命令名分发,overrides 可逐命令改写(如注入失败)。 */
-function stubShell(overrides: Record<string, (args?: Record<string, unknown>) => Promise<unknown>> = {}, models = DEFAULT_MODELS) {
+function stubShell(
+  overrides: Record<string, (args?: Record<string, unknown>) => Promise<unknown>> = {},
+  models: ModelInfo[] = DEFAULT_MODELS,
+) {
   const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
   (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
     core: {
@@ -75,7 +79,7 @@ describe("新建任务", () => {
     expect((within(menu).getByRole("button", { name: /locked-pro/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("本地 + 默认目录:createDir=true、think 缺省空串;创建成功回调并记忆模型", async () => {
+  it("本地 + 默认目录:createDir=true、think 默认低;创建成功回调并记忆模型", async () => {
     const calls = stubShell();
     const onCreated = vi.fn();
     render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
@@ -83,8 +87,26 @@ describe("新建任务", () => {
     await userEvent.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
     const create = calls.find((c) => c.cmd === "session_create");
-    expect(create?.args).toEqual({ workdir: "~/MonkeyCode", model: "gpt-5", createDir: true, kind: "local", think: "" });
+    expect(create?.args).toEqual({ workdir: "~/MonkeyCode", model: "gpt-5", createDir: true, kind: "local", think: "low" });
     expect(localStorage.getItem("mc.lastTaskModel")).toBe("gpt-5");
+  });
+
+  it("模型明确关闭思考时，新建任务显示并显式下发 off", async () => {
+    const calls = stubShell({}, [{ name: "no-reasoning", default: true, think: "off" }]);
+    const onCreated = vi.fn();
+    render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
+    await waitFor(() => {
+      const trigger = screen.getByRole("button", { name: "模型" });
+      expect(trigger.textContent).toContain("no-reasoning");
+      expect(trigger.textContent).toContain("· 关闭");
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(calls.find((c) => c.cmd === "session_create")?.args).toMatchObject({
+      model: "no-reasoning",
+      think: "off",
+    });
   });
 
   it("临时会话档:目录下拉选「不选文件夹」→ workdir 空串、createDir=false、kind=chat", async () => {
@@ -98,7 +120,7 @@ describe("新建任务", () => {
     await userEvent.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
     const create = calls.find((c) => c.cmd === "session_create");
-    expect(create?.args).toEqual({ workdir: "", model: "gpt-5", createDir: false, kind: "chat", think: "" });
+    expect(create?.args).toEqual({ workdir: "", model: "gpt-5", createDir: false, kind: "chat", think: "low" });
   });
 
   it("清空目录 = 临时会话档(会话=不选文件夹的任务,「必填」拦截退役):照建 kind=chat", async () => {
@@ -207,12 +229,13 @@ describe("新建任务", () => {
     expect(warn).toHaveBeenCalled();
   });
 
-  it("think 档:选中后随 session_create 下发", async () => {
+  it("模型组合菜单调整 think 后随 session_create 下发", async () => {
     const calls = stubShell();
     const onCreated = vi.fn();
     render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
-    await userEvent.click(screen.getByRole("button", { name: "思考深度" }));
-    await userEvent.click(within(screen.getByRole("list", { name: "思考深度" })).getByRole("button", { name: /高/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "模型" }).textContent).toContain("gpt-5"));
+    await userEvent.click(screen.getByRole("button", { name: "模型" }));
+    await userEvent.click(within(screen.getByRole("radiogroup", { name: "思考深度" })).getByRole("radio", { name: "高" }));
     await userEvent.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
     expect(calls.find((c) => c.cmd === "session_create")?.args).toMatchObject({ think: "high" });

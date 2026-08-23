@@ -2,11 +2,11 @@
 // 调用方在"还没拉到 / 拉取失败"时给的就是空数组(云端 models===null →
 // sections=[]),没有这一档菜单展开就是个**没有任何内容的空盒子**——看着像
 // 点坏了,而不是"暂时没有可选项"。
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { ModelMenu, OptionMenu, SkillsMenu, ThinkMenu } from "./pickers";
+import { ModelMenu, OptionMenu, SkillsMenu } from "./pickers";
 
 describe("OptionMenu:空清单也要说话", () => {
   it("options 为空:展开给「暂无可选项」,不是空盒子", async () => {
@@ -33,14 +33,14 @@ describe("OptionMenu:空清单也要说话", () => {
   });
 
   it("兄弟组件 ModelMenu 的同款空态仍在(两处形态必须一致)", async () => {
-    render(<ModelMenu models={[]} current="" onPick={vi.fn()} />);
+    render(<ModelMenu models={[]} current="" onPick={vi.fn()} think="low" onThinkPick={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "切换模型" }));
     expect(screen.getByRole("list", { name: "切换模型" }).textContent).toContain("尚未配置模型");
   });
 });
 
 describe("窄 panel 下的 picker", () => {
-  it("技能、思考、模型使用同一套收缩与截断规则", () => {
+  it("技能和模型组合选择器使用同一套收缩与截断规则", () => {
     render(
       <div className="flex min-w-0">
         <SkillsMenu
@@ -56,18 +56,18 @@ describe("窄 panel 下的 picker", () => {
           enabled={null}
           onChange={vi.fn()}
         />
-        <ThinkMenu current="high" ariaLabel="思考选择" onPick={vi.fn()} />
         <ModelMenu
           models={[{ name: "a-very-long-model-name", default: true }]}
           current="a-very-long-model-name"
           onPick={vi.fn()}
+          think="high"
+          onThinkPick={vi.fn()}
         />
       </div>,
     );
 
     const triggers = [
       screen.getByRole("button", { name: "会话技能" }),
-      screen.getByRole("button", { name: "思考选择" }),
       screen.getByRole("button", { name: "a-very-long-model-name" }),
     ];
     for (const trigger of triggers) {
@@ -77,6 +77,71 @@ describe("窄 panel 下的 picker", () => {
       expect(trigger.closest(".dropdown")?.className).toContain("shrink");
       expect(trigger.closest(".dropdown")?.className).not.toContain("shrink-0");
     }
+  });
+
+  it("模型菜单内统一提供关闭、低、中、高四档，调整后菜单保持打开", async () => {
+    const onThinkPick = vi.fn();
+    render(
+      <ModelMenu
+        models={[{ name: "model-a", default: true }]}
+        current="model-a"
+        onPick={vi.fn()}
+        think="medium"
+        onThinkPick={onThinkPick}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "model-a" }));
+    const group = screen.getByRole("radiogroup", { name: "思考深度" });
+    expect(within(group).getAllByRole("radio").map((item) => item.textContent)).toEqual(["关闭", "低", "中", "高"]);
+    expect(within(group).queryByText(/跟随模型/)).toBeNull();
+
+    await userEvent.click(within(group).getByRole("radio", { name: "高" }));
+    expect(onThinkPick).toHaveBeenCalledWith("high");
+    expect(screen.getByRole("list", { name: "切换模型" })).toBeTruthy();
+  });
+
+  it("思考单选组按当前项停靠 Tab，方向键循环切换", async () => {
+    const onThinkPick = vi.fn();
+    render(
+      <ModelMenu
+        models={[{ name: "model-a", default: true }]}
+        current="model-a"
+        onPick={vi.fn()}
+        think="medium"
+        onThinkPick={onThinkPick}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "model-a" }));
+    const group = screen.getByRole("radiogroup", { name: "思考深度" });
+    const medium = within(group).getByRole("radio", { name: "中" });
+    const high = within(group).getByRole("radio", { name: "高" });
+    expect(medium.tabIndex).toBe(0);
+    expect(high.tabIndex).toBe(-1);
+
+    medium.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(high);
+    expect(onThinkPick).toHaveBeenCalledWith("high");
+  });
+
+  it("外部禁用会立即关闭已展开菜单，恢复后不会自行重开", async () => {
+    const props = {
+      models: [{ name: "model-a", default: true }],
+      current: "model-a",
+      onPick: vi.fn(),
+      think: "low",
+      onThinkPick: vi.fn(),
+    };
+    const { rerender } = render(<ModelMenu {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "model-a" }));
+    expect(screen.getByRole("radiogroup", { name: "思考深度" })).toBeTruthy();
+
+    rerender(<ModelMenu {...props} disabled />);
+    expect(screen.queryByRole("radiogroup", { name: "思考深度" })).toBeNull();
+    rerender(<ModelMenu {...props} />);
+    expect(screen.queryByRole("radiogroup", { name: "思考深度" })).toBeNull();
   });
 
   it("技能菜单收窄并平移到所属 panel 内", async () => {

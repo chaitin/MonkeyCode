@@ -586,7 +586,7 @@ export const en: Record<MessageKey, string> = {
   "chat.slash.empty": "No matching command",
   "chat.slash.hint": "↑↓ select · ↩ fill in · Esc close",
   "chat.model.label": "Switch model",
-  "chat.model.tip": "Click to switch model (takes effect next turn)",
+  "chat.model.tip": "Switch model or adjust thinking depth (takes effect next turn)",
   "chat.model.empty": "No models configured",
   "chat.model.noMatch": "No matching models",
   "chat.option.empty": "No options available",

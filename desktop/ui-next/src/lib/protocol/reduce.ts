@@ -98,8 +98,8 @@ export function createChatState(): ChatState {
 // (commit 01fd08bd 给系统行加 tag 时就写明「tag 是唯一可测可译口径」,
 //  口径早铺好了,只是没接上。)
 
-/** 思考档位 → i18n 键(""=跟随模型默认)。**档位全集(键序)也以此为准**:
- *  新建任务页的选择器、composer 的 ThinkMenu、think_update 系统行同一份。 */
+/** 思考档位 → i18n 键。空串只用于兼容历史/未知 think_update 的展示回退；
+ *  模型组合菜单固定使用 pickers.THINK_LEVELS 的关闭/低/中/高四档。 */
 export const THINK_KEY: Record<string, MessageKey> = {
   "": "create.think.default",
   off: "chat.think.off",
