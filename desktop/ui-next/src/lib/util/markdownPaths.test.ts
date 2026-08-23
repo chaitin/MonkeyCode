@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { resolveMarkdownPath, resolveMarkdownResource, workspaceRelativePath } from "./markdownPaths";
+import { inferInlineCodeFilePath, resolveMarkdownPath, resolveMarkdownResource, workspaceRelativePath } from "./markdownPaths";
+
+describe("inferInlineCodeFilePath", () => {
+  it("识别相对、绝对及 Windows 文件路径", () => {
+    expect(inferInlineCodeFilePath("docs/design/a.md")).toBe("docs/design/a.md");
+    expect(inferInlineCodeFilePath("/Users/maxiao/My Project/src/main.ts")).toBe("/Users/maxiao/My Project/src/main.ts");
+    expect(inferInlineCodeFilePath("C:\\Work\\Demo\\main.rs")).toBe("C:\\Work\\Demo\\main.rs");
+    expect(inferInlineCodeFilePath("./Dockerfile")).toBe("./Dockerfile");
+  });
+
+  it("移除常见行列号后缀", () => {
+    expect(inferInlineCodeFilePath("src/main.ts:42:8")).toBe("src/main.ts");
+    expect(inferInlineCodeFilePath("src/main.ts#L42C8")).toBe("src/main.ts");
+  });
+
+  it("拒绝 URL、越界路径、命令及普通行内代码", () => {
+    expect(inferInlineCodeFilePath("https://example.com/docs/a.md")).toBeNull();
+    expect(inferInlineCodeFilePath("../secrets/a.md")).toBeNull();
+    expect(inferInlineCodeFilePath("cat docs/design/a.md")).toBeNull();
+    expect(inferInlineCodeFilePath("git status")).toBeNull();
+    expect(inferInlineCodeFilePath("foo/bar")).toBeNull();
+  });
+});
 
 describe("resolveMarkdownResource", () => {
   it("解码 macOS/Unix 空格路径", () => {

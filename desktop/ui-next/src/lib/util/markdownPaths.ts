@@ -6,6 +6,10 @@ export type MarkdownResource =
   | { kind: "local"; path: string }
   | { kind: "url"; src: string };
 
+const INLINE_FILE_MAX_CHARS = 512;
+const INLINE_FILE_NAME_RE = /(?:^\.[^./\\]+$|\.[a-z0-9][a-z0-9+_-]{0,15}$)/i;
+const INLINE_SPECIAL_FILE_RE = /^(?:dockerfile|makefile|readme|license|changelog|gemfile|rakefile)$/i;
+
 function decodePath(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -43,6 +47,35 @@ export function resolveMarkdownResource(src: string): MarkdownResource {
   // 其他显式协议交给净化器处理,不误当成本地文件。
   if (/^[a-z][a-z0-9+.-]*:/i.test(decoded)) return { kind: "url", src: value };
   return decoded ? { kind: "local", path: decoded } : { kind: "empty" };
+}
+
+/** 保守识别 Markdown 行内代码中的文件引用。这里只做纯文本判断，不查文件
+ * 系统；工作区判界与存在性检查留到用户点击后的壳调用。 */
+export function inferInlineCodeFilePath(value: string): string | null {
+  const text = value.trim();
+  if (!text || text.length > INLINE_FILE_MAX_CHARS || /[\r\n\t]/.test(text)) return null;
+  if (/^(?:https?|data|blob|asset|mailto|javascript):/i.test(text)) return null;
+  if (/[|;&<>`]/.test(text) || /^\$\s/.test(text)) return null;
+
+  // 行列号只参与展示，不属于实际路径。兼容 IDE 常见的 :line:column 与 #LxCy。
+  const location = text.match(/^(.*?)(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$/i);
+  const candidate = (location?.[1] ?? text).trim();
+  if (!candidate || /^\.\.[\\/]/.test(candidate) || /^~[\\/]/.test(candidate)) return null;
+  const firstWhitespace = candidate.search(/\s/);
+  const firstSeparator = candidate.search(/[\\/]/);
+  if (firstWhitespace >= 0 && (firstSeparator < 0 || firstWhitespace < firstSeparator)) return null;
+
+  const resource = resolveMarkdownResource(candidate);
+  if (resource.kind !== "local") return null;
+  const path = resource.path;
+  const slashed = path.replace(/\\/g, "/");
+  if (!slashed.includes("/")) return null;
+
+  const withoutTrailingSlash = slashed.replace(/\/+$/, "");
+  const fileName = withoutTrailingSlash.slice(withoutTrailingSlash.lastIndexOf("/") + 1);
+  const explicitDirectory = /[\\/]$/.test(path);
+  if (!explicitDirectory && !INLINE_FILE_NAME_RE.test(fileName) && !INLINE_SPECIAL_FILE_RE.test(fileName)) return null;
+  return path;
 }
 
 function pathPrefix(path: string): { prefix: string; rest: string; absolute: boolean; windows: boolean } {
