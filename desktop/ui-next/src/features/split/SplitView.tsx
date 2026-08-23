@@ -1434,7 +1434,7 @@ function WorkbenchList({
             )}
             {tasks.length === 0 && archivedTasks.length === 0 && (
               <li className="pointer-events-none">
-                <span className="text-xs text-base-content/50">{t("split.pickEmpty")}</span>
+                <span className="text-xs text-base-content/50">{t("split.projectsEmpty")}</span>
               </li>
             )}
             {/* 底部「已归档项目」小节(旧侧栏能力回归:2026-08-18 用户报障

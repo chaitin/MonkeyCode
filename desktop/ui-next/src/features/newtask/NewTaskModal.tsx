@@ -541,8 +541,8 @@ export function NewTaskModal({
             )}
             {kind !== "cloud" && (
               <>
-                {/* 卡头:「在 × 文件夹里工作」句式触发器(富下拉:临时会话/
-                    最近目录/系统选择/手输路径);空目录 = 临时会话档 */}
+                {/* 卡头以“项目”外显产品概念；本地项目由文件夹路径承载，
+                    空路径则是不关联项目的临时会话。 */}
                 {kind === "local" && (
                   <div ref={dirBoxRef} className="relative px-2 pt-2">
                     <button
@@ -561,7 +561,6 @@ export function NewTaskModal({
                         <>
                           <span className="shrink-0 text-xs text-base-content/50">{t("create.dirPre")}</span>
                           <span className="min-w-0 truncate text-xs font-semibold" title={dir}>{dirName(dir)}</span>
-                          <span className="shrink-0 text-xs text-base-content/50">{t("create.dirPost")}</span>
                         </>
                       ) : (
                         <span className="text-xs font-semibold">{t("create.dir.scratch")}</span>
@@ -578,7 +577,7 @@ export function NewTaskModal({
                         aria-label={t("create.recentDirs")}
                         className="absolute start-2 top-full z-20 mt-1 flex w-96 max-w-[calc(100%-1rem)] flex-col rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg"
                       >
-                        {/* 临时会话档殿前:会话=不选文件夹的任务 */}
+                        {/* 临时会话档殿前：空路径表示不关联本地项目。 */}
                         <li>
                           <button
                             type="button"

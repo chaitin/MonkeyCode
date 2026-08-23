@@ -700,18 +700,19 @@ describe("分屏视图(树形布局)", () => {
     ).toBeTruthy();
   });
 
-  it("「临时会话」组头「+」快捷新建:内嵌表单落本地页签的「临时会话」档(会话=不选文件夹的任务)", async () => {
+  it("「临时会话」组头「+」快捷新建:内嵌表单落本地页签的「临时会话」档(会话不关联项目)", async () => {
     stubShell();
-    render(<Harness />);
+    render(<Harness sessions={[]} />);
     const list = screen.getByRole("complementary", { name: "选择任务" });
     // 固定组头常驻；没有任何项目的新安装也保留「项目」分区锚点。
     const chatsHead = within(list).getByText("临时会话");
     const projectsCap = within(list).getByText("项目");
+    expect(within(list).getByText("暂无项目，点击右上角「+」新建")).toBeTruthy();
     expect(chatsHead.compareDocumentPosition(projectsCap) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await userEvent.click(within(list).getByRole("button", { name: "新建会话" }));
     const pane = screen.getAllByRole("region")[0]!;
     expect(within(pane).getByRole("tab", { name: /本地任务/ }).getAttribute("aria-selected")).toBe("true");
-    expect(within(pane).getByRole("button", { name: "最近目录" }).textContent).toContain("临时会话");
+    expect(within(pane).getByRole("button", { name: "选择项目" }).textContent).toContain("临时会话");
   });
 
   it("任务列默认展开:新建/列开关双钮在列内(2026-08-18 定案),点行走 place 路由(在场定位/空格装载)", async () => {
