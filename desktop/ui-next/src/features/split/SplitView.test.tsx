@@ -129,11 +129,74 @@ const fakeDT = () => {
   };
 };
 
+/** jsdom 未实现 DragEvent，fireEvent.dragOver 不会带上指针坐标。 */
+const fireDragAt = (
+  target: Element,
+  type: "dragover" | "drop",
+  dataTransfer: ReturnType<typeof fakeDT>,
+  clientX: number,
+  clientY: number,
+) => {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    dataTransfer: { value: dataTransfer },
+    clientX: { value: clientX },
+    clientY: { value: clientY },
+  });
+  fireEvent(target, event);
+};
+
 describe("分屏视图(树形布局)", () => {
   it("首启缺省单格(2026-08-20 定案:新用户不见空栏;存过树不受影响)", () => {
     stubShell();
     render(<Harness />);
     expect(screen.getAllByRole("region")).toHaveLength(1);
+  });
+
+  it("恢复时压密超大叶槽号并丢弃离树长尾，装载不再扩巨型数组", async () => {
+    stubShell();
+    localStorage.setItem("mc.splitTree", JSON.stringify({ leaf: Number.MAX_SAFE_INTEGER }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(Array.from({ length: 500 }, (_, i) => `c:orphan-${i}`)));
+    render(<Harness />);
+    expect(screen.getByRole("region", { name: "第 1 格" })).toBeTruthy();
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null")).toEqual({ leaf: 0 }));
+    expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "null")).toEqual([]);
+  });
+
+  it("20,001 叶深存档启动时只物化像素可见子树", () => {
+    stubShell();
+    const parts: string[] = [];
+    for (let slot = 0; slot < 20_000; slot++) {
+      parts.push(`{"dir":"col","ratio":0.5,"a":{"leaf":${slot}},"b":`);
+    }
+    localStorage.setItem("mc.splitTree", parts.join("") + '{"leaf":20000}' + "}".repeat(20_000));
+    const { container } = render(<Harness />);
+    expect(container.querySelectorAll("section[aria-label$='格']").length).toBeLessThan(32);
+    expect(container.querySelectorAll("[data-split-handle]").length).toBeLessThan(32);
+  });
+
+  it("4K 画布中的 20,001 叶平衡存档仍受全局物化预算约束", () => {
+    stubShell();
+    let level = Array.from({ length: 20_001 }, (_, slot) => `{"leaf":${slot}}`);
+    let depth = 0;
+    while (level.length > 1) {
+      const next: string[] = [];
+      for (let index = 0; index < level.length; index += 2) {
+        const a = level[index]!;
+        const b = level[index + 1];
+        next.push(b ? `{"dir":"${depth % 2 === 0 ? "col" : "row"}","ratio":0.5,"a":${a},"b":${b}}` : a);
+      }
+      level = next;
+      depth += 1;
+    }
+    localStorage.setItem("mc.splitTree", level[0]!);
+    const width = vi.spyOn(window, "innerWidth", "get").mockReturnValue(3840);
+    const height = vi.spyOn(window, "innerHeight", "get").mockReturnValue(2160);
+    const { container } = render(<Harness />);
+    width.mockRestore();
+    height.mockRestore();
+    expect(container.querySelectorAll("section[aria-label$='格']").length).toBeLessThanOrEqual(512);
+    expect(container.querySelectorAll("[data-split-handle]").length).toBeLessThanOrEqual(512);
   });
 
   it("存档双格:槽 0 挂会话,槽 1 装载卡——tab、项目分组、临时会话段、已入格判重排除", async () => {
@@ -185,7 +248,7 @@ describe("分屏视图(树形布局)", () => {
     expect(within(loader).getAllByText("A 跑着")).toHaveLength(1);
   });
 
-  it("右分屏:长出第三格(新格取最小空槽号、装载卡形态、树落盘);满 6 格置灰", async () => {
+  it("右分屏:新格取最小空槽号、树落盘且可继续拆出第七格", async () => {
     stubShell();
     localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
     render(<Harness />);
@@ -197,17 +260,19 @@ describe("分屏视图(树形布局)", () => {
     expect(screen.getByRole("region", { name: "第 3 格" })).toBeTruthy();
     const saved = JSON.parse(localStorage.getItem("mc.splitTree") ?? "null");
     expect(saved).not.toBeNull();
-    // 连拆到 6 格
+    // 连拆到 6 格后菜单仍可继续拆分
     for (let i = 0; i < 3; i++) {
       await userEvent.click(screen.getAllByRole("button", { name: "格操作" })[0]!);
       await userEvent.click(within(document.body.lastElementChild as HTMLElement).getByText("下分屏"));
     }
     expect(screen.getAllByRole("region")).toHaveLength(6);
-    // 满 6:菜单里两个拆分项置灰
     await userEvent.click(screen.getAllByRole("button", { name: "格操作" })[0]!);
-    const capMenu = document.body.lastElementChild as HTMLElement;
-    expect((within(capMenu).getByText("右分屏").closest("button") as HTMLButtonElement).disabled).toBe(true);
-    expect((within(capMenu).getByText("下分屏").closest("button") as HTMLButtonElement).disabled).toBe(true);
+    const menu = document.body.lastElementChild as HTMLElement;
+    const splitRight = within(menu).getByText("右分屏").closest("button") as HTMLButtonElement;
+    expect(splitRight.disabled).toBe(false);
+    await userEvent.click(splitRight);
+    expect(screen.getAllByRole("region")).toHaveLength(7);
+    expect(screen.getByRole("region", { name: "第 7 格" })).toBeTruthy();
   });
 
   it("工作台 inactive 时不响应聚焦、侧栏和分屏快捷键", async () => {
@@ -251,7 +316,7 @@ describe("分屏视图(树形布局)", () => {
     expect(aside.style.width).toBe("232px");
   });
 
-  it("工作台快捷键只操作焦点格：聚焦、侧栏、两向分屏与六格上限", async () => {
+  it("工作台快捷键只操作焦点格，且可连续拆分超过六格", async () => {
     stubShell();
     localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
     render(<Harness />);
@@ -272,7 +337,7 @@ describe("分屏视图(树形布局)", () => {
     expect(screen.getByRole("region", { name: "第 3 格" }).querySelector("[data-split-focus]")).not.toBeNull();
 
     for (let i = 0; i < 4; i++) fireEvent.keyDown(window, { key: "\\", code: "Backslash", ctrlKey: true });
-    expect(screen.getAllByRole("region")).toHaveLength(6);
+    expect(screen.getAllByRole("region")).toHaveLength(7);
   });
 
   it("Ctrl+N 沿用当前任务类型；侧栏帮助入口展示快捷键并由 Esc 关闭", async () => {
@@ -416,6 +481,11 @@ describe("分屏视图(树形布局)", () => {
     expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").a.ratio).toBeCloseTo(0.75);
     fireEvent.doubleClick(container.querySelector('[data-split-handle="a"]')!);
     expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").a.ratio).toBe(0.5);
+    const resetHandle = container.querySelector<HTMLElement>('[data-split-handle="a"]')!;
+    fireEvent.mouseDown(resetHandle, { clientY: 400 });
+    fireEvent.mouseMove(window, { clientY: 0 });
+    fireEvent.mouseUp(window);
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").a.ratio).toBeCloseTo(48 / 800);
   });
 
   it("三格双击贯通线:按辖下格数分成 2:1,并递归均分左侧两格", () => {
@@ -436,7 +506,7 @@ describe("分屏视图(树形布局)", () => {
     expect(saved.a.ratio).toBe(0.5);
   });
 
-  it("六格 1:5 均分后键盘沿边界方向不反跳", () => {
+  it("七格 1:6 均分可落盘并继续用键盘调整", () => {
     stubShell();
     localStorage.setItem(
       "mc.splitTree",
@@ -456,7 +526,12 @@ describe("分屏视图(树形布局)", () => {
               dir: "col",
               ratio: 0.5,
               a: { leaf: 3 },
-              b: { dir: "col", ratio: 0.5, a: { leaf: 4 }, b: { leaf: 5 } },
+              b: {
+                dir: "col",
+                ratio: 0.5,
+                a: { leaf: 4 },
+                b: { dir: "col", ratio: 0.5, a: { leaf: 5 }, b: { leaf: 6 } },
+              },
             },
           },
         },
@@ -465,11 +540,11 @@ describe("分屏视图(树形布局)", () => {
     const { container } = render(<Harness />);
     const root = container.querySelector<HTMLElement>('[data-split-handle="root"]')!;
     fireEvent.doubleClick(root);
-    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 6);
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 7);
     fireEvent.keyDown(root, { key: "ArrowLeft" });
-    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 6);
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 7 - 0.05);
     fireEvent.keyDown(root, { key: "ArrowRight" });
-    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 6 + 0.05);
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 7);
   });
 
   it("按住格头标题拖到另一格 = 交换位置(内容跟格走,落点有高亮)", () => {
@@ -495,6 +570,63 @@ describe("分屏视图(树形布局)", () => {
     expect(screen.getByRole("region", { name: "第 2 格" }).querySelector("[data-split-focus]")).toBeNull();
   });
 
+  it("任务拖到整个主视图上边缘 = 新建根级顶部格；原格不被替换", () => {
+    stubShell();
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null]));
+    const { container } = render(<Harness />);
+    const grid = container.querySelector<HTMLElement>("[data-split-grid]")!;
+    vi.spyOn(grid, "getBoundingClientRect").mockReturnValue({
+      left: 0, top: 0, width: 1000, height: 800, right: 1000, bottom: 800, x: 0, y: 0, toJSON: () => ({}),
+    });
+    const first = screen.getByRole("region", { name: "第 1 格" });
+    const row = within(screen.getByRole("complementary", { name: "选择任务" })).getByText("跑着的任务").closest("button")!;
+    const dt = fakeDT();
+    fireEvent.dragStart(row, { dataTransfer: dt });
+    fireDragAt(first, "dragover", dt, 500, 12);
+    expect(grid.querySelector('[data-split-root-drop="top"]')).not.toBeNull();
+    expect(first.querySelector("[data-split-drop]")).toBeNull();
+    fireDragAt(first, "drop", dt, 500, 12);
+
+    const panes = screen.getAllByRole("region");
+    expect(panes).toHaveLength(3);
+    expect(panes[0]!.getAttribute("aria-label")).toBe("第 3 格");
+    expect(within(panes[0]!).getByTitle(/跑着的任务/)).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "第 1 格" })).getByTitle(/已入格的任务/)).toBeTruthy();
+  });
+
+  it("Panel 拖到整个主视图右边缘 = 搬到根级右侧并收拢原位置", () => {
+    stubShell();
+    localStorage.setItem(
+      "mc.splitTree",
+      JSON.stringify({
+        dir: "row",
+        ratio: 0.5,
+        a: { dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } },
+        b: { leaf: 2 },
+      }),
+    );
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", "s2", "s3"]));
+    const { container } = render(<Harness />);
+    const grid = container.querySelector<HTMLElement>("[data-split-grid]")!;
+    vi.spyOn(grid, "getBoundingClientRect").mockReturnValue({
+      left: 0, top: 0, width: 1000, height: 800, right: 1000, bottom: 800, x: 0, y: 0, toJSON: () => ({}),
+    });
+    const first = screen.getByRole("region", { name: "第 1 格" });
+    const target = screen.getByRole("region", { name: "第 3 格" });
+    const dt = fakeDT();
+    fireEvent.dragStart(within(first).getByTitle(/已入格的任务/), { dataTransfer: dt });
+    fireDragAt(target, "dragover", dt, 988, 400);
+    expect(grid.querySelector('[data-split-root-drop="right"]')).not.toBeNull();
+    fireDragAt(target, "drop", dt, 988, 400);
+
+    const panes = screen.getAllByRole("region");
+    expect(panes).toHaveLength(3);
+    expect(panes.map((pane) => pane.getAttribute("aria-label"))).toEqual(["第 2 格", "第 3 格", "第 1 格"]);
+    expect(within(panes[2]!).getByTitle(/已入格的任务/)).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]")).toEqual(["s1", "s2", "s3"]);
+  });
+
   it("布局模板钮退役(2026-08-18 用户定案「没啥用」——拆分/关闭本身就是布局手段):头部无布局组", () => {
     stubShell();
     localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
@@ -509,12 +641,14 @@ describe("分屏视图(树形布局)", () => {
     expect(within(screen.getByRole("region", { name: "第 1 格" })).getByRole("button", { name: "格操作" })).toBeTruthy();
   });
 
-  it("格细头「会话文件」开全局文件抽屉(2026-08-16 报障「看文件的功能咋没了」)", async () => {
+  it("第七格的动态细头插槽可用：「会话文件」打开文件抽屉", async () => {
     stubShell();
-    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
-    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    localStorage.setItem("mc.splitTree", JSON.stringify({ leaf: 6 }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify([null, null, null, null, null, null, "s1"]));
     render(<Harness />);
-    await userEvent.click(within(screen.getByRole("region", { name: "第 1 格" })).getByRole("button", { name: "会话文件" }));
+    await userEvent.click(
+      await within(screen.getByRole("region", { name: "第 7 格" })).findByRole("button", { name: "会话文件" }),
+    );
     // FilesDrawer 挂上(文件/改动两页签);关掉即收
     expect(await screen.findByRole("tab", { name: /文件/ })).toBeTruthy();
   });
@@ -622,7 +756,7 @@ describe("分屏视图(树形布局)", () => {
     await waitFor(() => expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]")[2]).toBe("created"));
   });
 
-  it("六格全满时新建表单覆盖焦点格,不会把打开前已有会话误判成外部装载", async () => {
+  it("六格全满时新建表单拆出第七格，不覆盖已有会话", async () => {
     stubShell();
     const sixTree = {
       dir: "col",
@@ -637,8 +771,9 @@ describe("分屏视图(树形布局)", () => {
     await userEvent.click(
       within(screen.getByRole("complementary", { name: "选择任务" })).getByRole("button", { name: "新建任务" }),
     );
-    expect(screen.getAllByRole("region")).toHaveLength(6);
-    expect(within(screen.getByRole("region", { name: "第 1 格" })).getByRole("heading", { name: "新建任务" })).toBeTruthy();
+    expect(screen.getAllByRole("region")).toHaveLength(7);
+    expect(within(screen.getByRole("region", { name: "第 7 格" })).getByRole("heading", { name: "新建任务" })).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "第 1 格" })).getByTitle(/^满格 0/)).toBeTruthy();
   });
 
   it("工作台 inactive 时 window 级原生文件拖放不投递到后台 pane", async () => {

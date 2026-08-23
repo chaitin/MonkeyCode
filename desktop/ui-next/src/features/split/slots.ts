@@ -1,10 +1,8 @@
-// 分屏槽位纯逻辑:定长 SPLIT_MAX_PANES 的 (sid | null)[]。哪些槽位可见由
-// 布局树(tree.ts)的叶集决定——树上不在场的槽位留档不清空,换回带它的
-// 模板即恢复;设计定案见
+// 分屏槽位纯逻辑:按需增长的 (sid | null)[]。哪些槽位可见由布局树
+// (tree.ts)的叶集决定；启动恢复会把树叶与槽位一并压密，运行期关闭格
+// 则显式清掉内容。设计定案见
 // docs/superpowers/specs/2026-08-16-desktop-split-view-design.md。
 // 判定与变换全是纯函数,useSplitState 只做接线,产品语义单测钉在这里。
-import { SPLIT_MAX_PANES } from "@/lib/util/prefs";
-
 export type Slots = readonly (string | null)[];
 
 /** 槽位条目 = 「带记号的 id」:本地任务/会话 = 裸 sid;云端任务 =
@@ -16,14 +14,16 @@ export const cloudSlotId = (taskId: string): string => CLOUD_PREFIX + taskId;
 export const isCloudSlotId = (v: string): boolean => v.startsWith(CLOUD_PREFIX);
 export const cloudTaskIdOf = (v: string): string => v.slice(CLOUD_PREFIX.length);
 
-export const emptySlots = (): Slots => Array.from({ length: SPLIT_MAX_PANES }, () => null);
+export const emptySlots = (): Slots => [];
 
 /** 装载(move 语义):**同一会话禁止双格并存**——session_close 无引用
  *  计数,先卸载的那个实例会把另一格的实时流掐断(壳侧 session.rs 把
  *  opened 置 false 是按会话不是按订阅方)。装载前先把该会话从其他槽摘掉,
  *  判重收口在此单点,调用方不必各自防。 */
 export function assign(slots: Slots, index: number, id: string): Slots {
-  return slots.map((s, i) => (i === index ? id : s === id ? null : s));
+  if (!Number.isSafeInteger(index) || index < 0) return slots;
+  const length = Math.max(slots.length, index + 1);
+  return Array.from({ length }, (_, i) => (i === index ? id : slots[i] === id ? null : (slots[i] ?? null)));
 }
 
 export function eject(slots: Slots, index: number): Slots {

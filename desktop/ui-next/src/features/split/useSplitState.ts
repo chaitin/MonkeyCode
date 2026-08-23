@@ -9,8 +9,11 @@ import { readSplitSlots, readSplitTreeRaw, writeSplitSlots, writeSplitTree } fro
 import { assign, eject, ejectCloud, firstEmptyIn, isCloudSlotId, prune, seed, type Slots } from "./slots";
 import {
   equalizeAt,
+  insertRootLeaf,
   leaves,
+  moveLeafToRoot,
   PRESETS,
+  remapLeaves,
   removeLeaf,
   setRatio,
   splitLeaf,
@@ -18,6 +21,7 @@ import {
   validateTree,
   type SplitDir,
   type SplitNode,
+  type SplitRootEdge,
 } from "./tree";
 
 export interface SplitStateApi {
@@ -29,14 +33,16 @@ export interface SplitStateApi {
   focused: number;
   /** 实际在渲染的槽(放大 > 树叶集,阅读序);通知抑制按它算可见集。 */
   visibleIndices: readonly number[];
-  /** 套模板(树整棵替换;树上不在场的槽位留档,换回即恢复)。 */
   /** 拖分隔线:按节点路径改比例(路径见 tree.setRatio)。 */
   setNodeRatio: (path: string, ratio: number) => void;
   /** 双击分隔线:让该节点辖下的所有格子尽量等面积,路径外不动。 */
   equalizeNode: (path: string) => void;
-  /** 拆分某格(向右/向下):新格取最小空槽号并夺焦;到上限静默不动
-   *  (按钮侧按 canSplit 置灰,这里只兜底)。 */
+  /** 拆分某格(向右/向下):新格取最小空槽号并夺焦。 */
   splitPane: (slot: number, dir: SplitDir) => number | null;
+  /** 在整个主视图的上/右边缘创建新格。 */
+  addRootPane: (edge: SplitRootEdge) => number;
+  /** 把已有格搬到整个主视图的上/右边缘，原位置自动收拢。 */
+  movePaneToRoot: (slot: number, edge: SplitRootEdge) => void;
   /** 关闭某格(tmux 收格:兄弟上位):槽位内容一并清档——关格是显式
    *  动作,不同于换模板的"藏而不清";最后一格不许关。 */
   closePane: (slot: number) => void;
@@ -57,13 +63,37 @@ export interface SplitStateApi {
   place: (id: string) => void;
 }
 
-export function useSplitState(): SplitStateApi {
-  const [slots, setSlots] = useState<Slots>(readSplitSlots);
+function readInitialSplitState(): { tree: SplitNode; slots: Slots } {
   // 首启缺省**单格**(2026-08-20 用户定案:新用户开门见两栏、右栏空面板
-  // 冷场;多格由拆分/「新建即新格」自然长出)。存过树的老用户不受影响
-  const [tree, setTree] = useState<SplitNode>(() => validateTree(readSplitTreeRaw()) ?? PRESETS["1"]);
+  // 冷场;多格由拆分/「新建即新格」自然长出)。恢复时只取树实际引用的
+  // 槽，并把异常稀疏的叶槽号压密：树形/视觉顺序不变，同时避免手改的超大
+  // 叶号触发稠密数组扩容、离树长尾拖慢此后的每次渲染。
+  const restoredTree = validateTree(readSplitTreeRaw()) ?? PRESETS["1"];
+  const oldSlots = leaves(restoredTree).sort((a, b) => a - b);
+  const restoredSlots = readSplitSlots(oldSlots);
+  const maxSlot = oldSlots.at(-1) ?? 0;
+  // 正常拆关形成的低位空洞保留编号（例如历史「第 7 格」）；只有槽号相对
+  // 叶数异常稀疏时才压密。阈值随叶数增长，不构成 pane 数量上限。
+  const compact = maxSlot > oldSlots.length * 8 + 1024;
+  const remap = new Map(oldSlots.map((slot, index) => [slot, compact ? index : slot]));
+  const tree = compact ? remapLeaves(restoredTree, remap) : restoredTree;
+  const slots: (string | null)[] = [];
+  oldSlots.forEach((slot, index) => {
+    const target = remap.get(slot)!;
+    const entry = restoredSlots[index] ?? null;
+    if (entry) slots[target] = entry;
+  });
+  let length = slots.length;
+  while (length > 0 && !slots[length - 1]) length -= 1;
+  return { tree, slots: Array.from({ length }, (_, index) => slots[index] ?? null) };
+}
+
+export function useSplitState(): SplitStateApi {
+  const [initial] = useState(readInitialSplitState);
+  const [slots, setSlots] = useState<Slots>(initial.slots);
+  const [tree, setTree] = useState<SplitNode>(initial.tree);
   const [zoomed, setZoomed] = useState<number | null>(null);
-  const [focused, setFocused] = useState(() => leaves(validateTree(readSplitTreeRaw()) ?? PRESETS["1"])[0] ?? 0);
+  const [focused, setFocused] = useState(() => leaves(initial.tree)[0] ?? 0);
 
   // 持久化走 effect 不进 setState 更新器(更新器要纯;挂载首拍回写读到的
   // 归一化档,幂等)
@@ -93,6 +123,21 @@ export function useSplitState(): SplitStateApi {
     setFocused(res.newSlot);
     // 新槽号回给调用方:「新建即新格」要把创建表单定点装进拆出来的格
     return res.newSlot;
+  }, []);
+
+  const addRootPane = useCallback((edge: SplitRootEdge): number => {
+    const res = insertRootLeaf(snapRef.current.tree, edge);
+    setTree(res.tree);
+    setZoomed(null);
+    setFocused(res.newSlot);
+    return res.newSlot;
+  }, []);
+
+  const movePaneToRoot = useCallback((slot: number, edge: SplitRootEdge) => {
+    const next = moveLeafToRoot(snapRef.current.tree, slot, edge);
+    setTree(next);
+    setZoomed(null);
+    setFocused(slot);
   }, []);
 
   const closePane = useCallback((slot: number) => {
@@ -155,7 +200,7 @@ export function useSplitState(): SplitStateApi {
     if (existing >= 0 && order.includes(existing)) {
       target = existing; // 已在树上(含被放大遮住的):夺焦/切独占即可
     } else {
-      // 不在树上的留档槽视同不在场:assign 的 move 语义会把旧槽摘干净
+      // 不在树上的异常/旧档槽视同不在场:assign 的 move 语义会把旧槽摘干净
       target = firstEmptyIn(cur.slots, order) ?? (order.includes(cur.focused) ? cur.focused : (order[0] ?? 0));
       setSlots((prev) => assign(prev, target, id));
     }
@@ -172,6 +217,8 @@ export function useSplitState(): SplitStateApi {
     setNodeRatio,
     equalizeNode,
     splitPane,
+    addRootPane,
+    movePaneToRoot,
     closePane,
     swapPanes,
     focus,

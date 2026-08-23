@@ -60,7 +60,6 @@ export const zh = {
   "split.swapCancel": "取消换任务",
   "split.splitRight": "右分屏",
   "split.splitDown": "下分屏",
-  "split.splitCap": "格子数已达上限",
   "split.close": "关闭格子(任务继续后台运行)",
   "split.emptyPane": "空面板",
   "split.dragLoad": "拖到格子可装载",

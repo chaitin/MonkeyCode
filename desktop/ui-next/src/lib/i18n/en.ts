@@ -52,7 +52,6 @@ export const en: Record<MessageKey, string> = {
   "split.swapCancel": "Cancel swap",
   "split.splitRight": "Split right",
   "split.splitDown": "Split down",
-  "split.splitCap": "Pane limit reached",
   "split.close": "Close pane (task keeps running)",
   "split.emptyPane": "Empty panel",
   "split.dragLoad": "Drag onto a pane to load",

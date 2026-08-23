@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   equalizeAt,
+  insertRootLeaf,
   leaves,
+  moveLeafToRoot,
   paneCount,
   PRESETS,
+  remapLeaves,
   removeLeaf,
   sameShape,
   setRatio,
@@ -23,14 +26,51 @@ describe("布局树", () => {
     expect(paneCount(PRESETS["4"])).toBe(4);
   });
 
-  it("validateTree:坏方向/槽位越界/重复/超深整树作废;比例保留六格均分所需边界", () => {
+  it("validateTree:坏方向/非法或重复槽位整树作废;高位槽和深树可恢复", () => {
     expect(validateTree(PRESETS["4"])).toEqual(PRESETS["4"]);
     expect(validateTree({ dir: "diag", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } })).toBeNull();
-    expect(validateTree({ leaf: 99 })).toBeNull();
+    expect(validateTree({ leaf: 99 })).toEqual({ leaf: 99 });
+    expect(validateTree({ leaf: Number.MAX_SAFE_INTEGER + 1 })).toBeNull();
     expect(validateTree({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 0 } })).toBeNull();
     expect(validateTree(null)).toBeNull();
-    const clamped = validateTree({ dir: "col", ratio: 0.01, a: { leaf: 0 }, b: { leaf: 1 } });
-    expect(clamped && "dir" in clamped && clamped.ratio).toBeCloseTo(1 / 6);
+    const ratio = validateTree({ dir: "col", ratio: 0.01, a: { leaf: 0 }, b: { leaf: 1 } });
+    expect(ratio && "dir" in ratio && ratio.ratio).toBeCloseTo(0.01);
+
+    let deep: SplitNode = { leaf: 7 };
+    for (let slot = 6; slot >= 0; slot--) deep = { dir: "col", ratio: 0.5, a: { leaf: slot }, b: deep };
+    expect(validateTree(deep)).toEqual(deep);
+
+    const cycle: Record<string, unknown> = { dir: "col", ratio: 0.5, a: { leaf: 0 } };
+    cycle.b = cycle;
+    expect(validateTree(cycle)).toBeNull();
+  });
+
+  it("恢复时可把稀疏和超大叶槽压密且不改变视觉顺序", () => {
+    const tree: SplitNode = {
+      dir: "col",
+      ratio: 0.4,
+      a: { leaf: Number.MAX_SAFE_INTEGER },
+      b: { leaf: 7 },
+    };
+    const remapped = remapLeaves(tree, new Map([[7, 0], [Number.MAX_SAFE_INTEGER, 1]]));
+    expect(remapped).toEqual({ dir: "col", ratio: 0.4, a: { leaf: 1 }, b: { leaf: 0 } });
+    expect(leaves(remapped)).toEqual([1, 0]);
+  });
+
+  it("异常深存档与树操作不耗尽调用栈", () => {
+    let deep: SplitNode = { leaf: 20_000 };
+    for (let slot = 19_999; slot >= 0; slot--) deep = { dir: "col", ratio: 0.5, a: { leaf: slot }, b: deep };
+
+    const restored = validateTree(deep);
+    expect(restored).not.toBeNull();
+    expect(paneCount(restored!)).toBe(20_001);
+    expect(splitLeaf(restored!, 0, "row")?.newSlot).toBe(20_001);
+    expect(paneCount(equalizeAt(restored!, ""))).toBe(20_001);
+    expect(paneCount(removeLeaf(restored!, 20_000))).toBe(20_000);
+    expect(paneCount(insertRootLeaf(restored!, "top").tree)).toBe(20_002);
+    expect(paneCount(moveLeafToRoot(restored!, 10_000, "right"))).toBe(20_001);
+    expect(leaves(swapLeaves(restored!, 0, 20_000)).slice(0, 2)).toEqual([20_000, 1]);
+    expect(sameShape(restored!, restored!)).toBe(true);
   });
 
   it("setRatio 按路径寻址:只动那个节点(拖哪条线动哪条)", () => {
@@ -58,25 +98,58 @@ describe("布局树", () => {
     expect(local.ratio).toBe(0.4);
     expect(local.a.ratio).toBe(0.5);
 
-    let six: SplitNode = { leaf: 5 };
-    for (let slot = 4; slot >= 1; slot--) six = { dir: "col", ratio: 0.5, a: { leaf: slot }, b: six };
-    six = { dir: "col", ratio: 0.5, a: { leaf: 0 }, b: six };
-    const allSix = equalizeAt(six, "");
-    if ("leaf" in allSix) throw new Error("形状不该变");
-    expect(allSix.ratio).toBeCloseTo(1 / 6);
-    expect(validateTree(allSix)).toEqual(allSix); // 1:5 落盘重载后不能弹回 1:4
+    let seven: SplitNode = { leaf: 6 };
+    for (let slot = 5; slot >= 1; slot--) seven = { dir: "col", ratio: 0.5, a: { leaf: slot }, b: seven };
+    seven = { dir: "col", ratio: 0.5, a: { leaf: 0 }, b: seven };
+    const allSeven = equalizeAt(seven, "");
+    if ("leaf" in allSeven) throw new Error("形状不该变");
+    expect(allSeven.ratio).toBeCloseTo(1 / 7);
+    expect(validateTree(allSeven)).toEqual(allSeven); // 1:6 落盘重载后比例不反弹
   });
 
-  it("splitLeaf:新格取最小空槽号、原格在前;满员返回 null", () => {
+  it("splitLeaf:新格取最小空槽号、原格在前且可持续超过六格", () => {
     const res = splitLeaf(PRESETS["2col"], 0, "row");
     expect(res).not.toBeNull();
     expect(leaves(res!.tree)).toEqual([0, 2, 1]); // 槽 2 是最小空号,挂在 0 之下
     expect(res!.newSlot).toBe(2);
-    // 连拆到上限(6):再拆返回 null
     let tree = PRESETS["1"];
-    for (let i = 0; i < 5; i++) tree = splitLeaf(tree, 0, "col")!.tree;
-    expect(paneCount(tree)).toBe(6);
-    expect(splitLeaf(tree, 0, "col")).toBeNull();
+    for (let i = 0; i < 7; i++) tree = splitLeaf(tree, 0, "col")!.tree;
+    expect(paneCount(tree)).toBe(8);
+    expect(leaves(tree)).toContain(7);
+    expect(validateTree(tree)).toEqual(tree);
+  });
+
+  it("根边缘插入:上方/右侧包住整棵旧树且取最小空槽", () => {
+    const top = insertRootLeaf(PRESETS["2col"], "top");
+    expect(top.newSlot).toBe(2);
+    expect(top.tree).toEqual({ dir: "row", ratio: 0.5, a: { leaf: 2 }, b: PRESETS["2col"] });
+
+    const right = insertRootLeaf(PRESETS["2row"], "right");
+    expect(right.newSlot).toBe(2);
+    expect(right.tree).toEqual({ dir: "col", ratio: 0.5, a: PRESETS["2row"], b: { leaf: 2 } });
+  });
+
+  it("已有叶搬到根边缘:原位置收拢、槽只出现一次且单格不动", () => {
+    const right = moveLeafToRoot(PRESETS["4"], 2, "right");
+    expect(leaves(right)).toEqual([0, 1, 3, 2]);
+    expect(paneCount(right)).toBe(4);
+    expect(moveLeafToRoot(right, 2, "right")).toBe(right);
+    expect(right).toEqual({
+      dir: "col",
+      ratio: 0.5,
+      a: {
+        dir: "col",
+        ratio: 0.5,
+        a: { leaf: 0 },
+        b: { dir: "row", ratio: 0.5, a: { leaf: 1 }, b: { leaf: 3 } },
+      },
+      b: { leaf: 2 },
+    });
+
+    const top = moveLeafToRoot(PRESETS["4"], 3, "top");
+    expect(leaves(top)).toEqual([3, 0, 2, 1]);
+    expect(moveLeafToRoot({ leaf: 0 }, 0, "right")).toEqual({ leaf: 0 });
+    expect(moveLeafToRoot(PRESETS["2col"], 9, "top")).toBe(PRESETS["2col"]);
   });
 
   it("removeLeaf:兄弟上位(tmux 收格);最后一格不许关", () => {
