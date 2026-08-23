@@ -352,6 +352,7 @@ describe("思考块", () => {
     const ts = new Date(new Date().setHours(9, 5, 0, 0)).getTime();
     const state = withItems([{ kind: "thought", text: "先看日志", timestamp: ts }]);
     const { container } = render(<LogList state={state} sessionId="s1" />);
+    expect(container.querySelector(".collapse")?.classList.contains("mc-workbench-material-muted")).toBe(true);
     expect(container.querySelector("time")?.textContent).toBe("09:05");
     expect(container.querySelector(".collapse-arrow")).toBeNull(); // 统一为行尾 chevron
   });
@@ -394,6 +395,7 @@ describe("工具组聚合(摘要头 + 开合)", () => {
     const { container } = render(<LogList state={state} sessionId="s1" />);
     expect(container.querySelectorAll("[data-virtual-row]")).toHaveLength(1);
     const header = screen.getByRole("button", { name: "工具调用组" });
+    expect(header.classList.contains("mc-workbench-material")).toBe(true);
     expect(header.textContent).toContain("4 步");
     expect(header.textContent).toContain("执行命令 ×4");
     expect(screen.queryByText("step1")).toBeNull(); // 成员收起

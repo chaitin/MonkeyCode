@@ -44,6 +44,7 @@ describe("审批卡", () => {
     // 修复前这里摊的是 `Bash rm -rf /tmp/x`,而同会话里锚定型审批行显示的
     // 是「需要确认 · 执行命令」——两种审批形态语言不一致
     const body = screen.getByText("执行命令 rm -rf /tmp/x");
+    expect(body.classList.contains("mc-workbench-material-muted")).toBe(true);
     expect(body.getAttribute("title")).toBe("Bash rm -rf /tmp/x");
     for (const name of ["允许", "本会话始终允许", "此项目永久允许", "拒绝"]) {
       expect(screen.getByRole("button", { name })).toBeTruthy();

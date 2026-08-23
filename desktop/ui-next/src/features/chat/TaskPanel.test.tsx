@@ -13,7 +13,8 @@ const PLAN: PlanEntry[] = [
 
 describe("任务面板", () => {
   it("收起态:一行摘要 = 进度 + 正在项", () => {
-    render(<TaskPanel entries={PLAN} />);
+    const { container } = render(<TaskPanel entries={PLAN} />);
+    expect(container.firstElementChild?.classList.contains("mc-workbench-material")).toBe(true);
     expect(screen.getByText("任务 1/3")).toBeTruthy();
     expect(screen.getByText(/正在:改代码/)).toBeTruthy();
     expect(screen.getByRole("button", { expanded: false })).toBeTruthy();

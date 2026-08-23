@@ -211,6 +211,29 @@ html[data-mc-background="active"] [data-split-grid].mc-workbench-surface-300 {
   background-color: transparent;
 }
 
+/* 壁纸下的内容组件只在已有工作台表面上增加一层当前 Theme 色，不能再铺
+ * 100% base-*：浅色主题会变成白色贴片，深色主题会变成黑色贴片。这里只
+ * 改背景色与描边色；圆角、线宽、尺寸、depth/noise 仍由 daisyUI Theme 控制。 */
+.mc-workbench-material { background-color: var(--color-base-100); }
+.mc-workbench-material-muted { background-color: var(--color-base-200); }
+.mc-workbench-material-interactive { background-color: var(--color-base-100); }
+
+html[data-mc-background="active"] .mc-workbench-surface-100 .mc-workbench-material {
+  background-color: color-mix(in srgb, var(--color-base-100) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-base-content) 10%, transparent);
+}
+html[data-mc-background="active"] .mc-workbench-surface-100 .mc-workbench-material-muted {
+  background-color: color-mix(in srgb, var(--color-base-200) 24%, transparent);
+  border-color: color-mix(in srgb, var(--color-base-content) 10%, transparent);
+}
+html[data-mc-background="active"] .mc-workbench-surface-100 .mc-workbench-material-interactive {
+  background-color: color-mix(in srgb, var(--color-base-100) 50%, transparent);
+  border-color: color-mix(in srgb, var(--color-base-content) 13%, transparent);
+}
+html[data-mc-background="active"] .mc-workbench-surface-100 .mc-workbench-material-interactive:focus-within {
+  border-color: color-mix(in srgb, var(--color-base-content) 25%, transparent);
+}
+
 .mc-workbench-background {
   display: none;
   position: absolute;
@@ -237,6 +260,18 @@ html[data-mc-background="active"] .mc-workbench-background { display: block; }
   html[data-mc-background="active"] {
     --mc-surface-opacity: 100% !important;
     --mc-background-blur: 0px !important;
+  }
+  html[data-mc-background="active"] .mc-workbench-surface-100 .mc-workbench-material,
+  html[data-mc-background="active"] .mc-workbench-surface-100 .mc-workbench-material-interactive {
+    background-color: var(--color-base-100);
+    border-color: var(--color-base-300);
+  }
+  html[data-mc-background="active"] .mc-workbench-surface-100 .mc-workbench-material-muted {
+    background-color: var(--color-base-200);
+    border-color: var(--color-base-300);
+  }
+  html[data-mc-background="active"] .mc-workbench-surface-100 .mc-workbench-material-interactive:focus-within {
+    border-color: color-mix(in srgb, var(--color-base-content) 25%, transparent);
   }
 }
 

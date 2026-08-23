@@ -139,7 +139,7 @@ function ThoughtBlock({ item, streaming }: { item: Extract<ChatItem, { kind: "th
     // 行尾 ChevronRight(open 态转 90°,弃 collapse-arrow 的另一套箭头语言,
     // 用户定案 2026-08-05);时间与其他块一致 hover 显影(group 在 details 上)
     <details
-      className="group collapse border border-base-300 bg-base-200"
+      className="mc-workbench-material-muted group collapse border border-base-300"
       data-thought-streaming={streaming ? "true" : undefined}
       aria-busy={streaming || undefined}
       onToggle={(event) => setOpen(event.currentTarget.open)}
@@ -396,7 +396,7 @@ const GroupHead = memo(
           type="button"
           aria-expanded={expanded}
           aria-label={t("chat.tool.groupLabel")}
-          className={`card card-border flex-row items-center gap-2 overflow-hidden bg-base-100 px-3 py-2 text-xs ${expanded ? "rounded-b-none border-b-0" : ""} cursor-pointer`}
+          className={`mc-workbench-material card card-border flex-row items-center gap-2 overflow-hidden px-3 py-2 text-xs ${expanded ? "rounded-b-none border-b-0" : ""} cursor-pointer`}
           onClick={() => onToggle(stackKey, expanded)}
         >
           <span aria-hidden className={tone} />

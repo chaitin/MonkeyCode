@@ -723,6 +723,7 @@ describe("输入框自增高(影子副本,无 JS 量高)", () => {
     stubShell();
     render(<ChatView meta={META} />);
     const box = (await ready()) as HTMLTextAreaElement;
+    expect(box.closest(".mc-workbench-material-interactive")).toBeTruthy();
 
     const replica = box.previousElementSibling as HTMLElement;
     expect(replica).toBeTruthy();

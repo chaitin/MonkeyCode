@@ -130,7 +130,7 @@ export function PermCard({
           <span>{t("chat.perm.needConfirm")}</span>
           {item.tool && <span className="badge badge-warning badge-soft badge-xs font-mono">{item.tool}</span>}
         </div>
-        <div title={item.title} className="rounded-box bg-base-200 px-3 py-2 font-mono text-xs break-all select-text">
+        <div title={item.title} className="mc-workbench-material-muted rounded-box px-3 py-2 font-mono text-xs break-all select-text">
           {titleText}
         </div>
         {/* key=perm.id:同一渲染位被复用于另一张审批卡时,乐观态(local)

@@ -58,7 +58,8 @@ const MULTI: AskItem = {
 describe("AI 提问卡", () => {
   it("单选:radio 呈现,未作答提交不可点,选中后提交发 reply-question 并收成只读摘要", async () => {
     const calls = stubShell();
-    render(<AskCard item={SINGLE} sessionId="s1" />);
+    const { container } = render(<AskCard item={SINGLE} sessionId="s1" />);
+    expect(container.firstElementChild?.classList.contains("mc-workbench-material-interactive")).toBe(true);
     expect(screen.getByText("需要你的回答")).toBeTruthy();
     expect(screen.getByText("方案")).toBeTruthy();
     const submit = screen.getByRole("button", { name: "提交回答" });

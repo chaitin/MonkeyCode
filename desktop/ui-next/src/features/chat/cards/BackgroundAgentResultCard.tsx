@@ -58,7 +58,7 @@ export function BackgroundAgentResultCard({
   const target = item.description.trim() || summary || name;
 
   return (
-    <section className="card card-border overflow-hidden bg-base-100">
+    <section className="mc-workbench-material card card-border overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 text-xs">
         <span aria-hidden className={`shrink-0 ${statusDot(status.tone)}`} />
         <span className="sr-only">{statusText}</span>

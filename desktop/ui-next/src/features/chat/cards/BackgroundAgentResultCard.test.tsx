@@ -18,8 +18,9 @@ const COMPLETED: BackgroundAgentResultItem = {
 describe("BackgroundAgentResultCard", () => {
   it("卡片使用蓝色“查看结果”动作，点击后在弹窗渲染完整 Markdown", async () => {
     const user = userEvent.setup();
-    render(<BackgroundAgentResultCard item={COMPLETED} />);
+    const { container } = render(<BackgroundAgentResultCard item={COMPLETED} />);
 
+    expect(container.firstElementChild?.classList.contains("mc-workbench-material")).toBe(true);
     expect(screen.getByText("子代理结果")).toBeTruthy();
     expect(screen.getByText("已完成")).toBeTruthy();
     expect(screen.getByText("检查升级风险")).toBeTruthy();
