@@ -95,6 +95,9 @@ export function composerPresentationOf(state: ChatState): ComposerPresentation {
   } else {
     counts = { users: 0, openPermissions: 0, runningTools: 0, thinkUpdates: 0 };
     for (const item of state.items) countItem(counts, item, 1);
+    // 加载更早历史虽需重算用户/工具计数，但其中的旧 think 系统行不能
+    // 冒充当前 session_set_think 的实时确认。
+    if (previous && delta?.kind === "prepend") counts.thinkUpdates = previous.counts.thinkUpdates;
   }
   const nextPresentation: ComposerPresentation = {
     running: state.running,
