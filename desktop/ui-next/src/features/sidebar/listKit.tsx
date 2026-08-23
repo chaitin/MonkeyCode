@@ -13,7 +13,7 @@
 // - SectionFold 小节折叠:Archive 形小节头(10px 图标行首、无计数),
 //   开合走 prefs 契约键持久化,收起即卸载(部分 webview 里 details 收起
 //   后嵌套 ul 残留占位空间)。
-import { IconArchive, type TablerIcon } from "@tabler/icons-react";
+import { IconArchive, IconChevronDown, IconPlus, type TablerIcon } from "@tabler/icons-react";
 import { useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 
 import { openMenu, type MenuItem } from "@/lib/contextMenu";
@@ -154,6 +154,62 @@ export function StatusDot({ tone, label, pulse }: { tone: string; label: string;
       {pulse && <span aria-hidden className={`status ${tone} motion-safe:animate-ping`} />}
       <span aria-hidden className={`status ${tone}`} />
     </span>
+  );
+}
+
+/** 待办/临时会话固定组共用头：数量紧跟标题，新增按钮保留占位，
+ * 折叠箭头固定在最右。整行是折叠按钮，新增按钮绝对覆盖在箭头左侧，
+ * 避免两个嵌套 button，也避免 hover 时挤动标题。 */
+export function FixedGroupHeader({
+  icon: Icon,
+  name,
+  count = 0,
+  collapsed,
+  onToggle,
+  onAdd,
+  addLabel,
+}: {
+  icon: TablerIcon;
+  name: string;
+  count?: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  onAdd: () => void;
+  addLabel: string;
+}) {
+  return (
+    <div className="group/fixed relative flex w-full min-w-0 items-stretch p-0">
+      <button
+        type="button"
+        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-18 text-start"
+        aria-expanded={!collapsed}
+        onClick={onToggle}
+      >
+        <Icon size={12} stroke={1.75} className="shrink-0 text-base-content/40" aria-hidden />
+        <span className="min-w-0 truncate font-medium text-base-content/50">{name}</span>
+        {count > 0 && <span className="badge badge-ghost badge-xs shrink-0 tabular-nums">{count}</span>}
+        <span className="min-w-0 flex-1" />
+        <IconChevronDown
+          size={12}
+          stroke={1.75}
+          aria-hidden
+          className={`absolute end-2 shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed ? "-rotate-90" : ""}`}
+        />
+      </button>
+      <button
+        type="button"
+        aria-label={addLabel}
+        title={addLabel}
+        className="btn btn-ghost btn-square btn-xs invisible absolute end-8 top-0 h-8 min-h-8 w-9 group-hover/fixed:visible group-focus-within/fixed:visible"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onAdd();
+        }}
+      >
+        <IconPlus size={14} stroke={1.75} aria-hidden />
+      </button>
+    </div>
   );
 }
 

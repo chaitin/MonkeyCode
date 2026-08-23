@@ -678,13 +678,15 @@ describe("分屏视图(树形布局)", () => {
     stubShell();
     const list: SessionMeta[] = [
       meta({ id: "a1", title: "甲任务", workdir: "/p/alpha", updated_at: "2026-08-18T02:00:00Z" }),
-      meta({ id: "c9", title: "闲聊", kind: "chat", workdir: "", updated_at: "2026-08-18T01:00:00Z" }),
+      meta({ id: "c9", title: "闲聊", kind: "chat", workdir: "", waiting_ask: true, updated_at: "2026-08-18T01:00:00Z" }),
     ];
     render(<Harness sessions={list} />);
     const strip = screen.getByRole("complementary", { name: "选择任务" });
     // 默认序:临时会话在项目组之前(待办组是列表最前的固定段,本 Harness
     // 未接待办 wiring,组间序不受影响)
     const chatsHead = within(strip).getByText("临时会话");
+    // 等待处理只在具体会话行外显，组头不展示数字。
+    expect(chatsHead.closest("button")?.querySelector(".badge")).toBeNull();
     expect(chatsHead.compareDocumentPosition(within(strip).getByText("alpha")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // 拖 alpha 落到临时会话之前:快照写盘且渲染序翻转
     const dt = fakeDT();
@@ -702,8 +704,10 @@ describe("分屏视图(树形布局)", () => {
     stubShell();
     render(<Harness />);
     const list = screen.getByRole("complementary", { name: "选择任务" });
-    // 组头常驻(即使还没有会话),hover「+」是新建会话的常驻入口
-    expect(within(list).getByText("临时会话")).toBeTruthy();
+    // 固定组头常驻；没有任何项目的新安装也保留「项目」分区锚点。
+    const chatsHead = within(list).getByText("临时会话");
+    const projectsCap = within(list).getByText("项目");
+    expect(chatsHead.compareDocumentPosition(projectsCap) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await userEvent.click(within(list).getByRole("button", { name: "新建会话" }));
     const pane = screen.getAllByRole("region")[0]!;
     expect(within(pane).getByRole("tab", { name: /本地任务/ }).getAttribute("aria-selected")).toBe("true");

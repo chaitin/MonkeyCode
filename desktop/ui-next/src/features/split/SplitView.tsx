@@ -41,7 +41,7 @@ import { CloudTaskList, type CloudTasksFeed } from "@/features/cloud/CloudTaskLi
 import { CloudTaskView } from "@/features/cloud/CloudTaskView";
 import { NewTaskModal } from "@/features/newtask/NewTaskModal";
 import { rowStatusLabel, rowTrailing } from "@/features/sidebar/sessionStatus";
-import { GroupLabel, levelPad, ListRow, SectionFold, StatusDot } from "@/features/sidebar/listKit";
+import { FixedGroupHeader, GroupLabel, levelPad, ListRow, SectionFold, StatusDot } from "@/features/sidebar/listKit";
 import { TODO_GROUP_KEY, TodoSection, type TodoWiring } from "@/features/todo/TodoSection";
 
 /** 「临时会话」组的折叠哨兵键(与 TODO_GROUP_KEY 同构,住 mc.collapsedGroups;
@@ -1263,39 +1263,14 @@ function WorkbenchList({
                         {dragOverGroup === gk && draggedGroup !== gk && (
                           <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary" />
                         )}
-                        <button
-                          type="button"
-                          className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-1 text-start"
-                          aria-expanded={!collapsed.has(gk)}
-                          onClick={() => setGroupOpen(gk, collapsed.has(gk))}
-                        >
-                          <GroupLabel icon={IconMessages} name={t("split.chatsGroup")} />
-                          {chats.filter((m) => m.waiting_ask).length > 0 && (
-                            <span className="badge badge-warning badge-xs">
-                              {chats.filter((m) => m.waiting_ask).length}
-                            </span>
-                          )}
-                          <IconChevronDown
-                            size={12}
-                            stroke={1.75}
-                            aria-hidden
-                            className={`shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(gk) ? "-rotate-90" : ""}`}
-                          />
-                        </button>
-                        {/* 快捷钮常驻占位、hover 只切可见性(项目组头同款) */}
-                        <button
-                          type="button"
-                          aria-label={t("split.newChat")}
-                          title={t("split.newChat")}
-                          className="btn btn-ghost btn-xs invisible h-8 min-h-8 w-9 shrink-0 group-hover/ghead:visible group-focus-within/ghead:visible"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            onNewChat();
-                          }}
-                        >
-                          <IconPlus size={14} stroke={1.75} aria-hidden />
-                        </button>
+                        <FixedGroupHeader
+                          icon={IconMessages}
+                          name={t("split.chatsGroup")}
+                          collapsed={collapsed.has(gk)}
+                          onToggle={() => setGroupOpen(gk, collapsed.has(gk))}
+                          onAdd={onNewChat}
+                          addLabel={t("split.newChat")}
+                        />
                       </div>
                     </li>
                     {!collapsed.has(gk) && (
@@ -1448,6 +1423,15 @@ function WorkbenchList({
                 </Fragment>
               );
             })}
+            {/* 新安装还没有任何项目时也保留分区锚点，避免临时会话下面
+                直接落一条空态文案，看起来像整块内容缺失。 */}
+            {projGroups.length === 0 && (
+              <li aria-hidden className="pointer-events-none">
+                <span className="pt-2 pb-0.5 text-xs font-medium text-base-content/45">
+                  {t("split.projectsCaption")}
+                </span>
+              </li>
+            )}
             {tasks.length === 0 && archivedTasks.length === 0 && (
               <li className="pointer-events-none">
                 <span className="text-xs text-base-content/50">{t("split.pickEmpty")}</span>

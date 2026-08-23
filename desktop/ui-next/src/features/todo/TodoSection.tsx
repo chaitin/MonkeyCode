@@ -7,12 +7,12 @@
 // 组内:hover「+」行内添加(Enter 连续记,粘贴截图随 Enter 挂上);未完成
 // 段 HTML5 拖拽排序(项目组同款,2026-08-13 用户要求);「已完成」小节折叠;
 // 行 = 纯文字安静行 + 行尾图片角标(被动指示)+ 要紧态状态点。
-import { IconChecks, IconClipboardList, IconPhoto, IconPlus, IconX } from "@tabler/icons-react";
+import { IconChecks, IconClipboardList, IconPhoto, IconX } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { Lightbox, UploadImg } from "@/components/media/UploadImg";
-import { GroupLabel, levelPad, NEST_NO_GUIDE, StatusDot } from "@/features/sidebar/listKit";
+import { FixedGroupHeader, levelPad, NEST_NO_GUIDE, StatusDot } from "@/features/sidebar/listKit";
 import { rowStatusLabel, rowTrailing } from "@/features/sidebar/sessionStatus";
 import { openMenu, type MenuItem } from "@/lib/contextMenu";
 import { useI18n } from "@/lib/i18n";
@@ -358,41 +358,21 @@ export function TodoSection({
   );
   return (
     <li>
-      <details
-        open={!collapsed}
-        onToggle={(e) => {
-          if (e.target !== e.currentTarget) return; // toggle 合成冒泡守卫
-          onToggleCollapsed(TODO_GROUP_KEY, e.currentTarget.open);
+      <FixedGroupHeader
+        icon={IconClipboardList}
+        name={t("rail.todo")}
+        count={pending.length}
+        collapsed={collapsed}
+        onToggle={() => onToggleCollapsed(TODO_GROUP_KEY, collapsed)}
+        addLabel={t("todo.add")}
+        onAdd={() => {
+          // 组收着时先展开再开输入，不然输入行加在看不见的地方。
+          if (collapsed) onToggleCollapsed(TODO_GROUP_KEY, true);
+          setAdding(true);
         }}
-      >
-        <summary className="group relative flex items-center after:hidden" title={t("rail.todo")}>
-          <GroupLabel icon={IconClipboardList} name={t("rail.todo")} />
-          {/* 快捷添加:常驻占位 hover 显形(项目组头「+」同款,§6.2 铁律);
-              组收着时先展开再开输入,不然输入行加在看不见的地方 */}
-          <button
-            type="button"
-            aria-label={t("todo.add")}
-            title={t("todo.add")}
-            className="btn btn-ghost btn-square btn-xs invisible group-hover:visible group-focus-within:visible"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (collapsed) onToggleCollapsed(TODO_GROUP_KEY, true);
-              setAdding(true);
-            }}
-          >
-            <IconPlus size={14} stroke={1.75} aria-hidden />
-          </button>
-          {/* 未完成计数殿后(2026-08-20 用户「数字和+调换位置」;非"N 项目
-              N 任务"那类废统计) */}
-          {todo.todos.filter((i) => i.status !== "done").length > 0 && (
-            <span className="badge badge-ghost badge-xs">
-              {todo.todos.filter((i) => i.status !== "done").length}
-            </span>
-          )}
-        </summary>
-        {/* 收起即卸载(details 残留占位的 webview 坑,§6.2) */}
-        {!collapsed && (
+      />
+      {/* 收起即卸载，避免隐藏列表在部分 webview 中残留占位。 */}
+      {!collapsed && (
           <ul className={`ms-0 min-w-0 ps-0 pb-1.5 ${NEST_NO_GUIDE}`}>
             {adding && (
               <li className="flex-col items-stretch">
@@ -494,7 +474,6 @@ export function TodoSection({
             )}
           </ul>
         )}
-      </details>
       {/* portal 到 body:.menu 的行样式选择器命中 li 的**直接子节点**
           (padding/悬停底),modal 留在组里整层覆盖会被当菜单行染色;
           fixed 定位不依赖 DOM 位置,--chrome-h 顶偏移取根级变量不受影响 */}
