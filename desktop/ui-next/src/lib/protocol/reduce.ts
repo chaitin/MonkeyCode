@@ -780,6 +780,8 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
  * 会误杀折叠批里的合法帧。所以:
  * - 跨批次:seq 落在**批首水位**(state.lastSeq)之下的帧丢弃——云端
  *   重连的回放重叠帧属于这类;
+ * - task-ended 例外按轮次水位去重:折叠控制帧可能先把普通水位顶高，
+ *   终止帧跨批晚到时仍须关闭当前轮次，但不能早于当前 task-started;
  * - 批内:顺序可信,只丢**完全相同 seq** 的重复(同批里既回放又直播);
  * - 缺 seq/seq=0 的帧(云端旧帧)不参与去重,照常归约。
  * 水位单调抬升,永不回落;重连要重放全量时应从 createChatState() 重来。 */
@@ -800,7 +802,13 @@ export function reduceBatch(s: ChatState, batch: readonly Frame[]): ChatState {
   for (const f of batch) {
     const seq = typeof f.seq === "number" && f.seq > 0 ? f.seq : null;
     if (seq !== null) {
-      if (seq <= s.lastSeq || seenInBatch.has(seq)) continue;
+      // task-ended 的 seq 可能低于先到达的折叠控制帧；先用开轮水位排除
+      // 旧轮终态（无论它是否落在批首水位之下），再用独立终态水位允许
+      // 当前轮晚到的终态绕过普通去重。它也可与同批业务帧共享 seq。
+      const isTaskEnd = f.type === "task-ended";
+      if (isTaskEnd && seq <= next.lastTurnStartSeq) continue;
+      const freshTaskEnd = isTaskEnd && seq > next.lastTerminalSeq;
+      if ((seq <= s.lastSeq || seenInBatch.has(seq)) && !freshTaskEnd) continue;
       seenInBatch.add(seq);
       if (seq > watermark) watermark = seq;
     }

@@ -1011,6 +1011,73 @@ describe("seq 去重(云端重连会重放)", () => {
     expect(s2.lastSeq).toBe(4);
   });
 
+  it("跨批晚到的低 seq task-ended 按终态水位归约且重复回放仍丢弃", () => {
+    const running = reduceBatch(createChatState(), [
+      withSeq(frame("task-started"), 2),
+      withSeq(acp({ sessionUpdate: "usage_update", used: 9, size: 100 }), 40),
+    ]);
+    expect(running).toMatchObject({ running: true, lastSeq: 40, lastTerminalSeq: 0 });
+
+    const ended = reduceBatch(running, [withSeq(frame("task-ended"), 22)]);
+    expect(ended).toMatchObject({
+      running: false,
+      turnEnded: true,
+      lastSeq: 40,
+      lastTerminalSeq: 22,
+    });
+    expect(ended.items.filter((item) => item.kind === "sys" && item.tag === "turn-end")).toHaveLength(1);
+    expect(reduceBatch(ended, [withSeq(frame("task-ended"), 22)])).toBe(ended);
+  });
+
+  it("早于当前 task-started 的旧终态不得关闭新轮", () => {
+    const previous = reduceBatch(createChatState(), [
+      withSeq(frame("task-started"), 10),
+      withSeq(frame("task-ended"), 20),
+    ]);
+    const current = reduceBatch(previous, [
+      withSeq(frame("task-started"), 30),
+      withSeq(acp({ sessionUpdate: "usage_update", used: 9, size: 100 }), 40),
+    ]);
+    const staleEnd = reduceBatch(current, [withSeq(frame("task-ended"), 25)]);
+    expect(staleEnd).toBe(current);
+    expect(staleEnd).toMatchObject({
+      running: true,
+      lastSeq: 40,
+      lastTurnStartSeq: 30,
+      lastTerminalSeq: 20,
+    });
+    expect(staleEnd.items.filter((item) => item.kind === "sys" && item.tag === "turn-end")).toHaveLength(1);
+  });
+
+  it("与当前开轮同批的旧 task-ended 也不得关闭新轮", () => {
+    const previous = reduceBatch(createChatState(), [
+      withSeq(frame("task-started"), 10),
+      withSeq(frame("task-ended"), 20),
+    ]);
+    const current = reduceBatch(previous, [
+      withSeq(frame("task-started"), 30),
+      withSeq(acp({ sessionUpdate: "usage_update", used: 9, size: 100 }), 40),
+      withSeq(frame("task-ended"), 25),
+    ]);
+    expect(current).toMatchObject({
+      running: true,
+      lastSeq: 40,
+      lastTurnStartSeq: 30,
+      lastTerminalSeq: 20,
+    });
+    expect(current.items.filter((item) => item.kind === "sys" && item.tag === "turn-end")).toHaveLength(1);
+  });
+
+  it("与业务帧共享 seq 的 task-ended 仍关闭轮次", () => {
+    const ended = reduceBatch(createChatState(), [
+      withSeq(frame("task-started"), 1),
+      withSeq(chunk("完成"), 2),
+      withSeq(frame("task-ended"), 2),
+    ]);
+    expect(ended).toMatchObject({ running: false, turnEnded: true, lastSeq: 2, lastTerminalSeq: 2 });
+    expect(ended.items.at(-1)).toMatchObject({ kind: "sys", tag: "turn-end" });
+  });
+
   it("整批都在水位之下时状态原样返回(引用不变,不触发重渲染)", () => {
     const s1 = reduceBatch(createChatState(), [withSeq(chunk("你好"), 10)]);
     expect(reduceBatch(s1, [withSeq(chunk("你好"), 10), withSeq(chunk("旧帧"), 4)])).toBe(s1);

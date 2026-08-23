@@ -212,18 +212,34 @@ describe("connectCloudStream", () => {
     expect(h.frames.flat().filter((f) => f.seq === 7)).toHaveLength(2);
   });
 
-  it("task-ended 判定先于去重:低 seq 的 task-ended 也置 ended,断开后不重连", async () => {
-    const h = harness();
+  it("低 seq 的 task-ended 仍同步冲刷待处理帧,再通知结束且不重连", async () => {
+    const h = harness("attach", undefined, { deferFlush: true });
     h.opens[0]!.accept();
     await flush();
-    h.deliver(0, { type: "task-running", seq: 40 }); // 控制帧顶高水位
-    h.deliver(0, { type: "task-ended", seq: 22 }); // 低于水位:去重丢弃,但 ended 必须置真
+    h.deliver(0, { type: "task-started", seq: 10 });
+    h.deliver(0, { type: "task-running", seq: 40 }); // 控制帧顶高水位,仍在下一拍队列中
+    expect(h.frames).toEqual([]);
+    h.deliver(0, { type: "task-ended", seq: 22 }); // 晚于本轮开始，不能按普通重叠帧丢弃
+    expect(h.frames.flat().map((f) => f.type)).toEqual(["task-started", "task-running", "task-ended"]);
     expect(h.counters.ended).toBe(1);
-    expect(h.frames.flat().some((f) => f.type === "task-ended")).toBe(false); // 帧本身被去重
+    h.runFlush(); // 原先已安排的批处理回调应为空操作
+    expect(h.frames).toHaveLength(1);
     h.opens[0]!.onClose(null);
     expect(h.kinds().at(-1)).toBe("roundEnded");
     expect(h.clock.pendingDelays()).toEqual([]); // 不重连
     expect(h.counters.idle).toBe(0);
+  });
+
+  it("早于当前 task-started 的旧 task-ended 不得结束新轮", async () => {
+    const h = harness();
+    h.opens[0]!.accept();
+    await flush();
+    h.deliver(0, { type: "task-started", seq: 30 });
+    h.deliver(0, { type: "task-running", seq: 40 });
+    h.deliver(0, { type: "task-ended", seq: 25 });
+    expect(h.frames.flat().map((f) => f.type)).toEqual(["task-started", "task-running"]);
+    expect(h.counters.ended).toBe(0);
+    h.conn.close();
   });
 
   it("服务端 Close 1000 = 云端收束:转就绪不重连", async () => {

@@ -386,10 +386,6 @@ export function createCloudTaskRuntime(
       if (!current() || stream !== slot) return;
       emitEvent({ kind: "reconnect" });
     },
-    onEnded: () => {
-      // connectCloudStream 在 flush task-ended 批之前调用 onEnded。推进只能在
-      // handleFrames 中按“业务回显 -> task-ended”的顺序发生。
-    },
     onIdle: () => {
       if (!current() || stream !== slot) return;
       stream = null;
