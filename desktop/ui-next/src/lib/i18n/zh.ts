@@ -36,7 +36,7 @@ export const zh = {
   "split.pane": "第 {n} 格",
   "split.sideResize": "拖动调整任务列宽度",
   "split.resize": "调整格子比例",
-  "split.resizeHint": "拖动调整比例,双击平分",
+  "split.resizeHint": "拖动调整比例,双击均分此区域格子",
   "split.website": "官网",
   "split.pickTitle": "选择任务",
   "split.listShow": "展开任务列",

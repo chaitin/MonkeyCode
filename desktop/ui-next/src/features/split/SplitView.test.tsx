@@ -418,6 +418,60 @@ describe("分屏视图(树形布局)", () => {
     expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").a.ratio).toBe(0.5);
   });
 
+  it("三格双击贯通线:按辖下格数分成 2:1,并递归均分左侧两格", () => {
+    stubShell();
+    localStorage.setItem(
+      "mc.splitTree",
+      JSON.stringify({
+        dir: "col",
+        ratio: 0.5,
+        a: { dir: "row", ratio: 0.7, a: { leaf: 0 }, b: { leaf: 2 } },
+        b: { leaf: 1 },
+      }),
+    );
+    const { container } = render(<Harness />);
+    fireEvent.doubleClick(container.querySelector('[data-split-handle="root"]')!);
+    const saved = JSON.parse(localStorage.getItem("mc.splitTree") ?? "null");
+    expect(saved.ratio).toBeCloseTo(2 / 3);
+    expect(saved.a.ratio).toBe(0.5);
+  });
+
+  it("六格 1:5 均分后键盘沿边界方向不反跳", () => {
+    stubShell();
+    localStorage.setItem(
+      "mc.splitTree",
+      JSON.stringify({
+        dir: "col",
+        ratio: 0.5,
+        a: { leaf: 0 },
+        b: {
+          dir: "col",
+          ratio: 0.5,
+          a: { leaf: 1 },
+          b: {
+            dir: "col",
+            ratio: 0.5,
+            a: { leaf: 2 },
+            b: {
+              dir: "col",
+              ratio: 0.5,
+              a: { leaf: 3 },
+              b: { dir: "col", ratio: 0.5, a: { leaf: 4 }, b: { leaf: 5 } },
+            },
+          },
+        },
+      }),
+    );
+    const { container } = render(<Harness />);
+    const root = container.querySelector<HTMLElement>('[data-split-handle="root"]')!;
+    fireEvent.doubleClick(root);
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 6);
+    fireEvent.keyDown(root, { key: "ArrowLeft" });
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 6);
+    fireEvent.keyDown(root, { key: "ArrowRight" });
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 6 + 0.05);
+  });
+
   it("按住格头标题拖到另一格 = 交换位置(内容跟格走,落点有高亮)", () => {
     stubShell();
     localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));

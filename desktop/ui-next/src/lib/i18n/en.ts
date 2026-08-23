@@ -28,7 +28,7 @@ export const en: Record<MessageKey, string> = {
   "split.pane": "Pane {n}",
   "split.sideResize": "Drag to resize the task list",
   "split.resize": "Resize panes",
-  "split.resizeHint": "Drag to resize, double-click to reset",
+  "split.resizeHint": "Drag to resize, double-click to evenly distribute this region",
   "split.website": "Website",
   "split.pickTitle": "Pick a task",
   "split.listShow": "Show task list",

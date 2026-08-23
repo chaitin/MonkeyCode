@@ -63,7 +63,7 @@ import { isMacShell, openExternal } from "@/lib/ipc/host";
 import { readFold, SPLIT_MAX_PANES, writeFold } from "@/lib/util/prefs";
 import { renameIsNoop } from "@/lib/util/rename";
 import { cloudSlotId, cloudTaskIdOf, firstEmptyIn, isCloudSlotId, LOAD_MIME, SWAP_MIME } from "./slots";
-import { leaves, paneCount, type SplitDir, type SplitNode } from "./tree";
+import { leaves, paneCount, SPLIT_MAX_RATIO, SPLIT_MIN_RATIO, type SplitDir, type SplitNode } from "./tree";
 import type { SplitStateApi } from "./useSplitState";
 
 /** 快捷模板(「布局」下拉):套形状不套比例;当前同形的项 menu-active。 */
@@ -358,8 +358,8 @@ export function SplitView({
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", finish);
   };
-  // 0.2–0.8 夹取:太窄的格没有可读性,把手也不能被拖出容器
-  const clamp = (v: number) => Math.min(0.8, Math.max(0.2, v));
+  // 与树存档/双击均分共用边界；六格 1:5 时需要允许到 1/6。
+  const clamp = (v: number) => Math.min(SPLIT_MAX_RATIO, Math.max(SPLIT_MIN_RATIO, v));
   const startHandleDrag = (path: string, dir: SplitDir) => (e: ReactMouseEvent) => {
     e.preventDefault();
     // 分隔线的坐标系就是它所属切分容器(把手的父节点),树再深也各算各的
@@ -613,7 +613,7 @@ export function SplitView({
   };
 
   /** 递归渲染布局树:切分节点 = 两个按比例伸展的子容器 + 骑在 1px 分隔线
-   *  上的把手(8px 透明热区,双击回平分)。平铺分栏(2026-08-19 用户
+   *  上的把手(8px 透明热区,双击按辖下叶数递归均分面积)。平铺分栏(2026-08-19 用户
    *  mockup 终案):浮卡的 12px 缝在多格时每格白吃 ~30px 宽,回 1px 细线。 */
   const renderNode = (node: SplitNode, path: string) => {
     if ("leaf" in node) return renderPane(node.leaf);
@@ -631,8 +631,8 @@ export function SplitView({
           role="separator"
           aria-orientation={vertical ? "vertical" : "horizontal"}
           aria-label={t("split.resize")}
-          aria-valuemin={20}
-          aria-valuemax={80}
+          aria-valuemin={Math.round(SPLIT_MIN_RATIO * 100)}
+          aria-valuemax={Math.round(SPLIT_MAX_RATIO * 100)}
           aria-valuenow={Math.round(node.ratio * 100)}
           tabIndex={0}
           title={t("split.resizeHint")}
@@ -657,7 +657,7 @@ export function SplitView({
             e.stopPropagation();
             split.setNodeRatio(path, clamp(node.ratio + delta));
           }}
-          onDoubleClick={() => split.setNodeRatio(path, 0.5)}
+          onDoubleClick={() => split.equalizeNode(path)}
         >
           {/* 画布本体在背景启用时必须透明，否则 pane 的半透明表面会与
               画布叠成两层；真正的 1px 分隔面只画在把手中心。 */}

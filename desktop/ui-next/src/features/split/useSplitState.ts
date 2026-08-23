@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readSplitSlots, readSplitTreeRaw, writeSplitSlots, writeSplitTree } from "@/lib/util/prefs";
 import { assign, eject, ejectCloud, firstEmptyIn, isCloudSlotId, prune, seed, type Slots } from "./slots";
 import {
+  equalizeAt,
   leaves,
   PRESETS,
   removeLeaf,
@@ -31,6 +32,8 @@ export interface SplitStateApi {
   /** 套模板(树整棵替换;树上不在场的槽位留档,换回即恢复)。 */
   /** 拖分隔线:按节点路径改比例(路径见 tree.setRatio)。 */
   setNodeRatio: (path: string, ratio: number) => void;
+  /** 双击分隔线:让该节点辖下的所有格子尽量等面积,路径外不动。 */
+  equalizeNode: (path: string) => void;
   /** 拆分某格(向右/向下):新格取最小空槽号并夺焦;到上限静默不动
    *  (按钮侧按 canSplit 置灰,这里只兜底)。 */
   splitPane: (slot: number, dir: SplitDir) => number | null;
@@ -76,6 +79,10 @@ export function useSplitState(): SplitStateApi {
 
   const setNodeRatio = useCallback((path: string, ratio: number) => {
     setTree((prev) => setRatio(prev, path, ratio));
+  }, []);
+
+  const equalizeNode = useCallback((path: string) => {
+    setTree((prev) => equalizeAt(prev, path));
   }, []);
 
   const splitPane = useCallback((slot: number, dir: SplitDir): number | null => {
@@ -163,6 +170,7 @@ export function useSplitState(): SplitStateApi {
     focused,
     visibleIndices,
     setNodeRatio,
+    equalizeNode,
     splitPane,
     closePane,
     swapPanes,
