@@ -105,22 +105,61 @@ describe("壳骨架(工作台即主界面,2026-08-18 换代)", () => {
 });
 
 describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () => {
-  it("Ctrl+, 打开设置并保持幂等", () => {
+  it("Ctrl+, 以模态打开设置并保持幂等，工作台不卸载", () => {
     render(<App />);
+    const workbench = screen.getByRole("main");
     fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
-    expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy();
+    const dialog = screen.getByRole("dialog", { name: "设置" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(document.body.contains(workbench)).toBe(true);
+    const background = workbench.closest("[inert]");
+    expect(background?.getAttribute("aria-hidden")).toBe("true");
     fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
-    expect(screen.getAllByRole("heading", { name: "设置" })).toHaveLength(1);
+    expect(screen.getAllByRole("dialog", { name: "设置" })).toHaveLength(1);
   });
 
-  it("设置齿轮沉在任务列底部(2026-08-18 定案),打开设置页、关闭回到工作台", async () => {
+  it("设置齿轮沉在任务列底部，关闭模态后恢复同一工作台", async () => {
     render(<App />);
     const aside = screen.getByRole("complementary", { name: "选择任务" });
-    await userEvent.click(within(aside).getByRole("button", { name: "设置" }));
-    // 设置页标志改认页头标题:初始分区已是「账号」(登录主路径),不再是通用
-    expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy();
+    const settingsButton = within(aside).getByRole("button", { name: "设置" });
+    await userEvent.click(settingsButton);
+    expect(screen.getByRole("dialog", { name: "设置" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "返回" }));
     await userEvent.click(screen.getByRole("button", { name: "返回" }));
-    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "设置" })).toBeNull();
+    expect(document.body.contains(aside)).toBe(true);
+    expect(aside.closest("[inert]")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(settingsButton));
+  });
+
+  it("无有效返回焦点时关闭设置，回退聚焦当前 Composer", async () => {
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+    render(<App />);
+    const composer = await screen.findByRole("textbox", { name: "消息输入" });
+    composer.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
+    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+
+    await waitFor(() => expect(document.activeElement).toBe(composer));
+  });
+
+  it("返回目标仍挂载但已不可聚焦时，仍回退到当前 Composer", async () => {
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+    render(<App />);
+    const composer = await screen.findByRole("textbox", { name: "消息输入" });
+    const settingsButton = within(screen.getByRole("complementary", { name: "选择任务" })).getByRole("button", {
+      name: "设置",
+    }) as HTMLButtonElement;
+
+    await userEvent.click(settingsButton);
+    settingsButton.disabled = true;
+    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+
+    await waitFor(() => expect(document.activeElement).toBe(composer));
   });
 });
 
@@ -837,10 +876,10 @@ describe("格细头改名(旧单会话头能力回归 2026-08-19)", () => {
     const list = screen.getByRole("complementary", { name: "选择任务" });
     await userEvent.click(await within(list).findByText("老名字"));
     const pane = screen.getByRole("region", { name: "第 1 格" });
-    await userEvent.dblClick(within(pane).getByTitle(/老名字/));
+    fireEvent.doubleClick(within(pane).getByTitle(/老名字/));
     const input = within(pane).getByRole("textbox", { name: "重命名" });
-    await userEvent.clear(input);
-    await userEvent.type(input, "新名字{Enter}");
+    fireEvent.change(input, { target: { value: "新名字" } });
+    fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(shell.count("session_patch")).toBe(1));
   });
 });

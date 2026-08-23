@@ -17,7 +17,7 @@ import { useCloudProjects, useCloudTasks } from "@/features/cloud/CloudTaskList"
 import { CloudQueueCoordinatorProvider } from "@/features/cloud/CloudQueueCoordinator";
 import { DownloadsDock } from "@/features/downloads/DownloadsDock";
 import { EngineBanner } from "@/features/engine/EngineBanner";
-import { SettingsView } from "@/features/settings/SettingsView";
+import { SettingsView, type SettingsViewHandle } from "@/features/settings/SettingsView";
 import { SplitView } from "@/features/split/SplitView";
 import { cloudSlotId, isCloudSlotId } from "@/features/split/slots";
 import { useSplitState } from "@/features/split/useSplitState";
@@ -138,6 +138,9 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   } | null>(null);
   const createSeq = useRef(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpenRef = useRef(false);
+  const settingsRef = useRef<SettingsViewHandle>(null);
+  const settingsReturnFocusRef = useRef<HTMLElement | null>(null);
   const [cloudReload, setCloudReload] = useState(0);
   // 工作台状态机(槽位/布局树/焦点;toast 路由与通知抑制要在渲染分支之外读)
   const split = useSplitState();
@@ -153,6 +156,36 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   const [composerFocusRequest, setComposerFocusRequest] = useState(0);
   const focusSeqRef = useRef(0);
   const requestComposerFocus = () => setComposerFocusRequest(++focusSeqRef.current);
+  const openSettings = useCallback(() => {
+    if (settingsOpenRef.current) return;
+    settingsOpenRef.current = true;
+    const active = document.activeElement;
+    settingsReturnFocusRef.current =
+      active instanceof HTMLElement && active !== document.body && active !== document.documentElement ? active : null;
+    setSettingsOpen(true);
+  }, []);
+  const closeSettings = useCallback((restoreFocus = true) => {
+    settingsOpenRef.current = false;
+    setSettingsOpen(false);
+    if (!restoreFocus) return;
+    window.requestAnimationFrame(() => {
+      const target = settingsReturnFocusRef.current;
+      if (target?.isConnected) target.focus();
+      if (!target || document.activeElement !== target) requestComposerFocus();
+    });
+  }, []);
+  const afterSettingsClosed = (action: () => void) => {
+    if (!settingsOpenRef.current) {
+      action();
+      return;
+    }
+    const settings = settingsRef.current;
+    if (settings) settings.requestClose(action);
+    else {
+      closeSettings(false);
+      action();
+    }
+  };
   const handleComposerFocus = useCallback(
     (request: number) => setComposerFocusRequest((current) => (current === request ? 0 : current)),
     [],
@@ -170,17 +203,17 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
       if (appShortcutOfEvent(e) !== "open-settings") return;
       e.preventDefault();
       e.stopPropagation();
-      setSettingsOpen(true);
+      openSettings();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [openSettings]);
 
   // 事件回调挂一次,经 ref 读最新快照(闭包不攥旧状态)
   const sessionsRef = useRef<SessionMeta[]>(sessions);
   sessionsRef.current = sessions;
-  // 工作台快照(active = 工作台真在渲染——设置/新建盖着时格子已卸载,
-  // 可见集不作数;visibleIds = 可见格里的槽位条目):每次渲染就地刷新
+  // 工作台快照(active = 工作台未被设置模态遮挡;visibleIds = 可见格里的
+  // 槽位条目):设置在场时子树仍挂载，但不视为用户正在查看。
   const splitRef = useRef({ active: true, visibleIds: new Set<string>(), focusedId: null as string | null });
   const shellSeq = useRef(0);
   const shellTimers = useRef<Set<number>>(new Set());
@@ -218,15 +251,16 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   /** 待办「启动任务」:创建意图送进工作台(新建即新格)预填正文,todoId
    *  供创建成功后回链。 */
   const dispatchTodo = (item: TodoItem) => {
-    setSettingsOpen(false);
-    const openView = (files?: File[]) =>
-      setCreateRequest({ seq: ++createSeq.current, kind: "local", text: item.content, todoId: item.id, files });
-    const names = item.images ?? [];
-    if (!names.length) return openView();
-    void todoUploadsDir().then(
-      (dir) => openView(names.map((n) => pathBackedFile(`${dir}/${n}`, n, "image/*"))),
-      () => openView(),
-    );
+    afterSettingsClosed(() => {
+      const openView = (files?: File[]) =>
+        setCreateRequest({ seq: ++createSeq.current, kind: "local", text: item.content, todoId: item.id, files });
+      const names = item.images ?? [];
+      if (!names.length) return openView();
+      void todoUploadsDir().then(
+        (dir) => openView(names.map((n) => pathBackedFile(`${dir}/${n}`, n, "image/*"))),
+        () => openView(),
+      );
+    });
   };
 
   const clearNoticeTimer = (id: string) => {
@@ -272,12 +306,13 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   };
 
   /** 装载路由(任务列点行/toast 点击/壳意图共用):place 语义(在场定位/
-   *  空格装载)+ 已读 + composer 聚焦;覆盖视图盖着时顺带掀开回到格子。 */
+   *  空格装载)+ 已读 + composer 聚焦。设置模态在场时先走其脏状态守卫。 */
   const loadEntry = (entry: string) => {
-    split.place(entry);
-    dismissSession(entry);
-    setSettingsOpen(false);
-    requestComposerFocus();
+    afterSettingsClosed(() => {
+      split.place(entry);
+      dismissSession(entry);
+      requestComposerFocus();
+    });
   };
 
   /** 按 id 打开本地会话(提醒点击/壳意图):D8——不在本地快照的 id 先重拉
@@ -307,7 +342,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
     void takeUiIntent().then((intent) => {
       if (!alive) return;
       if (intent === "open-settings") {
-        setSettingsOpen(true);
+        openSettings();
         return;
       }
       const id = sessionIdFromUiIntent(intent);
@@ -316,7 +351,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
     // H9:事件送达立即消费壳侧意图副本——不消费的话整页刷新会重放同一意图
     const offOpenSettings = listen<void>("open-settings", () => {
       void takeUiIntent();
-      setSettingsOpen(true);
+      openSettings();
     });
     const offOpenSession = listen<string>("open-session", (id) => {
       void takeUiIntent();
@@ -339,7 +374,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
     if (inDesktopShell()) {
       void afterEngineReady(modelsList)
         .then((models) => {
-          if (alive && models.length === 0) setSettingsOpen(true);
+          if (alive && models.length === 0) openSettings();
         })
         .catch(() => {});
     }
@@ -456,7 +491,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
     setAttentionIds((previous) => (previous.has(entry) ? previous : new Set(previous).add(entry)));
   }, []);
 
-  // 原生窗口标题跟随焦点格(工作台即主壳:设置/新建覆盖时跟覆盖视图)
+  // 设置是工作台上的模态，原生窗口标题继续跟随焦点格。
   useEffect(() => {
     const focusedEntry = split.slots[split.focused];
     const focusedTitle = focusedEntry
@@ -467,9 +502,8 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
             return m ? (m.title_custom ? m.title : m.summary || m.title) : t("split.title");
           })()
       : t("split.title");
-    const label = settingsOpen ? t("settings.title") : focusedTitle;
-    setWindowTitle(`${label} — ${t("app.name")}`);
-  }, [split.slots, split.focused, sessions, cloudFeed.tasks, settingsOpen, t, locale]);
+    setWindowTitle(`${focusedTitle} — ${t("app.name")}`);
+  }, [split.slots, split.focused, sessions, cloudFeed.tasks, t, locale]);
 
   /** 删除会话(任务列右键/格内共用):成功才清 composer 留档、剪槽位、
    *  重拉列表;失败外显原因并就此打住。 */
@@ -531,14 +565,14 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
       )}
       <ResizeEdges />
       <EngineBanner />
-      <div className="flex min-h-0 min-w-0 flex-1">
-        {settingsOpen ? (
-          <SettingsView
-            onClose={() => setSettingsOpen(false)}
-            hasRunningTask={sessions.some((s) => s.status === "running")}
-          />
-        ) : (
+      <div className="relative flex min-h-0 min-w-0 flex-1">
+        <div
+          className="flex min-h-0 min-w-0 flex-1"
+          inert={settingsOpen ? true : undefined}
+          aria-hidden={settingsOpen ? "true" : undefined}
+        >
           <SplitView
+            active={!settingsOpen}
             sessions={sessions}
             split={split}
             epoch={epoch}
@@ -560,7 +594,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
             }}
             createRequest={createRequest}
             onCreateRequestHandled={() => setCreateRequest(null)}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={openSettings}
             recentDirs={recentDirs}
             cloud={{
               feed: cloudFeed,
@@ -603,6 +637,13 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
                 onOpenCloud: (id) => id && loadEntry(cloudSlotId(id)),
               },
             }}
+          />
+        </div>
+        {settingsOpen && (
+          <SettingsView
+            ref={settingsRef}
+            onClose={closeSettings}
+            hasRunningTask={sessions.some((s) => s.status === "running")}
           />
         )}
       </div>

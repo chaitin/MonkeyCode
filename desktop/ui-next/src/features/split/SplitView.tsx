@@ -90,6 +90,7 @@ export interface SplitAdminWiring {
 }
 
 export function SplitView({
+  active = true,
   sessions,
   split,
   epoch,
@@ -108,6 +109,8 @@ export function SplitView({
   admin,
   titlebarSlot = null,
 }: {
+  /** 设置模态在场时保持工作台挂载，但停用所有 window/Tauri 级交互。 */
+  active?: boolean;
   sessions: SessionMeta[];
   split: SplitStateApi;
   epoch: number;
@@ -168,6 +171,9 @@ export function SplitView({
   } | null>(null);
   const [dropSlot, setDropSlot] = useState<number | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  useEffect(() => {
+    if (!active) setShortcutsOpen(false);
+  }, [active]);
   // 任务列宽度可拖(2026-08-20 用户「给一个最小的宽度就行」):最小 184
   // 保住 tab/行截断链,上限 420 不吃画布;缺省仍 --spacing-side(232)
   const [sideWidth, setSideWidth] = useState<number>(() => {
@@ -286,6 +292,7 @@ export function SplitView({
     openCreateInNewPane(pickTab === "cloud" ? "cloud" : "local");
   };
   const onWorkbenchShortcut = useEffectEvent((e: KeyboardEvent) => {
+    if (!active) return;
     const action = appShortcutOfEvent(e);
     let handled = true;
     switch (action) {
@@ -330,6 +337,9 @@ export function SplitView({
   // body 上的全局 cursor/user-select 副作用会永久留下 ====
   const stopDragRef = useRef<(() => void) | null>(null);
   useEffect(() => () => stopDragRef.current?.(), []);
+  useEffect(() => {
+    if (!active) stopDragRef.current?.();
+  }, [active]);
   const trackPointer = (cursor: string, onMove: (ev: MouseEvent) => void) => {
     stopDragRef.current?.();
     document.body.style.cursor = cursor;
@@ -520,7 +530,7 @@ export function SplitView({
             initialFiles={creating.files}
             recentDirs={recentDirs}
             onOpenSettings={onOpenSettings}
-            nativeDropEnabled={focused}
+            nativeDropEnabled={active && focused}
             onCreated={(created) => {
               setCreatingSlot(null);
               setSwapSlot(null);
@@ -570,9 +580,9 @@ export function SplitView({
             task={cloudTask}
             headerSlot={paneExtras[slot] ?? null}
             menuRegister={paneMenuReg[slot]}
-            hotkeysActive={focused}
-            nativeDropEnabled={focused}
-            focusRequest={focused ? focusRequest : 0}
+            hotkeysActive={active && focused}
+            nativeDropEnabled={active && focused}
+            focusRequest={active && focused ? focusRequest : 0}
             onFocusRequestHandled={onFocusRequestHandled}
             onTasksChanged={cloud?.onChanged}
             onDeleted={() => {
@@ -588,9 +598,9 @@ export function SplitView({
             meta={meta!}
             epoch={epoch}
             headerSlot={paneExtras[slot] ?? null}
-            hotkeysActive={focused}
-            nativeDropEnabled={focused}
-            focusRequest={focused ? focusRequest : 0}
+            hotkeysActive={active && focused}
+            nativeDropEnabled={active && focused}
+            focusRequest={active && focused ? focusRequest : 0}
             onFocusRequestHandled={onFocusRequestHandled}
           />
         )}
@@ -738,7 +748,7 @@ export function SplitView({
             条本来就在,再开一行 h-10 只装两颗钮是纯浪费(2026-08-20 用户
             报障)。btn-xs 适配条高;列开着时双钮在品牌行,标题栏回归纯
             chrome。mac/浏览器无标题栏条,仍走下方 rightBar */}
-        {!listOpen && titlebarSlot && createPortal(
+        {active && !listOpen && titlebarSlot && createPortal(
           <span className="flex h-full items-center gap-0.5 ps-1">
             <button
               type="button"
@@ -812,7 +822,7 @@ export function SplitView({
         </div>
       </div>
       </main>
-      {shortcutsOpen && <ShortcutHelp onClose={() => setShortcutsOpen(false)} />}
+      {active && shortcutsOpen && <ShortcutHelp onClose={() => setShortcutsOpen(false)} />}
     </>
   );
 }

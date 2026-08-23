@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -12,7 +13,7 @@ import { setLocale } from "@/lib/i18n";
 import type { BackgroundAsset } from "@/lib/ipc/background";
 import type { DesktopConfig } from "@/lib/ipc/config";
 import { resetEscLayersForTest } from "@/lib/util/escLayer";
-import { SettingsView } from "./SettingsView";
+import { SettingsView, type SettingsViewHandle } from "./SettingsView";
 
 /** Esc = 走 escLayer 的 window capture 单一监听(层栈按后进先出派发)。 */
 const pressEsc = () =>
@@ -259,8 +260,69 @@ describe("Esc 分层与离开守卫", () => {
     render(<SettingsView onClose={onClose} />);
     await openModels();
     pressEsc();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "有未保存的更改" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "设置" }).getAttribute("aria-modal")).toBe("true");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("外部跳转关闭也经过脏状态守卫，确认后才执行后续动作", async () => {
+    stubShell();
+    const ref = createRef<SettingsViewHandle>();
+    const onClose = vi.fn();
+    const afterApproved = vi.fn();
+    render(<SettingsView ref={ref} onClose={onClose} />);
+    await openModels();
+    await userEvent.click(screen.getByRole("button", { name: /主力/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: "名称" }), "x");
+
+    await act(async () => ref.current?.requestClose(afterApproved));
+    expect(await screen.findByRole("dialog", { name: "有未保存的更改" })).toBeDefined();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(afterApproved).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "放弃并离开" }));
+    expect(onClose).toHaveBeenCalledWith(false);
+    expect(afterApproved).toHaveBeenCalledTimes(1);
+  });
+
+  it("从模态外发起跳转后选择留在设置，焦点回到设置内部", async () => {
+    stubShell();
+    const ref = createRef<SettingsViewHandle>();
+    render(
+      <>
+        <SettingsView ref={ref} onClose={() => {}} />
+        <button type="button">外部通知</button>
+      </>,
+    );
+    await openModels();
+    await userEvent.click(screen.getByRole("button", { name: /主力/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: "名称" }), "x");
+    await userEvent.click(screen.getByRole("button", { name: "外部通知" }));
+
+    await act(async () => ref.current?.requestClose(() => {}));
+    await userEvent.click(await screen.findByRole("button", { name: "留在设置" }));
+
+    const dialog = screen.getByRole("dialog", { name: "设置" });
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "返回" }));
+  });
+
+  it("radio 组中的未选项不会让 Tab 焦点越出设置模态", async () => {
+    stubShell({ config: { ...baseConfig, mc_base_url: "" } });
+    render(
+      <>
+        <SettingsView onClose={() => {}} />
+        <button type="button">模态外按钮</button>
+      </>,
+    );
+    await screen.findByRole("radio", { name: "国内版" });
+    const dialog = screen.getByRole("dialog", { name: "设置" });
+
+    for (let i = 0; i < 40; i += 1) {
+      await userEvent.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+    expect(document.activeElement).not.toBe(screen.getByRole("button", { name: "模态外按钮" }));
   });
 });
 
@@ -819,8 +881,9 @@ describe("外观设置:自定义背景内部编辑器", () => {
     render(<SettingsView onClose={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "通用" }));
     expect(screen.queryByRole("button", { name: "选择图片" })).toBeNull();
-    expect(screen.getByRole("main").className).toContain("bg-base-100");
-    expect(screen.getByRole("main").className).not.toContain("mc-workbench-surface");
+    const dialogBox = screen.getByRole("dialog", { name: "设置" }).querySelector(".modal-box") as HTMLElement;
+    expect(dialogBox.className).toContain("bg-base-100");
+    expect(dialogBox.className).not.toContain("mc-workbench-surface");
   });
 
   it("无图片时保留参数值但禁用调节控件", async () => {

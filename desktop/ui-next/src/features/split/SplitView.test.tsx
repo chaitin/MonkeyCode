@@ -1,6 +1,6 @@
 // 分屏视图(树形布局):装载卡 tab/分组与排序、拆分/关闭、把手按节点独立、
 // 拖格头换位、内嵌新建。ChatView 数据面在格内真实挂载,壳走最小 stub。
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -80,11 +80,20 @@ const SESSIONS: SessionMeta[] = [
   meta({ id: "c1", title: "闲聊", kind: "chat", workdir: "", updated_at: "2026-08-16T00:30:00Z" }),
 ];
 
-function Harness({ sessions = SESSIONS, onAssign }: { sessions?: SessionMeta[]; onAssign?: (slot: number, id: string) => void }) {
+function Harness({
+  active = true,
+  sessions = SESSIONS,
+  onAssign,
+}: {
+  active?: boolean;
+  sessions?: SessionMeta[];
+  onAssign?: (slot: number, id: string) => void;
+}) {
   const split = useSplitState();
   const [focusRequest, setFocusRequest] = useState(0);
   return (
     <SplitView
+      active={active}
       sessions={sessions}
       split={split}
       epoch={0}
@@ -199,6 +208,47 @@ describe("分屏视图(树形布局)", () => {
     const capMenu = document.body.lastElementChild as HTMLElement;
     expect((within(capMenu).getByText("右分屏").closest("button") as HTMLButtonElement).disabled).toBe(true);
     expect((within(capMenu).getByText("下分屏").closest("button") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("工作台 inactive 时不响应聚焦、侧栏和分屏快捷键", async () => {
+    stubShell();
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    render(<Harness active={false} />);
+    const input = await screen.findByRole("textbox", { name: "消息输入" });
+
+    fireEvent.keyDown(window, { key: "l", code: "KeyL", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "b", code: "KeyB", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "\\", code: "Backslash", ctrlKey: true });
+
+    expect(document.activeElement).not.toBe(input);
+    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
+    expect(screen.getAllByRole("region")).toHaveLength(1);
+  });
+
+  it("工作台切为 inactive 时关闭 body portal，恢复后不重新弹出", async () => {
+    stubShell();
+    const { rerender } = render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "键盘快捷键" }));
+    expect(screen.getByRole("dialog", { name: "键盘快捷键" })).toBeTruthy();
+
+    rerender(<Harness active={false} />);
+    expect(screen.queryByRole("dialog", { name: "键盘快捷键" })).toBeNull();
+    rerender(<Harness />);
+    expect(screen.queryByRole("dialog", { name: "键盘快捷键" })).toBeNull();
+  });
+
+  it("工作台切为 inactive 时终止正在进行的布局拖动", () => {
+    stubShell();
+    const { rerender } = render(<Harness />);
+    const handle = screen.getByRole("separator", { name: "拖动调整任务列宽度" });
+    const aside = screen.getByRole("complementary", { name: "选择任务" });
+    fireEvent.mouseDown(handle, { clientX: 232 });
+    expect(document.body.style.cursor).toBe("col-resize");
+
+    rerender(<Harness active={false} />);
+    expect(document.body.style.cursor).toBe("");
+    fireEvent.mouseMove(window, { clientX: 360 });
+    expect(aside.style.width).toBe("232px");
   });
 
   it("工作台快捷键只操作焦点格：聚焦、侧栏、两向分屏与六格上限", async () => {
@@ -535,6 +585,17 @@ describe("分屏视图(树形布局)", () => {
     );
     expect(screen.getAllByRole("region")).toHaveLength(6);
     expect(within(screen.getByRole("region", { name: "第 1 格" })).getByRole("heading", { name: "新建任务" })).toBeTruthy();
+  });
+
+  it("工作台 inactive 时 window 级原生文件拖放不投递到后台 pane", async () => {
+    const shell = stubShell();
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    render(<Harness active={false} />);
+    await waitFor(() => expect(shell.listenerCount("tauri://drag-drop")).toBe(1));
+
+    shell.emit("tauri://drag-drop", { paths: ["/tmp/hidden.txt"] });
+    await act(() => Promise.resolve());
+    expect(shell.calls.filter((c) => c.cmd === "stat_dropped_file")).toHaveLength(0);
   });
 
   it("Linux window 级原生文件拖放每次只投递给焦点 pane", async () => {
