@@ -1,4 +1,4 @@
-// 设置视图:全屏接管主区。左侧窄导航(通用/模型/MCP/运行环境/关于),
+// 设置模态:覆盖工作台但不卸载工作台子树。左侧窄导航(通用/模型/MCP/运行环境/关于),
 // 右侧内容列 + 底部脏状态保存条。
 //
 // 两类偏好、两条通路:
@@ -7,7 +7,7 @@
 // - models/mcp/kernel_env 走保存条:save_config 全量写回(表单外字段从载入
 //   配置透传),壳保存后重启引擎——重启过程由全局引擎横幅外显,这里不管。
 import { IconAdjustmentsHorizontal, IconAlertTriangle, IconDice5, IconPhoto, IconRotate, IconTrash, IconWand, IconBrain, IconCheck, IconChevronDown, IconInfoCircle, IconServer, IconSparkles, IconTerminal2, IconUser, IconWorld, type TablerIcon } from "@tabler/icons-react";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import { resolveShortcut } from "@/app/shortcuts";
 import {
@@ -846,15 +846,21 @@ function EnvSection({
   );
 }
 
-export function SettingsView({
-  onClose,
-  hasRunningTask = false,
-}: {
-  onClose: () => void;
+export interface SettingsViewHandle {
+  /** 所有外部跳转都经这里请求关闭，避免绕过未保存修改确认。 */
+  requestClose(afterApproved?: () => void): void;
+}
+
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export const SettingsView = forwardRef<SettingsViewHandle, {
+  /** restoreFocus=false 表示关闭后由跳转动作接管焦点。 */
+  onClose: (restoreFocus?: boolean) => void;
   /** 有本地会话在跑(status==="running"):同步后不自动保存重启引擎,
    * 隐式踹掉运行中的轮次不可接受;回退保存条由用户择机保存(旧 UI 同款口径) */
   hasRunningTask?: boolean;
-}) {
+}>(function SettingsView({ onClose, hasRunningTask = false }, ref) {
   const { t } = useI18n();
   const { generation: mcTransportGeneration, isCurrent: isMcTransportCurrent } = useMcTransport();
   // 离开确认(旧 UI App.tsx settingsDirty + window.confirm 的 daisyUI 版):
@@ -876,6 +882,20 @@ export function SettingsView({
   // 保存条——用户视角里「切换版本」不该出现任何「保存」字样(2026-08-15
   // 用户定案);失败才回落保存条外显错误
   const [inlineSaving, setInlineSaving] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const leaveDialogRef = useRef<HTMLDivElement | null>(null);
+  const stayButtonRef = useRef<HTMLButtonElement | null>(null);
+  const leaveFocusRef = useRef<HTMLElement | null>(null);
+  const pendingCloseRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (leaveAsk) stayButtonRef.current?.focus();
+  }, [leaveAsk]);
 
   useEffect(() => {
     let alive = true;
@@ -909,9 +929,64 @@ export function SettingsView({
 
   // 关闭主路径(Esc 与「返回」共用):脏表单先问一句再走(旧 UI App.tsx
   // closeSettings 同款守卫)
-  const requestClose = () => {
-    if (dirty) setLeaveAsk(true);
-    else onClose();
+  const finishClose = (afterApproved?: () => void) => {
+    pendingCloseRef.current = null;
+    onClose(!afterApproved);
+    afterApproved?.();
+  };
+  const requestClose = (afterApproved?: () => void) => {
+    pendingCloseRef.current = afterApproved ?? null;
+    if (dirty) {
+      leaveFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setLeaveAsk(true);
+    } else {
+      finishClose(afterApproved);
+    }
+  };
+  const cancelLeave = () => {
+    pendingCloseRef.current = null;
+    setLeaveAsk(false);
+    window.requestAnimationFrame(() => {
+      const target = leaveFocusRef.current;
+      if (target?.isConnected && dialogRef.current?.contains(target)) target.focus();
+      else closeButtonRef.current?.focus();
+    });
+  };
+  useImperativeHandle(ref, () => ({ requestClose }));
+
+  const trapTab = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return;
+    const root = leaveAsk ? leaveDialogRef.current : dialogRef.current;
+    if (!root) return;
+    const candidates = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+      (node) => !node.hasAttribute("disabled") && node.getAttribute("aria-hidden") !== "true",
+    );
+    const nodes = candidates.filter((node) => {
+      if (!(node instanceof HTMLInputElement) || node.type !== "radio" || !node.name) return true;
+      const group = candidates.filter(
+        (candidate): candidate is HTMLInputElement =>
+          candidate instanceof HTMLInputElement &&
+          candidate.type === "radio" &&
+          candidate.name === node.name &&
+          candidate.form === node.form,
+      );
+      const checked = group.find((radio) => radio.checked);
+      return checked ? checked === node : group[0] === node;
+    });
+    if (nodes.length === 0) {
+      e.preventDefault();
+      root.focus();
+      return;
+    }
+    const first = nodes[0]!;
+    const last = nodes[nodes.length - 1]!;
+    if (e.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) {
+      e.preventDefault();
+      first.focus();
+    }
   };
 
   // 视图级 Esc:走 escLayer 层栈而非自挂 window capture。同 target 同阶段的
@@ -933,7 +1008,7 @@ export function SettingsView({
   useEscLayer(
     leaveAsk,
     useCallback(() => {
-      setLeaveAsk(false);
+      cancelLeave();
       return true;
     }, []),
   );
@@ -1150,11 +1225,24 @@ export function SettingsView({
   };
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-base-100">
-      <header data-tauri-drag-region="" data-view-header="" data-mac-lights-clear="" className="flex h-10 shrink-0 items-center gap-2 border-b border-base-300 px-4">
-        <h1 data-tauri-drag-region="" className="text-sm font-semibold">{t("settings.title")}</h1>
-        <span data-tauri-drag-region="" className="flex-1" />
-        <button type="button" className="btn btn-ghost btn-sm" onClick={requestClose}>
+    <div
+      className="modal modal-open"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-dialog-title"
+      onKeyDownCapture={trapTab}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
+    >
+      <div
+        ref={dialogRef}
+        className="modal-box flex h-[min(84vh,760px)] w-[min(960px,92vw)] max-w-[min(960px,92vw)] flex-col overflow-hidden bg-base-100 p-0"
+        inert={leaveAsk ? true : undefined}
+      >
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-base-300 px-4">
+        <h1 id="settings-dialog-title" className="text-sm font-semibold">{t("settings.title")}</h1>
+        <span className="flex-1" />
+        <button ref={closeButtonRef} type="button" className="btn btn-ghost btn-sm" onClick={() => requestClose()}>
           {t("settings.back")}
         </button>
       </header>
@@ -1218,13 +1306,15 @@ export function SettingsView({
       {/* 离开确认(旧 UI「有未保存的更改,确定离开设置?」的 daisyUI 版):
           Esc / 返回 在脏表单上不再直接丢弃编辑。弹层自占一层 Esc,
           里面按 Esc = 取消离开,不会递归回视图层 */}
+      </div>
+      <div className="modal-backdrop cursor-pointer" onClick={() => requestClose()} aria-hidden />
       {leaveAsk && (
-        <div className="modal modal-open" role="dialog" aria-label={t("settings.leave.title")}>
-          <div className="modal-box max-w-sm">
-            <h3 className="text-sm font-semibold">{t("settings.leave.title")}</h3>
+        <div className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="settings-leave-title">
+          <div ref={leaveDialogRef} className="modal-box max-w-sm">
+            <h3 id="settings-leave-title" className="text-sm font-semibold">{t("settings.leave.title")}</h3>
             <p className="py-3 text-xs leading-relaxed text-base-content/70">{t("settings.leave.body")}</p>
             <div className="modal-action">
-              <button type="button" className="btn btn-sm" onClick={() => setLeaveAsk(false)}>
+              <button ref={stayButtonRef} type="button" className="btn btn-sm" onClick={cancelLeave}>
                 {t("settings.leave.stay")}
               </button>
               <button
@@ -1232,16 +1322,16 @@ export function SettingsView({
                 className="btn btn-error btn-sm"
                 onClick={() => {
                   setLeaveAsk(false);
-                  onClose();
+                  finishClose(pendingCloseRef.current ?? undefined);
                 }}
               >
                 {t("settings.leave.discard")}
               </button>
             </div>
           </div>
-          <div className="modal-backdrop cursor-pointer" onClick={() => setLeaveAsk(false)} aria-hidden />
+          <div className="modal-backdrop cursor-pointer" onClick={cancelLeave} aria-hidden />
         </div>
       )}
-    </main>
+    </div>
   );
-}
+});

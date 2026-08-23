@@ -1,19 +1,17 @@
 // 轻量下拉选择器:会话 composer 与新建任务页共用同一形态
 // (btn-ghost 文字触发器 + rounded-box 菜单),模型选择的过滤框/来源 tab/
 // 会员分节逻辑收口在此,两处不再各写一份。
-// - ModelMenu:模型切换(过滤/来源 tab/会员分节/锁定灰态,纯逻辑在
-//   lib/models/modelMenu);
-// - ThinkMenu:思考深度(档位 + hint 副文案;levels 可配,新建任务页多一档
-//   ""=跟随模型默认);
+// - ModelMenu:模型切换 + 思考深度(固定关闭/低/中/高；过滤/来源 tab/
+//   会员分节/锁定灰态的纯逻辑在 lib/models/modelMenu);
 // - OptionMenu:通用平铺单选(云端任务的宿主机/镜像等);
 // - SkillsMenu:会话技能启用集(唯一的多选:勾选不关菜单,整单全量提交)。
 // 关闭胶水统一 useDismiss(外点 pointerdown + Esc;不用 onBlur,WebKitGTK
 // 点按钮不移焦点会误关)。
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { useUpwardMenuHeight } from "@/lib/util/menuHeight";
+import { useBoundedMenuInlineStyle, useUpwardMenuHeight } from "@/lib/util/menuHeight";
 import type { ModelInfo } from "@/lib/ipc/sessions";
 import { defaultEnabledSkills, type SkillInfo } from "@/lib/ipc/skills";
 import {
@@ -32,8 +30,8 @@ import { useDismiss } from "@/lib/util/useDismiss";
 // 档位 → 键的映射收口在 lib/protocol/reduce(think_update 系统行同用一份):
 // 两处各写一份的话,加档位时改一处漏一处,系统行与选择器就会各说各话
 export { THINK_KEY };
-/** 档位副文案(一句话讲清速度/深度取舍);""=跟随默认无副文案。 */
-export const THINK_HINT_KEY: Partial<Record<string, MessageKey>> = {
+/** 档位副文案(组合菜单中作为 segmented control 的 title)。 */
+const THINK_HINT_KEY: Partial<Record<string, MessageKey>> = {
   off: "chat.think.hint.off",
   low: "chat.think.hint.low",
   medium: "chat.think.hint.medium",
@@ -83,6 +81,8 @@ export function ModelMenu({
   models,
   current,
   onPick,
+  think,
+  onThinkPick,
   disabled = false,
   title,
   ariaLabel,
@@ -92,6 +92,10 @@ export function ModelMenu({
   current: string;
   /** 选中回调(菜单已自关);同名/空名的去重守卫由调用方决定 */
   onPick: (name: string) => void;
+  /** 当前生效的思考档；组合菜单只提供关闭/低/中/高。 */
+  think: string;
+  /** 调整思考档不关闭菜单，便于继续切模型。 */
+  onThinkPick: (level: string) => void;
   disabled?: boolean;
   title?: string;
   /** 触发器 aria-label;不传则可及名 = 当前模型展示名(composer 契约) */
@@ -103,10 +107,18 @@ export function ModelMenu({
   const [tab, setTab] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const boxRef = useRef<HTMLDivElement | null>(null);
-  useDismiss(open, boxRef, () => setOpen(false));
+  const thinkRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const visibleOpen = open && !disabled;
+  useDismiss(visibleOpen, boxRef, () => setOpen(false));
+  useEffect(() => {
+    // 外部进入运行态时弹窗必须立即退场，不能在恢复空闲后自行重现。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (disabled) setOpen(false);
+  }, [disabled]);
   // 向上弹:高度按锚点到最近上边界(标题栏/视图头)的真实距离算,
   // 写死上限在矮窗口下会把菜单顶出视口(lib/util/menuHeight)
-  const { anchorRef, maxHeight: menuMax } = useUpwardMenuHeight<HTMLButtonElement>(open);
+  const { anchorRef, maxHeight: menuMax } = useUpwardMenuHeight<HTMLButtonElement>(visibleOpen);
+  const menuInlineStyle = useBoundedMenuInlineStyle(visibleOpen, anchorRef, align, 224);
 
   // 模型菜单派生(纯逻辑在 lib/models/modelMenu):过滤框在模型多时才有
   // 意义;tab 行只要 ≥2 来源就恒显(它是来源间唯一导航);过滤在 tab 内;
@@ -123,11 +135,40 @@ export function ModelMenu({
     filter,
   );
   const memberSections = activeTab === SOURCE_MONKEYCODE ? groupMemberSections(tabItems) : null;
+  const modelLabel = modelDisplayByName(models, current).label || t("chat.model.label");
+  const selectedThink = THINK_LEVELS.find((level) => level === think) ?? "low";
+  const thinkLabel = t(THINK_KEY[selectedThink]!);
 
   const openMenu = () => {
+    if (disabled) return;
     setFilter("");
     setTab(null); // 打开时回到「跟随当前模型来源」
     setOpen(true);
+  };
+  const onThinkKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next: number;
+    switch (event.key) {
+      case "ArrowLeft":
+      case "ArrowUp":
+        next = (index - 1 + THINK_LEVELS.length) % THINK_LEVELS.length;
+        break;
+      case "ArrowRight":
+      case "ArrowDown":
+        next = (index + 1) % THINK_LEVELS.length;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = THINK_LEVELS.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    thinkRefs.current[next]?.focus();
+    const level = THINK_LEVELS[next];
+    if (level && level !== selectedThink) onThinkPick(level);
   };
   const pick = (name: string) => {
     setOpen(false);
@@ -165,26 +206,54 @@ export function ModelMenu({
   return (
     <div
       ref={boxRef}
-      className={`dropdown dropdown-top min-w-0 shrink ${align === "end" ? "dropdown-end" : ""} ${open ? "dropdown-open" : ""}`}
+      className={`dropdown dropdown-top min-w-0 shrink ${align === "end" ? "dropdown-end" : ""} ${visibleOpen ? "dropdown-open" : ""}`}
     >
       <Trigger
-        open={open}
+        open={visibleOpen}
         disabled={disabled}
         title={title}
-        ariaLabel={ariaLabel}
-        className="max-w-52"
+        ariaLabel={ariaLabel ?? modelLabel}
+        className="min-w-0 max-w-full overflow-hidden"
         anchorRef={anchorRef}
-        onToggle={() => (open ? setOpen(false) : openMenu())}
+        onToggle={() => (visibleOpen ? setOpen(false) : openMenu())}
       >
-        <span className="min-w-0 truncate">{modelDisplayByName(models, current).label || t("chat.model.label")}</span>
+        <span className="min-w-0 truncate">{modelLabel}</span>
+        <span className="shrink-0 text-base-content/45">· {thinkLabel}</span>
       </Trigger>
-      {open && (
+      {visibleOpen && (
         // dropdown-content 换 div 外壳:过滤框/来源 tab 固定在顶,
         // 条目列表单独内滚(菜单长了不能把导航滚出视野)
         <div
-          style={{ maxHeight: menuMax }}
-          className="dropdown-content flex w-64 flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+          style={{ maxHeight: menuMax, ...menuInlineStyle }}
+          className="dropdown-content flex w-56 flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
         >
+          <div className="mb-2 shrink-0 border-b border-base-300 pb-2">
+            <div className="mb-1 px-1 text-2xs text-base-content/55">{t("chat.think.label")}</div>
+            <div role="radiogroup" aria-label={t("chat.think.label")} className="join grid grid-cols-4">
+              {THINK_LEVELS.map((level, index) => (
+                <button
+                  ref={(node) => {
+                    thinkRefs.current[index] = node;
+                  }}
+                  key={level}
+                  type="button"
+                  role="radio"
+                  aria-checked={level === selectedThink}
+                  tabIndex={level === selectedThink ? 0 : -1}
+                  title={t(THINK_HINT_KEY[level] ?? "chat.think.tip")}
+                  className={`btn btn-xs join-item min-w-0 px-1 font-normal ${
+                    level === selectedThink ? "btn-primary btn-soft" : "btn-ghost border-base-300"
+                  }`}
+                  onKeyDown={(event) => onThinkKeyDown(event, index)}
+                  onClick={() => {
+                    if (level !== selectedThink) onThinkPick(level);
+                  }}
+                >
+                  <span className="truncate">{t(THINK_KEY[level]!)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           {/* 不 autoFocus:打开菜单是「点选」意图,焦点跳进过滤框
               反而抢走键盘上下文(用户定案) */}
           {showExtras && (
@@ -241,71 +310,6 @@ export function ModelMenu({
   );
 }
 
-export function ThinkMenu({
-  current,
-  display,
-  onPick,
-  levels = [...THINK_LEVELS],
-  disabled = false,
-  title,
-  ariaLabel,
-  align = "end",
-}: {
-  /** 菜单选中态(新建任务页可为 ""=跟随模型默认) */
-  current: string;
-  /** 触发器展示档(生效档;缺省同 current) */
-  display?: string;
-  onPick: (level: string) => void;
-  levels?: string[];
-  disabled?: boolean;
-  title?: string;
-  ariaLabel?: string;
-  align?: "start" | "end";
-}) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  useDismiss(open, boxRef, () => setOpen(false));
-  const shown = display ?? current;
-  return (
-    <div
-      ref={boxRef}
-      className={`dropdown dropdown-top shrink-0 ${align === "end" ? "dropdown-end" : ""} ${open ? "dropdown-open" : ""}`}
-    >
-      <Trigger open={open} disabled={disabled} title={title} ariaLabel={ariaLabel} onToggle={() => setOpen(!open)}>
-        {t("chat.think.trigger", { label: t(THINK_KEY[shown] ?? "chat.think.low") })}
-      </Trigger>
-      {open && (
-        <ul
-          aria-label={t("chat.think.label")}
-          className="dropdown-content menu w-52 flex-nowrap [&_li]:flex-nowrap rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
-        >
-          {levels.map((level) => {
-            const hintKey = THINK_HINT_KEY[level];
-            return (
-              <li key={level}>
-                <button
-                  type="button"
-                  aria-current={level === current ? "true" : undefined}
-                  className={`flex flex-col items-start gap-0 ${level === current ? "menu-active" : ""}`}
-                  onClick={() => {
-                    setOpen(false);
-                    onPick(level);
-                  }}
-                >
-                  <span className="text-xs">{t(THINK_KEY[level] ?? "chat.think.low")}</span>
-                  {/* 档位副文案:一句话讲清速度/深度取舍(旧 UI hint 随迁) */}
-                  {hintKey && <span className="text-2xs opacity-60">{t(hintKey)}</span>}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 /** 会话技能启用集(多选)。与单选菜单的两点差异:勾选**不关**菜单
  * (一次会话常要调多个),条目用 checkbox 语义(aria-checked);每次勾选
  * 都全量提交(壳侧 session_set_skills 是全量声明,不是增量 patch)。
@@ -320,7 +324,7 @@ export function SkillsMenu({
   align = "end",
 }: {
   skills: SkillInfo[];
-  /** 启用名单;null = 全部启用 */
+  /** 启用名单;null = 按 default_enabled 推导默认集 */
   enabled: string[] | null;
   /** 勾选变更(已展开为显式全量名单) */
   onChange: (next: string[]) => void;
@@ -335,8 +339,10 @@ export function SkillsMenu({
   const boxRef = useRef<HTMLDivElement | null>(null);
   useDismiss(open, boxRef, () => setOpen(false));
   const { anchorRef, maxHeight: menuMax } = useUpwardMenuHeight<HTMLButtonElement>(open);
+  const menuInlineStyle = useBoundedMenuInlineStyle(open, anchorRef, align, 256);
   const enabledSet = new Set(enabled ?? defaultEnabledSkills(skills));
   const toggle = (name: string) => {
+    if (disabled) return;
     const next = new Set(enabledSet);
     if (next.has(name)) next.delete(name);
     else next.add(name);
@@ -379,6 +385,7 @@ export function SkillsMenu({
           type="button"
           role="checkbox"
           aria-checked={on}
+          disabled={disabled}
           className="flex items-center gap-2"
           onClick={() => toggle(s.name)}
         >
@@ -398,24 +405,27 @@ export function SkillsMenu({
   return (
     <div
       ref={boxRef}
-      className={`dropdown dropdown-top shrink-0 ${align === "end" ? "dropdown-end" : ""} ${open ? "dropdown-open" : ""}`}
+      className={`dropdown dropdown-top min-w-0 shrink ${align === "end" ? "dropdown-end" : ""} ${open ? "dropdown-open" : ""}`}
     >
       <Trigger
         open={open}
         disabled={disabled}
         title={title}
         ariaLabel={t("chat.skills.label")}
+        className="min-w-0 max-w-full overflow-hidden"
         anchorRef={anchorRef}
         onToggle={() => (open ? setOpen(false) : openMenu())}
       >
         {/* 交集计数:启用集快照可能带着已从库移除的技能名(仓库删技能 +
             应用更新的场景),直接取 size 会虚报 */}
-        {t("chat.skills.trigger", { n: skills.filter((s) => enabledSet.has(s.name)).length })}
+        <span className="min-w-0 truncate">
+          {t("chat.skills.trigger", { n: skills.filter((s) => enabledSet.has(s.name)).length })}
+        </span>
       </Trigger>
       {open && (
         // 结构同 ModelMenu:过滤框固定在顶,条目列表单独内滚
         <div
-          style={{ maxHeight: menuMax }}
+          style={{ maxHeight: menuMax, ...menuInlineStyle }}
           className="dropdown-content flex w-64 flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
         >
           {showFilter && (

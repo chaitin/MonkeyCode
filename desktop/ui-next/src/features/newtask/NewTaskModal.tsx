@@ -13,7 +13,9 @@
 //   首条消息之前逐个上传,再把「[图片]/[文件] <相对路径>」附件行并进正文
 //   (与 composer 同一条 attLine 约定)。单个附件上传失败与上面同一取舍:
 //   console.warn 后带着其余附件继续,不把已建好的会话卡在弹窗里
-// - think 档随 session_create 的 think 参数下发(""=跟随模型默认)
+// - think 档与 skills 启用名单随 session_create 原子下发(think 固定为
+//   off/low/medium/high；skills 缺省=默认集、空数组=停用全部 Desktop 任务技能),
+//   确保首轮消息直接使用所选配置
 // - 最近目录来自 props.recentDirs(App 从 sessions 的 workdir 派生),按内核
 //   运行环境过滤(lib/util/workdir);目录预填 = 过滤后首项,无则默认目录
 // - 模型记忆 mc.lastTaskModel(本地/对话共用);旧工程无 lastDir 持久化键,
@@ -39,6 +41,7 @@ import { afterEngineReady } from "@/lib/ipc/engine";
 import { isWindowsShell, pickDirectory, workdirPickBase } from "@/lib/ipc/host";
 import { sameModelName } from "@/lib/models/modelMenu";
 import { modelsList, sessionCreate, sessionSend, type ModelInfo, type SessionKind, type SessionMeta } from "@/lib/ipc/sessions";
+import { skillsList, type SkillInfo } from "@/lib/ipc/skills";
 import {
   isImagePath,
   nativePathOf,
@@ -50,18 +53,19 @@ import {
 } from "@/lib/ipc/uploads";
 import { attLineOf } from "@/lib/protocol/attLine";
 import { b64encode } from "@/lib/protocol/codec";
-import { THINK_KEY } from "@/lib/protocol/reduce";
 import { createImeGuard } from "@/lib/util/slash";
+import { insertNewlineAtSelection } from "@/lib/util/textarea";
 import { readLastTaskModel, rememberLastTaskModel } from "@/lib/util/prefs";
 import { DEFAULT_DIR, workdirMatchesEnv } from "@/lib/util/workdir";
-import { ModelMenu, ThinkMenu } from "@/features/chat/composer/pickers";
+import { ModelMenu, SkillsMenu, THINK_LEVELS } from "@/features/chat/composer/pickers";
 import { NewCloudTask } from "@/features/cloud/NewCloudTask";
 import type { CloudProject, CloudTaskDetail } from "@/lib/ipc/cloudtasks";
 
 export { DEFAULT_DIR };
 
-/** 档位全集以 THINK_KEY(protocol/reduce)为准(""=跟随模型默认领跑)。 */
-const THINK_OPTIONS = Object.keys(THINK_KEY);
+function modelThinkLevel(model: ModelInfo | undefined): string {
+  return THINK_LEVELS.find((level) => level === model?.think) ?? "low";
+}
 
 /** 暂存的附件:File 本体 + 展示名 + 图片预览 URL(非图片/占位 File 无);
  *  上传发生在建会话之后。
@@ -142,7 +146,14 @@ export function NewTaskModal({
   const [text, setText] = useState("");
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [model, setModel] = useState("");
-  const [think, setThink] = useState("");
+  // null 不是菜单选项，只表示用户尚未覆写；界面和创建参数始终展开成
+  // 当前模型的具体 off/low/medium/high，缺失配置才回落 low。
+  const [thinkOverride, setThinkOverride] = useState<string | null>(null);
+  const think = thinkOverride ?? modelThinkLevel(models.find((item) => item.name === model));
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [skillsLoaded, setSkillsLoaded] = useState(false);
+  // null = 沿用壳侧默认集;首次勾选后展开成显式全量名单。
+  const [enabledSkills, setEnabledSkills] = useState<string[] | null>(null);
   const [kernelEnv, setKernelEnv] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -168,7 +179,9 @@ export function NewTaskModal({
     dirTouched.current = false;
     setDirMenu(false);
     setText(initialText ?? "");
-    setThink("");
+    setThinkOverride(null);
+    setEnabledSkills(null);
+    setSkillsLoaded(false);
     setError("");
     setOfferCreate(false);
     // 附件区从预填起步(待办派发带图;无预填即空):上一次的暂存连预览一起清
@@ -218,6 +231,15 @@ export function NewTaskModal({
           : undefined;
         const pick = byMemory || list.find((m) => m.default && !m.locked) || list.find((m) => !m.locked);
         if (pick) setModel(pick.name);
+      })
+      .catch(() => {});
+    // 技能库只读壳侧文件,不依赖引擎;失败保留上一份,不把瞬时读取失败
+    // 伪装成「没有技能」。
+    void skillsList()
+      .then((list) => {
+        if (!alive || !Array.isArray(list)) return;
+        setSkills(list);
+        setSkillsLoaded(true);
       })
       .catch(() => {});
     // 运行环境 → 最近目录过滤(默认目录恒为 DEFAULT_DIR:`~` 由壳按环境展开,
@@ -380,6 +402,8 @@ export function NewTaskModal({
         createDir: !chat && (forceCreateDir || workdir === DEFAULT_DIR),
         kind: chat ? "chat" : "local",
         think,
+        // 不传 = 壳按默认启用规则物化;[] 必须保留,表示显式停用全部 Desktop 任务技能。
+        ...(enabledSkills !== null ? { skills: enabledSkills } : {}),
       });
       if (model) rememberLastTaskModel(model);
       // 附件行与 composer 同口径并入正文(壳只解 content):正文在前、附件行在后
@@ -437,6 +461,11 @@ export function NewTaskModal({
     if (e.key !== "Enter" || e.shiftKey) return;
     if (ime.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
     e.preventDefault();
+    if (e.ctrlKey && !e.altKey) {
+      e.stopPropagation();
+      insertNewlineAtSelection(e.currentTarget, text, setText);
+      return;
+    }
     void submit();
   };
   // 只有格内一种形态(2026-08-18 用户定案「整页新建没用了」:创建即新格,
@@ -512,8 +541,8 @@ export function NewTaskModal({
             )}
             {kind !== "cloud" && (
               <>
-                {/* 卡头:「在 × 文件夹里工作」句式触发器(富下拉:临时会话/
-                    最近目录/系统选择/手输路径);空目录 = 临时会话档 */}
+                {/* 卡头以“项目”外显产品概念；本地项目由文件夹路径承载，
+                    空路径则是不关联项目的临时会话。 */}
                 {kind === "local" && (
                   <div ref={dirBoxRef} className="relative px-2 pt-2">
                     <button
@@ -532,7 +561,6 @@ export function NewTaskModal({
                         <>
                           <span className="shrink-0 text-xs text-base-content/50">{t("create.dirPre")}</span>
                           <span className="min-w-0 truncate text-xs font-semibold" title={dir}>{dirName(dir)}</span>
-                          <span className="shrink-0 text-xs text-base-content/50">{t("create.dirPost")}</span>
                         </>
                       ) : (
                         <span className="text-xs font-semibold">{t("create.dir.scratch")}</span>
@@ -549,7 +577,7 @@ export function NewTaskModal({
                         aria-label={t("create.recentDirs")}
                         className="absolute start-2 top-full z-20 mt-1 flex w-96 max-w-[calc(100%-1rem)] flex-col rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg"
                       >
-                        {/* 临时会话档殿前:会话=不选文件夹的任务 */}
+                        {/* 临时会话档殿前：空路径表示不关联本地项目。 */}
                         <li>
                           <button
                             type="button"
@@ -688,25 +716,40 @@ export function NewTaskModal({
                   >
                     <IconPaperclip size={15} stroke={1.75} aria-hidden />
                   </button>
-                  {/* 模型/思考档与会话 composer 同一组件(features/chat/composer/
-                      pickers):左置触发器,菜单向上首端对齐 */}
+                  {/* 模型与思考档使用会话 composer 的同一组合菜单:左置触发器,
+                      菜单向上首端对齐 */}
                   <ModelMenu
                     models={models}
                     current={model}
                     onPick={setModel}
+                    think={think}
+                    onThinkPick={setThinkOverride}
                     ariaLabel={t("create.model")}
-                    title={t("create.model")}
+                    title={t("chat.model.tip")}
                     align="start"
                   />
-                  <ThinkMenu
-                    current={think}
-                    display={think || models.find((m) => m.name === model)?.think || "low"}
-                    levels={THINK_OPTIONS}
-                    onPick={setThink}
-                    ariaLabel={t("create.think")}
-                    title={t("create.think")}
-                    align="start"
-                  />
+                  {skillsLoaded ? (
+                    <SkillsMenu
+                      skills={skills}
+                      enabled={enabledSkills}
+                      onChange={setEnabledSkills}
+                      disabled={busy}
+                      title={t("chat.skills.label")}
+                      align="start"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm gap-1.5"
+                      disabled
+                      aria-label={t("chat.skills.label")}
+                      aria-busy="true"
+                      title={t("chat.skills.label")}
+                    >
+                      <span className="loading loading-spinner loading-xs" aria-hidden />
+                      {t("chat.skills.label")}
+                    </button>
+                  )}
                   <span className="flex-1" />
                   <button type="button" className="btn btn-primary btn-sm gap-1.5" disabled={busy} onClick={() => void submit()}>
                     {busy && <span className="loading loading-spinner loading-xs" aria-hidden />}

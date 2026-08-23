@@ -1,7 +1,8 @@
 // 分屏视图(树形布局):装载卡 tab/分组与排序、拆分/关闭、把手按节点独立、
 // 拖格头换位、内嵌新建。ChatView 数据面在格内真实挂载,壳走最小 stub。
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionMeta } from "@/lib/ipc/sessions";
@@ -79,15 +80,25 @@ const SESSIONS: SessionMeta[] = [
   meta({ id: "c1", title: "闲聊", kind: "chat", workdir: "", updated_at: "2026-08-16T00:30:00Z" }),
 ];
 
-function Harness({ sessions = SESSIONS, onAssign }: { sessions?: SessionMeta[]; onAssign?: (slot: number, id: string) => void }) {
+function Harness({
+  active = true,
+  sessions = SESSIONS,
+  onAssign,
+}: {
+  active?: boolean;
+  sessions?: SessionMeta[];
+  onAssign?: (slot: number, id: string) => void;
+}) {
   const split = useSplitState();
+  const [focusRequest, setFocusRequest] = useState(0);
   return (
     <SplitView
+      active={active}
       sessions={sessions}
       split={split}
       epoch={0}
-      focusRequest={0}
-      onFocusRequestHandled={() => {}}
+      focusRequest={focusRequest}
+      onFocusRequestHandled={() => setFocusRequest(0)}
       onAssign={(slot, id) => {
         onAssign?.(slot, id);
         split.assignTo(slot, id);
@@ -95,6 +106,7 @@ function Harness({ sessions = SESSIONS, onAssign }: { sessions?: SessionMeta[]; 
       onLoadSession={(id) => split.place(id)}
       onCreatedInSlot={(slot, created) => split.assignTo(slot, created.id)}
       onCloudCreatedInSlot={() => {}}
+      onComposerIntent={() => setFocusRequest((n) => n + 1)}
       onOpenSettings={() => {}}
       recentDirs={[]}
     />
@@ -196,6 +208,102 @@ describe("分屏视图(树形布局)", () => {
     const capMenu = document.body.lastElementChild as HTMLElement;
     expect((within(capMenu).getByText("右分屏").closest("button") as HTMLButtonElement).disabled).toBe(true);
     expect((within(capMenu).getByText("下分屏").closest("button") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("工作台 inactive 时不响应聚焦、侧栏和分屏快捷键", async () => {
+    stubShell();
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    render(<Harness active={false} />);
+    const input = await screen.findByRole("textbox", { name: "消息输入" });
+
+    fireEvent.keyDown(window, { key: "l", code: "KeyL", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "b", code: "KeyB", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "\\", code: "Backslash", ctrlKey: true });
+
+    expect(document.activeElement).not.toBe(input);
+    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
+    expect(screen.getAllByRole("region")).toHaveLength(1);
+  });
+
+  it("工作台切为 inactive 时关闭 body portal，恢复后不重新弹出", async () => {
+    stubShell();
+    const { rerender } = render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "键盘快捷键" }));
+    expect(screen.getByRole("dialog", { name: "键盘快捷键" })).toBeTruthy();
+
+    rerender(<Harness active={false} />);
+    expect(screen.queryByRole("dialog", { name: "键盘快捷键" })).toBeNull();
+    rerender(<Harness />);
+    expect(screen.queryByRole("dialog", { name: "键盘快捷键" })).toBeNull();
+  });
+
+  it("工作台切为 inactive 时终止正在进行的布局拖动", () => {
+    stubShell();
+    const { rerender } = render(<Harness />);
+    const handle = screen.getByRole("separator", { name: "拖动调整任务列宽度" });
+    const aside = screen.getByRole("complementary", { name: "选择任务" });
+    fireEvent.mouseDown(handle, { clientX: 232 });
+    expect(document.body.style.cursor).toBe("col-resize");
+
+    rerender(<Harness active={false} />);
+    expect(document.body.style.cursor).toBe("");
+    fireEvent.mouseMove(window, { clientX: 360 });
+    expect(aside.style.width).toBe("232px");
+  });
+
+  it("工作台快捷键只操作焦点格：聚焦、侧栏、两向分屏与六格上限", async () => {
+    stubShell();
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    render(<Harness />);
+    await screen.findByRole("textbox", { name: "消息输入" });
+
+    fireEvent.keyDown(window, { key: "l", code: "KeyL", ctrlKey: true });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "消息输入" })));
+
+    fireEvent.keyDown(window, { key: "b", code: "KeyB", ctrlKey: true });
+    expect(screen.queryByRole("complementary", { name: "选择任务" })).toBeNull();
+    fireEvent.keyDown(window, { key: "b", code: "KeyB", ctrlKey: true });
+    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "\\", code: "Backslash", ctrlKey: true });
+    expect(screen.getAllByRole("region")).toHaveLength(2);
+    fireEvent.keyDown(window, { key: "|", code: "Backslash", ctrlKey: true, shiftKey: true });
+    expect(screen.getAllByRole("region")).toHaveLength(3);
+    expect(screen.getByRole("region", { name: "第 3 格" }).querySelector("[data-split-focus]")).not.toBeNull();
+
+    for (let i = 0; i < 4; i++) fireEvent.keyDown(window, { key: "\\", code: "Backslash", ctrlKey: true });
+    expect(screen.getAllByRole("region")).toHaveLength(6);
+  });
+
+  it("Ctrl+N 沿用当前任务类型；侧栏帮助入口展示快捷键并由 Esc 关闭", async () => {
+    stubShell();
+    render(<Harness />);
+    fireEvent.keyDown(window, { key: "n", code: "KeyN", ctrlKey: true });
+    expect(screen.getByRole("heading", { name: "新建任务" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "键盘快捷键" }));
+    expect(screen.getByRole("dialog", { name: "键盘快捷键" })).toBeTruthy();
+    expect(screen.getByText("切换权限模式")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "键盘快捷键" })).toBeNull();
+  });
+
+  it("会话快捷键隔离到 split.focused：Shift+Tab 与 Ctrl+. 不会切另一格权限", async () => {
+    const shell = stubShell();
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", "s2", null, null, null, null]));
+    render(<Harness />);
+    await waitFor(() => expect(screen.getAllByRole("textbox", { name: "消息输入" })).toHaveLength(2));
+
+    fireEvent.keyDown(window, { key: "Tab", code: "Tab", shiftKey: true });
+    await waitFor(() => expect(shell.calls.filter((c) => c.cmd === "session_call")).toHaveLength(1));
+    expect(shell.calls.find((c) => c.cmd === "session_call")?.args?.id).toBe("s1");
+
+    fireEvent.pointerDown(screen.getByRole("region", { name: "第 2 格" }));
+    fireEvent.keyDown(window, { key: ".", code: "Period", ctrlKey: true });
+    await waitFor(() => expect(shell.calls.filter((c) => c.cmd === "session_call")).toHaveLength(2));
+    expect(shell.calls.filter((c) => c.cmd === "session_call")[1]?.args?.id).toBe("s2");
   });
 
   it("关闭格子:兄弟上位、槽位清档;最后一格不可关(钮置灰)", async () => {
@@ -308,6 +416,60 @@ describe("分屏视图(树形布局)", () => {
     expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").a.ratio).toBeCloseTo(0.75);
     fireEvent.doubleClick(container.querySelector('[data-split-handle="a"]')!);
     expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").a.ratio).toBe(0.5);
+  });
+
+  it("三格双击贯通线:按辖下格数分成 2:1,并递归均分左侧两格", () => {
+    stubShell();
+    localStorage.setItem(
+      "mc.splitTree",
+      JSON.stringify({
+        dir: "col",
+        ratio: 0.5,
+        a: { dir: "row", ratio: 0.7, a: { leaf: 0 }, b: { leaf: 2 } },
+        b: { leaf: 1 },
+      }),
+    );
+    const { container } = render(<Harness />);
+    fireEvent.doubleClick(container.querySelector('[data-split-handle="root"]')!);
+    const saved = JSON.parse(localStorage.getItem("mc.splitTree") ?? "null");
+    expect(saved.ratio).toBeCloseTo(2 / 3);
+    expect(saved.a.ratio).toBe(0.5);
+  });
+
+  it("六格 1:5 均分后键盘沿边界方向不反跳", () => {
+    stubShell();
+    localStorage.setItem(
+      "mc.splitTree",
+      JSON.stringify({
+        dir: "col",
+        ratio: 0.5,
+        a: { leaf: 0 },
+        b: {
+          dir: "col",
+          ratio: 0.5,
+          a: { leaf: 1 },
+          b: {
+            dir: "col",
+            ratio: 0.5,
+            a: { leaf: 2 },
+            b: {
+              dir: "col",
+              ratio: 0.5,
+              a: { leaf: 3 },
+              b: { dir: "col", ratio: 0.5, a: { leaf: 4 }, b: { leaf: 5 } },
+            },
+          },
+        },
+      }),
+    );
+    const { container } = render(<Harness />);
+    const root = container.querySelector<HTMLElement>('[data-split-handle="root"]')!;
+    fireEvent.doubleClick(root);
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 6);
+    fireEvent.keyDown(root, { key: "ArrowLeft" });
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 6);
+    fireEvent.keyDown(root, { key: "ArrowRight" });
+    expect(JSON.parse(localStorage.getItem("mc.splitTree") ?? "null").ratio).toBeCloseTo(1 / 6 + 0.05);
   });
 
   it("按住格头标题拖到另一格 = 交换位置(内容跟格走,落点有高亮)", () => {
@@ -479,6 +641,17 @@ describe("分屏视图(树形布局)", () => {
     expect(within(screen.getByRole("region", { name: "第 1 格" })).getByRole("heading", { name: "新建任务" })).toBeTruthy();
   });
 
+  it("工作台 inactive 时 window 级原生文件拖放不投递到后台 pane", async () => {
+    const shell = stubShell();
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    render(<Harness active={false} />);
+    await waitFor(() => expect(shell.listenerCount("tauri://drag-drop")).toBe(1));
+
+    shell.emit("tauri://drag-drop", { paths: ["/tmp/hidden.txt"] });
+    await act(() => Promise.resolve());
+    expect(shell.calls.filter((c) => c.cmd === "stat_dropped_file")).toHaveLength(0);
+  });
+
   it("Linux window 级原生文件拖放每次只投递给焦点 pane", async () => {
     const shell = stubShell();
     const sessions = [meta({ id: "left", title: "左格" }), meta({ id: "right", title: "右格" })];
@@ -505,13 +678,15 @@ describe("分屏视图(树形布局)", () => {
     stubShell();
     const list: SessionMeta[] = [
       meta({ id: "a1", title: "甲任务", workdir: "/p/alpha", updated_at: "2026-08-18T02:00:00Z" }),
-      meta({ id: "c9", title: "闲聊", kind: "chat", workdir: "", updated_at: "2026-08-18T01:00:00Z" }),
+      meta({ id: "c9", title: "闲聊", kind: "chat", workdir: "", waiting_ask: true, updated_at: "2026-08-18T01:00:00Z" }),
     ];
     render(<Harness sessions={list} />);
     const strip = screen.getByRole("complementary", { name: "选择任务" });
     // 默认序:临时会话在项目组之前(待办组是列表最前的固定段,本 Harness
     // 未接待办 wiring,组间序不受影响)
     const chatsHead = within(strip).getByText("临时会话");
+    // 等待处理只在具体会话行外显，组头不展示数字。
+    expect(chatsHead.closest("button")?.querySelector(".badge")).toBeNull();
     expect(chatsHead.compareDocumentPosition(within(strip).getByText("alpha")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // 拖 alpha 落到临时会话之前:快照写盘且渲染序翻转
     const dt = fakeDT();
@@ -525,16 +700,19 @@ describe("分屏视图(树形布局)", () => {
     ).toBeTruthy();
   });
 
-  it("「临时会话」组头「+」快捷新建:内嵌表单落本地页签的「临时会话」档(会话=不选文件夹的任务)", async () => {
+  it("「临时会话」组头「+」快捷新建:内嵌表单落本地页签的「临时会话」档(会话不关联项目)", async () => {
     stubShell();
-    render(<Harness />);
+    render(<Harness sessions={[]} />);
     const list = screen.getByRole("complementary", { name: "选择任务" });
-    // 组头常驻(即使还没有会话),hover「+」是新建会话的常驻入口
-    expect(within(list).getByText("临时会话")).toBeTruthy();
+    // 固定组头常驻；没有任何项目的新安装也保留「项目」分区锚点。
+    const chatsHead = within(list).getByText("临时会话");
+    const projectsCap = within(list).getByText("项目");
+    expect(within(list).getByText("暂无项目，点击右上角「+」新建")).toBeTruthy();
+    expect(chatsHead.compareDocumentPosition(projectsCap) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await userEvent.click(within(list).getByRole("button", { name: "新建会话" }));
     const pane = screen.getAllByRole("region")[0]!;
     expect(within(pane).getByRole("tab", { name: /本地任务/ }).getAttribute("aria-selected")).toBe("true");
-    expect(within(pane).getByRole("button", { name: "最近目录" }).textContent).toContain("临时会话");
+    expect(within(pane).getByRole("button", { name: "选择项目" }).textContent).toContain("临时会话");
   });
 
   it("任务列默认展开:新建/列开关双钮在列内(2026-08-18 定案),点行走 place 路由(在场定位/空格装载)", async () => {

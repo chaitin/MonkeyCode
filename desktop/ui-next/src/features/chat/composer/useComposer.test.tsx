@@ -32,6 +32,8 @@ const feed = (over: Partial<ComposerFeed> = {}): ComposerFeed => ({
   running: false,
   historyLoaded: true,
   lastSeq: 0,
+  lastTurnStartSeq: 0,
+  lastTerminalSeq: 0,
   ...over,
 });
 const settle = () => act(async () => void (await Promise.resolve()));
@@ -308,6 +310,145 @@ describe("useComposer 本地持久 lane", () => {
     await settle();
     expect(calls.filter((call) => call.cmd === "session_call" && call.args?.kind === "session_compact")).toHaveLength(1);
     expect(sends(calls)).toHaveLength(0);
+  });
+
+  it("空队列的暂停屏障不把 /compact 误判为任务执行中", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
+      initialProps: { running: true },
+    });
+    act(() => result.current.stop());
+    rerender({ running: false });
+    expect(result.current.queue).toMatchObject({ pending: [], inFlight: null, blocked: { code: "user-paused" } });
+
+    act(() => result.current.setDraft("/compact"));
+    act(() => expect(result.current.send()).toBe(true));
+    await settle();
+    expect(calls.filter((call) => call.cmd === "session_call" && call.args?.kind === "session_compact")).toHaveLength(1);
+  });
+
+  it("同批开始并结束后按配对水位清除隐藏在途锁", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(
+      ({ running, lastSeq, lastTurnStartSeq, lastTerminalSeq }) =>
+        useComposer("a", feed({ running, lastSeq, lastTurnStartSeq, lastTerminalSeq })),
+      { initialProps: { running: true, lastSeq: 0, lastTurnStartSeq: 0, lastTerminalSeq: 0 } },
+    );
+    act(() => result.current.setDraft("排队消息"));
+    act(() => result.current.send());
+
+    rerender({ running: false, lastSeq: 0, lastTurnStartSeq: 0, lastTerminalSeq: 0 });
+    await waitFor(() => expect(sends(calls)).toHaveLength(1));
+    expect(result.current.queue.inFlight?.phase).toBe("awaiting-receipt");
+
+    rerender({ running: false, lastSeq: 3, lastTurnStartSeq: 2, lastTerminalSeq: 3 });
+    await waitFor(() => expect(result.current.queue.inFlight).toBeNull());
+
+    act(() => result.current.setDraft("/compact"));
+    act(() => expect(result.current.send()).toBe(true));
+    await settle();
+    expect(calls.filter((call) => call.cmd === "session_call" && call.args?.kind === "session_compact")).toHaveLength(1);
+  });
+
+  it("错误帧保持运行态直到唯一 task-ended 后才补投下一条", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(
+      ({ running, lastSeq, lastTurnStartSeq, lastTerminalSeq }) =>
+        useComposer("a", feed({ running, lastSeq, lastTurnStartSeq, lastTerminalSeq })),
+      { initialProps: { running: true, lastSeq: 1, lastTurnStartSeq: 1, lastTerminalSeq: 0 } },
+    );
+    for (const text of ["当前消息", "下一条消息"]) {
+      act(() => result.current.setDraft(text));
+      act(() => result.current.send());
+    }
+
+    rerender({ running: false, lastSeq: 1, lastTurnStartSeq: 1, lastTerminalSeq: 0 });
+    await waitFor(() => expect(sends(calls)).toHaveLength(1));
+    rerender({ running: true, lastSeq: 2, lastTurnStartSeq: 2, lastTerminalSeq: 0 });
+    await waitFor(() => expect(result.current.queue.inFlight?.phase).toBe("awaiting-turn-end"));
+
+    // task-error(terminal=false) 只展示错误，不能先于权威 task-ended 放开队列。
+    rerender({ running: true, lastSeq: 20, lastTurnStartSeq: 2, lastTerminalSeq: 0 });
+    await settle();
+    expect(sends(calls)).toHaveLength(1);
+    expect(result.current.queue.inFlight).toMatchObject({ item: { content: "当前消息" } });
+
+    rerender({ running: false, lastSeq: 21, lastTurnStartSeq: 2, lastTerminalSeq: 21 });
+    await waitFor(() => expect(sends(calls)).toHaveLength(2));
+    expect(result.current.queue.inFlight).toMatchObject({
+      item: { content: "下一条消息" },
+      phase: "awaiting-receipt",
+      baselineSeq: 21,
+    });
+  });
+
+  it("切会话首帧不会用旧会话水位清除新会话在途项", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(
+      ({ id, running, historyLoaded, lastSeq, lastTurnStartSeq, lastTerminalSeq }) =>
+        useComposer(id, feed({ running, historyLoaded, lastSeq, lastTurnStartSeq, lastTerminalSeq })),
+      {
+        initialProps: {
+          id: "b",
+          running: true,
+          historyLoaded: true,
+          lastSeq: 5,
+          lastTurnStartSeq: 5,
+          lastTerminalSeq: 0,
+        },
+      },
+    );
+    act(() => result.current.setDraft("B 的在途消息"));
+    act(() => result.current.send());
+    rerender({
+      id: "b",
+      running: false,
+      historyLoaded: true,
+      lastSeq: 5,
+      lastTurnStartSeq: 5,
+      lastTerminalSeq: 0,
+    });
+    await waitFor(() => expect(sends(calls)).toHaveLength(1));
+    rerender({
+      id: "b",
+      running: true,
+      historyLoaded: true,
+      lastSeq: 6,
+      lastTurnStartSeq: 6,
+      lastTerminalSeq: 0,
+    });
+    await waitFor(() => expect(result.current.queue.inFlight?.phase).toBe("awaiting-turn-end"));
+
+    rerender({
+      id: "a",
+      running: false,
+      historyLoaded: true,
+      lastSeq: 100,
+      lastTurnStartSeq: 90,
+      lastTerminalSeq: 100,
+    });
+    await settle();
+    rerender({
+      id: "a",
+      running: false,
+      historyLoaded: true,
+      lastSeq: 100,
+      lastTurnStartSeq: 90,
+      lastTerminalSeq: 100,
+    });
+    rerender({
+      id: "b",
+      running: false,
+      historyLoaded: false,
+      lastSeq: 100,
+      lastTurnStartSeq: 90,
+      lastTerminalSeq: 100,
+    });
+
+    expect(result.current.queue.inFlight).toMatchObject({ item: { content: "B 的在途消息" } });
+    act(() => result.current.setDraft("/compact"));
+    act(() => expect(result.current.send()).toBe(false));
+    expect(result.current.draft).toBe("/compact");
   });
 
   it("直接发送失败恢复原草稿，不污染切换后的会话", async () => {

@@ -25,6 +25,7 @@ const HLJS_MAX_CHARS = 50_000;
 const EMPTY_IMAGE_DATA_URL = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
 const MERMAID_IMAGE_SOURCE_RE = /(\bimg\s*:\s*)(["'])(.*?)\2/g;
 type LocalImageUrl = (path: string) => Promise<string>;
+type LocalImageCache = Map<string, Promise<string>>;
 let mermaidRenderId = 0;
 
 function ensureMermaidStyleSheet() {
@@ -52,21 +53,33 @@ function ensureMermaidStyleSheet() {
   });
 }
 
+/** 同一路径的成功结果与在途读取共用一个 Promise；失败只删除对应在途项，
+ * 后续重渲可以重试。用 microtask 包装也能收住适配器的同步 throw。 */
+function loadLocalImage(path: string, localImageUrl: LocalImageUrl, cache: LocalImageCache): Promise<string> {
+  const cached = cache.get(path);
+  if (cached) return cached;
+  const pending = Promise.resolve().then(() => localImageUrl(path));
+  cache.set(path, pending);
+  void pending.catch(() => {
+    if (cache.get(path) === pending) cache.delete(path);
+  });
+  return pending;
+}
+
 async function resolveMermaidImageSources(
   source: string,
   localImageUrl: LocalImageUrl | undefined,
-  cache: Map<string, string>,
+  cache: LocalImageCache,
 ): Promise<string> {
   const matches = [...source.matchAll(MERMAID_IMAGE_SOURCE_RE)];
   const replacements = await Promise.all(
     matches.map(async (match) => {
       const resource = resolveMarkdownResource(match[3] ?? "");
       if (resource.kind !== "local") return null;
-      let url = cache.get(resource.path) ?? EMPTY_IMAGE_DATA_URL;
-      if (!cache.has(resource.path) && localImageUrl) {
+      let url = EMPTY_IMAGE_DATA_URL;
+      if (localImageUrl) {
         try {
-          url = await localImageUrl(resource.path);
-          cache.set(resource.path, url);
+          url = await loadLocalImage(resource.path, localImageUrl, cache);
         } catch {
           // 图片失败不能拖垮整张 Mermaid 图；透明像素保留节点布局。
         }
@@ -86,7 +99,7 @@ async function hydrateLocalImages(
   root: ParentNode,
   localImageUrl: LocalImageUrl | undefined,
   cancelled: () => boolean,
-  cache: Map<string, string>,
+  cache: LocalImageCache,
 ) {
   if (!localImageUrl) return;
   await Promise.all(
@@ -94,16 +107,10 @@ async function hydrateLocalImages(
       const path = img.dataset.mcLocalSrc;
       if (!path || img.dataset.mdLoaded === "1") return;
       img.dataset.mdLoaded = "1";
-      const cached = cache.get(path);
-      if (cached) {
-        img.src = cached;
-        return;
-      }
       img.setAttribute("aria-busy", "true");
       try {
-        const url = await localImageUrl(path);
+        const url = await loadLocalImage(path, localImageUrl, cache);
         if (cancelled() || !img.isConnected) return;
-        cache.set(path, url);
         img.src = url;
         img.removeAttribute("aria-busy");
       } catch (error) {
@@ -119,7 +126,7 @@ async function hydrateLocalImages(
 async function renderMermaidDiagrams(
   root: HTMLElement,
   localImageUrl: LocalImageUrl | undefined,
-  imageCache: Map<string, string>,
+  imageCache: LocalImageCache,
   cancelled: () => boolean,
 ): Promise<void> {
   const diagrams = [...root.querySelectorAll<HTMLElement>("[data-md-mermaid]")];
@@ -361,9 +368,12 @@ function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: strin
   }
   const link = target.closest("a");
   if (link) {
+    const local = link.getAttribute("data-mc-local-href");
+    // 本地链接打标后 href 也会被改成占位 `#`，须先排除；真正的同文档锚点
+    // 保留浏览器默认行为，它不离开 webview，也不该交给 opener。
+    if (!local && linkHref(link).startsWith("#")) return;
     // 契约:webview 不导航——工作区文件走 reveal 回调,其余交系统浏览器
     e.preventDefault();
-    const local = link.getAttribute("data-mc-local-href");
     if (local) {
       onLocalLink?.(local);
       return;
@@ -512,7 +522,7 @@ function StaticMarkdown({
   // 升格引起的行高突变(占位原文 vs 解析产物,差值可达千 px 级)不在这里
   // 各自补偿；动态高度窗口的行级 ResizeObserver 会更新 Fenwick 高度树，
   // 并仅在变化位于阅读锚点上方时按真实 delta 校正 scrollTop。
-  const cache = useRef(new Map<string, string>());
+  const cache = useRef<LocalImageCache>(new Map());
   const localImageUrlRef = useRef(localImageUrl);
   useEffect(() => {
     localImageUrlRef.current = localImageUrl;
@@ -630,7 +640,7 @@ function StreamingMarkdown({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [near, segments, locale],
   );
-  const cache = useRef(new Map<string, string>());
+  const cache = useRef<LocalImageCache>(new Map());
   const localImageUrlRef = useRef(localImageUrl);
   useEffect(() => {
     localImageUrlRef.current = localImageUrl;

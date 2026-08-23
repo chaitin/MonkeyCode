@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createChatState, reduceBatch } from "@/lib/protocol/reduce";
+import { createChatState, prependHistory, reduceBatch } from "@/lib/protocol/reduce";
 import type { AcpUpdate, Frame } from "@/lib/protocol/types";
 import { composerPresentationOf } from "./Composer";
 
@@ -23,6 +23,15 @@ describe("composerPresentationOf 增量投影", () => {
     ]);
     expect(composerPresentationOf(second)).toBe(before);
     expect(before.roundNo).toBe(1);
+  });
+
+  it("前插历史 think 行不递增实时确认版本", () => {
+    const current = reduceBatch(createChatState(), [acp({ sessionUpdate: "think_update", think: "medium" }, 10)]);
+    const before = composerPresentationOf(current);
+    const withHistory = prependHistory(current, [acp({ sessionUpdate: "think_update", think: "high" }, 1)]);
+
+    expect(composerPresentationOf(withHistory)).toBe(before);
+    expect(composerPresentationOf(withHistory).thinkRevision).toBe(1);
   });
 
   it("相关状态变化才产生新投影，并增量维护运行工具计数", () => {

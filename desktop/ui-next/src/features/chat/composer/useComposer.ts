@@ -99,19 +99,23 @@ const ERROR_TTL_MS = 8000;
  *  这串退避再补上"一帧都不再来"的死角;耗尽即停,不无限空转。 */
 const FLUSH_RETRY_MS = [600, 1800, 5000, 12000];
 
-/** 数据面喂给 composer 的三个信号(全部来自 useSessionFeed 的 ChatState)。 */
+/** 数据面喂给 composer 的轮次与帧水位信号(全部来自 useSessionFeed 的 ChatState)。 */
 export interface ComposerFeed {
   /** 轮次执行中(壳的忙碌守卫按它拒直发)。 */
   running: boolean;
   /** 首份历史(尾部回放窗口)已落地——落地前 running 恒 false 但不可信。 */
   historyLoaded: boolean;
+  /** 最近一次开轮帧 seq；用于确认回执及其后终态属于当前队列项。 */
+  lastTurnStartSeq: number;
+  /** 最近一个终止当前轮次的帧 seq；用于补回同批开始/结束时被折叠的边沿。 */
+  lastTerminalSeq: number;
   /** 帧 seq 水位:任一批帧到达即抬升。等价于旧 UI 的 onFrames 时机——
    *  "壳已把上一条上行物化成帧",是解除在途标记与失败抑制的唯一可信信号。 */
   lastSeq: number;
 }
 
 export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl {
-  const { running, historyLoaded, lastSeq } = feed;
+  const { running, historyLoaded, lastSeq, lastTurnStartSeq, lastTerminalSeq } = feed;
   const [draft, setDraft] = useState("");
   const target = useMemo(() => localSendQueueTarget(sessionId), [sessionId]);
   const subscribeLane = useCallback((listener: () => void) => subscribeSendQueueLane(target, listener), [target]);
@@ -226,7 +230,14 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     if (!content && atts.length === 0) return false;
     // /compact 是控制指令，不得进入待发送 lane。
     if (content === "/compact" && atts.length === 0) {
-      if (running || sendingRef.current || queue.pending.length > 0 || queue.inFlight || queue.blocked) {
+      if (
+        !historyLoaded ||
+        !composerReady ||
+        running ||
+        sendingRef.current ||
+        queue.pending.length > 0 ||
+        queue.inFlight
+      ) {
         notifyError(t("chat.compact.busy"));
         return false;
       }
@@ -237,7 +248,15 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       return true;
     }
 
-    if (running || sendingRef.current || queue.pending.length > 0 || queue.inFlight || queue.blocked) {
+    if (
+      !historyLoaded ||
+      !composerReady ||
+      running ||
+      sendingRef.current ||
+      queue.pending.length > 0 ||
+      queue.inFlight ||
+      queue.blocked
+    ) {
       // 忙碌/已有 lane 时结构化追加到队尾；附件行只在真正投递时生成。
       flushBlockedRef.current = false;
       clearRetry();
@@ -273,6 +292,8 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   }, [
     draft,
     atts,
+    historyLoaded,
+    composerReady,
     running,
     queue.pending.length,
     queue.inFlight,
@@ -283,24 +304,45 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     updateQueue,
   ]);
 
-  // 帧水位抬升 = 上行已物化。只把匹配 baseline 的队列项推进到等待轮末；
+  // 开轮水位确认上行已物化；终态水位只有晚于同一开轮时才收掉隐藏
+  // in-flight，避免失败轮连续 task-error/task-ended 误认成下一条消息的回执。
   // Promise resolve 本身不摘 in-flight，避免 ack 与首帧之间的真空连投。
   useEffect(() => {
+    if (!historyLoaded || !composerReady) return;
     sendingRef.current = false;
     flushBlockedRef.current = false;
     clearRetry();
     updateQueue((lane) => {
       let next = resumeAutomatic(lane);
       const inFlight = next.inFlight;
-      if (inFlight && (inFlight.baselineSeq === undefined || lastSeq > inFlight.baselineSeq)) {
-        next = markReceipt(next, inFlight.item.id);
+      const baselineSeq = inFlight?.baselineSeq;
+      const startedAfterClaim = baselineSeq !== undefined && lastTurnStartSeq > baselineSeq;
+      if (inFlight && startedAfterClaim) next = markReceipt(next, inFlight.item.id);
+      if (
+        next.inFlight?.phase === "awaiting-turn-end" &&
+        startedAfterClaim &&
+        lastTerminalSeq > lastTurnStartSeq
+      ) {
+        next = completeTurn(next, next.inFlight.item.id);
       }
       return next;
     });
-  }, [lastSeq, clearRetry, updateQueue]);
+  }, [
+    historyLoaded,
+    composerReady,
+    lastSeq,
+    lastTurnStartSeq,
+    lastTerminalSeq,
+    clearRetry,
+    updateQueue,
+  ]);
 
   // 开轮确认 receipt；只有观察到同一会话 running=true → false 才完成该项。
   useEffect(() => {
+    if (!historyLoaded || !composerReady) {
+      previousRunningRef.current = running;
+      return;
+    }
     const wasRunning = previousRunningRef.current;
     previousRunningRef.current = running;
     sendingRef.current = false;
@@ -313,7 +355,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       if (!running && wasRunning && itemId) next = completeTurn(next, itemId);
       return next;
     });
-  }, [running, clearRetry, updateQueue]);
+  }, [running, historyLoaded, composerReady, clearRetry, updateQueue]);
 
   // 空闲时原子领取一个队首并投递；领取先落持久化，失败同 ID 回队首且阻塞。
   useEffect(() => {

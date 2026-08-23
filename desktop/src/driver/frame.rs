@@ -138,10 +138,6 @@ pub fn task_ended(seq: u64) -> Value {
     build("task-ended", None, None, seq)
 }
 
-pub fn task_error(msg: &str, seq: u64) -> Value {
-    build("task-error", None, Some(json!({ "error": msg })), seq)
-}
-
 /// 引擎已报告错误/告警，但轮次尚未以 turn/stopped 权威收尾。沿用
 /// task-error 的展示词汇并显式标 terminal=false，让新 UI 保持 running；
 /// 缺字段的旧帧仍按历史语义视为终止，云端拒绝帧不受影响。

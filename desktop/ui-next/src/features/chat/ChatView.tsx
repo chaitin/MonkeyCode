@@ -1112,6 +1112,7 @@ export function ChatView({
                 historyLoaded={historyLoaded}
                 meta={meta}
                 onAfterSend={followBottom}
+                hotkeysActive={hotkeysActive}
                 focusRequest={focusRequest}
                 onFocusRequestHandled={onFocusRequestHandled}
               />

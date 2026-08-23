@@ -635,7 +635,7 @@ async fn e2e_wsl_smoke_full_lifecycle() {
     // "建得起来 + 存 guest 形态";那条 UNC 误判只在真 Windows 上现形,
     // 防线是 session_create_with_kind 里 (Some(_), _) 那条显式分支。
     let meta = driver
-        .session_create_with_kind("", "测试模型", false, "chat", "")
+        .session_create_with_kind("", "测试模型", false, "chat", "", None)
         .await
         .expect("WSL 下建普通对话");
     let sid4 = meta.get("id").and_then(|v| v.as_str()).unwrap();
@@ -1648,6 +1648,32 @@ fn error_event_waits_for_turn_stopped_and_deduplicates_terminal_summary() {
         1
     );
     assert!(!inner.sess.sessions.lock().unwrap()["s1"].running);
+}
+
+/// turn/stopped 自带的错误摘要与紧随其后的 task-ended 属于同一轮收尾。
+/// error 帧即使先被 30ms flusher 发走也不能提前放开 UI 队列。
+#[test]
+fn stopped_error_summary_stays_pending_until_task_ended() {
+    let inner = bare_inner("stopped-error-summary");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "error", "error": "quota exhausted" }),
+    );
+    inner.journal_barrier();
+
+    let frames = journal_frames(&inner, "s1");
+    let error_index = frames
+        .iter()
+        .position(|f| f.get("type").and_then(Value::as_str) == Some("task-error"))
+        .expect("缺 task-error");
+    let end_index = frames
+        .iter()
+        .position(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+        .expect("缺 task-ended");
+    assert_eq!(frames[error_index].pointer("/data/terminal").and_then(Value::as_bool), Some(false));
+    assert!(error_index < end_index, "错误摘要必须先展示，再由 task-ended 唯一收轮");
 }
 
 /// 回退后的 Agent 在用户取消 provider 请求时会额外发一条无 kind error，

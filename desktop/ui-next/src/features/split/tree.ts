@@ -31,9 +31,13 @@ export const PRESETS = {
 export type PresetKey = keyof typeof PRESETS;
 
 const MAX_DEPTH = 5; // 6 叶的树最深 5 层;再深必是坏档/恶意档
+export const SPLIT_MIN_RATIO = 1 / SPLIT_MAX_PANES; // 1:5 是六格等面积时的合法边界
+export const SPLIT_MAX_RATIO = 1 - SPLIT_MIN_RATIO;
 
 const clampRatio = (v: unknown): number =>
-  typeof v === "number" && Number.isFinite(v) ? Math.min(0.8, Math.max(0.2, v)) : 0.5;
+  typeof v === "number" && Number.isFinite(v)
+    ? Math.min(SPLIT_MAX_RATIO, Math.max(SPLIT_MIN_RATIO, v))
+    : 0.5;
 
 /** 叶槽位序(中序 = 视觉阅读序;可见集/焦点轮转/播种都按它)。 */
 export function leaves(node: SplitNode): number[] {
@@ -76,6 +80,22 @@ export function setRatio(node: SplitNode, path: string, ratio: number): SplitNod
   return head === "a"
     ? { ...node, a: setRatio(node.a, path.slice(1), ratio) }
     : { ...node, b: setRatio(node.b, path.slice(1), ratio) };
+}
+
+/** 双击某条分隔线时,只在它辖下的子树按叶数递归分配面积。比如左侧
+ * 有上下两格、右侧一格,根比例为 2/3:1/3,左侧内部再取 1/2:1/2；
+ * 于是三格等面积。路径外的布局保持不动。 */
+export function equalizeAt(node: SplitNode, path: string): SplitNode {
+  if ("leaf" in node) return node;
+  if (path !== "") {
+    const head = path[0];
+    return head === "a"
+      ? { ...node, a: equalizeAt(node.a, path.slice(1)) }
+      : { ...node, b: equalizeAt(node.b, path.slice(1)) };
+  }
+  const a = equalizeAt(node.a, "");
+  const b = equalizeAt(node.b, "");
+  return { ...node, ratio: clampRatio(paneCount(a) / (paneCount(a) + paneCount(b))), a, b };
 }
 
 /** 拆分某叶(向右 = col / 向下 = row):新格取未被任何叶占用的最小槽号,

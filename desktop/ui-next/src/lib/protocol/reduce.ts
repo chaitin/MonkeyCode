@@ -85,6 +85,8 @@ export function createChatState(): ChatState {
     permMode: "",
     commands: [],
     keyBase: 0,
+    lastTurnStartSeq: 0,
+    lastTerminalSeq: 0,
     lastSeq: 0,
   };
 }
@@ -96,8 +98,8 @@ export function createChatState(): ChatState {
 // (commit 01fd08bd 给系统行加 tag 时就写明「tag 是唯一可测可译口径」,
 //  口径早铺好了,只是没接上。)
 
-/** 思考档位 → i18n 键(""=跟随模型默认)。**档位全集(键序)也以此为准**:
- *  新建任务页的选择器、composer 的 ThinkMenu、think_update 系统行同一份。 */
+/** 思考档位 → i18n 键。空串只用于兼容历史/未知 think_update 的展示回退；
+ *  模型组合菜单固定使用 pickers.THINK_LEVELS 的关闭/低/中/高四档。 */
 export const THINK_KEY: Record<string, MessageKey> = {
   "": "create.think.default",
   off: "chat.think.off",
@@ -646,6 +648,8 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         ...s,
         running: true,
         turnEnded: false,
+        lastTurnStartSeq:
+          typeof f.seq === "number" && f.seq > 0 ? Math.max(s.lastTurnStartSeq, f.seq) : s.lastTurnStartSeq,
         plan: s.plan.length > 0 && s.plan.every((e) => e.status === "completed") ? [] : s.plan,
       };
     case "task-ended":
@@ -654,6 +658,8 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         running: false,
         streamKind: "",
         turnEnded: true,
+        lastTerminalSeq:
+          typeof f.seq === "number" && f.seq > 0 ? Math.max(s.lastTerminalSeq, f.seq) : s.lastTerminalSeq,
         items: [...expireOpenAsks(s.items), { kind: "sys", tag: "turn-end", text: "", key: "chat.sys.turnEnd" }],
       };
     case "task-error": {
@@ -665,6 +671,10 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         // 只负责即时展示，不能提前放开输入/排队闸；云端旧帧缺字段仍终止。
         running: terminal ? false : s.running,
         streamKind: "",
+        lastTerminalSeq:
+          terminal && typeof f.seq === "number" && f.seq > 0
+            ? Math.max(s.lastTerminalSeq, f.seq)
+            : s.lastTerminalSeq,
         items: [
           ...(terminal ? expireOpenAsks(s.items) : s.items),
           data?.error

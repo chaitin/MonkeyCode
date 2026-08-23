@@ -1,7 +1,7 @@
 // 壳级 chrome 行为(main.tsx 启动时安装,浏览器模式不生效):
-// - 右键:拦掉 WebView 原生菜单(带"检查元素/重新加载"且裁不掉),换自绘文本菜单
+// - 右键:拦掉 WebView 原生菜单(带"检查元素/重新加载"且裁不掉),换自绘菜单
 // - F12 / ⌃⇧I / ⌘⇧I:打开 devtools(壳命令)
-import { openTextContextMenu } from "@/lib/contextMenu";
+import { openContextMenu } from "@/lib/contextMenu";
 import { inDesktopShell, invoke } from "@/lib/ipc/ipc";
 
 /** 判据两点(2026-08-09 对表旧工程补回):
@@ -51,7 +51,7 @@ export function installShellChrome(): void {
   window.addEventListener("contextmenu", (e) => {
     if (!inDesktopShell()) return;
     e.preventDefault();
-    openTextContextMenu(e);
+    openContextMenu(e);
   });
   window.addEventListener("keydown", (e) => {
     if (!inDesktopShell()) return;

@@ -291,6 +291,11 @@ export interface ChatState {
    * 既有条目的 key 因此保持不变——否则下标 key 整体平移,React 认不出
    * 同一条,工具卡/思考块的展开态串位、整列重挂载(markdown 全部重解析)。 */
   keyBase: number;
+  /** 最近一次开轮帧 seq；与 lastTerminalSeq 配对判断终态属于哪一轮。 */
+  lastTurnStartSeq: number;
+  /** 最近一个终止当前轮次的帧 seq。与 running 不同，它是单调水位，避免
+   * task-started/task-ended 在同批归约后折叠成 false→false 而丢失轮末边沿。 */
+  lastTerminalSeq: number;
   /** seq 去重水位:已归约帧的最大 seq(0 = 还没见过带 seq 的帧)。
    * 云端重连会重放重叠帧,靠它跨批次丢弃;详见 reduceBatch 的去重口径。 */
   lastSeq: number;

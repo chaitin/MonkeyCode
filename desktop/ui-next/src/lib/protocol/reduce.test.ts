@@ -639,6 +639,22 @@ describe("轮次与系统帧", () => {
     expect(reduceFrame(ended, frame("task-started")).turnEnded).toBe(false);
   });
 
+  it("同批开始并结束仍保留单调终态水位", () => {
+    const ended = run([
+      { ...frame("task-started"), seq: 10 },
+      { ...frame("task-ended"), seq: 11 },
+    ]);
+    expect(ended).toMatchObject({
+      running: false,
+      lastSeq: 11,
+      lastTurnStartSeq: 10,
+      lastTerminalSeq: 11,
+    });
+
+    const next = reduceBatch(ended, [{ ...frame("task-error", { error: "暂时失败", terminal: false }), seq: 12 }]);
+    expect(next).toMatchObject({ running: false, lastSeq: 12, lastTerminalSeq: 11 });
+  });
+
   it("task-error 渲染错误系统行,缺 error 字段回退文案", () => {
     const s = run([frame("task-error", { error: "配额耗尽" })]);
     expect(s.items.at(-1)).toEqual({ kind: "sys", tag: "error", text: "", key: "chat.sys.error", params: { reason: "配额耗尽" }, error: true });

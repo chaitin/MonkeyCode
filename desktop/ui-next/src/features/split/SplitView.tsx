@@ -24,21 +24,24 @@ import {
   IconFolderCode,
   IconFolderOpen,
   IconLayoutSidebar,
+  IconKeyboard,
   IconMessages,
   IconPlus,
   IconSettings,
   IconWorld,
   IconX,
 } from "@tabler/icons-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { ChatView } from "@/features/chat/ChatView";
+import { DetailModal } from "@/features/chat/DetailModal";
+import { appShortcutOfEvent, shortcutChord, type AppShortcutAction } from "@/app/shortcuts";
 import { CloudTaskList, type CloudTasksFeed } from "@/features/cloud/CloudTaskList";
 import { CloudTaskView } from "@/features/cloud/CloudTaskView";
 import { NewTaskModal } from "@/features/newtask/NewTaskModal";
 import { rowStatusLabel, rowTrailing } from "@/features/sidebar/sessionStatus";
-import { GroupLabel, levelPad, ListRow, SectionFold, StatusDot } from "@/features/sidebar/listKit";
+import { FixedGroupHeader, GroupLabel, levelPad, ListRow, SectionFold, StatusDot } from "@/features/sidebar/listKit";
 import { TODO_GROUP_KEY, TodoSection, type TodoWiring } from "@/features/todo/TodoSection";
 
 /** 「临时会话」组的折叠哨兵键(与 TODO_GROUP_KEY 同构,住 mc.collapsedGroups;
@@ -60,7 +63,7 @@ import { isMacShell, openExternal } from "@/lib/ipc/host";
 import { readFold, SPLIT_MAX_PANES, writeFold } from "@/lib/util/prefs";
 import { renameIsNoop } from "@/lib/util/rename";
 import { cloudSlotId, cloudTaskIdOf, firstEmptyIn, isCloudSlotId, LOAD_MIME, SWAP_MIME } from "./slots";
-import { leaves, paneCount, type SplitDir, type SplitNode } from "./tree";
+import { leaves, paneCount, SPLIT_MAX_RATIO, SPLIT_MIN_RATIO, type SplitDir, type SplitNode } from "./tree";
 import type { SplitStateApi } from "./useSplitState";
 
 /** 快捷模板(「布局」下拉):套形状不套比例;当前同形的项 menu-active。 */
@@ -87,6 +90,7 @@ export interface SplitAdminWiring {
 }
 
 export function SplitView({
+  active = true,
   sessions,
   split,
   epoch,
@@ -105,6 +109,8 @@ export function SplitView({
   admin,
   titlebarSlot = null,
 }: {
+  /** 设置模态在场时保持工作台挂载，但停用所有 window/Tauri 级交互。 */
+  active?: boolean;
   sessions: SessionMeta[];
   split: SplitStateApi;
   epoch: number;
@@ -164,6 +170,10 @@ export function SplitView({
     todoId?: string;
   } | null>(null);
   const [dropSlot, setDropSlot] = useState<number | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  useEffect(() => {
+    if (!active) setShortcutsOpen(false);
+  }, [active]);
   // 任务列宽度可拖(2026-08-20 用户「给一个最小的宽度就行」):最小 184
   // 保住 tab/行截断链,上限 420 不吃画布;缺省仍 --spacing-side(232)
   const [sideWidth, setSideWidth] = useState<number>(() => {
@@ -281,6 +291,38 @@ export function SplitView({
   const newTaskAction = () => {
     openCreateInNewPane(pickTab === "cloud" ? "cloud" : "local");
   };
+  const onWorkbenchShortcut = useEffectEvent((e: KeyboardEvent) => {
+    if (!active) return;
+    const action = appShortcutOfEvent(e);
+    let handled = true;
+    switch (action) {
+      case "new-task":
+        newTaskAction();
+        break;
+      case "focus-composer":
+        onComposerIntent?.();
+        break;
+      case "toggle-sidebar":
+        toggleList();
+        break;
+      case "split-right":
+        split.splitPane(split.focused, "col");
+        break;
+      case "split-down":
+        split.splitPane(split.focused, "row");
+        break;
+      default:
+        handled = false;
+    }
+    if (!handled) return;
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => onWorkbenchShortcut(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // App 侧创建意图(待办派发):seq 去重消费,走「新建即新格」同一条路
   const consumedCreateSeq = useRef(0);
   useEffect(() => {
@@ -295,6 +337,9 @@ export function SplitView({
   // body 上的全局 cursor/user-select 副作用会永久留下 ====
   const stopDragRef = useRef<(() => void) | null>(null);
   useEffect(() => () => stopDragRef.current?.(), []);
+  useEffect(() => {
+    if (!active) stopDragRef.current?.();
+  }, [active]);
   const trackPointer = (cursor: string, onMove: (ev: MouseEvent) => void) => {
     stopDragRef.current?.();
     document.body.style.cursor = cursor;
@@ -313,8 +358,8 @@ export function SplitView({
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", finish);
   };
-  // 0.2–0.8 夹取:太窄的格没有可读性,把手也不能被拖出容器
-  const clamp = (v: number) => Math.min(0.8, Math.max(0.2, v));
+  // 与树存档/双击均分共用边界；六格 1:5 时需要允许到 1/6。
+  const clamp = (v: number) => Math.min(SPLIT_MAX_RATIO, Math.max(SPLIT_MIN_RATIO, v));
   const startHandleDrag = (path: string, dir: SplitDir) => (e: ReactMouseEvent) => {
     e.preventDefault();
     // 分隔线的坐标系就是它所属切分容器(把手的父节点),树再深也各算各的
@@ -406,6 +451,7 @@ export function SplitView({
     return (
       <section
         key={slot}
+        data-menu-inline-boundary=""
         aria-label={t("split.pane", { n: String(slot + 1) })}
         // capture 相:格内任意处按下即夺焦(含 composer/按钮,不拦事件)
         onPointerDownCapture={() => {
@@ -484,7 +530,7 @@ export function SplitView({
             initialFiles={creating.files}
             recentDirs={recentDirs}
             onOpenSettings={onOpenSettings}
-            nativeDropEnabled={focused}
+            nativeDropEnabled={active && focused}
             onCreated={(created) => {
               setCreatingSlot(null);
               setSwapSlot(null);
@@ -534,9 +580,9 @@ export function SplitView({
             task={cloudTask}
             headerSlot={paneExtras[slot] ?? null}
             menuRegister={paneMenuReg[slot]}
-            hotkeysActive={focused}
-            nativeDropEnabled={focused}
-            focusRequest={focused ? focusRequest : 0}
+            hotkeysActive={active && focused}
+            nativeDropEnabled={active && focused}
+            focusRequest={active && focused ? focusRequest : 0}
             onFocusRequestHandled={onFocusRequestHandled}
             onTasksChanged={cloud?.onChanged}
             onDeleted={() => {
@@ -552,9 +598,9 @@ export function SplitView({
             meta={meta!}
             epoch={epoch}
             headerSlot={paneExtras[slot] ?? null}
-            hotkeysActive={focused}
-            nativeDropEnabled={focused}
-            focusRequest={focused ? focusRequest : 0}
+            hotkeysActive={active && focused}
+            nativeDropEnabled={active && focused}
+            focusRequest={active && focused ? focusRequest : 0}
             onFocusRequestHandled={onFocusRequestHandled}
           />
         )}
@@ -567,7 +613,7 @@ export function SplitView({
   };
 
   /** 递归渲染布局树:切分节点 = 两个按比例伸展的子容器 + 骑在 1px 分隔线
-   *  上的把手(8px 透明热区,双击回平分)。平铺分栏(2026-08-19 用户
+   *  上的把手(8px 透明热区,双击按辖下叶数递归均分面积)。平铺分栏(2026-08-19 用户
    *  mockup 终案):浮卡的 12px 缝在多格时每格白吃 ~30px 宽,回 1px 细线。 */
   const renderNode = (node: SplitNode, path: string) => {
     if ("leaf" in node) return renderPane(node.leaf);
@@ -585,8 +631,8 @@ export function SplitView({
           role="separator"
           aria-orientation={vertical ? "vertical" : "horizontal"}
           aria-label={t("split.resize")}
-          aria-valuemin={20}
-          aria-valuemax={80}
+          aria-valuemin={Math.round(SPLIT_MIN_RATIO * 100)}
+          aria-valuemax={Math.round(SPLIT_MAX_RATIO * 100)}
           aria-valuenow={Math.round(node.ratio * 100)}
           tabIndex={0}
           title={t("split.resizeHint")}
@@ -611,7 +657,7 @@ export function SplitView({
             e.stopPropagation();
             split.setNodeRatio(path, clamp(node.ratio + delta));
           }}
-          onDoubleClick={() => split.setNodeRatio(path, 0.5)}
+          onDoubleClick={() => split.equalizeNode(path)}
         >
           {/* 画布本体在背景启用时必须透明，否则 pane 的半透明表面会与
               画布叠成两层；真正的 1px 分隔面只画在把手中心。 */}
@@ -629,7 +675,8 @@ export function SplitView({
   };
 
   return (
-    <main className="relative flex min-w-0 flex-1 overflow-hidden bg-base-100">
+    <>
+      <main className="relative flex min-w-0 flex-1 overflow-hidden bg-base-100">
       <div className="mc-workbench-background" aria-hidden />
       {/* 参考图重排(2026-08-18):任务列升为**整窗高左列**(mac 灯与列
           开关住其顶部),头部只横跨主区;格区卡片化。 */}
@@ -651,6 +698,7 @@ export function SplitView({
           onNewTaskInDir={(dir) => openCreateInNewPane("local", { dir })}
           onNewCloudIn={(project) => openCreateInNewPane("cloud", { cloudProject: project })}
           onOpenSettings={onOpenSettings}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
         />
       )}
       {/* 任务列拖宽把手:8px 透明骑列缘线(格分隔线同款;trackPointer
@@ -700,7 +748,7 @@ export function SplitView({
             条本来就在,再开一行 h-10 只装两颗钮是纯浪费(2026-08-20 用户
             报障)。btn-xs 适配条高;列开着时双钮在品牌行,标题栏回归纯
             chrome。mac/浏览器无标题栏条,仍走下方 rightBar */}
-        {!listOpen && titlebarSlot && createPortal(
+        {active && !listOpen && titlebarSlot && createPortal(
           <span className="flex h-full items-center gap-0.5 ps-1">
             <button
               type="button"
@@ -773,7 +821,44 @@ export function SplitView({
           {zoomedSlot !== null ? renderPane(zoomedSlot) : renderNode(split.tree, "")}
         </div>
       </div>
-    </main>
+      </main>
+      {active && shortcutsOpen && <ShortcutHelp onClose={() => setShortcutsOpen(false)} />}
+    </>
+  );
+}
+
+const SHORTCUT_HELP: ReadonlyArray<{
+  action: AppShortcutAction;
+  label: MessageKey;
+  context: MessageKey;
+}> = [
+  { action: "new-task", label: "shortcuts.newTask", context: "shortcuts.context.workbench" },
+  { action: "focus-composer", label: "shortcuts.focusComposer", context: "shortcuts.context.focused" },
+  { action: "open-settings", label: "shortcuts.openSettings", context: "shortcuts.context.app" },
+  { action: "toggle-sidebar", label: "shortcuts.toggleSidebar", context: "shortcuts.context.workbench" },
+  { action: "split-right", label: "shortcuts.splitRight", context: "shortcuts.context.focused" },
+  { action: "split-down", label: "shortcuts.splitDown", context: "shortcuts.context.focused" },
+  { action: "toggle-permission", label: "shortcuts.togglePermission", context: "shortcuts.context.local" },
+  { action: "stop-generation", label: "shortcuts.stopGeneration", context: "shortcuts.context.running" },
+];
+
+function ShortcutHelp({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
+  return (
+    <DetailModal ariaLabel={t("shortcuts.title")} title={t("shortcuts.title")} onClose={onClose}>
+      <p className="mb-3 text-xs text-base-content/60">{t("shortcuts.primaryHint")}</p>
+      <div className="divide-y divide-base-300 rounded-box border border-base-300">
+        {SHORTCUT_HELP.map((item) => (
+          <div key={item.action} className="flex items-center gap-3 px-3 py-2 text-xs">
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">{t(item.label)}</span>
+              <span className="block text-base-content/45">{t(item.context)}</span>
+            </span>
+            <kbd className="kbd kbd-sm shrink-0">{shortcutChord(item.action)}</kbd>
+          </div>
+        ))}
+      </div>
+    </DetailModal>
   );
 }
 
@@ -839,6 +924,7 @@ function WorkbenchList({
   onNewCloudIn,
   onNewTaskInDir,
   onOpenSettings,
+  onOpenShortcuts,
 }: {
   sessions: SessionMeta[];
   placed: ReadonlySet<string>;
@@ -863,6 +949,7 @@ function WorkbenchList({
   /** 组头「在此项目新建任务」(内嵌创建预填目录;旧侧栏能力)。 */
   onNewTaskInDir: (dir: string) => void;
   onOpenSettings: () => void;
+  onOpenShortcuts: () => void;
 }) {
   const { t, locale } = useI18n();
   // 项目组折叠:沿用 mc.collapsedGroups(与旧侧栏同键,升级不丢档);
@@ -1176,39 +1263,14 @@ function WorkbenchList({
                         {dragOverGroup === gk && draggedGroup !== gk && (
                           <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary" />
                         )}
-                        <button
-                          type="button"
-                          className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-1 text-start"
-                          aria-expanded={!collapsed.has(gk)}
-                          onClick={() => setGroupOpen(gk, collapsed.has(gk))}
-                        >
-                          <GroupLabel icon={IconMessages} name={t("split.chatsGroup")} />
-                          {chats.filter((m) => m.waiting_ask).length > 0 && (
-                            <span className="badge badge-warning badge-xs">
-                              {chats.filter((m) => m.waiting_ask).length}
-                            </span>
-                          )}
-                          <IconChevronDown
-                            size={12}
-                            stroke={1.75}
-                            aria-hidden
-                            className={`shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(gk) ? "-rotate-90" : ""}`}
-                          />
-                        </button>
-                        {/* 快捷钮常驻占位、hover 只切可见性(项目组头同款) */}
-                        <button
-                          type="button"
-                          aria-label={t("split.newChat")}
-                          title={t("split.newChat")}
-                          className="btn btn-ghost btn-xs invisible h-8 min-h-8 w-9 shrink-0 group-hover/ghead:visible group-focus-within/ghead:visible"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            onNewChat();
-                          }}
-                        >
-                          <IconPlus size={14} stroke={1.75} aria-hidden />
-                        </button>
+                        <FixedGroupHeader
+                          icon={IconMessages}
+                          name={t("split.chatsGroup")}
+                          collapsed={collapsed.has(gk)}
+                          onToggle={() => setGroupOpen(gk, collapsed.has(gk))}
+                          onAdd={onNewChat}
+                          addLabel={t("split.newChat")}
+                        />
                       </div>
                     </li>
                     {!collapsed.has(gk) && (
@@ -1361,9 +1423,18 @@ function WorkbenchList({
                 </Fragment>
               );
             })}
+            {/* 新安装还没有任何项目时也保留分区锚点，避免临时会话下面
+                直接落一条空态文案，看起来像整块内容缺失。 */}
+            {projGroups.length === 0 && (
+              <li aria-hidden className="pointer-events-none">
+                <span className="pt-2 pb-0.5 text-xs font-medium text-base-content/45">
+                  {t("split.projectsCaption")}
+                </span>
+              </li>
+            )}
             {tasks.length === 0 && archivedTasks.length === 0 && (
               <li className="pointer-events-none">
-                <span className="text-xs text-base-content/50">{t("split.pickEmpty")}</span>
+                <span className="text-xs text-base-content/50">{t("split.projectsEmpty")}</span>
               </li>
             )}
             {/* 底部「已归档项目」小节(旧侧栏能力回归:2026-08-18 用户报障
@@ -1440,6 +1511,15 @@ function WorkbenchList({
         >
           <IconSettings size={16} stroke={1.75} aria-hidden />
           {t("rail.settings")}
+        </button>
+        <button
+          type="button"
+          aria-label={t("shortcuts.title")}
+          title={t("shortcuts.title")}
+          className="btn btn-ghost btn-square btn-sm text-base-content/60"
+          onClick={onOpenShortcuts}
+        >
+          <IconKeyboard size={16} stroke={1.75} aria-hidden />
         </button>
         <span className="min-w-0 flex-1" />
         <button

@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { upwardMenuMaxHeight } from "./menuHeight";
+import { boundedMenuInlineLayout, upwardMenuMaxHeight } from "./menuHeight";
+
+describe("boundedMenuInlineLayout", () => {
+  it("宽 panel 中保留末端对齐和菜单宽度", () => {
+    expect(boundedMenuInlineLayout(500, 560, 100, 800, 256, "end")).toEqual({ left: 304, width: 256 });
+  });
+
+  it("窄 panel 中收窄并夹在两侧安全间距内", () => {
+    expect(boundedMenuInlineLayout(120, 180, 100, 300, 256, "end")).toEqual({ left: 108, width: 184 });
+  });
+
+  it("首端对齐靠近 panel 右缘时向左平移", () => {
+    expect(boundedMenuInlineLayout(450, 490, 100, 500, 256, "start")).toEqual({ left: 236, width: 256 });
+  });
+});
 
 describe("upwardMenuMaxHeight", () => {
   it("空间充裕时取 cap(不无限长)", () => {

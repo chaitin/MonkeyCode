@@ -20,6 +20,7 @@ import { mcFileUpload, pickSaveFile, readFileBase64 } from "@/lib/ipc/cloudtasks
 import { startDownload } from "@/lib/ipc/downloads";
 import { b64decode } from "@/lib/protocol/codec";
 import { useEscLayer } from "@/lib/util/escLayer";
+import { workspaceRelativePath } from "@/lib/util/markdownPaths";
 
 /** repo_file_list 条目;entry_mode 4=目录 5=子模块(对齐 web task-shared.ts)。 */
 export interface CloudRepoFile {
@@ -39,6 +40,23 @@ const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 上传上限 10MB(对齐 web 控制
 /** 预览读取上限 1MB(对齐 web/mobile 与旧 UI cloudfiles.tsx:17)。超限不请求:
  * 整包 base64 要穿两层(云端 → 控制流 → WebView),大文件预览既慢又没用。 */
 const MAX_PREVIEW_SIZE = 1 << 20;
+
+type CloudReadResult = {
+  content?: string;
+  total_size?: number;
+  is_truncated?: boolean;
+};
+
+const IMAGE_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  svg: "image/svg+xml",
+  avif: "image/avif",
+};
 
 /** 借控制流:宿主没给就自建一条,release 负责收尾(自建才真关)。 */
 type Borrowed = { ctrl: CloudControl; release: () => void };
@@ -189,25 +207,52 @@ export function CloudFiles({
       });
   };
 
-  /** 点文件行看正文(repo_read_file;content 是 []byte,JSON 里即 base64)。
-   * 超限文件不发请求,直接给一句人话——整包要穿云端 → 控制流 → WebView
-   * 两层,大文件既慢又没意义(旧 UI cloudfiles.tsx:83-90 同一口径)。 */
-  const openFile = (f: CloudRepoFile) => {
+  const cloudPath = (path: string) => workspaceRelativePath(path, "/workspace");
+  const readFile = (path: string) =>
+    ensureCtrl().call<CloudReadResult>("repo_read_file", { path, offset: 0, length: MAX_PREVIEW_SIZE }, wakeOpts);
+  const readTooLarge = (result: CloudReadResult) =>
+    (result.total_size ?? 0) > MAX_PREVIEW_SIZE || result.is_truncated === true;
+  const tooLargeText = (size?: number) =>
+    t("cloud.files.previewTooLarge", { size: fmtSize(size ?? MAX_PREVIEW_SIZE) });
+
+  /** 按路径读取正文。树条目有已知 size 时请求前拒绝；Markdown 链接等未知大小
+   * 回包后再依据 total_size/is_truncated 拒绝，截断正文绝不冒充完整文件。 */
+  const openFile = (path: string, size?: number) => {
     const req = ++reqRef.current;
-    const path = f.path;
-    if ((f.size ?? 0) > MAX_PREVIEW_SIZE) {
-      setPreview({ path, mode: "file", state: "error", text: t("cloud.files.previewTooLarge", { size: fmtSize(f.size) }) });
+    const rel = cloudPath(path);
+    if (rel === null) {
+      setErr(t("chat.revealOutside"));
       return;
     }
-    setPreview({ path, mode: "file", state: "loading", text: "" });
-    ensureCtrl()
-      .call<{ content?: string }>("repo_read_file", { path, offset: 0, length: MAX_PREVIEW_SIZE }, wakeOpts)
-      .then((r) => {
-        if (req === reqRef.current) setPreview({ path, mode: "file", state: "ready", text: r.content ? b64decode(r.content) : "" });
+    if ((size ?? 0) > MAX_PREVIEW_SIZE) {
+      setPreview({ path: rel, mode: "file", state: "error", text: tooLargeText(size) });
+      return;
+    }
+    setPreview({ path: rel, mode: "file", state: "loading", text: "" });
+    readFile(rel)
+      .then((result) => {
+        if (req !== reqRef.current) return;
+        if (readTooLarge(result)) {
+          setPreview({ path: rel, mode: "file", state: "error", text: tooLargeText(result.total_size) });
+          return;
+        }
+        setPreview({ path: rel, mode: "file", state: "ready", text: result.content ? b64decode(result.content) : "" });
       })
       .catch((e: unknown) => {
-        if (req === reqRef.current) setPreview({ path, mode: "file", state: "error", text: e instanceof Error ? e.message : String(e) });
+        if (req === reqRef.current) setPreview({ path: rel, mode: "file", state: "error", text: e instanceof Error ? e.message : String(e) });
       });
+  };
+
+  /** 图片保持 repo_read_file 的原始 base64，不先按 UTF-8 解码（否则二进制会损坏）。 */
+  const localImageUrl = async (path: string): Promise<string> => {
+    const rel = cloudPath(path);
+    if (rel === null) throw new Error(t("chat.revealOutside"));
+    const ext = rel.match(/\.([^./]+)$/)?.[1]?.toLowerCase() ?? "";
+    const mime = IMAGE_MIME[ext];
+    if (!mime) throw new Error(`Unsupported image type: ${ext || "unknown"}`);
+    const result = await readFile(rel);
+    if (readTooLarge(result)) throw new Error(tooLargeText(result.total_size));
+    return `data:${mime};base64,${result.content ?? ""}`;
   };
 
   // Esc 走 escLayer 层栈:预览是比「文件面板」更晚打开的一层,后进先出天然
@@ -377,7 +422,7 @@ export function CloudFiles({
                   <button
                     type="button"
                     className={`${vmId ? "pe-9 " : ""}${preview?.path === f.path && preview.mode === "file" ? "menu-active" : ""}`}
-                    onClick={() => openFile(f)}
+                    onClick={() => openFile(f.path, f.size)}
                   >
                     {/* 类型图标与本地文件树同一份 fileIcon,不做两套 */}
                     {(() => {
@@ -406,7 +451,12 @@ export function CloudFiles({
       </div>
       )}
       {preview && (
-        <Preview model={preview} status={(changes ?? []).find((c) => c.path === preview.path)?.status} onClose={closePreview} />
+        <Preview
+          model={preview}
+          status={(changes ?? []).find((c) => c.path === preview.path)?.status}
+          resources={{ localImageUrl, onLocalLink: (path) => openFile(path) }}
+          onClose={closePreview}
+        />
       )}
     </section>
   );

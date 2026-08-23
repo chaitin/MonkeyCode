@@ -16,8 +16,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useI18n } from "@/lib/i18n";
 import { isMacShell } from "@/lib/ipc/host";
 import { repoChanges, repoFileDiff, repoListDir, repoReadFile, repoReveal, type RepoChange, type RepoEntry } from "@/lib/ipc/repo";
+import { uploadFileURL } from "@/lib/ipc/uploads";
 import { copyText } from "@/lib/util/clipboard";
 import { useEscLayer } from "@/lib/util/escLayer";
+import { workspaceRelativePath } from "@/lib/util/markdownPaths";
 import { Changes } from "./Changes";
 import { Preview, type PreviewModel } from "./Preview";
 import { Tree } from "./Tree";
@@ -379,6 +381,25 @@ export function FilesDrawer({
     [sessionId, workdir, t],
   );
 
+  const markdownResources = useMemo(
+    () => ({
+      localImageUrl: (path: string) => {
+        const rel = workspaceRelativePath(path, workdir);
+        if (rel === null) return Promise.reject(new Error(t("chat.revealOutside")));
+        return uploadFileURL(sessionId, rel);
+      },
+      onLocalLink: (path: string) => {
+        const rel = workspaceRelativePath(path, workdir);
+        if (rel === null) {
+          setRevealMsg({ text: t("chat.revealOutside"), error: true });
+          return;
+        }
+        void reveal(rel);
+      },
+    }),
+    [reveal, sessionId, t, workdir],
+  );
+
   // [scrollbar-gutter:stable]:LAYOUT §5——内容量可变的纵滚容器一律预留滚条
   // 槽位。chrome.css 的 `*{scrollbar-width:thin}` 在 Chromium(= Windows 的
   // WebView2)下吃 10px 布局宽,不留槽的话「展开目录让文件树越过面板高度」
@@ -549,6 +570,7 @@ export function FilesDrawer({
             <Preview
               model={preview}
               status={changeStatus.get(preview.path)}
+              resources={markdownResources}
               onReveal={() => void reveal(preview.path)}
               onClose={closePreview}
             />

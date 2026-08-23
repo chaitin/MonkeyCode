@@ -1,13 +1,13 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { resetUpdateForTest } from "@/features/update/useUpdate";
+import { resetUpdateForTest, useUpdateState } from "@/features/update/useUpdate";
 import { AboutSection } from "./AboutSection";
 
 afterEach(() => {
   // 更新态是模块级 store(侧栏底部条与本页同源),跨用例会串
-  resetUpdateForTest();
+  act(() => resetUpdateForTest());
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
 });
 
@@ -36,6 +36,11 @@ function stubShell({ failInstall, exportLog }: { failInstall?: string; exportLog
   return { calls };
 }
 
+function SidebarUpdateProbe() {
+  const { installing } = useUpdateState();
+  return <span data-testid="sidebar-update-state">{installing ? "installing" : "idle"}</span>;
+}
+
 /** 隐藏排障入口的解锁手势:连点版本号 5 次。 */
 async function unlock() {
   const version = await screen.findByRole("button", { name: /应用 1\.0/ });
@@ -54,8 +59,8 @@ describe("关于页更新(H5)", () => {
     expect(status.textContent).toContain("安装完成后应用将自动重启");
   });
 
-  it("安装失败:复位忙态、外显失败文案,按钮可重试", async () => {
-    stubShell({ failInstall: "签名校验失败" });
+  it("安装失败:复位忙态、外显失败文案,后续排障反馈不被旧错误遮蔽", async () => {
+    stubShell({ failInstall: "签名校验失败", exportLog: () => "/tmp/ohmyagent.log" });
     render(<AboutSection />);
     await userEvent.click(screen.getByRole("button", { name: "检查更新" }));
     const install = await screen.findByRole("button", { name: "下载更新" });
@@ -64,15 +69,26 @@ describe("关于页更新(H5)", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("更新失败:签名校验失败"));
     const again = screen.getByRole("button", { name: "下载更新" }); // 忙态已复位,不再是"更新中…"
     expect((again as HTMLButtonElement).disabled).toBe(false);
+
+    await unlock();
+    await userEvent.click(screen.getByRole("button", { name: "导出日志" }));
+    expect((await screen.findByRole("status")).textContent).toContain("日志已导出");
+    expect(screen.queryByText(/更新失败/)).toBeNull();
   });
 
-  it("安装成功路径:壳自行重启,按钮停在更新中", async () => {
+  it("设置页发起安装后共享忙态，侧栏提醒同步进入安装中", async () => {
     stubShell();
-    render(<AboutSection />);
+    render(
+      <>
+        <AboutSection />
+        <SidebarUpdateProbe />
+      </>,
+    );
     await userEvent.click(screen.getByRole("button", { name: "检查更新" }));
     await userEvent.click(await screen.findByRole("button", { name: "下载更新" }));
     const busy = screen.getByRole("button", { name: /更新中/ });
     expect((busy as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("sidebar-update-state").textContent).toBe("installing");
   });
 });
 

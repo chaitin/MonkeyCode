@@ -216,6 +216,16 @@ describe("markdown 渲染", () => {
     expect(calls).toContain("plugin:opener|open_url");
   });
 
+  it("同文档锚点保留浏览器默认跳转，不交给 opener", () => {
+    const invoke = vi.fn(() => Promise.resolve(null));
+    (window as unknown as { __TAURI__?: unknown }).__TAURI__ = { core: { invoke } };
+    render(<Markdown source={"[安装说明](#install)"} />);
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    screen.getByRole("link", { name: "安装说明" }).dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("净化:script 与事件属性被剥掉;表格包进横滚容器", () => {
     const html = renderMarkdown('<script>alert(1)</script><img src=x onerror=alert(1)>\n\n|a|b|\n|-|-|\n|1|2|');
     expect(html).not.toContain("<script");
@@ -234,6 +244,47 @@ describe("本地资源(工作区图片/文件链接)", () => {
     );
     const img = await screen.findByRole("img", { name: "截图" });
     await waitFor(() => expect(img.getAttribute("src")).toBe("data:image/png;base64,AAA"));
+  });
+
+  it("重复普通图与 Mermaid 图复用同一路径的在途 Promise及成功缓存", async () => {
+    let finish: ((url: string) => void) | undefined;
+    const localImageUrl = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const source = [
+      "![图一](assets/same.png)",
+      "![图二](assets/same.png)",
+      '```mermaid\nflowchart TD\nA@{ img: "assets/same.png", label: "图" }\n```',
+    ].join("\n\n");
+    const { rerender } = render(<Markdown source={source} localImageUrl={localImageUrl} />);
+    await waitFor(() => expect(localImageUrl).toHaveBeenCalledTimes(1));
+    finish?.("data:image/png;base64,SAME");
+
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: "图一" }).getAttribute("src")).toBe("data:image/png;base64,SAME");
+      expect(screen.getByRole("img", { name: "图二" }).getAttribute("src")).toBe("data:image/png;base64,SAME");
+      expect(mermaidMock.render.mock.calls[0]?.[1]).toContain('img: "data:image/png;base64,SAME"');
+    });
+
+    rerender(<Markdown source={`${source}\n\n![图三](assets/same.png)`} localImageUrl={localImageUrl} />);
+    await waitFor(() => expect(screen.getByRole("img", { name: "图三" }).getAttribute("src")).toBe("data:image/png;base64,SAME"));
+    expect(localImageUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("本地图读取失败后删除缓存并在后续渲染重试", async () => {
+    const localImageUrl = vi
+      .fn<(path: string) => Promise<string>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue("data:image/png;base64,RETRY");
+    const { rerender } = render(<Markdown source={"![截图](assets/retry.png)"} localImageUrl={localImageUrl} />);
+    await waitFor(() => expect(screen.getByRole("img", { name: "截图" }).title).toContain("offline"));
+
+    rerender(<Markdown source={"![截图](assets/retry.png)\n\n重试"} localImageUrl={localImageUrl} />);
+    await waitFor(() => expect(screen.getByRole("img", { name: "截图" }).getAttribute("src")).toBe("data:image/png;base64,RETRY"));
+    expect(localImageUrl).toHaveBeenCalledTimes(2);
   });
 
   it("正文伪造的 data-mc-local-src 被清除,不指使 UI 读任意路径", () => {
