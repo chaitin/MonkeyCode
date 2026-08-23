@@ -118,7 +118,7 @@ export function ModelMenu({
   // 向上弹:高度按锚点到最近上边界(标题栏/视图头)的真实距离算,
   // 写死上限在矮窗口下会把菜单顶出视口(lib/util/menuHeight)
   const { anchorRef, maxHeight: menuMax } = useUpwardMenuHeight<HTMLButtonElement>(visibleOpen);
-  const menuInlineStyle = useBoundedMenuInlineStyle(visibleOpen, anchorRef, align, 288);
+  const menuInlineStyle = useBoundedMenuInlineStyle(visibleOpen, anchorRef, align, 224);
 
   // 模型菜单派生(纯逻辑在 lib/models/modelMenu):过滤框在模型多时才有
   // 意义;tab 行只要 ≥2 来源就恒显(它是来源间唯一导航);过滤在 tab 内;
@@ -225,7 +225,7 @@ export function ModelMenu({
         // 条目列表单独内滚(菜单长了不能把导航滚出视野)
         <div
           style={{ maxHeight: menuMax, ...menuInlineStyle }}
-          className="dropdown-content flex w-72 flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+          className="dropdown-content flex w-56 flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
         >
           <div className="mb-2 shrink-0 border-b border-base-300 pb-2">
             <div className="mb-1 px-1 text-2xs text-base-content/55">{t("chat.think.label")}</div>
