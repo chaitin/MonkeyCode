@@ -124,8 +124,8 @@ describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () =
     const settingsButton = within(aside).getByRole("button", { name: "设置" });
     await userEvent.click(settingsButton);
     expect(screen.getByRole("dialog", { name: "设置" })).toBeTruthy();
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "返回" }));
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    expect(document.activeElement).toBe(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog", { name: "设置" })).toBeNull();
     expect(document.body.contains(aside)).toBe(true);
     expect(aside.closest("[inert]")).toBeNull();
@@ -141,7 +141,7 @@ describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () =
     expect(document.activeElement).toBe(document.body);
 
     fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
 
     await waitFor(() => expect(document.activeElement).toBe(composer));
   });
@@ -157,7 +157,7 @@ describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () =
 
     await userEvent.click(settingsButton);
     settingsButton.disabled = true;
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
 
     await waitFor(() => expect(document.activeElement).toBe(composer));
   });
@@ -356,7 +356,7 @@ describe("D5 首启向导", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "设置" })).toBeTruthy();
     const opens = shell.count("models_list");
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
     expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
     await act(() => Promise.resolve());
     // 不循环:关闭后不再自动弹回,也不反复探测

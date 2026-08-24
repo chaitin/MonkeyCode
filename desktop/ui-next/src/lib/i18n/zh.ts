@@ -238,7 +238,7 @@ export const zh = {
   "settings.background.hint": "支持 PNG、JPEG、WebP，最大 20 MiB；修改立即生效并记在本机。",
 
   "settings.title": "设置",
-  "settings.back": "返回",
+  "settings.close": "关闭",
   "settings.nav.general": "通用",
   "settings.nav.models": "模型",
   "settings.nav.mcp": "MCP",

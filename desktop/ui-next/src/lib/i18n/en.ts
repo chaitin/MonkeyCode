@@ -224,7 +224,7 @@ export const en: Record<MessageKey, string> = {
   "settings.background.hint": "Supports PNG, JPEG and WebP up to 20 MiB. Changes apply immediately and are remembered on this machine.",
 
   "settings.title": "Settings",
-  "settings.back": "Back",
+  "settings.close": "Close",
   "settings.nav.general": "General",
   "settings.nav.models": "Models",
   "settings.nav.mcp": "MCP",
