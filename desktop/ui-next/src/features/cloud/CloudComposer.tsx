@@ -171,9 +171,9 @@ export function CloudComposer({
   const tokens = h.meta?.stats?.total_tokens ?? 0;
   const runningDetail = tokens > 0 ? `${fmtK(tokens)} tokens` : undefined;
 
-  // 模型菜单:当前项 = 详情里的模型;切换中触发器换文案
-  const currentModelId = h.meta?.model?.id ?? "";
-  const currentModelName = h.meta?.model?.remark || h.meta?.model?.model || t("cloud.model.label");
+  // 模型菜单:成功切换后的本地确认优先于初次详情;切换中触发器换文案
+  const currentModelId = h.currentModel?.id ?? "";
+  const currentModelName = h.currentModel?.remark || h.currentModel?.model || t("cloud.model.label");
   const modelSections = (h.models ?? []).map((g) => ({
     key: g.key,
     label: g.label,

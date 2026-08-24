@@ -57,6 +57,7 @@ function fakeRuntime(taskId: string) {
     sendFrame: vi.fn(async () => undefined),
     cancelRun: vi.fn(async () => undefined),
     borrowControl: vi.fn(() => ({ ctrl: {} as CloudControl, release: vi.fn() })),
+    confirmModel: vi.fn(() => undefined),
     confirmResume: vi.fn(() => undefined),
     invalidate: vi.fn((_reason?: SendQueueBlock) => undefined),
     dispose: vi.fn(() => undefined),
