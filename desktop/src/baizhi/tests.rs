@@ -118,31 +118,222 @@ fn official_model_and_mcp_gateways_are_pinned() {
 }
 
 /// MonkeyCode 服务地址解析:环境变量 > 设置值 > 官方云;设置值 trim +
-/// 尾斜杠归一。该环境变量只有生产路径(Service::new)消费,其余测试
-/// 不读它,本测试内设/删无交叉。
+/// MonkeyCode 地址优先级与尾斜杠归一纯函数,不触碰进程环境。
 #[test]
 fn endpoints_resolve_honors_configured_mc_base_url() {
-    std::env::remove_var("MC_DESKTOP_MONKEYCODE_URL");
-    let ep = Endpoints::resolve("https://self.example.com/");
-    assert_eq!(ep.monkeycode, "https://self.example.com", "设置值生效且尾斜杠归一");
-    let ep = Endpoints::resolve("  ");
-    assert_eq!(ep.monkeycode, "https://monkeycode-ai.com", "空白设置回落官方云");
-    std::env::set_var("MC_DESKTOP_MONKEYCODE_URL", "https://env.example.com");
-    let ep = Endpoints::resolve("https://self.example.com");
-    assert_eq!(ep.monkeycode, "https://env.example.com", "环境变量优先(开发/联调逃生门)");
-    std::env::remove_var("MC_DESKTOP_MONKEYCODE_URL");
+    assert_eq!(
+        super::resolve_monkeycode("https://self.example.com/", None),
+        "https://self.example.com",
+        "设置值生效且尾斜杠归一"
+    );
+    assert_eq!(super::resolve_monkeycode("  ", None), "https://monkeycode-ai.com", "空白设置回落官方云");
+    assert_eq!(
+        super::resolve_monkeycode("https://self.example.com", Some("https://env.example.com")),
+        "https://env.example.com",
+        "环境变量优先(开发/联调逃生门)"
+    );
+}
+
+#[test]
+fn baizhi_state_reconfigures_without_losing_runtime_state() {
+    let svc = Service::test_service(Endpoints {
+        account: "https://account.example.com".into(),
+        model_gateway: "https://models.example.com".into(),
+        mcp_gateway: "https://mcp.example.com".into(),
+        monkeycode: "https://old.example.com".into(),
+    });
+    svc.mc.update(
+        &reqwest::Url::parse("https://old.example.com/").unwrap(),
+        &["mc_session=old; Path=/".into()],
+    );
+    let state = super::BaizhiState::new(svc);
+    let old = state.service();
+    let cfg = crate::config::DesktopConfig {
+        mc_base_url: "https://new.example.com/".into(),
+        mc_basic_auth: "user:pass".into(),
+        mc_llm_base_url: "https://llm.example.com/v1/".into(),
+        ..Default::default()
+    };
+
+    let expected_monkeycode = Endpoints::resolve(&cfg.mc_base_url).monkeycode;
+    let pipes = super::monkeycode::CloudPipes::new();
+    assert!(state.apply_config(&cfg, &pipes).is_some(), "服务地址或鉴权变化应要求关闭旧云端连接");
+    let new = state.service();
+    assert_eq!(old.ep.monkeycode, "https://old.example.com", "在途请求继续使用稳定旧快照");
+    assert_eq!(new.ep.monkeycode, expected_monkeycode);
+    assert_eq!(new.mc_llm, "https://llm.example.com/v1");
+    assert_eq!(new.mc_basic.as_deref(), Some("Basic dXNlcjpwYXNz"));
+    assert!(Arc::ptr_eq(&old.store, &new.store), "切换配置不能复制 cookie 罐");
+    assert!(Arc::ptr_eq(&old.mc, &new.mc), "切换配置不能丢失 MonkeyCode 会话");
+    assert!(Arc::ptr_eq(&old.wx, &new.wx), "切换配置不能中断扫码状态");
+
+    let llm_only = crate::config::DesktopConfig {
+        mc_llm_base_url: "https://another-llm.example.com/v1".into(),
+        ..cfg
+    };
+    assert!(state.apply_config(&llm_only, &pipes).is_none(), "只换 LLM 地址不是 cloud transport 切换");
+    assert_eq!(state.transport_generation(), 1, "地址 + Basic 的单一判据只应推进一次代次");
+    assert_eq!(state.service().mc_llm, "https://another-llm.example.com/v1");
+}
+
+/// 跳过 TLS 验证的作用域:仅私有化 mc 域;官方云与其他域恒验证;
+/// 开关翻转按 transport 切换处理(关旧长连接、推进代次)。
+#[test]
+fn tls_skip_scoped_to_private_mc_domain() {
+    let svc = Service::test_service(Endpoints {
+        account: "https://account.example.com".into(),
+        model_gateway: "https://models.example.com".into(),
+        mcp_gateway: "https://mcp.example.com".into(),
+        monkeycode: "https://old.example.com".into(),
+    });
+    let state = super::BaizhiState::new(svc);
+    let pipes = super::monkeycode::CloudPipes::new();
+    let u = |s: &str| reqwest::Url::parse(s).unwrap();
+
+    let cfg = crate::config::DesktopConfig {
+        mc_base_url: "https://self-signed.example.com".into(),
+        mc_skip_tls_verify: true,
+        ..Default::default()
+    };
+    assert!(state.apply_config(&cfg, &pipes).is_some());
+    let svc = state.service();
+    assert!(svc.tls_insecure_for(&u("https://self-signed.example.com/api/v1/public/captcha/challenge")));
+    assert!(svc.tls_insecure_for(&u("https://self-signed.example.com:443/x")), "known 默认端口等价");
+    assert!(!svc.tls_insecure_for(&u("https://self-signed.example.com:8443/x")), "端口不同即不同源");
+    assert!(!svc.tls_insecure_for(&u("https://account.example.com/api")), "百智域恒验证");
+    assert!(!svc.tls_insecure_for(&u("https://evil.example.com/")), "第三方域恒验证");
+    assert!(svc.http_insecure.is_some() && svc.lp_insecure.is_some(), "免验证客户端应已构建");
+
+    // 只翻开关(地址/Basic 不变)也是 transport 切换:免验证与验证客户端的
+    // 握手行为不同,在途长连接不得跨形态延续
+    let off = crate::config::DesktopConfig { mc_skip_tls_verify: false, ..cfg.clone() };
+    assert!(state.apply_config(&off, &pipes).is_some(), "开关翻转应推进 transport 代次");
+    let svc = state.service();
+    assert!(!svc.tls_insecure_for(&u("https://self-signed.example.com/x")));
+    assert!(svc.http_insecure.is_none() && svc.lp_insecure.is_none());
+
+    // 官方云 + 开关残留:恒不生效(开关只为私有化自签而设,不弱化官方域)
+    let official = crate::config::DesktopConfig { mc_base_url: String::new(), mc_skip_tls_verify: true, ..Default::default() };
+    assert!(state.apply_config(&official, &pipes).is_some());
+    let svc = state.service();
+    assert!(!svc.mc_skip_tls, "官方云地址下开关不得生效");
+    assert!(svc.http_insecure.is_none());
+    assert!(!svc.tls_insecure_for(&u(&format!("{}/api", super::DEFAULT_MONKEYCODE_URL))));
+}
+
+#[test]
+fn member_key_transport_binds_server_and_basic_identity() {
+    let server = "https://private.example.com";
+    let llm = "https://private.example.com/v1";
+    let one = "Basic dXNlcjpvbmU=";
+    let two = "Basic dXNlcjp0d28=";
+    let key = json!({
+        "id": "k1",
+        "api_key": "secret",
+        "transport": super::mc_transport_fingerprint(server, Some(one)),
+    });
+    assert!(super::ohmyagent_key_matches_transport(&key, server, llm, Some(one)));
+    assert!(!super::ohmyagent_key_matches_transport(&key, server, llm, Some(two)));
+    assert!(!super::ohmyagent_key_matches_transport(
+        &key,
+        "https://other.example.com",
+        "https://other.example.com/v1",
+        Some(one),
+    ));
+
+    let legacy = json!({ "id": "k1", "api_key": "secret", "server": server, "base_url": llm });
+    assert!(super::ohmyagent_key_matches_transport(&legacy, server, llm, None));
+    assert!(!super::ohmyagent_key_matches_transport(&legacy, server, llm, Some(one)));
+}
+
+#[test]
+fn stale_member_key_commit_and_logout_cannot_touch_new_service() {
+    let svc = Service::test_service(Endpoints {
+        account: "https://account.example.com".into(),
+        model_gateway: "https://models.example.com".into(),
+        mcp_gateway: "https://mcp.example.com".into(),
+        monkeycode: "https://old.example.com".into(),
+    });
+    let state = super::BaizhiState::new(svc);
+    let (_old, old_generation) = state.service_snapshot();
+    let pipes = super::monkeycode::CloudPipes::new();
+    let cfg = crate::config::DesktopConfig {
+        mc_base_url: "https://new.example.com".into(),
+        ..Default::default()
+    };
+    state.apply_config(&cfg, &pipes);
+    let (current, current_generation) = state.service_snapshot();
+    assert!(
+        state.service_snapshot_if_current(Some(old_generation)).is_none(),
+        "排队中的旧代次命令不得在拿锁后改为操作新服务"
+    );
+    let current_url = reqwest::Url::parse("https://new.example.com/").unwrap();
+    current.mc.update(&current_url, &["session=new; Path=/".into()]);
+
+    let dir = std::env::temp_dir().join(format!("mc-stale-key-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(super::OHMYAGENT_KEY_FILE);
+    assert!(state
+        .commit_member_key(old_generation, &path, None, Some(br#"{"id":"old","api_key":"old"}"#))
+        .is_err());
+    assert!(!path.exists(), "旧服务迟到的创建结果不得写入新服务 Key 文件");
+    assert!(!state.logout_if_current(old_generation, &pipes), "旧断开不得清理当前新服务");
+    assert_eq!(current.mc.header(&current_url).as_deref(), Some("session=new"));
+
+    std::fs::write(&path, b"first").unwrap();
+    std::fs::write(&path, b"replacement").unwrap();
+    assert!(state.commit_member_key(current_generation, &path, Some(b"first"), None).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), b"replacement", "文件身份变化后不得误删替代者");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn stale_service_response_cannot_overwrite_current_monkeycode_cookie() {
+    let svc = Service::test_service(Endpoints {
+        account: "https://account.example.com".into(),
+        model_gateway: "https://models.example.com".into(),
+        mcp_gateway: "https://mcp.example.com".into(),
+        monkeycode: "http://localhost:8000".into(),
+    });
+    let state = super::BaizhiState::new(svc);
+    let old = state.service();
+    let cfg = crate::config::DesktopConfig {
+        mc_base_url: "http://localhost:9000".into(),
+        mc_basic_auth: "new-auth".into(),
+        ..Default::default()
+    };
+    let pipes = super::monkeycode::CloudPipes::new();
+
+    state.apply_config(&cfg, &pipes);
+    let current = state.service();
+    let current_url = reqwest::Url::parse(&format!("{}/", current.ep.monkeycode)).unwrap();
+    let old_url = reqwest::Url::parse(&format!("{}/", old.ep.monkeycode)).unwrap();
+    current.update_response_cookies(&current.mc, &current_url, &["session=new; Path=/".into()]);
+    old.update_response_cookies(&old.mc, &old_url, &["session=old; Path=/".into()]);
+
+    assert_eq!(current.mc.header(&current_url).as_deref(), Some("session=new"));
 }
 
 /// 模型请求地址(llmproxy)的解析口径,2026-08-07 用户定案:官方云走独立
 /// 代理子域,自建看用户填没填——填了用填的,没填跟随服务地址 /v1。
 #[test]
 fn mc_llm_resolution_prefers_proxy_on_official_cloud() {
-    use super::{resolve_mc_llm, DEFAULT_MONKEYCODE_LLM_URL, DEFAULT_MONKEYCODE_URL};
+    use super::{
+        resolve_mc_llm, DEFAULT_MONKEYCODE_LLM_URL, DEFAULT_MONKEYCODE_URL, INTL_MONKEYCODE_LLM_URL,
+        INTL_MONKEYCODE_URL,
+    };
     assert_eq!(resolve_mc_llm("", DEFAULT_MONKEYCODE_URL), DEFAULT_MONKEYCODE_LLM_URL);
     assert_eq!(
         resolve_mc_llm("", "https://monkeycode-ai.com/"),
         DEFAULT_MONKEYCODE_LLM_URL,
         "尾斜杠归一后仍认作官方云"
+    );
+    assert_eq!(resolve_mc_llm("", INTL_MONKEYCODE_URL), INTL_MONKEYCODE_LLM_URL);
+    assert_eq!(
+        resolve_mc_llm("", "https://monkeycode-ai.net/"),
+        INTL_MONKEYCODE_LLM_URL,
+        "国际版官方云同样走独立代理子域"
     );
     assert_eq!(
         resolve_mc_llm("", "https://self.example.com"),

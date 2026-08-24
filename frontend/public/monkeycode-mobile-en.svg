@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17191d"/>
+      <stop offset="1" stop-color="#0d0f13"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000" flood-opacity=".5"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" fill="#151719"/>
+  <g filter="url(#shadow)">
+    <rect x="241" y="29" width="420" height="843" rx="54" fill="#08090b" stroke="#6f7479" stroke-width="3"/>
+    <rect x="260" y="48" width="382" height="805" rx="40" fill="url(#screen)"/>
+    <rect x="941" y="29" width="420" height="843" rx="54" fill="#08090b" stroke="#6f7479" stroke-width="3"/>
+    <rect x="960" y="48" width="382" height="805" rx="40" fill="url(#screen)"/>
+  </g>
+  <g fill="#f5f5f2" font-family="Arial, sans-serif">
+    <text x="294" y="82" font-size="16">17:28</text><text x="994" y="82" font-size="16">17:33</text>
+    <rect x="382" y="58" width="137" height="30" rx="18" fill="#050608"/><rect x="1082" y="58" width="137" height="30" rx="18" fill="#050608"/>
+    <text x="280" y="143" font-size="29" font-weight="700">AI Tasks</text>
+    <rect x="280" y="164" width="82" height="38" rx="19" fill="#164e37"/><text x="301" y="189" font-size="15" fill="#5be497">In Progress</text>
+    <rect x="372" y="164" width="82" height="38" rx="19" fill="#292c31"/><text x="394" y="189" font-size="15" fill="#a0a4aa">Completed</text>
+    <text x="984" y="133" font-size="16">‹</text><text x="1024" y="134" font-size="16" font-weight="700">Improve Gomoku AI with a Strong Engine</text>
+    <text x="1010" y="174" font-size="13" fill="#8f969d">◉  Extreme Model--5.5</text><text x="1260" y="174" font-size="12" fill="#767d84">12.0M tokens</text>
+  </g>
+  <g font-family="Arial, sans-serif">
+    <g transform="translate(280 220)">
+      <rect width="342" height="116" rx="20" fill="#25272c"/><circle cx="20" cy="26" r="5" fill="#31d37c"/><text x="34" y="31" font-size="13" fill="#43de88">Running</text><text x="274" y="31" font-size="12" fill="#777e85">4 hours ago</text><text x="17" y="69" font-size="18" fill="#f1f1ee">Optimize Snake Game Style</text><text x="17" y="96" font-size="12" fill="#9da4aa">◈ Pro Model / qwen3.6-plus</text><text x="275" y="96" font-size="12" fill="#777e85">503.9k tokens</text>
+    </g>
+    <g transform="translate(280 349)">
+      <rect width="342" height="116" rx="20" fill="#25272c"/><circle cx="20" cy="26" r="5" fill="#31d37c"/><text x="34" y="31" font-size="13" fill="#43de88">Running</text><text x="274" y="31" font-size="12" fill="#777e85">18 hours ago</text><text x="17" y="69" font-size="18" fill="#f1f1ee">Continue Adding More Tests</text><text x="17" y="96" font-size="12" fill="#9da4aa">◈ Pro Model / qwen3.6-plus</text><text x="275" y="96" font-size="12" fill="#777e85">43.5M tokens</text>
+    </g>
+    <g transform="translate(280 478)">
+      <rect width="342" height="116" rx="20" fill="#25272c"/><circle cx="20" cy="26" r="5" fill="#31d37c"/><text x="34" y="31" font-size="13" fill="#43de88">Running</text><text x="285" y="31" font-size="12" fill="#777e85">1 day ago</text><text x="17" y="69" font-size="16" fill="#f1f1ee">Improve Gomoku AI with a Strong Engine</text><text x="17" y="96" font-size="12" fill="#9da4aa">◉ Extreme Model--5.5</text><text x="275" y="96" font-size="12" fill="#777e85">12.0M tokens</text>
+    </g>
+    <g fill="#737980" font-size="12"><text x="421" y="635">No more tasks</text><text x="308" y="816" fill="#41dc88">☷</text><text x="362" y="816">Tasks</text><text x="421" y="816">Projects</text><text x="496" y="816">Me</text></g>
+    <g fill="#f1f1ee" font-size="16">
+      <text x="982" y="218">There is very little room left</text><text x="982" y="248">Existing resources I confirmed:</text>
+      <text x="995" y="282" fill="#51d992">• AlphaZero_Gomoku</text><text x="995" y="312" fill="#b9c0c5">• Built-in model:</text><text x="1014" y="340" fill="#51d992">best_policy_6_6_4.model</text><text x="1014" y="368" fill="#51d992">best_policy_8_8_5.model</text>
+      <text x="982" y="409">The project's entry point defaults to 8x8.</text><text x="982" y="444">This means the strongest route is:</text><text x="996" y="480">1. Switch the project to 8x8 AlphaZero</text><text x="996" y="512" fill="#adb5bb">The most powerful and direct route</text><text x="996" y="544" fill="#51d992">/tmp/opencode/AlphaZero_Gomoku</text><text x="996" y="577">2. Keep the 15x15 board</text><text x="996" y="610" fill="#adb5bb">This requires a complete VCT/VCF model</text><text x="982" y="652">I recommend option 1.</text><text x="982" y="682">Next, I will convert the web page into an</text><text x="982" y="708" fill="#51d992">8x8 AlphaZero</text><text x="1080" y="708"> interface.</text>
+    </g>
+    <rect x="981" y="741" width="73" height="30" rx="15" fill="#175b3c"/><text x="1004" y="761" font-size="13" fill="#59e79a">Continue</text><rect x="1063" y="741" width="92" height="30" rx="15" fill="#175b3c"/><text x="1079" y="761" font-size="13" fill="#59e79a">Use Skill</text><rect x="1164" y="741" width="65" height="30" rx="15" fill="#33363b"/><text x="1181" y="761" font-size="13" fill="#b8bec4">More</text>
+    <rect x="981" y="780" width="260" height="43" rx="22" fill="#25272c" stroke="#3f4348"/><text x="1000" y="807" font-size="13" fill="#858c92">Continue this task...</text><circle cx="1292" cy="801" r="21" fill="#2d3137"/><text x="1284" y="808" font-size="16" fill="#a9afb5">↑</text>
+  </g>
+</svg>

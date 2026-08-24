@@ -36,8 +36,12 @@ export interface AcpUpdate {
   /** llm_call_retry(仅云端流):第几次重试 */
   attempt?: number;
   message?: string;
-  /** task_notification(后台子代理完成 📌 系统行)的通知文本 */
+  /** task_notification(后台子代理完成)的兼容通知文本与结构化结果字段 */
   text?: string;
+  agentId?: string;
+  agentName?: string;
+  description?: string;
+  result?: string;
   used?: number;
   size?: number;
   progress?: ToolProgress;
@@ -60,7 +64,7 @@ export interface SlashCommand {
 
 /** tool_call_update{status:in_progress} 的执行期进度载荷。 */
 export interface ToolProgress {
-  kind: string; // subagent_tool | subagent_text | output | child_session
+  kind: string; // subagent_tool | subagent_text | output | child_session | background_agent
   id?: string;
   title?: string;
   /** subagent_tool 的完整结构化入参,避免从截断标题反推目标 */
@@ -68,6 +72,8 @@ export interface ToolProgress {
   status?: string; // run | ok | fail
   line?: string;
   childSessionId?: string;
+  /** background_agent:SendMessage 异步续跑目标。 */
+  agentId?: string;
 }
 
 /** 实时任务清单(plan 帧)的一条。 */
@@ -180,8 +186,10 @@ export interface ToolItem {
   lastLine?: string;
   /** 子代理子会话 ID(可打开完整回放) */
   childSessionId?: string;
-  /** Agent 工具已转后台,但子代理本身仍在运行 */
+  /** Agent 工具已转后台,或 SendMessage 派发的续跑仍在执行。 */
   background?: boolean;
+  /** 后台运行目标；用于把 task_notification 精确回写到 SendMessage 卡。 */
+  backgroundAgentId?: string;
   /** 后台终态已回填,等待吞掉紧随其后的重复 task_notification */
   backgroundNoticePending?: boolean;
 }
@@ -227,8 +235,30 @@ export interface AskItem {
   questions: AskQuestion[];
 }
 
+/** 后台子代理的独立终态结果卡。字段保留上游原文，展示文案在组件内 i18n。 */
+export interface BackgroundAgentResultItem {
+  kind: "background-result";
+  agentId: string;
+  agentName: string;
+  description: string;
+  /** 上游状态词允许扩展，展示层只为已知终态提供语义色与翻译。 */
+  status: string;
+  result: string;
+  /** 旧通知的简短成品文本，仅作为结构化卡的辅助信息保留。 */
+  text: string;
+  timestamp?: number;
+}
+
 /** 对话流里的一条渲染项。 */
-export type ChatItem = UserItem | AgentItem | ThoughtItem | ToolItem | SysItem | PermItem | AskItem;
+export type ChatItem =
+  | UserItem
+  | AgentItem
+  | ThoughtItem
+  | ToolItem
+  | BackgroundAgentResultItem
+  | SysItem
+  | PermItem
+  | AskItem;
 
 // ==================== 会话状态(reduceBatch 的输入/输出) ====================
 
@@ -261,6 +291,11 @@ export interface ChatState {
    * 既有条目的 key 因此保持不变——否则下标 key 整体平移,React 认不出
    * 同一条,工具卡/思考块的展开态串位、整列重挂载(markdown 全部重解析)。 */
   keyBase: number;
+  /** 最近一次开轮帧 seq；与 lastTerminalSeq 配对判断终态属于哪一轮。 */
+  lastTurnStartSeq: number;
+  /** 最近一个终止当前轮次的帧 seq。与 running 不同，它是单调水位，避免
+   * task-started/task-ended 在同批归约后折叠成 false→false 而丢失轮末边沿。 */
+  lastTerminalSeq: number;
   /** seq 去重水位:已归约帧的最大 seq(0 = 还没见过带 seq 的帧)。
    * 云端重连会重放重叠帧,靠它跨批次丢弃;详见 reduceBatch 的去重口径。 */
   lastSeq: number;

@@ -6,6 +6,7 @@ import cn from "../src/i18n/resources/cn.ts";
 import en from "../src/i18n/resources/en.ts";
 
 const sourceFiles = {
+  languageToggle: readSource("../src/components/language-toggle.tsx"),
   sidebar: readSource("../src/components/manager/manager-sidebar.tsx"),
   navTeams: readSource("../src/components/manager/nav-teams.tsx"),
   navManager: readSource("../src/components/manager/nav-manager.tsx"),
@@ -23,17 +24,22 @@ test("管理后台外壳使用 managerShell i18n key", () => {
     assert.match(source, /useTranslation/);
   }
 
+  assert.match(sourceFiles.languageToggle, /t\("common\.language\.switch"\)/);
+  assert.match(sourceFiles.languageToggle, /setAppLanguage\(language\)/);
   assert.match(sourceFiles.sidebar, /t\("managerShell\.brand\.subtitle"\)/);
   assert.match(sourceFiles.navTeams, /t\("managerShell\.nav\.overview"\)/);
   assert.match(sourceFiles.navTeams, /t\("managerShell\.nav\.members"\)/);
   assert.match(sourceFiles.navManager, /t\("managerShell\.account\.changePassword\.title"\)/);
   assert.match(sourceFiles.navManager, /t\("managerShell\.account\.logout\.confirmTitle"\)/);
+  assert.match(sourceFiles.page, /<LanguageToggle \/>/);
   assert.match(sourceFiles.page, /t\("managerShell\.actions\.refresh"\)/);
   assert.match(sourceFiles.page, /t\("managerShell\.breadcrumb\.fallback"\)/);
   assert.doesNotMatch(combinedSource, cjkPattern);
 });
 
 test("管理后台外壳提供中英文资源", () => {
+  assert.equal(cn.common.language.switch, "切换语言");
+  assert.equal(en.common.language.switch, "Switch language");
   assert.equal(cn.managerShell.nav.overview, "仪表盘");
   assert.equal(en.managerShell.nav.overview, "Dashboard");
   assert.equal(cn.managerShell.account.changePassword.title, "修改密码");

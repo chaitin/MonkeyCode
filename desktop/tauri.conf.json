@@ -27,6 +27,7 @@
           ],
           "permissions": [
             "core:default",
+            "core:webview:allow-set-webview-zoom",
             "core:window:allow-start-dragging",
     "core:window:allow-start-resize-dragging",
             "core:window:allow-minimize",
@@ -106,6 +107,7 @@
             "allow-mc-checkin",
             "allow-mc-models-sync",
             "allow-mc-models-revoke",
+            "allow-mc-disconnect",
             "allow-mc-tasks",
             "allow-mc-projects",
             "allow-mc-task-info",
@@ -126,7 +128,12 @@
             "opener:allow-open-url",
             "opener:allow-default-urls",
             "allow-engine-restart",
-            "allow-probe-log"
+            "allow-probe-log",
+            "allow-background-import",
+            "allow-background-confirm",
+            "allow-background-discard",
+            "allow-background-read",
+            "allow-background-clear"
           ]
         },
         {

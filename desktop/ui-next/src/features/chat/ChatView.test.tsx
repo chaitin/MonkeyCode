@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -134,8 +134,13 @@ describe("聊天视图", () => {
     const { container } = render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
     const log = container.querySelector<HTMLElement>("[data-chat-log]")!;
-    // happy-dom 无布局:手动给出「距顶不足一屏」的几何
+    // happy-dom 无布局:手动给出几何。自动补页只服务真正离底看历史的人
+    // (贴底跟随中不触发,否则会窃取 pinned 旗标),所以要先滚到底建立
+    // 方向基线,再向上滚进「距顶不足一屏」
     Object.defineProperty(log, "clientHeight", { value: 500, configurable: true });
+    Object.defineProperty(log, "scrollHeight", { value: 2000, configurable: true });
+    log.scrollTop = 1500;
+    fireEvent.scroll(log);
     log.scrollTop = 100;
     fireEvent.scroll(log);
     await waitFor(() => expect(screen.getByText("更早的问题")).toBeTruthy());
@@ -145,6 +150,24 @@ describe("聊天视图", () => {
     fireEvent.scroll(log);
     await new Promise((r) => setTimeout(r, 30));
     expect(ops.filter((o) => o.cmd === "session_history").length).toBe(calls);
+  });
+
+  it("贴底跟随中不自动补页(内容不足两屏时进场贴底就距顶不足一屏)", async () => {
+    const { ops } = stubShell({ hasMore: true });
+    const { container } = render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    const log = container.querySelector<HTMLElement>("[data-chat-log]")!;
+    // 内容 800 / 视口 500:贴底位 scrollTop=300,天然落在「距顶不足一屏」;
+    // 自动补页若不豁免贴底态,onLoadEarlier 第一行会清掉 pinnedRef,
+    // 流式新内容从此不再跟随
+    Object.defineProperty(log, "clientHeight", { value: 500, configurable: true });
+    Object.defineProperty(log, "scrollHeight", { value: 800, configurable: true });
+    log.scrollTop = 300;
+    fireEvent.scroll(log); // 距底 0px,dy 向下:贴底跟随成立
+    await new Promise((r) => setTimeout(r, 30));
+    expect(ops.some((o) => o.cmd === "session_history")).toBe(false);
+    // 手动兜底入口仍在
+    expect(screen.getByRole("button", { name: "加载更早" })).toBeTruthy();
   });
 
   it("发送:user-input 帧 content 走 base64;失败不丢草稿", async () => {
@@ -182,6 +205,22 @@ describe("聊天视图", () => {
     await userEvent.keyboard("{Enter}");
     const sent = ops.find((o) => o.cmd === "session_send" && (o.args?.ftype as string) === "permission-resp");
     expect(sent?.args?.payload).toEqual({ id: "p1", approved: true, remember: false, persist: false });
+  });
+
+  it("待决审批时 Ctrl+Enter 只在 composer 换行,不误允许", async () => {
+    const { ops, emit } = stubShell();
+    render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    emit("frames:s1", [
+      { type: "permission-req", data: { id: "p-ctrl-enter", title: "npm test", tool: "Bash" }, timestamp: 4, seq: 4 },
+    ]);
+    await waitFor(() => expect(screen.getByText("需要确认")).toBeTruthy());
+    const box = screen.getByRole("textbox", { name: "消息输入" });
+    await userEvent.click(box);
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+
+    expect((box as HTMLTextAreaElement).value).toBe("\n");
+    expect(ops.some((o) => o.cmd === "session_send" && (o.args?.ftype as string) === "permission-resp")).toBe(false);
   });
 
   it("全局键盘审批:esc 拒绝;无待决审批时 ⏎/esc 不发任何帧", async () => {
@@ -513,6 +552,68 @@ describe("聊天视图", () => {
     expect(assignedTops).toEqual([100, 360]);
   });
 
+  it("提问大纲:跳到早期消息后切走再切回,自动补回该历史锚点而不是只剩顶部空白", async () => {
+    const first = { ...META, id: "s-outline-return", title: "长任务" };
+    const other = { ...META, id: "s-outline-other", title: "另一个任务" };
+    // 超过虚拟窗口上限:若恢复锚点仍拿本次打开才稳定的 row key,切回后会
+    // 渲染尾窗 + 顶部大块 spacer；scrollTop 又停在 0,画面就只剩「加载更早」。
+    const tail = Array.from({ length: 200 }, (_, index) => ({
+      type: "user-input",
+      data: { content: b64encode(`尾部问题 ${index}`) },
+      timestamp: 100 + index,
+      seq: 100 + index,
+    }));
+    const earlyPage = {
+      frames: [{ type: "user-input", data: { content: b64encode("最早的问题") }, timestamp: 1, seq: 1 }],
+      next_cursor: 0,
+      has_more: false,
+    };
+    const { ops } = stubShell({
+      hasMore: true,
+      frames: tail,
+      outline: [
+        { seq: 1, offset: 0, content: b64encode("最早的问题"), timestamp: 1 },
+        { seq: 299, offset: 7, content: b64encode("尾部问题 199"), timestamp: 299 },
+      ],
+      historyPages: [{ ...earlyPage }, { ...earlyPage }],
+    });
+    const view = render(<ChatView meta={first} />);
+    await screen.findByText("尾部问题 199");
+    const nav = await screen.findByRole("navigation", { name: "提问大纲" });
+    fireEvent.mouseEnter(nav.querySelector("[data-outline-dot]")!);
+    await userEvent.click(within(nav).getByText("最早的问题"));
+
+    const earlyBubble = await waitFor(() => {
+      const node = view.container.querySelector<HTMLElement>('[data-user-seq="1"]');
+      expect(node).toBeTruthy();
+      return node!;
+    });
+    const earlyRow = earlyBubble.closest<HTMLElement>("[data-virtual-row]")!;
+    const log = view.container.querySelector<HTMLElement>("[data-chat-log]")!;
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 600 },
+      scrollHeight: { configurable: true, value: 20_000 },
+    });
+    vi.spyOn(log, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 600, height: 600 } as DOMRect);
+    vi.spyOn(earlyRow, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 60, height: 60 } as DOMRect);
+    fireEvent.scroll(log);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30))); // rAF 节流的滚动记忆落盘
+
+    view.rerender(<ChatView meta={other} />);
+    await waitFor(() =>
+      expect(ops.filter((o) => o.cmd === "session_open" && o.args?.id === other.id)).toHaveLength(1),
+    );
+    // 等另一个任务的尾窗真正提交；否则 A→B→A 三次 transition 会在测试里
+    // 合并成一次，观察不到用户实际已经切走后的恢复路径。
+    await waitFor(() => expect(view.container.querySelector('[data-user-seq="1"]')).toBeNull());
+    view.rerender(<ChatView meta={first} />);
+
+    await waitFor(() =>
+      expect(ops.filter((o) => o.cmd === "session_history" && o.args?.id === first.id)).toHaveLength(2),
+    );
+    await waitFor(() => expect(view.container.querySelector('[data-user-seq="1"]')).toBeTruthy());
+  });
+
   it("提问大纲 activeSeq 冒烟:面板给当前项 aria-current(jsdom 几何全 0 → 最后一条已加载提问)", async () => {
     stubShell({
       outline: [
@@ -807,5 +908,54 @@ describe("聊天视图", () => {
     const tab = await screen.findByRole("tab", { name: /改动/ });
     expect(tab.className).toContain("tab-active");
     expect(await screen.findByRole("button", { name: /a\.ts/ })).toBeTruthy();
+  });
+
+  // 分屏格内形态(variant="pane"):细头/管理动作归 SplitView,数据面与
+  // composer 全保留。列宽换无地板的 chat-measure-pane(四分格 ~790px 时
+  // 768px 地板会顶出横滚);根不再是 main(四格并存,main 地标归 SplitView)
+  it("pane 变体:无 52px 视图头/大纲/文件抽屉入口,根非 main,列宽 chat-measure-pane", async () => {
+    const { ops } = stubShell();
+    const { container } = render(<ChatView meta={META} variant="pane" />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    expect(container.querySelector("[data-view-header]")).toBeNull();
+    expect(container.querySelector("main")).toBeNull();
+    expect(screen.queryByRole("button", { name: "会话文件" })).toBeNull();
+    expect(container.querySelector(".chat-measure")).toBeNull();
+    expect(container.querySelectorAll(".chat-measure-pane").length).toBeGreaterThan(0);
+    // 大纲点列不渲染(贴边点列在窄格里挤占行宽)
+    expect(container.querySelector("[data-outline-nav]") ?? screen.queryByRole("navigation", { name: /大纲|提问/ })).toBeNull();
+    // composer 仍在:数据面全功能保留是 pane 的立身之本
+    expect(screen.getByRole("textbox")).toBeTruthy();
+    // 改动计数在 pane 里不拉(无徽标无文件钮,白拉 = 4 格 × 每轮一次 IPC)
+    expect(ops.filter((o) => o.cmd === "session_call" && o.args?.kind === "repo_file_changes")).toHaveLength(0);
+  });
+
+  // 工作台降噪定案 2026-08-18:四格各铺一条几乎相同的长横幅是画面里最响的
+  // 噪音——pane 形态默认收成角落小图标(全文在 title/aria),点开展开原横幅
+  it("pane 变体:连接条默认收成小图标,点开展开、再点收回;full 形态不受影响", async () => {
+    const { emit } = stubShell();
+    render(<ChatView meta={META} variant="pane" />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    act(() => emit("conn-status:s1", { connected: false, text: "会话恢复失败: create provider" }));
+    // 收起态:无整行横幅,只有角落图标(aria 带全文)
+    expect(screen.queryByRole("status")).toBeNull();
+    const chip = await screen.findByRole("button", { name: /会话恢复失败/ });
+    await userEvent.click(chip);
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(screen.getByText(/create provider/)).toBeTruthy();
+    // 再点横幅收回图标
+    await userEvent.click(screen.getByRole("status"));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("背景表面单层:pane 根透明，独立形态提供工作台 100 表面", () => {
+    stubShell();
+    const paneView = render(<ChatView meta={META} variant="pane" />);
+    const pane = paneView.container.firstElementChild as HTMLElement;
+    expect(pane.className).toContain("bg-transparent");
+    expect(pane.className).not.toContain("mc-workbench-surface-100");
+    paneView.unmount();
+    const full = render(<ChatView meta={META} />).container.firstElementChild as HTMLElement;
+    expect(full.className).toContain("mc-workbench-surface-100");
   });
 });

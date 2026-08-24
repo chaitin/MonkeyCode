@@ -15,7 +15,9 @@ use tokio::sync::mpsc;
 use super::*;
 use crate::config::DesktopConfig;
 use crate::driver::frame;
-use crate::driver::session::{SessionState, SessionsState};
+use crate::driver::session::{
+    create_response_context_usage, restored_context_usage, SessionState, SessionsState,
+};
 use crate::driver::subagent::SubagentState;
 use crate::driver::transport::{find_ohmyagent, spawn_journal_writer, JournalMsg, TransportState};
 
@@ -401,6 +403,136 @@ async fn e2e_chat_normalization() {
     driver.stop();
 }
 
+/// 手动压缩全链路:真实 agent 先完成一轮对话，再经 session/compact 发出
+/// starting → 最终 compaction → usage。Desktop 必须只展示一对压缩状态，
+/// 且在 usage 入账后恰好结束一次压缩轮，不能提前清掉执行中状态。
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
+async fn e2e_manual_compaction_lifecycle() {
+    require_ohmyagent();
+    let _g = e2e_lock().await;
+    let (driver, home) = e2e_setup_steps(
+        "manual-compact",
+        0,
+        vec![sse_text("第一轮完成"), sse_text("压缩后的对话摘要")],
+    );
+
+    let workdir = home.to_string_lossy().into_owned();
+    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let sid = meta.get("id").and_then(Value::as_str).unwrap().to_string();
+    driver.session_open(&sid).await.expect("打开会话");
+    driver
+        .session_send(&sid, "user-input", json!({ "content": frame::b64_text("先聊一轮再压缩") }))
+        .await
+        .expect("发送");
+
+    let first = wait_journal(&driver, &sid, |journal| {
+        journal.iter().filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended")).count()
+            == 1
+    })
+    .await;
+    assert_eq!(
+        first
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1,
+        "首轮未正常结束: {first:?}"
+    );
+
+    driver.session_call(&sid, "session_compact", json!({})).await.expect("手动压缩");
+    let journal = wait_journal(&driver, &sid, |journal| {
+        journal.iter().filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended")).count()
+            == 2
+            && journal.iter().filter_map(acp_update).any(|u| {
+                u.get("sessionUpdate").and_then(Value::as_str) == Some("compact_status")
+                    && u.get("status").and_then(Value::as_str) == Some("ended")
+            })
+    })
+    .await;
+
+    let compact_statuses: Vec<String> = journal
+        .iter()
+        .filter_map(acp_update)
+        .filter(|u| u.get("sessionUpdate").and_then(Value::as_str) == Some("compact_status"))
+        .filter_map(|u| u.get("status").and_then(Value::as_str).map(String::from))
+        .collect();
+    assert_eq!(compact_statuses, vec!["started", "ended"], "压缩状态重复或未闭合");
+    assert_eq!(
+        journal
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        2,
+        "对话轮与压缩轮都只能各结束一次"
+    );
+    assert!(
+        journal.iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-error")),
+        "成功压缩不应产生 task-error: {journal:?}"
+    );
+    let sessions = driver.0.sess.sessions.lock().unwrap();
+    let state = sessions.get(&sid).expect("会话状态");
+    assert!(!state.running, "压缩完成后仍残留 running");
+    assert!(!state.compacting, "压缩完成后仍残留 compacting");
+    assert!(!state.manual_compact, "压缩完成后仍残留 manual_compact");
+    drop(sessions);
+    assert_eq!(
+        driver.0.read_sidecar(&sid).get("status").and_then(Value::as_str),
+        Some("idle"),
+        "压缩完成后 sidecar 未回到 idle"
+    );
+
+    driver.stop();
+}
+
+/// c046713 Agent 在取消中的 provider 请求返回后会先发无 kind error，
+/// 再发 interrupted turn/stopped。Desktop 必须保持执行态直到 stopped，
+/// 且用户主动取消不能在对话流里留下失败红字。
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
+async fn e2e_legacy_agent_cancel_has_single_clean_terminal() {
+    require_ohmyagent();
+    let _g = e2e_lock().await;
+    let (driver, home) = e2e_setup("legacy-cancel", 3000);
+
+    let workdir = home.to_string_lossy().into_owned();
+    let meta = driver.session_create(&workdir, "测试模型", false).await.expect("建会话");
+    let sid = meta.get("id").and_then(Value::as_str).unwrap().to_string();
+    driver.session_open(&sid).await.expect("打开会话");
+    driver
+        .session_send(&sid, "user-input", json!({ "content": frame::b64_text("开始一个慢任务") }))
+        .await
+        .expect("发送");
+    // 等主模型请求进入 HTTP 等待，再触发当前 Agent 的 context-canceled
+    // error 路径；仅取消本地乐观开轮会覆盖不到这个兼容分支。
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    driver.session_send(&sid, "user-cancel", json!({})).await.expect("取消");
+
+    let journal = wait_journal(&driver, &sid, |journal| {
+        journal.iter().any(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+    })
+    .await;
+    assert!(
+        journal.iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-error")),
+        "用户取消被旧 Agent 的 context error 渲染成失败: {journal:?}"
+    );
+    assert_eq!(
+        journal
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1,
+        "取消轮必须恰好收尾一次"
+    );
+    assert!(!driver.0.sess.sessions.lock().unwrap()[&sid].running);
+    assert_eq!(
+        driver.0.read_sidecar(&sid).get("status").and_then(Value::as_str),
+        Some("interrupted")
+    );
+
+    driver.stop();
+}
+
 /// WSL 运行环境冒烟:经 MC_WSL_EXE 假脚本走完整条 WSL spawn 链路——
 /// find_ohmyagent_linux(MC_OHMYAGENT_LINUX_BIN)→ prepare(home/登录
 /// shell/网络模式/路径翻译解析)→ 登录 shell 包装 spawn → 握手 → 会话
@@ -503,7 +635,7 @@ async fn e2e_wsl_smoke_full_lifecycle() {
     // "建得起来 + 存 guest 形态";那条 UNC 误判只在真 Windows 上现形,
     // 防线是 session_create_with_kind 里 (Some(_), _) 那条显式分支。
     let meta = driver
-        .session_create_with_kind("", "测试模型", false, "chat", "")
+        .session_create_with_kind("", "测试模型", false, "chat", "", None)
         .await
         .expect("WSL 下建普通对话");
     let sid4 = meta.get("id").and_then(|v| v.as_str()).unwrap();
@@ -964,7 +1096,12 @@ fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
             subagents: StdMutex::new(HashMap::new()),
             agent_results: StdMutex::new(HashMap::new()),
             agent_inputs: StdMutex::new(HashMap::new()),
+            agent_names: StdMutex::new(HashMap::new()),
             background_agents: StdMutex::new(HashMap::new()),
+            agent_origins: StdMutex::new(HashMap::new()),
+            agent_aliases: StdMutex::new(HashMap::new()),
+            child_agents: StdMutex::new(HashMap::new()),
+            active_continuations: StdMutex::new(HashMap::new()),
         },
         models: vec![],
         data_dir,
@@ -985,7 +1122,10 @@ fn bare_session(sid: &str) -> SessionState {
         seq: 0,
         running: true,
         compacting: false,
+        manual_compact: false,
+        terminal_error_seen: false,
         turn: 1,
+        cancel_requested_turn: None,
         created: true,
         engine_id: sid.to_string(),
         opened: false,
@@ -1067,6 +1207,17 @@ fn browser_context_resolves_explicit_sessions_without_rejecting_concurrency() {
     inner.sess.sessions.lock().unwrap().get_mut("s1").unwrap().running = false;
     inner.sub.background_agents.lock().unwrap()
         .insert("agent-1".into(), ("s1".into(), "tc-1".into()));
+    assert_eq!(driver.single_running_workdir().as_deref(), Some("/workspace/one"));
+    assert!(driver.has_running_sessions());
+
+    // SendMessage 尚未收到通知且还没有 child 事件时，active continuation
+    // 同样是运行真值，不能被维护重启打断。
+    inner.sub.background_agents.lock().unwrap().clear();
+    inner.register_continuation(
+        "s1",
+        "send-1",
+        &json!({ "agent_id": "agent-1", "message": "继续" }),
+    );
     assert_eq!(driver.single_running_workdir().as_deref(), Some("/workspace/one"));
     assert!(driver.has_running_sessions());
 }
@@ -1363,30 +1514,322 @@ async fn e2e_perm_remember_engine_rules() {
     driver.stop();
 }
 
-/// 压缩状态行:引擎只有"压缩完成"一个事件。自动压缩事后补 started+ended
-/// 一对(记录有始有终);手动压缩(compacting 在飞)发起时壳已实时落过
-/// started,事件只补 ended——否则"正在压缩/压缩完成"同刻蹦出两条。
-/// 判据不看 kind:手动的 LLM 失败会降级成 local_fallback。micro 不落帧。
+/// 压缩状态行兼容三代协议：
+/// - 新引擎 starting → 可选 fallback → final，只外显一对 started/ended；
+/// - 旧引擎仅 final，壳补齐 started/ended；
+/// - 手动压缩由壳先落 started，引擎 final 只补 ended。
+/// 过渡版的 error(kind=compaction_fallback)同样是非终止进度，不能落
+/// task-error 清掉 UI running。micro 仍不落帧。
 #[test]
-fn compaction_frames_skip_started_while_manual_compact_in_flight() {
+fn compaction_frames_normalize_new_legacy_and_manual_lifecycles() {
     let inner = bare_inner("compactline");
-    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
-    let ev = |data: Value| json!({ "type": "compaction", "session_id": "s1", "data": data });
-    inner.handle_event(ev(json!({ "kind": "auto", "tokens_saved": 10 })));
-    inner.handle_event(ev(json!({ "kind": "micro", "cleared": 3 })));
-    inner.sess.sessions.lock().unwrap().get_mut("s1").unwrap().compacting = true;
-    inner.handle_event(ev(json!({ "kind": "local_fallback", "tokens_saved": 10 })));
+    for sid in ["new", "legacy", "manual"] {
+        inner.sess.sessions.lock().unwrap().insert(sid.into(), bare_session(sid));
+    }
+    let ev = |sid: &str, data: Value| json!({ "type": "compaction", "session_id": sid, "data": data });
+
+    // 新协议：重复 starting 也只开一次；fallback 保持生命周期进行中，
+    // 最终计量事件才闭合。过渡版 fallback error 不得变 task-error。
+    inner.handle_event(ev("new", json!({ "kind": "auto", "status": "starting" })));
+    inner.handle_event(ev("new", json!({ "kind": "auto", "status": "starting" })));
+    inner.handle_event(ev(
+        "new",
+        json!({ "kind": "local_fallback", "status": "fallback", "error": "summary failed" }),
+    ));
+    inner.handle_event(json!({
+        "type": "error",
+        "session_id": "new",
+        "data": { "kind": "compaction_fallback", "error": "legacy summary failed" }
+    }));
+    inner.handle_event(ev("new", json!({ "kind": "micro", "cleared": 3 })));
+    inner.handle_event(ev("new", json!({ "kind": "local_fallback", "tokens_saved": 10 })));
+
+    // 旧协议只有最终事件；壳仍给历史记录补齐有始有终的一对。
+    inner.handle_event(ev("legacy", json!({ "kind": "auto", "tokens_saved": 10 })));
+
+    // 手动压缩的 started 由 session_compact 发起时实时落下；新引擎随后
+    // 再发 starting 也去重。final 后等紧随其后的 usage 才 task-ended，
+    // 防 usage 落到轮外；RPC 应答丢失也能靠该事件序列收尾。
+    {
+        let mut sessions = inner.sess.sessions.lock().unwrap();
+        sessions.get_mut("manual").unwrap().compacting = true;
+        sessions.get_mut("manual").unwrap().manual_compact = true;
+    }
+    inner.push_frame("manual", |seq| frame::compact_status("started", seq));
+    inner.handle_event(ev("manual", json!({ "kind": "manual", "status": "starting" })));
+    inner.handle_event(ev("manual", json!({ "kind": "manual", "tokens_saved": 10 })));
+    assert!(inner.sess.sessions.lock().unwrap()["manual"].running, "usage 前不得提前结束手动压缩");
+    inner.handle_event(json!({
+        "type": "usage",
+        "session_id": "manual",
+        "data": { "context_used": 100, "context_window": 1000 }
+    }));
+
     inner.journal_barrier();
-    let data =
-        std::fs::read_to_string(inner.data_dir.join("s1").join("events.jsonl")).unwrap();
-    let statuses: Vec<String> = data
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .filter_map(|f| acp_update(&f))
-        .filter(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("compact_status"))
-        .filter_map(|u| u.get("status").and_then(|v| v.as_str()).map(String::from))
+    let frames = |sid: &str| -> Vec<Value> {
+        std::fs::read_to_string(inner.data_dir.join(sid).join("events.jsonl"))
+            .unwrap()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .collect()
+    };
+    let statuses = |sid: &str| -> Vec<String> {
+        frames(sid)
+            .iter()
+            .filter_map(acp_update)
+            .filter(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("compact_status"))
+            .filter_map(|u| u.get("status").and_then(|v| v.as_str()).map(String::from))
+            .collect()
+    };
+    for sid in ["new", "legacy", "manual"] {
+        assert_eq!(statuses(sid), vec!["started", "ended"], "{sid} 压缩状态行序列不符");
+    }
+    assert!(
+        frames("new").iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-error")),
+        "可恢复的 compaction fallback 不应终止 UI 轮次"
+    );
+    let sessions = inner.sess.sessions.lock().unwrap();
+    assert!(sessions["new"].running, "fallback 后 agent 仍执行，壳不得清 running");
+    assert!(!sessions["new"].compacting, "最终事件后压缩生命周期应闭合");
+    assert!(!sessions["manual"].running, "手动压缩 final+usage 后必须收轮");
+    drop(sessions);
+    assert_eq!(
+        frames("manual")
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1,
+        "事件通路只能完成手动压缩一次"
+    );
+}
+
+/// error/stream 负责即时展示，不是空闲信号；同一错误的 turn/stopped 只
+/// 收 running 并补 task-ended，不得再落第二条红字。被过滤的重试事件仍须
+/// 推进 eventSeq 水位，否则下一条正常事件会被误判成背压丢帧。
+#[test]
+fn error_event_waits_for_turn_stopped_and_deduplicates_terminal_summary() {
+    let inner = bare_inner("error-lifecycle");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+
+    inner.handle_event(json!({
+        "type": "error", "session_id": "s1", "seq": 10,
+        "data": { "kind": "empty_response_retry", "terminal": false, "error": "retrying" }
+    }));
+    assert_eq!(inner.sess.sessions.lock().unwrap()["s1"].last_event_seq, 10);
+
+    inner.handle_event(json!({
+        "type": "error", "session_id": "s1", "seq": 11,
+        "data": { "terminal": true, "error": "quota exhausted" }
+    }));
+    {
+        let sessions = inner.sess.sessions.lock().unwrap();
+        assert!(sessions["s1"].running, "error 事件不能先于 turn/stopped 清 running");
+        assert!(sessions["s1"].terminal_error_seen);
+        assert_eq!(sessions["s1"].last_event_seq, 11);
+    }
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "error", "error": "quota exhausted" }),
+    );
+    inner.journal_barrier();
+
+    let frames = journal_frames(&inner, "s1");
+    let errors: Vec<&Value> = frames
+        .iter()
+        .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-error"))
         .collect();
-    assert_eq!(statuses, vec!["started", "ended", "ended"], "压缩状态行序列不符");
+    assert_eq!(errors.len(), 1, "event error 与 stopped 摘要不得重复渲染");
+    assert_eq!(errors[0].pointer("/data/terminal").and_then(Value::as_bool), Some(false));
+    assert_eq!(
+        frames
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1
+    );
+    assert!(!inner.sess.sessions.lock().unwrap()["s1"].running);
+}
+
+/// turn/stopped 自带的错误摘要与紧随其后的 task-ended 属于同一轮收尾。
+/// error 帧即使先被 30ms flusher 发走也不能提前放开 UI 队列。
+#[test]
+fn stopped_error_summary_stays_pending_until_task_ended() {
+    let inner = bare_inner("stopped-error-summary");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "error", "error": "quota exhausted" }),
+    );
+    inner.journal_barrier();
+
+    let frames = journal_frames(&inner, "s1");
+    let error_index = frames
+        .iter()
+        .position(|f| f.get("type").and_then(Value::as_str) == Some("task-error"))
+        .expect("缺 task-error");
+    let end_index = frames
+        .iter()
+        .position(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+        .expect("缺 task-ended");
+    assert_eq!(frames[error_index].pointer("/data/terminal").and_then(Value::as_bool), Some(false));
+    assert!(error_index < end_index, "错误摘要必须先展示，再由 task-ended 唯一收轮");
+}
+
+/// 回退后的 Agent 在用户取消 provider 请求时会额外发一条无 kind error，
+/// 随后才发 interrupted turn/stopped。Desktop 应把它视为取消过程噪声，
+/// 不能展示红字，也不能抢先清 running。
+#[test]
+fn legacy_cancel_error_is_suppressed_until_interrupted_stop() {
+    let inner = bare_inner("legacy-cancel-error");
+    let mut session = bare_session("s1");
+    session.cancel_requested_turn = Some(session.turn);
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+
+    inner.handle_event(json!({
+        "type": "error", "session_id": "s1", "seq": 1,
+        "data": { "error": "context canceled" }
+    }));
+    {
+        let sessions = inner.sess.sessions.lock().unwrap();
+        assert!(sessions["s1"].running, "取消 error 不能先于 stopped 清 running");
+        assert!(!sessions["s1"].terminal_error_seen, "取消 error 不应登记成终止错误");
+    }
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "interrupted" }),
+    );
+    inner.journal_barrier();
+
+    let frames = journal_frames(&inner, "s1");
+    assert!(frames.iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-error")));
+    assert_eq!(
+        frames
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1
+    );
+    assert!(!inner.sess.sessions.lock().unwrap()["s1"].running);
+}
+
+/// 旧 Agent 的持久化失败沿用普通 error 形状，但主循环仍继续。稳定前缀
+/// 必须兼容为 terminal=false；否则 error 收尾探针会反过来取消健康任务。
+#[test]
+fn legacy_persistence_error_warns_without_stopping_turn() {
+    let inner = bare_inner("legacy-persist-warning");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+
+    inner.handle_event(json!({
+        "type": "error", "session_id": "s1", "seq": 1,
+        "data": { "error": "session persist failed: disk is read-only" }
+    }));
+    inner.journal_barrier();
+
+    let sessions = inner.sess.sessions.lock().unwrap();
+    assert!(sessions["s1"].running);
+    assert!(!sessions["s1"].terminal_error_seen);
+    drop(sessions);
+    let frames = journal_frames(&inner, "s1");
+    let warning = frames
+        .iter()
+        .find(|f| f.get("type").and_then(Value::as_str) == Some("task-error"))
+        .expect("持久化告警应即时外显");
+    assert_eq!(warning.pointer("/data/terminal").and_then(Value::as_bool), Some(false));
+    assert!(frames.iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-ended")));
+}
+
+/// Desktop 为旧 Agent 漏失的 turn/stopped 补收尾时携带本地轮号。检查与
+/// 清 running 必须同锁完成，迟到探针不能把用户随后开启的新轮关掉。
+#[test]
+fn legacy_error_probe_completion_is_scoped_to_original_turn() {
+    let inner = bare_inner("legacy-error-probe");
+    for sid in ["owned", "stale"] {
+        inner.sess.sessions.lock().unwrap().insert(sid.into(), bare_session(sid));
+        inner.handle_event(json!({
+            "type": "error", "session_id": sid,
+            "data": { "error": "initialize tool context: missing root" }
+        }));
+    }
+    {
+        let mut sessions = inner.sess.sessions.lock().unwrap();
+        let stale = sessions.get_mut("stale").unwrap();
+        stale.turn += 1;
+        stale.terminal_error_seen = false;
+    }
+
+    for sid in ["owned", "stale"] {
+        inner.handle_notification(
+            "turn/stopped",
+            json!({
+                "session_id": sid,
+                "stop_reason": "error",
+                "error": "initialize tool context: missing root",
+                "_desktop_turn": 1,
+            }),
+        );
+    }
+    inner.journal_barrier();
+
+    let sessions = inner.sess.sessions.lock().unwrap();
+    assert!(!sessions["owned"].running, "原轮仍归探针所有时应完成收尾");
+    assert!(sessions["stale"].running, "迟到探针误关了新轮");
+    drop(sessions);
+    assert_eq!(
+        journal_frames(&inner, "owned")
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1
+    );
+    assert!(
+        journal_frames(&inner, "stale")
+            .iter()
+            .all(|f| f.get("type").and_then(Value::as_str) != Some("task-ended"))
+    );
+}
+
+#[test]
+fn manual_compaction_failed_and_cancelled_are_distinct_terminal_states() {
+    let (inner, events) = bare_inner_events("compact-terminal");
+    for sid in ["failed", "cancelled"] {
+        let mut session = bare_session(sid);
+        session.compacting = true;
+        session.manual_compact = true;
+        inner.sess.sessions.lock().unwrap().insert(sid.into(), session);
+        inner.push_frame(sid, frame::task_started);
+        inner.push_frame(sid, |seq| frame::compact_status("started", seq));
+    }
+    inner.handle_event(json!({
+        "type": "compaction", "session_id": "failed",
+        "data": { "kind": "manual", "status": "failed", "error": "disk full" }
+    }));
+    inner.handle_event(json!({
+        "type": "compaction", "session_id": "cancelled",
+        "data": { "kind": "manual", "status": "cancelled", "error": "context canceled" }
+    }));
+    inner.journal_barrier();
+
+    let failed = journal_frames(&inner, "failed");
+    let cancelled = journal_frames(&inner, "cancelled");
+    assert!(failed.iter().any(|f| f.get("type").and_then(Value::as_str) == Some("task-error")));
+    assert!(cancelled.iter().all(|f| f.get("type").and_then(Value::as_str) != Some("task-error")));
+    assert_eq!(
+        failed.iter().filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended")).count(),
+        1
+    );
+    assert_eq!(
+        cancelled
+            .iter()
+            .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-ended"))
+            .count(),
+        1
+    );
+    assert!(events.lock().unwrap().iter().any(|(name, payload)| {
+        name == "session-event"
+            && payload.get("id").and_then(Value::as_str) == Some("cancelled")
+            && payload.get("status").and_then(Value::as_str) == Some("interrupted")
+    }));
 }
 
 /// modelDoneText 全文对账:delta 被背压丢弃时,model_done 的权威全文
@@ -1501,6 +1944,62 @@ fn streaming_usage_updates_emitting_agent_without_parent_leak() {
     };
     assert_eq!(usage_of("main"), vec![(1_234, 200_000)]);
     assert_eq!(usage_of("child"), vec![(45_678, 64_000)]);
+}
+
+/// Agent 的 resume 契约会给 context_window、刻意省略 context_used。
+/// Desktop 不能把缺字段当 0；已经被旧版伪 0 污染的窗口则回退到最近一次
+/// 正值，让切回本地任务时无需再发一轮对话就能恢复 composer 上下文环。
+#[test]
+fn resume_usage_omission_does_not_overwrite_replayed_context() {
+    assert_eq!(
+        create_response_context_usage(&json!({ "context_window": 200_000 })),
+        None
+    );
+    assert_eq!(
+        create_response_context_usage(&json!({
+            "context_used": 45_678,
+            "context_window": 200_000,
+        })),
+        Some((45_678, 200_000))
+    );
+
+    let frames = vec![
+        frame::usage_update(45_678, 200_000, 8),
+        frame::usage_update(0, 200_000, 9),
+    ];
+    assert_eq!(restored_context_usage(None, &frames), Some((45_678, 200_000)));
+    assert_eq!(
+        restored_context_usage(Some((0, 200_000)), &frames),
+        Some((45_678, 200_000))
+    );
+    // 本进程内若已有更新的正值缓存，以缓存为准，不让旧回放倒灌。
+    assert_eq!(
+        restored_context_usage(Some((50_000, 200_000)), &frames),
+        Some((50_000, 200_000))
+    );
+}
+
+#[tokio::test]
+async fn session_open_returns_recovered_usage_after_legacy_zero_tail() {
+    let inner = bare_inner("open-usage-recovery");
+    let mut session = bare_session("s1");
+    session.running = false;
+    session.context_usage = Some((0, 200_000)); // 旧版 resume 已污染的内存快照
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+
+    inner.push_frame("s1", frame::task_started);
+    inner.push_frame("s1", |seq| frame::usage_update(45_678, 200_000, seq));
+    inner.push_frame("s1", frame::task_ended);
+    inner.journal_barrier();
+    // 旧版在空闲 resume 后追加的孤立伪 0；它晚于正确轮次，普通 reducer
+    // 会因此显示 0，session_open 快照必须把正确值重新盖回来。
+    inner.push_frame("s1", |seq| frame::usage_update(0, 200_000, seq));
+    inner.journal_barrier();
+
+    let driver = OhmyDriver(inner);
+    let opened = driver.session_open("s1").await.expect("打开会话");
+    assert_eq!(opened.get("context_used").and_then(Value::as_i64), Some(45_678));
+    assert_eq!(opened.get("context_window").and_then(Value::as_i64), Some(200_000));
 }
 
 /// 最新 Agent 将 turn/stopped 与 usage 统一成扁平字段；旧版嵌套形状仍
@@ -1664,6 +2163,400 @@ fn journal_frames(inner: &Inner, sid: &str) -> Vec<Value> {
         .collect()
 }
 
+#[test]
+fn notification_turn_started_opens_idle_session_once() {
+    let (inner, events) = bare_inner_events("notification-turn-started");
+    let mut session = bare_session("shell1");
+    session.engine_id = "engine1".into();
+    session.running = false;
+    session.compacting = true;
+    session.manual_compact = true;
+    session.terminal_error_seen = true;
+    session.cancel_requested_turn = Some(7);
+    session.model_text = "上一轮残留".into();
+    session.turn = 7;
+    inner.sess.sessions.lock().unwrap().insert("shell1".into(), session);
+
+    let started = json!({ "session_id": "engine1", "source": "notification" });
+    inner.handle_notification("turn/started", started.clone());
+    inner.handle_notification("turn/started", started);
+
+    let sessions = inner.sess.sessions.lock().unwrap();
+    let session = sessions.get("shell1").unwrap();
+    assert!(session.running);
+    assert!(!session.compacting && !session.manual_compact && !session.terminal_error_seen);
+    assert_eq!(session.cancel_requested_turn, None);
+    assert!(session.model_text.is_empty());
+    assert_eq!(session.turn, 8, "重复 started 不得重复开轮");
+    drop(sessions);
+
+    let started_count = journal_frames(&inner, "shell1")
+        .iter()
+        .filter(|f| f.get("type").and_then(Value::as_str) == Some("task-started"))
+        .count();
+    assert_eq!(started_count, 1);
+    assert_eq!(
+        inner.read_sidecar("shell1").get("status").and_then(Value::as_str),
+        Some("running")
+    );
+    let running_events = events
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(name, payload)| {
+            name == "session-event"
+                && payload.get("id").and_then(Value::as_str) == Some("shell1")
+                && payload.get("status").and_then(Value::as_str) == Some("running")
+        })
+        .count();
+    assert_eq!(running_events, 1);
+}
+
+#[test]
+fn send_message_async_launched_closes_dispatch_card_with_friendly_text() {
+    let inner = bare_inner("send-message-async");
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "sm1",
+        "data": { "name": "SendMessage", "input": { "agent_id": "a1", "message": "继续" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "sm1",
+        "data": { "tool": "SendMessage", "content": async_launched_json("a1", "bd", "继续执行"), "is_error": false }
+    }));
+
+    let updates: Vec<Value> = journal_frames(&inner, "s1").iter().filter_map(acp_update).collect();
+    let running = updates
+        .iter()
+        .find(|u| {
+            u.get("toolCallId").and_then(Value::as_str) == Some("sm1")
+                && u.pointer("/progress/kind").and_then(Value::as_str) == Some("background_agent")
+        })
+        .expect("SendMessage 未生成后台运行状态");
+    assert_eq!(running.pointer("/progress/agentId").and_then(Value::as_str), Some("a1"));
+    assert_eq!(running.pointer("/progress/status").and_then(Value::as_str), Some("running"));
+
+    let completed = updates
+        .iter()
+        .find(|u| {
+            u.get("sessionUpdate").and_then(Value::as_str) == Some("tool_call_update")
+                && u.get("toolCallId").and_then(Value::as_str) == Some("sm1")
+                && u.get("status").and_then(Value::as_str) == Some("completed")
+        })
+        .expect("SendMessage 派发卡未正常闭合");
+    let output = completed.get("rawOutput").and_then(Value::as_str).unwrap_or("");
+    assert!(output.contains("后台代理已继续执行") && output.contains("结果卡"));
+    assert!(!output.contains("async_launched"));
+    assert!(inner.sub.background_agents.lock().unwrap().is_empty());
+    assert!(inner.sess.sessions.lock().unwrap()["s1"].open_tools.is_empty());
+}
+
+fn register_finished_agent(inner: &Arc<Inner>, tc: &str, agent_id: &str, name: &str) {
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": tc,
+        "data": { "name": "Agent", "input": { "description": format!("任务-{name}"), "prompt": "首次任务", "name": name } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": tc,
+        "data": { "tool": "Agent", "content": async_launched_json(agent_id, name, &format!("任务-{name}")), "is_error": false }
+    }));
+    inner.handle_event(json!({ "type": "task_notification", "session_id": "s1", "data": {
+        "agent_id": agent_id, "name": name, "description": format!("任务-{name}"), "status": "completed",
+        "message": notification_message(agent_id, name, &format!("任务-{name}"), "completed", "首次完成")
+    }}));
+}
+
+#[test]
+fn send_message_continuation_reopens_existing_child_and_routes_early_events() {
+    let inner = bare_inner("send-message-rebind-existing");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "agent-tc",
+        "data": { "name": "Agent", "input": { "description": "初次调查", "prompt": "首次任务", "name": "researcher" } }
+    }));
+    // 首轮 child 在 Agent async 应答前已出现；应答需补齐 child → agent identity。
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "child-existing", "tool_call_id": "read-1",
+        "parent_session_id": "s1", "parent_tool_call_id": "agent-tc",
+        "data": { "name": "Read", "input": { "file_path": "a.rs" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "agent-tc",
+        "data": { "tool": "Agent", "content": async_launched_json("agent-1", "researcher", "初次调查"), "is_error": false }
+    }));
+    inner.handle_event(json!({ "type": "task_notification", "session_id": "s1", "data": {
+        "agent_id": "agent-1", "name": "researcher", "description": "初次调查", "status": "completed",
+        "message": notification_message("agent-1", "researcher", "初次调查", "completed", "首次完成")
+    }}));
+    assert!(!inner.sess.sessions.lock().unwrap()["child-existing"].running);
+
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "send-tc",
+        "data": { "name": "SendMessage", "input": { "to": "researcher", "message": "继续检查测试", "summary": "检查测试" } }
+    }));
+    // 续跑事件故意早于 SendMessage tool_result，且仍带首次 Agent 的旧 tc。
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "child-existing", "tool_call_id": "bash-2",
+        "parent_session_id": "s1", "parent_tool_call_id": "agent-tc",
+        "data": { "name": "Bash", "input": { "command": "cargo test" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "child-existing", "tool_call_id": "bash-2",
+        "parent_session_id": "s1", "parent_tool_call_id": "agent-tc",
+        "data": { "tool": "Bash", "content": "ok", "is_error": false }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "send-tc",
+        "data": { "tool": "SendMessage", "content": async_launched_json("agent-1", "researcher", "检查测试"), "is_error": false }
+    }));
+
+    let route = inner
+        .sub
+        .subagents
+        .lock()
+        .unwrap()
+        .get("child-existing")
+        .map(|r| (r.parent_sid.clone(), r.parent_tc.clone(), r.background));
+    assert_eq!(route, Some(("s1".into(), "send-tc".into(), true)));
+    let child = &inner.sess.sessions.lock().unwrap()["child-existing"];
+    assert!(child.running);
+    assert_eq!(child.turn, 2, "终态 child 应只重开一轮");
+    let routed_statuses: Vec<String> = journal_frames(&inner, "s1")
+        .iter()
+        .filter_map(acp_update)
+        .filter(|u| {
+            u.get("toolCallId").and_then(Value::as_str) == Some("send-tc")
+                && u.pointer("/progress/id").and_then(Value::as_str) == Some("bash-2")
+        })
+        .filter_map(|u| u.pointer("/progress/status").and_then(Value::as_str).map(String::from))
+        .collect();
+    assert_eq!(
+        routed_statuses,
+        vec!["run", "ok"],
+        "续跑 tool_call/tool_result 未投喂当前 SendMessage 卡"
+    );
+    let child_types: Vec<String> = journal_frames(&inner, "child-existing")
+        .iter()
+        .filter_map(|f| f.get("type").and_then(Value::as_str).map(String::from))
+        .collect();
+    assert_eq!(
+        child_types
+            .iter()
+            .filter(|t| t.as_str() == "task-started")
+            .count(),
+        2
+    );
+    assert_eq!(
+        child_types
+            .iter()
+            .filter(|t| t.as_str() == "user-input")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn synchronous_agent_result_registers_name_for_early_continuation_events() {
+    let inner = bare_inner("send-message-rebind-sync-agent");
+    inner.transport.engine_caps.lock().unwrap().insert("structuredToolResult".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "sync-origin",
+        "data": { "name": "Agent", "input": {
+            "description": "同步调查", "prompt": "首次同步任务", "name": "sync-worker"
+        } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "sync-child", "tool_call_id": "read-first",
+        "parent_session_id": "s1", "parent_tool_call_id": "sync-origin",
+        "data": { "name": "Read", "input": { "file_path": "first.rs" } }
+    }));
+    // 同步 Agent 不走 background_agent_launched；agent_result 的 agentId 必须
+    // 结合 tool_call 暂存的 name 建立 origin/alias/child identity。
+    inner.handle_event(json!({
+        "type": "agent_result", "session_id": "s1", "tool_call_id": "sync-origin",
+        "data": { "agentId": "sync-agent-1", "status": "completed", "content": "首次同步完成" }
+    }));
+    assert_eq!(
+        inner.sub.agent_aliases.lock().unwrap()
+            .get(&("s1".to_string(), "sync-worker".to_string())).map(String::as_str),
+        Some("sync-agent-1")
+    );
+    assert_eq!(
+        inner.sub.child_agents.lock().unwrap().get("sync-child").map(String::as_str),
+        Some("sync-agent-1")
+    );
+    assert!(inner.sub.agent_names.lock().unwrap().is_empty());
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "sync-origin",
+        "data": { "tool": "Agent", "content": "截断结果", "is_error": false }
+    }));
+    assert!(!inner.sess.sessions.lock().unwrap()["sync-child"].running);
+
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "sync-send",
+        "data": { "name": "SendMessage", "input": {
+            "to": "sync-worker", "message": "继续同步调查", "summary": "同步续跑"
+        } }
+    }));
+    // 两条续跑过程事件都早于 SendMessage async_launched tool_result。
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "sync-child", "tool_call_id": "bash-next",
+        "parent_session_id": "s1", "parent_tool_call_id": "sync-origin",
+        "data": { "name": "Bash", "input": { "command": "cargo test" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "sync-child", "tool_call_id": "bash-next",
+        "parent_session_id": "s1", "parent_tool_call_id": "sync-origin",
+        "data": { "tool": "Bash", "content": "ok", "is_error": false }
+    }));
+    let statuses: Vec<String> = journal_frames(&inner, "s1").iter().filter_map(acp_update)
+        .filter(|u| u.get("toolCallId").and_then(Value::as_str) == Some("sync-send")
+            && u.pointer("/progress/id").and_then(Value::as_str) == Some("bash-next"))
+        .filter_map(|u| u.pointer("/progress/status").and_then(Value::as_str).map(String::from))
+        .collect();
+    assert_eq!(statuses, vec!["run", "ok"]);
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "sync-send",
+        "data": { "tool": "SendMessage", "content": async_launched_json(
+            "sync-agent-1", "sync-worker", "同步续跑"
+        ), "is_error": false }
+    }));
+    assert_eq!(inner.sub.subagents.lock().unwrap()["sync-child"].parent_tc, "sync-send");
+}
+
+#[test]
+fn send_message_continuation_claims_first_child_from_old_origin() {
+    let inner = bare_inner("send-message-rebind-first-child");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    register_finished_agent(&inner, "origin-tc", "agent-new-child", "planner");
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "send-new",
+        "data": { "name": "SendMessage", "input": { "to": "planner", "message": "补跑验证", "summary": "补跑验证" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "never-seen-child", "tool_call_id": "glob-1",
+        "parent_session_id": "s1", "parent_tool_call_id": "origin-tc",
+        "data": { "name": "Glob", "input": { "pattern": "**/*.rs" } }
+    }));
+
+    assert_eq!(
+        inner
+            .sub
+            .child_agents
+            .lock()
+            .unwrap()
+            .get("never-seen-child")
+            .map(String::as_str),
+        Some("agent-new-child")
+    );
+    let route = inner
+        .sub
+        .subagents
+        .lock()
+        .unwrap()
+        .get("never-seen-child")
+        .map(|r| (r.parent_tc.clone(), r.background));
+    assert_eq!(route, Some(("send-new".into(), true)));
+    assert_eq!(
+        inner.sess.sessions.lock().unwrap()["never-seen-child"].turn,
+        1
+    );
+}
+
+#[test]
+fn concurrent_agent_continuations_do_not_cross_send_message_cards() {
+    let inner = bare_inner("send-message-rebind-isolated");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    register_finished_agent(&inner, "origin-a", "agent-a", "alice");
+    register_finished_agent(&inner, "origin-b", "agent-b", "bob");
+    inner.handle_event(
+        json!({ "type": "tool_call", "session_id": "s1", "tool_call_id": "send-a",
+        "data": { "name": "SendMessage", "input": { "to": "alice", "message": "A继续" } } }),
+    );
+    inner.handle_event(
+        json!({ "type": "tool_call", "session_id": "s1", "tool_call_id": "send-b",
+        "data": { "name": "SendMessage", "input": { "to": "bob", "message": "B继续" } } }),
+    );
+    inner.handle_event(json!({ "type": "error", "session_id": "child-a",
+        "parent_session_id": "s1", "parent_tool_call_id": "origin-a", "data": { "error": "A错误" } }));
+    inner.handle_event(json!({ "type": "tool_call", "session_id": "child-b", "tool_call_id": "b-tool",
+        "parent_session_id": "s1", "parent_tool_call_id": "origin-b", "data": { "name": "Read", "input": {} } }));
+
+    let routes = inner.sub.subagents.lock().unwrap();
+    assert_eq!(routes["child-a"].parent_tc, "send-a");
+    assert_eq!(routes["child-b"].parent_tc, "send-b");
+}
+
+#[test]
+fn continuation_notification_clears_active_route_without_result_backfill() {
+    let inner = bare_inner("send-message-rebind-finish");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    register_finished_agent(&inner, "origin-f", "agent-f", "finisher");
+    inner.handle_event(
+        json!({ "type": "tool_call", "session_id": "s1", "tool_call_id": "send-f",
+        "data": { "name": "SendMessage", "input": { "to": "finisher", "message": "继续收尾" } } }),
+    );
+    inner.handle_event(json!({ "type": "tool_call", "session_id": "child-f", "tool_call_id": "tool-f",
+        "parent_session_id": "s1", "parent_tool_call_id": "origin-f", "data": { "name": "Read", "input": {} } }));
+    inner.handle_event(json!({ "type": "tool_result", "session_id": "s1", "tool_call_id": "send-f",
+        "data": { "tool": "SendMessage", "content": async_launched_json("agent-f", "finisher", "继续收尾"), "is_error": false } }));
+    assert!(inner
+        .sub
+        .active_continuations
+        .lock()
+        .unwrap()
+        .contains_key("agent-f"));
+    inner.handle_event(json!({ "type": "task_notification", "session_id": "s1", "data": {
+        "agent_id": "agent-f", "name": "finisher", "description": "继续收尾", "status": "completed",
+        "message": notification_message("agent-f", "finisher", "继续收尾", "completed", "续跑最终结果")
+    }}));
+
+    assert!(inner.sub.active_continuations.lock().unwrap().is_empty());
+    assert!(!inner.sub.subagents.lock().unwrap().contains_key("child-f"));
+    assert!(!inner.sess.sessions.lock().unwrap()["child-f"].running);
+    let send_finals: Vec<Value> = journal_frames(&inner, "s1")
+        .iter()
+        .filter_map(acp_update)
+        .filter(|u| {
+            u.get("toolCallId").and_then(Value::as_str) == Some("send-f")
+                && u.get("status")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| s != "in_progress")
+        })
+        .collect();
+    assert_eq!(
+        send_finals.len(),
+        1,
+        "通知不得把完整 result 再回填 SendMessage 卡"
+    );
+    assert!(!send_finals[0]
+        .get("rawOutput")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .contains("续跑最终结果"));
+}
+
 /// 后台子代理已流式认领时:async_launched 不把原始 JSON
 /// 灌卡、不关活着的子代理路由;turn/stopped 放过后台子会话(跨轮存活);
 /// task_notification 以 Result 正文回填父卡终态 + 📌 系统行 + 子会话收尾;
@@ -1744,14 +2637,19 @@ fn backgrounded_subagent_survives_and_backfills() {
         Some("最终结论正文"),
         "Result 正文未回填父卡"
     );
-    // 📌 系统行(task_notification 帧,独立渲染项)
+    // 结构化后台结果帧落在通知到达的会话
     let note = frames
         .iter()
         .filter_map(acp_update)
         .find(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification"))
-        .expect("缺 📌 系统行帧");
+        .expect("缺结构化后台结果帧");
     let note_text = note.get("text").and_then(|v| v.as_str()).unwrap_or("");
     assert!(note_text.contains("bd") && note_text.contains("已完成"), "📌 文案不符: {note_text}");
+    assert_eq!(note.get("agentId").and_then(Value::as_str), Some("a1"));
+    assert_eq!(note.get("agentName").and_then(Value::as_str), Some("bd"));
+    assert_eq!(note.get("description").and_then(Value::as_str), Some("设计解耦接口方案"));
+    assert_eq!(note.get("status").and_then(Value::as_str), Some("completed"));
+    assert_eq!(note.get("result").and_then(Value::as_str), Some("最终结论正文"));
     // 通知全文不得以 agent_text 混进模型正文气泡
     let leaked = frames.iter().filter_map(acp_update).any(|u| {
         u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("agent_message_chunk")
@@ -1777,7 +2675,7 @@ fn backgrounded_subagent_survives_and_backfills() {
     );
 }
 
-/// 后台代理失败(status=error)→ 父卡 failed 帧回填错误详情,📌 行报失败,
+/// 后台代理失败(status=error)→ 父卡 failed 帧回填错误详情,结构化结果帧报失败,
 /// 子会话按 error 收尾。
 #[test]
 fn backgrounded_subagent_error_marks_card_failed() {
@@ -1811,15 +2709,16 @@ fn backgrounded_subagent_error_marks_card_failed() {
         .iter()
         .filter_map(acp_update)
         .find(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification"))
-        .expect("缺 📌 系统行帧");
+        .expect("缺结构化后台结果帧");
     assert!(note.get("text").and_then(|v| v.as_str()).unwrap_or("").contains("执行失败"));
+    assert_eq!(note.get("status").and_then(Value::as_str), Some("error"));
+    assert_eq!(note.get("result").and_then(Value::as_str), Some("provider 炸了"));
 }
 
 /// 反查不到登记(壳重启丢内存/SendMessage 续跑二次完成)的 task_notification:
-/// 退回整段外显,但剥 <task-notification> 包装标签——markdown 会把标签行
-/// 当 HTML 块吞掉后半段(用户实测症状:Result: 后面正文丢失)。
+/// 仍落结构化结果帧，Result 正文不混入助手消息。
 #[test]
-fn task_notification_without_registry_falls_back_stripped() {
+fn task_notification_without_registry_is_structured_result() {
     let inner = bare_inner("bgfb");
     inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
     inner.handle_event(json!({ "type": "task_notification", "session_id": "s1", "data": {
@@ -1827,15 +2726,17 @@ fn task_notification_without_registry_falls_back_stripped() {
         "message": notification_message("unknown", "x", "d", "completed", "正文内容"),
     }}));
     let frames = journal_frames(&inner, "s1");
-    let text = frames
+    let note = frames
         .iter()
         .filter_map(acp_update)
-        .filter(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("agent_message_chunk"))
-        .filter_map(|u| u["content"]["text"].as_str().map(String::from))
-        .next()
-        .expect("缺兜底外显帧");
-    assert!(text.contains("📌") && text.contains("正文内容"), "兜底外显不完整: {text}");
-    assert!(!text.contains("<task-notification>"), "包装标签未剥: {text}");
+        .find(|u| u.get("sessionUpdate").and_then(|v| v.as_str()) == Some("task_notification"))
+        .expect("缺结构化后台结果帧");
+    assert_eq!(note.get("agentId").and_then(Value::as_str), Some("unknown"));
+    assert_eq!(note.get("status").and_then(Value::as_str), Some("completed"));
+    assert_eq!(note.get("result").and_then(Value::as_str), Some("正文内容"));
+    assert!(frames.iter().filter_map(acp_update).all(|u| {
+        u.get("sessionUpdate").and_then(Value::as_str) != Some("agent_message_chunk")
+    }));
 }
 
 /// E2E:当前引擎的 run_in_background 只收紧子代理工具集为只读，调用仍

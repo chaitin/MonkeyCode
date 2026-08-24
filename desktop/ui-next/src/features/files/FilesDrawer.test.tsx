@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +23,7 @@ function stubShell(opts: {
   changes?: unknown;
   content?: string;
   diff?: string;
+  imageUrl?: string;
   /** repo_reveal 的应答;缺省成功 */
   reveal?: unknown;
 }) {
@@ -30,6 +31,10 @@ function stubShell(opts: {
   (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
     core: {
       invoke: (cmd: string, args?: Record<string, unknown>) => {
+        if (cmd === "upload_read") {
+          calls.push({ kind: cmd, payload: args ?? {} });
+          return Promise.resolve(opts.imageUrl ?? "data:image/png;base64,AA==");
+        }
         if (cmd !== "session_call") return Promise.resolve(null);
         const kind = String(args?.kind);
         const payload = (args?.payload ?? {}) as Record<string, unknown>;
@@ -84,6 +89,41 @@ describe("文件抽屉", () => {
     expect(screen.getByText("1")).toBeTruthy(); // 行号
   });
 
+  it("Markdown 相对图片走 upload_read,相对文件链接走 repo_reveal(workdir 缺省也可用)", async () => {
+    const calls = stubShell({
+      list: { "": [entry("README.md", "docs/README.md")] },
+      content: "![截图](./images/cat.png)\n\n[源码](../src/main.ts)",
+    });
+    render(<FilesDrawer sessionId="s1" onClose={() => {}} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /README\.md/ }));
+    const image = await screen.findByRole("img", { name: "截图" });
+    await waitFor(() => expect(image.getAttribute("src")).toBe("data:image/png;base64,AA=="));
+    expect(calls).toContainEqual({ kind: "upload_read", payload: { id: "s1", path: "docs/images/cat.png" } });
+
+    await userEvent.click(screen.getByRole("link", { name: "源码" }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ kind: "repo_reveal", payload: { path: "src/main.ts" } }),
+    );
+  });
+
+  it("Markdown 绝对资源只允许 workdir 内路径,工作区外不发 IPC", async () => {
+    const calls = stubShell({
+      list: { "": [entry("README.md", "README.md")] },
+      content: "![内图](/proj/alpha/images/cat.png)\n![外图](/proj/other/secret.png)\n\n[外链](/proj/other/secret.txt)",
+    });
+    render(<FilesDrawer sessionId="s1" workdir="/proj/alpha" onClose={() => {}} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /README\.md/ }));
+    await waitFor(() => expect(calls.some((c) => c.kind === "upload_read")).toBe(true));
+    expect(calls.filter((c) => c.kind === "upload_read")).toEqual([
+      { kind: "upload_read", payload: { id: "s1", path: "images/cat.png" } },
+    ]);
+    await userEvent.click(screen.getByRole("link", { name: "外链" }));
+    expect(calls.some((c) => c.kind === "repo_reveal" && c.payload.path === "/proj/other/secret.txt")).toBe(false);
+    expect(await screen.findByText("只能打开当前工作区内的文件")).toBeTruthy();
+  });
+
   it("tab 切到改动(带计数 badge),点改动行出 diff 预览", async () => {
     const diff = [
       "diff --git a/src/a.ts b/src/a.ts",
@@ -132,6 +172,168 @@ describe("文件抽屉", () => {
     const expected = window.innerWidth - 300;
     expect(panel.style.width).toBe(`${expected}px`);
     expect(localStorage.getItem("mc.drawerWidth")).toBe(String(expected));
+  });
+
+  it("pane 形态的宽度与预览分栏都以所在格边界计算", async () => {
+    stubShell({ list: { "": [entry("a.txt", "a.txt")] }, content: "hello" });
+    const { container } = render(
+      <div data-test-pane="">
+        <FilesDrawer variant="pane" sessionId="s1" onClose={() => {}} />
+      </div>,
+    );
+    const pane = container.querySelector<HTMLElement>("[data-test-pane]")!;
+    vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({
+      left: 100,
+      top: 50,
+      right: 900,
+      bottom: 650,
+      width: 800,
+      height: 600,
+      x: 100,
+      y: 50,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent(window, new Event("resize"));
+    await flush();
+
+    const panel = screen.getByRole("region", { name: "会话文件" });
+    const widthHandle = screen.getByTitle("拖动调整宽度");
+    await waitFor(() => expect(widthHandle.getAttribute("aria-valuemax")).toBe("680"));
+    expect(widthHandle.getAttribute("aria-valuemin")).toBe("420");
+    expect(widthHandle.getAttribute("aria-valuenow")).toBe("600");
+    fireEvent.mouseDown(widthHandle);
+    fireEvent.mouseMove(window, { clientX: 350 });
+    fireEvent.mouseUp(window);
+    // pane 右沿 900 - 指针 350 = 550；旧实现会算成 window.innerWidth - 350。
+    expect(panel.style.width).toBe("550px");
+
+    await userEvent.click(await screen.findByRole("button", { name: /a\.txt/ }));
+    await screen.findByText("hello");
+    const splitHandle = screen.getByTitle("拖动调整列表/预览高度");
+    const list = splitHandle.previousElementSibling as HTMLElement;
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue({
+      left: 100,
+      top: 150,
+      right: 900,
+      bottom: 400,
+      width: 800,
+      height: 250,
+      x: 100,
+      y: 150,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(splitHandle.getAttribute("aria-valuemax")).toBe("340"));
+    expect(splitHandle.getAttribute("aria-valuemin")).toBe("80");
+    expect(splitHandle.getAttribute("aria-valuenow")).toBe("250");
+    fireEvent.mouseDown(splitHandle);
+    fireEvent.mouseMove(window, { clientY: 600 });
+    fireEvent.mouseUp(window);
+    // pane.bottom 650 - list.top 150 - 预览最小 160 = 340。
+    expect(list.style.height).toBe("340px");
+  });
+
+  it("窄 pane 的宽度 ARIA 使用实际可达边界，而不是存量目标宽度", async () => {
+    localStorage.setItem("mc.drawerWidth", "777");
+    stubShell({ list: { "": [] } });
+    const { container } = render(
+      <div data-test-pane="">
+        <FilesDrawer variant="pane" sessionId="s1" onClose={() => {}} />
+      </div>,
+    );
+    const pane = container.querySelector<HTMLElement>("[data-test-pane]")!;
+    vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 400,
+      bottom: 600,
+      width: 400,
+      height: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent(window, new Event("resize"));
+
+    const handle = screen.getByTitle("拖动调整宽度");
+    await waitFor(() => expect(handle.getAttribute("aria-valuenow")).toBe("340"));
+    expect(handle.getAttribute("aria-valuemin")).toBe("340");
+    expect(handle.getAttribute("aria-valuemax")).toBe("340");
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(localStorage.getItem("mc.drawerWidth")).toBe("340");
+    expect(handle.getAttribute("aria-valuenow")).toBe("340");
+  });
+
+  it("pane 被 CSS 上限夹窄后，首次 ArrowRight 从实测宽度继续缩窄", async () => {
+    stubShell({ list: { "": [] } });
+    const { container } = render(
+      <div data-test-pane="">
+        <FilesDrawer variant="pane" sessionId="s1" onClose={() => {}} />
+      </div>,
+    );
+    const pane = container.querySelector<HTMLElement>("[data-test-pane]")!;
+    vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 600,
+      bottom: 600,
+      width: 600,
+      height: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const panel = screen.getByRole("region", { name: "会话文件" });
+    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue({
+      left: 90,
+      top: 0,
+      right: 600,
+      bottom: 600,
+      width: 510,
+      height: 600,
+      x: 90,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent(window, new Event("resize"));
+    const handle = screen.getByTitle("拖动调整宽度");
+    await waitFor(() => expect(handle.getAttribute("aria-valuenow")).toBe("510"));
+
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(panel.style.width).toBe("494px");
+    expect(localStorage.getItem("mc.drawerWidth")).toBe("494");
+  });
+
+  it("自适应短列表按 ArrowUp 不反向增高，ARIA 跟随实测列表高度", async () => {
+    stubShell({ list: { "": [entry("a.txt", "a.txt")] }, content: "hello" });
+    render(<FilesDrawer sessionId="s1" onClose={() => {}} />);
+    await userEvent.click(await screen.findByRole("button", { name: /a\.txt/ }));
+    await screen.findByText("hello");
+    const handle = screen.getByTitle("拖动调整列表/预览高度");
+    const list = handle.previousElementSibling as HTMLElement;
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 100,
+      right: 600,
+      bottom: 140,
+      width: 600,
+      height: 40,
+      x: 0,
+      y: 100,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(handle.getAttribute("aria-valuenow")).toBe("40"));
+    expect(handle.getAttribute("aria-valuemin")).toBe("40");
+
+    fireEvent.keyDown(handle, { key: "ArrowUp" });
+    expect(list.style.height).toBe("");
+    expect(localStorage.getItem("mc.drawerSplit")).toBeNull();
+
+    fireEvent.keyDown(handle, { key: "ArrowDown" });
+    expect(list.style.height).toBe("80px");
+    expect(localStorage.getItem("mc.drawerSplit")).toBe("80");
+    await waitFor(() => expect(handle.getAttribute("aria-valuenow")).toBe("80"));
   });
 
   // trackPointer 的收尾此前只挂在 mouseup 上,而 mouseup 不保证会来:抽屉在

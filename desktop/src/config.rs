@@ -80,14 +80,13 @@ pub struct DesktopConfig {
     #[serde(default)]
     pub kernel_env: String,
     /// MonkeyCode 服务地址(自建/私有化部署;空 = 官方云)。环境变量
-    /// MC_DESKTOP_MONKEYCODE_URL 优先于本字段(开发/联调逃生门)。修改
-    /// 保存后需**重启应用**生效:云端服务(baizhi::Service)在应用启动
-    /// 时按此构造一次,设置页保存只重启引擎、不重建它。
+    /// MC_DESKTOP_MONKEYCODE_URL 优先于本字段(开发/联调逃生门)。保存后
+    /// 云端服务快照会立即切换。
     #[serde(default)]
     pub mc_base_url: String,
     /// MonkeyCode 测试环境反向代理的 HTTP Basic Auth("user:pass",空 =
     /// 无;对齐 mobile 的 mc.basicAuth)。仅对 MonkeyCode 域的请求附
-    /// Authorization 头;同样重启应用生效。
+    /// Authorization 头;保存后立即生效。
     #[serde(default)]
     pub mc_basic_auth: String,
     /// 模型请求地址(llmproxy,会员模型的 LLM 调用打这里;服务端
@@ -95,6 +94,11 @@ pub struct DesktopConfig {
     /// 部署(模型代理独立域名/端口,或绕开反代鉴权)时单独指定。
     #[serde(default)]
     pub mc_llm_base_url: String,
+    /// 跳过 MonkeyCode 服务的 TLS 证书验证(私有化部署自签证书用)。
+    /// 仅对服务地址所在域生效,且服务地址为官方云时恒不生效(壳侧双重
+    /// 判定,见 baizhi::Service);引擎侧 LLM 直连不受此开关影响。
+    #[serde(default)]
+    pub mc_skip_tls_verify: bool,
     /// 已废弃(单引擎化后忽略):历史 config.json 兼容保留,不再消费。
     #[serde(default = "default_engine")]
     pub agent_engine: String,
@@ -129,6 +133,7 @@ impl Default for DesktopConfig {
             mc_base_url: String::new(),
             mc_basic_auth: String::new(),
             mc_llm_base_url: String::new(),
+            mc_skip_tls_verify: false,
             agent_engine: default_engine(),
             pet_enabled: true,
             sound_enabled: true,
@@ -524,7 +529,8 @@ fn write_ohmyagent_config(
         .iter()
         .any(is_monkeycode)
         .then(|| dir.parent().and_then(crate::baizhi::stored_ohmyagent_key))
-        .flatten();
+        .flatten()
+        .filter(|key| crate::baizhi::ohmyagent_key_matches_config(key, cfg));
     let mc_key_field = |k: &str| {
         mc_key
             .as_ref()
@@ -902,7 +908,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(
             root.join(crate::baizhi::OHMYAGENT_KEY_FILE),
-            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","base_url":"https://mc.example.com/v1"}"#,
+            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","server":"https://monkeycode-ai.com","base_url":"https://mc.example.com/v1"}"#,
         )
         .unwrap();
         let engine_dir = root.join("ohmyagent");
@@ -936,6 +942,19 @@ mod tests {
         // 非会员条目不受注入影响
         assert_eq!(settings["models"]["自定义"]["api_key"], "sk-direct");
         assert_eq!(settings["models"]["自定义"]["base_url"], "https://direct.example.com");
+
+        // Key 明确属于官方云时，切到另一套私有服务不能继续注入 api_key /
+        // signing_secret。服务地址相同但 Basic 身份不同也由 transport 指纹
+        // 拦截（baizhi 单测另钉指纹判据）。
+        let other_transport = DesktopConfig {
+            mc_base_url: "https://other.example.com".into(),
+            ..mc_cfg.clone()
+        };
+        write_ohmyagent_config(&engine_dir, &other_transport, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["models"]["会员模型"]["api_key"], "");
+        assert!(settings.get("signing_secret").is_none());
 
         // 配置了反代 Basic Auth:嵌进会员条目 base_url 的 userinfo(Go 引擎
         // 在 Authorization 空闲时自动补 Basic 头;特殊字符需百分号转义)。
@@ -1009,7 +1028,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(
             root.join(crate::baizhi::OHMYAGENT_KEY_FILE),
-            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","base_url":"https://mc.example.com/v1"}"#,
+            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","server":"https://monkeycode-ai.com","base_url":"https://mc.example.com/v1"}"#,
         )
         .unwrap();
         let engine_dir = root.join("ohmyagent");

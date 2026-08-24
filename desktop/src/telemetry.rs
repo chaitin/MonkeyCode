@@ -132,6 +132,16 @@ fn enabled(app: &AppHandle) -> bool {
     load_config(app).map(|c| c.telemetry_enabled).unwrap_or(false)
 }
 
+/// telemetry.json 的进程内互斥。启动槽(tick)与使用槽(mark_used)都是
+/// load → report(跨一次网络往返)→ save 的整段读改写,且 save 写的是完整
+/// State:不串行化时后落盘者会用陈旧快照覆盖对方刚推进的游标,打破"每台
+/// 设备每天每个槽位恰好一条"的模块级不变量(装机/启动被重复计数);首次
+/// 运行时两路还会各生成并落盘一个 install_id。持锁跨 await,必须用异步锁。
+fn state_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
 // ==================== 对外入口 ====================
 
 /// 起后台心跳。端点未配置时直接不起线程。
@@ -175,6 +185,7 @@ pub fn mark_used(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let Some((ep, path, version)) = context(&app) else { return };
+        let _guard = state_lock().lock().await;
         let mut st = match load_state(&path) {
             Ok(st) => st,
             Err(e) => return eprintln!("[desktop] 统计: 读状态失败 {e}"),
@@ -212,6 +223,7 @@ fn context(app: &AppHandle) -> Option<(Endpoint, std::path::PathBuf, String)> {
 
 async fn tick(app: &AppHandle) {
     let Some((ep, path, version)) = context(app) else { return };
+    let _guard = state_lock().lock().await;
     let mut st = match load_state(&path) {
         Ok(st) => st,
         Err(e) => return eprintln!("[desktop] 统计: 读状态失败 {e}"),

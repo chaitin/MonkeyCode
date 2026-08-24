@@ -93,6 +93,8 @@ export function sessionCreate(args: {
   createDir: boolean;
   kind?: SessionKind;
   think?: string;
+  /** Desktop 本地任务技能名;缺省 = 默认集,空数组 = 全部停用。 */
+  skills?: string[];
 }): Promise<SessionMeta> {
   return invoke<SessionMeta>("session_create", args);
 }
@@ -118,6 +120,9 @@ export interface SessionWindow {
   frames: Frame[];
   cursor: number;
   has_more: boolean;
+  /** Desktop 从本进程缓存/回放窗口恢复的上下文快照。旧壳可缺省。 */
+  context_used?: number;
+  context_window?: number;
 }
 
 /** ⚠️ session_history 的返回形状与 session_open **不同**:游标叫

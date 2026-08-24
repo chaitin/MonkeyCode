@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AskItem } from "@/lib/protocol/types";
 import { AskCard } from "./AskCard";
@@ -111,6 +111,24 @@ describe("AI 提问卡", () => {
       answers_json: JSON.stringify({ "选哪个方案?": "方案 A" }),
       cancelled: false,
     });
+  });
+
+  it("裸 Enter 提交后不冒泡；带修饰键 Enter 留给局部交互", async () => {
+    stubShell();
+    const bubbled = vi.fn();
+    render(<div onKeyDown={bubbled}><AskCard item={SINGLE} sessionId="s1" /></div>);
+    const option = screen.getByRole("radio", { name: /方案 A/ });
+    await userEvent.click(option);
+    bubbled.mockClear();
+
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    expect(bubbled.mock.calls.filter(([event]) => (event as KeyboardEvent).key === "Enter")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "提交回答" })).toBeTruthy();
+
+    bubbled.mockClear();
+    await userEvent.keyboard("{Enter}");
+    expect(bubbled).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "提交回答" })).toBeNull();
   });
 
   it("「其他」自定义:勾选后出输入框,内容为空不可提交,提交带自定义文本", async () => {

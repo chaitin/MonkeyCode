@@ -102,15 +102,26 @@
    * 不依赖本机安装;显式列出各平台回退,泛型解析各 WebView 不一 */
   --font-sans: "HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", "HarmonyOS Sans SC", ui-monospace, Menlo, Consolas, "Courier New", "Microsoft YaHei", monospace;
+  /* 字号阶梯的第 4 档(微标):时间戳/徽片/大纲导航等高密度 chrome 专用。
+   * 注册成 token 后全应用禁写任意值字号(text-[Npx]);完整阶梯只有四档
+   * —— 2xs(10 微标)/ xs(12 辅助)/ body=sm(14 正文)/ lg(18 标题),
+   * 阶梯口径见下方 body font-size 注释;markdown(md.css)与终端(term.css)
+   * 是独立相对域,不占档 */
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 0.875rem;
   /* 布局列宽令牌(w-rail / w-side):三列宽度的唯一出处,不写字面值 */
   --spacing-rail: 62px;
   --spacing-side: 232px;
-  /* 平台约定色:不跟主题走。mac 红绿灯三色 = 系统本色;caption-close =
-   * Windows 11 官方关闭键 hover 红(Win10 是 #e81123,Win11 起改这个值) */
+  /* 平台约定色:不跟主题走。mac 红绿灯三色 = 系统本色(自绘小灯 2026-08-20
+   * 回归:原生尺寸不可调、用户嫌大);caption-close = Windows 11 官方关闭键
+   * hover 红(Win10 是 #e81123,Win11 起改这个值)。关闭键前景与 mac 灯内
+   * 字形也以平台 token 命名，避免组件散写通用黑白色。 */
   --color-mac-close: #ff5f57;
   --color-mac-min: #febc2e;
   --color-mac-zoom: #28c840;
+  --color-mac-control-glyph: rgb(0 0 0 / 60%);
   --color-caption-close: #c42b1c;
+  --color-caption-close-content: #fff;
 }
 
 @layer base {
@@ -123,6 +134,10 @@
    * 本变量,不许再手算。 */
   :root {
     --chrome-h: 0px;
+    /* 自绘窗口覆盖层：普通浮层 < Linux 拉伸热区 < caption 三键。 */
+    --z-window-overlay: 1000;
+    --z-resize-edge: 1001;
+    --z-window-controls: 1002;
   }
   [data-platform="windows"],
   [data-platform="linux"] {
@@ -136,7 +151,14 @@
   body {
     /* 与 text-sm/menu 默认档同值(0.875rem=14px):13px 卡在 Tailwind 阶梯
      * 12/14 之间,任何字号类都打不到,裸文本自成一档是"不统一"的根源
-     * (2026-08-06 报障)。收成 12(辅助)/14(正文)两档主力 */
+     * (2026-08-06 报障)。
+     *
+     * 字号阶梯(2026-08-16 用户定案,全应用只许这四档):
+     *   text-lg  18px 标题/欢迎语/权益大数字(最大档,text-xl+ 禁用)
+     *   (默认)  14px 正文——一切常规 UI 文字,显式写时用 text-sm
+     *   text-xs  12px 辅助——副行/说明/表单标签
+     *   text-2xs 10px 微标——时间戳/徽片/大纲导航(@theme 注册,禁 text-[Npx])
+     * 例外域:markdown(md.css 相对 em 阶梯)与终端(term.css)。 */
     font-size: 0.875rem;
     overflow: hidden;
     /* 桌面壳手感:chrome 默认不可选中;可复制内容(消息/代码/输入框)由
@@ -164,6 +186,57 @@
   [role="status"] {
     user-select: text;
     -webkit-user-select: text;
+  }
+}
+
+/* 工作台自定义背景的结构表面。不能全局改写 bg-base-*：设置、菜单、弹窗、
+ * 卡片和审批控件必须继续实色。无 active 属性时三类与原主题底色完全等价。 */
+.mc-workbench-surface-100 { background-color: var(--color-base-100); }
+.mc-workbench-surface-200 { background-color: var(--color-base-200); }
+.mc-workbench-surface-300 { background-color: var(--color-base-300); }
+
+html[data-mc-background="active"] .mc-workbench-surface-100 {
+  background-color: color-mix(in srgb, var(--color-base-100) var(--mc-surface-opacity), transparent);
+}
+html[data-mc-background="active"] .mc-workbench-surface-200 {
+  background-color: color-mix(in srgb, var(--color-base-200) var(--mc-surface-opacity), transparent);
+}
+html[data-mc-background="active"] .mc-workbench-surface-300 {
+  background-color: color-mix(in srgb, var(--color-base-300) var(--mc-surface-opacity), transparent);
+}
+/* grid 的底色原本只借 1px gap 当分隔线；背景启用后若它仍带半透明底，
+ * 每个 pane 会再叠一层 100 表面。分隔线已由 resize handle 内的 1px span
+ * 单独绘制，所以此时只让 grid 本体透出全局图片。 */
+html[data-mc-background="active"] [data-split-grid].mc-workbench-surface-300 {
+  background-color: transparent;
+}
+
+.mc-workbench-background {
+  display: none;
+  position: absolute;
+  /* 24px 是 filter 的防光晕缓冲区；padding + content-box 让 background-size
+   * 仍按工作台原始尺寸计算。否则 contain 会按外扩后的大框缩放，再被工作台
+   * 裁掉四边（blur=0 和 blur>0 都不再是真正的完整显示）。 */
+  inset: -24px;
+  box-sizing: border-box;
+  padding: 24px;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--mc-background-image);
+  background-origin: content-box;
+  background-position: var(--mc-background-position);
+  background-repeat: var(--mc-background-repeat);
+  background-size: var(--mc-background-size);
+  filter: blur(var(--mc-background-blur));
+}
+html[data-mc-background="active"] .mc-workbench-background { display: block; }
+/* 绝对背景在 0 层；工作台根的直接结构子树统一压到其上。 */
+.mc-workbench-background ~ * { position: relative; z-index: 1; }
+
+@media (prefers-reduced-transparency: reduce), (prefers-reduced-motion: reduce) {
+  html[data-mc-background="active"] {
+    --mc-surface-opacity: 100% !important;
+    --mc-background-blur: 0px !important;
   }
 }
 
@@ -230,6 +303,26 @@
  * 共用它,分头改一定会让两条列错开中线。 */
 .chat-measure {
   max-width: min(64rem, max(48rem, 92%));
+}
+
+/* mac 红绿灯净空:自绘小灯由 App 固定浮在窗口左上(2026-08-20 回归——
+ * 原生尺寸不可调、用户嫌大;2026-08-18 曾回原生,一来一回都记档),
+ * **占住窗口左上角的那条 chrome**(显式挂 data-mac-lights-clear:任务列
+ * 在场是列顶 chrome 行,收起是主区视图头,设置覆盖视图是页头——不能按
+ * data-view-header 一刀切,列在场时主区头不贴左缘)让出左端 64px。
+ * **必须写在无层区**:头部自带的 px-4 在 @layer utilities,分层样式打不过
+ * 无层样式,搁进 @layer base 会被 px-4 原样压回 16px(Chrome 实测)。 */
+[data-platform="mac"] [data-mac-lights-clear] {
+  padding-left: 64px;
+}
+
+/* 分屏格内的对话列宽(ChatView/CloudTaskView variant="pane" 的消息流与
+ * composer 共用):
+ * 同一个 64rem 天花板、同一个 92% 呼吸边,**没有 48rem 地板**——地板是给
+ * 全宽主区设计的下限;四分格在 1080p 只有 ~790px 宽,768px 地板会把内容
+ * 顶出横向滚动(LAYOUT §5 列级容器禁横滚)。两条列的天花板要一起动。 */
+.chat-measure-pane {
+  max-width: min(64rem, 92%);
 }
 
 /* 消息流是真窗口化：只有视口附近至多 160 行进入 DOM。spacer 只承担高度，

@@ -1,13 +1,15 @@
-// 百智云未登录面板:微信扫码 / 短信验证码两 tab。
+// 登录面板:微信扫码 / 短信验证码(百智云 OAuth 路径),可选第三 tab
+// 「账号密码」(MonkeyCode 直连)。
 //
 // - 微信扫码:状态机在 lib/account/wechatFlow(可注入 poll/时钟),本层只
 //   消费快照;expired/error 在二维码上覆「重新获取」,canceled 由状态机
 //   自行回待扫。
 // - 短信:手机号弱校验(1[3-9] 开头 11 位)+ 60s 倒计时发码按钮。
-// - 登录成功只报边沿(onBaizhiLoggedIn),状态刷新与 MonkeyCode 桥接由宿主
-//   AccountSection 统一处理。
-// - MonkeyCode 账号密码登录(PasswordForm)从这里导出但**不在本面板出现**:
-//   入口归 MonkeyCode 卡(用户报障 2026-08-06:两块账号的东西串到一块了)。
+// - 登录成功只报边沿(onBaizhiLoggedIn / passwordTab.onLoggedIn),状态刷新
+//   与 MonkeyCode 桥接由宿主 AccountSection 统一处理。
+// - 账密 tab 只在国内版登录卡出现(passwordTab 传入);百智云增值登录
+//   (仅为同步模型/MCP)不带它——那不是 MonkeyCode 的登录入口。
+// - 引导语不在本面板:宿主卡的副行负责说明可用方式,面板不再重复。
 //
 // 字段一律用本文件的紧凑排布(标签 12px + gap-1),不用 daisyUI .fieldset:
 // 后者 legend 上下各 8px + 栅格 6px + 容器 4px,两三个字段的登录表单会被摊
@@ -33,8 +35,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** 微信扫码卡:二维码 + 状态遮罩。 */
-function WechatTab({ onLoggedIn }: { onLoggedIn: () => void }) {
+/** 微信扫码卡:二维码 + 状态遮罩。导出给服务行的登录窗格直用。 */
+export function WechatTab({ onLoggedIn }: { onLoggedIn: () => void }) {
   const { t } = useI18n();
   const [snap, setSnap] = useState<WechatSnapshot>(WECHAT_IDLE);
   const flowRef = useRef<WechatFlow | null>(null);
@@ -98,8 +100,8 @@ function WechatTab({ onLoggedIn }: { onLoggedIn: () => void }) {
   );
 }
 
-/** 短信验证码卡:手机号 + 验证码 + 60s 倒计时发码按钮。 */
-function SmsTab({ onLoggedIn }: { onLoggedIn: () => void }) {
+/** 短信验证码卡:手机号 + 验证码 + 60s 倒计时发码按钮。导出同 WechatTab。 */
+export function SmsTab({ onLoggedIn }: { onLoggedIn: () => void }) {
   const { t } = useI18n();
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -279,34 +281,30 @@ export function PasswordForm({ onLoggedIn }: { onLoggedIn: () => void }) {
 export function LoginPanel({
   onBaizhiLoggedIn,
 }: {
-  /** 百智云真实登录事件(短信/扫码成功各一次);宿主刷新状态并顺带桥接 */
+  /** 百智云真实登录事件(短信/扫码成功各一次);宿主刷新状态并顺带桥接。
+   *  仅百智云增值登录用(微信/短信两 tab);MonkeyCode 服务行的登录 tabs
+   *  由 ServiceCard 自排(tab 在行头,窗格直用 WechatTab/SmsTab)。 */
   onBaizhiLoggedIn: () => void;
 }) {
   const { t } = useI18n();
   const [mode, setMode] = useState<"wechat" | "sms">("wechat");
+  const tab = (key: "wechat" | "sms", label: string) => (
+    <button
+      type="button"
+      role="tab"
+      className={mode === key ? "tab tab-active" : "tab"}
+      aria-selected={mode === key}
+      onClick={() => setMode(key)}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="flex max-w-sm flex-col gap-1">
-      <p className="text-xs text-base-content/60">{t("account.loginHint")}</p>
       <div role="tablist" className="tabs tabs-border">
-        <button
-          type="button"
-          role="tab"
-          className={mode === "wechat" ? "tab tab-active" : "tab"}
-          aria-selected={mode === "wechat"}
-          onClick={() => setMode("wechat")}
-        >
-          {t("account.tab.wechat")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          className={mode === "sms" ? "tab tab-active" : "tab"}
-          aria-selected={mode === "sms"}
-          onClick={() => setMode("sms")}
-        >
-          {t("account.tab.sms")}
-        </button>
+        {tab("wechat", t("account.tab.wechat"))}
+        {tab("sms", t("account.tab.sms"))}
       </div>
       {mode === "wechat" ? <WechatTab onLoggedIn={onBaizhiLoggedIn} /> : <SmsTab onLoggedIn={onBaizhiLoggedIn} />}
     </div>

@@ -1,4 +1,4 @@
-// 设置视图:全屏接管主区。左侧窄导航(通用/模型/MCP/运行环境/关于),
+// 设置模态:覆盖工作台但不卸载工作台子树。左侧窄导航(通用/模型/MCP/运行环境/关于),
 // 右侧内容列 + 底部脏状态保存条。
 //
 // 两类偏好、两条通路:
@@ -6,10 +6,28 @@
 //   sound-enabled 事件与托盘/桌宠双向同步);
 // - models/mcp/kernel_env 走保存条:save_config 全量写回(表单外字段从载入
 //   配置透传),壳保存后重启引擎——重启过程由全局引擎横幅外显,这里不管。
-import { IconAdjustmentsHorizontal, IconAlertTriangle, IconDice5, IconRotate, IconWand, IconBrain, IconCheck, IconChevronDown, IconInfoCircle, IconServer, IconSparkles, IconTerminal2, IconUser, IconWorld, type TablerIcon } from "@tabler/icons-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { IconAdjustmentsHorizontal, IconAlertTriangle, IconDice5, IconPhoto, IconRotate, IconTrash, IconWand, IconBrain, IconCheck, IconChevronDown, IconInfoCircle, IconServer, IconSparkles, IconTerminal2, IconUser, IconWorld, type TablerIcon } from "@tabler/icons-react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import { resolveShortcut } from "@/app/shortcuts";
+import {
+  applyDecodedBackground,
+  beginBackgroundOperation,
+  cancelBackgroundOperations,
+  customBackgroundEnabled,
+  decodeBackground,
+  getBackgroundRuntimeState,
+  isBackgroundOperationCurrent,
+  initializeStoredBackground,
+  readBackgroundPreferences,
+  reconcileBackgroundRuntime,
+  removeAppliedBackground,
+  runBackgroundAssetOperation,
+  setBackgroundPreferences,
+  subscribeBackgroundRuntime,
+  type BackgroundFit,
+  type BackgroundPreferencesV1,
+} from "@/lib/background";
 import { LOCALES, setLocale, useI18n } from "@/lib/i18n";
 import {
   getConfig,
@@ -20,12 +38,24 @@ import {
   setSoundEnabled,
   type DesktopConfig,
 } from "@/lib/ipc/config";
+import {
+  clearBackgroundAsset,
+  confirmBackground,
+  createBackgroundOwnerToken,
+  createBackgroundStagedId,
+  discardBackgroundBestEffort,
+  importBackground,
+  pickBackgroundPath,
+  type StagedBackgroundAsset,
+} from "@/lib/ipc/background";
 import { isWindowsShell } from "@/lib/ipc/host";
 import { inDesktopShell } from "@/lib/ipc/ipc";
 import { readCustomTheme, readTheme, setCustomTheme, setTheme, THEMES, CUSTOM_THEME, type CustomTheme, type Theme } from "@/lib/theme";
+import { readUiScale, setUiScale, UI_SCALES, type UiScale } from "@/lib/uiScale";
 import { customThemeVars, randomTheme, roleHex, COLOR_ROLES, DEFAULT_CUSTOM, BORDER_RANGE, RADIUS_RANGE, SIZE_RANGE, type ColorRole } from "@/lib/customTheme";
 import { useDismiss } from "@/lib/util/useDismiss";
 import { useEscLayer } from "@/lib/util/escLayer";
+import { useMcTransport } from "@/lib/mcTransport";
 import { baizhiStatus } from "@/lib/ipc/account";
 import { AccountSection, type SyncApplied } from "@/features/account/AccountSection";
 import { engineCaps } from "@/lib/ipc/approvals";
@@ -66,11 +96,27 @@ function blurIfTyping(): boolean {
 }
 
 /** 设置行:左侧名称+说明、右侧控件,行间分隔线成组——桌面设置页惯例。 */
-function SettingRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+function SettingRow({
+  label,
+  hint,
+  onLabelClick,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  onLabelClick?: () => void;
+  children: ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between gap-6 px-4 py-3">
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-sm font-medium">{label}</span>
+        {onLabelClick ? (
+          <span data-background-unlock="" className="cursor-default text-sm font-medium" onClick={onLabelClick}>
+            {label}
+          </span>
+        ) : (
+          <span className="text-sm font-medium">{label}</span>
+        )}
         {hint && <span className="text-xs leading-relaxed text-base-content/50">{hint}</span>}
       </div>
       {children}
@@ -113,7 +159,7 @@ function ColorTile({ role, hex, overridden, resetLabel, seed, seedHint, onPick, 
   return (
     <div className="group/tile relative flex items-center gap-2 rounded-field border border-base-300 bg-base-100 py-1.5 pe-2 ps-1.5">
       <span aria-hidden className="size-5 shrink-0 rounded-field border border-base-content/10" style={{ background: hex }} />
-      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-base-content/70">{role}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-xs text-base-content/70">{role}</span>
       {seed && (
         <span title={seedHint} className="shrink-0 text-base-content/35">
           <IconWand size={13} stroke={1.75} aria-hidden />
@@ -124,7 +170,7 @@ function ColorTile({ role, hex, overridden, resetLabel, seed, seedHint, onPick, 
           type="button"
           title={resetLabel}
           aria-label={`${role} reset`}
-          className="btn btn-ghost btn-xs shrink-0 px-1 opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100"
+          className="btn btn-ghost btn-xs relative z-10 shrink-0 px-1 opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100"
           onClick={onReset}
         >
           <IconRotate size={12} stroke={1.75} aria-hidden />
@@ -173,8 +219,8 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
     <label className="flex flex-col gap-1">
       <span className="flex items-baseline gap-1.5 text-xs">
         <span className="text-base-content/70">{label}</span>
-        <span className="min-w-0 flex-1 truncate text-[10px] text-base-content/35">{hint}</span>
-        <span className="shrink-0 font-mono text-[10px] text-base-content/50 tabular-nums">{`${value[key]}${unit}`}</span>
+        <span className="min-w-0 flex-1 truncate text-2xs text-base-content/35">{hint}</span>
+        <span className="shrink-0 font-mono text-2xs text-base-content/50 tabular-nums">{`${value[key]}${unit}`}</span>
       </span>
       <input
         type="range"
@@ -199,7 +245,7 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
         onChange={(e) => set({ [key]: e.target.checked } as Partial<CustomTheme>)}
       />
       <span className="text-base-content/70">{label}</span>
-      <span className="min-w-0 truncate text-[10px] text-base-content/35">{hint}</span>
+      <span className="min-w-0 truncate text-2xs text-base-content/35">{hint}</span>
     </label>
   );
 
@@ -262,8 +308,8 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
           <input className="input input-xs w-28" defaultValue="input" aria-hidden tabIndex={-1} readOnly />
           <input type="checkbox" className="toggle toggle-xs" defaultChecked aria-hidden tabIndex={-1} readOnly />
           <input type="checkbox" className="checkbox checkbox-xs" defaultChecked aria-hidden tabIndex={-1} readOnly />
-          <span className="rounded-box bg-base-200 px-2 py-1 text-[10px] text-base-content/60">base-200</span>
-          <span className="rounded-box bg-base-300 px-2 py-1 text-[10px] text-base-content/60">base-300</span>
+          <span className="rounded-box bg-base-200 px-2 py-1 text-2xs text-base-content/60">base-200</span>
+          <span className="rounded-box bg-base-300 px-2 py-1 text-2xs text-base-content/60">base-300</span>
         </div>
       </div>
 
@@ -425,13 +471,229 @@ function ThemePicker({ theme, custom, onPick }: { theme: Theme; custom: CustomTh
   );
 }
 
-/** 通用:外观主题 / 语言 / 提示音(仅桌面壳)。 */
+/** 桌面专属背景编辑器：资产事务走 Rust，视觉参数点即生效且不进入引擎保存条。 */
+function BackgroundEditor() {
+  const { t } = useI18n();
+  const runtime = useSyncExternalStore(
+    subscribeBackgroundRuntime,
+    getBackgroundRuntimeState,
+    getBackgroundRuntimeState,
+  );
+  const [preferences, setPreferencesState] = useState<BackgroundPreferencesV1>(readBackgroundPreferences);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const mounted = useRef(true);
+  const asset = runtime.asset;
+  const runtimeError = runtime.error
+    ? t(
+        runtime.error.code === "storedAssetUnavailable"
+          ? "settings.background.storedUnavailable"
+          : "settings.background.loadFailed",
+        { detail: runtime.error.detail },
+      )
+    : "";
+  const error = actionError || runtimeError;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      cancelBackgroundOperations();
+    };
+  }, []);
+
+  const updatePreferences = (next: BackgroundPreferencesV1) => {
+    setPreferencesState(next);
+    setBackgroundPreferences(next);
+  };
+
+  const choose = async () => {
+    const generation = beginBackgroundOperation();
+    setActionError("");
+    try {
+      const path = await pickBackgroundPath(t("settings.background.pickTitle"));
+      if (!path || !isBackgroundOperationCurrent(generation)) return;
+      setBusy(true);
+      await runBackgroundAssetOperation(async () => {
+        if (!isBackgroundOperationCurrent(generation)) return;
+        const stagedId = createBackgroundStagedId();
+        const ownerToken = createBackgroundOwnerToken();
+        let imported: StagedBackgroundAsset;
+        try {
+          imported = await importBackground(path, stagedId, ownerToken);
+        } catch (error) {
+          // Rust 可能已成功落盘但 IPC 响应丢失；调用前生成的 ID + token 仍可用于回收。
+          await discardBackgroundBestEffort(stagedId, ownerToken);
+          throw error;
+        }
+        if (!isBackgroundOperationCurrent(generation)) {
+          await discardBackgroundBestEffort(stagedId, ownerToken);
+          return;
+        }
+        try {
+          // Rust 尚未切换 current；WebView 解码成功后才确认磁盘事务。
+          await decodeBackground(imported);
+          if (!isBackgroundOperationCurrent(generation)) {
+            await discardBackgroundBestEffort(stagedId, ownerToken);
+            return;
+          }
+          await confirmBackground(stagedId, ownerToken);
+          // 更晚动作已开始时由它负责最终 UI，旧动作不能复活背景。
+          if (isBackgroundOperationCurrent(generation)) applyDecodedBackground(imported);
+        } catch (error) {
+          await discardBackgroundBestEffort(stagedId, ownerToken);
+          await reconcileBackgroundRuntime(generation);
+          throw error;
+        }
+      });
+    } catch (e) {
+      if (mounted.current && isBackgroundOperationCurrent(generation)) setActionError(errMsg(e));
+    } finally {
+      if (mounted.current && isBackgroundOperationCurrent(generation)) setBusy(false);
+    }
+  };
+
+  const clear = async () => {
+    const generation = beginBackgroundOperation();
+    setActionError("");
+    setBusy(true);
+    try {
+      await runBackgroundAssetOperation(async () => {
+        if (!isBackgroundOperationCurrent(generation)) return;
+        try {
+          await clearBackgroundAsset();
+          if (isBackgroundOperationCurrent(generation)) removeAppliedBackground();
+        } catch (error) {
+          await reconcileBackgroundRuntime(generation);
+          throw error;
+        }
+      });
+    } catch (e) {
+      if (mounted.current && isBackgroundOperationCurrent(generation)) setActionError(errMsg(e));
+    } finally {
+      if (mounted.current && isBackgroundOperationCurrent(generation)) setBusy(false);
+    }
+  };
+
+  const fits: Array<{ value: BackgroundFit; label: string }> = [
+    { value: "cover", label: t("settings.background.fit.cover") },
+    { value: "contain", label: t("settings.background.fit.contain") },
+    { value: "repeat", label: t("settings.background.fit.repeat") },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-box border border-base-300 bg-base-200">
+          {asset ? (
+            <img src={asset.dataUrl} alt={t("settings.background.preview")} className="size-full object-cover" />
+          ) : (
+            <IconPhoto size={24} stroke={1.5} aria-hidden className="text-base-content/35" />
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium" title={asset?.originalName}>
+              {asset?.originalName ?? t("settings.background.none")}
+            </p>
+            {asset && <p className="text-xs text-base-content/50">{asset.width} × {asset.height} px</p>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void choose()}>
+              {busy && <span className="loading loading-spinner loading-xs" aria-hidden />}
+              {asset ? t("settings.background.replace") : t("settings.background.choose")}
+            </button>
+            {asset && (
+              <button type="button" className="btn btn-ghost btn-sm text-error" disabled={busy} onClick={() => void clear()}>
+                <IconTrash size={14} stroke={1.75} aria-hidden />
+                {t("settings.background.clear")}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {error && <div role="alert" className="alert alert-error alert-soft py-2 text-xs">{error}</div>}
+
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="flex items-center justify-between">
+          <span>{t("settings.background.opacity")}</span>
+          <span className="tabular-nums text-base-content/50">{Math.round(preferences.surfaceOpacity * 100)}%</span>
+        </span>
+        <input
+          type="range"
+          className="range range-xs"
+          aria-label={t("settings.background.opacity")}
+          min={35}
+          max={100}
+          step={1}
+          disabled={!asset || busy}
+          value={Math.round(preferences.surfaceOpacity * 100)}
+          onChange={(e) => updatePreferences({ ...preferences, surfaceOpacity: Number(e.target.value) / 100 })}
+        />
+      </label>
+      {preferences.surfaceOpacity < 0.6 && (
+        <div role="status" className="alert alert-warning alert-soft py-2 text-xs">
+          <IconAlertTriangle size={15} stroke={1.75} aria-hidden />
+          {t("settings.background.readability")}
+        </div>
+      )}
+
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="flex items-center justify-between">
+          <span>{t("settings.background.blur")}</span>
+          <span className="tabular-nums text-base-content/50">{preferences.blurPx} px</span>
+        </span>
+        <input
+          type="range"
+          className="range range-xs"
+          aria-label={t("settings.background.blur")}
+          min={0}
+          max={20}
+          step={1}
+          disabled={!asset || busy}
+          value={preferences.blurPx}
+          onChange={(e) => updatePreferences({ ...preferences, blurPx: Number(e.target.value) })}
+        />
+      </label>
+
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-xs">{t("settings.background.fit")}</span>
+        <div role="radiogroup" aria-label={t("settings.background.fit")} className="join shrink-0">
+          {fits.map(({ value, label }) => (
+            <input
+              key={value}
+              type="radio"
+              name="settings-background-fit"
+              className={`btn btn-sm join-item ${preferences.fit === value ? "btn-active" : "text-base-content/60"}`}
+              aria-label={label}
+              checked={preferences.fit === value}
+              disabled={!asset || busy}
+              onChange={() => updatePreferences({ ...preferences, fit: value })}
+            />
+          ))}
+        </div>
+      </div>
+      <p className="text-xs leading-relaxed text-base-content/50">{t("settings.background.hint")}</p>
+    </div>
+  );
+}
+
+/** 通用:外观主题 / 背景 / 语言 / 提示音(仅桌面壳)。 */
 function GeneralSection() {
   const { t, locale } = useI18n();
   const [theme, setThemeState] = useState<Theme>(readTheme);
   // 没配过就给一份默认草稿:编辑器要有初值,选中「自定义」当场就该看到效果
   const [custom, setCustom] = useState<CustomTheme>(() => readCustomTheme() ?? DEFAULT_CUSTOM);
+  const [backgroundUnlocked, setBackgroundUnlocked] = useState(false);
+  const backgroundUnlock = useRef({ count: 0, lastAt: 0 });
+  const backgroundVisible = customBackgroundEnabled() || backgroundUnlocked;
   const [soundOn, setSoundOn] = useState(true);
+  const [uiScale, setUiScaleState] = useState<UiScale>(() => readUiScale());
+  const pickUiScale = (s: UiScale) => {
+    setUiScaleState(s);
+    setUiScale(s);
+  };
 
   useEffect(() => {
     if (!inDesktopShell()) return;
@@ -452,6 +714,18 @@ function GeneralSection() {
     void setSoundEnabled(next).catch(() => setSoundOn(!next));
   };
 
+  const unlockBackground = () => {
+    if (backgroundVisible || !inDesktopShell()) return;
+    const now = Date.now();
+    const state = backgroundUnlock.current;
+    state.count = now - state.lastAt <= 1_000 ? state.count + 1 : 1;
+    state.lastAt = now;
+    if (state.count < 5) return;
+    state.count = 0;
+    setBackgroundUnlocked(true);
+    void initializeStoredBackground();
+  };
+
   const pickTheme = (next: Theme) => {
     // 切到自定义走 setCustomTheme:它同时落配置 + 渲染好的 CSS(首帧防闪要用),
     // 而 setTheme 只写主题名——选了自定义却没落 CSS 的话,下次启动首帧会是
@@ -466,10 +740,16 @@ function GeneralSection() {
     setCustomTheme(next);
     setThemeState(CUSTOM_THEME);
   };
-  const seg = (label: string, on: boolean, onClick: () => void) => (
-    <button key={label} type="button" className={`btn btn-sm join-item ${on ? "btn-active" : "text-base-content/60"}`} onClick={onClick}>
-      {label}
-    </button>
+  const seg = (group: string, label: string, on: boolean, onChange: () => void) => (
+    <input
+      key={label}
+      type="radio"
+      name={group}
+      className={`btn btn-sm join-item ${on ? "btn-active" : "text-base-content/60"}`}
+      aria-label={label}
+      checked={on}
+      onChange={onChange}
+    />
   );
 
   return (
@@ -478,14 +758,24 @@ function GeneralSection() {
         {/* 自定义编辑器与主题行同格(不另起 SettingRow):它是这一行的展开态,
             分成两行会读成两个并列设置 */}
         <div>
-          <SettingRow label={t("settings.appearance.theme")}>
+          <SettingRow label={t("settings.appearance.theme")} onLabelClick={unlockBackground}>
             <ThemePicker theme={theme} custom={custom} onPick={pickTheme} />
           </SettingRow>
           {theme === CUSTOM_THEME && <CustomThemeEditor value={custom} onChange={editCustom} />}
         </div>
+        {backgroundVisible && inDesktopShell() && <BackgroundEditor />}
         <SettingRow label={t("settings.appearance.language")}>
           <div role="radiogroup" aria-label={t("settings.appearance.language")} className="join shrink-0">
-            {LOCALES.map((l) => seg(l.label, locale === l.value, () => setLocale(l.value)))}
+            {LOCALES.map((l) => seg("settings-language", l.label, locale === l.value, () => setLocale(l.value)))}
+          </div>
+        </SettingRow>
+        {/* 界面缩放:WebView 页面 zoom,文字/图标/控件/终端同比例缩放
+            (用户定案 2026-08-16「所有组件跟着变」);点即生效,不进保存条 */}
+        <SettingRow label={t("settings.general.uiScale")} hint={t("settings.general.uiScaleHint")}>
+          <div role="radiogroup" aria-label={t("settings.general.uiScale")} className="join shrink-0">
+            {UI_SCALES.map((s) =>
+              seg("settings-ui-scale", `${Math.round(s * 100)}%`, uiScale === s, () => pickUiScale(s)),
+            )}
           </div>
         </SettingRow>
         {inDesktopShell() && (
@@ -556,16 +846,23 @@ function EnvSection({
   );
 }
 
-export function SettingsView({
-  onClose,
-  hasRunningTask = false,
-}: {
-  onClose: () => void;
+export interface SettingsViewHandle {
+  /** 所有外部跳转都经这里请求关闭，避免绕过未保存修改确认。 */
+  requestClose(afterApproved?: () => void): void;
+}
+
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export const SettingsView = forwardRef<SettingsViewHandle, {
+  /** restoreFocus=false 表示关闭后由跳转动作接管焦点。 */
+  onClose: (restoreFocus?: boolean) => void;
   /** 有本地会话在跑(status==="running"):同步后不自动保存重启引擎,
    * 隐式踹掉运行中的轮次不可接受;回退保存条由用户择机保存(旧 UI 同款口径) */
   hasRunningTask?: boolean;
-}) {
+}>(function SettingsView({ onClose, hasRunningTask = false }, ref) {
   const { t } = useI18n();
+  const { generation: mcTransportGeneration, isCurrent: isMcTransportCurrent } = useMcTransport();
   // 离开确认(旧 UI App.tsx settingsDirty + window.confirm 的 daisyUI 版):
   // 脏表单直接退出 = 静默丢弃全部未保存编辑,必须先问一句
   const [leaveAsk, setLeaveAsk] = useState(false);
@@ -581,6 +878,24 @@ export function SettingsView({
   const [bzLoggedIn, setBzLoggedIn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  // 账号分区的版本点选/私有化「保存生效」触发的静默落盘:在途期间不渲染
+  // 保存条——用户视角里「切换版本」不该出现任何「保存」字样(2026-08-15
+  // 用户定案);失败才回落保存条外显错误
+  const [inlineSaving, setInlineSaving] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const leaveDialogRef = useRef<HTMLDivElement | null>(null);
+  const stayButtonRef = useRef<HTMLButtonElement | null>(null);
+  const leaveFocusRef = useRef<HTMLElement | null>(null);
+  const pendingCloseRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (leaveAsk) stayButtonRef.current?.focus();
+  }, [leaveAsk]);
 
   useEffect(() => {
     let alive = true;
@@ -614,9 +929,64 @@ export function SettingsView({
 
   // 关闭主路径(Esc 与「返回」共用):脏表单先问一句再走(旧 UI App.tsx
   // closeSettings 同款守卫)
-  const requestClose = () => {
-    if (dirty) setLeaveAsk(true);
-    else onClose();
+  const finishClose = (afterApproved?: () => void) => {
+    pendingCloseRef.current = null;
+    onClose(!afterApproved);
+    afterApproved?.();
+  };
+  const requestClose = (afterApproved?: () => void) => {
+    pendingCloseRef.current = afterApproved ?? null;
+    if (dirty) {
+      leaveFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setLeaveAsk(true);
+    } else {
+      finishClose(afterApproved);
+    }
+  };
+  const cancelLeave = () => {
+    pendingCloseRef.current = null;
+    setLeaveAsk(false);
+    window.requestAnimationFrame(() => {
+      const target = leaveFocusRef.current;
+      if (target?.isConnected && dialogRef.current?.contains(target)) target.focus();
+      else closeButtonRef.current?.focus();
+    });
+  };
+  useImperativeHandle(ref, () => ({ requestClose }));
+
+  const trapTab = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return;
+    const root = leaveAsk ? leaveDialogRef.current : dialogRef.current;
+    if (!root) return;
+    const candidates = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+      (node) => !node.hasAttribute("disabled") && node.getAttribute("aria-hidden") !== "true",
+    );
+    const nodes = candidates.filter((node) => {
+      if (!(node instanceof HTMLInputElement) || node.type !== "radio" || !node.name) return true;
+      const group = candidates.filter(
+        (candidate): candidate is HTMLInputElement =>
+          candidate instanceof HTMLInputElement &&
+          candidate.type === "radio" &&
+          candidate.name === node.name &&
+          candidate.form === node.form,
+      );
+      const checked = group.find((radio) => radio.checked);
+      return checked ? checked === node : group[0] === node;
+    });
+    if (nodes.length === 0) {
+      e.preventDefault();
+      root.focus();
+      return;
+    }
+    const first = nodes[0]!;
+    const last = nodes[nodes.length - 1]!;
+    if (e.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) {
+      e.preventDefault();
+      first.focus();
+    }
   };
 
   // 视图级 Esc:走 escLayer 层栈而非自挂 window capture。同 target 同阶段的
@@ -638,7 +1008,7 @@ export function SettingsView({
   useEscLayer(
     leaveAsk,
     useCallback(() => {
-      setLeaveAsk(false);
+      cancelLeave();
       return true;
     }, []),
   );
@@ -820,6 +1190,21 @@ export function SettingsView({
             onMcDisconnected={applyMcDisconnect}
             draft={draft}
             onDraft={updateDraft}
+            refreshKey={mcTransportGeneration}
+            isRefreshKeyCurrent={isMcTransportCurrent}
+            savedMcBaseUrl={cfg?.mc_base_url ?? ""}
+            savedMcBasicAuth={cfg?.mc_basic_auth ?? ""}
+            // 版本点选即静默落盘:savingRef 防重入(save 自身不防并发);
+            // inlineSaving 让保存条在途不出现。与已保存配置无差异就跳过
+            // ——按载荷对比(与脏判定同口径):点回当前生效的版本不值得
+            // 白写一次盘、白重启一次引擎
+            onApplyDraft={(d) => {
+              if (savingRef.current) return;
+              if (cfg && baseline && payloadEquals(buildPayload(cfg, d), baseline)) return;
+              setInlineSaving(true);
+              void save(d).finally(() => setInlineSaving(false));
+            }}
+            saveBusy={saving}
           />
         );
       case "models":
@@ -840,11 +1225,24 @@ export function SettingsView({
   };
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-base-100">
-      <header data-tauri-drag-region="" data-view-header="" className="flex h-13 shrink-0 items-center gap-2 border-b border-base-300 px-4">
-        <h1 data-tauri-drag-region="" className="text-sm font-semibold">{t("settings.title")}</h1>
-        <span data-tauri-drag-region="" className="flex-1" />
-        <button type="button" className="btn btn-ghost btn-sm" onClick={requestClose}>
+    <div
+      className="modal modal-open"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-dialog-title"
+      onKeyDownCapture={trapTab}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
+    >
+      <div
+        ref={dialogRef}
+        className="modal-box flex h-[min(84vh,760px)] w-[min(960px,92vw)] max-w-[min(960px,92vw)] flex-col overflow-hidden bg-base-100 p-0"
+        inert={leaveAsk ? true : undefined}
+      >
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-base-300 px-4">
+        <h1 id="settings-dialog-title" className="text-sm font-semibold">{t("settings.title")}</h1>
+        <span className="flex-1" />
+        <button ref={closeButtonRef} type="button" className="btn btn-ghost btn-sm" onClick={() => requestClose()}>
           {t("settings.back")}
         </button>
       </header>
@@ -884,8 +1282,8 @@ export function SettingsView({
               {body()}
             </div>
           </div>
-          {/* 保存条:结构线贴底 */}
-          {dirty && (
+          {/* 保存条:结构线贴底。版本切换的静默落盘在途不出现(见 inlineSaving) */}
+          {dirty && !inlineSaving && (
             <div className="flex shrink-0 items-center gap-2 border-t border-base-300 bg-base-100 px-4 py-2">
               <span className="text-xs text-base-content/70">{t("settings.save.dirty")}</span>
               {saveError && (
@@ -908,13 +1306,15 @@ export function SettingsView({
       {/* 离开确认(旧 UI「有未保存的更改,确定离开设置?」的 daisyUI 版):
           Esc / 返回 在脏表单上不再直接丢弃编辑。弹层自占一层 Esc,
           里面按 Esc = 取消离开,不会递归回视图层 */}
+      </div>
+      <div className="modal-backdrop cursor-pointer" onClick={() => requestClose()} aria-hidden />
       {leaveAsk && (
-        <div className="modal modal-open" role="dialog" aria-label={t("settings.leave.title")}>
-          <div className="modal-box max-w-sm">
-            <h3 className="text-sm font-semibold">{t("settings.leave.title")}</h3>
+        <div className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="settings-leave-title">
+          <div ref={leaveDialogRef} className="modal-box max-w-sm">
+            <h3 id="settings-leave-title" className="text-sm font-semibold">{t("settings.leave.title")}</h3>
             <p className="py-3 text-xs leading-relaxed text-base-content/70">{t("settings.leave.body")}</p>
             <div className="modal-action">
-              <button type="button" className="btn btn-sm" onClick={() => setLeaveAsk(false)}>
+              <button ref={stayButtonRef} type="button" className="btn btn-sm" onClick={cancelLeave}>
                 {t("settings.leave.stay")}
               </button>
               <button
@@ -922,16 +1322,16 @@ export function SettingsView({
                 className="btn btn-error btn-sm"
                 onClick={() => {
                   setLeaveAsk(false);
-                  onClose();
+                  finishClose(pendingCloseRef.current ?? undefined);
                 }}
               >
                 {t("settings.leave.discard")}
               </button>
             </div>
           </div>
-          <div className="modal-backdrop cursor-pointer" onClick={() => setLeaveAsk(false)} aria-hidden />
+          <div className="modal-backdrop cursor-pointer" onClick={cancelLeave} aria-hidden />
         </div>
       )}
-    </main>
+    </div>
   );
-}
+});

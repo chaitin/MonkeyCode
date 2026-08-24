@@ -12,6 +12,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod background;
 mod baizhi;
 mod browser;
 mod config;
@@ -360,6 +361,20 @@ pub fn engine_exited(app: &AppHandle, instance: u64, detail: &str, log_tail: &st
     }
 }
 
+/// 将盘上配置应用到壳侧云 transport，并在真正变化的同一条路径上通知 UI。
+/// 通知发生在后续物化/引擎重启之前：即使引擎启动失败，账号和云任务也不会
+/// 继续展示旧服务数据。所有配置应用入口都必须经这里，避免遗漏某条恢复路径。
+fn apply_cloud_config(app: &AppHandle, config: &DesktopConfig) -> bool {
+    let pipes = app.state::<baizhi::monkeycode::CloudPipes>();
+    let Some(generation) = app.state::<baizhi::BaizhiState>().apply_config(config, &pipes) else {
+        return false;
+    };
+    if let Err(e) = app.emit("monkeycode-transport-changed", generation) {
+        eprintln!("[desktop] 通知 UI 云服务切换失败: {e}");
+    }
+    true
+}
+
 /// 退避后自动重启。失败与崩溃在退避上同权,继续退避直到熔断。
 fn schedule_engine_retry(app: &AppHandle, delay: Duration) {
     let generation = app.state::<EngineSupervisor>().generation.load(Ordering::SeqCst);
@@ -382,6 +397,9 @@ fn schedule_engine_retry(app: &AppHandle, delay: Duration) {
                 return;
             }
             load_config(&app).and_then(|config| {
+                // 壳侧云端快照跟随盘上权威配置(配置未变时为 no-op):失败的
+                // 保存/重启可能留下快照落后于盘的分裂态,自动重启在此自愈。
+                apply_cloud_config(&app, &config);
                 materialize_engine_config(&app, &config, browser::mcp_endpoint(&app))?;
                 restart_engine_locked(&app, &config)
             })
@@ -459,6 +477,8 @@ fn schedule_browser_mcp_refresh(app: &AppHandle) {
             // 必须在取得配置事务锁后再读盘：否则并发的设置保存可能先写入
             // 新值，本线程却拿旧快照随后覆盖回去。
             let result = load_config(&app).and_then(|config| {
+                // 同 schedule_engine_retry:壳侧云端快照跟随盘上配置,自愈分裂态。
+                apply_cloud_config(&app, &config);
                 materialize_engine_config(&app, &config, browser::mcp_endpoint(&app))?;
                 restart_engine_locked(&app, &config)
             });
@@ -487,7 +507,13 @@ async fn save_config(app: AppHandle, config: DesktopConfig) -> Result<(), String
         reset_engine_supervision(&app);
         // 壳自有偏好的合并与写盘在 ConfigStore 的同一事务内完成。
         let config = save_ui_config_files(&app, config, browser::mcp_endpoint(&app))?;
-        restart_engine_locked(&app, &config)
+        // 配置一旦落盘,壳侧云端服务快照必须先于引擎重启切换:apply_config
+        // 是纯内存操作不会失败,而 restart_engine_locked 失败会早退——若快照
+        // 切换排在其后,失败路径会留下「盘上/引擎是新地址、壳侧云端打旧地址」
+        // 的分裂态,且两条自动恢复路径都不会替本命令收这个尾。
+        apply_cloud_config(&app, &config);
+        restart_engine_locked(&app, &config)?;
+        Ok(())
     })
     .await
     .map_err(|e| format!("保存失败: {e}"))?
@@ -503,8 +529,12 @@ async fn engine_restart(app: AppHandle) -> Result<(), String> {
         let _host_apply = host.begin_apply();
         reset_engine_supervision(&app);
         let config = load_config(&app)?;
+        // 快照切换先于重启,理由同 save_config;此处配置未变时是纯 no-op,
+        // 但能自愈此前失败路径遗留的「壳侧快照落后于盘上配置」分裂态。
+        apply_cloud_config(&app, &config);
         materialize_engine_config(&app, &config, browser::mcp_endpoint(&app))?;
-        restart_engine_locked(&app, &config)
+        restart_engine_locked(&app, &config)?;
+        Ok(())
     })
     .await
     .map_err(|e| format!("重启失败: {e}"))?
@@ -932,9 +962,13 @@ fn create_main_window(app: &AppHandle, page: &str) {
     {
         builder = builder.disable_drag_drop_handler();
     }
-    // macOS:标题栏悬浮融入侧栏(Overlay)。原生红绿灯在 build 后被
+    // macOS:标题栏悬浮融入内容(Overlay),原生红绿灯在 build 后被
     // hide_native_window_buttons 隐藏,UI 侧自绘 10px 小红绿灯替代
-    // (titlebar.tsx MacWindowControls),尺寸/间距/位置从此归 UI 管。
+    // (TitleBar::MacWindowControls,App 固定左上角渲染)。自绘版曾于
+    // 2026-08-18 退役回原生,2026-08-20 用户「原生太大,能小一点么」再
+    // 反转——原生按钮尺寸是系统私有绘制不可调,要小只能藏掉自绘。
+    // ⚠️ 别试 traffic_light_position:2.11.5(runtime-wry
+    // with_traffic_light_inset)在 Overlay 下实测灯纹丝不动,真机截图为证。
     #[cfg(target_os = "macos")]
     {
         builder = builder
@@ -981,6 +1015,30 @@ fn create_main_window(app: &AppHandle, page: &str) {
         });
         finish_main_window_creation(&win, restored);
     }
+}
+
+/// macOS:隐藏原生红绿灯。AppKit 标准窗口按钮的尺寸与间距是系统私有绘制,
+/// 公开途径只能整组挪位置;要"更小的红绿灯"只能藏掉原生、UI 自绘替身
+/// (跨平台应用的通行做法)。NSWindow 消息须在主线程发。
+#[cfg(target_os = "macos")]
+fn hide_native_window_buttons(window: &tauri::WebviewWindow) {
+    let win = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        let Ok(ns_window) = win.ns_window() else {
+            return;
+        };
+        let ns_window = ns_window as *mut objc2::runtime::AnyObject;
+        // NSWindowButton: Close=0 / Miniaturize=1 / Zoom=2
+        for kind in 0usize..=2 {
+            unsafe {
+                let btn: *mut objc2::runtime::AnyObject =
+                    objc2::msg_send![ns_window, standardWindowButton: kind];
+                if !btn.is_null() {
+                    let _: () = objc2::msg_send![btn, setHidden: true];
+                }
+            }
+        }
+    });
 }
 
 fn finish_main_window_creation(window: &WebviewWindow, restored: Option<MainWindowRestore>) {
@@ -1065,30 +1123,6 @@ fn persist_main_window_state(app: &AppHandle) {
     if let Err(e) = config::update_config_json(app, |cfg| cfg.main_window_state = Some(state)) {
         eprintln!("[desktop] 保存主窗口状态失败: {e}");
     }
-}
-
-/// macOS:隐藏原生红绿灯。AppKit 标准窗口按钮的尺寸与间距是系统私有绘制,
-/// 公开途径只能整组挪位置;要"更小的红绿灯"只能藏掉原生、UI 自绘替身
-/// (跨平台应用的通行做法)。NSWindow 消息须在主线程发。
-#[cfg(target_os = "macos")]
-fn hide_native_window_buttons(window: &tauri::WebviewWindow) {
-    let win = window.clone();
-    let _ = window.run_on_main_thread(move || {
-        let Ok(ns_window) = win.ns_window() else {
-            return;
-        };
-        let ns_window = ns_window as *mut objc2::runtime::AnyObject;
-        // NSWindowButton: Close=0 / Miniaturize=1 / Zoom=2
-        for kind in 0usize..=2 {
-            unsafe {
-                let btn: *mut objc2::runtime::AnyObject =
-                    objc2::msg_send![ns_window, standardWindowButton: kind];
-                if !btn.is_null() {
-                    let _: () = objc2::msg_send![btn, setHidden: true];
-                }
-            }
-        }
-    });
 }
 
 // ==================== 桌宠 ====================
@@ -1432,6 +1466,11 @@ fn main() {
             list_wsl_distros,
             engine_restart,
             probe_log,
+            background::background_import,
+            background::background_confirm,
+            background::background_discard,
+            background::background_read,
+            background::background_clear,
             driver::engine_status,
             driver::engine_caps,
             driver::wsl_workdir_base,
@@ -1476,6 +1515,7 @@ fn main() {
             baizhi::mc_checkin,
             baizhi::mc_models_sync,
             baizhi::mc_models_revoke,
+            baizhi::mc_disconnect,
             baizhi::mc_tasks,
             baizhi::mc_projects,
             baizhi::mc_task_info,
@@ -1511,12 +1551,10 @@ fn main() {
             *app.state::<MainWindowRuntime>().0.lock_ok() = cfg.main_window_state;
 
             // 百智云/云端服务(壳级单例;凭证 cookie 与配置同目录)。晚于
-            // 配置加载:MonkeyCode 服务地址可由设置指定(mc_base_url,重启
-            // 应用生效);配置损坏时按默认值落官方云,错误页照常外显。
+            // 配置加载:MonkeyCode 服务地址由设置指定,保存后替换服务快照;
+            // 配置损坏时按默认值落官方云,错误页照常外显。
             let cfg_dir = config::config_dir(app.handle()).map_err(std::io::Error::other)?;
-            app.manage(baizhi::BaizhiState(std::sync::Arc::new(
-                baizhi::Service::new(cfg_dir, &cfg),
-            )));
+            app.manage(baizhi::BaizhiState::new(baizhi::Service::new(cfg_dir, &cfg)));
             app.state::<PetEnabled>()
                 .0
                 .store(cfg.pet_enabled, Ordering::Relaxed);

@@ -1,9 +1,26 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionMeta } from "@/lib/ipc/sessions";
+import {
+  cloudSendQueueTarget,
+  createSendQueueItem,
+  enqueue,
+  localSendQueueKey,
+  localSendQueueTarget,
+  readSendQueueLane,
+  resetSendQueueMemoryForTests,
+  updateSendQueueLane,
+  writeSendQueueLane,
+} from "@/features/chat/composer/sendQueue";
+import { resetStashForTests } from "@/features/chat/composer/stash";
 import { App } from "./App";
+
+beforeEach(() => {
+  resetSendQueueMemoryForTests();
+  resetStashForTests();
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -12,16 +29,25 @@ afterEach(() => {
   delete document.documentElement.dataset.theme;
 });
 
-describe("壳骨架(P1)", () => {
-  it("三栏齐全:空间导航 / 会话列表 / 主区", () => {
+describe("壳骨架(工作台即主界面,2026-08-18 换代)", () => {
+  it("启动即工作台:视图头 + 任务列(三 tab)+ 格区;旧 rail/侧栏不存在", () => {
     render(<App />);
-    expect(screen.getByRole("navigation", { name: "空间导航" })).toBeTruthy();
-    expect(screen.getByRole("complementary", { name: "会话列表" })).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
     expect(screen.getByRole("main")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "本地" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "云端" })).toBeTruthy();
+    // 「本地会话」tab 撤并(2026-08-18):chat 是本地列表里的「临时会话」组
+    expect(screen.queryByRole("tab", { name: /本地会话/ })).toBeNull();
+    expect(within(screen.getByRole("complementary", { name: "选择任务" })).getByText("临时会话")).toBeTruthy();
+    // 旧三列壳退役:空间导航 rail 与旧会话侧栏都不再渲染
+    expect(screen.queryByRole("navigation", { name: "空间导航" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "会话列表" })).toBeNull();
   });
 
-  it("浏览器模式:不渲染 Windows 标题栏与 mac 红绿灯", () => {
-    render(<App />);
+  it("浏览器模式:不渲染 Windows 标题栏与 mac 小灯", () => {
+    const { container } = render(<App />);
+    expect(container.querySelector("[data-window-titlebar]")).toBeNull();
     expect(screen.queryByRole("button", { name: "关闭" })).toBeNull();
     expect(screen.queryByRole("button", { name: "缩放" })).toBeNull();
   });
@@ -43,65 +69,97 @@ describe("壳骨架(P1)", () => {
     expect(screen.getByRole("button", { name: "关闭" })).toBeTruthy();
   });
 
-  // 曾对 Windows 开特例不留这一格,让第一个空间图标顶上去占位——尺寸恰好
-  // 凑得上(size-11 + py-1 = 52px)所以没露馅,但三个图标整体比其余平台高
-  // 一格,LAYOUT §2 也从没写过这条(2026-08-08 删除)
-  // 角落格恒存在(与三列头部同高,基线才对得齐),里面按平台放不同东西:
-  // mac 是红绿灯的家,其余平台放品牌标记——空着一整块深色方格在窗口左上角
-  // 既浪费又难看(2026-08-09 用户报障)。标记**不可交互**:系统菜单是标题栏
-  // 的东西,挂到侧栏图标上会变成「双击侧栏图标把应用关了」的陷阱。
-  it.each([
-    ["Windows NT 10.0", "Windows"],
-    ["X11; Linux x86_64", "Linux"],
-  ])("%s 壳:rail 角落格同高,里面是不可交互的品牌标记", (ua) => {
-    (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
-      core: { invoke: () => Promise.resolve(false) },
-      event: { listen: () => Promise.resolve(() => {}) },
-    };
-    vi.stubGlobal("navigator", { ...window.navigator, userAgent: ua });
-    render(<App />);
-    const corner = screen.getByRole("navigation", { name: "空间导航" }).firstElementChild;
-    expect(corner?.className).toContain("h-13");
-    const brand = corner?.querySelector("[data-rail-brand]");
-    expect(brand).not.toBeNull();
-    expect(corner?.querySelector("button")).toBeNull();
-    // 整格可拖窗(与 mac 的红绿灯格同待遇)
-    expect(corner?.hasAttribute("data-tauri-drag-region")).toBe(true);
+  it("mac 壳:自绘小灯回归(2026-08-20「原生太大」二次反转),固定左上、⌥ 绿点最大化;无 Windows 三键", async () => {
+    const shell = stubShell();
+    vi.stubGlobal("navigator", { ...window.navigator, userAgent: "Macintosh; Intel Mac OS X 10_15_7" });
+    const { container } = render(<App />);
+    expect(container.querySelector("[data-window-titlebar]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "最大化" })).toBeNull();
+    // 三颗小灯在(全局固定左上,不随视图切换消失);贴角 chrome 带净空标记
+    expect(screen.getByRole("button", { name: "缩放" })).toBeTruthy();
+    expect(
+      screen.getByRole("complementary", { name: "选择任务" }).querySelector("[data-mac-lights-clear]"),
+    ).not.toBeNull();
+    // 绿点默认切全屏(⌥ 才是最大化)
+    await userEvent.click(screen.getByRole("button", { name: "缩放" }));
+    await waitFor(() => expect(shell.count("plugin:window|is_fullscreen")).toBe(1));
   });
 
-  it("mac 壳:红绿灯在 rail 左上角(chrome 角落),无 Windows 三键", () => {
-    (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
-      core: { invoke: () => Promise.resolve(false) },
-      event: { listen: () => Promise.resolve(() => {}) },
-    };
-    vi.stubGlobal("navigator", { ...window.navigator, userAgent: "Macintosh; Intel Mac OS X 10_15_7" });
-    render(<App />);
-    const zoom = screen.getByRole("button", { name: "缩放" });
-    // 骨架规范:红绿灯待在 rail 顶部的 chrome 角落(与各列 h-11 头部同基线)
-    expect(screen.getByRole("navigation", { name: "空间导航" }).contains(zoom)).toBe(true);
-    expect(screen.queryByRole("button", { name: "最大化" })).toBeNull();
-  });
-  // 启动落点恒为本地任务(用户定案 2026-08-09)。此前读 mc.sidebarSpace 恢复
-  // 上次所在空间,于是只要建过一次云端任务(onCloudCreated 会 setSpace("cloud")),
-  // 启动空间就被永久改成云端,直到用户手动点回来——云端可能未登录/断网,
-  // 拿它当开机首屏每次都是一个坏屏幕。
-  it("启动恒落本地任务:localStorage 里存着 cloud 也不恢复", () => {
-    localStorage.setItem("mc.sidebarSpace", "cloud");
-    render(<App />);
-    expect(screen.getByRole("button", { name: "本地任务" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: "云端任务" }).getAttribute("aria-pressed")).toBe("false");
-    localStorage.removeItem("mc.sidebarSpace");
+  // 2026-08-20 用户报障「两个操作空了一行,折叠后也空一行」:非 mac 下
+  // 列顶 chrome 行(存在理由 = mac 灯净空)整行省掉;列收起时 ☰/新建
+  // 借住自绘标题栏左端,不再单开 h-10 顶条
+  it("Windows 壳列收起:☰/新建借住标题栏左端,不再单开一行顶条", async () => {
+    stubShell();
+    vi.stubGlobal("navigator", { ...window.navigator, userAgent: "Windows NT 10.0" });
+    localStorage.setItem("mc.workbenchListHidden", "1");
+    const { container } = render(<App />);
+    const bar = container.querySelector("[data-window-titlebar]") as HTMLElement;
+    expect(bar).not.toBeNull();
+    expect(document.querySelector("[data-view-header]")).toBeNull(); // 顶条免开
+    await userEvent.click(within(bar).getByRole("button", { name: "展开任务列" }));
+    const list = screen.getByRole("complementary", { name: "选择任务" });
+    // 展开后双钮回列内品牌行,标题栏回归纯 chrome
+    expect(within(bar).queryByRole("button", { name: "收起任务列" })).toBeNull();
+    expect(within(list).getByRole("button", { name: "收起任务列" })).toBeTruthy();
   });
 });
 
 describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () => {
-  it("rail 齿轮打开设置页,关闭回到欢迎页", async () => {
+  it("Ctrl+, 以模态打开设置并保持幂等，工作台不卸载", () => {
     render(<App />);
-    await userEvent.click(screen.getByRole("button", { name: "设置" }));
-    // 设置页标志改认页头标题:初始分区已是「账号」(登录主路径),不再是通用
-    expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy();
+    const workbench = screen.getByRole("main");
+    fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
+    const dialog = screen.getByRole("dialog", { name: "设置" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(document.body.contains(workbench)).toBe(true);
+    const background = workbench.closest("[inert]");
+    expect(background?.getAttribute("aria-hidden")).toBe("true");
+    fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
+    expect(screen.getAllByRole("dialog", { name: "设置" })).toHaveLength(1);
+  });
+
+  it("设置齿轮沉在任务列底部，关闭模态后恢复同一工作台", async () => {
+    render(<App />);
+    const aside = screen.getByRole("complementary", { name: "选择任务" });
+    const settingsButton = within(aside).getByRole("button", { name: "设置" });
+    await userEvent.click(settingsButton);
+    expect(screen.getByRole("dialog", { name: "设置" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "返回" }));
     await userEvent.click(screen.getByRole("button", { name: "返回" }));
-    expect(screen.getByText("开始一个任务")).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "设置" })).toBeNull();
+    expect(document.body.contains(aside)).toBe(true);
+    expect(aside.closest("[inert]")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(settingsButton));
+  });
+
+  it("无有效返回焦点时关闭设置，回退聚焦当前 Composer", async () => {
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+    render(<App />);
+    const composer = await screen.findByRole("textbox", { name: "消息输入" });
+    composer.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
+    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+
+    await waitFor(() => expect(document.activeElement).toBe(composer));
+  });
+
+  it("返回目标仍挂载但已不可聚焦时，仍回退到当前 Composer", async () => {
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+    render(<App />);
+    const composer = await screen.findByRole("textbox", { name: "消息输入" });
+    const settingsButton = within(screen.getByRole("complementary", { name: "选择任务" })).getByRole("button", {
+      name: "设置",
+    }) as HTMLButtonElement;
+
+    await userEvent.click(settingsButton);
+    settingsButton.disabled = true;
+    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+
+    await waitFor(() => expect(document.activeElement).toBe(composer));
   });
 });
 
@@ -167,6 +225,14 @@ function stubShell(
         if (cmd === "mc_projects") return Promise.resolve({ projects: [] });
         if (cmd === "mc_tasks")
           return Promise.resolve({ tasks: opts.cloudTasks ?? [], page_info: { total: (opts.cloudTasks ?? []).length } });
+        if (cmd === "mc_task_info") {
+          const task = (opts.cloudTasks ?? []).find((x) => (x as { id?: string }).id === args?.id) as
+            | Record<string, unknown>
+            | undefined;
+          return Promise.resolve(task ?? { id: args?.id, status: "pending" });
+        }
+        if (cmd === "mc_task_rounds") return Promise.resolve({ frames: [] });
+        if (cmd === "mc_task_user_inputs") return Promise.resolve({ items: [] });
         return Promise.resolve(null);
       },
     },
@@ -190,9 +256,9 @@ function stubShell(
   };
 }
 
-/** 侧栏行(菜单/属性都挂在 <a> 上;同名文字在主区头部也有一份,取侧栏那份)。 */
+/** 侧栏行(菜单/属性都挂在 button 上;同名文字在主区头部也有一份,取侧栏那份)。 */
 const rowOf = (text: string) =>
-  screen.getAllByText(text).map((el) => el.closest("a")).find(Boolean) as HTMLElement;
+  screen.getAllByText(text).map((el) => el.closest("button")).find(Boolean) as HTMLElement;
 
 /** 行右键后取命令式菜单(backdrop + menu 追加在 body 末尾)。 */
 const contextMenuOf = (el: HTMLElement): HTMLElement => {
@@ -246,7 +312,7 @@ describe("D1 引擎重启自愈", () => {
 });
 
 describe("D3 后台会话提醒", () => {
-  it("非当前会话等待审批:出可点击提示,点击跳转并按 kind 切空间", async () => {
+  it("屏外会话等待审批:出可点击提示,点击装进空格(place 路由,人不离开工作台)", async () => {
     localStorage.setItem("mc.lastSession", "s1");
     const shell = stubShell({
       sessions: [sess({ id: "s1", title: "任务一" }), sess({ id: "c1", title: "闲聊会话", kind: "chat" })],
@@ -260,8 +326,8 @@ describe("D3 后台会话提醒", () => {
     await waitFor(() =>
       expect(shell.calls.some((c) => c.cmd === "session_open" && c.args?.id === "c1")).toBe(true),
     );
-    expect(screen.getByRole("button", { name: "本地会话" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.queryByText("「闲聊会话」等待审批")).toBeNull(); // 打开即消
+    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy(); // 没切走
+    expect(screen.queryByText("「闲聊会话」等待审批")).toBeNull(); // 装载即消
   });
 
   it("终态提醒可关闭,不跳转;当前会话的事件不提醒", async () => {
@@ -284,42 +350,6 @@ describe("D3 后台会话提醒", () => {
   });
 });
 
-// 用户报障 2026-08-10:①「本地会话的等待审批好像没有计数提示」——徽标此前
-// 硬编码只挂 local,chat 会话停在等待确认上时导轨毫无外显;②「太偏右上角了,
-// 不靠近图标」——indicator-item 默认钉在 44px 命中区的角上,而图标只有 18px
-// 居中,徽标于是飘在图标斜上方 13px 开外。
-describe("空间导轨的等待确认徽标", () => {
-  const badgeOf = (name: string) =>
-    screen.getByRole("button", { name }).closest(".indicator")?.querySelector(".indicator-item") ?? null;
-
-  it("本地任务与本地会话各自计数,云端不出", async () => {
-    stubShell({
-      sessions: [
-        sess({ id: "s1", title: "任务一", waiting_ask: true }),
-        sess({ id: "s2", title: "任务二", waiting_ask: true }),
-        sess({ id: "s3", title: "任务三" }),
-        sess({ id: "c1", title: "会话一", kind: "chat", waiting_ask: true }),
-        sess({ id: "c2", title: "会话二", kind: "chat" }),
-      ],
-    });
-    render(<App />);
-    await waitFor(() => expect(badgeOf("本地任务")?.textContent).toBe("2"));
-    expect(badgeOf("本地会话")?.textContent).toBe("1");
-    expect(badgeOf("云端任务")).toBeNull();
-  });
-
-  it("锚点收进按钮内,徽标贴着图标而不是飘在命中区角上", async () => {
-    stubShell({ sessions: [sess({ id: "s1", waiting_ask: true })] });
-    render(<App />);
-    await waitFor(() => expect(badgeOf("本地任务")).not.toBeNull());
-    const cls = badgeOf("本地任务")?.className ?? "";
-    expect(cls).toContain("[--indicator-e:9px]");
-    expect(cls).toContain("[--indicator-t:9px]");
-    // 收进来之后徽标压在按钮上,不放行点击就成了「点数字没反应」
-    expect(cls).toContain("pointer-events-none");
-  });
-});
-
 describe("D5 首启向导", () => {
   it("桌面壳模型清单为空:自动打开设置页;关闭后不再纠缠", async () => {
     const shell = stubShell({ models: [] });
@@ -327,7 +357,7 @@ describe("D5 首启向导", () => {
     expect(await screen.findByRole("heading", { name: "设置" })).toBeTruthy();
     const opens = shell.count("models_list");
     await userEvent.click(screen.getByRole("button", { name: "返回" }));
-    expect(screen.getByText("开始一个任务")).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
     await act(() => Promise.resolve());
     // 不循环:关闭后不再自动弹回,也不反复探测
     expect(screen.queryByRole("heading", { name: "设置" })).toBeNull();
@@ -352,7 +382,7 @@ describe("D8 列表增量与意图跳转", () => {
     await waitFor(() => expect(shell.count("sessions_list")).toBe(before + 1));
   });
 
-  it("壳意图指向本地快照没有的会话:先重拉再选中,chat kind 切 chat 空间", async () => {
+  it("壳意图指向本地快照没有的会话:先重拉再装载入格", async () => {
     const shell = stubShell({
       sessions: [sess({ id: "s1" }), sess({ id: "c1", title: "闲聊会话", kind: "chat" })],
       intent: "open-session:c1",
@@ -361,20 +391,8 @@ describe("D8 列表增量与意图跳转", () => {
     await waitFor(() =>
       expect(shell.calls.some((c) => c.cmd === "session_open" && c.args?.id === "c1")).toBe(true),
     );
-    expect(screen.getByRole("button", { name: "本地会话" }).getAttribute("aria-pressed")).toBe("true");
-  });
-});
-
-describe("在此项目新建任务(侧栏组头 → 新建视图预填目录)", () => {
-  it("点组头 + 打开新建视图,项目目录预填", async () => {
-    const shell = stubShell({ sessions: [sess({ id: "s1", workdir: "/proj/alpha" })] });
-    render(<App />);
-    await waitFor(() => expect(shell.count("sessions_list")).toBeGreaterThanOrEqual(1));
-    await userEvent.click(await screen.findByRole("button", { name: "在此项目新建任务" }));
-    // 目录输入框收进「最近目录」下拉(卡头句式触发器),取值前先展开
-    await userEvent.click(await screen.findByRole("button", { name: "最近目录" }));
-    const dirInput = await screen.findByRole("textbox", { name: "项目目录" });
-    expect((dirInput as HTMLInputElement).value).toBe("/proj/alpha");
+    // 装进了格(槽位落盘含 c1)
+    expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]")).toContain("c1");
   });
 });
 
@@ -426,50 +444,50 @@ describe("壳级提示(浏览器工具装载)", () => {
   });
 });
 
-describe("覆盖视图开着时点侧栏(设置/新建永远让位)", () => {
-  const openSettings = () => userEvent.click(screen.getByRole("button", { name: "设置" }));
-  const openCreate = async () => userEvent.click(await screen.findByRole("button", { name: "新建任务" }));
-
-  it("本地空间:设置页/新建页开着时点任务,都切到该任务并聚焦输入框", async () => {
-    stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+describe("覆盖视图让位(设置/新建盖着时,装载动作掀开覆盖回工作台)", () => {
+  it("设置页开着:点任务列行装载 → 设置关、格挂上、输入框聚焦", async () => {
+    const shell = stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
     render(<App />);
-    await openSettings();
-    await userEvent.click(await screen.findByText("任务一"));
+    await waitFor(() => expect(shell.count("sessions_list")).toBeGreaterThanOrEqual(1));
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy();
+    // 覆盖视图盖着时任务列不在场,装载走 toast/意图同一条 loadEntry:
+    // 用屏外提醒模拟(设置盖着 → 可见集为空 → 一律提醒)
+    act(() => shell.emit("session-event", { type: "session-ask", id: "s1", title: "任务一", open: true }));
+    await userEvent.click(await screen.findByText("「任务一」等待审批"));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "设置" })).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "消息输入" })));
-
-    await openCreate();
-    await userEvent.click(await screen.findByText("任务一"));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "新建任务" })).toBeNull());
+    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "消息输入" })));
   });
+});
 
-  it("从云端空间切回已有本地任务,聚焦输入框", async () => {
-    localStorage.setItem("mc.lastSession", "s1");
-    stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+describe("MonkeyCode transport 切换", () => {
+  it("壳事件立即重拉云任务 feed(换服务/登出后旧列表作废)", async () => {
+    const shell = stubShell({ cloudTasks: [{ id: "ct1", title: "旧服务任务", status: "processing" }] });
     render(<App />);
-    await waitFor(() => expect(rowOf("任务一")).toBeTruthy());
-
-    await userEvent.click(screen.getByRole("button", { name: "云端任务" }));
-    await userEvent.click(screen.getByRole("button", { name: "本地任务" }));
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "消息输入" })));
+    // 云端 tab 由同一份 feed 供数;transport 事件 → reloadKey 翻转 → 重拉
+    await userEvent.click(screen.getByRole("tab", { name: "云端" }));
+    expect(await screen.findByText("旧服务任务")).toBeTruthy();
+    const before = shell.count("mc_tasks");
+    act(() => shell.emit("monkeycode-transport-changed", 1));
+    await waitFor(() => expect(shell.count("mc_tasks")).toBeGreaterThan(before));
   });
 
-  // 云端 onSelect 曾只 setCloudTask、不收覆盖视图,于是设置页开着时点云端任务
-  // 毫无反应(主区分支 settingsOpen/creating 优先级在前)——用户报障 2026-08-07
-  it("云端空间:设置页/新建页开着时点云端任务,都切到该任务", async () => {
-    stubShell({ cloudTasks: [{ id: "c1", title: "云端任务一", status: "processing" }] });
+  it("推进 generation、刷新账号状态并清掉旧服务持久化云槽", async () => {
+    localStorage.setItem("mc.splitTree", JSON.stringify({ leaf: 0 }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["c:ct1", null, null, null, null, null]));
+    const shell = stubShell({ cloudTasks: [{ id: "ct1", title: "旧账号任务", status: "pending" }] });
     render(<App />);
-    // 启动恒落本地(见「壳骨架」那条),要测云端就点 rail 切过去——这也更贴近
-    // 用户实际路径,比塞 localStorage 让 App"记得"上次在云端可靠
-    await userEvent.click(screen.getByRole("button", { name: "云端任务" }));
-    await openSettings();
-    await userEvent.click(await screen.findByText("云端任务一"));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "设置" })).toBeNull());
+    await waitFor(() => expect(shell.count("mc_task_info")).toBeGreaterThanOrEqual(1));
 
-    await openCreate();
-    await userEvent.click(await screen.findByText("云端任务一"));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "新建任务" })).toBeNull());
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    expect(await screen.findByRole("heading", { name: "设置" })).toBeTruthy();
+    await waitFor(() => expect(shell.count("mc_status")).toBeGreaterThanOrEqual(1));
+    const statusBefore = shell.count("mc_status");
+
+    act(() => shell.emit("monkeycode-transport-changed", 7));
+    await waitFor(() => expect(shell.count("mc_status")).toBeGreaterThan(statusBefore));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]")[0]).toBeNull());
   });
 });
 
@@ -526,10 +544,54 @@ describe("会话列表拉取失败不能清空侧栏", () => {
   });
 });
 
+describe("本地持久队列的 App 级接线", () => {
+  it("后台 session-status 严格逐轮：一个轮末事件只投一个队首", async () => {
+    localStorage.setItem("mc.lastSession", "s1");
+    localStorage.setItem("mc.sidebarSpace", "local");
+    const target = localSendQueueTarget("s2");
+    updateSendQueueLane(target, (lane) => enqueue(lane, createSendQueueItem("第一条", [])));
+    updateSendQueueLane(target, (lane) => enqueue(lane, createSendQueueItem("第二条", [])));
+    const shell = stubShell({
+      sessions: [sess({ id: "s1", title: "当前任务" }), sess({ id: "s2", title: "后台任务" })],
+    });
+    render(<App />);
+    await waitFor(() => expect(shell.count("session_open")).toBe(1));
+
+    act(() => shell.emit("session-event", { type: "session-status", id: "s2", status: "idle" }));
+    await waitFor(() => expect(shell.count("session_send")).toBe(1));
+    act(() => shell.emit("session-event", { type: "session-status", id: "s2", status: "idle" }));
+    await act(() => Promise.resolve());
+    expect(shell.count("session_send")).toBe(1);
+
+    act(() => shell.emit("session-event", { type: "session-status", id: "s2", status: "running" }));
+    act(() => shell.emit("session-event", { type: "session-status", id: "s2", status: "idle" }));
+    await waitFor(() => expect(shell.count("session_send")).toBe(2));
+  });
+
+  it("会话删除成功清持久 lane", async () => {
+    localStorage.setItem("mc.lastSession", "s1");
+    localStorage.setItem("mc.sidebarSpace", "local");
+    const target = localSendQueueTarget("s1");
+    updateSendQueueLane(target, (lane) => enqueue(lane, createSendQueueItem("删除时清理", [])));
+    const shell = stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+    render(<App />);
+    await waitFor(() => expect(shell.count("session_open")).toBe(1));
+
+    const menu = contextMenuOf(rowOf("任务一"));
+    await userEvent.click(within(menu).getByText("删除"));
+    await userEvent.click(within(menu).getByText(/确认删除/));
+    await waitFor(() => expect(shell.count("session_delete")).toBe(1));
+    await waitFor(() => expect(localStorage.getItem(localSendQueueKey("s1"))).toBeNull());
+    expect(readSendQueueLane(target).pending).toEqual([]);
+  });
+});
+
 describe("会话操作失败必须外显(壳拒了就别装作成功)", () => {
   it("删除被拒:给出原因,且不撤选中、不重拉(旧 UI 同款:notify 后 return)", async () => {
     localStorage.setItem("mc.lastSession", "s1");
     localStorage.setItem("mc.sidebarSpace", "local");
+    const target = localSendQueueTarget("s1");
+    updateSendQueueLane(target, (lane) => enqueue(lane, createSendQueueItem("失败时保留", [])));
     const shell = stubShell({
       sessions: [sess({ id: "s1", title: "任务一" })],
       fail: { session_delete: "会话正在运行,请先停止" },
@@ -547,6 +609,9 @@ describe("会话操作失败必须外显(壳拒了就别装作成功)", () => {
     expect(rowOf("任务一")).toBeTruthy();
     expect(screen.queryByText("开始一个任务")).toBeNull();
     expect(shell.count("sessions_list")).toBe(listBefore);
+    const retained = readSendQueueLane(target);
+    expect([retained.inFlight?.item.content, ...retained.pending.map((item) => item.content)]).toContain("失败时保留");
+    expect(localStorage.getItem(localSendQueueKey("s1"))).not.toBeNull();
   });
 
   it("归档 / 重命名被拒:各自给出原因", async () => {
@@ -597,6 +662,31 @@ describe("提醒的生命周期与失效跳转", () => {
     }
   });
 
+  // 多格在场口径(2026-08-20 用户「一轮结束/审批/提问得让人知道」):
+  // 「可见 = 在场」只对焦点格成立——此前非焦点格的这些事件被整个静默,
+  // 一轮结束了没有任何信号
+  it("可见非焦点格轮结束:不弹 toast,格头亮未读警示;落焦即消", async () => {
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", "s2", null, null, null, null]));
+    localStorage.setItem("mc.sidebarSpace", "local");
+    const shell = stubShell({
+      sessions: [sess({ id: "s1", title: "任务一" }), sess({ id: "s2", title: "后台任务" })],
+    });
+    render(<App />);
+    await waitFor(() => expect(shell.count("session_open")).toBe(2));
+
+    act(() => shell.emit("session-event", { type: "session-status", id: "s2", title: "后台任务", status: "idle" }));
+    const pane2 = screen.getByRole("region", { name: "第 2 格" });
+    await waitFor(() => expect(pane2.querySelector("[data-attention]")).not.toBeNull()); // 格头警示条
+    expect(screen.queryByText("「后台任务」已回复")).toBeNull(); // 格就在眼前,不弹 toast
+    expect(within(pane2).getByRole("img", { name: "有未读更新" })).toBeTruthy(); // 状态点走 attention 语义
+    expect(rowOf("后台任务").dataset.attention).toBeDefined(); // 任务列行同源高亮
+
+    fireEvent.pointerDown(pane2); // 落焦即已读
+    await waitFor(() => expect(pane2.querySelector("[data-attention]")).toBeNull());
+    expect(rowOf("后台任务").dataset.attention).toBeUndefined();
+  });
+
   // 引擎崩溃时壳对每个顶层会话发 interrupted(driver/session.rs 的
   // reconcile-all)。此前 notices.ts 漏了这一档,于是"跑着的后台任务全被打断"
   // 在界面上一声不吭:行是静默态(无点),提醒也没有
@@ -633,12 +723,18 @@ describe("提醒的生命周期与失效跳转", () => {
   });
 });
 
-describe("侧栏排序跟得上后台活动", () => {
-  // 侧栏项目组按「组内最近 updated_at」排(util/projects.groupSessions),而
-  // 增量补丁此前只改状态不动时间戳,于是后台任务跑起来、它所在的项目组不会
-  // 浮上去。旧 UI 是每来一条事件重拉全表,顺序自然跟着走
+describe("任务列排序跟得上后台活动", () => {
+  // 项目组按「组内最近 updated_at」排(util/projects.groupSessions),而
+  // 增量补丁此前只改状态不动时间戳。壳侧契约:session-status 恒紧跟一次
+  // 刷新 updated_at 的 write_sidecar;session-ask/summary 走 keep_updated
+  // (「临时会话」哨兵组头也带 aria-expanded 且默认居首,活跃度排序只看
+  // 项目组,滤掉它)
+  const groups = () =>
+    [...document.querySelectorAll('aside button[aria-expanded]')]
+      .map((el) => el.textContent ?? "")
+      .filter((tx) => !tx.includes("临时会话"));
+
   it("后台任务有进展:所在项目组浮到列表顶,且不为此重拉全表", async () => {
-    localStorage.setItem("mc.sidebarSpace", "local");
     const shell = stubShell({
       sessions: [
         sess({ id: "新的", workdir: "/p/alpha", updated_at: "2026-08-08T00:00:00Z" }),
@@ -646,20 +742,17 @@ describe("侧栏排序跟得上后台活动", () => {
       ],
     });
     render(<App />);
-    const groups = () =>
-      [...document.querySelectorAll("aside details > summary")]
-        .map((el) => el.textContent ?? "")
-        .filter((s) => !s.includes("待办")); // 待办组恒定置顶(2026-08-12),项目「浮顶」语义在其后
     await waitFor(() => expect(groups()[0]).toContain("alpha"));
     const listBefore = shell.count("sessions_list");
 
-    act(() => shell.emit("session-event", { type: "session-status", id: "旧的", title: "旧的", status: "running" }));
+    // idle 也是 session-status(时间戳照壳侧契约刷新);running 会进
+    // 「运行中」置顶区,组头浮顶的观察窗口用 idle 这一档
+    act(() => shell.emit("session-event", { type: "session-status", id: "旧的", title: "旧的", status: "idle" }));
     await waitFor(() => expect(groups()[0]).toContain("beta"));
     expect(shell.count("sessions_list")).toBe(listBefore); // 就地补丁,没有重拉风暴
   });
 
   it("session-ask / session-summary 不动时间戳(壳侧走的是 keep_updated 那条)", async () => {
-    localStorage.setItem("mc.sidebarSpace", "local");
     const shell = stubShell({
       sessions: [
         sess({ id: "新的", workdir: "/p/alpha", updated_at: "2026-08-08T00:00:00Z" }),
@@ -667,10 +760,6 @@ describe("侧栏排序跟得上后台活动", () => {
       ],
     });
     render(<App />);
-    const groups = () =>
-      [...document.querySelectorAll("aside details > summary")]
-        .map((el) => el.textContent ?? "")
-        .filter((s) => !s.includes("待办")); // 待办组恒定置顶(2026-08-12),项目「浮顶」语义在其后
     await waitFor(() => expect(groups()[0]).toContain("alpha"));
 
     act(() => shell.emit("session-event", { type: "session-ask", id: "旧的", title: "旧的", open: true }));
@@ -679,41 +768,173 @@ describe("侧栏排序跟得上后台活动", () => {
   });
 });
 
-describe("侧栏 ＋ 的默认页签跟随当前空间", () => {
-  const openCreate = async () => userEvent.click(await screen.findByRole("button", { name: "新建任务" }));
-  const tabOn = (name: string) =>
-    (screen.getByRole("tab", { name }) as HTMLElement).getAttribute("aria-selected") === "true";
-
-  it("停在「本地会话」空间时点 ＋:开出来就是会话页签", async () => {
+describe("新建入口", () => {
+  it("云端 tab 时列顶「新建任务」:格内创建表单预选云端页签(整页新建 2026-08-18 退役,创建即新格)", async () => {
     stubShell();
     render(<App />);
-    await userEvent.click(screen.getByRole("button", { name: "本地会话" }));
-    await openCreate();
-    expect(tabOn("本地会话")).toBe(true);
-    expect(tabOn("本地任务")).toBe(false);
+    const list = screen.getByRole("complementary", { name: "选择任务" });
+    await userEvent.click(within(list).getByRole("tab", { name: "云端" }));
+    await userEvent.click(within(list).getByRole("button", { name: "新建任务" }));
+    const heading = await screen.findByRole("heading", { name: "新建任务" });
+    const pane = heading.closest("section") as HTMLElement;
+    expect(pane).not.toBeNull(); // 表单住在格里,不是整页覆盖
+    expect(within(pane).getByRole("tab", { name: "云端任务" }).getAttribute("aria-selected")).toBe("true");
   });
+});
 
-  it("停在「云端任务」空间时点 ＋:开出来是云端页签", async () => {
-    stubShell();
+describe("点格与任务列联动(2026-08-19)", () => {
+  it("云端删除失败时 App 保留 runtime lane 与用户队列", async () => {
+    const target = cloudSendQueueTarget("h|u", "ct-delete");
+    writeSendQueueLane(target, enqueue(readSendQueueLane(target), createSendQueueItem("稍后发送", [])));
+    stubShell({
+      cloudTasks: [{ id: "ct-delete", title: "待删云端任务", status: "processing" }],
+      fail: { mc_task_delete: "仍有资源占用" },
+    });
     render(<App />);
-    await userEvent.click(screen.getByRole("button", { name: "云端任务" }));
-    await openCreate();
-    expect(tabOn("云端任务")).toBe(true);
+    await userEvent.click(screen.getByRole("tab", { name: "云端" }));
+    const row = (await screen.findByText("待删云端任务")).closest("button") as HTMLElement;
+    fireEvent.contextMenu(row);
+    const menu = document.body.lastElementChild as HTMLElement;
+    await userEvent.click(within(menu).getByText("删除任务"));
+    await userEvent.click(within(menu).getByText("确认删除"));
+    await waitFor(() => expect(readSendQueueLane(target).pending).toHaveLength(1));
   });
 
-  it("本地空间照旧落本地任务页签", async () => {
-    stubShell();
-    render(<App />); // 启动恒落本地,不用再摆布 localStorage
-    await openCreate();
-    expect(tabOn("本地任务")).toBe(true);
-  });
-
-  it("项目组头「+」带目录:比空间更强,即便停在会话空间也落本地任务页签", async () => {
-    stubShell({ sessions: [sess({ id: "s1", workdir: "/proj/alpha" })] });
+  it("云端删除成功后 App 统一 dropTask 清 lane/index 并弹出工作台格", async () => {
+    const target = cloudSendQueueTarget("h|u", "ct-delete-ok");
+    writeSendQueueLane(target, enqueue(readSendQueueLane(target), createSendQueueItem("稍后发送", [])));
+    stubShell({ cloudTasks: [{ id: "ct-delete-ok", title: "可删云端任务", status: "processing" }] });
     render(<App />);
-    // 组头的 ＋ 只在本地空间可见,先切过去
-    await userEvent.click(screen.getByRole("button", { name: "本地任务" }));
-    await userEvent.click(await screen.findByRole("button", { name: "在此项目新建任务" }));
-    expect(tabOn("本地任务")).toBe(true);
+    await userEvent.click(screen.getByRole("tab", { name: "云端" }));
+    const row = (await screen.findByText("可删云端任务")).closest("button") as HTMLElement;
+    fireEvent.contextMenu(row);
+    const menu = document.body.lastElementChild as HTMLElement;
+    await userEvent.click(within(menu).getByText("删除任务"));
+    await userEvent.click(within(menu).getByText("确认删除"));
+    await waitFor(() => expect(readSendQueueLane(target).pending).toHaveLength(0));
+    expect(screen.getByRole("region", { name: "第 1 格" })).toBeTruthy();
+  });
+
+  it("云端 tab 下点本地格:tab 切回「本地」", async () => {
+    stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+    render(<App />);
+    const list = screen.getByRole("complementary", { name: "选择任务" });
+    await userEvent.click(await within(list).findByText("任务一"));
+    await userEvent.click(within(list).getByRole("tab", { name: "云端" }));
+    expect(within(list).getByRole("tab", { name: "云端" }).getAttribute("aria-selected")).toBe("true");
+    await userEvent.click(within(screen.getByRole("region", { name: "第 1 格" })).getByTitle(/任务一/));
+    await waitFor(() => expect(within(list).getByRole("tab", { name: "本地" }).getAttribute("aria-selected")).toBe("true"));
+  });
+
+  it("点格切焦点 → composer 自动得焦(2026-08-20)", async () => {
+    const shell = stubShell({ sessions: [sess({ id: "s1", title: "任务一" }), sess({ id: "s2", title: "任务二" })] });
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    render(<App />);
+    const list = screen.getByRole("complementary", { name: "选择任务" });
+    await userEvent.click(await within(list).findByText("任务一"));
+    await userEvent.click(within(list).getByText("任务二"));
+    void shell;
+    const pane1 = screen.getByRole("region", { name: "第 1 格" });
+    const title = within(pane1).getByTitle(/任务一/);
+    fireEvent.pointerDown(title);
+    // 模拟桌面 WebView 在 pointerdown 的 React effect 之后执行默认失焦；
+    // 只发 pointerdown 会掩盖「effect 聚焦后又被 blur」的真机问题。
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.click(title);
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    expect(document.activeElement).toBe(within(pane1).getByRole("textbox", { name: "消息输入" }));
+  });
+
+  it("云端任务行可拖(LOAD_MIME 装载协议,与本地行同款)", async () => {
+    stubShell({ cloudTasks: [{ id: "ct1", title: "云端任务一", status: "processing" }] });
+    render(<App />);
+    await userEvent.click(screen.getByRole("tab", { name: "云端" }));
+    const row = (await screen.findByText("云端任务一")).closest("button")!;
+    expect(row.getAttribute("draggable")).toBe("true");
+  });
+});
+
+describe("格细头改名(旧单会话头能力回归 2026-08-19)", () => {
+  it("本地格 ⋯ 含 归档/删除(与云端格对称,旧详情页三件套齐了 2026-08-20)", async () => {
+    stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+    render(<App />);
+    const list = screen.getByRole("complementary", { name: "选择任务" });
+    await userEvent.click(await within(list).findByText("任务一"));
+    const pane = screen.getByRole("region", { name: "第 1 格" });
+    await userEvent.click(within(pane).getByRole("button", { name: "格操作" }));
+    const menu = document.body.lastElementChild as HTMLElement;
+    expect(within(menu).getByText("重命名")).toBeTruthy();
+    expect(within(menu).getByText("归档")).toBeTruthy();
+    expect(within(menu).getByText("删除")).toBeTruthy();
+  });
+
+  it("双击格标题 → 行内输入,Enter 走 session_patch", async () => {
+    const shell = stubShell({ sessions: [sess({ id: "s1", title: "老名字" })] });
+    render(<App />);
+    const list = screen.getByRole("complementary", { name: "选择任务" });
+    await userEvent.click(await within(list).findByText("老名字"));
+    const pane = screen.getByRole("region", { name: "第 1 格" });
+    fireEvent.doubleClick(within(pane).getByTitle(/老名字/));
+    const input = within(pane).getByRole("textbox", { name: "重命名" });
+    fireEvent.change(input, { target: { value: "新名字" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(shell.count("session_patch")).toBe(1));
+  });
+});
+
+describe("工作台常驻壳(2026-08-18 升级为主界面)", () => {
+  it("mc.lastSession(旧壳契约键)播种首叶:升级不丢「上次看的那个」", async () => {
+    localStorage.setItem("mc.lastSession", "s1");
+    const shell = stubShell({ sessions: [sess({ id: "s1", title: "任务一" }), sess({ id: "s2", title: "任务二" })] });
+    render(<App />);
+    // 首叶装载 s1(session_open 自然发生);另一格是轻提示/装载卡
+    await waitFor(() => expect(shell.calls.some((c) => c.cmd === "session_open" && c.args?.id === "s1")).toBe(true));
+    expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]")[0]).toBe("s1");
+  });
+
+  it("提醒口径:格内会话抑制,屏外照发且点击装格", async () => {
+    localStorage.setItem("mc.lastSession", "s1");
+    const shell = stubShell({ sessions: [sess({ id: "s1", title: "任务一" }), sess({ id: "s2", title: "任务二" })] });
+    render(<App />);
+    await waitFor(() => expect(shell.count("session_open")).toBe(1));
+
+    // 格内会话(首叶的 s1)就在眼前:等待审批不再出角落 toast
+    act(() => shell.emit("session-event", { type: "session-ask", id: "s1", title: "任务一", open: true }));
+    await act(() => Promise.resolve());
+    expect(screen.queryByText("「任务一」等待审批")).toBeNull();
+
+    // 屏外会话照常提醒;点击 = 装进第一个空格,人留在工作台
+    act(() => shell.emit("session-event", { type: "session-ask", id: "s2", title: "任务二", open: true }));
+    await userEvent.click(await screen.findByText("「任务二」等待审批"));
+    await waitFor(() =>
+      expect(shell.calls.some((c) => c.cmd === "session_open" && c.args?.id === "s2")).toBe(true),
+    );
+    expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
+    expect(screen.queryByText("「任务二」等待审批")).toBeNull(); // 装载即已读
+  });
+
+  it("云端任务列出在云端 tab,行可见(feed 与格内视图同一份数据)", async () => {
+    stubShell({ cloudTasks: [{ id: "ct1", title: "云端任务一", status: "processing" }] });
+    render(<App />);
+    await userEvent.click(screen.getByRole("tab", { name: "云端" }));
+    expect(await screen.findByText("云端任务一")).toBeTruthy();
+  });
+
+  it("云端格头动作走通用插槽与唯一 ⋯(2026-08-19「panel 都是通用的」+「怎么还有两个」):文件钮入细头,任务操作并入格操作菜单", async () => {
+    stubShell({ cloudTasks: [{ id: "ct1", title: "云端任务一", status: "processing" }] });
+    render(<App />);
+    await userEvent.click(screen.getByRole("tab", { name: "云端" }));
+    await userEvent.click(await screen.findByText("云端任务一"));
+    const pane = screen.getByRole("region", { name: "第 1 格" });
+    // portal 时序:插槽落点先挂、视图随后注入
+    await waitFor(() => expect(within(pane).getByRole("button", { name: "云端文件" })).toBeTruthy());
+    // 双 ⋯ 沙雕修正:格里没有第二颗菜单钮,任务操作项并入「格操作」
+    expect(within(pane).queryByRole("button", { name: "任务操作" })).toBeNull();
+    await userEvent.click(within(pane).getByRole("button", { name: "格操作" }));
+    const menu = document.body.lastElementChild as HTMLElement;
+    expect(within(menu).getByText("删除任务")).toBeTruthy();
+    expect(within(menu).getByText("右分屏")).toBeTruthy();
   });
 });

@@ -172,34 +172,26 @@ fn read_file(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
     Ok(json!({ "path": rel, "content": String::from_utf8_lossy(&data) }))
 }
 
-/// 相对 HEAD 的变更列表(含未跟踪文件)，同时返回工作区是否属于 git 仓库。
-/// 路径统一为相对 workdir(porcelain 输出仓库根相对路径,须剥前缀);
-/// quotepath 关闭,否则非 ASCII 文件名被转成八进制转义乱码。
-fn file_changes(ctx: &RepoCtx) -> Result<(Value, bool), String> {
-    let is_git_repo = ctx.is_git_repo();
-    if !is_git_repo {
-        return Ok((Value::Array(vec![]), false));
-    }
-    let prefix = ctx.git(&["rev-parse", "--show-prefix"]).unwrap_or_default().trim().to_string();
-    let out = ctx
-        .git(&["-c", "core.quotepath=false", "status", "--porcelain=v1", "--untracked-files=all", "--", "."])
-        .unwrap_or_default();
-    let mut changes: Vec<(String, &'static str)> = Vec::new();
-    for line in out.lines() {
-        if line.len() < 4 {
+/// `git status --porcelain=v1 -z` 的路径以 NUL 分隔且不做 C 引号转义。
+/// rename/copy 的**目标路径在前、源路径在后**；消费第二个字段即可，不再
+/// 从文件名中搜索含歧义的 ` -> `。
+fn parse_status_porcelain_z(out: &str, prefix: &str) -> Vec<(String, &'static str)> {
+    let mut records = out.split('\0');
+    let mut changes = Vec::new();
+    while let Some(record) = records.next() {
+        if record.len() < 4 {
             continue;
         }
-        let code = line[..2].trim();
-        let mut path = line[3..].trim().to_string();
-        // 处理重命名 "old -> new"
-        if let Some(i) = path.find(" -> ") {
-            path = path[i + 4..].to_string();
+        let code = &record[..2];
+        let mut path = record[3..].to_string();
+        if code.contains('R') || code.contains('C') {
+            // -z 的 rename/copy 额外跟一个 NUL 字段（源路径）。目标路径已经
+            // 在当前 record 中，源路径只需消费，不能当成下一条状态记录。
+            let _source = records.next();
         }
-        path = path.trim_matches('"').to_string();
-        // 仓库根相对 → workdir 相对(前缀之外的条目丢弃,双保险)
         if !prefix.is_empty() {
-            match path.strip_prefix(&prefix) {
-                Some(p) => path = p.to_string(),
+            match path.strip_prefix(prefix) {
+                Some(relative) => path = relative.to_string(),
                 None => continue,
             }
         }
@@ -212,6 +204,26 @@ fn file_changes(ctx: &RepoCtx) -> Result<(Value, bool), String> {
         };
         changes.push((path, status));
     }
+    changes
+}
+
+/// 相对 HEAD 的变更列表(含未跟踪文件)，同时返回工作区是否属于 git 仓库。
+/// 路径统一为相对 workdir(porcelain 输出仓库根相对路径,须剥前缀);
+/// 使用 NUL 模式保留空格、换行、引号、反斜杠和 ` -> ` 等合法文件名。
+fn file_changes(ctx: &RepoCtx) -> Result<(Value, bool), String> {
+    let is_git_repo = ctx.is_git_repo();
+    if !is_git_repo {
+        return Ok((Value::Array(vec![]), false));
+    }
+    let prefix = ctx
+        .git(&["rev-parse", "--show-prefix"])
+        .unwrap_or_default()
+        .trim_end_matches(['\r', '\n'])
+        .to_string();
+    let out = ctx
+        .git(&["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."])
+        .unwrap_or_default();
+    let mut changes = parse_status_porcelain_z(&out, &prefix);
     changes.sort_by(|a, b| a.0.cmp(&b.0));
     Ok((
         Value::Array(changes.into_iter().map(|(p, s)| json!({ "path": p, "status": s })).collect()),
@@ -280,6 +292,18 @@ fn reveal(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn porcelain_z_rename_does_not_parse_arrow_inside_source_name() {
+        let parsed = parse_status_porcelain_z(
+            "R  nested/new.txt\0nested/old -> name.txt\0?? nested/a -> b.txt\0",
+            "nested/",
+        );
+        assert_eq!(
+            parsed,
+            vec![("new.txt".to_string(), "M"), ("a -> b.txt".to_string(), "A")]
+        );
+    }
 
     /// 组件级校验挡不住符号链接:工作区内一条指向外部的链接,足以让只读
     /// 文件浏览读到工作区外的文件。与 uploads.rs::read_data_url 同标准,

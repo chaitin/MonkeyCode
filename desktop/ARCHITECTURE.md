@@ -141,25 +141,28 @@ context_window/supports_images/max_output/thinking`。桌面缺省显式压过
 budget_tokens legacy 已消亡);supports_images 恒显式写,vision 未勾选写
 false(引擎侧生效缺口见上游清单)。`default_model` 一律传别名。
 
-**技能(skills,src/skills.rs)**:引擎无任何技能协议入口,只在
-session/create 时扫描磁盘(`$OHMYAGENT_CONFIG_DIR/skills/<name>/SKILL.md`
-等),所以技能走**按会话物化**而非引擎重启物化:技能库(内置 = 仓库根 plugins/
-submodule(MonkeyCodeOfficialPlugins)的 skills/,gitlink 钉版本、经
-bundle.resources 目标名 "skills" 随更新分发,dev 回退同一 submodule 目录,
-升级技能 = bump submodule;用户 = app_config_dir/skills/,skills_* 命令
-即时读写,同名用户覆盖内置)是权威;
+**技能(skills,src/skills.rs)**:引擎无任何技能协议入口,只在会话
+创建/恢复时扫描磁盘,所以技能走**按会话物化**而非引擎重启物化:技能库
+(内置 = 仓库根 plugins/ submodule(MonkeyCodeOfficialPlugins)的 skills/,
+gitlink 钉版本、经 bundle.resources 目标名 "skills" 随更新分发,dev 回退
+同一 submodule 目录,升级技能 = bump submodule;用户 = app_config_dir/
+skills/,skills_* 命令即时读写,同名用户覆盖内置)是权威;
 driver 在**每次**引擎 session/create 前(新建/resume/重建)把该会话启用
-集整体重写到 `<engine_dir>/skills/`(纯派生,整删整建),"物化 + create"
-经 Inner::skills_gate 串行成对。启用集快照落 sidecar `skills` 字段
+集整体重写到 `<engine_dir>/sessions/<engine_id>/skills/`(引擎 session 级
+来源,扫描优先级最高;纯派生,整删整建,随引擎会话目录删除)。会话目录
+互相独立,并发会话选择不同互不干扰;物化顺手确保 messages.jsonl 存在
+(空 transcript resume 零记录照常成功),恢复/重建因此一律按原 engine_id
+resume,不再有"空会话全新 create 换绑"分支。新会话的 id 引擎才有:先
+create 空 loop 取得 id,物化缺省集后 destroy + resume,技能从第一轮起
+精确生效。启用集快照落 sidecar `skills` 字段
 (缺省 null = 缺省集:出厂规则「官方四件套 skills::DEFAULT_ENABLED +
 全部用户技能」⊕ app_config_dir/skills-defaults.json 的「默认启用」显式
 开关,解析单点在壳 skills::is_default_enabled,skills_list 以
 default_enabled 字段下发,UI 不复刻规则;开关只影响新会话与无快照的
 旧会话);中途改选择 = session_call `session_set_skills`
-→ destroy+resume 重建让引擎 catalog 重扫(仅空闲,历史保留)。已知取舍:
-引擎技能目录全局一份,并发会话选择不同时后创建者重写目录,先前会话
-catalog 不变但被移走的技能正文加载会失败(引擎友好报错);按会话目录的
-唯一出路是 cwd,会污染用户项目,不做。技能不进 config.json 事务(与
+→ destroy+resume 重建让引擎 catalog 重扫(仅空闲,历史保留)。旧版全局
+`<engine_dir>/skills/` 引擎仍按 user 级扫描,残留会污染所有会话,启动时
+(引擎 spawn 前)清一次(transport.rs)。技能不进 config.json 事务(与
 telemetry.json 同理);打包不变量由 check_bundle_configs.py 强制。
 
 所有权威配置事务经 `ConfigStore` 串行：0600 同目录临时文件、fsync、
@@ -176,7 +179,7 @@ telemetry.json 同理);打包不变量由 check_bundle_configs.py 强制。
 | 回放物化(一行一轮的折叠帧 + events 偏移) | 同上 replay.jsonl(打开只读尾部窗口,见 fold.rs) |
 | 子代理子会话(有流式事件时物化,仅回放) | 同上(sidecar 带 parent);显式后台纯文本任务可能仅有完成通知 |
 | 附件 | <workdir>/.monkeycode/uploads(会话工作区内,模型经相对路径可读;旧目录约定的附件按消息内路径回读) |
-| 用户技能库 | app_config_dir/skills/<name>/SKILL.md(内置技能在 bundle 资源,只读;<engine_dir>/skills/ 是按会话物化的派生物,勿手编) |
+| 用户技能库 | app_config_dir/skills/<name>/SKILL.md(内置技能在 bundle 资源,只读;<engine_dir>/sessions/<engine_id>/skills/ 是按会话物化的派生物,勿手编) |
 | 百智云/云端凭证 | app_config_dir/*-cookies.json(双罐,互不牵连) |
 | 浏览器扩展配对凭据 | app_config_dir/ext-auth.json |
 | 遥测游标/install_id | app_config_dir/telemetry.json(刻意独立于权威配置事务,不进备份/损坏恢复) |

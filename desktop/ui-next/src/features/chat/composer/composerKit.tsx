@@ -98,7 +98,7 @@ export function UsageRing({ pct, tip, label }: { pct: number | null; tip: string
   );
 }
 
-/** 输入卡外框:结构线 + 默认底,聚焦时边线加深。**不得**给这层卡片挂
+/** 输入卡外框:结构线 + 默认底,聚焦时边线加深并即时画 outline(焦点反馈不挂动画)。**不得**给这层卡片挂
  * daisyUI dropdown 类:daisyUI 的隐藏规则是后代选择器
  * (`.dropdown:not(...) .dropdown-content`),外层 dropdown 处于关态时会把
  * 嵌套在内的菜单一并 display:none(思考菜单弹不出来的根因,修复经历见
@@ -106,9 +106,13 @@ export function UsageRing({ pct, tip, label }: { pct: number | null; tip: string
  * -mx-2.5 光学对齐(旧 UI 出血 10px 随迁):textarea 自带 ~12px 内距,
  * 硬边卡片与正文同宽会显得输入文字向右缩;向两侧出血后卡内文字左缘与
  * 对话文字几乎重合,卡片略宽于正文列。 */
-export function ComposerCard({ children }: { children: ReactNode }) {
+export function ComposerCard({ children, attachedTop = false }: { children: ReactNode; attachedTop?: boolean }) {
   return (
-    <div className="relative -mx-2.5 flex flex-col rounded-box border border-base-300 bg-base-100 shadow-sm transition-colors focus-within:border-base-content/25">
+    <div
+      className={`relative -mx-2.5 flex flex-col rounded-box border border-base-300 bg-base-100 shadow-sm focus-within:border-base-content/25 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-primary ${
+        attachedTop ? "[border-top-left-radius:0] [border-top-right-radius:0]" : ""
+      }`}
+    >
       {children}
     </div>
   );
@@ -197,13 +201,13 @@ export function SlashPanel({
             onClick={() => onPick(c)}
           >
             <span className="font-mono text-xs font-bold">/{c.name}</span>
-            {c.input?.hint && <span className="font-mono text-[10px] opacity-50">{c.input.hint}</span>}
+            {c.input?.hint && <span className="font-mono text-2xs opacity-50">{c.input.hint}</span>}
             {c.description && <span className="min-w-0 flex-1 truncate text-xs opacity-60">{c.description}</span>}
           </button>
         </li>
       ))}
       <li className="menu-disabled mt-1 border-t border-base-300">
-        <span className="text-[10px]">{t("chat.slash.hint")}</span>
+        <span className="text-2xs">{t("chat.slash.hint")}</span>
       </li>
     </ul>
   );

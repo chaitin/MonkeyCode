@@ -7,16 +7,19 @@
 // ohmyagent/internal/transport/{stdio,protocol}.go 与 types/events.go。
 
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
 use super::frame::{self, PermOutcome, SessionStatus};
-use super::ohmy::Inner;
+use super::ohmy::{Inner, OhmyDriver};
 use crate::util::LockExt;
 
 impl Inner {
     /// stdio 通知路由(reader 线程调用)。
-    pub(super) fn handle_notification(&self, method: &str, params: Value) {
+    pub(super) fn handle_notification(self: &Arc<Self>, method: &str, params: Value) {
         match method {
             "event/stream" => self.handle_event(params),
             "permission/request" => {
@@ -81,10 +84,46 @@ impl Inner {
                     self.emit_session_ask(&sid, false);
                 }
             }
+            "turn/started" => {
+                // 用户发送由壳侧乐观开轮；只有通知触发的后台续跑需要在
+                // 引擎主动开轮时补齐 Desktop 生命周期。
+                if params.get("source").and_then(|v| v.as_str()) != Some("notification") {
+                    return;
+                }
+                let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
+                let opened = {
+                    let mut sessions = self.sess.sessions.lock_ok();
+                    match sessions.get_mut(&sid) {
+                        Some(s) if !s.running => {
+                            s.running = true;
+                            s.compacting = false;
+                            s.manual_compact = false;
+                            s.terminal_error_seen = false;
+                            s.cancel_requested_turn = None;
+                            s.model_text.clear();
+                            s.turn += 1;
+                            true
+                        }
+                        Some(_) => false,
+                        None => {
+                            eprintln!("[desktop] turn/started 无法映射到壳会话,已丢弃: {params}");
+                            return;
+                        }
+                    }
+                };
+                if opened {
+                    self.push_frame(&sid, frame::task_started);
+                    self.write_sidecar(&sid, |m| m["status"] = json!(SessionStatus::Running.as_str()));
+                    self.emit_session_event(&sid, SessionStatus::Running.as_str());
+                }
+            }
             "turn/stopped" => {
                 let sid = self.shell_sid_of(params.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
                 let stop_reason = params.get("stop_reason").and_then(|v| v.as_str()).unwrap_or("complete");
                 let err = params.get("error").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                // 仅 Desktop 为旧 Agent 补收尾时携带。真实协议没有该字段；
+                // 把轮号检查放进同一把 sessions 锁，避免迟到的探针误关新轮。
+                let expected_turn = params.get("_desktop_turn").and_then(|v| v.as_u64());
                 if sid.is_empty() {
                     // 认不出会话 = 这一轮壳侧永远收不了尾(会话卡 running,
                     // 输入/删除/切模型全锁死)。静默丢弃过一次就再也查不出来,
@@ -92,24 +131,37 @@ impl Inner {
                     eprintln!("[desktop] turn/stopped 无法映射到壳会话,已丢弃: {params}");
                     return;
                 }
-                let (was_running, open) = {
+                let closed = {
                     let mut sessions = self.sess.sessions.lock_ok();
                     match sessions.get_mut(&sid) {
+                        Some(s) if expected_turn.is_some_and(|turn| s.turn != turn) => None,
                         Some(s) => {
                             let was = s.running;
                             s.running = false;
+                            let compacting = std::mem::take(&mut s.compacting);
+                            s.manual_compact = false;
+                            s.cancel_requested_turn = None;
+                            let terminal_error_seen = std::mem::take(&mut s.terminal_error_seen);
                             s.model_text.clear(); // 对账累积不跨轮(model_done 缺席的残留)
-                            (was, std::mem::take(&mut s.open_tools))
+                            Some((was, std::mem::take(&mut s.open_tools), compacting, terminal_error_seen))
                         }
-                        None => (false, HashMap::new()),
+                        None => Some((false, HashMap::new(), false, false)),
                     }
+                };
+                let Some((was_running, open, compacting, terminal_error_seen)) = closed else {
+                    eprintln!(
+                        "[desktop] 旧 Agent error 收尾探针已过期,忽略: sid={sid} expected_turn={expected_turn:?}"
+                    );
+                    return;
                 };
                 // 中断轮次可能留下已暂存未被 tool_result 消费的 agent_result
                 if !open.is_empty() {
-                    let mut ar = self.sub.agent_results.lock_ok();
-                    for tc in open.keys() {
-                        ar.remove(tc);
+                    {
+                        let mut ar = self.sub.agent_results.lock_ok();
+                        for tc in open.keys() { ar.remove(tc); }
                     }
+                    let mut names = self.sub.agent_names.lock_ok();
+                    for tc in open.keys() { names.remove(tc); }
                 }
                 // 轮次收尾:残留子代理(未随工具闭合)按中断收尾;后台代理
                 // 除外——其子循环跨轮存活,收尾归 task_notification
@@ -130,6 +182,12 @@ impl Inner {
                 for (tc, _name) in open {
                     self.push_frame(&sid, |seq| frame::tool_call_failed(&tc, tool_msg, seq));
                 }
+                // 压缩开始后若没有最终 compaction 事件，不能把历史永久停在
+                // “正在压缩”。轮次终态负责补 cancelled/failed，而不是谎报成功。
+                if compacting {
+                    let compact_status = if stop_reason == "interrupted" { "cancelled" } else { "failed" };
+                    self.push_frame(&sid, |seq| frame::compact_status(compact_status, seq));
+                }
                 // 轮后用权威快照收口。新引擎与 usage 事件统一为顶层
                 // context_used/context_window；嵌套 context 仅留给旧引擎回放。
                 if let Some((used, window)) = context_usage_fields(&params) {
@@ -147,8 +205,8 @@ impl Inner {
                         SessionStatus::Error
                     }
                 };
-                if stop_reason == "error" && !err.is_empty() {
-                    self.push_frame(&sid, |seq| frame::task_error(&err, seq));
+                if stop_reason == "error" && !err.is_empty() && !terminal_error_seen {
+                    self.push_frame(&sid, |seq| frame::task_error_pending(&err, seq));
                 }
                 self.push_frame(&sid, frame::task_ended);
                 // sidecar 状态落盘(重启后列表可见;write_sidecar 一并刷 updated_at)
@@ -167,34 +225,21 @@ impl Inner {
     }
 
     /// event/stream 事件归一化 → Frame。
-    pub(super) fn handle_event(&self, event: Value) {
-        let etype = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        let raw = event.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+    pub(super) fn handle_event(self: &Arc<Self>, mut event: Value) {
+        let etype = event.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let raw = event.get("session_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
         if raw.is_empty() {
             return;
         }
-        let sid = self.shell_sid_of(raw);
+        let sid = self.shell_sid_of(&raw);
         let data = event.get("data").cloned().unwrap_or(Value::Null);
-        // provider 瞬时错误(kind=transient_retry,loop.go 的
-        // isTransientProviderErr 重试路径)引擎自动退避重试后继续跑,
-        // 不产 task_error——否则 UI 先报"任务出错"随后任务又正常完成;
-        // 仅记日志。终止性 error(无 kind)走下方常规分支不变。早于子代理
-        // 认领判断返回:不为一条重试日志物化子会话
-        if etype == "error" && data.get("kind").and_then(|v| v.as_str()) == Some("transient_retry") {
-            let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("");
-            eprintln!("[desktop] 引擎瞬时错误,自动重试中: {msg}");
-            return;
-        }
-        // 未知 session_id = 上游转发的子代理事件(子循环随机 id):
-        // 认领并物化为壳侧子会话,后续事件走正常帧路径;认领不到(迟到)丢弃
-        if !self.sess.sessions.lock_ok().contains_key(&sid) && !self.claim_subagent(&sid, &event) {
-            return;
-        }
-        // eventSeq:事件带会话内单调 seq(被背压丢弃的 delta 仍占号),
-        // 空洞即丢帧信号,记日志外显(文本缺口由 model_done 对账补齐,
-        // 此处只负责"发生过丢弃"的可观测性);seq 回落视为引擎侧会话
-        // 重建(destroy+create 换绑)后重新起算,水位跟随重置。
-        // 旧引擎不带 seq 字段,自然跳过——无需 caps 门控
+        // SendMessage 续跑沿用原 child sid 与首次 Agent 的 parent 戳记。
+        // 必须早于 transient error 过滤和 known-session 判断重绑，否则首条
+        // tool/error 可能在 SendMessage tool_result 之前到达并落回历史 Agent 卡。
+        self.prepare_continuation_event(&sid, &mut event);
+        // eventSeq 要在任何语义过滤之前推进。重试/兼容事件虽然不落 UI 帧，
+        // 仍真实占用了引擎序号；先 return 会把下一条正常事件误报成背压丢帧。
+        // 未知子会话此刻尚未物化，首条被过滤的重试无需建立水位。
         if let Some(eseq) = event.get("seq").and_then(|v| v.as_u64()).filter(|s| *s > 0) {
             if let Some(s) = self.sess.sessions.lock_ok().get_mut(&sid) {
                 if s.last_event_seq > 0 && eseq > s.last_event_seq + 1 {
@@ -207,9 +252,56 @@ impl Inner {
                 s.last_event_seq = eseq;
             }
         }
+        // provider 瞬时错误(kind=transient_retry,loop.go 的
+        // isTransientProviderErr 重试路径)引擎自动退避重试后继续跑,
+        // 不产 task_error——否则 UI 先报"任务出错"随后任务又正常完成;
+        // 仅记日志。终止性 error(无 kind)走下方常规分支不变。早于子代理
+        // 认领判断返回:不为一条重试日志物化子会话
+        if etype == "error" {
+            let kind = data.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+            let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("");
+            if kind == "transient_retry" || kind == "empty_response_retry" {
+                eprintln!("[desktop] 引擎瞬时错误,自动重试中: {msg}");
+                return;
+            }
+            // c3564b4..a08db70 之间的引擎把摘要失败后转本地截断上报成
+            // error(kind=compaction_fallback)。这是压缩进度而非轮次失败：
+            // 本地截断完成后 agent 还会继续请求模型。若落 task-error，UI
+            // 会提前清 running，出现“执行中消失但 agent 仍在工作”。
+            // 新引擎已改发 compaction(status=fallback)，这里保留旧版兼容。
+            if kind == "compaction_fallback" {
+                eprintln!("[desktop] 上下文摘要失败,引擎正回退本地压缩: {msg}");
+                return;
+            }
+            // c046713 及更早版本在取消中的 provider 调用返回后会先发一条
+            // 无 kind 的 error，再以 interrupted turn/stopped 收尾。用户已经
+            // 明确取消时这不是失败提示，也不能启动下面的终止错误探针。
+            let cancelling = self
+                .sess
+                .sessions
+                .lock_ok()
+                .get(&sid)
+                .is_some_and(|s| s.running && s.cancel_requested_turn == Some(s.turn));
+            if cancelling {
+                eprintln!("[desktop] 已忽略旧 Agent 取消过程中的 error: {msg}");
+                return;
+            }
+        }
+        // 未知 session_id = 上游转发的子代理事件(子循环随机 id):
+        // 认领并物化为壳侧子会话,后续事件走正常帧路径;认领不到(迟到)丢弃
+        if !self.sess.sessions.lock_ok().contains_key(&sid) && !self.claim_subagent(&sid, &event) {
+            return;
+        }
+        // 首条事件刚刚物化了子会话时，上面的预过滤阶段还没有 SessionState；
+        // 在这里补记起始水位，后续空洞仍能准确观测。
+        if let Some(eseq) = event.get("seq").and_then(|v| v.as_u64()).filter(|s| *s > 0) {
+            if let Some(s) = self.sess.sessions.lock_ok().get_mut(&sid).filter(|s| s.last_event_seq == 0) {
+                s.last_event_seq = eseq;
+            }
+        }
         // 子代理事件在父卡进度窗同步一份内联预览(非子代理为 no-op)
-        self.subagent_feed(&sid, etype, &event, &data);
-        match etype {
+        self.subagent_feed(&sid, &etype, &event, &data);
+        match etype.as_str() {
             // user_message:引擎回显忽略——session_send 已本地先行落 user-input
             // 帧(ack 与事件无时序保证,双写会重复气泡)
             "user_message" => {}
@@ -288,6 +380,11 @@ impl Inner {
                         let prompt =
                             input.get("prompt").and_then(|v| v.as_str()).unwrap_or("").to_string();
                         self.sub.agent_inputs.lock_ok().insert(tc_id.clone(), (desc, prompt));
+                        if let Some(agent_name) = input.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()) {
+                            self.sub.agent_names.lock_ok().insert(tc_id.clone(), agent_name.to_string());
+                        }
+                    } else if name == "SendMessage" {
+                        self.register_continuation(&sid, &tc_id, &input);
                     }
                 }
                 self.push_frame(&sid, |seq| frame::tool_call(&tc_id, &title, &input, seq));
@@ -300,6 +397,13 @@ impl Inner {
             "agent_result" => {
                 let tc = event.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("");
                 if !tc.is_empty() {
+                    let stored_name = self.sub.agent_names.lock_ok().remove(tc);
+                    let agent_name = data.get("name").and_then(Value::as_str).filter(|n| !n.is_empty())
+                        .map(str::to_string).or(stored_name).unwrap_or_default();
+                    let agent_id = data.get("agentId").and_then(Value::as_str).unwrap_or("");
+                    if !agent_id.is_empty() {
+                        self.register_agent_identity(&sid, tc, agent_id, &agent_name);
+                    }
                     let status =
                         data.get("status").and_then(|v| v.as_str()).unwrap_or("completed").to_string();
                     let content =
@@ -332,6 +436,37 @@ impl Inner {
                 let stashed =
                     if tc_id.is_empty() { None } else { self.sub.agent_results.lock_ok().remove(&tc_id) };
                 let is_agent = name.as_deref() == Some("Agent");
+                if name.as_deref() == Some("SendMessage") {
+                    let response = if is_error {
+                        None
+                    } else if data.get("status").and_then(Value::as_str) == Some("async_launched") {
+                        Some(data.clone())
+                    } else {
+                        serde_json::from_str::<Value>(content).ok()
+                            .filter(|v| v.get("status").and_then(Value::as_str) == Some("async_launched"))
+                    };
+                    if let Some(response) = response {
+                        let agent_id = response.get("agentId").and_then(Value::as_str).unwrap_or("");
+                        self.confirm_continuation(&sid, &tc_id, &response);
+                        self.push_frame(&sid, |seq| {
+                            frame::tool_call_progress(
+                                &tc_id,
+                                json!({ "kind": "background_agent", "agentId": agent_id, "status": "running" }),
+                                seq,
+                            )
+                        });
+                        self.push_frame(&sid, |seq| {
+                            frame::tool_call_completed(
+                                &tc_id,
+                                "后台代理已继续执行，完成后将在对话中显示结果卡",
+                                &[],
+                                seq,
+                            )
+                        });
+                        return;
+                    }
+                    self.cancel_continuation(&sid, &tc_id);
+                }
                 if is_agent && stashed.is_none() && !is_error {
                     if let Some(resp) = serde_json::from_str::<Value>(content)
                         .ok()
@@ -386,17 +521,43 @@ impl Inner {
                     return;
                 }
                 if etype == "task_notification" {
-                    // 后台代理完成:登记在案 → Result 正文回填父 Agent 卡 +
-                    // 📌 系统行(独立渲染项)。旧行为把整段渲染消息当
-                    // agent_text 混进模型正文气泡——<task-notification>
-                    // 标签行被 markdown 当 HTML 块吞掉,Result 正文散落
-                    // 主流,看着像主/子代理消息交织
-                    if !self.background_agent_finished(&data, &msg) {
-                        // 反查不到(壳重启丢登记/SendMessage 续跑的二次完成/
-                        // 旧引擎):整段外显兜底,剥包装标签防 markdown 吞块
-                        let inner = super::subagent::strip_notification_tags(&msg);
-                        self.push_frame(&sid, |seq| frame::agent_text(&format!("\n\n📌 {inner}\n\n"), seq));
+                    // 有登记时仍回填历史显式 Agent 卡；无论能否反查，结果都
+                    // 以结构化通知帧落到通知实际到达的会话，绝不混入助手正文。
+                    let result = super::subagent::notification_result(&msg)
+                        .unwrap_or_else(|| super::subagent::strip_notification_tags(&msg));
+                    if !self.continuation_finished(&data) {
+                        // 首次显式 Agent 维持原有完整结果回填；续跑结果只由
+                        // task_notification 独立卡承载，不复制进 SendMessage。
+                        self.background_agent_finished(&data, &result);
                     }
+                    let get = |key: &str| data.get(key).and_then(Value::as_str).unwrap_or("");
+                    let agent_id = get("agent_id");
+                    let agent_name = get("name");
+                    let description = get("description");
+                    let status = get("status");
+                    let label = if !agent_name.is_empty() {
+                        agent_name
+                    } else if !description.is_empty() {
+                        description
+                    } else {
+                        agent_id
+                    };
+                    let text = match status {
+                        "error" => format!("📌 后台代理 {label} 执行失败"),
+                        "stopped" => format!("📌 后台代理 {label} 已停止"),
+                        _ => format!("📌 后台代理 {label} 已完成"),
+                    };
+                    self.push_frame(&sid, |seq| {
+                        frame::background_result(
+                            agent_id,
+                            agent_name,
+                            description,
+                            status,
+                            &result,
+                            &text,
+                            seq,
+                        )
+                    });
                     return;
                 }
                 self.push_frame(&sid, |seq| frame::agent_text(&msg, seq));
@@ -414,6 +575,28 @@ impl Inner {
             "usage" => {
                 if let Some((used, window)) = context_usage_fields(&data) {
                     self.push_usage(&sid, used, window);
+                }
+                // applyCompaction 的 wire 顺序是 final compaction → usage →
+                // session/compact RPC 应答。手动操作以 usage 作为事件通路的
+                // 最后一帧再收轮：这样 RPC 应答丢失/超时仍可完成，又不会把
+                // usage 落到 task-ended 之后形成一段无头回放。
+                let finish_manual = {
+                    let mut sessions = self.sess.sessions.lock_ok();
+                    match sessions.get_mut(&sid) {
+                        Some(s) if s.running && s.manual_compact && !s.compacting => {
+                            s.running = false;
+                            s.manual_compact = false;
+                            s.cancel_requested_turn = None;
+                            s.terminal_error_seen = false;
+                            true
+                        }
+                        _ => false,
+                    }
+                };
+                if finish_manual {
+                    self.push_frame(&sid, frame::task_ended);
+                    self.write_sidecar(&sid, |m| m["status"] = json!(SessionStatus::Idle.as_str()));
+                    self.emit_session_event(&sid, SessionStatus::Idle.as_str());
                 }
             }
             // 会话摘要:引擎每轮用户消息后异步生成一句 ≤60 字的对话摘要
@@ -439,36 +622,185 @@ impl Inner {
             }
             // 微压缩(kind=micro)只是清空旧 tool_result,不调模型也与"接近
             // 上限"无关,且触发频繁;不落帧,免得对话流反复刷压缩提示。
-            // 其余 kind(auto/manual/partial/local_fallback)才是整体压缩。
+            // 整体压缩协议:starting → 可选 fallback → 最终计量，手动操作
+            // 还可能以 failed/cancelled 结束。旧引擎只发最终计量，仍需补 started。
             "compaction" => {
                 if data.get("kind").and_then(|v| v.as_str()) == Some("micro") {
                     return;
                 }
-                // 引擎只有"压缩完成"这一个事件。手动压缩(compacting 在飞,
-                // 判据不看 kind:LLM 失败会降级成 local_fallback)发起时壳已
-                // 实时落过 "started",这里只补收尾——再合成一对的话"正在
-                // 压缩/压缩完成"会同刻蹦出两条。自动压缩没有发起方落帧,
-                // 保持事后补一对的旧形态,记录读起来仍有始有终。
-                let manual = self
-                    .sess
-                    .sessions
-                    .lock_ok()
-                    .get(&sid)
-                    .map(|s| s.compacting)
-                    .unwrap_or(false);
-                if !manual {
+                let status = data.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                if status == "starting" || status == "fallback" {
+                    // starting 是新协议；fallback 是可恢复的中间态，不能补
+                    // ended，更不能生成 task-error。若 starting 因旧版/丢帧
+                    // 漏过，fallback 自己补 started，生命周期仍然闭合。
+                    let first = {
+                        let mut sessions = self.sess.sessions.lock_ok();
+                        match sessions.get_mut(&sid) {
+                            Some(s) => {
+                                let first = !s.compacting;
+                                s.compacting = true;
+                                first
+                            }
+                            None => true,
+                        }
+                    };
+                    if first {
+                        self.push_frame(&sid, |seq| frame::compact_status("started", seq));
+                    }
+                    if status == "fallback" {
+                        let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("");
+                        eprintln!("[desktop] 上下文摘要失败,引擎正回退本地压缩: {msg}");
+                    }
+                    return;
+                }
+
+                if status == "failed" || status == "cancelled" {
+                    let (had_started, finish_manual) = {
+                        let mut sessions = self.sess.sessions.lock_ok();
+                        match sessions.get_mut(&sid) {
+                            Some(s) => {
+                                let had_started = std::mem::take(&mut s.compacting);
+                                let finish_manual = s.manual_compact && s.running;
+                                if finish_manual {
+                                    s.running = false;
+                                    s.manual_compact = false;
+                                    s.cancel_requested_turn = None;
+                                    s.terminal_error_seen = false;
+                                }
+                                (had_started, finish_manual)
+                            }
+                            None => (false, false),
+                        }
+                    };
+                    if !had_started {
+                        self.push_frame(&sid, |seq| frame::compact_status("started", seq));
+                    }
+                    self.push_frame(&sid, |seq| frame::compact_status(status, seq));
+                    if finish_manual {
+                        let session_status = if status == "cancelled" {
+                            SessionStatus::Interrupted
+                        } else {
+                            let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("上下文压缩失败");
+                            self.push_frame(&sid, |seq| frame::task_error_pending(msg, seq));
+                            SessionStatus::Error
+                        };
+                        self.push_frame(&sid, frame::task_ended);
+                        self.write_sidecar(&sid, |m| m["status"] = json!(session_status.as_str()));
+                        self.emit_session_event(&sid, session_status.as_str());
+                    }
+                    return;
+                }
+
+                // 无 status（以及未来显式 completed）都是最终事件。新协议
+                // starting 已实时落过；手动压缩由 session_compact 预先落过；
+                // 旧协议两者都没有，此处补 started 后再统一落 ended。
+                let had_started = {
+                    let mut sessions = self.sess.sessions.lock_ok();
+                    match sessions.get_mut(&sid) {
+                        Some(s) => std::mem::take(&mut s.compacting),
+                        None => false,
+                    }
+                };
+                if !had_started {
                     self.push_frame(&sid, |seq| frame::compact_status("started", seq));
                 }
                 self.push_frame(&sid, |seq| frame::compact_status("ended", seq));
             }
             "error" => {
                 let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("未知错误");
-                self.push_frame(&sid, |seq| frame::task_error(msg, seq));
+                let kind = data.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+                let terminal = !legacy_nonterminal_error(&data, kind, msg);
+                let is_child = self.sub.subagents.lock_ok().contains_key(&sid);
+                let probe = if terminal {
+                    let mut sessions = self.sess.sessions.lock_ok();
+                    sessions.get_mut(&sid).and_then(|s| {
+                        s.terminal_error_seen = true;
+                        (s.running && !is_child).then(|| (s.turn, s.engine_id.clone()))
+                    })
+                } else {
+                    None
+                };
+                // error 事件可立即展示，但它不是空闲信号。即使 terminal=true，
+                // 也优先等 turn/stopped；旧 Agent 漏发时由 cancel 探针确认后
+                // 补收尾。手动压缩失败则由 compaction/RPC 终态收尾。
+                self.push_frame(&sid, |seq| frame::task_error_pending(msg, seq));
+                if let Some((turn, engine_id)) = probe {
+                    self.spawn_legacy_terminal_error_probe(sid.clone(), engine_id, turn, msg.to_string());
+                }
             }
             // turn_done:轮次边界以 turn/stopped 为准
             _ => {}
         }
     }
+
+    /// 兼容只发 terminal error、不发 turn/stopped 的旧 Agent。cancel 在
+    /// Agent 空闲时是无副作用查询(stopped=true)；请求必须在 reader 仍处理
+    /// error、UI 尚未可能开启下一轮时同步排入 stdin，避免异步探针误取消新轮。
+    /// 只有 Agent 明确 stopped=true（或会话已不存在）才补本地收尾；
+    /// stopped=false/超时继续保持 running，绝不重现“Agent 仍工作但状态没了”。
+    fn spawn_legacy_terminal_error_probe(
+        self: &Arc<Self>,
+        sid: String,
+        engine_id: String,
+        turn: u64,
+        error: String,
+    ) {
+        // 裸单元测试没有进程；真实进程句柄已被 stop() 摘走时也由停机和解。
+        if self.transport.child.lock_ok().is_none() {
+            return;
+        }
+        let inner = self.clone();
+        let grace_ms = self.transport.shutdown_grace_ms.load(Ordering::Relaxed).max(0) as u64;
+        let driver = OhmyDriver(inner.clone());
+        let pending = driver.begin_rpc("cancel", json!({ "session_id": engine_id }));
+        let (request_id, response_rx) = match pending {
+            Ok(pending) => pending,
+            Err(probe_error) => {
+                eprintln!("[desktop] 旧 Agent error 收尾探针无法发出,等待引擎终态: sid={sid}: {probe_error}");
+                return;
+            }
+        };
+        tauri::async_runtime::spawn(async move {
+            let response = driver
+                .await_rpc_response(
+                    "cancel",
+                    request_id,
+                    response_rx,
+                    Duration::from_millis(grace_ms.saturating_add(3_000)),
+                )
+                .await;
+            let confirmed_stopped = matches!(
+                &response,
+                Ok(value) if value.get("stopped").and_then(Value::as_bool) == Some(true)
+            ) || matches!(&response, Err(message) if message.starts_with("Session not found:"));
+            if !confirmed_stopped {
+                eprintln!(
+                    "[desktop] 旧 Agent error 收尾探针未确认停止,继续保持 running: sid={sid}: {response:?}"
+                );
+                return;
+            }
+            inner.handle_notification(
+                "turn/stopped",
+                json!({
+                    "session_id": sid,
+                    "stop_reason": "error",
+                    "error": error,
+                    "_desktop_turn": turn,
+                }),
+            );
+        });
+    }
+}
+
+/// 回退后的 Agent 没有 terminal 字段，以下三类持久化错误却不会停止当前
+/// turn；按稳定前缀兼容，避免为一条告警发送 cancel。新协议若显式给
+/// terminal=false 或 kind=persistence_warning，同样走非终止分支。
+fn legacy_nonterminal_error(data: &Value, kind: &str, message: &str) -> bool {
+    data.get("terminal").and_then(Value::as_bool) == Some(false)
+        || kind == "persistence_warning"
+        || message.starts_with("persist stop_reason failed:")
+        || message.starts_with("session persist failed:")
+        || message.starts_with("persist remembered permission rule failed:")
 }
 
 /// 上下文占用字段防腐层。13c8adc 起所有新入口统一为扁平

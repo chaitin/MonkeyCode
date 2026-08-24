@@ -151,23 +151,50 @@ describe("消息时间(悬停显影的 <time>)", () => {
 });
 
 describe("思考块(thoughtMarkdown 修复)", () => {
-  it("流式连拼的相邻加粗标题拆开渲染,不吞成一个 strong", () => {
+  it("流式连拼的相邻加粗标题展开后拆开渲染,不吞成一个 strong", async () => {
     const state = withItems([{ kind: "thought", text: "**先看日志****再改代码**" }]);
-    render(<LogList state={state} sessionId="s1" />);
+    const { container } = render(<LogList state={state} sessionId="s1" />);
+    // 折叠时完整 Markdown 不挂 DOM；点击后才解析长正文。
+    expect(screen.queryByText("再改代码")).toBeNull();
+    await userEvent.click(container.querySelector("summary")!);
     // 修复生效 = 两个独立的加粗段(吞并时会渲成含 ** 字面量的单个 strong)
     expect(screen.getAllByText("先看日志").some((el) => el.tagName === "STRONG")).toBe(true);
     expect(screen.getAllByText("再改代码").some((el) => el.tagName === "STRONG")).toBe(true);
   });
 
-  it("thought 流结束前暂缓 Mermaid 渲染", async () => {
+  it("折叠时不解析完整 Markdown，展开后才渲染 Mermaid", async () => {
     const item: ChatItem = { kind: "thought", text: "思考\n\n```mermaid\ngraph TD\nA-->B\n```" };
     const streaming = { ...withItems([item]), streamKind: "thought" as const };
-    const { rerender } = render(<LogList state={streaming} sessionId="s1" />);
+    const { container, rerender } = render(<LogList state={streaming} sessionId="s1" />);
     await Promise.resolve();
     expect(mermaidRender).not.toHaveBeenCalled();
 
     rerender(<LogList state={{ ...streaming, streamKind: "" }} sessionId="s1" />);
+    await Promise.resolve();
+    expect(mermaidRender).not.toHaveBeenCalled();
+    await userEvent.click(container.querySelector("summary")!);
     await waitFor(() => expect(mermaidRender).toHaveBeenCalledTimes(1));
+  });
+
+  it("折叠流式态展示最新尾部，完成后恢复首行摘要", () => {
+    const first: ChatItem = {
+      kind: "thought",
+      text: `固定首行\n${"很长的中间分析".repeat(20)}\n正在核对调用链`,
+    };
+    const streaming = { ...withItems([first]), streamKind: "thought" as const };
+    const { container, rerender } = render(<LogList state={streaming} sessionId="s1" />);
+    const summary = container.querySelector("summary")!;
+    expect(summary.textContent).toContain("正在核对调用链");
+    expect(summary.textContent).not.toContain("固定首行");
+    expect(container.querySelector("[data-thought-streaming='true']")).toBeTruthy();
+    expect(container.querySelector(".collapse-content .md")).toBeNull();
+
+    const next = { ...first, text: `${first.text}，已到最新文件` };
+    rerender(<LogList state={{ ...streaming, items: [next] }} sessionId="s1" />);
+    expect(summary.textContent).toContain("已到最新文件");
+
+    rerender(<LogList state={{ ...streaming, items: [next], streamKind: "" }} sessionId="s1" />);
+    expect(summary.textContent).toContain("固定首行");
   });
 
   it("折叠态摘要行也过 markdown:引擎首行几乎都是 **小标题**,当纯文本贴就是字面量星号", () => {

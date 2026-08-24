@@ -1,10 +1,19 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createRef } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  initializeStoredBackground,
+  installBackground,
+  resetBackgroundRuntimeForTest,
+  setCustomBackgroundEnabledForTest,
+} from "@/lib/background";
+import { setLocale } from "@/lib/i18n";
+import type { BackgroundAsset } from "@/lib/ipc/background";
 import type { DesktopConfig } from "@/lib/ipc/config";
 import { resetEscLayersForTest } from "@/lib/util/escLayer";
-import { SettingsView } from "./SettingsView";
+import { SettingsView, type SettingsViewHandle } from "./SettingsView";
 
 /** Esc = 走 escLayer 的 window capture 单一监听(层栈按后进先出派发)。 */
 const pressEsc = () =>
@@ -14,6 +23,7 @@ const pressEsc = () =>
 
 afterEach(() => {
   resetEscLayersForTest(); // 模块级层栈跨用例会串
+  resetBackgroundRuntimeForTest();
   localStorage.clear();
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
   // UA 覆写(WSL 条件渲染用)按实例属性打的,删掉即回落 jsdom 原型 getter
@@ -96,14 +106,76 @@ describe("设置视图:导航与载入", () => {
     expect(screen.getByText("默认")).toBeDefined(); // 主力行的默认徽标
   });
 
-  it("导航含「账号」,点击挂载账号分区(登录 tab 可见)", async () => {
-    stubShell(); // 未知命令(baizhi_status 等)回 null,分区按未登录形态渲染
+  it("导航含「账号」,点击挂载账号分区(国内版登录 tab 可见)", async () => {
+    // 未知命令(baizhi_status 等)回 null,分区按未登录形态渲染;
+    // mc_base_url 置空 = 官方云国内版——登录方式按生效版本裁剪,
+    // baseConfig 的私有地址会走仅账密形态(AccountSection 自有测试钉住)
+    stubShell({ config: { ...baseConfig, mc_base_url: "" } });
     render(<SettingsView onClose={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "账号" }));
     expect(await screen.findByRole("tab", { name: "微信扫码" })).toBeDefined();
-    expect(screen.getByRole("tab", { name: "短信验证码" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "短信" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "密码" })).toBeDefined();
     // 拉码命令回 null → 状态机按失败收束,给出重试入口(不留悬空 loading)
     expect(await screen.findByRole("button", { name: "重新获取二维码" })).toBeDefined();
+  });
+
+  it("账号分区点选国际版:静默落盘生效,全程不露保存条,登录方式随即翻为仅账密", async () => {
+    let resolveSave: (() => void) | undefined;
+    const { calls } = stubShell({
+      config: { ...baseConfig, mc_base_url: "" },
+      save: () =>
+        new Promise<null>((res) => {
+          resolveSave = () => res(null);
+        }),
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    await screen.findByRole("tab", { name: "微信扫码" });
+    await userEvent.click(screen.getByRole("radio", { name: "国际版" }));
+    // 点选即保存(用户视角没有「保存」这回事):落盘在途,微信码撤下、
+    // 保存条不闪现(2026-08-15 用户报障:能看到保存按钮一闪而过)
+    await waitFor(() => expect(calls.some((c) => c.cmd === "save_config")).toBe(true));
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByRole("button", { name: "放弃" })).toBeNull();
+    expect(screen.queryByText(/有未保存的修改/)).toBeNull();
+
+    resolveSave?.();
+    const saved = calls.find((c) => c.cmd === "save_config")?.args?.config as DesktopConfig;
+    expect(saved.mc_base_url).toBe("https://monkeycode-ai.net");
+    // 保存即真值:生效版本翻为国际版,登录区变为仅账密表单;保存条依旧不出现
+    expect(await screen.findByRole("textbox", { name: "邮箱" })).toBeDefined();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByText(/有未保存的修改/)).toBeNull();
+  });
+
+  it("切到私有化再点回国内版(配置本就是国内版):不触发保存,登录 tabs 直接回来", async () => {
+    const { calls } = stubShell({ config: { ...baseConfig, mc_base_url: "" } });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    await screen.findByRole("tab", { name: "微信扫码" });
+    await userEvent.click(screen.getByRole("radio", { name: "私有化部署" }));
+    expect(screen.queryByRole("tab")).toBeNull();
+    await userEvent.click(screen.getByRole("radio", { name: "国内版" }));
+    // 与已保存配置无差异:按载荷对比跳过落盘,不白重启引擎
+    expect(await screen.findByRole("tab", { name: "微信扫码" })).toBeDefined();
+    expect(screen.queryByText(/版本切换未生效/)).toBeNull();
+    expect(calls.some((c) => c.cmd === "save_config")).toBe(false);
+  });
+
+  it("国际版配置下切私有化再点国内版:保存条不弹,直接落盘切换,不误报「版本切换未生效」", async () => {
+    const { calls } = stubShell({ config: { ...baseConfig, mc_base_url: "https://monkeycode-ai.net" } });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    await screen.findByRole("textbox", { name: "邮箱" }); // 国际版 = 账密表单
+    await userEvent.click(screen.getByRole("radio", { name: "私有化部署" }));
+    expect(screen.queryByText(/有未保存的修改/)).toBeNull(); // 光点选不弄脏表单
+    await userEvent.click(screen.getByRole("radio", { name: "国内版" }));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "save_config")).toBe(true));
+    const saved = calls.find((c) => c.cmd === "save_config")?.args?.config as DesktopConfig;
+    expect(saved.mc_base_url).toBe("");
+    expect(await screen.findByRole("tab", { name: "微信扫码" })).toBeDefined();
+    expect(screen.queryByText(/版本切换未生效/)).toBeNull();
   });
 
   it("返回按钮回调 onClose", async () => {
@@ -188,8 +260,69 @@ describe("Esc 分层与离开守卫", () => {
     render(<SettingsView onClose={onClose} />);
     await openModels();
     pressEsc();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "有未保存的更改" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "设置" }).getAttribute("aria-modal")).toBe("true");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("外部跳转关闭也经过脏状态守卫，确认后才执行后续动作", async () => {
+    stubShell();
+    const ref = createRef<SettingsViewHandle>();
+    const onClose = vi.fn();
+    const afterApproved = vi.fn();
+    render(<SettingsView ref={ref} onClose={onClose} />);
+    await openModels();
+    await userEvent.click(screen.getByRole("button", { name: /主力/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: "名称" }), "x");
+
+    await act(async () => ref.current?.requestClose(afterApproved));
+    expect(await screen.findByRole("dialog", { name: "有未保存的更改" })).toBeDefined();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(afterApproved).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "放弃并离开" }));
+    expect(onClose).toHaveBeenCalledWith(false);
+    expect(afterApproved).toHaveBeenCalledTimes(1);
+  });
+
+  it("从模态外发起跳转后选择留在设置，焦点回到设置内部", async () => {
+    stubShell();
+    const ref = createRef<SettingsViewHandle>();
+    render(
+      <>
+        <SettingsView ref={ref} onClose={() => {}} />
+        <button type="button">外部通知</button>
+      </>,
+    );
+    await openModels();
+    await userEvent.click(screen.getByRole("button", { name: /主力/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: "名称" }), "x");
+    await userEvent.click(screen.getByRole("button", { name: "外部通知" }));
+
+    await act(async () => ref.current?.requestClose(() => {}));
+    await userEvent.click(await screen.findByRole("button", { name: "留在设置" }));
+
+    const dialog = screen.getByRole("dialog", { name: "设置" });
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "返回" }));
+  });
+
+  it("radio 组中的未选项不会让 Tab 焦点越出设置模态", async () => {
+    stubShell({ config: { ...baseConfig, mc_base_url: "" } });
+    render(
+      <>
+        <SettingsView onClose={() => {}} />
+        <button type="button">模态外按钮</button>
+      </>,
+    );
+    await screen.findByRole("radio", { name: "国内版" });
+    const dialog = screen.getByRole("dialog", { name: "设置" });
+
+    for (let i = 0; i < 40; i += 1) {
+      await userEvent.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+    expect(document.activeElement).not.toBe(screen.getByRole("button", { name: "模态外按钮" }));
   });
 });
 
@@ -259,10 +392,11 @@ describe("脏状态机与保存条", () => {
       ],
       mcp_servers: { fetch: { url: "https://mcp" } },
       kernel_env: "",
-      // 自建部署三项由草稿写回(未编辑即载入原值;未配置的写空串 = 官方云)
+      // 自建部署各项由草稿写回(未编辑即载入原值;未配置的写空串 = 官方云)
       mc_base_url: "https://mc.example",
       mc_basic_auth: "",
       mc_llm_base_url: "",
+      mc_skip_tls_verify: false,
     });
     await waitFor(() => expect(screen.queryByRole("button", { name: "保存" })).toBeNull());
   });
@@ -601,6 +735,38 @@ describe("同步自动保存(旧 UI autoSaveDecision 随迁)", () => {
   });
 });
 
+describe("界面缩放", () => {
+  it("通用页四档点即生效:落 localStorage 并调 WebView setZoom,不进保存条", async () => {
+    stubShell();
+    const setZoom = vi.fn(() => Promise.resolve());
+    (window as unknown as { __TAURI__: { webview?: unknown } }).__TAURI__.webview = {
+      getCurrentWebview: () => ({ setZoom }),
+    };
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+
+    const scale110 = screen.getByRole("radio", { name: "110%" }) as HTMLInputElement;
+    await userEvent.click(scale110);
+    expect(scale110.checked).toBe(true);
+    expect(setZoom).toHaveBeenCalledWith(1.1);
+    expect(localStorage.getItem("mc.uiScale")).toBe("1.1");
+    // 点即生效偏好,不弄脏表单
+    expect(screen.queryByText(/有未保存的修改/)).toBeNull();
+  });
+
+  it("缩放档是原生 radio group,方向键可切换", async () => {
+    stubShell();
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    const scale100 = screen.getByRole("radio", { name: "100%" }) as HTMLInputElement;
+    // user-event 的 radio 方向键实现用 CSS.escape；jsdom 未提供该浏览器 API。
+    vi.stubGlobal("CSS", { escape: (value: string) => value });
+    scale100.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect((screen.getByRole("radio", { name: "110%" }) as HTMLInputElement).checked).toBe(true);
+  });
+});
+
 describe("提示音双向同步", () => {
   it("初值来自 sound_enabled;切换发 set_sound_enabled;壳广播回来盖一次", async () => {
     const { calls, listeners } = stubShell({ sound: false });
@@ -672,5 +838,304 @@ describe("布局契约", () => {
     const menu = screen.getByRole("navigation", { name: "设置" }).querySelector("ul.menu")!;
     expect(menu.className).toContain("flex-nowrap");
     expect(menu.className).toContain("[&_li]:flex-nowrap");
+  });
+});
+
+describe("外观设置:自定义背景入口", () => {
+  it("功能关闭时隐藏入口，连续点击主题标签五次后临时解锁", async () => {
+    setCustomBackgroundEnabledForTest(false);
+    stubShell();
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    const hiddenTrigger = document.querySelector<HTMLElement>("[data-background-unlock]")!;
+    for (let i = 0; i < 4; i += 1) await userEvent.click(hiddenTrigger);
+    expect(screen.queryByRole("button", { name: "选择图片" })).toBeNull();
+    await userEvent.click(hiddenTrigger);
+    expect(await screen.findByRole("button", { name: "选择图片" })).toBeDefined();
+  });
+});
+
+describe("外观设置:自定义背景内部编辑器", () => {
+  beforeEach(() => setCustomBackgroundEnabledForTest(true));
+
+  const backgroundAsset: BackgroundAsset = {
+    revision: "a".repeat(64),
+    originalName: "wall.png",
+    mime: "image/png",
+    width: 1920,
+    height: 1080,
+    dataUrl: "data:image/png;base64,AA==",
+  };
+  const stagedBackgroundAsset = { ...backgroundAsset, stagedId: "stage-a" };
+
+  const stubImageDecode = () =>
+    vi.stubGlobal(
+      "Image",
+      class {
+        src = "";
+        decode = () => Promise.resolve();
+      },
+    );
+
+  it("浏览器模式不展示桌面专属背景设置", async () => {
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    expect(screen.queryByRole("button", { name: "选择图片" })).toBeNull();
+    const dialogBox = screen.getByRole("dialog", { name: "设置" }).querySelector(".modal-box") as HTMLElement;
+    expect(dialogBox.className).toContain("bg-base-100");
+    expect(dialogBox.className).not.toContain("mc-workbench-surface");
+  });
+
+  it("无图片时保留参数值但禁用调节控件", async () => {
+    localStorage.setItem(
+      "mc.backgroundPreferences",
+      JSON.stringify({ version: 1, surfaceOpacity: 0.72, blurPx: 6, fit: "contain" }),
+    );
+    stubShell();
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    expect((screen.getByRole("slider", { name: "内容背景不透明度" }) as HTMLInputElement).value).toBe("72");
+    expect((screen.getByRole("slider", { name: "内容背景不透明度" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("slider", { name: "图片模糊" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("radio", { name: "适应" }) as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("选择有效图片后显示预览与尺寸；调节即时生效、不进入引擎保存条", async () => {
+    stubImageDecode();
+    const { calls } = stubShell({
+      extra: {
+        "plugin:dialog|open": () => "/tmp/wall.png",
+        background_import: () => stagedBackgroundAsset,
+        background_confirm: () => null,
+      },
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "选择图片" }));
+    expect((await screen.findByRole("img", { name: "自定义背景预览" })).getAttribute("src")).toBe(backgroundAsset.dataUrl);
+    expect(screen.getByText("wall.png")).toBeDefined();
+    expect(screen.getByText("1920 × 1080 px")).toBeDefined();
+
+    fireEvent.change(screen.getByRole("slider", { name: "内容背景不透明度" }), { target: { value: "59" } });
+    expect(document.documentElement.style.getPropertyValue("--mc-surface-opacity")).toBe("59%");
+    expect(screen.getByRole("status").textContent).toContain("可读性");
+    fireEvent.change(screen.getByRole("slider", { name: "图片模糊" }), { target: { value: "7" } });
+    expect(document.documentElement.style.getPropertyValue("--mc-background-blur")).toBe("7px");
+    await userEvent.click(screen.getByRole("radio", { name: "平铺" }));
+    expect(document.documentElement.style.getPropertyValue("--mc-background-repeat")).toBe("repeat");
+    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+    expect(calls.some((call) => call.cmd === "save_config")).toBe(false);
+    const importCall = calls.find((call) => call.cmd === "background_import")!;
+    const confirmCall = calls.find((call) => call.cmd === "background_confirm")!;
+    expect(importCall.args?.ownerToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(confirmCall.args).toEqual({
+      stagedId: importCall.args?.stagedId,
+      ownerToken: importCall.args?.ownerToken,
+    });
+  });
+
+  it("更换导入失败保留旧预览并显示 alert；清除失败同样保留", async () => {
+    stubImageDecode();
+    await installBackground(backgroundAsset);
+    const { calls } = stubShell({
+      extra: {
+        "plugin:dialog|open": () => "/tmp/bad.png",
+        background_import: () => {
+          throw new Error("图片超过 20 MiB");
+        },
+        background_clear: () => {
+          throw new Error("磁盘拒绝删除");
+        },
+        background_read: () => backgroundAsset,
+      },
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "更换图片" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("20 MiB");
+    expect(screen.getByRole("img", { name: "自定义背景预览" }).getAttribute("src")).toBe(backgroundAsset.dataUrl);
+
+    await userEvent.click(screen.getByRole("button", { name: "清除图片" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("磁盘拒绝删除");
+    expect(screen.getByRole("img", { name: "自定义背景预览" }).getAttribute("src")).toBe(backgroundAsset.dataUrl);
+    expect(calls.some((call) => call.cmd === "background_clear")).toBe(true);
+  });
+
+  it("导入已落盘但 IPC 响应丢失时仍用调用前 ID 与 owner token 重试 discard", async () => {
+    let discardAttempts = 0;
+    const { calls } = stubShell({
+      extra: {
+        "plugin:dialog|open": () => "/tmp/response-lost.png",
+        background_import: () => {
+          throw new Error("IPC response lost");
+        },
+        background_discard: () => {
+          discardAttempts += 1;
+          if (discardAttempts === 1) throw new Error("temporary discard failure");
+          return null;
+        },
+      },
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "选择图片" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("IPC response lost");
+    const importCall = calls.find((call) => call.cmd === "background_import")!;
+    const stagedId = String(importCall.args?.stagedId);
+    const ownerToken = String(importCall.args?.ownerToken);
+    expect(stagedId).toMatch(/^[A-Za-z0-9-]{1,160}$/);
+    expect(ownerToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(importCall.args).toEqual({ path: "/tmp/response-lost.png", stagedId, ownerToken });
+    const discards = calls.filter((call) => call.cmd === "background_discard");
+    expect(discards).toHaveLength(2);
+    expect(discards.every((call) => call.args?.stagedId === stagedId && call.args?.ownerToken === ownerToken)).toBe(true);
+  });
+
+  it("清除成功恢复无背景外观，偏好值仍保留并转为禁用", async () => {
+    stubImageDecode();
+    await installBackground(backgroundAsset);
+    stubShell({ extra: { background_clear: () => null } });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "清除图片" }));
+    await waitFor(() => expect(screen.queryByRole("img", { name: "自定义背景预览" })).toBeNull());
+    expect(document.documentElement.dataset.mcBackground).toBeUndefined();
+    expect((screen.getByRole("slider", { name: "内容背景不透明度" }) as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("WebView 解码失败会丢弃 staged 导入，不确认磁盘事务且保留旧背景", async () => {
+    stubImageDecode();
+    await installBackground(backgroundAsset);
+    let decodeCalls = 0;
+    vi.stubGlobal(
+      "Image",
+      class {
+        src = "";
+        decode = () => decodeCalls++ === 0 ? Promise.reject(new Error("codec rejected")) : Promise.resolve();
+      },
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { calls } = stubShell({
+      extra: {
+        "plugin:dialog|open": () => "/tmp/new.png",
+        background_import: () => ({ ...stagedBackgroundAsset, stagedId: "decode-failed" }),
+        background_discard: () => {
+          throw new Error("discard unavailable");
+        },
+        background_read: () => backgroundAsset,
+      },
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "更换图片" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("codec rejected");
+    expect(screen.getByRole("img", { name: "自定义背景预览" }).getAttribute("src")).toBe(backgroundAsset.dataUrl);
+    expect(calls.filter((call) => call.cmd === "background_discard")).toHaveLength(2);
+    expect(calls.some((call) => call.cmd === "background_confirm")).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("pending TTL"),
+      expect.objectContaining({ stagedId: expect.stringMatching(/^[A-Za-z0-9-]{1,160}$/) }),
+    );
+  });
+
+  it("跨组件重挂后旧 choose 不能覆盖后发 clear，且后端资产操作保持同序", async () => {
+    stubImageDecode();
+    await installBackground(backgroundAsset);
+    let resolveImport!: (asset: typeof stagedBackgroundAsset) => void;
+    const pendingImport = new Promise<typeof stagedBackgroundAsset>((resolve) => {
+      resolveImport = resolve;
+    });
+    const { calls } = stubShell({
+      extra: {
+        "plugin:dialog|open": () => "/tmp/new.png",
+        background_import: () => pendingImport,
+        background_discard: () => null,
+        background_clear: () => null,
+      },
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "更换图片" }));
+    await waitFor(() => expect(calls.some((call) => call.cmd === "background_import")).toBe(true));
+
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "清除图片" }));
+    await act(async () => resolveImport(stagedBackgroundAsset));
+
+    await waitFor(() => expect(screen.queryByRole("img", { name: "自定义背景预览" })).toBeNull());
+    expect(calls.some((call) => call.cmd === "background_confirm")).toBe(false);
+    const discardIndex = calls.findIndex((call) => call.cmd === "background_discard");
+    const clearIndex = calls.findIndex((call) => call.cmd === "background_clear");
+    expect(discardIndex).toBeGreaterThan(-1);
+    expect(clearIndex).toBeGreaterThan(discardIndex);
+  });
+
+  it("旧 choose 已提交但后发 clear 失败时，从 Rust current 恢复而不保留旧 UI", async () => {
+    stubImageDecode();
+    await installBackground(backgroundAsset);
+    const nextAsset = {
+      ...backgroundAsset,
+      revision: "b".repeat(64),
+      originalName: "next.png",
+      dataUrl: "data:image/png;base64,BB==",
+    };
+    let current: BackgroundAsset | null = backgroundAsset;
+    let commitConfirm!: () => void;
+    const { calls } = stubShell({
+      extra: {
+        "plugin:dialog|open": () => "/tmp/next.png",
+        background_import: () => ({ ...nextAsset, stagedId: "stage-next" }),
+        background_confirm: () => new Promise<void>((resolve) => {
+          commitConfirm = () => {
+            current = nextAsset;
+            resolve();
+          };
+        }),
+        background_clear: () => {
+          throw new Error("clear response failed");
+        },
+        background_read: () => current,
+      },
+    });
+    render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "更换图片" }));
+    await waitFor(() => expect(calls.some((call) => call.cmd === "background_confirm")).toBe(true));
+
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    await userEvent.click(screen.getByRole("button", { name: "通用" }));
+    await userEvent.click(screen.getByRole("button", { name: "清除图片" }));
+    expect(calls.some((call) => call.cmd === "background_clear")).toBe(false);
+    await act(async () => commitConfirm());
+
+    expect((await screen.findByRole("alert")).textContent).toContain("clear response failed");
+    expect(screen.getByRole("img", { name: "自定义背景预览" }).getAttribute("src")).toBe(nextAsset.dataUrl);
+    expect(screen.getByText("next.png")).toBeDefined();
+    const confirmIndex = calls.findIndex((call) => call.cmd === "background_confirm");
+    const clearIndex = calls.findIndex((call) => call.cmd === "background_clear");
+    const readIndex = calls.findIndex((call) => call.cmd === "background_read");
+    expect(clearIndex).toBeGreaterThan(confirmIndex);
+    expect(readIndex).toBeGreaterThan(clearIndex);
+  });
+
+  it("英文界面用 i18n 前缀呈现结构化启动错误，不泄露硬编码中文 UI 文案", async () => {
+    localStorage.setItem("mc.backgroundAssetPresent", "1");
+    (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: () => Promise.reject(new Error("codec E42")) },
+    };
+    await initializeStoredBackground();
+    stubShell();
+    setLocale("en");
+    const view = render(<SettingsView onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "General" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Saved background unavailable: codec E42");
+    expect(alert.textContent).not.toContain("已保存的背景不可用");
+    view.unmount();
+    setLocale("zh-CN");
   });
 });

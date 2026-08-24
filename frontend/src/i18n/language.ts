@@ -84,8 +84,13 @@ export function writeLanguageCookie(language: AppLanguage) {
   document.cookie = buildLanguageCookie(language)
 }
 
-export function applyLanguage(language: AppLanguage) {
-  writeLanguageCookie(language)
+export function applyLanguage(
+  language: AppLanguage,
+  { persist = true }: { persist?: boolean } = {},
+) {
+  if (persist) {
+    writeLanguageCookie(language)
+  }
   dayjs.locale(getDayjsLocale(language))
 
   if (typeof document !== "undefined") {
@@ -95,7 +100,7 @@ export function applyLanguage(language: AppLanguage) {
 
 export function initLanguage(): AppLanguage {
   const language = resolveInitialLanguage(readLanguageQueryParam(), readLanguageCookie(), getBrowserLanguage())
-  applyLanguage(language)
+  applyLanguage(language, { persist: false })
   return language
 }
 

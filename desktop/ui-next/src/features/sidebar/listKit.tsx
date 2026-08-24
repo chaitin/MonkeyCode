@@ -7,14 +7,14 @@
 //   tab 表达,行内不再重复)。
 // - 组头/小节头图标保留(Folder/History/Archive):组级标签要锚点,
 //   且一组只出一次不吃行宽。
-// - GroupLabel 区块标签:组头 12px 图标 + text-xs font-medium /50(比行
-//   小一档;行 14px 后从 11px 提到 12px,免得差距拉到 3px 显得过小),
-//   放进 summary(flex 覆写、after:hidden 去尾箭头)。
+// - GroupLabel 区块标签:组头 12px 图标 + 与行同档 14px 文字(font-medium
+//   /50 的安静形态;2026-08-16 用户定案:行回 14px 后组头字号跟进,从属
+//   靠浓淡与缩进),放进 summary(flex 覆写、after:hidden 去尾箭头)。
 // - SectionFold 小节折叠:Archive 形小节头(10px 图标行首、无计数),
 //   开合走 prefs 契约键持久化,收起即卸载(部分 webview 里 details 收起
 //   后嵌套 ul 残留占位空间)。
-import { IconArchive, type TablerIcon } from "@tabler/icons-react";
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { IconArchive, IconChevronDown, IconPlus, type TablerIcon } from "@tabler/icons-react";
+import { useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 
 import { openMenu, type MenuItem } from "@/lib/contextMenu";
 import { readFold, writeFold, type FoldKey } from "@/lib/util/prefs";
@@ -57,13 +57,18 @@ const ATTENTION_BAR =
   "before:absolute before:inset-y-1 before:w-0.5 before:rounded-full before:bg-warning before:content-['']";
 
 /** 行缩进阶梯(§6.2「缩进进行内、行底满宽」——嵌套 margin 会把 hover/选中底
- * 压窄错位):基准 item padding 12px,每级 +12px(= 组头图标宽)。
+ * 压窄错位):基准 item padding 12px,**每级 +20px**(= 头部图标 12 +
+ * gap-2 8)。这样每级**行文字与其父头文字同线**:组头文字 = 12+20 = 32 =
+ * L1 行;组内小节头文字 = 32+20 = 52 = L2 行。2026-08-18 用户报障「好几条
+ * 对齐线,好乱」定案——旧阶梯 +12/头文字 +20 双增量并存,32/40、44/50
+ * 两对"差一点对齐"的近失误全并进 20px 网格(小节头 10px 图标要坐 12px
+ * 定宽槽,增量才恒 20)。
  * pad 与 bar 必须成对改:bar = 该级文字左缘 - 8px,拆开写迟早对不齐。 */
 const LEVELS = [
-  { pad: "", bar: "before:start-1" }, //      L0 文字 12px(chat 平铺行)
-  { pad: "ps-6", bar: "before:start-4" }, //  L1 文字 24px(项目内任务行)
-  { pad: "ps-9", bar: "before:start-7" }, //  L2 文字 36px(项目内归档行)
-  { pad: "ps-12", bar: "before:start-10" }, // L3 文字 48px(归档项目内的归档行)
+  { pad: "", bar: "before:start-1" }, //       L0 文字 12px(平铺行)
+  { pad: "ps-8", bar: "before:start-6" }, //   L1 文字 32px = 组头文字线
+  { pad: "ps-13", bar: "before:start-11" }, // L2 文字 52px = 组内小节头文字线
+  { pad: "ps-18", bar: "before:start-16" }, // L3 文字 72px
 ] as const;
 
 /** 缩进级 → 行内起始 padding 类(给非 ListRow 的同列元素对齐用,如改名输入框)。 */
@@ -71,7 +76,7 @@ export function levelPad(level = 0): string {
   return (LEVELS[level] ?? LEVELS[0]).pad;
 }
 
-/** 列表行(menu 的 li>a 载体)。 */
+/** 列表行(menu 的 li>button 载体)。 */
 export function ListRow({
   primary,
   trailing,
@@ -82,6 +87,8 @@ export function ListRow({
   attention,
   onSelect,
   menuItems,
+  onDragStart,
+  dataId,
 }: {
   primary: string;
   /** 行尾状态点:仅要紧态给(tone = 纯 status-* 语义色);状态词不上行
@@ -101,14 +108,22 @@ export function ListRow({
   attention?: boolean;
   onSelect: () => void;
   menuItems: MenuItem[];
+  /** HTML5 拖拽透传(工作台任务列行拖进格装载;不传即不可拖)。 */
+  onDragStart?: (e: DragEvent<HTMLButtonElement>) => void;
+  /** 行定位锚(data-row-id;焦点格换人时任务列 scrollIntoView 用)。 */
+  dataId?: string;
 }) {
   const lv = LEVELS[level] ?? LEVELS[0];
   return (
     <li>
-      <a
-        className={`relative flex min-w-0 items-center gap-2 overflow-hidden transition-colors duration-150 ${lv.pad} ${active ? "menu-active" : ""}${attention ? ` ${ATTENTION_BAR} ${lv.bar}` : ""}`}
+      <button
+        type="button"
+        className={`relative flex w-full min-w-0 items-center gap-2 overflow-hidden text-start transition-colors duration-150 ${lv.pad} ${active ? "menu-active" : ""}${attention ? ` ${ATTENTION_BAR} ${lv.bar}` : ""}`}
         data-attention={attention ? "" : undefined}
+        data-row-id={dataId}
         title={tooltip}
+        draggable={onDragStart ? true : undefined}
+        onDragStart={onDragStart}
         onClick={onSelect}
         onContextMenu={(e: MouseEvent) => {
           e.preventDefault();
@@ -119,7 +134,7 @@ export function ListRow({
         {/* 活跃行走正文色(不覆写);归档降到 /55,选中态不降——选中就该看清 */}
         <span className={`min-w-0 flex-1 truncate ${archived && !active ? "text-base-content/55" : ""}`}>{primary}</span>
         {trailing && <StatusDot {...trailing} />}
-      </a>
+      </button>
     </li>
   );
 }
@@ -142,18 +157,75 @@ export function StatusDot({ tone, label, pulse }: { tone: string; label: string;
   );
 }
 
+/** 待办/临时会话固定组共用头：数量紧跟标题，新增按钮保留占位，
+ * 折叠箭头固定在最右。整行是折叠按钮，新增按钮绝对覆盖在箭头左侧，
+ * 避免两个嵌套 button，也避免 hover 时挤动标题。 */
+export function FixedGroupHeader({
+  icon: Icon,
+  name,
+  count = 0,
+  collapsed,
+  onToggle,
+  onAdd,
+  addLabel,
+}: {
+  icon: TablerIcon;
+  name: string;
+  count?: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  onAdd: () => void;
+  addLabel: string;
+}) {
+  return (
+    <div className="group/fixed relative flex w-full min-w-0 items-stretch p-0">
+      <button
+        type="button"
+        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-18 text-start"
+        aria-expanded={!collapsed}
+        onClick={onToggle}
+      >
+        <Icon size={12} stroke={1.75} className="shrink-0 text-base-content/40" aria-hidden />
+        <span className="min-w-0 truncate font-medium text-base-content/50">{name}</span>
+        {count > 0 && <span className="badge badge-ghost badge-xs shrink-0 tabular-nums">{count}</span>}
+        <span className="min-w-0 flex-1" />
+        <IconChevronDown
+          size={12}
+          stroke={1.75}
+          aria-hidden
+          className={`absolute end-2 shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed ? "-rotate-90" : ""}`}
+        />
+      </button>
+      <button
+        type="button"
+        aria-label={addLabel}
+        title={addLabel}
+        className="btn btn-ghost btn-square btn-xs invisible absolute end-8 top-0 h-8 min-h-8 w-9 group-hover/fixed:visible group-focus-within/fixed:visible"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onAdd();
+        }}
+      >
+        <IconPlus size={14} stroke={1.75} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 /** 区块标签(组头 summary 内容):图标裸放 flex 行(12px 图标不需要定宽
- * 槽,多包一层反而竖向对不齐),名称保留原大小写。
+ * 槽,多包一层反而竖向对不齐;图标不随字号放大——缩进几何按它算),
+ * 名称保留原大小写。
  *
- * 组头保持**安静的小标签**(用户定案 2026-08-04,2026-08-07 复核后维持):
- * 期间试过按旧 UI 换成「与行同字号 + font-semibold + 满色」的锚点形态
- * ——旧 UI 正是靠组头比行更重来表达从属——但用户定案回退,组头继续小一档、
- * 淡一档。层级改由缩进承担(§6.2)。**别再提锚点形态。** */
+ * 组头保持**安静形态**(淡色 /50 + font-medium,2026-08-04 定案的重量
+ * 口径不变,不是锚点形态);字号与行同档 14px(2026-08-16 用户定案:
+ * 列表行回 14px 后组头跟进——12px 组头挂在 14px 行上头显得过小)。
+ * 从属层级由缩进与浓淡承担(§6.2)。 */
 export function GroupLabel({ icon: Icon, name }: { icon: TablerIcon; name: string }) {
   return (
     <>
       <Icon size={12} stroke={1.75} className="shrink-0 text-base-content/40" aria-hidden />
-      <span className="min-w-0 flex-1 truncate text-xs font-medium text-base-content/50">{name}</span>
+      <span className="min-w-0 flex-1 truncate font-medium text-base-content/50">{name}</span>
     </>
   );
 }
@@ -190,8 +262,11 @@ export function SectionFold({
         }}
       >
         {/* Archive 形小节头:图标行首(与组头 Folder 同构)、去 menu 默认尾箭头 */}
+        {/* 10px 图标坐 12px 定宽槽:小节头文字与子行同线(20px 网格) */}
         <summary className="flex items-center gap-2 text-xs text-base-content/50 after:hidden">
-          <Icon size={10} stroke={1.75} aria-hidden className="shrink-0" />
+          <span className="inline-flex w-3 shrink-0 justify-center">
+            <Icon size={10} stroke={1.75} aria-hidden />
+          </span>
           <span className="min-w-0 flex-1 truncate">{label}</span>
         </summary>
         {/* 收起即卸载:防 details 收起后嵌套 ul 残留占位空间 */}

@@ -93,6 +93,24 @@ export function serversToMcps(servers: Record<string, unknown>): McpEntry[] {
   });
 }
 
+// ---- MonkeyCode 服务版本 ----
+
+/** 官方云(国内)地址;mcBaseUrl 留空即它,写显式值也认(壳侧同口径)。 */
+export const MC_CN_URL = "https://monkeycode-ai.com";
+/** 官方云(国际)地址;与壳侧 baizhi::INTL_MONKEYCODE_URL 保持一致。 */
+export const MC_INTL_URL = "https://monkeycode-ai.net";
+
+/** 服务版本是 mcBaseUrl 三类取值的 UI 表达,不另设配置字段:
+ *  "" 或官方国内地址 = 国内版;官方国际地址 = 国际版;其余 = 私有化。 */
+export type McEdition = "cn" | "intl" | "private";
+
+export function mcEditionOf(mcBaseUrl: string): McEdition {
+  const base = mcBaseUrl.trim().replace(/\/+$/, "");
+  if (!base || base === MC_CN_URL) return "cn";
+  if (base === MC_INTL_URL) return "intl";
+  return "private";
+}
+
 // ---- 草稿 ----
 
 export interface SettingsDraft {
@@ -102,14 +120,17 @@ export interface SettingsDraft {
   mcps: McpEntry[];
   /** "" = 本机;"wsl:<发行版>" */
   kernelEnv: string;
-  /** 自建/私有化部署(账号分区的高级块;"" = 官方云)。壳在启动时构造云端
-   *  服务,故这三项保存后要**重启应用**才生效——文案在设置页说明 */
+  /** MonkeyCode 服务地址(账号分区的版本选择块;"" = 官方云国内版,
+   *  MC_INTL_URL = 国际版,其余 = 私有化),保存后立即生效 */
   mcBaseUrl: string;
   /** 测试环境反代的 HTTP Basic Auth("user:pass") */
   mcBasicAuth: string;
   /** 模型请求地址(llmproxy);"" = 官方云走 proxy 子域、自建走 {服务地址}/v1
    *  (口径在壳侧 baizhi::resolve_mc_llm) */
   mcLlmBaseUrl: string;
+  /** 跳过 MonkeyCode 服务的 TLS 证书验证(私有化自签证书;壳侧仅对
+   *  服务地址所在域生效,官方云恒验证) */
+  mcSkipTlsVerify: boolean;
 }
 
 export const emptyModel = (): HostModel => ({
@@ -163,6 +184,7 @@ export function draftFromConfig(cfg: DesktopConfig): SettingsDraft {
     mcBaseUrl: cfg.mc_base_url ?? "",
     mcBasicAuth: cfg.mc_basic_auth ?? "",
     mcLlmBaseUrl: cfg.mc_llm_base_url ?? "",
+    mcSkipTlsVerify: cfg.mc_skip_tls_verify ?? false,
   };
 }
 
@@ -203,6 +225,7 @@ export function buildPayload(base: DesktopConfig, draft: SettingsDraft): Desktop
     mc_base_url: draft.mcBaseUrl.trim(),
     mc_basic_auth: draft.mcBasicAuth.trim(),
     mc_llm_base_url: draft.mcLlmBaseUrl.trim(),
+    mc_skip_tls_verify: draft.mcSkipTlsVerify,
   };
 }
 

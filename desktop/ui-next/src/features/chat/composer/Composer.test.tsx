@@ -1,14 +1,22 @@
 // composer 全功能的集成测试:经 ChatView 挂载(真实 useSessionFeed/
 // useComposer 链路),假壳 IPC 断言发送面契约(载荷以壳侧 session.rs /
 // uploads.rs 为准)。
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ModelInfo, SessionMeta } from "@/lib/ipc/sessions";
 import { b64decode, b64encode } from "@/lib/protocol/codec";
 import { pushEscLayer } from "@/lib/util/escLayer";
 import { ChatView } from "../ChatView";
+import { resetSendQueueMemoryForTests } from "./sendQueue";
+import { resetStashForTests } from "./stash";
+
+beforeEach(() => {
+  localStorage.clear();
+  resetSendQueueMemoryForTests();
+  resetStashForTests();
+});
 
 afterEach(() => {
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
@@ -22,7 +30,13 @@ interface Op {
   args?: Record<string, unknown>;
 }
 
-function stubShell({ models = [] }: { models?: ModelInfo[] } = {}) {
+function stubShell({
+  models = [],
+  sessionCall,
+}: {
+  models?: ModelInfo[];
+  sessionCall?: (args?: Record<string, unknown>) => Promise<unknown>;
+} = {}) {
   const ops: Op[] = [];
   const listeners = new Map<string, (e: { payload: unknown }) => void>();
   (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
@@ -37,7 +51,7 @@ function stubShell({ models = [] }: { models?: ModelInfo[] } = {}) {
           });
         }
         if (cmd === "models_list") return Promise.resolve(models);
-        if (cmd === "session_call") return Promise.resolve({ result: {} });
+        if (cmd === "session_call") return sessionCall ? sessionCall(args) : Promise.resolve({ result: {} });
         if (cmd === "upload_begin") return Promise.resolve({ handle: 9 });
         if (cmd === "upload_finish") return Promise.resolve({ path: ".monkeycode/uploads/shot.png" });
         return Promise.resolve(null);
@@ -232,20 +246,66 @@ describe("模型 / 思考深度 / 权限模式", () => {
     expect(screen.queryByRole("list", { name: "切换模型" })).toBeNull();
   });
 
-  it("思考档:触发器显示生效档(会话档 > 模型默认档);四档带 hint 副文案;选择发 session_set_think", async () => {
+  it("模型组合菜单显示生效思考档，固定四档选择发 session_set_think 且不关闭菜单", async () => {
     const { ops } = stubShell({ models: MODELS });
     render(<ChatView meta={META} />);
     await ready();
-    // 会话未显式选档 → 跟随当前模型 m 配置的 medium
-    await userEvent.click(screen.getByRole("button", { name: "思考·中" }));
-    await screen.findByRole("list", { name: "思考深度" });
-    // 四档各带一句取舍说明(旧 UI THINK_LEVELS hint 随迁)
-    expect(screen.getByText("不思考,响应最快")).toBeTruthy();
-    expect(screen.getByText("简单任务,快速")).toBeTruthy();
-    expect(screen.getByText("日常任务,均衡")).toBeTruthy();
-    expect(screen.getByText("疑难任务,深入但更慢")).toBeTruthy();
-    await userEvent.click(screen.getByRole("button", { name: "高疑难任务,深入但更慢" }));
+    // 会话未显式选档 → 触发器展示当前模型 m 配置的 medium
+    const trigger = screen.getByRole("button", { name: "m" });
+    expect(trigger.textContent).toContain("· 中");
+    await userEvent.click(trigger);
+    const group = await screen.findByRole("radiogroup", { name: "思考深度" });
+    expect(within(group).getAllByRole("radio").map((item) => item.textContent)).toEqual(["关闭", "低", "中", "高"]);
+    await userEvent.click(within(group).getByRole("radio", { name: "高" }));
     expect(calls(ops, "session_set_think").map((o) => o.args?.payload)).toEqual([{ think: "high" }]);
+    expect(screen.getByRole("list", { name: "切换模型" })).toBeTruthy();
+  });
+
+  it("think_update 回写前快速改回原档，按点击顺序串行下发且最后选择不丢", async () => {
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    let thinkCalls = 0;
+    const { ops, emit } = stubShell({
+      models: MODELS,
+      sessionCall: (args) => {
+        if (args?.kind === "session_set_think" && thinkCalls++ === 0) {
+          return new Promise((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return Promise.resolve({ result: {} });
+      },
+    });
+    render(<ChatView meta={META} />);
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "m" }));
+    const group = await screen.findByRole("radiogroup", { name: "思考深度" });
+
+    await userEvent.click(within(group).getByRole("radio", { name: "高" }));
+    await userEvent.click(within(group).getByRole("radio", { name: "中" }));
+    expect(calls(ops, "session_set_think").map((o) => o.args?.payload)).toEqual([{ think: "high" }]);
+
+    await act(async () => resolveFirst?.({ result: {} }));
+    await waitFor(() =>
+      expect(calls(ops, "session_set_think").map((o) => o.args?.payload)).toEqual([
+        { think: "high" },
+        { think: "medium" },
+      ]),
+    );
+
+    const thinkFrame = (think: string, seq: number) => ({
+      type: "task-running",
+      kind: "acp_event",
+      data: { update: { sessionUpdate: "think_update", think } },
+      timestamp: seq,
+      seq,
+    });
+    act(() => emit("frames:s1", [thinkFrame("high", 8)]));
+    await screen.findByText("思考深度已调整为「高」"); // 确认旧回写已真正进入投影
+    expect(screen.getByRole("button", { name: "m" }).textContent).toContain("· 中"); // 最新选择遮住旧回写
+    act(() => emit("frames:s1", [thinkFrame("medium", 9)]));
+    await screen.findByText("思考深度已调整为「中」");
+    act(() => emit("frames:s1", [thinkFrame("off", 10)]));
+    await waitFor(() => expect(screen.getByRole("button", { name: "m" }).textContent).toContain("· 关闭")); // 已撤掉临时值
   });
 
   it("≥2 来源出 tabs(会员→百智云→自定义序,默认跟随当前模型来源);切 tab 换列表,选中发原名", async () => {
@@ -351,14 +411,17 @@ describe("模型 / 思考深度 / 权限模式", () => {
     ]);
   });
 
-  it("运行中:模型/思考触发器禁用(壳会拒绝,本地先不给点)", async () => {
+  it("运行中:组合触发器禁用，已展开菜单也立即关闭", async () => {
     const { emit } = stubShell({ models: MODELS });
     render(<ChatView meta={META} />);
     await ready();
+    await userEvent.click(screen.getByRole("button", { name: "m" }));
+    expect(await screen.findByRole("radiogroup", { name: "思考深度" })).toBeTruthy();
+
     emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
     await waitFor(() => {
       expect((screen.getByRole("button", { name: "m" }) as HTMLButtonElement).disabled).toBe(true);
-      expect((screen.getByRole("button", { name: "思考·中" }) as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.queryByRole("radiogroup", { name: "思考深度" })).toBeNull();
     });
   });
 });
@@ -385,12 +448,12 @@ describe("picker 关闭胶水(WebKitGTK 焦点语义回归)", () => {
     stubShell({ models: MODELS });
     render(<ChatView meta={META} />);
     const box = await ready();
-    await userEvent.click(screen.getByRole("button", { name: "思考·低" }));
-    const menu = await screen.findByRole("list", { name: "思考深度" });
-    fireEvent.pointerDown(menu); // 菜单内按下(还没 click)不许关——否则 click 落空
-    expect(screen.getByRole("list", { name: "思考深度" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "m" }));
+    const group = await screen.findByRole("radiogroup", { name: "思考深度" });
+    fireEvent.pointerDown(group); // 菜单内按下(还没 click)不许关——否则 click 落空
+    expect(screen.getByRole("radiogroup", { name: "思考深度" })).toBeTruthy();
     fireEvent.pointerDown(box); // 点回输入框 = 外点
-    expect(screen.queryByRole("list", { name: "思考深度" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "思考深度" })).toBeNull();
   });
 
   it("Esc 关闭菜单(window capture),不落到全局审批链", async () => {
@@ -401,20 +464,20 @@ describe("picker 关闭胶水(WebKitGTK 焦点语义回归)", () => {
       { type: "permission-req", data: { id: "p1", title: "npm test", tool: "Bash" }, timestamp: 3, seq: 3 },
     ]);
     await waitFor(() => expect(screen.getByText("需要确认")).toBeTruthy());
-    await userEvent.click(screen.getByRole("button", { name: "思考·低" }));
-    await screen.findByRole("list", { name: "思考深度" });
+    await userEvent.click(screen.getByRole("button", { name: "m" }));
+    await screen.findByRole("radiogroup", { name: "思考深度" });
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("list", { name: "思考深度" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "思考深度" })).toBeNull();
     expect(sends(ops, "permission-resp")).toHaveLength(0); // esc = deny 不可逆,不能漏
   });
 
-  it("结构守卫:思考/模型菜单不嵌进任何外层 dropdown(daisyUI 隐藏规则是后代选择器,外层关态会把内层菜单 display:none)", async () => {
+  it("结构守卫:模型组合菜单不嵌进任何外层 dropdown(daisyUI 隐藏规则是后代选择器,外层关态会把内层菜单 display:none)", async () => {
     stubShell({ models: MODELS });
     render(<ChatView meta={META} />);
     await ready();
-    await userEvent.click(screen.getByRole("button", { name: "思考·低" }));
-    const menu = await screen.findByRole("list", { name: "思考深度" });
-    const own = menu.closest(".dropdown");
+    await userEvent.click(screen.getByRole("button", { name: "m" }));
+    const group = await screen.findByRole("radiogroup", { name: "思考深度" });
+    const own = group.closest(".dropdown");
     expect(own?.classList.contains("dropdown-open")).toBe(true);
     // 自己的 picker 容器之上不得再有 .dropdown 祖先(输入卡不许当 dropdown 用)
     expect(own?.parentElement?.closest(".dropdown")).toBeNull();
@@ -422,6 +485,24 @@ describe("picker 关闭胶水(WebKitGTK 焦点语义回归)", () => {
 });
 
 describe("运行态 / 停止 / 排队", () => {
+  it("裸 Esc 停止运行；有待审批时仍由审批优先", async () => {
+    const { ops, emit } = stubShell();
+    render(<ChatView meta={META} />);
+    await ready();
+    emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
+    await screen.findByText("思考中");
+    fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+    expect(sends(ops, "user-cancel")).toHaveLength(1);
+
+    emit("frames:s1", [
+      { type: "permission-req", data: { id: "p-stop", title: "npm test", tool: "Bash" }, timestamp: 6, seq: 6 },
+    ]);
+    await screen.findByText("需要确认");
+    fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
+    expect(sends(ops, "permission-resp")).toHaveLength(1);
+    expect(sends(ops, "user-cancel")).toHaveLength(1);
+  });
+
   it("运行条:思考中 + 停止(user-cancel 帧);工具执行中换文案", async () => {
     const { ops, emit } = stubShell();
     render(<ChatView meta={META} />);
@@ -446,7 +527,7 @@ describe("运行态 / 停止 / 排队", () => {
     expect(cancels[0]?.args?.payload).toEqual({});
   });
 
-  it("运行中发送进入单槽排队(chip 可取消);轮结束自动补投", async () => {
+  it("运行中连续发送追加队列；轮结束只补投一个队首", async () => {
     const { ops, emit } = stubShell();
     render(<ChatView meta={META} />);
     const box = await ready();
@@ -454,23 +535,29 @@ describe("运行态 / 停止 / 排队", () => {
     await waitFor(() => expect(screen.getByText("思考中")).toBeTruthy());
 
     await userEvent.type(box, "补充问题{Enter}");
-    expect(screen.getByText("已排队")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "待发送消息队列" })).toBeTruthy();
     expect(screen.getByText("补充问题")).toBeTruthy();
     expect((box as HTMLTextAreaElement).value).toBe("");
     expect(sends(ops, "user-input")).toHaveLength(0); // 运行中不直发
 
-    // 后发覆盖先发(单槽语义)
+    // 后发追加，不覆盖先发
     await userEvent.type(box, "换个问法{Enter}");
-    expect(screen.queryByText("补充问题")).toBeNull();
+    expect(screen.getByText("补充问题")).toBeTruthy();
     expect(screen.getByText("换个问法")).toBeTruthy();
 
     emit("frames:s1", [{ type: "task-ended", timestamp: 7, seq: 7 }]);
     await waitFor(() => {
       const sent = sends(ops, "user-input");
       expect(sent).toHaveLength(1);
-      expect(b64decode((sent[0]?.args?.payload as { content: string }).content)).toBe("换个问法");
+      expect(b64decode((sent[0]?.args?.payload as { content: string }).content)).toBe("补充问题");
     });
-    expect(screen.queryByText("已排队")).toBeNull();
+    expect(screen.getByText("换个问法")).toBeTruthy();
+    expect(screen.getByText("发送中")).toBeTruthy();
+
+    // 首帧即发送回执：该项已进入时间线，只保留内部逐轮锁，不再重复显示“发送中”。
+    emit("frames:s1", [{ type: "task-started", timestamp: 8, seq: 8 }]);
+    await waitFor(() => expect(screen.queryByText("发送中")).toBeNull());
+    expect(screen.getByText("换个问法")).toBeTruthy();
   });
 
   it("排队可取消:清掉后轮结束不补投", async () => {
@@ -480,11 +567,39 @@ describe("运行态 / 停止 / 排队", () => {
     emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
     await waitFor(() => expect(screen.getByText("思考中")).toBeTruthy());
     await userEvent.type(box, "先排着{Enter}");
-    await userEvent.click(screen.getByRole("button", { name: "取消排队" }));
-    expect(screen.queryByText("已排队")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "删除待发送消息" }));
+    expect(screen.queryByRole("region", { name: "待发送消息队列" })).toBeNull();
     emit("frames:s1", [{ type: "task-ended", timestamp: 7, seq: 7 }]);
     await new Promise((r) => setTimeout(r, 20));
     expect(sends(ops, "user-input")).toHaveLength(0);
+  });
+});
+
+describe("输入与发送键", () => {
+  it("Ctrl+Enter 插入换行且不发送,随后普通 Enter 发送多行正文", async () => {
+    const { ops } = stubShell();
+    render(<ChatView meta={META} />);
+    const box = await ready();
+
+    await userEvent.type(box, "第一行");
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    expect((box as HTMLTextAreaElement).value).toBe("第一行\n");
+    expect(sends(ops, "user-input")).toHaveLength(0);
+
+    await userEvent.type(box, "第二行{Enter}");
+    await waitFor(() => expect(sends(ops, "user-input")).toHaveLength(1));
+    expect(b64decode((sends(ops, "user-input")[0]?.args?.payload as { content: string }).content)).toBe("第一行\n第二行");
+  });
+
+  it("Ctrl+Alt+Enter 不冒充 Ctrl+Enter,按原普通 Enter 路径发送", async () => {
+    const { ops } = stubShell();
+    render(<ChatView meta={META} />);
+    const box = await ready();
+    await userEvent.type(box, "AltGr 输入");
+
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true, altKey: true });
+    await waitFor(() => expect(sends(ops, "user-input")).toHaveLength(1));
+    expect(b64decode((sends(ops, "user-input")[0]?.args?.payload as { content: string }).content)).toBe("AltGr 输入");
   });
 });
 

@@ -95,6 +95,46 @@ describe("工具卡", () => {
     expect(screen.getByText("const a = 2;")).toBeTruthy(); // 新增行
   });
 
+  it("详情面板 diff 型:Edit edits 批量替换不显示 Replaced 回执", async () => {
+    render(
+      <ToolCard
+        item={{
+          kind: "tool",
+          tcId: "edit-batch",
+          title: "Edit src/a.ts",
+          status: "ok",
+          out: "",
+          rawInput: {
+            file_path: "src/a.ts",
+            edits: [{ old_string: "const a = 1;", new_string: "const a = 2;", replace_all: true }],
+          },
+          rawOutput: "Replaced 3 occurrence(s) in src/a.ts",
+        }}
+        sessionId="s1"
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "展开工具详情" }));
+    expect(screen.getByText("const a = 1;")).toBeTruthy();
+    expect(screen.getByText("const a = 2;")).toBeTruthy();
+    expect(screen.queryByText(/Replaced 3 occurrence/)).toBeNull();
+  });
+
+  it("apply_patch 标题展示文件，详情按文件分段并高亮增删内容", async () => {
+    const patch = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-const a = 1;\n+const a = 2;\n*** End Patch";
+    render(
+      <ToolCard
+        item={{ kind: "tool", tcId: "patch", title: "apply_patch", status: "ok", out: "", rawInput: { patch } }}
+        sessionId="s1"
+      />,
+    );
+    expect(screen.getByText("编辑文件")).toBeTruthy();
+    expect(screen.getByTitle("src/a.ts")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "展开工具详情" }));
+    expect(screen.getByText("Update File: src/a.ts")).toBeTruthy();
+    expect(screen.getByText("const a = 1;")).toBeTruthy();
+    expect(screen.getByText("const a = 2;")).toBeTruthy();
+  });
+
   it("运行中不出详情入口(终态才可回看入参/结果)", () => {
     render(<ToolCard item={{ ...BASE, status: "run", rawInput: { command: "x" } }} sessionId="s1" />);
     expect(screen.queryByRole("button", { name: "展开工具详情" })).toBeNull();
@@ -123,6 +163,33 @@ describe("工具卡", () => {
       (_, el) => el?.tagName === "PRE" && (el.textContent ?? "").includes("完整输出尾巴"),
     );
     expect(pre.textContent).not.toContain("截断头部…"); // 全文顶掉截断头部
+  });
+
+  it("apply_patch 回读完整入参后同步补齐标题中的文件", async () => {
+    const partial = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new";
+    const complete = `${partial}\n*** Add File: src/b.ts\n+export {}\n*** End Patch`;
+    const frame: Frame = {
+      type: "task-running",
+      data: { update: { sessionUpdate: "tool_call_update", rawInput: { patch: complete } } },
+    };
+    render(
+      <ToolCard
+        item={{
+          kind: "tool",
+          tcId: "patch-full",
+          title: "apply_patch",
+          status: "ok",
+          out: "",
+          rawInput: { patch: partial },
+          _meta: { mcSrc: { seq: 8 } },
+        }}
+        sessionId="s1"
+        loadFullTool={() => Promise.resolve(frame)}
+      />,
+    );
+    expect(screen.getByTitle("src/a.ts")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "展开工具详情" }));
+    expect(await screen.findByTitle("src/a.ts · src/b.ts")).toBeTruthy();
   });
 
   it("回读失败:行内外显错误(role=alert,带原因)", async () => {
@@ -197,6 +264,37 @@ describe("工具卡", () => {
     expect(screen.queryByText("已允许")).toBeNull();
   });
 
+  it("后台派发卡使用与普通子代理一致的蓝色详情动作，过程不在卡内展开", async () => {
+    const feed: ToolItem["feed"] = [
+      { kind: "tool", id: "a", title: "Read", rawInput: { file_path: "/w/a.ts" }, status: "ok" },
+      { kind: "text", text: "正在继续检查" },
+    ];
+    render(
+      <ToolCard
+        item={{
+          ...BASE,
+          title: "SendMessage",
+          status: "run",
+          background: true,
+          outKey: "chat.tool.bgRunning",
+          feed,
+          lastLine: "等待下一步",
+        }}
+        sessionId="s1"
+      />,
+    );
+    expect(screen.queryByText("后台运行中")).toBeNull();
+    expect(screen.queryByText("正在继续检查")).toBeNull();
+    expect(screen.queryByText("等待下一步")).toBeNull();
+
+    const detailButton = screen.getByRole("button", { name: "查看子代理详情" });
+    expect(detailButton.className).toContain("link-primary");
+    await userEvent.click(detailButton);
+    expect(screen.getByRole("dialog", { name: "子代理详情" })).toBeTruthy();
+    expect(screen.getByText("正在继续检查")).toBeTruthy();
+    expect(screen.getByText("等待下一步")).toBeTruthy();
+  });
+
   it("childSessionId + onOpenChild:头部出「查看子会话」入口并回传 id", async () => {
     const opened: string[] = [];
     render(<ToolCard item={{ ...BASE, childSessionId: "c1" }} sessionId="s1" onOpenChild={(id) => opened.push(id)} />);
@@ -209,21 +307,37 @@ describe("工具卡", () => {
     expect(screen.queryByRole("button", { name: "查看子会话" })).toBeNull();
   });
 
-  it("子会话入口缺席但有结果:「查看结果/收起结果」切换,结果走 Markdown", async () => {
+  it("子会话入口缺席但有结果:点击后台卡打开弹窗，不在卡内展开 Markdown", async () => {
     const item: ToolItem = { ...BASE, title: "Agent 调查代码", status: "ok", background: true, result: "**结论**:一切正常" };
-    render(<ToolCard item={item} sessionId="s1" />);
+    const { container } = render(<ToolCard item={item} sessionId="s1" />);
     expect(screen.queryByText("结论")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "查看结果" }));
-    expect(screen.getByText("结论")).toBeTruthy(); // Markdown 加粗节点
-    await userEvent.click(screen.getByRole("button", { name: "收起结果" }));
-    expect(screen.queryByText("结论")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "查看子代理详情" }));
+    expect(screen.getByRole("dialog", { name: "子代理详情" })).toBeTruthy();
+    expect(screen.getByText("结论")).toBeTruthy();
+    expect(container.querySelector(".markdown-body")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog", { name: "子代理详情" })).toBeNull();
   });
 
-  it("有子会话入口时不出「查看结果」兜底(结果统一从子会话看)", () => {
-    const item: ToolItem = { ...BASE, title: "Agent 调查代码", status: "ok", childSessionId: "c1", result: "结论文本" };
-    render(<ToolCard item={item} sessionId="s1" onOpenChild={() => {}} />);
-    expect(screen.getByRole("button", { name: "查看子会话" })).toBeTruthy();
+  it("有子会话入口时不出结果兜底，后台卡直接打开真实子会话弹窗", async () => {
+    const opened: string[] = [];
+    const item: ToolItem = {
+      ...BASE,
+      title: "SendMessage",
+      status: "run",
+      background: true,
+      childSessionId: "c1",
+      result: "结论文本",
+    };
+    render(<ToolCard item={item} sessionId="s1" onOpenChild={(id) => opened.push(id)} />);
+    const childButton = screen.getByRole("button", { name: "查看子会话" });
+    expect(childButton.className).toContain("link-primary");
+    await userEvent.click(childButton);
+    expect(opened).toEqual(["c1"]);
     expect(screen.queryByRole("button", { name: "查看结果" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "子代理详情" })).toBeNull();
   });
 
   it("report_findings:渲染结构化发现列表", () => {

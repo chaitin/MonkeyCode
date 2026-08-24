@@ -18,8 +18,7 @@ import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { exportEngineLog } from "@/lib/ipc/config";
 import { hostInfo, openAppDir, openLogDir, type HostInfo } from "@/lib/ipc/host";
-import { updateInstall } from "@/lib/ipc/update";
-import { checkUpdateNow, useUpdateInfo } from "@/features/update/useUpdate";
+import { checkUpdateNow, clearUpdateError, installUpdateNow, useUpdateState } from "@/features/update/useUpdate";
 
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -33,8 +32,8 @@ export function AboutSection() {
   // 各持一份 useState 的话,侧栏已在提示「有新版本」时进关于页仍显示普通
   // 「检查更新」钮;反过来在这儿查到的结果也传不到侧栏,而这次检查还把
   // 接下来 30 分钟的回焦复查一起闸掉了(两条路共用 update.ts 的模块级闸门)
-  const update = useUpdateInfo();
-  const [phase, setPhase] = useState<"idle" | "checking" | "installing">("idle");
+  const { update, installing, error: installError } = useUpdateState();
+  const [phase, setPhase] = useState<"idle" | "checking">("idle");
   const [msg, setMsg] = useState<{ text: string; error?: boolean; updateAvailable?: boolean } | null>(null);
   // 连点解锁计数:不落盘、不跨挂载(离开设置页即复位)——隐藏入口就该
   // 每次都要重新解一遍,免得某次排障之后按钮永久留在别人的关于页上
@@ -71,16 +70,9 @@ export function AboutSection() {
     );
   };
 
-  const install = async () => {
-    setPhase("installing");
+  const install = () => {
     setMsg(null);
-    try {
-      await updateInstall(); // 成功后壳自行重启,promise 不会正常返回
-    } catch (e) {
-      // 失败:复位忙态,失败文案外显(与侧栏 useUpdate 同一语义)
-      setPhase("idle");
-      setMsg({ text: t("update.failed", { reason: errMsg(e) }), error: true });
-    }
+    installUpdateNow();
   };
 
   /** 排障动作的统一收尾:失败就地外显(壳的 Err 是中文,吞掉就成了「点了
@@ -88,6 +80,7 @@ export function AboutSection() {
    *  (如另存对话框被用户取消)。 */
   const runDiag = async <T,>(fn: () => Promise<T>, ok?: (v: T) => string | null) => {
     setMsg(null);
+    clearUpdateError();
     try {
       // 动作先单独求值:写成 ok?.(await fn()) 的话,ok 缺席时可选调用会连
       // **实参**一起短路掉——按钮点了什么都不会发生
@@ -99,12 +92,13 @@ export function AboutSection() {
     }
   };
 
-  const busy = phase !== "idle";
+  const busy = phase !== "idle" || installing;
   const found = !!update?.available;
+  const shownMsg: typeof msg = installError ? { text: t("update.failed", { reason: installError }), error: true } : msg;
   const updateLabel =
     phase === "checking"
       ? t("settings.about.checking")
-      : phase === "installing"
+      : installing
         ? t("settings.about.installing")
         : found
           ? t("settings.about.install")
@@ -140,20 +134,20 @@ export function AboutSection() {
           {updateLabel}
         </button>
       </div>
-      {msg && (
+      {shownMsg && (
         <div
-          role={msg.error ? "alert" : "status"}
+          role={shownMsg.error ? "alert" : "status"}
           className={
-            msg.error
+            shownMsg.error
               ? "alert alert-error alert-soft py-1.5 text-xs"
-              : msg.updateAvailable
+              : shownMsg.updateAvailable
                 ? "alert alert-info alert-soft py-1.5 text-xs"
                 : "alert alert-success alert-soft py-1.5 text-xs"
           }
         >
           <span>
-            {msg.text}
-            {msg.updateAvailable && <> {t("settings.about.installHint")}</>}
+            {shownMsg.text}
+            {shownMsg.updateAvailable && <> {t("settings.about.installHint")}</>}
           </span>
         </div>
       )}

@@ -21,6 +21,13 @@ describe("终端帧编解码", () => {
     expect(parseTermFrame("not json")).toBeNull();
     expect(parseTermFrame('"bare"')).toBeNull();
   });
+
+  it("下行:坏 base64 返回空字节(脏帧丢弃,不抛未捕获异常)", () => {
+    // 与 parseTermFrame 同一容错契约:裸 atob 抛 InvalidCharacterError 会沿
+    // Tauri listen 派发链变成全局错误,把终端画成整屏「启动异常」面板
+    expect([...termBytes("!!bad!!")]).toEqual([]);
+    expect([...termBytes("aGk")]).toEqual([104, 105]); // 无填充仍可解
+  });
 });
 
 describe("pickTerminalId", () => {

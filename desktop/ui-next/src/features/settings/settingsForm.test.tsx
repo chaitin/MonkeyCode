@@ -97,6 +97,15 @@ describe("草稿 ⇄ 载荷(全量写回)", () => {
     expect(draftFromConfig(cfg({ models: [model()] })).defaultIdx).toBe(0);
   });
 
+  it("跳过证书验证开关:载入缺省为关,草稿值随载荷写回", () => {
+    expect(draftFromConfig(cfg()).mcSkipTlsVerify).toBe(false);
+    expect(draftFromConfig(cfg({ mc_skip_tls_verify: true })).mcSkipTlsVerify).toBe(true);
+    const base = cfg();
+    const d = { ...draftFromConfig(base), mcSkipTlsVerify: true };
+    expect(buildPayload(base, d).mc_skip_tls_verify).toBe(true);
+    expect(buildPayload(base, draftFromConfig(base)).mc_skip_tls_verify).toBe(false);
+  });
+
   // 载入自愈:同名存量不在载入时收敛,validateDraft 会以 modelDup 把**整份
   // 配置**的保存永久拦死(save() 见错即 return,kernel_env/MCP/新模型一起存
   // 不下去);同名的会员条目在 UI 里连删除入口都没有,用户无路可走
@@ -260,6 +269,7 @@ describe("同步并入(mergeSyncedModels / mergeSyncedMcps)", () => {
     mcBaseUrl: "",
     mcBasicAuth: "",
     mcLlmBaseUrl: "",
+    mcSkipTlsVerify: false,
   });
 
   it("落盘名加来源后缀(会员条目再缀配置 id);整组替换并按来源排序", () => {

@@ -21,6 +21,18 @@ function sources(dir: string = SRC): string[] {
 
 const rel = (p: string) => p.slice(SRC.length + 1);
 
+function zIndexOf(file: string, needle: string): number | undefined {
+  const text = readFileSync(join(SRC, file), "utf8");
+  const idx = text.indexOf(needle);
+  if (idx < 0) return undefined;
+  const token = /z-\[(?:(\d+)|var\((--[\w-]+)\))\]/.exec(text.slice(idx, idx + 200));
+  if (token?.[1]) return Number(token[1]);
+  if (!token?.[2]) return undefined;
+  const css = readFileSync(join(SRC, "styles/app.css"), "utf8");
+  const value = new RegExp(`${token[2]}:\\s*(\\d+)`).exec(css)?.[1];
+  return value ? Number(value) : undefined;
+}
+
 describe("LAYOUT §6.2 menu 截断铁律", () => {
   // daisyUI 5 的 `.menu` **和** `.menu :where(li)` 都是 `flex-flow: column wrap`
   // (node_modules/daisyui/components/menu.css 里核过)。wrap 列的行宽跟内容走,
@@ -88,27 +100,20 @@ describe("LAYOUT §1 z 序:角落瞬态与 resize 热区必须压过 daisyUI 模
     { file: "features/titlebar/ResizeEdges.tsx", needle: "fixed z-" },
   ];
   it.each(MUST_BEAT_MODAL)("$file 的 z 高于模态", ({ file, needle }) => {
-    const text = readFileSync(join(SRC, file), "utf8");
-    const idx = text.indexOf(needle);
-    expect(idx, `${file} 里找不到 ${needle}`).toBeGreaterThanOrEqual(0);
-    const around = text.slice(idx, idx + 200);
-    const z = /z-\[(\d+)\]/.exec(around)?.[1];
-    expect(z, `${file} 应写成 z-[<数字>] 形态`).toBeDefined();
-    expect(Number(z)).toBeGreaterThan(MODAL_Z);
+    const z = zIndexOf(file, needle);
+    expect(z, `${file} 应使用可解析的数字或 app.css z-index 变量`).toBeDefined();
+    expect(z).toBeGreaterThan(MODAL_Z);
   });
 
   // caption 三键要压过 resize 热区:NorthEast 的 12×12 整块落在关闭键内部、
   // North 又吃掉三键顶部 4px,不抬 z 就是「右上角点不了关闭」(点击变成
   // 一次空的 WM resize 抓取)
   it("caption 三键压过 ResizeEdges", () => {
-    const zOf = (file: string, needle: string) => {
-      const text = readFileSync(join(SRC, file), "utf8");
-      const around = text.slice(text.indexOf(needle), text.indexOf(needle) + 200);
-      return Number(/z-\[(\d+)\]/.exec(around)?.[1]);
-    };
-    const caption = zOf("features/titlebar/TitleBar.tsx", "const CAPTION_BTN");
-    const edges = zOf("features/titlebar/ResizeEdges.tsx", "fixed z-");
-    expect(caption).toBeGreaterThan(edges);
+    const caption = zIndexOf("features/titlebar/TitleBar.tsx", "const CAPTION_BTN");
+    const edges = zIndexOf("features/titlebar/ResizeEdges.tsx", "fixed z-");
+    expect(caption).toBeDefined();
+    expect(edges).toBeDefined();
+    expect(caption!).toBeGreaterThan(edges!);
   });
 });
 

@@ -461,6 +461,13 @@ describe("轮次与系统帧", () => {
     expect(run([frame("task-error")]).items.at(-1)).toEqual({ kind: "sys", text: "✗ 未知错误", error: true });
   });
 
+  it("terminal=false 的错误只展示,保持运行态直到 task-ended", () => {
+    const pending = run([frame("task-started"), frame("task-error", { error: "落盘失败", terminal: false })]);
+    expect(pending.running).toBe(true);
+    expect(pending.items.at(-1)).toEqual({ kind: "sys", text: "✗ 落盘失败", error: true });
+    expect(reduceFrame(pending, frame("task-ended")).running).toBe(false);
+  });
+
   it("user-input 解 base64(含多字节);坏编码回退原文", () => {
     const s = run([frame("user-input", { content: b64encode("修复 Bug🐛") })]);
     expect(s.items[0]).toEqual({ kind: "user", text: "修复 Bug🐛" });
@@ -557,10 +564,14 @@ describe("轮次与系统帧", () => {
   it("compact_status 与 llm_call_retry 渲染系统行", () => {
     const s = run([
       acp({ sessionUpdate: "compact_status", status: "started" }),
+      acp({ sessionUpdate: "compact_status", status: "failed" }),
+      acp({ sessionUpdate: "compact_status", status: "cancelled" }),
       acp({ sessionUpdate: "llm_call_retry", attempt: 2, message: "429" }),
     ]);
     expect(s.items.map((it) => (it as Extract<LogItem, { kind: "sys" }>).text)).toEqual([
       "⟳ 上下文接近上限,正在压缩…",
+      "✗ 上下文压缩失败",
+      "⟳ 上下文压缩已取消",
       "模型调用重试 #2: 429",
     ]);
   });

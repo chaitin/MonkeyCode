@@ -845,7 +845,7 @@ export function SettingsView({
   const [mcpExpanded, setMcpExpanded] = useState<number | null>(null);
   const [baizhiMcpOpen, setBaizhiMcpOpen] = useState(true); // 百智云 MCP 组(默认展开)
   const [kernelEnv, setKernelEnv] = useState(""); // 内核运行环境:"" 本机 / "wsl:<发行版>"
-  const [mcBaseUrl, setMcBaseUrl] = useState(""); // MonkeyCode 服务地址("" = 官方云;重启应用生效)
+  const [mcBaseUrl, setMcBaseUrl] = useState(""); // MonkeyCode 服务地址("" = 官方云;保存后立即生效)
   // 自建部署配置默认隐藏(彩蛋:连点 MonkeyCode 卡图标 6 次解锁,解锁态
   // 持久;已配置过任一地址项的用户恒可见——否则升级后自己的配置凭空消失)
   const [mcServerCfgUnlocked, setMcServerCfgUnlocked] = useState(() => {
@@ -867,7 +867,7 @@ export function SettingsView({
       }
     }
   };
-  const [mcBasicAuth, setMcBasicAuth] = useState(""); // 测试环境反代 Basic Auth("user:pass";重启应用生效)
+  const [mcBasicAuth, setMcBasicAuth] = useState(""); // 测试环境反代 Basic Auth("user:pass";保存后立即生效)
   const [mcLlmBaseUrl, setMcLlmBaseUrl] = useState(""); // 模型请求地址("" = {服务地址}/v1)
   const [wslDistros, setWslDistros] = useState<string[] | null>(null); // WSL 发行版列表(null=未加载)
   const [caps, setCaps] = useState<EngineCaps | null>(null); // 当前引擎能力(浏览器 tab 按此隐藏)
@@ -2041,8 +2041,8 @@ export function SettingsView({
           onSyncModels={() => void syncMcModels()}
           onLogoClick={onMcLogoClick}
         />
-        {/* 自建/私有化部署的服务地址(桌面壳在启动时构造云端服务,故重启生效;
-            浏览器模式配置只读,与模型页同门禁)。默认隐藏:连点上方卡图标
+        {/* 自建/私有化部署的服务地址保存后由桌面壳立即切换;
+            浏览器模式配置只读,与模型页同门禁。默认隐藏:连点上方卡图标
             6 次解锁;已配置过任一项恒可见 */}
         {desktop && (mcServerCfgUnlocked || !!(mcBaseUrl.trim() || mcBasicAuth.trim() || mcLlmBaseUrl.trim())) && (
           <div className="card card-lg" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2079,7 +2079,7 @@ export function SettingsView({
               />
             </Field>
             <span style={{ fontSize: 12, color: "var(--t5)", lineHeight: 1.7 }}>
-              指向自建/私有化 MonkeyCode 服务,保存后需<strong style={{ color: "var(--t3)" }}>重启应用</strong>生效。
+              指向自建/私有化 MonkeyCode 服务,保存后立即生效。
               环境变量 MC_DESKTOP_MONKEYCODE_URL 优先于地址设置。切换服务地址后需重新连接账号并重新同步会员模型;
               仅改模型请求地址无需重新同步。Basic Auth 对会员模型按其协议生效:anthropic 协议可用;openai 系
               协议因引擎以 Authorization 携带模型密钥而受限(模型请求地址绕开反代时无此限制)。

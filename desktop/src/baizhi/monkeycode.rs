@@ -497,10 +497,13 @@ pub async fn mc_upload(svc: &Service, filename: &str, data: Vec<u8>) -> BzResult
     if upload_url.is_empty() || access_url.is_empty() {
         return Err(other("预签名应答缺少上传/访问地址"));
     }
-    // 直传走长超时客户端:2MB 在慢速网络下可能贴近 30s 普通超时
+    // 直传走长超时客户端:2MB 在慢速网络下可能贴近 30s 普通超时。
+    // 预签名地址按主机路由:单机私有化部署对象存储常与主服务同域,
+    // 自签证书场景同样要免验证;独立 OSS 域则照常验证
+    let upload_url = reqwest::Url::parse(&upload_url).map_err(|e| other(format!("上传地址异常: {e}")))?;
     let resp = svc
-        .lp()?
-        .put(&upload_url)
+        .lp_for(&upload_url)?
+        .put(upload_url)
         .body(data)
         .send()
         .await
@@ -544,7 +547,7 @@ pub async fn mc_file_upload(svc: &Service, vm_id: &str, path: &str, data: Vec<u8
     let form = reqwest::multipart::Form::new()
         .part("file", reqwest::multipart::Part::bytes(data).file_name(filename));
     // 长超时客户端:10MB 在慢速网络下会贴近 30s 普通超时
-    let mut req = svc.lp()?.post(url.clone()).multipart(form);
+    let mut req = svc.lp_for(&url)?.post(url.clone()).multipart(form);
     if let Some(h) = svc.mc.header(&url) {
         req = req.header(reqwest::header::COOKIE, h);
     }
@@ -592,6 +595,15 @@ impl DownloadCtl {
 
 /// 进度事件节流间隔:够手感流畅,也不会让 IPC 事件刷屏。
 const DL_PROGRESS_EVERY: Duration = Duration::from_millis(150);
+
+/// 下载读等待的心跳间隔:把 stream.next() 的无限等待切成小段,每拍检查
+/// 取消旗标(否则取消只在块间生效,连接停摆时永远收不到下一块)。
+const DL_READ_TICK: Duration = Duration::from_secs(1);
+
+/// 连续无数据判连接停摆的上限。下载刻意不设总超时(大 zip 慢网会被掐,
+/// 见函数头注释),但 TCP 半开(切网/合盖休眠、NAT 静默丢映射)时流会
+/// 永久 pending:健康的流式 zip 不会整两分钟一个字节都不给。
+const DL_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// 从云端任务 VM 工作区下载文件/目录到本地(对齐 web 控制台文件树的
 /// "下载":GET /api/v1/users/files/download,目录由服务端打成 zip)。
@@ -649,11 +661,13 @@ async fn do_file_download(
         urlencode(filename)
     );
     let url = reqwest::Url::parse(&target).map_err(|e| other(format!("地址异常: {e}")))?;
-    let client = reqwest::Client::builder()
+    let mut cb = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|e| other(format!("HTTP 客户端构建失败: {e}")))?;
+        .connect_timeout(Duration::from_secs(15));
+    if svc.tls_insecure_for(&url) {
+        cb = cb.danger_accept_invalid_certs(true);
+    }
+    let client = cb.build().map_err(|e| other(format!("HTTP 客户端构建失败: {e}")))?;
     let mut req = client.get(url.clone());
     if let Some(h) = svc.mc.header(&url) {
         req = req.header(reqwest::header::COOKIE, h);
@@ -688,7 +702,31 @@ async fn do_file_download(
     let mut stream = resp.bytes_stream();
     let mut written: u64 = 0;
     let mut last_emit = Instant::now();
-    while let Some(chunk) = stream.next().await {
+    let mut idle = Duration::ZERO;
+    loop {
+        // StreamExt::next 可安全取消(未 Ready 不消费数据):select 心跳把
+        // 无限读等待切成 1s 小段,停摆的连接上取消旗标也能及时生效
+        let next = tokio::select! {
+            next = stream.next() => next,
+            _ = tokio::time::sleep(DL_READ_TICK) => {
+                idle += DL_READ_TICK;
+                if !cancel.load(Ordering::Relaxed) && idle < DL_IDLE_TIMEOUT {
+                    continue;
+                }
+                drop(file);
+                let _ = tokio::fs::remove_file(dest).await; // 残件不留
+                return if cancel.load(Ordering::Relaxed) {
+                    Err(other("下载已取消"))
+                } else {
+                    Err(other(format!(
+                        "下载中断: 连接停摆,连续 {}s 未收到数据",
+                        DL_IDLE_TIMEOUT.as_secs()
+                    )))
+                };
+            }
+        };
+        idle = Duration::ZERO;
+        let Some(chunk) = next else { break };
         if cancel.load(Ordering::Relaxed) {
             drop(file);
             let _ = tokio::fs::remove_file(dest).await; // 取消不留残件
@@ -973,6 +1011,78 @@ async fn mc_call(svc: &Service, method: reqwest::Method, path: &str, body: Optio
 
 // ==================== 云端 WS 桥 ====================
 
+/// 云端 WS 桥的 TLS connector:跳过证书验证生效且目标落在 mc 域时给
+/// 免验证 rustls 配置,否则 None(tungstenite 默认 webpki 验证)。
+fn ws_connector(svc: &Service, https_url: &str) -> Option<tokio_tungstenite::Connector> {
+    let url = reqwest::Url::parse(https_url).ok()?;
+    if !svc.tls_insecure_for(&url) {
+        return None;
+    }
+    insecure_rustls_config().map(tokio_tungstenite::Connector::Rustls)
+}
+
+/// 免验证 rustls 配置(进程内构建一次)。仅云端 WS 桥用——HTTP 侧
+/// reqwest 有内置 danger_accept_invalid_certs,不走这里。构建失败
+/// (密码学后端异常,实际不可达)返回 None,调用方退回默认验证
+/// connector:表现为证书错误,而不是把壳拖崩。
+fn insecure_rustls_config() -> Option<Arc<rustls::ClientConfig>> {
+    use std::sync::OnceLock;
+    static CFG: OnceLock<Option<Arc<rustls::ClientConfig>>> = OnceLock::new();
+    CFG.get_or_init(|| {
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let base = rustls::ClientConfig::builder_with_provider(Arc::clone(&provider))
+            .with_safe_default_protocol_versions()
+            .inspect_err(|e| eprintln!("[desktop] 免验证 TLS 配置构建失败: {e}"))
+            .ok()?;
+        Some(Arc::new(
+            base.dangerous()
+                .with_custom_certificate_verifier(Arc::new(NoCertVerify(provider)))
+                .with_no_client_auth(),
+        ))
+    })
+    .clone()
+}
+
+/// 放行一切服务器证书(私有化自签部署)。跳过的只是证书链与主机名校验,
+/// 握手签名验证照常执行,与 reqwest danger_accept_invalid_certs 同口径。
+#[derive(Debug)]
+struct NoCertVerify(Arc<rustls::crypto::CryptoProvider>);
+
+impl rustls::client::danger::ServerCertVerifier for NoCertVerify {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+        _server_name: &rustls::pki_types::ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls12_signature(message, cert, dss, &self.0.signature_verification_algorithms)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls13_signature(message, cert, dss, &self.0.signature_verification_algorithms)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.0.signature_verification_algorithms.supported_schemes()
+    }
+}
+
 enum PipeMsg {
     Text(String),
     Close,
@@ -1013,12 +1123,56 @@ impl CloudPipes {
         Ok(gen)
     }
 
+    fn claim_with_service(
+        &self,
+        bz: &super::BaizhiState,
+        pipe: &str,
+        tx: mpsc::UnboundedSender<PipeMsg>,
+    ) -> Result<(Arc<Service>, u64), String> {
+        bz.with_current_service(|current| {
+            let gen = self.claim(pipe, tx)?;
+            Ok((Arc::clone(current), gen))
+        })
+    }
+
+    pub(crate) fn close_all(&self) {
+        let entries = {
+            let mut map = self.pipes.lock_ok();
+            std::mem::take(&mut *map)
+        };
+        for entry in entries.into_values() {
+            let _ = entry.tx.send(PipeMsg::Close);
+        }
+    }
+
     /// 按代次摘除:仅当注册项仍是自己那一代才删——连接失败/转发任务收尾
     /// 只清理自己的占位,不碰后来者。
     fn remove_gen(&self, pipe: &str, gen: u64) {
         let mut map = self.pipes.lock_ok();
         if map.get(pipe).map(|e| e.gen) == Some(gen) {
             map.remove(pipe);
+        }
+    }
+}
+
+struct PipeReservation<'a> {
+    pipes: &'a CloudPipes,
+    pipe: String,
+    gen: u64,
+    active: bool,
+}
+
+impl PipeReservation<'_> {
+    fn commit(mut self) -> u64 {
+        self.active = false;
+        self.gen
+    }
+}
+
+impl Drop for PipeReservation<'_> {
+    fn drop(&mut self) {
+        if self.active {
+            self.pipes.remove_gen(&self.pipe, self.gen);
         }
     }
 }
@@ -1062,11 +1216,21 @@ pub async fn cloud_ws_open(
     if pipe.is_empty() || pipe.len() > 64 {
         return Err("pipe id 非法".into());
     }
-    let svc = &bz.0;
+    // 服务快照与管道占位共享 BaizhiState 锁,配置切换只能关闭完整的旧代次。
+    // 构建或连接失败时 reservation 自动撤销占位。
+    let (tx, mut rx) = mpsc::unbounded_channel::<PipeMsg>();
+    let (svc, my_gen) = pipes.claim_with_service(&bz, &pipe, tx)?;
+    let reservation = PipeReservation {
+        pipes: &pipes,
+        pipe: pipe.clone(),
+        gen: my_gen,
+        active: true,
+    };
+
     if svc.mc.is_empty() {
         return Err("MonkeyCode 会话缺失,请先在设置中连接 MonkeyCode 账号".into());
     }
-    let (https_url, ws_url) = pipe_urls(svc, &kind, &id, &params)?;
+    let (https_url, ws_url) = pipe_urls(&svc, &kind, &id, &params)?;
 
     let mut req = ws_url
         .clone()
@@ -1089,12 +1253,6 @@ pub async fn cloud_ws_open(
         }
     }
 
-    // 连接前先占位(检查+insert 同锁):并发的第二次 open 同名 pipe 立即
-    // 报错,而不是各自跨过 20s 连接窗口后互相覆盖/互删(TOCTOU)。
-    // 副作用是连接期间 cloud_ws_send 的帧会入队缓冲,连上后按序发出。
-    let (tx, mut rx) = mpsc::unbounded_channel::<PipeMsg>();
-    let my_gen = pipes.claim(&pipe, tx)?;
-
     // 读上限:云端工具输出帧可以很大(Go 侧代理为此把下行上限提到 32MB,
     // "默认 32KB 必炸");tungstenite 默认 max_frame_size 16MiB 不够,放宽到
     // 64MiB(消息级同步放宽),超限会断流并陷入重连循环
@@ -1105,25 +1263,29 @@ pub async fn cloud_ws_open(
     };
     let ws = match tokio::time::timeout(
         Duration::from_secs(20),
-        tokio_tungstenite::connect_async_with_config(req, Some(ws_config), false),
+        tokio_tungstenite::connect_async_tls_with_config(
+            req,
+            Some(ws_config),
+            false,
+            ws_connector(&svc, &https_url),
+        ),
     )
     .await
     {
         // 失败必须落壳日志:UI 只拿到 invoke 错误串,循环重连时无从追查;
-        // 并且要移除自己的占位(按代次,不误删期间 close+重开的新连接)
+        // reservation 会按代次移除自己的占位,不误删后来者。
         Err(_) => {
-            pipes.remove_gen(&pipe, my_gen);
             eprintln!("[desktop] 云端 WS({kind}) 连接超时 url={ws_url}");
             return Err("连接云端任务流超时".into());
         }
         Ok(Err(e)) => {
-            pipes.remove_gen(&pipe, my_gen);
             let msg = format!("连接云端任务流失败: {e}");
             eprintln!("[desktop] 云端 WS({kind}) {msg} url={ws_url}");
             return Err(msg);
         }
         Ok(Ok((ws, _))) => ws,
     };
+    let my_gen = reservation.commit();
 
     let pipe_id = pipe;
     let pid = pipe_id.clone();
@@ -1191,6 +1353,53 @@ pub async fn cloud_ws_close(pipes: State<'_, CloudPipes>, pipe: String) -> Resul
 #[cfg(test)]
 mod local_models_tests {
     use super::*;
+    use crate::baizhi::Endpoints;
+
+    #[test]
+    fn service_switch_closes_old_claim_without_closing_new_claim() {
+        let state = super::super::BaizhiState::new(Service::test_service(Endpoints {
+            account: "https://account.example.com".into(),
+            model_gateway: "https://models.example.com".into(),
+            mcp_gateway: "https://mcp.example.com".into(),
+            monkeycode: "https://old.example.com".into(),
+        }));
+        let pipes = CloudPipes::new();
+        let (old_tx, mut old_rx) = mpsc::unbounded_channel();
+        let (old, _) = pipes.claim_with_service(&state, "old", old_tx).unwrap();
+        assert_eq!(old.ep.monkeycode, "https://old.example.com");
+
+        let cfg = crate::config::DesktopConfig {
+            mc_base_url: "https://new.example.com".into(),
+            mc_basic_auth: "new-auth".into(),
+            ..Default::default()
+        };
+        let expected_monkeycode = Endpoints::resolve(&cfg.mc_base_url).monkeycode;
+        state.apply_config(&cfg, &pipes);
+        assert!(matches!(old_rx.try_recv(), Ok(PipeMsg::Close)));
+
+        let (new_tx, mut new_rx) = mpsc::unbounded_channel();
+        let (new, _) = pipes.claim_with_service(&state, "new", new_tx).unwrap();
+        assert_eq!(new.ep.monkeycode, expected_monkeycode);
+        assert!(matches!(new_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn close_all_disconnects_existing_cloud_pipes() {
+        let pipes = CloudPipes::new();
+        let (first_tx, mut first_rx) = mpsc::unbounded_channel();
+        let first_gen = pipes.claim("first", first_tx).unwrap();
+        let (second_tx, mut second_rx) = mpsc::unbounded_channel();
+        pipes.claim("second", second_tx).unwrap();
+
+        pipes.close_all();
+
+        assert!(matches!(first_rx.try_recv(), Ok(PipeMsg::Close)));
+        assert!(matches!(second_rx.try_recv(), Ok(PipeMsg::Close)));
+        let (replacement_tx, _replacement_rx) = mpsc::unbounded_channel();
+        let replacement_gen = pipes.claim("first", replacement_tx).unwrap();
+        pipes.remove_gen("first", first_gen);
+        assert_eq!(pipes.pipes.lock_ok().get("first").map(|entry| entry.gen), Some(replacement_gen));
+    }
 
     #[test]
     fn interface_type_vocabulary_pinned() {

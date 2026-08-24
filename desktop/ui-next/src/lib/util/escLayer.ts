@@ -22,7 +22,8 @@ const stack: EscHandler[] = [];
 let installed = false;
 
 function onKey(e: KeyboardEvent): void {
-  if (e.key !== "Escape") return;
+  // 组合输入期间 Esc 属于候选词/输入法，不得顺手关闭浮层。
+  if (e.key !== "Escape" || e.isComposing) return;
   // 自顶向下:上层可以"在场但放行"(如视图层让位给自己开着的浮层)
   for (let i = stack.length - 1; i >= 0; i--) {
     if (stack[i]!()) {

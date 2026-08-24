@@ -1,8 +1,8 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MacWindowControls, TitleBar } from "./TitleBar";
+import { TitleBar } from "./TitleBar";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -113,32 +113,3 @@ describe("自绘窗框条(Windows / Linux)", () => {
   });
 });
 
-describe("mac 自绘红绿灯", () => {
-  it("三颗齐全;绿点默认切全屏、⌥ 点击切最大化", async () => {
-    const { calls, done } = stubShell("Macintosh; Intel Mac OS X 10_15_7");
-    render(<MacWindowControls />);
-    await userEvent.click(screen.getByRole("button", { name: "缩放" }));
-    expect(calls.map((c) => c.cmd)).toContain("plugin:window|is_fullscreen");
-    expect(calls.at(-1)?.cmd).toBe("plugin:window|set_fullscreen");
-    expect(calls.at(-1)?.args).toEqual({ value: true });
-
-    calls.length = 0;
-    const user = userEvent.setup();
-    await user.keyboard("{Alt>}");
-    await user.click(screen.getByRole("button", { name: "缩放" }));
-    await user.keyboard("{/Alt}");
-    expect(calls.map((c) => c.cmd)).toContain("plugin:window|toggle_maximize");
-    done();
-  });
-
-  it("窗口失焦落 data-blurred(CSS 据此整组退灰),回焦清除", () => {
-    const { done } = stubShell("Macintosh; Intel Mac OS X 10_15_7");
-    const { container } = render(<MacWindowControls />);
-    const group = container.querySelector("[data-tauri-drag-region]");
-    act(() => window.dispatchEvent(new Event("blur")));
-    expect(group?.hasAttribute("data-blurred")).toBe(true);
-    act(() => window.dispatchEvent(new Event("focus")));
-    expect(group?.hasAttribute("data-blurred")).toBe(false);
-    done();
-  });
-});

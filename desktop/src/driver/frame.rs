@@ -138,8 +138,11 @@ pub fn task_ended(seq: u64) -> Value {
     build("task-ended", None, None, seq)
 }
 
-pub fn task_error(msg: &str, seq: u64) -> Value {
-    build("task-error", None, Some(json!({ "error": msg })), seq)
+/// 引擎已报告错误/告警，但轮次尚未以 turn/stopped 权威收尾。沿用
+/// task-error 的展示词汇并显式标 terminal=false，让新 UI 保持 running；
+/// 缺字段的旧帧仍按历史语义视为终止，云端拒绝帧不受影响。
+pub fn task_error_pending(msg: &str, seq: u64) -> Value {
+    build("task-error", None, Some(json!({ "error": msg, "terminal": false })), seq)
 }
 
 /// 用户输入回显(content 为 base64 文本,与云端上行格式一致)。
@@ -255,10 +258,29 @@ pub fn compact_status(status: &str, seq: u64) -> Value {
     acp(json!({ "sessionUpdate": "compact_status", "status": status }), seq)
 }
 
-/// 后台子代理完成通知(📌):独立系统行。不复用 agent_text——它会被
-/// reduce.ts 并进正在流式的模型正文气泡,通知与模型的话混作一团。
-pub fn task_note(text: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "task_notification", "text": text }), seq)
+/// 后台代理完成通知。结果正文保持结构化字段，避免混入助手正文气泡；
+/// text 只承载列表态可直接展示的简短摘要。
+pub fn background_result(
+    agent_id: &str,
+    agent_name: &str,
+    description: &str,
+    status: &str,
+    result: &str,
+    text: &str,
+    seq: u64,
+) -> Value {
+    acp(
+        json!({
+            "sessionUpdate": "task_notification",
+            "agentId": agent_id,
+            "agentName": agent_name,
+            "description": description,
+            "status": status,
+            "result": result,
+            "text": text,
+        }),
+        seq,
+    )
 }
 
 pub fn model_update(model: &str, seq: u64) -> Value {
