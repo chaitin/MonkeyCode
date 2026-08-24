@@ -380,7 +380,8 @@ function HeaderAction({
 export default function TerminalNativePage() {
   const { auth, serverConfig } = useAppRuntime();
   const isLoggedIn = auth.status === "authenticated";
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isEnglish = i18n.language === "en";
   const pricingRegion = getPricingRegion(serverConfig?.region);
   const [openFaq, setOpenFaq] = React.useState(0);
   const [billingPeriod, setBillingPeriod] = React.useState<BillingPeriod>("monthly");
@@ -444,7 +445,10 @@ export default function TerminalNativePage() {
                   <span>Monkey</span>
                   <span className="text-[var(--a-accent)] [text-shadow:0_0_24px_rgba(124,242,156,0.35)]">Code</span>
                 </h1>
-                <p className="mt-4 max-w-[540px] text-2xl font-medium leading-[1.08] tracking-[-0.03em] text-[var(--a-fg)] sm:text-[30px]">
+                <p className={cn(
+                  "mt-4 max-w-[540px] text-2xl font-medium leading-[1.08] tracking-[-0.03em] text-[var(--a-fg)] sm:text-[30px]",
+                  isEnglish && "sm:max-w-[620px] sm:text-[28px] lg:max-w-[680px] lg:whitespace-nowrap",
+                )}>
                   {t("terminalNative.hero.tagline")}
                 </p>
                 <p className="mt-5 max-w-[540px] text-sm leading-8 text-[var(--a-fg-dim)] sm:text-[15px]">
@@ -455,6 +459,10 @@ export default function TerminalNativePage() {
                   <HeaderAction to="/console" primary>
                     <IconArrowRight className="size-4" />
                     <span>{t("terminalNative.actions.start")}</span>
+                  </HeaderAction>
+                  <HeaderAction href="#desktop-client">
+                    <IconArrowRight className="size-4" />
+                    <span>{t("terminalNative.actions.desktopClient")}</span>
                   </HeaderAction>
                   <HeaderAction href="#mobile-client">
                     <IconArrowRight className="size-4" />

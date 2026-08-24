@@ -2101,12 +2101,13 @@ const en = {
   },
   terminalNative: {
     hero: {
-      tagline: "Online AI development platform",
-      description: "Use it for free with no installation. MonkeyCode includes a cloud development environment and broad support for leading models. Whether you are building projects, researching, writing docs, analyzing data, or handling tasks, open the browser and let AI keep the work moving.",
+      tagline: "The all-in-one AI platform for work & code",
+      description: "Start working right in the browser, with research, writing, development, and task execution flowing from the same workspace. When work needs local code, files, or runtime environments, hand it to MonkeyWork for continuous execution, keep up from mobile, and deploy privately inside the enterprise when needed.",
     },
     actions: {
       start: "Get started",
-      mobileClient: "Mobile client",
+      desktopClient: "Desktop app",
+      mobileClient: "Mobile app",
     },
     features: {
       title: "Features",

@@ -57,13 +57,18 @@ test("语言 cookie 只接受 cn 和 en", () => {
 });
 
 test("合法 language cookie 优先于浏览器语言", () => {
-  assert.equal(resolveInitialLanguage("cn", "en-US"), "cn");
-  assert.equal(resolveInitialLanguage("en", "zh-CN"), "en");
+  assert.equal(resolveInitialLanguage(undefined, "cn", "en-US"), "cn");
+  assert.equal(resolveInitialLanguage(undefined, "en", "zh-CN"), "en");
 });
 
 test("缺失或非法 language cookie 时根据浏览器语言重新初始化", () => {
-  assert.equal(resolveInitialLanguage(undefined, "zh-CN"), "cn");
-  assert.equal(resolveInitialLanguage("zh-CN", "en-US"), "en");
+  assert.equal(resolveInitialLanguage(undefined, undefined, "zh-CN"), "cn");
+  assert.equal(resolveInitialLanguage(undefined, "zh-CN", "en-US"), "en");
+});
+
+test("合法 lang 查询参数优先于 cookie 和浏览器语言", () => {
+  assert.equal(resolveInitialLanguage("cn", "en", "en-US"), "cn");
+  assert.equal(resolveInitialLanguage("en", "cn", "zh-CN"), "en");
 });
 
 test("浏览器首选语言是中文时命中 cn", () => {
