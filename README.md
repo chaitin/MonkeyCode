@@ -30,26 +30,26 @@ MonkeyCode is an open-source **enterprise-grade AI development platform** with b
 <table>
   <tr>
     <td align="center">
-      <img src="./frontend/public/monkeycode-1.png" alt="MonkeyCode AI task workspace" />
+      <img src="./frontend/public/monkeycode-1-en.webp" alt="MonkeyCode AI task workspace" />
       <br />
       <sub>AI Task Workspace</sub>
     </td>
     <td align="center">
-      <img src="./frontend/public/monkeycode-2.png" alt="MonkeyCode cloud terminal and task execution" />
+      <img src="./frontend/public/monkeycode-2-en.webp" alt="MonkeyCode cloud terminal and task execution" />
       <br />
       <sub>Cloud Terminal and Task Execution</sub>
     </td>
   </tr>
   <tr>
     <td align="center">
-      <img src="./frontend/public/monkeycode-3.png" alt="MonkeyCode project collaboration and file management" />
+      <img src="./frontend/public/monkeycode-3-en.webp" alt="MonkeyCode project collaboration and file management" />
       <br />
       <sub>Project Collaboration and File Management</sub>
     </td>
     <td align="center">
-      <img src="./frontend/public/monkeycode-mobile.png" alt="MonkeyCode mobile task and file management" />
+      <img src="./frontend/public/monkeycode-mobile-en.svg" alt="MonkeyCode mobile task and file management in English" />
       <br />
-      <sub>Mobile Task and File Management</sub>
+      <sub>Mobile Task and File Management / English Mockup</sub>
     </td>
   </tr>
 </table>
