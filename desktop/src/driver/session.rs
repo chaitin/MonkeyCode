@@ -409,6 +409,9 @@ pub(super) struct SessionState {
     pub(super) cancel_requested_turn: Option<u64>,
     /// 本进程内已 session/create(resume)过
     pub(super) created: bool,
+    /// session/create(resume) 已发出、尚未完成。与 created 一起在 sessions
+    /// 锁内判定和占位，避免冷启动的多个 session_open 重复恢复同一会话。
+    pub(super) resuming: bool,
     /// 引擎侧会话 id(通常 == 壳 sid。恢复/重建一律按原 id resume
     /// (materialize_skills 确保 transcript),正常不再换绑;仅引擎回显
     /// 异常 id 的守卫路径会更新此别名——壳 sid/目录/UI 通道恒不变。
@@ -444,6 +447,7 @@ pub(super) struct SessionState {
 /// pending_perms、perm_tools(均 StdMutex)。
 /// 加锁秩序(评审梳理,不得反向):
 /// - sessions → batch:push_frame 在 sessions 锁内投递 journal 并入缓冲;
+/// - sessions → resume:session_open 原子登记恢复占位与完成广播;
 /// - sidecar_write 只包围独立的小文件事务，不与其他状态锁嵌套;
 /// - pending_perms → pending_questions:sessions_list 的 waiting 快照;
 /// - perm_remember/perm_tools 点状取放,不与其他锁嵌套;
@@ -786,6 +790,7 @@ impl OhmyDriver {
                 pending_steer_echoes: VecDeque::new(),
                 cancel_requested_turn: None,
                 created: true,
+                resuming: false,
                 engine_id: sid.clone(),
                 opened: false,
                 open_tools: HashMap::new(),
@@ -831,14 +836,14 @@ impl OhmyDriver {
     /// "监听先于命令"那条约束对历史部分自然消失(实时流仍走事件,契约不变)。
     pub async fn session_open(&self, id: &str) -> Result<Value, String> {
         check_session_id(id)?;
-        let need_create = {
+        let need_resume = {
             let sessions = self.0.sess.sessions.lock_ok();
-            !sessions.get(id).map(|s| s.created).unwrap_or(false)
+            sessions.get(id).map(|s| !s.created && !s.resuming).unwrap_or(true)
         };
         // 恢复期间上行的 user-input 不能在 seq 水位恢复前编号(会从 0 重编、
         // 与旧帧撞号,大纲随之两点同亮/跳错):就绪宣告闸在水位恢复之后。
         let mut seq_gate: Option<tokio::sync::oneshot::Sender<()>> = None;
-        if need_create {
+        if need_resume {
             let meta = self.read_sidecar(id);
             let is_child =
                 meta.get("parent").and_then(|v| v.as_str()).map(|p| !p.is_empty()).unwrap_or(false);
@@ -851,6 +856,9 @@ impl OhmyDriver {
             // 先登记会话态(零 RPC):push_frame 有落点、replay_open 查得到
             // fold/running,后台 resume 也要靠它回写 engine_id。
             // 子代理子会话是壳侧实体(仅回放),created 直接为真、不向引擎 resume。
+            let (resume_tx, resume_rx) = tokio::sync::watch::channel::<Option<Result<(), String>>>(None);
+            let (gate_tx, gate_rx) = tokio::sync::oneshot::channel::<()>();
+            let mut start_resume = false;
             {
                 let mut sessions = self.0.sess.sessions.lock_ok();
                 let entry = sessions.entry(id.to_string()).or_insert(SessionState {
@@ -865,6 +873,7 @@ impl OhmyDriver {
                     pending_steer_echoes: VecDeque::new(),
                     cancel_requested_turn: None,
                     created: is_child,
+                    resuming: false,
                     engine_id: engine_id.clone(),
                     opened: false,
                     open_tools: HashMap::new(),
@@ -880,12 +889,18 @@ impl OhmyDriver {
                 entry.engine_id = engine_id.clone();
                 if is_child {
                     entry.created = true;
+                } else if !entry.created && !entry.resuming {
+                    // 与上方快速判断之间可能有另一个 session_open 抢先。
+                    // 在同一把 sessions 锁内复检并占位，只有赢家登记 watch
+                    // 和发出 session/create；后来者复用这一个恢复结果。
+                    entry.resuming = true;
+                    self.0.sess.resume.lock_ok().insert(id.to_string(), resume_rx);
+                    start_resume = true;
                 }
             }
-            if !is_child {
-                let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-                seq_gate = Some(tx);
-                self.spawn_resume(id, meta, engine_id, rx);
+            if start_resume {
+                seq_gate = Some(gate_tx);
+                self.spawn_resume(id, meta, engine_id, resume_tx, gate_rx);
             }
         }
         // 磁盘读与 flush 屏障都在阻塞线程上做,不占 tokio 运行时;
@@ -938,10 +953,13 @@ impl OhmyDriver {
         id: &str,
         meta: Value,
         engine_id: String,
+        tx: tokio::sync::watch::Sender<Option<Result<(), String>>>,
         seq_gate: tokio::sync::oneshot::Receiver<()>,
     ) {
-        let (tx, rx) = tokio::sync::watch::channel::<Option<Result<(), String>>>(None);
-        self.0.sess.resume.lock_ok().insert(id.to_string(), rx);
+        // 通道身份就是本次恢复的代次 token。会话可能在本任务最后一个 await
+        // 期间被删除并以同 ID 重建；收尾时只有仍占有 resume 表槽位的任务
+        // 才能修改 SessionState，避免旧任务清掉新恢复的 resuming。
+        let owner = tx.subscribe();
         let me = self.clone();
         let sid = id.to_string();
         tauri::async_runtime::spawn(async move {
@@ -950,6 +968,17 @@ impl OhmyDriver {
                 Ok(()) => json!({ "text": "已连接", "connected": true }),
                 Err(e) => json!({ "text": format!("⚠ 会话恢复失败: {e}"), "connected": false }),
             };
+            {
+                let mut sessions = me.0.sess.sessions.lock_ok();
+                let resumes = me.0.sess.resume.lock_ok();
+                let still_owner =
+                    resumes.get(&sid).is_some_and(|current| current.same_channel(&owner));
+                if still_owner {
+                    if let Some(session) = sessions.get_mut(&sid) {
+                        session.resuming = false;
+                    }
+                }
+            }
             let _ = tx.send(Some(r));
             me.0.app.emit_json(&format!("conn-status:{sid}"), status);
         });

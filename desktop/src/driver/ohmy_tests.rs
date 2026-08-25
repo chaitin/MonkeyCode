@@ -1137,6 +1137,7 @@ fn bare_session(sid: &str) -> SessionState {
         pending_steer_echoes: Default::default(),
         cancel_requested_turn: None,
         created: true,
+        resuming: false,
         engine_id: sid.to_string(),
         opened: false,
         open_tools: HashMap::new(),
@@ -1149,6 +1150,123 @@ fn bare_session(sid: &str) -> SessionState {
         title: String::new(),
         fold: Default::default(),
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_session_open_reuses_one_inflight_resume() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("open-resume-dedup");
+    let workdir = std::env::temp_dir().to_string_lossy().into_owned();
+    inner.write_sidecar("s1", |meta| {
+        meta["workdir"] = json!(workdir);
+        meta["mode"] = json!("default");
+    });
+    let driver = OhmyDriver(inner.clone());
+
+    let first_driver = driver.clone();
+    let first = tokio::spawn(async move { first_driver.session_open("s1").await });
+    let request: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(1), stdin_rx.recv())
+            .await
+            .expect("首个 resume RPC 未发出")
+            .expect("RPC 出站通道关闭")
+            .expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(request["method"], "session/create");
+
+    // 首个 create 尚未应答时再次打开同一会话。第二次 open 可以独立完成
+    // 回放，但不得覆盖 resume watch 或再发一个 session/create。
+    let second_driver = driver.clone();
+    let second = tokio::spawn(async move { second_driver.session_open("s1").await });
+    first.await.unwrap().expect("第一次打开");
+    second.await.unwrap().expect("第二次打开");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), stdin_rx.recv()).await.is_err(),
+        "并发 session_open 重复发出了 resume RPC"
+    );
+
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "session_id": "s1" } }),
+    );
+    tokio::time::timeout(Duration::from_secs(1), driver.ensure_engine_ready("s1"))
+        .await
+        .expect("等待恢复超时")
+        .expect("恢复失败");
+    let sessions = inner.sess.sessions.lock().unwrap();
+    let session = sessions.get("s1").expect("会话状态");
+    assert!(session.created);
+    assert!(!session.resuming);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn stale_resume_completion_does_not_clear_replacement_session() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("resume-generation");
+    let workdir = std::env::temp_dir().to_string_lossy().into_owned();
+    inner.write_sidecar("s1", |meta| {
+        meta["workdir"] = json!(workdir);
+        meta["mode"] = json!("default");
+        meta["think"] = json!("high");
+    });
+    let driver = OhmyDriver(inner.clone());
+
+    let open_driver = driver.clone();
+    let open = tokio::spawn(async move { open_driver.session_open("s1").await });
+    let create_request: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(1), stdin_rx.recv())
+            .await
+            .expect("resume RPC 未发出")
+            .expect("RPC 出站通道关闭")
+            .expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    open.await.unwrap().expect("打开会话");
+    let mut old_resume = inner
+        .sess
+        .resume
+        .lock()
+        .unwrap()
+        .get("s1")
+        .cloned()
+        .expect("旧恢复 watch");
+    answer_rpc(
+        &inner,
+        &create_request,
+        json!({ "jsonrpc": "2.0", "id": create_request["id"], "result": { "session_id": "s1" } }),
+    );
+    let think_request: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(1), stdin_rx.recv())
+            .await
+            .expect("思考档位 RPC 未发出")
+            .expect("RPC 出站通道关闭")
+            .expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(think_request["method"], "session/setThinking");
+
+    // 模拟恢复 A 在最后一个 await 期间，会话被删除并以同 ID 启动恢复 B。
+    // B 的 watch 身份不同；A 的迟到收尾不得修改 B 的 SessionState。
+    let mut replacement = bare_session("s1");
+    replacement.running = false;
+    replacement.created = false;
+    replacement.resuming = true;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), replacement);
+    let (_replacement_tx, replacement_rx) =
+        tokio::sync::watch::channel::<Option<Result<(), String>>>(None);
+    inner.sess.resume.lock().unwrap().insert("s1".into(), replacement_rx);
+
+    answer_rpc(
+        &inner,
+        &think_request,
+        json!({ "jsonrpc": "2.0", "id": think_request["id"], "result": {} }),
+    );
+    tokio::time::timeout(Duration::from_secs(1), old_resume.changed())
+        .await
+        .expect("旧恢复未完成")
+        .expect("旧恢复 watch 意外关闭");
+    let sessions = inner.sess.sessions.lock().unwrap();
+    assert!(sessions.get("s1").expect("替代会话").resuming);
 }
 
 #[test]
