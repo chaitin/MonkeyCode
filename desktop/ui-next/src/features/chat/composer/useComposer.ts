@@ -152,8 +152,11 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   const [uploads, setUploads] = useState<ComposerUpload[]>([]);
   const [error, setError] = useState<string | null>(null);
   // 上行在途:user-input 发出到回执/开轮之间再发必须入队,否则第二条直发
-  // 会被壳的忙碌守卫拒掉
+  // 会被壳的忙碌守卫拒掉。baseline 防同一 render 的迟到 passive effect
+  // 清掉用户在 commit 后刚建立的新发送锁。
   const sendingRef = useRef(false);
+  const sendingBaselineSeqRef = useRef<number | null>(null);
+  const directSendTokenRef = useRef<object | null>(null);
   // 排队补投失败后的抑制闸:防「失败→回队→effect 立即重投」空转,
   // 新帧到达/running 变化/退避到点/用户再次发送时解除
   const flushBlockedRef = useRef(false);
@@ -179,6 +182,12 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     window.clearTimeout(retryTimer.current);
     retryTimer.current = 0;
     retryStep.current = 0;
+  }, []);
+  const clearSendingIfProgressed = useCallback((seq: number, force = false) => {
+    const baseline = sendingBaselineSeqRef.current;
+    if (!force && baseline !== null && seq <= baseline) return;
+    sendingRef.current = false;
+    sendingBaselineSeqRef.current = null;
   }, []);
   const scheduleRetry = useCallback(() => {
     const delay = FLUSH_RETRY_MS[retryStep.current];
@@ -224,6 +233,8 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     setError(null);
     setStateSid(sessionId); // 与上面几个 setState 同批提交:补投 effect 据此放行
     sendingRef.current = false;
+    sendingBaselineSeqRef.current = null;
+    directSendTokenRef.current = null;
     flushBlockedRef.current = false;
     clearRetry();
     previousRunningRef.current = currentRunningRef.current;
@@ -341,6 +352,9 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
 
     const text = [content, ...atts.map(attLine)].filter(Boolean).join("\n");
     sendingRef.current = true;
+    sendingBaselineSeqRef.current = lastSeq;
+    const sendToken = {};
+    directSendTokenRef.current = sendToken;
     const forSid = sessionId;
     const prevDraft = draft;
     const prevAtts = atts;
@@ -348,7 +362,6 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     setAtts([]);
     // 成功路径不摘 sendingRef：必须等帧水位或开轮信号。
     void sessionSend(forSid, "user-input", { content: b64encode(text) }).catch((e: unknown) => {
-      sendingRef.current = false;
       if (activeRef.current !== forSid) {
         const prev = stashGet(forSid);
         stashSet(forSid, {
@@ -356,6 +369,10 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
           atts: prev?.atts.length ? prev.atts : prevAtts,
         });
         return;
+      }
+      if (directSendTokenRef.current === sendToken) {
+        sendingRef.current = false;
+        sendingBaselineSeqRef.current = null;
       }
       setDraft((cur) => cur || prevDraft);
       setAtts((cur) => (cur.length ? cur : prevAtts));
@@ -373,6 +390,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     notifyError,
     clearRetry,
     updateQueue,
+    lastSeq,
   ]);
 
   // 开轮水位确认上行已物化；终态水位只有晚于同一开轮时才收掉隐藏
@@ -380,7 +398,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   // Promise resolve 本身不摘 in-flight，避免 ack 与首帧之间的真空连投。
   useEffect(() => {
     if (!historyLoaded || !composerReady) return;
-    sendingRef.current = false;
+    clearSendingIfProgressed(lastSeq);
     flushBlockedRef.current = false;
     clearRetry();
     updateQueue((lane) => {
@@ -405,6 +423,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     lastTurnStartSeq,
     lastTerminalSeq,
     clearRetry,
+    clearSendingIfProgressed,
     updateQueue,
   ]);
 
@@ -416,7 +435,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     }
     const wasRunning = previousRunningRef.current;
     previousRunningRef.current = running;
-    sendingRef.current = false;
+    clearSendingIfProgressed(lastSeq, running);
     flushBlockedRef.current = false;
     clearRetry();
     updateQueue((lane) => {
@@ -427,7 +446,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       if (!running) next = releaseEmptyUserPause(next);
       return next;
     });
-  }, [running, historyLoaded, composerReady, clearRetry, updateQueue]);
+  }, [running, historyLoaded, composerReady, lastSeq, clearRetry, clearSendingIfProgressed, updateQueue]);
 
   // 空闲时原子领取一个队首并投递；领取先落持久化，失败同 ID 回队首且阻塞。
   useEffect(() => {
@@ -454,6 +473,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     const itemId = claimed.item.id;
     const text = queuedText(claimed.item);
     sendingRef.current = true;
+    sendingBaselineSeqRef.current = claimed.baselineSeq ?? lastSeq;
     queueDispatchRef.current.set(forSid, itemId);
     void sessionSend(forSid, "user-input", { content: b64encode(text) }).then(
       () => {
@@ -471,6 +491,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
         );
         if (activeRef.current === forSid) {
           sendingRef.current = false;
+          sendingBaselineSeqRef.current = null;
           flushBlockedRef.current = true;
           notifyError(e instanceof Error ? e.message : String(e));
           scheduleRetry();

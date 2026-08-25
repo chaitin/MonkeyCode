@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { useLayoutEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { b64decode } from "@/lib/protocol/codec";
@@ -439,6 +440,35 @@ describe("useComposer 本地持久 lane", () => {
     expect(result.current.queue.blocked).toBeNull();
   });
 
+  it("task-ended 后 layout 阶段直发不会被迟到 effect 清除发送锁", async () => {
+    const calls = stubShell();
+    const { result, rerender } = renderHook(
+      ({ running, sendInLayout }) => {
+        const ctl = useComposer("a", feed({ running, lastSeq: 7 }));
+        const sentInLayoutRef = useRef(false);
+        useLayoutEffect(() => {
+          if (!sendInLayout || sentInLayoutRef.current) return;
+          sentInLayoutRef.current = true;
+          ctl.send();
+        }, [ctl, sendInLayout]);
+        return ctl;
+      },
+      { initialProps: { running: true, sendInLayout: false } },
+    );
+
+    act(() => result.current.stop());
+    act(() => result.current.setDraft("第一条"));
+    rerender({ running: false, sendInLayout: true });
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(1);
+
+    act(() => result.current.setDraft("第二条"));
+    act(() => result.current.send());
+    await settle();
+
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(1);
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["第二条"]);
+  });
+
   it("用户主动停止会暂停剩余队列，新增消息不解锁，显式继续才补投", async () => {
     const calls = stubShell();
     const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
@@ -740,6 +770,63 @@ describe("useComposer 本地持久 lane", () => {
     await act(async () => rejectSend(new Error("down")));
     expect(result.current.draft).toBe("");
     expect(stashGet("a")?.draft).toBe("迟到的话");
+  });
+
+  it("A→B→A 后旧直发失败不会清除新发送锁", async () => {
+    const rejectors: Array<(error: Error) => void> = [];
+    const calls = stubShell((cmd) => {
+      if (cmd === "session_send") return new Promise((_, reject) => rejectors.push(reject));
+      return null;
+    });
+    const { result, rerender } = renderHook(({ id }) => useComposer(id, feed({ lastSeq: 9 })), {
+      initialProps: { id: "a" },
+    });
+
+    act(() => result.current.setDraft("旧 A"));
+    act(() => result.current.send());
+    rerender({ id: "b" });
+    rerender({ id: "a" });
+    await settle();
+
+    act(() => result.current.setDraft("新 A"));
+    act(() => result.current.send());
+    expect(rejectors).toHaveLength(2);
+
+    await act(async () => rejectors[0]!(new Error("old failure")));
+    expect(result.current.draft).toBe("旧 A");
+    act(() => result.current.setDraft("第三条"));
+    act(() => result.current.send());
+    await settle();
+
+    expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(2);
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["第三条"]);
+  });
+
+  it("同会话旧直发失败恢复的草稿可跨后续切换保留", async () => {
+    const rejectors: Array<(error: Error) => void> = [];
+    stubShell((cmd) => {
+      if (cmd === "session_send") return new Promise((_, reject) => rejectors.push(reject));
+      return null;
+    });
+    const { result, rerender } = renderHook(({ id }) => useComposer(id, feed({ lastSeq: 9 })), {
+      initialProps: { id: "a" },
+    });
+
+    act(() => result.current.setDraft("旧 A"));
+    act(() => result.current.send());
+    rerender({ id: "b" });
+    rerender({ id: "a" });
+    await settle();
+    act(() => result.current.setDraft("新 A"));
+    act(() => result.current.send());
+
+    await act(async () => rejectors[0]!(new Error("old failure")));
+    expect(result.current.draft).toBe("旧 A");
+    rerender({ id: "b" });
+    rerender({ id: "a" });
+    await settle();
+
+    expect(result.current.draft).toBe("旧 A");
   });
 
   it("队列投递失败时已切会话：按原 sid/item id 回队，不污染当前 lane", async () => {
