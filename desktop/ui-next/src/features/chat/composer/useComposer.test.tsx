@@ -9,6 +9,7 @@ import {
   emptySendQueueLane,
   enqueue,
   localSendQueueTarget,
+  pausePending,
   readSendQueueLane,
   resetSendQueueMemoryForTests,
   writeSendQueueLane,
@@ -173,6 +174,26 @@ describe("useComposer 本地持久 lane", () => {
     );
     await waitFor(() => expect(result.current.queue.steering).toEqual([]));
     expect(JSON.parse(localStorage.getItem("mc.sendQueue.v1.local.a") ?? "null").steering).toEqual([]);
+  });
+
+  it("迟到 steering 确认清空 outbox 后释放空取消屏障", async () => {
+    const target = localSendQueueTarget("a");
+    const item = createSendQueueItem("迟到确认", [], { id: "late-steering", createdAt: 1 });
+    let lane = ackSteering(claimSteering(enqueue(emptySendQueueLane(), item), item.id, 10), item.id);
+    lane = pausePending(lane, 11);
+    writeSendQueueLane(target, lane);
+
+    stubShell((cmd) => cmd === "engine_caps" ? { steering: true } : null);
+    const { result, rerender } = renderHook(
+      ({ confirmations }) => useComposer("a", feed({ running: false, steerConfirmations: confirmations })),
+      { initialProps: { confirmations: {} as ComposerFeed["steerConfirmations"] } },
+    );
+    await waitFor(() => expect(result.current.queue.steering?.[0]?.phase).toBe("uncertain"));
+    expect(result.current.queue.blocked?.code).toBe("user-paused");
+
+    rerender({ confirmations: { [item.id]: 30 } });
+    await waitFor(() => expect(result.current.queue.steering).toEqual([]));
+    await waitFor(() => expect(result.current.queue.blocked).toBeNull());
   });
 
   it("ACK 后 task end 无 confirmed 转 uncertain，并阻止后续 pending 自动越过", async () => {
@@ -396,7 +417,7 @@ describe("useComposer 本地持久 lane", () => {
     expect(sentText(sends(calls)[2]!)).toBe("三");
   });
 
-  it("停止时队列为空也保持粘性暂停，轮末后新增消息仍不会直接发送", async () => {
+  it("空队列取消完成后下一条消息正常直发", async () => {
     const calls = stubShell();
     const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
       initialProps: { running: true },
@@ -405,15 +426,17 @@ describe("useComposer 本地持久 lane", () => {
     act(() => result.current.stop());
     expect(result.current.queue.blocked?.code).toBe("user-paused");
     rerender({ running: false });
-    await settle();
+    await waitFor(() => expect(result.current.queue.blocked).toBeNull());
 
     act(() => result.current.setDraft("取消后新增"));
     act(() => result.current.send());
-    await settle();
 
-    expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(0);
-    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["取消后新增"]);
-    expect(result.current.queue.blocked?.code).toBe("user-paused");
+    await waitFor(() =>
+      expect(sends(calls).filter((call) => call.args?.ftype === "user-input")).toHaveLength(1),
+    );
+    expect(sentText(sends(calls).find((call) => call.args?.ftype === "user-input")!)).toBe("取消后新增");
+    expect(result.current.queue.pending).toEqual([]);
+    expect(result.current.queue.blocked).toBeNull();
   });
 
   it("用户主动停止会暂停剩余队列，新增消息不解锁，显式继续才补投", async () => {
@@ -565,14 +588,14 @@ describe("useComposer 本地持久 lane", () => {
     expect(sends(calls)).toHaveLength(0);
   });
 
-  it("空队列的暂停屏障不把 /compact 误判为任务执行中", async () => {
+  it("空队列取消完成后 /compact 正常执行", async () => {
     const calls = stubShell();
     const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
       initialProps: { running: true },
     });
     act(() => result.current.stop());
     rerender({ running: false });
-    expect(result.current.queue).toMatchObject({ pending: [], inFlight: null, blocked: { code: "user-paused" } });
+    expect(result.current.queue).toMatchObject({ pending: [], inFlight: null, blocked: null });
 
     act(() => result.current.setDraft("/compact"));
     act(() => expect(result.current.send()).toBe(true));

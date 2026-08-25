@@ -32,6 +32,7 @@ import {
   pausePending,
   readSendQueueLane,
   recoverLaneAfterRestart,
+  releaseEmptyUserPause,
   remove,
   reorderBefore,
   resetSendQueueMemoryForTests,
@@ -283,13 +284,19 @@ describe("send queue pure transitions", () => {
     expect(claimHead(confirmResume(completed), { startedAt: 102 }).inFlight?.item.id).toBe("next");
   });
 
-  it("空队列取消也保持粘性暂停，后续入队不能自动补投", () => {
+  it("轮末只释放空队列的取消屏障", () => {
     const pausedEmpty = pausePending(emptySendQueueLane<string>(), 101);
-    expect(pausedEmpty.blocked?.code).toBe("user-paused");
+    expect(releaseEmptyUserPause(pausedEmpty).blocked).toBeNull();
 
-    const queuedAfterCancel = enqueue(pausedEmpty, item("late"));
-    expect(queuedAfterCancel.blocked?.code).toBe("user-paused");
-    expect(claimHead(queuedAfterCancel)).toBe(queuedAfterCancel);
+    const queuedDuringCancel = enqueue(pausedEmpty, item("late"));
+    expect(releaseEmptyUserPause(queuedDuringCancel)).toBe(queuedDuringCancel);
+
+    const claimedDuringCancel = claimHead(laneOf(item("sending")), { startedAt: 102 });
+    const pausedClaimed = pausePending(claimedDuringCancel, 103);
+    expect(releaseEmptyUserPause(pausedClaimed)).toBe(pausedClaimed);
+
+    const discardedSteering = pausePending(clearPending(claimSteering(laneOf(item("cleared")), "cleared", 104)), 105);
+    expect(releaseEmptyUserPause(discardedSteering).blocked).toBeNull();
   });
 
   it("用户暂停覆盖可恢复故障并保留失败项约束，但不覆盖 uncertain", () => {

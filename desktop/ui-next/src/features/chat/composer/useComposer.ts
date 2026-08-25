@@ -45,6 +45,7 @@ import {
   markSteeringUncertain,
   nackHead,
   pausePending,
+  releaseEmptyUserPause,
   remove,
   reorderBefore,
   resumeAutomatic,
@@ -271,13 +272,14 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   }, [composerReady, notifyError, steerConfirmations, target]);
 
   // ACK 后 Agent 可能在 confirm 前崩溃而 WebView 仍存活；可信 idle 状态下
-  // 不能把 acked 永久隐藏，也不能等待 restart recovery 才让用户处置。
+  // 不能把 acked 永久隐藏，也不能等待 restart recovery 才让用户处置。迟到确认/
+  // 失败清掉最后一个 steering 后也要重新释放已经没有工作的取消屏障。
   useEffect(() => {
     if (!historyLoaded || !composerReady || running) return;
-    // 外部持久队列归约会同步通知订阅者；此处正是 idle 边沿的状态同步。
+    // 外部持久队列归约会同步通知订阅者；无变化时 transition 保留引用，不会循环通知。
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    updateQueue(markSteeringUncertain);
-  }, [composerReady, historyLoaded, running, updateQueue]);
+    updateQueue((lane) => releaseEmptyUserPause(markSteeringUncertain(lane)));
+  }, [composerReady, historyLoaded, running, steering, queue.blocked, updateQueue]);
 
   useEffect(() => {
     if (handledFlushTickRef.current === flushTick) return;
@@ -288,6 +290,15 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   const send = useCallback((): boolean => {
     const content = draft.trim();
     if (!content && atts.length === 0) return false;
+
+    // task-ended 的 passive effect 可能尚未执行；显式 idle 发送必须基于持久 lane
+    // 的最新值同步消费空取消屏障，不能先入队再等待异步释放。
+    const currentQueue =
+      historyLoaded && composerReady && !running && !sendingRef.current
+        ? updateQueue(releaseEmptyUserPause)
+        : queue;
+    const currentSteering = currentQueue.steering ?? [];
+
     // /compact 是控制指令，不得进入待发送 lane。
     if (content === "/compact" && atts.length === 0) {
       if (
@@ -295,9 +306,9 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
         !composerReady ||
         running ||
         sendingRef.current ||
-        queue.pending.length > 0 ||
-        queue.inFlight ||
-        steering.length > 0
+        currentQueue.pending.length > 0 ||
+        currentQueue.inFlight ||
+        currentSteering.length > 0
       ) {
         notifyError(t("chat.compact.busy"));
         return false;
@@ -314,10 +325,10 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       !composerReady ||
       running ||
       sendingRef.current ||
-      queue.pending.length > 0 ||
-      queue.inFlight ||
-      steering.length > 0 ||
-      queue.blocked
+      currentQueue.pending.length > 0 ||
+      currentQueue.inFlight ||
+      currentSteering.length > 0 ||
+      currentQueue.blocked
     ) {
       // 忙碌/已有 lane 时结构化追加到队尾；附件行只在真正投递时生成。
       flushBlockedRef.current = false;
@@ -357,10 +368,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     historyLoaded,
     composerReady,
     running,
-    queue.pending.length,
-    queue.inFlight,
-    steering.length,
-    queue.blocked,
+    queue,
     sessionId,
     notifyError,
     clearRetry,
@@ -416,6 +424,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       const itemId = next.inFlight?.item.id;
       if (running && itemId) next = markReceipt(next, itemId);
       if (!running && wasRunning && itemId) next = completeTurn(next, itemId);
+      if (!running) next = releaseEmptyUserPause(next);
       return next;
     });
   }, [running, historyLoaded, composerReady, clearRetry, updateQueue]);

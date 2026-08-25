@@ -541,6 +541,20 @@ export function pausePending<A>(lane: SendQueueLane<A>, at = Date.now()): SendQu
   });
 }
 
+/** 当前轮结束后释放空队列的取消屏障；真正待发送的工作仍保持暂停。 */
+export function releaseEmptyUserPause<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  if (
+    lane.blocked?.code !== "user-paused" ||
+    lane.pending.length > 0 ||
+    lane.inFlight !== null ||
+    (lane.steering ?? []).some((entry) => !entry.discardRequested)
+  ) {
+    return lane;
+  }
+  return { ...lane, blocked: null };
+}
+
 /** 清空尚未投递的消息。已发起的 steering 不能取消，只记录用户丢弃意图；
  * 这样迟到失败不会恢复，迟到确认仍可按 client_id 安全删除。 */
 export function clearPending<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
