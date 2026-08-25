@@ -48,7 +48,7 @@ AGENT_VERSION_SYM := github.com/chaitin/ohmyagent/internal/buildinfo.Version
 GOFLAGS     := -trimpath -ldflags "-s -w -X $(AGENT_VERSION_SYM)=$(AGENT_VERSION)"
 GOFLAGS_WIN := -trimpath -ldflags "-s -w -H=windowsgui -X $(AGENT_VERSION_SYM)=$(AGENT_VERSION)"
 
-.PHONY: dev run macos macos-release set-release-version windows windows-release linux linux-release check-signing check-macos check-windows check-linux check-bundle-configs check-ohmy-src engine-universal engine-windows engine-linux browser-extension icons clean
+.PHONY: dev run macos macos-release macos-release-build macos-notarize-dmg set-release-version windows windows-release linux linux-release check-signing check-apple-release check-apple-notarization check-macos-release-build check-macos check-windows check-linux check-bundle-configs check-ohmy-src engine-universal engine-windows engine-linux browser-extension icons clean
 
 # ---------- 开发 ----------
 
@@ -61,24 +61,58 @@ run: dev
 # ---------- macOS 打包(universal .app/.dmg,引擎 sidecar)----------
 
 macos: check-macos check-bundle-configs engine-universal browser-extension icons/icon.icns
-	$(TAURI) build --target universal-apple-darwin --config bundle.macos.conf.json $(EXTRA_TAURI_CONFIG)
+	$(TAURI) build --target universal-apple-darwin --config bundle.macos.conf.json --no-sign $(EXTRA_TAURI_CONFIG)
 	@echo ""
 	@echo "打包完成,分发产物:"
 	@ls -lh target/universal-apple-darwin/release/bundle/dmg/*.dmg 2>/dev/null || true
 	@echo "(.app 在 target/universal-apple-darwin/release/bundle/macos/)"
-	@echo "提示: 包未签名,同事首次打开需 右键→打开;提示已损坏时执行"
-	@echo "      xattr -cr /Applications/MonkeyCode.app"
+	@echo "提示: 当前是 unsigned 测试包;确认测试通过后运行 make macos-release 完成签名与公证"
 
-# 发布构建:在 macos 基础上叠加 createUpdaterArtifacts(需 TAURI_SIGNING_PRIVATE_KEY
-# 签名),并汇集 updater 产物(带版本文件名的 .app.tar.gz + latest.json)到
-# bundle/updater/,供人工上传 OSS。
-macos-release: EXTRA_TAURI_CONFIG += --config tauri.release.conf.json
+# 发布候选构建:先按当前 vYYMMDDNN tag 注入版本,再生成强制 unsigned 的
+# universal .app/.dmg 供本地测试。此阶段不需要任何 Apple/updater 密钥。
+macos-release-build:
+	$(MAKE) set-release-version
+	$(MAKE) macos
+	python3 scripts/macos_release_candidate.py record
 
+# 对已经测试过的编译产物执行发布后处理,不重新编译 Rust/Go/UI:
+# 1. tauri bundle 从现有 universal 二进制重新生成并签名/公证 .app；
+# 2. 生成签名的 updater tar.gz 和已签名 DMG；
+# 3. 单独公证/staple 最终 DMG 容器。
+# Tauri 重新 bundle 是必要的:签名会改变 .app,旧 unsigned DMG 不能原样复用。
 macos-release:
 	$(MAKE) check-signing
-	$(MAKE) set-release-version
-	$(MAKE) macos EXTRA_TAURI_CONFIG="$(EXTRA_TAURI_CONFIG)"
+	$(MAKE) check-apple-release
+	$(MAKE) check-macos-release-build
+	$(TAURI) bundle --target universal-apple-darwin --bundles app dmg \
+		--config bundle.macos.conf.json --config tauri.release.conf.json
 	python3 scripts/gen-latest-json.py
+	$(MAKE) macos-notarize-dmg
+
+# 只处理已生成的当前版本 DMG。可安全重跑:已有有效 staple ticket 时跳过
+# 再次提交,但仍执行 Gatekeeper 验收。
+macos-notarize-dmg:
+	$(MAKE) check-apple-notarization
+	@set -eu; \
+		version="$$(python3 -c 'import json; print(json.load(open("tauri.conf.json"))["version"])')"; \
+		dmg="target/universal-apple-darwin/release/bundle/dmg/MonkeyCode_$${version}_universal.dmg"; \
+		[ -f "$$dmg" ] || { echo "错误: 找不到当前版本 DMG: $$dmg"; exit 1; }; \
+		codesign --verify --strict --verbose=2 "$$dmg"; \
+		if xcrun stapler validate "$$dmg" >/dev/null 2>&1; then \
+			echo "DMG 已包含有效公证票据,跳过重复提交: $$dmg"; \
+		elif xcrun stapler staple "$$dmg"; then \
+			echo "已恢复此前公证成功的 DMG 票据: $$dmg"; \
+		else \
+			xcrun notarytool submit "$$dmg" \
+				--key "$$APPLE_API_KEY_PATH" \
+				--key-id "$$APPLE_API_KEY" \
+				--issuer "$$APPLE_API_ISSUER" \
+				--wait; \
+			xcrun stapler staple "$$dmg"; \
+		fi; \
+		xcrun stapler validate "$$dmg"; \
+		spctl --assess --type open --context context:primary-signature --verbose=4 "$$dmg"; \
+		echo "DMG 签名与公证验收通过: $$dmg"
 
 # 发布版本只接受当前提交上的 vYYMMDDNN tag；由统一脚本同步 Tauri、Cargo
 # manifest 及 lockfile。普通 macos 构建不修改版本文件。
@@ -88,9 +122,40 @@ set-release-version:
 		[ -n "$$tag" ] || { echo "错误: 发布构建要求当前提交带 vYYMMDDNN tag"; exit 1; }; \
 		python3 scripts/set_release_version.py "$$tag"
 
+# release 只消费刚测试过的现有构建,不能在签名前悄悄改版本或重新编译。
+# 同时核对 source config 与 unsigned .app 的版本,避免旧产物被误签成新 tag。
+check-macos-release-build: check-macos
+	@set -eu; \
+		tag="$$(git describe --tags --exact-match \
+			--match 'v[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]' HEAD 2>/dev/null)"; \
+		[ -n "$$tag" ] || { echo "错误: release 要求当前提交带 vYYMMDDNN tag"; exit 1; }; \
+		expected="$${tag#v}.0.0"; \
+		configured="$$(python3 -c 'import json; print(json.load(open("tauri.conf.json"))["version"])')"; \
+		app="target/universal-apple-darwin/release/bundle/macos/MonkeyCode.app"; \
+		binary="target/universal-apple-darwin/release/monkeycode-desktop"; \
+		[ -x "$$binary" ] && [ -d "$$app" ] || \
+			{ echo "错误: 缺少待发布构建,先运行 make macos-release-build"; exit 1; }; \
+		app_version="$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$$app/Contents/Info.plist")"; \
+		[ "$$configured" = "$$expected" ] && [ "$$app_version" = "$$expected" ] || \
+			{ echo "错误: tag=$$expected config=$$configured app=$$app_version 版本不一致,重新运行 make macos-release-build"; exit 1; }; \
+		python3 scripts/macos_release_candidate.py verify
+
 check-signing:
 	@[ -n "$$TAURI_SIGNING_PRIVATE_KEY" ] || \
 		{ echo "错误: 发布构建需要 TAURI_SIGNING_PRIVATE_KEY(updater 产物签名私钥)"; exit 1; }
+
+# 本地构建可直接使用登录钥匙串里的 Developer ID 私钥；CI 则额外通过
+# APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD 让 Tauri 临时导入 p12。
+check-apple-release: check-apple-notarization
+	@[ -n "$$APPLE_SIGNING_IDENTITY" ] || \
+		{ echo "错误: 发布构建需要 APPLE_SIGNING_IDENTITY(Developer ID Application 完整名称)"; exit 1; }
+
+check-apple-notarization:
+	@[ -n "$$APPLE_API_KEY" ] || { echo "错误: 缺少 APPLE_API_KEY"; exit 1; }
+	@[ -n "$$APPLE_API_ISSUER" ] || { echo "错误: 缺少 APPLE_API_ISSUER"; exit 1; }
+	@[ -n "$$APPLE_API_KEY_PATH" ] || { echo "错误: 缺少 APPLE_API_KEY_PATH"; exit 1; }
+	@[ -f "$$APPLE_API_KEY_PATH" ] || \
+		{ echo "错误: APPLE_API_KEY_PATH 文件不存在: $$APPLE_API_KEY_PATH"; exit 1; }
 
 check-macos:
 	@[ "$$(uname -s)" = "Darwin" ] || { echo "错误: macOS 打包需在 Mac 上执行"; exit 1; }

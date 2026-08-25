@@ -48,31 +48,62 @@ jobs:
           git config --global url."https://x-access-token:${OHMYAGENT_REPO_TOKEN}@github.com/".insteadOf "git@github.com:"
           git submodule update --init agent plugins
 
-      - name: Build app bundle (universal, unsigned)
+      # unsigned 构建独占一个 step,只拿编译期配置,接触不到任何 Apple/updater
+      # 私钥。release 模式由 secret 是否存在转换成布尔值,不把 secret 内容传入。
+      - name: Build unsigned app bundle (universal)
         working-directory: desktop
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          MACOS_RELEASE_BUILD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
           # 装机/使用统计的上报地址,编译期内联(desktop/src/telemetry.rs)。
-          # 只加在 release 工作流上:开发机 cargo run / cargo build 拿不到它,
-          # 因此开发过程不会往生产数据里灌噪声。secret 未配置时是空串 =
-          # 不上报,构建照常不红。
-          #
-          # 走 secret 不是把它当密钥(装了包的人 strings 一下就能拿到),而是
-          # 不把它摆在公开仓库里:端点免鉴权公开可写,而这套数据的全部意义
-          # 就是装机计数——谁都能 curl 循环随机塞 _id 把装机量刷成任意数字。
-          # 降低发现门槛没有收益,提高一点是免费的。
           MC_MATOMO_URL: ${{ secrets.MC_MATOMO_URL }}
           MC_MATOMO_SITE_ID: ${{ secrets.MC_MATOMO_SITE_ID }}
           OHMYAGENT_SRC: ${{ github.workspace }}/agent
-        # secret 就绪时走发布构建(额外产出签名的 updater tar.gz + latest.json),
-        # 否则回退普通打包,CI 不红;引擎 sidecar 由 make 从 OHMYAGENT_SRC 构建
         run: |
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            make macos-release
+          set -euo pipefail
+          if [ "$MACOS_RELEASE_BUILD" = "true" ]; then
+            make macos-release-build
+            echo "MACOS_RELEASE_SIGN=true" >> "$GITHUB_ENV"
           else
-            echo "::warning::TAURI_SIGNING_PRIVATE_KEY 未配置,跳过 updater 产物"
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY 未配置,仅构建 unsigned 测试包"
             make macos
+            echo "MACOS_RELEASE_SIGN=false" >> "$GITHUB_ENV"
           fi
+
+      # 在 unsigned 构建及候选指纹记录完成后才把签名材料放进 runner。
+      - name: Prepare Apple signing and notarization
+        if: env.MACOS_RELEASE_SIGN == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_CERTIFICATE:?Missing APPLE_CERTIFICATE}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?Missing APPLE_CERTIFICATE_PASSWORD}"
+          : "${ASC_KEY_ID:?Missing APP_STORE_CONNECT_KEY_ID}"
+          : "${ASC_ISSUER_ID:?Missing APP_STORE_CONNECT_ISSUER_ID}"
+          : "${ASC_PRIVATE_KEY_BASE64:?Missing APP_STORE_CONNECT_PRIVATE_KEY_BASE64}"
+          KEY_DIR="$RUNNER_TEMP/appstoreconnect/private_keys"
+          mkdir -p "$KEY_DIR"
+          KEY_FILE="$KEY_DIR/AuthKey_${ASC_KEY_ID}.p8"
+          echo "$ASC_PRIVATE_KEY_BASE64" | base64 -D > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          echo "APPLE_API_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
+
+      - name: Sign and notarize existing build
+        if: env.MACOS_RELEASE_SIGN == 'true'
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: "Developer ID Application: BEIJING CHAITIN TECHNOLOGY Co.,Ltd. (8Z56KX83T3)"
+          APPLE_API_KEY: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: make macos-release
 
       - name: Zip .app
         working-directory: desktop/target/universal-apple-darwin/release/bundle
