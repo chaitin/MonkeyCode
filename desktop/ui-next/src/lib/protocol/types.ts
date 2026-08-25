@@ -131,6 +131,8 @@ export interface UserItem {
   seq?: number;
   /** runtime steering 物化的补充指令；普通 user-input 缺席。 */
   source?: "steer";
+  /** durable steering outbox 的关联 ID；用于把确认状态投影回该气泡。 */
+  clientId?: string;
   /** 云端任务附件(url 直链渲染);无附件时字段缺席 */
   attachments?: ChatAttachment[];
 }

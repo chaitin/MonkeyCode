@@ -39,14 +39,18 @@ import { useTimelineWindow } from "./timeline/useTimelineWindow";
  * 本地会话走正文附件行约定(uploadUrl 回读工作区,点图看大图/点文件下载),
  * 云端任务走 attachments 字段(对象存储直链;文件 chip 点击在浏览器打开)。
  * 附件行只在有回读通道时剥离——无通道剥了就没法呈现,正文原样兜底。 */
+type SteerDisplayStatus = "sending" | "applied" | "uncertain";
+
 function UserBubble({
   item,
   flash,
   uploadUrl,
+  steerStatus,
 }: {
   item: Extract<ChatItem, { kind: "user" }>;
   flash?: boolean;
   uploadUrl?: (path: string) => Promise<string>;
+  steerStatus?: SteerDisplayStatus;
 }) {
   const { t } = useI18n();
   const [zoom, setZoom] = useState<string | null>(null); // 本地图:工作区相对路径
@@ -75,7 +79,26 @@ function UserBubble({
           否则从气泡右缘溢出(bubble 尾巴 background inherit,淡染一体生效) */}
       <div className="chat-bubble max-w-[85%] bg-primary/10 text-sm whitespace-pre-wrap wrap-anywhere select-text">
         {item.source === "steer" && (
-          <span className="mb-1 block text-[11px] font-medium text-base-content/45">{t("chat.user.steer")}</span>
+          <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-base-content/45">
+            <span>{t("chat.user.steer")}</span>
+            {steerStatus && (
+              <>
+                <span aria-hidden>·</span>
+                <span
+                  data-steer-status={steerStatus}
+                  className={steerStatus === "applied" ? "text-success/75" : steerStatus === "uncertain" ? "text-warning" : ""}
+                >
+                  {t(
+                    steerStatus === "applied"
+                      ? "chat.user.steerApplied"
+                      : steerStatus === "uncertain"
+                        ? "chat.user.steerUncertain"
+                        : "chat.user.steerSending",
+                  )}
+                </span>
+              </>
+            )}
+          </span>
         )}
         {body}
         {hasAtts && (
@@ -206,12 +229,14 @@ interface RenderOpts extends RowShared {
   joinNext?: boolean;
   /** 当前仍在追加正文的行暂缓 Mermaid 渲染。 */
   streaming?: boolean;
+  /** 补充指令按 client_id 确认、按会话运行态兜底投影出的展示状态。 */
+  steerStatus?: SteerDisplayStatus;
 }
 
 function renderItem(item: ChatItem, o: RenderOpts) {
   switch (item.kind) {
     case "user":
-      return <UserBubble item={item} flash={o.flash} uploadUrl={o.uploadUrl} />;
+      return <UserBubble item={item} flash={o.flash} uploadUrl={o.uploadUrl} steerStatus={o.steerStatus} />;
     case "agent":
       // 时间绝对定位在块顶空隙(悬停显影,不占流式高度)
       return (
@@ -317,6 +342,7 @@ const Row = memo(function Row({
   perm,
   flash,
   streaming,
+  steerStatus,
   joinPrev,
   joinNext,
   gap,
@@ -326,6 +352,7 @@ const Row = memo(function Row({
   perm?: PermItem;
   flash?: boolean;
   streaming?: boolean;
+  steerStatus?: SteerDisplayStatus;
   joinPrev: boolean;
   joinNext: boolean;
   /** 消息块间距(组内工具卡零距共享外框);包裹层 margin,见 LogList 注释 */
@@ -341,7 +368,7 @@ const Row = memo(function Row({
     // 首行(gap=false 且非
     // join)给 pt-3.5 刚好容下时间行;join 行零距契约不变(不渲时间)。
     <div className={`flex flex-col ${gap ? "pt-4" : joinPrev ? "" : "pt-3.5"}`}>
-      {renderItem(item, { t, perm, flash, streaming, joinPrev, joinNext, ...shared })}
+      {renderItem(item, { t, perm, flash, streaming, steerStatus, joinPrev, joinNext, ...shared })}
     </div>
   );
 });
@@ -537,6 +564,15 @@ const LogListSession = forwardRef<LogListHandle, LogListProps>(function LogListS
               perm={row.perm}
               flash={row.flash}
               streaming={row.streaming}
+              steerStatus={
+                row.item.kind === "user" && row.item.source === "steer"
+                  ? row.item.clientId && Object.hasOwn(state.steerConfirmations, row.item.clientId)
+                    ? "applied"
+                    : state.running
+                      ? "sending"
+                      : "uncertain"
+                  : undefined
+              }
               joinPrev={row.joinPrev}
               joinNext={row.joinNext}
               gap={row.gap}

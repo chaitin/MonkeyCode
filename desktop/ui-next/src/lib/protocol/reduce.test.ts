@@ -692,10 +692,19 @@ describe("轮次与系统帧", () => {
     expect(prepended.steerConfirmations).toEqual({ "client-a": 41, "client-b": 42 });
   });
 
-  it("user-input 只保留受支持的 steering 来源", () => {
-    const steered = run([frame("user-input", { content: b64encode("补充"), source: "steer" })]);
-    expect(steered.items[0]).toEqual({ kind: "user", text: "补充", source: "steer" });
-    const unknown = run([frame("user-input", { content: b64encode("普通"), source: "other" })]);
+  it("user-input 只保留受支持的 steering 来源与 client_id", () => {
+    const steered = run([
+      frame("user-input", { content: b64encode("补充"), source: "steer", client_id: "steer-1" }),
+    ]);
+    expect(steered.items[0]).toEqual({
+      kind: "user",
+      text: "补充",
+      source: "steer",
+      clientId: "steer-1",
+    });
+    const unknown = run([
+      frame("user-input", { content: b64encode("普通"), source: "other", client_id: "ignored" }),
+    ]);
     expect(unknown.items[0]).toEqual({ kind: "user", text: "普通" });
   });
 
