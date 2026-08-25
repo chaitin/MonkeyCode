@@ -315,6 +315,9 @@ impl Inner {
                 manual_compact: false,
                 terminal_error_seen: false,
                 turn: 1,
+                steer_attempt: 0,
+                pending_steer: None,
+                pending_steer_echoes: Default::default(),
                 cancel_requested_turn: None,
                 created: true, // 壳侧会话,无引擎实体,open 不做 resume RPC
                 engine_id: child_sid.to_string(),

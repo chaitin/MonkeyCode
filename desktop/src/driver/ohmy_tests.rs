@@ -1061,11 +1061,18 @@ fn bare_inner(tag: &str) -> Arc<Inner> {
 
 /// 同 bare_inner,另给一份壳事件缓冲(断言 session-event 用)。
 fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
+    let (inner, events, _stdin_rx) = bare_inner_rpc(tag);
+    (inner, events)
+}
+
+/// 同 bare_inner_events，并保留 RPC 出站接收端，供请求/事件竞态测试
+/// 精确控制 Agent 应答时序。
+fn bare_inner_rpc(tag: &str) -> (Arc<Inner>, EmittedEvents, mpsc::UnboundedReceiver<Option<String>>) {
     let home = std::env::temp_dir().join(format!("ohmy-journal-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     let data_dir = home.join("ohmy-sessions");
     std::fs::create_dir_all(&data_dir).unwrap();
-    let (stdin_tx, _stdin_rx) = mpsc::unbounded_channel();
+    let (stdin_tx, stdin_rx) = mpsc::unbounded_channel();
     let ctx = TestCtx::new(home.clone());
     let events = ctx.1.clone();
     let inner = Arc::new(Inner {
@@ -1114,7 +1121,7 @@ fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
         skills_defaults_path: home.join("skills-defaults.json"),
         skills_gate: tokio::sync::Mutex::new(()),
     });
-    (inner, events)
+    (inner, events, stdin_rx)
 }
 
 fn bare_session(sid: &str) -> SessionState {
@@ -1125,6 +1132,9 @@ fn bare_session(sid: &str) -> SessionState {
         manual_compact: false,
         terminal_error_seen: false,
         turn: 1,
+        steer_attempt: 0,
+        pending_steer: None,
+        pending_steer_echoes: Default::default(),
         cancel_requested_turn: None,
         created: true,
         engine_id: sid.to_string(),
@@ -1183,6 +1193,56 @@ async fn sessions_list_treats_legacy_finished_as_idle() {
     assert_eq!(legacy["turns"], 3);
 }
 
+#[tokio::test]
+async fn sending_to_archived_session_unarchives_sidecar_and_status_event() {
+    let (inner, events, mut stdin_rx) = bare_inner_rpc("send-unarchives");
+    let mut session = bare_session("s1");
+    session.running = false;
+    session.title = "已归档任务".into();
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    inner.write_sidecar("s1", |meta| {
+        meta["title"] = json!("已归档任务");
+        meta["status"] = json!("idle");
+        meta["turns"] = json!(1);
+        meta["archived"] = json!(true);
+    });
+    let driver = OhmyDriver(inner.clone());
+    let send_driver = driver.clone();
+
+    let call = tokio::spawn(async move {
+        send_driver
+            .session_send("s1", "user-input", json!({ "content": frame::b64_text("继续处理") }))
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(request["method"], "session/sendMessage");
+    assert_eq!(inner.read_sidecar("s1")["archived"], false);
+    let emitted = events.lock().unwrap();
+    let status = emitted
+        .iter()
+        .find(|(name, payload)| name == "session-event" && payload["type"] == "session-status")
+        .map(|(_, payload)| payload)
+        .expect("缺 session-status 事件");
+    assert_eq!(status["status"], "running");
+    assert_eq!(status["archived"], false);
+    drop(emitted);
+
+    let rpc_id = request["id"].as_i64().expect("RPC id");
+    inner
+        .transport
+        .pending
+        .lock()
+        .unwrap()
+        .remove(&rpc_id)
+        .expect("在途 RPC")
+        .send(json!({ "jsonrpc": "2.0", "id": rpc_id, "result": { "status": "accepted" } }))
+        .expect("RPC 等待端仍存活");
+    call.await.unwrap().expect("发送成功");
+}
+
 #[test]
 fn browser_context_resolves_explicit_sessions_without_rejecting_concurrency() {
     let inner = bare_inner("browser-owner");
@@ -1225,13 +1285,493 @@ fn browser_context_resolves_explicit_sessions_without_rejecting_concurrency() {
 #[test]
 fn public_caps_follow_the_ready_handshake() {
     let inner = bare_inner("caps");
-    inner.transport.engine_caps.lock().unwrap().insert("turn/stopped".into());
+    {
+        let mut engine_caps = inner.transport.engine_caps.lock().unwrap();
+        engine_caps.insert("turn/stopped".into());
+        engine_caps.insert("session/steer".into());
+    }
     let driver = OhmyDriver(inner);
     let caps = crate::driver::caps(&driver, false);
     assert!(!caps.browser_ext);
     assert!(caps.usage_update);
     assert!(!caps.perm_remember);
+    assert!(caps.steering);
     assert!(caps.attachments);
+}
+
+fn answer_rpc(inner: &Inner, request: &Value, response: Value) {
+    let id = request.get("id").and_then(Value::as_i64).expect("RPC id");
+    inner
+        .transport
+        .pending
+        .lock()
+        .unwrap()
+        .remove(&id)
+        .expect("在途 RPC")
+        .send(response)
+        .expect("RPC 等待端仍存活");
+}
+
+fn journal_steer_frames(inner: &Inner, sid: &str) -> Vec<Value> {
+    journal_frames(inner, sid)
+        .into_iter()
+        .filter(|frame| {
+            frame.get("type").and_then(Value::as_str) == Some("user-input")
+                && frame.pointer("/data/source").and_then(Value::as_str) == Some("steer")
+        })
+        .collect()
+}
+
+fn journal_steer_confirmed_frames(inner: &Inner, sid: &str) -> Vec<Value> {
+    journal_frames(inner, sid)
+        .into_iter()
+        .filter(|frame| frame.get("type").and_then(Value::as_str) == Some("steer-confirmed"))
+        .collect()
+}
+
+#[tokio::test]
+async fn steer_requires_a_nonempty_client_id_before_sending_rpc() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("steer-client-id");
+    inner.transport.engine_caps.lock().unwrap().insert("session/steer".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+
+    let error = driver
+        .session_call(
+            "s1",
+            "session_steer",
+            json!({ "content": frame::b64_text("不能发送"), "client_id": "  " }),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(error.contains("client_id"), "错误应指出缺少 client_id: {error}");
+    assert!(inner.sess.sessions.lock().unwrap()["s1"].pending_steer.is_none());
+    assert!(stdin_rx.try_recv().is_err(), "非法 client_id 不得下发 RPC");
+}
+
+#[tokio::test]
+async fn steer_response_first_echoes_once_without_opening_a_turn() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("steer-response-first");
+    inner.transport.engine_caps.lock().unwrap().insert("session/steer".into());
+    let mut session = bare_session("s1");
+    session.turn = 7;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    inner.write_sidecar("s1", |meta| {
+        meta["status"] = json!("running");
+        meta["turns"] = json!(4);
+    });
+    let driver = OhmyDriver(inner.clone());
+
+    let call = tokio::spawn(async move {
+        driver
+            .session_call("s1", "session_steer", json!({ "content": frame::b64_text("改用方案 B"), "client_id": "steer-a" }))
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(request["method"], "session/steer");
+    assert_eq!(request["params"], json!({ "session_id": "s1", "message": "改用方案 B" }));
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "status": "queued" } }),
+    );
+    assert_eq!(call.await.unwrap().unwrap(), json!({ "result": { "status": "queued" } }));
+
+    // ACK 只负责立即回显，不能让 durable outbox 提前清除。
+    let steers = journal_steer_frames(&inner, "s1");
+    assert_eq!(steers.len(), 1);
+    assert_eq!(
+        steers[0]["data"],
+        json!({
+            "content": frame::b64_text("改用方案 B"),
+            "source": "steer",
+            "client_id": "steer-a",
+        })
+    );
+    assert!(journal_steer_confirmed_frames(&inner, "s1").is_empty());
+
+    // 应答之后迟到的权威事件只用于确认，不能再产第二个气泡。
+    inner.handle_event(json!({
+        "type": "user_message", "session_id": "s1",
+        "data": { "message": "改用方案 B", "source": "steer" }
+    }));
+    assert_eq!(journal_steer_frames(&inner, "s1").len(), 1);
+    let confirmed = journal_steer_confirmed_frames(&inner, "s1");
+    assert_eq!(confirmed.len(), 1);
+    assert_eq!(confirmed[0]["data"], json!({ "client_id": "steer-a" }));
+    let state = inner.sess.sessions.lock().unwrap();
+    assert!(state["s1"].running);
+    assert_eq!(state["s1"].turn, 7);
+    assert!(state["s1"].pending_steer.is_none());
+    drop(state);
+    let meta = inner.read_sidecar("s1");
+    assert_eq!(meta["status"], "running");
+    assert_eq!(meta["turns"], 4);
+    let types: Vec<String> = journal_frames(&inner, "s1")
+        .iter()
+        .filter_map(|frame| frame.get("type").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    assert_eq!(types, vec!["user-input", "steer-confirmed"]);
+}
+
+#[tokio::test]
+async fn steer_event_first_is_authoritative_and_concurrent_attempt_is_rejected() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("steer-event-first");
+    inner.transport.engine_caps.lock().unwrap().insert("session/steer".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+    let first_driver = driver.clone();
+    let first = tokio::spawn(async move {
+        first_driver
+            .session_call("s1", "session_steer", json!({ "content": frame::b64_text("先写测试"), "client_id": "steer-a" }))
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+
+    let duplicate = driver
+        .session_call("s1", "session_steer", json!({ "content": frame::b64_text("另一条"), "client_id": "steer-b" }))
+        .await
+        .unwrap_err();
+    assert!(duplicate.contains("正在提交"), "重复请求错误不友好: {duplicate}");
+    inner.handle_event(json!({
+        "type": "user_message", "session_id": "s1",
+        "data": { "message": "先写测试", "source": "steer" }
+    }));
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "status": "queued" } }),
+    );
+    assert_eq!(first.await.unwrap().unwrap()["result"]["status"], "queued");
+    let steers = journal_steer_frames(&inner, "s1");
+    assert_eq!(steers.len(), 1);
+    assert_eq!(steers[0].pointer("/data/client_id").and_then(Value::as_str), Some("steer-a"));
+    let confirmed = journal_steer_confirmed_frames(&inner, "s1");
+    assert_eq!(confirmed.len(), 1);
+    assert_eq!(confirmed[0]["data"], json!({ "client_id": "steer-a" }));
+    let types: Vec<String> = journal_frames(&inner, "s1")
+        .iter()
+        .filter_map(|frame| frame.get("type").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    assert_eq!(types, vec!["user-input", "steer-confirmed"]);
+    assert!(inner.sess.sessions.lock().unwrap()["s1"].pending_steer.is_none());
+    assert!(stdin_rx.try_recv().is_err(), "重复请求不得下发第二条 RPC");
+}
+
+#[tokio::test]
+async fn steer_event_before_stopped_and_response_stays_single_bubble() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("steer-stopped-race");
+    inner.transport.engine_caps.lock().unwrap().insert("session/steer".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+    let call = tokio::spawn(async move {
+        driver
+            .session_call("s1", "session_steer", json!({ "content": frame::b64_text("收尾前指令"), "client_id": "steer-race" }))
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    inner.handle_event(json!({
+        "type": "user_message", "session_id": "s1",
+        "data": { "message": "收尾前指令", "source": "steer" }
+    }));
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "complete" }),
+    );
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "status": "queued" } }),
+    );
+    assert_eq!(call.await.unwrap().unwrap()["result"]["status"], "queued");
+    assert_eq!(journal_steer_frames(&inner, "s1").len(), 1);
+    let confirmed = journal_steer_confirmed_frames(&inner, "s1");
+    assert_eq!(confirmed.len(), 1);
+    assert_eq!(confirmed[0]["data"], json!({ "client_id": "steer-race" }));
+    let state = inner.sess.sessions.lock().unwrap();
+    assert!(!state["s1"].running);
+    assert_eq!(state["s1"].turn, 1);
+    assert!(state["s1"].pending_steer.is_none());
+}
+
+#[tokio::test]
+async fn steer_stopped_before_event_and_response_still_echoes_once() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("steer-stopped-first");
+    inner.transport.engine_caps.lock().unwrap().insert("session/steer".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+    let call = tokio::spawn(async move {
+        driver
+            .session_call("s1", "session_steer", json!({ "content": frame::b64_text("停止后迟到"), "client_id": "steer-stopped" }))
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+
+    // 即使 stopped 抢先，同一 turn 的 steer 事件仍必须物化，queued 应答
+    // 只负责确认，不能再追加第二个气泡。
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "complete" }),
+    );
+    inner.handle_event(json!({
+        "type": "user_message", "session_id": "s1",
+        "data": { "message": "停止后迟到", "source": "steer" }
+    }));
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "status": "queued" } }),
+    );
+
+    assert_eq!(call.await.unwrap().unwrap()["result"]["status"], "queued");
+    assert_eq!(journal_steer_frames(&inner, "s1").len(), 1);
+    let confirmed = journal_steer_confirmed_frames(&inner, "s1");
+    assert_eq!(confirmed.len(), 1);
+    assert_eq!(confirmed[0]["data"], json!({ "client_id": "steer-stopped" }));
+    let state = inner.sess.sessions.lock().unwrap();
+    assert!(!state["s1"].running);
+    assert!(state["s1"].pending_steer.is_none());
+}
+
+#[tokio::test]
+async fn steer_stopped_before_queued_response_uses_ack_echo() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("steer-stopped-before-ack");
+    inner.transport.engine_caps.lock().unwrap().insert("session/steer".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+    let call = tokio::spawn(async move {
+        driver
+            .session_call("s1", "session_steer", json!({ "content": frame::b64_text("应答负责回显"), "client_id": "steer-ack" }))
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "complete" }),
+    );
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "status": "queued" } }),
+    );
+    assert_eq!(call.await.unwrap().unwrap()["result"]["status"], "queued");
+    assert_eq!(journal_steer_frames(&inner, "s1").len(), 1);
+    assert!(journal_steer_confirmed_frames(&inner, "s1").is_empty());
+
+    // 后续权威事件只确认同一条消息，不得再追加第二个气泡。
+    inner.handle_event(json!({
+        "type": "user_message", "session_id": "s1",
+        "data": { "message": "应答负责回显", "source": "steer" }
+    }));
+    assert_eq!(journal_steer_frames(&inner, "s1").len(), 1);
+    let confirmed = journal_steer_confirmed_frames(&inner, "s1");
+    assert_eq!(confirmed.len(), 1);
+    assert_eq!(confirmed[0]["data"], json!({ "client_id": "steer-ack" }));
+}
+
+#[tokio::test]
+async fn steer_rpc_failure_clears_pending_without_echo() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("steer-failure");
+    inner.transport.engine_caps.lock().unwrap().insert("session/steer".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+    let call = tokio::spawn(async move {
+        driver
+            .session_call("s1", "session_steer", json!({ "content": frame::b64_text("不要落盘"), "client_id": "steer-failed" }))
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"], "error": { "message": "turn stopped" } }),
+    );
+    assert_eq!(call.await.unwrap().unwrap_err(), "turn stopped");
+    assert!(journal_steer_frames(&inner, "s1").is_empty());
+    assert!(journal_steer_confirmed_frames(&inner, "s1").is_empty());
+    assert!(inner.sess.sessions.lock().unwrap()["s1"].pending_steer.is_none());
+}
+
+#[tokio::test]
+async fn steer_event_before_rpc_failure_is_still_confirmed() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("steer-event-before-failure");
+    inner.transport.engine_caps.lock().unwrap().insert("session/steer".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+    let call = tokio::spawn(async move {
+        driver
+            .session_call("s1", "session_steer", json!({ "content": frame::b64_text("事件已经确认"), "client_id": "steer-event" }))
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    inner.handle_event(json!({
+        "type": "user_message", "session_id": "s1",
+        "data": { "message": "事件已经确认", "source": "steer" }
+    }));
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"], "error": { "message": "response lost" } }),
+    );
+
+    assert_eq!(call.await.unwrap().unwrap()["result"]["status"], "queued");
+    assert_eq!(journal_steer_frames(&inner, "s1").len(), 1);
+    let confirmed = journal_steer_confirmed_frames(&inner, "s1");
+    assert_eq!(confirmed.len(), 1);
+    assert_eq!(confirmed[0]["data"], json!({ "client_id": "steer-event" }));
+    assert!(inner.sess.sessions.lock().unwrap()["s1"].pending_steer.is_none());
+}
+
+#[tokio::test]
+async fn steer_late_echo_cannot_confirm_new_identical_attempt() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("steer-identical-late-echo");
+    inner.transport.engine_caps.lock().unwrap().insert("session/steer".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+
+    let first_driver = driver.clone();
+    let first = tokio::spawn(async move {
+        first_driver
+            .session_call("s1", "session_steer", json!({ "content": frame::b64_text("相同指令"), "client_id": "steer-a" }))
+            .await
+    });
+    let first_request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("第一条 RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    answer_rpc(
+        &inner,
+        &first_request,
+        json!({ "jsonrpc": "2.0", "id": first_request["id"], "result": { "status": "queued" } }),
+    );
+    assert_eq!(first.await.unwrap().unwrap()["result"]["status"], "queued");
+    assert_eq!(journal_steer_frames(&inner, "s1").len(), 1);
+    assert!(journal_steer_confirmed_frames(&inner, "s1").is_empty());
+
+    let second = tokio::spawn(async move {
+        driver
+            .session_call("s1", "session_steer", json!({ "content": frame::b64_text("相同指令"), "client_id": "steer-b" }))
+            .await
+    });
+    let second_request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("第二条 RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+
+    // 第一条 ACK 后迟到的 echo 只能偿还第一条的 FIFO debt，不能把文本
+    // 相同、实际失败的第二次尝试标记为 event_seen。
+    inner.handle_event(json!({
+        "type": "user_message", "session_id": "s1",
+        "data": { "message": "相同指令", "source": "steer" }
+    }));
+    answer_rpc(
+        &inner,
+        &second_request,
+        json!({ "jsonrpc": "2.0", "id": second_request["id"], "error": { "message": "second rejected" } }),
+    );
+
+    assert_eq!(second.await.unwrap().unwrap_err(), "second rejected");
+    assert_eq!(journal_steer_frames(&inner, "s1").len(), 1);
+    let confirmed = journal_steer_confirmed_frames(&inner, "s1");
+    assert_eq!(confirmed.len(), 1);
+    assert_eq!(confirmed[0]["data"], json!({ "client_id": "steer-a" }));
+    let state = inner.sess.sessions.lock().unwrap();
+    assert!(state["s1"].pending_steer.is_none());
+    assert!(state["s1"].pending_steer_echoes.is_empty());
+}
+
+#[tokio::test]
+async fn steer_echo_debt_head_mismatch_does_not_skip_to_new_pending() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("steer-echo-head-mismatch");
+    inner.transport.engine_caps.lock().unwrap().insert("session/steer".into());
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+
+    let first_driver = driver.clone();
+    let first = tokio::spawn(async move {
+        first_driver
+            .session_call(
+                "s1",
+                "session_steer",
+                json!({ "content": frame::b64_text("第一条"), "client_id": "steer-a" }),
+            )
+            .await
+    });
+    let first_request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("第一条 RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    answer_rpc(
+        &inner,
+        &first_request,
+        json!({ "jsonrpc": "2.0", "id": first_request["id"], "result": { "status": "queued" } }),
+    );
+    assert_eq!(first.await.unwrap().unwrap()["result"]["status"], "queued");
+
+    let second = tokio::spawn(async move {
+        driver
+            .session_call(
+                "s1",
+                "session_steer",
+                json!({ "content": frame::b64_text("第二条"), "client_id": "steer-b" }),
+            )
+            .await
+    });
+    let second_request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("第二条 RPC 出站").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+
+    // 债头 A 的文本不匹配时，不能越过 A 把事件认给当前 pending B。
+    inner.handle_event(json!({
+        "type": "user_message", "session_id": "s1",
+        "data": { "message": "第二条", "source": "steer" }
+    }));
+    assert!(journal_steer_confirmed_frames(&inner, "s1").is_empty());
+    {
+        let state = inner.sess.sessions.lock().unwrap();
+        assert_eq!(state["s1"].pending_steer_echoes.len(), 1);
+        assert!(!state["s1"].pending_steer.as_ref().unwrap().event_seen);
+    }
+
+    answer_rpc(
+        &inner,
+        &second_request,
+        json!({ "jsonrpc": "2.0", "id": second_request["id"], "error": { "message": "second rejected" } }),
+    );
+    assert_eq!(second.await.unwrap().unwrap_err(), "second rejected");
+
+    // A 随后匹配债头，只能确认 A；失败的 B 始终没有确认。
+    inner.handle_event(json!({
+        "type": "user_message", "session_id": "s1",
+        "data": { "message": "第一条", "source": "steer" }
+    }));
+    let confirmed = journal_steer_confirmed_frames(&inner, "s1");
+    assert_eq!(confirmed.len(), 1);
+    assert_eq!(confirmed[0]["data"], json!({ "client_id": "steer-a" }));
 }
 
 #[test]

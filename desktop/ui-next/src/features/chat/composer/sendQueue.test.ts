@@ -1,19 +1,24 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  ackSteering,
   block,
   claimHead,
+  claimSteering,
   clearPending,
   cloudSendQueueIndexKey,
   cloudSendQueueKey,
   cloudSendQueueTarget,
   completeTurn,
   confirmResume,
+  confirmSteering,
   createSendQueueItem,
+  discardSteering,
   discardUncertain,
   dropSendQueueTarget,
   emptySendQueueLane,
   enqueue,
+  failSteering,
   getCloudQueueIndexSnapshot,
   getSendQueuePersistenceState,
   invalidateCloudAccountQueues,
@@ -21,6 +26,7 @@ import {
   localSendQueueKey,
   localSendQueueTarget,
   markReceipt,
+  markSteeringUncertain,
   markUncertain,
   nackHead,
   pausePending,
@@ -30,9 +36,11 @@ import {
   reorderBefore,
   resetSendQueueMemoryForTests,
   resumeAutomatic,
+  retrySteering,
   stableCloudAccountScope,
   subscribeCloudQueueIndex,
   subscribeSendQueueLane,
+  updateSendQueueLane,
   writeSendQueueLane,
   type CloudQueueAttachment,
   type LocalQueueAttachment,
@@ -171,6 +179,63 @@ describe("send queue pure transitions", () => {
     expect(acknowledged.inFlight?.phase).toBe("awaiting-turn-end");
     expect(markReceipt(acknowledged, "b")).toBe(acknowledged);
     expect(completeTurn(acknowledged, "a")).toEqual({ ...acknowledged, inFlight: null });
+  });
+
+  it("steering claim/ACK/confirm 以 durable outbox 分段提交并支持多条确认", () => {
+    const original = laneOf(item("a"), item("b"), item("c"));
+    const first = claimSteering(original, "b", 100);
+    expect(idsOf(first)).toEqual(["a", "c"]);
+    expect(first.steering).toEqual([{
+      item: item("b"), phase: "dispatching", startedAt: 100, originalIndex: 1,
+    }]);
+    expect(claimSteering(first, "a", 101)).toBe(first);
+    expect(claimHead(first, { startedAt: 101 })).toBe(first);
+
+    const firstAck = ackSteering(first, "b");
+    const second = ackSteering(claimSteering(firstAck, "a", 102), "a");
+    expect(second.steering?.map((entry) => [entry.item.id, entry.phase])).toEqual([
+      ["b", "acked"], ["a", "acked"],
+    ]);
+    const confirmedA = confirmSteering(second, "a");
+    expect(confirmedA.steering?.map((entry) => entry.item.id)).toEqual(["b"]);
+    expect(confirmSteering(confirmedA, "a")).toBe(confirmedA);
+    expect(confirmSteering(confirmedA, "b").steering).toEqual([]);
+  });
+
+  it("steering 失败按 originalIndex 恢复；清空意图优先且 uncertain 只能显式处理", () => {
+    const dispatching = claimSteering(laneOf(item("a"), item("b"), item("c")), "b", 100);
+    expect(idsOf(failSteering(dispatching, "b"))).toEqual(["a", "b", "c"]);
+
+    const cleared = clearPending(dispatching);
+    expect(cleared.pending).toEqual([]);
+    expect(cleared.steering?.[0]).toMatchObject({ phase: "dispatching", discardRequested: true });
+    expect(failSteering(cleared, "b")).toMatchObject({ pending: [], steering: [] });
+
+    const uncertain = recoverLaneAfterRestart(ackSteering(dispatching, "b"));
+    expect(uncertain.steering?.[0]).toMatchObject({ item: { id: "b" }, phase: "uncertain" });
+    expect(idsOf(retrySteering(uncertain, "b"))).toEqual(["a", "b", "c"]);
+    expect(discardSteering(uncertain, "b").steering).toEqual([]);
+  });
+
+  it("idle 把 dispatching/acked steering 标为 uncertain，且未丢弃 outbox 阻止普通 claim", () => {
+    const dispatching = claimSteering(laneOf(item("steer"), item("later")), "steer", 100);
+    const uncertainFromDispatch = markSteeringUncertain(dispatching);
+    expect(uncertainFromDispatch.steering?.[0]?.phase).toBe("uncertain");
+    expect(claimHead(uncertainFromDispatch, { startedAt: 101 })).toBe(uncertainFromDispatch);
+
+    const acked = ackSteering(dispatching, "steer");
+    const uncertainFromAck = markSteeringUncertain(acked);
+    expect(uncertainFromAck.steering?.[0]?.phase).toBe("uncertain");
+    expect(markSteeringUncertain(uncertainFromAck)).toBe(uncertainFromAck);
+
+    const discardRequested = clearPending(dispatching);
+    const withNewPending = enqueue(discardRequested, item("explicit-new"));
+    expect(claimHead(withNewPending, { startedAt: 102 }).inFlight?.item.id).toBe("explicit-new");
+  });
+
+  it("普通 inFlight 会拒绝 steering claim", () => {
+    const ordinary = claimHead(laneOf(item("a"), item("b")), { startedAt: 100 });
+    expect(claimSteering(ordinary, "b", 101)).toBe(ordinary);
   });
 
   it("returns a rejected in-flight item to the head and blocks later items", () => {
@@ -363,6 +428,55 @@ describe("send queue storage", () => {
 
     expect(readSendQueueLane<LocalQueueAttachment>(localTarget)).toEqual(localLane);
     expect(readSendQueueLane<CloudQueueAttachment>(cloudTarget)).toEqual(cloudLane);
+  });
+
+  it("reads old v1 lanes without steering and normalizes the extension without a version bump", () => {
+    const target = localSendQueueTarget("old-v1");
+    const oldLane = { version: 1, pending: [item("legacy")], inFlight: null, blocked: null };
+    storage.setItem(localSendQueueKey("old-v1"), JSON.stringify(oldLane));
+
+    expect(isSendQueueLane(oldLane)).toBe(true);
+    expect(readSendQueueLane(target)).toEqual({ ...oldLane, steering: [] });
+  });
+
+  it("persists steering claim and keeps ACKed data until matching confirmation", () => {
+    const target = localSendQueueTarget("steering-durable");
+    writeSendQueueLane(target, laneOf(item("a"), item("b")));
+    const claimed = updateSendQueueLane(target, (lane) => claimSteering(lane, "a", 100));
+    expect(claimed.ok).toBe(true);
+    expect(JSON.parse(storage.getItem(localSendQueueKey("steering-durable")) ?? "null")).toMatchObject({
+      pending: [{ id: "b" }],
+      steering: [{ item: { id: "a" }, phase: "dispatching" }],
+    });
+
+    writeSendQueueLane(target, ackSteering(claimed.lane, "a"));
+    const persistedAck = JSON.parse(storage.getItem(localSendQueueKey("steering-durable")) ?? "null");
+    expect(persistedAck.pending).toEqual([{ ...item("b") }]);
+    expect(persistedAck.steering[0]).toMatchObject({ item: { id: "a" }, phase: "acked" });
+    expect(confirmSteering(readSendQueueLane(target), "other").steering).toHaveLength(1);
+    expect(confirmSteering(readSendQueueLane(target), "a").steering).toEqual([]);
+  });
+
+  it("recovers ACKed steering as visible uncertain and drops clear-requested entries", () => {
+    const uncertainTarget = localSendQueueTarget("steering-restart");
+    const acked = ackSteering(claimSteering(laneOf(item("a")), "a", 100), "a");
+    writeSendQueueLane(uncertainTarget, acked);
+    resetSendQueueMemoryForTests();
+    expect(readSendQueueLane(uncertainTarget).steering?.[0]?.phase).toBe("uncertain");
+
+    const discardedTarget = localSendQueueTarget("steering-cleared");
+    writeSendQueueLane(discardedTarget, clearPending(claimSteering(laneOf(item("gone")), "gone", 101)));
+    resetSendQueueMemoryForTests();
+    expect(readSendQueueLane(discardedTarget).steering).toEqual([]);
+  });
+
+  it("counts steering-only cloud lanes in the non-empty index", () => {
+    const target = cloudSendQueueTarget("account", "steering-only");
+    const outbox = claimSteering(laneOf(item("a")), "a", 100);
+    writeSendQueueLane(target, outbox);
+    expect(getCloudQueueIndexSnapshot("account")).toContain("steering-only");
+    writeSendQueueLane(target, confirmSteering(outbox, "a"));
+    expect(getCloudQueueIndexSnapshot("account")).not.toContain("steering-only");
   });
 
   it("isolates local sessions, cloud tasks, and cloud account namespaces", () => {

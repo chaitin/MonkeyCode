@@ -302,9 +302,50 @@ impl Inner {
         // 子代理事件在父卡进度窗同步一份内联预览(非子代理为 no-op)
         self.subagent_feed(&sid, &etype, &event, &data);
         match etype.as_str() {
-            // user_message:引擎回显忽略——session_send 已本地先行落 user-input
-            // 帧(ack 与事件无时序保证,双写会重复气泡)
-            "user_message" => {}
+            // 普通 user_message 仍由 session_send 的本地先行回显覆盖。steer
+            // 则可能先于 session/steer RPC 应答到达：事件是权威落点，先在
+            // pending 上标 seen，再追加气泡；应答路径据此不再重复回显。
+            "user_message" => {
+                if data.get("source").and_then(Value::as_str) != Some("steer") {
+                    return;
+                }
+                let event_message = data.get("message").and_then(Value::as_str).unwrap_or("");
+                // Some((bubble, client_id)) 表示本事件首次物化了对应 steer；
+                // ACK-first 已经有气泡，event-first 则必须先补气泡再发确认。
+                let materialized = {
+                    let mut sessions = self.sess.sessions.lock_ok();
+                    sessions.get_mut(&sid).and_then(|s| {
+                        // ACK 先到的尝试已经本地回显，其 Agent echo 只用于偿还
+                        // FIFO debt。必须先于当前 pending 匹配，否则 A/B 同 turn
+                        // 且文本相同时，A 的迟到 echo 会把失败的 B 误判为成功。
+                        if let Some(expected) = s.pending_steer_echoes.front() {
+                            if expected.turn <= s.turn && expected.message == event_message {
+                                let confirmed = s.pending_steer_echoes.pop_front()?;
+                                return Some((None, confirmed.client_id));
+                            }
+                            // Agent 保证 steer echo 按接收顺序发出；头债未匹配时
+                            // 也不能越过它认领更新的 pending，后者仍由 RPC 决定。
+                            return None;
+                        }
+
+                        let pending = s.pending_steer.as_mut()?;
+                        if s.turn != pending.turn
+                            || pending.event_seen
+                            || event_message != pending.message
+                        {
+                            return None;
+                        }
+                        pending.event_seen = true;
+                        Some((Some(pending.message.clone()), pending.client_id.clone()))
+                    })
+                };
+                if let Some((message, client_id)) = materialized {
+                    if let Some(message) = message {
+                        self.push_frame(&sid, |seq| frame::steer_input(&message, &client_id, seq));
+                    }
+                    self.push_frame(&sid, |seq| frame::steer_confirmed(&client_id, seq));
+                }
+            }
             "model_delta" => {
                 let text = data.get("text").and_then(|v| v.as_str()).unwrap_or("");
                 // modelDoneText 对账:累积本段实收流式文本(旧引擎不宣告

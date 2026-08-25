@@ -29,15 +29,16 @@ export const LocalComposerHost = forwardRef<
   { sessionId, state, historyLoaded, meta, onAfterSend, hotkeysActive = true, focusRequest, onFocusRequestHandled },
   ref,
 ) {
+  const presentation = useMemo(() => composerPresentationOf(state), [state]);
   const ctl = useComposer(sessionId, {
     running: state.running,
     historyLoaded,
     lastSeq: state.lastSeq,
     lastTurnStartSeq: state.lastTurnStartSeq,
     lastTerminalSeq: state.lastTerminalSeq,
+    steerConfirmations: presentation.steerConfirmations,
   });
   const inputRef = useRef<ComposerInputHandle>(null);
-  const presentation = useMemo(() => composerPresentationOf(state), [state]);
 
   // addFiles/notifyError 都是 useCallback，逐键草稿更新不会改变句柄；切会话
   // 时 React 会原子替换为新 ctl，上传迟到回调仍由 useComposer 纪元守卫。

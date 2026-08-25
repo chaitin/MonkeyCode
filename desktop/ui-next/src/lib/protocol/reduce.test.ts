@@ -675,6 +675,30 @@ describe("轮次与系统帧", () => {
     expect(bad.items[0]).toEqual({ kind: "user", text: "!!!不是base64" });
   });
 
+  it("同一 batch 累计多条 steer-confirmed，并对 replay/prepend 保持幂等", () => {
+    const confirmed = run([
+      { ...frame("steer-confirmed", { client_id: "client-a" }), seq: 41 },
+      { ...frame("steer-confirmed", { client_id: "client-b" }), seq: 42 },
+    ]);
+    expect(confirmed.steerConfirmations).toEqual({ "client-a": 41, "client-b": 42 });
+    expect(reduceFrame(confirmed, { ...frame("steer-confirmed", { client_id: "client-b" }), seq: 42 })).toBe(confirmed);
+    expect(reduceBatch(confirmed, [{ ...frame("steer-confirmed", { client_id: "client-a" }), seq: 41 }])).toBe(confirmed);
+
+    const prepended = prependHistory(confirmed, [
+      { ...frame("user-input", { content: b64encode("更早消息") }), seq: 1 },
+      { ...frame("steer-confirmed", { client_id: "old-page" }), seq: 2 },
+    ]);
+    expect(prepended.steerConfirmations).toBe(confirmed.steerConfirmations);
+    expect(prepended.steerConfirmations).toEqual({ "client-a": 41, "client-b": 42 });
+  });
+
+  it("user-input 只保留受支持的 steering 来源", () => {
+    const steered = run([frame("user-input", { content: b64encode("补充"), source: "steer" })]);
+    expect(steered.items[0]).toEqual({ kind: "user", text: "补充", source: "steer" });
+    const unknown = run([frame("user-input", { content: b64encode("普通"), source: "other" })]);
+    expect(unknown.items[0]).toEqual({ kind: "user", text: "普通" });
+  });
+
   it("user-input 保留消息时间", () => {
     const s = run([{ ...frame("user-input", { content: b64encode("带时间") }), timestamp: 1_234 }]);
     expect(s.items[0]).toEqual({ kind: "user", text: "带时间", timestamp: 1_234 });

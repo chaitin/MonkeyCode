@@ -102,6 +102,75 @@ describe("SendQueueList", () => {
     expect(onRemove).toHaveBeenCalledWith("stable-second");
   });
 
+  it("steering outbox 独立显示，dispatching 时禁止其他项重复插入，acked 隐藏", () => {
+    const onSteer = vi.fn();
+    const outbox = { item: item("a", "正在补充"), phase: "dispatching" as const, startedAt: 2, originalIndex: 0 };
+    const props = {
+      pending: [item("b", "后续消息")],
+      inFlight: null,
+      blocked: null,
+      onRemove: vi.fn(),
+      onReorder: vi.fn(),
+      onSteer,
+      onResume: vi.fn(),
+      onDiscardUncertain: vi.fn(),
+    };
+    const { rerender } = render(<SendQueueList {...props} steering={[outbox]} />);
+    const steeringRow = screen.getByText("正在补充").closest("li")!;
+    expect(within(steeringRow).getByText("正在插入…")).toBeTruthy();
+    expect(within(steeringRow).queryByRole("button", { name: "拖动调整顺序" })).toBeNull();
+    expect((screen.getByRole("button", { name: "立即发送" }) as HTMLButtonElement).disabled).toBe(true);
+
+    rerender(<SendQueueList {...props} steering={[{ ...outbox, phase: "acked" }]} />);
+    expect(screen.queryByText("正在补充")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "立即发送" }));
+    expect(onSteer).toHaveBeenCalledWith("b");
+  });
+
+  it("只有 acked/discardRequested steering 时不渲染队列空壳", () => {
+    const hidden = [
+      { item: item("acked", "已确认 ACK"), phase: "acked" as const, startedAt: 2, originalIndex: 0 },
+      { item: item("cleared", "用户已清空"), phase: "dispatching" as const, startedAt: 3, originalIndex: 1, discardRequested: true },
+    ];
+    render(
+      <SendQueueList
+        pending={[]}
+        inFlight={null}
+        blocked={null}
+        steering={hidden}
+        onRemove={() => {}}
+        onReorder={() => {}}
+        onResume={() => {}}
+        onDiscardUncertain={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("region", { name: "待发送消息队列" })).toBeNull();
+  });
+
+  it("uncertain steering 外显并提供独立 retry/discard", () => {
+    const onRetrySteering = vi.fn();
+    const onDiscardSteering = vi.fn();
+    render(
+      <SendQueueList
+        pending={[]}
+        inFlight={null}
+        blocked={null}
+        steering={[{ item: item("maybe", "可能已插入"), phase: "uncertain", startedAt: 2, originalIndex: 0 }]}
+        onRemove={() => {}}
+        onReorder={() => {}}
+        onRetrySteering={onRetrySteering}
+        onDiscardSteering={onDiscardSteering}
+        onResume={() => {}}
+        onDiscardUncertain={() => {}}
+      />,
+    );
+    expect(screen.getByText("插入状态待确认")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    fireEvent.click(screen.getByRole("button", { name: "移除此消息" }));
+    expect(onRetrySteering).toHaveBeenCalledWith("maybe");
+    expect(onDiscardSteering).toHaveBeenCalledWith("maybe");
+  });
+
   it("收到回执后隐藏已出现在时间线的发送中项", () => {
     render(
       <SendQueueList

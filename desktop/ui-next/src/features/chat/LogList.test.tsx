@@ -132,6 +132,13 @@ describe("LogList 系统行按 tag 分流", () => {
 });
 
 describe("消息时间(悬停显影的 <time>)", () => {
+  it("steering 用户气泡显示弱化的补充指令标签", () => {
+    const state = withItems([{ kind: "user", text: "再检查边界", source: "steer", seq: 1 }]);
+    render(<LogList state={state} sessionId="s1" />);
+    expect(screen.getByText("补充指令")).toBeTruthy();
+    expect(screen.getByText("再检查边界")).toBeTruthy();
+  });
+
   it("用户气泡与 agent 块渲染 dateTime 语义的 HH:MM;缺 timestamp 不渲染", () => {
     // 用「今天」的时刻:fmtClock 跨天会带日期前缀,固定历史日期会随运行日漂移
     const ts = new Date(new Date().setHours(9, 5, 0, 0)).getTime();

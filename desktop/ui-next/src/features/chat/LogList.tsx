@@ -74,6 +74,9 @@ function UserBubble({
           正文色。wrap-anywhere:长串无空格内容(URL/路径/token)必须可断,
           否则从气泡右缘溢出(bubble 尾巴 background inherit,淡染一体生效) */}
       <div className="chat-bubble max-w-[85%] bg-primary/10 text-sm whitespace-pre-wrap wrap-anywhere select-text">
+        {item.source === "steer" && (
+          <span className="mb-1 block text-[11px] font-medium text-base-content/45">{t("chat.user.steer")}</span>
+        )}
         {body}
         {hasAtts && (
           <div className={`flex flex-wrap items-center gap-1.5 ${body ? "mt-2" : ""}`}>

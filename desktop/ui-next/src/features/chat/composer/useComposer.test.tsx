@@ -2,7 +2,17 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { b64decode } from "@/lib/protocol/codec";
-import { localSendQueueTarget, readSendQueueLane, resetSendQueueMemoryForTests } from "./sendQueue";
+import {
+  ackSteering,
+  claimSteering,
+  createSendQueueItem,
+  emptySendQueueLane,
+  enqueue,
+  localSendQueueTarget,
+  readSendQueueLane,
+  resetSendQueueMemoryForTests,
+  writeSendQueueLane,
+} from "./sendQueue";
 import { resetStashForTests, stashGet } from "./stash";
 import { useComposer, type ComposerFeed } from "./useComposer";
 
@@ -34,6 +44,7 @@ const feed = (over: Partial<ComposerFeed> = {}): ComposerFeed => ({
   lastSeq: 0,
   lastTurnStartSeq: 0,
   lastTerminalSeq: 0,
+  steerConfirmations: {},
   ...over,
 });
 const settle = () => act(async () => void (await Promise.resolve()));
@@ -68,6 +79,248 @@ describe("useComposer 本地持久 lane", () => {
 
     expect(result.current.queue.pending.map((item) => item.content)).toEqual(["第一条", "第二条", "第三条"]);
     expect(queueTexts("a")).toEqual(["第一条", "第二条", "第三条"]);
+  });
+
+  it("能力查询撞重启闸门时退避重试，前两次 reject 后恢复 steering", async () => {
+    vi.useFakeTimers();
+    let attempts = 0;
+    const calls = stubShell((cmd) => {
+      if (cmd !== "engine_caps") return null;
+      attempts += 1;
+      if (attempts <= 2) throw new Error("engine applying");
+      return { steering: true };
+    });
+
+    const { result } = renderHook(() => useComposer("a", feed()));
+    await act(async () => void (await Promise.resolve()));
+    expect(result.current.steeringSupported).toBe(false);
+    expect(attempts).toBe(1);
+
+    await act(async () => void (await vi.advanceTimersByTimeAsync(80)));
+    expect(result.current.steeringSupported).toBe(false);
+    expect(attempts).toBe(2);
+
+    await act(async () => void (await vi.advanceTimersByTimeAsync(160)));
+    expect(result.current.steeringSupported).toBe(true);
+    expect(attempts).toBe(3);
+    expect(calls.filter((call) => call.cmd === "engine_caps")).toHaveLength(3);
+  });
+
+  it("steering claim 先持久化并携带 client_id；ACK 隐藏但 confirmed 才清 outbox", async () => {
+    let resolveSteer: () => void = () => {};
+    const pendingSteer = new Promise<void>((resolve) => (resolveSteer = resolve));
+    const calls = stubShell((cmd, args) => {
+      if (cmd === "engine_caps") return { steering: true };
+      if (cmd === "session_call" && args?.kind === "session_steer") return pendingSteer;
+      if (cmd === "upload_file_path") return { path: ".monkeycode/uploads/a.png" };
+      return null;
+    });
+    const { result, rerender } = renderHook(
+      ({ running, confirmations }: { running: boolean; confirmations: ComposerFeed["steerConfirmations"] }) =>
+        useComposer("a", feed({ running, steerConfirmations: confirmations })),
+      { initialProps: { running: true, confirmations: {} as ComposerFeed["steerConfirmations"] } },
+    );
+    await waitFor(() => expect(result.current.steeringSupported).toBe(true));
+    await act(() => result.current.addPaths([".monkeycode/uploads/a.png"]));
+    act(() => result.current.setDraft("  补充正文  "));
+    act(() => result.current.send());
+    const id = result.current.queue.pending[0]!.id;
+
+    act(() => result.current.steerQueued(id));
+    expect(result.current.queue.pending).toEqual([]);
+    expect(result.current.queue.steering?.[0]).toMatchObject({ item: { id }, phase: "dispatching" });
+    expect(JSON.parse(localStorage.getItem("mc.sendQueue.v1.local.a") ?? "null").steering[0]).toMatchObject({
+      item: { id }, phase: "dispatching",
+    });
+    const call = calls.find((entry) => entry.cmd === "session_call" && entry.args?.kind === "session_steer")!;
+    const payload = call.args?.payload as { content?: string; client_id?: string };
+    expect(payload.client_id).toBe(id);
+    expect(b64decode(String(payload.content))).toBe("补充正文\n[图片] .monkeycode/uploads/a.png");
+
+    rerender({ running: true, confirmations: {} });
+    await settle();
+    expect(sends(calls)).toHaveLength(0);
+    expect(result.current.steeringId).toBe(id);
+
+    await act(async () => {
+      resolveSteer();
+      await pendingSteer;
+    });
+    await waitFor(() => expect(result.current.steeringId).toBeNull());
+    expect(result.current.queue.steering?.[0]).toMatchObject({ item: { id }, phase: "acked" });
+    expect(JSON.parse(localStorage.getItem("mc.sendQueue.v1.local.a") ?? "null").steering[0].phase).toBe("acked");
+
+    rerender({ running: true, confirmations: { [id]: 12 } });
+    await waitFor(() => expect(result.current.queue.steering).toEqual([]));
+    // 同 client_id 换批重放仍幂等。
+    rerender({ running: true, confirmations: { [id]: 13 } });
+    expect(result.current.queue.steering).toEqual([]);
+    expect(sends(calls)).toHaveLength(0);
+  });
+
+  it("同一归约批次的两个 confirmed 分别清除两条 acked outbox", async () => {
+    const target = localSendQueueTarget("a");
+    const a = createSendQueueItem("补充 A", [], { id: "client-a", createdAt: 1 });
+    const b = createSendQueueItem("补充 B", [], { id: "client-b", createdAt: 2 });
+    let lane = enqueue(enqueue(emptySendQueueLane(), a), b);
+    lane = ackSteering(claimSteering(lane, a.id, 10), a.id);
+    lane = ackSteering(claimSteering(lane, b.id, 11), b.id);
+    writeSendQueueLane(target, lane);
+
+    stubShell((cmd) => cmd === "engine_caps" ? { steering: true } : null);
+    const { result } = renderHook(() =>
+      useComposer("a", feed({ running: false, steerConfirmations: { "client-a": 41, "client-b": 42 } })),
+    );
+    await waitFor(() => expect(result.current.queue.steering).toEqual([]));
+    expect(JSON.parse(localStorage.getItem("mc.sendQueue.v1.local.a") ?? "null").steering).toEqual([]);
+  });
+
+  it("ACK 后 task end 无 confirmed 转 uncertain，并阻止后续 pending 自动越过", async () => {
+    const calls = stubShell((cmd) => {
+      if (cmd === "engine_caps") return { steering: true };
+      return null;
+    });
+    const { result, rerender } = renderHook(
+      ({ running, confirmations }) => useComposer("a", feed({ running, steerConfirmations: confirmations })),
+      { initialProps: { running: true, confirmations: {} as Record<string, number> } },
+    );
+    await waitFor(() => expect(result.current.steeringSupported).toBe(true));
+    act(() => result.current.setDraft("已 ACK 的补充"));
+    act(() => result.current.send());
+    const id = result.current.queue.pending[0]!.id;
+    act(() => result.current.steerQueued(id));
+    await waitFor(() => expect(result.current.queue.steering?.[0]?.phase).toBe("acked"));
+
+    act(() => result.current.setDraft("不能越过的不同行消息"));
+    act(() => result.current.send());
+    rerender({ running: false, confirmations: {} });
+    await waitFor(() => expect(result.current.queue.steering?.[0]?.phase).toBe("uncertain"));
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["不能越过的不同行消息"]);
+    expect(sends(calls)).toHaveLength(0);
+
+    rerender({ running: false, confirmations: { [id]: 30 } });
+    await waitFor(() => expect(result.current.queue.steering).toEqual([]));
+  });
+
+  it("steering 失败保留原项并外显错误", async () => {
+    let rejectSteer: (error: Error) => void = () => {};
+    const pendingSteer = new Promise<void>((_, reject) => (rejectSteer = reject));
+    stubShell((cmd, args) => {
+      if (cmd === "engine_caps") return { steering: true };
+      if (cmd === "session_call" && args?.kind === "session_steer") return pendingSteer;
+      return null;
+    });
+    const { result } = renderHook(() => useComposer("a", feed({ running: true })));
+    await waitFor(() => expect(result.current.steeringSupported).toBe(true));
+    act(() => result.current.setDraft("不能丢"));
+    act(() => result.current.send());
+    const id = result.current.queue.pending[0]!.id;
+    act(() => result.current.steerQueued(id));
+
+    await act(async () => rejectSteer(new Error("runtime busy")));
+    expect(result.current.steeringId).toBeNull();
+    expect(result.current.queue.pending[0]?.id).toBe(id);
+    expect(result.current.error).toContain("runtime busy");
+  });
+
+  it("clear during dispatching + RPC failure 不恢复也不普通发送", async () => {
+    let rejectSteer: (error: Error) => void = () => {};
+    const pendingSteer = new Promise<void>((_, reject) => (rejectSteer = reject));
+    const calls = stubShell((cmd, args) => {
+      if (cmd === "engine_caps") return { steering: true };
+      if (cmd === "session_call" && args?.kind === "session_steer") return pendingSteer;
+      return null;
+    });
+    const { result, rerender } = renderHook(({ running }) => useComposer("a", feed({ running })), {
+      initialProps: { running: true },
+    });
+    await waitFor(() => expect(result.current.steeringSupported).toBe(true));
+    act(() => result.current.setDraft("清空后绝不能回来"));
+    act(() => result.current.send());
+    const id = result.current.queue.pending[0]!.id;
+    act(() => result.current.steerQueued(id));
+    act(() => result.current.clearQueue());
+    expect(result.current.queue.steering?.[0]).toMatchObject({ item: { id }, discardRequested: true });
+
+    await act(async () => rejectSteer(new Error("agent stopped")));
+    expect(result.current.queue.pending).toEqual([]);
+    expect(result.current.queue.steering).toEqual([]);
+    rerender({ running: false });
+    await settle();
+    expect(sends(calls)).toHaveLength(0);
+  });
+
+  it("idle 重挂把 durable dispatching 外显为 uncertain，ACK 后仍不普通重复发送", async () => {
+    let resolveSteer: () => void = () => {};
+    const pendingSteer = new Promise<void>((resolve) => (resolveSteer = resolve));
+    const calls = stubShell((cmd, args) => {
+      if (cmd === "engine_caps") return { steering: true };
+      if (cmd === "session_call" && args?.kind === "session_steer") return pendingSteer;
+      return null;
+    });
+    const first = renderHook(() => useComposer("a", feed({ running: true })));
+    await waitFor(() => expect(first.result.current.steeringSupported).toBe(true));
+    act(() => first.result.current.setDraft("只插入一次"));
+    act(() => first.result.current.send());
+    const id = first.result.current.queue.pending[0]!.id;
+    act(() => first.result.current.steerQueued(id));
+    first.unmount();
+
+    const second = renderHook(
+      ({ running, confirmations }) => useComposer("a", feed({ running, steerConfirmations: confirmations })),
+      { initialProps: { running: false, confirmations: {} as Record<string, number> } },
+    );
+    await waitFor(() => expect(second.result.current.queue.steering?.[0]?.phase).toBe("uncertain"));
+    expect(second.result.current.steeringId).toBeNull();
+    expect(sends(calls)).toHaveLength(0);
+
+    await act(async () => {
+      resolveSteer();
+      await pendingSteer;
+    });
+    // ACK 回调不能把 idle 时已外显的不确定项重新隐藏。
+    expect(second.result.current.queue.steering?.[0]?.phase).toBe("uncertain");
+    second.rerender({ running: true, confirmations: {} });
+    second.rerender({ running: false, confirmations: {} });
+    await settle();
+    expect(second.result.current.queue.pending).toEqual([]);
+    expect(second.result.current.queue.steering?.[0]).toMatchObject({ item: { id }, phase: "uncertain" });
+    expect(sends(calls)).toHaveLength(0);
+    second.rerender({ running: false, confirmations: { [id]: 20 } });
+    await waitFor(() => expect(second.result.current.queue.steering).toEqual([]));
+  });
+
+  it("steering 迟到 ACK 只更新 original target/id", async () => {
+    let resolveSteer: () => void = () => {};
+    const pendingSteer = new Promise<void>((resolve) => (resolveSteer = resolve));
+    stubShell((cmd, args) => {
+      if (cmd === "engine_caps") return { steering: true };
+      if (cmd === "session_call" && args?.kind === "session_steer") return pendingSteer;
+      return null;
+    });
+    const { result, rerender } = renderHook(({ id }) => useComposer(id, feed({ running: true })), {
+      initialProps: { id: "a" },
+    });
+    await waitFor(() => expect(result.current.steeringSupported).toBe(true));
+    act(() => result.current.setDraft("A 补充"));
+    act(() => result.current.send());
+    const steeringId = result.current.queue.pending[0]!.id;
+    act(() => result.current.steerQueued(steeringId));
+
+    rerender({ id: "b" });
+    act(() => result.current.setDraft("B 保留"));
+    act(() => result.current.send());
+    await act(async () => {
+      resolveSteer();
+      await pendingSteer;
+    });
+
+    expect(queueTexts("a")).toEqual([]);
+    expect(readSendQueueLane(localSendQueueTarget("a")).steering?.[0]).toMatchObject({
+      item: { id: steeringId }, phase: "acked",
+    });
+    expect(queueTexts("b")).toEqual(["B 保留"]);
+    expect(result.current.queue.pending.map((item) => item.content)).toEqual(["B 保留"]);
   });
 
   it("队列按会话隔离，草稿/当前附件仍只由 stash 恢复", () => {

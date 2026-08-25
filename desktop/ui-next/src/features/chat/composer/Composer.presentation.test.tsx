@@ -25,6 +25,15 @@ describe("composerPresentationOf 增量投影", () => {
     expect(before.roundNo).toBe(1);
   });
 
+  it("运行轮数不统计 steering 补充指令", () => {
+    const state = reduceBatch(createChatState(), [
+      { type: "user-input", data: { content: "5Li76KaB", source: "steer" }, seq: 1 },
+      { type: "user-input", data: { content: "5q2j5bi4" }, seq: 2 },
+      { type: "user-input", data: { content: "6KGl5YWF", source: "steer" }, seq: 3 },
+    ]);
+    expect(composerPresentationOf(state).roundNo).toBe(1);
+  });
+
   it("前插历史 think 行不递增实时确认版本", () => {
     const current = reduceBatch(createChatState(), [acp({ sessionUpdate: "think_update", think: "medium" }, 10)]);
     const before = composerPresentationOf(current);
