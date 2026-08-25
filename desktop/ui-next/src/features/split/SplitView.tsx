@@ -117,7 +117,8 @@ export interface SplitCloudWiring {
 export interface SplitAdminWiring {
   attentionIds: ReadonlySet<string>;
   onRename: (meta: SessionMeta, title: string) => void;
-  onToggleArchive: (meta: SessionMeta) => void;
+  /** 返回是否更新成功；归档失败时 Panel 必须保留。 */
+  onToggleArchive: (meta: SessionMeta) => Promise<boolean>;
   onDelete: (meta: SessionMeta) => void;
   todo?: TodoWiring;
 }
@@ -304,7 +305,6 @@ export function SplitView({
   const placed = new Set(split.slots.filter(Boolean) as string[]);
   const zoomedSlot = split.zoomed;
   const total = paneCount(split.tree);
-  const canClose = total > 1;
   const visible = zoomedSlot !== null ? 1 : total;
   const visibleLeaves = zoomedSlot !== null ? [zoomedSlot] : leaves(split.tree);
   // 右侧顶条只剩一种存在理由:列收起(☰/新建兜底之家 + mac 净空)。
@@ -347,6 +347,22 @@ export function SplitView({
   };
   const newTaskAction = () => {
     openCreateInNewPane(pickTab === "cloud" ? "cloud" : "local");
+  };
+  const openCreateAfterLastPane = (slot: number | null, kind: SessionKind | "cloud") => {
+    if (slot === null) return;
+    setSwapSlot(null);
+    setCreatingSlot({ slot, kind, entryAtOpen: null });
+  };
+  const closePane = (slot: number, kind: SessionKind | "cloud") => {
+    setSwapSlot(null);
+    setCreatingSlot((creating) => (creating?.slot === slot ? null : creating));
+    openCreateAfterLastPane(split.closePane(slot), kind);
+  };
+  const toggleArchive = async (meta: SessionMeta) => {
+    if (!admin) return;
+    const archived = !meta.archived;
+    const succeeded = await admin.onToggleArchive(meta);
+    if (succeeded && archived) openCreateAfterLastPane(split.closeEntry(meta.id), meta.kind ?? "local");
   };
   const onWorkbenchShortcut = useEffectEvent((e: KeyboardEvent) => {
     if (!active) return;
@@ -600,7 +616,7 @@ export function SplitView({
                 ? [
                     {
                       label: meta.archived ? t("sidebar.row.unarchive") : t("sidebar.row.archive"),
-                      run: () => admin.onToggleArchive(meta),
+                      run: () => void toggleArchive(meta),
                     },
                     {
                       label: t("sidebar.row.delete"),
@@ -615,7 +631,6 @@ export function SplitView({
             ]}
             zoomed={zoomedSlot === slot}
             swapping={swapSlot === slot}
-            canClose={canClose}
             onSplit={(dir) => {
               setSwapSlot(null);
               split.splitPane(slot, dir);
@@ -625,11 +640,7 @@ export function SplitView({
               split.toggleZoom(slot);
             }}
             onSwap={() => setSwapSlot((s) => (s === slot ? null : slot))}
-            onClose={() => {
-              setSwapSlot(null);
-              setCreatingSlot((c) => (c?.slot === slot ? null : c));
-              split.closePane(slot);
-            }}
+            onClose={() => closePane(slot, cloudTask ? "cloud" : (meta?.kind ?? "local"))}
           />
         )}
         {creating ? (
@@ -913,6 +924,7 @@ export function SplitView({
           focusedEntry={focusedEntry}
           cloud={cloud}
           admin={admin}
+          onToggleArchive={toggleArchive}
           tab={pickTab}
           onTabChange={setPickTab}
           revealTick={revealTick}
@@ -1160,6 +1172,7 @@ function WorkbenchList({
   focusedEntry,
   cloud,
   admin,
+  onToggleArchive,
   tab,
   onTabChange,
   revealTick,
@@ -1178,6 +1191,7 @@ function WorkbenchList({
   focusedEntry: string | null;
   cloud?: SplitCloudWiring;
   admin?: SplitAdminWiring;
+  onToggleArchive: (meta: SessionMeta) => void;
   /** 当前 tab 受控于 SplitView(头部「新建」的 kind 跟它走)。 */
   tab: "local" | "cloud";
   onTabChange: (tab: "local" | "cloud") => void;
@@ -1285,7 +1299,7 @@ function WorkbenchList({
           { label: t("sidebar.row.rename"), run: () => setRenamingId(meta.id) },
           {
             label: meta.archived ? t("sidebar.row.unarchive") : t("sidebar.row.archive"),
-            run: () => admin.onToggleArchive(meta),
+            run: () => onToggleArchive(meta),
           },
           {
             label: t("sidebar.row.delete"),
@@ -1807,7 +1821,6 @@ function PaneHeader({
   viewMenu,
   zoomed,
   swapping,
-  canClose,
   onSplit,
   onZoom,
   onSwap,
@@ -1833,7 +1846,6 @@ function PaneHeader({
   viewMenu?: () => MenuItem[];
   zoomed: boolean;
   swapping: boolean;
-  canClose: boolean;
   onSplit: (dir: SplitDir) => void;
   onZoom: () => void;
   onSwap: () => void;
@@ -1957,13 +1969,9 @@ function PaneHeader({
         >
           <IconDots size={16} stroke={1.75} aria-hidden />
         </button>
-        {/* 独格整颗不渲染(置灰版 2026-08-19 用户「去掉吧」——关不掉的
-            钮摆着是噪声) */}
-        {canClose && (
-          <button type="button" aria-label={t("split.close")} title={t("split.close")} className={btn} onClick={onClose}>
-            <IconX size={16} stroke={1.75} aria-hidden />
-          </button>
-        )}
+        <button type="button" aria-label={t("split.close")} title={t("split.close")} className={btn} onClick={onClose}>
+          <IconX size={16} stroke={1.75} aria-hidden />
+        </button>
       </div>
     </div>
   );

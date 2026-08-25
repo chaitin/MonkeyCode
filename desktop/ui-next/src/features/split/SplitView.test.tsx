@@ -6,7 +6,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionMeta } from "@/lib/ipc/sessions";
-import { SplitView } from "./SplitView";
+import { SplitView, type SplitAdminWiring } from "./SplitView";
 import { LOAD_MIME } from "./slots";
 import { useSplitState } from "./useSplitState";
 
@@ -84,10 +84,12 @@ function Harness({
   active = true,
   sessions = SESSIONS,
   onAssign,
+  admin,
 }: {
   active?: boolean;
   sessions?: SessionMeta[];
   onAssign?: (slot: number, id: string) => void;
+  admin?: SplitAdminWiring;
 }) {
   const split = useSplitState();
   const [focusRequest, setFocusRequest] = useState(0);
@@ -109,6 +111,7 @@ function Harness({
       onComposerIntent={() => setFocusRequest((n) => n + 1)}
       onOpenSettings={() => {}}
       recentDirs={[]}
+      admin={admin}
     />
   );
 }
@@ -371,20 +374,80 @@ describe("分屏视图(树形布局)", () => {
     expect(shell.calls.filter((c) => c.cmd === "session_call")[1]?.args?.id).toBe("s2");
   });
 
-  it("关闭格子:兄弟上位、槽位清档;最后一格不可关(钮置灰)", async () => {
+  it("关闭格子:兄弟上位并清档;关闭最后一格后原地打开新建任务页", async () => {
     stubShell();
     localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
     localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", "s2", null, null, null, null]));
     render(<Harness />);
     await userEvent.click(within(screen.getByRole("region", { name: "第 1 格" })).getByRole("button", { name: /关闭格子/ }));
-    const panes = screen.getAllByRole("region");
-    expect(panes).toHaveLength(1);
-    // 槽 0 的档被清(关格是显式动作,不留隐藏尾巴)
+    const pane = screen.getByRole("region");
     expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]")[0]).toBeNull();
-    // 独格:关闭钮整颗不渲染(置灰版 2026-08-19 用户「去掉吧」),
-    // 细头其余(格操作)仍在
-    expect(within(panes[0]!).queryByRole("button", { name: /关闭格子/ })).toBeNull();
-    expect(within(panes[0]!).getByRole("button", { name: "格操作" })).toBeTruthy();
+    const close = within(pane).getByRole("button", { name: /关闭格子/ });
+
+    await userEvent.click(close);
+
+    expect(screen.getAllByRole("region")).toHaveLength(1);
+    expect(within(pane).getByRole("heading", { name: "新建任务" })).toBeTruthy();
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]").every((entry: unknown) => entry === null)).toBe(true));
+  });
+
+  it("归档成功关闭对应 Panel，并保留其他 Panel", async () => {
+    stubShell();
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", "s2"]));
+    const onToggleArchive = vi.fn(async () => true);
+    const admin: SplitAdminWiring = {
+      attentionIds: new Set(),
+      onRename: () => {},
+      onToggleArchive,
+      onDelete: () => {},
+    };
+    render(<Harness admin={admin} />);
+    const pane = screen.getByRole("region", { name: "第 1 格" });
+    await userEvent.click(within(pane).getByRole("button", { name: "格操作" }));
+    await userEvent.click(within(document.body.lastElementChild as HTMLElement).getByText("归档"));
+
+    await waitFor(() => expect(screen.getAllByRole("region")).toHaveLength(1));
+    expect(within(screen.getByRole("region")).getByTitle(/跑着的任务/)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "新建任务" })).toBeNull();
+  });
+
+  it("归档最后一个任务时进入新建任务页", async () => {
+    stubShell();
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1"]));
+    const onToggleArchive = vi.fn(async () => true);
+    const admin: SplitAdminWiring = {
+      attentionIds: new Set(),
+      onRename: () => {},
+      onToggleArchive,
+      onDelete: () => {},
+    };
+    render(<Harness admin={admin} />);
+    const pane = screen.getByRole("region");
+    await userEvent.click(within(pane).getByRole("button", { name: "格操作" }));
+    await userEvent.click(within(document.body.lastElementChild as HTMLElement).getByText("归档"));
+
+    await waitFor(() => expect(onToggleArchive).toHaveBeenCalledWith(expect.objectContaining({ id: "s1" })));
+    expect(within(pane).getByRole("heading", { name: "新建任务" })).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]").every((entry: unknown) => entry === null)).toBe(true);
+  });
+
+  it("归档失败保留原 Panel", async () => {
+    stubShell();
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1"]));
+    const admin: SplitAdminWiring = {
+      attentionIds: new Set(),
+      onRename: () => {},
+      onToggleArchive: vi.fn(async () => false),
+      onDelete: () => {},
+    };
+    render(<Harness admin={admin} />);
+    const pane = screen.getByRole("region");
+    await userEvent.click(within(pane).getByRole("button", { name: "格操作" }));
+    await userEvent.click(within(document.body.lastElementChild as HTMLElement).getByText("归档"));
+
+    await waitFor(() => expect(within(pane).getByTitle(/已入格的任务/)).toBeTruthy());
+    expect(within(pane).queryByRole("heading", { name: "新建任务" })).toBeNull();
   });
 
   it("平铺分栏(2026-08-19 mockup 终案,当日浮卡退役):格白底无卡衣、细头恒在带拖窗面,右侧无顶条", () => {

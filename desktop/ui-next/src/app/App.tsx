@@ -389,6 +389,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
                   title: e.title || m.title,
                   status: e.status ?? m.status,
                   summary: e.summary ?? m.summary,
+                  archived: e.archived ?? m.archived,
                   waiting_ask: e.type === "session-ask" ? e.open : m.waiting_ask,
                   // 任务列项目组按「组内最近 updated_at」排序:session-status
                   // 恒紧跟一次刷新 updated_at 的 write_sidecar(壳侧契约)
@@ -621,10 +622,15 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
                   .then(refresh)
                   .catch((e: unknown) => pushShell("notice.renameFailed", "error", { params: { reason: errText(e) } }));
               },
-              onToggleArchive: (meta) => {
-                void sessionPatch(meta.id, { archived: !meta.archived })
-                  .then(refresh)
-                  .catch((e: unknown) => pushShell("notice.archiveFailed", "error", { params: { reason: errText(e) } }));
+              onToggleArchive: async (meta) => {
+                try {
+                  await sessionPatch(meta.id, { archived: !meta.archived });
+                  await refresh();
+                  return true;
+                } catch (e: unknown) {
+                  pushShell("notice.archiveFailed", "error", { params: { reason: errText(e) } });
+                  return false;
+                }
               },
               onDelete: removeSession,
               todo: {

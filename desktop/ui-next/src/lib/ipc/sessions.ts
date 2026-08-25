@@ -58,6 +58,7 @@ export interface SessionEvent {
   status?: string;
   open?: boolean;
   summary?: string;
+  archived?: boolean;
 }
 
 /** ⚠️ 壳内失败要**抛**给调用方。

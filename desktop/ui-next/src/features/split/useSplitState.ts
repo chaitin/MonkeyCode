@@ -43,9 +43,11 @@ export interface SplitStateApi {
   addRootPane: (edge: SplitRootEdge) => number;
   /** 把已有格搬到整个主视图的上/右边缘，原位置自动收拢。 */
   movePaneToRoot: (slot: number, edge: SplitRootEdge) => void;
-  /** 关闭某格(tmux 收格:兄弟上位):槽位内容一并清档——关格是显式
-   *  动作,不同于换模板的"藏而不清";最后一格不许关。 */
-  closePane: (slot: number) => void;
+  /** 关闭某格(tmux 收格:兄弟上位):槽位内容一并清档。若关闭最后
+   *  一格则保留一个空宿主叶，并返回其槽号供调用方打开新建页。 */
+  closePane: (slot: number) => number | null;
+  /** 原子关闭承载指定条目的全部格；异常旧档出现重复条目时也一次收净。 */
+  closeEntry: (entry: string) => number | null;
   /** 两格交换位置(拖格头换位;内容跟格走)。 */
   swapPanes: (x: number, y: number) => void;
   focus: (index: number) => void;
@@ -140,15 +142,34 @@ export function useSplitState(): SplitStateApi {
     setFocused(slot);
   }, []);
 
-  const closePane = useCallback((slot: number) => {
+  const closePanes = useCallback((targets: ReadonlySet<number>): number | null => {
     const cur = snapRef.current;
-    const next = removeLeaf(cur.tree, slot);
-    if (next === cur.tree) return; // 最后一格/不在树上
+    const order = leaves(cur.tree);
+    const closing = order.filter((slot) => targets.has(slot));
+    if (closing.length === 0) return null;
+
+    const closingAll = closing.length === order.length;
+    const host = closingAll ? (order[0] ?? 0) : null;
+    let next: SplitNode = host === null ? cur.tree : { leaf: host };
+    if (!closingAll) {
+      for (const slot of closing) next = removeLeaf(next, slot);
+    }
     setTree(next);
-    setSlots((prev) => eject(prev, slot));
-    if (cur.zoomed === slot) setZoomed(null);
-    setFocused((f) => (f === slot ? (leaves(next)[0] ?? 0) : f));
+    setSlots((prev) => closing.reduce((slots, slot) => eject(slots, slot), prev));
+    if (cur.zoomed !== null && targets.has(cur.zoomed)) setZoomed(null);
+    setFocused((focused) => (targets.has(focused) ? (leaves(next)[0] ?? 0) : focused));
+    return host;
   }, []);
+
+  const closePane = useCallback((slot: number) => closePanes(new Set([slot])), [closePanes]);
+
+  const closeEntry = useCallback(
+    (entry: string) => {
+      const cur = snapRef.current;
+      return closePanes(new Set(leaves(cur.tree).filter((slot) => cur.slots[slot] === entry)));
+    },
+    [closePanes],
+  );
 
   const swapPanes = useCallback((x: number, y: number) => {
     setTree((prev) => swapLeaves(prev, x, y));
@@ -220,6 +241,7 @@ export function useSplitState(): SplitStateApi {
     addRootPane,
     movePaneToRoot,
     closePane,
+    closeEntry,
     swapPanes,
     focus,
     toggleZoom,

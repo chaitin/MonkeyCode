@@ -752,6 +752,28 @@ describe("任务列排序跟得上后台活动", () => {
     expect(shell.count("sessions_list")).toBe(listBefore); // 就地补丁,没有重拉风暴
   });
 
+  it("已归档任务重新发言:状态事件将其立即移回活跃列表,且不重拉全表", async () => {
+    const shell = stubShell({ sessions: [sess({ id: "归档任务", archived: true })] });
+    render(<App />);
+    const list = screen.getByRole("complementary", { name: "选择任务" });
+    await waitFor(() => expect(shell.count("sessions_list")).toBeGreaterThanOrEqual(1));
+    expect(within(list).queryByText("归档任务")).toBeNull();
+    const listBefore = shell.count("sessions_list");
+
+    act(() =>
+      shell.emit("session-event", {
+        type: "session-status",
+        id: "归档任务",
+        title: "归档任务",
+        status: "running",
+        archived: false,
+      }),
+    );
+
+    expect(await within(list).findByText("归档任务")).toBeTruthy();
+    expect(shell.count("sessions_list")).toBe(listBefore);
+  });
+
   it("session-ask / session-summary 不动时间戳(壳侧走的是 keep_updated 那条)", async () => {
     const shell = stubShell({
       sessions: [
