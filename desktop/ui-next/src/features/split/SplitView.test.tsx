@@ -633,7 +633,7 @@ describe("分屏视图(树形布局)", () => {
     expect(screen.getByRole("region", { name: "第 2 格" }).querySelector("[data-split-focus]")).toBeNull();
   });
 
-  it("任务拖到整个主视图上边缘 = 新建根级顶部格；原格不被替换", () => {
+  it("任务拖到目标 Panel 上边缘 = 只拆该 Panel；其他列不受影响", () => {
     stubShell();
     localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
     localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null]));
@@ -643,11 +643,15 @@ describe("分屏视图(树形布局)", () => {
       left: 0, top: 0, width: 1000, height: 800, right: 1000, bottom: 800, x: 0, y: 0, toJSON: () => ({}),
     });
     const first = screen.getByRole("region", { name: "第 1 格" });
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue({
+      left: 0, top: 0, width: 500, height: 800, right: 500, bottom: 800, x: 0, y: 0, toJSON: () => ({}),
+    });
     const row = within(screen.getByRole("complementary", { name: "选择任务" })).getByText("跑着的任务").closest("button")!;
     const dt = fakeDT();
     fireEvent.dragStart(row, { dataTransfer: dt });
     fireDragAt(first, "dragover", dt, 500, 12);
-    expect(grid.querySelector('[data-split-root-drop="top"]')).not.toBeNull();
+    expect(grid.querySelector('[data-split-root-drop="top"]')).toBeNull();
+    expect(first.querySelector('[data-split-pane-drop="top"]')).not.toBeNull();
     expect(first.querySelector("[data-split-drop]")).toBeNull();
     fireDragAt(first, "drop", dt, 500, 12);
 
@@ -656,6 +660,50 @@ describe("分屏视图(树形布局)", () => {
     expect(panes[0]!.getAttribute("aria-label")).toBe("第 3 格");
     expect(within(panes[0]!).getByTitle(/跑着的任务/)).toBeTruthy();
     expect(within(screen.getByRole("region", { name: "第 1 格" })).getByTitle(/已入格的任务/)).toBeTruthy();
+    expect(panes[0]!.parentElement?.style.width).toBe("50%");
+    expect(panes[0]!.parentElement?.style.height).toBe("50%");
+    expect(screen.getByRole("region", { name: "第 2 格" }).parentElement?.style.height).toBe("100%");
+  });
+
+  it("任务拖到目标 Panel 下边缘以及整个主视图左边缘均可创建", () => {
+    stubShell();
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null]));
+    const { container, unmount } = render(<Harness />);
+    const grid = container.querySelector<HTMLElement>("[data-split-grid]")!;
+    vi.spyOn(grid, "getBoundingClientRect").mockReturnValue({
+      left: 0, top: 0, width: 1000, height: 800, right: 1000, bottom: 800, x: 0, y: 0, toJSON: () => ({}),
+    });
+    const first = screen.getByRole("region", { name: "第 1 格" });
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue({
+      left: 0, top: 0, width: 500, height: 800, right: 500, bottom: 800, x: 0, y: 0, toJSON: () => ({}),
+    });
+    const row = within(screen.getByRole("complementary", { name: "选择任务" })).getByText("跑着的任务").closest("button")!;
+    const bottomDt = fakeDT();
+    fireEvent.dragStart(row, { dataTransfer: bottomDt });
+    fireDragAt(first, "dragover", bottomDt, 250, 788);
+    expect(first.querySelector('[data-split-pane-drop="bottom"]')).not.toBeNull();
+    fireDragAt(first, "drop", bottomDt, 250, 788);
+    expect(screen.getAllByRole("region").map((pane) => pane.getAttribute("aria-label"))).toEqual(["第 1 格", "第 3 格", "第 2 格"]);
+
+    unmount();
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null]));
+    const secondRender = render(<Harness />);
+    const secondGrid = secondRender.container.querySelector<HTMLElement>("[data-split-grid]")!;
+    vi.spyOn(secondGrid, "getBoundingClientRect").mockReturnValue({
+      left: 0, top: 0, width: 1000, height: 800, right: 1000, bottom: 800, x: 0, y: 0, toJSON: () => ({}),
+    });
+    const secondFirst = screen.getByRole("region", { name: "第 1 格" });
+    const secondRow = within(screen.getByRole("complementary", { name: "选择任务" })).getByText("跑着的任务").closest("button")!;
+    const leftDt = fakeDT();
+    fireEvent.dragStart(secondRow, { dataTransfer: leftDt });
+    fireDragAt(secondFirst, "dragover", leftDt, 12, 400);
+    expect(secondGrid.querySelector('[data-split-root-drop="left"]')).not.toBeNull();
+    fireDragAt(secondFirst, "drop", leftDt, 12, 400);
+    const panes = screen.getAllByRole("region");
+    expect(panes.map((pane) => pane.getAttribute("aria-label"))).toEqual(["第 3 格", "第 1 格", "第 2 格"]);
+    expect(parseFloat(panes[0]!.parentElement?.style.width ?? "0")).toBeCloseTo(100 / 3);
   });
 
   it("Panel 拖到整个主视图右边缘 = 搬到根级右侧并收拢原位置", () => {

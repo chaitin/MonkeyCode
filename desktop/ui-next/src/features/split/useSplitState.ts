@@ -9,9 +9,9 @@ import { readSplitSlots, readSplitTreeRaw, writeSplitSlots, writeSplitTree } fro
 import { assign, eject, ejectCloud, firstEmptyIn, isCloudSlotId, prune, seed, type Slots } from "./slots";
 import {
   equalizeAt,
-  insertRootLeaf,
+  insertEdgeLeaf,
   leaves,
-  moveLeafToRoot,
+  moveLeafToEdge,
   PRESETS,
   remapLeaves,
   removeLeaf,
@@ -20,8 +20,8 @@ import {
   swapLeaves,
   validateTree,
   type SplitDir,
+  type SplitEdge,
   type SplitNode,
-  type SplitRootEdge,
 } from "./tree";
 
 export interface SplitStateApi {
@@ -39,10 +39,10 @@ export interface SplitStateApi {
   equalizeNode: (path: string) => void;
   /** 拆分某格(向右/向下):新格取最小空槽号并夺焦。 */
   splitPane: (slot: number, dir: SplitDir) => number | null;
-  /** 在整个主视图的上/右边缘创建新格。 */
-  addRootPane: (edge: SplitRootEdge) => number;
-  /** 把已有格搬到整个主视图的上/右边缘，原位置自动收拢。 */
-  movePaneToRoot: (slot: number, edge: SplitRootEdge) => void;
+  /** 左/右创建全局列，上/下在目标格的纵向组创建局部行。 */
+  addEdgePane: (target: number, edge: SplitEdge) => number | null;
+  /** 把已有格搬到目标边缘；原位置自动收拢。 */
+  movePaneToEdge: (slot: number, target: number, edge: SplitEdge) => void;
   /** 关闭某格(tmux 收格:兄弟上位):槽位内容一并清档。若关闭最后
    *  一格则保留一个空宿主叶，并返回其槽号供调用方打开新建页。 */
   closePane: (slot: number) => number | null;
@@ -127,16 +127,17 @@ export function useSplitState(): SplitStateApi {
     return res.newSlot;
   }, []);
 
-  const addRootPane = useCallback((edge: SplitRootEdge): number => {
-    const res = insertRootLeaf(snapRef.current.tree, edge);
+  const addEdgePane = useCallback((target: number, edge: SplitEdge): number | null => {
+    const res = insertEdgeLeaf(snapRef.current.tree, target, edge);
+    if (!res) return null;
     setTree(res.tree);
     setZoomed(null);
     setFocused(res.newSlot);
     return res.newSlot;
   }, []);
 
-  const movePaneToRoot = useCallback((slot: number, edge: SplitRootEdge) => {
-    const next = moveLeafToRoot(snapRef.current.tree, slot, edge);
+  const movePaneToEdge = useCallback((slot: number, target: number, edge: SplitEdge) => {
+    const next = moveLeafToEdge(snapRef.current.tree, slot, target, edge);
     setTree(next);
     setZoomed(null);
     setFocused(slot);
@@ -238,8 +239,8 @@ export function useSplitState(): SplitStateApi {
     setNodeRatio,
     equalizeNode,
     splitPane,
-    addRootPane,
-    movePaneToRoot,
+    addEdgePane,
+    movePaneToEdge,
     closePane,
     closeEntry,
     swapPanes,

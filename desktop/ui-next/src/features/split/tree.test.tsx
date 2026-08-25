@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   equalizeAt,
-  insertRootLeaf,
+  insertEdgeLeaf,
   leaves,
-  moveLeafToRoot,
+  moveLeafToEdge,
   paneCount,
   PRESETS,
   remapLeaves,
@@ -67,8 +67,8 @@ describe("布局树", () => {
     expect(splitLeaf(restored!, 0, "row")?.newSlot).toBe(20_001);
     expect(paneCount(equalizeAt(restored!, ""))).toBe(20_001);
     expect(paneCount(removeLeaf(restored!, 20_000))).toBe(20_000);
-    expect(paneCount(insertRootLeaf(restored!, "top").tree)).toBe(20_002);
-    expect(paneCount(moveLeafToRoot(restored!, 10_000, "right"))).toBe(20_001);
+    expect(paneCount(insertEdgeLeaf(restored!, 0, "top")!.tree)).toBe(20_002);
+    expect(paneCount(moveLeafToEdge(restored!, 10_000, 0, "right"))).toBe(20_001);
     expect(leaves(swapLeaves(restored!, 0, 20_000)).slice(0, 2)).toEqual([20_000, 1]);
     expect(sameShape(restored!, restored!)).toBe(true);
   });
@@ -119,37 +119,84 @@ describe("布局树", () => {
     expect(validateTree(tree)).toEqual(tree);
   });
 
-  it("根边缘插入:上方/右侧包住整棵旧树且取最小空槽", () => {
-    const top = insertRootLeaf(PRESETS["2col"], "top");
-    expect(top.newSlot).toBe(2);
-    expect(top.tree).toEqual({ dir: "row", ratio: 0.5, a: { leaf: 2 }, b: PRESETS["2col"] });
-
-    const right = insertRootLeaf(PRESETS["2row"], "right");
+  it("左/右插入全局列:旧列相对宽度不变,新列等于缩放后的最窄旧列", () => {
+    const uneven: SplitNode = { dir: "col", ratio: 0.375, a: { leaf: 0 }, b: { leaf: 1 } };
+    const right = insertEdgeLeaf(uneven, 0, "right")!;
     expect(right.newSlot).toBe(2);
-    expect(right.tree).toEqual({ dir: "col", ratio: 0.5, a: PRESETS["2row"], b: { leaf: 2 } });
+    if ("leaf" in right.tree) throw new Error("应该新增全局列");
+    expect(right.tree.dir).toBe("col");
+    expect(right.tree.ratio).toBeCloseTo(8 / 11);
+    expect(right.tree.a).toBe(uneven);
+    expect(right.tree.b).toEqual({ leaf: 2 });
+    // 旧列最终宽度 3/11、5/11，新列 3/11：旧 3:5 不变且新列不宽于旧列。
+    expect(right.tree.ratio * uneven.ratio).toBeCloseTo(3 / 11);
+    expect(1 - right.tree.ratio).toBeCloseTo(3 / 11);
+
+    const left = insertEdgeLeaf(PRESETS["2col"], 1, "left")!;
+    if ("leaf" in left.tree) throw new Error("应该新增全局列");
+    expect(left.tree.ratio).toBeCloseTo(1 / 3);
+    expect(leaves(left.tree)).toEqual([2, 0, 1]);
+
+    const mixed: SplitNode = {
+      dir: "row",
+      ratio: 0.5,
+      a: PRESETS["2col"],
+      b: { leaf: 2 },
+    };
+    const mixedRight = insertEdgeLeaf(mixed, 2, "right")!;
+    if ("leaf" in mixedRight.tree) throw new Error("应该新增全局列");
+    // 最窄现有 Panel 是上方两个半宽格；同比缩窄后旧半宽格与新列均为 1/3。
+    expect(mixedRight.tree.ratio).toBeCloseTo(2 / 3);
   });
 
-  it("已有叶搬到根边缘:原位置收拢、槽只出现一次且单格不动", () => {
-    const right = moveLeafToRoot(PRESETS["4"], 2, "right");
+  it("上/下只插入目标所在纵向组并把该组行等高", () => {
+    const top = insertEdgeLeaf(PRESETS["4"], 0, "top")!;
+    expect(top.newSlot).toBe(4);
+    expect(leaves(top.tree)).toEqual([4, 0, 2, 1, 3]);
+    if ("leaf" in top.tree || "leaf" in top.tree.a || "leaf" in top.tree.a.b) throw new Error("左列应有三行");
+    expect(top.tree.ratio).toBe(0.5); // 全局列宽不动
+    expect(top.tree.a.ratio).toBeCloseTo(1 / 3);
+    expect(top.tree.a.b.ratio).toBe(0.5);
+    if ("leaf" in PRESETS["4"]) throw new Error("四格模板应有左右列");
+    expect(top.tree.b).toEqual(PRESETS["4"].b); // 右列几何不动
+
+    const bottom = insertEdgeLeaf(PRESETS["4"], 0, "bottom")!;
+    expect(leaves(bottom.tree)).toEqual([0, 4, 2, 1, 3]);
+  });
+
+  it("等价 2×2 树也按视觉纵列归组，而不是受切分先后影响", () => {
+    const rowsFirst: SplitNode = {
+      dir: "row",
+      ratio: 0.5,
+      a: { dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } },
+      b: { dir: "col", ratio: 0.5, a: { leaf: 2 }, b: { leaf: 3 } },
+    };
+    const top = insertEdgeLeaf(rowsFirst, 0, "top")!;
+    expect(leaves(top.tree)).toEqual([4, 0, 2, 1, 3]);
+    if ("leaf" in top.tree || top.tree.dir !== "col" || "leaf" in top.tree.a) throw new Error("应归一成左右纵列");
+    expect(top.tree.a.ratio).toBeCloseTo(1 / 3);
+    expect(top.tree.b).toEqual({ dir: "row", ratio: 0.5, a: { leaf: 1 }, b: { leaf: 3 } });
+
+    const moved = moveLeafToEdge(rowsFirst, 1, 0, "bottom");
+    expect(leaves(moved)).toEqual([0, 1, 2, 3]);
+    if ("leaf" in moved || moved.dir !== "col" || "leaf" in moved.a) throw new Error("应保留左右纵列");
+    expect(moved.a.ratio).toBeCloseTo(1 / 3);
+    expect(moved.b).toEqual({ leaf: 3 }); // 源位置收拢，但不卷入左列三行均分
+  });
+
+  it("已有叶搬到四边:原位置收拢、槽只出现一次且单格不动", () => {
+    const right = moveLeafToEdge(PRESETS["4"], 2, 0, "right");
     expect(leaves(right)).toEqual([0, 1, 3, 2]);
     expect(paneCount(right)).toBe(4);
-    expect(moveLeafToRoot(right, 2, "right")).toBe(right);
-    expect(right).toEqual({
-      dir: "col",
-      ratio: 0.5,
-      a: {
-        dir: "col",
-        ratio: 0.5,
-        a: { leaf: 0 },
-        b: { dir: "row", ratio: 0.5, a: { leaf: 1 }, b: { leaf: 3 } },
-      },
-      b: { leaf: 2 },
-    });
+    expect(moveLeafToEdge(right, 2, 0, "right")).toBe(right);
+    if ("leaf" in right) throw new Error("应该搬到全局右列");
+    expect(right.ratio).toBeCloseTo(2 / 3);
+    expect(right.b).toEqual({ leaf: 2 });
 
-    const top = moveLeafToRoot(PRESETS["4"], 3, "top");
+    const top = moveLeafToEdge(PRESETS["4"], 3, 0, "top");
     expect(leaves(top)).toEqual([3, 0, 2, 1]);
-    expect(moveLeafToRoot({ leaf: 0 }, 0, "right")).toEqual({ leaf: 0 });
-    expect(moveLeafToRoot(PRESETS["2col"], 9, "top")).toBe(PRESETS["2col"]);
+    expect(moveLeafToEdge({ leaf: 0 }, 0, 0, "right")).toEqual({ leaf: 0 });
+    expect(moveLeafToEdge(PRESETS["2col"], 9, 0, "top")).toBe(PRESETS["2col"]);
   });
 
   it("removeLeaf:兄弟上位(tmux 收格);最后一格不许关", () => {

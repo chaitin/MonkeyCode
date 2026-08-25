@@ -96,7 +96,7 @@ import { isMacShell, openExternal } from "@/lib/ipc/host";
 import { readFold, writeFold } from "@/lib/util/prefs";
 import { renameIsNoop } from "@/lib/util/rename";
 import { cloudSlotId, cloudTaskIdOf, firstEmptyIn, isCloudSlotId, LOAD_MIME, SWAP_MIME } from "./slots";
-import { leaves, paneCount, SPLIT_MAX_RATIO, SPLIT_MIN_RATIO, type SplitDir, type SplitNode, type SplitRootEdge } from "./tree";
+import { leaves, paneCount, SPLIT_MAX_RATIO, SPLIT_MIN_RATIO, type SplitDir, type SplitEdge, type SplitHorizontalEdge, type SplitNode, type SplitVerticalEdge } from "./tree";
 import type { SplitStateApi } from "./useSplitState";
 
 /** 快捷模板(「布局」下拉):套形状不套比例;当前同形的项 menu-active。 */
@@ -204,7 +204,7 @@ export function SplitView({
     todoId?: string;
   } | null>(null);
   const [dropSlot, setDropSlot] = useState<number | null>(null);
-  const [dropEdge, setDropEdge] = useState<SplitRootEdge | null>(null);
+  const [dropEdge, setDropEdge] = useState<{ edge: SplitEdge; target: number } | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridSize, setGridSize] = useState(() => ({
@@ -471,17 +471,28 @@ export function SplitView({
 
   // ==== 格上拖拽落点(两条通道):格头换位(SWAP)与任务列拖行装载(LOAD)。
   // 私有 MIME 判定,ChatView pane 自己收文件拖放,互不打扰 ====
-  const rootDropEdgeOf = (e: ReactDragEvent<HTMLElement>): SplitRootEdge | null => {
+  const rootDropEdgeOf = (e: ReactDragEvent<HTMLElement>): SplitHorizontalEdge | null => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const left = e.clientX - rect.left;
+    const right = rect.right - e.clientX;
+    const inY = e.clientY >= rect.top && e.clientY <= rect.bottom;
+    const hitsLeft = inY && left >= 0 && left <= ROOT_DROP_EDGE_SIZE;
+    const hitsRight = inY && right >= 0 && right <= ROOT_DROP_EDGE_SIZE;
+    if (hitsLeft && hitsRight) return left <= right ? "left" : "right";
+    if (hitsLeft) return "left";
+    if (hitsRight) return "right";
+    return null;
+  };
+  const paneDropEdgeOf = (e: ReactDragEvent<HTMLElement>): SplitVerticalEdge | null => {
     const rect = e.currentTarget.getBoundingClientRect();
     const top = e.clientY - rect.top;
-    const right = rect.right - e.clientX;
+    const bottom = rect.bottom - e.clientY;
     const inX = e.clientX >= rect.left && e.clientX <= rect.right;
-    const inY = e.clientY >= rect.top && e.clientY <= rect.bottom;
     const hitsTop = inX && top >= 0 && top <= ROOT_DROP_EDGE_SIZE;
-    const hitsRight = inY && right >= 0 && right <= ROOT_DROP_EDGE_SIZE;
-    if (hitsTop && hitsRight) return top <= right ? "top" : "right";
+    const hitsBottom = inX && bottom >= 0 && bottom <= ROOT_DROP_EDGE_SIZE;
+    if (hitsTop && hitsBottom) return top <= bottom ? "top" : "bottom";
     if (hitsTop) return "top";
-    if (hitsRight) return "right";
+    if (hitsBottom) return "bottom";
     return null;
   };
   const hasSplitDrag = (e: ReactDragEvent) => {
@@ -491,7 +502,7 @@ export function SplitView({
   const onGridDragOverCapture = (e: ReactDragEvent<HTMLDivElement>) => {
     if (!hasSplitDrag(e)) return;
     const edge = rootDropEdgeOf(e);
-    setDropEdge(edge);
+    setDropEdge(edge ? { edge, target: split.focused } : null);
     if (!edge) return;
     e.preventDefault();
     e.stopPropagation();
@@ -509,24 +520,31 @@ export function SplitView({
     const swapRaw = e.dataTransfer.getData(SWAP_MIME);
     if (swapRaw !== "") {
       const src = Number(swapRaw);
-      if (Number.isSafeInteger(src) && leaves(split.tree).includes(src)) split.movePaneToRoot(src, edge);
+      if (Number.isSafeInteger(src) && leaves(split.tree).includes(src)) split.movePaneToEdge(src, split.focused, edge);
       return;
     }
     const loadRaw = e.dataTransfer.getData(LOAD_MIME);
-    if (loadRaw !== "") pick(split.addRootPane(edge), loadRaw);
+    if (loadRaw !== "") {
+      const target = split.addEdgePane(split.focused, edge);
+      if (target !== null) pick(target, loadRaw);
+    }
   };
 
-  const onPaneDragOver = (slot: number) => (e: ReactDragEvent) => {
+  const onPaneDragOver = (slot: number) => (e: ReactDragEvent<HTMLElement>) => {
     const types = [...e.dataTransfer.types];
     if (!types.includes(SWAP_MIME) && !types.includes(LOAD_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setDropSlot(slot);
+    const edge = paneDropEdgeOf(e);
+    setDropEdge(edge ? { edge, target: slot } : null);
+    setDropSlot(edge ? null : slot);
   };
-  const onPaneDrop = (slot: number) => (e: ReactDragEvent) => {
+  const onPaneDrop = (slot: number) => (e: ReactDragEvent<HTMLElement>) => {
     const swapRaw = e.dataTransfer.getData(SWAP_MIME);
     const loadRaw = e.dataTransfer.getData(LOAD_MIME);
+    const edge = paneDropEdgeOf(e);
     setDropSlot(null);
+    setDropEdge(null);
     if (swapRaw !== "") {
       e.preventDefault();
       const src = Number(swapRaw);
@@ -534,13 +552,19 @@ export function SplitView({
         // 换位涉及创建格时表单让位(表单钉在槽号上,换位后会盖住换进来的
         // 会话——装载优先同族,2026-08-20 审计)
         setCreatingSlot((c) => (c && (c.slot === src || c.slot === slot) ? null : c));
-        split.swapPanes(src, slot);
+        if (edge) split.movePaneToEdge(src, slot, edge);
+        else split.swapPanes(src, slot);
       }
       return;
     }
     if (loadRaw !== "") {
       e.preventDefault();
-      pick(slot, loadRaw); // 定点装载:move 语义自动收走它原先所在的格
+      if (edge) {
+        const target = split.addEdgePane(slot, edge);
+        if (target !== null) pick(target, loadRaw);
+      } else {
+        pick(slot, loadRaw); // 定点装载:move 语义自动收走它原先所在的格
+      }
     }
   };
 
@@ -593,7 +617,10 @@ export function SplitView({
           setRevealTick((n) => n + 1);
         }}
         onDragOver={onPaneDragOver(slot)}
-        onDragLeave={() => setDropSlot((d) => (d === slot ? null : d))}
+        onDragLeave={() => {
+          setDropSlot((d) => (d === slot ? null : d));
+          setDropEdge((d) => (d?.target === slot ? null : d));
+        }}
         onDrop={onPaneDrop(slot)}
         // 平铺分栏(2026-08-19 用户 mockup 终案,当日浮卡随之退役):白底
         // 通栏、1px 细线分隔(grid 底色透缝),细头恒在;焦点表达 = 细头
@@ -732,6 +759,15 @@ export function SplitView({
         {/* 拖拽落点:secondary 虚环(焦点已改由细头标题下划线表达) */}
         {dropSlot === slot && (
           <div aria-hidden data-split-drop="" className="pointer-events-none absolute inset-0 z-20 ring-2 ring-secondary/60 ring-inset" />
+        )}
+        {dropEdge?.target === slot && (dropEdge.edge === "top" || dropEdge.edge === "bottom") && (
+          <div
+            aria-hidden
+            data-split-pane-drop={dropEdge.edge}
+            className={`pointer-events-none absolute inset-x-0 z-20 h-12 bg-secondary/15 ring-2 ring-secondary/70 ring-inset ${
+              dropEdge.edge === "top" ? "top-0" : "bottom-0"
+            }`}
+          />
         )}
       </section>
     );
@@ -1069,12 +1105,12 @@ export function SplitView({
           }}
         >
           {zoomedSlot !== null ? renderPane(zoomedSlot) : renderLayout(split.tree)}
-          {dropEdge && (
+          {dropEdge && (dropEdge.edge === "left" || dropEdge.edge === "right") && (
             <div
               aria-hidden
-              data-split-root-drop={dropEdge}
-              className={`pointer-events-none absolute z-40 bg-secondary/15 ring-2 ring-secondary/70 ring-inset ${
-                dropEdge === "top" ? "inset-x-0 top-0 h-12" : "inset-y-0 end-0 w-12"
+              data-split-root-drop={dropEdge.edge}
+              className={`pointer-events-none absolute inset-y-0 z-40 w-12 bg-secondary/15 ring-2 ring-secondary/70 ring-inset ${
+                dropEdge.edge === "left" ? "start-0" : "end-0"
               }`}
             />
           )}
