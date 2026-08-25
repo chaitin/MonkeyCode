@@ -273,7 +273,8 @@ describe("聊天视图", () => {
     const { unmount } = render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
     unmount();
-    expect(ops.some((o) => o.cmd === "session_close")).toBe(true);
+    // close 与同会话在途 open 串行，不能迟到反关下一代；最终仍必须归还连接。
+    await waitFor(() => expect(ops.some((o) => o.cmd === "session_close")).toBe(true));
   });
 
   it("单行标题优先级:用户改名 > 轮末摘要 > 首句自动标题(2026-08-06 定案,撤两行)", async () => {

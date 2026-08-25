@@ -1044,6 +1044,36 @@ describe("seq 去重(云端重连会重放)", () => {
     expect(s2.lastSeq).toBe(4);
   });
 
+  it("连续 usage_update 后的 task-ended 立即关闭本地轮次", () => {
+    const started = reduceBatch(createChatState(), [withSeq(frame("task-started"), 14217)]);
+    const ended = reduceBatch(started, [
+      {
+        data: { update: { sessionUpdate: "usage_update", size: 200000, used: 56308 } },
+        kind: "acp_event",
+        seq: 14218,
+        timestamp: 1787649934202,
+        type: "task-running",
+      },
+      {
+        data: { update: { sessionUpdate: "usage_update", size: 200000, used: 57577 } },
+        kind: "acp_event",
+        seq: 14219,
+        timestamp: 1787649934250,
+        type: "task-running",
+      },
+      { seq: 14220, timestamp: 1787649934250, type: "task-ended" },
+    ]);
+
+    expect(ended).toMatchObject({
+      running: false,
+      turnEnded: true,
+      usage: { used: 57577, size: 200000 },
+      lastSeq: 14220,
+      lastTerminalSeq: 14220,
+    });
+    expect(ended.items.at(-1)).toMatchObject({ kind: "sys", tag: "turn-end" });
+  });
+
   it("跨批晚到的低 seq task-ended 按终态水位归约且重复回放仍丢弃", () => {
     const running = reduceBatch(createChatState(), [
       withSeq(frame("task-started"), 2),
