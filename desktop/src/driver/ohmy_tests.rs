@@ -1202,7 +1202,7 @@ async fn concurrent_session_open_reuses_one_inflight_resume() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn stale_resume_completion_does_not_clear_replacement_session() {
-    let (inner, _events, mut stdin_rx) = bare_inner_rpc("resume-generation");
+    let (inner, events, mut stdin_rx) = bare_inner_rpc("resume-generation");
     let workdir = std::env::temp_dir().to_string_lossy().into_owned();
     inner.write_sidecar("s1", |meta| {
         meta["workdir"] = json!(workdir);
@@ -1244,6 +1244,12 @@ async fn stale_resume_completion_does_not_clear_replacement_session() {
     )
     .unwrap();
     assert_eq!(think_request["method"], "session/setThinking");
+    {
+        let sessions = inner.sess.sessions.lock().unwrap();
+        let session = sessions.get("s1").expect("恢复中会话");
+        assert!(!session.created, "最后一个 await 前不应提前宣告 created");
+        assert!(session.resuming);
+    }
 
     // 模拟恢复 A 在最后一个 await 期间，会话被删除并以同 ID 启动恢复 B。
     // B 的 watch 身份不同；A 的迟到收尾不得修改 B 的 SessionState。
@@ -1266,7 +1272,15 @@ async fn stale_resume_completion_does_not_clear_replacement_session() {
         .expect("旧恢复未完成")
         .expect("旧恢复 watch 意外关闭");
     let sessions = inner.sess.sessions.lock().unwrap();
-    assert!(sessions.get("s1").expect("替代会话").resuming);
+    let replacement = sessions.get("s1").expect("替代会话");
+    assert!(replacement.resuming);
+    drop(sessions);
+    assert!(
+        !events.lock().unwrap().iter().any(|(name, payload)| {
+            name == "conn-status:s1" && payload.get("connected").and_then(Value::as_bool) == Some(true)
+        }),
+        "旧恢复向替代会话发送了已连接状态"
+    );
 }
 
 #[test]

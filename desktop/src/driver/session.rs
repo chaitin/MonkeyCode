@@ -968,19 +968,30 @@ impl OhmyDriver {
                 Ok(()) => json!({ "text": "已连接", "connected": true }),
                 Err(e) => json!({ "text": format!("⚠ 会话恢复失败: {e}"), "connected": false }),
             };
+            // created 仍为 false 时，session_delete 只能等待本 watch，不能摘除
+            // 旧状态再插入同 ID 新会话。利用这个屏障先外显状态，避免置 created
+            // 后 delete/reopen 抢在 emit 前完成，让旧状态投递给新一代监听器。
+            let still_owner = {
+                let sessions = me.0.sess.sessions.lock_ok();
+                let resumes = me.0.sess.resume.lock_ok();
+                sessions.contains_key(&sid)
+                    && resumes.get(&sid).is_some_and(|current| current.same_channel(&owner))
+            };
+            if still_owner {
+                me.0.app.emit_json(&format!("conn-status:{sid}"), status);
+            }
             {
                 let mut sessions = me.0.sess.sessions.lock_ok();
                 let resumes = me.0.sess.resume.lock_ok();
-                let still_owner =
-                    resumes.get(&sid).is_some_and(|current| current.same_channel(&owner));
-                if still_owner {
+                if resumes.get(&sid).is_some_and(|current| current.same_channel(&owner)) {
                     if let Some(session) = sessions.get_mut(&sid) {
+                        // 最后一个 await 与状态外显均已结束，原子提交就绪状态。
+                        session.created = r.is_ok();
                         session.resuming = false;
                     }
                 }
             }
             let _ = tx.send(Some(r));
-            me.0.app.emit_json(&format!("conn-status:{sid}"), status);
         });
     }
 
@@ -1068,12 +1079,12 @@ impl OhmyDriver {
             })
             .await;
         }
-        // created=true 是 ensure_engine_ready 的快路径:置位前必须等 seq 水位
-        // 恢复完(replay_open 末尾放行;发送端丢弃同样放行,不会挂死),
-        // 否则恢复期间的 user-input 会从 0 重编帧号、与旧帧撞 seq
+        // 就绪宣告前必须等 seq 水位恢复完(replay_open 末尾放行；发送端
+        // 丢弃同样放行，不会挂死)，否则恢复期间的 user-input 会从 0
+        // 重编帧号、与旧帧撞 seq。created 由 spawn_resume 在最后一个 await
+        // 之后随 resuming 一起提交，避免 session_delete 过早走就绪快路径。
         let _ = seq_gate.await;
         if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
-            s.created = true;
             s.engine_id = engine_id.clone();
             // session_open 登记的是 sidecar 原值,可能属于另一运行环境;
             // 换成引擎实际拿到的归一化形态,壳侧消费者(browser workdir 等)
