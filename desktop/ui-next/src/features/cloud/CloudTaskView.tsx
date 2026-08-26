@@ -158,6 +158,8 @@ export function CloudTaskView({
   const h = useCloudTask(task, { onTasksChanged });
   const [termOpen, setTermOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
+  // runtime 一旦失效，当前 render 就卸载文件面板；effect 只负责清理开合意图。
+  const filesVisible = filesOpen && h.runtimeReady;
   // 云端主机名:「在浏览器打开」拼控制台 URL 用。挂载拉一次(登录态本就
   // 在设置页维护,这里只借 host);拿不到就不出这一项,不给死链
   const [mcBaseUrl, setMcBaseUrl] = useState("");
@@ -271,7 +273,12 @@ export function CloudTaskView({
     setFilesOpen(false);
     return true;
   }, []);
-  useEscLayer(filesOpen, escFiles);
+  useEscLayer(filesVisible, escFiles);
+  // 账号/transport 换代时 coordinator 会先隐藏旧 runtime；同步收起面板，
+  // 避免继续操作已失效或作用域未知的控制连接。
+  useEffect(() => {
+    if (!h.runtimeReady) setFilesOpen(false);
+  }, [h.runtimeReady]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<LogListHandle>(null);
@@ -448,6 +455,12 @@ export function CloudTaskView({
   };
 
   const pending = h.taskStatus === "pending";
+  const filesDisabled = pending || !h.runtimeReady;
+  const filesTitle = pending
+    ? t("cloud.view.filesPending")
+    : h.runtimeReady
+      ? t("cloud.view.filesOpen")
+      : t("cloud.view.filesConnecting");
   const connText = statusText(t, h.status, {
     waking: h.waking,
     failed: h.vmFailed,
@@ -531,15 +544,15 @@ export function CloudTaskView({
    *  任务操作菜单**不在此**(格里并入格头 ⋯,整页头单独渲染 dropdown)。 */
   const headerActions = (
     <>
-        {/* 文件浏览走控制流(按 taskId 寻址,CloudFiles 懒建),不依赖 vmId
-            ——结束态浏览最终快照、运行中即便详情未捎带 VM 也能看;vmId 只
-            决定面板内上传/下载入口。仅 pending(VM 未建)禁用 */}
+        {/* 文件浏览走当前账号 scoped runtime 的控制流(按 taskId 寻址,
+            CloudFiles 懒建),不依赖 vmId——结束态仍可浏览最终快照；pending
+            或 runtime 身份未决时禁用，不能凭 taskId 绕过账号作用域直连。 */}
         <button
           type="button"
           aria-label={t("cloud.view.filesOpen")}
-          title={pending ? t("cloud.view.filesPending") : t("cloud.view.filesOpen")}
-          className={`btn btn-ghost btn-square btn-sm text-base-content/60 ${filesOpen ? "btn-active" : ""}`}
-          disabled={pending}
+          title={filesTitle}
+          className={`btn btn-ghost btn-square btn-sm text-base-content/60 ${filesVisible ? "btn-active" : ""}`}
+          disabled={filesDisabled}
           onClick={() => setFilesOpen((o) => !o)}
         >
           <IconFolderOpen size={16} stroke={1.75} aria-hidden />
@@ -781,7 +794,7 @@ export function CloudTaskView({
       {/* 云端文件:右滑抽屉,受控开合手法与 FilesDrawer 统一(scrim 点击关 +
           Esc 关,见上方 effect);面板挂在主区内(absolute,参照 relative main),
           CloudFiles 自带头部与关闭;下载走全局 downloads */}
-      {filesOpen && (
+      {filesVisible && (
         <>
           <div aria-hidden className="absolute inset-0 z-10 bg-base-content/20" onClick={() => setFilesOpen(false)} />
           <aside className="absolute inset-y-0 right-0 z-20 flex w-[26rem] max-w-[85%] flex-col border-l border-base-300 bg-base-100 shadow-xl">

@@ -753,6 +753,7 @@ export const en: Record<MessageKey, string> = {
   "cloud.view.terminalSub": "Task VM · /workspace",
   "cloud.view.filesOpen": "Cloud files",
   "cloud.view.filesPending": "Files become available once the VM is ready",
+  "cloud.view.filesConnecting": "Connecting to the cloud task…",
   "cloud.view.composerPlaceholder": "Continue the conversation. Enter to send, Shift+Enter for newline",
   "cloud.view.composerWaking": "Waking the cloud machine… type now; it sends once connected",
   "cloud.view.composerPending": "Environment starting… type now; it sends once ready",

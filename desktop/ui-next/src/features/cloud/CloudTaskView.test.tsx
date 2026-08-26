@@ -693,6 +693,40 @@ describe("CloudTaskView", () => {
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("云端文件:账号 scoped runtime 未就绪时禁用，就绪后再开放", async () => {
+    type Identity = { logged_in: true; base_url: string; user: { id: string } };
+    let resolveIdentity!: (value: Identity) => void;
+    const identity = new Promise<Identity>((resolve) => (resolveIdentity = resolve));
+    stubShell((cmd) => {
+      if (cmd === "mc_task_info") return Promise.resolve({ id: "runtime-race", status: "finished" });
+      if (cmd === "mc_task_rounds") return Promise.resolve({ frames: [], next_cursor: "", has_more: false });
+      return Promise.resolve({});
+    });
+    render(
+      <CloudQueueCoordinatorProvider loadIdentity={() => identity}>
+        <CloudTaskView task={{ id: "runtime-race", status: "finished" }} />
+      </CloudQueueCoordinatorProvider>,
+    );
+
+    const btn = await screen.findByRole("button", { name: "云端文件" });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    expect(btn.getAttribute("title")).toBe("正在连接云端任务…");
+    await userEvent.click(btn);
+    expect(screen.queryByRole("button", { name: "刷新" })).toBeNull();
+
+    await act(async () => {
+      resolveIdentity({
+        logged_in: true,
+        base_url: "http://localhost:8000/private/team-a",
+        user: { id: "runtime-race-user" },
+      });
+      await identity;
+    });
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
+    await userEvent.click(btn);
+    expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy();
+  });
+
   it("云端文件:结束态/详情无 VM 也可浏览(控制流按 taskId 寻址,不拿 vmId 当门槛)", async () => {
     stubShell((cmd) => {
       switch (cmd) {
@@ -706,7 +740,7 @@ describe("CloudTaskView", () => {
     });
     renderCloud(<CloudTaskView task={{ id: "t8b", status: "finished" }} />);
     const btn = await screen.findByRole("button", { name: "云端文件" });
-    expect((btn as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
     await userEvent.click(btn);
     expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy(); // CloudFiles 面板已挂载(快照浏览)
   });

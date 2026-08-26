@@ -93,6 +93,8 @@ export interface CloudTaskHandle {
   commands: SlashCommand[];
   ports: PortInfo[] | null;
   fetchPorts(): void;
+  /** 当前账号作用域的任务 runtime 已建立，可安全执行控制操作。 */
+  runtimeReady: boolean;
   borrowControl(): { ctrl: CloudControl; release: () => void };
   /** 共享持久化队列；发送中项也来自这里，不再有 hook 私有 outbox。 */
   queue: SendQueueLane<CloudQueueAttachment>;
@@ -615,6 +617,7 @@ export function useCloudTask(
     commands,
     ports,
     fetchPorts,
+    runtimeReady: runtimeTask !== null,
     borrowControl,
     queue,
     editingId,

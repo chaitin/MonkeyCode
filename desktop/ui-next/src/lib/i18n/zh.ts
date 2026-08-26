@@ -774,6 +774,7 @@ export const zh = {
   "cloud.view.terminalSub": "任务虚拟机 · /workspace",
   "cloud.view.filesOpen": "云端文件",
   "cloud.view.filesPending": "虚拟机就绪后可浏览文件",
+  "cloud.view.filesConnecting": "正在连接云端任务…",
   "cloud.view.composerPlaceholder": "继续对话,Enter 发送,Shift+Enter 换行",
   "cloud.view.composerWaking": "云端机器唤醒中…现在就能输入,连上后自动发出",
   "cloud.view.composerPending": "环境启动中…现在就能输入,就绪后自动发出",
