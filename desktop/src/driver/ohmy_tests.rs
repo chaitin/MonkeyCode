@@ -1091,6 +1091,7 @@ fn bare_inner_rpc(tag: &str) -> (Arc<Inner>, EmittedEvents, mpsc::UnboundedRecei
         },
         sess: SessionsState {
             sessions: StdMutex::new(HashMap::new()),
+            lifecycle: StdMutex::new(HashMap::new()),
             batch: Arc::new(StdMutex::new(HashMap::new())),
             sidecar_write: StdMutex::new(()),
             perm_remember: StdMutex::new(HashSet::new()),
@@ -1323,6 +1324,378 @@ async fn sessions_list_treats_legacy_finished_as_idle() {
     let legacy = list.as_array().unwrap().iter().find(|item| item["id"] == "legacy").unwrap();
     assert_eq!(legacy["status"], "idle");
     assert_eq!(legacy["turns"], 3);
+}
+
+#[tokio::test]
+async fn archiving_destroys_runtime_but_keeps_session_resumable() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("archive-destroy");
+    let mut session = bare_session("s1");
+    session.running = false;
+    session.opened = true;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    let workdir = std::env::temp_dir().to_string_lossy().into_owned();
+    inner.write_sidecar("s1", |meta| {
+        meta["workdir"] = json!(workdir);
+        meta["status"] = json!("idle");
+        meta["archived"] = json!(false);
+    });
+    let marker = inner.session_dir("s1").unwrap().join("history-marker");
+    std::fs::write(&marker, "kept").unwrap();
+    let driver = OhmyDriver(inner.clone());
+
+    let archive_driver = driver.clone();
+    let archive = tokio::spawn(async move { archive_driver.session_patch("s1", json!({ "archived": true })).await });
+    let destroy: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("destroy RPC 未发出").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(destroy["method"], "session/destroy");
+    assert_eq!(destroy["params"]["session_id"], "s1");
+    assert_eq!(inner.read_sidecar("s1")["archived"], false, "destroy 成功前不能先显示已归档");
+    let rpc_id = destroy["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &destroy,
+        json!({ "jsonrpc": "2.0", "id": rpc_id, "result": { "status": "destroyed" } }),
+    );
+    archive.await.unwrap().expect("归档成功");
+
+    {
+        let sessions = inner.sess.sessions.lock().unwrap();
+        let state = sessions.get("s1").unwrap();
+        assert!(!state.created);
+        assert!(!state.opened);
+        assert!(!state.running);
+    }
+    assert_eq!(inner.read_sidecar("s1")["archived"], true);
+    assert_eq!(std::fs::read_to_string(&marker).unwrap(), "kept", "归档不能删除历史目录");
+
+    driver.session_patch("s1", json!({ "archived": false })).await.expect("取消归档成功");
+    assert_eq!(inner.read_sidecar("s1")["archived"], false);
+    let opened = driver.session_open("s1").await.expect("冷会话应可打开");
+    assert!(opened["frames"].is_array());
+    let resume: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(1), stdin_rx.recv())
+            .await
+            .expect("resume RPC 未发出")
+            .expect("RPC 出站通道关闭")
+            .expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(resume["method"], "session/create");
+    assert_eq!(resume["params"]["resume"], "s1");
+    let rpc_id = resume["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &resume,
+        json!({ "jsonrpc": "2.0", "id": rpc_id, "result": { "session_id": "s1" } }),
+    );
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if inner.sess.sessions.lock().unwrap().get("s1").is_some_and(|s| s.created) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("resume 未完成");
+}
+
+#[tokio::test]
+async fn concurrent_archive_requests_destroy_runtime_once() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("archive-dedup");
+    let mut session = bare_session("s1");
+    session.running = false;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    inner.write_sidecar("s1", |meta| meta["archived"] = json!(false));
+    let driver = OhmyDriver(inner.clone());
+
+    let first_driver = driver.clone();
+    let first = tokio::spawn(async move { first_driver.session_patch("s1", json!({ "archived": true })).await });
+    let destroy: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("destroy RPC 未发出").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(destroy["method"], "session/destroy");
+
+    let second_driver = driver.clone();
+    let second = tokio::spawn(async move { second_driver.session_patch("s1", json!({ "archived": true })).await });
+    assert!(tokio::time::timeout(Duration::from_millis(30), stdin_rx.recv()).await.is_err());
+
+    let rpc_id = destroy["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &destroy,
+        json!({ "jsonrpc": "2.0", "id": rpc_id, "result": { "status": "destroyed" } }),
+    );
+    first.await.unwrap().expect("首次归档成功");
+    second.await.unwrap().expect("重复归档应幂等成功");
+    assert!(tokio::time::timeout(Duration::from_millis(30), stdin_rx.recv()).await.is_err());
+}
+
+#[tokio::test]
+async fn archive_waits_for_inflight_resume_then_destroys_it() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("archive-resume-race");
+    let workdir = std::env::temp_dir().to_string_lossy().into_owned();
+    inner.write_sidecar("s1", |meta| {
+        meta["workdir"] = json!(workdir);
+        meta["archived"] = json!(false);
+    });
+    let driver = OhmyDriver(inner.clone());
+
+    let open_driver = driver.clone();
+    let opened = tokio::spawn(async move { open_driver.session_open("s1").await });
+    let create: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("resume RPC 未发出").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(create["method"], "session/create");
+    opened.await.unwrap().expect("打开先返回回放");
+
+    let archive_driver = driver.clone();
+    let archive = tokio::spawn(async move { archive_driver.session_patch("s1", json!({ "archived": true })).await });
+    assert!(tokio::time::timeout(Duration::from_millis(30), stdin_rx.recv()).await.is_err());
+    let create_id = create["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &create,
+        json!({ "jsonrpc": "2.0", "id": create_id, "result": { "session_id": "s1" } }),
+    );
+
+    let destroy: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(1), stdin_rx.recv())
+            .await
+            .expect("destroy RPC 未发出")
+            .expect("RPC 出站通道关闭")
+            .expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(destroy["method"], "session/destroy");
+    let destroy_id = destroy["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &destroy,
+        json!({ "jsonrpc": "2.0", "id": destroy_id, "result": { "status": "destroyed" } }),
+    );
+    archive.await.unwrap().expect("归档成功");
+    assert!(!inner.sess.sessions.lock().unwrap().get("s1").unwrap().created);
+    assert_eq!(inner.read_sidecar("s1")["archived"], true);
+}
+
+#[tokio::test]
+async fn archive_does_not_block_opening_another_session() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("archive-per-session-gate");
+    let mut first = bare_session("s1");
+    first.running = false;
+    let mut second = bare_session("s2");
+    second.running = false;
+    {
+        let mut sessions = inner.sess.sessions.lock().unwrap();
+        sessions.insert("s1".into(), first);
+        sessions.insert("s2".into(), second);
+    }
+    inner.write_sidecar("s1", |_| {});
+    inner.write_sidecar("s2", |_| {});
+    let driver = OhmyDriver(inner.clone());
+
+    let archive_driver = driver.clone();
+    let archive = tokio::spawn(async move { archive_driver.session_patch("s1", json!({ "archived": true })).await });
+    let destroy: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("destroy RPC 未发出").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(destroy["method"], "session/destroy");
+
+    let other_driver = driver.clone();
+    tokio::time::timeout(Duration::from_millis(100), async move { other_driver.session_open("s2").await })
+        .await
+        .expect("归档 s1 不应阻塞打开 s2")
+        .expect("打开 s2 成功");
+
+    let rpc_id = destroy["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &destroy,
+        json!({ "jsonrpc": "2.0", "id": rpc_id, "result": { "status": "ok" } }),
+    );
+    archive.await.unwrap().expect("归档成功");
+}
+
+#[tokio::test]
+async fn archive_serializes_concurrent_session_calls() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("archive-call-gate");
+    let mut session = bare_session("s1");
+    session.running = false;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    inner.write_sidecar("s1", |meta| meta["archived"] = json!(false));
+    let driver = OhmyDriver(inner.clone());
+
+    let archive_driver = driver.clone();
+    let archive = tokio::spawn(async move { archive_driver.session_patch("s1", json!({ "archived": true })).await });
+    let destroy: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("destroy RPC 未发出").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+
+    let call_driver = driver.clone();
+    let call = tokio::spawn(async move {
+        call_driver.session_call("s1", "session_set_skills", json!({ "skills": [] })).await
+    });
+    assert!(tokio::time::timeout(Duration::from_millis(30), stdin_rx.recv()).await.is_err());
+
+    let rpc_id = destroy["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &destroy,
+        json!({ "jsonrpc": "2.0", "id": rpc_id, "result": { "status": "ok" } }),
+    );
+    archive.await.unwrap().expect("归档成功");
+    assert_eq!(call.await.unwrap().unwrap_err(), "会话已归档");
+    assert!(tokio::time::timeout(Duration::from_millis(30), stdin_rx.recv()).await.is_err());
+}
+
+#[tokio::test]
+async fn archive_can_destroy_inflight_compaction_without_waiting_for_response() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("archive-compact-gate");
+    inner.transport.engine_caps.lock().unwrap().insert("session/compact".into());
+    let mut session = bare_session("s1");
+    session.running = false;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    inner.write_sidecar("s1", |meta| meta["archived"] = json!(false));
+    let driver = OhmyDriver(inner.clone());
+
+    let compact_driver = driver.clone();
+    let compact = tokio::spawn(async move { compact_driver.session_call("s1", "session_compact", json!({})).await });
+    let compact_request: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("compact RPC 未发出").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(compact_request["method"], "session/compact");
+
+    let archive_driver = driver.clone();
+    let archive = tokio::spawn(async move { archive_driver.session_patch("s1", json!({ "archived": true })).await });
+    let destroy: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_millis(100), stdin_rx.recv())
+            .await
+            .expect("归档不应等待长时间 compact 应答")
+            .expect("RPC 出站通道关闭")
+            .expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(destroy["method"], "session/destroy");
+    let destroy_id = destroy["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &destroy,
+        json!({ "jsonrpc": "2.0", "id": destroy_id, "result": { "status": "ok" } }),
+    );
+    archive.await.unwrap().expect("归档应销毁压缩中的 runtime");
+
+    let compact_id = compact_request["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &compact_request,
+        json!({ "jsonrpc": "2.0", "id": compact_id, "error": { "code": -32000, "message": "Session destroyed" } }),
+    );
+    assert_eq!(compact.await.unwrap().unwrap()["result"]["status"], "closed");
+    assert_eq!(inner.read_sidecar("s1")["archived"], true);
+    assert!(!inner.sess.sessions.lock().unwrap().get("s1").unwrap().created);
+}
+
+#[tokio::test]
+async fn archive_destroys_a_failed_resume_attempt() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("archive-failed-resume");
+    let mut session = bare_session("s1");
+    session.running = false;
+    session.created = false;
+    session.resuming = false;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    let (_tx, rx) = tokio::sync::watch::channel(Some(Err("session/create 超时".to_string())));
+    inner.sess.resume.lock().unwrap().insert("s1".into(), rx);
+    inner.write_sidecar("s1", |meta| meta["archived"] = json!(false));
+    let driver = OhmyDriver(inner.clone());
+
+    let archive_driver = driver.clone();
+    let archive = tokio::spawn(async move { archive_driver.session_patch("s1", json!({ "archived": true })).await });
+    let destroy: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("destroy RPC 未发出").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(destroy["method"], "session/destroy");
+    assert_eq!(destroy["params"]["session_id"], "s1");
+    let rpc_id = destroy["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &destroy,
+        json!({ "jsonrpc": "2.0", "id": rpc_id, "result": { "status": "creating_cancelled" } }),
+    );
+    archive.await.unwrap().expect("恢复失败后的归档仍应销毁 Agent 创建占位");
+    assert_eq!(inner.read_sidecar("s1")["archived"], true);
+}
+
+#[tokio::test]
+async fn archive_reports_sidecar_write_failure() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("archive-sidecar-failure");
+    let mut session = bare_session("s1");
+    session.running = false;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    inner.write_sidecar("s1", |meta| meta["archived"] = json!(false));
+    let session_dir = inner.session_dir("s1").unwrap();
+    std::fs::remove_dir_all(&session_dir).unwrap();
+    std::fs::write(&session_dir, "not a directory").unwrap();
+    let driver = OhmyDriver(inner.clone());
+
+    let archive_driver = driver.clone();
+    let archive = tokio::spawn(async move { archive_driver.session_patch("s1", json!({ "archived": true })).await });
+    let destroy: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("destroy RPC 未发出").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    let rpc_id = destroy["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &destroy,
+        json!({ "jsonrpc": "2.0", "id": rpc_id, "result": { "status": "ok" } }),
+    );
+    let error = archive.await.unwrap().expect_err("sidecar 写失败必须上抛");
+    assert!(error.contains("写入会话 sidecar"), "unexpected error: {error}");
+    std::fs::remove_file(session_dir).unwrap();
+}
+
+#[tokio::test]
+async fn deleted_session_is_not_recreated_by_queued_model_change() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("delete-model-gate");
+    let mut session = bare_session("s1");
+    session.running = false;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    inner.write_sidecar("s1", |meta| meta["archived"] = json!(false));
+    let driver = OhmyDriver(inner.clone());
+
+    let delete_driver = driver.clone();
+    let delete = tokio::spawn(async move { delete_driver.session_delete("s1").await });
+    let destroy: Value = serde_json::from_str(
+        &stdin_rx.recv().await.expect("destroy RPC 未发出").expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(destroy["method"], "session/destroy");
+
+    let call_driver = driver.clone();
+    let model_change = tokio::spawn(async move {
+        call_driver.session_call("s1", "session_set_model", json!({ "model": "new-model" })).await
+    });
+    assert!(tokio::time::timeout(Duration::from_millis(30), stdin_rx.recv()).await.is_err());
+
+    let rpc_id = destroy["id"].as_i64().unwrap();
+    answer_rpc(
+        &inner,
+        &destroy,
+        json!({ "jsonrpc": "2.0", "id": rpc_id, "result": { "status": "ok" } }),
+    );
+    delete.await.unwrap().expect("删除成功");
+    assert_eq!(model_change.await.unwrap().unwrap_err(), "会话不存在");
+    assert!(tokio::time::timeout(Duration::from_millis(30), stdin_rx.recv()).await.is_err());
+    assert!(!inner.session_dir("s1").unwrap().exists(), "排队的切模型不应重建 sidecar");
 }
 
 #[tokio::test]
