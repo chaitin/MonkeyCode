@@ -76,6 +76,21 @@ describe("LogList 锚定分发", () => {
   });
 });
 
+describe("LogList 运行指示", () => {
+  it("使用三个普通 DOM 点且仅在 running 时挂载，不再进入 daisyUI SVG mask 路径", () => {
+    const running = { ...withItems([]), running: true };
+    const { container, rerender } = render(<LogList state={running} sessionId="s1" />);
+    const indicator = container.querySelector("[data-running-indicator]");
+
+    expect(indicator).toBeTruthy();
+    expect(indicator?.children).toHaveLength(3);
+    expect(indicator?.className).not.toContain("loading");
+
+    rerender(<LogList state={{ ...running, running: false }} sessionId="s1" />);
+    expect(container.querySelector("[data-running-indicator]")).toBeNull();
+  });
+});
+
 describe("LogList 系统行居中(H7)", () => {
   it("包裹 div 是 flex 列,sys 条目 self-center 有生效上下文", () => {
     const state = withItems([{ kind: "sys", text: "— 本轮结束 —" }]);
