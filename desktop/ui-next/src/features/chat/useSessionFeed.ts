@@ -25,6 +25,28 @@ const HISTORY_PAGE = 3; // 每次"加载更早"取的轮数窗口(壳侧 cursor 
  *  ——2026-08-10 用户 profile 里那一串 0.5~2.6s 的 message handler 正是它。 */
 const JUMP_PAGE = 50;
 
+/** 同一会话的 open/close 必须串行。壳侧只有一个 opened boolean，且
+ * replay_open 会先关实时投递、清 batch，再把这段帧装进本次返回窗口：若旧代
+ * session_open 与重开后的新代并发，后完成的旧代可能独占含 task-ended 的窗口，
+ * 但它的 alive 已为 false、结果会被丢弃；现役代只见 task-started，页面便永久
+ * 停在“执行中”。cleanup 的 close 也排进同一队列，不能迟到覆盖新代 open。 */
+const sessionLifecycleTails = new Map<string, Promise<void>>();
+
+function enqueueSessionLifecycle<T>(id: string, action: () => Promise<T>): Promise<T> {
+  const previous = sessionLifecycleTails.get(id) ?? Promise.resolve();
+  const current = previous.then(action);
+  // 队尾只表达“前一项已结束”，失败不能阻断此后的重开/关闭。
+  const tail = current.then(
+    () => undefined,
+    () => undefined,
+  );
+  sessionLifecycleTails.set(id, tail);
+  void tail.then(() => {
+    if (sessionLifecycleTails.get(id) === tail) sessionLifecycleTails.delete(id);
+  });
+  return current;
+}
+
 /** session_open 的独立用量快照转成普通协议帧，复用 reducer 的单一状态
  * 写入口。无 seq = 不抬水位；顺序放在回放窗口之后、等待期间实时帧之前：
  * 它修正历史里的旧版伪 0，真正的新 usage 仍可在后面覆盖。 */
@@ -158,7 +180,7 @@ export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
         // 退避重试:引擎重启后 Ready 与壳的 apply 闸门有重叠窗口,首发必被拒
         // (afterEngineReady 头注记了壳侧契约)。不重试的话浏览器配对后这次
         // 重开就静默失败,对话继续挂在旧引擎上、拿不到新 MCP 工具集
-        const win = await afterEngineReady(() => sessionOpen(id));
+        const win = await enqueueSessionLifecycle(id, () => afterEngineReady(() => sessionOpen(id)));
         if (!alive) return;
         cursorRef.current = win.cursor;
         hasMoreRef.current = !!win.has_more;
@@ -208,7 +230,7 @@ export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
       alive = false;
       void framesP.then((f) => f()).catch(() => {});
       void connP.then((f) => f()).catch(() => {});
-      void sessionClose(id);
+      void enqueueSessionLifecycle(id, () => sessionClose(id));
     };
   }, [id, epoch]);
 

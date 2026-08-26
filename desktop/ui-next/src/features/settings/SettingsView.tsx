@@ -1243,7 +1243,7 @@ export const SettingsView = forwardRef<SettingsViewHandle, {
         <h1 id="settings-dialog-title" className="text-sm font-semibold">{t("settings.title")}</h1>
         <span className="flex-1" />
         <button ref={closeButtonRef} type="button" className="btn btn-ghost btn-sm" onClick={() => requestClose()}>
-          {t("settings.back")}
+          {t("settings.close")}
         </button>
       </header>
       <div className="flex min-h-0 flex-1">

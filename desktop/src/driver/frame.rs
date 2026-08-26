@@ -150,6 +150,28 @@ pub fn user_input(text: &str, seq: u64) -> Value {
     build("user-input", None, Some(json!({ "content": b64_text(text) })), seq)
 }
 
+/// 运行中追加的用户指令。沿用 user-input 气泡词汇，但显式标记来源，
+/// 让回放/UI 能与开新轮的普通输入区分；client_id 关联 durable outbox，
+/// 本帧自身不代表 Agent 已物化，也不改变轮次生命周期。
+pub fn steer_input(text: &str, client_id: &str, seq: u64) -> Value {
+    build(
+        "user-input",
+        None,
+        Some(json!({
+            "content": b64_text(text),
+            "source": "steer",
+            "client_id": client_id,
+        })),
+        seq,
+    )
+}
+
+/// Agent 的 user_message(source=steer) 已到达，说明该 durable outbox 条目
+/// 已经持久化/物化。RPC ACK 只表示排队成功，绝不能产本确认帧。
+pub fn steer_confirmed(client_id: &str, seq: u64) -> Value {
+    build("steer-confirmed", None, Some(json!({ "client_id": client_id })), seq)
+}
+
 /// tool_call_id:引擎透传的 provider 工具调用 id(permissionToolCallId cap,
 /// 与先行到达的 tool_call 帧同 id)。UI 据此把审批按钮嵌进对应工具卡;
 /// 空则省略字段(旧引擎/provider 未给 id),UI 回退独立审批大卡。

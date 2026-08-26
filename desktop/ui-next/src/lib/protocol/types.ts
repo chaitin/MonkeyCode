@@ -129,6 +129,10 @@ export interface UserItem {
   /** 产生它的 user-input 帧 seq:提问大纲 ↔ 渲染项 ↔ DOM 的稳定锚
    * (下标会因"加载更早"整体平移,seq 不会;旧记录可缺省) */
   seq?: number;
+  /** runtime steering 物化的补充指令；普通 user-input 缺席。 */
+  source?: "steer";
+  /** durable steering outbox 的关联 ID；用于把确认状态投影回该气泡。 */
+  clientId?: string;
   /** 云端任务附件(url 直链渲染);无附件时字段缺席 */
   attachments?: ChatAttachment[];
 }
@@ -299,4 +303,7 @@ export interface ChatState {
   /** seq 去重水位:已归约帧的最大 seq(0 = 还没见过带 seq 的帧)。
    * 云端重连会重放重叠帧,靠它跨批次丢弃;详见 reduceBatch 的去重口径。 */
   lastSeq: number;
+  /** Agent 权威 user_message 已确认的 runtime steering 集合；client_id → 最大帧 seq。
+   * 累计结构避免同一批多条 steer-confirmed 互相覆盖。 */
+  steerConfirmations: Record<string, number>;
 }

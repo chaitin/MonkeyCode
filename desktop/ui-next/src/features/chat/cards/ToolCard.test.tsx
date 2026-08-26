@@ -25,7 +25,8 @@ const BASE: ToolItem = { kind: "tool", tcId: "t1", title: "Bash npm test", statu
 
 describe("工具卡", () => {
   it("标题拆「动作 + 目标」+ 耗时;悬停露原始标题与完整目标", () => {
-    render(<ToolCard item={{ ...BASE, durationMs: 1234 }} sessionId="s1" />);
+    const { container } = render(<ToolCard item={{ ...BASE, durationMs: 1234 }} sessionId="s1" />);
+    expect(container.firstElementChild?.classList.contains("mc-workbench-material")).toBe(true);
     expect(screen.getByText("执行命令")).toBeTruthy(); // 动作中文映射
     expect(screen.getByTitle("Bash npm test")).toBeTruthy(); // 动作悬停 = 原始标题
     expect(screen.getByTitle("npm test")).toBeTruthy(); // 目标悬停 = 完整目标
@@ -61,6 +62,8 @@ describe("工具卡", () => {
     // 未展开时详情不入 DOM(单一面板按需渲染)
     expect(screen.queryByLabelText("工具详情")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "展开工具详情" }));
+    const detail = screen.getByLabelText("工具详情");
+    expect(detail.classList.contains("mc-workbench-material-muted")).toBe(true);
     const pre = screen.getByText((_, el) => el?.tagName === "PRE" && (el.textContent ?? "").includes("$ npm test"));
     expect(pre.textContent).toContain("/repo"); // cwd 弱化行同在一个 pre
     expect(pre.textContent).toContain("42 passed"); // 输出不再另起盒子

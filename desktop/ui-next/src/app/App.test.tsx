@@ -124,8 +124,8 @@ describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () =
     const settingsButton = within(aside).getByRole("button", { name: "设置" });
     await userEvent.click(settingsButton);
     expect(screen.getByRole("dialog", { name: "设置" })).toBeTruthy();
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "返回" }));
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    expect(document.activeElement).toBe(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog", { name: "设置" })).toBeNull();
     expect(document.body.contains(aside)).toBe(true);
     expect(aside.closest("[inert]")).toBeNull();
@@ -141,7 +141,7 @@ describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () =
     expect(document.activeElement).toBe(document.body);
 
     fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
 
     await waitFor(() => expect(document.activeElement).toBe(composer));
   });
@@ -157,7 +157,7 @@ describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () =
 
     await userEvent.click(settingsButton);
     settingsButton.disabled = true;
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
 
     await waitFor(() => expect(document.activeElement).toBe(composer));
   });
@@ -356,7 +356,7 @@ describe("D5 首启向导", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "设置" })).toBeTruthy();
     const opens = shell.count("models_list");
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
     expect(screen.getByRole("complementary", { name: "选择任务" })).toBeTruthy();
     await act(() => Promise.resolve());
     // 不循环:关闭后不再自动弹回,也不反复探测
@@ -750,6 +750,28 @@ describe("任务列排序跟得上后台活动", () => {
     act(() => shell.emit("session-event", { type: "session-status", id: "旧的", title: "旧的", status: "idle" }));
     await waitFor(() => expect(groups()[0]).toContain("beta"));
     expect(shell.count("sessions_list")).toBe(listBefore); // 就地补丁,没有重拉风暴
+  });
+
+  it("已归档任务重新发言:状态事件将其立即移回活跃列表,且不重拉全表", async () => {
+    const shell = stubShell({ sessions: [sess({ id: "归档任务", archived: true })] });
+    render(<App />);
+    const list = screen.getByRole("complementary", { name: "选择任务" });
+    await waitFor(() => expect(shell.count("sessions_list")).toBeGreaterThanOrEqual(1));
+    expect(within(list).queryByText("归档任务")).toBeNull();
+    const listBefore = shell.count("sessions_list");
+
+    act(() =>
+      shell.emit("session-event", {
+        type: "session-status",
+        id: "归档任务",
+        title: "归档任务",
+        status: "running",
+        archived: false,
+      }),
+    );
+
+    expect(await within(list).findByText("归档任务")).toBeTruthy();
+    expect(shell.count("sessions_list")).toBe(listBefore);
   });
 
   it("session-ask / session-summary 不动时间戳(壳侧走的是 keep_updated 那条)", async () => {

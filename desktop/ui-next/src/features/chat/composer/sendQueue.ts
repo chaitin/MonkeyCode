@@ -22,6 +22,20 @@ export interface SendQueueInFlight<A> {
   startedAt: number;
 }
 
+export type SteeringPhase = "dispatching" | "acked" | "uncertain";
+
+/** Runtime steering 的持久 outbox。ACK 只把条目推进到 acked；只有
+ * steer-confirmed 才能删除，因此 Agent 在 ACK 后崩溃也不会静默丢消息。 */
+export interface SendQueueSteering<A> {
+  item: SendQueueItem<A>;
+  phase: SteeringPhase;
+  startedAt: number;
+  /** claim 前在 pending 中的位置，失败/显式重试时尽量恢复原顺序。 */
+  originalIndex: number;
+  /** 用户已清空：迟到失败也不得把消息恢复成普通待发送项。 */
+  discardRequested?: boolean;
+}
+
 export type SendQueueBlockCode =
   | "send-rejected"
   | "receipt-unknown"
@@ -46,6 +60,8 @@ export interface SendQueueLane<A> {
   pending: SendQueueItem<A>[];
   inFlight: SendQueueInFlight<A> | null;
   blocked: SendQueueBlock | null;
+  /** v1 后向兼容扩展；读取缺少该字段的旧 v1 lane 时归一为空数组。 */
+  steering?: SendQueueSteering<A>[];
 }
 
 export interface LocalQueueAttachment {
@@ -115,6 +131,7 @@ const PHASES = new Set<InFlightPhase>([
   "awaiting-turn-end",
   "uncertain",
 ]);
+const STEERING_PHASES = new Set<SteeringPhase>(["dispatching", "acked", "uncertain"]);
 const BLOCK_CODES = new Set<SendQueueBlockCode>([
   "send-rejected",
   "receipt-unknown",
@@ -196,9 +213,34 @@ export function isSendQueueLane<A>(
     inFlightItemId = inFlight.item.id;
   }
 
-  const ids = value.pending.map((item) => item.id);
-  if (new Set(ids).size !== ids.length) return false;
-  return inFlightItemId === null || !ids.includes(inFlightItemId);
+  // steering 是 v1 的可选扩展，缺席按 [] 兼容；一旦存在则严格校验。
+  const steering = value.steering;
+  if (steering !== undefined && !Array.isArray(steering)) return false;
+  const steeringEntries = Array.isArray(steering) ? steering : [];
+  if (
+    !steeringEntries.every(
+      (entry) =>
+        isRecord(entry) &&
+        isItem(entry.item, attachmentGuard) &&
+        typeof entry.phase === "string" &&
+        STEERING_PHASES.has(entry.phase as SteeringPhase) &&
+        isFiniteNumber(entry.startedAt) &&
+        typeof entry.originalIndex === "number" &&
+        Number.isInteger(entry.originalIndex) &&
+        entry.originalIndex >= 0 &&
+        (entry.discardRequested === undefined || typeof entry.discardRequested === "boolean"),
+    )
+  ) {
+    return false;
+  }
+  if (steeringEntries.filter((entry) => entry.phase === "dispatching").length > 1) return false;
+
+  const ids = [
+    ...value.pending.map((item) => item.id),
+    ...(inFlightItemId === null ? [] : [inFlightItemId]),
+    ...steeringEntries.map((entry) => entry.item.id),
+  ];
+  return new Set(ids).size === ids.length;
 }
 
 export function assertSendQueueLane<A>(lane: SendQueueLane<A>): void {
@@ -206,7 +248,7 @@ export function assertSendQueueLane<A>(lane: SendQueueLane<A>): void {
 }
 
 export function emptySendQueueLane<A>(): SendQueueLane<A> {
-  return { version: SEND_QUEUE_VERSION, pending: [], inFlight: null, blocked: null };
+  return { version: SEND_QUEUE_VERSION, pending: [], inFlight: null, blocked: null, steering: [] };
 }
 
 let fallbackIdSequence = 0;
@@ -237,7 +279,11 @@ export function createSendQueueItem<A>(
 export function enqueue<A>(lane: SendQueueLane<A>, item: SendQueueItem<A>): SendQueueLane<A> {
   assertSendQueueLane(lane);
   if (!isItem(item, (() => true) as unknown as AttachmentGuard<A>)) throw new Error("Invalid send queue item");
-  if (lane.pending.some((entry) => entry.id === item.id) || lane.inFlight?.item.id === item.id) return lane;
+  if (
+    lane.pending.some((entry) => entry.id === item.id) ||
+    lane.inFlight?.item.id === item.id ||
+    (lane.steering ?? []).some((entry) => entry.item.id === item.id)
+  ) return lane;
   return { ...lane, pending: [...lane.pending, item] };
 }
 
@@ -280,11 +326,16 @@ export function reorderBefore<A>(
   return { ...lane, pending: next };
 }
 
-/** 仅在未阻塞且无 in-flight 时原子领取 pending[0]。 */
+/** 仅在未阻塞、无普通 in-flight 且没有未丢弃 steering outbox 时领取队首。 */
 export function claimHead<A>(lane: SendQueueLane<A>, metadata: ClaimMetadata = {}): SendQueueLane<A> {
   assertSendQueueLane(lane);
   const head = lane.pending[0];
-  if (!head || lane.inFlight !== null || lane.blocked !== null) return lane;
+  if (
+    !head ||
+    lane.inFlight !== null ||
+    lane.blocked !== null ||
+    (lane.steering ?? []).some((entry) => !entry.discardRequested)
+  ) return lane;
   const inFlight: SendQueueInFlight<A> = {
     item: head,
     phase: metadata.phase ?? "dispatching",
@@ -292,6 +343,104 @@ export function claimHead<A>(lane: SendQueueLane<A>, metadata: ClaimMetadata = {
     ...(metadata.baselineSeq === undefined ? {} : { baselineSeq: metadata.baselineSeq }),
   };
   return { ...lane, pending: lane.pending.slice(1), inFlight };
+}
+
+/** 一次状态转换中把指定 pending 项移入 durable steering outbox。 */
+export function claimSteering<A>(
+  lane: SendQueueLane<A>,
+  itemId: string,
+  startedAt = Date.now(),
+): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  const originalIndex = lane.pending.findIndex((item) => item.id === itemId);
+  if (
+    originalIndex < 0 ||
+    lane.inFlight !== null ||
+    (lane.steering ?? []).some((entry) => entry.phase === "dispatching")
+  ) return lane;
+  const item = lane.pending[originalIndex];
+  if (!item) return lane;
+  return {
+    ...lane,
+    pending: [...lane.pending.slice(0, originalIndex), ...lane.pending.slice(originalIndex + 1)],
+    steering: [...(lane.steering ?? []), { item, phase: "dispatching", startedAt, originalIndex }],
+  };
+}
+
+/** 运行已结束但尚无 Agent 权威确认：ACK/投递中项都转为 uncertain 外显。
+ * 用户已经明确清空的项保持隐藏状态，继续等待迟到 RPC 回调或重启清理。 */
+export function markSteeringUncertain<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  const current = lane.steering ?? [];
+  let changed = false;
+  const steering = current.map((entry) => {
+    if (entry.discardRequested || (entry.phase !== "dispatching" && entry.phase !== "acked")) return entry;
+    changed = true;
+    return { ...entry, phase: "uncertain" as const };
+  });
+  return changed ? { ...lane, steering } : lane;
+}
+
+/** Driver 已接收 steering RPC；仍保留 outbox，等待 Agent 权威确认帧。 */
+export function ackSteering<A>(lane: SendQueueLane<A>, itemId: string): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  const current = lane.steering ?? [];
+  const index = current.findIndex((entry) => entry.item.id === itemId && entry.phase === "dispatching");
+  if (index < 0) return lane;
+  const steering = current.slice();
+  steering[index] = { ...steering[index]!, phase: "acked" };
+  return { ...lane, steering };
+}
+
+/** Agent 已把该 client_id 物化为权威 user_message；重复确认幂等。 */
+export function confirmSteering<A>(lane: SendQueueLane<A>, clientId: string): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  const current = lane.steering ?? [];
+  const steering = current.filter((entry) => entry.item.id !== clientId);
+  return steering.length === current.length ? lane : { ...lane, steering };
+}
+
+function restoreSteeringItem<A>(lane: SendQueueLane<A>, entry: SendQueueSteering<A>): SendQueueLane<A> {
+  if (lane.pending.some((item) => item.id === entry.item.id) || lane.inFlight?.item.id === entry.item.id) return lane;
+  const pending = lane.pending.slice();
+  pending.splice(Math.min(entry.originalIndex, pending.length), 0, entry.item);
+  return { ...lane, pending };
+}
+
+/** RPC 明确失败：删除 outbox；除非用户已清空，否则按原位置恢复 pending。 */
+export function failSteering<A>(lane: SendQueueLane<A>, itemId: string): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  const current = lane.steering ?? [];
+  const index = current.findIndex((entry) => entry.item.id === itemId);
+  if (index < 0) return lane;
+  const entry = current[index]!;
+  const without = {
+    ...lane,
+    steering: [...current.slice(0, index), ...current.slice(index + 1)],
+  };
+  return entry.discardRequested ? without : restoreSteeringItem(without, entry);
+}
+
+/** 用户明确重试不确定 steering：恢复普通 pending，后续不会自动 steering。 */
+export function retrySteering<A>(lane: SendQueueLane<A>, itemId: string): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  const current = lane.steering ?? [];
+  const index = current.findIndex((entry) => entry.item.id === itemId && entry.phase === "uncertain");
+  if (index < 0) return lane;
+  const entry = current[index]!;
+  const without = {
+    ...lane,
+    steering: [...current.slice(0, index), ...current.slice(index + 1)],
+  };
+  return restoreSteeringItem(without, entry);
+}
+
+/** 用户确认丢弃不确定 steering。 */
+export function discardSteering<A>(lane: SendQueueLane<A>, itemId: string): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  const current = lane.steering ?? [];
+  const steering = current.filter((entry) => entry.item.id !== itemId || entry.phase !== "uncertain");
+  return steering.length === current.length ? lane : { ...lane, steering };
 }
 
 export function markReceipt<A>(lane: SendQueueLane<A>, itemId: string): SendQueueLane<A> {
@@ -392,14 +541,36 @@ export function pausePending<A>(lane: SendQueueLane<A>, at = Date.now()): SendQu
   });
 }
 
-/** 清空尚未投递的消息，保留 in-flight 账本，避免迟到回执失配。 */
+/** 当前轮结束后释放空队列的取消屏障；真正待发送的工作仍保持暂停。 */
+export function releaseEmptyUserPause<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  if (
+    lane.blocked?.code !== "user-paused" ||
+    lane.pending.length > 0 ||
+    lane.inFlight !== null ||
+    (lane.steering ?? []).some((entry) => !entry.discardRequested)
+  ) {
+    return lane;
+  }
+  return { ...lane, blocked: null };
+}
+
+/** 清空尚未投递的消息。已发起的 steering 不能取消，只记录用户丢弃意图；
+ * 这样迟到失败不会恢复，迟到确认仍可按 client_id 安全删除。 */
 export function clearPending<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
   assertSendQueueLane(lane);
-  if (lane.pending.length === 0 && lane.blocked?.code !== "user-paused") return lane;
+  const currentSteering = lane.steering ?? [];
+  const shouldMarkSteering = currentSteering.some(
+    (entry) => (entry.phase === "dispatching" || entry.phase === "acked") && !entry.discardRequested,
+  );
+  if (lane.pending.length === 0 && lane.blocked?.code !== "user-paused" && !shouldMarkSteering) return lane;
   return {
     ...lane,
     pending: [],
     blocked: lane.blocked?.code === "user-paused" ? null : lane.blocked,
+    steering: currentSteering.map((entry) =>
+      entry.phase === "dispatching" || entry.phase === "acked" ? { ...entry, discardRequested: true } : entry,
+    ),
   };
 }
 
@@ -410,18 +581,33 @@ export function discardUncertain<A>(lane: SendQueueLane<A>, itemId: string): Sen
   return { ...lane, inFlight: null, blocked: null };
 }
 
-/** 磁盘恢复规则：不能证明仍在运行的在途项一律暂停，绝不自动重发。 */
+/** 磁盘恢复规则：不能证明结果的普通/steering 在途项一律外显为 uncertain，
+ * 绝不自动重发；已被用户清空的 steering 直接丢弃。 */
 export function recoverLaneAfterRestart<A>(
   lane: SendQueueLane<A>,
   options: RestoreOptions = {},
 ): SendQueueLane<A> {
   assertSendQueueLane(lane);
-  if (lane.inFlight === null) return lane;
-  if (lane.inFlight.phase === "awaiting-turn-end" && options.awaitingTurnRunning === true) return lane;
-  if (lane.inFlight.phase === "uncertain" && lane.blocked !== null) return lane;
+  const previousSteering = lane.steering ?? [];
+  const steering = previousSteering
+    .filter((entry) => !entry.discardRequested)
+    .map((entry) =>
+      entry.phase === "dispatching" || entry.phase === "acked"
+        ? { ...entry, phase: "uncertain" as const }
+        : entry,
+    );
+  // map/filter 总会新建数组；按内容无变化时保留引用，避免无谓 snapshot 更新。
+  const steeringChanged =
+    steering.length !== previousSteering.length ||
+    steering.some((entry, index) => entry !== previousSteering[index]);
+  const next = steeringChanged ? { ...lane, steering } : lane;
+
+  if (next.inFlight === null) return next;
+  if (next.inFlight.phase === "awaiting-turn-end" && options.awaitingTurnRunning === true) return next;
+  if (next.inFlight.phase === "uncertain" && next.blocked !== null) return next;
   return {
-    ...lane,
-    inFlight: { ...lane.inFlight, phase: "uncertain" },
+    ...next,
+    inFlight: { ...next.inFlight, phase: "uncertain" },
     blocked: {
       code: "receipt-unknown",
       message: "Delivery state is unknown after restart",
@@ -431,7 +617,7 @@ export function recoverLaneAfterRestart<A>(
 }
 
 export function isSendQueueEmpty<A>(lane: SendQueueLane<A>): boolean {
-  return lane.pending.length === 0 && lane.inFlight === null;
+  return lane.pending.length === 0 && lane.inFlight === null && (lane.steering?.length ?? 0) === 0;
 }
 
 function requireKeyPart(value: string, label: string): string {
@@ -603,8 +789,13 @@ function loadEntry<A>(target: SendQueueTarget, options: SendQueueReadOptions<A>)
         writeProtected: false,
       };
     }
+    // v1 初版没有 steering；读时补默认值，但不升级版本。
+    const normalized = {
+      ...parsed,
+      steering: Array.isArray(parsed.steering) ? parsed.steering : [],
+    } as SendQueueLane<A>;
     return {
-      lane: recoverLaneAfterRestart(parsed, options),
+      lane: recoverLaneAfterRestart(normalized, options),
       persistence: { ok: true, error: null },
       writeProtected: false,
     };

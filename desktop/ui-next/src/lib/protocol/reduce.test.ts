@@ -675,6 +675,39 @@ describe("轮次与系统帧", () => {
     expect(bad.items[0]).toEqual({ kind: "user", text: "!!!不是base64" });
   });
 
+  it("同一 batch 累计多条 steer-confirmed，并对 replay/prepend 保持幂等", () => {
+    const confirmed = run([
+      { ...frame("steer-confirmed", { client_id: "client-a" }), seq: 41 },
+      { ...frame("steer-confirmed", { client_id: "client-b" }), seq: 42 },
+    ]);
+    expect(confirmed.steerConfirmations).toEqual({ "client-a": 41, "client-b": 42 });
+    expect(reduceFrame(confirmed, { ...frame("steer-confirmed", { client_id: "client-b" }), seq: 42 })).toBe(confirmed);
+    expect(reduceBatch(confirmed, [{ ...frame("steer-confirmed", { client_id: "client-a" }), seq: 41 }])).toBe(confirmed);
+
+    const prepended = prependHistory(confirmed, [
+      { ...frame("user-input", { content: b64encode("更早消息") }), seq: 1 },
+      { ...frame("steer-confirmed", { client_id: "old-page" }), seq: 2 },
+    ]);
+    expect(prepended.steerConfirmations).toBe(confirmed.steerConfirmations);
+    expect(prepended.steerConfirmations).toEqual({ "client-a": 41, "client-b": 42 });
+  });
+
+  it("user-input 只保留受支持的 steering 来源与 client_id", () => {
+    const steered = run([
+      frame("user-input", { content: b64encode("补充"), source: "steer", client_id: "steer-1" }),
+    ]);
+    expect(steered.items[0]).toEqual({
+      kind: "user",
+      text: "补充",
+      source: "steer",
+      clientId: "steer-1",
+    });
+    const unknown = run([
+      frame("user-input", { content: b64encode("普通"), source: "other", client_id: "ignored" }),
+    ]);
+    expect(unknown.items[0]).toEqual({ kind: "user", text: "普通" });
+  });
+
   it("user-input 保留消息时间", () => {
     const s = run([{ ...frame("user-input", { content: b64encode("带时间") }), timestamp: 1_234 }]);
     expect(s.items[0]).toEqual({ kind: "user", text: "带时间", timestamp: 1_234 });
@@ -1009,6 +1042,103 @@ describe("seq 去重(云端重连会重放)", () => {
     expect(s2.items.filter((it) => it.kind === "user")).toHaveLength(1);
     expect(s2.items.at(-1)).toEqual({ kind: "agent", text: "你好,世界" });
     expect(s2.lastSeq).toBe(4);
+  });
+
+  it("连续 usage_update 后的 task-ended 立即关闭本地轮次", () => {
+    const started = reduceBatch(createChatState(), [withSeq(frame("task-started"), 14217)]);
+    const ended = reduceBatch(started, [
+      {
+        data: { update: { sessionUpdate: "usage_update", size: 200000, used: 56308 } },
+        kind: "acp_event",
+        seq: 14218,
+        timestamp: 1787649934202,
+        type: "task-running",
+      },
+      {
+        data: { update: { sessionUpdate: "usage_update", size: 200000, used: 57577 } },
+        kind: "acp_event",
+        seq: 14219,
+        timestamp: 1787649934250,
+        type: "task-running",
+      },
+      { seq: 14220, timestamp: 1787649934250, type: "task-ended" },
+    ]);
+
+    expect(ended).toMatchObject({
+      running: false,
+      turnEnded: true,
+      usage: { used: 57577, size: 200000 },
+      lastSeq: 14220,
+      lastTerminalSeq: 14220,
+    });
+    expect(ended.items.at(-1)).toMatchObject({ kind: "sys", tag: "turn-end" });
+  });
+
+  it("跨批晚到的低 seq task-ended 按终态水位归约且重复回放仍丢弃", () => {
+    const running = reduceBatch(createChatState(), [
+      withSeq(frame("task-started"), 2),
+      withSeq(acp({ sessionUpdate: "usage_update", used: 9, size: 100 }), 40),
+    ]);
+    expect(running).toMatchObject({ running: true, lastSeq: 40, lastTerminalSeq: 0 });
+
+    const ended = reduceBatch(running, [withSeq(frame("task-ended"), 22)]);
+    expect(ended).toMatchObject({
+      running: false,
+      turnEnded: true,
+      lastSeq: 40,
+      lastTerminalSeq: 22,
+    });
+    expect(ended.items.filter((item) => item.kind === "sys" && item.tag === "turn-end")).toHaveLength(1);
+    expect(reduceBatch(ended, [withSeq(frame("task-ended"), 22)])).toBe(ended);
+  });
+
+  it("早于当前 task-started 的旧终态不得关闭新轮", () => {
+    const previous = reduceBatch(createChatState(), [
+      withSeq(frame("task-started"), 10),
+      withSeq(frame("task-ended"), 20),
+    ]);
+    const current = reduceBatch(previous, [
+      withSeq(frame("task-started"), 30),
+      withSeq(acp({ sessionUpdate: "usage_update", used: 9, size: 100 }), 40),
+    ]);
+    const staleEnd = reduceBatch(current, [withSeq(frame("task-ended"), 25)]);
+    expect(staleEnd).toBe(current);
+    expect(staleEnd).toMatchObject({
+      running: true,
+      lastSeq: 40,
+      lastTurnStartSeq: 30,
+      lastTerminalSeq: 20,
+    });
+    expect(staleEnd.items.filter((item) => item.kind === "sys" && item.tag === "turn-end")).toHaveLength(1);
+  });
+
+  it("与当前开轮同批的旧 task-ended 也不得关闭新轮", () => {
+    const previous = reduceBatch(createChatState(), [
+      withSeq(frame("task-started"), 10),
+      withSeq(frame("task-ended"), 20),
+    ]);
+    const current = reduceBatch(previous, [
+      withSeq(frame("task-started"), 30),
+      withSeq(acp({ sessionUpdate: "usage_update", used: 9, size: 100 }), 40),
+      withSeq(frame("task-ended"), 25),
+    ]);
+    expect(current).toMatchObject({
+      running: true,
+      lastSeq: 40,
+      lastTurnStartSeq: 30,
+      lastTerminalSeq: 20,
+    });
+    expect(current.items.filter((item) => item.kind === "sys" && item.tag === "turn-end")).toHaveLength(1);
+  });
+
+  it("与业务帧共享 seq 的 task-ended 仍关闭轮次", () => {
+    const ended = reduceBatch(createChatState(), [
+      withSeq(frame("task-started"), 1),
+      withSeq(chunk("完成"), 2),
+      withSeq(frame("task-ended"), 2),
+    ]);
+    expect(ended).toMatchObject({ running: false, turnEnded: true, lastSeq: 2, lastTerminalSeq: 2 });
+    expect(ended.items.at(-1)).toMatchObject({ kind: "sys", tag: "turn-end" });
   });
 
   it("整批都在水位之下时状态原样返回(引用不变,不触发重渲染)", () => {

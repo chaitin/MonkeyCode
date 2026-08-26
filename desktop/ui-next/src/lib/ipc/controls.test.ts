@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { b64encode } from "@/lib/protocol/codec";
-import { sessionOutline, sessionSetMode, sessionSetModel, sessionSetThink } from "./controls";
+import { sessionOutline, sessionSetMode, sessionSetModel, sessionSetThink, sessionSteer } from "./controls";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -32,6 +32,15 @@ describe("session_call 封装(载荷契约对表壳侧 session.rs)", () => {
       { cmd: "session_call", args: { id: "s1", kind: "session_set_think", payload: { think: "high" } } },
       { cmd: "session_call", args: { id: "s1", kind: "session_set_mode", payload: { mode: "yolo" } } },
     ]);
+  });
+
+  it("runtime steering 复用 session_call 并编码正文", async () => {
+    const calls = stubShell(() => ({ result: {} }));
+    await sessionSteer("s1", "补充说明🐛", "client-1");
+    expect(calls).toEqual([{
+      cmd: "session_call",
+      args: { id: "s1", kind: "session_steer", payload: { content: b64encode("补充说明🐛"), client_id: "client-1" } },
+    }]);
   });
 
   it("应答 {error} 转 reject(壳对未知 kind 回 Ok({error}),不能吞)", async () => {

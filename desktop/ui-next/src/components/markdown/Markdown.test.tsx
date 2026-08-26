@@ -309,6 +309,62 @@ describe("本地资源(工作区图片/文件链接)", () => {
     expect(local).toEqual(["src/main.rs"]);
     expect(calls).not.toContain("plugin:opener|open_url");
   });
+
+  it("本地会话启发式识别行内代码文件路径并支持点击和键盘", async () => {
+    const onLocalLink = vi.fn();
+    render(<Markdown source={"`docs/design/a.md` 和 `src/main.ts:42:8`"} onLocalLink={onLocalLink} />);
+
+    const markdownFile = screen.getByRole("link", { name: "docs/design/a.md" });
+    const sourceFile = screen.getByRole("link", { name: "src/main.ts:42:8" });
+    await userEvent.click(markdownFile);
+    fireEvent.keyDown(sourceFile, { key: "Enter" });
+
+    expect(onLocalLink).toHaveBeenNthCalledWith(1, "docs/design/a.md");
+    expect(onLocalLink).toHaveBeenNthCalledWith(2, "src/main.ts");
+  });
+
+  it("行内代码作为显式链接标签时服从外层链接目标", async () => {
+    const calls: string[] = [];
+    (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
+      core: {
+        invoke: (cmd: string) => {
+          calls.push(cmd);
+          return Promise.resolve(null);
+        },
+      },
+    };
+    const onLocalLink = vi.fn();
+    const first = render(
+      <Markdown source={"[`docs/a.md`](https://example.com/guide)"} onLocalLink={onLocalLink} />,
+    );
+    await userEvent.click(screen.getByRole("link", { name: "docs/a.md" }));
+    expect(onLocalLink).not.toHaveBeenCalled();
+    expect(calls).toContain("plugin:opener|open_url");
+    first.unmount();
+
+    render(<Markdown source={"[`docs/a.md`](actual/target.md)"} onLocalLink={onLocalLink} />);
+    await userEvent.click(screen.getByRole("link", { name: "docs/a.md" }));
+    expect(onLocalLink).toHaveBeenCalledWith("actual/target.md");
+  });
+
+  it("流式活跃尾块停流前不生成启发式焦点链接", () => {
+    const onLocalLink = vi.fn();
+    const { rerender } = render(<Markdown source={"`docs/design/a.md`"} onLocalLink={onLocalLink} deferMermaid />);
+    expect(screen.queryByRole("link", { name: "docs/design/a.md" })).toBeNull();
+
+    rerender(<Markdown source={"`docs/design/a.md`"} onLocalLink={onLocalLink} />);
+    expect(screen.getByRole("link", { name: "docs/design/a.md" })).toBeTruthy();
+  });
+
+  it("无本地打开通道时不识别行内路径，并跳过代码块与非路径代码", () => {
+    const first = render(<Markdown source={"`docs/design/a.md`"} />);
+    expect(first.container.querySelector("code[data-mc-local-href]")).toBeNull();
+    first.unmount();
+
+    const second = render(<Markdown source={"`git status`\n\n```text\ndocs/design/a.md\n```"} onLocalLink={vi.fn()} />);
+    expect(second.container.querySelector("code[data-mc-local-href]")).toBeNull();
+  });
+
   it("Mermaid 图内相对链接触发 onLocalLink", async () => {
     mermaidMock.render.mockResolvedValueOnce({
       svg: '<svg xmlns:xlink="http://www.w3.org/1999/xlink"><a xlink:href="src/main.rs"><text>看图内文件</text></a></svg>',

@@ -6,7 +6,7 @@
 // push_frame 帧管线(编 seq → 落盘 → 批量缓冲)与本地和解
 // (reconcile_*)。共享状态定义见 ohmy.rs::Inner。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -361,6 +361,26 @@ mod chat_workdir_tests {
     }
 }
 
+/// 一次在途的运行中追加请求。只活在进程内：attempt + turn 共同作为
+/// RPC 应答/事件竞态的所有权守卫，绝不写入 sidecar。
+#[derive(Clone)]
+pub(super) struct PendingSteer {
+    pub(super) attempt: u64,
+    pub(super) turn: u64,
+    pub(super) message: String,
+    pub(super) client_id: String,
+    pub(super) event_seen: bool,
+}
+
+/// ACK 已先行本地回显、尚待 Agent user_message echo 的 steer。Agent 按
+/// 接收顺序发 echo；保留这条 FIFO 才能避免相同文本的迟到 echo 误认领
+/// 同一 turn 内的下一次尝试。
+pub(super) struct PendingSteerEcho {
+    pub(super) turn: u64,
+    pub(super) message: String,
+    pub(super) client_id: String,
+}
+
 pub(super) struct SessionState {
     /// 帧序号(回放续接:打开时取日志行数)
     pub(super) seq: u64,
@@ -379,11 +399,19 @@ pub(super) struct SessionState {
     /// 轮次序号(每次开轮 +1)。只用来给异步兜底认轮:cancel 看门狗到期时
     /// 会话可能已经收尾并开了新的一轮,拿它比对才不会误杀新轮次。
     pub(super) turn: u64,
+    /// 本会话 steer 尝试的单调编号，以及当前唯一在途尝试。steer 不开轮，
+    /// 因而 pending 必须同时记下它所归属的现有 turn。
+    pub(super) steer_attempt: u64,
+    pub(super) pending_steer: Option<PendingSteer>,
+    pub(super) pending_steer_echoes: VecDeque<PendingSteerEcho>,
     /// 用户明确请求取消的轮次。手动压缩没有 turn/stopped，只能用该标记
     /// 将其 context canceled 应答归为 Interrupted，而不是错误。
     pub(super) cancel_requested_turn: Option<u64>,
     /// 本进程内已 session/create(resume)过
     pub(super) created: bool,
+    /// session/create(resume) 已发出、尚未完成。与 created 一起在 sessions
+    /// 锁内判定和占位，避免冷启动的多个 session_open 重复恢复同一会话。
+    pub(super) resuming: bool,
     /// 引擎侧会话 id(通常 == 壳 sid。恢复/重建一律按原 id resume
     /// (materialize_skills 确保 transcript),正常不再换绑;仅引擎回显
     /// 异常 id 的守卫路径会更新此别名——壳 sid/目录/UI 通道恒不变。
@@ -419,6 +447,7 @@ pub(super) struct SessionState {
 /// pending_perms、perm_tools(均 StdMutex)。
 /// 加锁秩序(评审梳理,不得反向):
 /// - sessions → batch:push_frame 在 sessions 锁内投递 journal 并入缓冲;
+/// - sessions → resume:session_open 原子登记恢复占位与完成广播;
 /// - sidecar_write 只包围独立的小文件事务，不与其他状态锁嵌套;
 /// - pending_perms → pending_questions:sessions_list 的 waiting 快照;
 /// - perm_remember/perm_tools 点状取放,不与其他锁嵌套;
@@ -756,8 +785,12 @@ impl OhmyDriver {
                 manual_compact: false,
                 terminal_error_seen: false,
                 turn: 0,
+                steer_attempt: 0,
+                pending_steer: None,
+                pending_steer_echoes: VecDeque::new(),
                 cancel_requested_turn: None,
                 created: true,
+                resuming: false,
                 engine_id: sid.clone(),
                 opened: false,
                 open_tools: HashMap::new(),
@@ -803,14 +836,14 @@ impl OhmyDriver {
     /// "监听先于命令"那条约束对历史部分自然消失(实时流仍走事件,契约不变)。
     pub async fn session_open(&self, id: &str) -> Result<Value, String> {
         check_session_id(id)?;
-        let need_create = {
+        let need_resume = {
             let sessions = self.0.sess.sessions.lock_ok();
-            !sessions.get(id).map(|s| s.created).unwrap_or(false)
+            sessions.get(id).map(|s| !s.created && !s.resuming).unwrap_or(true)
         };
         // 恢复期间上行的 user-input 不能在 seq 水位恢复前编号(会从 0 重编、
         // 与旧帧撞号,大纲随之两点同亮/跳错):就绪宣告闸在水位恢复之后。
         let mut seq_gate: Option<tokio::sync::oneshot::Sender<()>> = None;
-        if need_create {
+        if need_resume {
             let meta = self.read_sidecar(id);
             let is_child =
                 meta.get("parent").and_then(|v| v.as_str()).map(|p| !p.is_empty()).unwrap_or(false);
@@ -823,6 +856,9 @@ impl OhmyDriver {
             // 先登记会话态(零 RPC):push_frame 有落点、replay_open 查得到
             // fold/running,后台 resume 也要靠它回写 engine_id。
             // 子代理子会话是壳侧实体(仅回放),created 直接为真、不向引擎 resume。
+            let (resume_tx, resume_rx) = tokio::sync::watch::channel::<Option<Result<(), String>>>(None);
+            let (gate_tx, gate_rx) = tokio::sync::oneshot::channel::<()>();
+            let mut start_resume = false;
             {
                 let mut sessions = self.0.sess.sessions.lock_ok();
                 let entry = sessions.entry(id.to_string()).or_insert(SessionState {
@@ -832,8 +868,12 @@ impl OhmyDriver {
                     manual_compact: false,
                     terminal_error_seen: false,
                     turn: 0,
+                    steer_attempt: 0,
+                    pending_steer: None,
+                    pending_steer_echoes: VecDeque::new(),
                     cancel_requested_turn: None,
                     created: is_child,
+                    resuming: false,
                     engine_id: engine_id.clone(),
                     opened: false,
                     open_tools: HashMap::new(),
@@ -849,12 +889,18 @@ impl OhmyDriver {
                 entry.engine_id = engine_id.clone();
                 if is_child {
                     entry.created = true;
+                } else if !entry.created && !entry.resuming {
+                    // 与上方快速判断之间可能有另一个 session_open 抢先。
+                    // 在同一把 sessions 锁内复检并占位，只有赢家登记 watch
+                    // 和发出 session/create；后来者复用这一个恢复结果。
+                    entry.resuming = true;
+                    self.0.sess.resume.lock_ok().insert(id.to_string(), resume_rx);
+                    start_resume = true;
                 }
             }
-            if !is_child {
-                let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-                seq_gate = Some(tx);
-                self.spawn_resume(id, meta, engine_id, rx);
+            if start_resume {
+                seq_gate = Some(gate_tx);
+                self.spawn_resume(id, meta, engine_id, resume_tx, gate_rx);
             }
         }
         // 磁盘读与 flush 屏障都在阻塞线程上做,不占 tokio 运行时;
@@ -907,10 +953,13 @@ impl OhmyDriver {
         id: &str,
         meta: Value,
         engine_id: String,
+        tx: tokio::sync::watch::Sender<Option<Result<(), String>>>,
         seq_gate: tokio::sync::oneshot::Receiver<()>,
     ) {
-        let (tx, rx) = tokio::sync::watch::channel::<Option<Result<(), String>>>(None);
-        self.0.sess.resume.lock_ok().insert(id.to_string(), rx);
+        // 通道身份就是本次恢复的代次 token。会话可能在本任务最后一个 await
+        // 期间被删除并以同 ID 重建；收尾时只有仍占有 resume 表槽位的任务
+        // 才能修改 SessionState，避免旧任务清掉新恢复的 resuming。
+        let owner = tx.subscribe();
         let me = self.clone();
         let sid = id.to_string();
         tauri::async_runtime::spawn(async move {
@@ -919,8 +968,30 @@ impl OhmyDriver {
                 Ok(()) => json!({ "text": "已连接", "connected": true }),
                 Err(e) => json!({ "text": format!("⚠ 会话恢复失败: {e}"), "connected": false }),
             };
+            // created 仍为 false 时，session_delete 只能等待本 watch，不能摘除
+            // 旧状态再插入同 ID 新会话。利用这个屏障先外显状态，避免置 created
+            // 后 delete/reopen 抢在 emit 前完成，让旧状态投递给新一代监听器。
+            let still_owner = {
+                let sessions = me.0.sess.sessions.lock_ok();
+                let resumes = me.0.sess.resume.lock_ok();
+                sessions.contains_key(&sid)
+                    && resumes.get(&sid).is_some_and(|current| current.same_channel(&owner))
+            };
+            if still_owner {
+                me.0.app.emit_json(&format!("conn-status:{sid}"), status);
+            }
+            {
+                let mut sessions = me.0.sess.sessions.lock_ok();
+                let resumes = me.0.sess.resume.lock_ok();
+                if resumes.get(&sid).is_some_and(|current| current.same_channel(&owner)) {
+                    if let Some(session) = sessions.get_mut(&sid) {
+                        // 最后一个 await 与状态外显均已结束，原子提交就绪状态。
+                        session.created = r.is_ok();
+                        session.resuming = false;
+                    }
+                }
+            }
             let _ = tx.send(Some(r));
-            me.0.app.emit_json(&format!("conn-status:{sid}"), status);
         });
     }
 
@@ -1008,12 +1079,12 @@ impl OhmyDriver {
             })
             .await;
         }
-        // created=true 是 ensure_engine_ready 的快路径:置位前必须等 seq 水位
-        // 恢复完(replay_open 末尾放行;发送端丢弃同样放行,不会挂死),
-        // 否则恢复期间的 user-input 会从 0 重编帧号、与旧帧撞 seq
+        // 就绪宣告前必须等 seq 水位恢复完(replay_open 末尾放行；发送端
+        // 丢弃同样放行，不会挂死)，否则恢复期间的 user-input 会从 0
+        // 重编帧号、与旧帧撞 seq。created 由 spawn_resume 在最后一个 await
+        // 之后随 resuming 一起提交，避免 session_delete 过早走就绪快路径。
         let _ = seq_gate.await;
         if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
-            s.created = true;
             s.engine_id = engine_id.clone();
             // session_open 登记的是 sidecar 原值,可能属于另一运行环境;
             // 换成引擎实际拿到的归一化形态,壳侧消费者(browser workdir 等)
@@ -1376,11 +1447,13 @@ impl OhmyDriver {
                             }
                             let turns = m.get("turns").and_then(|v| v.as_u64()).unwrap_or(0);
                             m["turns"] = json!(turns + 1);
+                            // 归档只表示暂时收起；用户再次发言即重新激活任务。
+                            m["archived"] = json!(false);
                         });
                     })
                     .await;
                 }
-                self.emit_session_event(id, SessionStatus::Running.as_str());
+                self.0.emit_session_event_with_archived(id, SessionStatus::Running.as_str(), false);
                 match self
                     .rpc("session/sendMessage", json!({ "session_id": self.engine_id(id), "message": text }))
                     .await
@@ -1592,6 +1665,37 @@ impl OhmyDriver {
         });
     }
 
+    /// 只摘取指定 attempt + turn 的 steer。RPC 失败、非 queued 应答与成功
+    /// 应答都经这里清理，迟到应答绝不会清掉后来一次尝试。ACK 先到时
+    /// `track_echo` 同锁登记 echo debt，封住清 pending 与事件到达之间的窗口。
+    fn take_pending_steer(
+        &self,
+        id: &str,
+        attempt: u64,
+        turn: u64,
+        track_echo: bool,
+    ) -> Option<(String, String, bool, bool)> {
+        let mut sessions = self.0.sess.sessions.lock_ok();
+        let session = sessions.get_mut(id)?;
+        let owned = session
+            .pending_steer
+            .as_ref()
+            .is_some_and(|pending| pending.attempt == attempt && pending.turn == turn);
+        if !owned {
+            return None;
+        }
+        let pending = session.pending_steer.take()?;
+        let same_turn = session.turn == turn;
+        if track_echo && !pending.event_seen && same_turn {
+            session.pending_steer_echoes.push_back(PendingSteerEcho {
+                turn,
+                message: pending.message.clone(),
+                client_id: pending.client_id.clone(),
+            });
+        }
+        Some((pending.message, pending.client_id, pending.event_seen, same_turn))
+    }
+
     pub async fn session_call(&self, id: &str, kind: &str, payload: Value) -> Result<Value, String> {
         // 同 session_send:引擎侧查询/切换都得等后台 resume 落地。
         // 唯独切模型不吃 resume 失败:恢复失败时会话未建成,正好走下方
@@ -1604,6 +1708,97 @@ impl OhmyDriver {
             }
         }
         match kind {
+            "session_steer" => {
+                if !self.has_cap("session/steer") {
+                    return Err("当前引擎版本不支持插入当前任务,请升级引擎".into());
+                }
+                // durable client_id 由 UI outbox 生成；queued ACK 只表示 Agent
+                // 接收排队，最终持久确认必须等待 normalize 写 steer-confirmed。
+                let client_id = payload
+                    .get("client_id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.trim().is_empty())
+                    .ok_or_else(|| "插入指令缺少非空 client_id".to_string())?
+                    .to_string();
+                let content = payload.get("content").and_then(Value::as_str).unwrap_or("");
+                let message = base64::engine::general_purpose::STANDARD
+                    .decode(content)
+                    .map_err(|_| "插入内容不是有效的 base64".to_string())
+                    .and_then(|bytes| {
+                        String::from_utf8(bytes)
+                            .map_err(|_| "插入内容不是有效的 UTF-8 文本".to_string())
+                    })?;
+                if message.is_empty() {
+                    return Err("空输入".into());
+                }
+
+                // 检查 running、占用每会话唯一在途槽和快照 engine_id 必须在
+                // 同一把锁里完成，避免两个并发请求都越过前置检查。
+                let (attempt, turn, engine_id) = {
+                    let mut sessions = self.0.sess.sessions.lock_ok();
+                    let Some(session) = sessions.get_mut(id) else {
+                        return Err("会话未打开".into());
+                    };
+                    if !session.running {
+                        return Err("当前会话没有正在执行的任务".into());
+                    }
+                    if session.pending_steer.is_some() {
+                        return Err("已有一条插入指令正在提交,请稍候".into());
+                    }
+                    session.steer_attempt = session.steer_attempt.wrapping_add(1).max(1);
+                    let attempt = session.steer_attempt;
+                    let turn = session.turn;
+                    session.pending_steer = Some(PendingSteer {
+                        attempt,
+                        turn,
+                        message: message.clone(),
+                        client_id: client_id.clone(),
+                        event_seen: false,
+                    });
+                    (attempt, turn, session.engine_id.clone())
+                };
+
+                let response = self
+                    .rpc("session/steer", json!({ "session_id": engine_id, "message": message }))
+                    .await;
+                let response = match response {
+                    Ok(response) => response,
+                    Err(error) => {
+                        // user_message(source=steer) 比 RPC 失败先到时，Agent 已
+                        // 经把消息物化进当前 turn；该权威事件优先，不能让 UI
+                        // 因 transport 应答丢失而保留队列项并在下一轮重复发送。
+                        let event_seen = self
+                            .take_pending_steer(id, attempt, turn, false)
+                            .is_some_and(|(_, _, event_seen, _)| event_seen);
+                        if event_seen {
+                            return Ok(json!({ "result": { "status": "queued" } }));
+                        }
+                        return Err(error);
+                    }
+                };
+                if response.get("status").and_then(Value::as_str) != Some("queued") {
+                    let event_seen = self
+                        .take_pending_steer(id, attempt, turn, false)
+                        .is_some_and(|(_, _, event_seen, _)| event_seen);
+                    if event_seen {
+                        return Ok(json!({ "result": { "status": "queued" } }));
+                    }
+                    return Err("引擎未确认插入指令已排队".into());
+                }
+
+                // 事件先到：event_seen=true，权威气泡已经落盘；应答先到：
+                // 只要仍是原 turn 就立即本地回显。turn/stopped 可能抢先把
+                // running 置 false，但 queued 已确认接收，不能因此丢掉消息；
+                // 真正的新轮会递增 turn，仍可挡住迟到应答污染下一轮。
+                if let Some((message, client_id, event_seen, same_turn)) =
+                    self.take_pending_steer(id, attempt, turn, true)
+                {
+                    if !event_seen && same_turn {
+                        self.push_frame(id, |seq| frame::steer_input(&message, &client_id, seq));
+                    }
+                }
+                Ok(json!({ "result": { "status": "queued" } }))
+            }
             "session_set_model" => {
                 let name = payload.get("model").and_then(|v| v.as_str()).unwrap_or("");
                 let model_id = self.model_id_of(name)?; // 前置校验,未知模型不动会话
@@ -2626,11 +2821,20 @@ impl Inner {
     }
 
     pub(super) fn emit_session_event(&self, sid: &str, status: &str) {
+        self.emit_session_event_inner(sid, status, None);
+    }
+
+    pub(super) fn emit_session_event_with_archived(&self, sid: &str, status: &str, archived: bool) {
+        self.emit_session_event_inner(sid, status, Some(archived));
+    }
+
+    fn emit_session_event_inner(&self, sid: &str, status: &str, archived: Option<bool>) {
         let title = self.sess.sessions.lock_ok().get(sid).map(|s| s.title.clone()).unwrap_or_default();
-        self.app.emit_json(
-            "session-event",
-            json!({ "type": "session-status", "id": sid, "status": status, "title": title }),
-        );
+        let mut payload = json!({ "type": "session-status", "id": sid, "status": status, "title": title });
+        if let Some(archived) = archived {
+            payload["archived"] = json!(archived);
+        }
+        self.app.emit_json("session-event", payload);
     }
 
     /// 会话摘要更新(引擎每轮异步生成,见 normalize.rs 的 session_summary 分支)。

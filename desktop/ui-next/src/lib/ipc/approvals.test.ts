@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   engineCaps,
+  engineCapsRequired,
   sendAskAnswers,
   sendAskAnswersVia,
   sendAskCancel,
@@ -134,6 +135,14 @@ describe("engineCaps", () => {
   it("浏览器模式返回 null(不 reject)", async () => {
     vi.stubGlobal("window", {});
     expect(await engineCaps()).toBeNull();
+    expect(await engineCapsRequired()).toBeNull();
+  });
+
+  it("strict API 在壳内保留 invoke reject，供就绪退避重试", async () => {
+    vi.stubGlobal("window", {
+      __TAURI__: { core: { invoke: () => Promise.reject(new Error("engine starting")) } },
+    });
+    await expect(engineCapsRequired()).rejects.toThrow("engine starting");
   });
 
   it("命令失败回落 null(引擎未就绪不炸 UI)", async () => {

@@ -264,6 +264,8 @@ pub struct Caps {
     /// 上下文用量(event/stream usage 实时更新 + turn/stopped 轮后快照)
     pub usage_update: bool,
     pub perm_remember: bool,
+    /// 运行中向当前轮追加用户指令。
+    pub steering: bool,
     pub attachments: bool,
 }
 
@@ -278,6 +280,7 @@ pub fn caps(engine: &OhmyDriver, browser_ext: bool) -> Caps {
         browser_ext: browser_ext && browser_reachable,
         usage_update: engine.has_capability("turn/stopped"),
         perm_remember: engine.has_capability("permissionRemember"),
+        steering: engine.has_capability("session/steer"),
         // 上传/路径注入由壳实现，不是引擎握手项。
         attachments: true,
     }

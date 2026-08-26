@@ -88,6 +88,7 @@ export function createChatState(): ChatState {
     lastTurnStartSeq: 0,
     lastTerminalSeq: 0,
     lastSeq: 0,
+    steerConfirmations: {},
   };
 }
 
@@ -684,7 +685,12 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
       };
     }
     case "user-input": {
-      const data = frameData<{ content?: string; attachments?: { url?: string; filename?: string }[] }>(f);
+      const data = frameData<{
+        content?: string;
+        source?: string;
+        client_id?: string;
+        attachments?: { url?: string; filename?: string }[];
+      }>(f);
       const text = decodeUserInput(data?.content);
       // 云端附件({url, filename},与 web/mobile 契约一致):缺 filename 的
       // 旧帧用 URL 末段兜底;无 url 不可渲染,丢弃。本地会话帧无此字段
@@ -700,9 +706,25 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         ...(f.timestamp !== undefined ? { timestamp: f.timestamp } : {}),
         // 大纲跳转的锚:壳的 session_outline 条目按同一 seq 对表
         ...(f.seq !== undefined ? { seq: f.seq } : {}),
+        ...(data?.source === "steer" ? { source: "steer" as const } : {}),
+        ...(data?.source === "steer" && data.client_id ? { clientId: data.client_id } : {}),
         // 有才写:undefined/空数组键会污染测试的全等比较,语义上也该缺席
         ...(atts.length ? { attachments: atts } : {}),
       });
+    }
+    case "steer-confirmed": {
+      const data = frameData<{ client_id?: string }>(f);
+      if (!data?.client_id) return s;
+      const seq = typeof f.seq === "number" ? f.seq : s.lastSeq;
+      const previous = Object.hasOwn(s.steerConfirmations, data.client_id)
+        ? s.steerConfirmations[data.client_id]
+        : undefined;
+      // 同 client_id 的 replay/重复确认不制造新 snapshot；高 seq 重放只抬水位。
+      if (previous !== undefined && previous >= seq) return s;
+      return {
+        ...s,
+        steerConfirmations: { ...s.steerConfirmations, [data.client_id]: seq },
+      };
     }
     case "permission-req": {
       const data = frameData<{ id?: string; title?: string; tool?: string; tool_call_id?: string }>(f);
@@ -780,6 +802,8 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
  * 会误杀折叠批里的合法帧。所以:
  * - 跨批次:seq 落在**批首水位**(state.lastSeq)之下的帧丢弃——云端
  *   重连的回放重叠帧属于这类;
+ * - task-ended 例外按轮次水位去重:折叠控制帧可能先把普通水位顶高，
+ *   终止帧跨批晚到时仍须关闭当前轮次，但不能早于当前 task-started;
  * - 批内:顺序可信,只丢**完全相同 seq** 的重复(同批里既回放又直播);
  * - 缺 seq/seq=0 的帧(云端旧帧)不参与去重,照常归约。
  * 水位单调抬升,永不回落;重连要重放全量时应从 createChatState() 重来。 */
@@ -800,7 +824,13 @@ export function reduceBatch(s: ChatState, batch: readonly Frame[]): ChatState {
   for (const f of batch) {
     const seq = typeof f.seq === "number" && f.seq > 0 ? f.seq : null;
     if (seq !== null) {
-      if (seq <= s.lastSeq || seenInBatch.has(seq)) continue;
+      // task-ended 的 seq 可能低于先到达的折叠控制帧；先用开轮水位排除
+      // 旧轮终态（无论它是否落在批首水位之下），再用独立终态水位允许
+      // 当前轮晚到的终态绕过普通去重。它也可与同批业务帧共享 seq。
+      const isTaskEnd = f.type === "task-ended";
+      if (isTaskEnd && seq <= next.lastTurnStartSeq) continue;
+      const freshTaskEnd = isTaskEnd && seq > next.lastTerminalSeq;
+      if ((seq <= s.lastSeq || seenInBatch.has(seq)) && !freshTaskEnd) continue;
       seenInBatch.add(seq);
       if (seq > watermark) watermark = seq;
     }

@@ -222,7 +222,7 @@ export function ToolCard({
   const hasAgentModal = item.background || (!!agentResult && !canOpenChild);
   return (
     <div
-      className={`card card-border overflow-hidden bg-base-100 ${joinPrev ? "rounded-t-none" : ""} ${joinNext ? "rounded-b-none border-b-0" : ""}`}
+      className={`mc-workbench-material card card-border overflow-hidden ${joinPrev ? "rounded-t-none" : ""} ${joinNext ? "rounded-b-none border-b-0" : ""}`}
       data-tool-id={item.tcId}
     >
       {/* 普通工具的标题行仍是详情开关；子代理类卡片统一只通过右侧文字动作
@@ -370,7 +370,7 @@ export function ToolCard({
       {detailOpen && detail && (
         <div
           aria-label={t("chat.tool.detail")}
-          className="mx-3 mb-2 ms-6 max-h-[50vh] overflow-auto rounded-box border border-base-300 bg-base-200 text-xs"
+          className="mc-workbench-material-muted mx-3 mb-2 ms-6 max-h-[50vh] overflow-auto rounded-box border border-base-300 text-xs"
         >
           <DetailBody detail={detail} />
         </div>
@@ -387,7 +387,7 @@ export function ToolCard({
         >
           <div className="flex flex-col gap-3 text-sm">
             {feed.length > 0 && (
-              <div className="flex flex-col gap-2 rounded-box border border-base-300 bg-base-200 p-3 text-xs">
+              <div className="mc-workbench-material-muted flex flex-col gap-2 rounded-box border border-base-300 p-3 text-xs">
                 {feed.map((entry, i) => (
                   <FeedRow key={entry.kind === "tool" ? entry.id : `text-${i}`} entry={entry} workdir={workdir} />
                 ))}

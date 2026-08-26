@@ -43,13 +43,37 @@ cd ui-next && npm test
 ## 打包
 
 ```bash
-make macos            # universal .app/.dmg(在 Mac 上执行)
-make macos-release    # + 签名 updater 产物(需 TAURI_SIGNING_PRIVATE_KEY)
-make windows          # NSIS 安装包(在 Windows 上执行;或走 CI)
+make macos                 # 编译并生成强制 unsigned 的 universal .app/.dmg
+make macos-release-build   # 注入 tag 版本后构建 unsigned 发布候选,供测试
+make macos-release         # 不重新编译;签名/公证刚测试的构建并生成 updater
+make macos-notarize-dmg    # 只重试最终 DMG 公证/staple,不重新 bundle
+make windows               # NSIS 安装包(在 Windows 上执行;或走 CI)
 make windows-release  # + 签名 updater 产物
 make linux            # deb + rpm + AppImage(在 Linux 上执行;AppImage 需 xdg-utils)
 make linux-release    # + 签名 updater 产物
 ```
+
+macOS 发布构建要求当前提交带 `vYYMMDDNN` tag，并设置：
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat /path/to/updater.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='...'
+export APPLE_SIGNING_IDENTITY='Developer ID Application: BEIJING CHAITIN TECHNOLOGY Co.,Ltd. (8Z56KX83T3)'
+export APPLE_API_KEY='...'
+export APPLE_API_ISSUER='...'
+export APPLE_API_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8"
+```
+
+本地签名使用登录钥匙串中的 Developer ID 私钥；CI 可额外提供
+`APPLE_CERTIFICATE` 和 `APPLE_CERTIFICATE_PASSWORD`，由 Tauri 临时导入
+`.p12`。推荐流程是先运行 `macos-release-build`，测试其 unsigned `.app`；
+确认通过后运行 `macos-release`。后者通过 `tauri bundle` 复用已有 universal
+二进制，不重新编译 Rust/Go/UI，只重新生成签名后的 `.app`、updater 和 DMG，
+最后公证/staple DMG 容器并执行 Gatekeeper 验收。候选构建会记录 binary、
+unsigned `.app`、sidecar、UI/resources 和 bundle 配置的 SHA-256 指纹；测试后
+任一输入变化或 `.app` 已被签名，release 都会拒绝继续。公证网络失败时只需
+重跑 `macos-notarize-dmg`。CI 同样将 unsigned build 与签名拆为不同 step，
+编译进程不会拿到 Apple/updater 私钥。
 
 打包配置文件一律叫 `bundle.<平台>.conf.json`,**不能**叫
 `tauri.<平台>.conf.json`——后者是 Tauri 的平台自动合并约定,那个名字一存在

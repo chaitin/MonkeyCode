@@ -8,7 +8,7 @@
 // - session_outline:提问大纲全量目录(user-input 帧投影),条目 content
 //   保持 base64(与帧内一致),本层解码;offset 是该轮在 replay.jsonl 的
 //   字节偏移(跳到未加载区间时的翻页锚)。
-import { b64decode } from "@/lib/protocol/codec";
+import { b64decode, b64encode } from "@/lib/protocol/codec";
 import { invoke } from "./ipc";
 
 interface CallReply {
@@ -45,6 +45,12 @@ export function sessionSetSkills(id: string, skills: string[]): Promise<void> {
  * 引擎无能力/会话未打开),调用方外显。 */
 export function sessionCompact(id: string): Promise<void> {
   return sessionCall(id, "session_compact", {});
+}
+
+/** 将一条补充指令插入当前运行中的任务。Driver 会立即物化
+ * data.source="steer" 的 user-input 帧，调用方无需乐观插入气泡。 */
+export function sessionSteer(id: string, content: string, clientId: string): Promise<void> {
+  return sessionCall(id, "session_steer", { content: b64encode(content), client_id: clientId });
 }
 
 /** 提问大纲的一条(壳投影 + 本层解码;seq 与 UserItem.seq / DOM 的

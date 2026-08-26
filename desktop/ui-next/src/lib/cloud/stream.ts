@@ -5,8 +5,9 @@
 //   再包一层 base64(引擎/云端契约,data 层之外的内层编码)。
 // - 下行即 Frame(与本地会话同构,直接喂 reduceBatch);ping 滤除;
 //   seq 单调去重(连接层水位,重连回放时复位;归约层另有跨批水位兜底)。
-// - task-ended 判定先于去重:回放中控制帧可能把 seq 水位顶高,后到的
-//   task-ended 被当重叠帧丢弃的话 ended 永不置真 → 断开被误判断流而无限重连。
+// - task-ended 不受普通 seq 去重影响:回放中控制帧可能把 seq 水位顶高,后到的
+//   task-ended 仍须在 onEnded 前同步交给 onFrames,但必须晚于本轮 task-started，
+//   避免重连回放的旧轮终态误关当前轮。
 // - 重连退避 2s 起指数翻倍封顶 30s;连续 5 次拨不通放弃(转就绪);
 //   重连一律降级 attach(避免误开新轮,对齐移动端)。
 // - 服务端 Close 1000/1001 或零业务帧 = 云端主动收束(转就绪,不重连);
@@ -99,6 +100,7 @@ export function connectCloudStream(
   let closed = false;
   let ended = false;
   let lastSeq = 0;
+  let lastTaskStartedSeq = 0;
   let queue: Frame[] = [];
   let flushScheduled = false;
   let reconnectTimer: unknown = null;
@@ -146,14 +148,18 @@ export function connectCloudStream(
       return;
     }
     if (f.type === "ping") return;
-    // task-ended 判定先于 seq 去重(缘由见文件头契约清单)
-    if (f.type === "task-ended" && !ended) {
-      ended = true;
-      h.onEnded?.();
-    }
-    if (typeof f.seq === "number" && f.seq > 0) {
-      if (f.seq <= lastSeq) return; // 重连回放重叠帧去重
-      lastSeq = f.seq;
+    const isTaskEnded = f.type === "task-ended";
+    const frameSeq = typeof f.seq === "number" && f.seq > 0 ? f.seq : null;
+    if (
+      isTaskEnded &&
+      (ended || (frameSeq !== null && lastTaskStartedSeq > 0 && frameSeq <= lastTaskStartedSeq))
+    ) return;
+    if (frameSeq !== null) {
+      // task-ended 是终止控制帧，可能使用低于业务帧水位的 seq，不能按普通
+      // 回放重叠帧丢弃；但也不能让它把连接水位倒退。
+      if (frameSeq <= lastSeq && !isTaskEnded) return;
+      if (frameSeq > lastSeq) lastSeq = frameSeq;
+      if (f.type === "task-started" && frameSeq > lastTaskStartedSeq) lastTaskStartedSeq = frameSeq;
     }
     // cursor(翻页游标)/task-error(拒绝提示,含旧词 error)不算"轮活跃":
     // 空闲 attach 云端也会先发 cursor 再关连接,计入会让空闲关闭被误判
@@ -163,6 +169,17 @@ export function connectCloudStream(
       sentFirst = null; // 有回显 = 首条输入已被云端接收
     }
     queue.push(f);
+    if (isTaskEnded) {
+      // 必须先置 ended，避免 onFrames 内关闭管道时被当成断流重连；再同步
+      // 冲刷此前尚在 rAF 队列里的业务帧和终止帧，确保队列清账先于 onEnded。
+      ended = true;
+      try {
+        flush();
+      } finally {
+        h.onEnded?.();
+      }
+      return;
+    }
     schedule();
   }
 

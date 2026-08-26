@@ -4,7 +4,7 @@
 // 形态与 ChatView 同构(LAYOUT §3/§4/§7):头部图标钮 + ⋯ 菜单(终止/删除
 // 二段确认)、状态徽标不进头部、拖拽属性逐节点、运行条入输入卡、结束态
 // LogList 只读。
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -847,13 +847,18 @@ describe("CloudTaskView", () => {
     expect(screen.queryByText("a.txt")).toBeNull(); // composer 草稿附件已清
   });
 
-  it("切换模型:菜单显当前模型,选项来自 mc_task_options,选中经控制流 switch_model(load_session)", async () => {
+  it("切换模型:成功提示可经重连保留,本地模型即时更新且后续详情仍权威", async () => {
     const controlSends: { pipe?: unknown; text?: unknown }[] = [];
     const pipeKinds = new Map<string, string>();
+    const streamPipes: string[] = [];
+    let infoCalls = 0;
     const listeners = stubShellWs((cmd, args) => {
       switch (cmd) {
         case "mc_task_info":
-          return Promise.resolve({ id: "t16", status: "processing", model: { id: "m1", model: "gpt-x", remark: "旧模型" } });
+          infoCalls += 1;
+          return Promise.resolve(infoCalls === 1
+            ? { id: "t16", status: "processing", model: { id: "m1", model: "gpt-x", remark: "旧模型" } }
+            : { id: "t16", status: "processing", model: { id: "m3", model: "gpt-z", remark: "外部模型" } });
         case "mc_task_options":
           return Promise.resolve({
             models: [
@@ -861,17 +866,28 @@ describe("CloudTaskView", () => {
               { id: "m2", model: "claude-y", remark: "新模型", owner: { type: "public" } },
             ],
           });
-        case "cloud_ws_open":
-          pipeKinds.set(String(args?.pipe ?? ""), String(args?.kind ?? ""));
+        case "cloud_ws_open": {
+          const pipe = String(args?.pipe ?? "");
+          const kind = String(args?.kind ?? "");
+          pipeKinds.set(pipe, kind);
+          if (kind === "stream") streamPipes.push(pipe);
           return Promise.resolve({});
+        }
         case "cloud_ws_send": {
           if (pipeKinds.get(String(args?.pipe ?? "")) !== "control") return Promise.resolve({});
           controlSends.push(args ?? {});
-          // 即答成功:按 request_id 配对 call-response,switching 归位
+          // 即答成功:按 request_id 配对 call-response,并带回服务端确认的新模型
           const f = JSON.parse(String(args?.text)) as { data: string };
           const req = JSON.parse(b64decode(f.data)) as { request_id: string };
           listeners.get(`ws-msg:${String(args?.pipe)}`)?.({
-            payload: JSON.stringify({ type: "call-response", data: { request_id: req.request_id, success: true } }),
+            payload: JSON.stringify({
+              type: "call-response",
+              data: {
+                request_id: req.request_id,
+                success: true,
+                model: { id: "m2", model: "claude-y", remark: "新模型" },
+              },
+            }),
           });
           return Promise.resolve({});
         }
@@ -890,6 +906,30 @@ describe("CloudTaskView", () => {
     expect(call.type).toBe("call");
     expect(call.kind).toBe("switch_model");
     expect(JSON.parse(b64decode(call.data))).toMatchObject({ model_id: "m2", load_session: true });
+    await waitFor(() => expect(trigger.textContent).toContain("新模型"));
+    expect(await screen.findByText("模型已切换为 新模型")).toBeTruthy();
+
+    // 异常断线前先收到业务帧，attach 才会进入真实重连而非空闲收束。
+    await waitFor(() => expect(streamPipes.length).toBeGreaterThan(0));
+    const firstStream = streamPipes[0]!;
+    await act(async () => {
+      listeners.get(`ws-msg:${firstStream}`)?.({
+        payload: JSON.stringify({ type: "task-running", seq: 1, data: {} }),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      listeners.get(`ws-closed:${firstStream}`)?.({ payload: null });
+    });
+    await waitFor(() => expect(streamPipes.length).toBeGreaterThan(1), { timeout: 3_000 });
+    expect(screen.getByText("模型已切换为 新模型")).toBeTruthy();
+
+    // 后续权威详情若由其他客户端更新，应覆盖本地成功响应的即时投影。
+    const reconnectedStream = streamPipes.at(-1)!;
+    await act(async () => {
+      listeners.get(`ws-msg:${reconnectedStream}`)?.({
+        payload: JSON.stringify({ type: "task-ended", seq: 2, data: {} }),
+      });
+    });
+    await waitFor(() => expect(trigger.textContent).toContain("外部模型"));
   });
 
   // ==== 休眠唤醒(2026-08-08 用户报障:「vm 还在 resume,我却还能发新消息」)====

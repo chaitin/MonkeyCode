@@ -3,7 +3,7 @@ import { useState, type DragEvent } from "react";
 
 import { Lightbox, UploadImg } from "@/components/media/UploadImg";
 import { useI18n } from "@/lib/i18n";
-import type { SendQueueBlock, SendQueueInFlight, SendQueueItem } from "./sendQueue";
+import type { SendQueueBlock, SendQueueInFlight, SendQueueItem, SendQueueSteering } from "./sendQueue";
 
 /** 队列排序专用类型。附件入口只应接受 kind=file，排序事件也会在组件内停止冒泡。 */
 export const SEND_QUEUE_DRAG_MIME = "application/x-monkeycode-send-queue-item";
@@ -12,8 +12,14 @@ export interface SendQueueListProps<A> {
   pending: SendQueueItem<A>[];
   inFlight: SendQueueInFlight<A> | null;
   blocked: SendQueueBlock | null;
+  steering?: SendQueueSteering<A>[];
   onRemove(id: string): void;
   onReorder(id: string, beforeId: string | null): void;
+  /** 仅在会话运行中且引擎支持 steering 时传入。 */
+  onSteer?: (id: string) => void;
+  /** 不确定 steering 只有显式用户动作才能恢复 pending 或删除。 */
+  onRetrySteering?: (id: string) => void;
+  onDiscardSteering?: (id: string) => void;
   /** 普通 blocked 时解除暂停；uncertain 时把原项以同一 ID 放回队首重试。 */
   onResume(): void;
   /** uncertain 项已可能送达，只有用户明确选择移除时才丢弃。 */
@@ -159,8 +165,12 @@ export function SendQueueList<A>({
   pending,
   inFlight,
   blocked,
+  steering = [],
   onRemove,
   onReorder,
+  onSteer,
+  onRetrySteering,
+  onDiscardSteering,
   onResume,
   onDiscardUncertain,
   onClearQueue,
@@ -183,12 +193,16 @@ export function SendQueueList<A>({
   // 投递锁，继续画成“发送中”会与上方用户气泡重复并给出错误状态。
   const visibleInFlight = inFlight?.phase === "awaiting-turn-end" ? null : inFlight;
   const uncertain = visibleInFlight?.phase === "uncertain";
+  const visibleSteering = steering.filter(
+    (entry) => !entry.discardRequested && (entry.phase === "dispatching" || entry.phase === "uncertain"),
+  );
+  const steeringDispatching = steering.some((entry) => entry.phase === "dispatching");
   // 空队列的 user-paused 只是取消与 task-ended 之间的投递屏障，不画空状态栏。
   const visibleBlock = blocked?.code === "user-paused" && pending.length === 0 ? null : blocked;
   const terminalBlock = visibleBlock?.code === "task-ended" || visibleBlock?.code === "task-missing";
   const userPaused = visibleBlock?.code === "user-paused";
 
-  if (pending.length === 0 && visibleInFlight === null && visibleBlock === null) return null;
+  if (pending.length === 0 && visibleInFlight === null && visibleSteering.length === 0 && visibleBlock === null) return null;
 
   const willMove = (before: string | null): boolean => {
     if (draggedId === null || draggedId === before) return false;
@@ -244,6 +258,54 @@ export function SendQueueList<A>({
       )}
 
       <ol className="flex flex-col">
+        {visibleSteering.map((entry) => {
+          const isUncertain = entry.phase === "uncertain";
+          return (
+            <li key={`steering-${entry.item.id}`} className="rounded-lg bg-primary/5 text-sm">
+              <div className="flex min-h-9 min-w-0 items-center gap-2 px-2">
+                {isUncertain ? (
+                  <IconX size={15} stroke={1.75} className="shrink-0 text-warning" aria-hidden />
+                ) : (
+                  <span className="loading loading-spinner loading-xs shrink-0" aria-hidden />
+                )}
+                <span className="shrink-0 text-xs font-medium text-base-content/55">
+                  {t(isUncertain ? "chat.sendQueue.steerUncertain" : "chat.sendQueue.steering")}
+                </span>
+                <ItemSummary
+                  item={entry.item}
+                  attachmentsOpen={attachmentsFor === entry.item.id}
+                  onToggleAttachments={() =>
+                    setAttachmentsFor((id) => (id === entry.item.id ? null : entry.item.id))
+                  }
+                />
+                {isUncertain && (
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button type="button" className="btn btn-ghost btn-xs" onClick={() => onRetrySteering?.(entry.item.id)}>
+                      {t("chat.sendQueue.retry")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs text-error"
+                      onClick={() => onDiscardSteering?.(entry.item.id)}
+                    >
+                      {t("chat.sendQueue.discardUncertain")}
+                    </button>
+                  </span>
+                )}
+              </div>
+              {attachmentsFor === entry.item.id && (
+                <AttachmentList
+                  attachments={entry.item.attachments}
+                  attachmentName={attachmentName}
+                  attachmentIsImage={attachmentIsImage}
+                  loadAttachmentUrl={loadAttachmentUrl}
+                  onOpenAttachment={onOpenAttachment}
+                />
+              )}
+            </li>
+          );
+        })}
+
         {visibleInFlight && (
           <li className="rounded-lg bg-primary/5 text-sm">
             <div className="flex min-h-9 min-w-0 items-center gap-2 px-2">
@@ -349,6 +411,16 @@ export function SendQueueList<A>({
                   attachmentsOpen={attachmentsFor === item.id}
                   onToggleAttachments={() => setAttachmentsFor((id) => (id === item.id ? null : item.id))}
                 />
+                {onSteer && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs h-7 min-h-7 shrink-0 px-1.5 font-normal text-primary"
+                    disabled={steeringDispatching}
+                    onClick={() => onSteer(item.id)}
+                  >
+                    {t("chat.sendQueue.steer")}
+                  </button>
+                )}
                 <button
                   type="button"
                   aria-label={t("chat.sendQueue.remove")}

@@ -78,6 +78,7 @@ export interface CloudTaskHandle {
   removeAtt(i: number): void;
   models: McCloudModelGroup[] | null;
   loadModels(): void;
+  currentModel: CloudTaskDetail["model"];
   switching: boolean;
   switchModel(modelId: string): Promise<void>;
   cancelRun(): void;
@@ -158,6 +159,7 @@ export function useCloudTask(
   const loadingRef = useRef(false);
   const historyRef = useRef<Frame[]>([]);
   const liveRef = useRef<Frame[]>([]);
+  const localNoticesRef = useRef<Frame[]>([]);
   const lastEventRef = useRef(0);
   const loadedRoundsForRef = useRef("");
   const onTasksChangedRef = useRef(opts.onTasksChanged);
@@ -184,6 +186,7 @@ export function useCloudTask(
   useEffect(() => {
     historyRef.current = [];
     liveRef.current = [];
+    localNoticesRef.current = [];
     lastEventRef.current = 0;
     loadedRoundsForRef.current = "";
     setChat(createChatState());
@@ -197,7 +200,7 @@ export function useCloudTask(
   const applyRuntimeEvent = useCallback((event: CloudRuntimeEvent) => {
     if (event.kind === "reconnect") {
       liveRef.current = [];
-      setChat(reduceBatch(createChatState(), historyRef.current));
+      setChat(reduceBatch(createChatState(), [...historyRef.current, ...localNoticesRef.current]));
       return;
     }
     if (event.kind !== "frames") return;
@@ -247,7 +250,7 @@ export function useCloudTask(
         historyRef.current = chronoRounds(result.frames ?? []);
         liveRef.current = [];
         applyCursor(result.next_cursor ? { cursor: result.next_cursor, hasMore: !!result.has_more } : null);
-        setChat(reduceBatch(createChatState(), historyRef.current));
+        setChat(reduceBatch(createChatState(), [...historyRef.current, ...localNoticesRef.current]));
       })
       .catch((error: unknown) => {
         if (alive && isTransportCurrent(expectedTransport)) {
@@ -338,19 +341,33 @@ export function useCloudTask(
       .finally(borrowed.release);
   };
 
+  const currentModel = meta?.model;
   const switchModel = async (modelId: string) => {
-    if (switching || !modelId || modelId === meta?.model?.id) return;
-    if (models?.some((group) => group.models.some((model) => model.id === modelId && model.locked))) return;
+    if (switching || !modelId || modelId === currentModel?.id) return;
+    const pickedModel = models?.flatMap((group) => group.models).find((model) => model.id === modelId);
+    if (pickedModel?.locked) return;
     setSwitching(true);
     setErr("");
     let borrowed: ReturnType<typeof borrowControl> | null = null;
     try {
       borrowed = borrowControl();
-      await borrowed.ctrl.call(
+      const result = await borrowed.ctrl.call<{ model?: CloudTaskDetail["model"] }>(
         "switch_model",
         { model_id: modelId, load_session: true },
         { timeoutMs: WAKE_CALL_TIMEOUT_MS, timeoutMsg: t("cloud.ctl.wakeTimeout") },
       );
+      const nextModel = result.model ?? pickedModel ?? { id: modelId };
+      runtime?.confirmModel(nextModel);
+      const name = nextModel.remark || nextModel.model;
+      if (name) {
+        const notice: Frame = {
+          type: "task-running",
+          kind: "acp_event",
+          data: { update: { sessionUpdate: "model_update", model: name } },
+        };
+        localNoticesRef.current.push(notice);
+        setChat((state) => reduceBatch(state, [notice]));
+      }
     } catch (error) {
       setErr(t("cloud.model.switchFailed", { reason: error instanceof Error ? error.message : String(error) }));
     } finally {
@@ -427,6 +444,7 @@ export function useCloudTask(
     removeAtt,
     models,
     loadModels,
+    currentModel,
     switching,
     switchModel,
     cancelRun,

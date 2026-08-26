@@ -52,12 +52,10 @@ export function rememberLastTaskModel(model: string): void {
  *  - mc.splitTree = 布局树 JSON(叶=槽位、内部节点=切分,词汇与校验的
  *    权威在 features/split/tree.ts——prefs 只做原始存取,不复刻树形状;
  *    2026-08-16 用户终案「让用户自定义,随便他搞」,固定档位模型退役);
- *  - mc.splitSlots = JSON (string|null)[](恒定长 SPLIT_MAX_PANES,树上
- *    不在场的槽位留档:换模板收缩只是叶变少,切回即恢复)。
+ *  - mc.splitSlots = JSON (string|null)[](按需增长;启动时只恢复当前树引用
+ *    的槽，异常稀疏编号压密；关闭格已显式清档,不保留无入口的离树长尾)。
  *  分屏开关本身刻意不持久化(启动恒常规视图,对齐「启动恒落本地任务」
  *  定案)。 */
-export const SPLIT_MAX_PANES = 6;
-
 export function readSplitTreeRaw(): unknown {
   try {
     return JSON.parse(localStorage.getItem("mc.splitTree") ?? "null");
@@ -74,22 +72,22 @@ export function writeSplitTree(tree: unknown): void {
   }
 }
 
-export function readSplitSlots(): (string | null)[] {
+export function readSplitSlots(indices?: readonly number[]): (string | null)[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem("mc.splitSlots") ?? "[]");
     const arr = Array.isArray(parsed) ? parsed : [];
-    // 逐位校验:坏档(旧格式/手改)按空槽兜住,不让一个坏位拖垮整组
-    return Array.from({ length: SPLIT_MAX_PANES }, (_, i) =>
-      typeof arr[i] === "string" && arr[i] !== "" ? (arr[i] as string) : null,
-    );
+    const valid = (value: unknown) => (typeof value === "string" && value !== "" ? value : null);
+    // 启动恢复已知树叶时只取树实际引用的槽：旧档的离树尾巴不再让每次渲染
+    // 都扫描整份数组；无 indices 的纯存取调用仍逐位校验完整旧格式。
+    return indices ? indices.map((index) => valid(arr[index])) : arr.map(valid);
   } catch {
-    return Array.from({ length: SPLIT_MAX_PANES }, () => null);
+    return [];
   }
 }
 
 export function writeSplitSlots(slots: readonly (string | null)[]): void {
   try {
-    localStorage.setItem("mc.splitSlots", JSON.stringify(slots.slice(0, SPLIT_MAX_PANES)));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(slots));
   } catch {
     // 只丢持久化
   }

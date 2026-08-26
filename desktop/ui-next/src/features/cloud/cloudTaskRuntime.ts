@@ -62,6 +62,8 @@ export interface CloudTaskRuntime {
   /** 用户主动取消当前轮：先暂停剩余队列，再发送取消帧。 */
   cancelRun(): Promise<void>;
   borrowControl(): { ctrl: CloudControl; release(): void };
+  /** 控制调用成功后立即更新详情投影；后续 taskInfo 刷新仍是权威来源。 */
+  confirmModel(model: CloudTaskDetail["model"]): void;
   confirmResume(): void;
   invalidate(reason?: SendQueueBlock): void;
   dispose(): void;
@@ -184,6 +186,7 @@ export function createCloudTaskRuntime(
   let evaluating = false;
   let evaluationQueued = false;
   let infoPending = false;
+  let detailRevision = 0;
   let roundState: "unknown" | "busy" | "idle" | "blocked" = "unknown";
   let ctrl: CloudControl | null = null;
   let stream: StreamSlot | null = null;
@@ -386,10 +389,6 @@ export function createCloudTaskRuntime(
       if (!current() || stream !== slot) return;
       emitEvent({ kind: "reconnect" });
     },
-    onEnded: () => {
-      // connectCloudStream 在 flush task-ended 批之前调用 onEnded。推进只能在
-      // handleFrames 中按“业务回显 -> task-ended”的顺序发生。
-    },
     onIdle: () => {
       if (!current() || stream !== slot) return;
       stream = null;
@@ -579,11 +578,15 @@ export function createCloudTaskRuntime(
     infoPending = true;
     clearPoll();
     const epoch = runtimeEpoch;
+    const revision = detailRevision;
     emit({ reconciling: true });
     try {
       const detail = await deps.taskInfo(taskId);
       if (!current() || epoch !== runtimeEpoch) return;
-      emit({ detail, reconciling: false, error: "" });
+      const resolvedDetail = revision === detailRevision
+        ? detail
+        : { ...detail, model: snapshot.detail?.model };
+      emit({ detail: resolvedDetail, reconciling: false, error: "" });
     } catch (error) {
       if (!current() || epoch !== runtimeEpoch) return;
       const reason = taskInfoBlock(error, deps.clock.now());
@@ -652,6 +655,11 @@ export function createCloudTaskRuntime(
           kick();
         },
       };
+    },
+    confirmModel(model) {
+      if (!current()) return;
+      detailRevision += 1;
+      emit({ detail: { ...(snapshot.detail ?? { id: taskId }), model } });
     },
     confirmResume() {
       deps.updateLane(taskId, confirmQueueResume);

@@ -6,13 +6,23 @@
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import { Marked } from "marked";
-import { memo, startTransition, useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
+import {
+  memo,
+  startTransition,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 
 import { t, useI18n } from "@/lib/i18n";
 import { openMenu } from "@/lib/contextMenu";
 import { openExternal } from "@/lib/ipc/host";
 import { copyText } from "@/lib/util/clipboard";
-import { resolveMarkdownResource } from "@/lib/util/markdownPaths";
+import { inferInlineCodeFilePath, resolveMarkdownResource } from "@/lib/util/markdownPaths";
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -311,7 +321,7 @@ function linkHref(link: Element): string {
   return link.getAttribute("href") ?? link.getAttributeNS(XLINK_NS, "href") ?? "";
 }
 
-function normalizeResourceUrls(root: ParentNode) {
+function normalizeResourceUrls(root: ParentNode, linkifyInlineFiles = false) {
   for (const mark of LOCAL_MARKS) {
     for (const el of root.querySelectorAll(`[${mark}]`)) el.removeAttribute(mark);
   }
@@ -336,12 +346,23 @@ function normalizeResourceUrls(root: ParentNode) {
       link.setAttribute("href", res.src);
     }
   }
+  if (linkifyInlineFiles) {
+    for (const code of root.querySelectorAll<HTMLElement>("code:not(pre code)")) {
+      // 显式 Markdown 链接的 href 始终优先，不能被代码样式的显示文本覆盖。
+      if (code.closest("a")) continue;
+      const path = inferInlineCodeFilePath(code.textContent ?? "");
+      if (!path) continue;
+      code.setAttribute("data-mc-local-href", path);
+      code.setAttribute("role", "link");
+      code.tabIndex = 0;
+    }
+  }
 }
 
-export function renderMarkdown(source: string): string {
+export function renderMarkdown(source: string, linkifyInlineFiles = false): string {
   const template = document.createElement("template");
   template.innerHTML = parser.parse(source) as string;
-  normalizeResourceUrls(template.content);
+  normalizeResourceUrls(template.content, linkifyInlineFiles);
   // target/rel 交给点击代理,净化时保守放行 data-*(复制按钮原文载荷与本地标记)
   return DOMPurify.sanitize(template.innerHTML, { USE_PROFILES: { html: true } });
 }
@@ -366,20 +387,30 @@ function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: strin
     }, 1500);
     return;
   }
+  const localTarget = target.closest<HTMLElement>("[data-mc-local-href]");
+  if (localTarget) {
+    e.preventDefault();
+    onLocalLink?.(localTarget.getAttribute("data-mc-local-href") ?? "");
+    return;
+  }
   const link = target.closest("a");
   if (link) {
-    const local = link.getAttribute("data-mc-local-href");
-    // 本地链接打标后 href 也会被改成占位 `#`，须先排除；真正的同文档锚点
-    // 保留浏览器默认行为，它不离开 webview，也不该交给 opener。
-    if (!local && linkHref(link).startsWith("#")) return;
+    // 真正的同文档锚点保留浏览器默认行为，它不离开 webview，也不该交给 opener。
+    if (linkHref(link).startsWith("#")) return;
     // 契约:webview 不导航——工作区文件走 reveal 回调,其余交系统浏览器
     e.preventDefault();
-    if (local) {
-      onLocalLink?.(local);
-      return;
-    }
     openExternal(linkHref(link));
   }
+}
+
+function onContainerKeyDown(e: KeyboardEvent<HTMLElement>, onLocalLink?: (path: string) => void) {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const target = e.target as HTMLElement;
+  const localTarget = target.closest<HTMLElement>("[data-mc-local-href]");
+  // 原生链接的键盘行为会转成 click；这里只补 code[role=link]。
+  if (!localTarget || localTarget.tagName === "A") return;
+  e.preventDefault();
+  onLocalLink?.(localTarget.getAttribute("data-mc-local-href") ?? "");
 }
 
 /** 流式源文本的节流采样:值变化后至多每 ms 毫秒放行一次(带尾随提交,
@@ -517,8 +548,12 @@ function StaticMarkdown({
   // locale 看着"没用到",实则 renderMarkdown 内部经 code renderer 调了
   // t("md.copy") 把文案烤进 HTML——静态分析看不穿这层,去掉它换语言后
   // 已渲染的消息里复制按钮会一直是旧语言
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const html = useMemo(() => (near ? renderMarkdown(throttled) : ""), [near, throttled, locale]);
+  const linkifyInlineFiles = Boolean(onLocalLink);
+  const html = useMemo(
+    () => (near ? renderMarkdown(throttled, linkifyInlineFiles) : ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [near, throttled, locale, linkifyInlineFiles],
+  );
   // 升格引起的行高突变(占位原文 vs 解析产物,差值可达千 px 级)不在这里
   // 各自补偿；动态高度窗口的行级 ResizeObserver 会更新 Fenwick 高度树，
   // 并仅在变化位于阅读锚点上方时按真实 delta 校正 scrollTop。
@@ -564,6 +599,7 @@ function StaticMarkdown({
       ref={root}
       className={`md select-text ${className ?? ""}`}
       onClick={(e) => onContainerClick(e, onLocalLink)}
+      onKeyDown={(e) => onContainerKeyDown(e, onLocalLink)}
       onContextMenu={onContainerContextMenu}
       dangerouslySetInnerHTML={{ __html: html }}
     />
@@ -611,10 +647,18 @@ export function segmentStreamingMarkdown(source: string): StreamingMarkdownSegme
   return { stable, tail, plainTail: fence !== null || tail.length > STREAM_TAIL_PARSE_MAX };
 }
 
-const MarkdownChunk = memo(function MarkdownChunk({ source, locale }: { source: string; locale: string }) {
+const MarkdownChunk = memo(function MarkdownChunk({
+  source,
+  locale,
+  linkifyInlineFiles,
+}: {
+  source: string;
+  locale: string;
+  linkifyInlineFiles: boolean;
+}) {
   // locale 参与 key 义:复制按钮文案烤进 HTML。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const html = useMemo(() => renderMarkdown(source), [source, locale]);
+  const html = useMemo(() => renderMarkdown(source, linkifyInlineFiles), [source, locale, linkifyInlineFiles]);
   return <div data-md-stable-chunk="" dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
@@ -630,11 +674,14 @@ function StreamingMarkdown({
   onLocalLink?: (path: string) => void;
 }) {
   const { locale } = useI18n();
+  const linkifyInlineFiles = Boolean(onLocalLink);
   const root = useRef<HTMLDivElement>(null);
   const near = useNearViewport(root);
   const sampled = useThrottled(source, source.length > 100_000 ? 600 : 120);
   const segments = useMemo(() => segmentStreamingMarkdown(sampled), [sampled]);
   const tailHtml = useMemo(
+    // 活跃尾块会反复重建 DOM，暂不生成可聚焦的启发式链接；封存为稳定块
+    // 或停流切回 StaticMarkdown 后再启用，避免键盘焦点随下一批 token 丢失。
     () => (near && !segments.plainTail && segments.tail ? renderMarkdown(segments.tail) : ""),
     // locale 会改变 renderMarkdown 内部烤入 HTML 的复制按钮文案。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -668,10 +715,11 @@ function StreamingMarkdown({
       data-md-stream=""
       className={`md select-text ${className ?? ""}`}
       onClick={(event) => onContainerClick(event, onLocalLink)}
+      onKeyDown={(event) => onContainerKeyDown(event, onLocalLink)}
       onContextMenu={onContainerContextMenu}
     >
       {segments.stable.map((chunk, index) => (
-        <MarkdownChunk key={index} source={chunk} locale={locale} />
+        <MarkdownChunk key={index} source={chunk} locale={locale} linkifyInlineFiles={linkifyInlineFiles} />
       ))}
       {segments.tail &&
         (segments.plainTail ? (

@@ -75,10 +75,17 @@ export interface EngineCaps {
   /** 审批记忆归引擎:false 时审批卡隐藏两个"始终"档 */
   perm_remember: boolean;
   attachments: boolean;
+  /** 运行中可将补充指令插入当前任务。 */
+  steering: boolean;
+}
+
+/** 能力快照的严格读取面；浏览器模式返回 null，桌面壳 invoke 失败向上抛。 */
+export function engineCapsRequired(): Promise<EngineCaps | null> {
+  if (!inDesktopShell()) return Promise.resolve(null);
+  return invoke<EngineCaps>("engine_caps");
 }
 
 /** 能力快照;浏览器模式/引擎未起返回 null(调用方按默认档降级)。 */
 export function engineCaps(): Promise<EngineCaps | null> {
-  if (!inDesktopShell()) return Promise.resolve(null);
-  return invoke<EngineCaps>("engine_caps").catch(() => null);
+  return engineCapsRequired().catch(() => null);
 }

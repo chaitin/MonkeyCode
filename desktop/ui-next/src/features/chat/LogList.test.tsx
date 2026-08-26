@@ -132,6 +132,31 @@ describe("LogList 系统行按 tag 分流", () => {
 });
 
 describe("消息时间(悬停显影的 <time>)", () => {
+  it("steering 用户气泡随发送、确认和终止状态更新", () => {
+    const item: ChatItem = {
+      kind: "user",
+      text: "再检查边界",
+      source: "steer",
+      clientId: "steer-1",
+      seq: 1,
+    };
+    const sending = { ...withItems([item]), running: true };
+    const { rerender } = render(<LogList state={sending} sessionId="s1" />);
+    expect(screen.getByText("补充指令")).toBeTruthy();
+    expect(screen.getByText("发送中").getAttribute("data-steer-status")).toBe("sending");
+    expect(screen.getByText("再检查边界")).toBeTruthy();
+
+    const applied = { ...sending, steerConfirmations: { "steer-1": 12 } };
+    rerender(<LogList state={applied} sessionId="s1" />);
+    expect(screen.getByText("已应用").getAttribute("data-steer-status")).toBe("applied");
+    expect(screen.queryByText("发送中")).toBeNull();
+
+    const uncertain = { ...sending, running: false };
+    rerender(<LogList state={uncertain} sessionId="s1" />);
+    expect(screen.getByText("状态待确认").getAttribute("data-steer-status")).toBe("uncertain");
+    expect(screen.queryByText("已应用")).toBeNull();
+  });
+
   it("用户气泡与 agent 块渲染 dateTime 语义的 HH:MM;缺 timestamp 不渲染", () => {
     // 用「今天」的时刻:fmtClock 跨天会带日期前缀,固定历史日期会随运行日漂移
     const ts = new Date(new Date().setHours(9, 5, 0, 0)).getTime();
@@ -352,6 +377,7 @@ describe("思考块", () => {
     const ts = new Date(new Date().setHours(9, 5, 0, 0)).getTime();
     const state = withItems([{ kind: "thought", text: "先看日志", timestamp: ts }]);
     const { container } = render(<LogList state={state} sessionId="s1" />);
+    expect(container.querySelector(".collapse")?.classList.contains("mc-workbench-material-muted")).toBe(true);
     expect(container.querySelector("time")?.textContent).toBe("09:05");
     expect(container.querySelector(".collapse-arrow")).toBeNull(); // 统一为行尾 chevron
   });
@@ -394,6 +420,7 @@ describe("工具组聚合(摘要头 + 开合)", () => {
     const { container } = render(<LogList state={state} sessionId="s1" />);
     expect(container.querySelectorAll("[data-virtual-row]")).toHaveLength(1);
     const header = screen.getByRole("button", { name: "工具调用组" });
+    expect(header.classList.contains("mc-workbench-material")).toBe(true);
     expect(header.textContent).toContain("4 步");
     expect(header.textContent).toContain("执行命令 ×4");
     expect(screen.queryByText("step1")).toBeNull(); // 成员收起

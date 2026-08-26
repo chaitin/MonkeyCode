@@ -109,7 +109,7 @@ export function UsageRing({ pct, tip, label }: { pct: number | null; tip: string
 export function ComposerCard({ children, attachedTop = false }: { children: ReactNode; attachedTop?: boolean }) {
   return (
     <div
-      className={`relative -mx-2.5 flex flex-col rounded-box border border-base-300 bg-base-100 shadow-sm focus-within:border-base-content/25 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-primary ${
+      className={`mc-workbench-material-interactive relative -mx-2.5 flex flex-col rounded-box border border-base-300 shadow-sm focus-within:border-base-content/25 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-primary ${
         attachedTop ? "[border-top-left-radius:0] [border-top-right-radius:0]" : ""
       }`}
     >

@@ -62,6 +62,9 @@
   font-family: var(--font-mono);
   font-size: 0.9em;
 }
+.md code[data-mc-local-href] { color: var(--color-primary); cursor: pointer; }
+.md code[data-mc-local-href]:hover { text-decoration: underline; }
+.md code[data-mc-local-href]:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .md pre code { background: transparent; padding: 0; font-size: inherit; }
 .mdi code {
   background: color-mix(in oklab, var(--color-base-content) 6%, transparent);

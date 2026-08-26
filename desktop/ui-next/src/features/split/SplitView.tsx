@@ -3,8 +3,8 @@
 // 标题 + 布局下拉 + 设置)+ 可折叠任务列(三 tab:本地项目/本地会话/
 // 云端任务——导航全部在此,行政事务随之迁入:行右键 改名/归档/删除、
 // 已归档折叠小节、待办组、云端列表整体复用 CloudTaskList)+ 布局树格区。
-// 布局 = 用户拆的二叉树(tree.ts,tmux/iTerm 同构):每格可向右/向下拆分
-// (上限 SPLIT_MAX_PANES)、可关闭(兄弟上位)、按住格头标题拖拽换位;
+// 布局 = 用户拆的二叉树(tree.ts,tmux/iTerm 同构):每格可向右/向下拆分、
+// 可关闭(兄弟上位)、按住格头标题拖拽换位;
 // 每条分隔线恰是一个树节点,拖它只动两侧子树。1/2横/2纵/4 为快捷模板。
 // 每格 = 细头 + ChatView/CloudTaskView 的 pane 变体(全交互;槽位条目经
 // slots.ts 的 "c:" 记号分流本地/云端);空槽:任务列展开时 = 轻提示卡,
@@ -31,7 +31,7 @@ import {
   IconWorld,
   IconX,
 } from "@tabler/icons-react";
-import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { Fragment, useEffect, useEffectEvent, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { ChatView } from "@/features/chat/ChatView";
@@ -51,7 +51,40 @@ import { TODO_GROUP_KEY, TodoSection, type TodoWiring } from "@/features/todo/To
 const SIDE_MIN = 184;
 const SIDE_MAX = 420;
 const SIDE_DEFAULT = 232; // = --spacing-side
+const ROOT_DROP_EDGE_SIZE = 48;
+const MIN_DRAG_PANE_SIZE = 48;
+const MIN_MATERIALIZED_PANE_SIZE = 48;
+const MAX_MATERIALIZED_PANES = 512;
+const MAX_MATERIALIZED_HANDLES = 512;
+const FALLBACK_GRID_WIDTH = 1024;
+const FALLBACK_GRID_HEIGHT = 768;
 const CHATS_GROUP_KEY = "\0chats";
+
+interface SplitRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface SplitRenderPath {
+  parent: SplitRenderPath | null;
+  side: "a" | "b";
+  depth: number;
+}
+
+const splitPathString = (path: SplitRenderPath | null): string => {
+  if (!path) return "";
+  const chars = new Array<string>(path.depth);
+  let current: SplitRenderPath | null = path;
+  while (current) {
+    chars[current.depth - 1] = current.side;
+    current = current.parent;
+  }
+  return chars.join("");
+};
+
+const pct = (value: number) => `${value * 100}%`;
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import type { CloudProject, CloudTask, CloudTaskDetail } from "@/lib/ipc/cloudtasks";
 import type { SessionKind, SessionMeta } from "@/lib/ipc/sessions";
@@ -60,10 +93,10 @@ import { groupSessions, projectKey, readArchivedProjects, readCollapsedGroups, r
 import { Brand } from "@/features/titlebar/TitleBar";
 import { useUpdate } from "@/features/update/useUpdate";
 import { isMacShell, openExternal } from "@/lib/ipc/host";
-import { readFold, SPLIT_MAX_PANES, writeFold } from "@/lib/util/prefs";
+import { readFold, writeFold } from "@/lib/util/prefs";
 import { renameIsNoop } from "@/lib/util/rename";
 import { cloudSlotId, cloudTaskIdOf, firstEmptyIn, isCloudSlotId, LOAD_MIME, SWAP_MIME } from "./slots";
-import { leaves, paneCount, SPLIT_MAX_RATIO, SPLIT_MIN_RATIO, type SplitDir, type SplitNode } from "./tree";
+import { leaves, paneCount, SPLIT_MAX_RATIO, SPLIT_MIN_RATIO, type SplitDir, type SplitEdge, type SplitHorizontalEdge, type SplitNode, type SplitVerticalEdge } from "./tree";
 import type { SplitStateApi } from "./useSplitState";
 
 /** 快捷模板(「布局」下拉):套形状不套比例;当前同形的项 menu-active。 */
@@ -84,7 +117,8 @@ export interface SplitCloudWiring {
 export interface SplitAdminWiring {
   attentionIds: ReadonlySet<string>;
   onRename: (meta: SessionMeta, title: string) => void;
-  onToggleArchive: (meta: SessionMeta) => void;
+  /** 返回是否更新成功；归档失败时 Panel 必须保留。 */
+  onToggleArchive: (meta: SessionMeta) => Promise<boolean>;
   onDelete: (meta: SessionMeta) => void;
   todo?: TodoWiring;
 }
@@ -170,7 +204,29 @@ export function SplitView({
     todoId?: string;
   } | null>(null);
   const [dropSlot, setDropSlot] = useState<number | null>(null);
+  const [dropEdge, setDropEdge] = useState<{ edge: SplitEdge; target: number } | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [gridSize, setGridSize] = useState(() => ({
+    width: typeof window === "undefined" ? FALLBACK_GRID_WIDTH : window.innerWidth || FALLBACK_GRID_WIDTH,
+    height: typeof window === "undefined" ? FALLBACK_GRID_HEIGHT : window.innerHeight || FALLBACK_GRID_HEIGHT,
+  }));
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const update = () => {
+      const rect = grid.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      setGridSize((prev) =>
+        prev.width === rect.width && prev.height === rect.height ? prev : { width: rect.width, height: rect.height },
+      );
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     if (!active) setShortcutsOpen(false);
   }, [active]);
@@ -215,22 +271,28 @@ export function SplitView({
   // 换新函数的话 React 会 detach(null)→attach(el) 反复打状态,直接
   // Maximum update depth(实测)
   const [paneExtras, setPaneExtras] = useState<Record<number, HTMLElement | null>>({});
-  const paneExtrasRef = useMemo(
-    () =>
-      Array.from({ length: SPLIT_MAX_PANES }, (_, i) => (el: HTMLElement | null) => {
-        setPaneExtras((prev) => (prev[i] === el ? prev : { ...prev, [i]: el }));
-      }),
-    [],
-  );
+  const paneExtraRefs = useRef(new Map<number, (el: HTMLElement | null) => void>());
+  const paneExtraRefFor = (slot: number) => {
+    const existing = paneExtraRefs.current.get(slot);
+    if (existing) return existing;
+    const created = (el: HTMLElement | null) => {
+      setPaneExtras((prev) => (prev[slot] === el ? prev : { ...prev, [slot]: el }));
+    };
+    paneExtraRefs.current.set(slot, created);
+    return created;
+  };
   // 视图菜单项注册表(开 ⋯ 时现取;注册函数按槽恒等,注销置 null)
   const viewMenus = useRef<Record<number, (() => MenuItem[]) | null>>({});
-  const paneMenuReg = useMemo(
-    () =>
-      Array.from({ length: SPLIT_MAX_PANES }, (_, i) => (fn: (() => MenuItem[]) | null) => {
-        viewMenus.current[i] = fn;
-      }),
-    [],
-  );
+  const paneMenuRegs = useRef(new Map<number, (fn: (() => MenuItem[]) | null) => void>());
+  const paneMenuRegFor = (slot: number) => {
+    const existing = paneMenuRegs.current.get(slot);
+    if (existing) return existing;
+    const created = (fn: (() => MenuItem[]) | null) => {
+      viewMenus.current[slot] = fn;
+    };
+    paneMenuRegs.current.set(slot, created);
+    return created;
+  };
   // 任务列开合(默认展开;键语义取反,见 prefs.FoldKey 注)
   const [listOpen, setListOpen] = useState(() => !readFold("mc.workbenchListHidden"));
   const toggleList = () => {
@@ -243,8 +305,6 @@ export function SplitView({
   const placed = new Set(split.slots.filter(Boolean) as string[]);
   const zoomedSlot = split.zoomed;
   const total = paneCount(split.tree);
-  const canSplit = total < SPLIT_MAX_PANES;
-  const canClose = total > 1;
   const visible = zoomedSlot !== null ? 1 : total;
   const visibleLeaves = zoomedSlot !== null ? [zoomedSlot] : leaves(split.tree);
   // 右侧顶条只剩一种存在理由:列收起(☰/新建兜底之家 + mac 净空)。
@@ -267,9 +327,8 @@ export function SplitView({
   };
   /** 「新建即新格」(2026-08-18 用户定案「创建任务也是一个 panel」):列侧
    *  一切新建入口走此——有空格先用空格(它就是现成的新格),没有就把焦点
-   *  格向右拆一格**专供创建**(spawned,取消即收回,不留空格尾巴);满
-   *  6 格退化为旧行为(占焦点格,取消回原会话)。格内入口(提示卡/装载
-   *  卡)仍就地创建,不走这条。 */
+   *  格向右拆一格**专供创建**(spawned,取消即收回,不留空格尾巴)。格内
+   *  入口(提示卡/装载卡)仍就地创建,不走这条。 */
   const openCreateInNewPane = (kind: SessionKind | "cloud", extras?: CreateExtras) => {
     if (split.zoomed !== null) split.toggleZoom(split.zoomed); // 独占态先回程
     const all = leaves(split.tree);
@@ -278,18 +337,32 @@ export function SplitView({
       openCreate(kind, empty, extras);
       return;
     }
-    if (all.length < SPLIT_MAX_PANES) {
-      const spawned = split.splitPane(split.focused, "col");
-      if (spawned !== null) {
-        setSwapSlot(null);
-        setCreatingSlot({ slot: spawned, kind, entryAtOpen: null, ...extras, spawned: true });
-        return;
-      }
+    const spawned = split.splitPane(split.focused, "col");
+    if (spawned !== null) {
+      setSwapSlot(null);
+      setCreatingSlot({ slot: spawned, kind, entryAtOpen: null, ...extras, spawned: true });
+      return;
     }
     openCreate(kind, undefined, extras);
   };
   const newTaskAction = () => {
     openCreateInNewPane(pickTab === "cloud" ? "cloud" : "local");
+  };
+  const openCreateAfterLastPane = (slot: number | null, kind: SessionKind | "cloud") => {
+    if (slot === null) return;
+    setSwapSlot(null);
+    setCreatingSlot({ slot, kind, entryAtOpen: null });
+  };
+  const closePane = (slot: number, kind: SessionKind | "cloud") => {
+    setSwapSlot(null);
+    setCreatingSlot((creating) => (creating?.slot === slot ? null : creating));
+    openCreateAfterLastPane(split.closePane(slot), kind);
+  };
+  const toggleArchive = async (meta: SessionMeta) => {
+    if (!admin) return;
+    const archived = !meta.archived;
+    const succeeded = await admin.onToggleArchive(meta);
+    if (succeeded && archived) openCreateAfterLastPane(split.closeEntry(meta.id), meta.kind ?? "local");
   };
   const onWorkbenchShortcut = useEffectEvent((e: KeyboardEvent) => {
     if (!active) return;
@@ -358,19 +431,32 @@ export function SplitView({
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", finish);
   };
-  // 与树存档/双击均分共用边界；六格 1:5 时需要允许到 1/6。
   const clamp = (v: number) => Math.min(SPLIT_MAX_RATIO, Math.max(SPLIT_MIN_RATIO, v));
-  const startHandleDrag = (path: string, dir: SplitDir) => (e: ReactMouseEvent) => {
+  // 树值本身不设与格数绑定的固定下限；真实拖动按当前所属区域至少留出
+  // 48px，避免 Number.EPSILON 在浏览器布局中被量化成 0px。
+  const clampVisible = (v: number, pixels: number) => {
+    if (pixels <= 0) return clamp(v); // jsdom/首拍尚无布局度量
+    const min = Math.min(0.5, MIN_DRAG_PANE_SIZE / pixels);
+    return Math.min(1 - min, Math.max(min, v));
+  };
+  const startHandleDrag = (path: () => string, dir: SplitDir, area: SplitRect) => (e: ReactMouseEvent) => {
     e.preventDefault();
-    // 分隔线的坐标系就是它所属切分容器(把手的父节点),树再深也各算各的
-    const rect = (e.currentTarget as HTMLElement).parentElement?.getBoundingClientRect();
-    if (!rect) return;
+    const grid = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-split-grid]");
+    if (!grid) return;
+    const gridRect = grid.getBoundingClientRect();
+    const rect = {
+      left: gridRect.left + area.x * gridRect.width,
+      top: gridRect.top + area.y * gridRect.height,
+      width: area.width * gridRect.width,
+      height: area.height * gridRect.height,
+    };
+    const resolvedPath = path();
     trackPointer(dir === "col" ? "col-resize" : "row-resize", (ev) => {
       const frac =
         dir === "col"
           ? (ev.clientX - rect.left) / Math.max(1, rect.width)
           : (ev.clientY - rect.top) / Math.max(1, rect.height);
-      split.setNodeRatio(path, clamp(frac));
+      split.setNodeRatio(resolvedPath, clampVisible(frac, dir === "col" ? rect.width : rect.height));
     });
   };
 
@@ -385,17 +471,80 @@ export function SplitView({
 
   // ==== 格上拖拽落点(两条通道):格头换位(SWAP)与任务列拖行装载(LOAD)。
   // 私有 MIME 判定,ChatView pane 自己收文件拖放,互不打扰 ====
-  const onPaneDragOver = (slot: number) => (e: ReactDragEvent) => {
+  const rootDropEdgeOf = (e: ReactDragEvent<HTMLElement>): SplitHorizontalEdge | null => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const left = e.clientX - rect.left;
+    const right = rect.right - e.clientX;
+    const inY = e.clientY >= rect.top && e.clientY <= rect.bottom;
+    const hitsLeft = inY && left >= 0 && left <= ROOT_DROP_EDGE_SIZE;
+    const hitsRight = inY && right >= 0 && right <= ROOT_DROP_EDGE_SIZE;
+    if (hitsLeft && hitsRight) return left <= right ? "left" : "right";
+    if (hitsLeft) return "left";
+    if (hitsRight) return "right";
+    return null;
+  };
+  const paneDropEdgeOf = (e: ReactDragEvent<HTMLElement>): SplitVerticalEdge | null => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const top = e.clientY - rect.top;
+    const bottom = rect.bottom - e.clientY;
+    const inX = e.clientX >= rect.left && e.clientX <= rect.right;
+    const hitsTop = inX && top >= 0 && top <= ROOT_DROP_EDGE_SIZE;
+    const hitsBottom = inX && bottom >= 0 && bottom <= ROOT_DROP_EDGE_SIZE;
+    if (hitsTop && hitsBottom) return top <= bottom ? "top" : "bottom";
+    if (hitsTop) return "top";
+    if (hitsBottom) return "bottom";
+    return null;
+  };
+  const hasSplitDrag = (e: ReactDragEvent) => {
+    const types = [...e.dataTransfer.types];
+    return types.includes(SWAP_MIME) || types.includes(LOAD_MIME);
+  };
+  const onGridDragOverCapture = (e: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasSplitDrag(e)) return;
+    const edge = rootDropEdgeOf(e);
+    setDropEdge(edge ? { edge, target: split.focused } : null);
+    if (!edge) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    setDropSlot(null);
+  };
+  const onGridDropCapture = (e: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasSplitDrag(e)) return;
+    const edge = rootDropEdgeOf(e);
+    if (!edge) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDropEdge(null);
+    setDropSlot(null);
+    const swapRaw = e.dataTransfer.getData(SWAP_MIME);
+    if (swapRaw !== "") {
+      const src = Number(swapRaw);
+      if (Number.isSafeInteger(src) && leaves(split.tree).includes(src)) split.movePaneToEdge(src, split.focused, edge);
+      return;
+    }
+    const loadRaw = e.dataTransfer.getData(LOAD_MIME);
+    if (loadRaw !== "") {
+      const target = split.addEdgePane(split.focused, edge);
+      if (target !== null) pick(target, loadRaw);
+    }
+  };
+
+  const onPaneDragOver = (slot: number) => (e: ReactDragEvent<HTMLElement>) => {
     const types = [...e.dataTransfer.types];
     if (!types.includes(SWAP_MIME) && !types.includes(LOAD_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setDropSlot(slot);
+    const edge = paneDropEdgeOf(e);
+    setDropEdge(edge ? { edge, target: slot } : null);
+    setDropSlot(edge ? null : slot);
   };
-  const onPaneDrop = (slot: number) => (e: ReactDragEvent) => {
+  const onPaneDrop = (slot: number) => (e: ReactDragEvent<HTMLElement>) => {
     const swapRaw = e.dataTransfer.getData(SWAP_MIME);
     const loadRaw = e.dataTransfer.getData(LOAD_MIME);
+    const edge = paneDropEdgeOf(e);
     setDropSlot(null);
+    setDropEdge(null);
     if (swapRaw !== "") {
       e.preventDefault();
       const src = Number(swapRaw);
@@ -403,13 +552,19 @@ export function SplitView({
         // 换位涉及创建格时表单让位(表单钉在槽号上,换位后会盖住换进来的
         // 会话——装载优先同族,2026-08-20 审计)
         setCreatingSlot((c) => (c && (c.slot === src || c.slot === slot) ? null : c));
-        split.swapPanes(src, slot);
+        if (edge) split.movePaneToEdge(src, slot, edge);
+        else split.swapPanes(src, slot);
       }
       return;
     }
     if (loadRaw !== "") {
       e.preventDefault();
-      pick(slot, loadRaw); // 定点装载:move 语义自动收走它原先所在的格
+      if (edge) {
+        const target = split.addEdgePane(slot, edge);
+        if (target !== null) pick(target, loadRaw);
+      } else {
+        pick(slot, loadRaw); // 定点装载:move 语义自动收走它原先所在的格
+      }
     }
   };
 
@@ -462,7 +617,10 @@ export function SplitView({
           setRevealTick((n) => n + 1);
         }}
         onDragOver={onPaneDragOver(slot)}
-        onDragLeave={() => setDropSlot((d) => (d === slot ? null : d))}
+        onDragLeave={() => {
+          setDropSlot((d) => (d === slot ? null : d));
+          setDropEdge((d) => (d?.target === slot ? null : d));
+        }}
         onDrop={onPaneDrop(slot)}
         // 平铺分栏(2026-08-19 用户 mockup 终案,当日浮卡随之退役):白底
         // 通栏、1px 细线分隔(grid 底色透缝),细头恒在;焦点表达 = 细头
@@ -476,7 +634,7 @@ export function SplitView({
             focused={focused && visible > 1}
             attention={attention}
             onRename={admin && meta ? (title) => admin.onRename(meta, title) : undefined}
-            extrasRef={paneExtrasRef[slot]}
+            extrasRef={entry ? paneExtraRefFor(slot) : undefined}
             viewMenu={() => [
               // 本地格行政项(与云端格 终止/删除 对称;旧详情页 ⋯ 三件套
               // 缺的两件,2026-08-20 审计补齐):同走 admin 接线,错误外显
@@ -485,7 +643,7 @@ export function SplitView({
                 ? [
                     {
                       label: meta.archived ? t("sidebar.row.unarchive") : t("sidebar.row.archive"),
-                      run: () => admin.onToggleArchive(meta),
+                      run: () => void toggleArchive(meta),
                     },
                     {
                       label: t("sidebar.row.delete"),
@@ -500,8 +658,6 @@ export function SplitView({
             ]}
             zoomed={zoomedSlot === slot}
             swapping={swapSlot === slot}
-            canSplit={canSplit}
-            canClose={canClose}
             onSplit={(dir) => {
               setSwapSlot(null);
               split.splitPane(slot, dir);
@@ -511,11 +667,7 @@ export function SplitView({
               split.toggleZoom(slot);
             }}
             onSwap={() => setSwapSlot((s) => (s === slot ? null : slot))}
-            onClose={() => {
-              setSwapSlot(null);
-              setCreatingSlot((c) => (c?.slot === slot ? null : c));
-              split.closePane(slot);
-            }}
+            onClose={() => closePane(slot, cloudTask ? "cloud" : (meta?.kind ?? "local"))}
           />
         )}
         {creating ? (
@@ -579,7 +731,7 @@ export function SplitView({
             variant="pane"
             task={cloudTask}
             headerSlot={paneExtras[slot] ?? null}
-            menuRegister={paneMenuReg[slot]}
+            menuRegister={paneMenuRegFor(slot)}
             hotkeysActive={active && focused}
             nativeDropEnabled={active && focused}
             focusRequest={active && focused ? focusRequest : 0}
@@ -608,69 +760,189 @@ export function SplitView({
         {dropSlot === slot && (
           <div aria-hidden data-split-drop="" className="pointer-events-none absolute inset-0 z-20 ring-2 ring-secondary/60 ring-inset" />
         )}
+        {dropEdge?.target === slot && (dropEdge.edge === "top" || dropEdge.edge === "bottom") && (
+          <div
+            aria-hidden
+            data-split-pane-drop={dropEdge.edge}
+            className={`pointer-events-none absolute inset-x-0 z-20 h-12 bg-secondary/15 ring-2 ring-secondary/70 ring-inset ${
+              dropEdge.edge === "top" ? "top-0" : "bottom-0"
+            }`}
+          />
+        )}
       </section>
     );
   };
 
-  /** 递归渲染布局树:切分节点 = 两个按比例伸展的子容器 + 骑在 1px 分隔线
-   *  上的把手(8px 透明热区,双击按辖下叶数递归均分面积)。平铺分栏(2026-08-19 用户
-   *  mockup 终案):浮卡的 12px 缝在多格时每格白吃 ~30px 宽,回 1px 细线。 */
-  const renderNode = (node: SplitNode, path: string) => {
-    if ("leaf" in node) return renderPane(node.leaf);
-    const vertical = node.dir === "col";
+  /** 把布局树迭代投影成同级 pane/handle，避免深树继续形成深 Fiber/DOM。 */
+  const renderLayout = (root: SplitNode) => {
+    type Branch = Extract<SplitNode, { dir: SplitDir }>;
+    const pending: { node: SplitNode; path: SplitRenderPath | null; area: SplitRect }[] = [
+      { node: root, path: null, area: { x: 0, y: 0, width: 1, height: 1 } },
+    ];
+    const panes: { slot: number; area: SplitRect }[] = [];
+    const handles: { node: Branch; path: SplitRenderPath | null; area: SplitRect; id: number }[] = [];
+    const viewportWidth = gridSize.width || FALLBACK_GRID_WIDTH;
+    const viewportHeight = gridSize.height || FALLBACK_GRID_HEIGHT;
+    const materialized = (area: SplitRect) =>
+      area.width * viewportWidth >= MIN_MATERIALIZED_PANE_SIZE &&
+      area.height * viewportHeight >= MIN_MATERIALIZED_PANE_SIZE;
+    // 像素虚拟化仍要保留焦点叶及其祖先：格数超过画布容量时，当前格
+    // 不能因面积不足而连操作入口一起消失。
+    const focusedNodes = new Set<SplitNode>();
+    const parents = new Map<SplitNode, SplitNode | null>([[root, null]]);
+    const leafOrder = new Map<number, number>();
+    const branchOrder = new Map<SplitNode, number>();
+    const search: SplitNode[] = [root];
+    let focusedNode: SplitNode | null = null;
+    let visitOrder = 0;
+    while (search.length > 0) {
+      const node = search.pop()!;
+      if ("leaf" in node) {
+        leafOrder.set(node.leaf, visitOrder++);
+        if (node.leaf === split.focused) focusedNode = node;
+        continue;
+      }
+      branchOrder.set(node, visitOrder++);
+      parents.set(node.a, node);
+      parents.set(node.b, node);
+      search.push(node.b, node.a);
+    }
+    while (focusedNode) {
+      focusedNodes.add(focusedNode);
+      focusedNode = parents.get(focusedNode) ?? null;
+    }
+    while (pending.length > 0) {
+      const item = pending.pop()!;
+      if ("leaf" in item.node) {
+        if (panes.length < MAX_MATERIALIZED_PANES || item.node.leaf === split.focused) {
+          panes.push({ slot: item.node.leaf, area: item.area });
+        }
+        continue;
+      }
+
+      const node = item.node;
+      const depth = (item.path?.depth ?? 0) + 1;
+      const aPath: SplitRenderPath = { parent: item.path, side: "a", depth };
+      const bPath: SplitRenderPath = { parent: item.path, side: "b", depth };
+      const aArea: SplitRect = { ...item.area };
+      const bArea: SplitRect = { ...item.area };
+      if (node.dir === "col") {
+        aArea.width *= node.ratio;
+        bArea.x += aArea.width;
+        bArea.width *= 1 - node.ratio;
+      } else {
+        aArea.height *= node.ratio;
+        bArea.y += aArea.height;
+        bArea.height *= 1 - node.ratio;
+      }
+      // 不物化实际不足一个可用 pane 尺寸的子树：它既不能完整交互，继续挂完整
+      // PaneHeader/ChatView 只会让恶意深树产生数十万 DOM。ResizeObserver
+      // 会在画布变大后重算；正常拖动另有 48px 下限，不会制造这种子树。
+      const onFocusedPath = focusedNodes.has(node);
+      // 焦点路径每层连同直接兄弟一起保留，保证连续拆分后新格和被拆格都
+      // 仍有可操作入口；兄弟若还是巨大子树，其更深后代仍受像素阈值约束。
+      const aVisible = materialized(aArea) || onFocusedPath || focusedNodes.has(node.a);
+      const bVisible = materialized(bArea) || onFocusedPath || focusedNodes.has(node.b);
+      if (((aVisible && bVisible) || onFocusedPath) && handles.length < MAX_MATERIALIZED_HANDLES) {
+        handles.push({ node, path: item.path, area: item.area, id: handles.length });
+      }
+      // 栈后进先出：焦点子树后压、优先遍历，确保全局物化预算先留给当前格。
+      if (focusedNodes.has(node.b)) {
+        if (aVisible) pending.push({ node: node.a, path: aPath, area: aArea });
+        if (bVisible) pending.push({ node: node.b, path: bPath, area: bArea });
+      } else {
+        if (bVisible) pending.push({ node: node.b, path: bPath, area: bArea });
+        if (aVisible) pending.push({ node: node.a, path: aPath, area: aArea });
+      }
+    }
+
+    // 焦点优先只影响谁获得物化预算，不能改变 DOM/辅助技术的树内视觉顺序。
+    panes.sort((a, b) => (leafOrder.get(a.slot) ?? 0) - (leafOrder.get(b.slot) ?? 0));
+    handles.sort((a, b) => (branchOrder.get(a.node) ?? 0) - (branchOrder.get(b.node) ?? 0));
+
     return (
-      <div className={`relative flex min-h-0 min-w-0 flex-1 gap-px ${vertical ? "" : "flex-col"}`}>
-        <div className="flex min-h-0 min-w-0" style={{ flex: `${node.ratio} 1 0%` }}>
-          {renderNode(node.a, `${path}a`)}
-        </div>
-        <div className="flex min-h-0 min-w-0" style={{ flex: `${1 - node.ratio} 1 0%` }}>
-          {renderNode(node.b, `${path}b`)}
-        </div>
-        <div
-          data-split-handle={path === "" ? "root" : path}
-          role="separator"
-          aria-orientation={vertical ? "vertical" : "horizontal"}
-          aria-label={t("split.resize")}
-          aria-valuemin={Math.round(SPLIT_MIN_RATIO * 100)}
-          aria-valuemax={Math.round(SPLIT_MAX_RATIO * 100)}
-          aria-valuenow={Math.round(node.ratio * 100)}
-          tabIndex={0}
-          title={t("split.resizeHint")}
-          className={`absolute z-30 focus-visible:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset ${
-            vertical ? "inset-y-0 w-2 -translate-x-1/2 cursor-col-resize" : "inset-x-0 h-2 -translate-y-1/2 cursor-row-resize"
-          }`}
-          style={vertical ? { left: `${node.ratio * 100}%` } : { top: `${node.ratio * 100}%` }}
-          onMouseDown={startHandleDrag(path, node.dir)}
-          onKeyDown={(e) => {
-            const delta =
-              vertical && e.key === "ArrowLeft"
-                ? -0.05
-                : vertical && e.key === "ArrowRight"
-                  ? 0.05
-                  : !vertical && e.key === "ArrowUp"
+      <>
+        {panes.map(({ slot, area }) => (
+          <div
+            key={`pane-${slot}`}
+            className="absolute flex min-h-0 min-w-0"
+            style={{
+              left: pct(area.x),
+              top: pct(area.y),
+              width: pct(area.width),
+              height: pct(area.height),
+              minWidth: MIN_MATERIALIZED_PANE_SIZE,
+              minHeight: MIN_MATERIALIZED_PANE_SIZE,
+            }}
+          >
+            {renderPane(slot)}
+          </div>
+        ))}
+        {handles.map(({ node, path, area, id }) => {
+          const vertical = node.dir === "col";
+          const resolvePath = () => splitPathString(path);
+          const pathAttr = !path ? "root" : path.depth <= 64 ? splitPathString(path) : `deep-${id}`;
+          const boundary = vertical
+            ? area.x + area.width * node.ratio
+            : area.y + area.height * node.ratio;
+          return (
+            <div
+              key={`handle-${id}`}
+              data-split-handle={pathAttr}
+              role="separator"
+              aria-orientation={vertical ? "vertical" : "horizontal"}
+              aria-label={t("split.resize")}
+              aria-valuemin={Math.round(SPLIT_MIN_RATIO * 100)}
+              aria-valuemax={Math.round(SPLIT_MAX_RATIO * 100)}
+              aria-valuenow={Math.round(node.ratio * 100)}
+              tabIndex={0}
+              title={t("split.resizeHint")}
+              className={`absolute z-30 focus-visible:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-inset ${
+                vertical ? "w-2 -translate-x-1/2 cursor-col-resize" : "h-2 -translate-y-1/2 cursor-row-resize"
+              }`}
+              style={
+                vertical
+                  ? { left: pct(boundary), top: pct(area.y), height: pct(area.height) }
+                  : { left: pct(area.x), top: pct(boundary), width: pct(area.width) }
+              }
+              onMouseDown={startHandleDrag(resolvePath, node.dir, area)}
+              onKeyDown={(e) => {
+                const delta =
+                  vertical && e.key === "ArrowLeft"
                     ? -0.05
-                    : !vertical && e.key === "ArrowDown"
+                    : vertical && e.key === "ArrowRight"
                       ? 0.05
-                      : 0;
-            if (delta === 0) return;
-            e.preventDefault();
-            e.stopPropagation();
-            split.setNodeRatio(path, clamp(node.ratio + delta));
-          }}
-          onDoubleClick={() => split.equalizeNode(path)}
-        >
-          {/* 画布本体在背景启用时必须透明，否则 pane 的半透明表面会与
-              画布叠成两层；真正的 1px 分隔面只画在把手中心。 */}
-          <span
-            aria-hidden
-            className={`mc-workbench-surface-300 pointer-events-none absolute ${
-              vertical
-                ? "inset-y-0 left-1/2 w-px -translate-x-1/2"
-                : "inset-x-0 top-1/2 h-px -translate-y-1/2"
-            }`}
-          />
-        </div>
-      </div>
+                      : !vertical && e.key === "ArrowUp"
+                        ? -0.05
+                        : !vertical && e.key === "ArrowDown"
+                          ? 0.05
+                          : 0;
+                if (delta === 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const grid = e.currentTarget.closest<HTMLElement>("[data-split-grid]");
+                const gridRect = grid?.getBoundingClientRect();
+                const pixels = gridRect
+                  ? vertical
+                    ? area.width * gridRect.width
+                    : area.height * gridRect.height
+                  : 0;
+                split.setNodeRatio(resolvePath(), clampVisible(node.ratio + delta, pixels));
+              }}
+              onDoubleClick={() => split.equalizeNode(resolvePath())}
+            >
+              <span
+                aria-hidden
+                className={`mc-workbench-surface-300 pointer-events-none absolute ${
+                  vertical
+                    ? "inset-y-0 left-1/2 w-px -translate-x-1/2"
+                    : "inset-x-0 top-1/2 h-px -translate-y-1/2"
+                }`}
+              />
+            </div>
+          );
+        })}
+      </>
     );
   };
 
@@ -688,6 +960,7 @@ export function SplitView({
           focusedEntry={focusedEntry}
           cloud={cloud}
           admin={admin}
+          onToggleArchive={toggleArchive}
           tab={pickTab}
           onTabChange={setPickTab}
           revealTick={revealTick}
@@ -817,8 +1090,30 @@ export function SplitView({
         {/* 平铺画布:bg 只为透出 1px 分隔线;无衬(2026-08-19 mockup 终案,
             浮卡的 12px 衬退役)。拖窗面 = 细头空白区(PaneHeader 自带拖拽
             属性)+ 列顶行 */}
-        <div data-split-grid="" data-tauri-drag-region="" className="mc-workbench-surface-300 flex min-h-0 min-w-0 flex-1">
-          {zoomedSlot !== null ? renderPane(zoomedSlot) : renderNode(split.tree, "")}
+        <div
+          ref={gridRef}
+          data-split-grid=""
+          data-tauri-drag-region=""
+          className="mc-workbench-surface-300 relative flex min-h-0 min-w-0 flex-1"
+          onDragOverCapture={onGridDragOverCapture}
+          onDropCapture={onGridDropCapture}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              setDropEdge(null);
+              setDropSlot(null);
+            }
+          }}
+        >
+          {zoomedSlot !== null ? renderPane(zoomedSlot) : renderLayout(split.tree)}
+          {dropEdge && (dropEdge.edge === "left" || dropEdge.edge === "right") && (
+            <div
+              aria-hidden
+              data-split-root-drop={dropEdge.edge}
+              className={`pointer-events-none absolute inset-y-0 z-40 w-12 bg-secondary/15 ring-2 ring-secondary/70 ring-inset ${
+                dropEdge.edge === "left" ? "start-0" : "end-0"
+              }`}
+            />
+          )}
         </div>
       </div>
       </main>
@@ -913,6 +1208,7 @@ function WorkbenchList({
   focusedEntry,
   cloud,
   admin,
+  onToggleArchive,
   tab,
   onTabChange,
   revealTick,
@@ -931,6 +1227,7 @@ function WorkbenchList({
   focusedEntry: string | null;
   cloud?: SplitCloudWiring;
   admin?: SplitAdminWiring;
+  onToggleArchive: (meta: SessionMeta) => void;
   /** 当前 tab 受控于 SplitView(头部「新建」的 kind 跟它走)。 */
   tab: "local" | "cloud";
   onTabChange: (tab: "local" | "cloud") => void;
@@ -1038,7 +1335,7 @@ function WorkbenchList({
           { label: t("sidebar.row.rename"), run: () => setRenamingId(meta.id) },
           {
             label: meta.archived ? t("sidebar.row.unarchive") : t("sidebar.row.archive"),
-            run: () => admin.onToggleArchive(meta),
+            run: () => onToggleArchive(meta),
           },
           {
             label: t("sidebar.row.delete"),
@@ -1560,8 +1857,6 @@ function PaneHeader({
   viewMenu,
   zoomed,
   swapping,
-  canSplit,
-  canClose,
   onSplit,
   onZoom,
   onSwap,
@@ -1587,8 +1882,6 @@ function PaneHeader({
   viewMenu?: () => MenuItem[];
   zoomed: boolean;
   swapping: boolean;
-  canSplit: boolean;
-  canClose: boolean;
   onSplit: (dir: SplitDir) => void;
   onZoom: () => void;
   onSwap: () => void;
@@ -1701,8 +1994,8 @@ function PaneHeader({
               [
                 ...(meta && onRename ? [{ label: t("sidebar.row.rename"), run: () => setRenaming(true) }] : []),
                 ...(meta ? [{ label: swapping ? t("split.swapCancel") : t("split.swap"), run: onSwap }] : []),
-                { label: t("split.splitRight"), disabledReason: canSplit ? undefined : t("split.splitCap"), run: () => onSplit("col") },
-                { label: t("split.splitDown"), disabledReason: canSplit ? undefined : t("split.splitCap"), run: () => onSplit("row") },
+                { label: t("split.splitRight"), run: () => onSplit("col") },
+                { label: t("split.splitDown"), run: () => onSplit("row") },
                 { label: zoomed ? t("split.unzoom") : t("split.zoom"), run: onZoom },
                 ...(viewMenu?.() ?? []),
               ],
@@ -1712,13 +2005,9 @@ function PaneHeader({
         >
           <IconDots size={16} stroke={1.75} aria-hidden />
         </button>
-        {/* 独格整颗不渲染(置灰版 2026-08-19 用户「去掉吧」——关不掉的
-            钮摆着是噪声) */}
-        {canClose && (
-          <button type="button" aria-label={t("split.close")} title={t("split.close")} className={btn} onClick={onClose}>
-            <IconX size={16} stroke={1.75} aria-hidden />
-          </button>
-        )}
+        <button type="button" aria-label={t("split.close")} title={t("split.close")} className={btn} onClick={onClose}>
+          <IconX size={16} stroke={1.75} aria-hidden />
+        </button>
       </div>
     </div>
   );

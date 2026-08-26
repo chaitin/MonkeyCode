@@ -32,6 +32,14 @@ function usageFrame(seq: number, used: number, size: number) {
   };
 }
 
+function reportedTerminalFrames() {
+  return [
+    { ...usageFrame(14218, 56308, 200000), timestamp: 1787649934202 },
+    { ...usageFrame(14219, 57577, 200000), timestamp: 1787649934250 },
+    { seq: 14220, timestamp: 1787649934250, type: "task-ended" },
+  ];
+}
+
 /** pages:session_history 按调用次序吐出的页(或 Error 表示该次失败)。 */
 function stubShell(
   pages: Array<{ frames?: unknown[]; next_cursor: number; has_more: boolean } | Error>,
@@ -178,6 +186,49 @@ describe("useSessionFeed:窗口与实时帧的先后、监听生命周期、打�
     return { listeners, release: () => release(), fail: (e: Error) => fail(e) };
   }
 
+  it("同会话重开时旧 session_open 晚到:现役代仍须重放其间的 task-ended", async () => {
+    const journal: unknown[] = [
+      userFrame(1, "开始任务"),
+      { type: "task-started", timestamp: 2, seq: 2 },
+    ];
+    let openCalls = 0;
+    let releaseFirst: () => void = () => {};
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
+      core: {
+        invoke: (cmd: string) => {
+          if (cmd !== "session_open") return Promise.resolve(null);
+          openCalls += 1;
+          const window = () => ({ frames: [...journal], cursor: 0, has_more: false });
+          return openCalls === 1 ? firstGate.then(window) : Promise.resolve(window());
+        },
+      },
+      event: { listen: () => Promise.resolve(() => {}) },
+    };
+
+    const view = renderHook(({ epoch }) => useSessionFeed("s1", epoch), {
+      initialProps: { epoch: 0 },
+    });
+    await waitFor(() => expect(openCalls).toBe(1));
+    view.rerender({ epoch: 1 });
+    // 让第二代完成监听注册并尝试 open。修复前它会越过仍在途的第一代，
+    // 此刻只回放到 task-started；随后终态被第一代窗口拿走，但第一代已失活。
+    await act(async () => Promise.resolve());
+    journal.push(...reportedTerminalFrames());
+    act(() => releaseFirst());
+
+    await waitFor(() => expect(view.result.current.historyLoaded).toBe(true));
+    expect(openCalls).toBe(2);
+    expect(view.result.current.state).toMatchObject({
+      running: false,
+      turnEnded: true,
+      lastSeq: 14220,
+      lastTerminalSeq: 14220,
+    });
+  });
+
   it("实时帧抢在回放窗口之前到达:先攒着,窗口落地后按真实先后一次归约", async () => {
     const { listeners, release } = gatedShell();
     const { result } = renderHook(() => useSessionFeed("s1"));
@@ -240,6 +291,32 @@ describe("useSessionFeed:窗口与实时帧的先后、监听生命周期、打�
     expect(
       result.current.state.items.filter((it) => it.kind === "user").map((it) => it.text),
     ).toEqual(["很久以前的问题", "刚发生的问题"]);
+  });
+
+  it("实时连续 usage_update + task-ended 原样送达后立即收轮", async () => {
+    const { listeners, release } = gatedShell([
+      userFrame(1, "开始任务"),
+      { type: "task-started", timestamp: 2, seq: 2 },
+    ]);
+    const { result } = renderHook(() => useSessionFeed("s1"));
+    await waitFor(() => expect(listeners.has("frames:s1")).toBe(true));
+    act(() => release());
+    await waitFor(() => expect(result.current.historyLoaded).toBe(true));
+    expect(result.current.state.running).toBe(true);
+
+    act(() => {
+      listeners.get("frames:s1")!({
+        payload: reportedTerminalFrames(),
+      });
+    });
+
+    expect(result.current.state).toMatchObject({
+      running: false,
+      turnEnded: true,
+      usage: { used: 57577, size: 200000 },
+      lastSeq: 14220,
+      lastTerminalSeq: 14220,
+    });
   });
 
   it("打开失败:攒下的实时帧要放行,不能一直堆在缓冲里(否则壳还在跑、界面是死的空屏)", async () => {

@@ -178,11 +178,11 @@ describe("设置视图:导航与载入", () => {
     expect(screen.queryByText(/版本切换未生效/)).toBeNull();
   });
 
-  it("返回按钮回调 onClose", async () => {
+  it("关闭按钮回调 onClose", async () => {
     stubShell();
     const onClose = vi.fn();
     render(<SettingsView onClose={onClose} />);
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -228,7 +228,7 @@ describe("Esc 分层与离开守卫", () => {
     expect((screen.getByRole("textbox", { name: "名称" }) as HTMLInputElement).value).toBe("主力2");
   });
 
-  it("脏表单上 Esc/返回:先问一句;「留在设置」不退,「放弃并离开」才退", async () => {
+  it("脏表单上 Esc/关闭:先问一句;「留在设置」不退,「放弃并离开」才退", async () => {
     stubShell();
     const onClose = vi.fn();
     render(<SettingsView onClose={onClose} />);
@@ -236,7 +236,7 @@ describe("Esc 分层与离开守卫", () => {
     await userEvent.click(screen.getByRole("button", { name: /主力/ }));
     await userEvent.type(screen.getByRole("textbox", { name: "名称" }), "x");
 
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
     expect(await screen.findByRole("dialog", { name: "有未保存的更改" })).toBeDefined();
     expect(onClose).not.toHaveBeenCalled();
 
@@ -245,16 +245,16 @@ describe("Esc 分层与离开守卫", () => {
     expect(screen.queryByRole("dialog", { name: "有未保存的更改" })).toBeNull();
     expect(onClose).not.toHaveBeenCalled();
 
-    pressEsc(); // 焦点已不在输入框(上一步点了「返回」),这下走视图层
+    pressEsc(); // 焦点已不在输入框(上一步点了「关闭」),这下走视图层
     await userEvent.click(await screen.findByRole("button", { name: "留在设置" }));
     expect(onClose).not.toHaveBeenCalled();
 
-    await userEvent.click(screen.getByRole("button", { name: "返回" }));
+    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
     await userEvent.click(await screen.findByRole("button", { name: "放弃并离开" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("表单干净时 Esc/返回直接退出,不拿弹层烦人", async () => {
+  it("表单干净时 Esc/关闭直接退出,不拿弹层烦人", async () => {
     stubShell();
     const onClose = vi.fn();
     render(<SettingsView onClose={onClose} />);
@@ -304,7 +304,7 @@ describe("Esc 分层与离开守卫", () => {
 
     const dialog = screen.getByRole("dialog", { name: "设置" });
     await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "返回" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "关闭" }));
   });
 
   it("radio 组中的未选项不会让 Tab 焦点越出设置模态", async () => {

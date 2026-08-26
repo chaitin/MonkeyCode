@@ -152,6 +152,33 @@ function makeHarness(contents = ["one", "two"]) {
 }
 
 describe("CloudTaskRuntime", () => {
+  it("控制调用立即确认模型，忽略更早请求的旧详情且接受后续权威刷新", async () => {
+    const h = makeHarness([]);
+    h.setDetail({ id: "t1", status: "processing", model: { id: "m1", model: "gpt-x", remark: "旧模型" } });
+    h.runtime.acquire("view");
+    await h.settle();
+
+    let resolveStaleInfo!: (detail: CloudTaskDetail) => void;
+    h.taskInfo.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveStaleInfo = resolve;
+    }));
+    h.streams[0]!.handlers.onFrames?.([{ type: "task-ended", seq: 1, data: {} }]);
+    h.runtime.confirmModel({ id: "m2", model: "claude-y", remark: "新模型" });
+    resolveStaleInfo({ id: "t1", status: "processing", model: { id: "m1", model: "gpt-x", remark: "旧模型" } });
+    await h.settle();
+    expect(h.runtime.getSnapshot().detail?.model?.id).toBe("m2");
+
+    h.setDetail({ id: "t1", status: "processing", model: { id: "m3", model: "gpt-z", remark: "外部模型" } });
+    h.enqueueMessage("下一轮");
+    await h.settle();
+    h.streams.at(-1)!.handlers.onFrames?.([
+      { type: "task-running", seq: 2, data: {} },
+      { type: "task-ended", seq: 3, data: {} },
+    ]);
+    await h.settle();
+    expect(h.runtime.getSnapshot().detail?.model?.id).toBe("m3");
+  });
+
   it("视图切离期间保留同一 runtime 的多批帧供重开补齐", async () => {
     const h = makeHarness();
     const queueLease = h.runtime.acquire("queue");

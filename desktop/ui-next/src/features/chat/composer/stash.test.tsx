@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { b64decode } from "@/lib/protocol/codec";
 import {
+  claimSteering,
   createSendQueueItem,
   enqueue,
+  markSteeringUncertain,
   localSendQueueKey,
   localSendQueueTarget,
   pausePending,
@@ -140,6 +142,24 @@ describe("deliverQueued 后台逐轮补投", () => {
     await flush();
     expect(sends(calls)).toHaveLength(1);
     expect(textOf(sends(calls)[0]!)).toBe("A 现场消息");
+  });
+
+  it("uncertain steering 存在时后台 deliverQueued 不让后续 pending 越过", async () => {
+    const calls = stubShell();
+    enqueueFor("a", "可能已插入");
+    const target = localSendQueueTarget("a");
+    const steerId = readSendQueueLane(target).pending[0]!.id;
+    updateSendQueueLane(target, (lane) => markSteeringUncertain(claimSteering(lane, steerId, 100)));
+    enqueueFor("a", "后续普通消息");
+
+    deliverQueued("a", "idle");
+    await flush();
+    expect(sends(calls)).toHaveLength(0);
+    expect(readSendQueueLane(target)).toMatchObject({
+      inFlight: null,
+      pending: [{ content: "后续普通消息" }],
+      steering: [{ item: { id: steerId }, phase: "uncertain" }],
+    });
   });
 
   it("后台状态归约不能解除用户主动暂停", async () => {

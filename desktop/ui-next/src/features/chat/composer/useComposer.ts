@@ -13,7 +13,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { t } from "@/lib/i18n";
-import { sessionCompact } from "@/lib/ipc/controls";
+import { engineCapsRequired } from "@/lib/ipc/approvals";
+import { sessionCompact, sessionSteer } from "@/lib/ipc/controls";
+import { afterEngineReady } from "@/lib/ipc/engine";
 import { sessionSend } from "@/lib/ipc/sessions";
 import { attLineOf } from "@/lib/protocol/attLine";
 import {
@@ -25,21 +27,29 @@ import {
 import { b64encode } from "@/lib/protocol/codec";
 import { bindActiveComposer, stashGet, stashSet } from "./stash";
 import {
+  ackSteering,
   claimHead,
+  claimSteering,
   clearPending,
   completeTurn,
   confirmResume,
+  confirmSteering,
   createSendQueueItem,
+  discardSteering,
   discardUncertain,
   enqueue,
+  failSteering,
   getSendQueueLaneSnapshot,
   localSendQueueTarget,
   markReceipt,
+  markSteeringUncertain,
   nackHead,
   pausePending,
+  releaseEmptyUserPause,
   remove,
   reorderBefore,
   resumeAutomatic,
+  retrySteering,
   subscribeSendQueueLane,
   updateSendQueueLane,
   type LocalQueueAttachment,
@@ -65,10 +75,22 @@ export interface ComposerUpload {
 /** 本地附件行(约定唯一出处在 lib/protocol/attLine,进消息正文)。 */
 export const attLine = (a: ComposerAtt) => attLineOf(a.path, a.isImage);
 
+/** pending 项的最终正文。普通逐轮投递与 runtime steering 必须共用此口径。 */
+function queuedText(item: { content: string; attachments: LocalQueueAttachment[] }): string {
+  return [item.content.trim(), ...item.attachments.map((a) => attLineOf(a.path, a.isImage))].filter(Boolean).join("\n");
+}
+
 export interface ComposerCtl {
   draft: string;
   setDraft(v: string): void;
   queue: SendQueueLane<LocalQueueAttachment>;
+  /** 当前会话是否支持向运行中任务插入补充指令。 */
+  steeringSupported: boolean;
+  /** durable outbox 中正在发起 RPC 的项；重挂载后仍可见。 */
+  steeringId: string | null;
+  steerQueued(id: string): void;
+  retrySteeringQueued(id: string): void;
+  discardSteeringQueued(id: string): void;
   removeQueued(id: string): void;
   reorderQueued(id: string, beforeId: string | null): void;
   resumeQueue(): void;
@@ -112,21 +134,29 @@ export interface ComposerFeed {
   /** 帧 seq 水位:任一批帧到达即抬升。等价于旧 UI 的 onFrames 时机——
    *  "壳已把上一条上行物化成帧",是解除在途标记与失败抑制的唯一可信信号。 */
   lastSeq: number;
+  /** Agent 权威 user_message 已确认的全部 steering client_id。 */
+  steerConfirmations: Record<string, number>;
 }
 
 export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl {
-  const { running, historyLoaded, lastSeq, lastTurnStartSeq, lastTerminalSeq } = feed;
+  const { running, historyLoaded, lastSeq, lastTurnStartSeq, lastTerminalSeq, steerConfirmations } = feed;
   const [draft, setDraft] = useState("");
+  const [steeringSupported, setSteeringSupported] = useState(false);
   const target = useMemo(() => localSendQueueTarget(sessionId), [sessionId]);
   const subscribeLane = useCallback((listener: () => void) => subscribeSendQueueLane(target, listener), [target]);
   const getLane = useCallback(() => getSendQueueLaneSnapshot<LocalQueueAttachment>(target), [target]);
   const queue = useSyncExternalStore(subscribeLane, getLane, getLane);
+  const steering = useMemo(() => queue.steering ?? [], [queue.steering]);
+  const steeringId = steering.find((entry) => entry.phase === "dispatching")?.item.id ?? null;
   const [atts, setAtts] = useState<ComposerAtt[]>([]);
   const [uploads, setUploads] = useState<ComposerUpload[]>([]);
   const [error, setError] = useState<string | null>(null);
   // 上行在途:user-input 发出到回执/开轮之间再发必须入队,否则第二条直发
-  // 会被壳的忙碌守卫拒掉
+  // 会被壳的忙碌守卫拒掉。baseline 防同一 render 的迟到 passive effect
+  // 清掉用户在 commit 后刚建立的新发送锁。
   const sendingRef = useRef(false);
+  const sendingBaselineSeqRef = useRef<number | null>(null);
+  const directSendTokenRef = useRef<object | null>(null);
   // 排队补投失败后的抑制闸:防「失败→回队→effect 立即重投」空转,
   // 新帧到达/running 变化/退避到点/用户再次发送时解除
   const flushBlockedRef = useRef(false);
@@ -143,7 +173,6 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   // 当前 hook 启动的队列 IPC token；每个 sid 记录稳定 item id，切走后迟到回调
   // 仍更新原 lane，而同 sid 的后续项/删除后的空 lane 会由 item id 转换守卫挡住。
   const queueDispatchRef = useRef(new Map<string, string>());
-
   // 草稿/附件仍经 effect 留档恢复；切会话首帧里 sessionId/queue target 已换，
   // 但编辑面 state 尚未完成恢复。stateSid 作为会话纪元闸，阻止这一帧启动补投。
   const [stateSid, setStateSid] = useState(sessionId);
@@ -153,6 +182,12 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     window.clearTimeout(retryTimer.current);
     retryTimer.current = 0;
     retryStep.current = 0;
+  }, []);
+  const clearSendingIfProgressed = useCallback((seq: number, force = false) => {
+    const baseline = sendingBaselineSeqRef.current;
+    if (!force && baseline !== null && seq <= baseline) return;
+    sendingRef.current = false;
+    sendingBaselineSeqRef.current = null;
   }, []);
   const scheduleRetry = useCallback(() => {
     const delay = FLUSH_RETRY_MS[retryStep.current];
@@ -175,6 +210,18 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   const activeRef = useRef(sessionId);
   activeRef.current = sessionId;
 
+  useEffect(() => {
+    let alive = true;
+    void afterEngineReady(engineCapsRequired)
+      .then((caps) => {
+        if (alive) setSteeringSupported(caps?.steering === true);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // 切会话 = 先留档再恢复(草稿/排队/附件按 sid 暂存,切回不丢;上传中列表
   // 是瞬态不入档,在途收尾回调按 id 过滤,清空后的 filter/map 无害)。
   // 留档挂在 cleanup:切走与卸载(关视图/进设置)统一走同一条路径。
@@ -186,6 +233,8 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     setError(null);
     setStateSid(sessionId); // 与上面几个 setState 同批提交:补投 effect 据此放行
     sendingRef.current = false;
+    sendingBaselineSeqRef.current = null;
+    directSendTokenRef.current = null;
     flushBlockedRef.current = false;
     clearRetry();
     previousRunningRef.current = currentRunningRef.current;
@@ -219,6 +268,30 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     [notifyError, target],
   );
 
+  // 权威确认必须先于下方 idle→uncertain 归约：同批多条 client_id 在一次
+  // 持久 transition 中全部清除；累计集合重放时 confirmSteering 仍幂等。
+  useEffect(() => {
+    if (!composerReady) return;
+    const clientIds = Object.keys(steerConfirmations);
+    if (clientIds.length === 0) return;
+    const result = updateSendQueueLane<LocalQueueAttachment>(target, (lane) => {
+      let next = lane;
+      for (const clientId of clientIds) next = confirmSteering(next, clientId);
+      return next;
+    });
+    if (!result.ok) notifyError(t("chat.sendQueue.persistenceFailed"));
+  }, [composerReady, notifyError, steerConfirmations, target]);
+
+  // ACK 后 Agent 可能在 confirm 前崩溃而 WebView 仍存活；可信 idle 状态下
+  // 不能把 acked 永久隐藏，也不能等待 restart recovery 才让用户处置。迟到确认/
+  // 失败清掉最后一个 steering 后也要重新释放已经没有工作的取消屏障。
+  useEffect(() => {
+    if (!historyLoaded || !composerReady || running) return;
+    // 外部持久队列归约会同步通知订阅者；无变化时 transition 保留引用，不会循环通知。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    updateQueue((lane) => releaseEmptyUserPause(markSteeringUncertain(lane)));
+  }, [composerReady, historyLoaded, running, steering, queue.blocked, updateQueue]);
+
   useEffect(() => {
     if (handledFlushTickRef.current === flushTick) return;
     handledFlushTickRef.current = flushTick;
@@ -228,6 +301,15 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   const send = useCallback((): boolean => {
     const content = draft.trim();
     if (!content && atts.length === 0) return false;
+
+    // task-ended 的 passive effect 可能尚未执行；显式 idle 发送必须基于持久 lane
+    // 的最新值同步消费空取消屏障，不能先入队再等待异步释放。
+    const currentQueue =
+      historyLoaded && composerReady && !running && !sendingRef.current
+        ? updateQueue(releaseEmptyUserPause)
+        : queue;
+    const currentSteering = currentQueue.steering ?? [];
+
     // /compact 是控制指令，不得进入待发送 lane。
     if (content === "/compact" && atts.length === 0) {
       if (
@@ -235,8 +317,9 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
         !composerReady ||
         running ||
         sendingRef.current ||
-        queue.pending.length > 0 ||
-        queue.inFlight
+        currentQueue.pending.length > 0 ||
+        currentQueue.inFlight ||
+        currentSteering.length > 0
       ) {
         notifyError(t("chat.compact.busy"));
         return false;
@@ -253,9 +336,10 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       !composerReady ||
       running ||
       sendingRef.current ||
-      queue.pending.length > 0 ||
-      queue.inFlight ||
-      queue.blocked
+      currentQueue.pending.length > 0 ||
+      currentQueue.inFlight ||
+      currentSteering.length > 0 ||
+      currentQueue.blocked
     ) {
       // 忙碌/已有 lane 时结构化追加到队尾；附件行只在真正投递时生成。
       flushBlockedRef.current = false;
@@ -268,6 +352,9 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
 
     const text = [content, ...atts.map(attLine)].filter(Boolean).join("\n");
     sendingRef.current = true;
+    sendingBaselineSeqRef.current = lastSeq;
+    const sendToken = {};
+    directSendTokenRef.current = sendToken;
     const forSid = sessionId;
     const prevDraft = draft;
     const prevAtts = atts;
@@ -275,7 +362,6 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     setAtts([]);
     // 成功路径不摘 sendingRef：必须等帧水位或开轮信号。
     void sessionSend(forSid, "user-input", { content: b64encode(text) }).catch((e: unknown) => {
-      sendingRef.current = false;
       if (activeRef.current !== forSid) {
         const prev = stashGet(forSid);
         stashSet(forSid, {
@@ -283,6 +369,10 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
           atts: prev?.atts.length ? prev.atts : prevAtts,
         });
         return;
+      }
+      if (directSendTokenRef.current === sendToken) {
+        sendingRef.current = false;
+        sendingBaselineSeqRef.current = null;
       }
       setDraft((cur) => cur || prevDraft);
       setAtts((cur) => (cur.length ? cur : prevAtts));
@@ -295,13 +385,12 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     historyLoaded,
     composerReady,
     running,
-    queue.pending.length,
-    queue.inFlight,
-    queue.blocked,
+    queue,
     sessionId,
     notifyError,
     clearRetry,
     updateQueue,
+    lastSeq,
   ]);
 
   // 开轮水位确认上行已物化；终态水位只有晚于同一开轮时才收掉隐藏
@@ -309,7 +398,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   // Promise resolve 本身不摘 in-flight，避免 ack 与首帧之间的真空连投。
   useEffect(() => {
     if (!historyLoaded || !composerReady) return;
-    sendingRef.current = false;
+    clearSendingIfProgressed(lastSeq);
     flushBlockedRef.current = false;
     clearRetry();
     updateQueue((lane) => {
@@ -334,6 +423,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     lastTurnStartSeq,
     lastTerminalSeq,
     clearRetry,
+    clearSendingIfProgressed,
     updateQueue,
   ]);
 
@@ -345,7 +435,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     }
     const wasRunning = previousRunningRef.current;
     previousRunningRef.current = running;
-    sendingRef.current = false;
+    clearSendingIfProgressed(lastSeq, running);
     flushBlockedRef.current = false;
     clearRetry();
     updateQueue((lane) => {
@@ -353,9 +443,10 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       const itemId = next.inFlight?.item.id;
       if (running && itemId) next = markReceipt(next, itemId);
       if (!running && wasRunning && itemId) next = completeTurn(next, itemId);
+      if (!running) next = releaseEmptyUserPause(next);
       return next;
     });
-  }, [running, historyLoaded, composerReady, clearRetry, updateQueue]);
+  }, [running, historyLoaded, composerReady, lastSeq, clearRetry, clearSendingIfProgressed, updateQueue]);
 
   // 空闲时原子领取一个队首并投递；领取先落持久化，失败同 ID 回队首且阻塞。
   useEffect(() => {
@@ -367,6 +458,8 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       queue.inFlight ||
       queue.blocked ||
       sendingRef.current ||
+      // uncertain/acked 同样可能已送达；任何未丢弃 outbox 都禁止后续 pending 越过。
+      steering.some((entry) => !entry.discardRequested) ||
       flushBlockedRef.current
     ) {
       return;
@@ -378,13 +471,9 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
 
     const forSid = sessionId;
     const itemId = claimed.item.id;
-    const text = [
-      claimed.item.content.trim(),
-      ...claimed.item.attachments.map((att) => attLineOf(att.path, att.isImage)),
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const text = queuedText(claimed.item);
     sendingRef.current = true;
+    sendingBaselineSeqRef.current = claimed.baselineSeq ?? lastSeq;
     queueDispatchRef.current.set(forSid, itemId);
     void sessionSend(forSid, "user-input", { content: b64encode(text) }).then(
       () => {
@@ -402,6 +491,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
         );
         if (activeRef.current === forSid) {
           sendingRef.current = false;
+          sendingBaselineSeqRef.current = null;
           flushBlockedRef.current = true;
           notifyError(e instanceof Error ? e.message : String(e));
           scheduleRetry();
@@ -415,6 +505,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     queue.pending,
     queue.inFlight,
     queue.blocked,
+    steering,
     sessionId,
     lastSeq,
     flushTick,
@@ -519,6 +610,42 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     setAtts((list) => list.filter((_, i) => i !== index));
   }, []);
 
+  const steerQueued = useCallback(
+    (id: string) => {
+      if (!running || !composerReady || !steeringSupported) return;
+      const item = queue.pending.find((entry) => entry.id === id);
+      if (!item) return;
+
+      const forSid = sessionId;
+      const originalTarget = target;
+      // pending→outbox 必须先在一次成功的持久 transition 中提交，之后才允许 IPC。
+      const claimed = updateSendQueueLane<LocalQueueAttachment>(originalTarget, (lane) => claimSteering(lane, id));
+      const outbox = (claimed.lane.steering ?? []).find(
+        (entry) => entry.item.id === id && entry.phase === "dispatching",
+      );
+      if (!claimed.ok || !outbox) {
+        // writeSendQueueLane 内存先提交；磁盘失败时把内存也恢复为可见 pending。
+        if (outbox) updateSendQueueLane<LocalQueueAttachment>(originalTarget, (lane) => failSteering(lane, id));
+        if (!claimed.ok && activeRef.current === forSid) notifyError(t("chat.sendQueue.persistenceFailed"));
+        return;
+      }
+
+      void sessionSteer(forSid, queuedText(outbox.item), id).then(
+        () => {
+          const result = updateSendQueueLane<LocalQueueAttachment>(originalTarget, (lane) => ackSteering(lane, id));
+          if (!result.ok && activeRef.current === forSid) notifyError(t("chat.sendQueue.persistenceFailed"));
+        },
+        (error: unknown) => {
+          updateSendQueueLane<LocalQueueAttachment>(originalTarget, (lane) => failSteering(lane, id));
+          if (activeRef.current === forSid) {
+            notifyError(t("chat.sendQueue.steerFailed", { reason: error instanceof Error ? error.message : String(error) }));
+          }
+        },
+      );
+    },
+    [running, composerReady, steeringSupported, sessionId, queue.pending, target, notifyError],
+  );
+
   const removeQueued = useCallback(
     (id: string) => {
       clearRetry();
@@ -545,12 +672,25 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     (id: string) => updateQueue((lane) => discardUncertain(lane, id)),
     [updateQueue],
   );
+  const retrySteeringQueued = useCallback(
+    (id: string) => updateQueue((lane) => retrySteering(lane, id)),
+    [updateQueue],
+  );
+  const discardSteeringQueued = useCallback(
+    (id: string) => updateQueue((lane) => discardSteering(lane, id)),
+    [updateQueue],
+  );
 
   return useMemo(
     () => ({
       draft,
       setDraft,
       queue,
+      steeringSupported,
+      steeringId,
+      steerQueued,
+      retrySteeringQueued,
+      discardSteeringQueued,
       removeQueued,
       reorderQueued,
       resumeQueue,
@@ -570,6 +710,11 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     [
       draft,
       queue,
+      steeringSupported,
+      steeringId,
+      steerQueued,
+      retrySteeringQueued,
+      discardSteeringQueued,
       removeQueued,
       reorderQueued,
       resumeQueue,

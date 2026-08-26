@@ -32,7 +32,7 @@ export function TaskPanel({ entries }: { entries: PlanEntry[] }) {
 
   return (
     <div
-      className={`collapse rounded-box border border-base-300 bg-base-100 ${open ? "collapse-open" : "collapse-close"}`}
+      className={`mc-workbench-material collapse rounded-box border border-base-300 ${open ? "collapse-open" : "collapse-close"}`}
     >
       <button
         type="button"

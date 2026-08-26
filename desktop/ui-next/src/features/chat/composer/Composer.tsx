@@ -60,6 +60,7 @@ export interface ComposerPresentation {
   openPermission: boolean;
   toolRunning: boolean;
   roundNo: number;
+  steerConfirmations: Record<string, number>;
 }
 
 interface ComposerCounts {
@@ -71,7 +72,7 @@ interface ComposerCounts {
 
 const presentationCache = new WeakMap<ChatState, { presentation: ComposerPresentation; counts: ComposerCounts }>();
 const countItem = (counts: ComposerCounts, item: ChatState["items"][number] | undefined, direction: 1 | -1) => {
-  if (item?.kind === "user") counts.users += direction;
+  if (item?.kind === "user" && item.source !== "steer") counts.users += direction;
   else if (item?.kind === "perm" && item.state === "open") counts.openPermissions += direction;
   else if (item?.kind === "tool" && item.status === "run") counts.runningTools += direction;
   else if (item?.kind === "sys" && item.tag === "think") counts.thinkUpdates += direction;
@@ -110,6 +111,7 @@ export function composerPresentationOf(state: ChatState): ComposerPresentation {
     openPermission: counts.openPermissions > 0,
     toolRunning: counts.runningTools > 0,
     roundNo: Math.max(1, counts.users),
+    steerConfirmations: state.steerConfirmations,
   };
   const old = previous?.presentation;
   const presentation =
@@ -123,7 +125,8 @@ export function composerPresentationOf(state: ChatState): ComposerPresentation {
     old.commands === nextPresentation.commands &&
     old.openPermission === nextPresentation.openPermission &&
     old.toolRunning === nextPresentation.toolRunning &&
-    old.roundNo === nextPresentation.roundNo
+    old.roundNo === nextPresentation.roundNo &&
+    old.steerConfirmations === nextPresentation.steerConfirmations
       ? old
       : nextPresentation;
   presentationCache.set(state, { presentation, counts });
@@ -443,8 +446,12 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
       ? Math.round((presentation.usage.used / presentation.usage.size) * 100)
       : null;
 
+  const visibleSteering = (ctl.queue.steering ?? []).some(
+    (entry) => !entry.discardRequested && (entry.phase === "dispatching" || entry.phase === "uncertain"),
+  );
   const queueVisible =
     ctl.queue.pending.length > 0 ||
+    visibleSteering ||
     (!!ctl.queue.inFlight && ctl.queue.inFlight.phase !== "awaiting-turn-end") ||
     (!!ctl.queue.blocked && ctl.queue.blocked.code !== "user-paused");
 
@@ -459,8 +466,12 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
           pending={ctl.queue.pending}
           inFlight={ctl.queue.inFlight}
           blocked={ctl.queue.blocked}
+          steering={ctl.queue.steering ?? []}
           onRemove={ctl.removeQueued}
           onReorder={ctl.reorderQueued}
+          onSteer={presentation.running && ctl.steeringSupported ? ctl.steerQueued : undefined}
+          onRetrySteering={ctl.retrySteeringQueued}
+          onDiscardSteering={ctl.discardSteeringQueued}
           onResume={ctl.resumeQueue}
           onClearQueue={ctl.clearQueue}
           onDiscardUncertain={ctl.discardUncertainQueued}
