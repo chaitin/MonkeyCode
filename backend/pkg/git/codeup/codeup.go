@@ -75,18 +75,23 @@ func normalizeBase(input, fallback string) (scheme, host string) {
 	return
 }
 
-// ParseRepoPath 从仓库 URL 解析 orgId 和 repo 标识（groupPath/repoName）。
+// ParseRepoPath 从仓库 URL 解析 organizationId 和仓库标识（groupPath/repoName）。
+//
+// Codeup 的标准 Git clone URL 与 OpenAPI repositoryId 是两套标识：clone URL
+// 使用 codeup.aliyun.com/{groupPath}/{repoName}.git，不包含 organizationId；
+// organizationId 应从已经绑定的 GitIdentity 或 token 解析。子域名形式仍可显式携带 orgId。
+//
 // 支持以下形式：
 //
-//	https://codeup.aliyun.com/{orgId}/{group}/{repo}.git
-//	https://codeup.aliyun.com/{orgId}/{group}/{repo}
-//	git@codeup.aliyun.com:{orgId}/{group}/{repo}.git
+//	https://codeup.aliyun.com/{group}/{repo}.git
+//	https://codeup.aliyun.com/{group}/{nested-group}/{repo}.git
+//	git@codeup.aliyun.com:{group}/{repo}.git
 //	https://{orgId}.codeup.aliyun.com/{group}/{repo}.git
 func ParseRepoPath(repoURL string) (orgID, identity string, err error) {
 	raw := strings.TrimSpace(repoURL)
 	raw = strings.TrimSuffix(raw, ".git")
 
-	// SSH 形式：git@host:org/group/repo
+	// SSH 形式：git@host:group[/nested-group]/repo
 	if strings.HasPrefix(raw, "git@") {
 		at := strings.Index(raw, "@")
 		col := strings.Index(raw, ":")
@@ -107,25 +112,36 @@ func ParseRepoPath(repoURL string) (orgID, identity string, err error) {
 	// 子域名形式：{orgId}.codeup.aliyun.com/{group}/{repo}
 	if idx := strings.Index(host, ".codeup."); idx > 0 {
 		orgID = host[:idx]
-		identity = path
-		if orgID == "" || identity == "" {
+		identity = strings.Trim(path, "/")
+		if orgID == "" || !validRepoIdentity(identity) {
 			return "", "", fmt.Errorf("invalid codeup subdomain url: %s", repoURL)
 		}
 		return orgID, identity, nil
 	}
 
-	// 路径形式：codeup.aliyun.com/{orgId}/{group}/{repo}
+	// 标准 clone URL 的整个 path 都是 groupPath/repoName，不应把首段误当成 organizationId。
 	return splitOrgAndIdentity(path, repoURL)
 }
 
 func splitOrgAndIdentity(path, raw string) (string, string, error) {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) < 3 {
-		return "", "", fmt.Errorf("invalid codeup url, expect orgId/group/repo: %s", raw)
+	identity := strings.Trim(path, "/")
+	if !validRepoIdentity(identity) {
+		return "", "", fmt.Errorf("invalid codeup url, expect group/repo: %s", raw)
 	}
-	orgID := parts[0]
-	identity := strings.Join(parts[1:], "/")
-	return orgID, identity, nil
+	return "", identity, nil
+}
+
+func validRepoIdentity(identity string) bool {
+	parts := strings.Split(strings.Trim(identity, "/"), "/")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 // repoPath 返回 /oapi/v1/codeup/organizations/{orgId}/repositories/{repoIdent}
@@ -259,11 +275,20 @@ func (c *Codeup) GetRepoByIdentity(ctx context.Context, token, orgID, identity s
 	return repo, nil
 }
 
-// CheckPAT 校验 PAT。先解析 repoURL 得到 orgId + identity，再调 OpenAPI 验证可访问。
+// CheckPAT 校验 PAT。标准 clone URL 不包含 orgId，因此必要时从客户端配置或 token 解析组织。
 func (c *Codeup) CheckPAT(ctx context.Context, token, repoURL string) (bool, *domain.BindRepository, error) {
 	orgID, identity, err := ParseRepoPath(repoURL)
 	if err != nil {
 		return false, nil, err
+	}
+	if orgID == "" {
+		orgID = c.orgID
+		if orgID == "" {
+			orgID, err = c.ResolveOrgID(ctx, token)
+			if err != nil {
+				return false, nil, fmt.Errorf("resolve organization: %w", err)
+			}
+		}
 	}
 	repo, err := c.GetRepoByIdentity(ctx, token, orgID, identity)
 	if err != nil {
