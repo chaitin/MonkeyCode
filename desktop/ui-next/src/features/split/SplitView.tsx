@@ -1661,7 +1661,7 @@ function WorkbenchList({
                       )}
                       <button
                         type="button"
-                        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-18 text-start"
+                        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-8 text-start group-hover/ghead:pe-18 group-focus-within/ghead:pe-18"
                         aria-expanded={!collapsed.has(g.key)}
                         onClick={() => setGroupOpen(g.key, collapsed.has(g.key))}
                       >
@@ -1679,8 +1679,8 @@ function WorkbenchList({
                           className={`absolute end-2 shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(g.key) ? "-rotate-90" : ""}`}
                         />
                       </button>
-                      {/* 主按钮为快捷钮留位，hover 只切可见性(插入式显隐会挤动
-                          项目名,鼠标一进一出就抖) */}
+                      {/* 默认只为箭头留位；hover/focus 时缩短项目名，为快捷钮腾位。
+                          整行尺寸与箭头位置保持不变。 */}
                       <button
                         type="button"
                         aria-label={t("sidebar.project.newTask")}
