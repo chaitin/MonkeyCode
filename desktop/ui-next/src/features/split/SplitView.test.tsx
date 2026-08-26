@@ -955,7 +955,14 @@ describe("分屏视图(树形布局)", () => {
     const projectsCap = within(list).getByText("项目");
     expect(within(list).getByText("暂无项目，点击右上角「+」新建")).toBeTruthy();
     expect(chatsHead.compareDocumentPosition(projectsCap) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await userEvent.click(within(list).getByRole("button", { name: "新建会话" }));
+    // 固定组头与项目组共用同一套紧凑操作区；待办也复用 FixedGroupHeader。
+    const chatsToggle = chatsHead.closest("button")!;
+    const chatsAdd = within(list).getByRole("button", { name: "新建会话" });
+    expect(chatsToggle.className).toContain("pe-7");
+    expect(chatsToggle.className).toContain("group-hover/fixed:pe-14");
+    expect(chatsAdd.className).toContain("end-6");
+    expect(chatsAdd.className).toContain("w-8");
+    await userEvent.click(chatsAdd);
     const pane = screen.getAllByRole("region")[0]!;
     expect(within(pane).getByRole("tab", { name: /本地任务/ }).getAttribute("aria-selected")).toBe("true");
     expect(within(pane).getByRole("button", { name: "选择项目" }).textContent).toContain("临时会话");
@@ -1019,7 +1026,7 @@ describe("分屏视图(树形布局)", () => {
     const headAfter = groupHeads()[0]!;
     expect(headAfter.querySelector(".tabler-icon-folder-open")).toBeNull();
     expect(headAfter.querySelector(".tabler-icon-folder")).not.toBeNull();
-    // hover「+」快捷新建:主按钮预留位置(invisible 只切可见性),点它开内嵌预填
+    // hover「+」快捷新建：默认只留箭头位，hover 时缩短标题并显示按钮。
     const plus = within(headAfter.parentElement!).getByRole("button", { name: "在此项目新建任务" });
     expect(plus.className).toContain("invisible");
     expect(plus.className).toContain("group-hover/ghead:visible");
@@ -1029,10 +1036,11 @@ describe("分屏视图(树形布局)", () => {
     // 与待办/临时会话同构：箭头固定最右，新增按钮悬浮在其左侧。
     expect(headAfter.querySelector(".tabler-icon-chevron-down")?.classList).toContain("absolute");
     expect(headAfter.querySelector(".tabler-icon-chevron-down")?.classList).toContain("end-2");
-    expect(headAfter.className).toContain("pe-18");
+    expect(headAfter.className).toContain("pe-7");
+    expect(headAfter.className).toContain("group-hover/ghead:pe-14");
     expect(plus.className).toContain("absolute");
-    expect(plus.className).toContain("end-8");
-    expect(plus.className).toContain("w-9");
+    expect(plus.className).toContain("end-6");
+    expect(plus.className).toContain("w-8");
     // daisyUI menu 的 hover/padding 在外层容器；直接点该边缘也必须开合。
     fireEvent.click(headAfter.parentElement!);
     expect(groupHeads()[0]!.querySelector(".tabler-icon-folder-open")).not.toBeNull();

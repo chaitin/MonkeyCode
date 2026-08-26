@@ -1661,7 +1661,7 @@ function WorkbenchList({
                       )}
                       <button
                         type="button"
-                        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-8 text-start group-hover/ghead:pe-18 group-focus-within/ghead:pe-18"
+                        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-7 text-start group-hover/ghead:pe-14 group-focus-within/ghead:pe-14"
                         aria-expanded={!collapsed.has(g.key)}
                         onClick={() => setGroupOpen(g.key, collapsed.has(g.key))}
                       >
@@ -1685,7 +1685,7 @@ function WorkbenchList({
                         type="button"
                         aria-label={t("sidebar.project.newTask")}
                         title={t("sidebar.project.newTask")}
-                        className="btn btn-ghost btn-xs invisible absolute end-8 top-0 h-8 min-h-8 w-9 shrink-0 group-hover/ghead:visible group-focus-within/ghead:visible"
+                        className="btn btn-ghost btn-xs invisible absolute end-6 top-0 h-8 min-h-8 w-8 shrink-0 group-hover/ghead:visible group-focus-within/ghead:visible"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
