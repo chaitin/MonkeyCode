@@ -1019,13 +1019,19 @@ describe("分屏视图(树形布局)", () => {
     const headAfter = groupHeads()[0]!;
     expect(headAfter.querySelector(".tabler-icon-folder-open")).toBeNull();
     expect(headAfter.querySelector(".tabler-icon-folder")).not.toBeNull();
-    // hover「+」快捷新建:常驻占位(invisible 只切可见性),点它开内嵌预填
+    // hover「+」快捷新建:主按钮预留位置(invisible 只切可见性),点它开内嵌预填
     const plus = within(headAfter.parentElement!).getByRole("button", { name: "在此项目新建任务" });
     expect(plus.className).toContain("invisible");
     expect(plus.className).toContain("group-hover/ghead:visible");
     expect(headAfter.parentElement?.className).toContain("p-0");
     expect(headAfter.parentElement?.className).toContain("gap-0");
     expect(headAfter.className).toContain("min-h-8");
+    // 与待办/临时会话同构：箭头固定最右，新增按钮悬浮在其左侧。
+    expect(headAfter.querySelector(".tabler-icon-chevron-down")?.classList).toContain("absolute");
+    expect(headAfter.querySelector(".tabler-icon-chevron-down")?.classList).toContain("end-2");
+    expect(headAfter.className).toContain("pe-18");
+    expect(plus.className).toContain("absolute");
+    expect(plus.className).toContain("end-8");
     expect(plus.className).toContain("w-9");
     // daisyUI menu 的 hover/padding 在外层容器；直接点该边缘也必须开合。
     fireEvent.click(headAfter.parentElement!);

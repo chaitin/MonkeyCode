@@ -1661,7 +1661,7 @@ function WorkbenchList({
                       )}
                       <button
                         type="button"
-                        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-1 text-start"
+                        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-18 text-start"
                         aria-expanded={!collapsed.has(g.key)}
                         onClick={() => setGroupOpen(g.key, collapsed.has(g.key))}
                       >
@@ -1671,21 +1671,21 @@ function WorkbenchList({
                             {g.sessions.filter((m) => m.waiting_ask).length}
                           </span>
                         )}
-                        {/* 开合 chevron 殿后常驻(2026-08-19 mockup:状态外显) */}
+                        {/* 与待办/临时会话同构：开合箭头固定最右，新增按钮悬浮在其左侧。 */}
                         <IconChevronDown
                           size={12}
                           stroke={1.75}
                           aria-hidden
-                          className={`shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(g.key) ? "-rotate-90" : ""}`}
+                          className={`absolute end-2 shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(g.key) ? "-rotate-90" : ""}`}
                         />
                       </button>
-                      {/* 快捷钮常驻占位、hover 只切可见性(插入式显隐会挤动
+                      {/* 主按钮为快捷钮留位，hover 只切可见性(插入式显隐会挤动
                           项目名,鼠标一进一出就抖) */}
                       <button
                         type="button"
                         aria-label={t("sidebar.project.newTask")}
                         title={t("sidebar.project.newTask")}
-                        className="btn btn-ghost btn-xs invisible h-8 min-h-8 w-9 shrink-0 group-hover/ghead:visible group-focus-within/ghead:visible"
+                        className="btn btn-ghost btn-xs invisible absolute end-8 top-0 h-8 min-h-8 w-9 shrink-0 group-hover/ghead:visible group-focus-within/ghead:visible"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
