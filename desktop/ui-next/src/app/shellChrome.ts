@@ -1,5 +1,6 @@
 // 壳级 chrome 行为(main.tsx 启动时安装,浏览器模式不生效):
 // - 右键:拦掉 WebView 原生菜单(带"检查元素/重新加载"且裁不掉),换自绘菜单
+// - Ctrl/⌘+R、Ctrl/⌘+Shift+R、F5:拦掉 WebView 默认整页刷新
 // - F12 / ⌃⇧I / ⌘⇧I:打开 devtools(壳命令)
 import { openContextMenu } from "@/lib/contextMenu";
 import { inDesktopShell, invoke } from "@/lib/ipc/ipc";
@@ -12,6 +13,13 @@ import { inDesktopShell, invoke } from "@/lib/ipc/ipc";
 export function isDevtoolsHotkey(e: Pick<KeyboardEvent, "code" | "key" | "ctrlKey" | "metaKey" | "shiftKey">): boolean {
   if (e.key === "F12") return true;
   return (e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyI";
+}
+
+/** WebView2 默认开放浏览器刷新 accelerator；WKWebView 行为又不同。壳内不依赖
+ * 整页刷新，统一拦掉所有 F5 变体以及普通/强制刷新，浏览器开发模式不受影响。 */
+export function isReloadHotkey(e: Pick<KeyboardEvent, "code" | "key" | "ctrlKey" | "metaKey">): boolean {
+  if (e.key === "F5") return true;
+  return (e.ctrlKey || e.metaKey) && e.code === "KeyR";
 }
 
 /** 原生窗口标题的上下文文案(旧 UI appView.ts::windowContextLabel 随迁)。
@@ -55,6 +63,10 @@ export function installShellChrome(): void {
   });
   window.addEventListener("keydown", (e) => {
     if (!inDesktopShell()) return;
+    if (isReloadHotkey(e)) {
+      e.preventDefault();
+      return;
+    }
     if (!isDevtoolsHotkey(e)) return;
     e.preventDefault();
     void invoke("open_devtools").catch(() => {});
