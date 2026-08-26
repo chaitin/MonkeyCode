@@ -54,6 +54,8 @@ export const zh = {
   "split.newTask": "新建任务",
   "split.newChat": "新建会话",
   "split.paneMenu": "格操作",
+  "split.copyPath": "复制项目路径",
+  "split.pathCopied": "项目路径已复制",
   "split.zoom": "最大化",
   "split.unzoom": "还原",
   "split.swap": "换任务…",

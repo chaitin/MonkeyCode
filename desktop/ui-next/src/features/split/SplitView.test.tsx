@@ -469,6 +469,42 @@ describe("分屏视图(树形布局)", () => {
     expect(within(pane).getByRole("button", { name: "格操作" })).toBeTruthy();
   });
 
+  it("单格保持单行标题；多格标题缩小并展示项目名与路径复制按钮", () => {
+    stubShell();
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(window.navigator, "clipboard", { value: { writeText }, configurable: true });
+    localStorage.setItem("mc.splitTree", JSON.stringify({ leaf: 0 }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    const single = render(<Harness />);
+    const singlePane = screen.getByRole("region", { name: "第 1 格" });
+    expect(singlePane.querySelector("[data-pane-project]")).toBeNull();
+    expect(singlePane.querySelector("[data-pane-title]")?.className).toContain("text-sm");
+    single.unmount();
+
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", "s3", null, null, null, null]));
+    render(
+      <Harness
+        sessions={[
+          SESSIONS[0]!,
+          meta({ id: "s3", title: "长目录任务", workdir: "/Users/maxiao/dev/github/xiaomakuaiz/MonkeyCode" }),
+        ]}
+      />,
+    );
+    const first = screen.getByRole("region", { name: "第 1 格" });
+    const second = screen.getByRole("region", { name: "第 2 格" });
+    expect(first.querySelector("[data-pane-title]")?.className).toContain("text-[13px]");
+    expect(first.querySelector("[data-pane-project]")?.textContent).toBe("a");
+    expect(second.querySelector("[data-pane-project]")?.textContent).toBe("MonkeyCode");
+    expect(second.querySelector("[data-pane-project]")?.textContent).not.toContain("/Users/maxiao/dev");
+    expect(second.querySelector("[data-pane-project]")?.getAttribute("title")).toBe(
+      "/Users/maxiao/dev/github/xiaomakuaiz/MonkeyCode",
+    );
+    fireEvent.click(within(second).getByRole("button", { name: "复制项目路径" }));
+    expect(writeText).toHaveBeenCalledWith("/Users/maxiao/dev/github/xiaomakuaiz/MonkeyCode");
+    expect(within(second).getByRole("button", { name: "项目路径已复制" })).toBeTruthy();
+  });
+
   it("拖放装载落在「创建中」格上:装载优先、表单退场(取消不再连格收走)", async () => {
     stubShell();
     localStorage.setItem("mc.workbenchListHidden", "1"); // 装载卡路径

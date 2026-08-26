@@ -46,6 +46,8 @@ export const en: Record<MessageKey, string> = {
   "split.newTask": "New task",
   "split.newChat": "New chat",
   "split.paneMenu": "Pane actions",
+  "split.copyPath": "Copy project path",
+  "split.pathCopied": "Project path copied",
   "split.zoom": "Maximize",
   "split.unzoom": "Restore",
   "split.swap": "Swap task…",
