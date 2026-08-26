@@ -1,4 +1,4 @@
-import { IconGripVertical, IconPaperclip, IconTrash, IconX } from "@tabler/icons-react";
+import { IconEdit, IconGripVertical, IconPaperclip, IconTrash, IconX } from "@tabler/icons-react";
 import { useState, type DragEvent } from "react";
 
 import { Lightbox, UploadImg } from "@/components/media/UploadImg";
@@ -15,6 +15,8 @@ export interface SendQueueListProps<A> {
   steering?: SendQueueSteering<A>[];
   onRemove(id: string): void;
   onReorder(id: string, beforeId: string | null): void;
+  editingId?: string | null;
+  onEdit?: (id: string) => void;
   /** 仅在会话运行中且引擎支持 steering 时传入。 */
   onSteer?: (id: string) => void;
   /** 不确定 steering 只有显式用户动作才能恢复 pending 或删除。 */
@@ -139,14 +141,26 @@ function AttachmentList<A>({
   );
 }
 
-function PausedActions({ onResume, onClear }: { onResume(): void; onClear(): void }) {
+function PausedActions({
+  onResume,
+  onClear,
+  clearDisabled,
+}: {
+  onResume(): void;
+  onClear(): void;
+  clearDisabled: boolean;
+}) {
   const { t } = useI18n();
   const [confirmClear, setConfirmClear] = useState(false);
+  const clearDisabledHint = clearDisabled ? t("chat.sendQueue.clearWhileEditing") : undefined;
   return (
     <span className="flex shrink-0 items-center gap-1">
       <button
         type="button"
         className="btn btn-ghost btn-xs shrink-0 text-error"
+        disabled={clearDisabled}
+        title={clearDisabledHint}
+        aria-label={clearDisabledHint ? `${t("chat.sendQueue.clear")}: ${clearDisabledHint}` : undefined}
         onClick={() => {
           if (confirmClear) onClear();
           else setConfirmClear(true);
@@ -168,6 +182,8 @@ export function SendQueueList<A>({
   steering = [],
   onRemove,
   onReorder,
+  editingId = null,
+  onEdit,
   onSteer,
   onRetrySteering,
   onDiscardSteering,
@@ -370,7 +386,8 @@ export function SendQueueList<A>({
               <div className="flex min-h-9 min-w-0 items-center gap-1 px-0.5">
                 <button
                   type="button"
-                  draggable
+                  draggable={editingId === null}
+                  disabled={editingId !== null}
                   aria-label={t("chat.sendQueue.drag")}
                   aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                   title={t("chat.sendQueue.drag")}
@@ -384,7 +401,7 @@ export function SendQueueList<A>({
                   }}
                   onDragEnd={finishDrag}
                   onKeyDown={(event) => {
-                    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                    if (editingId !== null || !event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
                     event.preventDefault();
                     event.stopPropagation();
                     const current = ids.indexOf(item.id);
@@ -406,6 +423,9 @@ export function SendQueueList<A>({
                 <span aria-hidden className="w-4 shrink-0 text-center text-xs tabular-nums text-base-content/35">
                   {index + 1}
                 </span>
+                {editingId === item.id && (
+                  <span className="shrink-0 text-xs font-medium text-primary">{t("chat.sendQueue.editing")}</span>
+                )}
                 <ItemSummary
                   item={item}
                   attachmentsOpen={attachmentsFor === item.id}
@@ -415,21 +435,34 @@ export function SendQueueList<A>({
                   <button
                     type="button"
                     className="btn btn-ghost btn-xs h-7 min-h-7 shrink-0 px-1.5 font-normal text-primary"
-                    disabled={steeringDispatching}
+                    disabled={steeringDispatching || editingId !== null}
                     onClick={() => onSteer(item.id)}
                   >
                     {t("chat.sendQueue.steer")}
                   </button>
                 )}
-                <button
-                  type="button"
-                  aria-label={t("chat.sendQueue.remove")}
-                  title={t("chat.sendQueue.remove")}
-                  className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-7 shrink-0 text-base-content/35 opacity-0 hover:text-error hover:opacity-100 focus-visible:text-error focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-                  onClick={() => onRemove(item.id)}
-                >
-                  <IconTrash size={13} stroke={1.75} aria-hidden />
-                </button>
+                {onEdit && editingId === null && (
+                  <button
+                    type="button"
+                    aria-label={t("chat.sendQueue.edit")}
+                    title={t("chat.sendQueue.edit")}
+                    className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-7 shrink-0 text-base-content/35 opacity-0 hover:text-primary hover:opacity-100 focus-visible:text-primary focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                    onClick={() => onEdit(item.id)}
+                  >
+                    <IconEdit size={13} stroke={1.75} aria-hidden />
+                  </button>
+                )}
+                {editingId !== item.id && (
+                  <button
+                    type="button"
+                    aria-label={t("chat.sendQueue.remove")}
+                    title={t("chat.sendQueue.remove")}
+                    className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-7 shrink-0 text-base-content/35 opacity-0 hover:text-error hover:opacity-100 focus-visible:text-error focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                    onClick={() => onRemove(item.id)}
+                  >
+                    <IconTrash size={13} stroke={1.75} aria-hidden />
+                  </button>
+                )}
               </div>
               {attachmentsFor === item.id && (
                 <AttachmentList
@@ -478,7 +511,14 @@ export function SendQueueList<A>({
           <span className="min-w-0 flex-1 truncate" title={userPaused ? t("chat.sendQueue.userPaused") : visibleBlock.message}>
             {userPaused ? t("chat.sendQueue.userPaused") : `${t("chat.sendQueue.blocked")}: ${visibleBlock.message}`}
           </span>
-          {userPaused && onClearQueue && <PausedActions onResume={onResume} onClear={onClearQueue} />}
+          {userPaused && onClearQueue && (
+            <PausedActions
+              key={editingId === null ? "clear-enabled" : "clear-disabled"}
+              onResume={onResume}
+              onClear={onClearQueue}
+              clearDisabled={editingId !== null}
+            />
+          )}
           {!uncertain && !terminalBlock && !userPaused && (
             <button type="button" className="btn btn-ghost btn-xs shrink-0" onClick={onResume}>
               {t("chat.sendQueue.resume")}

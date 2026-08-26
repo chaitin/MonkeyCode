@@ -62,6 +62,8 @@ export interface SendQueueLane<A> {
   blocked: SendQueueBlock | null;
   /** v1 后向兼容扩展；读取缺少该字段的旧 v1 lane 时归一为空数组。 */
   steering?: SendQueueSteering<A>[];
+  /** pending 原项上的短暂编辑锁。它会持久化以约束所有领取方，但重启恢复时清除。 */
+  editing?: { itemId: string; startedAt: number };
 }
 
 export interface LocalQueueAttachment {
@@ -235,6 +237,17 @@ export function isSendQueueLane<A>(
   }
   if (steeringEntries.filter((entry) => entry.phase === "dispatching").length > 1) return false;
 
+  const editing = value.editing;
+  if (
+    editing !== undefined &&
+    (!isRecord(editing) ||
+      !hasText(editing.itemId) ||
+      !isFiniteNumber(editing.startedAt) ||
+      !value.pending.some((item) => item.id === editing.itemId))
+  ) {
+    return false;
+  }
+
   const ids = [
     ...value.pending.map((item) => item.id),
     ...(inFlightItemId === null ? [] : [inFlightItemId]),
@@ -290,6 +303,7 @@ export function enqueue<A>(lane: SendQueueLane<A>, item: SendQueueItem<A>): Send
 /** 只允许删除 pending，发送中项不会被 remove 误删。 */
 export function remove<A>(lane: SendQueueLane<A>, itemId: string): SendQueueLane<A> {
   assertSendQueueLane(lane);
+  if (lane.editing?.itemId === itemId) return lane;
   const index = lane.pending.findIndex((item) => item.id === itemId);
   if (index < 0) return lane;
   const pending = [...lane.pending.slice(0, index), ...lane.pending.slice(index + 1)];
@@ -313,6 +327,7 @@ export function reorderBefore<A>(
 ): SendQueueLane<A> {
   assertSendQueueLane(lane);
   if (itemId === beforeId) return lane;
+  if (lane.editing) return lane;
   const blockedItemId = lane.blocked?.itemId;
   if (blockedItemId && (itemId === blockedItemId || beforeId === blockedItemId)) return lane;
   const sourceIndex = lane.pending.findIndex((item) => item.id === itemId);
@@ -332,6 +347,7 @@ export function claimHead<A>(lane: SendQueueLane<A>, metadata: ClaimMetadata = {
   const head = lane.pending[0];
   if (
     !head ||
+    lane.editing?.itemId === head.id ||
     lane.inFlight !== null ||
     lane.blocked !== null ||
     (lane.steering ?? []).some((entry) => !entry.discardRequested)
@@ -355,6 +371,7 @@ export function claimSteering<A>(
   const originalIndex = lane.pending.findIndex((item) => item.id === itemId);
   if (
     originalIndex < 0 ||
+    lane.editing !== undefined ||
     lane.inFlight !== null ||
     (lane.steering ?? []).some((entry) => entry.phase === "dispatching")
   ) return lane;
@@ -365,6 +382,39 @@ export function claimSteering<A>(
     pending: [...lane.pending.slice(0, originalIndex), ...lane.pending.slice(originalIndex + 1)],
     steering: [...(lane.steering ?? []), { item, phase: "dispatching", startedAt, originalIndex }],
   };
+}
+
+/** 原子锁定一个仍处于 pending 的稳定 ID；已在途/steering 或已有编辑锁时不改变 lane。 */
+export function beginEdit<A>(lane: SendQueueLane<A>, itemId: string, startedAt = Date.now()): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  if (lane.editing || !lane.pending.some((item) => item.id === itemId)) return lane;
+  return { ...lane, editing: { itemId, startedAt } };
+}
+
+/** 只更新当前锁定的 pending 原项，并在同一转换中解锁；ID、createdAt 和顺序保持不变。 */
+export function updateEdited<A>(
+  lane: SendQueueLane<A>,
+  itemId: string,
+  content: string,
+  attachments: A[],
+): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  if (lane.editing?.itemId !== itemId) return lane;
+  const index = lane.pending.findIndex((item) => item.id === itemId);
+  if (index < 0) return lane;
+  const item = lane.pending[index]!;
+  const pending = lane.pending.slice();
+  pending[index] = { ...item, content, attachments: [...attachments] };
+  const { editing: _editing, ...unlocked } = lane;
+  return { ...unlocked, pending };
+}
+
+/** 取消指定编辑锁；消息原项不变。 */
+export function cancelEdit<A>(lane: SendQueueLane<A>, itemId: string): SendQueueLane<A> {
+  assertSendQueueLane(lane);
+  if (lane.editing?.itemId !== itemId) return lane;
+  const { editing: _editing, ...unlocked } = lane;
+  return unlocked;
 }
 
 /** 运行已结束但尚无 Agent 权威确认：ACK/投递中项都转为 uncertain 外显。
@@ -559,6 +609,8 @@ export function releaseEmptyUserPause<A>(lane: SendQueueLane<A>): SendQueueLane<
  * 这样迟到失败不会恢复，迟到确认仍可按 client_id 安全删除。 */
 export function clearPending<A>(lane: SendQueueLane<A>): SendQueueLane<A> {
   assertSendQueueLane(lane);
+  // 编辑中的原项必须保留原位；先保存或取消后才能执行整队清空。
+  if (lane.editing) return lane;
   const currentSteering = lane.steering ?? [];
   const shouldMarkSteering = currentSteering.some(
     (entry) => (entry.phase === "dispatching" || entry.phase === "acked") && !entry.discardRequested,
@@ -588,7 +640,13 @@ export function recoverLaneAfterRestart<A>(
   options: RestoreOptions = {},
 ): SendQueueLane<A> {
   assertSendQueueLane(lane);
-  const previousSteering = lane.steering ?? [];
+  // 编辑态没有可恢复的 UI owner；重启只释放锁，pending 原项完整保留。
+  const withoutEditing: SendQueueLane<A> = lane.editing === undefined ? lane : (() => {
+    const next = { ...lane };
+    delete next.editing;
+    return next;
+  })();
+  const previousSteering = withoutEditing.steering ?? [];
   const steering = previousSteering
     .filter((entry) => !entry.discardRequested)
     .map((entry) =>
@@ -600,7 +658,7 @@ export function recoverLaneAfterRestart<A>(
   const steeringChanged =
     steering.length !== previousSteering.length ||
     steering.some((entry, index) => entry !== previousSteering[index]);
-  const next = steeringChanged ? { ...lane, steering } : lane;
+  const next = steeringChanged ? { ...withoutEditing, steering } : withoutEditing;
 
   if (next.inFlight === null) return next;
   if (next.inFlight.phase === "awaiting-turn-end" && options.awaitingTurnRunning === true) return next;

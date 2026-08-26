@@ -5,7 +5,7 @@
 // (h.chat.usage,云端 usage_update 帧与本地同构)+ 发送。
 // 发送/上传/切换/错误通道全在 useCloudTask 的 handle 上,本组件纯视图。
 import { IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import { ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing } from "@/features/chat/composer/composerKit";
 import { appShortcutOfEvent, openPermIdOf } from "@/app/shortcuts";
@@ -78,6 +78,11 @@ export function CloudComposer({
   const [slashSuppressed, setSlashSuppressed] = useState(false);
   const [active, setActive] = useState(0);
   const query = slashQuery(h.input);
+  const attachmentsReadOnly = h.editingId !== null;
+  const attachmentsReadOnlyLabel = t("chat.sendQueue.attachmentsReadOnly");
+  const editingIndex = h.editingId
+    ? h.queue.pending.findIndex((item) => item.id === h.editingId) + 1
+    : 0;
   const slashOpen = query !== null && !slashSuppressed && h.commands.length > 0;
   const list = useMemo(() => filterCommands(h.commands, query ?? ""), [h.commands, query]);
   const act = Math.min(active, Math.max(0, list.length - 1));
@@ -91,6 +96,23 @@ export function CloudComposer({
     setSlashSuppressed(true); // 填入的文本自己就是 /name,不压住会立刻回弹匹配自己
     taRef.current?.focus();
   };
+
+  // h 会随输入更新；编辑层若跟着重入栈，会反压到已打开的 slash 层上方。
+  // 稳定 handler 经 layout ref 读取最新 owner，让非焦点格明确放行 Esc。
+  const editEscRef = useRef({ hotkeysActive, cancel: h.cancelEditedQueued });
+  useLayoutEffect(() => {
+    editEscRef.current = { hotkeysActive, cancel: h.cancelEditedQueued };
+  }, [hotkeysActive, h.cancelEditedQueued]);
+  const escEdit = useCallback(() => {
+    if (!editEscRef.current.hotkeysActive) return false;
+    editEscRef.current.cancel();
+    return true;
+  }, []);
+  useEscLayer(h.editingId !== null, escEdit);
+
+  useEffect(() => {
+    if (h.editingId) taRef.current?.focus();
+  }, [h.editingId]);
 
   // Esc 关面板走 escLayer 层栈(全应用唯一一条 window capture,后开的浮层先
   // 拿到):面板开着时这一下只能归面板——审批热键挂在冒泡阶段且 esc = 不可逆
@@ -115,7 +137,19 @@ export function CloudComposer({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const submit = () => {
+    if (h.editingId) h.saveEditedQueued();
+    else onSend();
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (h.editingId && e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.altKey) {
+      if (imeRef.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      submit();
+      return;
+    }
     if (e.key === "Enter" && e.ctrlKey && !e.altKey) {
       if (imeRef.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
       e.preventDefault();
@@ -142,7 +176,7 @@ export function CloudComposer({
       if (imeRef.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
       e.preventDefault();
       if (h.uploading > 0) return;
-      onSend();
+      submit();
     }
   };
 
@@ -207,6 +241,8 @@ export function CloudComposer({
         blocked={h.queue.blocked}
         onRemove={h.removeQueued}
         onReorder={h.reorderQueued}
+        editingId={h.queue.editing?.itemId ?? null}
+        onEdit={h.beginEditQueued}
         onResume={h.confirmQueue}
         onClearQueue={h.clearQueue}
         onDiscardUncertain={h.discardUncertain}
@@ -219,6 +255,16 @@ export function CloudComposer({
       />
 
       <ComposerCard attachedTop={queueVisible}>
+        {h.editingId && (
+          <div className="flex min-h-9 items-center gap-2 border-b border-base-300/60 px-3 text-sm">
+            <span className="min-w-0 flex-1 truncate font-medium">
+              {t("chat.sendQueue.editingTitle", { n: editingIndex })}
+            </span>
+            <button type="button" className="btn btn-ghost btn-xs shrink-0" onClick={h.cancelEditedQueued}>
+              {t("chat.sendQueue.cancelEdit")}
+            </button>
+          </div>
+        )}
         {h.running && (
           <RunBar
             label={t("cloud.view.running")}
@@ -236,8 +282,10 @@ export function CloudComposer({
                 <span className="max-w-40 truncate">{a.filename}</span>
                 <button
                   type="button"
-                  aria-label={t("chat.attachRemove")}
+                  aria-label={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attachRemove")}
+                  title={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attachRemove")}
                   className="btn btn-ghost btn-circle btn-xs"
+                  disabled={attachmentsReadOnly}
                   onClick={() => h.removeAtt(i)}
                 >
                   <IconX size={12} stroke={1.75} aria-hidden />
@@ -259,9 +307,9 @@ export function CloudComposer({
           taRef={taRef}
           aria-label={t("chat.composer")}
           placeholder={
-            // 启动期/唤醒期都不禁输入:消息押后、条件解除即自动送达,
-            // 占位文案把这件事说清楚免得白等
-            pending
+            h.editingId
+              ? t("chat.sendQueue.editPlaceholder")
+              : pending
               ? t("cloud.view.composerPending")
               : h.waking
                 ? t("cloud.view.composerWaking")
@@ -284,13 +332,15 @@ export function CloudComposer({
             className="hidden"
             aria-hidden
             tabIndex={-1}
+            disabled={attachmentsReadOnly}
             onChange={(e) => onPickFiles(e.target.files)}
           />
           <button
             type="button"
-            aria-label={t("chat.attach")}
-            title={t("chat.attachTip")}
+            aria-label={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attach")}
+            title={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attachTip")}
             className="btn btn-ghost btn-square btn-xs shrink-0 text-base-content/60"
+            disabled={attachmentsReadOnly}
             onClick={() => fileRef.current?.click()}
           >
             <IconPaperclip size={15} stroke={1.75} aria-hidden />
@@ -325,17 +375,18 @@ export function CloudComposer({
           {/* 发送中不锁 composer；只有本条附件仍在上传时暂缓提交。 */}
           <button
             type="button"
-            aria-label={t("chat.send")}
-            title={t("chat.sendTip")}
-            className="btn btn-primary btn-square btn-sm shrink-0"
+            aria-label={t(h.editingId ? "chat.sendQueue.saveEdit" : "chat.send")}
+            title={t(h.editingId ? "chat.sendQueue.saveEditTip" : "chat.sendTip")}
+            className={`btn btn-primary btn-sm shrink-0 ${h.editingId ? "px-3" : "btn-square"}`}
             disabled={h.uploading > 0 || !h.input.trim()}
-            onClick={onSend}
+            onClick={submit}
           >
             {h.uploading > 0 ? (
               <span className="loading loading-spinner loading-xs" aria-hidden />
             ) : (
               <IconSend size={16} stroke={1.75} aria-hidden />
             )}
+            {h.editingId && <span>{t("chat.sendQueue.saveEdit")}</span>}
           </button>
         </div>
       </ComposerCard>

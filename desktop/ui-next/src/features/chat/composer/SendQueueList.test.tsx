@@ -70,6 +70,31 @@ function QueueHarness({ initial }: { initial: SendQueueItem<string>[] }) {
 }
 
 describe("SendQueueList", () => {
+  it("提供可访问的编辑入口，并锁定编辑中项的删除和排序", () => {
+    const onEdit = vi.fn();
+    const pending = [item("first", "第一条"), item("second", "第二条")];
+    const props = {
+      pending,
+      inFlight: null,
+      blocked: null,
+      onRemove: vi.fn(),
+      onReorder: vi.fn(),
+      onEdit,
+      onResume: vi.fn(),
+      onDiscardUncertain: vi.fn(),
+    };
+    const { rerender } = render(<SendQueueList {...props} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑待发送消息" })[1]!);
+    expect(onEdit).toHaveBeenCalledWith("second");
+
+    rerender(<SendQueueList {...props} editingId="second" />);
+    const editingRow = screen.getByText("编辑中").closest("li")!;
+    expect(within(editingRow).queryByRole("button", { name: "删除待发送消息" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "编辑待发送消息" })).toBeNull();
+    expect(handles().every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+  });
+
   it("锁定发送中项并展示正文完整提示、待发附件数和稳定 ID 删除", () => {
     const onRemove = vi.fn();
     const inFlight: SendQueueInFlight<string> = {
@@ -369,6 +394,30 @@ describe("SendQueueList", () => {
     fireEvent.click(screen.getByRole("button", { name: "移除此消息" }));
     expect(onResume).toHaveBeenCalledTimes(2);
     expect(onDiscard).toHaveBeenCalledWith("uncertain-id");
+  });
+
+  it("编辑期间暂停栏清空动作明确禁用且不进入确认态", () => {
+    const onClearQueue = vi.fn();
+    render(
+      <SendQueueList
+        pending={[item("editing", "编辑中的消息")]}
+        inFlight={null}
+        blocked={{ code: "user-paused", message: "Paused by user", at: 6 }}
+        editingId="editing"
+        onRemove={() => {}}
+        onReorder={() => {}}
+        onResume={() => {}}
+        onDiscardUncertain={() => {}}
+        onClearQueue={onClearQueue}
+      />,
+    );
+
+    const clear = screen.getByRole("button", { name: /清空队列.*请先保存或取消当前编辑/ }) as HTMLButtonElement;
+    expect(clear.disabled).toBe(true);
+    expect(clear.title).toBe("请先保存或取消当前编辑");
+    fireEvent.click(clear);
+    expect(onClearQueue).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "确认清空" })).toBeNull();
   });
 
   it("用户暂停状态提供继续发送与二次确认清空", () => {

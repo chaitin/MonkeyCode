@@ -4,6 +4,8 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
+  beginEdit,
+  cancelEdit,
   clearPending,
   cloudSendQueueTarget,
   createSendQueueItem,
@@ -14,6 +16,7 @@ import {
   remove,
   reorderBefore,
   subscribeSendQueueLane,
+  updateEdited,
   updateSendQueueLane,
   type CloudQueueAttachment,
   type SendQueueLane,
@@ -93,6 +96,10 @@ export interface CloudTaskHandle {
   borrowControl(): { ctrl: CloudControl; release: () => void };
   /** 共享持久化队列；发送中项也来自这里，不再有 hook 私有 outbox。 */
   queue: SendQueueLane<CloudQueueAttachment>;
+  editingId: string | null;
+  beginEditQueued(id: string): void;
+  saveEditedQueued(): boolean;
+  cancelEditedQueued(): void;
   removeQueued(id: string): void;
   reorderQueued(id: string, beforeId: string | null): void;
   confirmQueue(): void;
@@ -133,9 +140,8 @@ export function useCloudTask(
   const queue = useSyncExternalStore(subscribeLane, getLane, getLane);
   const updateLane = useCallback(
     (update: (lane: SendQueueLane<CloudQueueAttachment>) => SendQueueLane<CloudQueueAttachment>) => {
-      if (!accountScope) return false;
-      updateSendQueueLane<CloudQueueAttachment>(cloudSendQueueTarget(accountScope, id), update);
-      return true;
+      if (!accountScope) return null;
+      return updateSendQueueLane<CloudQueueAttachment>(cloudSendQueueTarget(accountScope, id), update);
     },
     [accountScope, id],
   );
@@ -145,8 +151,14 @@ export function useCloudTask(
   const [localErr, setErr] = useState("");
   const [input, setInput] = useState("");
   const [atts, setAtts] = useState<CloudUploadedAtt[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editingIdRef = useRef<string | null>(null);
+  const savedDraftRef = useRef<{ input: string; atts: CloudUploadedAtt[] } | null>(null);
   const [uploading, setUploading] = useState(0);
   const attCountRef = useRef(0);
+  // 上传结果只能落回发起时的草稿/编辑上下文；取消、保存、终态和切任务都会换代。
+  const attachmentContextRef = useRef(0);
+  const previousAccountScopeRef = useRef(accountScope);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [ports, setPorts] = useState<PortInfo[] | null>(null);
   const [models, setModels] = useState<McCloudModelGroup[] | null>(null);
@@ -182,8 +194,39 @@ export function useCloudTask(
   const vmNotReady = vmOffline && !failedCond;
   const label = task.title || task.summary || task.content || meta?.title || meta?.summary || t("cloud.list.untitled");
 
+  // 视图卸载/切任务必须释放短暂编辑锁；崩溃场景则由 lane 恢复规则兜底。
+  useEffect(() => {
+    return () => {
+      // 初次身份解析的 null → 稳定 scope 会执行旧 effect cleanup；此时不能
+      // 换代，否则解析前启动的上传其 success/finally 都会被挡住并永久卡计数。
+      if (!accountScope) return;
+      attachmentContextRef.current += 1;
+      const itemId = editingIdRef.current;
+      if (!itemId) return;
+      updateSendQueueLane<CloudQueueAttachment>(cloudSendQueueTarget(accountScope, id), (lane) =>
+        cancelEdit(lane, itemId),
+      );
+    };
+  }, [accountScope, id]);
+
+  // 已稳定账号真正离开时清掉账号专属草稿投影与上传预留；null 初次解析成
+  // 第一个稳定 scope 不属于切号，必须原样保留此时已经开始的上传。
+  useEffect(() => {
+    const previous = previousAccountScopeRef.current;
+    previousAccountScopeRef.current = accountScope;
+    if (!previous || previous === accountScope) return;
+    savedDraftRef.current = null;
+    editingIdRef.current = null;
+    setEditingId(null);
+    setInput("");
+    setAtts([]);
+    setUploading(0);
+    attCountRef.current = 0;
+  }, [accountScope]);
+
   // task.id 是挂载边界；这里只清视图投影，不释放 runtime（lease 由协调器 hook 管）。
   useEffect(() => {
+    attachmentContextRef.current += 1;
     historyRef.current = [];
     liveRef.current = [];
     localNoticesRef.current = [];
@@ -192,8 +235,12 @@ export function useCloudTask(
     setChat(createChatState());
     applyCursor(null);
     setErr("");
+    editingIdRef.current = null;
+    savedDraftRef.current = null;
+    setEditingId(null);
     setInput("");
     setAtts([]);
+    setUploading(0);
     attCountRef.current = 0;
   }, [id, applyCursor]);
 
@@ -265,6 +312,7 @@ export function useCloudTask(
   }, [chat.commands]);
 
   const send = () => {
+    if (editingIdRef.current) return;
     const text = withCommandSeparator(input, commands);
     if (!text.trim() || ended) return;
     if (uploading > 0) {
@@ -272,21 +320,29 @@ export function useCloudTask(
       return;
     }
     const attachments: CloudQueueAttachment[] = atts.map(({ url, filename, isImage }) => ({ url, filename, isImage }));
-    if (!updateLane((lane) => enqueue(lane, createSendQueueItem(text, attachments)))) {
+    const result = updateLane((lane) => enqueue(lane, createSendQueueItem(text, attachments)));
+    if (!result) {
       setErr(t("cloud.err.sendRejected"));
       return;
     }
+    if (!result.ok) setErr(t("chat.sendQueue.persistenceFailed"));
     // 每次追加都立即清草稿与本条附件；后续录入绑定到下一条队列项。
-    setErr("");
+    if (result.ok) setErr("");
     setInput("");
     setAtts([]);
     attCountRef.current = 0;
   };
 
   const addFiles = (files: File[]) => {
+    if (editingIdRef.current) {
+      setErr(t("chat.sendQueue.attachmentsReadOnly"));
+      return;
+    }
     if (ended) return;
+    const context = attachmentContextRef.current;
     void (async () => {
       for (const file of files) {
+        if (attachmentContextRef.current !== context) break;
         if (attCountRef.current >= MAX_CLOUD_ATTS) {
           setErr(t("cloud.attach.limit", { n: MAX_CLOUD_ATTS }));
           break;
@@ -295,19 +351,26 @@ export function useCloudTask(
         setUploading((count) => count + 1);
         try {
           const attachment = await uploadCloudFile(file);
+          if (attachmentContextRef.current !== context) continue;
           setAtts((previous) => [...previous, attachment]);
           setErr("");
         } catch (error) {
-          attCountRef.current -= 1;
-          setErr(t("cloud.attach.uploadFailed", { reason: error instanceof Error ? error.message : String(error) }));
+          if (attachmentContextRef.current === context) {
+            attCountRef.current -= 1;
+            setErr(t("cloud.attach.uploadFailed", { reason: error instanceof Error ? error.message : String(error) }));
+          }
         } finally {
-          setUploading((count) => count - 1);
+          if (attachmentContextRef.current === context) setUploading((count) => Math.max(0, count - 1));
         }
       }
     })();
   };
 
   const removeAtt = (index: number) => {
+    if (editingIdRef.current) {
+      setErr(t("chat.sendQueue.attachmentsReadOnly"));
+      return;
+    }
     attCountRef.current = Math.max(0, attCountRef.current - 1);
     setAtts((previous) => previous.filter((_, at) => at !== index));
   };
@@ -420,6 +483,102 @@ export function useCloudTask(
     }
   };
 
+  const beginEditQueued = (itemId: string) => {
+    if (ended || editingIdRef.current || uploading > 0) {
+      if (uploading > 0) setErr(t("chat.sendQueue.editUploadPending"));
+      return;
+    }
+    let acquired = false;
+    const result = updateLane((lane) => {
+      const next = beginEdit(lane, itemId);
+      acquired = next !== lane;
+      return next;
+    });
+    const lockedItem = acquired ? result?.lane.pending.find((entry) => entry.id === itemId) : undefined;
+    if (!result || !lockedItem || result.lane.editing?.itemId !== itemId) {
+      setErr(t("chat.sendQueue.editConflict"));
+      return;
+    }
+    if (!result.ok) {
+      updateLane((lane) => cancelEdit(lane, itemId));
+      setErr(t("chat.sendQueue.persistenceFailed"));
+      return;
+    }
+    savedDraftRef.current = { input, atts: [...atts] };
+    attachmentContextRef.current += 1;
+    editingIdRef.current = itemId;
+    setEditingId(itemId);
+    setInput(lockedItem.content);
+    setAtts(lockedItem.attachments.map((attachment) => ({ ...attachment })));
+    attCountRef.current = lockedItem.attachments.length;
+    setErr("");
+  };
+
+  const restoreDraftAfterEdit = () => {
+    const saved = savedDraftRef.current ?? { input: "", atts: [] };
+    attachmentContextRef.current += 1;
+    savedDraftRef.current = null;
+    editingIdRef.current = null;
+    setEditingId(null);
+    setUploading(0);
+    setInput(saved.input);
+    setAtts([...saved.atts]);
+    attCountRef.current = saved.atts.length;
+  };
+
+  const saveEditedQueued = (): boolean => {
+    const itemId = editingIdRef.current;
+    const content = withCommandSeparator(input, commands);
+    if (!itemId || !content.trim() || uploading > 0) return false;
+    const attachments: CloudQueueAttachment[] = atts.map(({ url, filename, isImage }) => ({ url, filename, isImage }));
+    let updated = false;
+    let lockedLane: SendQueueLane<CloudQueueAttachment> | null = null;
+    const result = updateLane((lane) => {
+      lockedLane = lane;
+      const next = updateEdited(lane, itemId, content, attachments);
+      updated = next !== lane;
+      return next;
+    });
+    if (!result || !updated) {
+      setErr(t("chat.sendQueue.editConflict"));
+      restoreDraftAfterEdit();
+      return false;
+    }
+    if (!result.ok) {
+      // 持久化失败时内存已经是解锁后的新正文；回滚为转换前带锁原项，保留编辑面供重试。
+      if (lockedLane) updateLane(() => lockedLane!);
+      setErr(t("chat.sendQueue.persistenceFailed"));
+      return false;
+    }
+    setErr("");
+    restoreDraftAfterEdit();
+    return true;
+  };
+
+  const cancelEditedQueued = () => {
+    const itemId = editingIdRef.current;
+    if (!itemId) return;
+    const result = updateLane((lane) => cancelEdit(lane, itemId));
+    if (result && !result.ok) setErr(t("chat.sendQueue.persistenceFailed"));
+    restoreDraftAfterEdit();
+  };
+
+  // CloudComposer 在终态隐藏但 hook 保持挂载；终态边沿必须主动释放 durable 编辑锁。
+  useEffect(() => {
+    if (!ended) return;
+    const itemId = editingIdRef.current;
+    if (!itemId) return;
+    attachmentContextRef.current += 1;
+    updateLane((lane) => cancelEdit(lane, itemId));
+    savedDraftRef.current = null;
+    editingIdRef.current = null;
+    setEditingId(null);
+    setInput("");
+    setAtts([]);
+    setUploading(0);
+    attCountRef.current = 0;
+  }, [ended, updateLane]);
+
   return {
     id,
     meta,
@@ -458,6 +617,10 @@ export function useCloudTask(
     fetchPorts,
     borrowControl,
     queue,
+    editingId,
+    beginEditQueued,
+    saveEditedQueued,
+    cancelEditedQueued,
     removeQueued: (itemId) => { updateLane((lane) => remove(lane, itemId)); },
     reorderQueued: (itemId, beforeId) => { updateLane((lane) => reorderBefore(lane, itemId, beforeId)); },
     confirmQueue: () => runtimeTask?.confirmResume(),
