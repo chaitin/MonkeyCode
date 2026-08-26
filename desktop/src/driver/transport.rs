@@ -343,6 +343,7 @@ impl OhmyDriver {
             },
             sess: SessionsState {
                 sessions: StdMutex::new(HashMap::new()),
+                lifecycle: StdMutex::new(HashMap::new()),
                 batch: Arc::new(StdMutex::new(HashMap::new())),
                 sidecar_write: StdMutex::new(()),
                 perm_remember: StdMutex::new(perm_remember),

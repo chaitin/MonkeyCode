@@ -455,6 +455,8 @@ pub(super) struct SessionState {
 ///   见 subagent.rs::SubagentState。
 pub(super) struct SessionsState {
     pub(super) sessions: StdMutex<HashMap<String, SessionState>>,
+    /// 同一会话的 open/配置重建/archive/delete 生命周期串行；不同会话互不阻塞。
+    pub(super) lifecycle: StdMutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     /// 待发帧批量缓冲(sid → 帧列表;flusher 任务 30ms 排空)
     pub(super) batch: Arc<StdMutex<HashMap<String, Vec<Value>>>>,
     /// sidecar 读改写锁，防并发更新互相覆盖字段。
@@ -836,6 +838,11 @@ impl OhmyDriver {
     /// "监听先于命令"那条约束对历史部分自然消失(实时流仍走事件,契约不变)。
     pub async fn session_open(&self, id: &str) -> Result<Value, String> {
         check_session_id(id)?;
+        let lifecycle = self.session_lifecycle(id);
+        let lifecycle = lifecycle.lock().await;
+        if !self.session_exists_locally(id) {
+            return Err("会话不存在".into());
+        }
         let need_resume = {
             let sessions = self.0.sess.sessions.lock_ok();
             sessions.get(id).map(|s| !s.created && !s.resuming).unwrap_or(true)
@@ -903,6 +910,7 @@ impl OhmyDriver {
                 self.spawn_resume(id, meta, engine_id, resume_tx, gate_rx);
             }
         }
+        drop(lifecycle);
         // 磁盘读与 flush 屏障都在阻塞线程上做,不占 tokio 运行时;
         // 无缺口保证见 replay_open 注释。
         let window = {
@@ -1201,6 +1209,8 @@ impl OhmyDriver {
     pub async fn session_delete(&self, id: &str) -> Result<Value, String> {
         // 本命令的终点是 remove_dir_all,是全壳爆炸半径最大的一条:先挡再说
         check_session_id(id)?;
+        let lifecycle = self.session_lifecycle(id);
+        let _lifecycle = lifecycle.lock().await;
         {
             let sessions = self.0.sess.sessions.lock_ok();
             if sessions.get(id).map(|s| s.running).unwrap_or(false) {
@@ -1330,19 +1340,98 @@ impl OhmyDriver {
             let t: String = t.trim().chars().take(80).collect();
             if t.is_empty() { (self.first_user_line(id), false) } else { (t, true) }
         });
-        if let Some((t, custom)) = title.clone() {
-            self.write_sidecar(id, |m| {
+        let archived = patch.get("archived").and_then(|v| v.as_bool());
+        let lifecycle = self.session_lifecycle(id);
+        let _lifecycle = lifecycle.lock().await;
+        if !self.session_exists_locally(id) {
+            return Err("会话不存在".into());
+        }
+
+        if archived == Some(true) {
+            // 归档是用户明确要求收起任务：保留 sidecar/journal/transcript，卸载
+            // Agent runtime。恢复若仍在飞，先等它落定，否则 create 会在本次
+            // patch 返回后才完成，形成已归档但 runtime 继续常驻的孤儿。
+            let resuming = self.0.sess.sessions.lock_ok().get(id).map(|s| s.resuming).unwrap_or(false);
+            let had_resume = self.0.sess.resume.lock_ok().contains_key(id);
+            if resuming || had_resume {
+                let _ = self.ensure_engine_ready(id).await;
+            }
+            let engine_id = {
+                let sessions = self.0.sess.sessions.lock_ok();
+                sessions
+                    .get(id)
+                    .filter(|s| s.created || had_resume)
+                    .map(|s| s.engine_id.clone())
+            };
+            if let Some(engine_id) = engine_id {
+                // destroy 同时取消仍在运行的轮次和后台资源；失败时不落 archived，
+                // 避免 UI 显示已归档而泄漏 runtime。
+                self.rpc("session/destroy", json!({ "session_id": engine_id })).await?;
+            }
+
+            // destroy 会先停 notification watcher，运行轮未必还有 turn/stopped
+            // 回到壳侧；本地补齐审批/提问、轮次和后台子代理的终态。
+            let perms: Vec<String> = self
+                .0
+                .sess
+                .pending_perms
+                .lock_ok()
+                .iter()
+                .filter_map(|(req, sid)| (sid == id).then_some(req.clone()))
+                .collect();
+            for req in perms {
+                self.0.sess.perm_tools.lock_ok().remove(&req);
+                self.0.resolve_perm(id, &req, PermOutcome::Cancelled);
+            }
+            let questions: Vec<String> = self
+                .0
+                .sess
+                .pending_questions
+                .lock_ok()
+                .iter()
+                .filter_map(|(req, (sid, _))| (sid == id).then_some(req.clone()))
+                .collect();
+            for req in questions {
+                self.0.sess.pending_questions.lock_ok().remove(&req);
+                self.0.emit_session_ask(id, false);
+            }
+            self.0.reconcile_session(id, "任务因归档已停止");
+            // parent 空闲但后台 Agent 尚存时 reconcile_session 会早退；归档销毁
+            // 整个 runtime 后这些 route 同样失效，必须一并收口。
+            self.0.close_children_of_session(id, SessionStatus::Interrupted, true);
+            if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
+                s.created = false;
+                s.resuming = false;
+                s.running = false;
+                s.opened = false;
+                s.compacting = false;
+                s.manual_compact = false;
+                s.pending_steer = None;
+                s.pending_steer_echoes.clear();
+                s.cancel_requested_turn = None;
+                s.open_tools.clear();
+                s.model_text.clear();
+            }
+            self.0.sess.resume.lock_ok().remove(id);
+            self.0.journal_close(id, false);
+        }
+
+        let update_sidecar = |m: &mut Value| {
+            if let Some((t, custom)) = &title {
                 m["title"] = json!(t);
                 // 用户改名标记:UI 标题优先级(用户改名 > summary > 首句自动
                 // 标题)靠它区分前后两者——title 字段本身分不出来
                 m["title_custom"] = json!(custom);
-            });
-        }
-        self.write_sidecar(id, |m| {
-            if let Some(a) = patch.get("archived").and_then(|v| v.as_bool()) {
+            }
+            if let Some(a) = archived {
                 m["archived"] = json!(a);
             }
-        });
+        };
+        if archived == Some(true) {
+            self.0.try_write_sidecar(id, update_sidecar)?;
+        } else {
+            self.write_sidecar(id, update_sidecar);
+        }
         if let Some((t, _)) = title {
             if let Some(s) = self.0.sess.sessions.lock_ok().get_mut(id) {
                 s.title = t;
@@ -1697,6 +1786,30 @@ impl OhmyDriver {
     }
 
     pub async fn session_call(&self, id: &str, kind: &str, payload: Value) -> Result<Value, String> {
+        // 会 destroy/resume 重建 runtime 的配置命令与归档串行；steer、审批等
+        // 实时命令不能共用这把锁，否则一个在途 RPC 会把重复请求阻塞到超时。
+        let serializes_runtime = matches!(
+            kind,
+            "session_set_model"
+                | "session_set_think"
+                | "session_set_mode"
+                | "session_set_skills"
+                | "session_compact"
+        );
+        let lifecycle = serializes_runtime.then(|| self.session_lifecycle(id));
+        let _lifecycle = if let Some(lifecycle) = &lifecycle {
+            Some(lifecycle.lock().await)
+        } else {
+            None
+        };
+        if serializes_runtime && !self.session_exists_locally(id) {
+            return Err("会话不存在".into());
+        }
+        if serializes_runtime
+            && self.read_sidecar(id).get("archived").and_then(Value::as_bool) == Some(true)
+        {
+            return Err("会话已归档".into());
+        }
         // 同 session_send:引擎侧查询/切换都得等后台 resume 落地。
         // 唯独切模型不吃 resume 失败:恢复失败时会话未建成,正好走下方
         // 未建成分支带新选模型重建——这是原模型失效后用户仅剩的自救入口,
@@ -1990,6 +2103,9 @@ impl OhmyDriver {
                 self.push_frame(id, |seq| frame::compact_status("started", seq));
                 self.write_sidecar(id, |m| m["status"] = json!(SessionStatus::Running.as_str()));
                 self.emit_session_event(id, SessionStatus::Running.as_str());
+                // lifecycle 只保护 resume + 开轮；压缩 RPC 可持续数分钟，归档必须
+                // 能在等待应答期间取得锁并用 destroy 主动取消它。
+                drop(_lifecycle);
                 // 应答要等整段历史的 LLM 摘要,30s 常规预算不够,单独放宽。
                 // 超时是本地放弃:引擎可能仍在压缩并事后成功,期间上行会被
                 // 引擎忙碌守卫拒绝,错误如实外显,不做本地和解
@@ -2313,6 +2429,21 @@ impl OhmyDriver {
         self.create_resumed(id, model_id, mode).await
     }
 
+    fn session_exists_locally(&self, id: &str) -> bool {
+        self.0.sess.sessions.lock_ok().contains_key(id)
+            || self.read_sidecar(id).as_object().is_some_and(|meta| !meta.is_empty())
+    }
+
+    fn session_lifecycle(&self, id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        self.0
+            .sess
+            .lifecycle
+            .lock_ok()
+            .entry(id.to_string())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+    }
+
     fn session_mode(&self, id: &str) -> String {
         self.0
             .sess.sessions
@@ -2535,6 +2666,12 @@ impl Inner {
     /// async command 里的调用点按需套 spawn_blocking(session_send/
     /// session_delete/sessions_list),reader 线程本就是专用 std 线程。
     pub(super) fn write_sidecar(&self, id: &str, f: impl FnOnce(&mut Value)) {
+        if let Err(e) = self.write_sidecar_inner(id, true, f) {
+            eprintln!("[desktop] 写入会话 sidecar {id} 失败: {e}");
+        }
+    }
+
+    pub(super) fn try_write_sidecar(&self, id: &str, f: impl FnOnce(&mut Value)) -> Result<(), String> {
         self.write_sidecar_inner(id, true, f)
     }
 
@@ -2542,34 +2679,29 @@ impl Inner {
     /// "模型异步回来、与用户动作无关"的字段一刷就把会话无端顶到最前——
     /// 用户没动它,列表却重排了。
     pub(super) fn write_sidecar_keep_updated(&self, id: &str, f: impl FnOnce(&mut Value)) {
-        self.write_sidecar_inner(id, false, f)
+        if let Err(e) = self.write_sidecar_inner(id, false, f) {
+            eprintln!("[desktop] 写入会话 sidecar {id} 失败: {e}");
+        }
     }
 
-    fn write_sidecar_inner(&self, id: &str, touch: bool, f: impl FnOnce(&mut Value)) {
+    fn write_sidecar_inner(&self, id: &str, touch: bool, f: impl FnOnce(&mut Value)) -> Result<(), String> {
         let _write = self.sess.sidecar_write.lock_ok();
         // 非法 id 到这里就停:再往下是 atomic_write_private,它会 create_dir_all
         // 出父目录,等于任意目录写 meta.json
         let Some(path) = self.sidecar_path(id) else {
-            eprintln!("[desktop] 拒绝为非法会话 id 写 sidecar: {id:?}");
-            return;
+            return Err(format!("拒绝为非法会话 id 写 sidecar: {id:?}"));
         };
         let mut meta = self.read_sidecar(id);
         f(&mut meta);
         if touch {
             meta["updated_at"] = json!(frame::now_ms());
         }
-        let data = match serde_json::to_vec_pretty(&meta) {
-            Ok(data) => data,
-            Err(e) => {
-                eprintln!("[desktop] 序列化会话 sidecar {id} 失败: {e}");
-                return;
-            }
-        };
+        let data = serde_json::to_vec_pretty(&meta)
+            .map_err(|e| format!("序列化会话 sidecar {id} 失败: {e}"))?;
         // Windows 的 std::fs::rename 不能可靠覆盖已有目标，共用配置层的
         // 跨平台原子替换原语。
-        if let Err(e) = crate::config::atomic_write_private(&path, &data) {
-            eprintln!("[desktop] 写入会话 sidecar {id} 失败: {e}");
-        }
+        crate::config::atomic_write_private(&path, &data)
+            .map_err(|e| format!("写入会话 sidecar {id} 失败: {e}"))
     }
 
     /// 追加一帧:编 seq → 投递写线程落盘 → (opened 时)入批量缓冲。

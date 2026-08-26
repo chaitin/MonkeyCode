@@ -126,6 +126,29 @@ describe("OutlineNav 交互", () => {
     expect(screen.getByText("(空消息)").closest("button")?.getAttribute("aria-current")).toBe("true");
     expect(screen.getByText("第一问").closest("button")?.getAttribute("aria-current")).toBeNull();
   });
+
+  it("展开长大纲时按条目位置把当前消息居中，而不是读取按钮在 li 内的局部偏移", () => {
+    const clientHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("dropdown-content") ? 120 : 0;
+    });
+    const offsetTop = vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockImplementation(function (this: HTMLElement) {
+      return this.tagName === "LI" && this.querySelector('[aria-current="true"]') ? 600 : 0;
+    });
+    const offsetHeight = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(24);
+    try {
+      const many = outlineEntriesOf(
+        Array.from({ length: 40 }, (_, i) => ({ seq: i + 1, offset: i * 10, text: `问题 ${i + 1}` })),
+        [],
+      );
+      const { container } = render(<OutlineNav entries={many} activeSeq={30} onJump={() => {}} />);
+      fireEvent.mouseEnter(container.querySelector("[data-outline-dot]")!);
+      expect((container.querySelector(".dropdown-content") as HTMLElement).scrollTop).toBe(552);
+    } finally {
+      clientHeight.mockRestore();
+      offsetTop.mockRestore();
+      offsetHeight.mockRestore();
+    }
+  });
 });
 
 // 点列仍保留限高，极小窗口下不会溢出到 composer；长会话则只展示
