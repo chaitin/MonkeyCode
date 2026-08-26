@@ -65,7 +65,7 @@ function Harness() {
         onCloudCreatedInSlot={() => {}}
         onOpenSettings={() => {}}
         recentDirs={[]}
-        cloud={{ feed, projects: [], reloadKey: 0, onDeleted: () => {}, onChanged: () => {} }}
+        cloud={{ feed, projects: [], reloadKey: 0, refreshKey: 0, onDeleted: () => {}, onChanged: () => {}, onRefresh: () => {} }}
       />
     </>
   );

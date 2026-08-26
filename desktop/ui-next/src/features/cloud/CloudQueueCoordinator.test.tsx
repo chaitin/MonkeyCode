@@ -266,6 +266,35 @@ describe("CloudQueueCoordinatorProvider", () => {
     view.unmount();
   });
 
+  it("同一 transport 下账号会话 revision 变化会立即隐藏旧 runtime 并重查身份", async () => {
+    localStorage.clear();
+    resetSendQueueMemoryForTests();
+    let loggedIn = false;
+    const loadIdentity = vi.fn(async (): Promise<CloudAccountIdentity> =>
+      loggedIn
+        ? { logged_in: true, base_url: "https://cloud.example", user: { id: "u1" } }
+        : { logged_in: false, base_url: "https://cloud.example" },
+    );
+    const tree = (identityRevision: number) => (
+      <McTransportProvider generation={1} isCurrent={(value) => value === 1}>
+        <CloudQueueCoordinatorProvider identityRevision={identityRevision} loadIdentity={loadIdentity}>
+          {(api) => <span data-testid="session-scope">{api.available ? api.accountScope : "unavailable"}</span>}
+        </CloudQueueCoordinatorProvider>
+      </McTransportProvider>
+    );
+
+    const view = render(tree(0));
+    await waitFor(() => expect(loadIdentity).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("session-scope").textContent).toBe("unavailable");
+
+    loggedIn = true;
+    view.rerender(tree(1));
+    expect(screen.getByTestId("session-scope").textContent).toBe("unavailable");
+    await waitFor(() => expect(screen.getByTestId("session-scope").textContent).toBe("https://cloud.example|u1"));
+    expect(loadIdentity).toHaveBeenCalledTimes(2);
+    view.unmount();
+  });
+
   it("StrictMode 下同一 accountScope+taskId 仍只创建一个 runtime", async () => {
     localStorage.clear();
     resetSendQueueMemoryForTests();

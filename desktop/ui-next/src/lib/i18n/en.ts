@@ -730,7 +730,7 @@ export const en: Record<MessageKey, string> = {
   "cloud.list.untitled": "Cloud task",
   "cloud.list.untitledProject": "Untitled project",
   "cloud.list.newTaskIn": "New task in this project",
-  "cloud.list.refresh": "Refresh cloud tasks",
+  "cloud.list.refresh": "Refresh cloud tasks and projects",
   "cloud.list.delete": "Delete task",
   "cloud.list.deleteConfirm": "Confirm delete",
   "cloud.list.deleteFailed": "Failed to delete task: {reason}",

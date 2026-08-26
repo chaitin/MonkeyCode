@@ -186,6 +186,8 @@ function stubShell(
     models?: unknown[];
     intent?: string | null;
     cloudTasks?: unknown[];
+    /** 针对集成场景覆盖指定壳命令。 */
+    extra?: Record<string, (args?: Record<string, unknown>) => unknown>;
     /** 让指定命令直接回 Err(壳拒了写操作:运行中不许删、磁盘只读…) */
     fail?: Record<string, string>;
   } = {},
@@ -212,6 +214,7 @@ function stubShell(
         if (gated) return gated;
         const failure = opts.fail?.[cmd];
         if (failure) return Promise.reject(new Error(failure));
+        if (opts.extra?.[cmd]) return Promise.resolve(opts.extra[cmd](args));
         if (cmd === "sessions_list") return Promise.resolve(opts.sessions ?? []);
         if (cmd === "models_list") return Promise.resolve(opts.models ?? [{ name: "m", default: true }]);
         if (cmd === "todos_load") return Promise.resolve([]); // 侧栏待办组挂载即消费,回 null 会被判契约漂移
@@ -462,6 +465,62 @@ describe("覆盖视图让位(设置/新建盖着时,装载动作掀开覆盖回�
 });
 
 describe("MonkeyCode transport 切换", () => {
+  it("Sidebar 手动刷新会同时重拉云任务和项目", async () => {
+    const shell = stubShell();
+    render(<App />);
+    await userEvent.click(screen.getByRole("tab", { name: "云端" }));
+    await waitFor(() => expect(shell.count("mc_tasks")).toBeGreaterThan(0));
+    await waitFor(() => expect(shell.count("mc_projects")).toBeGreaterThan(0));
+    const tasksBefore = shell.count("mc_tasks");
+    const projectsBefore = shell.count("mc_projects");
+
+    await userEvent.click(screen.getByRole("button", { name: "刷新云端任务和项目" }));
+    await waitFor(() => expect(shell.count("mc_tasks")).toBeGreaterThan(tasksBefore));
+    await waitFor(() => expect(shell.count("mc_projects")).toBeGreaterThan(projectsBefore));
+  });
+
+  it("设置页重新登录后立即恢复 Sidebar 登录态、任务和项目", async () => {
+    let loggedIn = false;
+    const shell = stubShell({
+      extra: {
+        mc_status: () =>
+          loggedIn
+            ? { logged_in: true, host: "h", base_url: "https://cloud.example", user: { id: "u" } }
+            : { logged_in: false, host: "h", base_url: "https://cloud.example" },
+        mc_tasks: () =>
+          loggedIn
+            ? { tasks: [{ id: "fresh-task", title: "重新登录后的任务", status: "processing" }], page_info: { total: 1 } }
+            : Promise.reject(new Error("Unauthorized")),
+        mc_projects: () => loggedIn ? { projects: [{ id: "fresh-project", name: "重新登录后的项目" }] } : { projects: [] },
+        mc_password_login: () => {
+          loggedIn = true;
+          return { ok: true };
+        },
+        baizhi_status: () => ({ logged_in: false }),
+        mc_usage: () => null,
+        mc_models_sync: () => ({ models: [] }),
+      },
+    });
+    render(<App />);
+    await userEvent.click(screen.getByRole("tab", { name: "云端" }));
+    expect(await screen.findByText("未连接云端")).toBeTruthy();
+    const tasksBefore = shell.count("mc_tasks");
+    const projectsBefore = shell.count("mc_projects");
+
+    await userEvent.click(screen.getByRole("button", { name: "去设置连接" }));
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "密码" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "邮箱" }), "user@example.com");
+    await userEvent.type(screen.getByLabelText("密码"), "secret");
+    await userEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    await waitFor(() => expect(shell.count("mc_tasks")).toBeGreaterThan(tasksBefore));
+    await waitFor(() => expect(shell.count("mc_projects")).toBeGreaterThan(projectsBefore));
+    await userEvent.click(screen.getByText("关闭", { selector: "button" }));
+    expect(await screen.findByText("重新登录后的任务")).toBeTruthy();
+    expect(await screen.findByText("重新登录后的项目")).toBeTruthy();
+  });
+
   it("壳事件立即重拉云任务 feed(换服务/登出后旧列表作废)", async () => {
     const shell = stubShell({ cloudTasks: [{ id: "ct1", title: "旧服务任务", status: "processing" }] });
     render(<App />);

@@ -188,6 +188,7 @@ function ServiceCard({
   onLoggedIn,
   onBaizhiLoggedIn,
   onMcDisconnected,
+  onSessionChanged,
   onResult,
   autoSyncToken = 0,
   serviceGeneration,
@@ -221,6 +222,8 @@ function ServiceCard({
   onBaizhiLoggedIn: () => void;
   /** 断开成功后清掉会员模型组(宿主 applyMcDisconnect) */
   onMcDisconnected?: () => SyncApplied | undefined | void;
+  /** MonkeyCode 登录态真实变化，通知 App 作废账号作用域数据。 */
+  onSessionChanged?: () => void;
   /** 同步结果交宿主并入设置草稿;回执带跳过名单与自动保存结论(行内外显) */
   onResult?: (r: McModelsSyncResult) => SyncApplied | undefined | void;
   /** 登录/桥接真实事件的自动同步信号 */
@@ -277,6 +280,7 @@ function ServiceCard({
     try {
       const { warning, cancelled } = await disconnectMc(serviceGeneration);
       if (cancelled || !isCurrentService()) return false;
+      onSessionChanged?.();
       await onChanged();
       if (!isCurrentService()) return false;
       // 把已同步的会员模型从配置里清掉(旧 UI disconnectMcWithCleanup)。
@@ -796,6 +800,7 @@ function BaizhiOptInRow({ onBaizhiLoggedIn }: { onBaizhiLoggedIn: () => void }) 
 export function AccountSection({
   onSyncResult,
   onMcDisconnected,
+  onMcSessionChanged,
   draft,
   onDraft,
   refreshKey = 0,
@@ -810,6 +815,8 @@ export function AccountSection({
   /** 断开 MonkeyCode 成功后清掉会员模型组(SettingsView.applyMcDisconnect);
    *  回执同 onSyncResult。缺席(浏览器模式/独立渲染)则只断连不清模型。 */
   onMcDisconnected?: () => SyncApplied | undefined | void;
+  /** 登录、桥接或断开成功后通知 App 刷新账号作用域的云数据。 */
+  onMcSessionChanged?: () => void;
   /** 设置草稿:服务版本与私有化三项在本分区编辑(缺席则只渲染生效行) */
   draft?: SettingsDraft | null;
   onDraft?: (up: (d: SettingsDraft) => SettingsDraft) => void;
@@ -932,21 +939,30 @@ export function AccountSection({
     try {
       await mcLogin();
       if (!isServiceGenerationCurrent(serviceGeneration)) return;
+      onMcSessionChanged?.();
       await refresh();
       if (!isServiceGenerationCurrent(serviceGeneration)) return;
       setMcSyncToken((n) => n + 1);
     } catch (e) {
       if (!isServiceGenerationCurrent(serviceGeneration)) return;
-      if (alive.current) setBridgeErr(errMsg(e));
       await refresh();
+      if (!isServiceGenerationCurrent(serviceGeneration)) return;
+      if (mcRef.current?.logged_in) {
+        onMcSessionChanged?.();
+        setMcSyncToken((n) => n + 1);
+      } else if (alive.current) {
+        setBridgeErr(errMsg(e));
+      }
     }
-  }, [isServiceGenerationCurrent, refresh]);
+  }, [isServiceGenerationCurrent, onMcSessionChanged, refresh]);
 
   const onMcLoggedIn = useCallback(async (generation: number) => {
+    if (!isServiceGenerationCurrent(generation)) return;
+    onMcSessionChanged?.();
     await refresh();
     if (!isServiceGenerationCurrent(generation)) return;
     setMcSyncToken((n) => n + 1);
-  }, [isServiceGenerationCurrent, refresh]);
+  }, [isServiceGenerationCurrent, onMcSessionChanged, refresh]);
 
   /** 选中版本(服务行 radio 与「切换到此服务」共用):官方版当场静默落盘,
    *  私有化只切形态待填地址。「与已保存配置无差异就跳过」由 SettingsView
@@ -1012,6 +1028,7 @@ export function AccountSection({
             onLoggedIn={onMcLoggedIn}
             onBaizhiLoggedIn={() => void onBaizhiLoggedIn()}
             onMcDisconnected={onMcDisconnected}
+            onSessionChanged={onMcSessionChanged}
             onResult={onSyncResult}
             autoSyncToken={mcSyncToken}
             serviceGeneration={refreshKey}

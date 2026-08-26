@@ -751,7 +751,7 @@ export const zh = {
   "cloud.list.untitled": "云端任务",
   "cloud.list.untitledProject": "未命名项目",
   "cloud.list.newTaskIn": "在此项目新建任务",
-  "cloud.list.refresh": "刷新云端任务",
+  "cloud.list.refresh": "刷新云端任务和项目",
   "cloud.list.delete": "删除任务",
   "cloud.list.deleteConfirm": "确认删除",
   "cloud.list.deleteFailed": "删除任务失败:{reason}",

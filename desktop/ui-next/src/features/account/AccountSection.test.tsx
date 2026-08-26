@@ -385,6 +385,7 @@ describe("MonkeyCode 账号密码登录入口", () => {
 
   it("空提交拦截;正确提交 mc_password_login 原样携带 email/password", async () => {
     let mcConnected = false;
+    const onMcSessionChanged = vi.fn();
     const { calls } = stubShell({
       baizhi_status: bzOut,
       mc_status: () => (mcConnected ? mcIn() : mcOut()),
@@ -396,7 +397,7 @@ describe("MonkeyCode 账号密码登录入口", () => {
       mc_usage: () => null,
       mc_models_sync: () => ({ models: [{ name: "m", base_url: "https://m", api_key: "k", model: "m", source: "monkeycode" }] }),
     });
-    render(<AccountSection />);
+    render(<AccountSection onMcSessionChanged={onMcSessionChanged} />);
     await userEvent.click(await screen.findByRole("tab", { name: "密码" }));
 
     await userEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -411,8 +412,9 @@ describe("MonkeyCode 账号密码登录入口", () => {
     // MC 已连、百智云未登录:登录 tabs 收起,百智云组降级为可选登录入口
     expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.getByRole("button", { name: "登录百智云" })).toBeDefined();
-    // 账密直连同样是登录真实事件:会员模型自动同步
+    // 账密直连同样是登录真实事件:会员模型自动同步，并通知 App 刷新云端空间
     await waitFor(() => expect(calls.some((c) => c.cmd === "mc_models_sync")).toBe(true));
+    expect(onMcSessionChanged).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -640,6 +642,7 @@ describe("已登录:用量面板/签到/同步/断开", () => {
   it("断开连接:只调用壳内原子 mc_disconnect,断开后回连接入口", async () => {
     let mcConnected = true;
     const usage = { current: usageFixture() };
+    const onMcSessionChanged = vi.fn();
     const { calls } = stubShell({
       baizhi_status: bzIn,
       mc_status: () => (mcConnected ? mcIn() : mcOut()),
@@ -649,10 +652,11 @@ describe("已登录:用量面板/签到/同步/断开", () => {
         return { ok: true };
       },
     });
-    render(<AccountSection />);
+    render(<AccountSection onMcSessionChanged={onMcSessionChanged} />);
     await userEvent.click(await screen.findByRole("button", { name: "断开连接" }));
     expect(await screen.findByRole("button", { name: "连接 MonkeyCode 云端" })).toBeDefined();
     expect(calls.filter((c) => c.cmd === "mc_disconnect")).toHaveLength(1);
+    expect(onMcSessionChanged).toHaveBeenCalledTimes(1);
   });
 
   it("服务切换时壳取消旧断开,UI 不刷新新服务状态", async () => {

@@ -29,6 +29,7 @@ import {
   IconKeyboard,
   IconMessages,
   IconPlus,
+  IconRefresh,
   IconSettings,
   IconWorld,
   IconX,
@@ -112,8 +113,11 @@ export interface SplitCloudWiring {
   feed: CloudTasksFeed;
   projects: CloudProject[];
   reloadKey: number;
+  refreshKey: number;
   onDeleted: (id: string) => void;
   onChanged: () => void;
+  /** 用户主动刷新任务、项目和已展开项目组。 */
+  onRefresh: () => void;
 }
 
 /** 行政接线(任务列行右键/待办组;旧侧栏能力随壳退役迁入)。 */
@@ -1416,8 +1420,8 @@ function WorkbenchList({
     ...(cloud ? [{ k: "cloud" as const, icon: IconCloud, label: "split.tabCloud" as MessageKey }] : []),
   ];
 
-  // ☰ 列开关 + 新建双钮(mac 住列顶 chrome 行,其余平台住品牌行行尾——
-  // 家不同、钮一致)。新建 = ☰ 同语汇的 ghost 方钮(2026-08-18 用户报障
+  // 列级动作(mac 住列顶 chrome 行,其余平台住品牌行行尾):☰、云端态刷新、
+  // 新建。新建 = ☰ 同语汇的 ghost 方钮(2026-08-18 用户报障
   // 「按钮丑」:soft-primary 色块是全 chrome 唯一大填充,违背「安静
   // chrome、填充只归选中」),品牌感只落图标色;kind 跟当前 tab,新建即新格
   const listActions = (
@@ -1432,6 +1436,17 @@ function WorkbenchList({
       >
         <IconLayoutSidebar size={16} stroke={1.75} aria-hidden />
       </button>
+      {tab === "cloud" && cloud && (
+        <button
+          type="button"
+          aria-label={t("cloud.list.refresh")}
+          title={t("cloud.list.refresh")}
+          className="btn btn-ghost btn-square btn-xs self-center text-base-content/60"
+          onClick={cloud.onRefresh}
+        >
+          <IconRefresh size={15} stroke={1.75} aria-hidden />
+        </button>
+      )}
       <button
         type="button"
         aria-label={t("split.newTask")}
@@ -1464,23 +1479,20 @@ function WorkbenchList({
         </div>
       )}
       {/* 品牌行(2026-08-18 用户定案「tab 上方加品牌」;旧侧栏头同款
-          Brand = 字标 + work 徽标,自带逐节点拖拽区);非 mac 双钮住行尾
+          Brand = 字标 + work 徽标,自带逐节点拖拽区);非 mac 动作组住行尾
           (chrome 行已省,见上) */}
       <div data-tauri-drag-region="" className={`flex items-center gap-2 ps-5 pt-1 pb-2 ${isMacShell() ? "pe-4" : "pe-2 min-h-10"}`}>
-        <Brand />
-        {!isMacShell() && (
-          <>
-            <span data-tauri-drag-region="" className="min-w-0 flex-1" />
-            {listActions}
-          </>
-        )}
+        <span data-tauri-drag-region="" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <Brand />
+        </span>
+        {!isMacShell() && <span className="flex shrink-0 items-center">{listActions}</span>}
       </div>
       {/* tab 盒式切换(形态五代:border 下划线 → box 白 pill → box 补轨
           → 文字级 → 回归 box,2026-08-20 用户「改成 box」):与换任务
           装载卡的 tabs-box 同语汇,选中 = 白底 pill;侧栏底色即 base-200,
           盒轨与列底同色隐形,只剩选中 pill 浮起,重量比带轨时代轻 */}
-      <div className="ps-4 pe-4 pb-1">
-        <div role="tablist" aria-label={t("split.pickTitle")} className="tabs tabs-box tabs-sm w-full">
+      <div className="px-4 pb-1">
+        <div role="tablist" aria-label={t("split.pickTitle")} className="tabs tabs-box tabs-sm w-full min-w-0">
           {TABS.map(({ k, label }) => (
             <button
               key={k}
@@ -1787,7 +1799,10 @@ function WorkbenchList({
             currentId={focusedEntry && isCloudSlotId(focusedEntry) ? cloudTaskIdOf(focusedEntry) : null}
             onSelect={(task) => onPick(cloudSlotId(task.id))}
             reloadKey={cloud.reloadKey}
+            refreshKey={cloud.refreshKey}
             onDeleted={cloud.onDeleted}
+            onOpenSettings={onOpenSettings}
+            onRefresh={cloud.onRefresh}
             onNewTaskIn={(project) => onNewCloudIn(project)}
             onTaskDragStart={(e, task) => {
               e.dataTransfer.setData(LOAD_MIME, cloudSlotId(task.id));
