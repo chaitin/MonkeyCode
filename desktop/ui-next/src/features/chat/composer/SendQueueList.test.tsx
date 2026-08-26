@@ -136,6 +136,7 @@ describe("SendQueueList", () => {
       blocked: null,
       onRemove: vi.fn(),
       onReorder: vi.fn(),
+      onEdit: vi.fn(),
       onSteer,
       onResume: vi.fn(),
       onDiscardUncertain: vi.fn(),
@@ -144,7 +145,17 @@ describe("SendQueueList", () => {
     const steeringRow = screen.getByText("正在补充").closest("li")!;
     expect(within(steeringRow).getByText("正在插入…")).toBeTruthy();
     expect(within(steeringRow).queryByRole("button", { name: "拖动调整顺序" })).toBeNull();
-    expect((screen.getByRole("button", { name: "立即发送" }) as HTMLButtonElement).disabled).toBe(true);
+    const pendingRow = screen.getByText("后续消息").closest("li")!;
+    const rowButtons = within(pendingRow).getAllByRole("button");
+    expect(rowButtons.map((button) => button.getAttribute("aria-label") || button.textContent)).toEqual([
+      "拖动调整顺序",
+      "立即发送",
+      "编辑待发送消息",
+      "删除待发送消息",
+    ]);
+    const steerButton = within(pendingRow).getByRole("button", { name: "立即发送" }) as HTMLButtonElement;
+    expect(steerButton.disabled).toBe(true);
+    expect(steerButton.className).toContain("opacity-0");
 
     rerender(<SendQueueList {...props} steering={[{ ...outbox, phase: "acked" }]} />);
     expect(screen.queryByText("正在补充")).toBeNull();

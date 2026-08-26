@@ -434,7 +434,7 @@ export function SendQueueList<A>({
                 {onSteer && (
                   <button
                     type="button"
-                    className="btn btn-ghost btn-xs h-7 min-h-7 shrink-0 px-1.5 font-normal text-primary"
+                    className="btn btn-ghost btn-xs h-7 min-h-7 shrink-0 px-1.5 font-normal text-primary opacity-0 hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                     disabled={steeringDispatching || editingId !== null}
                     onClick={() => onSteer(item.id)}
                   >
