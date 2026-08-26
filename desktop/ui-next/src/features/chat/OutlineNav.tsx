@@ -6,7 +6,7 @@
 // activeSeq 当前项:点列以不透明度差加重当前点,面板项 menu-active +
 // aria-current,打开时当前项滚入视野(移植旧 outline.tsx)。形态差异:
 // 旧「浮窗跟随指针高度」不做——dropdown 锚定已确定面板落点。
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
 import type { OutlineItem } from "@/lib/ipc/controls";
@@ -138,11 +138,12 @@ export const OutlineNav = memo(function OutlineNav({
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLUListElement>(null);
 
-  // 当前项始终可见:提问多到面板要内滚时,打开就已经停在「我现在在哪」上
-  // (移植旧 outline.tsx 的居中滚动;jsdom 几何全 0 时是无害空转)
-  useEffect(() => {
+  // 当前项始终可见:提问多到面板要内滚时,打开就已经停在「我现在在哪」上。
+  // daisyUI 给每个 li 设置了 position:relative，所以按钮的 offsetTop 恒以
+  // 自己所在的 li 为基准（始终接近 0）；必须用 li 相对面板的偏移来定位。
+  useLayoutEffect(() => {
     const box = panelRef.current;
-    const target = box?.querySelector<HTMLElement>('[aria-current="true"]');
+    const target = box?.querySelector<HTMLElement>('[data-outline-current="true"]');
     if (!open || !box || !target) return;
     box.scrollTop = Math.max(0, target.offsetTop - box.clientHeight / 2 + target.offsetHeight / 2);
   }, [open, activeSeq, entries.length]);
@@ -195,7 +196,7 @@ export const OutlineNav = memo(function OutlineNav({
             className="dropdown-content menu max-h-full w-64 flex-nowrap [&_li]:flex-nowrap overflow-x-hidden overflow-y-auto rounded-box bg-base-100 p-2 shadow-sm"
           >
             {entries.map((e) => (
-              <li key={e.seq}>
+              <li key={e.seq} data-outline-current={e.seq === activeSeq ? "true" : undefined}>
                 <button
                   type="button"
                   aria-current={e.seq === activeSeq ? "true" : undefined}
