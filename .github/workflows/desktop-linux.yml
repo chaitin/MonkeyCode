@@ -31,6 +31,8 @@ jobs:
             /etc/apt/sources.list
           apt-get -o Acquire::Check-Valid-Until=false update
           apt-get install -y --no-install-recommends ca-certificates curl git
+          # 容器内 root 用户访问宿主挂载工作区时，Git 需要显式信任该目录。
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: actions/checkout@v4
 
