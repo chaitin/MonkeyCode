@@ -560,6 +560,101 @@ describe("运行态 / 停止 / 排队", () => {
     expect(screen.getByText("换个问法")).toBeTruthy();
   });
 
+  it("主 composer 编辑/快捷保存/取消队列项并恢复新消息草稿", async () => {
+    const { emit, ops } = stubShell();
+    render(<ChatView meta={META} />);
+    const box = await ready();
+    emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
+    await waitFor(() => expect(screen.getByText("思考中")).toBeTruthy());
+
+    const queuedFile = new File([new Uint8Array([1])], "queued.png", { type: "image/png" });
+    fireEvent.paste(box, { clipboardData: { items: [{ kind: "file", getAsFile: () => queuedFile }] } });
+    await screen.findByText("queued.png");
+    await userEvent.type(box, "待修改{Enter}");
+    await userEvent.type(box, "我的新草稿");
+    await userEvent.click(screen.getByRole("button", { name: "编辑待发送消息" }));
+    expect(screen.getByText("正在编辑待发送消息 #1")).toBeTruthy();
+    expect(screen.getByText("编辑中")).toBeTruthy();
+    expect((box as HTMLTextAreaElement).value).toBe("待修改");
+    expect(document.activeElement).toBe(box);
+    const readOnlyAttachmentButtons = screen.getAllByRole("button", {
+      name: "编辑待发送消息时暂不支持修改附件",
+    });
+    expect(readOnlyAttachmentButtons).toHaveLength(2);
+    for (const button of readOnlyAttachmentButtons) {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(button.getAttribute("title")).toBe("编辑待发送消息时暂不支持修改附件");
+    }
+    const blockedFile = new File([new Uint8Array([2])], "blocked.png", { type: "image/png" });
+    fireEvent.paste(box, { clipboardData: { items: [{ kind: "file", getAsFile: () => blockedFile }] } });
+    fireEvent.drop(box.closest("main")!, { dataTransfer: { files: [blockedFile] } });
+    expect(ops.filter((op) => op.cmd === "upload_begin")).toHaveLength(1);
+    expect(await screen.findByText("编辑待发送消息时暂不支持修改附件")).toBeTruthy();
+    expect(screen.queryByText("blocked.png")).toBeNull();
+
+    fireEvent.change(box, { target: { value: "修改完成" } });
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(screen.getByText("修改完成")).toBeTruthy());
+    expect((box as HTMLTextAreaElement).value).toBe("我的新草稿");
+    expect(screen.queryByText("正在编辑待发送消息 #1")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "编辑待发送消息" }));
+    fireEvent.change(box, { target: { value: "放弃修改" } });
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByText("修改完成")).toBeTruthy();
+    expect(screen.queryByText("放弃修改")).toBeNull();
+    expect((box as HTMLTextAreaElement).value).toBe("我的新草稿");
+  });
+
+  it("编辑中继续输入 slash 时 Esc 先关菜单，下一次才取消编辑", async () => {
+    const { emit } = stubShell();
+    render(<ChatView meta={META} />);
+    const box = await ready();
+    emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
+    await screen.findByText("思考中");
+    await userEvent.type(box, "待编辑{Enter}");
+    await userEvent.click(screen.getByRole("button", { name: "编辑待发送消息" }));
+
+    fireEvent.change(box, { target: { value: "/c" } });
+    await screen.findByRole("listbox", { name: "斜杠指令" });
+    fireEvent.change(box, { target: { value: "/co" } }); // 触发 ctl 对象继续更新
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox", { name: "斜杠指令" })).toBeNull();
+    expect(screen.getByText("正在编辑待发送消息 #1")).toBeTruthy();
+    expect((box as HTMLTextAreaElement).value).toBe("/co");
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByText("正在编辑待发送消息 #1")).toBeNull();
+    expect(screen.getByText("待编辑")).toBeTruthy();
+  });
+
+  it("多格编辑 Esc 只取消 hotkeysActive 的本地 composer", async () => {
+    const { emit } = stubShell();
+    const meta2 = { ...META, id: "s2", title: "第二格" };
+    render(
+      <>
+        <ChatView meta={META} hotkeysActive={false} />
+        <ChatView meta={meta2} hotkeysActive />
+      </>,
+    );
+    await waitFor(() => expect(screen.getAllByText("帮我修 bug")).toHaveLength(2));
+    emit("frames:s1", [{ type: "task-started", timestamp: 5, seq: 5 }]);
+    emit("frames:s2", [{ type: "task-started", timestamp: 5, seq: 5 }]);
+    await waitFor(() => expect(screen.getAllByText("思考中")).toHaveLength(2));
+    const boxes = screen.getAllByRole("textbox", { name: "消息输入" });
+    await userEvent.type(boxes[0]!, "非焦点格消息{Enter}");
+    await userEvent.type(boxes[1]!, "焦点格消息{Enter}");
+    const editButtons = screen.getAllByRole("button", { name: "编辑待发送消息" });
+    await userEvent.click(editButtons[0]!);
+    await userEvent.click(screen.getAllByRole("button", { name: "编辑待发送消息" })[0]!);
+    expect(screen.getAllByText(/正在编辑待发送消息/)).toHaveLength(2);
+
+    await userEvent.keyboard("{Escape}");
+    expect((boxes[0] as HTMLTextAreaElement).value).toBe("非焦点格消息");
+    expect((boxes[1] as HTMLTextAreaElement).value).toBe("");
+    expect(screen.getAllByText(/正在编辑待发送消息/)).toHaveLength(1);
+  });
+
   it("排队可取消:清掉后轮结束不补投", async () => {
     const { ops, emit } = stubShell();
     render(<ChatView meta={META} />);

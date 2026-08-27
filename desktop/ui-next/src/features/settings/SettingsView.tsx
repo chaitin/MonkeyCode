@@ -860,7 +860,9 @@ export const SettingsView = forwardRef<SettingsViewHandle, {
   /** 有本地会话在跑(status==="running"):同步后不自动保存重启引擎,
    * 隐式踹掉运行中的轮次不可接受;回退保存条由用户择机保存(旧 UI 同款口径) */
   hasRunningTask?: boolean;
-}>(function SettingsView({ onClose, hasRunningTask = false }, ref) {
+  /** MonkeyCode 登录态变化后让 App 作废账号作用域数据。 */
+  onMcSessionChanged?: () => void;
+}>(function SettingsView({ onClose, hasRunningTask = false, onMcSessionChanged }, ref) {
   const { t } = useI18n();
   const { generation: mcTransportGeneration, isCurrent: isMcTransportCurrent } = useMcTransport();
   // 离开确认(旧 UI App.tsx settingsDirty + window.confirm 的 daisyUI 版):
@@ -1188,6 +1190,7 @@ export const SettingsView = forwardRef<SettingsViewHandle, {
           <AccountSection
             onSyncResult={applySync}
             onMcDisconnected={applyMcDisconnect}
+            onMcSessionChanged={onMcSessionChanged}
             draft={draft}
             onDraft={updateDraft}
             refreshKey={mcTransportGeneration}

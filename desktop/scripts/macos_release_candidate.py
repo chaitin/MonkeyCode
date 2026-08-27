@@ -27,6 +27,7 @@ INPUTS = (
     ROOT.parent / "plugins/skills",
     ROOT / "icons/icon.icns",
     ROOT / "icons/icon.png",
+    ROOT / "Info.plist",
     ROOT / "tauri.conf.json",
     ROOT / "bundle.macos.conf.json",
     ROOT / "tauri.release.conf.json",

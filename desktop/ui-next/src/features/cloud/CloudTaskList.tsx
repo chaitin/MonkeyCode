@@ -9,7 +9,7 @@
 // 数据 hook(useCloudTasks/useCloudProjects)由 Sidebar 顶层调用后注入
 // props——概览统计与列表共用同一份 feed,enabled 仅云端空间为真。
 import { IconCloud, IconFolder, IconHistory, IconPlus } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type DragEvent } from "react";
 
 import { GroupLabel, ListRow, NEST_NO_GUIDE, SectionFold } from "@/features/sidebar/listKit";
 import type { MenuItem } from "@/lib/contextMenu";
@@ -57,22 +57,26 @@ type PageMode = "replace" | "append" | "merge";
  * enabled=false 时不拉取(Sidebar 只在云端空间供数;数据跨空间切换留存,
  * 重新进入云端经 enabled 翻转刷新)。
  * 自动刷新:窗口重获焦点 + 30s 轮询(仅 enabled 时挂,离开即拆)。 */
-export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
+export function useCloudTasks(reloadKey = 0, enabled = true, refreshKey = 0): CloudTasksFeed {
   const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();
   const [tasks, setTasks] = useState<CloudTask[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [unauthorized, setUnauthorized] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
+  const [queuedRefreshTick, setQueuedRefreshTick] = useState(0);
   const pageRef = useRef(0); // 已加载的最后一页(0 = 尚未加载)
   // 取数互斥分两条:前台(首屏/翻页/手动刷新)与后台刷新各占各的。
   // 合成一条会让后台刷新**吃掉**用户刚点的「加载更多」——焦点/轮询的时机
   // 与点击撞车是常态,静默丢一次用户操作比多发一个请求坏得多。
   // 反向则让路:前台在跑时后台这一拍直接跳过(下一拍还会来)。
-  const inFlight = useRef(false);
-  const bgFlight = useRef(false);
+  const inFlight = useRef<symbol | null>(null);
+  const bgFlight = useRef<symbol | null>(null);
+  const bgGenerationRef = useRef(0);
+  const queuedReplaceRef = useRef(false);
   const generationRef = useRef(0);
   const appliedReloadRef = useRef<{ enabled: boolean; reloadKey: number; transportGeneration: number } | null>(null);
+  const appliedRefreshRef = useRef(refreshKey);
 
   const fetchPage = useCallback(async (page: number, mode: PageMode) => {
     if (!inDesktopShell()) {
@@ -82,11 +86,19 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
     }
     const generation = generationRef.current;
     const expectedTransport = transportGeneration;
-    const current = () => generation === generationRef.current && isTransportCurrent(expectedTransport);
     const bg = mode === "merge";
     const busy = bg ? bgFlight : inFlight;
-    if (busy.current || (bg && inFlight.current)) return;
-    busy.current = true;
+    if (busy.current || (bg && inFlight.current)) {
+      if (mode === "replace") queuedReplaceRef.current = true;
+      return;
+    }
+    const token = Symbol();
+    const bgGeneration = bgGenerationRef.current;
+    const current = () =>
+      generation === generationRef.current &&
+      (!bg || bgGeneration === bgGenerationRef.current) &&
+      isTransportCurrent(expectedTransport);
+    busy.current = token;
     // 后台刷新不点亮 loading:30s 一次的 spinner 闪烁是纯噪音,
     // 「加载更多」按钮也会因此莫名其妙地禁用一下
     if (!bg) setLoading(true);
@@ -94,6 +106,9 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
     try {
       const r = await mcTasks(page, PAGE_SIZE);
       if (!current()) return;
+      // 只有前台请求**成功**才作废更早的后台结果：若前台失败，已在途的
+      // 后台成功仍可补上新数据；若前台成功，旧后台晚到也不能覆盖它。
+      if (!bg) bgGenerationRef.current += 1;
       setUnauthorized(false); // 连上了(设置里刚连接完再回来)
       const batch = r.tasks ?? [];
       setTotal(r.page_info?.total ?? r.page_info?.total_count ?? null);
@@ -119,6 +134,9 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
       const st = await mcStatus().catch(() => null);
       if (!current()) return;
       if (st?.logged_in === false) {
+        // Cookie 已明确失效：任何更早的后台成功都属于旧登录态，不得再
+        // 撤销 unauthorized 并回灌任务。
+        bgGenerationRef.current += 1;
         setUnauthorized(true);
         setError("");
         setTasks((prev) => prev ?? []); // 收掉首屏 spinner,交给未连接空态
@@ -126,9 +144,15 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
         setError(e instanceof Error ? e.message : String(e));
       }
     } finally {
-      if (current()) {
-        busy.current = false;
-        if (!bg) setLoading(false);
+      if (busy.current === token) {
+        busy.current = null;
+        if (!bg) {
+          setLoading(false);
+          if (queuedReplaceRef.current) {
+            queuedReplaceRef.current = false;
+            setQueuedRefreshTick((n) => n + 1);
+          }
+        }
       }
     }
   }, [transportGeneration, isTransportCurrent]);
@@ -142,8 +166,10 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
     ) return;
     appliedReloadRef.current = { enabled, reloadKey, transportGeneration };
     generationRef.current += 1;
-    inFlight.current = false;
-    bgFlight.current = false;
+    bgGenerationRef.current += 1;
+    inFlight.current = null;
+    bgFlight.current = null;
+    queuedReplaceRef.current = false;
     setTasks(null);
     setTotal(null);
     setError("");
@@ -154,6 +180,18 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
     }
     void fetchPage(1, "replace");
   }, [fetchPage, reloadKey, enabled, transportGeneration]);
+
+  // 用户手动刷新只在成功后替换列表：它不是账号/transport 切换，临时失败
+  // 必须保留当前仍可用的数据。撞上加载更多等前台请求时，由 finally 排队
+  // 补拉，不能因为 refreshKey 已消费就永久丢掉这次动作。
+  useEffect(() => {
+    if (appliedRefreshRef.current === refreshKey) return;
+    appliedRefreshRef.current = refreshKey;
+    if (enabled) void fetchPage(1, "replace");
+  }, [enabled, fetchPage, refreshKey]);
+  useEffect(() => {
+    if (queuedRefreshTick > 0 && enabled) void fetchPage(1, "replace");
+  }, [enabled, fetchPage, queuedRefreshTick]);
 
   // 自动刷新(旧 UI App.tsx:329-340 的两条,ui-next 此前整个漏掉):
   // ① 窗口重获焦点即刷——网页/手机端刚派发的任务,切回桌面就该看得见;
@@ -189,27 +227,85 @@ export function useCloudTasks(reloadKey = 0, enabled = true): CloudTasksFeed {
   };
 }
 
-/** 项目列表(mc_projects;每项目捎带 ≤3 条运行中任务)。失败降级为空
- * (列表退回平铺形态,任务本身不受影响),但必须留痕便于诊断。 */
-export function useCloudProjects(reloadKey = 0, enabled = true): CloudProject[] {
+/** 项目列表(mc_projects;每项目捎带 ≤3 条运行中任务)。与任务首页同频
+ * 自动刷新；后台/手动失败保留上一次可用数据，身份 reload 才清旧账号内容。 */
+export function useCloudProjects(reloadKey = 0, enabled = true, refreshKey = 0): CloudProject[] {
   const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();
   const [projects, setProjects] = useState<CloudProject[]>([]);
-  useEffect(() => {
-    setProjects([]);
-    if (!inDesktopShell() || !enabled) return;
-    let alive = true;
+  const [queuedRefreshTick, setQueuedRefreshTick] = useState(0);
+  // generation 只在身份/transport reload 时推进；普通后台请求不能仅因“后发”
+  // 就吞掉先发成功响应。前台 reload 在途时跳过后台拍，反向则直接作废旧代。
+  const requestGeneration = useRef(0);
+  const foregroundFlight = useRef<symbol | null>(null);
+  const backgroundFlight = useRef<symbol | null>(null);
+  const queuedRefreshRef = useRef(false);
+  const appliedRefreshRef = useRef(refreshKey);
+  const fetchProjects = useCallback((clear: boolean, force = false) => {
+    const generation = requestGeneration.current;
     const expectedTransport = transportGeneration;
-    mcProjects()
+    if (!inDesktopShell() || !enabled) {
+      if (clear) setProjects([]);
+      return;
+    }
+    const busy = clear ? foregroundFlight : backgroundFlight;
+    if (busy.current || (!clear && foregroundFlight.current)) {
+      if (force) queuedRefreshRef.current = true;
+      return;
+    }
+    const token = Symbol();
+    busy.current = token;
+    if (clear) setProjects([]);
+    void mcProjects()
       .then((r) => {
-        if (alive && isTransportCurrent(expectedTransport)) setProjects((r.projects ?? []).filter((p) => !!p.id));
+        if (generation !== requestGeneration.current || !isTransportCurrent(expectedTransport)) return;
+        setProjects((r.projects ?? []).filter((p) => !!p.id));
       })
       .catch((e: unknown) => {
-        console.warn("[cloud-projects] 项目列表拉取失败:", e);
+        if (generation === requestGeneration.current && isTransportCurrent(expectedTransport)) {
+          console.warn("[cloud-projects] 项目列表拉取失败:", e);
+        }
+      })
+      .finally(() => {
+        if (busy.current !== token) return;
+        busy.current = null;
+        if (queuedRefreshRef.current && !foregroundFlight.current && !backgroundFlight.current) {
+          queuedRefreshRef.current = false;
+          setQueuedRefreshTick((n) => n + 1);
+        }
       });
+  }, [enabled, isTransportCurrent, transportGeneration]);
+
+  useEffect(() => {
+    requestGeneration.current += 1;
+    foregroundFlight.current = null;
+    backgroundFlight.current = null;
+    queuedRefreshRef.current = false;
+    fetchProjects(true);
     return () => {
-      alive = false;
+      requestGeneration.current += 1;
+      foregroundFlight.current = null;
+      backgroundFlight.current = null;
+      queuedRefreshRef.current = false;
     };
-  }, [reloadKey, enabled, transportGeneration, isTransportCurrent]);
+  }, [reloadKey, fetchProjects]);
+  useEffect(() => {
+    if (appliedRefreshRef.current === refreshKey) return;
+    appliedRefreshRef.current = refreshKey;
+    fetchProjects(false, true);
+  }, [fetchProjects, refreshKey]);
+  useEffect(() => {
+    if (queuedRefreshTick > 0) fetchProjects(false, true);
+  }, [fetchProjects, queuedRefreshTick]);
+  useEffect(() => {
+    if (!enabled || !inDesktopShell()) return;
+    const onFocus = () => fetchProjects(false);
+    window.addEventListener("focus", onFocus);
+    const timer = window.setInterval(onFocus, POLL_MS);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
+  }, [enabled, fetchProjects]);
   return projects;
 }
 
@@ -305,9 +401,11 @@ export function CloudTaskList({
   currentId,
   onSelect,
   reloadKey = 0,
+  refreshKey = 0,
   onDeleted,
   query = "",
   onOpenSettings,
+  onRefresh,
   onNewTaskIn,
   onTaskDragStart,
 }: {
@@ -317,14 +415,18 @@ export function CloudTaskList({
   projects: CloudProject[];
   currentId: string | null;
   onSelect: (task: CloudTask) => void;
-  /** App 在任务创建/终止后 bump(feed 重拉在 hook 侧;这里作废分组缓存) */
+  /** App 在任务创建/终止或身份切换后 bump；这里作废分组缓存。 */
   reloadKey?: number;
+  /** 用户手动刷新时 bump；保留旧组数据直到新请求成功。 */
+  refreshKey?: number;
   /** 任务删除成功后回调(带任务 id);App 据此清空当前打开的同 id 视图 */
   onDeleted?: (id: string) => void;
   /** 侧栏搜索词(已 trim/lowercase);非空时过滤行并强制展开折叠段 */
   query?: string;
   /** 未连接空态的「去设置连接」入口(App 打开设置页) */
   onOpenSettings?: () => void;
+  /** 同时刷新任务、项目与已展开项目组。 */
+  onRefresh?: () => void;
   /** 项目组头「在此项目新建任务」:App 打开新建视图并预选该云端项目 */
   onNewTaskIn?: (project: CloudProject) => void;
   /** 行拖进格装载(工作台 LOAD_MIME;不传即不可拖)。 */
@@ -337,22 +439,54 @@ export function CloudTaskList({
   // 分组懒拉缓存(键 = 项目 id);重拉键翻转即作废
   const [groupTasks, setGroupTasks] = useState<Record<string, GroupTasksState>>({});
   const groupGeneration = useRef(0);
+  const groupFlights = useRef<Map<string, symbol>>(new Map());
+  const queuedGroupRefreshes = useRef<Set<string>>(new Set());
   // 组开合(历史小节的契约键持久化在 SectionFold 内)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   // 行动作(删除/终止)失败原因,已格式化;新动作发起时清空
   const [actionErr, setActionErr] = useState("");
 
-  const fetchGroup = useCallback((projectId: string, generation: number) => {
+  const fetchGroup = useCallback((projectId: string, generation: number, force = false) => {
+    // focus/轮询不为同一项目叠请求；手动刷新撞上在途请求则排队补拉，不能
+    // 因去重直接吞掉用户动作。
+    if (groupFlights.current.has(projectId)) {
+      if (force) queuedGroupRefreshes.current.add(projectId);
+      return;
+    }
     const expectedTransport = transportGeneration;
-    mcTasks(1, PAGE_SIZE, "", { projectId })
-      .then((r) => {
-        if (generation !== groupGeneration.current || !isTransportCurrent(expectedTransport)) return;
-        setGroupTasks((prev) => ({ ...prev, [projectId]: { tasks: r.tasks ?? [] } }));
-      })
-      .catch((e: unknown) => {
-        if (generation !== groupGeneration.current || !isTransportCurrent(expectedTransport)) return;
-        setGroupTasks((prev) => ({ ...prev, [projectId]: { error: e instanceof Error ? e.message : String(e) } }));
-      });
+    const run = async () => {
+      do {
+        queuedGroupRefreshes.current.delete(projectId);
+        const token = Symbol();
+        groupFlights.current.set(projectId, token);
+        try {
+          const r = await mcTasks(1, PAGE_SIZE, "", { projectId });
+          if (
+            generation !== groupGeneration.current ||
+            groupFlights.current.get(projectId) !== token ||
+            !isTransportCurrent(expectedTransport)
+          ) return;
+          setGroupTasks((prev) => ({ ...prev, [projectId]: { tasks: r.tasks ?? [] } }));
+        } catch (e) {
+          if (
+            generation !== groupGeneration.current ||
+            groupFlights.current.get(projectId) !== token ||
+            !isTransportCurrent(expectedTransport)
+          ) return;
+          setGroupTasks((prev) => ({
+            ...prev,
+            [projectId]: {
+              ...prev[projectId],
+              loading: false,
+              error: e instanceof Error ? e.message : String(e),
+            },
+          }));
+        } finally {
+          if (groupFlights.current.get(projectId) === token) groupFlights.current.delete(projectId);
+        }
+      } while (generation === groupGeneration.current && queuedGroupRefreshes.current.delete(projectId));
+    };
+    void run();
   }, [transportGeneration, isTransportCurrent]);
 
   const loadGroup = useCallback(
@@ -379,6 +513,8 @@ export function CloudTaskList({
   }, [forceOpen, projects, openGroups]);
   const invalidateGroups = useCallback(() => {
     groupGeneration.current += 1;
+    groupFlights.current.clear();
+    queuedGroupRefreshes.current.clear();
     const generation = groupGeneration.current;
     const open = openSetRef.current;
     setGroupTasks(() => {
@@ -394,6 +530,29 @@ export function CloudTaskList({
     // 进依赖会把「展开一个组」也当成重拉信号
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadKey]);
+  const refreshLoadedGroups = useEffectEvent((force = false) => {
+    const currentProjects = new Set(projects.map((project) => project.id ?? ""));
+    const open = forceOpen ? currentProjects : openGroups;
+    const loaded = Object.keys(groupTasks).filter((projectId) => currentProjects.has(projectId) && open.has(projectId));
+    if (!loaded.length) return;
+    const generation = groupGeneration.current;
+    for (const projectId of loaded) fetchGroup(projectId, generation, force);
+  });
+  const appliedRefreshRef = useRef(refreshKey);
+  useEffect(() => {
+    if (appliedRefreshRef.current === refreshKey) return;
+    appliedRefreshRef.current = refreshKey;
+    refreshLoadedGroups(true);
+  }, [refreshKey]);
+  useEffect(() => {
+    const onFocus = () => refreshLoadedGroups();
+    window.addEventListener("focus", onFocus);
+    const timer = window.setInterval(onFocus, POLL_MS);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
+  }, []);
 
   // 搜索强制展开:未拉过的组顺势懒拉(命中不能藏在没拉过的组里)
   useEffect(() => {
@@ -464,7 +623,7 @@ export function CloudTaskList({
     return feed.error ? (
       <div role="alert" className="alert alert-error alert-soft flex flex-col items-start gap-1 py-2 text-xs">
         <span className="break-all">{t("cloud.list.error", { reason: feed.error })}</span>
-        <button type="button" className="btn btn-ghost btn-xs" onClick={feed.refresh}>
+        <button type="button" className="btn btn-ghost btn-xs" onClick={onRefresh ?? feed.refresh}>
           {t("cloud.list.retry")}
         </button>
       </div>

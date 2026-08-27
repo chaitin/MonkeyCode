@@ -5,7 +5,8 @@
 // 复制按钮用 daisyUI btn 类(注入 HTML 里的类是源码字面量,Tailwind 扫得到)。
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
-import { Marked } from "marked";
+import "katex/dist/katex.min.css";
+import { Marked, type MarkedExtension, type Tokens } from "marked";
 import {
   memo,
   startTransition,
@@ -253,8 +254,110 @@ function onContainerContextMenu(e: MouseEvent<HTMLElement>) {
   );
 }
 
+interface MathToken extends Tokens.Generic {
+  type: "inlineMath" | "blockMath";
+  text: string;
+  displayMode: boolean;
+}
+
+const MATH_MAX_SOURCE_CHARS = 512;
+const MATH_MAX_TOTAL_SOURCE_CHARS = 16_384;
+const MATH_MAX_TOTAL_HTML_CHARS = 2_000_000;
+const MATH_MAX_FORMULAS = 256;
+const MATH_MAX_NEW_SOURCE_CHARS = 4_096;
+const MATH_MAX_NEW_FORMULAS = 64;
+const MATH_MAX_SIZE_EM = 20;
+const MATH_MAX_EXPAND = 100;
+const MATH_HTML_CACHE_MAX = 512;
+const MATH_DEFINITION_RE = /\\(?:def|gdef|edef|xdef|let|futurelet|newcommand|renewcommand|providecommand)\b/;
+const BLOCK_MATH_RE = /^(?:[ \t]{0,3}\$\$[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]{0,3}\$\$[ \t]*|[ \t]{0,3}\\\[[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]{0,3}\\\][ \t]*)(?:\r?\n|$)/;
+const INLINE_DOLLAR_RE = /^\$(?!\$|\s)((?:\\.|[^\\\n`$])*?(?:\\.|[^\\\s\n`$]))\$(?=[\s?!.,:;。，！？：；、)\]}]|$)/u;
+const INLINE_DISPLAY_DOLLAR_RE = /^\$\$(?!\$)[ \t]*([^`\r\n]*?\S)[ \t]*\$\$(?!\$)(?=[\s?!.,:;。，！？：；、)\]}]|$)/u;
+const INLINE_DOLLAR_START_RE = /\$(?!\$|\s)(?:\\.|[^\\\n`$])*?(?:\\.|[^\\\s\n`$])\$(?=[\s?!.,:;。，！？：；、)\]}]|$)/u;
+const INLINE_MATH_START_RES = [
+  /\$\$(?!\$)[ \t]*[^`\r\n]*?\S[ \t]*\$\$(?!\$)(?=[\s?!.,:;。，！？：；、)\]}]|$)/u,
+  /\\\([ \t]*[^`\r\n]*?\S[ \t]*\\\)/,
+  /\\\[[ \t]*[^`\r\n]*?\S[ \t]*\\\]/,
+];
+
+function dollarMathToken(src: string): MathToken | undefined {
+  const displayMode = src.startsWith("$$");
+  const match = src.match(displayMode ? INLINE_DISPLAY_DOLLAR_RE : INLINE_DOLLAR_RE);
+  const text = match?.[1]?.trim();
+  if (!match || !text) return;
+  return { type: "inlineMath", raw: match[0], text, displayMode };
+}
+
+function inlineDollarMathStart(src: string): number | undefined {
+  const index = src.search(INLINE_DOLLAR_START_RE);
+  return index >= 0 ? index : undefined;
+}
+
+function slashMathToken(src: string, open: "\\(" | "\\[", close: "\\)" | "\\]", displayMode: boolean): MathToken | undefined {
+  if (!src.startsWith(open)) return;
+  const end = src.indexOf(close, open.length);
+  if (end < 0) return;
+  const text = src.slice(open.length, end);
+  if (!text.trim() || text.includes("\n") || text.includes("\r")) return;
+  return { type: "inlineMath", raw: src.slice(0, end + close.length), text: text.trim(), displayMode };
+}
+
+function mathWithinRenderBudget(source: string): boolean {
+  return source.length <= MATH_MAX_SOURCE_CHARS && !MATH_DEFINITION_RE.test(source);
+}
+
+function mathPlaceholder(token: MathToken): string {
+  // 同行 `$$...$$` / `\[...\]` 仍是 inline token，必须用 span，避免往
+  // marked 生成的 <p> 中塞 div；CSS 负责把 display math 提升成块盒。
+  const tag = token.type === "blockMath" ? "div" : "span";
+  const mode = token.displayMode ? "block" : "inline";
+  const suffix = token.displayMode ? "\n" : "";
+  if (!mathWithinRenderBudget(token.text)) {
+    return `<${tag} class="md-math md-math-${mode} md-math-source">${escapeHtml(token.raw)}</${tag}>${suffix}`;
+  }
+  // KaTeX 按需加载前先保留可读原文；公式源码只进 textContent，不进 HTML。
+  return `<${tag} class="md-math md-math-${mode}" data-md-math="${mode}">${escapeHtml(token.text)}</${tag}>${suffix}`;
+}
+
+function mathExtension(): MarkedExtension {
+  return {
+    extensions: [
+      {
+        name: "blockMath",
+        level: "block",
+        tokenizer(src) {
+          const match = src.match(BLOCK_MATH_RE);
+          const text = (match?.[1] ?? match?.[2])?.trim();
+          if (!match || !text) return;
+          return { type: "blockMath", raw: match[0], text, displayMode: true } satisfies MathToken;
+        },
+        renderer(token) {
+          return mathPlaceholder(token as MathToken);
+        },
+      },
+      {
+        name: "inlineMath",
+        level: "inline",
+        start(src) {
+          const indexes = [...INLINE_MATH_START_RES.map((rule) => src.search(rule)), inlineDollarMathStart(src)].filter(
+            (index): index is number => index !== undefined && index >= 0,
+          );
+          return indexes.length ? Math.min(...indexes) : undefined;
+        },
+        tokenizer(src) {
+          return dollarMathToken(src) ?? slashMathToken(src, "\\(", "\\)", false) ?? slashMathToken(src, "\\[", "\\]", true);
+        },
+        renderer(token) {
+          return mathPlaceholder(token as MathToken);
+        },
+      },
+    ],
+  };
+}
+
 function makeMarked(): Marked {
   const m = new Marked({ gfm: true, breaks: true, async: false });
+  m.use(mathExtension());
   m.use({
     renderer: {
       code({ text, lang }) {
@@ -359,12 +462,147 @@ function normalizeResourceUrls(root: ParentNode, linkifyInlineFiles = false) {
   }
 }
 
+type KatexRenderer = typeof import("katex").default;
+
+let katexModule: Promise<typeof import("katex")> | null = null;
+let katexRenderer: KatexRenderer | null = null;
+const mathHtmlCache = new Map<string, string>();
+
+function loadKatex(): Promise<typeof import("katex")> {
+  if (katexModule) return katexModule;
+  const pending = import("katex").then((module) => {
+    katexRenderer = module.default;
+    return module;
+  });
+  katexModule = pending;
+  void pending.catch(() => {
+    if (katexModule === pending) katexModule = null;
+  });
+  return pending;
+}
+
+function leaveMathAsSource(formula: HTMLElement, source: string): void {
+  const displayMode = formula.dataset.mdMath === "block";
+  formula.removeAttribute("data-md-math");
+  formula.classList.add("md-math-source");
+  formula.textContent = displayMode ? `$$\n${source}\n$$` : `$${source}$`;
+}
+
+function renderMathBeforeCommit(container: ParentNode): void {
+  if (!katexRenderer) return;
+  const formulas = [...container.querySelectorAll<HTMLElement>("[data-md-math]")];
+  let renderedCount = 0;
+  let totalSourceChars = 0;
+  let totalHtmlChars = 0;
+  let newRenderedCount = 0;
+  let newSourceChars = 0;
+  for (const formula of formulas) {
+    const source = formula.textContent ?? "";
+    if (
+      renderedCount >= MATH_MAX_FORMULAS ||
+      !mathWithinRenderBudget(source) ||
+      totalSourceChars + source.length > MATH_MAX_TOTAL_SOURCE_CHARS
+    ) {
+      leaveMathAsSource(formula, source);
+      continue;
+    }
+    const displayMode = formula.dataset.mdMath === "block";
+    const cacheKey = `${displayMode ? "block" : "inline"}\0${source}`;
+    try {
+      let html = mathHtmlCache.get(cacheKey);
+      if (html) {
+        // 命中时更新插入顺序，避免长流式回答前半段在停流全文解析前
+        // 被其他消息淘汰，随后又因整篇预算降级为源码。
+        mathHtmlCache.delete(cacheKey);
+        mathHtmlCache.set(cacheKey, html);
+      } else {
+        // 单次 React render 只生成有限的新 KaTeX HTML；剩余占位保留标记，
+        // useRenderedMarkdown 下一任务继续。缓存命中不计入该预算，因此流式
+        // 停止后的全文重建能一次复用此前公式，不会突然降级。
+        if (
+          newRenderedCount >= MATH_MAX_NEW_FORMULAS ||
+          newSourceChars + source.length > MATH_MAX_NEW_SOURCE_CHARS
+        ) {
+          continue;
+        }
+        html = katexRenderer.renderToString(source, {
+          displayMode,
+          maxExpand: MATH_MAX_EXPAND,
+          maxSize: MATH_MAX_SIZE_EM,
+          output: "htmlAndMathml",
+          strict: "ignore",
+          throwOnError: false,
+          trust: false,
+        });
+        if (mathHtmlCache.size >= MATH_HTML_CACHE_MAX) {
+          const oldest = mathHtmlCache.keys().next().value;
+          if (oldest !== undefined) mathHtmlCache.delete(oldest);
+        }
+        mathHtmlCache.set(cacheKey, html);
+        newRenderedCount += 1;
+        newSourceChars += source.length;
+      }
+      if (totalHtmlChars + html.length > MATH_MAX_TOTAL_HTML_CHARS) {
+        leaveMathAsSource(formula, source);
+        continue;
+      }
+      // KaTeX 产物在正文完成 DOMPurify 后写入，既保留 MathML，又不让正文
+      // HTML 绕过净化；提交给 React 前已经是最终尺寸，不再产生二次布局。
+      formula.innerHTML = html;
+      formula.removeAttribute("data-md-math");
+      formula.setAttribute("data-md-math-rendered", "");
+      renderedCount += 1;
+      totalSourceChars += source.length;
+      totalHtmlChars += html.length;
+    } catch {
+      leaveMathAsSource(formula, source);
+    }
+  }
+}
+
 export function renderMarkdown(source: string, linkifyInlineFiles = false): string {
   const template = document.createElement("template");
   template.innerHTML = parser.parse(source) as string;
   normalizeResourceUrls(template.content, linkifyInlineFiles);
-  // target/rel 交给点击代理,净化时保守放行 data-*(复制按钮原文载荷与本地标记)
-  return DOMPurify.sanitize(template.innerHTML, { USE_PROFILES: { html: true } });
+  // KaTeX 先只产生转义后的源码占位；正文净化完成后才把可信渲染产物写入。
+  template.innerHTML = DOMPurify.sanitize(template.innerHTML, { USE_PROFILES: { html: true } });
+  renderMathBeforeCommit(template.content);
+  return template.innerHTML;
+}
+
+function useRenderedMarkdown(source: string, enabled: boolean, linkifyInlineFiles: boolean, renderKey: string): string {
+  const [mathRevision, setMathRevision] = useState(0);
+  const html = useMemo(() => {
+    // 两者都是渲染世代：KaTeX 就绪/分批和 locale 变化时，即使 source 未变
+    // 也要重建 HTML（公式 DOM / 复制按钮文案分别由它们决定）。
+    void mathRevision;
+    void renderKey;
+    return enabled ? renderMarkdown(source, linkifyInlineFiles) : "";
+  }, [enabled, linkifyInlineFiles, mathRevision, renderKey, source]);
+  useEffect(() => {
+    if (!html.includes("data-md-math=")) return;
+    let cancelled = false;
+    if (!katexRenderer) {
+      void loadKatex().then(
+        () => {
+          if (!cancelled) setMathRevision((revision) => revision + 1);
+        },
+        () => {},
+      );
+    } else {
+      const timer = window.setTimeout(() => {
+        if (!cancelled) setMathRevision((revision) => revision + 1);
+      }, 0);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [html]);
+  return html;
 }
 
 function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: string) => void) {
@@ -549,11 +787,7 @@ function StaticMarkdown({
   // t("md.copy") 把文案烤进 HTML——静态分析看不穿这层,去掉它换语言后
   // 已渲染的消息里复制按钮会一直是旧语言
   const linkifyInlineFiles = Boolean(onLocalLink);
-  const html = useMemo(
-    () => (near ? renderMarkdown(throttled, linkifyInlineFiles) : ""),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [near, throttled, locale, linkifyInlineFiles],
-  );
+  const html = useRenderedMarkdown(throttled, near, linkifyInlineFiles, locale);
   // 升格引起的行高突变(占位原文 vs 解析产物,差值可达千 px 级)不在这里
   // 各自补偿；动态高度窗口的行级 ResizeObserver 会更新 Fenwick 高度树，
   // 并仅在变化位于阅读锚点上方时按真实 delta 校正 scrollTop。
@@ -612,39 +846,95 @@ const STREAM_TAIL_PARSE_MAX = 16_384;
 export interface StreamingMarkdownSegments {
   stable: string[];
   tail: string;
-  /** 未闭合 fenced code 不跑 marked/highlight，直接以 code 文本呈现。 */
+  /** 未闭合 fenced code / 块公式不跑 marked，直接以原文呈现。 */
   plainTail: boolean;
 }
 
 /** 把已经闭合的 Markdown 块封存成稳定片段。只在空行或 fenced code 结束处
- * 切分，永不切进代码围栏；最终停流仍由 StaticMarkdown 做一次规范全文解析。 */
+ * 切分，并避开未闭合块公式；停流仍由 StaticMarkdown 规范全文解析。 */
+function nextNonBlankLineIndent(source: string, offset: number): number | null {
+  for (const match of source.slice(offset).matchAll(/.*(?:\n|$)/g)) {
+    const line = match[0];
+    if (!line) continue;
+    const body = line.replace(/\r?\n$/, "");
+    if (!body.trim()) continue;
+    return (body.match(/^[ ]*/)?.[0].length ?? 0) + (body.startsWith("\t") ? 4 : 0);
+  }
+  return null;
+}
+
 export function segmentStreamingMarkdown(source: string): StreamingMarkdownSegments {
   const stable: string[] = [];
   let chunkStart = 0;
   let offset = 0;
   let fence: { char: string; size: number } | null = null;
+  let mathFence: "$$" | "\\]" | null = null;
+  let safeUnclosedMathStart: number | null = null;
+  let listContinuationIndent: number | null = null;
+  let previousWasBlank = false;
   for (const match of source.matchAll(/.*(?:\n|$)/g)) {
     const line = match[0];
     if (!line) continue;
     const body = line.replace(/\r?\n$/, "");
+    const listMarker = !fence && !mathFence ? body.match(/^([ ]{0,3})(?:[-+*]|\d{1,9}[.)])([ \t]+)/) : null;
+    const leadingIndent = body.match(/^[ ]*/)?.[0].length ?? 0;
+    if (body.trim() && !fence && !mathFence) {
+      if (previousWasBlank && listContinuationIndent !== null && !listMarker && leadingIndent < listContinuationIndent) {
+        listContinuationIndent = null;
+      }
+      if (listMarker) {
+        const contentIndent = listMarker[0].replace(/\t/g, "    ").length;
+        listContinuationIndent = listContinuationIndent === null ? contentIndent : Math.min(listContinuationIndent, contentIndent);
+      }
+    }
     const marker = body.match(/^\s{0,3}(`{3,}|~{3,})/i)?.[1];
     let closedFence = false;
-    if (marker) {
+    if (marker && !mathFence) {
       if (!fence) fence = { char: marker[0]!, size: marker.length };
       else if (marker[0] === fence.char && marker.length >= fence.size && /^\s{0,3}(`{3,}|~{3,})\s*$/.test(body)) {
         fence = null;
         closedFence = true;
       }
     }
+    if (!fence) {
+      if (mathFence === "$$" && /^\s{0,3}\$\$\s*$/.test(body)) {
+        mathFence = null;
+        safeUnclosedMathStart = null;
+      } else if (mathFence === "\\]" && /^\s{0,3}\\\]\s*$/.test(body)) {
+        mathFence = null;
+        safeUnclosedMathStart = null;
+      } else if (!mathFence && /^\s{0,3}\$\$\s*$/.test(body)) {
+        mathFence = "$$";
+        safeUnclosedMathStart = previousWasBlank && listContinuationIndent === null ? offset : null;
+      } else if (!mathFence && /^\s{0,3}\\\[\s*$/.test(body)) {
+        mathFence = "\\]";
+        safeUnclosedMathStart = previousWasBlank && listContinuationIndent === null ? offset : null;
+      }
+    }
     offset += line.length;
-    const blankBoundary = !fence && body.trim() === "" && offset - chunkStart >= STREAM_CHUNK_MIN;
+    // 只有处于列表上下文且下一块达到列表内容缩进时才延迟封存；普通的
+    // 1–3 空格顶层段落仍应按空行切分，避免 tail 超限后退化成纯文本。
+    const nextIndent = body.trim() === "" ? nextNonBlankLineIndent(source, offset) : null;
+    const continuesList =
+      listContinuationIndent !== null && nextIndent !== null && nextIndent >= listContinuationIndent;
+    const blankBoundary =
+      !fence && !mathFence && body.trim() === "" && offset - chunkStart >= STREAM_CHUNK_MIN && !continuesList;
     if (closedFence || blankBoundary) {
       stable.push(source.slice(chunkStart, offset));
       chunkStart = offset;
+      listContinuationIndent = null;
     }
+    previousWasBlank = body.trim() === "";
+  }
+  // 尾部块公式尚未闭合时，只把该公式保留为纯文本。若它前面有顶层空行，
+  // 该边界已足够安全，无需因为 1KB 常规封存阈值把整段已完成 Markdown
+  // 一起降级；闭合后仍会重新按完整上下文解析。
+  if (mathFence !== null && safeUnclosedMathStart !== null && safeUnclosedMathStart > chunkStart) {
+    stable.push(source.slice(chunkStart, safeUnclosedMathStart));
+    chunkStart = safeUnclosedMathStart;
   }
   const tail = source.slice(chunkStart);
-  return { stable, tail, plainTail: fence !== null || tail.length > STREAM_TAIL_PARSE_MAX };
+  return { stable, tail, plainTail: fence !== null || mathFence !== null || tail.length > STREAM_TAIL_PARSE_MAX };
 }
 
 const MarkdownChunk = memo(function MarkdownChunk({
@@ -656,9 +946,7 @@ const MarkdownChunk = memo(function MarkdownChunk({
   locale: string;
   linkifyInlineFiles: boolean;
 }) {
-  // locale 参与 key 义:复制按钮文案烤进 HTML。
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const html = useMemo(() => renderMarkdown(source, linkifyInlineFiles), [source, locale, linkifyInlineFiles]);
+  const html = useRenderedMarkdown(source, true, linkifyInlineFiles, locale);
   return <div data-md-stable-chunk="" dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
@@ -679,14 +967,9 @@ function StreamingMarkdown({
   const near = useNearViewport(root);
   const sampled = useThrottled(source, source.length > 100_000 ? 600 : 120);
   const segments = useMemo(() => segmentStreamingMarkdown(sampled), [sampled]);
-  const tailHtml = useMemo(
-    // 活跃尾块会反复重建 DOM，暂不生成可聚焦的启发式链接；封存为稳定块
-    // 或停流切回 StaticMarkdown 后再启用，避免键盘焦点随下一批 token 丢失。
-    () => (near && !segments.plainTail && segments.tail ? renderMarkdown(segments.tail) : ""),
-    // locale 会改变 renderMarkdown 内部烤入 HTML 的复制按钮文案。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [near, segments, locale],
-  );
+  // 活跃尾块会反复重建 DOM，暂不生成可聚焦的启发式链接；KaTeX 则在
+  // HTML 提交前同步写好最终 DOM，避免每批 token 都经历源码→公式的跳变。
+  const tailHtml = useRenderedMarkdown(segments.tail, near && !segments.plainTail && Boolean(segments.tail), false, locale);
   const cache = useRef<LocalImageCache>(new Map());
   const localImageUrlRef = useRef(localImageUrl);
   useEffect(() => {

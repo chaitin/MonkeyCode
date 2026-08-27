@@ -11,6 +11,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -263,6 +264,11 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
   const [slashSuppressed, setSlashSuppressed] = useState(false);
   const [active, setActive] = useState(0);
   const query = slashQuery(ctl.draft);
+  const attachmentsReadOnly = ctl.editingId !== null;
+  const attachmentsReadOnlyLabel = t("chat.sendQueue.attachmentsReadOnly");
+  const editingIndex = ctl.editingId
+    ? ctl.queue.pending.findIndex((item) => item.id === ctl.editingId) + 1
+    : 0;
   const slashOpen = query !== null && !slashSuppressed && commands.length > 0;
   const list = useMemo(() => filterCommands(commands, query ?? ""), [commands, query]);
   const act = Math.min(active, Math.max(0, list.length - 1));
@@ -278,6 +284,23 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
     setSlashSuppressed(true);
     taRef.current?.focus();
   };
+
+  // 编辑层 handler 必须稳定：输入会替换 ctl 对象，若因此反复出栈/入栈，
+  // 它会被重新压到已经打开的 slash 层上方。layout ref 读取最新 owner 与焦点格。
+  const editEscRef = useRef({ hotkeysActive, cancel: ctl.cancelEditedQueued });
+  useLayoutEffect(() => {
+    editEscRef.current = { hotkeysActive, cancel: ctl.cancelEditedQueued };
+  }, [hotkeysActive, ctl.cancelEditedQueued]);
+  const escEdit = useCallback(() => {
+    if (!editEscRef.current.hotkeysActive) return false;
+    editEscRef.current.cancel();
+    return true;
+  }, []);
+  useEscLayer(ctl.editingId !== null, escEdit);
+
+  useEffect(() => {
+    if (ctl.editingId) taRef.current?.focus();
+  }, [ctl.editingId]);
 
   // Esc 关闭斜杠面板走统一层栈(lib/util/escLayer):面板打开时才入栈,层序
   // (后入先得)保证它压过视图级 Esc;返回 true = 消费即截断,不许漏给冒泡
@@ -376,10 +399,23 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
 
   // ==== 发送 / 键盘 ====
   const submit = () => {
-    if (ctl.send()) onAfterSend?.();
+    const accepted = ctl.editingId ? ctl.saveEditedQueued() : ctl.send();
+    if (accepted) onAfterSend?.();
   };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (
+      ctl.editingId &&
+      e.key === "Enter" &&
+      (e.ctrlKey || e.metaKey) &&
+      !e.altKey
+    ) {
+      if (imeRef.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      submit();
+      return;
+    }
     if (e.key === "Enter" && e.ctrlKey && !e.altKey) {
       if (imeRef.current.isImeEnter(e.timeStamp, e.nativeEvent.isComposing)) return;
       e.preventDefault();
@@ -469,6 +505,8 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
           steering={ctl.queue.steering ?? []}
           onRemove={ctl.removeQueued}
           onReorder={ctl.reorderQueued}
+          editingId={ctl.queue.editing?.itemId ?? null}
+          onEdit={ctl.beginEditQueued}
           onSteer={presentation.running && ctl.steeringSupported ? ctl.steerQueued : undefined}
           onRetrySteering={ctl.retrySteeringQueued}
           onDiscardSteering={ctl.discardSteeringQueued}
@@ -493,6 +531,21 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
           <SlashPanel list={list} active={act} onHover={setActive} onPick={pickCommand} />
         )}
 
+        {ctl.editingId && (
+          <div className="flex min-h-9 items-center gap-2 border-b border-base-300/60 px-3 text-sm">
+            <span className="min-w-0 flex-1 truncate font-medium">
+              {t("chat.sendQueue.editingTitle", { n: editingIndex })}
+            </span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs shrink-0"
+              onClick={ctl.cancelEditedQueued}
+            >
+              {t("chat.sendQueue.cancelEdit")}
+            </button>
+          </div>
+        )}
+
         {/* 运行条:一行紧凑态——spinner + 文案 + 停止 icon 按钮 */}
         {presentation.running && <RunBar label={runningLabel} detail={runningDetail} stopLabel={t("chat.stop")} onStop={ctl.stop} />}
 
@@ -513,7 +566,14 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
             {ctl.atts.map((a, i) => (
               <span key={a.path} title={a.path} className="badge badge-ghost text-xs">
                 <span className="max-w-40 truncate">{a.name}</span>
-                <button type="button" aria-label={t("chat.attachRemove")} className="btn btn-ghost btn-circle btn-xs" onClick={() => ctl.removeAtt(i)}>
+                <button
+                  type="button"
+                  aria-label={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attachRemove")}
+                  title={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attachRemove")}
+                  className="btn btn-ghost btn-circle btn-xs"
+                  disabled={attachmentsReadOnly}
+                  onClick={() => ctl.removeAtt(i)}
+                >
                   <IconX size={12} stroke={1.75} aria-hidden />
                 </button>
               </span>
@@ -524,7 +584,13 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
         <ComposerTextarea
           taRef={taRef}
           aria-label={t("chat.composer")}
-          placeholder={presentation.running ? t("chat.composerPlaceholderRunning") : t("chat.composerPlaceholder")}
+          placeholder={
+            ctl.editingId
+              ? t("chat.sendQueue.editPlaceholder")
+              : presentation.running
+                ? t("chat.composerPlaceholderRunning")
+                : t("chat.composerPlaceholder")
+          }
           value={ctl.draft}
           onChange={(e) => ctl.setDraft(e.target.value)}
           onCompositionEnd={(e) => imeRef.current.markEnd(e.timeStamp)}
@@ -542,9 +608,10 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
         <div className="flex min-w-0 items-center gap-1 ps-1 pe-2 pb-1.5">
           <button
             type="button"
-            aria-label={t("chat.attach")}
-            title={t("chat.attachTip")}
+            aria-label={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attach")}
+            title={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attachTip")}
             className="btn btn-ghost btn-square btn-xs shrink-0 text-base-content/60"
+            disabled={attachmentsReadOnly}
             onClick={attach}
           >
             <IconPaperclip size={15} stroke={1.75} aria-hidden />
@@ -593,13 +660,14 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
           />
           <button
             type="button"
-            aria-label={t("chat.send")}
-            title={t("chat.sendTip")}
-            className="btn btn-primary btn-square btn-sm shrink-0"
-            disabled={!ctl.draft.trim() && ctl.atts.length === 0}
+            aria-label={t(ctl.editingId ? "chat.sendQueue.saveEdit" : "chat.send")}
+            title={t(ctl.editingId ? "chat.sendQueue.saveEditTip" : "chat.sendTip")}
+            className={`btn btn-primary btn-sm shrink-0 ${ctl.editingId ? "px-3" : "btn-square"}`}
+            disabled={ctl.uploads.length > 0 || (!ctl.draft.trim() && ctl.atts.length === 0)}
             onClick={submit}
           >
             <IconSend size={16} stroke={1.75} aria-hidden />
+            {ctl.editingId && <span>{t("chat.sendQueue.saveEdit")}</span>}
           </button>
         </div>
       </ComposerCard>

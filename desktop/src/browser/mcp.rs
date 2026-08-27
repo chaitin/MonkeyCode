@@ -70,7 +70,11 @@ impl McpClientSession {
         // 先封门再等 contexts 锁：已进临界区的创建会被随后 drain，尚未进入
         // 的创建会看到 closed。DELETE/reset 后不会晚生幽灵 context。
         self.closed.store(true, Ordering::Release);
-        self.contexts.lock_ok().drain().map(|(_, context)| context).collect()
+        self.contexts
+            .lock_ok()
+            .drain()
+            .map(|(_, context)| context)
+            .collect()
     }
 }
 
@@ -137,7 +141,9 @@ impl McpSessions {
     pub async fn reset(&self) {
         let clients = {
             let mut clients = self.0.clients.lock_ok();
-            std::mem::take(&mut *clients).into_values().collect::<Vec<_>>()
+            std::mem::take(&mut *clients)
+                .into_values()
+                .collect::<Vec<_>>()
         };
         for client in clients {
             for context in client.drain_contexts() {
@@ -151,8 +157,7 @@ impl McpSessions {
 /// 启动 MCP server(随机端口),返回 (url, bearer_token)。
 /// 阻塞式 HTTP 处理跑在独立线程(请求频率 = 工具调用频率,极低)。
 pub fn serve(sessions: McpSessions, workdir: WorkdirFn) -> Result<(String, String), String> {
-    let listener =
-        TcpListener::bind("127.0.0.1:0").map_err(|e| format!("MCP 监听失败: {e}"))?;
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| format!("MCP 监听失败: {e}"))?;
     let addr = listener.local_addr().map_err(|e| e.to_string())?;
     let token = new_token()?;
     let url = format!("http://{addr}/mcp");
@@ -192,13 +197,10 @@ fn new_token() -> Result<String, String> {
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-fn handle_conn(
-    mut conn: TcpStream,
-    sessions: &McpSessions,
-    token: &str,
-    workdir: &WorkdirFn,
-) {
-    let Some(req) = read_http_request(&mut conn) else { return };
+fn handle_conn(mut conn: TcpStream, sessions: &McpSessions, token: &str, workdir: &WorkdirFn) {
+    let Some(req) = read_http_request(&mut conn) else {
+        return;
+    };
 
     // 常时比较(复用 bridge.rs 的 ct_eq):`!=` 明文比对逐字节短路,
     // 本机恶意进程可按响应时延逐位试出 token
@@ -218,7 +220,13 @@ fn handle_conn(
     }
     if req.method == "DELETE" {
         let Some(id) = req.mcp_session_id.as_deref() else {
-            write_http(&mut conn, 400, "text/plain", b"missing Mcp-Session-Id", None);
+            write_http(
+                &mut conn,
+                400,
+                "text/plain",
+                b"missing Mcp-Session-Id",
+                None,
+            );
             return;
         };
         let removed = tauri::async_runtime::block_on(sessions.remove(id));
@@ -241,7 +249,11 @@ fn handle_conn(
         return;
     };
 
-    let method = rpc.get("method").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let method = rpc
+        .get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let protocol_id = if method == "initialize" {
         match req.mcp_session_id.as_deref() {
             Some(id) if sessions.contains(id) => id.to_string(),
@@ -254,7 +266,11 @@ fn handle_conn(
             },
         }
     } else {
-        let Some(id) = req.mcp_session_id.as_deref().filter(|id| sessions.contains(id)) else {
+        let Some(id) = req
+            .mcp_session_id
+            .as_deref()
+            .filter(|id| sessions.contains(id))
+        else {
             write_http(&mut conn, 404, "text/plain", b"unknown MCP session", None);
             return;
         };
@@ -270,13 +286,8 @@ fn handle_conn(
     let params = rpc.get("params").cloned().unwrap_or(Value::Null);
 
     // 工具执行是 async(桥 call 走 tokio);当前线程无 runtime,借 tauri 全局
-    let result = tauri::async_runtime::block_on(dispatch(
-        sessions,
-        &protocol_id,
-        workdir,
-        &method,
-        params,
-    ));
+    let result =
+        tauri::async_runtime::block_on(dispatch(sessions, &protocol_id, workdir, &method, params));
     let resp = match result {
         Ok(r) => json!({ "jsonrpc": "2.0", "id": id, "result": r }),
         Err((code, msg)) => {
@@ -323,7 +334,11 @@ async fn dispatch(
             Ok(json!({ "tools": tools }))
         }
         "tools/call" => {
-            let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let name = params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
             let scope = call_scope(&params);
             let context = sessions
@@ -358,14 +373,19 @@ async fn dispatch(
 
 fn call_scope(params: &Value) -> CallScope {
     let meta = params.get("_meta");
-    let value = |key: &str| meta.and_then(|value| value.get(key)).and_then(Value::as_str);
+    let value = |key: &str| {
+        meta.and_then(|value| value.get(key))
+            .and_then(Value::as_str)
+    };
     CallScope {
         session_id: value("session_id")
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string),
         // work_dir 是文件系统值，不裁剪合法的首尾空格。
-        work_dir: value("work_dir").filter(|value| !value.is_empty()).map(str::to_string),
+        work_dir: value("work_dir")
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
     }
 }
 
@@ -376,13 +396,21 @@ async fn call_tool(
     name: &str,
     args: &Value,
 ) -> Result<Vec<Value>, String> {
-    let s = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let s = |k: &str| {
+        args.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
     let text_block = |t: String| vec![json!({ "type": "text", "text": t })];
     match name {
         "browser_navigate" => sess.navigate(&s("url")).await.map(text_block),
         "browser_snapshot" => sess.snapshot().await.map(text_block),
         "browser_take_screenshot" => {
-            let full = args.get("full_page").and_then(|v| v.as_bool()).unwrap_or(false);
+            let full = args
+                .get("full_page")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let (png, mut note) = sess.screenshot(full).await?;
             // 截图同时落当前会话工作区:UI 工具卡按路径内联显示
             // (帧协议传路径不传 base64);模型侧走 MCP image 块直达
@@ -402,14 +430,23 @@ async fn call_tool(
         "browser_click" => sess.click(&s("ref")).await.map(text_block),
         "browser_type" => {
             let clear = args.get("clear").and_then(|v| v.as_bool()).unwrap_or(true);
-            let submit = args.get("submit").and_then(|v| v.as_bool()).unwrap_or(false);
-            sess.type_text(&s("ref"), &s("text"), clear, submit).await.map(text_block)
+            let submit = args
+                .get("submit")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            sess.type_text(&s("ref"), &s("text"), clear, submit)
+                .await
+                .map(text_block)
         }
         "browser_select_option" => {
             let values: Vec<String> = args
                 .get("values")
                 .and_then(|v| v.as_array())
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             sess.select_option(&s("ref"), &values).await.map(text_block)
         }
@@ -462,11 +499,19 @@ fn read_http_request(conn: &mut TcpStream) -> Option<HttpReq> {
         }
         if lower.starts_with("authorization:") {
             // 原始行取值(token 大小写敏感)
-            let v = h.split_once(':').map(|(_, value)| value).unwrap_or("").trim();
+            let v = h
+                .split_once(':')
+                .map(|(_, value)| value)
+                .unwrap_or("")
+                .trim();
             bearer = v.strip_prefix("Bearer ").map(str::to_string);
         }
         if lower.starts_with("mcp-session-id:") {
-            let value = h.split_once(':').map(|(_, value)| value).unwrap_or("").trim();
+            let value = h
+                .split_once(':')
+                .map(|(_, value)| value)
+                .unwrap_or("")
+                .trim();
             if !value.is_empty() {
                 mcp_session_id = Some(value.to_string());
             }
@@ -478,7 +523,12 @@ fn read_http_request(conn: &mut TcpStream) -> Option<HttpReq> {
     }
     let mut body = vec![0u8; content_len];
     reader.read_exact(&mut body).ok()?;
-    Some(HttpReq { method, bearer, mcp_session_id, body })
+    Some(HttpReq {
+        method,
+        bearer,
+        mcp_session_id,
+        body,
+    })
 }
 
 fn write_http(

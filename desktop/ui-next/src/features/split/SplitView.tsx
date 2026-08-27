@@ -17,7 +17,9 @@ import {
   IconActivity,
   IconArchive,
   IconBrandGithub,
+  IconCheck,
   IconChevronDown,
+  IconCopy,
   IconDots,
   IconCloud,
   IconFolder,
@@ -27,6 +29,7 @@ import {
   IconKeyboard,
   IconMessages,
   IconPlus,
+  IconRefresh,
   IconSettings,
   IconWorld,
   IconX,
@@ -89,7 +92,8 @@ import { useI18n, type MessageKey } from "@/lib/i18n";
 import type { CloudProject, CloudTask, CloudTaskDetail } from "@/lib/ipc/cloudtasks";
 import type { SessionKind, SessionMeta } from "@/lib/ipc/sessions";
 import { openMenu, type MenuItem } from "@/lib/contextMenu";
-import { groupSessions, projectKey, readArchivedProjects, readCollapsedGroups, readProjectOrder, readSessionArchivesOpen, reorderKeys, writeArchivedProjects, writeCollapsedGroups, writeProjectOrder, writeSessionArchivesOpen } from "@/lib/util/projects";
+import { copyText } from "@/lib/util/clipboard";
+import { groupSessions, projectKey, projectName, readArchivedProjects, readCollapsedGroups, readProjectOrder, readSessionArchivesOpen, reorderKeys, writeArchivedProjects, writeCollapsedGroups, writeProjectOrder, writeSessionArchivesOpen } from "@/lib/util/projects";
 import { Brand } from "@/features/titlebar/TitleBar";
 import { useUpdate } from "@/features/update/useUpdate";
 import { isMacShell, openExternal } from "@/lib/ipc/host";
@@ -109,8 +113,11 @@ export interface SplitCloudWiring {
   feed: CloudTasksFeed;
   projects: CloudProject[];
   reloadKey: number;
+  refreshKey: number;
   onDeleted: (id: string) => void;
   onChanged: () => void;
+  /** 用户主动刷新任务、项目和已展开项目组。 */
+  onRefresh: () => void;
 }
 
 /** 行政接线(任务列行右键/待办组;旧侧栏能力随壳退役迁入)。 */
@@ -632,6 +639,7 @@ export function SplitView({
             slot={slot}
             meta={headMeta}
             focused={focused && visible > 1}
+            showProjectContext={visible > 1}
             attention={attention}
             onRename={admin && meta ? (title) => admin.onRename(meta, title) : undefined}
             extrasRef={entry ? paneExtraRefFor(slot) : undefined}
@@ -1412,8 +1420,8 @@ function WorkbenchList({
     ...(cloud ? [{ k: "cloud" as const, icon: IconCloud, label: "split.tabCloud" as MessageKey }] : []),
   ];
 
-  // ☰ 列开关 + 新建双钮(mac 住列顶 chrome 行,其余平台住品牌行行尾——
-  // 家不同、钮一致)。新建 = ☰ 同语汇的 ghost 方钮(2026-08-18 用户报障
+  // 列级动作(mac 住列顶 chrome 行,其余平台住品牌行行尾):☰、云端态刷新、
+  // 新建。新建 = ☰ 同语汇的 ghost 方钮(2026-08-18 用户报障
   // 「按钮丑」:soft-primary 色块是全 chrome 唯一大填充,违背「安静
   // chrome、填充只归选中」),品牌感只落图标色;kind 跟当前 tab,新建即新格
   const listActions = (
@@ -1428,6 +1436,17 @@ function WorkbenchList({
       >
         <IconLayoutSidebar size={16} stroke={1.75} aria-hidden />
       </button>
+      {tab === "cloud" && cloud && (
+        <button
+          type="button"
+          aria-label={t("cloud.list.refresh")}
+          title={t("cloud.list.refresh")}
+          className="btn btn-ghost btn-square btn-xs self-center text-base-content/60"
+          onClick={cloud.onRefresh}
+        >
+          <IconRefresh size={15} stroke={1.75} aria-hidden />
+        </button>
+      )}
       <button
         type="button"
         aria-label={t("split.newTask")}
@@ -1460,23 +1479,20 @@ function WorkbenchList({
         </div>
       )}
       {/* 品牌行(2026-08-18 用户定案「tab 上方加品牌」;旧侧栏头同款
-          Brand = 字标 + work 徽标,自带逐节点拖拽区);非 mac 双钮住行尾
+          Brand = 字标 + work 徽标,自带逐节点拖拽区);非 mac 动作组住行尾
           (chrome 行已省,见上) */}
       <div data-tauri-drag-region="" className={`flex items-center gap-2 ps-5 pt-1 pb-2 ${isMacShell() ? "pe-4" : "pe-2 min-h-10"}`}>
-        <Brand />
-        {!isMacShell() && (
-          <>
-            <span data-tauri-drag-region="" className="min-w-0 flex-1" />
-            {listActions}
-          </>
-        )}
+        <span data-tauri-drag-region="" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <Brand />
+        </span>
+        {!isMacShell() && <span className="flex shrink-0 items-center">{listActions}</span>}
       </div>
       {/* tab 盒式切换(形态五代:border 下划线 → box 白 pill → box 补轨
           → 文字级 → 回归 box,2026-08-20 用户「改成 box」):与换任务
           装载卡的 tabs-box 同语汇,选中 = 白底 pill;侧栏底色即 base-200,
           盒轨与列底同色隐形,只剩选中 pill 浮起,重量比带轨时代轻 */}
-      <div className="ps-4 pe-4 pb-1">
-        <div role="tablist" aria-label={t("split.pickTitle")} className="tabs tabs-box tabs-sm w-full">
+      <div className="px-4 pb-1">
+        <div role="tablist" aria-label={t("split.pickTitle")} className="tabs tabs-box tabs-sm w-full min-w-0">
           {TABS.map(({ k, label }) => (
             <button
               key={k}
@@ -1661,7 +1677,7 @@ function WorkbenchList({
                       )}
                       <button
                         type="button"
-                        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-1 text-start"
+                        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-7 text-start group-hover/ghead:pe-14 group-focus-within/ghead:pe-14"
                         aria-expanded={!collapsed.has(g.key)}
                         onClick={() => setGroupOpen(g.key, collapsed.has(g.key))}
                       >
@@ -1671,21 +1687,21 @@ function WorkbenchList({
                             {g.sessions.filter((m) => m.waiting_ask).length}
                           </span>
                         )}
-                        {/* 开合 chevron 殿后常驻(2026-08-19 mockup:状态外显) */}
+                        {/* 与待办/临时会话同构：开合箭头固定最右，新增按钮悬浮在其左侧。 */}
                         <IconChevronDown
                           size={12}
                           stroke={1.75}
                           aria-hidden
-                          className={`shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(g.key) ? "-rotate-90" : ""}`}
+                          className={`absolute end-2 shrink-0 text-base-content/40 transition-transform duration-150 ${collapsed.has(g.key) ? "-rotate-90" : ""}`}
                         />
                       </button>
-                      {/* 快捷钮常驻占位、hover 只切可见性(插入式显隐会挤动
-                          项目名,鼠标一进一出就抖) */}
+                      {/* 默认只为箭头留位；hover/focus 时缩短项目名，为快捷钮腾位。
+                          整行尺寸与箭头位置保持不变。 */}
                       <button
                         type="button"
                         aria-label={t("sidebar.project.newTask")}
                         title={t("sidebar.project.newTask")}
-                        className="btn btn-ghost btn-xs invisible h-8 min-h-8 w-9 shrink-0 group-hover/ghead:visible group-focus-within/ghead:visible"
+                        className="btn btn-ghost btn-xs invisible absolute end-6 top-0 h-8 min-h-8 w-8 shrink-0 group-hover/ghead:visible group-focus-within/ghead:visible"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -1783,7 +1799,10 @@ function WorkbenchList({
             currentId={focusedEntry && isCloudSlotId(focusedEntry) ? cloudTaskIdOf(focusedEntry) : null}
             onSelect={(task) => onPick(cloudSlotId(task.id))}
             reloadKey={cloud.reloadKey}
+            refreshKey={cloud.refreshKey}
             onDeleted={cloud.onDeleted}
+            onOpenSettings={onOpenSettings}
+            onRefresh={cloud.onRefresh}
             onNewTaskIn={(project) => onNewCloudIn(project)}
             onTaskDragStart={(e, task) => {
               e.dataTransfer.setData(LOAD_MIME, cloudSlotId(task.id));
@@ -1851,6 +1870,7 @@ function PaneHeader({
   slot,
   meta,
   focused,
+  showProjectContext,
   attention = false,
   onRename,
   extrasRef,
@@ -1866,6 +1886,8 @@ function PaneHeader({
   meta: SessionMeta | null;
   /** 多格并存时的焦点格:标题下划线表达(ring 环退役,2026-08-19)。 */
   focused: boolean;
+  /** 多格可见时标题收成两行，并在本地任务下展示项目名与路径。 */
+  showProjectContext: boolean;
   /** 格级未读(可见非焦点格的轮结束/审批/提问,2026-08-20 用户「得让人
    *  知道这个 panel 需要他操作」):头部左缘警示条(任务列 ATTENTION_BAR
    *  同语言)+ 状态点走 attention 语义,落焦即消。 */
@@ -1889,11 +1911,28 @@ function PaneHeader({
 }) {
   const { t } = useI18n();
   const [renaming, setRenaming] = useState(false);
+  const [pathCopied, setPathCopied] = useState(false);
+  const copiedTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
   // ⋯ 菜单开着时簇钉住可见:openMenu 挂在 body,焦点/hover 一离格,
   // hover 显隐就把整簇藏了——「点了点点点,header 选项消失」(2026-08-20
   // 用户报障)
   const [menuOpen, setMenuOpen] = useState(false);
   const trailing = meta ? rowTrailing(meta, t, attention) : null;
+  const projectPath = showProjectContext && meta?.kind !== "chat" ? meta?.workdir.trim() : "";
+  const projectLabel = projectPath ? projectName(projectPath) : "";
+  const copyProjectPath = () => {
+    if (!projectPath) return;
+    copyText(projectPath);
+    setPathCopied(true);
+    if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(() => setPathCopied(false), 1800);
+  };
   const btn = "btn btn-ghost btn-square btn-sm text-base-content/60";
   const cluster = `flex shrink-0 items-center gap-2 ${
     swapping || zoomed || menuOpen ? "visible" : "invisible group-hover/pane:visible group-focus-within/pane:visible"
@@ -1944,7 +1983,7 @@ function PaneHeader({
           e.dataTransfer.effectAllowed = "move";
         }}
         onDoubleClick={() => meta && onRename && setRenaming(true)}
-        className={`min-w-0 cursor-grab truncate text-sm font-medium ${meta ? "" : "text-base-content/40"}`}
+        className={`min-w-0 max-w-full cursor-grab ${showProjectContext ? "flex flex-col gap-0.5" : "truncate"} ${meta ? "" : "text-base-content/40"}`}
         title={
           meta
             ? [meta.title, meta.summary, meta.workdir, onRename ? t("split.renameHint") : "", t("split.dragSwap")]
@@ -1958,13 +1997,42 @@ function PaneHeader({
             盒底缘,行内基线对齐会把整盒顶高 ~4px,标题视觉离心
             (2026-08-19 用户报障「没有居中」,Chrome 实测钉死) */}
         <span
+          data-pane-title=""
           data-split-focus={focused ? "" : undefined}
-          className={`block w-fit max-w-full truncate ${
-            focused ? "relative after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-primary after:content-['']" : ""
+          className={`block w-fit max-w-full truncate font-medium ${showProjectContext ? "text-[13px] leading-tight" : "text-sm"} ${
+            focused
+              ? `relative after:absolute after:inset-x-0 ${showProjectContext ? "after:-bottom-0.5" : "after:-bottom-1"} after:h-0.5 after:rounded-full after:bg-primary after:content-['']`
+              : ""
           }`}
         >
           {meta ? (meta.title_custom ? meta.title : meta.summary || meta.title) : t("split.emptyPane")}
         </span>
+        {projectPath && (
+          <span
+            data-pane-project=""
+            data-tauri-drag-region=""
+            title={projectPath}
+            className="group/project flex min-w-0 max-w-full items-center gap-1 text-[11px] font-normal leading-tight text-base-content/40"
+          >
+            <span data-tauri-drag-region="" className="min-w-0 max-w-48 truncate">
+              {projectLabel}
+            </span>
+            <button
+              type="button"
+              draggable={false}
+              aria-label={pathCopied ? t("split.pathCopied") : t("split.copyPath")}
+              title={`${pathCopied ? t("split.pathCopied") : t("split.copyPath")}\n${projectPath}`}
+              className={`-my-1 inline-flex size-5 shrink-0 items-center justify-center rounded transition-all hover:bg-base-200 hover:text-base-content focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-primary ${pathCopied ? "text-success opacity-100" : "text-base-content/35 opacity-0 group-hover/project:opacity-100"}`}
+              onDragStart={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                copyProjectPath();
+              }}
+            >
+              {pathCopied ? <IconCheck size={12} stroke={2} aria-hidden className="text-success" /> : <IconCopy size={12} stroke={1.75} aria-hidden />}
+            </button>
+          </span>
+        )}
       </span>
       {/* 真拖窗撑开段(2026-08-19 用户报障「有的区域拖不动」:Tauri 拖窗
           属性只认事件目标自身,标题 flex-1 时整条头都是交互件的地盘;

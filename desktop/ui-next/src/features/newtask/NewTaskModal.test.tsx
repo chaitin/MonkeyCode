@@ -354,6 +354,42 @@ describe("新建任务", () => {
     expect(calls.some((c) => c.cmd === "plugin:dialog|open")).toBe(true);
   });
 
+  it("目录选择器失败:不伪装成用户取消,就地展示错误", async () => {
+    stubShell({ "plugin:dialog|open": () => Promise.reject(new Error("dialog unavailable")) });
+    render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "选择项目" }));
+    await userEvent.click(screen.getByRole("button", { name: "选择项目文件夹…" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("无法打开项目文件夹选择器"));
+    expect(screen.getByRole("alert").textContent).toContain("dialog unavailable");
+  });
+
+  it("目录无权限:不提供创建误导,改为重新选择并授权", async () => {
+    const calls = stubShell({
+      session_create: () => Promise.reject(new Error("工作区目录无访问权限: /Users/u/Documents/project")),
+      "plugin:dialog|open": () => Promise.resolve("/Users/u/allowed-project"),
+    });
+    render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "重新选择并授权" })).toBeDefined());
+    expect(screen.queryByRole("button", { name: "创建并继续" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "重新选择并授权" }));
+    await waitFor(() => expect(screen.getByTitle("/Users/u/allowed-project")).toBeDefined());
+    expect(calls.some((call) => call.cmd === "plugin:dialog|open")).toBe(true);
+  });
+
+  it("重新授权时取消目录选择:保留权限错误和恢复入口", async () => {
+    stubShell({
+      session_create: () => Promise.reject(new Error("工作区目录无访问权限: /Users/u/Documents/project")),
+      "plugin:dialog|open": () => Promise.resolve(null),
+    });
+    render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "创建" }));
+    const retry = await screen.findByRole("button", { name: "重新选择并授权" });
+    await userEvent.click(retry);
+    await waitFor(() => expect(screen.getByRole("button", { name: "重新选择并授权" })).toBeDefined());
+    expect(screen.getByRole("alert").textContent).toContain("无法访问该项目文件夹");
+  });
+
   // 2026-08-09 撤回「按 wsl_workdir_base 拼默认目录」:默认目录恒为
   // ~/MonkeyCode,`~` 交给壳按内核环境展开(WSL → guest 家目录)。前端拼 UNC
   // 落点完全一样,却要等引擎起来才拿得到基座、拿不到时又退回 ~/MonkeyCode,

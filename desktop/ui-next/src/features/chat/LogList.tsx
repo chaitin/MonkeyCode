@@ -583,7 +583,17 @@ const LogListSession = forwardRef<LogListHandle, LogListProps>(function LogListS
       ))}
       <div data-virtual-spacer="bottom" aria-hidden style={{ height: virtual.bottomHeight }} />
       {state.running && (
-        <span className="loading loading-dots loading-sm mt-3 text-base-content/40" aria-hidden />
+        // daisyUI 的 loading-dots 是带无限 SMIL 动画的 SVG mask；WKWebView
+        // 会为它持续失效 mask 图层。普通 DOM + transform 只合成三个小圆点。
+        <span
+          data-running-indicator=""
+          className="mt-3 inline-flex size-5 items-center justify-between text-base-content/40"
+          aria-hidden
+        >
+          <span className="size-1.5 rounded-full bg-current motion-safe:animate-[mc-loading-dot_0.7s_ease-in-out_infinite]" />
+          <span className="size-1.5 rounded-full bg-current motion-safe:animate-[mc-loading-dot_0.7s_ease-in-out_0.1s_infinite]" />
+          <span className="size-1.5 rounded-full bg-current motion-safe:animate-[mc-loading-dot_0.7s_ease-in-out_0.2s_infinite]" />
+        </span>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isDevtoolsHotkey, windowContextLabel } from "./shellChrome";
+import { isDevtoolsHotkey, isReloadHotkey, windowContextLabel } from "./shellChrome";
 
 const key = (o: Partial<Pick<KeyboardEvent, "code" | "key" | "ctrlKey" | "metaKey" | "shiftKey">>) => ({
   code: "",
@@ -30,6 +30,22 @@ describe("devtools 快捷键判定", () => {
     expect(isDevtoolsHotkey(key({ code: "KeyI", key: "ш", ctrlKey: true, shiftKey: true }))).toBe(true);
     // 反向:别的物理键即使 key 恰好是 I 也不该命中
     expect(isDevtoolsHotkey(key({ code: "KeyJ", key: "I", ctrlKey: true, shiftKey: true }))).toBe(false);
+  });
+});
+
+describe("WebView 整页刷新快捷键判定", () => {
+  it("拦截 Windows/Linux 的普通与强制刷新", () => {
+    expect(isReloadHotkey(key({ code: "KeyR", key: "r", ctrlKey: true }))).toBe(true);
+    expect(isReloadHotkey(key({ code: "KeyR", key: "R", ctrlKey: true, shiftKey: true }))).toBe(true);
+    expect(isReloadHotkey(key({ key: "F5" }))).toBe(true);
+    expect(isReloadHotkey(key({ key: "F5", ctrlKey: true }))).toBe(true);
+  });
+
+  it("mac 的 ⌘R 同样拦截，并按物理键位识别", () => {
+    expect(isReloadHotkey(key({ code: "KeyR", key: "r", metaKey: true }))).toBe(true);
+    expect(isReloadHotkey(key({ code: "KeyR", key: "к", ctrlKey: true }))).toBe(true);
+    expect(isReloadHotkey(key({ code: "KeyT", key: "r", ctrlKey: true }))).toBe(false);
+    expect(isReloadHotkey(key({ code: "KeyR", key: "r" }))).toBe(false);
   });
 });
 

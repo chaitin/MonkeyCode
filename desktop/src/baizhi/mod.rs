@@ -18,8 +18,8 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use tauri::State;
 
-use cookies::CookieStore;
 use crate::util::LockExt;
+use cookies::CookieStore;
 
 const DEFAULT_MODEL_GATEWAY: &str = "https://ai-models.app.baizhi.cloud";
 const DEFAULT_MCP_GATEWAY: &str = "https://agent-toolkit.app.baizhi.cloud";
@@ -79,7 +79,11 @@ fn env_or(env: &str, def: &str) -> String {
 
 fn resolve_monkeycode(mc_base_url: &str, env_override: Option<&str>) -> String {
     let configured = mc_base_url.trim();
-    let configured = if configured.is_empty() { DEFAULT_MONKEYCODE_URL } else { configured };
+    let configured = if configured.is_empty() {
+        DEFAULT_MONKEYCODE_URL
+    } else {
+        configured
+    };
     env_override
         .filter(|value| !value.is_empty())
         .unwrap_or(configured)
@@ -161,7 +165,12 @@ pub struct Service {
 fn basic_header_value(user_pass: &str) -> Option<String> {
     use base64::Engine as _;
     let v = user_pass.trim();
-    (!v.is_empty()).then(|| format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(v.as_bytes())))
+    (!v.is_empty()).then(|| {
+        format!(
+            "Basic {}",
+            base64::engine::general_purpose::STANDARD.encode(v.as_bytes())
+        )
+    })
 }
 
 /// 服务地址是否官方云(国内/国际)。跳过 TLS 验证的开关对官方云恒不
@@ -230,10 +239,18 @@ impl Service {
             http: build_client(HTTP_TIMEOUT_SECS, false),
             lp: build_client(LP_TIMEOUT_SECS, false),
             mc_skip_tls,
-            http_insecure: mc_skip_tls.then(|| build_client(HTTP_TIMEOUT_SECS, true)).flatten(),
-            lp_insecure: mc_skip_tls.then(|| build_client(LP_TIMEOUT_SECS, true)).flatten(),
-            store: Arc::new(CookieStore::new(Some(config_dir.join("baizhi-cookies.json")))),
-            mc: Arc::new(CookieStore::new(Some(config_dir.join("monkeycode-cookies.json")))),
+            http_insecure: mc_skip_tls
+                .then(|| build_client(HTTP_TIMEOUT_SECS, true))
+                .flatten(),
+            lp_insecure: mc_skip_tls
+                .then(|| build_client(LP_TIMEOUT_SECS, true))
+                .flatten(),
+            store: Arc::new(CookieStore::new(Some(
+                config_dir.join("baizhi-cookies.json"),
+            ))),
+            mc: Arc::new(CookieStore::new(Some(
+                config_dir.join("monkeycode-cookies.json"),
+            ))),
             mc_cookie_generation: Arc::new(StdMutex::new(0)),
             mc_cookie_snapshot: 0,
             mc_basic: basic_header_value(&cfg.mc_basic_auth),
@@ -334,8 +351,9 @@ impl Service {
     pub(crate) fn mc_basic_header(&self, url: &reqwest::Url) -> Option<&str> {
         let basic = self.mc_basic.as_deref()?;
         let mc = reqwest::Url::parse(&self.ep.monkeycode).ok()?;
-        (url.host_str() == mc.host_str() && url.port_or_known_default() == mc.port_or_known_default())
-            .then_some(basic)
+        (url.host_str() == mc.host_str()
+            && url.port_or_known_default() == mc.port_or_known_default())
+        .then_some(basic)
     }
 
     /// 取 API 客户端;TLS 后端起不来时给出可行动错误而不是 panic。
@@ -370,10 +388,9 @@ impl Service {
     /// 验证客户端——那只会把"开关没生效"伪装成又一次证书错误。
     fn http_for(&self, url: &reqwest::Url) -> BzResult<&reqwest::Client> {
         if self.tls_insecure_for(url) {
-            return self
-                .http_insecure
-                .as_ref()
-                .ok_or_else(|| other("HTTP 客户端初始化失败(系统 TLS 不可用),云端与账号功能暂不可用"));
+            return self.http_insecure.as_ref().ok_or_else(|| {
+                other("HTTP 客户端初始化失败(系统 TLS 不可用),云端与账号功能暂不可用")
+            });
         }
         self.http()
     }
@@ -381,17 +398,21 @@ impl Service {
     /// http_for 的长轮询版(上传等长耗时请求用)。
     fn lp_for(&self, url: &reqwest::Url) -> BzResult<&reqwest::Client> {
         if self.tls_insecure_for(url) {
-            return self
-                .lp_insecure
-                .as_ref()
-                .ok_or_else(|| other("HTTP 客户端初始化失败(系统 TLS 不可用),云端与账号功能暂不可用"));
+            return self.lp_insecure.as_ref().ok_or_else(|| {
+                other("HTTP 客户端初始化失败(系统 TLS 不可用),云端与账号功能暂不可用")
+            });
         }
         self.lp()
     }
 
     // ==================== HTTP 基座 ====================
 
-    fn update_response_cookies(&self, store: &CookieStore, url: &reqwest::Url, set_cookies: &[String]) {
+    fn update_response_cookies(
+        &self,
+        store: &CookieStore,
+        url: &reqwest::Url,
+        set_cookies: &[String],
+    ) {
         if std::ptr::eq(store, self.mc.as_ref()) {
             let generation = self.mc_cookie_generation.lock_ok();
             if *generation != self.mc_cookie_snapshot {
@@ -424,7 +445,10 @@ impl Service {
         if let Some(b) = self.mc_basic_header(&url) {
             req = req.header(reqwest::header::AUTHORIZATION, b);
         }
-        let resp = req.send().await.map_err(|e| other(format!("请求 {host} 失败: {e}")))?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| other(format!("请求 {host} 失败: {e}")))?;
         let status = resp.status().as_u16();
         let location = resp
             .headers()
@@ -438,7 +462,10 @@ impl Service {
             .filter_map(|v| v.to_str().ok().map(str::to_string))
             .collect();
         self.update_response_cookies(store, resp.url(), &set_cookies);
-        let data = resp.bytes().await.map_err(|e| other(format!("读取响应失败: {e}")))?;
+        let data = resp
+            .bytes()
+            .await
+            .map_err(|e| other(format!("读取响应失败: {e}")))?;
         Ok((data.to_vec(), status, location))
     }
 
@@ -455,7 +482,12 @@ impl Service {
     }
 
     /// 账号域相对路径请求(绝对 URL 直接用)。
-    async fn account_do(&self, method: reqwest::Method, path: &str, body: Option<&Value>) -> BzResult<(Vec<u8>, u16)> {
+    async fn account_do(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> BzResult<(Vec<u8>, u16)> {
         let target = if path.starts_with("http://") || path.starts_with("https://") {
             path.to_string()
         } else {
@@ -471,7 +503,10 @@ impl Service {
         if let Some(h) = self.store.header(&url) {
             req = req.header(reqwest::header::COOKIE, h);
         }
-        let resp = req.send().await.map_err(|e| other(format!("请求失败: {e}")))?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| other(format!("请求失败: {e}")))?;
         let status = resp.status().as_u16();
         let set_cookies: Vec<String> = resp
             .headers()
@@ -483,12 +518,20 @@ impl Service {
         if status >= 400 {
             return Err(other(format!("HTTP {status}")));
         }
-        resp.bytes().await.map(|b| b.to_vec()).map_err(|e| other(format!("读取响应失败: {e}")))
+        resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .map_err(|e| other(format!("读取响应失败: {e}")))
     }
 
     /// 请求百智云业务接口并解开 {code,message,success,data} 包壳。
     /// 返回 data(缺 data 字段时返回整个响应体,对齐移动端语义)。
-    pub async fn call(&self, method: reqwest::Method, path: &str, body: Option<&Value>) -> BzResult<Value> {
+    pub async fn call(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> BzResult<Value> {
         let (data, status) = self.account_do(method, path, body).await?;
         unwrap_envelope(&data, status, &ENV_BAIZHI)
     }
@@ -522,13 +565,19 @@ impl Service {
 
     /// 百智云域的 PoW 验证码(手机号发码/登录用)。
     async fn obtain_captcha_token(&self) -> BzResult<String> {
-        self.captcha_token_at(&self.ep.account, &self.store, "百智云").await
+        self.captcha_token_at(&self.ep.account, &self.store, "百智云")
+            .await
     }
 
     /// 完整跑一遍 PoW 验证码,返回登录接口所需 captcha_token。百智云与
     /// MonkeyCode 服务端用同一套 go-cap 协议(challenge 201 裸结构 → 本地
     /// 爆破 → redeem 换 token),差异只在域、cookie 罐与错误标签。
-    pub(crate) async fn captcha_token_at(&self, base: &str, store: &CookieStore, label: &str) -> BzResult<String> {
+    pub(crate) async fn captcha_token_at(
+        &self,
+        base: &str,
+        store: &CookieStore,
+        label: &str,
+    ) -> BzResult<String> {
         let ch = self
             .raw_at(
                 store,
@@ -539,9 +588,14 @@ impl Service {
             )
             .await
             .map_err(|e| other(format!("获取验证码质询失败: {}", e.msg())))?;
-        let token = ch.get("token").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let challenge: pow::Challenge = serde_json::from_value(ch.get("challenge").cloned().unwrap_or(Value::Null))
-            .map_err(|_| other("验证码质询响应格式异常"))?;
+        let token = ch
+            .get("token")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let challenge: pow::Challenge =
+            serde_json::from_value(ch.get("challenge").cloned().unwrap_or(Value::Null))
+                .map_err(|_| other("验证码质询响应格式异常"))?;
         // valid() 同时给 c/s/d 设上界:参数来自服务端,超界值要么是恶意
         // 要么是协议破损,放进爆破只会钉死 blocking 线程(见 pow.rs)
         if token.is_empty() || !challenge.valid() {
@@ -549,10 +603,11 @@ impl Service {
         }
         // SHA-256 爆破是 CPU 密集,丢 blocking 池
         let tk = token.clone();
-        let solutions = tauri::async_runtime::spawn_blocking(move || pow::solve_challenges(&tk, challenge))
-            .await
-            .map_err(|e| other(format!("验证码求解失败: {e}")))?
-            .map_err(other)?;
+        let solutions =
+            tauri::async_runtime::spawn_blocking(move || pow::solve_challenges(&tk, challenge))
+                .await
+                .map_err(|e| other(format!("验证码求解失败: {e}")))?
+                .map_err(other)?;
         let rd = self
             .raw_at(
                 store,
@@ -566,7 +621,10 @@ impl Service {
         let ok = rd.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
         let rd_token = rd.get("token").and_then(|v| v.as_str()).unwrap_or("");
         if !ok || rd_token.is_empty() {
-            let msg = rd.get("message").and_then(|v| v.as_str()).unwrap_or("验证码校验未通过");
+            let msg = rd
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("验证码校验未通过");
             return Err(other(clean_message(msg)));
         }
         Ok(rd_token.to_string())
@@ -601,7 +659,10 @@ impl Service {
         if self.store.is_empty() {
             return Ok((false, Value::Null));
         }
-        match self.call(reqwest::Method::GET, "/api/v1/user/profile", None).await {
+        match self
+            .call(reqwest::Method::GET, "/api/v1/user/profile", None)
+            .await
+        {
             Ok(profile) => Ok((true, profile)),
             Err(BzErr::Unauthorized(_)) => Ok((false, Value::Null)),
             Err(e) => Err(e),
@@ -675,7 +736,10 @@ pub(crate) fn unwrap_envelope(data: &[u8], status: u16, p: &Envelope) -> BzResul
     };
     let code_fail = !(p.code_ok)(v.get("code"));
     let success_fail = p.check_success
-        && v.get("success").and_then(|s| s.as_bool()).map(|s| !s).unwrap_or(false);
+        && v.get("success")
+            .and_then(|s| s.as_bool())
+            .map(|s| !s)
+            .unwrap_or(false);
     if !is2xx || code_fail || success_fail {
         let msg = clean_message(v.get("message").and_then(|m| m.as_str()).unwrap_or(""));
         if msg.is_empty() {
@@ -767,7 +831,10 @@ impl BaizhiState {
 
     /// UI 发起操作时携带它看到的壳代次。即使命令先在异步互斥锁上排队，
     /// 真正开始网络请求时也不能悄悄改为操作已经切入的新服务。
-    fn service_snapshot_if_current(&self, expected_generation: Option<u64>) -> Option<(Arc<Service>, u64)> {
+    fn service_snapshot_if_current(
+        &self,
+        expected_generation: Option<u64>,
+    ) -> Option<(Arc<Service>, u64)> {
         let current = self.service.lock_ok();
         let generation = self.transport_generation.load(Ordering::SeqCst);
         if expected_generation.is_some_and(|expected| expected != generation) {
@@ -804,7 +871,10 @@ impl BaizhiState {
         let next = Arc::new(next);
         *current = next;
         if transport_changed {
-            let generation = self.transport_generation.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
+            let generation = self
+                .transport_generation
+                .fetch_add(1, Ordering::SeqCst)
+                .wrapping_add(1);
             // service 锁保持到管道关闭完成:新 claim 不会插进 swap 与 close_all 之间。
             pipes.close_all();
             Some(generation)
@@ -856,7 +926,10 @@ impl BaizhiState {
 }
 
 fn valid_phone(p: &str) -> bool {
-    p.len() == 11 && p.starts_with('1') && p.bytes().all(|b| b.is_ascii_digit()) && (b'3'..=b'9').contains(&p.as_bytes()[1])
+    p.len() == 11
+        && p.starts_with('1')
+        && p.bytes().all(|b| b.is_ascii_digit())
+        && (b'3'..=b'9').contains(&p.as_bytes()[1])
 }
 
 fn valid_code(c: &str) -> bool {
@@ -879,16 +952,26 @@ pub async fn baizhi_send_code(bz: State<'_, BaizhiState>, phone: String) -> Resu
     if !valid_phone(&phone) {
         return Err("请输入有效的手机号".into());
     }
-    bz.service().send_phone_code(&phone).await.map_err(BzErr::msg)?;
+    bz.service()
+        .send_phone_code(&phone)
+        .await
+        .map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))
 }
 
 #[tauri::command]
-pub async fn baizhi_login(bz: State<'_, BaizhiState>, phone: String, code: String) -> Result<Value, String> {
+pub async fn baizhi_login(
+    bz: State<'_, BaizhiState>,
+    phone: String,
+    code: String,
+) -> Result<Value, String> {
     if !valid_phone(&phone) || !valid_code(&code) {
         return Err("请输入有效的手机号和短信验证码".into());
     }
-    bz.service().login_phone(&phone, &code).await.map_err(BzErr::msg)?;
+    bz.service()
+        .login_phone(&phone, &code)
+        .await
+        .map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))
 }
 
@@ -900,19 +983,28 @@ pub async fn baizhi_logout(bz: State<'_, BaizhiState>) -> Result<Value, String> 
 
 #[tauri::command]
 pub async fn baizhi_wechat_start(bz: State<'_, BaizhiState>) -> Result<Value, String> {
-    let qr = wechat::start_wechat_login(&bz.service()).await.map_err(BzErr::msg)?;
+    let qr = wechat::start_wechat_login(&bz.service())
+        .await
+        .map_err(BzErr::msg)?;
     Ok(json!({ "qr": qr }))
 }
 
 #[tauri::command]
 pub async fn baizhi_wechat_poll(bz: State<'_, BaizhiState>) -> Result<Value, String> {
-    let status = wechat::poll_wechat_login(&bz.service()).await.map_err(BzErr::msg)?;
+    let status = wechat::poll_wechat_login(&bz.service())
+        .await
+        .map_err(BzErr::msg)?;
     Ok(json!({ "status": status }))
 }
 
 #[tauri::command]
-pub async fn baizhi_sync(bz: State<'_, BaizhiState>, known_keys: Option<Vec<String>>) -> Result<Value, String> {
-    sync::sync(&bz.service(), &known_keys.unwrap_or_default()).await.map_err(BzErr::msg)
+pub async fn baizhi_sync(
+    bz: State<'_, BaizhiState>,
+    known_keys: Option<Vec<String>>,
+) -> Result<Value, String> {
+    sync::sync(&bz.service(), &known_keys.unwrap_or_default())
+        .await
+        .map_err(BzErr::msg)
 }
 
 #[tauri::command]
@@ -932,7 +1024,9 @@ pub async fn mc_status(bz: State<'_, BaizhiState>) -> Result<Value, String> {
 
 #[tauri::command]
 pub async fn mc_login(bz: State<'_, BaizhiState>) -> Result<Value, String> {
-    let user = monkeycode::login_monkeycode(&bz.service()).await.map_err(BzErr::msg)?;
+    let user = monkeycode::login_monkeycode(&bz.service())
+        .await
+        .map_err(BzErr::msg)?;
     let mut resp = json!({ "ok": true });
     if !user.is_null() {
         resp["user"] = user;
@@ -944,7 +1038,11 @@ pub async fn mc_login(bz: State<'_, BaizhiState>) -> Result<Value, String> {
 /// 校验对齐 mobile 的弱校验:仅非空;password **不 trim**——首尾空格是
 /// 密码的一部分,trim 会与 mobile/web 行为分叉。
 #[tauri::command]
-pub async fn mc_password_login(bz: State<'_, BaizhiState>, email: String, password: String) -> Result<Value, String> {
+pub async fn mc_password_login(
+    bz: State<'_, BaizhiState>,
+    email: String,
+    password: String,
+) -> Result<Value, String> {
     let email = email.trim();
     if email.is_empty() || password.is_empty() {
         return Err("请输入邮箱和密码".into());
@@ -973,13 +1071,17 @@ pub async fn mc_logout(
 /// 账号权益(额度/会员/签到态/邀请一次取回;单路缺席按 null 降级,见 mc_usage)。
 #[tauri::command]
 pub async fn mc_usage(bz: State<'_, BaizhiState>) -> Result<Value, String> {
-    monkeycode::mc_usage(&bz.service()).await.map_err(BzErr::msg)
+    monkeycode::mc_usage(&bz.service())
+        .await
+        .map_err(BzErr::msg)
 }
 
 /// 每日签到(壳内自动完成 PoW 验证码)。成功后 UI 重拉 mc_usage 刷新余额。
 #[tauri::command]
 pub async fn mc_checkin(bz: State<'_, BaizhiState>) -> Result<Value, String> {
-    monkeycode::mc_checkin(&bz.service()).await.map_err(BzErr::msg)?;
+    monkeycode::mc_checkin(&bz.service())
+        .await
+        .map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))
 }
 
@@ -997,7 +1099,12 @@ fn read_optional_file(path: &std::path::Path) -> BzResult<Option<Vec<u8>>> {
 
 fn parse_ohmyagent_key(data: &[u8]) -> Option<Value> {
     let v: Value = serde_json::from_slice(data).ok()?;
-    let has = |k: &str| v.get(k).and_then(Value::as_str).map(|s| !s.is_empty()).unwrap_or(false);
+    let has = |k: &str| {
+        v.get(k)
+            .and_then(Value::as_str)
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+    };
     (has("id") && has("api_key")).then_some(v)
 }
 
@@ -1018,9 +1125,18 @@ fn mc_transport_fingerprint(server: &str, basic: Option<&str>) -> String {
     format!("{digest:x}")
 }
 
-fn ohmyagent_key_matches_transport(key: &Value, server: &str, llm: &str, basic: Option<&str>) -> bool {
+fn ohmyagent_key_matches_transport(
+    key: &Value,
+    server: &str,
+    llm: &str,
+    basic: Option<&str>,
+) -> bool {
     let expected = mc_transport_fingerprint(server, basic);
-    if let Some(stored) = key.get("transport").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+    if let Some(stored) = key
+        .get("transport")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
         return stored == expected;
     }
 
@@ -1030,13 +1146,23 @@ fn ohmyagent_key_matches_transport(key: &Value, server: &str, llm: &str, basic: 
     if basic.is_some() {
         return false;
     }
-    if let Some(stored) = key.get("server").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+    if let Some(stored) = key
+        .get("server")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
         return stored == server;
     }
-    key.get("base_url").and_then(Value::as_str).filter(|s| !s.is_empty()) == Some(llm)
+    key.get("base_url")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        == Some(llm)
 }
 
-pub(crate) fn ohmyagent_key_matches_config(key: &Value, cfg: &crate::config::DesktopConfig) -> bool {
+pub(crate) fn ohmyagent_key_matches_config(
+    key: &Value,
+    cfg: &crate::config::DesktopConfig,
+) -> bool {
     let ep = Endpoints::resolve(&cfg.mc_base_url);
     let llm = resolve_mc_llm(&cfg.mc_llm_base_url, &ep.monkeycode);
     let basic = basic_header_value(&cfg.mc_basic_auth);
@@ -1046,7 +1172,10 @@ pub(crate) fn ohmyagent_key_matches_config(key: &Value, cfg: &crate::config::Des
 fn stamp_ohmyagent_key(mut key: Value, svc: &Service) -> Value {
     key["server"] = json!(svc.ep.monkeycode);
     key["base_url"] = json!(svc.mc_llm);
-    key["transport"] = json!(mc_transport_fingerprint(&svc.ep.monkeycode, svc.mc_basic.as_deref()));
+    key["transport"] = json!(mc_transport_fingerprint(
+        &svc.ep.monkeycode,
+        svc.mc_basic.as_deref()
+    ));
     key
 }
 
@@ -1055,11 +1184,19 @@ fn stamp_ohmyagent_key(mut key: Value, svc: &Service) -> Value {
 #[cfg(test)]
 async fn ensure_ohmyagent_key(svc: &Service, cfg_dir: &std::path::Path) -> BzResult<Value> {
     let persist = |k: &Value| {
-        crate::config::atomic_write_private(&cfg_dir.join(OHMYAGENT_KEY_FILE), k.to_string().as_bytes())
-            .map_err(other)
+        crate::config::atomic_write_private(
+            &cfg_dir.join(OHMYAGENT_KEY_FILE),
+            k.to_string().as_bytes(),
+        )
+        .map_err(other)
     };
     if let Some(k) = stored_ohmyagent_key(cfg_dir) {
-        if ohmyagent_key_matches_transport(&k, &svc.ep.monkeycode, &svc.mc_llm, svc.mc_basic.as_deref()) {
+        if ohmyagent_key_matches_transport(
+            &k,
+            &svc.ep.monkeycode,
+            &svc.mc_llm,
+            svc.mc_basic.as_deref(),
+        ) {
             let k = stamp_ohmyagent_key(k, svc);
             persist(&k)?;
             return Ok(k);
@@ -1081,9 +1218,15 @@ async fn ensure_ohmyagent_key_current(
     let path = cfg_dir.join(OHMYAGENT_KEY_FILE);
     let before = read_optional_file(&path)?;
     if let Some(k) = before.as_deref().and_then(parse_ohmyagent_key) {
-        if ohmyagent_key_matches_transport(&k, &svc.ep.monkeycode, &svc.mc_llm, svc.mc_basic.as_deref()) {
+        if ohmyagent_key_matches_transport(
+            &k,
+            &svc.ep.monkeycode,
+            &svc.mc_llm,
+            svc.mc_basic.as_deref(),
+        ) {
             let stamped = stamp_ohmyagent_key(k, svc);
-            let data = serde_json::to_vec(&stamped).map_err(|e| other(format!("序列化会员密钥失败: {e}")))?;
+            let data = serde_json::to_vec(&stamped)
+                .map_err(|e| other(format!("序列化会员密钥失败: {e}")))?;
             if before.as_deref() != Some(data.as_slice()) {
                 bz.commit_member_key(transport_generation, &path, before.as_deref(), Some(&data))?;
             } else if !bz.is_current(transport_generation) {
@@ -1101,7 +1244,10 @@ async fn ensure_ohmyagent_key_current(
 
 /// 同步会员内置模型(命令的可测内核:tests.rs 以 TempDir 直调)。
 #[cfg(test)]
-pub(crate) async fn sync_member_models(svc: &Service, cfg_dir: &std::path::Path) -> BzResult<Value> {
+pub(crate) async fn sync_member_models(
+    svc: &Service,
+    cfg_dir: &std::path::Path,
+) -> BzResult<Value> {
     ensure_ohmyagent_key(svc, cfg_dir).await?;
     monkeycode::mc_member_models_sync(svc).await
 }
@@ -1112,7 +1258,12 @@ pub(crate) async fn revoke_member_models(svc: &Service, cfg_dir: &std::path::Pat
     let Some(key) = stored_ohmyagent_key(cfg_dir) else {
         return Ok(()); // 从未同步过,无可删
     };
-    if !ohmyagent_key_matches_transport(&key, &svc.ep.monkeycode, &svc.mc_llm, svc.mc_basic.as_deref()) {
+    if !ohmyagent_key_matches_transport(
+        &key,
+        &svc.ep.monkeycode,
+        &svc.mc_llm,
+        svc.mc_basic.as_deref(),
+    ) {
         return Ok(());
     }
     let id = key.get("id").and_then(Value::as_str).unwrap_or("");
@@ -1132,7 +1283,12 @@ async fn revoke_member_models_current(
     let Some(key) = before.as_deref().and_then(parse_ohmyagent_key) else {
         return Ok(());
     };
-    if !ohmyagent_key_matches_transport(&key, &svc.ep.monkeycode, &svc.mc_llm, svc.mc_basic.as_deref()) {
+    if !ohmyagent_key_matches_transport(
+        &key,
+        &svc.ep.monkeycode,
+        &svc.mc_llm,
+        svc.mc_basic.as_deref(),
+    ) {
         return Ok(());
     }
     let id = key.get("id").and_then(Value::as_str).unwrap_or("");
@@ -1150,11 +1306,16 @@ pub async fn mc_models_sync(
 ) -> Result<Value, String> {
     let cfg_dir = crate::config::config_dir(&app)?;
     let _op = bz.member_ops.lock().await;
-    let Some((svc, transport_generation)) = bz.service_snapshot_if_current(expected_generation) else {
+    let Some((svc, transport_generation)) = bz.service_snapshot_if_current(expected_generation)
+    else {
         return Err("服务配置已切换,本次会员模型同步已取消,请重试".into());
     };
-    ensure_ohmyagent_key_current(&bz, &svc, transport_generation, &cfg_dir).await.map_err(BzErr::msg)?;
-    let models = monkeycode::mc_member_models_sync(&svc).await.map_err(BzErr::msg)?;
+    ensure_ohmyagent_key_current(&bz, &svc, transport_generation, &cfg_dir)
+        .await
+        .map_err(BzErr::msg)?;
+    let models = monkeycode::mc_member_models_sync(&svc)
+        .await
+        .map_err(BzErr::msg)?;
     if !bz.is_current(transport_generation) {
         return Err("服务配置已切换,旧服务的模型结果已丢弃,请重试".into());
     }
@@ -1171,10 +1332,13 @@ pub async fn mc_models_revoke(
 ) -> Result<Value, String> {
     let cfg_dir = crate::config::config_dir(&app)?;
     let _op = bz.member_ops.lock().await;
-    let Some((svc, transport_generation)) = bz.service_snapshot_if_current(expected_generation) else {
+    let Some((svc, transport_generation)) = bz.service_snapshot_if_current(expected_generation)
+    else {
         return Err("服务配置已切换,本次会员密钥吊销已取消,请重试".into());
     };
-    revoke_member_models_current(&bz, &svc, transport_generation, &cfg_dir).await.map_err(BzErr::msg)?;
+    revoke_member_models_current(&bz, &svc, transport_generation, &cfg_dir)
+        .await
+        .map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))
 }
 
@@ -1189,7 +1353,9 @@ pub async fn mc_disconnect(
 ) -> Result<Value, String> {
     let cfg_dir = crate::config::config_dir(&app)?;
     let _op = bz.member_ops.lock().await;
-    let Some((svc, transport_generation)) = bz.service_snapshot_if_current(Some(expected_generation)) else {
+    let Some((svc, transport_generation)) =
+        bz.service_snapshot_if_current(Some(expected_generation))
+    else {
         return Ok(json!({ "ok": false, "cancelled": true }));
     };
     let warning = revoke_member_models_current(&bz, &svc, transport_generation, &cfg_dir)
@@ -1229,12 +1395,16 @@ pub async fn mc_tasks(
 
 #[tauri::command]
 pub async fn mc_projects(bz: State<'_, BaizhiState>) -> Result<Value, String> {
-    monkeycode::mc_projects(&bz.service()).await.map_err(BzErr::msg)
+    monkeycode::mc_projects(&bz.service())
+        .await
+        .map_err(BzErr::msg)
 }
 
 #[tauri::command]
 pub async fn mc_task_info(bz: State<'_, BaizhiState>, id: String) -> Result<Value, String> {
-    monkeycode::mc_task_info(&bz.service(), &id).await.map_err(BzErr::msg)
+    monkeycode::mc_task_info(&bz.service(), &id)
+        .await
+        .map_err(BzErr::msg)
 }
 
 #[tauri::command]
@@ -1266,41 +1436,57 @@ pub async fn mc_task_user_inputs(
 
 #[tauri::command]
 pub async fn mc_task_stop(bz: State<'_, BaizhiState>, id: String) -> Result<Value, String> {
-    monkeycode::mc_task_stop(&bz.service(), &id).await.map_err(BzErr::msg)?;
+    monkeycode::mc_task_stop(&bz.service(), &id)
+        .await
+        .map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))
 }
 
 #[tauri::command]
 pub async fn mc_task_delete(bz: State<'_, BaizhiState>, id: String) -> Result<Value, String> {
-    monkeycode::mc_task_delete(&bz.service(), &id).await.map_err(BzErr::msg)?;
+    monkeycode::mc_task_delete(&bz.service(), &id)
+        .await
+        .map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))
 }
 
 #[tauri::command]
 pub async fn mc_task_create(bz: State<'_, BaizhiState>, req: Value) -> Result<Value, String> {
-    monkeycode::mc_task_create(&bz.service(), &req).await.map_err(BzErr::msg)
+    monkeycode::mc_task_create(&bz.service(), &req)
+        .await
+        .map_err(BzErr::msg)
 }
 
 #[tauri::command]
 pub async fn mc_task_options(bz: State<'_, BaizhiState>) -> Result<Value, String> {
-    monkeycode::mc_task_options(&bz.service()).await.map_err(BzErr::msg)
+    monkeycode::mc_task_options(&bz.service())
+        .await
+        .map_err(BzErr::msg)
 }
 
 /// 云端聊天附件上传(data = base64 文件字节);返回 {access_url}。
 #[tauri::command]
-pub async fn mc_upload(bz: State<'_, BaizhiState>, filename: String, data: String) -> Result<Value, String> {
+pub async fn mc_upload(
+    bz: State<'_, BaizhiState>,
+    filename: String,
+    data: String,
+) -> Result<Value, String> {
     use base64::Engine as _;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data.as_bytes())
         .map_err(|e| format!("附件数据解码失败: {e}"))?;
-    let access_url = monkeycode::mc_upload(&bz.service(), &filename, bytes).await.map_err(BzErr::msg)?;
+    let access_url = monkeycode::mc_upload(&bz.service(), &filename, bytes)
+        .await
+        .map_err(BzErr::msg)?;
     Ok(json!({ "access_url": access_url }))
 }
 
 /// 虚拟机终端 session 列表(终端面板复用已有会话用;返回 {terminals})。
 #[tauri::command]
 pub async fn mc_terminal_list(bz: State<'_, BaizhiState>, vm_id: String) -> Result<Value, String> {
-    monkeycode::mc_terminal_list(&bz.service(), &vm_id).await.map_err(BzErr::msg)
+    monkeycode::mc_terminal_list(&bz.service(), &vm_id)
+        .await
+        .map_err(BzErr::msg)
 }
 
 /// 从云端任务 VM 工作区下载文件/目录到本地(dest 为 UI 经保存对话框
@@ -1318,9 +1504,18 @@ pub async fn mc_file_download(
     filename: String,
     dest: String,
 ) -> Result<Value, String> {
-    let bytes = monkeycode::mc_file_download(&app, &ctl, &bz.service(), &dl_id, &vm_id, &path, &filename, &dest)
-        .await
-        .map_err(BzErr::msg)?;
+    let bytes = monkeycode::mc_file_download(
+        &app,
+        &ctl,
+        &bz.service(),
+        &dl_id,
+        &vm_id,
+        &path,
+        &filename,
+        &dest,
+    )
+    .await
+    .map_err(BzErr::msg)?;
     Ok(json!({ "ok": true, "bytes": bytes }))
 }
 
@@ -1347,6 +1542,8 @@ pub async fn mc_file_upload(
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data.as_bytes())
         .map_err(|e| format!("文件数据解码失败: {e}"))?;
-    monkeycode::mc_file_upload(&bz.service(), &vm_id, &path, bytes).await.map_err(BzErr::msg)?;
+    monkeycode::mc_file_upload(&bz.service(), &vm_id, &path, bytes)
+        .await
+        .map_err(BzErr::msg)?;
     Ok(json!({ "ok": true }))
 }

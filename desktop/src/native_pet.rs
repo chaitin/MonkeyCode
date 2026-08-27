@@ -12,6 +12,7 @@ use std::mem::size_of;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::util::LockExt;
 use tauri::{AppHandle, Manager};
 use windows::core::w;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
@@ -24,7 +25,6 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetCapture, ReleaseCapture, SetCapture};
-use crate::util::LockExt;
 use windows::Win32::UI::Shell::{
     DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass, SUBCLASSPROC,
 };
@@ -32,10 +32,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetWindowRect, KillTimer,
     LoadCursorW, PostMessageW, RegisterClassExW, SetTimer, SetWindowPos, ShowWindow,
     UpdateLayeredWindow, HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_APP,
-    WM_CAPTURECHANGED, WM_DPICHANGED, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCDESTROY,
-    WM_SIZE, WM_TIMER, WNDCLASSEXW,
-    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_APP, WM_CAPTURECHANGED,
+    WM_DPICHANGED, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCDESTROY, WM_SIZE, WM_TIMER,
+    WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 const LOGICAL_H: f64 = 120.0;
@@ -304,9 +303,7 @@ pub fn update(app: &AppHandle, mode: &str, tone: &str, text: &str, session_id: O
         visual.text = text.chars().take(80).collect();
         visual.target_session_id = session_id
             .map(str::trim)
-            .filter(|id| {
-                !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
-            })
+            .filter(|id| !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control))
             .map(str::to_string);
         visual.since = Instant::now();
         visual.generation = visual.generation.wrapping_add(1);

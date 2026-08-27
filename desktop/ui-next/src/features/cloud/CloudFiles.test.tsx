@@ -105,6 +105,19 @@ describe("CloudFiles", () => {
     expect(screen.getByText("上传文件")).toBeTruthy();
   });
 
+  it("宿主 runtime 换代时同步借用失败转为面板错误，不冒泡到全局", async () => {
+    render(
+      <CloudFiles
+        taskId="t1"
+        vmId="vm1"
+        borrowControl={() => {
+          throw new Error("Cloud task runtime is not ready");
+        }}
+      />,
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain("Cloud task runtime is not ready");
+  });
+
   // 借来的常驻控制流是宿主的保活/唤醒通道(后端每条控制连接另起一份 TaskLive
   // 上游订阅,task_control.go),本组件只借不关
   it("控制流向宿主借:卸载只 release,不 close 借来的连接", async () => {

@@ -45,7 +45,10 @@ pub fn defaults_path(cfg_dir: &Path) -> PathBuf {
 }
 
 pub fn load_default_prefs(path: &Path) -> std::collections::BTreeMap<String, bool> {
-    fs::read(path).ok().and_then(|d| serde_json::from_slice(&d).ok()).unwrap_or_default()
+    fs::read(path)
+        .ok()
+        .and_then(|d| serde_json::from_slice(&d).ok())
+        .unwrap_or_default()
 }
 
 /// 一个技能是否默认启用:显式开关优先,否则出厂规则。
@@ -66,7 +69,9 @@ pub fn valid_skill_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
         && !name.starts_with('.')
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
 #[derive(Serialize, Clone)]
@@ -92,7 +97,10 @@ pub struct SkillInfo {
 /// 形态照抄 open_extension_dir 的双候选。
 pub fn builtin_dir(app: &AppHandle) -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Ok(p) = app.path().resolve("skills", tauri::path::BaseDirectory::Resource) {
+    if let Ok(p) = app
+        .path()
+        .resolve("skills", tauri::path::BaseDirectory::Resource)
+    {
         candidates.push(p);
     }
     candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugins/skills"));
@@ -125,8 +133,14 @@ fn parse_frontmatter(text: &str) -> (Option<String>, Option<String>) {
         if line.starts_with(' ') || line.starts_with('\t') {
             continue;
         }
-        let Some((key, value)) = line.split_once(':') else { continue };
-        let value = value.trim().trim_matches('"').trim_matches('\'').to_string();
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let value = value
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
         match key.trim() {
             "name" => name = Some(value),
             "description" => description = Some(value),
@@ -153,7 +167,9 @@ fn derive_description(text: &str) -> String {
 }
 
 fn skip_frontmatter(text: &str) -> &str {
-    let Some(rest) = text.strip_prefix("---") else { return text };
+    let Some(rest) = text.strip_prefix("---") else {
+        return text;
+    };
     match rest.split_once("\n---") {
         Some((_, body)) => body.split_once('\n').map(|(_, b)| b).unwrap_or(""),
         None => text,
@@ -170,7 +186,9 @@ struct StoreSkill {
 /// 扫一个来源目录:<dir>/<name>/SKILL.md。坏条目(读不了/名字非法)跳过
 /// 不拖垮整库——列表少一条比整页报错可诊断(目录名非法只可能是手工放入)。
 fn scan_source(dir: &Path, source: &str, out: &mut Vec<StoreSkill>) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let path = e.path();
         if !path.is_dir() {
@@ -180,7 +198,9 @@ fn scan_source(dir: &Path, source: &str, out: &mut Vec<StoreSkill>) {
         if !valid_skill_name(&name) {
             continue;
         }
-        let Ok(content) = fs::read_to_string(path.join("SKILL.md")) else { continue };
+        let Ok(content) = fs::read_to_string(path.join("SKILL.md")) else {
+            continue;
+        };
         out.push(StoreSkill {
             info: SkillInfo {
                 description: derive_description(&content),
@@ -287,7 +307,11 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
 #[tauri::command]
 pub fn skills_list(app: AppHandle) -> Result<Vec<SkillInfo>, String> {
     let cfg_dir = crate::config::config_dir(&app)?;
-    Ok(list(builtin_dir(&app).as_deref(), &user_dir(&cfg_dir), &defaults_path(&cfg_dir)))
+    Ok(list(
+        builtin_dir(&app).as_deref(),
+        &user_dir(&cfg_dir),
+        &defaults_path(&cfg_dir),
+    ))
 }
 
 /// 默认启用开关:只影响**新会话**(与旧 sidecar 无 skills 字段的会话)的
@@ -318,7 +342,9 @@ pub fn skills_save(app: AppHandle, name: String, content: String) -> Result<Skil
     }
     if let (Some(fm_name), _) = parse_frontmatter(&content) {
         if !fm_name.is_empty() && fm_name != name {
-            return Err(format!("frontmatter 的 name({fm_name})与技能名({name})不一致"));
+            return Err(format!(
+                "frontmatter 的 name({fm_name})与技能名({name})不一致"
+            ));
         }
     }
     let cfg_dir = crate::config::config_dir(&app)?;
@@ -416,7 +442,9 @@ mod tests {
         put_skill(&user, "review", "用户版");
         let all = list(Some(&builtin), &user, &user.join("no-defaults.json"));
         assert_eq!(
-            all.iter().map(|s| (s.name.as_str(), s.source.as_str())).collect::<Vec<_>>(),
+            all.iter()
+                .map(|s| (s.name.as_str(), s.source.as_str()))
+                .collect::<Vec<_>>(),
             vec![("only-builtin", "builtin"), ("review", "user")]
         );
         assert_eq!(all[1].content, "用户版");
@@ -439,14 +467,25 @@ mod tests {
         fs::write(user.join("b/references/x.md"), "ref").unwrap();
 
         let nodefaults = user.join("no-defaults.json");
-        let both =
-            materialize(&first, Some(&builtin), &user, &nodefaults, Some(&["a".into(), "b".into()]))
-                .unwrap();
+        let both = materialize(
+            &first,
+            Some(&builtin),
+            &user,
+            &nodefaults,
+            Some(&["a".into(), "b".into()]),
+        )
+        .unwrap();
         assert_eq!(both, vec!["a", "b"]);
         assert!(first.join("b/references/x.md").is_file());
 
-        let only_b =
-            materialize(&second, Some(&builtin), &user, &nodefaults, Some(&["b".into()])).unwrap();
+        let only_b = materialize(
+            &second,
+            Some(&builtin),
+            &user,
+            &nodefaults,
+            Some(&["b".into()]),
+        )
+        .unwrap();
         assert_eq!(only_b, vec!["b"]);
         assert!(first.join("a").exists(), "更新另一会话不得改写已有会话");
         assert!(!second.join("a").exists(), "未启用的技能不得写入当前会话");
@@ -473,9 +512,14 @@ mod tests {
         put_skill(&user, "my-skill", "用户技能出厂默认启用");
 
         // 无开关文件:纯出厂规则
-        let def =
-            materialize(&target, Some(&builtin), &user, &user.join("no-defaults.json"), None)
-                .unwrap();
+        let def = materialize(
+            &target,
+            Some(&builtin),
+            &user,
+            &user.join("no-defaults.json"),
+            None,
+        )
+        .unwrap();
         assert_eq!(def, vec!["feature-design", "my-skill"]);
         assert!(!target.join("tailwindcss-helper").exists());
 
@@ -490,8 +534,11 @@ mod tests {
         assert_eq!(def, vec!["tailwindcss-helper"]);
         // list() 的 default_enabled 与物化同一解析
         let infos = list(Some(&builtin), &user, &prefs_path);
-        let on: Vec<&str> =
-            infos.iter().filter(|s| s.default_enabled).map(|s| s.name.as_str()).collect();
+        let on: Vec<&str> = infos
+            .iter()
+            .filter(|s| s.default_enabled)
+            .map(|s| s.name.as_str())
+            .collect();
         assert_eq!(on, vec!["tailwindcss-helper"]);
     }
 

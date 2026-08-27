@@ -129,7 +129,9 @@ fn endpoint() -> Option<Endpoint> {
 /// 合规出口(config.json,无 UI)。读不出配置时按**关闭**处理:统计是可有可无
 /// 的,而"配置异常时仍然照发"是不能接受的默认。
 fn enabled(app: &AppHandle) -> bool {
-    load_config(app).map(|c| c.telemetry_enabled).unwrap_or(false)
+    load_config(app)
+        .map(|c| c.telemetry_enabled)
+        .unwrap_or(false)
 }
 
 /// telemetry.json 的进程内互斥。启动槽(tick)与使用槽(mark_used)都是
@@ -184,14 +186,18 @@ pub fn mark_used(app: &AppHandle) {
     }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let Some((ep, path, version)) = context(&app) else { return };
+        let Some((ep, path, version)) = context(&app) else {
+            return;
+        };
         let _guard = state_lock().lock().await;
         let mut st = match load_state(&path) {
             Ok(st) => st,
             Err(e) => return eprintln!("[desktop] 统计: 读状态失败 {e}"),
         };
         // 本进程之前那次运行今天可能已经报过(进程内缓存只覆盖本次运行)
-        let Some(action) = use_action(&st, &today) else { return };
+        let Some(action) = use_action(&st, &today) else {
+            return;
+        };
         report(&path, &ep, &mut st, Slot::Use, action, &version).await;
     });
 }
@@ -222,14 +228,18 @@ fn context(app: &AppHandle) -> Option<(Endpoint, std::path::PathBuf, String)> {
 }
 
 async fn tick(app: &AppHandle) {
-    let Some((ep, path, version)) = context(app) else { return };
+    let Some((ep, path, version)) = context(app) else {
+        return;
+    };
     let _guard = state_lock().lock().await;
     let mut st = match load_state(&path) {
         Ok(st) => st,
         Err(e) => return eprintln!("[desktop] 统计: 读状态失败 {e}"),
     };
     // 先定事件名再交出可变借用(launch_action 读的正是 report 会改的游标)
-    let Some(action) = launch_action(&st, &utc_day()) else { return };
+    let Some(action) = launch_action(&st, &utc_day()) else {
+        return;
+    };
     report(&path, &ep, &mut st, Slot::Launch, action, &version).await;
 }
 
@@ -248,7 +258,11 @@ fn launch_action(st: &State, today: &str) -> Option<&'static str> {
     if st.last_day == today {
         return None;
     }
-    Some(if st.last_day.is_empty() { "install" } else { "daily-launch" })
+    Some(if st.last_day.is_empty() {
+        "install"
+    } else {
+        "daily-launch"
+    })
 }
 
 /// 发送一条事件,并在**成功后**推进该槽位的游标。返回是否发成功(供测试断言)。
@@ -267,8 +281,11 @@ async fn report(
     action: &str,
     version: &str,
 ) -> bool {
-    let facts =
-        Facts { version: version.to_string(), platform: platform(), nonce: nonce() };
+    let facts = Facts {
+        version: version.to_string(),
+        platform: platform(),
+        nonce: nonce(),
+    };
     let url = tracking_url(ep, st, action, &facts);
     match send(&url).await {
         Ok(()) => {
@@ -379,7 +396,10 @@ fn new_install_id() -> Result<String, String> {
 }
 
 fn valid_install_id(id: &str) -> bool {
-    id.len() == 16 && id.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    id.len() == 16
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// 读状态;缺失或损坏都重新生成设备标识并**立刻落盘**——这一步不能省:
@@ -420,7 +440,11 @@ mod tests {
     const TODAY: &str = "2026-07-26";
 
     fn facts(platform: &str) -> Facts {
-        Facts { version: "26071401".into(), platform: platform.into(), nonce: "beef".into() }
+        Facts {
+            version: "26071401".into(),
+            platform: platform.into(),
+            nonce: "beef".into(),
+        }
     }
 
     /// used = 曾经用过;used_today = 今天已成功报过使用事件。
@@ -428,7 +452,11 @@ mod tests {
         State {
             install_id: "a3f19c02b84e7d61".into(),
             used,
-            last_used_day: if used_today { TODAY.into() } else { "2026-01-01".into() },
+            last_used_day: if used_today {
+                TODAY.into()
+            } else {
+                "2026-01-01".into()
+            },
             last_day: String::new(),
         }
     }
@@ -442,7 +470,10 @@ mod tests {
         let url = tracking_url(&ep(), &st, "daily-launch", &facts("windows-x86_64"));
 
         assert!(valid_install_id(&st.install_id));
-        assert!(url.starts_with("https://matomo.example.com/matomo.php?"), "{url}");
+        assert!(
+            url.starts_with("https://matomo.example.com/matomo.php?"),
+            "{url}"
+        );
         assert!(url.contains("&_id=a3f19c02b84e7d61"), "{url}");
         assert!(url.contains("idsite=3"), "{url}");
         assert!(url.contains("&rec=1"), "{url}");
@@ -453,7 +484,12 @@ mod tests {
     /// 指标的口径("等于事件数")悄悄失去依据。
     #[test]
     fn tracking_url_is_an_event_not_a_pageview() {
-        let url = tracking_url(&ep(), &state(true, true), "daily-launch", &facts("linux-x86_64"));
+        let url = tracking_url(
+            &ep(),
+            &state(true, true),
+            "daily-launch",
+            &facts("linux-x86_64"),
+        );
 
         assert!(url.contains("&e_c=desktop"), "事件类别: {url}");
         assert!(url.contains("&e_a=daily-launch"), "事件操作: {url}");
@@ -469,24 +505,46 @@ mod tests {
         let url = tracking_url(&ep(), &st, "install", &facts("macos-aarch64"));
 
         assert!(url.contains("&_id=a3f19c02b84e7d61"), "{url}");
-        assert!(url.contains("&e_n=a3f19c02b84e7d61"), "事件自带设备标识: {url}");
+        assert!(
+            url.contains("&e_n=a3f19c02b84e7d61"),
+            "事件自带设备标识: {url}"
+        );
     }
 
     /// 自定义维度的编号是与 Matomo 后台配置的约定。改了编号等于把数据写进
     /// 别的维度(或被丢弃),同样不报错。
     #[test]
     fn tracking_url_pins_custom_dimension_slots() {
-        let url = tracking_url(&ep(), &state(true, true), "daily-launch", &facts("linux-x86_64"));
+        let url = tracking_url(
+            &ep(),
+            &state(true, true),
+            "daily-launch",
+            &facts("linux-x86_64"),
+        );
 
-        assert!(url.contains("&dimension1=26071401"), "版本 → dimension1: {url}");
-        assert!(url.contains("&dimension2=linux-x86_64"), "系统 → dimension2: {url}");
+        assert!(
+            url.contains("&dimension1=26071401"),
+            "版本 → dimension1: {url}"
+        );
+        assert!(
+            url.contains("&dimension2=linux-x86_64"),
+            "系统 → dimension2: {url}"
+        );
     }
 
     /// 合成 URL 与事件名必须转义后进查询串,否则 `://` 会截断后面的参数。
     #[test]
     fn tracking_url_percent_encodes_values() {
-        let url = tracking_url(&ep(), &state(true, true), "first-use", &facts("windows-x86_64"));
-        assert!(url.contains("url=https%3A%2F%2Fdesktop.monkeycode%2Flaunch"), "{url}");
+        let url = tracking_url(
+            &ep(),
+            &state(true, true),
+            "first-use",
+            &facts("windows-x86_64"),
+        );
+        assert!(
+            url.contains("url=https%3A%2F%2Fdesktop.monkeycode%2Flaunch"),
+            "{url}"
+        );
         assert!(url.contains("&e_a=first-use"), "{url}");
         // 查询串里只应有一个 '?';值里的保留字符都被编码掉了
         assert_eq!(url.matches('?').count(), 1, "{url}");
@@ -505,7 +563,10 @@ mod tests {
         assert!(!valid_install_id(""));
         assert!(!valid_install_id("a3f19c02b84e7d6"), "15 位应拒绝");
         assert!(!valid_install_id("a3f19c02b84e7d611"), "17 位应拒绝");
-        assert!(!valid_install_id("A3F19C02B84E7D61"), "大写应拒绝(Matomo 要小写)");
+        assert!(
+            !valid_install_id("A3F19C02B84E7D61"),
+            "大写应拒绝(Matomo 要小写)"
+        );
         assert!(!valid_install_id("a3f19c02-b84e-7d6"), "UUID 带横线应拒绝");
         assert!(valid_install_id("0123456789abcdef"));
     }
@@ -586,7 +647,10 @@ mod tests {
         assert_eq!(env_or_compiled("MC_TELEMETRY_ABSENT_KEY", None), None);
         assert_eq!(env_or_compiled("MC_TELEMETRY_ABSENT_KEY", Some("  ")), None);
         assert_eq!(
-            env_or_compiled("MC_TELEMETRY_ABSENT_KEY", Some("https://m.example.com/matomo.php/")),
+            env_or_compiled(
+                "MC_TELEMETRY_ABSENT_KEY",
+                Some("https://m.example.com/matomo.php/")
+            ),
             Some("https://m.example.com/matomo.php".into())
         );
     }
@@ -619,8 +683,10 @@ mod tests {
                 // 把请求行(含查询串)记下来即可,不必读完头
                 sink.lock().unwrap().push(line.trim().to_string());
                 let _ = conn.write_all(
-                    format!("HTTP/1.1 {status} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
-                        .as_bytes(),
+                    format!(
+                        "HTTP/1.1 {status} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                    .as_bytes(),
                 );
                 let _ = conn.flush();
                 let mut drain = Vec::new();
@@ -652,8 +718,14 @@ mod tests {
         let second = load_state(&path).unwrap();
 
         assert!(valid_install_id(&first.install_id), "{}", first.install_id);
-        assert_eq!(first.install_id, second.install_id, "重新读取必须拿到同一个标识");
-        assert!(path.exists(), "标识必须立刻落盘,只在内存里生成等于每次都是新机器");
+        assert_eq!(
+            first.install_id, second.install_id,
+            "重新读取必须拿到同一个标识"
+        );
+        assert!(
+            path.exists(),
+            "标识必须立刻落盘,只在内存里生成等于每次都是新机器"
+        );
         let on_disk: State = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(on_disk.install_id, first.install_id);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
@@ -677,19 +749,40 @@ mod tests {
         seen.lock()
             .unwrap()
             .iter()
-            .map(|line| line.split("&e_a=").nth(1).unwrap().split('&').next().unwrap().to_string())
+            .map(|line| {
+                line.split("&e_a=")
+                    .nth(1)
+                    .unwrap()
+                    .split('&')
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
             .collect()
     }
 
     #[tokio::test]
     async fn successful_report_reaches_matomo_and_advances_the_cursor() {
         let (url, seen) = fake_matomo(204);
-        let ep = Endpoint { url, site_id: "7".into() };
+        let ep = Endpoint {
+            url,
+            site_id: "7".into(),
+        };
         let path = tmp_state("ok");
         let mut st = load_state(&path).unwrap();
         st.used = true;
 
-        assert!(report(&path, &ep, &mut st, Slot::Launch, "daily-launch", "26071401").await);
+        assert!(
+            report(
+                &path,
+                &ep,
+                &mut st,
+                Slot::Launch,
+                "daily-launch",
+                "26071401"
+            )
+            .await
+        );
 
         let reqs = seen.lock().unwrap().clone();
         assert_eq!(reqs.len(), 1, "应恰好发一条: {reqs:?}");
@@ -703,7 +796,11 @@ mod tests {
 
         assert_eq!(st.last_day, utc_day(), "成功后游标推进到今天");
         let on_disk: State = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(on_disk.last_day, utc_day(), "游标必须落盘,否则重启后重复上报");
+        assert_eq!(
+            on_disk.last_day,
+            utc_day(),
+            "游标必须落盘,否则重启后重复上报"
+        );
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
@@ -712,11 +809,24 @@ mod tests {
     #[tokio::test]
     async fn failed_report_leaves_the_cursor_for_the_next_tick() {
         let (url, seen) = fake_matomo(500);
-        let ep = Endpoint { url, site_id: "1".into() };
+        let ep = Endpoint {
+            url,
+            site_id: "1".into(),
+        };
         let path = tmp_state("retry");
         let mut st = load_state(&path).unwrap();
 
-        assert!(!report(&path, &ep, &mut st, Slot::Launch, "daily-launch", "26071401").await);
+        assert!(
+            !report(
+                &path,
+                &ep,
+                &mut st,
+                Slot::Launch,
+                "daily-launch",
+                "26071401"
+            )
+            .await
+        );
 
         assert_eq!(st.last_day, "", "失败不得推进游标");
         let on_disk: State = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
@@ -724,12 +834,28 @@ mod tests {
 
         // 下一次醒来重试:同一台机器、同一个标识,这次通了就该记上
         let (ok_url, ok_seen) = fake_matomo(204);
-        let ok_ep = Endpoint { url: ok_url, site_id: "1".into() };
-        assert!(report(&path, &ok_ep, &mut st, Slot::Launch, "daily-launch", "26071401").await);
+        let ok_ep = Endpoint {
+            url: ok_url,
+            site_id: "1".into(),
+        };
+        assert!(
+            report(
+                &path,
+                &ok_ep,
+                &mut st,
+                Slot::Launch,
+                "daily-launch",
+                "26071401"
+            )
+            .await
+        );
         assert_eq!(st.last_day, utc_day());
         assert_eq!(seen.lock().unwrap().len(), 1, "失败的那次确实发出去过");
         let retried = ok_seen.lock().unwrap().clone();
-        assert!(retried[0].contains(&format!("_id={}", st.install_id)), "重试用同一标识");
+        assert!(
+            retried[0].contains(&format!("_id={}", st.install_id)),
+            "重试用同一标识"
+        );
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
@@ -738,7 +864,10 @@ mod tests {
     #[tokio::test]
     async fn failed_use_report_retries_as_activation_not_routine() {
         let (url, _) = fake_matomo(500);
-        let ep = Endpoint { url, site_id: "1".into() };
+        let ep = Endpoint {
+            url,
+            site_id: "1".into(),
+        };
         let path = tmp_state("use-retry");
         let mut st = load_state(&path).unwrap();
         let today = utc_day();
@@ -747,7 +876,11 @@ mod tests {
         assert!(!report(&path, &ep, &mut st, Slot::Use, "first-use", "26071401").await);
 
         assert!(!st.used, "失败不得把 used 记成真");
-        assert_eq!(use_action(&st, &today), Some("first-use"), "重试仍是激活,不能退化成 daily-use");
+        assert_eq!(
+            use_action(&st, &today),
+            Some("first-use"),
+            "重试仍是激活,不能退化成 daily-use"
+        );
         let on_disk: State = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert!(!on_disk.used, "盘上也不能推进");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
@@ -759,7 +892,10 @@ mod tests {
     #[tokio::test]
     async fn a_use_event_does_not_swallow_the_same_day_launch_event() {
         let (url, seen) = fake_matomo(204);
-        let ep = Endpoint { url, site_id: "1".into() };
+        let ep = Endpoint {
+            url,
+            site_id: "1".into(),
+        };
         let path = tmp_state("two-cursors");
         let mut st = load_state(&path).unwrap();
         st.used = true;
@@ -787,7 +923,10 @@ mod tests {
     #[tokio::test]
     async fn a_new_machine_emits_install_then_first_use_then_daily_pair() {
         let (url, seen) = fake_matomo(204);
-        let ep = Endpoint { url, site_id: "3".into() };
+        let ep = Endpoint {
+            url,
+            site_id: "3".into(),
+        };
         let path = tmp_state("lifecycle");
         let mut st = load_state(&path).unwrap();
         let id = st.install_id.clone();
@@ -821,7 +960,10 @@ mod tests {
         assert_eq!(lines.len(), 4);
         for line in &lines {
             assert!(line.contains(&format!("_id={id}")), "{line}");
-            assert!(line.contains(&format!("e_n={id}")), "事件自带设备标识: {line}");
+            assert!(
+                line.contains(&format!("e_n={id}")),
+                "事件自带设备标识: {line}"
+            );
             assert!(line.contains("e_c=desktop"), "{line}");
             assert!(line.contains("dimension1=26071401"), "{line}");
             assert!(line.contains("dimension2="), "{line}");
@@ -833,11 +975,24 @@ mod tests {
     #[tokio::test]
     async fn unreachable_endpoint_fails_silently() {
         // 端口 1 上没有服务,连接会被立刻拒绝
-        let ep = Endpoint { url: "http://127.0.0.1:1/matomo.php".into(), site_id: "1".into() };
+        let ep = Endpoint {
+            url: "http://127.0.0.1:1/matomo.php".into(),
+            site_id: "1".into(),
+        };
         let path = tmp_state("offline");
         let mut st = load_state(&path).unwrap();
 
-        assert!(!report(&path, &ep, &mut st, Slot::Launch, "daily-launch", "26071401").await);
+        assert!(
+            !report(
+                &path,
+                &ep,
+                &mut st,
+                Slot::Launch,
+                "daily-launch",
+                "26071401"
+            )
+            .await
+        );
         assert_eq!(st.last_day, "");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }

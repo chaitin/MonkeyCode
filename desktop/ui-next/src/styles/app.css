@@ -298,13 +298,21 @@ html[data-mc-background="active"] .mc-workbench-background { display: block; }
   white-space: nowrap;
 }
 
-/* 对话流运行指示(loading-dots)提速:daisyUI 把节奏烧死在 SVG mask 的
- * dur 里(1.05s/圈),没有自暴露变量可调,只能同款 SVG 改 dur=0.7s 整体
- * 覆盖——是本段「只调变量」约定的唯一例外(2026-08-11 反馈「跳的有点慢」)。
- * 仅在 no-preference 下加速:reduced-motion 保留 daisyUI 的 3s 慢版。 */
+/* daisyUI 的 loading-spinner 也是带无限 SMIL 动画的 SVG mask。WKWebView
+ * 会持续走 SVG mask 的失效与重绘路径；保留既有尺寸/颜色 API，只把图形实现
+ * 换成普通 border，现有调用点无需逐处迁移。动画仅旋转元素本身，不触碰
+ * mask/image buffer；reduced-motion 下保留静态缺口圆环。 */
+.loading-spinner {
+  -webkit-mask-image: none;
+  mask-image: none;
+  background-color: transparent;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 9999px;
+}
 @media (prefers-reduced-motion: no-preference) {
-  .loading-dots {
-    mask-image: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='4' cy='12' r='3'%3E%3Canimate attributeName='cy' values='12;6;12;12' keyTimes='0;0.286;0.571;1' dur='0.7s' repeatCount='indefinite' keySplines='.33,0,.66,.33;.33,.66,.66,1'/%3E%3C/circle%3E%3Ccircle cx='12' cy='12' r='3'%3E%3Canimate attributeName='cy' values='12;6;12;12' keyTimes='0;0.286;0.571;1' dur='0.7s' repeatCount='indefinite' keySplines='.33,0,.66,.33;.33,.66,.66,1' begin='0.1s'/%3E%3C/circle%3E%3Ccircle cx='20' cy='12' r='3'%3E%3Canimate attributeName='cy' values='12;6;12;12' keyTimes='0;0.286;0.571;1' dur='0.7s' repeatCount='indefinite' keySplines='.33,0,.66,.33;.33,.66,.66,1' begin='0.2s'/%3E%3C/circle%3E%3C/svg%3E");
+  .loading-spinner {
+    animation: mc-loading-spin 0.8s linear infinite;
   }
 }
 

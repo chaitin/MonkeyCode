@@ -137,15 +137,23 @@ export function CloudFiles({
   // 全部调用给足唤醒余量,免得唤醒期间必然超时
   const wakeOpts = { timeoutMs: WAKE_CALL_TIMEOUT_MS, timeoutMsg: t("cloud.ctl.wakeTimeout") };
 
+  // runtime 换代可能恰好发生在已挂载面板发起操作前。借用失败属于可恢复的
+  // 生命周期状态，将同步异常转成 Promise rejection，交给各操作现有错误态处理。
+  const callControl = <T,>(kind: string, payload: Record<string, unknown>) => {
+    try {
+      return ensureCtrl().call<T>(kind, payload, wakeOpts);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  };
+
   const list = (target: string) => {
     setFiles(null);
     setErr("");
-    ensureCtrl()
-      .call<{ files?: CloudRepoFile[] }>(
-        "repo_file_list",
-        { path: target, glob_pattern: "*", include_hidden: true },
-        wakeOpts,
-      )
+    callControl<{ files?: CloudRepoFile[] }>(
+      "repo_file_list",
+      { path: target, glob_pattern: "*", include_hidden: true },
+    )
       .then((r) => {
         setFiles(
           (r.files ?? [])
@@ -169,8 +177,7 @@ export function CloudFiles({
   // 成本),刷新钮/上传落地后重拉;失败降级空列表 + 错误条外显
   const loadChanges = () => {
     setChanges(null);
-    ensureCtrl()
-      .call<{ changes?: ChangeItem[] }>("repo_file_changes", {}, wakeOpts)
+    callControl<{ changes?: ChangeItem[] }>("repo_file_changes", {})
       .then((r) => setChanges(r.changes ?? []))
       .catch((e: unknown) => {
         setChanges([]);
@@ -197,8 +204,7 @@ export function CloudFiles({
   const openDiff = (path: string) => {
     const req = ++reqRef.current;
     setPreview({ path, mode: "diff", state: "loading", text: "" });
-    ensureCtrl()
-      .call<{ diff?: string }>("repo_file_diff", { path, unified: true, context_lines: 20 }, wakeOpts)
+    callControl<{ diff?: string }>("repo_file_diff", { path, unified: true, context_lines: 20 })
       .then((r) => {
         if (req === reqRef.current) setPreview({ path, mode: "diff", state: "ready", text: r.diff ?? "" });
       })
@@ -209,7 +215,7 @@ export function CloudFiles({
 
   const cloudPath = (path: string) => workspaceRelativePath(path, "/workspace");
   const readFile = (path: string) =>
-    ensureCtrl().call<CloudReadResult>("repo_read_file", { path, offset: 0, length: MAX_PREVIEW_SIZE }, wakeOpts);
+    callControl<CloudReadResult>("repo_read_file", { path, offset: 0, length: MAX_PREVIEW_SIZE });
   const readTooLarge = (result: CloudReadResult) =>
     (result.total_size ?? 0) > MAX_PREVIEW_SIZE || result.is_truncated === true;
   const tooLargeText = (size?: number) =>

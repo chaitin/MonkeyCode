@@ -157,9 +157,9 @@ export function StatusDot({ tone, label, pulse }: { tone: string; label: string;
   );
 }
 
-/** 待办/临时会话固定组共用头：数量紧跟标题，新增按钮保留占位，
- * 折叠箭头固定在最右。整行是折叠按钮，新增按钮绝对覆盖在箭头左侧，
- * 避免两个嵌套 button，也避免 hover 时挤动标题。 */
+/** 待办/临时会话固定组共用头：数量紧跟标题，折叠箭头固定在最右。
+ * 整行是折叠按钮，新增按钮绝对覆盖在箭头左侧；默认只留箭头位，
+ * hover/focus 时缩短标题，为新增按钮腾位。 */
 export function FixedGroupHeader({
   icon: Icon,
   name,
@@ -181,7 +181,7 @@ export function FixedGroupHeader({
     <div className="group/fixed relative flex w-full min-w-0 items-stretch p-0">
       <button
         type="button"
-        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-18 text-start"
+        className="flex min-h-8 min-w-0 flex-1 items-center gap-2 py-1.5 ps-3 pe-7 text-start group-hover/fixed:pe-14 group-focus-within/fixed:pe-14"
         aria-expanded={!collapsed}
         onClick={onToggle}
       >
@@ -200,7 +200,7 @@ export function FixedGroupHeader({
         type="button"
         aria-label={addLabel}
         title={addLabel}
-        className="btn btn-ghost btn-square btn-xs invisible absolute end-8 top-0 h-8 min-h-8 w-9 group-hover/fixed:visible group-focus-within/fixed:visible"
+        className="btn btn-ghost btn-square btn-xs invisible absolute end-6 top-0 h-8 min-h-8 w-8 group-hover/fixed:visible group-focus-within/fixed:visible"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();

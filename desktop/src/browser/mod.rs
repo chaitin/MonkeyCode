@@ -48,7 +48,11 @@ fn endpoint_for_pairing(
     paired: bool,
     endpoint: Option<(String, String)>,
 ) -> Option<(String, String)> {
-    if paired { endpoint } else { None }
+    if paired {
+        endpoint
+    } else {
+        None
+    }
 }
 
 pub fn mcp_endpoint(app: &AppHandle) -> Option<(String, String)> {
@@ -109,7 +113,10 @@ pub fn init(app: &AppHandle) {
         }
         Err(e) => eprintln!("[desktop] 浏览器 MCP server 启动失败: {e}"),
     }
-    app.manage(BrowserHost { bridge: b, mcp_sessions });
+    app.manage(BrowserHost {
+        bridge: b,
+        mcp_sessions,
+    });
     let app2 = app.clone();
     app.state::<BrowserHost>()
         .bridge

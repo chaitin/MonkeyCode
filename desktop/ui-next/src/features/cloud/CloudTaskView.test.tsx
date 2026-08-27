@@ -15,7 +15,9 @@ import {
   createSendQueueItem,
   emptySendQueueLane,
   enqueue,
+  readSendQueueLane,
   writeSendQueueLane,
+  type CloudQueueAttachment,
 } from "@/features/chat/composer/sendQueue";
 import { CloudQueueCoordinatorProvider } from "./CloudQueueCoordinator";
 import { CloudTaskView } from "./CloudTaskView";
@@ -59,6 +61,7 @@ function stubShellWs(invoke: Invoke) {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   delete (window as unknown as { __TAURI__?: unknown }).__TAURI__;
   localStorage.clear();
 });
@@ -88,6 +91,178 @@ describe("CloudTaskView", () => {
     expect(await screen.findByText("第一条")).toBeTruthy();
     expect(screen.getByText("第二条")).toBeTruthy();
     expect(streamModes).toEqual([]);
+  });
+
+  it("accountScope 初次从 null 初始化不打断已开始上传，计数能归零", async () => {
+    type Identity = { logged_in: true; base_url: string; user: { id: string } };
+    let resolveIdentity!: (value: Identity) => void;
+    const identity = new Promise<Identity>((resolve) => (resolveIdentity = resolve));
+    let finishUpload!: (value: { access_url: string }) => void;
+    const pendingUpload = new Promise<{ access_url: string }>((resolve) => (finishUpload = resolve));
+    let infoCalls = 0;
+    stubShellWs((cmd) => {
+      if (cmd === "mc_upload") return pendingUpload;
+      if (cmd === "mc_task_info") {
+        infoCalls += 1;
+        return Promise.resolve({ id: "scope-upload", status: "pending" });
+      }
+      return Promise.resolve({});
+    });
+    render(
+      <CloudQueueCoordinatorProvider loadIdentity={() => identity}>
+        <CloudTaskView task={{ id: "scope-upload", status: "pending" }} />
+      </CloudQueueCoordinatorProvider>,
+    );
+    await screen.findByLabelText("消息输入");
+    const picker = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(picker, { target: { files: [new File(["hello"], "scope.txt", { type: "text/plain" })] } });
+    await screen.findByText("上传中…");
+
+    await act(async () => {
+      resolveIdentity({
+        logged_in: true,
+        base_url: "http://localhost:8000/private/team-a",
+        user: { id: "scope-user" },
+      });
+      await identity;
+    });
+    await waitFor(() => expect(infoCalls).toBeGreaterThan(0));
+    await act(async () => {
+      finishUpload({ access_url: "https://oss/scope.txt" });
+      await pendingUpload;
+    });
+
+    expect(await screen.findByText("scope.txt")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("上传中…")).toBeNull());
+    expect((screen.getByRole("button", { name: "发送" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("消息输入"), { target: { value: "附件已就绪" } });
+    expect((screen.getByRole("button", { name: "发送" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("云端 composer 编辑只读保留附件，并可保存/取消待发送项后恢复草稿", async () => {
+    let uploadCalls = 0;
+    stubShellWs((cmd) => {
+      if (cmd === "mc_task_info") return Promise.resolve({ id: "cloud-edit", status: "pending" });
+      if (cmd === "mc_upload") {
+        uploadCalls += 1;
+        return Promise.resolve({ access_url: "https://oss/queued-cloud.txt" });
+      }
+      return Promise.resolve({});
+    });
+    renderCloud(<CloudTaskView task={{ id: "cloud-edit", status: "pending" }} />);
+    const box = await screen.findByLabelText("消息输入");
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["original"], "queued-cloud.txt", { type: "text/plain" })] },
+    });
+    await screen.findByText("queued-cloud.txt");
+    fireEvent.change(box, { target: { value: "待修改消息" } });
+    await userEvent.click(screen.getByRole("button", { name: "发送" }));
+    fireEvent.change(box, { target: { value: "云端新草稿" } });
+    await userEvent.click(screen.getByRole("button", { name: "编辑待发送消息" }));
+    expect(screen.getByText("正在编辑待发送消息 #1")).toBeTruthy();
+    expect((box as HTMLTextAreaElement).value).toBe("待修改消息");
+    expect(screen.getByText("编辑中")).toBeTruthy();
+    const readOnlyAttachmentButtons = screen.getAllByRole("button", {
+      name: "编辑待发送消息时暂不支持修改附件",
+    });
+    expect(readOnlyAttachmentButtons).toHaveLength(2);
+    for (const button of readOnlyAttachmentButtons) {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(button.getAttribute("title")).toBe("编辑待发送消息时暂不支持修改附件");
+    }
+    expect(fileInput.disabled).toBe(true);
+
+    const blockedFile = new File(["blocked"], "blocked-cloud.txt", { type: "text/plain" });
+    fireEvent.paste(box, {
+      clipboardData: { items: [{ kind: "file", getAsFile: () => blockedFile }] },
+    });
+    fireEvent.drop(box.closest("main")!, { dataTransfer: { files: [blockedFile] } });
+    const removeButton = within(screen.getByText("queued-cloud.txt").parentElement!).getByRole("button");
+    removeButton.removeAttribute("disabled");
+    fireEvent.click(removeButton);
+    await screen.findByText("编辑待发送消息时暂不支持修改附件");
+    expect(uploadCalls).toBe(1);
+    expect(screen.getByText("queued-cloud.txt")).toBeTruthy();
+    expect(screen.queryByText("blocked-cloud.txt")).toBeNull();
+
+    fireEvent.change(box, { target: { value: "已修改消息" } });
+    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(await screen.findByText("已修改消息")).toBeTruthy();
+    expect((box as HTMLTextAreaElement).value).toBe("云端新草稿");
+    expect(
+      readSendQueueLane<CloudQueueAttachment>(
+        cloudSendQueueTarget("http://localhost:8000/private/team-a|view-test-user", "cloud-edit"),
+      ).pending[0]?.attachments,
+    ).toEqual([{ url: "https://oss/queued-cloud.txt", filename: "queued-cloud.txt", isImage: false }]);
+
+    await userEvent.click(screen.getByRole("button", { name: "编辑待发送消息" }));
+    fireEvent.change(box, { target: { value: "放弃的云端修改" } });
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getByText("已修改消息")).toBeTruthy();
+    expect(screen.queryByText("放弃的云端修改")).toBeNull();
+    expect((box as HTMLTextAreaElement).value).toBe("云端新草稿");
+  });
+
+  it("云端保存编辑持久化失败时保留内容、owner 和带锁原 lane，可再次保存", async () => {
+    stubShellWs((cmd) => {
+      if (cmd === "mc_task_info") return Promise.resolve({ id: "cloud-edit-fail", status: "pending" });
+      return Promise.resolve({});
+    });
+    renderCloud(<CloudTaskView task={{ id: "cloud-edit-fail", status: "pending" }} />);
+    const box = await screen.findByLabelText("消息输入");
+    fireEvent.change(box, { target: { value: "落盘前原文" } });
+    await userEvent.click(screen.getByRole("button", { name: "发送" }));
+    await userEvent.click(screen.getByRole("button", { name: "编辑待发送消息" }));
+    fireEvent.change(box, { target: { value: "首次保存失败的修改" } });
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    expect((box as HTMLTextAreaElement).value).toBe("首次保存失败的修改");
+    expect(screen.getByText("正在编辑待发送消息 #1")).toBeTruthy();
+    expect(screen.getByText("编辑中")).toBeTruthy();
+    expect(screen.getByText("落盘前原文")).toBeTruthy();
+    expect(screen.getByText("待发送消息未能持久化")).toBeTruthy();
+
+    setItem.mockRestore();
+    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(await screen.findByText("首次保存失败的修改")).toBeTruthy();
+    expect(screen.queryByText("正在编辑待发送消息 #1")).toBeNull();
+  });
+
+  it("多格编辑 Esc 只取消 hotkeysActive 的云端 composer", async () => {
+    let infoCalls = 0;
+    stubShellWs((cmd, args) => {
+      if (cmd === "mc_task_info") {
+        infoCalls += 1;
+        return Promise.resolve({ id: String(args?.id ?? ""), status: "pending" });
+      }
+      return Promise.resolve({});
+    });
+    renderCloud(
+      <>
+        <CloudTaskView task={{ id: "cloud-pane-a", status: "pending" }} hotkeysActive={false} />
+        <CloudTaskView task={{ id: "cloud-pane-b", status: "pending" }} hotkeysActive />
+      </>,
+    );
+    const boxes = await screen.findAllByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect(infoCalls).toBeGreaterThanOrEqual(2)); // 两个 hook 都已拿到稳定 accountScope
+    fireEvent.change(boxes[0]!, { target: { value: "非焦点云消息" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "发送" })[0]!);
+    fireEvent.change(boxes[1]!, { target: { value: "焦点云消息" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "发送" })[1]!);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "编辑待发送消息" })).toHaveLength(2));
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑待发送消息" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑待发送消息" })[0]!);
+    expect(screen.getAllByText(/正在编辑待发送消息/)).toHaveLength(2);
+
+    await userEvent.keyboard("{Escape}");
+    expect((boxes[0] as HTMLTextAreaElement).value).toBe("非焦点云消息");
+    expect((boxes[1] as HTMLTextAreaElement).value).toBe("");
+    expect(screen.getAllByText(/正在编辑待发送消息/)).toHaveLength(1);
   });
 
   it("结束态异常队列提供停止并清除入口", async () => {
@@ -389,6 +564,21 @@ describe("CloudTaskView", () => {
     await userEvent.keyboard("{Enter}");
     expect((box as HTMLTextAreaElement).value).toBe("/compact ");
     expect(screen.queryByRole("listbox", { name: "斜杠指令" })).toBeNull(); // 填入即收
+
+    // 编辑层先入栈；slash 后开且输入继续触发 h 更新，也必须始终位于其上。
+    fireEvent.change(box, { target: { value: "云端待编辑" } });
+    await userEvent.click(screen.getByRole("button", { name: "发送" }));
+    await userEvent.click(screen.getByRole("button", { name: "编辑待发送消息" }));
+    fireEvent.change(box, { target: { value: "/c" } });
+    await screen.findByRole("listbox", { name: "斜杠指令" });
+    fireEvent.change(box, { target: { value: "/co" } });
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox", { name: "斜杠指令" })).toBeNull();
+    expect(screen.getByText("正在编辑待发送消息 #1")).toBeTruthy();
+    expect((box as HTMLTextAreaElement).value).toBe("/co");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByText("正在编辑待发送消息 #1")).toBeNull();
+    expect(screen.getByText("云端待编辑")).toBeTruthy();
   });
 
   it("提问大纲:REST 索引 + 回放窗口按时间锚合并;跳转未加载锚经 rounds 大步长补页", async () => {
@@ -503,6 +693,40 @@ describe("CloudTaskView", () => {
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("云端文件:账号 scoped runtime 未就绪时禁用，就绪后再开放", async () => {
+    type Identity = { logged_in: true; base_url: string; user: { id: string } };
+    let resolveIdentity!: (value: Identity) => void;
+    const identity = new Promise<Identity>((resolve) => (resolveIdentity = resolve));
+    stubShell((cmd) => {
+      if (cmd === "mc_task_info") return Promise.resolve({ id: "runtime-race", status: "finished" });
+      if (cmd === "mc_task_rounds") return Promise.resolve({ frames: [], next_cursor: "", has_more: false });
+      return Promise.resolve({});
+    });
+    render(
+      <CloudQueueCoordinatorProvider loadIdentity={() => identity}>
+        <CloudTaskView task={{ id: "runtime-race", status: "finished" }} />
+      </CloudQueueCoordinatorProvider>,
+    );
+
+    const btn = await screen.findByRole("button", { name: "云端文件" });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    expect(btn.getAttribute("title")).toBe("正在连接云端任务…");
+    await userEvent.click(btn);
+    expect(screen.queryByRole("button", { name: "刷新" })).toBeNull();
+
+    await act(async () => {
+      resolveIdentity({
+        logged_in: true,
+        base_url: "http://localhost:8000/private/team-a",
+        user: { id: "runtime-race-user" },
+      });
+      await identity;
+    });
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
+    await userEvent.click(btn);
+    expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy();
+  });
+
   it("云端文件:结束态/详情无 VM 也可浏览(控制流按 taskId 寻址,不拿 vmId 当门槛)", async () => {
     stubShell((cmd) => {
       switch (cmd) {
@@ -516,7 +740,7 @@ describe("CloudTaskView", () => {
     });
     renderCloud(<CloudTaskView task={{ id: "t8b", status: "finished" }} />);
     const btn = await screen.findByRole("button", { name: "云端文件" });
-    expect((btn as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
     await userEvent.click(btn);
     expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy(); // CloudFiles 面板已挂载(快照浏览)
   });
