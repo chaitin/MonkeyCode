@@ -88,6 +88,14 @@
 .md-mermaid .arrowMarkerPath,
 .md-mermaid .root .anchor path { fill: var(--color-base-content) !important; stroke: var(--color-base-content) !important; }
 
+/* KaTeX JS 首次遇到公式时按需加载，CSS 静态打包以避免样式 chunk 首次失败后
+ * 无法重试；块公式横滚而不撑破消息列，颜色继承 daisyUI 当前主题。 */
+.md-math { color: var(--color-base-content); }
+.md-math-inline { display: inline; }
+.md-math-block { display: block; max-width: 100%; margin: 0.8em 0; overflow-x: auto; overflow-y: hidden; text-align: center; }
+.md-math-block > .katex-display { width: max-content; min-width: 100%; margin: 0; }
+.md-math-source { font-family: var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
+
 /* 代码高亮 token 配色:不用 hljs 官方主题 CSS(只分深浅两套,跟不上 35 套
  * daisyUI 主题)。语义色给色相身份、base-content 掺混归一(oklab):
  * 浅色主题把荧光压成墨色、深色主题把饱和提成粉彩,对比度由 base-content
