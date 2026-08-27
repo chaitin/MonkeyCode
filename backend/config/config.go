@@ -175,9 +175,10 @@ type InitTeam struct {
 }
 
 type TaskFlow struct {
-	GrpcHost string `mapstructure:"grpc_host"`
-	GrpcPort int    `mapstructure:"grpc_port"`
-	GrpcURL  string `mapstructure:"grpc_url"`
+	GrpcHost      string `mapstructure:"grpc_host"`
+	GrpcPort      int    `mapstructure:"grpc_port"`
+	GrpcURL       string `mapstructure:"grpc_url"`
+	CallbackToken string `mapstructure:"callback_token"`
 }
 
 type MCPHub struct {
@@ -379,6 +380,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("init_team.image", "")
 	v.SetDefault("init_team.extension_package_dir", "/app/extensions/packages")
 	v.SetDefault("taskflow.grpc_url", "")
+	v.SetDefault("taskflow.callback_token", "")
 	v.SetDefault("task.at_keyword", "")
 	v.SetDefault("task.host_ids", []string{})
 	v.SetDefault("task.create_req_ttl_seconds", 600)

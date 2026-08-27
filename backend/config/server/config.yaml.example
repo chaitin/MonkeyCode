@@ -11,6 +11,11 @@ security:
   # 可通过 MCAI_SECURITY_CAPTCHA_ENABLED 环境变量覆盖。
   captcha_enabled: true
 
+taskflow:
+  # taskflow 回调 /internal 接口时使用的共享密钥，生产环境请通过环境变量注入随机值。
+  # 后端环境变量：MCAI_TASKFLOW_CALLBACK_TOKEN。
+  callback_token: ""
+
 database:
   master: "postgres://monkeycode:monkeycode@localhost:5432/monkeycode?sslmode=disable"
   slave: ""
