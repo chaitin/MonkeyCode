@@ -22,7 +22,9 @@ jobs:
     # 宿主 runner 只负责运行 Actions，所有编译和打包都在容器内进行。
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/twursc/monkeycode-desktop-linux-builder:glibc-2.28-glib-2.70
+      # Keep this tag in sync with desktop-linux-builder.yml. It pins every
+      # release build to one published builder image revision.
+      image: ghcr.io/twursc/monkeycode-desktop-linux-builder:glibc-2.28-glib-2.70-rust-ustc-v1
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -37,8 +39,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-
-      - uses: dtolnay/rust-toolchain@stable
 
       - uses: actions/setup-node@v4
         with:

@@ -27,10 +27,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
+        # Bump this tag with each Dockerfile revision. Release jobs only pull
+        # this published builder and never build it themselves.
         with:
           context: .
           file: desktop/ci/linux-builder.Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/monkeycode-desktop-linux-builder:glibc-2.28-glib-2.70
+            ghcr.io/${{ github.repository_owner }}/monkeycode-desktop-linux-builder:glibc-2.28-glib-2.70-rust-ustc-v1
             ghcr.io/${{ github.repository_owner }}/monkeycode-desktop-linux-builder:sha-${{ github.sha }}
