@@ -39,7 +39,7 @@ jobs:
             /etc/apt/sources.list
           apt-get -o Acquire::Check-Valid-Until=false update
           apt-get install -y --no-install-recommends \
-            build-essential pkg-config libssl-dev \
+            build-essential pkg-config libssl-dev ca-certificates curl \
             libwebkit2gtk-4.0-dev libgtk-3-dev libayatana-appindicator3-dev \
             librsvg2-dev patchelf xdg-utils rpm \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
