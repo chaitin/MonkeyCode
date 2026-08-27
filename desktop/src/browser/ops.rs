@@ -117,7 +117,9 @@ impl BrowserSession {
         struct HistEntry {
             id: i64,
         }
-        let raw = self.cmd(tab, None, "Page.getNavigationHistory", None).await?;
+        let raw = self
+            .cmd(tab, None, "Page.getNavigationHistory", None)
+            .await?;
         let hist: Hist = serde_json::from_value(raw)
             .map_err(|e| format!("CDP Page.getNavigationHistory 结果解析失败: {e}"))?;
         if hist.current_index <= 0 || hist.current_index as usize >= hist.entries.len() {
@@ -184,7 +186,11 @@ impl BrowserSession {
         };
         if !old_group.is_empty() {
             for sid in &old_sessions {
-                let sid_opt = if sid.is_empty() { None } else { Some(sid.as_str()) };
+                let sid_opt = if sid.is_empty() {
+                    None
+                } else {
+                    Some(sid.as_str())
+                };
                 let _ = self
                     .0
                     .cdp
@@ -287,7 +293,9 @@ impl BrowserSession {
             let props: Props = serde_json::from_value(props_raw)
                 .map_err(|e| format!("CDP Runtime.getProperties 结果解析失败: {e}"))?;
             for p in props.result {
-                let Ok(idx) = p.name.parse::<usize>() else { continue };
+                let Ok(idx) = p.name.parse::<usize>() else {
+                    continue;
+                };
                 let Some(v) = p.value else { continue };
                 if idx >= refs.len() {
                     continue;
@@ -359,7 +367,12 @@ impl BrowserSession {
             height: f64,
         }
         let raw = match self
-            .cmd(tab, None, "DOM.getBoxModel", Some(json!({ "objectId": obj_id })))
+            .cmd(
+                tab,
+                None,
+                "DOM.getBoxModel",
+                Some(json!({ "objectId": obj_id })),
+            )
             .await
         {
             Ok(v) => v,
@@ -400,7 +413,8 @@ impl BrowserSession {
                 json!({"type": "mousePressed", "x": rect.x, "y": rect.y, "button": "left", "clickCount": 1}),
                 json!({"type": "mouseReleased", "x": rect.x, "y": rect.y, "button": "left", "clickCount": 1}),
             ] {
-                self.cmd(tab, None, "Input.dispatchMouseEvent", Some(ev)).await?;
+                self.cmd(tab, None, "Input.dispatchMouseEvent", Some(ev))
+                    .await?;
             }
         } else {
             let ok: Option<bool> = self
@@ -585,31 +599,30 @@ impl BrowserSession {
             "key": k.key, "code": k.code,
             "windowsVirtualKeyCode": k.key_code, "nativeVirtualKeyCode": k.key_code,
         });
-        self.cmd(tab, None, "Input.dispatchKeyEvent", Some(down)).await?;
+        self.cmd(tab, None, "Input.dispatchKeyEvent", Some(down))
+            .await?;
         if !k.text.is_empty() {
             let ch = json!({
                 "type": "char", "modifiers": k.modifiers, "text": k.text,
                 "key": k.key, "windowsVirtualKeyCode": k.key_code,
             });
-            self.cmd(tab, None, "Input.dispatchKeyEvent", Some(ch)).await?;
+            self.cmd(tab, None, "Input.dispatchKeyEvent", Some(ch))
+                .await?;
         }
         let up = json!({
             "type": "keyUp", "modifiers": k.modifiers,
             "key": k.key, "code": k.code,
             "windowsVirtualKeyCode": k.key_code, "nativeVirtualKeyCode": k.key_code,
         });
-        self.cmd(tab, None, "Input.dispatchKeyEvent", Some(up)).await?;
+        self.cmd(tab, None, "Input.dispatchKeyEvent", Some(up))
+            .await?;
         Ok(())
     }
 
     // ==================== browser_scroll ====================
 
     /// 视口滚动一屏(direction)或滚动到元素(ref)。
-    pub async fn scroll(
-        &self,
-        direction: Option<&str>,
-        r: Option<&str>,
-    ) -> Result<String, String> {
+    pub async fn scroll(&self, direction: Option<&str>, r: Option<&str>) -> Result<String, String> {
         let tab = self.ensure_tab().await?;
         if let Some(r) = r.filter(|v| !v.is_empty()) {
             let er = self.resolve_ref(r)?;

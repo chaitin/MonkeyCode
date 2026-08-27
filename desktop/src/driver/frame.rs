@@ -28,7 +28,10 @@ use serde_json::{json, Value};
 /// rename_all 小写与 as_str 一致(两处同改才算改)。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../ui/src/gen/", rename_all = "lowercase"))]
+#[cfg_attr(
+    test,
+    ts(export, export_to = "../ui/src/gen/", rename_all = "lowercase")
+)]
 pub enum SessionStatus {
     Created,
     Running,
@@ -57,7 +60,10 @@ impl SessionStatus {
 /// ts-rs 导出 → ui/src/gen/PermOutcome.ts(rename_all 小写与 as_str 一致)。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../ui/src/gen/", rename_all = "lowercase"))]
+#[cfg_attr(
+    test,
+    ts(export, export_to = "../ui/src/gen/", rename_all = "lowercase")
+)]
 pub enum PermOutcome {
     Approved,
     Denied,
@@ -125,7 +131,12 @@ fn build(ftype: &str, kind: Option<&str>, payload: Option<Value>, seq: u64) -> V
 }
 
 fn acp(update: Value, seq: u64) -> Value {
-    build("task-running", Some("acp_event"), Some(json!({ "update": update })), seq)
+    build(
+        "task-running",
+        Some("acp_event"),
+        Some(json!({ "update": update })),
+        seq,
+    )
 }
 
 // ==================== 顶层帧 ====================
@@ -142,12 +153,22 @@ pub fn task_ended(seq: u64) -> Value {
 /// task-error 的展示词汇并显式标 terminal=false，让新 UI 保持 running；
 /// 缺字段的旧帧仍按历史语义视为终止，云端拒绝帧不受影响。
 pub fn task_error_pending(msg: &str, seq: u64) -> Value {
-    build("task-error", None, Some(json!({ "error": msg, "terminal": false })), seq)
+    build(
+        "task-error",
+        None,
+        Some(json!({ "error": msg, "terminal": false })),
+        seq,
+    )
 }
 
 /// 用户输入回显(content 为 base64 文本,与云端上行格式一致)。
 pub fn user_input(text: &str, seq: u64) -> Value {
-    build("user-input", None, Some(json!({ "content": b64_text(text) })), seq)
+    build(
+        "user-input",
+        None,
+        Some(json!({ "content": b64_text(text) })),
+        seq,
+    )
 }
 
 /// 运行中追加的用户指令。沿用 user-input 气泡词汇，但显式标记来源，
@@ -169,7 +190,12 @@ pub fn steer_input(text: &str, client_id: &str, seq: u64) -> Value {
 /// Agent 的 user_message(source=steer) 已到达，说明该 durable outbox 条目
 /// 已经持久化/物化。RPC ACK 只表示排队成功，绝不能产本确认帧。
 pub fn steer_confirmed(client_id: &str, seq: u64) -> Value {
-    build("steer-confirmed", None, Some(json!({ "client_id": client_id })), seq)
+    build(
+        "steer-confirmed",
+        None,
+        Some(json!({ "client_id": client_id })),
+        seq,
+    )
 }
 
 /// tool_call_id:引擎透传的 provider 工具调用 id(permissionToolCallId cap,
@@ -184,7 +210,12 @@ pub fn permission_req(id: &str, tool: &str, title: &str, tool_call_id: &str, seq
 }
 
 pub fn permission_resolved(id: &str, outcome: PermOutcome, seq: u64) -> Value {
-    build("permission-resolved", None, Some(json!({ "id": id, "outcome": outcome.as_str() })), seq)
+    build(
+        "permission-resolved",
+        None,
+        Some(json!({ "id": id, "outcome": outcome.as_str() })),
+        seq,
+    )
 }
 
 /// 提问卡答复回显(回放可见答案;request_id 即 askId)。
@@ -192,7 +223,9 @@ pub fn reply_question(request_id: &str, answers_json: &str, cancelled: bool, seq
     build(
         "reply-question",
         None,
-        Some(json!({ "request_id": request_id, "answers_json": answers_json, "cancelled": cancelled })),
+        Some(
+            json!({ "request_id": request_id, "answers_json": answers_json, "cancelled": cancelled }),
+        ),
         seq,
     )
 }
@@ -217,11 +250,17 @@ pub fn ask_user_question(request_id: &str, questions: &Value, seq: u64) -> Value
 // ==================== ACP session update 帧 ====================
 
 pub fn agent_text(delta: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": delta } }), seq)
+    acp(
+        json!({ "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": delta } }),
+        seq,
+    )
 }
 
 pub fn agent_thought(delta: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "agent_thought_chunk", "content": { "type": "text", "text": delta } }), seq)
+    acp(
+        json!({ "sessionUpdate": "agent_thought_chunk", "content": { "type": "text", "text": delta } }),
+        seq,
+    )
 }
 
 /// TodoWrite 计划清单(引擎 todo_update 事件的 todos 数组,条目
@@ -273,11 +312,17 @@ pub fn tool_call_failed(tc_id: &str, raw_output: &str, seq: u64) -> Value {
 /// 上下文用量(环形指示):used = 当前 Agent 历史 + system prompt 的
 /// token 估算，size = 模型上下文预算；不使用含子代理的整轮累计用量。
 pub fn usage_update(used: i64, size: i64, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "usage_update", "used": used, "size": size }), seq)
+    acp(
+        json!({ "sessionUpdate": "usage_update", "used": used, "size": size }),
+        seq,
+    )
 }
 
 pub fn compact_status(status: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "compact_status", "status": status }), seq)
+    acp(
+        json!({ "sessionUpdate": "compact_status", "status": status }),
+        seq,
+    )
 }
 
 /// 后台代理完成通知。结果正文保持结构化字段，避免混入助手正文气泡；
@@ -306,15 +351,24 @@ pub fn background_result(
 }
 
 pub fn model_update(model: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "model_update", "model": model }), seq)
+    acp(
+        json!({ "sessionUpdate": "model_update", "model": model }),
+        seq,
+    )
 }
 
 /// 会话思考档位变更(""=跟随模型默认);与 model_update 同形,UI 据此
 /// 同步 composer 的思考深度选择器。
 pub fn think_update(think: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "think_update", "think": think }), seq)
+    acp(
+        json!({ "sessionUpdate": "think_update", "think": think }),
+        seq,
+    )
 }
 
 pub fn permission_mode_update(mode: &str, seq: u64) -> Value {
-    acp(json!({ "sessionUpdate": "permission_mode_update", "mode": mode }), seq)
+    acp(
+        json!({ "sessionUpdate": "permission_mode_update", "mode": mode }),
+        seq,
+    )
 }

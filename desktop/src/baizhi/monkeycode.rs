@@ -42,7 +42,10 @@ fn account_host(svc: &Service) -> String {
 
 fn on_account_host(svc: &Service, u: &reqwest::Url) -> bool {
     u.host_str().map(str::to_string).unwrap_or_default() == account_host(svc)
-        && u.port() == reqwest::Url::parse(&svc.ep.account).ok().and_then(|a| a.port())
+        && u.port()
+            == reqwest::Url::parse(&svc.ep.account)
+                .ok()
+                .and_then(|a| a.port())
 }
 
 /// 桥接登录:需已持有百智云会话。成功返回云端用户信息(原样)。
@@ -50,9 +53,13 @@ pub async fn login_monkeycode(svc: &Service) -> BzResult<Value> {
     if svc.store.is_empty() {
         return Err(other("请先登录百智云账号"));
     }
-    let mut cur = format!("{}/api/v1/users/login?redirect=&inviter_id=", svc.ep.monkeycode);
+    let mut cur = format!(
+        "{}/api/v1/users/login?redirect=&inviter_id=",
+        svc.ep.monkeycode
+    );
     for _ in 0..MAX_BRIDGE_HOPS {
-        let mut u = reqwest::Url::parse(&cur).map_err(|e| other(format!("云端登录桥接地址异常: {e}")))?;
+        let mut u =
+            reqwest::Url::parse(&cur).map_err(|e| other(format!("云端登录桥接地址异常: {e}")))?;
         // 落到百智授权"页面"时改写为 API 端点(WebView 里这一跳由页面 JS 完成)
         if on_account_host(svc, &u) && u.path() == "/oauth/authorize" {
             cur = authorize_page_to_api(svc, &u)?;
@@ -68,7 +75,11 @@ pub async fn login_monkeycode(svc: &Service) -> BzResult<Value> {
 
 /// 执行桥接链上的一跳。Ok(None) 表示重定向链走完(停在 2xx)。
 async fn bridge_hop(svc: &Service, u: &reqwest::Url) -> BzResult<Option<String>> {
-    let store = if on_account_host(svc, u) { &svc.store } else { &svc.mc };
+    let store = if on_account_host(svc, u) {
+        &svc.store
+    } else {
+        &svc.mc
+    };
     let (_, status, location) = svc
         .do_store_full(store, reqwest::Method::GET, u.as_str(), None)
         .await
@@ -76,14 +87,19 @@ async fn bridge_hop(svc: &Service, u: &reqwest::Url) -> BzResult<Option<String>>
     if (300..400).contains(&status) {
         let loc = location.ok_or_else(|| other("云端登录桥接失败: 重定向缺少目标地址"))?;
         // 相对地址按当前页解析
-        let next = u.join(&loc).map_err(|e| other(format!("云端登录桥接失败: 重定向地址异常: {e}")))?;
+        let next = u
+            .join(&loc)
+            .map_err(|e| other(format!("云端登录桥接失败: 重定向地址异常: {e}")))?;
         return Ok(Some(next.to_string()));
     }
     if !(200..300).contains(&status) {
         if status == 401 && on_account_host(svc, u) {
             return Err(BzErr::Unauthorized("百智云会话已失效,请重新登录".into()));
         }
-        return Err(other(format!("云端登录桥接失败(HTTP {status},{})", u.host_str().unwrap_or(""))));
+        return Err(other(format!(
+            "云端登录桥接失败(HTTP {status},{})",
+            u.host_str().unwrap_or("")
+        )));
     }
     Ok(None)
 }
@@ -134,9 +150,12 @@ async fn mc_user(svc: &Service) -> BzResult<Value> {
     let out = mc_call(svc, reqwest::Method::GET, "/api/v1/users/status", None).await?;
     let user = out.get("user").cloned().unwrap_or(Value::Null);
     // 空对象也算未登录(与移动端 hasUserIdentity 语义一致)
-    let has_identity = ["id", "name", "username", "email"]
-        .iter()
-        .any(|k| user.get(k).and_then(|v| v.as_str()).map(|s| !s.is_empty()).unwrap_or(false));
+    let has_identity = ["id", "name", "username", "email"].iter().any(|k| {
+        user.get(k)
+            .and_then(|v| v.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+    });
     if !has_identity {
         return Err(BzErr::Unauthorized("MonkeyCode 会话无效".into()));
     }
@@ -151,10 +170,16 @@ async fn mc_user(svc: &Service) -> BzResult<Value> {
 /// 里的"MD5 加密后的值"已过时,mobile/web 前端都发明文,勿做前端哈希)。
 /// 服务端把密码错/用户不存在等业务失败统一折叠为「登录失败」(code 10606),
 /// 经 ENV_MC 解包原样透传。
-pub async fn login_monkeycode_password(svc: &Service, email: &str, password: &str) -> BzResult<Value> {
+pub async fn login_monkeycode_password(
+    svc: &Service,
+    email: &str,
+    password: &str,
+) -> BzResult<Value> {
     // 验证码打 MonkeyCode 域;罐传 mc——罐决定 Set-Cookie 吸收方向,
     // 用百智罐会把 mc 域 cookie 混进百智罐,破坏双罐隔离
-    let captcha = svc.captcha_token_at(&svc.ep.monkeycode, &svc.mc, "MonkeyCode ").await?;
+    let captcha = svc
+        .captcha_token_at(&svc.ep.monkeycode, &svc.mc, "MonkeyCode ")
+        .await?;
     mc_call(
         svc,
         reqwest::Method::POST,
@@ -193,17 +218,35 @@ async fn mc_wallet(svc: &Service) -> BzResult<Value> {
 
 /// 会员订阅(等级/到期/续费来源)。开源版后端固定返回基础状态。
 async fn mc_subscription(svc: &Service) -> BzResult<Value> {
-    mc_call(svc, reqwest::Method::GET, "/api/v1/users/subscription", None).await
+    mc_call(
+        svc,
+        reqwest::Method::GET,
+        "/api/v1/users/subscription",
+        None,
+    )
+    .await
 }
 
 /// 当天是否已签到。
 async fn mc_checkin_status(svc: &Service) -> BzResult<Value> {
-    mc_call(svc, reqwest::Method::GET, "/api/v1/users/wallet/checkin", None).await
+    mc_call(
+        svc,
+        reqwest::Method::GET,
+        "/api/v1/users/wallet/checkin",
+        None,
+    )
+    .await
 }
 
 /// 邀请记录({count, items})。头像地址可能是相对路径,由 UI 按 base_url 补全。
 async fn mc_invitations(svc: &Service) -> BzResult<Value> {
-    mc_call(svc, reqwest::Method::GET, "/api/v1/users/invitations?page=1&size=50", None).await
+    mc_call(
+        svc,
+        reqwest::Method::GET,
+        "/api/v1/users/invitations?page=1&size=50",
+        None,
+    )
+    .await
 }
 
 /// 账号权益总览:额度、会员、签到态、邀请记录并发取回。单路失败按缺省
@@ -234,7 +277,9 @@ pub async fn mc_usage(svc: &Service) -> BzResult<Value> {
 /// 每日签到(每天 1 次;与账密登录同一套 MonkeyCode 域 PoW 验证码)。
 /// 重复签到等业务失败由服务端包壳原样透传。
 pub async fn mc_checkin(svc: &Service) -> BzResult<Value> {
-    let captcha = svc.captcha_token_at(&svc.ep.monkeycode, &svc.mc, "MonkeyCode ").await?;
+    let captcha = svc
+        .captcha_token_at(&svc.ep.monkeycode, &svc.mc, "MonkeyCode ")
+        .await?;
     mc_call(
         svc,
         reqwest::Method::POST,
@@ -269,22 +314,41 @@ pub async fn mc_tasks(
 
 /// Web 侧栏同款项目列表；每个项目可携带其最近任务。
 pub async fn mc_projects(svc: &Service) -> BzResult<Value> {
-    mc_call(svc, reqwest::Method::GET, "/api/v1/users/projects?limit=50", None).await
+    mc_call(
+        svc,
+        reqwest::Method::GET,
+        "/api/v1/users/projects?limit=50",
+        None,
+    )
+    .await
 }
 
 pub async fn mc_task_info(svc: &Service, id: &str) -> BzResult<Value> {
-    mc_call(svc, reqwest::Method::GET, &format!("/api/v1/users/tasks/{}", urlencode(id)), None).await
+    mc_call(
+        svc,
+        reqwest::Method::GET,
+        &format!("/api/v1/users/tasks/{}", urlencode(id)),
+        None,
+    )
+    .await
 }
 
 /// 云端任务历史回放,归一为 UI 帧词汇:chunk 的 event→type,时间戳纳秒→毫秒;
 /// data(base64)原样透传,与本地会话的 Frame 结构同构。
 pub async fn mc_task_rounds(svc: &Service, id: &str, cursor: &str, limit: u32) -> BzResult<Value> {
-    let mut path = format!("/api/v1/users/tasks/rounds?id={}&limit={limit}", urlencode(id));
+    let mut path = format!(
+        "/api/v1/users/tasks/rounds?id={}&limit={limit}",
+        urlencode(id)
+    );
     if !cursor.is_empty() {
         path.push_str(&format!("&cursor={}", urlencode(cursor)));
     }
     let out = mc_call(svc, reqwest::Method::GET, &path, None).await?;
-    let chunks = out.get("chunks").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let chunks = out
+        .get("chunks")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     let frames: Vec<Value> = chunks
         .iter()
         .map(|c| {
@@ -296,7 +360,11 @@ pub async fn mc_task_rounds(svc: &Service, id: &str, cursor: &str, limit: u32) -
                 "type": c.get("event").and_then(|v| v.as_str()).unwrap_or(""),
                 "timestamp": ts,
             });
-            if let Some(kind) = c.get("kind").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            if let Some(kind) = c
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
                 f["kind"] = json!(kind);
             }
             if let Some(data) = c.get("data").filter(|d| !d.is_null()) {
@@ -318,8 +386,16 @@ pub async fn mc_task_rounds(svc: &Service, id: &str, cursor: &str, limit: u32) -
 /// 云端任务提问索引(倒序,cursor 向更早翻页;{items, next_cursor, has_more}
 /// 原样透传 UI)。content 已是解码明文(超 500 字符截断),timestamp 纳秒、
 /// 与 chunk.timestamp 对齐——UI 的提问大纲靠它与帧流对表。
-pub async fn mc_task_user_inputs(svc: &Service, id: &str, cursor: &str, limit: u32) -> BzResult<Value> {
-    let mut path = format!("/api/v1/users/tasks/user-inputs?id={}&limit={limit}", urlencode(id));
+pub async fn mc_task_user_inputs(
+    svc: &Service,
+    id: &str,
+    cursor: &str,
+    limit: u32,
+) -> BzResult<Value> {
+    let mut path = format!(
+        "/api/v1/users/tasks/user-inputs?id={}&limit={limit}",
+        urlencode(id)
+    );
     if !cursor.is_empty() {
         path.push_str(&format!("&cursor={}", urlencode(cursor)));
     }
@@ -328,9 +404,14 @@ pub async fn mc_task_user_inputs(svc: &Service, id: &str, cursor: &str, limit: u
 
 /// 终止云端任务(区别于 WS 上行 user-cancel:那只中断当前执行)。
 pub async fn mc_task_stop(svc: &Service, id: &str) -> BzResult<()> {
-    mc_call(svc, reqwest::Method::PUT, "/api/v1/users/tasks/stop", Some(&json!({ "id": id })))
-        .await
-        .map(|_| ())
+    mc_call(
+        svc,
+        reqwest::Method::PUT,
+        "/api/v1/users/tasks/stop",
+        Some(&json!({ "id": id })),
+    )
+    .await
+    .map(|_| ())
 }
 
 /// 删除云端任务。服务端会拒绝仍在运行或虚拟机尚在线的任务。
@@ -368,7 +449,12 @@ const MC_DEFAULT_SKILL_IDS: [&str; 4] = [
 /// (UI 从 mc_task_options 透传的 task_defaults 取),缺省用壳内常量——
 /// 云端改档位只需服务端下发,无需壳发版。
 pub async fn mc_task_create(svc: &Service, req: &Value) -> BzResult<Value> {
-    let get = |k: &str| req.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let get = |k: &str| {
+        req.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
     let (content, model_id, image_id) = (get("content"), get("model_id"), get("image_id"));
     if content.is_empty() || model_id.is_empty() || image_id.is_empty() {
         return Err(other("任务描述、模型与镜像不能为空"));
@@ -383,9 +469,17 @@ pub async fn mc_task_create(svc: &Service, req: &Value) -> BzResult<Value> {
         }
     }
     let host_id = get("host_id");
-    let host_id = if host_id.is_empty() { MC_DEFAULT_HOST_ID.into() } else { host_id };
+    let host_id = if host_id.is_empty() {
+        MC_DEFAULT_HOST_ID.into()
+    } else {
+        host_id
+    };
     let cli_name = get("cli_name");
-    let cli_name = if cli_name.is_empty() { MC_DEFAULT_CLI_NAME.into() } else { cli_name };
+    let cli_name = if cli_name.is_empty() {
+        MC_DEFAULT_CLI_NAME.into()
+    } else {
+        cli_name
+    };
     let resource = match req.get("resource") {
         Some(r) if r.is_object() => r.clone(),
         _ => {
@@ -413,7 +507,13 @@ pub async fn mc_task_create(svc: &Service, req: &Value) -> BzResult<Value> {
         "task_type": "develop",
         "extra": extra,
     });
-    mc_call(svc, reqwest::Method::POST, "/api/v1/users/tasks", Some(&payload)).await
+    mc_call(
+        svc,
+        reqwest::Method::POST,
+        "/api/v1/users/tasks",
+        Some(&payload),
+    )
+    .await
 }
 
 /// 建任务所需的下拉数据:模型/宿主机/镜像/项目/订阅档。
@@ -443,10 +543,24 @@ pub async fn mc_task_options(svc: &Service) -> BzResult<Value> {
     if let Ok(hosts) = mc_call(svc, reqwest::Method::GET, "/api/v1/users/hosts", None).await {
         res["hosts"] = arr(&hosts, "hosts");
     }
-    if let Ok(projects) = mc_call(svc, reqwest::Method::GET, "/api/v1/users/projects?limit=50", None).await {
+    if let Ok(projects) = mc_call(
+        svc,
+        reqwest::Method::GET,
+        "/api/v1/users/projects?limit=50",
+        None,
+    )
+    .await
+    {
         res["projects"] = arr(&projects, "projects");
     }
-    if let Ok(sub) = mc_call(svc, reqwest::Method::GET, "/api/v1/users/subscription", None).await {
+    if let Ok(sub) = mc_call(
+        svc,
+        reqwest::Method::GET,
+        "/api/v1/users/subscription",
+        None,
+    )
+    .await
+    {
         res["plan"] = sub.get("plan").cloned().unwrap_or(json!(""));
     }
     Ok(res)
@@ -492,7 +606,12 @@ pub async fn mc_upload(svc: &Service, filename: &str, data: Vec<u8>) -> BzResult
         Some(&json!({ "filename": filename })),
     )
     .await?;
-    let field = |k: &str| out.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let field = |k: &str| {
+        out.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
     let (upload_url, access_url) = (field("upload_url"), field("access_url"));
     if upload_url.is_empty() || access_url.is_empty() {
         return Err(other("预签名应答缺少上传/访问地址"));
@@ -500,7 +619,8 @@ pub async fn mc_upload(svc: &Service, filename: &str, data: Vec<u8>) -> BzResult
     // 直传走长超时客户端:2MB 在慢速网络下可能贴近 30s 普通超时。
     // 预签名地址按主机路由:单机私有化部署对象存储常与主服务同域,
     // 自签证书场景同样要免验证;独立 OSS 域则照常验证
-    let upload_url = reqwest::Url::parse(&upload_url).map_err(|e| other(format!("上传地址异常: {e}")))?;
+    let upload_url =
+        reqwest::Url::parse(&upload_url).map_err(|e| other(format!("上传地址异常: {e}")))?;
     let resp = svc
         .lp_for(&upload_url)?
         .put(upload_url)
@@ -544,8 +664,10 @@ pub async fn mc_file_upload(svc: &Service, vm_id: &str, path: &str, data: Vec<u8
         urlencode(path)
     );
     let url = reqwest::Url::parse(&target).map_err(|e| other(format!("地址异常: {e}")))?;
-    let form = reqwest::multipart::Form::new()
-        .part("file", reqwest::multipart::Part::bytes(data).file_name(filename));
+    let form = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(data).file_name(filename),
+    );
     // 长超时客户端:10MB 在慢速网络下会贴近 30s 普通超时
     let mut req = svc.lp_for(&url)?.post(url.clone()).multipart(form);
     if let Some(h) = svc.mc.header(&url) {
@@ -554,9 +676,15 @@ pub async fn mc_file_upload(svc: &Service, vm_id: &str, path: &str, data: Vec<u8
     if let Some(b) = svc.mc_basic_header(&url) {
         req = req.header(reqwest::header::AUTHORIZATION, b);
     }
-    let resp = req.send().await.map_err(|e| other(format!("上传失败: {e}")))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| other(format!("上传失败: {e}")))?;
     let status = resp.status().as_u16();
-    let body = resp.bytes().await.map_err(|e| other(format!("读取响应失败: {e}")))?;
+    let body = resp
+        .bytes()
+        .await
+        .map_err(|e| other(format!("读取响应失败: {e}")))?;
     unwrap_envelope(&body, status, &ENV_MC).map(|_| ())
 }
 
@@ -568,7 +696,9 @@ pub struct DownloadCtl {
 
 impl DownloadCtl {
     pub fn new() -> Self {
-        Self { flags: StdMutex::new(HashMap::new()) }
+        Self {
+            flags: StdMutex::new(HashMap::new()),
+        }
     }
 
     fn claim(&self, id: &str) -> Result<Arc<AtomicBool>, String> {
@@ -667,7 +797,9 @@ async fn do_file_download(
     if svc.tls_insecure_for(&url) {
         cb = cb.danger_accept_invalid_certs(true);
     }
-    let client = cb.build().map_err(|e| other(format!("HTTP 客户端构建失败: {e}")))?;
+    let client = cb
+        .build()
+        .map_err(|e| other(format!("HTTP 客户端构建失败: {e}")))?;
     let mut req = client.get(url.clone());
     if let Some(h) = svc.mc.header(&url) {
         req = req.header(reqwest::header::COOKIE, h);
@@ -675,7 +807,10 @@ async fn do_file_download(
     if let Some(b) = svc.mc_basic_header(&url) {
         req = req.header(reqwest::header::AUTHORIZATION, b);
     }
-    let resp = req.send().await.map_err(|e| other(format!("下载失败: {e}")))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| other(format!("下载失败: {e}")))?;
     let status = resp.status().as_u16();
     if !(200..300).contains(&status) {
         // 失败时响应体是 JSON 包壳:借 unwrap_envelope 取可读的 message
@@ -824,8 +959,19 @@ fn plan_allows_model(model: &str, plan: &str) -> bool {
 /// POST /api/v1/users/ohmyagent/api-keys(无请求参数)。三个字段都必需,
 /// 缺任一即在此快失败,别拖到对话时变成难解释的上游报错。
 pub async fn mc_ohmyagent_key_create(svc: &Service) -> BzResult<Value> {
-    let out = mc_call(svc, reqwest::Method::POST, "/api/v1/users/ohmyagent/api-keys", None).await?;
-    let has = |k: &str| out.get(k).and_then(Value::as_str).map(|s| !s.is_empty()).unwrap_or(false);
+    let out = mc_call(
+        svc,
+        reqwest::Method::POST,
+        "/api/v1/users/ohmyagent/api-keys",
+        None,
+    )
+    .await?;
+    let has = |k: &str| {
+        out.get(k)
+            .and_then(Value::as_str)
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+    };
     if !has("id") || !has("api_key") || !has("signing_secret") {
         return Err(other("同步准备失败:服务端响应缺少必要字段"));
     }
@@ -860,10 +1006,16 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
     let mut notes = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut dup_names = 0usize; // 同批重名:不再丢弃,只提示(落盘名靠 id 区分)
-    // 跳过计数:同步条数对不上时,消息里要能说清差额去哪了(逐条列会太长)
+                                // 跳过计数:同步条数对不上时,消息里要能说清差额去哪了(逐条列会太长)
     let (mut alien_owner, mut placeholder) = (0usize, 0usize);
     for it in items {
-        let s = |k: &str| it.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
+        let s = |k: &str| {
+            it.get(k)
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        };
         let owner = match it.pointer("/owner/type").and_then(Value::as_str) {
             Some(o @ ("public" | "private" | "team")) => o,
             // owner 整个缺席按 public 收:服务端该字段是 omitempty,且只在模型
@@ -878,7 +1030,11 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
             }
         };
         // 服务端标了隐藏就是刻意不给用户看的,静默跳过——报个数只是噪音
-        if it.get("is_hidden").and_then(Value::as_bool).unwrap_or(false) {
+        if it
+            .get("is_hidden")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
             continue;
         }
         let (id, model) = (s("id"), s("model"));
@@ -890,13 +1046,22 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
         let locked = !plan_allows_model(&model, plan);
         let itype = s("interface_type");
         let Some(provider) = provider_of_interface(&itype) else {
-            notes.push(format!("模型 {model} 使用了本版本不支持的协议「{itype}」,已跳过"));
+            notes.push(format!(
+                "模型 {model} 使用了本版本不支持的协议「{itype}」,已跳过"
+            ));
             continue;
         };
         // remark 是后台人起的备注,同批重复很正常。以前撞了就丢第二条(表现
         // 为"同步的模型不全");现在原样收下,由 UI 侧 syncedName 用这里带出去
         // 的服务端配置 id 拼出唯一落盘名(展示层剥掉),不再有条目因重名蒸发
-        let name = { let n = s("remark"); if n.is_empty() { model.clone() } else { n } };
+        let name = {
+            let n = s("remark");
+            if n.is_empty() {
+                model.clone()
+            } else {
+                n
+            }
+        };
         let mut entry = json!({
             "name": name.clone(),
             "id": id.clone(),
@@ -923,7 +1088,11 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
         if let Some(mo) = num("output_limit") {
             entry["max_output"] = json!(mo);
         }
-        if it.get("support_image").and_then(Value::as_bool).unwrap_or(false) {
+        if it
+            .get("support_image")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
             entry["vision"] = json!(true);
         }
         // thinking_enabled 对 public 条目刻意忽略(用户拍板):会员内置
@@ -942,7 +1111,9 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
         keyed.push((member_section_rank(&model, owner), weight, name, entry));
     }
     if dup_names > 0 {
-        notes.push(format!("{dup_names} 条模型与同批条目重名,已按服务端配置区分收录"));
+        notes.push(format!(
+            "{dup_names} 条模型与同批条目重名,已按服务端配置区分收录"
+        ));
     }
     if alien_owner > 0 {
         notes.push(format!("{alien_owner} 条模型的归属类型无法识别,已跳过"));
@@ -961,27 +1132,54 @@ fn local_model_entries(items: &[Value], plan: &str) -> (Vec<Value>, Vec<String>)
 pub async fn mc_member_models_sync(svc: &Service) -> BzResult<Value> {
     // 服务端是游标分页,limit 缺省只给 100(backend handler List);显式要 200,
     // 还有下一页就出 note——宁可说清楚,也不让用户对着少掉的条目猜
-    let out = mc_call(svc, reqwest::Method::GET, "/api/v1/users/models?limit=200", None).await?;
+    let out = mc_call(
+        svc,
+        reqwest::Method::GET,
+        "/api/v1/users/models?limit=200",
+        None,
+    )
+    .await?;
     // out 为 Null 单独翻译成"会话失效":会话过期若不是标准 401(有 fixed_401
     // 兜住)而是 2xx 登录页/空 data,unwrap_envelope 的 2xx 宽容分支会折成
     // Null——报"格式异常"让用户摸不着头脑(同 sync.rs console_items,
     // 2026-08-12 反馈)。真正的契约漂移(结构对不上)才报格式异常
     if out.is_null() {
-        return Err(BzErr::Unauthorized("MonkeyCode 会话已失效,请在设置中重新连接".into()));
+        return Err(BzErr::Unauthorized(
+            "MonkeyCode 会话已失效,请在设置中重新连接".into(),
+        ));
     }
     let items = out
         .get("models")
         .and_then(Value::as_array)
         .cloned()
-        .ok_or_else(|| other(format!("模型列表响应格式异常: {}", super::snippet(&out.to_string(), 120))))?;
+        .ok_or_else(|| {
+            other(format!(
+                "模型列表响应格式异常: {}",
+                super::snippet(&out.to_string(), 120)
+            ))
+        })?;
     let mut notes = Vec::new();
     if out.pointer("/page/has_next_page").and_then(Value::as_bool) == Some(true) {
         notes.push("服务端模型超过 200 条,本次只同步了前 200 条".to_string());
     }
-    let plan = match mc_call(svc, reqwest::Method::GET, "/api/v1/users/subscription", None).await {
-        Ok(v) => v.get("plan").and_then(Value::as_str).unwrap_or("").to_string(),
+    let plan = match mc_call(
+        svc,
+        reqwest::Method::GET,
+        "/api/v1/users/subscription",
+        None,
+    )
+    .await
+    {
+        Ok(v) => v
+            .get("plan")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
         Err(e) => {
-            notes.push(format!("订阅信息读取失败({}),进阶档模型已按不可用锁定,重新同步可恢复", e.msg()));
+            notes.push(format!(
+                "订阅信息读取失败({}),进阶档模型已按不可用锁定,重新同步可恢复",
+                e.msg()
+            ));
             String::new()
         }
     };
@@ -1003,7 +1201,12 @@ pub(crate) const ENV_MC: Envelope = Envelope {
 };
 
 /// 请求 MonkeyCode 云端接口并解开包壳。
-async fn mc_call(svc: &Service, method: reqwest::Method, path: &str, body: Option<&Value>) -> BzResult<Value> {
+async fn mc_call(
+    svc: &Service,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<&Value>,
+) -> BzResult<Value> {
     let target = format!("{}{}", svc.ep.monkeycode, path);
     let (data, status) = svc.do_store(&svc.mc, method, &target, body).await?;
     unwrap_envelope(&data, status, &ENV_MC)
@@ -1066,7 +1269,12 @@ impl rustls::client::danger::ServerCertVerifier for NoCertVerify {
         cert: &rustls::pki_types::CertificateDer<'_>,
         dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        rustls::crypto::verify_tls12_signature(message, cert, dss, &self.0.signature_verification_algorithms)
+        rustls::crypto::verify_tls12_signature(
+            message,
+            cert,
+            dss,
+            &self.0.signature_verification_algorithms,
+        )
     }
 
     fn verify_tls13_signature(
@@ -1075,7 +1283,12 @@ impl rustls::client::danger::ServerCertVerifier for NoCertVerify {
         cert: &rustls::pki_types::CertificateDer<'_>,
         dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        rustls::crypto::verify_tls13_signature(message, cert, dss, &self.0.signature_verification_algorithms)
+        rustls::crypto::verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &self.0.signature_verification_algorithms,
+        )
     }
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
@@ -1107,7 +1320,10 @@ pub struct CloudPipes {
 
 impl CloudPipes {
     pub fn new() -> Self {
-        Self { pipes: StdMutex::new(HashMap::new()), next_gen: AtomicU64::new(0) }
+        Self {
+            pipes: StdMutex::new(HashMap::new()),
+            next_gen: AtomicU64::new(0),
+        }
     }
 
     /// 检查与占位一步完成(持同一把锁):占用即报错,否则立刻 insert——
@@ -1178,25 +1394,45 @@ impl Drop for PipeReservation<'_> {
 }
 
 /// 云端 wss 地址(cookie 罐按 https 形态取,Secure cookie 匹配 scheme)。
-fn pipe_urls(svc: &Service, kind: &str, id: &str, params: &Value) -> Result<(String, String), String> {
+fn pipe_urls(
+    svc: &Service,
+    kind: &str,
+    id: &str,
+    params: &Value,
+) -> Result<(String, String), String> {
     let path = match kind {
         "stream" => {
-            let mode = params.get("mode").and_then(|v| v.as_str()).unwrap_or("attach");
+            let mode = params
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("attach");
             let mode = if mode == "new" { "new" } else { "attach" };
-            format!("/api/v1/users/tasks/stream?id={}&mode={mode}", urlencode(id))
+            format!(
+                "/api/v1/users/tasks/stream?id={}&mode={mode}",
+                urlencode(id)
+            )
         }
         "control" => format!("/api/v1/users/tasks/control?id={}", urlencode(id)),
         "terminal" => {
-            let tid = params.get("terminal_id").and_then(|v| v.as_str()).unwrap_or("");
+            let tid = params
+                .get("terminal_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             if tid.is_empty() {
                 return Err("缺少 terminal_id".into());
             }
-            format!("/api/v1/users/hosts/vms/{}/terminals/connect?terminal_id={}", urlencode(id), urlencode(tid))
+            format!(
+                "/api/v1/users/hosts/vms/{}/terminals/connect?terminal_id={}",
+                urlencode(id),
+                urlencode(tid)
+            )
         }
         _ => return Err(format!("未知 WS 桥类型 {kind}")),
     };
     let https_url = format!("{}{}", svc.ep.monkeycode, path);
-    let ws_url = https_url.replacen("https://", "wss://", 1).replacen("http://", "ws://", 1);
+    let ws_url = https_url
+        .replacen("https://", "wss://", 1)
+        .replacen("http://", "ws://", 1);
     Ok((https_url, ws_url))
 }
 
@@ -1336,10 +1572,17 @@ pub async fn cloud_ws_open(
 }
 
 #[tauri::command]
-pub async fn cloud_ws_send(pipes: State<'_, CloudPipes>, pipe: String, text: String) -> Result<(), String> {
+pub async fn cloud_ws_send(
+    pipes: State<'_, CloudPipes>,
+    pipe: String,
+    text: String,
+) -> Result<(), String> {
     let map = pipes.pipes.lock_ok();
     let entry = map.get(&pipe).ok_or_else(|| "连接已关闭".to_string())?;
-    entry.tx.send(PipeMsg::Text(text)).map_err(|_| "连接已关闭".to_string())
+    entry
+        .tx
+        .send(PipeMsg::Text(text))
+        .map_err(|_| "连接已关闭".to_string())
 }
 
 #[tauri::command]
@@ -1380,7 +1623,10 @@ mod local_models_tests {
         let (new_tx, mut new_rx) = mpsc::unbounded_channel();
         let (new, _) = pipes.claim_with_service(&state, "new", new_tx).unwrap();
         assert_eq!(new.ep.monkeycode, expected_monkeycode);
-        assert!(matches!(new_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)));
+        assert!(matches!(
+            new_rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
     }
 
     #[test]
@@ -1398,7 +1644,10 @@ mod local_models_tests {
         let (replacement_tx, _replacement_rx) = mpsc::unbounded_channel();
         let replacement_gen = pipes.claim("first", replacement_tx).unwrap();
         pipes.remove_gen("first", first_gen);
-        assert_eq!(pipes.pipes.lock_ok().get("first").map(|entry| entry.gen), Some(replacement_gen));
+        assert_eq!(
+            pipes.pipes.lock_ok().get("first").map(|entry| entry.gen),
+            Some(replacement_gen)
+        );
     }
 
     #[test]
@@ -1406,7 +1655,10 @@ mod local_models_tests {
         // 服务端 openai_chat ↔ 本地 openai 的词汇差异是唯一改名点;
         // 未知协议必须拒绝(route_of 的 anthropic 兜底不适用于它们)
         assert_eq!(provider_of_interface("openai_chat"), Some("openai"));
-        assert_eq!(provider_of_interface("openai_responses"), Some("openai_responses"));
+        assert_eq!(
+            provider_of_interface("openai_responses"),
+            Some("openai_responses")
+        );
         assert_eq!(provider_of_interface("anthropic"), Some("anthropic"));
         assert_eq!(provider_of_interface("grpc_v2"), None);
         assert_eq!(provider_of_interface(""), None);
@@ -1422,7 +1674,10 @@ mod local_models_tests {
         assert!(plan_allows_model("monkeycode-pro-x", "flagship"));
         assert!(!plan_allows_model("monkeycode-ultra-x", "pro"));
         assert!(plan_allows_model("monkeycode-ultra-x", "ultra"));
-        assert!(plan_allows_model("Monkeycode-Pro-X", "pro"), "档位前缀不区分大小写");
+        assert!(
+            plan_allows_model("Monkeycode-Pro-X", "pro"),
+            "档位前缀不区分大小写"
+        );
     }
 
     fn pub_owner() -> Value {
@@ -1471,14 +1726,23 @@ mod local_models_tests {
         assert_eq!(dups, vec!["cfg-1", "cfg-7"], "重名两条都在,靠 id 区分");
         let m0 = &models[0];
         assert_eq!(m0.get("name").and_then(Value::as_str), Some("旗舰模型"));
-        assert_eq!(m0.get("provider").and_then(Value::as_str), Some("anthropic"));
+        assert_eq!(
+            m0.get("provider").and_then(Value::as_str),
+            Some("anthropic")
+        );
         // model 字段 = 服务端模型名(swagger 的"配置 ID"是过时文档);
         // base_url/api_key 为空占位,物化时由壳补齐
-        assert_eq!(m0.get("model").and_then(Value::as_str), Some("monkeycode-ultra-x"));
+        assert_eq!(
+            m0.get("model").and_then(Value::as_str),
+            Some("monkeycode-ultra-x")
+        );
         assert_eq!(m0.get("api_key").and_then(Value::as_str), Some(""));
         assert_eq!(m0.get("base_url").and_then(Value::as_str), Some(""));
         assert_eq!(m0.get("source").and_then(Value::as_str), Some("monkeycode"));
-        assert_eq!(m0.get("context_window").and_then(Value::as_i64), Some(200_000));
+        assert_eq!(
+            m0.get("context_window").and_then(Value::as_i64),
+            Some(200_000)
+        );
         assert_eq!(m0.get("max_output").and_then(Value::as_i64), Some(16_384));
         assert_eq!(m0.get("vision").and_then(Value::as_bool), Some(true));
         let by = |name: &str| {
@@ -1489,7 +1753,11 @@ mod local_models_tests {
         };
         let m1 = by("mc-gpt");
         assert_eq!(m1.get("name").and_then(Value::as_str), Some("mc-gpt"));
-        assert_eq!(m1.get("model").and_then(Value::as_str), Some("mc-gpt"), "remark 空时 name==model,与百智云同构");
+        assert_eq!(
+            m1.get("model").and_then(Value::as_str),
+            Some("mc-gpt"),
+            "remark 空时 name==model,与百智云同构"
+        );
         assert_eq!(m1.get("provider").and_then(Value::as_str), Some("openai"));
         assert!(m1.get("vision").is_none());
         assert!(m1.get("context_window").is_none());
@@ -1498,25 +1766,45 @@ mod local_models_tests {
         assert!(m1.get("think").is_none(), "public 标 false 也不压 off");
         assert!(m0.get("think").is_none(), "未标注的模型跟随产品默认档");
         // 无主条目按 public 收:排在付费节(节序 3),在私有/团队之前
-        let orphan = models.iter().find(|m| m.get("name").and_then(Value::as_str) == Some("无主")).expect("无主条目应被收录");
+        let orphan = models
+            .iter()
+            .find(|m| m.get("name").and_then(Value::as_str) == Some("无主"))
+            .expect("无主条目应被收录");
         assert_eq!(orphan.get("owner").and_then(Value::as_str), Some("public"));
         let m2 = by("私有");
         assert_eq!(m2.get("name").and_then(Value::as_str), Some("私有"));
         assert_eq!(m2.get("owner").and_then(Value::as_str), Some("private"));
-        assert_eq!(m2.get("think").and_then(Value::as_str), Some("off"), "私有条目标 false 须尊重");
+        assert_eq!(
+            m2.get("think").and_then(Value::as_str),
+            Some("off"),
+            "私有条目标 false 须尊重"
+        );
         let m3 = by("团队");
         assert_eq!(m3.get("owner").and_then(Value::as_str), Some("team"));
         assert_eq!(m0.get("owner").and_then(Value::as_str), Some("public"));
         assert!(
-            !models.iter().any(|m| m.get("name").and_then(Value::as_str) == Some("未知主")),
+            !models
+                .iter()
+                .any(|m| m.get("name").and_then(Value::as_str) == Some("未知主")),
             "认不出的归属类型仍要跳过: {models:?}"
         );
         // 未知协议 1 + 重名提示 1 + 两类跳过计数(归属不明 1 / 占位 1);
         // 隐藏条目静默跳过,不出 note
         assert_eq!(notes.len(), 4, "{notes:?}");
-        assert!(notes.iter().any(|n| n.contains("与同批条目重名,已按服务端配置区分收录")), "{notes:?}");
-        assert!(!notes.iter().any(|n| n.contains("隐藏")), "隐藏条目不该出 note: {notes:?}");
-        assert!(notes.iter().any(|n| n.contains("归属类型无法识别")), "{notes:?}");
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains("与同批条目重名,已按服务端配置区分收录")),
+            "{notes:?}"
+        );
+        assert!(
+            !notes.iter().any(|n| n.contains("隐藏")),
+            "隐藏条目不该出 note: {notes:?}"
+        );
+        assert!(
+            notes.iter().any(|n| n.contains("归属类型无法识别")),
+            "{notes:?}"
+        );
         assert!(notes.iter().any(|n| n.contains("占位")), "{notes:?}");
     }
 
@@ -1528,15 +1816,29 @@ mod local_models_tests {
             json!({ "id": "c3", "model": "monkeycode-ultra-a", "interface_type": "anthropic", "owner": pub_owner() }),
         ];
         let (models, notes) = local_model_entries(&items, "pro");
-        let names: Vec<_> = models.iter().filter_map(|m| m.get("model").and_then(Value::as_str)).collect();
+        let names: Vec<_> = models
+            .iter()
+            .filter_map(|m| m.get("model").and_then(Value::as_str))
+            .collect();
         assert_eq!(
             names,
-            vec!["monkeycode-basic-a", "monkeycode-pro-a", "monkeycode-ultra-a"],
+            vec![
+                "monkeycode-basic-a",
+                "monkeycode-pro-a",
+                "monkeycode-ultra-a"
+            ],
             "超档条目保留(展示禁选),不再剔除"
         );
-        assert!(models[0].get("locked").is_none(), "档内条目无 locked(omit-false)");
+        assert!(
+            models[0].get("locked").is_none(),
+            "档内条目无 locked(omit-false)"
+        );
         assert!(models[1].get("locked").is_none());
-        assert_eq!(models[2].get("locked").and_then(Value::as_bool), Some(true), "ultra 超出 pro 档 → locked");
+        assert_eq!(
+            models[2].get("locked").and_then(Value::as_bool),
+            Some(true),
+            "ultra 超出 pro 档 → locked"
+        );
         assert!(notes.is_empty(), "锁定静默不出 note(菜单灰态即外显)");
     }
 
@@ -1567,7 +1869,10 @@ mod local_models_tests {
             json!({ "id": "c7", "model": "paid-a", "interface_type": "anthropic", "owner": pub_owner(), "weight": 1 }),
         ];
         let (models, _) = local_model_entries(&items, "ultra");
-        let names: Vec<_> = models.iter().filter_map(|m| m.get("name").and_then(Value::as_str)).collect();
+        let names: Vec<_> = models
+            .iter()
+            .filter_map(|m| m.get("name").and_then(Value::as_str))
+            .collect();
         assert_eq!(
             names,
             vec![
@@ -1598,11 +1903,23 @@ mod local_models_tests {
         ];
         let (models, _) = local_model_entries(&items, "");
         let by = |name: &str| {
-            models.iter().find(|m| m.get("model").and_then(Value::as_str) == Some(name)).expect("条目应在")
+            models
+                .iter()
+                .find(|m| m.get("model").and_then(Value::as_str) == Some(name))
+                .expect("条目应在")
         };
-        assert_eq!(by("m-a").get("context_window").and_then(Value::as_i64), Some(200_000));
-        assert_eq!(by("m-a").get("max_output").and_then(Value::as_i64), Some(32_000));
-        assert_eq!(by("m-b").get("max_output").and_then(Value::as_i64), Some(16_384));
+        assert_eq!(
+            by("m-a").get("context_window").and_then(Value::as_i64),
+            Some(200_000)
+        );
+        assert_eq!(
+            by("m-a").get("max_output").and_then(Value::as_i64),
+            Some(32_000)
+        );
+        assert_eq!(
+            by("m-b").get("max_output").and_then(Value::as_i64),
+            Some(16_384)
+        );
         assert!(by("m-c").get("context_window").is_none());
         assert!(by("m-c").get("max_output").is_none());
     }

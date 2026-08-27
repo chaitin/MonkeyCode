@@ -179,7 +179,11 @@ impl ExtBridge {
     }
 
     /// 发送请求并等待应答(超时/断连即错)。req.id 由本方法发号,调用方置 0 即可。
-    pub async fn call(&self, mut req: Request, timeout: Duration) -> Result<serde_json::Value, String> {
+    pub async fn call(
+        &self,
+        mut req: Request,
+        timeout: Duration,
+    ) -> Result<serde_json::Value, String> {
         let c = { self.0.st.lock_ok().conn.clone() };
         let Some(c) = c else {
             return Err("浏览器扩展未连接;请确认已在浏览器中安装 MonkeyCode 扩展并完成配对(设置页可查看状态)".to_string());
@@ -201,7 +205,9 @@ impl ExtBridge {
                     Err(mpsc::error::TrySendError::Full(_)) => {
                         self.drop_conn(Some(&c));
                         c.pending.lock_ok().remove(&id);
-                        return Err("发送浏览器指令失败: 出站队列积压(连接不健康),已断开".to_string());
+                        return Err(
+                            "发送浏览器指令失败: 出站队列积压(连接不健康),已断开".to_string()
+                        );
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => false,
                 },
@@ -349,14 +355,20 @@ impl ExtBridge {
         }
         if !auth.code.is_empty()
             && !st.pairing_code.is_empty()
-            && ct_eq(normalize_code(&auth.code).as_bytes(), st.pairing_code.as_bytes())
+            && ct_eq(
+                normalize_code(&auth.code).as_bytes(),
+                st.pairing_code.as_bytes(),
+            )
         {
             let mut raw = [0u8; 16];
             if getrandom::getrandom(&mut raw).is_err() {
                 return Err("internal error".to_string());
             }
             let token = hex_encode(&raw);
-            let file = ExtAuthFile { token: token.clone(), ext_id: ext_id.clone() };
+            let file = ExtAuthFile {
+                token: token.clone(),
+                ext_id: ext_id.clone(),
+            };
             let data = serde_json::to_vec(&file).map_err(|_| "persist failed".to_string())?;
             if write_file_0600(&self.0.auth_path, &data).is_err() {
                 return Err("persist failed".to_string());
@@ -444,7 +456,9 @@ fn new_pairing_code() -> String {
         eprintln!("[desktop] 系统随机源不可用,本次不生成浏览器配对码: {e}");
         return String::new();
     }
-    raw.iter().map(|&c| ALPHABET[c as usize % ALPHABET.len()] as char).collect()
+    raw.iter()
+        .map(|&c| ALPHABET[c as usize % ALPHABET.len()] as char)
+        .collect()
 }
 
 #[cfg(test)]
@@ -452,8 +466,7 @@ mod pairing_code_tests {
     use super::*;
 
     fn bridge(tag: &str) -> ExtBridge {
-        let dir = std::env::temp_dir()
-            .join(format!("mc-bridge-{tag}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("mc-bridge-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         ExtBridge::new(7440, &dir)
@@ -465,7 +478,10 @@ mod pairing_code_tests {
         const ALPHABET: &str = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
         let a = new_pairing_code();
         assert_eq!(a.chars().count(), 8, "配对码长度变了: {a:?}");
-        assert!(a.chars().all(|c| ALPHABET.contains(c)), "混入易混字符: {a:?}");
+        assert!(
+            a.chars().all(|c| ALPHABET.contains(c)),
+            "混入易混字符: {a:?}"
+        );
         assert_ne!(a, new_pairing_code(), "两次生成相同,随机源没起作用");
     }
 
@@ -480,7 +496,10 @@ mod pairing_code_tests {
 
         let hello = |code: &str| Message {
             event: EVENT_HELLO.to_string(),
-            auth: Some(HelloAuth { token: String::new(), code: code.to_string() }),
+            auth: Some(HelloAuth {
+                token: String::new(),
+                code: code.to_string(),
+            }),
             ..Default::default()
         };
         // 空码、任意猜测、以及全零缓冲会映射出的那个码,一个都不能过
@@ -491,7 +510,10 @@ mod pairing_code_tests {
             );
         }
         // 也不该因为这些尝试而反手颁发长期 token
-        assert!(b.0.st.lock_ok().token.is_empty(), "失败的配对尝试不得留下 token");
+        assert!(
+            b.0.st.lock_ok().token.is_empty(),
+            "失败的配对尝试不得留下 token"
+        );
     }
 }
 
@@ -502,7 +524,11 @@ fn normalize_code(s: &str) -> String {
         if c == b'-' || c == b' ' {
             continue;
         }
-        let c = if c.is_ascii_lowercase() { c - (b'a' - b'A') } else { c };
+        let c = if c.is_ascii_lowercase() {
+            c - (b'a' - b'A')
+        } else {
+            c
+        };
         out.push(c);
     }
     String::from_utf8_lossy(&out).into_owned()
@@ -532,7 +558,10 @@ fn write_file_0600(path: &Path, data: &[u8]) -> std::io::Result<()> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::DirBuilderExt;
-            std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(dir)?;
         }
         #[cfg(not(unix))]
         std::fs::create_dir_all(dir)?;
@@ -556,7 +585,10 @@ fn write_file_0600(path: &Path, data: &[u8]) -> std::io::Result<()> {
 /// 桥接线路日志(MC_BRIDGE_DEBUG 非空时输出,排查扩展联调问题用)。
 /// 时间戳为 UTC 时分秒(Go 版是本地时间;仅调试输出,不引入时区依赖)。
 fn debugf(args: std::fmt::Arguments<'_>) {
-    if std::env::var("MC_BRIDGE_DEBUG").unwrap_or_default().is_empty() {
+    if std::env::var("MC_BRIDGE_DEBUG")
+        .unwrap_or_default()
+        .is_empty()
+    {
         return;
     }
     let now = std::time::SystemTime::now()

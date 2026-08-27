@@ -122,7 +122,11 @@ pub fn format_snapshot(m: &SnapshotMeta) -> String {
     let mut b = String::new();
     let _ = write!(b, "页面: {}\nURL: {}\n", m.title, m.url);
     if m.doc_h > m.win_h {
-        let _ = write!(b, "滚动: 视口顶部在 {}/{}px(视口高 {}px)\n", m.scroll_y, m.doc_h, m.win_h);
+        let _ = write!(
+            b,
+            "滚动: 视口顶部在 {}/{}px(视口高 {}px)\n",
+            m.scroll_y, m.doc_h, m.win_h
+        );
     }
     let _ = write!(b, "可交互元素({} 个):\n", m.items.len());
     for (i, it) in m.items.iter().enumerate() {
@@ -145,7 +149,11 @@ pub fn format_snapshot(m: &SnapshotMeta) -> String {
             let _ = write!(b, " 占位:{:?}", it.ph);
         }
         if let Some(checked) = it.checked {
-            b.push_str(if checked { " [已勾选]" } else { " [未勾选]" });
+            b.push_str(if checked {
+                " [已勾选]"
+            } else {
+                " [未勾选]"
+            });
         }
         if !it.href.is_empty() {
             let _ = write!(b, " → {}", it.href);
@@ -156,10 +164,18 @@ pub fn format_snapshot(m: &SnapshotMeta) -> String {
         b.push('\n');
     }
     if m.truncated {
-        let _ = write!(b, "(元素过多,仅列出前 {} 个;可滚动后重新 snapshot)\n", SNAPSHOT_MAX_ELEMS);
+        let _ = write!(
+            b,
+            "(元素过多,仅列出前 {} 个;可滚动后重新 snapshot)\n",
+            SNAPSHOT_MAX_ELEMS
+        );
     }
     if m.cross_origin_iframes > 0 {
-        let _ = write!(b, "(页面含 {} 个跨源 iframe,其内容未包含)\n", m.cross_origin_iframes);
+        let _ = write!(
+            b,
+            "(页面含 {} 个跨源 iframe,其内容未包含)\n",
+            m.cross_origin_iframes
+        );
     }
     b
 }
@@ -202,7 +218,10 @@ mod tests {
     // 契约对齐 snapshot_test.go 的 TestFormatSnapshot_Truncated。
     #[test]
     fn test_format_snapshot_truncated() {
-        let out = format_snapshot(&SnapshotMeta { truncated: true, ..Default::default() });
+        let out = format_snapshot(&SnapshotMeta {
+            truncated: true,
+            ..Default::default()
+        });
         assert!(out.contains("仅列出前 150 个"), "截断提示缺失");
     }
 }

@@ -25,13 +25,19 @@ fn lifecycle(t: &str, seq: u64) -> Value {
 }
 
 fn text_of(f: &Value) -> String {
-    f["data"]["update"]["content"]["text"].as_str().unwrap_or_default().to_string()
+    f["data"]["update"]["content"]["text"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn temp_dir(label: &str) -> PathBuf {
     let mut random = [0u8; 8];
     getrandom::getrandom(&mut random).unwrap();
-    let suffix = random.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let suffix = random
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
     let dir = std::env::temp_dir().join(format!("monkeycode-fold-{label}-{suffix}"));
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -58,7 +64,10 @@ fn does_not_merge_across_a_different_kind_or_an_opaque_frame() {
         chunk("agent_thought_chunk", "先想", 1, 1),
         chunk("agent_message_chunk", "再说", 2, 1),
         chunk("agent_thought_chunk", "又想", 3, 1),
-        acp(json!({ "sessionUpdate": "tool_call", "toolCallId": "t1", "title": "Read" }), 4),
+        acp(
+            json!({ "sessionUpdate": "tool_call", "toolCallId": "t1", "title": "Read" }),
+            4,
+        ),
         chunk("agent_thought_chunk", "还想", 5, 1),
     ]);
 
@@ -68,7 +77,13 @@ fn does_not_merge_across_a_different_kind_or_an_opaque_frame() {
         .collect();
     assert_eq!(
         kinds,
-        ["agent_thought_chunk", "agent_message_chunk", "agent_thought_chunk", "tool_call", "agent_thought_chunk"]
+        [
+            "agent_thought_chunk",
+            "agent_message_chunk",
+            "agent_thought_chunk",
+            "tool_call",
+            "agent_thought_chunk"
+        ]
     );
 }
 
@@ -76,9 +91,15 @@ fn does_not_merge_across_a_different_kind_or_an_opaque_frame() {
 fn usage_and_plan_collapse_to_one_frame_and_stay_transparent_to_merging() {
     let out = fold_frames(&[
         chunk("agent_message_chunk", "前半", 1, 1),
-        acp(json!({ "sessionUpdate": "usage_update", "used": 10, "size": 100 }), 2),
+        acp(
+            json!({ "sessionUpdate": "usage_update", "used": 10, "size": 100 }),
+            2,
+        ),
         chunk("agent_message_chunk", "后半", 3, 1),
-        acp(json!({ "sessionUpdate": "usage_update", "used": 20, "size": 100 }), 4),
+        acp(
+            json!({ "sessionUpdate": "usage_update", "used": 20, "size": 100 }),
+            4,
+        ),
     ]);
 
     // usage 只剩一帧且是最新值;正文没被它打断
@@ -98,7 +119,10 @@ fn legacy_base64_payloads_are_normalised_to_inline_objects() {
     let out = fold_frames(&[legacy, chunk("agent_message_chunk", "接上", 2, 1)]);
 
     assert_eq!(out.len(), 1);
-    assert!(out[0]["data"].is_object(), "折叠输出一律内联对象,老会话物化后不再每帧 atob");
+    assert!(
+        out[0]["data"].is_object(),
+        "折叠输出一律内联对象,老会话物化后不再每帧 atob"
+    );
     assert_eq!(text_of(&out[0]), "旧格式接上");
 }
 
@@ -120,8 +144,14 @@ fn write_turns(dir: &PathBuf, turns: &[(u64, u64, usize)]) -> PathBuf {
     let path = dir.join("replay.jsonl");
     let mut f = std::fs::File::create(&path).unwrap();
     for (from, to, n) in turns {
-        let frames: Vec<Value> = (0..*n).map(|i| chunk("agent_message_chunk", "x", from + i as u64, 1)).collect();
-        let turn = Turn { from: *from, to: *to, frames };
+        let frames: Vec<Value> = (0..*n)
+            .map(|i| chunk("agent_message_chunk", "x", from + i as u64, 1))
+            .collect();
+        let turn = Turn {
+            from: *from,
+            to: *to,
+            frames,
+        };
         writeln!(f, "{}", turn.to_line(to * 10)).unwrap();
     }
     path
@@ -186,7 +216,10 @@ fn a_torn_last_line_degrades_to_the_previous_turn_instead_of_corrupting_the_wind
     let dir = temp_dir("torn");
     let path = write_turns(&dir, &[(1, 9, 1), (10, 19, 1)]);
     // 模拟崩溃:半行没有换行结尾
-    let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .unwrap();
     write!(f, "{{\"from\":20,\"to\":29,\"frames\":[").unwrap();
     drop(f);
 
@@ -215,7 +248,9 @@ fn outline_entries_come_from_user_input_frames_only() {
     // content 保持 base64:截断与附件行剥离的规则长在 UI,不复制到壳里
     assert_eq!(
         String::from_utf8(
-            base64::engine::general_purpose::STANDARD.decode(e["content"].as_str().unwrap()).unwrap()
+            base64::engine::general_purpose::STANDARD
+                .decode(e["content"].as_str().unwrap())
+                .unwrap()
         )
         .unwrap(),
         "帮我看下这个 panic"
@@ -282,7 +317,11 @@ fn big_tool_update(seq: u64, bytes: usize) -> Value {
 
 /// 护栏只在物化那一刻施加(Turn::guard),折叠本身保持等价
 fn materialized(frames: &[Value]) -> Vec<Value> {
-    let mut turn = Turn { from: 0, to: 0, frames: fold_frames(frames) };
+    let mut turn = Turn {
+        from: 0,
+        to: 0,
+        frames: fold_frames(frames),
+    };
     turn.guard();
     turn.frames
 }
@@ -295,8 +334,20 @@ fn folding_alone_never_truncates_only_materialising_does() {
     let stored = materialized(&[big]);
 
     // 折叠输出必须原样保留(等价性契约);截断是物化那一步的事
-    assert_eq!(folded[0]["data"]["update"]["rawOutput"]["output"].as_str().unwrap().len(), 200_000);
-    assert!(stored[0]["data"]["update"]["rawOutput"]["output"].as_str().unwrap().len() < 2000);
+    assert_eq!(
+        folded[0]["data"]["update"]["rawOutput"]["output"]
+            .as_str()
+            .unwrap()
+            .len(),
+        200_000
+    );
+    assert!(
+        stored[0]["data"]["update"]["rawOutput"]["output"]
+            .as_str()
+            .unwrap()
+            .len()
+            < 2000
+    );
 }
 
 #[test]
@@ -308,7 +359,11 @@ fn oversized_tool_fields_are_truncated_in_place_and_marked_for_re_read() {
     let text = update["rawOutput"]["output"].as_str().unwrap();
     assert!(text.len() < 2000, "行内只留头部: {}", text.len());
     assert!(text.ends_with('…'));
-    assert_eq!(update["_meta"]["mcSrc"]["seq"], json!(5), "留下按 seq 回读的凭据");
+    assert_eq!(
+        update["_meta"]["mcSrc"]["seq"],
+        json!(5),
+        "留下按 seq 回读的凭据"
+    );
 }
 
 #[test]
@@ -329,7 +384,9 @@ fn truncation_never_splits_a_multibyte_character() {
         1,
     )]);
 
-    let text = out[0]["data"]["update"]["rawInput"]["text"].as_str().unwrap();
+    let text = out[0]["data"]["update"]["rawInput"]["text"]
+        .as_str()
+        .unwrap();
     assert!(text.chars().all(|c| c == '中' || c == '…'));
 }
 
@@ -349,7 +406,12 @@ fn the_full_frame_is_read_back_by_seq_from_the_raw_journal() {
     // events.jsonl:两轮原始帧;replay.jsonl:对应的轮记录
     let mut events = String::new();
     let full = big_tool_update(3, 200_000);
-    for f in [lifecycle("user-input", 1), lifecycle("task-started", 2), full.clone(), lifecycle("task-ended", 4)] {
+    for f in [
+        lifecycle("user-input", 1),
+        lifecycle("task-started", 2),
+        full.clone(),
+        lifecycle("task-ended", 4),
+    ] {
         events.push_str(&f.to_string());
         events.push('\n');
     }
@@ -359,7 +421,11 @@ fn the_full_frame_is_read_back_by_seq_from_the_raw_journal() {
         events.push('\n');
     }
     std::fs::write(dir.join("events.jsonl"), &events).unwrap();
-    let mut turn = Turn { from: 1, to: 4, frames: fold_frames(&[full.clone()]) };
+    let mut turn = Turn {
+        from: 1,
+        to: 4,
+        frames: fold_frames(&[full.clone()]),
+    };
     turn.guard();
     let mut f = std::fs::File::create(dir.join("replay.jsonl")).unwrap();
     writeln!(f, "{}", turn.to_line(src_end)).unwrap();
@@ -367,11 +433,15 @@ fn the_full_frame_is_read_back_by_seq_from_the_raw_journal() {
 
     let got = read_frame_by_seq(&dir.join("replay.jsonl"), &dir.join("events.jsonl"), 3).unwrap();
 
-    assert_eq!(got["data"]["update"]["rawOutput"]["output"].as_str().unwrap().len(), 200_000);
+    assert_eq!(
+        got["data"]["update"]["rawOutput"]["output"]
+            .as_str()
+            .unwrap()
+            .len(),
+        200_000
+    );
     // 找不到的 seq 明确返回 None(UI 据此外显"原始记录已不可用")
     assert!(read_frame_by_seq(&dir.join("replay.jsonl"), &dir.join("events.jsonl"), 999).is_none());
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
-
-

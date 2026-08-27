@@ -12,8 +12,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::{Deserialize, Serialize};
 use crate::util::LockExt;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
 struct StoredCookie {
@@ -45,7 +45,10 @@ fn parse_rfc3339(s: &str) -> Option<SystemTime> {
 }
 
 fn to_rfc3339(t: SystemTime) -> String {
-    let ms = t.duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    let ms = t
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
     crate::config::ms_to_rfc3339(ms)
 }
 
@@ -66,7 +69,11 @@ impl StoredCookie {
         } else if host != self.domain && !host.ends_with(&format!(".{}", self.domain)) {
             return false;
         }
-        let cp = if self.path.is_empty() { "/" } else { &self.path };
+        let cp = if self.path.is_empty() {
+            "/"
+        } else {
+            &self.path
+        };
         path == cp || path.starts_with(&format!("{}/", cp.trim_end_matches('/')))
     }
 }
@@ -89,7 +96,10 @@ impl CookieStore {
                 }
             }
         }
-        Self { path, list: Mutex::new(list) }
+        Self {
+            path,
+            list: Mutex::new(list),
+        }
     }
 
     /// 吸收一条响应的 Set-Cookie 集合(覆盖同名同域同路径;过期/负 Max-Age 删除)。
@@ -102,7 +112,9 @@ impl CookieStore {
         let host = req_url.host_str().unwrap_or("").to_string();
         let mut list = self.list.lock_ok();
         for raw in set_cookies {
-            let Ok(c) = cookie::Cookie::parse(raw.clone()) else { continue };
+            let Ok(c) = cookie::Cookie::parse(raw.clone()) else {
+                continue;
+            };
             let mut sc = StoredCookie {
                 name: c.name().to_string(),
                 value: c.value().to_string(),
@@ -132,8 +144,9 @@ impl CookieStore {
             }
             match c.max_age() {
                 Some(ma) if ma.whole_seconds() > 0 => {
-                    sc.expires =
-                        Some(to_rfc3339(now + Duration::from_secs(ma.whole_seconds() as u64)));
+                    sc.expires = Some(to_rfc3339(
+                        now + Duration::from_secs(ma.whole_seconds() as u64),
+                    ));
                 }
                 Some(_) => {
                     // 零/负 Max-Age = 立即过期(删除)
@@ -143,7 +156,8 @@ impl CookieStore {
                     if let Some(cookie::Expiration::DateTime(dt)) = c.expires() {
                         let unix = dt.unix_timestamp();
                         if unix > 0 {
-                            sc.expires = Some(to_rfc3339(UNIX_EPOCH + Duration::from_secs(unix as u64)));
+                            sc.expires =
+                                Some(to_rfc3339(UNIX_EPOCH + Duration::from_secs(unix as u64)));
                         }
                     }
                 }
@@ -173,7 +187,11 @@ impl CookieStore {
     pub fn header(&self, url: &reqwest::Url) -> Option<String> {
         let now = SystemTime::now();
         let host = url.host_str().unwrap_or("");
-        let path = if url.path().is_empty() { "/" } else { url.path() };
+        let path = if url.path().is_empty() {
+            "/"
+        } else {
+            url.path()
+        };
         let secure = url.scheme() == "https";
         let list = self.list.lock_ok();
         let parts: Vec<String> = list
@@ -249,7 +267,10 @@ mod tests {
         let path = dir.join("baizhi-cookies.json");
 
         let store = CookieStore::new(Some(path.clone()));
-        store.update(&url("https://baizhi.cloud/api/v1/login"), &["sid=abc; Path=/; Domain=baizhi.cloud".into()]);
+        store.update(
+            &url("https://baizhi.cloud/api/v1/login"),
+            &["sid=abc; Path=/; Domain=baizhi.cloud".into()],
+        );
         assert!(path.is_file(), "首次落盘应创建罐文件");
 
         #[cfg(unix)]
@@ -260,27 +281,50 @@ mod tests {
         }
 
         // 覆盖既有文件:旧实现的裸 rename 在 Windows 上会失败。
-        store.update(&url("https://baizhi.cloud/x"), &["other=1; Path=/; Domain=baizhi.cloud".into()]);
+        store.update(
+            &url("https://baizhi.cloud/x"),
+            &["other=1; Path=/; Domain=baizhi.cloud".into()],
+        );
         let reloaded = CookieStore::new(Some(path.clone()));
-        let header = reloaded.header(&url("https://baizhi.cloud/api/v1/user/profile")).unwrap();
+        let header = reloaded
+            .header(&url("https://baizhi.cloud/api/v1/user/profile"))
+            .unwrap();
         assert!(header.contains("sid=abc"), "重开后应读回 sid: {header}");
         assert!(header.contains("other=1"), "重开后应读回 other: {header}");
 
         // 登出删文件,且不留临时文件残渣。
         reloaded.clear();
         assert!(!path.exists());
-        let leftovers: Vec<_> = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).collect();
-        assert!(leftovers.is_empty(), "目录应无临时文件残留: {:?}", leftovers.iter().map(|e| e.file_name()).collect::<Vec<_>>());
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "目录应无临时文件残留: {:?}",
+            leftovers.iter().map(|e| e.file_name()).collect::<Vec<_>>()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn set_and_match() {
         let store = CookieStore::new(None);
-        store.update(&url("https://baizhi.cloud/api/v1/login"), &["sid=abc; Path=/; Domain=baizhi.cloud".into()]);
+        store.update(
+            &url("https://baizhi.cloud/api/v1/login"),
+            &["sid=abc; Path=/; Domain=baizhi.cloud".into()],
+        );
         // 域后缀匹配:子域也带
-        assert_eq!(store.header(&url("https://baizhi.cloud/api/v1/user/profile")).unwrap(), "sid=abc");
-        assert_eq!(store.header(&url("https://app.baizhi.cloud/x")).unwrap(), "sid=abc");
+        assert_eq!(
+            store
+                .header(&url("https://baizhi.cloud/api/v1/user/profile"))
+                .unwrap(),
+            "sid=abc"
+        );
+        assert_eq!(
+            store.header(&url("https://app.baizhi.cloud/x")).unwrap(),
+            "sid=abc"
+        );
         assert!(store.header(&url("https://other.cloud/x")).is_none());
         assert!(!store.is_empty());
     }
@@ -290,16 +334,25 @@ mod tests {
         let store = CookieStore::new(None);
         store.update(&url("https://baizhi.cloud/"), &["sid=abc; Path=/".into()]);
         assert!(store.header(&url("https://app.baizhi.cloud/")).is_none());
-        assert_eq!(store.header(&url("https://baizhi.cloud/")).unwrap(), "sid=abc");
+        assert_eq!(
+            store.header(&url("https://baizhi.cloud/")).unwrap(),
+            "sid=abc"
+        );
     }
 
     #[test]
     fn mismatched_domain_attr_becomes_host_only() {
         // 联调假服务在 localhost 却声明 .baizhi.cloud → host-only 处理
         let store = CookieStore::new(None);
-        store.update(&url("http://localhost:8080/"), &["sid=abc; Domain=baizhi.cloud".into()]);
+        store.update(
+            &url("http://localhost:8080/"),
+            &["sid=abc; Domain=baizhi.cloud".into()],
+        );
         assert!(store.header(&url("https://baizhi.cloud/")).is_none());
-        assert_eq!(store.header(&url("http://localhost:8080/")).unwrap(), "sid=abc");
+        assert_eq!(
+            store.header(&url("http://localhost:8080/")).unwrap(),
+            "sid=abc"
+        );
     }
 
     #[test]
@@ -307,7 +360,10 @@ mod tests {
         let store = CookieStore::new(None);
         store.update(&url("https://baizhi.cloud/"), &["sid=abc; Secure".into()]);
         assert!(store.header(&url("http://baizhi.cloud/")).is_none());
-        assert_eq!(store.header(&url("https://baizhi.cloud/")).unwrap(), "sid=abc");
+        assert_eq!(
+            store.header(&url("https://baizhi.cloud/")).unwrap(),
+            "sid=abc"
+        );
     }
 
     #[test]
@@ -352,7 +408,10 @@ mod tests {
     fn tld_level_domain_rejected() {
         let store = CookieStore::new(None);
         // 被刮取的第三方页面尝试种 Domain=cloud 污染 *.cloud 请求 → 整条拒收
-        store.update(&url("https://evil.cloud/x"), &["sid=hack; Domain=cloud; Path=/".into()]);
+        store.update(
+            &url("https://evil.cloud/x"),
+            &["sid=hack; Domain=cloud; Path=/".into()],
+        );
         assert!(store.is_empty());
         assert!(store.header(&url("https://baizhi.cloud/")).is_none());
         // 单标签主机自身声明同名 Domain(localhost 联调)不受影响

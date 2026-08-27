@@ -79,7 +79,9 @@ impl BrowserSessions {
             return BrowserSession(existing);
         }
         let inner = Arc::new(SessInner {
-            cdp: Cdp { bridge: self.0.bridge.clone() },
+            cdp: Cdp {
+                bridge: self.0.bridge.clone(),
+            },
             st: StdMutex::new(SessState::default()),
             owner: owner.to_string(),
             sessions: self.clone(),
@@ -119,7 +121,12 @@ impl BrowserSessions {
         };
         self.0.bridge.claim_tab(tab_id);
         if let Some(previous) = previous {
-            let old = self.0.sessions.lock_ok().get(&previous).and_then(Weak::upgrade);
+            let old = self
+                .0
+                .sessions
+                .lock_ok()
+                .get(&previous)
+                .and_then(Weak::upgrade);
             if let Some(old) = old {
                 old.relinquish_tab(tab_id, "用户已将该标签页交付给另一个任务");
             }
@@ -307,7 +314,12 @@ impl BrowserSession {
         method: &str,
         params: Option<Value>,
     ) -> Result<Value, String> {
-        match self.0.cdp.cmd(tab, session_id, method, params.clone()).await {
+        match self
+            .0
+            .cdp
+            .cmd(tab, session_id, method, params.clone())
+            .await
+        {
             Err(e) if is_detached_err(&e) => {
                 self.0.cdp.attach(tab).await?;
                 self.0.cdp.cmd(tab, session_id, method, params).await
@@ -479,7 +491,9 @@ impl SessInner {
     fn handle_cdp_event(self: &Arc<Self>, msg: Message) {
         match msg.method.as_str() {
             "Page.frameNavigated" => {
-                let Some(params) = msg.params.as_ref() else { return };
+                let Some(params) = msg.params.as_ref() else {
+                    return;
+                };
                 let parent_id = params
                     .pointer("/frame/parentId")
                     .and_then(|v| v.as_str())
@@ -529,7 +543,11 @@ impl SessInner {
                         .await;
                     });
                 }
-                let action = if accept { "已自动确认" } else { "已自动取消" };
+                let action = if accept {
+                    "已自动确认"
+                } else {
+                    "已自动取消"
+                };
                 let mut st = self.st.lock_ok();
                 st.add_note(format!(
                     "页面弹出 {typ} 对话框({action}): {:?}",

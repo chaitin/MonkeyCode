@@ -64,7 +64,9 @@ fn uploads_root(workdir: &str, wsl_distro: Option<&str>) -> Result<PathBuf, Stri
 }
 
 fn uploads_dir(workdir: &str, wsl_distro: Option<&str>) -> Result<PathBuf, String> {
-    Ok(uploads_root(workdir, wsl_distro)?.join(".monkeycode").join("uploads"))
+    Ok(uploads_root(workdir, wsl_distro)?
+        .join(".monkeycode")
+        .join("uploads"))
 }
 
 fn image_mime(path: &Path) -> Option<&'static str> {
@@ -111,9 +113,17 @@ fn read_dropped(path: &str) -> Result<Value, String> {
         return Err("只支持拖入文件(不支持目录)".into());
     }
     if meta.len() > UPLOAD_MAX_BYTES as u64 {
-        return Err(format!("文件过大({} 字节,上限 {})", meta.len(), UPLOAD_MAX_BYTES));
+        return Err(format!(
+            "文件过大({} 字节,上限 {})",
+            meta.len(),
+            UPLOAD_MAX_BYTES
+        ));
     }
-    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+    let name = p
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
     let data = std::fs::read(p).map_err(|e| format!("读取失败: {e}"))?;
     Ok(json!({
         "name": name,
@@ -127,7 +137,12 @@ fn read_dropped(path: &str) -> Result<Value, String> {
 /// name 与 save() 同样过 sanitize_name:当前唯一调用方传的是壳自己生成的
 /// `browser-<ms>.png`,但本函数是 pub 的,未清洗时 `../../x` 能写出目录外
 /// (join 遇到 `..` 会向上跳)。清洗成本为零,不留这条latent 路径遍历。
-pub fn save_raw(workdir: &str, wsl_distro: Option<&str>, name: &str, data: &[u8]) -> Result<String, String> {
+pub fn save_raw(
+    workdir: &str,
+    wsl_distro: Option<&str>,
+    name: &str,
+    data: &[u8],
+) -> Result<String, String> {
     let name = sanitize_name(name).ok_or("文件名无效")?;
     let dir = uploads_dir(workdir, wsl_distro)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建上传目录失败: {e}"))?;
@@ -201,7 +216,12 @@ static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
 
 /// 开始分块上传:占位半成品文件,返回句柄。命名:优先保留原始文件名
 /// (清洗后);无名按时间戳兜底;重名追加序号。
-pub fn begin(workdir: &str, wsl_distro: Option<&str>, name: &str, media_type: &str) -> Result<u64, String> {
+pub fn begin(
+    workdir: &str,
+    wsl_distro: Option<&str>,
+    name: &str,
+    media_type: &str,
+) -> Result<u64, String> {
     let dir = ensure_uploads_dir(workdir, wsl_distro)?;
     begin_in_dir(dir, ".monkeycode/uploads/", name, media_type)
 }
@@ -209,8 +229,16 @@ pub fn begin(workdir: &str, wsl_distro: Option<&str>, name: &str, media_type: &s
 /// begin 的目录参数化本体(待办图片走 config_dir/todo-uploads,与会话工作区
 /// 共用同一张句柄表与 chunk/finish/abort 命令面):rel = rel_prefix + 落盘名,
 /// 即 finish 回给 UI 的引用路径——会话通道是工作区相对路径,待办是裸文件名。
-pub(crate) fn begin_in_dir(dir: PathBuf, rel_prefix: &str, name: &str, media_type: &str) -> Result<u64, String> {
-    let fname = reserve_name(&dir, sanitize_name(name).unwrap_or_else(|| fallback_name(media_type)));
+pub(crate) fn begin_in_dir(
+    dir: PathBuf,
+    rel_prefix: &str,
+    name: &str,
+    media_type: &str,
+) -> Result<u64, String> {
+    let fname = reserve_name(
+        &dir,
+        sanitize_name(name).unwrap_or_else(|| fallback_name(media_type)),
+    );
     let part = dir.join(format!("{fname}.part"));
     // create_new:与并发 begin 争抢同名时硬失败而不是互写
     let file = std::fs::OpenOptions::new()
@@ -221,7 +249,12 @@ pub(crate) fn begin_in_dir(dir: PathBuf, rel_prefix: &str, name: &str, media_typ
     let h = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
     pending().lock_ok().insert(
         h,
-        PendingUpload { file, part, dest: dir.join(&fname), rel: format!("{rel_prefix}{fname}") },
+        PendingUpload {
+            file,
+            part,
+            dest: dir.join(&fname),
+            rel: format!("{rel_prefix}{fname}"),
+        },
     );
     Ok(h)
 }
@@ -244,8 +277,13 @@ pub fn chunk(handle: u64, data_b64: &str) -> Result<(), String> {
 
 /// 收尾:半成品改名为最终名,返回 {path: 工作区相对路径}。
 pub fn finish(handle: u64) -> Result<Value, String> {
-    let p = pending().lock_ok().remove(&handle).ok_or("上传已失效,请重试")?;
-    p.file.sync_all().map_err(|e| format!("写入文件失败: {e}"))?;
+    let p = pending()
+        .lock_ok()
+        .remove(&handle)
+        .ok_or("上传已失效,请重试")?;
+    p.file
+        .sync_all()
+        .map_err(|e| format!("写入文件失败: {e}"))?;
     drop(p.file);
     std::fs::rename(&p.part, &p.dest).map_err(|e| format!("写入文件失败: {e}"))?;
     Ok(json!({ "path": p.rel }))
@@ -267,7 +305,11 @@ pub fn save_from_path(workdir: &str, wsl_distro: Option<&str>, src: &str) -> Res
 }
 
 /// save_from_path 的目录参数化本体(与 begin_in_dir 同一组;rel 语义同)。
-pub(crate) fn save_from_path_in_dir(dir: PathBuf, rel_prefix: &str, src: &str) -> Result<Value, String> {
+pub(crate) fn save_from_path_in_dir(
+    dir: PathBuf,
+    rel_prefix: &str,
+    src: &str,
+) -> Result<Value, String> {
     let sp = Path::new(src);
     let meta = std::fs::metadata(sp).map_err(|e| format!("读取源文件失败: {e}"))?;
     if !meta.is_file() {
@@ -275,7 +317,10 @@ pub(crate) fn save_from_path_in_dir(dir: PathBuf, rel_prefix: &str, src: &str) -
     }
     let name = sp.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let media = image_mime(sp).unwrap_or("");
-    let fname = reserve_name(&dir, sanitize_name(name).unwrap_or_else(|| fallback_name(media)));
+    let fname = reserve_name(
+        &dir,
+        sanitize_name(name).unwrap_or_else(|| fallback_name(media)),
+    );
     std::fs::copy(sp, dir.join(&fname)).map_err(|e| format!("复制文件失败: {e}"))?;
     Ok(json!({ "path": format!("{rel_prefix}{fname}") }))
 }
@@ -290,7 +335,11 @@ pub async fn stat_dropped_file(path: String) -> Result<Value, String> {
         if !meta.is_file() {
             return Err("只支持拖入文件(不支持目录)".into());
         }
-        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        let name = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
         Ok(json!({
             "name": name,
             "mediaType": image_mime(p).unwrap_or(""),
@@ -392,8 +441,10 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir()
-                .join(format!("monkeycode-uploads-{}-{nonce}-{seq}", std::process::id()));
+            let path = std::env::temp_dir().join(format!(
+                "monkeycode-uploads-{}-{nonce}-{seq}",
+                std::process::id()
+            ));
             std::fs::create_dir_all(&path).unwrap();
             Self(path)
         }
@@ -416,14 +467,20 @@ mod tests {
         let tmp = TempDir::new();
         let workdir = tmp.0.to_string_lossy().to_string();
         let h = begin(&workdir, None, "big.bin", "").unwrap();
-        assert!(tmp.0.join(".monkeycode/uploads/big.bin.part").is_file(), "begin 未占位半成品");
+        assert!(
+            tmp.0.join(".monkeycode/uploads/big.bin.part").is_file(),
+            "begin 未占位半成品"
+        );
         chunk(h, &b64(b"hello ")).unwrap();
         chunk(h, &b64(b"world")).unwrap();
         let out = finish(h).unwrap();
         assert_eq!(out["path"], ".monkeycode/uploads/big.bin");
         let dest = tmp.0.join(".monkeycode/uploads/big.bin");
         assert_eq!(std::fs::read(&dest).unwrap(), b"hello world");
-        assert!(!tmp.0.join(".monkeycode/uploads/big.bin.part").exists(), "半成品未清理");
+        assert!(
+            !tmp.0.join(".monkeycode/uploads/big.bin.part").exists(),
+            "半成品未清理"
+        );
         // 句柄一次性:finish 后 chunk/finish 都拒绝
         assert!(chunk(h, &b64(b"x")).is_err());
         assert!(finish(h).is_err());
@@ -440,7 +497,10 @@ mod tests {
         chunk(h2, &b64(b"two")).unwrap();
         assert_eq!(finish(h2).unwrap()["path"], ".monkeycode/uploads/a-2.txt");
         abort(h1);
-        assert!(!tmp.0.join(".monkeycode/uploads/a.txt.part").exists(), "abort 未删半成品");
+        assert!(
+            !tmp.0.join(".monkeycode/uploads/a.txt.part").exists(),
+            "abort 未删半成品"
+        );
         abort(h1); // 幂等
     }
 
@@ -460,9 +520,15 @@ mod tests {
         let src = tmp.0.join("photo.jpg");
         std::fs::write(&src, b"jpg").unwrap();
         let lossy = src.to_string_lossy();
-        assert_eq!(save_from_path_in_dir(dir.clone(), "", &lossy).unwrap()["path"], "photo.jpg");
+        assert_eq!(
+            save_from_path_in_dir(dir.clone(), "", &lossy).unwrap()["path"],
+            "photo.jpg"
+        );
         // 重名让位与会话通道同一套
-        assert_eq!(save_from_path_in_dir(dir, "", &lossy).unwrap()["path"], "photo-2.jpg");
+        assert_eq!(
+            save_from_path_in_dir(dir, "", &lossy).unwrap()["path"],
+            "photo-2.jpg"
+        );
     }
 
     /// 路径直拷:复制进 uploads、保留文件名、重名追加序号、目录拒绝。
@@ -477,12 +543,18 @@ mod tests {
 
         let out = save_from_path(&workdir, None, &src.to_string_lossy()).unwrap();
         assert_eq!(out["path"], ".monkeycode/uploads/数据集.csv");
-        assert_eq!(std::fs::read(ws.join(".monkeycode/uploads/数据集.csv")).unwrap(), b"a,b\n1,2\n");
+        assert_eq!(
+            std::fs::read(ws.join(".monkeycode/uploads/数据集.csv")).unwrap(),
+            b"a,b\n1,2\n"
+        );
 
         let out2 = save_from_path(&workdir, None, &src.to_string_lossy()).unwrap();
         assert_eq!(out2["path"], ".monkeycode/uploads/数据集-2.csv");
 
-        assert!(save_from_path(&workdir, None, &tmp.0.to_string_lossy()).is_err(), "目录必须拒绝");
+        assert!(
+            save_from_path(&workdir, None, &tmp.0.to_string_lossy()).is_err(),
+            "目录必须拒绝"
+        );
     }
 
     /// save_raw 是 pub 的,名字必须与分块/直拷同样清洗:未清洗时 join 遇到
@@ -553,20 +625,30 @@ mod tests {
         let v = read_dropped(&img.to_string_lossy()).unwrap();
         assert_eq!(v["name"], "猫图.png");
         assert_eq!(v["mediaType"], "image/png");
-        assert_eq!(v["data"], base64::engine::general_purpose::STANDARD.encode(b"fake-png"));
+        assert_eq!(
+            v["data"],
+            base64::engine::general_purpose::STANDARD.encode(b"fake-png")
+        );
 
         // 非图片扩展名 MIME 置空(UI 侧按 [文件] 处理)
         let txt = tmp.0.join("notes.txt");
         std::fs::write(&txt, b"hi").unwrap();
-        assert_eq!(read_dropped(&txt.to_string_lossy()).unwrap()["mediaType"], "");
+        assert_eq!(
+            read_dropped(&txt.to_string_lossy()).unwrap()["mediaType"],
+            ""
+        );
 
         // 目录、不存在的路径、超限文件(sparse 快速置长)都拒绝
-        assert!(read_dropped(&tmp.0.to_string_lossy()).unwrap_err().contains("目录"));
+        assert!(read_dropped(&tmp.0.to_string_lossy())
+            .unwrap_err()
+            .contains("目录"));
         assert!(read_dropped(&tmp.0.join("missing").to_string_lossy()).is_err());
         let big = tmp.0.join("big.bin");
         let f = std::fs::File::create(&big).unwrap();
         f.set_len(UPLOAD_MAX_BYTES as u64 + 1).unwrap();
-        assert!(read_dropped(&big.to_string_lossy()).unwrap_err().contains("过大"));
+        assert!(read_dropped(&big.to_string_lossy())
+            .unwrap_err()
+            .contains("过大"));
     }
 
     #[test]

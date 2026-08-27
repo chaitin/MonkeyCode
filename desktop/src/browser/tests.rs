@@ -23,7 +23,10 @@ fn tmp_dir(tag: &str) -> std::path::PathBuf {
 fn browser_mcp_endpoint_requires_pairing() {
     let endpoint = Some(("http://127.0.0.1:7777/mcp".to_string(), "token".to_string()));
     assert_eq!(super::endpoint_for_pairing(false, endpoint.clone()), None);
-    assert_eq!(super::endpoint_for_pairing(true, endpoint.clone()), endpoint);
+    assert_eq!(
+        super::endpoint_for_pairing(true, endpoint.clone()),
+        endpoint
+    );
 }
 
 /// 轮询桥就绪并取实际地址。
@@ -54,9 +57,16 @@ async fn bridge_pair_and_call_roundtrip() {
     let addr = wait_addr(&b).await;
 
     // 配对:用状态页展示的一次性配对码(小写 + 连字符,测 normalize)
-    let code = b.status().get("pairing_code").and_then(|v| v.as_str()).unwrap().to_string();
+    let code = b
+        .status()
+        .get("pairing_code")
+        .and_then(|v| v.as_str())
+        .unwrap()
+        .to_string();
     let scrambled = format!("{}-{}", code[..4].to_lowercase(), &code[4..]);
-    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ext")).await.expect("连接");
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ext"))
+        .await
+        .expect("连接");
     ws.send(tokio_tungstenite::tungstenite::Message::Text(
         json!({ "event": "hello", "proto": 1,
             "auth": { "code": scrambled },
@@ -70,8 +80,15 @@ async fn bridge_pair_and_call_roundtrip() {
         tokio_tungstenite::tungstenite::Message::Text(t) => serde_json::from_str(&t).unwrap(),
         other => panic!("非文本帧: {other:?}"),
     };
-    assert_eq!(reply.get("event").and_then(|v| v.as_str()), Some("hello.ok"));
-    let token = reply.get("token").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    assert_eq!(
+        reply.get("event").and_then(|v| v.as_str()),
+        Some("hello.ok")
+    );
+    let token = reply
+        .get("token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     assert_eq!(token.len(), 32, "配对应颁发 32 hex token");
 
     // 已配对状态外显 + 浏览器信息
@@ -80,7 +97,10 @@ async fn bridge_pair_and_call_roundtrip() {
     assert!(b.is_paired());
     assert_eq!(*pairing_changes.lock().unwrap(), vec![true]);
     assert_eq!(st.get("connected").and_then(|v| v.as_bool()), Some(true));
-    assert_eq!(st.get("browser_name").and_then(|v| v.as_str()), Some("TestChrome"));
+    assert_eq!(
+        st.get("browser_name").and_then(|v| v.as_str()),
+        Some("TestChrome")
+    );
 
     // 调用往返:假扩展应答 tabs.list
     let b2 = b.clone();
@@ -97,7 +117,8 @@ async fn bridge_pair_and_call_roundtrip() {
     assert_eq!(req.get("op").and_then(|v| v.as_str()), Some("tabs.list"));
     let id = req.get("id").and_then(|v| v.as_i64()).unwrap();
     ws.send(tokio_tungstenite::tungstenite::Message::Text(
-        json!({ "id": id, "result": [{ "tabId": 7, "url": "https://a", "title": "A" }] }).to_string(),
+        json!({ "id": id, "result": [{ "tabId": 7, "url": "https://a", "title": "A" }] })
+            .to_string(),
     ))
     .await
     .unwrap();
@@ -151,8 +172,14 @@ async fn bridge_pair_and_call_roundtrip() {
         "detached 错误应带稳定标记: {err}"
     );
     let stripped = super::protocol::strip_err_marks(err);
-    assert!(!stripped.contains(super::protocol::ERR_MARK_DETACHED), "标记应被剥除");
-    assert!(stripped.contains("浏览器调试连接已断开"), "人读文案应保留: {stripped}");
+    assert!(
+        !stripped.contains(super::protocol::ERR_MARK_DETACHED),
+        "标记应被剥除"
+    );
+    assert!(
+        stripped.contains("浏览器调试连接已断开"),
+        "人读文案应保留: {stripped}"
+    );
 
     // R6:repair 应一并清空受控集合与 handoff 队列(换浏览器后 tabId 撞号)。
     // read_loop 按帧序处理:先发 handoff 事件帧,再借一次 call 往返做屏障,
@@ -184,7 +211,10 @@ async fn bridge_pair_and_call_roundtrip() {
     b.repair();
     assert!(!b.is_paired());
     assert_eq!(*pairing_changes.lock().unwrap(), vec![true, false]);
-    assert!(b.take_pending_handoff().is_none(), "repair 应清空 handoff 队列");
+    assert!(
+        b.take_pending_handoff().is_none(),
+        "repair 应清空 handoff 队列"
+    );
     assert!(!b.owns_tab(9), "repair 应清空受控集合");
 }
 
@@ -197,13 +227,21 @@ async fn mcp_oversized_headers_are_dropped_and_server_survives() {
     let b = ExtBridge::new(27462, &dir);
     let sessions = mcp::McpSessions::new(b);
     let (url, token) = mcp::serve(sessions, std::sync::Arc::new(|_| Ok(None))).expect("MCP 启动");
-    let addr = url.strip_prefix("http://").unwrap().split('/').next().unwrap().to_string();
+    let addr = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
     // 一条 1MB 且不含 CRLF 的头(远超 32KB 上限),连体都不发
     {
         let mut conn = tokio::net::TcpStream::connect(&addr).await.unwrap();
-        conn.write_all(b"POST /mcp HTTP/1.1\r\nX-Flood: ").await.unwrap();
+        conn.write_all(b"POST /mcp HTTP/1.1\r\nX-Flood: ")
+            .await
+            .unwrap();
         // 服务端读到 32KB 上限就会主动关连接；客户端仍在写剩余 1MB 时
         // 收到 BrokenPipe/Reset 正是期望结果，不能把它当成测试失败。
         if let Err(e) = conn.write_all(&vec![b'A'; 1024 * 1024]).await {
@@ -227,10 +265,20 @@ async fn mcp_oversized_headers_are_dropped_and_server_survives() {
         // 15s 而非 5s:区分信号本身余量极大(有上限时 32KB 一到即关连接、
         // 近乎瞬时;无上限时要等服务端自己的 30s 读超时),没必要把阈值卡在
         // 会被机器负载影响的位置。
-        let closed = tokio::time::timeout(std::time::Duration::from_secs(15), conn.read_to_end(&mut buf)).await;
-        assert!(closed.is_ok(), "超限连接应被服务端及时关闭(EOF),而不是挂着等 CRLF");
+        let closed = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            conn.read_to_end(&mut buf),
+        )
+        .await;
+        assert!(
+            closed.is_ok(),
+            "超限连接应被服务端及时关闭(EOF),而不是挂着等 CRLF"
+        );
         let resp = String::from_utf8_lossy(&buf);
-        assert!(!resp.contains("jsonrpc"), "超长头不应得到 JSON-RPC 应答: {resp}");
+        assert!(
+            !resp.contains("jsonrpc"),
+            "超长头不应得到 JSON-RPC 应答: {resp}"
+        );
     }
 
     // 服务端未被拖死,正常请求照常受理
@@ -248,7 +296,10 @@ async fn mcp_oversized_headers_are_dropped_and_server_survives() {
     let mut buf = Vec::new();
     let _ = conn.read_to_end(&mut buf).await;
     let resp = String::from_utf8_lossy(&buf);
-    assert!(resp.contains(r#""protocolVersion":"2025-06-18""#), "超限连接后服务端应仍可用: {resp}");
+    assert!(
+        resp.contains(r#""protocolVersion":"2025-06-18""#),
+        "超限连接后服务端应仍可用: {resp}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -282,7 +333,13 @@ async fn mcp_smoke_initialize_list_call() {
             }
             let body = body.to_string();
             req.push_str(&format!("Content-Length: {}\r\n\r\n{}", body.len(), body));
-            let addr = url.strip_prefix("http://").unwrap().split('/').next().unwrap().to_string();
+            let addr = url
+                .strip_prefix("http://")
+                .unwrap()
+                .split('/')
+                .next()
+                .unwrap()
+                .to_string();
             let mut conn = tokio::net::TcpStream::connect(&addr).await.unwrap();
             use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
             conn.write_all(req.as_bytes()).await.unwrap();
@@ -309,7 +366,10 @@ async fn mcp_smoke_initialize_list_call() {
         None,
     )
     .await;
-    assert!(resp.contains(r#""protocolVersion":"2025-06-18""#), "initialize 应答不对: {resp}");
+    assert!(
+        resp.contains(r#""protocolVersion":"2025-06-18""#),
+        "initialize 应答不对: {resp}"
+    );
     assert!(resp.contains("mc-browser"));
     let session = resp
         .lines()
@@ -331,7 +391,10 @@ async fn mcp_smoke_initialize_list_call() {
         .map(str::trim)
         .expect("第二次 initialize 应返回 Mcp-Session-Id")
         .to_string();
-    assert_ne!(session, session2, "不同 transport 不应共享 protocol session");
+    assert_ne!(
+        session, session2,
+        "不同 transport 不应共享 protocol session"
+    );
 
     // tools/list:9 个工具,名字与扩展契约一致
     let resp = post(
@@ -341,8 +404,15 @@ async fn mcp_smoke_initialize_list_call() {
     )
     .await;
     for name in [
-        "browser_navigate", "browser_snapshot", "browser_take_screenshot", "browser_click",
-        "browser_type", "browser_select_option", "browser_press_key", "browser_scroll", "browser_tabs",
+        "browser_navigate",
+        "browser_snapshot",
+        "browser_take_screenshot",
+        "browser_click",
+        "browser_type",
+        "browser_select_option",
+        "browser_press_key",
+        "browser_scroll",
+        "browser_tabs",
     ] {
         assert!(resp.contains(name), "tools/list 缺 {name}");
     }
@@ -388,7 +458,13 @@ async fn mcp_smoke_initialize_list_call() {
     assert!(resp.starts_with("HTTP/1.1 202"), "通知应 202: {resp}");
 
     // DELETE 释放对应 protocol session；其后旧 id 必须失效，不能复活现场。
-    let addr = url.strip_prefix("http://").unwrap().split('/').next().unwrap().to_string();
+    let addr = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
     let req = format!(
         "DELETE /mcp HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {token}\r\n\
          Mcp-Session-Id: {session2}\r\nContent-Length: 0\r\n\r\n"
@@ -399,14 +475,20 @@ async fn mcp_smoke_initialize_list_call() {
     let mut buf = Vec::new();
     let _ = conn.read_to_end(&mut buf).await;
     let resp = String::from_utf8_lossy(&buf);
-    assert!(resp.starts_with("HTTP/1.1 204"), "DELETE 应释放会话: {resp}");
+    assert!(
+        resp.starts_with("HTTP/1.1 204"),
+        "DELETE 应释放会话: {resp}"
+    );
     let resp = post(
         json!({ "jsonrpc": "2.0", "id": 12, "method": "tools/list" }),
         Some(token),
         Some(session2),
     )
     .await;
-    assert!(resp.starts_with("HTTP/1.1 404"), "已删除会话必须失效: {resp}");
+    assert!(
+        resp.starts_with("HTTP/1.1 404"),
+        "已删除会话必须失效: {resp}"
+    );
 }
 
 /// 父/子 Agent 共用一个 MCP transport；不同 _meta.session_id 必须真正并行，
@@ -415,10 +497,7 @@ async fn mcp_smoke_initialize_list_call() {
 async fn mcp_agent_contexts_execute_in_parallel() {
     let dir = tmp_dir("mcp-parallel");
     let sessions = mcp::McpSessions::new(ExtBridge::new(27465, &dir));
-    let gate = std::sync::Arc::new((
-        std::sync::Mutex::new(0usize),
-        std::sync::Condvar::new(),
-    ));
+    let gate = std::sync::Arc::new((std::sync::Mutex::new(0usize), std::sync::Condvar::new()));
     let timed_out = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let gate2 = gate.clone();
     let timed_out2 = timed_out.clone();
@@ -439,7 +518,13 @@ async fn mcp_agent_contexts_execute_in_parallel() {
         }),
     )
     .expect("MCP 启动");
-    let addr = url.strip_prefix("http://").unwrap().split('/').next().unwrap().to_string();
+    let addr = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
 
     async fn post(addr: &str, token: &str, session: Option<&str>, body: Value) -> String {
         use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -490,13 +575,15 @@ async fn mcp_agent_contexts_execute_in_parallel() {
             "_meta": { "session_id": "agent-two", "work_dir": "/workspace/two" }
         } }),
     );
-    let (one, two) = tokio::time::timeout(Duration::from_secs(5), async {
-        tokio::join!(one, two)
-    })
-    .await
-    .expect("不同 Agent context 不应互相阻塞");
+    let (one, two) = tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(one, two) })
+        .await
+        .expect("不同 Agent context 不应互相阻塞");
     assert!(one.contains(r#""isError":true"#) && two.contains(r#""isError":true"#));
-    assert_eq!(*gate.0.lock().unwrap(), 2, "两个 Agent context 都应进入 resolver");
+    assert_eq!(
+        *gate.0.lock().unwrap(),
+        2,
+        "两个 Agent context 都应进入 resolver"
+    );
     assert!(
         !timed_out.load(std::sync::atomic::Ordering::SeqCst),
         "两个 Agent context 被 transport 级锁串行了"
@@ -512,7 +599,13 @@ async fn mcp_gosdk_wire_shape() {
     let b = ExtBridge::new(27470, &dir);
     let sessions = mcp::McpSessions::new(b);
     let (url, token) = mcp::serve(sessions, std::sync::Arc::new(|_| Ok(None))).expect("MCP 启动");
-    let addr = url.strip_prefix("http://").unwrap().split('/').next().unwrap().to_string();
+    let addr = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
 
     async fn raw(addr: &str, req: String) -> String {
         use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -534,7 +627,8 @@ async fn mcp_gosdk_wire_shape() {
     assert!(resp.starts_with("HTTP/1.1 405"), "GET 应 405: {resp}");
 
     let init = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize",
-        "params": { "protocolVersion": "2025-06-18" } }).to_string();
+        "params": { "protocolVersion": "2025-06-18" } })
+    .to_string();
     let resp = raw(
         &addr,
         format!(
@@ -565,8 +659,14 @@ async fn mcp_gosdk_wire_shape() {
         ),
     )
     .await;
-    assert!(resp.starts_with("HTTP/1.1 200"), "带 MCP-Protocol-Version 头应正常应答: {resp}");
-    assert!(resp.contains("browser_navigate"), "tools/list 应答不对: {resp}");
+    assert!(
+        resp.starts_with("HTTP/1.1 200"),
+        "带 MCP-Protocol-Version 头应正常应答: {resp}"
+    );
+    assert!(
+        resp.contains("browser_navigate"),
+        "tools/list 应答不对: {resp}"
+    );
 }
 
 // ===========================================================================
@@ -613,7 +713,11 @@ impl FakeExt {
         .await
         .unwrap();
         let reply = next_json(&mut ws).await.expect("应收到 hello.ok");
-        assert_eq!(reply["event"].as_str(), Some("hello.ok"), "hello 应答不对: {reply}");
+        assert_eq!(
+            reply["event"].as_str(),
+            Some("hello.ok"),
+            "hello 应答不对: {reply}"
+        );
         let token = reply["token"].as_str().map(str::to_string);
 
         let (event_tx, mut event_rx) = mpsc::unbounded_channel::<(Value, oneshot::Sender<()>)>();
@@ -661,17 +765,32 @@ impl FakeExt {
                 }
             }
         });
-        (FakeExt { event_tx, script, log }, token)
+        (
+            FakeExt {
+                event_tx,
+                script,
+                log,
+            },
+            token,
+        )
     }
 
     /// 追加一条脚本应答(队列尾)。
     fn on(&self, key: &str, resp: Value) {
-        self.script.lock().unwrap().entry(key.to_string()).or_default().push_back(resp);
+        self.script
+            .lock()
+            .unwrap()
+            .entry(key.to_string())
+            .or_default()
+            .push_back(resp);
     }
 
     /// 整队替换脚本应答。
     fn set(&self, key: &str, resps: Vec<Value>) {
-        self.script.lock().unwrap().insert(key.to_string(), resps.into());
+        self.script
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), resps.into());
     }
 
     /// 注入一条扩展事件帧;返回时事件已写出到 WS。桥的 read_loop 按帧序
@@ -685,7 +804,8 @@ impl FakeExt {
     /// 指定键收到的全部请求帧(按到达顺序)。
     fn calls(&self, key: &str) -> Vec<Value> {
         self.log
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .iter()
             .filter(|(k, _)| k == key)
             .map(|(_, v)| v.clone())
@@ -693,12 +813,22 @@ impl FakeExt {
     }
 
     fn call_count(&self, key: &str) -> usize {
-        self.log.lock().unwrap().iter().filter(|(k, _)| k == key).count()
+        self.log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(k, _)| k == key)
+            .count()
     }
 
     /// 全部请求键序列(断言调用顺序用)。
     fn key_log(&self) -> Vec<String> {
-        self.log.lock().unwrap().iter().map(|(k, _)| k.clone()).collect()
+        self.log
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect()
     }
 
     /// 轮询等待指定键的第 n 次调用到达(异步旁路,如对话框自动应答)。
@@ -728,7 +858,10 @@ async fn next_json(ws: &mut WsClient) -> Option<Value> {
 /// 配对连入:用状态页配对码完成首次配对,返回假扩展与长期 token。
 async fn pair(b: &ExtBridge) -> (FakeExt, String) {
     let addr = wait_addr(b).await;
-    let code = b.status()["pairing_code"].as_str().expect("未配对应外显配对码").to_string();
+    let code = b.status()["pairing_code"]
+        .as_str()
+        .expect("未配对应外显配对码")
+        .to_string();
     let (fake, token) = FakeExt::connect(&addr, json!({ "code": code }), "TestChrome").await;
     (fake, token.expect("配对应颁发 token"))
 }
@@ -739,7 +872,9 @@ async fn barrier(fake: &FakeExt, b: &ExtBridge) {
     fake.on("test.barrier", ok_res(Value::Null));
     let mut req = super::protocol::Request::default();
     req.op = "test.barrier".to_string();
-    b.call(req, Duration::from_secs(5)).await.expect("屏障 call 应成功");
+    b.call(req, Duration::from_secs(5))
+        .await
+        .expect("屏障 call 应成功");
 }
 
 /// CDP Runtime.evaluate / callFunctionOn 形态的成功应答(returnByValue 值)。
@@ -807,7 +942,11 @@ async fn adopt_tab(fake: &FakeExt, b: &ExtBridge, sess: &BrowserSession, tab_id:
     .await;
     barrier(fake, b).await;
     sess.ensure().expect("ensure 应成功");
-    assert_eq!(sess.state().tab_id, Some(tab_id), "handoff 后应认领标签页 #{tab_id}");
+    assert_eq!(
+        sess.state().tab_id,
+        Some(tab_id),
+        "handoff 后应认领标签页 #{tab_id}"
+    );
 }
 
 /// 锁什么:snapshot→click 完整链路。快照按 CDP 语义应答(COLLECT_JS 元数据
@@ -852,12 +991,17 @@ async fn ops_snapshot_click_full_roundtrip() {
     // 交互后的轻量状态(interaction_result → status)
     fake.set(
         "cdp:Runtime.evaluate",
-        vec![cdp_value(json!({ "url": "https://a/x", "title": "X", "gen": 1 }))],
+        vec![cdp_value(
+            json!({ "url": "https://a/x", "title": "X", "gen": 1 }),
+        )],
     );
 
     let out = sess.click("e1").await.expect("click 应成功");
     assert!(out.contains("已点击 e1"), "点击结果不对: {out}");
-    assert!(out.contains("当前页面: X(https://a/x)"), "应回报轻量状态: {out}");
+    assert!(
+        out.contains("当前页面: X(https://a/x)"),
+        "应回报轻量状态: {out}"
+    );
     assert!(!out.contains("引用已失效"), "gen>0 不应提示重新快照: {out}");
 
     // CDP 往返细节:作用对象与坐标(盒模型四角中心 = (60,25))
@@ -868,11 +1012,20 @@ async fn ops_snapshot_click_full_roundtrip() {
         "click 应作用于快照解析出的 e1 对象"
     );
     let box_calls = fake.calls("cdp:DOM.getBoxModel");
-    assert_eq!(box_calls[0]["params"]["objectId"].as_str(), Some("obj-btn-1"));
+    assert_eq!(
+        box_calls[0]["params"]["objectId"].as_str(),
+        Some("obj-btn-1")
+    );
     let mouse = fake.calls("cdp:Input.dispatchMouseEvent");
-    let kinds: Vec<&str> =
-        mouse.iter().map(|m| m["params"]["type"].as_str().unwrap_or("")).collect();
-    assert_eq!(kinds, ["mouseMoved", "mousePressed", "mouseReleased"], "鼠标序列不对");
+    let kinds: Vec<&str> = mouse
+        .iter()
+        .map(|m| m["params"]["type"].as_str().unwrap_or(""))
+        .collect();
+    assert_eq!(
+        kinds,
+        ["mouseMoved", "mousePressed", "mouseReleased"],
+        "鼠标序列不对"
+    );
     for m in &mouse {
         assert_eq!(m["params"]["x"].as_f64(), Some(60.0), "x 应为盒模型中心");
         assert_eq!(m["params"]["y"].as_f64(), Some(25.0), "y 应为盒模型中心");
@@ -905,13 +1058,18 @@ async fn ops_ref_stale_after_navigation_guides_resnapshot() {
     );
 
     // ② 主 frame 导航 → 整表失效,旧代 ref 闭环报错
-    fake.send_event(json!({ "event": "cdp", "tabId": 7, "method": "Page.frameNavigated",
-        "params": { "frame": { "id": "f1" } } }))
+    fake.send_event(
+        json!({ "event": "cdp", "tabId": 7, "method": "Page.frameNavigated",
+        "params": { "frame": { "id": "f1" } } }),
+    )
     .await;
     barrier(&fake, &b).await;
     let n_before = fake.call_count("cdp:Runtime.callFunctionOn");
     let err = sess.click("e1").await.expect_err("导航后旧 ref 应报错");
-    assert!(err.contains("请先调用 browser_snapshot"), "失效文案不对: {err}");
+    assert!(
+        err.contains("请先调用 browser_snapshot"),
+        "失效文案不对: {err}"
+    );
     assert_eq!(
         fake.call_count("cdp:Runtime.callFunctionOn"),
         n_before,
@@ -921,11 +1079,16 @@ async fn ops_ref_stale_after_navigation_guides_resnapshot() {
     // ③ 子 frame 导航(有 parentId)不失效主表
     script_snapshot(&fake, 2);
     sess.snapshot().await.expect("重新 snapshot 应成功");
-    fake.send_event(json!({ "event": "cdp", "tabId": 7, "method": "Page.frameNavigated",
-        "params": { "frame": { "id": "f2", "parentId": "f1" } } }))
+    fake.send_event(
+        json!({ "event": "cdp", "tabId": 7, "method": "Page.frameNavigated",
+        "params": { "frame": { "id": "f2", "parentId": "f1" } } }),
+    )
     .await;
     barrier(&fake, &b).await;
-    assert!(sess.state().refs.lookup("e1").is_ok(), "子 frame 导航不应失效主表");
+    assert!(
+        sess.state().refs.lookup("e1").is_ok(),
+        "子 frame 导航不应失效主表"
+    );
 
     // ④ 执行上下文已销毁(实际导航但事件未及处理)→ 翻译为 ref 失效错误
     fake.set(
@@ -955,8 +1118,13 @@ async fn session_detached_auto_reattach_once_respects_user_revoke() {
 
     // ① 首次命令回 detached → 自动 attach → 重试成功
     fake.set("attach", vec![ok_res(json!({}))]);
-    fake.set("cdp:Page.reload", vec![ext_err("detached", ""), ok_res(json!({}))]);
-    sess.cmd(7, None, "Page.reload", None).await.expect("detached 后应自愈成功");
+    fake.set(
+        "cdp:Page.reload",
+        vec![ext_err("detached", ""), ok_res(json!({}))],
+    );
+    sess.cmd(7, None, "Page.reload", None)
+        .await
+        .expect("detached 后应自愈成功");
     let seq: Vec<String> = fake
         .key_log()
         .into_iter()
@@ -969,26 +1137,44 @@ async fn session_detached_auto_reattach_once_respects_user_revoke() {
     );
 
     // ② detached 事件(非用户原因,如页面崩溃):保留成员资格,提示自动重连
-    fake.send_event(json!({ "event": "detached", "tabId": 7, "reason": "target_crashed" })).await;
+    fake.send_event(json!({ "event": "detached", "tabId": 7, "reason": "target_crashed" }))
+        .await;
     barrier(&fake, &b).await;
     assert!(b.owns_tab(7), "非用户原因不应移出受控集合");
     assert_eq!(sess.state().tab_id, Some(7), "非用户原因应保留当前标签页");
-    assert!(sess.take_notes().contains("将自动重连"), "应旁白提示自动重连");
+    assert!(
+        sess.take_notes().contains("将自动重连"),
+        "应旁白提示自动重连"
+    );
 
     // ③ 用户主动收回控制权:尊重之,移出会话与受控集合
-    fake.send_event(json!({ "event": "detached", "tabId": 7, "reason": "canceled_by_user" })).await;
+    fake.send_event(json!({ "event": "detached", "tabId": 7, "reason": "canceled_by_user" }))
+        .await;
     barrier(&fake, &b).await;
     assert!(!b.owns_tab(7), "用户收回应移出受控集合");
     assert_eq!(sess.state().tab_id, None, "用户收回应清空当前标签页");
-    assert!(sess.take_notes().contains("用户收回了标签页 #7"), "应旁白记录用户收回");
+    assert!(
+        sess.take_notes().contains("用户收回了标签页 #7"),
+        "应旁白记录用户收回"
+    );
 
     // ④ 收回后的命令级重试:重 attach 被扩展拒绝(受控集合外),引导文案
     //    透出且不再二次重试原命令
     fake.set("attach", vec![ext_err("not_controlled", "")]);
     fake.set("cdp:Page.stopLoading", vec![ext_err("detached", "")]);
-    let err = sess.cmd(7, None, "Page.stopLoading", None).await.expect_err("应报错");
-    assert!(err.contains("交给 agent 操作"), "应透出扩展的引导文案: {err}");
-    assert_eq!(fake.call_count("cdp:Page.stopLoading"), 1, "attach 被拒后不应再重试原命令");
+    let err = sess
+        .cmd(7, None, "Page.stopLoading", None)
+        .await
+        .expect_err("应报错");
+    assert!(
+        err.contains("交给 agent 操作"),
+        "应透出扩展的引导文案: {err}"
+    );
+    assert_eq!(
+        fake.call_count("cdp:Page.stopLoading"),
+        1,
+        "attach 被拒后不应再重试原命令"
+    );
 }
 
 /// 锁什么:新连顶旧连(bridge 的 epoch/排空语义,从 ops 层视角断言)。
@@ -1024,10 +1210,18 @@ async fn bridge_preempt_wakes_inflight_call_from_ops_view() {
     // 新连上的工具调用照常工作(ops 视角完整往返)
     fake2.set(
         "tabs.list",
-        vec![ok_res(json!([{ "tabId": 3, "url": "https://b", "title": "B", "controlled": true }]))],
+        vec![ok_res(
+            json!([{ "tabId": 3, "url": "https://b", "title": "B", "controlled": true }]),
+        )],
     );
-    let out = sess.tabs("list", None, None).await.expect("新连上的调用应成功");
-    assert!(out.contains("#3 [待认领] B — https://b"), "标签页列表不对: {out}");
+    let out = sess
+        .tabs("list", None, None)
+        .await
+        .expect("新连上的调用应成功");
+    assert!(
+        out.contains("#3 [待认领] B — https://b"),
+        "标签页列表不对: {out}"
+    );
 }
 
 /// 锁什么:session 事件处理。① tab.removed → 双侧清理(桥受控集合 +
@@ -1046,36 +1240,55 @@ async fn session_tab_removed_cleanup_and_dialog_auto_reply() {
     assert!(b.owns_tab(7));
 
     // ① tab.removed → 桥受控集合与会话状态双侧清理
-    fake.send_event(json!({ "event": "tab.removed", "tabId": 7 })).await;
+    fake.send_event(json!({ "event": "tab.removed", "tabId": 7 }))
+        .await;
     barrier(&fake, &b).await;
     assert!(!b.owns_tab(7), "tab.removed 应释放桥受控集合");
     assert_eq!(sess.state().tab_id, None, "tab.removed 应清空当前标签页");
-    assert!(sess.take_notes().contains("标签页 #7 已被关闭"), "应旁白记录关闭");
+    assert!(
+        sess.take_notes().contains("标签页 #7 已被关闭"),
+        "应旁白记录关闭"
+    );
     let err = sess.snapshot().await.expect_err("无标签页应报引导错误");
     assert!(err.contains("当前没有活动标签页"), "引导文案不对: {err}");
 
     // ② 对话框自动应答(异步旁路):alert 确认、confirm 取消
     adopt_tab(&fake, &b, &sess, 8).await;
     fake.set("cdp:Page.handleJavaScriptDialog", vec![ok_res(json!({}))]);
-    fake.send_event(json!({ "event": "cdp", "tabId": 8, "method": "Page.javascriptDialogOpening",
-        "params": { "type": "alert", "message": "保存成功" } }))
+    fake.send_event(
+        json!({ "event": "cdp", "tabId": 8, "method": "Page.javascriptDialogOpening",
+        "params": { "type": "alert", "message": "保存成功" } }),
+    )
     .await;
     fake.wait_call("cdp:Page.handleJavaScriptDialog", 1).await;
-    fake.send_event(json!({ "event": "cdp", "tabId": 8, "method": "Page.javascriptDialogOpening",
-        "params": { "type": "confirm", "message": "确定删除?" } }))
+    fake.send_event(
+        json!({ "event": "cdp", "tabId": 8, "method": "Page.javascriptDialogOpening",
+        "params": { "type": "confirm", "message": "确定删除?" } }),
+    )
     .await;
     fake.wait_call("cdp:Page.handleJavaScriptDialog", 2).await;
 
     let replies = fake.calls("cdp:Page.handleJavaScriptDialog");
     assert_eq!(replies[0]["tabId"].as_i64(), Some(8));
-    assert_eq!(replies[0]["params"]["accept"].as_bool(), Some(true), "alert 应自动确认");
-    assert_eq!(replies[1]["params"]["accept"].as_bool(), Some(false), "confirm 应自动取消");
+    assert_eq!(
+        replies[0]["params"]["accept"].as_bool(),
+        Some(true),
+        "alert 应自动确认"
+    );
+    assert_eq!(
+        replies[1]["params"]["accept"].as_bool(),
+        Some(false),
+        "confirm 应自动取消"
+    );
     let notes = sess.take_notes();
     assert!(
         notes.contains("alert 对话框(已自动确认)") && notes.contains("保存成功"),
         "alert 旁白不对: {notes}"
     );
-    assert!(notes.contains("confirm 对话框(已自动取消)"), "confirm 旁白不对: {notes}");
+    assert!(
+        notes.contains("confirm 对话框(已自动取消)"),
+        "confirm 旁白不对: {notes}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1101,7 +1314,8 @@ async fn concurrent_browser_sessions_keep_tab_ownership_and_events_isolated() {
         .expect_err("另一任务不得抢占 tab");
     assert!(err.contains("另一个任务"), "归属冲突文案不对: {err}");
 
-    fake.send_event(json!({ "event": "tab.removed", "tabId": 7 })).await;
+    fake.send_event(json!({ "event": "tab.removed", "tabId": 7 }))
+        .await;
     barrier(&fake, &bridge).await;
     assert_eq!(one.state().tab_id, None, "tab #7 事件应只清理 owner one");
     assert_eq!(two.state().tab_id, Some(8), "tab #7 事件不应污染 owner two");
