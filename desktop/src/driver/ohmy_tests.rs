@@ -2273,6 +2273,36 @@ async fn session_meta_prefers_sidecar_then_legacy_baseline_and_revisions_are_mon
 }
 
 #[tokio::test]
+async fn sessions_list_survives_skill_store_recovery_pending() {
+    let inner = bare_inner("sessions-list-skill-recovery");
+    inner.write_sidecar("legacy", |meta| {
+        meta["title"] = json!("历史会话");
+    });
+    inner.write_sidecar("explicit", |meta| {
+        meta["title"] = json!("显式技能会话");
+        meta["skills"] = json!(["sidecar"]);
+        meta["skills_revision"] = json!(4);
+    });
+    let config_dir = inner.data_dir.parent().unwrap();
+    crate::config::atomic_write_private(
+        &config_dir.join("legacy-session-skills-v1.json"),
+        &serde_json::to_vec_pretty(&json!({ "legacy": ["frozen"] })).unwrap(),
+    )
+    .unwrap();
+    std::fs::remove_file(config_dir.join("skills.revision")).unwrap();
+
+    let list = OhmyDriver(inner).sessions_list().await.unwrap();
+    let items = list.as_array().unwrap();
+    let legacy = items.iter().find(|item| item["id"] == "legacy").unwrap();
+    assert_eq!(legacy["title"], "历史会话");
+    assert_eq!(legacy["skills"], Value::Null);
+    assert_eq!(legacy["skills_revision"], 0);
+    let explicit = items.iter().find(|item| item["id"] == "explicit").unwrap();
+    assert_eq!(explicit["skills"], json!(["sidecar"]));
+    assert_eq!(explicit["skills_revision"], 4);
+}
+
+#[tokio::test]
 async fn missing_and_corrupt_session_meta_never_become_ghost_list_entries() {
     let inner = bare_inner("invalid-session-meta");
     inner.write_sidecar("valid", |meta| {

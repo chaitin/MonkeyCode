@@ -1147,7 +1147,7 @@ impl OhmyDriver {
     fn sessions_list_blocking(inner: &Arc<Inner>) -> Result<Value, String> {
         inner
             .skill_store
-            .with_legacy_session_skills(|legacy_baseline| {
+            .with_session_list_skills(|legacy_baseline| {
                 let mut items: Vec<(u64, Value)> = Vec::new();
                 let entries = std::fs::read_dir(&inner.data_dir)
                     .map(|it| it.flatten().collect::<Vec<_>>())
@@ -1249,7 +1249,6 @@ impl OhmyDriver {
                 items.sort_by(|a, b| b.0.cmp(&a.0));
                 Ok(Value::Array(items.into_iter().map(|(_, v)| v).collect()))
             })
-            .map_err(|error| error.to_string())
     }
 
     /// session/create 已发出后若壳侧 promotion（sidecar/engine_id 绑定）失败，

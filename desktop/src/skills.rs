@@ -682,6 +682,25 @@ impl SkillStoreState {
         })
     }
 
+    /// 会话 sidecar 是历史列表的权威索引。技能库 revision、恢复或锁异常时，
+    /// 列表仍按 sidecar 降级；仅旧会话暂时拿不到独立 baseline。operation 本身
+    /// 不可失败，因此错误只可能发生在调用它之前，降级不会掩盖列表错误。
+    pub(crate) fn with_session_list_skills<T>(
+        &self,
+        operation: impl Fn(Option<&LegacySessionSkills>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        match self.read(|_| {
+            let baseline = read_legacy_session_skills(&self.inner.legacy_session_skills_path)?;
+            Ok(operation(baseline.as_ref()))
+        }) {
+            Ok(result) => result,
+            Err(error) => {
+                eprintln!("[desktop] 读取历史会话技能 baseline 失败，按 sidecar 降级: {error}");
+                operation(None)
+            }
+        }
+    }
+
     /// 恢复面板读取：与普通 read 相同地先接管全部可恢复事务，但不会把已登记
     /// issue 自身转换成错误。
     pub(crate) fn recovery_issues(&self) -> Result<Vec<SkillRecoveryIssue>, SkillStoreError> {
@@ -1288,9 +1307,23 @@ fn authoritative_store_is_empty(inner: &SkillStoreStateInner) -> Result<bool, Sk
             Ok(false)
         }
         Ok(_) => {
-            let mut entries = fs::read_dir(&inner.user_dir)
+            let entries = fs::read_dir(&inner.user_dir)
                 .map_err(|error| SkillStoreError::io("枚举用户技能库", &inner.user_dir, error))?;
-            Ok(entries.next().is_none())
+            for entry in entries {
+                let entry = entry.map_err(|error| {
+                    SkillStoreError::io("读取用户技能库目录项", &inner.user_dir, error)
+                })?;
+                if entry.file_name() != std::ffi::OsStr::new(".DS_Store") {
+                    return Ok(false);
+                }
+                let metadata = fs::symlink_metadata(entry.path()).map_err(|error| {
+                    SkillStoreError::io("检查 macOS 技能库元数据", &entry.path(), error)
+                })?;
+                if !plain_file_metadata(&metadata) {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
     }
 }
@@ -1345,6 +1378,19 @@ fn validate_legacy_store_for_revision_migration(
             .file_name()
             .into_string()
             .map_err(|_| SkillStoreError::unsafe_object("skills", "legacy 技能目录名不是 UTF-8"))?;
+        if name == ".DS_Store" {
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path).map_err(|error| {
+                SkillStoreError::io("检查 macOS legacy 技能库元数据", &path, error)
+            })?;
+            if !plain_file_metadata(&metadata) {
+                return Err(SkillStoreError::unsafe_object(
+                    name,
+                    "macOS 技能库元数据必须是普通文件",
+                ));
+            }
+            continue;
+        }
         let internal = matches!(name.as_str(), ".imports" | ".backups" | ".transactions");
         let path = if internal {
             entry.path()
@@ -3762,6 +3808,7 @@ mod tests {
     fn safe_nonempty_store_missing_revision_is_migrated_once_but_corruption_is_preserved() {
         let cfg = test_dir("missing-revision-migration");
         put_skill(&cfg.join("skills"), "keep", "keep me");
+        fs::write(cfg.join("skills/.DS_Store"), b"Finder metadata").unwrap();
         let state = SkillStoreState::new(cfg.clone()).unwrap();
         let snapshot = state.snapshot(None).unwrap();
         assert_eq!(snapshot.revision, MIGRATED_INITIAL_REVISION);
@@ -3775,6 +3822,10 @@ mod tests {
         assert_eq!(
             fs::read_to_string(cfg.join("skills/keep/SKILL.md")).unwrap(),
             "keep me"
+        );
+        assert_eq!(
+            fs::read(cfg.join("skills/.DS_Store")).unwrap(),
+            b"Finder metadata"
         );
 
         // 模拟 marker 已 fsync、revision 尚未发布时退出；重入必须复用 store_id。
