@@ -277,7 +277,7 @@ func TestRestoreRemainsIdempotentWhenEndpointIsRestoredWhileWaitingForLock(t *te
 	}
 }
 
-func TestBridgeRejectsUntrustedOriginAndInvalidEnvelope(t *testing.T) {
+func TestBridgeAllowsCrossOriginAndRejectsInvalidEnvelope(t *testing.T) {
 	dbClient := enttest.Open(t, "sqlite3", fmt.Sprintf("file:endpoint-security-%s?mode=memory&cache=shared&_fk=1", uuid.NewString()))
 	t.Cleanup(func() { _ = dbClient.Close() })
 	redisServer := miniredis.RunT(t)
@@ -298,18 +298,28 @@ func TestBridgeRejectsUntrustedOriginAndInvalidEnvelope(t *testing.T) {
 		&websocket.DialOptions{HTTPHeader: header},
 	)
 	if conn != nil {
-		_ = conn.CloseNow()
+		defer conn.Close(websocket.StatusNormalClosure, "")
 	}
-	if err == nil || response == nil || response.StatusCode != http.StatusForbidden {
-		t.Fatalf("不可信 Origin 应被拒绝: response=%v err=%v", response, err)
+	if err != nil {
+		t.Fatalf("跨 Origin 连接失败: response=%v err=%v", response, err)
 	}
 
 	machineID := uuid.NewString()
-	valid := connectBridge(t, server.URL, cookie, machineID, "桌面端", "macos")
-	defer valid.Close(websocket.StatusNormalClosure, "")
-	assertMessageType(t, readBridgeMessage(t, valid), "welcome")
-	assertDirectory(t, readBridgeMessage(t, valid), machineID)
-	writeBridgeMessage(t, valid, map[string]any{
+	writeBridgeMessage(t, conn, map[string]any{
+		"type":              "hello",
+		"protocol_versions": []int{1},
+		"machine_id":        machineID,
+		"profile": map[string]any{
+			"device_name":    "桌面端",
+			"platform":       "macos",
+			"os_version":     "1.0",
+			"arch":           "arm64",
+			"client_version": "test",
+		},
+	})
+	assertMessageType(t, readBridgeMessage(t, conn), "welcome")
+	assertDirectory(t, readBridgeMessage(t, conn), machineID)
+	writeBridgeMessage(t, conn, map[string]any{
 		"type":       "event",
 		"message_id": uuid.NewString(),
 		"target":     machineID,
@@ -317,21 +327,21 @@ func TestBridgeRejectsUntrustedOriginAndInvalidEnvelope(t *testing.T) {
 		"source":     machineID,
 		"payload":    map[string]any{},
 	})
-	protocolError := readUntilType(t, valid, "error")
+	protocolError := readUntilType(t, conn, "error")
 	errorBody, _ := protocolError["error"].(map[string]any)
 	if errorBody["code"] != "invalid_message" {
 		t.Fatalf("伪造来源错误 = %#v", protocolError)
 	}
 
 	messageID := uuid.NewString()
-	writeBridgeMessage(t, valid, map[string]any{
+	writeBridgeMessage(t, conn, map[string]any{
 		"type":       "request",
 		"message_id": messageID,
 		"target":     machineID,
 		"method":     "Invalid Method",
 		"payload":    map[string]any{},
 	})
-	protocolError = readUntilType(t, valid, "error")
+	protocolError = readUntilType(t, conn, "error")
 	if protocolError["reply_to"] != messageID {
 		t.Fatalf("可识别消息的协议错误未关联原消息: %#v", protocolError)
 	}
@@ -468,7 +478,6 @@ func newBridgeTestServerWithConfig(
 	cfg.Redis.Port = port
 	cfg.Session.ExpireDay = 1
 	cfg.EndpointBridge.InstanceID = instanceID
-	cfg.EndpointBridge.AllowedOrigins = []string{"https://app.example.com"}
 	if configure != nil {
 		configure(cfg)
 	}

@@ -49,7 +49,6 @@ type bridgeConfig struct {
 	heartbeatInterval time.Duration
 	heartbeatTimeout  time.Duration
 	presenceTTL       time.Duration
-	allowedOrigins    []string
 	debug             bool
 }
 
@@ -166,7 +165,6 @@ func resolveBridgeConfig(cfg *config.Config) bridgeConfig {
 		heartbeatInterval: duration(cfg.EndpointBridge.HeartbeatInterval, 30*time.Second),
 		heartbeatTimeout:  duration(cfg.EndpointBridge.HeartbeatTimeout, 10*time.Second),
 		presenceTTL:       duration(cfg.EndpointBridge.PresenceTTL, 60*time.Second),
-		allowedOrigins:    slices.Clone(cfg.EndpointBridge.AllowedOrigins),
 		debug:             cfg.Debug,
 	}
 }
@@ -450,7 +448,7 @@ func (b *Bridge) Restore(c *web.Context, req domain.EndpointPathReq) error {
 // Connect 建立端点桥接 WebSocket
 //
 //	@Summary		建立端点桥接连接
-//	@Description	该路由用于 WebSocket Upgrade，不是普通 REST 查询。原生桌面端和移动端复用当前登录 Cookie 连接；生产环境必须使用 WSS，非空 Origin 必须匹配服务端白名单。
+//	@Description	该路由用于 WebSocket Upgrade，不是普通 REST 查询。原生桌面端和移动端复用当前登录 Cookie 连接；生产环境必须使用 WSS。
 //	@Description	Upgrade 成功后，客户端须在 5 秒内发送 hello 文本帧，包含支持的协议主版本、安装级 UUIDv4 machine_id 和设备资料。服务端返回 welcome，并立即发送同一用户全部未撤销端点的 directory.snapshot 全量快照。
 //	@Description	业务帧仅支持 UTF-8 JSON 文本格式的 event、request、response；单帧最大 256 KiB，不支持二进制帧和压缩。完整消息结构、关闭码和重连规则见 docs/design/2026-07-17-client-bridge-client-protocol.md。
 //	@Tags			【用户】端点桥接
@@ -459,7 +457,7 @@ func (b *Bridge) Restore(c *web.Context, req domain.EndpointPathReq) error {
 //	@Param			Connection	header		string	true	"包含 Upgrade"
 //	@Success		101			{string}	string	"切换到 WebSocket 协议；后续通过文本帧交换 hello、welcome、directory.snapshot 和业务消息"
 //	@Failure		401			{string}	string	"登录会话无效"
-//	@Failure		403			{string}	string	"必须使用 WSS 或 Origin 不受信任"
+//	@Failure		403			{string}	string	"必须使用 WSS"
 //	@Router			/api/v1/endpoints/connect [get]
 func (b *Bridge) Connect(c *web.Context) error {
 	if err := b.validateUpgrade(c.Request()); err != nil {
@@ -471,8 +469,8 @@ func (b *Bridge) Connect(c *web.Context) error {
 		return c.String(http.StatusUnauthorized, "Unauthorized")
 	}
 	conn, err := websocket.Accept(c.Response(), c.Request(), &websocket.AcceptOptions{
-		CompressionMode: websocket.CompressionDisabled,
-		OriginPatterns:  b.config.allowedOrigins,
+		CompressionMode:    websocket.CompressionDisabled,
+		InsecureSkipVerify: true,
 	})
 	if err != nil {
 		return nil
@@ -523,16 +521,7 @@ func (b *Bridge) validateUpgrade(r *http.Request) error {
 	if !secure && (!b.config.debug || !isLoopbackHost(r.Host)) {
 		return errors.New("只允许 WSS，开发环境本机地址除外")
 	}
-	origin := strings.TrimSpace(r.Header.Get("Origin"))
-	if origin == "" {
-		return nil
-	}
-	for _, allowed := range b.config.allowedOrigins {
-		if origin == strings.TrimSpace(allowed) {
-			return nil
-		}
-	}
-	return errors.New("来源不受信任")
+	return nil
 }
 
 func isLoopbackHost(address string) bool {

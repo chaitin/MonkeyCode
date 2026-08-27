@@ -108,17 +108,16 @@ type ReviewAgent struct {
 }
 
 type EndpointBridge struct {
-	InstanceID        string   `mapstructure:"instance_id"`
-	AllowedOrigins    []string `mapstructure:"allowed_origins"`
-	MaxEndpoints      int      `mapstructure:"max_endpoints"`
-	MaxFrameBytes     int64    `mapstructure:"max_frame_bytes"`
-	QueueMessages     int      `mapstructure:"queue_messages"`
-	QueueBytes        int64    `mapstructure:"queue_bytes"`
-	MessageRate       int      `mapstructure:"message_rate"`
-	ByteRate          int64    `mapstructure:"byte_rate"`
-	HeartbeatInterval string   `mapstructure:"heartbeat_interval"`
-	HeartbeatTimeout  string   `mapstructure:"heartbeat_timeout"`
-	PresenceTTL       string   `mapstructure:"presence_ttl"`
+	InstanceID        string `mapstructure:"instance_id"`
+	MaxEndpoints      int    `mapstructure:"max_endpoints"`
+	MaxFrameBytes     int64  `mapstructure:"max_frame_bytes"`
+	QueueMessages     int    `mapstructure:"queue_messages"`
+	QueueBytes        int64  `mapstructure:"queue_bytes"`
+	MessageRate       int    `mapstructure:"message_rate"`
+	ByteRate          int64  `mapstructure:"byte_rate"`
+	HeartbeatInterval string `mapstructure:"heartbeat_interval"`
+	HeartbeatTimeout  string `mapstructure:"heartbeat_timeout"`
+	PresenceTTL       string `mapstructure:"presence_ttl"`
 }
 
 type OAuthLoginConfig struct {
@@ -424,7 +423,6 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("host_installer.mode", "online")
 	v.SetDefault("host_installer.bundle_path", "installer/{{.arch}}/host.tgz")
 	v.SetDefault("endpoint_bridge.instance_id", "")
-	v.SetDefault("endpoint_bridge.allowed_origins", []string{})
 	v.SetDefault("endpoint_bridge.max_endpoints", 20)
 	v.SetDefault("endpoint_bridge.max_frame_bytes", 256<<10)
 	v.SetDefault("endpoint_bridge.queue_messages", 128)
