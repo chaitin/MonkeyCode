@@ -12,46 +12,27 @@ on:
 # 只有 AppImage 能自更新(updater 在 Linux 是原地替换 AppImage 文件),
 # deb/rpm 交给 apt/dnf,壳侧对非 AppImage 运行不提示更新(main.rs updater_supported)。
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   build:
-    # Debian 10 的 glibc 为 2.28。宿主 runner 只负责运行 Actions，所有
-    # 编译和打包都在容器内进行，使产物可运行于 glibc 2.28 环境。
+    # Builder 基于 Debian 10(glibc 2.28)，并预装 GLib 2.70 与 Tauri 依赖。
+    # 宿主 runner 只负责运行 Actions，所有编译和打包都在容器内进行。
     runs-on: ubuntu-22.04
     container:
-      image: debian:10
+      image: ghcr.io/twursc/monkeycode-desktop-linux-builder:glibc-2.28-glib-2.70
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      # actions/checkout 只有在 git 已可用时才会保留 .git 元数据，后续需要
-      # 该元数据来初始化 agent 和 plugins 子模块。
-      - name: Prepare Debian build container
+      - name: Trust mounted workspace
         run: |
-          # Debian 10 已归档，关闭归档仓库的 Release 日期校验。
-          sed -i \
-            -e 's|deb.debian.org/debian|archive.debian.org/debian|g' \
-            -e 's|security.debian.org/debian-security|archive.debian.org/debian-security|g' \
-            /etc/apt/sources.list
-          apt-get -o Acquire::Check-Valid-Until=false update
-          apt-get install -y --no-install-recommends ca-certificates curl git
           # 容器内 root 用户访问宿主挂载工作区时，Git 需要显式信任该目录。
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: actions/checkout@v4
-
-      # webkit2gtk-4.1 + gtk3 是构建依赖;librsvg2/patchelf 是 bundler 需要;
-      # xdg-utils 不能省——AppImage bundler 会把系统的 xdg-open 复制进包,
-      # 缺了会在 release 编译跑完之后才报 "xdg-open binary not found"
-      # (实测:仅把 xdg-open 放进 PATH 不够,bundler 按系统路径找)。
-      # gstreamer 插件供 AppImage 的 bundleMediaFramework 捆入包内:
-      # linuxdeploy 会连带捆入 GStreamer 核心库,插件必须成套跟上——
-      # 捆芯无插件时桌宠页 new Audio 初始化媒体后端即崩 WebProcess,
-      # 整页空白(桌宠隐身的根因,见 Makefile check-linux 注释)。
-      - name: Install Tauri system dependencies
-        run: |
-          apt-get install -y --no-install-recommends \
-            build-essential pkg-config libssl-dev \
-            libwebkit2gtk-4.0-dev libgtk-3-dev libayatana-appindicator3-dev \
-            librsvg2-dev patchelf xdg-utils rpm \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-            gstreamer1.0-libav gstreamer1.0-alsa
 
       - uses: actions/setup-go@v5
         with:
