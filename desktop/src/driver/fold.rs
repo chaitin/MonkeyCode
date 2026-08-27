@@ -99,7 +99,11 @@ fn stream_kind(data: &Value) -> Option<&str> {
 }
 
 fn chunk_text(f: &Value) -> Option<&str> {
-    f.get("data")?.get("update")?.get("content")?.get("text")?.as_str()
+    f.get("data")?
+        .get("update")?
+        .get("content")?
+        .get("text")?
+        .as_str()
 }
 
 fn is_overwrite(su: &str) -> bool {
@@ -148,10 +152,12 @@ fn truncate_strings(v: &mut Value, head: usize) -> bool {
             *s = cut(s, head);
             true
         }
-        Value::Array(items) => items.iter_mut().fold(false, |acc, x| truncate_strings(x, head) || acc),
-        Value::Object(map) => {
-            map.iter_mut().fold(false, |acc, (_, x)| truncate_strings(x, head) || acc)
-        }
+        Value::Array(items) => items
+            .iter_mut()
+            .fold(false, |acc, x| truncate_strings(x, head) || acc),
+        Value::Object(map) => map
+            .iter_mut()
+            .fold(false, |acc, (_, x)| truncate_strings(x, head) || acc),
         _ => false,
     }
 }
@@ -162,14 +168,21 @@ fn truncate_strings(v: &mut Value, head: usize) -> bool {
 /// `_meta` 是既有的透传扩展点,reduce 原样带到 LogItem 上,归约层零改动。
 fn guard_big_fields(nf: &mut Value) -> bool {
     let seq = frame_seq(nf);
-    let Some(update) = nf.pointer_mut("/data/update") else { return false };
-    let su = update.get("sessionUpdate").and_then(|v| v.as_str()).unwrap_or("");
+    let Some(update) = nf.pointer_mut("/data/update") else {
+        return false;
+    };
+    let su = update
+        .get("sessionUpdate")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if su != "tool_call" && su != "tool_call_update" {
         return false;
     }
     let mut cut_any = false;
     for key in ["rawInput", "rawOutput", "content"] {
-        let Some(field) = update.get_mut(key) else { continue };
+        let Some(field) = update.get_mut(key) else {
+            continue;
+        };
         // 只丈量一次:小字段(绝大多数)不进递归
         if serde_json::to_string(field).map(|s| s.len()).unwrap_or(0) <= FIELD_LIMIT {
             continue;
@@ -233,11 +246,11 @@ impl TurnFold {
             if let Some((idx, kind)) = &self.tail {
                 if kind == &su {
                     let idx = *idx;
-                    if let (Some(prev), Some(add)) =
-                        (chunk_text(&self.out[idx]).map(str::to_string), chunk_text(&nf))
-                    {
-                        self.out[idx]["data"]["update"]["content"]["text"] =
-                            json!(prev + add);
+                    if let (Some(prev), Some(add)) = (
+                        chunk_text(&self.out[idx]).map(str::to_string),
+                        chunk_text(&nf),
+                    ) {
+                        self.out[idx]["data"]["update"]["content"]["text"] = json!(prev + add);
                         return;
                     }
                 }
@@ -261,7 +274,11 @@ impl TurnFold {
     /// 取走整轮并复位
     pub(super) fn take(&mut self) -> Turn {
         let taken = std::mem::take(self);
-        Turn { from: taken.from, to: taken.to, frames: taken.out }
+        Turn {
+            from: taken.from,
+            to: taken.to,
+            frames: taken.out,
+        }
     }
 }
 
@@ -323,7 +340,11 @@ fn parse_turn_line(offset: u64, line: &str) -> Option<TurnLine> {
         from: v.get("from").and_then(|x| x.as_u64()).unwrap_or(0),
         to: v.get("to").and_then(|x| x.as_u64()).unwrap_or(0),
         src_end: v.get("src_end").and_then(|x| x.as_u64()).unwrap_or(0),
-        frames: v.get("frames").and_then(|x| x.as_array()).cloned().unwrap_or_default(),
+        frames: v
+            .get("frames")
+            .and_then(|x| x.as_array())
+            .cloned()
+            .unwrap_or_default(),
     })
 }
 
@@ -334,8 +355,12 @@ fn parse_turn_line(offset: u64, line: &str) -> Option<TurnLine> {
 /// 都被"每次仍要把整个 replay.jsonl 读进内存"吃掉。
 fn lines_backward(path: &Path, before: u64, max: usize) -> Vec<(u64, String)> {
     const CHUNK: usize = 64 * 1024;
-    let Ok(mut f) = std::fs::File::open(path) else { return vec![] };
-    let Ok(meta) = f.metadata() else { return vec![] };
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return vec![];
+    };
+    let Ok(meta) = f.metadata() else {
+        return vec![];
+    };
     let end = before.min(meta.len());
     if end == 0 {
         return vec![];
@@ -395,7 +420,9 @@ pub(super) fn read_before(path: &Path, before: u64, limit: usize) -> (Vec<TurnLi
     let mut frames = 0usize;
     // 从最新往回收,凑够帧数就停——但至少保住一轮,否则长轮次会空窗
     for (off, line) in lines.iter().rev() {
-        let Some(t) = parse_turn_line(*off, line) else { continue };
+        let Some(t) = parse_turn_line(*off, line) else {
+            continue;
+        };
         let n = t.frames.len();
         if !turns.is_empty() && frames + n > TAIL_FRAMES {
             break;
@@ -416,7 +443,9 @@ pub(super) fn read_frame_by_seq(replay: &Path, events: &Path, seq: u64) -> Optio
     let mut end = u64::MAX;
     let mut prev_src_end = 0u64;
     for (offset, line) in scan_lines(replay) {
-        let Some(t) = parse_turn_line(offset, &line) else { continue };
+        let Some(t) = parse_turn_line(offset, &line) else {
+            continue;
+        };
         if seq >= t.from && seq <= t.to {
             start = prev_src_end;
             end = t.src_end;
@@ -458,7 +487,9 @@ pub(super) fn read_frame_by_seq(replay: &Path, events: &Path, seq: u64) -> Optio
 /// 顺序扫描全文(带行偏移);大纲用。文件是折叠后的,量级几十 KB~数 MB。
 pub(super) fn scan_lines(path: &Path) -> Vec<(u64, String)> {
     use std::io::{BufRead as _, BufReader};
-    let Ok(f) = std::fs::File::open(path) else { return vec![] };
+    let Ok(f) = std::fs::File::open(path) else {
+        return vec![];
+    };
     let mut r = BufReader::new(f);
     let mut out = Vec::new();
     let mut off = 0u64;
@@ -480,9 +511,16 @@ pub(super) fn scan_lines(path: &Path) -> Vec<(u64, String)> {
 
 /// 一行轮记录 → 其中的用户提问条目(大纲)
 pub(super) fn outline_of_line(offset: u64, line: &str) -> Vec<Value> {
-    let Ok(v) = serde_json::from_str::<Value>(line) else { return vec![] };
-    let Some(frames) = v.get("frames").and_then(|x| x.as_array()) else { return vec![] };
-    frames.iter().filter_map(|f| outline_entry(offset, f)).collect()
+    let Ok(v) = serde_json::from_str::<Value>(line) else {
+        return vec![];
+    };
+    let Some(frames) = v.get("frames").and_then(|x| x.as_array()) else {
+        return vec![];
+    };
+    frames
+        .iter()
+        .filter_map(|f| outline_entry(offset, f))
+        .collect()
 }
 
 /// user-input 帧 → 大纲条目(非 user-input 返回 None)。

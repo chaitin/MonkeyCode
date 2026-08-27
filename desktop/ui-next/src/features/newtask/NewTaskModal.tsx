@@ -158,6 +158,7 @@ export function NewTaskModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [offerCreate, setOfferCreate] = useState(false);
+  const [offerReauthorize, setOfferReauthorize] = useState(false);
   // 附件暂存(本地/对话;云端任务不支持)。dragDepth:dragenter/leave 在
   // 子元素间反复触发,计数配对才不会一进子元素就把高亮闪掉
   const [atts, setAtts] = useState<StagedAtt[]>([]);
@@ -184,6 +185,7 @@ export function NewTaskModal({
     setSkillsLoaded(false);
     setError("");
     setOfferCreate(false);
+    setOfferReauthorize(false);
     // 附件区从预填起步(待办派发带图;无预填即空):上一次的暂存连预览一起清
     setAtts((prev) => {
       for (const a of prev) if (a.preview) URL.revokeObjectURL(a.preview);
@@ -264,6 +266,22 @@ export function NewTaskModal({
     setDirMenu(false);
     setError("");
     setOfferCreate(false);
+    setOfferReauthorize(false);
+  };
+
+  const chooseProjectDirectory = async () => {
+    setDirMenu(false);
+    try {
+      // 起始目录跟当前运行环境走(WSL 模式开在发行版内,不给的话对话框会开在 Windows 侧)
+      const picked = await pickDirectory(await workdirPickBase());
+      // 取消不改变目录，也不清掉仍然成立的权限错误和恢复入口。
+      if (picked) pickDir(picked);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      setOfferCreate(false);
+      setOfferReauthorize(false);
+      setError(`${t("create.pickFailed")}: ${detail}`);
+    }
   };
 
   // ==== 附件暂存 ====
@@ -394,6 +412,7 @@ export function NewTaskModal({
     setBusy(true);
     setError("");
     setOfferCreate(false);
+    setOfferReauthorize(false);
     try {
       const meta = await sessionCreate({
         workdir,
@@ -422,8 +441,9 @@ export function NewTaskModal({
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
-      // 壳的文案契约:目录缺失的 Err 必含「目录不存在」(本机与 WSL 两条路径同款)
+      // 壳的稳定文案前缀区分不存在与无权限，避免把 TCC 拒绝诱导成“创建目录”。
       if (!chat && msg.includes("目录不存在")) setOfferCreate(true);
+      if (!chat && msg.startsWith("工作区目录无访问权限:")) setOfferReauthorize(true);
     } finally {
       setBusy(false);
     }
@@ -619,16 +639,7 @@ export function NewTaskModal({
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm w-full justify-start gap-2 px-2 font-normal text-base-content/70"
-                            onClick={() => {
-                              setDirMenu(false);
-                              // 起始目录跟当前运行环境走(WSL 模式开在发行版内,
-                              // 不给的话对话框会开在 Windows 侧)
-                              void workdirPickBase()
-                                .then((base) => pickDirectory(base))
-                                .then((picked) => {
-                                  if (picked) pickDir(picked);
-                                });
-                            }}
+                            onClick={() => void chooseProjectDirectory()}
                           >
                             <IconFolderOpen size={13} stroke={1.75} aria-hidden className="shrink-0 text-base-content/50" />
                             {t("create.pickOther")}
@@ -771,6 +782,18 @@ export function NewTaskModal({
                   onClick={() => void submit(true)}
                 >
                   {t("create.dirCreate")}
+                </button>
+              </div>
+            ) : offerReauthorize ? (
+              <div role="alert" className="flex items-center gap-2 px-2 text-xs text-error" title={error}>
+                <span>{t("create.dirDenied")}</span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs shrink-0 text-warning"
+                  disabled={busy}
+                  onClick={() => void chooseProjectDirectory()}
+                >
+                  {t("create.dirReauthorize")}
                 </button>
               </div>
             ) : error ? (

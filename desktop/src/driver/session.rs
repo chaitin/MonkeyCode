@@ -36,6 +36,53 @@ const COLD_REPAIR_REASON: &str = "上次运行未正常结束(应用被强制退
 /// 并继续保持 running，直到事件终态/明确 stopped/看门狗之一原子收轮。
 const COMPACT_RPC_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// 将文件系统拒绝转换成前端可识别、用户可恢复的稳定错误。
+fn workdir_access_error(path: &str, error: std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::PermissionDenied {
+        format!(
+            "工作区目录无访问权限: {path}\n\
+             请在系统中允许 MonkeyCode 访问该目录，或重新选择项目文件夹"
+        )
+    } else {
+        format!("检查工作区目录失败: {path}: {error}")
+    }
+}
+
+/// 在启动 agent 前由签名稳定的主 App 主动打开一次目录。除了把不存在和权限
+/// 错误分开，这也让 macOS 的 Files & Folders 授权归因在 MonkeyCode，而不是
+/// 等 sidecar/shell 首次碰路径时才零散触发。
+fn ensure_host_workdir(path: &Path, display: &str, create: bool) -> Result<(), String> {
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) if create => {
+            std::fs::create_dir_all(path).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    workdir_access_error(display, e)
+                } else {
+                    format!("创建工作区目录失败: {e}")
+                }
+            })?;
+        }
+        Ok(_) => return Err(format!("工作区路径不是目录: {display}")),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && create => {
+            std::fs::create_dir_all(path).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    workdir_access_error(display, e)
+                } else {
+                    format!("创建工作区目录失败: {e}")
+                }
+            })?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("工作区目录不存在: {display}"));
+        }
+        Err(e) => return Err(workdir_access_error(display, e)),
+    }
+    std::fs::read_dir(path)
+        .map(|_| ())
+        .map_err(|e| workdir_access_error(display, e))
+}
+
 /// 普通对话不绑定用户项目，但引擎仍要求 cwd。每个新对话创建一个独立的
 /// 受管工作目录，根目录由 Tauri 按平台解析为本应用的 local data 目录。
 fn create_chat_workdir_in(root: &Path) -> Result<PathBuf, String> {
@@ -181,6 +228,42 @@ fn check_session_id(id: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("非法会话 id: {id:?}"))
+    }
+}
+
+#[cfg(test)]
+mod workdir_access_tests {
+    use std::io::{Error, ErrorKind};
+
+    use super::{ensure_host_workdir, workdir_access_error};
+
+    #[test]
+    fn distinguishes_missing_paths_and_creates_only_when_requested() {
+        let root = std::env::temp_dir().join(format!(
+            "monkeycode-workdir-test-{}",
+            std::process::id()
+        ));
+        let path = root.join("project");
+        let _ = std::fs::remove_dir_all(&root);
+
+        let missing =
+            ensure_host_workdir(&path, "/project", false).expect_err("缺失目录应报错");
+        assert!(missing.contains("工作区目录不存在"), "{missing}");
+
+        ensure_host_workdir(&path, "/project", true).expect("按需创建目录");
+        assert!(path.is_dir());
+        ensure_host_workdir(&path, "/project", false).expect("已有可读目录应通过");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn permission_errors_have_a_stable_actionable_marker() {
+        let message = workdir_access_error(
+            "/Documents/project",
+            Error::from(ErrorKind::PermissionDenied),
+        );
+        assert!(message.starts_with("工作区目录无访问权限:"), "{message}");
+        assert!(message.contains("MonkeyCode"), "{message}");
     }
 }
 
@@ -687,14 +770,7 @@ impl OhmyDriver {
             }
             (None, None) => {
                 let host = Path::new(&workdir_owned);
-                if !host.is_dir() {
-                    if create_dir {
-                        std::fs::create_dir_all(host)
-                            .map_err(|e| format!("创建工作区目录失败: {e}"))?;
-                    } else {
-                        return Err(format!("工作区目录不存在: {workdir_owned}"));
-                    }
-                }
+                ensure_host_workdir(host, &workdir_owned, create_dir)?;
                 workdir_owned
             }
         };
@@ -1034,6 +1110,14 @@ impl OhmyDriver {
             // 归一化(盘符 → automount 映射等)。归一不了的明确失败——错误
             // 经 conn-status 外显,好过把另一环境的 cwd 塞给引擎后工具全空转
             workdir = self.0.resolve_workdir(&workdir)?;
+        }
+        // 新建会话已经在 session_create_with_kind 预检；恢复也必须由主 App
+        // 先碰一次受保护目录，否则权限被重置后仍会落回 sidecar/shell 首次访问。
+        // WSL 的 workdir 是 guest 路径，宿主不能拿 Path 直接检查；普通对话则是
+        // App 自己管理的数据目录，不参与用户项目授权。
+        let kind = meta.get("kind").and_then(|v| v.as_str()).unwrap_or("local");
+        if self.0.wsl.is_none() && kind != "chat" {
+            ensure_host_workdir(Path::new(&workdir), &workdir, false)?;
         }
         let mut params =
             engine_session_create_params(&workdir, Some(engine_id.as_str()), None, mode);

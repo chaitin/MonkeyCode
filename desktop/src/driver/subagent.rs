@@ -80,7 +80,10 @@ pub(super) struct SubagentState {
 
 impl Inner {
     fn agent_id_for_origin(&self, parent_sid: &str, parent_tc: &str) -> Option<String> {
-        self.sub.agent_origins.lock_ok().iter()
+        self.sub
+            .agent_origins
+            .lock_ok()
+            .iter()
             .find(|(_, origin)| origin.parent_sid == parent_sid && origin.parent_tc == parent_tc)
             .map(|(agent_id, _)| agent_id.clone())
     }
@@ -94,50 +97,96 @@ impl Inner {
         agent_id: &str,
         name: &str,
     ) {
-        if agent_id.is_empty() || tc_id.is_empty() { return; }
-        self.sub.agent_origins.lock_ok().entry(agent_id.to_string()).or_insert_with(|| AgentOrigin {
-            parent_sid: sid.to_string(), parent_tc: tc_id.to_string(),
-        });
+        if agent_id.is_empty() || tc_id.is_empty() {
+            return;
+        }
+        self.sub
+            .agent_origins
+            .lock_ok()
+            .entry(agent_id.to_string())
+            .or_insert_with(|| AgentOrigin {
+                parent_sid: sid.to_string(),
+                parent_tc: tc_id.to_string(),
+            });
         if !name.is_empty() {
-            self.sub.agent_aliases.lock_ok()
+            self.sub
+                .agent_aliases
+                .lock_ok()
                 .insert((sid.to_string(), name.to_string()), agent_id.to_string());
         }
-        let children: Vec<String> = self.sub.subagents.lock_ok().iter()
+        let children: Vec<String> = self
+            .sub
+            .subagents
+            .lock_ok()
+            .iter()
             .filter(|(_, route)| route.parent_sid == sid && route.parent_tc == tc_id)
-            .map(|(child, _)| child.clone()).collect();
+            .map(|(child, _)| child.clone())
+            .collect();
         let mut child_agents = self.sub.child_agents.lock_ok();
-        for child in children { child_agents.insert(child, agent_id.to_string()); }
+        for child in children {
+            child_agents.insert(child, agent_id.to_string());
+        }
     }
 
     /// SendMessage tool_call 一到就建立 provisional 路由。alias 按父会话隔离，
     /// 避免两个会话恰好都把代理命名为同一个短名时串卡。
     pub(super) fn register_continuation(&self, sid: &str, tc_id: &str, input: &Value) {
-        let addressed = input.get("agent_id").and_then(Value::as_str)
-            .or_else(|| input.get("to").and_then(Value::as_str)).unwrap_or("");
-        if addressed.is_empty() || tc_id.is_empty() { return; }
-        let agent_id = self.sub.agent_aliases.lock_ok()
-            .get(&(sid.to_string(), addressed.to_string())).cloned()
+        let addressed = input
+            .get("agent_id")
+            .and_then(Value::as_str)
+            .or_else(|| input.get("to").and_then(Value::as_str))
+            .unwrap_or("");
+        if addressed.is_empty() || tc_id.is_empty() {
+            return;
+        }
+        let agent_id = self
+            .sub
+            .agent_aliases
+            .lock_ok()
+            .get(&(sid.to_string(), addressed.to_string()))
+            .cloned()
             .unwrap_or_else(|| addressed.to_string());
-        let message = input.get("message").and_then(Value::as_str).unwrap_or("").to_string();
-        let summary = input.get("summary").and_then(Value::as_str).filter(|s| !s.is_empty())
-            .unwrap_or("继续执行").to_string();
+        let message = input
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let summary = input
+            .get("summary")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("继续执行")
+            .to_string();
         let continuation = ActiveContinuation {
-            parent_sid: sid.to_string(), parent_tc: tc_id.to_string(),
-            summary: summary.clone(), message: message.clone(), opened_children: HashSet::new(),
+            parent_sid: sid.to_string(),
+            parent_tc: tc_id.to_string(),
+            summary: summary.clone(),
+            message: message.clone(),
+            opened_children: HashSet::new(),
         };
         // 同一 agent 尚有活跃续跑时，引擎会同步拒绝第二次 SendMessage；不能
         // 让这张注定失败的 provisional 卡覆盖仍在执行的真实 route。
-        self.sub.active_continuations.lock_ok().entry(agent_id).or_insert(continuation);
-        self.sub.agent_inputs.lock_ok().insert(tc_id.to_string(), (summary, message));
+        self.sub
+            .active_continuations
+            .lock_ok()
+            .entry(agent_id)
+            .or_insert(continuation);
+        self.sub
+            .agent_inputs
+            .lock_ok()
+            .insert(tc_id.to_string(), (summary, message));
     }
 
     /// async_launched 是 SendMessage 对目标 agent_id 的权威确认。若 tool_call
     /// 阶段以 alias 暂存，这里把 active key 换成响应中的真实 id。
     pub(super) fn confirm_continuation(&self, sid: &str, tc_id: &str, resp: &Value) {
         let confirmed = resp.get("agentId").and_then(Value::as_str).unwrap_or("");
-        if confirmed.is_empty() { return; }
+        if confirmed.is_empty() {
+            return;
+        }
         let mut active = self.sub.active_continuations.lock_ok();
-        let provisional = active.iter()
+        let provisional = active
+            .iter()
             .find(|(_, c)| c.parent_sid == sid && c.parent_tc == tc_id)
             .map(|(agent_id, _)| agent_id.clone());
         if let Some(provisional) = provisional.filter(|id| id != confirmed) {
@@ -149,7 +198,9 @@ impl Inner {
 
     /// SendMessage 没有真正转后台时撤销该工具卡的 provisional active。
     pub(super) fn cancel_continuation(&self, sid: &str, tc_id: &str) {
-        self.sub.active_continuations.lock_ok()
+        self.sub
+            .active_continuations
+            .lock_ok()
             .retain(|_, c| !(c.parent_sid == sid && c.parent_tc == tc_id));
         self.sub.agent_inputs.lock_ok().remove(tc_id);
     }
@@ -160,19 +211,34 @@ impl Inner {
     pub(super) fn prepare_continuation_event(&self, child_sid: &str, event: &mut Value) -> bool {
         let by_child = self.sub.child_agents.lock_ok().get(child_sid).cloned();
         let agent_id = by_child.or_else(|| {
-            let parent = event.get("parent_session_id").and_then(Value::as_str).unwrap_or("");
-            let tc = event.get("parent_tool_call_id").and_then(Value::as_str).unwrap_or("");
-            if parent.is_empty() || tc.is_empty() { return None; }
+            let parent = event
+                .get("parent_session_id")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let tc = event
+                .get("parent_tool_call_id")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if parent.is_empty() || tc.is_empty() {
+                return None;
+            }
             self.agent_id_for_origin(&self.shell_sid_of(parent), tc)
         });
-        let Some(agent_id) = agent_id else { return false };
+        let Some(agent_id) = agent_id else {
+            return false;
+        };
         let (continuation, first_for_child) = {
             let mut active = self.sub.active_continuations.lock_ok();
-            let Some(c) = active.get_mut(&agent_id) else { return false };
+            let Some(c) = active.get_mut(&agent_id) else {
+                return false;
+            };
             let first = c.opened_children.insert(child_sid.to_string());
             (c.clone(), first)
         };
-        self.sub.child_agents.lock_ok().insert(child_sid.to_string(), agent_id);
+        self.sub
+            .child_agents
+            .lock_ok()
+            .insert(child_sid.to_string(), agent_id);
         if let Some(obj) = event.as_object_mut() {
             obj.insert("parent_session_id".into(), json!(continuation.parent_sid));
             obj.insert("parent_tool_call_id".into(), json!(continuation.parent_tc));
@@ -194,17 +260,30 @@ impl Inner {
                     route.background = true;
                     route.line_buf.clear();
                 }
-                None => { routes.insert(child_sid.to_string(), SubagentRoute {
-                    parent_sid: continuation.parent_sid.clone(), parent_tc: continuation.parent_tc.clone(),
-                    line_buf: String::new(), background: true,
-                }); }
+                None => {
+                    routes.insert(
+                        child_sid.to_string(),
+                        SubagentRoute {
+                            parent_sid: continuation.parent_sid.clone(),
+                            parent_tc: continuation.parent_tc.clone(),
+                            line_buf: String::new(),
+                            background: true,
+                        },
+                    );
+                }
             }
         }
-        if !first_for_child { return true; }
+        if !first_for_child {
+            return true;
+        }
         let reopened = {
             let mut sessions = self.sess.sessions.lock_ok();
-            let Some(child) = sessions.get_mut(child_sid) else { return true };
-            if child.running { false } else {
+            let Some(child) = sessions.get_mut(child_sid) else {
+                return true;
+            };
+            if child.running {
+                false
+            } else {
                 child.running = true;
                 child.compacting = false;
                 child.manual_compact = false;
@@ -220,7 +299,9 @@ impl Inner {
         };
         if reopened {
             if !continuation.message.is_empty() {
-                self.push_frame(child_sid, |seq| frame::user_input(&continuation.message, seq));
+                self.push_frame(child_sid, |seq| {
+                    frame::user_input(&continuation.message, seq)
+                });
             }
             self.push_frame(child_sid, frame::task_started);
             self.write_sidecar(child_sid, |m| {
@@ -229,10 +310,13 @@ impl Inner {
                 m["status"] = json!(SessionStatus::Running.as_str());
             });
         }
-        self.push_frame(&continuation.parent_sid, |seq| frame::tool_call_progress(
-            &continuation.parent_tc,
-            json!({ "kind": "child_session", "childSessionId": child_sid }), seq,
-        ));
+        self.push_frame(&continuation.parent_sid, |seq| {
+            frame::tool_call_progress(
+                &continuation.parent_tc,
+                json!({ "kind": "child_session", "childSessionId": child_sid }),
+                seq,
+            )
+        });
         true
     }
 
@@ -294,16 +378,23 @@ impl Inner {
                 None
             }
         };
-        let Some((psid, ptc, workdir, model_name)) = claimed else { return false };
+        let Some((psid, ptc, workdir, model_name)) = claimed else {
+            return false;
+        };
         let (mut title, prompt) = self
-            .sub.agent_inputs
+            .sub
+            .agent_inputs
             .lock_ok()
             .get(&ptc)
             .cloned()
             .unwrap_or_else(|| ("子代理".into(), String::new()));
         // 事件戳的 parent_description 优先(939e03e):后台代理跨轮续跑时
         // tc_id 暂存可能已清,戳记恒在
-        if let Some(d) = event.get("parent_description").and_then(|v| v.as_str()).filter(|d| !d.is_empty()) {
+        if let Some(d) = event
+            .get("parent_description")
+            .and_then(|v| v.as_str())
+            .filter(|d| !d.is_empty())
+        {
             title = d.to_string();
         }
         self.sess.sessions.lock_ok().insert(
@@ -343,17 +434,33 @@ impl Inner {
         });
         // 认领晚于 async_launched 的情形(后台子代理首个转发事件稍后才到):
         // 登记表已有该父工具的后台标记,路由生来即后台,跨轮存活
-        let explicitly_background = self.sub.background_agents.lock_ok().values()
+        let explicitly_background = self
+            .sub
+            .background_agents
+            .lock_ok()
+            .values()
             .any(|(s, tc)| s == &psid && tc == &ptc);
-        let continuing = self.sub.active_continuations.lock_ok().values()
+        let continuing = self
+            .sub
+            .active_continuations
+            .lock_ok()
+            .values()
             .any(|c| c.parent_sid == psid && c.parent_tc == ptc);
         let background = explicitly_background || continuing;
         self.sub.subagents.lock_ok().insert(
             child_sid.to_string(),
-            SubagentRoute { parent_sid: psid.clone(), parent_tc: ptc.clone(), line_buf: String::new(), background },
+            SubagentRoute {
+                parent_sid: psid.clone(),
+                parent_tc: ptc.clone(),
+                line_buf: String::new(),
+                background,
+            },
         );
         if let Some(agent_id) = self.agent_id_for_origin(&psid, &ptc) {
-            self.sub.child_agents.lock_ok().insert(child_sid.to_string(), agent_id);
+            self.sub
+                .child_agents
+                .lock_ok()
+                .insert(child_sid.to_string(), agent_id);
         }
         // 子会话回放形状与主会话一致:user-input(任务)→ task-started → …
         if !prompt.is_empty() {
@@ -374,7 +481,8 @@ impl Inner {
     /// 子代理事件在父卡进度窗的内联预览(完整对话在子会话本体)。
     pub(super) fn subagent_feed(&self, child_sid: &str, etype: &str, event: &Value, data: &Value) {
         let Some((psid, ptc)) = self
-            .sub.subagents
+            .sub
+            .subagents
             .lock_ok()
             .get(child_sid)
             .map(|r| (r.parent_sid.clone(), r.parent_tc.clone()))
@@ -402,7 +510,11 @@ impl Inner {
                 });
             }
             "tool_result" => {
-                let tc_id = event.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let tc_id = event
+                    .get("tool_call_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 self.push_frame(&psid, |seq| {
                     frame::tool_call_progress(
                         &ptc,
@@ -415,7 +527,9 @@ impl Inner {
                 let text = data.get("text").and_then(|v| v.as_str()).unwrap_or("");
                 let lines = {
                     let mut subs = self.sub.subagents.lock_ok();
-                    let Some(r) = subs.get_mut(child_sid) else { return };
+                    let Some(r) = subs.get_mut(child_sid) else {
+                        return;
+                    };
                     r.line_buf.push_str(text);
                     let mut out = Vec::new();
                     while let Some(pos) = r.line_buf.find('\n') {
@@ -429,12 +543,19 @@ impl Inner {
                 };
                 for line in lines {
                     self.push_frame(&psid, |seq| {
-                        frame::tool_call_progress(&ptc, json!({ "kind": "subagent_text", "line": line }), seq)
+                        frame::tool_call_progress(
+                            &ptc,
+                            json!({ "kind": "subagent_text", "line": line }),
+                            seq,
+                        )
                     });
                 }
             }
             "error" => {
-                let msg = data.get("error").and_then(|v| v.as_str()).unwrap_or("子代理出错");
+                let msg = data
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("子代理出错");
                 self.push_frame(&psid, |seq| {
                     frame::tool_call_progress(
                         &ptc,
@@ -479,7 +600,12 @@ impl Inner {
             let closing = subs
                 .iter_mut()
                 .filter(|(_, r)| r.parent_sid == sid && r.parent_tc == tc_id)
-                .map(|(child, r)| (child.clone(), std::mem::take(&mut r.line_buf).trim().to_string()))
+                .map(|(child, r)| {
+                    (
+                        child.clone(),
+                        std::mem::take(&mut r.line_buf).trim().to_string(),
+                    )
+                })
                 .collect();
             subs.retain(|_, r| !(r.parent_sid == sid && r.parent_tc == tc_id));
             closing
@@ -487,7 +613,11 @@ impl Inner {
         for (child, tail) in closing {
             if !tail.is_empty() {
                 self.push_frame(sid, |seq| {
-                    frame::tool_call_progress(tc_id, json!({ "kind": "subagent_text", "line": tail }), seq)
+                    frame::tool_call_progress(
+                        tc_id,
+                        json!({ "kind": "subagent_text", "line": tail }),
+                        seq,
+                    )
                 });
             }
             self.close_child(&child, status);
@@ -500,7 +630,12 @@ impl Inner {
     /// include_background=false(turn/stopped)放过后台代理——它们的子循环
     /// 跨轮存活,收尾归 task_notification;true(引擎不再服务的和解)全关,
     /// 后台登记一并清除(通知永远不会来了)。
-    pub(super) fn close_children_of_session(&self, sid: &str, status: SessionStatus, include_background: bool) {
+    pub(super) fn close_children_of_session(
+        &self,
+        sid: &str,
+        status: SessionStatus,
+        include_background: bool,
+    ) {
         let children: Vec<String> = {
             let mut subs = self.sub.subagents.lock_ok();
             let children = subs
@@ -515,16 +650,24 @@ impl Inner {
             self.close_child(&child, status);
         }
         if include_background {
-            self.sub.background_agents.lock_ok().retain(|_, (s, _)| s != sid);
+            self.sub
+                .background_agents
+                .lock_ok()
+                .retain(|_, (s, _)| s != sid);
             let continuation_tcs: Vec<String> = {
                 let mut active = self.sub.active_continuations.lock_ok();
-                let tcs = active.values().filter(|c| c.parent_sid == sid)
-                    .map(|c| c.parent_tc.clone()).collect();
+                let tcs = active
+                    .values()
+                    .filter(|c| c.parent_sid == sid)
+                    .map(|c| c.parent_tc.clone())
+                    .collect();
                 active.retain(|_, c| c.parent_sid != sid);
                 tcs
             };
             let mut inputs = self.sub.agent_inputs.lock_ok();
-            for tc in continuation_tcs { inputs.remove(&tc); }
+            for tc in continuation_tcs {
+                inputs.remove(&tc);
+            }
         }
     }
 
@@ -537,16 +680,27 @@ impl Inner {
         let get = |k: &str| resp.get(k).and_then(|v| v.as_str()).unwrap_or("");
         let agent_id = get("agentId");
         if !agent_id.is_empty() {
-            self.sub.background_agents
+            self.sub
+                .background_agents
                 .lock_ok()
                 .insert(agent_id.to_string(), (sid.to_string(), tc_id.to_string()));
-            let input_name = self.sub.agent_names.lock_ok().remove(tc_id).unwrap_or_default();
+            let input_name = self
+                .sub
+                .agent_names
+                .lock_ok()
+                .remove(tc_id)
+                .unwrap_or_default();
             let response_name = get("name");
-            let name = if response_name.is_empty() { input_name.as_str() } else { response_name };
+            let name = if response_name.is_empty() {
+                input_name.as_str()
+            } else {
+                response_name
+            };
             self.register_agent_identity(sid, tc_id, agent_id, name);
         }
         if let Some(r) = self
-            .sub.subagents
+            .sub
+            .subagents
             .lock_ok()
             .values_mut()
             .find(|r| r.parent_sid == sid && r.parent_tc == tc_id)
@@ -561,9 +715,12 @@ impl Inner {
             )
         });
         let label = agent_label(get("name"), get("description"), agent_id);
-        let text =
-            format!("⏳ 子代理已转入后台继续执行({label}),完成后结果将回填此卡,并在对话流以 📌 通知");
-        self.push_frame(sid, |seq| frame::tool_call_completed(tc_id, &text, &[], seq));
+        let text = format!(
+            "⏳ 子代理已转入后台继续执行({label}),完成后结果将回填此卡,并在对话流以 📌 通知"
+        );
+        self.push_frame(sid, |seq| {
+            frame::tool_call_completed(tc_id, &text, &[], seq)
+        });
     }
 
     /// task_notification 收尾后台代理:按 agent_id 反查父卡,Result 正文
@@ -595,7 +752,9 @@ impl Inner {
             self.push_frame(&psid, |seq| frame::tool_call_failed(&ptc, result, seq));
         } else {
             let images = super::normalize::extract_upload_paths(result);
-            self.push_frame(&psid, |seq| frame::tool_call_completed(&ptc, result, &images, seq));
+            self.push_frame(&psid, |seq| {
+                frame::tool_call_completed(&ptc, result, &images, seq)
+            });
         }
         true
     }
@@ -604,7 +763,9 @@ impl Inner {
     /// task_notification 独立结果卡承载，不能再次灌进 SendMessage 卡。
     pub(super) fn continuation_finished(&self, data: &Value) -> bool {
         let agent_id = data.get("agent_id").and_then(Value::as_str).unwrap_or("");
-        if agent_id.is_empty() { return false; }
+        if agent_id.is_empty() {
+            return false;
+        }
         let Some(continuation) = self.sub.active_continuations.lock_ok().remove(agent_id) else {
             return false;
         };

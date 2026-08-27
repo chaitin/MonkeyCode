@@ -54,3 +54,24 @@
     background-color: transparent;
   }
 }
+
+/* keyframes 配额 2/5:WebKit 安全的加载指示。spinner 只旋转普通 border；
+ * 对话流的三个普通 DOM 点分别错峰引用 loading-dot。两者都由调用侧的
+ * prefers-reduced-motion 条件启用，不使用 SVG/SMIL/mask。 */
+@keyframes mc-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* keyframes 配额 3/5。关键点沿用原 loading-dots 的 0/29%/57% 节奏。 */
+@keyframes mc-loading-dot {
+  0%,
+  57%,
+  100% {
+    transform: translateY(0);
+  }
+  29% {
+    transform: translateY(-0.25rem);
+  }
+}

@@ -8,7 +8,10 @@
 
 use serde_json::{json, Value};
 
-use super::{clean_message, code_is_zero, other, snippet, unwrap_envelope, BzErr, BzResult, Envelope, Service};
+use super::{
+    clean_message, code_is_zero, other, snippet, unwrap_envelope, BzErr, BzResult, Envelope,
+    Service,
+};
 
 /// 同步新建密钥的名字(网关控制台里用户可见)。
 const SYNC_KEY_NAME: &str = "MonkeyCode";
@@ -48,7 +51,12 @@ pub(crate) const ENV_CONSOLE: Envelope = Envelope {
 };
 
 /// ai-models 请求(带 cookie),解包 {data,error}。
-async fn console_call(svc: &Service, method: reqwest::Method, path: &str, body: Option<&Value>) -> BzResult<Value> {
+async fn console_call(
+    svc: &Service,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<&Value>,
+) -> BzResult<Value> {
     let target = format!("{}{}", svc.ep.model_gateway, path);
     let (data, status) = svc.do_store(&svc.store, method, &target, body).await?;
     if let Ok(v) = serde_json::from_slice::<Value>(&data) {
@@ -89,24 +97,30 @@ async fn console_call(svc: &Service, method: reqwest::Method, path: &str, body: 
 /// 八九是会话没了,报"响应格式异常"只会让用户摸不着头脑。
 fn console_items(data: &Value) -> BzResult<Vec<Value>> {
     if data.is_null() {
-        return Err(BzErr::Unauthorized("百智云登录已失效,请重新登录后再同步".into()));
+        return Err(BzErr::Unauthorized(
+            "百智云登录已失效,请重新登录后再同步".into(),
+        ));
     }
-    if let Some(arr) = data.as_array().or_else(|| data.get("items").and_then(Value::as_array)) {
+    if let Some(arr) = data
+        .as_array()
+        .or_else(|| data.get("items").and_then(Value::as_array))
+    {
         return Ok(arr.clone());
     }
     // 真契约漂移:带上实际结构定位,但对象只报字段名——密钥列表响应含
     // 明文 api_key,原文进弹窗会随报障截图外传
     let shape = match data.as_object() {
-        Some(o) => format!("对象字段: {}", o.keys().cloned().collect::<Vec<_>>().join(",")),
+        Some(o) => format!(
+            "对象字段: {}",
+            o.keys().cloned().collect::<Vec<_>>().join(",")
+        ),
         None => snippet(&data.to_string(), 120),
     };
     Err(other(format!("模型服务列表响应格式异常({shape})")))
 }
 
 fn api_key_secret(item: &Value) -> &str {
-    item.get("api_key")
-        .and_then(Value::as_str)
-        .unwrap_or("")
+    item.get("api_key").and_then(Value::as_str).unwrap_or("")
 }
 
 fn api_key_active(item: &Value) -> bool {
@@ -139,7 +153,11 @@ async fn ensure_api_key(svc: &Service, known_keys: &[String]) -> BzResult<(Strin
             if api_key_secret(it) != k {
                 continue;
             }
-            let name = it.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let name = it
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             if !api_key_active(it) {
                 enable_api_key(svc, it)
                     .await
@@ -157,7 +175,11 @@ async fn ensure_api_key(svc: &Service, known_keys: &[String]) -> BzResult<(Strin
             .unwrap_or(false)
             && !api_key_secret(it).is_empty()
     }) {
-        let name = it.get("name").and_then(Value::as_str).unwrap_or("").to_string();
+        let name = it
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         if !api_key_active(it) {
             enable_api_key(svc, it)
                 .await
@@ -210,7 +232,9 @@ fn pick_key_name(existing: &[Value]) -> BzResult<String> {
             return Ok(name);
         }
     }
-    Err(other(format!("网关中 {SYNC_KEY_NAME} 系列密钥过多,请在百智云控制台清理后重试")))
+    Err(other(format!(
+        "网关中 {SYNC_KEY_NAME} 系列密钥过多,请在百智云控制台清理后重试"
+    )))
 }
 
 /// ai-models 通过 PUT 更新密钥状态,支持只传 status。
@@ -251,8 +275,8 @@ async fn model_catalog_page(svc: &Service, key: &str, after_id: Option<&str>) ->
         .bytes()
         .await
         .map_err(|e| other(format!("读取模型列表失败: {e}")))?;
-    let value: Value = serde_json::from_slice(&data)
-        .map_err(|e| other(format!("模型列表响应解析失败: {e}")))?;
+    let value: Value =
+        serde_json::from_slice(&data).map_err(|e| other(format!("模型列表响应解析失败: {e}")))?;
     if !(200..300).contains(&status) {
         let msg = value
             .pointer("/error/message")
@@ -315,7 +339,11 @@ async fn gateway_models(svc: &Service, key: &str) -> BzResult<(Vec<Value>, Vec<S
                 "source": SOURCE_BAIZHI,
             }));
         }
-        if !page.get("has_more").and_then(Value::as_bool).unwrap_or(false) {
+        if !page
+            .get("has_more")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
             if models.is_empty() {
                 notes.push("推理接口下没有可用模型".to_string());
             }
@@ -324,7 +352,12 @@ async fn gateway_models(svc: &Service, key: &str) -> BzResult<(Vec<Value>, Vec<S
         let next = page
             .get("last_id")
             .and_then(Value::as_str)
-            .or_else(|| items.last().and_then(|m| m.get("id")).and_then(Value::as_str))
+            .or_else(|| {
+                items
+                    .last()
+                    .and_then(|m| m.get("id"))
+                    .and_then(Value::as_str)
+            })
             .unwrap_or("")
             .trim();
         if next.is_empty() || after_id.as_deref() == Some(next) {
@@ -359,7 +392,12 @@ pub(crate) const ENV_MCP: Envelope = Envelope {
 };
 
 /// agent-toolkit 管理 API 请求。
-async fn mcp_call(svc: &Service, method: reqwest::Method, path: &str, body: Option<&Value>) -> BzResult<Value> {
+async fn mcp_call(
+    svc: &Service,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<&Value>,
+) -> BzResult<Value> {
     let target = format!("{}{}", svc.ep.mcp_gateway, path);
     let (data, status) = svc.do_store(&svc.store, method, &target, body).await?;
     unwrap_envelope(&data, status, &ENV_MCP)
@@ -372,7 +410,12 @@ async fn mcp_servers(svc: &Service) -> (Value, Vec<String>) {
 
     // 握手:agent-toolkit 的 sl-session 按 host 独立,先 GET / 领取
     let _ = svc
-        .do_store(&svc.store, reqwest::Method::GET, &format!("{}/", svc.ep.mcp_gateway), None)
+        .do_store(
+            &svc.store,
+            reqwest::Method::GET,
+            &format!("{}/", svc.ep.mcp_gateway),
+            None,
+        )
         .await;
 
     let svc_list = match mcp_call(svc, reqwest::Method::GET, "/api/v1/services", None).await {
@@ -380,22 +423,42 @@ async fn mcp_servers(svc: &Service) -> (Value, Vec<String>) {
         Err(e) => {
             let msg = e.msg();
             if msg.contains("未开通") {
-                return (empty, vec!["当前团队未开通 Agent 工具包,已跳过 MCP 同步(可在百智云控制台申请开通)".into()]);
+                return (
+                    empty,
+                    vec![
+                        "当前团队未开通 Agent 工具包,已跳过 MCP 同步(可在百智云控制台申请开通)"
+                            .into(),
+                    ],
+                );
             }
             return (empty, vec![format!("获取 MCP 服务失败: {msg}")]);
         }
     };
-    let items: Vec<Value> = svc_list.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let items: Vec<Value> = svc_list
+        .get("items")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     if items.is_empty() {
         return (empty, vec!["Agent 工具包下没有可用的 MCP 服务".into()]);
     }
     let codes: Vec<String> = items
         .iter()
-        .filter_map(|it| it.get("catalog_code").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_string))
+        .filter_map(|it| {
+            it.get("catalog_code")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
         .collect();
     let names: Vec<String> = items
         .iter()
-        .filter_map(|it| it.get("name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_string))
+        .filter_map(|it| {
+            it.get("name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
         .collect();
 
     let (key, note) = ensure_mcp_key(svc, &codes).await;
@@ -409,7 +472,11 @@ async fn mcp_servers(svc: &Service) -> (Value, Vec<String>) {
             "source": SOURCE_BAIZHI,
         }
     });
-    let mut notes = vec![format!("MCP 已同步(含 {} 个服务: {})", items.len(), names.join("、"))];
+    let mut notes = vec![format!(
+        "MCP 已同步(含 {} 个服务: {})",
+        items.len(),
+        names.join("、")
+    )];
     if !note.is_empty() {
         notes.push(note);
     }
@@ -431,7 +498,11 @@ async fn ensure_mcp_key(svc: &Service, tool_codes: &[String]) -> (String, String
         Ok(v) => v,
         Err(e) => return (String::new(), format!("获取 MCP 密钥列表失败: {}", e.msg())),
     };
-    let items: Vec<Value> = list.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let items: Vec<Value> = list
+        .get("items")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
 
     // 已有可用密钥(优先同名)→ reveal 取明文;停用的同名密钥先启用
     let mut pick: Option<&Value> = None;
@@ -464,7 +535,14 @@ async fn ensure_mcp_key(svc: &Service, tool_codes: &[String]) -> (String, String
         }
     }
     if let Some(it) = picked {
-        let rev = match mcp_call(svc, reqwest::Method::GET, &format!("/api/v1/api-keys/{}/reveal", id_path(&it)), None).await {
+        let rev = match mcp_call(
+            svc,
+            reqwest::Method::GET,
+            &format!("/api/v1/api-keys/{}/reveal", id_path(&it)),
+            None,
+        )
+        .await
+        {
             Ok(v) => v,
             Err(e) => return (String::new(), format!("获取 MCP 密钥明文失败: {}", e.msg())),
         };
@@ -487,7 +565,11 @@ async fn ensure_mcp_key(svc: &Service, tool_codes: &[String]) -> (String, String
         Ok(v) => v,
         Err(e) => return (String::new(), format!("创建 MCP 密钥失败: {}", e.msg())),
     };
-    let key = created.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let key = created
+        .get("key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if key.is_empty() {
         return (String::new(), "创建 MCP 密钥成功但响应未含明文".into());
     }
@@ -516,11 +598,17 @@ mod tests {
         let gw = "https://gw.example";
         assert_eq!(
             entry_route("gpt-5-codex", gw),
-            ("openai_responses", "https://gw.example/api/openai/v1".to_string())
+            (
+                "openai_responses",
+                "https://gw.example/api/openai/v1".to_string()
+            )
         );
         assert_eq!(
             entry_route("GPT-4o", gw),
-            ("openai_responses", "https://gw.example/api/openai/v1".to_string()),
+            (
+                "openai_responses",
+                "https://gw.example/api/openai/v1".to_string()
+            ),
             "大小写不敏感"
         );
         assert_eq!(
@@ -536,9 +624,18 @@ mod tests {
 
     #[test]
     fn pick_name_skips_taken() {
-        let items = vec![json!({"name": "MonkeyCode"}), json!({"name": "MonkeyCode-2"})];
-        assert_eq!(pick_key_name(&items).map_err(|e| e.msg()).unwrap(), "MonkeyCode-3");
-        assert_eq!(pick_key_name(&[]).map_err(|e| e.msg()).unwrap(), "MonkeyCode");
+        let items = vec![
+            json!({"name": "MonkeyCode"}),
+            json!({"name": "MonkeyCode-2"}),
+        ];
+        assert_eq!(
+            pick_key_name(&items).map_err(|e| e.msg()).unwrap(),
+            "MonkeyCode-3"
+        );
+        assert_eq!(
+            pick_key_name(&[]).map_err(|e| e.msg()).unwrap(),
+            "MonkeyCode"
+        );
     }
 
     #[test]

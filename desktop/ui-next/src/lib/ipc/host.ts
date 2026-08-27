@@ -184,23 +184,20 @@ export async function wslWorkdirBase(): Promise<string | null> {
   }
 }
 
-/** 系统目录选择;取消/浏览器模式返回 null。 */
+/** 系统目录选择;用户取消/浏览器模式返回 null，原生对话框失败则抛出。
+ *  失败不能伪装成取消：权限/ACL 配置异常时用户需要明确的恢复入口。 */
 export async function pickDirectory(defaultPath?: string): Promise<string | null> {
   if (!inDesktopShell()) return null;
-  try {
-    const res = await invoke<string | string[] | null>("plugin:dialog|open", {
-      // defaultPath 决定对话框开在哪:不给的话落点由平台自定(Windows 上是
-      // 进程 CWD = 安装目录),WSL 模式下更会开在 Windows 侧、选出来的路径
-      // 压根不属于当前运行环境(2026-08-07 对表旧 UI 补回;与导出引擎日志
-      // 落「下载」目录同一口径)
-      options: { directory: true, multiple: false, ...(defaultPath ? { defaultPath } : {}) },
-    });
-    if (typeof res === "string") return res;
-    if (Array.isArray(res)) return res[0] ?? null;
-    return null;
-  } catch {
-    return null;
-  }
+  const res = await invoke<string | string[] | null>("plugin:dialog|open", {
+    // defaultPath 决定对话框开在哪:不给的话落点由平台自定(Windows 上是
+    // 进程 CWD = 安装目录),WSL 模式下更会开在 Windows 侧、选出来的路径
+    // 压根不属于当前运行环境(2026-08-07 对表旧 UI 补回;与导出引擎日志
+    // 落「下载」目录同一口径)
+    options: { directory: true, multiple: false, ...(defaultPath ? { defaultPath } : {}) },
+  });
+  if (typeof res === "string") return res;
+  if (Array.isArray(res)) return res[0] ?? null;
+  return null;
 }
 
 /** 目录对话框的初始位置,按当前内核运行环境定:

@@ -71,7 +71,10 @@ impl Cdp {
 
     /// 列出全部标签页(含受控标注)。
     pub async fn tabs_list(&self) -> Result<Vec<TabInfo>, String> {
-        let res = self.bridge.call(Self::req(OP_TABS_LIST), CALL_TIMEOUT).await?;
+        let res = self
+            .bridge
+            .call(Self::req(OP_TABS_LIST), CALL_TIMEOUT)
+            .await?;
         serde_json::from_value(res).map_err(|e| format!("tabs.list 结果解析失败: {e}"))
     }
 

@@ -28,6 +28,8 @@ import { b64encode } from "@/lib/protocol/codec";
 import { bindActiveComposer, stashGet, stashSet } from "./stash";
 import {
   ackSteering,
+  beginEdit,
+  cancelEdit,
   claimHead,
   claimSteering,
   clearPending,
@@ -51,6 +53,7 @@ import {
   resumeAutomatic,
   retrySteering,
   subscribeSendQueueLane,
+  updateEdited,
   updateSendQueueLane,
   type LocalQueueAttachment,
   type SendQueueLane,
@@ -93,6 +96,11 @@ export interface ComposerCtl {
   discardSteeringQueued(id: string): void;
   removeQueued(id: string): void;
   reorderQueued(id: string, beforeId: string | null): void;
+  /** 当前 composer 是否正在持有某个 pending 项的编辑锁。 */
+  editingId: string | null;
+  beginEditQueued(id: string): void;
+  saveEditedQueued(): boolean;
+  cancelEditedQueued(): void;
   resumeQueue(): void;
   clearQueue(): void;
   discardUncertainQueued(id: string): void;
@@ -149,6 +157,9 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   const steering = useMemo(() => queue.steering ?? [], [queue.steering]);
   const steeringId = steering.find((entry) => entry.phase === "dispatching")?.item.id ?? null;
   const [atts, setAtts] = useState<ComposerAtt[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editingIdRef = useRef<string | null>(null);
+  const savedDraftRef = useRef<{ draft: string; atts: ComposerAtt[] } | null>(null);
   const [uploads, setUploads] = useState<ComposerUpload[]>([]);
   const [error, setError] = useState<string | null>(null);
   // 上行在途:user-input 发出到回执/开轮之间再发必须入队,否则第二条直发
@@ -166,6 +177,8 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   const [flushTick, setFlushTick] = useState(0);
   const handledFlushTickRef = useRef(0);
   const uploadSeqRef = useRef(0);
+  // 每次进入/退出编辑、切会话或卸载都会换代；上传完成只能写回发起时的 composer 上下文。
+  const attachmentContextRef = useRef(0);
   const errorTimer = useRef(0);
   const previousRunningRef = useRef(running);
   const currentRunningRef = useRef(running);
@@ -199,13 +212,14 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       setFlushTick((n) => n + 1);
     }, delay);
   }, []);
-
   // 编辑面快照(留档用):cleanup 时拿到的是最后一次已提交状态
   const snapRef = useRef<{ draft: string; atts: ComposerAtt[] }>({
     draft: "",
     atts: [],
   });
-  snapRef.current = { draft, atts };
+  // 编辑队列项期间，stash 必须看到进入编辑前的新消息草稿，而不是队列正文。
+  snapRef.current = savedDraftRef.current ?? { draft, atts };
+  editingIdRef.current = editingId;
   // 当前活跃会话(迟到的发送回执按它守卫,不污染切换后的会话)
   const activeRef = useRef(sessionId);
   activeRef.current = sessionId;
@@ -226,7 +240,11 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   // 是瞬态不入档,在途收尾回调按 id 过滤,清空后的 filter/map 无害)。
   // 留档挂在 cleanup:切走与卸载(关视图/进设置)统一走同一条路径。
   useEffect(() => {
+    attachmentContextRef.current += 1;
     const entry = stashGet(sessionId);
+    editingIdRef.current = null;
+    savedDraftRef.current = null;
+    setEditingId(null);
     setDraft(entry?.draft ?? "");
     setAtts(entry?.atts ? [...entry.atts] : []);
     setUploads([]);
@@ -240,11 +258,14 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     previousRunningRef.current = currentRunningRef.current;
     const unbind = bindActiveComposer(sessionId);
     return () => {
+      attachmentContextRef.current += 1;
       unbind();
+      const lockedId = editingIdRef.current;
+      if (lockedId) updateSendQueueLane<LocalQueueAttachment>(target, (lane) => cancelEdit(lane, lockedId));
       stashSet(sessionId, snapRef.current);
       clearRetry();
     };
-  }, [sessionId, clearRetry]);
+  }, [sessionId, target, clearRetry]);
 
   useEffect(() => () => window.clearTimeout(errorTimer.current), []);
 
@@ -299,6 +320,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
   }, [flushTick, updateQueue]);
 
   const send = useCallback((): boolean => {
+    if (editingIdRef.current) return false;
     const content = draft.trim();
     if (!content && atts.length === 0) return false;
 
@@ -525,7 +547,13 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
 
   /** 上传一个来源并入列附件;失败外显、不阻断后续文件。 */
   const uploadOne = useCallback(
-    async (run: (onProgress: (sent: number, total: number) => void, signal: AbortSignal) => Promise<{ path: string }>, name: string, indeterminate: boolean, fallbackIsImage: boolean) => {
+    async (
+      run: (onProgress: (sent: number, total: number) => void, signal: AbortSignal) => Promise<{ path: string }>,
+      name: string,
+      indeterminate: boolean,
+      fallbackIsImage: boolean,
+      context: number,
+    ) => {
       const id = ++uploadSeqRef.current;
       const forSid = sessionId;
       const ctl = new AbortController();
@@ -558,9 +586,11 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
         // 不守卫的话它会落进**当前**会话的 composer,而 path 是按旧工作区
         // 算的相对路径——附件行发出去模型根本读不到那个文件(旧 UI
         // useSession.ts:555-571 同款纪元守卫)
-        if (activeRef.current === forSid) {
+        const sameContext = attachmentContextRef.current === context;
+        if (activeRef.current === forSid && sameContext) {
           setAtts((list) => [...list, att]);
-        } else {
+        } else if (activeRef.current !== forSid) {
+          // 普通草稿上传期间切会话仍回到原 sid stash。
           const prev = stashGet(forSid);
           stashSet(forSid, {
             draft: prev?.draft ?? "",
@@ -568,7 +598,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
           });
         }
       } catch (e) {
-        if (!ctl.signal.aborted) {
+        if (!ctl.signal.aborted && attachmentContextRef.current === context) {
           notifyError(t("chat.uploadFailed", { reason: e instanceof Error ? e.message : String(e) }));
         }
       } finally {
@@ -580,7 +610,13 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
 
   const addFiles = useCallback(
     async (files: File[]) => {
+      if (editingIdRef.current) {
+        notifyError(t("chat.sendQueue.attachmentsReadOnly"));
+        return;
+      }
+      const context = attachmentContextRef.current;
       for (const f of files) {
+        if (attachmentContextRef.current !== context) break;
         const native = nativePathOf(f);
         await uploadOne(
           (onProgress, signal) =>
@@ -590,25 +626,36 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
           f.name,
           !!native || f.size === 0,
           f.type.startsWith("image/"),
+          context,
         );
       }
     },
-    [sessionId, uploadOne],
+    [notifyError, sessionId, uploadOne],
   );
 
   const addPaths = useCallback(
     async (paths: string[]) => {
+      if (editingIdRef.current) {
+        notifyError(t("chat.sendQueue.attachmentsReadOnly"));
+        return;
+      }
+      const context = attachmentContextRef.current;
       for (const p of paths) {
+        if (attachmentContextRef.current !== context) break;
         const name = p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
-        await uploadOne(() => uploadFilePath(sessionId, p), name, true, false);
+        await uploadOne(() => uploadFilePath(sessionId, p), name, true, false, context);
       }
     },
-    [sessionId, uploadOne],
+    [notifyError, sessionId, uploadOne],
   );
 
   const removeAtt = useCallback((index: number) => {
+    if (editingIdRef.current) {
+      notifyError(t("chat.sendQueue.attachmentsReadOnly"));
+      return;
+    }
     setAtts((list) => list.filter((_, i) => i !== index));
-  }, []);
+  }, [notifyError]);
 
   const steerQueued = useCallback(
     (id: string) => {
@@ -645,6 +692,84 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     },
     [running, composerReady, steeringSupported, sessionId, queue.pending, target, notifyError],
   );
+
+  const beginEditQueued = useCallback(
+    (id: string) => {
+      if (editingIdRef.current || uploads.length > 0) {
+        if (uploads.length > 0) notifyError(t("chat.sendQueue.editUploadPending"));
+        return;
+      }
+      let acquired = false;
+      const result = updateSendQueueLane<LocalQueueAttachment>(target, (lane) => {
+        const next = beginEdit(lane, id);
+        acquired = next !== lane;
+        return next;
+      });
+      const lockedItem = acquired ? result.lane.pending.find((entry) => entry.id === id) : undefined;
+      if (!lockedItem || result.lane.editing?.itemId !== id) {
+        notifyError(t("chat.sendQueue.editConflict"));
+        return;
+      }
+      if (!result.ok) {
+        updateSendQueueLane<LocalQueueAttachment>(target, (lane) => cancelEdit(lane, id));
+        notifyError(t("chat.sendQueue.persistenceFailed"));
+        return;
+      }
+      savedDraftRef.current = { draft, atts: [...atts] };
+      attachmentContextRef.current += 1;
+      editingIdRef.current = id;
+      setEditingId(id);
+      setDraft(lockedItem.content);
+      setAtts([...lockedItem.attachments]);
+    },
+    [atts, draft, notifyError, target, uploads.length],
+  );
+
+  const restoreDraftAfterEdit = useCallback(() => {
+    const saved = savedDraftRef.current ?? { draft: "", atts: [] };
+    attachmentContextRef.current += 1;
+    savedDraftRef.current = null;
+    editingIdRef.current = null;
+    setEditingId(null);
+    setUploads([]);
+    setDraft(saved.draft);
+    setAtts([...saved.atts]);
+  }, []);
+
+  const saveEditedQueued = useCallback((): boolean => {
+    const id = editingIdRef.current;
+    const content = draft.trim();
+    if (!id || (!content && atts.length === 0) || uploads.length > 0) return false;
+    let updated = false;
+    let lockedLane: SendQueueLane<LocalQueueAttachment> | null = null;
+    const result = updateSendQueueLane<LocalQueueAttachment>(target, (lane) => {
+      lockedLane = lane;
+      const next = updateEdited(lane, id, content, atts);
+      updated = next !== lane;
+      return next;
+    });
+    if (!updated) {
+      notifyError(t("chat.sendQueue.editConflict"));
+      restoreDraftAfterEdit();
+      return false;
+    }
+    if (!result.ok) {
+      // writeSendQueueLane 内存先提交；持久化失败时恢复转换前带锁原项，保留编辑面供重试。
+      if (lockedLane) updateSendQueueLane<LocalQueueAttachment>(target, () => lockedLane!);
+      notifyError(t("chat.sendQueue.persistenceFailed"));
+      return false;
+    }
+    restoreDraftAfterEdit();
+    return true;
+  }, [atts, draft, notifyError, restoreDraftAfterEdit, target, uploads.length]);
+
+  const cancelEditedQueued = useCallback(() => {
+    const id = editingIdRef.current;
+    if (!id) return;
+    const result = updateSendQueueLane<LocalQueueAttachment>(target, (lane) => cancelEdit(lane, id));
+    if (!result.ok) notifyError(t("chat.sendQueue.persistenceFailed"));
+    restoreDraftAfterEdit();
+  }, [notifyError, restoreDraftAfterEdit, target]);
 
   const removeQueued = useCallback(
     (id: string) => {
@@ -693,6 +818,10 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       discardSteeringQueued,
       removeQueued,
       reorderQueued,
+      editingId,
+      beginEditQueued,
+      saveEditedQueued,
+      cancelEditedQueued,
       resumeQueue,
       clearQueue,
       discardUncertainQueued,
@@ -717,6 +846,10 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       discardSteeringQueued,
       removeQueued,
       reorderQueued,
+      editingId,
+      beginEditQueued,
+      saveEditedQueued,
+      cancelEditedQueued,
       resumeQueue,
       clearQueue,
       discardUncertainQueued,

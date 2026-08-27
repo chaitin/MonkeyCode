@@ -142,12 +142,24 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   const settingsRef = useRef<SettingsViewHandle>(null);
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null);
   const [cloudReload, setCloudReload] = useState(0);
+  const [cloudRefresh, setCloudRefresh] = useState(0);
+  const [cloudIdentityRevision, setCloudIdentityRevision] = useState(0);
   // 工作台状态机(槽位/布局树/焦点;toast 路由与通知抑制要在渲染分支之外读)
   const split = useSplitState();
+  const reloadCloud = useCallback(() => setCloudReload((n) => n + 1), []);
+  const refreshCloud = useCallback(() => setCloudRefresh((n) => n + 1), []);
+  const clearCloud = split.clearCloud;
+  const onMcSessionChanged = useCallback(() => {
+    // Cookie 会话与 transport 配置是两条代次：会话变化先撤下旧账号槽位与
+    // runtime，再让列表/项目和 coordinator 重新确认当前账号。
+    clearCloud();
+    setCloudIdentityRevision((n) => n + 1);
+    reloadCloud();
+  }, [clearCloud, reloadCloud]);
   // 云端数据源(任务列云端 tab 与格内 CloudTaskView 同一份;工作台即主壳,
   // 恒启用)
-  const cloudFeed = useCloudTasks(cloudReload, true);
-  const cloudProjects = useCloudProjects(cloudReload, true);
+  const cloudFeed = useCloudTasks(cloudReload, true, cloudRefresh);
+  const cloudProjects = useCloudProjects(cloudReload, true, cloudRefresh);
 
   // Windows/Linux 自绘标题栏左端的寄宿位(TitleBar leading → SplitView
   // 列收起时 portal ☰/新建;mac/浏览器恒 null)
@@ -550,7 +562,10 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   })();
 
   return (
-    <CloudQueueCoordinatorProvider onAttention={handleCloudQueueAttention}>
+    <CloudQueueCoordinatorProvider
+      identityRevision={cloudIdentityRevision}
+      onAttention={handleCloudQueueAttention}
+    >
       {(cloudQueue) => (
       <div className="flex h-full flex-col text-base-content">
       {/* leading = 标题栏左端寄宿位:任务列收起时 SplitView 把 ☰/新建
@@ -601,6 +616,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
               feed: cloudFeed,
               projects: cloudProjects,
               reloadKey: cloudReload,
+              refreshKey: cloudRefresh,
               onDeleted: (id) => {
                 // CloudTaskList 只在服务端删除成功后触发；此时再停 runtime 并删
                 // lane/index。失败路径不会触碰协调器和用户待发送内容。
@@ -611,7 +627,8 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
                 const at = split.slots.indexOf(cloudSlotId(id));
                 if (at >= 0) split.ejectAt(at);
               },
-              onChanged: () => setCloudReload((n) => n + 1),
+              onChanged: reloadCloud,
+              onRefresh: refreshCloud,
             }}
             admin={{
               attentionIds,
@@ -650,6 +667,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
             ref={settingsRef}
             onClose={closeSettings}
             hasRunningTask={sessions.some((s) => s.status === "running")}
+            onMcSessionChanged={onMcSessionChanged}
           />
         )}
       </div>

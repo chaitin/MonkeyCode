@@ -61,7 +61,10 @@ fn todos_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn todos_load(app: AppHandle, store: tauri::State<'_, TodosStore>) -> Result<Vec<TodoItem>, String> {
+pub fn todos_load(
+    app: AppHandle,
+    store: tauri::State<'_, TodosStore>,
+) -> Result<Vec<TodoItem>, String> {
     let _guard = store.0.lock_ok();
     let path = todos_path(&app)?;
     let data = match fs::read(&path) {
@@ -97,7 +100,11 @@ fn ensured_uploads_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// 开始分块上传(粘贴的截图等只有内容的来源):句柄进 uploads 的共用表,
 /// 后续块走 upload_chunk/finish/abort。rel_prefix 空串 = finish 回裸文件名。
 #[tauri::command]
-pub async fn todo_upload_begin(app: AppHandle, name: String, media_type: String) -> Result<Value, String> {
+pub async fn todo_upload_begin(
+    app: AppHandle,
+    name: String,
+    media_type: String,
+) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let dir = ensured_uploads_dir(&app)?;
         let handle = uploads::begin_in_dir(dir, "", &name, &media_type)?;

@@ -196,6 +196,8 @@ const CloudQueueContext = createContext<CloudQueueCoordinatorApi>(FALLBACK_API);
 export interface CloudQueueCoordinatorProviderProps {
   children: ReactNode | ((api: CloudQueueCoordinatorApi) => ReactNode);
   onAttention?: (taskId: string, reason: CloudAttentionReason) => void;
+  /** 账号 Cookie 会话变化时递增；独立于服务 transport generation。 */
+  identityRevision?: number;
   /** 测试可直接注入账号查询；生产缺省走 mc_status。 */
   loadIdentity?: () => Promise<CloudAccountIdentity | null>;
   createDeps?: (
@@ -209,14 +211,16 @@ export interface CloudQueueCoordinatorProviderProps {
 export function CloudQueueCoordinatorProvider({
   children,
   onAttention,
+  identityRevision = 0,
   loadIdentity = mcStatus,
   createDeps = defaultCloudRuntimeDeps,
 }: CloudQueueCoordinatorProviderProps) {
   const { generation, isCurrent } = useMcTransport();
   const [identityState, setIdentityState] = useState<{
     generation: number;
+    revision: number;
     scope: string | null;
-  }>({ generation, scope: null });
+  }>({ generation, revision: identityRevision, scope: null });
 
   useEffect(() => {
     let alive = true;
@@ -225,26 +229,32 @@ export function CloudQueueCoordinatorProvider({
         if (!alive || !isCurrent(generation)) return;
         const scope = stableCloudAccountScope(identity);
         setIdentityState((previous) =>
-          previous.generation === generation && previous.scope === scope ? previous : { generation, scope },
+          previous.generation === generation && previous.revision === identityRevision && previous.scope === scope
+            ? previous
+            : { generation, revision: identityRevision, scope },
         );
       })
       .catch(() => {
         if (alive && isCurrent(generation)) {
           setIdentityState((previous) =>
-            previous.generation === generation && previous.scope === null
+            previous.generation === generation && previous.revision === identityRevision && previous.scope === null
               ? previous
-              : { generation, scope: null },
+              : { generation, revision: identityRevision, scope: null },
           );
         }
       });
     return () => {
       alive = false;
     };
-  }, [generation, isCurrent, loadIdentity]);
+  }, [generation, identityRevision, isCurrent, loadIdentity]);
 
-  const accountScope = identityState.generation === generation ? identityState.scope : null;
+  const accountScope =
+    identityState.generation === generation && identityState.revision === identityRevision
+      ? identityState.scope
+      : null;
   const [coordinatorState, setCoordinatorState] = useState<{
     generation: number;
+    revision: number;
     accountScope: string;
     coordinator: CloudQueueCoordinatorCore;
   } | null>(null);
@@ -252,7 +262,9 @@ export function CloudQueueCoordinatorProvider({
   // 绝不缓存 taskId：同 ID 可能随后属于另一个账号，宁可保留旧 namespace。
   const pendingDrops = useMemo(() => new Map<string, Set<string>>(), []);
   const coordinator =
-    coordinatorState?.generation === generation && coordinatorState.accountScope === accountScope
+    coordinatorState?.generation === generation &&
+    coordinatorState.revision === identityRevision &&
+    coordinatorState.accountScope === accountScope
       ? coordinatorState.coordinator
       : null;
   useEffect(() => {
@@ -265,7 +277,7 @@ export function CloudQueueCoordinatorProvider({
         alive = false;
       };
     }
-    const registryKey = `${generation}\u0000${accountScope}`;
+    const registryKey = `${generation}\u0000${identityRevision}\u0000${accountScope}`;
     let registered = coordinatorRegistry.get(registryKey);
     if (!registered) {
       const coordinatorDeps: CloudQueueCoordinatorDeps = {
@@ -283,7 +295,12 @@ export function CloudQueueCoordinatorProvider({
     }
     registered.refs += 1;
     queueMicrotask(() => {
-      if (alive) setCoordinatorState({ generation, accountScope, coordinator: registered!.coordinator });
+      if (alive) setCoordinatorState({
+        generation,
+        revision: identityRevision,
+        accountScope,
+        coordinator: registered!.coordinator,
+      });
     });
     return () => {
       alive = false;
@@ -299,16 +316,16 @@ export function CloudQueueCoordinatorProvider({
         coordinatorRegistry.delete(registryKey);
       });
     };
-  }, [accountScope, createDeps, generation, isCurrent, onAttention]);
+  }, [accountScope, createDeps, generation, identityRevision, isCurrent, onAttention]);
 
   useEffect(() => {
     if (!coordinator || !accountScope) return;
-    const key = `${generation}\u0000${accountScope}`;
+    const key = `${generation}\u0000${identityRevision}\u0000${accountScope}`;
     const taskIds = pendingDrops.get(key);
     if (!taskIds) return;
     pendingDrops.delete(key);
     for (const taskId of taskIds) coordinator.dropTask(taskId);
-  }, [accountScope, coordinator, generation, pendingDrops]);
+  }, [accountScope, coordinator, generation, identityRevision, pendingDrops]);
 
   const api = useMemo<CloudQueueCoordinatorApi>(() => {
     if (!coordinator) {
@@ -317,7 +334,7 @@ export function CloudQueueCoordinatorProvider({
         // 仅 scope 已知、只是 coordinator 尚未挂好时可押后；身份未决直接保守保留。
         dropTask: (taskId) => {
           if (!accountScope) return;
-          const key = `${generation}\u0000${accountScope}`;
+          const key = `${generation}\u0000${identityRevision}\u0000${accountScope}`;
           const taskIds = pendingDrops.get(key) ?? new Set<string>();
           taskIds.add(taskId);
           pendingDrops.set(key, taskIds);
@@ -333,7 +350,7 @@ export function CloudQueueCoordinatorProvider({
       dropTask: (taskId) => coordinator.dropTask(taskId),
       attention: (taskId, reason) => onAttention?.(taskId, reason),
     };
-  }, [accountScope, coordinator, generation, onAttention, pendingDrops]);
+  }, [accountScope, coordinator, generation, identityRevision, onAttention, pendingDrops]);
 
   return (
     <CloudQueueContext.Provider value={api}>

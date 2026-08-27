@@ -2,22 +2,26 @@ package v1
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/GoYoko/web"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 	"github.com/patrickmn/go-cache"
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
 	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
 	vmidle "github.com/chaitin/MonkeyCode/backend/biz/vmidle/usecase"
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -49,6 +53,7 @@ type InternalHostHandler struct {
 	projectUsecase domain.ProjectUsecase
 	tokenProvider  *gituc.TokenProvider
 	idleRefresher  vmidle.VMIdleRefresher
+	internalToken  string
 }
 
 type taskLogStoreRepo interface {
@@ -63,6 +68,11 @@ const vmActivityTaskRefreshInterval = 5 * time.Minute
 
 func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
+	cfg := do.MustInvoke[*config.Config](i)
+	internalToken := strings.TrimSpace(cfg.TaskFlow.CallbackToken)
+	if internalToken == "" {
+		return nil, errors.New("taskflow.callback_token is required")
+	}
 	tf := do.MustInvoke[taskflow.Clienter](i)
 	rdb := do.MustInvoke[*redis.Client](i)
 	taskRepo := do.MustInvoke[domain.TaskRepo](i)
@@ -89,9 +99,11 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		projectUsecase: do.MustInvoke[domain.ProjectUsecase](i),
 		tokenProvider:  do.MustInvoke[*gituc.TokenProvider](i),
 		idleRefresher:  do.MustInvoke[vmidle.VMIdleRefresher](i),
+		internalToken:  internalToken,
 	}
 
 	g := w.Group("/internal")
+	g.Use(h.internalAuth())
 	g.POST("/check-token", web.BindHandler(h.CheckToken))
 	g.POST("/host-info", web.BindHandler(h.ReportHostInfo))
 	g.POST("/vm-info", web.BindHandler(h.ReportVirtualMachine))
@@ -107,6 +119,20 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	g.POST("/task-stream-ips", web.BindHandler(h.GetTaskStreamIPs))
 
 	return h, nil
+}
+
+func (h *InternalHostHandler) internalAuth() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			parts := strings.Fields(c.Request().Header.Get(echo.HeaderAuthorization))
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") ||
+				subtle.ConstantTimeCompare([]byte(parts[1]), []byte(h.internalToken)) != 1 {
+				c.Response().Header().Set("WWW-Authenticate", "Bearer")
+				return c.String(http.StatusUnauthorized, "Unauthorized")
+			}
+			return next(c)
+		}
+	}
 }
 
 type VMActivityReq struct {

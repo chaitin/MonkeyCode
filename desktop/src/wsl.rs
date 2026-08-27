@@ -19,7 +19,11 @@ pub fn wsl_exe() -> String {
 /// 壳跨 host/guest 的文件系统访问统一经 host_fs_view 走到这里。
 #[cfg_attr(not(windows), allow(dead_code))] // 非 Windows 只有 host_fs_view 的恒等分支
 pub fn unc_path(distro: &str, guest_path: &str) -> PathBuf {
-    PathBuf::from(format!(r"\\wsl$\{}{}", distro, guest_path.replace('/', r"\")))
+    PathBuf::from(format!(
+        r"\\wsl$\{}{}",
+        distro,
+        guest_path.replace('/', r"\")
+    ))
 }
 
 /// unc_path 的逆:`\\wsl$\<d>\…` / `\\wsl.localhost\<d>\…` → (发行版, guest 路径)。
@@ -29,10 +33,10 @@ pub fn unc_path(distro: &str, guest_path: &str) -> PathBuf {
 pub fn guest_path_of_unc(path: &str) -> Option<(String, String)> {
     fn strip_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
         let head = s.get(..prefix.len())?;
-        head.eq_ignore_ascii_case(prefix).then(|| &s[prefix.len()..])
+        head.eq_ignore_ascii_case(prefix)
+            .then(|| &s[prefix.len()..])
     }
-    let rest =
-        strip_ci(path, r"\\wsl$\").or_else(|| strip_ci(path, r"\\wsl.localhost\"))?;
+    let rest = strip_ci(path, r"\\wsl$\").or_else(|| strip_ci(path, r"\\wsl.localhost\"))?;
     let (distro, tail) = match rest.split_once('\\') {
         Some((d, t)) => (d, format!("/{}", t.replace('\\', "/"))),
         None => (rest, "/".to_string()),
@@ -41,7 +45,11 @@ pub fn guest_path_of_unc(path: &str) -> Option<(String, String)> {
         return None;
     }
     // 去掉对话框可能带的尾随分隔符(\\wsl$\d\home\u\ → /home/u)
-    let tail = if tail.len() > 1 { tail.trim_end_matches('/').to_string() } else { tail };
+    let tail = if tail.len() > 1 {
+        tail.trim_end_matches('/').to_string()
+    } else {
+        tail
+    };
     Some((distro.to_string(), tail))
 }
 
@@ -77,7 +85,9 @@ pub fn guest_path_of_drive(mount_root: &str, path: &str) -> Option<String> {
 pub fn derive_mount_root(host: &Path, guest: &str) -> Option<String> {
     // 空根产出的就是 `/c/Users/…` 纯尾巴,正好用作后缀匹配
     let tail = guest_path_of_drive("", &host.to_string_lossy())?;
-    guest.strip_suffix(&tail).map(|root| root.trim_end_matches('/').to_string())
+    guest
+        .strip_suffix(&tail)
+        .map(|root| root.trim_end_matches('/').to_string())
 }
 
 /// guest 路径的宿主文件系统视角:Windows 经 \\wsl$ UNC;非 Windows
@@ -152,7 +162,11 @@ pub fn run_wsl_bytes(args: &[String], timeout: Duration) -> Result<Vec<u8>, Stri
                 if Instant::now() > deadline {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Err(format!("wsl 命令超时({}s): {}", timeout.as_secs(), args.join(" ")));
+                    return Err(format!(
+                        "wsl 命令超时({}s): {}",
+                        timeout.as_secs(),
+                        args.join(" ")
+                    ));
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
@@ -178,11 +192,17 @@ pub fn run_wsl_bytes(args: &[String], timeout: Duration) -> Result<Vec<u8>, Stri
             ));
         }
     };
-    let stderr = stderr_rx.recv_timeout(Duration::from_millis(200)).unwrap_or_default();
+    let stderr = stderr_rx
+        .recv_timeout(Duration::from_millis(200))
+        .unwrap_or_default();
     if !status.success() {
         let stdout_text = decode_wsl_output(&stdout);
         let stderr_text = decode_wsl_output(&stderr);
-        let msg = if stderr_text.trim().is_empty() { &stdout_text } else { &stderr_text };
+        let msg = if stderr_text.trim().is_empty() {
+            &stdout_text
+        } else {
+            &stderr_text
+        };
         return Err(format!("wsl 命令失败({status}): {}", msg.trim()));
     }
     Ok(stdout)
@@ -439,11 +459,17 @@ pub fn ensure_guest_dir(distro: &str, path: &str, create: bool) -> Result<String
     } else {
         r#"cd -- "$1" && pwd -P"#
     };
-    let args: Vec<String> =
-        ["-d", distro, "--exec", "/bin/sh", "-c", script, "sh", path].map(String::from).to_vec();
+    let args: Vec<String> = ["-d", distro, "--exec", "/bin/sh", "-c", script, "sh", path]
+        .map(String::from)
+        .to_vec();
     match run_wsl(&args, Duration::from_secs(30)) {
         Ok(out) => {
-            let canon = out.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+            let canon = out
+                .lines()
+                .rev()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .unwrap_or("");
             if canon.starts_with('/') {
                 Ok(canon.to_string())
             } else {
@@ -454,9 +480,9 @@ pub fn ensure_guest_dir(distro: &str, path: &str, create: bool) -> Result<String
         // 只有 mkdir/cd,失败即目录不存在/不可进入;文案必须含"目录不存在"
         // (前端 offerCreate 按此匹配给"创建"入口)。其余错误(wsl.exe 起
         // 不来、超时)按环境错误原样上抛,不能伪装成目录问题诱导用户点创建
-        Err(e) if e.starts_with("wsl 命令失败") => {
-            Err(format!("工作区目录不存在或不可进入(发行版 {distro} 内): {path}\n{e}"))
-        }
+        Err(e) if e.starts_with("wsl 命令失败") => Err(format!(
+            "工作区目录不存在或不可进入(发行版 {distro} 内): {path}\n{e}"
+        )),
         Err(e) => Err(e),
     }
 }
@@ -464,14 +490,24 @@ pub fn ensure_guest_dir(distro: &str, path: &str, create: bool) -> Result<String
 /// guest 内网络模式探测(mcp.json 物化时决定浏览器 MCP 是否可用)。
 /// 失败(未装 WSL、老版无 wslinfo、发行版异常)一律视为 "nat" 降级。
 pub fn networking_mode(distro: &str) -> String {
-    let args: Vec<String> = ["-d", distro, "--exec", "/bin/sh", "-c",
-        "wslinfo --networking-mode 2>/dev/null || echo nat"]
-        .map(String::from)
-        .to_vec();
+    let args: Vec<String> = [
+        "-d",
+        distro,
+        "--exec",
+        "/bin/sh",
+        "-c",
+        "wslinfo --networking-mode 2>/dev/null || echo nat",
+    ]
+    .map(String::from)
+    .to_vec();
     match run_wsl(&args, Duration::from_secs(30)) {
         Ok(out) => {
             let mode = out.trim().to_lowercase();
-            if mode.is_empty() { "nat".into() } else { mode }
+            if mode.is_empty() {
+                "nat".into()
+            } else {
+                mode
+            }
         }
         Err(e) => {
             eprintln!("[desktop] WSL 网络模式探测失败,按 nat 处理: {e}");
@@ -486,8 +522,9 @@ pub fn networking_mode(distro: &str) -> String {
 /// (退出码 1,引擎已自退的常态)与失败都只记日志,不上抛。
 pub fn kill_guest_engine(distro: &str, bin_name: &str) {
     let pattern: String = bin_name.chars().take(15).collect();
-    let args: Vec<String> =
-        ["-d", distro, "--exec", "pkill", "-x", &pattern].map(String::from).to_vec();
+    let args: Vec<String> = ["-d", distro, "--exec", "pkill", "-x", &pattern]
+        .map(String::from)
+        .to_vec();
     if let Err(e) = run_wsl(&args, Duration::from_secs(10)) {
         eprintln!("[desktop] WSL 引擎兜底清理(无匹配即已退出,属常态): {e}");
     }
@@ -525,7 +562,10 @@ mod tests {
 
     #[test]
     fn decode_utf8_passthrough() {
-        assert_eq!(decode_wsl_output("Ubuntu-22.04\n发行版\n".as_bytes()), "Ubuntu-22.04\n发行版\n");
+        assert_eq!(
+            decode_wsl_output("Ubuntu-22.04\n发行版\n".as_bytes()),
+            "Ubuntu-22.04\n发行版\n"
+        );
     }
 
     #[test]
@@ -564,7 +604,10 @@ mod tests {
             guest_path_of_unc(r"\\wsl$\Ubuntu\home\u\"),
             Some(("Ubuntu".into(), "/home/u".into()))
         );
-        assert_eq!(guest_path_of_unc(r"\\wsl$\Ubuntu"), Some(("Ubuntu".into(), "/".into())));
+        assert_eq!(
+            guest_path_of_unc(r"\\wsl$\Ubuntu"),
+            Some(("Ubuntu".into(), "/".into()))
+        );
         // 中文发行版名
         assert_eq!(
             guest_path_of_unc(r"\\wsl$\测试版\home"),
@@ -584,11 +627,17 @@ mod tests {
             guest_path_of_drive("/mnt", r"C:\Users\u\proj"),
             Some("/mnt/c/Users/u/proj".into())
         );
-        assert_eq!(guest_path_of_drive("/mnt", "d:/dev//x/"), Some("/mnt/d/dev/x".into()));
+        assert_eq!(
+            guest_path_of_drive("/mnt", "d:/dev//x/"),
+            Some("/mnt/d/dev/x".into())
+        );
         // 盘根;automount root=/(空根)与自定义根
         assert_eq!(guest_path_of_drive("/mnt", r"C:\"), Some("/mnt/c".into()));
         assert_eq!(guest_path_of_drive("", r"C:\a"), Some("/c/a".into()));
-        assert_eq!(guest_path_of_drive("/custom/", r"E:\a"), Some("/custom/e/a".into()));
+        assert_eq!(
+            guest_path_of_drive("/custom/", r"E:\a"),
+            Some("/custom/e/a".into())
+        );
         // 相对盘符语义、UNC、posix、相对路径都不接
         assert_eq!(guest_path_of_drive("/mnt", "C:foo"), None);
         assert_eq!(guest_path_of_drive("/mnt", r"\\wsl$\Ubuntu\home"), None);
@@ -607,7 +656,10 @@ mod tests {
             derive_mount_root(Path::new(r"D:\dev"), "/custom/d/dev"),
             Some("/custom".into())
         );
-        assert_eq!(derive_mount_root(Path::new(r"C:\a"), "/c/a"), Some("".into()));
+        assert_eq!(
+            derive_mount_root(Path::new(r"C:\a"), "/c/a"),
+            Some("".into())
+        );
         // 反推不出:形状对不上或宿主路径不是盘符(Linux 冒烟恒等翻译)
         assert_eq!(derive_mount_root(Path::new(r"C:\a"), "/mnt/d/a"), None);
         assert_eq!(derive_mount_root(Path::new("/opt/x"), "/opt/x"), None);

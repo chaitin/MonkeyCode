@@ -11,8 +11,8 @@ import { CloudTaskList, useCloudProjects, useCloudTasks } from "./CloudTaskList"
 /** 数据注入随生产接线(Sidebar 顶层调 hook 供数):测试同构一个 Harness,
  * hook 结果注入 props,断言口径不变。 */
 function Harness(props: Omit<Parameters<typeof CloudTaskList>[0], "feed" | "projects">) {
-  const feed = useCloudTasks(props.reloadKey ?? 0);
-  const projects = useCloudProjects(props.reloadKey ?? 0);
+  const feed = useCloudTasks(props.reloadKey ?? 0, true, props.refreshKey ?? 0);
+  const projects = useCloudProjects(props.reloadKey ?? 0, true, props.refreshKey ?? 0);
   return <CloudTaskList {...props} feed={feed} projects={projects} />;
 }
 
@@ -152,13 +152,19 @@ describe("CloudTaskList", () => {
     await screen.findByText("修复登录");
   });
 
-  it("项目分组:组头区块标签,展开按 project_id 懒拉;无快速开始组(已撤)", async () => {
+  it("项目分组:展开按 project_id 懒拉，focus 会刷新已加载组", async () => {
     const calls: { cmd: string; args?: Record<string, unknown> }[] = [];
+    let groupedTasks: CloudTask[] = [{ id: "t1", title: "项目内任务", status: "finished" }];
+    let groupFailed = false;
+    let groupCalls = 0;
     stubShell((cmd, args) => {
       calls.push({ cmd, args });
       if (cmd === "mc_projects") return Promise.resolve({ projects: [{ id: "p1", name: "支付服务" }] });
       if (cmd !== "mc_tasks") return Promise.resolve({});
-      if (args?.projectId === "p1") return Promise.resolve({ tasks: [{ id: "t1", title: "项目内任务", status: "finished" }] });
+      if (args?.projectId === "p1") {
+        groupCalls += 1;
+        return groupFailed ? Promise.reject(new Error("瞬时断网")) : Promise.resolve({ tasks: groupedTasks });
+      }
       return Promise.resolve({ tasks, page_info: { total: 3 } });
     });
     render(<Harness currentId={null} onSelect={() => {}} />);
@@ -171,6 +177,76 @@ describe("CloudTaskList", () => {
     await userEvent.click(screen.getByText("支付服务"));
     expect(await screen.findByText("项目内任务")).toBeTruthy();
     expect(calls.some((c) => c.cmd === "mc_tasks" && c.args?.projectId === "p1")).toBe(true);
+
+    groupedTasks = [{ id: "t2", title: "网页新增的项目任务", status: "processing" }];
+    fireEvent.focus(window);
+    expect(await screen.findByText("网页新增的项目任务")).toBeTruthy();
+    expect(screen.queryByText("项目内任务")).toBeNull();
+
+    groupFailed = true;
+    const beforeFailure = groupCalls;
+    fireEvent.focus(window);
+    await waitFor(() => expect(groupCalls).toBeGreaterThan(beforeFailure));
+    expect(await screen.findByText(/瞬时断网/)).toBeTruthy();
+    expect(screen.getByText("网页新增的项目任务")).toBeTruthy();
+  });
+
+  it("项目组连续 focus 不叠请求，先发成功结果不会被后发失败吞掉", async () => {
+    let groupCalls = 0;
+    let resolveRefresh: ((value: { tasks: CloudTask[] }) => void) | undefined;
+    const refresh = new Promise<{ tasks: CloudTask[] }>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    stubShell((cmd, args) => {
+      if (cmd === "mc_projects") return Promise.resolve({ projects: [{ id: "p1", name: "并发项目" }] });
+      if (cmd === "mc_tasks" && args?.projectId === "p1") {
+        groupCalls += 1;
+        return groupCalls === 1
+          ? Promise.resolve({ tasks: [{ id: "old", title: "旧组状态", status: "finished" }] })
+          : refresh;
+      }
+      if (cmd === "mc_tasks") return Promise.resolve({ tasks: [], page_info: { total: 0 } });
+      return Promise.resolve({});
+    });
+
+    render(<Harness currentId={null} onSelect={() => {}} />);
+    await userEvent.click(await screen.findByText("并发项目"));
+    await screen.findByText("旧组状态");
+    fireEvent.focus(window);
+    fireEvent.focus(window);
+    await act(async () => undefined);
+    expect(groupCalls).toBe(2);
+    resolveRefresh?.({ tasks: [{ id: "new", title: "最新组状态", status: "finished" }] });
+    expect(await screen.findByText("最新组状态")).toBeTruthy();
+  });
+
+  it("项目组手动刷新撞上后台请求时会排队补拉", async () => {
+    let groupCalls = 0;
+    let resolveBackground: ((value: { tasks: CloudTask[] }) => void) | undefined;
+    const background = new Promise<{ tasks: CloudTask[] }>((resolve) => {
+      resolveBackground = resolve;
+    });
+    stubShell((cmd, args) => {
+      if (cmd === "mc_projects") return Promise.resolve({ projects: [{ id: "p1", name: "排队项目" }] });
+      if (cmd === "mc_tasks" && args?.projectId === "p1") {
+        groupCalls += 1;
+        if (groupCalls === 1) return Promise.resolve({ tasks: [{ id: "initial", title: "初始组状态", status: "finished" }] });
+        if (groupCalls === 2) return background;
+        return Promise.resolve({ tasks: [{ id: "manual", title: "手动补拉状态", status: "finished" }] });
+      }
+      if (cmd === "mc_tasks") return Promise.resolve({ tasks: [], page_info: { total: 0 } });
+      return Promise.resolve({});
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} refreshKey={0} />);
+    await userEvent.click(await screen.findByText("排队项目"));
+    await screen.findByText("初始组状态");
+    fireEvent.focus(window);
+    rerender(<Harness currentId={null} onSelect={() => {}} refreshKey={1} />);
+    expect(groupCalls).toBe(2);
+    resolveBackground?.({ tasks: [{ id: "background", title: "后台旧拍状态", status: "finished" }] });
+    expect(await screen.findByText("手动补拉状态")).toBeTruthy();
+    expect(groupCalls).toBe(3);
   });
 
   it("reloadKey 切换时立即撤下旧服务项目", async () => {
@@ -197,8 +273,85 @@ describe("CloudTaskList", () => {
     rerender(<Harness currentId={null} onSelect={() => {}} reloadKey={1} />);
     await waitFor(() => expect(taskCalls).toBeGreaterThanOrEqual(2));
     await waitFor(() => expect(screen.queryByText("旧服务项目")).toBeNull());
+    fireEvent.focus(window);
+    await act(async () => undefined);
+    expect(projectCalls).toBe(2); // reload 在途时后台拍跳过，不能以后发请求吞掉先发成功
     resolveNew?.({ projects: [{ id: "new", name: "新服务项目" }] });
     await screen.findByText("新服务项目");
+  });
+
+  it("手动刷新失败保留任务、项目和已展开项目组", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let failRefresh = false;
+    let taskCalls = 0;
+    let projectCalls = 0;
+    let groupCalls = 0;
+    stubShell((cmd, args) => {
+      if (cmd === "mc_status") return Promise.resolve({ logged_in: true });
+      if (cmd === "mc_projects") {
+        projectCalls += 1;
+        return failRefresh
+          ? Promise.reject(new Error("项目网络失败"))
+          : Promise.resolve({ projects: [{ id: "p1", name: "保留项目" }] });
+      }
+      if (cmd === "mc_tasks" && args?.projectId === "p1") {
+        groupCalls += 1;
+        return failRefresh
+          ? Promise.reject(new Error("分组网络失败"))
+          : Promise.resolve({ tasks: [{ id: "g1", title: "保留组任务", status: "finished" }] });
+      }
+      if (cmd === "mc_tasks") {
+        taskCalls += 1;
+        return failRefresh
+          ? Promise.reject(new Error("任务网络失败"))
+          : Promise.resolve({ tasks: [{ id: "t1", title: "保留顶层任务", status: "processing" }], page_info: { total: 1 } });
+      }
+      return Promise.resolve({});
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} refreshKey={0} />);
+    await screen.findByText("保留顶层任务");
+    await userEvent.click(await screen.findByText("保留项目"));
+    await screen.findByText("保留组任务");
+    failRefresh = true;
+    const before = { taskCalls, projectCalls, groupCalls };
+
+    rerender(<Harness currentId={null} onSelect={() => {}} refreshKey={1} />);
+    await waitFor(() => expect(taskCalls).toBeGreaterThan(before.taskCalls));
+    await waitFor(() => expect(projectCalls).toBeGreaterThan(before.projectCalls));
+    await waitFor(() => expect(groupCalls).toBeGreaterThan(before.groupCalls));
+    expect(screen.getByText("保留顶层任务")).toBeTruthy();
+    expect(screen.getByText("保留项目")).toBeTruthy();
+    expect(screen.getByText("保留组任务")).toBeTruthy();
+    expect(warn).toHaveBeenCalledWith("[cloud-projects] 项目列表拉取失败:", expect.any(Error));
+    warn.mockRestore();
+  });
+
+  it("项目手动刷新撞上后台请求时会排队补拉", async () => {
+    let projectCalls = 0;
+    let resolveBackground: ((value: { projects: { id: string; name: string }[] }) => void) | undefined;
+    const background = new Promise<{ projects: { id: string; name: string }[] }>((resolve) => {
+      resolveBackground = resolve;
+    });
+    stubShell((cmd) => {
+      if (cmd === "mc_projects") {
+        projectCalls += 1;
+        if (projectCalls === 1) return Promise.resolve({ projects: [{ id: "p1", name: "项目初始状态" }] });
+        if (projectCalls === 2) return background;
+        return Promise.resolve({ projects: [{ id: "p2", name: "项目手动补拉状态" }] });
+      }
+      if (cmd === "mc_tasks") return Promise.resolve({ tasks: [], page_info: { total: 0 } });
+      return Promise.resolve({});
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} refreshKey={0} />);
+    await screen.findByText("项目初始状态");
+    fireEvent.focus(window);
+    rerender(<Harness currentId={null} onSelect={() => {}} refreshKey={1} />);
+    expect(projectCalls).toBe(2);
+    resolveBackground?.({ projects: [{ id: "old", name: "项目后台旧拍" }] });
+    expect(await screen.findByText("项目手动补拉状态")).toBeTruthy();
+    expect(projectCalls).toBe(3);
   });
 
   it("reloadKey 切换后项目组旧请求不得回灌,已展开的组立即重拉", async () => {
@@ -308,40 +461,172 @@ describe("CloudTaskList", () => {
 
   // 自动刷新(旧 UI App.tsx:329-340;ui-next 此前只有创建/终止/删除/手动刷新
   // /切空间会拉数)。没有它,网页/手机端派发的任务永远不出现,状态翻转也一路静止
-  it("窗口重获焦点即刷新:网页/手机端刚派发的任务切回来就看得见", async () => {
+  it("窗口重获焦点即同时刷新任务和项目", async () => {
     let batch: CloudTask[] = [{ id: "a", title: "修复登录", status: "processing" }];
-    let calls = 0;
+    let projectBatch = [{ id: "p1", name: "原项目" }];
+    let taskCalls = 0;
+    let projectCalls = 0;
     stubShell((cmd) => {
-      if (cmd !== "mc_tasks") return Promise.resolve({});
-      calls += 1;
-      return Promise.resolve({ tasks: batch, page_info: { total: batch.length } });
+      if (cmd === "mc_tasks") {
+        taskCalls += 1;
+        return Promise.resolve({ tasks: batch, page_info: { total: batch.length } });
+      }
+      if (cmd === "mc_projects") {
+        projectCalls += 1;
+        return Promise.resolve({ projects: projectBatch });
+      }
+      return Promise.resolve({});
     });
     render(<Harness currentId={null} onSelect={() => {}} />);
     await screen.findByText("修复登录");
-    expect(calls).toBe(1);
+    await screen.findByText("原项目");
+    expect(taskCalls).toBe(1);
+    expect(projectCalls).toBe(1);
     batch = [{ id: "z", title: "手机上派的活", status: "pending" }, ...batch];
+    projectBatch = [{ id: "p2", name: "网页新项目" }];
     fireEvent.focus(window);
     await screen.findByText("手机上派的活");
+    await screen.findByText("网页新项目");
+    expect(taskCalls).toBe(2);
+    expect(projectCalls).toBe(2);
   });
 
-  it("30s 轮询:状态翻转(pending→processing→finished)不用手动刷新", async () => {
+  it("30s 轮询:任务状态和项目列表都不用手动刷新", async () => {
     vi.useFakeTimers();
     try {
       let batch: CloudTask[] = [{ id: "a", title: "修复登录", status: "pending" }];
-      stubShell((cmd) =>
-        cmd === "mc_tasks" ? Promise.resolve({ tasks: batch, page_info: { total: 1 } }) : Promise.resolve({}),
-      );
+      let projectBatch = [{ id: "p1", name: "原项目" }];
+      stubShell((cmd) => {
+        if (cmd === "mc_tasks") return Promise.resolve({ tasks: batch, page_info: { total: 1 } });
+        if (cmd === "mc_projects") return Promise.resolve({ projects: projectBatch });
+        return Promise.resolve({});
+      });
       render(<Harness currentId={null} onSelect={() => {}} />);
       await act(async () => void (await vi.advanceTimersByTimeAsync(100)));
       expect(rowOf("修复登录").title).toContain("排队中");
+      expect(screen.getByText("原项目")).toBeTruthy();
       // 仍留在「进行中」段(finished 会掉进默认收起的历史小节,断言就跟
       // 折叠态纠缠了):只看状态词跟着云端翻
       batch = [{ id: "a", title: "修复登录", status: "processing" }];
+      projectBatch = [{ id: "p2", name: "轮询新项目" }];
       await act(async () => void (await vi.advanceTimersByTimeAsync(30_000)));
       expect(rowOf("修复登录").title).toContain("运行中");
+      expect(screen.getByText("轮询新项目")).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("手动刷新会作废更早的后台任务响应", async () => {
+    let taskCalls = 0;
+    let resolveBackground: ((value: { tasks: CloudTask[]; page_info: { total: number } }) => void) | undefined;
+    const background = new Promise<{ tasks: CloudTask[]; page_info: { total: number } }>((resolve) => {
+      resolveBackground = resolve;
+    });
+    stubShell((cmd) => {
+      if (cmd === "mc_projects") return Promise.resolve({ projects: [] });
+      if (cmd !== "mc_tasks") return Promise.resolve({});
+      taskCalls += 1;
+      if (taskCalls === 1) {
+        return Promise.resolve({ tasks: [{ id: "same", title: "初始状态", status: "pending" }], page_info: { total: 1 } });
+      }
+      if (taskCalls === 2) return background;
+      return Promise.resolve({ tasks: [{ id: "same", title: "手动刷新新状态", status: "processing" }], page_info: { total: 1 } });
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} refreshKey={0} />);
+    await screen.findByText("初始状态");
+    fireEvent.focus(window);
+    rerender(<Harness currentId={null} onSelect={() => {}} refreshKey={1} />);
+    expect(await screen.findByText("手动刷新新状态")).toBeTruthy();
+    resolveBackground?.({ tasks: [{ id: "same", title: "迟到旧状态", status: "pending" }], page_info: { total: 1 } });
+    await act(async () => undefined);
+    expect(screen.getByText("手动刷新新状态")).toBeTruthy();
+    expect(screen.queryByText("迟到旧状态")).toBeNull();
+  });
+
+  it("任务手动刷新撞上加载更多时会排队补拉首页", async () => {
+    localStorage.setItem("mc.cloudHistoryOpen", "1");
+    let taskCalls = 0;
+    let resolveLoadMore: ((value: { tasks: CloudTask[]; page_info: { total: number } }) => void) | undefined;
+    const loadMore = new Promise<{ tasks: CloudTask[]; page_info: { total: number } }>((resolve) => {
+      resolveLoadMore = resolve;
+    });
+    stubShell((cmd, args) => {
+      if (cmd === "mc_projects") return Promise.resolve({ projects: [] });
+      if (cmd !== "mc_tasks") return Promise.resolve({});
+      taskCalls += 1;
+      if (taskCalls === 1) {
+        return Promise.resolve({ tasks: [{ id: "old", title: "刷新前首页", status: "finished" }], page_info: { total: 2 } });
+      }
+      if ((args?.page as number) === 2) return loadMore;
+      return Promise.resolve({ tasks: [{ id: "fresh", title: "排队刷新首页", status: "processing" }], page_info: { total: 1 } });
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} refreshKey={0} />);
+    await screen.findByText("刷新前首页");
+    await userEvent.click(screen.getByText("加载更多"));
+    rerender(<Harness currentId={null} onSelect={() => {}} refreshKey={1} />);
+    expect(taskCalls).toBe(2);
+    resolveLoadMore?.({ tasks: [{ id: "deep", title: "旧深层页", status: "finished" }], page_info: { total: 2 } });
+    expect(await screen.findByText("排队刷新首页")).toBeTruthy();
+    expect(taskCalls).toBe(3);
+  });
+
+  it("手动任务刷新失败时仍接受更早后台请求的成功结果", async () => {
+    let taskCalls = 0;
+    let resolveBackground: ((value: { tasks: CloudTask[]; page_info: { total: number } }) => void) | undefined;
+    const background = new Promise<{ tasks: CloudTask[]; page_info: { total: number } }>((resolve) => {
+      resolveBackground = resolve;
+    });
+    stubShell((cmd) => {
+      if (cmd === "mc_projects") return Promise.resolve({ projects: [] });
+      if (cmd === "mc_status") return Promise.resolve({ logged_in: true });
+      if (cmd !== "mc_tasks") return Promise.resolve({});
+      taskCalls += 1;
+      if (taskCalls === 1) {
+        return Promise.resolve({ tasks: [{ id: "same", title: "刷新前旧状态", status: "pending" }], page_info: { total: 1 } });
+      }
+      if (taskCalls === 2) return background;
+      return Promise.reject(new Error("手动刷新失败"));
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} refreshKey={0} />);
+    await screen.findByText("刷新前旧状态");
+    fireEvent.focus(window);
+    rerender(<Harness currentId={null} onSelect={() => {}} refreshKey={1} />);
+    await waitFor(() => expect(taskCalls).toBe(3));
+    resolveBackground?.({ tasks: [{ id: "same", title: "后台成功新状态", status: "processing" }], page_info: { total: 1 } });
+    expect(await screen.findByText("后台成功新状态")).toBeTruthy();
+  });
+
+  it("明确未登录后作废更早的后台任务响应", async () => {
+    let taskCalls = 0;
+    let resolveBackground: ((value: { tasks: CloudTask[]; page_info: { total: number } }) => void) | undefined;
+    const background = new Promise<{ tasks: CloudTask[]; page_info: { total: number } }>((resolve) => {
+      resolveBackground = resolve;
+    });
+    stubShell((cmd) => {
+      if (cmd === "mc_projects") return Promise.resolve({ projects: [] });
+      if (cmd === "mc_status") return Promise.resolve({ logged_in: false });
+      if (cmd !== "mc_tasks") return Promise.resolve({});
+      taskCalls += 1;
+      if (taskCalls === 1) {
+        return Promise.resolve({ tasks: [{ id: "old", title: "旧账号任务", status: "processing" }], page_info: { total: 1 } });
+      }
+      if (taskCalls === 2) return background;
+      return Promise.reject(new Error("会话过期"));
+    });
+
+    const { rerender } = render(<Harness currentId={null} onSelect={() => {}} refreshKey={0} />);
+    await screen.findByText("旧账号任务");
+    fireEvent.focus(window);
+    rerender(<Harness currentId={null} onSelect={() => {}} refreshKey={1} />);
+    expect(await screen.findByText("未连接云端")).toBeTruthy();
+    resolveBackground?.({ tasks: [{ id: "leak", title: "旧后台回灌任务", status: "processing" }], page_info: { total: 1 } });
+    await act(async () => undefined);
+    expect(screen.getByText("未连接云端")).toBeTruthy();
+    expect(screen.queryByText("旧后台回灌任务")).toBeNull();
   });
 
   it("后台刷新用合并而非整表替换:已翻出来的深层页不会被 30s 一次的轮询收回去", async () => {

@@ -15,10 +15,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::util::LockExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
-use crate::util::LockExt;
 
 static TEMP_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 const DEFAULT_MODEL_CONTEXT_WINDOW: i64 = 200_000;
@@ -460,7 +460,11 @@ fn thinking_config(effort: &str) -> serde_json::Value {
 /// 设置里补同样的服务地址即可。
 fn on_mc_host(url: &str, mc_base_url: &str) -> bool {
     let mc = mc_base_url.trim().trim_end_matches('/');
-    let mc = if mc.is_empty() { crate::baizhi::DEFAULT_MONKEYCODE_URL } else { mc };
+    let mc = if mc.is_empty() {
+        crate::baizhi::DEFAULT_MONKEYCODE_URL
+    } else {
+        mc
+    };
     let (Ok(a), Ok(b)) = (reqwest::Url::parse(url), reqwest::Url::parse(mc)) else {
         return false;
     };
@@ -515,7 +519,8 @@ fn write_ohmyagent_config(
     // MonkeyCode 会员条目的 base_url/api_key 在物化时从应用配置目录
     //(= 引擎目录的父目录,见 baizhi::OHMYAGENT_KEY_FILE)补齐。
     let is_monkeycode = |m: &serde_json::Value| {
-        m.get("source").and_then(|v| v.as_str()) == Some(crate::baizhi::monkeycode::SOURCE_MONKEYCODE)
+        m.get("source").and_then(|v| v.as_str())
+            == Some(crate::baizhi::monkeycode::SOURCE_MONKEYCODE)
     };
     // locked = 超出会员档的条目(同步层打标):**照常物化**——会员档权限由
     // 服务端把关,引擎 settings 缺了条目反而让老会话(会员到期前选的模型)
@@ -720,10 +725,7 @@ fn engine_mcp_server_name(display_name: &str) -> String {
     let mut separator_pending = false;
     for ch in display_name.chars() {
         if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
-            if separator_pending
-                && !slug.is_empty()
-                && !slug.ends_with('_')
-                && !slug.ends_with('-')
+            if separator_pending && !slug.is_empty() && !slug.ends_with('_') && !slug.ends_with('-')
             {
                 slug.push('_');
             }
@@ -736,7 +738,10 @@ fn engine_mcp_server_name(display_name: &str) -> String {
     let slug = slug.trim_matches(|c| c == '_' || c == '-');
     let slug = if slug.is_empty() { "server" } else { slug };
     let digest = Sha256::digest(display_name.as_bytes());
-    let hash: String = digest[..6].iter().map(|byte| format!("{byte:02x}")).collect();
+    let hash: String = digest[..6]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
     format!("{slug}_{hash}")
 }
 
@@ -870,7 +875,10 @@ mod tests {
 
         assert!(!merged.telemetry_enabled, "统计开关必须保留磁盘上的关闭态");
         assert!(!merged.pet_enabled);
-        assert!(!merged.sound_enabled, "提示音开关同样不在表单里,必须保留关闭态");
+        assert!(
+            !merged.sound_enabled,
+            "提示音开关同样不在表单里,必须保留关闭态"
+        );
         assert_eq!(merged.pet_pos, Some((12, 34)));
         assert_eq!(merged.main_window_state, disk.main_window_state);
         assert_eq!(merged.kernel_env, "wsl:Ubuntu", "表单字段仍应生效");
@@ -879,7 +887,8 @@ mod tests {
     /// 老版本 config.json 没有这个字段，升级后应视为开启(而不是 false)。
     #[test]
     fn config_without_telemetry_field_defaults_to_enabled() {
-        let cfg: DesktopConfig = serde_json::from_str(r#"{"models":[],"pet_enabled":false}"#).unwrap();
+        let cfg: DesktopConfig =
+            serde_json::from_str(r#"{"models":[],"pet_enabled":false}"#).unwrap();
         assert!(cfg.telemetry_enabled);
         assert!(cfg.sound_enabled, "升级到带提示音开关的版本不该静音");
         assert!(!cfg.pet_enabled, "同一份 JSON 里显式给出的字段不受影响");
@@ -941,7 +950,10 @@ mod tests {
         );
         // 非会员条目不受注入影响
         assert_eq!(settings["models"]["自定义"]["api_key"], "sk-direct");
-        assert_eq!(settings["models"]["自定义"]["base_url"], "https://direct.example.com");
+        assert_eq!(
+            settings["models"]["自定义"]["base_url"],
+            "https://direct.example.com"
+        );
 
         // Key 明确属于官方云时，切到另一套私有服务不能继续注入 api_key /
         // signing_secret。服务地址相同但 Basic 身份不同也由 transport 指纹
@@ -968,16 +980,28 @@ mod tests {
         write_ohmyagent_config(&engine_dir, &basic_cfg, None).unwrap();
         let settings: serde_json::Value =
             serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
-        assert_eq!(settings["models"]["会员模型"]["base_url"], "https://user:p%40ss@mc.example.com/v1");
-        assert_eq!(settings["models"]["自定义"]["base_url"], "https://direct.example.com");
+        assert_eq!(
+            settings["models"]["会员模型"]["base_url"],
+            "https://user:p%40ss@mc.example.com/v1"
+        );
+        assert_eq!(
+            settings["models"]["自定义"]["base_url"],
+            "https://direct.example.com"
+        );
 
         // 显式模型请求地址(拆分部署):物化直接采用设置值(尾斜杠归一,
         // 不等重新同步刷新 Key 快照)
-        let llm_cfg = DesktopConfig { mc_llm_base_url: "https://llm.example.com/v1/".into(), ..mc_cfg.clone() };
+        let llm_cfg = DesktopConfig {
+            mc_llm_base_url: "https://llm.example.com/v1/".into(),
+            ..mc_cfg.clone()
+        };
         write_ohmyagent_config(&engine_dir, &llm_cfg, None).unwrap();
         let settings: serde_json::Value =
             serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
-        assert_eq!(settings["models"]["会员模型"]["base_url"], "https://llm.example.com/v1");
+        assert_eq!(
+            settings["models"]["会员模型"]["base_url"],
+            "https://llm.example.com/v1"
+        );
 
         // 模型地址指向第三方主机 + 配了 Basic:**不得**把 MC 反代凭证嵌给
         // 第三方(host 门,与 mc_basic_header 同语义);指回 MC 主机则照嵌
@@ -1001,7 +1025,10 @@ mod tests {
         write_ohmyagent_config(&engine_dir, &same_host_cfg, None).unwrap();
         let settings: serde_json::Value =
             serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
-        assert_eq!(settings["models"]["会员模型"]["base_url"], "https://user:p%40ss@mc.example.com/llm/v1");
+        assert_eq!(
+            settings["models"]["会员模型"]["base_url"],
+            "https://user:p%40ss@mc.example.com/llm/v1"
+        );
 
         // 无会员条目:即便 Key 文件在,也不写顶层 secret
         let plain_cfg = DesktopConfig {
@@ -1047,10 +1074,22 @@ mod tests {
         write_ohmyagent_config(&engine_dir, &cfg, None).unwrap();
         let settings: serde_json::Value =
             serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
-        assert_eq!(settings["models"]["旗舰模型"]["api_key"], "omk-1", "locked 会员条目照常物化并注入密钥");
-        assert_eq!(settings["models"]["专业模型"]["api_key"], "omk-1", "未锁会员条目照常注入");
-        assert_eq!(settings["models"]["手编"]["api_key"], "k", "杂散 locked 的手编条目不受影响");
-        assert_eq!(settings["default_model"], "专业模型", "default 落在 locked 条目时回退首个未锁条目");
+        assert_eq!(
+            settings["models"]["旗舰模型"]["api_key"], "omk-1",
+            "locked 会员条目照常物化并注入密钥"
+        );
+        assert_eq!(
+            settings["models"]["专业模型"]["api_key"], "omk-1",
+            "未锁会员条目照常注入"
+        );
+        assert_eq!(
+            settings["models"]["手编"]["api_key"], "k",
+            "杂散 locked 的手编条目不受影响"
+        );
+        assert_eq!(
+            settings["default_model"], "专业模型",
+            "default 落在 locked 条目时回退首个未锁条目"
+        );
         assert_eq!(settings["signing_secret"], "sec-9");
 
         // 全部会员条目均 locked:条目照常物化,secret 照写,default 落未锁的自定义条目
@@ -1065,9 +1104,15 @@ mod tests {
         write_ohmyagent_config(&engine_dir, &all_locked, None).unwrap();
         let settings: serde_json::Value =
             serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
-        assert_eq!(settings["signing_secret"], "sec-9", "有会员条目(含全锁)就写顶层 secret");
+        assert_eq!(
+            settings["signing_secret"], "sec-9",
+            "有会员条目(含全锁)就写顶层 secret"
+        );
         assert_eq!(settings["models"]["旗舰模型"]["api_key"], "omk-1");
-        assert_eq!(settings["default_model"], "自定义", "default 不落在 locked 条目上");
+        assert_eq!(
+            settings["default_model"], "自定义",
+            "default 不落在 locked 条目上"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -1223,7 +1268,10 @@ mod tests {
             serde_json::json!({ "enabled": true, "effort": "low" })
         );
         // 显式关闭:enabled:false 显式写入,压过引擎目录里的模型默认
-        assert_eq!(models["think-off"]["thinking"], serde_json::json!({ "enabled": false }));
+        assert_eq!(
+            models["think-off"]["thinking"],
+            serde_json::json!({ "enabled": false })
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1298,8 +1346,14 @@ mod tests {
                 .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
             "引擎名称必须满足 OpenAI tool name 约束: {engine_name}"
         );
-        assert!(names.contains(&engine_name.as_str()), "派生名称缺失: {names:?}");
-        assert!(names.contains(&"english-server"), "合法名称不应改变: {names:?}");
+        assert!(
+            names.contains(&engine_name.as_str()),
+            "派生名称缺失: {names:?}"
+        );
+        assert!(
+            names.contains(&"english-server"),
+            "合法名称不应改变: {names:?}"
+        );
         assert_eq!(engine_mcp_server_name(display_name), engine_name);
         assert_ne!(engine_mcp_server_name("另一个知识库"), engine_name);
         assert!(

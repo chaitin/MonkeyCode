@@ -8,6 +8,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 )
 
+const MCPHeaderMask = "******"
+
 type TeamMCPUsecase interface {
 	ListUpstreams(ctx context.Context, teamUser *TeamUser) (*ListTeamMCPUpstreamsResp, error)
 	CreateUpstream(ctx context.Context, teamUser *TeamUser, req CreateTeamMCPUpstreamReq) (*TeamMCPUpstream, error)
@@ -37,6 +39,11 @@ func (m *TeamMCPUpstream) From(src *db.MCPUpstream) *TeamMCPUpstream {
 		return m
 	}
 	m.MCPUpstream = (&MCPUpstream{}).From(src)
+	for i := range m.Headers {
+		if m.Headers[i].Value != "" {
+			m.Headers[i].Value = MCPHeaderMask
+		}
+	}
 	if src.TeamID != nil {
 		m.TeamID = *src.TeamID
 	}

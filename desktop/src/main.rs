@@ -42,9 +42,9 @@ use tauri::{
 #[cfg(target_os = "macos")]
 use tauri_nspanel::{tauri_panel, StyleMask, WebviewWindowExt as _};
 
+use crate::util::LockExt;
 use config::{load_config, materialize_engine_config, save_ui_config_files, DesktopConfig};
 use driver::DriverHost;
-use crate::util::LockExt;
 
 // macOS 桌宠面板类:普通 NSWindow 被点击会激活应用、把主窗口带到最前;
 // NonactivatingPanel 让桌宠保持为不抢焦点的独立面板。hides_on_deactivate 必须关,
@@ -277,7 +277,9 @@ fn publish_engine_status(app: &AppHandle, status: driver::EngineStatus) {
 /// 注意**不重置 attempt**:那由 next_retry 的稳定期判据负责。在这里清零等于
 /// 认定"起来了就算成功",而"起来就崩"恰恰是必须能触发熔断的那种故障。
 fn adopt_engine(app: &AppHandle, engine: driver::ohmy::OhmyDriver) {
-    let status = driver::EngineStatus::Ready { version: engine.version() };
+    let status = driver::EngineStatus::Ready {
+        version: engine.version(),
+    };
     let sup = app.state::<EngineSupervisor>();
     sup.generation.fetch_add(1, Ordering::SeqCst);
     sup.ready_at.lock_ok().replace(Instant::now());
@@ -292,7 +294,10 @@ fn restart_engine_locked(app: &AppHandle, config: &DesktopConfig) -> Result<(), 
     // Starting 要盖住**整个**重启窗口,包括旧引擎的优雅退出(最长 grace+3s)。
     // take() 会把状态落回 Stopped,那期间 running() 为假——关主窗口会真退出
     // 而不是最小化,UI 也看不出正在重启。所以先外显再停。
-    let attempt = app.state::<EngineSupervisor>().attempt.load(Ordering::SeqCst);
+    let attempt = app
+        .state::<EngineSupervisor>()
+        .attempt
+        .load(Ordering::SeqCst);
     publish_engine_status(app, driver::EngineStatus::Starting { attempt });
     if let Some(engine) = old {
         engine.stop();
@@ -334,7 +339,12 @@ pub fn engine_exited(app: &AppHandle, instance: u64, detail: &str, log_tail: &st
         return;
     }
     let sup = app.state::<EngineSupervisor>();
-    let uptime = sup.ready_at.lock_ok().take().map(|t| t.elapsed()).unwrap_or_default();
+    let uptime = sup
+        .ready_at
+        .lock_ok()
+        .take()
+        .map(|t| t.elapsed())
+        .unwrap_or_default();
     let decision = driver::next_retry(sup.attempt.load(Ordering::SeqCst), uptime);
     let (attempt, delay) = match decision {
         Some((attempt, delay)) => {
@@ -366,7 +376,10 @@ pub fn engine_exited(app: &AppHandle, instance: u64, detail: &str, log_tail: &st
 /// 继续展示旧服务数据。所有配置应用入口都必须经这里，避免遗漏某条恢复路径。
 fn apply_cloud_config(app: &AppHandle, config: &DesktopConfig) -> bool {
     let pipes = app.state::<baizhi::monkeycode::CloudPipes>();
-    let Some(generation) = app.state::<baizhi::BaizhiState>().apply_config(config, &pipes) else {
+    let Some(generation) = app
+        .state::<baizhi::BaizhiState>()
+        .apply_config(config, &pipes)
+    else {
         return false;
     };
     if let Err(e) = app.emit("monkeycode-transport-changed", generation) {
@@ -377,12 +390,18 @@ fn apply_cloud_config(app: &AppHandle, config: &DesktopConfig) -> bool {
 
 /// 退避后自动重启。失败与崩溃在退避上同权,继续退避直到熔断。
 fn schedule_engine_retry(app: &AppHandle, delay: Duration) {
-    let generation = app.state::<EngineSupervisor>().generation.load(Ordering::SeqCst);
+    let generation = app
+        .state::<EngineSupervisor>()
+        .generation
+        .load(Ordering::SeqCst);
     let app = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(delay);
         let stale = || {
-            app.state::<EngineSupervisor>().generation.load(Ordering::SeqCst) != generation
+            app.state::<EngineSupervisor>()
+                .generation
+                .load(Ordering::SeqCst)
+                != generation
         };
         if stale() {
             return; // 期间用户已手动重启/保存设置,这次自动重启作废
@@ -579,14 +598,10 @@ fn open_session_intent(session_id: &str) -> Option<String> {
 /// 唤回主窗口，并在桌宠当前状态有明确目标时要求主 UI 打开对应会话。
 /// 事件负责已就绪页面的实时跳转，UiIntent 负责页面尚未开始监听时的兜底。
 fn show_main_session(app: &AppHandle, session_id: Option<&str>) {
-    let target = session_id.and_then(|id| {
-        open_session_intent(id).map(|intent| (id.trim().to_string(), intent))
-    });
+    let target = session_id
+        .and_then(|id| open_session_intent(id).map(|intent| (id.trim().to_string(), intent)));
     if let Some((_, intent)) = &target {
-        app.state::<UiIntent>()
-            .0
-            .lock_ok()
-            .replace(intent.clone());
+        app.state::<UiIntent>().0.lock_ok().replace(intent.clone());
     }
     show_any_window(app);
     if let Some((id, _)) = target {
@@ -777,9 +792,11 @@ fn updater_supported(app: &AppHandle) -> bool {
 fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
     use tauri_plugin_updater::UpdaterExt;
     if !updater_supported(app) {
-        return Err("当前安装方式(deb/rpm)由系统包管理器升级,应用内不提供自动更新;\
+        return Err(
+            "当前安装方式(deb/rpm)由系统包管理器升级,应用内不提供自动更新;\
                     AppImage 版本支持一键更新"
-            .into());
+                .into(),
+        );
     }
     let handle = app.clone();
     let mut builder = app
@@ -1140,10 +1157,7 @@ fn ensure_pet_window(app: &AppHandle) {
     if app.get_webview_window("pet").is_some() {
         return;
     }
-    let saved = *app
-        .state::<PetPos>()
-        .0
-        .lock_ok();
+    let saved = *app.state::<PetPos>().0.lock_ok();
     let win = WebviewWindowBuilder::new(app, "pet", WebviewUrl::App("pet.html".into()))
         .title("MonkeyCode 桌宠")
         .inner_size(PET_W, PET_H)
@@ -1224,10 +1238,7 @@ fn ensure_pet_window(app: &AppHandle) {
     if native_pet::exists(app) {
         return;
     }
-    let saved = *app
-        .state::<PetPos>()
-        .0
-        .lock_ok();
+    let saved = *app.state::<PetPos>().0.lock_ok();
     let position = pet_position(app, saved);
     let scale = app
         .available_monitors()
@@ -1384,7 +1395,9 @@ fn set_sound_enabled(app: AppHandle, enabled: bool) {
 /// 广播先于落盘:静音是用户此刻就要的效果,写盘失败(磁盘满/权限)不该让
 /// 本次静音也失效——下次启动回到旧值即可,而不是"点了没反应"。
 fn apply_sound_enabled(app: &AppHandle, enabled: bool) {
-    app.state::<SoundEnabled>().0.store(enabled, Ordering::Relaxed);
+    app.state::<SoundEnabled>()
+        .0
+        .store(enabled, Ordering::Relaxed);
     if let Some(item) = app.state::<TraySoundItem>().0.lock_ok().as_ref() {
         let _ = item.set_checked(enabled);
     }
@@ -1554,16 +1567,16 @@ fn main() {
             // 配置加载:MonkeyCode 服务地址由设置指定,保存后替换服务快照;
             // 配置损坏时按默认值落官方云,错误页照常外显。
             let cfg_dir = config::config_dir(app.handle()).map_err(std::io::Error::other)?;
-            app.manage(baizhi::BaizhiState::new(baizhi::Service::new(cfg_dir, &cfg)));
+            app.manage(baizhi::BaizhiState::new(baizhi::Service::new(
+                cfg_dir, &cfg,
+            )));
             app.state::<PetEnabled>()
                 .0
                 .store(cfg.pet_enabled, Ordering::Relaxed);
             app.state::<SoundEnabled>()
                 .0
                 .store(cfg.sound_enabled, Ordering::Relaxed);
-            *app.state::<PetPos>()
-                .0
-                .lock_ok() = cfg.pet_pos;
+            *app.state::<PetPos>().0.lock_ok() = cfg.pet_pos;
 
             // 托盘失败只降级(无托盘宿主的桌面环境),不阻塞
             if let Err(e) = setup_tray(app.handle(), cfg.pet_enabled, cfg.sound_enabled) {
@@ -1593,7 +1606,10 @@ fn main() {
                      请先执行 cd desktop/ui && npm run build 重建后再启动"
                 );
                 eprintln!("[desktop] {msg}");
-                create_main_window(app.handle(), &format!("error.html#{}", util::urlencode(&msg)));
+                create_main_window(
+                    app.handle(),
+                    &format!("error.html#{}", util::urlencode(&msg)),
+                );
                 ensure_pet_window(app.handle());
                 return Ok(());
             }
@@ -1725,12 +1741,23 @@ fn setup_tray(app: &AppHandle, pet_enabled: bool, sound_enabled: bool) -> tauri:
     // 设置页切换时要回改这个勾选项(见 apply_sound_enabled)
     *app.state::<TraySoundItem>().0.lock_ok() = Some(sound.clone());
     // 重启引擎:引擎正常跑着时界面上原本没有任何入口(横幅只在崩溃/启动
-     // 失败时才出),而「改了设置外的东西要重启才生效」的提示到处都在指它。
+    // 失败时才出),而「改了设置外的东西要重启才生效」的提示到处都在指它。
     // 托盘这一份还兼顾引擎卡死到 UI 都不响应的场景(2026-08-07 用户报障)
     let restart_engine = MenuItem::with_id(app, "restart-engine", "重启引擎", true, None::<&str>)?;
     let update = MenuItem::with_id(app, "check-update", "检查更新", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出 MonkeyCode", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &settings, &pet, &sound, &restart_engine, &update, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &show,
+            &settings,
+            &pet,
+            &sound,
+            &restart_engine,
+            &update,
+            &quit,
+        ],
+    )?;
     let tray = TrayIconBuilder::new()
         .icon(tray_icon())
         .tooltip("MonkeyCode")
@@ -1973,17 +2000,11 @@ mod linux_gdk_backend_tests {
     #[test]
     fn selects_backend_from_linux_session_environment() {
         assert_eq!(
-            default_linux_gdk_backend(
-                Some(OsStr::new("wayland-0")),
-                Some(OsStr::new("wayland")),
-            ),
+            default_linux_gdk_backend(Some(OsStr::new("wayland-0")), Some(OsStr::new("wayland")),),
             "wayland"
         );
         assert_eq!(
-            default_linux_gdk_backend(
-                Some(OsStr::new("wayland-0")),
-                Some(OsStr::new("x11")),
-            ),
+            default_linux_gdk_backend(Some(OsStr::new("wayland-0")), Some(OsStr::new("x11")),),
             "x11"
         );
         assert_eq!(

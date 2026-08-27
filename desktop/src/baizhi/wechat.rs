@@ -78,7 +78,9 @@ pub async fn start_wechat_login(svc: &Service) -> BzResult<String> {
     let state = q("state");
     let callback = q("redirect_uri");
     if state.is_empty() || callback.is_empty() {
-        return Err(other(format!("微信授权地址缺少 state/redirect_uri: {auth_url_str:?}")));
+        return Err(other(format!(
+            "微信授权地址缺少 state/redirect_uri: {auth_url_str:?}"
+        )));
     }
 
     // 2. 拉授权页解析二维码 uuid
@@ -125,15 +127,25 @@ pub async fn start_wechat_login(svc: &Service) -> BzResult<String> {
 pub async fn poll_wechat_login(svc: &Service) -> BzResult<&'static str> {
     let (uuid, state, callback_url, lp_base) = {
         let wx = svc.wx.lock_ok();
-        let login = wx.as_ref().ok_or_else(|| other("没有进行中的扫码会话,请先获取二维码"))?;
-        (login.uuid.clone(), login.state.clone(), login.callback_url.clone(), login.lp_base.clone())
+        let login = wx
+            .as_ref()
+            .ok_or_else(|| other("没有进行中的扫码会话,请先获取二维码"))?;
+        (
+            login.uuid.clone(),
+            login.state.clone(),
+            login.callback_url.clone(),
+            login.lp_base.clone(),
+        )
     };
 
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    let lp_url = format!("{lp_base}/connect/l/qrconnect?uuid={}&_={now_ms}", urlencoding_encode(&uuid));
+    let lp_url = format!(
+        "{lp_base}/connect/l/qrconnect?uuid={}&_={now_ms}",
+        urlencoding_encode(&uuid)
+    );
     let body = svc
         .fetch(&lp_url)
         .await
@@ -169,9 +181,17 @@ pub async fn poll_wechat_login(svc: &Service) -> BzResult<&'static str> {
 }
 
 /// 用 wx_code 走百智云回调换会话,并以 profile 探测确认。
-async fn complete_wechat_callback(svc: &Service, callback_url: &str, state: &str, code: &str) -> BzResult<()> {
-    let mut cb = reqwest::Url::parse(callback_url).map_err(|e| other(format!("回调地址异常: {e}")))?;
-    cb.query_pairs_mut().append_pair("code", code).append_pair("state", state);
+async fn complete_wechat_callback(
+    svc: &Service,
+    callback_url: &str,
+    state: &str,
+    code: &str,
+) -> BzResult<()> {
+    let mut cb =
+        reqwest::Url::parse(callback_url).map_err(|e| other(format!("回调地址异常: {e}")))?;
+    cb.query_pairs_mut()
+        .append_pair("code", code)
+        .append_pair("state", state);
     // 回调通常 302 到 redirect_url;不跟随重定向,Set-Cookie 在首响应即被吸收。
     let (data, status) = svc
         .do_store(&svc.store, reqwest::Method::GET, cb.as_str(), None)
@@ -186,7 +206,10 @@ async fn complete_wechat_callback(svc: &Service, callback_url: &str, state: &str
         return Err(other(format!("微信登录回调被拒(HTTP {status})")));
     }
     // 权威确认:会话真的建立了
-    let (logged_in, _) = svc.status().await.map_err(|e| other(format!("登录状态确认失败: {}", e.msg())))?;
+    let (logged_in, _) = svc
+        .status()
+        .await
+        .map_err(|e| other(format!("登录状态确认失败: {}", e.msg())))?;
     if !logged_in {
         return Err(other("微信登录未生效(回调已走通但会话无效),请重试"));
     }
@@ -197,7 +220,12 @@ fn truncate(s: &str, n: usize) -> String {
     if s.len() <= n {
         return s.to_string();
     }
-    let cut = s.char_indices().map(|(i, _)| i).take_while(|&i| i <= n).last().unwrap_or(0);
+    let cut = s
+        .char_indices()
+        .map(|(i, _)| i)
+        .take_while(|&i| i <= n)
+        .last()
+        .unwrap_or(0);
     format!("{}...", &s[..cut])
 }
 
@@ -205,7 +233,9 @@ fn truncate(s: &str, n: usize) -> String {
 fn urlencoding_encode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
             _ => format!("%{b:02X}"),
         })
         .collect()

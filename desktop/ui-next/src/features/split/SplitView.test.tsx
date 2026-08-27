@@ -469,6 +469,42 @@ describe("分屏视图(树形布局)", () => {
     expect(within(pane).getByRole("button", { name: "格操作" })).toBeTruthy();
   });
 
+  it("单格保持单行标题；多格标题缩小并展示项目名与路径复制按钮", () => {
+    stubShell();
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(window.navigator, "clipboard", { value: { writeText }, configurable: true });
+    localStorage.setItem("mc.splitTree", JSON.stringify({ leaf: 0 }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    const single = render(<Harness />);
+    const singlePane = screen.getByRole("region", { name: "第 1 格" });
+    expect(singlePane.querySelector("[data-pane-project]")).toBeNull();
+    expect(singlePane.querySelector("[data-pane-title]")?.className).toContain("text-sm");
+    single.unmount();
+
+    localStorage.setItem("mc.splitTree", JSON.stringify({ dir: "col", ratio: 0.5, a: { leaf: 0 }, b: { leaf: 1 } }));
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", "s3", null, null, null, null]));
+    render(
+      <Harness
+        sessions={[
+          SESSIONS[0]!,
+          meta({ id: "s3", title: "长目录任务", workdir: "/Users/maxiao/dev/github/xiaomakuaiz/MonkeyCode" }),
+        ]}
+      />,
+    );
+    const first = screen.getByRole("region", { name: "第 1 格" });
+    const second = screen.getByRole("region", { name: "第 2 格" });
+    expect(first.querySelector("[data-pane-title]")?.className).toContain("text-[13px]");
+    expect(first.querySelector("[data-pane-project]")?.textContent).toBe("a");
+    expect(second.querySelector("[data-pane-project]")?.textContent).toBe("MonkeyCode");
+    expect(second.querySelector("[data-pane-project]")?.textContent).not.toContain("/Users/maxiao/dev");
+    expect(second.querySelector("[data-pane-project]")?.getAttribute("title")).toBe(
+      "/Users/maxiao/dev/github/xiaomakuaiz/MonkeyCode",
+    );
+    fireEvent.click(within(second).getByRole("button", { name: "复制项目路径" }));
+    expect(writeText).toHaveBeenCalledWith("/Users/maxiao/dev/github/xiaomakuaiz/MonkeyCode");
+    expect(within(second).getByRole("button", { name: "项目路径已复制" })).toBeTruthy();
+  });
+
   it("拖放装载落在「创建中」格上:装载优先、表单退场(取消不再连格收走)", async () => {
     stubShell();
     localStorage.setItem("mc.workbenchListHidden", "1"); // 装载卡路径
@@ -955,7 +991,14 @@ describe("分屏视图(树形布局)", () => {
     const projectsCap = within(list).getByText("项目");
     expect(within(list).getByText("暂无项目，点击右上角「+」新建")).toBeTruthy();
     expect(chatsHead.compareDocumentPosition(projectsCap) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await userEvent.click(within(list).getByRole("button", { name: "新建会话" }));
+    // 固定组头与项目组共用同一套紧凑操作区；待办也复用 FixedGroupHeader。
+    const chatsToggle = chatsHead.closest("button")!;
+    const chatsAdd = within(list).getByRole("button", { name: "新建会话" });
+    expect(chatsToggle.className).toContain("pe-7");
+    expect(chatsToggle.className).toContain("group-hover/fixed:pe-14");
+    expect(chatsAdd.className).toContain("end-6");
+    expect(chatsAdd.className).toContain("w-8");
+    await userEvent.click(chatsAdd);
     const pane = screen.getAllByRole("region")[0]!;
     expect(within(pane).getByRole("tab", { name: /本地任务/ }).getAttribute("aria-selected")).toBe("true");
     expect(within(pane).getByRole("button", { name: "选择项目" }).textContent).toContain("临时会话");
@@ -1019,14 +1062,21 @@ describe("分屏视图(树形布局)", () => {
     const headAfter = groupHeads()[0]!;
     expect(headAfter.querySelector(".tabler-icon-folder-open")).toBeNull();
     expect(headAfter.querySelector(".tabler-icon-folder")).not.toBeNull();
-    // hover「+」快捷新建:常驻占位(invisible 只切可见性),点它开内嵌预填
+    // hover「+」快捷新建：默认只留箭头位，hover 时缩短标题并显示按钮。
     const plus = within(headAfter.parentElement!).getByRole("button", { name: "在此项目新建任务" });
     expect(plus.className).toContain("invisible");
     expect(plus.className).toContain("group-hover/ghead:visible");
     expect(headAfter.parentElement?.className).toContain("p-0");
     expect(headAfter.parentElement?.className).toContain("gap-0");
     expect(headAfter.className).toContain("min-h-8");
-    expect(plus.className).toContain("w-9");
+    // 与待办/临时会话同构：箭头固定最右，新增按钮悬浮在其左侧。
+    expect(headAfter.querySelector(".tabler-icon-chevron-down")?.classList).toContain("absolute");
+    expect(headAfter.querySelector(".tabler-icon-chevron-down")?.classList).toContain("end-2");
+    expect(headAfter.className).toContain("pe-7");
+    expect(headAfter.className).toContain("group-hover/ghead:pe-14");
+    expect(plus.className).toContain("absolute");
+    expect(plus.className).toContain("end-6");
+    expect(plus.className).toContain("w-8");
     // daisyUI menu 的 hover/padding 在外层容器；直接点该边缘也必须开合。
     fireEvent.click(headAfter.parentElement!);
     expect(groupHeads()[0]!.querySelector(".tabler-icon-folder-open")).not.toBeNull();

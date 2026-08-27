@@ -2,7 +2,9 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ackSteering,
+  beginEdit,
   block,
+  cancelEdit,
   claimHead,
   claimSteering,
   clearPending,
@@ -41,6 +43,7 @@ import {
   stableCloudAccountScope,
   subscribeCloudQueueIndex,
   subscribeSendQueueLane,
+  updateEdited,
   updateSendQueueLane,
   writeSendQueueLane,
   type CloudQueueAttachment,
@@ -150,6 +153,58 @@ describe("send queue pure transitions", () => {
     ["last", "c", ["a", "b"]],
   ])("removes the %s pending item without disturbing the rest", (_position, removedId, expected) => {
     expect(idsOf(remove(laneOf(item("a"), item("b"), item("c")), removedId))).toEqual(expected);
+  });
+
+  it("原位更新编辑项并保持稳定 ID、附件、createdAt 和顺序", () => {
+    const originalAttachment = localAttachment("original.png");
+    const addedAttachment = localAttachment("added.txt");
+    const original = laneOf(
+      item<LocalQueueAttachment>("a"),
+      item<LocalQueueAttachment>("b", [originalAttachment]),
+      item<LocalQueueAttachment>("c"),
+    );
+    const locked = beginEdit(original, "b", 100);
+    const updated = updateEdited(locked, "b", "edited content", [originalAttachment, addedAttachment]);
+
+    expect(idsOf(updated)).toEqual(["a", "b", "c"]);
+    expect(updated.pending[1]).toEqual({
+      ...original.pending[1],
+      content: "edited content",
+      attachments: [originalAttachment, addedAttachment],
+    });
+    expect(updated.editing).toBeUndefined();
+    expect(original.pending[1]?.content).toBe("message-b");
+  });
+
+  it("编辑项未到队首时前项可领取，轮到编辑项时暂停", () => {
+    const locked = beginEdit(laneOf(item("a"), item("b"), item("c")), "b", 100);
+    expect(claimSteering(locked, "a", 100)).toBe(locked);
+    const first = claimHead(locked, { startedAt: 101 });
+    expect(first.inFlight?.item.id).toBe("a");
+    expect(idsOf(first)).toEqual(["b", "c"]);
+
+    const afterTurn = completeTurn(markReceipt(first, "a"), "a");
+    expect(claimHead(afterTurn, { startedAt: 102 })).toBe(afterTurn);
+    expect(afterTurn.inFlight).toBeNull();
+  });
+
+  it("编辑锁存在时 clearPending 保留原 lane，避免领域层静默丢项", () => {
+    const locked = beginEdit(laneOf(item("a"), item("b")), "a", 100);
+    expect(clearPending(locked)).toBe(locked);
+    expect(idsOf(locked)).toEqual(["a", "b"]);
+  });
+
+  it("取消编辑释放锁且不改变消息，恢复时也只清锁", () => {
+    const original = laneOf(item("a"), item("b"));
+    const locked = beginEdit(original, "a", 100);
+    const cancelled = cancelEdit(locked, "a");
+    expect(cancelled.pending).toEqual(original.pending);
+    expect(cancelled.editing).toBeUndefined();
+    expect(claimHead(cancelled, { startedAt: 101 }).inFlight?.item.id).toBe("a");
+
+    const recovered = recoverLaneAfterRestart(beginEdit(original, "b", 102));
+    expect(recovered.pending).toEqual(original.pending);
+    expect(recovered.editing).toBeUndefined();
   });
 
   it("reorders pending items forward, backward, and to the end", () => {

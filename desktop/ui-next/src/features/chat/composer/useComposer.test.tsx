@@ -66,6 +66,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("useComposer 本地持久 lane", () => {
@@ -81,6 +82,114 @@ describe("useComposer 本地持久 lane", () => {
 
     expect(result.current.queue.pending.map((item) => item.content)).toEqual(["第一条", "第二条", "第三条"]);
     expect(queueTexts("a")).toEqual(["第一条", "第二条", "第三条"]);
+  });
+
+  it("编辑/保存原位更新消息并恢复进入编辑前的文字与附件草稿", async () => {
+    stubShell((cmd, args) => {
+      if (cmd === "upload_file_path") return { path: String(args?.src ?? "") };
+      return null;
+    });
+    const target = localSendQueueTarget("a");
+    const queuedAtt = { path: "queued.png", name: "queued.png", isImage: true };
+    const draftAtt = { path: "draft.txt", name: "draft.txt", isImage: false };
+    const first = createSendQueueItem("原正文", [queuedAtt], { id: "first", createdAt: 11 });
+    const second = createSendQueueItem("后一条", [], { id: "second", createdAt: 12 });
+    writeSendQueueLane(target, enqueue(enqueue(emptySendQueueLane(), first), second));
+    const { result } = renderHook(() => useComposer("a", feed({ running: true })));
+
+    act(() => result.current.setDraft("我的新消息草稿"));
+    await act(() => result.current.addPaths([draftAtt.path]));
+    act(() => result.current.beginEditQueued("first"));
+    expect(result.current.editingId).toBe("first");
+    expect(result.current.queue.editing?.itemId).toBe("first");
+    expect(result.current.draft).toBe("原正文");
+    expect(result.current.atts).toEqual([queuedAtt]);
+
+    act(() => result.current.setDraft("修改后的正文"));
+    act(() => expect(result.current.saveEditedQueued()).toBe(true));
+    expect(result.current.queue.pending.map((item) => item.id)).toEqual(["first", "second"]);
+    expect(result.current.queue.pending[0]).toEqual({
+      id: "first",
+      createdAt: 11,
+      content: "修改后的正文",
+      attachments: [queuedAtt],
+    });
+    expect(result.current.queue.editing).toBeUndefined();
+    expect(result.current.draft).toBe("我的新消息草稿");
+    expect(result.current.atts).toEqual([draftAtt]);
+  });
+
+  it("保存编辑持久化失败时回滚带锁原项并保留编辑内容供重试", () => {
+    stubShell();
+    const target = localSendQueueTarget("a");
+    const queued = createSendQueueItem("磁盘旧正文", [], { id: "locked", createdAt: 10 });
+    writeSendQueueLane(target, enqueue(emptySendQueueLane(), queued));
+    const { result } = renderHook(() => useComposer("a", feed({ running: true })));
+
+    act(() => result.current.setDraft("原新消息草稿"));
+    act(() => result.current.beginEditQueued("locked"));
+    act(() => result.current.setDraft("用户修改但首次落盘失败"));
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+
+    act(() => expect(result.current.saveEditedQueued()).toBe(false));
+    expect(result.current.editingId).toBe("locked");
+    expect(result.current.draft).toBe("用户修改但首次落盘失败");
+    expect(result.current.queue.editing?.itemId).toBe("locked");
+    expect(result.current.queue.pending[0]).toEqual(queued);
+
+    setItem.mockRestore();
+    act(() => expect(result.current.saveEditedQueued()).toBe(true));
+    expect(result.current.queue.pending[0]?.content).toBe("用户修改但首次落盘失败");
+    expect(result.current.draft).toBe("原新消息草稿");
+  });
+
+  it("编辑态拒绝文件与路径上传和移除，原附件只读保留", async () => {
+    const calls = stubShell((cmd) => {
+      if (cmd === "upload_begin") return { handle: 71 };
+      if (cmd === "upload_file_path") return { path: ".monkeycode/uploads/edit-only.txt" };
+      return null;
+    });
+    const target = localSendQueueTarget("a");
+    const queuedAtt = { path: "queued.png", name: "queued.png", isImage: true };
+    const queued = createSendQueueItem("待编辑", [queuedAtt], { id: "queued", createdAt: 10 });
+    writeSendQueueLane(target, enqueue(emptySendQueueLane(), queued));
+    const { result } = renderHook(() => useComposer("a", feed({ running: true })));
+
+    act(() => result.current.beginEditQueued("queued"));
+    await act(async () => {
+      await result.current.addFiles([new File([new Uint8Array([1, 2, 3])], "edit-only.png")]);
+      await result.current.addPaths(["/tmp/edit-only.txt"]);
+      result.current.removeAtt(0);
+    });
+
+    expect(calls.some((call) => call.cmd === "upload_begin")).toBe(false);
+    expect(calls.some((call) => call.cmd === "upload_file_path")).toBe(false);
+    expect(result.current.uploads).toEqual([]);
+    expect(result.current.atts).toEqual([queuedAtt]);
+    expect(result.current.error).toBe("编辑待发送消息时暂不支持修改附件");
+
+    act(() => result.current.setDraft("只修改文字"));
+    act(() => expect(result.current.saveEditedQueued()).toBe(true));
+    expect(result.current.queue.pending[0]?.attachments).toEqual([queuedAtt]);
+  });
+
+  it("取消编辑保留队列原项并恢复草稿", () => {
+    stubShell();
+    const target = localSendQueueTarget("a");
+    const queued = createSendQueueItem("不可改掉", [], { id: "queued", createdAt: 10 });
+    writeSendQueueLane(target, enqueue(emptySendQueueLane(), queued));
+    const { result } = renderHook(() => useComposer("a", feed({ running: true })));
+
+    act(() => result.current.setDraft("原草稿"));
+    act(() => result.current.beginEditQueued("queued"));
+    act(() => result.current.setDraft("放弃的修改"));
+    act(() => result.current.cancelEditedQueued());
+
+    expect(result.current.queue.pending).toEqual([queued]);
+    expect(result.current.queue.editing).toBeUndefined();
+    expect(result.current.draft).toBe("原草稿");
   });
 
   it("能力查询撞重启闸门时退避重试，前两次 reject 后恢复 steering", async () => {

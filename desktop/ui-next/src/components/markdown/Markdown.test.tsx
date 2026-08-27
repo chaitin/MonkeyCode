@@ -40,6 +40,117 @@ describe("markdown 渲染", () => {
     expect(container.querySelector("code")?.textContent).toBe("code");
   });
 
+  it("按需渲染美元与 LaTeX 定界符的行内/块级公式，并保留 MathML", async () => {
+    const source = String.raw`行内 $E=mc^2$、$2\text{米}$ 与 \(a^2+b^2=c^2\)
+
+$$
+\int_0^1 x\,dx
+$$
+
+\[
+\sum_{i=1}^n i
+\]`;
+    const { container } = render(<Markdown source={source} />);
+
+    await waitFor(() => expect(container.querySelectorAll(".md-math .katex")).toHaveLength(5));
+    expect(container.querySelectorAll(".md-math-inline .katex")).toHaveLength(3);
+    expect(container.querySelectorAll(".md-math-block .katex-display")).toHaveLength(2);
+    expect(container.querySelectorAll(".md-math math")).toHaveLength(5);
+    expect(container.querySelector("[data-md-math]")).toBeNull();
+  });
+
+  it("金额、代码与未闭合定界符不误渲染，并继续识别后续真公式", async () => {
+    const source = "价格为$5，公式是$x$；price $5; formula=$y$；另一个是 $10；代码 `$code$`，未闭合 $z";
+    const { container } = render(<Markdown source={source} />);
+    await waitFor(() => expect(container.querySelectorAll(".md-math .katex")).toHaveLength(2));
+    expect(container.querySelector("code")?.textContent).toBe("$code$");
+    expect(container.textContent).toContain("价格为$5");
+    expect(container.textContent).toContain("price $5; formula=");
+    expect(container.textContent).toContain("$10");
+    expect(container.textContent).toContain("$z");
+  });
+
+  it("接受至多三个前导空格的块公式", async () => {
+    const { container } = render(<Markdown source={"   $$\nx^2\n   $$"} />);
+    await waitFor(() => expect(container.querySelector(".md-math-block .katex-display")).toBeTruthy());
+    expect(container.textContent).not.toContain("$$");
+  });
+
+  it("KaTeX 加载后，流式尾部每次提交都直接包含最终公式 DOM", async () => {
+    const { container, rerender } = render(<Markdown source={"公式 $x$"} deferMermaid />);
+    await waitFor(() => expect(container.querySelector(".katex")).toBeTruthy());
+
+    rerender(<Markdown source={"公式 $x$，后续文本"} deferMermaid />);
+    expect(container.querySelector(".katex")).toBeTruthy();
+    expect(container.querySelector("[data-md-math]")).toBeNull();
+    expect(renderMarkdown("另一个 $y$ 公式")).toContain("data-md-math-rendered");
+  });
+
+  it("长回答停流全文解析时保留超过 64 个普通公式", async () => {
+    const formulas = Array.from({ length: 80 }, (_, index) => `$$\nx_${index}\n$$`);
+    const source = formulas.join("\n\n");
+    const view = render(<Markdown source={formulas.slice(0, 40).join("\n\n")} deferMermaid />);
+    await waitFor(() => expect(view.container.querySelectorAll(".katex")).toHaveLength(40));
+    view.rerender(<Markdown source={source} deferMermaid />);
+    await waitFor(() => expect(view.container.querySelectorAll(".katex")).toHaveLength(80));
+
+    const firstFormula = view.container.querySelector(".katex")?.outerHTML;
+    view.rerender(<Markdown source={source} />);
+    expect(view.container.querySelectorAll(".katex")).toHaveLength(80);
+    expect(view.container.querySelectorAll(".md-math-source")).toHaveLength(0);
+    expect(view.container.querySelector(".katex")?.outerHTML).toBe(firstFormula);
+  });
+
+  it("限制单公式、整篇公式与用户指定尺寸，超限时保留源码", async () => {
+    const longFormula = `$$\n${"x+".repeat(5_000)}x\n$$`;
+    const long = render(<Markdown source={longFormula} />);
+    expect(long.container.querySelector(".katex")).toBeNull();
+    expect(long.container.querySelector(".md-math-source")?.textContent).toContain("$$");
+    long.unmount();
+
+    const expanding = render(<Markdown source={String.raw`$\def\a{xxxxxxxxxxxxxxxx}\a\a\a$`} />);
+    expect(expanding.container.querySelector(".katex")).toBeNull();
+    expect(expanding.container.querySelector(".md-math-source")?.textContent).toContain("\\def");
+    expanding.unmount();
+
+    const many = render(<Markdown source={Array.from({ length: 257 }, (_, index) => `$x_${index}$`).join(" ")} />);
+    await waitFor(() => expect(many.container.querySelectorAll(".katex")).toHaveLength(256));
+    expect(many.container.querySelectorAll(".md-math-source")).toHaveLength(1);
+    expect(many.container.querySelector("[data-md-math]")).toBeNull();
+    many.unmount();
+
+    const hugeRule = render(<Markdown source={String.raw`$\rule{1em}{1000000000em}$`} />);
+    await waitFor(() => expect(hugeRule.container.querySelector(".katex")).toBeTruthy());
+    expect([...hugeRule.container.querySelectorAll<HTMLElement>("[style]")].some((node) => node.style.cssText.includes("1000000000em"))).toBe(false);
+    expect(hugeRule.container.querySelector<HTMLElement>(".rule")?.style.borderTopWidth).toBe("20em");
+  });
+
+  it("流式未闭合块公式只降级自身，闭合后不切断所在列表", async () => {
+    const { container, rerender } = render(<Markdown source={"$$\nx^2"} deferMermaid />);
+    expect(container.querySelector("[data-md-stream-plain]")?.textContent).toContain("x^2");
+
+    const prefix = "前面已经完成。\n\n$$\nx^2\n$$\n\n- 时间膨胀\n- 长度收缩\n\n";
+    const incomplete = `${prefix}$$\n\\boxed{E_0=mc^2}`;
+    expect(segmentStreamingMarkdown(incomplete)).toEqual({
+      stable: [prefix],
+      tail: "$$\n\\boxed{E_0=mc^2}",
+      plainTail: true,
+    });
+    rerender(<Markdown source={incomplete} deferMermaid />);
+    await waitFor(() => expect(container.querySelector(".md-math-block .katex-display")).toBeTruthy());
+    expect(container.querySelectorAll("li")).toHaveLength(2);
+    expect(container.querySelector("[data-md-stream-plain]")?.textContent).toBe("$$\n\\boxed{E_0=mc^2}");
+
+    const source = `- ${"推导".repeat(520)}\n  $$\n  x^2\n  $$\n\n  其中 x 为变量`;
+    expect(segmentStreamingMarkdown(source)).toEqual({ stable: [], tail: source, plainTail: false });
+    rerender(<Markdown source={source} deferMermaid />);
+    await waitFor(() => {
+      expect(container.querySelector("[data-md-stream-plain]")).toBeNull();
+      expect(container.querySelector(".md-math-block .katex-display")).toBeTruthy();
+    });
+    expect(container.querySelector("li")?.textContent).toContain("其中 x 为变量");
+  });
+
   it("围栏代码带高亮与复制按钮;点复制写剪贴板并给反馈", async () => {
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(window.navigator, "clipboard", { value: { writeText }, configurable: true });
@@ -412,6 +523,11 @@ describe("本地资源(工作区图片/文件链接)", () => {
   it("流式正文封存完整块，只替换活跃尾块", async () => {
     const prefix = `**稳定块**${"甲".repeat(1100)}\n\n`;
     expect(segmentStreamingMarkdown(prefix + "尾部").stable).toEqual([prefix]);
+    const indentedParagraphs = Array.from({ length: 80 }, () => `   ${"普通段落".repeat(30)}\n\n`).join("");
+    const indentedSegments = segmentStreamingMarkdown(indentedParagraphs);
+    expect(indentedSegments.stable.length).toBeGreaterThan(0);
+    expect(indentedSegments.tail.length).toBeLessThan(16_384);
+    expect(indentedSegments.plainTail).toBe(false);
     const { container, rerender } = render(<Markdown source={prefix + "尾部"} deferMermaid />);
     const stableNode = await screen.findByText("稳定块");
     rerender(<Markdown source={prefix + "尾部继续增长"} deferMermaid />);

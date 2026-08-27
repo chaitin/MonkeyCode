@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>MonkeyCode needs access to folders you choose so its agent can read and modify project files.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>MonkeyCode needs access to folders you choose so its agent can read and modify project files.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>MonkeyCode needs access to folders you choose so its agent can read and modify project files.</string>
+  <key>NSNetworkVolumesUsageDescription</key>
+  <string>MonkeyCode needs access to network folders you choose as project folders.</string>
+  <key>NSRemovableVolumesUsageDescription</key>
+  <string>MonkeyCode needs access to removable-drive folders you choose as project folders.</string>
+</dict>
+</plist>
