@@ -620,6 +620,7 @@ impl SkillStoreState {
     /// 在一次技能库共享读临界区内解析历史会话快照并物化。若本调用先读到
     /// baseline 尚未建立，后续技能写必须等待本次按修改前默认集物化完成；若
     /// 技能写先完成，本调用则必定读到该写事务建立的 baseline。
+    #[cfg(test)]
     pub(crate) fn materialize_session(
         &self,
         target: &Path,
