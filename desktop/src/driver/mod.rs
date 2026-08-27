@@ -19,6 +19,8 @@ mod session;
 mod subagent;
 mod transport;
 
+pub(crate) use session::valid_session_id;
+
 use std::ops::Deref;
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;

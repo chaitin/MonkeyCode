@@ -161,14 +161,16 @@ pub(super) struct Inner {
     pub(super) perm_persist_path: PathBuf,
     /// WSL 运行环境上下文(本机模式 None;见 WslCtx)
     pub(super) wsl: Option<WslCtx>,
-    /// 技能库来源(skills.rs):内置(bundle 资源,可缺)与用户目录,
-    /// 及默认启用开关文件(skills-defaults.json)
+    /// 同一会话技能快照的跨进程锁目录。
+    pub(super) session_skill_locks_dir: PathBuf,
+    /// 技能库来源(skills.rs):内置 bundle 资源可缺；用户目录和默认开关路径
+    /// 只由下面的共享 state 持有。
     pub(super) skills_builtin_dir: Option<PathBuf>,
-    pub(super) skills_user_dir: PathBuf,
-    pub(super) skills_defaults_path: PathBuf,
+    /// 与 skills IPC/import/recovery 共用的技能库门控；物化不得按路径直读。
+    pub(super) skill_store: crate::skills::SkillStoreState,
     /// 技能物化闸:同一会话的"重写目录 → session/create"必须成对,
     /// 避免并发切换互相覆盖。目录本身已按 engine session id 隔离。
-    pub(super) skills_gate: tokio::sync::Mutex<()>,
+    pub(super) skills_gate: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[derive(Clone)]

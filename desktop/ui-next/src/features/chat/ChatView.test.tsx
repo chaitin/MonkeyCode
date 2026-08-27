@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { SettingsNavigationProvider } from "@/features/settings/SettingsNavigationContext";
 import type { SessionMeta } from "@/lib/ipc/sessions";
 import { b64encode } from "@/lib/protocol/codec";
 import { ChatView } from "./ChatView";
@@ -947,6 +948,35 @@ describe("聊天视图", () => {
     // 再点横幅收回图标
     await userEvent.click(screen.getByRole("status"));
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("skill-recovery-pending 提供精确打开技能恢复，其他物化错误保持不同提示", async () => {
+    const openSettings = vi.fn();
+    const { emit } = stubShell();
+    const view = render(
+      <SettingsNavigationProvider openSettings={openSettings}>
+        <ChatView meta={META} />
+      </SettingsNavigationProvider>,
+    );
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+
+    act(() => emit("conn-status:s1", {
+      connected: false,
+      text: "recovery pending detail",
+      code: "skill-recovery-pending",
+    }));
+    expect(await screen.findByText("技能库恢复完成后才能打开此会话。")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "打开技能恢复" }));
+    expect(openSettings).toHaveBeenCalledWith("skills");
+
+    act(() => emit("conn-status:s1", {
+      connected: false,
+      text: "copy failed",
+      code: "skill-materialize-failed",
+    }));
+    expect(await screen.findByText("会话技能准备失败:copy failed")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "打开技能恢复" })).toBeNull();
+    view.unmount();
   });
 
   it("背景表面单层:pane 根透明，独立形态提供工作台 100 表面", () => {

@@ -20,6 +20,8 @@ mod driver;
 #[cfg(target_os = "windows")]
 mod native_pet;
 mod repo;
+mod skill_import;
+mod skill_transactions;
 mod skills;
 mod telemetry;
 mod todos;
@@ -45,6 +47,106 @@ use tauri_nspanel::{tauri_panel, StyleMask, WebviewWindowExt as _};
 use crate::util::LockExt;
 use config::{load_config, materialize_engine_config, save_ui_config_files, DesktopConfig};
 use driver::DriverHost;
+use skill_import::state::SkillImportState;
+use skill_import::store::{SkillStoreError, StoreRevision};
+
+const SKILLS_CATALOG_CHANGED_EVENT: &str = "skills-catalog-changed";
+const SKILLS_CATALOG_WATCH_INTERVAL: Duration = Duration::from_millis(750);
+
+/// catalog revision 轮询的停止句柄。Drop、正常退出和 updater 直接退进程三条
+/// 生命周期路径都会发出停止信号，避免 WebView/运行时销毁后任务继续触发事件。
+struct SkillsCatalogWatcher {
+    stop: tokio::sync::watch::Sender<bool>,
+}
+
+impl SkillsCatalogWatcher {
+    fn stop(&self) {
+        self.stop.send_replace(true);
+    }
+}
+
+impl Drop for SkillsCatalogWatcher {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+fn initialize_skill_runtime(
+    config_dir: PathBuf,
+) -> Result<(skills::SkillStoreState, SkillImportState), String> {
+    initialize_skill_runtime_with(config_dir, |store| {
+        // recovery_issues 会先接管所有可自动恢复事务；不可自动恢复项以列表保留，
+        // 让应用启动后可经 recovery IPC 解决，真正的 I/O/锁错误则阻止初始化。
+        store.recovery_issues().map(|_| ())
+    })
+}
+
+fn initialize_skill_runtime_with(
+    config_dir: PathBuf,
+    recover: impl FnOnce(&skills::SkillStoreState) -> Result<(), SkillStoreError>,
+) -> Result<(skills::SkillStoreState, SkillImportState), String> {
+    let store = skills::SkillStoreState::new(config_dir.clone())
+        .map_err(|error| format!("初始化技能库状态失败: {error}"))?;
+    recover(&store).map_err(|error| format!("启动技能事务恢复失败: {error}"))?;
+    let lease_store = store.clone();
+    let imports = SkillImportState::open(&config_dir, move |path| {
+        lease_store.protects_staging_path(path)
+    })
+    .map_err(|error| format!("初始化技能导入暂存失败: {error}"))?;
+    Ok((store, imports))
+}
+
+fn start_skills_catalog_watcher(
+    app: AppHandle,
+    store: skills::SkillStoreState,
+) -> SkillsCatalogWatcher {
+    let (stop, mut stopped) = tokio::sync::watch::channel(false);
+    tauri::async_runtime::spawn(async move {
+        let mut last_error: Option<String> = None;
+        loop {
+            tokio::select! {
+                changed = stopped.changed() => {
+                    if changed.is_err() || *stopped.borrow() {
+                        break;
+                    }
+                }
+                _ = tokio::time::sleep(SKILLS_CATALOG_WATCH_INTERVAL) => {
+                    let polling_store = store.clone();
+                    let polled = tauri::async_runtime::spawn_blocking(move || {
+                        polling_store.poll_external_catalog_revision()
+                    }).await;
+                    match polled {
+                        Ok(Ok(Some(revision))) => {
+                            last_error = None;
+                            emit_skills_catalog_changed(&app, revision);
+                        }
+                        Ok(Ok(None)) => last_error = None,
+                        Ok(Err(error)) => {
+                            let message = error.to_string();
+                            if last_error.as_deref() != Some(message.as_str()) {
+                                eprintln!("[desktop] 监视 skills.revision 失败: {message}");
+                                last_error = Some(message);
+                            }
+                        }
+                        Err(error) => {
+                            let message = format!("catalog 监视后台任务异常结束: {error}");
+                            if last_error.as_deref() != Some(message.as_str()) {
+                                eprintln!("[desktop] {message}");
+                                last_error = Some(message);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+    SkillsCatalogWatcher { stop }
+}
+
+fn emit_skills_catalog_changed(app: &AppHandle, revision: StoreRevision) {
+    // 仅主 WebView 消费 catalog；宠物页不获得技能库事件或任何文件能力。
+    let _ = app.emit_to("main", SKILLS_CATALOG_CHANGED_EVENT, revision);
+}
 
 // macOS 桌宠面板类:普通 NSWindow 被点击会激活应用、把主窗口带到最前;
 // NonactivatingPanel 让桌宠保持为不抢焦点的独立面板。hides_on_deactivate 必须关,
@@ -813,6 +915,7 @@ fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, Strin
         .on_before_exit(move || {
             #[cfg(target_os = "windows")]
             persist_main_window_state(&handle);
+            handle.state::<SkillsCatalogWatcher>().stop();
             if let Some(engine) = handle.state::<DriverHost>().take() {
                 engine.stop();
             }
@@ -1505,6 +1608,13 @@ fn main() {
             skills::skills_save,
             skills::skills_delete,
             skills::skills_set_default,
+            skill_import::commands::skills_import_current,
+            skill_import::commands::skills_import_pick,
+            skill_import::commands::skills_import_read_text,
+            skill_import::commands::skills_import_commit,
+            skill_import::commands::skills_import_cancel,
+            skills::skills_recovery_list,
+            skills::skills_recovery_resolve,
             driver::upload_begin,
             driver::upload_file_path,
             driver::upload_read,
@@ -1567,6 +1677,21 @@ fn main() {
             // 配置加载:MonkeyCode 服务地址由设置指定,保存后替换服务快照;
             // 配置损坏时按默认值落官方云,错误页照常外显。
             let cfg_dir = config::config_dir(app.handle()).map_err(std::io::Error::other)?;
+            // 状态构造、事务恢复、跨进程锁等待与 lease 孤儿回收都有文件 I/O，
+            // setup 只等待 blocking worker 的结果，不在 Tauri 事件线程直接执行。
+            let skill_cfg_dir = cfg_dir.clone();
+            let (skill_store, skill_imports) =
+                tauri::async_runtime::block_on(tauri::async_runtime::spawn_blocking(move || {
+                    initialize_skill_runtime(skill_cfg_dir)
+                }))
+                .map_err(|error| std::io::Error::other(format!("技能状态后台初始化失败: {error}")))?
+                .map_err(std::io::Error::other)?;
+            app.manage(skill_store.clone());
+            app.manage(skill_imports);
+            app.manage(start_skills_catalog_watcher(
+                app.handle().clone(),
+                skill_store,
+            ));
             app.manage(baizhi::BaizhiState::new(baizhi::Service::new(
                 cfg_dir, &cfg,
             )));
@@ -1706,6 +1831,7 @@ fn main() {
                 api.prevent_exit();
             }
             RunEvent::Exit => {
+                app.state::<SkillsCatalogWatcher>().stop();
                 persist_pet_prefs(app); // 拖动位置只在退出/开关切换时落盘
                 persist_main_window_state(app);
                 #[cfg(target_os = "windows")]
@@ -2012,5 +2138,151 @@ mod linux_gdk_backend_tests {
             "wayland"
         );
         assert_eq!(default_linux_gdk_backend(None, None), "x11");
+    }
+}
+
+#[cfg(test)]
+mod skill_runtime_registration_tests {
+    use super::{
+        initialize_skill_runtime_with, skills, SkillStoreError, SkillsCatalogWatcher,
+        SKILLS_CATALOG_CHANGED_EVENT,
+    };
+    use serde_json::Value;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const COMMANDS: [&str; 7] = [
+        "skills_import_current",
+        "skills_import_pick",
+        "skills_import_read_text",
+        "skills_import_commit",
+        "skills_import_cancel",
+        "skills_recovery_list",
+        "skills_recovery_resolve",
+    ];
+
+    fn test_dir(label: &str) -> PathBuf {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        std::env::temp_dir().join(format!(
+            "monkeycode-task11-{label}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    #[test]
+    fn seven_async_commands_are_registered_and_acl_allowed_only_for_main_app() {
+        let main_source = include_str!("main.rs");
+        let commands_source = include_str!("skill_import/commands.rs");
+        let skills_source = include_str!("skills.rs");
+        let build_source = include_str!("../build.rs");
+        let config: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let capabilities = config["app"]["security"]["capabilities"]
+            .as_array()
+            .unwrap();
+        let main_permissions = capabilities
+            .iter()
+            .find(|capability| capability["identifier"] == "main-app")
+            .unwrap()["permissions"]
+            .as_array()
+            .unwrap();
+        let pet_permissions = capabilities
+            .iter()
+            .find(|capability| capability["identifier"] == "pet-page")
+            .unwrap()["permissions"]
+            .as_array()
+            .unwrap();
+
+        for command in COMMANDS {
+            assert!(
+                build_source.contains(&format!("\"{command}\"")),
+                "build.rs 未登记 {command}"
+            );
+            assert!(
+                main_source.contains(&format!("::{command},")),
+                "invoke_handler 未登记 {command}"
+            );
+            let implementation = if command.starts_with("skills_recovery_") {
+                skills_source
+            } else {
+                commands_source
+            };
+            assert!(
+                implementation.contains(&format!("pub async fn {command}")),
+                "{command} 必须保持 async handler"
+            );
+            let permission = Value::String(format!("allow-{}", command.replace('_', "-")));
+            assert!(main_permissions.contains(&permission));
+            assert!(!pet_permissions.contains(&permission));
+        }
+        assert!(main_permissions.contains(&Value::String("dialog:allow-open".into())));
+        assert!(main_permissions.iter().all(|permission| {
+            permission
+                .as_str()
+                .is_none_or(|permission| !permission.starts_with("fs:"))
+        }));
+    }
+
+    #[test]
+    fn external_catalog_poll_is_deduplicated_monotonic_and_serializes_event_identity() {
+        let root = test_dir("catalog");
+        std::fs::create_dir_all(&root).unwrap();
+        let observer = skills::SkillStoreState::new(root.clone()).unwrap();
+        let writer = skills::SkillStoreState::new(root.clone()).unwrap();
+
+        assert!(observer.poll_external_catalog_revision().unwrap().is_none());
+        writer.save_skill("external", "# external", None).unwrap();
+        let event = observer
+            .poll_external_catalog_revision()
+            .unwrap()
+            .expect("另一个实例的更高 revision 应产生事件");
+        assert_eq!(event.revision, 1);
+        assert_eq!(SKILLS_CATALOG_CHANGED_EVENT, "skills-catalog-changed");
+        let payload = serde_json::to_value(&event).unwrap();
+        assert_eq!(payload["store_id"], event.store_id);
+        assert_eq!(payload["revision"], 1);
+        assert!(observer.poll_external_catalog_revision().unwrap().is_none());
+
+        observer.save_skill("local", "# local", None).unwrap();
+        assert!(
+            observer.poll_external_catalog_revision().unwrap().is_none(),
+            "本实例已观察的写入不得伪装成跨实例事件"
+        );
+        drop(writer);
+        drop(observer);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn catalog_watcher_stop_is_idempotent_and_visible_to_its_task() {
+        let (stop, stopped) = tokio::sync::watch::channel(false);
+        let watcher = SkillsCatalogWatcher { stop };
+        assert!(!*stopped.borrow());
+        watcher.stop();
+        watcher.stop();
+        assert!(*stopped.borrow());
+    }
+
+    #[test]
+    fn startup_recovery_failure_is_propagated_before_lease_cleanup_starts() {
+        let root = test_dir("recovery-error");
+        let result = initialize_skill_runtime_with(root.clone(), |_| {
+            Err(SkillStoreError::Io {
+                operation: "测试启动恢复",
+                path: "transaction".into(),
+                message: "injected".into(),
+            })
+        });
+        let error = match result {
+            Ok(_) => panic!("恢复错误不应被静默忽略"),
+            Err(error) => error,
+        };
+        assert!(error.contains("启动技能事务恢复失败"));
+        assert!(error.contains("injected"));
+        assert!(
+            !root.join("skill-import-staging").exists(),
+            "恢复失败后不应继续创建 lease 或清理孤儿暂存"
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 }

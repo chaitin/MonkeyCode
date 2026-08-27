@@ -31,6 +31,8 @@ export interface SessionMeta {
   /** 技能启用集(名字数组;null/缺省 = 缺省集,规则见
    * lib/ipc/skills.ts::defaultEnabledSkills,与壳侧物化一致) */
   skills?: string[] | null;
+  /** 壳侧有效技能快照的服务端单调 revision；旧壳/旧测试夹具可缺省为 0。 */
+  skills_revision?: number;
   turns: number;
   status: string;
   /** 有待答复的审批请求(运行时状态,不落盘) */
@@ -166,11 +168,22 @@ export function onFrames(id: string, cb: (frames: Frame[]) => void): Promise<() 
   return listenAsync<Frame[]>(`frames:${id}`, cb);
 }
 
-export interface ConnStatus {
+export type ConnStatusErrorCode = "skill-recovery-pending" | "skill-materialize-failed";
+
+export interface ConnStatusPayload {
   text: string;
   connected: boolean;
+  code?: ConnStatusErrorCode;
 }
 
-export function onConnStatus(id: string, cb: (s: ConnStatus) => void): Promise<() => void> {
-  return listenAsync<ConnStatus>(`conn-status:${id}`, cb);
+/** 兼容旧导出名；线上载荷契约名为 ConnStatusPayload。 */
+export type ConnStatus = ConnStatusPayload;
+
+export interface SessionSkillsMutationResult {
+  skills: string[];
+  skills_revision: number;
+}
+
+export function onConnStatus(id: string, cb: (status: ConnStatusPayload) => void): Promise<() => void> {
+  return listenAsync<ConnStatusPayload>(`conn-status:${id}`, cb);
 }

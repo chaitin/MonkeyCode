@@ -9,34 +9,42 @@
 //   保持 base64(与帧内一致),本层解码;offset 是该轮在 replay.jsonl 的
 //   字节偏移(跳到未加载区间时的翻页锚)。
 import { b64decode, b64encode } from "@/lib/protocol/codec";
+import type { SessionSkillsMutationResult } from "./sessions";
 import { invoke } from "./ipc";
 
-interface CallReply {
-  result?: Record<string, unknown>;
+interface CallReply<T = Record<string, unknown>> {
+  result?: T;
   error?: string;
 }
 
-async function sessionCall(id: string, kind: string, payload: Record<string, unknown>): Promise<void> {
-  const r = await invoke<CallReply | null>("session_call", { id, kind, payload });
-  if (r?.error) throw new Error(r.error);
+async function sessionCall<T = Record<string, unknown>>(
+  id: string,
+  kind: string,
+  payload: Record<string, unknown>,
+): Promise<T | undefined> {
+  const reply = await invoke<CallReply<T> | null>("session_call", { id, kind, payload });
+  if (reply?.error) throw new Error(reply.error);
+  return reply?.result;
 }
 
 export function sessionSetModel(id: string, model: string): Promise<void> {
-  return sessionCall(id, "session_set_model", { model });
+  return sessionCall(id, "session_set_model", { model }).then(() => {});
 }
 
 export function sessionSetThink(id: string, think: string): Promise<void> {
-  return sessionCall(id, "session_set_think", { think });
+  return sessionCall(id, "session_set_think", { think }).then(() => {});
 }
 
 export function sessionSetMode(id: string, mode: string): Promise<void> {
-  return sessionCall(id, "session_set_mode", { mode });
+  return sessionCall(id, "session_set_mode", { mode }).then(() => {});
 }
 
 /** 会话技能启用集(全量声明,空数组 = 全部停用)。壳侧 destroy+resume
  * 重建引擎会话让技能目录重扫,所以仅空闲可调,resolve 在重建完成后。 */
-export function sessionSetSkills(id: string, skills: string[]): Promise<void> {
-  return sessionCall(id, "session_set_skills", { skills });
+export async function sessionSetSkills(id: string, skills: string[]): Promise<SessionSkillsMutationResult> {
+  const result = await sessionCall<SessionSkillsMutationResult>(id, "session_set_skills", { skills });
+  if (!result) throw new Error("session_set_skills 返回了空响应");
+  return result;
 }
 
 /** 手动压缩上下文(session_compact)。resolve 在压缩完成后(引擎同步
@@ -44,13 +52,13 @@ export function sessionSetSkills(id: string, skills: string[]): Promise<void> {
  * task_ended,失败走 task-error 帧)。reject 仅当压缩没起来(忙碌/旧
  * 引擎无能力/会话未打开),调用方外显。 */
 export function sessionCompact(id: string): Promise<void> {
-  return sessionCall(id, "session_compact", {});
+  return sessionCall(id, "session_compact", {}).then(() => {});
 }
 
 /** 将一条补充指令插入当前运行中的任务。Driver 会立即物化
  * data.source="steer" 的 user-input 帧，调用方无需乐观插入气泡。 */
 export function sessionSteer(id: string, content: string, clientId: string): Promise<void> {
-  return sessionCall(id, "session_steer", { content: b64encode(content), client_id: clientId });
+  return sessionCall(id, "session_steer", { content: b64encode(content), client_id: clientId }).then(() => {});
 }
 
 /** 提问大纲的一条(壳投影 + 本层解码;seq 与 UserItem.seq / DOM 的

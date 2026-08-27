@@ -37,6 +37,7 @@ import { useEscLayer } from "@/lib/util/escLayer";
 import { useDismiss } from "@/lib/util/useDismiss";
 import { useI18n } from "@/lib/i18n";
 import { getConfig } from "@/lib/ipc/config";
+import { useOptionalSkillsCatalog } from "@/features/skills/SkillsCatalogProvider";
 import { afterEngineReady } from "@/lib/ipc/engine";
 import { isWindowsShell, pickDirectory, workdirPickBase } from "@/lib/ipc/host";
 import { sameModelName } from "@/lib/models/modelMenu";
@@ -150,8 +151,12 @@ export function NewTaskModal({
   // 当前模型的具体 off/low/medium/high，缺失配置才回落 low。
   const [thinkOverride, setThinkOverride] = useState<string | null>(null);
   const think = thinkOverride ?? modelThinkLevel(models.find((item) => item.name === model));
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
-  const [skillsLoaded, setSkillsLoaded] = useState(false);
+  const catalog = useOptionalSkillsCatalog();
+  const catalogCalibrate = catalog?.calibrateSkillsCatalog;
+  const [standaloneSkills, setStandaloneSkills] = useState<SkillInfo[]>([]);
+  const [standaloneSkillsLoaded, setStandaloneSkillsLoaded] = useState(false);
+  const skills = catalog?.skills ?? standaloneSkills;
+  const skillsLoaded = catalog?.ready ?? standaloneSkillsLoaded;
   // null = 沿用壳侧默认集;首次勾选后展开成显式全量名单。
   const [enabledSkills, setEnabledSkills] = useState<string[] | null>(null);
   const [kernelEnv, setKernelEnv] = useState("");
@@ -182,7 +187,7 @@ export function NewTaskModal({
     setText(initialText ?? "");
     setThinkOverride(null);
     setEnabledSkills(null);
-    setSkillsLoaded(false);
+    setStandaloneSkillsLoaded(false);
     setError("");
     setOfferCreate(false);
     setOfferReauthorize(false);
@@ -235,15 +240,18 @@ export function NewTaskModal({
         if (pick) setModel(pick.name);
       })
       .catch(() => {});
-    // 技能库只读壳侧文件,不依赖引擎;失败保留上一份,不把瞬时读取失败
-    // 伪装成「没有技能」。
-    void skillsList()
-      .then((list) => {
-        if (!alive || !Array.isArray(list)) return;
-        setSkills(list);
-        setSkillsLoaded(true);
-      })
-      .catch(() => {});
+    // App 运行时消费共同父级 Provider；独立组件测试/Story 才走本地兜底。
+    if (catalogCalibrate) {
+      catalogCalibrate();
+    } else {
+      void skillsList()
+        .then((snapshot) => {
+          if (!alive) return;
+          setStandaloneSkills(snapshot.skills);
+          setStandaloneSkillsLoaded(true);
+        })
+        .catch(() => {});
+    }
     // 运行环境 → 最近目录过滤(默认目录恒为 DEFAULT_DIR:`~` 由壳按环境展开,
     // WSL 下就是 guest 家目录下的 MonkeyCode,见 lib/util/workdir 头注)
     void (async () => {
@@ -258,7 +266,7 @@ export function NewTaskModal({
       alive = false;
     };
     // t 是模块级函数(useI18n 头注),身份恒稳,不会催动重置
-  }, [open, initialDir, initialCloudProject, initialKind, initialText, initialFiles, t]);
+  }, [open, initialDir, initialCloudProject, initialKind, initialText, initialFiles, t, catalogCalibrate]);
 
   const pickDir = (p: string) => {
     dirTouched.current = true;
@@ -744,7 +752,9 @@ export function NewTaskModal({
                       skills={skills}
                       enabled={enabledSkills}
                       onChange={setEnabledSkills}
-                      disabled={busy}
+                      onOpen={catalogCalibrate}
+                      triggerDisabled={busy}
+                      selectionDisabled={busy}
                       title={t("chat.skills.label")}
                       align="start"
                     />

@@ -1087,6 +1087,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2149,12 +2159,16 @@ version = "26081303.0.0"
 dependencies = [
  "base64 0.22.1",
  "cookie",
+ "crc32fast",
+ "flate2",
+ "fs2",
  "futures-util",
  "getrandom 0.2.17",
  "image",
  "objc2",
  "regex",
  "reqwest 0.12.28",
+ "rustix",
  "rustls",
  "serde",
  "serde_json",
@@ -2169,7 +2183,9 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "ts-rs",
+ "unicode-normalization",
  "windows",
+ "zip",
 ]
 
 [[package]]
@@ -4784,6 +4800,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
+name = "unicode-normalization"
+version = "0.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fd4f6878c9cb28d874b009da9e8d183b5abc80117c40bbd187a1fde336be6e8"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
 name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5857,6 +5882,7 @@ checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
 dependencies = [
  "arbitrary",
  "crc32fast",
+ "flate2",
  "indexmap 2.14.0",
  "memchr",
 ]

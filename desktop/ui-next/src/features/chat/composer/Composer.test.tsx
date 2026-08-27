@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SkillInfo } from "@/lib/ipc/skills";
 import type { ModelInfo, SessionMeta } from "@/lib/ipc/sessions";
 import { b64decode, b64encode } from "@/lib/protocol/codec";
 import { pushEscLayer } from "@/lib/util/escLayer";
@@ -32,9 +33,11 @@ interface Op {
 
 function stubShell({
   models = [],
+  skills = [],
   sessionCall,
 }: {
   models?: ModelInfo[];
+  skills?: SkillInfo[];
   sessionCall?: (args?: Record<string, unknown>) => Promise<unknown>;
 } = {}) {
   const ops: Op[] = [];
@@ -51,6 +54,7 @@ function stubShell({
           });
         }
         if (cmd === "models_list") return Promise.resolve(models);
+        if (cmd === "skills_list") return Promise.resolve({ revision: 1, store_id: "test", skills });
         if (cmd === "session_call") return sessionCall ? sessionCall(args) : Promise.resolve({ result: {} });
         if (cmd === "upload_begin") return Promise.resolve({ handle: 9 });
         if (cmd === "upload_finish") return Promise.resolve({ path: ".monkeycode/uploads/shot.png" });
@@ -411,8 +415,16 @@ describe("模型 / 思考深度 / 权限模式", () => {
     ]);
   });
 
-  it("运行中:组合触发器禁用，已展开菜单也立即关闭", async () => {
-    const { emit } = stubShell({ models: MODELS });
+  it("运行中:模型菜单禁用关闭；技能 trigger/管理入口可用但 checkbox 禁改", async () => {
+    const skill: SkillInfo = {
+      name: "feature-design",
+      description: "设计功能",
+      source: "builtin",
+      content: "",
+      overrides: false,
+      default_enabled: true,
+    };
+    const { emit } = stubShell({ models: MODELS, skills: [skill] });
     render(<ChatView meta={META} />);
     await ready();
     await userEvent.click(screen.getByRole("button", { name: "m" }));
@@ -422,7 +434,12 @@ describe("模型 / 思考深度 / 权限模式", () => {
     await waitFor(() => {
       expect((screen.getByRole("button", { name: "m" }) as HTMLButtonElement).disabled).toBe(true);
       expect(screen.queryByRole("radiogroup", { name: "思考深度" })).toBeNull();
+      expect((screen.getByRole("button", { name: "会话技能" }) as HTMLButtonElement).disabled).toBe(false);
     });
+
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    expect((screen.getByRole("checkbox", { name: "feature-design" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "管理和导入技能…" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
@@ -854,5 +871,252 @@ describe("切会话焦点", () => {
     expect(document.activeElement).not.toBe(box);
     rerender(<ChatView meta={{ ...META, id: "s2", title: "部署" }} />);
     expect(document.activeElement).not.toBe(box);
+  });
+});
+
+describe("会话技能 server revision", () => {
+  const skills: SkillInfo[] = [
+    { name: "a", description: "A", source: "builtin", content: "", overrides: false, default_enabled: false },
+    { name: "b", description: "B", source: "user", content: "", overrides: false, default_enabled: false },
+  ];
+
+  it("乐观勾选由规范化响应确认，旧 poll/旧 revision 不回退", async () => {
+    let resolveMutation: ((value: unknown) => void) | undefined;
+    stubShell({
+      skills,
+      sessionCall: (args) =>
+        args?.kind === "session_set_skills"
+          ? new Promise((resolve) => { resolveMutation = resolve; })
+          : Promise.resolve({ result: {} }),
+    });
+    const initial = { ...META, skills: ["a"], skills_revision: 2 };
+    const { rerender } = render(<ChatView meta={initial} />);
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    const menu = screen.getByRole("list", { name: "会话技能" });
+    const a = within(menu).getByRole("checkbox", { name: "a" });
+    expect(a.getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    const b = within(menu).getByRole("checkbox", { name: "b" });
+    await userEvent.click(b);
+    expect(b.getAttribute("aria-checked")).toBe("true");
+
+    rerender(<ChatView meta={{ ...initial, skills: [], skills_revision: 1 }} />);
+    expect(b.getAttribute("aria-checked")).toBe("true");
+
+    await act(async () => resolveMutation?.({ result: { skills: ["b"], skills_revision: 4 } }));
+    await userEvent.click(screen.getByRole("tab", { name: "内置" }));
+    await waitFor(() => {
+      expect(within(menu).getByRole("checkbox", { name: "a" }).getAttribute("aria-checked")).toBe("false");
+    });
+
+    rerender(<ChatView meta={{ ...initial, skills: ["a"], skills_revision: 3 }} />);
+    expect(within(menu).getByRole("checkbox", { name: "a" }).getAttribute("aria-checked")).toBe("false");
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    expect(within(menu).getByRole("checkbox", { name: "b" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("同会话快速点击严格按意图顺序调用，逆序延迟 mock 下后端最终仍是最新选择", async () => {
+    const invocations: string[][] = [];
+    let activeCalls = 0;
+    let maxActiveCalls = 0;
+    let backendSkills: string[] = [];
+    stubShell({
+      skills,
+      sessionCall: (args) => {
+        if (args?.kind !== "session_set_skills") return Promise.resolve({ result: {} });
+        const next = [...((args.payload as { skills: string[] }).skills)];
+        const callIndex = invocations.length;
+        invocations.push(next);
+        activeCalls += 1;
+        maxActiveCalls = Math.max(maxActiveCalls, activeCalls);
+        // 若并发，第二次会先完成，随后旧调用覆盖后端；只有 invocation
+        // 本身串行，最终后端才会保持最后一次用户意图。
+        return new Promise((resolve) => window.setTimeout(() => {
+          backendSkills = next;
+          activeCalls -= 1;
+          resolve({ result: { skills: next, skills_revision: callIndex === 0 ? 3 : 4 } });
+        }, callIndex === 0 ? 30 : 0));
+      },
+    });
+    render(<ChatView meta={{ ...META, skills: ["a"], skills_revision: 2 }} />);
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    const menu = screen.getByRole("list", { name: "会话技能" });
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    await userEvent.click(within(menu).getByRole("checkbox", { name: "b" })); // op1: a,b
+    await userEvent.click(screen.getByRole("tab", { name: "内置" }));
+    await userEvent.click(within(menu).getByRole("checkbox", { name: "a" })); // op2(latest): b
+    expect(invocations).toEqual([["a", "b"]]);
+    expect(within(menu).getByRole("checkbox", { name: "a" }).getAttribute("aria-checked")).toBe("false");
+    await waitFor(() => expect(invocations).toEqual([["a", "b"], ["b"]]));
+    await waitFor(() => expect(backendSkills).toEqual(["b"]));
+    expect(maxActiveCalls).toBe(1);
+    expect(within(menu).getByRole("checkbox", { name: "a" }).getAttribute("aria-checked")).toBe("false");
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    expect(within(menu).getByRole("checkbox", { name: "b" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("连续两次失败回滚到原 server-confirmed 态，而非首笔乐观态", async () => {
+    const rejects: Array<(reason: unknown) => void> = [];
+    const invocations: string[][] = [];
+    stubShell({
+      skills,
+      sessionCall: (args) => {
+        if (args?.kind !== "session_set_skills") return Promise.resolve({ result: {} });
+        invocations.push([...((args.payload as { skills: string[] }).skills)]);
+        return new Promise((_resolve, reject) => { rejects.push(reject); });
+      },
+    });
+    render(<ChatView meta={{ ...META, skills: ["a"], skills_revision: 2 }} />);
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    const menu = screen.getByRole("list", { name: "会话技能" });
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    await userEvent.click(within(menu).getByRole("checkbox", { name: "b" })); // op1: a,b
+    await userEvent.click(screen.getByRole("tab", { name: "内置" }));
+    await userEvent.click(within(menu).getByRole("checkbox", { name: "a" })); // op2: b
+
+    await act(async () => rejects[0]?.(new Error("first failed")));
+    await waitFor(() => expect(invocations).toEqual([["a", "b"], ["b"]]));
+    await act(async () => rejects[1]?.(new Error("second failed")));
+
+    await waitFor(() => {
+      expect(within(menu).getByRole("checkbox", { name: "a" }).getAttribute("aria-checked")).toBe("true");
+    });
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    expect(within(menu).getByRole("checkbox", { name: "b" }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("第一笔成功、第二笔失败时回滚到第一笔 server normalized 态", async () => {
+    let resolveFirst!: (value: unknown) => void;
+    let rejectSecond!: (reason: unknown) => void;
+    const invocations: string[][] = [];
+    stubShell({
+      skills,
+      sessionCall: (args) => {
+        if (args?.kind !== "session_set_skills") return Promise.resolve({ result: {} });
+        invocations.push([...((args.payload as { skills: string[] }).skills)]);
+        return invocations.length === 1
+          ? new Promise((resolve) => { resolveFirst = resolve; })
+          : new Promise((_resolve, reject) => { rejectSecond = reject; });
+      },
+    });
+    render(<ChatView meta={{ ...META, skills: ["a"], skills_revision: 2 }} />);
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    const menu = screen.getByRole("list", { name: "会话技能" });
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    await userEvent.click(within(menu).getByRole("checkbox", { name: "b" })); // op1: a,b
+    await userEvent.click(screen.getByRole("tab", { name: "内置" }));
+    await userEvent.click(within(menu).getByRole("checkbox", { name: "a" })); // op2: b
+
+    await act(async () => resolveFirst({ result: { skills: [], skills_revision: 3 } }));
+    await waitFor(() => expect(invocations).toEqual([["a", "b"], ["b"]]));
+    await act(async () => rejectSecond(new Error("latest failed")));
+
+    await waitFor(() => {
+      expect(within(menu).getByRole("checkbox", { name: "a" }).getAttribute("aria-checked")).toBe("false");
+    });
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    expect(within(menu).getByRole("checkbox", { name: "b" }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("第一笔失败、第二笔成功时确认第二笔 server normalized 态，旧失败不回滚或外显", async () => {
+    const invocations: string[][] = [];
+    let rejectFirst!: (reason: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    stubShell({
+      skills,
+      sessionCall: (args) => {
+        if (args?.kind !== "session_set_skills") return Promise.resolve({ result: {} });
+        invocations.push([...((args.payload as { skills: string[] }).skills)]);
+        return invocations.length === 1
+          ? new Promise((_resolve, reject) => { rejectFirst = reject; })
+          : new Promise((resolve) => { resolveSecond = resolve; });
+      },
+    });
+    render(<ChatView meta={{ ...META, skills: ["a"], skills_revision: 2 }} />);
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    const menu = screen.getByRole("list", { name: "会话技能" });
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    await userEvent.click(within(menu).getByRole("checkbox", { name: "b" })); // op1: a,b
+    await userEvent.click(screen.getByRole("tab", { name: "内置" }));
+    await userEvent.click(within(menu).getByRole("checkbox", { name: "a" })); // op2: b
+    expect(invocations).toEqual([["a", "b"]]);
+
+    await act(async () => rejectFirst(new Error("old failure")));
+    await waitFor(() => expect(invocations).toEqual([["a", "b"], ["b"]]));
+    await act(async () => resolveSecond({ result: { skills: ["a"], skills_revision: 5 } }));
+    expect(screen.queryByText(/old failure/)).toBeNull();
+    await userEvent.click(screen.getByRole("tab", { name: "内置" }));
+    expect(within(menu).getByRole("checkbox", { name: "a" }).getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    expect(within(menu).getByRole("checkbox", { name: "b" }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("更高外部 revision 推进 confirmed，随后旧 RPC 响应与旧 poll 都不能回退", async () => {
+    let resolveMutation!: (value: unknown) => void;
+    stubShell({
+      skills,
+      sessionCall: (args) => args?.kind === "session_set_skills"
+        ? new Promise((resolve) => { resolveMutation = resolve; })
+        : Promise.resolve({ result: {} }),
+    });
+    const initial = { ...META, skills: ["a"], skills_revision: 2 };
+    const { rerender } = render(<ChatView meta={initial} />);
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    const menu = screen.getByRole("list", { name: "会话技能" });
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    await userEvent.click(within(menu).getByRole("checkbox", { name: "b" }));
+
+    rerender(<ChatView meta={{ ...initial, skills: ["b"], skills_revision: 10 }} />);
+    await waitFor(() => {
+      expect(within(menu).getByRole("checkbox", { name: "b" }).getAttribute("aria-checked")).toBe("true");
+    });
+    await act(async () => resolveMutation({ result: { skills: ["a"], skills_revision: 3 } }));
+    rerender(<ChatView meta={{ ...initial, skills: ["a"], skills_revision: 9 }} />);
+
+    await userEvent.click(screen.getByRole("tab", { name: "内置" }));
+    expect(within(menu).getByRole("checkbox", { name: "a" }).getAttribute("aria-checked")).toBe("false");
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    expect(within(menu).getByRole("checkbox", { name: "b" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("切到 B 会话后其调用不被 A 队列阻塞，A 的迟到高 revision 也不能进入 B", async () => {
+    let resolveA: ((value: unknown) => void) | undefined;
+    let resolveB: ((value: unknown) => void) | undefined;
+    const invokedSessions: string[] = [];
+    stubShell({
+      skills,
+      sessionCall: (args) => {
+        if (args?.kind !== "session_set_skills") return Promise.resolve({ result: {} });
+        const id = args.id as string;
+        invokedSessions.push(id);
+        return new Promise((resolve) => {
+          if (id === "A") resolveA = resolve;
+          else resolveB = resolve;
+        });
+      },
+    });
+    const { rerender } = render(
+      <ChatView meta={{ ...META, id: "A", skills: ["a"], skills_revision: 2 }} />,
+    );
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "b" }));
+
+    rerender(<ChatView meta={{ ...META, id: "B", skills: ["b"], skills_revision: 10 }} />);
+    await userEvent.click(screen.getByRole("tab", { name: "内置" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "a" }));
+    expect(invokedSessions).toEqual(["A", "B"]);
+    await act(async () => resolveB?.({ result: { skills: ["a", "b"], skills_revision: 11 } }));
+    await act(async () => resolveA?.({ result: { skills: ["a"], skills_revision: 999 } }));
+    expect(screen.getByRole("checkbox", { name: "a" }).getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(screen.getByRole("tab", { name: "自定义" }));
+    expect(screen.getByRole("checkbox", { name: "b" }).getAttribute("aria-checked")).toBe("true");
   });
 });

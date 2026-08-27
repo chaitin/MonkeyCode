@@ -6,6 +6,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { SettingsNavigationProvider } from "@/features/settings/SettingsNavigationContext";
 import { ModelMenu, OptionMenu, SkillsMenu } from "./pickers";
 
 describe("OptionMenu:空清单也要说话", () => {
@@ -39,6 +40,56 @@ describe("OptionMenu:空清单也要说话", () => {
   });
 });
 
+describe("SkillsMenu catalog 校准与管理入口", () => {
+  it("运行中 trigger 和管理入口可用，但技能 checkbox 禁止修改", async () => {
+    const openSettings = vi.fn();
+    const onChange = vi.fn();
+    render(
+      <SettingsNavigationProvider openSettings={openSettings}>
+        <SkillsMenu
+          skills={[
+            {
+              name: "feature-design",
+              description: "设计功能",
+              source: "builtin",
+              content: "",
+              overrides: false,
+              default_enabled: true,
+            },
+          ]}
+          enabled={null}
+          onChange={onChange}
+          selectionDisabled
+        />
+      </SettingsNavigationProvider>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "会话技能" });
+    expect((trigger as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(trigger);
+    const checkbox = within(screen.getByRole("list", { name: "会话技能" })).getByRole("checkbox", {
+      name: "feature-design",
+    });
+    expect((checkbox as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(checkbox);
+    expect(onChange).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "管理和导入技能…" }));
+    expect(openSettings).toHaveBeenCalledWith("skills");
+  });
+
+  it("每次展开调用 onOpen，供 Provider 覆盖丢失的 catalog 事件", async () => {
+    const onOpen = vi.fn();
+    render(<SkillsMenu skills={[]} enabled={[]} onChange={vi.fn()} onOpen={onOpen} />);
+    const trigger = screen.getByRole("button", { name: "会话技能" });
+    await userEvent.click(trigger);
+    expect(onOpen).toHaveBeenCalledOnce();
+    await userEvent.click(trigger);
+    await userEvent.click(trigger);
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("窄 panel 下的 picker", () => {
   it("技能和模型组合选择器使用同一套收缩与截断规则", () => {
     render(
@@ -50,6 +101,7 @@ describe("窄 panel 下的 picker", () => {
               description: "设计功能",
               source: "builtin",
               content: "",
+              overrides: false,
               default_enabled: true,
             },
           ]}
@@ -154,6 +206,7 @@ describe("窄 panel 下的 picker", () => {
               description: "设计功能",
               source: "builtin",
               content: "",
+              overrides: false,
               default_enabled: true,
             },
           ]}

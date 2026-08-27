@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { SettingsNavigationProvider } from "@/features/settings/SettingsNavigationContext";
 import type { ModelInfo } from "@/lib/ipc/sessions";
 import { pathBackedFile } from "@/lib/ipc/uploads";
 import { b64encode } from "@/lib/protocol/codec";
@@ -26,8 +27,8 @@ const DEFAULT_MODELS: ModelInfo[] = [
   { name: "locked-pro", default: false, locked: true },
 ];
 const DEFAULT_SKILLS = [
-  { name: "feature-design", description: "设计功能", source: "builtin", content: "", default_enabled: true },
-  { name: "code-review", description: "审查代码", source: "builtin", content: "", default_enabled: false },
+  { name: "feature-design", description: "设计功能", source: "builtin", content: "", overrides: false, default_enabled: true },
+  { name: "code-review", description: "审查代码", source: "builtin", content: "", overrides: false, default_enabled: false },
 ];
 
 /** 壳桩:按命令名分发,overrides 可逐命令改写(如注入失败)。 */
@@ -263,6 +264,20 @@ describe("新建任务", () => {
 
     await act(async () => resolveSkills?.(DEFAULT_SKILLS));
     await waitFor(() => expect(screen.getByRole("button", { name: "会话技能" }).textContent).toContain("技能·1"));
+  });
+
+  it("skills:底部管理入口精确跳转设置技能分区", async () => {
+    stubShell();
+    const openSettings = vi.fn();
+    render(
+      <SettingsNavigationProvider openSettings={openSettings}>
+        <NewTaskModal open onClose={() => {}} onCreated={() => {}} />
+      </SettingsNavigationProvider>,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "会话技能" }).textContent).toContain("技能·1"));
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    await userEvent.click(screen.getByRole("button", { name: "管理和导入技能…" }));
+    expect(openSettings).toHaveBeenCalledWith("skills");
   });
 
   it("skills:可在创建前多选,显式名单随 session_create 原子下发", async () => {
