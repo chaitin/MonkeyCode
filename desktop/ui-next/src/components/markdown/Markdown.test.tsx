@@ -76,6 +76,16 @@ $$
     expect(container.textContent).not.toContain("$$");
   });
 
+  it("KaTeX 加载后，流式尾部每次提交都直接包含最终公式 DOM", async () => {
+    const { container, rerender } = render(<Markdown source={"公式 $x$"} deferMermaid />);
+    await waitFor(() => expect(container.querySelector(".katex")).toBeTruthy());
+
+    rerender(<Markdown source={"公式 $x$，后续文本"} deferMermaid />);
+    expect(container.querySelector(".katex")).toBeTruthy();
+    expect(container.querySelector("[data-md-math]")).toBeNull();
+    expect(renderMarkdown("另一个 $y$ 公式")).toContain("data-md-math-rendered");
+  });
+
   it("限制公式长度、单次数量和用户指定尺寸，超限时保留源码", async () => {
     const longFormula = `$$\n${"x+".repeat(5_000)}x\n$$`;
     const long = render(<Markdown source={longFormula} />);

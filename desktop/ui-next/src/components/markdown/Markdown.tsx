@@ -265,7 +265,7 @@ const MATH_MAX_TOTAL_SOURCE_CHARS = 4_096;
 const MATH_MAX_FORMULAS = 64;
 const MATH_MAX_SIZE_EM = 20;
 const MATH_MAX_EXPAND = 100;
-const MATH_RENDER_SLICE_MS = 12;
+const MATH_HTML_CACHE_MAX = 256;
 const MATH_DEFINITION_RE = /\\(?:def|gdef|edef|xdef|let|futurelet|newcommand|renewcommand|providecommand)\b/;
 const BLOCK_MATH_RE = /^(?:[ \t]{0,3}\$\$[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]{0,3}\$\$[ \t]*|[ \t]{0,3}\\\[[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]{0,3}\\\][ \t]*)(?:\r?\n|$)/;
 const INLINE_DOLLAR_RE = /^\$(?!\$|\s)((?:\\.|[^\\\n`$])*?(?:\\.|[^\\\s\n`$]))\$(?=[\s?!.,:;。，！？：；、)\]}]|$)/u;
@@ -459,19 +459,18 @@ function normalizeResourceUrls(root: ParentNode, linkifyInlineFiles = false) {
   }
 }
 
-export function renderMarkdown(source: string, linkifyInlineFiles = false): string {
-  const template = document.createElement("template");
-  template.innerHTML = parser.parse(source) as string;
-  normalizeResourceUrls(template.content, linkifyInlineFiles);
-  // target/rel 交给点击代理,净化时保守放行 data-*(复制按钮原文载荷与本地标记)
-  return DOMPurify.sanitize(template.innerHTML, { USE_PROFILES: { html: true } });
-}
+type KatexRenderer = typeof import("katex").default;
 
 let katexModule: Promise<typeof import("katex")> | null = null;
+let katexRenderer: KatexRenderer | null = null;
+const mathHtmlCache = new Map<string, string>();
 
 function loadKatex(): Promise<typeof import("katex")> {
   if (katexModule) return katexModule;
-  const pending = import("katex");
+  const pending = import("katex").then((module) => {
+    katexRenderer = module.default;
+    return module;
+  });
   katexModule = pending;
   void pending.catch(() => {
     if (katexModule === pending) katexModule = null;
@@ -486,55 +485,87 @@ function leaveMathAsSource(formula: HTMLElement, source: string): void {
   formula.textContent = displayMode ? `$$\n${source}\n$$` : `$${source}$`;
 }
 
-async function hydrateMath(container: ParentNode, cancelled: () => boolean): Promise<void> {
+function renderMathBeforeCommit(container: ParentNode): void {
+  if (!katexRenderer) return;
   const formulas = [...container.querySelectorAll<HTMLElement>("[data-md-math]")];
-  if (!formulas.length) return;
-  const pending: Array<{ formula: HTMLElement; source: string }> = [];
+  let renderedCount = 0;
   let totalChars = 0;
   for (const formula of formulas) {
     const source = formula.textContent ?? "";
     if (
-      pending.length >= MATH_MAX_FORMULAS ||
+      renderedCount >= MATH_MAX_FORMULAS ||
       !mathWithinRenderBudget(source) ||
       totalChars + source.length > MATH_MAX_TOTAL_SOURCE_CHARS
     ) {
       leaveMathAsSource(formula, source);
       continue;
     }
-    pending.push({ formula, source });
-    totalChars += source.length;
-  }
-  if (!pending.length) return;
-  let katex: typeof import("katex").default;
-  try {
-    katex = (await loadKatex()).default;
-  } catch {
-    return; // chunk 加载失败时保留可读公式原文
-  }
-  let sliceStartedAt = performance.now();
-  for (const { formula, source } of pending) {
-    if (cancelled() || !formula.isConnected) return;
-    if (performance.now() - sliceStartedAt >= MATH_RENDER_SLICE_MS) {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-      if (cancelled() || !formula.isConnected) return;
-      sliceStartedAt = performance.now();
-    }
+    const displayMode = formula.dataset.mdMath === "block";
+    const cacheKey = `${displayMode ? "block" : "inline"}\0${source}`;
     try {
-      katex.render(source, formula, {
-        displayMode: formula.dataset.mdMath === "block",
-        maxExpand: MATH_MAX_EXPAND,
-        maxSize: MATH_MAX_SIZE_EM,
-        output: "htmlAndMathml",
-        strict: "ignore",
-        throwOnError: false,
-        trust: false,
-      });
+      let html = mathHtmlCache.get(cacheKey);
+      if (!html) {
+        html = katexRenderer.renderToString(source, {
+          displayMode,
+          maxExpand: MATH_MAX_EXPAND,
+          maxSize: MATH_MAX_SIZE_EM,
+          output: "htmlAndMathml",
+          strict: "ignore",
+          throwOnError: false,
+          trust: false,
+        });
+        if (mathHtmlCache.size >= MATH_HTML_CACHE_MAX) {
+          const oldest = mathHtmlCache.keys().next().value;
+          if (oldest !== undefined) mathHtmlCache.delete(oldest);
+        }
+        mathHtmlCache.set(cacheKey, html);
+      }
+      // KaTeX 产物在正文完成 DOMPurify 后写入，既保留 MathML，又不让正文
+      // HTML 绕过净化；提交给 React 前已经是最终尺寸，不再产生二次布局。
+      formula.innerHTML = html;
       formula.removeAttribute("data-md-math");
       formula.setAttribute("data-md-math-rendered", "");
+      renderedCount += 1;
+      totalChars += source.length;
     } catch {
-      formula.textContent = source;
+      leaveMathAsSource(formula, source);
     }
   }
+}
+
+export function renderMarkdown(source: string, linkifyInlineFiles = false): string {
+  const template = document.createElement("template");
+  template.innerHTML = parser.parse(source) as string;
+  normalizeResourceUrls(template.content, linkifyInlineFiles);
+  // KaTeX 先只产生转义后的源码占位；正文净化完成后才把可信渲染产物写入。
+  template.innerHTML = DOMPurify.sanitize(template.innerHTML, { USE_PROFILES: { html: true } });
+  renderMathBeforeCommit(template.content);
+  return template.innerHTML;
+}
+
+function useRenderedMarkdown(source: string, enabled: boolean, linkifyInlineFiles: boolean, renderKey: string): string {
+  const [mathReady, setMathReady] = useState(() => katexRenderer !== null);
+  const html = useMemo(() => {
+    // 两者都是渲染世代：KaTeX 就绪和 locale 变化时，即使 source 未变也要
+    // 重建 HTML（公式 DOM / 复制按钮文案分别由它们决定）。
+    void mathReady;
+    void renderKey;
+    return enabled ? renderMarkdown(source, linkifyInlineFiles) : "";
+  }, [enabled, linkifyInlineFiles, mathReady, renderKey, source]);
+  useEffect(() => {
+    if (mathReady || !html.includes("data-md-math=")) return;
+    let cancelled = false;
+    void loadKatex().then(
+      () => {
+        if (!cancelled) setMathReady(true);
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [html, mathReady]);
+  return html;
 }
 
 function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: string) => void) {
@@ -719,11 +750,7 @@ function StaticMarkdown({
   // t("md.copy") 把文案烤进 HTML——静态分析看不穿这层,去掉它换语言后
   // 已渲染的消息里复制按钮会一直是旧语言
   const linkifyInlineFiles = Boolean(onLocalLink);
-  const html = useMemo(
-    () => (near ? renderMarkdown(throttled, linkifyInlineFiles) : ""),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [near, throttled, locale, linkifyInlineFiles],
-  );
+  const html = useRenderedMarkdown(throttled, near, linkifyInlineFiles, locale);
   // 升格引起的行高突变(占位原文 vs 解析产物,差值可达千 px 级)不在这里
   // 各自补偿；动态高度窗口的行级 ResizeObserver 会更新 Fenwick 高度树，
   // 并仅在变化位于阅读锚点上方时按真实 delta 校正 scrollTop。
@@ -738,15 +765,6 @@ function StaticMarkdown({
     if (!container) return;
     let cancelled = false;
     hydrateLocalImages(container, localImageUrlRef.current, () => cancelled, cache.current).catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [html]);
-  useEffect(() => {
-    const container = root.current;
-    if (!container) return;
-    let cancelled = false;
-    hydrateMath(container, () => cancelled).catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -879,9 +897,7 @@ const MarkdownChunk = memo(function MarkdownChunk({
   locale: string;
   linkifyInlineFiles: boolean;
 }) {
-  // locale 参与 key 义:复制按钮文案烤进 HTML。
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const html = useMemo(() => renderMarkdown(source, linkifyInlineFiles), [source, locale, linkifyInlineFiles]);
+  const html = useRenderedMarkdown(source, true, linkifyInlineFiles, locale);
   return <div data-md-stable-chunk="" dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
@@ -902,14 +918,9 @@ function StreamingMarkdown({
   const near = useNearViewport(root);
   const sampled = useThrottled(source, source.length > 100_000 ? 600 : 120);
   const segments = useMemo(() => segmentStreamingMarkdown(sampled), [sampled]);
-  const tailHtml = useMemo(
-    // 活跃尾块会反复重建 DOM，暂不生成可聚焦的启发式链接；封存为稳定块
-    // 或停流切回 StaticMarkdown 后再启用，避免键盘焦点随下一批 token 丢失。
-    () => (near && !segments.plainTail && segments.tail ? renderMarkdown(segments.tail) : ""),
-    // locale 会改变 renderMarkdown 内部烤入 HTML 的复制按钮文案。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [near, segments, locale],
-  );
+  // 活跃尾块会反复重建 DOM，暂不生成可聚焦的启发式链接；KaTeX 则在
+  // HTML 提交前同步写好最终 DOM，避免每批 token 都经历源码→公式的跳变。
+  const tailHtml = useRenderedMarkdown(segments.tail, near && !segments.plainTail && Boolean(segments.tail), false, locale);
   const cache = useRef<LocalImageCache>(new Map());
   const localImageUrlRef = useRef(localImageUrl);
   useEffect(() => {
@@ -920,15 +931,6 @@ function StreamingMarkdown({
     if (!container || !near) return;
     let cancelled = false;
     hydrateLocalImages(container, localImageUrlRef.current, () => cancelled, cache.current).catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [segments, tailHtml, near]);
-  useEffect(() => {
-    const container = root.current;
-    if (!container || !near) return;
-    let cancelled = false;
-    hydrateMath(container, () => cancelled).catch(() => {});
     return () => {
       cancelled = true;
     };
