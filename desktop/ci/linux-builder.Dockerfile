@@ -1,7 +1,8 @@
 FROM debian:10
 
-ARG GLIB_VERSION=2.70.6
+ARG GLIB_VERSION=2.70.5
 ARG MESON_VERSION=0.61.5
+ARG DEBIAN_ARCHIVE_HOST=archive.debian.org
 
 ENV DEBIAN_FRONTEND=noninteractive \
     GLIB_PREFIX=/opt/glib-2.70 \
@@ -11,8 +12,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Debian 10 supplies glibc 2.28. Its packaged GLib is 2.58, so build the
 # newer GLib required by the Rust GTK bindings into an isolated prefix.
 RUN sed -i \
-      -e 's|deb.debian.org/debian|archive.debian.org/debian|g' \
-      -e 's|security.debian.org/debian-security|archive.debian.org/debian-security|g' \
+      -e "s|deb.debian.org/debian|${DEBIAN_ARCHIVE_HOST}/debian|g" \
+      -e "s|security.debian.org/debian-security|${DEBIAN_ARCHIVE_HOST}/debian-security|g" \
       /etc/apt/sources.list \
     && apt-get -o Acquire::Check-Valid-Until=false update \
     && apt-get install -y --no-install-recommends \
@@ -22,8 +23,9 @@ RUN sed -i \
       libwebkit2gtk-4.0-dev libgtk-3-dev libayatana-appindicator3-dev \
       librsvg2-dev patchelf xdg-utils rpm \
       gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-      gstreamer1.0-libav gstreamer1.0-alsa \
-    && curl --fail --location --silent --show-error \
+      gstreamer1.0-libav gstreamer1.0-alsa
+
+RUN curl --fail --location --silent --show-error \
       "https://github.com/mesonbuild/meson/archive/refs/tags/${MESON_VERSION}.tar.gz" \
       --output /tmp/meson.tar.gz \
     && tar -xzf /tmp/meson.tar.gz -C /opt \
