@@ -86,7 +86,22 @@ $$
     expect(renderMarkdown("另一个 $y$ 公式")).toContain("data-md-math-rendered");
   });
 
-  it("限制公式长度、单次数量和用户指定尺寸，超限时保留源码", async () => {
+  it("长回答停流全文解析时保留超过 64 个普通公式", async () => {
+    const formulas = Array.from({ length: 80 }, (_, index) => `$$\nx_${index}\n$$`);
+    const source = formulas.join("\n\n");
+    const view = render(<Markdown source={formulas.slice(0, 40).join("\n\n")} deferMermaid />);
+    await waitFor(() => expect(view.container.querySelectorAll(".katex")).toHaveLength(40));
+    view.rerender(<Markdown source={source} deferMermaid />);
+    await waitFor(() => expect(view.container.querySelectorAll(".katex")).toHaveLength(80));
+
+    const firstFormula = view.container.querySelector(".katex")?.outerHTML;
+    view.rerender(<Markdown source={source} />);
+    expect(view.container.querySelectorAll(".katex")).toHaveLength(80);
+    expect(view.container.querySelectorAll(".md-math-source")).toHaveLength(0);
+    expect(view.container.querySelector(".katex")?.outerHTML).toBe(firstFormula);
+  });
+
+  it("限制单公式、整篇公式与用户指定尺寸，超限时保留源码", async () => {
     const longFormula = `$$\n${"x+".repeat(5_000)}x\n$$`;
     const long = render(<Markdown source={longFormula} />);
     expect(long.container.querySelector(".katex")).toBeNull();
@@ -98,8 +113,8 @@ $$
     expect(expanding.container.querySelector(".md-math-source")?.textContent).toContain("\\def");
     expanding.unmount();
 
-    const many = render(<Markdown source={Array.from({ length: 65 }, (_, index) => `$x_${index}$`).join(" ")} />);
-    await waitFor(() => expect(many.container.querySelectorAll(".katex")).toHaveLength(64));
+    const many = render(<Markdown source={Array.from({ length: 257 }, (_, index) => `$x_${index}$`).join(" ")} />);
+    await waitFor(() => expect(many.container.querySelectorAll(".katex")).toHaveLength(256));
     expect(many.container.querySelectorAll(".md-math-source")).toHaveLength(1);
     expect(many.container.querySelector("[data-md-math]")).toBeNull();
     many.unmount();
@@ -110,15 +125,29 @@ $$
     expect(hugeRule.container.querySelector<HTMLElement>(".rule")?.style.borderTopWidth).toBe("20em");
   });
 
-  it("流式未闭合块公式保持原文，闭合后不切断所在列表", async () => {
+  it("流式未闭合块公式只降级自身，闭合后不切断所在列表", async () => {
     const { container, rerender } = render(<Markdown source={"$$\nx^2"} deferMermaid />);
     expect(container.querySelector("[data-md-stream-plain]")?.textContent).toContain("x^2");
+
+    const prefix = "前面已经完成。\n\n$$\nx^2\n$$\n\n- 时间膨胀\n- 长度收缩\n\n";
+    const incomplete = `${prefix}$$\n\\boxed{E_0=mc^2}`;
+    expect(segmentStreamingMarkdown(incomplete)).toEqual({
+      stable: [prefix],
+      tail: "$$\n\\boxed{E_0=mc^2}",
+      plainTail: true,
+    });
+    rerender(<Markdown source={incomplete} deferMermaid />);
+    await waitFor(() => expect(container.querySelector(".md-math-block .katex-display")).toBeTruthy());
+    expect(container.querySelectorAll("li")).toHaveLength(2);
+    expect(container.querySelector("[data-md-stream-plain]")?.textContent).toBe("$$\n\\boxed{E_0=mc^2}");
 
     const source = `- ${"推导".repeat(520)}\n  $$\n  x^2\n  $$\n\n  其中 x 为变量`;
     expect(segmentStreamingMarkdown(source)).toEqual({ stable: [], tail: source, plainTail: false });
     rerender(<Markdown source={source} deferMermaid />);
-    await waitFor(() => expect(container.querySelector(".md-math-block .katex-display")).toBeTruthy());
-    expect(container.querySelector("[data-md-stream-plain]")).toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector("[data-md-stream-plain]")).toBeNull();
+      expect(container.querySelector(".md-math-block .katex-display")).toBeTruthy();
+    });
     expect(container.querySelector("li")?.textContent).toContain("其中 x 为变量");
   });
 

@@ -261,11 +261,14 @@ interface MathToken extends Tokens.Generic {
 }
 
 const MATH_MAX_SOURCE_CHARS = 512;
-const MATH_MAX_TOTAL_SOURCE_CHARS = 4_096;
-const MATH_MAX_FORMULAS = 64;
+const MATH_MAX_TOTAL_SOURCE_CHARS = 16_384;
+const MATH_MAX_TOTAL_HTML_CHARS = 2_000_000;
+const MATH_MAX_FORMULAS = 256;
+const MATH_MAX_NEW_SOURCE_CHARS = 4_096;
+const MATH_MAX_NEW_FORMULAS = 64;
 const MATH_MAX_SIZE_EM = 20;
 const MATH_MAX_EXPAND = 100;
-const MATH_HTML_CACHE_MAX = 256;
+const MATH_HTML_CACHE_MAX = 512;
 const MATH_DEFINITION_RE = /\\(?:def|gdef|edef|xdef|let|futurelet|newcommand|renewcommand|providecommand)\b/;
 const BLOCK_MATH_RE = /^(?:[ \t]{0,3}\$\$[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]{0,3}\$\$[ \t]*|[ \t]{0,3}\\\[[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]{0,3}\\\][ \t]*)(?:\r?\n|$)/;
 const INLINE_DOLLAR_RE = /^\$(?!\$|\s)((?:\\.|[^\\\n`$])*?(?:\\.|[^\\\s\n`$]))\$(?=[\s?!.,:;。，！？：；、)\]}]|$)/u;
@@ -489,13 +492,16 @@ function renderMathBeforeCommit(container: ParentNode): void {
   if (!katexRenderer) return;
   const formulas = [...container.querySelectorAll<HTMLElement>("[data-md-math]")];
   let renderedCount = 0;
-  let totalChars = 0;
+  let totalSourceChars = 0;
+  let totalHtmlChars = 0;
+  let newRenderedCount = 0;
+  let newSourceChars = 0;
   for (const formula of formulas) {
     const source = formula.textContent ?? "";
     if (
       renderedCount >= MATH_MAX_FORMULAS ||
       !mathWithinRenderBudget(source) ||
-      totalChars + source.length > MATH_MAX_TOTAL_SOURCE_CHARS
+      totalSourceChars + source.length > MATH_MAX_TOTAL_SOURCE_CHARS
     ) {
       leaveMathAsSource(formula, source);
       continue;
@@ -504,7 +510,21 @@ function renderMathBeforeCommit(container: ParentNode): void {
     const cacheKey = `${displayMode ? "block" : "inline"}\0${source}`;
     try {
       let html = mathHtmlCache.get(cacheKey);
-      if (!html) {
+      if (html) {
+        // 命中时更新插入顺序，避免长流式回答前半段在停流全文解析前
+        // 被其他消息淘汰，随后又因整篇预算降级为源码。
+        mathHtmlCache.delete(cacheKey);
+        mathHtmlCache.set(cacheKey, html);
+      } else {
+        // 单次 React render 只生成有限的新 KaTeX HTML；剩余占位保留标记，
+        // useRenderedMarkdown 下一任务继续。缓存命中不计入该预算，因此流式
+        // 停止后的全文重建能一次复用此前公式，不会突然降级。
+        if (
+          newRenderedCount >= MATH_MAX_NEW_FORMULAS ||
+          newSourceChars + source.length > MATH_MAX_NEW_SOURCE_CHARS
+        ) {
+          continue;
+        }
         html = katexRenderer.renderToString(source, {
           displayMode,
           maxExpand: MATH_MAX_EXPAND,
@@ -519,6 +539,12 @@ function renderMathBeforeCommit(container: ParentNode): void {
           if (oldest !== undefined) mathHtmlCache.delete(oldest);
         }
         mathHtmlCache.set(cacheKey, html);
+        newRenderedCount += 1;
+        newSourceChars += source.length;
+      }
+      if (totalHtmlChars + html.length > MATH_MAX_TOTAL_HTML_CHARS) {
+        leaveMathAsSource(formula, source);
+        continue;
       }
       // KaTeX 产物在正文完成 DOMPurify 后写入，既保留 MathML，又不让正文
       // HTML 绕过净化；提交给 React 前已经是最终尺寸，不再产生二次布局。
@@ -526,7 +552,8 @@ function renderMathBeforeCommit(container: ParentNode): void {
       formula.removeAttribute("data-md-math");
       formula.setAttribute("data-md-math-rendered", "");
       renderedCount += 1;
-      totalChars += source.length;
+      totalSourceChars += source.length;
+      totalHtmlChars += html.length;
     } catch {
       leaveMathAsSource(formula, source);
     }
@@ -544,27 +571,37 @@ export function renderMarkdown(source: string, linkifyInlineFiles = false): stri
 }
 
 function useRenderedMarkdown(source: string, enabled: boolean, linkifyInlineFiles: boolean, renderKey: string): string {
-  const [mathReady, setMathReady] = useState(() => katexRenderer !== null);
+  const [mathRevision, setMathRevision] = useState(0);
   const html = useMemo(() => {
-    // 两者都是渲染世代：KaTeX 就绪和 locale 变化时，即使 source 未变也要
-    // 重建 HTML（公式 DOM / 复制按钮文案分别由它们决定）。
-    void mathReady;
+    // 两者都是渲染世代：KaTeX 就绪/分批和 locale 变化时，即使 source 未变
+    // 也要重建 HTML（公式 DOM / 复制按钮文案分别由它们决定）。
+    void mathRevision;
     void renderKey;
     return enabled ? renderMarkdown(source, linkifyInlineFiles) : "";
-  }, [enabled, linkifyInlineFiles, mathReady, renderKey, source]);
+  }, [enabled, linkifyInlineFiles, mathRevision, renderKey, source]);
   useEffect(() => {
-    if (mathReady || !html.includes("data-md-math=")) return;
+    if (!html.includes("data-md-math=")) return;
     let cancelled = false;
-    void loadKatex().then(
-      () => {
-        if (!cancelled) setMathReady(true);
-      },
-      () => {},
-    );
+    if (!katexRenderer) {
+      void loadKatex().then(
+        () => {
+          if (!cancelled) setMathRevision((revision) => revision + 1);
+        },
+        () => {},
+      );
+    } else {
+      const timer = window.setTimeout(() => {
+        if (!cancelled) setMathRevision((revision) => revision + 1);
+      }, 0);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }
     return () => {
       cancelled = true;
     };
-  }, [html, mathReady]);
+  }, [html]);
   return html;
 }
 
@@ -832,6 +869,7 @@ export function segmentStreamingMarkdown(source: string): StreamingMarkdownSegme
   let offset = 0;
   let fence: { char: string; size: number } | null = null;
   let mathFence: "$$" | "\\]" | null = null;
+  let safeUnclosedMathStart: number | null = null;
   let listContinuationIndent: number | null = null;
   let previousWasBlank = false;
   for (const match of source.matchAll(/.*(?:\n|$)/g)) {
@@ -861,12 +899,16 @@ export function segmentStreamingMarkdown(source: string): StreamingMarkdownSegme
     if (!fence) {
       if (mathFence === "$$" && /^\s{0,3}\$\$\s*$/.test(body)) {
         mathFence = null;
+        safeUnclosedMathStart = null;
       } else if (mathFence === "\\]" && /^\s{0,3}\\\]\s*$/.test(body)) {
         mathFence = null;
+        safeUnclosedMathStart = null;
       } else if (!mathFence && /^\s{0,3}\$\$\s*$/.test(body)) {
         mathFence = "$$";
+        safeUnclosedMathStart = previousWasBlank && listContinuationIndent === null ? offset : null;
       } else if (!mathFence && /^\s{0,3}\\\[\s*$/.test(body)) {
         mathFence = "\\]";
+        safeUnclosedMathStart = previousWasBlank && listContinuationIndent === null ? offset : null;
       }
     }
     offset += line.length;
@@ -883,6 +925,13 @@ export function segmentStreamingMarkdown(source: string): StreamingMarkdownSegme
       listContinuationIndent = null;
     }
     previousWasBlank = body.trim() === "";
+  }
+  // 尾部块公式尚未闭合时，只把该公式保留为纯文本。若它前面有顶层空行，
+  // 该边界已足够安全，无需因为 1KB 常规封存阈值把整段已完成 Markdown
+  // 一起降级；闭合后仍会重新按完整上下文解析。
+  if (mathFence !== null && safeUnclosedMathStart !== null && safeUnclosedMathStart > chunkStart) {
+    stable.push(source.slice(chunkStart, safeUnclosedMathStart));
+    chunkStart = safeUnclosedMathStart;
   }
   const tail = source.slice(chunkStart);
   return { stable, tail, plainTail: fence !== null || mathFence !== null || tail.length > STREAM_TAIL_PARSE_MAX };
