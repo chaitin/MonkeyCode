@@ -91,6 +91,39 @@ describe("LogList 运行指示", () => {
   });
 });
 
+describe("模型回答一键复制", () => {
+  it("跨工具调用的整轮回答只在末段提供一个默认隐藏的复制入口", async () => {
+    const intro = "我先检查。";
+    const conclusion = "## 结论\n\n- 保留列表\n- 保留 `代码`";
+    const state = withItems([
+      { kind: "user", text: "检查问题" },
+      { kind: "agent", text: intro },
+      { kind: "tool", tcId: "t1", title: "Read a.ts", status: "ok", out: "" },
+      { kind: "agent", text: conclusion },
+      { kind: "sys", tag: "turn-end", text: "" },
+    ]);
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(window.navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<LogList state={state} sessionId="s1" />);
+
+    const buttons = screen.getAllByRole("button", { name: "复制回答 Markdown 原文" });
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]!.className).toContain("opacity-0");
+    expect(buttons[0]!.className).toContain("group-hover:opacity-100");
+    buttons[0]!.focus();
+    await userEvent.keyboard("{Enter}");
+
+    expect(writeText).toHaveBeenCalledWith(`${intro}\n\n${conclusion}`);
+    expect(screen.getByRole("button", { name: "回答已复制" })).toBeTruthy();
+  });
+
+  it("当前运行轮次不展示复制按钮", () => {
+    const state = { ...withItems([{ kind: "agent", text: "半截回答" }]), running: true, streamKind: "agent" as const };
+    render(<LogList state={state} sessionId="s1" />);
+    expect(screen.queryByRole("button", { name: "复制回答 Markdown 原文" })).toBeNull();
+  });
+});
+
 describe("LogList 系统行居中(H7)", () => {
   it("包裹 div 是 flex 列,sys 条目 self-center 有生效上下文", () => {
     const state = withItems([{ kind: "sys", text: "— 本轮结束 —" }]);

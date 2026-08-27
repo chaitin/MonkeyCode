@@ -568,6 +568,8 @@ export const en: Record<MessageKey, string> = {
   "md.copyImageUnsupported": "Copying images is not supported in this environment",
 
   "chat.thought": "Thinking",
+  "chat.agent.copyMarkdown": "Copy response as Markdown",
+  "chat.agent.copied": "Response copied",
   "chat.permission": "Approval",
   "chat.perm.needConfirm": "Approval required",
   // ---- 归约层产出的系统行/状态词 ----

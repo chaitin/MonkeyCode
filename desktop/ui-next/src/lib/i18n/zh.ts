@@ -586,6 +586,8 @@ export const zh = {
   "md.copyImageUnsupported": "当前环境不支持复制图片",
 
   "chat.thought": "思考",
+  "chat.agent.copyMarkdown": "复制回答 Markdown 原文",
+  "chat.agent.copied": "回答已复制",
   "chat.permission": "审批",
   // ---- 归约层产出的系统行/状态词(reduce.ts 只给键,渲染时才求值)----
   "chat.sys.turnEnd": "— 本轮结束 —",
