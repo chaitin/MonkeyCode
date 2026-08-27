@@ -704,6 +704,35 @@ describe("已登录:用量面板/签到/同步/断开", () => {
 });
 
 describe("服务版本选择", () => {
+  it("私有化行常驻免费下载入口并通过系统浏览器打开", async () => {
+    const { calls } = stubShell({ baizhi_status: bzOut, mc_status: mcOut });
+    render(<AccountSection draft={emptyDraft()} onDraft={() => {}} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "免费下载" }));
+
+    expect(calls).toContainEqual({
+      cmd: "plugin:opener|open_url",
+      args: {
+        url: "https://monkeycode-ai.com/self-hosting?utm_source=monkeycode_desktop&utm_medium=app&utm_campaign=self_hosting&utm_content=account_settings",
+      },
+    });
+  });
+
+  it("已登录私有化服务时仍常驻免费下载入口", async () => {
+    stubShell({ baizhi_status: bzIn, mc_status: mcIn, mc_usage: () => null });
+    const draft = { ...emptyDraft(), mcBaseUrl: "https://self.host" };
+    render(
+      <AccountSection
+        draft={draft}
+        onDraft={() => {}}
+        savedMcBaseUrl={draft.mcBaseUrl}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "免费下载" })).toBeDefined();
+    expect(screen.getAllByRole("button", { name: "切换到此服务" })).toHaveLength(2);
+  });
+
   it("默认国内版;选国际版写入官方国际地址并清空私有化随行配置", async () => {
     stubShell({ baizhi_status: bzOut, mc_status: mcOut });
     let draft: SettingsDraft = { ...emptyDraft(), mcBasicAuth: "user:pass", mcLlmBaseUrl: "https://llm.old/v1" };

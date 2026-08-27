@@ -382,6 +382,7 @@ export const zh = {
   "account.edition.intlMethods": "邮箱登录",
   "account.edition.privateMethods": "需填写服务地址",
   "account.edition.privateSubtitle": "连接你自己部署的服务端",
+  "account.edition.privateDownload": "免费下载",
   "account.service.title": "服务",
   "account.service.switchNote": "切换后需重新登录并同步会员模型",
   "account.service.switchTo": "切换到此服务",

@@ -168,6 +168,8 @@ function DomainLink({ url }: { url: string }) {
 }
 
 const EDITION_ORDER: McEdition[] = ["cn", "intl", "private"];
+const SELF_HOSTING_URL =
+  "https://monkeycode-ai.com/self-hosting?utm_source=monkeycode_desktop&utm_medium=app&utm_campaign=self_hosting&utm_content=account_settings";
 
 /** MonkeyCode 服务卡:登录前后同一张「三选一」列表,生效行展开。
  *  行为逻辑(连接/断开/同步/自动同步/代次守卫)与旧账号卡同一套。 */
@@ -540,6 +542,16 @@ function ServiceCard({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-semibold">{rowTitle(r)}</span>
+              {r === "private" && (
+                <button
+                  type="button"
+                  className="inline-flex h-5 shrink-0 cursor-pointer items-center gap-1 p-0 text-xs font-medium leading-5 text-primary transition-colors hover:text-primary/75"
+                  onClick={() => openExternal(SELF_HOSTING_URL)}
+                >
+                  {t("account.edition.privateDownload")}
+                  <IconExternalLink size={11} stroke={1.75} aria-hidden className="block shrink-0" />
+                </button>
+              )}
               {rowConnected && (
                 <span className="badge badge-success badge-soft badge-xs shrink-0">{t("account.loggedIn")}</span>
               )}

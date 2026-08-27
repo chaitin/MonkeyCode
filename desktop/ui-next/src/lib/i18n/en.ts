@@ -363,6 +363,7 @@ export const en: Record<MessageKey, string> = {
   "account.edition.intlMethods": "Email sign-in",
   "account.edition.privateMethods": "Requires a service URL",
   "account.edition.privateSubtitle": "Connect your own deployment",
+  "account.edition.privateDownload": "Free download",
   "account.service.title": "Service",
   "account.service.switchNote": "Switching requires signing in again and re-syncing member models",
   "account.service.switchTo": "Switch to this service",
