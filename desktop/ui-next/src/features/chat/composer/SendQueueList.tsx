@@ -1,5 +1,5 @@
 import { IconEdit, IconGripVertical, IconPaperclip, IconTrash, IconX } from "@tabler/icons-react";
-import { useState, type DragEvent } from "react";
+import { useState, type DragEvent, type ReactNode } from "react";
 
 import { Lightbox, UploadImg } from "@/components/media/UploadImg";
 import { useI18n } from "@/lib/i18n";
@@ -48,10 +48,12 @@ function ItemSummary<A>({
   item,
   attachmentsOpen,
   onToggleAttachments,
+  actions,
 }: {
   item: SendQueueItem<A>;
   attachmentsOpen: boolean;
   onToggleAttachments(): void;
+  actions?: ReactNode;
 }) {
   const { t } = useI18n();
   return (
@@ -59,20 +61,25 @@ function ItemSummary<A>({
       <span className="min-w-0 flex-1 truncate" title={item.content}>
         {item.content}
       </span>
-      {item.attachments.length > 0 && (
-        <button
-          type="button"
-          aria-expanded={attachmentsOpen}
-          aria-label={t(attachmentsOpen ? "chat.sendQueue.hideAttachments" : "chat.sendQueue.showAttachments", {
-            n: item.attachments.length,
-          })}
-          className="btn btn-ghost btn-xs h-7 min-h-7 shrink-0 gap-1 px-1.5 text-xs font-normal text-base-content/55"
-          title={t("chat.sendQueue.attachments", { n: item.attachments.length })}
-          onClick={onToggleAttachments}
-        >
-          <IconPaperclip size={13} stroke={1.75} aria-hidden />
-          <span>{item.attachments.length}</span>
-        </button>
+      {(actions || item.attachments.length > 0) && (
+        <span className="relative flex h-7 shrink-0 items-center">
+          {actions}
+          {item.attachments.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={attachmentsOpen}
+              aria-label={t(attachmentsOpen ? "chat.sendQueue.hideAttachments" : "chat.sendQueue.showAttachments", {
+                n: item.attachments.length,
+              })}
+              className="btn btn-ghost btn-xs h-7 min-h-7 shrink-0 gap-1 px-1.5 text-xs font-normal text-base-content/55"
+              title={t("chat.sendQueue.attachments", { n: item.attachments.length })}
+              onClick={onToggleAttachments}
+            >
+              <IconPaperclip size={13} stroke={1.75} aria-hidden />
+              <span>{item.attachments.length}</span>
+            </button>
+          )}
+        </span>
       )}
     </>
   );
@@ -383,7 +390,7 @@ export function SendQueueList<A>({
                   className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary"
                 />
               )}
-              <div className="flex min-h-9 min-w-0 items-center gap-1 px-0.5">
+              <div className="relative flex min-h-9 min-w-0 items-center gap-1 px-0.5">
                 <button
                   type="button"
                   draggable={editingId === null}
@@ -430,39 +437,48 @@ export function SendQueueList<A>({
                   item={item}
                   attachmentsOpen={attachmentsFor === item.id}
                   onToggleAttachments={() => setAttachmentsFor((id) => (id === item.id ? null : item.id))}
+                  actions={
+                    onSteer || (onEdit && editingId === null) || editingId !== item.id ? (
+                      <span
+                        data-send-queue-actions=""
+                        className="pointer-events-none absolute end-full top-0 z-10 flex items-center gap-1 rounded-md bg-transparent pl-2 group-hover:bg-base-100 focus-within:bg-base-100"
+                      >
+                        {onSteer && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs h-7 min-h-7 shrink-0 px-1.5 font-normal text-primary opacity-0 hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+                            disabled={steeringDispatching || editingId !== null}
+                            onClick={() => onSteer(item.id)}
+                          >
+                            {t("chat.sendQueue.steer")}
+                          </button>
+                        )}
+                        {onEdit && editingId === null && (
+                          <button
+                            type="button"
+                            aria-label={t("chat.sendQueue.edit")}
+                            title={t("chat.sendQueue.edit")}
+                            className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-7 shrink-0 text-base-content/35 opacity-0 hover:text-primary hover:opacity-100 focus-visible:pointer-events-auto focus-visible:text-primary focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+                            onClick={() => onEdit(item.id)}
+                          >
+                            <IconEdit size={13} stroke={1.75} aria-hidden />
+                          </button>
+                        )}
+                        {editingId !== item.id && (
+                          <button
+                            type="button"
+                            aria-label={t("chat.sendQueue.remove")}
+                            title={t("chat.sendQueue.remove")}
+                            className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-7 shrink-0 text-base-content/35 opacity-0 hover:text-error hover:opacity-100 focus-visible:pointer-events-auto focus-visible:text-error focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+                            onClick={() => onRemove(item.id)}
+                          >
+                            <IconTrash size={13} stroke={1.75} aria-hidden />
+                          </button>
+                        )}
+                      </span>
+                    ) : undefined
+                  }
                 />
-                {onSteer && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-xs h-7 min-h-7 shrink-0 px-1.5 font-normal text-primary opacity-0 hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-                    disabled={steeringDispatching || editingId !== null}
-                    onClick={() => onSteer(item.id)}
-                  >
-                    {t("chat.sendQueue.steer")}
-                  </button>
-                )}
-                {onEdit && editingId === null && (
-                  <button
-                    type="button"
-                    aria-label={t("chat.sendQueue.edit")}
-                    title={t("chat.sendQueue.edit")}
-                    className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-7 shrink-0 text-base-content/35 opacity-0 hover:text-primary hover:opacity-100 focus-visible:text-primary focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-                    onClick={() => onEdit(item.id)}
-                  >
-                    <IconEdit size={13} stroke={1.75} aria-hidden />
-                  </button>
-                )}
-                {editingId !== item.id && (
-                  <button
-                    type="button"
-                    aria-label={t("chat.sendQueue.remove")}
-                    title={t("chat.sendQueue.remove")}
-                    className="btn btn-ghost btn-square btn-xs h-7 min-h-7 w-7 shrink-0 text-base-content/35 opacity-0 hover:text-error hover:opacity-100 focus-visible:text-error focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-                    onClick={() => onRemove(item.id)}
-                  >
-                    <IconTrash size={13} stroke={1.75} aria-hidden />
-                  </button>
-                )}
               </div>
               {attachmentsFor === item.id && (
                 <AttachmentList
