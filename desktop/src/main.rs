@@ -1537,7 +1537,14 @@ fn main() {
             default_linux_gdk_backend(wayland_display.as_deref(), session_type.as_deref()),
         );
     }
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // 必须是首个插件：Windows/Linux 托盘进程仍在时再次点击快捷方式，不启动
+    // 第二套客户端/引擎，而是把第二次启动转给已有进程并唤回主窗口。
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        show_any_window(app);
+    }));
+    let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build());

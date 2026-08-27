@@ -74,6 +74,10 @@ tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e
 # 隐藏原生红绿灯要向 NSWindow 发消息(标准按钮尺寸不可调,UI 自绘 10px 替身)
 objc2 = "0.6"
 
+# Windows/Linux 托盘常驻时再次点击快捷方式只唤回已有窗口，禁止启动第二套客户端/引擎。
+[target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"
+
 # Windows 桌宠不交给 WebView2 绘制,用 UpdateLayeredWindow 直接提交
 # 预乘 alpha 位图(见 native_pet.rs 头注释,全 Windows 版本共用一套)。
 [target.'cfg(target_os = "windows")'.dependencies]
