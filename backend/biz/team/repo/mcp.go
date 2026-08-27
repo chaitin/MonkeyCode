@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
@@ -107,7 +108,7 @@ func (r *teamMCPRepo) UpdateUpstream(ctx context.Context, teamID uuid.UUID, req 
 			update = update.SetURL(*req.URL)
 		}
 		if req.Headers != nil {
-			update = update.SetHeaders(headersToMap(*req.Headers))
+			update = update.SetHeaders(mergeHeaders(*req.Headers, row.Headers))
 		}
 		if req.Description != nil {
 			update = update.SetDescription(*req.Description)
@@ -232,6 +233,26 @@ func headersToMap(headers []domain.MCPHeader) map[string]string {
 	result := make(map[string]string, len(headers))
 	for _, header := range headers {
 		if header.Name == "" {
+			continue
+		}
+		result[header.Name] = header.Value
+	}
+	return result
+}
+
+func mergeHeaders(headers []domain.MCPHeader, current map[string]string) map[string]string {
+	result := make(map[string]string, len(headers))
+	for _, header := range headers {
+		if header.Name == "" {
+			continue
+		}
+		if header.Value == domain.MCPHeaderMask {
+			for name, value := range current {
+				if strings.EqualFold(name, header.Name) {
+					result[header.Name] = value
+					break
+				}
+			}
 			continue
 		}
 		result[header.Name] = header.Value

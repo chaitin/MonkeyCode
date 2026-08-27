@@ -30,7 +30,7 @@ func NewTeamMCPHandler(i *do.Injector) (*TeamMCPHandler, error) {
 
 	g := w.Group("/api/v1/teams/mcp")
 	g.Use(auth.TeamAuth())
-	g.GET("/upstreams", web.BaseHandler(h.ListUpstreams))
+	g.GET("/upstreams", web.BaseHandler(h.ListUpstreams), adminAuth)
 	g.POST("/upstreams", web.BindHandler(h.CreateUpstream), adminAuth, audit.Audit("create_team_mcp_upstream"))
 	g.PUT("/upstreams/:upstream_id", web.BindHandler(h.UpdateUpstream), adminAuth, audit.Audit("update_team_mcp_upstream"))
 	g.DELETE("/upstreams/:upstream_id", web.BindHandler(h.DeleteUpstream), adminAuth, audit.Audit("delete_team_mcp_upstream"))

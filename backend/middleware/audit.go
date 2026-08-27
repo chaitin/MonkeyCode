@@ -157,7 +157,31 @@ func maskSensitiveData(operation, reqBody, respBody string) (string, string, err
 		if err != nil {
 			return "", "", err
 		}
+	case "create_team_mcp_upstream":
+		reqBody, err = maskJSON(reqBody, func(req *domain.CreateTeamMCPUpstreamReq) {
+			maskMCPHeaders(req.Headers)
+		})
+		if err != nil {
+			return "", "", err
+		}
+	case "update_team_mcp_upstream":
+		reqBody, err = maskJSON(reqBody, func(req *domain.UpdateTeamMCPUpstreamReq) {
+			if req.Headers != nil {
+				maskMCPHeaders(*req.Headers)
+			}
+		})
+		if err != nil {
+			return "", "", err
+		}
 	}
 
 	return reqBody, respBody, nil
+}
+
+func maskMCPHeaders(headers []domain.MCPHeader) {
+	for i := range headers {
+		if headers[i].Value != "" {
+			headers[i].Value = domain.MCPHeaderMask
+		}
+	}
 }
