@@ -1121,13 +1121,6 @@ fn commit_blocking(
                     source: fixed_source,
                     baseline,
                     replace,
-                    staging_instance_id: Some(
-                        imports
-                            .staging_instance()
-                            .map_err(state_store_error)?
-                            .instance_id()
-                            .to_string(),
-                    ),
                 });
             }
             // 所有 selected item 都已打开并固定后、任何 revision/事务写入前，再做

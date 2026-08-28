@@ -5,7 +5,7 @@
 //! list/save/delete/default/import/recovery/materialize 不会形成第二套锁域。
 
 use std::fmt;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
@@ -405,92 +405,158 @@ struct ScannedTarget {
     skill_md: Option<Vec<u8>>,
 }
 
-#[cfg(unix)]
+/// 统一的 std 平台实现。TOCTOU 级句柄钉扎已废弃：能篡改本地暂存文件的
+/// 攻击者同样能直接改技能库，钉句柄换不来额外防御，却让 Windows 上后续
+/// 的 rename/删除与自家句柄互斥（线上 os error 32 的根因）。内容一致性
+/// 改由前后快照（大小/mtime/内容 hash）比对保证；symlink/特殊对象仍然
+/// 在扫描与复制的每一层被拒绝。
 mod platform {
     use super::*;
-    use std::ffi::{OsStr, OsString};
-    use std::os::fd::{AsFd as _, OwnedFd};
-    use std::os::unix::ffi::OsStringExt as _;
-
-    use rustix::fs::{fstat, openat, Dir, FileType, Mode, OFlags, CWD};
 
     pub(super) struct RootHandle {
-        file: File,
-        object_a: u64,
-        object_b: u64,
+        path: PathBuf,
+    }
+
+    fn plain_dir(metadata: &fs::Metadata) -> bool {
+        metadata.file_type().is_dir() && !metadata.file_type().is_symlink()
+    }
+
+    fn open_dir_root(path: &Path, label: &str) -> Result<RootHandle, SkillStoreError> {
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|error| SkillStoreError::io("固定技能库根", path, error))?;
+        if !plain_dir(&metadata) {
+            return Err(SkillStoreError::unsafe_object(label, "根不是普通目录"));
+        }
+        Ok(RootHandle {
+            path: path.to_path_buf(),
+        })
     }
 
     pub(super) fn open_root(path: &Path) -> Result<RootHandle, SkillStoreError> {
-        let fd = openat(CWD, path, directory_flags(), Mode::empty())
-            .map_err(|error| SkillStoreError::io("固定技能库根", path, error))?;
-        let stat = fstat(&fd).map_err(|error| SkillStoreError::io("复核技能库根", path, error))?;
-        if FileType::from_raw_mode(stat.st_mode) != FileType::Directory {
-            return Err(SkillStoreError::unsafe_object(".", "技能库根不是普通目录"));
-        }
-        Ok(RootHandle {
-            file: File::from(fd),
-            object_a: stat.st_dev as u64,
-            object_b: stat.st_ino as u64,
-        })
+        open_dir_root(path, ".")
     }
 
     pub(super) fn open_child_root(path: &Path) -> Result<RootHandle, SkillStoreError> {
-        let parent_path = path.parent().ok_or_else(|| {
-            SkillStoreError::unsafe_object("staged-skill-root", "暂存根缺少父目录")
-        })?;
-        let name = path.file_name().ok_or_else(|| {
-            SkillStoreError::unsafe_object("staged-skill-root", "暂存根缺少末级名称")
-        })?;
-        let parent = open_root(parent_path)?;
-        let fd = openat(parent.file.as_fd(), name, directory_flags(), Mode::empty()).map_err(
-            |error| {
-                SkillStoreError::io(
-                    "父句柄相对固定暂存技能根",
-                    Path::new("staged-skill-root"),
-                    error,
-                )
+        open_dir_root(path, "staged-skill-root")
+    }
+
+    pub(super) fn verify_root(root: &RootHandle, expected: &Path) -> Result<(), SkillStoreError> {
+        if root.path != expected {
+            return Err(SkillStoreError::unsafe_object(".", "技能库根路径不一致"));
+        }
+        open_dir_root(&root.path, ".").map(|_| ())
+    }
+
+    fn time_parts(time: std::io::Result<std::time::SystemTime>) -> (i64, i64) {
+        let Ok(time) = time else { return (0, 0) };
+        match time.duration_since(std::time::UNIX_EPOCH) {
+            Ok(duration) => (duration.as_secs() as i64, duration.subsec_nanos() as i64),
+            Err(before) => {
+                let duration = before.duration();
+                (-(duration.as_secs() as i64), duration.subsec_nanos() as i64)
+            }
+        }
+    }
+
+    fn identity(relative: &str, metadata: &fs::Metadata, hash: Option<String>) -> TreeIdentity {
+        let (object_a, object_b);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            object_a = metadata.dev();
+            object_b = metadata.ino();
+        }
+        #[cfg(not(unix))]
+        {
+            object_a = 0;
+            object_b = 0;
+        }
+        let (modified_seconds, modified_nanos) = time_parts(metadata.modified());
+        #[cfg(unix)]
+        let (changed_seconds, changed_nanos) = {
+            use std::os::unix::fs::MetadataExt as _;
+            (metadata.ctime(), metadata.ctime_nsec())
+        };
+        #[cfg(not(unix))]
+        let (changed_seconds, changed_nanos) = (modified_seconds, modified_nanos);
+        TreeIdentity {
+            relative_path: relative.to_string(),
+            entry_type: if metadata.is_dir() {
+                TargetEntryType::Directory
+            } else {
+                TargetEntryType::File
             },
-        )?;
-        let stat = fstat(&fd).map_err(|error| {
-            SkillStoreError::io("复核暂存技能根", Path::new("staged-skill-root"), error)
-        })?;
-        if FileType::from_raw_mode(stat.st_mode) != FileType::Directory {
-            return Err(SkillStoreError::unsafe_object(
-                "staged-skill-root",
-                "暂存技能根不是普通目录",
-            ));
+            object_a,
+            object_b,
+            size: if metadata.is_dir() { 0 } else { metadata.len() },
+            modified_seconds,
+            modified_nanos,
+            changed_seconds,
+            changed_nanos,
+            content_sha256: hash,
         }
-        Ok(RootHandle {
-            file: File::from(fd),
-            object_a: stat.st_dev as u64,
-            object_b: stat.st_ino as u64,
-        })
     }
 
-    pub(super) fn root_identity(root: &RootHandle) -> Result<TreeIdentity, SkillStoreError> {
-        let stat = fstat(&root.file).map_err(|error| {
-            SkillStoreError::io("复核暂存技能根", Path::new("staged-skill-root"), error)
-        })?;
-        Ok(identity_from_stat(
-            "",
-            TargetEntryType::Directory,
-            &stat,
-            None,
-        ))
+    fn scan_tree(
+        base: &Path,
+        prefix: &str,
+        tree: &mut Vec<TreeIdentity>,
+        skill_md: &mut Option<Vec<u8>>,
+    ) -> Result<(), SkillStoreError> {
+        let entries =
+            fs::read_dir(base).map_err(|error| SkillStoreError::io("枚举技能目录", base, error))?;
+        for entry in entries {
+            let entry =
+                entry.map_err(|error| SkillStoreError::io("读取技能目录项", base, error))?;
+            let name = entry.file_name();
+            let Some(name) = name.to_str().map(str::to_string) else {
+                return Err(SkillStoreError::unsafe_object(prefix, "名称不是 UTF-8"));
+            };
+            if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
+                return Err(SkillStoreError::unsafe_object(prefix, "路径组件非法"));
+            }
+            let child = base.join(&name);
+            let relative = if prefix.is_empty() {
+                name
+            } else {
+                format!("{prefix}/{name}")
+            };
+            let metadata = fs::symlink_metadata(&child)
+                .map_err(|error| SkillStoreError::io("检查技能对象", &child, error))?;
+            if metadata.file_type().is_symlink() {
+                return Err(SkillStoreError::unsafe_object(relative, "不允许符号链接"));
+            }
+            if metadata.is_dir() {
+                tree.push(identity(&relative, &metadata, None));
+                scan_tree(&child, &relative, tree, skill_md)?;
+            } else if metadata.is_file() {
+                let mut file = File::open(&child)
+                    .map_err(|error| SkillStoreError::io("打开技能文件", &child, error))?;
+                let hash = hash_open_file(&mut file)
+                    .map_err(|error| SkillStoreError::io("读取技能文件", &child, error))?;
+                if relative == "SKILL.md" {
+                    let bytes = fs::read(&child)
+                        .map_err(|error| SkillStoreError::io("读取 SKILL.md", &child, error))?;
+                    *skill_md = Some(bytes);
+                }
+                tree.push(identity(&relative, &metadata, Some(hash)));
+            } else {
+                return Err(SkillStoreError::unsafe_object(relative, "不支持的对象类型"));
+            }
+        }
+        Ok(())
     }
 
-    pub(super) fn scan_root(root: &RootHandle) -> Result<ScannedTarget, SkillStoreError> {
-        let fd =
-            openat(root.file.as_fd(), ".", directory_flags(), Mode::empty()).map_err(|error| {
-                SkillStoreError::io("复制暂存技能根句柄", Path::new("staged-skill-root"), error)
-            })?;
-        let mut tree = Vec::new();
+    fn scan_directory_root(base: &Path) -> Result<ScannedTarget, SkillStoreError> {
+        let metadata = fs::symlink_metadata(base)
+            .map_err(|error| SkillStoreError::io("检查技能根", base, error))?;
+        if !plain_dir(&metadata) {
+            return Err(SkillStoreError::unsafe_object(".", "技能根不是普通目录"));
+        }
+        let mut tree = vec![identity("", &metadata, None)];
         let mut skill_md = None;
-        scan_directory(fd, "staged-skill-root", "", &mut tree, &mut skill_md)?;
+        scan_tree(base, "", &mut tree, &mut skill_md)?;
         tree.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-        if let Some(index) = tree.iter().position(|entry| entry.relative_path.is_empty()) {
-            tree.swap(0, index);
-        }
         Ok(ScannedTarget {
             target_type: Some(TargetEntryType::Directory),
             tree,
@@ -498,346 +564,99 @@ mod platform {
         })
     }
 
-    pub(super) fn copy_root_directory(
-        root: &RootHandle,
-        destination: &Path,
-    ) -> Result<(), SkillStoreError> {
-        let fd =
-            openat(root.file.as_fd(), ".", directory_flags(), Mode::empty()).map_err(|error| {
-                SkillStoreError::io("复制暂存技能根句柄", Path::new("staged-skill-root"), error)
-            })?;
-        std::fs::create_dir(destination).map_err(|error| {
-            SkillStoreError::io("独占创建事务 prepared 目录", destination, error)
-        })?;
-        copy_directory_to(fd, "staged-skill-root", "", destination)
+    pub(super) fn root_identity(root: &RootHandle) -> Result<TreeIdentity, SkillStoreError> {
+        let metadata = fs::symlink_metadata(&root.path)
+            .map_err(|error| SkillStoreError::io("检查技能根", &root.path, error))?;
+        if !plain_dir(&metadata) {
+            return Err(SkillStoreError::unsafe_object(".", "技能根不是普通目录"));
+        }
+        Ok(identity("", &metadata, None))
     }
 
-    pub(super) fn read_root_file(
-        root: &RootHandle,
-        relative: &str,
-        offset: u64,
-        length: usize,
-    ) -> Result<(Vec<u8>, u64), SkillStoreError> {
-        let mut components = relative.split('/').collect::<Vec<_>>();
-        if components.is_empty()
-            || components
-                .iter()
-                .any(|part| part.is_empty() || *part == "." || *part == "..")
-        {
-            return Err(SkillStoreError::unsafe_object(relative, "文件路径组件非法"));
-        }
-        let name = components.pop().expect("已检查非空");
-        let mut parent = openat(root.file.as_fd(), ".", directory_flags(), Mode::empty())
-            .map_err(|error| SkillStoreError::io("复制暂存根句柄", Path::new(relative), error))?;
-        for component in components {
-            parent = openat(
-                &parent,
-                OsStr::new(component),
-                directory_flags(),
-                Mode::empty(),
-            )
-            .map_err(|error| {
-                SkillStoreError::io("父句柄相对打开暂存目录", Path::new(relative), error)
-            })?;
-        }
-        let fd = openat(
-            &parent,
-            OsStr::new(name),
-            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|error| {
-            SkillStoreError::io("父句柄相对打开暂存文件", Path::new(relative), error)
-        })?;
-        let stat = fstat(&fd)
-            .map_err(|error| SkillStoreError::io("复核暂存文件句柄", Path::new(relative), error))?;
-        if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
-            return Err(SkillStoreError::unsafe_object(relative, "对象不是普通文件"));
-        }
-        let size = stat.st_size.max(0) as u64;
-        if offset > size {
-            return Err(SkillStoreError::CandidateChanged {
-                entry_path: relative.into(),
-            });
-        }
-        let mut file = File::from(fd);
-        file.seek(SeekFrom::Start(offset))
-            .map_err(|error| SkillStoreError::io("定位暂存文件", Path::new(relative), error))?;
-        let wanted = length.min((size - offset) as usize);
-        let mut bytes = vec![0u8; wanted];
-        file.read_exact(&mut bytes)
-            .map_err(|error| SkillStoreError::io("读取暂存文件", Path::new(relative), error))?;
-        let after = fstat(&file)
-            .map_err(|error| SkillStoreError::io("结束复核暂存文件", Path::new(relative), error))?;
-        if stat.st_dev != after.st_dev
-            || stat.st_ino != after.st_ino
-            || stat.st_size != after.st_size
-            || stat.st_mtime != after.st_mtime
-            || stat.st_mtime_nsec != after.st_mtime_nsec
-            || stat.st_ctime != after.st_ctime
-            || stat.st_ctime_nsec != after.st_ctime_nsec
-        {
-            return Err(SkillStoreError::CandidateChanged {
-                entry_path: relative.into(),
-            });
-        }
-        Ok((bytes, size))
-    }
-
-    pub(super) fn verify_root(root: &RootHandle, path: &Path) -> Result<(), SkillStoreError> {
-        let fd = openat(CWD, path, directory_flags(), Mode::empty())
-            .map_err(|error| SkillStoreError::io("重新打开技能库根", path, error))?;
-        let stat = fstat(&fd).map_err(|error| SkillStoreError::io("复核技能库根", path, error))?;
-        if stat.st_dev as u64 != root.object_a || stat.st_ino as u64 != root.object_b {
-            return Err(SkillStoreError::unsafe_object(
-                ".",
-                "技能库根在扫描期间被替换",
-            ));
-        }
-        Ok(())
+    pub(super) fn scan_root(root: &RootHandle) -> Result<ScannedTarget, SkillStoreError> {
+        scan_directory_root(&root.path)
     }
 
     pub(super) fn scan_target(
         root: &RootHandle,
         target_name: &str,
     ) -> Result<ScannedTarget, SkillStoreError> {
-        let target = match openat(
-            root.file.as_fd(),
-            OsStr::new(target_name),
-            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-            Mode::empty(),
-        ) {
-            Ok(fd) => fd,
-            Err(error) if error == rustix::io::Errno::NOENT => {
+        let path = root.path.join(target_name);
+        let metadata = match fs::symlink_metadata(&path) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 return Ok(ScannedTarget {
                     target_type: None,
                     tree: Vec::new(),
                     skill_md: None,
                 });
             }
-            Err(error) => {
-                return Err(SkillStoreError::io(
-                    "安全打开技能目标",
-                    Path::new(target_name),
-                    error,
-                ));
-            }
+            Err(error) => return Err(SkillStoreError::io("检查技能目标", &path, error)),
+            Ok(metadata) => metadata,
         };
-        let stat = fstat(&target)
-            .map_err(|error| SkillStoreError::io("复核技能目标", Path::new(target_name), error))?;
-        match FileType::from_raw_mode(stat.st_mode) {
-            FileType::RegularFile => {
-                let mut file = File::from(target);
-                let before = identity_from_stat(target_name, TargetEntryType::File, &stat, None);
-                let hash = hash_open_file(&mut file).map_err(|error| {
-                    SkillStoreError::io("读取技能目标", Path::new(target_name), error)
-                })?;
-                let after_stat = fstat(&file).map_err(|error| {
-                    SkillStoreError::io("复核技能目标", Path::new(target_name), error)
-                })?;
-                let after =
-                    identity_from_stat(target_name, TargetEntryType::File, &after_stat, Some(hash));
-                if !same_metadata(&before, &after) {
-                    return Err(SkillStoreError::TargetChanged {
-                        target_name: target_name.into(),
-                    });
-                }
-                Ok(ScannedTarget {
-                    target_type: Some(TargetEntryType::File),
-                    tree: vec![after],
-                    skill_md: None,
-                })
-            }
-            FileType::Directory => {
-                let mut tree = Vec::new();
-                let mut skill_md = None;
-                scan_directory(target, target_name, "", &mut tree, &mut skill_md)?;
-                tree.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-                if let Some(index) = tree.iter().position(|entry| entry.relative_path.is_empty()) {
-                    tree.swap(0, index);
-                }
-                Ok(ScannedTarget {
-                    target_type: Some(TargetEntryType::Directory),
-                    tree,
-                    skill_md,
-                })
-            }
-            FileType::Symlink => Err(SkillStoreError::unsafe_object(
+        if metadata.file_type().is_symlink() {
+            return Err(SkillStoreError::unsafe_object(
                 target_name,
-                "目标不得为符号链接",
-            )),
-            _ => Err(SkillStoreError::unsafe_object(
-                target_name,
-                "目标只允许普通文件或目录",
-            )),
+                "不允许符号链接",
+            ));
         }
+        if metadata.is_dir() {
+            return scan_directory_root(&path);
+        }
+        if !metadata.is_file() {
+            return Err(SkillStoreError::unsafe_object(
+                target_name,
+                "不支持的对象类型",
+            ));
+        }
+        let mut file =
+            File::open(&path).map_err(|error| SkillStoreError::io("打开技能目标", &path, error))?;
+        let hash = hash_open_file(&mut file)
+            .map_err(|error| SkillStoreError::io("读取技能目标", &path, error))?;
+        Ok(ScannedTarget {
+            target_type: Some(TargetEntryType::File),
+            tree: vec![identity(target_name, &metadata, Some(hash))],
+            skill_md: None,
+        })
     }
 
-    fn scan_directory(
-        directory: OwnedFd,
-        target_name: &str,
-        relative: &str,
-        tree: &mut Vec<TreeIdentity>,
-        skill_md: &mut Option<Vec<u8>>,
-    ) -> Result<(), SkillStoreError> {
-        let before_stat = fstat(&directory)
-            .map_err(|error| SkillStoreError::io("复核技能目录", Path::new(relative), error))?;
-        if FileType::from_raw_mode(before_stat.st_mode) != FileType::Directory {
-            return Err(SkillStoreError::unsafe_object(relative, "对象不是普通目录"));
-        }
-        let before = identity_from_stat(relative, TargetEntryType::Directory, &before_stat, None);
-        tree.push(before.clone());
-
-        let mut names = Vec::new();
-        let mut stream = Dir::read_from(&directory)
-            .map_err(|error| SkillStoreError::io("枚举技能目录", Path::new(relative), error))?;
-        while let Some(entry) = stream.read() {
-            let entry = entry
-                .map_err(|error| SkillStoreError::io("枚举技能目录", Path::new(relative), error))?;
-            let bytes = entry.file_name().to_bytes();
-            if bytes == b"." || bytes == b".." {
-                continue;
-            }
-            let name = OsString::from_vec(bytes.to_vec());
-            if name.to_str().is_none() {
+    fn copy_tree(source: &Path, destination: &Path) -> Result<(), SkillStoreError> {
+        fs::create_dir(destination)
+            .map_err(|error| SkillStoreError::io("独占创建目标目录", destination, error))?;
+        let entries = fs::read_dir(source)
+            .map_err(|error| SkillStoreError::io("枚举复制来源", source, error))?;
+        for entry in entries {
+            let entry =
+                entry.map_err(|error| SkillStoreError::io("读取复制来源项", source, error))?;
+            let child = entry.path();
+            let output = destination.join(entry.file_name());
+            let metadata = fs::symlink_metadata(&child)
+                .map_err(|error| SkillStoreError::io("检查复制来源", &child, error))?;
+            if metadata.file_type().is_symlink() {
                 return Err(SkillStoreError::unsafe_object(
-                    relative,
-                    "路径必须是有效 Unicode",
+                    child.display().to_string(),
+                    "不允许符号链接",
                 ));
             }
-            names.push(name);
-        }
-        names.sort();
-        for name in names {
-            let name_text = name.to_string_lossy();
-            if name_text.is_empty()
-                || name_text == "."
-                || name_text == ".."
-                || name_text.contains(['/', '\\'])
-            {
-                return Err(SkillStoreError::unsafe_object(
-                    relative,
-                    "包含不安全路径组件",
-                ));
-            }
-            let child_relative = if relative.is_empty() {
-                name_text.into_owned()
+            if metadata.is_dir() {
+                copy_tree(&child, &output)?;
+            } else if metadata.is_file() {
+                fs::copy(&child, &output)
+                    .map_err(|error| SkillStoreError::io("复制技能文件", &child, error))?;
             } else {
-                format!("{relative}/{name_text}")
-            };
-            let child = openat(
-                &directory,
-                &name,
-                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-                Mode::empty(),
-            )
-            .map_err(|error| {
-                SkillStoreError::io("安全打开技能对象", Path::new(&child_relative), error)
-            })?;
-            let stat = fstat(&child).map_err(|error| {
-                SkillStoreError::io("复核技能对象", Path::new(&child_relative), error)
-            })?;
-            match FileType::from_raw_mode(stat.st_mode) {
-                FileType::Directory => {
-                    scan_directory(child, target_name, &child_relative, tree, skill_md)?;
-                }
-                FileType::RegularFile => {
-                    let mut file = File::from(child);
-                    let before =
-                        identity_from_stat(&child_relative, TargetEntryType::File, &stat, None);
-                    let mut captured_skill = None;
-                    let hash = if child_relative == "SKILL.md" {
-                        let mut bytes = Vec::new();
-                        file.read_to_end(&mut bytes).map_err(|error| {
-                            SkillStoreError::io(
-                                "读取现有 SKILL.md",
-                                Path::new(&child_relative),
-                                error,
-                            )
-                        })?;
-                        let digest = format!("{:x}", Sha256::digest(&bytes));
-                        captured_skill = Some(bytes);
-                        digest
-                    } else {
-                        hash_open_file(&mut file).map_err(|error| {
-                            SkillStoreError::io("读取技能文件", Path::new(&child_relative), error)
-                        })?
-                    };
-                    let after_stat = fstat(&file).map_err(|error| {
-                        SkillStoreError::io("复核技能文件", Path::new(&child_relative), error)
-                    })?;
-                    let after = identity_from_stat(
-                        &child_relative,
-                        TargetEntryType::File,
-                        &after_stat,
-                        Some(hash),
-                    );
-                    if !same_metadata(&before, &after) {
-                        return Err(SkillStoreError::TargetChanged {
-                            target_name: target_name.into(),
-                        });
-                    }
-                    if captured_skill.is_some() {
-                        *skill_md = captured_skill;
-                    }
-                    tree.push(after);
-                }
-                FileType::Symlink => {
-                    return Err(SkillStoreError::unsafe_object(
-                        child_relative,
-                        "不允许符号链接",
-                    ));
-                }
-                _ => {
-                    return Err(SkillStoreError::unsafe_object(
-                        child_relative,
-                        "只允许普通文件和目录",
-                    ));
-                }
+                return Err(SkillStoreError::unsafe_object(
+                    child.display().to_string(),
+                    "不支持的对象类型",
+                ));
             }
-        }
-        let after_stat = fstat(&directory)
-            .map_err(|error| SkillStoreError::io("复核技能目录", Path::new(relative), error))?;
-        let after = identity_from_stat(relative, TargetEntryType::Directory, &after_stat, None);
-        if before != after {
-            return Err(SkillStoreError::TargetChanged {
-                target_name: target_name.into(),
-            });
         }
         Ok(())
     }
 
-    fn identity_from_stat(
-        relative_path: &str,
-        entry_type: TargetEntryType,
-        stat: &rustix::fs::Stat,
-        content_sha256: Option<String>,
-    ) -> TreeIdentity {
-        // rustix 跟随 libc：Linux 纳秒字段为 u64，macOS 为 i64；其合法范围均小于 10^9。
-        TreeIdentity {
-            relative_path: relative_path.to_string(),
-            entry_type,
-            object_a: stat.st_dev as u64,
-            object_b: stat.st_ino as u64,
-            size: stat.st_size.max(0) as u64,
-            modified_seconds: stat.st_mtime,
-            modified_nanos: stat.st_mtime_nsec as i64,
-            changed_seconds: stat.st_ctime,
-            changed_nanos: stat.st_ctime_nsec as i64,
-            content_sha256,
-        }
-    }
-
-    fn same_metadata(left: &TreeIdentity, right: &TreeIdentity) -> bool {
-        left.relative_path == right.relative_path
-            && left.entry_type == right.entry_type
-            && left.object_a == right.object_a
-            && left.object_b == right.object_b
-            && left.size == right.size
-            && left.modified_seconds == right.modified_seconds
-            && left.modified_nanos == right.modified_nanos
-            && left.changed_seconds == right.changed_seconds
-            && left.changed_nanos == right.changed_nanos
+    pub(super) fn copy_root_directory(
+        root: &RootHandle,
+        destination: &Path,
+    ) -> Result<(), SkillStoreError> {
+        copy_tree(&root.path, destination)
     }
 
     pub(super) fn copy_target_directory(
@@ -845,293 +664,7 @@ mod platform {
         target_name: &str,
         destination: &Path,
     ) -> Result<(), SkillStoreError> {
-        let target = openat(
-            root.file.as_fd(),
-            OsStr::new(target_name),
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|error| {
-            SkillStoreError::io("固定待物化技能目录", Path::new(target_name), error)
-        })?;
-        let stat = fstat(&target).map_err(|error| {
-            SkillStoreError::io("复核待物化技能目录", Path::new(target_name), error)
-        })?;
-        if FileType::from_raw_mode(stat.st_mode) != FileType::Directory {
-            return Err(SkillStoreError::unsafe_object(
-                target_name,
-                "物化来源不是普通目录",
-            ));
-        }
-        std::fs::create_dir(destination)
-            .map_err(|error| SkillStoreError::io("独占创建物化技能目录", destination, error))?;
-        copy_directory_to(target, target_name, "", destination)
-    }
-
-    fn copy_directory_to(
-        directory: OwnedFd,
-        target_name: &str,
-        relative: &str,
-        destination: &Path,
-    ) -> Result<(), SkillStoreError> {
-        let before = fstat(&directory)
-            .map_err(|error| SkillStoreError::io("复核技能目录", Path::new(relative), error))?;
-        if FileType::from_raw_mode(before.st_mode) != FileType::Directory {
-            return Err(SkillStoreError::unsafe_object(relative, "对象不是普通目录"));
-        }
-        let mut names = Vec::new();
-        let mut stream = Dir::read_from(&directory)
-            .map_err(|error| SkillStoreError::io("枚举技能目录", Path::new(relative), error))?;
-        while let Some(entry) = stream.read() {
-            let entry = entry
-                .map_err(|error| SkillStoreError::io("枚举技能目录", Path::new(relative), error))?;
-            let bytes = entry.file_name().to_bytes();
-            if bytes == b"." || bytes == b".." {
-                continue;
-            }
-            let name = OsString::from_vec(bytes.to_vec());
-            if name.to_str().is_none() {
-                return Err(SkillStoreError::unsafe_object(
-                    relative,
-                    "路径必须是有效 Unicode",
-                ));
-            }
-            names.push(name);
-        }
-        names.sort();
-        for name in names {
-            let text = name.to_string_lossy();
-            if text.is_empty() || text == "." || text == ".." || text.contains(['/', '\\']) {
-                return Err(SkillStoreError::unsafe_object(
-                    relative,
-                    "包含不安全路径组件",
-                ));
-            }
-            let child_relative = if relative.is_empty() {
-                text.into_owned()
-            } else {
-                format!("{relative}/{text}")
-            };
-            let child = openat(
-                &directory,
-                &name,
-                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-                Mode::empty(),
-            )
-            .map_err(|error| {
-                SkillStoreError::io("安全打开物化技能对象", Path::new(&child_relative), error)
-            })?;
-            let stat = fstat(&child).map_err(|error| {
-                SkillStoreError::io("复核物化技能对象", Path::new(&child_relative), error)
-            })?;
-            let output = destination.join(&name);
-            match FileType::from_raw_mode(stat.st_mode) {
-                FileType::Directory => {
-                    std::fs::create_dir(&output).map_err(|error| {
-                        SkillStoreError::io("独占创建物化子目录", &output, error)
-                    })?;
-                    copy_directory_to(child, target_name, &child_relative, &output)?;
-                }
-                FileType::RegularFile => {
-                    let before_file = stat;
-                    let mut source = File::from(child);
-                    let mut target = std::fs::OpenOptions::new()
-                        .write(true)
-                        .create_new(true)
-                        .open(&output)
-                        .map_err(|error| {
-                            SkillStoreError::io("独占创建物化技能文件", &output, error)
-                        })?;
-                    io::copy(&mut source, &mut target).map_err(|error| {
-                        SkillStoreError::io(
-                            "从固定句柄复制技能文件",
-                            Path::new(&child_relative),
-                            error,
-                        )
-                    })?;
-                    target
-                        .sync_all()
-                        .map_err(|error| SkillStoreError::io("同步物化技能文件", &output, error))?;
-                    let after_file = fstat(&source).map_err(|error| {
-                        SkillStoreError::io("复核物化技能文件", Path::new(&child_relative), error)
-                    })?;
-                    if before_file.st_dev != after_file.st_dev
-                        || before_file.st_ino != after_file.st_ino
-                        || before_file.st_size != after_file.st_size
-                        || before_file.st_mtime != after_file.st_mtime
-                        || before_file.st_mtime_nsec != after_file.st_mtime_nsec
-                        || before_file.st_ctime != after_file.st_ctime
-                        || before_file.st_ctime_nsec != after_file.st_ctime_nsec
-                    {
-                        return Err(SkillStoreError::TargetChanged {
-                            target_name: target_name.into(),
-                        });
-                    }
-                }
-                FileType::Symlink => {
-                    return Err(SkillStoreError::unsafe_object(
-                        child_relative,
-                        "不允许符号链接",
-                    ));
-                }
-                _ => {
-                    return Err(SkillStoreError::unsafe_object(
-                        child_relative,
-                        "只允许普通文件和目录",
-                    ));
-                }
-            }
-        }
-        let after = fstat(&directory)
-            .map_err(|error| SkillStoreError::io("复核技能目录", Path::new(relative), error))?;
-        if before.st_dev != after.st_dev
-            || before.st_ino != after.st_ino
-            || before.st_mtime != after.st_mtime
-            || before.st_mtime_nsec != after.st_mtime_nsec
-            || before.st_ctime != after.st_ctime
-            || before.st_ctime_nsec != after.st_ctime_nsec
-        {
-            return Err(SkillStoreError::TargetChanged {
-                target_name: target_name.into(),
-            });
-        }
-        Ok(())
-    }
-
-    fn directory_flags() -> OFlags {
-        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC
-    }
-}
-
-#[cfg(windows)]
-mod platform {
-    use super::*;
-    use std::ffi::{OsStr, OsString};
-    use std::mem::{offset_of, size_of};
-    use std::os::windows::ffi::OsStrExt as _;
-    use std::os::windows::io::{AsRawHandle as _, FromRawHandle as _, RawHandle};
-
-    use windows::core::{PCWSTR, PWSTR};
-    use windows::Wdk::Foundation::OBJECT_ATTRIBUTES;
-    use windows::Wdk::Storage::FileSystem::{
-        NtCreateFile, FILE_OPEN, FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT,
-    };
-    use windows::Win32::Foundation::{
-        HANDLE, OBJ_CASE_INSENSITIVE, OBJ_DONT_REPARSE, STATUS_OBJECT_NAME_NOT_FOUND,
-        STATUS_OBJECT_PATH_NOT_FOUND, UNICODE_STRING,
-    };
-    use windows::Win32::Storage::FileSystem::{
-        CreateFileW, FileBasicInfo, FileIdBothDirectoryInfo, FileIdInfo, FileStandardInfo,
-        GetFileInformationByHandleEx, GetFileType, FILE_ATTRIBUTE_DEVICE, FILE_ATTRIBUTE_DIRECTORY,
-        FILE_ATTRIBUTE_REPARSE_POINT, FILE_BASIC_INFO, FILE_FLAG_BACKUP_SEMANTICS,
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ, FILE_ID_BOTH_DIR_INFO, FILE_ID_INFO,
-        FILE_INFO_BY_HANDLE_CLASS, FILE_SHARE_READ, FILE_STANDARD_INFO, FILE_TYPE_DISK,
-        OPEN_EXISTING,
-    };
-    use windows::Win32::System::IO::IO_STATUS_BLOCK;
-
-    const DIRECTORY_BUFFER_BYTES: usize = 64 * 1024;
-    const HRESULT_NO_MORE_FILES: u32 = 0x8007_0012;
-    // windows 0.61 metadata 未导出该命名常量；FILE_INFO_BY_HANDLE_CLASS 的 SDK
-    // 固定值 11 即 FileIdBothRestartDirectoryInfo。
-    #[allow(non_upper_case_globals)]
-    const FileIdBothRestartDirectoryInfo: FILE_INFO_BY_HANDLE_CLASS = FILE_INFO_BY_HANDLE_CLASS(11);
-
-    pub(super) struct RootHandle {
-        file: File,
-        identity: HandleIdentity,
-    }
-
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    struct HandleIdentity {
-        volume: u64,
-        file_id_low: u64,
-        file_id_high: u64,
-        size: u64,
-        modified: i64,
-        changed: i64,
-        directory: bool,
-    }
-
-    struct DirectoryEntry {
-        name: OsString,
-        directory: bool,
-    }
-
-    pub(super) fn open_root(path: &Path) -> Result<RootHandle, SkillStoreError> {
-        let file = open_root_path(path)?;
-        let identity = inspect_handle(&file, ".")?;
-        if !identity.directory {
-            return Err(SkillStoreError::unsafe_object(
-                ".",
-                "技能库根不是普通磁盘目录",
-            ));
-        }
-        Ok(RootHandle { file, identity })
-    }
-
-    pub(super) fn open_child_root(path: &Path) -> Result<RootHandle, SkillStoreError> {
-        let parent_path = path.parent().ok_or_else(|| {
-            SkillStoreError::unsafe_object("staged-skill-root", "暂存根缺少父目录")
-        })?;
-        let name = path.file_name().ok_or_else(|| {
-            SkillStoreError::unsafe_object("staged-skill-root", "暂存根缺少末级名称")
-        })?;
-        let parent = open_root(parent_path)?;
-        let file = open_relative(&parent.file, name, "staged-skill-root")?.ok_or_else(|| {
-            SkillStoreError::CandidateChanged {
-                entry_path: "staged-skill-root".into(),
-            }
-        })?;
-        let identity = inspect_handle(&file, "staged-skill-root")?;
-        if !identity.directory {
-            return Err(SkillStoreError::unsafe_object(
-                "staged-skill-root",
-                "暂存技能根不是普通目录",
-            ));
-        }
-        Ok(RootHandle { file, identity })
-    }
-
-    pub(super) fn root_identity(root: &RootHandle) -> Result<TreeIdentity, SkillStoreError> {
-        let identity = inspect_handle(&root.file, "staged-skill-root")?;
-        Ok(tree_identity(
-            "",
-            TargetEntryType::Directory,
-            &identity,
-            None,
-        ))
-    }
-
-    pub(super) fn scan_root(root: &RootHandle) -> Result<ScannedTarget, SkillStoreError> {
-        let mut tree = Vec::new();
-        let mut skill_md = None;
-        let file = root.file.try_clone().map_err(|error| {
-            SkillStoreError::io("复制暂存根句柄", Path::new("staged-skill-root"), error)
-        })?;
-        scan_directory(file, "staged-skill-root", "", &mut tree, &mut skill_md)?;
-        tree.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-        if let Some(index) = tree.iter().position(|entry| entry.relative_path.is_empty()) {
-            tree.swap(0, index);
-        }
-        Ok(ScannedTarget {
-            target_type: Some(TargetEntryType::Directory),
-            tree,
-            skill_md,
-        })
-    }
-
-    pub(super) fn copy_root_directory(
-        root: &RootHandle,
-        destination: &Path,
-    ) -> Result<(), SkillStoreError> {
-        let file = root.file.try_clone().map_err(|error| {
-            SkillStoreError::io("复制暂存根句柄", Path::new("staged-skill-root"), error)
-        })?;
-        std::fs::create_dir(destination).map_err(|error| {
-            SkillStoreError::io("独占创建事务 prepared 目录", destination, error)
-        })?;
-        copy_directory_to(file, "staged-skill-root", "", destination)
+        copy_tree(&root.path.join(target_name), destination)
     }
 
     pub(super) fn read_root_file(
@@ -1140,7 +673,7 @@ mod platform {
         offset: u64,
         length: usize,
     ) -> Result<(Vec<u8>, u64), SkillStoreError> {
-        let mut components = relative.split('/').collect::<Vec<_>>();
+        let components = relative.split('/').collect::<Vec<_>>();
         if components.is_empty()
             || components
                 .iter()
@@ -1148,644 +681,44 @@ mod platform {
         {
             return Err(SkillStoreError::unsafe_object(relative, "文件路径组件非法"));
         }
-        let name = components.pop().expect("已检查非空");
-        let mut parent = root
-            .file
-            .try_clone()
-            .map_err(|error| SkillStoreError::io("复制暂存根句柄", Path::new(relative), error))?;
-        for component in components {
-            parent = open_relative(&parent, OsStr::new(component), relative)?.ok_or_else(|| {
-                SkillStoreError::CandidateChanged {
-                    entry_path: relative.into(),
+        let mut path = root.path.clone();
+        for (index, component) in components.iter().enumerate() {
+            path = path.join(component);
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|error| SkillStoreError::io("检查暂存文件路径", &path, error))?;
+            if metadata.file_type().is_symlink() {
+                return Err(SkillStoreError::unsafe_object(relative, "不允许符号链接"));
+            }
+            let is_last = index + 1 == components.len();
+            if is_last {
+                if !metadata.is_file() {
+                    return Err(SkillStoreError::unsafe_object(relative, "对象不是普通文件"));
                 }
-            })?;
-            if !inspect_handle(&parent, relative)?.directory {
-                return Err(SkillStoreError::unsafe_object(relative, "父路径不是目录"));
+            } else if !metadata.is_dir() {
+                return Err(SkillStoreError::unsafe_object(relative, "路径中间不是目录"));
             }
         }
-        let mut file = open_relative(&parent, OsStr::new(name), relative)?.ok_or_else(|| {
-            SkillStoreError::CandidateChanged {
-                entry_path: relative.into(),
-            }
-        })?;
-        let before = inspect_handle(&file, relative)?;
-        if before.directory {
-            return Err(SkillStoreError::unsafe_object(relative, "对象不是普通文件"));
-        }
-        if offset > before.size {
-            return Err(SkillStoreError::CandidateChanged {
-                entry_path: relative.into(),
-            });
-        }
+        let mut file =
+            File::open(&path).map_err(|error| SkillStoreError::io("打开暂存文件", &path, error))?;
+        let total = file
+            .metadata()
+            .map_err(|error| SkillStoreError::io("复核暂存文件", &path, error))?
+            .len();
         file.seek(SeekFrom::Start(offset))
-            .map_err(|error| SkillStoreError::io("定位暂存文件", Path::new(relative), error))?;
-        let wanted = length.min((before.size - offset) as usize);
-        let mut bytes = vec![0u8; wanted];
-        file.read_exact(&mut bytes)
-            .map_err(|error| SkillStoreError::io("读取暂存文件", Path::new(relative), error))?;
-        if inspect_handle(&file, relative)? != before {
-            return Err(SkillStoreError::CandidateChanged {
-                entry_path: relative.into(),
-            });
-        }
-        Ok((bytes, before.size))
-    }
-
-    pub(super) fn verify_root(root: &RootHandle, path: &Path) -> Result<(), SkillStoreError> {
-        let current = open_root_path(path)?;
-        if inspect_handle(&current, ".")? != root.identity {
-            return Err(SkillStoreError::unsafe_object(
-                ".",
-                "技能库根在扫描期间被替换或修改",
-            ));
-        }
-        Ok(())
-    }
-
-    pub(super) fn scan_target(
-        root: &RootHandle,
-        target_name: &str,
-    ) -> Result<ScannedTarget, SkillStoreError> {
-        let Some(target) = open_relative(&root.file, OsStr::new(target_name), target_name)? else {
-            return Ok(ScannedTarget {
-                target_type: None,
-                tree: Vec::new(),
-                skill_md: None,
-            });
-        };
-        let identity = inspect_handle(&target, target_name)?;
-        if identity.directory {
-            let mut tree = Vec::new();
-            let mut skill_md = None;
-            scan_directory(target, target_name, "", &mut tree, &mut skill_md)?;
-            tree.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-            if let Some(index) = tree.iter().position(|entry| entry.relative_path.is_empty()) {
-                tree.swap(0, index);
+            .map_err(|error| SkillStoreError::io("定位暂存文件", &path, error))?;
+        let mut buffer = vec![0u8; length];
+        let mut filled = 0;
+        while filled < buffer.len() {
+            let read = file
+                .read(&mut buffer[filled..])
+                .map_err(|error| SkillStoreError::io("读取暂存文件", &path, error))?;
+            if read == 0 {
+                break;
             }
-            Ok(ScannedTarget {
-                target_type: Some(TargetEntryType::Directory),
-                tree,
-                skill_md,
-            })
-        } else {
-            let mut file = target;
-            let before = inspect_handle(&file, target_name)?;
-            let hash = hash_open_file(&mut file).map_err(|error| {
-                SkillStoreError::io("读取技能目标", Path::new(target_name), error)
-            })?;
-            let after = inspect_handle(&file, target_name)?;
-            if before != after {
-                return Err(SkillStoreError::TargetChanged {
-                    target_name: target_name.into(),
-                });
-            }
-            Ok(ScannedTarget {
-                target_type: Some(TargetEntryType::File),
-                tree: vec![tree_identity(
-                    target_name,
-                    TargetEntryType::File,
-                    &after,
-                    Some(hash),
-                )],
-                skill_md: None,
-            })
+            filled += read;
         }
-    }
-
-    fn open_root_path(path: &Path) -> Result<File, SkillStoreError> {
-        let mut wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
-        wide.push(0);
-        let handle = unsafe {
-            CreateFileW(
-                PCWSTR(wide.as_ptr()),
-                FILE_GENERIC_READ.0,
-                FILE_SHARE_READ,
-                None,
-                OPEN_EXISTING,
-                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-                None,
-            )
-        }
-        .map_err(|error| SkillStoreError::io("固定技能库根", path, error))?;
-        Ok(unsafe { File::from_raw_handle(handle.0 as RawHandle) })
-    }
-
-    /// 所有 target/子项都仅以单个名称相对已固定父句柄打开。OBJ_DONT_REPARSE
-    /// 与 FILE_OPEN_REPARSE_POINT 共同保证组件不会被重解析；FILE_SHARE_READ
-    /// 在句柄生命周期内拒绝写入和删除替换。
-    fn open_relative(
-        parent: &File,
-        name: &OsStr,
-        relative: &str,
-    ) -> Result<Option<File>, SkillStoreError> {
-        let mut name_wide = name.encode_wide().collect::<Vec<_>>();
-        let name_bytes = name_wide
-            .len()
-            .checked_mul(2)
-            .and_then(|bytes| u16::try_from(bytes).ok())
-            .ok_or_else(|| SkillStoreError::unsafe_object(relative, "路径组件过长"))?;
-        let unicode_name = UNICODE_STRING {
-            Length: name_bytes,
-            MaximumLength: name_bytes,
-            Buffer: PWSTR(name_wide.as_mut_ptr()),
-        };
-        let object_attributes = OBJECT_ATTRIBUTES {
-            Length: size_of::<OBJECT_ATTRIBUTES>() as u32,
-            RootDirectory: HANDLE(parent.as_raw_handle()),
-            ObjectName: &unicode_name,
-            Attributes: OBJ_CASE_INSENSITIVE | OBJ_DONT_REPARSE,
-            SecurityDescriptor: std::ptr::null(),
-            SecurityQualityOfService: std::ptr::null(),
-        };
-        let mut io_status: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
-        let mut handle = HANDLE::default();
-        let status = unsafe {
-            NtCreateFile(
-                &mut handle,
-                FILE_GENERIC_READ,
-                &object_attributes,
-                &mut io_status,
-                None,
-                Default::default(),
-                FILE_SHARE_READ,
-                FILE_OPEN,
-                FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
-                None,
-                0,
-            )
-        };
-        if status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_OBJECT_PATH_NOT_FOUND {
-            return Ok(None);
-        }
-        if status.0 < 0 {
-            return Err(SkillStoreError::Io {
-                operation: "父句柄相对打开技能对象",
-                path: relative.into(),
-                message: format!("NTSTATUS 0x{:08x}", status.0 as u32),
-            });
-        }
-        Ok(Some(unsafe {
-            File::from_raw_handle(handle.0 as RawHandle)
-        }))
-    }
-
-    fn scan_directory(
-        directory: File,
-        target_name: &str,
-        relative: &str,
-        tree: &mut Vec<TreeIdentity>,
-        skill_md: &mut Option<Vec<u8>>,
-    ) -> Result<(), SkillStoreError> {
-        let before = inspect_handle(&directory, relative)?;
-        if !before.directory {
-            return Err(SkillStoreError::unsafe_object(
-                relative,
-                "对象不是普通磁盘目录",
-            ));
-        }
-        tree.push(tree_identity(
-            relative,
-            TargetEntryType::Directory,
-            &before,
-            None,
-        ));
-
-        for entry in enumerate_directory(&directory, relative)? {
-            let name_text = entry.name.to_string_lossy();
-            let child_relative = if relative.is_empty() {
-                name_text.into_owned()
-            } else {
-                format!("{relative}/{name_text}")
-            };
-            let child =
-                open_relative(&directory, &entry.name, &child_relative)?.ok_or_else(|| {
-                    SkillStoreError::TargetChanged {
-                        target_name: target_name.into(),
-                    }
-                })?;
-            let child_identity = inspect_handle(&child, &child_relative)?;
-            if child_identity.directory != entry.directory {
-                return Err(SkillStoreError::TargetChanged {
-                    target_name: target_name.into(),
-                });
-            }
-            if child_identity.directory {
-                scan_directory(child, target_name, &child_relative, tree, skill_md)?;
-            } else {
-                scan_file(child, target_name, &child_relative, tree, skill_md)?;
-            }
-        }
-
-        if inspect_handle(&directory, relative)? != before {
-            return Err(SkillStoreError::TargetChanged {
-                target_name: target_name.into(),
-            });
-        }
-        Ok(())
-    }
-
-    fn scan_file(
-        mut file: File,
-        target_name: &str,
-        relative: &str,
-        tree: &mut Vec<TreeIdentity>,
-        skill_md: &mut Option<Vec<u8>>,
-    ) -> Result<(), SkillStoreError> {
-        let before = inspect_handle(&file, relative)?;
-        if before.directory {
-            return Err(SkillStoreError::unsafe_object(
-                relative,
-                "对象不是普通磁盘文件",
-            ));
-        }
-        let mut captured_skill = None;
-        let hash = if relative == "SKILL.md" {
-            let mut bytes = Vec::new();
-            file.read_to_end(&mut bytes).map_err(|error| {
-                SkillStoreError::io("读取现有 SKILL.md", Path::new(relative), error)
-            })?;
-            let digest = format!("{:x}", Sha256::digest(&bytes));
-            captured_skill = Some(bytes);
-            digest
-        } else {
-            hash_open_file(&mut file)
-                .map_err(|error| SkillStoreError::io("读取技能文件", Path::new(relative), error))?
-        };
-        let after = inspect_handle(&file, relative)?;
-        if before != after {
-            return Err(SkillStoreError::TargetChanged {
-                target_name: target_name.into(),
-            });
-        }
-        if captured_skill.is_some() {
-            *skill_md = captured_skill;
-        }
-        tree.push(tree_identity(
-            relative,
-            TargetEntryType::File,
-            &after,
-            Some(hash),
-        ));
-        Ok(())
-    }
-
-    fn enumerate_directory(
-        directory: &File,
-        relative: &str,
-    ) -> Result<Vec<DirectoryEntry>, SkillStoreError> {
-        let mut entries = Vec::new();
-        let mut restart = true;
-        loop {
-            // u64 backing gives the variable-length FILE_ID_BOTH_DIR_INFO records
-            // sufficient alignment while still allowing byte-offset parsing.
-            let mut buffer = vec![0u64; DIRECTORY_BUFFER_BYTES / size_of::<u64>()];
-            // try_clone/DuplicateHandle 共享同一个 file object 及其目录枚举游标。
-            // 每次独立 list 的首轮必须 restart，后续轮次再从当前游标继续。
-            let information_class = if restart {
-                FileIdBothRestartDirectoryInfo
-            } else {
-                FileIdBothDirectoryInfo
-            };
-            let result = unsafe {
-                GetFileInformationByHandleEx(
-                    HANDLE(directory.as_raw_handle()),
-                    information_class,
-                    buffer.as_mut_ptr().cast(),
-                    DIRECTORY_BUFFER_BYTES as u32,
-                )
-            };
-            if let Err(error) = result {
-                if error.code().0 as u32 == HRESULT_NO_MORE_FILES {
-                    break;
-                }
-                return Err(SkillStoreError::io(
-                    "枚举技能目录句柄",
-                    Path::new(relative),
-                    error,
-                ));
-            }
-            restart = false;
-
-            let bytes = unsafe {
-                std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), DIRECTORY_BUFFER_BYTES)
-            };
-            let mut offset = 0usize;
-            loop {
-                let header_size = offset_of!(FILE_ID_BOTH_DIR_INFO, FileName);
-                if offset
-                    .checked_add(header_size)
-                    .is_none_or(|end| end > bytes.len())
-                {
-                    return Err(SkillStoreError::unsafe_object(relative, "目录枚举记录越界"));
-                }
-                let record = unsafe {
-                    std::ptr::read_unaligned(
-                        bytes.as_ptr().add(offset).cast::<FILE_ID_BOTH_DIR_INFO>(),
-                    )
-                };
-                let name_bytes = record.FileNameLength as usize;
-                if name_bytes % 2 != 0
-                    || offset
-                        .checked_add(header_size)
-                        .and_then(|start| start.checked_add(name_bytes))
-                        .is_none_or(|end| end > bytes.len())
-                {
-                    return Err(SkillStoreError::unsafe_object(
-                        relative,
-                        "目录项名称记录非法",
-                    ));
-                }
-                let name_start = offset + header_size;
-                let wide = bytes[name_start..name_start + name_bytes]
-                    .chunks_exact(2)
-                    .map(|pair| u16::from_ne_bytes([pair[0], pair[1]]))
-                    .collect::<Vec<_>>();
-                let name = String::from_utf16(&wide).map_err(|_| {
-                    SkillStoreError::unsafe_object(relative, "路径必须是有效 Unicode")
-                })?;
-                if name != "." && name != ".." {
-                    if name.is_empty() || name.contains(['/', '\\']) {
-                        return Err(SkillStoreError::unsafe_object(
-                            relative,
-                            "包含不安全路径组件",
-                        ));
-                    }
-                    if record.FileAttributes
-                        & (FILE_ATTRIBUTE_REPARSE_POINT.0 | FILE_ATTRIBUTE_DEVICE.0)
-                        != 0
-                    {
-                        return Err(SkillStoreError::unsafe_object(
-                            if relative.is_empty() {
-                                name.clone()
-                            } else {
-                                format!("{relative}/{name}")
-                            },
-                            "不允许重解析点或特殊对象",
-                        ));
-                    }
-                    entries.push(DirectoryEntry {
-                        name: OsString::from(name),
-                        directory: record.FileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 != 0,
-                    });
-                }
-                if record.NextEntryOffset == 0 {
-                    break;
-                }
-                let next = record.NextEntryOffset as usize;
-                if next < header_size
-                    || offset
-                        .checked_add(next)
-                        .is_none_or(|next| next >= bytes.len())
-                {
-                    return Err(SkillStoreError::unsafe_object(
-                        relative,
-                        "目录枚举链偏移非法",
-                    ));
-                }
-                offset += next;
-            }
-        }
-        entries.sort_by(|left, right| left.name.cmp(&right.name));
-        Ok(entries)
-    }
-
-    fn inspect_handle(file: &File, relative: &str) -> Result<HandleIdentity, SkillStoreError> {
-        let handle = HANDLE(file.as_raw_handle());
-        if unsafe { GetFileType(handle) } != FILE_TYPE_DISK {
-            return Err(SkillStoreError::unsafe_object(
-                relative,
-                "对象不是磁盘文件或目录",
-            ));
-        }
-        let mut basic = FILE_BASIC_INFO::default();
-        let mut standard = FILE_STANDARD_INFO::default();
-        let mut id = FILE_ID_INFO::default();
-        unsafe {
-            GetFileInformationByHandleEx(
-                handle,
-                FileBasicInfo,
-                (&mut basic as *mut FILE_BASIC_INFO).cast(),
-                size_of::<FILE_BASIC_INFO>() as u32,
-            )
-            .and_then(|_| {
-                GetFileInformationByHandleEx(
-                    handle,
-                    FileStandardInfo,
-                    (&mut standard as *mut FILE_STANDARD_INFO).cast(),
-                    size_of::<FILE_STANDARD_INFO>() as u32,
-                )
-            })
-            .and_then(|_| {
-                GetFileInformationByHandleEx(
-                    handle,
-                    FileIdInfo,
-                    (&mut id as *mut FILE_ID_INFO).cast(),
-                    size_of::<FILE_ID_INFO>() as u32,
-                )
-            })
-        }
-        .map_err(|error| {
-            SkillStoreError::io("复核 Windows 技能对象句柄", Path::new(relative), error)
-        })?;
-        if basic.FileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT.0 | FILE_ATTRIBUTE_DEVICE.0) != 0
-            || standard.EndOfFile < 0
-        {
-            return Err(SkillStoreError::unsafe_object(
-                relative,
-                "不允许重解析点或特殊对象",
-            ));
-        }
-        Ok(HandleIdentity {
-            volume: id.VolumeSerialNumber,
-            file_id_low: u64::from_le_bytes(id.FileId.Identifier[..8].try_into().unwrap()),
-            file_id_high: u64::from_le_bytes(id.FileId.Identifier[8..].try_into().unwrap()),
-            size: standard.EndOfFile as u64,
-            modified: basic.LastWriteTime,
-            changed: basic.ChangeTime,
-            directory: standard.Directory,
-        })
-    }
-
-    pub(super) fn copy_target_directory(
-        root: &RootHandle,
-        target_name: &str,
-        destination: &Path,
-    ) -> Result<(), SkillStoreError> {
-        let target =
-            open_relative(&root.file, OsStr::new(target_name), target_name)?.ok_or_else(|| {
-                SkillStoreError::TargetChanged {
-                    target_name: target_name.into(),
-                }
-            })?;
-        let identity = inspect_handle(&target, target_name)?;
-        if !identity.directory {
-            return Err(SkillStoreError::unsafe_object(
-                target_name,
-                "物化来源不是普通磁盘目录或包含重解析点",
-            ));
-        }
-        std::fs::create_dir(destination)
-            .map_err(|error| SkillStoreError::io("独占创建物化技能目录", destination, error))?;
-        copy_directory_to(target, target_name, "", destination)
-    }
-
-    fn copy_directory_to(
-        directory: File,
-        target_name: &str,
-        relative: &str,
-        destination: &Path,
-    ) -> Result<(), SkillStoreError> {
-        let before = inspect_handle(&directory, relative)?;
-        if !before.directory {
-            return Err(SkillStoreError::unsafe_object(
-                relative,
-                "对象不是普通磁盘目录或包含重解析点",
-            ));
-        }
-        for entry in enumerate_directory(&directory, relative)? {
-            let text = entry.name.to_string_lossy();
-            let child_relative = if relative.is_empty() {
-                text.into_owned()
-            } else {
-                format!("{relative}/{text}")
-            };
-            let child =
-                open_relative(&directory, &entry.name, &child_relative)?.ok_or_else(|| {
-                    SkillStoreError::TargetChanged {
-                        target_name: target_name.into(),
-                    }
-                })?;
-            let child_before = inspect_handle(&child, &child_relative)?;
-            if child_before.directory != entry.directory {
-                return Err(SkillStoreError::unsafe_object(
-                    child_relative,
-                    "对象类型变化或包含重解析点",
-                ));
-            }
-            let output = destination.join(&entry.name);
-            if child_before.directory {
-                std::fs::create_dir(&output)
-                    .map_err(|error| SkillStoreError::io("独占创建物化子目录", &output, error))?;
-                copy_directory_to(child, target_name, &child_relative, &output)?;
-            } else {
-                let mut source = child;
-                let mut target = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&output)
-                    .map_err(|error| SkillStoreError::io("独占创建物化技能文件", &output, error))?;
-                io::copy(&mut source, &mut target).map_err(|error| {
-                    SkillStoreError::io("从固定句柄复制技能文件", Path::new(&child_relative), error)
-                })?;
-                target
-                    .sync_all()
-                    .map_err(|error| SkillStoreError::io("同步物化技能文件", &output, error))?;
-                if inspect_handle(&source, &child_relative)? != child_before {
-                    return Err(SkillStoreError::TargetChanged {
-                        target_name: target_name.into(),
-                    });
-                }
-            }
-        }
-        if inspect_handle(&directory, relative)? != before {
-            return Err(SkillStoreError::TargetChanged {
-                target_name: target_name.into(),
-            });
-        }
-        Ok(())
-    }
-
-    fn tree_identity(
-        relative_path: &str,
-        entry_type: TargetEntryType,
-        identity: &HandleIdentity,
-        content_sha256: Option<String>,
-    ) -> TreeIdentity {
-        let (modified_seconds, modified_nanos) = split_windows_time(identity.modified);
-        let (changed_seconds, changed_nanos) = split_windows_time(identity.changed);
-        // TreeIdentity 的旧 IPC 形态只有两个 object 槽；baseline 内部比较仍使用
-        // 完整 128-bit file id，上层稳定快照以 volume + 两半异或携带对象身份。
-        TreeIdentity {
-            relative_path: relative_path.into(),
-            entry_type,
-            object_a: identity.volume,
-            object_b: identity.file_id_low ^ identity.file_id_high.rotate_left(1),
-            size: identity.size,
-            modified_seconds,
-            modified_nanos,
-            changed_seconds,
-            changed_nanos,
-            content_sha256,
-        }
-    }
-
-    fn split_windows_time(value: i64) -> (i64, i64) {
-        (
-            value.div_euclid(10_000_000),
-            value.rem_euclid(10_000_000) * 100,
-        )
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-mod platform {
-    use super::*;
-
-    pub(super) struct RootHandle;
-
-    fn unsupported() -> SkillStoreError {
-        SkillStoreError::unsafe_object(".", "当前平台不支持安全技能库句柄")
-    }
-
-    pub(super) fn open_root(_path: &Path) -> Result<RootHandle, SkillStoreError> {
-        Err(unsupported())
-    }
-
-    pub(super) fn open_child_root(_path: &Path) -> Result<RootHandle, SkillStoreError> {
-        Err(unsupported())
-    }
-
-    pub(super) fn root_identity(_root: &RootHandle) -> Result<TreeIdentity, SkillStoreError> {
-        Err(unsupported())
-    }
-
-    pub(super) fn scan_root(_root: &RootHandle) -> Result<ScannedTarget, SkillStoreError> {
-        Err(unsupported())
-    }
-
-    pub(super) fn copy_root_directory(
-        _root: &RootHandle,
-        _destination: &Path,
-    ) -> Result<(), SkillStoreError> {
-        Err(unsupported())
-    }
-
-    pub(super) fn read_root_file(
-        _root: &RootHandle,
-        _relative: &str,
-        _offset: u64,
-        _length: usize,
-    ) -> Result<(Vec<u8>, u64), SkillStoreError> {
-        Err(unsupported())
-    }
-
-    pub(super) fn verify_root(_root: &RootHandle, _path: &Path) -> Result<(), SkillStoreError> {
-        Err(unsupported())
-    }
-
-    pub(super) fn scan_target(
-        _root: &RootHandle,
-        _target_name: &str,
-    ) -> Result<ScannedTarget, SkillStoreError> {
-        Err(unsupported())
-    }
-
-    pub(super) fn copy_target_directory(
-        _root: &RootHandle,
-        _target_name: &str,
-        _destination: &Path,
-    ) -> Result<(), SkillStoreError> {
-        Err(unsupported())
+        buffer.truncate(filled);
+        Ok((buffer, total))
     }
 }
 
@@ -1829,23 +762,5 @@ mod tests {
 
         drop(fixed);
         std::fs::remove_dir_all(root).unwrap();
-    }
-
-    /// macOS CI 无法执行 Win32 API，但仍锁定首轮 restart、后续 continue 的源码契约。
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn windows_directory_enumeration_restart_contract_is_present() {
-        let source = include_str!("store.rs");
-        assert!(source.contains(
-            "const FileIdBothRestartDirectoryInfo: FILE_INFO_BY_HANDLE_CLASS = FILE_INFO_BY_HANDLE_CLASS(11);"
-        ));
-        let start = source.find("    fn enumerate_directory(").unwrap();
-        let end = source[start..].find("\n    fn inspect_handle(").unwrap() + start;
-        let body = &source[start..end];
-        let restart = body.find("let mut restart = true;").unwrap();
-        let first_class = body.find("FileIdBothRestartDirectoryInfo").unwrap();
-        let later_class = body.find("FileIdBothDirectoryInfo").unwrap();
-        let consume = body.find("restart = false;").unwrap();
-        assert!(restart < first_class && first_class < later_class && later_class < consume);
     }
 }

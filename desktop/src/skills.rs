@@ -15,7 +15,6 @@
 // 技能内容不进 config.json 事务:与 telemetry.json 同理,库本身就是
 // 一目录一文件的权威,坏一个技能只影响它自己。
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
@@ -284,7 +283,6 @@ struct SkillStoreStateInner {
     defaults_path: PathBuf,
     revision_path: PathBuf,
     observed: Mutex<Option<StoreRevision>>,
-    recovery_issues: Mutex<BTreeMap<String, CachedRecoveryIssue>>,
     #[cfg(test)]
     fail_next_revision_write: std::sync::atomic::AtomicBool,
 }
@@ -294,12 +292,6 @@ struct RevisionDocument {
     format: u32,
     store_id: String,
     revision: u64,
-}
-
-#[derive(Clone)]
-struct CachedRecoveryIssue {
-    fingerprint: String,
-    issue: SkillRecoveryIssue,
 }
 
 impl SkillStoreState {
@@ -313,20 +305,12 @@ impl SkillStoreState {
                 revision_path: config_dir.join(REVISION_FILE),
                 config_dir,
                 observed: Mutex::new(None),
-                recovery_issues: Mutex::new(BTreeMap::new()),
                 #[cfg(test)]
                 fail_next_revision_write: std::sync::atomic::AtomicBool::new(false),
             }),
         };
         state.initialize_if_new()?;
         Ok(state)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn inject_revision_failure_for_test(&self) {
-        self.inner
-            .fail_next_revision_write
-            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     #[cfg(test)]
@@ -474,32 +458,14 @@ impl SkillStoreState {
         &self,
         operation: impl FnOnce(&StoreRevision) -> Result<T, SkillStoreError>,
     ) -> Result<T, SkillStoreError> {
-        // 闭包只在最终“事务检查与读取共处同一共享锁临界区”时消费。
-        let mut operation = Some(operation);
-        loop {
-            let process = self
-                .inner
-                .gate
-                .read()
-                .unwrap_or_else(|error| error.into_inner());
-            let os = os_lock::lock(&self.inner.config_dir, false)?;
-            let inventory = crate::skill_transactions::discover_locked(&self.inner.user_dir)?;
-            let issues = self.reconcile_recovery_issues_locked(&inventory);
-            if !issues.is_empty() {
-                return Err(SkillStoreError::RecoveryPending(issues));
-            }
-            if !inventory.needs_automatic_recovery() {
-                let revision = self.load_revision_locked()?;
-                return operation.take().expect("read operation consumed")(&revision);
-            }
-
-            // 共享锁不能升级：严格释放 OS/进程读锁，再按固定顺序取得两层写锁。
-            drop(os);
-            drop(process);
-            self.recover_once_exclusive()?;
-            // 独占锁到下一轮共享锁之间可能出现另一个进程的新事务，故必须循环，
-            // 绝不直接执行 operation。
-        }
+        let _process = self
+            .inner
+            .gate
+            .read()
+            .unwrap_or_else(|error| error.into_inner());
+        let _os = os_lock::lock(&self.inner.config_dir, false)?;
+        let revision = self.load_revision_locked()?;
+        operation(&revision)
     }
 
     /// save/delete/default/import 的唯一权威写入口。取得全部锁后先持久预留
@@ -545,7 +511,6 @@ impl SkillStoreState {
             .write()
             .unwrap_or_else(|error| error.into_inner());
         let _os = os_lock::lock(&self.inner.config_dir, true)?;
-        self.recover_under_exclusive_locked()?;
         let revision = self.load_revision_locked()?;
         let baseline = BaselineStore::open_locked(&self.inner.user_dir)?;
         baseline.capture_locked(&revision, target_name)
@@ -615,74 +580,27 @@ impl SkillStoreState {
         })
     }
 
-    /// 恢复面板读取：与普通 read 相同地先接管全部可恢复事务，但不会把已登记
-    /// issue 自身转换成错误。
+    /// 事务恢复机已废弃：没有事务日志就没有待恢复项。保留 IPC 外形，
+    /// 顺手清扫历史版本的事务残留目录。
     pub(crate) fn recovery_issues(&self) -> Result<Vec<SkillRecoveryIssue>, SkillStoreError> {
-        loop {
-            let process = self
-                .inner
-                .gate
-                .read()
-                .unwrap_or_else(|error| error.into_inner());
-            let os = os_lock::lock(&self.inner.config_dir, false)?;
-            let inventory = crate::skill_transactions::discover_locked(&self.inner.user_dir)?;
-            let issues = self.reconcile_recovery_issues_locked(&inventory);
-            if !issues.is_empty() || !inventory.needs_automatic_recovery() {
-                return Ok(issues);
-            }
-            drop(os);
-            drop(process);
-            // 失败会登记 issue；恢复列表下一轮把它返回，而不是重复尝试。
-            match self.recover_once_exclusive() {
-                Ok(()) | Err(SkillStoreError::RecoveryPending(_)) => {}
-                Err(error) => return Err(error),
-            }
-        }
+        let _process = self
+            .inner
+            .gate
+            .read()
+            .unwrap_or_else(|error| error.into_inner());
+        let _os = os_lock::lock(&self.inner.config_dir, false)?;
+        crate::skill_transactions::discover_locked(&self.inner.user_dir)?;
+        Ok(Vec::new())
     }
 
     pub(crate) fn resolve_recovery(
         &self,
-        transaction_id: &str,
-        action: SkillRecoveryAction,
+        _transaction_id: &str,
+        _action: SkillRecoveryAction,
     ) -> Result<SkillRecoveryResolveResult, SkillStoreError> {
-        let _process = self
-            .inner
-            .gate
-            .write()
-            .unwrap_or_else(|error| error.into_inner());
-        let _os = os_lock::lock(&self.inner.config_dir, true)?;
-        // 先在同一独占锁内纯只读确认 issue/action 并绑定候选 fingerprint。无效请求
-        // 在 revision write-ahead invalidation 之前返回，不能制造虚假的 catalog 版本。
-        let cached_issue = self
-            .inner
-            .recovery_issues
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .get(transaction_id)
-            .cloned();
-        let plan = crate::skill_transactions::plan_resolve_locked(
-            &self.inner.user_dir,
-            transaction_id,
-            action,
-            cached_issue
-                .as_ref()
-                .map(|cached| (cached.fingerprint.as_str(), &cached.issue)),
-        )?;
-        // 合法计划才预留 revision。写失败时尚未移动任何候选；执行失败或计划后
-        // fingerprint 改变则允许 revision 保守前进。
-        let revision = self.advance_revision_locked()?;
-        self.mark_revision_observed(&revision);
-        let outcome = crate::skill_transactions::execute_resolve_plan_locked(
-            &self.inner.config_dir,
-            &self.inner.user_dir,
-            plan,
-        )?;
-        let inventory = crate::skill_transactions::discover_locked(&self.inner.user_dir)?;
-        self.reconcile_recovery_issues_locked(&inventory);
-        Ok(SkillRecoveryResolveResult {
-            preserved_path: outcome.preserved_path,
-            catalog_revision: revision.revision,
-        })
+        Err(SkillStoreError::InvalidTargetName(
+            "没有待解决的恢复事务".into(),
+        ))
     }
 
     /// task 10 的批次编排必须复用此入口；返回顺序与请求顺序严格一致。
@@ -733,7 +651,6 @@ impl SkillStoreState {
             .write()
             .unwrap_or_else(|error| error.into_inner());
         let _os = os_lock::lock(&self.inner.config_dir, true)?;
-        self.recover_under_exclusive_locked()?;
         let current = self.load_revision_locked()?;
         let catalog = list_unlocked(builtin, &self.inner.user_dir, &self.inner.defaults_path);
         let baselines = BaselineStore::open_locked(&self.inner.user_dir)?;
@@ -773,85 +690,9 @@ impl SkillStoreState {
         Ok((outcomes, revision))
     }
 
-    /// task 4 的 instance lease 清理闭包：活动事务仅按日志中的安全实例组件豁免。
-    pub(crate) fn protects_staging_path(&self, path: &Path) -> bool {
-        crate::skill_transactions::staging_path_has_active_transaction(&self.inner.config_dir, path)
-    }
-
-    fn reconcile_recovery_issues_locked(
-        &self,
-        inventory: &crate::skill_transactions::RecoveryInventory,
-    ) -> Vec<SkillRecoveryIssue> {
-        let mut cache = self
-            .inner
-            .recovery_issues
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let mut next = BTreeMap::new();
-        for entry in &inventory.entries {
-            let cached = cache
-                .get(&entry.transaction_id)
-                .filter(|cached| cached.fingerprint == entry.fingerprint)
-                .cloned();
-            let issue = entry
-                .issue
-                .clone()
-                .or_else(|| cached.map(|cached| cached.issue));
-            if let Some(issue) = issue {
-                next.insert(
-                    entry.transaction_id.clone(),
-                    CachedRecoveryIssue {
-                        fingerprint: entry.fingerprint.clone(),
-                        issue,
-                    },
-                );
-            }
-        }
-        *cache = next;
-        cache.values().map(|cached| cached.issue.clone()).collect()
-    }
-
-    fn recover_once_exclusive(&self) -> Result<(), SkillStoreError> {
-        let _process = self
-            .inner
-            .gate
-            .write()
-            .unwrap_or_else(|error| error.into_inner());
-        let _os = os_lock::lock(&self.inner.config_dir, true)?;
-        self.recover_under_exclusive_locked()
-    }
-
-    fn recover_under_exclusive_locked(&self) -> Result<(), SkillStoreError> {
-        let inventory = crate::skill_transactions::discover_locked(&self.inner.user_dir)?;
-        let existing = self.reconcile_recovery_issues_locked(&inventory);
-        // 同 fingerprint 的失败只尝试一次，避免 list/materialize 的升级循环忙转。
-        if !existing.is_empty() {
-            return Err(SkillStoreError::RecoveryPending(existing));
-        }
-        if !inventory.needs_automatic_recovery() {
-            return Ok(());
-        }
-        // 自动恢复即使只清理日志/备份也可能改变读者判断，执行任何 rename/delete
-        // 前先持久预留 revision。写失败必须保持事务目录完全不变。
-        self.advance_revision_locked()?;
-        let run = crate::skill_transactions::recover_locked(&self.inner.user_dir)?;
-        {
-            let mut cache = self
-                .inner
-                .recovery_issues
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            for (transaction_id, fingerprint, issue) in run.issues {
-                cache.insert(transaction_id, CachedRecoveryIssue { fingerprint, issue });
-            }
-        }
-        let inventory = crate::skill_transactions::discover_locked(&self.inner.user_dir)?;
-        let issues = self.reconcile_recovery_issues_locked(&inventory);
-        if issues.is_empty() {
-            Ok(())
-        } else {
-            Err(SkillStoreError::RecoveryPending(issues))
-        }
+    /// 没有事务日志即没有需要豁免清理的暂存实例。
+    pub(crate) fn protects_staging_path(&self, _path: &Path) -> bool {
+        false
     }
 
     fn advance_revision_locked(&self) -> Result<StoreRevision, SkillStoreError> {
@@ -870,9 +711,9 @@ impl SkillStoreState {
             .swap(false, std::sync::atomic::Ordering::SeqCst)
         {
             return Err(SkillStoreError::io(
-                "注入 catalog revision 写入失败",
+                "写入 skills.revision",
                 &self.inner.revision_path,
-                "test injection",
+                "注入的 revision 写失败",
             ));
         }
         write_revision_synced(&self.inner.revision_path, &revision)?;
@@ -897,32 +738,9 @@ impl SkillStoreState {
             .write()
             .unwrap_or_else(|error| error.into_inner());
         let _os = os_lock::lock(&self.inner.config_dir, true)?;
-        // 每次普通写都从磁盘接管崩溃事务；内存 cache 绝不是放行依据。
-        self.recover_under_exclusive_locked()?;
-        let current = self.load_revision_locked()?;
-        let revision = StoreRevision {
-            store_id: current.store_id,
-            revision: current
-                .revision
-                .checked_add(1)
-                .ok_or(SkillStoreError::RevisionOverflow)?,
-        };
-
         // revision 是所有潜在权威变化的 write-ahead invalidation。这里必须位于
         // operation 之前，且成功后绝不因 operation 失败而回退或二次提交。
-        #[cfg(test)]
-        if self
-            .inner
-            .fail_next_revision_write
-            .swap(false, std::sync::atomic::Ordering::SeqCst)
-        {
-            return Err(SkillStoreError::io(
-                "注入 catalog revision 写入失败",
-                &self.inner.revision_path,
-                "test injection",
-            ));
-        }
-        write_revision_synced(&self.inner.revision_path, &revision)?;
+        let revision = self.advance_revision_locked()?;
         self.mark_revision_observed(&revision);
 
         let value = operation(&self.inner.user_dir, &self.inner.defaults_path)?;
@@ -2349,44 +2167,6 @@ mod tests {
     }
 
     #[test]
-    fn automatic_recovery_revision_is_polled_once_but_local_write_is_deduplicated() {
-        let cfg = test_dir("automatic-recovery-event");
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        assert!(state.poll_external_catalog_revision().unwrap().is_none());
-
-        let source = test_dir("automatic-recovery-event-source");
-        put_skill(&source, "recovered", "recovered content");
-        crate::skill_transactions::seed_prepared_new_for_test(
-            &cfg.join("skills"),
-            &source.join("recovered"),
-            "recovered",
-        );
-        let snapshot = state.snapshot(None).unwrap();
-        assert_eq!(snapshot.revision, 1);
-        assert!(
-            crate::skill_transactions::discover_locked(&cfg.join("skills"))
-                .unwrap()
-                .entries
-                .is_empty(),
-            "read 必须完成自动恢复后才返回"
-        );
-
-        let recovered = state
-            .poll_external_catalog_revision()
-            .unwrap()
-            .expect("自动恢复推进的 revision 必须交付给 watcher");
-        assert_eq!(recovered.revision, 1);
-        assert!(state.poll_external_catalog_revision().unwrap().is_none());
-
-        let saved = state.save_skill("local", "local", None).unwrap();
-        assert_eq!(saved.revision, 2);
-        assert!(
-            state.poll_external_catalog_revision().unwrap().is_none(),
-            "显式本地 mutation 应更新 watcher 水位，避免重复事件"
-        );
-    }
-
-    #[test]
     fn old_session_baseline_is_ignored_and_missing_snapshot_tracks_current_defaults() {
         let cfg = test_dir("legacy-session-baseline-ignored");
         put_skill(&cfg.join("skills"), "first", "first");
@@ -2461,45 +2241,23 @@ mod tests {
     }
 
     #[test]
-    fn windows_baseline_contract_uses_fixed_parent_relative_handles() {
+    fn store_platform_rejects_links_and_stays_std_only() {
         let source = include_str!("skill_import/store.rs");
-        let windows = source
-            .split("#[cfg(windows)]")
-            .nth(1)
-            .unwrap()
-            .split("#[cfg(not(any(unix, windows)))]")
-            .next()
-            .unwrap();
-        for required in [
+        // 句柄钉扎/NT 相对打开机已废弃,不得回归(Windows 自持句柄互斥的根因);
+        // symlink 与特殊对象仍必须在扫描/复制/读取层被拒绝。
+        for forbidden in [
             "NtCreateFile",
-            "RootDirectory",
             "OBJ_DONT_REPARSE",
             "FILE_OPEN_REPARSE_POINT",
-            "GetFileInformationByHandleEx",
-            "FileIdBothDirectoryInfo",
-            "FILE_ATTRIBUTE_REPARSE_POINT",
-            "FILE_TYPE_DISK",
         ] {
             assert!(
-                windows.contains(required),
-                "Windows baseline 缺少 {required}"
+                !source.contains(forbidden),
+                "不得回归 NT 句柄机: {forbidden}"
             );
         }
-        // 来源只能相对固定父句柄枚举/打开/读取；destination.join 只是构造
-        // 已独占创建的输出树名称，不属于来源路径重开。
-        for forbidden in ["fs::read_dir", "fs::read(", "fs::copy"] {
-            assert!(
-                !windows.contains(forbidden),
-                "Windows baseline 不得按来源路径重开: {forbidden}"
-            );
+        for required in ["不允许符号链接", "symlink_metadata", "is_symlink"] {
+            assert!(source.contains(required), "缺少链接拒绝: {required}");
         }
-        for required in ["open_relative(&directory", ".create_new(true)", "io::copy"] {
-            assert!(
-                windows.contains(required),
-                "Windows 安全复制缺少 {required}"
-            );
-        }
-        assert!(!windows.contains("Windows 安全 baseline 相对枚举当前不可用"));
     }
 
     #[test]
@@ -2834,66 +2592,6 @@ mod tests {
                     .is_file());
             }
         }
-    }
-
-    #[test]
-    fn multiprocess_readers_take_over_crashed_transaction_before_listing() {
-        let cfg = test_dir("transaction-takeover-multiprocess");
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        let source_root = test_dir("transaction-takeover-source");
-        put_skill(
-            &source_root,
-            "demo",
-            "---\nname: demo\n---\ncrashed prepared content",
-        );
-        crate::skill_transactions::seed_prepared_new_for_test(
-            &cfg.join("skills"),
-            &source_root.join("demo"),
-            "demo",
-        );
-        drop(state);
-        let mut children = ["a", "b"]
-            .into_iter()
-            .map(|role| spawn_state_helper(&cfg, role, "recovery-read"))
-            .collect::<Vec<_>>();
-        for child in &mut children {
-            assert!(child.wait().unwrap().success());
-        }
-        assert!(
-            crate::skill_transactions::discover_locked(&cfg.join("skills"))
-                .unwrap()
-                .entries
-                .is_empty()
-        );
-        assert!(SkillStoreState::new(cfg).unwrap().snapshot(None).is_ok());
-    }
-
-    #[test]
-    fn multiprocess_observer_drops_cached_issue_after_resolver_commits() {
-        let cfg = test_dir("transaction-resolve-multiprocess");
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        let id =
-            crate::skill_transactions::seed_unrecoverable_for_test(&cfg.join("skills"), "demo");
-        fs::write(cfg.join("recovery.tx-id"), &id).unwrap();
-        drop(state);
-
-        let mut observer = spawn_state_helper(&cfg, "observer", "recovery-cache");
-        wait_for(&cfg.join("observer.blocked"));
-        let mut resolver = spawn_state_helper(&cfg, "resolver", "recovery-resolve");
-        assert!(resolver.wait().unwrap().success());
-        assert!(observer.wait().unwrap().success());
-        let revision = fs::read_to_string(cfg.join("observer.revision"))
-            .unwrap()
-            .parse::<u64>()
-            .unwrap();
-        assert_eq!(
-            SkillStoreState::new(cfg)
-                .unwrap()
-                .snapshot(None)
-                .unwrap()
-                .revision,
-            revision
-        );
     }
 
     #[cfg(unix)]
