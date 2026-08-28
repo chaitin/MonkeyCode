@@ -4099,8 +4099,7 @@ impl Inner {
         .map_err(|error| format!("序列化孤儿会话记录失败: {error}"))?;
         crate::config::atomic_write_private(&path, &bytes)
             .map_err(|error| format!("持久化孤儿会话记录失败: {error}"))?;
-        std::fs::File::open(&path)
-            .and_then(|file| file.sync_all())
+        crate::config::sync_file(&path)
             .map_err(|error| format!("同步孤儿会话记录失败: {error}"))?;
         #[cfg(unix)]
         std::fs::File::open(&self.session_skill_locks_dir)

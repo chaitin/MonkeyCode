@@ -813,6 +813,7 @@ mod platform {
         stat: &rustix::fs::Stat,
         content_sha256: Option<String>,
     ) -> TreeIdentity {
+        // rustix 跟随 libc：Linux 纳秒字段为 u64，macOS 为 i64；其合法范围均小于 10^9。
         TreeIdentity {
             relative_path: relative_path.to_string(),
             entry_type,
@@ -820,9 +821,9 @@ mod platform {
             object_b: stat.st_ino as u64,
             size: stat.st_size.max(0) as u64,
             modified_seconds: stat.st_mtime,
-            modified_nanos: stat.st_mtime_nsec,
+            modified_nanos: stat.st_mtime_nsec as i64,
             changed_seconds: stat.st_ctime,
-            changed_nanos: stat.st_ctime_nsec,
+            changed_nanos: stat.st_ctime_nsec as i64,
             content_sha256,
         }
     }

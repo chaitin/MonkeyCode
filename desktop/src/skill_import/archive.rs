@@ -2348,11 +2348,12 @@ mod platform {
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     fn stat_times(stat: &rustix::fs::Stat) -> (i64, i64, i64, i64) {
+        // rustix 跟随 libc：Linux 纳秒字段为 u64，macOS 为 i64；其合法范围均小于 10^9。
         (
             stat.st_mtime,
-            stat.st_mtime_nsec,
+            stat.st_mtime_nsec as i64,
             stat.st_ctime,
-            stat.st_ctime_nsec,
+            stat.st_ctime_nsec as i64,
         )
     }
 

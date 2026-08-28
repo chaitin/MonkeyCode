@@ -279,6 +279,19 @@ fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
     }
 }
 
+pub(crate) fn sync_file(path: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        // Windows FlushFileBuffers requires GENERIC_WRITE; File::open only grants
+        // GENERIC_READ and returns ERROR_ACCESS_DENIED even for files we created.
+        fs::OpenOptions::new().write(true).open(path)?.sync_all()
+    }
+    #[cfg(not(windows))]
+    {
+        fs::File::open(path)?.sync_all()
+    }
+}
+
 /// 0600 同目录临时文件 → sync → 原子替换；写入失败时主文件保持不变。
 /// session sidecar 与权威配置共用这一底层原语，确保 Windows 上也能替换
 /// 已存在的目标文件。
@@ -755,6 +768,43 @@ mod tests {
             std::process::id(),
             TEMP_FILE_SEQ.fetch_add(1, Ordering::Relaxed)
         ))
+    }
+
+    #[test]
+    fn windows_sync_contract_opens_files_with_write_access() {
+        let source = include_str!("config.rs");
+        let helper = source
+            .split("pub(crate) fn sync_file")
+            .nth(1)
+            .unwrap()
+            .split("pub(crate) fn atomic_write_private")
+            .next()
+            .unwrap();
+        assert!(helper.contains("#[cfg(windows)]"));
+        assert!(helper.contains("fs::OpenOptions::new()"));
+        assert!(helper.contains(".write(true)"));
+        assert!(helper.contains(".sync_all()"));
+
+        let session_source = include_str!("driver/session.rs");
+        let orphan_writer = session_source
+            .split("fn record_session_orphan_locked")
+            .nth(1)
+            .unwrap()
+            .split("fn recover_session_materialization_locked")
+            .next()
+            .unwrap();
+        assert!(orphan_writer.contains("crate::config::sync_file(&path)"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_sync_file_does_not_return_access_denied() {
+        let dir = test_dir("windows-sync-file");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("durable.json");
+        fs::write(&path, b"{}").unwrap();
+        sync_file(&path).unwrap();
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

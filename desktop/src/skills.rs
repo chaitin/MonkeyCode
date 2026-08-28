@@ -1833,9 +1833,7 @@ fn write_materialize_journal(
         .map_err(|error| format!("序列化物化事务日志失败: {error}"))?;
     crate::config::atomic_write_private(path, &bytes)
         .map_err(|error| format!("原子写入物化事务日志失败: {error}"))?;
-    fs::File::open(path)
-        .and_then(|file| file.sync_all())
-        .map_err(|error| format!("同步物化事务日志失败: {error}"))?;
+    crate::config::sync_file(path).map_err(|error| format!("同步物化事务日志失败: {error}"))?;
     sync_materialize_parent(parent)
 }
 
@@ -2273,8 +2271,7 @@ fn sync_materialized_tree(path: &Path) -> Result<(), String> {
         if plain_directory_metadata(&metadata) {
             sync_materialized_tree(&child)?;
         } else if plain_file_metadata(&metadata) {
-            fs::File::open(&child)
-                .and_then(|file| file.sync_all())
+            crate::config::sync_file(&child)
                 .map_err(|e| format!("同步会话技能文件 {} 失败: {e}", child.display()))?;
         } else {
             return Err(format!("待同步会话技能条目不安全: {}", child.display()));
@@ -3418,6 +3415,49 @@ mod tests {
             );
         }
         assert!(!windows.contains("Windows 安全 baseline 相对枚举当前不可用"));
+    }
+
+    #[test]
+    fn windows_materialize_sync_uses_writable_file_handles() {
+        let config_source = include_str!("config.rs");
+        let helper = config_source
+            .split("pub(crate) fn sync_file")
+            .nth(1)
+            .unwrap()
+            .split("pub(crate) fn atomic_write_private")
+            .next()
+            .unwrap();
+        assert!(helper.contains("#[cfg(windows)]"));
+        assert!(helper.contains("fs::OpenOptions::new()"));
+        assert!(helper.contains(".write(true)"));
+        assert!(helper.contains(".sync_all()"));
+        let source = include_str!("skills.rs");
+        let journal_writer = source
+            .split("fn write_materialize_journal")
+            .nth(1)
+            .unwrap()
+            .split("fn remove_materialize_journal")
+            .next()
+            .unwrap();
+        assert!(journal_writer.contains("crate::config::sync_file(path)"));
+        let tree_sync = source
+            .split("fn sync_materialized_tree")
+            .nth(1)
+            .unwrap()
+            .split("fn remove_plain_tree")
+            .next()
+            .unwrap();
+        assert!(tree_sync.contains("crate::config::sync_file(&child)"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_materialize_file_sync_does_not_return_access_denied() {
+        let root = test_dir("windows-materialize-file-sync");
+        let path = root.join("journal.json");
+        fs::write(&path, b"{}").unwrap();
+        crate::config::sync_file(&path).unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
