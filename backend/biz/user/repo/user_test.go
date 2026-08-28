@@ -49,3 +49,34 @@ func TestPasswordLoginRejectsSubAccountWhenOIDCDisablesPassword(t *testing.T) {
 		t.Fatalf("error = %v, want ErrPasswordLoginDisabled", err)
 	}
 }
+
+func TestPasswordLoginEmailCaseInsensitive(t *testing.T) {
+	ctx := context.Background()
+	client := enttest.Open(t, "sqlite3", "file:user_repo_password_email_case?mode=memory&cache=shared&_fk=1")
+	defer client.Close()
+
+	hashed, err := crypto.HashPassword("secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := client.User.Create().
+		SetID(uuid.New()).
+		SetName("成员").
+		SetEmail("member@example.com").
+		SetPassword(hashed).
+		SetRole(consts.UserRoleSubAccount).
+		SetStatus(consts.UserStatusActive).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := &userRepo{db: client, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	got, err := repo.PasswordLogin(ctx, &domain.TeamLoginReq{Email: "MEMBER@EXAMPLE.COM", Password: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != want.ID {
+		t.Fatalf("user ID = %s, want %s", got.ID, want.ID)
+	}
+}
