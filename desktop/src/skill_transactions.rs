@@ -1781,12 +1781,14 @@ fn windows_handle_rename(from: &Path, to: &Path) -> io::Result<()> {
     use std::os::windows::io::AsRawHandle as _;
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::Storage::FileSystem::{
-        FileRenameInfo, SetFileInformationByHandle, FILE_RENAME_INFO,
+        FileRenameInfo, SetFileInformationByHandle, DELETE, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO,
+        FILE_TRAVERSE,
     };
-    let source = open_windows_rename_handle(from, false)?;
+    let source = open_windows_rename_handle(from, DELETE.0 | FILE_READ_ATTRIBUTES.0, true)?;
     let parent = open_windows_rename_handle(
         to.parent()
             .ok_or_else(|| io::Error::other("目标父级缺失"))?,
+        FILE_TRAVERSE.0 | FILE_READ_ATTRIBUTES.0,
         true,
     )?;
     let name = to
@@ -1818,15 +1820,15 @@ fn windows_handle_rename(from: &Path, to: &Path) -> io::Result<()> {
 }
 
 #[cfg(windows)]
-fn open_windows_rename_handle(path: &Path, directory: bool) -> io::Result<File> {
+fn open_windows_rename_handle(path: &Path, access_mode: u32, directory: bool) -> io::Result<File> {
     use std::os::windows::fs::OpenOptionsExt as _;
     use windows::Win32::Storage::FileSystem::{
-        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE,
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE,
         FILE_SHARE_READ, FILE_SHARE_WRITE,
     };
     let mut options = OpenOptions::new();
     options
-        .access_mode(DELETE.0)
+        .access_mode(access_mode)
         .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0 | FILE_SHARE_DELETE.0)
         .custom_flags(
             FILE_FLAG_OPEN_REPARSE_POINT.0
@@ -3329,7 +3331,36 @@ mod tests {
         assert!(!source.contains("volume_serial_number()"));
         assert!(!source.contains("file_index()"));
         assert!(source.contains("Anonymous.Flags = 0"));
+        assert!(source.contains("DELETE.0 | FILE_READ_ATTRIBUTES.0, true"));
+        assert!(source.contains("FILE_TRAVERSE.0 | FILE_READ_ATTRIBUTES.0"));
+        assert!(source.contains(".access_mode(access_mode)"));
         assert!(source.contains("MOVEFILE_WRITE_THROUGH"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_transaction_rename_does_not_require_parent_delete_sharing() {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        use windows::Win32::Storage::FileSystem::{
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_READ, FILE_SHARE_WRITE,
+        };
+
+        let parent = root("windows-rename-parent-share");
+        let source = parent.join("prepared");
+        let target = parent.join("installed");
+        fs::create_dir(&source).unwrap();
+        let held_parent = OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
+            .open(&parent)
+            .unwrap();
+
+        fixed_parent_rename(&source, &target).unwrap();
+        assert!(!source.exists());
+        assert!(target.is_dir());
+        drop(held_parent);
+        fs::remove_dir_all(parent).unwrap();
     }
 
     #[cfg(unix)]

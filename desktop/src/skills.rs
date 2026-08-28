@@ -2333,8 +2333,8 @@ fn rename_materialize_path(from: &Path, to: &Path) -> std::io::Result<()> {
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::Storage::FileSystem::{
         FileRenameInfo, SetFileInformationByHandle, DELETE, FILE_ATTRIBUTE_REPARSE_POINT,
-        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_RENAME_INFO,
-        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+        FILE_RENAME_INFO, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE,
     };
 
     let metadata = fs::symlink_metadata(from)?;
@@ -2349,19 +2349,12 @@ fn rename_materialize_path(from: &Path, to: &Path) -> std::io::Result<()> {
             "重命名目标已存在",
         ));
     }
-    let open = |path: &Path, directory: bool| {
+    let open = |path: &Path, access_mode: u32| {
         let mut options = fs::OpenOptions::new();
         options
-            .access_mode(DELETE.0)
+            .access_mode(access_mode)
             .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0 | FILE_SHARE_DELETE.0)
-            .custom_flags(
-                FILE_FLAG_OPEN_REPARSE_POINT.0
-                    | if directory {
-                        FILE_FLAG_BACKUP_SEMANTICS.0
-                    } else {
-                        0
-                    },
-            );
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0 | FILE_FLAG_BACKUP_SEMANTICS.0);
         let file = options.open(path)?;
         let metadata = file.metadata()?;
         if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
@@ -2369,11 +2362,13 @@ fn rename_materialize_path(from: &Path, to: &Path) -> std::io::Result<()> {
         }
         Ok(file)
     };
-    let source = open(from, true)?;
+    let source = open(from, DELETE.0 | FILE_READ_ATTRIBUTES.0)?;
+    // RootDirectory 只用于解析目标名称。请求 DELETE 会额外要求父目录 ACL 和
+    // 已有句柄共享删除，导致普通用户配置目录稳定返回 ERROR_ACCESS_DENIED。
     let parent = open(
         to.parent()
             .ok_or_else(|| std::io::Error::other("目标父级缺失"))?,
-        true,
+        FILE_TRAVERSE.0 | FILE_READ_ATTRIBUTES.0,
     )?;
     let name = to
         .file_name()
@@ -3457,6 +3452,32 @@ mod tests {
         let path = root.join("journal.json");
         fs::write(&path, b"{}").unwrap();
         crate::config::sync_file(&path).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_materialize_rename_does_not_require_parent_delete_sharing() {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        use windows::Win32::Storage::FileSystem::{
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_READ, FILE_SHARE_WRITE,
+        };
+
+        let root = test_dir("windows-materialize-rename-parent-share");
+        let old = root.join("skills");
+        let backup = root.join("skills.backup");
+        fs::create_dir(&old).unwrap();
+        let _held_parent = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
+            .open(&root)
+            .unwrap();
+
+        rename_materialize_path(&old, &backup).unwrap();
+        assert!(!old.exists());
+        assert!(backup.is_dir());
+        drop(_held_parent);
         fs::remove_dir_all(root).unwrap();
     }
 
