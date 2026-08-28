@@ -19,7 +19,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
-use fs2::FileExt as _;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
@@ -1042,132 +1041,16 @@ fn revision_recovery_issue(message: String) -> SkillRecoveryIssue {
     }
 }
 
-#[cfg(unix)]
-mod os_lock {
-    use super::*;
-    use std::fs::File;
-    use std::os::fd::{AsFd, OwnedFd};
-
-    use rustix::fs::{fstat, openat, FileType, Mode, OFlags, CWD};
-
-    pub(super) struct Guard {
-        anchor: File,
-        lock: File,
-    }
-
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            let _ = fs2::FileExt::unlock(&self.lock);
-            let _ = fs2::FileExt::unlock(&self.anchor);
-        }
-    }
-
-    pub(super) fn lock(config_dir: &Path, exclusive: bool) -> Result<Guard, SkillStoreError> {
-        let anchor_fd = openat(
-            CWD,
-            config_dir,
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|error| SkillStoreError::io("打开技能库稳定父目录", config_dir, error))?;
-        let anchor = File::from(anchor_fd);
-        file_lock(&anchor, exclusive, config_dir, "取得技能库父目录锚锁")?;
-
-        let lock_fd = open_lock_at(anchor.as_fd())?;
-        let lock = File::from(lock_fd);
-        file_lock(
-            &lock,
-            exclusive,
-            &config_dir.join(LOCK_FILE),
-            "取得 skills.lock",
-        )?;
-
-        // 在父目录锚锁仍持有时重新按名称打开并比较 dev/inode。协作进程不能
-        // 删除/替换路径；若不协作的外部程序竞态替换，identity 不同即拒绝。
-        let current = open_lock_at(anchor.as_fd())?;
-        let locked_stat = fstat(&lock).map_err(|error| {
-            SkillStoreError::io("复核 skills.lock 句柄", Path::new(LOCK_FILE), error)
-        })?;
-        let current_stat = fstat(&current).map_err(|error| {
-            SkillStoreError::io("复核 skills.lock 路径", Path::new(LOCK_FILE), error)
-        })?;
-        if locked_stat.st_dev != current_stat.st_dev || locked_stat.st_ino != current_stat.st_ino {
-            return Err(SkillStoreError::unsafe_object(
-                LOCK_FILE,
-                "锁路径在进入临界区前被替换",
-            ));
-        }
-        Ok(Guard { anchor, lock })
-    }
-
-    fn open_lock_at(anchor: impl AsFd) -> Result<OwnedFd, SkillStoreError> {
-        let fd = openat(
-            anchor,
-            LOCK_FILE,
-            OFlags::RDWR | OFlags::CREATE | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::RUSR | Mode::WUSR,
-        )
-        .map_err(|error| {
-            SkillStoreError::io("安全打开 skills.lock", Path::new(LOCK_FILE), error)
-        })?;
-        let stat = fstat(&fd).map_err(|error| {
-            SkillStoreError::io("复核 skills.lock", Path::new(LOCK_FILE), error)
-        })?;
-        if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
-            return Err(SkillStoreError::unsafe_object(
-                LOCK_FILE,
-                "锁对象不是普通文件",
-            ));
-        }
-        Ok(fd)
-    }
-
-    fn file_lock(
-        file: &File,
-        exclusive: bool,
-        path: &Path,
-        operation: &'static str,
-    ) -> Result<(), SkillStoreError> {
-        let result = if exclusive {
-            file.lock_exclusive()
-        } else {
-            file.lock_shared()
-        };
-        result.map_err(|error| SkillStoreError::io(operation, path, error))
-    }
-}
-
-#[cfg(windows)]
+/// 跨进程互斥：`config_dir/skills.lock` 上的 fs2 咨询锁（Unix flock /
+/// Windows LockFileEx）。锁文件以完全共享模式打开、从不被删除或替换；
+/// 同进程并发由 `gate` RwLock 先行序列化。历史上的父目录锚锁、命名
+/// mutex 与身份复核已废弃——协作进程本就不会替换锁路径，而那套机制的
+/// 受限共享模式正是 Windows 句柄互斥故障面之一。
 mod os_lock {
     use super::*;
     use std::fs::{File, OpenOptions};
-    use std::os::windows::fs::OpenOptionsExt as _;
-    use std::os::windows::io::AsRawHandle as _;
-
-    use sha2::{Digest as _, Sha256};
-    use windows::core::PCWSTR;
-    use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_ABANDONED, WAIT_OBJECT_0};
-    use windows::Win32::Storage::FileSystem::{
-        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_FLAG_OPEN_REPARSE_POINT,
-        FILE_SHARE_READ, FILE_SHARE_WRITE,
-    };
-    use windows::Win32::System::Threading::{
-        CreateMutexW, ReleaseMutex, WaitForSingleObject, INFINITE,
-    };
-
-    struct NamedMutex(HANDLE);
-
-    impl Drop for NamedMutex {
-        fn drop(&mut self) {
-            unsafe {
-                let _ = ReleaseMutex(self.0);
-                let _ = CloseHandle(self.0);
-            }
-        }
-    }
 
     pub(super) struct Guard {
-        anchor: NamedMutex,
         lock: File,
     }
 
@@ -1178,79 +1061,20 @@ mod os_lock {
     }
 
     pub(super) fn lock(config_dir: &Path, exclusive: bool) -> Result<Guard, SkillStoreError> {
-        // 命名 mutex 不依赖可替换文件路径；所有进程在整个临界区持有它，再
-        // 每次重新打开 skills.lock 并比较 file-index。
-        let anchor = named_mutex(config_dir)?;
-        let lock_path = config_dir.join(LOCK_FILE);
-        let lock = open(&lock_path)?;
-        let result = if exclusive {
-            lock.lock_exclusive()
-        } else {
-            lock.lock_shared()
-        };
-        result.map_err(|error| SkillStoreError::io("取得 skills.lock", &lock_path, error))?;
-        let current = open(&lock_path)?;
-        if identity(&lock)? != identity(&current)? {
-            return Err(SkillStoreError::unsafe_object(LOCK_FILE, "锁路径被替换"));
-        }
-        Ok(Guard { anchor, lock })
-    }
-
-    fn named_mutex(config_dir: &Path) -> Result<NamedMutex, SkillStoreError> {
-        let key = config_dir.to_string_lossy().to_ascii_lowercase();
-        let digest = format!("{:x}", Sha256::digest(key.as_bytes()));
-        let name = format!("Local\\MonkeyCodeSkills-{}", &digest[..32]);
-        let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
-        let handle = unsafe { CreateMutexW(None, false, PCWSTR(wide.as_ptr())) }
-            .map_err(|error| SkillStoreError::io("创建技能库命名 mutex", config_dir, error))?;
-        let wait = unsafe { WaitForSingleObject(handle, INFINITE) };
-        if wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED {
-            unsafe {
-                let _ = CloseHandle(handle);
-            }
-            return Err(SkillStoreError::io(
-                "等待技能库命名 mutex",
-                config_dir,
-                format!("等待结果 {wait:?}"),
-            ));
-        }
-        Ok(NamedMutex(handle))
-    }
-
-    fn open(path: &Path) -> Result<File, SkillStoreError> {
-        let mut options = OpenOptions::new();
-        options
+        let path = config_dir.join(LOCK_FILE);
+        let lock = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            // 允许其他进程预先打开并等待 advisory lock，但拒绝删除/替换。
-            .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0)
-            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0);
-        options
-            .open(path)
-            .map_err(|error| SkillStoreError::io("安全打开锁文件", path, error))
-    }
-
-    fn identity(file: &File) -> Result<(u32, u64), SkillStoreError> {
-        let mut information = BY_HANDLE_FILE_INFORMATION::default();
-        unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut information) }
-            .map_err(|error| SkillStoreError::io("读取锁身份", Path::new(LOCK_FILE), error))?;
-        Ok((
-            information.dwVolumeSerialNumber,
-            ((information.nFileIndexHigh as u64) << 32) | information.nFileIndexLow as u64,
-        ))
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-mod os_lock {
-    use super::*;
-    pub(super) struct Guard;
-    pub(super) fn lock(_config_dir: &Path, _exclusive: bool) -> Result<Guard, SkillStoreError> {
-        Err(SkillStoreError::unsafe_object(
-            ".",
-            "当前平台不支持技能库锁",
-        ))
+            .open(&path)
+            .map_err(|error| SkillStoreError::io("打开 skills.lock", &path, error))?;
+        let result = if exclusive {
+            fs2::FileExt::lock_exclusive(&lock)
+        } else {
+            fs2::FileExt::lock_shared(&lock)
+        };
+        result.map_err(|error| SkillStoreError::io("取得 skills.lock", &path, error))?;
+        Ok(Guard { lock })
     }
 }
 
@@ -2592,30 +2416,6 @@ mod tests {
                     .is_file());
             }
         }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn replacing_skills_lock_cannot_split_two_process_critical_sections() {
-        let cfg = test_dir("replace-lock");
-        let mut first = spawn_state_helper(&cfg, "first", "replacement");
-        wait_for(&cfg.join("first.active"));
-        // 模拟不遵守协议的外部删除/替换。第二个生产 state 仍先等待稳定父目录
-        // 锚锁，不能仅因拿到新 inode 而与第一个旧 inode 临界区重叠。
-        fs::remove_file(cfg.join(LOCK_FILE)).unwrap();
-        fs::write(cfg.join(LOCK_FILE), b"replacement").unwrap();
-        let mut second = spawn_state_helper(&cfg, "second", "replacement");
-        assert!(first.wait().unwrap().success());
-        assert!(second.wait().unwrap().success());
-        assert!(!cfg.join("overlap").exists());
-        assert_eq!(
-            SkillStoreState::new(cfg)
-                .unwrap()
-                .snapshot(None)
-                .unwrap()
-                .revision,
-            2
-        );
     }
 
     #[test]

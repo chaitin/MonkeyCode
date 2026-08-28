@@ -282,65 +282,6 @@ fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
     })
 }
 
-/// 相对固定父句柄的 NT rename(真正的 renameat 语义,ReplaceIfExists=FALSE)。
-/// kernelbase 的 SetFileInformationByHandle 拒绝非 NULL RootDirectory
-/// (线上实测返回 ERROR_INVALID_PARAMETER,文档也要求该字段为 NULL),
-/// 因此直接走 NtSetInformationFile(FileRenameInformation),由内核按
-/// RootDirectory 解析相对目标名。
-#[cfg(windows)]
-pub(crate) fn nt_relative_rename(
-    source: &fs::File,
-    parent: &fs::File,
-    name: &std::ffi::OsStr,
-) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt as _;
-    use std::os::windows::io::AsRawHandle as _;
-    use windows::Wdk::Storage::FileSystem::{
-        FileRenameInformation, NtSetInformationFile, FILE_RENAME_INFORMATION,
-    };
-    use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::System::IO::IO_STATUS_BLOCK;
-
-    let name: Vec<u16> = name.encode_wide().collect();
-    if name.is_empty() || name.contains(&0) {
-        return Err(std::io::Error::other("重命名目标名非法"));
-    }
-    let bytes = std::mem::size_of::<FILE_RENAME_INFORMATION>()
-        + name.len().saturating_sub(1) * std::mem::size_of::<u16>();
-    // FILE_RENAME_INFORMATION 含 HANDLE,必须按指针字对齐,不能用 Vec<u8> 强转。
-    let words = bytes.div_ceil(std::mem::size_of::<usize>());
-    let mut buffer = vec![0usize; words];
-    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
-    let mut iosb = IO_STATUS_BLOCK::default();
-    let status = unsafe {
-        (*info).Anonymous.Flags = 0;
-        (*info).RootDirectory = HANDLE(parent.as_raw_handle());
-        (*info).FileNameLength = (name.len() * std::mem::size_of::<u16>()) as u32;
-        std::ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len());
-        NtSetInformationFile(
-            HANDLE(source.as_raw_handle()),
-            &mut iosb,
-            info.cast::<core::ffi::c_void>(),
-            bytes as u32,
-            FileRenameInformation,
-        )
-    };
-    if status.is_ok() {
-        Ok(())
-    } else {
-        Err(nt_status_io_error(status))
-    }
-}
-
-/// NTSTATUS → io::Error,经 RtlNtStatusToDosError 还原 Win32 错误码,
-/// 报错文案带 "(os error N)",现场排障不再只剩中文前缀。
-#[cfg(windows)]
-pub(crate) fn nt_status_io_error(status: windows::Win32::Foundation::NTSTATUS) -> std::io::Error {
-    use windows::Win32::Foundation::RtlNtStatusToDosError;
-    let code = unsafe { RtlNtStatusToDosError(status) };
-    std::io::Error::from_raw_os_error(code as i32)
-}
-
 /// Windows 上瞬态句柄冲突的退避重试:实时防护/索引器会短暂持有刚写入的
 /// 文件,期间按路径重开会报所列错误码。退避总预算约 1.4s,超时原样返回。
 #[cfg(windows)]
@@ -398,22 +339,6 @@ fn windows_core_io_error(error: windows::core::Error) -> std::io::Error {
     } else {
         std::io::Error::other(error)
     }
-}
-
-/// 文件系统不支持"固定父句柄相对 rename"这种形态时的错误码(网络重定向器
-/// 按 MS-FSCC 要求 RootDirectory 为零)。与 std remove_dir_all 对 POSIX
-/// delete 的降级判定同一组;调用方据此降级为路径式 rename。
-#[cfg(windows)]
-pub(crate) fn windows_relative_rename_unsupported(error: &std::io::Error) -> bool {
-    use windows::Win32::Foundation::{
-        ERROR_INVALID_FUNCTION, ERROR_INVALID_PARAMETER, ERROR_NOT_SUPPORTED,
-    };
-    matches!(
-        error.raw_os_error(),
-        Some(code) if code as u32 == ERROR_INVALID_FUNCTION.0
-            || code as u32 == ERROR_NOT_SUPPORTED.0
-            || code as u32 == ERROR_INVALID_PARAMETER.0
-    )
 }
 
 pub(crate) fn sync_file(path: &Path) -> std::io::Result<()> {
