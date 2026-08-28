@@ -314,7 +314,7 @@ export const zh = {
   "settings.mcp.disabledBadge": "已停用",
   // 技能库:内置随包分发只读,同名自定义覆盖(壳 skills.rs 去重口径)。
   // 保存即落盘、不重启引擎——生效时机必须讲清,否则"改了怎么没反应"
-  "settings.skills.hint": "技能是给 Agent 的可复用作业指引(SKILL.md)。对新会话即时生效;已打开的会话在调整启用集后生效。",
+  "settings.skills.hint": "技能为 Agent 提供可复用的工作方法。默认启用的技能会自动用于新会话，已打开的会话可单独调整。",
   "settings.skills.add": "新建技能",
   "settings.skills.import": "导入技能",
   "settings.skills.importFolders": "选择文件夹…",
