@@ -322,7 +322,6 @@ export function SkillsMenu({
   onChange,
   onOpen,
   triggerDisabled = false,
-  selectionDisabled = false,
   title,
   align = "end",
 }: {
@@ -333,10 +332,8 @@ export function SkillsMenu({
   onChange: (next: string[]) => void;
   /** 展开即向服务端校准 catalog revision，覆盖文件事件丢失。 */
   onOpen?: () => void;
-  /** 禁用整个触发器（如新建任务仍在加载技能清单）。 */
+  /** 禁用整个触发器（如新建任务仍在加载技能清单、当前会话运行中）。 */
   triggerDisabled?: boolean;
-  /** 只禁用技能勾选；菜单和管理入口仍可用（当前会话运行中）。 */
-  selectionDisabled?: boolean;
   title?: string;
   align?: "start" | "end";
 }) {
@@ -355,7 +352,7 @@ export function SkillsMenu({
   const menuInlineStyle = useBoundedMenuInlineStyle(open, anchorRef, align, 256);
   const enabledSet = new Set(enabled ?? defaultEnabledSkills(skills));
   const toggle = (name: string) => {
-    if (selectionDisabled) return;
+    if (triggerDisabled) return;
     const next = new Set(enabledSet);
     if (next.has(name)) next.delete(name);
     else next.add(name);
@@ -370,7 +367,14 @@ export function SkillsMenu({
   const tabs = [
     { key: "builtin", label: t("skill.source.builtin") },
     { key: "user", label: t("skill.source.custom") },
-  ].filter((it) => skills.some((s) => isUserSkill(s) === (it.key === "user")));
+  ]
+    .filter((it) => skills.some((s) => isUserSkill(s) === (it.key === "user")))
+    .map((it) => ({
+      ...it,
+      selected: skills.filter(
+        (s) => isUserSkill(s) === (it.key === "user") && enabledSet.has(s.name),
+      ).length,
+    }));
   const showTabs = tabs.length >= 2;
   const wantTab = tab ?? "builtin";
   const activeTab = tabs.some((it) => it.key === wantTab) ? wantTab : (tabs[0]?.key ?? "builtin");
@@ -399,7 +403,6 @@ export function SkillsMenu({
           type="button"
           role="checkbox"
           aria-checked={on}
-          disabled={selectionDisabled}
           className="flex items-center gap-2"
           onClick={() => toggle(s.name)}
         >
@@ -459,10 +462,16 @@ export function SkillsMenu({
                   type="button"
                   role="tab"
                   aria-selected={it.key === activeTab}
-                  className={`tab ${it.key === activeTab ? "tab-active" : ""}`}
+                  className={`tab gap-1 ${it.key === activeTab ? "tab-active" : ""}`}
                   onClick={() => setTab(it.key)}
                 >
-                  {it.label}
+                  <span>{it.label}</span>
+                  <span
+                    aria-hidden
+                    className="badge badge-xs min-w-4 border-0 bg-base-200 px-1 text-[9px] text-base-content/60 tabular-nums"
+                  >
+                    {it.selected}
+                  </span>
                 </button>
               ))}
             </div>

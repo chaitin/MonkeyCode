@@ -754,7 +754,6 @@ export function NewTaskModal({
                       onChange={setEnabledSkills}
                       onOpen={catalogCalibrate}
                       triggerDisabled={busy}
-                      selectionDisabled={busy}
                       title={t("chat.skills.label")}
                       align="start"
                     />

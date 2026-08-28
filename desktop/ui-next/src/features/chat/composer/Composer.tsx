@@ -728,7 +728,7 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
             enabled={enabledSkills}
             onChange={pickSkills}
             onOpen={catalog?.calibrateSkillsCatalog}
-            selectionDisabled={presentation.running}
+            triggerDisabled={presentation.running}
             title={presentation.running ? t("chat.skills.runningTip") : t("chat.skills.tip")}
           />
           <ModelMenu

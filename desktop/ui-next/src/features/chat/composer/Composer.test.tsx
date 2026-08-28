@@ -415,7 +415,7 @@ describe("模型 / 思考深度 / 权限模式", () => {
     ]);
   });
 
-  it("运行中:模型菜单禁用关闭；技能 trigger/管理入口可用但 checkbox 禁改", async () => {
+  it("运行中:模型菜单关闭，模型与技能 trigger 均禁用", async () => {
     const skill: SkillInfo = {
       name: "feature-design",
       description: "设计功能",
@@ -434,12 +434,11 @@ describe("模型 / 思考深度 / 权限模式", () => {
     await waitFor(() => {
       expect((screen.getByRole("button", { name: "m" }) as HTMLButtonElement).disabled).toBe(true);
       expect(screen.queryByRole("radiogroup", { name: "思考深度" })).toBeNull();
-      expect((screen.getByRole("button", { name: "会话技能" }) as HTMLButtonElement).disabled).toBe(false);
+      expect((screen.getByRole("button", { name: "会话技能" }) as HTMLButtonElement).disabled).toBe(true);
     });
 
     await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
-    expect((screen.getByRole("checkbox", { name: "feature-design" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "管理和导入技能…" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole("list", { name: "会话技能" })).toBeNull();
   });
 });
 
