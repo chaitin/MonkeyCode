@@ -375,6 +375,32 @@ pub(crate) fn file_identity(path: &Path) -> Option<(u64, u64)> {
     }
 }
 
+/// 已打开文件/目录句柄的稳定对象身份（Windows volume/file-index）。
+/// 与 [`file_identity`] 同源，保证按路径与按句柄取到的身份可比对。
+#[cfg(not(unix))]
+pub(crate) fn open_file_identity(file: &fs::File) -> Option<(u64, u64)> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle as _;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::{
+            GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+        };
+        let mut information = BY_HANDLE_FILE_INFORMATION::default();
+        unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut information) }
+            .ok()?;
+        Some((
+            information.dwVolumeSerialNumber as u64,
+            ((information.nFileIndexHigh as u64) << 32) | information.nFileIndexLow as u64,
+        ))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = file;
+        None
+    }
+}
+
 pub(crate) fn sync_file(path: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {

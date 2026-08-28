@@ -1359,15 +1359,7 @@ mod platform {
         if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
             return Err(FolderImportError::SourceNotDirectory);
         }
-        #[cfg_attr(unix, allow(unused_mut))]
-        let mut stable = stable_from_metadata(&metadata, FolderEntryKind::Directory);
-        // 非 unix 的 std metadata 拿不到对象身份;来源根的身份参与 SourceKey
-        // 去重与指纹比对,经全共享句柄补查(失败保持 0,仅弱化去重)。
-        #[cfg(not(unix))]
-        if let Some((object_a, object_b)) = crate::config::file_identity(path) {
-            stable.object_a = object_a;
-            stable.object_b = object_b;
-        }
+        let stable = stable_from_metadata(path, &metadata, FolderEntryKind::Directory);
         Ok((
             RootHandle {
                 path: path.to_path_buf(),
@@ -1407,7 +1399,7 @@ mod platform {
             let child_path = relative.child(name)?;
             let metadata = fs::symlink_metadata(entry.path())
                 .map_err(|error| FolderImportError::io("检查来源条目", &child_path, error))?;
-            let stable = stable_for_entry(&metadata)?;
+            let stable = stable_for_entry(&entry.path(), &metadata)?;
             output.push(PlatformDirectoryEntry {
                 name: name.to_string(),
                 stable,
@@ -1441,7 +1433,7 @@ mod platform {
         let path = resolve(root, relative);
         let metadata = fs::symlink_metadata(&path)
             .map_err(|error| FolderImportError::io("检查来源文件", relative, error))?;
-        let stable = stable_for_entry(&metadata)?;
+        let stable = stable_for_entry(&path, &metadata)?;
         if stable != *expected || stable.kind != FolderEntryKind::File {
             return Err(FolderImportError::SourceChanged {
                 relative_path: relative.display().to_string(),
@@ -1474,7 +1466,15 @@ mod platform {
                 reason: "已打开对象不是普通磁盘文件",
             });
         };
-        Ok(stable_from_metadata(&metadata, kind))
+        #[cfg_attr(unix, allow(unused_mut))]
+        let mut stable = stable_from_metadata(Path::new("."), &metadata, kind);
+        // 句柄侧与路径侧身份同源(volume/file-index),同一文件必然可比对。
+        #[cfg(not(unix))]
+        if let Some((object_a, object_b)) = crate::config::open_file_identity(file) {
+            stable.object_a = object_a;
+            stable.object_b = object_b;
+        }
+        Ok(stable)
     }
 
     pub(super) fn verify_root_path(
@@ -1491,12 +1491,10 @@ mod platform {
                 relative_path: ".".into(),
             });
         }
-        let current = stable_from_metadata(&metadata, FolderEntryKind::Directory);
-        #[cfg(unix)]
-        let identity_unchanged =
-            current.object_a == expected.object_a && current.object_b == expected.object_b;
-        #[cfg(not(unix))]
-        let identity_unchanged = current.kind == expected.kind;
+        let current = stable_from_metadata(path, &metadata, FolderEntryKind::Directory);
+        let identity_unchanged = current.kind == expected.kind
+            && current.object_a == expected.object_a
+            && current.object_b == expected.object_b;
         if !identity_unchanged {
             return Err(FolderImportError::SourceChanged {
                 relative_path: ".".into(),
@@ -1515,7 +1513,7 @@ mod platform {
     ) -> Result<StableMetadata, FolderImportError> {
         let metadata = fs::symlink_metadata(path)
             .map_err(|error| FolderImportError::io("复核来源目录", relative, error))?;
-        let stable = stable_for_entry(&metadata)?;
+        let stable = stable_for_entry(path, &metadata)?;
         if stable.kind != FolderEntryKind::Directory {
             return Err(FolderImportError::SourceChanged {
                 relative_path: relative.display().to_string(),
@@ -1524,7 +1522,10 @@ mod platform {
         Ok(stable)
     }
 
-    fn stable_for_entry(metadata: &fs::Metadata) -> Result<StableMetadata, FolderImportError> {
+    fn stable_for_entry(
+        path: &Path,
+        metadata: &fs::Metadata,
+    ) -> Result<StableMetadata, FolderImportError> {
         let file_type = metadata.file_type();
         if file_type.is_symlink() {
             return Err(FolderImportError::UnsafeEntry {
@@ -1542,12 +1543,17 @@ mod platform {
                 reason: "只允许普通文件和目录",
             });
         };
-        Ok(stable_from_metadata(metadata, kind))
+        Ok(stable_from_metadata(path, metadata, kind))
     }
 
-    fn stable_from_metadata(metadata: &fs::Metadata, kind: FolderEntryKind) -> StableMetadata {
+    fn stable_from_metadata(
+        path: &Path,
+        metadata: &fs::Metadata,
+        kind: FolderEntryKind,
+    ) -> StableMetadata {
         #[cfg(unix)]
         {
+            let _ = path;
             use std::os::unix::fs::MetadataExt as _;
             StableMetadata {
                 object_a: metadata.dev(),
@@ -1563,10 +1569,13 @@ mod platform {
         }
         #[cfg(not(unix))]
         {
+            // 非 unix 的 std metadata 拿不到对象身份;经全共享句柄按路径补查
+            // (开-查-关,不钉扎),失败退化为 0——所有构造点同源,比对一致。
+            let (object_a, object_b) = crate::config::file_identity(path).unwrap_or((0, 0));
             let (modified_seconds, modified_nanos) = time_parts(metadata.modified());
             StableMetadata {
-                object_a: 0,
-                object_b: 0,
+                object_a,
+                object_b,
                 object_c: 0,
                 size: metadata.len(),
                 modified_seconds,

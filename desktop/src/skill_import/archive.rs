@@ -2259,17 +2259,9 @@ mod platform {
         if !opened.file_type().is_file() {
             return Err(ArchiveImportError::SourceNotFile);
         }
-        #[cfg_attr(unix, allow(unused_mut))]
-        let mut identity = source_identity(&opened);
-        if identity != source_identity(&selected) {
+        let identity = source_identity(path, &opened);
+        if identity != source_identity(path, &selected) {
             return Err(ArchiveImportError::SourceChanged);
-        }
-        // 非 unix 的 std metadata 拿不到对象身份;ZIP 来源身份参与 SourceKey
-        // 去重与指纹比对,经全共享句柄补查(失败保持 0,仅弱化去重)。
-        #[cfg(not(unix))]
-        if let Some((object_a, object_b)) = crate::config::file_identity(path) {
-            identity.object_a = object_a;
-            identity.object_b = object_b;
         }
         Ok(OpenedArchive {
             file: Some(file),
@@ -2282,7 +2274,9 @@ mod platform {
         let Ok(metadata) = fs::symlink_metadata(&opened.source_path) else {
             return Err(ArchiveImportError::SourceChanged);
         };
-        if !metadata.file_type().is_file() || source_identity(&metadata) != opened.identity {
+        if !metadata.file_type().is_file()
+            || source_identity(&opened.source_path, &metadata) != opened.identity
+        {
             return Err(ArchiveImportError::SourceChanged);
         }
         Ok(())
@@ -2292,7 +2286,9 @@ mod platform {
         verify_handle(opened)
     }
 
-    fn source_identity(metadata: &fs::Metadata) -> ArchiveIdentity {
+    fn source_identity(path: &Path, metadata: &fs::Metadata) -> ArchiveIdentity {
+        #[cfg(unix)]
+        let _ = path;
         let (object_a, object_b);
         #[cfg(unix)]
         {
@@ -2302,8 +2298,11 @@ mod platform {
         }
         #[cfg(not(unix))]
         {
-            object_a = 0;
-            object_b = 0;
+            // 经全共享句柄按路径补查对象身份(开-查-关,不钉扎);失败退化 0,
+            // 所有构造点同源,比对一致。
+            let identity = crate::config::file_identity(path).unwrap_or((0, 0));
+            object_a = identity.0;
+            object_b = identity.1;
         }
         let (modified_seconds, modified_nanos) = time_parts(metadata.modified());
         #[cfg(unix)]
