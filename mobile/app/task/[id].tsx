@@ -310,13 +310,14 @@ export default function TaskDetailScreen() {
   }, [interactive, id, cursor, liveState?.status]);
 
   // 持久化上下文用量：只在收到有效 usage_update（size>0）时更新，避免新一轮 handler 清空后闪回空白。
+  // 依赖必须用数值而非对象：contextUsage 每次 emit 都是新引用，按引用依赖会让本 effect 在
+  // 每次流式提交后都调一次 setState——高频提交下 React 的 eager bailout 常因队列非空而失效，
+  // 连续 50 次「passive effect 内调度更新」就会触发 Maximum update depth 告警。
+  const ctxUsed = liveState?.contextUsage?.used;
+  const ctxSize = liveState?.contextUsage?.size;
   useEffect(() => {
-    const c = liveState?.contextUsage;
-    if (c && typeof c.size === 'number' && c.size > 0) {
-      const used = c.used ?? 0, size = c.size;
-      setLastCtx((prev) => (prev && prev.used === used && prev.size === size ? prev : { used, size }));
-    }
-  }, [liveState?.contextUsage]);
+    if (typeof ctxSize === 'number' && ctxSize > 0) setLastCtx({ used: ctxUsed ?? 0, size: ctxSize });
+  }, [ctxUsed, ctxSize]);
   // 切换任务时清空（路由复用同一组件实例时也能正确重置）。
   useEffect(() => { setLastCtx(null); }, [id]);
 
