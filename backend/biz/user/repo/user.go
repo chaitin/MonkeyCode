@@ -78,7 +78,7 @@ func (u *userRepo) WechatMPBound(ctx context.Context, uid uuid.UUID) (bool, erro
 // PasswordLogin implements domain.UserRepo.
 func (u *userRepo) PasswordLogin(ctx context.Context, req *domain.TeamLoginReq) (*db.User, error) {
 	usr, err := u.db.User.Query().
-		Where(user.EmailEQ(req.Email)).
+		Where(user.EmailEqualFold(req.Email)).
 		Where(user.RoleNEQ(consts.UserRoleEnterprise)).
 		WithTeamMembers(func(q *db.TeamMemberQuery) {
 			q.WithTeam()
