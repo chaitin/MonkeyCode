@@ -1724,6 +1724,19 @@ fn materialize_unlocked_with_journal(
             "生成物化树期间旧 target 或 backup 发生变化".into(),
         ));
     }
+    // 新旧树内容一致(重开会话/升级但技能集未变的常态)时 target 已是期望
+    // 结果,直接清理 temporary 与日志,不做备份/安装。跳过目录 rename 也就
+    // 避开了 Windows 上实时防护/索引器占用子文件导致的瞬时失败面。
+    if had_old && target_digest.as_deref() == Some(new_digest.as_str()) {
+        let cleanup = remove_plain_tree(&temporary)
+            .map_err(|error| format!("清理未使用物化树失败: {error}"))
+            .and_then(|()| sync_materialize_parent(parent))
+            .and_then(|()| remove_materialize_journal(journal_path));
+        if let Err(error) = cleanup {
+            eprintln!("[desktop] 会话技能已就绪，但物化清理待重试: {error}");
+        }
+        return Ok(done);
+    }
     journal.stage = MaterializeTransactionStage::Prepared;
     journal.new_digest = Some(new_digest);
     if let Err(error) = write_materialize_journal(journal_path, &journal) {
@@ -2037,16 +2050,22 @@ fn rollback_materialize_journal(target: &Path, journal_path: &Path) -> Result<()
         if backup_digest.is_some() && !backup_is_old {
             return Err("回滚时 backup 与旧目录指纹不一致，保留全部对象".into());
         }
-        if target_is_new {
-            if !backup_is_old {
-                return Err("回滚已安装目录时缺少完整旧备份".into());
+        // target_is_old 必须先于 target_is_new 判定:新旧树内容一致时两个
+        // 指纹相同,若先按"新树已安装"解释会去找根本不存在的 backup。旧树
+        // 仍在位(或内容等价)时 target 不需要搬动,只清理 temporary 与日志。
+        if !target_is_old {
+            if target_is_new {
+                if !backup_is_old {
+                    return Err("回滚已安装目录时缺少完整旧备份".into());
+                }
+                remove_plain_tree(target)
+                    .map_err(|error| format!("移除未提交新目录失败: {error}"))?;
+                sync_materialize_parent(parent)?;
+            } else if target_digest.is_some() {
+                return Err("回滚时目标既不是旧目录也不是新目录，保留全部对象".into());
+            } else if !backup_is_old {
+                return Err("回滚时旧目录缺失且备份不完整，保留全部对象".into());
             }
-            remove_plain_tree(target).map_err(|error| format!("移除未提交新目录失败: {error}"))?;
-            sync_materialize_parent(parent)?;
-        } else if target_digest.is_some() && !target_is_old {
-            return Err("回滚时目标既不是旧目录也不是新目录，保留全部对象".into());
-        }
-        if target_digest.is_none() || target_is_new {
             rename_materialize_path(&backup, target)
                 .map_err(|error| format!("回滚恢复旧会话技能目录失败: {error}"))?;
             sync_materialize_parent(parent)?;
@@ -2327,14 +2346,16 @@ fn rename_materialize_path(from: &Path, to: &Path) -> std::io::Result<()> {
 
 #[cfg(windows)]
 fn rename_materialize_path(from: &Path, to: &Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt as _;
+    crate::config::retry_transient_windows_rename(|| rename_materialize_path_once(from, to))
+}
+
+#[cfg(windows)]
+fn rename_materialize_path_once(from: &Path, to: &Path) -> std::io::Result<()> {
     use std::os::windows::fs::{MetadataExt as _, OpenOptionsExt as _};
-    use std::os::windows::io::AsRawHandle as _;
-    use windows::Win32::Foundation::HANDLE;
     use windows::Win32::Storage::FileSystem::{
-        FileRenameInfo, SetFileInformationByHandle, DELETE, FILE_ATTRIBUTE_REPARSE_POINT,
-        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
-        FILE_RENAME_INFO, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE,
+        DELETE, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ,
+        FILE_SHARE_WRITE, FILE_TRAVERSE,
     };
 
     let metadata = fs::symlink_metadata(from)?;
@@ -2362,9 +2383,11 @@ fn rename_materialize_path(from: &Path, to: &Path) -> std::io::Result<()> {
         }
         Ok(file)
     };
+    // 句柄上的 metadata() 复核走 GetFileInformationByHandle,要求句柄具备
+    // FILE_READ_ATTRIBUTES;只申请 DELETE 时该复核必然 ERROR_ACCESS_DENIED。
     let source = open(from, DELETE.0 | FILE_READ_ATTRIBUTES.0)?;
-    // RootDirectory 只用于解析目标名称。请求 DELETE 会额外要求父目录 ACL 和
-    // 已有句柄共享删除，导致普通用户配置目录稳定返回 ERROR_ACCESS_DENIED。
+    // RootDirectory 只用于解析目标名称,不需要也不应申请 DELETE,少一分
+    // 父目录 ACL 与共享冲突的暴露面。
     let parent = open(
         to.parent()
             .ok_or_else(|| std::io::Error::other("目标父级缺失"))?,
@@ -2372,26 +2395,29 @@ fn rename_materialize_path(from: &Path, to: &Path) -> std::io::Result<()> {
     )?;
     let name = to
         .file_name()
-        .ok_or_else(|| std::io::Error::other("目标名缺失"))?
-        .encode_wide()
-        .collect::<Vec<_>>();
-    let bytes = std::mem::size_of::<FILE_RENAME_INFO>()
-        + name.len().saturating_sub(1) * std::mem::size_of::<u16>();
-    let words = bytes.div_ceil(std::mem::size_of::<usize>());
-    let mut buffer = vec![0usize; words];
-    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-    unsafe {
-        (*info).Anonymous.Flags = 0;
-        (*info).RootDirectory = HANDLE(parent.as_raw_handle());
-        (*info).FileNameLength = (name.len() * 2) as u32;
-        std::ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len());
-        SetFileInformationByHandle(
-            HANDLE(source.as_raw_handle()),
-            FileRenameInfo,
-            info.cast::<core::ffi::c_void>() as *const core::ffi::c_void,
-            bytes as u32,
-        )
-        .map_err(std::io::Error::other)
+        .ok_or_else(|| std::io::Error::other("目标名缺失"))?;
+    match crate::config::nt_relative_rename(&source, &parent, name) {
+        Err(error) if crate::config::windows_relative_rename_unsupported(&error) => {
+            // 网络重定向器(重定向 AppData/漫游配置等)不支持 RootDirectory
+            // 相对 rename。释放句柄后按路径重新复核形态,降级为路径式
+            // rename;路径式的窄竞态窗口仅存在于这个降级分支。
+            drop(parent);
+            drop(source);
+            let metadata = fs::symlink_metadata(from)?;
+            if !plain_directory_metadata(&metadata) {
+                return Err(std::io::Error::other(
+                    "拒绝重命名链接、重解析点或非普通目录",
+                ));
+            }
+            if fs::symlink_metadata(to).is_ok() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    "重命名目标已存在",
+                ));
+            }
+            fs::rename(from, to)
+        }
+        result => result,
     }
 }
 
@@ -2404,9 +2430,9 @@ fn sync_materialize_parent(path: &Path) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        // SetFileInformationByHandle 的 fixed-parent rename 不允许通过 std File
-        // 同步目录；源/父句柄会保持到 rename 返回，Windows cache manager 负责
-        // 目录元数据提交。这里不能退回会跟随 reparse point 的路径式打开。
+        // Windows 不保证普通目录句柄的 FlushFileBuffers;目录元数据的持久
+        // 顺序依赖 NTFS 日志按序落盘,事务日志文件的 sync 会连带刷出此前的
+        // 元数据记录。这里不能退回会跟随 reparse point 的路径式打开。
         let _ = path;
         Ok(())
     }
@@ -3479,6 +3505,110 @@ mod tests {
         assert!(backup.is_dir());
         drop(_held_parent);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn windows_rename_uses_nt_relative_rename_with_retry_and_fallback() {
+        let source = include_str!("skills.rs")
+            .rsplit_once("#[cfg(test)]\nmod tests {")
+            .unwrap()
+            .0;
+        // 空白归一后再比对,断言不再被 rustfmt 折行破坏。
+        let squashed: String = source.split_whitespace().collect();
+        let has = |needle: &str| squashed.contains(&needle.split_whitespace().collect::<String>());
+        assert!(has("crate::config::retry_transient_windows_rename"));
+        assert!(has("crate::config::nt_relative_rename"));
+        assert!(has("crate::config::windows_relative_rename_unsupported"));
+        assert!(has("DELETE.0 | FILE_READ_ATTRIBUTES.0"));
+        assert!(has("FILE_TRAVERSE.0 | FILE_READ_ATTRIBUTES.0"));
+        // kernelbase 的 SetFileInformationByHandle 拒绝非 NULL RootDirectory
+        // (线上 0x80070057),物化 rename 不得回退到该 API。
+        assert!(!has("SetFileInformationByHandle"));
+        let config_source = include_str!("config.rs");
+        let config_squashed: String = config_source.split_whitespace().collect();
+        let config_has =
+            |needle: &str| config_squashed.contains(&needle.split_whitespace().collect::<String>());
+        assert!(config_has("NtSetInformationFile"));
+        assert!(config_has("FileRenameInformation"));
+        assert!(config_has("RtlNtStatusToDosError"));
+    }
+
+    #[test]
+    fn rollback_with_identical_old_and_new_digest_keeps_target_and_cleans_up() {
+        // BackupOld 失败后的回滚现场:技能集未变时 old_digest == new_digest,
+        // 回滚必须按"旧树仍在位"处理,而不是按"新树已安装"去找根本不存在的
+        // backup(线上报错"回滚已安装目录时缺少完整旧备份"的根因)。
+        let root = test_dir("rollback-equal-digest");
+        let target = root.join("skills");
+        fs::create_dir_all(target.join("a")).unwrap();
+        fs::write(target.join("a/SKILL.md"), "same").unwrap();
+        let temporary = root.join(".skills.materialize-aaaaaaaaaaaaaaaaaaaaaaaa");
+        fs::create_dir_all(temporary.join("a")).unwrap();
+        fs::write(temporary.join("a/SKILL.md"), "same").unwrap();
+        let digest = materialized_tree_digest(&target).unwrap();
+        assert_eq!(digest, materialized_tree_digest(&temporary).unwrap());
+
+        let journal_path = default_materialize_journal_path(&target).unwrap();
+        let journal = MaterializeTransactionJournal {
+            format: 1,
+            target: "skills".into(),
+            temporary: ".skills.materialize-aaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            backup: ".skills.backup-aaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            stage: MaterializeTransactionStage::Prepared,
+            had_old: true,
+            old_digest: Some(digest.clone()),
+            new_digest: Some(digest),
+        };
+        write_materialize_journal(&journal_path, &journal).unwrap();
+
+        rollback_materialize_journal(&target, &journal_path).unwrap();
+        assert_eq!(
+            fs::read_to_string(target.join("a/SKILL.md")).unwrap(),
+            "same"
+        );
+        assert!(!temporary.exists());
+        assert!(!journal_path.exists());
+    }
+
+    #[test]
+    fn unchanged_skill_set_rematerializes_without_touching_target() {
+        let user = test_dir("materialize-unchanged-user");
+        put_skill(&user, "stable", "内容不变");
+        let root = test_dir("materialize-unchanged-root");
+        let target = root.join("skills");
+        let nodefaults = user.join("no-defaults.json");
+        let enabled = ["stable".to_string()];
+        materialize_unlocked(&target, None, &user, &nodefaults, Some(&enabled)).unwrap();
+
+        // 第二次物化内容一致:不得再走备份/安装(Windows 上这两步目录 rename
+        // 是唯一会被实时防护/索引器占用打断的环节),短路返回且不留临时对象。
+        let mut steps = Vec::new();
+        let done = materialize_unlocked_with_hook(
+            &target,
+            None,
+            &user,
+            &nodefaults,
+            Some(&enabled),
+            |step| {
+                steps.push(step);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(done, vec!["stable"]);
+        assert!(!steps.contains(&MaterializeStep::BackupOld));
+        assert!(!steps.contains(&MaterializeStep::InstallNew));
+        assert_eq!(
+            fs::read_to_string(target.join("stable/SKILL.md")).unwrap(),
+            "内容不变"
+        );
+        let leftovers = fs::read_dir(&root)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name != "skills")
+            .collect::<Vec<_>>();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
     }
 
     #[test]

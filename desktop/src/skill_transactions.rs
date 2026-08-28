@@ -1770,57 +1770,45 @@ fn fixed_parent_rename(from: &Path, to: &Path) -> Result<(), TxError> {
 
 #[cfg(windows)]
 fn fixed_parent_rename(from: &Path, to: &Path) -> Result<(), TxError> {
-    // Windows 先打开源对象与目标父目录句柄；SetFileInformationByHandle 的
-    // FILE_RENAME_INFO.RootDirectory 让最终 rename 相对固定父句柄完成。
-    windows_handle_rename(from, to).map_err(TxError::from)
+    // Windows 打开源对象与目标父目录句柄,经 NtSetInformationFile 的
+    // FileRenameInformation 相对固定父句柄完成 rename(renameat 语义)。
+    crate::config::retry_transient_windows_rename(|| windows_handle_rename(from, to))
+        .map_err(TxError::from)
 }
 
 #[cfg(windows)]
 fn windows_handle_rename(from: &Path, to: &Path) -> io::Result<()> {
-    use std::os::windows::ffi::OsStrExt as _;
-    use std::os::windows::io::AsRawHandle as _;
-    use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::Storage::FileSystem::{
-        FileRenameInfo, SetFileInformationByHandle, DELETE, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO,
-        FILE_TRAVERSE,
-    };
-    let source = open_windows_rename_handle(from, DELETE.0 | FILE_READ_ATTRIBUTES.0, true)?;
+    use windows::Win32::Storage::FileSystem::{DELETE, FILE_READ_ATTRIBUTES, FILE_TRAVERSE};
+    let source = open_windows_rename_handle(from, DELETE.0 | FILE_READ_ATTRIBUTES.0)?;
     let parent = open_windows_rename_handle(
         to.parent()
             .ok_or_else(|| io::Error::other("目标父级缺失"))?,
         FILE_TRAVERSE.0 | FILE_READ_ATTRIBUTES.0,
-        true,
     )?;
     let name = to
         .file_name()
-        .ok_or_else(|| io::Error::other("目标名缺失"))?
-        .encode_wide()
-        .collect::<Vec<_>>();
-    let base = std::mem::size_of::<FILE_RENAME_INFO>();
-    let bytes = base + name.len().saturating_sub(1) * std::mem::size_of::<u16>();
-    // FILE_RENAME_INFO 含 HANDLE，必须按指针对齐，不能把 Vec<u8> 直接强转。
-    let words = bytes.div_ceil(std::mem::size_of::<usize>());
-    let mut buffer = vec![0usize; words];
-    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-    unsafe {
-        // windows 0.61 将 ReplaceIfExists/Flags 表达为 Anonymous union；Flags=0
-        // 即不覆盖已有目标，也不启用任何 FILE_RENAME_FLAG_* 扩展语义。
-        (*info).Anonymous.Flags = 0;
-        (*info).RootDirectory = HANDLE(parent.as_raw_handle());
-        (*info).FileNameLength = (name.len() * 2) as u32;
-        std::ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len());
-        SetFileInformationByHandle(
-            HANDLE(source.as_raw_handle()),
-            FileRenameInfo,
-            info.cast::<core::ffi::c_void>() as *const core::ffi::c_void,
-            bytes as u32,
-        )
-        .map_err(io::Error::other)
+        .ok_or_else(|| io::Error::other("目标名缺失"))?;
+    match crate::config::nt_relative_rename(&source, &parent, name) {
+        Err(error) if crate::config::windows_relative_rename_unsupported(&error) => {
+            // 网络重定向器不支持 RootDirectory 相对 rename,降级为路径式;
+            // 调用方 rename_verified 在 rename 前后有 stable_snapshot 复核,
+            // 路径竞态由其兜底。
+            drop(parent);
+            drop(source);
+            if path_present(to) {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "重命名目标已存在",
+                ));
+            }
+            fs::rename(from, to)
+        }
+        result => result,
     }
 }
 
 #[cfg(windows)]
-fn open_windows_rename_handle(path: &Path, access_mode: u32, directory: bool) -> io::Result<File> {
+fn open_windows_rename_handle(path: &Path, access_mode: u32) -> io::Result<File> {
     use std::os::windows::fs::OpenOptionsExt as _;
     use windows::Win32::Storage::FileSystem::{
         FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE,
@@ -1830,14 +1818,9 @@ fn open_windows_rename_handle(path: &Path, access_mode: u32, directory: bool) ->
     options
         .access_mode(access_mode)
         .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0 | FILE_SHARE_DELETE.0)
-        .custom_flags(
-            FILE_FLAG_OPEN_REPARSE_POINT.0
-                | if directory {
-                    FILE_FLAG_BACKUP_SEMANTICS.0
-                } else {
-                    0
-                },
-        );
+        // 源可能是文件也可能是目录;FILE_FLAG_BACKUP_SEMANTICS 对文件无副作用,
+        // 而目录句柄没有它根本打不开。
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0 | FILE_FLAG_BACKUP_SEMANTICS.0);
     options.open(path)
 }
 
@@ -1889,8 +1872,9 @@ fn sync_directory(path: &Path) -> Result<(), TxError> {
     }
     #[cfg(windows)]
     {
-        // 文件写使用 sync_all，重命名使用 MOVEFILE_WRITE_THROUGH。Windows 不保证
-        // 普通目录句柄的 FlushFileBuffers，因此这里不伪造失败的目录 fsync。
+        // 文件写使用 sync_all;目录元数据的持久顺序依赖 NTFS 日志按序落盘,
+        // 且事务日志文件的 sync 会连带刷出此前的元数据记录。Windows 不保证
+        // 普通目录句柄的 FlushFileBuffers,因此这里不伪造失败的目录 fsync。
         let _ = path;
         Ok(())
     }
@@ -3319,22 +3303,26 @@ mod tests {
     }
 
     #[test]
-    fn windows_contract_rejects_reparse_objects_and_uses_write_through_rename() {
+    fn windows_contract_rejects_reparse_objects_and_uses_nt_relative_rename() {
         let source = include_str!("skill_transactions.rs")
             .rsplit_once("#[cfg(test)]\nmod tests {")
             .unwrap()
             .0;
-        assert!(source.contains("FILE_FLAG_OPEN_REPARSE_POINT"));
-        assert!(source.contains("FILE_ATTRIBUTE_REPARSE_POINT"));
-        assert!(source.contains("GetFileInformationByHandle"));
-        assert!(source.contains("windows_handle_identity"));
-        assert!(!source.contains("volume_serial_number()"));
-        assert!(!source.contains("file_index()"));
-        assert!(source.contains("Anonymous.Flags = 0"));
-        assert!(source.contains("DELETE.0 | FILE_READ_ATTRIBUTES.0, true"));
-        assert!(source.contains("FILE_TRAVERSE.0 | FILE_READ_ATTRIBUTES.0"));
-        assert!(source.contains(".access_mode(access_mode)"));
-        assert!(source.contains("MOVEFILE_WRITE_THROUGH"));
+        // 空白归一后再比对,断言不再被 rustfmt 折行破坏。
+        let squashed: String = source.split_whitespace().collect();
+        let has = |needle: &str| squashed.contains(&needle.split_whitespace().collect::<String>());
+        assert!(has("FILE_FLAG_OPEN_REPARSE_POINT"));
+        assert!(has("FILE_ATTRIBUTE_REPARSE_POINT"));
+        assert!(has("GetFileInformationByHandle"));
+        assert!(has("windows_handle_identity"));
+        assert!(!has("volume_serial_number()"));
+        assert!(!has("file_index()"));
+        assert!(has("crate::config::nt_relative_rename"));
+        assert!(has("crate::config::retry_transient_windows_rename"));
+        assert!(has("DELETE.0 | FILE_READ_ATTRIBUTES.0"));
+        assert!(has("FILE_TRAVERSE.0 | FILE_READ_ATTRIBUTES.0"));
+        assert!(has(".access_mode(access_mode)"));
+        assert!(!has("SetFileInformationByHandle"));
     }
 
     #[cfg(windows)]
