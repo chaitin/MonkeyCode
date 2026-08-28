@@ -426,6 +426,8 @@ export const en: Record<MessageKey, string> = {
   "settings.skills.delete": "Delete",
   "settings.skills.override": "Edit a copy",
   "settings.skills.readonlyHint": "Built-in skills ship with app updates and are read-only. \"Edit a copy\" creates a custom skill with the same name that overrides it; delete the copy to restore.",
+  "settings.skills.legacyReadonlyBadge": "Legacy read-only",
+  "settings.skills.legacyReadonlyHint": "This legacy-compatible skill is read-only and can only be viewed or deleted.",
   "settings.skills.save": "Save",
   "settings.skills.cancel": "Cancel",
   "settings.skills.saveFailed": "Save failed: {reason}",

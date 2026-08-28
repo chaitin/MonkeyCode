@@ -338,6 +338,7 @@ function SkillsSectionContent() {
           {items.map((s) => {
             const open = expanded === s.name;
             const isUser = s.source === "user";
+            const isLegacyReadonly = s.can_set_default === false || s.can_edit === false;
             return (
               <li key={s.name} className={`flex flex-col transition-colors ${highlightedImports.has(s.name) ? "bg-success/10 ring-1 ring-inset ring-success/30" : ""}`}>
                 <div
@@ -360,6 +361,11 @@ function SkillsSectionContent() {
                         {t("settings.skills.overridesBadge")}
                       </span>
                     )}
+                    {isLegacyReadonly && (
+                      <span className="badge badge-ghost badge-sm shrink-0">
+                        {t("settings.skills.legacyReadonlyBadge")}
+                      </span>
+                    )}
                     {/* 默认启用态 = 常驻徽标(状态要一眼可扫);动作在 hover
                         (MCP 停用/启用同款行惯例,不在每行摆一个开关控件) */}
                     {s.default_enabled && (
@@ -369,30 +375,34 @@ function SkillsSectionContent() {
                     )}
                     <span className="min-w-0 flex-1 truncate text-xs text-base-content/50">{s.description}</span>
                   </button>
-                  <button
-                    type="button"
-                    title={t("settings.skills.defaultTip")}
-                    className="btn btn-ghost btn-xs shrink-0 text-base-content/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDefault(s.name, !s.default_enabled);
-                    }}
-                  >
-                    {t(s.default_enabled ? "settings.skills.defaultOff" : "settings.skills.defaultOn")}
-                  </button>
+                  {s.can_set_default !== false && (
+                    <button
+                      type="button"
+                      title={t("settings.skills.defaultTip")}
+                      className="btn btn-ghost btn-xs shrink-0 text-base-content/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDefault(s.name, !s.default_enabled);
+                      }}
+                    >
+                      {t(s.default_enabled ? "settings.skills.defaultOff" : "settings.skills.defaultOn")}
+                    </button>
+                  )}
                   {isUser ? (
                     <>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-xs shrink-0 text-base-content/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setExpanded(s.name);
-                          setEdit({ name: s.name, content: s.content, editing: s.name });
-                        }}
-                      >
-                        {t("settings.skills.edit")}
-                      </button>
+                      {s.can_edit !== false && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs shrink-0 text-base-content/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpanded(s.name);
+                            setEdit({ name: s.name, content: s.content, editing: s.name });
+                          }}
+                        >
+                          {t("settings.skills.edit")}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn btn-ghost btn-xs shrink-0 text-base-content/40 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 hover:text-error"
@@ -405,7 +415,7 @@ function SkillsSectionContent() {
                         {t("settings.skills.delete")}
                       </button>
                     </>
-                  ) : (
+                  ) : s.can_edit !== false ? (
                     <button
                       type="button"
                       className="btn btn-ghost btn-xs shrink-0 text-base-content/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
@@ -417,7 +427,7 @@ function SkillsSectionContent() {
                     >
                       {t("settings.skills.override")}
                     </button>
-                  )}
+                  ) : null}
                   <IconChevronDown
                     size={14}
                     stroke={1.75}
@@ -431,9 +441,13 @@ function SkillsSectionContent() {
                       editForm
                     ) : (
                       <>
-                        {!isUser && (
+                        {isLegacyReadonly ? (
+                          <p className="mb-2 text-2xs text-base-content/50">
+                            {t("settings.skills.legacyReadonlyHint")}
+                          </p>
+                        ) : !isUser ? (
                           <p className="mb-2 text-2xs text-base-content/50">{t("settings.skills.readonlyHint")}</p>
-                        )}
+                        ) : null}
                         <pre className="max-h-64 overflow-auto rounded-box bg-base-200/60 p-3 font-mono text-xs whitespace-pre-wrap">
                           {s.content}
                         </pre>

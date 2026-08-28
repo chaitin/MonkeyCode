@@ -37,6 +37,10 @@ use crate::skill_transactions::SkillInstallRequest;
 use crate::skills::{self, SkillInfo, SkillStoreState};
 
 const IMPORT_UPDATED_EVENT: &str = "skills-import-updated";
+/// Agent ebab367 的技能元数据使用未扩容的 Go `bufio.Scanner`。默认 token
+/// 上限为 64 KiB；为给换行分隔符留出空间，frontmatter 每行最多接收
+/// 64 KiB - 1 字节（不含 LF；CRLF 的 CR 计入行内容）。
+const AGENT_SCANNER_SAFE_LINE_BYTES: usize = 64 * 1024 - 1;
 
 /// 一个 picker 命令从预留 token 起就由本 guard 负责。任何 `?`、join error 或
 /// unwind 都先显式清理尚未合并 reservation，再撤销 inflight；只有原子 merge
@@ -115,6 +119,7 @@ pub async fn skills_import_current(
     state: State<'_, SkillImportState>,
 ) -> Result<SkillImportCurrentSnapshot, SkillCommandError> {
     let state = state.inner().clone();
+    ensure_import_available(&state).await?;
     let maintenance = state.clone();
     run_blocking(move || maintenance.retry_pending_cleanup(PENDING_CLEANUP_RETRY_LIMIT)).await??;
     Ok(state.current())
@@ -130,6 +135,7 @@ pub async fn skills_import_pick(
 ) -> Result<Option<SkillImportBatchPreview>, SkillCommandError> {
     let imports = imports.inner().clone();
     let store = store.inner().clone();
+    ensure_import_available(&imports).await?;
     let maintenance = imports.clone();
     run_blocking(move || maintenance.retry_pending_cleanup(PENDING_CLEANUP_RETRY_LIMIT)).await??;
     let token = match batch_id.as_deref() {
@@ -187,6 +193,7 @@ pub async fn skills_import_read_text(
     offset: u64,
     limit: u64,
 ) -> Result<SkillImportTextChunk, SkillCommandError> {
+    ensure_import_available(state.inner()).await?;
     if limit == 0 || limit > MAX_TEXT_PREVIEW_BYTES {
         return Err(invalid("文本预览单次 limit 必须在 1 到 1 MiB 之间"));
     }
@@ -219,6 +226,7 @@ pub async fn skills_import_commit(
 ) -> Result<SkillImportBatchResult, SkillCommandError> {
     let imports = imports.inner().clone();
     let store = store.inner().clone();
+    ensure_import_available(&imports).await?;
     let phase = imports
         .current()
         .batch
@@ -257,6 +265,7 @@ pub async fn skills_import_cancel(
     batch_id: String,
 ) -> Result<(), SkillCommandError> {
     let state = state.inner().clone();
+    ensure_import_available(&state).await?;
     let maintenance = state.clone();
     run_blocking(move || maintenance.retry_pending_cleanup(PENDING_CLEANUP_RETRY_LIMIT)).await??;
     let cancelled = state.cancel(&batch_id)?;
@@ -329,6 +338,11 @@ where
     tauri::async_runtime::spawn_blocking(operation)
         .await
         .map_err(|error| io_error(format!("技能导入后台任务异常结束: {error}")))
+}
+
+async fn ensure_import_available(state: &SkillImportState) -> Result<(), SkillCommandError> {
+    let state = state.clone();
+    run_blocking(move || state.ensure_available()).await?
 }
 
 fn stage_selected_paths(
@@ -625,6 +639,122 @@ struct EntryView {
     executable: bool,
 }
 
+/// 复刻 Agent ebab367 在目录技能上实际使用的轻量 frontmatter 契约，而不把
+/// 完整技能校验复制到前端：Agent 会 TrimSpace 每个冒号前的 key，因此缩进的
+/// `name` 也会覆盖目录/顶层名称；同时其默认 Scanner 无法接收 64 KiB 行。
+/// 行长约束 frontmatter，以及 Agent 在 description 为空时继续扫描的正文前缀；
+/// 一旦取得首个非空 description 候选，后续正文不再由元数据 Scanner 读取。
+fn resolve_agent_compatible_import_metadata(
+    skill_md: &str,
+    fallback_name: &str,
+) -> Result<skills::ResolvedSkillMetadata, String> {
+    let desktop = skills::resolve_import_skill_metadata(skill_md, fallback_name)?;
+    let Some(first_raw) = skill_md.split('\n').next() else {
+        return Ok(desktop);
+    };
+    let first = first_raw.strip_suffix('\r').unwrap_or(first_raw);
+    if first.trim() != "---" {
+        validate_agent_description_scan(skill_md.split('\n'))?;
+        return Ok(desktop);
+    }
+    if first != "---" {
+        return Err(
+            "frontmatter 起始分隔线必须是独占一行且无缩进的 ---，否则 Agent 不会按元数据解析"
+                .into(),
+        );
+    }
+
+    let mut agent_name = fallback_name.to_string();
+    let mut agent_description = String::new();
+    let mut name_count = 0usize;
+    let mut closed = false;
+    let mut lines = skill_md.split('\n').skip(1);
+    for raw in lines.by_ref() {
+        if raw.as_bytes().len() > AGENT_SCANNER_SAFE_LINE_BYTES {
+            return Err(format!(
+                "frontmatter 单行超过 Agent 可解析的 {} 字节上限；请拆分或缩短该元数据行",
+                AGENT_SCANNER_SAFE_LINE_BYTES
+            ));
+        }
+        let line = raw.strip_suffix('\r').unwrap_or(raw);
+        if line.trim() == "---" {
+            if line != "---" {
+                return Err(
+                    "frontmatter 结束分隔线必须是独占一行且无缩进的 ---，否则 Agent 不会结束元数据扫描"
+                        .into(),
+                );
+            }
+            closed = true;
+            break;
+        }
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
+        if key == "description" {
+            // Agent 对 description 使用与 name 相同的 TrimSpace key 规则，且后值
+            // 覆盖前值。这里必须据其最终值决定是否继续扫描正文。
+            agent_description = value.clone();
+        }
+        if key != "name" {
+            continue;
+        }
+        name_count += 1;
+        if line.starts_with(' ') || line.starts_with('\t') {
+            return Err(
+                "frontmatter 包含嵌套 name；当前 Agent 会把缩进 TrimSpace 后当作顶层名称并覆盖最终技能名，请删除嵌套 name"
+                    .into(),
+            );
+        }
+        if name_count > 1 {
+            return Err(
+                "frontmatter 包含多个 name，最终技能名有歧义；请只保留一个顶层 name".into(),
+            );
+        }
+        agent_name = value;
+    }
+    if !closed {
+        return Err(
+            "frontmatter 缺少独占一行的结束分隔线 ---；Agent 将不会应用其中的技能名".into(),
+        );
+    }
+    if agent_description.is_empty() {
+        // parseSkillMetadata 会复用同一个默认 Scanner，从结束分隔线之后逐行寻找
+        // description。候选算法严格对应 TrimSpace(TrimPrefix(TrimSpace(line), "#"))。
+        validate_agent_description_scan(lines)?;
+    }
+    if desktop.name != agent_name {
+        return Err(format!(
+            "Desktop 解析的技能名 {} 与 Agent 最终名称 {} 不一致；请检查 frontmatter name",
+            desktop.name, agent_name
+        ));
+    }
+    Ok(desktop)
+}
+
+fn validate_agent_description_scan<'a>(lines: impl Iterator<Item = &'a str>) -> Result<(), String> {
+    for raw in lines {
+        if raw.as_bytes().len() > AGENT_SCANNER_SAFE_LINE_BYTES {
+            return Err(format!(
+                "Agent 为推导 description 而扫描的正文行超过 {} 字节上限；请在该长行之前添加简短 description 或正文标题",
+                AGENT_SCANNER_SAFE_LINE_BYTES
+            ));
+        }
+        let line = raw.strip_suffix('\r').unwrap_or(raw);
+        let trimmed = line.trim();
+        let candidate = trimmed.strip_prefix('#').unwrap_or(trimmed).trim();
+        if !candidate.is_empty() {
+            break;
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn make_item(
     source_id: &str,
@@ -658,7 +788,7 @@ fn make_item(
         }
         let text = String::from_utf8(bytes).map_err(|_| invalid("SKILL.md 不是 UTF-8 文本"))?;
         let fingerprint = Some(snapshot);
-        match skills::resolve_import_skill_metadata(&text, &fallback) {
+        match resolve_agent_compatible_import_metadata(&text, &fallback) {
             Ok(meta) => (
                 Some(meta.name),
                 Some(meta.portable_name_key),
@@ -948,6 +1078,29 @@ fn commit_blocking(
                     .name
                     .as_deref()
                     .ok_or_else(|| SkillStoreError::InvalidTargetName("技能名无效".into()))?;
+                // 即使 staged tree identity 与预览一致，提交仍在 revision 写入前按
+                // 同一 Agent 契约重读元数据；校验逻辑变化、损坏状态或 TOCTOU 都不能
+                // 把预览名称之外的最终 Agent 名称安装进权威库。
+                let (skill_md, size) = fixed_source.read_file_range(
+                    "SKILL.md",
+                    0,
+                    (MAX_SKILL_MD_BYTES + 1) as usize,
+                )?;
+                if size > MAX_SKILL_MD_BYTES {
+                    return Err(SkillStoreError::InvalidTargetName(
+                        "SKILL.md 超过 1 MiB".into(),
+                    ));
+                }
+                let skill_md = String::from_utf8(skill_md).map_err(|_| {
+                    SkillStoreError::InvalidTargetName("SKILL.md 不是 UTF-8 文本".into())
+                })?;
+                let rechecked = resolve_agent_compatible_import_metadata(&skill_md, name)
+                    .map_err(SkillStoreError::InvalidTargetName)?;
+                if rechecked.name != name {
+                    return Err(SkillStoreError::InvalidTargetName(
+                        "提交重检的技能名与导入预览不一致，请重新选择来源".into(),
+                    ));
+                }
                 let baseline = baselines.capture_locked(revision, name)?;
                 let replace = decision.action == SkillImportAction::Replace;
                 let expected_presence = if replace {

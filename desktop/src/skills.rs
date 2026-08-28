@@ -45,8 +45,9 @@ pub(crate) type LegacySessionSkills = std::collections::BTreeMap<String, Vec<Str
 /// (baizhi/monkeycode.rs)+ 桌面端补充的 publish-website(把本会话产出的
 /// Web 项目发布上线,官方库专为 pc-client 收录)。官方库全默认启用会把
 /// system prompt 塞满几十条 name+description,故其余按需勾选。用户自建
-/// 技能不受此表限制,出厂恒默认启用——亲手写的技能就是要用的。出厂规则
-/// 之上是用户显式开关(skills-defaults.json,见 load_default_prefs):
+/// 技能不受此表限制,出厂恒默认启用——亲手写的技能就是要用的；批量导入
+/// 会显式写入 false，只安装入库，等待用户主动设为默认。出厂规则之上是用户
+/// 显式开关(skills-defaults.json,见 load_default_prefs):
 /// 没拨过的技能跟随出厂,拨过的以开关为准。解析结果经 skills_list 的
 /// default_enabled 字段下发,UI 不再自持一份规则镜像。
 pub const DEFAULT_ENABLED: [&str; 5] = [
@@ -141,6 +142,12 @@ pub struct SkillInfo {
     /// 新会话是否默认启用(出厂规则 ⊕ skills-defaults.json 显式开关的
     /// 解析结果;UI 的缺省集推导只认这个字段,不复刻规则)
     pub default_enabled: bool,
+    /// 后端按当前严格名称规则给出的显式能力。legacy 兼容名称可列出和删除，
+    /// 但不能写入默认集，也不会进入 Agent 物化。
+    pub can_set_default: bool,
+    /// 是否可经 `skills_save` 编辑（内置技能表示可创建同名编辑副本）。legacy
+    /// 兼容名称会被严格保存入口拒绝，因此 UI 不应提供编辑动作。
+    pub can_edit: bool,
 }
 
 /// 内置技能目录:bundle 资源 + dev 回退(cargo run 无 bundle 资源时用
@@ -338,6 +345,10 @@ struct RevisionMigrationDocument {
     migration: String,
     store_id: String,
     initial_revision: u64,
+    /// 仅迁移时确认过的旧版大技能可绕过现行 1 MiB 物化输入上限。digest 把
+    /// 豁免绑定到迁移当时的完整安全目录树，后续手工放入或改写的大文件不继承。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    legacy_large_skills: BTreeMap<String, String>,
 }
 
 #[derive(Clone)]
@@ -834,6 +845,27 @@ impl SkillStoreState {
         let revision = self.advance_revision_locked()?;
         self.mark_revision_observed(&revision);
         self.migrate_legacy_session_skills_locked(builtin)?;
+        // 导入是“安装入库”，不是替用户启用。新安装/内置覆盖在首个目录事务
+        // 前先持久化显式 false，保证事务中断后即使用户选择保留已安装版本也不会
+        // 自动启用；替换已有用户技能则保留原默认设置。
+        let mut prefs = load_default_prefs(&self.inner.defaults_path);
+        let mut defaults_changed = false;
+        for request in requests.iter().filter(|request| !request.replace) {
+            defaults_changed |= prefs.insert(request.skill_name.clone(), false) != Some(false);
+        }
+        if defaults_changed {
+            let data = serde_json::to_vec_pretty(&prefs)
+                .map_err(|error| SkillStoreError::CorruptRevision(error.to_string()))?;
+            crate::config::atomic_write_private(&self.inner.defaults_path, &data).map_err(
+                |error| SkillStoreError::io("写入导入技能默认集", &self.inner.defaults_path, error),
+            )?;
+            sync_directory(
+                self.inner
+                    .defaults_path
+                    .parent()
+                    .unwrap_or_else(|| Path::new(".")),
+            )?;
+        }
         let outcomes =
             crate::skill_transactions::install_many_locked(&self.inner.user_dir, &requests);
         Ok((outcomes, revision))
@@ -1199,10 +1231,9 @@ impl SkillStoreState {
             return Err(SkillStoreError::RecoveryPending(issues));
         }
 
-        let had_marker = marker.is_some();
-        let revision = match marker {
+        let revision = match marker.as_ref() {
             Some(marker) => StoreRevision {
-                store_id: marker.store_id,
+                store_id: marker.store_id.clone(),
                 revision: marker.initial_revision,
             },
             None => StoreRevision {
@@ -1210,9 +1241,21 @@ impl SkillStoreState {
                 revision: MIGRATED_INITIAL_REVISION,
             },
         };
-        validate_legacy_store_for_revision_migration(&self.inner, &revision)?;
-        if !had_marker {
-            write_revision_migration_synced(&self.inner.revision_migration_path, &revision)?;
+        let legacy_large_skills =
+            validate_legacy_store_for_revision_migration(&self.inner, &revision)?;
+        if let Some(marker) = marker.as_ref() {
+            if marker.legacy_large_skills != legacy_large_skills {
+                return Err(SkillStoreError::unsafe_object(
+                    REVISION_MIGRATION_FILE,
+                    "revision migration 的旧版大技能指纹与技能库不一致",
+                ));
+            }
+        } else {
+            write_revision_migration_synced(
+                &self.inner.revision_migration_path,
+                &revision,
+                &legacy_large_skills,
+            )?;
         }
         // marker 先落盘：若在两次原子写之间退出，下一实例复用同一 store_id 后
         // 完成 revision 发布，不会把同一个 legacy store 识别成两个 store。
@@ -1331,7 +1374,7 @@ fn authoritative_store_is_empty(inner: &SkillStoreStateInner) -> Result<bool, Sk
 fn validate_legacy_store_for_revision_migration(
     inner: &SkillStoreStateInner,
     revision: &StoreRevision,
-) -> Result<(), SkillStoreError> {
+) -> Result<BTreeMap<String, String>, SkillStoreError> {
     match fs::symlink_metadata(&inner.defaults_path) {
         Ok(metadata) => {
             if !plain_file_metadata(&metadata) {
@@ -1368,6 +1411,7 @@ fn validate_legacy_store_for_revision_migration(
     }
 
     let baseline = BaselineStore::open_locked(&inner.user_dir)?;
+    let mut legacy_large_skills = BTreeMap::new();
     let entries = fs::read_dir(&inner.user_dir)
         .map_err(|error| SkillStoreError::io("枚举 legacy 技能库", &inner.user_dir, error))?;
     for entry in entries {
@@ -1415,45 +1459,63 @@ fn validate_legacy_store_for_revision_migration(
             ));
         }
         if valid_skill_name(&name) {
-            let captured = baseline.capture_locked(revision, &name)?;
-            if captured.presence != crate::skill_import::store::TargetPresence::Present
-                || captured.target_type
-                    != Some(crate::skill_import::store::TargetEntryType::Directory)
-                || captured.preview.is_none()
-            {
-                return Err(SkillStoreError::unsafe_object(
-                    name,
-                    "legacy 技能必须是包含普通 SKILL.md 的完整安全目录树",
-                ));
+            let skill_md = path.join("SKILL.md");
+            let oversized = fs::symlink_metadata(&skill_md)
+                .map(|metadata| {
+                    plain_file_metadata(&metadata)
+                        && metadata.len() > crate::skill_import::model::MAX_SKILL_MD_BYTES
+                })
+                .unwrap_or(false);
+            if oversized {
+                let digest = validate_legacy_skill_tree(&path, &name)?;
+                legacy_large_skills.insert(name, digest);
+            } else {
+                let captured = baseline.capture_locked(revision, &name)?;
+                if captured.presence != crate::skill_import::store::TargetPresence::Present
+                    || captured.target_type
+                        != Some(crate::skill_import::store::TargetEntryType::Directory)
+                    || captured.preview.is_none()
+                {
+                    return Err(SkillStoreError::unsafe_object(
+                        name,
+                        "legacy 技能必须是包含普通 SKILL.md 的完整安全目录树",
+                    ));
+                }
             }
         } else {
-            validate_legacy_incompatible_skill_tree(&path, &name)?;
+            validate_legacy_skill_tree(&path, &name)?;
         }
     }
-    Ok(())
+    Ok(legacy_large_skills)
 }
 
 /// 旧版规则安全、但当前 Agent/Windows 规则不兼容的根名称无法传入严格
 /// `BaselineStore`。迁移只需证明原有目录没有链接/特殊文件且 SKILL.md 可读；
 /// 不移动、不改写技能数据，随后只允许 catalog 展示和按原名单组件删除。
-fn validate_legacy_incompatible_skill_tree(path: &Path, name: &str) -> Result<(), SkillStoreError> {
-    materialized_tree_digest(path).map_err(|reason| {
+fn validate_legacy_skill_tree(path: &Path, name: &str) -> Result<String, SkillStoreError> {
+    let before = materialized_tree_digest(path).map_err(|reason| {
         SkillStoreError::unsafe_object(name, format!("legacy 技能目录树不安全: {reason}"))
     })?;
     let skill_md = path.join("SKILL.md");
     let metadata = fs::symlink_metadata(&skill_md)
         .map_err(|error| SkillStoreError::io("检查 legacy SKILL.md", &skill_md, error))?;
-    if !plain_file_metadata(&metadata)
-        || metadata.len() > crate::skill_import::model::MAX_SKILL_MD_BYTES
-    {
+    if !plain_file_metadata(&metadata) {
         return Err(SkillStoreError::unsafe_object(
             format!("{name}/SKILL.md"),
-            "legacy 技能必须包含不超过 1 MiB 的普通 SKILL.md",
+            "legacy 技能必须包含普通 SKILL.md",
         ));
     }
     fs::read_to_string(&skill_md)
         .map_err(|error| SkillStoreError::io("读取 legacy SKILL.md", &skill_md, error))?;
-    Ok(())
+    let after = materialized_tree_digest(path).map_err(|reason| {
+        SkillStoreError::unsafe_object(name, format!("复核 legacy 技能目录树失败: {reason}"))
+    })?;
+    if before != after {
+        return Err(SkillStoreError::TargetChanged {
+            target_name: name.into(),
+        });
+    }
+    Ok(after)
 }
 
 fn read_revision_migration(
@@ -1492,12 +1554,14 @@ fn read_revision_migration(
 fn write_revision_migration_synced(
     path: &Path,
     revision: &StoreRevision,
+    legacy_large_skills: &BTreeMap<String, String>,
 ) -> Result<(), SkillStoreError> {
     let marker = RevisionMigrationDocument {
         format: REVISION_MIGRATION_FORMAT,
         migration: REVISION_MIGRATION_KIND.into(),
         store_id: revision.store_id.clone(),
         initial_revision: revision.revision,
+        legacy_large_skills: legacy_large_skills.clone(),
     };
     let bytes = serde_json::to_vec_pretty(&marker)
         .map_err(|error| SkillStoreError::CorruptRevision(error.to_string()))?;
@@ -1973,6 +2037,7 @@ fn scan_source(dir: &Path, source: &str, allow_legacy_names: bool, out: &mut Vec
         let Ok(content) = fs::read_to_string(&skill_md) else {
             continue;
         };
+        let has_current_name_capabilities = valid_skill_name(&name);
         out.push(StoreSkill {
             info: SkillInfo {
                 description: derive_description(&content),
@@ -1981,6 +2046,8 @@ fn scan_source(dir: &Path, source: &str, allow_legacy_names: bool, out: &mut Vec
                 content,
                 overrides: false,
                 default_enabled: false, // 占位,list_unlocked()/materialize_unlocked() 按 prefs 解析
+                can_set_default: has_current_name_capabilities,
+                can_edit: has_current_name_capabilities,
             },
         });
     }
@@ -2025,6 +2092,133 @@ fn list_unlocked(builtin: Option<&Path>, user: &Path, defaults: &Path) -> Vec<Sk
         .collect()
 }
 
+/// 普通来源始终走 import store 的 1 MiB 严格验证。仅当用户技能在 revision
+/// migration marker 中以完整树 digest 登记、当前仍是同一棵大树时，才走旧版
+/// 兼容复制；因此迁移后新放入或被改写的大文件不会获得豁免。
+fn copy_skill_directory_for_materialization(
+    root: &Path,
+    name: &str,
+    destination: &Path,
+    user_source: bool,
+) -> Result<(), SkillStoreError> {
+    let skill_md = root.join(name).join("SKILL.md");
+    let oversized = fs::symlink_metadata(&skill_md)
+        .map(|metadata| {
+            plain_file_metadata(&metadata)
+                && metadata.len() > crate::skill_import::model::MAX_SKILL_MD_BYTES
+        })
+        .unwrap_or(false);
+    if !user_source || !oversized {
+        return crate::skill_import::store::copy_skill_directory_verified(root, name, destination);
+    }
+
+    let marker_path = root
+        .parent()
+        .ok_or_else(|| SkillStoreError::unsafe_object(name, "用户技能库缺少配置父目录"))?
+        .join(REVISION_MIGRATION_FILE);
+    let marker = read_revision_migration(&marker_path)?.ok_or_else(|| {
+        SkillStoreError::unsafe_object(
+            format!("{name}/SKILL.md"),
+            "超过 1 MiB 且不是已登记的旧版大技能",
+        )
+    })?;
+    let expected = marker.legacy_large_skills.get(name).ok_or_else(|| {
+        SkillStoreError::unsafe_object(
+            format!("{name}/SKILL.md"),
+            "超过 1 MiB 且不在旧版迁移豁免中",
+        )
+    })?;
+    let source = root.join(name);
+    let before = validate_legacy_skill_tree(&source, name)?;
+    if &before != expected {
+        return Err(SkillStoreError::unsafe_object(
+            name,
+            "旧版大技能已在迁移后发生变化",
+        ));
+    }
+    copy_plain_legacy_tree(&source, destination, name)?;
+    let after = validate_legacy_skill_tree(&source, name)?;
+    let copied = materialized_tree_digest(destination).map_err(|reason| {
+        SkillStoreError::unsafe_object(name, format!("复核旧版大技能物化树失败: {reason}"))
+    })?;
+    if after != before || copied != before {
+        return Err(SkillStoreError::TargetChanged {
+            target_name: name.into(),
+        });
+    }
+    Ok(())
+}
+
+fn copy_plain_legacy_tree(
+    source: &Path,
+    destination: &Path,
+    skill_name: &str,
+) -> Result<(), SkillStoreError> {
+    let metadata = fs::symlink_metadata(source)
+        .map_err(|error| SkillStoreError::io("检查旧版大技能来源", source, error))?;
+    if !plain_directory_metadata(&metadata) {
+        return Err(SkillStoreError::unsafe_object(
+            skill_name,
+            "旧版大技能来源必须是普通目录",
+        ));
+    }
+    fs::create_dir(destination)
+        .map_err(|error| SkillStoreError::io("创建旧版大技能物化目录", destination, error))?;
+    let entries = fs::read_dir(source)
+        .map_err(|error| SkillStoreError::io("枚举旧版大技能来源", source, error))?;
+    for entry in entries {
+        let entry =
+            entry.map_err(|error| SkillStoreError::io("读取旧版大技能目录项", source, error))?;
+        let name = entry.file_name().into_string().map_err(|_| {
+            SkillStoreError::unsafe_object(skill_name, "旧版大技能包含非 UTF-8 路径")
+        })?;
+        if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
+            return Err(SkillStoreError::unsafe_object(
+                skill_name,
+                "旧版大技能包含不安全路径组件",
+            ));
+        }
+        let source_child = entry.path();
+        let destination_child = destination.join(&name);
+        let metadata = fs::symlink_metadata(&source_child)
+            .map_err(|error| SkillStoreError::io("检查旧版大技能目录项", &source_child, error))?;
+        if plain_directory_metadata(&metadata) {
+            copy_plain_legacy_tree(&source_child, &destination_child, skill_name)?;
+        } else if plain_file_metadata(&metadata) {
+            let mut input = fs::File::open(&source_child)
+                .map_err(|error| SkillStoreError::io("打开旧版大技能文件", &source_child, error))?;
+            if !plain_file_metadata(
+                &input.metadata().map_err(|error| {
+                    SkillStoreError::io("复核旧版大技能文件", &source_child, error)
+                })?,
+            ) {
+                return Err(SkillStoreError::unsafe_object(
+                    skill_name,
+                    "旧版大技能文件在复制期间变为不安全对象",
+                ));
+            }
+            let mut output = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&destination_child)
+                .map_err(|error| {
+                    SkillStoreError::io("创建旧版大技能物化文件", &destination_child, error)
+                })?;
+            std::io::copy(&mut input, &mut output)
+                .map_err(|error| SkillStoreError::io("复制旧版大技能文件", &source_child, error))?;
+            output.sync_all().map_err(|error| {
+                SkillStoreError::io("同步旧版大技能物化文件", &destination_child, error)
+            })?;
+        } else {
+            return Err(SkillStoreError::unsafe_object(
+                skill_name,
+                format!("旧版大技能包含链接或特殊对象: {name}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 // ==================== 按会话物化 ====================
 
 /// 把启用子集原子切换到 Agent 的 session skills 目录。
@@ -2051,6 +2245,7 @@ enum MaterializeStep {
     CopySkill,
     SyncTemporary,
     ValidateTarget,
+    WritePreparingJournal,
     BackupOld,
     SyncParentAfterBackup,
     InstallNew,
@@ -2061,6 +2256,7 @@ enum MaterializeStep {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 enum MaterializeTransactionStage {
+    Preparing,
     Prepared,
     BackupCreated,
     Installed,
@@ -2075,7 +2271,8 @@ struct MaterializeTransactionJournal {
     stage: MaterializeTransactionStage,
     had_old: bool,
     old_digest: Option<String>,
-    new_digest: String,
+    /// Preparing 尚未生成完整新树；Prepared 及后续阶段必须为 Some。
+    new_digest: Option<String>,
 }
 
 fn materialize_unlocked_with_hook(
@@ -2115,8 +2312,44 @@ fn materialize_unlocked_with_journal(
     ensure_plain_materialize_parent(parent)?;
     let (temporary, backup) = unique_materialize_siblings(target)?;
 
-    before(MaterializeStep::CreateTemporary)?;
-    fs::create_dir(&temporary).map_err(|e| format!("创建会话技能临时目录失败: {e}"))?;
+    // 在创建 temporary 前先登记精确 sibling 及旧 target 指纹。Preparing 恢复只
+    // 会在 target 未变且 backup 不存在时删除这一个已登记 temporary，绝不按前缀
+    // 猜测或清理任意无日志目录。
+    before(MaterializeStep::ValidateTarget)?;
+    let had_old = path_is_plain_directory_or_missing(target)?;
+    let old_digest = if had_old {
+        Some(materialized_tree_digest(target)?)
+    } else {
+        None
+    };
+    let mut journal = MaterializeTransactionJournal {
+        format: 1,
+        target: safe_file_name(target)?,
+        temporary: safe_file_name(&temporary)?,
+        backup: safe_file_name(&backup)?,
+        stage: MaterializeTransactionStage::Preparing,
+        had_old,
+        old_digest,
+        new_digest: None,
+    };
+    let preparing = before(MaterializeStep::WritePreparingJournal)
+        .and_then(|()| write_materialize_journal(journal_path, &journal));
+    if let Err(error) = preparing {
+        return Err(materialize_generation_error(target, journal_path, error));
+    }
+    crash_materialize_boundary_for_test("preparing-journal-synced");
+
+    if let Err(error) = before(MaterializeStep::CreateTemporary) {
+        return Err(materialize_generation_error(target, journal_path, error));
+    }
+    if let Err(error) = fs::create_dir(&temporary) {
+        return Err(materialize_generation_error(
+            target,
+            journal_path,
+            format!("创建会话技能临时目录失败: {error}"),
+        ));
+    }
+    crash_materialize_boundary_for_test("temporary-created");
 
     let prefs = load_default_prefs(defaults);
     let mut done = Vec::new();
@@ -2139,10 +2372,11 @@ fn materialize_unlocked_with_journal(
             } else {
                 builtin.ok_or_else(|| format!("内置技能根缺失: {}", s.info.name))?
             };
-            crate::skill_import::store::copy_skill_directory_verified(
+            copy_skill_directory_for_materialization(
                 source_root,
                 &s.info.name,
                 &temporary.join(&s.info.name),
+                s.info.source == "user",
             )
             .map_err(|e| format!("物化技能 {} 失败: {e}", s.info.name))?;
             done.push(s.info.name);
@@ -2152,38 +2386,39 @@ fn materialize_unlocked_with_journal(
         Ok::<(), String>(())
     })();
     if let Err(error) = generated {
-        let _ = remove_plain_tree(&temporary);
-        return Err(error);
+        return Err(materialize_generation_error(target, journal_path, error));
     }
+    crash_materialize_boundary_for_test("temporary-synced");
 
-    if let Err(error) = before(MaterializeStep::ValidateTarget) {
-        let _ = remove_plain_tree(&temporary);
-        return Err(error);
-    }
-    let had_old = match path_is_plain_directory_or_missing(target) {
-        Ok(had_old) => had_old,
+    let new_digest = match materialized_tree_digest(&temporary) {
+        Ok(digest) => digest,
         Err(error) => {
-            let _ = remove_plain_tree(&temporary);
-            return Err(error);
+            return Err(materialize_generation_error(target, journal_path, error));
         }
     };
-    let old_digest = if had_old {
-        Some(materialized_tree_digest(target)?)
+    let target_digest = match digest_if_plain_directory(target) {
+        Ok(digest) => digest,
+        Err(error) => {
+            return Err(materialize_generation_error(target, journal_path, error));
+        }
+    };
+    let target_unchanged = if had_old {
+        target_digest == journal.old_digest
     } else {
-        None
+        target_digest.is_none()
     };
-    let new_digest = materialized_tree_digest(&temporary)?;
-    let mut journal = MaterializeTransactionJournal {
-        format: 1,
-        target: safe_file_name(target)?,
-        temporary: safe_file_name(&temporary)?,
-        backup: safe_file_name(&backup)?,
-        stage: MaterializeTransactionStage::Prepared,
-        had_old,
-        old_digest,
-        new_digest,
-    };
-    write_materialize_journal(journal_path, &journal)?;
+    if !target_unchanged || backup.exists() {
+        return Err(materialize_generation_error(
+            target,
+            journal_path,
+            "生成物化树期间旧 target 或 backup 发生变化".into(),
+        ));
+    }
+    journal.stage = MaterializeTransactionStage::Prepared;
+    journal.new_digest = Some(new_digest);
+    if let Err(error) = write_materialize_journal(journal_path, &journal) {
+        return Err(materialize_generation_error(target, journal_path, error));
+    }
     crash_materialize_boundary_for_test("journal-prepared");
     let switched = (|| {
         if had_old {
@@ -2207,12 +2442,8 @@ fn materialize_unlocked_with_journal(
         journal.stage = MaterializeTransactionStage::Installed;
         write_materialize_journal(journal_path, &journal)?;
         crash_materialize_boundary_for_test("installed-stage-synced");
-        if materialized_tree_digest(target)? != journal.new_digest {
+        if materialized_tree_digest(target)? != journal.new_digest.clone().unwrap_or_default() {
             return Err("新会话技能目录安装后完整性复核失败".into());
-        }
-        if had_old {
-            // 注入点位于任何破坏性清理之前，因此这一步失败仍能完整恢复旧树。
-            before(MaterializeStep::CleanupBackup)?;
         }
         Ok::<(), String>(())
     })();
@@ -2221,7 +2452,7 @@ fn materialize_unlocked_with_journal(
         // 普通错误与进程崩溃的决策不同：只要本次调用向上返回 Err，就必须
         // 恢复调用前的旧树；崩溃重入则按持久 stage/磁盘状态完成或回滚。
         // 不能复用 recover_materialize_journal 的“已安装新树即提交”规则，
-        // 否则 CleanupBackup 等注入错误会一边报失败、一边留下新树。
+        // 否则安装/同步阶段的普通错误会一边报失败、一边留下新树。
         let recovery = rollback_materialize_journal(target, journal_path);
         return Err(match recovery {
             Ok(()) => error,
@@ -2229,16 +2460,32 @@ fn materialize_unlocked_with_journal(
         });
     }
 
+    // Installed 日志已经持久化就是提交点。此后的递归删除可能只删掉 backup 的
+    // 一部分；任何清理错误都不能把已提交的新 target 伪装成失败。日志保留时下次
+    // 恢复继续收敛，日志删除本身失败也同样只属于 best-effort housekeeping。
     if had_old {
-        // 此时新目录已经原子安装并同步。递归删除不是原子操作；清理失败不能
-        // 伪造物化失败（那会在备份已被部分删除后无法诚实恢复）。保留剩余
-        // backup 供下次/人工清理，权威 target 仍是完整的新树。
-        remove_plain_tree(&backup).map_err(|error| format!("清理会话技能备份失败: {error}"))?;
-        sync_materialize_parent(parent)?;
+        let cleanup = before(MaterializeStep::CleanupBackup)
+            .and_then(|()| {
+                remove_plain_tree(&backup).map_err(|error| format!("清理会话技能备份失败: {error}"))
+            })
+            .and_then(|()| sync_materialize_parent(parent));
+        if let Err(error) = cleanup {
+            eprintln!("[desktop] 已提交会话技能，但备份清理待重试: {error}");
+            return Ok(done);
+        }
     }
     crash_materialize_boundary_for_test("backup-cleaned");
-    remove_materialize_journal(journal_path)?;
+    if let Err(error) = remove_materialize_journal(journal_path) {
+        eprintln!("[desktop] 已提交会话技能，但事务日志清理待重试: {error}");
+    }
     Ok(done)
+}
+
+fn materialize_generation_error(target: &Path, journal_path: &Path, error: String) -> String {
+    match recover_materialize_journal(target, journal_path) {
+        Ok(()) => error,
+        Err(recovery_error) => format!("{error}; 清理未提交物化树失败: {recovery_error}"),
+    }
 }
 
 fn default_materialize_journal_path(target: &Path) -> Result<PathBuf, String> {
@@ -2343,7 +2590,34 @@ fn recover_materialize_journal(target: &Path, journal_path: &Path) -> Result<(),
     let target_digest = digest_if_plain_directory(target)?;
     let temporary_digest = digest_if_plain_directory(&temporary)?;
     let backup_digest = digest_if_plain_directory(&backup)?;
-    let target_is_new = target_digest.as_deref() == Some(journal.new_digest.as_str());
+
+    if journal.stage == MaterializeTransactionStage::Preparing {
+        if journal.new_digest.is_some() {
+            return Err("Preparing 物化事务不应包含新树指纹".into());
+        }
+        let target_unchanged = if journal.had_old {
+            journal
+                .old_digest
+                .as_ref()
+                .is_some_and(|old| target_digest.as_deref() == Some(old.as_str()))
+        } else {
+            journal.old_digest.is_none() && target_digest.is_none()
+        };
+        if !target_unchanged || backup_digest.is_some() {
+            return Err("Preparing 恢复时旧 target 已变化或意外出现 backup，保留全部对象".into());
+        }
+        // temporary 可能只创建了一半，尚无可供比对的 new_digest；日志中的随机
+        // 精确名称、未变化的 target 和不存在的 backup 共同界定可安全清理对象。
+        remove_plain_tree(&temporary).map_err(|error| error.to_string())?;
+        sync_materialize_parent(parent)?;
+        return remove_materialize_journal(journal_path);
+    }
+
+    let new_digest = journal
+        .new_digest
+        .as_deref()
+        .ok_or_else(|| "Prepared 及后续物化事务缺少新树指纹".to_string())?;
+    let target_is_new = target_digest.as_deref() == Some(new_digest);
     let target_is_old = journal
         .old_digest
         .as_ref()
@@ -2352,12 +2626,12 @@ fn recover_materialize_journal(target: &Path, journal_path: &Path) -> Result<(),
         .old_digest
         .as_ref()
         .is_some_and(|old| backup_digest.as_deref() == Some(old.as_str()));
-    let temporary_is_new = temporary_digest.as_deref() == Some(journal.new_digest.as_str());
+    let temporary_is_new = temporary_digest.as_deref() == Some(new_digest);
 
     if target_is_new {
-        if backup_digest.is_some() && !backup_is_old {
-            return Err("已安装新目录但 backup 与旧目录指纹不一致，恢复存在歧义".into());
-        }
+        // new_digest 匹配的 target 是 Installed 提交后的权威结果。backup 的递归
+        // 删除不是原子的，崩溃后残树必然不再匹配 old_digest；不能据此误判歧义，
+        // 更不能回滚或删除已经提交的 target。
         if temporary_digest.is_some() && !temporary_is_new {
             return Err("已安装新目录但 temporary 指纹不一致，恢复存在歧义".into());
         }
@@ -2427,10 +2701,17 @@ fn rollback_materialize_journal(target: &Path, journal_path: &Path) -> Result<()
     }
     let temporary = parent.join(&journal.temporary);
     let backup = parent.join(&journal.backup);
+    if journal.stage == MaterializeTransactionStage::Preparing {
+        return recover_materialize_journal(target, journal_path);
+    }
+    let new_digest = journal
+        .new_digest
+        .as_deref()
+        .ok_or_else(|| "回滚事务缺少新树指纹".to_string())?;
     let target_digest = digest_if_plain_directory(target)?;
     let temporary_digest = digest_if_plain_directory(&temporary)?;
     let backup_digest = digest_if_plain_directory(&backup)?;
-    let target_is_new = target_digest.as_deref() == Some(journal.new_digest.as_str());
+    let target_is_new = target_digest.as_deref() == Some(new_digest);
     let target_is_old = journal
         .old_digest
         .as_ref()
@@ -2439,7 +2720,7 @@ fn rollback_materialize_journal(target: &Path, journal_path: &Path) -> Result<()
         .old_digest
         .as_ref()
         .is_some_and(|old| backup_digest.as_deref() == Some(old.as_str()));
-    let temporary_is_new = temporary_digest.as_deref() == Some(journal.new_digest.as_str());
+    let temporary_is_new = temporary_digest.as_deref() == Some(new_digest);
 
     if temporary_digest.is_some() && !temporary_is_new {
         return Err("回滚时 temporary 与新目录指纹不一致，保留全部对象".into());
@@ -2930,6 +3211,11 @@ pub async fn skills_save(
             message: "技能内容不能为空".into(),
         });
     }
+    if content.len() as u64 > crate::skill_import::model::MAX_SKILL_MD_BYTES {
+        return Err(SkillCommandError::InvalidRequest {
+            message: "SKILL.md 不能超过 1 MiB".into(),
+        });
+    }
     if let (Some(fm_name), _) = parse_frontmatter(&content) {
         if !fm_name.is_empty() && fm_name != name {
             return Err(SkillCommandError::InvalidRequest {
@@ -3081,15 +3367,28 @@ mod tests {
             snapshot
                 .skills
                 .iter()
-                .map(|skill| (skill.name.as_str(), skill.default_enabled))
+                .map(|skill| {
+                    (
+                        skill.name.as_str(),
+                        skill.default_enabled,
+                        skill.can_set_default,
+                        skill.can_edit,
+                    )
+                })
                 .collect::<Vec<_>>(),
             vec![
-                ("COM1", false),
-                ("CON", false),
-                ("foo.", false),
-                ("strict", true)
+                ("COM1", false, false, false),
+                ("CON", false, false, false),
+                ("foo.", false, false, false),
+                ("strict", true, true, true)
             ]
         );
+        let serialized = serde_json::to_value(&snapshot.skills).unwrap();
+        assert_eq!(serialized[1]["name"], "CON");
+        assert_eq!(serialized[1]["can_set_default"], false);
+        assert_eq!(serialized[1]["can_edit"], false);
+        assert_eq!(serialized[3]["can_set_default"], true);
+        assert_eq!(serialized[3]["can_edit"], true);
         assert!(cfg.join(REVISION_FILE).is_file());
         assert!(cfg.join(REVISION_MIGRATION_FILE).is_file());
 
@@ -3115,6 +3414,56 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["strict"]
         );
+    }
+
+    #[test]
+    fn legacy_1_2_mib_skill_migrates_lists_materializes_and_deletes_without_global_relaxation() {
+        let cfg = test_dir("legacy-large-skill");
+        let mut content = "---\nname: legacy-large\ndescription: migrated\n---\n".to_string();
+        content.push_str(&"x".repeat(1_200 * 1024));
+        assert!(content.len() as u64 > crate::skill_import::model::MAX_SKILL_MD_BYTES);
+        put_skill(&cfg.join("skills"), "legacy-large", &content);
+
+        let state = SkillStoreState::new(cfg.clone()).unwrap();
+        let snapshot = state.snapshot(None).unwrap();
+        assert_eq!(snapshot.revision, MIGRATED_INITIAL_REVISION);
+        assert_eq!(snapshot.skills.len(), 1);
+        assert_eq!(snapshot.skills[0].name, "legacy-large");
+        assert_eq!(snapshot.skills[0].content.len(), content.len());
+        let marker: RevisionMigrationDocument =
+            serde_json::from_slice(&fs::read(cfg.join(REVISION_MIGRATION_FILE)).unwrap()).unwrap();
+        assert!(marker.legacy_large_skills.contains_key("legacy-large"));
+
+        let target = cfg.join("session/skills");
+        assert_eq!(
+            state
+                .materialize(&target, None, Some(&["legacy-large".into()]))
+                .unwrap(),
+            vec!["legacy-large"]
+        );
+        assert_eq!(
+            fs::read_to_string(target.join("legacy-large/SKILL.md")).unwrap(),
+            content
+        );
+
+        // marker 只豁免迁移时按 digest 绑定的对象。迁移后手工放入的大文件仍走
+        // 当前严格上限，且失败不会破坏上次成功物化的 target。
+        put_skill(&cfg.join("skills"), "untrusted-large", &content);
+        let error = state
+            .materialize(&target, None, Some(&["untrusted-large".into()]))
+            .unwrap_err();
+        assert!(error.to_string().contains("1 MiB"));
+        assert!(target.join("legacy-large/SKILL.md").is_file());
+        assert!(!target.join("untrusted-large").exists());
+
+        state.delete_skill("legacy-large", None).unwrap();
+        assert!(!cfg.join("skills/legacy-large").exists());
+        assert!(state
+            .snapshot(None)
+            .unwrap()
+            .skills
+            .iter()
+            .all(|skill| skill.name != "legacy-large"));
     }
 
     #[cfg(unix)]
@@ -3231,16 +3580,16 @@ mod tests {
         let defaults = user.join("no-defaults.json");
         let steps = [
             MaterializeStep::ValidateParent,
+            MaterializeStep::ValidateTarget,
+            MaterializeStep::WritePreparingJournal,
             MaterializeStep::CreateTemporary,
             MaterializeStep::ScanCatalog,
             MaterializeStep::CopySkill,
             MaterializeStep::SyncTemporary,
-            MaterializeStep::ValidateTarget,
             MaterializeStep::BackupOld,
             MaterializeStep::SyncParentAfterBackup,
             MaterializeStep::InstallNew,
             MaterializeStep::SyncParentAfterInstall,
-            MaterializeStep::CleanupBackup,
         ];
 
         for (index, failed_step) in steps.into_iter().enumerate() {
@@ -3282,8 +3631,135 @@ mod tests {
     }
 
     #[test]
+    fn first_materialize_journal_write_failure_cleans_untracked_temporary_and_can_retry() {
+        let user = test_dir("materialize-prejournal-user");
+        put_skill(&user, "new-skill", "new");
+        let root = test_dir("materialize-prejournal-root");
+        let target = root.join("skills");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("old.marker"), "old").unwrap();
+        let journal = root.join("custom-materialize.json");
+        let mut injected = false;
+
+        let error = materialize_unlocked_with_journal(
+            &target,
+            &journal,
+            None,
+            &user,
+            &user.join("no-defaults.json"),
+            Some(&["new-skill".into()]),
+            &mut |step| {
+                if step == MaterializeStep::WritePreparingJournal && !injected {
+                    injected = true;
+                    fs::create_dir(&journal).unwrap();
+                }
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("物化事务日志不是普通文件"));
+        assert_eq!(
+            fs::read_to_string(target.join("old.marker")).unwrap(),
+            "old"
+        );
+        assert!(
+            fs::read_dir(&root).unwrap().flatten().all(|entry| !entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".skills.materialize-")),
+            "首次日志写失败不得留下未登记 temporary"
+        );
+
+        fs::remove_dir(&journal).unwrap();
+        let done = materialize_unlocked_with_journal(
+            &target,
+            &journal,
+            None,
+            &user,
+            &user.join("no-defaults.json"),
+            Some(&["new-skill".into()]),
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(done, vec!["new-skill"]);
+        assert_eq!(
+            fs::read_to_string(target.join("new-skill/SKILL.md")).unwrap(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn installed_target_survives_partial_backup_cleanup_failure_and_restart_recovery() {
+        let user = test_dir("materialize-partial-backup-user");
+        put_skill(&user, "new-skill", "new");
+        let root = test_dir("materialize-partial-backup-root");
+        let target = root.join("skills");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("old-a.marker"), "old-a").unwrap();
+        fs::write(target.join("old-b.marker"), "old-b").unwrap();
+        let journal = default_materialize_journal_path(&target).unwrap();
+
+        let done = materialize_unlocked_with_hook(
+            &target,
+            None,
+            &user,
+            &user.join("no-defaults.json"),
+            Some(&["new-skill".into()]),
+            |step| {
+                if step == MaterializeStep::CleanupBackup {
+                    let backup = fs::read_dir(&root)
+                        .unwrap()
+                        .flatten()
+                        .find(|entry| {
+                            entry
+                                .file_name()
+                                .to_string_lossy()
+                                .starts_with(".skills.backup-")
+                        })
+                        .unwrap()
+                        .path();
+                    fs::remove_file(backup.join("old-a.marker")).unwrap();
+                    return Err("injected partial backup cleanup failure".into());
+                }
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(done, vec!["new-skill"]);
+        assert_eq!(
+            fs::read_to_string(target.join("new-skill/SKILL.md")).unwrap(),
+            "new"
+        );
+        assert!(journal.is_file(), "清理失败时必须保留 Installed 日志");
+
+        recover_session_materialization(&target, &journal).unwrap();
+        assert_eq!(
+            fs::read_to_string(target.join("new-skill/SKILL.md")).unwrap(),
+            "new",
+            "恢复不得误删已提交 target"
+        );
+        let leftovers = fs::read_dir(&root)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| {
+                name.starts_with(".skills.materialize-")
+                    || name.starts_with(".skills.backup-")
+                    || name == ".skills.materialize.json"
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            leftovers.is_empty(),
+            "恢复必须收敛残缺 backup/log: {leftovers:?}"
+        );
+    }
+
+    #[test]
     fn real_process_crash_reentry_recovers_every_materialize_stage_without_orphans() {
         for boundary in [
+            "preparing-journal-synced",
+            "temporary-created",
+            "temporary-synced",
             "journal-prepared",
             "backup-renamed",
             "backup-stage-synced",

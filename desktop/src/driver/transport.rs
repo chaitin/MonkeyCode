@@ -378,6 +378,8 @@ impl OhmyDriver {
                 sidecar_write: Arc::new(super::session::SidecarWriteLock::new()),
                 #[cfg(test)]
                 fail_next_session_skills_commit: std::sync::atomic::AtomicBool::new(false),
+                #[cfg(test)]
+                fail_next_engine_session_cleanup: std::sync::atomic::AtomicBool::new(false),
                 deleted_sessions: Arc::new(StdMutex::new(HashSet::new())),
                 perm_remember: StdMutex::new(perm_remember),
                 pending_questions: StdMutex::new(HashMap::new()),

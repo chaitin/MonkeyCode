@@ -89,10 +89,12 @@ fn initialize_skill_runtime_with(
         .map_err(|error| format!("初始化技能库状态失败: {error}"))?;
     recover(&store).map_err(|error| format!("启动技能事务恢复失败: {error}"))?;
     let lease_store = store.clone();
-    let imports = SkillImportState::open(&config_dir, move |path| {
+    let imports = SkillImportState::open_resilient(&config_dir, move |path| {
         lease_store.protects_staging_path(path)
-    })
-    .map_err(|error| format!("初始化技能导入暂存失败: {error}"))?;
+    });
+    if let Some(error) = imports.unavailable_error() {
+        eprintln!("[desktop] 技能导入暂存初始化失败，导入功能暂不可用: {error:?}");
+    }
     Ok((store, imports))
 }
 
@@ -2290,6 +2292,36 @@ mod skill_runtime_registration_tests {
             !root.join("skill-import-staging").exists(),
             "恢复失败后不应继续创建 lease 或清理孤儿暂存"
         );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn corrupt_import_ledger_degrades_only_import_and_can_retry_without_overwrite() {
+        let root = test_dir("corrupt-import-ledger");
+        std::fs::create_dir_all(&root).unwrap();
+        let ledger = root.join("skill-import-staging.usage.json");
+        let corrupt = b"{ definitely-not-json";
+        std::fs::write(&ledger, corrupt).unwrap();
+
+        let (_store, imports) = initialize_skill_runtime_with(root.clone(), |_| Ok(()))
+            .expect("导入子系统失败不应阻止核心技能库与应用启动");
+        let error = imports
+            .ensure_available()
+            .expect_err("损坏账本必须保持 unavailable");
+        let payload = serde_json::to_value(error).unwrap();
+        assert_eq!(payload["code"], "skill-import-unavailable");
+        assert!(payload["action"].as_str().unwrap().contains("修复"));
+        assert_eq!(
+            std::fs::read(&ledger).unwrap(),
+            corrupt,
+            "不得重建覆盖损坏账本"
+        );
+
+        std::fs::remove_file(&ledger).unwrap();
+        imports
+            .ensure_available()
+            .expect("用户修复账本后下一次导入操作应重试初始化");
+        assert!(root.join("skill-import-staging.usage.json").is_file());
         let _ = std::fs::remove_dir_all(root);
     }
 }

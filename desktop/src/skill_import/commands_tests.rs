@@ -139,6 +139,40 @@ fn stage_one(state: &SkillImportState, store: &SkillStoreState, source: PathBuf)
     state.current().batch.unwrap().items[0].item_id.clone()
 }
 
+fn preview_skill_content(
+    label: &str,
+    fallback_name: &str,
+    content: &str,
+) -> (TestRoot, SkillImportItem) {
+    let root = TestRoot::new(label);
+    let config = root.path().join("config");
+    fs::create_dir_all(&config).unwrap();
+    let state =
+        SkillImportState::with_staging_instance(StagingInstance::open(&config, |_| false).unwrap());
+    let source = root.path().join("sources").join(fallback_name);
+    fs::create_dir_all(&source).unwrap();
+    fs::write(source.join("SKILL.md"), content).unwrap();
+    state.create_batch("batch").unwrap();
+    let token = state.reserve_source_pick("batch").unwrap();
+    let staged = stage_selected_paths(
+        state.staging_instance().unwrap(),
+        SkillImportSourceKind::Folders,
+        vec![source],
+        0,
+    )
+    .unwrap();
+    state.complete_source_picks(&token, staged).unwrap();
+    let item = state
+        .current()
+        .batch
+        .unwrap()
+        .items
+        .into_iter()
+        .next()
+        .unwrap();
+    (root, item)
+}
+
 fn decision(item_id: &str, action: SkillImportAction) -> Vec<SkillImportDecision> {
     vec![SkillImportDecision {
         item_id: item_id.into(),
@@ -154,6 +188,8 @@ fn catalog_skill(name: &str, source: &str) -> SkillInfo {
         content: String::new(),
         overrides: false,
         default_enabled: false,
+        can_set_default: true,
+        can_edit: true,
     }
 }
 
@@ -262,6 +298,213 @@ fn desktop_name_fixtures_match_preview_and_install_targets() {
             );
         }
     }
+}
+
+#[test]
+fn nested_name_is_rejected_but_other_nested_metadata_remains_importable() {
+    let (_root, ambiguous) = preview_skill_content(
+        "nested-name",
+        "fallback",
+        "---\nname: top-level\ndescription: top\nmetadata:\n  name: nested-override\n---\n# Body\n",
+    );
+    assert!(matches!(
+        &ambiguous.validity,
+        SkillImportValidity::Invalid { reasons }
+            if reasons.iter().any(|reason| reason.contains("嵌套 name") && reason.contains("Agent"))
+    ));
+    assert_eq!(ambiguous.name, None);
+
+    let (_root, normal) = preview_skill_content(
+        "nested-metadata",
+        "fallback",
+        "---\nname: top-level\ndescription: top\nmetadata:\n  category: design\n  enabled: true\n---\n# Body\n",
+    );
+    assert_eq!(normal.validity, SkillImportValidity::Valid);
+    assert_eq!(normal.name.as_deref(), Some("top-level"));
+}
+
+#[test]
+fn agent_scanner_frontmatter_line_limit_is_byte_exact_and_actionable() {
+    fn content_with_line(prefix: &str, total_line_bytes: usize) -> String {
+        assert!(prefix.len() <= total_line_bytes);
+        format!(
+            "---\nname: line-limit\n{prefix}{}\n---\n# Body\n",
+            "x".repeat(total_line_bytes - prefix.len())
+        )
+    }
+
+    let (_root, boundary) = preview_skill_content(
+        "line-boundary",
+        "line-limit",
+        &content_with_line("description: ", AGENT_SCANNER_SAFE_LINE_BYTES),
+    );
+    assert_eq!(boundary.validity, SkillImportValidity::Valid);
+
+    // CRLF 的 CR 属于 Scanner token：元数据正文 65,534 字节 + CR 恰可用，
+    // 再多一个正文 byte 就必须拒绝。
+    let crlf_at_boundary = format!(
+        "---\r\nname: line-limit\r\ndescription: {}\r\n---\r\n# Body\r\n",
+        "x".repeat(AGENT_SCANNER_SAFE_LINE_BYTES - "description: ".len() - 1)
+    );
+    let (_root, crlf_boundary) =
+        preview_skill_content("line-boundary-crlf", "line-limit", &crlf_at_boundary);
+    assert_eq!(crlf_boundary.validity, SkillImportValidity::Valid);
+    let crlf_over_boundary = format!(
+        "---\r\nname: line-limit\r\ndescription: {}\r\n---\r\n# Body\r\n",
+        "x".repeat(AGENT_SCANNER_SAFE_LINE_BYTES - "description: ".len())
+    );
+    let (_root, crlf_over) =
+        preview_skill_content("line-over-crlf", "line-limit", &crlf_over_boundary);
+    assert!(matches!(
+        crlf_over.validity,
+        SkillImportValidity::Invalid { ref reasons }
+            if reasons.iter().any(|reason| reason.contains("65535"))
+    ));
+
+    for (label, prefix, bytes) in [
+        ("description-70k", "description: ", 70 * 1024),
+        ("unknown-70k", "unknown-metadata: ", 70 * 1024),
+        (
+            "one-over-boundary",
+            "unknown-metadata: ",
+            AGENT_SCANNER_SAFE_LINE_BYTES + 1,
+        ),
+    ] {
+        let (_root, item) =
+            preview_skill_content(label, "line-limit", &content_with_line(prefix, bytes));
+        assert!(
+            matches!(
+                &item.validity,
+                SkillImportValidity::Invalid { reasons }
+                    if reasons.iter().any(|reason|
+                        reason.contains("frontmatter 单行")
+                            && reason.contains("65535")
+                            && reason.contains("拆分或缩短"))
+            ),
+            "label={label}: {:?}",
+            item.validity
+        );
+    }
+
+    // 限制只覆盖 Agent 会作为 frontmatter 扫描的元数据范围；正文长行仍可导入。
+    let long_body = format!(
+        "---\nname: body-line\ndescription: short\n---\n{}\n",
+        "x".repeat(70 * 1024)
+    );
+    let (_root, body) = preview_skill_content("long-body", "body-line", &long_body);
+    assert_eq!(body.validity, SkillImportValidity::Valid);
+}
+
+#[test]
+fn agent_scanner_limits_only_the_body_prefix_used_to_derive_missing_description() {
+    let long_line = "x".repeat(70 * 1024);
+    for (label, body, frontmatter) in [
+        (
+            "missing-description-long-first",
+            format!("{long_line}\n"),
+            true,
+        ),
+        (
+            "missing-description-empty-then-long",
+            format!("\n   \n#   \n{long_line}\n"),
+            true,
+        ),
+        ("no-frontmatter-long-first", format!("{long_line}\n"), false),
+        (
+            "no-frontmatter-empty-then-long",
+            format!("\n   \n#   \n{long_line}\n"),
+            false,
+        ),
+    ] {
+        let content = if frontmatter {
+            format!("---\nname: body-description\n---\n{body}")
+        } else {
+            body
+        };
+        let (_root, item) = preview_skill_content(label, "body-description", &content);
+        assert!(
+            matches!(
+                &item.validity,
+                SkillImportValidity::Invalid { reasons }
+                    if reasons.iter().any(|reason|
+                        reason.contains("Agent 为推导 description")
+                            && reason.contains("65535")
+                            && reason.contains("简短 description 或正文标题"))
+            ),
+            "label={label}: {:?}",
+            item.validity
+        );
+    }
+
+    let short_then_long = format!("---\nname: body-description\n---\n# Short title\n{long_line}\n");
+    let (_root, accepted) = preview_skill_content(
+        "missing-description-short-then-long",
+        "body-description",
+        &short_then_long,
+    );
+    assert_eq!(accepted.validity, SkillImportValidity::Valid);
+    assert_eq!(accepted.description, "Short title");
+
+    let no_frontmatter_short_then_long = format!("# Short title\n{long_line}\n");
+    let (_root, accepted) = preview_skill_content(
+        "no-frontmatter-short-then-long",
+        "body-description",
+        &no_frontmatter_short_then_long,
+    );
+    assert_eq!(accepted.validity, SkillImportValidity::Valid);
+    assert_eq!(accepted.description, "Short title");
+}
+
+#[test]
+fn successful_new_import_is_installed_disabled_without_changing_existing_defaults() {
+    let (root, state, store, source) = fixture("default-disabled", "imported-disabled");
+    store
+        .save_skill(
+            "existing-enabled",
+            "---\ndescription: existing\n---\n# Existing\n",
+            None,
+        )
+        .unwrap();
+    store.set_default("existing-enabled", true, None).unwrap();
+    let item_id = stage_one(&state, &store, source);
+
+    let guard = state.begin_initial_commit("batch").unwrap();
+    let result = commit_blocking(
+        state,
+        store.clone(),
+        None,
+        "batch".into(),
+        decision(&item_id, SkillImportAction::Install),
+        true,
+        guard,
+    )
+    .unwrap();
+
+    assert_eq!(result.success_count, 1);
+    let snapshot = store.snapshot(None).unwrap();
+    assert_eq!(
+        snapshot
+            .skills
+            .iter()
+            .find(|skill| skill.name == "imported-disabled")
+            .map(|skill| skill.default_enabled),
+        Some(false)
+    );
+    assert_eq!(
+        snapshot
+            .skills
+            .iter()
+            .find(|skill| skill.name == "existing-enabled")
+            .map(|skill| skill.default_enabled),
+        Some(true)
+    );
+    assert_eq!(
+        skills::load_default_prefs(&skills::defaults_path(&root.path().join("config"))),
+        std::collections::BTreeMap::from([
+            ("existing-enabled".to_string(), true),
+            ("imported-disabled".to_string(), false),
+        ])
+    );
 }
 
 #[test]
@@ -430,6 +673,109 @@ fn initial_risk_failure_is_zero_write_and_success_advances_revision() {
     assert_eq!(result.success_count, 1);
     assert_eq!(result.catalog_revision, Some(1));
     assert!(config.join("skills/risky/SKILL.md").is_file());
+}
+
+#[test]
+fn commit_rechecks_agent_metadata_contract_even_with_a_rebased_staged_fingerprint() {
+    let (root, state, store, source) = fixture("metadata-recheck", "metadata-recheck");
+    state.create_batch("batch").unwrap();
+    let token = state.reserve_source_pick("batch").unwrap();
+    let mut staged = stage_selected_paths(
+        state.staging_instance().unwrap(),
+        SkillImportSourceKind::Folders,
+        vec![source],
+        0,
+    )
+    .unwrap();
+    let staged_item = &mut staged[0].source.items[0];
+    assert_eq!(staged_item.preview.validity, SkillImportValidity::Valid);
+    let staged_root = staged_item.staged_root.as_ref().unwrap();
+    fs::write(
+        staged_root.join("SKILL.md"),
+        "---\nname: metadata-recheck\nmetadata:\n  name: agent-override\n---\nbody\n",
+    )
+    .unwrap();
+    // 模拟预览后内容被替换且低层 identity 也被重新基准化；提交层不能只相信
+    // preview/fingerprint，仍须按当前 Agent 契约重读 SKILL.md。
+    staged_item.staged_fingerprint = Some(FixedStagedSkillRoot::capture(staged_root).unwrap());
+    state.complete_source_picks(&token, staged).unwrap();
+    let preview = state.current().batch.unwrap();
+    state
+        .update_collecting_conflicts("batch", &conflict_updates(&preview.items, &[]))
+        .unwrap();
+    let item_id = preview.items[0].item_id.clone();
+
+    let guard = state.begin_initial_commit("batch").unwrap();
+    let error = commit_blocking(
+        state.clone(),
+        store.clone(),
+        None,
+        "batch".into(),
+        decision(&item_id, SkillImportAction::Install),
+        true,
+        guard,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        SkillCommandError::InvalidRequest { ref message }
+            if message.contains("嵌套 name") && message.contains("Agent")
+    ));
+    assert_eq!(store.current_revision_for_test(), 0);
+    assert!(!root.path().join("config/skills/metadata-recheck").exists());
+    assert_eq!(
+        state.current().batch.unwrap().phase,
+        SkillImportBatchPhase::Collecting
+    );
+}
+
+#[test]
+fn commit_rechecks_missing_description_body_scanner_limit_before_store_write() {
+    let (root, state, store, source) = fixture("body-description-recheck", "body-recheck");
+    state.create_batch("batch").unwrap();
+    let token = state.reserve_source_pick("batch").unwrap();
+    let mut staged = stage_selected_paths(
+        state.staging_instance().unwrap(),
+        SkillImportSourceKind::Folders,
+        vec![source],
+        0,
+    )
+    .unwrap();
+    let staged_item = &mut staged[0].source.items[0];
+    assert_eq!(staged_item.preview.validity, SkillImportValidity::Valid);
+    let staged_root = staged_item.staged_root.as_ref().unwrap();
+    let changed = format!("{}\n", "x".repeat(70 * 1024));
+    fs::write(staged_root.join("SKILL.md"), changed).unwrap();
+    staged_item.staged_fingerprint = Some(FixedStagedSkillRoot::capture(staged_root).unwrap());
+    state.complete_source_picks(&token, staged).unwrap();
+    let preview = state.current().batch.unwrap();
+    state
+        .update_collecting_conflicts("batch", &conflict_updates(&preview.items, &[]))
+        .unwrap();
+    let item_id = preview.items[0].item_id.clone();
+
+    let guard = state.begin_initial_commit("batch").unwrap();
+    let error = commit_blocking(
+        state.clone(),
+        store.clone(),
+        None,
+        "batch".into(),
+        decision(&item_id, SkillImportAction::Install),
+        true,
+        guard,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        SkillCommandError::InvalidRequest { ref message }
+            if message.contains("Agent 为推导 description") && message.contains("65535")
+    ));
+    assert_eq!(store.current_revision_for_test(), 0);
+    assert!(!root.path().join("config/skills/body-recheck").exists());
+    assert_eq!(
+        state.current().batch.unwrap().phase,
+        SkillImportBatchPhase::Collecting
+    );
 }
 
 #[test]

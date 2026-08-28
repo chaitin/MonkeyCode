@@ -484,7 +484,7 @@ fn late_source_merge_is_rejected_and_explicitly_releases_reservation() {
 }
 
 #[test]
-fn late_source_cleanup_permission_denied_is_structured_and_preserves_staging_ledger() {
+fn late_source_cleanup_permission_denied_preserves_rejection_and_queues_guard() {
     let config = TestConfig::new("late-source-cleanup-denied");
     let instance = StagingInstance::open(&config.root, |_| false).unwrap();
     let state = SkillImportState::with_staging_instance(instance.clone());
@@ -520,14 +520,19 @@ fn late_source_cleanup_permission_denied_is_structured_and_preserves_staging_led
             Some(reservation),
         )
         .unwrap_err();
-    assert!(matches!(
-        error,
-        SkillCommandError::CleanupFailed { ref target, .. }
-            if target == "来源暂存目录"
-    ));
+    assert!(matches!(error, SkillCommandError::Busy));
+    assert_eq!(state.pending_cleanup_count(), 1);
     assert!(staged_root.exists());
     assert_eq!(instance.config_usage().unwrap(), usage);
     assert!(state.current().batch.unwrap().sources.is_empty());
+
+    state.clear_pending_cleanup_errors_for_test();
+    state
+        .retry_pending_cleanup(PENDING_CLEANUP_RETRY_LIMIT)
+        .unwrap();
+    assert_eq!(state.pending_cleanup_count(), 0);
+    assert!(!staged_root.exists());
+    assert_eq!(instance.config_usage().unwrap(), StagingUsage::default());
 }
 
 #[test]
@@ -591,8 +596,8 @@ fn same_item_id_from_different_sources_is_rejected_and_cannot_leave_completed_pe
 }
 
 #[test]
-fn duplicate_source_cleanup_permission_denied_is_structured_and_preserves_staging_ledger() {
-    let config = TestConfig::new("merge-reject-cleanup-denied");
+fn rejected_duplicate_cleanup_is_queued_and_reclaims_quota_without_restart() {
+    let config = TestConfig::new("merge-reject-cleanup-retry");
     let instance = StagingInstance::open(&config.root, |_| false).unwrap();
     let state = SkillImportState::with_staging_instance(instance.clone());
     state.create_batch("batch").unwrap();
@@ -629,17 +634,36 @@ fn duplicate_source_cleanup_permission_denied_is_structured_and_preserves_stagin
         .unwrap_err();
     assert!(matches!(
         error,
-        SkillCommandError::CleanupFailed { ref target, .. }
-            if target == "来源暂存目录"
+        SkillCommandError::Io { ref message } if message.contains("来源已存在于当前批次")
     ));
-    assert!(staged_root.exists(), "显式清理失败后必须保留 staging");
+    assert_eq!(state.pending_cleanup_count(), 1);
+    assert!(staged_root.exists(), "首次立即清理失败后必须保留 staging");
     assert_eq!(
         instance.config_usage().unwrap(),
         usage,
         "必须保留 ledger 配额"
     );
+
+    // 注入仍在，运行期维护的第二次立即清理也失败，但 guard 必须继续留在队列。
+    assert!(matches!(
+        state.retry_pending_cleanup(PENDING_CLEANUP_RETRY_LIMIT),
+        Err(SkillCommandError::CleanupFailed { .. })
+    ));
+    assert_eq!(state.pending_cleanup_count(), 1);
+    assert!(staged_root.exists());
+    assert_eq!(instance.config_usage().unwrap(), usage);
+
+    // 模拟临时占用解除；同一进程下一次 current/pick/cancel 的维护入口完成回收。
+    state.clear_pending_cleanup_errors_for_test();
+    state
+        .retry_pending_cleanup(PENDING_CLEANUP_RETRY_LIMIT)
+        .unwrap();
+    assert_eq!(state.pending_cleanup_count(), 0);
+    assert!(!staged_root.exists());
+    assert_eq!(instance.config_usage().unwrap(), StagingUsage::default());
+
     let snapshot = state.current().batch.unwrap();
-    assert_eq!(snapshot.sources.len(), 1);
+    assert_eq!(snapshot.sources.len(), 1, "拒绝来源不能在后续批次中复现");
     assert_eq!(snapshot.in_flight_source_picks, 0);
 }
 

@@ -1372,6 +1372,7 @@ fn bare_inner_rpc(
             batch: Arc::new(StdMutex::new(HashMap::new())),
             sidecar_write: Arc::new(super::super::session::SidecarWriteLock::new()),
             fail_next_session_skills_commit: std::sync::atomic::AtomicBool::new(false),
+            fail_next_engine_session_cleanup: std::sync::atomic::AtomicBool::new(false),
             deleted_sessions: Arc::new(StdMutex::new(HashSet::new())),
             perm_remember: StdMutex::new(HashSet::new()),
             pending_questions: StdMutex::new(HashMap::new()),
@@ -2603,6 +2604,63 @@ async fn session_skills_commit_does_not_reenter_store_after_destroy_starts() {
 }
 
 #[tokio::test]
+async fn session_skills_rpc_does_not_block_reader_sidecar_write() {
+    let (inner, _events, mut stdin_rx) =
+        bare_inner_rpc_with_test_model("session-skills-reader-sidecar");
+    install_ready_skill_session(&inner);
+    let driver = OhmyDriver(inner.clone());
+    let call = tokio::spawn(async move {
+        driver
+            .session_call("s1", "session_set_skills", json!({ "skills": [] }))
+            .await
+    });
+
+    let destroy: Value = serde_json::from_str(
+        &stdin_rx
+            .recv()
+            .await
+            .unwrap()
+            .expect("非 shutdown destroy RPC"),
+    )
+    .unwrap();
+    assert_eq!(destroy["method"], "session/destroy");
+
+    let reader_inner = inner.clone();
+    tokio::time::timeout(
+        Duration::from_millis(200),
+        tokio::task::spawn_blocking(move || {
+            reader_inner.write_sidecar("s1", |meta| meta["reader_marker"] = json!(true));
+        }),
+    )
+    .await
+    .expect("Agent RPC 等待期间 reader sidecar 写不应被全局锁阻断")
+    .unwrap();
+
+    answer_rpc(
+        &inner,
+        &destroy,
+        json!({ "jsonrpc": "2.0", "id": destroy["id"], "result": { "status": "destroyed" } }),
+    );
+    let create: Value = serde_json::from_str(
+        &stdin_rx
+            .recv()
+            .await
+            .unwrap()
+            .expect("非 shutdown create RPC"),
+    )
+    .unwrap();
+    answer_rpc(
+        &inner,
+        &create,
+        json!({ "jsonrpc": "2.0", "id": create["id"], "result": { "session_id": "s1" } }),
+    );
+    call.await.unwrap().unwrap();
+    let meta = inner.read_sidecar("s1");
+    assert_eq!(meta["reader_marker"], true, "提交不得覆盖 RPC 期间通知字段");
+    assert_eq!(meta["skills_revision"], 2);
+}
+
+#[tokio::test]
 async fn session_skills_sidecar_failure_destroys_unpromoted_new_engine() {
     let (inner, _events, mut stdin_rx) =
         bare_inner_rpc_with_test_model("session-skills-sidecar-compensation");
@@ -2978,6 +3036,31 @@ async fn delete_tombstone_blocks_late_sidecar_and_derived_directory_rebuild() {
 
     assert!(!inner.session_dir("s1").unwrap().exists());
     assert!(!engine_dir.exists());
+}
+
+#[tokio::test]
+async fn delete_succeeds_after_authoritative_sidecar_removal_when_derived_cleanup_fails() {
+    let inner = bare_inner("delete-derived-cleanup-failure");
+    inner.write_sidecar("s1", |meta| {
+        meta["engine_id"] = json!("s1");
+        meta["skills"] = json!([]);
+    });
+    let engine_dir = inner.engine_session_dir("s1").unwrap();
+    std::fs::create_dir_all(&engine_dir).unwrap();
+    std::fs::write(engine_dir.join("derived"), b"keep for retry semantics").unwrap();
+    inner
+        .sess
+        .fail_next_engine_session_cleanup
+        .store(true, Ordering::SeqCst);
+    let driver = OhmyDriver(inner.clone());
+
+    assert_eq!(driver.session_delete("s1").await.unwrap()["ok"], true);
+    assert!(!inner.session_dir("s1").unwrap().exists());
+    assert!(engine_dir.exists(), "失败注入应只跳过派生目录清理");
+
+    let retry: Value = serde_json::from_str(&driver.session_delete("s1").await.unwrap_err())
+        .expect("重试应返回结构化不存在，而不是可重试删除失败");
+    assert_eq!(retry["code"], "session-meta-not-found");
 }
 
 #[cfg(unix)]

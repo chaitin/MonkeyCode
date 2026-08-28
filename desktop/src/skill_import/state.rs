@@ -14,8 +14,8 @@ use std::time::SystemTime;
 use super::archive::ArchiveSourceFingerprint;
 use super::folder::FolderSourceFingerprint;
 use super::lease::{
-    BatchAccounting, LeaseError, MergedSourceGuard, SourceMergeCandidate, SourceReservation,
-    StagingInstance,
+    BatchAccounting, CleanupGuardError, LeaseError, MergedSourceGuard, SourceMergeCandidate,
+    SourceReservation, StagingInstance,
 };
 use super::model::{
     SkillCommandError, SkillImportAction, SkillImportBatchPhase, SkillImportBatchPreview,
@@ -236,8 +236,8 @@ struct StateInner {
     slot: BatchSlot,
     next_pick_sequence: u64,
     events: VecDeque<SkillImportSnapshotEvent>,
-    /// cancel 墓碑发布后仍删除失败的来源。队列只在短临界区移交 guard；实际目录
-    /// 删除与 ledger 文件锁始终由命令层在 spawn_blocking 中调用 retry。
+    /// cancel 墓碑或来源拒绝后仍删除失败的来源。队列只在短临界区移交 guard；
+    /// 实际目录删除与 ledger 文件锁始终由命令层在 spawn_blocking 中调用 retry。
     pending_cleanup: VecDeque<MergedSourceGuard>,
 }
 
@@ -250,7 +250,19 @@ struct StateCore {
 #[derive(Clone)]
 pub(crate) struct SkillImportState {
     core: Arc<StateCore>,
-    staging_instance: Option<StagingInstance>,
+    staging: Arc<Mutex<StagingState>>,
+}
+
+type StagingPathProtection = dyn Fn(&Path) -> bool + Send + Sync;
+
+enum StagingState {
+    Unconfigured,
+    Ready(StagingInstance),
+    Retryable {
+        config_dir: PathBuf,
+        protects: Arc<StagingPathProtection>,
+        last_error: LeaseError,
+    },
 }
 
 impl Default for SkillImportState {
@@ -272,7 +284,7 @@ impl SkillImportState {
                 }),
                 snapshot_clock: AtomicU64::new(0),
             }),
-            staging_instance: None,
+            staging: Arc::new(Mutex::new(StagingState::Unconfigured)),
         }
     }
 
@@ -286,19 +298,97 @@ impl SkillImportState {
     }
 
     pub(crate) fn with_staging_instance(staging_instance: StagingInstance) -> Self {
-        let mut state = Self::new();
-        state.staging_instance = Some(staging_instance);
+        let state = Self::new();
+        *state
+            .staging
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = StagingState::Ready(staging_instance);
         state
     }
 
-    pub(crate) fn staging_instance(&self) -> Result<StagingInstance, SkillCommandError> {
-        self.staging_instance
-            .clone()
-            .ok_or_else(|| invalid_request("技能导入状态未配置 instance lease"))
+    /// 启动时导入 lease 初始化失败只禁用导入；后续 IPC 会用同一配置与保护规则重试。
+    pub(crate) fn open_resilient(
+        config_dir: &Path,
+        belongs_to_install_transaction: impl Fn(&Path) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        let protects: Arc<StagingPathProtection> = Arc::new(belongs_to_install_transaction);
+        match StagingInstance::open(config_dir, |path| protects(path)) {
+            Ok(instance) => Self::with_staging_instance(instance),
+            Err(last_error) => {
+                let state = Self::new();
+                *state
+                    .staging
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = StagingState::Retryable {
+                    config_dir: config_dir.to_path_buf(),
+                    protects,
+                    last_error,
+                };
+                state
+            }
+        }
     }
 
-    /// 有界取出 cancel 遗留 guard 后在状态锁外重试文件系统清理。失败 guard 会重新
-    /// 入队，确保当前进程解除占用后无需重启即可再次回收目录与配置配额。
+    pub(crate) fn ensure_available(&self) -> Result<(), SkillCommandError> {
+        self.staging_instance().map(|_| ())
+    }
+
+    pub(crate) fn unavailable_error(&self) -> Option<SkillCommandError> {
+        let staging = self
+            .staging
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        match &*staging {
+            StagingState::Retryable { last_error, .. } => Some(SkillCommandError::SkillImportUnavailable {
+                message: format!("技能导入暂存不可用: {last_error}"),
+                action: "请检查配置目录权限；若提示账本损坏，请先备份并修复 skill-import-staging.usage.json，然后重试导入操作".into(),
+            }),
+            StagingState::Unconfigured | StagingState::Ready(_) => None,
+        }
+    }
+
+    pub(crate) fn staging_instance(&self) -> Result<StagingInstance, SkillCommandError> {
+        let mut staging = self
+            .staging
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        match &*staging {
+            StagingState::Ready(instance) => return Ok(instance.clone()),
+            StagingState::Unconfigured => {
+                return Err(invalid_request("技能导入状态未配置 instance lease"));
+            }
+            StagingState::Retryable { .. } => {}
+        }
+        let StagingState::Retryable {
+            config_dir,
+            protects,
+            ..
+        } = &*staging
+        else {
+            unreachable!()
+        };
+        let config_dir = config_dir.clone();
+        let protects = protects.clone();
+        match StagingInstance::open(&config_dir, |path| protects(path)) {
+            Ok(instance) => {
+                *staging = StagingState::Ready(instance.clone());
+                Ok(instance)
+            }
+            Err(error) => {
+                let message = error.to_string();
+                if let StagingState::Retryable { last_error, .. } = &mut *staging {
+                    *last_error = error;
+                }
+                Err(SkillCommandError::SkillImportUnavailable {
+                    message: format!("技能导入暂存不可用: {message}"),
+                    action: "请检查配置目录权限；若提示账本损坏，请先备份并修复 skill-import-staging.usage.json，然后重试导入操作".into(),
+                })
+            }
+        }
+    }
+
+    /// 有界取出 cancel/来源拒绝遗留 guard 后在状态锁外重试文件系统清理。失败
+    /// guard 会重新入队，确保当前进程解除占用后无需重启即可回收目录与配置配额。
     pub(crate) fn retry_pending_cleanup(&self, limit: usize) -> Result<(), SkillCommandError> {
         if limit == 0 {
             return Ok(());
@@ -524,20 +614,20 @@ impl SkillImportState {
                 Err(rejected) => {
                     let (error, rejected) = rejected.into_parts();
                     if error == LeaseError::DuplicateSource {
-                        if let Err(cleanup) = rejected.cleanup() {
-                            let _ = cleanup_merged_sources(accepted);
+                        if let Err(failure) = rejected.cleanup() {
+                            self.retain_cleanup_failure(failure);
+                            self.cleanup_merged_sources(accepted);
                             self.clear_matching_pick(token);
-                            return Err(lease_error(cleanup.into_error()));
+                            return Err(lease_error(error));
                         }
                         continue;
                     }
-                    let cleanup = rejected.cleanup().err().map(|failure| failure.into_error());
-                    let accepted_cleanup = cleanup_merged_sources(accepted).err();
+                    if let Err(failure) = rejected.cleanup() {
+                        self.retain_cleanup_failure(failure);
+                    }
+                    self.cleanup_merged_sources(accepted);
                     self.clear_matching_pick(token);
-                    return Err(cleanup
-                        .or(accepted_cleanup)
-                        .map(lease_error)
-                        .unwrap_or_else(|| lease_error(error)));
+                    return Err(lease_error(error));
                 }
             }
         }
@@ -577,9 +667,9 @@ impl SkillImportState {
         };
         if let Some(error) = rejection {
             drop(inner);
-            let cleanup = cleanup_merged_sources(accepted).err();
+            self.cleanup_merged_sources(accepted);
             self.clear_matching_pick(token);
-            return Err(cleanup.map(lease_error).unwrap_or(error));
+            return Err(error);
         }
 
         let event = {
@@ -802,6 +892,24 @@ impl SkillImportState {
         build_result(batch)
     }
 
+    fn retain_cleanup_failure(&self, failure: CleanupGuardError<MergedSourceGuard>) {
+        let (_, guard) = failure.into_parts();
+        self.core.lock().pending_cleanup.push_back(guard);
+    }
+
+    fn cleanup_merged_sources(&self, candidates: Vec<(StagedImportSourceData, MergedSourceGuard)>) {
+        let mut pending = Vec::new();
+        for (_, candidate) in candidates {
+            if let Err(failure) = candidate.cleanup() {
+                let (_, guard) = failure.into_parts();
+                pending.push(guard);
+            }
+        }
+        if !pending.is_empty() {
+            self.core.lock().pending_cleanup.extend(pending);
+        }
+    }
+
     fn clear_matching_pick(&self, token: &SourcePickToken) {
         let mut inner = self.core.lock();
         let event = match &mut inner.slot {
@@ -875,18 +983,6 @@ fn reject_merged<T>(
         .cleanup()
         .map_err(|failure| lease_error(failure.into_error()))?;
     Err(error)
-}
-
-fn cleanup_merged_sources(
-    candidates: Vec<(StagedImportSourceData, MergedSourceGuard)>,
-) -> Result<(), LeaseError> {
-    let mut first_error = None;
-    for (_, candidate) in candidates {
-        if let Err(error) = candidate.cleanup() {
-            first_error.get_or_insert_with(|| error.into_error());
-        }
-    }
-    first_error.map_or(Ok(()), Err)
 }
 
 fn slot_error(slot: &BatchSlot, requested_batch_id: &str) -> SkillCommandError {

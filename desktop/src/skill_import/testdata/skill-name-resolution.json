@@ -5,13 +5,13 @@
       "id": "nested-frontmatter",
       "fallback_name": "nested-fallback",
       "content": "---\nname: TopLevel.Skill\ndescription: top level\nmetadata:\n  name: nested-map-name\narguments:\n  - name: nested-list-name\n---\n# body\n",
-      "expected_name": "TopLevel.Skill"
+      "expected_name": null
     },
     {
       "id": "whitespace-frontmatter-delimiters",
       "fallback_name": "whitespace-fallback",
       "content": " \t--- \t\nname: Whitespace.Delimiters\ndescription: whitespace delimiters\nmetadata:\n  name: nested-name\n  description: nested description\n \t--- \t\nname: body-must-not-override\n# body\n",
-      "expected_name": "Whitespace.Delimiters"
+      "expected_name": null
     },
     {
       "id": "missing-name-fallback",
@@ -42,13 +42,13 @@
       "id": "single-line-near-1mib",
       "fallback_name": "near-limit",
       "repeat": { "text": "x", "bytes": 1048575 },
-      "expected_name": "near-limit"
+      "expected_name": null
     },
     {
       "id": "single-line-equal-1mib",
       "fallback_name": "equal-limit",
       "repeat": { "text": "x", "bytes": 1048576 },
-      "expected_name": "equal-limit"
+      "expected_name": null
     },
     {
       "id": "single-line-over-1mib",

@@ -262,6 +262,7 @@ pub struct SkillRecoveryResolveResult {
 #[serde(tag = "code", rename_all = "kebab-case")]
 pub enum SkillCommandError {
     RecoveryPending { issues: Vec<SkillRecoveryIssue> },
+    SkillImportUnavailable { message: String, action: String },
     Busy,
     InvalidRequest { message: String },
     CandidateChanged { entry_path: String },

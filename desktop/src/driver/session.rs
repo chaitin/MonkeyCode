@@ -464,15 +464,12 @@ mod workdir_access_tests {
 
     #[test]
     fn distinguishes_missing_paths_and_creates_only_when_requested() {
-        let root = std::env::temp_dir().join(format!(
-            "monkeycode-workdir-test-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("monkeycode-workdir-test-{}", std::process::id()));
         let path = root.join("project");
         let _ = std::fs::remove_dir_all(&root);
 
-        let missing =
-            ensure_host_workdir(&path, "/project", false).expect_err("缺失目录应报错");
+        let missing = ensure_host_workdir(&path, "/project", false).expect_err("缺失目录应报错");
         assert!(missing.contains("工作区目录不存在"), "{missing}");
 
         ensure_host_workdir(&path, "/project", true).expect("按需创建目录");
@@ -791,7 +788,7 @@ pub(super) struct SessionState {
 /// 加锁秩序(评审梳理,不得反向):
 /// - sessions → batch:push_frame 在 sessions 锁内投递 journal 并入缓冲;
 /// - sessions → resume:session_open 原子登记恢复占位与完成广播;
-/// - 技能快照变更固定 skills_gate → sidecar_write → OS session lock →
+/// - 技能快照变更固定 skills_gate → OS session lock → sidecar_write →
 ///   SkillStoreState 共享读锁；技能库写路径禁止反向取会话锁;
 /// - pending_perms → pending_questions:sessions_list 的 waiting 快照;
 /// - perm_remember/perm_tools 点状取放,不与其他锁嵌套;
@@ -803,12 +800,15 @@ pub(super) struct SessionsState {
     pub(super) lifecycle: StdMutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     /// 待发帧批量缓冲(sid → 帧列表;flusher 任务 30ms 排空)
     pub(super) batch: Arc<StdMutex<HashMap<String, Vec<Value>>>>,
-    /// sidecar 读改写锁，防并发更新互相覆盖字段。Owned guard 可安全跨
-    /// session/create await 持有；普通同步 sidecar 写也走同一把锁。
+    /// sidecar 读改写锁，防并发更新互相覆盖字段。Agent RPC 期间不得持有，
+    /// stdout reader 的通知处理也会同步写 sidecar。
     pub(super) sidecar_write: Arc<SidecarWriteLock>,
     /// 精确验证“引擎 create 成功、sidecar promotion 失败”的补偿路径。
     #[cfg(test)]
     pub(super) fail_next_session_skills_commit: std::sync::atomic::AtomicBool,
+    /// 验证权威 sidecar 已删后派生目录失败仍按删除成功提交。
+    #[cfg(test)]
+    pub(super) fail_next_engine_session_cleanup: std::sync::atomic::AtomicBool,
     /// 删除墓碑只覆盖本进程迟到的事件/后台任务。跨进程防幽灵由固定 session
     /// file lock + 锁内 sidecar 复检保证；本表防止本进程在删除释放锁后，迟到
     /// write_sidecar 再由 atomic_write_private 创建同名目录。
@@ -829,9 +829,8 @@ pub(super) struct SessionsState {
         StdMutex<HashMap<String, tokio::sync::watch::Receiver<Option<Result<(), String>>>>>,
 }
 
-/// 不借用 mutex guard 的进程内锁。`session_set_skills` 取得它后会在 blocking
-/// 线程等待 OS session lock，并跨异步 RPC 保持所有权；标准库 `MutexGuard`
-/// 不能安全跨 await/线程移动，因此这里使用 condvar + owned token。
+/// 不借用 mutex guard 的进程内锁。取得 OS session lock 时需要 owned token
+/// 跨 blocking 线程移动；进入 Agent RPC 前必须主动释放。
 pub(super) struct SidecarWriteLock {
     held: StdMutex<bool>,
     available: Condvar,
@@ -874,11 +873,17 @@ impl Drop for SidecarWriteGuard {
     }
 }
 
-/// 释放顺序与字段顺序一致：先 OS lock，再进程内 sidecar lock；获取顺序严格
-/// 相反。持有期间调用方才可进入 SkillStoreState 共享读锁。
+/// 先取得 OS session lock，再短暂取得进程内 sidecar lock。RPC 前释放进程锁，
+/// OS lock 继续保证跨进程的单会话事务一致性。
 struct SessionSkillGuards {
+    process: Option<SidecarWriteGuard>,
     _os: session_skill_os_lock::Guard,
-    _process: SidecarWriteGuard,
+}
+
+impl SessionSkillGuards {
+    fn release_process(&mut self) {
+        self.process.take();
+    }
 }
 
 /// 会话技能操作的完整外层门控。字段逆获取顺序排列，以便 drop 时先释放
@@ -889,13 +894,20 @@ struct SessionOperationGuards {
     _skills_gate: tokio::sync::OwnedMutexGuard<()>,
 }
 
+impl SessionOperationGuards {
+    fn release_process(&mut self) {
+        self._session.release_process();
+    }
+}
+
 /// `session_set_skills` 在销毁旧 runtime 前准备完的 sidecar 提交计划。
 /// revision 与 legacy baseline 均在跨进程 session lock 内读取；create 成功后
-/// 只剩一次原子文件替换，不再进入可能返回 RecoveryPending 的 SkillStoreState。
+/// 重取最新 sidecar、复检 revision 并合并技能字段，不再进入 SkillStoreState。
 struct SessionSkillsCommitPlan {
     session_id: String,
     path: PathBuf,
-    meta: Value,
+    skills: Vec<String>,
+    expected_revision: u64,
     revision: u64,
 }
 
@@ -1343,7 +1355,7 @@ impl OhmyDriver {
         // 在任何 RPC 之前完成恢复门控、源句柄验证、复制、持久事务和原子 promotion；
         // create 因而从第一次构建 loop 起就只能看到完整技能快照。
         let sid = generate_session_id()?;
-        let operation_guards = match self.acquire_session_operation_guards(&sid).await {
+        let mut operation_guards = match self.acquire_session_operation_guards(&sid).await {
             Ok(guards) => guards,
             Err(error) => {
                 if let Some(path) = &chat_workdir {
@@ -1366,6 +1378,7 @@ impl OhmyDriver {
                 return Err(error.to_string());
             }
         };
+        operation_guards.release_process();
         let result = match self
             .rpc(
                 "session/create",
@@ -1410,18 +1423,24 @@ impl OhmyDriver {
             }
             return Err("session/create 返回了不同的 session_id".into());
         }
-        if let Err(error) = self.0.write_new_session_sidecar_locked(
-            &sid,
-            json!({
-                "model_name": model_name,
-                "workdir": workdir,
-                "kind": kind,
-                "think": think,
-                "skills": &skills,
-                "skills_revision": 1u64,
-                "status": SessionStatus::Created.as_str(),
-            }),
-        ) {
+        let inner = self.0.clone();
+        let sidecar_sid = sid.clone();
+        let sidecar = json!({
+            "model_name": model_name,
+            "workdir": workdir,
+            "kind": kind,
+            "think": think,
+            "skills": &skills,
+            "skills_revision": 1u64,
+            "status": SessionStatus::Created.as_str(),
+        });
+        let promotion = tokio::task::spawn_blocking(move || {
+            let _write = inner.sess.sidecar_write.lock();
+            inner.write_new_session_sidecar_locked(&sidecar_sid, sidecar)
+        })
+        .await
+        .unwrap_or_else(|error| Err(format!("写入新会话 sidecar 任务失败: {error}")));
+        if let Err(error) = promotion {
             self.confirm_destroy_after_create_failure(
                 &sid,
                 &sid,
@@ -1489,9 +1508,8 @@ impl OhmyDriver {
         check_session_id(id)?;
         let lifecycle = self.session_lifecycle(id);
         let lifecycle = lifecycle.lock().await;
-        if !self.session_exists_locally(id) {
-            return Err("会话不存在".into());
-        }
+        // 不用宽松的 session_exists_locally 预判：缺失或损坏的 meta 必须由下方
+        // read_sidecar_checked 返回结构化错误，且不能被空对象伪装成普通不存在。
         // 从有效 sidecar 快照读取到 materialize + session/create 完成，完整持有
         // skills_gate 和跨进程 session lock；SkillStoreState 只能在二者之后进入。
         // delete/set-skills 因而不可能在 create 前换掉本次看到的显式快照。
@@ -1772,7 +1790,7 @@ impl OhmyDriver {
         meta: &Value,
         mut engine_id: String,
         seq_gate: tokio::sync::oneshot::Receiver<()>,
-        operation_guards: SessionOperationGuards,
+        mut operation_guards: SessionOperationGuards,
     ) -> Result<(), ResumeError> {
         // engine_id 可能来自 sidecar(engine_id 字段),一律 resume 后它会
         // 直达引擎侧的路径拼接——损坏的 sidecar 不能把畸形 id 送过去
@@ -1829,6 +1847,7 @@ impl OhmyDriver {
         // 绝不能让 session/create 在旧/残缺目录上静默降级启动。
         self.materialize_skills(&engine_id, id, skills_of_meta(meta))
             .await?;
+        operation_guards.release_process();
         let result = match self.rpc("session/create", params.clone()).await {
             Ok(r) => r,
             // 壳的模型快照(引擎启动时定格)与引擎 settings 可能口径分叉,
@@ -1857,6 +1876,7 @@ impl OhmyDriver {
             let inner = self.0.clone();
             let sid = id.to_string();
             let promotion = tokio::task::spawn_blocking(move || {
+                let _write = inner.sess.sidecar_write.lock();
                 inner.update_existing_sidecar_locked(&sid, true, |m| m["engine_id"] = json!(e))
             })
             .await
@@ -2029,7 +2049,7 @@ impl OhmyDriver {
         // 与 open/set-skills 固定同一外层顺序；delete 不进入 SkillStoreState。
         // 锁内重新读取 sidecar，若另一进程已删除则直接报不存在，绝不按空对象
         // 继续并让后续迟到写重建幽灵目录。
-        let operation_guards = self.acquire_session_operation_guards(id).await?;
+        let mut operation_guards = self.acquire_session_operation_guards(id).await?;
         let meta = self
             .0
             .read_sidecar_checked(id)
@@ -2080,6 +2100,7 @@ impl OhmyDriver {
         } else {
             eng
         };
+        operation_guards.release_process();
         if created {
             let _ = self
                 .rpc("session/destroy", json!({ "session_id": eng }))
@@ -2095,6 +2116,7 @@ impl OhmyDriver {
         let inner = self.0.clone();
         let (id_owned, eng, chat_workdir) = (id.to_string(), eng, chat_workdir);
         tokio::task::spawn_blocking(move || {
+            let write = inner.sess.sidecar_write.lock();
             let id = id_owned.as_str();
             // 级联删子代理子会话(sidecar parent == id;壳侧实体,无引擎目录)
             let children: Vec<String> = std::fs::read_dir(&inner.data_dir)
@@ -2138,15 +2160,26 @@ impl OhmyDriver {
                     }
                 }
             }
+            drop(write);
             if let Some(dir) = inner.engine_session_dir(&eng) {
-                match std::fs::remove_dir_all(&dir) {
-                    Ok(()) => {}
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(error) => {
-                        return Err(format!(
-                            "删除引擎会话派生目录失败({}): {error}",
+                #[cfg(test)]
+                let cleanup = if inner
+                    .sess
+                    .fail_next_engine_session_cleanup
+                    .swap(false, Ordering::SeqCst)
+                {
+                    Err(std::io::Error::other("test injection"))
+                } else {
+                    std::fs::remove_dir_all(&dir)
+                };
+                #[cfg(not(test))]
+                let cleanup = std::fs::remove_dir_all(&dir);
+                if let Err(error) = cleanup {
+                    if error.kind() != std::io::ErrorKind::NotFound {
+                        eprintln!(
+                            "[desktop] 清理引擎会话派生目录失败({}): {error}",
                             dir.display()
-                        ));
+                        );
                     }
                 }
             }
@@ -3045,12 +3078,12 @@ impl OhmyDriver {
                 {
                     return Err("执行中不能切换,请先取消当前任务".into());
                 }
-                // 总锁序：skills_gate → 进程内 sidecar lock → OS session lock；
-                // guards 跨全部准备、destroy/create 与最终 sidecar commit 持有。
+                // 总锁序：skills_gate → OS session lock → 进程内 sidecar lock；
+                // OS lock 跨完整事务持有，进程级 sidecar lock 在 RPC 前释放。
                 // 销毁旧 runtime 前必须完成所有可能失败的 store/baseline/revision
                 // 读取、技能目录 promotion 和 sidecar 提交计划构造。create 成功后
                 // 只允许执行计划中的原子写；不能再进入 SkillStoreState。
-                let operation_guards = self.acquire_session_operation_guards(id).await?;
+                let mut operation_guards = self.acquire_session_operation_guards(id).await?;
                 let current_meta = self
                     .0
                     .read_sidecar_checked(id)
@@ -3106,6 +3139,7 @@ impl OhmyDriver {
                     return Err("执行中不能切换,请先取消当前任务".into());
                 }
                 let had_runtime = self.session_created(id);
+                operation_guards.release_process();
                 if had_runtime {
                     // 从这里起任何错误都保持 created=false；UI/上行不得把尚未
                     // promotion 的新 loop 当作可用 runtime。
@@ -3137,10 +3171,15 @@ impl OhmyDriver {
                     .filter(|engine_id| valid_session_id(engine_id))
                     .unwrap_or(&current_engine_id)
                     .to_string();
-                let skills_revision = match self
-                    .0
-                    .persist_session_skills_commit_locked(commit_plan, &new_engine_id)
-                {
+                let inner = self.0.clone();
+                let commit_engine_id = new_engine_id.clone();
+                let committed = tokio::task::spawn_blocking(move || {
+                    let _write = inner.sess.sidecar_write.lock();
+                    inner.persist_session_skills_commit_locked(commit_plan, &commit_engine_id)
+                })
+                .await
+                .unwrap_or_else(|error| Err(format!("提交会话技能 sidecar 任务失败: {error}")));
+                let skills_revision = match committed {
                     Ok(revision) => revision,
                     Err(error) => {
                         self.confirm_destroy_after_create_failure(
@@ -3406,7 +3445,7 @@ impl OhmyDriver {
         }
         // 技能物化 + create 必须同时圈进 skills_gate 和跨进程 session lock。
         // session_set_skills 已持有完整 guard；模型/模式/压缩自救路径在这里获取。
-        let operation_guards = if skills_gate_held {
+        let mut operation_guards = if skills_gate_held {
             None
         } else {
             let guards = self.acquire_session_operation_guards(id).await?;
@@ -3432,6 +3471,9 @@ impl OhmyDriver {
             Some(skills) => skills,
             None => self.materialize_skills(&eng, id, enabled).await?,
         };
+        if let Some(guards) = &mut operation_guards {
+            guards.release_process();
+        }
         let result = self.rpc("session/create", params).await?;
         // 同 resume_engine:换绑的 engine_id 是目录名,畸形值不接受
         let new_eng = result
@@ -3442,10 +3484,15 @@ impl OhmyDriver {
             .to_string();
         if persist_engine_id && new_eng != id {
             let e = new_eng.clone();
-            if let Err(error) = self
-                .0
-                .update_existing_sidecar_locked(id, true, |m| m["engine_id"] = json!(e))
-            {
+            let inner = self.0.clone();
+            let sid = id.to_string();
+            let promotion = tokio::task::spawn_blocking(move || {
+                let _write = inner.sess.sidecar_write.lock();
+                inner.update_existing_sidecar_locked(&sid, true, |m| m["engine_id"] = json!(e))
+            })
+            .await
+            .unwrap_or_else(|error| Err(format!("更新会话绑定任务失败: {error}")));
+            if let Err(error) = promotion {
                 self.confirm_destroy_after_create_failure(
                     id,
                     &new_eng,
@@ -3733,7 +3780,7 @@ impl OhmyDriver {
         {
             return Err(ResumeError::Other("执行中不能切换,请先取消当前任务".into()));
         }
-        let operation_guards = if skills_gate_held {
+        let mut operation_guards = if skills_gate_held {
             None
         } else {
             let guards = self.acquire_session_operation_guards(id).await?;
@@ -3768,6 +3815,9 @@ impl OhmyDriver {
             return Err(ResumeError::Other("执行中不能切换,请先取消当前任务".into()));
         }
         // destroy 容错:引擎侧可能已无此会话(崩溃重启后),不阻断重建。
+        if let Some(guards) = &mut operation_guards {
+            guards.release_process();
+        }
         let _ = self
             .rpc(
                 "session/destroy",
@@ -4099,13 +4149,13 @@ impl Inner {
 
     fn acquire_session_skill_guards(&self, id: &str) -> Result<SessionSkillGuards, String> {
         check_session_id(id)?;
-        // 固定顺序：进程内 sidecar lock → OS session lock。SkillStoreState
-        // 只能由持有返回 guard 的调用方随后获取。
-        let process = self.sess.sidecar_write.lock();
+        // 等待跨进程 session lock 时不能占住全局 sidecar lock；否则另一实例
+        // 的长 RPC 会间接阻断本进程 stdout reader 写通知。
         let os = session_skill_os_lock::lock(&self.session_skill_locks_dir, id)?;
+        let process = self.sess.sidecar_write.lock();
         Ok(SessionSkillGuards {
+            process: Some(process),
             _os: os,
-            _process: process,
         })
     }
 
@@ -4201,12 +4251,12 @@ impl Inner {
         id: &str,
         skills: &[String],
     ) -> Result<SessionSkillsCommitPlan, String> {
-        // 调用方已按 sidecar process lock → OS session lock 取得 guards。锁内
+        // 调用方已按 OS session lock → sidecar process lock 取得 guards。锁内
         // 必须重新读取，不能使用物化前缓存的 revision。
         let path = self
             .sidecar_path(id)
             .ok_or_else(|| format!("非法会话 id: {id}"))?;
-        let mut meta = self
+        let meta = self
             .read_sidecar_checked(id)
             .map_err(|error| error.command_error())?;
         let current_revision = self
@@ -4218,29 +4268,40 @@ impl Inner {
         let revision = current_revision
             .checked_add(1)
             .ok_or("会话技能 revision 已到上限")?;
-        meta["skills"] = json!(skills);
-        meta["skills_revision"] = json!(revision);
-        meta["updated_at"] = json!(frame::now_ms());
-        // 序列化同样属于可失败的计划准备，不能推迟到 destroy 之后。
-        serde_json::to_vec_pretty(&meta)
-            .map_err(|error| format!("序列化会话 sidecar {id} 失败: {error}"))?;
         Ok(SessionSkillsCommitPlan {
             session_id: id.to_string(),
             path,
-            meta,
+            skills: skills.to_vec(),
+            expected_revision: current_revision,
             revision,
         })
     }
 
     fn persist_session_skills_commit_locked(
         &self,
-        mut plan: SessionSkillsCommitPlan,
+        plan: SessionSkillsCommitPlan,
         engine_id: &str,
     ) -> Result<u64, String> {
-        if engine_id != plan.session_id {
-            plan.meta["engine_id"] = json!(engine_id);
+        let mut meta = self
+            .read_sidecar_checked(&plan.session_id)
+            .map_err(|error| error.command_error())?;
+        let actual_revision = meta
+            .get("skills_revision")
+            .and_then(Value::as_u64)
+            .unwrap_or(plan.expected_revision);
+        if actual_revision != plan.expected_revision {
+            return Err(format!(
+                "会话 {} 技能 revision 已变化（预期 {}，实际 {}）",
+                plan.session_id, plan.expected_revision, actual_revision
+            ));
         }
-        let data = serde_json::to_vec_pretty(&plan.meta).map_err(|error| {
+        meta["skills"] = json!(plan.skills);
+        meta["skills_revision"] = json!(plan.revision);
+        meta["updated_at"] = json!(frame::now_ms());
+        if engine_id != plan.session_id {
+            meta["engine_id"] = json!(engine_id);
+        }
+        let data = serde_json::to_vec_pretty(&meta).map_err(|error| {
             format!(
                 "序列化会话 sidecar {} promotion 失败: {error}",
                 plan.session_id

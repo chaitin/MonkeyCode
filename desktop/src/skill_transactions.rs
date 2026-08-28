@@ -670,15 +670,22 @@ pub(crate) fn recover_locked(user_dir: &Path) -> Result<RecoveryRun, SkillStoreE
                     .find(|candidate| candidate.transaction_id == entry.transaction_id);
                 let (fingerprint, mut issue) = refreshed
                     .map(|candidate| {
-                        let issue = candidate.issue.unwrap_or_else(|| {
-                            generic_issue(&entry.transaction_id, None, &error.to_string(), true)
+                        let issue = candidate.issue.unwrap_or_else(|| match candidate.kind {
+                            RecoveryKind::Logged(log) => issue_for(
+                                &log,
+                                &inspect_candidates(user_dir, &log),
+                                &error.to_string(),
+                            ),
+                            RecoveryKind::Malformed { .. } | RecoveryKind::PreserveInProgress => {
+                                generic_issue(&entry.transaction_id, None, &error.to_string(), true)
+                            }
                         });
                         (candidate.fingerprint, issue)
                     })
                     .unwrap_or_else(|| {
                         (
                             entry.fingerprint,
-                            generic_issue(&entry.transaction_id, None, &error.to_string(), true),
+                            generic_issue(&entry.transaction_id, None, &error.to_string(), false),
                         )
                     });
                 issue.error = redact_store_path(&error.to_string(), user_dir);
@@ -942,9 +949,16 @@ fn preserve_residues(
     let mut manifest = open_or_create_preserve_manifest(&destination, transaction_id, residues)?;
     resume_preservation(user_dir, &destination, &mut manifest)?;
     manifest.complete = true;
+    // write_preserve_manifest 会在原子写后同步 destination；成功即为提交点。
     write_preserve_manifest(&destination, &manifest)?;
-    sync_directory(&destination)?;
-    sync_directory(&recovery_root)?;
+    // complete manifest 与目录内容是保留操作的提交点。父目录最后一次 fsync 仅是
+    // 附加耐久性诊断：此时再报告失败会让调用方误以为没有保留成功，并永久丢失
+    // 已经可安全展示的 preserved_path。
+    if let Err(error) = inject_failure("preserve-final-recovery-root-sync")
+        .and_then(|_| sync_directory(&recovery_root))
+    {
+        eprintln!("[desktop] 技能恢复保留结果已提交，但恢复根目录最终同步失败: {error}");
+    }
     Ok(ResolveOutcome {
         // 只返回固定、安全的展示相对路径，绝不投影 config_dir。
         preserved_path: Some(format!("skill-recovery/{transaction_id}")),
@@ -2869,34 +2883,68 @@ mod tests {
     }
 
     #[test]
-    fn failed_automatic_recovery_is_attempted_once_per_unchanged_issue() {
-        let config = root("automatic-recovery-single-attempt");
+    fn installed_recovery_failure_exposes_executable_action_and_converges_in_process() {
+        let config = root("installed-recovery-retry");
         let state = crate::skills::SkillStoreState::new(config.clone()).unwrap();
-        let sources = root("automatic-recovery-single-attempt-source");
-        let source = skill(&sources, "demo", "new");
-        let id = seed_prepared_new_for_test(&config.join("skills"), &source, "demo");
+        let user = config.join("skills");
+        ensure_layout(&user).unwrap();
+        let sources = root("installed-recovery-retry-source");
+        let target = skill(&sources, "new-source", "new-authority");
+        fs::write(target.join(SKILL_MD), "---\nname: demo\n---\nnew-authority").unwrap();
+        let original = skill(&sources, "old-source", "old-backup");
+        fs::write(original.join(SKILL_MD), "---\nname: demo\n---\nold-backup").unwrap();
+        copy_skill_tree_synced(&target, &user.join("demo"), "demo").unwrap();
+        let id = generate_transaction_id().unwrap();
+        let backup = backup_container(&user, &id);
+        create_private_directory(&backup).unwrap();
+        copy_skill_tree_synced(&original, &backup.join(ORIGINAL_DIR), "demo").unwrap();
+        write_log_synced(
+            &user,
+            &TransactionLog {
+                format: LOG_FORMAT,
+                transaction_id: id.clone(),
+                skill_name: "demo".into(),
+                portable_name_key: "demo".into(),
+                replace: true,
+                phase: TransactionPhase::Installed,
+                staging_instance_id: None,
+            },
+        )
+        .unwrap();
 
         inject_failure_for_test("recover-log");
-        assert!(matches!(
-            state.snapshot(None),
-            Err(SkillStoreError::RecoveryPending(_))
-        ));
-        assert!(transaction_log_path(&config.join("skills"), &id).is_file());
-        let after_first = state.current_revision_for_test();
+        let issues = match state.snapshot(None) {
+            Err(SkillStoreError::RecoveryPending(issues)) => issues,
+            other => panic!("expected recovery issue, got {other:?}"),
+        };
+        assert_eq!(issues.len(), 1);
+        assert_eq!(
+            issues[0].actions,
+            vec![
+                SkillRecoveryAction::RestoreBackup,
+                SkillRecoveryAction::KeepInstalled,
+            ]
+        );
+        assert!(!issues[0]
+            .actions
+            .contains(&SkillRecoveryAction::PreserveFiles));
+        assert!(fs::read_to_string(user.join("demo/SKILL.md"))
+            .unwrap()
+            .contains("new-authority"));
+        assert!(backup.join(ORIGINAL_DIR).is_dir());
 
-        // failpoint 已一次性消费；如果同 fingerprint 被重试，这一轮会自动成功。
-        // 日志仍存在且 revision 不再推进，证明缓存 issue 阻止了忙循环。
-        assert!(matches!(
-            state.snapshot(None),
-            Err(SkillStoreError::RecoveryPending(_))
-        ));
-        assert!(transaction_log_path(&config.join("skills"), &id).is_file());
-        assert_eq!(state.current_revision_for_test(), after_first);
-
-        // 独立实例没有本进程缓存，会从磁盘重新校准并接管该事务。
-        let restarted = crate::skills::SkillStoreState::new(config.clone()).unwrap();
-        assert!(restarted.snapshot(None).is_ok());
-        assert!(!transaction_log_path(&config.join("skills"), &id).exists());
+        // 临时错误已由一次性 failpoint 解除；同一状态实例执行 UI 提供的动作即可
+        // 收敛，不需要重启，也不会把有效 target/backup 当作通用残留误保留或误删。
+        let result = state
+            .resolve_recovery(&id, SkillRecoveryAction::KeepInstalled)
+            .unwrap();
+        assert!(result.preserved_path.is_none());
+        assert!(state.snapshot(None).is_ok());
+        assert!(fs::read_to_string(user.join("demo/SKILL.md"))
+            .unwrap()
+            .contains("new-authority"));
+        assert!(!backup.exists());
+        assert!(!transaction_log_path(&user, &id).exists());
     }
 
     #[test]
@@ -3137,6 +3185,36 @@ mod tests {
             fs::read(destination.join("transaction-entry")).unwrap(),
             b"keep-me"
         );
+    }
+
+    #[test]
+    fn preserve_returns_committed_path_when_final_recovery_root_sync_fails() {
+        let config = root("preserve-committed-final-sync");
+        let user = config.join("skills");
+        ensure_layout(&user).unwrap();
+        let malformed = transactions_root(&user).join("broken-final-sync");
+        fs::write(&malformed, b"committed-residue").unwrap();
+        let entry = discover_locked(&user).unwrap().entries.pop().unwrap();
+
+        inject_failure_for_test("preserve-final-recovery-root-sync");
+        let outcome = resolve_locked(
+            &config,
+            &user,
+            &entry.transaction_id,
+            SkillRecoveryAction::PreserveFiles,
+        )
+        .unwrap();
+        let relative = format!("skill-recovery/{}", entry.transaction_id);
+        assert_eq!(outcome.preserved_path.as_deref(), Some(relative.as_str()));
+        let destination = config.join(relative);
+        let manifest = read_preserve_manifest(&destination.join(PRESERVE_MANIFEST)).unwrap();
+        assert!(manifest.complete);
+        assert!(manifest.entries.iter().all(|entry| entry.completed));
+        assert_eq!(
+            fs::read(destination.join("transaction-entry")).unwrap(),
+            b"committed-residue"
+        );
+        assert!(discover_locked(&user).unwrap().entries.is_empty());
     }
 
     #[test]

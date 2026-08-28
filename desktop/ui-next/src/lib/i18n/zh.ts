@@ -444,6 +444,8 @@ export const zh = {
   "settings.skills.delete": "删除",
   "settings.skills.override": "编辑副本",
   "settings.skills.readonlyHint": "内置技能随应用更新分发,只读;「编辑副本」会创建同名自定义技能覆盖它,删除副本即还原。",
+  "settings.skills.legacyReadonlyBadge": "旧版只读",
+  "settings.skills.legacyReadonlyHint": "此旧版兼容技能为只读，仅可查看或删除。",
   "settings.skills.save": "保存",
   "settings.skills.cancel": "取消",
   "settings.skills.saveFailed": "保存失败:{reason}",

@@ -21,6 +21,12 @@ function chromeHeightIn(selector: string): string | null {
   return body?.match(/--chrome-h:\s*([^;]+);/)?.[1]?.trim() ?? null;
 }
 
+describe("页面层级静态契约", () => {
+  it("定义页面内 popover 层级，避免下拉菜单退回 auto 后被后续列表控件覆盖", () => {
+    expect(css.match(/--z-popover:\s*([^;]+);/)?.[1]?.trim()).toBe("40");
+  });
+});
+
 describe("--chrome-h 静态契约", () => {
   it("默认 0px:mac 与浏览器不画窗框条,覆盖层贴视口顶(mac 零回归的底线)", () => {
     expect(chromeHeightIn(":root")).toBe("0px");

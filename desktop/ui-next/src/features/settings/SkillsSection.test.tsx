@@ -1,7 +1,8 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { setLocale } from "@/lib/i18n";
 import type { SkillImportBatchPreview, SkillImportSourceKind } from "@/lib/ipc/skills";
 import { SkillsSection } from "./SkillsSection";
 
@@ -128,6 +129,70 @@ describe("技能设置导入入口", () => {
     ]));
   });
 
+  it("legacy 名称按 Rust capability 只允许查看和删除，并显示中文 i18n 文案", async () => {
+    setLocale("zh-CN");
+    const calls: string[] = [];
+    (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: (cmd: string) => {
+        calls.push(cmd);
+        if (cmd === "skills_list") return Promise.resolve({
+          revision: 1,
+          store_id: "test",
+          skills: [
+            {
+              name: "CON",
+              description: "Legacy compatible skill",
+              source: "user",
+              content: "---\nname: CON\n---\nlegacy",
+              overrides: false,
+              default_enabled: false,
+              can_set_default: false,
+              can_edit: false,
+            },
+            {
+              name: "strict",
+              description: "Current skill",
+              source: "user",
+              content: "---\nname: strict\n---\ncurrent",
+              overrides: false,
+              default_enabled: false,
+              can_set_default: true,
+              can_edit: true,
+            },
+          ],
+        });
+        if (cmd === "skills_import_current") return Promise.resolve({ snapshot_revision: 0, batch: null });
+        if (cmd === "skills_recovery_list") return Promise.resolve([]);
+        if (cmd === "skills_delete") return Promise.resolve({ catalog_revision: 2 });
+        return Promise.resolve(null);
+      } },
+      event: { listen: () => Promise.resolve(() => {}) },
+    };
+
+    render(<SkillsSection />);
+    const legacyDescription = await screen.findByText("Legacy compatible skill");
+    const legacyRow = legacyDescription.closest("li");
+    expect(legacyRow).toBeTruthy();
+    const legacy = within(legacyRow!);
+    expect(legacy.getByText("旧版只读")).toBeTruthy();
+    expect(legacy.queryByRole("button", { name: "设为默认" })).toBeNull();
+    expect(legacy.queryByRole("button", { name: "取消默认" })).toBeNull();
+    expect(legacy.queryByRole("button", { name: "编辑" })).toBeNull();
+    expect(legacy.getByRole("button", { name: "删除" })).toBeTruthy();
+
+    await userEvent.click(legacyDescription);
+    expect(await screen.findByText("此旧版兼容技能为只读，仅可查看或删除。")).toBeTruthy();
+    await userEvent.click(legacy.getByRole("button", { name: "删除" }));
+    await waitFor(() => expect(calls).toContain("skills_delete"));
+    expect(calls).not.toContain("skills_set_default");
+    expect(calls).not.toContain("skills_save");
+
+    const currentRow = screen.getByText("Current skill").closest("li");
+    expect(currentRow).toBeTruthy();
+    expect(within(currentRow!).getByRole("button", { name: "设为默认" })).toBeTruthy();
+    expect(within(currentRow!).getByRole("button", { name: "编辑" })).toBeTruthy();
+  });
+
   it("完成批次的 target 请求晚于 focus 的 RecoveryPending 失败时，dialog 进入恢复态而不悬挂", async () => {
     const completed = importedBatch(["folders"], 7);
     completed.phase = "completed";
@@ -212,6 +277,7 @@ describe("技能设置导入入口", () => {
 
     await userEvent.click(topImport);
     const topMenu = screen.getByRole("menu", { name: "导入技能" });
+    expect(topMenu.className).toContain("z-[var(--z-popover)]");
     expect(topImport.getAttribute("aria-controls")).toBe(topMenu.id);
     expect(topImport.getAttribute("aria-expanded")).toBe("true");
     await userEvent.click(screen.getByRole("menuitem", { name: /选择文件夹/ }));
