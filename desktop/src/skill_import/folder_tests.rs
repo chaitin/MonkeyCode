@@ -1,7 +1,5 @@
 use super::*;
 
-#[cfg(windows)]
-use std::ffi::OsStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_TEST: AtomicU64 = AtomicU64::new(0);
@@ -724,102 +722,31 @@ fn errors_never_include_absolute_source_path() {
 }
 
 #[test]
-fn windows_backend_contract_uses_only_fixed_parent_relative_descendant_opens() {
+fn platform_backend_is_unified_std_without_handle_pinning() {
     let source = include_str!("folder.rs");
-    let start = source
-        .find("// Windows 只用一次完整路径 API 固定卷或 UNC share 根")
-        .unwrap();
-    let end = source[start..]
-        .find("#[cfg(not(any(unix, windows)))]")
-        .map(|offset| start + offset)
-        .unwrap();
-    let backend = &source[start..end];
-    for required in [
-        "CreateFileW",
-        "NtCreateFile",
-        "RootDirectory",
-        "OBJ_DONT_REPARSE",
-        "FILE_OPEN_REPARSE_POINT",
-        "FileIdBothRestartDirectoryInfo",
-        "FileIdBothDirectoryInfo",
-        "FILE_TYPE_DISK",
-        "FILE_SHARE_READ",
-        "component_identities",
-    ] {
-        assert!(
-            backend.contains(required),
-            "Windows 安全后端缺少契约: {required}"
-        );
-    }
     for forbidden in [
-        "root.path",
-        "fs::read_dir",
-        ".join(relative",
-        "FILE_SHARE_WRITE",
-        "FILE_SHARE_DELETE",
-        "canonicalize",
-        "creation_time",
+        "NtCreateFile",
+        "CreateFileW",
+        "OBJ_DONT_REPARSE",
+        "FILE_SHARE_READ",
+        "windows::",
+        "rustix",
+        "openat",
+        "cfg(windows)",
+        "cfg(not(any(unix, windows)))",
         "UnsupportedPlatformSafety",
+        "canonicalize",
     ] {
         assert!(
-            !backend.contains(forbidden),
-            "Windows 安全后端不得保留路径重开或写/删共享: {forbidden}"
+            !source.contains(forbidden),
+            "统一 std 平台后端后不得残留平台句柄机: {forbidden}"
         );
     }
-}
-
-#[cfg(windows)]
-#[test]
-fn windows_unc_share_root_parser_accepts_both_root_spellings_only() {
-    let (without_slash, without_components) =
-        platform::parse_absolute_path_for_test(Path::new(r"\\server\share")).unwrap();
-    let (with_slash, with_components) =
-        platform::parse_absolute_path_for_test(Path::new(r"\\server\share\")).unwrap();
-
-    assert_eq!(without_slash, with_slash);
-    assert_eq!(without_slash.as_os_str(), OsStr::new(r"\\server\share\"));
-    assert!(without_components.is_empty());
-    assert!(with_components.is_empty());
-
-    for non_canonical in [
-        r"\\server\share\\",
-        r"\\server\share\child\",
-        r"\\server\share\child\\leaf",
-        r"\\server\share\child\.\leaf",
-    ] {
-        assert!(
-            platform::parse_absolute_path_for_test(Path::new(non_canonical)).is_err(),
-            "应拒绝非规范 UNC 子路径: {non_canonical}"
-        );
-    }
-}
-
-#[cfg(windows)]
-#[test]
-fn windows_stage_routes_both_unc_share_root_spellings_to_the_same_anchor_open() {
-    // localhost 上使用进程唯一且不存在的 share；本测试不依赖外部网络或管理员权限，
-    // 只要求 stage 的两种 share-root 拼写都通过纯解析并到达相同 anchor 打开层。
-    let share = format!(
-        r"\\localhost\monkeycode-missing-share-{}-{}",
-        std::process::id(),
-        NEXT_TEST.fetch_add(1, Ordering::Relaxed)
+    assert_eq!(
+        source.matches("mod platform").count(),
+        1,
+        "folder.rs 只应保留一套统一 platform 实现"
     );
-    for source in [share.clone(), format!(r"{share}\")] {
-        let tree = TestTree::new("windows-unc-stage-contract");
-        let mut usage = FolderBatchUsage::default();
-        let error =
-            stage_folder_source(Path::new(&source), &tree.staging(), &mut usage).unwrap_err();
-        assert!(matches!(
-            error,
-            FolderImportError::Io {
-                operation: "固定 Windows 卷或 share 根",
-                relative_path,
-                ..
-            } if relative_path == "."
-        ));
-        assert_eq!(usage, FolderBatchUsage::default());
-        assert!(!tree.staging().exists());
-    }
 }
 
 #[cfg(windows)]

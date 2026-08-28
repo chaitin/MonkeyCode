@@ -1459,71 +1459,40 @@ fn store_error(error: SkillStoreError) -> SkillCommandError {
     }
 }
 
-#[cfg(unix)]
+/// 暂存树读取与指纹：std 路径实现，逐组件拒绝 symlink 与特殊对象。
+/// 句柄相对打开已废弃（Windows 上该形态曾整体 stub 为不可用）。
 mod secure_tree {
     use super::*;
-    use std::ffi::{OsStr, OsString};
-    use std::fs::File;
+    use std::fs;
     use std::io::{Read, Seek, SeekFrom};
-    use std::os::fd::OwnedFd;
-    use std::os::unix::ffi::OsStringExt as _;
 
-    use rustix::fs::{fstat, openat, Dir, FileType, Mode, OFlags, CWD};
     use sha2::{Digest as _, Sha256};
 
-    fn directory_flags() -> OFlags {
-        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC
-    }
-
-    fn open_root(path: &Path) -> Result<OwnedFd, SkillCommandError> {
-        let fd = openat(CWD, path, directory_flags(), Mode::empty())
-            .map_err(|error| io_error(format!("安全打开暂存技能根失败: {error}")))?;
-        let stat = fstat(&fd).map_err(|error| io_error(format!("复核暂存技能根失败: {error}")))?;
-        if FileType::from_raw_mode(stat.st_mode) != FileType::Directory {
+    fn resolve_file(root_path: &Path, relative: &str) -> Result<PathBuf, SkillCommandError> {
+        let root = fs::symlink_metadata(root_path)
+            .map_err(|error| io_error(format!("检查暂存技能根失败: {error}")))?;
+        if !root.is_dir() || root.file_type().is_symlink() {
             return Err(invalid("暂存技能根不是普通目录"));
         }
-        Ok(fd)
-    }
-
-    fn open_directory(root: &OwnedFd, relative: &[String]) -> Result<OwnedFd, SkillCommandError> {
-        let mut current = openat(root, ".", directory_flags(), Mode::empty())
-            .map_err(|error| io_error(format!("复制暂存根句柄失败: {error}")))?;
-        for component in relative {
-            current = openat(
-                &current,
-                OsStr::new(component),
-                directory_flags(),
-                Mode::empty(),
-            )
-            .map_err(|_| invalid("暂存路径包含链接、特殊对象或已逃逸"))?;
-            let stat = fstat(&current).map_err(|error| io_error(error.to_string()))?;
-            if FileType::from_raw_mode(stat.st_mode) != FileType::Directory {
+        let mut path = root_path.to_path_buf();
+        let components: Vec<&str> = relative.split('/').collect();
+        for (index, component) in components.iter().enumerate() {
+            path.push(component);
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|_| invalid("暂存路径包含链接、特殊对象或已逃逸"))?;
+            if metadata.file_type().is_symlink() {
+                return Err(invalid("暂存路径包含链接、特殊对象或已逃逸"));
+            }
+            let is_last = index + 1 == components.len();
+            if is_last {
+                if !metadata.is_file() {
+                    return Err(invalid("文本预览只允许普通文件"));
+                }
+            } else if !metadata.is_dir() {
                 return Err(invalid("暂存路径组件不是普通目录"));
             }
         }
-        Ok(current)
-    }
-
-    fn open_file(root: &OwnedFd, relative: &str) -> Result<File, SkillCommandError> {
-        let parts = relative.split('/').collect::<Vec<_>>();
-        let (name, parents) = parts.split_last().ok_or_else(|| invalid("文件路径为空"))?;
-        let parents = parents
-            .iter()
-            .map(|part| (*part).to_string())
-            .collect::<Vec<_>>();
-        let parent = open_directory(root, &parents)?;
-        let fd = openat(
-            &parent,
-            OsStr::new(name),
-            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|_| invalid("暂存文件包含链接、特殊对象或已逃逸"))?;
-        let stat = fstat(&fd).map_err(|error| io_error(error.to_string()))?;
-        if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
-            return Err(invalid("文本预览只允许普通文件"));
-        }
-        Ok(File::from(fd))
+        Ok(path)
     }
 
     pub(super) fn read_small_file(
@@ -1532,9 +1501,10 @@ mod secure_tree {
         maximum: u64,
     ) -> Result<Vec<u8>, SkillCommandError> {
         let relative = normalize_relative(relative)?;
-        let root = open_root(root_path)?;
-        let mut file = open_file(&root, &relative)?;
-        let mut limited = (&mut file).take(maximum.saturating_add(1));
+        let path = resolve_file(root_path, &relative)?;
+        let file = fs::File::open(&path)
+            .map_err(|error| io_error(format!("打开暂存文件失败: {error}")))?;
+        let mut limited = file.take(maximum.saturating_add(1));
         let mut bytes = Vec::new();
         limited
             .read_to_end(&mut bytes)
@@ -1555,8 +1525,9 @@ mod secure_tree {
             return Err(invalid("文本预览单次 limit 必须在 1 到 1 MiB 之间"));
         }
         let relative = normalize_relative(relative)?;
-        let root = open_root(root_path)?;
-        let mut file = open_file(&root, &relative)?;
+        let path = resolve_file(root_path, &relative)?;
+        let mut file = fs::File::open(&path)
+            .map_err(|error| io_error(format!("打开暂存文件失败: {error}")))?;
         let size = file
             .metadata()
             .map_err(|error| io_error(error.to_string()))?
@@ -1590,9 +1561,13 @@ mod secure_tree {
     }
 
     pub(super) fn fingerprint(root_path: &Path) -> Result<String, SkillCommandError> {
-        let root = open_root(root_path)?;
+        let root = fs::symlink_metadata(root_path)
+            .map_err(|error| io_error(format!("检查暂存技能根失败: {error}")))?;
+        if !root.is_dir() || root.file_type().is_symlink() {
+            return Err(invalid("暂存技能根不是普通目录"));
+        }
         let mut records = Vec::<(String, u8, u64, String)>::new();
-        scan(&root, &[], "", &mut records)?;
+        scan(root_path, "", &mut records)?;
         records.sort_by(|left, right| left.0.cmp(&right.0));
         let mut digest = Sha256::new();
         for (path, kind, size, hash) in records {
@@ -1606,25 +1581,21 @@ mod secure_tree {
     }
 
     fn scan(
-        root: &OwnedFd,
-        components: &[String],
+        base: &Path,
         relative: &str,
         output: &mut Vec<(String, u8, u64, String)>,
     ) -> Result<(), SkillCommandError> {
-        let directory = open_directory(root, components)?;
-        let mut stream = Dir::read_from(&directory).map_err(|error| io_error(error.to_string()))?;
         let mut names = Vec::new();
-        while let Some(entry) = stream.read() {
+        let entries = fs::read_dir(base).map_err(|error| io_error(error.to_string()))?;
+        for entry in entries {
             let entry = entry.map_err(|error| io_error(error.to_string()))?;
-            let bytes = entry.file_name().to_bytes();
-            if bytes == b"." || bytes == b".." {
+            let name = entry.file_name();
+            let Some(text) = name.to_str().map(str::to_string) else {
+                return Err(invalid("暂存路径必须是 UTF-8"));
+            };
+            if text == "." || text == ".." {
                 continue;
             }
-            let name = OsString::from_vec(bytes.to_vec());
-            let text = name
-                .to_str()
-                .ok_or_else(|| invalid("暂存路径必须是 UTF-8"))?
-                .to_string();
             if text.contains(['/', '\\']) {
                 return Err(invalid("暂存路径组件非法"));
             }
@@ -1637,61 +1608,37 @@ mod secure_tree {
             } else {
                 format!("{relative}/{name}")
             };
-            let fd = openat(
-                &directory,
-                OsStr::new(&name),
-                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-                Mode::empty(),
-            )
-            .map_err(|_| invalid("暂存树包含链接或特殊对象"))?;
-            let stat = fstat(&fd).map_err(|error| io_error(error.to_string()))?;
-            match FileType::from_raw_mode(stat.st_mode) {
-                FileType::Directory => {
-                    output.push((path.clone(), 0, 0, String::new()));
-                    let mut next = components.to_vec();
-                    next.push(name.clone());
-                    scan(root, &next, &path, output)?;
-                }
-                FileType::RegularFile => {
-                    let mut file = File::from(fd);
-                    let mut hash = Sha256::new();
-                    let mut buffer = [0u8; 64 * 1024];
-                    let mut size = 0u64;
-                    loop {
-                        let read = file
-                            .read(&mut buffer)
-                            .map_err(|error| io_error(error.to_string()))?;
-                        if read == 0 {
-                            break;
-                        }
-                        size += read as u64;
-                        hash.update(&buffer[..read]);
+            let child = base.join(&name);
+            let metadata =
+                fs::symlink_metadata(&child).map_err(|_| invalid("暂存树包含链接或特殊对象"))?;
+            if metadata.file_type().is_symlink() {
+                return Err(invalid("暂存树包含链接或特殊对象"));
+            }
+            if metadata.is_dir() {
+                output.push((path.clone(), 0, 0, String::new()));
+                scan(&child, &path, output)?;
+            } else if metadata.is_file() {
+                let mut file =
+                    fs::File::open(&child).map_err(|error| io_error(error.to_string()))?;
+                let mut hash = Sha256::new();
+                let mut buffer = [0u8; 64 * 1024];
+                let mut size = 0u64;
+                loop {
+                    let read = file
+                        .read(&mut buffer)
+                        .map_err(|error| io_error(error.to_string()))?;
+                    if read == 0 {
+                        break;
                     }
-                    output.push((path, 1, size, format!("{:x}", hash.finalize())));
+                    size += read as u64;
+                    hash.update(&buffer[..read]);
                 }
-                _ => return Err(invalid("暂存树包含链接或特殊文件")),
+                output.push((path, 1, size, format!("{:x}", hash.finalize())));
+            } else {
+                return Err(invalid("暂存树包含链接或特殊文件"));
             }
         }
         Ok(())
-    }
-}
-
-#[cfg(not(unix))]
-mod secure_tree {
-    use super::*;
-    pub(super) fn read_small_file(_: &Path, _: &str, _: u64) -> Result<Vec<u8>, SkillCommandError> {
-        Err(invalid("当前平台不支持固定句柄读取"))
-    }
-    pub(super) fn read_text_chunk(
-        _: &Path,
-        _: &str,
-        _: u64,
-        _: u64,
-    ) -> Result<SkillImportTextChunk, SkillCommandError> {
-        Err(invalid("当前平台不支持固定句柄读取"))
-    }
-    pub(super) fn fingerprint(_: &Path) -> Result<String, SkillCommandError> {
-        Err(invalid("当前平台不支持固定句柄复核"))
     }
 }
 

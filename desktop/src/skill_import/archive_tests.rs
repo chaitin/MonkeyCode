@@ -1401,51 +1401,27 @@ fn parser_has_no_whole_archive_or_central_directory_read_to_end() {
 }
 
 #[test]
-fn windows_backend_contract_uses_nt_parent_relative_open_and_read_only_sharing() {
+fn platform_backend_is_single_std_path_implementation_without_handle_pinning() {
     let source = include_str!("archive.rs");
-    let start = source.find("// Windows 最终 ZIP 组件").unwrap();
-    let end = source[start..]
-        .find("#[cfg(not(any(unix, windows)))]")
-        .map(|offset| start + offset)
-        .unwrap();
-    let backend = &source[start..end];
-    for required in [
-        "NtCreateFile",
-        "RootDirectory",
-        "FILE_OPEN_REPARSE_POINT",
-        "FILE_TYPE_DISK",
-        "FILE_SHARE_READ",
-        "_parent: OwnedHandle",
-    ] {
-        assert!(
-            backend.contains(required),
-            "Windows 后端缺少安全语义: {required}"
-        );
-    }
     for forbidden in [
-        "FILE_SHARE_WRITE",
-        "FILE_SHARE_DELETE",
+        "NtCreateFile",
+        "OBJECT_ATTRIBUTES",
+        "FILE_SHARE_READ",
+        "windows::",
+        "rustix::",
+        "openat",
+        "#[cfg(windows)]",
+        "#[cfg(not(any(unix, windows)))]",
         "UnsupportedPlatformSafety",
     ] {
         assert!(
-            !backend.contains(forbidden),
-            "Windows 后端不得放宽或失败降级: {forbidden}"
+            !source.contains(forbidden),
+            "归档后端不得保留平台专属句柄机代码: {forbidden}"
         );
     }
-}
-
-#[cfg(windows)]
-#[test]
-fn windows_archive_import_succeeds_and_fixed_handle_denies_write_and_delete_sharing() {
-    let archive = TestArchive::new("windows-safe-open");
-    archive.write(&[("skill/SKILL.md", Some(b"x"))]);
-    {
-        let opened = platform::open_archive(&archive.zip).unwrap();
-        assert!(OpenOptions::new().write(true).open(&archive.zip).is_err());
-        assert!(fs::remove_file(&archive.zip).is_err());
-        platform::verify_handle(&opened).unwrap();
-    }
-    let (staged, usage) = stage_with_limits(&archive, small_limits()).unwrap();
-    assert_eq!(staged.skills.len(), 1);
-    assert_eq!(usage.skills, 1);
+    assert_eq!(
+        source.matches("mod platform").count(),
+        1,
+        "归档后端必须是唯一一套无 cfg 的 std 路径实现"
+    );
 }

@@ -1,6 +1,6 @@
 //! ZIP 技能来源的安全、有界索引、发现与逐技能暂存。
 //!
-//! 在调用 `zip` crate 建立内部索引之前，本模块先从固定归档句柄的尾部窗口解析
+//! 在调用 `zip` crate 建立内部索引之前，本模块先从已打开的归档文件的尾部窗口解析
 //! EOCD/Zip64，并逐项、流式校验中央目录。只有归档大小、中央目录大小、条目数和
 //! 所有偏移均已受限后，才允许 crate 分配索引。归档内容始终从最初打开的句柄读取。
 
@@ -240,7 +240,6 @@ pub(crate) enum ArchiveImportError {
         relative_path: String,
         message: String,
     },
-    UnsupportedPlatformSafety,
 }
 
 impl ArchiveImportError {
@@ -312,7 +311,6 @@ impl fmt::Display for ArchiveImportError {
                 relative_path,
                 message,
             } => write!(formatter, "{operation} {relative_path} 失败: {message}"),
-            Self::UnsupportedPlatformSafety => write!(formatter, "当前平台无法保证安全打开 ZIP"),
         }
     }
 }
@@ -460,7 +458,7 @@ impl ArchiveSourceFingerprint {
     }
 }
 
-/// commit 预检重新安全打开并解析有界索引，且复核固定句柄和选择路径仍指向同一
+/// commit 预检重新打开并解析有界索引，且复核选择路径仍指向暂存时快照的同一
 /// 普通磁盘文件。这里只比较壳侧指纹，绝不返回来源绝对路径。
 pub(crate) fn verify_archive_source_fingerprint(
     source_path: &Path,
@@ -2206,18 +2204,17 @@ fn le_u64(bytes: &[u8]) -> u64 {
     u64::from_le_bytes(bytes.try_into().expect("固定宽度切片"))
 }
 
-#[cfg(unix)]
+/// 统一的 std 平台实现。TOCTOU 级句柄钉扎已废弃：能篡改本地 ZIP 来源的攻击者
+/// 同样能直接改技能库，钉句柄换不来额外防御，却让 Windows 上受限共享打开与
+/// 其他句柄持有者互斥（线上 os error 32 的根因）。来源一致性改由前后快照
+/// （unix dev/ino、大小、mtime/ctime）比对保证；symlink 来源与 ZIP 条目内容的
+/// 全部安全校验（zip-slip、配额、SKILL.md 等）仍在索引与解压的每一层执行。
 mod platform {
     use super::*;
-    use std::os::fd::OwnedFd;
-
-    use rustix::fs::{fstat, openat, statat, AtFlags, FileType, Mode, OFlags, CWD};
 
     pub(super) struct OpenedArchive {
         file: Option<File>,
-        monitor: File,
-        parent: OwnedFd,
-        selected_name: std::ffi::OsString,
+        source_path: PathBuf,
         identity: ArchiveIdentity,
     }
 
@@ -2249,96 +2246,78 @@ mod platform {
     }
 
     pub(super) fn open_archive(path: &Path) -> Result<OpenedArchive, ArchiveImportError> {
-        let selected_name = path
-            .file_name()
-            .ok_or(ArchiveImportError::SourceNotFile)?
-            .to_os_string();
-        let parent_path = path
-            .parent()
-            .filter(|path| !path.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-        let parent = openat(
-            CWD,
-            parent_path,
-            OFlags::RDONLY
-                | OFlags::DIRECTORY
-                | OFlags::NOFOLLOW
-                | OFlags::NONBLOCK
-                | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|error| ArchiveImportError::io("安全打开 ZIP 父目录", ".", error))?;
-        let initial = statat(&parent, &selected_name, AtFlags::SYMLINK_NOFOLLOW)
+        let selected = fs::symlink_metadata(path)
             .map_err(|error| ArchiveImportError::io("检查 ZIP 来源", ".", error))?;
-        if FileType::from_raw_mode(initial.st_mode) != FileType::RegularFile {
+        if !selected.file_type().is_file() {
             return Err(ArchiveImportError::SourceNotFile);
         }
-        let fd = openat(
-            &parent,
-            &selected_name,
-            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|error| ArchiveImportError::io("安全打开 ZIP 来源", ".", error))?;
-        let actual =
-            fstat(&fd).map_err(|error| ArchiveImportError::io("复核 ZIP 来源句柄", ".", error))?;
-        if FileType::from_raw_mode(actual.st_mode) != FileType::RegularFile {
+        let file = File::open(path)
+            .map_err(|error| ArchiveImportError::io("打开 ZIP 来源", ".", error))?;
+        let opened = file
+            .metadata()
+            .map_err(|error| ArchiveImportError::io("复核 ZIP 来源", ".", error))?;
+        if !opened.file_type().is_file() {
             return Err(ArchiveImportError::SourceNotFile);
         }
-        let initial_identity = identity_from_stat(&initial);
-        let identity = identity_from_stat(&actual);
-        if initial_identity.object_a != identity.object_a
-            || initial_identity.object_b != identity.object_b
-        {
+        #[cfg_attr(unix, allow(unused_mut))]
+        let mut identity = source_identity(&opened);
+        if identity != source_identity(&selected) {
             return Err(ArchiveImportError::SourceChanged);
         }
-        let file = File::from(fd);
-        let monitor = file
-            .try_clone()
-            .map_err(|error| ArchiveImportError::io("复制 ZIP 来源句柄", ".", error))?;
+        // 非 unix 的 std metadata 拿不到对象身份;ZIP 来源身份参与 SourceKey
+        // 去重与指纹比对,经全共享句柄补查(失败保持 0,仅弱化去重)。
+        #[cfg(not(unix))]
+        if let Some((object_a, object_b)) = crate::config::file_identity(path) {
+            identity.object_a = object_a;
+            identity.object_b = object_b;
+        }
         Ok(OpenedArchive {
             file: Some(file),
-            monitor,
-            parent,
-            selected_name,
+            source_path: path.to_path_buf(),
             identity,
         })
     }
 
     pub(super) fn verify_handle(opened: &OpenedArchive) -> Result<(), ArchiveImportError> {
-        let stat = fstat(&opened.monitor)
-            .map_err(|error| ArchiveImportError::io("复核 ZIP 来源句柄", ".", error))?;
-        if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile
-            || identity_from_stat(&stat) != opened.identity
-        {
+        let Ok(metadata) = fs::symlink_metadata(&opened.source_path) else {
+            return Err(ArchiveImportError::SourceChanged);
+        };
+        if !metadata.file_type().is_file() || source_identity(&metadata) != opened.identity {
             return Err(ArchiveImportError::SourceChanged);
         }
         Ok(())
     }
 
     pub(super) fn verify_source(opened: &OpenedArchive) -> Result<(), ArchiveImportError> {
-        verify_handle(opened)?;
-        let stat = statat(
-            &opened.parent,
-            &opened.selected_name,
-            AtFlags::SYMLINK_NOFOLLOW,
-        )
-        .map_err(|_| ArchiveImportError::SourceChanged)?;
-        if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile
-            || identity_from_stat(&stat) != opened.identity
-        {
-            return Err(ArchiveImportError::SourceChanged);
-        }
-        Ok(())
+        verify_handle(opened)
     }
 
-    fn identity_from_stat(stat: &rustix::fs::Stat) -> ArchiveIdentity {
-        let (modified_seconds, modified_nanos, changed_seconds, changed_nanos) = stat_times(stat);
+    fn source_identity(metadata: &fs::Metadata) -> ArchiveIdentity {
+        let (object_a, object_b);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            object_a = metadata.dev();
+            object_b = metadata.ino();
+        }
+        #[cfg(not(unix))]
+        {
+            object_a = 0;
+            object_b = 0;
+        }
+        let (modified_seconds, modified_nanos) = time_parts(metadata.modified());
+        #[cfg(unix)]
+        let (changed_seconds, changed_nanos) = {
+            use std::os::unix::fs::MetadataExt as _;
+            (metadata.ctime(), metadata.ctime_nsec())
+        };
+        #[cfg(not(unix))]
+        let (changed_seconds, changed_nanos) = (modified_seconds, modified_nanos);
         ArchiveIdentity {
-            object_a: stat.st_dev as u64,
-            object_b: stat.st_ino as u64,
+            object_a,
+            object_b,
             object_c: 0,
-            size: stat.st_size.max(0) as u64,
+            size: metadata.len(),
             modified_seconds,
             modified_nanos,
             changed_seconds,
@@ -2346,260 +2325,15 @@ mod platform {
         }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    fn stat_times(stat: &rustix::fs::Stat) -> (i64, i64, i64, i64) {
-        // rustix 跟随 libc：Linux 纳秒字段为 u64，macOS 为 i64；其合法范围均小于 10^9。
-        (
-            stat.st_mtime,
-            stat.st_mtime_nsec as i64,
-            stat.st_ctime,
-            stat.st_ctime_nsec as i64,
-        )
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    fn stat_times(_stat: &rustix::fs::Stat) -> (i64, i64, i64, i64) {
-        (0, 0, 0, 0)
-    }
-}
-
-// Windows 最终 ZIP 组件必须通过 `NtCreateFile(RootDirectory=parent)` 相对父句柄
-// 打开；完整路径 API 只用于固定父目录自身，不能用于最终来源文件。
-#[cfg(windows)]
-mod platform {
-    use super::*;
-    use std::mem::size_of;
-    use std::os::windows::ffi::OsStrExt as _;
-    use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, OwnedHandle, RawHandle};
-
-    use windows::core::{PCWSTR, PWSTR};
-    use windows::Wdk::Foundation::OBJECT_ATTRIBUTES;
-    use windows::Wdk::Storage::FileSystem::{
-        NtCreateFile, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT,
-        FILE_SYNCHRONOUS_IO_NONALERT,
-    };
-    use windows::Win32::Foundation::{
-        HANDLE, OBJ_CASE_INSENSITIVE, OBJ_DONT_REPARSE, UNICODE_STRING,
-    };
-    use windows::Win32::Storage::FileSystem::{
-        CreateFileW, FileBasicInfo, FileIdInfo, FileStandardInfo, GetFileInformationByHandleEx,
-        GetFileType, FILE_ATTRIBUTE_REPARSE_POINT, FILE_BASIC_INFO, FILE_FLAG_BACKUP_SEMANTICS,
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ, FILE_ID_INFO, FILE_SHARE_READ,
-        FILE_STANDARD_INFO, FILE_TYPE_DISK, OPEN_EXISTING,
-    };
-    use windows::Win32::System::IO::IO_STATUS_BLOCK;
-
-    pub(super) struct OpenedArchive {
-        file: Option<File>,
-        monitor: File,
-        // 持有父目录且不共享 WRITE/DELETE，保证相对命名上下文不被替换。
-        _parent: OwnedHandle,
-        identity: ArchiveIdentity,
-    }
-
-    impl fmt::Debug for OpenedArchive {
-        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter
-                .debug_struct("OpenedArchive")
-                .field("identity", &self.identity)
-                .finish_non_exhaustive()
+    fn time_parts(time: io::Result<std::time::SystemTime>) -> (i64, i64) {
+        let Ok(time) = time else { return (0, 0) };
+        match time.duration_since(std::time::UNIX_EPOCH) {
+            Ok(duration) => (duration.as_secs() as i64, duration.subsec_nanos() as i64),
+            Err(before) => {
+                let duration = before.duration();
+                (-(duration.as_secs() as i64), duration.subsec_nanos() as i64)
+            }
         }
-    }
-
-    impl OpenedArchive {
-        pub(super) fn file_mut(&mut self) -> &mut File {
-            self.file.as_mut().expect("归档句柄尚未交给解析器")
-        }
-        pub(super) fn clone_file(&self) -> Result<File, ArchiveImportError> {
-            self.file
-                .as_ref()
-                .expect("归档句柄仍由安全索引持有")
-                .try_clone()
-                .map_err(|error| ArchiveImportError::io("复制 ZIP 内容句柄", ".", error))
-        }
-        pub(super) fn identity(&self) -> &ArchiveIdentity {
-            &self.identity
-        }
-    }
-
-    pub(super) fn open_archive(path: &Path) -> Result<OpenedArchive, ArchiveImportError> {
-        let selected_name = path.file_name().ok_or(ArchiveImportError::SourceNotFile)?;
-        let parent_path = path
-            .parent()
-            .filter(|path| !path.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-
-        let mut parent_wide = parent_path.as_os_str().encode_wide().collect::<Vec<_>>();
-        parent_wide.push(0);
-        let parent_handle = unsafe {
-            CreateFileW(
-                PCWSTR(parent_wide.as_ptr()),
-                FILE_GENERIC_READ.0,
-                FILE_SHARE_READ,
-                None,
-                OPEN_EXISTING,
-                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-                None,
-            )
-        }
-        .map_err(|error| ArchiveImportError::io("安全打开 ZIP 父目录", ".", error))?;
-        let parent = unsafe { OwnedHandle::from_raw_handle(parent_handle.0 as RawHandle) };
-        validate_windows_object(parent_handle, true)?;
-
-        let mut name_wide = selected_name.encode_wide().collect::<Vec<_>>();
-        let name_bytes = name_wide
-            .len()
-            .checked_mul(2)
-            .and_then(|bytes| u16::try_from(bytes).ok())
-            .ok_or(ArchiveImportError::SourceNotFile)?;
-        let unicode_name = UNICODE_STRING {
-            Length: name_bytes,
-            MaximumLength: name_bytes,
-            Buffer: PWSTR(name_wide.as_mut_ptr()),
-        };
-        let object_attributes = OBJECT_ATTRIBUTES {
-            Length: size_of::<OBJECT_ATTRIBUTES>() as u32,
-            RootDirectory: HANDLE(parent.as_raw_handle()),
-            ObjectName: &unicode_name,
-            Attributes: OBJ_CASE_INSENSITIVE | OBJ_DONT_REPARSE,
-            SecurityDescriptor: std::ptr::null(),
-            SecurityQualityOfService: std::ptr::null(),
-        };
-        let mut io_status: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
-        let mut file_handle = HANDLE::default();
-        let status = unsafe {
-            NtCreateFile(
-                &mut file_handle,
-                FILE_GENERIC_READ,
-                &object_attributes,
-                &mut io_status,
-                None,
-                Default::default(),
-                FILE_SHARE_READ,
-                FILE_OPEN,
-                FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
-                None,
-                0,
-            )
-        };
-        if status.0 < 0 {
-            return Err(ArchiveImportError::Io {
-                operation: "父句柄相对打开 ZIP 来源",
-                relative_path: ".".into(),
-                message: format!("NTSTATUS 0x{:08x}", status.0 as u32),
-            });
-        }
-        let owned_file = unsafe { OwnedHandle::from_raw_handle(file_handle.0 as RawHandle) };
-        let identity = validate_windows_object(file_handle, false)?;
-        let file = unsafe { File::from_raw_handle(owned_file.into_raw_handle()) };
-        let monitor = file
-            .try_clone()
-            .map_err(|error| ArchiveImportError::io("复制 ZIP 来源句柄", ".", error))?;
-        Ok(OpenedArchive {
-            file: Some(file),
-            monitor,
-            _parent: parent,
-            identity,
-        })
-    }
-
-    pub(super) fn verify_handle(opened: &OpenedArchive) -> Result<(), ArchiveImportError> {
-        let handle = HANDLE(opened.monitor.as_raw_handle());
-        if validate_windows_object(handle, false)? != opened.identity {
-            return Err(ArchiveImportError::SourceChanged);
-        }
-        Ok(())
-    }
-
-    pub(super) fn verify_source(opened: &OpenedArchive) -> Result<(), ArchiveImportError> {
-        // FILE_SHARE_READ 明确拒绝了 WRITE/DELETE，共享锁覆盖整个读取期；不按路径
-        // 或名称重新打开最终组件，只复核固定句柄。
-        verify_handle(opened)
-    }
-
-    fn validate_windows_object(
-        handle: HANDLE,
-        require_directory: bool,
-    ) -> Result<ArchiveIdentity, ArchiveImportError> {
-        if unsafe { GetFileType(handle) } != FILE_TYPE_DISK {
-            return Err(ArchiveImportError::SourceNotFile);
-        }
-        let mut basic = FILE_BASIC_INFO::default();
-        let mut standard = FILE_STANDARD_INFO::default();
-        let mut id = FILE_ID_INFO::default();
-        unsafe {
-            GetFileInformationByHandleEx(
-                handle,
-                FileBasicInfo,
-                (&mut basic as *mut FILE_BASIC_INFO).cast(),
-                size_of::<FILE_BASIC_INFO>() as u32,
-            )
-            .and_then(|_| {
-                GetFileInformationByHandleEx(
-                    handle,
-                    FileStandardInfo,
-                    (&mut standard as *mut FILE_STANDARD_INFO).cast(),
-                    size_of::<FILE_STANDARD_INFO>() as u32,
-                )
-            })
-            .and_then(|_| {
-                GetFileInformationByHandleEx(
-                    handle,
-                    FileIdInfo,
-                    (&mut id as *mut FILE_ID_INFO).cast(),
-                    size_of::<FILE_ID_INFO>() as u32,
-                )
-            })
-        }
-        .map_err(|error| ArchiveImportError::io("复核 ZIP Windows 句柄", ".", error))?;
-        if basic.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0
-            || standard.Directory != require_directory
-            || standard.EndOfFile < 0
-        {
-            return Err(ArchiveImportError::SourceNotFile);
-        }
-        let low = u64::from_le_bytes(id.FileId.Identifier[0..8].try_into().unwrap());
-        let high = u64::from_le_bytes(id.FileId.Identifier[8..16].try_into().unwrap());
-        Ok(ArchiveIdentity {
-            object_a: id.VolumeSerialNumber,
-            object_b: low,
-            object_c: high,
-            size: standard.EndOfFile as u64,
-            modified_seconds: basic.LastWriteTime,
-            modified_nanos: 0,
-            changed_seconds: 0,
-            changed_nanos: 0,
-        })
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-mod platform {
-    use super::*;
-
-    #[derive(Debug)]
-    pub(super) struct OpenedArchive;
-
-    impl OpenedArchive {
-        pub(super) fn file_mut(&mut self) -> &mut File {
-            unreachable!()
-        }
-        pub(super) fn clone_file(&self) -> Result<File, ArchiveImportError> {
-            Err(ArchiveImportError::UnsupportedPlatformSafety)
-        }
-        pub(super) fn identity(&self) -> &ArchiveIdentity {
-            unreachable!()
-        }
-    }
-
-    pub(super) fn open_archive(_path: &Path) -> Result<OpenedArchive, ArchiveImportError> {
-        Err(ArchiveImportError::UnsupportedPlatformSafety)
-    }
-    pub(super) fn verify_handle(_opened: &OpenedArchive) -> Result<(), ArchiveImportError> {
-        Err(ArchiveImportError::UnsupportedPlatformSafety)
-    }
-    pub(super) fn verify_source(_opened: &OpenedArchive) -> Result<(), ArchiveImportError> {
-        Err(ArchiveImportError::UnsupportedPlatformSafety)
     }
 }
 

@@ -1,8 +1,8 @@
 //! 文件夹技能来源的安全清单、发现与暂存。
 //!
-//! 来源绝不经过 `canonicalize` 后再按路径打开。Unix 的所有后代对象都从固定
-//! 根目录句柄以 `openat(O_NOFOLLOW)` 打开；Windows 从固定卷或 UNC share 根开始，
-//! 以 `NtCreateFile(RootDirectory=parent)` 逐组件打开，绝不拼接后代完整路径。
+//! 统一的 std 路径实现：枚举、复核与打开的每一层都以 `symlink_metadata` 拒绝
+//! symlink 与特殊对象；来源一致性由稳定元数据清单在暂存前后整树重扫比对保证，
+//! 不再按平台钉扎目录或文件句柄。
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -282,7 +282,6 @@ pub(crate) enum FolderImportError {
         relative_path: String,
         message: String,
     },
-    UnsupportedPlatformSafety,
 }
 
 impl FolderImportError {
@@ -332,7 +331,6 @@ impl fmt::Display for FolderImportError {
                 relative_path,
                 message,
             } => write!(formatter, "{operation} {relative_path} 失败: {message}"),
-            Self::UnsupportedPlatformSafety => write!(formatter, "当前平台无法保证安全打开来源"),
         }
     }
 }
@@ -1332,17 +1330,16 @@ struct PlatformDirectoryEntry {
     platform_executable: bool,
 }
 
-#[cfg(unix)]
+/// 统一的 std 平台实现。历史上按平台以固定句柄逐组件打开来源；该句柄钉扎在本
+/// 威胁模型下无增益（能改本地暂存文件的攻击者同样能直接改技能库），而 Windows
+/// 上受限共享打开还会与其他句柄持有者互斥（线上 os error 32 的根因）。现在每层
+/// 都以 `symlink_metadata` 复核并拒绝 symlink 与特殊对象，TOCTOU 由调用方在暂存
+/// 前后比对稳定元数据清单兜底。
 mod platform {
     use super::*;
-    use std::os::fd::OwnedFd;
-    use std::os::unix::ffi::OsStrExt as _;
-    use std::os::unix::fs::MetadataExt as _;
-
-    use rustix::fs::{fstat, openat, statat, AtFlags, Dir, FileType, Mode, OFlags, CWD};
 
     pub(super) struct RootHandle {
-        fd: OwnedFd,
+        path: PathBuf,
     }
 
     impl fmt::Debug for RootHandle {
@@ -1362,36 +1359,21 @@ mod platform {
         if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
             return Err(FolderImportError::SourceNotDirectory);
         }
-        let fd = openat(
-            CWD,
-            path,
-            OFlags::RDONLY
-                | OFlags::DIRECTORY
-                | OFlags::NOFOLLOW
-                | OFlags::NONBLOCK
-                | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|error| FolderImportError::Io {
-            operation: "固定来源根",
-            relative_path: ".".into(),
-            message: error.to_string(),
-        })?;
-        let stable = stable_from_stat(&fstat(&fd).map_err(|error| FolderImportError::Io {
-            operation: "复核来源根",
-            relative_path: ".".into(),
-            message: error.to_string(),
-        })?)?;
-        if stable.kind != FolderEntryKind::Directory {
-            return Err(FolderImportError::SourceNotDirectory);
+        #[cfg_attr(unix, allow(unused_mut))]
+        let mut stable = stable_from_metadata(&metadata, FolderEntryKind::Directory);
+        // 非 unix 的 std metadata 拿不到对象身份;来源根的身份参与 SourceKey
+        // 去重与指纹比对,经全共享句柄补查(失败保持 0,仅弱化去重)。
+        #[cfg(not(unix))]
+        if let Some((object_a, object_b)) = crate::config::file_identity(path) {
+            stable.object_a = object_a;
+            stable.object_b = object_b;
         }
-        let initial = stable_from_metadata(&metadata, FolderEntryKind::Directory);
-        if initial.object_a != stable.object_a || initial.object_b != stable.object_b {
-            return Err(FolderImportError::SourceChanged {
-                relative_path: ".".into(),
-            });
-        }
-        Ok((RootHandle { fd }, stable))
+        Ok((
+            RootHandle {
+                path: path.to_path_buf(),
+            },
+            stable,
+        ))
     }
 
     pub(super) fn list_directory(
@@ -1399,24 +1381,16 @@ mod platform {
         relative: &RelativePath,
         remaining_entries: usize,
     ) -> Result<(StableMetadata, Vec<PlatformDirectoryEntry>), FolderImportError> {
-        let directory = open_directory(root, relative)?;
-        let before = stable_from_stat(
-            &fstat(&directory)
-                .map_err(|error| FolderImportError::io("复核来源目录", relative, error))?,
-        )?;
-        if before.kind != FolderEntryKind::Directory {
-            return Err(FolderImportError::SourceChanged {
-                relative_path: relative.display().to_string(),
-            });
-        }
-        let mut stream = Dir::read_from(&directory)
+        let directory = resolve(root, relative);
+        let before = directory_metadata(&directory, relative)?;
+        let reader = fs::read_dir(&directory)
             .map_err(|error| FolderImportError::io("枚举来源目录", relative, error))?;
         let mut output = Vec::new();
-        while let Some(entry) = stream.read() {
+        for entry in reader {
             let entry =
                 entry.map_err(|error| FolderImportError::io("枚举来源目录", relative, error))?;
-            let bytes = entry.file_name().to_bytes();
-            if bytes == b"." || bytes == b".." {
+            let name_os = entry.file_name();
+            if name_os == "." || name_os == ".." {
                 continue;
             }
             // 在构造第 remaining+1 个名称、稳定元数据或输出项之前立即停止。
@@ -1424,7 +1398,6 @@ mod platform {
             if output.len() >= remaining_entries {
                 return Err(FolderImportError::BatchEntriesExceeded);
             }
-            let name_os = std::ffi::OsStr::from_bytes(bytes);
             let Some(name) = name_os.to_str() else {
                 return Err(FolderImportError::UnsafeEntry {
                     relative_path: relative.display().to_string(),
@@ -1432,41 +1405,16 @@ mod platform {
                 });
             };
             let child_path = relative.child(name)?;
-            let stat = statat(&directory, name_os, AtFlags::SYMLINK_NOFOLLOW)
+            let metadata = fs::symlink_metadata(entry.path())
                 .map_err(|error| FolderImportError::io("检查来源条目", &child_path, error))?;
-            let stable = stable_from_stat(&stat)?;
-            if !matches!(
-                stable.kind,
-                FolderEntryKind::File | FolderEntryKind::Directory
-            ) {
-                return Err(FolderImportError::UnsafeEntry {
-                    relative_path: child_path.display().to_string(),
-                    reason: "只允许普通文件和目录",
-                });
-            }
-            if stable.kind == FolderEntryKind::Directory {
-                let opened = openat(&directory, name_os, directory_flags(), Mode::empty())
-                    .map_err(|error| FolderImportError::io("固定来源目录", &child_path, error))?;
-                let opened_stable =
-                    stable_from_stat(&fstat(&opened).map_err(|error| {
-                        FolderImportError::io("复核来源目录", &child_path, error)
-                    })?)?;
-                if opened_stable != stable {
-                    return Err(FolderImportError::SourceChanged {
-                        relative_path: child_path.display().to_string(),
-                    });
-                }
-            }
+            let stable = stable_for_entry(&metadata)?;
             output.push(PlatformDirectoryEntry {
                 name: name.to_string(),
                 stable,
-                platform_executable: stat.st_mode & 0o111 != 0,
+                platform_executable: platform_executable(&metadata),
             });
         }
-        let after = stable_from_stat(
-            &fstat(&directory)
-                .map_err(|error| FolderImportError::io("复核来源目录", relative, error))?,
-        )?;
+        let after = directory_metadata(&directory, relative)?;
         if after != before {
             return Err(FolderImportError::SourceChanged {
                 relative_path: relative.display().to_string(),
@@ -1479,10 +1427,7 @@ mod platform {
         root: &RootHandle,
         relative: &RelativePath,
     ) -> Result<StableMetadata, FolderImportError> {
-        let fd = open_directory(root, relative)?;
-        stable_from_stat(
-            &fstat(&fd).map_err(|error| FolderImportError::io("复核来源目录", relative, error))?,
-        )
+        directory_metadata(&resolve(root, relative), relative)
     }
 
     pub(super) fn open_file(
@@ -1490,24 +1435,27 @@ mod platform {
         relative: &RelativePath,
         expected: &StableMetadata,
     ) -> Result<File, FolderImportError> {
-        let (parent, name) = split_parent(relative)?;
-        let parent_fd = open_directory(root, &parent)?;
-        let fd = openat(
-            &parent_fd,
-            std::ffi::OsStr::new(name),
-            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|error| FolderImportError::io("安全打开来源文件", relative, error))?;
-        let actual = stable_from_stat(
-            &fstat(&fd).map_err(|error| FolderImportError::io("复核来源文件", relative, error))?,
-        )?;
+        if relative.0.is_empty() {
+            return Err(FolderImportError::unsafe_path("文件路径不能为空"));
+        }
+        let path = resolve(root, relative);
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|error| FolderImportError::io("检查来源文件", relative, error))?;
+        let stable = stable_for_entry(&metadata)?;
+        if stable != *expected || stable.kind != FolderEntryKind::File {
+            return Err(FolderImportError::SourceChanged {
+                relative_path: relative.display().to_string(),
+            });
+        }
+        let file = File::open(&path)
+            .map_err(|error| FolderImportError::io("安全打开来源文件", relative, error))?;
+        let actual = metadata_for_open_file(&file)?;
         if actual != *expected || actual.kind != FolderEntryKind::File {
             return Err(FolderImportError::SourceChanged {
                 relative_path: relative.display().to_string(),
             });
         }
-        Ok(File::from(fd))
+        Ok(file)
     }
 
     pub(super) fn metadata_for_open_file(file: &File) -> Result<StableMetadata, FolderImportError> {
@@ -1544,7 +1492,12 @@ mod platform {
             });
         }
         let current = stable_from_metadata(&metadata, FolderEntryKind::Directory);
-        if &current != expected {
+        #[cfg(unix)]
+        let identity_unchanged =
+            current.object_a == expected.object_a && current.object_b == expected.object_b;
+        #[cfg(not(unix))]
+        let identity_unchanged = current.kind == expected.kind;
+        if !identity_unchanged {
             return Err(FolderImportError::SourceChanged {
                 relative_path: ".".into(),
             });
@@ -1552,771 +1505,102 @@ mod platform {
         Ok(())
     }
 
-    fn open_directory(
-        root: &RootHandle,
-        relative: &RelativePath,
-    ) -> Result<OwnedFd, FolderImportError> {
-        let mut current =
-            openat(&root.fd, ".", directory_flags(), Mode::empty()).map_err(|error| {
-                FolderImportError::io("复制来源根句柄", &RelativePath::root(), error)
-            })?;
-        let mut walked = RelativePath::root();
-        for component in relative.0.split('/').filter(|part| !part.is_empty()) {
-            walked = walked.child(component)?;
-            current = openat(
-                &current,
-                std::ffi::OsStr::new(component),
-                directory_flags(),
-                Mode::empty(),
-            )
-            .map_err(|error| FolderImportError::io("安全打开来源目录", &walked, error))?;
-            let stable = stable_from_stat(
-                &fstat(&current)
-                    .map_err(|error| FolderImportError::io("复核来源目录", &walked, error))?,
-            )?;
-            if stable.kind != FolderEntryKind::Directory {
-                return Err(FolderImportError::SourceChanged {
-                    relative_path: walked.display().to_string(),
-                });
-            }
-        }
-        Ok(current)
+    fn resolve(root: &RootHandle, relative: &RelativePath) -> PathBuf {
+        root.path.join(relative.to_path_buf())
     }
 
-    fn directory_flags() -> OFlags {
-        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC
-    }
-
-    fn split_parent(relative: &RelativePath) -> Result<(RelativePath, &str), FolderImportError> {
-        if relative.0.is_empty() {
-            return Err(FolderImportError::unsafe_path("文件路径不能为空"));
-        }
-        Ok((relative.parent(), relative.file_name()))
-    }
-
-    fn stable_from_stat(stat: &rustix::fs::Stat) -> Result<StableMetadata, FolderImportError> {
-        let kind = match FileType::from_raw_mode(stat.st_mode) {
-            FileType::RegularFile => FolderEntryKind::File,
-            FileType::Directory => FolderEntryKind::Directory,
-            FileType::Symlink => {
-                return Err(FolderImportError::UnsafeEntry {
-                    relative_path: ".".into(),
-                    reason: "不允许符号链接",
-                })
-            }
-            _ => {
-                return Err(FolderImportError::UnsafeEntry {
-                    relative_path: ".".into(),
-                    reason: "只允许普通文件和目录",
-                })
-            }
-        };
-        let (modified_seconds, modified_nanos, changed_seconds, changed_nanos) = stat_times(stat);
-        Ok(StableMetadata {
-            object_a: stat.st_dev as u64,
-            object_b: stat.st_ino as u64,
-            object_c: 0,
-            size: stat.st_size.max(0) as u64,
-            modified_seconds,
-            modified_nanos,
-            changed_seconds,
-            changed_nanos,
-            kind,
-        })
-    }
-
-    fn stable_from_metadata(metadata: &fs::Metadata, kind: FolderEntryKind) -> StableMetadata {
-        StableMetadata {
-            object_a: metadata.dev(),
-            object_b: metadata.ino(),
-            object_c: 0,
-            size: metadata.size(),
-            modified_seconds: metadata.mtime(),
-            modified_nanos: metadata.mtime_nsec(),
-            changed_seconds: metadata.ctime(),
-            changed_nanos: metadata.ctime_nsec(),
-            kind,
-        }
-    }
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    fn stat_times(stat: &rustix::fs::Stat) -> (i64, i64, i64, i64) {
-        // rustix 跟随 libc：Linux 纳秒字段为 u64，macOS 为 i64；其合法范围均小于 10^9。
-        (
-            stat.st_mtime,
-            stat.st_mtime_nsec as i64,
-            stat.st_ctime,
-            stat.st_ctime_nsec as i64,
-        )
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    fn stat_times(_stat: &rustix::fs::Stat) -> (i64, i64, i64, i64) {
-        (0, 0, 0, 0)
-    }
-}
-
-// Windows 只用一次完整路径 API 固定卷或 UNC share 根；选中根及其所有后代均
-// 通过已固定父句柄逐组件打开。禁止在此模块中保存可供后代重新拼接的根路径。
-#[cfg(windows)]
-mod platform {
-    use super::*;
-    use std::ffi::{OsStr, OsString};
-    use std::mem::{offset_of, size_of};
-    use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
-    use std::os::windows::io::{AsRawHandle as _, FromRawHandle as _, RawHandle};
-    use std::path::Prefix;
-
-    use windows::core::{PCWSTR, PWSTR};
-    use windows::Wdk::Foundation::OBJECT_ATTRIBUTES;
-    use windows::Wdk::Storage::FileSystem::{
-        NtCreateFile, FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
-        FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT,
-    };
-    use windows::Win32::Foundation::{
-        HANDLE, OBJ_CASE_INSENSITIVE, OBJ_DONT_REPARSE, UNICODE_STRING,
-    };
-    use windows::Win32::Storage::FileSystem::{
-        CreateFileW, FileBasicInfo, FileIdBothDirectoryInfo, FileIdInfo, FileStandardInfo,
-        GetFileInformationByHandleEx, GetFileType, FILE_ATTRIBUTE_DEVICE, FILE_ATTRIBUTE_DIRECTORY,
-        FILE_ATTRIBUTE_REPARSE_POINT, FILE_BASIC_INFO, FILE_FLAG_BACKUP_SEMANTICS,
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ, FILE_ID_BOTH_DIR_INFO, FILE_ID_INFO,
-        FILE_INFO_BY_HANDLE_CLASS, FILE_SHARE_READ, FILE_STANDARD_INFO, FILE_TYPE_DISK,
-        OPEN_EXISTING,
-    };
-    use windows::Win32::System::IO::IO_STATUS_BLOCK;
-
-    const DIRECTORY_BUFFER_BYTES: usize = 64 * 1024;
-    const HRESULT_NO_MORE_FILES: u32 = 0x8007_0012;
-    // windows 0.61 metadata 未导出该命名常量；FILE_INFO_BY_HANDLE_CLASS 的 SDK
-    // 固定值 11 即 FileIdBothRestartDirectoryInfo。
-    #[allow(non_upper_case_globals)]
-    const FileIdBothRestartDirectoryInfo: FILE_INFO_BY_HANDLE_CLASS = FILE_INFO_BY_HANDLE_CLASS(11);
-
-    pub(super) struct RootHandle {
-        file: File,
-        identity: ObjectIdentity,
-        component_identities: Vec<ObjectIdentity>,
-    }
-
-    impl fmt::Debug for RootHandle {
-        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter
-                .debug_struct("RootHandle")
-                .field("identity", &self.identity)
-                .finish_non_exhaustive()
-        }
-    }
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct ObjectIdentity {
-        volume: u64,
-        file_id_low: u64,
-        file_id_high: u64,
-    }
-
-    struct ParsedAbsolutePath {
-        anchor: OsString,
-        components: Vec<OsString>,
-        labels: Vec<String>,
-    }
-
-    #[derive(Clone, Copy)]
-    enum OpenKind {
-        Any,
-        Directory,
-        File,
-    }
-
-    pub(super) fn open_root(
+    fn directory_metadata(
         path: &Path,
-    ) -> Result<(RootHandle, StableMetadata), FolderImportError> {
-        let parsed = parse_absolute_path(path)?;
-        let (file, component_identities) = open_selected_path(&parsed)?;
-        let stable = inspect_handle(&file, &RelativePath::root())?;
-        if stable.kind != FolderEntryKind::Directory {
-            return Err(FolderImportError::SourceNotDirectory);
-        }
-        let identity = identity(&stable);
-        Ok((
-            RootHandle {
-                file,
-                identity,
-                component_identities,
-            },
-            stable,
-        ))
-    }
-
-    pub(super) fn list_directory(
-        root: &RootHandle,
-        relative: &RelativePath,
-        remaining_entries: usize,
-    ) -> Result<(StableMetadata, Vec<PlatformDirectoryEntry>), FolderImportError> {
-        let directory = open_directory(root, relative)?;
-        let before = inspect_handle(&directory, relative)?;
-        if before.kind != FolderEntryKind::Directory {
-            return Err(source_changed(relative));
-        }
-        let mut output = Vec::new();
-        let mut restart = true;
-        loop {
-            // u64 backing 保证变长 FILE_ID_BOTH_DIR_INFO 记录的对齐。
-            let mut buffer = vec![0u64; DIRECTORY_BUFFER_BYTES / size_of::<u64>()];
-            // try_clone/DuplicateHandle 共享同一个 file object 及其目录枚举游标。
-            // 每次 list 的首个请求必须显式 restart，后续请求再从当前游标继续。
-            let information_class = if restart {
-                FileIdBothRestartDirectoryInfo
-            } else {
-                FileIdBothDirectoryInfo
-            };
-            let result = unsafe {
-                GetFileInformationByHandleEx(
-                    HANDLE(directory.as_raw_handle()),
-                    information_class,
-                    buffer.as_mut_ptr().cast(),
-                    DIRECTORY_BUFFER_BYTES as u32,
-                )
-            };
-            if let Err(error) = result {
-                if error.code().0 as u32 == HRESULT_NO_MORE_FILES {
-                    break;
-                }
-                return Err(FolderImportError::io("枚举来源目录句柄", relative, error));
-            }
-            restart = false;
-            let bytes = unsafe {
-                std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), DIRECTORY_BUFFER_BYTES)
-            };
-            let mut offset = 0usize;
-            loop {
-                let header_size = offset_of!(FILE_ID_BOTH_DIR_INFO, FileName);
-                if offset
-                    .checked_add(header_size)
-                    .is_none_or(|end| end > bytes.len())
-                {
-                    return Err(unsafe_entry(relative, "目录枚举记录越界"));
-                }
-                let record = unsafe {
-                    std::ptr::read_unaligned(
-                        bytes.as_ptr().add(offset).cast::<FILE_ID_BOTH_DIR_INFO>(),
-                    )
-                };
-                let name_bytes = record.FileNameLength as usize;
-                if name_bytes % 2 != 0
-                    || offset
-                        .checked_add(header_size)
-                        .and_then(|start| start.checked_add(name_bytes))
-                        .is_none_or(|end| end > bytes.len())
-                {
-                    return Err(unsafe_entry(relative, "目录项名称记录非法"));
-                }
-                let name_start = offset + header_size;
-                let wide = bytes[name_start..name_start + name_bytes]
-                    .chunks_exact(2)
-                    .map(|pair| u16::from_ne_bytes([pair[0], pair[1]]))
-                    .collect::<Vec<_>>();
-                let name = String::from_utf16(&wide)
-                    .map_err(|_| unsafe_entry(relative, "路径必须是有效 Unicode"))?;
-                if name != "." && name != ".." {
-                    // 在创建第 budget+1 个名称对应的元数据与输出对象前停止。
-                    if output.len() >= remaining_entries {
-                        return Err(FolderImportError::BatchEntriesExceeded);
-                    }
-                    let child_path = relative.child(&name)?;
-                    let attributes = record.FileAttributes;
-                    if attributes & (FILE_ATTRIBUTE_REPARSE_POINT.0 | FILE_ATTRIBUTE_DEVICE.0) != 0
-                    {
-                        return Err(FolderImportError::UnsafeEntry {
-                            relative_path: child_path.display().to_string(),
-                            reason: "不允许重解析点或特殊对象",
-                        });
-                    }
-                    let record_directory = attributes & FILE_ATTRIBUTE_DIRECTORY.0 != 0;
-                    let child = open_relative_nt(
-                        &directory,
-                        OsStr::new(&name),
-                        &child_path,
-                        if record_directory {
-                            OpenKind::Directory
-                        } else {
-                            OpenKind::File
-                        },
-                        "父句柄相对打开来源条目",
-                    )?;
-                    let stable = inspect_handle(&child, &child_path)?;
-                    let expected_kind = if record_directory {
-                        FolderEntryKind::Directory
-                    } else {
-                        FolderEntryKind::File
-                    };
-                    // 枚举记录只提供 64-bit FileId；完整 128-bit identity、size 与
-                    // 时间均取自刚刚固定的对象句柄。
-                    if stable.kind != expected_kind
-                        || stable.object_a != before.object_a
-                        || stable.object_b != record.FileId as u64
-                        || (stable.kind == FolderEntryKind::File
-                            && (stable.size != record.EndOfFile.max(0) as u64
-                                || (stable.modified_seconds, stable.modified_nanos)
-                                    != windows_time(record.LastWriteTime)))
-                    {
-                        return Err(source_changed(&child_path));
-                    }
-                    output.push(PlatformDirectoryEntry {
-                        name,
-                        stable,
-                        platform_executable: false,
-                    });
-                }
-                if record.NextEntryOffset == 0 {
-                    break;
-                }
-                let next = record.NextEntryOffset as usize;
-                if next < header_size
-                    || offset
-                        .checked_add(next)
-                        .is_none_or(|next_offset| next_offset >= bytes.len())
-                {
-                    return Err(unsafe_entry(relative, "目录枚举链偏移非法"));
-                }
-                offset += next;
-            }
-        }
-        if inspect_handle(&directory, relative)? != before {
-            return Err(source_changed(relative));
-        }
-        Ok((before, output))
-    }
-
-    pub(super) fn metadata_for_directory(
-        root: &RootHandle,
         relative: &RelativePath,
     ) -> Result<StableMetadata, FolderImportError> {
-        let directory = open_directory(root, relative)?;
-        let stable = inspect_handle(&directory, relative)?;
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|error| FolderImportError::io("复核来源目录", relative, error))?;
+        let stable = stable_for_entry(&metadata)?;
         if stable.kind != FolderEntryKind::Directory {
-            return Err(source_changed(relative));
+            return Err(FolderImportError::SourceChanged {
+                relative_path: relative.display().to_string(),
+            });
         }
         Ok(stable)
     }
 
-    pub(super) fn open_file(
-        root: &RootHandle,
-        relative: &RelativePath,
-        expected: &StableMetadata,
-    ) -> Result<File, FolderImportError> {
-        if relative.0.is_empty() {
-            return Err(FolderImportError::unsafe_path("文件路径不能为空"));
-        }
-        let parent = open_directory(root, &relative.parent())?;
-        let file = open_relative_nt(
-            &parent,
-            OsStr::new(relative.file_name()),
-            relative,
-            OpenKind::File,
-            "父句柄相对打开来源文件",
-        )?;
-        let actual = inspect_handle(&file, relative)?;
-        if actual != *expected || actual.kind != FolderEntryKind::File {
-            return Err(source_changed(relative));
-        }
-        // NtCreateFile 的 FILE_SHARE_READ 拒绝 WRITE/DELETE，共享约束随返回的
-        // File 覆盖整个读取期；调用方只从这个固定句柄读取并在结束后复核。
-        Ok(file)
-    }
-
-    pub(super) fn metadata_for_open_file(file: &File) -> Result<StableMetadata, FolderImportError> {
-        inspect_handle(file, &RelativePath::root())
-    }
-
-    pub(super) fn verify_root_path(
-        path: &Path,
-        root: &RootHandle,
-        expected: &StableMetadata,
-    ) -> Result<(), FolderImportError> {
-        let parsed =
-            parse_absolute_path(path).map_err(|_| source_changed(&RelativePath::root()))?;
-        let (current, component_identities) =
-            open_selected_path(&parsed).map_err(|_| source_changed(&RelativePath::root()))?;
-        let current_stable = inspect_handle(&current, &RelativePath::root())
-            .map_err(|_| source_changed(&RelativePath::root()))?;
-        if component_identities != root.component_identities
-            || identity(&current_stable) != root.identity
-            || identity(&current_stable) != identity(expected)
-        {
-            return Err(source_changed(&RelativePath::root()));
-        }
-        Ok(())
-    }
-
-    fn parse_absolute_path(path: &Path) -> Result<ParsedAbsolutePath, FolderImportError> {
-        let input = path.as_os_str().encode_wide().collect::<Vec<_>>();
-        if input.is_empty() || input.contains(&0) || input.contains(&('/' as u16)) {
-            return Err(FolderImportError::unsafe_path(
-                "Windows 来源必须是规范 drive 或 UNC share 绝对路径",
-            ));
-        }
-        let mut parts = path.components();
-        let Some(Component::Prefix(prefix)) = parts.next() else {
-            return Err(FolderImportError::unsafe_path(
-                "Windows 来源必须是规范 drive 或 UNC share 绝对路径",
-            ));
-        };
-        let (anchor_wide, unc) = match prefix.kind() {
-            Prefix::Disk(letter) => (vec![letter as u16, ':' as u16, '\\' as u16], false),
-            Prefix::UNC(server, share) => {
-                let server = server.encode_wide().collect::<Vec<_>>();
-                let share = share.encode_wide().collect::<Vec<_>>();
-                if server.is_empty()
-                    || share.is_empty()
-                    || server
-                        .iter()
-                        .chain(&share)
-                        .any(|unit| *unit == 0 || *unit == b'/' as u16 || *unit == b'\\' as u16)
-                {
-                    return Err(FolderImportError::unsafe_path("UNC server/share 名称非法"));
-                }
-                let mut anchor = vec![b'\\' as u16, b'\\' as u16];
-                anchor.extend(server);
-                anchor.push(b'\\' as u16);
-                anchor.extend(share);
-                anchor.push(b'\\' as u16);
-                (anchor, true)
-            }
-            _ => {
-                return Err(FolderImportError::unsafe_path(
-                    "拒绝 verbatim、device 与 drive-relative 路径",
-                ))
-            }
-        };
-        let mut had_root = false;
-        let mut components = Vec::new();
-        let mut labels = Vec::new();
-        for component in parts {
-            match component {
-                Component::RootDir if !had_root && components.is_empty() => had_root = true,
-                Component::Normal(name) if had_root => {
-                    let label = name
-                        .to_str()
-                        .ok_or_else(|| FolderImportError::unsafe_path("路径必须是有效 Unicode"))?;
-                    if label.is_empty() || label == "." || label == ".." {
-                        return Err(FolderImportError::unsafe_path("来源绝对路径组件非法"));
-                    }
-                    components.push(name.to_os_string());
-                    labels.push(label.to_string());
-                }
-                _ => {
-                    return Err(FolderImportError::unsafe_path(
-                        "Windows 来源必须是规范绝对路径",
-                    ))
-                }
-            }
-        }
-        if !had_root && !(unc && components.is_empty()) {
-            return Err(FolderImportError::unsafe_path("拒绝 drive-relative 路径"));
-        }
-        let mut normalized = anchor_wide.clone();
-        // Rust 对 UNC prefix 提供隐式 RootDir，因此无尾斜杠的 share root 也会
-        // 得到 had_root=true。share root 的两种标准拼写都归一到同一 anchor；
-        // 只有无后续组件时允许省略这一个尾斜杠。
-        if unc && components.is_empty() && input.last() != Some(&(b'\\' as u16)) {
-            normalized.pop();
-        }
-        for (index, component) in components.iter().enumerate() {
-            if index > 0 {
-                normalized.push(b'\\' as u16);
-            }
-            normalized.extend(component.encode_wide());
-        }
-        if normalized != input {
-            return Err(FolderImportError::unsafe_path(
-                "Windows 来源路径包含非规范分隔符或跳转组件",
-            ));
-        }
-        Ok(ParsedAbsolutePath {
-            anchor: OsString::from_wide(&anchor_wide),
-            components,
-            labels,
-        })
-    }
-
-    #[cfg(test)]
-    pub(super) fn parse_absolute_path_for_test(
-        path: &Path,
-    ) -> Result<(OsString, Vec<String>), FolderImportError> {
-        let parsed = parse_absolute_path(path)?;
-        Ok((parsed.anchor, parsed.labels))
-    }
-
-    fn open_selected_path(
-        parsed: &ParsedAbsolutePath,
-    ) -> Result<(File, Vec<ObjectIdentity>), FolderImportError> {
-        let mut anchor = parsed.anchor.encode_wide().collect::<Vec<_>>();
-        anchor.push(0);
-        let handle = unsafe {
-            CreateFileW(
-                PCWSTR(anchor.as_ptr()),
-                FILE_GENERIC_READ.0,
-                FILE_SHARE_READ,
-                None,
-                OPEN_EXISTING,
-                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-                None,
-            )
-        }
-        .map_err(|error| FolderImportError::Io {
-            operation: "固定 Windows 卷或 share 根",
-            relative_path: ".".into(),
-            message: error.to_string(),
-        })?;
-        let mut current = unsafe { File::from_raw_handle(handle.0 as RawHandle) };
-        let mut stable = inspect_handle(&current, &RelativePath::root())?;
-        if stable.kind != FolderEntryKind::Directory {
-            return Err(FolderImportError::SourceNotDirectory);
-        }
-        let mut chain = vec![identity(&stable)];
-        let mut walked = RelativePath::root();
-        for (index, component) in parsed.components.iter().enumerate() {
-            walked = walked.child(&parsed.labels[index])?;
-            let kind = if index + 1 == parsed.components.len() {
-                OpenKind::Any
-            } else {
-                OpenKind::Directory
-            };
-            current = open_relative_nt(&current, component, &walked, kind, "从卷根逐组件打开来源")?;
-            stable = inspect_handle(&current, &walked)?;
-            if stable.kind != FolderEntryKind::Directory {
-                if index + 1 == parsed.components.len() {
-                    return Err(FolderImportError::SourceNotDirectory);
-                }
-                return Err(source_changed(&walked));
-            }
-            chain.push(identity(&stable));
-        }
-        Ok((current, chain))
-    }
-
-    fn open_directory(
-        root: &RootHandle,
-        relative: &RelativePath,
-    ) -> Result<File, FolderImportError> {
-        let mut current = root.file.try_clone().map_err(|error| {
-            FolderImportError::io("复制固定来源根句柄", &RelativePath::root(), error)
-        })?;
-        let mut walked = RelativePath::root();
-        for component in relative.0.split('/').filter(|part| !part.is_empty()) {
-            walked = walked.child(component)?;
-            current = open_relative_nt(
-                &current,
-                OsStr::new(component),
-                &walked,
-                OpenKind::Directory,
-                "安全打开来源目录",
-            )?;
-            if inspect_handle(&current, &walked)?.kind != FolderEntryKind::Directory {
-                return Err(source_changed(&walked));
-            }
-        }
-        Ok(current)
-    }
-
-    fn open_relative_nt(
-        parent: &File,
-        name: &OsStr,
-        relative: &RelativePath,
-        kind: OpenKind,
-        operation: &'static str,
-    ) -> Result<File, FolderImportError> {
-        let mut name_wide = name.encode_wide().collect::<Vec<_>>();
-        if name_wide.is_empty()
-            || name_wide.contains(&0)
-            || name_wide.contains(&(b'\\' as u16))
-            || name_wide.contains(&(b'/' as u16))
-        {
-            return Err(unsafe_entry(relative, "路径组件非法"));
-        }
-        let name_bytes = name_wide
-            .len()
-            .checked_mul(2)
-            .and_then(|bytes| u16::try_from(bytes).ok())
-            .ok_or_else(|| unsafe_entry(relative, "路径组件过长"))?;
-        let unicode_name = UNICODE_STRING {
-            Length: name_bytes,
-            MaximumLength: name_bytes,
-            Buffer: PWSTR(name_wide.as_mut_ptr()),
-        };
-        let object_attributes = OBJECT_ATTRIBUTES {
-            Length: size_of::<OBJECT_ATTRIBUTES>() as u32,
-            RootDirectory: HANDLE(parent.as_raw_handle()),
-            ObjectName: &unicode_name,
-            Attributes: OBJ_CASE_INSENSITIVE | OBJ_DONT_REPARSE,
-            SecurityDescriptor: std::ptr::null(),
-            SecurityQualityOfService: std::ptr::null(),
-        };
-        let mut io_status: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
-        let mut handle = HANDLE::default();
-        let kind_options = match kind {
-            OpenKind::Any => Default::default(),
-            OpenKind::Directory => FILE_DIRECTORY_FILE,
-            OpenKind::File => FILE_NON_DIRECTORY_FILE,
-        };
-        let status = unsafe {
-            NtCreateFile(
-                &mut handle,
-                FILE_GENERIC_READ,
-                &object_attributes,
-                &mut io_status,
-                None,
-                Default::default(),
-                FILE_SHARE_READ,
-                FILE_OPEN,
-                kind_options | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
-                None,
-                0,
-            )
-        };
-        if status.0 < 0 {
-            return Err(FolderImportError::Io {
-                operation,
-                relative_path: relative.display().to_string(),
-                message: format!("NTSTATUS 0x{:08x}", status.0 as u32),
+    fn stable_for_entry(metadata: &fs::Metadata) -> Result<StableMetadata, FolderImportError> {
+        let file_type = metadata.file_type();
+        if file_type.is_symlink() {
+            return Err(FolderImportError::UnsafeEntry {
+                relative_path: ".".into(),
+                reason: "不允许符号链接",
             });
         }
-        Ok(unsafe { File::from_raw_handle(handle.0 as RawHandle) })
+        let kind = if file_type.is_dir() {
+            FolderEntryKind::Directory
+        } else if file_type.is_file() {
+            FolderEntryKind::File
+        } else {
+            return Err(FolderImportError::UnsafeEntry {
+                relative_path: ".".into(),
+                reason: "只允许普通文件和目录",
+            });
+        };
+        Ok(stable_from_metadata(metadata, kind))
     }
 
-    fn inspect_handle(
-        file: &File,
-        relative: &RelativePath,
-    ) -> Result<StableMetadata, FolderImportError> {
-        let handle = HANDLE(file.as_raw_handle());
-        if unsafe { GetFileType(handle) } != FILE_TYPE_DISK {
-            return Err(unsafe_entry(relative, "对象不是磁盘文件或目录"));
-        }
-        let mut basic = FILE_BASIC_INFO::default();
-        let mut standard = FILE_STANDARD_INFO::default();
-        let mut id = FILE_ID_INFO::default();
-        unsafe {
-            GetFileInformationByHandleEx(
-                handle,
-                FileBasicInfo,
-                (&mut basic as *mut FILE_BASIC_INFO).cast(),
-                size_of::<FILE_BASIC_INFO>() as u32,
-            )
-            .and_then(|_| {
-                GetFileInformationByHandleEx(
-                    handle,
-                    FileStandardInfo,
-                    (&mut standard as *mut FILE_STANDARD_INFO).cast(),
-                    size_of::<FILE_STANDARD_INFO>() as u32,
-                )
-            })
-            .and_then(|_| {
-                GetFileInformationByHandleEx(
-                    handle,
-                    FileIdInfo,
-                    (&mut id as *mut FILE_ID_INFO).cast(),
-                    size_of::<FILE_ID_INFO>() as u32,
-                )
-            })
-        }
-        .map_err(|error| FolderImportError::io("复核 Windows 来源句柄", relative, error))?;
-        if basic.FileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT.0 | FILE_ATTRIBUTE_DEVICE.0) != 0
-            || standard.EndOfFile < 0
+    fn stable_from_metadata(metadata: &fs::Metadata, kind: FolderEntryKind) -> StableMetadata {
+        #[cfg(unix)]
         {
-            return Err(unsafe_entry(relative, "不允许重解析点或特殊对象"));
+            use std::os::unix::fs::MetadataExt as _;
+            StableMetadata {
+                object_a: metadata.dev(),
+                object_b: metadata.ino(),
+                object_c: 0,
+                size: metadata.size(),
+                modified_seconds: metadata.mtime(),
+                modified_nanos: metadata.mtime_nsec(),
+                changed_seconds: metadata.ctime(),
+                changed_nanos: metadata.ctime_nsec(),
+                kind,
+            }
         }
-        let (modified_seconds, modified_nanos) = windows_time(basic.LastWriteTime);
-        let (changed_seconds, changed_nanos) = windows_time(basic.ChangeTime);
-        Ok(StableMetadata {
-            object_a: id.VolumeSerialNumber,
-            object_b: u64::from_le_bytes(id.FileId.Identifier[..8].try_into().unwrap()),
-            object_c: u64::from_le_bytes(id.FileId.Identifier[8..].try_into().unwrap()),
-            size: standard.EndOfFile as u64,
-            modified_seconds,
-            modified_nanos,
-            changed_seconds,
-            changed_nanos,
-            kind: if standard.Directory {
-                FolderEntryKind::Directory
-            } else {
-                FolderEntryKind::File
-            },
-        })
-    }
-
-    fn windows_time(ticks: i64) -> (i64, i64) {
-        (
-            ticks.div_euclid(10_000_000),
-            ticks.rem_euclid(10_000_000) * 100,
-        )
-    }
-
-    fn identity(stable: &StableMetadata) -> ObjectIdentity {
-        ObjectIdentity {
-            volume: stable.object_a,
-            file_id_low: stable.object_b,
-            file_id_high: stable.object_c,
+        #[cfg(not(unix))]
+        {
+            let (modified_seconds, modified_nanos) = time_parts(metadata.modified());
+            StableMetadata {
+                object_a: 0,
+                object_b: 0,
+                object_c: 0,
+                size: metadata.len(),
+                modified_seconds,
+                modified_nanos,
+                changed_seconds: modified_seconds,
+                changed_nanos: modified_nanos,
+                kind,
+            }
         }
     }
 
-    fn source_changed(relative: &RelativePath) -> FolderImportError {
-        FolderImportError::SourceChanged {
-            relative_path: relative.display().to_string(),
+    #[cfg(not(unix))]
+    fn time_parts(time: io::Result<std::time::SystemTime>) -> (i64, i64) {
+        let Ok(time) = time else { return (0, 0) };
+        match time.duration_since(std::time::UNIX_EPOCH) {
+            Ok(duration) => (duration.as_secs() as i64, duration.subsec_nanos() as i64),
+            Err(before) => {
+                let duration = before.duration();
+                (-(duration.as_secs() as i64), duration.subsec_nanos() as i64)
+            }
         }
     }
 
-    fn unsafe_entry(relative: &RelativePath, reason: &'static str) -> FolderImportError {
-        FolderImportError::UnsafeEntry {
-            relative_path: relative.display().to_string(),
-            reason,
+    fn platform_executable(metadata: &fs::Metadata) -> bool {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            metadata.mode() & 0o111 != 0
         }
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-mod platform {
-    use super::*;
-
-    #[derive(Debug)]
-    pub(super) struct RootHandle;
-
-    pub(super) fn open_root(
-        _path: &Path,
-    ) -> Result<(RootHandle, StableMetadata), FolderImportError> {
-        Err(FolderImportError::UnsupportedPlatformSafety)
-    }
-    pub(super) fn list_directory(
-        _root: &RootHandle,
-        _relative: &RelativePath,
-        _remaining_entries: usize,
-    ) -> Result<(StableMetadata, Vec<PlatformDirectoryEntry>), FolderImportError> {
-        Err(FolderImportError::UnsupportedPlatformSafety)
-    }
-    pub(super) fn metadata_for_directory(
-        _root: &RootHandle,
-        _relative: &RelativePath,
-    ) -> Result<StableMetadata, FolderImportError> {
-        Err(FolderImportError::UnsupportedPlatformSafety)
-    }
-    pub(super) fn open_file(
-        _root: &RootHandle,
-        _relative: &RelativePath,
-        _expected: &StableMetadata,
-    ) -> Result<File, FolderImportError> {
-        Err(FolderImportError::UnsupportedPlatformSafety)
-    }
-    pub(super) fn metadata_for_open_file(
-        _file: &File,
-    ) -> Result<StableMetadata, FolderImportError> {
-        Err(FolderImportError::UnsupportedPlatformSafety)
-    }
-    pub(super) fn verify_root_path(
-        _path: &Path,
-        _root: &RootHandle,
-        _expected: &StableMetadata,
-    ) -> Result<(), FolderImportError> {
-        Err(FolderImportError::UnsupportedPlatformSafety)
+        #[cfg(not(unix))]
+        {
+            let _ = metadata;
+            false
+        }
     }
 }
 

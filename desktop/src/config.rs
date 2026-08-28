@@ -341,6 +341,40 @@ fn windows_core_io_error(error: windows::core::Error) -> std::io::Error {
     }
 }
 
+/// 文件/目录的稳定对象身份（Windows volume/file-index，经全共享句柄
+/// 开-查-关，不钉扎；unix 侧调用方直接用 MetadataExt，不经这里）。
+/// 查询失败返回 None，调用方需有退化路径。
+#[cfg(not(unix))]
+pub(crate) fn file_identity(path: &Path) -> Option<(u64, u64)> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        use std::os::windows::io::AsRawHandle as _;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::{
+            GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS,
+            FILE_READ_ATTRIBUTES,
+        };
+        let file = fs::OpenOptions::new()
+            .access_mode(FILE_READ_ATTRIBUTES.0)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
+            .open(path)
+            .ok()?;
+        let mut information = BY_HANDLE_FILE_INFORMATION::default();
+        unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut information) }
+            .ok()?;
+        Some((
+            information.dwVolumeSerialNumber as u64,
+            ((information.nFileIndexHigh as u64) << 32) | information.nFileIndexLow as u64,
+        ))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        None
+    }
+}
+
 pub(crate) fn sync_file(path: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {
