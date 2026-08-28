@@ -32,14 +32,6 @@ use crate::skill_import::store::{BaselineStore, SkillStoreError, StoreRevision, 
 const LOCK_FILE: &str = "skills.lock";
 const REVISION_FILE: &str = "skills.revision";
 const REVISION_FORMAT: u32 = 1;
-const REVISION_MIGRATION_FILE: &str = "skills.revision-migration-v1.json";
-const REVISION_MIGRATION_FORMAT: u32 = 1;
-const REVISION_MIGRATION_KIND: &str = "legacy-nonempty-store";
-const MIGRATED_INITIAL_REVISION: u64 = 1;
-const LEGACY_SESSION_SKILLS_FILE: &str = "legacy-session-skills-v1.json";
-const SESSIONS_DIR: &str = "ohmy-sessions";
-
-pub(crate) type LegacySessionSkills = std::collections::BTreeMap<String, Vec<String>>;
 
 /// 内置技能的**出厂**缺省启用集:云端建任务的 MC_DEFAULT_SKILL_IDS 四件套
 /// (baizhi/monkeycode.rs)+ 桌面端补充的 publish-website(把本会话产出的
@@ -84,10 +76,9 @@ pub fn is_default_enabled(
         .unwrap_or_else(|| source == "user" || DEFAULT_ENABLED.contains(&name))
 }
 
-/// 旧版 Desktop 曾允许的单组件名。它仍然不含分隔符、反斜杠或 `..`，所以在
-/// 已有 macOS/Linux 技能库中按子路径列出和删除是安全的；但它可能以点结尾或
-/// 是 Windows 设备名，不能用于新建、导入或 Agent 物化。
-fn valid_legacy_skill_name(name: &str) -> bool {
+/// 技能名即目录名,会拼进壳与引擎两侧的文件系统路径,校验口径与
+/// session id 同类:单段安全名,另限 ASCII(斜杠指令 /name 的可输入性)。
+pub fn valid_skill_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= crate::skill_import::model::MAX_SKILL_NAME_BYTES
         && !name.starts_with('.')
@@ -96,14 +87,8 @@ fn valid_legacy_skill_name(name: &str) -> bool {
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-}
-
-/// 技能名即目录名,会拼进壳与引擎两侧的文件系统路径,校验口径与
-/// session id 同类:单段安全名,另限 ASCII(斜杠指令 /name 的可输入性)。
-/// 新建和导入始终使用此跨平台严格规则；legacy 兼容只走
-/// [`valid_legacy_skill_name`] 标明的只读/删除路径。
-pub fn valid_skill_name(name: &str) -> bool {
-    valid_legacy_skill_name(name) && !name.ends_with(['.', ' ']) && !is_windows_reserved_name(name)
+        && !name.ends_with(['.', ' '])
+        && !is_windows_reserved_name(name)
 }
 
 /// Windows 设备名即使带扩展名仍是保留名（例如 `CON.md`）。统一拒绝它们，
@@ -142,12 +127,6 @@ pub struct SkillInfo {
     /// 新会话是否默认启用(出厂规则 ⊕ skills-defaults.json 显式开关的
     /// 解析结果;UI 的缺省集推导只认这个字段,不复刻规则)
     pub default_enabled: bool,
-    /// 后端按当前严格名称规则给出的显式能力。legacy 兼容名称可列出和删除，
-    /// 但不能写入默认集，也不会进入 Agent 物化。
-    pub can_set_default: bool,
-    /// 是否可经 `skills_save` 编辑（内置技能表示可创建同名编辑副本）。legacy
-    /// 兼容名称会被严格保存入口拒绝，因此 UI 不应提供编辑动作。
-    pub can_edit: bool,
 }
 
 /// 内置技能目录:bundle 资源 + dev 回退(cargo run 无 bundle 资源时用
@@ -169,22 +148,6 @@ pub fn builtin_dir(app: &AppHandle) -> Option<PathBuf> {
 /// 用户技能目录(权威,壳 UI 直接读写)。
 pub fn user_dir(cfg_dir: &Path) -> PathBuf {
     cfg_dir.join("skills")
-}
-
-/// 只用于已经从父目录枚举出的 legacy 项。Windows 的 canonicalize 返回
-/// `\\?\` verbatim 路径，因而能够真实寻址/删除普通 Win32 路径无法表达的
-/// `CON`、`COM1`、尾点名称；名称本身仍先受旧版单组件规则约束，不能逃逸父目录。
-fn existing_skill_path(root: &Path, name: &str) -> Result<PathBuf, SkillStoreError> {
-    if !valid_legacy_skill_name(name) {
-        return Err(SkillStoreError::InvalidTargetName(name.into()));
-    }
-    #[cfg(windows)]
-    if !valid_skill_name(name) {
-        return fs::canonicalize(root)
-            .map(|root| root.join(name))
-            .map_err(|error| SkillStoreError::io("固定 legacy 技能库根", root, error));
-    }
-    Ok(root.join(name))
 }
 
 // ==================== SKILL.md 解析(引擎子集的镜像) ====================
@@ -320,15 +283,10 @@ struct SkillStoreStateInner {
     user_dir: PathBuf,
     defaults_path: PathBuf,
     revision_path: PathBuf,
-    revision_migration_path: PathBuf,
-    sessions_path: PathBuf,
-    legacy_session_skills_path: PathBuf,
     observed: Mutex<Option<StoreRevision>>,
     recovery_issues: Mutex<BTreeMap<String, CachedRecoveryIssue>>,
     #[cfg(test)]
     fail_next_revision_write: std::sync::atomic::AtomicBool,
-    #[cfg(test)]
-    fail_next_legacy_baseline_write: std::sync::atomic::AtomicBool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -336,19 +294,6 @@ struct RevisionDocument {
     format: u32,
     store_id: String,
     revision: u64,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RevisionMigrationDocument {
-    format: u32,
-    migration: String,
-    store_id: String,
-    initial_revision: u64,
-    /// 仅迁移时确认过的旧版大技能可绕过现行 1 MiB 物化输入上限。digest 把
-    /// 豁免绑定到迁移当时的完整安全目录树，后续手工放入或改写的大文件不继承。
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    legacy_large_skills: BTreeMap<String, String>,
 }
 
 #[derive(Clone)]
@@ -366,16 +311,11 @@ impl SkillStoreState {
                 user_dir: user_dir(&config_dir),
                 defaults_path: defaults_path(&config_dir),
                 revision_path: config_dir.join(REVISION_FILE),
-                revision_migration_path: config_dir.join(REVISION_MIGRATION_FILE),
-                sessions_path: config_dir.join(SESSIONS_DIR),
-                legacy_session_skills_path: config_dir.join(LEGACY_SESSION_SKILLS_FILE),
                 config_dir,
                 observed: Mutex::new(None),
                 recovery_issues: Mutex::new(BTreeMap::new()),
                 #[cfg(test)]
                 fail_next_revision_write: std::sync::atomic::AtomicBool::new(false),
-                #[cfg(test)]
-                fail_next_legacy_baseline_write: std::sync::atomic::AtomicBool::new(false),
             }),
         };
         state.initialize_if_new()?;
@@ -455,11 +395,14 @@ impl SkillStoreState {
         &self,
         name: &str,
         content: &str,
-        builtin: Option<&Path>,
+        _builtin: Option<&Path>,
     ) -> Result<StoreRevision, SkillStoreError> {
         let name = name.to_string();
+        if !valid_skill_name(&name) {
+            return Err(SkillStoreError::InvalidTargetName(name));
+        }
         let content = content.to_string();
-        self.mutate(builtin, true, |user, _| {
+        self.mutate(|user, _| {
             let dir = user.join(&name);
             fs::create_dir_all(&dir)
                 .map_err(|error| SkillStoreError::io("创建技能目录", &dir, error))?;
@@ -476,10 +419,13 @@ impl SkillStoreState {
         &self,
         name: &str,
         enabled: bool,
-        builtin: Option<&Path>,
+        _builtin: Option<&Path>,
     ) -> Result<StoreRevision, SkillStoreError> {
         let name = name.to_string();
-        self.mutate(builtin, true, |_, defaults| {
+        if !valid_skill_name(&name) {
+            return Err(SkillStoreError::InvalidTargetName(name));
+        }
+        self.mutate(|_, defaults| {
             let mut prefs = load_default_prefs(defaults);
             prefs.insert(name, enabled);
             let data = serde_json::to_vec_pretty(&prefs)
@@ -494,14 +440,14 @@ impl SkillStoreState {
     pub(crate) fn delete_skill(
         &self,
         name: &str,
-        builtin: Option<&Path>,
+        _builtin: Option<&Path>,
     ) -> Result<StoreRevision, SkillStoreError> {
         let name = name.to_string();
-        if !valid_legacy_skill_name(&name) {
+        if !valid_skill_name(&name) {
             return Err(SkillStoreError::InvalidTargetName(name));
         }
-        self.mutate(builtin, true, |user, defaults| {
-            let dir = existing_skill_path(user, &name)?;
+        self.mutate(|user, defaults| {
+            let dir = user.join(&name);
             if !dir.join("SKILL.md").is_file() {
                 return Err(SkillStoreError::InvalidTargetName(format!(
                     "用户技能不存在: {name}"
@@ -564,17 +510,17 @@ impl SkillStoreState {
         &self,
         operation: impl FnOnce(&Path, &Path) -> Result<T, SkillStoreError>,
     ) -> Result<(T, StoreRevision), SkillStoreError> {
-        self.mutate(None, true, operation)
+        self.mutate(operation)
     }
 
     /// 后续导入编排只可从这个入口进入同一 state，不得自建锁。
     #[allow(dead_code)] // 导入命令尚未注册；task 6 先冻结唯一入口。
     pub(crate) fn import<T>(
         &self,
-        builtin: Option<&Path>,
+        _builtin: Option<&Path>,
         operation: impl FnOnce(&Path, &Path) -> Result<T, SkillStoreError>,
     ) -> Result<(T, StoreRevision), SkillStoreError> {
-        self.mutate(builtin, true, operation)
+        self.mutate(operation)
     }
 
     /// 恢复 commit 与普通 mutation 使用相同锁和 revision 出口。
@@ -583,7 +529,7 @@ impl SkillStoreState {
         &self,
         operation: impl FnOnce(&Path, &Path) -> Result<T, SkillStoreError>,
     ) -> Result<(T, StoreRevision), SkillStoreError> {
-        self.mutate(None, false, operation)
+        self.mutate(operation)
     }
 
     #[allow(dead_code)] // 导入提交尚未注册；本任务先覆盖锁内 baseline 契约。
@@ -628,15 +574,11 @@ impl SkillStoreState {
         })
     }
 
-    /// 在一次技能库共享读临界区内解析历史会话快照并物化。若本调用先读到
-    /// baseline 尚未建立，后续技能写必须等待本次按修改前默认集物化完成；若
-    /// 技能写先完成，本调用则必定读到该写事务建立的 baseline。
     #[cfg(test)]
     pub(crate) fn materialize_session(
         &self,
         target: &Path,
         builtin: Option<&Path>,
-        session_id: &str,
         explicit: Option<&[String]>,
     ) -> Result<Vec<String>, SkillStoreError> {
         let journal =
@@ -645,7 +587,7 @@ impl SkillStoreState {
                 path: target.display().to_string(),
                 message,
             })?;
-        self.materialize_session_with_journal(target, &journal, builtin, session_id, explicit)
+        self.materialize_session_with_journal(target, &journal, builtin, explicit)
     }
 
     pub(crate) fn materialize_session_with_journal(
@@ -653,24 +595,16 @@ impl SkillStoreState {
         target: &Path,
         journal: &Path,
         builtin: Option<&Path>,
-        session_id: &str,
         explicit: Option<&[String]>,
     ) -> Result<Vec<String>, SkillStoreError> {
         self.read(|_| {
-            let baseline = read_legacy_session_skills(&self.inner.legacy_session_skills_path)?;
-            let enabled = explicit.or_else(|| {
-                baseline
-                    .as_ref()
-                    .and_then(|entries| entries.get(session_id))
-                    .map(Vec::as_slice)
-            });
             materialize_unlocked_with_journal(
                 target,
                 journal,
                 builtin,
                 &self.inner.user_dir,
                 &self.inner.defaults_path,
-                enabled,
+                explicit,
                 &mut |_| Ok(()),
             )
             .map_err(|message| SkillStoreError::Io {
@@ -679,37 +613,6 @@ impl SkillStoreState {
                 message,
             })
         })
-    }
-
-    /// 会话 list/open 在同一技能库共享读锁下读取 sidecar 与 baseline，避免
-    /// 返回“新 catalog + 旧会话仍为 null”的混合观察。
-    pub(crate) fn with_legacy_session_skills<T>(
-        &self,
-        operation: impl FnOnce(Option<&LegacySessionSkills>) -> Result<T, SkillStoreError>,
-    ) -> Result<T, SkillStoreError> {
-        self.read(|_| {
-            let baseline = read_legacy_session_skills(&self.inner.legacy_session_skills_path)?;
-            operation(baseline.as_ref())
-        })
-    }
-
-    /// 会话 sidecar 是历史列表的权威索引。技能库 revision、恢复或锁异常时，
-    /// 列表仍按 sidecar 降级；仅旧会话暂时拿不到独立 baseline。operation 本身
-    /// 不可失败，因此错误只可能发生在调用它之前，降级不会掩盖列表错误。
-    pub(crate) fn with_session_list_skills<T>(
-        &self,
-        operation: impl Fn(Option<&LegacySessionSkills>) -> Result<T, String>,
-    ) -> Result<T, String> {
-        match self.read(|_| {
-            let baseline = read_legacy_session_skills(&self.inner.legacy_session_skills_path)?;
-            Ok(operation(baseline.as_ref()))
-        }) {
-            Ok(result) => result,
-            Err(error) => {
-                eprintln!("[desktop] 读取历史会话技能 baseline 失败，按 sidecar 降级: {error}");
-                operation(None)
-            }
-        }
     }
 
     /// 恢复面板读取：与普通 read 相同地先接管全部可恢复事务，但不会把已登记
@@ -803,8 +706,8 @@ impl SkillStoreState {
     }
 
     /// task 10 的“同一写锁内零写入预检 → 单次批次事务”入口。validate 在
-    /// revision、baseline 和当前 catalog 的同一独占锁快照上运行；失败时不会推进
-    /// revision、迁移 baseline 或触碰技能目录。空请求（全 skip）同样零写入。
+    /// revision、导入 baseline 和当前 catalog 的同一独占锁快照上运行；失败时
+    /// 不会推进 revision 或触碰技能目录。空请求（全 skip）同样零写入。
     pub(crate) fn install_transactions_validated(
         &self,
         builtin: Option<&Path>,
@@ -844,7 +747,6 @@ impl SkillStoreState {
 
         let revision = self.advance_revision_locked()?;
         self.mark_revision_observed(&revision);
-        self.migrate_legacy_session_skills_locked(builtin)?;
         // 导入是“安装入库”，不是替用户启用。新安装/内置覆盖在首个目录事务
         // 前先持久化显式 false，保证事务中断后即使用户选择保留已安装版本也不会
         // 自动启用；替换已有用户技能则保留原默认设置。
@@ -987,8 +889,6 @@ impl SkillStoreState {
 
     fn mutate<T>(
         &self,
-        builtin: Option<&Path>,
-        migrate_legacy_sessions: bool,
         operation: impl FnOnce(&Path, &Path) -> Result<T, SkillStoreError>,
     ) -> Result<(T, StoreRevision), SkillStoreError> {
         let _process = self
@@ -1025,147 +925,8 @@ impl SkillStoreState {
         write_revision_synced(&self.inner.revision_path, &revision)?;
         self.mark_revision_observed(&revision);
 
-        // revision 可作为保守 write-ahead invalidation 提前推进；baseline 迁移
-        // 必须先于任何技能目录/defaults 权威写。迁移失败时 operation 不运行。
-        if migrate_legacy_sessions {
-            self.migrate_legacy_session_skills_locked(builtin)?;
-        }
         let value = operation(&self.inner.user_dir, &self.inner.defaults_path)?;
         Ok((value, revision))
-    }
-
-    fn migrate_legacy_session_skills_locked(
-        &self,
-        builtin: Option<&Path>,
-    ) -> Result<(), SkillStoreError> {
-        let existing = read_legacy_session_skills(&self.inner.legacy_session_skills_path)?;
-        let mut baseline = existing.clone().unwrap_or_default();
-        let default_skills =
-            list_unlocked(builtin, &self.inner.user_dir, &self.inner.defaults_path)
-                .into_iter()
-                .filter(|skill| skill.default_enabled)
-                .map(|skill| skill.name)
-                .collect::<Vec<_>>();
-        let mut changed = existing.is_none();
-
-        let entries = match fs::read_dir(&self.inner.sessions_path) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return self.write_legacy_session_skills_if_changed(&baseline, changed);
-            }
-            Err(error) => {
-                return Err(SkillStoreError::io(
-                    "扫描持久会话目录",
-                    &self.inner.sessions_path,
-                    error,
-                ));
-            }
-        };
-        for entry in entries {
-            let entry = entry.map_err(|error| {
-                SkillStoreError::io("枚举持久会话目录", &self.inner.sessions_path, error)
-            })?;
-            let session_id = entry.file_name().to_string_lossy().into_owned();
-            #[cfg(test)]
-            {
-                let request = self.inner.config_dir.join("baseline.pause-request");
-                if fs::read_to_string(&request).is_ok_and(|requested| requested == session_id) {
-                    fs::write(
-                        self.inner.config_dir.join("baseline.scan-entered"),
-                        b"entered",
-                    )
-                    .map_err(|error| {
-                        SkillStoreError::io("写入 baseline 测试屏障", &request, error)
-                    })?;
-                    let release = self.inner.config_dir.join("baseline.scan-release");
-                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-                    while !release.exists() {
-                        if std::time::Instant::now() >= deadline {
-                            return Err(SkillStoreError::io(
-                                "等待 baseline 测试屏障",
-                                &release,
-                                "timeout",
-                            ));
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(5));
-                    }
-                }
-            }
-            let metadata = match fs::symlink_metadata(entry.path()) {
-                Ok(metadata) => metadata,
-                // sidecar 删除不取得技能库锁；枚举后消失是合法竞态。迁移只写独立
-                // baseline，不能因会话恰好删除而失败，更不能重建其目录。
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => {
-                    return Err(SkillStoreError::io(
-                        "检查持久会话目录项",
-                        &entry.path(),
-                        error,
-                    ));
-                }
-            };
-            if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
-                continue;
-            }
-            if !crate::driver::valid_session_id(&session_id) {
-                continue;
-            }
-            let meta_path = entry.path().join("meta.json");
-            let bytes = match fs::read(&meta_path) {
-                Ok(bytes) => bytes,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => {
-                    return Err(SkillStoreError::io("读取会话 sidecar", &meta_path, error));
-                }
-            };
-            let meta: serde_json::Value = serde_json::from_slice(&bytes)
-                .map_err(|error| SkillStoreError::io("解析会话 sidecar", &meta_path, error))?;
-            if meta.as_object().is_none_or(|object| object.is_empty())
-                || meta
-                    .get("skills")
-                    .and_then(serde_json::Value::as_array)
-                    .is_some()
-                || baseline.contains_key(&session_id)
-            {
-                continue;
-            }
-            baseline.insert(session_id, default_skills.clone());
-            changed = true;
-        }
-        self.write_legacy_session_skills_if_changed(&baseline, changed)
-    }
-
-    fn write_legacy_session_skills_if_changed(
-        &self,
-        baseline: &LegacySessionSkills,
-        changed: bool,
-    ) -> Result<(), SkillStoreError> {
-        if !changed {
-            return Ok(());
-        }
-        #[cfg(test)]
-        if self
-            .inner
-            .fail_next_legacy_baseline_write
-            .swap(false, std::sync::atomic::Ordering::SeqCst)
-        {
-            return Err(SkillStoreError::io(
-                "注入历史会话 baseline 写入失败",
-                &self.inner.legacy_session_skills_path,
-                "test injection",
-            ));
-        }
-        let bytes = serde_json::to_vec_pretty(baseline)
-            .map_err(|error| SkillStoreError::CorruptRevision(error.to_string()))?;
-        crate::config::atomic_write_private(&self.inner.legacy_session_skills_path, &bytes)
-            .map_err(|error| {
-                SkillStoreError::io(
-                    "原子写入历史会话 baseline",
-                    &self.inner.legacy_session_skills_path,
-                    error,
-                )
-            })?;
-        sync_directory(&self.inner.config_dir)
     }
 
     fn initialize_if_new(&self) -> Result<(), SkillStoreError> {
@@ -1193,108 +954,30 @@ impl SkillStoreState {
                         .lock()
                         .unwrap_or_else(|error| error.into_inner()) = Some(revision);
                 }
-                // 不安全 legacy 根、未完成事务和损坏 migration marker 都不得被
-                // “初始化”覆盖。保留现场并让 catalog 入口继续返回 RecoveryPending。
+                // 不安全技能库根不得被“初始化”覆盖。
                 Err(SkillStoreError::RecoveryPending(_))
                 | Err(SkillStoreError::UnsafeObject { .. })
                 | Err(SkillStoreError::InvalidTargetName(_))
                 | Err(SkillStoreError::CorruptRevision(_)) => {}
                 Err(error) => return Err(error),
             },
-            // 已存在但损坏的 revision 绝不走兼容迁移或被 marker 覆盖。
+            // 已存在但损坏的 revision 绝不覆盖。
             Err(SkillStoreError::CorruptRevision(_)) => {}
             Err(error) => return Err(error),
         }
         Ok(())
     }
 
-    /// 兼容早于 catalog revision 的 Desktop 技能库。调用方已完整持有进程写锁
-    /// 和 `skills.lock` 独占锁；第二个进程进入后会先看到第一个原子发布的 revision，
-    /// 因而 migration marker/store_id 只会生成一次。
+    /// 调用方已完整持有进程写锁和 `skills.lock` 独占锁；第二个进程进入后会先
+    /// 看到第一个原子发布的 revision，因而 store_id 只会生成一次。
     fn initialize_missing_revision_locked(&self) -> Result<StoreRevision, SkillStoreError> {
         ensure_plain_directory(&self.inner.user_dir)?;
-        let marker = read_revision_migration(&self.inner.revision_migration_path)?;
-        if marker.is_none() && authoritative_store_is_empty(&self.inner)? {
-            let revision = StoreRevision {
-                store_id: generate_store_id()?,
-                revision: 0,
-            };
-            write_revision_synced(&self.inner.revision_path, &revision)?;
-            return Ok(revision);
-        }
-
-        // 缺 revision 时不能先运行会改动权威目录的自动恢复，因为恢复自身也必须
-        // 预留 revision。任何 transaction residue 都先成为无动作 blocker。
-        let inventory = crate::skill_transactions::discover_locked(&self.inner.user_dir)?;
-        if !inventory.entries.is_empty() {
-            let issues = self.cache_missing_revision_transaction_blockers(&inventory);
-            return Err(SkillStoreError::RecoveryPending(issues));
-        }
-
-        let revision = match marker.as_ref() {
-            Some(marker) => StoreRevision {
-                store_id: marker.store_id.clone(),
-                revision: marker.initial_revision,
-            },
-            None => StoreRevision {
-                store_id: generate_store_id()?,
-                revision: MIGRATED_INITIAL_REVISION,
-            },
+        let revision = StoreRevision {
+            store_id: generate_store_id()?,
+            revision: 0,
         };
-        let legacy_large_skills =
-            validate_legacy_store_for_revision_migration(&self.inner, &revision)?;
-        if let Some(marker) = marker.as_ref() {
-            if marker.legacy_large_skills != legacy_large_skills {
-                return Err(SkillStoreError::unsafe_object(
-                    REVISION_MIGRATION_FILE,
-                    "revision migration 的旧版大技能指纹与技能库不一致",
-                ));
-            }
-        } else {
-            write_revision_migration_synced(
-                &self.inner.revision_migration_path,
-                &revision,
-                &legacy_large_skills,
-            )?;
-        }
-        // marker 先落盘：若在两次原子写之间退出，下一实例复用同一 store_id 后
-        // 完成 revision 发布，不会把同一个 legacy store 识别成两个 store。
         write_revision_synced(&self.inner.revision_path, &revision)?;
         Ok(revision)
-    }
-
-    fn cache_missing_revision_transaction_blockers(
-        &self,
-        inventory: &crate::skill_transactions::RecoveryInventory,
-    ) -> Vec<SkillRecoveryIssue> {
-        let mut cache = self
-            .inner
-            .recovery_issues
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        cache.clear();
-        for entry in &inventory.entries {
-            let issue = entry.issue.clone().unwrap_or_else(|| SkillRecoveryIssue {
-                transaction_id: entry.transaction_id.clone(),
-                entry_path: Some(format!(".transactions/{}", entry.transaction_id)),
-                skill_name: String::new(),
-                portable_name_key: String::new(),
-                backup_available: false,
-                installed_available: false,
-                isolated_available: false,
-                authoritative_target_missing: false,
-                actions: Vec::new(),
-                error: "技能库缺失 skills.revision，必须先恢复 revision 后才能安全接管事务".into(),
-            });
-            cache.insert(
-                entry.transaction_id.clone(),
-                CachedRecoveryIssue {
-                    fingerprint: entry.fingerprint.clone(),
-                    issue,
-                },
-            );
-        }
-        cache.values().map(|cached| cached.issue.clone()).collect()
     }
 
     fn load_revision_locked(&self) -> Result<StoreRevision, SkillStoreError> {
@@ -1335,241 +1018,6 @@ impl SkillStoreState {
     }
 }
 
-fn authoritative_store_is_empty(inner: &SkillStoreStateInner) -> Result<bool, SkillStoreError> {
-    if inner.defaults_path.exists() {
-        return Ok(false);
-    }
-    match fs::symlink_metadata(&inner.user_dir) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
-        Err(error) => Err(SkillStoreError::io(
-            "检查用户技能库",
-            &inner.user_dir,
-            error,
-        )),
-        Ok(metadata) if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() => {
-            Ok(false)
-        }
-        Ok(_) => {
-            let entries = fs::read_dir(&inner.user_dir)
-                .map_err(|error| SkillStoreError::io("枚举用户技能库", &inner.user_dir, error))?;
-            for entry in entries {
-                let entry = entry.map_err(|error| {
-                    SkillStoreError::io("读取用户技能库目录项", &inner.user_dir, error)
-                })?;
-                if entry.file_name() != std::ffi::OsStr::new(".DS_Store") {
-                    return Ok(false);
-                }
-                let metadata = fs::symlink_metadata(entry.path()).map_err(|error| {
-                    SkillStoreError::io("检查 macOS 技能库元数据", &entry.path(), error)
-                })?;
-                if !plain_file_metadata(&metadata) {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        }
-    }
-}
-
-fn validate_legacy_store_for_revision_migration(
-    inner: &SkillStoreStateInner,
-    revision: &StoreRevision,
-) -> Result<BTreeMap<String, String>, SkillStoreError> {
-    match fs::symlink_metadata(&inner.defaults_path) {
-        Ok(metadata) => {
-            if !plain_file_metadata(&metadata) {
-                return Err(SkillStoreError::unsafe_object(
-                    "skills-defaults.json",
-                    "legacy 默认集不是普通文件",
-                ));
-            }
-            let bytes = fs::read(&inner.defaults_path).map_err(|error| {
-                SkillStoreError::io("读取 legacy 技能默认集", &inner.defaults_path, error)
-            })?;
-            let defaults: BTreeMap<String, bool> =
-                serde_json::from_slice(&bytes).map_err(|error| {
-                    SkillStoreError::unsafe_object(
-                        "skills-defaults.json",
-                        format!("legacy 默认集损坏: {error}"),
-                    )
-                })?;
-            if let Some(name) = defaults.keys().find(|name| !valid_legacy_skill_name(name)) {
-                return Err(SkillStoreError::unsafe_object(
-                    "skills-defaults.json",
-                    format!("legacy 默认集包含不安全技能名: {name}"),
-                ));
-            }
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(SkillStoreError::io(
-                "检查 legacy 技能默认集",
-                &inner.defaults_path,
-                error,
-            ));
-        }
-    }
-
-    let baseline = BaselineStore::open_locked(&inner.user_dir)?;
-    let mut legacy_large_skills = BTreeMap::new();
-    let entries = fs::read_dir(&inner.user_dir)
-        .map_err(|error| SkillStoreError::io("枚举 legacy 技能库", &inner.user_dir, error))?;
-    for entry in entries {
-        let entry = entry.map_err(|error| {
-            SkillStoreError::io("读取 legacy 技能库目录项", &inner.user_dir, error)
-        })?;
-        let name = entry
-            .file_name()
-            .into_string()
-            .map_err(|_| SkillStoreError::unsafe_object("skills", "legacy 技能目录名不是 UTF-8"))?;
-        if name == ".DS_Store" {
-            let path = entry.path();
-            let metadata = fs::symlink_metadata(&path).map_err(|error| {
-                SkillStoreError::io("检查 macOS legacy 技能库元数据", &path, error)
-            })?;
-            if !plain_file_metadata(&metadata) {
-                return Err(SkillStoreError::unsafe_object(
-                    name,
-                    "macOS 技能库元数据必须是普通文件",
-                ));
-            }
-            continue;
-        }
-        let internal = matches!(name.as_str(), ".imports" | ".backups" | ".transactions");
-        let path = if internal {
-            entry.path()
-        } else {
-            existing_skill_path(&inner.user_dir, &name)?
-        };
-        let metadata = fs::symlink_metadata(&path)
-            .map_err(|error| SkillStoreError::io("检查 legacy 技能目录项", &path, error))?;
-        if internal {
-            if !plain_directory_metadata(&metadata) {
-                return Err(SkillStoreError::unsafe_object(
-                    name,
-                    "事务内部根必须是普通目录",
-                ));
-            }
-            continue;
-        }
-        if !valid_legacy_skill_name(&name) || !plain_directory_metadata(&metadata) {
-            return Err(SkillStoreError::unsafe_object(
-                name,
-                "legacy 技能库根只允许旧版安全单组件普通技能目录和固定事务内部目录",
-            ));
-        }
-        if valid_skill_name(&name) {
-            let skill_md = path.join("SKILL.md");
-            let oversized = fs::symlink_metadata(&skill_md)
-                .map(|metadata| {
-                    plain_file_metadata(&metadata)
-                        && metadata.len() > crate::skill_import::model::MAX_SKILL_MD_BYTES
-                })
-                .unwrap_or(false);
-            if oversized {
-                let digest = validate_legacy_skill_tree(&path, &name)?;
-                legacy_large_skills.insert(name, digest);
-            } else {
-                let captured = baseline.capture_locked(revision, &name)?;
-                if captured.presence != crate::skill_import::store::TargetPresence::Present
-                    || captured.target_type
-                        != Some(crate::skill_import::store::TargetEntryType::Directory)
-                    || captured.preview.is_none()
-                {
-                    return Err(SkillStoreError::unsafe_object(
-                        name,
-                        "legacy 技能必须是包含普通 SKILL.md 的完整安全目录树",
-                    ));
-                }
-            }
-        } else {
-            validate_legacy_skill_tree(&path, &name)?;
-        }
-    }
-    Ok(legacy_large_skills)
-}
-
-/// 旧版规则安全、但当前 Agent/Windows 规则不兼容的根名称无法传入严格
-/// `BaselineStore`。迁移只需证明原有目录没有链接/特殊文件且 SKILL.md 可读；
-/// 不移动、不改写技能数据，随后只允许 catalog 展示和按原名单组件删除。
-fn validate_legacy_skill_tree(path: &Path, name: &str) -> Result<String, SkillStoreError> {
-    let before = materialized_tree_digest(path).map_err(|reason| {
-        SkillStoreError::unsafe_object(name, format!("legacy 技能目录树不安全: {reason}"))
-    })?;
-    let skill_md = path.join("SKILL.md");
-    let metadata = fs::symlink_metadata(&skill_md)
-        .map_err(|error| SkillStoreError::io("检查 legacy SKILL.md", &skill_md, error))?;
-    if !plain_file_metadata(&metadata) {
-        return Err(SkillStoreError::unsafe_object(
-            format!("{name}/SKILL.md"),
-            "legacy 技能必须包含普通 SKILL.md",
-        ));
-    }
-    fs::read_to_string(&skill_md)
-        .map_err(|error| SkillStoreError::io("读取 legacy SKILL.md", &skill_md, error))?;
-    let after = materialized_tree_digest(path).map_err(|reason| {
-        SkillStoreError::unsafe_object(name, format!("复核 legacy 技能目录树失败: {reason}"))
-    })?;
-    if before != after {
-        return Err(SkillStoreError::TargetChanged {
-            target_name: name.into(),
-        });
-    }
-    Ok(after)
-}
-
-fn read_revision_migration(
-    path: &Path,
-) -> Result<Option<RevisionMigrationDocument>, SkillStoreError> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(SkillStoreError::io("检查 revision migration", path, error)),
-    };
-    if !plain_file_metadata(&metadata) {
-        return Err(SkillStoreError::unsafe_object(
-            REVISION_MIGRATION_FILE,
-            "revision migration marker 不是普通文件",
-        ));
-    }
-    let bytes = fs::read(path)
-        .map_err(|error| SkillStoreError::io("读取 revision migration", path, error))?;
-    let marker: RevisionMigrationDocument = serde_json::from_slice(&bytes)
-        .map_err(|error| SkillStoreError::CorruptRevision(format!("migration marker: {error}")))?;
-    if marker.format != REVISION_MIGRATION_FORMAT
-        || marker.migration != REVISION_MIGRATION_KIND
-        || marker.initial_revision != MIGRATED_INITIAL_REVISION
-    {
-        return Err(SkillStoreError::CorruptRevision(
-            "revision migration marker 格式非法".into(),
-        ));
-    }
-    validate_revision(&StoreRevision {
-        store_id: marker.store_id.clone(),
-        revision: marker.initial_revision,
-    })?;
-    Ok(Some(marker))
-}
-
-fn write_revision_migration_synced(
-    path: &Path,
-    revision: &StoreRevision,
-    legacy_large_skills: &BTreeMap<String, String>,
-) -> Result<(), SkillStoreError> {
-    let marker = RevisionMigrationDocument {
-        format: REVISION_MIGRATION_FORMAT,
-        migration: REVISION_MIGRATION_KIND.into(),
-        store_id: revision.store_id.clone(),
-        initial_revision: revision.revision,
-        legacy_large_skills: legacy_large_skills.clone(),
-    };
-    let bytes = serde_json::to_vec_pretty(&marker)
-        .map_err(|error| SkillStoreError::CorruptRevision(error.to_string()))?;
-    crate::config::atomic_write_private(path, &bytes)
-        .map_err(|error| SkillStoreError::io("原子写入 revision migration", path, error))?;
-    sync_directory(path.parent().unwrap_or_else(|| Path::new(".")))
-}
-
 fn ensure_plain_directory(path: &Path) -> Result<(), SkillStoreError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() => {
@@ -1603,19 +1051,6 @@ fn read_revision(path: &Path) -> Result<Option<StoreRevision>, SkillStoreError> 
         store_id: document.store_id,
         revision: document.revision,
     }))
-}
-
-fn read_legacy_session_skills(path: &Path) -> Result<Option<LegacySessionSkills>, SkillStoreError> {
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => {
-            return Err(SkillStoreError::io("读取历史会话 baseline", path, error));
-        }
-    };
-    let baseline = serde_json::from_slice::<LegacySessionSkills>(&bytes)
-        .map_err(|error| SkillStoreError::io("解析历史会话 baseline", path, error))?;
-    Ok(Some(baseline))
 }
 
 fn validate_revision(revision: &StoreRevision) -> Result<(), SkillStoreError> {
@@ -2009,18 +1444,16 @@ struct StoreSkill {
 
 /// 扫一个来源目录:<dir>/<name>/SKILL.md。坏条目(读不了/名字非法)跳过
 /// 不拖垮整库——列表少一条比整页报错可诊断(目录名非法只可能是手工放入)。
-fn scan_source(dir: &Path, source: &str, allow_legacy_names: bool, out: &mut Vec<StoreSkill>) {
+fn scan_source(dir: &Path, source: &str, out: &mut Vec<StoreSkill>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
-        if !(valid_skill_name(&name) || (allow_legacy_names && valid_legacy_skill_name(&name))) {
+        if !valid_skill_name(&name) {
             continue;
         }
-        let Ok(path) = existing_skill_path(dir, &name) else {
-            continue;
-        };
+        let path = e.path();
         let Ok(metadata) = fs::symlink_metadata(&path) else {
             continue;
         };
@@ -2031,13 +1464,17 @@ fn scan_source(dir: &Path, source: &str, allow_legacy_names: bool, out: &mut Vec
         let Ok(skill_metadata) = fs::symlink_metadata(&skill_md) else {
             continue;
         };
-        if !plain_file_metadata(&skill_metadata) {
+        if !plain_file_metadata(&skill_metadata)
+            || skill_metadata.len() > crate::skill_import::model::MAX_SKILL_MD_BYTES
+        {
             continue;
         }
         let Ok(content) = fs::read_to_string(&skill_md) else {
             continue;
         };
-        let has_current_name_capabilities = valid_skill_name(&name);
+        if content.len() as u64 > crate::skill_import::model::MAX_SKILL_MD_BYTES {
+            continue;
+        }
         out.push(StoreSkill {
             info: SkillInfo {
                 description: derive_description(&content),
@@ -2046,8 +1483,6 @@ fn scan_source(dir: &Path, source: &str, allow_legacy_names: bool, out: &mut Vec
                 content,
                 overrides: false,
                 default_enabled: false, // 占位,list_unlocked()/materialize_unlocked() 按 prefs 解析
-                can_set_default: has_current_name_capabilities,
-                can_edit: has_current_name_capabilities,
             },
         });
     }
@@ -2057,11 +1492,9 @@ fn scan_source(dir: &Path, source: &str, allow_legacy_names: bool, out: &mut Vec
 /// 物化顺序与此一致,两侧"谁生效"口径相同)。按名排序稳定输出。
 fn scan_store(builtin: Option<&Path>, user: &Path) -> Vec<StoreSkill> {
     let mut all = Vec::new();
-    // 用户库可能由旧版 macOS/Linux Desktop 创建；只兼容旧规则本就允许的
-    // 安全单组件名。内置库及所有新入口仍只接受当前严格规则。
-    scan_source(user, "user", true, &mut all);
+    scan_source(user, "user", &mut all);
     if let Some(b) = builtin {
-        scan_source(b, "builtin", false, &mut all);
+        scan_source(b, "builtin", &mut all);
     }
     let builtin_names: std::collections::HashSet<String> = all
         .iter()
@@ -2083,140 +1516,18 @@ fn list_unlocked(builtin: Option<&Path>, user: &Path, defaults: &Path) -> Vec<Sk
         .into_iter()
         .map(|s| {
             let mut info = s.info;
-            // Agent 现行 catalog 使用严格跨平台名称规则。legacy 技能只供 UI
-            // 查看/删除，不声称默认可用，也不会进入会话物化结果。
-            info.default_enabled = valid_skill_name(&info.name)
-                && is_default_enabled(&info.name, &info.source, &prefs);
+            info.default_enabled = is_default_enabled(&info.name, &info.source, &prefs);
             info
         })
         .collect()
 }
 
-/// 普通来源始终走 import store 的 1 MiB 严格验证。仅当用户技能在 revision
-/// migration marker 中以完整树 digest 登记、当前仍是同一棵大树时，才走旧版
-/// 兼容复制；因此迁移后新放入或被改写的大文件不会获得豁免。
 fn copy_skill_directory_for_materialization(
     root: &Path,
     name: &str,
     destination: &Path,
-    user_source: bool,
 ) -> Result<(), SkillStoreError> {
-    let skill_md = root.join(name).join("SKILL.md");
-    let oversized = fs::symlink_metadata(&skill_md)
-        .map(|metadata| {
-            plain_file_metadata(&metadata)
-                && metadata.len() > crate::skill_import::model::MAX_SKILL_MD_BYTES
-        })
-        .unwrap_or(false);
-    if !user_source || !oversized {
-        return crate::skill_import::store::copy_skill_directory_verified(root, name, destination);
-    }
-
-    let marker_path = root
-        .parent()
-        .ok_or_else(|| SkillStoreError::unsafe_object(name, "用户技能库缺少配置父目录"))?
-        .join(REVISION_MIGRATION_FILE);
-    let marker = read_revision_migration(&marker_path)?.ok_or_else(|| {
-        SkillStoreError::unsafe_object(
-            format!("{name}/SKILL.md"),
-            "超过 1 MiB 且不是已登记的旧版大技能",
-        )
-    })?;
-    let expected = marker.legacy_large_skills.get(name).ok_or_else(|| {
-        SkillStoreError::unsafe_object(
-            format!("{name}/SKILL.md"),
-            "超过 1 MiB 且不在旧版迁移豁免中",
-        )
-    })?;
-    let source = root.join(name);
-    let before = validate_legacy_skill_tree(&source, name)?;
-    if &before != expected {
-        return Err(SkillStoreError::unsafe_object(
-            name,
-            "旧版大技能已在迁移后发生变化",
-        ));
-    }
-    copy_plain_legacy_tree(&source, destination, name)?;
-    let after = validate_legacy_skill_tree(&source, name)?;
-    let copied = materialized_tree_digest(destination).map_err(|reason| {
-        SkillStoreError::unsafe_object(name, format!("复核旧版大技能物化树失败: {reason}"))
-    })?;
-    if after != before || copied != before {
-        return Err(SkillStoreError::TargetChanged {
-            target_name: name.into(),
-        });
-    }
-    Ok(())
-}
-
-fn copy_plain_legacy_tree(
-    source: &Path,
-    destination: &Path,
-    skill_name: &str,
-) -> Result<(), SkillStoreError> {
-    let metadata = fs::symlink_metadata(source)
-        .map_err(|error| SkillStoreError::io("检查旧版大技能来源", source, error))?;
-    if !plain_directory_metadata(&metadata) {
-        return Err(SkillStoreError::unsafe_object(
-            skill_name,
-            "旧版大技能来源必须是普通目录",
-        ));
-    }
-    fs::create_dir(destination)
-        .map_err(|error| SkillStoreError::io("创建旧版大技能物化目录", destination, error))?;
-    let entries = fs::read_dir(source)
-        .map_err(|error| SkillStoreError::io("枚举旧版大技能来源", source, error))?;
-    for entry in entries {
-        let entry =
-            entry.map_err(|error| SkillStoreError::io("读取旧版大技能目录项", source, error))?;
-        let name = entry.file_name().into_string().map_err(|_| {
-            SkillStoreError::unsafe_object(skill_name, "旧版大技能包含非 UTF-8 路径")
-        })?;
-        if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
-            return Err(SkillStoreError::unsafe_object(
-                skill_name,
-                "旧版大技能包含不安全路径组件",
-            ));
-        }
-        let source_child = entry.path();
-        let destination_child = destination.join(&name);
-        let metadata = fs::symlink_metadata(&source_child)
-            .map_err(|error| SkillStoreError::io("检查旧版大技能目录项", &source_child, error))?;
-        if plain_directory_metadata(&metadata) {
-            copy_plain_legacy_tree(&source_child, &destination_child, skill_name)?;
-        } else if plain_file_metadata(&metadata) {
-            let mut input = fs::File::open(&source_child)
-                .map_err(|error| SkillStoreError::io("打开旧版大技能文件", &source_child, error))?;
-            if !plain_file_metadata(
-                &input.metadata().map_err(|error| {
-                    SkillStoreError::io("复核旧版大技能文件", &source_child, error)
-                })?,
-            ) {
-                return Err(SkillStoreError::unsafe_object(
-                    skill_name,
-                    "旧版大技能文件在复制期间变为不安全对象",
-                ));
-            }
-            let mut output = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&destination_child)
-                .map_err(|error| {
-                    SkillStoreError::io("创建旧版大技能物化文件", &destination_child, error)
-                })?;
-            std::io::copy(&mut input, &mut output)
-                .map_err(|error| SkillStoreError::io("复制旧版大技能文件", &source_child, error))?;
-            output.sync_all().map_err(|error| {
-                SkillStoreError::io("同步旧版大技能物化文件", &destination_child, error)
-            })?;
-        } else {
-            return Err(SkillStoreError::unsafe_object(
-                skill_name,
-                format!("旧版大技能包含链接或特殊对象: {name}"),
-            ));
-        }
-    }
-    Ok(())
+    crate::skill_import::store::copy_skill_directory_verified(root, name, destination)
 }
 
 // ==================== 按会话物化 ====================
@@ -2376,7 +1687,6 @@ fn materialize_unlocked_with_journal(
                 source_root,
                 &s.info.name,
                 &temporary.join(&s.info.name),
-                s.info.source == "user",
             )
             .map_err(|e| format!("物化技能 {} 失败: {e}", s.info.name))?;
             done.push(s.info.name);
@@ -3162,8 +2472,8 @@ pub async fn skills_list(
     .map_err(|error| command_error(error, &error_config_dir))
 }
 
-/// 默认启用开关:只影响**新会话**(与旧 sidecar 无 skills 字段的会话)的
-/// 缺省集,已有会话跟随各自快照。写显式值而不是"翻转出厂规则":出厂表
+/// 默认启用开关影响新会话，以及缺少 skills 字段的旧会话下一次打开时采用的
+/// 缺省集；已有显式快照的会话不变。写显式值而不是"翻转出厂规则":出厂表
 /// 将来变了,用户拨过的开关语义不漂移。
 #[tauri::command]
 pub async fn skills_set_default(
@@ -3245,7 +2555,7 @@ pub async fn skills_delete(
     store: State<'_, SkillStoreState>,
     name: String,
 ) -> Result<SkillMutationResult, SkillCommandError> {
-    if !valid_legacy_skill_name(&name) {
+    if !valid_skill_name(&name) {
         return Err(SkillCommandError::InvalidRequest {
             message: format!("非法技能名: {name}"),
         });
@@ -3293,7 +2603,6 @@ pub async fn skills_recovery_resolve(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Value};
 
     fn test_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("mc-skills-{label}-{}", std::process::id()));
@@ -3306,16 +2615,6 @@ mod tests {
         let dir = root.join(name);
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("SKILL.md"), content).unwrap();
-    }
-
-    fn put_session_meta(cfg: &Path, id: &str, meta: serde_json::Value) {
-        let dir = cfg.join(SESSIONS_DIR).join(id);
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(
-            dir.join("meta.json"),
-            serde_json::to_vec_pretty(&meta).unwrap(),
-        )
-        .unwrap();
     }
 
     #[test]
@@ -3338,153 +2637,96 @@ mod tests {
         ] {
             assert!(!valid_skill_name(bad), "{bad:?} 应当被拒绝");
         }
-        for legacy in ["CON", "COM1", "foo."] {
-            assert!(valid_legacy_skill_name(legacy));
-        }
     }
 
-    #[cfg(not(windows))]
     #[test]
-    fn legacy_safe_names_migrate_list_delete_but_never_materialize() {
-        let cfg = test_dir("legacy-safe-names");
-        for name in ["CON", "COM1", "foo.", "strict"] {
+    fn invalid_names_and_oversized_skills_are_hidden_not_materialized_or_deletable() {
+        let cfg = test_dir("strict-catalog");
+        for name in ["CON", "foo.", "strict"] {
             put_skill(
                 &cfg.join("skills"),
                 name,
                 &format!("---\nname: {name}\n---\n{name}"),
             );
         }
-        fs::write(
-            cfg.join("skills-defaults.json"),
-            br#"{"CON":true,"COM1":true,"foo.":true,"strict":true}"#,
-        )
-        .unwrap();
+        let mut oversized = "---\nname: oversized\n---\n".to_string();
+        oversized.push_str(&"x".repeat(crate::skill_import::model::MAX_SKILL_MD_BYTES as usize));
+        assert!(oversized.len() as u64 > crate::skill_import::model::MAX_SKILL_MD_BYTES);
+        put_skill(&cfg.join("skills"), "oversized", &oversized);
 
         let state = SkillStoreState::new(cfg.clone()).unwrap();
         let snapshot = state.snapshot(None).unwrap();
-        assert_eq!(snapshot.revision, MIGRATED_INITIAL_REVISION);
-        assert_eq!(
-            snapshot
-                .skills
-                .iter()
-                .map(|skill| {
-                    (
-                        skill.name.as_str(),
-                        skill.default_enabled,
-                        skill.can_set_default,
-                        skill.can_edit,
-                    )
-                })
-                .collect::<Vec<_>>(),
-            vec![
-                ("COM1", false, false, false),
-                ("CON", false, false, false),
-                ("foo.", false, false, false),
-                ("strict", true, true, true)
-            ]
-        );
-        let serialized = serde_json::to_value(&snapshot.skills).unwrap();
-        assert_eq!(serialized[1]["name"], "CON");
-        assert_eq!(serialized[1]["can_set_default"], false);
-        assert_eq!(serialized[1]["can_edit"], false);
-        assert_eq!(serialized[3]["can_set_default"], true);
-        assert_eq!(serialized[3]["can_edit"], true);
-        assert!(cfg.join(REVISION_FILE).is_file());
-        assert!(cfg.join(REVISION_MIGRATION_FILE).is_file());
+        assert_eq!(snapshot.revision, 0);
+        assert_eq!(snapshot.skills.len(), 1);
+        assert_eq!(snapshot.skills[0].name, "strict");
 
         let target = cfg.join("materialized");
-        let enabled = ["CON".into(), "COM1".into(), "foo.".into(), "strict".into()];
+        let enabled = [
+            "CON".into(),
+            "foo.".into(),
+            "strict".into(),
+            "oversized".into(),
+        ];
         assert_eq!(
             state.materialize(&target, None, Some(&enabled)).unwrap(),
             vec!["strict"]
         );
-        for legacy in ["CON", "COM1", "foo."] {
-            assert!(!target.join(legacy).exists());
-            state.delete_skill(legacy, None).unwrap();
-            assert!(!cfg.join("skills").join(legacy).exists());
-            assert!(cfg.join("skills/strict/SKILL.md").is_file());
+        for ignored in ["CON", "foo.", "oversized"] {
+            assert!(!target.join(ignored).exists());
         }
-        assert_eq!(
-            state
-                .snapshot(None)
-                .unwrap()
-                .skills
-                .iter()
-                .map(|skill| skill.name.as_str())
-                .collect::<Vec<_>>(),
-            vec!["strict"]
-        );
+        for invalid in ["CON", "foo."] {
+            assert!(matches!(
+                state.set_default(invalid, true, None),
+                Err(SkillStoreError::InvalidTargetName(_))
+            ));
+            assert!(matches!(
+                state.save_skill(invalid, "replacement", None),
+                Err(SkillStoreError::InvalidTargetName(_))
+            ));
+            assert!(matches!(
+                state.delete_skill(invalid, None),
+                Err(SkillStoreError::InvalidTargetName(_))
+            ));
+            assert!(cfg.join("skills").join(invalid).exists());
+        }
     }
 
     #[test]
-    fn legacy_1_2_mib_skill_migrates_lists_materializes_and_deletes_without_global_relaxation() {
-        let cfg = test_dir("legacy-large-skill");
-        let mut content = "---\nname: legacy-large\ndescription: migrated\n---\n".to_string();
-        content.push_str(&"x".repeat(1_200 * 1024));
-        assert!(content.len() as u64 > crate::skill_import::model::MAX_SKILL_MD_BYTES);
-        put_skill(&cfg.join("skills"), "legacy-large", &content);
+    fn missing_revision_initializes_nonempty_store_at_zero_and_ignores_old_marker() {
+        let cfg = test_dir("missing-revision-current-contract");
+        put_skill(&cfg.join("skills"), "keep", "keep me");
+        let marker = cfg.join("skills.revision-migration-v1.json");
+        fs::write(&marker, b"corrupt old marker").unwrap();
 
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        let snapshot = state.snapshot(None).unwrap();
-        assert_eq!(snapshot.revision, MIGRATED_INITIAL_REVISION);
-        assert_eq!(snapshot.skills.len(), 1);
-        assert_eq!(snapshot.skills[0].name, "legacy-large");
-        assert_eq!(snapshot.skills[0].content.len(), content.len());
-        let marker: RevisionMigrationDocument =
-            serde_json::from_slice(&fs::read(cfg.join(REVISION_MIGRATION_FILE)).unwrap()).unwrap();
-        assert!(marker.legacy_large_skills.contains_key("legacy-large"));
-
-        let target = cfg.join("session/skills");
-        assert_eq!(
-            state
-                .materialize(&target, None, Some(&["legacy-large".into()]))
-                .unwrap(),
-            vec!["legacy-large"]
-        );
-        assert_eq!(
-            fs::read_to_string(target.join("legacy-large/SKILL.md")).unwrap(),
-            content
-        );
-
-        // marker 只豁免迁移时按 digest 绑定的对象。迁移后手工放入的大文件仍走
-        // 当前严格上限，且失败不会破坏上次成功物化的 target。
-        put_skill(&cfg.join("skills"), "untrusted-large", &content);
-        let error = state
-            .materialize(&target, None, Some(&["untrusted-large".into()]))
-            .unwrap_err();
-        assert!(error.to_string().contains("1 MiB"));
-        assert!(target.join("legacy-large/SKILL.md").is_file());
-        assert!(!target.join("untrusted-large").exists());
-
-        state.delete_skill("legacy-large", None).unwrap();
-        assert!(!cfg.join("skills/legacy-large").exists());
-        assert!(state
-            .snapshot(None)
+        let snapshot = SkillStoreState::new(cfg.clone())
             .unwrap()
-            .skills
-            .iter()
-            .all(|skill| skill.name != "legacy-large"));
-    }
+            .snapshot(None)
+            .unwrap();
+        assert_eq!(snapshot.revision, 0);
+        assert_eq!(snapshot.skills.len(), 1);
+        assert_eq!(fs::read(&marker).unwrap(), b"corrupt old marker");
+        assert!(cfg.join(REVISION_FILE).is_file());
 
-    #[cfg(unix)]
-    #[test]
-    fn legacy_migration_still_rejects_unsafe_linked_tree_without_revision_write() {
-        use std::os::unix::fs::symlink;
+        let without_marker = test_dir("missing-revision-no-marker");
+        put_skill(&without_marker.join("skills"), "keep", "keep me");
+        let snapshot = SkillStoreState::new(without_marker.clone())
+            .unwrap()
+            .snapshot(None)
+            .unwrap();
+        assert_eq!(snapshot.revision, 0);
+        assert!(!without_marker
+            .join("skills.revision-migration-v1.json")
+            .exists());
 
-        let cfg = test_dir("legacy-unsafe-tree");
-        let outside = test_dir("legacy-unsafe-tree-outside");
-        put_skill(&cfg.join("skills"), "foo.", "legacy");
-        fs::write(outside.join("secret"), b"secret").unwrap();
-        symlink(&outside, cfg.join("skills/foo./escape")).unwrap();
-
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
+        let corrupt = test_dir("corrupt-revision");
+        put_skill(&corrupt.join("skills"), "keep", "keep me");
+        fs::write(corrupt.join(REVISION_FILE), b"not-json").unwrap();
+        let state = SkillStoreState::new(corrupt.clone()).unwrap();
         assert!(matches!(
             state.snapshot(None),
-            Err(SkillStoreError::RecoveryPending(_)) | Err(SkillStoreError::UnsafeObject { .. })
+            Err(SkillStoreError::RecoveryPending(_)) | Err(SkillStoreError::CorruptRevision(_))
         ));
-        assert!(!cfg.join(REVISION_FILE).exists());
-        assert!(!cfg.join(REVISION_MIGRATION_FILE).exists());
-        assert_eq!(fs::read(outside.join("secret")).unwrap(), b"secret");
+        assert_eq!(fs::read(corrupt.join(REVISION_FILE)).unwrap(), b"not-json");
     }
 
     #[test]
@@ -4063,146 +3305,44 @@ mod tests {
     }
 
     #[test]
-    fn first_skill_write_freezes_missing_sessions_at_prewrite_defaults_idempotently() {
-        let cfg = test_dir("legacy-session-baseline");
-        let builtin = test_dir("legacy-session-builtin");
-        put_skill(&builtin, "feature-design", "builtin default");
-        put_skill(&builtin, "opt-in", "builtin opt-in");
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        put_skill(&cfg.join("skills"), "existing-user", "existing");
-        fs::write(cfg.join("skills-defaults.json"), br#"{"opt-in":true}"#).unwrap();
-        put_session_meta(&cfg, "legacy", json!({"title":"old"}));
-        put_session_meta(
-            &cfg,
-            "explicit",
-            json!({"skills":["kept"],"skills_revision":7}),
-        );
-
-        state
-            .save_skill("new-user", "---\nname: new-user\n---\nnew", Some(&builtin))
-            .unwrap();
-        let first_bytes = fs::read(cfg.join(LEGACY_SESSION_SKILLS_FILE)).unwrap();
-        let baseline: LegacySessionSkills = serde_json::from_slice(&first_bytes).unwrap();
-        assert_eq!(
-            baseline.get("legacy").unwrap(),
-            &vec![
-                "existing-user".to_string(),
-                "feature-design".to_string(),
-                "opt-in".to_string(),
-            ]
-        );
-        assert!(!baseline.contains_key("explicit"));
-        assert!(!baseline["legacy"].contains(&"new-user".to_string()));
-
-        state
-            .set_default("new-user", false, Some(&builtin))
-            .unwrap();
-        assert_eq!(
-            fs::read(cfg.join(LEGACY_SESSION_SKILLS_FILE)).unwrap(),
-            first_bytes,
-            "第二次写入不得重算已冻结 baseline"
-        );
-        let explicit: Value = serde_json::from_slice(
-            &fs::read(cfg.join(SESSIONS_DIR).join("explicit/meta.json")).unwrap(),
+    fn old_session_baseline_is_ignored_and_missing_snapshot_tracks_current_defaults() {
+        let cfg = test_dir("legacy-session-baseline-ignored");
+        put_skill(&cfg.join("skills"), "first", "first");
+        put_skill(&cfg.join("skills"), "second", "second");
+        fs::write(
+            cfg.join("legacy-session-skills-v1.json"),
+            br#"{"legacy":["frozen"]}"#,
         )
         .unwrap();
-        assert_eq!(explicit["skills"], json!(["kept"]));
-        assert_eq!(explicit["skills_revision"], 7);
-    }
-
-    #[test]
-    fn baseline_failure_advances_only_conservative_catalog_revision() {
-        let cfg = test_dir("legacy-session-baseline-failure");
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        put_skill(&cfg.join("skills"), "before", "before");
-        put_session_meta(&cfg, "legacy", json!({"title":"old"}));
-        state
-            .inner
-            .fail_next_legacy_baseline_write
-            .store(true, std::sync::atomic::Ordering::SeqCst);
-
-        let result = state.save_skill("must-not-exist", "content", None);
-        assert!(matches!(result, Err(SkillStoreError::Io { .. })));
-        assert!(!cfg.join("skills/must-not-exist").exists());
-        assert!(!cfg.join(LEGACY_SESSION_SKILLS_FILE).exists());
-        assert_eq!(state.snapshot(None).unwrap().revision, 1);
-    }
-
-    #[test]
-    fn save_delete_default_and_import_all_run_the_same_baseline_gate() {
-        for mutation in ["save", "delete", "default", "import"] {
-            let cfg = test_dir(&format!("legacy-gate-{mutation}"));
-            let state = SkillStoreState::new(cfg.clone()).unwrap();
-            put_skill(&cfg.join("skills"), "before", "before");
-            put_session_meta(&cfg, "legacy", json!({"title":"old"}));
-            match mutation {
-                "save" => {
-                    state.save_skill("after", "after", None).unwrap();
-                }
-                "delete" => {
-                    state.delete_skill("before", None).unwrap();
-                }
-                "default" => {
-                    state.set_default("before", false, None).unwrap();
-                }
-                "import" => {
-                    state
-                        .import(None, |user, _| {
-                            fs::write(user.join("imported"), b"imported")
-                                .map_err(|error| SkillStoreError::io("导入测试", user, error))
-                        })
-                        .unwrap();
-                }
-                _ => unreachable!(),
-            }
-            let baseline: LegacySessionSkills =
-                serde_json::from_slice(&fs::read(cfg.join(LEGACY_SESSION_SKILLS_FILE)).unwrap())
-                    .unwrap();
-            assert_eq!(baseline["legacy"], vec!["before"], "mutation={mutation}");
-        }
-    }
-
-    #[test]
-    fn corrupt_sidecar_aborts_baseline_before_authoritative_write() {
-        let cfg = test_dir("legacy-session-corrupt-sidecar");
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        let session = cfg.join(SESSIONS_DIR).join("legacy");
-        fs::create_dir_all(&session).unwrap();
-        fs::write(session.join("meta.json"), b"{").unwrap();
-
-        let result = state.set_default("feature-design", false, None);
-        assert!(matches!(result, Err(SkillStoreError::Io { .. })));
-        assert!(!cfg.join("skills-defaults.json").exists());
-        assert_eq!(state.snapshot(None).unwrap().revision, 1);
-    }
-
-    #[test]
-    fn materialize_uses_explicit_sidecar_selection_before_legacy_baseline() {
-        let cfg = test_dir("legacy-session-materialize");
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        put_skill(&cfg.join("skills"), "frozen", "frozen");
-        put_skill(&cfg.join("skills"), "explicit", "explicit");
-        crate::config::atomic_write_private(
-            &cfg.join(LEGACY_SESSION_SKILLS_FILE),
-            &serde_json::to_vec_pretty(&json!({"legacy":["frozen"]})).unwrap(),
+        fs::write(
+            cfg.join("skills-defaults.json"),
+            br#"{"first":true,"second":false}"#,
         )
         .unwrap();
+        let baseline_bytes = fs::read(cfg.join("legacy-session-skills-v1.json")).unwrap();
+        let state = SkillStoreState::new(cfg.clone()).unwrap();
+        let target = cfg.join("materialized");
 
-        let target = cfg.join("materialized-legacy");
+        assert_eq!(
+            state.materialize_session(&target, None, None).unwrap(),
+            vec!["first"]
+        );
+        state.set_default("first", false, None).unwrap();
+        state.set_default("second", true, None).unwrap();
+        assert_eq!(
+            state.materialize_session(&target, None, None).unwrap(),
+            vec!["second"]
+        );
         assert_eq!(
             state
-                .materialize_session(&target, None, "legacy", None)
+                .materialize_session(&target, None, Some(&["first".into()]))
                 .unwrap(),
-            vec!["frozen"]
+            vec!["first"]
         );
-        assert!(!target.join("explicit").exists());
         assert_eq!(
-            state
-                .materialize_session(&target, None, "legacy", Some(&["explicit".into()]),)
-                .unwrap(),
-            vec!["explicit"]
+            fs::read(cfg.join("legacy-session-skills-v1.json")).unwrap(),
+            baseline_bytes
         );
-        assert!(!target.join("frozen").exists());
     }
 
     #[test]
@@ -4281,84 +3421,10 @@ mod tests {
     }
 
     #[test]
-    fn safe_nonempty_store_missing_revision_is_migrated_once_but_corruption_is_preserved() {
-        let cfg = test_dir("missing-revision-migration");
-        put_skill(&cfg.join("skills"), "keep", "keep me");
-        fs::write(cfg.join("skills/.DS_Store"), b"Finder metadata").unwrap();
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        let snapshot = state.snapshot(None).unwrap();
-        assert_eq!(snapshot.revision, MIGRATED_INITIAL_REVISION);
-        assert_eq!(snapshot.skills.len(), 1);
-        let marker: RevisionMigrationDocument =
-            serde_json::from_slice(&fs::read(cfg.join(REVISION_MIGRATION_FILE)).unwrap()).unwrap();
-        assert_eq!(marker.format, REVISION_MIGRATION_FORMAT);
-        assert_eq!(marker.migration, REVISION_MIGRATION_KIND);
-        assert_eq!(marker.store_id, snapshot.store_id);
-        assert_eq!(marker.initial_revision, MIGRATED_INITIAL_REVISION);
-        assert_eq!(
-            fs::read_to_string(cfg.join("skills/keep/SKILL.md")).unwrap(),
-            "keep me"
-        );
-        assert_eq!(
-            fs::read(cfg.join("skills/.DS_Store")).unwrap(),
-            b"Finder metadata"
-        );
-
-        // 模拟 marker 已 fsync、revision 尚未发布时退出；重入必须复用 store_id。
-        fs::remove_file(cfg.join(REVISION_FILE)).unwrap();
-        drop(state);
-        let resumed = SkillStoreState::new(cfg.clone())
-            .unwrap()
-            .snapshot(None)
-            .unwrap();
-        assert_eq!(resumed.store_id, marker.store_id);
-        assert_eq!(resumed.revision, MIGRATED_INITIAL_REVISION);
-
-        let corrupt = test_dir("corrupt-revision");
-        put_skill(&corrupt.join("skills"), "keep", "keep me");
-        fs::write(corrupt.join(REVISION_FILE), b"not-json").unwrap();
-        let state = SkillStoreState::new(corrupt.clone()).unwrap();
-        assert!(matches!(
-            state.snapshot(None),
-            Err(SkillStoreError::RecoveryPending(_)) | Err(SkillStoreError::CorruptRevision(_))
-        ));
-        assert_eq!(fs::read(corrupt.join(REVISION_FILE)).unwrap(), b"not-json");
-        assert!(!corrupt.join(REVISION_MIGRATION_FILE).exists());
-    }
-
-    #[test]
-    fn missing_revision_migration_rejects_unsafe_root_and_transaction_residue() {
-        let unsafe_cfg = test_dir("missing-revision-unsafe");
-        fs::create_dir_all(unsafe_cfg.join("skills")).unwrap();
-        fs::write(unsafe_cfg.join("skills/rogue.txt"), b"rogue").unwrap();
-        let unsafe_state = SkillStoreState::new(unsafe_cfg.clone()).unwrap();
-        assert!(matches!(
-            unsafe_state.snapshot(None),
-            Err(SkillStoreError::RecoveryPending(_))
-        ));
-        assert!(!unsafe_cfg.join(REVISION_FILE).exists());
-        assert!(!unsafe_cfg.join(REVISION_MIGRATION_FILE).exists());
-
-        let tx_cfg = test_dir("missing-revision-transaction");
-        let source = test_dir("missing-revision-transaction-source");
-        put_skill(&source, "demo", "candidate");
-        crate::skill_transactions::seed_prepared_new_for_test(
-            &tx_cfg.join("skills"),
-            &source.join("demo"),
-            "demo",
-        );
-        let tx_state = SkillStoreState::new(tx_cfg.clone()).unwrap();
-        let issues = tx_state.recovery_issues().unwrap();
-        assert!(!issues.is_empty());
-        assert!(issues.iter().all(|issue| issue.actions.is_empty()));
-        assert!(!tx_cfg.join(REVISION_FILE).exists());
-        assert!(!tx_cfg.join(REVISION_MIGRATION_FILE).exists());
-    }
-
-    #[test]
-    fn concurrent_missing_revision_initializers_publish_one_store_identity() {
+    fn concurrent_missing_revision_initializers_publish_one_zero_revision_identity() {
         let cfg = test_dir("missing-revision-concurrent");
         put_skill(&cfg.join("skills"), "keep", "keep me");
+        fs::write(cfg.join("skills.revision-migration-v1.json"), b"ignored").unwrap();
         let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
         let handles = (0..2)
             .map(|_| {
@@ -4376,11 +3442,12 @@ mod tests {
             .map(|handle| handle.join().unwrap())
             .collect::<Vec<_>>();
         assert_eq!(snapshots[0].store_id, snapshots[1].store_id);
-        assert_eq!(snapshots[0].revision, MIGRATED_INITIAL_REVISION);
-        assert_eq!(snapshots[1].revision, MIGRATED_INITIAL_REVISION);
-        let marker: RevisionMigrationDocument =
-            serde_json::from_slice(&fs::read(cfg.join(REVISION_MIGRATION_FILE)).unwrap()).unwrap();
-        assert_eq!(marker.store_id, snapshots[0].store_id);
+        assert_eq!(snapshots[0].revision, 0);
+        assert_eq!(snapshots[1].revision, 0);
+        assert_eq!(
+            fs::read(cfg.join("skills.revision-migration-v1.json")).unwrap(),
+            b"ignored"
+        );
     }
 
     #[test]
@@ -4650,77 +3717,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn multiprocess_first_writers_freeze_one_prewrite_legacy_baseline() {
-        let cfg = test_dir("legacy-session-multiprocess");
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        put_skill(&cfg.join("skills"), "before", "before");
-        put_session_meta(&cfg, "legacy", json!({"title":"old"}));
-        drop(state);
-
-        let mut children = ["a", "b"]
-            .into_iter()
-            .map(|role| spawn_state_helper(&cfg, role, "legacy-baseline"))
-            .collect::<Vec<_>>();
-        for child in &mut children {
-            assert!(child.wait().unwrap().success());
-        }
-        let baseline: LegacySessionSkills =
-            serde_json::from_slice(&fs::read(cfg.join(LEGACY_SESSION_SKILLS_FILE)).unwrap())
-                .unwrap();
-        assert_eq!(baseline["legacy"], vec!["before"]);
-        assert_eq!(
-            SkillStoreState::new(cfg)
-                .unwrap()
-                .snapshot(None)
-                .unwrap()
-                .revision,
-            2
-        );
-    }
-
-    #[test]
-    fn baseline_scan_tolerates_concurrent_explicit_sidecar_write_and_delete() {
-        let cfg = test_dir("legacy-session-sidecar-race");
-        let state = SkillStoreState::new(cfg.clone()).unwrap();
-        put_skill(&cfg.join("skills"), "before", "before");
-        put_session_meta(&cfg, "becomes-explicit", json!({"title":"old"}));
-        put_session_meta(&cfg, "deleted", json!({"title":"delete me"}));
-        drop(state);
-        fs::write(cfg.join("baseline.pause-request"), b"deleted").unwrap();
-
-        let mut migrator = spawn_state_helper(&cfg, "migrator", "baseline-sidecar-race");
-        wait_for(&cfg.join("baseline.scan-entered"));
-        crate::config::atomic_write_private(
-            &cfg.join(SESSIONS_DIR).join("becomes-explicit/meta.json"),
-            &serde_json::to_vec_pretty(&json!({
-                "title": "updated concurrently",
-                "skills": ["explicit"],
-                "skills_revision": 9,
-            }))
-            .unwrap(),
-        )
-        .unwrap();
-        fs::remove_dir_all(cfg.join(SESSIONS_DIR).join("deleted")).unwrap();
-        fs::write(cfg.join("baseline.scan-release"), b"release").unwrap();
-        assert!(migrator.wait().unwrap().success());
-
-        let explicit: Value = serde_json::from_slice(
-            &fs::read(cfg.join(SESSIONS_DIR).join("becomes-explicit/meta.json")).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(explicit["skills"], json!(["explicit"]));
-        assert_eq!(explicit["skills_revision"], 9);
-        assert!(!cfg.join(SESSIONS_DIR).join("deleted").exists());
-        let baseline: LegacySessionSkills =
-            serde_json::from_slice(&fs::read(cfg.join(LEGACY_SESSION_SKILLS_FILE)).unwrap())
-                .unwrap();
-        // Depending on directory enumeration order the independent baseline may have
-        // captured the old implicit state, but the explicit sidecar always wins and is untouched.
-        assert!(!baseline.contains_key("deleted"));
-        assert!(cfg.join("skills/after-migrator/SKILL.md").is_file());
-    }
-
     #[cfg(unix)]
     #[test]
     fn replacing_skills_lock_cannot_split_two_process_critical_sections() {
@@ -4786,21 +3782,6 @@ mod tests {
                 .resolve_recovery(&id, SkillRecoveryAction::PreserveFiles)
                 .unwrap();
             fs::write(cfg.join(format!("{role}.resolved")), b"resolved").unwrap();
-            return;
-        }
-        if mode == "legacy-baseline" {
-            let skill = format!("after-{role}");
-            state.save_skill(&skill, "after", None).unwrap();
-            return;
-        }
-        if mode == "baseline-sidecar-race" {
-            state
-                .save_skill(
-                    "after-migrator",
-                    "---\nname: after-migrator\n---\nafter",
-                    None,
-                )
-                .unwrap();
             return;
         }
         if mode == "all-entrypoints-stress" {

@@ -1281,12 +1281,14 @@ export const SettingsView = forwardRef<SettingsViewHandle, {
               槽位的话在长短分区间切换时居中内容列左右晃约 5px */}
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] px-6 py-5">
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
-              {/* 分区头:大标题+一句话说明(对齐旧工程设置屏的标题层级) */}
-              <header className="flex flex-col gap-1">
-                {/* text-lg:应用最大字号档(欢迎页/新建任务同档),不再独一档 text-xl */}
-                <h2 className="text-lg font-bold">{active?.label}</h2>
-                <p className="text-xs text-base-content/60">{active?.desc}</p>
-              </header>
+              {/* 技能分区把标题与高频动作并为一个页头，避免说明和按钮在两行互相挤压。 */}
+              {section !== "skills" && (
+                <header className="flex flex-col gap-1">
+                  {/* text-lg:应用最大字号档(欢迎页/新建任务同档),不再独一档 text-xl */}
+                  <h2 className="text-lg font-bold">{active?.label}</h2>
+                  <p className="text-xs text-base-content/60">{active?.desc}</p>
+                </header>
+              )}
               {body()}
             </div>
           </div>

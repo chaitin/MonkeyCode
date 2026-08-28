@@ -255,7 +255,7 @@ export const zh = {
   "settings.desc.account": "连接服务、查看会员与用量",
   "settings.desc.models": "模型接入与默认模型,保存后重启引擎生效",
   "settings.desc.mcp": "MCP 服务器,为 Agent 扩展工具能力",
-  "settings.desc.skills": "内置与自定义技能库,对话里按会话启用",
+  "settings.desc.skills": "管理 Agent 的可复用技能。默认启用项用于新会话，已打开的会话可单独调整。",
   "settings.desc.browser": "连接 Chrome/Edge,让 Agent 操作网页",
   "settings.desc.env": "内核在本机或 WSL 发行版中运行",
   "settings.desc.about": "版本、更新与诊断",
@@ -313,8 +313,6 @@ export const zh = {
   "settings.mcp.enable": "启用",
   "settings.mcp.disabledBadge": "已停用",
   // 技能库:内置随包分发只读,同名自定义覆盖(壳 skills.rs 去重口径)。
-  // 保存即落盘、不重启引擎——生效时机必须讲清,否则"改了怎么没反应"
-  "settings.skills.hint": "技能为 Agent 提供可复用的工作方法。默认启用的技能会自动用于新会话，已打开的会话可单独调整。",
   "settings.skills.add": "新建技能",
   "settings.skills.import": "导入技能",
   "settings.skills.importFolders": "选择文件夹…",
@@ -444,8 +442,6 @@ export const zh = {
   "settings.skills.delete": "删除",
   "settings.skills.override": "编辑副本",
   "settings.skills.readonlyHint": "内置技能随应用更新分发,只读;「编辑副本」会创建同名自定义技能覆盖它,删除副本即还原。",
-  "settings.skills.legacyReadonlyBadge": "旧版只读",
-  "settings.skills.legacyReadonlyHint": "此旧版兼容技能为只读，仅可查看或删除。",
   "settings.skills.save": "保存",
   "settings.skills.cancel": "取消",
   "settings.skills.saveFailed": "保存失败:{reason}",

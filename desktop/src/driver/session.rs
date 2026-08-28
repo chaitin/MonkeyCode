@@ -901,8 +901,8 @@ impl SessionOperationGuards {
 }
 
 /// `session_set_skills` 在销毁旧 runtime 前准备完的 sidecar 提交计划。
-/// revision 与 legacy baseline 均在跨进程 session lock 内读取；create 成功后
-/// 重取最新 sidecar、复检 revision 并合并技能字段，不再进入 SkillStoreState。
+/// revision 在跨进程 session lock 内读取；create 成功后重取最新 sidecar、
+/// 复检 revision 并合并技能字段，不再进入 SkillStoreState。
 struct SessionSkillsCommitPlan {
     session_id: String,
     path: PathBuf,
@@ -1157,81 +1157,75 @@ impl OhmyDriver {
     }
 
     fn sessions_list_blocking(inner: &Arc<Inner>) -> Result<Value, String> {
-        inner
-            .skill_store
-            .with_session_list_skills(|legacy_baseline| {
-                let mut items: Vec<(u64, Value)> = Vec::new();
-                let entries = std::fs::read_dir(&inner.data_dir)
-                    .map(|it| it.flatten().collect::<Vec<_>>())
-                    .unwrap_or_default();
-                // 锁内只快照 running 集合,立即放锁:reader 线程每条引擎事件都要拿
-                // 同一把 sessions 锁(push_frame),若持锁贯穿下面的逐会话
-                // read_sidecar(磁盘 I/O),UI 刷列表会把整条事件流卡在磁盘上
-                let running_set: HashSet<String> = {
-                    let sessions = inner.sess.sessions.lock_ok();
-                    sessions
-                        .iter()
-                        .filter(|(_, s)| s.running)
-                        .map(|(id, _)| id.clone())
-                        .collect()
-                };
-                let waiting: HashSet<String> = inner
+        let mut items: Vec<(u64, Value)> = Vec::new();
+        let entries = std::fs::read_dir(&inner.data_dir)
+            .map(|it| it.flatten().collect::<Vec<_>>())
+            .unwrap_or_default();
+        // 锁内只快照 running 集合,立即放锁:reader 线程每条引擎事件都要拿
+        // 同一把 sessions 锁(push_frame),若持锁贯穿下面的逐会话
+        // read_sidecar(磁盘 I/O),UI 刷列表会把整条事件流卡在磁盘上
+        let running_set: HashSet<String> = {
+            let sessions = inner.sess.sessions.lock_ok();
+            sessions
+                .iter()
+                .filter(|(_, s)| s.running)
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+        let waiting: HashSet<String> = inner
+            .sess
+            .pending_perms
+            .lock_ok()
+            .values()
+            .cloned()
+            .chain(
+                inner
                     .sess
-                    .pending_perms
+                    .pending_questions
                     .lock_ok()
                     .values()
-                    .cloned()
-                    .chain(
-                        inner
-                            .sess
-                            .pending_questions
-                            .lock_ok()
-                            .values()
-                            .map(|(s, _)| s.clone()),
-                    )
-                    .collect();
-                for e in entries {
-                    if !e.path().is_dir() {
-                        continue;
-                    }
-                    let id = e.file_name().to_string_lossy().into_owned();
-                    let meta = match inner.read_sidecar_checked(&id) {
-                        Ok(meta) => effective_session_meta(meta, &id, legacy_baseline),
-                        Err(error) => {
-                            eprintln!("[desktop] 会话列表跳过无效 sidecar: {error}");
-                            continue;
-                        }
-                    };
-                    if meta
-                        .get("parent")
-                        .and_then(|v| v.as_str())
-                        .map(|p| !p.is_empty())
-                        .unwrap_or(false)
-                    {
-                        continue; // 子代理子会话不进列表(经父会话工具卡点开)
-                    }
-                    let running = running_set.contains(&id);
-                    let turns = meta.get("turns").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let status = if running {
-                        "running".to_string()
-                    } else {
-                        match meta.get("status").and_then(|v| v.as_str()) {
-                            // 历史遗留的 sidecar "running"(和解机制上线前的崩溃残留):
-                            // 内存里没在跑就不是在跑,读取时自愈为 interrupted
-                            Some("running") => "interrupted".to_string(),
-                            // 旧版把每轮正常结束写成 finished；顶层会话可继续，读取时
-                            // 兼容迁移为 idle，不修改真正子任务（它们已在上方过滤）。
-                            Some("finished") => "idle".to_string(),
-                            Some(s) => s.to_string(),
-                            None if turns > 0 => "idle".to_string(),
-                            None => "created".to_string(),
-                        }
-                    };
-                    let updated = meta
-                        .get("updated_at")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    items.push((
+                    .map(|(s, _)| s.clone()),
+            )
+            .collect();
+        for e in entries {
+            if !e.path().is_dir() {
+                continue;
+            }
+            let id = e.file_name().to_string_lossy().into_owned();
+            let meta = match inner.read_sidecar_checked(&id) {
+                Ok(meta) => meta,
+                Err(error) => {
+                    eprintln!("[desktop] 会话列表跳过无效 sidecar: {error}");
+                    continue;
+                }
+            };
+            if meta
+                .get("parent")
+                .and_then(|v| v.as_str())
+                .map(|p| !p.is_empty())
+                .unwrap_or(false)
+            {
+                continue; // 子代理子会话不进列表(经父会话工具卡点开)
+            }
+            let running = running_set.contains(&id);
+            let turns = meta.get("turns").and_then(|v| v.as_u64()).unwrap_or(0);
+            let status = if running {
+                "running".to_string()
+            } else {
+                match meta.get("status").and_then(|v| v.as_str()) {
+                    // 历史遗留的 sidecar "running"(和解机制上线前的崩溃残留):
+                    // 内存里没在跑就不是在跑,读取时自愈为 interrupted
+                    Some("running") => "interrupted".to_string(),
+                    // 旧版把每轮正常结束写成 finished；顶层会话可继续，读取时
+                    // 兼容迁移为 idle，不修改真正子任务（它们已在上方过滤）。
+                    Some("finished") => "idle".to_string(),
+                    Some(s) => s.to_string(),
+                    None if turns > 0 => "idle".to_string(),
+                    None => "created".to_string(),
+                }
+            };
+            let updated = meta.get("updated_at").and_then(|v| v.as_u64()).unwrap_or(0);
+            items.push((
                         updated,
                         json!({
                             "id": id,
@@ -1245,7 +1239,7 @@ impl OhmyDriver {
                             "model": meta.get("model_name").and_then(|v| v.as_str()).unwrap_or(""),
                             "think": meta.get("think").and_then(|v| v.as_str()).unwrap_or(""),
                             "mode": meta.get("mode").and_then(|v| v.as_str()).unwrap_or("default"),
-                            // sidecar 显式值优先；历史缺失值由独立 baseline 显式化。
+                            // 旧会话缺失值保持 null，打开时动态采用当时的默认集。
                             "skills": meta.get("skills").cloned().unwrap_or(Value::Null),
                             "skills_revision": meta.get("skills_revision").and_then(Value::as_u64).unwrap_or(0),
                             "turns": turns,
@@ -1257,10 +1251,9 @@ impl OhmyDriver {
                             "waiting_ask": waiting.contains(&id),
                         }),
                     ));
-                }
-                items.sort_by(|a, b| b.0.cmp(&a.0));
-                Ok(Value::Array(items.into_iter().map(|(_, v)| v).collect()))
-            })
+        }
+        items.sort_by(|a, b| b.0.cmp(&a.0));
+        Ok(Value::Array(items.into_iter().map(|(_, v)| v).collect()))
     }
 
     /// session/create 已发出后若壳侧 promotion（sidecar/engine_id 绑定）失败，
@@ -1530,18 +1523,8 @@ impl OhmyDriver {
                 raw["__session_materialize_recovery_error"] = json!(message);
                 return Ok(raw);
             }
-            // store 门控错误必须由真正的 materialize 保留类别并经 conn-status
-            // 外显。这里若提前把 RecoveryPending 压成 String 返回，spawn_resume
-            // 永远看不到它；保留原始 sidecar，让下一步在同一 session guard 下
-            // 重试 store read。成功时仍应用 sidecar → baseline 的快照优先级。
-            Ok::<_, SessionMetaReadError>(
-                match inner.skill_store.with_legacy_session_skills(|baseline| {
-                    Ok(effective_session_meta(raw.clone(), &sid, baseline))
-                }) {
-                    Ok(effective) => effective,
-                    Err(_) => raw,
-                },
-            )
+            // 缺少 skills 的旧会话保留原始 sidecar；后台物化时按当前默认集解析。
+            Ok::<_, SessionMetaReadError>(raw)
         })
         .await
         .map_err(|error| format!("读取会话技能快照任务失败: {error}"))?
@@ -3080,8 +3063,8 @@ impl OhmyDriver {
                 }
                 // 总锁序：skills_gate → OS session lock → 进程内 sidecar lock；
                 // OS lock 跨完整事务持有，进程级 sidecar lock 在 RPC 前释放。
-                // 销毁旧 runtime 前必须完成所有可能失败的 store/baseline/revision
-                // 读取、技能目录 promotion 和 sidecar 提交计划构造。create 成功后
+                // 销毁旧 runtime 前必须完成所有可能失败的 store/revision 读取、
+                // 技能目录 promotion 和 sidecar 提交计划构造。create 成功后
                 // 只允许执行计划中的原子写；不能再进入 SkillStoreState。
                 let mut operation_guards = self.acquire_session_operation_guards(id).await?;
                 let current_meta = self
@@ -3671,7 +3654,6 @@ impl OhmyDriver {
             .0
             .session_materialize_journal(session_id)
             .ok_or_else(|| MaterializeSkillsError::Failed(format!("非法会话 id: {session_id}")))?;
-        let session_id = session_id.to_string();
         tokio::task::spawn_blocking(move || {
             std::fs::create_dir_all(&dir).map_err(|e| {
                 MaterializeSkillsError::Failed(format!("创建引擎会话目录失败: {e}"))
@@ -3688,7 +3670,6 @@ impl OhmyDriver {
                     &dir.join("skills"),
                     &journal,
                     builtin.as_deref(),
-                    &session_id,
                     enabled.as_deref(),
                 )
                 .map_err(|error| match error {
@@ -3798,8 +3779,8 @@ impl OhmyDriver {
                 .map_err(MaterializeSkillsError::Failed)?;
             Some(guards)
         };
-        // materialize 会进入 SkillStoreState，也会读取 legacy baseline。它必须
-        // 在 destroy 前完成；成功后 create 只消费这份规范化结果，绝不二次入门。
+        // materialize 会进入 SkillStoreState，必须在 destroy 前完成；成功后
+        // create 只消费这份规范化结果，绝不二次入门。
         let current_engine_id = self.engine_id(id);
         let skills = self
             .materialize_skills(&current_engine_id, id, enabled)
@@ -4259,12 +4240,10 @@ impl Inner {
         let meta = self
             .read_sidecar_checked(id)
             .map_err(|error| error.command_error())?;
-        let current_revision = self
-            .skill_store
-            .with_legacy_session_skills(|baseline| {
-                Ok(effective_session_skills(&meta, id, baseline).1)
-            })
-            .map_err(|error| error.to_string())?;
+        let current_revision = meta
+            .get("skills_revision")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
         let revision = current_revision
             .checked_add(1)
             .ok_or("会话技能 revision 已到上限")?;
@@ -4288,7 +4267,7 @@ impl Inner {
         let actual_revision = meta
             .get("skills_revision")
             .and_then(Value::as_u64)
-            .unwrap_or(plan.expected_revision);
+            .unwrap_or(0);
         if actual_revision != plan.expected_revision {
             return Err(format!(
                 "会话 {} 技能 revision 已变化（预期 {}，实际 {}）",
@@ -4941,48 +4920,6 @@ fn skills_of_meta(meta: &Value) -> Option<Vec<String>> {
             .filter_map(|x| x.as_str().map(String::from))
             .collect()
     })
-}
-
-fn effective_session_skills(
-    meta: &Value,
-    session_id: &str,
-    legacy_baseline: Option<&crate::skills::LegacySessionSkills>,
-) -> (Option<Vec<String>>, u64) {
-    if let Some(skills) = skills_of_meta(meta) {
-        let revision = meta
-            .get("skills_revision")
-            .and_then(Value::as_u64)
-            .unwrap_or(1);
-        return (Some(skills), revision);
-    }
-    if let Some(skills) = legacy_baseline.and_then(|entries| entries.get(session_id)) {
-        // baseline 把“缺失”显式化为第一版；若未来格式里已有预留 revision，
-        // 仍严格推进而不回退。
-        let previous = meta
-            .get("skills_revision")
-            .and_then(Value::as_u64)
-            .unwrap_or(0);
-        return (Some(skills.clone()), previous.saturating_add(1));
-    }
-    (
-        None,
-        meta.get("skills_revision")
-            .and_then(Value::as_u64)
-            .unwrap_or(0),
-    )
-}
-
-fn effective_session_meta(
-    mut meta: Value,
-    session_id: &str,
-    legacy_baseline: Option<&crate::skills::LegacySessionSkills>,
-) -> Value {
-    let (skills, revision) = effective_session_skills(&meta, session_id, legacy_baseline);
-    if let Some(skills) = skills {
-        meta["skills"] = json!(skills);
-    }
-    meta["skills_revision"] = json!(revision);
-    meta
 }
 
 fn ohmy_mode_of(mode: &str) -> &'static str {

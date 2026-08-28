@@ -2222,8 +2222,8 @@ async fn deleted_session_is_not_recreated_by_queued_model_change() {
 }
 
 #[tokio::test]
-async fn session_meta_prefers_sidecar_then_legacy_baseline_and_revisions_are_monotonic() {
-    let inner = bare_inner("legacy-skills-priority");
+async fn old_session_baseline_is_ignored_and_first_set_starts_at_revision_one() {
+    let inner = bare_inner("legacy-skills-ignored");
     inner.write_sidecar("legacy", |meta| {
         meta["title"] = json!("旧会话");
     });
@@ -2233,44 +2233,40 @@ async fn session_meta_prefers_sidecar_then_legacy_baseline_and_revisions_are_mon
         meta["skills_revision"] = json!(7);
     });
     let config_dir = inner.data_dir.parent().unwrap();
-    crate::config::atomic_write_private(
-        &config_dir.join("legacy-session-skills-v1.json"),
-        serde_json::to_vec_pretty(&json!({
-            "legacy": ["frozen"],
-            "explicit": ["must-not-win"],
-        }))
-        .unwrap()
-        .as_slice(),
-    )
+    let baseline_path = config_dir.join("legacy-session-skills-v1.json");
+    let baseline_bytes = serde_json::to_vec_pretty(&json!({
+        "legacy": ["frozen"],
+        "explicit": ["must-not-win"],
+    }))
     .unwrap();
+    crate::config::atomic_write_private(&baseline_path, &baseline_bytes).unwrap();
 
     let list = OhmyDriver(inner.clone()).sessions_list().await.unwrap();
     let items = list.as_array().unwrap();
     let legacy = items.iter().find(|item| item["id"] == "legacy").unwrap();
-    assert_eq!(legacy["skills"], json!(["frozen"]));
-    assert_eq!(legacy["skills_revision"], 1);
+    assert_eq!(legacy["skills"], Value::Null);
+    assert_eq!(legacy["skills_revision"], 0);
     let explicit = items.iter().find(|item| item["id"] == "explicit").unwrap();
     assert_eq!(explicit["skills"], json!(["sidecar"]));
     assert_eq!(explicit["skills_revision"], 7);
-    let read_only = inner.read_sidecar("legacy");
-    assert!(read_only.get("skills").is_none());
-    assert!(read_only.get("skills_revision").is_none());
+    assert!(inner.read_sidecar("legacy").get("skills").is_none());
 
     assert_eq!(
         inner
             .commit_session_skills("legacy", &["normalized".into()])
             .unwrap(),
-        2
+        1
     );
     assert_eq!(
         inner
             .commit_session_skills("legacy", &["next".into()])
             .unwrap(),
-        3
+        2
     );
     let committed = inner.read_sidecar("legacy");
     assert_eq!(committed["skills"], json!(["next"]));
-    assert_eq!(committed["skills_revision"], 3);
+    assert_eq!(committed["skills_revision"], 2);
+    assert_eq!(std::fs::read(&baseline_path).unwrap(), baseline_bytes);
 }
 
 #[tokio::test]
@@ -2561,7 +2557,7 @@ async fn session_skills_commit_does_not_reenter_store_after_destroy_starts() {
             .await
     });
 
-    // 收到 destroy 证明物化、legacy baseline/revision 读取和提交计划均已成功。
+    // 收到 destroy 证明物化、revision 读取和提交计划均已成功。
     let destroy: Value = serde_json::from_str(
         &stdin_rx
             .recv()
@@ -2842,6 +2838,58 @@ fn conn_status_preserves_materialize_error_categories() {
     });
     assert_eq!(recovery_payload["code"], "skill-recovery-pending");
     assert_eq!(failed_payload["code"], "skill-materialize-failed");
+}
+
+#[tokio::test]
+async fn new_session_still_persists_explicit_skills_at_revision_one() {
+    let (inner, _events, mut stdin_rx) =
+        bare_inner_rpc_with_test_model("new-session-explicit-skills");
+    let skill = inner
+        .data_dir
+        .parent()
+        .unwrap()
+        .join("skills/default-skill");
+    std::fs::create_dir_all(&skill).unwrap();
+    std::fs::write(
+        skill.join("SKILL.md"),
+        "---\nname: default-skill\n---\ndefault",
+    )
+    .unwrap();
+    let driver = OhmyDriver(inner.clone());
+    let create = tokio::spawn(async move {
+        driver
+            .session_create_with_kind(
+                &std::env::temp_dir().to_string_lossy(),
+                "测试模型",
+                false,
+                "local",
+                "",
+                None,
+            )
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx
+            .recv()
+            .await
+            .unwrap()
+            .expect("非 shutdown create RPC"),
+    )
+    .unwrap();
+    assert_eq!(request["method"], "session/create");
+    let sid = request["params"]["resume"].as_str().unwrap().to_string();
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "session_id": &sid } }),
+    );
+
+    let result = create.await.unwrap().unwrap();
+    assert_eq!(result["skills"], json!(["default-skill"]));
+    assert_eq!(result["skills_revision"], 1);
+    let meta = inner.read_sidecar(&sid);
+    assert_eq!(meta["skills"], json!(["default-skill"]));
+    assert_eq!(meta["skills_revision"], 1);
 }
 
 #[tokio::test]

@@ -8,10 +8,6 @@ export interface SkillInfo {
   content: string;
   overrides: boolean;
   default_enabled: boolean;
-  /** Rust catalog 的权威能力；旧壳缺字段时按可用处理以保持滚动升级兼容。 */
-  can_set_default?: boolean;
-  /** user=可编辑、builtin=可编辑副本；legacy 兼容名称为 false。 */
-  can_edit?: boolean;
 }
 
 export interface SkillsCatalogSnapshot {

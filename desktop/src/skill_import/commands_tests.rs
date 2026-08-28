@@ -188,8 +188,6 @@ fn catalog_skill(name: &str, source: &str) -> SkillInfo {
         content: String::new(),
         overrides: false,
         default_enabled: false,
-        can_set_default: true,
-        can_edit: true,
     }
 }
 
