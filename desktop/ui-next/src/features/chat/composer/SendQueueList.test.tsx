@@ -152,6 +152,7 @@ describe("SendQueueList", () => {
     const pendingRow = screen.getByText("后续消息").closest("li")!;
     const actions = pendingRow.querySelector("[data-send-queue-actions]")!;
     expect(actions.className).toContain("absolute");
+    expect(actions.className).toContain("w-max");
     expect(actions.className).toContain("pointer-events-none");
     const rowButtons = within(pendingRow).getAllByRole("button");
     expect(rowButtons.map((button) => button.getAttribute("aria-label") || button.textContent)).toEqual([

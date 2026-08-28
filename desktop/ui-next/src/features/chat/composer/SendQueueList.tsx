@@ -441,7 +441,7 @@ export function SendQueueList<A>({
                     onSteer || (onEdit && editingId === null) || editingId !== item.id ? (
                       <span
                         data-send-queue-actions=""
-                        className="pointer-events-none absolute end-full top-0 z-10 flex items-center gap-1 rounded-md bg-transparent pl-2 group-hover:bg-base-100 focus-within:bg-base-100"
+                        className="pointer-events-none absolute end-full top-0 z-10 flex w-max items-center gap-1 rounded-md bg-transparent pl-2 group-hover:bg-base-100 focus-within:bg-base-100"
                       >
                         {onSteer && (
                           <button
