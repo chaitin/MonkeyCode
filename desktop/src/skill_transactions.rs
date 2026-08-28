@@ -1845,6 +1845,9 @@ fn remove_safe_tree_synced(path: &Path) -> Result<(), TxError> {
     let parent = path
         .parent()
         .ok_or_else(|| TxError::Message("删除目标没有父级".into()))?;
+    #[cfg(windows)]
+    crate::config::retry_transient_windows_remove(|| fs::remove_dir_all(path))?;
+    #[cfg(not(windows))]
     fs::remove_dir_all(path)?;
     sync_directory(parent)
 }
@@ -1897,10 +1900,13 @@ fn open_nofollow_file(path: &Path) -> io::Result<File> {
     {
         use std::os::windows::fs::OpenOptionsExt as _;
         use windows::Win32::Storage::FileSystem::{
-            FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ,
+            FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
         };
+        // 校验/指纹读句柄必须共享 WRITE:否则后台轮询持有期间,同一文件的
+        // sync_file 写打开会被挡成共享冲突(os error 32)。写入竞态本来就由
+        // stable_snapshot 的双指纹复核兜底,这里不靠共享模式排他。
         options
-            .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_DELETE.0)
+            .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0 | FILE_SHARE_DELETE.0)
             .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0);
     }
     options.open(path)

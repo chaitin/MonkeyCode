@@ -2303,7 +2303,16 @@ fn remove_plain_tree(path: &Path) -> std::io::Result<()> {
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
-        Ok(metadata) if plain_directory_metadata(&metadata) => fs::remove_dir_all(path),
+        Ok(metadata) if plain_directory_metadata(&metadata) => {
+            #[cfg(windows)]
+            {
+                crate::config::retry_transient_windows_remove(|| fs::remove_dir_all(path))
+            }
+            #[cfg(not(windows))]
+            {
+                fs::remove_dir_all(path)
+            }
+        }
         Ok(_) => Err(std::io::Error::other("拒绝递归删除链接或重解析点")),
     }
 }

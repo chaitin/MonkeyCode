@@ -269,14 +269,17 @@ fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
 
     let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
     let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
-    unsafe {
-        MoveFileExW(
-            PCWSTR(from.as_ptr()),
-            PCWSTR(to.as_ptr()),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-        .map_err(std::io::Error::other)
-    }
+    // 源/目标可能正被实时防护短暂持有,瞬态占用走退避重试。
+    retry_transient_windows_rename(|| {
+        unsafe {
+            MoveFileExW(
+                PCWSTR(from.as_ptr()),
+                PCWSTR(to.as_ptr()),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        }
+        .map_err(windows_core_io_error)
+    })
 }
 
 /// 相对固定父句柄的 NT rename(真正的 renameat 语义,ReplaceIfExists=FALSE)。
@@ -338,28 +341,63 @@ pub(crate) fn nt_status_io_error(status: windows::Win32::Foundation::NTSTATUS) -
     std::io::Error::from_raw_os_error(code as i32)
 }
 
-/// 目录 rename 撞上实时防护/索引器/引擎短暂持有的子文件句柄时,Windows 报
-/// 拒绝访问或共享冲突;这类瞬态占用退避重试即可,不代表持久失败。
+/// Windows 上瞬态句柄冲突的退避重试:实时防护/索引器会短暂持有刚写入的
+/// 文件,期间按路径重开会报所列错误码。退避总预算约 1.4s,超时原样返回。
 #[cfg(windows)]
-pub(crate) fn retry_transient_windows_rename(
-    mut rename: impl FnMut() -> std::io::Result<()>,
+pub(crate) fn retry_windows_transient(
+    codes: &[u32],
+    mut operation: impl FnMut() -> std::io::Result<()>,
 ) -> std::io::Result<()> {
-    use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION};
-    for _ in 0..4 {
-        match rename() {
+    const BACKOFF_MS: [u64; 6] = [5, 20, 60, 150, 400, 800];
+    let mut attempt = 0;
+    loop {
+        match operation() {
             Err(error)
-                if matches!(
-                    error.raw_os_error(),
-                    Some(code) if code as u32 == ERROR_ACCESS_DENIED.0
-                        || code as u32 == ERROR_SHARING_VIOLATION.0
-                ) =>
+                if attempt < BACKOFF_MS.len()
+                    && error
+                        .raw_os_error()
+                        .is_some_and(|code| codes.contains(&(code as u32))) =>
             {
-                std::thread::sleep(std::time::Duration::from_millis(60));
+                std::thread::sleep(std::time::Duration::from_millis(BACKOFF_MS[attempt]));
+                attempt += 1;
             }
             result => return result,
         }
     }
-    rename()
+}
+
+/// 目录/对象 rename 撞上短暂持有的句柄:拒绝访问=目录内子文件被握住,
+/// 共享冲突=DELETE 权限打开被未共享删除的句柄挡住。
+#[cfg(windows)]
+pub(crate) fn retry_transient_windows_rename(
+    rename: impl FnMut() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION};
+    retry_windows_transient(&[ERROR_ACCESS_DENIED.0, ERROR_SHARING_VIOLATION.0], rename)
+}
+
+/// 递归删除与 rename 的瞬态占用同类(std remove_dir_all 内部不做退避)。
+#[cfg(windows)]
+pub(crate) fn retry_transient_windows_remove(
+    operation: impl FnMut() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION};
+    retry_windows_transient(
+        &[ERROR_ACCESS_DENIED.0, ERROR_SHARING_VIOLATION.0],
+        operation,
+    )
+}
+
+/// windows-rs 错误 → io::Error,HRESULT 来自 Win32 时还原 raw os error,
+/// 供退避重试按错误码分类,报错文案也带上 "(os error N)"。
+#[cfg(windows)]
+fn windows_core_io_error(error: windows::core::Error) -> std::io::Error {
+    let hresult = error.code().0 as u32;
+    if hresult & 0xFFFF_0000 == 0x8007_0000 {
+        std::io::Error::from_raw_os_error((hresult & 0xFFFF) as i32)
+    } else {
+        std::io::Error::other(error)
+    }
 }
 
 /// 文件系统不支持"固定父句柄相对 rename"这种形态时的错误码(网络重定向器
@@ -383,7 +421,12 @@ pub(crate) fn sync_file(path: &Path) -> std::io::Result<()> {
     {
         // Windows FlushFileBuffers requires GENERIC_WRITE; File::open only grants
         // GENERIC_READ and returns ERROR_ACCESS_DENIED even for files we created.
-        fs::OpenOptions::new().write(true).open(path)?.sync_all()
+        // 写权限打开会与实时防护扫描刚写入文件的句柄互斥(os error 32),
+        // 共享冲突走退避重试。
+        use windows::Win32::Foundation::ERROR_SHARING_VIOLATION;
+        retry_windows_transient(&[ERROR_SHARING_VIOLATION.0], || {
+            fs::OpenOptions::new().write(true).open(path)?.sync_all()
+        })
     }
     #[cfg(not(windows))]
     {
