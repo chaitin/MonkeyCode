@@ -2,9 +2,10 @@
  * Agent 活动流的消息块渲染 —— 对齐设计稿 screen-chat.jsx。
  * 复用 messages/handler 的 ChatMessage 类型（user / agent / thought / tool / error / system / ask）。
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Image, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import Markdown from 'react-native-markdown-display';
+import Markdown, { MarkdownIt } from 'react-native-markdown-display';
+import { SvgXml } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -12,6 +13,7 @@ import type { AskQuestion, ChatMessage } from '@/messages/handler';
 import { buildAskAnswers, CUSTOM_ANSWER_KEY, type AnswerMap } from '@/messages/askAnswers';
 import { resolveAssetUrl } from '@/api/client';
 import { Icons, Spinner } from '@/components/Icons';
+import { mathJaxReady, mathPlugin, subscribeMathJaxReady, texToSvg } from '@/components/math';
 import { buildMermaidHtml, fenceLanguage, trimFenceContent } from '@/components/mermaidHtml';
 import { useTheme, type Theme } from '@/theme';
 
@@ -35,6 +37,51 @@ function loadMermaidRuntime(): Promise<string> {
     throw error;
   });
   return mermaidRuntimePromise;
+}
+
+// 与库内默认 MarkdownIt({typographer:true}) 配置一致，仅追加数学公式分词。
+const markdownItWithMath = MarkdownIt({ typographer: true }).use(mathPlugin);
+
+/** MathJax 就绪状态：订阅即触发异步加载；就绪时全部公式组件在一次批量重渲中切换。 */
+function useMathJax(): boolean {
+  return useSyncExternalStore(subscribeMathJaxReady, mathJaxReady);
+}
+
+const MD_FONT_SIZE = 14.5;
+
+/** 行内公式：SVG 以内联视图排进文字流；未就绪/失败回退原文。 */
+function MathInline({ tex, display, t }: { tex: string; display: boolean; t: Theme }) {
+  const ready = useMathJax();
+  const rendered = ready ? texToSvg(tex, display, MD_FONT_SIZE) : null;
+  if (!rendered) {
+    return <Text style={{ color: t.tx2, fontFamily: 'monospace', fontSize: 13 }}>{display ? `$$${tex}$$` : `$${tex}$`}</Text>;
+  }
+  // 两端的文字内联视图底边都落在基线上（Android 的 PlaceholderSpan descent=0，
+  // iOS 同），向下平移 depth 让公式自身基线与正文基线对齐。
+  return (
+    <SvgXml
+      xml={rendered.svg}
+      width={rendered.width}
+      height={rendered.height}
+      color={t.tx}
+      style={{ transform: [{ translateY: rendered.depth }] }}
+    />
+  );
+}
+
+/** 块级公式：居中展示，超宽横向滚动。 */
+function MathBlock({ tex, t }: { tex: string; t: Theme }) {
+  const ready = useMathJax();
+  const rendered = ready ? texToSvg(tex, true, MD_FONT_SIZE + 1.5) : null;
+  if (!rendered) {
+    return <Text style={{ color: t.tx2, fontFamily: 'monospace', fontSize: 12.5, lineHeight: 19, marginVertical: 7 }}>{`$$\n${tex}\n$$`}</Text>;
+  }
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 7 }}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: 4 }}>
+      <SvgXml xml={rendered.svg} width={rendered.width} height={rendered.height} color={t.tx} />
+    </ScrollView>
+  );
 }
 
 function mdStyles(t: Theme) {
@@ -136,7 +183,7 @@ function stableMermaidKey(node: { content?: string; index?: number; tokenIndex?:
   return `mermaid-${node.tokenIndex ?? node.index ?? 0}-${text.length}-${hash >>> 0}`;
 }
 
-/** 覆盖 markdown 的 image/fence 规则（图片修告警；mermaid fence 渲染为图）。 */
+/** 覆盖 markdown 的 image/fence 规则（图片修告警；mermaid fence 渲染为图；数学公式渲染为 SVG）。 */
 function markdownRules(t: Theme, onSave?: (url: string) => void, renderMermaid = true) {
   return {
     image: (node: { key: string; attributes?: { src?: string; alt?: string } }) => (
@@ -148,6 +195,12 @@ function markdownRules(t: Theme, onSave?: (url: string) => void, renderMermaid =
       if (lang === 'mermaid' && renderMermaid) return <MermaidDiagram key={stableMermaidKey(node)} code={content} t={t} />;
       return <Text key={node.key} style={[inheritedStyles, styles.fence]}>{content}</Text>;
     },
+    math_inline: (node: { key: string; content?: string; sourceMeta?: { display?: boolean } }) => (
+      <MathInline key={node.key} tex={node.content ?? ''} display={!!node.sourceMeta?.display} t={t} />
+    ),
+    math_block: (node: { key: string; content?: string }) => (
+      <MathBlock key={node.key} tex={node.content ?? ''} t={t} />
+    ),
   };
 }
 
@@ -199,7 +252,7 @@ function AgentMarkdown({ text, isStreaming, t, onCopy, onSaveImage }: { text: st
   const rules = useMemo(() => markdownRules(t, onSaveImage, !isStreaming), [isStreaming, onSaveImage, t]);
   return (
     <Pressable onPress={() => Keyboard.dismiss()} onLongPress={() => onCopy?.(text)}>
-      <Markdown style={mdStyles(t) as any} rules={rules}>{displayText}</Markdown>
+      <Markdown style={mdStyles(t) as any} rules={rules} markdownit={markdownItWithMath}>{displayText}</Markdown>
     </Pressable>
   );
 }
@@ -427,7 +480,12 @@ function AskBlock({ askId, status, questions, canAnswer, answerSubmitState, onAn
   const [customAnswers, setCustomAnswers] = useState<Record<number, string>>({});
   const [submitState, setSubmitState] = useState<'idle' | AnswerSubmitState>('idle');
 
+  // 初始状态本就是空的，只在 askId 真正变化（组件被复用）时重置——挂载时跳过，
+  // 避免每次挂载都用新 {} 引用调度一次空更新（passive flush 内的多余调度）。
+  const askIdRef = useRef(askId);
   useEffect(() => {
+    if (askIdRef.current === askId) return;
+    askIdRef.current = askId;
     setSelected({});
     setCustomAnswers({});
     setSubmitState('idle');
