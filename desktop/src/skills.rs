@@ -598,14 +598,14 @@ impl SkillStoreState {
         explicit: Option<&[String]>,
     ) -> Result<Vec<String>, SkillStoreError> {
         self.read(|_| {
-            materialize_unlocked_with_journal(
+            // 旧版本的物化事务日志已废弃；升级用户可能仍留有该文件，顺手清理。
+            let _ = fs::remove_file(journal);
+            materialize_unlocked(
                 target,
-                journal,
                 builtin,
                 &self.inner.user_dir,
                 &self.inner.defaults_path,
                 explicit,
-                &mut |_| Ok(()),
             )
             .map_err(|message| SkillStoreError::Io {
                 operation: "物化会话技能",
@@ -1532,12 +1532,23 @@ fn copy_skill_directory_for_materialization(
 
 // ==================== 按会话物化 ====================
 
-/// 把启用子集原子切换到 Agent 的 session skills 目录。
-/// enabled=None 表示"缺省集"(新会话初始;旧 sidecar 无 skills 字段):
-/// 出厂规则 ⊕ defaults 文件的显式开关(is_default_enabled)。返回实际物化
-/// 的技能名(sidecar 落这份快照)。完整新树先生成在目标同级目录；只有全部
-/// 拷贝和同步成功后，才执行“旧目录 → backup、新目录 → target”的原子切换。
-/// 所有返回错误的路径都会尝试把旧目录恢复到原名，绝不先删旧目录。
+/// 物化父目录按需创建，且创建前后祖先链都必须是普通目录（拒绝链接/
+/// 重解析点），防止 sibling 建到库外位置。
+fn ensure_plain_materialize_parent(parent: &Path) -> Result<(), String> {
+    validate_plain_ancestor_chain(parent)?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("创建物化父目录失败({}): {error}", parent.display()))?;
+    match fs::symlink_metadata(parent) {
+        Err(error) => Err(format!("检查物化父目录失败({}): {error}", parent.display())),
+        Ok(metadata) if plain_directory_metadata(&metadata) => Ok(()),
+        Ok(_) => Err(format!("物化父目录不是普通目录: {}", parent.display())),
+    }
+}
+
+/// 会话技能物化：在同目录 sibling 里建好完整新树，旧树挪到 trash sibling
+/// 后一次 rename 就位，最后清理。技能目录是可重建缓存——中途崩溃最多留下
+/// 缺失的 target 或半份 sibling，下次物化会整树重建并清扫残留，不需要事务
+/// 日志或指纹复核。
 fn materialize_unlocked(
     target: &Path,
     builtin: Option<&Path>,
@@ -1545,127 +1556,18 @@ fn materialize_unlocked(
     defaults: &Path,
     enabled: Option<&[String]>,
 ) -> Result<Vec<String>, String> {
-    materialize_unlocked_with_hook(target, builtin, user, defaults, enabled, |_| Ok(()))
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MaterializeStep {
-    ValidateParent,
-    CreateTemporary,
-    ScanCatalog,
-    CopySkill,
-    SyncTemporary,
-    ValidateTarget,
-    WritePreparingJournal,
-    BackupOld,
-    SyncParentAfterBackup,
-    InstallNew,
-    SyncParentAfterInstall,
-    CleanupBackup,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum MaterializeTransactionStage {
-    Preparing,
-    Prepared,
-    BackupCreated,
-    Installed,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct MaterializeTransactionJournal {
-    format: u32,
-    target: String,
-    temporary: String,
-    backup: String,
-    stage: MaterializeTransactionStage,
-    had_old: bool,
-    old_digest: Option<String>,
-    /// Preparing 尚未生成完整新树；Prepared 及后续阶段必须为 Some。
-    new_digest: Option<String>,
-}
-
-fn materialize_unlocked_with_hook(
-    target: &Path,
-    builtin: Option<&Path>,
-    user: &Path,
-    defaults: &Path,
-    enabled: Option<&[String]>,
-    mut before: impl FnMut(MaterializeStep) -> Result<(), String>,
-) -> Result<Vec<String>, String> {
-    let journal = default_materialize_journal_path(target)?;
-    materialize_unlocked_with_journal(
-        target,
-        &journal,
-        builtin,
-        user,
-        defaults,
-        enabled,
-        &mut before,
-    )
-}
-
-fn materialize_unlocked_with_journal(
-    target: &Path,
-    journal_path: &Path,
-    builtin: Option<&Path>,
-    user: &Path,
-    defaults: &Path,
-    enabled: Option<&[String]>,
-    before: &mut impl FnMut(MaterializeStep) -> Result<(), String>,
-) -> Result<Vec<String>, String> {
-    recover_materialize_journal(target, journal_path)?;
-    before(MaterializeStep::ValidateParent)?;
     let parent = target
         .parent()
         .ok_or_else(|| "会话技能目录缺少父目录".to_string())?;
     ensure_plain_materialize_parent(parent)?;
-    let (temporary, backup) = unique_materialize_siblings(target)?;
-
-    // 在创建 temporary 前先登记精确 sibling 及旧 target 指纹。Preparing 恢复只
-    // 会在 target 未变且 backup 不存在时删除这一个已登记 temporary，绝不按前缀
-    // 猜测或清理任意无日志目录。
-    before(MaterializeStep::ValidateTarget)?;
-    let had_old = path_is_plain_directory_or_missing(target)?;
-    let old_digest = if had_old {
-        Some(materialized_tree_digest(target)?)
-    } else {
-        None
-    };
-    let mut journal = MaterializeTransactionJournal {
-        format: 1,
-        target: safe_file_name(target)?,
-        temporary: safe_file_name(&temporary)?,
-        backup: safe_file_name(&backup)?,
-        stage: MaterializeTransactionStage::Preparing,
-        had_old,
-        old_digest,
-        new_digest: None,
-    };
-    let preparing = before(MaterializeStep::WritePreparingJournal)
-        .and_then(|()| write_materialize_journal(journal_path, &journal));
-    if let Err(error) = preparing {
-        return Err(materialize_generation_error(target, journal_path, error));
-    }
-    crash_materialize_boundary_for_test("preparing-journal-synced");
-
-    if let Err(error) = before(MaterializeStep::CreateTemporary) {
-        return Err(materialize_generation_error(target, journal_path, error));
-    }
-    if let Err(error) = fs::create_dir(&temporary) {
-        return Err(materialize_generation_error(
-            target,
-            journal_path,
-            format!("创建会话技能临时目录失败: {error}"),
-        ));
-    }
-    crash_materialize_boundary_for_test("temporary-created");
+    path_is_plain_directory_or_missing(target)?;
+    cleanup_materialize_siblings(target);
+    let (temporary, trash) = unique_materialize_siblings(target)?;
+    fs::create_dir(&temporary).map_err(|e| format!("创建会话技能临时目录失败: {e}"))?;
 
     let prefs = load_default_prefs(defaults);
     let mut done = Vec::new();
     let generated = (|| {
-        before(MaterializeStep::ScanCatalog)?;
         for s in scan_store(builtin, user) {
             if !valid_skill_name(&s.info.name) {
                 continue;
@@ -1677,7 +1579,6 @@ fn materialize_unlocked_with_journal(
             if !on {
                 continue;
             }
-            before(MaterializeStep::CopySkill)?;
             let source_root = if s.info.source == "user" {
                 user
             } else {
@@ -1691,126 +1592,67 @@ fn materialize_unlocked_with_journal(
             .map_err(|e| format!("物化技能 {} 失败: {e}", s.info.name))?;
             done.push(s.info.name);
         }
-        before(MaterializeStep::SyncTemporary)?;
-        sync_materialized_tree(&temporary)?;
         Ok::<(), String>(())
     })();
     if let Err(error) = generated {
-        return Err(materialize_generation_error(target, journal_path, error));
-    }
-    crash_materialize_boundary_for_test("temporary-synced");
-
-    let new_digest = match materialized_tree_digest(&temporary) {
-        Ok(digest) => digest,
-        Err(error) => {
-            return Err(materialize_generation_error(target, journal_path, error));
-        }
-    };
-    let target_digest = match digest_if_plain_directory(target) {
-        Ok(digest) => digest,
-        Err(error) => {
-            return Err(materialize_generation_error(target, journal_path, error));
-        }
-    };
-    let target_unchanged = if had_old {
-        target_digest == journal.old_digest
-    } else {
-        target_digest.is_none()
-    };
-    if !target_unchanged || backup.exists() {
-        return Err(materialize_generation_error(
-            target,
-            journal_path,
-            "生成物化树期间旧 target 或 backup 发生变化".into(),
-        ));
-    }
-    // 新旧树内容一致(重开会话/升级但技能集未变的常态)时 target 已是期望
-    // 结果,直接清理 temporary 与日志,不做备份/安装。跳过目录 rename 也就
-    // 避开了 Windows 上实时防护/索引器占用子文件导致的瞬时失败面。
-    if had_old && target_digest.as_deref() == Some(new_digest.as_str()) {
-        let cleanup = remove_plain_tree(&temporary)
-            .map_err(|error| format!("清理未使用物化树失败: {error}"))
-            .and_then(|()| sync_materialize_parent(parent))
-            .and_then(|()| remove_materialize_journal(journal_path));
-        if let Err(error) = cleanup {
-            eprintln!("[desktop] 会话技能已就绪，但物化清理待重试: {error}");
-        }
-        return Ok(done);
-    }
-    journal.stage = MaterializeTransactionStage::Prepared;
-    journal.new_digest = Some(new_digest);
-    if let Err(error) = write_materialize_journal(journal_path, &journal) {
-        return Err(materialize_generation_error(target, journal_path, error));
-    }
-    crash_materialize_boundary_for_test("journal-prepared");
-    let switched = (|| {
-        if had_old {
-            before(MaterializeStep::BackupOld)?;
-            rename_materialize_path(target, &backup)
-                .map_err(|e| format!("备份旧会话技能目录失败: {e}"))?;
-            crash_materialize_boundary_for_test("backup-renamed");
-            before(MaterializeStep::SyncParentAfterBackup)?;
-            sync_materialize_parent(parent)?;
-            journal.stage = MaterializeTransactionStage::BackupCreated;
-            write_materialize_journal(journal_path, &journal)?;
-            crash_materialize_boundary_for_test("backup-stage-synced");
-        }
-
-        before(MaterializeStep::InstallNew)?;
-        rename_materialize_path(&temporary, target)
-            .map_err(|e| format!("安装新会话技能目录失败: {e}"))?;
-        crash_materialize_boundary_for_test("target-installed");
-        before(MaterializeStep::SyncParentAfterInstall)?;
-        sync_materialize_parent(parent)?;
-        journal.stage = MaterializeTransactionStage::Installed;
-        write_materialize_journal(journal_path, &journal)?;
-        crash_materialize_boundary_for_test("installed-stage-synced");
-        if materialized_tree_digest(target)? != journal.new_digest.clone().unwrap_or_default() {
-            return Err("新会话技能目录安装后完整性复核失败".into());
-        }
-        Ok::<(), String>(())
-    })();
-
-    if let Err(error) = switched {
-        // 普通错误与进程崩溃的决策不同：只要本次调用向上返回 Err，就必须
-        // 恢复调用前的旧树；崩溃重入则按持久 stage/磁盘状态完成或回滚。
-        // 不能复用 recover_materialize_journal 的“已安装新树即提交”规则，
-        // 否则安装/同步阶段的普通错误会一边报失败、一边留下新树。
-        let recovery = rollback_materialize_journal(target, journal_path);
-        return Err(match recovery {
-            Ok(()) => error,
-            Err(recovery_error) => format!("{error}; 持久物化恢复失败: {recovery_error}"),
-        });
+        let _ = remove_plain_tree(&temporary);
+        return Err(error);
     }
 
-    // Installed 日志已经持久化就是提交点。此后的递归删除可能只删掉 backup 的
-    // 一部分；任何清理错误都不能把已提交的新 target 伪装成失败。日志保留时下次
-    // 恢复继续收敛，日志删除本身失败也同样只属于 best-effort housekeeping。
+    // 交换：旧树先挪开，新树 rename 就位；安装失败时尽力把旧树搬回原位。
+    let had_old = fs::symlink_metadata(target).is_ok();
     if had_old {
-        let cleanup = before(MaterializeStep::CleanupBackup)
-            .and_then(|()| {
-                remove_plain_tree(&backup).map_err(|error| format!("清理会话技能备份失败: {error}"))
-            })
-            .and_then(|()| sync_materialize_parent(parent));
-        if let Err(error) = cleanup {
-            eprintln!("[desktop] 已提交会话技能，但备份清理待重试: {error}");
-            return Ok(done);
+        if let Err(error) = swap_rename(target, &trash) {
+            let _ = remove_plain_tree(&temporary);
+            return Err(format!("移开旧会话技能目录失败: {error}"));
         }
     }
-    crash_materialize_boundary_for_test("backup-cleaned");
-    if let Err(error) = remove_materialize_journal(journal_path) {
-        eprintln!("[desktop] 已提交会话技能，但事务日志清理待重试: {error}");
+    if let Err(error) = swap_rename(&temporary, target) {
+        if had_old {
+            let _ = swap_rename(&trash, target);
+        }
+        let _ = remove_plain_tree(&temporary);
+        return Err(format!("安装新会话技能目录失败: {error}"));
     }
+    let _ = remove_plain_tree(&trash);
     Ok(done)
 }
 
-fn materialize_generation_error(target: &Path, journal_path: &Path, error: String) -> String {
-    match recover_materialize_journal(target, journal_path) {
-        Ok(()) => error,
-        Err(recovery_error) => format!("{error}; 清理未提交物化树失败: {recovery_error}"),
+/// 跨平台 rename；Windows 上对实时防护/索引器的短暂句柄占用退避重试。
+fn swap_rename(from: &Path, to: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        crate::config::retry_transient_windows_rename(|| fs::rename(from, to))
+    }
+    #[cfg(not(windows))]
+    {
+        fs::rename(from, to)
     }
 }
 
+/// 清扫本 target 的历史物化残留（含旧版本事务机留下的 temp/backup
+/// sibling）。全部 best-effort：清不掉不阻塞本次物化，下次再试。
+fn cleanup_materialize_siblings(target: &Path) {
+    let Some(parent) = target.parent() else {
+        return;
+    };
+    let Some(name) = target.file_name().and_then(|n| n.to_str()) else {
+        return;
+    };
+    let temporary_prefix = format!(".{name}.materialize-");
+    let backup_prefix = format!(".{name}.backup-");
+    let Ok(entries) = fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        if file_name.starts_with(&temporary_prefix) || file_name.starts_with(&backup_prefix) {
+            let _ = remove_plain_tree(&entry.path());
+        }
+    }
+}
+
+#[cfg(test)]
 fn default_materialize_journal_path(target: &Path) -> Result<PathBuf, String> {
     let parent = target
         .parent()
@@ -1818,6 +1660,7 @@ fn default_materialize_journal_path(target: &Path) -> Result<PathBuf, String> {
     Ok(parent.join(format!(".{}.materialize.json", safe_file_name(target)?)))
 }
 
+#[cfg(test)]
 fn safe_file_name(path: &Path) -> Result<String, String> {
     let name = path
         .file_name()
@@ -1829,381 +1672,15 @@ fn safe_file_name(path: &Path) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-fn write_materialize_journal(
-    path: &Path,
-    journal: &MaterializeTransactionJournal,
-) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "物化事务日志缺少父目录".to_string())?;
-    ensure_plain_materialize_parent(parent)?;
-    if let Ok(metadata) = fs::symlink_metadata(path) {
-        if !plain_file_metadata(&metadata) {
-            return Err(format!("物化事务日志不是普通文件: {}", path.display()));
-        }
-    }
-    let bytes = serde_json::to_vec_pretty(journal)
-        .map_err(|error| format!("序列化物化事务日志失败: {error}"))?;
-    crate::config::atomic_write_private(path, &bytes)
-        .map_err(|error| format!("原子写入物化事务日志失败: {error}"))?;
-    crate::config::sync_file(path).map_err(|error| format!("同步物化事务日志失败: {error}"))?;
-    sync_materialize_parent(parent)
-}
-
-fn remove_materialize_journal(path: &Path) -> Result<(), String> {
-    match fs::symlink_metadata(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(format!("检查物化事务日志失败: {error}")),
-        Ok(metadata) if plain_file_metadata(&metadata) => {}
-        Ok(_) => return Err(format!("拒绝删除不安全物化事务日志: {}", path.display())),
-    }
-    fs::remove_file(path).map_err(|error| format!("删除物化事务日志失败: {error}"))?;
-    sync_materialize_parent(path.parent().unwrap_or_else(|| Path::new(".")))
-}
-
-fn read_materialize_journal(path: &Path) -> Result<Option<MaterializeTransactionJournal>, String> {
-    let metadata = match fs::symlink_metadata(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(format!("检查物化事务日志失败: {error}")),
-        Ok(metadata) => metadata,
-    };
-    if !plain_file_metadata(&metadata) || metadata.len() > 64 * 1024 {
-        return Err(format!("物化事务日志不安全或过大: {}", path.display()));
-    }
-    let bytes = fs::read(path).map_err(|error| format!("读取物化事务日志失败: {error}"))?;
-    let journal: MaterializeTransactionJournal =
-        serde_json::from_slice(&bytes).map_err(|error| format!("解析物化事务日志失败: {error}"))?;
-    if journal.format != 1 {
-        return Err(format!("未知物化事务日志格式: {}", journal.format));
-    }
-    Ok(Some(journal))
-}
-
+/// 旧版本的物化事务日志已废弃：这里只做残留清扫（删除 journal 文件与
+/// 孤儿 sibling），物化本身按需整树重建，不存在需要恢复的中间状态。
 pub(crate) fn recover_session_materialization(
     target: &Path,
     journal_path: &Path,
 ) -> Result<(), String> {
-    recover_materialize_journal(target, journal_path)
-}
-
-fn recover_materialize_journal(target: &Path, journal_path: &Path) -> Result<(), String> {
-    let Some(journal) = read_materialize_journal(journal_path)? else {
-        return reject_orphan_materialize_siblings(target);
-    };
-    let parent = target
-        .parent()
-        .ok_or_else(|| "物化恢复目标缺少父目录".to_string())?;
-    ensure_plain_materialize_parent(parent)?;
-    if journal.target != safe_file_name(target)?
-        || !journal
-            .temporary
-            .starts_with(&format!(".{}.materialize-", journal.target))
-        || !journal
-            .backup
-            .starts_with(&format!(".{}.backup-", journal.target))
-        || safe_file_name(Path::new(&journal.temporary))? != journal.temporary
-        || safe_file_name(Path::new(&journal.backup))? != journal.backup
-    {
-        return Err("物化事务日志包含不安全或不匹配路径".into());
-    }
-    let temporary = parent.join(&journal.temporary);
-    let backup = parent.join(&journal.backup);
-    let target_digest = digest_if_plain_directory(target)?;
-    let temporary_digest = digest_if_plain_directory(&temporary)?;
-    let backup_digest = digest_if_plain_directory(&backup)?;
-
-    if journal.stage == MaterializeTransactionStage::Preparing {
-        if journal.new_digest.is_some() {
-            return Err("Preparing 物化事务不应包含新树指纹".into());
-        }
-        let target_unchanged = if journal.had_old {
-            journal
-                .old_digest
-                .as_ref()
-                .is_some_and(|old| target_digest.as_deref() == Some(old.as_str()))
-        } else {
-            journal.old_digest.is_none() && target_digest.is_none()
-        };
-        if !target_unchanged || backup_digest.is_some() {
-            return Err("Preparing 恢复时旧 target 已变化或意外出现 backup，保留全部对象".into());
-        }
-        // temporary 可能只创建了一半，尚无可供比对的 new_digest；日志中的随机
-        // 精确名称、未变化的 target 和不存在的 backup 共同界定可安全清理对象。
-        remove_plain_tree(&temporary).map_err(|error| error.to_string())?;
-        sync_materialize_parent(parent)?;
-        return remove_materialize_journal(journal_path);
-    }
-
-    let new_digest = journal
-        .new_digest
-        .as_deref()
-        .ok_or_else(|| "Prepared 及后续物化事务缺少新树指纹".to_string())?;
-    let target_is_new = target_digest.as_deref() == Some(new_digest);
-    let target_is_old = journal
-        .old_digest
-        .as_ref()
-        .is_some_and(|old| target_digest.as_deref() == Some(old.as_str()));
-    let backup_is_old = journal
-        .old_digest
-        .as_ref()
-        .is_some_and(|old| backup_digest.as_deref() == Some(old.as_str()));
-    let temporary_is_new = temporary_digest.as_deref() == Some(new_digest);
-
-    if target_is_new {
-        // new_digest 匹配的 target 是 Installed 提交后的权威结果。backup 的递归
-        // 删除不是原子的，崩溃后残树必然不再匹配 old_digest；不能据此误判歧义，
-        // 更不能回滚或删除已经提交的 target。
-        if temporary_digest.is_some() && !temporary_is_new {
-            return Err("已安装新目录但 temporary 指纹不一致，恢复存在歧义".into());
-        }
-        remove_plain_tree(&temporary).map_err(|error| error.to_string())?;
-        remove_plain_tree(&backup).map_err(|error| error.to_string())?;
-        sync_materialize_parent(parent)?;
-        return remove_materialize_journal(journal_path);
-    }
-
-    if target_is_old && backup_digest.is_none() {
-        if temporary_digest.is_some() && !temporary_is_new {
-            return Err("旧目录仍在但 temporary 指纹不一致，恢复存在歧义".into());
-        }
-        remove_plain_tree(&temporary).map_err(|error| error.to_string())?;
-        sync_materialize_parent(parent)?;
-        return remove_materialize_journal(journal_path);
-    }
-
-    if target_digest.is_none() && backup_is_old {
-        rename_materialize_path(&backup, target)
-            .map_err(|error| format!("恢复旧会话技能目录失败: {error}"))?;
-        sync_materialize_parent(parent)?;
-        if temporary_digest.is_some() && !temporary_is_new {
-            return Err("旧目录已恢复但 temporary 指纹不一致，恢复存在歧义".into());
-        }
-        remove_plain_tree(&temporary).map_err(|error| error.to_string())?;
-        sync_materialize_parent(parent)?;
-        return remove_materialize_journal(journal_path);
-    }
-
-    if !journal.had_old && target_digest.is_none() {
-        if temporary_digest.is_some() && !temporary_is_new {
-            return Err("无旧目录事务的 temporary 指纹不一致，恢复存在歧义".into());
-        }
-        if backup_digest.is_some() {
-            return Err("无旧目录事务意外出现 backup，恢复存在歧义".into());
-        }
-        if temporary_digest.is_none() && journal.stage != MaterializeTransactionStage::Prepared {
-            return Err("已安装阶段权威目标缺失且无备份，恢复存在歧义".into());
-        }
-        remove_plain_tree(&temporary).map_err(|error| error.to_string())?;
-        sync_materialize_parent(parent)?;
-        return remove_materialize_journal(journal_path);
-    }
-
-    Err(format!(
-        "会话技能物化事务状态歧义: stage={:?}, target={:?}, temporary={:?}, backup={:?}",
-        journal.stage, target_digest, temporary_digest, backup_digest
-    ))
-}
-
-/// 当前调用明确失败时恢复调用前状态。日志保留到旧状态及临时对象均同步完成，
-/// 因而回滚过程中再次崩溃仍可由通用恢复入口接管。
-fn rollback_materialize_journal(target: &Path, journal_path: &Path) -> Result<(), String> {
-    let Some(journal) = read_materialize_journal(journal_path)? else {
-        return reject_orphan_materialize_siblings(target);
-    };
-    let parent = target
-        .parent()
-        .ok_or_else(|| "物化回滚目标缺少父目录".to_string())?;
-    ensure_plain_materialize_parent(parent)?;
-    if journal.target != safe_file_name(target)?
-        || safe_file_name(Path::new(&journal.temporary))? != journal.temporary
-        || safe_file_name(Path::new(&journal.backup))? != journal.backup
-    {
-        return Err("物化事务日志包含不安全或不匹配路径".into());
-    }
-    let temporary = parent.join(&journal.temporary);
-    let backup = parent.join(&journal.backup);
-    if journal.stage == MaterializeTransactionStage::Preparing {
-        return recover_materialize_journal(target, journal_path);
-    }
-    let new_digest = journal
-        .new_digest
-        .as_deref()
-        .ok_or_else(|| "回滚事务缺少新树指纹".to_string())?;
-    let target_digest = digest_if_plain_directory(target)?;
-    let temporary_digest = digest_if_plain_directory(&temporary)?;
-    let backup_digest = digest_if_plain_directory(&backup)?;
-    let target_is_new = target_digest.as_deref() == Some(new_digest);
-    let target_is_old = journal
-        .old_digest
-        .as_ref()
-        .is_some_and(|old| target_digest.as_deref() == Some(old.as_str()));
-    let backup_is_old = journal
-        .old_digest
-        .as_ref()
-        .is_some_and(|old| backup_digest.as_deref() == Some(old.as_str()));
-    let temporary_is_new = temporary_digest.as_deref() == Some(new_digest);
-
-    if temporary_digest.is_some() && !temporary_is_new {
-        return Err("回滚时 temporary 与新目录指纹不一致，保留全部对象".into());
-    }
-    if journal.had_old {
-        if backup_digest.is_some() && !backup_is_old {
-            return Err("回滚时 backup 与旧目录指纹不一致，保留全部对象".into());
-        }
-        // target_is_old 必须先于 target_is_new 判定:新旧树内容一致时两个
-        // 指纹相同,若先按"新树已安装"解释会去找根本不存在的 backup。旧树
-        // 仍在位(或内容等价)时 target 不需要搬动,只清理 temporary 与日志。
-        if !target_is_old {
-            if target_is_new {
-                if !backup_is_old {
-                    return Err("回滚已安装目录时缺少完整旧备份".into());
-                }
-                remove_plain_tree(target)
-                    .map_err(|error| format!("移除未提交新目录失败: {error}"))?;
-                sync_materialize_parent(parent)?;
-            } else if target_digest.is_some() {
-                return Err("回滚时目标既不是旧目录也不是新目录，保留全部对象".into());
-            } else if !backup_is_old {
-                return Err("回滚时旧目录缺失且备份不完整，保留全部对象".into());
-            }
-            rename_materialize_path(&backup, target)
-                .map_err(|error| format!("回滚恢复旧会话技能目录失败: {error}"))?;
-            sync_materialize_parent(parent)?;
-        }
-        if materialized_tree_digest(target)? != journal.old_digest.clone().unwrap_or_default() {
-            return Err("回滚后的旧会话技能目录完整性复核失败".into());
-        }
-    } else {
-        if backup_digest.is_some() {
-            return Err("无旧目录事务在回滚时出现 backup，保留全部对象".into());
-        }
-        if target_is_new {
-            remove_plain_tree(target).map_err(|error| format!("移除未提交新目录失败: {error}"))?;
-            sync_materialize_parent(parent)?;
-        } else if target_digest.is_some() {
-            return Err("无旧目录事务在回滚时出现未知目标，保留全部对象".into());
-        }
-    }
-    remove_plain_tree(&temporary).map_err(|error| format!("清理物化临时目录失败: {error}"))?;
-    sync_materialize_parent(parent)?;
-    remove_materialize_journal(journal_path)
-}
-
-fn reject_orphan_materialize_siblings(target: &Path) -> Result<(), String> {
-    let parent = target
-        .parent()
-        .ok_or_else(|| "物化目标缺少父目录".to_string())?;
-    let target_name = safe_file_name(target)?;
-    let temporary_prefix = format!(".{target_name}.materialize-");
-    let backup_prefix = format!(".{target_name}.backup-");
-    let entries = match fs::read_dir(parent) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(format!("扫描孤立物化目录失败: {error}")),
-    };
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("枚举孤立物化目录失败: {error}"))?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with(&temporary_prefix) || name.starts_with(&backup_prefix) {
-            return Err(format!("发现无事务日志的孤立物化目录，拒绝继续: {name}"));
-        }
-    }
+    let _ = fs::remove_file(journal_path);
+    cleanup_materialize_siblings(target);
     Ok(())
-}
-
-fn digest_if_plain_directory(path: &Path) -> Result<Option<String>, String> {
-    match fs::symlink_metadata(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(format!("检查物化目录失败({}): {error}", path.display())),
-        Ok(metadata) if plain_directory_metadata(&metadata) => {
-            materialized_tree_digest(path).map(Some)
-        }
-        Ok(_) => Err(format!("物化事务对象不是普通目录: {}", path.display())),
-    }
-}
-
-fn materialized_tree_digest(root: &Path) -> Result<String, String> {
-    use sha2::{Digest as _, Sha256};
-    fn walk(path: &Path, relative: &str, digest: &mut Sha256) -> Result<(), String> {
-        let metadata = fs::symlink_metadata(path)
-            .map_err(|error| format!("检查物化树对象失败({}): {error}", path.display()))?;
-        if plain_directory_metadata(&metadata) {
-            digest.update(b"D\0");
-            digest.update(relative.as_bytes());
-            digest.update(b"\0");
-            let mut entries = fs::read_dir(path)
-                .map_err(|error| format!("枚举物化树失败({}): {error}", path.display()))?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|error| format!("枚举物化树条目失败: {error}"))?;
-            entries.sort_by_key(|entry| entry.file_name());
-            for entry in entries {
-                let name = entry
-                    .file_name()
-                    .into_string()
-                    .map_err(|_| "物化树路径不是 UTF-8".to_string())?;
-                if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
-                    return Err("物化树含不安全路径组件".into());
-                }
-                let child = if relative.is_empty() {
-                    name
-                } else {
-                    format!("{relative}/{name}")
-                };
-                walk(&entry.path(), &child, digest)?;
-            }
-            Ok(())
-        } else if plain_file_metadata(&metadata) {
-            digest.update(b"F\0");
-            digest.update(relative.as_bytes());
-            digest.update(b"\0");
-            let bytes = fs::read(path)
-                .map_err(|error| format!("读取物化树文件失败({}): {error}", path.display()))?;
-            digest.update((bytes.len() as u64).to_le_bytes());
-            digest.update(&bytes);
-            Ok(())
-        } else {
-            Err(format!(
-                "物化树含链接、重解析点或特殊对象: {}",
-                path.display()
-            ))
-        }
-    }
-    let mut digest = Sha256::new();
-    walk(root, "", &mut digest)?;
-    Ok(format!("{:x}", digest.finalize()))
-}
-
-#[cfg(test)]
-fn crash_materialize_boundary_for_test(boundary: &str) {
-    if std::env::var("MC_MATERIALIZE_CRASH_BOUNDARY").as_deref() == Ok(boundary) {
-        std::process::exit(86);
-    }
-}
-
-#[cfg(not(test))]
-fn crash_materialize_boundary_for_test(_boundary: &str) {}
-
-fn ensure_plain_materialize_parent(parent: &Path) -> Result<(), String> {
-    validate_plain_ancestor_chain(parent)?;
-    match fs::symlink_metadata(parent) {
-        Ok(metadata) if plain_directory_metadata(&metadata) => Ok(()),
-        Ok(_) => Err(format!(
-            "会话技能父目录不是普通目录或包含重解析点: {}",
-            parent.display()
-        )),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            fs::create_dir_all(parent).map_err(|e| format!("创建会话技能父目录失败: {e}"))?;
-            validate_plain_ancestor_chain(parent)?;
-            let metadata =
-                fs::symlink_metadata(parent).map_err(|e| format!("复核会话技能父目录失败: {e}"))?;
-            if plain_directory_metadata(&metadata) {
-                Ok(())
-            } else {
-                Err("创建后的会话技能父目录不是普通目录".into())
-            }
-        }
-        Err(error) => Err(format!("检查会话技能父目录失败: {error}")),
-    }
 }
 
 fn validate_plain_ancestor_chain(path: &Path) -> Result<(), String> {
@@ -2272,33 +1749,6 @@ fn unique_materialize_siblings(target: &Path) -> Result<(PathBuf, PathBuf), Stri
     Err("生成会话技能临时目录连续冲突".into())
 }
 
-fn sync_materialized_tree(path: &Path) -> Result<(), String> {
-    let metadata =
-        fs::symlink_metadata(path).map_err(|e| format!("检查待同步会话技能对象失败: {e}"))?;
-    if !plain_directory_metadata(&metadata) {
-        return Err(format!(
-            "待同步会话技能对象不是普通目录: {}",
-            path.display()
-        ));
-    }
-    for entry in fs::read_dir(path).map_err(|e| format!("枚举待同步会话技能目录失败: {e}"))?
-    {
-        let entry = entry.map_err(|e| format!("读取待同步会话技能条目失败: {e}"))?;
-        let child = entry.path();
-        let metadata =
-            fs::symlink_metadata(&child).map_err(|e| format!("检查待同步会话技能条目失败: {e}"))?;
-        if plain_directory_metadata(&metadata) {
-            sync_materialized_tree(&child)?;
-        } else if plain_file_metadata(&metadata) {
-            crate::config::sync_file(&child)
-                .map_err(|e| format!("同步会话技能文件 {} 失败: {e}", child.display()))?;
-        } else {
-            return Err(format!("待同步会话技能条目不安全: {}", child.display()));
-        }
-    }
-    sync_materialize_parent(path)
-}
-
 fn remove_plain_tree(path: &Path) -> std::io::Result<()> {
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -2314,143 +1764,6 @@ fn remove_plain_tree(path: &Path) -> std::io::Result<()> {
             }
         }
         Ok(_) => Err(std::io::Error::other("拒绝递归删除链接或重解析点")),
-    }
-}
-
-#[cfg(not(windows))]
-fn rename_materialize_path(from: &Path, to: &Path) -> std::io::Result<()> {
-    use rustix::fs::{openat, renameat, Mode, OFlags, CWD};
-
-    let metadata = fs::symlink_metadata(from)?;
-    if !plain_directory_metadata(&metadata) {
-        return Err(std::io::Error::other("拒绝重命名链接或非普通目录"));
-    }
-    if to.exists() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            "重命名目标已存在",
-        ));
-    }
-    let from_parent = from
-        .parent()
-        .ok_or_else(|| std::io::Error::other("来源父级缺失"))?;
-    let to_parent = to
-        .parent()
-        .ok_or_else(|| std::io::Error::other("目标父级缺失"))?;
-    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
-    let from_fd = openat(CWD, from_parent, flags, Mode::empty())
-        .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))?;
-    let to_fd = openat(CWD, to_parent, flags, Mode::empty())
-        .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))?;
-    renameat(
-        &from_fd,
-        from.file_name()
-            .ok_or_else(|| std::io::Error::other("来源名缺失"))?,
-        &to_fd,
-        to.file_name()
-            .ok_or_else(|| std::io::Error::other("目标名缺失"))?,
-    )
-    .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))
-}
-
-#[cfg(windows)]
-fn rename_materialize_path(from: &Path, to: &Path) -> std::io::Result<()> {
-    crate::config::retry_transient_windows_rename(|| rename_materialize_path_once(from, to))
-}
-
-#[cfg(windows)]
-fn rename_materialize_path_once(from: &Path, to: &Path) -> std::io::Result<()> {
-    use std::os::windows::fs::{MetadataExt as _, OpenOptionsExt as _};
-    use windows::Win32::Storage::FileSystem::{
-        DELETE, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ,
-        FILE_SHARE_WRITE, FILE_TRAVERSE,
-    };
-
-    let metadata = fs::symlink_metadata(from)?;
-    if !plain_directory_metadata(&metadata) {
-        return Err(std::io::Error::other(
-            "拒绝重命名链接、重解析点或非普通目录",
-        ));
-    }
-    if to.exists() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            "重命名目标已存在",
-        ));
-    }
-    let open = |path: &Path, access_mode: u32| {
-        let mut options = fs::OpenOptions::new();
-        options
-            .access_mode(access_mode)
-            .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0 | FILE_SHARE_DELETE.0)
-            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0 | FILE_FLAG_BACKUP_SEMANTICS.0);
-        let file = options.open(path)?;
-        let metadata = file.metadata()?;
-        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
-            return Err(std::io::Error::other("拒绝重命名 Windows reparse point"));
-        }
-        Ok(file)
-    };
-    // 句柄上的 metadata() 复核走 GetFileInformationByHandle,要求句柄具备
-    // FILE_READ_ATTRIBUTES;只申请 DELETE 时该复核必然 ERROR_ACCESS_DENIED。
-    let source = open(from, DELETE.0 | FILE_READ_ATTRIBUTES.0)?;
-    // RootDirectory 只用于解析目标名称,不需要也不应申请 DELETE,少一分
-    // 父目录 ACL 与共享冲突的暴露面。
-    let parent = open(
-        to.parent()
-            .ok_or_else(|| std::io::Error::other("目标父级缺失"))?,
-        FILE_TRAVERSE.0 | FILE_READ_ATTRIBUTES.0,
-    )?;
-    let name = to
-        .file_name()
-        .ok_or_else(|| std::io::Error::other("目标名缺失"))?;
-    match crate::config::nt_relative_rename(&source, &parent, name) {
-        Err(error) if crate::config::windows_relative_rename_unsupported(&error) => {
-            // 网络重定向器(重定向 AppData/漫游配置等)不支持 RootDirectory
-            // 相对 rename。释放句柄后按路径重新复核形态,降级为路径式
-            // rename;路径式的窄竞态窗口仅存在于这个降级分支。
-            drop(parent);
-            drop(source);
-            let metadata = fs::symlink_metadata(from)?;
-            if !plain_directory_metadata(&metadata) {
-                return Err(std::io::Error::other(
-                    "拒绝重命名链接、重解析点或非普通目录",
-                ));
-            }
-            if fs::symlink_metadata(to).is_ok() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::AlreadyExists,
-                    "重命名目标已存在",
-                ));
-            }
-            fs::rename(from, to)
-        }
-        result => result,
-    }
-}
-
-fn sync_materialize_parent(path: &Path) -> Result<(), String> {
-    #[cfg(unix)]
-    {
-        fs::File::open(path)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|e| format!("同步会话技能目录 {} 失败: {e}", path.display()))
-    }
-    #[cfg(windows)]
-    {
-        // Windows 不保证普通目录句柄的 FlushFileBuffers;目录元数据的持久
-        // 顺序依赖 NTFS 日志按序落盘,事务日志文件的 sync 会连带刷出此前的
-        // 元数据记录。这里不能退回会跟随 reparse point 的路径式打开。
-        let _ = path;
-        Ok(())
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        Err(format!(
-            "当前平台不支持同步会话技能目录: {}",
-            path.display()
-        ))
     }
 }
 
@@ -2843,264 +2156,6 @@ mod tests {
     }
 
     #[test]
-    fn every_atomic_materialize_failure_restores_the_old_directory() {
-        let user = test_dir("materialize-fault-user");
-        put_skill(&user, "new-skill", "new");
-        let defaults = user.join("no-defaults.json");
-        let steps = [
-            MaterializeStep::ValidateParent,
-            MaterializeStep::ValidateTarget,
-            MaterializeStep::WritePreparingJournal,
-            MaterializeStep::CreateTemporary,
-            MaterializeStep::ScanCatalog,
-            MaterializeStep::CopySkill,
-            MaterializeStep::SyncTemporary,
-            MaterializeStep::BackupOld,
-            MaterializeStep::SyncParentAfterBackup,
-            MaterializeStep::InstallNew,
-            MaterializeStep::SyncParentAfterInstall,
-        ];
-
-        for (index, failed_step) in steps.into_iter().enumerate() {
-            let root = test_dir(&format!("materialize-fault-{index}"));
-            let target = root.join("skills");
-            fs::create_dir(&target).unwrap();
-            fs::write(target.join("old.marker"), format!("old-{index}")).unwrap();
-            let result = materialize_unlocked_with_hook(
-                &target,
-                None,
-                &user,
-                &defaults,
-                Some(&["new-skill".into()]),
-                |step| {
-                    if step == failed_step {
-                        Err(format!("injected {step:?}"))
-                    } else {
-                        Ok(())
-                    }
-                },
-            );
-            assert!(result.is_err(), "{failed_step:?} 未触发失败");
-            assert_eq!(
-                fs::read_to_string(target.join("old.marker")).unwrap(),
-                format!("old-{index}"),
-                "{failed_step:?} 没有恢复旧目录"
-            );
-            assert!(
-                !target.join("new-skill").exists(),
-                "{failed_step:?} 泄漏了未提交新目录"
-            );
-            let leftovers = fs::read_dir(&root)
-                .unwrap()
-                .flatten()
-                .filter(|entry| entry.file_name().to_string_lossy().starts_with(".skills."))
-                .collect::<Vec<_>>();
-            assert!(leftovers.is_empty(), "{failed_step:?} 残留事务目录");
-        }
-    }
-
-    #[test]
-    fn first_materialize_journal_write_failure_cleans_untracked_temporary_and_can_retry() {
-        let user = test_dir("materialize-prejournal-user");
-        put_skill(&user, "new-skill", "new");
-        let root = test_dir("materialize-prejournal-root");
-        let target = root.join("skills");
-        fs::create_dir(&target).unwrap();
-        fs::write(target.join("old.marker"), "old").unwrap();
-        let journal = root.join("custom-materialize.json");
-        let mut injected = false;
-
-        let error = materialize_unlocked_with_journal(
-            &target,
-            &journal,
-            None,
-            &user,
-            &user.join("no-defaults.json"),
-            Some(&["new-skill".into()]),
-            &mut |step| {
-                if step == MaterializeStep::WritePreparingJournal && !injected {
-                    injected = true;
-                    fs::create_dir(&journal).unwrap();
-                }
-                Ok(())
-            },
-        )
-        .unwrap_err();
-        assert!(error.contains("物化事务日志不是普通文件"));
-        assert_eq!(
-            fs::read_to_string(target.join("old.marker")).unwrap(),
-            "old"
-        );
-        assert!(
-            fs::read_dir(&root).unwrap().flatten().all(|entry| !entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with(".skills.materialize-")),
-            "首次日志写失败不得留下未登记 temporary"
-        );
-
-        fs::remove_dir(&journal).unwrap();
-        let done = materialize_unlocked_with_journal(
-            &target,
-            &journal,
-            None,
-            &user,
-            &user.join("no-defaults.json"),
-            Some(&["new-skill".into()]),
-            &mut |_| Ok(()),
-        )
-        .unwrap();
-        assert_eq!(done, vec!["new-skill"]);
-        assert_eq!(
-            fs::read_to_string(target.join("new-skill/SKILL.md")).unwrap(),
-            "new"
-        );
-    }
-
-    #[test]
-    fn installed_target_survives_partial_backup_cleanup_failure_and_restart_recovery() {
-        let user = test_dir("materialize-partial-backup-user");
-        put_skill(&user, "new-skill", "new");
-        let root = test_dir("materialize-partial-backup-root");
-        let target = root.join("skills");
-        fs::create_dir(&target).unwrap();
-        fs::write(target.join("old-a.marker"), "old-a").unwrap();
-        fs::write(target.join("old-b.marker"), "old-b").unwrap();
-        let journal = default_materialize_journal_path(&target).unwrap();
-
-        let done = materialize_unlocked_with_hook(
-            &target,
-            None,
-            &user,
-            &user.join("no-defaults.json"),
-            Some(&["new-skill".into()]),
-            |step| {
-                if step == MaterializeStep::CleanupBackup {
-                    let backup = fs::read_dir(&root)
-                        .unwrap()
-                        .flatten()
-                        .find(|entry| {
-                            entry
-                                .file_name()
-                                .to_string_lossy()
-                                .starts_with(".skills.backup-")
-                        })
-                        .unwrap()
-                        .path();
-                    fs::remove_file(backup.join("old-a.marker")).unwrap();
-                    return Err("injected partial backup cleanup failure".into());
-                }
-                Ok(())
-            },
-        )
-        .unwrap();
-        assert_eq!(done, vec!["new-skill"]);
-        assert_eq!(
-            fs::read_to_string(target.join("new-skill/SKILL.md")).unwrap(),
-            "new"
-        );
-        assert!(journal.is_file(), "清理失败时必须保留 Installed 日志");
-
-        recover_session_materialization(&target, &journal).unwrap();
-        assert_eq!(
-            fs::read_to_string(target.join("new-skill/SKILL.md")).unwrap(),
-            "new",
-            "恢复不得误删已提交 target"
-        );
-        let leftovers = fs::read_dir(&root)
-            .unwrap()
-            .flatten()
-            .map(|entry| entry.file_name().to_string_lossy().into_owned())
-            .filter(|name| {
-                name.starts_with(".skills.materialize-")
-                    || name.starts_with(".skills.backup-")
-                    || name == ".skills.materialize.json"
-            })
-            .collect::<Vec<_>>();
-        assert!(
-            leftovers.is_empty(),
-            "恢复必须收敛残缺 backup/log: {leftovers:?}"
-        );
-    }
-
-    #[test]
-    fn real_process_crash_reentry_recovers_every_materialize_stage_without_orphans() {
-        for boundary in [
-            "preparing-journal-synced",
-            "temporary-created",
-            "temporary-synced",
-            "journal-prepared",
-            "backup-renamed",
-            "backup-stage-synced",
-            "target-installed",
-            "installed-stage-synced",
-            "backup-cleaned",
-        ] {
-            let root = test_dir(&format!("materialize-crash-{boundary}"));
-            let user = root.join("user");
-            fs::create_dir(&user).unwrap();
-            put_skill(&user, "new-skill", "new");
-            let target = root.join("skills");
-            fs::create_dir(&target).unwrap();
-            fs::write(target.join("old.marker"), "old").unwrap();
-
-            let status = std::process::Command::new(std::env::current_exe().unwrap())
-                .arg("--exact")
-                .arg("skills::tests::materialize_crash_helper")
-                .arg("--nocapture")
-                .env("MC_MATERIALIZE_CRASH_ROOT", &root)
-                .env("MC_MATERIALIZE_CRASH_BOUNDARY", boundary)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .unwrap();
-            assert_eq!(status.code(), Some(86), "boundary={boundary}");
-
-            let done = materialize_unlocked(
-                &target,
-                None,
-                &user,
-                &user.join("no-defaults.json"),
-                Some(&["new-skill".into()]),
-            )
-            .unwrap();
-            assert_eq!(done, vec!["new-skill"]);
-            assert_eq!(
-                fs::read_to_string(target.join("new-skill/SKILL.md")).unwrap(),
-                "new"
-            );
-            let leftovers = fs::read_dir(&root)
-                .unwrap()
-                .flatten()
-                .map(|entry| entry.file_name().to_string_lossy().into_owned())
-                .filter(|name| {
-                    name.starts_with(".skills.materialize-")
-                        || name.starts_with(".skills.backup-")
-                        || name == ".skills.materialize.json"
-                })
-                .collect::<Vec<_>>();
-            assert!(leftovers.is_empty(), "boundary={boundary}: {leftovers:?}");
-        }
-    }
-
-    #[test]
-    fn materialize_crash_helper() {
-        let Some(root) = std::env::var_os("MC_MATERIALIZE_CRASH_ROOT").map(PathBuf::from) else {
-            return;
-        };
-        let target = root.join("skills");
-        let user = root.join("user");
-        let result = materialize_unlocked(
-            &target,
-            None,
-            &user,
-            &user.join("no-defaults.json"),
-            Some(&["new-skill".into()]),
-        );
-        panic!("崩溃边界未退出进程: {result:?}");
-    }
-
-    #[test]
     fn atomic_materialize_success_replaces_old_tree_only_after_full_generation() {
         let user = test_dir("materialize-success-user");
         put_skill(&user, "new-skill", "new");
@@ -3461,23 +2516,6 @@ mod tests {
         assert!(helper.contains("fs::OpenOptions::new()"));
         assert!(helper.contains(".write(true)"));
         assert!(helper.contains(".sync_all()"));
-        let source = include_str!("skills.rs");
-        let journal_writer = source
-            .split("fn write_materialize_journal")
-            .nth(1)
-            .unwrap()
-            .split("fn remove_materialize_journal")
-            .next()
-            .unwrap();
-        assert!(journal_writer.contains("crate::config::sync_file(path)"));
-        let tree_sync = source
-            .split("fn sync_materialized_tree")
-            .nth(1)
-            .unwrap()
-            .split("fn remove_plain_tree")
-            .next()
-            .unwrap();
-        assert!(tree_sync.contains("crate::config::sync_file(&child)"));
     }
 
     #[cfg(windows)]
@@ -3500,7 +2538,7 @@ mod tests {
 
         let root = test_dir("windows-materialize-rename-parent-share");
         let old = root.join("skills");
-        let backup = root.join("skills.backup");
+        let trash = root.join(".skills.backup-parent-share");
         fs::create_dir(&old).unwrap();
         let _held_parent = fs::OpenOptions::new()
             .read(true)
@@ -3509,108 +2547,49 @@ mod tests {
             .open(&root)
             .unwrap();
 
-        rename_materialize_path(&old, &backup).unwrap();
+        swap_rename(&old, &trash).unwrap();
         assert!(!old.exists());
-        assert!(backup.is_dir());
+        assert!(trash.is_dir());
         drop(_held_parent);
         fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn windows_rename_uses_nt_relative_rename_with_retry_and_fallback() {
+    fn windows_swap_rename_retries_transient_holders() {
         let source = include_str!("skills.rs")
             .rsplit_once("#[cfg(test)]\nmod tests {")
             .unwrap()
             .0;
-        // 空白归一后再比对,断言不再被 rustfmt 折行破坏。
         let squashed: String = source.split_whitespace().collect();
         let has = |needle: &str| squashed.contains(&needle.split_whitespace().collect::<String>());
+        // 物化 rename 只允许 std rename + 瞬态退避重试，不得回到自定义
+        // Win32/NT 句柄机（历史上 error 5/87/32 三连的来源）。
         assert!(has("crate::config::retry_transient_windows_rename"));
-        assert!(has("crate::config::nt_relative_rename"));
-        assert!(has("crate::config::windows_relative_rename_unsupported"));
-        assert!(has("DELETE.0 | FILE_READ_ATTRIBUTES.0"));
-        assert!(has("FILE_TRAVERSE.0 | FILE_READ_ATTRIBUTES.0"));
-        // kernelbase 的 SetFileInformationByHandle 拒绝非 NULL RootDirectory
-        // (线上 0x80070057),物化 rename 不得回退到该 API。
         assert!(!has("SetFileInformationByHandle"));
-        let config_source = include_str!("config.rs");
-        let config_squashed: String = config_source.split_whitespace().collect();
-        let config_has =
-            |needle: &str| config_squashed.contains(&needle.split_whitespace().collect::<String>());
-        assert!(config_has("NtSetInformationFile"));
-        assert!(config_has("FileRenameInformation"));
-        assert!(config_has("RtlNtStatusToDosError"));
+        assert!(!has("NtSetInformationFile"));
     }
 
     #[test]
-    fn rollback_with_identical_old_and_new_digest_keeps_target_and_cleans_up() {
-        // BackupOld 失败后的回滚现场:技能集未变时 old_digest == new_digest,
-        // 回滚必须按"旧树仍在位"处理,而不是按"新树已安装"去找根本不存在的
-        // backup(线上报错"回滚已安装目录时缺少完整旧备份"的根因)。
-        let root = test_dir("rollback-equal-digest");
-        let target = root.join("skills");
-        fs::create_dir_all(target.join("a")).unwrap();
-        fs::write(target.join("a/SKILL.md"), "same").unwrap();
-        let temporary = root.join(".skills.materialize-aaaaaaaaaaaaaaaaaaaaaaaa");
-        fs::create_dir_all(temporary.join("a")).unwrap();
-        fs::write(temporary.join("a/SKILL.md"), "same").unwrap();
-        let digest = materialized_tree_digest(&target).unwrap();
-        assert_eq!(digest, materialized_tree_digest(&temporary).unwrap());
-
-        let journal_path = default_materialize_journal_path(&target).unwrap();
-        let journal = MaterializeTransactionJournal {
-            format: 1,
-            target: "skills".into(),
-            temporary: ".skills.materialize-aaaaaaaaaaaaaaaaaaaaaaaa".into(),
-            backup: ".skills.backup-aaaaaaaaaaaaaaaaaaaaaaaa".into(),
-            stage: MaterializeTransactionStage::Prepared,
-            had_old: true,
-            old_digest: Some(digest.clone()),
-            new_digest: Some(digest),
-        };
-        write_materialize_journal(&journal_path, &journal).unwrap();
-
-        rollback_materialize_journal(&target, &journal_path).unwrap();
-        assert_eq!(
-            fs::read_to_string(target.join("a/SKILL.md")).unwrap(),
-            "same"
-        );
-        assert!(!temporary.exists());
-        assert!(!journal_path.exists());
-    }
-
-    #[test]
-    fn unchanged_skill_set_rematerializes_without_touching_target() {
-        let user = test_dir("materialize-unchanged-user");
+    fn repeated_materialize_is_idempotent_and_leaves_no_siblings() {
+        let user = test_dir("materialize-repeat-user");
         put_skill(&user, "stable", "内容不变");
-        let root = test_dir("materialize-unchanged-root");
+        let root = test_dir("materialize-repeat-root");
         let target = root.join("skills");
         let nodefaults = user.join("no-defaults.json");
         let enabled = ["stable".to_string()];
+        for _ in 0..2 {
+            let done =
+                materialize_unlocked(&target, None, &user, &nodefaults, Some(&enabled)).unwrap();
+            assert_eq!(done, vec!["stable"]);
+            assert_eq!(
+                fs::read_to_string(target.join("stable/SKILL.md")).unwrap(),
+                "内容不变"
+            );
+        }
+        // 历史残留(含旧版本事务机命名)会在下次物化时被清扫。
+        fs::create_dir(root.join(".skills.materialize-deadbeef")).unwrap();
+        fs::create_dir(root.join(".skills.backup-deadbeef")).unwrap();
         materialize_unlocked(&target, None, &user, &nodefaults, Some(&enabled)).unwrap();
-
-        // 第二次物化内容一致:不得再走备份/安装(Windows 上这两步目录 rename
-        // 是唯一会被实时防护/索引器占用打断的环节),短路返回且不留临时对象。
-        let mut steps = Vec::new();
-        let done = materialize_unlocked_with_hook(
-            &target,
-            None,
-            &user,
-            &nodefaults,
-            Some(&enabled),
-            |step| {
-                steps.push(step);
-                Ok(())
-            },
-        )
-        .unwrap();
-        assert_eq!(done, vec!["stable"]);
-        assert!(!steps.contains(&MaterializeStep::BackupOld));
-        assert!(!steps.contains(&MaterializeStep::InstallNew));
-        assert_eq!(
-            fs::read_to_string(target.join("stable/SKILL.md")).unwrap(),
-            "内容不变"
-        );
         let leftovers = fs::read_dir(&root)
             .unwrap()
             .flatten()
