@@ -118,6 +118,23 @@ describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () =
     expect(screen.getAllByRole("dialog", { name: "设置" })).toHaveLength(1);
   });
 
+  it("当前会话技能菜单精确打开技能分区，下次普通打开重新采用账号分区", async () => {
+    localStorage.setItem("mc.splitSlots", JSON.stringify(["s1", null, null, null, null, null]));
+    stubShell({ sessions: [sess({ id: "s1", title: "任务一" })] });
+    render(<App />);
+
+    const skillsTrigger = await screen.findByRole("button", { name: "会话技能" });
+    await userEvent.click(skillsTrigger);
+    await userEvent.click(screen.getByRole("button", { name: "管理和导入技能…" }));
+    let dialog = screen.getByRole("dialog", { name: "设置" });
+    expect(within(dialog).getByRole("button", { name: "技能" }).getAttribute("aria-current")).toBe("page");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    fireEvent.keyDown(window, { key: ",", code: "Comma", ctrlKey: true });
+    dialog = screen.getByRole("dialog", { name: "设置" });
+    expect(within(dialog).getByRole("button", { name: "账号" }).getAttribute("aria-current")).toBe("page");
+  });
+
   it("设置齿轮沉在任务列底部，关闭模态后恢复同一工作台", async () => {
     render(<App />);
     const aside = screen.getByRole("complementary", { name: "选择任务" });
@@ -217,6 +234,8 @@ function stubShell(
         if (opts.extra?.[cmd]) return Promise.resolve(opts.extra[cmd](args));
         if (cmd === "sessions_list") return Promise.resolve(opts.sessions ?? []);
         if (cmd === "models_list") return Promise.resolve(opts.models ?? [{ name: "m", default: true }]);
+        if (cmd === "skills_list") return Promise.resolve({ revision: 0, store_id: "test", skills: [] });
+        if (cmd === "skills_import_current") return Promise.resolve({ snapshot_revision: 0, batch: null });
         if (cmd === "todos_load") return Promise.resolve([]); // 侧栏待办组挂载即消费,回 null 会被判契约漂移
         if (cmd === "take_ui_intent") return Promise.resolve(opts.intent ?? null);
         if (cmd === "engine_status") return Promise.resolve({ phase: "ready", version: "1" });
@@ -791,7 +810,7 @@ describe("任务列排序跟得上后台活动", () => {
   const groups = () =>
     [...document.querySelectorAll('aside button[aria-expanded]')]
       .map((el) => el.textContent ?? "")
-      .filter((tx) => !tx.includes("临时会话"));
+      .filter((tx) => !tx.includes("临时会话") && !tx.includes("待办"));
 
   it("后台任务有进展:所在项目组浮到列表顶,且不为此重拉全表", async () => {
     const shell = stubShell({

@@ -78,7 +78,7 @@ import {
   type SettingsDraft,
 } from "./settingsForm";
 
-type Section = "general" | "account" | "models" | "mcp" | "skills" | "browser" | "env" | "about";
+export type SettingsSection = "general" | "account" | "models" | "mcp" | "skills" | "browser" | "env" | "about";
 
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -857,20 +857,25 @@ const FOCUSABLE =
 export const SettingsView = forwardRef<SettingsViewHandle, {
   /** restoreFocus=false 表示关闭后由跳转动作接管焦点。 */
   onClose: (restoreFocus?: boolean) => void;
+  /** 每次新挂载设置时采用的分区；普通设置入口仍默认账号页。 */
+  initialSection?: SettingsSection;
   /** 有本地会话在跑(status==="running"):同步后不自动保存重启引擎,
    * 隐式踹掉运行中的轮次不可接受;回退保存条由用户择机保存(旧 UI 同款口径) */
   hasRunningTask?: boolean;
   /** MonkeyCode 登录态变化后让 App 作废账号作用域数据。 */
   onMcSessionChanged?: () => void;
-}>(function SettingsView({ onClose, hasRunningTask = false, onMcSessionChanged }, ref) {
+}>(function SettingsView(
+  { onClose, initialSection = "account", hasRunningTask = false, onMcSessionChanged },
+  ref,
+) {
   const { t } = useI18n();
   const { generation: mcTransportGeneration, isCurrent: isMcTransportCurrent } = useMcTransport();
   // 离开确认(旧 UI App.tsx settingsDirty + window.confirm 的 daisyUI 版):
   // 脏表单直接退出 = 静默丢弃全部未保存编辑,必须先问一句
   const [leaveAsk, setLeaveAsk] = useState(false);
-  // 初始落账号分区(旧 UI 同款,ui-next 首版漏迁 2026-08-06 用户报障):
-  // 「登录 → 同步」是主路径,新用户进设置第一眼要看到扫码登录
-  const [section, setSection] = useState<Section>("account");
+  // 普通入口初始落账号分区(旧 UI 同款);带目标的工作台入口则在本次新挂载时
+  // 精确落到 initialSection。设置关闭会卸载，下次打开重新采用新的目标。
+  const [section, setSection] = useState<SettingsSection>(initialSection);
   const [cfg, setCfg] = useState<DesktopConfig | null>(null);
   const [loadError, setLoadError] = useState("");
   const [draft, setDraft] = useState<SettingsDraft | null>(null);
@@ -1151,7 +1156,7 @@ export const SettingsView = forwardRef<SettingsViewHandle, {
     }
   };
 
-  const items: Array<{ id: Section; label: string; desc: string; icon: TablerIcon }> = [
+  const items: Array<{ id: SettingsSection; label: string; desc: string; icon: TablerIcon }> = [
     { id: "general", label: t("settings.nav.general"), desc: t("settings.desc.general"), icon: IconAdjustmentsHorizontal },
     { id: "account", label: t("settings.nav.account"), desc: t("settings.desc.account"), icon: IconUser },
     { id: "models", label: t("settings.nav.models"), desc: t("settings.desc.models"), icon: IconBrain },
@@ -1276,12 +1281,14 @@ export const SettingsView = forwardRef<SettingsViewHandle, {
               槽位的话在长短分区间切换时居中内容列左右晃约 5px */}
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] px-6 py-5">
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
-              {/* 分区头:大标题+一句话说明(对齐旧工程设置屏的标题层级) */}
-              <header className="flex flex-col gap-1">
-                {/* text-lg:应用最大字号档(欢迎页/新建任务同档),不再独一档 text-xl */}
-                <h2 className="text-lg font-bold">{active?.label}</h2>
-                <p className="text-xs text-base-content/60">{active?.desc}</p>
-              </header>
+              {/* 技能分区把标题与高频动作并为一个页头，避免说明和按钮在两行互相挤压。 */}
+              {section !== "skills" && (
+                <header className="flex flex-col gap-1">
+                  {/* text-lg:应用最大字号档(欢迎页/新建任务同档),不再独一档 text-xl */}
+                  <h2 className="text-lg font-bold">{active?.label}</h2>
+                  <p className="text-xs text-base-content/60">{active?.desc}</p>
+                </header>
+              )}
               {body()}
             </div>
           </div>

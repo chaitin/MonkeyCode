@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "nested-frontmatter",
+      "fallback_name": "nested-fallback",
+      "content": "---\nname: TopLevel.Skill\ndescription: top level\nmetadata:\n  name: nested-map-name\narguments:\n  - name: nested-list-name\n---\n# body\n",
+      "expected_name": null
+    },
+    {
+      "id": "whitespace-frontmatter-delimiters",
+      "fallback_name": "whitespace-fallback",
+      "content": " \t--- \t\nname: Whitespace.Delimiters\ndescription: whitespace delimiters\nmetadata:\n  name: nested-name\n  description: nested description\n \t--- \t\nname: body-must-not-override\n# body\n",
+      "expected_name": null
+    },
+    {
+      "id": "missing-name-fallback",
+      "fallback_name": "directory-fallback",
+      "desktop_zip_virtual_root": true,
+      "content": "---\ndescription: no declared name\n---\n# body\n",
+      "expected_name": "directory-fallback"
+    },
+    {
+      "id": "illegal-path-name",
+      "fallback_name": "illegal-path-fallback",
+      "content": "---\nname: ../escape\n---\n# body\n",
+      "expected_name": null
+    },
+    {
+      "id": "nfd-name",
+      "fallback_name": "nfd-fallback",
+      "content": "---\nname: café\n---\n# body\n",
+      "expected_name": null
+    },
+    {
+      "id": "mixed-case-name",
+      "fallback_name": "case-fallback",
+      "content": "---\nname: MixedCase_Name.1\n---\n# body\n",
+      "expected_name": "MixedCase_Name.1"
+    },
+    {
+      "id": "single-line-near-1mib",
+      "fallback_name": "near-limit",
+      "repeat": { "text": "x", "bytes": 1048575 },
+      "expected_name": null
+    },
+    {
+      "id": "single-line-equal-1mib",
+      "fallback_name": "equal-limit",
+      "repeat": { "text": "x", "bytes": 1048576 },
+      "expected_name": null
+    },
+    {
+      "id": "single-line-over-1mib",
+      "fallback_name": "over-limit",
+      "repeat": { "text": "x", "bytes": 1048577 },
+      "expected_name": null
+    }
+  ]
+}

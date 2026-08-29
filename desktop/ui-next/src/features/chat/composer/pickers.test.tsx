@@ -2,7 +2,7 @@
 // 调用方在"还没拉到 / 拉取失败"时给的就是空数组(云端 models===null →
 // sections=[]),没有这一档菜单展开就是个**没有任何内容的空盒子**——看着像
 // 点坏了,而不是"暂时没有可选项"。
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -39,6 +39,59 @@ describe("OptionMenu:空清单也要说话", () => {
   });
 });
 
+describe("SkillsMenu catalog 校准与管理入口", () => {
+  it("禁用 trigger 时关闭已打开菜单，且不能再次展开", async () => {
+    const skill = {
+      name: "feature-design",
+      description: "设计功能",
+      source: "builtin" as const,
+      content: "",
+      overrides: false,
+      default_enabled: true,
+    };
+    const view = render(<SkillsMenu skills={[skill]} enabled={null} onChange={vi.fn()} />);
+
+    const trigger = screen.getByRole("button", { name: "会话技能" });
+    await userEvent.click(trigger);
+    expect(screen.getByRole("list", { name: "会话技能" })).toBeTruthy();
+
+    view.rerender(<SkillsMenu skills={[skill]} enabled={null} onChange={vi.fn()} triggerDisabled />);
+    await waitFor(() => expect(screen.queryByRole("list", { name: "会话技能" })).toBeNull());
+    expect((trigger as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(trigger);
+    expect(screen.queryByRole("list", { name: "会话技能" })).toBeNull();
+  });
+
+  it("来源 Tab 显示各自已选技能数量角标", async () => {
+    render(
+      <SkillsMenu
+        skills={[
+          { name: "builtin-on", description: "", source: "builtin", content: "", overrides: false, default_enabled: false },
+          { name: "builtin-off", description: "", source: "builtin", content: "", overrides: false, default_enabled: false },
+          { name: "custom-on", description: "", source: "user", content: "", overrides: false, default_enabled: false },
+        ]}
+        enabled={["builtin-on", "custom-on"]}
+        onChange={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "会话技能" }));
+    expect(screen.getByRole("tab", { name: "内置" }).textContent).toBe("内置1");
+    expect(screen.getByRole("tab", { name: "自定义" }).textContent).toBe("自定义1");
+  });
+
+  it("每次展开调用 onOpen，供 Provider 覆盖丢失的 catalog 事件", async () => {
+    const onOpen = vi.fn();
+    render(<SkillsMenu skills={[]} enabled={[]} onChange={vi.fn()} onOpen={onOpen} />);
+    const trigger = screen.getByRole("button", { name: "会话技能" });
+    await userEvent.click(trigger);
+    expect(onOpen).toHaveBeenCalledOnce();
+    await userEvent.click(trigger);
+    await userEvent.click(trigger);
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("窄 panel 下的 picker", () => {
   it("技能和模型组合选择器使用同一套收缩与截断规则", () => {
     render(
@@ -50,6 +103,7 @@ describe("窄 panel 下的 picker", () => {
               description: "设计功能",
               source: "builtin",
               content: "",
+              overrides: false,
               default_enabled: true,
             },
           ]}
@@ -154,6 +208,7 @@ describe("窄 panel 下的 picker", () => {
               description: "设计功能",
               source: "builtin",
               content: "",
+              overrides: false,
               default_enabled: true,
             },
           ]}

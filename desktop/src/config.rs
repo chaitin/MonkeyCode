@@ -269,13 +269,153 @@ fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
 
     let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
     let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
-    unsafe {
-        MoveFileExW(
-            PCWSTR(from.as_ptr()),
-            PCWSTR(to.as_ptr()),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-        .map_err(std::io::Error::other)
+    // 源/目标可能正被实时防护短暂持有,瞬态占用走退避重试。
+    retry_transient_windows_rename(|| {
+        unsafe {
+            MoveFileExW(
+                PCWSTR(from.as_ptr()),
+                PCWSTR(to.as_ptr()),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        }
+        .map_err(windows_core_io_error)
+    })
+}
+
+/// Windows 上瞬态句柄冲突的退避重试:实时防护/索引器会短暂持有刚写入的
+/// 文件,期间按路径重开会报所列错误码。退避总预算约 1.4s,超时原样返回。
+#[cfg(windows)]
+pub(crate) fn retry_windows_transient(
+    codes: &[u32],
+    mut operation: impl FnMut() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    const BACKOFF_MS: [u64; 6] = [5, 20, 60, 150, 400, 800];
+    let mut attempt = 0;
+    loop {
+        match operation() {
+            Err(error)
+                if attempt < BACKOFF_MS.len()
+                    && error
+                        .raw_os_error()
+                        .is_some_and(|code| codes.contains(&(code as u32))) =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(BACKOFF_MS[attempt]));
+                attempt += 1;
+            }
+            result => return result,
+        }
+    }
+}
+
+/// 目录/对象 rename 撞上短暂持有的句柄:拒绝访问=目录内子文件被握住,
+/// 共享冲突=DELETE 权限打开被未共享删除的句柄挡住。
+#[cfg(windows)]
+pub(crate) fn retry_transient_windows_rename(
+    rename: impl FnMut() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION};
+    retry_windows_transient(&[ERROR_ACCESS_DENIED.0, ERROR_SHARING_VIOLATION.0], rename)
+}
+
+/// 递归删除与 rename 的瞬态占用同类(std remove_dir_all 内部不做退避)。
+#[cfg(windows)]
+pub(crate) fn retry_transient_windows_remove(
+    operation: impl FnMut() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION};
+    retry_windows_transient(
+        &[ERROR_ACCESS_DENIED.0, ERROR_SHARING_VIOLATION.0],
+        operation,
+    )
+}
+
+/// windows-rs 错误 → io::Error,HRESULT 来自 Win32 时还原 raw os error,
+/// 供退避重试按错误码分类,报错文案也带上 "(os error N)"。
+#[cfg(windows)]
+fn windows_core_io_error(error: windows::core::Error) -> std::io::Error {
+    let hresult = error.code().0 as u32;
+    if hresult & 0xFFFF_0000 == 0x8007_0000 {
+        std::io::Error::from_raw_os_error((hresult & 0xFFFF) as i32)
+    } else {
+        std::io::Error::other(error)
+    }
+}
+
+/// 文件/目录的稳定对象身份（Windows volume/file-index，经全共享句柄
+/// 开-查-关，不钉扎；unix 侧调用方直接用 MetadataExt，不经这里）。
+/// 查询失败返回 None，调用方需有退化路径。
+#[cfg(not(unix))]
+pub(crate) fn file_identity(path: &Path) -> Option<(u64, u64)> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        use std::os::windows::io::AsRawHandle as _;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::{
+            GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS,
+            FILE_READ_ATTRIBUTES,
+        };
+        let file = fs::OpenOptions::new()
+            .access_mode(FILE_READ_ATTRIBUTES.0)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
+            .open(path)
+            .ok()?;
+        let mut information = BY_HANDLE_FILE_INFORMATION::default();
+        unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut information) }
+            .ok()?;
+        Some((
+            information.dwVolumeSerialNumber as u64,
+            ((information.nFileIndexHigh as u64) << 32) | information.nFileIndexLow as u64,
+        ))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        None
+    }
+}
+
+/// 已打开文件/目录句柄的稳定对象身份（Windows volume/file-index）。
+/// 与 [`file_identity`] 同源，保证按路径与按句柄取到的身份可比对。
+#[cfg(not(unix))]
+pub(crate) fn open_file_identity(file: &fs::File) -> Option<(u64, u64)> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle as _;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::{
+            GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+        };
+        let mut information = BY_HANDLE_FILE_INFORMATION::default();
+        unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &mut information) }
+            .ok()?;
+        Some((
+            information.dwVolumeSerialNumber as u64,
+            ((information.nFileIndexHigh as u64) << 32) | information.nFileIndexLow as u64,
+        ))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = file;
+        None
+    }
+}
+
+pub(crate) fn sync_file(path: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        // Windows FlushFileBuffers requires GENERIC_WRITE; File::open only grants
+        // GENERIC_READ and returns ERROR_ACCESS_DENIED even for files we created.
+        // 写权限打开会与实时防护扫描刚写入文件的句柄互斥(os error 32),
+        // 共享冲突走退避重试。
+        use windows::Win32::Foundation::ERROR_SHARING_VIOLATION;
+        retry_windows_transient(&[ERROR_SHARING_VIOLATION.0], || {
+            fs::OpenOptions::new().write(true).open(path)?.sync_all()
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        fs::File::open(path)?.sync_all()
     }
 }
 
@@ -755,6 +895,43 @@ mod tests {
             std::process::id(),
             TEMP_FILE_SEQ.fetch_add(1, Ordering::Relaxed)
         ))
+    }
+
+    #[test]
+    fn windows_sync_contract_opens_files_with_write_access() {
+        let source = include_str!("config.rs");
+        let helper = source
+            .split("pub(crate) fn sync_file")
+            .nth(1)
+            .unwrap()
+            .split("pub(crate) fn atomic_write_private")
+            .next()
+            .unwrap();
+        assert!(helper.contains("#[cfg(windows)]"));
+        assert!(helper.contains("fs::OpenOptions::new()"));
+        assert!(helper.contains(".write(true)"));
+        assert!(helper.contains(".sync_all()"));
+
+        let session_source = include_str!("driver/session.rs");
+        let orphan_writer = session_source
+            .split("fn record_session_orphan_locked")
+            .nth(1)
+            .unwrap()
+            .split("fn recover_session_materialization_locked")
+            .next()
+            .unwrap();
+        assert!(orphan_writer.contains("crate::config::sync_file(&path)"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_sync_file_does_not_return_access_denied() {
+        let dir = test_dir("windows-sync-file");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("durable.json");
+        fs::write(&path, b"{}").unwrap();
+        sync_file(&path).unwrap();
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

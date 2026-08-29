@@ -19,6 +19,9 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
+import { useOptionalSkillsCatalog } from "@/features/skills/SkillsCatalogProvider";
+import { acceptHigherSessionSkills, type SessionSkillsSelectionState } from "@/features/skills/sessionSkillsState";
+import { useReportConsumedSessionSkills } from "@/features/skills/SessionSkillsConsumption";
 import { downloadUpload } from "@/components/media/UploadImg";
 import { appShortcutOfEvent } from "@/app/shortcuts";
 import { useI18n } from "@/lib/i18n";
@@ -207,40 +210,134 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
     };
   }, []);
 
-  // ==== 会话技能(库 + 本会话启用集) ====
-  // 库一次拉取(纯壳侧文件读取,不吃引擎重启闸门);失败保留上一份,
-  // 口径同上方 modelsList。启用集以 sidecar 快照(meta.skills)起步,
-  // 变更走 session_set_skills(壳 destroy+resume 重建),成功后本地即为
-  // 真值——壳不产技能帧,不能指望 ChatState 回写。
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  // ==== 会话技能(共同 catalog + 本会话 server revision 状态) ====
+  const catalog = useOptionalSkillsCatalog();
+  const [standaloneSkills, setStandaloneSkills] = useState<SkillInfo[]>([]);
+  const skills = catalog?.skills ?? standaloneSkills;
   useEffect(() => {
+    if (catalog) return;
     let alive = true;
     void skillsList()
-      .then((list) => {
-        if (alive && Array.isArray(list)) setSkills(list);
+      .then((snapshot) => {
+        if (alive) setStandaloneSkills(snapshot.skills);
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
+  }, [catalog]);
+
+  const initialSessionSkills: SessionSkillsSelectionState = {
+    serverRevision: meta.skills_revision ?? 0,
+    enabledSkills: meta.skills ?? null,
+  };
+  const [sessionSkills, setSessionSkills] = useState<SessionSkillsSelectionState>(initialSessionSkills);
+  const sessionSkillsRef = useRef(initialSessionSkills);
+  // 乐观 UI 与服务端确认态必须分开。连续操作的 previous 可能本身只是上一笔
+  // 乐观值，不能拿它做失败回滚；每个 session 独立保留最后一个 revision 更高的
+  // server-confirmed 快照，切会话后慢响应也只能写回自己的槽位。
+  const confirmedSessionSkillsRef = useRef(
+    new Map<string, SessionSkillsSelectionState>([[sessionId, initialSessionSkills]]),
+  );
+  const currentSkillsSessionRef = useRef(sessionId);
+  const latestSkillsOperationRef = useRef(new Map<string, number>());
+  const nextSkillsOperationRef = useRef(0);
+  // session_set_skills 是全量声明，壳侧又会重建会话。并发发送会让较早的
+  // 声明在较晚的声明之后落地，最终后端状态与最后一次点击相反。按 session
+  // 串行；切到另一个 session 时使用另一条链，不被旧会话的慢请求阻塞。
+  const skillsMutationQueuesRef = useRef(new Map<string, Promise<void>>());
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
-  const [enabledSkills, setEnabledSkills] = useState<string[] | null>(meta.skills ?? null);
-  // 切会话跟随该会话的 sidecar 快照;不依赖 meta 引用(列表轮询的旧值
-  // 会打回刚勾选的乐观状态)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => setEnabledSkills(meta.skills ?? null), [sessionId]);
+
+  const showSessionSkills = (snapshot: SessionSkillsSelectionState) => {
+    sessionSkillsRef.current = snapshot;
+    setSessionSkills(snapshot);
+  };
+  const confirmSessionSkills = (targetSessionId: string, skills: string[] | null, revision: number) => {
+    const current = confirmedSessionSkillsRef.current.get(targetSessionId);
+    const confirmed = current
+      ? acceptHigherSessionSkills(current, skills, revision)
+      : { serverRevision: revision, enabledSkills: skills };
+    confirmedSessionSkillsRef.current.set(targetSessionId, confirmed);
+    return confirmed;
+  };
+
+  // 切会话从该 session 的确认态起步；props/poll 只有 revision 更高时才同时推进
+  // confirmed 与当前 UI。layout effect 保证切换 commit 后的首次点击不会误读旧会话。
+  useLayoutEffect(() => {
+    const switchedSession = currentSkillsSessionRef.current !== sessionId;
+    currentSkillsSessionRef.current = sessionId;
+    const incoming = confirmSessionSkills(sessionId, meta.skills ?? null, meta.skills_revision ?? 0);
+    if (switchedSession) {
+      showSessionSkills(incoming);
+      return;
+    }
+    if (incoming.serverRevision > sessionSkillsRef.current.serverRevision) showSessionSkills(incoming);
+  }, [sessionId, meta.skills_revision, meta.skills]);
+  useReportConsumedSessionSkills(sessionId, sessionSkills.serverRevision);
+
+  const enabledSkills = sessionSkills.enabledSkills;
   const pickSkills = (next: string[]) => {
-    const prev = enabledSkills;
-    setEnabledSkills(next);
-    void sessionSetSkills(sessionId, next).catch((e) => {
-      setEnabledSkills(prev);
-      ctl.notifyError(t("chat.skills.failed", { reason: errText(e) }));
+    const operation = {
+      sessionId,
+      id: ++nextSkillsOperationRef.current,
+    };
+    latestSkillsOperationRef.current.set(operation.sessionId, operation.id);
+    const isLatestOperation = () =>
+      latestSkillsOperationRef.current.get(operation.sessionId) === operation.id;
+    const isCurrentSession = () =>
+      mountedRef.current && currentSkillsSessionRef.current === operation.sessionId;
+    const optimistic = { ...sessionSkillsRef.current, enabledSkills: next };
+    // ref 同步跟进，确保同一轮事件循环里的连续点击也基于最新用户意图。
+    showSessionSkills(optimistic);
+
+    const run = async () => {
+      try {
+        const result = await sessionSetSkills(operation.sessionId, next);
+        // 即使这已不是 latest op，也必须推进该 session 的 confirmed；否则后续
+        // latest 失败时会错误回滚到点击前的旧确认态。revision 单调守住旧响应。
+        const confirmed = confirmSessionSkills(
+          operation.sessionId,
+          result.skills,
+          result.skills_revision,
+        );
+        if (!isCurrentSession()) return;
+        if (isLatestOperation()) {
+          showSessionSkills(confirmed);
+        } else if (confirmed.serverRevision > sessionSkillsRef.current.serverRevision) {
+          // 保留更新操作的乐观 skills，仅报告已消费的 server revision。
+          showSessionSkills({
+            ...sessionSkillsRef.current,
+            serverRevision: confirmed.serverRevision,
+          });
+        }
+      } catch (reason) {
+        if (!isLatestOperation() || !isCurrentSession()) return;
+        // previous 可能是上一笔尚未确认的乐观值；唯一合法回滚点是该 session
+        // 最新 server-confirmed 快照（可能来自较早成功 RPC 或更高 revision poll）。
+        const confirmed = confirmedSessionSkillsRef.current.get(operation.sessionId);
+        if (confirmed) showSessionSkills(confirmed);
+        ctl.notifyError(t("chat.skills.failed", { reason: errText(reason) }));
+      }
+    };
+    const queues = skillsMutationQueuesRef.current;
+    const previousMutation = queues.get(operation.sessionId) ?? Promise.resolve();
+    // 两个分支都继续 run，保证即使未来维护中前一条链意外 reject，最新意图
+    // 仍会发往后端；run 自身会消费当前调用的失败并执行 latest guard。
+    const queued = previousMutation.then(run, run);
+    queues.set(operation.sessionId, queued);
+    void queued.then(() => {
+      if (queues.get(operation.sessionId) === queued) queues.delete(operation.sessionId);
     });
   };
-  // null = 缺省集(与 SkillsMenu、壳侧物化同一规则,lib/ipc/skills.ts)
   const enabledSkillList = useMemo(() => {
     const on = enabledSkills ?? defaultEnabledSkills(skills);
-    return skills.filter((s) => on.includes(s.name));
+    return skills.filter((skill) => on.includes(skill.name));
   }, [skills, enabledSkills]);
 
   // ==== 斜杠指令面板(首字符 / 就地补全) ====
@@ -630,8 +727,9 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
             skills={skills}
             enabled={enabledSkills}
             onChange={pickSkills}
-            disabled={presentation.running}
-            title={presentation.running ? t("chat.switchWhileRunning") : t("chat.skills.tip")}
+            onOpen={catalog?.calibrateSkillsCatalog}
+            triggerDisabled={presentation.running}
+            title={presentation.running ? t("chat.skills.runningTip") : t("chat.skills.tip")}
           />
           <ModelMenu
             models={menuModels}

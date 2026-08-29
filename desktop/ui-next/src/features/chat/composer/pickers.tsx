@@ -7,9 +7,10 @@
 // - SkillsMenu:会话技能启用集(唯一的多选:勾选不关菜单,整单全量提交)。
 // 关闭胶水统一 useDismiss(外点 pointerdown + Esc;不用 onBlur,WebKitGTK
 // 点按钮不移焦点会误关)。
-import { IconCheck, IconChevronDown } from "@tabler/icons-react";
+import { IconCheck, IconChevronDown, IconSettings } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
+import { useSettingsNavigation } from "@/features/settings/SettingsNavigationContext";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { useBoundedMenuInlineStyle, useUpwardMenuHeight } from "@/lib/util/menuHeight";
 import type { ModelInfo } from "@/lib/ipc/sessions";
@@ -319,7 +320,8 @@ export function SkillsMenu({
   skills,
   enabled,
   onChange,
-  disabled = false,
+  onOpen,
+  triggerDisabled = false,
   title,
   align = "end",
 }: {
@@ -328,21 +330,29 @@ export function SkillsMenu({
   enabled: string[] | null;
   /** 勾选变更(已展开为显式全量名单) */
   onChange: (next: string[]) => void;
-  disabled?: boolean;
+  /** 展开即向服务端校准 catalog revision，覆盖文件事件丢失。 */
+  onOpen?: () => void;
+  /** 禁用整个触发器（如新建任务仍在加载技能清单、当前会话运行中）。 */
+  triggerDisabled?: boolean;
   title?: string;
   align?: "start" | "end";
 }) {
   const { t } = useI18n();
+  const { openSettings } = useSettingsNavigation();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const boxRef = useRef<HTMLDivElement | null>(null);
   useDismiss(open, boxRef, () => setOpen(false));
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (triggerDisabled) setOpen(false);
+  }, [triggerDisabled]);
   const { anchorRef, maxHeight: menuMax } = useUpwardMenuHeight<HTMLButtonElement>(open);
   const menuInlineStyle = useBoundedMenuInlineStyle(open, anchorRef, align, 256);
   const enabledSet = new Set(enabled ?? defaultEnabledSkills(skills));
   const toggle = (name: string) => {
-    if (disabled) return;
+    if (triggerDisabled) return;
     const next = new Set(enabledSet);
     if (next.has(name)) next.delete(name);
     else next.add(name);
@@ -357,7 +367,14 @@ export function SkillsMenu({
   const tabs = [
     { key: "builtin", label: t("skill.source.builtin") },
     { key: "user", label: t("skill.source.custom") },
-  ].filter((it) => skills.some((s) => isUserSkill(s) === (it.key === "user")));
+  ]
+    .filter((it) => skills.some((s) => isUserSkill(s) === (it.key === "user")))
+    .map((it) => ({
+      ...it,
+      selected: skills.filter(
+        (s) => isUserSkill(s) === (it.key === "user") && enabledSet.has(s.name),
+      ).length,
+    }));
   const showTabs = tabs.length >= 2;
   const wantTab = tab ?? "builtin";
   const activeTab = tabs.some((it) => it.key === wantTab) ? wantTab : (tabs[0]?.key ?? "builtin");
@@ -369,6 +386,7 @@ export function SkillsMenu({
   );
   const showFilter = shouldShowModelExtras(skills.length);
   const openMenu = () => {
+    onOpen?.();
     setFilter("");
     setTab(null); // 打开时回到内置 tab(条目主体)
     setOpen(true);
@@ -385,7 +403,6 @@ export function SkillsMenu({
           type="button"
           role="checkbox"
           aria-checked={on}
-          disabled={disabled}
           className="flex items-center gap-2"
           onClick={() => toggle(s.name)}
         >
@@ -409,7 +426,7 @@ export function SkillsMenu({
     >
       <Trigger
         open={open}
-        disabled={disabled}
+        disabled={triggerDisabled}
         title={title}
         ariaLabel={t("chat.skills.label")}
         className="min-w-0 max-w-full overflow-hidden"
@@ -445,10 +462,16 @@ export function SkillsMenu({
                   type="button"
                   role="tab"
                   aria-selected={it.key === activeTab}
-                  className={`tab ${it.key === activeTab ? "tab-active" : ""}`}
+                  className={`tab gap-1 ${it.key === activeTab ? "tab-active" : ""}`}
                   onClick={() => setTab(it.key)}
                 >
-                  {it.label}
+                  <span>{it.label}</span>
+                  <span
+                    aria-hidden
+                    className="badge badge-xs min-w-4 border-0 bg-base-200 px-1 text-[9px] text-base-content/60 tabular-nums"
+                  >
+                    {it.selected}
+                  </span>
                 </button>
               ))}
             </div>
@@ -466,6 +489,19 @@ export function SkillsMenu({
             )}
             {items.map(itemOf)}
           </ul>
+          <div className="mt-1 shrink-0 border-t border-base-300 pt-1">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm h-auto min-h-8 w-full justify-start gap-2 px-2 text-xs font-normal"
+              onClick={() => {
+                setOpen(false);
+                openSettings("skills");
+              }}
+            >
+              <IconSettings size={14} stroke={1.75} aria-hidden />
+              {t("chat.skills.manage")}
+            </button>
+          </div>
         </div>
       )}
     </div>

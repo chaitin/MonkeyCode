@@ -134,6 +134,8 @@
    * 本变量,不许再手算。 */
   :root {
     --chrome-h: 0px;
+    /* 页面内浮层必须高于普通列表和行内操作；窗口级覆盖层另用 1000+。 */
+    --z-popover: 40;
     /* 自绘窗口覆盖层：普通浮层 < Linux 拉伸热区 < caption 三键。 */
     --z-window-overlay: 1000;
     --z-resize-edge: 1001;

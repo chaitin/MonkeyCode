@@ -9,6 +9,8 @@ export interface TimelineItemRow {
   perm?: PermItem;
   flash: boolean;
   streaming: boolean;
+  /** 仅完整助手轮次的最后一段携带；跨工具调用的模型正文已按顺序合并。 */
+  agentCopySource?: string;
   joinPrev: boolean;
   joinNext: boolean;
   gap: boolean;
@@ -40,6 +42,31 @@ export interface TimelineProjectionOptions {
 
 const AGG_MIN = 3;
 
+/** ACP 会把一次助手回答按工具调用拆成多个 agent 条目。复制操作应属于整轮
+ * 回答：只挂到最后一个 agent 条目，并按原顺序合并 Markdown 正文。 */
+function agentCopySources(state: ChatState): Map<number, string> {
+  const sources = new Map<number, string>();
+  let parts: string[] = [];
+  let lastAgent = -1;
+  const flush = () => {
+    if (lastAgent >= 0 && parts.length > 0) sources.set(lastAgent, parts.join("\n\n"));
+    parts = [];
+    lastAgent = -1;
+  };
+  for (let index = 0; index < state.items.length; index++) {
+    const item = state.items[index]!;
+    if (item.kind === "user" && item.source !== "steer") flush();
+    if (item.kind === "agent" && item.text) {
+      parts.push(item.text);
+      lastAgent = index;
+    }
+    if (item.kind === "sys" && item.tag === "turn-end") flush();
+  }
+  // 历史记录可能没有 turn-end；当前运行轮次则必须等终态，避免出现半截复制。
+  if (!state.running) flush();
+  return sources;
+}
+
 /** 协议条目 → 真正有视觉盒的行。旧实现为维持 raw index 契约给锚定审批、
  * 合并模型行、折叠工具成员各留一个 display:none 节点；窗口化后坐标改用
  * 稳定 key，这些空节点全部可以消失。 */
@@ -48,6 +75,7 @@ export function projectTimelineRows(
   { openGroups, closedGroups, flashSeq }: TimelineProjectionOptions,
 ): TimelineRow[] {
   const anchors = permAnchors(state.items);
+  const copySources = agentCopySources(state);
   const toolIds = new Set<string>();
   for (const item of state.items) if (item.kind === "tool" && item.tcId) toolIds.add(item.tcId);
 
@@ -132,6 +160,7 @@ export function projectTimelineRows(
         rawIndex === state.items.length - 1 &&
         (item.kind === "agent" || item.kind === "thought") &&
         state.streamKind === item.kind,
+      ...(copySources.has(rawIndex) ? { agentCopySource: copySources.get(rawIndex) } : {}),
       joinPrev,
       joinNext: item.kind === "tool" && next?.kind === "tool",
       gap: previous !== null && !joinPrev,

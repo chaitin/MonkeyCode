@@ -17,10 +17,14 @@ import { useCloudProjects, useCloudTasks } from "@/features/cloud/CloudTaskList"
 import { CloudQueueCoordinatorProvider } from "@/features/cloud/CloudQueueCoordinator";
 import { DownloadsDock } from "@/features/downloads/DownloadsDock";
 import { EngineBanner } from "@/features/engine/EngineBanner";
-import { SettingsView, type SettingsViewHandle } from "@/features/settings/SettingsView";
+import { SettingsNavigationProvider } from "@/features/settings/SettingsNavigationContext";
+import { SettingsView, type SettingsSection, type SettingsViewHandle } from "@/features/settings/SettingsView";
 import { SplitView } from "@/features/split/SplitView";
 import { cloudSlotId, isCloudSlotId } from "@/features/split/slots";
 import { useSplitState } from "@/features/split/useSplitState";
+import { SessionSkillsConsumptionCoordinator, SessionSkillsConsumptionProvider } from "@/features/skills/SessionSkillsConsumption";
+import { SkillsCatalogProvider } from "@/features/skills/SkillsCatalogProvider";
+import { preserveNewerSessionSkills, sessionSkillsRevisionTargets } from "@/features/skills/sessionSkillsState";
 import { useTodos } from "@/features/todo/useTodos";
 import { ResizeEdges } from "@/features/titlebar/ResizeEdges";
 import { MacWindowControls, TitleBar } from "@/features/titlebar/TitleBar";
@@ -138,6 +142,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   } | null>(null);
   const createSeq = useRef(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSection>("account");
   const settingsOpenRef = useRef(false);
   const settingsRef = useRef<SettingsViewHandle>(null);
   const settingsReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -168,9 +173,10 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   const [composerFocusRequest, setComposerFocusRequest] = useState(0);
   const focusSeqRef = useRef(0);
   const requestComposerFocus = () => setComposerFocusRequest(++focusSeqRef.current);
-  const openSettings = useCallback(() => {
+  const openSettings = useCallback((section: SettingsSection = "account") => {
     if (settingsOpenRef.current) return;
     settingsOpenRef.current = true;
+    setSettingsInitialSection(section);
     const active = document.activeElement;
     settingsReturnFocusRef.current =
       active instanceof HTMLElement && active !== document.body && active !== document.documentElement ? active : null;
@@ -224,6 +230,19 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   // 事件回调挂一次,经 ref 读最新快照(闭包不攥旧状态)
   const sessionsRef = useRef<SessionMeta[]>(sessions);
   sessionsRef.current = sessions;
+  const [sessionSkillsCoordinator] = useState(() => new SessionSkillsConsumptionCoordinator());
+  const acceptSessionList = useCallback((incoming: SessionMeta[]): SessionMeta[] => {
+    const merged = preserveNewerSessionSkills(sessionsRef.current, incoming);
+    // 同步推进 ref，后到的旧 poll 在 React commit 前也无法钻空回退。
+    sessionsRef.current = merged;
+    setSessions(merged);
+    return merged;
+  }, []);
+  const synchronizeSessionSkills = useCallback(async () => {
+    const incoming = await sessionsList();
+    const merged = acceptSessionList(incoming);
+    await sessionSkillsCoordinator.waitFor(sessionSkillsRevisionTargets(merged));
+  }, [acceptSessionList, sessionSkillsCoordinator]);
   // 工作台快照(active = 工作台未被设置模态遮挡;visibleIds = 可见格里的
   // 槽位条目):设置在场时子树仍挂载，但不视为用户正在查看。
   const splitRef = useRef({ active: true, visibleIds: new Set<string>(), focusedId: null as string | null });
@@ -300,8 +319,8 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   const refresh = () =>
     void afterEngineReady(sessionsList)
       .then((list) => {
-        setSessions(list);
-        split.pruneTo(new Set(list.map((m) => m.id)));
+        const merged = acceptSessionList(list);
+        split.pruneTo(new Set(merged.map((meta) => meta.id)));
       })
       .catch(() => {});
 
@@ -334,8 +353,8 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
     if (!meta) {
       const list = await sessionsList().catch(() => null);
       if (list) {
-        setSessions(list);
-        meta = list.find((m) => m.id === id);
+        const merged = acceptSessionList(list);
+        meta = merged.find((item) => item.id === id);
       }
     }
     if (!meta) {
@@ -562,10 +581,13 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   })();
 
   return (
-    <CloudQueueCoordinatorProvider
-      identityRevision={cloudIdentityRevision}
-      onAttention={handleCloudQueueAttention}
-    >
+    <SessionSkillsConsumptionProvider coordinator={sessionSkillsCoordinator}>
+      <SkillsCatalogProvider beforeAcceptCatalog={synchronizeSessionSkills}>
+        <SettingsNavigationProvider openSettings={openSettings}>
+          <CloudQueueCoordinatorProvider
+            identityRevision={cloudIdentityRevision}
+            onAttention={handleCloudQueueAttention}
+          >
       {(cloudQueue) => (
       <div className="flex h-full flex-col text-base-content">
       {/* leading = 标题栏左端寄宿位:任务列收起时 SplitView 把 ☰/新建
@@ -610,7 +632,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
             }}
             createRequest={createRequest}
             onCreateRequestHandled={() => setCreateRequest(null)}
-            onOpenSettings={openSettings}
+            onOpenSettings={() => openSettings()}
             recentDirs={recentDirs}
             cloud={{
               feed: cloudFeed,
@@ -665,6 +687,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
         {settingsOpen && (
           <SettingsView
             ref={settingsRef}
+            initialSection={settingsInitialSection}
             onClose={closeSettings}
             hasRunningTask={sessions.some((s) => s.status === "running")}
             onMcSessionChanged={onMcSessionChanged}
@@ -755,6 +778,9 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
       <DownloadsDock />
       </div>
       )}
-    </CloudQueueCoordinatorProvider>
+          </CloudQueueCoordinatorProvider>
+        </SettingsNavigationProvider>
+      </SkillsCatalogProvider>
+    </SessionSkillsConsumptionProvider>
   );
 }

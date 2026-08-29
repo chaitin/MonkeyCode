@@ -12,8 +12,8 @@
 // O(n) 的投影(join/分组/锚定表)只允许出现在结构变化；token 流式快路复用
 // 布局骨架。逐条目的昂贵计算(presentToolCall、splitAttachments、markdown)
 // 一律待在行组件内，靠 memo 只在该行变化时才跑。
-import { IconArrowsMinimize, IconChevronRight, IconFile as FileIcon, IconSparkles } from "@tabler/icons-react";
-import { forwardRef, memo, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { IconArrowsMinimize, IconCheck, IconChevronRight, IconCopy, IconFile as FileIcon, IconSparkles } from "@tabler/icons-react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { Markdown, MarkdownInline } from "@/components/markdown/Markdown";
 import { downloadUpload, Lightbox, UploadImg } from "@/components/media/UploadImg";
@@ -25,6 +25,7 @@ import { splitAttachments } from "@/lib/protocol/attLine";
 import { THINK_KEY } from "@/lib/protocol/reduce";
 import type { ChatItem, ChatState, Frame, PermItem } from "@/lib/protocol/types";
 import { presentToolCall } from "@/lib/tools/toolLabels";
+import { copyText } from "@/lib/util/clipboard";
 import { thoughtLiveSummary, thoughtMarkdown, thoughtSummary } from "@/lib/util/thoughtMarkdown";
 import { AskCard } from "./cards/AskCard";
 import { BackgroundAgentResultCard } from "./cards/BackgroundAgentResultCard";
@@ -202,6 +203,51 @@ function ThoughtBlock({ item, streaming }: { item: Extract<ChatItem, { kind: "th
   );
 }
 
+/** 复制整轮回答的原始 Markdown，而不是从渲染 DOM 提取文字；操作入口
+ * 只挂在整轮最后一段，默认隐藏，避免每个工具调用前后的片段各出一个按钮。 */
+function AgentMessage({
+  item,
+  streaming,
+  copySource,
+  uploadUrl,
+  onLocalLink,
+}: {
+  item: Extract<ChatItem, { kind: "agent" }>;
+  streaming?: boolean;
+  copySource?: string;
+  uploadUrl?: (path: string) => Promise<string>;
+  onLocalLink?: (path: string) => void;
+}) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
+  const copy = () => {
+    if (!copySource) return;
+    copyText(copySource);
+    setCopied(true);
+    window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(() => setCopied(false), 1800);
+  };
+  return (
+    <div className="group relative flex flex-col">
+      <MessageTime timestamp={item.timestamp} className="absolute -top-3.5 start-0" />
+      <Markdown source={item.text} localImageUrl={uploadUrl} onLocalLink={onLocalLink} deferMermaid={streaming} />
+      {copySource && (
+        <button
+          type="button"
+          aria-label={copied ? t("chat.agent.copied") : t("chat.agent.copyMarkdown")}
+          title={copied ? t("chat.agent.copied") : t("chat.agent.copyMarkdown")}
+          className="btn btn-ghost btn-square btn-xs pointer-events-none mt-1 self-start opacity-0 text-base-content/40 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 hover:text-base-content focus-visible:pointer-events-auto focus-visible:opacity-100"
+          onClick={copy}
+        >
+          {copied ? <IconCheck size={14} stroke={2} aria-hidden className="text-success" /> : <IconCopy size={14} stroke={1.75} aria-hidden />}
+        </button>
+      )}
+    </div>
+  );
+}
+
 type T = ReturnType<typeof useI18n>["t"];
 
 /** 行组件间共传的稳定引用集(memo 生效的前提,见文件头「性能契约」)。 */
@@ -229,6 +275,8 @@ interface RenderOpts extends RowShared {
   joinNext?: boolean;
   /** 当前仍在追加正文的行暂缓 Mermaid 渲染。 */
   streaming?: boolean;
+  /** 整轮助手回答仅最后一个 agent 行携带的 Markdown 合并原文。 */
+  agentCopySource?: string;
   /** 补充指令按 client_id 确认、按会话运行态兜底投影出的展示状态。 */
   steerStatus?: SteerDisplayStatus;
 }
@@ -238,18 +286,7 @@ function renderItem(item: ChatItem, o: RenderOpts) {
     case "user":
       return <UserBubble item={item} flash={o.flash} uploadUrl={o.uploadUrl} steerStatus={o.steerStatus} />;
     case "agent":
-      // 时间绝对定位在块顶空隙(悬停显影,不占流式高度)
-      return (
-        <div className="group relative flex flex-col">
-          <MessageTime timestamp={item.timestamp} className="absolute -top-3.5 start-0" />
-          <Markdown
-            source={item.text}
-            localImageUrl={o.uploadUrl}
-            onLocalLink={o.onLocalLink}
-            deferMermaid={o.streaming}
-          />
-        </div>
-      );
+      return <AgentMessage item={item} streaming={o.streaming} copySource={o.agentCopySource} uploadUrl={o.uploadUrl} onLocalLink={o.onLocalLink} />;
     case "thought":
       // 与助手块同构:时间线在块顶空隙
       return (
@@ -342,6 +379,7 @@ const Row = memo(function Row({
   perm,
   flash,
   streaming,
+  agentCopySource,
   steerStatus,
   joinPrev,
   joinNext,
@@ -352,6 +390,7 @@ const Row = memo(function Row({
   perm?: PermItem;
   flash?: boolean;
   streaming?: boolean;
+  agentCopySource?: string;
   steerStatus?: SteerDisplayStatus;
   joinPrev: boolean;
   joinNext: boolean;
@@ -368,7 +407,7 @@ const Row = memo(function Row({
     // 首行(gap=false 且非
     // join)给 pt-3.5 刚好容下时间行;join 行零距契约不变(不渲时间)。
     <div className={`flex flex-col ${gap ? "pt-4" : joinPrev ? "" : "pt-3.5"}`}>
-      {renderItem(item, { t, perm, flash, streaming, steerStatus, joinPrev, joinNext, ...shared })}
+      {renderItem(item, { t, perm, flash, streaming, agentCopySource, steerStatus, joinPrev, joinNext, ...shared })}
     </div>
   );
 });
@@ -564,6 +603,7 @@ const LogListSession = forwardRef<LogListHandle, LogListProps>(function LogListS
               perm={row.perm}
               flash={row.flash}
               streaming={row.streaming}
+              agentCopySource={row.agentCopySource}
               steerStatus={
                 row.item.kind === "user" && row.item.source === "steer"
                   ? row.item.clientId && Object.hasOwn(state.steerConfirmations, row.item.clientId)

@@ -24,6 +24,7 @@ import { createPortal } from "react-dom";
 
 import { useApprovalHotkeys } from "@/app/shortcuts";
 import { useI18n } from "@/lib/i18n";
+import { useSettingsNavigation } from "@/features/settings/SettingsNavigationContext";
 import { sessionOutline, type OutlineItem } from "@/lib/ipc/controls";
 import { repoChanges, repoReveal } from "@/lib/ipc/repo";
 import { sessionFrame, sessionPatch, type SessionMeta } from "@/lib/ipc/sessions";
@@ -109,6 +110,7 @@ export function ChatView({
   onActionError?: (key: "notice.renameFailed" | "notice.archiveFailed", reason: string) => void;
 }) {
   const { t } = useI18n();
+  const { openSettings } = useSettingsNavigation();
   const pane = variant === "pane";
   const { state, conn, historyLoaded, openError, hasMore, loadingEarlier, earlierError, loadEarlier, ensureLoaded } =
     useSessionFeed(meta.id, epoch);
@@ -810,11 +812,16 @@ export function ChatView({
 
   // header 之下那条内嵌条的文案(§3:会话连接状态唯一的法定位置)。打开失败
   // 压过连接态:它是终局,而"正在恢复"只是过程
+  const skillRecoveryPending = !openError && !conn?.connected && conn?.code === "skill-recovery-pending";
   const stripText = openError
     ? t("chat.openFailed", { reason: openError })
-    : conn && !conn.connected
-      ? conn.text
-      : null;
+    : skillRecoveryPending
+      ? t("chat.skillRecoveryPending")
+      : conn && !conn.connected
+        ? conn.code === "skill-materialize-failed"
+          ? t("chat.skillMaterializeFailed", { reason: conn.text })
+          : conn.text
+        : null;
 
   // pane 形态不当 <main>:分屏四格并存,页面只许一个 main 地标(SplitView
   // 自己是 main);格外壳的 section/aria 由 SplitView 提供,这里退成 div。
@@ -1030,6 +1037,18 @@ export function ChatView({
           >
             <span aria-hidden className={`status status-sm shrink-0 ${openError ? "status-error" : "status-warning motion-safe:animate-pulse"}`} />
             <span className="min-w-0 flex-1 truncate" title={stripText}>{stripText}</span>
+            {skillRecoveryPending && (
+              <button
+                type="button"
+                className="btn btn-warning btn-xs shrink-0"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openSettings("skills");
+                }}
+              >
+                {t("chat.openSkillRecovery")}
+              </button>
+            )}
           </div>
         ))}
 

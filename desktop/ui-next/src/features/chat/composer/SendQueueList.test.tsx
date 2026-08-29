@@ -121,7 +121,11 @@ describe("SendQueueList", () => {
     expect(within(lockedRow).queryByRole("button", { name: "拖动调整顺序" })).toBeNull();
     expect(within(lockedRow).queryByRole("button", { name: "删除待发送消息" })).toBeNull();
     expect(screen.getByTitle("第一条很长的待发消息")).toBeTruthy();
-    expect(screen.getByTitle("2 个附件")).toBeTruthy();
+    const attachmentButton = screen.getByTitle("2 个附件");
+    const pendingRow = attachmentButton.closest("li")!;
+    const actions = pendingRow.querySelector("[data-send-queue-actions]")!;
+    expect(actions.parentElement).toBe(attachmentButton.parentElement);
+    expect(actions.className).toContain("end-full");
 
     fireEvent.click(screen.getAllByRole("button", { name: "删除待发送消息" })[1]!);
     expect(onRemove).toHaveBeenCalledWith("stable-second");
@@ -146,6 +150,10 @@ describe("SendQueueList", () => {
     expect(within(steeringRow).getByText("正在插入…")).toBeTruthy();
     expect(within(steeringRow).queryByRole("button", { name: "拖动调整顺序" })).toBeNull();
     const pendingRow = screen.getByText("后续消息").closest("li")!;
+    const actions = pendingRow.querySelector("[data-send-queue-actions]")!;
+    expect(actions.className).toContain("absolute");
+    expect(actions.className).toContain("w-max");
+    expect(actions.className).toContain("pointer-events-none");
     const rowButtons = within(pendingRow).getAllByRole("button");
     expect(rowButtons.map((button) => button.getAttribute("aria-label") || button.textContent)).toEqual([
       "拖动调整顺序",

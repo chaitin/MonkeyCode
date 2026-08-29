@@ -24,9 +24,139 @@ async function freshI18n() {
 }
 
 describe("词典完整性", () => {
-  it("英文词典覆盖中文全部键(类型层已钉,这里防运行时空串)", () => {
+  it("中英文词典键集合完全一致且文案非空", () => {
+    expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort());
     for (const key of Object.keys(zh) as Array<keyof typeof zh>) {
       expect(en[key], `en 缺 ${key}`).toBeTruthy();
+      expect(zh[key], `zh 缺 ${key}`).toBeTruthy();
+    }
+  });
+
+  it("技能导入的全部显式 key 集合完整，不以每类抽样代替覆盖", () => {
+    const required = [
+      "settings.skills.import",
+      "settings.skills.importFolders",
+      "settings.skills.importFoldersHint",
+      "settings.skills.importZips",
+      "settings.skills.importZipsHint",
+      "settings.skills.importFailed",
+      "settings.skills.recovery.title",
+      "settings.skills.recovery.hint",
+      "settings.skills.recovery.refresh",
+      "settings.skills.recovery.loading",
+      "settings.skills.recovery.loadFailed",
+      "settings.skills.recovery.resolveFailed",
+      "settings.skills.recovery.issues",
+      "settings.skills.recovery.authorityMissing",
+      "settings.skills.recovery.candidates",
+      "settings.skills.recovery.candidate.backup",
+      "settings.skills.recovery.candidate.installed",
+      "settings.skills.recovery.candidate.isolated",
+      "settings.skills.recovery.available",
+      "settings.skills.recovery.unavailable",
+      "settings.skills.recovery.action.restore-backup",
+      "settings.skills.recovery.action.keep-installed",
+      "settings.skills.recovery.action.preserve-files",
+      "settings.skills.recovery.resolving",
+      "settings.skills.recovery.resolvingIssue",
+      "settings.skills.recovery.ready",
+      "settings.skills.recovery.preservedPath",
+      "settings.skills.importDialog.title",
+      "settings.skills.importDialog.completedTitle",
+      "settings.skills.importDialog.addSource",
+      "settings.skills.importDialog.close",
+      "settings.skills.importDialog.summary",
+      "settings.skills.importDialog.resultSummary",
+      "settings.skills.importDialog.filter.all",
+      "settings.skills.importDialog.filter.importable",
+      "settings.skills.importDialog.filter.conflicts",
+      "settings.skills.importDialog.filter.risks",
+      "settings.skills.importDialog.filter.invalid",
+      "settings.skills.importDialog.filters",
+      "settings.skills.importDialog.filterPanel",
+      "settings.skills.importDialog.selectAll",
+      "settings.skills.importDialog.selectNone",
+      "settings.skills.importDialog.indexing",
+      "settings.skills.importDialog.sourceIssues",
+      "settings.skills.importDialog.sourceEmpty",
+      "settings.skills.importDialog.sourceFailed",
+      "settings.skills.importDialog.validating",
+      "settings.skills.importDialog.submitting",
+      "settings.skills.importDialog.retrying",
+      "settings.skills.importDialog.items",
+      "settings.skills.importDialog.results",
+      "settings.skills.importDialog.progress",
+      "settings.skills.importDialog.noItems",
+      "settings.skills.importDialog.selected",
+      "settings.skills.importDialog.submit",
+      "settings.skills.importDialog.reviewExecutable",
+      "settings.skills.importDialog.operationFailed",
+      "settings.skills.importDialog.refreshFailed",
+      "settings.skills.importDialog.recoveryPending",
+      "settings.skills.importDialog.retryRefresh",
+      "settings.skills.importDialog.refreshingCatalog",
+      "settings.skills.importDialog.retryFailed",
+      "settings.skills.importDialog.retry",
+      "settings.skills.importDialog.retryItem",
+      "settings.skills.importDialog.skipped",
+      "settings.skills.importDialog.status.ready",
+      "settings.skills.importDialog.status.pending",
+      "settings.skills.importDialog.status.invalid",
+      "settings.skills.importDialog.status.failed",
+      "settings.skills.importDialog.status.succeeded",
+      "settings.skills.importDialog.status.skipped",
+      "settings.skills.importDialog.risk.executable-content",
+      "settings.skills.importDialog.risk.tools",
+      "settings.skills.importDialog.risk.scripts",
+      "settings.skills.importDialog.risk.hooks",
+      "settings.skills.importDialog.risk.mcp",
+      "settings.skills.importDialog.risk.network",
+      "settings.skills.importDialog.conflict.duplicate",
+      "settings.skills.importDialog.conflict.user",
+      "settings.skills.importDialog.conflict.builtin",
+      "settings.skills.importDialog.conflict.case",
+      "settings.skills.importDialog.selectCandidate",
+      "settings.skills.importDialog.selectItem",
+      "settings.skills.importDialog.expandItem",
+      "settings.skills.importDialog.collapseItem",
+      "settings.skills.importDialog.itemDetails",
+      "settings.skills.importDialog.conflictAction",
+      "settings.skills.importDialog.action.skip",
+      "settings.skills.importDialog.action.replace",
+      "settings.skills.importDialog.action.overrideBuiltin",
+      "settings.skills.importDialog.action.selectCandidate",
+      "settings.skills.importDialog.action.caseDisabled",
+      "settings.skills.importDialog.unnamed",
+      "settings.skills.importDialog.files",
+      "settings.skills.importDialog.noDescription",
+      "settings.skills.importDialog.source",
+      "settings.skills.importDialog.root",
+      "settings.skills.importDialog.itemId",
+      "settings.skills.importDialog.renameHint",
+      "settings.skills.importDialog.replaceHint",
+      "settings.skills.importDialog.builtinHint",
+      "settings.skills.importDialog.invalidReasons",
+      "settings.skills.importDialog.risks",
+      "settings.skills.importDialog.executables",
+      "settings.skills.importDialog.fileTree",
+      "settings.skills.importDialog.filePreview",
+      "settings.skills.importDialog.chooseFile",
+      "settings.skills.importDialog.previewFailed",
+      "settings.skills.importDialog.loading",
+      "settings.skills.importDialog.loadMore",
+    ] as const;
+    const actual = Object.keys(zh).filter((key) =>
+      key === "settings.skills.import" ||
+      key.startsWith("settings.skills.importFolders") ||
+      key.startsWith("settings.skills.importZips") ||
+      key === "settings.skills.importFailed" ||
+      key.startsWith("settings.skills.importDialog.") ||
+      key.startsWith("settings.skills.recovery."),
+    );
+    expect(actual.sort()).toEqual([...required].sort());
+    for (const key of required) {
+      expect(en[key], `en 缺技能导入文案 ${key}`).toBeTruthy();
+      expect(zh[key], `zh 缺技能导入文案 ${key}`).toBeTruthy();
     }
   });
 });

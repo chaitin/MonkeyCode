@@ -43,6 +43,13 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 sha2 = "0.10"
 cookie = "0.18"
 regex = "1"
+# 技能 ZIP 生产解压仅实现 Store/Deflate；显式锁定纯 Rust 后端，不让解码库扫描归档索引。
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+crc32fast = "1"
+# 配置目录级暂存配额与 instance lease：固定 fs2 语义（Unix flock / Windows LockFileEx）。
+fs2 = "=0.4.3"
+# ZIP 暂存目标别名检测：按 Unicode 规范分解后比较，覆盖 macOS 卷别名。
+unicode-normalization = "0.1"
 # cookie 罐过期时间的 RFC3339 解析。time 本就在依赖树里(cookie 的 Expires
 # 解析),显式声明 + parsing feature,替代手写历算(严格校验月/日范围)
 time = { version = "0.3", features = ["parsing"] }
@@ -53,23 +60,38 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 # Rust→TS 契约类型生成(derive 经 cfg_attr(test) 门控,不进产物二进制):
 # `cargo test export_bindings` 产出 desktop/ui/src/gen/,见 driver/frame.rs
 ts-rs = "12"
+# 仅测试 fixture 写入 ZIP；生产代码不依赖其 EOCD/central 解析器。
+zip = { version = "4.6.1", default-features = false, features = ["deflate-flate2"] }
 
 # 桌宠窗口在 macOS 须是 NonactivatingPanel:普通 NSWindow 被点击会激活
 # 应用(主窗口被提到最前并抢焦点→桌宠被显隐逻辑藏掉)。锁 rev 保证可复现。
+[target.'cfg(unix)'.dependencies]
+# 文件夹技能导入：openat/statat/O_NOFOLLOW 固定来源根句柄，避免路径复开 TOCTOU。
+rustix = { version = "1", features = ["fs"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e894383aa068ec5365a42994e3ac94ba1b6" }
 # 隐藏原生红绿灯要向 NSWindow 发消息(标准按钮尺寸不可调,UI 自绘 10px 替身)
 objc2 = "0.6"
 
+# Windows/Linux 托盘常驻时再次点击快捷方式只唤回已有窗口，禁止启动第二套客户端/引擎。
+[target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"
+
 # Windows 桌宠不交给 WebView2 绘制,用 UpdateLayeredWindow 直接提交
 # 预乘 alpha 位图(见 native_pet.rs 头注释,全 Windows 版本共用一套)。
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
+  "Wdk_Foundation",
+  "Wdk_Storage_FileSystem",
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
+  "Win32_Security",
   "Win32_Storage_FileSystem",
+  "Win32_System_IO",
   "Win32_System_LibraryLoader",
   "Win32_System_Registry",
+  "Win32_System_Threading",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",

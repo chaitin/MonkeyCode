@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tokio::sync::{mpsc, oneshot};
 
 use super::ohmy::{parse_manifest_models, Inner, OhmyDriver, ShellCtx, WslCtx};
@@ -73,10 +73,17 @@ pub(super) enum JournalMsg {
     /// Append 必然先于本消息到达,单线程顺序处理,此刻的文件长度精确等于
     /// "这一轮最后一帧写完"的位置。补录/迁移的旧轮后面还跟着别的帧,
     /// 必须显式给出那一轮自己的结束偏移。
-    Materialize { sid: String, turn: super::fold::Turn, src_end: Option<u64> },
+    Materialize {
+        sid: String,
+        turn: super::fold::Turn,
+        src_end: Option<u64>,
+    },
     /// 关闭并移除该会话的缓存句柄;带 ack 时处理完即应答——
     /// 删除会话目录前必须等到(Windows 上打开中的文件删不掉目录)
-    Close { sid: String, ack: Option<std::sync::mpsc::Sender<()>> },
+    Close {
+        sid: String,
+        ack: Option<std::sync::mpsc::Sender<()>>,
+    },
     /// flush 屏障:写线程处理到此处即应答,意味着此前入队的 Append
     /// 已全部落盘(回放/停机前的一致性栅栏)
     Sync { ack: std::sync::mpsc::Sender<()> },
@@ -128,8 +135,10 @@ pub(super) fn spawn_journal_writer(data_dir: PathBuf) -> mpsc::UnboundedSender<J
                     tick += 1;
                     if !handles.contains_key(&sid) {
                         if handles.len() >= MAX_HANDLES {
-                            let oldest =
-                                handles.iter().min_by_key(|(_, (t, _))| *t).map(|(k, _)| k.clone());
+                            let oldest = handles
+                                .iter()
+                                .min_by_key(|(_, (t, _))| *t)
+                                .map(|(k, _)| k.clone());
                             if let Some(k) = oldest {
                                 handles.remove(&k); // drop 即关闭
                             }
@@ -150,7 +159,9 @@ pub(super) fn spawn_journal_writer(data_dir: PathBuf) -> mpsc::UnboundedSender<J
                             }
                         }
                     }
-                    let Some((t, f)) = handles.get_mut(&sid) else { continue };
+                    let Some((t, f)) = handles.get_mut(&sid) else {
+                        continue;
+                    };
                     *t = tick;
                     if writeln!(f, "{line}").is_err() {
                         handles.remove(&sid);
@@ -158,7 +169,11 @@ pub(super) fn spawn_journal_writer(data_dir: PathBuf) -> mpsc::UnboundedSender<J
                 }
                 // 一轮一次,不值得为它留句柄(留了反而是 Windows 删目录时
                 // 的又一个待关文件):每轮 open-append-close。
-                JournalMsg::Materialize { sid, mut turn, src_end } => {
+                JournalMsg::Materialize {
+                    sid,
+                    mut turn,
+                    src_end,
+                } => {
                     // 截断只发生在写进 replay.jsonl 的这一刻(见 Turn::guard)
                     turn.guard();
                     let dir = data_dir.join(&sid);
@@ -245,10 +260,25 @@ impl OhmyDriver {
     // ==================== 生命周期 ====================
 
     pub fn start(app: AppHandle, cfg: &DesktopConfig) -> Result<Self, String> {
-        Self::start_with(Arc::new(app), cfg)
+        let skill_store = app
+            .state::<crate::skills::SkillStoreState>()
+            .inner()
+            .clone();
+        Self::start_with_store(Arc::new(app), cfg, skill_store)
     }
 
+    #[allow(dead_code)]
     pub fn start_with(app: Arc<dyn ShellCtx>, cfg: &DesktopConfig) -> Result<Self, String> {
+        let skill_store = crate::skills::SkillStoreState::new(app.config_dir()?)
+            .map_err(|error| error.to_string())?;
+        Self::start_with_store(app, cfg, skill_store)
+    }
+
+    fn start_with_store(
+        app: Arc<dyn ShellCtx>,
+        cfg: &DesktopConfig,
+        skill_store: crate::skills::SkillStoreState,
+    ) -> Result<Self, String> {
         let cfg_dir = app.config_dir()?;
         let chat_workspaces_dir = app.local_data_dir()?.join("chat-workspaces");
         let log_path = cfg_dir.join("ohmyagent.log");
@@ -345,7 +375,12 @@ impl OhmyDriver {
                 sessions: StdMutex::new(HashMap::new()),
                 lifecycle: StdMutex::new(HashMap::new()),
                 batch: Arc::new(StdMutex::new(HashMap::new())),
-                sidecar_write: StdMutex::new(()),
+                sidecar_write: Arc::new(super::session::SidecarWriteLock::new()),
+                #[cfg(test)]
+                fail_next_session_skills_commit: std::sync::atomic::AtomicBool::new(false),
+                #[cfg(test)]
+                fail_next_engine_session_cleanup: std::sync::atomic::AtomicBool::new(false),
+                deleted_sessions: Arc::new(StdMutex::new(HashSet::new())),
                 perm_remember: StdMutex::new(perm_remember),
                 pending_questions: StdMutex::new(HashMap::new()),
                 pending_perms: StdMutex::new(HashMap::new()),
@@ -369,10 +404,10 @@ impl OhmyDriver {
             chat_workspaces_dir,
             perm_persist_path,
             wsl: wsl_ctx,
+            session_skill_locks_dir: cfg_dir.join("session-skill-locks"),
             skills_builtin_dir: app_builtin_skills,
-            skills_user_dir: crate::skills::user_dir(&cfg_dir),
-            skills_defaults_path: crate::skills::defaults_path(&cfg_dir),
-            skills_gate: tokio::sync::Mutex::new(()),
+            skill_store,
+            skills_gate: Arc::new(tokio::sync::Mutex::new(())),
         });
 
         // writer 线程:串行写 stdin;收到 None 哨兵或通道关闭即丢弃 stdin
@@ -383,7 +418,9 @@ impl OhmyDriver {
                 let msg = tauri::async_runtime::block_on(stdin_rx.recv());
                 match msg {
                     Some(Some(line)) => {
-                        if stdin.write_all(line.as_bytes()).is_err() || stdin.write_all(b"\n").is_err() {
+                        if stdin.write_all(line.as_bytes()).is_err()
+                            || stdin.write_all(b"\n").is_err()
+                        {
                             break;
                         }
                         let _ = stdin.flush();
@@ -421,7 +458,9 @@ impl OhmyDriver {
                 if line.trim().is_empty() {
                     continue;
                 }
-                let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+                let Ok(v) = serde_json::from_str::<Value>(&line) else {
+                    continue;
+                };
                 if v.get("id").and_then(|i| i.as_i64()).is_some() && v.get("method").is_none() {
                     // RPC 应答
                     let id = v.get("id").and_then(|i| i.as_i64()).unwrap();
@@ -442,7 +481,11 @@ impl OhmyDriver {
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
                         if proto != SUPPORTED_PROTOCOL_VERSION {
-                            let shown = if proto.is_empty() { "未知(过旧)" } else { proto };
+                            let shown = if proto.is_empty() {
+                                "未知(过旧)"
+                            } else {
+                                proto
+                            };
                             let _ = ready_tx.send(Err(format!(
                                 "ohmyagent 引擎协议版本不兼容(引擎 {shown},应用支持 {SUPPORTED_PROTOCOL_VERSION}),请更新应用后重试"
                             )));
@@ -452,19 +495,34 @@ impl OhmyDriver {
                         let caps: HashSet<String> = params
                             .get("capabilities")
                             .and_then(|v| v.as_array())
-                            .map(|a| a.iter().filter_map(|c| c.as_str().map(String::from)).collect())
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(|c| c.as_str().map(String::from))
+                                    .collect()
+                            })
                             .unwrap_or_default();
-                        let version =
-                            params.get("version").and_then(|v| v.as_str()).unwrap_or("?").to_string();
-                        eprintln!("[desktop] ohmyagent 就绪 version={version} caps={}", caps.len());
+                        let version = params
+                            .get("version")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("?")
+                            .to_string();
+                        eprintln!(
+                            "[desktop] ohmyagent 就绪 version={version} caps={}",
+                            caps.len()
+                        );
                         *inner_r.transport.engine_version.lock_ok() = version;
                         *inner_r.transport.engine_caps.lock_ok() = caps;
                         // 停止预算协商:记下引擎内部的优雅退出预算,stop()
                         // 的等待取 grace+3s(见 shutdown_grace_ms 字段注释)
-                        if let Some(g) =
-                            params.get("shutdownGraceMs").and_then(|v| v.as_i64()).filter(|g| *g > 0)
+                        if let Some(g) = params
+                            .get("shutdownGraceMs")
+                            .and_then(|v| v.as_i64())
+                            .filter(|g| *g > 0)
                         {
-                            inner_r.transport.shutdown_grace_ms.store(g, Ordering::Relaxed);
+                            inner_r
+                                .transport
+                                .shutdown_grace_ms
+                                .store(g, Ordering::Relaxed);
                         }
                         let _ = ready_tx.send(Ok(()));
                     }
@@ -555,12 +613,19 @@ impl OhmyDriver {
         self.0.journal_barrier();
         self.0.transport.stopped.store(true, Ordering::Relaxed);
         let _ = self.0.transport.stdin_tx.send(None); // 关 stdin → 优雅退出
-        let Some(mut child) = self.0.transport.child.lock_ok().take() else { return };
+        let Some(mut child) = self.0.transport.child.lock_ok().take() else {
+            return;
+        };
         // 停止预算协商:引擎收到 EOF 后自己也要等运行中 loop 收敛
         // (ready.shutdownGraceMs,缺省 5s)再退出——壳若同样只等 5s,
         // 两个 5s 叠死,壳必先到期 kill,优雅退出永远走不完。
         // 壳预算 = 引擎宣告预算 + 3s 余量(引擎强制清理与进程退出的时间)
-        let grace = self.0.transport.shutdown_grace_ms.load(Ordering::Relaxed).max(0) as u64;
+        let grace = self
+            .0
+            .transport
+            .shutdown_grace_ms
+            .load(Ordering::Relaxed)
+            .max(0) as u64;
         let deadline = std::time::Instant::now() + Duration::from_millis(grace + 3000);
         while std::time::Instant::now() < deadline {
             match child.try_wait() {
@@ -616,7 +681,8 @@ impl OhmyDriver {
         let id = self.0.transport.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         self.0.transport.pending.lock_ok().insert(id, tx);
-        let line = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string();
+        let line =
+            json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string();
         if self.0.transport.stdin_tx.send(Some(line)).is_err() {
             self.0.transport.pending.lock_ok().remove(&id);
             return Err("引擎已退出".into());
@@ -642,7 +708,10 @@ impl OhmyDriver {
             }
         };
         if let Some(err) = resp.get("error").filter(|e| !e.is_null()) {
-            let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("未知错误");
+            let msg = err
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("未知错误");
             return Err(msg.to_string());
         }
         Ok(resp.get("result").cloned().unwrap_or(Value::Null))
@@ -677,7 +746,8 @@ impl Inner {
         let id = self.transport.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         self.transport.pending.lock_ok().insert(id, tx);
-        let line = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string();
+        let line =
+            json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string();
         if self.transport.stdin_tx.send(Some(line)).is_err() {
             self.transport.pending.lock_ok().remove(&id);
             return;
@@ -688,7 +758,10 @@ impl Inner {
             // 表丢弃 sender → rx Err 收尾任务,崩溃路径已另行外显不重复报
             if let Ok(resp) = rx.await {
                 if let Some(err) = resp.get("error").filter(|e| !e.is_null()) {
-                    let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("未知错误");
+                    let msg = err
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("未知错误");
                     eprintln!("[desktop] {method} 被引擎拒绝: {msg}");
                 }
             }
@@ -700,7 +773,12 @@ impl Inner {
     /// 通道已关(引擎停闭后期)则直接返回。
     pub(super) fn journal_barrier(&self) {
         let (tx, rx) = std::sync::mpsc::channel();
-        if self.transport.journal_tx.send(JournalMsg::Sync { ack: tx }).is_ok() {
+        if self
+            .transport
+            .journal_tx
+            .send(JournalMsg::Sync { ack: tx })
+            .is_ok()
+        {
             let _ = rx.recv();
         }
     }
@@ -710,7 +788,15 @@ impl Inner {
     pub(super) fn journal_close(&self, sid: &str, wait: bool) {
         let (tx, rx) = std::sync::mpsc::channel();
         let ack = wait.then_some(tx);
-        if self.transport.journal_tx.send(JournalMsg::Close { sid: sid.to_string(), ack }).is_err() {
+        if self
+            .transport
+            .journal_tx
+            .send(JournalMsg::Close {
+                sid: sid.to_string(),
+                ack,
+            })
+            .is_err()
+        {
             return;
         }
         if wait {
@@ -733,7 +819,9 @@ fn migrate_legacy_sessions(engine_dir: &std::path::Path, legacy_home: Option<&st
     }
     fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
         let _ = std::fs::create_dir_all(dst);
-        let Ok(entries) = std::fs::read_dir(src) else { return };
+        let Ok(entries) = std::fs::read_dir(src) else {
+            return;
+        };
         for e in entries.flatten() {
             let (s, d) = (e.path(), dst.join(e.file_name()));
             if s.is_dir() {
@@ -744,7 +832,10 @@ fn migrate_legacy_sessions(engine_dir: &std::path::Path, legacy_home: Option<&st
         }
     }
     copy_dir(&old_sessions, &new_sessions);
-    eprintln!("[desktop] 已迁移 ~/.ohmyagent/sessions → {}", new_sessions.display());
+    eprintln!(
+        "[desktop] 已迁移 ~/.ohmyagent/sessions → {}",
+        new_sessions.display()
+    );
 }
 
 /// 登录 shell 环境补齐(unix):从 Finder/Dock/桌面启动器点开时,GUI 会话
@@ -807,7 +898,9 @@ fn login_shell_env() -> &'static HashMap<String, String> {
         let buf = if timed_out {
             return HashMap::new();
         } else {
-            reader_rx.recv_timeout(Duration::from_millis(200)).unwrap_or_default()
+            reader_rx
+                .recv_timeout(Duration::from_millis(200))
+                .unwrap_or_default()
         };
         let env = parse_shell_env_output(&buf);
         if !env.is_empty() {
@@ -822,7 +915,10 @@ const ENV_CAPTURE: &str =
     "command printf '\\0__MONKEYCODE_ENV_BEGIN__\\0'; command env -0 2>/dev/null || command env";
 
 fn shell_env_capture_args<'a>(shell: &'a str) -> Vec<&'a str> {
-    match std::path::Path::new(shell).file_name().and_then(|n| n.to_str()) {
+    match std::path::Path::new(shell)
+        .file_name()
+        .and_then(|n| n.to_str())
+    {
         // bash 登录 shell 不自动读 .bashrc:先读 profile,再进交互 shell。
         Some("bash") => vec!["-lc", "exec \"$1\" -ic \"$2\"", "bash", shell, ENV_CAPTURE],
         Some("zsh") => vec!["-ilc", ENV_CAPTURE],
@@ -831,7 +927,10 @@ fn shell_env_capture_args<'a>(shell: &'a str) -> Vec<&'a str> {
 }
 
 fn parse_shell_env_output(buf: &[u8]) -> HashMap<String, String> {
-    let Some(start) = buf.windows(ENV_MARKER.len()).rposition(|part| part == ENV_MARKER) else {
+    let Some(start) = buf
+        .windows(ENV_MARKER.len())
+        .rposition(|part| part == ENV_MARKER)
+    else {
         return HashMap::new();
     };
     parse_env_output(&buf[start + ENV_MARKER.len()..])
@@ -864,7 +963,12 @@ fn merge_login_env(
         if k == "PATH" {
             // 登录 shell 的 PATH 在前(用户配置的优先级),壳环境独有段追加
             let mut parts: Vec<&str> = v.split(':').filter(|s| !s.is_empty()).collect();
-            for p in current.get("PATH").map(String::as_str).unwrap_or("").split(':') {
+            for p in current
+                .get("PATH")
+                .map(String::as_str)
+                .unwrap_or("")
+                .split(':')
+            {
                 if !p.is_empty() && !parts.contains(&p) {
                     parts.push(p);
                 }
@@ -919,18 +1023,29 @@ mod login_env_tests {
         .into_iter()
         .map(|(k, v)| (k.into(), v.into()))
         .collect();
-        let current: HashMap<String, String> =
-            [("PATH", "/usr/bin:/bin"), ("SSH_AUTH_SOCK", "/gui/launchd.sock")]
-                .into_iter()
-                .map(|(k, v)| (k.into(), v.into()))
-                .collect();
+        let current: HashMap<String, String> = [
+            ("PATH", "/usr/bin:/bin"),
+            ("SSH_AUTH_SOCK", "/gui/launchd.sock"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.into(), v.into()))
+        .collect();
         let out: HashMap<String, String> = merge_login_env(&login, &current).into_iter().collect();
         // PATH 并集:登录在前,壳独有段(/bin)追加,去重(/usr/bin)
-        assert_eq!(out.get("PATH").map(String::as_str), Some("/opt/homebrew/bin:/usr/bin:/bin"));
+        assert_eq!(
+            out.get("PATH").map(String::as_str),
+            Some("/opt/homebrew/bin:/usr/bin:/bin")
+        );
         // 缺失键补上
-        assert_eq!(out.get("HTTP_PROXY").map(String::as_str), Some("http://127.0.0.1:7890"));
+        assert_eq!(
+            out.get("HTTP_PROXY").map(String::as_str),
+            Some("http://127.0.0.1:7890")
+        );
         // rc 中明确修改的值覆盖 GUI 环境，噪音键不搬
-        assert_eq!(out.get("SSH_AUTH_SOCK").map(String::as_str), Some("/login/sock"));
+        assert_eq!(
+            out.get("SSH_AUTH_SOCK").map(String::as_str),
+            Some("/login/sock")
+        );
         assert!(!out.contains_key("PWD"));
     }
 
@@ -981,7 +1096,10 @@ mod login_env_tests {
 
         super::migrate_legacy_sessions(&engine, Some(&home));
 
-        assert_eq!(std::fs::read(engine.join("sessions/s1/messages.jsonl")).unwrap(), b"one\n");
+        assert_eq!(
+            std::fs::read(engine.join("sessions/s1/messages.jsonl")).unwrap(),
+            b"one\n"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }
@@ -1002,9 +1120,17 @@ fn wsl_capture_args<'a>(shell: &'a str, interactive: bool) -> Vec<&'a str> {
     }
 }
 
-fn capture_wsl_env(distro: &str, shell: &str, interactive: bool) -> Result<HashMap<String, String>, String> {
+fn capture_wsl_env(
+    distro: &str,
+    shell: &str,
+    interactive: bool,
+) -> Result<HashMap<String, String>, String> {
     let mut args = vec!["-d".into(), distro.into(), "--exec".into(), shell.into()];
-    args.extend(wsl_capture_args(shell, interactive).into_iter().map(String::from));
+    args.extend(
+        wsl_capture_args(shell, interactive)
+            .into_iter()
+            .map(String::from),
+    );
     let out = crate::wsl::run_wsl_bytes(&args, Duration::from_secs(5))?;
     let env = parse_shell_env_output(&out);
     if env.is_empty() {
@@ -1017,12 +1143,18 @@ fn capture_wsl_env(distro: &str, shell: &str, interactive: bool) -> Result<HashM
 fn wsl_shell_env(distro: &str, shell: &str) -> Result<Vec<String>, String> {
     let baseline = capture_wsl_env(distro, "/bin/sh", false)?;
     let captured = capture_wsl_env(distro, shell, true)?;
-    const SKIP: [&str; 6] = ["PWD", "OLDPWD", "SHLVL", "_", "WSL_INTEROP", "WSL_DISTRO_NAME"];
-    Ok(captured.into_iter()
+    const SKIP: [&str; 6] = [
+        "PWD",
+        "OLDPWD",
+        "SHLVL",
+        "_",
+        "WSL_INTEROP",
+        "WSL_DISTRO_NAME",
+    ];
+    Ok(captured
+        .into_iter()
         .filter(|(key, value)| {
-            valid_env_name(key)
-                && !SKIP.contains(&key.as_str())
-                && baseline.get(key) != Some(value)
+            valid_env_name(key) && !SKIP.contains(&key.as_str()) && baseline.get(key) != Some(value)
         })
         .map(|(key, value)| format!("{key}={value}"))
         .collect())
@@ -1052,7 +1184,10 @@ fn build_engine_command(
     let wsl_supported = cfg!(windows) || std::env::var("MC_WSL_EXE").is_ok();
     let distro = crate::wsl::distro_of(&cfg.kernel_env).filter(|_| {
         if !wsl_supported {
-            eprintln!("[desktop] kernel_env={:?} 在当前平台不可用,按本机运行", cfg.kernel_env);
+            eprintln!(
+                "[desktop] kernel_env={:?} 在当前平台不可用,按本机运行",
+                cfg.kernel_env
+            );
         }
         wsl_supported
     });
@@ -1087,8 +1222,10 @@ fn build_engine_command(
     // 批量 wslpath 翻译。失败即启动失败,文案含排查指引,经既有三条外显
     // 路径(setup 失败页/设置页报错/退避重启横幅)呈现。
     let prep = crate::wsl::prepare(distro, &[bin.as_path(), engine_dir, chat_workspaces_dir])?;
-    let [guest_bin, guest_engine_dir, guest_chat_root]: [String; 3] =
-        prep.paths.try_into().map_err(|_| "WSL 路径翻译数量异常".to_string())?;
+    let [guest_bin, guest_engine_dir, guest_chat_root]: [String; 3] = prep
+        .paths
+        .try_into()
+        .map_err(|_| "WSL 路径翻译数量异常".to_string())?;
     // 先在独立进程中读交互 rc,再用干净 /bin/sh 启动引擎；rc 输出不会
     // 进入 JSON-RPC stdout。环境值是独立 argv，不经 eval/字符串拼接。
     let shell = pick_login_shell(&prep.login_shell);
@@ -1203,6 +1340,9 @@ pub(super) fn find_ohmyagent() -> Option<PathBuf> {
         if let Some(home) = crate::config::home_dir() {
             paths.push(home.join(".local/bin"));
         }
-        paths.into_iter().map(|d| d.join(name)).find(|p| p.is_file())
+        paths
+            .into_iter()
+            .map(|d| d.join(name))
+            .find(|p| p.is_file())
     }
 }
