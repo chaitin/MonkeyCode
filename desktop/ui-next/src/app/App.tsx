@@ -15,7 +15,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useCloudProjects, useCloudTasks } from "@/features/cloud/CloudTaskList";
 import { CloudQueueCoordinatorProvider } from "@/features/cloud/CloudQueueCoordinator";
-import { previewHide, previewShow } from "@/features/design/previewIpc";
+import { sweepOrphanPreview } from "@/features/design/previewIpc";
+import { acquireNativeObscure } from "@/lib/util/nativeObscure";
 import { DownloadsDock } from "@/features/downloads/DownloadsDock";
 import { EngineBanner } from "@/features/engine/EngineBanner";
 import { SettingsNavigationProvider } from "@/features/settings/SettingsNavigationContext";
@@ -280,12 +281,19 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
       { params: { reason } },
     ),
   );
-  const handleTodoDetailOpenChange = useCallback((open: boolean) => {
-    void (open ? previewHide() : previewShow()).catch(() => {});
-  }, []);
+  // 覆盖工作台的浮层一律经 nativeObscure 计数令原生预览避让,不再直呼
+  // previewHide/Show——关闭时无条件 show 会把 workbench 因别的浮层(子会话
+  // 回放等)藏起的预览重新顶回最上层。待办详情/DetailModal 族在各自组件内
+  // acquire,App 只管设置模态这一个 App 级浮层。
   useEffect(() => {
-    void (settingsOpen ? previewHide() : previewShow()).catch(() => {});
+    if (!settingsOpen) return;
+    return acquireNativeObscure();
   }, [settingsOpen]);
+  // UI 重载(HMR/webview 崩溃恢复)后,上一 DOM 纪元的原生预览无人认领,
+  // 会永远浮在最上层——启动清一次场(壳侧 destroy 对「不存在」宽容)。
+  useEffect(() => {
+    sweepOrphanPreview();
+  }, []);
 
   /** 待办「启动任务」:创建意图送进工作台(新建即新格)预填正文,todoId
    *  供创建成功后回链。 */
@@ -690,7 +698,6 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
                 // 云端派发件的跳转:装载入格(工作台即主壳,没有"云端空间"
                 // 可切了;无 id 的存量件退化为无动作)
                 onOpenCloud: (id) => id && loadEntry(cloudSlotId(id)),
-                onDetailOpenChange: handleTodoDetailOpenChange,
               },
             }}
           />

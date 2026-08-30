@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 
 import { useI18n } from "@/lib/i18n";
 import { useEscLayer } from "@/lib/util/escLayer";
+import { acquireNativeObscure } from "@/lib/util/nativeObscure";
 
 export function DetailModal({
   ariaLabel,
@@ -21,6 +22,8 @@ export function DetailModal({
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+  // 模态在场期间原生预览避让(工具详情/子会话回放/快捷键表共用本组件)
+  useEffect(() => acquireNativeObscure(), []);
   useEscLayer(
     true,
     useCallback(() => {

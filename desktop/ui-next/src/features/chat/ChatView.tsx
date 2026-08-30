@@ -32,6 +32,7 @@ import { repoChanges, repoPreviewFiles, repoReveal } from "@/lib/ipc/repo";
 import { designTemplatePreviewRead, sessionFrame, sessionPatch, type SessionMeta } from "@/lib/ipc/sessions";
 import { onNativeFileDrop, uploadFileURL } from "@/lib/ipc/uploads";
 import { workspaceRelativePath } from "@/lib/util/markdownPaths";
+import { useNativeObscured } from "@/lib/util/nativeObscure";
 import {
   consumeProgrammaticScroll,
   markProgrammaticScroll,
@@ -653,6 +654,10 @@ export function ChatView({
   useEffect(() => {
     setChildId(null); // 切会话关掉上一个会话的子回放
   }, [meta.id]);
+
+  // 全局浮层遮挡信号(命令式菜单/DetailModal 族/设置模态):原生预览
+  // webview 画在所有 DOM 之上,浮层在场时并入 obscured 令其避让
+  const overlayObscured = useNativeObscured();
 
   // ==== 后台子代理停止入口(background_stop → subagent/cancel 直通) ====
   // 能力门控:无 subagentControl 时入口整体隐藏(契约 2,不按版本猜)。
@@ -1475,7 +1480,7 @@ export function ChatView({
               initialTarget={previewTarget}
               refreshKey={previewRefreshKey}
               composer={composerRef.current}
-              obscured={sideTab !== "preview" || !!childId}
+              obscured={sideTab !== "preview" || !!childId || overlayObscured}
             />
           </div>
         )}

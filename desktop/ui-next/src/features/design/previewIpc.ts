@@ -37,6 +37,34 @@ export const previewSaveHtml = (sessionId: string, path: string, html: string) =
 export const previewResultShow = (dataUrl: string, status: string, commentCount: number) => invoke<void>("preview_result_show", { dataUrl, status, commentCount });
 export const previewResultHide = () => invoke<void>("preview_result_hide");
 
+// 原生预览 create/destroy 必须串行(壳侧同一个 LABEL webview),所有生命
+// 周期操作都排进这一条队列。此前队列私有在 DesignPreviewWorkbench 模块里,
+// 启动清扫要共用才搬到这里。
+let lifecycleQueue = Promise.resolve();
+let lifecycleUsed = false;
+
+export function enqueuePreviewLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+  lifecycleUsed = true;
+  const result = lifecycleQueue.then(operation);
+  lifecycleQueue = result.then(() => {}, () => {});
+  return result;
+}
+
+/** App 启动清扫孤儿原生预览:UI 重载(HMR/webview 崩溃恢复)后,上一
+ * DOM 纪元创建的原生预览无人认领,会永远浮在所有 DOM 之上。仅当本纪元
+ * 还没有任何生命周期操作时才清——有了就说明现任所有者在场,轮不到清扫
+ * (壳侧 destroy 对「不存在」宽容,返回 Ok)。 */
+export function sweepOrphanPreview(): void {
+  if (lifecycleUsed) return;
+  void enqueuePreviewLifecycle(() => previewDestroy()).catch(() => {});
+}
+
+/** 测试复位:队列与清扫哨兵是模块级状态,跨用例会残留。 */
+export function resetPreviewLifecycleForTests(): void {
+  lifecycleQueue = Promise.resolve();
+  lifecycleUsed = false;
+}
+
 export const onPreviewCaptured = (cb: (event: CaptureResult) => void) => listen("preview-captured", cb);
 export const onPreviewCaptureError = (cb: (event: PreviewError) => void) => listen("preview-capture-error", cb);
 export const onPreviewSerialized = (cb: (event: SerializeResult) => void) => listen("preview-serialized", cb);

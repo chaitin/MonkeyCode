@@ -20,6 +20,7 @@ import type { SessionMeta } from "@/lib/ipc/sessions";
 import { todoUploadURL, type TodoItem } from "@/lib/ipc/todos";
 import { pickImageFiles } from "@/lib/ipc/uploads";
 import { pushEscLayer } from "@/lib/util/escLayer";
+import { acquireNativeObscure } from "@/lib/util/nativeObscure";
 import { readFold, writeFold } from "@/lib/util/prefs";
 import { createImeGuard } from "@/lib/util/slash";
 import type { TodoOps } from "./useTodos";
@@ -34,7 +35,6 @@ export interface TodoWiring {
   /** 云端派发件的跳转(带云端任务 id;工作台主壳里 = 装载入格。旧壳
    *  时代无参、只切云端空间——空间已死,id 随契约升级带出)。 */
   onOpenCloud: (id?: string) => void;
-  onDetailOpenChange?: (open: boolean) => void;
 }
 
 /** 待办组在 mc.collapsedGroups 里的注册 key(\0 哨兵,不会与目录路径相撞;
@@ -173,6 +173,9 @@ function TodoDetailModal({
   const ime = useRef(createImeGuard());
   const [zoom, setZoom] = useState<string | null>(null);
   const closeZoom = useCallback(() => setZoom(null), []);
+  // 模态在场期间原生预览避让(此前经 App 的 onDetailOpenChange 直呼
+  // previewHide/Show,关闭时无条件 show 会与 workbench 抢所有权)
+  useEffect(() => acquireNativeObscure(), []);
   useEffect(() => {
     return pushEscLayer(() => {
       onClose();
@@ -320,11 +323,6 @@ export function TodoSection({
   const finished = todo.todos.filter((i) => i.status === "done");
   // 条目被删(右键删除)时弹窗随条目消失(条件渲染兜底)
   const detail = todo.todos.find((i) => i.id === detailId);
-  const detailOpen = !!detail;
-  useEffect(() => {
-    todo.onDetailOpenChange?.(detailOpen);
-    return () => todo.onDetailOpenChange?.(false);
-  }, [detailOpen, todo.onDetailOpenChange]);
 
   const pendingIds = pending.map((i) => i.id);
   /** 落点是否**真的会改变顺序**(不会就不画线、不落盘;项目组同一套判定)。 */

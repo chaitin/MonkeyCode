@@ -15,6 +15,8 @@ import {
   writeSendQueueLane,
 } from "@/features/chat/composer/sendQueue";
 import { resetStashForTests } from "@/features/chat/composer/stash";
+import { resetPreviewLifecycleForTests } from "@/features/design/previewIpc";
+import { nativeObscured } from "@/lib/util/nativeObscure";
 import { App } from "./App";
 
 beforeEach(() => {
@@ -180,16 +182,24 @@ describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () =
   });
 });
 
-describe("设计预览页面生命周期", () => {
-  it("切换主区页面时强制销毁原生预览", async () => {
+describe("设计预览生命周期(设置已改模态、工作台常驻,旧「切页销毁」语义退役)", () => {
+  it("App 启动清扫孤儿原生预览:上一 DOM 纪元的 webview 无人认领", async () => {
+    resetPreviewLifecycleForTests();
     const shell = stubShell();
     render(<App />);
     await waitFor(() => expect(shell.count("preview_destroy")).toBeGreaterThan(0));
-    const before = shell.count("preview_destroy");
+  });
+
+  it("设置模态经遮挡信号令原生预览避让,关闭即释放", async () => {
+    stubShell();
+    render(<App />);
+    expect(nativeObscured()).toBe(false);
 
     await userEvent.click(screen.getByRole("button", { name: "设置" }));
+    expect(nativeObscured()).toBe(true);
 
-    await waitFor(() => expect(shell.count("preview_destroy")).toBeGreaterThan(before));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "设置" })).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(nativeObscured()).toBe(false));
   });
 });
 

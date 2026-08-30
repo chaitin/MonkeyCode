@@ -7,6 +7,7 @@
 import { t } from "@/lib/i18n";
 import { copyText } from "@/lib/util/clipboard";
 import { pushEscLayer } from "@/lib/util/escLayer";
+import { acquireNativeObscure } from "@/lib/util/nativeObscure";
 
 type Editable = HTMLInputElement | HTMLTextAreaElement;
 
@@ -170,6 +171,9 @@ export function openMenu(pos: { x: number; y: number }, items: MenuItem[], opts?
   closeMenu();
   if (!items.length) return;
   currentOnClose = opts?.onClose ?? null;
+  // 菜单可能落在原生预览 webview 的矩形里(pane ⋯ 菜单正是),而原生视图
+  // 压在所有 DOM 之上——菜单在场期间令预览避让,关闭即还原
+  const releaseObscure = acquireNativeObscure();
 
   const backdrop = document.createElement("div");
   // daisyUI modal 写死 z-index:999；命令式菜单追加到 body，必须进入统一窗口
@@ -227,6 +231,7 @@ export function openMenu(pos: { x: number; y: number }, items: MenuItem[], opts?
   cleanup = () => {
     cleanup = null;
     popEsc();
+    releaseObscure();
     window.removeEventListener("resize", closeMenu);
     window.removeEventListener("blur", closeMenu);
     backdrop.remove();

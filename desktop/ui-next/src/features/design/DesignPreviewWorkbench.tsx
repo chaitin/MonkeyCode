@@ -12,9 +12,9 @@ import { useI18n, type MessageKey } from "@/lib/i18n";
 import { repoArtifactRead, repoPreviewFiles, type RepoArtifact, type RepoPreviewFile } from "@/lib/ipc/repo";
 import { rankPreviewFiles, targetForFile, type DesignPreviewTarget } from "./previewArtifact";
 import {
-  onPreviewElementPicked, onPreviewPickerError, onPreviewResultAction, previewCreate, previewCreateArtifact,
-  previewDestroy, previewElementApply, previewElementUndo, previewHide, previewNavigate, previewPickerToggle,
-  previewReload, previewResultHide, previewResultShow, previewSaveHtml, previewSetBounds,
+  enqueuePreviewLifecycle, onPreviewElementPicked, onPreviewPickerError, onPreviewResultAction, previewCreate,
+  previewCreateArtifact, previewDestroy, previewElementApply, previewElementUndo, previewHide, previewNavigate,
+  previewPickerToggle, previewReload, previewResultHide, previewResultShow, previewSaveHtml, previewSetBounds,
   previewSetZoom, previewShow, requestCapture, requestSerialization, type ElementSnapshot, type ElementStyles,
 } from "./previewIpc";
 import { normalizePreviewUrl, normalizeTypedPreviewUrl } from "./previewUrl";
@@ -328,14 +328,6 @@ function feedbackOf(url: string, annotations: Annotation[], message: string) {
     `Design preview feedback for ${url}`,
     `Annotations: ${annotations.length}.`,
   ].filter(Boolean).join("\n\n");
-}
-
-let previewLifecycleQueue = Promise.resolve();
-
-function enqueuePreviewLifecycle<T>(operation: () => Promise<T>): Promise<T> {
-  const result = previewLifecycleQueue.then(operation);
-  previewLifecycleQueue = result.then(() => {}, () => {});
-  return result;
 }
 
 export function DesignPreviewWorkbench({
