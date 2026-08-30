@@ -231,7 +231,16 @@ export default function TaskDetailScreen() {
     if (!id || !interactive) return;
     const client = TaskStreamClient.attach(id, { onState: (s) => setLive(s), onReplyStatus: handleReplyStatus });
     clientRef.current = client; client.connect();
-    return () => { client.disconnect(); if (clientRef.current === client) clientRef.current = null; setLive(null); cursorSeededRef.current = false; };
+    return () => {
+      // handleSend 会把 clientRef 换成 newRound client（没有任何 effect 持有它）：
+      // 卸载/依赖翻转时一并断开，否则其 socket 和重连梯会向已卸载的组件继续 setLive。
+      const current = clientRef.current;
+      if (current && current !== client) current.disconnect();
+      client.disconnect();
+      clientRef.current = null;
+      setLive(null);
+      cursorSeededRef.current = false;
+    };
   }, [handleReplyStatus, id, interactive, setLive]);
 
   useEffect(() => { setAnswerSubmitStates({}); }, [id]);
@@ -346,9 +355,11 @@ export default function TaskDetailScreen() {
     if (!id || (!body && ready.length === 0)) return;
     if (includeAttachments && attachmentsRef.current.some((a) => a.status === 'uploading')) { flashToast('图片还在上传中…'); return; }
     const atts = ready.map((a) => ({ url: a.url as string, filename: a.name }));
-    const prevLive = liveStateRef.current?.messages ?? [];
+    // 先断开旧连接再取快照：disconnect() 会同步冲刷 50ms 节流暂扣的尾部 chunk，
+    // 其返回值才是完整末态；先快照 liveStateRef 会把这截尾巴永久丢出会话记录。
+    const prevState = clientRef.current?.disconnect();
+    const prevLive = prevState?.messages ?? liveStateRef.current?.messages ?? [];
     if (prevLive.length) setHistoryMessages((prev) => [...prev, ...prevLive]);
-    clientRef.current?.disconnect();
     setSending(true);
     const client = TaskStreamClient.newRound(id, body, atts, {
       onState: setLive,
@@ -493,6 +504,18 @@ export default function TaskDetailScreen() {
   // 倒置列表：最新在前（视觉底部）。新消息进 data[0]（底部）、历史从 data 末尾（视觉顶部）追加。
   // 初始定位底部、流式吸底、上滑加载历史、展开 toolcall 都由 inverted 天然处理，无需手动 scrollToEnd。
   const reversed = useMemo(() => messages.slice().reverse(), [messages]);
+  const reversedRef = useRef(reversed);
+  reversedRef.current = reversed;
+
+  // AI 提问卡片的自定义回答输入框聚焦：键盘（keyboard-controller padding）就位后把
+  // 整张卡片滚回可视区——inverted 列表 viewPosition 0 即卡片底边贴到 composer 上方，
+  // 输入框和提交按钮都在卡片下部，不再被键盘遮住。回调保持稳定，最新数据走 ref。
+  const onAskFocus = useCallback((askId: string) => {
+    setTimeout(() => {
+      const index = reversedRef.current.findIndex((m) => m.kind === 'ask' && m.askId === askId);
+      if (index >= 0) listRef.current?.scrollToIndex({ index, viewPosition: 0, animated: true });
+    }, 300);
+  }, []);
 
   const streamConnected = liveState?.connectionState === 'connected';
   const roundRunning = streamConnected && liveState?.status === 'connected';
@@ -594,7 +617,7 @@ export default function TaskDetailScreen() {
             data={reversed}
             inverted
             keyExtractor={(m) => m.id}
-            renderItem={({ item }) => <StreamBlock message={item} isStreaming={item.id === streamingMessageId && item.kind === 'agent'} canAnswer={item.kind === 'ask' ? canAnswer : undefined} answerSubmitState={item.kind === 'ask' ? answerSubmitStates[item.askId] : undefined} onAnswer={handleAnswer} onCopy={onCopy} onSaveImage={onSaveImage} />}
+            renderItem={({ item }) => <StreamBlock message={item} isStreaming={item.id === streamingMessageId && item.kind === 'agent'} canAnswer={item.kind === 'ask' ? canAnswer : undefined} answerSubmitState={item.kind === 'ask' ? answerSubmitStates[item.askId] : undefined} onAnswer={handleAnswer} onAskFocus={onAskFocus} onCopy={onCopy} onSaveImage={onSaveImage} />}
             ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
             // inverted 下：paddingTop=视觉底部（贴近 composer），paddingBottom=视觉顶部（避开浮动 header）。
             contentContainerStyle={{ paddingTop: 14, paddingBottom: headerH + 12, paddingHorizontal: spacing.pad }}
@@ -607,6 +630,8 @@ export default function TaskDetailScreen() {
             // 关键：生成时流式消息在 reversed[0]（底部）。minIndexForVisible:0 让底部消息“长高”时
             // 补偿滚动偏移，用户上滑查看时视图不被往下拽；autoscrollToTopThreshold 仅在贴近底部时才自动吸底。
             maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
+            // scrollToIndex 目标未渲染时（理论上不会：滚动目标是用户刚点过的卡片）按估算兜底。
+            onScrollToIndexFailed={(info) => listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true })}
             initialNumToRender={12}
             maxToRenderPerBatch={12}
             windowSize={11}

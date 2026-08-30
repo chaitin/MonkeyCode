@@ -60,7 +60,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@babel/plugin-transform-dynamic-import": "^8.0.1",
+    "@babel/plugin-transform-dynamic-import": "^7.29.7",
     "@types/jest": "^29.5.14",
     "@types/node": "^25.9.1",
     "@types/react": "~19.2.0",

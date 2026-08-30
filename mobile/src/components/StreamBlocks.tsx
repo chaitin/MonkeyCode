@@ -3,9 +3,9 @@
  * 复用 messages/handler 的 ChatMessage 类型（user / agent / thought / tool / error / system / ask）。
  */
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Image, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Markdown, { MarkdownIt } from 'react-native-markdown-display';
-import { SvgXml } from 'react-native-svg';
+import { parse as parseSvg, SvgAst, type JsxAST } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -49,22 +49,59 @@ function useMathJax(): boolean {
 
 const MD_FONT_SIZE = 14.5;
 
+// markdown-display 每次解析都重建整棵 AST（父节点 key 全换 → 公式组件必然重挂载），
+// SvgXml 每次挂载都要重新解析数 KB 的 MathJax XML。按 svg 字符串缓存解析产物 +
+// SvgAst 直渲，重挂载就只剩原生视图重建。
+const MATH_AST_CACHE_MAX = 256;
+const mathAstCache = new Map<string, JsxAST | null>();
+
+function mathSvgAst(svg: string): JsxAST | null {
+  const cached = mathAstCache.get(svg);
+  if (cached !== undefined) {
+    // 命中刷新插入顺序（LRU）：否则超容量后先淘汰的是屏幕上正在用的早期公式。
+    mathAstCache.delete(svg);
+    mathAstCache.set(svg, cached);
+    return cached;
+  }
+  let ast: JsxAST | null = null;
+  try { ast = parseSvg(svg); } catch { ast = null; }
+  if (mathAstCache.size >= MATH_AST_CACHE_MAX) {
+    const oldest = mathAstCache.keys().next().value;
+    if (oldest !== undefined) mathAstCache.delete(oldest);
+  }
+  mathAstCache.set(svg, ast);
+  return ast;
+}
+
+// mdStyles.body 的行高；Android 行内公式的可用高度以它为上限。
+const MD_LINE_HEIGHT = 23;
+
 /** 行内公式：SVG 以内联视图排进文字流；未就绪/失败回退原文。 */
 function MathInline({ tex, display, t }: { tex: string; display: boolean; t: Theme }) {
   const ready = useMathJax();
   const rendered = ready ? texToSvg(tex, display, MD_FONT_SIZE) : null;
-  if (!rendered) {
+  const ast = rendered ? mathSvgAst(rendered.svg) : null;
+  if (!rendered || !ast) {
     return <Text style={{ color: t.tx2, fontFamily: 'monospace', fontSize: 13 }}>{display ? `$$${tex}$$` : `$${tex}$`}</Text>;
   }
-  // 两端的文字内联视图底边都落在基线上（Android 的 PlaceholderSpan descent=0，
-  // iOS 同），向下平移 depth 让公式自身基线与正文基线对齐。
+  if (Platform.OS === 'android') {
+    // Android 的 lineHeight 由 CustomLineHeightSpan 钉死为固定行高，内联视图高过
+    // 行盒会直接画到相邻行上；translateY 下移（占位 span descent=0）同样会叠行。
+    // 这里把公式等比缩进行盒、底边落在基线上，不再做基线下移。
+    const maxH = MD_LINE_HEIGHT - 3;
+    const k = rendered.height > maxH ? maxH / rendered.height : 1;
+    return <SvgAst ast={ast} override={{ width: rendered.width * k, height: rendered.height * k, color: t.tx }} />;
+  }
+  // iOS 内联视图底边落在基线上，向下平移 depth 让公式自身基线与正文基线对齐。
   return (
-    <SvgXml
-      xml={rendered.svg}
-      width={rendered.width}
-      height={rendered.height}
-      color={t.tx}
-      style={{ transform: [{ translateY: rendered.depth }] }}
+    <SvgAst
+      ast={ast}
+      override={{
+        width: rendered.width,
+        height: rendered.height,
+        color: t.tx,
+        style: { transform: [{ translateY: rendered.depth }] },
+      }}
     />
   );
 }
@@ -73,13 +110,14 @@ function MathInline({ tex, display, t }: { tex: string; display: boolean; t: The
 function MathBlock({ tex, t }: { tex: string; t: Theme }) {
   const ready = useMathJax();
   const rendered = ready ? texToSvg(tex, true, MD_FONT_SIZE + 1.5) : null;
-  if (!rendered) {
+  const ast = rendered ? mathSvgAst(rendered.svg) : null;
+  if (!rendered || !ast) {
     return <Text style={{ color: t.tx2, fontFamily: 'monospace', fontSize: 12.5, lineHeight: 19, marginVertical: 7 }}>{`$$\n${tex}\n$$`}</Text>;
   }
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 7 }}
       contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: 4 }}>
-      <SvgXml xml={rendered.svg} width={rendered.width} height={rendered.height} color={t.tx} />
+      <SvgAst ast={ast} override={{ width: rendered.width, height: rendered.height, color: t.tx }} />
     </ScrollView>
   );
 }
@@ -176,16 +214,29 @@ function MermaidDiagram({ code, t }: { code: string; t: Theme }) {
   );
 }
 
-function stableMermaidKey(node: { content?: string; index?: number; tokenIndex?: number }): string {
-  const text = trimFenceContent(node.content);
+// 内容哈希 key：markdown-display 的 node.key 每次解析都重新生成，直接用它会让
+// mermaid/公式这类重组件在流式期间每个节流帧都整个重挂载。仅对顶层节点有效，
+// 且前提是 body 根节点的 key 恒定（见 markdownRules 的 body 覆盖）；行内公式因
+// 父级 textgroup/paragraph key 仍会翻新而照旧重挂载，靠 svg/AST 缓存把成本压低。
+function stableNodeKey(prefix: string, node: { index?: number; tokenIndex?: number }, text: string): string {
   let hash = 0;
   for (let i = 0; i < text.length; i += 1) hash = ((hash * 31) + text.charCodeAt(i)) | 0;
-  return `mermaid-${node.tokenIndex ?? node.index ?? 0}-${text.length}-${hash >>> 0}`;
+  return `${prefix}-${node.tokenIndex ?? node.index ?? 0}-${text.length}-${hash >>> 0}`;
+}
+
+function stableMermaidKey(node: { content?: string; index?: number; tokenIndex?: number }): string {
+  return stableNodeKey('mermaid', node, trimFenceContent(node.content));
 }
 
 /** 覆盖 markdown 的 image/fence 规则（图片修告警；mermaid fence 渲染为图；数学公式渲染为 SVG）。 */
 function markdownRules(t: Theme, onSave?: (url: string) => void, renderMermaid = true) {
   return {
+    // 库的 AstRenderer.render 给根 body 每次解析都发新 key（getUniqueID），导致整棵
+    // 子树每帧重挂载、子级稳定 key 全部失效；覆盖成恒定 key 后，顶层稳定 key 的
+    // 节点（块级公式/mermaid）在流式重解析间得以保留原生视图。
+    body: (_node: unknown, children: React.ReactNode, _parent: unknown, styles: Record<string, any>) => (
+      <View key="md-body" style={styles._VIEW_SAFE_body}>{children}</View>
+    ),
     image: (node: { key: string; attributes?: { src?: string; alt?: string } }) => (
       <MarkdownImage key={node.key} uri={resolveAssetUrl(node.attributes?.src) ?? node.attributes?.src ?? ''} t={t} onSave={onSave} />
     ),
@@ -195,11 +246,11 @@ function markdownRules(t: Theme, onSave?: (url: string) => void, renderMermaid =
       if (lang === 'mermaid' && renderMermaid) return <MermaidDiagram key={stableMermaidKey(node)} code={content} t={t} />;
       return <Text key={node.key} style={[inheritedStyles, styles.fence]}>{content}</Text>;
     },
-    math_inline: (node: { key: string; content?: string; sourceMeta?: { display?: boolean } }) => (
-      <MathInline key={node.key} tex={node.content ?? ''} display={!!node.sourceMeta?.display} t={t} />
+    math_inline: (node: { key: string; content?: string; index?: number; tokenIndex?: number; sourceMeta?: { display?: boolean } }) => (
+      <MathInline key={stableNodeKey('mathi', node, node.content ?? '')} tex={node.content ?? ''} display={!!node.sourceMeta?.display} t={t} />
     ),
-    math_block: (node: { key: string; content?: string }) => (
-      <MathBlock key={node.key} tex={node.content ?? ''} t={t} />
+    math_block: (node: { key: string; content?: string; index?: number; tokenIndex?: number }) => (
+      <MathBlock key={stableNodeKey('mathb', node, node.content ?? '')} tex={node.content ?? ''} t={t} />
     ),
   };
 }
@@ -250,9 +301,12 @@ function useThrottledText(text: string, active: boolean, intervalMs = 100): stri
 function AgentMarkdown({ text, isStreaming, t, onCopy, onSaveImage }: { text: string; isStreaming?: boolean; t: Theme; onCopy?: (text: string) => void; onSaveImage?: (url: string) => void }) {
   const displayText = useThrottledText(text, !!isStreaming);
   const rules = useMemo(() => markdownRules(t, onSaveImage, !isStreaming), [isStreaming, onSaveImage, t]);
+  // style 每次新建对象会击穿 Markdown 的 memo：即使 displayText 未变（如仅回调身份
+  // 变化引起的重渲）也会整篇重新解析。按主题记忆化，让 memo 真正生效。
+  const style = useMemo(() => mdStyles(t) as any, [t]);
   return (
     <Pressable onPress={() => Keyboard.dismiss()} onLongPress={() => onCopy?.(text)}>
-      <Markdown style={mdStyles(t) as any} rules={rules} markdownit={markdownItWithMath}>{displayText}</Markdown>
+      <Markdown style={style} rules={rules} markdownit={markdownItWithMath}>{displayText}</Markdown>
     </Pressable>
   );
 }
@@ -414,7 +468,7 @@ function ToolCard({ msg, t, onCopy }: { msg: ToolMsg; t: Theme; onCopy?: (s: str
   );
 }
 
-function StreamBlockBase({ message, canAnswer, answerSubmitState, isStreaming, onAnswer, onCopy, onSaveImage }: { message: ChatMessage; canAnswer?: boolean; answerSubmitState?: AnswerSubmitState; isStreaming?: boolean; onAnswer?: (askId: string, answers: AnswerMap) => AnswerSubmitResult; onCopy?: (text: string) => void; onSaveImage?: (url: string) => void }) {
+function StreamBlockBase({ message, canAnswer, answerSubmitState, isStreaming, onAnswer, onAskFocus, onCopy, onSaveImage }: { message: ChatMessage; canAnswer?: boolean; answerSubmitState?: AnswerSubmitState; isStreaming?: boolean; onAnswer?: (askId: string, answers: AnswerMap) => AnswerSubmitResult; onAskFocus?: (askId: string) => void; onCopy?: (text: string) => void; onSaveImage?: (url: string) => void }) {
   const t = useTheme();
   switch (message.kind) {
     case 'user': {
@@ -450,7 +504,7 @@ function StreamBlockBase({ message, canAnswer, answerSubmitState, isStreaming, o
     case 'system':
       return <Text style={{ color: t.tx3, fontSize: 12, textAlign: 'center', paddingHorizontal: 12 }}>{message.text}</Text>;
     case 'ask':
-      return <AskBlock askId={message.askId} status={message.status} questions={message.questions} canAnswer={!!canAnswer && message.status === 'pending'} answerSubmitState={answerSubmitState} onAnswer={onAnswer} t={t} />;
+      return <AskBlock askId={message.askId} status={message.status} questions={message.questions} canAnswer={!!canAnswer && message.status === 'pending'} answerSubmitState={answerSubmitState} onAnswer={onAnswer} onCustomFocus={onAskFocus} t={t} />;
     default:
       return null;
   }
@@ -462,7 +516,7 @@ type MsgCmp = { id?: string; kind?: string; text?: string; title?: string; statu
 export const StreamBlock = React.memo(StreamBlockBase, (a, b) => {
   const m = a.message as MsgCmp;
   const n = b.message as MsgCmp;
-  if (m.kind === 'ask' && (a.canAnswer !== b.canAnswer || a.answerSubmitState !== b.answerSubmitState || a.onAnswer !== b.onAnswer)) return false;
+  if (m.kind === 'ask' && (a.canAnswer !== b.canAnswer || a.answerSubmitState !== b.answerSubmitState || a.onAnswer !== b.onAnswer || a.onAskFocus !== b.onAskFocus)) return false;
   if (m.kind === 'agent' && a.isStreaming !== b.isStreaming) return false;
   if (a.onCopy !== b.onCopy || a.onSaveImage !== b.onSaveImage) return false;
   return (
@@ -475,7 +529,7 @@ export const StreamBlock = React.memo(StreamBlockBase, (a, b) => {
   );
 });
 
-function AskBlock({ askId, status, questions, canAnswer, answerSubmitState, onAnswer, t }: { askId: string; status: string; questions: AskQuestion[]; canAnswer: boolean; answerSubmitState?: AnswerSubmitState; onAnswer?: (askId: string, answers: AnswerMap) => AnswerSubmitResult; t: Theme }) {
+function AskBlock({ askId, status, questions, canAnswer, answerSubmitState, onAnswer, onCustomFocus, t }: { askId: string; status: string; questions: AskQuestion[]; canAnswer: boolean; answerSubmitState?: AnswerSubmitState; onAnswer?: (askId: string, answers: AnswerMap) => AnswerSubmitResult; onCustomFocus?: (askId: string) => void; t: Theme }) {
   const [selected, setSelected] = useState<Record<number, Set<string>>>({});
   const [customAnswers, setCustomAnswers] = useState<Record<number, string>>({});
   const [submitState, setSubmitState] = useState<'idle' | AnswerSubmitState>('idle');
@@ -574,6 +628,8 @@ function AskBlock({ askId, status, questions, canAnswer, answerSubmitState, onAn
                       placeholder="请输入回答"
                       placeholderTextColor={t.tx3}
                       autoFocus
+                      // 键盘弹出会遮住列表下部：聚焦后由外层把整张提问卡滚回键盘上方
+                      onFocus={() => onCustomFocus?.(askId)}
                       style={{ minHeight: 42, borderWidth: 1, borderColor: t.line, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9, color: t.tx, fontSize: 13.5 }}
                     />
                   ) : recordedCustom ? (

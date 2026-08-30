@@ -324,7 +324,8 @@ export class TaskStreamClient {
    * 前沿保证单发事件（连接状态翻转等）零延迟，尾随定时器保证洪峰后末态必达。
    */
   private emit() {
-    const elapsed = Date.now() - this.lastEmitMs;
+    // Date.now 不保证单调（NTP 校时/手动改时间会回拨），钳到 >=0 防止武装出超长定时器。
+    const elapsed = Math.max(0, Date.now() - this.lastEmitMs);
     if (elapsed >= EMIT_INTERVAL_MS) {
       this.emitNow();
       return;

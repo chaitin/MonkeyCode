@@ -47,6 +47,35 @@ test('tokenizes inline $…$ with boundary guards', () => {
   expect(mathTokens('$ x $')).toHaveLength(0);
 });
 
+test('inline $…$ renders in Chinese context without surrounding spaces', () => {
+  const single = mathTokens('质能方程$E=mc^2$的推导');
+  expect(single).toHaveLength(1);
+  expect(single[0].content).toBe('E=mc^2');
+
+  const pair = mathTokens('$a$和$b$');
+  expect(pair.map((token) => token.content)).toEqual(['a', 'b']);
+});
+
+test('inline $…$ renders when followed by markup or operators', () => {
+  const bold = mathTokens('**$E=mc^2$**');
+  expect(bold).toHaveLength(1);
+  expect(bold[0].content).toBe('E=mc^2');
+
+  expect(mathTokens('$a$-$b$').map((token) => token.content)).toEqual(['a', 'b']);
+  expect(mathTokens('速度为 $x$/2 左右')).toHaveLength(1);
+  // 闭合 $ 后紧跟字母/数字仍视为货币/粘连，不渲染。
+  expect(mathTokens('$5 and $6 dollars')).toHaveLength(0);
+});
+
+test('suffix currency spanning two $ signs is not math', () => {
+  expect(mathTokens('花了100$，总计200$。')).toHaveLength(0);
+});
+
+test('empty $$ block stays literal text', () => {
+  expect(mathTokens('$$\n$$')).toHaveLength(0);
+  expect(mathTokens('$$\n\n$$')).toHaveLength(0);
+});
+
 test('tokenizes single-line $$…$$ as inline display math', () => {
   const found = mathTokens('推导得 $$x = \\frac{1}{2}$$，代入即可');
   expect(found).toHaveLength(1);
@@ -100,6 +129,9 @@ test('texToSvg converts TeX to sized SVG after loadMathJax', async () => {
 
   // 超预算直接拒绝，不进 MathJax。
   expect(texToSvg('x'.repeat(513), true, 16)).toBeNull();
+
+  // 输出尺寸钳制：短源码也能画出巨型图形（\rule），超限回退原文。
+  expect(texToSvg('\\rule{50em}{50em}', false, 14.5)).toBeNull();
 
   // 缓存命中返回一致结果。
   expect(texToSvg('x^2', false, 14.5)).toEqual(inline);

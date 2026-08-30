@@ -1,6 +1,6 @@
 /**
  * 数学公式支持：markdown-it 分词插件 + MathJax TeX→SVG 转换。
- * 分隔符语义对齐 desktop/ui-next 的 Markdown.tsx：
+ * 分隔符基于 desktop/ui-next 的 Markdown.tsx，并针对中文语境放宽/收紧（见正则处注释）：
  *   块级：独占行的 $$ … $$ / \[ … \]；行内：$…$、$$…$$、\(…\)、\[…\]（单行）。
  * 本模块不依赖 react-native，可在 node/jest 下直接测试；
  * MathJax 运行时较大（~1MB JS），由调用方 loadMathJax() 异步加载。
@@ -20,9 +20,19 @@ export interface MathSvg {
 export const MATH_MAX_SOURCE_CHARS = 512;
 const MATH_DEFINITION_RE = /\\(?:def|gdef|edef|xdef|let|futurelet|newcommand|renewcommand|providecommand)\b/;
 const SVG_CACHE_MAX = 256;
+// 输出尺寸钳制（对应 desktop 的 KaTeX maxSize）：\rule{50em}{50em} 这类 20 字符输入
+// 能画出 800px+ 的图形，内联进消息 Text 会撑爆行布局，超限回退原文。
+const MATH_MAX_WIDTH_EX = 200;
+const MATH_MAX_HEIGHT_EX = 40;
 
-const INLINE_DOLLAR_RE = /^\$(?!\$|\s)((?:\\.|[^\\\n`$])*?(?:\\.|[^\\\s\n`$]))\$(?=[\s?!.,:;。，！？：；、)\]}]|$)/u;
-const INLINE_DISPLAY_DOLLAR_RE = /^\$\$(?!\$)[ \t]*([^`\r\n]*?\S)[ \t]*\$\$(?!\$)(?=[\s?!.,:;。，！？：；、)\]}]|$)/u;
+// 与 desktop 正则的两点刻意差异（中文语境适配）：
+// ①闭合 $ 的边界从白名单前瞻改为否定类：只拒绝紧跟字母/数字/$/\（货币或粘连续写），
+//   这样「…$E=mc^2$的推导」「**$E=mc^2$**」「$a$-$b$」等相邻写法都能渲染——
+//   desktop 的白名单沿用英文两侧留空格的习惯，这些场景整个不渲染；
+// ②正文排除汉字与全角标点——「花了100$，总计200$。」这类跨两个货币符号的中文
+//   片段不再被误判成公式（公式内确需中文可用 \(…\) 显式定界符，仍完整支持）。
+const INLINE_DOLLAR_RE = /^\$(?!\$|\s)((?:\\.|[^\\\n`$一-龥。，！？：；、])*?(?:\\.|[^\\\s\n`$一-龥。，！？：；、]))\$(?![0-9A-Za-z$\\])/u;
+const INLINE_DISPLAY_DOLLAR_RE = /^\$\$(?!\$)[ \t]*([^`\r\n一-龥。，！？：；、]*?\S)[ \t]*\$\$(?![0-9A-Za-z$\\])/u;
 
 interface InlineMatch {
   raw: string;
@@ -79,11 +89,14 @@ type MathToken = {
 };
 
 function mathInlineRule(state: InlineState, silent: boolean): boolean {
+  // markdown-it 在每个终结符位置（* - : ` _ [ ] …）都会调到这里，先按首字符
+  // 过滤再 slice——否则每次解析都是 O(n²) 的字符串垃圾（流式期间每秒重跑多次）。
+  const ch = state.src.charCodeAt(state.pos);
+  if (ch !== 0x24 /* $ */ && ch !== 0x5c /* \ */) return false;
   const src = state.src.slice(state.pos, state.posMax);
-  const ch = src[0];
   let match: InlineMatch | undefined;
-  if (ch === '$') match = dollarMathMatch(src);
-  else if (ch === '\\') match = slashMathMatch(src, '\\(', '\\)', false) ?? slashMathMatch(src, '\\[', '\\]', true);
+  if (ch === 0x24) match = dollarMathMatch(src);
+  else match = slashMathMatch(src, '\\(', '\\)', false) ?? slashMathMatch(src, '\\[', '\\]', true);
   if (!match) return false;
   if (!silent) {
     const token = state.push('math_inline', 'math', 0);
@@ -116,9 +129,11 @@ function mathBlockRule(state: BlockState, startLine: number, endLine: number, si
   }
   // 未闭合（流式尾部常见）：不吞掉后续内容，整段交回 paragraph 按原文显示。
   if (closingLine < 0) return false;
+  const content = state.getLines(startLine + 1, closingLine, state.blkIndent, false).trim();
+  // 空正文保留原文（行内规则同样拒绝空正文，避免渲染出一条空白带）。
+  if (!content) return false;
   if (silent) return true;
 
-  const content = state.getLines(startLine + 1, closingLine, state.blkIndent, false).trim();
   const token = state.push('math_block', 'math', 0);
   token.block = true;
   token.content = content;
@@ -232,7 +247,10 @@ export function texToSvg(source: string, display: boolean, fontSize: number): Ma
     const width = Number.parseFloat(SVG_WIDTH_RE.exec(svg)?.[1] ?? '');
     const height = Number.parseFloat(SVG_HEIGHT_RE.exec(svg)?.[1] ?? '');
     const depth = Number.parseFloat(SVG_VALIGN_RE.exec(svg)?.[1] ?? '0');
-    if (svg.includes('<svg') && Number.isFinite(width) && Number.isFinite(height)) {
+    if (
+      svg.includes('<svg') && Number.isFinite(width) && Number.isFinite(height) &&
+      width <= MATH_MAX_WIDTH_EX && height <= MATH_MAX_HEIGHT_EX
+    ) {
       // 缓存存 ex 尺寸（width/height/depth 字段单位为 ex），取用时按字号换算。
       result = { svg, width, height, depth: Number.isFinite(depth) ? Math.max(0, -depth) : 0 };
     }
