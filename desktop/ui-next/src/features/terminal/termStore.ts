@@ -54,8 +54,6 @@ export interface TermInstance {
 export interface SessionTerms {
   instances: TermInstance[];
   active: number;
-  /** 本会话是否开过终端:首开自动播种一个;用户全关后不复活 */
-  seeded: boolean;
   nextKey: number;
 }
 
@@ -78,7 +76,7 @@ export const terminalsVersion = (): number => version;
 export function sessionTerminals(sessionId: string): SessionTerms {
   let s = sessions.get(sessionId);
   if (!s) {
-    s = { instances: [], active: 0, seeded: false, nextKey: 1 };
+    s = { instances: [], active: 0, nextKey: 1 };
     sessions.set(sessionId, s);
   }
   return s;
@@ -87,7 +85,6 @@ export function sessionTerminals(sessionId: string): SessionTerms {
 export function openTerminal(sessionId: string, workdir?: string): void {
   const s = sessionTerminals(sessionId);
   const key = s.nextKey++;
-  s.seeded = true;
   const container = document.createElement("div");
   container.style.height = "100%";
   const motionQuery = typeof window.matchMedia === "function"
@@ -165,6 +162,9 @@ export function openTerminal(sessionId: string, workdir?: string): void {
     }
     requestAnimationFrame(() => fitReport(inst));
     inst.poll = window.setInterval(() => {
+      // 视图不在场(收起侧边栏/切走会话)不白拉:标题只有面板可见才有人看,
+      // macOS 侧每次查询还要起一个 ps;回来后下一拍(≤2s)自然追上
+      if (!inst.container.isConnected) return;
       if (inst.oscSeen || inst.exited || inst.disposed) return;
       void termTitle(inst.id)
         .then((name) => {

@@ -91,6 +91,12 @@ fn main() {
             "cloud_ws_open",
             "cloud_ws_send",
             "cloud_ws_close",
+            // 本地终端(term.rs;侧边栏「终端」tab)
+            "term_open",
+            "term_write",
+            "term_resize",
+            "term_title",
+            "term_close",
             // 待办清单(todos.rs)
             "todos_load",
             "todos_save",
@@ -101,6 +107,7 @@ fn main() {
             "todo_uploads_dir",
             // Design 预览工作台(preview.rs)
             "preview_create",
+            "preview_create_artifact",
             "preview_show",
             "preview_hide",
             "preview_set_bounds",

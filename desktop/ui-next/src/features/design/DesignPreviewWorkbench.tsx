@@ -1,5 +1,5 @@
 import {
-  IconArrowBackUp, IconBrowser, IconCamera, IconCode, IconDeviceDesktop, IconDeviceMobile,
+  IconArrowBackUp, IconCamera, IconCode, IconDeviceDesktop, IconDeviceMobile,
   IconDeviceTablet, IconDownload, IconMessage, IconPencil, IconPointer, IconRefresh,
   IconSend, IconSquare, IconTrash, IconX, IconFolder, IconCheck, IconChevronDown,
 } from "@tabler/icons-react";
@@ -17,7 +17,7 @@ import {
   previewReload, previewResultHide, previewResultShow, previewSaveHtml, previewSetBounds,
   previewSetZoom, previewShow, requestCapture, requestSerialization, type ElementSnapshot, type ElementStyles,
 } from "./previewIpc";
-import { normalizePreviewUrl } from "./previewUrl";
+import { normalizePreviewUrl, normalizeTypedPreviewUrl } from "./previewUrl";
 
 type Annotation =
   | { kind: "rect"; x: number; y: number; width: number; height: number }
@@ -49,6 +49,8 @@ function elementDraftOf(snapshot: ElementSnapshot): ElementDraft {
 }
 
 const PRESETS = { desktop: 1280, tablet: 768, mobile: 390 } as const;
+/** 选中元素弹窗「贴着元素放」所需的最小高度;低于它就改为盖住元素居中放。 */
+const SELECTED_DIALOG_MIN_HEIGHT = 160;
 
 function ElementSelect({
   label, value, options, onChange, openAbove = false,
@@ -337,18 +339,16 @@ function enqueuePreviewLifecycle<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export function DesignPreviewWorkbench({
-  sessionId, initialTarget, refreshKey = 0, composer, obscured, onClose,
+  sessionId, initialTarget, refreshKey = 0, composer, obscured,
 }: {
   sessionId: string;
   initialTarget: DesignPreviewTarget;
   refreshKey?: number;
   composer: Pick<ComposerCtl, "sendWithFiles">;
   obscured: boolean;
-  onClose(): void;
 }) {
   const { t } = useI18n();
   const initialUrl = initialTarget.kind === "localhost" ? initialTarget.url : "";
-  const paneRef = useRef<HTMLElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef(0);
   const createdRef = useRef(false);
@@ -357,7 +357,6 @@ export function DesignPreviewWorkbench({
     : `artifact:${initialTarget.path}`;
   const incomingNative = initialTarget.kind === "localhost" || initialTarget.artifactKind === "html";
   const incomingRefreshRef = useRef(refreshKey);
-  const [paneWidth, setPaneWidth] = useState<number | string>("70%");
   const [target, setTarget] = useState<DesignPreviewTarget>(initialTarget);
   const targetKey = target.kind === "localhost" ? `localhost:${normalizePreviewUrl(target.url) ?? target.url}` : target.kind === "artifact" ? `artifact:${target.path}` : "none";
   const latestRef = useRef({ sessionId, targetKey, targetKind: target.kind });
@@ -374,6 +373,11 @@ export function DesignPreviewWorkbench({
   const [zoom, setZoom] = useState(100);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+  // 地址走 ref 而非依赖:submitFeedback 一旦跟着 address 变身份,挂在它上面的
+  // preview-element-picked / picker-error / result-action 三个原生监听就会随
+  // 地址栏的每次击键注销重注册(选区事件正好落在这个窗口里就丢了)。
+  const addressRef = useRef(address);
+  addressRef.current = address;
   const [preset, setPreset] = useState<keyof typeof PRESETS>("desktop");
   const [status, setStatus] = useState("");
   const [html, setHtml] = useState("");
@@ -462,7 +466,7 @@ export function DesignPreviewWorkbench({
       const annotated = await annotatedDataUrl(image, feedbackAnnotations);
       if (latestRef.current.sessionId !== forSid) return false;
       const accepted = await composer.sendWithFiles(
-        feedbackOf(address, feedbackAnnotations, message),
+        feedbackOf(addressRef.current, feedbackAnnotations, message),
         [pngFileOf(annotated)],
       );
       if (latestRef.current.sessionId !== forSid) return false;
@@ -479,7 +483,7 @@ export function DesignPreviewWorkbench({
       feedbackSendingRef.current = false;
       if (latestRef.current.sessionId === forSid) setFeedbackSending(false);
     }
-  }, [sessionId, composer, address, report]);
+  }, [sessionId, composer, report]);
 
   const bounds = useCallback(() => {
     const host = hostRef.current;
@@ -544,6 +548,8 @@ export function DesignPreviewWorkbench({
   }, [tab, preset, bounds]);
 
   useEffect(() => {
+    // 地址栏常驻:artifact 态也把当前路径回填,免得输入框空着看不出在预览什么。
+    if (target.kind === "artifact") { setAddress(target.path); return; }
     if (target.kind !== "localhost") return;
     const url = normalizePreviewUrl(target.url);
     if (!url) return;
@@ -568,10 +574,14 @@ export function DesignPreviewWorkbench({
   }, [hidden, bounds, report]);
 
   useEffect(() => {
-    const generation = liveRef.current;
     const offPicked = onPreviewElementPicked((snapshot) => {
-      if (liveRef.current !== generation || !pickerRef.current) return;
+      if (!pickerRef.current) return;
       pickerRef.current = false;
+      // 代次在**事件到达时**取,不能在注册时取:换预览目标会重建 webview 并
+      // 递增 liveRef,而本 effect 不跟着重跑(重跑会引入注册/注销竞态)。按
+      // 注册时的快照比对,切过一次文件或地址之后每次选取都会被当成过期丢掉
+      // ——现象就是「点了编辑、选了元素,却不弹窗」。
+      const generation = liveRef.current;
       const selection = ++elementSelectionRef.current;
       const selectedTarget = latestRef.current.targetKey;
       const showPicked = (preview: string | null) => {
@@ -588,9 +598,9 @@ export function DesignPreviewWorkbench({
       });
       void previewPickerToggle(false).catch(report);
     });
-    const offError = onPreviewPickerError((error) => liveRef.current === generation && report(error));
+    const offError = onPreviewPickerError((error) => report(error));
     const offAction = onPreviewResultAction((action) => {
-      if (liveRef.current !== generation || latestRef.current.sessionId !== sessionId) return;
+      if (latestRef.current.sessionId !== sessionId) return;
       const image = resultImageRef.current;
       const resultAnnotations = resultAnnotationsRef.current;
       const resultFeedback = resultFeedbackRef.current;
@@ -603,6 +613,9 @@ export function DesignPreviewWorkbench({
       if (action === "close") void previewResultHide().catch(report);
     });
     return () => { offPicked(); offError(); offAction(); };
+    // 依赖刻意不含 previewSourceKey:监听常驻,过期判定交给上面的代次/选区/
+    // 目标三重守卫。跟着目标重注册会踩注册-注销竞态(旧的 unlisten 落在新的
+    // listen 之后,把新监听一并摘掉)。
   }, [sessionId, submitFeedback, report]);
 
   const togglePicker = (purpose: "edit" | "comment") => {
@@ -631,13 +644,39 @@ export function DesignPreviewWorkbench({
         report(error);
       });
   };
-  const navigate = () => {
-    const normalized = normalizePreviewUrl(address);
-    if (!normalized) { setStatus("Only localhost, 127.0.0.1 and [::1] HTTP(S) URLs are allowed."); return; }
+  const openTarget = (next: DesignPreviewTarget) => {
     elementSelectionRef.current += 1;
     setPicked(null); setPickedPreview(null);
-    setAddress(normalized); setTarget({ kind: "localhost", url: normalized }); setStatus("");
-    if (native) void previewNavigate(normalized).catch(report);
+    setTarget(next); setStatus("");
+    if (next.kind === "artifact" && next.artifactKind === "html") setSavePath(next.path);
+  };
+  // 地址栏兼收两种输入(像浏览器地址栏兼收网址与搜索):localhost 地址切 dev
+  // server,工作区相对路径切静态文件。文件路径只认 repo_preview_files 报过的
+  // 那些——既省掉自己判扩展名,也保证不会切到一个预览不了的路径。
+  const navigate = () => {
+    const typed = address.trim();
+    const normalized = normalizeTypedPreviewUrl(typed);
+    if (normalized) {
+      openTarget({ kind: "localhost", url: normalized });
+      setAddress(normalized);
+      if (native) void previewNavigate(normalized).catch(report);
+      return;
+    }
+    if (!typed) return;
+    // 原样回车(路径没改)= 刷新当前预览,不该报错
+    if (target.kind === "artifact" && typed === target.path) {
+      void previewReload().catch(report);
+      return;
+    }
+    void (previewFiles ? Promise.resolve(previewFiles) : repoPreviewFiles(sessionId).then((r) => {
+      setPreviewFiles(r.files); setFilesTruncated(r.truncated);
+      return r.files;
+    })).then((files) => {
+      if (latestRef.current.sessionId !== sessionId) return;
+      const hit = files.find((file) => file.path === typed);
+      if (hit) openTarget(targetForFile(hit));
+      else setStatus(t("design.preview.addressInvalid"));
+    }, report);
   };
   const serialize = async () => {
     setStatus("Serializing…");
@@ -727,7 +766,10 @@ export function DesignPreviewWorkbench({
   const sendFeedback = async () => {
     const image = capture;
     if (!image) return;
-    if (await submitFeedback(image, annotations, feedbackText)) closeCapture();
+    // 发出去了就直接收起标注层。这里不能走 closeCapture:它会弹原生结果卡
+    // 再问一次「下载 / 发送到对话」——对一件已经做完的事二次追问。结果卡只
+    // 服务「关掉标注但还没发」那条路。
+    if (await submitFeedback(image, annotations, feedbackText)) cancelCapture();
   };
 
   const point = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -876,45 +918,55 @@ export function DesignPreviewWorkbench({
   const selectedElementDialogBelowTop = Math.max(12, selectedElementBottom + 8);
   const selectedElementDialogBelowSpace = Math.max(0, overlayHeight - selectedElementDialogBelowTop - 12);
   const selectedElementDialogAboveSpace = Math.max(0, selectedElementTop - 20);
-  const selectedElementDialogPreferredHeight = Math.min(320, Math.max(0, overlayHeight - 24));
-  const selectedElementDialogAbove = overlayHeight > 0
+  const selectedElementDialogRoom = Math.max(0, overlayHeight - 24);
+  const selectedElementDialogPreferredHeight = Math.min(320, selectedElementDialogRoom);
+  // 选中元素占满视口(点到 section/body 这类大块)时,元素上下都挤不出空间,
+  // 继续「贴着元素放」会把 maxHeight 算成 0——弹窗还在 DOM 里但高度为零,
+  // 现象就是「选中了却什么都没弹」。侧边栏形态(2026-08-30)比旧的宽 aside
+  // 矮窄得多,这一档必现。放不下时改为盖住元素、用满可用高度:挡住一部分
+  // 预览也好过一个不可见的弹窗。
+  const selectedElementDialogFits = overlayHeight > 0
+    && Math.max(selectedElementDialogBelowSpace, selectedElementDialogAboveSpace)
+      >= Math.min(SELECTED_DIALOG_MIN_HEIGHT, selectedElementDialogPreferredHeight);
+  const selectedElementDialogAbove = selectedElementDialogFits
     && selectedElementDialogBelowSpace < selectedElementDialogPreferredHeight
     && selectedElementDialogAboveSpace > selectedElementDialogBelowSpace;
-  const selectedElementDialogStyle = selectedElementDialogAbove
-    ? { left: selectedElementDialogLeft, bottom: Math.max(12, overlayHeight - selectedElementTop + 8), maxHeight: selectedElementDialogAboveSpace }
-    : { left: selectedElementDialogLeft, top: selectedElementDialogBelowTop, maxHeight: selectedElementDialogBelowSpace };
+  // overlayHeight 尚未量到(首帧/隐藏态)时不设上限,交给自然高度,
+  // 免得靠一个陈旧的 0 把弹窗压没。
+  const selectedElementDialogStyle = overlayHeight <= 0
+    ? { left: selectedElementDialogLeft, top: 12 }
+    : !selectedElementDialogFits
+      ? { left: selectedElementDialogLeft, top: 12, maxHeight: selectedElementDialogRoom }
+      : selectedElementDialogAbove
+        ? { left: selectedElementDialogLeft, bottom: Math.max(12, overlayHeight - selectedElementTop + 8), maxHeight: selectedElementDialogAboveSpace }
+        : { left: selectedElementDialogLeft, top: selectedElementDialogBelowTop, maxHeight: selectedElementDialogBelowSpace };
 
   return (
-    <aside ref={paneRef} aria-label={t("design.preview.workbench")} style={{ width: paneWidth }} className="relative flex min-w-80 shrink-0 flex-col border-s border-base-300 bg-base-100">
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={t("design.preview.resize")}
-        className="absolute inset-y-0 -start-1 z-30 w-2 cursor-col-resize"
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          const parent = paneRef.current?.parentElement?.getBoundingClientRect();
-          const move = (event: PointerEvent) => parent && setPaneWidth(Math.max(320, Math.min(parent.width - 360, parent.right - event.clientX)));
-          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up, { once: true });
-        }}
-      />
+    // 嵌入形态(2026-08-30 侧边栏定案):宽度/拖宽/关闭都上收到 SidePanel,
+    // 本体只负责填满侧边栏的「预览」tab 区
+    <section aria-label={t("design.preview.workbench")} className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-base-100">
       <div className="relative flex h-10 shrink-0 items-center gap-1 border-b border-base-300 px-2">
         <button aria-label={t("design.preview.chooseFile")} className="btn btn-ghost btn-square btn-xs" onClick={() => { const open = !filesOpen; setFilesOpen(open); if (open && previewFiles === null) void loadFiles(); }}><IconFolder size={14} /></button>
-        {target.kind === "localhost" ? <>
-          <IconBrowser size={15} stroke={1.75} className="shrink-0 text-base-content/50" aria-hidden />
-          <input aria-label={t("design.preview.address")} className="input input-xs min-w-24 flex-1 font-mono" value={address} onChange={(e) => setAddress(e.target.value)} onKeyDown={(e) => e.key === "Enter" && navigate()} />
-          <button className="btn btn-ghost btn-square btn-xs" title={t("design.preview.navigate")} onClick={navigate}>→</button>
-          <button className="btn btn-ghost btn-square btn-xs" title={t("design.preview.reload")} onClick={() => void previewReload().catch(report)}><IconRefresh size={14} stroke={1.75} /></button>
-        </> : <>
-          <span className="min-w-0 flex-1 truncate font-mono text-xs" title={target.kind === "artifact" ? target.path : ""}>{target.kind === "artifact" ? target.path : ""}</span>
-          {target.kind === "artifact" && target.artifactKind === "html" && <button className="btn btn-ghost btn-square btn-xs" title={t("design.preview.reload")} onClick={() => void previewReload().catch(report)}><IconRefresh size={14} stroke={1.75} /></button>}
-        </>}
-        <button className="btn btn-ghost btn-square btn-xs" title={t("design.preview.close")} onClick={onClose}><IconX size={14} stroke={1.75} /></button>
+        {/* 地址栏常驻(2026-08-30):此前只在 localhost 目标下渲染,而切到
+            localhost 的唯一途径是 agent 在消息里打印过 URL——自己起的 dev
+            server 就永远进不来。artifact 态回填文件路径,键入 localhost 地址
+            回车即切换目标。 */}
+        <input
+          aria-label={t("design.preview.address")}
+          placeholder={t("design.preview.addressPlaceholder")}
+          title={target.kind === "artifact" ? target.path : address}
+          className="input input-xs min-w-24 flex-1 font-mono"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && navigate()}
+        />
+        <button className="btn btn-ghost btn-square btn-xs" title={t("design.preview.navigate")} onClick={navigate}>→</button>
+        {(target.kind === "localhost" || (target.kind === "artifact" && target.artifactKind === "html")) &&
+          <button className="btn btn-ghost btn-square btn-xs" title={t("design.preview.reload")} onClick={() => void previewReload().catch(report)}><IconRefresh size={14} stroke={1.75} /></button>}
         {filesOpen && <div className="absolute inset-x-2 top-10 z-40 max-h-72 overflow-auto rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
           <div className="flex gap-1"><input autoFocus aria-label={t("design.preview.searchFiles")} className="input input-xs min-w-0 flex-1" placeholder={t("design.preview.searchPlaceholder")} value={fileQuery} onChange={(e) => setFileQuery(e.target.value)} /><button className="btn btn-ghost btn-xs" disabled={filesLoading} onClick={() => void loadFiles()}><IconRefresh size={13} /> {t("design.preview.refresh")}</button></div>
           {filesTruncated && <p className="py-1 text-xs text-warning">{t("design.preview.truncated")}</p>}
-          <div className="mt-1 flex flex-col">{visibleFiles.map((file) => <button key={file.path} className="btn btn-ghost btn-sm h-auto min-h-8 justify-start font-mono text-xs" title={file.path} onClick={() => { const nextTarget = targetForFile(file); elementSelectionRef.current += 1; setPicked(null); setPickedPreview(null); setTarget(nextTarget); if (nextTarget.kind === "artifact" && nextTarget.artifactKind === "html") setSavePath(nextTarget.path); setFilesOpen(false); }}>{file.path}</button>)}</div>
+          <div className="mt-1 flex flex-col">{visibleFiles.map((file) => <button key={file.path} className="btn btn-ghost btn-sm h-auto min-h-8 justify-start font-mono text-xs" title={file.path} onClick={() => { openTarget(targetForFile(file)); setFilesOpen(false); }}>{file.path}</button>)}</div>
           {!filesLoading && visibleFiles.length === 0 && <p className="p-2 text-xs text-base-content/60">{t("design.preview.empty")}</p>}
         </div>}
       </div>
@@ -928,10 +980,13 @@ export function DesignPreviewWorkbench({
           <button role="tab" className={`tab ${tab === "preview" ? "tab-active" : ""}`} onClick={() => { setTab("preview"); requestAnimationFrame(() => void previewShow().then(bounds).catch(report)); }}>{t("design.preview.tab.preview")}</button>
           <button role="tab" className={`tab ${tab === "code" ? "tab-active" : ""}`} onClick={() => void serialize()}><IconCode size={12} stroke={1.75} /> {t("design.preview.tab.code")}</button>
         </div>
-        <button className="btn btn-ghost btn-xs ms-auto" onClick={() => void takeScreenshot()}><IconCamera size={13} stroke={1.75} /> {t("design.preview.screenshot")}</button>
-        <button className={`btn btn-xs ${picker && pickerPurpose === "comment" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("comment")}><IconMessage size={13} stroke={1.75} /> {t("design.preview.annotate")}</button>
-        <button className={`btn btn-xs ${capture ? "btn-primary" : "btn-ghost"}`} onClick={() => capture ? cancelCapture() : void startCapture()}><IconPencil size={13} stroke={1.75} /> {t("design.preview.mark")}</button>
-        <button className={`btn btn-xs ${picker && pickerPurpose === "edit" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("edit")}><IconPointer size={13} stroke={1.75} /> {t("design.preview.edit")}</button>
+        {/* 四个动作两两相似(截图/标记都出图,注释/编辑都要选元素),标签本身
+            分不出差别——tooltip 一律说「点完得到什么」,并点明去向:截图只进
+            剪贴板、编辑只改预览,另两个才发进对话。 */}
+        <button title={t("design.preview.screenshotTip")} className="btn btn-ghost btn-xs ms-auto" onClick={() => void takeScreenshot()}><IconCamera size={13} stroke={1.75} /> {t("design.preview.screenshot")}</button>
+        <button title={picker && pickerPurpose === "comment" ? t("design.preview.exitTip") : t("design.preview.annotateTip")} className={`btn btn-xs ${picker && pickerPurpose === "comment" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("comment")}><IconMessage size={13} stroke={1.75} /> {t("design.preview.annotate")}</button>
+        <button title={capture ? t("design.preview.exitTip") : t("design.preview.markTip")} className={`btn btn-xs ${capture ? "btn-primary" : "btn-ghost"}`} onClick={() => capture ? cancelCapture() : void startCapture()}><IconPencil size={13} stroke={1.75} /> {t("design.preview.mark")}</button>
+        <button title={picker && pickerPurpose === "edit" ? t("design.preview.exitTip") : t("design.preview.editTip")} className={`btn btn-xs ${picker && pickerPurpose === "edit" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("edit")}><IconPointer size={13} stroke={1.75} /> {t("design.preview.edit")}</button>
         <select aria-label={t("design.preview.zoom")} className="select select-xs w-20" value={zoom} onChange={(e) => { const n = Math.min(500, Math.max(10, Number(e.target.value))); setZoom(n); void previewSetZoom(n / 100).catch(report); }}>
           {[10, 25, 50, 75, 100, 125, 150, 200, 300, 400, 500].map((n) => <option key={n} value={n}>{n}%</option>)}
         </select>
@@ -1163,6 +1218,6 @@ export function DesignPreviewWorkbench({
           </div>
         )}
       </div>
-    </aside>
+    </section>
   );
 }

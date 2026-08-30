@@ -17,7 +17,7 @@ import { engineCapsRequired } from "@/lib/ipc/approvals";
 import { sessionCompact, sessionSteer } from "@/lib/ipc/controls";
 import { afterEngineReady } from "@/lib/ipc/engine";
 import { sessionSend } from "@/lib/ipc/sessions";
-import { attLineOf } from "@/lib/protocol/attLine";
+import { attLineFor } from "@/lib/protocol/attLine";
 import {
   isImagePath,
   nativePathOf,
@@ -61,10 +61,14 @@ import {
 } from "./sendQueue";
 
 export interface ComposerAtt {
-  /** 工作区相对路径(壳返回;附件行与模型可读路径都用它)。 */
+  /** 工作区相对路径(壳返回;附件行与模型可读路径都用它)。
+   *  isDir 时改为 resolveRuntimePath 后的运行时绝对路径。 */
   path: string;
   name: string;
   isImage: boolean;
+  /** 目录**引用**(不上传、不拷贝,只把路径交给 agent 自取)。
+   *  与上传附件同列展示,但不可回读/下载。 */
+  isDir?: boolean;
 }
 
 export interface ComposerUpload {
@@ -77,11 +81,11 @@ export interface ComposerUpload {
 }
 
 /** 本地附件行(约定唯一出处在 lib/protocol/attLine,进消息正文)。 */
-export const attLine = (a: ComposerAtt) => attLineOf(a.path, a.isImage);
+export const attLine = attLineFor;
 
 /** pending 项的最终正文。普通逐轮投递与 runtime steering 必须共用此口径。 */
 function queuedText(item: { content: string; attachments: LocalQueueAttachment[] }): string {
-  return [item.content.trim(), ...item.attachments.map((a) => attLineOf(a.path, a.isImage))].filter(Boolean).join("\n");
+  return [item.content.trim(), ...item.attachments.map(attLine)].filter(Boolean).join("\n");
 }
 
 export interface ComposerCtl {
@@ -121,6 +125,9 @@ export interface ComposerCtl {
   addFiles(files: File[]): Promise<void>;
   /** 系统对话框选出的本地路径直拷为附件。 */
   addPaths(paths: string[]): Promise<void>;
+  /** 目录引用入列(不上传:只把运行时绝对路径作为 [目录] 行带给 agent)。
+   *  同一路径重复选取按幂等处理,返回是否新增。 */
+  addDirectory(path: string): boolean;
 }
 
 const ERROR_TTL_MS = 8000;
@@ -661,6 +668,26 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
     [notifyError, sessionId, uploadOne],
   );
 
+  // 目录不经上传通道:没有字节要传,也就没有进度/取消/digest 那套。直接入
+  // atts,让它与上传附件共用 chip 展示、removeAtt、排队与 stash 恢复。
+  const addDirectory = useCallback(
+    (path: string) => {
+      if (editingIdRef.current) {
+        notifyError(t("chat.sendQueue.attachmentsReadOnly"));
+        return false;
+      }
+      if (atts.some((a) => a.isDir && a.path === path)) return false;
+      const name = path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || path;
+      setAtts((list) =>
+        list.some((a) => a.isDir && a.path === path)
+          ? list
+          : [...list, { path, name, isImage: false, isDir: true }],
+      );
+      return true;
+    },
+    [atts, notifyError],
+  );
+
   const sendWithFiles = useCallback(
     async (raw: string, files: File[]): Promise<boolean> => {
       const text = raw.trim();
@@ -923,6 +950,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       stop,
       addFiles,
       addPaths,
+      addDirectory,
     }),
     [
       draft,
@@ -952,6 +980,7 @@ export function useComposer(sessionId: string, feed: ComposerFeed): ComposerCtl 
       stop,
       addFiles,
       addPaths,
+      addDirectory,
     ],
   );
 }

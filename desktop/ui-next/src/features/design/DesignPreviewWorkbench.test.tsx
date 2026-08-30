@@ -60,11 +60,11 @@ afterEach(() => { delete (window as unknown as { __TAURI__?: unknown }).__TAURI_
 const composer = { sendWithFiles: vi.fn(async () => true) } as unknown as ComposerCtl;
 
 function mount(obscured = false) {
-  return render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured={obscured} onClose={() => {}} />);
+  return render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured={obscured} />);
 }
 
 function mountArtifact(path = "pages/home.html") {
-  return render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path, artifactKind: "html" }} composer={composer} obscured={false} onClose={() => {}} />);
+  return render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path, artifactKind: "html" }} composer={composer} obscured={false} />);
 }
 
 async function waitPreviewReady() {
@@ -91,13 +91,28 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     expect(screen.getByRole("button", { name: /Edit/ })).toBeTruthy();
   });
 
+  // 四个动作两两相似,标签分不出差别;提示必须说清「去哪儿」——截图只进剪贴板、
+  // 编辑只改预览,是最容易被误解也最容易在改文案时丢掉的两条。
+  it("gives each toolbar action a tooltip that states where its result goes", async () => {
+    setLocale("zh-CN");
+    mount();
+
+    expect(screen.getByRole("button", { name: "截图" }).getAttribute("title")).toContain("不发进对话");
+    expect(screen.getByRole("button", { name: "注释" }).getAttribute("title")).toContain("发进对话");
+    expect(screen.getByRole("button", { name: "标记" }).getAttribute("title")).toContain("发进对话");
+    expect(screen.getByRole("button", { name: "编辑" }).getAttribute("title")).toContain("不写回源码");
+
+    act(() => setLocale("en"));
+    expect((await screen.findByRole("button", { name: /Edit/ })).getAttribute("title")).toContain("preview only");
+  });
+
   it("creates with measured bounds, hides under an obscurer, restores and destroys", async () => {
     const view = mount();
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create")).toBe(true));
     expect(calls.find((c) => c.cmd === "preview_create")?.args?.bounds).toEqual({ x: 400, y: 80, width: 600, height: 400 });
-    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured onClose={() => {}} />);
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured />);
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_hide")).toBe(true));
-    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured={false} onClose={() => {}} />);
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured={false} />);
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_show")).toBe(true));
     view.unmount();
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_destroy")).toBe(true));
@@ -116,7 +131,7 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
 
   it("does not let the StrictMode cleanup destroy the active preview", async () => {
     deferCreates = true;
-    render(<StrictMode><DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured={false} onClose={() => {}} /></StrictMode>);
+    render(<StrictMode><DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured={false} /></StrictMode>);
     await waitFor(() => expect(pendingCreates).toHaveLength(1));
 
     await act(async () => {
@@ -167,10 +182,10 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
 
   it("waits for non-preview cleanup before creating the next artifact", async () => {
     deferDestroys = true;
-    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "images/hero.png", artifactKind: "image" }} composer={composer} obscured={false} onClose={() => {}} />);
+    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "images/hero.png", artifactKind: "image" }} composer={composer} obscured={false} />);
     await waitFor(() => expect(pendingDestroys).toHaveLength(1));
 
-    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/home.html", artifactKind: "html" }} composer={composer} obscured={false} onClose={() => {}} />);
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/home.html", artifactKind: "html" }} composer={composer} obscured={false} />);
     expect(calls.some((c) => c.cmd === "preview_create_artifact")).toBe(false);
     await act(async () => {
       pendingDestroys.shift()?.();
@@ -208,25 +223,25 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
   });
 
   it("switches artifact when initialTarget changes in the same session", async () => {
-    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/first.html", artifactKind: "html" }} composer={composer} obscured={false} onClose={() => {}} />);
+    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/first.html", artifactKind: "html" }} composer={composer} obscured={false} />);
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create_artifact" && c.args?.path === "pages/first.html")).toBe(true));
-    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/second.html", artifactKind: "html" }} composer={composer} obscured={false} onClose={() => {}} />);
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/second.html", artifactKind: "html" }} composer={composer} obscured={false} />);
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create_artifact" && c.args?.path === "pages/second.html")).toBe(true));
   });
 
   it("reloads an unchanged artifact when a completed turn refreshes it", async () => {
     const target = { kind: "artifact", path: "index.html", artifactKind: "html" } as const;
-    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={0} composer={composer} obscured={false} onClose={() => {}} />);
+    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={0} composer={composer} obscured={false} />);
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create_artifact" && c.args?.path === "index.html")).toBe(true));
 
-    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={1} composer={composer} obscured={false} onClose={() => {}} />);
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={1} composer={composer} obscured={false} />);
 
     await waitFor(() => expect(calls.filter((c) => c.cmd === "preview_reload")).toHaveLength(1));
     expect(calls.filter((c) => c.cmd === "preview_create_artifact")).toHaveLength(1);
   });
 
   it("reloads an artifact already selected inside the workbench", async () => {
-    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/first.html", artifactKind: "html" }} refreshKey={0} composer={composer} obscured={false} onClose={() => {}} />);
+    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/first.html", artifactKind: "html" }} refreshKey={0} composer={composer} obscured={false} />);
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create_artifact" && c.args?.path === "pages/first.html")).toBe(true));
     await userEvent.click(screen.getByRole("button", { name: "Choose workspace preview file" }));
     await userEvent.click(await screen.findByRole("button", { name: "pages/home.html" }));
@@ -234,7 +249,7 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     calls = [];
 
     const target = { kind: "artifact", path: "pages/home.html", artifactKind: "html" } as const;
-    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={1} composer={composer} obscured={false} onClose={() => {}} />);
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={1} composer={composer} obscured={false} />);
 
     await waitFor(() => expect(calls.filter((c) => c.cmd === "preview_reload")).toHaveLength(1));
     expect(calls.some((c) => c.cmd === "preview_create_artifact")).toBe(false);
@@ -242,12 +257,12 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
 
   it("does not reload non-native artifacts", async () => {
     const target = { kind: "artifact", path: "images/hero.png", artifactKind: "image" } as const;
-    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={0} composer={composer} obscured={false} onClose={() => {}} />);
+    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={0} composer={composer} obscured={false} />);
     await waitFor(() => expect(calls.some((c) => c.cmd === "session_call" && c.args?.kind === "repo_artifact_read")).toBe(true));
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_destroy")).toBe(true));
     calls = [];
 
-    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={1} composer={composer} obscured={false} onClose={() => {}} />);
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={1} composer={composer} obscured={false} />);
     await act(async () => { await Promise.resolve(); });
 
     expect(calls.some((c) => c.cmd === "preview_reload")).toBe(false);
@@ -255,10 +270,10 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
 
   it("serializes rapid artifact preview switches", async () => {
     deferCreates = true;
-    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/first.html", artifactKind: "html" }} composer={composer} obscured={false} onClose={() => {}} />);
+    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/first.html", artifactKind: "html" }} composer={composer} obscured={false} />);
     await waitFor(() => expect(pendingCreates).toHaveLength(1));
 
-    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/second.html", artifactKind: "html" }} composer={composer} obscured={false} onClose={() => {}} />);
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/second.html", artifactKind: "html" }} composer={composer} obscured={false} />);
     await act(async () => {
       pendingCreates.shift()?.();
       await Promise.resolve();
@@ -275,7 +290,7 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
   });
 
   it("renders workspace HTML without reading it through IPC", async () => {
-    render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/home.html", artifactKind: "html" }} composer={composer} obscured={false} onClose={() => {}} />);
+    render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/home.html", artifactKind: "html" }} composer={composer} obscured={false} />);
 
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create_artifact" && c.args?.id === "s1" && c.args?.path === "pages/home.html")).toBe(true));
     expect(calls.some((c) => c.cmd === "session_call" && c.args?.kind === "repo_artifact_read")).toBe(false);
@@ -339,7 +354,7 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save HTML" }));
     await waitFor(() => expect(pendingSaves).toHaveLength(1));
 
-    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "images/hero.png", artifactKind: "image" }} composer={composer} obscured={false} onClose={() => {}} />);
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "images/hero.png", artifactKind: "image" }} composer={composer} obscured={false} />);
     expect(await screen.findByRole("img", { name: "images/hero.png" })).toBeTruthy();
     const reloadsBeforeSaveCompletes = calls.filter((call) => call.cmd === "preview_reload").length;
     await act(async () => { pendingSaves.shift()?.(); await Promise.resolve(); });
@@ -552,6 +567,74 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     expect(screen.getByText(/BUTTON · #second/)).toBeTruthy();
   });
 
+  // 地址栏此前只在 localhost 目标下渲染,而切到 localhost 只能靠 agent 在消息里
+  // 打印过 URL——用户自己起的 dev server 无从进入,预览等于只能看静态文件。
+  it("lets a static-file preview be pointed at a dev server through the address bar", async () => {
+    mountArtifact("dist/index.html");
+    const bar = await screen.findByLabelText("Preview address");
+    expect((bar as HTMLInputElement).value).toBe("dist/index.html");
+
+    await userEvent.clear(bar);
+    await userEvent.type(bar, "http://localhost:5173/{Enter}");
+
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create")).toBe(true));
+    expect(calls.filter((c) => c.cmd === "preview_create").at(-1)?.args?.url).toBe("http://localhost:5173/");
+  });
+
+  // 地址栏显示的是文件路径,却只收 URL——那是把「看起来能改的东西」做成不能
+  // 改。两种输入都收:localhost 切 dev server,工作区路径切静态文件。
+  it("accepts a workspace file path typed into the address bar", async () => {
+    mountArtifact("pages/home.html");
+    const bar = await screen.findByLabelText("Preview address");
+    await userEvent.clear(bar);
+    await userEvent.type(bar, "images/hero.png{Enter}");
+
+    // repo_preview_files 报过的路径才认;命中后按该文件的 kind 切目标
+    expect(await screen.findByRole("img", { name: "images/hero.png" })).toBeTruthy();
+  });
+
+  it("accepts a bare host:port typed into the address bar", async () => {
+    mountArtifact("dist/index.html");
+    const bar = await screen.findByLabelText("Preview address");
+    await userEvent.clear(bar);
+    await userEvent.type(bar, "localhost:5173{Enter}");
+
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create")).toBe(true));
+    expect(calls.filter((c) => c.cmd === "preview_create").at(-1)?.args?.url).toBe("http://localhost:5173/");
+  });
+
+  it("still shows the element dialog after switching from a file to a dev server", async () => {
+    mountArtifact("dist/index.html");
+    const bar = await screen.findByLabelText("Preview address");
+    await userEvent.clear(bar);
+    await userEvent.type(bar, "localhost:5173{Enter}");
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create")).toBe(true));
+
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+    await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
+    act(() => events.get("preview-element-picked")?.({ payload: { selector: "#hero", text: "Hi", tag: "DIV", bounds: { x: 10, y: 20, width: 120, height: 32 }, styles: {} } }));
+
+    expect(await screen.findByRole("dialog", { name: "Selected element" })).toBeTruthy();
+  });
+
+  it("rejects a path that repo_preview_files never reported", async () => {
+    mountArtifact("pages/home.html");
+    const bar = await screen.findByLabelText("Preview address");
+    await userEvent.clear(bar);
+    await userEvent.type(bar, "nope/missing.html{Enter}");
+
+    expect(await screen.findByText(/Only localhost/)).toBeTruthy();
+  });
+
+  it("treats Enter on an unchanged artifact path as a reload, not an invalid URL", async () => {
+    mountArtifact("dist/index.html");
+    const bar = await screen.findByLabelText("Preview address");
+    await userEvent.type(bar, "{Enter}");
+
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_reload")).toBe(true));
+    expect(screen.queryByText(/Only localhost/)).toBeNull();
+  });
+
   it("includes the current artifact path in an element comment", async () => {
     mountArtifact("pages/home.html");
     await userEvent.click(screen.getByRole("button", { name: /Annotate/ }));
@@ -599,6 +682,27 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     expect(panel.style.top).toBe("");
     expect(panel.style.bottom).toBe("38px");
     expect(panel.style.maxHeight).toBe("350px");
+  });
+
+  // 侧边栏形态(2026-08-30)把 overlay 变矮:点到占满视口的大块元素时,元素
+  // 上下都挤不出空间,旧算法把 maxHeight 算成 0——弹窗在 DOM 里但高度为零,
+  // 用户看到的是「选中了却什么都没弹」。放不下时必须改为盖住元素。
+  it("falls back to overlapping the element when neither side has room", async () => {
+    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockImplementation(function (this: HTMLElement) {
+      if (this.dataset.previewHost !== undefined) return { x: 400, y: 80, left: 400, top: 80, right: 700, bottom: 320, width: 300, height: 240, toJSON() {} };
+      return { x: 400, y: 80, left: 400, top: 80, right: 700, bottom: 320, width: 300, height: 240, toJSON() {} };
+    });
+    mount();
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+    await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
+    // 整块 section:几乎铺满 240 高的 overlay,上下各剩不到 10px
+    act(() => events.get("preview-element-picked")?.({ payload: { selector: "section", text: "Whole page", tag: "SECTION", bounds: { x: 0, y: 4, width: 300, height: 232 }, styles: {} } }));
+
+    const panel = await screen.findByRole("dialog", { name: "Selected element" });
+    expect(panel.style.top).toBe("12px");
+    expect(panel.style.bottom).toBe("");
+    // 关键:高度不能是 0,否则弹窗等于不存在
+    expect(parseFloat(panel.style.maxHeight)).toBeGreaterThan(100);
   });
 
   it("keeps the wider selected-element panel inside the preview overlay", async () => {
@@ -841,6 +945,20 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     expect(surface.querySelector('rect[stroke="red"]')).toBeNull();
   });
 
+  // 发出去之后再弹一张「下载 / 发送到对话」的原生结果卡,是对已经做完的事二次
+  // 追问。结果卡只该服务「关掉标注但没发」那条路。
+  it("does not raise the native result card after the markup was sent", async () => {
+    mount();
+    await userEvent.click(screen.getByRole("button", { name: /Mark/ }));
+    await userEvent.type(await screen.findByLabelText("Message to Agent"), "Copy is unclear");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(composer.sendWithFiles).toHaveBeenCalledTimes(1));
+    expect(calls.some((c) => c.cmd === "preview_result_show")).toBe(false);
+    // 标注层照常收起
+    expect(screen.queryByLabelText("Annotation surface")).toBeNull();
+  });
+
   it("opens the inline editor at the clicked image position and commits its text", async () => {
     mount();
     await userEvent.click(screen.getByRole("button", { name: /Mark/ }));
@@ -885,7 +1003,6 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     expect(file!.type).toBe("image/png");
     expect(file!.size).toBe(3);
     expect(await screen.findByText("Feedback sent through the composer.")).toBeTruthy();
-    expect(calls.some((c) => c.cmd === "preview_result_show")).toBe(true);
   });
 
   it("keeps the capture open and visibly reports a guarded send failure", async () => {
@@ -901,9 +1018,9 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
   it("uses the same image composer path for the native preview-result send action", async () => {
     mount();
     await userEvent.click(screen.getByRole("button", { name: /Mark/ }));
-    await userEvent.click(await screen.findByRole("button", { name: /^Send$/ }));
-    await waitFor(() => expect(composer.sendWithFiles).toHaveBeenCalledTimes(1));
-    vi.mocked(composer.sendWithFiles).mockClear();
+    // 结果卡由「关闭标注」raise:那条路才是「先收起、稍后再下载/发送」
+    await userEvent.click(await screen.findByRole("button", { name: "Close capture" }));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_result_show")).toBe(true));
     await waitFor(() => expect(events.has("preview-result-action")).toBe(true));
     act(() => { events.get("preview-result-action")?.({ payload: "send" }); });
     await waitFor(() => expect(composer.sendWithFiles).toHaveBeenCalledTimes(1));

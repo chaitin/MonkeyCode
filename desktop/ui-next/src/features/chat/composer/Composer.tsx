@@ -38,6 +38,7 @@ import { timelineDeltaOf } from "@/lib/protocol/reduce";
 import { fmtK } from "@/lib/util/fmt";
 import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } from "@/lib/util/slash";
 import { insertNewlineAtSelection } from "@/lib/util/textarea";
+import { useDismiss } from "@/lib/util/useDismiss";
 import { BackgroundBar, ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing, type BackgroundTask } from "./composerKit";
 import { SendQueueList } from "./SendQueueList";
 import { ModelMenu, SkillsMenu } from "./pickers";
@@ -187,6 +188,9 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
   useImperativeHandle(ref, () => ({ focus: () => taRef.current?.focus() }), []);
   const imeRef = useRef(createImeGuard());
   const [models, setModels] = useState<ModelInfo[]>([]);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const attachMenuRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(attachMenuOpen, attachMenuRef, () => setAttachMenuOpen(false));
 
   // 切会话后焦点落到输入框:sessionId 处理同实例内切换;focusRequest 处理
   // 设置/新建/云端视图切回时的重挂载。请求消费后由 App 清零,避免引擎
@@ -589,11 +593,18 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
       .then((base) => pickDirectory(base))
       .then((path) => (path ? resolveRuntimePath(path) : null))
       .then((path) => {
+        // 选目录期间切走会话:路径属于原会话,不能落到新会话的附件里。
         if (!path || sessionRef.current !== forSession) return;
-        const prefix = draftRef.current.trimEnd();
-        ctl.setDraft(`${prefix}${prefix ? "\n" : ""}${t("chat.materialsPath", { path })}`);
+        ctl.addDirectory(path);
         taRef.current?.focus();
       });
+  };
+
+  // 菜单先收再开系统对话框:模态对话框会夺走焦点,useDismiss 的 pointerdown
+  // 收不到,回来时菜单还挂在那儿。
+  const pickFrom = (run: () => void) => {
+    setAttachMenuOpen(false);
+    run();
   };
 
   // ==== 运行态文案 ====
@@ -646,6 +657,8 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
           attachmentIsImage={(attachment) => attachment.isImage}
           loadAttachmentUrl={(attachment) => uploadFileURL(sessionId, attachment.path)}
           onOpenAttachment={(attachment) => {
+            // 目录只是路径引用,壳里没有对应字节可下载。
+            if (attachment.isDir) return;
             if (!attachment.isImage) downloadUpload(() => uploadFileURL(sessionId, attachment.path), attachment.name);
           }}
           attachedToComposer
@@ -721,6 +734,8 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
             ))}
             {ctl.atts.map((a, i) => (
               <span key={a.path} title={a.path} className="badge badge-ghost text-xs">
+                {/* 目录是引用不是上传:给个文件夹图标,和拷进会话的附件区分开 */}
+                {a.isDir && <IconFolder size={12} stroke={1.75} aria-hidden className="shrink-0 opacity-70" />}
                 <span className="max-w-40 truncate">{a.name}</span>
                 <button
                   type="button"
@@ -762,25 +777,48 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
             与输入文字/正文同一条竖线。pe-2:发送钮是实底色块没有幽灵内距,
             贴 4px 边显挤,右侧多留一档 */}
         <div className="flex min-w-0 items-center gap-1 ps-1 pe-2 pb-1.5">
-          <button
-            type="button"
-            aria-label={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attach")}
-            title={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attachTip")}
-            className="btn btn-ghost btn-square btn-xs shrink-0 text-base-content/60"
-            disabled={attachmentsReadOnly}
-            onClick={attach}
+          {/* 上下文入口收成一个:文件与目录在用户心里是同一件事(给这条消息
+              加料),差异体现在产出的 chip 上,不该在工具栏各占一个图标——
+              两个相邻图标行为迥异正是最容易看岔的形态。 */}
+          <div
+            ref={attachMenuRef}
+            className={`dropdown dropdown-top shrink-0 ${attachMenuOpen ? "dropdown-open" : ""}`}
           >
-            <IconPaperclip size={15} stroke={1.75} aria-hidden />
-          </button>
-          <button
-            type="button"
-            aria-label={t("chat.materialsDirectory")}
-            title={t("chat.materialsDirectoryTip")}
-            className="btn btn-ghost btn-square btn-xs shrink-0 text-base-content/60"
-            onClick={pickMaterialsDirectory}
-          >
-            <IconFolder size={15} stroke={1.75} aria-hidden />
-          </button>
+            <button
+              type="button"
+              aria-label={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attach")}
+              title={attachmentsReadOnly ? attachmentsReadOnlyLabel : t("chat.attachTip")}
+              aria-expanded={attachMenuOpen}
+              className="btn btn-ghost btn-square btn-xs shrink-0 text-base-content/60"
+              disabled={attachmentsReadOnly}
+              onClick={() => setAttachMenuOpen((v) => !v)}
+            >
+              <IconPaperclip size={15} stroke={1.75} aria-hidden />
+            </button>
+            {attachMenuOpen && (
+              <ul
+                aria-label={t("chat.attach")}
+                className="dropdown-content menu w-56 flex-nowrap [&_li]:flex-nowrap overflow-x-hidden rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+              >
+                <li>
+                  <button type="button" className="flex items-center gap-2" onClick={() => pickFrom(attach)}>
+                    <IconPaperclip size={14} stroke={1.75} aria-hidden className="shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-xs">{t("chat.attachFiles")}</span>
+                  </button>
+                </li>
+                <li title={t("chat.materialsDirectoryTip")}>
+                  <button
+                    type="button"
+                    className="flex items-center gap-2"
+                    onClick={() => pickFrom(pickMaterialsDirectory)}
+                  >
+                    <IconFolder size={14} stroke={1.75} aria-hidden className="shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-xs">{t("chat.materialsDirectory")}</span>
+                  </button>
+                </li>
+              </ul>
+            )}
+          </div>
           <button
             type="button"
             title={t("chat.mode.tip")}

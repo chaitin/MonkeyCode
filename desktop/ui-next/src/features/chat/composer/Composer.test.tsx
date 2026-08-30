@@ -109,13 +109,58 @@ const sends = (ops: Op[], ftype: string) =>
 const calls = (ops: Op[], kind: string) =>
   ops.filter((o) => o.cmd === "session_call" && (o.args?.kind as string) === kind);
 
-describe("设计资料目录", () => {
-  it("使用 Agent 运行环境中的路径", async () => {
-    stubShell({ directoryPath: "\\\\wsl$\\Ubuntu\\home\\me\\materials", runtimePath: "/home/me/materials" });
+describe("资料目录", () => {
+  /** 上下文入口收成一个附件钮:先展开菜单,再点其中一项。 */
+  const openAttachMenu = async () => {
+    await userEvent.click(screen.getByRole("button", { name: "附件" }));
+    return screen.getByRole("list", { name: "附件" });
+  };
+  const pickDirectoryFromMenu = async () => {
+    const menu = await openAttachMenu();
+    await userEvent.click(within(menu).getByRole("button", { name: "资料目录…" }));
+  };
+
+  it("入附件列而非正文;发送时走 [目录] 行,用 Agent 运行环境中的路径", async () => {
+    const { ops } = stubShell({
+      directoryPath: "\\\\wsl$\\Ubuntu\\home\\me\\materials",
+      runtimePath: "/home/me/materials",
+    });
     render(<ChatView meta={META} />);
     const box = (await ready()) as HTMLTextAreaElement;
-    await userEvent.click(screen.getByRole("button", { name: "设计资料目录" }));
-    await waitFor(() => expect(box.value).toBe("设计资料目录：/home/me/materials"));
+    await pickDirectoryFromMenu();
+    // 呈现为可移除的 chip(与上传附件同列),正文一个字都不动
+    await waitFor(() => expect(screen.getByText("materials")).toBeTruthy());
+    expect(box.value).toBe("");
+
+    await userEvent.type(box, "按这些资料做{Enter}");
+    const sent = sends(ops, "user-input");
+    expect(sent).toHaveLength(1);
+    // 线格式是约定而非 i18n 文案:中英构建产出同一串
+    expect(b64decode((sent[0]?.args?.payload as { content: string }).content)).toBe(
+      "按这些资料做\n[目录] /home/me/materials",
+    );
+    await waitFor(() => expect(screen.queryByText("materials")).toBeNull());
+  });
+
+  it("重复选同一目录不叠加;✕ 可移除", async () => {
+    stubShell({ directoryPath: "/tmp/mats", runtimePath: "/tmp/mats" });
+    render(<ChatView meta={META} />);
+    await ready();
+    await pickDirectoryFromMenu();
+    await waitFor(() => expect(screen.getAllByText("mats")).toHaveLength(1));
+    await pickDirectoryFromMenu();
+    await waitFor(() => expect(screen.getAllByText("mats")).toHaveLength(1));
+
+    await userEvent.click(screen.getByRole("button", { name: "移除附件" }));
+    await waitFor(() => expect(screen.queryByText("mats")).toBeNull());
+  });
+
+  it("选完即收起菜单(系统对话框夺焦点,收不到 pointerdown)", async () => {
+    stubShell({ directoryPath: "/tmp/mats", runtimePath: "/tmp/mats" });
+    render(<ChatView meta={META} />);
+    await ready();
+    await pickDirectoryFromMenu();
+    await waitFor(() => expect(screen.queryByRole("list", { name: "附件" })).toBeNull());
   });
 
   it("会话切换后丢弃旧会话的目录选择结果", async () => {
@@ -126,7 +171,7 @@ describe("设计资料目录", () => {
     stubShell({ directoryResult });
     const { rerender } = render(<ChatView meta={META} />);
     await ready();
-    await userEvent.click(screen.getByRole("button", { name: "设计资料目录" }));
+    await pickDirectoryFromMenu();
     rerender(<ChatView meta={{ ...META, id: "s2", title: "另一个会话" }} />);
     resolveDirectory("/tmp/from-s1");
     await waitFor(() => expect(screen.getByRole("textbox", { name: "消息输入" })).toBeTruthy());

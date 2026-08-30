@@ -371,8 +371,9 @@ describe("聊天视图", () => {
     const h1 = header.querySelector("h1") as HTMLElement;
     expect(h1.hasAttribute("data-tauri-drag-region")).toBe(true);
     expect(h1.classList.contains("max-w-full")).toBe(true);
+    // 2026-08-30 侧边栏改造:预览/文件双钮收编为一颗开合钮,动作簇 = 开合 + ⋯
     const actions = header.querySelectorAll("[data-header-action]");
-    expect(actions).toHaveLength(3);
+    expect(actions).toHaveLength(2);
     for (const action of actions) expect(action.classList.contains("shrink-0")).toBe(true);
     // 双击改名的文字 span 必须留在拖拽区之外(拖拽区双击=窗口最大化)
     expect(h1.querySelector("span")?.hasAttribute("data-tauri-drag-region")).toBe(false);
@@ -437,11 +438,13 @@ describe("聊天视图", () => {
     expect(screen.getByText(/正在:改代码/)).toBeTruthy();
   });
 
-  it("H1 浮层优先:抽屉开 + 待审批,一次 Esc 只关抽屉不发 permission-resp;再按才拒绝", async () => {
+  // 2026-08-30 侧边栏改造:面板常驻(非浮层)后不再吃 Esc——审批热键照常
+  // 生效,侧边栏原地不动(面板内文件预览的先关一级钉在 FilesPanel.test)
+  it("侧边栏常驻不拦 Esc:打开侧边栏 + 待审批,一次 Esc 即拒绝,侧边栏不收", async () => {
     const { ops, emit } = stubShell();
     render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
-    await userEvent.click(screen.getByRole("button", { name: "会话文件" }));
+    await userEvent.click(screen.getByRole("button", { name: "打开侧边栏" }));
     expect(screen.getByRole("region", { name: "会话文件" })).toBeTruthy();
     emit("frames:s1", [
       { type: "permission-req", data: { id: "p9", title: "npm test", tool: "Bash" }, timestamp: 4, seq: 4 },
@@ -450,12 +453,9 @@ describe("聊天视图", () => {
 
     const permResp = () => ops.filter((o) => o.cmd === "session_send" && (o.args?.ftype as string) === "permission-resp");
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("region", { name: "会话文件" })).toBeNull(); // 抽屉关了
-    expect(permResp()).toHaveLength(0); // 同一下按键没顺手拒绝(deny 不可逆)
-
-    await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(permResp()).toHaveLength(1));
     expect(permResp()[0]?.args?.payload).toEqual({ id: "p9", approved: false, remember: false, persist: false });
+    expect(screen.getByRole("region", { name: "会话文件" })).toBeTruthy(); // 侧边栏不动
   });
 
   it("D4 双击标题改名:Enter 提交 session_patch,不乐观改 meta(等 session-event 回写)", async () => {
@@ -1042,11 +1042,15 @@ describe("聊天视图", () => {
     expect(badgeCls).toContain("[--indicator-t:5px]");
     expect(badgeCls).toContain("pointer-events-none");
 
-    // 徽标存在时点文件钮:抽屉直达「改动」页,改动列表直出
-    await userEvent.click(within(header).getByRole("button", { name: "会话文件" }));
-    const tab = await screen.findByRole("tab", { name: /改动/ });
-    expect(tab.className).toContain("tab-active");
+    // 徽标存在时点开合钮:侧边栏直达「变更」tab,改动列表直出
+    await userEvent.click(within(header).getByRole("button", { name: "打开侧边栏" }));
+    const tab = await screen.findByRole("tab", { name: /变更/ });
+    expect(tab.getAttribute("aria-selected")).toBe("true");
     expect(await screen.findByRole("button", { name: /a\.ts/ })).toBeTruthy();
+    // 终端 tab 在场但懒挂载:不点不起 shell(2026-08-30「终端可多开」;
+    // 多实例细节钉在 features/terminal/LocalTerminal.test)
+    expect(screen.getByRole("tab", { name: "终端" })).toBeTruthy();
+    expect(screen.queryByTestId("term-host")).toBeNull();
   });
 
   // 分屏格内形态(variant="pane"):细头/管理动作归 SplitView,数据面与
@@ -1058,7 +1062,7 @@ describe("聊天视图", () => {
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
     expect(container.querySelector("[data-view-header]")).toBeNull();
     expect(container.querySelector("main")).toBeNull();
-    expect(screen.queryByRole("button", { name: "会话文件" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "打开侧边栏" })).toBeNull();
     expect(container.querySelector(".chat-measure")).toBeNull();
     expect(container.querySelectorAll(".chat-measure-pane").length).toBeGreaterThan(0);
     // 大纲点列不渲染(贴边点列在窄格里挤占行宽)

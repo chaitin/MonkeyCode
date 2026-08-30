@@ -412,7 +412,7 @@ export function SplitView({
     onCreateRequestHandled?.();
   });
 
-  // ==== 分隔线拖拽(FilesDrawer::trackPointer 同款收尾纪律):收尾两条路
+  // ==== 分隔线拖拽(FilesPanel::trackPointer 同款收尾纪律):收尾两条路
   // 都有——正常 mouseup 之外,组件卸载(换模板)时兜底再收一次,否则
   // body 上的全局 cursor/user-select 副作用会永久留下 ====
   const stopDragRef = useRef<(() => void) | null>(null);

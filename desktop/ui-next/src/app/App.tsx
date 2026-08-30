@@ -51,6 +51,7 @@ import {
 } from "@/lib/ipc/sessions";
 import { noticeForQueuedDelivery, noticeForSessionEvent, type NoticeKind, type SessionNotice } from "@/lib/notices";
 import { deliverQueued, dropStash } from "@/features/chat/composer/stash";
+import { disposeSessionTerminals } from "@/features/terminal/termStore";
 import { readLastSession } from "@/lib/util/prefs";
 import { projectKey, readArchivedProjects } from "@/lib/util/projects";
 import { McTransportProvider } from "@/lib/mcTransport";
@@ -544,12 +545,14 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
     setWindowTitle(`${focusedTitle} — ${t("app.name")}`);
   }, [split.slots, split.focused, sessions, cloudFeed.tasks, t, locale]);
 
-  /** 删除会话(任务列右键/格内共用):成功才清 composer 留档、剪槽位、
+  /** 删除会话(任务列右键/格内共用):成功才清 composer 留档、杀掉本会话
+   *  终端(termStore 常驻,不清的话孤儿 shell 一直跑到退出)、剪槽位、
    *  重拉列表;失败外显原因并就此打住。 */
   const removeSession = (meta: SessionMeta) => {
     void sessionDelete(meta.id)
       .then(() => {
         dropStash(meta.id);
+        disposeSessionTerminals(meta.id);
         refresh();
       })
       .catch((e: unknown) => pushShell("notice.deleteFailed", "error", { params: { reason: errText(e) } }));

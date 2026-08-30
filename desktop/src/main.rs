@@ -25,6 +25,7 @@ mod skill_import;
 mod skill_transactions;
 mod skills;
 mod telemetry;
+mod term;
 mod todos;
 mod uploads;
 mod util;
@@ -1562,6 +1563,7 @@ fn main() {
     builder
         .manage(config::ConfigStore::new())
         .manage(DriverHost::new())
+        .manage(term::TermState::default())
         .manage(TrayReady(AtomicBool::new(true)))
         .manage(UiIntent(Mutex::new(None)))
         .manage(PetEnabled(AtomicBool::new(true)))
@@ -1688,6 +1690,11 @@ fn main() {
             baizhi::monkeycode::cloud_ws_open,
             baizhi::monkeycode::cloud_ws_send,
             baizhi::monkeycode::cloud_ws_close,
+            term::term_open,
+            term::term_write,
+            term::term_resize,
+            term::term_title,
+            term::term_close,
             todos::todos_load,
             todos::todos_save,
             todos::todo_upload_begin,

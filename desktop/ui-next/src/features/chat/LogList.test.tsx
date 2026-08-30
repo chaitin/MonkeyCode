@@ -395,6 +395,18 @@ describe("用户气泡附件呈现(附件行约定)", () => {
     expect(await screen.findByRole("dialog", { name: ".monkeycode/uploads/a.png" })).toBeTruthy();
   });
 
+  it("目录行剥成 chip:只显目录名,不当可下载文件", () => {
+    const uploadUrl = (p: string) => Promise.resolve(`data:image/png;base64,${p.length}`);
+    const state = withItems([{ kind: "user", text: "按这些资料做\n[目录] /home/me/Design Materials", seq: 1 }]);
+    render(<LogList state={state} sessionId="s1" uploadUrl={uploadUrl} />);
+
+    expect(screen.getByText("按这些资料做")).toBeTruthy();
+    expect(screen.queryByText(/\[目录\]/)).toBeNull();
+    // 尾段目录名成 chip;它是引用,不该出现可点击的下载钮
+    expect(screen.getByText("Design Materials")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Design Materials" })).toBeNull();
+  });
+
   it("无 uploadUrl(云端/无通道):正文原样,不剥附件行", () => {
     const state = withItems([{ kind: "user", text: TEXT, seq: 1 }]);
     render(<LogList state={state} sessionId="s1" />);

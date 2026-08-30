@@ -12,7 +12,7 @@
 // O(n) 的投影(join/分组/锚定表)只允许出现在结构变化；token 流式快路复用
 // 布局骨架。逐条目的昂贵计算(presentToolCall、splitAttachments、markdown)
 // 一律待在行组件内，靠 memo 只在该行变化时才跑。
-import { IconArrowsMinimize, IconCheck, IconChevronRight, IconCopy, IconFile as FileIcon, IconSparkles } from "@tabler/icons-react";
+import { IconArrowsMinimize, IconCheck, IconChevronRight, IconCopy, IconFile as FileIcon, IconFolder, IconSparkles } from "@tabler/icons-react";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { Markdown, MarkdownInline } from "@/components/markdown/Markdown";
@@ -57,15 +57,15 @@ function UserBubble({
   const { t } = useI18n();
   const [zoom, setZoom] = useState<string | null>(null); // 本地图:工作区相对路径
   const [zoomUrl, setZoomUrl] = useState<string | null>(null); // 云端图:直链
-  const { body, images, files } = uploadUrl
+  const { body, images, files, dirs } = uploadUrl
     ? splitAttachments(item.text)
-    : { body: item.text, images: [] as string[], files: [] as string[] };
+    : { body: item.text, images: [] as string[], files: [] as string[], dirs: [] as string[] };
   // 归约层对缺名附件留空串(不产成品文案),展示名在这儿兜底
   const attName = (a: { filename: string }) => a.filename || t("common.unnamedFile");
   const atts = item.attachments ?? [];
   const cloudImages = atts.filter((a) => isImagePath(a.filename));
   const cloudFiles = atts.filter((a) => !isImagePath(a.filename));
-  const hasAtts = images.length + files.length + cloudImages.length + cloudFiles.length > 0;
+  const hasAtts = images.length + files.length + dirs.length + cloudImages.length + cloudFiles.length > 0;
   const thumb = "block max-h-28 max-w-36 cursor-zoom-in rounded-box";
   return (
     <div
@@ -134,6 +134,17 @@ function UserBubble({
                 <FileIcon size={12} stroke={1.75} aria-hidden className="shrink-0" />
                 <span className="min-w-0 truncate">{p.split("/").pop() || p}</span>
               </button>
+            ))}
+            {/* 目录是引用:没有可下载的字节,也没有缩略图,只呈现来源路径 */}
+            {dirs.map((p) => (
+              <span
+                key={p}
+                className="badge badge-ghost max-w-56 gap-1 text-xs"
+                title={t("chat.att.dirTip", { path: p })}
+              >
+                <IconFolder size={12} stroke={1.75} aria-hidden className="shrink-0" />
+                <span className="min-w-0 truncate">{p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p}</span>
+              </span>
             ))}
           </div>
         )}

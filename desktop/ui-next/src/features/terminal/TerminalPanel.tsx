@@ -3,7 +3,8 @@
 // termStore(模块级)——本组件只是它的视图:收起侧边栏/切会话时组件卸载,
 // shell 与回滚缓冲原地活着,回来重新 attach。tab 名跟随前台进程/OSC 标题
 // (termStore 头注),缺省「终端 {n}」(编号单调不重排)。
-// 全关后留空态 + 新建入口,不自动复活——用户关掉最后一个是明确意图。
+// 不自动起 shell(2026-08-30 用户定案「让用户自己新建就行了」):进 tab
+// 只是挂面板,空态 + 新建入口等用户显式创建;全关后同样不复活。
 import { IconPlus, IconTerminal2, IconX } from "@tabler/icons-react";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
@@ -18,16 +19,11 @@ export function TerminalPanel({ sessionId, workdir }: { sessionId: string; workd
   useSyncExternalStore(subscribeTerminals, terminalsVersion);
   const s = sessionTerminals(sessionId);
 
-  // 首开播种:本会话从未开过终端才自动起一个;用户全关后(seeded 仍 true)
-  // 不复活
-  useEffect(() => {
-    if (!sessionTerminals(sessionId).seeded) openTerminal(sessionId, workdir);
-    // workdir 与 sessionId 同源,不单独驱动重开
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
-
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* 实例页签行只在有实例时存在:空态下整行退场(2026-08-30 用户报障
+          「没有 terminal 为啥还有一行 tab header」),新建入口由空态 CTA 独任 */}
+      {s.instances.length > 0 && (
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-base-300 px-2">
         {/* overflow-clip(SidePanel tab 条同款教训):单轴 hidden 会把另一轴
             算成 auto,变成滚动容器后点击获焦就上下跳 */}
@@ -63,19 +59,18 @@ export function TerminalPanel({ sessionId, workdir }: { sessionId: string; workd
             );
           })}
         </div>
-        {/* 空态时头部「+」让位给空态 CTA(同名双钮对可访问性树是歧义) */}
-        {s.instances.length > 0 && (
-          <button
-            type="button"
-            aria-label={t("term.new")}
-            title={t("term.new")}
-            className="btn btn-ghost btn-square btn-xs shrink-0 text-base-content/60"
-            onClick={() => openTerminal(sessionId, workdir)}
-          >
-            <IconPlus size={13} stroke={1.75} aria-hidden />
-          </button>
-        )}
+        {/* 空态 CTA 与本钮同名不共存:整行 header 空态即退场 */}
+        <button
+          type="button"
+          aria-label={t("term.new")}
+          title={t("term.new")}
+          className="btn btn-ghost btn-square btn-xs shrink-0 text-base-content/60"
+          onClick={() => openTerminal(sessionId, workdir)}
+        >
+          <IconPlus size={13} stroke={1.75} aria-hidden />
+        </button>
       </div>
+      )}
       {s.instances.map((inst) => (
         <TermHost key={inst.key} inst={inst} visible={s.active === inst.key} />
       ))}

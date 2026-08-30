@@ -7,7 +7,7 @@
 // 大纲跳转:锚(data-user-seq)不在 DOM 时按条目 offset 走 ensureLoaded
 // 精确补页(session_history 以 offset 为终点,不盲翻),补页提交前的空窗
 // 用短时重试兜；当前项由虚拟高度索引 O(1) 反查最近的用户行。
-import { IconAlertTriangle, IconBrowser, IconDots, IconFolderOpen, IconPencil } from "@tabler/icons-react";
+import { IconAlertTriangle, IconDots, IconFileDiff, IconFolder, IconLayoutSidebarRight, IconPencil, IconTerminal2, IconWorld } from "@tabler/icons-react";
 import {
   useCallback,
   useEffect,
@@ -43,7 +43,9 @@ import { DetailModal } from "./DetailModal";
 import { LogList, type LogListHandle } from "./LogList";
 import { OutlineNav, useOutlineEntries } from "./OutlineNav";
 import { TaskPanel } from "./TaskPanel";
-import { FilesDrawer } from "@/features/files/FilesDrawer";
+import { FilesPanel } from "@/features/files/FilesPanel";
+import { SidePanel, type SidePanelTab } from "@/components/SidePanel";
+import { TerminalPanel } from "@/features/terminal/TerminalPanel";
 import { DesignPreviewWorkbench } from "@/features/design/DesignPreviewWorkbench";
 import { hasDesignRelatedChanges, rankPreviewFiles, selectTurnPreviewArtifact, targetForFile, touchedTurnChanges, turnWarrantsArtifactPreview, writtenToolPaths, type DesignPreviewTarget } from "@/features/design/previewArtifact";
 import { currentTurnAgentPreviewUrl, newestAgentPreviewUrl, normalizePreviewUrl } from "@/features/design/previewUrl";
@@ -95,9 +97,9 @@ export function ChatView({
   hotkeysActive?: boolean;
   /** Linux 原生拖放是 window 级事件；分屏时仅焦点格接收。 */
   nativeDropEnabled?: boolean;
-  /** 格头「视图动作」插槽:文件钮 createPortal 进去(云端同构;格头唯一
-   *  框架不写任务类型分支)。抽屉本体也随之入格(pane 变体)——「云端在
-   *  格内、本地为啥全局」2026-08-19 用户报障。 */
+  /** 格头「视图动作」插槽:侧边栏开合钮 createPortal 进去(云端同构;格头
+   *  唯一框架不写任务类型分支)。右侧侧边栏(文件/变更/预览)在格内同样
+   *  是主区的 flex 兄弟列(2026-08-30 mockup 定案)。 */
   headerSlot?: HTMLElement | null;
   focusRequest?: number;
   onFocusRequestHandled?: (request: number) => void;
@@ -137,6 +139,23 @@ export function ChatView({
   const [preview, setPreview] = useState<{ sessionId: string; target: DesignPreviewTarget } | null>(null);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const previewTarget = preview?.sessionId === meta.id ? preview.target : null;
+  // 右侧侧边栏(2026-08-30 用户 mockup 定案):文件/变更/终端/预览扁平 tab
+  // 统一收进来,header 只留一颗开合钮(云端 CloudTaskView 同构,tab 集不同)。
+  const [sideOpen, setSideOpen] = useState(false);
+  const [sideTab, setSideTab] = useState<"files" | "changes" | "terminal" | "preview">("files");
+  // 非 git 工作区没有「变更」tab;FilesPanel 探测后经 onRepoInfo 收敛
+  const [isGitRepo, setIsGitRepo] = useState(true);
+  // 终端懒挂(首次进 tab 才挂面板;shell 不自动起,由用户在面板里显式
+  // 新建——2026-08-30 用户定案);实例真身住 termStore(模块级),收起
+  // 侧边栏/切会话只是视图离场,shell 与回滚缓冲原地活着,销毁只在用户关
+  // 实例页签/删会话/退出应用
+  const [termMounted, setTermMounted] = useState(false);
+  /** 打开设计预览的唯一入口:落 target + 拉开侧边栏并切到「预览」tab。 */
+  const openPreview = useCallback((sessionId: string, target: DesignPreviewTarget) => {
+    setPreview({ sessionId, target });
+    setSideOpen(true);
+    setSideTab("preview");
+  }, []);
   // composer 自己持有草稿/附件/上传状态；父层只留一个稳定命令端口给拖拽与
   // Markdown 错误和设计预览反馈。打字从此不会再重渲 ChatView 和时间线。
   const composerRef = useRef<LocalComposerHandle>(null);
@@ -558,9 +577,9 @@ export function ChatView({
   const openPreviewMarkdownLink = useCallback((raw: string): boolean => {
     const url = normalizePreviewUrl(raw);
     if (!url) return false;
-    setPreview({ sessionId: metaRef.current.id, target: { kind: "localhost", url } });
+    openPreview(metaRef.current.id, { kind: "localhost", url });
     return true;
-  }, []);
+  }, [openPreview]);
   // 设计流程不输出 localhost URL，而是把 HTML 写进工作区：手动打开预览时
   // 退化为扫描工作区内可预览 HTML，取排序后第一个。
   const openArtifactPreview = useCallback(async () => {
@@ -568,8 +587,8 @@ export function ChatView({
     const result = await repoPreviewFiles(sessionId);
     if (metaRef.current.id !== sessionId) return;
     const html = rankPreviewFiles(result.files).find((file) => file.kind === "html");
-    if (html) setPreview({ sessionId, target: targetForFile(html) });
-  }, []);
+    if (html) openPreview(sessionId, targetForFile(html));
+  }, [openPreview]);
   const uploadUrl = useCallback((p: string, expectedDigest?: string) => uploadFileURL(metaRef.current.id, p, expectedDigest), []);
   const loadDesignPreview = useCallback((p: string) => designTemplatePreviewRead(metaRef.current.id, p), []);
   const loadFullTool = useCallback((seq: number) => sessionFrame(metaRef.current.id, seq), []);
@@ -826,7 +845,6 @@ export function ChatView({
 
   // ==== 拖拽附件:HTML5 事件(dragenter/leave 计数配对)+ Linux 壳原生事件 ====
   const [dragging, setDragging] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [changesToken, setChangesToken] = useState(0);
   const [changesCount, setChangesCount] = useState(0);
   const prevTurnEnded = useRef(false);
@@ -848,8 +866,12 @@ export function ChatView({
     }
     const rising = state.running && !baselineRunning.current;
     baselineRunning.current = state.running;
-    if (rising) turnBaseline.current = { sessionId: meta.id, value: repoChanges(meta.id) };
-  }, [meta.id, state.running]);
+    // repo_file_changes 是整棵工作区快照。只有设计意图轮需要在开轮时留
+    // baseline；普通轮的改动徽标只在轮末查询一次，不能为自动预览白拉一份。
+    if (rising && turnWarrantsArtifactPreview(currentTurnText.user, currentTurnText.agent, [])) {
+      turnBaseline.current = { sessionId: meta.id, value: repoChanges(meta.id) };
+    }
+  }, [currentTurnText.agent, currentTurnText.user, meta.id, state.running]);
   useEffect(() => {
     const turnJustEnded = state.turnEnded && !prevTurnEnded.current;
     prevTurnEnded.current = state.turnEnded;
@@ -858,7 +880,7 @@ export function ChatView({
     const sessionId = meta.id;
     const generation = ++changesGeneration.current;
     if (currentTurnPreviewUrl) {
-      setPreview({ sessionId, target: { kind: "localhost", url: currentTurnPreviewUrl } });
+      openPreview(sessionId, { kind: "localhost", url: currentTurnPreviewUrl });
       setPreviewRefreshKey((key) => key + 1);
     }
     void repoChanges(sessionId).then(async (result) => {
@@ -879,46 +901,70 @@ export function ChatView({
         artifact = selectTurnPreviewArtifact(touched, currentTurnText.user, currentTurnText.agent, files.files);
       }
       if (artifact && changesGeneration.current === generation && metaRef.current.id === sessionId) {
-        setPreview({ sessionId, target: targetForFile(artifact) });
+        openPreview(sessionId, targetForFile(artifact));
         setPreviewRefreshKey((key) => key + 1);
       }
     }).catch(() => {
       if (changesGeneration.current === generation && metaRef.current.id === sessionId) setChangesCount(0);
     });
-  }, [currentTurnPreviewUrl, currentTurnText, meta.id, state.items, state.turnEnded]);
+  }, [currentTurnPreviewUrl, currentTurnText, meta.id, openPreview, state.items, state.turnEnded]);
   // 改动数徽标与自动 artifact 选择共用上面的轮末查询，避免重复读取全工作区。
   useEffect(() => {
     changesGeneration.current += 1;
     prevTurnEnded.current = false;
     setChangesCount(0); // 徽标属于会话,切走清零
-    // 抽屉同属会话,切走一并收起(旧 UI App.tsx 五条切换路径一律 setDrawer(null))。
-    // ChatView 的 key 只取 epoch,切会话走的是**同一实例**,不复位就会:文件树
-    // 停在上一个工作区(Tree 挂 loadedRef 守卫、根目录只在挂载时拉一次,且它
-    // 没有 key),而「改动」页已经换成新会话的改动——同一块面板里两个项目的
-    // 数据混在一起,旧树行上还标着新会话的改动徽标。点只在旧工作区存在的文件
-    // 报「文件不存在」;点两边同名的文件(README.md 这类)会**静默显示新会话
-    // 工作区里的另一个文件**,而用户以为点的是刚才看到的那个。
-    // 能在抽屉开着时换会话的路径:后台会话提醒 toast(z-50,压在 scrim 之上
-    // 且可点)、壳意图 open-session(托盘/桌宠)、键盘 Tab 进侧栏行回车。
-    setDrawerOpen(false);
+    // 侧边栏同属会话,切走一并收起(旧抽屉时代的口径随迁):ChatView 的 key
+    // 只取 epoch,切会话走的是**同一实例**——面板内容(FilesPanel)虽按
+    // meta.id 加 key 重挂,但开合态/当前 tab/git 判定都是上一个会话的,
+    // 不复位就把旧会话的侧边栏姿势带进新会话。
+    setSideOpen(false);
+    setSideTab("files");
+    setIsGitRepo(true);
+    setTermMounted(false);
   }, [meta.id]);
+  // FilesPanel 的改动探测回流:非 git 收走「变更」tab;计数与轮末徽标同源
+  const onRepoInfo = useCallback((info: { isGitRepo: boolean; changesCount: number }) => {
+    setIsGitRepo(info.isGitRepo);
+    setChangesCount(info.changesCount);
+  }, []);
   useEffect(() => {
-    // 文件钮(格内经插槽自投)带改动数徽标,pane 也要拉(2026-08-20 用户
-    // 报障「文件夹上变动数字没了」——入格重构时门禁忘了拆)
-    if (changesToken === 0) return;
-    let alive = true;
-    repoChanges(meta.id).then(
-      (r) => {
-        if (alive) setChangesCount(r.changes.length);
-      },
-      () => {
-        if (alive) setChangesCount(0);
-      },
-    );
-    return () => {
-      alive = false;
-    };
-  }, [changesToken, meta.id, pane]);
+    if (!isGitRepo && sideTab === "changes") setSideTab("files");
+  }, [isGitRepo, sideTab]);
+  /** header 开合钮(旧「会话文件」钮改造):打开时按旧抽屉口径选落点——
+   *  有改动直达「变更」;上次停在无货的「预览」则回「文件」。 */
+  const toggleSide = () => {
+    if (!sideOpen) {
+      if (changesCount > 0 && isGitRepo) setSideTab("changes");
+      else if (sideTab === "preview" && !previewTarget) setSideTab("files");
+    }
+    setSideOpen((o) => !o);
+  };
+  /** 「预览」tab 空手激活时的取材链:先认 agent 输出的 localhost URL,
+   *  再退化扫描工作区可预览 HTML(与旧 header 预览钮同一条链)。 */
+  const selectSideTab = (id: string) => {
+    if (id === "preview") {
+      setSideTab("preview");
+      if (!previewTarget) {
+        if (detectedPreviewUrl) openPreview(meta.id, { kind: "localhost", url: detectedPreviewUrl });
+        else void openArtifactPreview();
+      }
+      return;
+    }
+    if (id === "terminal") {
+      setSideTab("terminal");
+      setTermMounted(true); // 只挂面板;shell 等用户点「新建终端」
+      return;
+    }
+    if (id === "files" || id === "changes") setSideTab(id);
+  };
+  const sideTabs: SidePanelTab[] = [
+    { id: "files", label: t("side.tab.files"), icon: <IconFolder size={14} stroke={1.75} aria-hidden /> },
+    ...(isGitRepo
+      ? [{ id: "changes", label: t("side.tab.changes"), icon: <IconFileDiff size={14} stroke={1.75} aria-hidden />, badge: changesCount }]
+      : []),
+    { id: "terminal", label: t("side.tab.terminal"), icon: <IconTerminal2 size={14} stroke={1.75} aria-hidden /> },
+    { id: "preview", label: t("side.tab.preview"), icon: <IconWorld size={14} stroke={1.75} aria-hidden /> },
+  ];
   const dragDepth = useRef(0);
   const onDragEnter = (e: DragEvent<HTMLElement>) => {
     if (![...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) return;
@@ -985,11 +1031,11 @@ export function ChatView({
   const Root = pane ? "div" : "main";
   return (
     <div
-      data-design-preview-open={previewTarget ? "true" : undefined}
-      className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
+      data-design-preview-open={sideOpen && sideTab === "preview" && previewTarget ? "true" : undefined}
+      className={`flex min-h-0 min-w-0 flex-1 overflow-hidden ${pane ? "bg-transparent" : "mc-workbench-surface-100"}`}
     >
     <Root
-      className={`relative flex min-w-0 flex-1 flex-col ${pane ? "min-h-0 bg-transparent" : "mc-workbench-surface-100"}`}
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-transparent"
       onDragEnter={onDragEnter}
       onDragOver={(e) => e.preventDefault()}
       onDragLeave={onDragLeave}
@@ -1064,31 +1110,17 @@ export function ChatView({
             </h1>
           )}
         </div>
-        <button
-          data-header-action=""
-          type="button"
-          aria-label="Open design preview"
-          title={detectedPreviewUrl ?? "Open workspace design preview"}
-          className="btn btn-ghost btn-square btn-sm shrink-0 text-base-content/60"
-          onClick={() => {
-            if (detectedPreviewUrl) {
-              setPreview({ sessionId: meta.id, target: { kind: "localhost", url: detectedPreviewUrl } });
-            } else {
-              void openArtifactPreview();
-            }
-          }}
-        >
-          <IconBrowser size={16} stroke={1.75} aria-hidden />
-        </button>
         {/* §7:indicator 壳与徽标是头部非交互子节点,必须各自带拖拽属性 */}
+        {/* 旧「预览/会话文件」双钮 2026-08-30 收编为一颗侧边栏开合钮:
+            文件/变更/预览都在右侧侧边栏里,header 只管开合 */}
         <div data-header-action="" data-tauri-drag-region="" className={changesCount > 0 ? "indicator shrink-0" : "shrink-0"}>
           {changesCount > 0 && (
             /* 与 rail 徽标同一处方(App.tsx SpaceRail):默认锚点在 32px 按钮的
                角上,16px 图标居中,徽标就飘出去了(用户报障 2026-08-10
-               「太偏右上角」)。往内收 5px,徽标贴着文件夹图标的右上角。
-               收进来之后它压在按钮上,故补 pointer-events-none——点数字要开抽屉,
-               不能变成「按住数字拖窗口」;拖拽属性照 §7 保留(命中落到按钮上,
-               这块本就不再是空白拖拽区) */
+               「太偏右上角」)。往内收 5px,徽标贴着图标的右上角。
+               收进来之后它压在按钮上,故补 pointer-events-none——点数字要开
+               侧边栏,不能变成「按住数字拖窗口」;拖拽属性照 §7 保留(命中落
+               到按钮上,这块本就不再是空白拖拽区) */
             <span
               data-tauri-drag-region=""
               className="indicator-item badge badge-primary badge-xs pointer-events-none [--indicator-e:5px] [--indicator-t:5px]"
@@ -1098,12 +1130,13 @@ export function ChatView({
           )}
           <button
             type="button"
-            aria-label={t("files.label")}
-            title={t("files.label")}
-            className="btn btn-ghost btn-square btn-sm text-base-content/60"
-            onClick={() => setDrawerOpen((v) => !v)}
+            aria-label={sideOpen ? t("side.hide") : t("side.show")}
+            title={sideOpen ? t("side.hide") : t("side.show")}
+            aria-pressed={sideOpen}
+            className={`btn btn-ghost btn-square btn-sm text-base-content/60 ${sideOpen ? "btn-active" : ""}`}
+            onClick={toggleSide}
           >
-            <IconFolderOpen size={16} stroke={1.75} aria-hidden />
+            <IconLayoutSidebarRight size={16} stroke={1.75} aria-hidden />
           </button>
         </div>
         <div data-header-action="" ref={menuBoxRef} className={`dropdown dropdown-end shrink-0 ${menuOpen ? "dropdown-open" : ""}`}>
@@ -1321,23 +1354,7 @@ export function ChatView({
       {pane &&
         headerSlot &&
         createPortal(
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              aria-label="Open design preview"
-              title={detectedPreviewUrl ?? "Open workspace design preview"}
-              className={`btn btn-ghost btn-square btn-sm text-base-content/60 ${previewTarget ? "btn-active" : ""}`}
-              onClick={() => {
-                if (detectedPreviewUrl) {
-                  setPreview({ sessionId: meta.id, target: { kind: "localhost", url: detectedPreviewUrl } });
-                } else {
-                  void openArtifactPreview();
-                }
-              }}
-            >
-              <IconBrowser size={16} stroke={1.75} aria-hidden />
-            </button>
-            <div className={changesCount > 0 ? "indicator" : undefined}>
+          <div className={changesCount > 0 ? "indicator" : undefined}>
             {changesCount > 0 && (
               <span
                 aria-hidden
@@ -1348,39 +1365,58 @@ export function ChatView({
             )}
             <button
               type="button"
-              aria-label={t("files.label")}
-              title={t("files.label")}
-              className={`btn btn-ghost btn-square btn-sm text-base-content/60 ${drawerOpen ? "btn-active" : ""}`}
-              onClick={() => setDrawerOpen((o) => !o)}
+              aria-label={sideOpen ? t("side.hide") : t("side.show")}
+              title={sideOpen ? t("side.hide") : t("side.show")}
+              aria-pressed={sideOpen}
+              className={`btn btn-ghost btn-square btn-sm text-base-content/60 ${sideOpen ? "btn-active" : ""}`}
+              onClick={toggleSide}
             >
-              <IconFolderOpen size={16} stroke={1.75} aria-hidden />
+              <IconLayoutSidebarRight size={16} stroke={1.75} aria-hidden />
             </button>
-            </div>
           </div>,
           headerSlot,
         )}
-      {drawerOpen && (
-        <FilesDrawer
-          variant={pane ? "pane" : "global"}
-          sessionId={meta.id}
-          workdir={meta.workdir}
-          onClose={() => setDrawerOpen(false)}
-          refreshToken={changesToken}
-          initialTab={changesCount > 0 ? "changes" : "files"}
-        />
-      )}
       {childId && <ChildSessionModal id={childId} workdir={meta.workdir} onClose={() => setChildId(null)} />}
     </Root>
-    {previewTarget && composerRef.current && (
-      <DesignPreviewWorkbench
-        key={meta.id}
-        sessionId={meta.id}
-        initialTarget={previewTarget}
-        refreshKey={previewRefreshKey}
-        composer={composerRef.current}
-        obscured={drawerOpen || !!childId}
-        onClose={() => setPreview(null)}
-      />
+    {/* 右侧侧边栏(2026-08-30 mockup 定案):主区的 flex 兄弟列。文件/变更
+        共用 FilesPanel(常驻挂载,靠 display 切换保住树状态);预览 tab
+        的工作台在 target 在场时同样常驻——切 tab 只藏不卸,原生预览
+        webview 不必反复重建(obscured 驱动壳侧 hide/show)。 */}
+    {sideOpen && (
+      <SidePanel tabs={sideTabs} active={sideTab} onSelect={selectSideTab}>
+        <div className={sideTab === "files" || sideTab === "changes" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}>
+          <FilesPanel
+            key={meta.id}
+            sessionId={meta.id}
+            workdir={meta.workdir}
+            tab={sideTab === "changes" ? "changes" : "files"}
+            refreshToken={changesToken}
+            onRepoInfo={onRepoInfo}
+          />
+        </div>
+        {termMounted && (
+          <div className={sideTab === "terminal" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+            <TerminalPanel key={meta.id} sessionId={meta.id} workdir={meta.workdir} />
+          </div>
+        )}
+        {sideTab === "preview" && !previewTarget && (
+          <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+            <p className="text-sm text-base-content/50">{t("side.previewEmpty")}</p>
+          </div>
+        )}
+        {previewTarget && composerRef.current && (
+          <div className={sideTab === "preview" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+            <DesignPreviewWorkbench
+              key={meta.id}
+              sessionId={meta.id}
+              initialTarget={previewTarget}
+              refreshKey={previewRefreshKey}
+              composer={composerRef.current}
+              obscured={sideTab !== "preview" || !!childId}
+            />
+          </div>
+        )}
+      </SidePanel>
     )}
     </div>
   );

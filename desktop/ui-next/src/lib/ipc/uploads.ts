@@ -101,7 +101,8 @@ export function pathBackedFile(path: string, name: string, mediaType: string): F
 export const nativePathOf = (f: File): string | undefined => nativePaths.get(f);
 
 /** 系统文件对话框多选附件,返回本地路径列表(取消/浏览器模式返回空)。
- * title 由调用方传入(文案走 i18n,本层不产 UI 词)。 */
+ * title 由调用方传入(文案走 i18n,本层不产 UI 词)。
+ * 选目录不走这里——见 host.ts::pickDirectory,它另有 defaultPath(WSL)口径。 */
 export async function pickAttachmentPaths(title?: string): Promise<string[]> {
   if (!inDesktopShell()) return [];
   try {

@@ -12,10 +12,9 @@
 // 提问大纲:数据 = REST 提问索引(全量目录)+ 已回放窗口的用户消息按时间锚
 // 合并(lib/cloud/outline),渲染复用本地 OutlineNav;跳转目标未加载时经
 // loadEarlier 大步长补页——effect 驱动(每页提交后重查),上限防死循环。
-import { IconDots, IconFolderOpen, IconTerminal2, IconWorld, IconX } from "@tabler/icons-react";
+import { IconDots, IconFolder, IconLayoutSidebarRight, IconTerminal2, IconWorld } from "@tabler/icons-react";
 import { createPortal } from "react-dom";
 import {
-  useCallback,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -41,10 +40,10 @@ import type { OutlineItem } from "@/lib/ipc/controls";
 import { cloudAnchorIndex, cloudOutlineAnchor, fetchCloudOutline, withCloudAnchors } from "@/lib/cloud/outline";
 import type { StreamStatus } from "@/lib/cloud/stream";
 import { onNativeFileDrop } from "@/lib/ipc/uploads";
-import { useEscLayer } from "@/lib/util/escLayer";
 import { useDismiss } from "@/lib/util/useDismiss";
 import { useMcTransport } from "@/lib/mcTransport";
 import { CloudComposer } from "./CloudComposer";
+import { SidePanel, type SidePanelTab } from "@/components/SidePanel";
 import { CloudFiles } from "./CloudFiles";
 import { CloudTerminal } from "./CloudTerminal";
 import { StartupTimeline } from "./StartupTimeline";
@@ -156,10 +155,20 @@ export function CloudTaskView({
   const { t } = useI18n();
   const { generation: transportGeneration, isCurrent: isTransportCurrent } = useMcTransport();
   const h = useCloudTask(task, { onTasksChanged });
-  const [termOpen, setTermOpen] = useState(false);
-  const [filesOpen, setFilesOpen] = useState(false);
-  // runtime 一旦失效，当前 render 就卸载文件面板；effect 只负责清理开合意图。
-  const filesVisible = filesOpen && h.runtimeReady;
+  // 右侧侧边栏(2026-08-30 用户 mockup 定案,与 ChatView 同构):文件/终端
+  // 扁平 tab 收进统一右侧栏,header 只留一颗开合钮。内容懒挂 + 常驻:
+  // 文件面板与终端都攥着连接,切 tab 只藏不卸,免得反复重连。
+  const [sideOpen, setSideOpen] = useState(false);
+  const [sideTab, setSideTab] = useState<"files" | "terminal">("files");
+  const [filesMounted, setFilesMounted] = useState(false);
+  const [termMounted, setTermMounted] = useState(false);
+  // runtime 一旦失效，当前 render 就卸载文件面板；effect 只负责清理挂载意图。
+  const filesVisible = filesMounted && h.runtimeReady;
+  const pending = h.taskStatus === "pending";
+  // 文件浏览走当前账号 scoped runtime 的控制流;pending 或 runtime 身份未决
+  // 时禁用,不能凭 taskId 绕过账号作用域直连(原文件钮口径随迁)
+  const filesDisabled = pending || !h.runtimeReady;
+  const termAvailable = !!h.vmId && !h.ended;
   // 云端主机名:「在浏览器打开」拼控制台 URL 用。挂载拉一次(登录态本就
   // 在设置页维护,这里只借 host);拿不到就不出这一项,不给死链
   const [mcBaseUrl, setMcBaseUrl] = useState("");
@@ -265,20 +274,26 @@ export function CloudTaskView({
     [h.id],
   );
 
-  // Esc 关文件抽屉走 escLayer 层栈(全应用唯一一条 window capture,后开的
-  // 浮层先拿到):抽屉里的预览是更晚入栈的一层,Esc 先关预览再关抽屉。
-  // 消费即截断——window 上还挂着审批热键(app/shortcuts.ts,esc = deny
-  // 不可逆),同一下按键绝不能"关抽屉 + 拒绝审批"双消费
-  const escFiles = useCallback(() => {
-    setFilesOpen(false);
-    return true;
-  }, []);
-  useEscLayer(filesVisible, escFiles);
-  // 账号/transport 换代时 coordinator 会先隐藏旧 runtime；同步收起面板，
-  // 避免继续操作已失效或作用域未知的控制连接。
+  // 账号/transport 换代时 coordinator 会先隐藏旧 runtime；同步卸掉文件面板，
+  // 避免继续操作已失效或作用域未知的控制连接。(侧边栏改常驻后 Esc 不再
+  // 参与开合:面板不是浮层,Esc 让位给审批热键;CloudFiles 内部预览的
+  // escLayer 一级不受影响。)
   useEffect(() => {
-    if (!h.runtimeReady) setFilesOpen(false);
+    if (!h.runtimeReady) setFilesMounted(false);
   }, [h.runtimeReady]);
+  // 懒挂载:首次停在某 tab 且其前置条件成立才真挂,此后常驻只切 display
+  useEffect(() => {
+    if (!sideOpen) return;
+    if (sideTab === "files" && !filesDisabled) setFilesMounted(true);
+    if (sideTab === "terminal" && termAvailable) setTermMounted(true);
+  }, [sideOpen, sideTab, filesDisabled, termAvailable]);
+  // 终端前置条件消失(VM 回收/任务结束):卸载并退回文件 tab
+  useEffect(() => {
+    if (!termAvailable) {
+      setTermMounted(false);
+      setSideTab((tab) => (tab === "terminal" ? "files" : tab));
+    }
+  }, [termAvailable]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<LogListHandle>(null);
@@ -454,8 +469,6 @@ export function CloudTaskView({
     h.send();
   };
 
-  const pending = h.taskStatus === "pending";
-  const filesDisabled = pending || !h.runtimeReady;
   const filesTitle = pending
     ? t("cloud.view.filesPending")
     : h.runtimeReady
@@ -539,41 +552,46 @@ export function CloudTaskView({
     return () => menuRegister(null);
   }, [variant, menuRegister]);
 
-  /** 头部动作簇(文件/终端两颗可视钮):整页头与格头插槽同一份 JSX——
-   *  格里经 createPortal 注入 PaneHeader 的通用插槽,不做第二套头;
-   *  任务操作菜单**不在此**(格里并入格头 ⋯,整页头单独渲染 dropdown)。 */
+  /** 头部动作簇(旧文件/终端双钮 2026-08-30 收编为一颗侧边栏开合钮):
+   *  整页头与格头插槽同一份 JSX——格里经 createPortal 注入 PaneHeader 的
+   *  通用插槽,不做第二套头;任务操作菜单**不在此**。 */
+  const sideAvailable = !filesDisabled || termAvailable;
+  const toggleSide = () => {
+    // 文件不可用(pending/runtime 未决)但终端在:打开直接落终端 tab
+    if (!sideOpen && filesDisabled && termAvailable && sideTab === "files") setSideTab("terminal");
+    setSideOpen((o) => !o);
+  };
+  const sideTabs: SidePanelTab[] = [
+    {
+      id: "files",
+      label: t("side.tab.files"),
+      icon: <IconFolder size={14} stroke={1.75} aria-hidden />,
+      ...(filesDisabled ? { disabledReason: filesTitle } : {}),
+    },
+    ...(termAvailable
+      ? [{ id: "terminal", label: t("side.tab.terminal"), icon: <IconTerminal2 size={14} stroke={1.75} aria-hidden /> }]
+      : []),
+  ];
   const headerActions = (
-    <>
-        {/* 文件浏览走当前账号 scoped runtime 的控制流(按 taskId 寻址,
-            CloudFiles 懒建),不依赖 vmId——结束态仍可浏览最终快照；pending
-            或 runtime 身份未决时禁用，不能凭 taskId 绕过账号作用域直连。 */}
-        <button
-          type="button"
-          aria-label={t("cloud.view.filesOpen")}
-          title={filesTitle}
-          className={`btn btn-ghost btn-square btn-sm text-base-content/60 ${filesVisible ? "btn-active" : ""}`}
-          disabled={filesDisabled}
-          onClick={() => setFilesOpen((o) => !o)}
-        >
-          <IconFolderOpen size={16} stroke={1.75} aria-hidden />
-        </button>
-        {h.vmId && !h.ended && (
-          <button
-            type="button"
-            aria-label={termOpen ? t("cloud.view.terminalClose") : t("cloud.view.terminalOpen")}
-            title={termOpen ? t("cloud.view.terminalClose") : t("cloud.view.terminalOpen")}
-            className={`btn btn-ghost btn-square btn-sm text-base-content/60 ${termOpen ? "btn-active" : ""}`}
-            onClick={() => setTermOpen((o) => !o)}
-          >
-            <IconTerminal2 size={16} stroke={1.75} aria-hidden />
-          </button>
-        )}
-    </>
+    <button
+      type="button"
+      aria-label={sideOpen ? t("side.hide") : t("side.show")}
+      title={!sideAvailable ? filesTitle : sideOpen ? t("side.hide") : t("side.show")}
+      aria-pressed={sideOpen}
+      disabled={!sideAvailable}
+      className={`btn btn-ghost btn-square btn-sm text-base-content/60 ${sideOpen ? "btn-active" : ""}`}
+      onClick={toggleSide}
+    >
+      <IconLayoutSidebarRight size={16} stroke={1.75} aria-hidden />
+    </button>
   );
   const Root = variant === "pane" ? "div" : "main";
   return (
+    // 外层 flex 行(与 ChatView 同构):主区 + 右侧侧边栏是兄弟列,底色上
+    // 收到行容器,Root 退成透明列
+    <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden ${variant === "pane" ? "bg-transparent" : "mc-workbench-surface-100"}`}>
     <Root
-      className={`relative flex min-w-0 flex-1 flex-col ${variant === "pane" ? "min-h-0 bg-transparent" : "mc-workbench-surface-100"}`}
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-transparent"
       onDragEnter={onDragEnter}
       onDragOver={(e) => e.preventDefault()}
       onDragLeave={onDragLeave}
@@ -791,53 +809,9 @@ export function CloudTaskView({
       {!pending && <OutlineNav entries={entries} activeSeq={activeAnchor ?? undefined} onJump={onJumpOutline} />}
       </div>
 
-      {/* 云端文件:右滑抽屉,受控开合手法与 FilesDrawer 统一(scrim 点击关 +
-          Esc 关,见上方 effect);面板挂在主区内(absolute,参照 relative main),
-          CloudFiles 自带头部与关闭;下载走全局 downloads */}
-      {filesVisible && (
-        <>
-          <div aria-hidden className="absolute inset-0 z-10 bg-base-content/20" onClick={() => setFilesOpen(false)} />
-          <aside className="absolute inset-y-0 right-0 z-20 flex w-[26rem] max-w-[85%] flex-col border-l border-base-300 bg-base-100 shadow-xl">
-            {/* 控制流复用常驻那条(h.borrowControl):每条控制连接在后端都会
-                另起一份 TaskLive 上游订阅(task_control.go),各开各的既费
-                上游、又多一条与保活语义纠缠的连接 */}
-            <CloudFiles
-              taskId={h.id}
-              vmId={h.ended ? undefined : h.vmId || undefined}
-              borrowControl={h.borrowControl}
-              onClose={() => setFilesOpen(false)}
-            />
-          </aside>
-        </>
-      )}
-
       {/* 无上边线:与 ChatView composer 同款(2026-08-13 用户定案) */}
       <footer className="shrink-0 p-3">
         <div className={`mx-auto flex ${variant === "pane" ? "chat-measure-pane" : "chat-measure"} flex-col gap-2`}>
-          {/* 终端卡:外壳走 card card-border 官方形态,头部条普通 base 底 +
-              结构线;深色只留给 xterm 本体(term.css 白名单) */}
-          {termOpen && h.vmId && !h.ended && (
-            <div className="card card-border h-64 min-h-0 overflow-hidden bg-base-100">
-              <div className="flex h-8 shrink-0 items-center gap-2 border-b border-base-300 px-3">
-                <span aria-hidden className="status status-success" />
-                <span className="text-xs font-semibold">{t("cloud.view.terminalTitle")}</span>
-                <span className="text-xs text-base-content/60">{t("cloud.view.terminalSub")}</span>
-                <span className="flex-1" />
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-square btn-xs"
-                  aria-label={t("cloud.view.terminalClose")}
-                  onClick={() => setTermOpen(false)}
-                >
-                  <IconX size={14} stroke={1.75} aria-hidden />
-                </button>
-              </div>
-              <div className="min-h-0 flex-1">
-                <CloudTerminal vmId={h.vmId} />
-              </div>
-            </div>
-          )}
-
           {h.ended ? (
             <>
               {/* 结束态 composer 不渲染,错误通道(如删除被拒)另给一条 */}
@@ -874,5 +848,38 @@ export function CloudTaskView({
         </div>
       </footer>
     </Root>
+    {/* 右侧侧边栏:文件/终端。文件面板复用 CloudFiles(控制流仍借宿主常驻
+        那条,h.borrowControl——每条控制连接在后端都会另起一份 TaskLive
+        上游订阅,各开各的既费上游、又多一条与保活语义纠缠的连接);
+        终端攥着 WS,切 tab 只藏不卸 */}
+    {sideOpen && (
+      <SidePanel tabs={sideTabs} active={sideTab} onSelect={(id) => setSideTab(id as "files" | "terminal")}>
+        {filesVisible && (
+          <div className={sideTab === "files" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+            <CloudFiles taskId={h.id} vmId={h.ended ? undefined : h.vmId || undefined} borrowControl={h.borrowControl} />
+          </div>
+        )}
+        {sideTab === "files" && !filesVisible && (
+          <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+            <p className="text-sm text-base-content/50">{filesTitle}</p>
+          </div>
+        )}
+        {termMounted && h.vmId && !h.ended && (
+          <div className={sideTab === "terminal" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+            {/* 终端头:状态点 + 身份词(旧 footer 卡头随迁;关闭钮让位给
+                侧边栏收起);深色只留给 xterm 本体(term.css 白名单) */}
+            <div className="flex h-9 shrink-0 items-center gap-2 border-b border-base-300 px-3">
+              <span aria-hidden className="status status-success" />
+              <span className="text-xs font-semibold">{t("cloud.view.terminalTitle")}</span>
+              <span className="text-xs text-base-content/60">{t("cloud.view.terminalSub")}</span>
+            </div>
+            <div className="min-h-0 flex-1">
+              <CloudTerminal vmId={h.vmId} />
+            </div>
+          </div>
+        )}
+      </SidePanel>
+    )}
+    </div>
   );
 }
