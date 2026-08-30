@@ -137,6 +137,7 @@ export default function TaskDetailScreen() {
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const cursorSeededRef = useRef(false);
   const restSeedingRef = useRef(false); // 防止 REST 兜底取游标时重入
+  const archivedRoundsRef = useRef(0); // handleSend 本地归档进 historyMessages 的轮数（游标 seeding 需跳过）
   const controlRef = useRef<TaskControlClient | null>(null);
   const attachmentsRef = useRef<PendingAtt[]>([]);
   const attachSeq = useRef(0);
@@ -292,8 +293,11 @@ export default function TaskDetailScreen() {
 
   // stream 给的历史游标：只有「拿到可用 cursor」才算 seed 成功；ready 但 cursor 为空时不要占位，
   // 否则会同时挡住 loadEarlier（无 cursor）和下面的 REST 兜底。
+  // 本地已归档过轮次（archivedRoundsRef>0，见 handleSend）后不再用 hc seed：重连拿到的
+  // 新游标覆盖已归档的轮次，向上翻页会把同一轮再拉一遍（解码 id 不同、无法按 key 去重），
+  // 此时交给下面会跳过归档轮数的 REST 兜底。
   useEffect(() => {
-    if (!interactive || cursorSeededRef.current) return;
+    if (!interactive || cursorSeededRef.current || archivedRoundsRef.current > 0) return;
     const hc = liveState?.historyCursor;
     if (hc?.ready && hc.cursor) {
       cursorSeededRef.current = true;
@@ -304,13 +308,17 @@ export default function TaskDetailScreen() {
 
   // 兜底：发消息/取消走 new 模式（captureCursor=false）或 stream 没给可用游标时，cursor 一直为空、
   // 上滑加载历史失效。本轮结束（status=finished）后仍无 cursor，就用 REST 取一次游标补上。
+  // limit 额外跳过本地已归档的轮数，让游标落在归档内容之前，避免向上翻页重复展示。
   useEffect(() => {
     if (!interactive || !id || cursor || cursorSeededRef.current || restSeedingRef.current) return;
     if (liveState?.status !== 'finished') return;
     restSeedingRef.current = true;
+    const archivedAtStart = archivedRoundsRef.current;
     (async () => {
       try {
-        const rounds = await getTaskRounds({ id, limit: ROUNDS_PER_FETCH });
+        const rounds = await getTaskRounds({ id, limit: ROUNDS_PER_FETCH + archivedAtStart });
+        // 拉取期间又归档了新轮次：本次游标已过期，丢弃并等下一轮结束后重试。
+        if (archivedRoundsRef.current !== archivedAtStart) return;
         cursorSeededRef.current = true;
         setCursor(rounds.next_cursor);
         setHasMore(!!rounds.has_more && !!rounds.next_cursor);
@@ -328,10 +336,16 @@ export default function TaskDetailScreen() {
     if (typeof ctxSize === 'number' && ctxSize > 0) setLastCtx({ used: ctxUsed ?? 0, size: ctxSize });
   }, [ctxUsed, ctxSize]);
   // 切换任务时清空（路由复用同一组件实例时也能正确重置）。
-  useEffect(() => { setLastCtx(null); }, [id]);
+  useEffect(() => { setLastCtx(null); archivedRoundsRef.current = 0; }, [id]);
 
+  // 防重入必须用 ref 同步判断：historyLoading 是异步提交的 state，进入页面时
+  // 「自动拉首页」的兜底 effect 和 inverted 列表初始布局触发的 onEndReached 会在
+  // 同一帧内先后调用本函数，都在 setHistoryLoading(true) 提交前通过 state 守卫，
+  // 同一 cursor 拉两次 → 该轮消息展示两份（解码 id 每次新生成，无法靠 key 去重）。
+  const historyLoadingRef = useRef(false);
   const loadEarlier = useCallback(async () => {
-    if (!id || !cursor || historyLoading || !hasMore) return;
+    if (!id || !cursor || historyLoadingRef.current || !hasMore) return;
+    historyLoadingRef.current = true;
     setHistoryLoading(true);
     try {
       const rounds = await getTaskRounds({ id, cursor, limit: ROUNDS_PER_FETCH });
@@ -339,8 +353,8 @@ export default function TaskDetailScreen() {
       setHistoryMessages((prev) => [...decoded.messages, ...prev]);
       setCursor(rounds.next_cursor);
       setHasMore(!!rounds.has_more && !!rounds.next_cursor);
-    } catch { /* ignore */ } finally { setHistoryLoading(false); }
-  }, [cursor, hasMore, historyLoading, id]);
+    } catch { /* ignore */ } finally { historyLoadingRef.current = false; setHistoryLoading(false); }
+  }, [cursor, hasMore, id]);
 
   // 游标就绪但还没加载过任何历史时，自动拉第一页。覆盖两种 onEndReached 失效的情况：
   // ①上滑早于游标 seed（滑动时 cursor 还没就绪，之后不会再触发）；②内容没铺满、onEndReached 不会触发。
@@ -359,7 +373,10 @@ export default function TaskDetailScreen() {
     // 其返回值才是完整末态；先快照 liveStateRef 会把这截尾巴永久丢出会话记录。
     const prevState = clientRef.current?.disconnect();
     const prevLive = prevState?.messages ?? liveStateRef.current?.messages ?? [];
-    if (prevLive.length) setHistoryMessages((prev) => [...prev, ...prevLive]);
+    if (prevLive.length) {
+      setHistoryMessages((prev) => [...prev, ...prevLive]);
+      archivedRoundsRef.current += 1;
+    }
     setSending(true);
     const client = TaskStreamClient.newRound(id, body, atts, {
       onState: setLive,
