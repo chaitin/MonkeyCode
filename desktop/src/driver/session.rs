@@ -782,9 +782,26 @@ pub(super) struct SessionState {
     pub(super) fold: TurnFold,
 }
 
-/// 会话态锁组:会话表、待发帧缓冲与审批/提问簿记。
+pub(super) struct PendingDesignPreview {
+    /// 与 UI 一致的实际渲染路径：旧 image 缩略图优先，否则使用 preview.path。
+    pub(super) path: String,
+    /// 新协议请求携带的预览内容摘要；None 表示需要兼容的旧请求。
+    pub(super) digest: Option<String>,
+}
+
+pub(super) struct PendingDesignSelection {
+    pub(super) request_id: String,
+    /// 候选 id → 发出请求时的渲染预览绑定，防止 UI 用刷新后的候选错配提交。
+    pub(super) previews: HashMap<String, PendingDesignPreview>,
+    /// 已有一个合法响应正在等待引擎确认。它只封住并发重复提交；RPC 失败
+    /// 会重新打开，cancel/reconcile 则可直接删除整条 pending。
+    pub(super) responding: bool,
+}
+
+/// 会话态锁组:会话表、待发帧缓冲与审批/提问/设计选择簿记。
 /// 含锁:sessions、batch、sidecar_write、perm_remember、pending_questions、
-/// pending_perms、perm_tools(均 StdMutex)。
+/// pending_perms、pending_design_selections、seen_design_selection_requests、
+/// perm_tools(均 StdMutex)。
 /// 加锁秩序(评审梳理,不得反向):
 /// - sessions → batch:push_frame 在 sessions 锁内投递 journal 并入缓冲;
 /// - sessions → resume:session_open 原子登记恢复占位与完成广播;
@@ -821,6 +838,10 @@ pub(super) struct SessionsState {
     pub(super) pending_questions: StdMutex<HashMap<String, (String, Value)>>,
     /// 未答复的审批(request_id → sid)
     pub(super) pending_perms: StdMutex<HashMap<String, String>>,
+    /// 未答复的设计模板选择。按 sid 建索引，从结构上保证每会话至多一个。
+    pub(super) pending_design_selections: StdMutex<HashMap<String, PendingDesignSelection>>,
+    /// 本引擎生命周期内见过的 request_id；终态后重发仍按幂等通知吞掉。
+    pub(super) seen_design_selection_requests: StdMutex<HashSet<String>>,
     /// 审批请求的工具名(request_id → tool;"始终允许"回写记忆集用)
     pub(super) perm_tools: StdMutex<HashMap<String, String>>,
     /// 后台 resume 的完成广播(sid → 结果)。打开会话不再串行等引擎握手,
@@ -1185,6 +1206,14 @@ impl OhmyDriver {
                     .lock_ok()
                     .values()
                     .map(|(s, _)| s.clone()),
+            )
+            .chain(
+                inner
+                    .sess
+                    .pending_design_selections
+                    .lock_ok()
+                    .keys()
+                    .cloned(),
             )
             .collect();
         for e in entries {
@@ -2668,6 +2697,113 @@ impl OhmyDriver {
                     frame::reply_question(&req_id, answers_json, cancelled, seq)
                 });
                 self.emit_session_ask(id, false);
+                Ok(())
+            }
+            "design/selection/respond" => {
+                let req_id = payload
+                    .get("request_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let action = payload.get("action").and_then(Value::as_str).unwrap_or("");
+                if req_id.is_empty() {
+                    return Err("设计模板选择响应缺少 request_id".into());
+                }
+                if !matches!(action, "select" | "next" | "direct" | "cancel") {
+                    return Err(format!("不支持的设计模板选择动作: {action:?}"));
+                }
+                for key in [
+                    "selected_id",
+                    "selected_preview_path",
+                    "selected_preview_digest",
+                    "refinement_text",
+                ] {
+                    if payload
+                        .get(key)
+                        .is_some_and(|v| !v.is_string() && !v.is_null())
+                    {
+                        return Err(format!("{key} 必须是字符串"));
+                    }
+                }
+                let selected_id = payload.get("selected_id").and_then(Value::as_str);
+                let selected_preview_path =
+                    payload.get("selected_preview_path").and_then(Value::as_str);
+                let selected_preview_digest = payload
+                    .get("selected_preview_digest")
+                    .and_then(Value::as_str);
+                let refinement_text = payload.get("refinement_text").and_then(Value::as_str);
+                let mut response = json!({ "request_id": req_id, "action": action });
+                if let Some(selected_id) = selected_id {
+                    response["selected_id"] = json!(selected_id);
+                }
+                if let Some(path) = selected_preview_path {
+                    response["selected_preview_path"] = json!(path);
+                }
+                if let Some(digest) = selected_preview_digest {
+                    response["selected_preview_digest"] = json!(digest);
+                }
+                if let Some(refinement_text) = refinement_text {
+                    response["refinement_text"] = json!(refinement_text);
+                }
+
+                // 校验与 responding 置位必须在同一临界区：首个合法响应独占
+                // 引擎确认窗口，并发双击立即拒绝；锁不能跨 await。
+                {
+                    let mut pending = self.0.sess.pending_design_selections.lock_ok();
+                    let Some(current) = pending.get_mut(id) else {
+                        return Err("设计模板选择请求已过期、取消或已响应".into());
+                    };
+                    if current.request_id != req_id {
+                        return Err("设计模板选择 request_id 与当前等待请求不匹配".into());
+                    }
+                    if current.responding {
+                        return Err("设计模板选择响应正在处理中，请勿重复提交".into());
+                    }
+                    if action == "select" {
+                        let Some(selected_id) = selected_id.filter(|v| !v.is_empty()) else {
+                            return Err("select 动作必须提供 selected_id".into());
+                        };
+                        let Some(binding) = current.previews.get(selected_id) else {
+                            return Err(format!("selected_id 不属于当前模板列表: {selected_id}"));
+                        };
+                        // 带摘要的新请求必须把点击时的完整预览绑定原样带回；
+                        // 旧请求没有摘要，继续兼容仅回传 selected_id 的历史 UI/回放。
+                        if let Some(expected_digest) = binding.digest.as_deref() {
+                            if selected_preview_path != Some(binding.path.as_str())
+                                || selected_preview_digest != Some(expected_digest)
+                            {
+                                return Err("selected_id、selected_preview_path 与 selected_preview_digest 不匹配".into());
+                            }
+                        }
+                    }
+                    current.responding = true;
+                }
+
+                if let Err(error) = self.rpc("design/selection/respond", response.clone()).await {
+                    // RPC 失败后允许重试；若 cancel/reconcile 已删除则不复活。
+                    let mut pending = self.0.sess.pending_design_selections.lock_ok();
+                    if let Some(current) = pending
+                        .get_mut(id)
+                        .filter(|current| current.request_id == req_id)
+                    {
+                        current.responding = false;
+                    }
+                    return Err(error);
+                }
+
+                // ACK 后才消费和记成功帧；等待期间取消则不写假成功。
+                {
+                    let mut pending = self.0.sess.pending_design_selections.lock_ok();
+                    let confirmed = pending
+                        .get(id)
+                        .is_some_and(|current| current.request_id == req_id && current.responding);
+                    if !confirmed {
+                        return Err("设计模板选择请求已在响应期间取消或失效".into());
+                    }
+                    pending.remove(id);
+                    self.0
+                        .push_frame(id, |seq| frame::design_selection_respond(&response, seq));
+                }
+                self.0.emit_session_ask(id, false);
                 Ok(())
             }
             other => Err(format!("ohmyagent 引擎不支持上行帧 {other}")),
@@ -4842,6 +4978,25 @@ impl Inner {
             .get(sid)
             .map(|s| s.title.clone())
             .unwrap_or_default();
+        // 关闭一种交互卡不等于会话已无等待项；从三本 pending 重新投影。
+        let open = open
+            || self
+                .sess
+                .pending_perms
+                .lock_ok()
+                .values()
+                .any(|pending_sid| pending_sid == sid)
+            || self
+                .sess
+                .pending_questions
+                .lock_ok()
+                .values()
+                .any(|(pending_sid, _)| pending_sid == sid)
+            || self
+                .sess
+                .pending_design_selections
+                .lock_ok()
+                .contains_key(sid);
         self.app.emit_json(
             "session-event",
             json!({ "type": "session-ask", "id": sid, "title": title, "open": open }),
@@ -4873,6 +5028,20 @@ impl Inner {
     /// task-ended),sidecar 落 interrupted;不和解会永久卡"执行中"
     /// (不能发/不能删/不能切,重启也救不回)。
     pub(super) fn reconcile_session(&self, sid: &str, reason: &str) {
+        // cancel 超时也走单会话和解，设计选择不能永久留在等待态。
+        let design = {
+            let mut pending = self.sess.pending_design_selections.lock_ok();
+            let design = pending.remove(sid);
+            if let Some(request) = &design {
+                self.push_frame(sid, |seq| {
+                    frame::design_selection_cancelled(&request.request_id, reason, seq)
+                });
+            }
+            design
+        };
+        if design.is_some() {
+            self.emit_session_ask(sid, false);
+        }
         let (open, compacting, user_cancelled) = {
             let mut sessions = self.sess.sessions.lock_ok();
             match sessions.get_mut(sid) {
@@ -4949,6 +5118,16 @@ impl Inner {
             .collect();
         for (req_id, sid) in questions {
             self.sess.pending_questions.lock_ok().remove(&req_id);
+            self.emit_session_ask(&sid, false);
+        }
+        let designs = {
+            let mut pending = self.sess.pending_design_selections.lock_ok();
+            std::mem::take(&mut *pending)
+        };
+        for (sid, request) in designs {
+            self.push_frame(&sid, |seq| {
+                frame::design_selection_cancelled(&request.request_id, reason, seq)
+            });
             self.emit_session_ask(&sid, false);
         }
         // 子会话跳过:由各自父会话的和解统一收尾(close_children_of_session)
@@ -5067,6 +5246,7 @@ fn engine_session_create_params(
         "cwd": cwd,
         "permission_mode": ohmy_mode_of(mode),
         "interactive": true,
+        "host_capabilities": ["designSelectionPreviewBinding"],
     });
     if let Some(resume) = resume {
         params["resume"] = json!(resume);
@@ -5184,6 +5364,7 @@ fn stale_background_cards_in_frames(
 #[cfg(test)]
 mod permission_mode_tests {
     use super::{engine_session_create_params, ohmy_mode_of};
+    use serde_json::json;
 
     /// 映射结果必须全部落在引擎 permission.ParseMode 的受理集合内
     /// (default/plan/auto/bypassPermissions/yolo)。历史遗留的 "normal"
@@ -5220,5 +5401,9 @@ mod permission_mode_tests {
         assert_eq!(params["model"], "model-1");
         assert_eq!(params["permission_mode"], "auto");
         assert_eq!(params["interactive"], true);
+        assert_eq!(
+            params["host_capabilities"],
+            json!(["designSelectionPreviewBinding"])
+        );
     }
 }

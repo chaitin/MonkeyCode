@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ATT_LINE, attLineOf, splitAttachments } from "./attLine";
+import { ATT_LINE, attLineFor, attLineOf, DIR_LINE, dirLineOf, splitAttachments } from "./attLine";
 
 describe("附件行约定(唯一出处)", () => {
   it("attLineOf 与 ATT_LINE 互为逆:拼出来的行必被识别", () => {
@@ -26,5 +26,26 @@ describe("附件行约定(唯一出处)", () => {
     const r = splitAttachments("前缀 [图片] a.png\n[图片] 有 空格.png");
     expect(r.images).toEqual([]);
     expect(r.body).toContain("有 空格.png");
+  });
+
+  it("dirLineOf 与 DIR_LINE 互为逆;目录路径允许空格(用户在系统对话框里选的)", () => {
+    expect(dirLineOf("/Users/me/mats")).toMatch(DIR_LINE);
+    const r = splitAttachments(dirLineOf("/Users/me/Design Materials"));
+    expect(r.dirs).toEqual(["/Users/me/Design Materials"]);
+    expect(r.body).toBe("");
+  });
+
+  it("目录行与上传附件行同时出现时各归各路,顺序保持", () => {
+    const r = splitAttachments("看下\n[图片] up/a.png\n[目录] /tmp/mats\n[文件] up/b.txt");
+    expect(r.body).toBe("看下");
+    expect(r.images).toEqual(["up/a.png"]);
+    expect(r.files).toEqual(["up/b.txt"]);
+    expect(r.dirs).toEqual(["/tmp/mats"]);
+  });
+
+  it("attLineFor 按 isDir 分流:目录不落成 [文件] 行", () => {
+    expect(attLineFor({ path: "/tmp/mats", isImage: false, isDir: true })).toBe("[目录] /tmp/mats");
+    expect(attLineFor({ path: "up/a.png", isImage: true })).toBe("[图片] up/a.png");
+    expect(attLineFor({ path: "up/b.txt", isImage: false })).toBe("[文件] up/b.txt");
   });
 });

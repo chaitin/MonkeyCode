@@ -70,6 +70,8 @@ export interface LocalQueueAttachment {
   path: string;
   name: string;
   isImage: boolean;
+  /** 目录引用(见 ComposerAtt.isDir);缺省即普通上传附件。 */
+  isDir?: boolean;
 }
 
 export interface CloudQueueAttachment {
@@ -156,7 +158,9 @@ export function isLocalQueueAttachment(value: unknown): value is LocalQueueAttac
     isRecord(value) &&
     typeof value.path === "string" &&
     typeof value.name === "string" &&
-    typeof value.isImage === "boolean"
+    typeof value.isImage === "boolean" &&
+    // 旧持久化记录没有 isDir 字段,缺省视作上传附件——不能因此判非法整条丢弃。
+    (value.isDir === undefined || typeof value.isDir === "boolean")
   );
 }
 

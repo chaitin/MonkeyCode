@@ -651,7 +651,7 @@ describe("CloudTaskView", () => {
     expect(seqs).toEqual(["1", "5", "10"]);
   });
 
-  it("云端文件:vmId 就绪才可用,点开右滑面板挂 CloudFiles,可关闭", async () => {
+  it("云端文件:vmId 就绪才可用,开合钮拉开右侧侧边栏挂 CloudFiles,可收起", async () => {
     stubShell((cmd) => {
       switch (cmd) {
         case "mc_task_info":
@@ -663,33 +663,36 @@ describe("CloudTaskView", () => {
       }
     });
     renderCloud(<CloudTaskView task={{ id: "t7", status: "finished" }} />);
-    const btn = await screen.findByRole("button", { name: "云端文件" });
-    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false)); // vmId 到位才可用
+    const btn = await screen.findByRole("button", { name: "打开侧边栏" });
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false)); // runtime 到位才可用
     await userEvent.click(btn);
     expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy(); // CloudFiles 头部已挂载
-    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
+    // 收起唯一入口 = header 同一颗开合钮(面板内不再放第二颗,2026-08-30
+    // 用户报障「重复」);开着时它的可访问名变为「收起侧边栏」
+    expect(btn.getAttribute("aria-label")).toBe("收起侧边栏");
+    await userEvent.click(btn);
     expect(screen.queryByRole("button", { name: "刷新" })).toBeNull();
 
-    // 重开后 Esc(window capture)也能关,且截断传播——审批热键(esc = deny
-    // 不可逆)同挂 window,这一下按键绝不能双消费(与 FilesDrawer 同契约)
+    // 2026-08-30 侧边栏改造:面板常驻(非浮层)后不再吃 Esc——审批热键照常
+    // 生效;CloudFiles 内部文件预览的先关一级不受影响(escLayer 仍在)
     await userEvent.click(btn);
     expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy();
     const leaked = vi.fn();
     window.addEventListener("keydown", leaked);
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("button", { name: "刷新" })).toBeNull();
-    expect(leaked).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy(); // 侧边栏不动
+    expect(leaked).toHaveBeenCalledTimes(1); // 不消费,照常传播
     window.removeEventListener("keydown", leaked);
   });
 
-  it("云端文件:pending(VM 未建)时按钮禁用", async () => {
+  it("云端文件:pending(VM 未建)时开合钮禁用", async () => {
     stubShell((cmd) =>
       cmd === "mc_task_info"
         ? Promise.resolve({ id: "t8", status: "pending", virtualmachine: { id: "", conditions: [] } })
         : Promise.resolve({}),
     );
     renderCloud(<CloudTaskView task={{ id: "t8", status: "pending" }} />);
-    const btn = await screen.findByRole("button", { name: "云端文件" });
+    const btn = await screen.findByRole("button", { name: "打开侧边栏" });
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -708,7 +711,7 @@ describe("CloudTaskView", () => {
       </CloudQueueCoordinatorProvider>,
     );
 
-    const btn = await screen.findByRole("button", { name: "云端文件" });
+    const btn = await screen.findByRole("button", { name: "打开侧边栏" });
     expect((btn as HTMLButtonElement).disabled).toBe(true);
     expect(btn.getAttribute("title")).toBe("正在连接云端任务…");
     await userEvent.click(btn);
@@ -739,7 +742,7 @@ describe("CloudTaskView", () => {
       }
     });
     renderCloud(<CloudTaskView task={{ id: "t8b", status: "finished" }} />);
-    const btn = await screen.findByRole("button", { name: "云端文件" });
+    const btn = await screen.findByRole("button", { name: "打开侧边栏" });
     await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
     await userEvent.click(btn);
     expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy(); // CloudFiles 面板已挂载(快照浏览)

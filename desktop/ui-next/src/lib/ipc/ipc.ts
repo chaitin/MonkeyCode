@@ -46,7 +46,12 @@ export function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<
  *  「启动异常」糊用户一脸(2026-08-12 报障,3 条对应 tauri://drag-* 三监听)。 */
 function safeOff(off: () => unknown): void {
   try {
-    void Promise.resolve(off()).catch(() => {});
+    const result = off();
+    // 壳注入的 unlisten 在不同版本中可能是同步函数，也可能返回 Promise。
+    // cleanup 不能 await，但异步拒绝同样必须吞掉，避免变成全局 unhandledrejection。
+    if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+      void Promise.resolve(result).catch(() => {});
+    }
   } catch {
     // 同步抛也是同一类"已解绑"信号
   }
@@ -57,7 +62,10 @@ export function listen<T>(name: string, cb: (payload: T) => void): () => void {
   const event = tauri()?.event;
   if (!event) return () => {};
   const pending = event.listen(name, (e) => cb(e.payload as T));
+  let closed = false;
   return () => {
+    if (closed) return;
+    closed = true;
     void pending.then((off) => safeOff(off)).catch(() => {});
   };
 }
@@ -68,5 +76,10 @@ export async function listenAsync<T>(name: string, cb: (payload: T) => void): Pr
   const event = tauri()?.event;
   if (!event) return () => {};
   const off = await event.listen(name, (e) => cb(e.payload as T));
-  return () => safeOff(off);
+  let closed = false;
+  return () => {
+    if (closed) return;
+    closed = true;
+    safeOff(off);
+  };
 }

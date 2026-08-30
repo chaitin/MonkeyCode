@@ -1,7 +1,7 @@
 // 每会话 composer 只暂存草稿与当前附件；待发送消息由 sendQueue 按 sid 持久化。
 // 后台补投由 App 的 session-status 事件驱动，每个轮末至多领取一个队首项。
 import { sessionSend } from "@/lib/ipc/sessions";
-import { attLineOf } from "@/lib/protocol/attLine";
+import { attLineFor } from "@/lib/protocol/attLine";
 import { b64encode } from "@/lib/protocol/codec";
 import {
   claimHead,
@@ -62,9 +62,7 @@ export function bindActiveComposer(id: string): () => void {
 }
 
 function messageOf(item: { content: string; attachments: LocalQueueAttachment[] }): string {
-  return [item.content.trim(), ...item.attachments.map((att) => attLineOf(att.path, att.isImage))]
-    .filter(Boolean)
-    .join("\n");
+  return [item.content.trim(), ...item.attachments.map(attLineFor)].filter(Boolean).join("\n");
 }
 
 function advanceForStatus(

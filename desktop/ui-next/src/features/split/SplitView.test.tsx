@@ -788,16 +788,17 @@ describe("分屏视图(树形布局)", () => {
     expect(within(screen.getByRole("region", { name: "第 1 格" })).getByRole("button", { name: "格操作" })).toBeTruthy();
   });
 
-  it("第七格的动态细头插槽可用：「会话文件」打开文件抽屉", async () => {
+  it("第七格的动态细头插槽可用：「打开侧边栏」拉开右侧文件面板", async () => {
     stubShell();
     localStorage.setItem("mc.splitTree", JSON.stringify({ leaf: 6 }));
     localStorage.setItem("mc.splitSlots", JSON.stringify([null, null, null, null, null, null, "s1"]));
     render(<Harness />);
     await userEvent.click(
-      await within(screen.getByRole("region", { name: "第 7 格" })).findByRole("button", { name: "会话文件" }),
+      await within(screen.getByRole("region", { name: "第 7 格" })).findByRole("button", { name: "打开侧边栏" }),
     );
-    // FilesDrawer 挂上(文件/改动两页签);关掉即收
+    // 右侧侧边栏挂上(文件 tab + FilesPanel)
     expect(await screen.findByRole("tab", { name: /文件/ })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "会话文件" })).toBeTruthy();
   });
 
   it("点装载卡行 → onAssign(槽, 会话) 且该格挂载", async () => {

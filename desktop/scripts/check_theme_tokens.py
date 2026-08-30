@@ -32,8 +32,8 @@ import sys
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-# 出货的那套(tauri.conf.json 的 beforeBuildCommand.cwd)。旧 desktop/ui 已冻结、
-# 待 P9 删除,不再守——**守错工程等于没有守卫**。
+# 出货的那套(tauri.conf.json 的 beforeBuildCommand.cwd)。旧 desktop/ui 已于
+# 2026-08-30 删除——**守错工程等于没有守卫**。
 UI = ROOT / "ui-next"
 STYLES = UI / "src/styles/app.css"
 INDEX_HTML = UI / "index.html"

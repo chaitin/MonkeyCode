@@ -605,7 +605,7 @@ function useRenderedMarkdown(source: string, enabled: boolean, linkifyInlineFile
   return html;
 }
 
-function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: string) => void) {
+function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: string) => void, onUrlLink?: (url: string) => boolean) {
   const target = e.target as HTMLElement;
   const copyBtn = target.closest<HTMLElement>("[data-md-copy]");
   if (copyBtn) {
@@ -637,7 +637,9 @@ function onContainerClick(e: MouseEvent<HTMLElement>, onLocalLink?: (path: strin
     if (linkHref(link).startsWith("#")) return;
     // 契约:webview 不导航——工作区文件走 reveal 回调,其余交系统浏览器
     e.preventDefault();
-    openExternal(linkHref(link));
+    const href = linkHref(link);
+    if (onUrlLink?.(href)) return;
+    openExternal(href);
   }
 }
 
@@ -760,6 +762,7 @@ function StaticMarkdown({
   className,
   localImageUrl,
   onLocalLink,
+  onUrlLink,
   deferMermaid = false,
 }: {
   source: string;
@@ -768,6 +771,8 @@ function StaticMarkdown({
   localImageUrl?: (path: string) => Promise<string>;
   /** 本地链接点击代理(reveal 到文件管理器等)。 */
   onLocalLink?: (path: string) => void;
+  /** Return true to claim an absolute URL (design preview intercept). */
+  onUrlLink?: (url: string) => boolean;
   /** 流式正文尚未稳定时暂缓图表渲染，避免无法取消的旧任务积压。 */
   deferMermaid?: boolean;
 }) {
@@ -832,7 +837,7 @@ function StaticMarkdown({
       key="md"
       ref={root}
       className={`md select-text ${className ?? ""}`}
-      onClick={(e) => onContainerClick(e, onLocalLink)}
+      onClick={(e) => onContainerClick(e, onLocalLink, onUrlLink)}
       onKeyDown={(e) => onContainerKeyDown(e, onLocalLink)}
       onContextMenu={onContainerContextMenu}
       dangerouslySetInnerHTML={{ __html: html }}
@@ -955,11 +960,13 @@ function StreamingMarkdown({
   className,
   localImageUrl,
   onLocalLink,
+  onUrlLink,
 }: {
   source: string;
   className?: string;
   localImageUrl?: (path: string) => Promise<string>;
   onLocalLink?: (path: string) => void;
+  onUrlLink?: (url: string) => boolean;
 }) {
   const { locale } = useI18n();
   const linkifyInlineFiles = Boolean(onLocalLink);
@@ -997,7 +1004,7 @@ function StreamingMarkdown({
       ref={root}
       data-md-stream=""
       className={`md select-text ${className ?? ""}`}
-      onClick={(event) => onContainerClick(event, onLocalLink)}
+      onClick={(event) => onContainerClick(event, onLocalLink, onUrlLink)}
       onKeyDown={(event) => onContainerKeyDown(event, onLocalLink)}
       onContextMenu={onContainerContextMenu}
     >
@@ -1021,6 +1028,7 @@ export function Markdown(props: {
   className?: string;
   localImageUrl?: (path: string) => Promise<string>;
   onLocalLink?: (path: string) => void;
+  onUrlLink?: (url: string) => boolean;
   deferMermaid?: boolean;
 }) {
   return props.deferMermaid ? <StreamingMarkdown {...props} /> : <StaticMarkdown {...props} />;

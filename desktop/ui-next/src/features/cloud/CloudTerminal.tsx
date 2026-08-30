@@ -20,8 +20,9 @@ import {
 import type { CloudPipe } from "@/lib/cloud/pipes";
 import { useI18n } from "@/lib/i18n";
 
-/** CSS 令牌 → xterm options。令牌缺席时省略该项，让 xterm 使用库默认。 */
-function readTermOptions() {
+/** CSS 令牌 → xterm options。令牌缺席时省略该项，让 xterm 使用库默认。
+ *  (导出给本地终端 LocalTerminal 复用:两边同一块深色终端岛。) */
+export function readTermOptions() {
   const css = getComputedStyle(document.documentElement);
   const background = css.getPropertyValue("--termBg").trim();
   const foreground = css.getPropertyValue("--termTx").trim();

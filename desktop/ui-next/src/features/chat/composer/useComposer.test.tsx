@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { useLayoutEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { b64decode } from "@/lib/protocol/codec";
+import { b64decode, b64encode } from "@/lib/protocol/codec";
 import {
   ackSteering,
   claimSteering,
@@ -979,5 +979,88 @@ describe("useComposer 本地持久 lane", () => {
     });
     expect(result.current.atts).toHaveLength(0);
     expect(stashGet("a")?.atts.map((att) => att.path)).toEqual([".monkeycode/uploads/a.png"]);
+  });
+});
+
+describe("useComposer:guarded generated-file send", () => {
+  const image = () => new File([new Uint8Array([1, 2, 3])], "annotated.png", { type: "image/png" });
+  const path = ".monkeycode/uploads/annotated.png";
+  const installUpload = (fail?: "upload" | "send") => stubShell((cmd) => {
+    if (cmd === "upload_begin") {
+      if (fail === "upload") throw new Error("disk full");
+      return { handle: 7 };
+    }
+    if (cmd === "upload_finish") return { path };
+    if (cmd === "session_send" && fail === "send") throw new Error("engine down");
+    return null;
+  });
+
+  it("uploads the image and sends feedback with the standard image attachment line", async () => {
+    const calls = installUpload();
+    const { result } = renderHook(() => useComposer("a", feed()));
+    let accepted = false;
+    await act(async () => { accepted = await result.current.sendWithFiles("review metadata", [image()]); });
+    expect(accepted).toBe(true);
+    const send = calls.find((c) => c.cmd === "session_send");
+    expect(send?.args).toEqual({
+      id: "a",
+      ftype: "user-input",
+      payload: { content: b64encode(`review metadata\n[图片] ${path}`) },
+    });
+  });
+
+  it("uploads while running and places the complete payload in the persistent queue", async () => {
+    const calls = installUpload();
+    const { result } = renderHook(() => useComposer("a", feed({ running: true })));
+    let accepted = false;
+    await act(async () => { accepted = await result.current.sendWithFiles("queued review", [image()]); });
+    expect(accepted).toBe(true);
+    expect(result.current.queue.pending).toHaveLength(1);
+    expect(result.current.queue.pending[0]).toMatchObject({
+      content: "queued review",
+      attachments: [{ path, name: "annotated.png", isImage: true }],
+    });
+    expect(calls.filter((c) => c.cmd === "session_send")).toHaveLength(0);
+  });
+
+  it("surfaces upload and send failures and never reports them as accepted", async () => {
+    let calls = installUpload("upload");
+    let hook = renderHook(() => useComposer("a", feed()));
+    let accepted = true;
+    await act(async () => { accepted = await hook.result.current.sendWithFiles("review", [image()]); });
+    expect(accepted).toBe(false);
+    expect(hook.result.current.error).toContain("disk full");
+    expect(calls.filter((c) => c.cmd === "session_send")).toHaveLength(0);
+    hook.unmount();
+
+    calls = installUpload("send");
+    hook = renderHook(() => useComposer("a", feed()));
+    await act(async () => { accepted = await hook.result.current.sendWithFiles("review", [image()]); });
+    expect(accepted).toBe(false);
+    expect(hook.result.current.error).toContain("engine down");
+    expect(hook.result.current.draft).toBe("review");
+    expect(hook.result.current.atts.map((a) => a.path)).toEqual([path]);
+    expect(calls.filter((c) => c.cmd === "session_send")).toHaveLength(1);
+  });
+
+  it("does not send an upload that completes after the active session switches", async () => {
+    let finish: (value: { path: string }) => void = () => {};
+    const pending = new Promise<{ path: string }>((resolve) => { finish = resolve; });
+    const calls = stubShell((cmd) => {
+      if (cmd === "upload_begin") return { handle: 9 };
+      if (cmd === "upload_finish") return pending;
+      return null;
+    });
+    const { result, rerender } = renderHook(({ id }) => useComposer(id, feed()), { initialProps: { id: "a" } });
+    let sending: Promise<boolean> = Promise.resolve(true);
+    act(() => { sending = result.current.sendWithFiles("old-session review", [image()]); });
+    await waitFor(() => expect(calls.some((c) => c.cmd === "upload_finish")).toBe(true));
+    rerender({ id: "b" });
+    let accepted = true;
+    await act(async () => { finish({ path }); accepted = await sending; });
+    expect(accepted).toBe(false);
+    expect(calls.filter((c) => c.cmd === "session_send")).toHaveLength(0);
+    expect(stashGet("a")?.draft).toBe("old-session review");
+    expect(stashGet("a")?.atts.map((a) => a.path)).toEqual([path]);
   });
 });

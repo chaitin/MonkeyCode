@@ -78,8 +78,12 @@ export function uploadFilePath(sessionId: string, src: string): Promise<{ path: 
 /** 回读本地资源为 data URL(壳 upload_read):uploads 目录内附件放行,
  * 其余路径只放行工作区内常见图片;20MB 上限。Tauri 下 <img> 带不了鉴权头,
  * 也不开 asset scope 到任意工作区,小图 base64 内联最稳(壳侧头注同口径)。 */
-export function uploadFileURL(sessionId: string, path: string): Promise<string> {
-  return invoke<string>("upload_read", { id: sessionId, path });
+export function uploadFileURL(sessionId: string, path: string, expectedDigest?: string): Promise<string> {
+  return invoke<string>("upload_read", {
+    id: sessionId,
+    path,
+    ...(expectedDigest ? { expectedDigest } : {}),
+  });
 }
 
 // path-backed 占位 File:原生拖拽只有路径,造一个空内容、仅元数据的 File
@@ -97,7 +101,8 @@ export function pathBackedFile(path: string, name: string, mediaType: string): F
 export const nativePathOf = (f: File): string | undefined => nativePaths.get(f);
 
 /** 系统文件对话框多选附件,返回本地路径列表(取消/浏览器模式返回空)。
- * title 由调用方传入(文案走 i18n,本层不产 UI 词)。 */
+ * title 由调用方传入(文案走 i18n,本层不产 UI 词)。
+ * 选目录不走这里——见 host.ts::pickDirectory,它另有 defaultPath(WSL)口径。 */
 export async function pickAttachmentPaths(title?: string): Promise<string[]> {
   if (!inDesktopShell()) return [];
   try {

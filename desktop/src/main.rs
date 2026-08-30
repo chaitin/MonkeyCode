@@ -1,7 +1,7 @@
 // MonkeyCode 本地桌面客户端 —— Tauri 壳。
 //
 // 职责边界:壳持有**应用配置**(模型列表等)与宿主事务(进程生命周期、
-// 托盘、桌宠、更新),并承载 UI(ui/ 构建产物随壳分发,frontendDist)。
+// 托盘、桌宠、更新),并承载 UI(ui-next/ 构建产物随壳分发,frontendDist)。
 // 引擎 ohmyagent 是壳拉起的子进程(stdio JSON-RPC,driver/ohmy.rs),
 // UI 只经 Tauri IPC 与壳对话。
 //
@@ -19,11 +19,13 @@ mod config;
 mod driver;
 #[cfg(target_os = "windows")]
 mod native_pet;
+mod preview;
 mod repo;
 mod skill_import;
 mod skill_transactions;
 mod skills;
 mod telemetry;
+mod term;
 mod todos;
 mod uploads;
 mod util;
@@ -1539,7 +1541,10 @@ fn main() {
             default_linux_gdk_backend(wayland_display.as_deref(), session_type.as_deref()),
         );
     }
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().register_uri_scheme_protocol(
+        preview::ARTIFACT_SCHEME,
+        |_context, request| preview::artifact_protocol_response(request),
+    );
     // 必须是首个插件：Windows/Linux 托盘进程仍在时再次点击快捷方式，不启动
     // 第二套客户端/引擎，而是把第二次启动转给已有进程并唤回主窗口。
     #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -1558,6 +1563,7 @@ fn main() {
     builder
         .manage(config::ConfigStore::new())
         .manage(DriverHost::new())
+        .manage(term::TermState::default())
         .manage(TrayReady(AtomicBool::new(true)))
         .manage(UiIntent(Mutex::new(None)))
         .manage(PetEnabled(AtomicBool::new(true)))
@@ -1599,6 +1605,7 @@ fn main() {
             driver::engine_status,
             driver::engine_caps,
             driver::wsl_workdir_base,
+            driver::resolve_runtime_path,
             browser::browser_status,
             browser::browser_repair,
             driver::sessions_list,
@@ -1627,11 +1634,29 @@ fn main() {
             driver::upload_begin,
             driver::upload_file_path,
             driver::upload_read,
+            driver::design_template_preview_read,
             uploads::upload_chunk,
             uploads::upload_finish,
             uploads::upload_abort,
             uploads::stat_dropped_file,
             uploads::read_dropped_file,
+            preview::preview_create,
+            preview::preview_create_artifact,
+            preview::preview_show,
+            preview::preview_hide,
+            preview::preview_set_bounds,
+            preview::preview_navigate,
+            preview::preview_reload,
+            preview::preview_set_zoom,
+            preview::preview_destroy,
+            preview::preview_result_show,
+            preview::preview_result_hide,
+            preview::preview_picker_toggle,
+            preview::preview_element_apply,
+            preview::preview_element_undo,
+            preview::preview_capture,
+            preview::preview_serialize,
+            preview::preview_save_html,
             baizhi::baizhi_status,
             baizhi::baizhi_send_code,
             baizhi::baizhi_login,
@@ -1665,6 +1690,11 @@ fn main() {
             baizhi::monkeycode::cloud_ws_open,
             baizhi::monkeycode::cloud_ws_send,
             baizhi::monkeycode::cloud_ws_close,
+            term::term_open,
+            term::term_write,
+            term::term_resize,
+            term::term_title,
+            term::term_close,
             todos::todos_load,
             todos::todos_save,
             todos::todo_upload_begin,
@@ -1721,7 +1751,7 @@ fn main() {
             // 装机/使用统计心跳。端点未注入(默认)或用户在托盘关掉则空转。
             telemetry::start(app.handle());
 
-            // 自动检查更新整条收在 UI 侧(ui/src/App.tsx + updateGate.ts):挂载、
+            // 自动检查更新整条收在 UI 侧(ui-next features/update/useUpdate.ts):挂载、
             // 切回前台、4 小时兜底三个触发点共用一道 30 分钟闸门,发现新版点亮
             // 侧栏徽标与横幅。这里曾经还有一条"启动后 5 秒自检 + 弹对话框"的
             // 并行路径,与 UI 那次在启动瞬间各打一遍更新端点,且弹窗与横幅重复;

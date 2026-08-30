@@ -24,6 +24,8 @@ function stubShell({
   outline,
   frames,
   changes,
+  previewFiles,
+  artifacts,
   historyPages,
 }: {
   hasMore?: boolean;
@@ -32,10 +34,13 @@ function stubShell({
   frames?: unknown[];
   /** session_call repo_file_changes 的应答(改动徽标用例) */
   changes?: unknown;
+  previewFiles?: unknown;
+  artifacts?: Record<string, unknown>;
   /** session_history 逐次应答队列(offset 补页用例);耗尽/缺省走单页默认 */
   historyPages?: unknown[];
 } = {}) {
   const ops: Op[] = [];
+  const changeResponses = Array.isArray(changes) ? [...changes] : null;
   const listeners = new Map<string, (e: { payload: unknown }) => void>();
   (window as unknown as { __TAURI__?: unknown }).__TAURI__ = {
     core: {
@@ -43,7 +48,14 @@ function stubShell({
         ops.push({ op: "invoke", cmd, args });
         if (cmd === "session_outline") return Promise.resolve(outline ?? null);
         if (cmd === "session_call" && args?.kind === "repo_file_changes") {
-          return Promise.resolve(changes ?? { result: [], is_git_repo: true });
+          return Promise.resolve(changeResponses?.shift() ?? changes ?? { result: [], is_git_repo: true });
+        }
+        if (cmd === "session_call" && args?.kind === "repo_preview_files") {
+          return Promise.resolve(previewFiles ?? { result: { files: [], truncated: false } });
+        }
+        if (cmd === "session_call" && args?.kind === "repo_artifact_read") {
+          const path = (args.payload as { path?: string } | undefined)?.path ?? "";
+          return Promise.resolve({ result: artifacts?.[path] ?? { path, kind: "html", mime: "text/html", content: "<html></html>" } });
         }
         if (cmd === "session_call") return Promise.resolve({ result: [] });
         if (cmd === "session_open") {
@@ -117,6 +129,102 @@ describe("聊天视图", () => {
       },
     ]);
     await waitFor(() => expect(screen.getByText(/再跑测试/)).toBeTruthy());
+  });
+
+  it("running 会话切换到另一个 running 会话时重新建立 artifact baseline", async () => {
+    const shell = stubShell({
+      frames: [
+        { type: "user-input", data: { content: b64encode("设计页面") }, seq: 1 },
+        { type: "task-started", seq: 2 },
+      ],
+    });
+    const view = render(<ChatView meta={META} />);
+    await waitFor(() => expect(shell.ops.filter((op) => op.args?.kind === "repo_file_changes")).toHaveLength(1));
+    expect(shell.ops.find((op) => op.args?.kind === "repo_file_changes")?.args?.id).toBe("s1");
+
+    const nextMeta = { ...META, id: "s2", title: "另一个运行会话" };
+    view.rerender(<ChatView meta={nextMeta} />);
+    await waitFor(() => expect(shell.ops.filter((op) => op.args?.kind === "repo_file_changes")).toHaveLength(2));
+    const baselineCalls = shell.ops.filter((op) => op.args?.kind === "repo_file_changes");
+    expect(baselineCalls.map((op) => op.args?.id)).toEqual(["s1", "s2"]);
+    expect(shell.ops.some((op) => op.op === "listen" && op.cmd === "frames:s2")).toBe(true);
+  });
+
+  it("当前轮设计完成后自动打开预览并标记压缩布局", async () => {
+    const { emit } = stubShell();
+    const { container } = render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+
+    emit("frames:s1", [
+      { type: "user-input", data: { content: b64encode("设计页面") }, timestamp: 3, seq: 3 },
+      { type: "task-started", timestamp: 4, seq: 4 },
+      {
+        type: "task-running",
+        kind: "acp_event",
+        data: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "完成：http://127.0.0.1:49173/" } } },
+        timestamp: 5,
+        seq: 5,
+      },
+    ]);
+    expect(container.querySelector('[data-design-preview-open="true"]')).toBeNull();
+
+    emit("frames:s1", [{ type: "task-ended", timestamp: 6, seq: 6 }]);
+    await waitFor(() => expect(container.querySelector('[data-design-preview-open="true"]')).toBeTruthy());
+    expect(screen.getByLabelText("设计预览工作台")).toBeTruthy();
+  });
+
+  it("无 localhost URL 的设计轮结束后自动打开最佳 HTML artifact，普通代码轮不弹", async () => {
+    const shell = stubShell({
+      changes: [
+        { result: [{ path: "legacy.html", status: "M" }], is_git_repo: true },
+        { result: [{ path: "legacy.html", status: "M" }, { path: "src/Login.tsx", status: "M" }], is_git_repo: true },
+      ],
+      previewFiles: { result: { files: [{ path: "index.html", kind: "html", mime: "text/html", size: 20 }], truncated: false } },
+    });
+    const view = render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    shell.emit("frames:s1", [
+      { type: "user-input", data: { content: b64encode("设计一个登录页面") }, seq: 3 },
+      { type: "task-started", seq: 4 },
+    ]);
+    await waitFor(() => expect(shell.ops.filter((op) => op.args?.kind === "repo_file_changes")).toHaveLength(1));
+    shell.emit("frames:s1", [
+      { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "页面已经完成" } } }, seq: 5 },
+      { type: "task-ended", seq: 6 },
+    ]);
+    expect(await screen.findByTitle("index.html")).toBeTruthy();
+    expect(screen.queryByTitle("Preview legacy.html")).toBeNull();
+    view.unmount();
+
+    const ordinary = stubShell({ changes: { result: [{ path: "server/api.rs", status: "M" }], is_git_repo: true } });
+    const plain = render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    ordinary.emit("frames:s1", [
+      { type: "user-input", data: { content: b64encode("修复 API 超时") }, seq: 7 },
+      { type: "task-started", seq: 8 },
+      { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "后端测试通过" } } }, seq: 9 },
+      { type: "task-ended", seq: 10 },
+    ]);
+    await waitFor(() => expect(ordinary.ops.some((op) => op.args?.kind === "repo_file_changes")).toBe(true));
+    expect(plain.queryByLabelText("设计预览工作台")).toBeNull();
+  });
+
+  it("本轮写工具可选中 baseline 已 dirty 的 HTML，而不选其他遗留 HTML", async () => {
+    const dirty = { result: [{ path: "legacy.html", status: "M" }, { path: "pages/login.html", status: "M" }], is_git_repo: true };
+    const shell = stubShell({ changes: [dirty, dirty] });
+    render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    shell.emit("frames:s1", [
+      { type: "user-input", data: { content: b64encode("设计登录页面") }, seq: 11 },
+      { type: "task-started", seq: 12 },
+    ]);
+    await waitFor(() => expect(shell.ops.filter((op) => op.args?.kind === "repo_file_changes")).toHaveLength(1));
+    shell.emit("frames:s1", [
+      { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "tool_call", toolCallId: "w1", title: "Write page", kind: "write", rawInput: { file_path: "/p/a/pages/login.html" } } }, seq: 13 },
+      { type: "task-ended", seq: 14 },
+    ]);
+    expect(await screen.findByTitle("pages/login.html")).toBeTruthy();
+    expect(screen.queryByTitle("Preview legacy.html")).toBeNull();
   });
 
   it("加载更早:前插历史且 cursor 前移,原条目仍在", async () => {
@@ -262,6 +370,11 @@ describe("聊天视图", () => {
     expect(header.hasAttribute("data-tauri-drag-region")).toBe(true);
     const h1 = header.querySelector("h1") as HTMLElement;
     expect(h1.hasAttribute("data-tauri-drag-region")).toBe(true);
+    expect(h1.classList.contains("max-w-full")).toBe(true);
+    // 2026-08-30 侧边栏改造:预览/文件双钮收编为一颗开合钮,动作簇 = 开合 + ⋯
+    const actions = header.querySelectorAll("[data-header-action]");
+    expect(actions).toHaveLength(2);
+    for (const action of actions) expect(action.classList.contains("shrink-0")).toBe(true);
     // 双击改名的文字 span 必须留在拖拽区之外(拖拽区双击=窗口最大化)
     expect(h1.querySelector("span")?.hasAttribute("data-tauri-drag-region")).toBe(false);
     for (const btn of header.querySelectorAll("button")) {
@@ -325,11 +438,13 @@ describe("聊天视图", () => {
     expect(screen.getByText(/正在:改代码/)).toBeTruthy();
   });
 
-  it("H1 浮层优先:抽屉开 + 待审批,一次 Esc 只关抽屉不发 permission-resp;再按才拒绝", async () => {
+  // 2026-08-30 侧边栏改造:面板常驻(非浮层)后不再吃 Esc——审批热键照常
+  // 生效,侧边栏原地不动(面板内文件预览的先关一级钉在 FilesPanel.test)
+  it("侧边栏常驻不拦 Esc:打开侧边栏 + 待审批,一次 Esc 即拒绝,侧边栏不收", async () => {
     const { ops, emit } = stubShell();
     render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
-    await userEvent.click(screen.getByRole("button", { name: "会话文件" }));
+    await userEvent.click(screen.getByRole("button", { name: "打开侧边栏" }));
     expect(screen.getByRole("region", { name: "会话文件" })).toBeTruthy();
     emit("frames:s1", [
       { type: "permission-req", data: { id: "p9", title: "npm test", tool: "Bash" }, timestamp: 4, seq: 4 },
@@ -338,12 +453,9 @@ describe("聊天视图", () => {
 
     const permResp = () => ops.filter((o) => o.cmd === "session_send" && (o.args?.ftype as string) === "permission-resp");
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("region", { name: "会话文件" })).toBeNull(); // 抽屉关了
-    expect(permResp()).toHaveLength(0); // 同一下按键没顺手拒绝(deny 不可逆)
-
-    await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(permResp()).toHaveLength(1));
     expect(permResp()[0]?.args?.payload).toEqual({ id: "p9", approved: false, remember: false, persist: false });
+    expect(screen.getByRole("region", { name: "会话文件" })).toBeTruthy(); // 侧边栏不动
   });
 
   it("D4 双击标题改名:Enter 提交 session_patch,不乐观改 meta(等 session-event 回写)", async () => {
@@ -652,6 +764,31 @@ describe("聊天视图", () => {
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
   });
 
+  it("离底时收到模板选择请求会自动显露待交互卡片", async () => {
+    const meta = { ...META, id: "s-template-reveal" };
+    const { emit } = stubShell();
+    const { container } = render(<ChatView meta={meta} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    const log = container.querySelector("[data-chat-log]") as HTMLElement;
+    Object.defineProperty(log, "scrollHeight", { value: 2468, configurable: true });
+    log.scrollTop = 0;
+    fireEvent.wheel(log, { deltaY: -120 });
+
+    emit("frames:s-template-reveal", [{
+      type: "design-template-selection-request",
+      seq: 3,
+      data: {
+        request_id: "template-request-1",
+        description: "企业 IM 落地页",
+        items: [{ id: "saas-landing", title: "SaaS 产品营销落地页", image: ".monkeycode/template.webp" }],
+        actions: { select: true, next: true, direct: true, cancel: true },
+      },
+    }]);
+
+    await waitFor(() => expect(screen.getByText("SaaS 产品营销落地页")).toBeTruthy());
+    expect(log.scrollTop).toBe(2468);
+  });
+
   // 任务面板钉在 composer 上方的 footer 里,footer 是 shrink-0、日志视口是
   // flex-1:plan 帧一到,面板撑高 footer 就把视口压矮同样多。内容没变、
   // scrollTop 不动,于是停在离底「正好一个面板高」的位置(用户报障 2026-08-06)。
@@ -905,11 +1042,15 @@ describe("聊天视图", () => {
     expect(badgeCls).toContain("[--indicator-t:5px]");
     expect(badgeCls).toContain("pointer-events-none");
 
-    // 徽标存在时点文件钮:抽屉直达「改动」页,改动列表直出
-    await userEvent.click(within(header).getByRole("button", { name: "会话文件" }));
-    const tab = await screen.findByRole("tab", { name: /改动/ });
-    expect(tab.className).toContain("tab-active");
+    // 徽标存在时点开合钮:侧边栏直达「变更」tab,改动列表直出
+    await userEvent.click(within(header).getByRole("button", { name: "打开侧边栏" }));
+    const tab = await screen.findByRole("tab", { name: /变更/ });
+    expect(tab.getAttribute("aria-selected")).toBe("true");
     expect(await screen.findByRole("button", { name: /a\.ts/ })).toBeTruthy();
+    // 终端 tab 在场但懒挂载:不点不起 shell(2026-08-30「终端可多开」;
+    // 多实例细节钉在 features/terminal/LocalTerminal.test)
+    expect(screen.getByRole("tab", { name: "终端" })).toBeTruthy();
+    expect(screen.queryByTestId("term-host")).toBeNull();
   });
 
   // 分屏格内形态(variant="pane"):细头/管理动作归 SplitView,数据面与
@@ -921,7 +1062,7 @@ describe("聊天视图", () => {
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
     expect(container.querySelector("[data-view-header]")).toBeNull();
     expect(container.querySelector("main")).toBeNull();
-    expect(screen.queryByRole("button", { name: "会话文件" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "打开侧边栏" })).toBeNull();
     expect(container.querySelector(".chat-measure")).toBeNull();
     expect(container.querySelectorAll(".chat-measure-pane").length).toBeGreaterThan(0);
     // 大纲点列不渲染(贴边点列在窄格里挤占行宽)

@@ -180,6 +180,19 @@ describe("设置入口(外观/语言/配置在 SettingsView,各有专测)", () =
   });
 });
 
+describe("设计预览页面生命周期", () => {
+  it("切换主区页面时强制销毁原生预览", async () => {
+    const shell = stubShell();
+    render(<App />);
+    await waitFor(() => expect(shell.count("preview_destroy")).toBeGreaterThan(0));
+    const before = shell.count("preview_destroy");
+
+    await userEvent.click(screen.getByRole("button", { name: "设置" }));
+
+    await waitFor(() => expect(shell.count("preview_destroy")).toBeGreaterThan(before));
+  });
+});
+
 /* ==================== 批 A:D1/D3/D5/D8/H9 的 App 级粘合 ==================== */
 
 const sess = (over: Partial<SessionMeta> & { id: string }): SessionMeta => ({
@@ -1028,8 +1041,9 @@ describe("工作台常驻壳(2026-08-18 升级为主界面)", () => {
     await userEvent.click(screen.getByRole("tab", { name: "云端" }));
     await userEvent.click(await screen.findByText("云端任务一"));
     const pane = screen.getByRole("region", { name: "第 1 格" });
-    // portal 时序:插槽落点先挂、视图随后注入
-    await waitFor(() => expect(within(pane).getByRole("button", { name: "云端文件" })).toBeTruthy());
+    // portal 时序:插槽落点先挂、视图随后注入(2026-08-30 侧边栏改造:
+    // 文件/终端双钮收编为一颗开合钮)
+    await waitFor(() => expect(within(pane).getByRole("button", { name: "打开侧边栏" })).toBeTruthy());
     // 双 ⋯ 沙雕修正:格里没有第二颗菜单钮,任务操作项并入「格操作」
     expect(within(pane).queryByRole("button", { name: "任务操作" })).toBeNull();
     await userEvent.click(within(pane).getByRole("button", { name: "格操作" }));

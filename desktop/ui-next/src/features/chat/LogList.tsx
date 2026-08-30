@@ -12,7 +12,7 @@
 // O(n) 的投影(join/分组/锚定表)只允许出现在结构变化；token 流式快路复用
 // 布局骨架。逐条目的昂贵计算(presentToolCall、splitAttachments、markdown)
 // 一律待在行组件内，靠 memo 只在该行变化时才跑。
-import { IconArrowsMinimize, IconCheck, IconChevronRight, IconCopy, IconFile as FileIcon, IconSparkles } from "@tabler/icons-react";
+import { IconArrowsMinimize, IconCheck, IconChevronRight, IconCopy, IconFile as FileIcon, IconFolder, IconSparkles } from "@tabler/icons-react";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { Markdown, MarkdownInline } from "@/components/markdown/Markdown";
@@ -29,6 +29,7 @@ import { copyText } from "@/lib/util/clipboard";
 import { thoughtLiveSummary, thoughtMarkdown, thoughtSummary } from "@/lib/util/thoughtMarkdown";
 import { AskCard } from "./cards/AskCard";
 import { BackgroundAgentResultCard } from "./cards/BackgroundAgentResultCard";
+import { DesignTemplateSelectionCard } from "./cards/DesignTemplateSelectionCard";
 import { PermCard } from "./cards/PermCard";
 import { statusDot } from "./cards/statusDot";
 import { ToolCard } from "./cards/ToolCard";
@@ -50,21 +51,21 @@ function UserBubble({
 }: {
   item: Extract<ChatItem, { kind: "user" }>;
   flash?: boolean;
-  uploadUrl?: (path: string) => Promise<string>;
+  uploadUrl?: (path: string, expectedDigest?: string) => Promise<string>;
   steerStatus?: SteerDisplayStatus;
 }) {
   const { t } = useI18n();
   const [zoom, setZoom] = useState<string | null>(null); // 本地图:工作区相对路径
   const [zoomUrl, setZoomUrl] = useState<string | null>(null); // 云端图:直链
-  const { body, images, files } = uploadUrl
+  const { body, images, files, dirs } = uploadUrl
     ? splitAttachments(item.text)
-    : { body: item.text, images: [] as string[], files: [] as string[] };
+    : { body: item.text, images: [] as string[], files: [] as string[], dirs: [] as string[] };
   // 归约层对缺名附件留空串(不产成品文案),展示名在这儿兜底
   const attName = (a: { filename: string }) => a.filename || t("common.unnamedFile");
   const atts = item.attachments ?? [];
   const cloudImages = atts.filter((a) => isImagePath(a.filename));
   const cloudFiles = atts.filter((a) => !isImagePath(a.filename));
-  const hasAtts = images.length + files.length + cloudImages.length + cloudFiles.length > 0;
+  const hasAtts = images.length + files.length + dirs.length + cloudImages.length + cloudFiles.length > 0;
   const thumb = "block max-h-28 max-w-36 cursor-zoom-in rounded-box";
   return (
     <div
@@ -133,6 +134,17 @@ function UserBubble({
                 <FileIcon size={12} stroke={1.75} aria-hidden className="shrink-0" />
                 <span className="min-w-0 truncate">{p.split("/").pop() || p}</span>
               </button>
+            ))}
+            {/* 目录是引用:没有可下载的字节,也没有缩略图,只呈现来源路径 */}
+            {dirs.map((p) => (
+              <span
+                key={p}
+                className="badge badge-ghost max-w-56 gap-1 text-xs"
+                title={t("chat.att.dirTip", { path: p })}
+              >
+                <IconFolder size={12} stroke={1.75} aria-hidden className="shrink-0" />
+                <span className="min-w-0 truncate">{p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p}</span>
+              </span>
             ))}
           </div>
         )}
@@ -211,12 +223,14 @@ function AgentMessage({
   copySource,
   uploadUrl,
   onLocalLink,
+  onUrlLink,
 }: {
   item: Extract<ChatItem, { kind: "agent" }>;
   streaming?: boolean;
   copySource?: string;
   uploadUrl?: (path: string) => Promise<string>;
   onLocalLink?: (path: string) => void;
+  onUrlLink?: (url: string) => boolean;
 }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -232,7 +246,7 @@ function AgentMessage({
   return (
     <div className="group relative flex flex-col">
       <MessageTime timestamp={item.timestamp} className="absolute -top-3.5 start-0" />
-      <Markdown source={item.text} localImageUrl={uploadUrl} onLocalLink={onLocalLink} deferMermaid={streaming} />
+      <Markdown source={item.text} localImageUrl={uploadUrl} onLocalLink={onLocalLink} onUrlLink={onUrlLink} deferMermaid={streaming} />
       {copySource && (
         <button
           type="button"
@@ -256,8 +270,10 @@ interface RowShared {
   sendFrame?: FrameSender;
   readonly?: boolean;
   onOpenChildSession?: (id: string) => void;
-  uploadUrl?: (path: string) => Promise<string>;
+  uploadUrl?: (path: string, expectedDigest?: string) => Promise<string>;
+  loadDesignPreview?: (path: string) => Promise<string>;
   onLocalLink?: (path: string) => void;
+  onPreviewUrl?: (url: string) => boolean;
   workdir?: string;
   loadFullTool?: (seq: number) => Promise<Frame>;
 }
@@ -286,7 +302,7 @@ function renderItem(item: ChatItem, o: RenderOpts) {
     case "user":
       return <UserBubble item={item} flash={o.flash} uploadUrl={o.uploadUrl} steerStatus={o.steerStatus} />;
     case "agent":
-      return <AgentMessage item={item} streaming={o.streaming} copySource={o.agentCopySource} uploadUrl={o.uploadUrl} onLocalLink={o.onLocalLink} />;
+      return <AgentMessage item={item} streaming={o.streaming} copySource={o.agentCopySource} uploadUrl={o.uploadUrl} onLocalLink={o.onLocalLink} onUrlLink={o.onPreviewUrl} />;
     case "thought":
       // 与助手块同构:时间线在块顶空隙
       return (
@@ -327,6 +343,17 @@ function renderItem(item: ChatItem, o: RenderOpts) {
       return <PermCard item={item} sessionId={o.sessionId} sendFrame={o.sendFrame} readonly={o.readonly} />;
     case "ask":
       return <AskCard item={item} sessionId={o.sessionId} sendFrame={o.sendFrame} readonly={o.readonly} />;
+    case "design-template-selection":
+      return (
+        <DesignTemplateSelectionCard
+          item={item}
+          sessionId={o.sessionId}
+          sendFrame={o.sendFrame}
+          readonly={o.readonly}
+          uploadUrl={o.uploadUrl}
+          loadHtml={o.loadDesignPreview}
+        />
+      );
     case "sys":
       // turn-end 收敛为 2px 呼吸位:消息天然按用户/助手交替,不再用文字
       // 切碎正文;全文留在 title 供悬停查证(旧 UI TurnDivider 同语义)
@@ -516,9 +543,12 @@ interface LogListProps {
   /** 子代理工具卡「查看子会话」入口(缺省不渲染入口)。 */
   onOpenChildSession?: (id: string) => void;
   /** 本地附件回读通道(路径 → data URL);缺省 = 不剥附件行、正文原样。 */
-  uploadUrl?: (path: string) => Promise<string>;
+  uploadUrl?: (path: string, expectedDigest?: string) => Promise<string>;
+  /** 固定模板缓存根中的 HTML bundle 受控回读。 */
+  loadDesignPreview?: (path: string) => Promise<string>;
   /** markdown 工作区文件链接点击代理(reveal);缺省点击无动作。 */
   onLocalLink?: (path: string) => void;
+  onPreviewUrl?: (url: string) => boolean;
   /** 会话工作目录:工具卡 path 型目标剥绝对前缀;缺省不剥。 */
   workdir?: string;
   /** 工具卡大字段回读通道(按帧 seq 取原帧);缺省只展示截断头部。 */
@@ -533,7 +563,9 @@ const LogListSession = forwardRef<LogListHandle, LogListProps>(function LogListS
   readonly,
   onOpenChildSession,
   uploadUrl,
+  loadDesignPreview,
   onLocalLink,
+  onPreviewUrl,
   workdir,
   loadFullTool,
 }: LogListProps, ref) {
@@ -577,7 +609,7 @@ const LogListSession = forwardRef<LogListHandle, LogListProps>(function LogListS
   );
   // 行级稳定引用集(每个 prop 自身稳定,对象本身逐渲染新造没关系——memo
   // 比的是展开后的单个 prop)
-  const shared: RowShared = { sessionId, sendFrame, readonly, onOpenChildSession, uploadUrl, onLocalLink, workdir, loadFullTool };
+  const shared: RowShared = { sessionId, sendFrame, readonly, onOpenChildSession, uploadUrl, loadDesignPreview, onLocalLink, onPreviewUrl, workdir, loadFullTool };
   return (
     <div ref={rootRef} data-chat-items="" className="flex flex-col">
       <div data-virtual-spacer="top" aria-hidden style={{ height: virtual.topHeight }} />

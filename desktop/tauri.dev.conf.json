@@ -1,5 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "com.chaitin.baizhi.monkeycode.debug",
   "build": {
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": { "script": "npm run dev", "cwd": "ui" }

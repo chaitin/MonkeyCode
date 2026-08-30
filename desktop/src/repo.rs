@@ -13,6 +13,29 @@ use serde_json::{json, Value};
 
 const MAX_FILE_BYTES: u64 = 1 << 20; // 单文件读取上限 1MB
 const MAX_LIST_ITEMS: usize = 2000;
+const MAX_PREVIEW_FILES: usize = 500;
+const MAX_PREVIEW_SCAN_ENTRIES: usize = 20_000;
+const MAX_PREVIEW_SCAN_DIRS: usize = 2_000;
+const MAX_PREVIEW_SCAN_DEPTH: usize = 12;
+
+fn preview_kind(path: &Path) -> Option<(&'static str, &'static str)> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "html" | "htm" => ("html", "text/html"),
+        "png" => ("image", "image/png"),
+        "jpg" | "jpeg" => ("image", "image/jpeg"),
+        "gif" => ("image", "image/gif"),
+        "webp" => ("image", "image/webp"),
+        "bmp" => ("image", "image/bmp"),
+        "svg" => ("image", "image/svg+xml"),
+        "avif" => ("image", "image/avif"),
+        "txt" | "md" | "markdown" | "css" | "scss" | "less" | "js" | "mjs" | "cjs" | "jsx"
+        | "ts" | "tsx" | "json" | "yaml" | "yml" | "toml" | "xml" | "csv" | "rs" | "go" | "py"
+        | "rb" | "java" | "kt" | "c" | "h" | "cpp" | "hpp" | "sh" | "zsh" | "fish" | "sql"
+        | "vue" | "svelte" => ("text", "text/plain"),
+        _ => return None,
+    })
+}
 
 /// 一次 repo 查询的执行环境。
 pub struct RepoCtx {
@@ -129,6 +152,8 @@ pub fn dispatch(ctx: &RepoCtx, kind: &str, payload: &Value) -> Value {
     let r = match kind {
         "repo_file_list" => list_files(ctx, path),
         "repo_read_file" => read_file(ctx, path),
+        "repo_preview_files" => preview_files(ctx),
+        "repo_artifact_read" => artifact_read(ctx, path),
         "repo_file_diff" => file_diff(ctx, path),
         "repo_reveal" => reveal(ctx, path),
         _ => Err(format!("未知 call kind: {kind}")),
@@ -168,6 +193,110 @@ fn list_files(ctx: &RepoCtx, dir: &str) -> Result<Value, String> {
         })
         .collect();
     Ok(Value::Array(entries))
+}
+
+fn preview_files(ctx: &RepoCtx) -> Result<Value, String> {
+    const SKIP: &[&str] = &[".git", "node_modules", "target", "vendor", ".venv", "venv"];
+    let root = ctx.resolve("")?;
+    let mut pending = vec![(root, String::new(), 0usize)];
+    let mut files = Vec::new();
+    let mut scanned = 0usize;
+    let mut scanned_dirs = 0usize;
+    let mut truncated = false;
+    while let Some((dir, base, depth)) = pending.pop() {
+        scanned_dirs += 1;
+        if scanned_dirs > MAX_PREVIEW_SCAN_DIRS {
+            truncated = true;
+            break;
+        }
+        let entries = std::fs::read_dir(dir).map_err(|e| format!("扫描预览文件失败: {e}"))?;
+        for entry in entries.flatten() {
+            scanned += 1;
+            if scanned > MAX_PREVIEW_SCAN_ENTRIES {
+                truncated = true;
+                break;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if SKIP.contains(&name.as_str()) {
+                continue;
+            }
+            let Ok(md) = std::fs::symlink_metadata(entry.path()) else {
+                continue;
+            };
+            if md.file_type().is_symlink() {
+                continue;
+            }
+            let rel = if base.is_empty() {
+                name
+            } else {
+                format!("{base}/{name}")
+            };
+            if md.is_dir() {
+                if depth < MAX_PREVIEW_SCAN_DEPTH {
+                    pending.push((entry.path(), rel, depth + 1));
+                } else {
+                    truncated = true;
+                }
+                continue;
+            }
+            if let Some((kind, mime)) = preview_kind(&entry.path()) {
+                files.push(json!({ "path": rel, "kind": kind, "mime": mime, "size": md.len() }));
+                if files.len() >= MAX_PREVIEW_FILES {
+                    truncated = true;
+                    break;
+                }
+            }
+        }
+        if truncated {
+            break;
+        }
+    }
+    files.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
+    Ok(json!({ "files": files, "truncated": truncated }))
+}
+
+fn reject_artifact_symlink(ctx: &RepoCtx, rel: &str) -> Result<(), String> {
+    let mut current = ctx.fs_root();
+    for component in Path::new(rel).components() {
+        current.push(component.as_os_str());
+        if std::fs::symlink_metadata(&current)
+            .map_err(|e| format!("读取失败: {e}"))?
+            .file_type()
+            .is_symlink()
+        {
+            return Err("工作区预览不允许符号链接".into());
+        }
+    }
+    Ok(())
+}
+
+fn artifact_read(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
+    let p = ctx.resolve(rel)?;
+    reject_artifact_symlink(ctx, rel)?;
+    let md = std::fs::metadata(&p).map_err(|e| format!("读取失败: {e}"))?;
+    if !md.is_file() {
+        return Err(format!("{rel} 不是文件"));
+    }
+    let (kind, mime) = preview_kind(&p).ok_or("不支持的预览文件类型")?;
+    match kind {
+        "html" => Ok(json!({ "path": rel, "kind": kind, "mime": mime,
+            "content": crate::uploads::read_workspace_html_bundle(&ctx.workdir, ctx.wsl_distro.as_deref(), rel)? })),
+        "image" => Ok(json!({ "path": rel, "kind": kind, "mime": mime,
+            "data_url": crate::uploads::read_data_url(&ctx.workdir, ctx.wsl_distro.as_deref(), rel)? })),
+        _ => {
+            if md.len() > MAX_FILE_BYTES {
+                return Err(format!(
+                    "文件过大({} 字节),超过 {} 上限",
+                    md.len(),
+                    MAX_FILE_BYTES
+                ));
+            }
+            let bytes = std::fs::read(&p).map_err(|e| format!("读取失败: {e}"))?;
+            let content =
+                String::from_utf8(bytes).map_err(|_| "文本预览文件必须是 UTF-8".to_string())?;
+            Ok(json!({ "path": rel, "kind": kind, "mime": mime, "content": content }))
+        }
+    }
 }
 
 /// 读取文件内容(1MB 上限)。
@@ -435,6 +564,83 @@ mod tests {
             dir.join("src").join("a.ts")
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn preview_scan_and_artifact_read_are_bounded_and_typed() {
+        let dir = std::env::temp_dir().join(format!("mc-preview-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("site/assets")).unwrap();
+        std::fs::create_dir_all(dir.join("node_modules")).unwrap();
+        std::fs::create_dir_all(dir.join("dist")).unwrap();
+        std::fs::create_dir_all(dir.join("build")).unwrap();
+        std::fs::write(
+            dir.join("site/index.html"),
+            "<link rel=\"stylesheet\" href=\"assets/a.css\">",
+        )
+        .unwrap();
+        std::fs::write(dir.join("site/assets/a.css"), "body{color:red}").unwrap();
+        std::fs::write(dir.join("note.txt"), "hello").unwrap();
+        std::fs::write(dir.join("node_modules/hidden.html"), "hidden").unwrap();
+        std::fs::write(dir.join("dist/index.html"), "dist").unwrap();
+        std::fs::write(dir.join("build/index.html"), "build").unwrap();
+        let ctx = RepoCtx {
+            workdir: dir.to_string_lossy().into_owned(),
+            wsl_distro: None,
+        };
+        let listed = dispatch(&ctx, "repo_preview_files", &json!({}));
+        let paths: Vec<_> = listed["result"]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["path"].as_str().unwrap())
+            .collect();
+        assert!(paths.contains(&"site/index.html"));
+        assert!(paths.contains(&"note.txt"));
+        assert!(paths.contains(&"dist/index.html"));
+        assert!(paths.contains(&"build/index.html"));
+        assert!(!paths.contains(&"node_modules/hidden.html"));
+        let html = dispatch(
+            &ctx,
+            "repo_artifact_read",
+            &json!({"path":"site/index.html"}),
+        );
+        assert!(html["result"]["content"]
+            .as_str()
+            .unwrap()
+            .contains("data:text/css;base64,"));
+        assert_eq!(
+            dispatch(&ctx, "repo_artifact_read", &json!({"path":"note.txt"}))["result"]["content"],
+            "hello"
+        );
+        assert!(
+            dispatch(&ctx, "repo_artifact_read", &json!({"path":"../bad.txt"}))["error"]
+                .is_string()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preview_scan_and_read_reject_symlinks() {
+        use std::os::unix::fs::symlink;
+        let dir = std::env::temp_dir().join(format!("mc-preview-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("real.html"), "ok").unwrap();
+        symlink(dir.join("real.html"), dir.join("linked.html")).unwrap();
+        let ctx = RepoCtx {
+            workdir: dir.to_string_lossy().into_owned(),
+            wsl_distro: None,
+        };
+        let listed = preview_files(&ctx).unwrap();
+        assert!(!listed["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["path"] == "linked.html"));
+        assert!(artifact_read(&ctx, "linked.html").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

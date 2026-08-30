@@ -24,12 +24,16 @@ export function Tree({
   onOpenFile,
   activePath,
   changeStatus,
+  refreshToken = 0,
 }: {
   listDir: (dir: string) => Promise<RepoEntry[]>;
   onOpenFile: (entry: RepoEntry) => void;
   activePath: string | null;
   /** 路径 → 改动状态(文件行徽标;缺省不标注) */
   changeStatus?: ReadonlyMap<string, string>;
+  /** 外部刷新信号(FilesPanel 刷新钮):自增即重拉**全部已加载目录**,
+   *  展开集合保留——点刷新是想看到新文件,不是想重新逐层点开。 */
+  refreshToken?: number;
 }) {
   const { t } = useI18n();
   // 目录 → 子项缓存("" = 工作区根)、展开集合、按目录粒度的加载中标记
@@ -65,11 +69,51 @@ export function Tree({
     }
   };
 
-  // 挂载即拉根目录(抽屉关闭整体卸载,重开自然是全新状态)
+  // 挂载即拉根目录(面板关闭整体卸载,重开自然是全新状态)
   useEffect(() => {
     void load("");
-     
+
   }, []);
+
+  /** 刷新用的强制重拉:绕过 loadedRef 缓存守卫、不闪骨架屏(旧内容顶到
+   *  新数据落地)。已消失的目录静默出栈(清缓存 + 收起),不打扰;根目录
+   *  失败照常外显——那是「工作区没了」级别的事。 */
+  const reload = async (dir: string) => {
+    if (pendingRef.current.has(dir)) return;
+    pendingRef.current.add(dir);
+    try {
+      const items = await listDirRef.current(dir);
+      loadedRef.current.add(dir);
+      setTree((m) => new Map(m).set(dir, items));
+    } catch (e) {
+      if (dir === "") {
+        setErr(e instanceof Error ? e.message : String(e));
+      } else {
+        loadedRef.current.delete(dir);
+        setTree((m) => {
+          const n = new Map(m);
+          n.delete(dir);
+          return n;
+        });
+        setExpanded((s) => {
+          const n = new Set(s);
+          n.delete(dir);
+          return n;
+        });
+      }
+    } finally {
+      pendingRef.current.delete(dir);
+    }
+  };
+  const prevRefresh = useRef(refreshToken);
+  useEffect(() => {
+    if (refreshToken === prevRefresh.current) return;
+    prevRefresh.current = refreshToken;
+    setErr(""); // 上一轮的陈旧错误随刷新清场
+    for (const dir of [...loadedRef.current]) void reload(dir);
+    // reload 只读 refs;信号边沿触发,不随普通帧重跑
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshToken]);
 
   // 展开/收起目录(展开时懒加载子项,已缓存的即时展开)
   const toggleDir = (dir: string) => {

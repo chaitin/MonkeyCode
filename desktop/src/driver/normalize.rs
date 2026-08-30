@@ -15,7 +15,103 @@ use serde_json::{json, Value};
 
 use super::frame::{self, PermOutcome, SessionStatus};
 use super::ohmy::{Inner, OhmyDriver};
+use super::session::{PendingDesignPreview, PendingDesignSelection};
 use crate::util::LockExt;
+
+/// 验证专用设计选择协议，并提取响应校验需要的候选预览绑定。
+fn validate_design_selection_request(
+    params: &Value,
+) -> Result<(String, String, HashMap<String, PendingDesignPreview>), ()> {
+    let request_id = params
+        .get("request_id")
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+        .ok_or(())?;
+    let session_id = params
+        .get("session_id")
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+        .ok_or(())?;
+    for key in ["title", "description"] {
+        if params
+            .get(key)
+            .is_some_and(|v| !v.is_string() && !v.is_null())
+        {
+            return Err(());
+        }
+    }
+    if params
+        .get("mode")
+        .is_some_and(|v| !v.is_null() && !matches!(v.as_str(), Some("template" | "direction")))
+    {
+        return Err(());
+    }
+    let items = params.get("items").and_then(Value::as_array).ok_or(())?;
+    let mut previews = HashMap::new();
+    for item in items {
+        let id = item
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .ok_or(())?;
+        item.get("title")
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .ok_or(())?;
+        let image = item.get("image");
+        if image.is_some_and(|v| !v.is_string() && !v.is_null()) {
+            return Err(());
+        }
+        let image_path = image.and_then(Value::as_str).filter(|v| !v.is_empty());
+        let preview_path = match item.get("preview") {
+            None | Some(Value::Null) => None,
+            Some(preview) => {
+                let preview_type = preview.get("type").and_then(Value::as_str).ok_or(())?;
+                let path = preview
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .filter(|v| !v.is_empty())
+                    .ok_or(())?;
+                if !matches!(preview_type, "html" | "image") {
+                    return Err(());
+                }
+                Some(path)
+            }
+        };
+        if (image_path.is_none() && preview_path.is_none())
+            || item
+                .get("description")
+                .is_some_and(|v| !v.is_string() && !v.is_null())
+            || item
+                .get("recommended")
+                .is_some_and(|v| !v.is_boolean() && !v.is_null())
+        {
+            return Err(());
+        }
+        let digest = match item.get("preview_digest") {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .filter(|v| !v.is_empty())
+                    .ok_or(())?
+                    .to_string(),
+            ),
+        };
+        let binding = PendingDesignPreview {
+            // 与 DesignTemplateSelectionCard 的渲染规则保持一致。
+            path: image_path.or(preview_path).ok_or(())?.to_string(),
+            digest,
+        };
+        if previews.insert(id.to_string(), binding).is_some() {
+            return Err(());
+        }
+    }
+    if previews.is_empty() {
+        return Err(());
+    }
+    Ok((request_id.to_string(), session_id.to_string(), previews))
+}
 
 impl Inner {
     /// stdio 通知路由(reader 线程调用)。
@@ -149,6 +245,78 @@ impl Inner {
                 if let Some(sid) = sid {
                     self.emit_session_ask(&sid, false);
                 }
+            }
+            "design/template-selection/request" => {
+                let Ok((req_id, engine_sid, previews)) = validate_design_selection_request(&params)
+                else {
+                    eprintln!("[desktop] 无效的设计模板选择请求,已忽略: {params}");
+                    return;
+                };
+                let sid = self.shell_sid_of(&engine_sid);
+                if sid.is_empty() || !self.sess.sessions.lock_ok().contains_key(&sid) {
+                    return;
+                }
+                let mut pending = self.sess.pending_design_selections.lock_ok();
+                if let Some(current) = pending.get(&sid) {
+                    if current.request_id == req_id {
+                        return;
+                    }
+                    eprintln!(
+                        "[desktop] 会话已有设计模板选择请求,拒绝覆盖: sid={sid} current={} incoming={req_id}",
+                        current.request_id
+                    );
+                    return;
+                }
+                let mut seen = self.sess.seen_design_selection_requests.lock_ok();
+                if seen.contains(&req_id) {
+                    return;
+                }
+                if pending.values().any(|current| current.request_id == req_id) {
+                    eprintln!("[desktop] 设计模板选择 request_id 跨会话重复,已忽略: {req_id}");
+                    return;
+                }
+                seen.insert(req_id.clone());
+                pending.insert(
+                    sid.clone(),
+                    PendingDesignSelection {
+                        request_id: req_id,
+                        previews,
+                        responding: false,
+                    },
+                );
+                self.push_frame(&sid, |seq| {
+                    frame::design_template_selection_request(&params, seq)
+                });
+                drop(pending);
+                self.emit_session_ask(&sid, true);
+            }
+            "design/selection/cancelled" => {
+                let req_id = params
+                    .get("request_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let engine_sid = params
+                    .get("session_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if req_id.is_empty() || engine_sid.is_empty() {
+                    return;
+                }
+                let sid = self.shell_sid_of(engine_sid);
+                let mut pending = self.sess.pending_design_selections.lock_ok();
+                let matches_current = pending
+                    .get(&sid)
+                    .is_some_and(|current| current.request_id == req_id);
+                if !matches_current {
+                    return;
+                }
+                pending.remove(&sid);
+                let reason = params.get("reason").and_then(Value::as_str).unwrap_or("");
+                self.push_frame(&sid, |seq| {
+                    frame::design_selection_cancelled(req_id, reason, seq)
+                });
+                drop(pending);
+                self.emit_session_ask(&sid, false);
             }
             "turn/started" => {
                 // 用户发送由壳侧乐观开轮；只有通知触发的后台续跑需要在

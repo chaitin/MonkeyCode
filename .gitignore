@@ -28,3 +28,6 @@ dist
 # ai
 .superpowers/
 desktop/uidist/
+
+# ohmyagent 工具生成的临时工作树
+.ohmyagent/

@@ -63,10 +63,10 @@ def report_set_error(label: str, left: set[str], right: set[str]) -> list[str]:
     return errors
 
 
-# 扫描哪些 UI 工程:并行期两套都在(打包出的是 ui-next,见 tauri.conf.json 的
-# beforeBuildCommand),**出货的那套没被扫到就等于没有守卫**——open_app_dir 漏进
-# capability 正是这么发生的。不存在的目录静默跳过,P9 `git rm ui` 后本文件免改。
-UI_ROOTS = ("ui", "ui-next")
+# 扫描哪些 UI 工程:只剩出货的 ui-next(旧 desktop/ui 已于 2026-08-30 删除;
+# tauri.conf.json 的 beforeBuildCommand 指向它)。**出货的那套没被扫到就等于
+# 没有守卫**——open_app_dir 漏进 capability 正是这么发生的。
+UI_ROOTS = ("ui-next",)
 
 
 def check(root: pathlib.Path = ROOT) -> list[str]:
