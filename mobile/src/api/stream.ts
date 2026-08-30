@@ -50,6 +50,7 @@ interface Callbacks {
 type Mode = 'attach' | 'new';
 
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
+const EMIT_INTERVAL_MS = 50;
 
 interface ServerChunk {
   type?: string;
@@ -77,6 +78,8 @@ export class TaskStreamClient {
   private closeReason: CloseReason = null;
   private lastProcessedSeq: number | null = null;
   private queuedReplies = new Map<string, string>();
+  private emitTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastEmitMs = 0;
 
   private constructor(taskId: string, mode: Mode, captureCursor: boolean, cb: Callbacks) {
     this.taskId = taskId;
@@ -114,6 +117,8 @@ export class TaskStreamClient {
   }
 
   disconnect(): StreamState {
+    // 有尾随 emit 挂着就先同步冲刷，保证 finished 等末态不被节流吞掉。
+    if (this.emitTimer) this.emitNow();
     this.clearReconnectTimer();
     this.manuallyDisconnected = true;
     if (this.socket) {
@@ -312,7 +317,33 @@ export class TaskStreamClient {
     }
   }
 
+  /**
+   * 状态发布做前沿 + 尾随节流：长会话 attach 回放是数百条 chunk 连发，逐条 emit 会把
+   * UI 逼到每秒数百次提交——除了卡顿，还会让 React 的 passive 更新计数器在两次空闲
+   * 之间被连续顶满（连续 50 次脏 flush 即报 Maximum update depth exceeded）。
+   * 前沿保证单发事件（连接状态翻转等）零延迟，尾随定时器保证洪峰后末态必达。
+   */
   private emit() {
+    // Date.now 不保证单调（NTP 校时/手动改时间会回拨），钳到 >=0 防止武装出超长定时器。
+    const elapsed = Math.max(0, Date.now() - this.lastEmitMs);
+    if (elapsed >= EMIT_INTERVAL_MS) {
+      this.emitNow();
+      return;
+    }
+    if (!this.emitTimer) {
+      this.emitTimer = setTimeout(() => {
+        this.emitTimer = null;
+        this.emitNow();
+      }, EMIT_INTERVAL_MS - elapsed);
+    }
+  }
+
+  private emitNow() {
+    this.lastEmitMs = Date.now();
+    if (this.emitTimer) {
+      clearTimeout(this.emitTimer);
+      this.emitTimer = null;
+    }
     this.cb.onState?.(this.buildState());
   }
 

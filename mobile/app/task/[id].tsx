@@ -137,6 +137,7 @@ export default function TaskDetailScreen() {
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const cursorSeededRef = useRef(false);
   const restSeedingRef = useRef(false); // 防止 REST 兜底取游标时重入
+  const archivedRoundsRef = useRef(0); // handleSend 本地归档进 historyMessages 的轮数（游标 seeding 需跳过）
   const controlRef = useRef<TaskControlClient | null>(null);
   const attachmentsRef = useRef<PendingAtt[]>([]);
   const attachSeq = useRef(0);
@@ -231,7 +232,16 @@ export default function TaskDetailScreen() {
     if (!id || !interactive) return;
     const client = TaskStreamClient.attach(id, { onState: (s) => setLive(s), onReplyStatus: handleReplyStatus });
     clientRef.current = client; client.connect();
-    return () => { client.disconnect(); if (clientRef.current === client) clientRef.current = null; setLive(null); cursorSeededRef.current = false; };
+    return () => {
+      // handleSend 会把 clientRef 换成 newRound client（没有任何 effect 持有它）：
+      // 卸载/依赖翻转时一并断开，否则其 socket 和重连梯会向已卸载的组件继续 setLive。
+      const current = clientRef.current;
+      if (current && current !== client) current.disconnect();
+      client.disconnect();
+      clientRef.current = null;
+      setLive(null);
+      cursorSeededRef.current = false;
+    };
   }, [handleReplyStatus, id, interactive, setLive]);
 
   useEffect(() => { setAnswerSubmitStates({}); }, [id]);
@@ -283,8 +293,11 @@ export default function TaskDetailScreen() {
 
   // stream 给的历史游标：只有「拿到可用 cursor」才算 seed 成功；ready 但 cursor 为空时不要占位，
   // 否则会同时挡住 loadEarlier（无 cursor）和下面的 REST 兜底。
+  // 本地已归档过轮次（archivedRoundsRef>0，见 handleSend）后不再用 hc seed：重连拿到的
+  // 新游标覆盖已归档的轮次，向上翻页会把同一轮再拉一遍（解码 id 不同、无法按 key 去重），
+  // 此时交给下面会跳过归档轮数的 REST 兜底。
   useEffect(() => {
-    if (!interactive || cursorSeededRef.current) return;
+    if (!interactive || cursorSeededRef.current || archivedRoundsRef.current > 0) return;
     const hc = liveState?.historyCursor;
     if (hc?.ready && hc.cursor) {
       cursorSeededRef.current = true;
@@ -295,13 +308,17 @@ export default function TaskDetailScreen() {
 
   // 兜底：发消息/取消走 new 模式（captureCursor=false）或 stream 没给可用游标时，cursor 一直为空、
   // 上滑加载历史失效。本轮结束（status=finished）后仍无 cursor，就用 REST 取一次游标补上。
+  // limit 额外跳过本地已归档的轮数，让游标落在归档内容之前，避免向上翻页重复展示。
   useEffect(() => {
     if (!interactive || !id || cursor || cursorSeededRef.current || restSeedingRef.current) return;
     if (liveState?.status !== 'finished') return;
     restSeedingRef.current = true;
+    const archivedAtStart = archivedRoundsRef.current;
     (async () => {
       try {
-        const rounds = await getTaskRounds({ id, limit: ROUNDS_PER_FETCH });
+        const rounds = await getTaskRounds({ id, limit: ROUNDS_PER_FETCH + archivedAtStart });
+        // 拉取期间又归档了新轮次：本次游标已过期，丢弃并等下一轮结束后重试。
+        if (archivedRoundsRef.current !== archivedAtStart) return;
         cursorSeededRef.current = true;
         setCursor(rounds.next_cursor);
         setHasMore(!!rounds.has_more && !!rounds.next_cursor);
@@ -310,18 +327,25 @@ export default function TaskDetailScreen() {
   }, [interactive, id, cursor, liveState?.status]);
 
   // 持久化上下文用量：只在收到有效 usage_update（size>0）时更新，避免新一轮 handler 清空后闪回空白。
+  // 依赖必须用数值而非对象：contextUsage 每次 emit 都是新引用，按引用依赖会让本 effect 在
+  // 每次流式提交后都调一次 setState——高频提交下 React 的 eager bailout 常因队列非空而失效，
+  // 连续 50 次「passive effect 内调度更新」就会触发 Maximum update depth 告警。
+  const ctxUsed = liveState?.contextUsage?.used;
+  const ctxSize = liveState?.contextUsage?.size;
   useEffect(() => {
-    const c = liveState?.contextUsage;
-    if (c && typeof c.size === 'number' && c.size > 0) {
-      const used = c.used ?? 0, size = c.size;
-      setLastCtx((prev) => (prev && prev.used === used && prev.size === size ? prev : { used, size }));
-    }
-  }, [liveState?.contextUsage]);
+    if (typeof ctxSize === 'number' && ctxSize > 0) setLastCtx({ used: ctxUsed ?? 0, size: ctxSize });
+  }, [ctxUsed, ctxSize]);
   // 切换任务时清空（路由复用同一组件实例时也能正确重置）。
-  useEffect(() => { setLastCtx(null); }, [id]);
+  useEffect(() => { setLastCtx(null); archivedRoundsRef.current = 0; }, [id]);
 
+  // 防重入必须用 ref 同步判断：historyLoading 是异步提交的 state，进入页面时
+  // 「自动拉首页」的兜底 effect 和 inverted 列表初始布局触发的 onEndReached 会在
+  // 同一帧内先后调用本函数，都在 setHistoryLoading(true) 提交前通过 state 守卫，
+  // 同一 cursor 拉两次 → 该轮消息展示两份（解码 id 每次新生成，无法靠 key 去重）。
+  const historyLoadingRef = useRef(false);
   const loadEarlier = useCallback(async () => {
-    if (!id || !cursor || historyLoading || !hasMore) return;
+    if (!id || !cursor || historyLoadingRef.current || !hasMore) return;
+    historyLoadingRef.current = true;
     setHistoryLoading(true);
     try {
       const rounds = await getTaskRounds({ id, cursor, limit: ROUNDS_PER_FETCH });
@@ -329,8 +353,8 @@ export default function TaskDetailScreen() {
       setHistoryMessages((prev) => [...decoded.messages, ...prev]);
       setCursor(rounds.next_cursor);
       setHasMore(!!rounds.has_more && !!rounds.next_cursor);
-    } catch { /* ignore */ } finally { setHistoryLoading(false); }
-  }, [cursor, hasMore, historyLoading, id]);
+    } catch { /* ignore */ } finally { historyLoadingRef.current = false; setHistoryLoading(false); }
+  }, [cursor, hasMore, id]);
 
   // 游标就绪但还没加载过任何历史时，自动拉第一页。覆盖两种 onEndReached 失效的情况：
   // ①上滑早于游标 seed（滑动时 cursor 还没就绪，之后不会再触发）；②内容没铺满、onEndReached 不会触发。
@@ -345,9 +369,14 @@ export default function TaskDetailScreen() {
     if (!id || (!body && ready.length === 0)) return;
     if (includeAttachments && attachmentsRef.current.some((a) => a.status === 'uploading')) { flashToast('图片还在上传中…'); return; }
     const atts = ready.map((a) => ({ url: a.url as string, filename: a.name }));
-    const prevLive = liveStateRef.current?.messages ?? [];
-    if (prevLive.length) setHistoryMessages((prev) => [...prev, ...prevLive]);
-    clientRef.current?.disconnect();
+    // 先断开旧连接再取快照：disconnect() 会同步冲刷 50ms 节流暂扣的尾部 chunk，
+    // 其返回值才是完整末态；先快照 liveStateRef 会把这截尾巴永久丢出会话记录。
+    const prevState = clientRef.current?.disconnect();
+    const prevLive = prevState?.messages ?? liveStateRef.current?.messages ?? [];
+    if (prevLive.length) {
+      setHistoryMessages((prev) => [...prev, ...prevLive]);
+      archivedRoundsRef.current += 1;
+    }
     setSending(true);
     const client = TaskStreamClient.newRound(id, body, atts, {
       onState: setLive,
@@ -485,13 +514,33 @@ export default function TaskDetailScreen() {
     () => (liveState?.messages ?? []).map((m) => normalizeAskStatus(m, !!liveAskExpired)),
     [liveState?.messages, liveAskExpired],
   );
-  const messages = useMemo(
-    () => [...historyMessages.map((m) => normalizeAskStatus(m, true)), ...liveMessages],
-    [historyMessages, liveMessages],
-  );
+  const messages = useMemo(() => {
+    const history = historyMessages.map((m) => normalizeAskStatus(m, true));
+    // 轮次边界裁剪：进入运行中任务时，REST 拉取/本地归档的历史可能与 attach 回放
+    // 在当前轮开头重叠（解码 id 每次新生成，无法按 id 去重），重叠会让本轮的
+    // user input 和已有输出重复一份、视觉上夹在输出中间。以实时流第一条带时间戳
+    // 消息为界，时间不早于它的历史消息一律裁掉（属于活跃轮，以实时流为准）。
+    const liveStart = liveMessages.find((m) => typeof m.time === 'number' && m.time > 0)?.time;
+    const trimmed = liveStart
+      ? history.filter((m) => !(typeof m.time === 'number' && m.time >= liveStart))
+      : history;
+    return [...trimmed, ...liveMessages];
+  }, [historyMessages, liveMessages]);
   // 倒置列表：最新在前（视觉底部）。新消息进 data[0]（底部）、历史从 data 末尾（视觉顶部）追加。
   // 初始定位底部、流式吸底、上滑加载历史、展开 toolcall 都由 inverted 天然处理，无需手动 scrollToEnd。
   const reversed = useMemo(() => messages.slice().reverse(), [messages]);
+  const reversedRef = useRef(reversed);
+  reversedRef.current = reversed;
+
+  // AI 提问卡片的自定义回答输入框聚焦：键盘（keyboard-controller padding）就位后把
+  // 整张卡片滚回可视区——inverted 列表 viewPosition 0 即卡片底边贴到 composer 上方，
+  // 输入框和提交按钮都在卡片下部，不再被键盘遮住。回调保持稳定，最新数据走 ref。
+  const onAskFocus = useCallback((askId: string) => {
+    setTimeout(() => {
+      const index = reversedRef.current.findIndex((m) => m.kind === 'ask' && m.askId === askId);
+      if (index >= 0) listRef.current?.scrollToIndex({ index, viewPosition: 0, animated: true });
+    }, 300);
+  }, []);
 
   const streamConnected = liveState?.connectionState === 'connected';
   const roundRunning = streamConnected && liveState?.status === 'connected';
@@ -593,7 +642,7 @@ export default function TaskDetailScreen() {
             data={reversed}
             inverted
             keyExtractor={(m) => m.id}
-            renderItem={({ item }) => <StreamBlock message={item} isStreaming={item.id === streamingMessageId && item.kind === 'agent'} canAnswer={item.kind === 'ask' ? canAnswer : undefined} answerSubmitState={item.kind === 'ask' ? answerSubmitStates[item.askId] : undefined} onAnswer={handleAnswer} onCopy={onCopy} onSaveImage={onSaveImage} />}
+            renderItem={({ item }) => <StreamBlock message={item} isStreaming={item.id === streamingMessageId && item.kind === 'agent'} canAnswer={item.kind === 'ask' ? canAnswer : undefined} answerSubmitState={item.kind === 'ask' ? answerSubmitStates[item.askId] : undefined} onAnswer={handleAnswer} onAskFocus={onAskFocus} onCopy={onCopy} onSaveImage={onSaveImage} />}
             ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
             // inverted 下：paddingTop=视觉底部（贴近 composer），paddingBottom=视觉顶部（避开浮动 header）。
             contentContainerStyle={{ paddingTop: 14, paddingBottom: headerH + 12, paddingHorizontal: spacing.pad }}
@@ -606,6 +655,8 @@ export default function TaskDetailScreen() {
             // 关键：生成时流式消息在 reversed[0]（底部）。minIndexForVisible:0 让底部消息“长高”时
             // 补偿滚动偏移，用户上滑查看时视图不被往下拽；autoscrollToTopThreshold 仅在贴近底部时才自动吸底。
             maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
+            // scrollToIndex 目标未渲染时（理论上不会：滚动目标是用户刚点过的卡片）按估算兜底。
+            onScrollToIndexFailed={(info) => listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true })}
             initialNumToRender={12}
             maxToRenderPerBatch={12}
             windowSize={11}

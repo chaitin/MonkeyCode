@@ -159,9 +159,12 @@ export class TaskMessageHandler {
   }
 
   private failPendingToolCalls() {
-    for (const m of this.messages) {
+    for (let i = 0; i < this.messages.length; i += 1) {
+      const m = this.messages[i];
       if (m.kind === 'tool' && (m.status === 'in_progress' || m.status === 'pending')) {
-        m.status = 'failed';
+        // 必须换新对象：getState() 只浅拷贝 messages 数组，原地改 status 会让
+        // StreamBlock 的按内容 memo 前后读到同一对象而跳过重渲，工具卡 spinner 卡死。
+        this.messages[i] = { ...m, status: 'failed' };
       }
     }
   }
