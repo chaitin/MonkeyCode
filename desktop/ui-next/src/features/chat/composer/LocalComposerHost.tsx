@@ -24,9 +24,24 @@ export const LocalComposerHost = forwardRef<
     hotkeysActive?: boolean;
     focusRequest?: number;
     onFocusRequestHandled?: (request: number) => void;
+    /** 空闲态后台状态条取材(ChatView 供给,引用稳定;透传给 Composer) */
+    backgroundInfo?: {
+      tasks: { key: string; title: string; startedAt?: number; childId?: string }[];
+      onOpen?: (childId: string) => void;
+    };
   }
 >(function LocalComposerHost(
-  { sessionId, state, historyLoaded, meta, onAfterSend, hotkeysActive = true, focusRequest, onFocusRequestHandled },
+  {
+    sessionId,
+    state,
+    historyLoaded,
+    meta,
+    onAfterSend,
+    hotkeysActive = true,
+    focusRequest,
+    onFocusRequestHandled,
+    backgroundInfo,
+  },
   ref,
 ) {
   const presentation = useMemo(() => composerPresentationOf(state), [state]);
@@ -63,6 +78,7 @@ export const LocalComposerHost = forwardRef<
       hotkeysActive={hotkeysActive}
       focusRequest={focusRequest}
       onFocusRequestHandled={onFocusRequestHandled}
+      backgroundInfo={backgroundInfo}
     />
   );
 });

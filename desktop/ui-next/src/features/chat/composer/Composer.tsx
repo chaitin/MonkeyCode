@@ -37,7 +37,7 @@ import { timelineDeltaOf } from "@/lib/protocol/reduce";
 import { fmtK } from "@/lib/util/fmt";
 import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } from "@/lib/util/slash";
 import { insertNewlineAtSelection } from "@/lib/util/textarea";
-import { ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing } from "./composerKit";
+import { BackgroundBar, ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing, type BackgroundTask } from "./composerKit";
 import { SendQueueList } from "./SendQueueList";
 import { ModelMenu, SkillsMenu } from "./pickers";
 import type { ComposerCtl } from "./useComposer";
@@ -63,6 +63,9 @@ export interface ComposerPresentation {
   commands: SlashCommand[];
   openPermission: boolean;
   toolRunning: boolean;
+  /** 后台运行卡数(run+background):主循环空闲时驱动 BackgroundBar。
+   * 与 toolRunning 分账——钉在运行态的后台卡不算"执行工具中"。 */
+  backgroundRunning: number;
   roundNo: number;
   steerConfirmations: Record<string, number>;
 }
@@ -71,6 +74,7 @@ interface ComposerCounts {
   users: number;
   openPermissions: number;
   runningTools: number;
+  runningBackground: number;
   thinkUpdates: number;
 }
 
@@ -78,8 +82,12 @@ const presentationCache = new WeakMap<ChatState, { presentation: ComposerPresent
 const countItem = (counts: ComposerCounts, item: ChatState["items"][number] | undefined, direction: 1 | -1) => {
   if (item?.kind === "user" && item.source !== "steer") counts.users += direction;
   else if (item?.kind === "perm" && item.state === "open") counts.openPermissions += direction;
-  else if (item?.kind === "tool" && item.status === "run") counts.runningTools += direction;
-  else if (item?.kind === "sys" && item.tag === "think") counts.thinkUpdates += direction;
+  else if (item?.kind === "tool" && item.status === "run") {
+    // 后台卡刻意钉在 run 态直到通知回填:不算"执行工具中",否则后续
+    // 轮次的 runningLabel 会被它永远顶成「执行工具中」
+    if (item.background) counts.runningBackground += direction;
+    else counts.runningTools += direction;
+  } else if (item?.kind === "sys" && item.tag === "think") counts.thinkUpdates += direction;
 };
 
 export function composerPresentationOf(state: ChatState): ComposerPresentation {
@@ -98,7 +106,7 @@ export function composerPresentationOf(state: ChatState): ComposerPresentation {
       for (let index = delta.from.items.length; index < state.items.length; index++) countItem(counts, state.items[index], 1);
     }
   } else {
-    counts = { users: 0, openPermissions: 0, runningTools: 0, thinkUpdates: 0 };
+    counts = { users: 0, openPermissions: 0, runningTools: 0, runningBackground: 0, thinkUpdates: 0 };
     for (const item of state.items) countItem(counts, item, 1);
     // 加载更早历史虽需重算用户/工具计数，但其中的旧 think 系统行不能
     // 冒充当前 session_set_think 的实时确认。
@@ -114,6 +122,7 @@ export function composerPresentationOf(state: ChatState): ComposerPresentation {
     commands: state.commands,
     openPermission: counts.openPermissions > 0,
     toolRunning: counts.runningTools > 0,
+    backgroundRunning: counts.runningBackground,
     roundNo: Math.max(1, counts.users),
     steerConfirmations: state.steerConfirmations,
   };
@@ -129,6 +138,7 @@ export function composerPresentationOf(state: ChatState): ComposerPresentation {
     old.commands === nextPresentation.commands &&
     old.openPermission === nextPresentation.openPermission &&
     old.toolRunning === nextPresentation.toolRunning &&
+    old.backgroundRunning === nextPresentation.backgroundRunning &&
     old.roundNo === nextPresentation.roundNo &&
     old.steerConfirmations === nextPresentation.steerConfirmations
       ? old
@@ -151,6 +161,9 @@ interface ComposerProps {
   hotkeysActive?: boolean;
   focusRequest?: number;
   onFocusRequestHandled?: (request: number) => void;
+  /** 空闲态后台状态条的取材与入口(ChatView 供给,引用需稳定以保 memo;
+   * 无后台任务时缺席,渲染由 presentation.backgroundRunning 门控)。 */
+  backgroundInfo?: { tasks: BackgroundTask[]; onOpen?: (childId: string) => void };
 }
 
 const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Composer({
@@ -162,6 +175,7 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
   hotkeysActive = true,
   focusRequest = 0,
   onFocusRequestHandled,
+  backgroundInfo,
 }: ComposerProps, ref) {
   const { t } = useI18n();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -645,6 +659,33 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
 
         {/* 运行条:一行紧凑态——spinner + 文案 + 停止 icon 按钮 */}
         {presentation.running && <RunBar label={runningLabel} detail={runningDetail} stopLabel={t("chat.stop")} onStop={ctl.stop} />}
+
+        {/* 后台状态条(RunBar 同槽位的安静版):主循环空闲但后台任务未了结,
+            对话没有合上——没有这条,轮末即"看起来结束了",通知轮到达时像
+            凭空复活。输入保持可用是它与 RunBar 的本质区别。backgroundInfo
+            与计数同源(ChatView 扫同一批 items),并额外承担断连门控;
+            多任务收起为计数,可展开逐任务查看 */}
+        {!presentation.running &&
+          presentation.backgroundRunning > 0 &&
+          backgroundInfo &&
+          backgroundInfo.tasks.length > 0 && (
+          <BackgroundBar
+            label={t("chat.bg.running", { count: String(presentation.backgroundRunning) })}
+            tasks={backgroundInfo.tasks}
+            elapsedLabel={(m) =>
+              m >= 2880
+                ? t("chat.bg.elapsedDays", { d: String(Math.floor(m / 1440)) })
+                : m >= 60
+                  ? t("chat.bg.elapsedHours", { h: String(Math.floor(m / 60)) })
+                  : t("chat.bg.elapsed", { m: String(m) })
+            }
+            hint={t("chat.bg.hint")}
+            openLabel={t("chat.tool.childSession")}
+            expandLabel={t("chat.bg.expand")}
+            collapseLabel={t("chat.bg.collapse")}
+            onOpen={backgroundInfo.onOpen}
+          />
+        )}
 
         {(ctl.uploads.length > 0 || ctl.atts.length > 0) && (
           <div className="flex flex-wrap gap-2 px-3 pt-2">

@@ -21,7 +21,7 @@ describe("BackgroundAgentResultCard", () => {
     const { container } = render(<BackgroundAgentResultCard item={COMPLETED} />);
 
     expect(container.firstElementChild?.classList.contains("mc-workbench-material")).toBe(true);
-    expect(screen.getByText("子代理结果")).toBeTruthy();
+    expect(screen.getByText("后台代理结果")).toBeTruthy();
     expect(screen.getByText("已完成")).toBeTruthy();
     expect(screen.getByText("检查升级风险")).toBeTruthy();
     expect(screen.queryByText(/依赖调查员/)).toBeNull();
@@ -32,7 +32,7 @@ describe("BackgroundAgentResultCard", () => {
     expect(resultButton.className).toContain("link-primary");
     await user.click(resultButton);
 
-    expect(screen.getByRole("dialog", { name: "子代理结果" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "后台代理结果" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "第一条摘要", level: 2 })).toBeTruthy();
     expect(screen.getByText("完整内容")).toBeTruthy();
   });
@@ -54,6 +54,6 @@ describe("BackgroundAgentResultCard", () => {
 
     expect(screen.queryByRole("button", { name: "复制结果" })).toBeNull();
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog", { name: "子代理结果" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "后台代理结果" })).toBeNull();
   });
 });

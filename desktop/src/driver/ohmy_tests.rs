@@ -6607,3 +6607,314 @@ fn parse_manifest_models_tolerates_missing_model_field() {
     assert!(models[1].locked);
     assert_eq!(models[1].owner, "public");
 }
+
+// ==================== 后台第三态与僵尸对账(P1) ====================
+//
+// 轮末快照:turn/stopped 正常收尾时若仍有未回通知的后台登记,sidecar 状态
+// 写 background 而非 idle;通知清理后收敛回 idle。引擎更替后 sidecar 遗留的
+// pending 由 replay_open 的对账路径补合成「已中断」终态并清零。
+
+#[test]
+fn turn_stopped_with_pending_background_writes_background_status() {
+    let (inner, events) = bare_inner_events("bg-third-state");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "sm1",
+        "data": { "name": "SendMessage", "input": { "agent_id": "a1", "message": "继续", "summary": "继续实现" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "sm1",
+        "data": { "tool": "SendMessage", "content": async_launched_json("a1", "bd", "继续实现"), "is_error": false }
+    }));
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "complete" }),
+    );
+
+    let sidecar = inner.read_sidecar("s1");
+    assert_eq!(
+        sidecar.get("status").and_then(Value::as_str),
+        Some("background"),
+        "主循环空闲但续跑未回通知,轮末必须写第三态"
+    );
+    let pending = sidecar
+        .get("background")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].get("agentId").and_then(Value::as_str), Some("a1"));
+    assert_eq!(pending[0].get("tcId").and_then(Value::as_str), Some("sm1"));
+    assert_eq!(
+        pending[0].get("summary").and_then(Value::as_str),
+        Some("继续实现")
+    );
+    assert!(
+        events.lock().unwrap().iter().any(|(name, payload)| {
+            name == "session-event"
+                && payload.get("id").and_then(Value::as_str) == Some("s1")
+                && payload.get("status").and_then(Value::as_str) == Some("background")
+        }),
+        "侧栏经 session-event 感知第三态"
+    );
+}
+
+#[test]
+fn notification_after_idle_converges_background_status_to_idle() {
+    let (inner, events) = bare_inner_events("bg-third-idle");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "sm1",
+        "data": { "name": "SendMessage", "input": { "agent_id": "a1", "message": "继续", "summary": "继续实现" } }
+    }));
+    inner.handle_event(json!({
+        "type": "tool_result", "session_id": "s1", "tool_call_id": "sm1",
+        "data": { "tool": "SendMessage", "content": async_launched_json("a1", "bd", "继续实现"), "is_error": false }
+    }));
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "complete" }),
+    );
+    assert_eq!(
+        inner
+            .read_sidecar("s1")
+            .get("status")
+            .and_then(Value::as_str),
+        Some("background")
+    );
+
+    // 无轮次包裹的完成通知(兼容旧引擎/回放边角):清理登记并收敛状态
+    inner.handle_event(json!({
+        "type": "task_notification", "session_id": "s1",
+        "data": {
+            "agent_id": "a1", "name": "bd", "description": "继续实现", "status": "completed",
+            "message": notification_message("a1", "bd", "继续实现", "completed", "结论")
+        }
+    }));
+    let sidecar = inner.read_sidecar("s1");
+    assert_eq!(sidecar.get("status").and_then(Value::as_str), Some("idle"));
+    assert_eq!(
+        sidecar.get("background").and_then(Value::as_array).map(Vec::len),
+        Some(0),
+        "通知清理后 sidecar pending 必须清空"
+    );
+    assert!(events.lock().unwrap().iter().any(|(name, payload)| {
+        name == "session-event"
+            && payload.get("id").and_then(Value::as_str) == Some("s1")
+            && payload.get("status").and_then(Value::as_str) == Some("idle")
+    }));
+}
+
+#[test]
+fn unfinished_send_message_dispatch_does_not_count_as_pending() {
+    let (inner, _events) = bare_inner_events("bg-provisional");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    // 只有 tool_call,没有 tool_result:async_launched 从未确认,轮末不能把
+    // 注定失败的 provisional 派发算进 pending 快照
+    inner.handle_event(json!({
+        "type": "tool_call", "session_id": "s1", "tool_call_id": "sm1",
+        "data": { "name": "SendMessage", "input": { "agent_id": "a1", "message": "继续", "summary": "继续实现" } }
+    }));
+    inner.handle_notification(
+        "turn/stopped",
+        json!({ "session_id": "s1", "stop_reason": "complete" }),
+    );
+    let sidecar = inner.read_sidecar("s1");
+    assert_eq!(sidecar.get("status").and_then(Value::as_str), Some("idle"));
+    assert_eq!(
+        sidecar
+            .get("background")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0),
+        0
+    );
+}
+
+#[test]
+fn replay_repairs_stale_background_entries_after_engine_restart() {
+    let (inner, _events) = bare_inner_events("bg-repair");
+    // 模拟应用重启后的会话:空闲、内存登记为空,仅 sidecar 遗留 pending
+    let mut session = bare_session("s1");
+    session.running = false;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    inner.write_sidecar("s1", |m| {
+        m["status"] = json!("background");
+        m["background"] =
+            json!([{ "agentId": "a1", "tcId": "sm1", "summary": "继续实现", "startedAt": 1 }]);
+    });
+
+    let window = inner.replay_open("s1");
+    let repaired = window
+        .frames
+        .iter()
+        .filter_map(acp_update)
+        .find(|u| {
+            u.get("toolCallId").and_then(Value::as_str) == Some("sm1")
+                && u.get("status").and_then(Value::as_str) == Some("failed")
+                && u.get("backgroundInterrupted").and_then(Value::as_bool) == Some(true)
+        })
+        .expect("孤儿后台卡必须补合成「已中断」终态帧");
+    assert!(repaired
+        .get("rawOutput")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .contains("继续实现"));
+    let sidecar = inner.read_sidecar("s1");
+    assert_eq!(
+        sidecar.get("status").and_then(Value::as_str),
+        Some("interrupted"),
+        "遗留的 background 状态归一 interrupted"
+    );
+    assert_eq!(
+        sidecar.get("background").and_then(Value::as_array).map(Vec::len),
+        Some(0)
+    );
+    // 对账帧同时落 journal:下次打开经折叠回放,不再重复补刀
+    assert!(journal_frames(&inner, "s1")
+        .iter()
+        .filter_map(acp_update)
+        .any(|u| u.get("backgroundInterrupted").and_then(Value::as_bool) == Some(true)));
+}
+
+#[test]
+fn replay_keeps_live_background_entries() {
+    let (inner, _events) = bare_inner_events("bg-repair-live");
+    // 同进程重开:内存登记仍在(引擎继续服务),sidecar 条目不是孤儿
+    let mut session = bare_session("s1");
+    session.running = false;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+    inner.sub.active_continuations.lock().unwrap().insert(
+        "a1".into(),
+        crate::driver::subagent::ActiveContinuation {
+            parent_sid: "s1".into(),
+            parent_tc: "sm1".into(),
+            summary: "继续实现".into(),
+            message: String::new(),
+            opened_children: Default::default(),
+        },
+    );
+    inner.write_sidecar("s1", |m| {
+        m["status"] = json!("background");
+        m["background"] =
+            json!([{ "agentId": "a1", "tcId": "sm1", "summary": "继续实现", "startedAt": 1 }]);
+    });
+
+    let window = inner.replay_open("s1");
+    assert!(
+        window
+            .frames
+            .iter()
+            .filter_map(acp_update)
+            .all(|u| u.get("backgroundInterrupted").is_none()),
+        "活跃登记不得被补刀"
+    );
+    let sidecar = inner.read_sidecar("s1");
+    assert_eq!(sidecar.get("status").and_then(Value::as_str), Some("background"));
+    assert_eq!(
+        sidecar.get("background").and_then(Value::as_array).map(Vec::len),
+        Some(1)
+    );
+}
+
+#[test]
+fn replay_repairs_legacy_journal_zombie_without_sidecar_entry() {
+    // 存量 journal 形态(sidecar 持久化上线前):回执态派发卡没有
+    // background_agent 绑定,完成通知按 agentId 关不上它;sidecar 也没有
+    // pending 条目。帧考古必须把它认成孤儿补「已中断」。
+    let (inner, _events) = bare_inner_events("bg-archaeology");
+    let dir = inner.data_dir.join("s1");
+    std::fs::create_dir_all(&dir).unwrap();
+    let lines: Vec<String> = [
+        frame::tool_call(
+            "sm1",
+            "SendMessage",
+            &json!({ "agent_id": "a1", "summary": "验证后台续跑状态" }),
+            1,
+        ),
+        frame::tool_call_completed("sm1", "后台代理已继续执行，完成后将在对话中显示结果卡", &[], 2),
+        frame::background_result("a1", "bd", "验证后台续跑状态", "completed", "结论", "📌 done", 3),
+    ]
+    .iter()
+    .map(|f| f.to_string())
+    .collect();
+    std::fs::write(dir.join("events.jsonl"), lines.join("\n") + "\n").unwrap();
+    let mut session = bare_session("s1");
+    session.running = false;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+
+    let window = inner.replay_open("s1");
+    let repaired = window
+        .frames
+        .iter()
+        .filter_map(acp_update)
+        .find(|u| {
+            u.get("toolCallId").and_then(Value::as_str) == Some("sm1")
+                && u.get("backgroundInterrupted").and_then(Value::as_bool) == Some(true)
+        })
+        .expect("存量 journal 的孤儿回执卡必须被帧考古补终态");
+    assert!(
+        repaired
+            .get("rawOutput")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("验证后台续跑状态"),
+        "摘要取自派发入参 summary"
+    );
+}
+
+#[test]
+fn replay_archaeology_skips_cards_closed_by_bound_notification() {
+    // 绑定完整的正常闭环:background_agent 进度帧建立 tc↔agent 绑定,
+    // 完成通知按 agentId 关卡——考古不得再补刀。
+    let (inner, _events) = bare_inner_events("bg-archaeology-closed");
+    let dir = inner.data_dir.join("s1");
+    std::fs::create_dir_all(&dir).unwrap();
+    let lines: Vec<String> = [
+        frame::tool_call(
+            "sm2",
+            "SendMessage",
+            &json!({ "agent_id": "a2", "summary": "验证后台续跑状态" }),
+            1,
+        ),
+        frame::tool_call_progress(
+            "sm2",
+            json!({ "kind": "background_agent", "agentId": "a2", "status": "running" }),
+            2,
+        ),
+        frame::tool_call_background_launched("sm2", "后台代理已继续执行", 3),
+        frame::background_result("a2", "bd", "验证后台续跑状态", "completed", "结论", "📌 done", 4),
+    ]
+    .iter()
+    .map(|f| f.to_string())
+    .collect();
+    std::fs::write(dir.join("events.jsonl"), lines.join("\n") + "\n").unwrap();
+    let mut session = bare_session("s1");
+    session.running = false;
+    inner.sess.sessions.lock().unwrap().insert("s1".into(), session);
+
+    let window = inner.replay_open("s1");
+    assert!(
+        window
+            .frames
+            .iter()
+            .filter_map(acp_update)
+            .all(|u| u.get("backgroundInterrupted").is_none()),
+        "通知已按绑定关卡,考古不得补刀"
+    );
+}

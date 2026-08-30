@@ -305,9 +305,14 @@ function closeTool(s: ChatState, u: AcpUpdate, timestamp: number | undefined): C
   const timing = durationMs !== undefined ? { durationMs } : {};
   const items = s.items.slice();
 
-  // 这句中文是**引擎的输出内容**(协议嗅探),不是界面文案——不进词典:
-  // 翻译了就匹配不上上游了
-  if (raw.includes("子代理已转入后台继续执行") || raw.includes("后台代理已继续执行")) {
+  // 启动回执闭卡:新驱动带 backgroundLaunch 结构化标记。中文嗅探仅存量
+  // journal 兜底——这句是**引擎的输出内容**(协议嗅探),不是界面文案,
+  // 不进词典:翻译了就匹配不上历史帧了
+  if (
+    u.backgroundLaunch ||
+    raw.includes("子代理已转入后台继续执行") ||
+    raw.includes("后台代理已继续执行")
+  ) {
     // Agent 工具"转后台"的 completed 只是启动回执:卡片视觉上保持运行态,
     // 进度直播照常,真正的终态由后续补发帧回填
     items[idx] = { ...merged, status: "run", outKey: "chat.tool.bgRunning", out: "", result: undefined, lastLine: undefined, background: true };
@@ -315,16 +320,18 @@ function closeTool(s: ChatState, u: AcpUpdate, timestamp: number | undefined): C
   }
   if (prev.background) {
     // 后台卡的迟到终态:收起卡片,完整正文只留在卡数据里(卡自己展示),
-    // 并标记吞掉紧随其后的重复 task_notification
+    // 并标记吞掉紧随其后的重复 task_notification。对账合成的「已中断」
+    // 终态(backgroundInterrupted)不会再有通知,不置吞并标记
+    const interrupted = !!u.backgroundInterrupted;
     items[idx] = {
       ...merged,
       status: failed ? "fail" : "ok",
-      outKey: failed ? "chat.tool.bgFailed" : "chat.tool.bgDone",
+      outKey: interrupted ? "chat.tool.bgInterrupted" : failed ? "chat.tool.bgFailed" : "chat.tool.bgDone",
       out: "",
       result: raw,
       ...timing,
       lastLine: undefined,
-      backgroundNoticePending: true,
+      backgroundNoticePending: !interrupted,
     };
     return { ...s, items, streamKind: "" };
   }
@@ -653,7 +660,12 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
           typeof f.seq === "number" && f.seq > 0 ? Math.max(s.lastTurnStartSeq, f.seq) : s.lastTurnStartSeq,
         plan: s.plan.length > 0 && s.plan.every((e) => e.status === "completed") ? [] : s.plan,
       };
-    case "task-ended":
+    case "task-ended": {
+      // 后台任务未了结时轮末分隔线换语义变体:普通「本轮结束」此刻是
+      // 误导——对话还没有真正合上,完成通知稍后会继续这段对话
+      const bgPending = s.items.some(
+        (it) => it.kind === "tool" && it.status === "run" && it.background,
+      );
       return {
         ...s,
         running: false,
@@ -661,8 +673,12 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
         turnEnded: true,
         lastTerminalSeq:
           typeof f.seq === "number" && f.seq > 0 ? Math.max(s.lastTerminalSeq, f.seq) : s.lastTerminalSeq,
-        items: [...expireOpenAsks(s.items), { kind: "sys", tag: "turn-end", text: "", key: "chat.sys.turnEnd" }],
+        items: [
+          ...expireOpenAsks(s.items),
+          { kind: "sys", tag: "turn-end", text: "", key: bgPending ? "chat.sys.turnEndBg" : "chat.sys.turnEnd" },
+        ],
       };
+    }
     case "task-error": {
       const data = frameData<{ error?: string; terminal?: boolean }>(f);
       const terminal = data?.terminal !== false;

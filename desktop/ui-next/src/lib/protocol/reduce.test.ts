@@ -352,6 +352,69 @@ describe("SendMessage 后台续跑", () => {
   });
 });
 
+describe("后台结构化标记与轮末第三态", () => {
+  const open = acp({ sessionUpdate: "tool_call", toolCallId: "b1", title: "Agent 后台调查" });
+  // 新驱动:backgroundLaunch 结构化标记闭卡,回执文案任意(不再嗅探中文)
+  const launched = acp({
+    sessionUpdate: "tool_call_update",
+    toolCallId: "b1",
+    status: "completed",
+    rawOutput: "launch receipt",
+    backgroundLaunch: true,
+  });
+
+  it("backgroundLaunch 标记闭卡保持运行态,不依赖回执文案", () => {
+    const s = run([open, launched]);
+    expect(toolItem(s, "b1")).toMatchObject({
+      status: "run",
+      background: true,
+      outKey: "chat.tool.bgRunning",
+    });
+    expect(toolItem(s, "b1").result).toBeUndefined();
+  });
+
+  it("对账合成的 backgroundInterrupted 终态按已中断收卡,不再等待通知", () => {
+    const s = run([
+      open,
+      launched,
+      acp({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "b1",
+        status: "failed",
+        rawOutput: "后台任务已随应用重启中断(调查依赖),不会再有完成通知",
+        backgroundInterrupted: true,
+      }),
+    ]);
+    expect(toolItem(s, "b1")).toMatchObject({
+      status: "fail",
+      outKey: "chat.tool.bgInterrupted",
+      backgroundNoticePending: false,
+    });
+  });
+
+  it("后台任务未了结时轮末分隔线用后台变体键", () => {
+    const s = run([frame("task-started"), open, launched, frame("task-ended")]);
+    expect(s.items.at(-1)).toMatchObject({ kind: "sys", tag: "turn-end", key: "chat.sys.turnEndBg" });
+  });
+
+  it("无后台任务的轮末分隔线保持原键", () => {
+    const s = run([frame("task-started"), frame("task-ended")]);
+    expect(s.items.at(-1)).toMatchObject({ kind: "sys", tag: "turn-end", key: "chat.sys.turnEnd" });
+  });
+
+  it("后台卡回填真终态后,再来的轮末分隔线回到原键", () => {
+    const s = run([
+      frame("task-started"),
+      open,
+      launched,
+      acp({ sessionUpdate: "tool_call_update", toolCallId: "b1", status: "completed", rawOutput: "结论" }),
+      frame("task-ended"),
+    ]);
+    expect(toolItem(s, "b1")).toMatchObject({ status: "ok", outKey: "chat.tool.bgDone" });
+    expect(s.items.at(-1)).toMatchObject({ kind: "sys", tag: "turn-end", key: "chat.sys.turnEnd" });
+  });
+});
+
 describe("后台子代理(Agent 显式转后台)", () => {
   const open = acp({ sessionUpdate: "tool_call", toolCallId: "t1", title: "Agent 后台调查" });
   // 驱动侧 async_launched 的友好文案闭卡

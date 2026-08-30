@@ -37,6 +37,8 @@ pub enum SessionStatus {
     Running,
     /// 当前轮已正常结束，会话空闲并可继续发送消息。
     Idle,
+    /// 主循环空闲，但仍有后台子代理未回完成通知(轮末快照非空)。
+    Background,
     /// 真正结束的子任务；顶层本地会话不以一轮回复作为完成。
     Finished,
     Interrupted,
@@ -49,6 +51,7 @@ impl SessionStatus {
             SessionStatus::Created => "created",
             SessionStatus::Running => "running",
             SessionStatus::Idle => "idle",
+            SessionStatus::Background => "background",
             SessionStatus::Finished => "finished",
             SessionStatus::Interrupted => "interrupted",
             SessionStatus::Error => "error",
@@ -305,6 +308,28 @@ pub fn tool_call_failed(tc_id: &str, raw_output: &str, seq: u64) -> Value {
     acp(
         json!({ "sessionUpdate": "tool_call_update", "toolCallId": tc_id,
             "status": "failed", "rawOutput": raw_output }),
+        seq,
+    )
+}
+
+/// 后台派发的启动回执闭卡:completed 只表示"调用成功返回",子代理仍在
+/// 执行。backgroundLaunch 结构化标记让 reducer 把卡保持运行态,不再依赖
+/// 嗅探回执中文(嗅探仅存量 journal 兜底,见 reduce.ts::closeTool)。
+pub fn tool_call_background_launched(tc_id: &str, raw_output: &str, seq: u64) -> Value {
+    acp(
+        json!({ "sessionUpdate": "tool_call_update", "toolCallId": tc_id,
+            "status": "completed", "rawOutput": raw_output, "backgroundLaunch": true }),
+        seq,
+    )
+}
+
+/// 后台任务僵尸对账的合成终态:引擎进程更替后任务必然已死,通知永远
+/// 不会来。backgroundInterrupted 标记让 reducer 用「已中断」而非「执行
+/// 失败」文案收卡,且不再等待吞并后续通知。
+pub fn tool_call_background_interrupted(tc_id: &str, raw_output: &str, seq: u64) -> Value {
+    acp(
+        json!({ "sessionUpdate": "tool_call_update", "toolCallId": tc_id,
+            "status": "failed", "rawOutput": raw_output, "backgroundInterrupted": true }),
         seq,
     )
 }
