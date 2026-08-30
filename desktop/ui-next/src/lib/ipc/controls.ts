@@ -1,8 +1,8 @@
 // 会话控制面的补充命令封装(sessions.ts 已冻结,新命令进本文件):
-// - session_call:切模型/思考档/权限模式/手动压缩,接收端 = 壳侧
+// - session_call:切模型/思考档/权限模式/手动压缩/停后台代理,接收端 = 壳侧
 //   driver/session.rs::session_call(session_set_model {model:展示名} /
 //   session_set_think {think:off|low|medium|high} / session_set_mode
-//   {mode:default|yolo} / session_compact {});
+//   {mode:default|yolo} / session_compact {} / background_stop {agent_id});
 //   应答 {result}/{error} 同构,error 转 reject 让调用方外显。
 //   注:模型/思考档运行中壳会拒绝(引擎限制),权限模式可热切。
 // - session_outline:提问大纲全量目录(user-input 帧投影),条目 content
@@ -59,6 +59,24 @@ export function sessionCompact(id: string): Promise<void> {
  * data.source="steer" 的 user-input 帧，调用方无需乐观插入气泡。 */
 export function sessionSteer(id: string, content: string, clientId: string): Promise<void> {
   return sessionCall(id, "session_steer", { content: b64encode(content), client_id: clientId }).then(() => {});
+}
+
+/** background_stop 的引擎应答(subagent/cancel 直通)。stopped=false 且
+ * state="stopping" 表示已发出取消但引擎 5s 内未收尾——终态仍由
+ * task_notification 回填,调用方保持「停止中」即可,无需轮询。 */
+export interface BackgroundStopReply {
+  state?: string;
+  stopped?: boolean;
+}
+
+/** 定向停止一个后台子代理(capability: subagentControl,入口由
+ * engine_caps.subagent_control 门控)。agentId 是派发应答里的子代理寻址
+ * id(backgroundAgentId),不是子会话 id。reject = 引擎拒绝/不存在,
+ * 调用方回弹外显。 */
+export function sessionBackgroundStop(id: string, agentId: string): Promise<BackgroundStopReply> {
+  return sessionCall<BackgroundStopReply>(id, "background_stop", { agent_id: agentId }).then(
+    (reply) => reply ?? {},
+  );
 }
 
 /** 提问大纲的一条(壳投影 + 本层解码;seq 与 UserItem.seq / DOM 的

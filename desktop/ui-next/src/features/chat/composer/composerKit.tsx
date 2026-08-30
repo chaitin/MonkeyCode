@@ -73,6 +73,10 @@ export interface BackgroundTask {
   title: string;
   startedAt?: number;
   childId?: string;
+  /** 引擎侧子代理寻址 id(backgroundAgentId);缺席(旧 journal 卡)无停止入口。 */
+  agentId?: string;
+  /** 停止已受理,等 task_notification 终态收卡(调用方维护的瞬态)。 */
+  stopping?: boolean;
 }
 
 /** 后台状态条(RunBar 同槽位的安静版):主循环空闲但后台子代理未回完成
@@ -89,7 +93,12 @@ export function BackgroundBar({
   openLabel,
   expandLabel,
   collapseLabel,
+  stopLabel,
+  stopConfirmLabel,
+  stoppingLabel,
+  stopError,
   onOpen,
+  onStop,
 }: {
   label: string;
   tasks: BackgroundTask[];
@@ -99,10 +108,25 @@ export function BackgroundBar({
   openLabel: string;
   expandLabel: string;
   collapseLabel: string;
+  stopLabel: string;
+  stopConfirmLabel: string;
+  stoppingLabel: string;
+  /** 上一次停止失败的成品文案(调用方求值);行已回弹,可重试。 */
+  stopError?: string;
   onOpen?: (childId: string) => void;
+  /** 缺席 = 引擎无 subagentControl 能力,停止入口整体不渲染。 */
+  onStop?: (agentId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [, setTick] = useState(0);
+  // 二段确认(按钮原位变「确认停止?」):同一时刻至多一行处于确认态,
+  // 几秒不点自动回弹——停止不可恢复,不能让确认态永久蹲在那等误触
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (confirmKey === null) return;
+    const id = setTimeout(() => setConfirmKey(null), 4_000);
+    return () => clearTimeout(id);
+  }, [confirmKey]);
   const anyStarted = tasks.some((t) => t.startedAt !== undefined);
   useEffect(() => {
     if (!anyStarted) return;
@@ -111,6 +135,35 @@ export function BackgroundBar({
   }, [anyStarted]);
   const minutesOf = (startedAt?: number) =>
     startedAt !== undefined ? Math.floor((Date.now() - startedAt) / 60_000) : 0;
+  const stopControl = (task: BackgroundTask) => {
+    const agentId = task.agentId;
+    if (!onStop || !agentId) return null;
+    if (task.stopping) {
+      return (
+        <span className="flex shrink-0 items-center gap-1 text-base-content/40">
+          <span className="loading loading-spinner loading-xs" aria-hidden />
+          {stoppingLabel}
+        </span>
+      );
+    }
+    const confirming = confirmKey === task.key;
+    return (
+      <button
+        type="button"
+        className={`btn btn-xs shrink-0 ${confirming ? "btn-outline btn-error" : "btn-ghost text-error"}`}
+        onClick={() => {
+          if (!confirming) {
+            setConfirmKey(task.key);
+            return;
+          }
+          setConfirmKey(null);
+          onStop(agentId);
+        }}
+      >
+        {confirming ? stopConfirmLabel : stopLabel}
+      </button>
+    );
+  };
   const single = tasks.length === 1 ? tasks[0] : undefined;
   const singleMinutes = minutesOf(single?.startedAt);
   const singleChild = single?.childId;
@@ -132,6 +185,7 @@ export function BackgroundBar({
             {openLabel}
           </button>
         )}
+        {single && stopControl(single)}
         {!single && (
           <button
             type="button"
@@ -166,9 +220,15 @@ export function BackgroundBar({
                   {openLabel}
                 </button>
               )}
+              {stopControl(task)}
             </div>
           );
         })}
+      {stopError && (
+        <div role="alert" className="border-t border-base-300/40 px-3 py-1 text-error">
+          {stopError}
+        </div>
+      )}
     </div>
   );
 }

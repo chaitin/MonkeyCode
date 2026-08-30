@@ -26,7 +26,8 @@ import { createPortal } from "react-dom";
 import { useApprovalHotkeys } from "@/app/shortcuts";
 import { useI18n } from "@/lib/i18n";
 import { useSettingsNavigation } from "@/features/settings/SettingsNavigationContext";
-import { sessionOutline, type OutlineItem } from "@/lib/ipc/controls";
+import { sessionBackgroundStop, sessionOutline, type OutlineItem } from "@/lib/ipc/controls";
+import { engineCaps } from "@/lib/ipc/approvals";
 import { repoChanges, repoPreviewFiles, repoReveal } from "@/lib/ipc/repo";
 import { designTemplatePreviewRead, sessionFrame, sessionPatch, type SessionMeta } from "@/lib/ipc/sessions";
 import { onNativeFileDrop, uploadFileURL } from "@/lib/ipc/uploads";
@@ -653,6 +654,46 @@ export function ChatView({
     setChildId(null); // 切会话关掉上一个会话的子回放
   }, [meta.id]);
 
+  // ==== 后台子代理停止入口(background_stop → subagent/cancel 直通) ====
+  // 能力门控:无 subagentControl 时入口整体隐藏(契约 2,不按版本猜)。
+  // 挂载拉一次即可——引擎自愈会经 epoch 整格重建本组件,快照随之刷新
+  const [canStopBg, setCanStopBg] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void engineCaps().then((caps) => {
+      if (alive && caps) setCanStopBg(caps.subagent_control);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  // 停止是「已受理」瞬态:成功后行保持「停止中」,真正收卡等
+  // task_notification 终态(卡关了行自然消失,集合残留无害);失败回弹
+  // 并外显原因,可重试。切会话即作废。
+  const [bgStopping, setBgStopping] = useState<ReadonlySet<string>>(new Set());
+  const [bgStopError, setBgStopError] = useState<string | null>(null);
+  useEffect(() => {
+    setBgStopping(new Set());
+    setBgStopError(null);
+  }, [meta.id]);
+  const onStopBackground = useCallback(
+    (agentId: string) => {
+      setBgStopError(null);
+      setBgStopping((prev) => new Set(prev).add(agentId));
+      void sessionBackgroundStop(metaRef.current.id, agentId).catch((e: unknown) => {
+        setBgStopping((prev) => {
+          const next = new Set(prev);
+          next.delete(agentId);
+          return next;
+        });
+        setBgStopError(
+          t("chat.bg.stopFailed", { reason: e instanceof Error ? e.message : String(e) }),
+        );
+      });
+    },
+    [t],
+  );
+
   // ==== 空闲态后台状态条取材:全部 run+background 派发卡(时间序) ====
   // 摘要优先 SendMessage 的 summary / Agent 的 description(rawInput),
   // 退回工具标题;入口复用子会话回放浮层。running 时状态条不渲染,跳过
@@ -663,7 +704,14 @@ export function ChatView({
     // 断连门控:引擎不在了,"运行中"就是谎言(重启后的孤儿卡另有对账
     // 路径补终态);conn 为 null 是"还不知道",按乐观显示
     if (conn && !conn.connected) return [];
-    const out: { key: string; title: string; startedAt?: number; childId?: string }[] = [];
+    const out: {
+      key: string;
+      title: string;
+      startedAt?: number;
+      childId?: string;
+      agentId?: string;
+      stopping?: boolean;
+    }[] = [];
     for (const it of state.items) {
       if (it.kind === "tool" && it.status === "run" && it.background) {
         const input = (it.rawInput ?? {}) as { summary?: unknown; description?: unknown };
@@ -676,21 +724,36 @@ export function ChatView({
           title,
           ...(it.startedAt !== undefined ? { startedAt: it.startedAt } : {}),
           ...(it.childSessionId ? { childId: it.childSessionId } : {}),
+          ...(it.backgroundAgentId ? { agentId: it.backgroundAgentId } : {}),
+          ...(it.backgroundAgentId && bgStopping.has(it.backgroundAgentId)
+            ? { stopping: true }
+            : {}),
         });
       }
     }
     return out;
-  }, [state, conn]);
+  }, [state, conn, bgStopping]);
   const onOpenBackground = useCallback((childId: string) => setChildId(childId), []);
   const bgSignature = bgCards
-    .map((c) => `${c.key}|${c.title}|${c.childId ?? ""}|${c.startedAt ?? 0}`)
+    .map(
+      (c) =>
+        `${c.key}|${c.title}|${c.childId ?? ""}|${c.startedAt ?? 0}|${c.agentId ?? ""}|${c.stopping ? 1 : 0}`,
+    )
     .join("\n");
   const backgroundInfo = useMemo(
-    () => (bgCards.length === 0 ? undefined : { tasks: bgCards, onOpen: onOpenBackground }),
+    () =>
+      bgCards.length === 0
+        ? undefined
+        : {
+            tasks: bgCards,
+            onOpen: onOpenBackground,
+            ...(canStopBg ? { onStop: onStopBackground } : {}),
+            ...(bgStopError !== null ? { stopError: bgStopError } : {}),
+          },
     // bgSignature 覆盖 bgCards 的全部字段值:签名不变则内容必然逐字段相同,
     // 用它换引用稳定,避免逐批次新数组击穿 memo
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bgSignature, onOpenBackground],
+    [bgSignature, onOpenBackground, canStopBg, onStopBackground, bgStopError],
   );
 
   // pane 连接条的展开态(收/展是会话内瞬态;切会话回到收起)

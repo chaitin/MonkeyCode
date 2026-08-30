@@ -541,7 +541,10 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
           ) {
             continue;
           }
-          const failed = u.status === "error" || u.status === "failed" || u.status === "stopped";
+          // stopped 是定向停止(TaskStop/subagent cancel)的终态:按「已停止」
+          // 收卡——用户刚点过停止,再报「执行失败」是把服从说成事故
+          const stopped = u.status === "stopped";
+          const failed = stopped || u.status === "error" || u.status === "failed";
           const durationMs =
             timestamp !== undefined && it.startedAt !== undefined && timestamp >= it.startedAt
               ? timestamp - it.startedAt
@@ -550,7 +553,7 @@ function reduceAcp(s: ChatState, u: AcpUpdate, timestamp?: number): ChatState {
           items[i] = {
             ...it,
             status: failed ? "fail" : "ok",
-            outKey: failed ? "chat.tool.bgFailed" : "chat.tool.bgDone",
+            outKey: stopped ? "chat.tool.bgStopped" : failed ? "chat.tool.bgFailed" : "chat.tool.bgDone",
             out: "",
             lastLine: undefined,
             backgroundNoticePending: false,

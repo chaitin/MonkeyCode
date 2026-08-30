@@ -286,7 +286,7 @@ impl DriverHost {
     }
 }
 
-/// 引擎能力表(对表 desktop/ui/src/types.ts 的 EngineCaps)。
+/// 引擎能力表(对表 ui-next/src/lib/ipc/approvals.ts 的 EngineCaps)。
 /// 能力仍是渐进的(随上游补齐翻位),由 ready 握手与桌面壳实际能力
 /// 共同投影；UI 降级与命令层守卫都读取同一份运行时结果。
 #[derive(Clone, Copy, serde::Serialize)]
@@ -299,6 +299,8 @@ pub struct Caps {
     /// 运行中向当前轮追加用户指令。
     pub steering: bool,
     pub attachments: bool,
+    /// 定向停止后台子代理(subagent/cancel;UI 后台状态条的停止入口)。
+    pub subagent_control: bool,
 }
 
 pub fn caps(engine: &OhmyDriver, browser_ext: bool) -> Caps {
@@ -315,6 +317,7 @@ pub fn caps(engine: &OhmyDriver, browser_ext: bool) -> Caps {
         steering: engine.has_capability("session/steer"),
         // 上传/路径注入由壳实现，不是引擎握手项。
         attachments: true,
+        subagent_control: engine.has_capability("subagentControl"),
     }
 }
 

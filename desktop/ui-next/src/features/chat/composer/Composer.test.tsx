@@ -38,6 +38,7 @@ function stubShell({
   directoryPath = null,
   runtimePath,
   directoryResult,
+  caps = null,
 }: {
   models?: ModelInfo[];
   skills?: SkillInfo[];
@@ -45,6 +46,8 @@ function stubShell({
   directoryPath?: string | null;
   runtimePath?: string;
   directoryResult?: Promise<string | null>;
+  /** engine_caps 应答;缺省 null = 能力未知,按「不支持」降级渲染。 */
+  caps?: Record<string, unknown> | null;
 } = {}) {
   const ops: Op[] = [];
   const listeners = new Map<string, (e: { payload: unknown }) => void>();
@@ -62,6 +65,7 @@ function stubShell({
         if (cmd === "models_list") return Promise.resolve(models);
         if (cmd === "skills_list") return Promise.resolve({ revision: 1, store_id: "test", skills });
         if (cmd === "session_call") return sessionCall ? sessionCall(args) : Promise.resolve({ result: {} });
+        if (cmd === "engine_caps") return Promise.resolve(caps);
         if (cmd === "upload_begin") return Promise.resolve({ handle: 9 });
         if (cmd === "upload_finish") return Promise.resolve({ path: ".monkeycode/uploads/shot.png" });
         if (cmd === "plugin:dialog|open") return directoryResult ?? Promise.resolve(directoryPath);
@@ -1327,5 +1331,141 @@ describe("后台状态条·多任务", () => {
     await waitFor(() => expect(screen.getByText("1 个后台代理运行中")).toBeTruthy());
     // 单任务回到摘要内联形态(取剩余那张卡)
     expect(screen.getAllByText("分析日志").length).toBeGreaterThan(0);
+  });
+});
+
+describe("后台状态条·停止", () => {
+  const CAPS = {
+    browser_ext: false,
+    usage_update: true,
+    perm_remember: true,
+    attachments: true,
+    steering: false,
+    subagent_control: true,
+  };
+  // 派发卡带 background_agent 进度(壳在 async_launched 应答时产出,携带
+  // 引擎侧寻址 agentId)——停止入口按它寻址,缺席的旧 journal 卡不出入口
+  const STOPPABLE_FRAMES = [
+    { type: "task-started", timestamp: 3, seq: 3 },
+    {
+      type: "task-running",
+      kind: "acp_event",
+      data: {
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId: "b1",
+          title: "SendMessage",
+          rawInput: { summary: "继续实现" },
+        },
+      },
+      timestamp: 4,
+      seq: 4,
+    },
+    {
+      type: "task-running",
+      kind: "acp_event",
+      data: {
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "b1",
+          status: "in_progress",
+          progress: { kind: "background_agent", agentId: "ag-1", status: "running" },
+        },
+      },
+      timestamp: 5,
+      seq: 5,
+    },
+    {
+      type: "task-running",
+      kind: "acp_event",
+      data: {
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "b1",
+          status: "completed",
+          rawOutput: "receipt",
+          backgroundLaunch: true,
+        },
+      },
+      timestamp: 6,
+      seq: 6,
+    },
+    { type: "task-ended", timestamp: 7, seq: 7 },
+  ];
+
+  it("二段确认后调 background_stop,行转停止中;通知到达后消退", async () => {
+    const { ops, emit } = stubShell({ caps: CAPS });
+    render(<ChatView meta={META} />);
+    await ready();
+    emit("frames:s1", STOPPABLE_FRAMES);
+
+    await waitFor(() => expect(screen.getByText("1 个后台代理运行中")).toBeTruthy());
+    // 首击只进入确认态,不发命令(停止不可恢复)
+    await userEvent.click(await screen.findByRole("button", { name: "停止" }));
+    expect(calls(ops, "background_stop").length).toBe(0);
+    await userEvent.click(screen.getByRole("button", { name: "确认停止?" }));
+
+    await waitFor(() => expect(calls(ops, "background_stop").length).toBe(1));
+    expect(calls(ops, "background_stop")[0]?.args).toMatchObject({
+      id: "s1",
+      kind: "background_stop",
+      payload: { agent_id: "ag-1" },
+    });
+    // 应答只表示受理:行保持「停止中」,收卡等 task_notification 终态
+    await waitFor(() => expect(screen.getByText("停止中…")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "停止" })).toBeNull();
+
+    emit("frames:s1", [
+      {
+        type: "task-running",
+        kind: "acp_event",
+        data: {
+          update: {
+            sessionUpdate: "task_notification",
+            agentId: "ag-1",
+            status: "stopped",
+            result: "已按请求停止",
+            text: "📌 后台代理已停止",
+          },
+        },
+        timestamp: 8,
+        seq: 8,
+      },
+    ]);
+    await waitFor(() => expect(screen.queryByText("1 个后台代理运行中")).toBeNull());
+  });
+
+  it("引擎无 subagentControl 能力时不出停止入口", async () => {
+    const { emit } = stubShell(); // engine_caps → null,按不支持降级
+    render(<ChatView meta={META} />);
+    await ready();
+    emit("frames:s1", STOPPABLE_FRAMES);
+
+    await waitFor(() => expect(screen.getByText("1 个后台代理运行中")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "停止" })).toBeNull();
+  });
+
+  it("停止失败回弹并外显原因,可重试", async () => {
+    const { emit } = stubShell({
+      caps: CAPS,
+      sessionCall: (args) =>
+        (args?.kind as string) === "background_stop"
+          ? Promise.reject(new Error("sub-agent not found: ag-1"))
+          : Promise.resolve({ result: {} }),
+    });
+    render(<ChatView meta={META} />);
+    await ready();
+    emit("frames:s1", STOPPABLE_FRAMES);
+
+    await waitFor(() => expect(screen.getByText("1 个后台代理运行中")).toBeTruthy());
+    await userEvent.click(await screen.findByRole("button", { name: "停止" }));
+    await userEvent.click(screen.getByRole("button", { name: "确认停止?" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("停止后台代理失败:sub-agent not found: ag-1")).toBeTruthy(),
+    );
+    // 行回弹,停止入口可重试
+    expect(screen.getByRole("button", { name: "停止" })).toBeTruthy();
+    expect(screen.queryByText("停止中…")).toBeNull();
   });
 });

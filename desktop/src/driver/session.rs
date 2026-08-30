@@ -3025,6 +3025,39 @@ impl OhmyDriver {
                 }
                 Ok(json!({ "result": { "status": "queued" } }))
             }
+            // 定向停止一个后台子代理(subagent/cancel 直通)。应答只驱动 UI 的
+            // 「停止中」瞬态;终态回填仍由 task_notification 权威路径完成
+            // (引擎 manager.Complete 照常入通知队列),不新增终态路径——
+            // 通知丢失(引擎更替)也有既有孤儿对账兜底。
+            "background_stop" => {
+                if !self.has_cap("subagentControl") {
+                    return Err("当前引擎版本不支持停止后台子代理,请升级引擎".into());
+                }
+                let agent_id = payload
+                    .get("agent_id")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|a| !a.is_empty())
+                    .ok_or_else(|| "停止指令缺少非空 agent_id".to_string())?
+                    .to_string();
+                let engine_id = {
+                    let sessions = self.0.sess.sessions.lock_ok();
+                    let Some(session) = sessions.get(id) else {
+                        return Err("会话未打开".into());
+                    };
+                    session.engine_id.clone()
+                };
+                // {status:"ok", state, stopped} 原样透传:stopped=false 且
+                // state="stopping" 表示引擎已发出取消但 5s 内未收尾,子代理
+                // 稍后退出时通知照常到达
+                let response = self
+                    .rpc(
+                        "subagent/cancel",
+                        json!({ "session_id": engine_id, "agent_id": agent_id }),
+                    )
+                    .await?;
+                Ok(json!({ "result": response }))
+            }
             "session_set_model" => {
                 let name = payload.get("model").and_then(|v| v.as_str()).unwrap_or("");
                 let model_id = self.model_id_of(name)?; // 前置校验,未知模型不动会话

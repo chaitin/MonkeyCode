@@ -386,6 +386,10 @@ interactive:true,引擎给持久 Task 工具族)、会话思考档 session/setTh
 直调自动提升)、子代理事件带 parent_session_id/parent_tool_call_id
 (dab1b85,壳精确认领)。固定引擎已删除“同步 Agent 超时后自动转后台”，
 后台执行必须由 `run_in_background:true` 显式声明。
+子代理控制面(733df47,cap `subagentControl`:`subagent/list` +
+`subagent/cancel`):壳经 `session_call background_stop` 直通 cancel
+(UI 后台状态条的停止入口,Caps.subagent_control 门控);list 暂未消费,
+pending 派生/对账仍以壳侧登记为权威。
 
 ## 开发与构建产物
 

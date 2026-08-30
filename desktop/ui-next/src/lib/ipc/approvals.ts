@@ -86,6 +86,8 @@ export interface EngineCaps {
   attachments: boolean;
   /** 运行中可将补充指令插入当前任务。 */
   steering: boolean;
+  /** 定向停止后台子代理(subagent/cancel):false 时后台状态条不出停止入口 */
+  subagent_control: boolean;
 }
 
 /** 能力快照的严格读取面；浏览器模式返回 null，桌面壳 invoke 失败向上抛。 */

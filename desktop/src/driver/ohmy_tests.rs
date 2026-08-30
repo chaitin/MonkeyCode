@@ -3788,6 +3788,7 @@ fn public_caps_follow_the_ready_handshake() {
         let mut engine_caps = inner.transport.engine_caps.lock().unwrap();
         engine_caps.insert("turn/stopped".into());
         engine_caps.insert("session/steer".into());
+        engine_caps.insert("subagentControl".into());
     }
     let driver = OhmyDriver(inner);
     let caps = crate::driver::caps(&driver, false);
@@ -3796,6 +3797,155 @@ fn public_caps_follow_the_ready_handshake() {
     assert!(!caps.perm_remember);
     assert!(caps.steering);
     assert!(caps.attachments);
+    assert!(caps.subagent_control);
+}
+
+/// background_stop:subagentControl 缺失时命令层拒绝,不下发 RPC。
+#[tokio::test]
+async fn background_stop_requires_the_subagent_control_capability() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("bgstop-no-cap");
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+
+    let error = driver
+        .session_call("s1", "background_stop", json!({ "agent_id": "ag-1" }))
+        .await
+        .unwrap_err();
+
+    assert!(error.contains("不支持"), "应提示引擎能力缺口: {error}");
+    assert!(stdin_rx.try_recv().is_err(), "能力缺失不得下发 RPC");
+}
+
+/// background_stop:agent_id 缺失/空白在本地快速失败。
+#[tokio::test]
+async fn background_stop_requires_a_nonempty_agent_id() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("bgstop-agent-id");
+    inner
+        .transport
+        .engine_caps
+        .lock()
+        .unwrap()
+        .insert("subagentControl".into());
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+
+    let error = driver
+        .session_call("s1", "background_stop", json!({ "agent_id": "  " }))
+        .await
+        .unwrap_err();
+
+    assert!(
+        error.contains("agent_id"),
+        "错误应指出缺少 agent_id: {error}"
+    );
+    assert!(stdin_rx.try_recv().is_err(), "非法 agent_id 不得下发 RPC");
+}
+
+/// background_stop 直通 subagent/cancel:按 engine_id 寻址、应答原样透传
+/// (stopped=false/state=stopping 表示引擎仍在收尾)。终态不在应答里处理
+/// ——收尾归 task_notification 权威路径。
+#[tokio::test]
+async fn background_stop_forwards_subagent_cancel_and_passes_the_reply_through() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("bgstop-forward");
+    inner
+        .transport
+        .engine_caps
+        .lock()
+        .unwrap()
+        .insert("subagentControl".into());
+    let mut session = bare_session("s1");
+    session.running = false; // 后台第三态:主循环空闲时也可停止
+    session.engine_id = "eng-1".into(); // 换绑过的会话必须按 engine_id 寻址
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), session);
+    let driver = OhmyDriver(inner.clone());
+
+    let call = tokio::spawn(async move {
+        driver
+            .session_call("s1", "background_stop", json!({ "agent_id": "ag-7" }))
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx
+            .recv()
+            .await
+            .expect("RPC 出站")
+            .expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    assert_eq!(request["method"], "subagent/cancel");
+    assert_eq!(
+        request["params"],
+        json!({ "session_id": "eng-1", "agent_id": "ag-7" })
+    );
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"],
+            "result": { "status": "ok", "state": "stopping", "stopped": false } }),
+    );
+    assert_eq!(
+        call.await.unwrap().unwrap(),
+        json!({ "result": { "status": "ok", "state": "stopping", "stopped": false } })
+    );
+}
+
+/// 引擎侧错误(agent 不存在/顶层会话不在)原样上抛给 UI 外显。
+#[tokio::test]
+async fn background_stop_surfaces_engine_errors() {
+    let (inner, _events, mut stdin_rx) = bare_inner_rpc("bgstop-error");
+    inner
+        .transport
+        .engine_caps
+        .lock()
+        .unwrap()
+        .insert("subagentControl".into());
+    inner
+        .sess
+        .sessions
+        .lock()
+        .unwrap()
+        .insert("s1".into(), bare_session("s1"));
+    let driver = OhmyDriver(inner.clone());
+
+    let call = tokio::spawn(async move {
+        driver
+            .session_call("s1", "background_stop", json!({ "agent_id": "gone" }))
+            .await
+    });
+    let request: Value = serde_json::from_str(
+        &stdin_rx
+            .recv()
+            .await
+            .expect("RPC 出站")
+            .expect("非 shutdown 消息"),
+    )
+    .unwrap();
+    answer_rpc(
+        &inner,
+        &request,
+        json!({ "jsonrpc": "2.0", "id": request["id"],
+            "error": { "code": -32000, "message": "sub-agent not found: gone" } }),
+    );
+    let error = call.await.unwrap().unwrap_err();
+    assert!(
+        error.contains("sub-agent not found"),
+        "引擎错误应透传: {error}"
+    );
 }
 
 fn answer_rpc(inner: &Inner, request: &Value, response: Value) {
