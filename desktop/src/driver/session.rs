@@ -4611,6 +4611,10 @@ impl Inner {
         if idle && fold::unterminated(&frames) {
             frames.extend(self.repair_unterminated(sid, seen_seq));
         }
+        // 后台任务孤儿对账(sidecar 遗留 pending + 存量 journal 帧考古):
+        // 合成终态帧追加在窗口尾部,归约后僵尸派发卡收敛为「已中断」
+        let repairs = self.repair_stale_background(sid, &frames);
+        frames.extend(repairs);
         ReplayWindow {
             frames,
             cursor,
@@ -4674,6 +4678,118 @@ impl Inner {
         });
         eprintln!("[desktop] 冷修复未闭合轮次: sid={sid}");
         vec![err, end]
+    }
+
+    /// 后台任务僵尸对账:引擎进程更替后后台子代理必然已死(goroutine 随
+    /// 进程消亡),再也等不到 task_notification 的派发卡不清会让卡与状态条
+    /// 永远转圈。孤儿来源有二,互补覆盖:
+    /// ① sidecar 持久化的 pending 条目(覆盖回放窗口之外的卡);
+    /// ② 窗口帧考古(覆盖 sidecar 持久化上线前的存量 journal——回执态卡
+    ///    由 reducer 嗅探恢复运行态,或完成通知因进程死亡未落盘/旧帧缺
+    ///    backgroundAgentId 绑定而永远关不上)。
+    /// 对账以内存登记为准——同进程内引擎仍服务时登记必在、条目被跳过;
+    /// 登记缺席即孤儿,按 tcId 补合成「已中断」终态帧(复用冷修复的
+    /// journal 通道),sidecar 剔除孤儿条目并在无存活任务时把 background
+    /// 状态归一 interrupted。合成帧直接并入本次回放窗口,不入批量缓冲
+    /// (缘由同 repair_unterminated 头注)。
+    fn repair_stale_background(&self, sid: &str, window: &[Value]) -> Vec<Value> {
+        let live = self.pending_background(sid);
+        let meta = self
+            .sidecar_path(sid)
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .unwrap_or(Value::Null);
+        // 来源①:sidecar 条目里无活跃登记的
+        let mut stale: Vec<(String, String)> = meta
+            .get("background")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|e| {
+                        let agent_id = e.get("agentId")?.as_str()?;
+                        let tc_id = e.get("tcId")?.as_str()?.to_string();
+                        let summary = e
+                            .get("summary")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        (!live.iter().any(|p| p.agent_id == agent_id))
+                            .then_some((tc_id, summary))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        // 来源②:窗口帧考古(按 tcId 去重,sidecar 条目优先——它有摘要)
+        for (tc_id, label) in stale_background_cards_in_frames(window, &live) {
+            if !stale.iter().any(|(t, _)| t == &tc_id) {
+                stale.push((tc_id, label));
+            }
+        }
+        if stale.is_empty() {
+            return Vec::new();
+        }
+        let frames: Vec<Value> = {
+            let mut sessions = self.sess.sessions.lock_ok();
+            let Some(s) = sessions.get_mut(sid) else {
+                return Vec::new();
+            };
+            // 活轮进行时不补刀(放弃条件同冷修复):running/折叠中说明有
+            // 新一轮在跑,孤儿判定可能基于过期快照
+            if s.running || !s.fold.is_empty() {
+                return Vec::new();
+            }
+            let mut out = Vec::new();
+            for (tc_id, summary) in &stale {
+                s.seq += 1;
+                let label = if summary.is_empty() {
+                    "后台任务"
+                } else {
+                    summary.as_str()
+                };
+                let f = frame::tool_call_background_interrupted(
+                    tc_id,
+                    &format!("后台任务已随应用重启中断({label}),不会再有完成通知"),
+                    s.seq,
+                );
+                let _ = self.transport.journal_tx.send(JournalMsg::Append {
+                    sid: sid.to_string(),
+                    line: f.to_string(),
+                });
+                s.fold.push(&f);
+                out.push(f);
+            }
+            let turn = s.fold.take();
+            if !turn.frames.is_empty() {
+                let _ = self.transport.journal_tx.send(JournalMsg::Materialize {
+                    sid: sid.to_string(),
+                    turn,
+                    src_end: None,
+                });
+            }
+            out
+        };
+        let stale_tcs: Vec<&str> = stale.iter().map(|(tc, _)| tc.as_str()).collect();
+        self.write_sidecar(sid, |m| {
+            // 只剔孤儿:同进程重开时 sidecar 里可能混着仍存活的条目
+            if let Some(arr) = m.get_mut("background").and_then(Value::as_array_mut) {
+                arr.retain(|e| {
+                    let aid = e.get("agentId").and_then(Value::as_str).unwrap_or("");
+                    let tc = e.get("tcId").and_then(Value::as_str).unwrap_or("");
+                    live.iter().any(|p| p.agent_id == aid) && !stale_tcs.contains(&tc)
+                });
+            }
+            if live.is_empty()
+                && m.get("status").and_then(Value::as_str)
+                    == Some(SessionStatus::Background.as_str())
+            {
+                m["status"] = json!(SessionStatus::Interrupted.as_str());
+            }
+        });
+        eprintln!(
+            "[desktop] 后台任务对账: sid={sid} 清理 {} 条孤儿派发卡",
+            stale.len()
+        );
+        frames
     }
 
     pub(super) fn emit_session_event(&self, sid: &str, status: &str) {
@@ -4959,6 +5075,110 @@ fn engine_session_create_params(
         params["model"] = json!(model_id);
     }
     params
+}
+
+/// 回放窗口帧 → acp update(仅认新格式内联 data;后台回执/结构化标记晚于
+/// base64 时代,存量字符串格式帧不可能携带考古目标,跳过即正确)。
+fn window_acp_update(f: &Value) -> Option<&Value> {
+    if f.get("type").and_then(Value::as_str) != Some("task-running")
+        || f.get("kind").and_then(Value::as_str) != Some("acp_event")
+    {
+        return None;
+    }
+    f.pointer("/data/update")
+}
+
+/// 回放窗口的帧考古:找回放后仍停在「启动回执」运行态的后台派发卡。
+/// 状态机对表 reduce.ts::closeTool / task_notification 的关卡语义:
+/// - 带 backgroundLaunch 标记或回执中文的终态 = 启动回执,卡保持运行态;
+/// - 其后的普通终态帧按 tcId 关卡;
+/// - task_notification 按 agentId 只关最近一张绑定卡(旧帧缺
+///   background_agent 绑定时关不上——正是要考古的孤儿形态之一)。
+/// 过滤活跃登记(live)后剩下的就是永远等不到通知的僵尸。
+fn stale_background_cards_in_frames(
+    frames: &[Value],
+    live: &[super::subagent::PendingBackground],
+) -> Vec<(String, String)> {
+    let mut labels: HashMap<String, String> = HashMap::new();
+    let mut agents: HashMap<String, String> = HashMap::new();
+    let mut open: Vec<String> = Vec::new();
+    for f in frames {
+        let Some(u) = window_acp_update(f) else {
+            continue;
+        };
+        match u.get("sessionUpdate").and_then(Value::as_str).unwrap_or("") {
+            "tool_call" => {
+                let Some(tc) = u.get("toolCallId").and_then(Value::as_str) else {
+                    continue;
+                };
+                let label = u
+                    .pointer("/rawInput/summary")
+                    .or_else(|| u.pointer("/rawInput/description"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if !label.is_empty() {
+                    labels.insert(tc.to_string(), label.to_string());
+                }
+            }
+            "tool_call_update" => {
+                let Some(tc) = u.get("toolCallId").and_then(Value::as_str) else {
+                    continue;
+                };
+                if u.pointer("/progress/kind").and_then(Value::as_str) == Some("background_agent") {
+                    if let Some(aid) = u
+                        .pointer("/progress/agentId")
+                        .and_then(Value::as_str)
+                        .filter(|a| !a.is_empty())
+                    {
+                        agents.insert(tc.to_string(), aid.to_string());
+                    }
+                }
+                // 终态词汇对表 reduce.ts::TERMINAL_TOOL_STATUS
+                let terminal = matches!(
+                    u.get("status").and_then(Value::as_str),
+                    Some("completed") | Some("failed") | Some("error") | Some("cancelled")
+                );
+                if !terminal {
+                    continue;
+                }
+                let raw = u.get("rawOutput").and_then(Value::as_str).unwrap_or("");
+                let launch = u.get("backgroundLaunch").and_then(Value::as_bool) == Some(true)
+                    || raw.contains("子代理已转入后台继续执行")
+                    || raw.contains("后台代理已继续执行");
+                open.retain(|t| t != tc);
+                if launch {
+                    open.push(tc.to_string());
+                }
+            }
+            "task_notification" => {
+                let Some(aid) = u
+                    .get("agentId")
+                    .and_then(Value::as_str)
+                    .filter(|a| !a.is_empty())
+                else {
+                    continue;
+                };
+                if let Some(pos) = open
+                    .iter()
+                    .rposition(|t| agents.get(t).map(String::as_str) == Some(aid))
+                {
+                    open.remove(pos);
+                }
+            }
+            _ => {}
+        }
+    }
+    open.into_iter()
+        .filter(|tc| {
+            !live
+                .iter()
+                .any(|p| p.tc_id == *tc || agents.get(tc) == Some(&p.agent_id))
+        })
+        .map(|tc| {
+            let label = labels.get(&tc).cloned().unwrap_or_default();
+            (tc, label)
+        })
+        .collect()
 }
 
 #[cfg(test)]

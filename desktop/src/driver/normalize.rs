@@ -252,9 +252,17 @@ impl Inner {
                             ar.remove(tc);
                         }
                     }
-                    let mut names = self.sub.agent_names.lock_ok();
+                    {
+                        let mut names = self.sub.agent_names.lock_ok();
+                        for tc in open.keys() {
+                            names.remove(tc);
+                        }
+                    }
+                    // 未闭合 SendMessage 的 provisional 续跑登记一并撤销:
+                    // tool_result 没来,async_launched 从未确认,注定失败的
+                    // 派发不能算进轮末 pending 快照(卡本身随后被补 failed 帧)
                     for tc in open.keys() {
-                        names.remove(tc);
+                        self.cancel_continuation(&sid, tc);
                     }
                 }
                 // 轮次收尾:残留子代理(未随工具闭合)按中断收尾;后台代理
@@ -305,6 +313,16 @@ impl Inner {
                         eprintln!("[desktop] 未知 turn/stopped.stop_reason={other},按 error 收尾");
                         SessionStatus::Error
                     }
+                };
+                // 主循环空闲但仍有后台子代理未回通知:会话第三态。中断/错误
+                // 维持原状态词——用户中断只停当前轮,续跑仍存活,pending 由
+                // 对话内状态条表达,侧栏不把「被打断」显示成「后台运行中」
+                let status = if status == SessionStatus::Idle
+                    && !self.pending_background(&sid).is_empty()
+                {
+                    SessionStatus::Background
+                } else {
+                    status
                 };
                 if stop_reason == "error" && !err.is_empty() && !terminal_error_seen {
                     self.push_frame(&sid, |seq| frame::task_error_pending(&err, seq));
@@ -662,11 +680,12 @@ impl Inner {
                                 seq,
                             )
                         });
+                        // backgroundLaunch 结构化标记闭卡;回执中文仅存量
+                        // journal 兜底嗅探用,不得改动(reduce.ts::closeTool)
                         self.push_frame(&sid, |seq| {
-                            frame::tool_call_completed(
+                            frame::tool_call_background_launched(
                                 &tc_id,
                                 "后台代理已继续执行，完成后将在对话中显示结果卡",
-                                &[],
                                 seq,
                             )
                         });
@@ -768,6 +787,9 @@ impl Inner {
                             seq,
                         )
                     });
+                    // 无轮次包裹的通知(旧引擎/回放边角)也要收敛第三态;
+                    // 通知轮开着时会话 running,这里空转,turn/stopped 权威收敛
+                    self.refresh_background_status(&sid);
                     return;
                 }
                 self.push_frame(&sid, |seq| frame::agent_text(&msg, seq));

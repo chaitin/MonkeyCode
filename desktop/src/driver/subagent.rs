@@ -42,6 +42,16 @@ pub(super) struct ActiveContinuation {
     pub(super) opened_children: HashSet<String>,
 }
 
+/// 会话未了结后台任务快照的一条(轮末状态词/sidecar 持久化/对账共用)。
+pub(super) struct PendingBackground {
+    pub(super) agent_id: String,
+    pub(super) tc_id: String,
+    /// P1 对账取材走 sidecar 条目自带的摘要;本字段是 P2 侧栏悬浮与
+    /// P3 停止入口的取材位,快照口径先定齐避免二次返工。
+    #[allow(dead_code)]
+    pub(super) summary: String,
+}
+
 /// 子代理态锁组:子会话路由与 Agent 工具入参/结果暂存。
 /// 含锁:subagents、agent_results、agent_inputs、agent_names、background_agents、
 /// agent_origins、agent_aliases、child_agents、active_continuations(均 StdMutex)。
@@ -184,15 +194,23 @@ impl Inner {
         if confirmed.is_empty() {
             return;
         }
-        let mut active = self.sub.active_continuations.lock_ok();
-        let provisional = active
-            .iter()
-            .find(|(_, c)| c.parent_sid == sid && c.parent_tc == tc_id)
-            .map(|(agent_id, _)| agent_id.clone());
-        if let Some(provisional) = provisional.filter(|id| id != confirmed) {
-            if let Some(continuation) = active.remove(&provisional) {
-                active.insert(confirmed.to_string(), continuation);
+        let summary = {
+            let mut active = self.sub.active_continuations.lock_ok();
+            let provisional = active
+                .iter()
+                .find(|(_, c)| c.parent_sid == sid && c.parent_tc == tc_id)
+                .map(|(agent_id, _)| agent_id.clone());
+            if let Some(provisional) = provisional.filter(|id| id != confirmed) {
+                if let Some(continuation) = active.remove(&provisional) {
+                    active.insert(confirmed.to_string(), continuation);
+                }
             }
+            active.get(confirmed).map(|c| c.summary.clone())
+        };
+        // 权威确认即持久化 pending(侧栏/对账取材);登记缺席说明 tool_call
+        // 阶段没建 provisional(入参异常),无从追踪,不落 sidecar
+        if let Some(summary) = summary {
+            self.sidecar_background_add(sid, confirmed, tc_id, &summary);
         }
     }
 
@@ -668,7 +686,134 @@ impl Inner {
             for tc in continuation_tcs {
                 inputs.remove(&tc);
             }
+            drop(inputs);
+            // 引擎不再服务:通知永远不会来,sidecar 的 pending 一并清零,
+            // 侧栏/状态条不得残留「后台运行中」
+            self.sidecar_background_clear(sid);
         }
+    }
+
+    /// 会话未了结的后台任务快照(显式后台 Agent + SendMessage 续跑)。
+    /// agent_id 去重,续跑登记优先——它对应当前活跃的派发卡。摘要:
+    /// 续跑取 summary,显式后台取 Agent 入参 description。锁全部点状
+    /// 取放(agent_inputs 不与 background_agents 嵌套,见 SubagentState 头注)。
+    pub(super) fn pending_background(&self, sid: &str) -> Vec<PendingBackground> {
+        let explicit: Vec<(String, String)> = self
+            .sub
+            .background_agents
+            .lock_ok()
+            .iter()
+            .filter(|(_, target)| target.0 == sid)
+            .map(|(agent_id, target)| (agent_id.clone(), target.1.clone()))
+            .collect();
+        let mut by_agent: HashMap<String, PendingBackground> = HashMap::new();
+        {
+            let inputs = self.sub.agent_inputs.lock_ok();
+            for (agent_id, tc_id) in explicit {
+                let summary = inputs
+                    .get(&tc_id)
+                    .map(|(desc, _)| desc.clone())
+                    .unwrap_or_default();
+                by_agent.insert(
+                    agent_id.clone(),
+                    PendingBackground {
+                        agent_id,
+                        tc_id,
+                        summary,
+                    },
+                );
+            }
+        }
+        for (agent_id, c) in self.sub.active_continuations.lock_ok().iter() {
+            if c.parent_sid == sid {
+                by_agent.insert(
+                    agent_id.clone(),
+                    PendingBackground {
+                        agent_id: agent_id.clone(),
+                        tc_id: c.parent_tc.clone(),
+                        summary: c.summary.clone(),
+                    },
+                );
+            }
+        }
+        let mut out: Vec<PendingBackground> = by_agent.into_values().collect();
+        out.sort_by(|a, b| a.agent_id.cmp(&b.agent_id));
+        out
+    }
+
+    /// 通知清理后的第三态收敛:会话空闲时把 sidecar 状态对齐当前 pending
+    /// 集合。只在 background 相关迁移时改写——不得把 interrupted/error 抹成
+    /// idle;通知轮开着(running)时空转,收敛交给 turn/stopped 的权威路径。
+    pub(super) fn refresh_background_status(&self, sid: &str) {
+        let running = self
+            .sess
+            .sessions
+            .lock_ok()
+            .get(sid)
+            .map(|s| s.running)
+            .unwrap_or(false);
+        if running {
+            return;
+        }
+        let pending = !self.pending_background(sid).is_empty();
+        let mut changed: Option<SessionStatus> = None;
+        self.write_sidecar(sid, |m| {
+            let cur = m
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let next = if pending {
+                SessionStatus::Background
+            } else {
+                SessionStatus::Idle
+            };
+            let relevant = cur == SessionStatus::Background.as_str()
+                || (pending && cur == SessionStatus::Idle.as_str());
+            if relevant && cur != next.as_str() {
+                m["status"] = json!(next.as_str());
+                changed = Some(next);
+            }
+        });
+        if let Some(next) = changed {
+            self.emit_session_event(sid, next.as_str());
+        }
+    }
+
+    /// sidecar 的 pending 持久化(background 数组):侧栏免开会话感知 +
+    /// 引擎更替后对账依据(session.rs::repair_stale_background)。按 agentId 幂等。
+    fn sidecar_background_add(&self, sid: &str, agent_id: &str, tc_id: &str, summary: &str) {
+        let entry = json!({
+            "agentId": agent_id,
+            "tcId": tc_id,
+            "summary": summary,
+            "startedAt": frame::now_ms(),
+        });
+        self.write_sidecar(sid, |m| {
+            if m.get("background").and_then(Value::as_array).is_none() {
+                m["background"] = json!([]);
+            }
+            if let Some(arr) = m.get_mut("background").and_then(Value::as_array_mut) {
+                arr.retain(|e| e.get("agentId").and_then(Value::as_str) != Some(agent_id));
+                arr.push(entry);
+            }
+        });
+    }
+
+    fn sidecar_background_remove(&self, sid: &str, agent_id: &str) {
+        self.write_sidecar(sid, |m| {
+            if let Some(arr) = m.get_mut("background").and_then(Value::as_array_mut) {
+                arr.retain(|e| e.get("agentId").and_then(Value::as_str) != Some(agent_id));
+            }
+        });
+    }
+
+    fn sidecar_background_clear(&self, sid: &str) {
+        self.write_sidecar(sid, |m| {
+            if m.get("background").is_some() {
+                m["background"] = json!([]);
+            }
+        });
     }
 
     /// Agent 工具应答 async_launched(显式 run_in_background):
@@ -697,6 +842,20 @@ impl Inner {
                 response_name
             };
             self.register_agent_identity(sid, tc_id, agent_id, name);
+            let summary = {
+                let d = get("description");
+                if d.is_empty() {
+                    self.sub
+                        .agent_inputs
+                        .lock_ok()
+                        .get(tc_id)
+                        .map(|(desc, _)| desc.clone())
+                        .unwrap_or_default()
+                } else {
+                    d.to_string()
+                }
+            };
+            self.sidecar_background_add(sid, agent_id, tc_id, &summary);
         }
         if let Some(r) = self
             .sub
@@ -718,8 +877,10 @@ impl Inner {
         let text = format!(
             "⏳ 子代理已转入后台继续执行({label}),完成后结果将回填此卡,并在对话流以 📌 通知"
         );
+        // backgroundLaunch 结构化标记闭卡(reducer 保持运行态不再靠嗅探
+        // 上面这句回执中文;文案仅存量 journal 兜底,不得改动)
         self.push_frame(sid, |seq| {
-            frame::tool_call_completed(tc_id, &text, &[], seq)
+            frame::tool_call_background_launched(tc_id, &text, seq)
         });
     }
 
@@ -740,6 +901,7 @@ impl Inner {
         let Some((psid, ptc)) = self.sub.background_agents.lock_ok().remove(agent_id) else {
             return false;
         };
+        self.sidecar_background_remove(&psid, agent_id);
         let status = get("status");
         let child_status = match status {
             "error" => SessionStatus::Error,
@@ -769,6 +931,7 @@ impl Inner {
         let Some(continuation) = self.sub.active_continuations.lock_ok().remove(agent_id) else {
             return false;
         };
+        self.sidecar_background_remove(&continuation.parent_sid, agent_id);
         let status = match data.get("status").and_then(Value::as_str).unwrap_or("") {
             "error" => SessionStatus::Error,
             "stopped" => SessionStatus::Interrupted,

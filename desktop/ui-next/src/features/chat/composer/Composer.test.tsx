@@ -1119,3 +1119,66 @@ describe("会话技能 server revision", () => {
     expect(screen.getByRole("checkbox", { name: "b" }).getAttribute("aria-checked")).toBe("true");
   });
 });
+
+describe("后台状态条", () => {
+  // 派发一张显式后台 Agent 卡(backgroundLaunch 结构化标记)后主轮结束:
+  // 会话空闲但对话没有合上,状态条常驻、输入可用
+  const DISPATCH_FRAMES = [
+    { type: "task-started", timestamp: 3, seq: 3 },
+    {
+      type: "task-running",
+      kind: "acp_event",
+      data: {
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId: "b1",
+          title: "Agent",
+          rawInput: { description: "调查依赖" },
+        },
+      },
+      timestamp: 4,
+      seq: 4,
+    },
+    {
+      type: "task-running",
+      kind: "acp_event",
+      data: {
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "b1",
+          status: "completed",
+          rawOutput: "receipt",
+          backgroundLaunch: true,
+        },
+      },
+      timestamp: 5,
+      seq: 5,
+    },
+    { type: "task-ended", timestamp: 6, seq: 6 },
+  ];
+
+  it("空闲但后台未了结:状态条可见、输入可用;真终态回填后消失", async () => {
+    const { emit } = stubShell();
+    render(<ChatView meta={META} />);
+    const box = await ready();
+    emit("frames:s1", DISPATCH_FRAMES);
+
+    await waitFor(() => expect(screen.getByText("1 个后台任务运行中")).toBeTruthy());
+    expect(screen.getByText(/完成后将在此继续汇报/)).toBeTruthy();
+    expect(screen.getAllByText("调查依赖").length).toBeGreaterThan(0);
+    expect((box as HTMLTextAreaElement).disabled).toBe(false);
+
+    emit("frames:s1", [
+      {
+        type: "task-running",
+        kind: "acp_event",
+        data: {
+          update: { sessionUpdate: "tool_call_update", toolCallId: "b1", status: "completed", rawOutput: "结论" },
+        },
+        timestamp: 7,
+        seq: 7,
+      },
+    ]);
+    await waitFor(() => expect(screen.queryByText("1 个后台任务运行中")).toBeNull());
+  });
+});

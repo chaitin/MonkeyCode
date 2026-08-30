@@ -13,6 +13,7 @@ import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type DragEvent,
@@ -568,6 +569,44 @@ export function ChatView({
   useEffect(() => {
     setChildId(null); // 切会话关掉上一个会话的子回放
   }, [meta.id]);
+
+  // ==== 空闲态后台状态条取材:最后一张 run+background 派发卡 ====
+  // 摘要优先 SendMessage 的 summary / Agent 的 description(rawInput),
+  // 退回工具标题;入口复用子会话回放浮层。running 时状态条不渲染,跳过
+  // 扫描;两级 useMemo 把对象引用钉在字段值上,不然每个帧批次都会击穿
+  // Composer 的 memo。
+  const bgSource = useMemo(() => {
+    if (state.running) return null;
+    // 断连门控:引擎不在了,"运行中"就是谎言(重启后的孤儿卡另有对账
+    // 路径补终态);conn 为 null 是"还不知道",按乐观显示
+    if (conn && !conn.connected) return null;
+    for (let i = state.items.length - 1; i >= 0; i--) {
+      const it = state.items[i];
+      if (it && it.kind === "tool" && it.status === "run" && it.background) {
+        const input = (it.rawInput ?? {}) as { summary?: unknown; description?: unknown };
+        const title =
+          (typeof input.summary === "string" && input.summary) ||
+          (typeof input.description === "string" && input.description) ||
+          it.title;
+        return { title, startedAt: it.startedAt, childId: it.childSessionId };
+      }
+    }
+    return null;
+  }, [state, conn]);
+  const bgTitle = bgSource?.title;
+  const bgStartedAt = bgSource?.startedAt;
+  const bgChildId = bgSource?.childId;
+  const backgroundInfo = useMemo(
+    () =>
+      bgTitle === undefined
+        ? undefined
+        : {
+            title: bgTitle,
+            startedAt: bgStartedAt,
+            onOpen: bgChildId ? () => setChildId(bgChildId) : undefined,
+          },
+    [bgTitle, bgStartedAt, bgChildId],
+  );
 
   // pane 连接条的展开态(收/展是会话内瞬态;切会话回到收起)
   const [stripOpen, setStripOpen] = useState(false);
@@ -1134,6 +1173,7 @@ export function ChatView({
                 hotkeysActive={hotkeysActive}
                 focusRequest={focusRequest}
                 onFocusRequestHandled={onFocusRequestHandled}
+                backgroundInfo={backgroundInfo}
               />
             </>
           )}

@@ -57,4 +57,31 @@ describe("composerPresentationOf 增量投影", () => {
     expect(completed).not.toBe(running);
     expect(completed.toolRunning).toBe(false);
   });
+
+  it("后台运行卡计入 backgroundRunning 而非 toolRunning", () => {
+    const dispatched = reduceBatch(createChatState(), [
+      acp({ sessionUpdate: "tool_call", toolCallId: "b1", title: "Agent" }, 1),
+      acp(
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "b1",
+          status: "completed",
+          rawOutput: "receipt",
+          backgroundLaunch: true,
+        },
+        2,
+      ),
+    ]);
+    const idle = composerPresentationOf(dispatched);
+    // 钉在运行态的后台卡不得把 runningLabel 顶成「执行工具中」
+    expect(idle.toolRunning).toBe(false);
+    expect(idle.backgroundRunning).toBe(1);
+
+    const finished = reduceBatch(dispatched, [
+      acp({ sessionUpdate: "tool_call_update", toolCallId: "b1", status: "completed", rawOutput: "结论" }, 3),
+    ]);
+    const after = composerPresentationOf(finished);
+    expect(after.backgroundRunning).toBe(0);
+    expect(after.toolRunning).toBe(false);
+  });
 });

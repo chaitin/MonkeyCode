@@ -45,6 +45,12 @@ export interface AcpUpdate {
   used?: number;
   size?: number;
   progress?: ToolProgress;
+  /** 后台派发启动回执闭卡的结构化标记:completed 只是"调用成功返回",
+   * 卡保持运行态。旧 journal 无此字段,归约退回嗅探回执中文。 */
+  backgroundLaunch?: boolean;
+  /** 引擎更替对账的合成终态(session.rs::repair_stale_background):
+   * 按「已中断」收卡,通知永远不会来,不置吞并标记。 */
+  backgroundInterrupted?: boolean;
   model?: string;
   /** think_update:会话思考档位("" = 跟随模型默认) */
   think?: string;

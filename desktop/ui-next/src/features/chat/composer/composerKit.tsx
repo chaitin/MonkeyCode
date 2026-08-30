@@ -4,7 +4,14 @@
 // 搬迁的定稿形态(-mx-2.5 出血、ps-1/pe-2 光学对齐等口径见 Composer 内注),
 // 改形态只改这里。
 import { IconAlertCircle, IconPlayerStopFilled, IconX } from "@tabler/icons-react";
-import { type CSSProperties, type ReactNode, type RefObject, type TextareaHTMLAttributes } from "react";
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+  type TextareaHTMLAttributes,
+} from "react";
 
 import { useI18n } from "@/lib/i18n";
 import type { SlashCommand } from "@/lib/protocol/types";
@@ -56,6 +63,52 @@ export function RunBar({
             播放器停止键的通行形态,也是各家「停止生成」的既定语汇 */}
         <IconPlayerStopFilled size={15} aria-hidden />
       </button>
+    </div>
+  );
+}
+
+/** 后台状态条(RunBar 同槽位的安静版):主循环空闲但后台子代理未回完成
+ * 通知时常驻。脉冲点而非 spinner、无主循环停止按钮——输入可用,会话没有
+ * 合上但你可以继续说话,这是它与 RunBar 的本质区别。elapsed 用 30s 自驱
+ * ticker:空闲会话没有帧到达,不自驱就永远冻在派发那一刻。 */
+export function BackgroundBar({
+  label,
+  title,
+  startedAt,
+  elapsedLabel,
+  hint,
+  openLabel,
+  onOpen,
+}: {
+  label: string;
+  title?: string;
+  startedAt?: number;
+  /** 分钟数 → 成品文案(i18n 在调用方求值,本件不进词典) */
+  elapsedLabel: (minutes: number) => string;
+  hint: string;
+  openLabel: string;
+  onOpen?: () => void;
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (startedAt === undefined) return;
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+  const minutes = startedAt !== undefined ? Math.floor((Date.now() - startedAt) / 60_000) : 0;
+  return (
+    <div className="flex items-center gap-2 border-b border-base-300 px-3 py-1.5 text-xs">
+      <span aria-hidden className="size-2 shrink-0 animate-pulse rounded-full bg-primary/70" />
+      <span className="shrink-0 font-semibold">{label}</span>
+      {title && <span className="truncate text-base-content/60">{title}</span>}
+      <span className="min-w-0 flex-1 truncate text-base-content/40">
+        {minutes >= 1 ? `${elapsedLabel(minutes)} · ${hint}` : hint}
+      </span>
+      {onOpen && (
+        <button type="button" className="btn btn-ghost btn-xs shrink-0 text-primary" onClick={onOpen}>
+          {openLabel}
+        </button>
+      )}
     </div>
   );
 }
