@@ -25,7 +25,10 @@ export const LocalComposerHost = forwardRef<
     focusRequest?: number;
     onFocusRequestHandled?: (request: number) => void;
     /** 空闲态后台状态条取材(ChatView 供给,引用稳定;透传给 Composer) */
-    backgroundInfo?: { title: string; startedAt?: number; onOpen?: () => void };
+    backgroundInfo?: {
+      tasks: { key: string; title: string; startedAt?: number; childId?: string }[];
+      onOpen?: (childId: string) => void;
+    };
   }
 >(function LocalComposerHost(
   {

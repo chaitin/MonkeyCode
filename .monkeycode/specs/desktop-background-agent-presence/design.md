@@ -1,8 +1,8 @@
-# Desktop 后台任务在场感知与停止设计
+# Desktop 后台代理在场感知与停止设计
 
 ## 1. 总体方案
 
-不修改 Agent。把"主循环空闲但后台任务未了结"提升为会话第三态，driver 是唯一权威派生点：`SubagentState` 已在镜像两条派发路径（Agent async 与 SendMessage 续跑）与完成通知，缺的只是把这份派生状态落到 sidecar/session-event 并在 UI 的三个注意力表面（composer、轮末分隔线、侧栏/系统通知）持续呈现。停止走 `session/publishEvent` 模型中介（best-effort），成功与否都经现有通知管道收敛，不新增终态路径。
+不修改 Agent。把"主循环空闲但后台代理未了结"提升为会话第三态，driver 是唯一权威派生点：`SubagentState` 已在镜像两条派发路径（Agent async 与 SendMessage 续跑）与完成通知，缺的只是把这份派生状态落到 sidecar/session-event 并在 UI 的三个注意力表面（composer、轮末分隔线、侧栏/系统通知）持续呈现。停止走 `session/publishEvent` 模型中介（best-effort），成功与否都经现有通知管道收敛，不新增终态路径。
 
 分三个独立可交付阶段：P1 三态感知与对账；P2 会话外呈现；P3 停止。
 
@@ -57,8 +57,8 @@ sidecar 增加 `background: [{agentId, tcId, summary, startedAt}]`：
 `composerKit.tsx` 新增 `BackgroundBar`：
 
 - 渲染条件：`!presentation.running && presentation.backgroundRunning > 0 && conn.connected`，占 RunBar 的插槽位；
-- 内容：脉冲状态点 + `chat.bg.running`（count 插值）+ 最近派发卡的摘要与耗时（从 items 里最后一张 `run+background` 卡取 `title`/`startedAt`，ChatView 传入）；
-- 交互：点击滚动到该卡（复用 seq/key 锚定）或打开其 DetailModal；无主循环停止按钮；
+- 内容：脉冲状态点 + `chat.bg.running`（count 插值）。单任务摘要与耗时内联（`rawInput` 的 summary/description 优先，退回工具标题）；多任务收起为计数，可展开逐任务一行（摘要 + 耗时 + 各自「查看子会话」，对齐工具卡组「×N 展开」形态）。取材为 items 里全部 `run+background` 卡，ChatView 供给并经签名 memo 稳定引用；
+- 交互：任务行点击打开对应子会话回放浮层（`childSessionId`）；无主循环停止按钮；
 - P3：任务行 hover 出"停止"→ 二段确认（按钮原位变"确认停止？"）→ 调 `background_stop` → 行进入"停止中…"；busy/超时回弹并 toast。
 
 ### 3.3 轮末分隔线变体

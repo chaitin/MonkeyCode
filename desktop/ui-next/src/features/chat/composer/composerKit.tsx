@@ -67,48 +67,108 @@ export function RunBar({
   );
 }
 
+/** 后台状态条的一条任务(key = 派发卡 tcId;childId 存在才有查看入口)。 */
+export interface BackgroundTask {
+  key: string;
+  title: string;
+  startedAt?: number;
+  childId?: string;
+}
+
 /** 后台状态条(RunBar 同槽位的安静版):主循环空闲但后台子代理未回完成
  * 通知时常驻。脉冲点而非 spinner、无主循环停止按钮——输入可用,会话没有
- * 合上但你可以继续说话,这是它与 RunBar 的本质区别。elapsed 用 30s 自驱
- * ticker:空闲会话没有帧到达,不自驱就永远冻在派发那一刻。 */
+ * 合上但你可以继续说话,这是它与 RunBar 的本质区别。单任务摘要内联;
+ * 多任务收起为计数,可展开逐任务一行(对齐工具卡组「×N 展开」的既有
+ * 形态)。elapsed 用 30s 自驱 ticker:空闲会话没有帧到达,不自驱就永远
+ * 冻在派发那一刻。 */
 export function BackgroundBar({
   label,
-  title,
-  startedAt,
+  tasks,
   elapsedLabel,
   hint,
   openLabel,
+  expandLabel,
+  collapseLabel,
   onOpen,
 }: {
   label: string;
-  title?: string;
-  startedAt?: number;
+  tasks: BackgroundTask[];
   /** 分钟数 → 成品文案(i18n 在调用方求值,本件不进词典) */
   elapsedLabel: (minutes: number) => string;
   hint: string;
   openLabel: string;
-  onOpen?: () => void;
+  expandLabel: string;
+  collapseLabel: string;
+  onOpen?: (childId: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const [, setTick] = useState(0);
+  const anyStarted = tasks.some((t) => t.startedAt !== undefined);
   useEffect(() => {
-    if (startedAt === undefined) return;
+    if (!anyStarted) return;
     const id = setInterval(() => setTick((n) => n + 1), 30_000);
     return () => clearInterval(id);
-  }, [startedAt]);
-  const minutes = startedAt !== undefined ? Math.floor((Date.now() - startedAt) / 60_000) : 0;
+  }, [anyStarted]);
+  const minutesOf = (startedAt?: number) =>
+    startedAt !== undefined ? Math.floor((Date.now() - startedAt) / 60_000) : 0;
+  const single = tasks.length === 1 ? tasks[0] : undefined;
+  const singleMinutes = minutesOf(single?.startedAt);
+  const singleChild = single?.childId;
   return (
-    <div className="flex items-center gap-2 border-b border-base-300 px-3 py-1.5 text-xs">
-      <span aria-hidden className="size-2 shrink-0 animate-pulse rounded-full bg-primary/70" />
-      <span className="shrink-0 font-semibold">{label}</span>
-      {title && <span className="truncate text-base-content/60">{title}</span>}
-      <span className="min-w-0 flex-1 truncate text-base-content/40">
-        {minutes >= 1 ? `${elapsedLabel(minutes)} · ${hint}` : hint}
-      </span>
-      {onOpen && (
-        <button type="button" className="btn btn-ghost btn-xs shrink-0 text-primary" onClick={onOpen}>
-          {openLabel}
-        </button>
-      )}
+    <div className="border-b border-base-300 text-xs">
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <span aria-hidden className="size-2 shrink-0 animate-pulse rounded-full bg-primary/70" />
+        <span className="shrink-0 font-semibold">{label}</span>
+        {single?.title && <span className="truncate text-base-content/60">{single.title}</span>}
+        <span className="min-w-0 flex-1 truncate text-base-content/40">
+          {single && singleMinutes >= 1 ? `${elapsedLabel(singleMinutes)} · ${hint}` : hint}
+        </span>
+        {singleChild && onOpen && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs shrink-0 text-primary"
+            onClick={() => onOpen(singleChild)}
+          >
+            {openLabel}
+          </button>
+        )}
+        {!single && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs shrink-0"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? collapseLabel : expandLabel}
+          </button>
+        )}
+      </div>
+      {!single &&
+        expanded &&
+        tasks.map((task) => {
+          const minutes = minutesOf(task.startedAt);
+          const childId = task.childId;
+          return (
+            <div
+              key={task.key}
+              className="flex items-center gap-2 border-t border-base-300/40 py-1 pe-3 ps-7"
+            >
+              <span className="min-w-0 flex-1 truncate text-base-content/60">{task.title}</span>
+              {minutes >= 1 && (
+                <span className="shrink-0 text-base-content/40">{elapsedLabel(minutes)}</span>
+              )}
+              {childId && onOpen && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs shrink-0 text-primary"
+                  onClick={() => onOpen(childId)}
+                >
+                  {openLabel}
+                </button>
+              )}
+            </div>
+          );
+        })}
     </div>
   );
 }

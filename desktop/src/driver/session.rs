@@ -4742,13 +4742,13 @@ impl Inner {
             for (tc_id, summary) in &stale {
                 s.seq += 1;
                 let label = if summary.is_empty() {
-                    "后台任务"
+                    "后台代理"
                 } else {
                     summary.as_str()
                 };
                 let f = frame::tool_call_background_interrupted(
                     tc_id,
-                    &format!("后台任务已随应用重启中断({label}),不会再有完成通知"),
+                    &format!("后台代理已随应用重启中断({label}),不会再有完成通知"),
                     s.seq,
                 );
                 let _ = self.transport.journal_tx.send(JournalMsg::Append {

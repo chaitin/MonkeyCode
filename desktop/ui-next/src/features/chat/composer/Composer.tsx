@@ -37,7 +37,7 @@ import { timelineDeltaOf } from "@/lib/protocol/reduce";
 import { fmtK } from "@/lib/util/fmt";
 import { commandText, createImeGuard, cycleIndex, filterCommands, slashQuery } from "@/lib/util/slash";
 import { insertNewlineAtSelection } from "@/lib/util/textarea";
-import { BackgroundBar, ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing } from "./composerKit";
+import { BackgroundBar, ComposerCard, ComposerTextarea, ErrorBar, RunBar, SlashPanel, UsageRing, type BackgroundTask } from "./composerKit";
 import { SendQueueList } from "./SendQueueList";
 import { ModelMenu, SkillsMenu } from "./pickers";
 import type { ComposerCtl } from "./useComposer";
@@ -163,7 +163,7 @@ interface ComposerProps {
   onFocusRequestHandled?: (request: number) => void;
   /** 空闲态后台状态条的取材与入口(ChatView 供给,引用需稳定以保 memo;
    * 无后台任务时缺席,渲染由 presentation.backgroundRunning 门控)。 */
-  backgroundInfo?: { title: string; startedAt?: number; onOpen?: () => void };
+  backgroundInfo?: { tasks: BackgroundTask[]; onOpen?: (childId: string) => void };
 }
 
 const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Composer({
@@ -663,12 +663,15 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
         {/* 后台状态条(RunBar 同槽位的安静版):主循环空闲但后台任务未了结,
             对话没有合上——没有这条,轮末即"看起来结束了",通知轮到达时像
             凭空复活。输入保持可用是它与 RunBar 的本质区别。backgroundInfo
-            与计数同源(ChatView 扫同一批 items),并额外承担断连门控 */}
-        {!presentation.running && presentation.backgroundRunning > 0 && backgroundInfo && (
+            与计数同源(ChatView 扫同一批 items),并额外承担断连门控;
+            多任务收起为计数,可展开逐任务查看 */}
+        {!presentation.running &&
+          presentation.backgroundRunning > 0 &&
+          backgroundInfo &&
+          backgroundInfo.tasks.length > 0 && (
           <BackgroundBar
             label={t("chat.bg.running", { count: String(presentation.backgroundRunning) })}
-            title={backgroundInfo?.title}
-            startedAt={backgroundInfo?.startedAt}
+            tasks={backgroundInfo.tasks}
             elapsedLabel={(m) =>
               m >= 2880
                 ? t("chat.bg.elapsedDays", { d: String(Math.floor(m / 1440)) })
@@ -678,7 +681,9 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
             }
             hint={t("chat.bg.hint")}
             openLabel={t("chat.tool.childSession")}
-            onOpen={backgroundInfo?.onOpen}
+            expandLabel={t("chat.bg.expand")}
+            collapseLabel={t("chat.bg.collapse")}
+            onOpen={backgroundInfo.onOpen}
           />
         )}
 

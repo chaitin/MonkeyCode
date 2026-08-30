@@ -570,42 +570,44 @@ export function ChatView({
     setChildId(null); // 切会话关掉上一个会话的子回放
   }, [meta.id]);
 
-  // ==== 空闲态后台状态条取材:最后一张 run+background 派发卡 ====
+  // ==== 空闲态后台状态条取材:全部 run+background 派发卡(时间序) ====
   // 摘要优先 SendMessage 的 summary / Agent 的 description(rawInput),
   // 退回工具标题;入口复用子会话回放浮层。running 时状态条不渲染,跳过
-  // 扫描;两级 useMemo 把对象引用钉在字段值上,不然每个帧批次都会击穿
+  // 扫描;对象引用经签名 useMemo 钉在字段值上,不然每个帧批次都会击穿
   // Composer 的 memo。
-  const bgSource = useMemo(() => {
-    if (state.running) return null;
+  const bgCards = useMemo(() => {
+    if (state.running) return [];
     // 断连门控:引擎不在了,"运行中"就是谎言(重启后的孤儿卡另有对账
     // 路径补终态);conn 为 null 是"还不知道",按乐观显示
-    if (conn && !conn.connected) return null;
-    for (let i = state.items.length - 1; i >= 0; i--) {
-      const it = state.items[i];
-      if (it && it.kind === "tool" && it.status === "run" && it.background) {
+    if (conn && !conn.connected) return [];
+    const out: { key: string; title: string; startedAt?: number; childId?: string }[] = [];
+    for (const it of state.items) {
+      if (it.kind === "tool" && it.status === "run" && it.background) {
         const input = (it.rawInput ?? {}) as { summary?: unknown; description?: unknown };
         const title =
           (typeof input.summary === "string" && input.summary) ||
           (typeof input.description === "string" && input.description) ||
           it.title;
-        return { title, startedAt: it.startedAt, childId: it.childSessionId };
+        out.push({
+          key: it.tcId,
+          title,
+          ...(it.startedAt !== undefined ? { startedAt: it.startedAt } : {}),
+          ...(it.childSessionId ? { childId: it.childSessionId } : {}),
+        });
       }
     }
-    return null;
+    return out;
   }, [state, conn]);
-  const bgTitle = bgSource?.title;
-  const bgStartedAt = bgSource?.startedAt;
-  const bgChildId = bgSource?.childId;
+  const onOpenBackground = useCallback((childId: string) => setChildId(childId), []);
+  const bgSignature = bgCards
+    .map((c) => `${c.key}|${c.title}|${c.childId ?? ""}|${c.startedAt ?? 0}`)
+    .join("\n");
   const backgroundInfo = useMemo(
-    () =>
-      bgTitle === undefined
-        ? undefined
-        : {
-            title: bgTitle,
-            startedAt: bgStartedAt,
-            onOpen: bgChildId ? () => setChildId(bgChildId) : undefined,
-          },
-    [bgTitle, bgStartedAt, bgChildId],
+    () => (bgCards.length === 0 ? undefined : { tasks: bgCards, onOpen: onOpenBackground }),
+    // bgSignature 覆盖 bgCards 的全部字段值:签名不变则内容必然逐字段相同,
+    // 用它换引用稳定,避免逐批次新数组击穿 memo
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bgSignature, onOpenBackground],
   );
 
   // pane 连接条的展开态(收/展是会话内瞬态;切会话回到收起)
