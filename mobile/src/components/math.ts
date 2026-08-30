@@ -15,9 +15,12 @@ export interface MathSvg {
   depth: number;
 }
 
-// 与 desktop 相同的渲染预算：超长公式与宏定义类命令直接保留原文，
-// 防止流式场景下恶意/异常输入拖垮 JS 线程。
+// 渲染预算：超长公式与宏定义类命令直接保留原文，防止流式场景下恶意/异常输入
+// 拖垮 JS 线程。行内沿用 desktop 的 512；块级放宽到 4K——多行 aligned 推导
+//（相对论/张量计算这类回答）轻松超过 512，是真实高频输入，输出高度另有
+// MATH_MAX_HEIGHT_EX 钳制兜底。
 export const MATH_MAX_SOURCE_CHARS = 512;
+export const MATH_MAX_BLOCK_SOURCE_CHARS = 4096;
 const MATH_DEFINITION_RE = /\\(?:def|gdef|edef|xdef|let|futurelet|newcommand|renewcommand|providecommand)\b/;
 const SVG_CACHE_MAX = 256;
 // 输出尺寸钳制（对应 desktop 的 KaTeX maxSize）：\rule{50em}{50em}（100ex）这类短输入
@@ -58,8 +61,9 @@ function slashMathMatch(src: string, open: '\\(' | '\\[', close: '\\)' | '\\]', 
   return { raw: src.slice(0, end + close.length), text: text.trim(), display };
 }
 
-export function mathWithinRenderBudget(source: string): boolean {
-  return source.length <= MATH_MAX_SOURCE_CHARS && !MATH_DEFINITION_RE.test(source);
+export function mathWithinRenderBudget(source: string, display = false): boolean {
+  const cap = display ? MATH_MAX_BLOCK_SOURCE_CHARS : MATH_MAX_SOURCE_CHARS;
+  return source.length <= cap && !MATH_DEFINITION_RE.test(source);
 }
 
 // ── markdown-it 插件（markdown-it@10，react-native-markdown-display 自带的版本）──
@@ -207,7 +211,12 @@ async function createConverter(): Promise<Converter> {
   // autoload/require 走动态装载路径，脱离浏览器环境不可用。
   const packages = (AllPackages as string[]).filter((p) => p !== 'autoload' && p !== 'require');
   const tex = new TeX({ packages, maxMacros: 1000, maxBuffer: 5 * 1024 });
-  const svg = new SVG({ fontCache: 'local' });
+  // fontCache 必须用 none：'local' 会用 <defs>/<use> 复用字形，而组装型高定界符
+  // （超高括号的 S4 分段）在嵌套 <svg> 里引用外层模板——react-native-svg 的模板
+  // 作用域在嵌套 svg 处断裂，原生侧每帧告警「template not defined」且括号缺段；
+  // 告警还会打脏 React 的 passive 更新计数器，诱发 Maximum update depth 提示。
+  // none 让所有字形直接内联 path，不存在跨作用域引用（体积由 LRU 缓存吸收）。
+  const svg = new SVG({ fontCache: 'none' });
   const doc = mathjax.document('', { InputJax: tex, OutputJax: svg });
   return (source: string, display: boolean) => {
     const node = doc.convert(source, { display, em: 16, ex: 8, containerWidth: 16 * 60 });
@@ -254,7 +263,7 @@ const SVG_VALIGN_RE = /vertical-align:\s*(-?[\d.]+)ex/;
  * 尺寸按 fontSize 折算（MathJax 的 ex 单位 ≈ fontSize/2）。
  */
 export function texToSvg(source: string, display: boolean, fontSize: number): MathSvg | null {
-  if (!converter || !mathWithinRenderBudget(source)) return null;
+  if (!converter || !mathWithinRenderBudget(source, display)) return null;
   const key = `${display ? 'B' : 'I'}\0${source}`;
   const cached = svgCache.get(key);
   if (cached !== undefined) {

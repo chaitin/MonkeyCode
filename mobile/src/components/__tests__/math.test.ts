@@ -123,6 +123,9 @@ test('math inside fenced code is untouched', () => {
 test('render budget rejects oversized sources and macro definitions', () => {
   expect(mathWithinRenderBudget('x^2')).toBe(true);
   expect(mathWithinRenderBudget('x'.repeat(513))).toBe(false);
+  // 块级放宽到 4K：多行 aligned 推导轻松超过 512，是真实高频输入。
+  expect(mathWithinRenderBudget('x'.repeat(513), true)).toBe(true);
+  expect(mathWithinRenderBudget('x'.repeat(4097), true)).toBe(false);
   expect(mathWithinRenderBudget('\\def\\x{y}')).toBe(false);
   expect(mathWithinRenderBudget('\\newcommand{\\f}{g}')).toBe(false);
 });
@@ -147,8 +150,8 @@ test('texToSvg converts TeX to sized SVG after loadMathJax', async () => {
   expect(block?.svg).toContain('<svg');
   expect(block?.depth).toBeGreaterThan(0); // 分式向基线下方延伸
 
-  // 超预算直接拒绝，不进 MathJax。
-  expect(texToSvg('x'.repeat(513), true, 16)).toBeNull();
+  // 超预算直接拒绝，不进 MathJax（行内 512 上限；块级另有 4K 上限与输出尺寸钳制）。
+  expect(texToSvg('x'.repeat(513), false, 16)).toBeNull();
 
   // 输出尺寸钳制：短源码也能画出巨型图形（\rule），超限回退原文。
   expect(texToSvg('\\rule{50em}{50em}', false, 14.5)).toBeNull();
