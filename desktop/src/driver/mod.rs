@@ -44,7 +44,7 @@ pub const ENGINE_STABLE_UPTIME: Duration = Duration::from_secs(60);
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 #[serde(tag = "phase", rename_all = "lowercase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../ui/src/gen/"))]
+#[cfg_attr(test, ts(export, export_to = "../ui-next/src/gen/"))]
 pub enum EngineStatus {
     /// 未启动:冷启动前、或应用退出/重启的中间态。
     Stopped,

@@ -1,7 +1,7 @@
 // Frame 词汇的唯一定义(产帧权威;词汇源自旧 Go 内核的 frame.go,
 // git 历史可查)。
 //
-// 对表:本模块产帧、UI 消费(desktop/ui/src/{types.ts,reduce.ts})——
+// 对表:本模块产帧、UI 消费(ui-next/src/lib/protocol/{types,reduce}.ts)——
 // 任何新帧类型/字段先改这里与 types.ts,driver 禁止手拼 Frame JSON。
 //
 // 帧结构:{ type, kind?, data?(内联 JSON 对象), timestamp(ms), seq }
@@ -17,20 +17,20 @@
 // Rust→TS 类型生成:Frame/SessionStatus/PermOutcome 带 ts_rs 导出
 // (derive 经 cfg_attr(test) 门控,不进产物二进制)。再生成命令:
 //   cargo test export_bindings
-// 产出 desktop/ui/src/gen/(生成物入库,勿手改);ui/src/types.ts 从
+// 产出 desktop/ui-next/src/gen/(生成物入库,勿手改);protocol/types.ts 从
 // gen/ 复用这些类型,手写与注释对表自此只剩"跑一次生成"。
 
 use base64::Engine as _;
 use serde_json::{json, Value};
 
 /// 会话状态词汇(SessionMeta.status;UI/桌宠按此渲染,勿用裸字符串)。
-/// ts-rs 导出 → ui/src/gen/SessionStatus.ts(types.ts 复用);
+/// ts-rs 导出 → ui-next/src/gen/SessionStatus.ts(types.ts 复用);
 /// rename_all 小写与 as_str 一致(两处同改才算改)。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(
     test,
-    ts(export, export_to = "../ui/src/gen/", rename_all = "lowercase")
+    ts(export, export_to = "../ui-next/src/gen/", rename_all = "lowercase")
 )]
 pub enum SessionStatus {
     Created,
@@ -65,7 +65,7 @@ impl SessionStatus {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(
     test,
-    ts(export, export_to = "../ui/src/gen/", rename_all = "lowercase")
+    ts(export, export_to = "../ui-next/src/gen/", rename_all = "lowercase")
 )]
 pub enum PermOutcome {
     Approved,
@@ -103,7 +103,7 @@ pub fn b64_text(s: &str) -> String {
 /// timestamp 以容存量 journal 与云端帧,见 ui/src/types.ts::Frame)。
 #[derive(serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../ui/src/gen/"))]
+#[cfg_attr(test, ts(export, export_to = "../ui-next/src/gen/"))]
 pub struct Frame {
     pub r#type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
