@@ -46,26 +46,6 @@ jobs:
           npm test
           npm run build
 
-  # 冻结中的旧工程(desktop/ui),留着只为退役前不烂掉——它已不参与打包。
-  # P9 `git rm -r desktop/ui` 时连同本 job 一起删除。
-  ui-legacy:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: desktop/ui/package-lock.json
-
-      - name: Test and build legacy ui
-        working-directory: desktop/ui
-        run: |
-          npm ci
-          npm test
-          npm run build
-
   linux:
     runs-on: ubuntu-24.04
     steps:

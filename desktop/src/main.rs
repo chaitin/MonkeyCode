@@ -1,7 +1,7 @@
 // MonkeyCode 本地桌面客户端 —— Tauri 壳。
 //
 // 职责边界:壳持有**应用配置**(模型列表等)与宿主事务(进程生命周期、
-// 托盘、桌宠、更新),并承载 UI(ui/ 构建产物随壳分发,frontendDist)。
+// 托盘、桌宠、更新),并承载 UI(ui-next/ 构建产物随壳分发,frontendDist)。
 // 引擎 ohmyagent 是壳拉起的子进程(stdio JSON-RPC,driver/ohmy.rs),
 // UI 只经 Tauri IPC 与壳对话。
 //
@@ -1751,7 +1751,7 @@ fn main() {
             // 装机/使用统计心跳。端点未注入(默认)或用户在托盘关掉则空转。
             telemetry::start(app.handle());
 
-            // 自动检查更新整条收在 UI 侧(ui/src/App.tsx + updateGate.ts):挂载、
+            // 自动检查更新整条收在 UI 侧(ui-next features/update/useUpdate.ts):挂载、
             // 切回前台、4 小时兜底三个触发点共用一道 30 分钟闸门,发现新版点亮
             // 侧栏徽标与横幅。这里曾经还有一条"启动后 5 秒自检 + 弹对话框"的
             // 并行路径,与 UI 那次在启动瞬间各打一遍更新端点,且弹窗与横幅重复;
