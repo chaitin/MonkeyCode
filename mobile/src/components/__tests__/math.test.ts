@@ -34,6 +34,26 @@ test('unclosed $$ block stays plain text (streaming tail)', () => {
   expect(mathTokens('$$\nE = mc^2')).toHaveLength(0);
 });
 
+test('single-line $$…$$ occupying the whole line is promoted to math_block', () => {
+  const alone = mathTokens('$$E=mc^2$$');
+  expect(alone).toHaveLength(1);
+  expect(alone[0].type).toBe('math_block');
+  expect(alone[0].content).toBe('E=mc^2');
+
+  // 段落中间独占一行的公式同样中断段落、按块级渲染。
+  const inside = mathTokens('推导：\n$$x = \\frac{-b}{2a}$$\n代入即可');
+  expect(inside).toHaveLength(1);
+  expect(inside[0].type).toBe('math_block');
+
+  const bracket = mathTokens('\\[x^2 + y^2 = z^2\\]');
+  expect(bracket).toHaveLength(1);
+  expect(bracket[0].type).toBe('math_block');
+
+  // 同一行多段 $$…$$ 夹文字：不是整行公式，保持行内解析。
+  const mixed = mathTokens('$$a$$ 和 $$b$$');
+  expect(mixed.map((token) => token.type)).toEqual(['math_inline', 'math_inline']);
+});
+
 test('tokenizes inline $…$ with boundary guards', () => {
   const found = mathTokens('质能方程 $E=mc^2$ 很有名');
   expect(found).toHaveLength(1);

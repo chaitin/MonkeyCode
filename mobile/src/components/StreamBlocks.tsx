@@ -3,7 +3,7 @@
  * 复用 messages/handler 的 ChatMessage 类型（user / agent / thought / tool / error / system / ask）。
  */
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Image, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Image, Keyboard, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Markdown, { MarkdownIt } from 'react-native-markdown-display';
 import { parse as parseSvg, SvgAst, type JsxAST } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
@@ -15,7 +15,7 @@ import { resolveAssetUrl } from '@/api/client';
 import { Icons, Spinner } from '@/components/Icons';
 import { mathJaxReady, mathPlugin, subscribeMathJaxReady, texToSvg } from '@/components/math';
 import { buildMermaidHtml, fenceLanguage, trimFenceContent } from '@/components/mermaidHtml';
-import { useTheme, type Theme } from '@/theme';
+import { spacing, useTheme, type Theme } from '@/theme';
 
 export type { AnswerMap } from '@/messages/askAnswers';
 export type AnswerSubmitResult = 'sent' | 'queued' | 'rejected';
@@ -84,41 +84,76 @@ function MathInline({ tex, display, t }: { tex: string; display: boolean; t: The
   if (!rendered || !ast) {
     return <Text style={{ color: t.tx2, fontFamily: 'monospace', fontSize: 13 }}>{display ? `$$${tex}$$` : `$${tex}$`}</Text>;
   }
+  // 行内视图没有横滚能力，超出屏宽会被右缘直接裁掉：按可用宽度（屏宽减列表左右
+  // 内边距）等比缩小兜底。真正的长公式应走块级（单行 $$…$$ 已提升，见 math.ts）。
+  const availWidth = Dimensions.get('window').width - spacing.pad * 2 - 4;
+  let k = rendered.width > availWidth ? availWidth / rendered.width : 1;
   if (Platform.OS === 'android') {
     // Android 的 lineHeight 由 CustomLineHeightSpan 钉死为固定行高，内联视图高过
     // 行盒会直接画到相邻行上；translateY 下移（占位 span descent=0）同样会叠行。
     // 这里把公式等比缩进行盒、底边落在基线上，不再做基线下移。
     const maxH = MD_LINE_HEIGHT - 3;
-    const k = rendered.height > maxH ? maxH / rendered.height : 1;
-    return <SvgAst ast={ast} override={{ width: rendered.width * k, height: rendered.height * k, color: t.tx }} />;
+    if (rendered.height * k > maxH) k = maxH / rendered.height;
+    return <SvgAst ast={ast} override={{ pointerEvents: 'none' as const, width: rendered.width * k, height: rendered.height * k, color: t.tx }} />;
   }
   // iOS 内联视图底边落在基线上，向下平移 depth 让公式自身基线与正文基线对齐。
   return (
     <SvgAst
       ast={ast}
       override={{
-        width: rendered.width,
-        height: rendered.height,
+        // SvgView 的 interceptsTouchEvent 无条件认领触摸（Android），会挡住祖先
+        // ScrollView/Pressable；公式不需要触摸，整体退出 hit-test。
+        pointerEvents: 'none' as const,
+        width: rendered.width * k,
+        height: rendered.height * k,
         color: t.tx,
-        style: { transform: [{ translateY: rendered.depth }] },
+        style: { transform: [{ translateY: rendered.depth * k }] },
       }}
     />
   );
 }
 
-/** 块级公式：居中展示，超宽横向滚动。 */
+// 块级公式可读性下限：缩放低于该值时提示点按放大（列表内不再做横滚——嵌套反向
+// 滚动的手势仲裁里竖向列表永远占先手，横滑基本触发不了）。
+const MIN_BLOCK_MATH_SCALE = 0.72;
+
+/** 块级公式：一律等比缩放进一屏、居中展示；缩得过小的长公式点按弹出全屏查看器
+ *（独立 Modal 内的横滑没有手势竞争，滑动必定顺畅）。 */
 function MathBlock({ tex, t }: { tex: string; t: Theme }) {
   const ready = useMathJax();
+  const [expanded, setExpanded] = useState(false);
   const rendered = ready ? texToSvg(tex, true, MD_FONT_SIZE + 1.5) : null;
   const ast = rendered ? mathSvgAst(rendered.svg) : null;
   if (!rendered || !ast) {
     return <Text style={{ color: t.tx2, fontFamily: 'monospace', fontSize: 12.5, lineHeight: 19, marginVertical: 7 }}>{`$$\n${tex}\n$$`}</Text>;
   }
+  const availWidth = Dimensions.get('window').width - spacing.pad * 2;
+  const fit = Math.min(1, availWidth / rendered.width);
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 7 }}
-      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: 4 }}>
-      <SvgAst ast={ast} override={{ width: rendered.width, height: rendered.height, color: t.tx }} />
-    </ScrollView>
+    <>
+      <Pressable disabled={fit >= 1} onPress={() => setExpanded(true)} style={{ marginVertical: 7, paddingVertical: 4, alignItems: 'center' }}>
+        <SvgAst ast={ast} override={{ pointerEvents: 'none' as const, width: rendered.width * fit, height: rendered.height * fit, color: t.tx }} />
+        {fit < MIN_BLOCK_MATH_SCALE ? (
+          <Text style={{ marginTop: 6, color: t.tx3, fontSize: 11.5 }}>公式过长已缩小 · 点按放大查看</Text>
+        ) : null}
+      </Pressable>
+      {expanded ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setExpanded(false)} statusBarTranslucent>
+          {/* 背板与滚动内容必须是兄弟层级（对齐「更多」弹层的 Scrim 结构）：Pressable
+              作为 ScrollView 祖先时会与原生滚动抢触摸——拖动不滚、抬手还触发 onPress
+              把弹层直接关掉。竖直方向加大 padding，扩大可滑动条带的命中区。 */}
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <Pressable onPress={() => setExpanded(false)}
+              style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, backgroundColor: t.dark ? 'rgba(8,8,8,0.92)' : 'rgba(252,252,250,0.97)' }} />
+            <ScrollView horizontal showsHorizontalScrollIndicator style={{ flexGrow: 0 }}
+              contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 56, alignItems: 'center' }}>
+              <SvgAst ast={ast} override={{ pointerEvents: 'none' as const, width: rendered.width, height: rendered.height, color: t.tx }} />
+            </ScrollView>
+            <Text pointerEvents="none" style={{ position: 'absolute', bottom: 48, alignSelf: 'center', color: t.tx3, fontSize: 12.5 }}>左右滑动查看 · 点按空白处关闭</Text>
+          </View>
+        </Modal>
+      ) : null}
+    </>
   );
 }
 

@@ -20,10 +20,11 @@ export interface MathSvg {
 export const MATH_MAX_SOURCE_CHARS = 512;
 const MATH_DEFINITION_RE = /\\(?:def|gdef|edef|xdef|let|futurelet|newcommand|renewcommand|providecommand)\b/;
 const SVG_CACHE_MAX = 256;
-// 输出尺寸钳制（对应 desktop 的 KaTeX maxSize）：\rule{50em}{50em} 这类 20 字符输入
-// 能画出 800px+ 的图形，内联进消息 Text 会撑爆行布局，超限回退原文。
+// 输出尺寸钳制（对应 desktop 的 KaTeX maxSize）：\rule{50em}{50em}（100ex）这类短输入
+// 能画出巨型图形，内联进消息 Text 会撑爆行布局，超限回退原文。高度上限要容得下
+// 十几行的 aligned 多行推导（约 3-4ex/行），同时仍拦住 rule 炸弹。
 const MATH_MAX_WIDTH_EX = 200;
-const MATH_MAX_HEIGHT_EX = 40;
+const MATH_MAX_HEIGHT_EX = 60;
 
 // 与 desktop 正则的两点刻意差异（中文语境适配）：
 // ①闭合 $ 的边界从白名单前瞻改为否定类：只拒绝紧跟字母/数字/$/\（货币或粘连续写），
@@ -112,10 +113,31 @@ const BLOCK_OPEN_DOLLAR_RE = /^\$\$\s*$/;
 const BLOCK_OPEN_BRACKET_RE = /^\\\[\s*$/;
 const BLOCK_CLOSE_DOLLAR_RE = /^\$\$\s*$/;
 const BLOCK_CLOSE_BRACKET_RE = /^\\\]\s*$/;
+// 独占一行的单行 $$…$$ / \[…\]：desktop 用 CSS 把 display 公式提升成块盒，RN 没有
+// 等价机制——按行内渲染的长公式会被屏幕右缘裁掉且无法滚动，这里直接按块级分词
+//（居中 + 超宽横滚）。内容里含 $ 的行不匹配，交回行内规则处理「$$a$$ 和 $$b$$」。
+const SINGLE_LINE_DOLLAR_BLOCK_RE = /^\$\$(?!\$)[ \t]*([^$]+?)[ \t]*\$\$\s*$/;
+const SINGLE_LINE_BRACKET_BLOCK_RE = /^\\\[[ \t]*(.+?)[ \t]*\\\]\s*$/;
 
 function mathBlockRule(state: BlockState, startLine: number, endLine: number, silent: boolean): boolean {
   if (state.sCount[startLine] - state.blkIndent >= 4) return false;
   const first = state.src.slice(state.bMarks[startLine] + state.tShift[startLine], state.eMarks[startLine]);
+
+  const single = first.match(SINGLE_LINE_DOLLAR_BLOCK_RE) ?? first.match(SINGLE_LINE_BRACKET_BLOCK_RE);
+  if (single) {
+    const content = single[1].trim();
+    if (!content) return false;
+    if (silent) return true;
+    const token = state.push('math_block', 'math', 0);
+    token.block = true;
+    token.content = content;
+    token.markup = '$$';
+    token.map = [startLine, startLine + 1];
+    token.meta = { display: true };
+    state.line = startLine + 1;
+    return true;
+  }
+
   let closeRe: RegExp;
   if (BLOCK_OPEN_DOLLAR_RE.test(first)) closeRe = BLOCK_CLOSE_DOLLAR_RE;
   else if (BLOCK_OPEN_BRACKET_RE.test(first)) closeRe = BLOCK_CLOSE_BRACKET_RE;
