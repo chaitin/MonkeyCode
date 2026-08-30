@@ -514,10 +514,18 @@ export default function TaskDetailScreen() {
     () => (liveState?.messages ?? []).map((m) => normalizeAskStatus(m, !!liveAskExpired)),
     [liveState?.messages, liveAskExpired],
   );
-  const messages = useMemo(
-    () => [...historyMessages.map((m) => normalizeAskStatus(m, true)), ...liveMessages],
-    [historyMessages, liveMessages],
-  );
+  const messages = useMemo(() => {
+    const history = historyMessages.map((m) => normalizeAskStatus(m, true));
+    // 轮次边界裁剪：进入运行中任务时，REST 拉取/本地归档的历史可能与 attach 回放
+    // 在当前轮开头重叠（解码 id 每次新生成，无法按 id 去重），重叠会让本轮的
+    // user input 和已有输出重复一份、视觉上夹在输出中间。以实时流第一条带时间戳
+    // 消息为界，时间不早于它的历史消息一律裁掉（属于活跃轮，以实时流为准）。
+    const liveStart = liveMessages.find((m) => typeof m.time === 'number' && m.time > 0)?.time;
+    const trimmed = liveStart
+      ? history.filter((m) => !(typeof m.time === 'number' && m.time >= liveStart))
+      : history;
+    return [...trimmed, ...liveMessages];
+  }, [historyMessages, liveMessages]);
   // 倒置列表：最新在前（视觉底部）。新消息进 data[0]（底部）、历史从 data 末尾（视觉顶部）追加。
   // 初始定位底部、流式吸底、上滑加载历史、展开 toolcall 都由 inverted 天然处理，无需手动 scrollToEnd。
   const reversed = useMemo(() => messages.slice().reverse(), [messages]);
