@@ -39,14 +39,22 @@ function normalizePath(path: string): string {
   return path.trim().replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/{2,}/g, "/");
 }
 
-/** 绝对路径落在 workdir 内时转成 workdir 相对路径(artifact_read 只收相对路径)。 */
-function toWorkdirRelative(path: string, workdir: string): string {
+function isAbsolutePath(path: string): boolean {
+  return /^(?:[a-z]:)?\//i.test(normalizePath(path));
+}
+
+/** 绝对路径落在 workdir 内时转成 workdir 相对路径(artifact_read 只收相对路径)。
+ * Windows 盘符比较不区分大小写；工作区外返回 null，不能仅凭同名尾段误认。 */
+function toWorkdirRelative(path: string, workdir: string): string | null {
   const normalized = normalizePath(path);
-  if (!normalized.startsWith("/")) return normalized;
+  if (!isAbsolutePath(normalized)) return normalized;
   const root = normalizePath(workdir).replace(/\/+$/, "");
-  if (normalized === root) return "";
-  if (normalized.startsWith(`${root}/`)) return normalized.slice(root.length + 1);
-  return normalized;
+  const insensitive = /^[a-z]:\//i.test(normalized) || /^[a-z]:\//i.test(root);
+  const candidate = insensitive ? normalized.toLocaleLowerCase() : normalized;
+  const base = insensitive ? root.toLocaleLowerCase() : root;
+  if (candidate === base) return "";
+  if (candidate.startsWith(`${base}/`)) return normalized.slice(root.length + 1);
+  return null;
 }
 
 /** 地址栏输入的绝对路径落在 workdir 内时折算成 workdir 相对路径。Windows
@@ -96,13 +104,14 @@ export function touchedTurnChanges(
   }
   for (const rawToolPath of toolPaths) {
     const rel = workdir ? toWorkdirRelative(rawToolPath, workdir) : rawToolPath;
+    if (rel === null) continue;
     const toolPath = normalizePath(rel);
     const match = ending.find((change) => {
       const repoPath = normalizePath(change.path);
       return repoPath === toolPath || toolPath.endsWith(`/${repoPath}`);
     });
     if (match) selected.set(normalizePath(match.path), match);
-    else if (!toolPath.startsWith("/") && !toolPath.includes("../")) selected.set(toolPath, { path: toolPath, status: "M" });
+    else if (!isAbsolutePath(toolPath) && !toolPath.includes("../")) selected.set(toolPath, { path: toolPath, status: "M" });
   }
   return [...selected.values()];
 }

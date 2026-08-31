@@ -87,6 +87,19 @@ describe("preview artifact selection", () => {
       .toEqual([{ path: "index.html", status: "M" }]);
   });
 
+  it("maps Windows absolute write paths before opening an automatic artifact preview", () => {
+    const workdir = "C:/Users/chaitin/AppData/Local/com.chaitin.baizhi.monkeycode/chat-workspaces/chat-4c0b3ca1d3ea2142e40f";
+    const paths = [`${workdir}/snake.html`];
+    const touched = touchedTurnChanges([], [], paths, workdir.toLocaleLowerCase());
+    expect(touched).toEqual([{ path: "snake.html", status: "M" }]);
+    expect(selectTurnPreviewArtifact(touched, "写一个贪吃蛇页面", "已完成")?.path).toBe("snake.html");
+  });
+
+  it("does not synthesize an artifact for an absolute write path outside the workdir", () => {
+    expect(touchedTurnChanges([], [], ["C:/Users/other/snake.html"], "C:/Users/project"))
+      .toEqual([]);
+  });
+
   it("classifies only tool action tokens, never read-like substrings in filenames", () => {
     expect(writtenToolPaths([
       { title: "Edit README.md", toolKind: undefined, rawInput: { file_path: "README.md" } },

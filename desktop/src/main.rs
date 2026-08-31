@@ -1282,6 +1282,10 @@ fn ensure_pet_window(app: &AppHandle) {
         .resizable(cfg!(target_os = "linux"))
         .maximizable(false)
         .minimizable(false)
+        // macOS 桌宠会转成 non-activating NSPanel；应用失活时 AppKit 默认
+        // 吃掉首击，WKWebView 收不到 mousedown/up，pet.html 就不会发
+        // show_main。允许首击直达页面，同时也让第一次拖动立即生效。
+        .accept_first_mouse(true)
         .focusable(false)
         .focused(false)
         .visible(false)
