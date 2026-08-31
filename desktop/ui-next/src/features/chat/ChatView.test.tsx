@@ -150,6 +150,33 @@ describe("聊天视图", () => {
     expect(shell.ops.some((op) => op.op === "listen" && op.cmd === "frames:s2")).toBe(true);
   });
 
+  it("打开历史会话:回放的旧轮末零副作用——不做 git 扫描、不自动开预览", async () => {
+    // 回放窗口自带完整的一轮(含 localhost URL 与 task-ended):turnEnded
+    // 为真,但本次挂载没亲历过活轮次(liveTurnSeen 闸),轮末流水线不得触发
+    const shell = stubShell({
+      frames: [
+        { type: "user-input", data: { content: b64encode("设计页面") }, timestamp: 1, seq: 1 },
+        { type: "task-started", timestamp: 2, seq: 2 },
+        {
+          type: "task-running",
+          kind: "acp_event",
+          data: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "完成：http://127.0.0.1:49173/" } } },
+          timestamp: 3,
+          seq: 3,
+        },
+        { type: "task-ended", timestamp: 4, seq: 4 },
+      ],
+    });
+    const { container } = render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText(/49173/)).toBeTruthy());
+
+    // 给异步流水线一个发作窗口再断言(它若触发,首个动作就是 repo_file_changes)
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(shell.ops.some((op) => op.args?.kind === "repo_file_changes")).toBe(false);
+    expect(container.querySelector('[data-design-preview-open="true"]')).toBeNull();
+    expect(screen.queryByLabelText("设计预览工作台")).toBeNull();
+  });
+
   it("当前轮设计完成后自动打开预览并标记压缩布局", async () => {
     const { emit } = stubShell();
     const { container } = render(<ChatView meta={META} />);

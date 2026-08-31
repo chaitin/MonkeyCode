@@ -120,7 +120,7 @@ export function ChatView({
   const { t } = useI18n();
   const { openSettings } = useSettingsNavigation();
   const pane = variant === "pane";
-  const { state, conn, historyLoaded, openError, hasMore, loadingEarlier, earlierError, loadEarlier, ensureLoaded } =
+  const { state, conn, sawLive, historyLoaded, openError, hasMore, loadingEarlier, earlierError, loadEarlier, ensureLoaded } =
     useSessionFeed(meta.id, epoch);
   useApprovalHotkeys(state, meta.id, undefined, hotkeysActive);
   const detectedPreviewUrl = useMemo(() => newestAgentPreviewUrl(state.items), [state.items]);
@@ -944,6 +944,10 @@ export function ChatView({
     const turnJustEnded = state.turnEnded && !prevTurnEnded.current;
     prevTurnEnded.current = state.turnEnded;
     if (!turnJustEnded) return;
+    // 回放的旧轮末零副作用(sawLive:本次打开后收到过实时帧才算活轮末,
+    // 见 useSessionFeed):打开历史会话不做全工作区 git 扫描、不把回放里的
+    // URL/产物当新产出抢视图开预览;改动徽标交给 FilesPanel 打开时自行探测
+    if (!sawLive) return;
     setChangesToken((n) => n + 1);
     const sessionId = meta.id;
     const generation = ++changesGeneration.current;
@@ -975,7 +979,7 @@ export function ChatView({
     }).catch(() => {
       if (changesGeneration.current === generation && metaRef.current.id === sessionId) setChangesCount(0);
     });
-  }, [currentTurnPreviewUrl, currentTurnText, meta.id, openPreview, state.items, state.turnEnded]);
+  }, [currentTurnPreviewUrl, currentTurnText, meta.id, openPreview, sawLive, state.items, state.turnEnded]);
   // 改动数徽标与自动 artifact 选择共用上面的轮末查询，避免重复读取全工作区。
   useEffect(() => {
     changesGeneration.current += 1;
