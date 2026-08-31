@@ -350,6 +350,9 @@ export function DesignPreviewWorkbench({
   // 正确(浮层遮挡也无需冻结帧);代价是依赖原生 eval 的选元素/截图/标记/
   // 序列化在 Linux 隐藏。localhost 与 artifact(自定义协议对全部 webview
   // 注册,主 webview 内的 iframe 一样可加载)都走 iframe。
+  // ⚠️ iframe 的可加载性受主 webview CSP 管(原生 webview 时代不受):
+  // tauri.conf.json 的 frame-src 必须放行 localhost 族 + monkeycode-artifact:,
+  // 否则整块白屏(2026-08-31 Linux 实测报障,frame-src 当时只有 'self' blob:)。
   const inlineFallback = isLinuxShell();
   const [inlineReload, setInlineReload] = useState(0);
   const initialUrl = initialTarget.kind === "localhost" ? initialTarget.url : "";
