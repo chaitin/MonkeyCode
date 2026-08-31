@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { rankPreviewFiles, selectTurnPreviewArtifact, targetForFile, touchedTurnChanges, turnWarrantsArtifactPreview, writtenToolPaths } from "./previewArtifact";
+import { rankPreviewFiles, selectTurnPreviewArtifact, targetForFile, touchedTurnChanges, turnWarrantsArtifactPreview, typedWorkdirRelativePath, writtenToolPaths } from "./previewArtifact";
+
+describe("typedWorkdirRelativePath", () => {
+  it("盘符/分隔符/大小写不敏感地折算 workdir 内的绝对路径", () => {
+    expect(typedWorkdirRelativePath("C:\\Proj\\pages\\home.html", "c:/proj")).toBe("pages/home.html");
+    expect(typedWorkdirRelativePath("c:/proj/index.html", "C:\\Proj\\")).toBe("index.html");
+    expect(typedWorkdirRelativePath("/home/me/proj/index.html", "/home/me/proj")).toBe("index.html");
+  });
+
+  it("非绝对路径、工作区外与前缀撞名不折算", () => {
+    expect(typedWorkdirRelativePath("pages/home.html", "c:/proj")).toBeNull();
+    expect(typedWorkdirRelativePath("c:/other/home.html", "c:/proj")).toBeNull();
+    expect(typedWorkdirRelativePath("c:/projx/home.html", "c:/proj")).toBeNull();
+    expect(typedWorkdirRelativePath("c:/proj/a.html", undefined)).toBeNull();
+  });
+});
 
 const files = [
   { path: "src/app.ts", kind: "text" as const, mime: "text/plain", size: 1 },

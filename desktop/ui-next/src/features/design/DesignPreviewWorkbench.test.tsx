@@ -670,6 +670,19 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     expect(await screen.findByText(/Only localhost/)).toBeTruthy();
   });
 
+  // Windows 用户习惯粘贴 c:\… 全路径(2026-08-31 报障):落在 workdir 内就
+  // 折算成相对路径匹配索引,盘符大小写与反斜杠不敏感
+  it("accepts an absolute path inside the workdir typed into the address bar", async () => {
+    render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "dist/index.html", artifactKind: "html" }} composer={composer} obscured={false} workdir="c:/proj" />);
+    const bar = await screen.findByLabelText("Preview address");
+    await userEvent.clear(bar);
+    await userEvent.type(bar, "C:\\proj\\pages\\home.html{Enter}");
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.cmd === "preview_create_artifact" && c.args?.path === "pages/home.html")).toBe(true),
+    );
+  });
+
   it("treats Enter on an unchanged artifact path as a reload, not an invalid URL", async () => {
     mountArtifact("dist/index.html");
     const bar = await screen.findByLabelText("Preview address");

@@ -1481,6 +1481,7 @@ export function ChatView({
               refreshKey={previewRefreshKey}
               composer={composerRef.current}
               obscured={sideTab !== "preview" || !!childId || overlayObscured}
+              workdir={meta.workdir}
             />
           </div>
         )}

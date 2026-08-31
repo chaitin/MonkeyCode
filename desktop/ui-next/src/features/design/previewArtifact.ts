@@ -49,6 +49,20 @@ function toWorkdirRelative(path: string, workdir: string): string {
   return normalized;
 }
 
+/** 地址栏输入的绝对路径落在 workdir 内时折算成 workdir 相对路径。Windows
+ * 用户习惯粘贴 `c:\xxx\yyy.html` 全路径(2026-08-31 报障),盘符大小写与
+ * 分隔符风格都不敏感;非绝对路径或工作区外返回 null,交回调用方按原样匹配。 */
+export function typedWorkdirRelativePath(typed: string, workdir: string | undefined): string | null {
+  if (!workdir) return null;
+  const normalized = normalizePath(typed);
+  if (!/^(?:[a-z]:)?\//i.test(normalized)) return null;
+  const root = normalizePath(workdir).replace(/\/+$/, "");
+  const haystack = normalized.toLocaleLowerCase();
+  const needle = root.toLocaleLowerCase();
+  if (!haystack.startsWith(`${needle}/`)) return null;
+  return normalized.slice(root.length + 1);
+}
+
 /** Paths explicitly named by write-like tools in the current turn. */
 export function writtenToolPaths(items: Pick<ToolItem, "title" | "toolKind" | "rawInput">[]): string[] {
   const paths = new Set<string>();

@@ -679,6 +679,27 @@ fn is_artifact_url(url: &Url) -> bool {
         || matches!(url.scheme(), "http" | "https") && url.host_str() == Some(ARTIFACT_HTTP_HOST)
 }
 
+/// 自定义协议 URL 的 http 桥接形态(`http://monkeycode-artifact.localhost/…`)。
+/// Windows 上 WebView2 导航不了原生自定义 scheme——tauri 的自定义协议在
+/// Windows/Android 只经此形态可达(tauri app.rs 文档),而 tauri 对
+/// `WebviewUrl::CustomProtocol` 的入口 URL 原样透传不做平台转换。路径保持
+/// 已编码形态原样拼接,不二次编码。
+fn bridged_artifact_url(url: &Url) -> Result<Url, String> {
+    Url::parse(&format!("http://{ARTIFACT_HTTP_HOST}{}", url.path()))
+        .map_err(|e| format!("无法创建桥接预览地址: {e}"))
+}
+
+/// artifact 入口按平台选形态:Windows 走 http 桥接(否则永远空白,
+/// 2026-08-31 报障「本地 html 无法预览」;导航白名单 is_artifact_url 早已
+/// 两种形态都认,此前唯独漏了入口);macOS/Linux 走真自定义协议。
+fn artifact_webview_url(url: Url) -> Result<WebviewUrl, String> {
+    if cfg!(windows) {
+        Ok(WebviewUrl::External(bridged_artifact_url(&url)?))
+    } else {
+        Ok(WebviewUrl::CustomProtocol(url))
+    }
+}
+
 fn create_preview(
     app: AppHandle,
     url: Url,
@@ -693,7 +714,7 @@ fn create_preview(
     let callback_app = app.clone();
     let navigation_root = artifact_root.clone();
     let webview_url = if is_artifact_url(&url) {
-        WebviewUrl::CustomProtocol(url)
+        artifact_webview_url(url)?
     } else {
         WebviewUrl::External(url)
     };
@@ -1275,6 +1296,15 @@ mod tests {
     fn policy() {
         assert!(preview_url("http://localhost:3000").is_ok());
         assert!(preview_url("https://localhost.evil").is_err());
+    }
+    /// Windows 入口桥接:路径已编码段原样保留,不二次编码。
+    #[test]
+    fn artifact_bridge_preserves_encoded_path() {
+        let url = Url::parse("monkeycode-artifact://localhost/__workspace__/a%20b/index.html").unwrap();
+        assert_eq!(
+            bridged_artifact_url(&url).unwrap().as_str(),
+            "http://monkeycode-artifact.localhost/__workspace__/a%20b/index.html"
+        );
     }
     #[test]
     fn edit_validation() {

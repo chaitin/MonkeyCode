@@ -10,7 +10,7 @@ import type { ComposerCtl } from "@/features/chat/composer/useComposer";
 import { CodeView } from "@/features/files/CodeView";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { repoArtifactRead, repoPreviewFiles, type RepoArtifact, type RepoPreviewFile } from "@/lib/ipc/repo";
-import { rankPreviewFiles, targetForFile, type DesignPreviewTarget } from "./previewArtifact";
+import { rankPreviewFiles, targetForFile, typedWorkdirRelativePath, type DesignPreviewTarget } from "./previewArtifact";
 import {
   enqueuePreviewLifecycle, onPreviewElementPicked, onPreviewPickerError, onPreviewResultAction, previewCreate,
   previewCreateArtifact, previewDestroy, previewElementApply, previewElementUndo, previewHide, previewNavigate,
@@ -331,13 +331,15 @@ function feedbackOf(url: string, annotations: Annotation[], message: string) {
 }
 
 export function DesignPreviewWorkbench({
-  sessionId, initialTarget, refreshKey = 0, composer, obscured,
+  sessionId, initialTarget, refreshKey = 0, composer, obscured, workdir,
 }: {
   sessionId: string;
   initialTarget: DesignPreviewTarget;
   refreshKey?: number;
   composer: Pick<ComposerCtl, "sendWithFiles">;
   obscured: boolean;
+  /** 会话工作目录:地址栏把粘贴的绝对路径折算成 workdir 相对路径用。 */
+  workdir?: string;
 }) {
   const { t } = useI18n();
   const initialUrl = initialTarget.kind === "localhost" ? initialTarget.url : "";
@@ -713,7 +715,13 @@ export function DesignPreviewWorkbench({
       return r.files;
     })).then((files) => {
       if (latestRef.current.sessionId !== sessionId) return;
-      const hit = files.find((file) => file.path === typed);
+      // 绝对路径(Windows 用户粘贴 c:\… 全路径)折算成 workdir 相对再匹配;
+      // 比较统一正斜杠,命中仍以索引里的原始 path 开预览
+      const relativeTyped = typedWorkdirRelativePath(typed, workdir);
+      const wanted = [typed, relativeTyped]
+        .filter((value): value is string => !!value)
+        .map((value) => value.replaceAll("\\", "/"));
+      const hit = files.find((file) => wanted.includes(file.path.replaceAll("\\", "/")));
       if (hit) openTarget(targetForFile(hit));
       else setStatus(t("design.preview.addressInvalid"));
     }, report);
