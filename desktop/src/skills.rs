@@ -32,21 +32,21 @@ const REVISION_FILE: &str = "skills.revision";
 const REVISION_FORMAT: u32 = 1;
 
 /// 内置技能的**出厂**缺省启用集:云端建任务的 MC_DEFAULT_SKILL_IDS 四件套
-/// (baizhi/monkeycode.rs)+ 桌面端补充的发布与设计流入口。设计流内部 Skill
-/// 由 workflow.json 依赖闭包自动物化，不作为用户可选项。
+/// (baizhi/monkeycode.rs)+ 桌面端补充的发布入口。design-flow 随包提供但
+/// 默认关闭，用户明确勾选后其内部 Skill 才由 workflow.json 依赖闭包自动
+/// 物化；内部 Skill 本身不作为用户可选项。
 /// 官方库全默认启用会把 system prompt 塞满几十条 name+description,故其余
 /// 按需勾选。用户自建技能不受此表限制,出厂恒默认启用——亲手写的技能就是
 /// 要用的；批量导入会显式写入 false，只安装入库，等待用户主动设为默认。
 /// 出厂规则之上是用户显式开关(skills-defaults.json,见 load_default_prefs):
 /// 没拨过的技能跟随出厂,拨过的以开关为准。解析结果经 skills_list 的
 /// default_enabled 字段下发,UI 不再自持一份规则镜像。
-pub const DEFAULT_ENABLED: [&str; 6] = [
+pub const DEFAULT_ENABLED: [&str; 5] = [
     "feature-design",
     "project-wiki",
     "feature-implementer",
     "implementation-planner",
     "publish-website",
-    "design-flow",
 ];
 
 /// 默认启用开关的持久化(<app_config_dir>/skills-defaults.json,
@@ -1979,7 +1979,7 @@ mod tests {
     }
 
     #[test]
-    fn design_skills_are_factory_enabled_and_user_prefs_override_them() {
+    fn design_skills_are_factory_disabled_and_user_prefs_can_enable_them() {
         const INTERNAL_SKILLS: [&str; 10] = [
             "design-generation",
             "design-refinement",
@@ -1992,7 +1992,7 @@ mod tests {
             "react-native-design",
             "headless-design-jury",
         ];
-        assert!(DEFAULT_ENABLED.contains(&"design-flow"));
+        assert!(!DEFAULT_ENABLED.contains(&"design-flow"));
         assert!(INTERNAL_SKILLS.iter().all(|name| !DEFAULT_ENABLED.contains(name)));
 
         let builtin = test_dir("def-builtin");
@@ -2010,7 +2010,7 @@ mod tests {
         put_skill(&builtin, "tailwindcss-helper", "官方非默认项");
         put_skill(&user, "my-skill", "用户技能出厂默认启用");
 
-        // 用户只选择公开入口，内部依赖仍自动物化，但不进入返回的显式启用集。
+        // 新任务未显式选择技能时，design-flow 与内部依赖均不物化。
         let def = materialize_unlocked(
             &target,
             Some(&builtin),
@@ -2019,31 +2019,40 @@ mod tests {
             None,
         )
         .unwrap();
-        assert!(def.iter().any(|enabled| enabled == "design-flow"));
+        assert!(!def.iter().any(|enabled| enabled == "design-flow"));
         for name in INTERNAL_SKILLS {
             assert!(!def.iter().any(|enabled| enabled == name));
-            assert!(target.join(name).join("SKILL.md").is_file());
+            assert!(!target.join(name).exists());
         }
         assert!(def.iter().any(|enabled| enabled == "my-skill"));
         assert!(!target.join("tailwindcss-helper").exists());
 
         let infos = list_unlocked(Some(&builtin), &user, &user.join("no-defaults.json"));
         assert!(infos.iter().any(|skill| skill.name == "design-flow"));
+        assert_eq!(
+            infos
+                .iter()
+                .find(|skill| skill.name == "design-flow")
+                .map(|skill| skill.default_enabled),
+            Some(false)
+        );
         assert!(INTERNAL_SKILLS.iter().all(|name| !infos.iter().any(|skill| skill.name == *name)));
 
-        // 关闭入口后不再物化它的内部依赖。
+        // 用户显式打开公开入口后，内部依赖自动物化但不进入公开启用集。
         let prefs_path = test_dir("def-prefs").join("skills-defaults.json");
         fs::write(
             &prefs_path,
-            r#"{"design-flow": false, "tailwindcss-helper": true, "my-skill": false}"#,
+            r#"{"design-flow": true, "tailwindcss-helper": true, "my-skill": false}"#,
         )
         .unwrap();
         let def = materialize_unlocked(&target, Some(&builtin), &user, &prefs_path, None).unwrap();
-        assert!(!def.iter().any(|enabled| enabled == "design-flow"));
+        assert!(def.iter().any(|enabled| enabled == "design-flow"));
         assert!(def.iter().any(|enabled| enabled == "tailwindcss-helper"));
         assert!(!def.iter().any(|enabled| enabled == "my-skill"));
-        assert!(!target.join("design-flow").exists());
-        assert!(INTERNAL_SKILLS.iter().all(|name| !target.join(name).exists()));
+        assert!(target.join("design-flow/SKILL.md").is_file());
+        assert!(INTERNAL_SKILLS
+            .iter()
+            .all(|name| target.join(name).join("SKILL.md").is_file()));
         // list_unlocked() 的 default_enabled 与物化同一解析
         let infos = list_unlocked(Some(&builtin), &user, &prefs_path);
         let enabled = |name: &str| {
@@ -2052,7 +2061,7 @@ mod tests {
                 .find(|skill| skill.name == name)
                 .map(|skill| skill.default_enabled)
         };
-        assert_eq!(enabled("design-flow"), Some(false));
+        assert_eq!(enabled("design-flow"), Some(true));
         assert_eq!(enabled("design-generation"), None);
         assert_eq!(enabled("tailwindcss-helper"), Some(true));
         assert_eq!(enabled("my-skill"), Some(false));
