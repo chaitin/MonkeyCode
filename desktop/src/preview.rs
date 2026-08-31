@@ -788,8 +788,21 @@ fn create_preview(
     Ok(())
 }
 
+/// Linux 上原生子 webview 不可用:上游 tauri-runtime-wry 把 WindowChild
+/// `pack_start` 进窗口的垂直 GtkBox(非定位叠放),窗口被对半分、预览整宽
+/// 落底,且 wry 的 set_bounds 仅在 gtk::Fixed 父容器下生效——摆位全部空转
+/// (2026-08-31 报障截图)。UI 侧已降级为 DOM 内嵌 iframe
+/// (DesignPreviewWorkbench 的 inlineFallback),此处硬拒防回归。
+fn reject_native_preview_on_linux() -> Result<(), String> {
+    if cfg!(target_os = "linux") {
+        return Err("Linux 上原生预览不可用(上游子 webview 无定位能力),应使用内嵌预览".into());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn preview_create(app: AppHandle, url: String, bounds: PreviewBounds) -> Result<(), String> {
+    reject_native_preview_on_linux()?;
     let _lane = PREVIEW_LANE.lock().await;
     #[cfg(debug_assertions)]
     eprintln!("[preview-lifecycle] create url={url}");
@@ -807,6 +820,7 @@ pub async fn preview_create_artifact(
 ) -> Result<(), String> {
     #[cfg(debug_assertions)]
     eprintln!("[preview-lifecycle] create-artifact id={id} path={path}");
+    reject_native_preview_on_linux()?;
     let engine = host.get()?;
     let workdir = engine.session_workdir(&id).await?;
     let fs_root = match engine.wsl_distro() {

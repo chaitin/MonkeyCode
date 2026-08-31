@@ -23,6 +23,9 @@ let applyFailureProperty: string | null;
 
 beforeEach(() => {
   setLocale("en");
+  // jsdom 的 UA 是 "(darwin)"/"(linux)",hostPlatform 会误判成 linux 而让
+  // 工作台整体走内嵌降级——原生路径用例统一钉成 mac,Linux 用例自行覆写
+  vi.stubGlobal("navigator", { ...window.navigator, userAgent: "Macintosh; Intel Mac OS X" });
   calls = []; events = new Map(); pendingCreates = []; pendingDestroys = []; pendingPickerToggles = []; pendingSaves = []; deferCreates = false; deferDestroys = false; deferPickerToggles = false; deferSaves = false; deferCaptures = false; captureError = null; applyFailureProperty = null;
   vi.mocked(composer.sendWithFiles).mockReset().mockResolvedValue(true);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ x: 400, y: 80, left: 400, top: 80, right: 1000, bottom: 480, width: 600, height: 400, toJSON() {} });
@@ -668,6 +671,39 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     await userEvent.type(bar, "nope/missing.html{Enter}");
 
     expect(await screen.findByText(/Only localhost/)).toBeTruthy();
+  });
+
+  describe("Linux 内嵌预览降级(上游子 webview 打包进 GtkBox,无定位能力)", () => {
+    beforeEach(() => {
+      vi.stubGlobal("navigator", { ...window.navigator, userAgent: "X11; Linux x86_64" });
+    });
+
+    it("artifact 走自定义协议 iframe,不建原生 webview,原生 eval 入口整组隐藏", async () => {
+      mountArtifact("pages/home.html");
+      const frame = await waitFor(() => {
+        const found = document.querySelector("[data-preview-host] iframe");
+        expect(found).toBeTruthy();
+        return found as HTMLIFrameElement;
+      });
+      expect(frame.getAttribute("src")).toBe("monkeycode-artifact://localhost/__workspace__/pages/home.html");
+      expect(calls.some((c) => c.cmd === "preview_create" || c.cmd === "preview_create_artifact")).toBe(false);
+      // 代码页(序列化)与截图/注释/标记/编辑都依赖原生 eval,Linux 上不渲染
+      expect(screen.queryByRole("tab")).toBeNull();
+      expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
+    });
+
+    it("localhost 目标内嵌加载,刷新走 iframe 重载而非原生命令", async () => {
+      mount();
+      const frame = await waitFor(() => {
+        const found = document.querySelector("[data-preview-host] iframe");
+        expect(found).toBeTruthy();
+        return found as HTMLIFrameElement;
+      });
+      expect(frame.getAttribute("src")).toBe("http://localhost:5173/app");
+
+      await userEvent.click(screen.getByTitle("Reload"));
+      expect(calls.some((c) => c.cmd === "preview_reload" || c.cmd === "preview_create")).toBe(false);
+    });
   });
 
   // Windows 用户习惯粘贴 c:\… 全路径(2026-08-31 报障):落在 workdir 内就
