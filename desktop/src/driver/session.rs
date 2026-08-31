@@ -615,27 +615,20 @@ mod chat_workdir_tests {
             .join("chat-workspaces")
     }
 
-    /// 对话工作区在 WSL 下**不能**用宿主视角验存在性——这条把当年的失败
-    /// 现场固定下来(2026-08-09 用户报障:选了 WSL 内核后开普通对话必报
-    /// 「工作区目录不存在: /mnt/c/Users/…/chat-workspaces/chat-xxxx」)。
-    ///
-    /// 成因:chat 根落在 Windows 侧,guest 形态是 /mnt/c/…;旧代码把它交给
-    /// 「guest 路径 → \\wsl$\<发行版>\… 」的宿主视角去 is_dir(),包出来是
-    /// 下面这个串——Windows 穿不过 WSL 共享上的 drvfs 挂载点,于是壳刚
-    /// create_dir 成功的目录被判成不存在。本机模式恰好等价,所以只在
-    /// Windows+WSL 上现形,Linux 冒烟(guest==host)也复现不了。
+    /// chat 根落在 Windows 盘，guest 形态是 /mnt/c/…；宿主文件操作必须
+    /// 反解回 C:\…，不能走 Windows 穿不过去的 \\wsl$\…\mnt\c\…。
     #[test]
-    fn host_view_of_a_chat_workdir_under_wsl_is_an_unusable_unc_path() {
+    fn host_view_of_a_chat_workdir_under_wsl_maps_back_to_the_drive() {
         let guest = "/mnt/c/Users/phxa1/AppData/Local/com.chaitin.baizhi.monkeycode\
                      /chat-workspaces/chat-3a6c477966006def8049";
         let host_view = crate::wsl::host_fs_view("Ubuntu-22.04", guest);
-        // 只在 Windows 上才拼 UNC(其余平台恒等,见 wsl::host_fs_view)
+        // 非 Windows 的假 WSL 冒烟保持 guest == host。
         if cfg!(windows) {
-            assert!(
-                host_view
-                    .to_string_lossy()
-                    .starts_with(r"\\wsl$\Ubuntu-22.04\mnt\c\"),
-                "宿主视角会把 chat 的 guest 路径包成穿不过去的 UNC: {host_view:?}"
+            assert_eq!(
+                host_view,
+                PathBuf::from(
+                    r"C:\Users\phxa1\AppData\Local\com.chaitin.baizhi.monkeycode\chat-workspaces\chat-3a6c477966006def8049"
+                )
             );
         }
         // 平台无关的那半条:chat 目录由 create_chat_workdir_in 在宿主建成

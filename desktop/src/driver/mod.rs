@@ -530,6 +530,7 @@ pub async fn session_call(
         let ctx = RepoCtx {
             workdir,
             wsl_distro: engine.wsl_distro(),
+            wsl_mount_root: engine.wsl_mount_root(),
         };
         // git/fs 是阻塞操作,丢 blocking 池;15s 超时防文件面板永久转圈
         let task = tauri::async_runtime::spawn_blocking(move || {

@@ -2,9 +2,10 @@
 // 应答字段与内核 WS call 完全对齐:{result} / {error},UI 归约层零改动。
 // 全部操作强制限定在工作区目录内。
 //
-// WSL 模式(kernel_env = "wsl:<发行版>"):workdir 是 guest 内 Linux 路径,
-// 文件系统操作经 \\wsl$\<发行版> UNC 访问,git 经 wsl.exe 在 guest 内执行
-// (UNC 上跑 Windows git 会撞 ownership 校验且行尾语义不对)。
+// WSL 模式(kernel_env = "wsl:<发行版>"):workdir 是 guest 内 Linux 路径。
+// WSL 文件系统路径经 \\wsl$ UNC 访问，automount 盘符路径(/mnt/c/…)
+// 反解回 C:\…；git 经 wsl.exe 在 guest 内执行(UNC 上跑 Windows git 会撞
+// ownership 校验且行尾语义不对)。
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -43,14 +44,19 @@ pub struct RepoCtx {
     pub workdir: String,
     /// WSL 发行版(仅 Windows + kernel_env=wsl:* 时 Some)
     pub wsl_distro: Option<String>,
+    /// WSL automount 根(通常 /mnt，允许 wsl.conf 自定义)。
+    pub wsl_mount_root: Option<String>,
 }
 
 impl RepoCtx {
-    /// 本地文件系统视角的工作区根(WSL 模式转 UNC;Linux 冒烟恒等)。
+    /// 本地文件系统视角的工作区根(WSL 文件系统转 UNC，盘符挂载转宿主盘符)。
     fn fs_root(&self) -> PathBuf {
-        match &self.wsl_distro {
-            Some(d) => crate::wsl::host_fs_view(d, &self.workdir),
-            None => PathBuf::from(&self.workdir),
+        match (&self.wsl_distro, &self.wsl_mount_root) {
+            (Some(distro), Some(mount_root)) => {
+                crate::wsl::host_fs_view_with_mount_root(distro, mount_root, &self.workdir)
+            }
+            (Some(distro), None) => crate::wsl::host_fs_view(distro, &self.workdir),
+            (None, _) => PathBuf::from(&self.workdir),
         }
     }
 
@@ -469,6 +475,17 @@ fn reveal(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
+    #[test]
+    fn wsl_automount_workspace_uses_the_host_drive() {
+        let ctx = RepoCtx {
+            workdir: "/mnt/c/Users/chaitin/project".into(),
+            wsl_distro: Some("Ubuntu".into()),
+            wsl_mount_root: Some("/mnt".into()),
+        };
+        assert_eq!(ctx.fs_root(), PathBuf::from(r"C:\Users\chaitin\project"));
+    }
+
     #[test]
     fn porcelain_z_rename_does_not_parse_arrow_inside_source_name() {
         let parsed = parse_status_porcelain_z(
@@ -506,6 +523,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: ws.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
 
         assert!(
@@ -545,6 +563,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: dir.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
 
         let root = ctx.resolve("").unwrap();
@@ -588,6 +607,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: dir.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
         let listed = dispatch(&ctx, "repo_preview_files", &json!({}));
         let paths: Vec<_> = listed["result"]["files"]
@@ -633,6 +653,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: dir.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
         let listed = preview_files(&ctx).unwrap();
         assert!(!listed["files"]
@@ -652,6 +673,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: dir.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
 
         let response = dispatch(&ctx, "repo_file_changes", &json!({}));
@@ -676,6 +698,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: dir.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
 
         let response = dispatch(&ctx, "repo_file_changes", &json!({}));

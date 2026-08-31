@@ -823,10 +823,7 @@ pub async fn preview_create_artifact(
     reject_native_preview_on_linux()?;
     let engine = host.get()?;
     let workdir = engine.session_workdir(&id).await?;
-    let fs_root = match engine.wsl_distro() {
-        Some(distro) => crate::wsl::host_fs_view(&distro, &workdir),
-        None => PathBuf::from(workdir),
-    };
+    let fs_root = engine.host_fs_view(&workdir);
     let site = artifact_preview_file(&fs_root, &path)?;
     let url = artifact_entry_url(&site)?;
     let root = site.root.clone();

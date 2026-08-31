@@ -59,8 +59,8 @@ pub(crate) fn sanitize_name(name: &str) -> Option<String> {
     }
 }
 
-/// 工作区 uploads 目录(WSL 模式下 workdir 转 UNC 访问)。
-/// 工作区根(WSL 模式下映射 UNC)。空 workdir 会让相对路径落到进程 cwd
+/// 工作区 uploads 目录。WSL 模式下 automount 路径反解回宿主盘符，
+/// Linux 文件系统路径映射 UNC。空 workdir 会让相对路径落到进程 cwd
 /// (打包应用下是主目录)——硬错误。
 fn uploads_root(workdir: &str, wsl_distro: Option<&str>) -> Result<PathBuf, String> {
     if workdir.trim().is_empty() {
