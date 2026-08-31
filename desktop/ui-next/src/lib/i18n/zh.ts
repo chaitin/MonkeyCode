@@ -938,6 +938,7 @@ export const zh = {
   "design.preview.full": "整页",
   "design.preview.zoom": "缩放",
   "design.preview.loading": "预览仍在加载中。",
+  "design.preview.obscuredHint": "菜单或弹窗打开时预览暂时隐藏,关闭后自动恢复",
   "design.preview.pickHint": "请在预览中点击一个元素。",
   "design.preview.screenshot": "截图",
   "design.preview.capturing": "正在截图…",

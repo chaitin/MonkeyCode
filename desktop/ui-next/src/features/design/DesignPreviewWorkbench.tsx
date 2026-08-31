@@ -396,6 +396,9 @@ export function DesignPreviewWorkbench({
   const elementSavingRef = useRef(false);
   const [elementSaving, setElementSaving] = useState(false);
   const [capture, setCapture] = useState<string | null>(null);
+  /** 外部浮层遮挡期间垫在宿主原位的冻结帧(null = 未冻结/截帧失败退文字)。 */
+  const [obscuredFreeze, setObscuredFreeze] = useState<string | null>(null);
+  const freezeGen = useRef(0);
   const resultImageRef = useRef<string | null>(null);
   const resultAnnotationsRef = useRef<Annotation[]>([]);
   const resultFeedbackRef = useRef("");
@@ -421,7 +424,11 @@ export function DesignPreviewWorkbench({
 
   const native = target.kind === "localhost" || (target.kind === "artifact" && target.artifactKind === "html");
   const previewSourceKey = target.kind === "localhost" ? "localhost" : target.kind === "artifact" && target.artifactKind === "html" ? `artifact:${target.path}` : "none";
-  const hidden = !native || obscured || tab === "code" || filesOpen || !!capture || !!picked;
+  // 隐藏原因分两类:工作台自身的视图切换(代码页/文件面板/截图/选元素,
+  // 各有自己的视觉承接)与外部浮层遮挡(菜单/模态)。后者要走「冻结帧」
+  // 路径——预览在用户眼里不消失,见 hidden effect。
+  const hiddenByView = !native || tab === "code" || filesOpen || !!capture || !!picked;
+  const hidden = hiddenByView || obscured;
   const visibleFiles = useMemo(() => rankPreviewFiles(previewFiles ?? [], fileQuery), [previewFiles, fileQuery]);
   const findMatches = useMemo(() => {
     if (!findQuery) return [];
@@ -529,15 +536,28 @@ export function DesignPreviewWorkbench({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, previewSourceKey]);
 
+  // 逐帧位移追踪:纯位移(拖格换位/任务列收起/分屏重排)不改宿主尺寸,
+  // ResizeObserver 不响,原生 webview 就被留在原地(2026-08-31 报障截图)。
+  // rAF 比对宿主矩形,变了才发 preview_set_bounds——静止帧只有一次布局读、
+  // 零 IPC;尺寸变化同样被覆盖,原先这里的 RO 随之退役(创建路径的 RO
+  // 在上面的生命周期 effect 里,不动)。
   useLayoutEffect(() => {
-    if (tab !== "preview" || !hostRef.current) return;
-    bounds();
-    const frame = requestAnimationFrame(bounds);
-    if (typeof ResizeObserver === "undefined") return () => cancelAnimationFrame(frame);
-    const ro = new ResizeObserver(bounds);
-    ro.observe(hostRef.current);
-    return () => { cancelAnimationFrame(frame); ro.disconnect(); };
-  }, [tab, preset, bounds]);
+    if (tab !== "preview") return;
+    let raf = 0;
+    let last: { x: number; y: number; width: number; height: number } | null = null;
+    const track = () => {
+      raf = requestAnimationFrame(track);
+      const host = hostRef.current;
+      if (!host || !createdRef.current) return;
+      const r = host.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return;
+      if (last && r.left === last.x && r.top === last.y && r.width === last.width && r.height === last.height) return;
+      last = { x: r.left, y: r.top, width: r.width, height: r.height };
+      void previewSetBounds(last).catch(report);
+    };
+    track();
+    return () => cancelAnimationFrame(raf);
+  }, [tab, report]);
 
   useEffect(() => {
     // 地址栏常驻:artifact 态也把当前路径回填,免得输入框空着看不出在预览什么。
@@ -562,8 +582,36 @@ export function DesignPreviewWorkbench({
 
   useEffect(() => {
     if (!createdRef.current) return;
-    void (hidden ? previewHide() : previewShow().then(bounds)).catch(report);
-  }, [hidden, bounds, report]);
+    const gen = ++freezeGen.current;
+    if (!hidden) {
+      // 冻结帧等 show 落地再撤,避免露出一帧空白/提示
+      void previewShow()
+        .then(() => {
+          bounds();
+          if (freezeGen.current === gen) setObscuredFreeze(null);
+        })
+        .catch(report);
+      return;
+    }
+    if (hiddenByView) {
+      setObscuredFreeze(null);
+      void previewHide().catch(report);
+      return;
+    }
+    // 外部浮层遮挡:原生 webview 必须让位(它永远压在 DOM 之上),但预览
+    // 不能在用户眼里"消失"——先截一帧冻结在原位再隐藏,浮层浮在冻结帧上,
+    // 关闭后无缝切回活视图(选元素弹窗 pickedPreview 的同一手法)。截帧
+    // 期间活视图仍在,占位不会闪现;限时 800ms:页面繁忙截不到就直接隐藏
+    // 走文字兜底,不能让浮层被预览压着等默认的 20s 截图预算。
+    void requestCapture("viewport-no-copy", 800)
+      .then((result) => {
+        if (freezeGen.current === gen) setObscuredFreeze(result.dataUrl);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (freezeGen.current === gen) void previewHide().catch(report);
+      });
+  }, [hidden, hiddenByView, bounds, report]);
 
   useEffect(() => {
     const offPicked = onPreviewElementPicked((snapshot) => {
@@ -991,7 +1039,20 @@ export function DesignPreviewWorkbench({
           : null
         ) : tab === "preview" ? (
           <div className="flex size-full justify-center overflow-auto p-2">
-            <div ref={hostRef} data-preview-host="" style={{ width: preset === "desktop" ? "100%" : `min(100%, ${PRESETS[preset]}px)` }} className="h-full min-w-40 bg-base-100" />
+            <div ref={hostRef} data-preview-host="" style={{ width: preset === "desktop" ? "100%" : `min(100%, ${PRESETS[preset]}px)` }} className="h-full min-w-40 bg-base-100">
+              {/* 原生 webview 被浮层(菜单/模态)顶避让时,宿主垫冻结帧,
+                  预览在用户眼里不消失(「预览直接消失了」的报障);截帧
+                  失败才退文字说明,浮层一关 previewShow 即还原 */}
+              {obscured && native && (
+                obscuredFreeze ? (
+                  <img src={obscuredFreeze} alt="" aria-hidden className="size-full object-fill" />
+                ) : (
+                  <div role="status" className="flex h-full items-center justify-center px-4 text-center text-xs text-base-content/40">
+                    {t("design.preview.obscuredHint")}
+                  </div>
+                )
+              )}
+            </div>
           </div>
         ) : (
           <div

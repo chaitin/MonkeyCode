@@ -129,6 +129,50 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_show")).toBe(true));
   });
 
+  it("external obscurers freeze a screenshot in place before hiding, and clear it on restore", async () => {
+    const view = mount();
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create")).toBe(true));
+
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured />);
+    // 先截帧(浮层期间预览"不消失"),再隐藏原生 webview
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_capture")).toBe(true));
+    expect(calls.find((c) => c.cmd === "preview_capture")?.args?.mode).toBe("viewport-no-copy");
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_hide")).toBe(true));
+    await waitFor(() =>
+      expect(document.querySelector("[data-preview-host] img")?.getAttribute("src")).toBe("data:image/png;base64,AQID"),
+    );
+
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured={false} />);
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_show")).toBe(true));
+    // show 落地后冻结帧才撤,避免露白
+    await waitFor(() => expect(document.querySelector("[data-preview-host] img")).toBeNull());
+  });
+
+  it("falls back to a textual hint when the freeze capture fails, and still hides", async () => {
+    captureError = "capture failed";
+    const view = mount();
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create")).toBe(true));
+
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured />);
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_hide")).toBe(true));
+    expect(screen.getByText(/menu or dialog/)).toBeTruthy();
+    expect(document.querySelector("[data-preview-host] img")).toBeNull();
+  });
+
+  it("tracks pure translations of the host (pane swaps) and re-sends bounds", async () => {
+    mount();
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create")).toBe(true));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "preview_set_bounds")).toBe(true));
+
+    // 同尺寸纯位移:ResizeObserver 不响,rAF 逐帧比对必须补发新矩形
+    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue({ x: 40, y: 80, left: 40, top: 80, right: 640, bottom: 480, width: 600, height: 400, toJSON() {} } as DOMRect);
+    await waitFor(() =>
+      expect(
+        calls.some((c) => c.cmd === "preview_set_bounds" && (c.args?.bounds as { x: number } | undefined)?.x === 40),
+      ).toBe(true),
+    );
+  });
+
   it("does not let the StrictMode cleanup destroy the active preview", async () => {
     deferCreates = true;
     render(<StrictMode><DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "localhost", url: "http://localhost:5173/app" }} composer={composer} obscured={false} /></StrictMode>);

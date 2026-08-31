@@ -914,6 +914,7 @@ export const en: Record<MessageKey, string> = {
   "design.preview.full": "Full",
   "design.preview.zoom": "Zoom",
   "design.preview.loading": "Preview is still loading.",
+  "design.preview.obscuredHint": "Preview hides while a menu or dialog is open and restores when it closes",
   "design.preview.pickHint": "Click an element in the preview.",
   "design.preview.screenshot": "Screenshot",
   "design.preview.capturing": "Capturing…",
