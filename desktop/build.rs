@@ -122,6 +122,7 @@ fn main() {
             "preview_element_undo",
             "preview_capture",
             "preview_serialize",
+            "preview_resolve_url_html_source",
             "preview_save_html",
             // 百智云/云端(baizhi/)
             "baizhi_status",

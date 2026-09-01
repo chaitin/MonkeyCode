@@ -6,11 +6,12 @@ use std::borrow::Cow;
 use std::io::{Read as _, Write as _};
 use std::path::{Component, Path, PathBuf};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{
         atomic::{AtomicBool, Ordering},
         Mutex, OnceLock,
     },
+    time::Duration,
 };
 use tauri::{
     http::{header, Request, Response, StatusCode},
@@ -1019,6 +1020,135 @@ fn atomic_write_html(target: &Path, html: &str) -> Result<(), String> {
         .map_err(|e| format!("原子替换 HTML 失败: {}", e.error))
 }
 
+async fn session_workdir(host: &DriverHost, session_id: &str) -> Result<PathBuf, String> {
+    let list = host.get()?.sessions_list().await?;
+    let items = list
+        .as_array()
+        .or_else(|| list.get("sessions").and_then(|v| v.as_array()))
+        .ok_or("无法读取会话列表")?;
+    items
+        .iter()
+        .find(|x| x.get("id").and_then(|v| v.as_str()) == Some(session_id))
+        .and_then(|x| x.get("workdir"))
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .ok_or_else(|| "当前会话不存在".into())
+}
+
+fn matching_workspace_html(root: &Path, expected: &[u8]) -> Result<Option<String>, String> {
+    let root = root
+        .canonicalize()
+        .map_err(|e| format!("工作区无效: {e}"))?;
+    let mut directories = VecDeque::from([root.clone()]);
+    let mut match_path = None;
+    let mut visited_files = 0usize;
+    while let Some(directory) = directories.pop_front() {
+        for entry in std::fs::read_dir(&directory).map_err(|e| format!("读取工作区失败: {e}"))?
+        {
+            let entry = entry.map_err(|e| format!("读取工作区条目失败: {e}"))?;
+            let file_type = entry
+                .file_type()
+                .map_err(|e| format!("读取工作区条目失败: {e}"))?;
+            if file_type.is_symlink() {
+                continue;
+            }
+            let metadata = entry
+                .metadata()
+                .map_err(|e| format!("读取工作区条目失败: {e}"))?;
+            let path = entry.path();
+            if metadata.is_dir() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if !matches!(
+                    name.as_ref(),
+                    ".git" | ".ohmyagent" | "node_modules" | "target" | "dist" | "build"
+                ) {
+                    directories.push_back(path);
+                }
+                continue;
+            }
+            if !metadata.is_file() || metadata.len() > 8 * 1024 * 1024 {
+                continue;
+            }
+            let is_html = path
+                .extension()
+                .and_then(|value| value.to_str())
+                .is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("html") || extension.eq_ignore_ascii_case("htm")
+                });
+            if !is_html {
+                continue;
+            }
+            visited_files += 1;
+            if visited_files > 4096 {
+                return Ok(None);
+            }
+            let content = std::fs::read(&path).map_err(|e| format!("读取 HTML 文件失败: {e}"))?;
+            if content != expected {
+                continue;
+            }
+            let relative = path
+                .strip_prefix(&root)
+                .map_err(|_| "HTML 文件超出工作区")?
+                .to_string_lossy()
+                .replace('\\', "/");
+            if match_path.is_some() {
+                return Ok(None);
+            }
+            match_path = Some(relative);
+        }
+    }
+    Ok(match_path)
+}
+
+#[tauri::command]
+pub async fn preview_resolve_url_html_source(
+    host: State<'_, DriverHost>,
+    session_id: String,
+    url: String,
+) -> Result<Option<String>, String> {
+    let url = preview_url(&url)?;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("创建 HTML 源文件探测器失败: {e}"))?;
+    let response = client
+        .get(url.as_str())
+        .send()
+        .await
+        .map_err(|e| format!("读取预览 HTML 失败: {e}"))?;
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+    let is_html = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("text/html"))
+        });
+    if !is_html
+        || response
+            .content_length()
+            .is_some_and(|length| length > 8 * 1024 * 1024)
+    {
+        return Ok(None);
+    }
+    let body = response
+        .bytes()
+        .await
+        .map_err(|e| format!("读取预览 HTML 失败: {e}"))?;
+    if body.len() > 8 * 1024 * 1024 {
+        return Ok(None);
+    }
+    let workdir = session_workdir(&host, &session_id).await?;
+    matching_workspace_html(&workdir, &body)
+}
+
 #[tauri::command]
 pub async fn preview_save_html(
     host: State<'_, DriverHost>,
@@ -1029,18 +1159,8 @@ pub async fn preview_save_html(
     if html.len() > 8 * 1024 * 1024 {
         return Err("HTML 超过 8 MiB 限制".into());
     }
-    let list = host.get()?.sessions_list().await?;
-    let items = list
-        .as_array()
-        .or_else(|| list.get("sessions").and_then(|v| v.as_array()))
-        .ok_or("无法读取会话列表")?;
-    let workdir = items
-        .iter()
-        .find(|x| x.get("id").and_then(|v| v.as_str()) == Some(&session_id))
-        .and_then(|x| x.get("workdir"))
-        .and_then(|v| v.as_str())
-        .ok_or("当前会话不存在")?;
-    let target = safe_html_target(Path::new(workdir), &path)?;
+    let workdir = session_workdir(&host, &session_id).await?;
+    let target = safe_html_target(&workdir, &path)?;
     atomic_write_html(&target, &html)
 }
 
@@ -1471,6 +1591,53 @@ mod tests {
         assert!(safe_html_target(&root, "../index.html").is_err());
         assert!(safe_html_target(&root, "index.txt").is_err());
         assert!(safe_html_target(&root, "/tmp/index.html").is_err());
+    }
+
+    #[test]
+    fn url_html_source_requires_one_exact_workspace_match() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("pages")).unwrap();
+        std::fs::write(
+            root.path().join("pages/home.html"),
+            "<!doctype html><h1>Home</h1>",
+        )
+        .unwrap();
+        std::fs::write(root.path().join("pages/other.html"), "<h1>Other</h1>").unwrap();
+
+        assert_eq!(
+            matching_workspace_html(root.path(), b"<!doctype html><h1>Home</h1>").unwrap(),
+            Some("pages/home.html".into())
+        );
+        assert_eq!(
+            matching_workspace_html(root.path(), b"<h1>Missing</h1>").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn url_html_source_rejects_ambiguous_matches() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("pages")).unwrap();
+        std::fs::write(root.path().join("index.html"), "<h1>Same</h1>").unwrap();
+        std::fs::write(root.path().join("pages/index.html"), "<h1>Same</h1>").unwrap();
+
+        assert_eq!(
+            matching_workspace_html(root.path(), b"<h1>Same</h1>").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn url_html_source_ignores_generated_directories() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("dist")).unwrap();
+        std::fs::write(root.path().join("index.html"), "<h1>Source</h1>").unwrap();
+        std::fs::write(root.path().join("dist/index.html"), "<h1>Source</h1>").unwrap();
+
+        assert_eq!(
+            matching_workspace_html(root.path(), b"<h1>Source</h1>").unwrap(),
+            Some("index.html".into())
+        );
     }
 
     #[test]

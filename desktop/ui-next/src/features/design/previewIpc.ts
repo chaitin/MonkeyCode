@@ -33,6 +33,7 @@ export const previewElementApply = (edit: ElementEdit) => invoke<void>("preview_
 export const previewElementUndo = () => invoke<void>("preview_element_undo");
 export const previewCapture = (mode: "viewport" | "viewport-no-copy" | "full", requestId: string) => invoke<void>("preview_capture", { mode, requestId });
 export const previewSerialize = (requestId: string) => invoke<void>("preview_serialize", { requestId });
+export const previewResolveUrlHtmlSource = (sessionId: string, url: string) => invoke<string | null>("preview_resolve_url_html_source", { sessionId, url });
 export const previewSaveHtml = (sessionId: string, path: string, html: string) => invoke<void>("preview_save_html", { sessionId, path, html });
 export const previewResultShow = (dataUrl: string, status: string, commentCount: number) => invoke<void>("preview_result_show", { dataUrl, status, commentCount });
 export const previewResultHide = () => invoke<void>("preview_result_hide");

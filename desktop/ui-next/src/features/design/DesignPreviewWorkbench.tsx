@@ -14,8 +14,8 @@ import { rankPreviewFiles, targetForFile, type DesignPreviewTarget } from "./pre
 import {
   onPreviewElementPicked, onPreviewPickerError, onPreviewResultAction, previewCreate, previewCreateArtifact,
   previewDestroy, previewElementApply, previewElementUndo, previewHide, previewNavigate, previewPickerToggle,
-  previewReload, previewResultHide, previewResultShow, previewSaveHtml, previewSetBounds,
-  previewSetZoom, previewShow, requestCapture, requestSerialization, type ElementSnapshot, type ElementStyles,
+  previewReload, previewResolveUrlHtmlSource, previewResultHide, previewResultShow, previewSaveHtml, previewSetBounds,
+  previewSetZoom, previewShow, requestCapture, requestSerialization, type ElementEdit, type ElementSnapshot, type ElementStyles,
 } from "./previewIpc";
 import { normalizePreviewUrl, normalizeTypedPreviewUrl } from "./previewUrl";
 
@@ -854,6 +854,24 @@ export function DesignPreviewWorkbench({
     await previewSaveHtml(persistence.sessionId, persistence.path, serialized);
     return persistence.path;
   };
+  const requestFrameworkSourceEdit = async (
+    operation: "update" | "delete",
+    selected: ElementSnapshot,
+    edits: ElementEdit[],
+    url: string,
+  ) => {
+    const payload = { target: url, operation, element: selected, edits };
+    const accepted = await composer.sendWithFiles([
+      t("design.preview.sourceEditPrompt"),
+      `URL: ${url}`,
+      `${t("design.preview.elementSelector")}: ${selected.selector}`,
+      `${t("design.preview.elementTag")}: ${selected.tag}`,
+      `${t("design.preview.elementText")}: ${selected.text}`,
+      `${t("design.preview.sourceEditOperation")}: ${operation}`,
+      `${t("design.preview.sourceEditValues")}: ${JSON.stringify(edits)}`,
+    ].join("\n"), [new File([JSON.stringify(payload, null, 2)], "element-source-edit.json", { type: "application/json" })]);
+    if (!accepted) throw new Error(t("design.preview.feedbackFailed"));
+  };
   const saveElement = async () => {
     if (!picked || !elementDraft || elementSavingRef.current) return;
     const original = elementDraftOf(picked);
@@ -864,19 +882,23 @@ export function DesignPreviewWorkbench({
     const operationTargetKey = targetKey;
     const persistence = target.kind === "artifact" && target.artifactKind === "html" ? { sessionId, path: target.path } : null;
     const operationIsCurrent = () => latestRef.current.sessionId === operationSessionId && latestRef.current.targetKey === operationTargetKey;
-    let persistedPath: string | null = null;
+    let persistedPath: string | null;
     elementSavingRef.current = true;
     setElementSaving(true);
     try {
       persistedPath = await enqueuePreviewLifecycle(async () => {
         if (!operationIsCurrent() || !createdRef.current) throw new Error(t("design.preview.targetChanged"));
+        const resolvedPath = persistence ? null : await previewResolveUrlHtmlSource(operationSessionId, previewTarget);
+        const directPersistence = persistence ?? (resolvedPath ? { sessionId: operationSessionId, path: resolvedPath } : null);
         let applied = 0;
         try {
           for (const edit of edits) {
             await previewElementApply(edit);
             applied += 1;
           }
-          return await persistElementChanges(persistence);
+          if (directPersistence) return await persistElementChanges(directPersistence);
+          await requestFrameworkSourceEdit("update", picked, edits, previewTarget);
+          return null;
         } catch (error) {
           try {
             while (applied > 0) {
@@ -884,7 +906,7 @@ export function DesignPreviewWorkbench({
               applied -= 1;
             }
           } catch (rollbackError) {
-            throw new Error(`${error instanceof Error ? error.message : String(error)}; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+            throw new Error(`${error instanceof Error ? error.message : String(error)}; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`, { cause: rollbackError });
           }
           throw error;
         }
@@ -897,7 +919,9 @@ export function DesignPreviewWorkbench({
       setElementSaving(false);
     }
     if (!operationIsCurrent()) return;
-    setStatus(persistedPath ? t("design.preview.code.saved", { path: persistedPath }) : t("design.preview.applied"));
+    setStatus(persistedPath
+      ? t("design.preview.code.saved", { path: persistedPath })
+      : t(persistence ? "design.preview.applied" : "design.preview.sourceEditRequested"));
     dismissPicked();
   };
   const deleteElement = async () => {
@@ -906,23 +930,28 @@ export function DesignPreviewWorkbench({
     const operationTargetKey = targetKey;
     const persistence = target.kind === "artifact" && target.artifactKind === "html" ? { sessionId, path: target.path } : null;
     const operationIsCurrent = () => latestRef.current.sessionId === operationSessionId && latestRef.current.targetKey === operationTargetKey;
-    let persistedPath: string | null = null;
+    let persistedPath: string | null;
     elementSavingRef.current = true;
     setElementSaving(true);
     try {
       persistedPath = await enqueuePreviewLifecycle(async () => {
         if (!operationIsCurrent() || !createdRef.current) throw new Error(t("design.preview.targetChanged"));
+        const resolvedPath = persistence ? null : await previewResolveUrlHtmlSource(operationSessionId, previewTarget);
+        const directPersistence = persistence ?? (resolvedPath ? { sessionId: operationSessionId, path: resolvedPath } : null);
         let applied = false;
         try {
-          await previewElementApply({ selector: picked.selector, property: "delete", value: "" });
+          const edit = { selector: picked.selector, property: "delete", value: "" };
+          await previewElementApply(edit);
           applied = true;
-          return await persistElementChanges(persistence);
+          if (directPersistence) return await persistElementChanges(directPersistence);
+          await requestFrameworkSourceEdit("delete", picked, [edit], previewTarget);
+          return null;
         } catch (error) {
           if (applied) {
             try {
               await previewElementUndo();
             } catch (rollbackError) {
-              throw new Error(`${error instanceof Error ? error.message : String(error)}; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+              throw new Error(`${error instanceof Error ? error.message : String(error)}; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`, { cause: rollbackError });
             }
           }
           throw error;
@@ -936,7 +965,9 @@ export function DesignPreviewWorkbench({
       setElementSaving(false);
     }
     if (!operationIsCurrent()) return;
-    setStatus(persistedPath ? t("design.preview.code.saved", { path: persistedPath }) : t("design.preview.applied"));
+    setStatus(persistedPath
+      ? t("design.preview.code.saved", { path: persistedPath })
+      : t(persistence ? "design.preview.applied" : "design.preview.sourceEditRequested"));
     dismissPicked();
   };
   const updateElementDraft = (property: "text" | StyleProperty, value: string) => {

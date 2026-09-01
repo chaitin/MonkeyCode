@@ -1656,6 +1656,7 @@ fn main() {
             preview::preview_element_undo,
             preview::preview_capture,
             preview::preview_serialize,
+            preview::preview_resolve_url_html_source,
             preview::preview_save_html,
             baizhi::baizhi_status,
             baizhi::baizhi_send_code,

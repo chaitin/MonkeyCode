@@ -68,6 +68,7 @@
             "allow-preview-element-undo",
             "allow-preview-capture",
             "allow-preview-serialize",
+            "allow-preview-resolve-url-html-source",
             "allow-preview-save-html",
             "allow-list-wsl-distros",
             "allow-wsl-workdir-base",

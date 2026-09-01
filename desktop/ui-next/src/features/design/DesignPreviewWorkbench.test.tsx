@@ -21,10 +21,11 @@ let deferCaptures: boolean;
 let captureError: string | null;
 let applyFailureProperty: string | null;
 let saveFailure: boolean;
+let resolvedUrlHtmlPath: string | null;
 
 beforeEach(() => {
   setLocale("en");
-  calls = []; events = new Map(); pendingCreates = []; pendingDestroys = []; pendingPickerToggles = []; pendingSaves = []; deferCreates = false; deferDestroys = false; deferPickerToggles = false; deferSaves = false; deferCaptures = false; captureError = null; applyFailureProperty = null; saveFailure = false;
+  calls = []; events = new Map(); pendingCreates = []; pendingDestroys = []; pendingPickerToggles = []; pendingSaves = []; deferCreates = false; deferDestroys = false; deferPickerToggles = false; deferSaves = false; deferCaptures = false; captureError = null; applyFailureProperty = null; saveFailure = false; resolvedUrlHtmlPath = null;
   vi.mocked(composer.sendWithFiles).mockReset().mockResolvedValue(true);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ x: 400, y: 80, left: 400, top: 80, right: 1000, bottom: 480, width: 600, height: 400, toJSON() {} });
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
@@ -35,6 +36,7 @@ beforeEach(() => {
       if ((cmd === "preview_create" || cmd === "preview_create_artifact") && deferCreates) await new Promise<void>((resolve) => pendingCreates.push(resolve));
       if (cmd === "preview_destroy" && deferDestroys) await new Promise<void>((resolve) => pendingDestroys.push(resolve));
       if (cmd === "preview_picker_toggle" && deferPickerToggles) await new Promise<void>((resolve) => pendingPickerToggles.push(resolve));
+      if (cmd === "preview_resolve_url_html_source") return resolvedUrlHtmlPath;
       if (cmd === "preview_save_html" && saveFailure) throw new Error("save failed");
       if (cmd === "preview_save_html" && deferSaves) await new Promise<void>((resolve) => pendingSaves.push(resolve));
       if (cmd === "preview_serialize") queueMicrotask(() => events.get("preview-serialized")?.({ payload: { requestId: args?.requestId, html: "<html>serialized</html>" } }));
@@ -94,7 +96,7 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
   });
 
   // 四个动作两两相似,标签分不出差别;提示必须说清「去哪儿」——截图只进剪贴板、
-  // 编辑只改预览,是最容易被误解也最容易在改文案时丢掉的两条。
+  // URL 编辑优先直写 HTML、框架页面才交给 Agent,是最容易被误解也最容易在改文案时丢掉的两条。
   it("gives each toolbar action a tooltip that states where its result goes", async () => {
     setLocale("zh-CN");
     mount();
@@ -102,10 +104,10 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     expect(screen.getByRole("button", { name: "截图" }).getAttribute("title")).toContain("不发进对话");
     expect(screen.getByRole("button", { name: "注释" }).getAttribute("title")).toContain("发进对话");
     expect(screen.getByRole("button", { name: "标记" }).getAttribute("title")).toContain("发进对话");
-    expect(screen.getByRole("button", { name: "编辑" }).getAttribute("title")).toContain("不写回源码");
+    expect(screen.getByRole("button", { name: "编辑" }).getAttribute("title")).toContain("HTML 文件时直接写回");
 
     act(() => setLocale("en"));
-    expect((await screen.findByRole("button", { name: /Edit/ })).getAttribute("title")).toContain("preview only");
+    expect((await screen.findByRole("button", { name: /Edit/ })).getAttribute("title")).toContain("directly writes a uniquely matched HTML file");
   });
 
   it("creates with measured bounds, hides under an obscurer, restores and destroys", async () => {
@@ -927,6 +929,56 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
 
     expect(calls.some((c) => c.cmd === "preview_element_apply")).toBe(false);
     expect(screen.queryByRole("dialog", { name: "Selected element" })).toBeNull();
+  });
+
+  it("writes a uniquely matched localhost HTML source directly without using the agent", async () => {
+    resolvedUrlHtmlPath = "site/index.html";
+    mount();
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+    await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
+    act(() => events.get("preview-element-picked")?.({ payload: { selector: "#hero", text: "Hello", tag: "DIV", bounds: { x: 0, y: 0, width: 10, height: 10 }, styles: {} } }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete element" }));
+
+    await waitFor(() => expect(calls).toContainEqual({
+      cmd: "preview_save_html",
+      args: { sessionId: "s1", path: "site/index.html", html: "<html>serialized</html>" },
+    }));
+    expect(calls).toContainEqual({
+      cmd: "preview_resolve_url_html_source",
+      args: { sessionId: "s1", url: "http://localhost:5173/app" },
+    });
+    expect(composer.sendWithFiles).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toContain("Saved site/index.html");
+  });
+
+  it("sends localhost element deletion to the agent for a real framework source edit", async () => {
+    mount();
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+    await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
+    act(() => events.get("preview-element-picked")?.({ payload: { selector: ".design-brand-by", text: "by Open Design", tag: "SPAN", bounds: { x: 0, y: 0, width: 10, height: 10 }, styles: {} } }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete element" }));
+
+    await waitFor(() => expect(composer.sendWithFiles).toHaveBeenCalledOnce());
+    const [prompt, files] = vi.mocked(composer.sendWithFiles).mock.calls[0]!;
+    expect(prompt).toContain("real framework source code");
+    expect(prompt).toContain(".design-brand-by");
+    expect(prompt).toContain("delete");
+    expect(files[0]?.name).toBe("element-source-edit.json");
+    expect(calls.some((call) => call.cmd === "preview_save_html")).toBe(false);
+    expect(screen.getByRole("status").textContent).toContain("Source edit sent to the agent");
+  });
+
+  it("rolls back a localhost deletion when the source edit cannot be queued", async () => {
+    vi.mocked(composer.sendWithFiles).mockResolvedValueOnce(false);
+    mount();
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+    await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
+    act(() => events.get("preview-element-picked")?.({ payload: { selector: ".design-brand-by", text: "by Open Design", tag: "SPAN", bounds: { x: 0, y: 0, width: 10, height: 10 }, styles: {} } }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete element" }));
+
+    await waitFor(() => expect(calls.some((call) => call.cmd === "preview_element_undo")).toBe(true));
+    expect(screen.getByRole("dialog", { name: "Selected element" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("Send failed");
   });
 
   it("deletes an element from the editor footer and persists workspace HTML", async () => {
