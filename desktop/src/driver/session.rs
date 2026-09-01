@@ -1028,6 +1028,10 @@ impl ConnStatusPayload {
 #[derive(Debug)]
 pub(super) enum MaterializeSkillsError {
     RecoveryPending(String),
+    /// 技能库(store)侧失败。会话流程(创建/恢复/重建)对它降级——技能只是
+    /// 一个功能,不配阻断对话;set_skills 等技能自身操作仍按错误上报。
+    StoreFailed(String),
+    /// 会话基础设施失败(目录/transcript/非法 id):会话本来就无法运行,不可降级。
     Failed(String),
 }
 
@@ -1035,15 +1039,22 @@ impl MaterializeSkillsError {
     fn code(&self) -> ConnStatusErrorCode {
         match self {
             Self::RecoveryPending(_) => ConnStatusErrorCode::SkillRecoveryPending,
-            Self::Failed(_) => ConnStatusErrorCode::SkillMaterializeFailed,
+            Self::StoreFailed(_) | Self::Failed(_) => ConnStatusErrorCode::SkillMaterializeFailed,
         }
+    }
+
+    /// 会话流程可降级的错误集合:技能库侧问题(含待恢复)不阻断对话。
+    fn is_degradable_for_sessions(&self) -> bool {
+        matches!(self, Self::RecoveryPending(_) | Self::StoreFailed(_))
     }
 }
 
 impl std::fmt::Display for MaterializeSkillsError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::RecoveryPending(message) | Self::Failed(message) => formatter.write_str(message),
+            Self::RecoveryPending(message) | Self::StoreFailed(message) | Self::Failed(message) => {
+                formatter.write_str(message)
+            }
         }
     }
 }
@@ -1380,7 +1391,10 @@ impl OhmyDriver {
             }
         };
         self.recover_session_materialization(&sid, &sid).await?;
-        let skills = match self.materialize_skills(&sid, &sid, enabled_skills).await {
+        let skills = match self
+            .materialize_skills_or_degrade(&sid, &sid, enabled_skills)
+            .await
+        {
             Ok(skills) => skills,
             Err(error) => {
                 if let Some(path) = self.0.engine_session_dir(&sid) {
@@ -1848,9 +1862,10 @@ impl OhmyDriver {
             Err(_) => false,
         };
         // session_open 已持有 skills_gate + session file lock；这里进入共享
-        // SkillStoreState 并原子物化。任何错误（含 RecoveryPending）立即停止，
-        // 绝不能让 session/create 在旧/残缺目录上静默降级启动。
-        self.materialize_skills(&engine_id, id, skills_of_meta(meta))
+        // SkillStoreState 并原子物化。技能库侧失败（含 RecoveryPending）降级
+        // 继续:恢复对话优先于技能快照的新鲜度,引擎沿用上次物化的目录（或
+        // 无技能）,技能库修复后下一次 resume/set_skills 重新物化。
+        self.materialize_skills_or_degrade(&engine_id, id, skills_of_meta(meta))
             .await?;
         operation_guards.release_process();
         let result = match self.rpc("session/create", params.clone()).await {
@@ -3614,7 +3629,7 @@ impl OhmyDriver {
             engine_session_create_params(&workdir, Some(eng.as_str()), Some(model_id), mode);
         let skills = match prepared_skills {
             Some(skills) => skills,
-            None => self.materialize_skills(&eng, id, enabled).await?,
+            None => self.materialize_skills_or_degrade(&eng, id, enabled).await?,
         };
         if let Some(guards) = &mut operation_guards {
             guards.release_process();
@@ -3838,11 +3853,34 @@ impl OhmyDriver {
                     error @ SkillStoreError::RecoveryPending(_) => {
                         MaterializeSkillsError::RecoveryPending(error.to_string())
                     }
-                    other => MaterializeSkillsError::Failed(other.to_string()),
+                    other => MaterializeSkillsError::StoreFailed(other.to_string()),
                 })
         })
         .await
         .map_err(|e| MaterializeSkillsError::Failed(format!("技能物化任务失败: {e}")))?
+    }
+
+    /// 会话流程(创建/恢复/重建)的物化入口:技能库侧失败降级为"沿用现存或
+    /// 空技能目录"继续对话,只记日志;目录/transcript 等会话基础设施失败仍然
+    /// 致命。降级时返回调用方请求的启用列表(None → 空)作为快照回退——之后
+    /// 技能库恢复,resume/set_skills 会按这份记录重新物化。
+    async fn materialize_skills_or_degrade(
+        &self,
+        engine_id: &str,
+        session_id: &str,
+        enabled: Option<Vec<String>>,
+    ) -> Result<Vec<String>, MaterializeSkillsError> {
+        let fallback = enabled.clone().unwrap_or_default();
+        match self.materialize_skills(engine_id, session_id, enabled).await {
+            Ok(skills) => Ok(skills),
+            Err(error) if error.is_degradable_for_sessions() => {
+                eprintln!(
+                    "[desktop] 会话 {session_id} 技能物化失败,对话继续(本次不带/沿用旧技能): {error}"
+                );
+                Ok(fallback)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// 出站 RPC 用的引擎会话 id(通常 == 壳 sid;守卫路径换绑过则不同,
@@ -3945,7 +3983,7 @@ impl OhmyDriver {
         // create 只消费这份规范化结果，绝不二次入门。
         let current_engine_id = self.engine_id(id);
         let skills = self
-            .materialize_skills(&current_engine_id, id, enabled)
+            .materialize_skills_or_degrade(&current_engine_id, id, enabled)
             .await?;
         if self
             .0

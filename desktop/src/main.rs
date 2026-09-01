@@ -75,29 +75,36 @@ impl Drop for SkillsCatalogWatcher {
 
 fn initialize_skill_runtime(
     config_dir: PathBuf,
-) -> Result<(skills::SkillStoreState, SkillImportState), String> {
+) -> (skills::SkillStoreState, SkillImportState) {
     initialize_skill_runtime_with(config_dir, |store| {
         // recovery_issues 会先接管所有可自动恢复事务；不可自动恢复项以列表保留，
-        // 让应用启动后可经 recovery IPC 解决，真正的 I/O/锁错误则阻止初始化。
+        // 让应用启动后可经 recovery IPC 解决。
         store.recovery_issues().map(|_| ())
     })
 }
 
+/// 技能库是应用的一个功能，任何初始化/预检失败都不阻止应用启动：store 延迟
+/// 初始化（见 SkillStoreState::new_deferred），预检失败只记录，后续技能操作
+/// 按操作粒度重试并报错。预检失败时导入子系统保持 Retryable——启动阶段跳过
+/// 可能误删他进程暂存的孤儿清理，下一次导入 IPC 再重试完整初始化。
 fn initialize_skill_runtime_with(
     config_dir: PathBuf,
     recover: impl FnOnce(&skills::SkillStoreState) -> Result<(), SkillStoreError>,
-) -> Result<(skills::SkillStoreState, SkillImportState), String> {
-    let store = skills::SkillStoreState::new(config_dir.clone())
-        .map_err(|error| format!("初始化技能库状态失败: {error}"))?;
-    recover(&store).map_err(|error| format!("启动技能事务恢复失败: {error}"))?;
+) -> (skills::SkillStoreState, SkillImportState) {
+    let store = skills::SkillStoreState::new_deferred(config_dir.clone());
     let lease_store = store.clone();
-    let imports = SkillImportState::open_resilient(&config_dir, move |path| {
-        lease_store.protects_staging_path(path)
-    });
+    let protects = move |path: &std::path::Path| lease_store.protects_staging_path(path);
+    if let Err(error) = recover(&store) {
+        eprintln!("[desktop] 技能库启动预检失败(应用继续启动，技能操作时重试): {error}");
+        let imports =
+            SkillImportState::unavailable_retryable(&config_dir, protects, error.to_string());
+        return (store, imports);
+    }
+    let imports = SkillImportState::open_resilient(&config_dir, protects);
     if let Some(error) = imports.unavailable_error() {
         eprintln!("[desktop] 技能导入暂存初始化失败，导入功能暂不可用: {error:?}");
     }
-    Ok((store, imports))
+    (store, imports)
 }
 
 fn start_skills_catalog_watcher(
@@ -1720,15 +1727,16 @@ fn main() {
             // 配置加载:MonkeyCode 服务地址由设置指定,保存后替换服务快照;
             // 配置损坏时按默认值落官方云,错误页照常外显。
             let cfg_dir = config::config_dir(app.handle()).map_err(std::io::Error::other)?;
-            // 状态构造、事务恢复、跨进程锁等待与 lease 孤儿回收都有文件 I/O，
-            // setup 只等待 blocking worker 的结果，不在 Tauri 事件线程直接执行。
+            // 事务恢复、跨进程锁等待与 lease 孤儿回收都有文件 I/O，setup 只
+            // 等待 blocking worker 的结果，不在 Tauri 事件线程直接执行。技能库
+            // 环境问题（权限/坏链接/磁盘错误）不会让这里失败——store 延迟
+            // 初始化，错误在具体技能操作时按操作粒度暴露并重试。
             let skill_cfg_dir = cfg_dir.clone();
             let (skill_store, skill_imports) =
                 tauri::async_runtime::block_on(tauri::async_runtime::spawn_blocking(move || {
                     initialize_skill_runtime(skill_cfg_dir)
                 }))
-                .map_err(|error| std::io::Error::other(format!("技能状态后台初始化失败: {error}")))?
-                .map_err(std::io::Error::other)?;
+                .map_err(|error| std::io::Error::other(format!("技能状态后台初始化失败: {error}")))?;
             app.manage(skill_store.clone());
             app.manage(skill_imports);
             app.manage(start_skills_catalog_watcher(
@@ -2307,25 +2315,33 @@ mod skill_runtime_registration_tests {
     }
 
     #[test]
-    fn startup_recovery_failure_is_propagated_before_lease_cleanup_starts() {
+    fn startup_recovery_failure_keeps_app_booting_and_defers_import_cleanup() {
         let root = test_dir("recovery-error");
-        let result = initialize_skill_runtime_with(root.clone(), |_| {
+        let (store, imports) = initialize_skill_runtime_with(root.clone(), |_| {
             Err(SkillStoreError::Io {
                 operation: "测试启动恢复",
                 path: "transaction".into(),
                 message: "injected".into(),
             })
         });
-        let error = match result {
-            Ok(_) => panic!("恢复错误不应被静默忽略"),
-            Err(error) => error,
-        };
-        assert!(error.contains("启动技能事务恢复失败"));
-        assert!(error.contains("injected"));
+        // 预检失败绝不阻止应用启动；技能库延迟初始化，操作照常可用。
+        assert!(store.snapshot(None).unwrap().skills.is_empty());
+        // 启动阶段不触碰暂存（不做可能误删他进程暂存的孤儿清理），且导入
+        // 保持 unavailable 并携带可诊断的原因。
         assert!(
             !root.join("skill-import-staging").exists(),
-            "恢复失败后不应继续创建 lease 或清理孤儿暂存"
+            "预检失败后不应继续创建 lease 或清理孤儿暂存"
         );
+        let error = imports
+            .unavailable_error()
+            .expect("预检失败后导入应保持 unavailable");
+        let payload = serde_json::to_value(error).unwrap();
+        assert_eq!(payload["code"], "skill-import-unavailable");
+        assert!(payload["message"].as_str().unwrap().contains("injected"));
+        // Retryable：下一次导入操作重试完整初始化，环境正常即恢复。
+        imports
+            .ensure_available()
+            .expect("环境正常时导入重试应成功");
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -2337,8 +2353,7 @@ mod skill_runtime_registration_tests {
         let corrupt = b"{ definitely-not-json";
         std::fs::write(&ledger, corrupt).unwrap();
 
-        let (_store, imports) = initialize_skill_runtime_with(root.clone(), |_| Ok(()))
-            .expect("导入子系统失败不应阻止核心技能库与应用启动");
+        let (_store, imports) = initialize_skill_runtime_with(root.clone(), |_| Ok(()));
         let error = imports
             .ensure_available()
             .expect_err("损坏账本必须保持 unavailable");

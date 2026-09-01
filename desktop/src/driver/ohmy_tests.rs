@@ -3340,8 +3340,9 @@ async fn new_session_still_persists_explicit_skills_at_revision_one() {
     assert_eq!(meta["skills_revision"], 1);
 }
 
+/// 技能物化失败只降级(快照回退到请求列表、不物化任何技能),对话照常创建。
 #[tokio::test]
-async fn new_session_materialize_failure_sends_zero_create_rpcs() {
+async fn new_session_materialize_failure_degrades_and_still_creates_session() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::symlink;
@@ -3355,24 +3356,43 @@ async fn new_session_materialize_failure_sends_zero_create_rpcs() {
         std::fs::write(skill.join("real.txt"), "real").unwrap();
         symlink("real.txt", skill.join("link.txt")).unwrap();
 
-        let error = OhmyDriver(inner.clone())
-            .session_create_with_kind(
-                &std::env::temp_dir().to_string_lossy(),
-                "测试模型",
-                false,
-                "local",
-                "",
-                Some(vec!["broken".into()]),
-            )
-            .await
-            .unwrap_err();
-        assert!(error.contains("物化"), "{error}");
-        assert!(
-            tokio::time::timeout(Duration::from_millis(100), stdin_rx.recv())
+        let driver = OhmyDriver(inner.clone());
+        let create = tokio::spawn(async move {
+            driver
+                .session_create_with_kind(
+                    &std::env::temp_dir().to_string_lossy(),
+                    "测试模型",
+                    false,
+                    "local",
+                    "",
+                    Some(vec!["broken".into()]),
+                )
                 .await
-                .is_err(),
-            "新会话物化准备失败后仍发送了 RPC"
+        });
+        let request: Value = serde_json::from_str(
+            &tokio::time::timeout(Duration::from_secs(2), stdin_rx.recv())
+                .await
+                .expect("物化降级后应照常发送 create RPC")
+                .unwrap()
+                .expect("非 shutdown create RPC"),
+        )
+        .unwrap();
+        assert_eq!(request["method"], "session/create");
+        let sid = request["params"]["resume"].as_str().unwrap().to_string();
+        answer_rpc(
+            &inner,
+            &request,
+            json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "session_id": &sid } }),
         );
+        let result = create.await.unwrap().unwrap();
+        // 降级快照回退到请求列表并进 sidecar；引擎目录里没有物化出的技能。
+        assert_eq!(result["skills"], json!(["broken"]));
+        assert_eq!(inner.read_sidecar(&sid)["skills"], json!(["broken"]));
+        assert!(!inner
+            .engine_session_dir(&sid)
+            .unwrap()
+            .join("skills")
+            .exists());
     }
 }
 
@@ -3561,7 +3581,7 @@ async fn delete_succeeds_after_authoritative_sidecar_removal_when_derived_cleanu
 
 #[cfg(unix)]
 #[tokio::test]
-async fn resume_materialize_failure_keeps_old_tree_stops_create_and_sets_code() {
+async fn resume_materialize_failure_degrades_keeps_old_tree_and_still_creates() {
     use std::os::unix::fs::symlink;
 
     let (inner, events, mut stdin_rx) = bare_inner_rpc("resume-materialize-failure");
@@ -3581,30 +3601,27 @@ async fn resume_materialize_failure_keeps_old_tree_stops_create_and_sets_code() 
     std::fs::write(target.join("old.marker"), "old").unwrap();
 
     OhmyDriver(inner.clone()).session_open("s1").await.unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(2);
-    loop {
-        if events.lock().unwrap().iter().any(|(name, payload)| {
-            name == "conn-status:s1" && payload["code"] == "skill-materialize-failed"
-        }) {
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline, "未收到结构化物化错误");
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    let request: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(2), stdin_rx.recv())
+            .await
+            .expect("物化降级后 resume 应照常发起 session/create")
+            .unwrap()
+            .expect("非 shutdown create RPC"),
+    )
+    .unwrap();
+    assert_eq!(request["method"], "session/create");
+    // 旧技能树原样保留(引擎沿用上次物化结果)，且不再向对话上报技能错误。
     assert_eq!(
         std::fs::read_to_string(target.join("old.marker")).unwrap(),
         "old"
     );
-    assert!(
-        tokio::time::timeout(Duration::from_millis(100), stdin_rx.recv())
-            .await
-            .is_err(),
-        "物化失败后仍调用了 session/create"
-    );
+    assert!(events.lock().unwrap().iter().all(|(name, payload)| {
+        !(name == "conn-status:s1" && payload["code"] == "skill-materialize-failed")
+    }));
 }
 
 #[tokio::test]
-async fn resume_recovery_pending_stops_create_and_sets_recovery_code() {
+async fn resume_recovery_pending_degrades_and_still_creates() {
     let (inner, events, mut stdin_rx) = bare_inner_rpc("resume-recovery-pending");
     inner.write_sidecar("s1", |meta| {
         meta["workdir"] = json!(std::env::temp_dir().to_string_lossy());
@@ -3617,29 +3634,23 @@ async fn resume_recovery_pending_stops_create_and_sets_recovery_code() {
     std::fs::remove_file(inner.data_dir.parent().unwrap().join("skills.revision")).unwrap();
 
     OhmyDriver(inner.clone()).session_open("s1").await.unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(2);
-    loop {
-        if events.lock().unwrap().iter().any(|(name, payload)| {
-            name == "conn-status:s1" && payload["code"] == "skill-recovery-pending"
-        }) {
-            break;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "未收到结构化恢复门控错误"
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    let request: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(2), stdin_rx.recv())
+            .await
+            .expect("RecoveryPending 降级后 resume 应照常发起 session/create")
+            .unwrap()
+            .expect("非 shutdown create RPC"),
+    )
+    .unwrap();
+    assert_eq!(request["method"], "session/create");
+    // 旧技能树原样保留，待恢复状态不再阻断对话（恢复入口仍在技能页）。
     assert_eq!(
         std::fs::read_to_string(target.join("old.marker")).unwrap(),
         "old"
     );
-    assert!(
-        tokio::time::timeout(Duration::from_millis(100), stdin_rx.recv())
-            .await
-            .is_err(),
-        "RecoveryPending 后仍调用了 session/create"
-    );
+    assert!(events.lock().unwrap().iter().all(|(name, payload)| {
+        !(name == "conn-status:s1" && payload["code"] == "skill-recovery-pending")
+    }));
 }
 
 #[tokio::test]

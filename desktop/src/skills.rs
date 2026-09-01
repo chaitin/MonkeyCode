@@ -303,6 +303,8 @@ struct SkillStoreStateInner {
     defaults_path: PathBuf,
     revision_path: PathBuf,
     observed: Mutex<Option<StoreRevision>>,
+    /// 延迟初始化闸门，见 ensure_ready。
+    ready: Mutex<bool>,
     #[cfg(test)]
     fail_next_revision_write: std::sync::atomic::AtomicBool,
 }
@@ -315,9 +317,12 @@ struct RevisionDocument {
 }
 
 impl SkillStoreState {
-    pub(crate) fn new(config_dir: PathBuf) -> Result<Self, SkillStoreError> {
-        ensure_plain_directory(&config_dir)?;
-        let state = Self {
+    /// 生产构造入口：不做任何磁盘 I/O，目录检查与 revision 引导推迟到第一次
+    /// 技能操作（ensure_ready）。技能库只是应用的一个功能——环境问题（权限、
+    /// 坏链接、磁盘错误）在具体技能操作时按操作粒度报错并自动重试，绝不
+    /// 阻止应用启动。
+    pub(crate) fn new_deferred(config_dir: PathBuf) -> Self {
+        Self {
             inner: Arc::new(SkillStoreStateInner {
                 gate: RwLock::new(()),
                 user_dir: user_dir(&config_dir),
@@ -325,12 +330,36 @@ impl SkillStoreState {
                 revision_path: config_dir.join(REVISION_FILE),
                 config_dir,
                 observed: Mutex::new(None),
+                ready: Mutex::new(false),
                 #[cfg(test)]
                 fail_next_revision_write: std::sync::atomic::AtomicBool::new(false),
             }),
-        };
-        state.initialize_if_new()?;
+        }
+    }
+
+    /// 构造并立即完成初始化；需要确定就绪语义的调用方（测试、备用驱动入口）使用。
+    pub(crate) fn new(config_dir: PathBuf) -> Result<Self, SkillStoreError> {
+        let state = Self::new_deferred(config_dir);
+        state.ensure_ready()?;
         Ok(state)
+    }
+
+    /// 所有技能库入口的第一步。成功一次后只剩一次 Mutex 检查；失败不缓存，
+    /// 下一次操作重试完整初始化，环境修复后无需重启即恢复。
+    /// 锁序：ready → gate → skills.lock；持有 gate 的路径绝不取 ready。
+    fn ensure_ready(&self) -> Result<(), SkillStoreError> {
+        let mut ready = self
+            .inner
+            .ready
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if *ready {
+            return Ok(());
+        }
+        ensure_store_root_directory(&self.inner.config_dir)?;
+        self.initialize_if_new()?;
+        *ready = true;
+        Ok(())
     }
 
     #[cfg(test)]
@@ -360,6 +389,7 @@ impl SkillStoreState {
     pub(crate) fn poll_external_catalog_revision(
         &self,
     ) -> Result<Option<StoreRevision>, SkillStoreError> {
+        self.ensure_ready()?;
         let revision = read_revision(&self.inner.revision_path)?.ok_or_else(|| {
             SkillStoreError::RecoveryPending(vec![revision_recovery_issue(
                 "非空技能库缺失 skills.revision，禁止重置为新 store".into(),
@@ -478,6 +508,7 @@ impl SkillStoreState {
         &self,
         operation: impl FnOnce(&StoreRevision) -> Result<T, SkillStoreError>,
     ) -> Result<T, SkillStoreError> {
+        self.ensure_ready()?;
         let _process = self
             .inner
             .gate
@@ -523,6 +554,7 @@ impl SkillStoreState {
         &self,
         target_name: &str,
     ) -> Result<TargetBaseline, SkillStoreError> {
+        self.ensure_ready()?;
         // baseline 是提交校验的一部分，按要求在同一 write 锁内捕获
         // presence/type/稳定树身份并解析 SKILL.md。
         let _process = self
@@ -603,6 +635,7 @@ impl SkillStoreState {
     /// 事务恢复机已废弃：没有事务日志就没有待恢复项。保留 IPC 外形，
     /// 顺手清扫历史版本的事务残留目录。
     pub(crate) fn recovery_issues(&self) -> Result<Vec<SkillRecoveryIssue>, SkillStoreError> {
+        self.ensure_ready()?;
         let _process = self
             .inner
             .gate
@@ -665,6 +698,7 @@ impl SkillStoreState {
         ),
         SkillStoreError,
     > {
+        self.ensure_ready()?;
         let _process = self
             .inner
             .gate
@@ -752,6 +786,7 @@ impl SkillStoreState {
         &self,
         operation: impl FnOnce(&Path, &Path) -> Result<T, SkillStoreError>,
     ) -> Result<(T, StoreRevision), SkillStoreError> {
+        self.ensure_ready()?;
         let _process = self
             .inner
             .gate
@@ -853,6 +888,24 @@ impl SkillStoreState {
         // `observed` 是 watcher 的交付水位，不是任意读者的磁盘缓存。
         // 普通 read（尤其自动恢复后的重读）不能吞掉尚未 emit 的 revision。
         Ok(revision)
+    }
+}
+
+/// 技能库根目录（应用配置目录）允许是符号链接/junction：把数据目录迁到
+/// 其他盘再 mklink 回来是 Windows 用户的常见做法，而能替换 AppData 根的
+/// 主体本就拥有该用户全部权限，校验根目录换不来任何防御。链接劫持防护由
+/// 目录内部条目的逐层校验承担（ensure_plain_directory / scan_tree），与根
+/// 是否为链接无关。这里跟随链接，只要求最终指向一个目录。
+fn ensure_store_root_directory(path: &Path) -> Result<(), SkillStoreError> {
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_dir() => Ok(()),
+        Ok(_) => Err(SkillStoreError::unsafe_object(
+            path.display().to_string(),
+            "必须是目录或指向目录的链接",
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => fs::create_dir_all(path)
+            .map_err(|error| SkillStoreError::io("创建技能库目录", path, error)),
+        Err(error) => Err(SkillStoreError::io("检查技能库目录", path, error)),
     }
 }
 
@@ -1678,6 +1731,51 @@ mod tests {
         let dir = root.join(name);
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("SKILL.md"), content).unwrap();
+    }
+
+    /// 用户把数据目录迁到别的盘再链接回原位（Windows 上 mklink /D 或 /J）
+    /// 是常见做法；技能库根必须跟随链接工作，否则应用启动即失败。
+    #[cfg(unix)]
+    #[test]
+    fn store_root_symlink_is_followed_and_fully_usable() {
+        let real = test_dir("symlink-root-real");
+        let holder = test_dir("symlink-root-link");
+        let link = holder.join("config");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let state = SkillStoreState::new(link.clone()).unwrap();
+        state.save_skill("linked", "---\nname: linked\n---\nbody", None).unwrap();
+        let snapshot = state.snapshot(None).unwrap();
+        assert_eq!(snapshot.skills.len(), 1);
+        assert_eq!(snapshot.skills[0].name, "linked");
+        // 内容确实落在链接指向的真实目录里。
+        assert!(real.join("skills/linked/SKILL.md").is_file());
+        assert!(real.join(REVISION_FILE).is_file());
+        // 通过真实路径打开的是同一个 store（同 store_id，revision 连续）。
+        let direct = SkillStoreState::new(real.clone()).unwrap();
+        assert_eq!(direct.snapshot(None).unwrap().store_id, snapshot.store_id);
+    }
+
+    /// 技能库环境坏掉只能让技能操作报错，绝不允许影响构造（应用启动）；
+    /// 环境修复后同一实例的下一次操作自动完成初始化，无需重启。
+    #[test]
+    fn deferred_init_failure_blocks_operations_then_recovers_without_restart() {
+        let holder = test_dir("deferred-root");
+        let root = holder.join("config");
+        fs::write(&root, b"not a dir").unwrap();
+
+        let state = SkillStoreState::new_deferred(root.clone());
+        assert!(state.snapshot(None).is_err());
+        assert!(state.poll_external_catalog_revision().is_err());
+        assert!(state.save_skill("blocked", "# blocked", None).is_err());
+
+        fs::remove_file(&root).unwrap();
+        state
+            .save_skill("revived", "---\nname: revived\n---\nbody", None)
+            .unwrap();
+        let snapshot = state.snapshot(None).unwrap();
+        assert_eq!(snapshot.skills.len(), 1);
+        assert_eq!(snapshot.skills[0].name, "revived");
     }
 
     #[test]
