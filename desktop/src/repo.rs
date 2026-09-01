@@ -9,6 +9,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
@@ -173,18 +174,30 @@ pub fn dispatch(ctx: &RepoCtx, kind: &str, payload: &Value) -> Value {
 /// 列出目录内容(单层,非递归)。dir 为空表示工作区根。目录在前,再按名排序。
 fn list_files(ctx: &RepoCtx, dir: &str) -> Result<Value, String> {
     let target = ctx.resolve(dir)?;
-    let items = std::fs::read_dir(&target).map_err(|e| format!("读取目录失败: {e}"))?;
     let mut out: Vec<(bool, String, u64)> = Vec::new();
-    for it in items.flatten() {
-        let name = it.file_name().to_string_lossy().into_owned();
-        if name == ".git" {
-            continue;
+    match std::fs::read_dir(&target) {
+        Ok(items) => {
+            for it in items.flatten() {
+                let name = it.file_name().to_string_lossy().into_owned();
+                if name == ".git" {
+                    continue;
+                }
+                let Ok(md) = it.metadata() else { continue };
+                out.push((md.is_dir(), name, md.len()));
+                if out.len() >= MAX_LIST_ITEMS {
+                    break;
+                }
+            }
         }
-        let Ok(md) = it.metadata() else { continue };
-        out.push((md.is_dir(), name, md.len()));
-        if out.len() >= MAX_LIST_ITEMS {
-            break;
+        Err(host_error) if ctx.wsl_distro.is_some() => {
+            out = list_files_in_wsl(ctx, dir).map_err(|wsl_error| {
+                format!(
+                    "读取目录失败({}): {host_error}; WSL 读取也失败: {wsl_error}",
+                    target.display()
+                )
+            })?;
         }
+        Err(error) => return Err(format!("读取目录失败({}): {error}", target.display())),
     }
     out.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
     let base = if dir.is_empty() {
@@ -199,6 +212,71 @@ fn list_files(ctx: &RepoCtx, dir: &str) -> Result<Value, String> {
         })
         .collect();
     Ok(Value::Array(entries))
+}
+
+/// Windows 无法读取某些 WSL/DrvFs 路径时，在对应发行版内读取单层目录。
+/// readlink -f 同时把符号链接收敛成真实路径，case 守住 workdir 边界；find
+/// 用 NUL 分隔三元组，文件名中的空格、换行、引号和反斜杠都不会破坏协议。
+fn list_files_in_wsl(ctx: &RepoCtx, dir: &str) -> Result<Vec<(bool, String, u64)>, String> {
+    let distro = ctx.wsl_distro.as_deref().ok_or("缺少 WSL 发行版")?;
+    let target = if dir.is_empty() {
+        ctx.workdir.clone()
+    } else {
+        format!(
+            "{}/{}",
+            ctx.workdir.trim_end_matches('/'),
+            dir.replace('\\', "/")
+        )
+    };
+    let script = format!(
+        r#"set -eu
+root=$(readlink -f -- "$1")
+target=$(readlink -f -- "$2")
+if [ "$target" != "$root" ]; then
+  case "$target" in "$root"/*) ;; *) echo '路径超出工作区' >&2; exit 13 ;; esac
+fi
+find "$target" -mindepth 1 -maxdepth 1 -printf '%f\0%y\0%s\0' | head -z -n {}"#,
+        MAX_LIST_ITEMS * 3
+    );
+    let args = vec![
+        "-d".into(),
+        distro.into(),
+        "--exec".into(),
+        "/bin/sh".into(),
+        "-c".into(),
+        script,
+        "monkeycode-repo-list".into(),
+        ctx.workdir.clone(),
+        target,
+    ];
+    let output = crate::wsl::run_wsl_bytes(&args, Duration::from_secs(10))?;
+    parse_wsl_directory_entries(&output)
+}
+
+fn parse_wsl_directory_entries(data: &[u8]) -> Result<Vec<(bool, String, u64)>, String> {
+    let mut fields = data.split(|byte| *byte == 0);
+    let mut entries = Vec::new();
+    loop {
+        let Some(name) = fields.next() else { break };
+        if name.is_empty() {
+            break;
+        }
+        let kind = fields.next().ok_or("WSL 目录响应缺少类型")?;
+        let size = fields.next().ok_or("WSL 目录响应缺少大小")?;
+        let name = String::from_utf8_lossy(name).into_owned();
+        if name == ".git" {
+            continue;
+        }
+        let size = std::str::from_utf8(size)
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .ok_or("WSL 目录响应大小无效")?;
+        entries.push((kind == b"d", name, size));
+        if entries.len() >= MAX_LIST_ITEMS {
+            break;
+        }
+    }
+    Ok(entries)
 }
 
 fn preview_files(ctx: &RepoCtx) -> Result<Value, String> {
@@ -474,6 +552,20 @@ fn reveal(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wsl_directory_protocol_preserves_special_names_and_filters_git() {
+        let data = b"src\0d\04096\0line one\nline two.txt\0f\012\0.git\0d\04096\0";
+        assert_eq!(
+            parse_wsl_directory_entries(data).unwrap(),
+            vec![
+                (true, "src".into(), 4096),
+                (false, "line one\nline two.txt".into(), 12),
+            ]
+        );
+        assert!(parse_wsl_directory_entries(b"name\0f\0bad\0").is_err());
+        assert!(parse_wsl_directory_entries(b"name\0").is_err());
+    }
 
     #[cfg(windows)]
     #[test]
