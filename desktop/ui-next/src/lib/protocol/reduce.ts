@@ -771,8 +771,15 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
       };
     }
     case "task-error": {
-      const data = frameData<{ error?: string; terminal?: boolean }>(f);
+      const data = frameData<{ error?: string; terminal?: boolean; details?: string; message?: string }>(f);
       const terminal = data?.terminal !== false;
+      // 错误文案字段按端别分叉:本地引擎帧(frame.rs)是 {error};云端
+      // TaskStream 是 {details, message}——details 才是完整错误(如
+      // "[EXECUTION_FAILED] task execution failed: 模型不存在或无权访问"),
+      // message 往往只是泛化分类。只认 error 会把云端错误一律折成
+      // 「未知错误」,真实原因整个被吞(2026-09-01 报障)。优先级对齐
+      // mobile messages/handler.ts:details > message > error。
+      const reason = data?.details || data?.message || data?.error;
       return {
         ...s,
         // 本地引擎先发 error 事件、稍后才发权威 turn/stopped。terminal=false
@@ -785,8 +792,8 @@ export function reduceFrame(s: ChatState, f: Frame): ChatState {
             : s.lastTerminalSeq,
         items: [
           ...(terminal ? expireOpenAsks(s.items) : s.items),
-          data?.error
-            ? { kind: "sys" as const, tag: "error" as const, text: "", key: "chat.sys.error" as const, params: { reason: data.error }, error: true }
+          reason
+            ? { kind: "sys" as const, tag: "error" as const, text: "", key: "chat.sys.error" as const, params: { reason }, error: true }
             : { kind: "sys" as const, tag: "error" as const, text: "", key: "chat.sys.errorUnknown" as const, error: true },
         ],
       };
