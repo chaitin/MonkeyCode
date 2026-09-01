@@ -586,6 +586,58 @@ async fn web_login_probe_requires_full_cookie_chain_and_keeps_jar_clean() {
     assert!(user.is_null());
 }
 
+/// 旧版私有化服务端缺同步端点(backend 2026-07-30 才有 ohmyagent/api-keys
+/// 与 users/models):echo 框架 404 的 {"message":"Not Found"} 不得裸透传
+/// (2026-09-01 报障:界面只见一句 Not Found)——非包壳的框架错误页带上
+/// 域与状态码;同步链路首跳另附升级指引;业务失败包壳(带 code)的产品
+/// 文案仍原样透传。
+#[tokio::test(flavor = "multi_thread")]
+async fn legacy_server_missing_sync_endpoint_reports_upgrade_hint() {
+    use super::monkeycode::ENV_MC;
+    let (url, _stop) = serve(Arc::new(|_req: Req| {
+        // 旧服务端没有该路由:echo 默认 404 形态
+        Resp::json(404, json!({ "message": "Not Found" }))
+    }));
+    let svc = Service::test_service(Endpoints {
+        account: url.clone(),
+        model_gateway: url.clone(),
+        mcp_gateway: url.clone(),
+        monkeycode: url.clone(),
+    });
+    let err = super::monkeycode::mc_ohmyagent_key_create(&svc)
+        .await
+        .err()
+        .expect("旧服务端应失败")
+        .msg();
+    assert!(err.contains("HTTP 404"), "{err}");
+    assert!(err.contains("Not Found"), "{err}");
+    assert!(err.contains("请升级后端"), "{err}");
+
+    // 非包壳框架 404(无 code/success)在通用解包层就带上域与状态码
+    match unwrap_envelope(r#"{"message":"Not Found"}"#.as_bytes(), 404, &ENV_MC) {
+        Err(BzErr::Other(msg)) => assert_eq!(msg, "MonkeyCode 请求失败(HTTP 404): Not Found"),
+        Err(BzErr::Unauthorized(msg)) => panic!("框架 404 不是会话失效: {msg}"),
+        Ok(_) => panic!("404 不应判成功"),
+    }
+    // 业务失败包壳(带 code)的产品文案原样透传,2xx 与非 2xx 同口径
+    match unwrap_envelope(
+        r#"{"code":10606,"message":"登录失败"}"#.as_bytes(),
+        200,
+        &ENV_MC,
+    ) {
+        Err(BzErr::Other(msg)) => assert_eq!(msg, "登录失败"),
+        _ => panic!("业务失败应原样透传"),
+    }
+    match unwrap_envelope(
+        r#"{"code":1,"message":"配额耗尽"}"#.as_bytes(),
+        400,
+        &ENV_MC,
+    ) {
+        Err(BzErr::Other(msg)) => assert_eq!(msg, "配额耗尽"),
+        _ => panic!("业务失败应原样透传"),
+    }
+}
+
 /// 模型请求地址(llmproxy)的解析口径,2026-08-07 用户定案:官方云走独立
 /// 代理子域,自建看用户填没填——填了用填的,没填跟随服务地址 /v1。
 #[test]

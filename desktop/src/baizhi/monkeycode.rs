@@ -969,7 +969,16 @@ pub async fn mc_ohmyagent_key_create(svc: &Service) -> BzResult<Value> {
         "/api/v1/users/ohmyagent/api-keys",
         None,
     )
-    .await?;
+    .await
+    .map_err(|e| match e {
+        // 该端点 2026-07-30(backend b98377b3)才有,同步链路它打头阵:
+        // 旧版私有化服务端在这里 404 是"版本过旧"的典型形态,指条升级的
+        // 路,而不是让用户对着框架 404 文案猜(2026-09-01 报障)
+        BzErr::Other(m) if m.contains("HTTP 404") => other(format!(
+            "{m}——服务端缺少会员模型同步端点,私有化部署版本过旧,请升级后端后重试"
+        )),
+        e => e,
+    })?;
     let has = |k: &str| {
         out.get(k)
             .and_then(Value::as_str)

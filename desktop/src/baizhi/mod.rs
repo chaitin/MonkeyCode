@@ -758,6 +758,14 @@ pub(crate) fn unwrap_envelope(data: &[u8], status: u16, p: &Envelope) -> BzResul
         if status == 401 {
             return Err(BzErr::Unauthorized(msg));
         }
+        // 非包壳的框架错误页(非 2xx、JSON 形但既无 code 也无 success):
+        // 业务失败恒带包壳字段,这里是路由不存在之类的框架应答——echo 默认
+        // 404 是 {"message":"Not Found"},原样透传就是一句没头没尾的英文
+        // (2026-09-01 报障:旧版私有化服务端缺同步端点,界面只见 Not Found)。
+        // 带上域与状态码才可排查;产品文案的业务失败仍原样透传。
+        if !is2xx && v.get("code").is_none() && v.get("success").is_none() {
+            return Err(other(format!("{}请求失败(HTTP {status}): {msg}", p.label)));
+        }
         return Err(other(msg));
     }
     match v.get("data") {
