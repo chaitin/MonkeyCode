@@ -495,7 +495,7 @@ export const en: Record<MessageKey, string> = {
     "Address of the model proxy (llmproxy); set it separately for split deployments or to bypass proxy auth for model traffic",
   "account.server.skipTlsVerify": "Skip TLS certificate verification (self-signed certificates)",
   "account.server.skipTlsVerifyHint":
-    "Check when the server uses a self-signed certificate; applies only to requests to this service URL. Connections can be intercepted — use only on trusted private networks",
+    "Check when the server uses a self-signed certificate; applies to requests to this service URL and to member-model LLM requests. Connections can be intercepted — use only on trusted private networks",
   "account.server.hint": "After switching the service URL, sign in again and re-sync member models.",
 
   "settings.browser.statusLoading": "Reading status…",

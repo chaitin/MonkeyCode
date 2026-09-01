@@ -510,7 +510,7 @@ export const zh = {
   "account.server.llmBaseUrlPlaceholder": "留空 = 服务地址/v1",
   "account.server.llmBaseUrlHint": "模型代理(llmproxy)的地址;拆分部署或模型流量绕开反代鉴权时单独指定",
   "account.server.skipTlsVerify": "跳过 TLS 证书验证(自签名证书)",
-  "account.server.skipTlsVerifyHint": "服务端使用自签名证书时勾选;仅对该服务地址的请求生效,有被中间人窃听的风险,只应在可信的内网环境使用",
+  "account.server.skipTlsVerifyHint": "服务端使用自签名证书时勾选;对该服务地址的请求与会员模型的模型请求生效,有被中间人窃听的风险,只应在可信的内网环境使用",
   "account.server.hint": "切换服务地址后需重新登录,并重新同步会员模型。",
 
   "settings.browser.statusLoading": "读取状态中…",
