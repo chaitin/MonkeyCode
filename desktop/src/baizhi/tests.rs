@@ -427,6 +427,165 @@ fn stale_service_response_cannot_overwrite_current_monkeycode_cookie() {
     );
 }
 
+/// 浏览器登录窗的收割吸罐走同一代次守卫:服务切换后,旧登录任务迟到的
+/// 收割结果必须被拒收,不得把 A 服务窗口里的会话灌进 B 服务的罐。
+#[test]
+fn stale_web_login_harvest_cannot_pollute_current_jar() {
+    let svc = Service::test_service(Endpoints {
+        account: "https://account.example.com".into(),
+        model_gateway: "https://models.example.com".into(),
+        mcp_gateway: "https://mcp.example.com".into(),
+        monkeycode: "http://localhost:8000".into(),
+    });
+    let state = super::BaizhiState::new(svc);
+    let old = state.service();
+    let old_url = reqwest::Url::parse("http://localhost:8000/").unwrap();
+    assert!(
+        old.absorb_mc_cookies(&old_url, &["session=web; Path=/".into()]),
+        "当前代次的收割应被吸收"
+    );
+    assert_eq!(old.mc.header(&old_url).as_deref(), Some("session=web"));
+
+    let cfg = crate::config::DesktopConfig {
+        mc_base_url: "http://localhost:9000".into(),
+        ..Default::default()
+    };
+    let pipes = super::monkeycode::CloudPipes::new();
+    state.apply_config(&cfg, &pipes);
+    old.mc.clear(); // 模拟切换边界上的登出清罐
+
+    assert!(
+        !old.absorb_mc_cookies(&old_url, &["session=stale; Path=/".into()]),
+        "代次已翻,旧登录任务的收割必须拒收"
+    );
+    assert!(
+        state.service().mc.header(&old_url).is_none(),
+        "拒收后罐中不得出现旧服务会话"
+    );
+}
+
+/// MonkeyCode 域 3xx 分类(mc_call 单点):登录网关弹登录页 → 会话失效
+/// (Unauthorized,状态类接口转未登录);同主机 http→https → 提示改地址
+/// (重定向会剥掉 Cookie,重登无效,配置才是病根);其余永久重定向保持
+/// HTTP 错误;百智云链路(unwrap_envelope)语义不变。
+#[test]
+fn mc_redirect_classification_distinguishes_gateway_and_scheme_upgrade() {
+    use super::monkeycode::classify_mc_redirect;
+    let req = reqwest::Url::parse("http://mc.corp.example/api/v1/users/status").unwrap();
+    // 网关弹去 IdP/登录页(绝对/相对/缺 Location 头都见过):会话失效语义
+    for loc in [
+        Some("https://idp.corp.example/login"),
+        Some("/oauth2/start"),
+        None,
+    ] {
+        match classify_mc_redirect(&req, 302, loc) {
+            BzErr::Unauthorized(msg) => assert!(msg.contains("重新连接"), "{msg}"),
+            BzErr::Other(msg) => panic!("302({loc:?}) 应判会话失效,实得 Other: {msg}"),
+        }
+    }
+    // 同主机 http→https(nginx return 301 / Traefik RedirectScheme 默认 302):
+    // 是配置问题,提示改地址;不得误报"会话已失效"诱导无效重登
+    for status in [301u16, 302, 308] {
+        match classify_mc_redirect(
+            &req,
+            status,
+            Some("https://mc.corp.example/api/v1/users/status"),
+        ) {
+            BzErr::Other(msg) => assert!(msg.contains("https://"), "{msg}"),
+            BzErr::Unauthorized(msg) => panic!("scheme 升级不是会话失效: {msg}"),
+        }
+    }
+    // 301 换域:部署级重定向,保持 HTTP 错误
+    match classify_mc_redirect(&req, 301, Some("https://new.example.com/api")) {
+        BzErr::Other(msg) => assert!(msg.contains("HTTP 301"), "{msg}"),
+        BzErr::Unauthorized(msg) => panic!("301 换域应保持 HTTP 错误: {msg}"),
+    }
+    // 百智云账号域:302 仍按原 HTTP 错误报,不受 mc 分类影响
+    match unwrap_envelope(&[], 302, &ENV_BAIZHI) {
+        Err(BzErr::Other(msg)) => assert!(msg.contains("HTTP 302"), "{msg}"),
+        Err(BzErr::Unauthorized(msg)) => panic!("百智云 302 语义不得改变,实得 Unauthorized: {msg}"),
+        Ok(_) => panic!("百智云 302 不应判成功"),
+    }
+}
+
+/// 浏览器登录窗的探测契约:用收割的 cookie 直探 users/status——带齐网关
+/// 会话 + MonkeyCode 会话才算登录完成;网关弹回(302)与空身份都判未完成;
+/// 探测不吸收响应 Set-Cookie(登录未完成前不得污染壳罐)。
+#[tokio::test(flavor = "multi_thread")]
+async fn web_login_probe_requires_full_cookie_chain_and_keeps_jar_clean() {
+    let (url, _stop) = serve(Arc::new(|req: Req| {
+        if req.path.split('?').next() != Some("/api/v1/users/status") {
+            return Resp::json(404, json!({}));
+        }
+        // 网关层:没有网关会话一律 302 弹登录页(oauth2-proxy 形态)
+        if !req.cookie.contains("_gateway=g1") {
+            return Resp::redirect("/oauth2/start");
+        }
+        // 应用层:有 MonkeyCode 会话给身份,否则空 user(Check 非强制语义)
+        let user = if req.cookie.contains("mc_session=s1") {
+            json!({ "id": "u1", "name": "私有化用户" })
+        } else {
+            json!({})
+        };
+        Resp::json(200, json!({ "code": 0, "data": { "user": user } }))
+            .with_cookie("probe_side_effect=1; Path=/")
+    }));
+    let svc = Service::test_service(Endpoints {
+        account: url.clone(),
+        model_gateway: url.clone(),
+        mcp_gateway: url.clone(),
+        monkeycode: url.clone(),
+    });
+
+    assert_eq!(
+        super::weblogin::probe_status(&svc, "").await,
+        Ok(None),
+        "无 cookie 应判**明确**未完成(网关 302 不是抖动)"
+    );
+    assert_eq!(
+        super::weblogin::probe_status(&svc, "_gateway=g1").await,
+        Ok(None),
+        "只过网关、无 MonkeyCode 会话应判明确未完成(空身份)"
+    );
+    let user = super::weblogin::probe_status(&svc, "_gateway=g1; mc_session=s1")
+        .await
+        .expect("探测不应报抖动")
+        .expect("全链会话应判完成");
+    assert_eq!(user.get("id").and_then(Value::as_str), Some("u1"));
+    assert!(svc.mc.is_empty(), "探测不得把响应 Set-Cookie 吸进壳罐");
+
+    // 传输抖动 ≠ 未登录:必须区分,否则登录完成后的最后一次 cookie 变化
+    // 恰逢抖动时指纹已落、轮询永不再探(用户困在等待面板)。拿一个刚释放
+    // 的端口制造连接拒绝
+    let dead_port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    let dead = Service::test_service(Endpoints {
+        account: format!("http://127.0.0.1:{dead_port}"),
+        model_gateway: format!("http://127.0.0.1:{dead_port}"),
+        mcp_gateway: format!("http://127.0.0.1:{dead_port}"),
+        monkeycode: format!("http://127.0.0.1:{dead_port}"),
+    });
+    assert_eq!(
+        super::weblogin::probe_status(&dead, "x=1").await,
+        Err(()),
+        "网络不可达应报抖动(调用方保留指纹重探)"
+    );
+
+    // 端到端:网关 302 经 mc_call 分类归一,mc_status 转"未登录"而不是报错
+    svc.mc.update(
+        &reqwest::Url::parse(&format!("{url}/")).unwrap(),
+        &["stale=1; Path=/".into()],
+    );
+    let (logged_in, user) = super::monkeycode::mc_status(&svc)
+        .await
+        .map_err(BzErr::msg)
+        .expect("不应报错");
+    assert!(!logged_in, "网关弹回应表现为未登录(引导重新连接)");
+    assert!(user.is_null());
+}
+
 /// 模型请求地址(llmproxy)的解析口径,2026-08-07 用户定案:官方云走独立
 /// 代理子域,自建看用户填没填——填了用填的,没填跟随服务地址 /v1。
 #[test]

@@ -4,8 +4,10 @@
 //
 // - 未登录:选中行展开登录方式(国内版 = 行头 tabs 微信扫码/短信/密码,
 //   微信与短信都是**经百智云 OAuth** 登录 MonkeyCode,成功后自动桥接;
-//   国际版 = 邮箱账密;私有化 = 地址三项 + 保存生效 + 账密),未选中行右侧
-//   一句灰字标注各自的登录方式;点行(radio)即切换,官方版当场静默落盘。
+//   国际版 = 邮箱账密;私有化 = 地址三项 + 保存生效 + 行头 tabs
+//   浏览器登录(缺省,壳开登录窗跑服务端登录页,企业 SSO/OIDC 可用)/
+//   账密),未选中行右侧一句灰字标注各自的登录方式;点行(radio)即切换,
+//   官方版当场静默落盘。
 // - 已登录:选中行展开权益(会员徽标/有效期 + 额度/积分/邀请三瓷片),
 //   其余行给「切换到此服务」——**切换不保留旧会话**(2026-08-16 用户定案):
 //   先走断开(吊销会员模型密钥 → 登出 → 清配置里的会员模型),再切换落盘,
@@ -36,6 +38,8 @@ import {
   disconnectMc,
   mcLogin,
   mcStatus,
+  mcWebLogin,
+  mcWebLoginCancel,
   type BaizhiStatus,
   type BaizhiSyncResult,
   type McModelsSyncResult,
@@ -235,11 +239,15 @@ function ServiceCard({
   isServiceGenerationCurrent: (generation: number) => boolean;
 }) {
   const { t } = useI18n();
-  const [busy, setBusy] = useState<"connect" | "disconnect" | "sync" | null>(null);
+  const [busy, setBusy] = useState<"connect" | "disconnect" | "sync" | "weblogin" | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
   // 国内版登录方式(行头 tabs);桥接重试态里账密作折叠后备
   const [loginMode, setLoginMode] = useState<"wechat" | "sms" | "password">("wechat");
   const [pwOpen, setPwOpen] = useState(false);
+  // 私有化行登录方式(行头 tabs):浏览器登录缺省——它开的是服务端自己的
+  // 登录页,账密/企业 OIDC/OAuth 全覆盖,SSO 开通的账号往往没有密码;
+  // 应用内账密是快捷路径,兼作自签证书/WebView 打不开登录页时的兜底
+  const [privateMode, setPrivateMode] = useState<"web" | "password">("web");
   const isCurrentService = () => isServiceGenerationCurrent(serviceGeneration);
 
   useEffect(() => {
@@ -247,6 +255,7 @@ function ServiceCard({
     setMsg(null);
     setLoginMode("wechat");
     setPwOpen(false);
+    setPrivateMode("web");
   }, [serviceGeneration]);
 
   // 换版本选择即清操作留言:断开/同步的结果行属于上一个语境,挂在新版本的
@@ -300,6 +309,30 @@ function ServiceCard({
     } finally {
       if (isCurrentService()) setBusy(null);
     }
+  };
+
+  /** 浏览器登录:壳开独立登录窗,invoke 挂起到登录完成/关窗才收尾。
+   *  cancelled(用户关窗或点取消)静默回到初始态——关掉一扇自己刚打开的
+   *  窗不是错误,不值得一条红字。成功走 onLoggedIn 与账密同一收尾
+   *  (刷状态 + 会员模型同步)。 */
+  const webLogin = async () => {
+    setBusy("weblogin");
+    setMsg(null);
+    try {
+      const r = await mcWebLogin();
+      if (!isCurrentService()) return;
+      if (r.ok) await onLoggedIn(serviceGeneration);
+    } catch (e) {
+      if (isCurrentService()) setMsg({ text: errMsg(e), error: true });
+    } finally {
+      if (isCurrentService()) setBusy(null);
+    }
+  };
+
+  /** 取消只发关窗指令;挂起的 mcWebLogin 随窗口关闭以 cancelled 收尾,
+   *  等待态由那条 promise 统一退出,这里不碰本地状态。 */
+  const webLoginCancel = () => {
+    void mcWebLoginCancel().catch(() => undefined);
   };
 
   /** 「切换到此服务」= 壳内原子断开后清会员模型、再选中目标版本。
@@ -414,7 +447,9 @@ function ServiceCard({
         <button
           type="button"
           className="btn btn-primary btn-sm self-start"
-          disabled={saveBusy}
+          // 登录窗开着时锁保存:切服会让壳作废进行中的登录、UI 卸掉唯一的
+          // 取消入口,窗口却还开着一秒——与私有化 tabs 的锁同一理由
+          disabled={saveBusy || busy === "weblogin"}
           onClick={() => onApplyDraft(draft)}
         >
           {saveBusy && <span className="loading loading-spinner loading-xs" aria-hidden />}
@@ -423,6 +458,35 @@ function ServiceCard({
       )}
     </>
   );
+
+  /** 私有化登录区(地址已生效):行头 tabs 二选一——浏览器登录(缺省)或
+   *  应用内账密。等待态替换整个登录区:窗口开着时这里只有一件事可做。 */
+  const privateLogin = () =>
+    privateMode === "password" ? (
+      <PasswordForm onLoggedIn={guardedPasswordLogin} />
+    ) : busy === "weblogin" ? (
+      <div className="flex flex-col items-center gap-3 py-2">
+        <span className="loading loading-spinner loading-md text-primary" aria-hidden />
+        <span role="status" className="text-xs text-base-content/60">
+          {t("account.web.waiting")}
+        </span>
+        <button type="button" className="btn btn-sm" onClick={webLoginCancel}>
+          {t("account.web.cancel")}
+        </button>
+      </div>
+    ) : (
+      <div className="flex flex-col gap-2.5">
+        <p className="text-xs leading-relaxed text-base-content/60">{t("account.web.hint")}</p>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm w-full"
+          disabled={busy !== null || saveBusy}
+          onClick={() => void webLogin()}
+        >
+          {t("account.web.open")}
+        </button>
+      </div>
+    );
 
   /** 选中行的登录区(未连接)。私有化行地址字段恒在,其余按生效与否分流。 */
   const loginContent = (r: McEdition) => {
@@ -436,9 +500,7 @@ function ServiceCard({
               {t("account.edition.switching")}
             </p>
           ) : editionReady ? (
-            <div className="border-t border-base-300 pt-3">
-              <PasswordForm onLoggedIn={guardedPasswordLogin} />
-            </div>
+            <div className="border-t border-base-300 pt-3">{privateLogin()}</div>
           ) : (
             <p className="text-xs text-base-content/60">{t("account.edition.needServerUrl")}</p>
           )}
@@ -520,6 +582,7 @@ function ServiceCard({
     const active = r === edition;
     const rowConnected = active && connected;
     const showTabs = active && !connected && r === "cn" && editionReady && !baizhiLoggedIn;
+    const showPrivateTabs = active && !connected && r === "private" && editionReady && !saveBusy;
     return (
       <div
         key={r}
@@ -535,7 +598,9 @@ function ServiceCard({
               className="radio radio-primary radio-sm shrink-0"
               aria-label={rowTitle(r)}
               checked={active}
-              disabled={saveBusy}
+              // weblogin 锁定与「保存生效」同一理由:切版本 = 切服,会作废
+              // 进行中的浏览器登录并卸掉等待面板
+              disabled={saveBusy || busy === "weblogin"}
               onChange={() => onSelectEdition(r)}
             />
           )}
@@ -610,6 +675,24 @@ function ServiceCard({
                     onClick={() => setLoginMode(m)}
                   >
                     {t(m === "wechat" ? "account.tab.wechat" : m === "sms" ? "account.tab.sms" : "account.tab.password")}
+                  </button>
+                ))}
+              </div>
+            ) : showPrivateTabs ? (
+              <div role="tablist" className="tabs tabs-border tabs-sm">
+                {(["web", "password"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="tab"
+                    className={privateMode === m ? "tab tab-active" : "tab"}
+                    aria-selected={privateMode === m}
+                    // 登录窗开着时锁 tabs:切到账密会把等待面板(唯一的取消
+                    // 入口)卸掉,而窗口还开着,两个登录入口互相打架
+                    disabled={busy === "weblogin"}
+                    onClick={() => setPrivateMode(m)}
+                  >
+                    {t(m === "web" ? "account.tab.web" : "account.tab.password")}
                   </button>
                 ))}
               </div>

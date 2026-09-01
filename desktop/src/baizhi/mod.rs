@@ -6,6 +6,7 @@ pub mod cookies;
 pub mod monkeycode;
 pub mod pow;
 pub mod sync;
+pub mod weblogin;
 pub mod wechat;
 
 #[cfg(test)]
@@ -413,15 +414,24 @@ impl Service {
         url: &reqwest::Url,
         set_cookies: &[String],
     ) {
+        // mc 罐的代次守卫单点在 absorb_mc_cookies(浏览器登录收割同路)
         if std::ptr::eq(store, self.mc.as_ref()) {
-            let generation = self.mc_cookie_generation.lock_ok();
-            if *generation != self.mc_cookie_snapshot {
-                return;
-            }
-            store.update(url, set_cookies);
+            self.absorb_mc_cookies(url, set_cookies);
             return;
         }
         store.update(url, set_cookies);
+    }
+
+    /// 浏览器登录窗收割的 cookie 吸入 mc 罐。与响应 Set-Cookie 走同一代次
+    /// 守卫(见 update_response_cookies):服务切换后迟到的收割结果不得污染
+    /// 新服务的罐。返回是否已吸收(false = 代次已翻,调用方按已切换处理)。
+    pub(crate) fn absorb_mc_cookies(&self, url: &reqwest::Url, set_cookies: &[String]) -> bool {
+        let generation = self.mc_cookie_generation.lock_ok();
+        if *generation != self.mc_cookie_snapshot {
+            return false;
+        }
+        self.mc.update(url, set_cookies);
+        true
     }
 
     /// 发请求:携带指定罐的 cookie,吸收响应的 Set-Cookie。

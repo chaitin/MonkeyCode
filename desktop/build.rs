@@ -134,6 +134,8 @@ fn main() {
             "mc_status",
             "mc_login",
             "mc_password_login",
+            "mc_web_login",
+            "mc_web_login_cancel",
             "mc_logout",
             "mc_usage",
             "mc_checkin",

@@ -12,5 +12,15 @@
   <string>MonkeyCode needs access to network folders you choose as project folders.</string>
   <key>NSRemovableVolumesUsageDescription</key>
   <string>MonkeyCode needs access to removable-drive folders you choose as project folders.</string>
+  <!-- 浏览器登录窗要能加载 http:// 的私有化部署登录页(内网自建常无 TLS)。
+       ATS 例外是 App 级的,没有按窗口收窄的键:本键放开的是**全部** WKWebView
+       网页内容的明文加载(主窗口只载壳内置页且外链一律转系统浏览器,实际
+       暴露面即登录窗);壳自身网络(reqwest)不走 ATS,不受影响。日后若有
+       别的远程内容 webview,须自带 https 约束,不能指望 ATS 兜底。 -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsArbitraryLoadsInWebContent</key>
+    <true/>
+  </dict>
 </dict>
 </plist>

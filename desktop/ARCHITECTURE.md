@@ -250,6 +250,36 @@ Op/Ev/错误码、proto:1、20s ping。
   返回模型。
 - 错误码→中文可行动文案是产品契约(模型行为依赖),改动需过 e2e 断言。
 
+## 浏览器登录窗(baizhi/weblogin.rs)
+
+私有化部署的交互式登录(企业 OIDC/OAuth、账密、或客户登录网关的任意组合)
+在独立 WebView 窗口(label `mc-login`,incognito)里完成:壳轮询窗口
+cookie,集合变化时用收割 cookie 直探 `/api/v1/users/status`(不经壳罐、
+不吸 Set-Cookie),探到有效身份把 mc 域**全部** cookie(含网关会话)经
+代次守卫(`Service::absorb_mc_cookies`)吸入壳 mc 罐,再走罐路权威确认
+(`confirm_mc_login`,与账密/桥接同一收尾)。登录方式对壳透明——服务端
+登录页有什么就能用什么,服务端新增登录方式壳零适配。
+
+- 「UI 不建立网络连接」铁律不破:登录窗是**壳属**浏览器面,远程页面
+  **不进任何 capability**(拿不到 IPC),ui-next 仍只经 IPC 驱动。
+- 完成判定不靠导航监听:web 前端是 SPA,登录后跳 /console 多为
+  pushState,on_navigation 看不见。收割用全量 `cookies()` 壳侧自筛域
+  ——wry 的 `cookies_for_url` 是精确域比较,`Domain=.example.com` 的
+  网关 cookie 会被它漏掉。
+- 服务切换即作废:轮询每拍校验 transport 代次,吸罐另有代次守卫兜竞窗;
+  用户关窗/取消 = cancelled 收尾(不是错误),窗口生命周期与 invoke 绑定。
+- 会话过期的第二形态(网关弹登录页)由 mc_call 的 3xx 分类
+  (classify_mc_redirect,带 Location 判别)归一:302/303/307 →
+  Unauthorized(「重新连接」);同主机 http→https → 「改 https 地址」
+  (scheme 升级重定向剥 Cookie,重登无效);其余 301/308 仍按 HTTP 错误报。
+- 网关部署的已知边界:引擎 LLM 流量(llmproxy `/v1`)带 API key 不带
+  cookie,OAuth 网关需对 `/v1/*` 豁免(llmproxy 自带鉴权);壳侧
+  REST/WS/上传下载均从罐带全量 cookie,可过网关。
+- macOS 加载 http 登录页依赖 Info.plist 的
+  `NSAllowsArbitraryLoadsInWebContent`(只豁免网页内容);自签 TLS 的
+  部署 WebView 无法免验证(`mc_skip_tls_verify` 只作用于壳侧 reqwest),
+  此场景退回应用内账密登录。
+
 ## 遥测(telemetry.rs)
 
 自建 Matomo 的极小心跳,只回答"每天新增多少装机/装了有没有用起来":

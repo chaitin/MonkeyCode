@@ -133,6 +133,8 @@
             "allow-mc-status",
             "allow-mc-login",
             "allow-mc-password-login",
+            "allow-mc-web-login",
+            "allow-mc-web-login-cancel",
             "allow-mc-logout",
             "allow-mc-usage",
             "allow-mc-checkin",

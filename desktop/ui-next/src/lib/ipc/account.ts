@@ -156,6 +156,15 @@ export const mcLogin = () => invoke<{ ok: boolean; user?: McUser }>("mc_login");
 export const mcPasswordLogin = (email: string, password: string) =>
   invoke<{ ok: boolean; user?: McUser }>("mc_password_login", { email, password });
 
+/** 浏览器登录:壳开独立登录窗(服务端 /login 页,账密与企业 SSO 等服务端
+ *  启用的全部方式可用),invoke 挂起直到登录完成或窗口关闭。
+ *  cancelled = 用户关窗/取消(不是错误,静默收尾);服务切换等异常 reject。 */
+export const mcWebLogin = () => invoke<{ ok: boolean; cancelled?: boolean; user?: McUser }>("mc_web_login");
+
+/** 关闭进行中的浏览器登录窗(无进行中登录时为空操作);挂起的 mcWebLogin
+ *  随之以 cancelled 收尾,UI 不需要自己收状态。 */
+export const mcWebLoginCancel = () => invoke<{ ok: boolean }>("mc_web_login_cancel");
+
 export const mcLogout = () => invoke<{ ok: boolean }>("mc_logout");
 
 /** 账号权益(额度/会员/签到态/邀请);浏览器模式 null。 */

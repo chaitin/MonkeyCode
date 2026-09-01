@@ -418,6 +418,76 @@ describe("MonkeyCode 账号密码登录入口", () => {
   });
 });
 
+describe("私有化浏览器登录", () => {
+  const PRIVATE_URL = "https://mc.private.example";
+
+  it("缺省浏览器 tab:开窗→等待态(tabs 锁定、可取消),cancelled 静默回初始态", async () => {
+    let resolveLogin: ((v: unknown) => void) | undefined;
+    const { calls } = stubShell({
+      baizhi_status: bzOut,
+      mc_status: mcOut,
+      mc_web_login: () => new Promise((resolve) => (resolveLogin = resolve)),
+      mc_web_login_cancel: () => ({ ok: true }),
+    });
+    render(<AccountSection savedMcBaseUrl={PRIVATE_URL} />);
+
+    // 行头 tabs:浏览器登录缺省选中,账密退居第二 tab
+    const webTab = await screen.findByRole("tab", { name: "浏览器登录" });
+    expect(webTab.getAttribute("aria-selected")).toBe("true");
+    await userEvent.click(screen.getByRole("button", { name: "打开登录窗口" }));
+    expect(calls.some((c) => c.cmd === "mc_web_login")).toBe(true);
+
+    // 等待态:说明 + 取消;登录窗开着时不许切去账密(两个入口会打架)
+    await screen.findByText("请在登录窗口中完成登录…");
+    expect(screen.getByRole("tab", { name: "密码" })).toHaveProperty("disabled", true);
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(calls.some((c) => c.cmd === "mc_web_login_cancel")).toBe(true);
+
+    // 壳收尾:关窗后挂起的 mc_web_login 以 cancelled 落地 → 静默回初始态
+    resolveLogin?.({ ok: false, cancelled: true });
+    expect(await screen.findByRole("button", { name: "打开登录窗口" })).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("登录成功与账密同一收尾:刷状态、自动会员同步、通知 App", async () => {
+    let mcConnected = false;
+    const onMcSessionChanged = vi.fn();
+    const { calls } = stubShell({
+      baizhi_status: bzOut,
+      mc_status: () => (mcConnected ? mcIn() : mcOut()),
+      mc_web_login: () => {
+        mcConnected = true;
+        return { ok: true, user: { id: "u1" } };
+      },
+      mc_usage: () => null,
+      mc_models_sync: () => ({ models: [{ name: "m", base_url: "", api_key: "", model: "m", source: "monkeycode" }] }),
+    });
+    render(<AccountSection savedMcBaseUrl={PRIVATE_URL} onMcSessionChanged={onMcSessionChanged} />);
+    await userEvent.click(await screen.findByRole("button", { name: "打开登录窗口" }));
+
+    expect(await screen.findByText("云端用户")).toBeDefined();
+    await waitFor(() => expect(calls.some((c) => c.cmd === "mc_models_sync")).toBe(true));
+    expect(onMcSessionChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("浏览器登录失败外显错误;切「密码」tab 给应用内账密表单", async () => {
+    stubShell({
+      baizhi_status: bzOut,
+      mc_status: mcOut,
+      mc_web_login: () => {
+        throw new Error("登录窗口创建失败: boom");
+      },
+    });
+    render(<AccountSection savedMcBaseUrl={PRIVATE_URL} />);
+    await userEvent.click(await screen.findByRole("button", { name: "打开登录窗口" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("登录窗口创建失败");
+
+    await userEvent.click(screen.getByRole("tab", { name: "密码" }));
+    expect(screen.getByRole("textbox", { name: "邮箱" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "登录" })).toBeDefined();
+  });
+});
+
 describe("百智云增值登录(国内版,MC 已连)", () => {
   it("可选入口展开后仅微信/短信(登的是百智云,不带账密 tab);登录后不重复桥接", async () => {
     let bzLogged = false;
@@ -775,7 +845,7 @@ describe("服务版本选择", () => {
     };
     const { rerender } = render(<AccountSection {...props} />);
     await screen.findByRole("radio", { name: "私有化部署" });
-    expect(screen.queryByRole("textbox", { name: "邮箱" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "打开登录窗口" })).toBeNull();
     expect(screen.getByText(/填写服务地址并保存后登录/)).toBeDefined();
 
     rerender(
@@ -785,7 +855,7 @@ describe("服务版本选择", () => {
         savedMcBasicAuth={draft.mcBasicAuth}
       />,
     );
-    expect(await screen.findByRole("textbox", { name: "邮箱" })).toBeDefined();
+    expect(await screen.findByRole("button", { name: "打开登录窗口" })).toBeDefined();
   });
 
   it("官方档不露私有化字段;选私有化展开字段且不清用户草稿", async () => {
@@ -903,12 +973,14 @@ describe("非国内版的登录方式裁剪", () => {
     expect(screen.queryByText("张三")).toBeNull();
   });
 
-  it("私有化:仅账密登录、百智云已登录也不出桥接钮;百智云服务组保留(同步仍可用)", async () => {
+  it("私有化:浏览器/账密 tabs、百智云已登录也不出桥接钮;百智云服务组保留(同步仍可用)", async () => {
     stubShell({ baizhi_status: bzIn, mc_status: mcOut, mc_usage: () => null });
     render(<AccountSection savedMcBaseUrl="https://self.host" />);
-    await screen.findByRole("textbox", { name: "邮箱" });
+    await screen.findByRole("button", { name: "打开登录窗口" });
     expect(screen.queryByRole("button", { name: "连接 MonkeyCode 云端" })).toBeNull();
-    expect(screen.queryByRole("tab")).toBeNull();
+    // 行头只有私有化自己的登录方式,没有国内版的微信/短信 tab
+    expect(screen.queryByRole("tab", { name: "微信扫码" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "短信" })).toBeNull();
     expect(await screen.findByText("张三")).toBeDefined();
     expect(screen.getByRole("button", { name: "同步模型与 MCP" })).toBeDefined();
   });
