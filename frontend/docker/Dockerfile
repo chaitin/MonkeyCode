@@ -1,17 +1,13 @@
-# 直接使用 nginx 镜像，因为应用已经在 CI 中构建完成
 FROM nginx:alpine
 
-# 复制构建产物到 nginx 目录
-COPY dist/ /usr/share/nginx/html/
+RUN mkdir -p /etc/nginx/locations
 
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY --chown=nginx:nginx dist/ /usr/share/nginx/html/
+COPY --chown=nginx:nginx nginx.conf /etc/nginx/nginx.conf
 
-# 复制启动脚本
-COPY start.sh /start.sh
-RUN chmod +x /start.sh
+USER nginx
 
-# 暴露端口
-EXPOSE 80
+EXPOSE 8080
 
-# 使用启动脚本启动
-CMD ["/start.sh"]
+ENTRYPOINT []
+CMD ["nginx", "-g", "daemon off;"]
