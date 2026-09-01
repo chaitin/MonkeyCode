@@ -43,6 +43,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # 设计预览 URL 编码与截图剪贴板。
 percent-encoding = "2"
 arboard = "3"
+tempfile = "3"
 
 # 百智云/云端原生化(baizhi/):PoW 验证码、Set-Cookie 解析、微信页刮取
 sha2 = "0.10"

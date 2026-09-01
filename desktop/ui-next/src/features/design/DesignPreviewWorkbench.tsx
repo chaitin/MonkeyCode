@@ -425,6 +425,9 @@ export function DesignPreviewWorkbench({
 
   useEffect(() => {
     elementSelectionRef.current += 1;
+    setPicked(null);
+    setPickedPreview(null);
+    setElementDraft(null);
   }, [sessionId, targetKey]);
 
   const native = target.kind === "localhost" || (target.kind === "artifact" && target.artifactKind === "html");
@@ -845,52 +848,95 @@ export function DesignPreviewWorkbench({
     setPickedPreview(null);
     setElementDraft(null);
   };
+  const persistElementChanges = async (persistence: { sessionId: string; path: string } | null) => {
+    if (!persistence) return null;
+    const serialized = await requestSerialization();
+    await previewSaveHtml(persistence.sessionId, persistence.path, serialized);
+    return persistence.path;
+  };
   const saveElement = async () => {
     if (!picked || !elementDraft || elementSavingRef.current) return;
     const original = elementDraftOf(picked);
     const edits = (["text", ...Object.keys(EMPTY_ELEMENT_STYLES)] as ("text" | StyleProperty)[])
       .filter((name) => elementDraft[name] !== original[name])
       .map((name) => ({ selector: picked.selector, property: name, value: elementDraft[name] }));
-    let applied = 0;
+    const operationSessionId = sessionId;
+    const operationTargetKey = targetKey;
+    const persistence = target.kind === "artifact" && target.artifactKind === "html" ? { sessionId, path: target.path } : null;
+    const operationIsCurrent = () => latestRef.current.sessionId === operationSessionId && latestRef.current.targetKey === operationTargetKey;
+    let persistedPath: string | null = null;
     elementSavingRef.current = true;
     setElementSaving(true);
     try {
-      for (const edit of edits) {
-        await previewElementApply(edit);
-        applied += 1;
-      }
-    } catch (error) {
-      try {
-        while (applied > 0) {
-          await previewElementUndo();
-          applied -= 1;
+      persistedPath = await enqueuePreviewLifecycle(async () => {
+        if (!operationIsCurrent() || !createdRef.current) throw new Error(t("design.preview.targetChanged"));
+        let applied = 0;
+        try {
+          for (const edit of edits) {
+            await previewElementApply(edit);
+            applied += 1;
+          }
+          return await persistElementChanges(persistence);
+        } catch (error) {
+          try {
+            while (applied > 0) {
+              await previewElementUndo();
+              applied -= 1;
+            }
+          } catch (rollbackError) {
+            throw new Error(`${error instanceof Error ? error.message : String(error)}; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+          }
+          throw error;
         }
-        report(error);
-      } catch (rollbackError) {
-        report(new Error(`${error instanceof Error ? error.message : String(error)}; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`));
-      }
+      });
+    } catch (error) {
+      if (operationIsCurrent()) report(error);
       return;
     } finally {
       elementSavingRef.current = false;
       setElementSaving(false);
     }
-    setStatus(t("design.preview.applied"));
+    if (!operationIsCurrent()) return;
+    setStatus(persistedPath ? t("design.preview.code.saved", { path: persistedPath }) : t("design.preview.applied"));
     dismissPicked();
   };
   const deleteElement = async () => {
     if (!picked || elementSavingRef.current) return;
+    const operationSessionId = sessionId;
+    const operationTargetKey = targetKey;
+    const persistence = target.kind === "artifact" && target.artifactKind === "html" ? { sessionId, path: target.path } : null;
+    const operationIsCurrent = () => latestRef.current.sessionId === operationSessionId && latestRef.current.targetKey === operationTargetKey;
+    let persistedPath: string | null = null;
     elementSavingRef.current = true;
     setElementSaving(true);
     try {
-      await previewElementApply({ selector: picked.selector, property: "delete", value: "" });
+      persistedPath = await enqueuePreviewLifecycle(async () => {
+        if (!operationIsCurrent() || !createdRef.current) throw new Error(t("design.preview.targetChanged"));
+        let applied = false;
+        try {
+          await previewElementApply({ selector: picked.selector, property: "delete", value: "" });
+          applied = true;
+          return await persistElementChanges(persistence);
+        } catch (error) {
+          if (applied) {
+            try {
+              await previewElementUndo();
+            } catch (rollbackError) {
+              throw new Error(`${error instanceof Error ? error.message : String(error)}; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+            }
+          }
+          throw error;
+        }
+      });
     } catch (error) {
-      report(error);
+      if (operationIsCurrent()) report(error);
       return;
     } finally {
       elementSavingRef.current = false;
       setElementSaving(false);
     }
-    setStatus(t("design.preview.applied"));
+    if (!operationIsCurrent()) return;
+    setStatus(persistedPath ? t("design.preview.code.saved", { path: persistedPath }) : t("design.preview.applied"));
     dismissPicked();
   };
   const updateElementDraft = (property: "text" | StyleProperty, value: string) => {
@@ -986,7 +1032,7 @@ export function DesignPreviewWorkbench({
         <button title={t("design.preview.screenshotTip")} className="btn btn-ghost btn-xs ms-auto" onClick={() => void takeScreenshot()}><IconCamera size={13} stroke={1.75} /> {t("design.preview.screenshot")}</button>
         <button title={picker && pickerPurpose === "comment" ? t("design.preview.exitTip") : t("design.preview.annotateTip")} className={`btn btn-xs ${picker && pickerPurpose === "comment" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("comment")}><IconMessage size={13} stroke={1.75} /> {t("design.preview.annotate")}</button>
         <button title={capture ? t("design.preview.exitTip") : t("design.preview.markTip")} className={`btn btn-xs ${capture ? "btn-primary" : "btn-ghost"}`} onClick={() => capture ? cancelCapture() : void startCapture()}><IconPencil size={13} stroke={1.75} /> {t("design.preview.mark")}</button>
-        <button title={picker && pickerPurpose === "edit" ? t("design.preview.exitTip") : t("design.preview.editTip")} className={`btn btn-xs ${picker && pickerPurpose === "edit" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("edit")}><IconPointer size={13} stroke={1.75} /> {t("design.preview.edit")}</button>
+        <button title={picker && pickerPurpose === "edit" ? t("design.preview.exitTip") : t(target.kind === "artifact" && target.artifactKind === "html" ? "design.preview.editArtifactTip" : "design.preview.editTip")} className={`btn btn-xs ${picker && pickerPurpose === "edit" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("edit")}><IconPointer size={13} stroke={1.75} /> {t("design.preview.edit")}</button>
         <select aria-label={t("design.preview.zoom")} className="select select-xs w-20" value={zoom} onChange={(e) => { const n = Math.min(500, Math.max(10, Number(e.target.value))); setZoom(n); void previewSetZoom(n / 100).catch(report); }}>
           {[10, 25, 50, 75, 100, 125, 150, 200, 300, 400, 500].map((n) => <option key={n} value={n}>{n}%</option>)}
         </select>

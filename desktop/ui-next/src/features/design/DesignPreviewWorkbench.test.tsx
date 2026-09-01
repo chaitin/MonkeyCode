@@ -20,10 +20,11 @@ let deferSaves: boolean;
 let deferCaptures: boolean;
 let captureError: string | null;
 let applyFailureProperty: string | null;
+let saveFailure: boolean;
 
 beforeEach(() => {
   setLocale("en");
-  calls = []; events = new Map(); pendingCreates = []; pendingDestroys = []; pendingPickerToggles = []; pendingSaves = []; deferCreates = false; deferDestroys = false; deferPickerToggles = false; deferSaves = false; deferCaptures = false; captureError = null; applyFailureProperty = null;
+  calls = []; events = new Map(); pendingCreates = []; pendingDestroys = []; pendingPickerToggles = []; pendingSaves = []; deferCreates = false; deferDestroys = false; deferPickerToggles = false; deferSaves = false; deferCaptures = false; captureError = null; applyFailureProperty = null; saveFailure = false;
   vi.mocked(composer.sendWithFiles).mockReset().mockResolvedValue(true);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ x: 400, y: 80, left: 400, top: 80, right: 1000, bottom: 480, width: 600, height: 400, toJSON() {} });
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
@@ -34,6 +35,7 @@ beforeEach(() => {
       if ((cmd === "preview_create" || cmd === "preview_create_artifact") && deferCreates) await new Promise<void>((resolve) => pendingCreates.push(resolve));
       if (cmd === "preview_destroy" && deferDestroys) await new Promise<void>((resolve) => pendingDestroys.push(resolve));
       if (cmd === "preview_picker_toggle" && deferPickerToggles) await new Promise<void>((resolve) => pendingPickerToggles.push(resolve));
+      if (cmd === "preview_save_html" && saveFailure) throw new Error("save failed");
       if (cmd === "preview_save_html" && deferSaves) await new Promise<void>((resolve) => pendingSaves.push(resolve));
       if (cmd === "preview_serialize") queueMicrotask(() => events.get("preview-serialized")?.({ payload: { requestId: args?.requestId, html: "<html>serialized</html>" } }));
       if (cmd === "preview_capture" && !deferCaptures) queueMicrotask(() => captureError
@@ -741,6 +743,74 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     }));
   });
 
+  it("persists element edits to the current workspace HTML file", async () => {
+    mountArtifact("pages/home.html");
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+    await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
+    act(() => events.get("preview-element-picked")?.({ payload: {
+      selector: "#hero", text: "Hello", tag: "DIV", bounds: { x: 0, y: 0, width: 100, height: 20 },
+      styles: { width: "100px" },
+    } }));
+    const panel = await screen.findByRole("dialog", { name: "Selected element" });
+    await userEvent.clear(within(panel).getByLabelText("Width"));
+    await userEvent.type(within(panel).getByLabelText("Width"), "200px");
+    await userEvent.click(within(panel).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(calls).toContainEqual({
+      cmd: "preview_save_html",
+      args: { sessionId: "s1", path: "pages/home.html", html: "<html>serialized</html>" },
+    }));
+    const commands = calls.map((call) => call.cmd);
+    expect(commands.indexOf("preview_element_apply")).toBeLessThan(commands.indexOf("preview_serialize"));
+    expect(commands.indexOf("preview_serialize")).toBeLessThan(commands.indexOf("preview_save_html"));
+    expect(screen.getByRole("status").textContent).toContain("Saved pages/home.html");
+  });
+
+  it("finishes persistence before switching the shared preview to another artifact", async () => {
+    const view = mountArtifact("pages/first.html");
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+    await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
+    act(() => events.get("preview-element-picked")?.({ payload: {
+      selector: "#hero", text: "Hello", tag: "DIV", bounds: { x: 0, y: 0, width: 100, height: 20 },
+      styles: { width: "100px" },
+    } }));
+    const panel = await screen.findByRole("dialog", { name: "Selected element" });
+    await userEvent.clear(within(panel).getByLabelText("Width"));
+    await userEvent.type(within(panel).getByLabelText("Width"), "200px");
+    deferSaves = true;
+    await userEvent.click(within(panel).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(pendingSaves).toHaveLength(1));
+
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/second.html", artifactKind: "html" }} composer={composer} obscured={false} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(calls.some((call) => call.cmd === "preview_create_artifact" && call.args?.path === "pages/second.html")).toBe(false);
+    expect(screen.queryByRole("dialog", { name: "Selected element" })).toBeNull();
+
+    deferSaves = false;
+    await act(async () => { pendingSaves.shift()?.(); await Promise.resolve(); });
+    await waitFor(() => expect(calls.some((call) => call.cmd === "preview_create_artifact" && call.args?.path === "pages/second.html")).toBe(true));
+    expect(calls).toContainEqual({ cmd: "preview_save_html", args: { sessionId: "s1", path: "pages/first.html", html: "<html>serialized</html>" } });
+  });
+
+  it("rolls back element edits when workspace HTML persistence fails", async () => {
+    mountArtifact("pages/home.html");
+    await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
+    await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
+    act(() => events.get("preview-element-picked")?.({ payload: {
+      selector: "#hero", text: "Hello", tag: "DIV", bounds: { x: 0, y: 0, width: 100, height: 20 },
+      styles: { width: "100px" },
+    } }));
+    const panel = await screen.findByRole("dialog", { name: "Selected element" });
+    await userEvent.clear(within(panel).getByLabelText("Width"));
+    await userEvent.type(within(panel).getByLabelText("Width"), "200px");
+    saveFailure = true;
+    await userEvent.click(within(panel).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(calls.some((call) => call.cmd === "preview_element_undo")).toBe(true));
+    expect(screen.getByRole("dialog", { name: "Selected element" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("save failed");
+  });
+
   it("edits grouped element styles and saves only changed values", async () => {
     mount();
     await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
@@ -859,14 +929,15 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     expect(screen.queryByRole("dialog", { name: "Selected element" })).toBeNull();
   });
 
-  it("deletes an element from the editor footer", async () => {
-    mount();
+  it("deletes an element from the editor footer and persists workspace HTML", async () => {
+    mountArtifact("pages/home.html");
     await userEvent.click(screen.getByRole("button", { name: /Edit/ }));
     await waitFor(() => expect(events.has("preview-element-picked")).toBe(true));
     act(() => events.get("preview-element-picked")?.({ payload: { selector: "#hero", text: "Hello", tag: "DIV", bounds: { x: 0, y: 0, width: 10, height: 10 }, styles: {} } }));
     await userEvent.click(await screen.findByRole("button", { name: "Delete element" }));
 
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_element_apply" && (c.args?.edit as { property?: string }).property === "delete")).toBe(true));
+    expect(calls).toContainEqual({ cmd: "preview_save_html", args: { sessionId: "s1", path: "pages/home.html", html: "<html>serialized</html>" } });
     expect(screen.queryByRole("dialog", { name: "Selected element" })).toBeNull();
   });
 

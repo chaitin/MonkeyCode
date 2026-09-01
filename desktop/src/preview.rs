@@ -3,7 +3,7 @@ use base64::Engine as _;
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::io::Read as _;
+use std::io::{Read as _, Write as _};
 use std::path::{Component, Path, PathBuf};
 use std::{
     collections::HashMap,
@@ -29,7 +29,7 @@ const MAX_RESULT_BYTES: usize = 32 * 1024;
 static PICKER_ACTIVE: AtomicBool = AtomicBool::new(false);
 static PREVIEW_ZOOM: Mutex<f64> = Mutex::new(1.0);
 const SERIALIZE_SCHEME: &str = "monkeycode-serialize";
-const SERIALIZE_JS: &str = r#"(()=>{window.__mcSerialize=async id=>{try{const html='<!doctype html>\n'+new XMLSerializer().serializeToString(document.documentElement);if(new TextEncoder().encode(html).length>8388608)throw Error('HTML 超过 8 MiB 限制');const n=4000,total=Math.ceil(html.length/n);for(let i=0;i<total;i++){location.href=`monkeycode-serialize://${id}?index=${i}&total=${total}&data=${encodeURIComponent(html.slice(i*n,(i+1)*n))}`;await new Promise(r=>setTimeout(r,0))}}catch(e){location.href=`monkeycode-serialize://${id}?error=${encodeURIComponent(String(e?.message||e))}`}}})()"#;
+const SERIALIZE_JS: &str = r#"(()=>{window.__mcSerialize=async id=>{const restore=(style,name,value,priority)=>{if(value)style.setProperty(name,value,priority);else style.removeProperty(name)},zoom=window.__mcPreviewZoomState,current=zoom&&zoom.map(item=>({item,value:item.element.style.getPropertyValue(item.name),priority:item.element.style.getPropertyPriority(item.name)}));let html;try{if(zoom)for(const item of zoom)restore(item.element.style,item.name,item.value,item.priority);html='<!doctype html>\n'+new XMLSerializer().serializeToString(document.documentElement)}catch(e){location.href=`monkeycode-serialize://${id}?error=${encodeURIComponent(String(e?.message||e))}`;return}finally{if(current)for(const saved of current)restore(saved.item.element.style,saved.item.name,saved.value,saved.priority)}try{if(new TextEncoder().encode(html).length>8388608)throw Error('HTML 超过 8 MiB 限制');const n=4000,total=Math.ceil(html.length/n);for(let i=0;i<total;i++){location.href=`monkeycode-serialize://${id}?index=${i}&total=${total}&data=${encodeURIComponent(html.slice(i*n,(i+1)*n))}`;await new Promise(r=>setTimeout(r,0))}}catch(e){location.href=`monkeycode-serialize://${id}?error=${encodeURIComponent(String(e?.message||e))}`}}})()"#;
 
 fn serialize_result(url: &Url) -> Option<Result<Option<(String, String)>, String>> {
     if url.scheme() != SERIALIZE_SCHEME {
@@ -988,6 +988,37 @@ fn safe_html_target(root: &Path, relative: &str) -> Result<PathBuf, String> {
     }
     Ok(output)
 }
+
+fn atomic_write_html(target: &Path, html: &str) -> Result<(), String> {
+    let parent = target.parent().ok_or("目标目录无效")?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|e| format!("创建 HTML 临时文件失败: {e}"))?;
+    temporary
+        .as_file_mut()
+        .write_all(html.as_bytes())
+        .map_err(|e| format!("写入 HTML 临时文件失败: {e}"))?;
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(|e| format!("同步 HTML 临时文件失败: {e}"))?;
+    if target.exists() {
+        let permissions = std::fs::metadata(target)
+            .map_err(|e| format!("读取 HTML 文件权限失败: {e}"))?
+            .permissions();
+        if permissions.readonly() {
+            return Err("目标 HTML 文件为只读".into());
+        }
+        temporary
+            .as_file()
+            .set_permissions(permissions)
+            .map_err(|e| format!("设置 HTML 临时文件权限失败: {e}"))?;
+    }
+    temporary
+        .persist(target)
+        .map(|_| ())
+        .map_err(|e| format!("原子替换 HTML 失败: {}", e.error))
+}
+
 #[tauri::command]
 pub async fn preview_save_html(
     host: State<'_, DriverHost>,
@@ -1010,7 +1041,7 @@ pub async fn preview_save_html(
         .and_then(|v| v.as_str())
         .ok_or("当前会话不存在")?;
     let target = safe_html_target(Path::new(workdir), &path)?;
-    std::fs::write(target, html).map_err(|e| format!("保存 HTML 失败: {e}"))
+    atomic_write_html(&target, &html)
 }
 
 #[cfg(target_os = "macos")]
@@ -1440,5 +1471,22 @@ mod tests {
         assert!(safe_html_target(&root, "../index.html").is_err());
         assert!(safe_html_target(&root, "index.txt").is_err());
         assert!(safe_html_target(&root, "/tmp/index.html").is_err());
+    }
+
+    #[test]
+    fn html_write_atomically_replaces_existing_content() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("index.html");
+        std::fs::write(&target, "old").unwrap();
+
+        atomic_write_html(&target, "<main>new</main>").unwrap();
+
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "<main>new</main>");
+    }
+
+    #[test]
+    fn serializer_temporarily_restores_preview_zoom_styles() {
+        assert!(SERIALIZE_JS.contains("window.__mcPreviewZoomState"));
+        assert!(SERIALIZE_JS.contains("finally{if(current)"));
     }
 }
