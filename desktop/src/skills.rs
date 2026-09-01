@@ -32,21 +32,21 @@ const REVISION_FILE: &str = "skills.revision";
 const REVISION_FORMAT: u32 = 1;
 
 /// 内置技能的**出厂**缺省启用集:云端建任务的 MC_DEFAULT_SKILL_IDS 四件套
-/// (baizhi/monkeycode.rs)+ 桌面端补充的发布与设计流入口。设计流内部 Skill
-/// 由 workflow.json 依赖闭包自动物化，不作为用户可选项。
+/// (baizhi/monkeycode.rs)+ 桌面端补充的发布入口。design-flow 随包提供但
+/// 默认关闭，用户明确勾选后其内部 Skill 才由 workflow.json 依赖闭包自动
+/// 物化；内部 Skill 本身不作为用户可选项。
 /// 官方库全默认启用会把 system prompt 塞满几十条 name+description,故其余
 /// 按需勾选。用户自建技能不受此表限制,出厂恒默认启用——亲手写的技能就是
 /// 要用的；批量导入会显式写入 false，只安装入库，等待用户主动设为默认。
 /// 出厂规则之上是用户显式开关(skills-defaults.json,见 load_default_prefs):
 /// 没拨过的技能跟随出厂,拨过的以开关为准。解析结果经 skills_list 的
 /// default_enabled 字段下发,UI 不再自持一份规则镜像。
-pub const DEFAULT_ENABLED: [&str; 6] = [
+pub const DEFAULT_ENABLED: [&str; 5] = [
     "feature-design",
     "project-wiki",
     "feature-implementer",
     "implementation-planner",
     "publish-website",
-    "design-flow",
 ];
 
 /// 默认启用开关的持久化(<app_config_dir>/skills-defaults.json,
@@ -303,6 +303,8 @@ struct SkillStoreStateInner {
     defaults_path: PathBuf,
     revision_path: PathBuf,
     observed: Mutex<Option<StoreRevision>>,
+    /// 延迟初始化闸门，见 ensure_ready。
+    ready: Mutex<bool>,
     #[cfg(test)]
     fail_next_revision_write: std::sync::atomic::AtomicBool,
 }
@@ -315,9 +317,12 @@ struct RevisionDocument {
 }
 
 impl SkillStoreState {
-    pub(crate) fn new(config_dir: PathBuf) -> Result<Self, SkillStoreError> {
-        ensure_plain_directory(&config_dir)?;
-        let state = Self {
+    /// 生产构造入口：不做任何磁盘 I/O，目录检查与 revision 引导推迟到第一次
+    /// 技能操作（ensure_ready）。技能库只是应用的一个功能——环境问题（权限、
+    /// 坏链接、磁盘错误）在具体技能操作时按操作粒度报错并自动重试，绝不
+    /// 阻止应用启动。
+    pub(crate) fn new_deferred(config_dir: PathBuf) -> Self {
+        Self {
             inner: Arc::new(SkillStoreStateInner {
                 gate: RwLock::new(()),
                 user_dir: user_dir(&config_dir),
@@ -325,12 +330,47 @@ impl SkillStoreState {
                 revision_path: config_dir.join(REVISION_FILE),
                 config_dir,
                 observed: Mutex::new(None),
+                ready: Mutex::new(false),
                 #[cfg(test)]
                 fail_next_revision_write: std::sync::atomic::AtomicBool::new(false),
             }),
-        };
-        state.initialize_if_new()?;
+        }
+    }
+
+    /// 构造并立即完成初始化；需要确定就绪语义的调用方（测试、备用驱动入口）使用。
+    pub(crate) fn new(config_dir: PathBuf) -> Result<Self, SkillStoreError> {
+        let state = Self::new_deferred(config_dir);
+        state.ensure_ready()?;
         Ok(state)
+    }
+
+    /// 所有技能库入口的第一步。成功一次后只剩一次 Mutex 检查；失败不缓存，
+    /// 下一次操作重试完整初始化，环境修复后无需重启即恢复。
+    /// 锁序：ready → gate → skills.lock；持有 gate 的路径绝不取 ready。
+    fn ensure_ready(&self) -> Result<(), SkillStoreError> {
+        let mut ready = self
+            .inner
+            .ready
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if *ready {
+            return Ok(());
+        }
+        ensure_store_root_directory(&self.inner.config_dir)?;
+        self.initialize_if_new()?;
+        // initialize_if_new 会吞掉"不得覆盖不安全/损坏库"类引导失败（见其内部
+        // 注释），那些路径不填 observed。此时不得锁存就绪：后续操作每次重试
+        // 完整引导，用户修复磁盘（如删掉占住 user_dir 的文件）后无需重启。
+        if self
+            .inner
+            .observed
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .is_some()
+        {
+            *ready = true;
+        }
+        Ok(())
     }
 
     #[cfg(test)]
@@ -360,6 +400,7 @@ impl SkillStoreState {
     pub(crate) fn poll_external_catalog_revision(
         &self,
     ) -> Result<Option<StoreRevision>, SkillStoreError> {
+        self.ensure_ready()?;
         let revision = read_revision(&self.inner.revision_path)?.ok_or_else(|| {
             SkillStoreError::RecoveryPending(vec![revision_recovery_issue(
                 "非空技能库缺失 skills.revision，禁止重置为新 store".into(),
@@ -478,6 +519,7 @@ impl SkillStoreState {
         &self,
         operation: impl FnOnce(&StoreRevision) -> Result<T, SkillStoreError>,
     ) -> Result<T, SkillStoreError> {
+        self.ensure_ready()?;
         let _process = self
             .inner
             .gate
@@ -523,6 +565,7 @@ impl SkillStoreState {
         &self,
         target_name: &str,
     ) -> Result<TargetBaseline, SkillStoreError> {
+        self.ensure_ready()?;
         // baseline 是提交校验的一部分，按要求在同一 write 锁内捕获
         // presence/type/稳定树身份并解析 SKILL.md。
         let _process = self
@@ -551,11 +594,7 @@ impl SkillStoreState {
                 &self.inner.defaults_path,
                 enabled,
             )
-            .map_err(|message| SkillStoreError::Io {
-                operation: "物化技能",
-                path: target.display().to_string(),
-                message,
-            })
+            .map_err(|error| error.into_store_error(target))
         })
     }
 
@@ -592,17 +631,14 @@ impl SkillStoreState {
                 &self.inner.defaults_path,
                 explicit,
             )
-            .map_err(|message| SkillStoreError::Io {
-                operation: "物化会话技能",
-                path: target.display().to_string(),
-                message,
-            })
+            .map_err(|error| error.into_store_error(target))
         })
     }
 
     /// 事务恢复机已废弃：没有事务日志就没有待恢复项。保留 IPC 外形，
     /// 顺手清扫历史版本的事务残留目录。
     pub(crate) fn recovery_issues(&self) -> Result<Vec<SkillRecoveryIssue>, SkillStoreError> {
+        self.ensure_ready()?;
         let _process = self
             .inner
             .gate
@@ -665,6 +701,7 @@ impl SkillStoreState {
         ),
         SkillStoreError,
     > {
+        self.ensure_ready()?;
         let _process = self
             .inner
             .gate
@@ -752,6 +789,7 @@ impl SkillStoreState {
         &self,
         operation: impl FnOnce(&Path, &Path) -> Result<T, SkillStoreError>,
     ) -> Result<(T, StoreRevision), SkillStoreError> {
+        self.ensure_ready()?;
         let _process = self
             .inner
             .gate
@@ -853,6 +891,24 @@ impl SkillStoreState {
         // `observed` 是 watcher 的交付水位，不是任意读者的磁盘缓存。
         // 普通 read（尤其自动恢复后的重读）不能吞掉尚未 emit 的 revision。
         Ok(revision)
+    }
+}
+
+/// 技能库根目录（应用配置目录）允许是符号链接/junction：把数据目录迁到
+/// 其他盘再 mklink 回来是 Windows 用户的常见做法，而能替换 AppData 根的
+/// 主体本就拥有该用户全部权限，校验根目录换不来任何防御。链接劫持防护由
+/// 目录内部条目的逐层校验承担（ensure_plain_directory / scan_tree），与根
+/// 是否为链接无关。这里跟随链接，只要求最终指向一个目录。
+fn ensure_store_root_directory(path: &Path) -> Result<(), SkillStoreError> {
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_dir() => Ok(()),
+        Ok(_) => Err(SkillStoreError::unsafe_object(
+            path.display().to_string(),
+            "必须是目录或指向目录的链接",
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => fs::create_dir_all(path)
+            .map_err(|error| SkillStoreError::io("创建技能库目录", path, error)),
+        Err(error) => Err(SkillStoreError::io("检查技能库目录", path, error)),
     }
 }
 
@@ -1242,6 +1298,34 @@ fn workflow_dependencies(dir: &Path) -> Vec<String> {
     dependencies.into_iter().collect()
 }
 
+/// 物化失败归因。Target = 会话目录侧（目标/父目录防劫持校验、临时目录、
+/// rename 交换）：store 是健康的，会话流程若对它降级只会"静默永久无技能"，
+/// 必须保持致命；Store = 技能库内容侧（内置根缺失、技能拷贝）：可被会话
+/// 流程降级，恢复对话优先。
+#[derive(Debug)]
+enum MaterializeUnlockedError {
+    Target(String),
+    Store(String),
+}
+
+/// 会话物化"目标目录侧"失败在 SkillStoreError::Io.operation 上的标记；
+/// driver 据此判定不可降级（见 session.rs 的 materialize_skills）。
+pub(crate) const MATERIALIZE_TARGET_OPERATION: &str = "物化会话技能目标目录";
+
+impl MaterializeUnlockedError {
+    fn into_store_error(self, target: &Path) -> SkillStoreError {
+        let (operation, message) = match self {
+            Self::Target(message) => (MATERIALIZE_TARGET_OPERATION, message),
+            Self::Store(message) => ("物化会话技能", message),
+        };
+        SkillStoreError::Io {
+            operation,
+            path: target.display().to_string(),
+            message,
+        }
+    }
+}
+
 /// 会话技能物化：在同目录 sibling 里建好完整新树，旧树挪到 trash sibling
 /// 后一次 rename 就位，最后清理。技能目录是可重建缓存——中途崩溃最多留下
 /// 缺失的 target 或半份 sibling，下次物化会整树重建并清扫残留，不需要事务
@@ -1254,15 +1338,18 @@ fn materialize_unlocked(
     user: &Path,
     defaults: &Path,
     enabled: Option<&[String]>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, MaterializeUnlockedError> {
     let parent = target
         .parent()
-        .ok_or_else(|| "会话技能目录缺少父目录".to_string())?;
-    ensure_plain_materialize_parent(parent)?;
-    path_is_plain_directory_or_missing(target)?;
+        .ok_or_else(|| MaterializeUnlockedError::Target("会话技能目录缺少父目录".to_string()))?;
+    ensure_plain_materialize_parent(parent).map_err(MaterializeUnlockedError::Target)?;
+    path_is_plain_directory_or_missing(target).map_err(MaterializeUnlockedError::Target)?;
     cleanup_materialize_siblings(target);
-    let (temporary, trash) = unique_materialize_siblings(target)?;
-    fs::create_dir(&temporary).map_err(|e| format!("创建会话技能临时目录失败: {e}"))?;
+    let (temporary, trash) =
+        unique_materialize_siblings(target).map_err(MaterializeUnlockedError::Target)?;
+    fs::create_dir(&temporary).map_err(|e| {
+        MaterializeUnlockedError::Target(format!("创建会话技能临时目录失败: {e}"))
+    })?;
 
     let prefs = load_default_prefs(defaults);
     let store = scan_store(builtin, user);
@@ -1302,20 +1389,24 @@ fn materialize_unlocked(
             let source_root = if s.info.source == "user" {
                 user
             } else {
-                builtin.ok_or_else(|| format!("内置技能根缺失: {}", s.info.name))?
+                builtin.ok_or_else(|| {
+                    MaterializeUnlockedError::Store(format!("内置技能根缺失: {}", s.info.name))
+                })?
             };
             copy_skill_directory_for_materialization(
                 source_root,
                 &s.info.name,
                 &temporary.join(&s.info.name),
             )
-            .map_err(|e| format!("物化技能 {} 失败: {e}", s.info.name))?;
+            .map_err(|e| {
+                MaterializeUnlockedError::Store(format!("物化技能 {} 失败: {e}", s.info.name))
+            })?;
             // 只有公开入口进 sidecar 快照;内部依赖仅落盘。
             if roots.contains(&s.info.name) {
                 done.push(s.info.name);
             }
         }
-        Ok::<(), String>(())
+        Ok::<(), MaterializeUnlockedError>(())
     })();
     if let Err(error) = generated {
         let _ = remove_plain_tree(&temporary);
@@ -1327,7 +1418,9 @@ fn materialize_unlocked(
     if had_old {
         if let Err(error) = swap_rename(target, &trash) {
             let _ = remove_plain_tree(&temporary);
-            return Err(format!("移开旧会话技能目录失败: {error}"));
+            return Err(MaterializeUnlockedError::Target(format!(
+                "移开旧会话技能目录失败: {error}"
+            )));
         }
     }
     if let Err(error) = swap_rename(&temporary, target) {
@@ -1335,7 +1428,9 @@ fn materialize_unlocked(
             let _ = swap_rename(&trash, target);
         }
         let _ = remove_plain_tree(&temporary);
-        return Err(format!("安装新会话技能目录失败: {error}"));
+        return Err(MaterializeUnlockedError::Target(format!(
+            "安装新会话技能目录失败: {error}"
+        )));
     }
     let _ = remove_plain_tree(&trash);
     Ok(done)
@@ -1680,6 +1775,91 @@ mod tests {
         fs::write(dir.join("SKILL.md"), content).unwrap();
     }
 
+    /// 用户把数据目录迁到别的盘再链接回原位（Windows 上 mklink /D 或 /J）
+    /// 是常见做法；技能库根必须跟随链接工作，否则应用启动即失败。
+    #[cfg(unix)]
+    #[test]
+    fn store_root_symlink_is_followed_and_fully_usable() {
+        let real = test_dir("symlink-root-real");
+        let holder = test_dir("symlink-root-link");
+        let link = holder.join("config");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let state = SkillStoreState::new(link.clone()).unwrap();
+        state.save_skill("linked", "---\nname: linked\n---\nbody", None).unwrap();
+        let snapshot = state.snapshot(None).unwrap();
+        assert_eq!(snapshot.skills.len(), 1);
+        assert_eq!(snapshot.skills[0].name, "linked");
+        // 内容确实落在链接指向的真实目录里。
+        assert!(real.join("skills/linked/SKILL.md").is_file());
+        assert!(real.join(REVISION_FILE).is_file());
+        // 通过真实路径打开的是同一个 store（同 store_id，revision 连续）。
+        let direct = SkillStoreState::new(real.clone()).unwrap();
+        assert_eq!(direct.snapshot(None).unwrap().store_id, snapshot.store_id);
+    }
+
+    /// initialize_if_new 内部吞掉的引导失败（如 user_dir 被普通文件占住）
+    /// 不得锁存就绪：错误要持续暴露，且用户修复后同一实例免重启恢复。
+    #[test]
+    fn swallowed_bootstrap_failure_does_not_latch_ready_and_recovers() {
+        let cfg = test_dir("no-latch");
+        fs::write(cfg.join("skills"), b"not a dir").unwrap();
+
+        let state = SkillStoreState::new_deferred(cfg.clone());
+        assert!(state.snapshot(None).is_err());
+
+        fs::remove_file(cfg.join("skills")).unwrap();
+        state
+            .save_skill("revived", "---\nname: revived\n---\nbody", None)
+            .unwrap();
+        assert_eq!(state.snapshot(None).unwrap().skills.len(), 1);
+    }
+
+    /// 目标目录侧失败（此处：目标被换成符号链接）必须带上 Target 标记，
+    /// 供会话流程判定不可降级；技能库内容侧失败则不带。
+    #[cfg(unix)]
+    #[test]
+    fn hijacked_materialize_target_is_tagged_as_target_side_failure() {
+        let cfg = test_dir("target-side-tag");
+        let state = SkillStoreState::new(cfg.clone()).unwrap();
+        let outside = cfg.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        let sessions = cfg.join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let target = sessions.join("skills");
+        std::os::unix::fs::symlink(&outside, &target).unwrap();
+
+        let error = state.materialize(&target, None, Some(&[])).unwrap_err();
+        match error {
+            SkillStoreError::Io { operation, .. } => {
+                assert_eq!(operation, MATERIALIZE_TARGET_OPERATION);
+            }
+            other => panic!("目标劫持应产生 Io 错误: {other:?}"),
+        }
+    }
+
+    /// 技能库环境坏掉只能让技能操作报错，绝不允许影响构造（应用启动）；
+    /// 环境修复后同一实例的下一次操作自动完成初始化，无需重启。
+    #[test]
+    fn deferred_init_failure_blocks_operations_then_recovers_without_restart() {
+        let holder = test_dir("deferred-root");
+        let root = holder.join("config");
+        fs::write(&root, b"not a dir").unwrap();
+
+        let state = SkillStoreState::new_deferred(root.clone());
+        assert!(state.snapshot(None).is_err());
+        assert!(state.poll_external_catalog_revision().is_err());
+        assert!(state.save_skill("blocked", "# blocked", None).is_err());
+
+        fs::remove_file(&root).unwrap();
+        state
+            .save_skill("revived", "---\nname: revived\n---\nbody", None)
+            .unwrap();
+        let snapshot = state.snapshot(None).unwrap();
+        assert_eq!(snapshot.skills.len(), 1);
+        assert_eq!(snapshot.skills[0].name, "revived");
+    }
+
     #[test]
     fn skill_name_validation_rejects_path_escapes_and_nonportable_names() {
         assert!(valid_skill_name("git-commit"));
@@ -1979,7 +2159,7 @@ mod tests {
     }
 
     #[test]
-    fn design_skills_are_factory_enabled_and_user_prefs_override_them() {
+    fn design_skills_are_factory_disabled_and_user_prefs_can_enable_them() {
         const INTERNAL_SKILLS: [&str; 10] = [
             "design-generation",
             "design-refinement",
@@ -1992,7 +2172,7 @@ mod tests {
             "react-native-design",
             "headless-design-jury",
         ];
-        assert!(DEFAULT_ENABLED.contains(&"design-flow"));
+        assert!(!DEFAULT_ENABLED.contains(&"design-flow"));
         assert!(INTERNAL_SKILLS.iter().all(|name| !DEFAULT_ENABLED.contains(name)));
 
         let builtin = test_dir("def-builtin");
@@ -2010,7 +2190,7 @@ mod tests {
         put_skill(&builtin, "tailwindcss-helper", "官方非默认项");
         put_skill(&user, "my-skill", "用户技能出厂默认启用");
 
-        // 用户只选择公开入口，内部依赖仍自动物化，但不进入返回的显式启用集。
+        // 新任务未显式选择技能时，design-flow 与内部依赖均不物化。
         let def = materialize_unlocked(
             &target,
             Some(&builtin),
@@ -2019,31 +2199,40 @@ mod tests {
             None,
         )
         .unwrap();
-        assert!(def.iter().any(|enabled| enabled == "design-flow"));
+        assert!(!def.iter().any(|enabled| enabled == "design-flow"));
         for name in INTERNAL_SKILLS {
             assert!(!def.iter().any(|enabled| enabled == name));
-            assert!(target.join(name).join("SKILL.md").is_file());
+            assert!(!target.join(name).exists());
         }
         assert!(def.iter().any(|enabled| enabled == "my-skill"));
         assert!(!target.join("tailwindcss-helper").exists());
 
         let infos = list_unlocked(Some(&builtin), &user, &user.join("no-defaults.json"));
         assert!(infos.iter().any(|skill| skill.name == "design-flow"));
+        assert_eq!(
+            infos
+                .iter()
+                .find(|skill| skill.name == "design-flow")
+                .map(|skill| skill.default_enabled),
+            Some(false)
+        );
         assert!(INTERNAL_SKILLS.iter().all(|name| !infos.iter().any(|skill| skill.name == *name)));
 
-        // 关闭入口后不再物化它的内部依赖。
+        // 用户显式打开公开入口后，内部依赖自动物化但不进入公开启用集。
         let prefs_path = test_dir("def-prefs").join("skills-defaults.json");
         fs::write(
             &prefs_path,
-            r#"{"design-flow": false, "tailwindcss-helper": true, "my-skill": false}"#,
+            r#"{"design-flow": true, "tailwindcss-helper": true, "my-skill": false}"#,
         )
         .unwrap();
         let def = materialize_unlocked(&target, Some(&builtin), &user, &prefs_path, None).unwrap();
-        assert!(!def.iter().any(|enabled| enabled == "design-flow"));
+        assert!(def.iter().any(|enabled| enabled == "design-flow"));
         assert!(def.iter().any(|enabled| enabled == "tailwindcss-helper"));
         assert!(!def.iter().any(|enabled| enabled == "my-skill"));
-        assert!(!target.join("design-flow").exists());
-        assert!(INTERNAL_SKILLS.iter().all(|name| !target.join(name).exists()));
+        assert!(target.join("design-flow/SKILL.md").is_file());
+        assert!(INTERNAL_SKILLS
+            .iter()
+            .all(|name| target.join(name).join("SKILL.md").is_file()));
         // list_unlocked() 的 default_enabled 与物化同一解析
         let infos = list_unlocked(Some(&builtin), &user, &prefs_path);
         let enabled = |name: &str| {
@@ -2052,7 +2241,7 @@ mod tests {
                 .find(|skill| skill.name == name)
                 .map(|skill| skill.default_enabled)
         };
-        assert_eq!(enabled("design-flow"), Some(false));
+        assert_eq!(enabled("design-flow"), Some(true));
         assert_eq!(enabled("design-generation"), None);
         assert_eq!(enabled("tailwindcss-helper"), Some(true));
         assert_eq!(enabled("my-skill"), Some(false));

@@ -27,8 +27,17 @@ export const LocalComposerHost = forwardRef<
     onFocusRequestHandled?: (request: number) => void;
     /** 空闲态后台状态条取材(ChatView 供给,引用稳定;透传给 Composer) */
     backgroundInfo?: {
-      tasks: { key: string; title: string; startedAt?: number; childId?: string }[];
+      tasks: {
+        key: string;
+        title: string;
+        startedAt?: number;
+        childId?: string;
+        agentId?: string;
+        stopping?: boolean;
+      }[];
       onOpen?: (childId: string) => void;
+      onStop?: (agentId: string) => void;
+      stopError?: string;
     };
   }
 >(function LocalComposerHost(

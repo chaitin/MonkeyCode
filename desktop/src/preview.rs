@@ -28,6 +28,14 @@ const PREVIEW_RESULT_SCHEME: &str = "monkeycode-preview-result";
 const MAX_RESULT_BYTES: usize = 32 * 1024;
 static PICKER_ACTIVE: AtomicBool = AtomicBool::new(false);
 static PREVIEW_ZOOM: Mutex<f64> = Mutex::new(1.0);
+/// preview 命令族的单车道。全族 async 化(见各命令)后不再内联于主线程的
+/// webview IPC 回调——此前它们是同步命令,一个 `preview_create` 在 Windows
+/// 上挂死(wry 建 WebView2 走 wait_with_pump 嵌套消息泵,期间重入的
+/// preview IPC 可对半建的 webview 做 close/再建,把泵绞死),整个 IPC
+/// 派发路径连同取消一起报废(2026-08-31 报障「preview_create 挂起后
+/// 后续所有 IPC 全挂」)。async 让 IPC 回调立即返回;这把锁恢复原先
+/// 主线程串行给到的次序保证,并从根上杜绝创建期重入。
+static PREVIEW_LANE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 const SERIALIZE_SCHEME: &str = "monkeycode-serialize";
 const SERIALIZE_JS: &str = r#"(()=>{window.__mcSerialize=async id=>{try{const html='<!doctype html>\n'+new XMLSerializer().serializeToString(document.documentElement);if(new TextEncoder().encode(html).length>8388608)throw Error('HTML 超过 8 MiB 限制');const n=4000,total=Math.ceil(html.length/n);for(let i=0;i<total;i++){location.href=`monkeycode-serialize://${id}?index=${i}&total=${total}&data=${encodeURIComponent(html.slice(i*n,(i+1)*n))}`;await new Promise(r=>setTimeout(r,0))}}catch(e){location.href=`monkeycode-serialize://${id}?error=${encodeURIComponent(String(e?.message||e))}`}}})()"#;
 
@@ -671,6 +679,27 @@ fn is_artifact_url(url: &Url) -> bool {
         || matches!(url.scheme(), "http" | "https") && url.host_str() == Some(ARTIFACT_HTTP_HOST)
 }
 
+/// 自定义协议 URL 的 http 桥接形态(`http://monkeycode-artifact.localhost/…`)。
+/// Windows 上 WebView2 导航不了原生自定义 scheme——tauri 的自定义协议在
+/// Windows/Android 只经此形态可达(tauri app.rs 文档),而 tauri 对
+/// `WebviewUrl::CustomProtocol` 的入口 URL 原样透传不做平台转换。路径保持
+/// 已编码形态原样拼接,不二次编码。
+fn bridged_artifact_url(url: &Url) -> Result<Url, String> {
+    Url::parse(&format!("http://{ARTIFACT_HTTP_HOST}{}", url.path()))
+        .map_err(|e| format!("无法创建桥接预览地址: {e}"))
+}
+
+/// artifact 入口按平台选形态:Windows 走 http 桥接(否则永远空白,
+/// 2026-08-31 报障「本地 html 无法预览」;导航白名单 is_artifact_url 早已
+/// 两种形态都认,此前唯独漏了入口);macOS/Linux 走真自定义协议。
+fn artifact_webview_url(url: Url) -> Result<WebviewUrl, String> {
+    if cfg!(windows) {
+        Ok(WebviewUrl::External(bridged_artifact_url(&url)?))
+    } else {
+        Ok(WebviewUrl::CustomProtocol(url))
+    }
+}
+
 fn create_preview(
     app: AppHandle,
     url: Url,
@@ -685,7 +714,7 @@ fn create_preview(
     let callback_app = app.clone();
     let navigation_root = artifact_root.clone();
     let webview_url = if is_artifact_url(&url) {
-        WebviewUrl::CustomProtocol(url)
+        artifact_webview_url(url)?
     } else {
         WebviewUrl::External(url)
     };
@@ -704,11 +733,17 @@ fn create_preview(
                     } else if let Some(result) = capture_result(url) {
                         match result {
                             Ok(Some((request_id, data_url, copy_to_clipboard))) => {
-                                let clipboard_error = copy_to_clipboard
-                                    .then(|| copy_capture_to_clipboard(&data_url))
-                                    .transpose()
-                                    .err();
-                                let _ = callback_app.emit_to("main", "preview-captured", serde_json::json!({"requestId":request_id,"dataUrl":data_url,"clipboardError":clipboard_error}));
+                                // 本回调在主线程消息泵里跑;Windows 系统剪贴板是全局锁
+                                // (OpenClipboard 可被他程占住而阻塞),写入挪去独立线程,
+                                // 完成后再发事件
+                                let app = callback_app.clone();
+                                std::thread::spawn(move || {
+                                    let clipboard_error = copy_to_clipboard
+                                        .then(|| copy_capture_to_clipboard(&data_url))
+                                        .transpose()
+                                        .err();
+                                    let _ = app.emit_to("main", "preview-captured", serde_json::json!({"requestId":request_id,"dataUrl":data_url,"clipboardError":clipboard_error}));
+                                });
                             }
                             Ok(None) => {}
                             Err(error) => { let _ = callback_app.emit_to("main", "preview-capture-error", serde_json::json!({"requestId":url.host_str().unwrap_or(""),"error":error})); }
@@ -753,8 +788,22 @@ fn create_preview(
     Ok(())
 }
 
+/// Linux 上原生子 webview 不可用:上游 tauri-runtime-wry 把 WindowChild
+/// `pack_start` 进窗口的垂直 GtkBox(非定位叠放),窗口被对半分、预览整宽
+/// 落底,且 wry 的 set_bounds 仅在 gtk::Fixed 父容器下生效——摆位全部空转
+/// (2026-08-31 报障截图)。UI 侧已降级为 DOM 内嵌 iframe
+/// (DesignPreviewWorkbench 的 inlineFallback),此处硬拒防回归。
+fn reject_native_preview_on_linux() -> Result<(), String> {
+    if cfg!(target_os = "linux") {
+        return Err("Linux 上原生预览不可用(上游子 webview 无定位能力),应使用内嵌预览".into());
+    }
+    Ok(())
+}
+
 #[tauri::command]
-pub fn preview_create(app: AppHandle, url: String, bounds: PreviewBounds) -> Result<(), String> {
+pub async fn preview_create(app: AppHandle, url: String, bounds: PreviewBounds) -> Result<(), String> {
+    reject_native_preview_on_linux()?;
+    let _lane = PREVIEW_LANE.lock().await;
     #[cfg(debug_assertions)]
     eprintln!("[preview-lifecycle] create url={url}");
     *ARTIFACT_SITE.lock().map_err(|_| "预览资源状态锁损坏")? = None;
@@ -771,15 +820,14 @@ pub async fn preview_create_artifact(
 ) -> Result<(), String> {
     #[cfg(debug_assertions)]
     eprintln!("[preview-lifecycle] create-artifact id={id} path={path}");
+    reject_native_preview_on_linux()?;
     let engine = host.get()?;
     let workdir = engine.session_workdir(&id).await?;
-    let fs_root = match engine.wsl_distro() {
-        Some(distro) => crate::wsl::host_fs_view(&distro, &workdir),
-        None => PathBuf::from(workdir),
-    };
+    let fs_root = engine.host_fs_view(&workdir);
     let site = artifact_preview_file(&fs_root, &path)?;
     let url = artifact_entry_url(&site)?;
     let root = site.root.clone();
+    let _lane = PREVIEW_LANE.lock().await;
     *ARTIFACT_SITE.lock().map_err(|_| "预览资源状态锁损坏")? = Some(site);
     if let Err(error) = create_preview(app, url, bounds, Some(root)) {
         if let Ok(mut active) = ARTIFACT_SITE.lock() {
@@ -790,15 +838,18 @@ pub async fn preview_create_artifact(
     Ok(())
 }
 #[tauri::command]
-pub fn preview_show(app: AppHandle) -> Result<(), String> {
+pub async fn preview_show(app: AppHandle) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     webview(&app)?.show().map_err(|e| e.to_string())
 }
 #[tauri::command]
-pub fn preview_hide(app: AppHandle) -> Result<(), String> {
+pub async fn preview_hide(app: AppHandle) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     webview(&app)?.hide().map_err(|e| e.to_string())
 }
 #[tauri::command]
-pub fn preview_set_bounds(app: AppHandle, bounds: PreviewBounds) -> Result<(), String> {
+pub async fn preview_set_bounds(app: AppHandle, bounds: PreviewBounds) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     let b = bounds.validate()?;
     let v = webview(&app)?;
     v.set_position(LogicalPosition::new(b.x, b.y))
@@ -808,25 +859,29 @@ pub fn preview_set_bounds(app: AppHandle, bounds: PreviewBounds) -> Result<(), S
     apply_zoom(&v, preview_zoom()?)
 }
 #[tauri::command]
-pub fn preview_navigate(app: AppHandle, url: String) -> Result<(), String> {
+pub async fn preview_navigate(app: AppHandle, url: String) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     webview(&app)?
         .navigate(preview_url(&url)?)
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
-pub fn preview_reload(app: AppHandle) -> Result<(), String> {
+pub async fn preview_reload(app: AppHandle) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     webview(&app)?.reload().map_err(|e| e.to_string())
 }
 #[tauri::command]
-pub fn preview_set_zoom(app: AppHandle, scale: f64) -> Result<(), String> {
+pub async fn preview_set_zoom(app: AppHandle, scale: f64) -> Result<(), String> {
     if !scale.is_finite() || !(0.1..=5.0).contains(&scale) {
         return Err("缩放比例必须在 10% 到 500% 之间".into());
     }
+    let _lane = PREVIEW_LANE.lock().await;
     *PREVIEW_ZOOM.lock().map_err(|_| "预览缩放状态锁损坏")? = scale;
     apply_zoom(&webview(&app)?, scale)
 }
 #[tauri::command]
-pub fn preview_destroy(app: AppHandle) -> Result<(), String> {
+pub async fn preview_destroy(app: AppHandle) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     #[cfg(debug_assertions)]
     eprintln!("[preview-lifecycle] destroy");
     PICKER_ACTIVE.store(false, Ordering::Relaxed);
@@ -837,12 +892,13 @@ pub fn preview_destroy(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 #[tauri::command]
-pub fn preview_result_show(
+pub async fn preview_result_show(
     app: AppHandle,
     data_url: String,
     status: String,
     comment_count: usize,
 ) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     if !data_url.starts_with("data:image/png;base64,")
         || data_url.len() > MAX_CAPTURE_BYTES * 4 / 3 + 64
         || status.chars().count() > 500
@@ -864,7 +920,8 @@ pub fn preview_result_show(
 }
 
 #[tauri::command]
-pub fn preview_result_hide(app: AppHandle) -> Result<(), String> {
+pub async fn preview_result_hide(app: AppHandle) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     webview(&app)?
         .eval(format!(
             "{PREVIEW_RESULT_JS};window.__mcPreviewResultHide()"
@@ -873,7 +930,8 @@ pub fn preview_result_hide(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn preview_picker_toggle(app: AppHandle, enabled: bool) -> Result<(), String> {
+pub async fn preview_picker_toggle(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     let arg = serde_json::to_string(&enabled).unwrap();
     webview(&app)?
         .eval(format!("{PICKER_JS};window.__mcPicker.toggle({arg})"))
@@ -882,7 +940,8 @@ pub fn preview_picker_toggle(app: AppHandle, enabled: bool) -> Result<(), String
     Ok(())
 }
 #[tauri::command]
-pub fn preview_element_apply(app: AppHandle, edit: ElementEdit) -> Result<(), String> {
+pub async fn preview_element_apply(app: AppHandle, edit: ElementEdit) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     if !valid_selector(&edit.selector)
         || !(edit.property == "delete"
             || edit.property == "text"
@@ -930,17 +989,19 @@ pub fn preview_element_apply(app: AppHandle, edit: ElementEdit) -> Result<(), St
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
-pub fn preview_element_undo(app: AppHandle) -> Result<(), String> {
+pub async fn preview_element_undo(app: AppHandle) -> Result<(), String> {
+    let _lane = PREVIEW_LANE.lock().await;
     webview(&app)?
         .eval("window.__mcPicker&&window.__mcPicker.undoOne()")
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn preview_serialize(app: AppHandle, request_id: String) -> Result<(), String> {
+pub async fn preview_serialize(app: AppHandle, request_id: String) -> Result<(), String> {
     if request_id.len() != 32 || !request_id.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("序列化请求 ID 无效".into());
     }
+    let _lane = PREVIEW_LANE.lock().await;
     let id = serde_json::to_string(&request_id).unwrap();
     webview(&app)?
         .eval(format!("{SERIALIZE_JS};window.__mcSerialize({id})"))
@@ -1212,13 +1273,14 @@ mod native_capture {
 }
 
 #[tauri::command]
-pub fn preview_capture(app: AppHandle, mode: String, request_id: String) -> Result<(), String> {
+pub async fn preview_capture(app: AppHandle, mode: String, request_id: String) -> Result<(), String> {
     if !matches!(mode.as_str(), "viewport" | "viewport-no-copy" | "full")
         || request_id.len() != 32
         || !request_id.bytes().all(|b| b.is_ascii_hexdigit())
     {
         return Err("截图参数无效".into());
     }
+    let _lane = PREVIEW_LANE.lock().await;
     #[cfg(target_os = "macos")]
     {
         return native_capture::start(app, mode, request_id);
@@ -1245,6 +1307,15 @@ mod tests {
     fn policy() {
         assert!(preview_url("http://localhost:3000").is_ok());
         assert!(preview_url("https://localhost.evil").is_err());
+    }
+    /// Windows 入口桥接:路径已编码段原样保留,不二次编码。
+    #[test]
+    fn artifact_bridge_preserves_encoded_path() {
+        let url = Url::parse("monkeycode-artifact://localhost/__workspace__/a%20b/index.html").unwrap();
+        assert_eq!(
+            bridged_artifact_url(&url).unwrap().as_str(),
+            "http://monkeycode-artifact.localhost/__workspace__/a%20b/index.html"
+        );
     }
     #[test]
     fn edit_validation() {

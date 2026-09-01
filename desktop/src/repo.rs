@@ -2,12 +2,14 @@
 // 应答字段与内核 WS call 完全对齐:{result} / {error},UI 归约层零改动。
 // 全部操作强制限定在工作区目录内。
 //
-// WSL 模式(kernel_env = "wsl:<发行版>"):workdir 是 guest 内 Linux 路径,
-// 文件系统操作经 \\wsl$\<发行版> UNC 访问,git 经 wsl.exe 在 guest 内执行
-// (UNC 上跑 Windows git 会撞 ownership 校验且行尾语义不对)。
+// WSL 模式(kernel_env = "wsl:<发行版>"):workdir 是 guest 内 Linux 路径。
+// WSL 文件系统路径经 \\wsl$ UNC 访问，automount 盘符路径(/mnt/c/…)
+// 反解回 C:\…；git 经 wsl.exe 在 guest 内执行(UNC 上跑 Windows git 会撞
+// ownership 校验且行尾语义不对)。
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
@@ -43,14 +45,19 @@ pub struct RepoCtx {
     pub workdir: String,
     /// WSL 发行版(仅 Windows + kernel_env=wsl:* 时 Some)
     pub wsl_distro: Option<String>,
+    /// WSL automount 根(通常 /mnt，允许 wsl.conf 自定义)。
+    pub wsl_mount_root: Option<String>,
 }
 
 impl RepoCtx {
-    /// 本地文件系统视角的工作区根(WSL 模式转 UNC;Linux 冒烟恒等)。
+    /// 本地文件系统视角的工作区根(WSL 文件系统转 UNC，盘符挂载转宿主盘符)。
     fn fs_root(&self) -> PathBuf {
-        match &self.wsl_distro {
-            Some(d) => crate::wsl::host_fs_view(d, &self.workdir),
-            None => PathBuf::from(&self.workdir),
+        match (&self.wsl_distro, &self.wsl_mount_root) {
+            (Some(distro), Some(mount_root)) => {
+                crate::wsl::host_fs_view_with_mount_root(distro, mount_root, &self.workdir)
+            }
+            (Some(distro), None) => crate::wsl::host_fs_view(distro, &self.workdir),
+            (None, _) => PathBuf::from(&self.workdir),
         }
     }
 
@@ -167,18 +174,30 @@ pub fn dispatch(ctx: &RepoCtx, kind: &str, payload: &Value) -> Value {
 /// 列出目录内容(单层,非递归)。dir 为空表示工作区根。目录在前,再按名排序。
 fn list_files(ctx: &RepoCtx, dir: &str) -> Result<Value, String> {
     let target = ctx.resolve(dir)?;
-    let items = std::fs::read_dir(&target).map_err(|e| format!("读取目录失败: {e}"))?;
     let mut out: Vec<(bool, String, u64)> = Vec::new();
-    for it in items.flatten() {
-        let name = it.file_name().to_string_lossy().into_owned();
-        if name == ".git" {
-            continue;
+    match std::fs::read_dir(&target) {
+        Ok(items) => {
+            for it in items.flatten() {
+                let name = it.file_name().to_string_lossy().into_owned();
+                if name == ".git" {
+                    continue;
+                }
+                let Ok(md) = it.metadata() else { continue };
+                out.push((md.is_dir(), name, md.len()));
+                if out.len() >= MAX_LIST_ITEMS {
+                    break;
+                }
+            }
         }
-        let Ok(md) = it.metadata() else { continue };
-        out.push((md.is_dir(), name, md.len()));
-        if out.len() >= MAX_LIST_ITEMS {
-            break;
+        Err(host_error) if ctx.wsl_distro.is_some() => {
+            out = list_files_in_wsl(ctx, dir).map_err(|wsl_error| {
+                format!(
+                    "读取目录失败({}): {host_error}; WSL 读取也失败: {wsl_error}",
+                    target.display()
+                )
+            })?;
         }
+        Err(error) => return Err(format!("读取目录失败({}): {error}", target.display())),
     }
     out.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
     let base = if dir.is_empty() {
@@ -193,6 +212,93 @@ fn list_files(ctx: &RepoCtx, dir: &str) -> Result<Value, String> {
         })
         .collect();
     Ok(Value::Array(entries))
+}
+
+/// Windows 无法读取某些 WSL/DrvFs 路径时，在对应发行版内读取单层目录。
+/// `cd -P && pwd -P` 收敛真实路径并守住 workdir 边界；POSIX shell glob
+/// 避免依赖 GNU find/head，NUL 三元组保留文件名中的空格、换行和反斜杠。
+fn list_files_in_wsl(ctx: &RepoCtx, dir: &str) -> Result<Vec<(bool, String, u64)>, String> {
+    let distro = ctx.wsl_distro.as_deref().ok_or("缺少 WSL 发行版")?;
+    let target = guest_target(ctx, dir);
+    let script = wsl_list_script();
+    let args = vec![
+        "-d".into(),
+        distro.into(),
+        "--exec".into(),
+        "/bin/sh".into(),
+        "-c".into(),
+        script,
+        "monkeycode-repo-list".into(),
+        ctx.workdir.clone(),
+        target,
+    ];
+    // 外层 repo 查询 15s；给 run_wsl_bytes 最多 5s 的进程退出后排空留余量。
+    let output = crate::wsl::run_wsl_bytes(&args, Duration::from_secs(8))?;
+    parse_wsl_directory_entries(&output)
+}
+
+fn wsl_list_script() -> String {
+    format!(
+        r#"set -eu
+root=$(CDPATH= cd -P "$1" && pwd -P)
+target=$(CDPATH= cd -P "$2" && pwd -P)
+if [ "$root" != '/' ] && [ "$target" != "$root" ]; then
+  case "$target" in "$root"/*) ;; *) echo '路径超出工作区' >&2; exit 13 ;; esac
+fi
+count=0
+for path in "$target"/* "$target"/.[!.]* "$target"/..?*; do
+  [ -e "$path" ] || [ -L "$path" ] || continue
+  name=${{path##*/}}
+  [ "$name" = '.git' ] && continue
+  if [ -d "$path" ] && [ ! -L "$path" ]; then kind=d; else kind=f; fi
+  # 单层 fallback 的首要目标是可靠/快速列树；逐项拉起 stat 在大目录会
+  # 产生数千进程。文件打开时会再取权威大小，这里用 0 作未知占位。
+  printf '%s\000%s\0000\000' "$name" "$kind"
+  count=$((count + 1))
+  # 不能写成 `[ ... ] && break`:最后一个 glob 命中真实条目(如 ..data)时
+  # 该测试作为循环体最后一条命令以状态 1 结束整个脚本,完整列表被当失败丢弃。
+  if [ "$count" -ge {} ]; then break; fi
+done"#,
+        MAX_LIST_ITEMS
+    )
+}
+
+fn guest_target(ctx: &RepoCtx, rel: &str) -> String {
+    if rel.is_empty() {
+        ctx.workdir.clone()
+    } else {
+        format!(
+            "{}/{}",
+            ctx.workdir.trim_end_matches('/'),
+            rel.replace('\\', "/")
+        )
+    }
+}
+
+fn parse_wsl_directory_entries(data: &[u8]) -> Result<Vec<(bool, String, u64)>, String> {
+    let mut fields = data.split(|byte| *byte == 0);
+    let mut entries = Vec::new();
+    loop {
+        let Some(name) = fields.next() else { break };
+        if name.is_empty() {
+            break;
+        }
+        let kind = fields.next().ok_or("WSL 目录响应缺少类型")?;
+        let size = fields.next().ok_or("WSL 目录响应缺少大小")?;
+        let name = String::from_utf8_lossy(name).into_owned();
+        if name == ".git" {
+            continue;
+        }
+        let size = std::str::from_utf8(size)
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .ok_or("WSL 目录响应大小无效")?;
+        entries.push((kind == b"d", name, size));
+        if entries.len() >= MAX_LIST_ITEMS {
+            break;
+        }
+    }
+    Ok(entries)
 }
 
 fn preview_files(ctx: &RepoCtx) -> Result<Value, String> {
@@ -302,7 +408,18 @@ fn artifact_read(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
 /// 读取文件内容(1MB 上限)。
 fn read_file(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
     let p = ctx.resolve(rel)?;
-    let md = std::fs::metadata(&p).map_err(|e| format!("读取失败: {e}"))?;
+    let md = match std::fs::metadata(&p) {
+        Ok(metadata) => metadata,
+        Err(host_error) if ctx.wsl_distro.is_some() => {
+            return read_file_in_wsl(ctx, rel).map_err(|wsl_error| {
+                format!(
+                    "读取失败({}): {host_error}; WSL 读取也失败: {wsl_error}",
+                    p.display()
+                )
+            });
+        }
+        Err(error) => return Err(format!("读取失败({}): {error}", p.display())),
+    };
     if md.is_dir() {
         return Err(format!("{rel} 是目录"));
     }
@@ -313,8 +430,78 @@ fn read_file(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
             MAX_FILE_BYTES
         ));
     }
-    let data = std::fs::read(&p).map_err(|e| format!("读取失败: {e}"))?;
+    let data = match std::fs::read(&p) {
+        Ok(data) => data,
+        Err(host_error) if ctx.wsl_distro.is_some() => {
+            return read_file_in_wsl(ctx, rel).map_err(|wsl_error| {
+                format!(
+                    "读取失败({}): {host_error}; WSL 读取也失败: {wsl_error}",
+                    p.display()
+                )
+            });
+        }
+        Err(error) => return Err(format!("读取失败({}): {error}", p.display())),
+    };
     Ok(json!({ "path": rel, "content": String::from_utf8_lossy(&data) }))
+}
+
+fn read_file_in_wsl(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
+    let distro = ctx.wsl_distro.as_deref().ok_or("缺少 WSL 发行版")?;
+    let target = guest_target(ctx, rel);
+    let script = wsl_read_script();
+    let args = vec![
+        "-d".into(),
+        distro.into(),
+        "--exec".into(),
+        "/bin/sh".into(),
+        "-c".into(),
+        script,
+        "monkeycode-repo-read".into(),
+        ctx.workdir.clone(),
+        target,
+    ];
+    let output = crate::wsl::run_wsl_bytes(&args, Duration::from_secs(8))?;
+    parse_wsl_file_response(rel, &output)
+}
+
+fn wsl_read_script() -> String {
+    format!(
+        r#"set -eu
+root=$(CDPATH= cd -P "$1" && pwd -P)
+requested=$2
+parent=${{requested%/*}}
+name=${{requested##*/}}
+[ -n "$parent" ] || parent=/
+parent=$(CDPATH= cd -P "$parent" && pwd -P)
+if [ "$root" != '/' ] && [ "$parent" != "$root" ]; then
+  case "$parent" in "$root"/*) ;; *) echo '路径超出工作区' >&2; exit 13 ;; esac
+fi
+target="$parent/$name"
+[ ! -L "$target" ] || {{ echo '不允许读取符号链接' >&2; exit 14; }}
+[ ! -d "$target" ] || {{ echo '目标是目录' >&2; exit 15; }}
+[ -f "$target" ] || {{ echo '文件不存在或不是普通文件' >&2; exit 16; }}
+size=$(stat -c %s "$target" 2>/dev/null || stat -f %z "$target")
+[ "$size" -le {} ] || {{ echo "文件过大($size 字节)" >&2; exit 17; }}
+printf '%s\000' "$size"
+cat "$target""#,
+        MAX_FILE_BYTES
+    )
+}
+
+fn parse_wsl_file_response(rel: &str, output: &[u8]) -> Result<Value, String> {
+    let separator = output
+        .iter()
+        .position(|byte| *byte == 0)
+        .ok_or("WSL 文件响应缺少大小")?;
+    let size = std::str::from_utf8(&output[..separator])
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or("WSL 文件响应大小无效")?;
+    let data = &output[separator + 1..];
+    if size != data.len() as u64 || size > MAX_FILE_BYTES {
+        return Err("WSL 文件响应长度不一致或超过上限".into());
+    }
+    Ok(json!({ "path": rel, "content": String::from_utf8_lossy(data) }))
 }
 
 /// `git status --porcelain=v1 -z` 的路径以 NUL 分隔且不做 C 引号转义。
@@ -470,6 +657,111 @@ mod tests {
     use super::*;
 
     #[test]
+    fn wsl_directory_protocol_preserves_special_names_and_filters_git() {
+        let data = b"src\0d\04096\0line one\nline two.txt\0f\012\0.git\0d\04096\0";
+        assert_eq!(
+            parse_wsl_directory_entries(data).unwrap(),
+            vec![
+                (true, "src".into(), 4096),
+                (false, "line one\nline two.txt".into(), 12),
+            ]
+        );
+        assert!(parse_wsl_directory_entries(b"name\0f\0bad\0").is_err());
+        assert!(parse_wsl_directory_entries(b"name\0").is_err());
+    }
+
+    #[test]
+    fn wsl_file_protocol_is_bounded_and_keeps_embedded_nuls() {
+        assert_eq!(
+            parse_wsl_file_response("a.bin", b"3\0a\0b").unwrap(),
+            json!({ "path": "a.bin", "content": "a\0b" })
+        );
+        assert!(parse_wsl_file_response("a.txt", b"4\0abc").is_err());
+        assert!(parse_wsl_file_response("a.txt", b"bad\0abc").is_err());
+        assert!(parse_wsl_file_response("a.txt", b"abc").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn wsl_shell_helpers_enforce_bounds_and_roundtrip_special_names() {
+        use std::os::unix::fs::symlink;
+
+        let base = std::env::temp_dir().join(format!("mc-wsl-repo-shell-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("work space");
+        let outside = base.join("outside");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let special = root.join("line one\nline two.txt");
+        std::fs::write(&special, b"hello").unwrap();
+        // `..` 前缀名(如 Kubernetes 的 ..data)命中最后一个 glob 组;它作为
+        // 循环最后一项时脚本必须仍以状态 0 退出。
+        std::fs::write(root.join("..data"), b"projected").unwrap();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(outside.join("secret.txt"), b"secret").unwrap();
+        symlink(outside.join("secret.txt"), root.join("escape.txt")).unwrap();
+
+        let list = Command::new("/bin/sh")
+            .args(["-c", &wsl_list_script(), "test"])
+            .arg(&root)
+            .arg(&root)
+            .output()
+            .unwrap();
+        assert!(list.status.success(), "{}", String::from_utf8_lossy(&list.stderr));
+        let mut entries = parse_wsl_directory_entries(&list.stdout).unwrap();
+        entries.sort_by(|a, b| a.1.cmp(&b.1));
+        assert_eq!(
+            entries,
+            vec![
+                (false, "..data".into(), 0),
+                (false, "escape.txt".into(), 0),
+                (false, "line one\nline two.txt".into(), 0),
+                (true, "src".into(), 0),
+            ]
+        );
+
+        let read = Command::new("/bin/sh")
+            .args(["-c", &wsl_read_script(), "test"])
+            .arg(&root)
+            .arg(&special)
+            .output()
+            .unwrap();
+        assert!(read.status.success(), "{}", String::from_utf8_lossy(&read.stderr));
+        assert_eq!(
+            parse_wsl_file_response("line.txt", &read.stdout).unwrap(),
+            json!({ "path": "line.txt", "content": "hello" })
+        );
+
+        let escaped = Command::new("/bin/sh")
+            .args(["-c", &wsl_read_script(), "test"])
+            .arg(&root)
+            .arg(root.join("escape.txt"))
+            .output()
+            .unwrap();
+        assert!(!escaped.status.success(), "符号链接读取必须被拒绝");
+        let outside_list = Command::new("/bin/sh")
+            .args(["-c", &wsl_list_script(), "test"])
+            .arg(&root)
+            .arg(&outside)
+            .output()
+            .unwrap();
+        assert!(!outside_list.status.success(), "工作区外目录必须被拒绝");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn wsl_automount_workspace_uses_the_host_drive() {
+        let ctx = RepoCtx {
+            workdir: "/mnt/c/Users/chaitin/project".into(),
+            wsl_distro: Some("Ubuntu".into()),
+            wsl_mount_root: Some("/mnt".into()),
+        };
+        assert_eq!(ctx.fs_root(), PathBuf::from(r"C:\Users\chaitin\project"));
+    }
+
+    #[test]
     fn porcelain_z_rename_does_not_parse_arrow_inside_source_name() {
         let parsed = parse_status_porcelain_z(
             "R  nested/new.txt\0nested/old -> name.txt\0?? nested/a -> b.txt\0",
@@ -506,6 +798,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: ws.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
 
         assert!(
@@ -545,6 +838,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: dir.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
 
         let root = ctx.resolve("").unwrap();
@@ -588,6 +882,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: dir.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
         let listed = dispatch(&ctx, "repo_preview_files", &json!({}));
         let paths: Vec<_> = listed["result"]["files"]
@@ -633,6 +928,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: dir.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
         let listed = preview_files(&ctx).unwrap();
         assert!(!listed["files"]
@@ -652,6 +948,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: dir.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
 
         let response = dispatch(&ctx, "repo_file_changes", &json!({}));
@@ -676,6 +973,7 @@ mod tests {
         let ctx = RepoCtx {
             workdir: dir.to_string_lossy().into_owned(),
             wsl_distro: None,
+            wsl_mount_root: None,
         };
 
         let response = dispatch(&ctx, "repo_file_changes", &json!({}));

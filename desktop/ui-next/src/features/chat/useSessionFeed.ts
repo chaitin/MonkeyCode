@@ -71,6 +71,12 @@ function openUsageFrame(used: number | undefined, window: number | undefined): F
 export interface SessionFeed {
   state: ChatState;
   conn: ConnStatus | null;
+  /** 本次打开后收到过**实时**帧(frames:{id} 通道;回放窗口不算)。
+   *  轮末副作用的活性闸:历史会话的回放以旧 task-ended 收尾,turnEnded
+   *  照样为真——不区分回放/实时,每次打开历史会话都会重放一遍轮末流水线
+   *  (全工作区 git 扫描 + 把回放里的 URL/产物当新产出强行拉开预览,
+   *  2026-08-31 定案:回放零副作用)。 */
+  sawLive: boolean;
   /** 首份历史(session_open 的尾部回放窗口)是否已落地。
    *  落地前 state 只是 createChatState() 的空壳,running 恒 false 却**不可信**
    *  ——会话可能正在后台跑轮。切回时恢复出来的排队消息若在这之前抢投,必被
@@ -101,6 +107,7 @@ export interface SessionFeed {
 export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
   const [state, setState] = useState<ChatState>(createChatState);
   const [conn, setConn] = useState<ConnStatus | null>(null);
+  const [sawLive, setSawLive] = useState(false);
   // 不用裸 boolean：组件实例会跨任务复用，id 改变后的第一次 render 仍会
   // 看到上一任务的 state。把“已加载”绑定到会话/引擎代次，切换那一帧就能
   // 同步变 false，避免调用方拿新 id 配旧 cursor/state 做恢复或投递。
@@ -144,6 +151,7 @@ export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
   useEffect(() => {
     setState(createChatState());
     setConn(null);
+    setSawLive(false);
     setLoadedHistory(null);
     setOpenError(null);
     setHasMore(false);
@@ -161,6 +169,11 @@ export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
     // 壳里(每次快速切会话漏一对,旧会话的帧此后一直往已卸载的组件里灌)。
     // 旧 UI session.ts:140-143 同款:退订等 Promise resolve 之后再执行。
     const framesP = onFrames(id, (batch) => {
+      // 活帧**到达即置位**(不等应用):早于窗口的活帧会进 pendingRef、与
+      // 窗口同一次 commit 落地,若按"应用时"置位,同批里的活轮末会先于
+      // 标记被消费。sawLive 是轮末流水线的活性闸(见 ChatView),回放
+      // (session_open 返回值)不走本通道,天然不置位
+      setSawLive(true);
       if (!alive) return;
       // 窗口还没落地就先攒着(见 pendingRef 头注),别把水位抬到窗口之上
       const pending = pendingRef.current;
@@ -291,5 +304,5 @@ export function useSessionFeed(id: string | null, epoch = 0): SessionFeed {
     [loadEarlier],
   );
 
-  return { state, conn, historyLoaded, openError, hasMore, loadingEarlier, earlierError, loadEarlier, ensureLoaded };
+  return { state, conn, sawLive, historyLoaded, openError, hasMore, loadingEarlier, earlierError, loadEarlier, ensureLoaded };
 }

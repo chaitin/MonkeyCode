@@ -1,7 +1,8 @@
 // WSL 运行环境支持:Windows 上壳把 ohmyagent 引擎 spawn 进 WSL 发行版
 // (wsl.exe -d <d> --exec <登录shell> -l -c …,stdio 经中继透传)。引擎数据
-// 留 Windows 侧经 /mnt/c 访问;会话 workdir 是 guest Linux 路径,壳侧经
-// \\wsl$ UNC 访问(repo 浏览、附件上传共用 host_fs_view/unc_path)。
+// 留 Windows 侧经 /mnt/c 访问;会话 workdir 是 guest Linux 路径。壳侧
+// automount 路径反解回盘符，真正的 WSL 文件系统路径才经 \\wsl$ UNC
+// 访问(repo 浏览、附件上传共用 host_fs_view)。
 //
 // 本模块全平台编译:Linux 开发机可经 MC_WSL_EXE 指向假 wsl 脚本冒烟整条
 // 代码路径;仅 CREATE_NO_WINDOW 之类 Windows 细节 cfg 局部化。
@@ -90,19 +91,58 @@ pub fn derive_mount_root(host: &Path, guest: &str) -> Option<String> {
         .map(|root| root.trim_end_matches('/').to_string())
 }
 
-/// guest 路径的宿主文件系统视角:Windows 经 \\wsl$ UNC;非 Windows
-/// (MC_WSL_EXE 假脚本冒烟,guest == host)原样返回。会话目录判定/创建、
-/// repo 浏览、附件落盘等所有"壳侧 std::fs 摸 guest 文件"的点统一走这里。
-pub fn host_fs_view(distro: &str, guest_path: &str) -> PathBuf {
+/// guest automount 路径 → Windows 盘符路径。`/mnt/c/a` → `C:\a`；
+/// mount_root 同时支持自定义根与 root=/。非 automount 路径返回 None。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn host_drive_path(mount_root: &str, guest_path: &str) -> Option<String> {
+    let root = mount_root.trim_end_matches('/');
+    let relative = if root.is_empty() {
+        guest_path.strip_prefix('/')?
+    } else {
+        guest_path.strip_prefix(root)?.strip_prefix('/')?
+    };
+    let mut components = relative.split('/');
+    let drive = components.next()?;
+    if drive.len() != 1 || !drive.as_bytes()[0].is_ascii_alphabetic() {
+        return None;
+    }
+    let tail: Vec<_> = components
+        .filter(|component| !component.is_empty())
+        .collect();
+    if tail
+        .iter()
+        .any(|component| matches!(*component, "." | ".."))
+    {
+        return None;
+    }
+    let mut host = format!("{}:\\", drive.to_ascii_uppercase());
+    host.push_str(&tail.join(r"\"));
+    Some(host)
+}
+
+/// guest 路径的宿主文件系统视角。Windows 盘 automount 必须反解回盘符路径：
+/// `\\wsl$\<distro>\mnt\c\...` 无法从 Windows 穿回 drvfs，会报拒绝访问；
+/// `/home/...` 等真正位于 WSL 文件系统的路径才走 UNC。非 Windows 的 WSL
+/// 假脚本冒烟仍保持 guest == host。
+pub fn host_fs_view_with_mount_root(distro: &str, mount_root: &str, guest_path: &str) -> PathBuf {
     #[cfg(windows)]
     {
+        if let Some(path) = host_drive_path(mount_root, guest_path) {
+            return PathBuf::from(path);
+        }
         unc_path(distro, guest_path)
     }
     #[cfg(not(windows))]
     {
-        let _ = distro;
+        let _ = (distro, mount_root);
         PathBuf::from(guest_path)
     }
+}
+
+/// 默认 automount root(/mnt)的兼容入口。持有 WslCtx 的调用方应优先使用
+/// host_fs_view_with_mount_root，兼容 wsl.conf 自定义 automount root。
+pub fn host_fs_view(distro: &str, guest_path: &str) -> PathBuf {
+    host_fs_view_with_mount_root(distro, "/mnt", guest_path)
 }
 
 /// kernel_env 配置值解析:"wsl:<distro>" → Some(distro),其余(本机)→ None。
@@ -643,6 +683,22 @@ mod tests {
         assert_eq!(guest_path_of_drive("/mnt", r"\\wsl$\Ubuntu\home"), None);
         assert_eq!(guest_path_of_drive("/mnt", "/home/u"), None);
         assert_eq!(guest_path_of_drive("/mnt", "relative"), None);
+    }
+
+    #[test]
+    fn guest_automount_maps_back_to_the_windows_drive() {
+        assert_eq!(
+            host_drive_path("/mnt", "/mnt/c/Users/u/project"),
+            Some(r"C:\Users\u\project".into())
+        );
+        assert_eq!(
+            host_drive_path("/custom", "/custom/d/dev/site"),
+            Some(r"D:\dev\site".into())
+        );
+        assert_eq!(host_drive_path("", "/e/work"), Some(r"E:\work".into()));
+        assert_eq!(host_drive_path("/mnt", "/home/u/project"), None);
+        assert_eq!(host_drive_path("/mnt", "/mnt/cache/project"), None);
+        assert_eq!(host_drive_path("/mnt", "/mnt/c/../secret"), None);
     }
 
     #[test]

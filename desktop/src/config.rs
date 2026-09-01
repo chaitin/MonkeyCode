@@ -693,7 +693,7 @@ fn write_ohmyagent_config(
         // 会员条目的密钥由壳补齐(本机记录缺失时照常物化,请求时报错外显,
         // 不静默丢条目);配了测试环境反代 Basic Auth 时嵌进 userinfo
         // (见 with_basic_userinfo)
-        let (base_url, api_key) = if is_monkeycode(m) {
+        let (base_url, api_key, skip_tls) = if is_monkeycode(m) {
             // 地址按当前配置现算(baizhi::resolve_mc_llm 单一出处):设置里显式
             // 指定 > 官方云代理子域 > {服务地址}/v1。**不读 Key 文件里的
             // base_url 快照**——那是建 Key 当时的地址,默认值一改(如官方云
@@ -706,9 +706,15 @@ fn write_ohmyagent_config(
             if !b.is_empty() && !basic.is_empty() && on_mc_host(&b, &cfg.mc_base_url) {
                 b = with_basic_userinfo(&b, basic);
             }
-            (b, mc_key_field("api_key"))
+            // 「跳过 TLS 证书验证」延伸到会员条目的 LLM 请求(引擎 per-model
+            // tls_insecure_skip_verify):macOS 上 Go 走系统校验器,私有化自签
+            // 证书常因苹果合规策略(有效期/SAN/EKU)被拒,钥匙串信任也无法
+            // 豁免。官方云永不跳过,与 baizhi::Service 构建免验证客户端同门;
+            // 拆分部署的独立 LLM 主机视为同一私有化部署,一并生效。
+            let skip = cfg.mc_skip_tls_verify && !crate::baizhi::is_official_mc(&server);
+            (b, mc_key_field("api_key"), skip)
         } else {
-            (get("base_url"), get("api_key"))
+            (get("base_url"), get("api_key"), false)
         };
         if name.is_empty() || model.is_empty() {
             continue;
@@ -718,6 +724,9 @@ fn write_ohmyagent_config(
             "type": wire_type, "model": model,
             "base_url": base_url, "api_key": api_key,
         });
+        if skip_tls {
+            entry["tls_insecure_skip_verify"] = serde_json::json!(true);
+        }
         let context_window = m
             .get("context_window")
             .and_then(|v| v.as_i64())
@@ -1102,6 +1111,73 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.join("settings.json")).unwrap()).unwrap();
         assert!(settings.get("monkeydesign").is_none());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 「跳过 TLS 证书验证」延伸到会员条目的 LLM 请求:私有化服务地址时
+    /// 物化引擎 per-model tls_insecure_skip_verify;官方云与手动添加的
+    /// 第三方条目永不携带。
+    #[test]
+    fn ohmyagent_config_extends_skip_tls_to_private_monkeycode_llm_entries() {
+        let root = test_dir("skip-tls");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let engine_dir = root.join("ohmyagent");
+        let models = serde_json::json!([
+            {
+                "name": "会员模型", "provider": "anthropic",
+                "base_url": "", "api_key": "",
+                "model": "cfg-1", "source": "monkeycode"
+            },
+            {
+                "name": "自定义", "provider": "anthropic",
+                "base_url": "https://direct.example.com", "api_key": "sk", "model": "m"
+            }
+        ]);
+
+        let private_cfg = DesktopConfig {
+            mc_base_url: "https://47.111.27.120".into(),
+            mc_skip_tls_verify: true,
+            models: models.clone(),
+            ..Default::default()
+        };
+        write_ohmyagent_config(&engine_dir, &private_cfg, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(
+            settings["models"]["会员模型"]["tls_insecure_skip_verify"],
+            true
+        );
+        assert!(
+            settings["models"]["自定义"]
+                .get("tls_insecure_skip_verify")
+                .is_none(),
+            "第三方条目不得跳过校验"
+        );
+
+        // 开关未开:私有化条目也不跳过。
+        let private_off = DesktopConfig {
+            mc_skip_tls_verify: false,
+            ..private_cfg.clone()
+        };
+        write_ohmyagent_config(&engine_dir, &private_off, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert!(settings["models"]["会员模型"]
+            .get("tls_insecure_skip_verify")
+            .is_none());
+
+        // 官方云:即使开关残留开启也永不跳过。
+        let official_cfg = DesktopConfig {
+            mc_base_url: String::new(),
+            ..private_cfg.clone()
+        };
+        write_ohmyagent_config(&engine_dir, &official_cfg, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+        assert!(settings["models"]["会员模型"]
+            .get("tls_insecure_skip_verify")
+            .is_none());
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// MonkeyCode 会员条目的 base_url/api_key 在 config.json 里是空占位,

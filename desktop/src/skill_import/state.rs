@@ -306,6 +306,28 @@ impl SkillImportState {
         state
     }
 
+    /// 技能库启动预检失败时的降级构造：不触碰暂存目录（跳过可能误删他进程
+    /// 暂存的孤儿清理），保持 Retryable 让后续导入 IPC 重试完整初始化。
+    pub(crate) fn unavailable_retryable(
+        config_dir: &Path,
+        belongs_to_install_transaction: impl Fn(&Path) -> bool + Send + Sync + 'static,
+        reason: String,
+    ) -> Self {
+        let state = Self::new();
+        *state
+            .staging
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = StagingState::Retryable {
+            config_dir: config_dir.to_path_buf(),
+            protects: Arc::new(belongs_to_install_transaction),
+            last_error: LeaseError::Io {
+                operation: "技能库启动预检",
+                message: reason,
+            },
+        };
+        state
+    }
+
     /// 启动时导入 lease 初始化失败只禁用导入；后续 IPC 会用同一配置与保护规则重试。
     pub(crate) fn open_resilient(
         config_dir: &Path,

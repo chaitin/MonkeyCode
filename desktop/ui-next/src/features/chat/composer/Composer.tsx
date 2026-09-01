@@ -164,8 +164,14 @@ interface ComposerProps {
   focusRequest?: number;
   onFocusRequestHandled?: (request: number) => void;
   /** 空闲态后台状态条的取材与入口(ChatView 供给,引用需稳定以保 memo;
-   * 无后台任务时缺席,渲染由 presentation.backgroundRunning 门控)。 */
-  backgroundInfo?: { tasks: BackgroundTask[]; onOpen?: (childId: string) => void };
+   * 无后台任务时缺席,渲染由 presentation.backgroundRunning 门控)。
+   * onStop 缺席 = 引擎无 subagentControl 能力,停止入口整体不出现。 */
+  backgroundInfo?: {
+    tasks: BackgroundTask[];
+    onOpen?: (childId: string) => void;
+    onStop?: (agentId: string) => void;
+    stopError?: string;
+  };
 }
 
 const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Composer({
@@ -714,7 +720,12 @@ const ComposerImpl = forwardRef<ComposerInputHandle, ComposerProps>(function Com
             openLabel={t("chat.tool.childSession")}
             expandLabel={t("chat.bg.expand")}
             collapseLabel={t("chat.bg.collapse")}
+            stopLabel={t("chat.bg.stop")}
+            stopConfirmLabel={t("chat.bg.stopConfirm")}
+            stoppingLabel={t("chat.bg.stopping")}
+            stopError={backgroundInfo.stopError}
             onOpen={backgroundInfo.onOpen}
+            onStop={backgroundInfo.onStop}
           />
         )}
 

@@ -350,6 +350,29 @@ describe("SendMessage 后台续跑", () => {
     expect(toolItem(s, "sm1")).toMatchObject({ status: "run", backgroundAgentId: "a1" });
     expect(s.items.at(-1)).toMatchObject({ kind: "background-result", agentId: "a2" });
   });
+
+  it("stopped 通知按「已停止」收卡——用户主动停止不是执行失败", () => {
+    const s = run([
+      open,
+      running,
+      launched,
+      acp({
+        sessionUpdate: "task_notification",
+        agentId: "a1",
+        agentName: "worker",
+        description: "继续实现",
+        status: "stopped",
+        result: "已按请求停止",
+        text: "📌 后台代理 worker 已停止",
+      }),
+    ]);
+    expect(toolItem(s, "sm1")).toMatchObject({
+      status: "fail",
+      outKey: "chat.tool.bgStopped",
+      backgroundNoticePending: false,
+    });
+    expect(s.items.at(-1)).toMatchObject({ kind: "background-result", status: "stopped" });
+  });
 });
 
 describe("后台结构化标记与轮末第三态", () => {

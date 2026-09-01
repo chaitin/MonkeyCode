@@ -2,7 +2,7 @@
 
 /**
  * 会话状态词汇(SessionMeta.status;UI/桌宠按此渲染,勿用裸字符串)。
- * ts-rs 导出 → ui/src/gen/SessionStatus.ts(types.ts 复用);
+ * ts-rs 导出 → ui-next/src/gen/SessionStatus.ts(types.ts 复用);
  * rename_all 小写与 as_str 一致(两处同改才算改)。
  */
 export type SessionStatus = "created" | "running" | "idle" | "background" | "finished" | "interrupted" | "error";

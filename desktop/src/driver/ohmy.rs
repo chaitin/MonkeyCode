@@ -103,6 +103,21 @@ impl OhmyDriver {
         self.0.wsl.as_ref().map(|w| w.distro.clone())
     }
 
+    /// WSL automount 根；repo 等宿主文件操作用它把 `/mnt/c/...` 精确反解
+    /// 回 Windows 盘符路径。与 distro 一样随引擎实例更新。
+    pub fn wsl_mount_root(&self) -> Option<String> {
+        self.0.wsl.as_ref().map(|w| w.mount_root.clone())
+    }
+
+    /// 会话 guest 路径的宿主文件系统视角。本机模式原样返回；WSL 的盘符
+    /// automount 反解为 `C:\...`，真正的 Linux 路径才走 `\\wsl$`。
+    pub fn host_fs_view(&self, path: &str) -> PathBuf {
+        match &self.0.wsl {
+            Some(w) => crate::wsl::host_fs_view_with_mount_root(&w.distro, &w.mount_root, path),
+            None => PathBuf::from(path),
+        }
+    }
+
     /// WSL guest 网络模式("mirrored"/"nat";本机模式 None)。
     /// 浏览器 MCP 等回连宿主 127.0.0.1 的能力按此降级。
     pub fn wsl_networking(&self) -> Option<String> {

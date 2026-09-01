@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { rankPreviewFiles, selectTurnPreviewArtifact, targetForFile, touchedTurnChanges, turnWarrantsArtifactPreview, writtenToolPaths } from "./previewArtifact";
+import { rankPreviewFiles, selectTurnPreviewArtifact, targetForFile, touchedTurnChanges, turnWarrantsArtifactPreview, typedWorkdirRelativePath, writtenToolPaths } from "./previewArtifact";
+
+describe("typedWorkdirRelativePath", () => {
+  it("盘符/分隔符/大小写不敏感地折算 workdir 内的绝对路径", () => {
+    expect(typedWorkdirRelativePath("C:\\Proj\\pages\\home.html", "c:/proj")).toBe("pages/home.html");
+    expect(typedWorkdirRelativePath("c:/proj/index.html", "C:\\Proj\\")).toBe("index.html");
+    expect(typedWorkdirRelativePath("/home/me/proj/index.html", "/home/me/proj")).toBe("index.html");
+  });
+
+  it("非绝对路径、工作区外与前缀撞名不折算", () => {
+    expect(typedWorkdirRelativePath("pages/home.html", "c:/proj")).toBeNull();
+    expect(typedWorkdirRelativePath("c:/other/home.html", "c:/proj")).toBeNull();
+    expect(typedWorkdirRelativePath("c:/projx/home.html", "c:/proj")).toBeNull();
+    expect(typedWorkdirRelativePath("c:/proj/a.html", undefined)).toBeNull();
+  });
+});
 
 const files = [
   { path: "src/app.ts", kind: "text" as const, mime: "text/plain", size: 1 },
@@ -70,6 +85,19 @@ describe("preview artifact selection", () => {
     const paths = ["/Users/dev/test-design/index.html"];
     expect(touchedTurnChanges([], [], paths, "/Users/dev/test-design"))
       .toEqual([{ path: "index.html", status: "M" }]);
+  });
+
+  it("maps Windows absolute write paths before opening an automatic artifact preview", () => {
+    const workdir = "C:/Users/chaitin/AppData/Local/com.chaitin.baizhi.monkeycode/chat-workspaces/chat-4c0b3ca1d3ea2142e40f";
+    const paths = [`${workdir}/snake.html`];
+    const touched = touchedTurnChanges([], [], paths, workdir.toLocaleLowerCase());
+    expect(touched).toEqual([{ path: "snake.html", status: "M" }]);
+    expect(selectTurnPreviewArtifact(touched, "写一个贪吃蛇页面", "已完成")?.path).toBe("snake.html");
+  });
+
+  it("does not synthesize an artifact for an absolute write path outside the workdir", () => {
+    expect(touchedTurnChanges([], [], ["C:/Users/other/snake.html"], "C:/Users/project"))
+      .toEqual([]);
   });
 
   it("classifies only tool action tokens, never read-like substrings in filenames", () => {

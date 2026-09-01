@@ -36,18 +36,20 @@
   - [ ] 6.2 失焦/非当前会话的结构化通知 → 系统通知，点击聚焦并定位结果卡
   - [ ] 6.3 权限缺失静默降级；触发条件测试（mock plugin）
 
-## P3 停止（best-effort）
+## P3 停止（已按 subagentControl 直通 RPC 落地；publishEvent 中介方案作废，见 design §2.6）
 
-- [ ] 7. Driver 停止通道
-  - [ ] 7.1 `session_call` kind `background_stop`：publishEvent 组装（幂等 event_id、点名 TaskStop、busy/not_found 透传）
-  - [ ] 7.2 `normalize.rs` host 事件轮（source=desktop）接入开轮/收轮，轻量系统行呈现
-  - [ ] 7.3 按 event_id 观察 TaskStop tool_call：确认/超时回弹（session-event 通知 UI）
-  - [ ] 7.4 Rust 测试：幂等开轮、观察确认、超时回弹、busy 透传
-- [ ] 8. UI 停止入口
-  - [ ] 8.1 BackgroundBar 任务行与派发卡详情弹窗的"停止"入口，二段确认（提示不可恢复）
-  - [ ] 8.2 停止中态、busy/超时回弹与 toast
-  - [ ] 8.3 `engine_caps` 探测：无 publishEvent 时隐藏入口；预留 task/stop 直通切换位
-  - [ ] 8.4 UI 测试：二段确认、停止中、回弹
+- [x] 7. Driver 停止通道
+  - [x] 7.1 `session_call` kind `background_stop {agent_id}`：直调 `subagent/cancel`（cap 守卫、engine_id 寻址、应答/错误原样透传）
+  - [x] 7.2 `Caps` 投影新增 `subagent_control`（engine_caps → UI 门控）
+  - [x] 7.3 Rust 测试：cap 缺失拒绝、agent_id 校验、RPC 形状与应答透传、引擎错误透传
+  - ~~publishEvent 组装 / desktop 事件轮 / TaskStop 观察与超时回弹~~（直通 RPC 后不需要：应答即受理确认，终态归 task_notification 既有链路）
+- [x] 8. UI 停止入口
+  - [x] 8.1 BackgroundBar 任务行常驻「停止」，二段确认（原位变「确认停止?」，4s 自动回弹）
+  - [x] 8.2 停止中态（等 task_notification 收卡）、失败回弹 + 条内原因外显（chat.bg.stopFailed）
+  - [x] 8.3 `engine_caps.subagent_control` 门控：无能力/无 agentId（旧 journal 卡）隐藏入口
+  - [x] 8.4 stopped 终态状态词：通知按「已停止」收卡（chat.tool.bgStopped），不再混用「执行失败」
+  - [x] 8.5 UI 测试：二段确认、停止中、能力门控、失败回弹；reduce stopped 收卡
+  - [ ] 8.6 派发卡详情弹窗的停止入口（暂缓：状态条为唯一入口）
 
 ## 验证
 

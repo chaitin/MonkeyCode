@@ -10,14 +10,15 @@ import type { ComposerCtl } from "@/features/chat/composer/useComposer";
 import { CodeView } from "@/features/files/CodeView";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { repoArtifactRead, repoPreviewFiles, type RepoArtifact, type RepoPreviewFile } from "@/lib/ipc/repo";
-import { rankPreviewFiles, targetForFile, type DesignPreviewTarget } from "./previewArtifact";
+import { rankPreviewFiles, targetForFile, typedWorkdirRelativePath, type DesignPreviewTarget } from "./previewArtifact";
 import {
-  onPreviewElementPicked, onPreviewPickerError, onPreviewResultAction, previewCreate, previewCreateArtifact,
-  previewDestroy, previewElementApply, previewElementUndo, previewHide, previewNavigate, previewPickerToggle,
-  previewReload, previewResultHide, previewResultShow, previewSaveHtml, previewSetBounds,
+  enqueuePreviewLifecycle, onPreviewElementPicked, onPreviewPickerError, onPreviewResultAction, previewCreate,
+  previewCreateArtifact, previewDestroy, previewElementApply, previewElementUndo, previewHide, previewNavigate,
+  previewPickerToggle, previewReload, previewResultHide, previewResultShow, previewSaveHtml, previewSetBounds,
   previewSetZoom, previewShow, requestCapture, requestSerialization, type ElementSnapshot, type ElementStyles,
 } from "./previewIpc";
-import { normalizePreviewUrl, normalizeTypedPreviewUrl } from "./previewUrl";
+import { isLinuxShell } from "@/lib/ipc/host";
+import { artifactInlineUrl, normalizePreviewUrl, normalizeTypedPreviewUrl } from "./previewUrl";
 
 type Annotation =
   | { kind: "rect"; x: number; y: number; width: number; height: number }
@@ -330,24 +331,30 @@ function feedbackOf(url: string, annotations: Annotation[], message: string) {
   ].filter(Boolean).join("\n\n");
 }
 
-let previewLifecycleQueue = Promise.resolve();
-
-function enqueuePreviewLifecycle<T>(operation: () => Promise<T>): Promise<T> {
-  const result = previewLifecycleQueue.then(operation);
-  previewLifecycleQueue = result.then(() => {}, () => {});
-  return result;
-}
-
 export function DesignPreviewWorkbench({
-  sessionId, initialTarget, refreshKey = 0, composer, obscured,
+  sessionId, initialTarget, refreshKey = 0, composer, obscured, workdir,
 }: {
   sessionId: string;
   initialTarget: DesignPreviewTarget;
   refreshKey?: number;
   composer: Pick<ComposerCtl, "sendWithFiles">;
   obscured: boolean;
+  /** 会话工作目录:地址栏把粘贴的绝对路径折算成 workdir 相对路径用。 */
+  workdir?: string;
 }) {
   const { t } = useI18n();
+  // Linux 上游限制:tauri-runtime-wry 把子 webview pack_start 进窗口的垂直
+  // GtkBox(不是按坐标叠放),窗口被对半分、预览整宽落底,且 wry set_bounds
+  // 仅在 fixed 父容器下生效——摆位调用全部空转(2026-08-31 报障截图)。
+  // 原生子 webview 在 Linux 不可用,降级为 DOM 内嵌 iframe:层级/摆位天然
+  // 正确(浮层遮挡也无需冻结帧);代价是依赖原生 eval 的选元素/截图/标记/
+  // 序列化在 Linux 隐藏。localhost 与 artifact(自定义协议对全部 webview
+  // 注册,主 webview 内的 iframe 一样可加载)都走 iframe。
+  // ⚠️ iframe 的可加载性受主 webview CSP 管(原生 webview 时代不受):
+  // tauri.conf.json 的 frame-src 必须放行 localhost 族 + monkeycode-artifact:,
+  // 否则整块白屏(2026-08-31 Linux 实测报障,frame-src 当时只有 'self' blob:)。
+  const inlineFallback = isLinuxShell();
+  const [inlineReload, setInlineReload] = useState(0);
   const initialUrl = initialTarget.kind === "localhost" ? initialTarget.url : "";
   const hostRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef(0);
@@ -404,6 +411,9 @@ export function DesignPreviewWorkbench({
   const elementSavingRef = useRef(false);
   const [elementSaving, setElementSaving] = useState(false);
   const [capture, setCapture] = useState<string | null>(null);
+  /** 外部浮层遮挡期间垫在宿主原位的冻结帧(null = 未冻结/截帧失败退文字)。 */
+  const [obscuredFreeze, setObscuredFreeze] = useState<string | null>(null);
+  const freezeGen = useRef(0);
   const resultImageRef = useRef<string | null>(null);
   const resultAnnotationsRef = useRef<Annotation[]>([]);
   const resultFeedbackRef = useRef("");
@@ -429,7 +439,11 @@ export function DesignPreviewWorkbench({
 
   const native = target.kind === "localhost" || (target.kind === "artifact" && target.artifactKind === "html");
   const previewSourceKey = target.kind === "localhost" ? "localhost" : target.kind === "artifact" && target.artifactKind === "html" ? `artifact:${target.path}` : "none";
-  const hidden = !native || obscured || tab === "code" || filesOpen || !!capture || !!picked;
+  // 隐藏原因分两类:工作台自身的视图切换(代码页/文件面板/截图/选元素,
+  // 各有自己的视觉承接)与外部浮层遮挡(菜单/模态)。后者要走「冻结帧」
+  // 路径——预览在用户眼里不消失,见 hidden effect。
+  const hiddenByView = !native || tab === "code" || filesOpen || !!capture || !!picked;
+  const hidden = hiddenByView || obscured;
   const visibleFiles = useMemo(() => rankPreviewFiles(previewFiles ?? [], fileQuery), [previewFiles, fileQuery]);
   const findMatches = useMemo(() => {
     if (!findQuery) return [];
@@ -451,11 +465,15 @@ export function DesignPreviewWorkbench({
     const previousRefreshKey = incomingRefreshRef.current;
     incomingRefreshRef.current = refreshKey;
     if (refreshKey === previousRefreshKey || !incomingNative || incomingTargetKey !== latestRef.current.targetKey) return;
+    if (inlineFallback) {
+      setInlineReload((n) => n + 1);
+      return;
+    }
     void enqueuePreviewLifecycle(() => {
       if (latestRef.current.targetKey !== incomingTargetKey) return Promise.resolve();
       return previewReload();
     }).catch(report);
-  }, [incomingNative, incomingTargetKey, refreshKey, report]);
+  }, [incomingNative, incomingTargetKey, inlineFallback, refreshKey, report]);
   const submitFeedback = useCallback(async (image: string, feedbackAnnotations: Annotation[], message: string): Promise<boolean> => {
     if (feedbackSendingRef.current) return false;
     feedbackSendingRef.current = true;
@@ -494,6 +512,7 @@ export function DesignPreviewWorkbench({
   }, [report]);
 
   useLayoutEffect(() => {
+    if (inlineFallback) return; // Linux:内嵌 iframe,不建原生 webview
     const generation = ++liveRef.current;
     const artifactPath = target.kind === "artifact" && target.artifactKind === "html" ? target.path : null;
     const url = target.kind === "localhost" ? normalizePreviewUrl(target.url) : null;
@@ -537,15 +556,28 @@ export function DesignPreviewWorkbench({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, previewSourceKey]);
 
+  // 逐帧位移追踪:纯位移(拖格换位/任务列收起/分屏重排)不改宿主尺寸,
+  // ResizeObserver 不响,原生 webview 就被留在原地(2026-08-31 报障截图)。
+  // rAF 比对宿主矩形,变了才发 preview_set_bounds——静止帧只有一次布局读、
+  // 零 IPC;尺寸变化同样被覆盖,原先这里的 RO 随之退役(创建路径的 RO
+  // 在上面的生命周期 effect 里,不动)。
   useLayoutEffect(() => {
-    if (tab !== "preview" || !hostRef.current) return;
-    bounds();
-    const frame = requestAnimationFrame(bounds);
-    if (typeof ResizeObserver === "undefined") return () => cancelAnimationFrame(frame);
-    const ro = new ResizeObserver(bounds);
-    ro.observe(hostRef.current);
-    return () => { cancelAnimationFrame(frame); ro.disconnect(); };
-  }, [tab, preset, bounds]);
+    if (tab !== "preview" || inlineFallback) return;
+    let raf = 0;
+    let last: { x: number; y: number; width: number; height: number } | null = null;
+    const track = () => {
+      raf = requestAnimationFrame(track);
+      const host = hostRef.current;
+      if (!host || !createdRef.current) return;
+      const r = host.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return;
+      if (last && r.left === last.x && r.top === last.y && r.width === last.width && r.height === last.height) return;
+      last = { x: r.left, y: r.top, width: r.width, height: r.height };
+      void previewSetBounds(last).catch(report);
+    };
+    track();
+    return () => cancelAnimationFrame(raf);
+  }, [tab, inlineFallback, report]);
 
   useEffect(() => {
     // 地址栏常驻:artifact 态也把当前路径回填,免得输入框空着看不出在预览什么。
@@ -569,9 +601,37 @@ export function DesignPreviewWorkbench({
   }, [sessionId, target, report]);
 
   useEffect(() => {
-    if (!createdRef.current) return;
-    void (hidden ? previewHide() : previewShow().then(bounds)).catch(report);
-  }, [hidden, bounds, report]);
+    if (inlineFallback || !createdRef.current) return;
+    const gen = ++freezeGen.current;
+    if (!hidden) {
+      // 冻结帧等 show 落地再撤,避免露出一帧空白/提示
+      void previewShow()
+        .then(() => {
+          bounds();
+          if (freezeGen.current === gen) setObscuredFreeze(null);
+        })
+        .catch(report);
+      return;
+    }
+    if (hiddenByView) {
+      setObscuredFreeze(null);
+      void previewHide().catch(report);
+      return;
+    }
+    // 外部浮层遮挡:原生 webview 必须让位(它永远压在 DOM 之上),但预览
+    // 不能在用户眼里"消失"——先截一帧冻结在原位再隐藏,浮层浮在冻结帧上,
+    // 关闭后无缝切回活视图(选元素弹窗 pickedPreview 的同一手法)。截帧
+    // 期间活视图仍在,占位不会闪现;限时 800ms:页面繁忙截不到就直接隐藏
+    // 走文字兜底,不能让浮层被预览压着等默认的 20s 截图预算。
+    void requestCapture("viewport-no-copy", 800)
+      .then((result) => {
+        if (freezeGen.current === gen) setObscuredFreeze(result.dataUrl);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (freezeGen.current === gen) void previewHide().catch(report);
+      });
+  }, [hidden, hiddenByView, inlineFallback, bounds, report]);
 
   useEffect(() => {
     const offPicked = onPreviewElementPicked((snapshot) => {
@@ -659,13 +719,15 @@ export function DesignPreviewWorkbench({
     if (normalized) {
       openTarget({ kind: "localhost", url: normalized });
       setAddress(normalized);
-      if (native) void previewNavigate(normalized).catch(report);
+      // Linux 内嵌态换目标即换 iframe key,无原生 webview 可导航
+      if (native && !inlineFallback) void previewNavigate(normalized).catch(report);
       return;
     }
     if (!typed) return;
     // 原样回车(路径没改)= 刷新当前预览,不该报错
     if (target.kind === "artifact" && typed === target.path) {
-      void previewReload().catch(report);
+      if (inlineFallback) setInlineReload((n) => n + 1);
+      else void previewReload().catch(report);
       return;
     }
     void (previewFiles ? Promise.resolve(previewFiles) : repoPreviewFiles(sessionId).then((r) => {
@@ -673,7 +735,13 @@ export function DesignPreviewWorkbench({
       return r.files;
     })).then((files) => {
       if (latestRef.current.sessionId !== sessionId) return;
-      const hit = files.find((file) => file.path === typed);
+      // 绝对路径(Windows 用户粘贴 c:\… 全路径)折算成 workdir 相对再匹配;
+      // 比较统一正斜杠,命中仍以索引里的原始 path 开预览
+      const relativeTyped = typedWorkdirRelativePath(typed, workdir);
+      const wanted = [typed, relativeTyped]
+        .filter((value): value is string => !!value)
+        .map((value) => value.replaceAll("\\", "/"));
+      const hit = files.find((file) => wanted.includes(file.path.replaceAll("\\", "/")));
       if (hit) openTarget(targetForFile(hit));
       else setStatus(t("design.preview.addressInvalid"));
     }, report);
@@ -962,7 +1030,7 @@ export function DesignPreviewWorkbench({
         />
         <button className="btn btn-ghost btn-square btn-xs" title={t("design.preview.navigate")} onClick={navigate}>→</button>
         {(target.kind === "localhost" || (target.kind === "artifact" && target.artifactKind === "html")) &&
-          <button className="btn btn-ghost btn-square btn-xs" title={t("design.preview.reload")} onClick={() => void previewReload().catch(report)}><IconRefresh size={14} stroke={1.75} /></button>}
+          <button className="btn btn-ghost btn-square btn-xs" title={t("design.preview.reload")} onClick={() => { if (inlineFallback) { setInlineReload((n) => n + 1); return; } void previewReload().catch(report); }}><IconRefresh size={14} stroke={1.75} /></button>}
         {filesOpen && <div className="absolute inset-x-2 top-10 z-40 max-h-72 overflow-auto rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
           <div className="flex gap-1"><input autoFocus aria-label={t("design.preview.searchFiles")} className="input input-xs min-w-0 flex-1" placeholder={t("design.preview.searchPlaceholder")} value={fileQuery} onChange={(e) => setFileQuery(e.target.value)} /><button className="btn btn-ghost btn-xs" disabled={filesLoading} onClick={() => void loadFiles()}><IconRefresh size={13} /> {t("design.preview.refresh")}</button></div>
           {filesTruncated && <p className="py-1 text-xs text-warning">{t("design.preview.truncated")}</p>}
@@ -976,18 +1044,22 @@ export function DesignPreviewWorkbench({
           const label = t(`design.preview.device.${name}` as MessageKey);
           return <button key={name} className={`btn btn-square btn-xs ${preset === name ? "btn-active" : "btn-ghost"}`} title={label} aria-label={label} onClick={() => setPreset(name as keyof typeof PRESETS)}><Icon size={14} stroke={1.75} /></button>;
         })}
-        <div role="tablist" className="tabs tabs-box tabs-xs ms-1">
-          <button role="tab" className={`tab ${tab === "preview" ? "tab-active" : ""}`} onClick={() => { setTab("preview"); requestAnimationFrame(() => void previewShow().then(bounds).catch(report)); }}>{t("design.preview.tab.preview")}</button>
-          <button role="tab" className={`tab ${tab === "code" ? "tab-active" : ""}`} onClick={() => void serialize()}><IconCode size={12} stroke={1.75} /> {t("design.preview.tab.code")}</button>
-        </div>
-        {/* 四个动作两两相似(截图/标记都出图,注释/编辑都要选元素),标签本身
-            分不出差别——tooltip 一律说「点完得到什么」,并点明去向:截图只进
-            剪贴板、编辑只改预览,另两个才发进对话。 */}
-        <button title={t("design.preview.screenshotTip")} className="btn btn-ghost btn-xs ms-auto" onClick={() => void takeScreenshot()}><IconCamera size={13} stroke={1.75} /> {t("design.preview.screenshot")}</button>
-        <button title={picker && pickerPurpose === "comment" ? t("design.preview.exitTip") : t("design.preview.annotateTip")} className={`btn btn-xs ${picker && pickerPurpose === "comment" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("comment")}><IconMessage size={13} stroke={1.75} /> {t("design.preview.annotate")}</button>
-        <button title={capture ? t("design.preview.exitTip") : t("design.preview.markTip")} className={`btn btn-xs ${capture ? "btn-primary" : "btn-ghost"}`} onClick={() => capture ? cancelCapture() : void startCapture()}><IconPencil size={13} stroke={1.75} /> {t("design.preview.mark")}</button>
-        <button title={picker && pickerPurpose === "edit" ? t("design.preview.exitTip") : t("design.preview.editTip")} className={`btn btn-xs ${picker && pickerPurpose === "edit" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("edit")}><IconPointer size={13} stroke={1.75} /> {t("design.preview.edit")}</button>
-        <select aria-label={t("design.preview.zoom")} className="select select-xs w-20" value={zoom} onChange={(e) => { const n = Math.min(500, Math.max(10, Number(e.target.value))); setZoom(n); void previewSetZoom(n / 100).catch(report); }}>
+        {/* Linux 内嵌降级:代码页(序列化)与四个动作都依赖对原生 webview 的
+            eval,整组隐藏;缩放改走 iframe 的 CSS zoom,不发原生命令 */}
+        {!inlineFallback && (<>
+          <div role="tablist" className="tabs tabs-box tabs-xs ms-1">
+            <button role="tab" className={`tab ${tab === "preview" ? "tab-active" : ""}`} onClick={() => { setTab("preview"); requestAnimationFrame(() => void previewShow().then(bounds).catch(report)); }}>{t("design.preview.tab.preview")}</button>
+            <button role="tab" className={`tab ${tab === "code" ? "tab-active" : ""}`} onClick={() => void serialize()}><IconCode size={12} stroke={1.75} /> {t("design.preview.tab.code")}</button>
+          </div>
+          {/* 四个动作两两相似(截图/标记都出图,注释/编辑都要选元素),标签本身
+              分不出差别——tooltip 一律说「点完得到什么」,并点明去向:截图只进
+              剪贴板、编辑只改预览,另两个才发进对话。 */}
+          <button title={t("design.preview.screenshotTip")} className="btn btn-ghost btn-xs ms-auto" onClick={() => void takeScreenshot()}><IconCamera size={13} stroke={1.75} /> {t("design.preview.screenshot")}</button>
+          <button title={picker && pickerPurpose === "comment" ? t("design.preview.exitTip") : t("design.preview.annotateTip")} className={`btn btn-xs ${picker && pickerPurpose === "comment" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("comment")}><IconMessage size={13} stroke={1.75} /> {t("design.preview.annotate")}</button>
+          <button title={capture ? t("design.preview.exitTip") : t("design.preview.markTip")} className={`btn btn-xs ${capture ? "btn-primary" : "btn-ghost"}`} onClick={() => capture ? cancelCapture() : void startCapture()}><IconPencil size={13} stroke={1.75} /> {t("design.preview.mark")}</button>
+          <button title={picker && pickerPurpose === "edit" ? t("design.preview.exitTip") : t("design.preview.editTip")} className={`btn btn-xs ${picker && pickerPurpose === "edit" ? "btn-primary" : "btn-ghost"}`} onClick={() => void togglePicker("edit")}><IconPointer size={13} stroke={1.75} /> {t("design.preview.edit")}</button>
+        </>)}
+        <select aria-label={t("design.preview.zoom")} className={`select select-xs w-20 ${inlineFallback ? "ms-auto" : ""}`} value={zoom} onChange={(e) => { const n = Math.min(500, Math.max(10, Number(e.target.value))); setZoom(n); if (!inlineFallback) void previewSetZoom(n / 100).catch(report); }}>
           {[10, 25, 50, 75, 100, 125, 150, 200, 300, 400, 500].map((n) => <option key={n} value={n}>{n}%</option>)}
         </select>
       </div>}
@@ -999,7 +1071,35 @@ export function DesignPreviewWorkbench({
           : null
         ) : tab === "preview" ? (
           <div className="flex size-full justify-center overflow-auto p-2">
-            <div ref={hostRef} data-preview-host="" style={{ width: preset === "desktop" ? "100%" : `min(100%, ${PRESETS[preset]}px)` }} className="h-full min-w-40 bg-base-100" />
+            <div ref={hostRef} data-preview-host="" style={{ width: preset === "desktop" ? "100%" : `min(100%, ${PRESETS[preset]}px)` }} className="h-full min-w-40 bg-base-100">
+              {inlineFallback && native ? (
+                /* Linux 内嵌预览:DOM iframe,层级/摆位天然正确,浮层遮挡
+                   无需冻结帧;key 带 targetKey 与 reload 计数,切目标/刷新
+                   即重载;缩放走 WebKit 的 CSS zoom */
+                <iframe
+                  key={`${targetKey}:${inlineReload}`}
+                  title={t("design.preview.workbench")}
+                  src={target.kind === "localhost"
+                    ? normalizePreviewUrl(target.url) ?? "about:blank"
+                    : target.kind === "artifact"
+                      ? artifactInlineUrl(target.path)
+                      : "about:blank"}
+                  className="size-full border-0"
+                  style={{ zoom: zoom / 100 }}
+                />
+              ) : obscured && native ? (
+                /* 原生 webview 被浮层(菜单/模态)顶避让时,宿主垫冻结帧,
+                   预览在用户眼里不消失(「预览直接消失了」的报障);截帧
+                   失败才退文字说明,浮层一关 previewShow 即还原 */
+                obscuredFreeze ? (
+                  <img src={obscuredFreeze} alt="" aria-hidden className="size-full object-fill" />
+                ) : (
+                  <div role="status" className="flex h-full items-center justify-center px-4 text-center text-xs text-base-content/40">
+                    {t("design.preview.obscuredHint")}
+                  </div>
+                )
+              ) : null}
+            </div>
           </div>
         ) : (
           <div

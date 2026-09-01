@@ -175,7 +175,7 @@ fn basic_header_value(user_pass: &str) -> Option<String> {
 
 /// 服务地址是否官方云(国内/国际)。跳过 TLS 验证的开关对官方云恒不
 /// 生效:它只为私有化自签证书而设,不能被拿来弱化官方域的传输安全。
-fn is_official_mc(monkeycode: &str) -> bool {
+pub(crate) fn is_official_mc(monkeycode: &str) -> bool {
     monkeycode == DEFAULT_MONKEYCODE_URL || monkeycode == INTL_MONKEYCODE_URL
 }
 

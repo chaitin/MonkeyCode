@@ -2,7 +2,8 @@
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { openContextMenu } from "./contextMenu";
+import { openContextMenu, openMenu } from "./contextMenu";
+import { nativeObscured } from "@/lib/util/nativeObscure";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -148,5 +149,20 @@ describe("自绘右键菜单", () => {
     image.src = "https://example.com/result.png";
     document.body.appendChild(image);
     expect(rightClickMenu(image)).toBeNull();
+  });
+
+  it("菜单在场时置原生预览遮挡信号;换菜单持续遮挡,关闭即释放", () => {
+    // 菜单(fixed DOM)可能落在原生预览 webview 的矩形里,而原生视图压在
+    // 所有 DOM 之上——遮挡信号是它不被预览截断的唯一途径
+    expect(nativeObscured()).toBe(false);
+    openMenu({ x: 10, y: 10 }, [{ label: "甲", run: () => {} }]);
+    expect(nativeObscured()).toBe(true);
+    // 未关先开第二个(pane ⋯ 菜单切到右键菜单):同步换手落定后仍遮挡,
+    // 且旧菜单的释放不得把新菜单的计数扣穿——收尾还要能归零
+    openMenu({ x: 20, y: 20 }, [{ label: "乙", run: () => {} }]);
+    expect(nativeObscured()).toBe(true);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(document.querySelector("ul.menu")).toBeNull();
+    expect(nativeObscured()).toBe(false);
   });
 });

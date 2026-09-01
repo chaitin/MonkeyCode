@@ -49,7 +49,7 @@
 | 角色 | 位置 |
 |---|---|
 | 产帧(壳,引擎事件归一化) | src/driver/frame.rs(唯一入口,禁手拼 JSON) |
-| 消费(UI) | ui-next/src/lib/protocol/{types,reduce}.ts(Frame/SessionStatus/PermOutcome/EngineStatus 由 ts-rs 自 frame.rs 生成到 ui/src/gen/ 并同步一份到 ui-next/src/gen/(genSync.test.ts 钉字节一致),types.ts 复用) |
+| 消费(UI) | ui-next/src/lib/protocol/{types,reduce}.ts(Frame/SessionStatus/PermOutcome/EngineStatus 由 ts-rs 自 frame.rs 直接生成到 ui-next/src/gen/,types.ts 复用;旧工程 ui/ 已删,genSync 并行期契约随之退役) |
 
 帧结构 `{type, kind?, data?(内联 JSON), timestamp(ms), seq}`——data 的
 base64 双重编码已去除,只剩存量 journal 与云端帧两条兼容边界;
@@ -64,8 +64,9 @@ usage_update/compact_status/task_notification(后台子代理完成通知)/
 model_update/think_update(会话思考档变更)/permission_mode_update`。
 `llm_call_retry` 仅云端流产出,壳不产,UI 归约兼容。
 
-改词汇的顺序:frame.rs 是唯一权威(ts-rs 重新生成 ui/src/gen/,ui-next/src/gen/ 随之同步),与
-types.ts/reduce.ts 同一 PR 内同步,reduce.test.ts 补对应归约断言。
+改词汇的顺序:frame.rs 是唯一权威(cargo test 经 ts-rs 重新生成
+ui-next/src/gen/),与 types.ts/reduce.ts 同一 PR 内同步,reduce.test.ts
+补对应归约断言。
 
 **折叠是等价变换**(driver/fold.rs):journal 是「一 token 一帧」,回放前把
 相邻同类流式碎片合并回一帧(usage/plan 每轮只留最后一条,其余原样)。
@@ -201,7 +202,7 @@ Windows 不得用不能覆盖既有目标的裸 `std::fs::rename`。
 
 ## 契约 5:会话状态机
 
-状态词汇(Rust `frame::SessionStatus`,ts-rs 生成 ui/src/gen/SessionStatus.ts,ui-next/src/gen/ 同步一份):
+状态词汇(Rust `frame::SessionStatus`,ts-rs 生成 ui-next/src/gen/SessionStatus.ts):
 `created → running → idle | finished | interrupted | error`
 - `created` = 新建未运行,**不是完成**(否则侧栏/桌宠按完成渲染)。
 - `idle` = 当前轮正常结束、会话空闲可继续;`finished` 留给真正结束的
@@ -386,6 +387,10 @@ interactive:true,引擎给持久 Task 工具族)、会话思考档 session/setTh
 直调自动提升)、子代理事件带 parent_session_id/parent_tool_call_id
 (dab1b85,壳精确认领)。固定引擎已删除“同步 Agent 超时后自动转后台”，
 后台执行必须由 `run_in_background:true` 显式声明。
+子代理控制面(733df47,cap `subagentControl`:`subagent/list` +
+`subagent/cancel`):壳经 `session_call background_stop` 直通 cancel
+(UI 后台状态条的停止入口,Caps.subagent_control 门控);list 暂未消费,
+pending 派生/对账仍以壳侧登记为权威。
 
 ## 开发与构建产物
 

@@ -44,7 +44,7 @@ pub const ENGINE_STABLE_UPTIME: Duration = Duration::from_secs(60);
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 #[serde(tag = "phase", rename_all = "lowercase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../ui/src/gen/"))]
+#[cfg_attr(test, ts(export, export_to = "../ui-next/src/gen/"))]
 pub enum EngineStatus {
     /// 未启动:冷启动前、或应用退出/重启的中间态。
     Stopped,
@@ -286,7 +286,7 @@ impl DriverHost {
     }
 }
 
-/// 引擎能力表(对表 desktop/ui/src/types.ts 的 EngineCaps)。
+/// 引擎能力表(对表 ui-next/src/lib/ipc/approvals.ts 的 EngineCaps)。
 /// 能力仍是渐进的(随上游补齐翻位),由 ready 握手与桌面壳实际能力
 /// 共同投影；UI 降级与命令层守卫都读取同一份运行时结果。
 #[derive(Clone, Copy, serde::Serialize)]
@@ -299,6 +299,8 @@ pub struct Caps {
     /// 运行中向当前轮追加用户指令。
     pub steering: bool,
     pub attachments: bool,
+    /// 定向停止后台子代理(subagent/cancel;UI 后台状态条的停止入口)。
+    pub subagent_control: bool,
 }
 
 pub fn caps(engine: &OhmyDriver, browser_ext: bool) -> Caps {
@@ -315,6 +317,7 @@ pub fn caps(engine: &OhmyDriver, browser_ext: bool) -> Caps {
         steering: engine.has_capability("session/steer"),
         // 上传/路径注入由壳实现，不是引擎握手项。
         attachments: true,
+        subagent_control: engine.has_capability("subagentControl"),
     }
 }
 
@@ -527,6 +530,7 @@ pub async fn session_call(
         let ctx = RepoCtx {
             workdir,
             wsl_distro: engine.wsl_distro(),
+            wsl_mount_root: engine.wsl_mount_root(),
         };
         // git/fs 是阻塞操作,丢 blocking 池;15s 超时防文件面板永久转圈
         let task = tauri::async_runtime::spawn_blocking(move || {

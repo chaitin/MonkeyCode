@@ -31,6 +31,14 @@ export function normalizeTypedPreviewUrl(raw: string): string | null {
   return normalizePreviewUrl(`http://${value}`);
 }
 
+/** artifact 的自定义协议地址(与壳侧 preview.rs::artifact_entry_url 同形,
+ * 逐段编码)。Linux 内嵌 iframe 直接加载它:自定义协议对进程内所有 webview
+ * 注册,主 webview 里的子框架一样可达。 */
+export function artifactInlineUrl(path: string): string {
+  const segments = path.split("/").filter(Boolean).map((part) => encodeURIComponent(part));
+  return `monkeycode-artifact://localhost/__workspace__/${segments.join("/")}`;
+}
+
 export function previewUrlsInText(text: string): string[] {
   const found: string[] = [];
   for (const match of text.matchAll(URL_CANDIDATE)) {

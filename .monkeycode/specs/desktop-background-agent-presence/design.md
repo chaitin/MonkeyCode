@@ -40,11 +40,23 @@ sidecar 增加 `background: [{agentId, tcId, summary, startedAt}]`：
 
 派发闭卡帧（driver 生成"已转后台"回执处）附带结构化标记（沿用 `progress {kind:"background_agent"}` 词汇或闭卡 update 上的专用字段），reducer 优先按结构化字段进入"保持运行态"分支；对引擎中文回执的字符串嗅探保留为旧 journal 回放 fallback，注释标注其唯一用途。
 
-### 2.6 停止（P3）
+### 2.6 停止（P3，已按直通 RPC 落地）
 
-- `session_call` 新增 kind `background_stop {agentId}`：映射 shell sid → engine sid 后调 `session/publishEvent`，`event_id = "bgstop:" + agentId + ":" + uuid`（幂等），`type = "host_request"`，`source = "desktop"`，message 固定模板：点名 `TaskStop(task_id=<agentId>)`、要求仅执行停止并简短确认。`busy`/`not_found` 原样返回给 UI。
-- `normalize.rs` 通知轮开轮分支放宽：`source == "notification" || source == "desktop"` 共用同一幂等开轮/收轮逻辑；desktop 事件轮的正文以轻量系统行呈现。
-- TaskStop 观察：driver 按事件携带的 `event_id` 关联该轮 `tool_call`，登记 `bgstop` 待决项；见到 `TaskStop` 即确认，超时（30s）未见或轮次结束仍未见 → 经 session-event 通知 UI 回弹。停止成功的终态不需要专门处理——引擎 `manager.Complete` 照常入 `NotificationQueue`，现有 stopped 结果卡与派发卡回填链路原样工作。
+引擎 733df47 提供 `subagentControl` 能力（`subagent/list` / `subagent/cancel`），
+§4 预留的「直通切换位」直接生效；原 publishEvent 模型中介方案从未实现，整体作废
+（连同 desktop 事件轮、TaskStop 观察与 30s 回弹——直通应答本身就是受理确认）：
+
+- `session_call` 新增 kind `background_stop {agent_id}`：映射 shell sid → engine_id
+  后直调 `subagent/cancel`，应答 `{status:"ok", state, stopped}` 原样透传。
+  `stopped=false, state="stopping"` = 引擎已发出取消但 5s（shutdownGrace）内未收尾，
+  子代理稍后退出时通知照常到达；引擎错误（agent/顶层会话不存在）原样上抛给 UI 外显。
+- 命令层守卫 `subagentControl` cap（契约 2 的唯一强制点）；`driver/mod.rs::Caps`
+  投影新增 `subagent_control` 供 UI 门控。
+- 终态不走应答：引擎 `manager.Complete` 照常入 `NotificationQueue`，现有
+  `task_notification` 链路（stopped 结果卡 + 派发卡回填 + 第三态收敛）原样工作，
+  不新增终态路径；通知丢失（引擎更替）由既有孤儿对账兜底。stopped 通知的派发卡
+  收卡语义细化为「已停止」（`chat.tool.bgStopped`），不再与「执行失败」混词。
+- `subagent/list` 暂未消费：pending 派生与对账已由壳侧登记覆盖，留作日后对账校验位。
 
 ## 3. UI（ui-next）
 
@@ -59,7 +71,11 @@ sidecar 增加 `background: [{agentId, tcId, summary, startedAt}]`：
 - 渲染条件：`!presentation.running && presentation.backgroundRunning > 0 && conn.connected`，占 RunBar 的插槽位；
 - 内容：脉冲状态点 + `chat.bg.running`（count 插值）。单任务摘要与耗时内联（`rawInput` 的 summary/description 优先，退回工具标题）；多任务收起为计数，可展开逐任务一行（摘要 + 耗时 + 各自「查看子会话」，对齐工具卡组「×N 展开」形态）。取材为 items 里全部 `run+background` 卡，ChatView 供给并经签名 memo 稳定引用；
 - 交互：任务行点击打开对应子会话回放浮层（`childSessionId`）；无主循环停止按钮；
-- P3：任务行 hover 出"停止"→ 二段确认（按钮原位变"确认停止？"）→ 调 `background_stop` → 行进入"停止中…"；busy/超时回弹并 toast。
+- P3（已落地）：任务行常驻「停止」（与「查看子会话」同形态；实现弃用了 hover 出钮——
+  同排的查看入口是常驻的，忽隐忽现反而更抓眼）→ 二段确认（按钮原位变「确认停止?」，
+  4s 未点自动回弹）→ 调 `background_stop` → 行进入「停止中…」直至通知收卡；失败回弹、
+  原因在条内外显（`chat.bg.stopFailed`），可重试。停止入口按 `backgroundAgentId` 寻址，
+  无 agentId 的旧 journal 卡与 `engine_caps.subagent_control` 为假时不出入口。
 
 ### 3.3 轮末分隔线变体
 
@@ -76,16 +92,16 @@ sidecar 增加 `background: [{agentId, tcId, summary, startedAt}]`：
 
 ### 3.6 i18n
 
-新增键：`chat.bg.running`、`chat.sys.turnEndBg`、`chat.tool.bgInterrupted`、停止入口与确认文案、系统通知模板。zh/en 同步。
+新增键：`chat.bg.running`、`chat.sys.turnEndBg`、`chat.tool.bgInterrupted`、停止入口与确认文案（`chat.bg.stop/stopConfirm/stopping/stopFailed`、`chat.tool.bgStopped`）、系统通知模板。zh/en 同步。
 
 ## 4. 兼容与升级策略
 
 - 旧 journal：无结构化标记的历史帧靠保留的嗅探 fallback 正常回放；无 sidecar `background` 字段的旧会话对账视为空集。
-- 旧引擎：`publishEvent` 已在 caps 声明，缺失时停止入口整体隐藏（探测 `engine_caps`）。
-- 升级位：引擎将来提供 `task/stop`/轮末任务快照 caps 时，`background_stop` 切直通 RPC，publishEvent 降为 fallback；派生逻辑收敛在 driver 一处，UI 无感。
+- 旧引擎：`subagentControl` 缺失时停止入口整体隐藏（探测 `engine_caps.subagent_control`，命令层同守）。
+- 升级位（已兑现）：引擎 733df47 落地 `subagentControl` 直通 RPC，`background_stop` 直调 `subagent/cancel`；publishEvent fallback 不再保留（从未实现，直接按直通落地），见 §2.6。
 
 ## 5. 测试
 
-- Rust（`ohmy_tests.rs`）：pending 派生（两条派发路径、多任务并存）；turn/stopped complete/interrupted × pending 有无的状态词；通知清理回写；sidecar 持久化写/删；引擎更替对账（合成终态帧、状态归一、正常重开不触发）；desktop 事件轮幂等开轮/收轮；TaskStop 观察确认与超时回弹。
-- UI（Vitest）：countItem 拆分与 presentation 全等；BackgroundBar 渲染条件、断连门控、点击定位；turn-end 变体 key；结构化标记优先 + 嗅探 fallback；停止二段确认、停止中、回弹（P3）；通知触发条件（P2，mock plugin）。
+- Rust（`ohmy_tests.rs`）：pending 派生（两条派发路径、多任务并存）；turn/stopped complete/interrupted × pending 有无的状态词；通知清理回写；sidecar 持久化写/删；引擎更替对账（合成终态帧、状态归一、正常重开不触发）；background_stop cap 守卫/agent_id 校验/RPC 形状与应答透传/引擎错误透传。
+- UI（Vitest）：countItem 拆分与 presentation 全等；BackgroundBar 渲染条件、断连门控、点击定位；turn-end 变体 key；结构化标记优先 + 嗅探 fallback；停止二段确认、停止中、能力门控、失败回弹（P3）；stopped 通知按「已停止」收卡；通知触发条件（P2，mock plugin）。
 - 门禁：相关 Cargo tests、Vitest、TypeScript typecheck、`git diff --check`。

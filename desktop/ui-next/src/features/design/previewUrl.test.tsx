@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentTurnAgentPreviewUrl, newestAgentPreviewUrl, normalizePreviewUrl, normalizeTypedPreviewUrl, previewUrlsInText } from "./previewUrl";
+import { artifactInlineUrl, currentTurnAgentPreviewUrl, newestAgentPreviewUrl, normalizePreviewUrl, normalizeTypedPreviewUrl, previewUrlsInText } from "./previewUrl";
 import type { ChatItem } from "@/lib/protocol/types";
 
 describe("design preview URL policy", () => {
@@ -50,5 +50,14 @@ describe("design preview URL policy", () => {
 
     previousTurnUrl.push({ kind: "agent", text: "ready at http://127.0.0.1:5173/new" });
     expect(currentTurnAgentPreviewUrl(previousTurnUrl)).toBe("http://127.0.0.1:5173/new");
+  });
+
+  it("artifactInlineUrl 与壳侧 artifact_entry_url 同形:逐段编码", () => {
+    expect(artifactInlineUrl("pages/home.html")).toBe(
+      "monkeycode-artifact://localhost/__workspace__/pages/home.html",
+    );
+    expect(artifactInlineUrl("a b/首页.html")).toBe(
+      "monkeycode-artifact://localhost/__workspace__/a%20b/%E9%A6%96%E9%A1%B5.html",
+    );
   });
 });
