@@ -255,7 +255,9 @@ for path in "$target"/* "$target"/.[!.]* "$target"/..?*; do
   # 产生数千进程。文件打开时会再取权威大小，这里用 0 作未知占位。
   printf '%s\000%s\0000\000' "$name" "$kind"
   count=$((count + 1))
-  [ "$count" -ge {} ] && break
+  # 不能写成 `[ ... ] && break`:最后一个 glob 命中真实条目(如 ..data)时
+  # 该测试作为循环体最后一条命令以状态 1 结束整个脚本,完整列表被当失败丢弃。
+  if [ "$count" -ge {} ]; then break; fi
 done"#,
         MAX_LIST_ITEMS
     )
@@ -692,6 +694,9 @@ mod tests {
         std::fs::create_dir_all(&outside).unwrap();
         let special = root.join("line one\nline two.txt");
         std::fs::write(&special, b"hello").unwrap();
+        // `..` 前缀名(如 Kubernetes 的 ..data)命中最后一个 glob 组;它作为
+        // 循环最后一项时脚本必须仍以状态 0 退出。
+        std::fs::write(root.join("..data"), b"projected").unwrap();
         std::fs::create_dir_all(root.join(".git")).unwrap();
         std::fs::write(outside.join("secret.txt"), b"secret").unwrap();
         symlink(outside.join("secret.txt"), root.join("escape.txt")).unwrap();
@@ -708,6 +713,7 @@ mod tests {
         assert_eq!(
             entries,
             vec![
+                (false, "..data".into(), 0),
                 (false, "escape.txt".into(), 0),
                 (false, "line one\nline two.txt".into(), 0),
                 (true, "src".into(), 0),

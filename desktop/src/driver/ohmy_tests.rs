@@ -3396,6 +3396,102 @@ async fn new_session_materialize_failure_degrades_and_still_creates_session() {
     }
 }
 
+/// skills=None(跟随默认集)遇到降级时,sidecar 不得写入 skills 键——
+/// "跟随默认集"不能被固化成"显式无技能",技能库恢复后仍按默认集物化。
+#[tokio::test]
+async fn new_session_default_set_degrade_keeps_sidecar_following_defaults() {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        let (inner, _events, mut stdin_rx) =
+            bare_inner_rpc_with_test_model("new-session-default-degrade");
+        // 用户技能默认启用;内部符号链接让默认集物化必然失败(store 侧,可降级)。
+        let config = inner.data_dir.parent().unwrap();
+        let skill = config.join("skills/broken");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "broken").unwrap();
+        std::fs::write(skill.join("real.txt"), "real").unwrap();
+        symlink("real.txt", skill.join("link.txt")).unwrap();
+
+        let driver = OhmyDriver(inner.clone());
+        let create = tokio::spawn(async move {
+            driver
+                .session_create_with_kind(
+                    &std::env::temp_dir().to_string_lossy(),
+                    "测试模型",
+                    false,
+                    "local",
+                    "",
+                    None,
+                )
+                .await
+        });
+        let request: Value = serde_json::from_str(
+            &tokio::time::timeout(Duration::from_secs(2), stdin_rx.recv())
+                .await
+                .expect("默认集降级后应照常发送 create RPC")
+                .unwrap()
+                .expect("非 shutdown create RPC"),
+        )
+        .unwrap();
+        let sid = request["params"]["resume"].as_str().unwrap().to_string();
+        answer_rpc(
+            &inner,
+            &request,
+            json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "session_id": &sid } }),
+        );
+        create.await.unwrap().unwrap();
+        let meta = inner.read_sidecar(&sid);
+        assert!(
+            meta.get("skills").is_none(),
+            "降级不得把默认集固化成显式列表: {meta}"
+        );
+        assert!(meta.get("skills_revision").is_none());
+    }
+}
+
+/// 引擎会话 skills 目录被换成符号链接:目标目录侧(防劫持)失败必须保持
+/// 致命并上报 conn-status——store 是健康的,降级只会让技能静默永久失效。
+#[cfg(unix)]
+#[tokio::test]
+async fn resume_hijacked_target_skills_dir_stays_fatal_not_degraded() {
+    use std::os::unix::fs::symlink;
+
+    let (inner, events, mut stdin_rx) = bare_inner_rpc("resume-hijacked-target");
+    inner.write_sidecar("s1", |meta| {
+        meta["workdir"] = json!(std::env::temp_dir().to_string_lossy());
+        meta["mode"] = json!("default");
+        meta["skills"] = json!([]);
+    });
+    let engine_dir = inner.engine_session_dir("s1").unwrap();
+    std::fs::create_dir_all(&engine_dir).unwrap();
+    let outside = engine_dir.join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    symlink(&outside, engine_dir.join("skills")).unwrap();
+
+    OhmyDriver(inner.clone()).session_open("s1").await.unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        if events.lock().unwrap().iter().any(|(name, payload)| {
+            name == "conn-status:s1" && payload["code"] == "skill-materialize-failed"
+        }) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "目标劫持必须上报结构化物化错误"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), stdin_rx.recv())
+            .await
+            .is_err(),
+        "目标劫持后不得继续 session/create"
+    );
+}
+
 #[tokio::test]
 async fn post_create_promotion_failure_requires_destroy_and_persists_unconfirmed_orphan() {
     let (inner, _events, mut stdin_rx) =

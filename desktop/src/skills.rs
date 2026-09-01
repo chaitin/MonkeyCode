@@ -358,7 +358,18 @@ impl SkillStoreState {
         }
         ensure_store_root_directory(&self.inner.config_dir)?;
         self.initialize_if_new()?;
-        *ready = true;
+        // initialize_if_new 会吞掉"不得覆盖不安全/损坏库"类引导失败（见其内部
+        // 注释），那些路径不填 observed。此时不得锁存就绪：后续操作每次重试
+        // 完整引导，用户修复磁盘（如删掉占住 user_dir 的文件）后无需重启。
+        if self
+            .inner
+            .observed
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .is_some()
+        {
+            *ready = true;
+        }
         Ok(())
     }
 
@@ -583,11 +594,7 @@ impl SkillStoreState {
                 &self.inner.defaults_path,
                 enabled,
             )
-            .map_err(|message| SkillStoreError::Io {
-                operation: "物化技能",
-                path: target.display().to_string(),
-                message,
-            })
+            .map_err(|error| error.into_store_error(target))
         })
     }
 
@@ -624,11 +631,7 @@ impl SkillStoreState {
                 &self.inner.defaults_path,
                 explicit,
             )
-            .map_err(|message| SkillStoreError::Io {
-                operation: "物化会话技能",
-                path: target.display().to_string(),
-                message,
-            })
+            .map_err(|error| error.into_store_error(target))
         })
     }
 
@@ -1295,6 +1298,34 @@ fn workflow_dependencies(dir: &Path) -> Vec<String> {
     dependencies.into_iter().collect()
 }
 
+/// 物化失败归因。Target = 会话目录侧（目标/父目录防劫持校验、临时目录、
+/// rename 交换）：store 是健康的，会话流程若对它降级只会"静默永久无技能"，
+/// 必须保持致命；Store = 技能库内容侧（内置根缺失、技能拷贝）：可被会话
+/// 流程降级，恢复对话优先。
+#[derive(Debug)]
+enum MaterializeUnlockedError {
+    Target(String),
+    Store(String),
+}
+
+/// 会话物化"目标目录侧"失败在 SkillStoreError::Io.operation 上的标记；
+/// driver 据此判定不可降级（见 session.rs 的 materialize_skills）。
+pub(crate) const MATERIALIZE_TARGET_OPERATION: &str = "物化会话技能目标目录";
+
+impl MaterializeUnlockedError {
+    fn into_store_error(self, target: &Path) -> SkillStoreError {
+        let (operation, message) = match self {
+            Self::Target(message) => (MATERIALIZE_TARGET_OPERATION, message),
+            Self::Store(message) => ("物化会话技能", message),
+        };
+        SkillStoreError::Io {
+            operation,
+            path: target.display().to_string(),
+            message,
+        }
+    }
+}
+
 /// 会话技能物化：在同目录 sibling 里建好完整新树，旧树挪到 trash sibling
 /// 后一次 rename 就位，最后清理。技能目录是可重建缓存——中途崩溃最多留下
 /// 缺失的 target 或半份 sibling，下次物化会整树重建并清扫残留，不需要事务
@@ -1307,15 +1338,18 @@ fn materialize_unlocked(
     user: &Path,
     defaults: &Path,
     enabled: Option<&[String]>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, MaterializeUnlockedError> {
     let parent = target
         .parent()
-        .ok_or_else(|| "会话技能目录缺少父目录".to_string())?;
-    ensure_plain_materialize_parent(parent)?;
-    path_is_plain_directory_or_missing(target)?;
+        .ok_or_else(|| MaterializeUnlockedError::Target("会话技能目录缺少父目录".to_string()))?;
+    ensure_plain_materialize_parent(parent).map_err(MaterializeUnlockedError::Target)?;
+    path_is_plain_directory_or_missing(target).map_err(MaterializeUnlockedError::Target)?;
     cleanup_materialize_siblings(target);
-    let (temporary, trash) = unique_materialize_siblings(target)?;
-    fs::create_dir(&temporary).map_err(|e| format!("创建会话技能临时目录失败: {e}"))?;
+    let (temporary, trash) =
+        unique_materialize_siblings(target).map_err(MaterializeUnlockedError::Target)?;
+    fs::create_dir(&temporary).map_err(|e| {
+        MaterializeUnlockedError::Target(format!("创建会话技能临时目录失败: {e}"))
+    })?;
 
     let prefs = load_default_prefs(defaults);
     let store = scan_store(builtin, user);
@@ -1355,20 +1389,24 @@ fn materialize_unlocked(
             let source_root = if s.info.source == "user" {
                 user
             } else {
-                builtin.ok_or_else(|| format!("内置技能根缺失: {}", s.info.name))?
+                builtin.ok_or_else(|| {
+                    MaterializeUnlockedError::Store(format!("内置技能根缺失: {}", s.info.name))
+                })?
             };
             copy_skill_directory_for_materialization(
                 source_root,
                 &s.info.name,
                 &temporary.join(&s.info.name),
             )
-            .map_err(|e| format!("物化技能 {} 失败: {e}", s.info.name))?;
+            .map_err(|e| {
+                MaterializeUnlockedError::Store(format!("物化技能 {} 失败: {e}", s.info.name))
+            })?;
             // 只有公开入口进 sidecar 快照;内部依赖仅落盘。
             if roots.contains(&s.info.name) {
                 done.push(s.info.name);
             }
         }
-        Ok::<(), String>(())
+        Ok::<(), MaterializeUnlockedError>(())
     })();
     if let Err(error) = generated {
         let _ = remove_plain_tree(&temporary);
@@ -1380,7 +1418,9 @@ fn materialize_unlocked(
     if had_old {
         if let Err(error) = swap_rename(target, &trash) {
             let _ = remove_plain_tree(&temporary);
-            return Err(format!("移开旧会话技能目录失败: {error}"));
+            return Err(MaterializeUnlockedError::Target(format!(
+                "移开旧会话技能目录失败: {error}"
+            )));
         }
     }
     if let Err(error) = swap_rename(&temporary, target) {
@@ -1388,7 +1428,9 @@ fn materialize_unlocked(
             let _ = swap_rename(&trash, target);
         }
         let _ = remove_plain_tree(&temporary);
-        return Err(format!("安装新会话技能目录失败: {error}"));
+        return Err(MaterializeUnlockedError::Target(format!(
+            "安装新会话技能目录失败: {error}"
+        )));
     }
     let _ = remove_plain_tree(&trash);
     Ok(done)
@@ -1754,6 +1796,46 @@ mod tests {
         // 通过真实路径打开的是同一个 store（同 store_id，revision 连续）。
         let direct = SkillStoreState::new(real.clone()).unwrap();
         assert_eq!(direct.snapshot(None).unwrap().store_id, snapshot.store_id);
+    }
+
+    /// initialize_if_new 内部吞掉的引导失败（如 user_dir 被普通文件占住）
+    /// 不得锁存就绪：错误要持续暴露，且用户修复后同一实例免重启恢复。
+    #[test]
+    fn swallowed_bootstrap_failure_does_not_latch_ready_and_recovers() {
+        let cfg = test_dir("no-latch");
+        fs::write(cfg.join("skills"), b"not a dir").unwrap();
+
+        let state = SkillStoreState::new_deferred(cfg.clone());
+        assert!(state.snapshot(None).is_err());
+
+        fs::remove_file(cfg.join("skills")).unwrap();
+        state
+            .save_skill("revived", "---\nname: revived\n---\nbody", None)
+            .unwrap();
+        assert_eq!(state.snapshot(None).unwrap().skills.len(), 1);
+    }
+
+    /// 目标目录侧失败（此处：目标被换成符号链接）必须带上 Target 标记，
+    /// 供会话流程判定不可降级；技能库内容侧失败则不带。
+    #[cfg(unix)]
+    #[test]
+    fn hijacked_materialize_target_is_tagged_as_target_side_failure() {
+        let cfg = test_dir("target-side-tag");
+        let state = SkillStoreState::new(cfg.clone()).unwrap();
+        let outside = cfg.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        let sessions = cfg.join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let target = sessions.join("skills");
+        std::os::unix::fs::symlink(&outside, &target).unwrap();
+
+        let error = state.materialize(&target, None, Some(&[])).unwrap_err();
+        match error {
+            SkillStoreError::Io { operation, .. } => {
+                assert_eq!(operation, MATERIALIZE_TARGET_OPERATION);
+            }
+            other => panic!("目标劫持应产生 Io 错误: {other:?}"),
+        }
     }
 
     /// 技能库环境坏掉只能让技能操作报错，绝不允许影响构造（应用启动）；

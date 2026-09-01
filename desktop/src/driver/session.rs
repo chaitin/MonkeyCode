@@ -1454,15 +1454,20 @@ impl OhmyDriver {
         }
         let inner = self.0.clone();
         let sidecar_sid = sid.clone();
-        let sidecar = json!({
+        let mut sidecar = json!({
             "model_name": model_name,
             "workdir": workdir,
             "kind": kind,
             "think": think,
-            "skills": &skills,
-            "skills_revision": 1u64,
             "status": SessionStatus::Created.as_str(),
         });
+        // 物化降级且请求为 None(跟随默认集)时不写 skills 键:缺键即"按当前
+        // 默认集解析"(见 session_open),技能库恢复后仍跟随默认,而不是被
+        // 固化成显式空集。
+        if let Some(skills) = &skills {
+            sidecar["skills"] = json!(skills);
+            sidecar["skills_revision"] = json!(1u64);
+        }
         let promotion = tokio::task::spawn_blocking(move || {
             let _write = inner.sess.sidecar_write.lock();
             inner.write_new_session_sidecar_locked(&sidecar_sid, sidecar)
@@ -1517,7 +1522,7 @@ impl OhmyDriver {
         Ok(json!({
             "id": sid, "title": "", "workdir": workdir, "model": model_name,
             "kind": kind, "mode": "default", "turns": 0, "think": think,
-            "skills": skills, "skills_revision": 1u64,
+            "skills": skills.as_deref().unwrap_or_default(), "skills_revision": 1u64,
             "status": SessionStatus::Created.as_str(),
         }))
     }
@@ -3629,7 +3634,12 @@ impl OhmyDriver {
             engine_session_create_params(&workdir, Some(eng.as_str()), Some(model_id), mode);
         let skills = match prepared_skills {
             Some(skills) => skills,
-            None => self.materialize_skills_or_degrade(&eng, id, enabled).await?,
+            // enabled=None 只来自 create_resumed,它丢弃返回值;降级回退空集
+            // 不会被持久化。
+            None => self
+                .materialize_skills_or_degrade(&eng, id, enabled)
+                .await?
+                .unwrap_or_default(),
         };
         if let Some(guards) = &mut operation_guards {
             guards.release_process();
@@ -3853,6 +3863,12 @@ impl OhmyDriver {
                     error @ SkillStoreError::RecoveryPending(_) => {
                         MaterializeSkillsError::RecoveryPending(error.to_string())
                     }
+                    // 目标目录(会话侧)失败不可降级:store 健康,不存在"以后
+                    // 自愈",降级只会让技能静默永久失效(含防劫持校验拒绝)。
+                    error @ SkillStoreError::Io {
+                        operation: crate::skills::MATERIALIZE_TARGET_OPERATION,
+                        ..
+                    } => MaterializeSkillsError::Failed(error.to_string()),
                     other => MaterializeSkillsError::StoreFailed(other.to_string()),
                 })
         })
@@ -3862,17 +3878,18 @@ impl OhmyDriver {
 
     /// 会话流程(创建/恢复/重建)的物化入口:技能库侧失败降级为"沿用现存或
     /// 空技能目录"继续对话,只记日志;目录/transcript 等会话基础设施失败仍然
-    /// 致命。降级时返回调用方请求的启用列表(None → 空)作为快照回退——之后
-    /// 技能库恢复,resume/set_skills 会按这份记录重新物化。
+    /// 致命。降级时回退调用方请求的启用列表作为快照——显式列表原样保留
+    /// (技能库恢复后 resume/set_skills 按这份记录重新物化),None(跟随默认
+    /// 集)保持 None,绝不能把"跟随默认集"固化成"显式无技能"。
     async fn materialize_skills_or_degrade(
         &self,
         engine_id: &str,
         session_id: &str,
         enabled: Option<Vec<String>>,
-    ) -> Result<Vec<String>, MaterializeSkillsError> {
-        let fallback = enabled.clone().unwrap_or_default();
+    ) -> Result<Option<Vec<String>>, MaterializeSkillsError> {
+        let fallback = enabled.clone();
         match self.materialize_skills(engine_id, session_id, enabled).await {
-            Ok(skills) => Ok(skills),
+            Ok(skills) => Ok(Some(skills)),
             Err(error) if error.is_degradable_for_sessions() => {
                 eprintln!(
                     "[desktop] 会话 {session_id} 技能物化失败,对话继续(本次不带/沿用旧技能): {error}"
@@ -3982,9 +3999,12 @@ impl OhmyDriver {
         // materialize 会进入 SkillStoreState，必须在 destroy 前完成；成功后
         // create 只消费这份规范化结果，绝不二次入门。
         let current_engine_id = self.engine_id(id);
+        // enabled=None 只来自 recreate_fallback,它丢弃返回值;降级回退空集
+        // 不会被持久化。
         let skills = self
             .materialize_skills_or_degrade(&current_engine_id, id, enabled)
-            .await?;
+            .await?
+            .unwrap_or_default();
         if self
             .0
             .sess
