@@ -215,29 +215,12 @@ fn list_files(ctx: &RepoCtx, dir: &str) -> Result<Value, String> {
 }
 
 /// Windows 无法读取某些 WSL/DrvFs 路径时，在对应发行版内读取单层目录。
-/// readlink -f 同时把符号链接收敛成真实路径，case 守住 workdir 边界；find
-/// 用 NUL 分隔三元组，文件名中的空格、换行、引号和反斜杠都不会破坏协议。
+/// `cd -P && pwd -P` 收敛真实路径并守住 workdir 边界；POSIX shell glob
+/// 避免依赖 GNU find/head，NUL 三元组保留文件名中的空格、换行和反斜杠。
 fn list_files_in_wsl(ctx: &RepoCtx, dir: &str) -> Result<Vec<(bool, String, u64)>, String> {
     let distro = ctx.wsl_distro.as_deref().ok_or("缺少 WSL 发行版")?;
-    let target = if dir.is_empty() {
-        ctx.workdir.clone()
-    } else {
-        format!(
-            "{}/{}",
-            ctx.workdir.trim_end_matches('/'),
-            dir.replace('\\', "/")
-        )
-    };
-    let script = format!(
-        r#"set -eu
-root=$(readlink -f -- "$1")
-target=$(readlink -f -- "$2")
-if [ "$target" != "$root" ]; then
-  case "$target" in "$root"/*) ;; *) echo '路径超出工作区' >&2; exit 13 ;; esac
-fi
-find "$target" -mindepth 1 -maxdepth 1 -printf '%f\0%y\0%s\0' | head -z -n {}"#,
-        MAX_LIST_ITEMS * 3
-    );
+    let target = guest_target(ctx, dir);
+    let script = wsl_list_script();
     let args = vec![
         "-d".into(),
         distro.into(),
@@ -249,8 +232,45 @@ find "$target" -mindepth 1 -maxdepth 1 -printf '%f\0%y\0%s\0' | head -z -n {}"#,
         ctx.workdir.clone(),
         target,
     ];
-    let output = crate::wsl::run_wsl_bytes(&args, Duration::from_secs(10))?;
+    // 外层 repo 查询 15s；给 run_wsl_bytes 最多 5s 的进程退出后排空留余量。
+    let output = crate::wsl::run_wsl_bytes(&args, Duration::from_secs(8))?;
     parse_wsl_directory_entries(&output)
+}
+
+fn wsl_list_script() -> String {
+    format!(
+        r#"set -eu
+root=$(CDPATH= cd -P "$1" && pwd -P)
+target=$(CDPATH= cd -P "$2" && pwd -P)
+if [ "$root" != '/' ] && [ "$target" != "$root" ]; then
+  case "$target" in "$root"/*) ;; *) echo '路径超出工作区' >&2; exit 13 ;; esac
+fi
+count=0
+for path in "$target"/* "$target"/.[!.]* "$target"/..?*; do
+  [ -e "$path" ] || [ -L "$path" ] || continue
+  name=${{path##*/}}
+  [ "$name" = '.git' ] && continue
+  if [ -d "$path" ] && [ ! -L "$path" ]; then kind=d; else kind=f; fi
+  # 单层 fallback 的首要目标是可靠/快速列树；逐项拉起 stat 在大目录会
+  # 产生数千进程。文件打开时会再取权威大小，这里用 0 作未知占位。
+  printf '%s\000%s\0000\000' "$name" "$kind"
+  count=$((count + 1))
+  [ "$count" -ge {} ] && break
+done"#,
+        MAX_LIST_ITEMS
+    )
+}
+
+fn guest_target(ctx: &RepoCtx, rel: &str) -> String {
+    if rel.is_empty() {
+        ctx.workdir.clone()
+    } else {
+        format!(
+            "{}/{}",
+            ctx.workdir.trim_end_matches('/'),
+            rel.replace('\\', "/")
+        )
+    }
 }
 
 fn parse_wsl_directory_entries(data: &[u8]) -> Result<Vec<(bool, String, u64)>, String> {
@@ -386,7 +406,18 @@ fn artifact_read(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
 /// 读取文件内容(1MB 上限)。
 fn read_file(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
     let p = ctx.resolve(rel)?;
-    let md = std::fs::metadata(&p).map_err(|e| format!("读取失败: {e}"))?;
+    let md = match std::fs::metadata(&p) {
+        Ok(metadata) => metadata,
+        Err(host_error) if ctx.wsl_distro.is_some() => {
+            return read_file_in_wsl(ctx, rel).map_err(|wsl_error| {
+                format!(
+                    "读取失败({}): {host_error}; WSL 读取也失败: {wsl_error}",
+                    p.display()
+                )
+            });
+        }
+        Err(error) => return Err(format!("读取失败({}): {error}", p.display())),
+    };
     if md.is_dir() {
         return Err(format!("{rel} 是目录"));
     }
@@ -397,8 +428,78 @@ fn read_file(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
             MAX_FILE_BYTES
         ));
     }
-    let data = std::fs::read(&p).map_err(|e| format!("读取失败: {e}"))?;
+    let data = match std::fs::read(&p) {
+        Ok(data) => data,
+        Err(host_error) if ctx.wsl_distro.is_some() => {
+            return read_file_in_wsl(ctx, rel).map_err(|wsl_error| {
+                format!(
+                    "读取失败({}): {host_error}; WSL 读取也失败: {wsl_error}",
+                    p.display()
+                )
+            });
+        }
+        Err(error) => return Err(format!("读取失败({}): {error}", p.display())),
+    };
     Ok(json!({ "path": rel, "content": String::from_utf8_lossy(&data) }))
+}
+
+fn read_file_in_wsl(ctx: &RepoCtx, rel: &str) -> Result<Value, String> {
+    let distro = ctx.wsl_distro.as_deref().ok_or("缺少 WSL 发行版")?;
+    let target = guest_target(ctx, rel);
+    let script = wsl_read_script();
+    let args = vec![
+        "-d".into(),
+        distro.into(),
+        "--exec".into(),
+        "/bin/sh".into(),
+        "-c".into(),
+        script,
+        "monkeycode-repo-read".into(),
+        ctx.workdir.clone(),
+        target,
+    ];
+    let output = crate::wsl::run_wsl_bytes(&args, Duration::from_secs(8))?;
+    parse_wsl_file_response(rel, &output)
+}
+
+fn wsl_read_script() -> String {
+    format!(
+        r#"set -eu
+root=$(CDPATH= cd -P "$1" && pwd -P)
+requested=$2
+parent=${{requested%/*}}
+name=${{requested##*/}}
+[ -n "$parent" ] || parent=/
+parent=$(CDPATH= cd -P "$parent" && pwd -P)
+if [ "$root" != '/' ] && [ "$parent" != "$root" ]; then
+  case "$parent" in "$root"/*) ;; *) echo '路径超出工作区' >&2; exit 13 ;; esac
+fi
+target="$parent/$name"
+[ ! -L "$target" ] || {{ echo '不允许读取符号链接' >&2; exit 14; }}
+[ ! -d "$target" ] || {{ echo '目标是目录' >&2; exit 15; }}
+[ -f "$target" ] || {{ echo '文件不存在或不是普通文件' >&2; exit 16; }}
+size=$(stat -c %s "$target" 2>/dev/null || stat -f %z "$target")
+[ "$size" -le {} ] || {{ echo "文件过大($size 字节)" >&2; exit 17; }}
+printf '%s\000' "$size"
+cat "$target""#,
+        MAX_FILE_BYTES
+    )
+}
+
+fn parse_wsl_file_response(rel: &str, output: &[u8]) -> Result<Value, String> {
+    let separator = output
+        .iter()
+        .position(|byte| *byte == 0)
+        .ok_or("WSL 文件响应缺少大小")?;
+    let size = std::str::from_utf8(&output[..separator])
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or("WSL 文件响应大小无效")?;
+    let data = &output[separator + 1..];
+    if size != data.len() as u64 || size > MAX_FILE_BYTES {
+        return Err("WSL 文件响应长度不一致或超过上限".into());
+    }
+    Ok(json!({ "path": rel, "content": String::from_utf8_lossy(data) }))
 }
 
 /// `git status --porcelain=v1 -z` 的路径以 NUL 分隔且不做 C 引号转义。
@@ -565,6 +666,82 @@ mod tests {
         );
         assert!(parse_wsl_directory_entries(b"name\0f\0bad\0").is_err());
         assert!(parse_wsl_directory_entries(b"name\0").is_err());
+    }
+
+    #[test]
+    fn wsl_file_protocol_is_bounded_and_keeps_embedded_nuls() {
+        assert_eq!(
+            parse_wsl_file_response("a.bin", b"3\0a\0b").unwrap(),
+            json!({ "path": "a.bin", "content": "a\0b" })
+        );
+        assert!(parse_wsl_file_response("a.txt", b"4\0abc").is_err());
+        assert!(parse_wsl_file_response("a.txt", b"bad\0abc").is_err());
+        assert!(parse_wsl_file_response("a.txt", b"abc").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn wsl_shell_helpers_enforce_bounds_and_roundtrip_special_names() {
+        use std::os::unix::fs::symlink;
+
+        let base = std::env::temp_dir().join(format!("mc-wsl-repo-shell-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("work space");
+        let outside = base.join("outside");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let special = root.join("line one\nline two.txt");
+        std::fs::write(&special, b"hello").unwrap();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(outside.join("secret.txt"), b"secret").unwrap();
+        symlink(outside.join("secret.txt"), root.join("escape.txt")).unwrap();
+
+        let list = Command::new("/bin/sh")
+            .args(["-c", &wsl_list_script(), "test"])
+            .arg(&root)
+            .arg(&root)
+            .output()
+            .unwrap();
+        assert!(list.status.success(), "{}", String::from_utf8_lossy(&list.stderr));
+        let mut entries = parse_wsl_directory_entries(&list.stdout).unwrap();
+        entries.sort_by(|a, b| a.1.cmp(&b.1));
+        assert_eq!(
+            entries,
+            vec![
+                (false, "escape.txt".into(), 0),
+                (false, "line one\nline two.txt".into(), 0),
+                (true, "src".into(), 0),
+            ]
+        );
+
+        let read = Command::new("/bin/sh")
+            .args(["-c", &wsl_read_script(), "test"])
+            .arg(&root)
+            .arg(&special)
+            .output()
+            .unwrap();
+        assert!(read.status.success(), "{}", String::from_utf8_lossy(&read.stderr));
+        assert_eq!(
+            parse_wsl_file_response("line.txt", &read.stdout).unwrap(),
+            json!({ "path": "line.txt", "content": "hello" })
+        );
+
+        let escaped = Command::new("/bin/sh")
+            .args(["-c", &wsl_read_script(), "test"])
+            .arg(&root)
+            .arg(root.join("escape.txt"))
+            .output()
+            .unwrap();
+        assert!(!escaped.status.success(), "符号链接读取必须被拒绝");
+        let outside_list = Command::new("/bin/sh")
+            .args(["-c", &wsl_list_script(), "test"])
+            .arg(&root)
+            .arg(&outside)
+            .output()
+            .unwrap();
+        assert!(!outside_list.status.success(), "工作区外目录必须被拒绝");
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[cfg(windows)]
