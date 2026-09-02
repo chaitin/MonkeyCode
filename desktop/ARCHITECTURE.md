@@ -142,6 +142,22 @@ context_window/supports_images/max_output/thinking`。桌面缺省显式压过
 budget_tokens legacy 已消亡);supports_images 恒显式写,vision 未勾选写
 false(引擎侧生效缺口见上游清单)。`default_model` 一律传别名。
 
+**会员条目的运行时直传(model_config)**:私有化部署架在 OAuth/SSO 登录
+网关之后时,引擎 LLM 流量只带 API key 会被网关弹去登录页,而引擎的
+`headers` 只在 RuntimeModelConfig 上,settings.json 条目带不了。故会员
+条目在建会话/切模型时改经 `session/create`、`session/switchModel` 的
+`model_config` 直传(cap `runtimeConfig`):模板 = settings.json 同一物化
+(config.rs engine_model_entry)+ name + signing_secret,随引擎实例定格
+在清单里(ManifestModel.runtime);Cookie 头由驱动每次从 mc 罐现取
+(session.rs member_runtime_model_config,经 ShellCtx::mc_cookie_header),
+罐里刷新过的网关 cookie 对新会话/切模型自然生效,不重启引擎。直传只在
+**私有化 + 罐里对该地址有 cookie**时发生:官方云、非会员条目、未登录都维持
+按别名走 settings.json,`model` 别名恒并传(旧引擎回退)。settings.json 里
+的会员条目照常物化,是无 cookie 场景的兜底。已知取舍:会话 provider 是建
+会话/切模型那一刻的 cookie 快照,登录或网关刷新 cookie 后已开会话要切一次
+模型或重开;cookie 过期时引擎跟随 302 拿到登录页 HTML,报错文案不友好
+(引擎侧禁跟随重定向属上游缺口)。
+
 **技能(skills,src/skills.rs)**:引擎无任何技能协议入口,只在会话
 创建/恢复时扫描磁盘,所以技能走**按会话物化**而非引擎重启物化:技能库
 (内置 = 仓库根 plugins/ submodule(MonkeyCodeOfficialPlugins)的 skills/,
@@ -272,9 +288,10 @@ cookie,集合变化时用收割 cookie 直探 `/api/v1/users/status`(不经壳�
   (classify_mc_redirect,带 Location 判别)归一:302/303/307 →
   Unauthorized(「重新连接」);同主机 http→https → 「改 https 地址」
   (scheme 升级重定向剥 Cookie,重登无效);其余 301/308 仍按 HTTP 错误报。
-- 网关部署的已知边界:引擎 LLM 流量(llmproxy `/v1`)带 API key 不带
-  cookie,OAuth 网关需对 `/v1/*` 豁免(llmproxy 自带鉴权);壳侧
-  REST/WS/上传下载均从罐带全量 cookie,可过网关。
+- 网关部署:引擎 LLM 流量(llmproxy `/v1`)带 API key 不带 cookie,会被
+  网关弹去登录页——会员条目经 `model_config` 直传附上罐里的网关 cookie
+  (契约 4「会员条目的运行时直传」);壳侧 REST/WS/上传下载均从罐带全量
+  cookie,可过网关。网关对 `/v1/*` 豁免时两条路都通。
 - macOS 加载 http 登录页依赖 Info.plist 的
   `NSAllowsArbitraryLoadsInWebContent`(只豁免网页内容);自签 TLS 的
   部署 WebView 无法免验证(`mc_skip_tls_verify` 只作用于壳侧 reqwest),

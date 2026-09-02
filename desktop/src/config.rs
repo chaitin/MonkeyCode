@@ -7,6 +7,7 @@
 // (设置页/托盘即时开关)与 telemetry_enabled(仅改文件)都不在设置页表单里，
 // 设置页保存时必须从磁盘合并，否则会被默认值打回。
 
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io::Write as _;
@@ -633,6 +634,183 @@ fn with_basic_userinfo(base_url: &str, user_pass: &str) -> String {
     u.to_string()
 }
 
+/// 壳清单条目是否 MonkeyCode 会员条目(同步层打 source 标)。
+fn is_monkeycode_entry(m: &serde_json::Value) -> bool {
+    m.get("source").and_then(|v| v.as_str()) == Some(crate::baizhi::monkeycode::SOURCE_MONKEYCODE)
+}
+
+/// 协议 → 引擎 wire 类型(e792858 起扁平 per-model schema:每条模型自带
+/// type/api_key/base_url,按别名作键——壳清单一一对应物化,旧 providers
+/// 槽位与冲突跳过逻辑随之消亡)。
+fn engine_wire_type(provider: &str) -> &'static str {
+    match provider {
+        "openai" => "openai-chat",
+        "openai_responses" => "openai-responses",
+        _ => "anthropic",
+    }
+}
+
+/// 清单含会员条目时读本机 Key 记录;记录须与当前服务地址/Basic 指纹匹配,
+/// 否则视为无——别的服务签发的 key 不得注入当前引擎。
+fn member_key_for(
+    models: &[serde_json::Value],
+    cfg: &DesktopConfig,
+    cfg_dir: &Path,
+) -> Option<serde_json::Value> {
+    models
+        .iter()
+        .any(is_monkeycode_entry)
+        .then(|| crate::baizhi::stored_ohmyagent_key(cfg_dir))
+        .flatten()
+        .filter(|key| crate::baizhi::ohmyagent_key_matches_config(key, cfg))
+}
+
+fn key_field(key: Option<&serde_json::Value>, k: &str) -> String {
+    key.and_then(|v| v.get(k))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// 会员条目的模型请求地址与已解析服务地址 (base_url, server)。地址按当前
+/// 配置现算(baizhi::resolve_mc_llm 单一出处):设置里显式指定 > 官方云代理
+/// 子域 > {服务地址}/v1。**不读 Key 文件里的 base_url 快照**——那是建 Key
+/// 当时的地址,默认值一改(如官方云从主域挪到 proxy 子域)老机器会一直打
+/// 旧地址,直到下次重新同步。配了测试环境反代 Basic Auth 时嵌进 userinfo
+/// (见 with_basic_userinfo);只嵌给 MonkeyCode 主机——模型地址指向别的
+/// 主机时嵌入等于把反代凭证泄漏给第三方(host 门与 mc_basic_header 同语义)。
+fn member_llm_base_url(cfg: &DesktopConfig) -> (String, String) {
+    let server = crate::baizhi::Endpoints::resolve(&cfg.mc_base_url).monkeycode;
+    let mut b = crate::baizhi::resolve_mc_llm(&cfg.mc_llm_base_url, &server);
+    let basic = cfg.mc_basic_auth.trim();
+    if !b.is_empty() && !basic.is_empty() && on_mc_host(&b, &cfg.mc_base_url) {
+        b = with_basic_userinfo(&b, basic);
+    }
+    (b, server)
+}
+
+/// 壳清单单条 → 引擎 settings.models 条目 (别名, 条目);name/model 缺失
+/// 返回 None。会员条目的密钥由壳从本机 Key 记录补齐(记录缺失时照常物化,
+/// 请求时报错外显,不静默丢条目)。settings.json 物化与运行时 model_config
+/// (member_runtime_models)共用这一处,两条路的条目口径不得分叉。
+fn engine_model_entry(
+    m: &serde_json::Value,
+    cfg: &DesktopConfig,
+    mc_key: Option<&serde_json::Value>,
+) -> Option<(String, serde_json::Value)> {
+    let get = |k: &str| m.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let (name, provider, model) = (get("name"), get("provider"), get("model"));
+    if name.is_empty() || model.is_empty() {
+        return None;
+    }
+    let (base_url, api_key, skip_tls) = if is_monkeycode_entry(m) {
+        let (b, server) = member_llm_base_url(cfg);
+        // 「跳过 TLS 证书验证」延伸到会员条目的 LLM 请求(引擎 per-model
+        // tls_insecure_skip_verify):macOS 上 Go 走系统校验器,私有化自签
+        // 证书常因苹果合规策略(有效期/SAN/EKU)被拒,钥匙串信任也无法
+        // 豁免。官方云永不跳过,与 baizhi::Service 构建免验证客户端同门;
+        // 拆分部署的独立 LLM 主机视为同一私有化部署,一并生效。
+        let skip = cfg.mc_skip_tls_verify && !crate::baizhi::is_official_mc(&server);
+        (b, key_field(mc_key, "api_key"), skip)
+    } else {
+        (get("base_url"), get("api_key"), false)
+    };
+    let mut entry = serde_json::json!({
+        "type": engine_wire_type(&provider), "model": model,
+        "base_url": base_url, "api_key": api_key,
+    });
+    if skip_tls {
+        entry["tls_insecure_skip_verify"] = serde_json::json!(true);
+    }
+    let context_window = m
+        .get("context_window")
+        .and_then(|v| v.as_i64())
+        .filter(|&c| c > 0)
+        .unwrap_or(DEFAULT_MODEL_CONTEXT_WINDOW);
+    // Desktop 的产品默认值是 200k。必须显式写给引擎，否则自定义/未知
+    // model id 会落入引擎自己的 128k 通用兜底，composer 显示与设置页不符。
+    entry["context_window"] = serde_json::json!(context_window);
+    // 视觉标记显式透传:勾选即支持;未勾选写 false 压过引擎目录里
+    // 已知 model id 的 vision 默认,保证不发图片块(读图降级为文本占位)
+    let vision = m.get("vision").and_then(|v| v.as_bool()).unwrap_or(false);
+    entry["supports_images"] = serde_json::json!(vision);
+    // 最大输出:显式配置(>0)优先,缺省物化产品默认 32768——新一代模型
+    // 的输出上限(64k~128k)远超引擎 16384 兜底,不抬高会截断长输出。
+    // 已知取舍:引擎压缩在上下文占用 90% 才触发且不预留输出空间,
+    // 200k 窗口下输入落在 167k~180k 的请求会因 输入+输出 超模型上限
+    // 被服务端拒(settings.tsx 的 10% 校验即为此而设)。
+    let max_output = m
+        .get("max_output")
+        .and_then(|v| v.as_i64())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_MODEL_MAX_OUTPUT);
+    entry["max_output"] = serde_json::json!(max_output);
+    // 思考深度:条目按模型设置的 think 档物化,未配置/未知档位落产品
+    // 默认「低」;显式 off 写 enabled:false(与 vision 同理,显式写入
+    // 压过引擎目录里已知 model id 的默认)。会话级调整走引擎
+    // session/setThinking RPC(session.rs),不再物化变体别名。
+    entry["thinking"] = match m.get("think").and_then(|v| v.as_str()).unwrap_or("") {
+        "off" => serde_json::json!({ "enabled": false }),
+        effort @ ("low" | "medium" | "high") => thinking_config(effort),
+        _ => thinking_config(DEFAULT_MODEL_THINK),
+    };
+    Some((name, entry))
+}
+
+/// 会员条目的运行时 model_config 模板(不含 Cookie 头,见 member_runtime_models)。
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct MemberRuntimeModel {
+    /// 引擎 RuntimeModelConfig 形态:settings.json 条目字段 + name + signing_secret。
+    pub(crate) template: serde_json::Value,
+    /// 驱动建会话时向 mc 罐取 Cookie 头用的地址(= 条目 base_url)。官方云
+    /// None:那里没有登录网关,不给引擎流量附会话 cookie(与 TLS 跳过同一道门)。
+    pub(crate) cookie_url: Option<String>,
+}
+
+/// 会员条目 → 运行时 model_config 模板(按别名索引)。
+///
+/// 私有化部署架在 OAuth/SSO 登录网关之后时,引擎的 LLM 流量只带 API key、
+/// 不带 cookie,会被网关弹去登录页;壳的 mc 罐里有浏览器登录窗收割的网关
+/// 会话,但引擎 `headers` 只在 RuntimeModelConfig 上(settings.json 条目带
+/// 不了),所以会员条目改经 session/create、session/switchModel 的
+/// `model_config` 直传。模板 = settings.json 条目同一物化(engine_model_entry)
+/// + name + signing_secret(settings 里是顶层字段,运行时配置逐条带);Cookie
+/// 头由驱动建会话时按罐现拼(session.rs member_runtime_model_config),这样
+/// 罐里刷新过的 cookie 对新会话自然生效,不需要重启引擎。非会员条目不在
+/// 其中,维持按别名走 settings.json。
+pub(crate) fn member_runtime_models(
+    cfg: &DesktopConfig,
+    cfg_dir: &Path,
+) -> HashMap<String, MemberRuntimeModel> {
+    let empty = vec![];
+    let models = cfg.models.as_array().unwrap_or(&empty);
+    let mc_key = member_key_for(models, cfg, cfg_dir);
+    let secret = key_field(mc_key.as_ref(), "signing_secret");
+    let (_, server) = member_llm_base_url(cfg);
+    let private = !crate::baizhi::is_official_mc(&server);
+    let mut out = HashMap::new();
+    for m in models.iter().filter(|m| is_monkeycode_entry(m)) {
+        let Some((name, mut template)) = engine_model_entry(m, cfg, mc_key.as_ref()) else {
+            continue;
+        };
+        template["name"] = serde_json::json!(name);
+        if !secret.is_empty() {
+            template["signing_secret"] = serde_json::json!(secret);
+        }
+        let cookie_url = private
+            .then(|| template["base_url"].as_str().unwrap_or("").to_string())
+            .filter(|u| !u.is_empty());
+        out.insert(
+            name,
+            MemberRuntimeModel {
+                template,
+                cookie_url,
+            },
+        );
+    }
+    out
+}
+
 /// 壳清单 → <engine_config_dir>/settings.json + mcp.json。
 ///
 /// 映射:HostModel{name,provider,base_url,api_key,model,…} → 以别名为键的
@@ -644,120 +822,28 @@ fn write_ohmyagent_config(
 ) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|e| format!("创建引擎配置目录失败: {e}"))?;
 
-    // 协议 → 引擎 wire 类型(e792858 起扁平 per-model schema:每条模型
-    // 自带 type/api_key/base_url,按别名作键——壳清单一一对应物化,
-    // 旧 providers 槽位与冲突跳过逻辑随之消亡)
-    let route_of = |provider: &str| match provider {
-        "openai" => "openai-chat",
-        "openai_responses" => "openai-responses",
-        _ => "anthropic",
-    };
-
     let empty = vec![];
     let models_arr = cfg.models.as_array().unwrap_or(&empty);
 
     // MonkeyCode 会员条目的 base_url/api_key 在物化时从应用配置目录
     //(= 引擎目录的父目录,见 baizhi::OHMYAGENT_KEY_FILE)补齐。
-    let is_monkeycode = |m: &serde_json::Value| {
-        m.get("source").and_then(|v| v.as_str())
-            == Some(crate::baizhi::monkeycode::SOURCE_MONKEYCODE)
-    };
     // locked = 超出会员档的条目(同步层打标):**照常物化**——会员档权限由
     // 服务端把关,引擎 settings 缺了条目反而让老会话(会员到期前选的模型)
     // 一打开就 "unknown model",连恢复都进不去。locked 只影响 default 回退
     // (不默认选禁用项)与显式选择(session.rs model_id_of 拒绝)。
     // 只认会员条目上的标记,手编条目的杂散 locked 忽略。
     let is_locked_member = |m: &serde_json::Value| {
-        is_monkeycode(m) && m.get("locked").and_then(|v| v.as_bool()).unwrap_or(false)
+        is_monkeycode_entry(m) && m.get("locked").and_then(|v| v.as_bool()).unwrap_or(false)
     };
-    let mc_key = models_arr
-        .iter()
-        .any(is_monkeycode)
-        .then(|| dir.parent().and_then(crate::baizhi::stored_ohmyagent_key))
-        .flatten()
-        .filter(|key| crate::baizhi::ohmyagent_key_matches_config(key, cfg));
-    let mc_key_field = |k: &str| {
-        mc_key
-            .as_ref()
-            .and_then(|v| v.get(k))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
-    };
+    let mc_key = dir
+        .parent()
+        .and_then(|cfg_dir| member_key_for(models_arr, cfg, cfg_dir));
 
     let mut models_out = serde_json::Map::new();
     let mut default_model = String::new();
     for m in models_arr {
-        let get = |k: &str| m.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let (name, provider, model) = (get("name"), get("provider"), get("model"));
-        // 会员条目的密钥由壳补齐(本机记录缺失时照常物化,请求时报错外显,
-        // 不静默丢条目);配了测试环境反代 Basic Auth 时嵌进 userinfo
-        // (见 with_basic_userinfo)
-        let (base_url, api_key, skip_tls) = if is_monkeycode(m) {
-            // 地址按当前配置现算(baizhi::resolve_mc_llm 单一出处):设置里显式
-            // 指定 > 官方云代理子域 > {服务地址}/v1。**不读 Key 文件里的
-            // base_url 快照**——那是建 Key 当时的地址,默认值一改(如官方云
-            // 从主域挪到 proxy 子域)老机器会一直打旧地址,直到下次重新同步
-            let server = crate::baizhi::Endpoints::resolve(&cfg.mc_base_url).monkeycode;
-            let mut b = crate::baizhi::resolve_mc_llm(&cfg.mc_llm_base_url, &server);
-            let basic = cfg.mc_basic_auth.trim();
-            // Basic Auth 只嵌给 MonkeyCode 主机:模型地址指向别的主机时嵌入
-            // 等于把反代凭证泄漏给第三方(host 门与 mc_basic_header 同语义)
-            if !b.is_empty() && !basic.is_empty() && on_mc_host(&b, &cfg.mc_base_url) {
-                b = with_basic_userinfo(&b, basic);
-            }
-            // 「跳过 TLS 证书验证」延伸到会员条目的 LLM 请求(引擎 per-model
-            // tls_insecure_skip_verify):macOS 上 Go 走系统校验器,私有化自签
-            // 证书常因苹果合规策略(有效期/SAN/EKU)被拒,钥匙串信任也无法
-            // 豁免。官方云永不跳过,与 baizhi::Service 构建免验证客户端同门;
-            // 拆分部署的独立 LLM 主机视为同一私有化部署,一并生效。
-            let skip = cfg.mc_skip_tls_verify && !crate::baizhi::is_official_mc(&server);
-            (b, mc_key_field("api_key"), skip)
-        } else {
-            (get("base_url"), get("api_key"), false)
-        };
-        if name.is_empty() || model.is_empty() {
+        let Some((name, entry)) = engine_model_entry(m, cfg, mc_key.as_ref()) else {
             continue;
-        }
-        let wire_type = route_of(&provider);
-        let mut entry = serde_json::json!({
-            "type": wire_type, "model": model,
-            "base_url": base_url, "api_key": api_key,
-        });
-        if skip_tls {
-            entry["tls_insecure_skip_verify"] = serde_json::json!(true);
-        }
-        let context_window = m
-            .get("context_window")
-            .and_then(|v| v.as_i64())
-            .filter(|&c| c > 0)
-            .unwrap_or(DEFAULT_MODEL_CONTEXT_WINDOW);
-        // Desktop 的产品默认值是 200k。必须显式写给引擎，否则自定义/未知
-        // model id 会落入引擎自己的 128k 通用兜底，composer 显示与设置页不符。
-        entry["context_window"] = serde_json::json!(context_window);
-        // 视觉标记显式透传:勾选即支持;未勾选写 false 压过引擎目录里
-        // 已知 model id 的 vision 默认,保证不发图片块(读图降级为文本占位)
-        let vision = m.get("vision").and_then(|v| v.as_bool()).unwrap_or(false);
-        entry["supports_images"] = serde_json::json!(vision);
-        // 最大输出:显式配置(>0)优先,缺省物化产品默认 32768——新一代模型
-        // 的输出上限(64k~128k)远超引擎 16384 兜底,不抬高会截断长输出。
-        // 已知取舍:引擎压缩在上下文占用 90% 才触发且不预留输出空间,
-        // 200k 窗口下输入落在 167k~180k 的请求会因 输入+输出 超模型上限
-        // 被服务端拒(settings.tsx 的 10% 校验即为此而设)。
-        let max_output = m
-            .get("max_output")
-            .and_then(|v| v.as_i64())
-            .filter(|&n| n > 0)
-            .unwrap_or(DEFAULT_MODEL_MAX_OUTPUT);
-        entry["max_output"] = serde_json::json!(max_output);
-        // 思考深度:条目按模型设置的 think 档物化,未配置/未知档位落产品
-        // 默认「低」;显式 off 写 enabled:false(与 vision 同理,显式写入
-        // 压过引擎目录里已知 model id 的默认)。会话级调整走引擎
-        // session/setThinking RPC(session.rs),不再物化变体别名。
-        entry["thinking"] = match m.get("think").and_then(|v| v.as_str()).unwrap_or("") {
-            "off" => serde_json::json!({ "enabled": false }),
-            effort @ ("low" | "medium" | "high") => thinking_config(effort),
-            _ => thinking_config(DEFAULT_MODEL_THINK),
         };
         models_out.insert(name.clone(), entry);
         // default/首条回退滤 locked(降档后 config 的 default 可能落在锁定行,
@@ -775,7 +861,7 @@ fn write_ohmyagent_config(
     });
     // 顶层字段,引擎按需使用;对全部模型生效,其他网关忽略无副作用。
     // 无会员条目时不写。
-    let secret = mc_key_field("signing_secret");
+    let secret = key_field(mc_key.as_ref(), "signing_secret");
     if !secret.is_empty() {
         settings["signing_secret"] = serde_json::json!(secret);
     }
@@ -1177,6 +1263,80 @@ mod tests {
         assert!(settings["models"]["会员模型"]
             .get("tls_insecure_skip_verify")
             .is_none());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// 会员条目的运行时 model_config 模板与 settings.json 条目同一物化:
+    /// 字段一致,外加 name 与 signing_secret;私有化带 cookie_url(= base_url),
+    /// 官方云不带;非会员条目不在其中;Cookie 头不在模板里。
+    #[test]
+    fn member_runtime_models_mirror_settings_entries() {
+        let root = test_dir("runtime-models");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join(crate::baizhi::OHMYAGENT_KEY_FILE),
+            br#"{"id":"key-1","api_key":"omk-1","signing_secret":"sec-9","server":"https://mc.example.com","base_url":"https://mc.example.com/v1"}"#,
+        )
+        .unwrap();
+        let engine_dir = root.join("ohmyagent");
+        let private_cfg = DesktopConfig {
+            mc_base_url: "https://mc.example.com".into(),
+            mc_skip_tls_verify: true,
+            models: serde_json::json!([
+                {
+                    "name": "会员模型", "provider": "anthropic",
+                    "base_url": "", "api_key": "",
+                    "model": "cfg-1", "source": "monkeycode", "think": "high", "vision": true
+                },
+                {
+                    "name": "自定义", "provider": "openai",
+                    "base_url": "https://direct.example.com", "api_key": "sk", "model": "m"
+                }
+            ]),
+            ..Default::default()
+        };
+        write_ohmyagent_config(&engine_dir, &private_cfg, None).unwrap();
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(engine_dir.join("settings.json")).unwrap()).unwrap();
+
+        let runtime = member_runtime_models(&private_cfg, &root);
+        assert_eq!(runtime.len(), 1, "非会员条目不直传");
+        let member = &runtime["会员模型"];
+        let mut expected = settings["models"]["会员模型"].clone();
+        expected["name"] = serde_json::json!("会员模型");
+        expected["signing_secret"] = serde_json::json!("sec-9");
+        assert_eq!(member.template, expected, "模板须与 settings 条目同源");
+        assert_eq!(member.template["api_key"], "omk-1");
+        assert_eq!(member.template["tls_insecure_skip_verify"], true);
+        assert_eq!(member.template["thinking"], thinking_config("high"));
+        assert_eq!(member.template["supports_images"], true);
+        assert_eq!(
+            member.cookie_url.as_deref(),
+            Some("https://mc.example.com/v1"),
+            "私有化:按 base_url 取罐"
+        );
+        assert!(
+            member.template.get("headers").is_none(),
+            "Cookie 头由驱动建会话时现拼,不进模板"
+        );
+
+        // 官方云:模板仍与 settings 同源,但不带 cookie_url(那里没有登录网关);
+        // Key 属于 mc.example.com,官方云配置下不注入(与 settings 物化同判)
+        let official_cfg = DesktopConfig {
+            mc_base_url: String::new(),
+            ..private_cfg.clone()
+        };
+        let runtime = member_runtime_models(&official_cfg, &root);
+        let member = &runtime["会员模型"];
+        assert_eq!(member.cookie_url, None);
+        assert_eq!(
+            member.template["base_url"],
+            crate::baizhi::DEFAULT_MONKEYCODE_LLM_URL
+        );
+        assert_eq!(member.template["api_key"], "");
+        assert!(member.template.get("signing_secret").is_none());
+        assert!(member.template.get("tls_insecure_skip_verify").is_none());
         let _ = fs::remove_dir_all(&root);
     }
 

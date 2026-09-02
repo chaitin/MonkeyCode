@@ -339,7 +339,13 @@ impl OhmyDriver {
             }
         };
 
-        let models = parse_manifest_models(&cfg.models);
+        let mut models = parse_manifest_models(&cfg.models);
+        // 会员条目的运行时 model_config 模板随引擎实例定格(与清单同一快照;
+        // Cookie 头建会话/切模型时才从罐现取,见 session.rs)
+        let mut runtime_models = crate::config::member_runtime_models(cfg, &cfg_dir);
+        for m in &mut models {
+            m.runtime = runtime_models.remove(&m.name);
+        }
         let data_dir = cfg_dir.join("ohmy-sessions");
         let _ = std::fs::create_dir_all(&data_dir);
         // 壳侧审批记忆持久化(兼容尾巴):仅旧引擎会消费;新引擎

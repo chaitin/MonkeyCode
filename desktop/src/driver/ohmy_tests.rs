@@ -120,14 +120,45 @@ const FAKE_SUMMARY: &str = "假模型给的会话摘要";
 /// 这也正是 e2e_perm_remember_engine_rules 在假绿灯下被掩盖的失败原因。
 /// 现在按真实契约回 ASK(单词应答,不消耗步骤),把 Ask 分支稳定地走出来。
 fn fake_anthropic_steps(delay_ms: u64, steps: Vec<String>) -> String {
+    fake_anthropic_server(delay_ms, steps).0
+}
+
+/// 假 LLM 收到的一次请求(头名已小写)。
+#[derive(Clone, Debug)]
+struct CapturedRequest {
+    headers: Vec<(String, String)>,
+    body: String,
+}
+
+impl CapturedRequest {
+    fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    }
+    /// 主循环请求(排除壳分类器/标题摘要这两类旁路请求)。
+    fn is_main_turn(&self) -> bool {
+        !self.body.contains(SHELL_CLASSIFIER_MARK) && !self.body.contains(TITLE_PROMPT_MARK)
+    }
+}
+
+/// fake_anthropic_steps 的记录版:返回 (地址, 收到的请求)。
+fn fake_anthropic_server(
+    delay_ms: u64,
+    steps: Vec<String>,
+) -> (String, Arc<StdMutex<Vec<CapturedRequest>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen: Arc<StdMutex<Vec<CapturedRequest>>> = Arc::new(StdMutex::new(Vec::new()));
+    let sink = seen.clone();
     std::thread::spawn(move || {
         for conn in listener.incoming() {
             let Ok(mut conn) = conn else { continue };
             let counter = counter.clone();
             let steps = steps.clone();
+            let sink = sink.clone();
             std::thread::spawn(move || {
                 use std::io::{BufRead as _, Write as _};
                 if delay_ms > 0 {
@@ -137,10 +168,14 @@ fn fake_anthropic_steps(delay_ms: u64, steps: Vec<String>) -> String {
                 let mut line = String::new();
                 let _ = reader.read_line(&mut line);
                 let mut content_len = 0usize;
+                let mut headers = Vec::new();
                 loop {
                     let mut h = String::new();
                     if reader.read_line(&mut h).is_err() || h.trim().is_empty() {
                         break;
+                    }
+                    if let Some((k, v)) = h.split_once(':') {
+                        headers.push((k.trim().to_ascii_lowercase(), v.trim().to_string()));
                     }
                     if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
                         content_len = v.trim().parse().unwrap_or(0);
@@ -151,6 +186,10 @@ fn fake_anthropic_steps(delay_ms: u64, steps: Vec<String>) -> String {
                 let _ = reader.read_exact(&mut body);
                 // 分类/摘要请求必须在取步骤**之前**判定:都不属于主循环步序。
                 let body_text = String::from_utf8_lossy(&body);
+                sink.lock().unwrap().push(CapturedRequest {
+                    headers,
+                    body: body_text.to_string(),
+                });
                 let sse = if body_text.contains(SHELL_CLASSIFIER_MARK) {
                     sse_text("ASK")
                 } else if body_text.contains(TITLE_PROMPT_MARK) {
@@ -168,7 +207,7 @@ fn fake_anthropic_steps(delay_ms: u64, steps: Vec<String>) -> String {
             });
         }
     });
-    format!("http://{addr}")
+    (format!("http://{addr}"), seen)
 }
 
 /// 端到端:mock 壳 + 真实 ohmyagent + 假 LLM,验证 create → send → 归一化
@@ -178,10 +217,18 @@ fn fake_anthropic_steps(delay_ms: u64, steps: Vec<String>) -> String {
 /// bare_inner_events 取这份共享句柄。
 type EmittedEvents = Arc<StdMutex<Vec<(String, Value)>>>;
 
-struct TestCtx(PathBuf, EmittedEvents);
+struct TestCtx(PathBuf, EmittedEvents, Option<String>);
 impl TestCtx {
     fn new(dir: PathBuf) -> Self {
-        Self(dir, Arc::new(StdMutex::new(Vec::new())))
+        Self(dir, Arc::new(StdMutex::new(Vec::new())), None)
+    }
+    /// 壳 mc 罐替身:对任何地址都返回这串 Cookie 头(会员模型直传 e2e 用)。
+    fn with_cookie(dir: PathBuf, cookie: &str) -> Self {
+        Self(
+            dir,
+            Arc::new(StdMutex::new(Vec::new())),
+            Some(cookie.to_string()),
+        )
     }
 }
 impl ShellCtx for TestCtx {
@@ -190,6 +237,9 @@ impl ShellCtx for TestCtx {
     }
     fn config_dir(&self) -> Result<PathBuf, String> {
         Ok(self.0.clone())
+    }
+    fn mc_cookie_header(&self, _url: &str) -> Option<String> {
+        self.2.clone()
     }
     fn local_data_dir(&self) -> Result<PathBuf, String> {
         Ok(self.0.join("local-data"))
@@ -272,6 +322,168 @@ fn e2e_setup_cfg(
     };
     let driver = OhmyDriver::start_with(ctx, &cfg).expect("引擎启动");
     (driver, home)
+}
+
+/// 端到端:私有化部署架在登录网关之后——会员条目经 session/create、
+/// session/switchModel 的 model_config 直传,引擎打向 LLM 的每个请求都要
+/// 带壳 mc 罐里的网关 cookie,凭据(x-api-key)来自本机 Key 记录而不是
+/// settings.json(那里根本没有会员条目);切到非会员条目后不再带 cookie,
+/// 切回来又带上。
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "需 MC_OHMYAGENT_BIN 钉住配套引擎;用 --include-ignored 显式跑"]
+async fn e2e_member_runtime_model_config_carries_gateway_cookie() {
+    require_ohmyagent();
+    let _g = e2e_lock().await;
+    let home = std::env::temp_dir().join(format!("ohmy-e2e-member-cookie-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join("shellcfg/ohmyagent")).unwrap();
+    let (llm, seen) = fake_anthropic_server(
+        0,
+        vec![
+            sse_text("会员轮完成"),
+            sse_text("直连轮完成"),
+            sse_text("再会员轮完成"),
+        ],
+    );
+    let llm_base = format!("{llm}/api/anthropic");
+    // 引擎 settings.json 只放非会员条目:会员条目若还经 settings 走,建会话
+    // 就会 unknown model,直传生效才可能过。
+    let settings = json!({
+        "default_model": "测试模型",
+        "permission_mode": "default",
+        "models": { "测试模型": { "type": "anthropic", "model": "test-model",
+            "api_key": "sk-fake", "base_url": llm_base, "context_window": 200000 } },
+    });
+    std::fs::write(
+        home.join("shellcfg/ohmyagent/settings.json"),
+        serde_json::to_vec_pretty(&settings).unwrap(),
+    )
+    .unwrap();
+    let mc_base_url = "https://mc.example.com";
+    let server = crate::baizhi::Endpoints::resolve(mc_base_url).monkeycode;
+    std::fs::write(
+        home.join("shellcfg").join(crate::baizhi::OHMYAGENT_KEY_FILE),
+        json!({ "id": "key-1", "api_key": "omk-e2e", "signing_secret": "sec-e2e", "server": server })
+            .to_string(),
+    )
+    .unwrap();
+    let cookie = "_oauth2_proxy=gw-session; monkeycode_ai_session=mc-session";
+    let ctx: Arc<dyn ShellCtx> = Arc::new(TestCtx::with_cookie(home.join("shellcfg"), cookie));
+    let cfg = DesktopConfig {
+        mc_base_url: mc_base_url.into(),
+        // 拆分部署:模型地址显式指到假 LLM(私有化判定看服务地址,不看模型地址)
+        mc_llm_base_url: llm_base.clone(),
+        models: json!([
+            { "name": "测试模型", "provider": "anthropic", "base_url": llm_base,
+              "api_key": "sk-fake", "model": "test-model", "default": true },
+            { "name": "会员模型", "provider": "anthropic", "base_url": "", "api_key": "",
+              "model": "cfg-1", "source": "monkeycode" }
+        ]),
+        ..Default::default()
+    };
+    let driver = OhmyDriver::start_with(ctx, &cfg).expect("引擎启动");
+    assert!(
+        driver.has_capability("runtimeConfig"),
+        "配套引擎须宣告 runtimeConfig"
+    );
+
+    let workdir = home.to_string_lossy().into_owned();
+    let meta = driver
+        .session_create(&workdir, "会员模型", false)
+        .await
+        .expect("建会话(会员条目经 model_config 直传)");
+    let sid = meta["id"].as_str().unwrap().to_string();
+    driver.session_open(&sid).await.expect("打开会话");
+
+    let ended =
+        |n: usize| move |j: &[Value]| j.iter().filter(|f| f["type"] == "task-ended").count() >= n;
+    let main_requests = || -> Vec<CapturedRequest> {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.is_main_turn())
+            .cloned()
+            .collect()
+    };
+
+    // 第 1 轮:会员条目 → 带网关 cookie,凭据来自 Key 记录
+    driver
+        .session_send(
+            &sid,
+            "user-input",
+            json!({ "content": frame::b64_text("第一轮") }),
+        )
+        .await
+        .expect("发送");
+    let journal = wait_journal(&driver, &sid, ended(1)).await;
+    assert!(ended(1)(&journal), "缺 task-ended: {journal:?}");
+    let reqs = main_requests();
+    assert!(!reqs.is_empty(), "假 LLM 未收到主循环请求");
+    for r in &reqs {
+        assert_eq!(
+            r.header("cookie"),
+            Some(cookie),
+            "LLM 请求须带罐里的网关 cookie"
+        );
+        assert_eq!(
+            r.header("x-api-key"),
+            Some("omk-e2e"),
+            "凭据须来自 Key 记录"
+        );
+    }
+    let after_first = reqs.len();
+
+    // 第 2 轮:切到非会员条目(session/switchModel 无 model_config)→ 不带 cookie
+    driver
+        .session_call(&sid, "session_set_model", json!({ "model": "测试模型" }))
+        .await
+        .expect("切到直连条目");
+    driver
+        .session_send(
+            &sid,
+            "user-input",
+            json!({ "content": frame::b64_text("第二轮") }),
+        )
+        .await
+        .expect("发送");
+    let journal = wait_journal(&driver, &sid, ended(2)).await;
+    assert!(ended(2)(&journal), "缺第二个 task-ended: {journal:?}");
+    let reqs = main_requests();
+    assert!(reqs.len() > after_first, "第二轮未打到假 LLM");
+    for r in &reqs[after_first..] {
+        assert_eq!(r.header("cookie"), None, "非会员条目不得带网关 cookie");
+        assert_eq!(r.header("x-api-key"), Some("sk-fake"));
+    }
+    let after_second = reqs.len();
+
+    // 第 3 轮:切回会员条目(session/switchModel 带 model_config)→ 又带上 cookie
+    driver
+        .session_call(&sid, "session_set_model", json!({ "model": "会员模型" }))
+        .await
+        .expect("切回会员条目");
+    driver
+        .session_send(
+            &sid,
+            "user-input",
+            json!({ "content": frame::b64_text("第三轮") }),
+        )
+        .await
+        .expect("发送");
+    let journal = wait_journal(&driver, &sid, ended(3)).await;
+    assert!(ended(3)(&journal), "缺第三个 task-ended: {journal:?}");
+    let reqs = main_requests();
+    assert!(reqs.len() > after_second, "第三轮未打到假 LLM");
+    for r in &reqs[after_second..] {
+        assert_eq!(
+            r.header("cookie"),
+            Some(cookie),
+            "切回会员条目须重新带 cookie"
+        );
+        assert_eq!(r.header("x-api-key"), Some("omk-e2e"));
+    }
+
+    driver.stop();
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1425,6 +1637,7 @@ fn bare_inner_rpc_with_test_model(
         model: "test-model".into(),
         locked: false,
         owner: String::new(),
+        runtime: None,
     }];
     (inner, events, stdin_rx)
 }
