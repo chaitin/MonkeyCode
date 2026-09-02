@@ -149,7 +149,7 @@ type oidcResolveRepoStub struct {
 	memberByEmail  *db.TeamMember
 }
 
-func (s *oidcResolveRepoStub) FindUserByOIDCIdentity(ctx context.Context, identityID string) (*db.User, error) {
+func (s *oidcResolveRepoStub) FindUserByOIDCIdentity(ctx context.Context, teamID uuid.UUID, identityID string) (*db.User, error) {
 	if s.userByIdentity != nil {
 		return s.userByIdentity, nil
 	}

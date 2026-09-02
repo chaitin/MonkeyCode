@@ -26,7 +26,7 @@ type TeamOIDCRepo interface {
 	GetConfig(ctx context.Context, teamID uuid.UUID) (*db.TeamOIDCConfig, error)
 	GetDefaultEnabledConfig(ctx context.Context) (*db.TeamOIDCConfig, error)
 	UpsertConfig(ctx context.Context, teamID uuid.UUID, req *SaveTeamOIDCConfigReq) (*db.TeamOIDCConfig, error)
-	FindUserByOIDCIdentity(ctx context.Context, identityID string) (*db.User, error)
+	FindUserByOIDCIdentity(ctx context.Context, teamID uuid.UUID, identityID string) (*db.User, error)
 	FindTeamMemberByEmail(ctx context.Context, teamID uuid.UUID, email string) (*db.TeamMember, error)
 	BindOIDCIdentity(ctx context.Context, userID uuid.UUID, external *OIDCExternalUser) error
 }
