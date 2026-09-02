@@ -1,0 +1,1 @@
+-- Historical team-model associations are valid data and intentionally retained on rollback.

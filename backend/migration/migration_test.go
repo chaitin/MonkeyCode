@@ -23,6 +23,27 @@ func TestMigrationsUseDeletedAtForSoftDelete(t *testing.T) {
 	}
 }
 
+func TestTeamModelBackfillUsesGroupTeamOwnership(t *testing.T) {
+	data, err := os.ReadFile("000026_backfill_team_models.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := strings.ToLower(string(data))
+	for _, want := range []string{
+		"insert into team_models",
+		"join team_groups",
+		"join teams",
+		"join models",
+		"tgm.deleted_at is null",
+		"group by tg.team_id, tgm.model_id",
+		"on conflict (team_id, model_id) do nothing",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("team model backfill migration missing %q", want)
+		}
+	}
+}
+
 func TestMigrationsWidenUserIdentityIDForOIDC(t *testing.T) {
 	data, err := os.ReadFile("000015_alter_user_identities_identity_id_text.up.sql")
 	if err != nil {
