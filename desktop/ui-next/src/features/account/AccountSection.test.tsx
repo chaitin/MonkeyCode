@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { type ComponentProps, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SettingsDraft } from "@/features/settings/settingsForm";
@@ -35,6 +36,15 @@ function stubShell(handlers: Record<string, Handler>) {
 }
 
 const never = () => new Promise(() => {});
+
+/** 带状态的草稿宿主:输入要真正回流到 draft prop 才能测「改动 → 按钮出现」。 */
+function DraftHost({
+  initial,
+  ...rest
+}: Omit<NonNullable<ComponentProps<typeof AccountSection>>, "draft" | "onDraft"> & { initial: SettingsDraft }) {
+  const [draft, setDraft] = useState(initial);
+  return <AccountSection {...rest} draft={draft} onDraft={(up) => setDraft((d) => up(d))} />;
+}
 const bzOut = () => ({ logged_in: false, host: "baizhi.cloud" });
 const bzIn = () => ({ logged_in: true, host: "baizhi.cloud", profile: { name: "张三" } });
 const mcOut = () => ({ logged_in: false, host: "monkeycode-ai.com" });
@@ -907,10 +917,48 @@ describe("服务版本选择", () => {
     // 形态立即跟选择走,落盘期间不给旧服务的登录表单
     expect(screen.queryByRole("tab")).toBeNull();
 
-    // 私有化要先填地址,点选不自动落盘(交给字段下的「保存」钮)
+    // 私有化要先填地址,点选不自动落盘(交给字段下的「保存」钮);地址还没填
+    // = 没东西可存,按钮也不出现
     onApplyDraft.mockClear();
     await userEvent.click(screen.getByRole("radio", { name: "私有化部署" }));
     expect(onApplyDraft).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("服务地址")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "保存生效" })).toBeNull();
+  });
+
+  it("私有化:填了地址才出现「保存生效」;已生效且未改动时不显示,改任一项再出现", async () => {
+    stubShell({ baizhi_status: bzOut, mc_status: mcOut });
+    // 已保存 cn、刚点选私有化:填地址前没有按钮,填了才有
+    const onApplyDraft = vi.fn();
+    const { unmount } = render(<DraftHost initial={emptyDraft()} savedMcBaseUrl="" onApplyDraft={onApplyDraft} />);
+    await userEvent.click(await screen.findByRole("radio", { name: "私有化部署" }));
+    expect(screen.queryByRole("button", { name: "保存生效" })).toBeNull();
+    await userEvent.type(screen.getByLabelText("服务地址"), "https://mc.example.com");
+    await userEvent.click(screen.getByRole("button", { name: "保存生效" }));
+    expect(onApplyDraft).toHaveBeenCalledWith(expect.objectContaining({ mcBaseUrl: "https://mc.example.com" }));
+    unmount();
+
+    // 私有化已生效、草稿与已保存一致:按钮不出现(2026-09-02 报障),登录区照常
+    const saved = { ...emptyDraft(), mcBaseUrl: "https://mc.example.com", mcLlmBaseUrl: "https://llm.example.com/v1" };
+    render(
+      <DraftHost
+        initial={saved}
+        savedMcBaseUrl="https://mc.example.com"
+        savedMcLlmBaseUrl="https://llm.example.com/v1"
+        onApplyDraft={vi.fn()}
+      />,
+    );
+    expect(await screen.findByRole("button", { name: "打开登录窗口" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "保存生效" })).toBeNull();
+    // 改模型请求地址(不换服务):按钮出现,登录区不让位;改回去按钮消失
+    const llm = screen.getByLabelText("模型请求地址(可选)");
+    await userEvent.type(llm, "x");
+    expect(screen.getByRole("button", { name: "保存生效" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "打开登录窗口" })).toBeDefined();
+    await userEvent.type(llm, "{backspace}");
+    expect(screen.queryByRole("button", { name: "保存生效" })).toBeNull();
+    // 只勾 TLS 开关同样算改动
+    await userEvent.click(screen.getByLabelText("跳过 TLS 证书验证(自签名证书)"));
     expect(screen.getByRole("button", { name: "保存生效" })).toBeDefined();
   });
 

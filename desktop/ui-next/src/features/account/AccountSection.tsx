@@ -182,6 +182,7 @@ function ServiceCard({
   baizhiLoggedIn,
   edition,
   editionReady,
+  privateDirty,
   showSelector,
   draft,
   onDraft,
@@ -208,6 +209,9 @@ function ServiceCard({
   edition: McEdition;
   /** 所选版本已保存生效。false 时不给登录表单——表单登的是已保存的旧服务 */
   editionReady: boolean;
+  /** 私有化四项有未保存改动。「保存生效」钮只在此时出现——地址没动还摆一个
+   *  按钮,看着像还差一步没做(2026-09-02 报障) */
+  privateDirty: boolean;
   /** 有设置草稿上下文才给选择能力(radio/切换钮);没有则只渲染生效行 */
   showSelector: boolean;
   draft?: SettingsDraft | null;
@@ -443,7 +447,7 @@ function ServiceCard({
         <span className="text-xs">{t("account.server.skipTlsVerify")}</span>
       </label>
       <p className="text-xs leading-relaxed text-base-content/60">{t("account.server.hint")}</p>
-      {onApplyDraft && (
+      {onApplyDraft && privateDirty && (
         <button
           type="button"
           className="btn btn-primary btn-sm self-start"
@@ -901,6 +905,8 @@ export function AccountSection({
   refreshKey = 0,
   savedMcBaseUrl = "",
   savedMcBasicAuth = "",
+  savedMcLlmBaseUrl = "",
+  savedMcSkipTlsVerify = false,
   isRefreshKeyCurrent,
   onApplyDraft,
   saveBusy = false,
@@ -922,6 +928,11 @@ export function AccountSection({
   savedMcBaseUrl?: string;
   /** 已保存的 Basic Auth；私有 A→私有 B 时不能只比较 edition 枚举。 */
   savedMcBasicAuth?: string;
+  /** 已保存的模型请求地址与 TLS 跳过开关:只参与「有无未保存改动」判定
+   *  (决定「保存生效」钮出不出现),不参与 editionReady——改它们不换服务,
+   *  登录表单不必让位。 */
+  savedMcLlmBaseUrl?: string;
+  savedMcSkipTlsVerify?: boolean;
   /** 壳事件会先推进 App ref、后触发本组件重渲染；该守卫覆盖这段窗口。 */
   isRefreshKeyCurrent?: (generation: number) => boolean;
   /** 立即保存指定草稿(SettingsView.save(target)):版本点选/私有化「保存
@@ -944,6 +955,14 @@ export function AccountSection({
     (draft.mcBaseUrl.trim() === savedMcBaseUrl.trim() &&
       draft.mcBasicAuth.trim() === savedMcBasicAuth.trim());
   const editionReady = selectedEdition === savedEdition && transportReady;
+  // 私有化四项任一与已保存值不同才有东西可存(与 SettingsView.onApplyDraft
+  // 的「无差异跳过」同口径,那边是兜底,这里决定按钮出不出现)
+  const privateDirty =
+    !!draft &&
+    (draft.mcBaseUrl.trim() !== savedMcBaseUrl.trim() ||
+      draft.mcBasicAuth.trim() !== savedMcBasicAuth.trim() ||
+      draft.mcLlmBaseUrl.trim() !== savedMcLlmBaseUrl.trim() ||
+      draft.mcSkipTlsVerify !== savedMcSkipTlsVerify);
   /** onBaizhiLoggedIn 是稳定回调,经 ref 读最新版本结论,免整链换引用。 */
   const savedEditionRef = useRef(savedEdition);
   savedEditionRef.current = savedEdition;
@@ -1111,6 +1130,7 @@ export function AccountSection({
             baizhiLoggedIn={!!bz?.logged_in}
             edition={selectedEdition}
             editionReady={editionReady}
+            privateDirty={privateDirty}
             showSelector={showSelector}
             draft={draft}
             onDraft={onDraft}
