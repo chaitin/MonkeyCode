@@ -259,7 +259,7 @@ func (u *TeamOIDCUsecase) resolveUser(ctx context.Context, teamID uuid.UUID, aut
 		"issuer_len", len(external.Issuer),
 		"subject_len", len(external.Subject),
 	)
-	user, err := u.repo.FindUserByOIDCIdentity(ctx, identityID)
+	user, err := u.repo.FindUserByOIDCIdentity(ctx, teamID, identityID)
 	if err != nil && !db.IsNotFound(err) {
 		return nil, err
 	}

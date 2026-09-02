@@ -89,9 +89,16 @@ func (r *TeamOIDCRepo) UpsertConfig(ctx context.Context, teamID uuid.UUID, req *
 	return r.db.TeamOIDCConfig.Get(ctx, id)
 }
 
-func (r *TeamOIDCRepo) FindUserByOIDCIdentity(ctx context.Context, identityID string) (*db.User, error) {
+func (r *TeamOIDCRepo) FindUserByOIDCIdentity(ctx context.Context, teamID uuid.UUID, identityID string) (*db.User, error) {
 	identity, err := r.db.UserIdentity.Query().
-		Where(useridentity.PlatformEQ(consts.UserPlatformOIDC), useridentity.IdentityIDEQ(identityID)).
+		Where(
+			useridentity.PlatformEQ(consts.UserPlatformOIDC),
+			useridentity.IdentityIDEQ(identityID),
+			useridentity.HasUserWith(
+				user.RoleEQ(consts.UserRoleSubAccount),
+				user.HasTeamsWith(team.IDEQ(teamID)),
+			),
+		).
 		WithUser().
 		First(ctx)
 	if err != nil {
@@ -104,7 +111,11 @@ func (r *TeamOIDCRepo) FindTeamMemberByEmail(ctx context.Context, teamID uuid.UU
 	return r.db.TeamMember.Query().
 		Where(
 			teammember.TeamIDEQ(teamID),
-			teammember.HasUserWith(user.EmailEQ(normalizeEmail(email))),
+			teammember.RoleEQ(consts.TeamMemberRoleUser),
+			teammember.HasUserWith(
+				user.EmailEQ(normalizeEmail(email)),
+				user.RoleEQ(consts.UserRoleSubAccount),
+			),
 		).
 		WithUser().
 		First(ctx)

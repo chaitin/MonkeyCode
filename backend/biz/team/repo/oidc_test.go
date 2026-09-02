@@ -56,6 +56,113 @@ func TestTeamOIDCConfigSchemaPersistsDefaults(t *testing.T) {
 	}
 }
 
+func TestTeamOIDCRepoFindsOnlyOrdinaryTeamMember(t *testing.T) {
+	ctx := context.Background()
+	client := enttest.Open(t, "sqlite3", "file:team_oidc_member_role?mode=memory&cache=shared&_fk=1")
+	defer client.Close()
+
+	teamID := uuid.New()
+	if _, err := client.Team.Create().
+		SetID(teamID).
+		SetName("研发团队").
+		SetMemberLimit(10).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	adminOnlyTeamID := uuid.New()
+	if _, err := client.Team.Create().
+		SetID(adminOnlyTeamID).
+		SetName("仅管理员团队").
+		SetMemberLimit(10).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	admin, err := client.User.Create().
+		SetID(uuid.New()).
+		SetName("Admin").
+		SetEmail("same@example.com").
+		SetRole(consts.UserRoleEnterprise).
+		SetStatus(consts.UserStatusActive).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := client.User.Create().
+		SetID(uuid.New()).
+		SetName("Member").
+		SetEmail("same@example.com").
+		SetRole(consts.UserRoleSubAccount).
+		SetStatus(consts.UserStatusActive).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.TeamMember.Create().
+		SetID(uuid.New()).
+		SetTeamID(teamID).
+		SetUserID(admin.ID).
+		SetRole(consts.TeamMemberRoleAdmin).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.TeamMember.Create().
+		SetID(uuid.New()).
+		SetTeamID(teamID).
+		SetUserID(member.ID).
+		SetRole(consts.TeamMemberRoleUser).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.TeamMember.Create().
+		SetID(uuid.New()).
+		SetTeamID(adminOnlyTeamID).
+		SetUserID(admin.ID).
+		SetRole(consts.TeamMemberRoleAdmin).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.UserIdentity.Create().
+		SetID(uuid.New()).
+		SetUserID(admin.ID).
+		SetPlatform(consts.UserPlatformOIDC).
+		SetIdentityID("admin-identity").
+		SetUsername("Admin").
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.UserIdentity.Create().
+		SetID(uuid.New()).
+		SetUserID(member.ID).
+		SetPlatform(consts.UserPlatformOIDC).
+		SetIdentityID("member-identity").
+		SetUsername("Member").
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := &TeamOIDCRepo{db: client}
+	teamMember, err := repo.FindTeamMemberByEmail(ctx, teamID, "same@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if teamMember.Edges.User == nil || teamMember.Edges.User.ID != member.ID {
+		t.Fatalf("matched user = %+v, want member %s", teamMember.Edges.User, member.ID)
+	}
+	if _, err := repo.FindTeamMemberByEmail(ctx, adminOnlyTeamID, "same@example.com"); !db.IsNotFound(err) {
+		t.Fatalf("admin-only email lookup err = %v, want not found so auto-create can run", err)
+	}
+	if _, err := repo.FindUserByOIDCIdentity(ctx, teamID, "admin-identity"); !db.IsNotFound(err) {
+		t.Fatalf("admin identity err = %v, want not found", err)
+	}
+	found, err := repo.FindUserByOIDCIdentity(ctx, teamID, "member-identity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != member.ID {
+		t.Fatalf("identity user = %s, want member %s", found.ID, member.ID)
+	}
+}
+
 func TestTeamOIDCRepoBindOIDCIdentitySkipsCreateWhenIdentityExists(t *testing.T) {
 	ctx := context.Background()
 	sqlDB, mock, err := sqlmock.New()
