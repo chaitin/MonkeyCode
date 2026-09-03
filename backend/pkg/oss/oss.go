@@ -208,7 +208,7 @@ func (c *Client) WithAccessEndpoint(endpoint string) *Client {
 }
 
 func (c *Client) GetURL(prefix, filename string) string {
-	base := objectAccessBase(c.cfg)
+	base := objectAccessBase(c.cfg, c.pathStyle)
 	return appendURLPath(base, objectKey(prefix, filename))
 }
 
@@ -337,7 +337,7 @@ func appendURLPath(base, key string) string {
 	return u.String()
 }
 
-func objectAccessBase(cfg config.ObjectStorageConfig) string {
+func objectAccessBase(cfg config.ObjectStorageConfig, pathStyle bool) string {
 	base := strings.TrimRight(strings.TrimSpace(cfg.AccessEndpoint), "/")
 	if base == "" {
 		base = strings.TrimRight(cfg.Endpoint, "/")
@@ -350,7 +350,7 @@ func objectAccessBase(cfg config.ObjectStorageConfig) string {
 	if err != nil {
 		return strings.TrimRight(base, "/") + "/" + bucket
 	}
-	if endpointHostHasBucket(u, bucket) {
+	if !pathStyle && endpointHostHasBucket(u, bucket) {
 		return u.String()
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
@@ -389,7 +389,7 @@ func presignSigningEndpoint(cfg config.ObjectStorageConfig) string {
 }
 
 func (c *Client) publicPresignURL(signedURL, key string) string {
-	publicURL := appendURLPath(objectAccessBase(c.cfg), key)
+	publicURL := appendURLPath(objectAccessBase(c.cfg, c.pathStyle), key)
 	public, err := url.Parse(publicURL)
 	if err != nil {
 		return signedURL

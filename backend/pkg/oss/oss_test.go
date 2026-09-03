@@ -235,6 +235,33 @@ func TestPresignWithAccessEndpointKeepsPathPrefixOutsideSignature(t *testing.T) 
 	}
 }
 
+func TestPresignPathStyleKeepsBucketWhenDomainStartsWithBucket(t *testing.T) {
+	client, err := NewS3Compatible(context.Background(), config.ObjectStorageConfig{
+		Endpoint:        "http://internal:9000",
+		AccessEndpoint:  "http://monkeycode.citicsinfo.com/oss",
+		AccessKey:       "ak",
+		AccessKeySecret: "sk",
+		Bucket:          "monkeycode",
+	}, S3Option{ForcePathStyle: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	presign, err := client.Presign(context.Background(), "temp", "a.txt", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := "/oss/monkeycode/temp/a.txt"
+	for _, raw := range []string{presign.UploadURL, presign.AccessURL} {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u.Path != wantPath {
+			t.Fatalf("presign path = %q, want %q", u.Path, wantPath)
+		}
+	}
+}
+
 func signatureValue(t *testing.T, raw string) string {
 	t.Helper()
 	u, err := url.Parse(raw)
