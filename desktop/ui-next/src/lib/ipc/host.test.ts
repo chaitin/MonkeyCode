@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  acceptLanguageOf,
   applyPlatformAttr,
   hostInfo,
   hostPlatform,
@@ -8,6 +9,7 @@ import {
   isLinuxShell,
   isMacShell,
   isWindowsShell,
+  reportWebviewIdentity,
   setWindowTitle,
 } from "./host";
 
@@ -20,6 +22,40 @@ function stubShell(
   vi.stubGlobal("window", { __TAURI__: { core: { invoke } } });
   vi.stubGlobal("navigator", { userAgent: ua });
 }
+
+describe("浏览器身份上报", () => {
+  it("acceptLanguageOf:首项无 q,其后递减 0.1,空项剔除", () => {
+    expect(acceptLanguageOf(["zh-CN", "zh", "en"])).toBe("zh-CN,zh;q=0.9,en;q=0.8");
+    expect(acceptLanguageOf(["en-US"])).toBe("en-US");
+    expect(acceptLanguageOf(["zh-CN", ""])).toBe("zh-CN");
+  });
+
+  it("壳内启动上报 UA 与 Accept-Language(命令字面量);浏览器模式不发", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    stubShell("Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15", (cmd, args) => {
+      calls.push({ cmd, args });
+      return Promise.resolve({ ok: true });
+    });
+    vi.stubGlobal("navigator", {
+      userAgent: "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15",
+      languages: ["zh-CN", "zh"],
+      language: "zh-CN",
+    });
+    reportWebviewIdentity();
+    await Promise.resolve();
+    expect(calls).toEqual([
+      {
+        cmd: "mc_set_webview_identity",
+        args: { userAgent: "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15", acceptLanguage: "zh-CN,zh;q=0.9" },
+      },
+    ]);
+
+    vi.stubGlobal("window", {});
+    calls.length = 0;
+    reportWebviewIdentity();
+    expect(calls).toEqual([]);
+  });
+});
 
 describe("平台探测", () => {
   it("浏览器模式:无 __TAURI__ 即 browser,不看 UA", () => {

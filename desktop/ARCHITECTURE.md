@@ -142,6 +142,23 @@ context_window/supports_images/max_output/thinking`。桌面缺省显式压过
 budget_tokens legacy 已消亡);supports_images 恒显式写,vision 未勾选写
 false(引擎侧生效缺口见上游清单)。`default_model` 一律传别名。
 
+**会员条目的运行时直传(model_config)**:私有化部署架在 OAuth/SSO 登录
+网关之后时,引擎 LLM 流量只带 API key 会被网关弹去登录页,而引擎的
+`headers` 只在 RuntimeModelConfig 上,settings.json 条目带不了。故会员
+条目在建会话/切模型时改经 `session/create`、`session/switchModel` 的
+`model_config` 直传(cap `runtimeConfig`):模板 = settings.json 同一物化
+(config.rs engine_model_entry)+ name + signing_secret,随引擎实例定格
+在清单里(ManifestModel.runtime);Cookie 头由驱动每次从 mc 罐现取
+(session.rs member_runtime_model_config,经 ShellCtx::mc_session_headers,
+随带主窗上报的浏览器身份头,见「浏览器登录窗」一节),罐里刷新过的网关
+cookie 对新会话/切模型自然生效,不重启引擎。直传只在
+**私有化 + 罐里对该地址有 cookie**时发生:官方云、非会员条目、未登录都维持
+按别名走 settings.json,`model` 别名恒并传(旧引擎回退)。settings.json 里
+的会员条目照常物化,是无 cookie 场景的兜底。已知取舍:会话 provider 是建
+会话/切模型那一刻的 cookie 快照,登录或网关刷新 cookie 后已开会话要切一次
+模型或重开;cookie 过期时引擎跟随 302 拿到登录页 HTML,报错文案不友好
+(引擎侧禁跟随重定向属上游缺口)。
+
 **技能(skills,src/skills.rs)**:引擎无任何技能协议入口,只在会话
 创建/恢复时扫描磁盘,所以技能走**按会话物化**而非引擎重启物化:技能库
 (内置 = 仓库根 plugins/ submodule(MonkeyCodeOfficialPlugins)的 skills/,
@@ -249,6 +266,45 @@ Op/Ev/错误码、proto:1、20s ping。
   workspace，无法确定只跳过本地副本、不拒绝操作，图片仍作为 MCP image
   返回模型。
 - 错误码→中文可行动文案是产品契约(模型行为依赖),改动需过 e2e 断言。
+
+## 浏览器登录窗(baizhi/weblogin.rs)
+
+私有化部署的交互式登录(企业 OIDC/OAuth、账密、或客户登录网关的任意组合)
+在独立 WebView 窗口(label `mc-login`,incognito)里完成:壳轮询窗口
+cookie,集合变化时用收割 cookie 直探 `/api/v1/users/status`(不经壳罐、
+不吸 Set-Cookie),探到有效身份把 mc 域**全部** cookie(含网关会话)经
+代次守卫(`Service::absorb_mc_cookies`)吸入壳 mc 罐,再走罐路权威确认
+(`confirm_mc_login`,与账密/桥接同一收尾)。登录方式对壳透明——服务端
+登录页有什么就能用什么,服务端新增登录方式壳零适配。
+
+- 「UI 不建立网络连接」铁律不破:登录窗是**壳属**浏览器面,远程页面
+  **不进任何 capability**(拿不到 IPC),ui-next 仍只经 IPC 驱动。
+- 完成判定不靠导航监听:web 前端是 SPA,登录后跳 /console 多为
+  pushState,on_navigation 看不见。收割用全量 `cookies()` 壳侧自筛域
+  ——wry 的 `cookies_for_url` 是精确域比较,`Domain=.example.com` 的
+  网关 cookie 会被它漏掉。
+- 服务切换即作废:轮询每拍校验 transport 代次,吸罐另有代次守卫兜竞窗;
+  用户关窗/取消 = cancelled 收尾(不是错误),窗口生命周期与 invoke 绑定。
+- 会话过期的第二形态(网关弹登录页)由 mc_call 的 3xx 分类
+  (classify_mc_redirect,带 Location 判别)归一:302/303/307 →
+  Unauthorized(「重新连接」);同主机 http→https → 「改 https 地址」
+  (scheme 升级重定向剥 Cookie,重登无效);其余 301/308 仍按 HTTP 错误报。
+- 网关部署:引擎 LLM 流量(llmproxy `/v1`)带 API key 不带 cookie,会被
+  网关弹去登录页——会员条目经 `model_config` 直传附上罐里的网关 cookie
+  (契约 4「会员条目的运行时直传」);壳侧 REST/WS/上传下载均从罐带全量
+  cookie,可过网关。网关对 `/v1/*` 豁免时两条路都通。
+- 会话绑定指纹的网关(同一 cookie 换 UA 即判劫持并注销会话):主窗 WebView
+  启动时把 `navigator.userAgent` 与 Accept-Language 经 `mc_set_webview_identity`
+  上报壳(`Service.identity`,WebviewIdentity);登录窗显式钉同一 UA,壳侧
+  mc 域请求(REST/上传/下载/WS/探测,`mc_identity_headers`,与 Basic 同门)
+  与引擎会员模型请求(随 Cookie 一并进 `model_config.headers`,压过引擎默认
+  `ohmyagent x`)三方以同一浏览器身份示人。主窗与登录窗同一 WebView 引擎,
+  上报值即登录时网关看到的真实指纹。网关若比对 TLS 指纹则无解(三方 TLS
+  栈本就不同),退部署侧豁免。
+- macOS 加载 http 登录页依赖 Info.plist 的
+  `NSAllowsArbitraryLoadsInWebContent`(只豁免网页内容);自签 TLS 的
+  部署 WebView 无法免验证(`mc_skip_tls_verify` 只作用于壳侧 reqwest),
+  此场景退回应用内账密登录。
 
 ## 遥测(telemetry.rs)
 

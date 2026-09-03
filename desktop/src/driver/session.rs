@@ -1411,7 +1411,13 @@ impl OhmyDriver {
         let result = match self
             .rpc(
                 "session/create",
-                engine_session_create_params(workdir, Some(&sid), Some(&model_id), "default"),
+                engine_session_create_params(
+                    workdir,
+                    Some(&sid),
+                    Some(&model_id),
+                    "default",
+                    self.runtime_model_config(&model_id),
+                ),
             )
             .await
         {
@@ -1854,13 +1860,16 @@ impl OhmyDriver {
             ensure_host_workdir(Path::new(&workdir), &workdir, false)?;
         }
         let mut params =
-            engine_session_create_params(&workdir, Some(engine_id.as_str()), None, mode);
+            engine_session_create_params(&workdir, Some(engine_id.as_str()), None, mode, None);
         let model_name = meta
             .get("model_name")
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let with_model = match self.model_id_of_any(model_name) {
             Ok(model_id) => {
+                if let Some(cfg) = self.runtime_model_config(&model_id) {
+                    params["model_config"] = cfg;
+                }
                 params["model"] = json!(model_id);
                 true
             }
@@ -1882,6 +1891,7 @@ impl OhmyDriver {
                 eprintln!("[desktop] 会话 {id} 按记录模型恢复失败,回落引擎默认模型重试: {e}");
                 if let Some(p) = params.as_object_mut() {
                     p.remove("model");
+                    p.remove("model_config");
                 }
                 self.rpc("session/create", params).await?
             }
@@ -3092,11 +3102,11 @@ impl OhmyDriver {
                         .await
                         .map_err(|error| error.to_string())?;
                 } else if self.has_cap("session/switchModel") {
-                    self.rpc(
-                        "session/switchModel",
-                        json!({ "session_id": self.engine_id(id), "model": model_id }),
-                    )
-                    .await?;
+                    let mut switch = json!({ "session_id": self.engine_id(id), "model": model_id });
+                    if let Some(cfg) = self.runtime_model_config(&model_id) {
+                        switch["model_config"] = cfg;
+                    }
+                    self.rpc("session/switchModel", switch).await?;
                 } else {
                     // 版本握手回退:旧引擎无 switch RPC,destroy+resume 全参重建
                     let mode = self.session_mode(id);
@@ -3292,6 +3302,7 @@ impl OhmyDriver {
                     Some(&current_engine_id),
                     Some(&model_id),
                     &mode,
+                    self.runtime_model_config(&model_id),
                 );
                 if self
                     .0
@@ -3630,8 +3641,13 @@ impl OhmyDriver {
             eng = current_engine_id;
             Some(guards)
         };
-        let params =
-            engine_session_create_params(&workdir, Some(eng.as_str()), Some(model_id), mode);
+        let params = engine_session_create_params(
+            &workdir,
+            Some(eng.as_str()),
+            Some(model_id),
+            mode,
+            self.runtime_model_config(model_id),
+        );
         let skills = match prepared_skills {
             Some(skills) => skills,
             // enabled=None 只来自 create_resumed,它丢弃返回值;降级回退空集
@@ -3923,6 +3939,18 @@ impl OhmyDriver {
 
     fn has_cap(&self, cap: &str) -> bool {
         self.0.has_cap(cap)
+    }
+
+    /// 会员条目的运行时 model_config(引擎 runtimeConfig 能力):模板 + mc 罐
+    /// 里当前对该地址有效的 Cookie 头。None = 维持按别名走 settings.json。
+    /// `model` 别名照传:模板 name 与之相同,旧引擎(有 runtimeConfig 但
+    /// switchModel 尚不认 model_config)忽略该字段后仍按别名切换。
+    fn runtime_model_config(&self, model_id: &str) -> Option<Value> {
+        if !self.has_cap("runtimeConfig") {
+            return None;
+        }
+        let m = self.0.models.iter().find(|m| m.name == model_id)?;
+        member_runtime_model_config(m.runtime.as_ref(), |url| self.0.app.mc_session_headers(url))
     }
 
     /// 引擎侧会话存在性(session/exists,旧引擎回退文件探测)。生产路径
@@ -5320,11 +5348,14 @@ fn ohmy_mode_of(mode: &str) -> &'static str {
 
 /// 构造引擎 session/create 参数。cwd 是逐会话状态，即使 resume 也必须
 /// 显式发送；否则引擎会回退到 Desktop 启动它时的进程 cwd。
+/// session/create 参数。`model_config`(引擎 runtimeConfig 能力)与 `model`
+/// 别名并存:引擎以 model_config 为准,别名只作展示名/旧引擎回退。
 fn engine_session_create_params(
     cwd: &str,
     resume: Option<&str>,
     model_id: Option<&str>,
     mode: &str,
+    model_config: Option<Value>,
 ) -> Value {
     let mut params = json!({
         "cwd": cwd,
@@ -5338,7 +5369,35 @@ fn engine_session_create_params(
     if let Some(model_id) = model_id {
         params["model"] = json!(model_id);
     }
+    if let Some(model_config) = model_config {
+        params["model_config"] = model_config;
+    }
     params
+}
+
+/// 会员条目的运行时 model_config:模板(config.rs member_runtime_models)+
+/// 会话头(ShellCtx::mc_session_headers:mc 罐里当前对该地址有效的 Cookie,
+/// 加主窗浏览器身份),供 session/create、switchModel 直传。None = 走按别名
+/// 的 settings.json 老路——非会员条目、官方云(模板无 cookie_url,那里没有
+/// 登录网关)、罐里没有该地址的 cookie(未登录/已登出,带不带 model_config
+/// 引擎请求都一样,不必绕开 settings.json)。
+///
+/// 已知取舍:会话的 provider 是建会话/切模型那一刻的 cookie 快照,登录或
+/// 网关刷新 cookie 后,已开会话要切一次模型或重开才带新值。
+pub(super) fn member_runtime_model_config(
+    runtime: Option<&crate::config::MemberRuntimeModel>,
+    headers_of: impl FnOnce(&str) -> Option<Vec<(String, String)>>,
+) -> Option<Value> {
+    let rt = runtime?;
+    let headers = headers_of(rt.cookie_url.as_deref()?)?;
+    let mut cfg = rt.template.clone();
+    cfg["headers"] = Value::Object(
+        headers
+            .into_iter()
+            .map(|(name, value)| (name, json!(value)))
+            .collect(),
+    );
+    Some(cfg)
 }
 
 /// 回放窗口帧 → acp update(仅认新格式内联 data;后台回执/结构化标记晚于
@@ -5447,8 +5506,82 @@ fn stale_background_cards_in_frames(
 
 #[cfg(test)]
 mod permission_mode_tests {
-    use super::{engine_session_create_params, ohmy_mode_of};
+    use super::{engine_session_create_params, member_runtime_model_config, ohmy_mode_of};
+    use crate::config::MemberRuntimeModel;
     use serde_json::json;
+
+    /// 运行时 model_config 与 model 别名并存直传;None 时不写该键。
+    #[test]
+    fn session_create_params_carry_runtime_model_config() {
+        let cfg = json!({
+            "name": "会员模型", "type": "anthropic", "model": "cfg-1",
+            "headers": { "Cookie": "_oauth2_proxy=abc" }
+        });
+        let params = engine_session_create_params(
+            "/w",
+            None,
+            Some("会员模型"),
+            "default",
+            Some(cfg.clone()),
+        );
+        assert_eq!(params["model"], "会员模型");
+        assert_eq!(params["model_config"], cfg);
+    }
+
+    /// 直传条件:会员模板 + 私有化(有 cookie_url)+ 罐里对该地址有 cookie;
+    /// 缺任一都回到按别名的 settings.json 老路。
+    #[test]
+    fn member_runtime_model_config_requires_private_template_and_cookie() {
+        let template = json!({
+            "name": "会员模型", "type": "anthropic", "model": "cfg-1",
+            "base_url": "https://mc.example.com/v1", "api_key": "omk-1"
+        });
+        let private = MemberRuntimeModel {
+            template: template.clone(),
+            cookie_url: Some("https://mc.example.com/v1".into()),
+        };
+        let cfg = member_runtime_model_config(Some(&private), |url| {
+            assert_eq!(url, "https://mc.example.com/v1");
+            Some(vec![
+                (
+                    "Cookie".into(),
+                    "_oauth2_proxy=abc; monkeycode_ai_session=s".into(),
+                ),
+                ("User-Agent".into(), "Mozilla/5.0 (WebKit)".into()),
+            ])
+        })
+        .expect("私有化 + 有 cookie 直传");
+        assert_eq!(
+            cfg["headers"]["Cookie"],
+            "_oauth2_proxy=abc; monkeycode_ai_session=s"
+        );
+        assert_eq!(
+            cfg["headers"]["User-Agent"], "Mozilla/5.0 (WebKit)",
+            "浏览器身份随 cookie 一并直传"
+        );
+        assert_eq!(cfg["name"], "会员模型");
+        assert_eq!(cfg["api_key"], "omk-1");
+        // 模板本身不被改写(每次建会话都重新拼)
+        assert!(private.template.get("headers").is_none());
+
+        assert!(
+            member_runtime_model_config(Some(&private), |_| None).is_none(),
+            "罐里没有该地址的 cookie:走别名老路"
+        );
+        let official = MemberRuntimeModel {
+            template,
+            cookie_url: None,
+        };
+        assert!(
+            member_runtime_model_config(Some(&official), |_| panic!("官方云不取罐")).is_none(),
+            "官方云模板无 cookie_url:不直传"
+        );
+        assert!(
+            member_runtime_model_config(None, |_| Some(vec![("Cookie".into(), "x=1".into())]))
+                .is_none(),
+            "非会员条目不直传"
+        );
+    }
 
     /// 映射结果必须全部落在引擎 permission.ParseMode 的受理集合内
     /// (default/plan/auto/bypassPermissions/yolo)。历史遗留的 "normal"
@@ -5478,7 +5611,9 @@ mod permission_mode_tests {
             Some("session-1"),
             Some("model-1"),
             "default",
+            None,
         );
+        assert!(params.get("model_config").is_none());
 
         assert_eq!(params["cwd"], "/workspace/project");
         assert_eq!(params["resume"], "session-1");

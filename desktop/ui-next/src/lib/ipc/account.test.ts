@@ -17,6 +17,8 @@ import {
   mcPasswordLogin,
   mcStatus,
   mcUsage,
+  mcWebLogin,
+  mcWebLoginCancel,
 } from "./account";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -121,6 +123,16 @@ describe("account 契约:MonkeyCode 命令名与载荷形状", () => {
     const calls = stubInvoke(() => Promise.resolve({ ok: true }));
     await mcPasswordLogin("a@b.c", " pw with spaces ");
     expect(calls).toEqual([{ cmd: "mc_password_login", args: { email: "a@b.c", password: " pw with spaces " } }]);
+  });
+
+  it("mc_web_login / mc_web_login_cancel:命令字面量,cancelled 原样返回", async () => {
+    const calls = stubInvoke((cmd) =>
+      Promise.resolve(cmd === "mc_web_login" ? { ok: false, cancelled: true } : { ok: true }),
+    );
+    expect((await mcWebLogin()).cancelled).toBe(true);
+    await mcWebLoginCancel();
+    expect(calls.map((c) => c.cmd)).toEqual(["mc_web_login", "mc_web_login_cancel"]);
+    expect(calls.every((c) => c.args === undefined)).toBe(true);
   });
 
   it("mc_login / mc_checkin / mc_models_sync:命令字面量及同步代次", async () => {

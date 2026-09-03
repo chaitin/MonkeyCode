@@ -527,6 +527,7 @@ export function OptionMenu({
   onPick,
   ariaLabel,
   triggerLabel,
+  icon,
   disabled = false,
   title,
   notice,
@@ -538,8 +539,12 @@ export function OptionMenu({
   onPick: (value: string) => void;
   /** 触发器与菜单列表共用的可及名(role 区分,查询不歧义) */
   ariaLabel: string;
-  /** 触发器展示文案;缺省 = 选中项 label(分组场景可传「组名 / 条目名」) */
+  /** 触发器展示文案;缺省 = 选中项 label */
   triggerLabel?: string;
+  /** 触发器前置图标(shrink-0 的语义锚点)。同一行摆多个本菜单时必传:
+   *  长文案被挤压截断后,纯文本触发器连成一串分不出控件边界,图标是
+   *  唯一稳定的视觉分隔(2026-09-01 云端任务三选器报障「错乱」)。 */
+  icon?: React.ReactNode;
   disabled?: boolean;
   title?: string;
   /** 选项受限的**可见**说明,渲染成菜单首行。
@@ -591,6 +596,7 @@ export function OptionMenu({
         anchorRef={anchorRef}
         onToggle={() => setOpen(!open)}
       >
+        {icon}
         <span className="min-w-0 truncate">{currentLabel}</span>
       </Trigger>
       {open && (

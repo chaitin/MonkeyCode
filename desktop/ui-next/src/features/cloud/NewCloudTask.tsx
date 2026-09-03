@@ -8,7 +8,7 @@
 // - 镜像:公共 devbox → is_default → 第一个;
 // - 仓库:默认不关联(快速开始);选云端项目下发 project_id,手输地址下发
 //   repo_url,两者互斥(选一个即清掉另一个)。
-import { IconCheck, IconChevronDown, IconCloud, IconFolder, IconSend } from "@tabler/icons-react";
+import { IconBox, IconCheck, IconChevronDown, IconCloud, IconCpu, IconFolder, IconSend, IconServer } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { mcStatus } from "@/lib/ipc/account";
@@ -135,12 +135,16 @@ export function NewCloudTask({
     setRepoErr("");
   }, [initialProject]);
 
-  // 模型按档位/来源分组(基础/专业/旗舰/付费/我的/团队,移植旧 UI 口径);
-  // 触发器展示「组名 / 组内名」,组内名已剥去与组头重复的档位前缀
+  // 模型按档位/来源分组(基础/专业/旗舰/付费/我的/团队,移植旧 UI 口径)。
+  // 触发器只显示组内名,「组名 / 组内名」全称走悬停 title:团队组名取自
+  // owner.name,长度不可控,拼进触发器会吃掉整个 max-w 并把 "团队名 / 模型"
+  // 渲染成 owner/repo 的形状——与卡头「关联仓库」语义撞车,工具行读起来
+  // 错乱(2026-09-01 用户报障截图)。组归属在菜单节头本就可见。
   const modelGroups = options ? groupCloudModels(options.models, options.plan) : [];
   const selectedModel = modelGroups.flatMap((g) => g.models).find((m) => m.id === modelId);
   const selectedGroup = modelGroups.find((g) => g.models.some((m) => m.id === modelId));
-  const modelTriggerLabel = selectedModel
+  const modelTriggerLabel = selectedModel ? groupedCloudModelLabel(selectedModel) : undefined;
+  const modelTriggerTitle = selectedModel
     ? [selectedGroup?.label, groupedCloudModelLabel(selectedModel)].filter(Boolean).join(" / ")
     : undefined;
   const publicModel = options ? isPublicModel(options.models, modelId) : false;
@@ -383,12 +387,17 @@ export function NewCloudTask({
             value={content}
             onChange={(e) => setContent(e.target.value)}
           />
-          {/* 工具行(与本地页同构):运行配置选择器在左,提交钮同行在右 */}
+          {/* 工具行(与本地页同构):运行配置选择器在左,提交钮同行在右。
+              三个触发器都带 shrink-0 图标:长文案被挤压截断后,纯文本触发器
+              连成一串分不出控件边界(2026-09-01 报障),图标是稳定的视觉
+              分隔与语义锚点 */}
           <div className="flex min-w-0 items-center gap-1 px-2.5 pb-2.5">
             <OptionMenu
               ariaLabel={t("cloud.new.model")}
               value={modelId}
               triggerLabel={modelTriggerLabel}
+              title={modelTriggerTitle}
+              icon={<IconCpu size={13} stroke={1.75} aria-hidden className="shrink-0" />}
               onPick={setModelId}
               sections={modelGroups.map((g) => ({
                 key: g.key,
@@ -404,6 +413,7 @@ export function NewCloudTask({
             <OptionMenu
               ariaLabel={t("cloud.new.host")}
               value={effectiveHostId}
+              icon={<IconServer size={13} stroke={1.75} aria-hidden className="shrink-0" />}
               onPick={setHostId}
               // **不禁用**触发器,理由走菜单内可见文字(旧 UI newtask.tsx:837
               // 同款:触发器照常可点,菜单里渲染一行说明)。此前写的是
@@ -418,6 +428,7 @@ export function NewCloudTask({
             <OptionMenu
               ariaLabel={t("cloud.new.image")}
               value={imageId}
+              icon={<IconBox size={13} stroke={1.75} aria-hidden className="shrink-0" />}
               onPick={setImageId}
               options={images.map((img) => ({ value: img.id ?? "", label: cloudImageLabel(img) }))}
             />

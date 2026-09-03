@@ -747,6 +747,28 @@ describe("轮次与系统帧", () => {
     expect(run([frame("task-error")]).items.at(-1)).toEqual({ kind: "sys", tag: "error", text: "", key: "chat.sys.errorUnknown", error: true });
   });
 
+  it("云端 task-error({details, message} 词汇)显示完整错误,不折成未知错误", () => {
+    // 真实云端帧形状(2026-09-01 报障):data 是 base64(JSON),字段没有
+    // error,完整原因在 details,message 只是泛化分类。取值优先级对齐
+    // mobile handler.ts:details > message > error
+    const cloud = run([
+      frame("task-error", {
+        details: "[EXECUTION_FAILED] task execution failed: 模型不存在或无权访问",
+        message: "task execution failed",
+      }),
+    ]);
+    expect(cloud.items.at(-1)).toMatchObject({
+      kind: "sys",
+      tag: "error",
+      key: "chat.sys.error",
+      params: { reason: "[EXECUTION_FAILED] task execution failed: 模型不存在或无权访问" },
+      error: true,
+    });
+    // 只有 message 时也不该丢:泛化分类好过「未知错误」
+    const msgOnly = run([frame("task-error", { message: "task execution failed" })]);
+    expect(msgOnly.items.at(-1)).toMatchObject({ params: { reason: "task execution failed" } });
+  });
+
   it("terminal=false 的错误只展示,保持运行态直到 task-ended", () => {
     const pending = run([frame("task-started"), frame("task-error", { error: "落盘失败", terminal: false })]);
     expect(pending.running).toBe(true);

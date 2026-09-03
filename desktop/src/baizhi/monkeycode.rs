@@ -136,8 +136,8 @@ fn authorize_page_to_api(svc: &Service, page: &reqwest::Url) -> BzResult<String>
     Ok(api.to_string())
 }
 
-/// 桥接链走完后校验云端会话已建立,返回用户信息。
-async fn confirm_mc_login(svc: &Service) -> BzResult<Value> {
+/// 登录链(桥接/浏览器登录窗)走完后校验云端会话已建立,返回用户信息。
+pub(crate) async fn confirm_mc_login(svc: &Service) -> BzResult<Value> {
     match mc_user(svc).await {
         Ok(user) => Ok(user),
         Err(BzErr::Unauthorized(_)) => Err(other("云端登录未完成: 未获得 MonkeyCode 会话")),
@@ -145,18 +145,22 @@ async fn confirm_mc_login(svc: &Service) -> BzResult<Value> {
     }
 }
 
-/// 拉取云端用户信息;会话无效返回 Unauthorized。
-async fn mc_user(svc: &Service) -> BzResult<Value> {
-    let out = mc_call(svc, reqwest::Method::GET, "/api/v1/users/status", None).await?;
-    let user = out.get("user").cloned().unwrap_or(Value::Null);
-    // 空对象也算未登录(与移动端 hasUserIdentity 语义一致)
-    let has_identity = ["id", "name", "username", "email"].iter().any(|k| {
+/// users/status 的 user 是否携带有效身份。空对象也算未登录(与移动端
+/// hasUserIdentity 语义一致);浏览器登录窗的探测与 mc_user 共用此判定。
+pub(crate) fn user_has_identity(user: &Value) -> bool {
+    ["id", "name", "username", "email"].iter().any(|k| {
         user.get(k)
             .and_then(|v| v.as_str())
             .map(|s| !s.is_empty())
             .unwrap_or(false)
-    });
-    if !has_identity {
+    })
+}
+
+/// 拉取云端用户信息;会话无效返回 Unauthorized。
+async fn mc_user(svc: &Service) -> BzResult<Value> {
+    let out = mc_call(svc, reqwest::Method::GET, "/api/v1/users/status", None).await?;
+    let user = out.get("user").cloned().unwrap_or(Value::Null);
+    if !user_has_identity(&user) {
         return Err(BzErr::Unauthorized("MonkeyCode 会话无效".into()));
     }
     Ok(user)
@@ -676,6 +680,9 @@ pub async fn mc_file_upload(svc: &Service, vm_id: &str, path: &str, data: Vec<u8
     if let Some(b) = svc.mc_basic_header(&url) {
         req = req.header(reqwest::header::AUTHORIZATION, b);
     }
+    for (name, value) in svc.mc_identity_headers(&url) {
+        req = req.header(name, value);
+    }
     let resp = req
         .send()
         .await
@@ -806,6 +813,9 @@ async fn do_file_download(
     }
     if let Some(b) = svc.mc_basic_header(&url) {
         req = req.header(reqwest::header::AUTHORIZATION, b);
+    }
+    for (name, value) in svc.mc_identity_headers(&url) {
+        req = req.header(name, value);
     }
     let resp = req
         .send()
@@ -965,7 +975,16 @@ pub async fn mc_ohmyagent_key_create(svc: &Service) -> BzResult<Value> {
         "/api/v1/users/ohmyagent/api-keys",
         None,
     )
-    .await?;
+    .await
+    .map_err(|e| match e {
+        // 该端点 2026-07-30(backend b98377b3)才有,同步链路它打头阵:
+        // 旧版私有化服务端在这里 404 是"版本过旧"的典型形态,指条升级的
+        // 路,而不是让用户对着框架 404 文案猜(2026-09-01 报障)
+        BzErr::Other(m) if m.contains("HTTP 404") => other(format!(
+            "{m}——服务端缺少会员模型同步端点,私有化部署版本过旧,请升级后端后重试"
+        )),
+        e => e,
+    })?;
     let has = |k: &str| {
         out.get(k)
             .and_then(Value::as_str)
@@ -1200,6 +1219,37 @@ pub(crate) const ENV_MC: Envelope = Envelope {
     whole_body_fallback: false,
 };
 
+/// MonkeyCode 域 3xx 应答的分类(unwrap_envelope 不感知 Location,单点在此):
+/// - 同主机 http→https:部署要求 HTTPS(nginx/Traefik 的 scheme 升级,
+///   301/302/308 都常见),可行动错误是"改地址",重登再多次也无效;
+/// - 其余 302/303/307:OAuth/SSO 登录网关把未认证请求弹去登录页——会话
+///   失效的第二形态,归一成 Unauthorized(状态类接口转"未登录",文案引导
+///   重新连接;首次登录被弹同理,出路都是浏览器登录);
+/// - 其余 301/308:部署级永久重定向(换域等),按原 HTTP 错误报。
+pub(crate) fn classify_mc_redirect(
+    req: &reqwest::Url,
+    status: u16,
+    location: Option<&str>,
+) -> BzErr {
+    if let Some(target) = location.and_then(|l| req.join(l).ok()) {
+        if req.scheme() == "http"
+            && target.scheme() == "https"
+            && target.host_str() == req.host_str()
+        {
+            return other(format!(
+                "服务端要求 HTTPS(HTTP {status} 重定向),请在设置中把服务地址改为 https:// 开头"
+            ));
+        }
+    }
+    if matches!(status, 302 | 303 | 307) {
+        return BzErr::Unauthorized(
+            "MonkeyCode 请求被重定向到登录页:会话已失效,或服务端有登录网关保护,请在设置中重新连接"
+                .into(),
+        );
+    }
+    super::http_error(status, &[], "MonkeyCode ")
+}
+
 /// 请求 MonkeyCode 云端接口并解开包壳。
 async fn mc_call(
     svc: &Service,
@@ -1208,7 +1258,11 @@ async fn mc_call(
     body: Option<&Value>,
 ) -> BzResult<Value> {
     let target = format!("{}{}", svc.ep.monkeycode, path);
-    let (data, status) = svc.do_store(&svc.mc, method, &target, body).await?;
+    let (data, status, location) = svc.do_store_full(&svc.mc, method, &target, body).await?;
+    if (300..400).contains(&status) {
+        let url = reqwest::Url::parse(&target).map_err(|e| other(format!("地址异常: {e}")))?;
+        return Err(classify_mc_redirect(&url, status, location.as_deref()));
+    }
     unwrap_envelope(&data, status, &ENV_MC)
 }
 
@@ -1485,6 +1539,15 @@ pub async fn cloud_ws_open(
             req.headers_mut().insert(
                 "Authorization",
                 b.parse().map_err(|_| "Basic Auth 头构造失败".to_string())?,
+            );
+        }
+        // 浏览器身份对 WS 升级请求同样生效(会话绑定指纹的网关看 UA)
+        for (name, value) in svc.mc_identity_headers(&u) {
+            req.headers_mut().insert(
+                name,
+                value
+                    .parse()
+                    .map_err(|_| "浏览器身份头构造失败".to_string())?,
             );
         }
     }

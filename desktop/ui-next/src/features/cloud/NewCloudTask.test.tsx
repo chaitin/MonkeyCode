@@ -98,6 +98,32 @@ describe("NewCloudTask", () => {
     expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: "new-task" }));
   });
 
+  it("团队模型:触发器只显组内名,组归属走悬停全称(团队名不冒充 owner/repo)", async () => {
+    const options = {
+      ...OPTIONS,
+      models: [
+        ...OPTIONS.models,
+        {
+          id: "m-team",
+          model: "team-model",
+          remark: "feature-model",
+          owner: { type: "team", id: "t1", name: "ChaitinMonkeyCode" },
+        },
+      ],
+    };
+    stubShell([], options);
+    render(<NewCloudTask onCreated={() => {}} />);
+    await userEvent.click(await screen.findByRole("button", { name: "模型" }));
+    await userEvent.click(
+      within(screen.getByRole("list", { name: "模型" })).getByRole("button", { name: "feature-model" }),
+    );
+    const trigger = screen.getByRole("button", { name: "模型" });
+    // 「ChaitinMonkeyCode / feature-model」拼进触发器会渲染成 owner/repo 的
+    // 形状,与卡头「关联仓库」撞车(2026-09-01 报障);组名只走悬停全称
+    expect(trigger.textContent).toBe("feature-model");
+    expect(trigger.getAttribute("title")).toBe("ChaitinMonkeyCode / feature-model");
+  });
+
   it("创建请求完成前切换服务:丢弃旧服务迟到的 task,不回填 App", async () => {
     let resolveCreate: ((task: unknown) => void) | undefined;
     const pending = new Promise<unknown>((resolve) => {

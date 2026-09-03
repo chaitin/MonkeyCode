@@ -1202,6 +1202,8 @@ export const SettingsView = forwardRef<SettingsViewHandle, {
             isRefreshKeyCurrent={isMcTransportCurrent}
             savedMcBaseUrl={cfg?.mc_base_url ?? ""}
             savedMcBasicAuth={cfg?.mc_basic_auth ?? ""}
+            savedMcLlmBaseUrl={cfg?.mc_llm_base_url ?? ""}
+            savedMcSkipTlsVerify={cfg?.mc_skip_tls_verify ?? false}
             // 版本点选即静默落盘:savingRef 防重入(save 自身不防并发);
             // inlineSaving 让保存条在途不出现。与已保存配置无差异就跳过
             // ——按载荷对比(与脏判定同口径):点回当前生效的版本不值得

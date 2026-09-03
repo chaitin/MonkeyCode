@@ -1587,6 +1587,7 @@ fn main() {
         .manage(EngineSupervisor::new())
         .manage(baizhi::monkeycode::CloudPipes::new())
         .manage(baizhi::monkeycode::DownloadCtl::new())
+        .manage(baizhi::weblogin::WebLoginCtl::new())
         .manage(todos::TodosStore::new())
         .invoke_handler(tauri::generate_handler![
             get_config,
@@ -1678,6 +1679,9 @@ fn main() {
             baizhi::mc_status,
             baizhi::mc_login,
             baizhi::mc_password_login,
+            baizhi::weblogin::mc_web_login,
+            baizhi::weblogin::mc_web_login_cancel,
+            baizhi::mc_set_webview_identity,
             baizhi::mc_logout,
             baizhi::mc_usage,
             baizhi::mc_checkin,

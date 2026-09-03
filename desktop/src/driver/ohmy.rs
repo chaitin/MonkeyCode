@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde_json::Value;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use super::session::SessionsState;
 use super::subagent::SubagentState;
@@ -51,6 +51,15 @@ pub trait ShellCtx: Send + Sync + 'static {
         None
     }
 
+    /// 会员模型运行时 model_config 应附的请求头(见 session.rs
+    /// member_runtime_model_config):mc 罐里对该地址有效的 Cookie,加主窗
+    /// 上报的浏览器身份(User-Agent/Accept-Language,会话绑定指纹的网关要求
+    /// 与登录时一致)。None = 罐里没有该地址的 cookie。生产实现读壳的
+    /// BaizhiState;测试替身缺省 None = 不直传运行时配置。
+    fn mc_session_headers(&self, _url: &str) -> Option<Vec<(String, String)>> {
+        None
+    }
+
     /// 引擎进程非 stop() 退出(reader 读到 stdout EOF)。driver 只负责**报告**
     /// 事实,摘句柄/置崩溃态/退避重启这些策略全在壳侧(main.rs),transport
     /// 因此不必知道 DriverHost 与 Tauri State 的存在。
@@ -69,6 +78,18 @@ impl ShellCtx for AppHandle {
     }
     fn local_data_dir(&self) -> Result<PathBuf, String> {
         crate::config::local_data_dir(self)
+    }
+    fn mc_session_headers(&self, url: &str) -> Option<Vec<(String, String)>> {
+        let url = reqwest::Url::parse(url).ok()?;
+        let svc = self.try_state::<crate::baizhi::BaizhiState>()?.service();
+        let cookie = svc.mc.header(&url)?;
+        let mut out = vec![("Cookie".to_string(), cookie)];
+        out.extend(
+            svc.identity_headers()
+                .into_iter()
+                .map(|(name, value)| (name.to_string(), value)),
+        );
+        Some(out)
     }
     fn on_engine_exit(&self, instance: u64, detail: &str, log_tail: &str) {
         crate::engine_exited(self, instance, detail, log_tail);
@@ -211,6 +232,9 @@ pub(super) struct ManifestModel {
     /// 会员条目的服务端归属(public/private/team;非会员条目为空),
     /// UI 会员 tab 按它分「付费/我的/团队」节。
     pub(super) owner: String,
+    /// 会员条目的运行时 model_config 模板(config.rs member_runtime_models;
+    /// 非会员条目 None)。驱动建会话/切模型时附 Cookie 头后直传引擎。
+    pub(super) runtime: Option<crate::config::MemberRuntimeModel>,
 }
 
 /// 清单模型解析(壳 models.json 词汇:name/provider/base_url/api_key/model/…)。
@@ -247,6 +271,7 @@ pub(super) fn parse_manifest_models(models: &Value) -> Vec<ManifestModel> {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string(),
+                runtime: None,
             })
         })
         .collect()

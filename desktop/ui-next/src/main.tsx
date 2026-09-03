@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "@/app/App";
 import { installShellChrome } from "@/app/shellChrome";
 import { customBackgroundEnabled, initializeStoredBackground } from "@/lib/background";
-import { applyPlatformAttr } from "@/lib/ipc/host";
+import { applyPlatformAttr, reportWebviewIdentity } from "@/lib/ipc/host";
 import { applyStoredTheme } from "@/lib/theme";
 import { applyUiScale, readUiScale } from "@/lib/uiScale";
 import "@/styles/app.css";
@@ -18,6 +18,8 @@ applyStoredTheme();
 applyUiScale(readUiScale());
 // data-platform 落根节点(mac 红绿灯让位等平台分支的依据)
 applyPlatformAttr();
+// 浏览器身份上报壳(登录窗/壳侧请求/引擎会员模型请求三方对齐,先于任何账号请求)
+reportWebviewIdentity();
 function mountApp(): void {
   // 壳级 chrome:右键拦截换自绘文本菜单、F12 devtools(浏览器模式不装)
   installShellChrome();
