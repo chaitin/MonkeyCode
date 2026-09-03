@@ -40,7 +40,6 @@ type ProjectUsecase struct {
 	logger          *slog.Logger
 	cfg             *config.Config
 	gh              *github.Github
-	gte             *gitee.Gitee
 	gta             *gitea.Gitea
 	glDomestic      *gitlab.Gitlab
 	glInternational *gitlab.Gitlab
@@ -70,7 +69,6 @@ func NewProjectUsecase(i *do.Injector) (domain.ProjectUsecase, error) {
 		logger:          logger.With("module", "usecase.ProjectUsecase"),
 		cfg:             cfg,
 		gh:              github.NewGithub(logger, cfg),
-		gte:             gitee.NewGitee(cfg.Gitee.BaseURL, logger),
 		gta:             gitea.NewGitea(logger, cfg.GetGiteaBaseURL()),
 		glDomestic:      glDomestic,
 		glInternational: glInternational,
@@ -319,7 +317,12 @@ func (u *ProjectUsecase) getClient(ctx context.Context, p *db.Project) (domain.G
 
 	case consts.GitPlatformGitee:
 		owner, repo, _ := gitee.ParseRepoPath(p.RepoURL)
-		return u.gte, &ClientContext{
+		baseURL := gi.BaseURL
+		if baseURL == "" {
+			baseURL = u.cfg.Gitee.BaseURL
+		}
+		client := gitee.NewGitee(baseURL, u.logger)
+		return client, &ClientContext{
 			Owner: owner, Repo: repo, DefaultBranch: p.Branch, Token: token, IsOAuth: gi.OauthRefreshToken != "",
 		}, nil
 

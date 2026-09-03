@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -26,14 +27,11 @@ func NewGitee(baseURL string, logger *slog.Logger) *Gitee {
 	if baseURL == "" {
 		baseURL = "https://gitee.com"
 	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
 	return &Gitee{
 		logger:  logger.With("module", "gitee"),
 		baseURL: baseURL,
-		client: request.NewClient(
-			"https",
-			strings.TrimPrefix(baseURL, "https://"),
-			time.Second*30,
-		),
+		client:  newRequestClient(baseURL),
 	}
 }
 
@@ -49,11 +47,13 @@ func ParseRepoPath(repoURL string) (owner, repo string, err error) {
 
 func parseGiteeRepoPath(repoURL string) (string, string, error) {
 	repoURL = strings.TrimSuffix(repoURL, ".git")
-	repoURL = strings.TrimPrefix(repoURL, "https://gitee.com/")
-	repoURL = strings.TrimPrefix(repoURL, "http://gitee.com/")
-	repoURL = strings.TrimPrefix(repoURL, "git@gitee.com:")
+	if parsed, err := url.Parse(repoURL); err == nil && parsed.Host != "" {
+		repoURL = strings.TrimPrefix(parsed.Path, "/")
+	} else if _, path, ok := strings.Cut(repoURL, ":"); ok {
+		repoURL = path
+	}
 	parts := strings.Split(repoURL, "/")
-	if len(parts) < 2 {
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", fmt.Errorf("invalid gitee repo url: %s", repoURL)
 	}
 	return parts[0], parts[1], nil
@@ -112,7 +112,7 @@ func (g *Gitee) CheckPAT(ctx context.Context, token string, repoURL string) (boo
 
 // GetUserInfoByPAT 根据 PAT 获取用户信息
 func (g *Gitee) GetUserInfoByPAT(ctx context.Context, token string) (*domain.PlatformUserInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://gitee.com/api/v5/user", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.baseURL+"/api/v5/user", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -139,11 +139,7 @@ func (g *Gitee) ListUserReposByToken(baseURL, token string, page, perPage int) (
 	if perPage > 100 {
 		perPage = 100
 	}
-	client := request.NewClient(
-		"https",
-		strings.TrimPrefix(baseURL, "https://"),
-		time.Second*30,
-	)
+	client := newRequestClient(baseURL)
 	path := "/api/v5/user/repos"
 	query := map[string]string{
 		"access_token": token,
@@ -158,11 +154,12 @@ func (g *Gitee) ListUserReposByToken(baseURL, token string, page, perPage int) (
 	return *repos, nil
 }
 
+func newRequestClient(baseURL string) *request.Client {
+	parsed, _ := url.Parse(baseURL)
+	return request.NewClient(parsed.Scheme, parsed.Host, time.Second*30)
+}
+
 // newRequestClientForToken 使用指定 token 创建 request client
 func (g *Gitee) newRequestClientForToken(token string) *request.Client {
-	return request.NewClient(
-		"https",
-		"gitee.com",
-		time.Second*30,
-	)
+	return newRequestClient(g.baseURL)
 }
