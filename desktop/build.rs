@@ -136,6 +136,7 @@ fn main() {
             "mc_password_login",
             "mc_web_login",
             "mc_web_login_cancel",
+            "mc_set_webview_identity",
             "mc_logout",
             "mc_usage",
             "mc_checkin",

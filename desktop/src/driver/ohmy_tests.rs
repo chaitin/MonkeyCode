@@ -217,12 +217,16 @@ fn fake_anthropic_server(
 /// bare_inner_events 取这份共享句柄。
 type EmittedEvents = Arc<StdMutex<Vec<(String, Value)>>>;
 
+/// 会员模型直传 e2e 里壳替身上报的浏览器身份。
+const TEST_WEBVIEW_UA: &str = "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 MonkeyCodeTest";
+
 struct TestCtx(PathBuf, EmittedEvents, Option<String>);
 impl TestCtx {
     fn new(dir: PathBuf) -> Self {
         Self(dir, Arc::new(StdMutex::new(Vec::new())), None)
     }
-    /// 壳 mc 罐替身:对任何地址都返回这串 Cookie 头(会员模型直传 e2e 用)。
+    /// 壳 mc 罐替身:对任何地址都返回这串 Cookie 头 + TEST_WEBVIEW_UA
+    /// 浏览器身份(会员模型直传 e2e 用)。
     fn with_cookie(dir: PathBuf, cookie: &str) -> Self {
         Self(
             dir,
@@ -238,8 +242,12 @@ impl ShellCtx for TestCtx {
     fn config_dir(&self) -> Result<PathBuf, String> {
         Ok(self.0.clone())
     }
-    fn mc_cookie_header(&self, _url: &str) -> Option<String> {
-        self.2.clone()
+    fn mc_session_headers(&self, _url: &str) -> Option<Vec<(String, String)>> {
+        let cookie = self.2.clone()?;
+        Some(vec![
+            ("Cookie".into(), cookie),
+            ("User-Agent".into(), TEST_WEBVIEW_UA.into()),
+        ])
     }
     fn local_data_dir(&self) -> Result<PathBuf, String> {
         Ok(self.0.join("local-data"))
@@ -430,6 +438,11 @@ async fn e2e_member_runtime_model_config_carries_gateway_cookie() {
             Some("omk-e2e"),
             "凭据须来自 Key 记录"
         );
+        assert_eq!(
+            r.header("user-agent"),
+            Some(TEST_WEBVIEW_UA),
+            "浏览器身份须压过引擎默认 UA(会话绑定指纹的网关)"
+        );
     }
     let after_first = reqs.len();
 
@@ -453,6 +466,11 @@ async fn e2e_member_runtime_model_config_carries_gateway_cookie() {
     for r in &reqs[after_first..] {
         assert_eq!(r.header("cookie"), None, "非会员条目不得带网关 cookie");
         assert_eq!(r.header("x-api-key"), Some("sk-fake"));
+        assert_ne!(
+            r.header("user-agent"),
+            Some(TEST_WEBVIEW_UA),
+            "非会员条目沿用引擎默认 UA"
+        );
     }
     let after_second = reqs.len();
 

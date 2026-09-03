@@ -680,6 +680,9 @@ pub async fn mc_file_upload(svc: &Service, vm_id: &str, path: &str, data: Vec<u8
     if let Some(b) = svc.mc_basic_header(&url) {
         req = req.header(reqwest::header::AUTHORIZATION, b);
     }
+    for (name, value) in svc.mc_identity_headers(&url) {
+        req = req.header(name, value);
+    }
     let resp = req
         .send()
         .await
@@ -810,6 +813,9 @@ async fn do_file_download(
     }
     if let Some(b) = svc.mc_basic_header(&url) {
         req = req.header(reqwest::header::AUTHORIZATION, b);
+    }
+    for (name, value) in svc.mc_identity_headers(&url) {
+        req = req.header(name, value);
     }
     let resp = req
         .send()
@@ -1533,6 +1539,15 @@ pub async fn cloud_ws_open(
             req.headers_mut().insert(
                 "Authorization",
                 b.parse().map_err(|_| "Basic Auth 头构造失败".to_string())?,
+            );
+        }
+        // 浏览器身份对 WS 升级请求同样生效(会话绑定指纹的网关看 UA)
+        for (name, value) in svc.mc_identity_headers(&u) {
+            req.headers_mut().insert(
+                name,
+                value
+                    .parse()
+                    .map_err(|_| "浏览器身份头构造失败".to_string())?,
             );
         }
     }

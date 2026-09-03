@@ -135,6 +135,7 @@
             "allow-mc-password-login",
             "allow-mc-web-login",
             "allow-mc-web-login-cancel",
+            "allow-mc-set-webview-identity",
             "allow-mc-logout",
             "allow-mc-usage",
             "allow-mc-checkin",

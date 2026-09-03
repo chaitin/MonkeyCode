@@ -149,8 +149,9 @@ false(引擎侧生效缺口见上游清单)。`default_model` 一律传别名。
 `model_config` 直传(cap `runtimeConfig`):模板 = settings.json 同一物化
 (config.rs engine_model_entry)+ name + signing_secret,随引擎实例定格
 在清单里(ManifestModel.runtime);Cookie 头由驱动每次从 mc 罐现取
-(session.rs member_runtime_model_config,经 ShellCtx::mc_cookie_header),
-罐里刷新过的网关 cookie 对新会话/切模型自然生效,不重启引擎。直传只在
+(session.rs member_runtime_model_config,经 ShellCtx::mc_session_headers,
+随带主窗上报的浏览器身份头,见「浏览器登录窗」一节),罐里刷新过的网关
+cookie 对新会话/切模型自然生效,不重启引擎。直传只在
 **私有化 + 罐里对该地址有 cookie**时发生:官方云、非会员条目、未登录都维持
 按别名走 settings.json,`model` 别名恒并传(旧引擎回退)。settings.json 里
 的会员条目照常物化,是无 cookie 场景的兜底。已知取舍:会话 provider 是建
@@ -292,6 +293,14 @@ cookie,集合变化时用收割 cookie 直探 `/api/v1/users/status`(不经壳�
   网关弹去登录页——会员条目经 `model_config` 直传附上罐里的网关 cookie
   (契约 4「会员条目的运行时直传」);壳侧 REST/WS/上传下载均从罐带全量
   cookie,可过网关。网关对 `/v1/*` 豁免时两条路都通。
+- 会话绑定指纹的网关(同一 cookie 换 UA 即判劫持并注销会话):主窗 WebView
+  启动时把 `navigator.userAgent` 与 Accept-Language 经 `mc_set_webview_identity`
+  上报壳(`Service.identity`,WebviewIdentity);登录窗显式钉同一 UA,壳侧
+  mc 域请求(REST/上传/下载/WS/探测,`mc_identity_headers`,与 Basic 同门)
+  与引擎会员模型请求(随 Cookie 一并进 `model_config.headers`,压过引擎默认
+  `ohmyagent x`)三方以同一浏览器身份示人。主窗与登录窗同一 WebView 引擎,
+  上报值即登录时网关看到的真实指纹。网关若比对 TLS 指纹则无解(三方 TLS
+  栈本就不同),退部署侧豁免。
 - macOS 加载 http 登录页依赖 Info.plist 的
   `NSAllowsArbitraryLoadsInWebContent`(只豁免网页内容);自签 TLS 的
   部署 WebView 无法免验证(`mc_skip_tls_verify` 只作用于壳侧 reqwest),

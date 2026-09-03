@@ -51,10 +51,12 @@ pub trait ShellCtx: Send + Sync + 'static {
         None
     }
 
-    /// mc 罐里应随该地址请求携带的 Cookie 头(会员模型运行时 model_config
-    /// 用,见 session.rs member_runtime_model_config)。生产实现读壳的
-    /// BaizhiState mc 罐;测试替身缺省 None = 不直传运行时配置。
-    fn mc_cookie_header(&self, _url: &str) -> Option<String> {
+    /// 会员模型运行时 model_config 应附的请求头(见 session.rs
+    /// member_runtime_model_config):mc 罐里对该地址有效的 Cookie,加主窗
+    /// 上报的浏览器身份(User-Agent/Accept-Language,会话绑定指纹的网关要求
+    /// 与登录时一致)。None = 罐里没有该地址的 cookie。生产实现读壳的
+    /// BaizhiState;测试替身缺省 None = 不直传运行时配置。
+    fn mc_session_headers(&self, _url: &str) -> Option<Vec<(String, String)>> {
         None
     }
 
@@ -77,12 +79,17 @@ impl ShellCtx for AppHandle {
     fn local_data_dir(&self) -> Result<PathBuf, String> {
         crate::config::local_data_dir(self)
     }
-    fn mc_cookie_header(&self, url: &str) -> Option<String> {
+    fn mc_session_headers(&self, url: &str) -> Option<Vec<(String, String)>> {
         let url = reqwest::Url::parse(url).ok()?;
-        self.try_state::<crate::baizhi::BaizhiState>()?
-            .service()
-            .mc
-            .header(&url)
+        let svc = self.try_state::<crate::baizhi::BaizhiState>()?.service();
+        let cookie = svc.mc.header(&url)?;
+        let mut out = vec![("Cookie".to_string(), cookie)];
+        out.extend(
+            svc.identity_headers()
+                .into_iter()
+                .map(|(name, value)| (name.to_string(), value)),
+        );
+        Some(out)
     }
     fn on_engine_exit(&self, instance: u64, detail: &str, log_tail: &str) {
         crate::engine_exited(self, instance, detail, log_tail);

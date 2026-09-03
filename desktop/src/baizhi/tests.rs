@@ -17,6 +17,8 @@ struct Req {
     path: String, // 含查询串
     cookie: String,
     authorization: String,
+    user_agent: String,
+    accept_language: String,
     body: Vec<u8>,
 }
 
@@ -74,6 +76,8 @@ fn serve(handler: Handler) -> (String, Arc<AtomicBool>) {
                 let path = parts.next().unwrap_or("").to_string();
                 let mut cookie = String::new();
                 let mut authorization = String::new();
+                let mut user_agent = String::new();
+                let mut accept_language = String::new();
                 let mut content_len = 0usize;
                 loop {
                     let mut h = String::new();
@@ -86,6 +90,12 @@ fn serve(handler: Handler) -> (String, Arc<AtomicBool>) {
                     }
                     if lower.starts_with("authorization:") {
                         authorization = h[14..].trim().to_string();
+                    }
+                    if lower.starts_with("user-agent:") {
+                        user_agent = h[11..].trim().to_string();
+                    }
+                    if lower.starts_with("accept-language:") {
+                        accept_language = h[16..].trim().to_string();
                     }
                     if let Some(v) = lower.strip_prefix("content-length:") {
                         content_len = v.trim().parse().unwrap_or(0);
@@ -100,6 +110,8 @@ fn serve(handler: Handler) -> (String, Arc<AtomicBool>) {
                     path,
                     cookie,
                     authorization,
+                    user_agent,
+                    accept_language,
                     body,
                 });
                 let mut out = format!(
@@ -1299,6 +1311,89 @@ async fn monkeycode_password_login_contract() {
 /// 测试环境反代 Basic Auth:仅 MonkeyCode 域的请求附 Authorization 头
 /// ("Basic <b64(user:pass)>",对齐 mobile 的 authHeaders);百智域零附加
 /// (业务鉴权走 cookie,该头在 MC 的 REST/WS 链路上是空闲的)。
+/// 浏览器身份头只附给 MC 域:UI 上报后,壳侧 REST 以主窗 WebView 的
+/// UA/语言示人(会话绑定指纹的登录网关不把壳当另一台设备);百智域不冒充
+/// 浏览器;未上报时什么都不附;引擎直传用的 identity_headers 不按主机门控。
+#[tokio::test(flavor = "multi_thread")]
+async fn browser_identity_headers_scoped_to_mc_host() {
+    let mc_seen: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let bz_seen: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let cap_mc = mc_seen.clone();
+    let (mc_url, _s1) = serve(Arc::new(move |req: Req| {
+        cap_mc
+            .lock()
+            .unwrap()
+            .push((req.user_agent.clone(), req.accept_language.clone()));
+        Resp::json(200, json!({ "code": 0, "data": { "projects": [] } }))
+    }));
+    let cap_bz = bz_seen.clone();
+    let (bz_url, _s2) = serve(Arc::new(move |req: Req| {
+        cap_bz
+            .lock()
+            .unwrap()
+            .push((req.user_agent.clone(), req.accept_language.clone()));
+        Resp::json(200, json!({ "code": 0, "data": {} }))
+    }));
+    let svc = Service::test_service(Endpoints {
+        account: bz_url.clone(),
+        model_gateway: bz_url.clone(),
+        mcp_gateway: bz_url.clone(),
+        monkeycode: mc_url.clone(),
+    });
+
+    // 未上报:MC 域也不附
+    super::monkeycode::mc_projects(&svc)
+        .await
+        .map_err(|e| e.msg())
+        .unwrap();
+    assert_eq!(
+        mc_seen.lock().unwrap().as_slice(),
+        [(String::new(), String::new())],
+        "未上报身份时不附头"
+    );
+    assert!(svc.identity_headers().is_empty());
+
+    svc.set_webview_identity(Some(super::WebviewIdentity {
+        user_agent: "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15".into(),
+        accept_language: "zh-CN,zh;q=0.9".into(),
+    }));
+    super::monkeycode::mc_projects(&svc)
+        .await
+        .map_err(|e| e.msg())
+        .unwrap();
+    svc.call(reqwest::Method::GET, "/api/v1/user/profile", None)
+        .await
+        .map_err(|e| e.msg())
+        .unwrap();
+    assert_eq!(
+        mc_seen.lock().unwrap()[1],
+        (
+            "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15".to_string(),
+            "zh-CN,zh;q=0.9".to_string()
+        ),
+        "MC 域必须以主窗浏览器身份示人"
+    );
+    assert_eq!(
+        bz_seen.lock().unwrap().as_slice(),
+        [(String::new(), String::new())],
+        "百智域不冒充浏览器"
+    );
+    // 空语言字段不附 Accept-Language;引擎直传用的不门控版本同款
+    svc.set_webview_identity(Some(super::WebviewIdentity {
+        user_agent: "UA".into(),
+        accept_language: String::new(),
+    }));
+    assert_eq!(
+        svc.identity_headers(),
+        vec![("User-Agent", "UA".to_string())]
+    );
+    let third_party = reqwest::Url::parse("https://llm.example.com/v1").unwrap();
+    assert!(
+        svc.mc_identity_headers(&third_party).is_empty(),
+        "壳侧门控只给 mc 域"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn basic_auth_header_scoped_to_mc_host() {
     let mc_auth: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));

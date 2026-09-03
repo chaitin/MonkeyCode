@@ -12,6 +12,28 @@ export function isWindowsShell(): boolean {
   return inDesktopShell() && /Windows/.test(navigator.userAgent);
 }
 
+/** navigator.languages → Accept-Language(Chromium/WebKit 同款:首项无 q,
+ *  其后 q 每项递减 0.1,最低 0.1)。 */
+export function acceptLanguageOf(languages: readonly string[]): string {
+  return languages
+    .filter(Boolean)
+    .map((lang, i) => (i === 0 ? lang : `${lang};q=${Math.max(0.1, 1 - i * 0.1).toFixed(1)}`))
+    .join(",");
+}
+
+/** 把主窗 WebView 的浏览器身份(UA + Accept-Language)上报壳:登录窗、壳侧
+ *  mc 域请求与引擎会员模型请求三方对齐同一身份,会话绑定指纹的登录网关才
+ *  不会把壳或引擎当成另一台设备踢掉会话。启动时调用一次;浏览器模式 no-op,
+ *  失败静默(旧壳无此命令时不影响启动)。 */
+export function reportWebviewIdentity(): void {
+  if (!inDesktopShell()) return;
+  const languages = navigator.languages?.length ? navigator.languages : [navigator.language];
+  void invoke("mc_set_webview_identity", {
+    userAgent: navigator.userAgent,
+    acceptLanguage: acceptLanguageOf(languages),
+  }).catch(() => {});
+}
+
 export type HostPlatform = "mac" | "windows" | "linux" | "browser";
 
 export function hostPlatform(): HostPlatform {

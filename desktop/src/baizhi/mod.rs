@@ -160,6 +160,37 @@ pub struct Service {
     pub(crate) mc_llm: String,
     /// 进行中的扫码会话(只保留最新)
     pub wx: Arc<StdMutex<Option<wechat::WechatLogin>>>,
+    /// 主窗 WebView 上报的浏览器身份(见 WebviewIdentity);跨 reconfigured /
+    /// logged_out 共享,UI 启动上报一次全程有效。
+    pub(crate) identity: Arc<StdMutex<Option<WebviewIdentity>>>,
+}
+
+/// 主窗 WebView 的浏览器身份(UI 启动时经 mc_set_webview_identity 上报)。
+/// 登录窗、壳侧 mc 域请求、引擎会员模型请求三方都以它示人,让网关看到同一个
+/// "浏览器/设备":会话绑定指纹的登录网关看到同一 cookie 换了 UA 会判为劫持
+/// 并注销会话(2026-09-02 报障:引擎以 ohmyagent/x 打模型即被踢),壳与引擎
+/// 必须和登录时的浏览器身份一致。主窗与登录窗是同一 WebView 引擎,上报值
+/// 就是登录时网关看到的真实指纹,不猜平台字符串。
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct WebviewIdentity {
+    pub user_agent: String,
+    #[serde(default)]
+    pub accept_language: String,
+}
+
+impl WebviewIdentity {
+    /// 应附到请求上的头(空字段不附)。名字用 &'static str:reqwest 与
+    /// tungstenite 的 HeaderMap 都直接收。
+    pub(crate) fn headers(&self) -> Vec<(&'static str, String)> {
+        let mut out = Vec::with_capacity(2);
+        if !self.user_agent.is_empty() {
+            out.push(("User-Agent", self.user_agent.clone()));
+        }
+        if !self.accept_language.is_empty() {
+            out.push(("Accept-Language", self.accept_language.clone()));
+        }
+        out
+    }
 }
 
 /// "user:pass" → 预计算的 Basic Auth 头值(空白 = 未配置)。
@@ -225,6 +256,7 @@ impl Service {
             mc_basic: None,
             mc_llm,
             wx: Arc::new(StdMutex::new(None)),
+            identity: Arc::new(StdMutex::new(None)),
         }
     }
 
@@ -257,6 +289,7 @@ impl Service {
             mc_basic: basic_header_value(&cfg.mc_basic_auth),
             mc_llm,
             wx: Arc::new(StdMutex::new(None)),
+            identity: Arc::new(StdMutex::new(None)),
         }
     }
 
@@ -308,6 +341,7 @@ impl Service {
                 mc_basic,
                 mc_llm,
                 wx: Arc::clone(&self.wx),
+                identity: Arc::clone(&self.identity),
             },
             transport_changed,
         )
@@ -341,6 +375,7 @@ impl Service {
             mc_basic: self.mc_basic.clone(),
             mc_llm: self.mc_llm.clone(),
             wx: Arc::clone(&self.wx),
+            identity: Arc::clone(&self.identity),
         }
     }
 
@@ -351,10 +386,41 @@ impl Service {
     /// anthropic 协议可用;openai 系协议因引擎占用 Authorization 仍受限)。
     pub(crate) fn mc_basic_header(&self, url: &reqwest::Url) -> Option<&str> {
         let basic = self.mc_basic.as_deref()?;
-        let mc = reqwest::Url::parse(&self.ep.monkeycode).ok()?;
-        (url.host_str() == mc.host_str()
-            && url.port_or_known_default() == mc.port_or_known_default())
-        .then_some(basic)
+        self.is_mc_url(url).then_some(basic)
+    }
+
+    /// url 是否落在 MonkeyCode 服务主机(host + port 同口径;Basic 与浏览器
+    /// 身份两道门共用,tls_insecure_for 同判定)。
+    pub(crate) fn is_mc_url(&self, url: &reqwest::Url) -> bool {
+        let Ok(mc) = reqwest::Url::parse(&self.ep.monkeycode) else {
+            return false;
+        };
+        url.host_str() == mc.host_str() && url.port_or_known_default() == mc.port_or_known_default()
+    }
+
+    /// 记录/清除主窗上报的浏览器身份。
+    pub fn set_webview_identity(&self, identity: Option<WebviewIdentity>) {
+        *self.identity.lock_ok() = identity;
+    }
+
+    /// 已上报的浏览器身份头(未上报为空)。引擎会员模型请求随 Cookie 一并
+    /// 携带(driver ShellCtx::mc_session_headers),不按主机门控:cookie 打到
+    /// 哪台主机,身份就跟到哪台,发 cookie 不发身份正是被踢的形态。
+    pub(crate) fn identity_headers(&self) -> Vec<(&'static str, String)> {
+        self.identity
+            .lock_ok()
+            .as_ref()
+            .map(WebviewIdentity::headers)
+            .unwrap_or_default()
+    }
+
+    /// 壳侧请求应附的浏览器身份头:只给 mc 域(与 Basic 同门),百智/第三方
+    /// 不冒充浏览器。
+    pub(crate) fn mc_identity_headers(&self, url: &reqwest::Url) -> Vec<(&'static str, String)> {
+        if !self.is_mc_url(url) {
+            return Vec::new();
+        }
+        self.identity_headers()
     }
 
     /// 取 API 客户端;TLS 后端起不来时给出可行动错误而不是 panic。
@@ -454,6 +520,9 @@ impl Service {
         }
         if let Some(b) = self.mc_basic_header(&url) {
             req = req.header(reqwest::header::AUTHORIZATION, b);
+        }
+        for (name, value) in self.mc_identity_headers(&url) {
+            req = req.header(name, value);
         }
         let resp = req
             .send()
@@ -814,6 +883,23 @@ pub fn http_error(status: u16, body: &[u8], label: &str) -> BzErr {
 }
 
 // ==================== Tauri 命令 ====================
+
+/// 主窗 WebView 上报浏览器身份(UI 启动时一次,见 WebviewIdentity)。空 UA
+/// 视为清除。
+#[tauri::command]
+pub async fn mc_set_webview_identity(
+    state: State<'_, BaizhiState>,
+    user_agent: String,
+    accept_language: Option<String>,
+) -> Result<Value, String> {
+    let user_agent = user_agent.trim().to_string();
+    let identity = (!user_agent.is_empty()).then(|| WebviewIdentity {
+        user_agent,
+        accept_language: accept_language.unwrap_or_default().trim().to_string(),
+    });
+    state.service().set_webview_identity(identity);
+    Ok(json!({ "ok": true }))
+}
 
 pub struct BaizhiState {
     service: StdMutex<Arc<Service>>,

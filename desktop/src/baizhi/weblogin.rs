@@ -192,6 +192,9 @@ pub(crate) async fn probe_status(svc: &Service, cookie_header: &str) -> Result<O
     if let Some(b) = svc.mc_basic_header(&url) {
         req = req.header(reqwest::header::AUTHORIZATION, b);
     }
+    for (name, value) in svc.mc_identity_headers(&url) {
+        req = req.header(name, value);
+    }
     let resp = req.send().await.map_err(|_| ())?;
     let status = resp.status().as_u16();
     // 网关把未认证请求弹去登录页:明确未登录,不是抖动
@@ -230,14 +233,26 @@ async fn run_web_login(
     if let Some(stale) = app.get_webview_window(LOGIN_WINDOW) {
         let _ = stale.destroy();
     }
-    let win = WebviewWindowBuilder::new(app, LOGIN_WINDOW, WebviewUrl::External(login_url))
+    let mut builder = WebviewWindowBuilder::new(app, LOGIN_WINDOW, WebviewUrl::External(login_url))
         // 标题带目标主机:IdP 重定向会把窗内页面带去别的域,标题钉住
         // "在登录哪个服务"这一事实
         .title(format!("登录 {host}"))
         .inner_size(480.0, 720.0)
         .min_inner_size(400.0, 560.0)
         .center()
-        .incognito(true)
+        .incognito(true);
+    // 登录窗钉死主窗上报的 UA:本就是同一 WebView 引擎的缺省值,显式钉住
+    // 保证与壳侧/引擎随 cookie 发出的身份逐字一致(会话绑定指纹的网关)
+    let pinned_ua = svc
+        .identity
+        .lock_ok()
+        .as_ref()
+        .map(|i| i.user_agent.clone())
+        .filter(|ua| !ua.is_empty());
+    if let Some(ua) = pinned_ua {
+        builder = builder.user_agent(&ua);
+    }
+    let win = builder
         .build()
         .map_err(|e| other(format!("登录窗口创建失败: {e}")))?;
     *active.window.lock_ok() = Some(win.clone());

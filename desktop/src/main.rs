@@ -1681,6 +1681,7 @@ fn main() {
             baizhi::mc_password_login,
             baizhi::weblogin::mc_web_login,
             baizhi::weblogin::mc_web_login_cancel,
+            baizhi::mc_set_webview_identity,
             baizhi::mc_logout,
             baizhi::mc_usage,
             baizhi::mc_checkin,

@@ -3950,7 +3950,7 @@ impl OhmyDriver {
             return None;
         }
         let m = self.0.models.iter().find(|m| m.name == model_id)?;
-        member_runtime_model_config(m.runtime.as_ref(), |url| self.0.app.mc_cookie_header(url))
+        member_runtime_model_config(m.runtime.as_ref(), |url| self.0.app.mc_session_headers(url))
     }
 
     /// 引擎侧会话存在性(session/exists,旧引擎回退文件探测)。生产路径
@@ -5376,21 +5376,27 @@ fn engine_session_create_params(
 }
 
 /// 会员条目的运行时 model_config:模板(config.rs member_runtime_models)+
-/// mc 罐里当前对该地址有效的 Cookie 头,供 session/create、switchModel
-/// 直传。None = 走按别名的 settings.json 老路——非会员条目、官方云(模板无
-/// cookie_url,那里没有登录网关)、罐里没有该地址的 cookie(未登录/已登出,
-/// 带不带 model_config 引擎请求都一样,不必绕开 settings.json)。
+/// 会话头(ShellCtx::mc_session_headers:mc 罐里当前对该地址有效的 Cookie,
+/// 加主窗浏览器身份),供 session/create、switchModel 直传。None = 走按别名
+/// 的 settings.json 老路——非会员条目、官方云(模板无 cookie_url,那里没有
+/// 登录网关)、罐里没有该地址的 cookie(未登录/已登出,带不带 model_config
+/// 引擎请求都一样,不必绕开 settings.json)。
 ///
 /// 已知取舍:会话的 provider 是建会话/切模型那一刻的 cookie 快照,登录或
 /// 网关刷新 cookie 后,已开会话要切一次模型或重开才带新值。
 pub(super) fn member_runtime_model_config(
     runtime: Option<&crate::config::MemberRuntimeModel>,
-    cookie_of: impl FnOnce(&str) -> Option<String>,
+    headers_of: impl FnOnce(&str) -> Option<Vec<(String, String)>>,
 ) -> Option<Value> {
     let rt = runtime?;
-    let cookie = cookie_of(rt.cookie_url.as_deref()?)?;
+    let headers = headers_of(rt.cookie_url.as_deref()?)?;
     let mut cfg = rt.template.clone();
-    cfg["headers"] = json!({ "Cookie": cookie });
+    cfg["headers"] = Value::Object(
+        headers
+            .into_iter()
+            .map(|(name, value)| (name, json!(value)))
+            .collect(),
+    );
     Some(cfg)
 }
 
@@ -5536,12 +5542,22 @@ mod permission_mode_tests {
         };
         let cfg = member_runtime_model_config(Some(&private), |url| {
             assert_eq!(url, "https://mc.example.com/v1");
-            Some("_oauth2_proxy=abc; monkeycode_ai_session=s".into())
+            Some(vec![
+                (
+                    "Cookie".into(),
+                    "_oauth2_proxy=abc; monkeycode_ai_session=s".into(),
+                ),
+                ("User-Agent".into(), "Mozilla/5.0 (WebKit)".into()),
+            ])
         })
         .expect("私有化 + 有 cookie 直传");
         assert_eq!(
             cfg["headers"]["Cookie"],
             "_oauth2_proxy=abc; monkeycode_ai_session=s"
+        );
+        assert_eq!(
+            cfg["headers"]["User-Agent"], "Mozilla/5.0 (WebKit)",
+            "浏览器身份随 cookie 一并直传"
         );
         assert_eq!(cfg["name"], "会员模型");
         assert_eq!(cfg["api_key"], "omk-1");
@@ -5561,7 +5577,8 @@ mod permission_mode_tests {
             "官方云模板无 cookie_url:不直传"
         );
         assert!(
-            member_runtime_model_config(None, |_| Some("x=1".into())).is_none(),
+            member_runtime_model_config(None, |_| Some(vec![("Cookie".into(), "x=1".into())]))
+                .is_none(),
             "非会员条目不直传"
         );
     }
