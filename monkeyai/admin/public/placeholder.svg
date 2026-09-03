@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1600" role="img" aria-labelledby="title description">
+  <title id="title">MonkeyAI workspace</title>
+  <desc id="description">An abstract teal illustration for the MonkeyAI login page.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#042f2e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.2" r="0.8">
+      <stop offset="0" stop-color="#5eead4" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#14b8a6" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="72" height="72" patternUnits="userSpaceOnUse">
+      <path d="M72 0H0V72" fill="none" stroke="#ccfbf1" stroke-opacity="0.12"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="1600" fill="url(#background)"/>
+  <rect width="1200" height="1600" fill="url(#glow)"/>
+  <rect width="1200" height="1600" fill="url(#grid)"/>
+  <circle cx="600" cy="700" r="250" fill="#0d9488" fill-opacity="0.34" stroke="#99f6e4" stroke-opacity="0.7" stroke-width="2"/>
+  <circle cx="600" cy="700" r="170" fill="#134e4a" fill-opacity="0.74" stroke="#ccfbf1" stroke-opacity="0.55" stroke-width="2"/>
+  <path d="M470 670c25-100 235-100 260 0v105c0 105-260 105-260 0Z" fill="#f0fdfa" fill-opacity="0.9"/>
+  <circle cx="545" cy="710" r="20" fill="#115e59"/>
+  <circle cx="655" cy="710" r="20" fill="#115e59"/>
+  <path d="M550 790c30 26 70 26 100 0" fill="none" stroke="#115e59" stroke-linecap="round" stroke-width="16"/>
+  <path d="M490 625c-55-85-145 5-85 90 22 31 60 36 91 16M710 625c55-85 145 5 85 90-22 31-60 36-91 16" fill="#134e4a" stroke="#99f6e4" stroke-opacity="0.7" stroke-width="2"/>
+  <text x="600" y="1110" fill="#f0fdfa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="76" font-weight="700" text-anchor="middle">MonkeyAI</text>
+  <text x="600" y="1180" fill="#99f6e4" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="30" text-anchor="middle">Build smarter. Move faster.</text>
+</svg>
