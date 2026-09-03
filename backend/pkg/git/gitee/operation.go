@@ -285,10 +285,10 @@ func (g *Gitee) GetRepoArchive(ctx context.Context, token, owner, repo, ref stri
 }
 
 // ListBranches 获取 Gitee 仓库分支列表
-func ListBranches(ctx context.Context, token, owner, repo string, page, perPage int, isOAuth bool) ([]*BranchInfo, error) {
+func ListBranches(ctx context.Context, baseURL, token, owner, repo string, page, perPage int, isOAuth bool) ([]*BranchInfo, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
-	apiURL := fmt.Sprintf("https://gitee.com/api/v5/repos/%s/%s/branches?page=%d&per_page=%d",
-		url.PathEscape(owner), url.PathEscape(repo), page, perPage)
+	apiURL := fmt.Sprintf("%s/api/v5/repos/%s/%s/branches?page=%d&per_page=%d",
+		baseURL, url.PathEscape(owner), url.PathEscape(repo), page, perPage)
 	if isOAuth {
 		apiURL += "&access_token=" + url.QueryEscape(token)
 	}
@@ -474,7 +474,7 @@ func (g *Gitee) Archive(ctx context.Context, opts *domain.ArchiveOptions) (*doma
 
 // Branches 实现 GitPlatformClient 接口
 func (g *Gitee) Branches(ctx context.Context, opts *domain.BranchesOptions) ([]*domain.BranchInfo, error) {
-	resp, err := ListBranches(ctx, opts.Token, opts.Owner, opts.Repo, opts.Page, opts.PerPage, opts.IsOAuth)
+	resp, err := ListBranches(ctx, g.baseURL, opts.Token, opts.Owner, opts.Repo, opts.Page, opts.PerPage, opts.IsOAuth)
 	if err != nil {
 		return nil, err
 	}
@@ -496,8 +496,8 @@ func (g *Gitee) DeleteWebhook(ctx context.Context, opts *domain.WebhookOptions) 
 
 	// 分页查找匹配的 webhook
 	for page := 1; ; page++ {
-		apiURL := fmt.Sprintf("https://gitee.com/api/v5/repos/%s/%s/hooks?page=%d&per_page=100",
-			url.PathEscape(owner), url.PathEscape(repo), page)
+		apiURL := fmt.Sprintf("%s/api/v5/repos/%s/%s/hooks?page=%d&per_page=100",
+			g.baseURL, url.PathEscape(owner), url.PathEscape(repo), page)
 		if opts.IsOAuth {
 			apiURL += "&access_token=" + url.QueryEscape(opts.Token)
 		}
@@ -530,8 +530,8 @@ func (g *Gitee) DeleteWebhook(ctx context.Context, opts *domain.WebhookOptions) 
 		}
 		for _, hook := range hooks {
 			if hook.URL == opts.WebhookURL {
-				deleteURL := fmt.Sprintf("https://gitee.com/api/v5/repos/%s/%s/hooks/%d",
-					url.PathEscape(owner), url.PathEscape(repo), hook.ID)
+				deleteURL := fmt.Sprintf("%s/api/v5/repos/%s/%s/hooks/%d",
+					g.baseURL, url.PathEscape(owner), url.PathEscape(repo), hook.ID)
 				if opts.IsOAuth {
 					deleteURL += "?access_token=" + url.QueryEscape(opts.Token)
 				}
@@ -565,8 +565,8 @@ func (g *Gitee) CreateWebhook(ctx context.Context, opts *domain.CreateWebhookOpt
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	apiURL := fmt.Sprintf("https://gitee.com/api/v5/repos/%s/%s/hooks",
-		url.PathEscape(owner), url.PathEscape(repo))
+	apiURL := fmt.Sprintf("%s/api/v5/repos/%s/%s/hooks",
+		g.baseURL, url.PathEscape(owner), url.PathEscape(repo))
 
 	payload := map[string]any{
 		"url":                   opts.WebhookURL,

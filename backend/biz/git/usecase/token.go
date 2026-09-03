@@ -218,8 +218,11 @@ func (p *TokenProvider) refreshGitea(ctx context.Context, gi *db.GitIdentity) (s
 	return resp.AccessToken, resp.RefreshToken, time.Unix(resp.ExpiresAt(), 0), nil
 }
 
-func (p *TokenProvider) refreshGitee(_ context.Context, gi *db.GitIdentity) (string, string, time.Time, error) {
-	resp, err := oauth.RefreshGitee(gi.OauthRefreshToken)
+func (p *TokenProvider) refreshGitee(ctx context.Context, gi *db.GitIdentity) (string, string, time.Time, error) {
+	if err := p.guard.ValidateURL(ctx, gi.BaseURL); err != nil {
+		return "", "", time.Time{}, err
+	}
+	resp, err := oauth.RefreshGitee(gi.BaseURL, gi.OauthRefreshToken, p.proxies...)
 	if err != nil {
 		return "", "", time.Time{}, err
 	}

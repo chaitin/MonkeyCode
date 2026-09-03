@@ -248,15 +248,18 @@ func ExchangeCnbCode(webBaseURL, clientID, clientSecret, code, redirectURI strin
 }
 
 // RefreshGitee 刷新 Gitee OAuth access_token（无需 client 凭证）
-func RefreshGitee(refreshToken string) (*GiteeTokenResponse, error) {
+func RefreshGitee(baseURL, refreshToken string, proxies ...string) (*GiteeTokenResponse, error) {
+	if baseURL == "" {
+		baseURL = "https://gitee.com"
+	}
 	params := url.Values{}
 	params.Add("grant_type", "refresh_token")
 	params.Add("refresh_token", refreshToken)
 
 	result, err := fetchWithProxyAndBody[GiteeTokenResponse](
-		http.MethodPost, "https://gitee.com/oauth/token",
+		http.MethodPost, strings.TrimSuffix(baseURL, "/")+"/oauth/token",
 		map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
-		strings.NewReader(params.Encode()),
+		strings.NewReader(params.Encode()), proxies...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("refresh gitee token: %w", err)
