@@ -15,7 +15,7 @@ MonkeyAI 的统一 Go 后端，同时承接管理后台和 AI Work Agent 的请�
 | 日志 | 标准库 `log/slog` |
 | 鉴权 | 服务端 Session、可撤销 Opaque Token、Argon2id |
 | 积分 | `shopspring/decimal` |
-| 后台任务 | `context`、`time` 与 PostgreSQL 任务表 |
+| 后台作业 | `context`、`time` 与 PostgreSQL 作业表 |
 | 测试 | 标准库 `testing`、`httptest`，数据库集成测试按需使用 Testcontainers |
 
 首期不引入 DI 容器、ORM、Redis、消息队列、ClickHouse 和独立向量数据库。知识检索优先使用 PostgreSQL 全文检索与 `pgvector`；双向实时通信确有需要时再引入 WebSocket。
@@ -40,7 +40,7 @@ backend/
 │   ├── rule/                  # Agent 规则
 │   ├── mcp/                   # MCP 服务与工具
 │   ├── expert/                # 专家预设与资源组合
-│   ├── task/                  # 任务及模型、工具调用事实
+│   ├── session/               # 会话及模型、工具调用事实
 │   ├── billing/               # 定价、额度、账户和流水
 │   ├── audit/                 # 管理审计
 │   ├── stats/                 # 实时状态和统计查询
@@ -98,7 +98,7 @@ migrations/<唯一版本>_<feature>_*.sql
 - Admin API 与 Agent API 只共享业务服务，不共享请求 DTO。
 - 跨包调用通过使用方定义的小接口完成，禁止循环依赖。
 - `database` 只提供连接与事务，具体 SQL 留在拥有该数据的业务包中。
-- 后台定时任务先随 server 生命周期运行；只有出现独立扩缩容需求时再增加 worker。
+- 后台定时作业先随 server 生命周期运行；只有出现独立扩缩容需求时再增加 worker。
 
 ## 工程约定
 
