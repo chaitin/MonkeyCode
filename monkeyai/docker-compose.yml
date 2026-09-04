@@ -2,14 +2,14 @@ name: monkeyai
 
 services:
   db:
-    image: postgres:17-alpine
+    image: chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/postgres:18.6
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-monkeyai}
       POSTGRES_USER: ${POSTGRES_USER:-monkeyai}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请设置 POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -78,6 +78,3 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-
-volumes:
-  postgres_data:

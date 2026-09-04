@@ -57,8 +57,4 @@ docker compose up --no-build
 docker compose down
 ```
 
-如需同时删除 PostgreSQL 数据卷（数据不可恢复）：
-
-```bash
-docker compose down --volumes
-```
+PostgreSQL 数据保存在 `./data`，执行 `docker compose down` 不会删除该目录。如需清空数据库，请先停止服务，再手动删除 `./data`；该操作不可恢复。
