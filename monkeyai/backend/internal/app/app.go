@@ -15,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 )
 
 type App struct {
@@ -28,14 +29,12 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	if err != nil {
 		return nil, err
 	}
-	admin := chi.NewRouter()
-	agent := chi.NewRouter()
 
 	return &App{
 		servers: []*http.Server{
 			{
 				Addr:              cfg.Addr,
-				Handler:           httpapi.New(logger, pool, admin, agent),
+				Handler:           newHandler(logger, pool),
 				ReadHeaderTimeout: 5 * time.Second,
 				IdleTimeout:       2 * time.Minute,
 				MaxHeaderBytes:    1 << 20,
@@ -53,6 +52,15 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
 	}, nil
+}
+
+func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
+	admin := chi.NewRouter()
+	agent := chi.NewRouter()
+	router := chi.NewRouter()
+	proxy.NewProxy(nil, logger).Register(router)
+	router.Mount("/", httpapi.New(logger, database, admin, agent))
+	return router
 }
 
 func (a *App) Run(ctx context.Context) error {

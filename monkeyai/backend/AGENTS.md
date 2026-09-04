@@ -24,6 +24,11 @@
 - 业务任务先运行 `go test ./internal/<feature>/...`。
 - 集成任务运行 `go test ./...`、`go vet ./...` 和 API、迁移冲突检查。
 
+## Go API 设计
+
+- 构造函数只接收必需依赖；可选配置统一使用返回接收者的链式 `WithXxx` 方法。
+- 不定义 `Option func(...)` 类型，也不使用可变参数函数式 Option。
+
 ## Go 文件命名
 
 - 手写 Go 文件使用简短的连续小写名称，例如 `admin.go`、`agent.go`、`postgres.go`。
