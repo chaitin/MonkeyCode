@@ -51,6 +51,21 @@ func TestReadyWhenDatabaseUnavailable(t *testing.T) {
 	}
 }
 
+func TestPprofNotExposed(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	New(
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		stubPinger{},
+		http.NotFoundHandler(),
+		http.NotFoundHandler(),
+	).
+		ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil))
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d", recorder.Code)
+	}
+}
+
 func TestAPIRoutes(t *testing.T) {
 	handler := New(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	_ "net/http/pprof"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -17,7 +18,7 @@ import (
 )
 
 type App struct {
-	server          *http.Server
+	servers         []*http.Server
 	database        *pgxpool.Pool
 	shutdownTimeout time.Duration
 }
@@ -31,13 +32,23 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	agent := chi.NewRouter()
 
 	return &App{
-		server: &http.Server{
-			Addr:              cfg.Addr,
-			Handler:           httpapi.New(logger, pool, admin, agent),
-			ReadHeaderTimeout: 5 * time.Second,
-			IdleTimeout:       2 * time.Minute,
-			MaxHeaderBytes:    1 << 20,
-			ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		servers: []*http.Server{
+			{
+				Addr:              cfg.Addr,
+				Handler:           httpapi.New(logger, pool, admin, agent),
+				ReadHeaderTimeout: 5 * time.Second,
+				IdleTimeout:       2 * time.Minute,
+				MaxHeaderBytes:    1 << 20,
+				ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+			},
+			{
+				Addr:              cfg.PprofAddr,
+				Handler:           http.DefaultServeMux,
+				ReadHeaderTimeout: 5 * time.Second,
+				IdleTimeout:       2 * time.Minute,
+				MaxHeaderBytes:    1 << 20,
+				ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+			},
 		},
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
@@ -47,29 +58,39 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 func (a *App) Run(ctx context.Context) error {
 	defer a.database.Close()
 
-	result := make(chan error, 1)
-	go func() {
-		result <- a.server.ListenAndServe()
-	}()
+	result := make(chan error, len(a.servers))
+	for _, server := range a.servers {
+		go func() {
+			err := server.ListenAndServe()
+			if errors.Is(err, http.ErrServerClosed) {
+				err = nil
+			} else if err != nil {
+				err = fmt.Errorf("监听 %s: %w", server.Addr, err)
+			}
+			result <- err
+		}()
+	}
 
+	completed := 0
+	var runErrors []error
 	select {
 	case err := <-result:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return fmt.Errorf("运行 HTTP 服务: %w", err)
+		runErrors = append(runErrors, err)
+		completed++
 	case <-ctx.Done():
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.shutdownTimeout)
 	defer cancel()
-	if err := a.server.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("关闭 HTTP 服务: %w", err)
+	for _, server := range a.servers {
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			runErrors = append(runErrors, fmt.Errorf("关闭 %s: %w", server.Addr, err))
+		}
 	}
 
-	err := <-result
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("运行 HTTP 服务: %w", err)
+	for completed < len(a.servers) {
+		runErrors = append(runErrors, <-result)
+		completed++
 	}
-	return nil
+	return errors.Join(runErrors...)
 }

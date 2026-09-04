@@ -13,6 +13,7 @@ MonkeyAI 的统一 Go 后端，同时承接管理后台和 AI Work Agent 的请�
 | 数据迁移 | `golang-migrate/v4` 与显式 SQL |
 | 配置 | 标准库 `os`、`flag`、`strconv` |
 | 日志 | 标准库 `log/slog` |
+| 性能分析 | 标准库 `net/http/pprof`，独立本机监听 |
 | 鉴权 | 服务端 Session、可撤销 Opaque Token、Argon2id |
 | 积分 | `shopspring/decimal` |
 | 后台作业 | `context`、`time` 与 PostgreSQL 作业表 |
@@ -129,4 +130,4 @@ export MONKEYAI_DATABASE_URL='postgres://monkeyai:password@127.0.0.1:5432/monkey
 go run ./cmd/server
 ```
 
-可选环境变量为 `MONKEYAI_HTTP_ADDR`、`MONKEYAI_SHUTDOWN_TIMEOUT` 和 `MONKEYAI_LOG_LEVEL`，对应命令行参数可通过 `go run ./cmd/server -h` 查看。服务提供 `/healthz` 存活检查和 `/readyz` 数据库就绪检查。
+可选环境变量为 `MONKEYAI_HTTP_ADDR`、`MONKEYAI_PPROF_ADDR`、`MONKEYAI_SHUTDOWN_TIMEOUT` 和 `MONKEYAI_LOG_LEVEL`，对应命令行参数可通过 `go run ./cmd/server -h` 查看。服务提供 `/healthz` 存活检查和 `/readyz` 数据库就绪检查。pprof 默认单独监听 `127.0.0.1:6060`，入口为 `/debug/pprof/`，不对业务端口暴露。

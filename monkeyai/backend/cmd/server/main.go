@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger.Info("服务启动", "addr", cfg.Addr)
+	logger.Info("服务启动", "addr", cfg.Addr, "pprof_addr", cfg.PprofAddr)
 	if err := application.Run(ctx); err != nil {
 		logger.Error("服务退出", "error", err)
 		os.Exit(1)
