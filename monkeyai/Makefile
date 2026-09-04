@@ -4,10 +4,11 @@ REGISTRY ?= chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode
 
 ADMIN_IMAGE ?= $(REGISTRY)/monkeyai-admin:$(TAG)
 BACKEND_IMAGE ?= $(REGISTRY)/monkeyai-backend:$(TAG)
+MIGRATE_IMAGE ?= $(REGISTRY)/monkeyai-migrate:$(TAG)
 
-.PHONY: image image-admin image-backend push push-admin push-backend images
+.PHONY: image image-admin image-backend image-migrate push push-admin push-backend push-migrate images
 
-image: image-admin image-backend
+image: image-admin image-backend image-migrate
 
 image-admin:
 	docker buildx build \
@@ -25,7 +26,15 @@ image-backend:
 	  ./backend
 	@echo "Backend image: $(BACKEND_IMAGE)"
 
-push: push-admin push-backend
+image-migrate:
+	docker buildx build \
+	  --platform $(PLATFORM) \
+	  --tag $(MIGRATE_IMAGE) \
+	  --load \
+	  ./backend/migrations
+	@echo "Migrate image: $(MIGRATE_IMAGE)"
+
+push: push-admin push-backend push-migrate
 
 push-admin:
 	docker buildx build \
@@ -43,6 +52,15 @@ push-backend:
 	  ./backend
 	@echo "Pushed: $(BACKEND_IMAGE)"
 
+push-migrate:
+	docker buildx build \
+	  --platform $(PLATFORM) \
+	  --tag $(MIGRATE_IMAGE) \
+	  --push \
+	  ./backend/migrations
+	@echo "Pushed: $(MIGRATE_IMAGE)"
+
 images:
 	@echo "Admin: $(ADMIN_IMAGE)"
 	@echo "Backend: $(BACKEND_IMAGE)"
+	@echo "Migrate: $(MIGRATE_IMAGE)"

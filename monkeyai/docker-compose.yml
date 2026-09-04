@@ -16,13 +16,13 @@ services:
       start_period: 10s
 
   migrate:
-    image: chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/migrate:v4.18.3
+    image: ${MIGRATE_IMAGE:-monkeyai-migrate:local}
+    build:
+      context: ./backend/migrations
     command:
       - -path=/migrations
       - -database=${MONKEYAI_DATABASE_URL:-postgres://${POSTGRES_USER:-monkeyai}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-monkeyai}?sslmode=disable}
       - up
-    volumes:
-      - ./backend/migrations:/migrations:ro
     depends_on:
       db:
         condition: service_healthy

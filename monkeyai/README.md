@@ -29,8 +29,10 @@ make push
 ```bash
 make image-admin
 make image-backend
+make image-migrate
 make push-admin
 make push-backend
+make push-migrate
 ```
 
 发布指定标签或多架构镜像时覆盖对应变量：
@@ -48,8 +50,11 @@ make push REGISTRY=registry.example.com/team
 ```bash
 ADMIN_IMAGE=registry.example.com/team/monkeyai-admin:v1.0.0 \
 BACKEND_IMAGE=registry.example.com/team/monkeyai-backend:v1.0.0 \
+MIGRATE_IMAGE=registry.example.com/team/monkeyai-migrate:v1.0.0 \
 docker compose up --no-build
 ```
+
+迁移 SQL 已打包在 Migrate 镜像中。远程部署无需同步 `backend/migrations` 目录，但必须为 `MIGRATE_IMAGE` 指定与 Backend 相同发布版本的已推送镜像。
 
 停止服务：
 
