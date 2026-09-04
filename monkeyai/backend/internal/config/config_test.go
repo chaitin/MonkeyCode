@@ -1,0 +1,49 @@
+package config
+
+import (
+	"log/slog"
+	"testing"
+	"time"
+)
+
+func TestLoad(t *testing.T) {
+	t.Setenv("MONKEYAI_HTTP_ADDR", "")
+	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://monkeyai:secret@localhost:5432/monkeyai")
+	t.Setenv("MONKEYAI_SHUTDOWN_TIMEOUT", "")
+	t.Setenv("MONKEYAI_LOG_LEVEL", "")
+
+	cfg, err := Load([]string{
+		"-http-addr=127.0.0.1:9000",
+		"-shutdown-timeout=3s",
+		"-log-level=debug",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Addr != "127.0.0.1:9000" {
+		t.Fatalf("Addr = %q", cfg.Addr)
+	}
+	if cfg.ShutdownTimeout != 3*time.Second {
+		t.Fatalf("ShutdownTimeout = %s", cfg.ShutdownTimeout)
+	}
+	if cfg.LogLevel != slog.LevelDebug {
+		t.Fatalf("LogLevel = %s", cfg.LogLevel)
+	}
+}
+
+func TestLoadRequiresDatabaseURL(t *testing.T) {
+	t.Setenv("MONKEYAI_DATABASE_URL", "")
+
+	if _, err := Load(nil); err == nil {
+		t.Fatal("期望数据库地址为空时返回错误")
+	}
+}
+
+func TestLoadRejectsInvalidShutdownTimeout(t *testing.T) {
+	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://localhost/monkeyai")
+	t.Setenv("MONKEYAI_SHUTDOWN_TIMEOUT", "later")
+
+	if _, err := Load(nil); err == nil {
+		t.Fatal("期望退出超时时间非法时返回错误")
+	}
+}
