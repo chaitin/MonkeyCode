@@ -57,4 +57,4 @@ docker compose up --no-build
 docker compose down
 ```
 
-PostgreSQL 数据保存在 `./data`，执行 `docker compose down` 不会删除该目录。如需清空数据库，请先停止服务，再手动删除 `./data`；该操作不可恢复。
+PostgreSQL 数据保存在 `./data/postgres`，执行 `docker compose down` 不会删除该目录。如需清空数据库，请先停止服务，再手动删除 `./data/postgres`；该操作不可恢复。
