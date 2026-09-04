@@ -1,6 +1,6 @@
 # MonkeyAI Admin 数据模型设计
 
-> 状态：草案，已生成第一版 PostgreSQL migration
+> 状态：方案设计草案
 >
 > 数据库语义：PostgreSQL
 >
@@ -8,21 +8,21 @@
 
 ## 1. 目标与范围
 
-本文档定义 MonkeyAI Admin 所需的领域实体、实体关系和字段。字段类型使用 PostgreSQL 类型表达，并已转换为第一版 migration；本文档本身不包含 SQL。
+本文档定义 MonkeyAI Admin 所需的领域实体、实体关系和字段。字段类型使用 PostgreSQL 类型表达，作为后续实现数据库结构的设计依据；本文档本身不包含 SQL，也不讨论已有数据库兼容或迁移方案。
 
 当前版本确定：
 
 - 表及字段；
 - 字段含义、可空性、默认值和候选值；
 - 实体之间的逻辑关系；
-- 首版主键、外键、唯一约束、检查约束和查询索引；
+- 主键、外键、唯一约束、检查约束和查询索引；
 - 敏感字段和统计事实的存储边界。
 
 后续版本仍需确定：
 
 - 分区、归档和冷热数据策略；
 - 全文检索索引；
-- 与现有 MonkeyCode 后端表的复用、改造和数据迁移方案。
+- 数据库实现与部署方案。
 
 ## 2. 核心建模决策
 
@@ -267,7 +267,7 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 资源授权 ID。 |
-| `resource_type` | `text` | 是 | 无 | 被授权资源类型：`model`、`skill`、`rule`、`mcp_server`、`expert`。 |
+| `resource_type` | `text` | 是 | 无 | 被授权资源类型：`model`、`skill`、`rule`、`connector`、`expert`。Definition 不参与授权。 |
 | `resource_id` | `uuid` | 是 | 无 | 被授权资源 ID，与 `resource_type` 共同定位具体资源。 |
 | `user_id` | `uuid` | 否 | `NULL` | 被授权用户 ID；与 `group_id` 必须且只能填写一个。 |
 | `group_id` | `uuid` | 否 | `NULL` | 被授权分组 ID；与 `user_id` 必须且只能填写一个，并覆盖其所有后代分组用户。 |
@@ -276,6 +276,8 @@ flowchart LR
 | `granted_by_user_id` | `uuid` | 是 | 无 | 执行分享的资源所有者或管理员用户 ID。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 首次授权时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 访问级别最近更新时间。 |
+
+专家授权只能使用 `read_only`。个人 Connector 不写入本表，仅所有者可用。
 
 ## 8. AI 资源
 
@@ -321,6 +323,8 @@ flowchart LR
 
 ### 8.3 `skills`：技能
 
+Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接包含 `SKILL.md`。该文件是指令唯一权威来源，数据库只保存解析出的名称、描述和包对象元数据。
+
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 技能 ID。 |
@@ -328,7 +332,6 @@ flowchart LR
 | `owner_user_id` | `uuid` | 是 | 无 | 关联用户 ID；系统技能记录创建它的管理员，个人技能记录当前所有者。 |
 | `name` | `text` | 是 | 无 | 技能名称，对应技能包中的规范名称。 |
 | `description` | `text` | 是 | 无 | 技能用途说明。 |
-| `instructions` | `text` | 是 | 无 | 技能主指令内容。 |
 | `package_file_name` | `text` | 是 | 无 | 导入时的技能包原始文件名。 |
 | `package_s3_key` | `text` | 是 | 无 | 技能包在 S3 Bucket 中的 Object Key。 |
 | `package_size_bytes` | `bigint` | 是 | 无 | 技能包字节数。 |
@@ -346,7 +349,7 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 关系 ID。 |
-| `resource_type` | `text` | 是 | 无 | 资源类型：`model`、`skill`、`rule`、`mcp_server`、`expert`。 |
+| `resource_type` | `text` | 是 | 无 | 资源类型：`model`、`skill`、`rule`、`connector`、`expert`。 |
 | `resource_id` | `uuid` | 是 | 无 | 资源 ID，与 `resource_type` 共同定位具体资源。 |
 | `tag_id` | `uuid` | 是 | 无 | 标签 ID。 |
 | `assigned_by_user_id` | `uuid` | 是 | 无 | 执行标签关联的用户 ID。 |
@@ -365,105 +368,178 @@ flowchart LR
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
 
-### 8.6 `mcp_servers`：MCP 服务
+### 8.6 `connector_definitions`：Connector 定义
+
+保存一类远程 MCP 服务的稳定标识、连接模板和认证配置。系统 Definition 对所有用户可见；个人 Definition 仅所有者可见和使用。
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
-| `id` | `uuid` | 是 | 自动生成 | MCP 服务 ID。 |
+| `id` | `uuid` | 是 | 自动生成 | Definition ID。 |
+| `identifier` | `text` | 是 | 无 | 系统标识如 `github`，个人标识为自动生成的 `custom:<uuid>`；创建后不可修改。 |
+| `name` | `text` | 是 | 无 | 默认显示名称。 |
+| `description` | `text` | 是 | 无 | 服务能力说明。 |
 | `ownership_type` | `text` | 是 | 无 | 所有权：`system`、`user`。 |
-| `owner_user_id` | `uuid` | 是 | 无 | 关联用户 ID；系统 MCP 服务记录创建它的管理员，个人 MCP 服务记录当前所有者。 |
-| `name` | `text` | 是 | 无 | MCP 服务显示名称。 |
-| `description` | `text` | 是 | 无 | MCP 服务用途说明。 |
-| `url` | `text` | 是 | 无 | MCP 服务连接地址。 |
-| `authorization_mode` | `text` | 是 | 无 | 授权模式：`none`、`independent`、`centralized`。 |
-| `authorization_method` | `text` | 否 | `NULL` | 授权方式：`oauth`、`http_header`；无需授权时为空。 |
-| `connection_status` | `text` | 是 | `unknown` | 最近检测状态：`connected`、`error`、`unknown`。 |
-| `last_checked_at` | `timestamptz` | 否 | `NULL` | 最近一次连接检测时间。 |
-| `last_error` | `text` | 否 | `NULL` | 最近一次连接失败原因。 |
+| `owner_user_id` | `uuid` | 是 | 无 | 系统 Definition 记录创建管理员，个人 Definition 记录所有者。 |
+| `icon_file_name` | `text` | 否 | `NULL` | 图标原始文件名。 |
+| `icon_s3_key` | `text` | 否 | `NULL` | 图标 S3 Object Key。 |
+| `icon_mime_type` | `text` | 否 | `NULL` | 图标 MIME 类型。 |
+| `icon_size_bytes` | `bigint` | 否 | `NULL` | 图标字节数。 |
+| `icon_sha256` | `text` | 否 | `NULL` | 图标内容摘要。 |
+| `transport` | `text` | 是 | `streamable_http` | 服务端远程 Transport；本期仅支持 `streamable_http` 并兼容 SSE。 |
+| `server_url` | `text` | 是 | 无 | 默认上游 MCP URL。 |
+| `authorization_mode` | `text` | 是 | 无 | `none`、`independent`、`centralized`；个人 Definition 不允许 `centralized`。 |
+| `authorization_method` | `text` | 否 | `NULL` | `oauth`、`http_header`；`none` 时为空。 |
+| `header_schema` | `jsonb` | 是 | 空数组 | Header 名称、展示信息、必填性、敏感性和非敏感默认值。 |
+| `oauth_discovery_type` | `text` | 否 | `NULL` | `oauth_authorization_server`、`openid_connect`、`manual`。 |
+| `oauth_discovery_url` | `text` | 否 | `NULL` | 完整 RFC 8414 或 OIDC Discovery URL。 |
+| `oauth_authorization_endpoint` | `text` | 否 | `NULL` | Manual 模式授权端点。 |
+| `oauth_token_endpoint` | `text` | 否 | `NULL` | Manual 模式 Token 端点。 |
+| `oauth_client_id` | `text` | 否 | `NULL` | 预先配置的 OAuth Client ID。 |
+| `oauth_client_secret` | `text` | 否 | `NULL` | OAuth Client Secret，首版明文保存且 API 不回传。 |
+| `oauth_scopes` | `text[]` | 否 | `NULL` | 请求的 OAuth Scope。 |
+| `oauth_use_pkce` | `boolean` | 是 | `true` | 是否使用 PKCE。 |
+| `last_discovered_connector_id` | `uuid` | 否 | `NULL` | 最近成功覆盖共享工具目录的 Connector ID。 |
+| `enabled` | `boolean` | 是 | `true` | 是否允许创建新 Connector。 |
+| `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
+| `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
+| `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间；存在有效 Connector 时禁止删除。 |
+
+系统 identifier 格式为 `^[a-z][a-z0-9_-]{1,63}$` 且在实例内唯一。系统 identifier 是保留名称，用户只能基于系统 Definition 创建个人 Connector。Header key 忽略大小写唯一；敏感 Header 不得设置默认值；`none` 不得声明敏感 Header。
+
+### 8.7 `connectors`：Connector 实例
+
+同一 Definition 可创建多个实例。Connector 可覆盖 URL 和非敏感 Header，但不能覆盖授权模式和认证方式。
+
+| 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | 是 | 自动生成 | Connector ID。 |
+| `definition_id` | `uuid` | 是 | 无 | 来源 Definition ID。 |
+| `ownership_type` | `text` | 是 | 无 | 所有权：`system`、`user`。 |
+| `owner_user_id` | `uuid` | 是 | 无 | 系统实例记录创建管理员，个人实例记录所有者。 |
+| `name` | `text` | 是 | 无 | 实例显示名称。 |
+| `server_url_override` | `text` | 否 | `NULL` | 实例 URL 覆盖。 |
+| `header_values` | `jsonb` | 是 | 空对象 | Header Schema 中非敏感 Header 的实例值。 |
+| `definition_snapshot` | `jsonb` | 否 | `NULL` | `none`、`independent` 创建时的非密钥配置快照；`centralized` 必须为空。 |
+| `enabled` | `boolean` | 是 | `true` | 是否允许新会话选择。 |
+| `connection_status` | `text` | 是 | `unknown` | `connected`、`error`、`unknown`。 |
+| `last_checked_at` | `timestamptz` | 否 | `NULL` | 手动测试或实际 MCP 请求最近更新时间。 |
+| `last_error` | `text` | 否 | `NULL` | 最近一次脱敏错误。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
 
-### 8.7 `mcp_server_credentials`：MCP 服务凭据
+个人 Connector 仅所有者可用且不支持分享。`none`、`independent` 使用创建时 Definition 快照；`centralized` 始终使用当前 Definition。删除 Connector 时撤销其凭证，历史调用继续保留。
 
-集中授权时 `user_id` 为空；独立授权时每个用户保存一份凭据。
+### 8.8 `connector_credentials`：Connector 凭证
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
-| `id` | `uuid` | 是 | 自动生成 | 凭据 ID。 |
-| `server_id` | `uuid` | 是 | 无 | MCP 服务 ID。 |
-| `user_id` | `uuid` | 否 | `NULL` | 独立授权的用户 ID；集中授权为空。 |
-| `method` | `text` | 是 | 无 | 凭据类型：`oauth`、`http_header`。 |
-| `http_headers` | `jsonb` | 否 | `NULL` | HTTP Header 集合，包含的认证信息以明文保存。 |
-| `oauth_access_token` | `text` | 否 | `NULL` | OAuth Access Token，明文保存。 |
-| `oauth_refresh_token` | `text` | 否 | `NULL` | OAuth Refresh Token，明文保存。 |
-| `oauth_token_type` | `text` | 否 | `NULL` | OAuth Token 类型，例如 `Bearer`。 |
-| `oauth_scopes` | `text` | 否 | `NULL` | OAuth Scope 快照。 |
+| `id` | `uuid` | 是 | 自动生成 | 凭证 ID。 |
+| `connector_id` | `uuid` | 是 | 无 | Connector ID。 |
+| `user_id` | `uuid` | 否 | `NULL` | 独立认证用户；集中认证为空。 |
+| `http_headers` | `jsonb` | 否 | `NULL` | Header Schema 中的敏感值，首版明文保存。 |
+| `oauth_access_token` | `text` | 否 | `NULL` | OAuth Access Token，首版明文保存。 |
+| `oauth_refresh_token` | `text` | 否 | `NULL` | OAuth Refresh Token，首版明文保存。 |
+| `oauth_token_type` | `text` | 否 | `NULL` | OAuth Token 类型。 |
+| `oauth_scopes` | `text[]` | 否 | `NULL` | 实际授权 Scope。 |
 | `oauth_expires_at` | `timestamptz` | 否 | `NULL` | Access Token 过期时间。 |
-| `status` | `text` | 是 | `pending` | 状态：`pending`、`authorized`、`expired`、`revoked`、`error`。 |
+| `status` | `text` | 是 | `pending` | `pending`、`authorized`、`expired`、`revoked`、`error`。 |
 | `authorized_at` | `timestamptz` | 否 | `NULL` | 最近授权成功时间。 |
-| `last_error` | `text` | 否 | `NULL` | 最近授权失败原因。 |
+| `refreshed_at` | `timestamptz` | 否 | `NULL` | 最近 Token 刷新时间。 |
+| `last_error` | `text` | 否 | `NULL` | 最近一次脱敏授权错误。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
-| `revoked_at` | `timestamptz` | 否 | `NULL` | 撤销授权时间。 |
+| `revoked_at` | `timestamptz` | 否 | `NULL` | 撤销时间。 |
 
-### 8.8 `mcp_tools`：MCP 工具
+认证方式以 Connector 实际 Definition 为准，本表不重复保存 method。集中认证使用每个 Connector 唯一的 `user_id IS NULL` 有效凭证；独立认证 `user_id` 必填；`none` 不允许凭证。重新授权覆盖原记录。
+
+### 8.9 `mcp_tools`：MCP 工具
+
+工具目录按 Definition 保存，同一 Definition 的全部 Connector 共享目录、启停和计费配置。
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
-| `id` | `uuid` | 是 | 自动生成 | MCP 工具 ID。 |
-| `server_id` | `uuid` | 是 | 无 | 所属 MCP 服务 ID。 |
-| `name` | `text` | 是 | 无 | MCP 服务声明的工具名称。 |
-| `description` | `text` | 是 | 无 | MCP 服务声明的工具说明。 |
-| `input_schema` | `jsonb` | 否 | `NULL` | MCP 工具输入 JSON Schema。 |
-| `enabled` | `boolean` | 是 | `true` | 是否允许调用该工具。 |
-| `credits_per_call` | `numeric(24,6)` | 是 | `0` | 每次成功调用消耗的积分。 |
+| `id` | `uuid` | 是 | 自动生成 | 工具 ID。 |
+| `definition_id` | `uuid` | 是 | 无 | 所属 Definition ID。 |
+| `name` | `text` | 是 | 无 | 上游工具名称，同一 Definition 内忽略大小写唯一。 |
+| `description` | `text` | 是 | 无 | 工具说明。 |
+| `input_schema` | `jsonb` | 否 | `NULL` | 输入 JSON Schema。 |
+| `enabled` | `boolean` | 是 | `true` | 是否允许该 Definition 暴露工具。 |
+| `credits_per_call` | `numeric(24,6)` | 是 | `0` | 集中认证成功调用的积分；其他模式固定 `0`。 |
 | `discovered_at` | `timestamptz` | 是 | 当前时间 | 首次发现时间。 |
-| `updated_at` | `timestamptz` | 是 | 当前时间 | 最近一次同步定义或配置的时间。 |
-| `deleted_at` | `timestamptz` | 否 | `NULL` | 工具从服务中消失或被删除的时间。 |
+| `updated_at` | `timestamptz` | 是 | 当前时间 | 最近同步时间。 |
+| `deleted_at` | `timestamptz` | 否 | `NULL` | 最新目录中未发现该工具的时间。 |
 
-### 8.9 `experts`：专家
+任意 Connector 成功执行 `tools/list` 后以最新结果覆盖共享目录。新工具创建，缺失工具软删除，再次发现同名工具时恢复。工具改名视为删除和新增。同步不覆盖管理员设置的 `enabled` 和 `credits_per_call`。
+
+### 8.10 `experts`：系统专家
+
+服务端只保存管理员创建的系统专家。个人专家仅由 Desktop 本地管理。本期修改即发布，不建立版本表。
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 专家 ID。 |
-| `name` | `text` | 是 | 无 | 专家显示名称。 |
+| `name` | `text` | 是 | 无 | 专家名称。 |
 | `description` | `text` | 是 | 无 | 专家用途说明。 |
-| `prompt` | `text` | 是 | 无 | 专家角色和工作方式提示词。 |
-| `enabled` | `boolean` | 是 | `true` | 是否允许用户使用该专家。 |
-| `created_by_user_id` | `uuid` | 是 | 无 | 创建者用户 ID。 |
+| `profile` | `jsonb` | 是 | 无 | 团队拓扑预留、Connector 依赖与默认模型。 |
+| `resource_manifest_hash` | `text` | 是 | 无 | 当前专家资源清单 SHA-256。 |
+| `enabled` | `boolean` | 是 | `true` | 是否允许新会话使用。 |
+| `created_by_user_id` | `uuid` | 是 | 无 | 创建管理员。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
 
-### 8.10 `expert_mcp_tools`：专家 MCP 工具关系
+Profile 包含 `schema_version`、本期固定为空的 `team.topology`、按系统 identifier 声明的 Connector 依赖，以及可空的 `runtime.default_model_id`。每项 Connector 依赖保存 `required`、工具白名单、工具黑名单和 `target_member_keys`。同一 Profile 中 identifier 不重复。
+
+### 8.11 `expert_agents`：专家成员
+
+| 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | 是 | 自动生成 | 成员 ID。 |
+| `expert_id` | `uuid` | 是 | 无 | 所属专家。 |
+| `agent_key` | `text` | 是 | 无 | 专家内部不可变成员标识。 |
+| `display_name` | `text` | 是 | 无 | 展示名称。 |
+| `role` | `text` | 是 | 无 | `lead`、`member`。 |
+| `prompt_file_name` | `text` | 是 | 无 | 提示词文件名。 |
+| `prompt_s3_key` | `text` | 是 | 无 | Markdown 提示词 Object Key。 |
+| `prompt_size_bytes` | `bigint` | 是 | 无 | 提示词文件字节数。 |
+| `prompt_sha256` | `text` | 是 | 无 | 提示词文件摘要。 |
+| `sort_order` | `integer` | 是 | `0` | 展示顺序。 |
+| `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
+| `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
+| `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
+
+本期每个专家只允许一个有效成员且必须为 lead，由该成员完成任务；结构预留 member。同一专家下有效 agent_key 唯一。
+
+### 8.12 `expert_rules`：专家规则关系
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 关系 ID。 |
 | `expert_id` | `uuid` | 是 | 无 | 专家 ID。 |
-| `tool_id` | `uuid` | 是 | 无 | 专家可调用的 MCP 工具 ID。 |
+| `rule_id` | `uuid` | 是 | 无 | 系统规则 ID。 |
+| `target_member_keys` | `jsonb` | 是 | 空数组 | 可用成员 agent_key；空数组表示全部成员。 |
+| `sort_order` | `integer` | 是 | `0` | 装配顺序。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 绑定时间。 |
 
-### 8.11 `expert_rules`：专家规则关系
+### 8.13 `expert_skills`：专家技能关系
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 关系 ID。 |
 | `expert_id` | `uuid` | 是 | 无 | 专家 ID。 |
-| `rule_id` | `uuid` | 是 | 无 | 专家固定加载的规则 ID。 |
+| `skill_id` | `uuid` | 是 | 无 | 系统技能 ID。 |
+| `target_member_keys` | `jsonb` | 是 | 空数组 | 可用成员 agent_key；空数组表示全部成员。 |
+| `sort_order` | `integer` | 是 | `0` | 装配顺序。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 绑定时间。 |
 
-### 8.12 `expert_skills`：专家技能关系
+两张关系表均要求同一专家不能重复关联同一资源，且 `sort_order >= 0`。`target_member_keys` 由应用层验证为同一专家的成员。解除关系时物理删除并写入审计。被有效关系引用的 Rule 或 Skill 禁止删除。
 
-| 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
-| --- | --- | --- | --- | --- |
-| `id` | `uuid` | 是 | 自动生成 | 关系 ID。 |
-| `expert_id` | `uuid` | 是 | 无 | 专家 ID。 |
-| `skill_id` | `uuid` | 是 | 无 | 专家固定加载的技能 ID。 |
-| `created_at` | `timestamptz` | 是 | 当前时间 | 绑定时间。 |
+`resource_manifest_hash` 包含 Profile、成员提示词、专家 Rule 和 Skill 包摘要，不包含 Connector Definition 和系统强制 Rule。相关资源或关系变化时在同一事务内同步重算。
 
 ## 9. 会话与用量事实
+
+管理页面和产品交互中沿用“任务”称谓时，其持久化实体统一为 `sessions`，任务 ID 即会话 ID，不另建 `tasks` 表。
 
 ### 9.1 `sessions`：会话
 
@@ -512,12 +588,14 @@ flowchart LR
 
 ### 9.3 `mcp_tool_calls`：MCP 工具调用
 
+只记录调用事实，不保存请求或响应 Payload。三种远程授权模式都记录调用；只有集中认证成功调用扣费。本地 stdio MCP 不进入本表。
+
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 工具调用 ID。 |
 | `session_id` | `uuid` | 是 | 无 | 所属会话 ID。 |
 | `user_id` | `uuid` | 是 | 无 | 产生调用的用户 ID。 |
-| `server_id` | `uuid` | 是 | 无 | MCP 服务 ID。 |
+| `connector_id` | `uuid` | 是 | 无 | 实际使用的 Connector ID。 |
 | `tool_id` | `uuid` | 是 | 无 | MCP 工具 ID。 |
 | `request_id` | `text` | 否 | `NULL` | 链路请求 ID。 |
 | `status` | `text` | 是 | 无 | 状态：`running`、`succeeded`、`failed`、`cancelled`。 |
@@ -623,8 +701,8 @@ flowchart LR
 | 任务历史 | `sessions`、`model_calls`、`credit_ledger_entries`、`users` |
 | 模型管理 | `models`、`resource_access_grants` |
 | 技能 | `skills`、`tags`、`resource_tags`、`resource_access_grants`、S3 对象存储 |
-| 专家 | `experts` 及三张专家资源关系表、`resource_access_grants` |
-| 工具 | `mcp_servers`、`mcp_server_credentials`、`mcp_tools`、`resource_access_grants` |
+| 专家 | `experts`、`expert_agents`、`expert_rules`、`expert_skills`、`resource_access_grants`、S3 对象存储 |
+| 工具 | `connector_definitions`、`connectors`、`connector_credentials`、`mcp_tools`、`resource_access_grants` |
 | 规则 | `rules`、`resource_access_grants` |
 | 扣费明细 | `credit_ledger_entries`、`credit_accounts` |
 | 费用设置 | `settings`、`billing_quotas` |
@@ -634,10 +712,9 @@ flowchart LR
 
 ## 13. 后续阶段
 
-第一版 migration 已按当前模型生成。后续评审与迭代应继续完成：
+本数据模型确认后，后续实现阶段应继续完成：
 
 1. 结合管理端实际查询继续校准索引；
-2. 明确与现有 MonkeyCode 后端表的复用、改造和迁移关系；
-3. 明确高频事实表的保留周期、分区和聚合策略；
-4. 评估敏感信息加密、轮换和脱敏方案；
-5. 根据评审结果追加 migration，不改写已发布版本。
+2. 明确高频事实表的保留周期、分区和聚合策略；
+3. 评估敏感信息加密、轮换和脱敏方案；
+4. 根据最终设计实现 PostgreSQL schema。
