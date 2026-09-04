@@ -29,6 +29,9 @@ export const enUS = {
     submit: "Sign in",
     continueWith: "Or continue with",
     loginWith: "Sign in with {{provider}}",
+    oauthAdminRequired:
+      "This OAuth account is not linked to an active administrator",
+    oauthFailed: "OAuth sign-in failed. Please try again",
     workspacePreview: "MonkeyAI workspace preview",
     legal:
       "<terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>",

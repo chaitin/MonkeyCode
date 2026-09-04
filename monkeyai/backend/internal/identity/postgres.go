@@ -130,12 +130,12 @@ func (s *Service) rotateToken(ctx context.Context, oldRefreshHash, clientID, acc
 	return tx.Commit(ctx)
 }
 
-func (s *Service) createLoginState(ctx context.Context, stateHash, connectionID, requestID string, expiresAt time.Time) error {
+func (s *Service) createLoginState(ctx context.Context, stateHash, connectionID, requestID, purpose string, expiresAt time.Time) error {
 	_, err := s.db.Exec(ctx, `
 		INSERT INTO oauth_login_states (
-			state_hash, connection_id, authorization_request_id, expires_at
-		) VALUES ($1, $2, $3, $4)
-	`, stateHash, connectionID, requestID, expiresAt)
+			state_hash, connection_id, authorization_request_id, purpose, expires_at
+		) VALUES ($1, $2, nullif($3, '')::uuid, $4, $5)
+	`, stateHash, connectionID, requestID, purpose, expiresAt)
 	return err
 }
 
@@ -145,8 +145,8 @@ func (s *Service) consumeLoginState(ctx context.Context, stateHash string) (Logi
 		UPDATE oauth_login_states
 		SET consumed_at = now()
 		WHERE state_hash = $1 AND consumed_at IS NULL AND expires_at > now()
-		RETURNING connection_id, authorization_request_id
-	`, stateHash).Scan(&state.ConnectionID, &state.AuthorizationRequestID)
+		RETURNING connection_id, coalesce(authorization_request_id::text, ''), purpose
+	`, stateHash).Scan(&state.ConnectionID, &state.AuthorizationRequestID, &state.Purpose)
 	return state, err
 }
 
@@ -269,7 +269,7 @@ func scanUser(row rowScanner) (User, error) {
 	return user, nil
 }
 
-func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile) (User, error) {
+func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile, adminOnly bool) (User, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return User{}, err
@@ -283,11 +283,8 @@ func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile) (
 			AND i.deleted_at IS NULL AND u.deleted_at IS NULL
 	`, profile.Provider, profile.Issuer, profile.Subject))
 	if err == nil {
-		if user.Role == "admin" {
-			return User{}, ErrAdminPasswordRequired
-		}
-		if user.Status != "active" {
-			return User{}, ErrUserDisabled
+		if err := validateUpstreamUser(user, adminOnly); err != nil {
+			return User{}, err
 		}
 		err = tx.QueryRow(ctx, `
 			UPDATE users SET name = $2, avatar_url = nullif($3, ''), last_login_at = now(), updated_at = now()
@@ -307,6 +304,9 @@ func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile) (
 	}
 
 	if profile.Email == "" {
+		if adminOnly {
+			return User{}, ErrAdminRoleRequired
+		}
 		profile.Email = fmt.Sprintf("%s@%s.oauth.local", profile.Subject, profile.Provider)
 	}
 	if profile.Name == "" {
@@ -315,36 +315,47 @@ func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile) (
 	if profile.Name == "" {
 		profile.Name = profile.Email
 	}
-	var existingRole, existingStatus string
-	err = tx.QueryRow(ctx, `
-		SELECT role, status FROM users
+	user, err = scanUser(tx.QueryRow(ctx, `
+		SELECT id, name, email, coalesce(avatar_url, ''), role, status, joined_at, last_login_at
+		FROM users
 		WHERE lower(email) = lower($1) AND deleted_at IS NULL
-	`, profile.Email).Scan(&existingRole, &existingStatus)
+	`, profile.Email))
 	switch {
-	case err == nil && existingRole == "admin":
-		return User{}, ErrAdminPasswordRequired
-	case err == nil && existingStatus != "active":
-		return User{}, ErrUserDisabled
+	case err == nil:
+		if err := validateUpstreamUser(user, adminOnly); err != nil {
+			return User{}, err
+		}
+		err = tx.QueryRow(ctx, `
+			UPDATE users SET name = $2, avatar_url = nullif($3, ''), last_login_at = now(), updated_at = now()
+			WHERE id = $1
+			RETURNING id, name, email, coalesce(avatar_url, ''), role, status, joined_at, last_login_at
+		`, user.ID, profile.Name, profile.AvatarURL).Scan(&user.ID, &user.Name, &user.Email, &user.AvatarURL, &user.Role, &user.Status, &user.JoinedAt, &user.LastLoginAt)
+		if err != nil {
+			return User{}, err
+		}
 	case errors.Is(err, pgx.ErrNoRows):
+		if adminOnly {
+			return User{}, ErrAdminRoleRequired
+		}
 		if !s.registrationEnabled(ctx) {
 			return User{}, ErrRegistrationDisabled
 		}
+		err = tx.QueryRow(ctx, `
+			INSERT INTO users (name, email, avatar_url, role, last_login_at)
+			VALUES ($1, $2, nullif($3, ''), 'user', now())
+			ON CONFLICT (lower(email)) WHERE deleted_at IS NULL DO UPDATE SET
+				name = EXCLUDED.name, avatar_url = EXCLUDED.avatar_url,
+				last_login_at = now(), updated_at = now()
+			WHERE users.role = 'user' AND users.status = 'active'
+			RETURNING id, name, email, coalesce(avatar_url, ''), role, status, joined_at, last_login_at
+		`, profile.Name, profile.Email, profile.AvatarURL).Scan(&user.ID, &user.Name, &user.Email, &user.AvatarURL, &user.Role, &user.Status, &user.JoinedAt, &user.LastLoginAt)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrAdminPasswordRequired
+		}
+		if err != nil {
+			return User{}, err
+		}
 	case err != nil:
-		return User{}, err
-	}
-	err = tx.QueryRow(ctx, `
-		INSERT INTO users (name, email, avatar_url, role, last_login_at)
-		VALUES ($1, $2, nullif($3, ''), 'user', now())
-		ON CONFLICT (lower(email)) WHERE deleted_at IS NULL DO UPDATE SET
-			name = EXCLUDED.name, avatar_url = EXCLUDED.avatar_url,
-			last_login_at = now(), updated_at = now()
-		WHERE users.role = 'user' AND users.status = 'active'
-		RETURNING id, name, email, coalesce(avatar_url, ''), role, status, joined_at, last_login_at
-	`, profile.Name, profile.Email, profile.AvatarURL).Scan(&user.ID, &user.Name, &user.Email, &user.AvatarURL, &user.Role, &user.Status, &user.JoinedAt, &user.LastLoginAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return User{}, ErrAdminPasswordRequired
-	}
-	if err != nil {
 		return User{}, err
 	}
 	_, err = tx.Exec(ctx, `
@@ -360,9 +371,23 @@ func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile) (
 	return user, nil
 }
 
+func validateUpstreamUser(user User, adminOnly bool) error {
+	if user.Status != "active" {
+		return ErrUserDisabled
+	}
+	if adminOnly && user.Role != "admin" {
+		return ErrAdminRoleRequired
+	}
+	if !adminOnly && user.Role == "admin" {
+		return ErrAdminPasswordRequired
+	}
+	return nil
+}
+
 var (
 	ErrNotFound              = errors.New("记录不存在")
 	ErrUserDisabled          = errors.New("用户已停用")
 	ErrRegistrationDisabled  = errors.New("未开放新用户注册")
 	ErrAdminPasswordRequired = errors.New("管理员必须使用密码登录")
+	ErrAdminRoleRequired     = errors.New("管理后台 OAuth 登录必须关联管理员")
 )

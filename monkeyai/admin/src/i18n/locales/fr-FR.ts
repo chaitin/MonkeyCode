@@ -31,6 +31,9 @@ export const frFR = {
     submit: "Se connecter",
     continueWith: "Ou continuer avec",
     loginWith: "Se connecter avec {{provider}}",
+    oauthAdminRequired:
+      "Ce compte OAuth n’est pas associé à un administrateur actif",
+    oauthFailed: "Échec de la connexion OAuth. Veuillez réessayer",
     workspacePreview: "Aperçu de l’espace de travail MonkeyAI",
     legal:
       "<terms>Conditions d’utilisation</terms> et <privacy>Politique de confidentialité</privacy>",

@@ -31,6 +31,9 @@ export const jaJP = {
     submit: "ログイン",
     continueWith: "または次の方法で続行",
     loginWith: "{{provider}} でログイン",
+    oauthAdminRequired:
+      "この OAuth アカウントは有効な管理者に関連付けられていません",
+    oauthFailed: "OAuth ログインに失敗しました。もう一度お試しください",
     workspacePreview: "MonkeyAI ワークスペースのプレビュー",
     legal:
       "<terms>利用規約</terms> および <privacy>プライバシーポリシー</privacy>",

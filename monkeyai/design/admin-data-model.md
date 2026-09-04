@@ -221,7 +221,7 @@ flowchart LR
 | JSON 路径 | JSON 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `value.registration_enabled` | `boolean` | 是 | `false` | 是否允许客户端用户通过 OAuth 自助注册。 |
-| `value.oauth_connections` | `array` | 是 | 空数组 | 客户端用户可用的 OAuth/OIDC 连接列表；不用于管理员登录。 |
+| `value.oauth_connections` | `array` | 是 | 空数组 | 管理后台和客户端用户共用的 OAuth/OIDC 连接列表；管理后台只接受关联到启用状态管理员的身份。 |
 | `value.oauth_connections[].id` | `string` | 是 | 自动生成 | OAuth 连接 UUID，用于管理列表中的连接项。 |
 | `value.oauth_connections[].provider` | `string` | 是 | 无 | 提供方：`github`、`google`、`microsoft`、`gitlab`、`oidc`。 |
 | `value.oauth_connections[].name` | `string` | 是 | 无 | OAuth 连接显示名称。 |

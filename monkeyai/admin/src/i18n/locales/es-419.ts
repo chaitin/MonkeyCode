@@ -31,6 +31,9 @@ export const es419 = {
     submit: "Iniciar sesión",
     continueWith: "O continúa con",
     loginWith: "Iniciar sesión con {{provider}}",
+    oauthAdminRequired:
+      "Esta cuenta de OAuth no está vinculada a un administrador activo",
+    oauthFailed: "Error al iniciar sesión con OAuth. Inténtalo de nuevo",
     workspacePreview: "Vista previa del espacio de trabajo de MonkeyAI",
     legal:
       "<terms>Términos del servicio</terms> y <privacy>Política de privacidad</privacy>",

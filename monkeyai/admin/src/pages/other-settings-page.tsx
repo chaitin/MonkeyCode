@@ -77,6 +77,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { api } from "@/lib/api"
+import { createOAuthConnectionID } from "@/lib/oauth"
 
 const OAUTH_PROVIDERS = [
   { value: "github", labelKey: "pages.otherSettings.oauth.providers.github" },
@@ -205,6 +206,7 @@ export function OtherSettingsPage() {
   )
   const [oauthDialogOpen, setOauthDialogOpen] = useState(false)
   const [oauthProvider, setOauthProvider] = useState<OAuthProvider>("github")
+  const [oauthSaving, setOauthSaving] = useState(false)
   const [emailSettings, setEmailSettings] = useState(INITIAL_EMAIL_SETTINGS)
   const [savedEmailSettings, setSavedEmailSettings] = useState(
     INITIAL_EMAIL_SETTINGS
@@ -363,6 +365,8 @@ export function OtherSettingsPage() {
 
   const handleAddOauth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (oauthSaving) return
+
     const form = event.currentTarget
     const formData = new FormData(form)
     const name = String(formData.get("name") ?? "").trim()
@@ -379,22 +383,27 @@ export function OtherSettingsPage() {
       return
     }
 
-    const connections = [
-      ...oauthConnections,
-      {
-        id: crypto.randomUUID(),
-        provider: oauthProvider,
-        name,
-        clientId,
-        clientSecret,
-        issuerUrl: issuerUrl || undefined,
-        enabled: true,
-      },
-    ]
-    if (await saveAuthentication(connections)) {
-      setOauthConnections(connections)
-      form.reset()
-      handleOauthDialogOpenChange(false)
+    setOauthSaving(true)
+    try {
+      const connections = [
+        ...oauthConnections,
+        {
+          id: createOAuthConnectionID(),
+          provider: oauthProvider,
+          name,
+          clientId,
+          clientSecret,
+          issuerUrl: issuerUrl || undefined,
+          enabled: true,
+        },
+      ]
+      if (await saveAuthentication(connections)) {
+        setOauthConnections(connections)
+        form.reset()
+        handleOauthDialogOpenChange(false)
+      }
+    } finally {
+      setOauthSaving(false)
     }
   }
 
@@ -1480,12 +1489,24 @@ export function OtherSettingsPage() {
                   </FieldGroup>
                   <DialogFooter>
                     <DialogClose
-                      render={<Button type="button" variant="outline" />}
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={oauthSaving}
+                        />
+                      }
                     >
                       {t("pages.otherSettings.oauth.cancel")}
                     </DialogClose>
-                    <Button type="submit">
-                      {t("pages.otherSettings.oauth.addConnection")}
+                    <Button
+                      type="submit"
+                      disabled={oauthSaving}
+                      aria-busy={oauthSaving}
+                    >
+                      {oauthSaving
+                        ? `${t("pages.otherSettings.oauth.addConnection")}…`
+                        : t("pages.otherSettings.oauth.addConnection")}
                     </Button>
                   </DialogFooter>
                 </form>

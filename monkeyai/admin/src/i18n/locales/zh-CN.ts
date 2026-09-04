@@ -29,6 +29,8 @@ export const zhCN = {
     submit: "登录",
     continueWith: "或通过以下方式继续",
     loginWith: "使用 {{provider}} 登录",
+    oauthAdminRequired: "该 OAuth 账号未关联到启用状态的管理员账户",
+    oauthFailed: "OAuth 登录失败，请重试",
     workspacePreview: "MonkeyAI 工作区预览",
     legal: "<terms>服务条款</terms> 和 <privacy>隐私政策</privacy>",
   },
