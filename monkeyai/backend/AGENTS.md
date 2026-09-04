@@ -4,7 +4,7 @@
 
 - 每个 AI 默认只负责一个业务能力目录，例如 `internal/model` 或 `internal/skill`。
 - 业务代码、Admin API、Agent API、SQL、sqlc 生成结果和测试都保存在对应业务目录。
-- OpenAPI 源文件放在 `api/<feature>`，迁移使用包含 feature 名称的唯一 UTC 毫秒时间戳。
+- OpenAPI 源文件放在 `api/<feature>`，迁移使用 `migrate create -ext sql -dir migrations -seq <feature>_<action>` 生成默认六位序号，名称必须包含 feature。
 
 ## 共享集成点
 
