@@ -82,6 +82,8 @@ erDiagram
     RULES ||--o{ EXPERT_RULES : referenced_by
     EXPERTS ||--o{ EXPERT_SKILLS : binds
     SKILLS ||--o{ EXPERT_SKILLS : referenced_by
+    EXPERTS }o--o{ CONNECTOR_DEFINITIONS : "profile identifier"
+    CONNECTOR_DEFINITIONS ||--o{ MCP_TOOLS : declares
     EXPERTS ||--o{ RESOURCE_ACCESS_GRANTS : grants_access
     EXPERTS ||--o{ SESSIONS : used_by
 
@@ -132,6 +134,22 @@ erDiagram
         timestamptz created_at
     }
 
+    CONNECTOR_DEFINITIONS {
+        uuid id PK
+        text identifier UK
+        text name
+        text authorization_mode
+        boolean enabled
+    }
+
+    MCP_TOOLS {
+        uuid id PK
+        uuid definition_id FK
+        text name
+        boolean enabled
+        numeric credits_per_call
+    }
+
     RULES {
         uuid id PK
         text ownership_type
@@ -148,6 +166,16 @@ erDiagram
         boolean enabled
     }
 ```
+
+图中的 Expert 与 Connector Definition 是 Profile 中的逻辑关系，不是数据库外键：
+
+```text
+experts.profile.connectors[].identifier
+→ connector_definitions.identifier
+→ mcp_tools.definition_id
+```
+
+每项 Connector 依赖还通过 `tool_whitelist`、`tool_blacklist` 保存工具名称过滤条件。Expert 不绑定具体 `connectors.id` 或 `mcp_tools.id`；创建会话时再根据 identifier 选择用户可用的具体 Connector 实例，并从该 Definition 的已启用工具中应用白名单和黑名单。
 
 ## 3. Admin 原型改动建议
 
