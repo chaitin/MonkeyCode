@@ -1,6 +1,6 @@
 # MonkeyAI Admin 数据模型设计
 
-> 状态：草案
+> 状态：草案，已生成第一版 PostgreSQL migration
 >
 > 数据库语义：PostgreSQL
 >
@@ -8,21 +8,21 @@
 
 ## 1. 目标与范围
 
-本文档定义 MonkeyAI Admin 所需的领域实体、实体关系和字段。字段类型使用 PostgreSQL 类型表达，方便后续直接转换为迁移，但本文档不包含 SQL。
+本文档定义 MonkeyAI Admin 所需的领域实体、实体关系和字段。字段类型使用 PostgreSQL 类型表达，并已转换为第一版 migration；本文档本身不包含 SQL。
 
-本阶段只确定：
+当前版本确定：
 
 - 表及字段；
 - 字段含义、可空性、默认值和候选值；
 - 实体之间的逻辑关系；
+- 首版主键、外键、唯一约束、检查约束和查询索引；
 - 敏感字段和统计事实的存储边界。
 
-本阶段不确定：
+后续版本仍需确定：
 
-- 主键、外键、唯一约束和检查约束；
-- 普通索引、唯一索引和全文索引；
 - 分区、归档和冷热数据策略；
-- 数据库迁移及与现有后端表的兼容方案。
+- 全文检索索引；
+- 与现有 MonkeyCode 后端表的复用、改造和数据迁移方案。
 
 ## 2. 核心建模决策
 
@@ -117,6 +117,7 @@ flowchart LR
 | 约定 | 说明 |
 | --- | --- |
 | ID | 实体 ID 使用 `uuid`，默认由应用或 PostgreSQL 生成。 |
+| 字符串 | 可变长度字符串统一使用 `text`，不在数据库层设置长度上限。 |
 | 时间 | 业务时间统一使用 `timestamptz`，以 UTC 保存、按用户时区展示。 |
 | 金额/积分 | 积分使用 `numeric(24,6)`，避免浮点误差。 |
 | 计数 | Token、调用次数等可能持续增长的计数使用 `bigint`。 |
@@ -134,12 +135,12 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 用户 ID。 |
-| `name` | `varchar(255)` | 是 | 无 | 用户显示名称。 |
-| `email` | `varchar(320)` | 是 | 无 | 用户主邮箱，也是默认登录标识。 |
+| `name` | `text` | 是 | 无 | 用户显示名称。 |
+| `email` | `text` | 是 | 无 | 用户主邮箱，也是默认登录标识。 |
 | `avatar_url` | `text` | 否 | `NULL` | 用户头像地址。 |
 | `password_hash` | `text` | 否 | `NULL` | 密码哈希；仅使用 OAuth 或邮箱验证码时可为空。 |
-| `role` | `varchar(32)` | 是 | `user` | 系统角色：`admin`、`user`。 |
-| `status` | `varchar(32)` | 是 | `active` | 用户状态：`active`、`disabled`。 |
+| `role` | `text` | 是 | `user` | 系统角色：`admin`、`user`。 |
+| `status` | `text` | 是 | `active` | 用户状态：`active`、`disabled`。 |
 | `joined_at` | `timestamptz` | 是 | 当前时间 | 成为系统用户的时间。 |
 | `disabled_at` | `timestamptz` | 否 | `NULL` | 被禁用时间。 |
 | `last_login_at` | `timestamptz` | 否 | `NULL` | 最近一次成功登录时间。 |
@@ -155,11 +156,11 @@ flowchart LR
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 第三方身份 ID。 |
 | `user_id` | `uuid` | 是 | 无 | 对应用户 ID。 |
-| `provider` | `varchar(32)` | 是 | 无 | 提供方：`github`、`google`、`microsoft`、`gitlab`、`oidc`。 |
+| `provider` | `text` | 是 | 无 | 提供方：`github`、`google`、`microsoft`、`gitlab`、`oidc`。 |
 | `issuer` | `text` | 是 | 无 | 第三方身份的签发方或命名空间；OIDC 使用 `iss`，内置 OAuth 提供方使用系统定义的固定值。 |
 | `provider_subject` | `text` | 是 | 无 | 提供方返回的稳定用户标识，与 `issuer` 共同确定第三方身份。 |
-| `username` | `varchar(255)` | 否 | `NULL` | 提供方侧账号名称。 |
-| `email` | `varchar(320)` | 否 | `NULL` | 提供方返回的邮箱快照。 |
+| `username` | `text` | 否 | `NULL` | 提供方侧账号名称。 |
+| `email` | `text` | 否 | `NULL` | 提供方返回的邮箱快照。 |
 | `avatar_url` | `text` | 否 | `NULL` | 提供方返回的头像地址。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 首次绑定时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近同步时间。 |
@@ -173,7 +174,7 @@ flowchart LR
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 分组 ID；根分组和管理员分组使用系统预设 ID。 |
 | `parent_id` | `uuid` | 否 | `NULL` | 父分组 ID；唯一根分组为空，其他分组必须有父分组。 |
-| `name` | `varchar(255)` | 是 | 无 | 分组显示名称。 |
+| `name` | `text` | 是 | 无 | 分组显示名称。 |
 | `created_by_user_id` | `uuid` | 否 | `NULL` | 创建者用户 ID；系统初始化的根分组和管理员分组为空。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 名称或层级最近更新时间。 |
@@ -201,7 +202,7 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 设置记录 ID。 |
-| `key` | `varchar(64)` | 是 | 无 | 配置域标识：`branding`、`authentication`、`email`、`billing`。 |
+| `key` | `text` | 是 | 无 | 配置域标识：`branding`、`authentication`、`email`、`billing`。 |
 | `value` | `jsonb` | 是 | 空对象 | 该配置域的完整明文配置，结构见下文。 |
 | `schema_version` | `integer` | 是 | `1` | `value` 的结构版本。 |
 | `updated_by_user_id` | `uuid` | 是 | 无 | 最近修改者用户 ID。 |
@@ -266,12 +267,12 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 资源授权 ID。 |
-| `resource_type` | `varchar(32)` | 是 | 无 | 被授权资源类型：`model`、`skill`、`rule`、`mcp_server`、`expert`。 |
+| `resource_type` | `text` | 是 | 无 | 被授权资源类型：`model`、`skill`、`rule`、`mcp_server`、`expert`。 |
 | `resource_id` | `uuid` | 是 | 无 | 被授权资源 ID，与 `resource_type` 共同定位具体资源。 |
 | `user_id` | `uuid` | 否 | `NULL` | 被授权用户 ID；与 `group_id` 必须且只能填写一个。 |
 | `group_id` | `uuid` | 否 | `NULL` | 被授权分组 ID；与 `user_id` 必须且只能填写一个，并覆盖其所有后代分组用户。 |
-| `access_level` | `varchar(32)` | 是 | 无 | 访问级别：`read_only`、`read_write`。 |
-| `usage_requirement` | `varchar(32)` | 是 | `optional` | 使用要求：`optional`、`required`；`required` 仅用于系统规则，表示规则必须应用且被授权者不能自行移除。 |
+| `access_level` | `text` | 是 | 无 | 访问级别：`read_only`、`read_write`。 |
+| `usage_requirement` | `text` | 是 | `optional` | 使用要求：`optional`、`required`；`required` 仅用于系统规则，表示规则必须应用且被授权者不能自行移除。 |
 | `granted_by_user_id` | `uuid` | 是 | 无 | 执行分享的资源所有者或管理员用户 ID。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 首次授权时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 访问级别最近更新时间。 |
@@ -283,11 +284,11 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 模型配置 ID。 |
-| `ownership_type` | `varchar(32)` | 是 | 无 | 所有权：`system`、`user`。 |
+| `ownership_type` | `text` | 是 | 无 | 所有权：`system`、`user`。 |
 | `owner_user_id` | `uuid` | 是 | 无 | 关联用户 ID；系统模型记录创建它的管理员，个人模型记录当前所有者。 |
-| `model_id` | `varchar(255)` | 是 | 无 | 上游模型标识，例如 `gpt-5`。 |
-| `display_name` | `varchar(255)` | 是 | 无 | 管理端和客户端显示名称。 |
-| `protocol` | `varchar(64)` | 是 | 无 | 调用协议：`openai_chat_completions`、`openai_responses`、`anthropic`。 |
+| `model_id` | `text` | 是 | 无 | 上游模型标识，例如 `gpt-5`。 |
+| `display_name` | `text` | 是 | 无 | 管理端和客户端显示名称。 |
+| `protocol` | `text` | 是 | 无 | 调用协议：`openai_chat_completions`、`openai_responses`、`anthropic`。 |
 | `base_url` | `text` | 是 | 无 | 上游 API 基础地址。 |
 | `api_key` | `text` | 是 | 无 | 模型 API Key，明文保存。 |
 | `advanced_config` | `jsonb` | 是 | 无 | 模型能力和协议相关高级配置，当前结构见下文。 |
@@ -312,7 +313,7 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 标签 ID。 |
-| `name` | `varchar(64)` | 是 | 无 | 标签名称。 |
+| `name` | `text` | 是 | 无 | 标签名称。 |
 | `created_by_user_id` | `uuid` | 是 | 无 | 创建者用户 ID。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
@@ -323,15 +324,15 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 技能 ID。 |
-| `ownership_type` | `varchar(32)` | 是 | 无 | 所有权：`system`、`user`。 |
+| `ownership_type` | `text` | 是 | 无 | 所有权：`system`、`user`。 |
 | `owner_user_id` | `uuid` | 是 | 无 | 关联用户 ID；系统技能记录创建它的管理员，个人技能记录当前所有者。 |
-| `name` | `varchar(255)` | 是 | 无 | 技能名称，对应技能包中的规范名称。 |
+| `name` | `text` | 是 | 无 | 技能名称，对应技能包中的规范名称。 |
 | `description` | `text` | 是 | 无 | 技能用途说明。 |
 | `instructions` | `text` | 是 | 无 | 技能主指令内容。 |
-| `package_file_name` | `varchar(512)` | 是 | 无 | 导入时的技能包原始文件名。 |
+| `package_file_name` | `text` | 是 | 无 | 导入时的技能包原始文件名。 |
 | `package_s3_key` | `text` | 是 | 无 | 技能包在 S3 Bucket 中的 Object Key。 |
 | `package_size_bytes` | `bigint` | 是 | 无 | 技能包字节数。 |
-| `package_sha256` | `varchar(64)` | 是 | 无 | 技能包内容的 SHA-256 摘要。 |
+| `package_sha256` | `text` | 是 | 无 | 技能包内容的 SHA-256 摘要。 |
 | `file_count` | `integer` | 是 | `0` | 技能包内文件数量。 |
 | `enabled` | `boolean` | 是 | `true` | 是否可被 Agent 使用。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
@@ -345,7 +346,7 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 关系 ID。 |
-| `resource_type` | `varchar(32)` | 是 | 无 | 资源类型：`model`、`skill`、`rule`、`mcp_server`、`expert`。 |
+| `resource_type` | `text` | 是 | 无 | 资源类型：`model`、`skill`、`rule`、`mcp_server`、`expert`。 |
 | `resource_id` | `uuid` | 是 | 无 | 资源 ID，与 `resource_type` 共同定位具体资源。 |
 | `tag_id` | `uuid` | 是 | 无 | 标签 ID。 |
 | `assigned_by_user_id` | `uuid` | 是 | 无 | 执行标签关联的用户 ID。 |
@@ -356,9 +357,9 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 规则 ID。 |
-| `ownership_type` | `varchar(32)` | 是 | 无 | 所有权：`system`、`user`。 |
+| `ownership_type` | `text` | 是 | 无 | 所有权：`system`、`user`。 |
 | `owner_user_id` | `uuid` | 是 | 无 | 关联用户 ID；系统规则记录创建它的管理员，个人规则记录当前所有者。 |
-| `name` | `varchar(255)` | 是 | 无 | 规则名称。 |
+| `name` | `text` | 是 | 无 | 规则名称。 |
 | `content` | `text` | 是 | 无 | 规则指令正文。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
@@ -369,14 +370,14 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | MCP 服务 ID。 |
-| `ownership_type` | `varchar(32)` | 是 | 无 | 所有权：`system`、`user`。 |
+| `ownership_type` | `text` | 是 | 无 | 所有权：`system`、`user`。 |
 | `owner_user_id` | `uuid` | 是 | 无 | 关联用户 ID；系统 MCP 服务记录创建它的管理员，个人 MCP 服务记录当前所有者。 |
-| `name` | `varchar(255)` | 是 | 无 | MCP 服务显示名称。 |
+| `name` | `text` | 是 | 无 | MCP 服务显示名称。 |
 | `description` | `text` | 是 | 无 | MCP 服务用途说明。 |
 | `url` | `text` | 是 | 无 | MCP 服务连接地址。 |
-| `authorization_mode` | `varchar(32)` | 是 | 无 | 授权模式：`none`、`independent`、`centralized`。 |
-| `authorization_method` | `varchar(32)` | 否 | `NULL` | 授权方式：`oauth`、`http_header`；无需授权时为空。 |
-| `connection_status` | `varchar(32)` | 是 | `unknown` | 最近检测状态：`connected`、`error`、`unknown`。 |
+| `authorization_mode` | `text` | 是 | 无 | 授权模式：`none`、`independent`、`centralized`。 |
+| `authorization_method` | `text` | 否 | `NULL` | 授权方式：`oauth`、`http_header`；无需授权时为空。 |
+| `connection_status` | `text` | 是 | `unknown` | 最近检测状态：`connected`、`error`、`unknown`。 |
 | `last_checked_at` | `timestamptz` | 否 | `NULL` | 最近一次连接检测时间。 |
 | `last_error` | `text` | 否 | `NULL` | 最近一次连接失败原因。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
@@ -392,14 +393,14 @@ flowchart LR
 | `id` | `uuid` | 是 | 自动生成 | 凭据 ID。 |
 | `server_id` | `uuid` | 是 | 无 | MCP 服务 ID。 |
 | `user_id` | `uuid` | 否 | `NULL` | 独立授权的用户 ID；集中授权为空。 |
-| `method` | `varchar(32)` | 是 | 无 | 凭据类型：`oauth`、`http_header`。 |
+| `method` | `text` | 是 | 无 | 凭据类型：`oauth`、`http_header`。 |
 | `http_headers` | `jsonb` | 否 | `NULL` | HTTP Header 集合，包含的认证信息以明文保存。 |
 | `oauth_access_token` | `text` | 否 | `NULL` | OAuth Access Token，明文保存。 |
 | `oauth_refresh_token` | `text` | 否 | `NULL` | OAuth Refresh Token，明文保存。 |
-| `oauth_token_type` | `varchar(32)` | 否 | `NULL` | OAuth Token 类型，例如 `Bearer`。 |
+| `oauth_token_type` | `text` | 否 | `NULL` | OAuth Token 类型，例如 `Bearer`。 |
 | `oauth_scopes` | `text` | 否 | `NULL` | OAuth Scope 快照。 |
 | `oauth_expires_at` | `timestamptz` | 否 | `NULL` | Access Token 过期时间。 |
-| `status` | `varchar(32)` | 是 | `pending` | 状态：`pending`、`authorized`、`expired`、`revoked`、`error`。 |
+| `status` | `text` | 是 | `pending` | 状态：`pending`、`authorized`、`expired`、`revoked`、`error`。 |
 | `authorized_at` | `timestamptz` | 否 | `NULL` | 最近授权成功时间。 |
 | `last_error` | `text` | 否 | `NULL` | 最近授权失败原因。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
@@ -412,7 +413,7 @@ flowchart LR
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | MCP 工具 ID。 |
 | `server_id` | `uuid` | 是 | 无 | 所属 MCP 服务 ID。 |
-| `name` | `varchar(255)` | 是 | 无 | MCP 服务声明的工具名称。 |
+| `name` | `text` | 是 | 无 | MCP 服务声明的工具名称。 |
 | `description` | `text` | 是 | 无 | MCP 服务声明的工具说明。 |
 | `input_schema` | `jsonb` | 否 | `NULL` | MCP 工具输入 JSON Schema。 |
 | `enabled` | `boolean` | 是 | `true` | 是否允许调用该工具。 |
@@ -426,7 +427,7 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 专家 ID。 |
-| `name` | `varchar(255)` | 是 | 无 | 专家显示名称。 |
+| `name` | `text` | 是 | 无 | 专家显示名称。 |
 | `description` | `text` | 是 | 无 | 专家用途说明。 |
 | `prompt` | `text` | 是 | 无 | 专家角色和工作方式提示词。 |
 | `enabled` | `boolean` | 是 | `true` | 是否允许用户使用该专家。 |
@@ -474,12 +475,12 @@ flowchart LR
 | `owner_user_id` | `uuid` | 是 | 无 | 发起会话的用户 ID。 |
 | `expert_id` | `uuid` | 否 | `NULL` | 会话使用的专家 ID。 |
 | `title` | `text` | 是 | 无 | 会话标题。 |
-| `session_type` | `varchar(32)` | 是 | 无 | 类型：`conversation`、`workflow`、`tool`、`scheduled`。 |
-| `client_type` | `varchar(32)` | 是 | 无 | 客户端类型：`desktop`、`web`、`extension`、`mobile`。 |
-| `client_name` | `varchar(255)` | 是 | 无 | 客户端显示名称或版本名称。 |
-| `device_id` | `varchar(255)` | 否 | `NULL` | 发起会话的设备标识。 |
+| `session_type` | `text` | 是 | 无 | 类型：`conversation`、`workflow`、`tool`、`scheduled`。 |
+| `client_type` | `text` | 是 | 无 | 客户端类型：`desktop`、`web`、`extension`、`mobile`。 |
+| `client_name` | `text` | 是 | 无 | 客户端显示名称或版本名称。 |
+| `device_id` | `text` | 否 | `NULL` | 发起会话的设备标识。 |
 | `turn_count` | `integer` | 是 | `0` | 会话内已产生的对话轮次数。 |
-| `failure_code` | `varchar(128)` | 否 | `NULL` | 会话异常结束代码。 |
+| `failure_code` | `text` | 否 | `NULL` | 会话异常结束代码。 |
 | `failure_message` | `text` | 否 | `NULL` | 会话异常结束说明。 |
 | `started_at` | `timestamptz` | 是 | 无 | 会话开始时间。 |
 | `last_active_at` | `timestamptz` | 是 | 无 | 最近活动时间。 |
@@ -496,14 +497,14 @@ flowchart LR
 | `session_id` | `uuid` | 是 | 无 | 所属会话 ID。 |
 | `user_id` | `uuid` | 是 | 无 | 产生调用的用户 ID。 |
 | `model_id` | `uuid` | 是 | 无 | 被调用的模型配置 ID。 |
-| `request_id` | `varchar(255)` | 否 | `NULL` | 上游或链路请求 ID。 |
-| `status` | `varchar(32)` | 是 | 无 | 状态：`running`、`succeeded`、`failed`、`cancelled`。 |
+| `request_id` | `text` | 否 | `NULL` | 上游或链路请求 ID。 |
+| `status` | `text` | 是 | 无 | 状态：`running`、`succeeded`、`failed`、`cancelled`。 |
 | `input_tokens` | `bigint` | 是 | `0` | 输入 Token 数。 |
 | `cached_input_tokens` | `bigint` | 是 | `0` | 命中缓存的输入 Token 数。 |
 | `output_tokens` | `bigint` | 是 | `0` | 输出 Token 数。 |
 | `cache_hit` | `boolean` | 是 | `false` | 本次请求是否命中缓存。 |
 | `response_duration_ms` | `integer` | 否 | `NULL` | 请求总耗时，单位毫秒。 |
-| `error_code` | `varchar(128)` | 否 | `NULL` | 上游或内部错误代码。 |
+| `error_code` | `text` | 否 | `NULL` | 上游或内部错误代码。 |
 | `error_message` | `text` | 否 | `NULL` | 脱敏后的失败说明。 |
 | `started_at` | `timestamptz` | 是 | 无 | 调用开始时间。 |
 | `completed_at` | `timestamptz` | 否 | `NULL` | 调用结束时间。 |
@@ -518,10 +519,10 @@ flowchart LR
 | `user_id` | `uuid` | 是 | 无 | 产生调用的用户 ID。 |
 | `server_id` | `uuid` | 是 | 无 | MCP 服务 ID。 |
 | `tool_id` | `uuid` | 是 | 无 | MCP 工具 ID。 |
-| `request_id` | `varchar(255)` | 否 | `NULL` | 链路请求 ID。 |
-| `status` | `varchar(32)` | 是 | 无 | 状态：`running`、`succeeded`、`failed`、`cancelled`。 |
+| `request_id` | `text` | 否 | `NULL` | 链路请求 ID。 |
+| `status` | `text` | 是 | 无 | 状态：`running`、`succeeded`、`failed`、`cancelled`。 |
 | `duration_ms` | `integer` | 否 | `NULL` | 调用耗时，单位毫秒。 |
-| `error_code` | `varchar(128)` | 否 | `NULL` | MCP 或内部错误代码。 |
+| `error_code` | `text` | 否 | `NULL` | MCP 或内部错误代码。 |
 | `error_message` | `text` | 否 | `NULL` | 脱敏后的失败说明。 |
 | `started_at` | `timestamptz` | 是 | 无 | 调用开始时间。 |
 | `completed_at` | `timestamptz` | 否 | `NULL` | 调用结束时间。 |
@@ -536,7 +537,7 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 额度设置 ID。 |
-| `subject_type` | `varchar(32)` | 是 | 无 | 设置对象：`group`、`user`。 |
+| `subject_type` | `text` | 是 | 无 | 设置对象：`group`、`user`。 |
 | `group_id` | `uuid` | 否 | `NULL` | 分组额度对应的分组 ID。 |
 | `user_id` | `uuid` | 否 | `NULL` | 用户额度对应的用户 ID。 |
 | `credits_per_cycle` | `numeric(24,6)` | 是 | 无 | 每个刷新周期分配的积分。 |
@@ -570,19 +571,19 @@ flowchart LR
 | `account_id` | `uuid` | 是 | 无 | 积分账户 ID。 |
 | `user_id` | `uuid` | 是 | 无 | 被计费用户 ID。 |
 | `session_id` | `uuid` | 否 | `NULL` | 与会话相关时对应的会话 ID。 |
-| `entry_type` | `varchar(32)` | 是 | 无 | 流水类型：`charge`、`grant`、`refund`、`reset`、`adjustment`。 |
-| `category` | `varchar(32)` | 是 | 无 | 费用分类：`model`、`tool`、`other`。 |
-| `source_type` | `varchar(32)` | 否 | `NULL` | 来源：`model_call`、`mcp_tool_call`、`quota_refresh`、`manual`。 |
+| `entry_type` | `text` | 是 | 无 | 流水类型：`charge`、`grant`、`refund`、`reset`、`adjustment`。 |
+| `category` | `text` | 是 | 无 | 费用分类：`model`、`tool`、`other`。 |
+| `source_type` | `text` | 否 | `NULL` | 来源：`model_call`、`mcp_tool_call`、`quota_refresh`、`manual`。 |
 | `source_id` | `uuid` | 否 | `NULL` | 来源事实记录 ID。 |
-| `resource_type` | `varchar(32)` | 否 | `NULL` | 被计价资源类型：`model`、`mcp_tool`。 |
+| `resource_type` | `text` | 否 | `NULL` | 被计价资源类型：`model`、`mcp_tool`。 |
 | `resource_id` | `uuid` | 否 | `NULL` | 被计价资源 ID。 |
-| `item_name` | `varchar(512)` | 是 | 无 | 计费项名称快照，例如“GPT-5 · Input”。 |
+| `item_name` | `text` | 是 | 无 | 计费项名称快照，例如“GPT-5 · Input”。 |
 | `quantity` | `bigint` | 否 | `NULL` | 计量数量。 |
-| `usage_unit` | `varchar(32)` | 否 | `NULL` | 计量单位：`tokens`、`calls`。 |
+| `usage_unit` | `text` | 否 | `NULL` | 计量单位：`tokens`、`calls`。 |
 | `unit_credits` | `numeric(24,6)` | 否 | `NULL` | 生成该流水时采用的单位积分价格。 |
 | `credit_delta` | `numeric(24,6)` | 是 | 无 | 积分变动量；扣费为负，发放或退款为正。 |
 | `balance_after` | `numeric(24,6)` | 是 | 无 | 该笔变动完成后的账户余额。 |
-| `external_reference` | `varchar(255)` | 否 | `NULL` | 远程计费平台返回的交易标识。 |
+| `external_reference` | `text` | 否 | `NULL` | 远程计费平台返回的交易标识。 |
 | `metadata` | `jsonb` | 是 | 空对象 | 不参与核心计算的扩展快照。 |
 | `occurred_at` | `timestamptz` | 是 | 无 | 业务变动发生时间。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 流水写入时间。 |
@@ -596,18 +597,18 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 审计日志 ID。 |
-| `actor_type` | `varchar(32)` | 是 | 无 | 操作者类型：`user`、`system`。 |
+| `actor_type` | `text` | 是 | 无 | 操作者类型：`user`、`system`。 |
 | `actor_user_id` | `uuid` | 否 | `NULL` | 用户操作时的用户 ID。 |
-| `actor_name` | `varchar(255)` | 是 | 无 | 操作者名称快照。 |
-| `actor_email` | `varchar(320)` | 否 | `NULL` | 操作者邮箱快照。 |
-| `action` | `varchar(128)` | 是 | 无 | 操作标识，例如 `add_model`、`disable_user`。 |
-| `category` | `varchar(32)` | 是 | 无 | 分类：`model`、`user`、`security`、`settings`。 |
-| `target_type` | `varchar(64)` | 否 | `NULL` | 被操作对象类型。 |
+| `actor_name` | `text` | 是 | 无 | 操作者名称快照。 |
+| `actor_email` | `text` | 否 | `NULL` | 操作者邮箱快照。 |
+| `action` | `text` | 是 | 无 | 操作标识，例如 `add_model`、`disable_user`。 |
+| `category` | `text` | 是 | 无 | 分类：`model`、`user`、`security`、`settings`。 |
+| `target_type` | `text` | 否 | `NULL` | 被操作对象类型。 |
 | `target_id` | `uuid` | 否 | `NULL` | 被操作对象 ID。 |
 | `request_params` | `jsonb` | 是 | 空对象 | 脱敏后的请求参数。 |
 | `source_ip` | `inet` | 否 | `NULL` | 请求来源 IP。 |
 | `user_agent` | `text` | 否 | `NULL` | 请求 User-Agent。 |
-| `result` | `varchar(32)` | 是 | 无 | 执行结果：`success`、`failed`。 |
+| `result` | `text` | 是 | 无 | 执行结果：`success`、`failed`。 |
 | `error_message` | `text` | 否 | `NULL` | 脱敏后的失败原因。 |
 | `occurred_at` | `timestamptz` | 是 | 无 | 操作发生时间。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 日志写入时间。 |
@@ -633,11 +634,10 @@ flowchart LR
 
 ## 13. 后续阶段
 
-下一阶段应在本文档评审通过后补充：
+第一版 migration 已按当前模型生成。后续评审与迭代应继续完成：
 
-1. 主键、外键、唯一约束和候选值检查约束；
-2. 结合管理端查询条件设计索引；
-3. 明确与现有 MonkeyCode 后端表的复用、改造和迁移关系；
-4. 明确高频事实表的保留周期、分区和聚合策略；
-5. 评估敏感信息加密、轮换和脱敏方案；
-6. 生成正式 PostgreSQL migration。
+1. 结合管理端实际查询继续校准索引；
+2. 明确与现有 MonkeyCode 后端表的复用、改造和迁移关系；
+3. 明确高频事实表的保留周期、分区和聚合策略；
+4. 评估敏感信息加密、轮换和脱敏方案；
+5. 根据评审结果追加 migration，不改写已发布版本。

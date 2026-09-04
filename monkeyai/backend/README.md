@@ -107,7 +107,7 @@ migrations/<唯一版本>_<feature>_*.sql
 - 路由使用 `chi/v5` 组织版本、调用方和中间件，处理器保持标准 `http.Handler` 接口。
 - HTTP DTO 不直接充当业务对象。
 - 测试与对应 Go 源码放在同一目录；暂不创建独立测试树。
-- 迁移文件使用唯一 UTC 毫秒时间戳 `<YYYYMMDDHHMMSSmmm>_<feature>_<action>.{up,down}.sql` 命名，创建后先检查版本未被其他并行任务占用；已经发布的迁移不可改写。
+- 迁移文件使用 `migrate create -ext sql -dir migrations -seq <feature>_<action>` 生成，采用默认六位递增序号。合并前必须检查序号未被其他分支占用；如有冲突，重新生成序号。已经发布的迁移不可改写。
 - 不创建 `pkg`、`utils` 或 `common`；出现明确复用对象后再决定归属。
 
 ## Go 编码原则
