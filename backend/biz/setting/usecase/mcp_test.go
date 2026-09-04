@@ -2,11 +2,16 @@ package usecase
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
@@ -14,6 +19,28 @@ func TestUnconfiguredUserMCPSyncClientReturnsError(t *testing.T) {
 	err := (&unconfiguredUserMCPSyncClient{}).SyncUpstream(context.Background(), uuid.New())
 	if err == nil || !strings.Contains(err.Error(), "not configured") {
 		t.Fatalf("SyncUpstream() error = %v, want configuration error", err)
+	}
+}
+
+func TestUserMCPSyncClientTimeoutCoversCompleteHandshake(t *testing.T) {
+	i := do.New()
+	do.ProvideValue(i, &config.Config{MCPHub: config.MCPHub{
+		URL:             "http://127.0.0.1:8888",
+		Token:           "test-token",
+		UpstreamTimeout: "20s",
+	}})
+	do.ProvideValue(i, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	client, err := NewUserMCPSyncClient(i)
+	if err != nil {
+		t.Fatalf("NewUserMCPSyncClient() error = %v", err)
+	}
+	httpClient, ok := client.(*httpUserMCPSyncClient)
+	if !ok {
+		t.Fatalf("NewUserMCPSyncClient() type = %T, want *httpUserMCPSyncClient", client)
+	}
+	if httpClient.client.Timeout != 65*time.Second {
+		t.Fatalf("client timeout = %s, want 1m5s", httpClient.client.Timeout)
 	}
 }
 

@@ -19,6 +19,11 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/netguard"
 )
 
+const (
+	mcpSyncRequestCount = 3
+	mcpSyncTimeoutGrace = 5 * time.Second
+)
+
 type userMCPUsecase struct {
 	repo       domain.UserMCPRepo
 	syncClient domain.UserMCPSyncClient
@@ -45,9 +50,13 @@ func NewUserMCPSyncClient(i *do.Injector) (domain.UserMCPSyncClient, error) {
 	return &httpUserMCPSyncClient{
 		baseURL: cfg.MCPHub.URL,
 		token:   cfg.MCPHub.Token,
-		client:  &http.Client{Timeout: 15 * time.Second},
+		client:  &http.Client{Timeout: mcpSyncTimeout(cfg.MCPHub.UpstreamTimeoutDuration())},
 		logger:  logger,
 	}, nil
+}
+
+func mcpSyncTimeout(upstreamTimeout time.Duration) time.Duration {
+	return mcpSyncRequestCount*upstreamTimeout + mcpSyncTimeoutGrace
 }
 
 func (u *userMCPUsecase) ListUpstreams(ctx context.Context, uid uuid.UUID, cursor domain.CursorReq) (*domain.ListUserMCPUpstreamsResp, error) {
