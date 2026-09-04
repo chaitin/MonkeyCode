@@ -1,0 +1,83 @@
+name: monkeyai
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-monkeyai}
+      POSTGRES_USER: ${POSTGRES_USER:-monkeyai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请设置 POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  migrate:
+    image: migrate/migrate:v4.18.3
+    command:
+      - -path=/migrations
+      - -database=${MONKEYAI_DATABASE_URL:-postgres://${POSTGRES_USER:-monkeyai}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-monkeyai}?sslmode=disable}
+      - up
+    volumes:
+      - ./backend/migrations:/migrations:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    image: ${BACKEND_IMAGE:-monkeyai-backend:local}
+    build:
+      context: ./backend
+    restart: unless-stopped
+    init: true
+    environment:
+      MONKEYAI_DATABASE_URL: ${MONKEYAI_DATABASE_URL:-postgres://${POSTGRES_USER:-monkeyai}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-monkeyai}?sslmode=disable}
+      MONKEYAI_HTTP_ADDR: :8080
+      MONKEYAI_LOG_LEVEL: ${MONKEYAI_LOG_LEVEL:-info}
+      MONKEYAI_PUBLIC_URL: ${MONKEYAI_PUBLIC_URL:-http://localhost:8080}
+      MONKEYAI_ADMIN_URL: ${MONKEYAI_ADMIN_URL:-http://localhost:8080}
+      MONKEYAI_INITIAL_ADMIN_NAME: ${MONKEYAI_INITIAL_ADMIN_NAME:-MonkeyAI Admin}
+      MONKEYAI_INITIAL_ADMIN_EMAIL: ${MONKEYAI_INITIAL_ADMIN_EMAIL:-}
+      MONKEYAI_INITIAL_ADMIN_PASSWORD: ${MONKEYAI_INITIAL_ADMIN_PASSWORD:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-Y", "off", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  admin:
+    image: ${ADMIN_IMAGE:-monkeyai-admin:local}
+    build:
+      context: ./admin
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${MONKEYAI_ADMIN_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-Y", "off", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  postgres_data:
