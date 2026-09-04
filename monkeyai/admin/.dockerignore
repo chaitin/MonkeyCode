@@ -1,0 +1,11 @@
+node_modules
+.pnpm-store
+dist
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+coverage
+*.log
+.DS_Store
