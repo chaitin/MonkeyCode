@@ -6,7 +6,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { TFunction } from "i18next"
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
@@ -61,6 +61,7 @@ import {
   AUTHORIZATION_MEMBERS,
   type AuthorizationGroupNode,
 } from "@/lib/authorization-groups"
+import { api } from "@/lib/api"
 
 type RefreshCycle = "daily" | "weekly" | "monthly"
 type ChargingMode = "local" | "remote"
@@ -135,7 +136,7 @@ function QuotaSummary({
   return (
     <div className="relative flex min-h-8 min-w-0 items-center justify-end">
       <span
-        className="w-full truncate text-end text-xs text-muted-foreground data-[inherited=true]:text-muted-foreground/40 group-hover/quota-row:opacity-0"
+        className="w-full truncate text-end text-xs text-muted-foreground group-hover/quota-row:opacity-0 data-[inherited=true]:text-muted-foreground/40"
         data-inherited={inherited}
       >
         {summary}
@@ -458,6 +459,7 @@ export function BillingSettingsPage() {
   )
   const [quotaSettingsSaved, setQuotaSettingsSaved] = useState(false)
   const [quotaTarget, setQuotaTarget] = useState<QuotaTarget | null>(null)
+  const [settingsError, setSettingsError] = useState("")
   const modelPricingDirty =
     JSON.stringify(modelPricing) !== JSON.stringify(savedModelPricing)
   const refreshSettingsDirty =
@@ -478,6 +480,91 @@ export function BillingSettingsPage() {
   const quotaCycleLabel = t(
     `pages.billingSettings.quotaRefresh.cycleLabels.${refreshSettings.refreshCycle}`
   )
+
+  useEffect(() => {
+    api<{
+      value: Record<string, unknown>
+    }>("/api/admin/v1/settings/billing")
+      .then(({ value }) => {
+        const pricing = {
+          inputTokenCredits: String(
+            value.input_credits_per_million_tokens ?? "100"
+          ),
+          cachedInputTokenCredits: String(
+            value.cached_input_credits_per_million_tokens ?? "20"
+          ),
+          outputTokenCredits: String(
+            value.output_credits_per_million_tokens ?? "400"
+          ),
+        }
+        const refresh = {
+          refreshCycle: String(
+            value.quota_refresh_cycle ?? "monthly"
+          ) as RefreshCycle,
+        }
+        const charging = {
+          mode: String(value.charging_mode ?? "local") as ChargingMode,
+          baizhiBaseUrl: String(value.remote_billing_base_url ?? ""),
+          baizhiApiKey: String(value.remote_billing_api_key ?? ""),
+        }
+        const quotas = {
+          rootCredits: String(value.root_credits ?? "15000"),
+          quotaOverrides:
+            (value.quota_overrides as Partial<Record<string, string>>) ?? {},
+        }
+        setModelPricing(pricing)
+        setSavedModelPricing(pricing)
+        setRefreshSettings(refresh)
+        setSavedRefreshSettings(refresh)
+        setChargingMethod(charging)
+        setSavedChargingMethod(charging)
+        setQuotaSettings(quotas)
+        setSavedQuotaSettings(quotas)
+      })
+      .catch((reason: { status?: number; message: string }) => {
+        if (reason.status !== 404) setSettingsError(reason.message)
+      })
+  }, [])
+
+  const saveBilling = async (values?: {
+    pricing?: ModelPricingSettings
+    refresh?: RefreshSettings
+    charging?: ChargingMethodSettings
+    quotas?: QuotaSettings
+  }) => {
+    const pricing = values?.pricing ?? modelPricing
+    const refresh = values?.refresh ?? refreshSettings
+    const charging = values?.charging ?? chargingMethod
+    const quotas = values?.quotas ?? quotaSettings
+    setSettingsError("")
+    try {
+      await api("/api/admin/v1/settings/billing", {
+        method: "PUT",
+        body: JSON.stringify({
+          schema_version: 1,
+          value: {
+            input_credits_per_million_tokens: Number(pricing.inputTokenCredits),
+            cached_input_credits_per_million_tokens: Number(
+              pricing.cachedInputTokenCredits
+            ),
+            output_credits_per_million_tokens: Number(
+              pricing.outputTokenCredits
+            ),
+            quota_refresh_cycle: refresh.refreshCycle,
+            charging_mode: charging.mode,
+            remote_billing_base_url: charging.baizhiBaseUrl || null,
+            remote_billing_api_key: charging.baizhiApiKey || null,
+            root_credits: Number(quotas.rootCredits),
+            quota_overrides: quotas.quotaOverrides,
+          },
+        }),
+      })
+      return true
+    } catch (reason) {
+      setSettingsError((reason as Error).message)
+      return false
+    }
+  }
 
   const updateModelPricing = <Key extends keyof ModelPricingSettings>(
     key: Key,
@@ -523,6 +610,14 @@ export function BillingSettingsPage() {
 
   return (
     <section className="grid flex-1 gap-4 p-4 pt-0 xl:grid-cols-2">
+      {settingsError && (
+        <p
+          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive xl:col-span-2"
+          role="alert"
+        >
+          {settingsError}
+        </p>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>{t("pages.billingSettings.groupQuota.title")}</CardTitle>
@@ -538,9 +633,11 @@ export function BillingSettingsPage() {
             <Button
               disabled={!quotaSettingsDirty || !quotaSettings.rootCredits}
               type="button"
-              onClick={() => {
-                setSavedQuotaSettings(quotaSettings)
-                setQuotaSettingsSaved(true)
+              onClick={async () => {
+                if (await saveBilling({ quotas: quotaSettings })) {
+                  setSavedQuotaSettings(quotaSettings)
+                  setQuotaSettingsSaved(true)
+                }
               }}
             >
               {t("pages.billingSettings.save")}
@@ -585,9 +682,11 @@ export function BillingSettingsPage() {
               <Button
                 disabled={!refreshSettingsDirty}
                 type="button"
-                onClick={() => {
-                  setSavedRefreshSettings(refreshSettings)
-                  setRefreshSettingsSaved(true)
+                onClick={async () => {
+                  if (await saveBilling({ refresh: refreshSettings })) {
+                    setSavedRefreshSettings(refreshSettings)
+                    setRefreshSettingsSaved(true)
+                  }
                 }}
               >
                 {t("pages.billingSettings.save")}
@@ -648,9 +747,11 @@ export function BillingSettingsPage() {
               <Button
                 disabled={!modelPricingDirty}
                 type="button"
-                onClick={() => {
-                  setSavedModelPricing(modelPricing)
-                  setModelPricingSaved(true)
+                onClick={async () => {
+                  if (await saveBilling({ pricing: modelPricing })) {
+                    setSavedModelPricing(modelPricing)
+                    setModelPricingSaved(true)
+                  }
                 }}
               >
                 {t("pages.billingSettings.save")}
@@ -742,9 +843,11 @@ export function BillingSettingsPage() {
                       !chargingMethod.baizhiApiKey))
                 }
                 type="button"
-                onClick={() => {
-                  setSavedChargingMethod(chargingMethod)
-                  setChargingMethodSaved(true)
+                onClick={async () => {
+                  if (await saveBilling({ charging: chargingMethod })) {
+                    setSavedChargingMethod(chargingMethod)
+                    setChargingMethodSaved(true)
+                  }
                 }}
               >
                 {t("pages.billingSettings.save")}
@@ -765,9 +868,7 @@ export function BillingSettingsPage() {
                   }}
                 >
                   <TabsList
-                    aria-label={t(
-                      "pages.billingSettings.chargingMethod.mode"
-                    )}
+                    aria-label={t("pages.billingSettings.chargingMethod.mode")}
                     className="w-full"
                   >
                     <TabsTrigger value="local">

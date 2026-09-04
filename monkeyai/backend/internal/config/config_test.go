@@ -63,3 +63,33 @@ func TestLoadRequiresPprofAddr(t *testing.T) {
 		t.Fatal("期望 pprof 监听地址为空时返回错误")
 	}
 }
+
+func TestLoadRejectsInvalidPublicURL(t *testing.T) {
+	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://localhost/monkeyai")
+	t.Setenv("MONKEYAI_PUBLIC_URL", "javascript:alert(1)")
+
+	if _, err := Load(nil); err == nil {
+		t.Fatal("期望公网地址非法时返回错误")
+	}
+}
+
+func TestLoadRequiresPublicAndAdminURLOnSameHost(t *testing.T) {
+	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://localhost/monkeyai")
+	t.Setenv("MONKEYAI_PUBLIC_URL", "https://api.example.com")
+	t.Setenv("MONKEYAI_ADMIN_URL", "https://admin.example.com")
+
+	if _, err := Load(nil); err == nil {
+		t.Fatal("期望公网地址与管理端地址主机名不同时返回错误")
+	}
+}
+
+func TestLoadRejectsIncompleteInitialAdmin(t *testing.T) {
+	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://localhost/monkeyai")
+	t.Setenv("MONKEYAI_PUBLIC_URL", "http://localhost:8080")
+	t.Setenv("MONKEYAI_INITIAL_ADMIN_EMAIL", "admin@example.com")
+	t.Setenv("MONKEYAI_INITIAL_ADMIN_PASSWORD", "")
+
+	if _, err := Load(nil); err == nil {
+		t.Fatal("期望首次管理员配置不完整时返回错误")
+	}
+}

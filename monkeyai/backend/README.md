@@ -133,4 +133,8 @@ export MONKEYAI_DATABASE_URL='postgres://monkeyai:password@127.0.0.1:5432/monkey
 go run ./cmd/server
 ```
 
-可选环境变量为 `MONKEYAI_HTTP_ADDR`、`MONKEYAI_PPROF_ADDR`、`MONKEYAI_SHUTDOWN_TIMEOUT` 和 `MONKEYAI_LOG_LEVEL`，对应命令行参数可通过 `go run ./cmd/server -h` 查看。服务提供 `/healthz` 存活检查和 `/readyz` 数据库就绪检查。pprof 默认单独监听 `127.0.0.1:6060`，入口为 `/debug/pprof/`，不对业务端口暴露。
+可选环境变量为 `MONKEYAI_HTTP_ADDR`、`MONKEYAI_PPROF_ADDR`、`MONKEYAI_SHUTDOWN_TIMEOUT`、`MONKEYAI_LOG_LEVEL`、`MONKEYAI_PUBLIC_URL` 和 `MONKEYAI_ADMIN_URL`，对应命令行参数可通过 `go run ./cmd/server -h` 查看。`MONKEYAI_PUBLIC_URL` 是上游 OAuth 回调和 OAuth 元数据使用的服务地址，`MONKEYAI_ADMIN_URL` 是登录完成后返回的页面地址；两者必须使用相同协议和主机名，开发环境可以使用不同端口，正式环境应使用 HTTPS。
+
+空数据库首次启动时，必须通过 `MONKEYAI_INITIAL_ADMIN_EMAIL` 和 `MONKEYAI_INITIAL_ADMIN_PASSWORD` 创建管理员账号，可选 `MONKEYAI_INITIAL_ADMIN_NAME` 设置显示名称。密码至少 12 个字符；未配置时服务会拒绝启动，避免产生无法管理的实例。服务只在用户表为空时创建账号，不会在后续启动时重置密码。创建完成后应移除密码环境变量。完整登录流程见 [`../design/agent-auth-settings.md`](../design/agent-auth-settings.md)。
+
+服务提供 `/healthz` 存活检查和 `/readyz` 数据库就绪检查。pprof 默认单独监听 `127.0.0.1:6060`，入口为 `/debug/pprof/`，不对业务端口暴露。

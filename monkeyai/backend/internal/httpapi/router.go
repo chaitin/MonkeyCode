@@ -14,7 +14,7 @@ type Pinger interface {
 	Ping(context.Context) error
 }
 
-func New(logger *slog.Logger, database Pinger, admin, agent http.Handler) http.Handler {
+func New(logger *slog.Logger, database Pinger, admin, agent, auth http.Handler) http.Handler {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
@@ -36,6 +36,7 @@ func New(logger *slog.Logger, database Pinger, admin, agent http.Handler) http.H
 
 	router.Mount("/api/admin/v1", admin)
 	router.Mount("/api/agent/v1", agent)
+	router.Mount("/api/auth/v1", auth)
 
 	return router
 }

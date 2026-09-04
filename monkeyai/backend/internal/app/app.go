@@ -15,7 +15,9 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 )
 
 type App struct {
@@ -29,12 +31,17 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	if err != nil {
 		return nil, err
 	}
+	handler, err := newApplicationHandler(ctx, logger, pool, cfg)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
 
 	return &App{
 		servers: []*http.Server{
 			{
 				Addr:              cfg.Addr,
-				Handler:           newHandler(logger, pool),
+				Handler:           handler,
 				ReadHeaderTimeout: 5 * time.Second,
 				IdleTimeout:       2 * time.Minute,
 				MaxHeaderBytes:    1 << 20,
@@ -57,10 +64,48 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 	admin := chi.NewRouter()
 	agent := chi.NewRouter()
+	auth := chi.NewRouter()
 	router := chi.NewRouter()
 	proxy.NewProxy(nil, logger).Register(router)
-	router.Mount("/", httpapi.New(logger, database, admin, agent))
+	router.Mount("/", httpapi.New(logger, database, admin, agent, auth))
 	return router
+}
+
+func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) (http.Handler, error) {
+	broker := setting.NewBroker()
+	settings := setting.NewService(setting.NewPostgres(pool), broker)
+	identities := identity.NewService(pool, settings, cfg.PublicURL, cfg.AdminURL)
+	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil {
+		return nil, fmt.Errorf("初始化管理员: %w", err)
+	}
+	go func() {
+		for ctx.Err() == nil {
+			if err := settings.Listen(ctx); err != nil && ctx.Err() == nil {
+				logger.Error("监听设置变更失败", "error", err)
+			}
+			select {
+			case <-ctx.Done():
+			case <-time.After(time.Second):
+			}
+		}
+	}()
+
+	admin := chi.NewRouter()
+	admin.Use(identities.RequireAdmin)
+	identities.RegisterAdmin(admin)
+	settings.RegisterAdmin(admin)
+
+	agent := chi.NewRouter()
+	agent.Use(identities.RequireAgent)
+	identities.RegisterAgent(agent)
+	settings.RegisterAgent(agent)
+
+	router := chi.NewRouter()
+	proxy.NewProxy(nil, logger).Register(router)
+	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
+	router.Mount("/oauth", identities.OAuthRouter())
+	router.Mount("/", httpapi.New(logger, pool, admin, agent, identities.AuthRouter()))
+	return router, nil
 }
 
 func (a *App) Run(ctx context.Context) error {

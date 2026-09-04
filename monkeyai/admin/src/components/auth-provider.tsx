@@ -1,27 +1,57 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react"
 
-import { AuthContext } from "@/lib/auth-context"
-
-const AUTH_STORAGE_KEY = "monkeyai-admin-authenticated"
+import { api } from "@/lib/api"
+import { AuthContext, type AuthUser } from "@/lib/auth-context"
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () => localStorage.getItem(AUTH_STORAGE_KEY) === "true"
-  )
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const login = useCallback(() => {
-    localStorage.setItem(AUTH_STORAGE_KEY, "true")
-    setIsAuthenticated(true)
+  const refresh = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const session = await api<{
+        authenticated: boolean
+        user: AuthUser | null
+      }>("/api/auth/v1/session")
+      setUser(session.authenticated ? session.user : null)
+    } catch {
+      setUser(null)
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
-  const logout = useCallback(() => {
-    localStorage.removeItem(AUTH_STORAGE_KEY)
-    setIsAuthenticated(false)
+  useEffect(() => {
+    api<{
+      authenticated: boolean
+      user: AuthUser | null
+    }>("/api/auth/v1/session")
+      .then((session) => setUser(session.authenticated ? session.user : null))
+      .catch(() => setUser(null))
+      .finally(() => setIsLoading(false))
+  }, [])
+
+  const logout = useCallback(async () => {
+    await api<void>("/api/auth/v1/logout", { method: "POST" })
+    setUser(null)
   }, [])
 
   const value = useMemo(
-    () => ({ isAuthenticated, login, logout }),
-    [isAuthenticated, login, logout]
+    () => ({
+      isAuthenticated: user !== null,
+      isLoading,
+      user,
+      refresh,
+      logout,
+    }),
+    [isLoading, logout, refresh, user]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

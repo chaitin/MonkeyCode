@@ -33,8 +33,8 @@ export function Dashboard() {
   const navigate = useNavigate()
   const currentPage = getConsolePage(location.pathname) ?? CONSOLE_PAGES[0]
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     navigate(LOGIN_PATH, { replace: true })
   }
 
