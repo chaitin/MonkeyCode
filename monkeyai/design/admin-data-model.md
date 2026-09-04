@@ -267,7 +267,7 @@ flowchart LR
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 资源授权 ID。 |
-| `resource_type` | `text` | 是 | 无 | 被授权资源类型：`model`、`skill`、`rule`、`connector`、`expert`。Definition 不参与授权。 |
+| `resource_type` | `text` | 是 | 无 | 被授权资源类型：`model`、`skill`、`rule`、`connector`、`expert`。Provider 不参与授权。 |
 | `resource_id` | `uuid` | 是 | 无 | 被授权资源 ID，与 `resource_type` 共同定位具体资源。 |
 | `user_id` | `uuid` | 否 | `NULL` | 被授权用户 ID；与 `group_id` 必须且只能填写一个。 |
 | `group_id` | `uuid` | 否 | `NULL` | 被授权分组 ID；与 `user_id` 必须且只能填写一个，并覆盖其所有后代分组用户。 |
@@ -368,18 +368,18 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
 
-### 8.6 `connector_definitions`：Connector 定义
+### 8.6 `connector_providers`：Connector Provider
 
-保存一类远程 MCP 服务的稳定标识、连接模板和认证配置。系统 Definition 对所有用户可见；个人 Definition 仅所有者可见和使用。
+保存一类远程 MCP 服务的稳定标识、连接模板和认证配置。系统 Connector Provider 对所有用户可见；个人 Connector Provider 仅所有者可见和使用。
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
-| `id` | `uuid` | 是 | 自动生成 | Definition ID。 |
+| `id` | `uuid` | 是 | 自动生成 | Provider ID。 |
 | `identifier` | `text` | 是 | 无 | 系统标识如 `github`，个人标识为自动生成的 `custom:<uuid>`；创建后不可修改。 |
 | `name` | `text` | 是 | 无 | 默认显示名称。 |
 | `description` | `text` | 是 | 无 | 服务能力说明。 |
 | `ownership_type` | `text` | 是 | 无 | 所有权：`system`、`user`。 |
-| `owner_user_id` | `uuid` | 是 | 无 | 系统 Definition 记录创建管理员，个人 Definition 记录所有者。 |
+| `owner_user_id` | `uuid` | 是 | 无 | 系统 Connector Provider 记录创建管理员，个人 Connector Provider 记录所有者。 |
 | `icon_file_name` | `text` | 否 | `NULL` | 图标原始文件名。 |
 | `icon_s3_key` | `text` | 否 | `NULL` | 图标 S3 Object Key。 |
 | `icon_mime_type` | `text` | 否 | `NULL` | 图标 MIME 类型。 |
@@ -387,7 +387,7 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `icon_sha256` | `text` | 否 | `NULL` | 图标内容摘要。 |
 | `transport` | `text` | 是 | `streamable_http` | 服务端远程 Transport；本期仅支持 `streamable_http` 并兼容 SSE。 |
 | `server_url` | `text` | 是 | 无 | 默认上游 MCP URL。 |
-| `authorization_mode` | `text` | 是 | 无 | `none`、`independent`、`centralized`；个人 Definition 不允许 `centralized`。 |
+| `authorization_mode` | `text` | 是 | 无 | `none`、`independent`、`centralized`；个人 Connector Provider 不允许 `centralized`。 |
 | `authorization_method` | `text` | 否 | `NULL` | `oauth`、`http_header`；`none` 时为空。 |
 | `header_schema` | `jsonb` | 是 | 空数组 | Header 名称、展示信息、必填性、敏感性和非敏感默认值。 |
 | `oauth_discovery_type` | `text` | 否 | `NULL` | `oauth_authorization_server`、`openid_connect`、`manual`。 |
@@ -404,22 +404,22 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间；存在有效 Connector 时禁止删除。 |
 
-系统 identifier 格式为 `^[a-z][a-z0-9_-]{1,63}$` 且在实例内唯一。系统 identifier 是保留名称，用户只能基于系统 Definition 创建个人 Connector。Header key 忽略大小写唯一；敏感 Header 不得设置默认值；`none` 不得声明敏感 Header。
+系统 identifier 格式为 `^[a-z][a-z0-9_-]{1,63}$` 且在实例内唯一。系统 identifier 是保留名称，用户只能基于系统 Connector Provider 创建个人 Connector。Header key 忽略大小写唯一；敏感 Header 不得设置默认值；`none` 不得声明敏感 Header。
 
 ### 8.7 `connectors`：Connector 实例
 
-同一 Definition 可创建多个实例。Connector 可覆盖 URL 和非敏感 Header，但不能覆盖授权模式和认证方式。
+同一 Connector Provider 可创建多个实例。Connector 可覆盖 URL 和非敏感 Header，但不能覆盖授权模式和认证方式。
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | Connector ID。 |
-| `definition_id` | `uuid` | 是 | 无 | 来源 Definition ID。 |
+| `provider_id` | `uuid` | 是 | 无 | 来源 Connector Provider ID。 |
 | `ownership_type` | `text` | 是 | 无 | 所有权：`system`、`user`。 |
 | `owner_user_id` | `uuid` | 是 | 无 | 系统实例记录创建管理员，个人实例记录所有者。 |
 | `name` | `text` | 是 | 无 | 实例显示名称。 |
 | `server_url_override` | `text` | 否 | `NULL` | 实例 URL 覆盖。 |
 | `header_values` | `jsonb` | 是 | 空对象 | Header Schema 中非敏感 Header 的实例值。 |
-| `definition_snapshot` | `jsonb` | 否 | `NULL` | `none`、`independent` 创建时的非密钥配置快照；`centralized` 必须为空。 |
+| `provider_snapshot` | `jsonb` | 否 | `NULL` | `none`、`independent` 创建时的非密钥配置快照；`centralized` 必须为空。 |
 | `enabled` | `boolean` | 是 | `true` | 是否允许新会话选择。 |
 | `connection_status` | `text` | 是 | `unknown` | `connected`、`error`、`unknown`。 |
 | `last_checked_at` | `timestamptz` | 否 | `NULL` | 手动测试或实际 MCP 请求最近更新时间。 |
@@ -428,7 +428,7 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
 
-个人 Connector 仅所有者可用且不支持分享。`none`、`independent` 使用创建时 Definition 快照；`centralized` 始终使用当前 Definition。删除 Connector 时撤销其凭证，历史调用继续保留。
+个人 Connector 仅所有者可用且不支持分享。`none`、`independent` 使用创建时 Connector Provider 快照；`centralized` 始终使用当前 Connector Provider。删除 Connector 时撤销其凭证，历史调用继续保留。
 
 ### 8.8 `connector_credentials`：Connector 凭证
 
@@ -451,20 +451,20 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `revoked_at` | `timestamptz` | 否 | `NULL` | 撤销时间。 |
 
-认证方式以 Connector 实际 Definition 为准，本表不重复保存 method。集中认证使用每个 Connector 唯一的 `user_id IS NULL` 有效凭证；独立认证 `user_id` 必填；`none` 不允许凭证。重新授权覆盖原记录。
+认证方式以 Connector 实际 Connector Provider 为准，本表不重复保存 method。集中认证使用每个 Connector 唯一的 `user_id IS NULL` 有效凭证；独立认证 `user_id` 必填；`none` 不允许凭证。重新授权覆盖原记录。
 
 ### 8.9 `mcp_tools`：MCP 工具
 
-工具目录按 Definition 保存，同一 Definition 的全部 Connector 共享目录、启停和计费配置。
+工具目录按 Connector Provider 保存，同一 Connector Provider 的全部 Connector 共享目录、启停和计费配置。
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 工具 ID。 |
-| `definition_id` | `uuid` | 是 | 无 | 所属 Definition ID。 |
-| `name` | `text` | 是 | 无 | 上游工具名称，同一 Definition 内忽略大小写唯一。 |
+| `provider_id` | `uuid` | 是 | 无 | 所属 Connector Provider ID。 |
+| `name` | `text` | 是 | 无 | 上游工具名称，同一 Connector Provider 内忽略大小写唯一。 |
 | `description` | `text` | 是 | 无 | 工具说明。 |
 | `input_schema` | `jsonb` | 否 | `NULL` | 输入 JSON Schema。 |
-| `enabled` | `boolean` | 是 | `true` | 是否允许该 Definition 暴露工具。 |
+| `enabled` | `boolean` | 是 | `true` | 是否允许该 Connector Provider 暴露工具。 |
 | `credits_per_call` | `numeric(24,6)` | 是 | `0` | 集中认证成功调用的积分；其他模式固定 `0`。 |
 | `discovered_at` | `timestamptz` | 是 | 当前时间 | 首次发现时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近同步时间。 |
@@ -482,7 +482,7 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `name` | `text` | 是 | 无 | 专家名称。 |
 | `description` | `text` | 是 | 无 | 专家用途说明。 |
 | `prompt` | `text` | 是 | 无 | 专家角色、目标和工作方式提示词。 |
-| `profile` | `jsonb` | 是 | 无 | Connector 依赖与默认模型。 |
+| `default_model_id` | `uuid` | 否 | `NULL` | 默认模型 ID；用户仍可选择其他有权模型。 |
 | `resource_manifest_hash` | `text` | 是 | 无 | 当前专家资源清单 SHA-256。 |
 | `enabled` | `boolean` | 是 | `true` | 是否允许新会话使用。 |
 | `created_by_user_id` | `uuid` | 是 | 无 | 创建管理员。 |
@@ -490,31 +490,45 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
 
-Profile 包含 `schema_version`、按系统 identifier 声明的 Connector 依赖，以及可空的 `runtime.default_model_id`。每项 Connector 依赖保存 `required`、工具白名单和工具黑名单。同一 Profile 中 identifier 不重复。
+`default_model_id` 外键关联 `models.id`。模型被 Expert 引用时禁止删除；禁用后不再作为新会话默认值，用户需选择其他有权模型。
 
-### 8.11 `expert_rules`：专家规则关系
+### 8.11 `expert_connector_providers`：专家 Connector Provider 关系
+
+Expert 关联 Connector Provider 类型，不直接绑定包含账号与凭证的 Connector 实例。
+
+| 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | 是 | 自动生成 | 关系 ID。 |
+| `expert_id` | `uuid` | 是 | 无 | 专家 ID。 |
+| `provider_id` | `uuid` | 是 | 无 | 系统 Connector Provider ID。 |
+| `required` | `boolean` | 是 | `true` | 缺少可用 Connector 实例时是否阻止任务启动。 |
+| `tool_whitelist` | `text[]` | 是 | 空数组 | 允许的工具名称；空数组表示不限制候选工具。 |
+| `tool_blacklist` | `text[]` | 是 | 空数组 | 禁止的工具名称，优先级高于白名单。 |
+| `created_at` | `timestamptz` | 是 | 当前时间 | 绑定时间。 |
+
+同一 Expert 不能重复关联同一 Connector Provider。工具名称按 Provider 工具目录校验并忽略大小写去重；Provider 必须为有效的系统资源。被有效关系引用的 Connector Provider 禁止删除。解除关系时物理删除并写入审计。
+
+### 8.12 `expert_rules`：专家规则关系
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 关系 ID。 |
 | `expert_id` | `uuid` | 是 | 无 | 专家 ID。 |
 | `rule_id` | `uuid` | 是 | 无 | 系统规则 ID。 |
-| `sort_order` | `integer` | 是 | `0` | 装配顺序。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 绑定时间。 |
 
-### 8.12 `expert_skills`：专家技能关系
+### 8.13 `expert_skills`：专家技能关系
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 关系 ID。 |
 | `expert_id` | `uuid` | 是 | 无 | 专家 ID。 |
 | `skill_id` | `uuid` | 是 | 无 | 系统技能 ID。 |
-| `sort_order` | `integer` | 是 | `0` | 装配顺序。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 绑定时间。 |
 
-两张关系表均要求同一专家不能重复关联同一资源，且 `sort_order >= 0`。解除关系时物理删除并写入审计。被有效关系引用的 Rule 或 Skill 禁止删除。
+两张关系表均要求同一专家不能重复关联同一资源。运行时按资源规范化名称、资源 ID 升序稳定装配；规范化名称去除首尾空格并转换为小写。解除关系时物理删除并写入审计。被有效关系引用的 Rule 或 Skill 禁止删除。
 
-`resource_manifest_hash` 包含 Prompt、Profile、专家 Rule 和 Skill 包摘要，不包含 Connector Definition 和系统强制 Rule。相关资源或关系变化时在同一事务内同步重算。
+`resource_manifest_hash` 包含 Prompt、默认模型、Connector Provider 关系及过滤条件、专家 Rule 和 Skill 包摘要，不包含 Connector Provider 自身配置和系统强制 Rule。相关资源或关系变化时在同一事务内同步重算。
 
 ## 9. 会话与用量事实
 
@@ -681,7 +695,7 @@ Profile 包含 `schema_version`、按系统 identifier 声明的 Connector 依�
 | 模型管理 | `models`、`resource_access_grants` |
 | 技能 | `skills`、`tags`、`resource_tags`、`resource_access_grants`、S3 对象存储 |
 | 专家 | `experts`、`expert_rules`、`expert_skills`、`resource_access_grants` |
-| 工具 | `connector_definitions`、`connectors`、`connector_credentials`、`mcp_tools`、`resource_access_grants` |
+| 工具 | `connector_providers`、`connectors`、`connector_credentials`、`mcp_tools`、`expert_connector_providers`、`resource_access_grants` |
 | 规则 | `rules`、`resource_access_grants` |
 | 扣费明细 | `credit_ledger_entries`、`credit_accounts` |
 | 费用设置 | `settings`、`billing_quotas` |

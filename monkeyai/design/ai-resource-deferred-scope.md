@@ -6,7 +6,7 @@
 
 ## 1. 专家版本管理
 
-本期不实现专家草稿、发布版本、回滚和历史版本。专家 Prompt、Profile、关联 Rule 和 Skill 的修改即成为服务端最新配置，并影响后续新任务。
+本期不实现专家草稿、发布版本、回滚和历史版本。专家 Prompt、默认模型及关联的 Connector Provider、Rule 和 Skill 修改即成为服务端最新配置，并影响后续新任务。
 
 连续运行中的任务继续使用创建时快照。恢复历史任务时使用服务端最新专家配置重新生成快照。
 
@@ -58,14 +58,14 @@
 
 ## 6. 个人 Connector 分享
 
-用户私有 Connector Definition 和 Connector 仅本人使用，本期不支持：
+用户私有 Connector Provider 和 Connector 仅本人使用，本期不支持：
 
-- 通过 `resource_access_grants` 分享 Definition 或 Connector；
-- 管理员将个人 Definition 转为系统 Definition；
+- 通过 `resource_access_grants` 分享 Provider 或 Connector；
+- 管理员将个人 Connector Provider 转为系统 Connector Provider；
 - 在不同 MonkeyAI 服务端之间自动迁移个人 Connector；
 - 分享 Credential。
 
-本地专家导出可携带非敏感 Definition 配置，接收者导入后创建自己的 Definition 与 Connector。
+本地专家导出可携带非敏感 Provider 配置，接收者导入后创建自己的 Connector Provider 与 Connector。
 
 ## 7. Credential 加密与外部 Secret Manager
 
@@ -114,17 +114,17 @@ API、日志、审计参数、错误消息和资源同步内容仍禁止返回�
 
 - 专家资源变更原因表；
 - 专家关联关系软删除历史；
-- Connector Definition 审核流程；
+- Connector Provider 审核流程；
 - 工具重命名识别；
 - 多 Connector 工具目录合并；
-- Connector Definition 或 Profile 的结构化版本迁移工具；
+- Connector Provider 或专家资源关系的结构化版本迁移工具；
 - 已运行会话的资源热更新。
 
 ## 13. 已知首版限制
 
-- 最近一次 Connector 的 `tools/list` 会覆盖 Definition 的共享工具目录；不同实例暴露不同工具时，最后一次结果为准。
+- 最近一次 Connector 的 `tools/list` 会覆盖 Provider 的共享工具目录；不同实例暴露不同工具时，最后一次结果为准。
 - MCP 工具名称忽略大小写唯一，但调用上游时仍使用原始名称。
-- `default_model_id` 位于 Profile JSONB，只能由应用层校验模型引用。
+- `experts.default_model_id` 使用数据库外键关联模型。
 - Desktop 未确认专家资源更新时，可继续使用本地旧 Skill 或旧 Rule 副本。
 
 ## 14. 知识库与专家知识库依赖

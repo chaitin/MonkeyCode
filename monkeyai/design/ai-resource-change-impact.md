@@ -52,10 +52,10 @@
 
 改动：
 
-- 删除 `mcp_servers` 概念，拆为 `connector_definitions` 和 `connectors`。
+- 删除 `mcp_servers` 概念，拆为 `connector_providers` 和 `connectors`。
 - `mcp_server_credentials` 重命名为 `connector_credentials`，关联 `connector_id`。
 - Credential 删除重复的 `method` 字段。
-- `mcp_tools.server_id` 改为 `definition_id`。
+- `mcp_tools.server_id` 改为 `provider_id`。
 - `mcp_tool_calls.server_id` 改为 `connector_id`。
 - 资源授权类型由 `mcp_server` 改为 `connector`。
 
@@ -66,10 +66,10 @@
 改动：
 
 - 保留 `experts.prompt`。
-- 增加 `experts.profile` 和 `resource_manifest_hash`。
+- 增加 `experts.default_model_id` 和 `resource_manifest_hash`。
 - 不新增 `expert_agents`。
-- 删除 `expert_mcp_tools`；Connector 依赖改存 `profile.connectors`，按 identifier 声明。
-- `expert_rules`、`expert_skills` 增加 `sort_order`。
+- 删除 `expert_mcp_tools`；新增 `expert_connector_providers`，关联 Connector Provider 并保存必需标记和工具过滤条件。
+- `expert_rules`、`expert_skills` 仅保存资源关联，按资源规范化名称和资源 ID 稳定装配。
 - `expert_knowledge_bases` 及知识库相关改动移入未来规划，不进入本期表结构。
 
 本期 Expert 表结构关系如下：
@@ -77,12 +77,14 @@
 ```mermaid
 erDiagram
     USERS ||--o{ EXPERTS : creates
+    MODELS ||--o{ EXPERTS : defaults_for
     EXPERTS ||--o{ EXPERT_RULES : binds
     RULES ||--o{ EXPERT_RULES : referenced_by
     EXPERTS ||--o{ EXPERT_SKILLS : binds
     SKILLS ||--o{ EXPERT_SKILLS : referenced_by
-    EXPERTS }o--o{ CONNECTOR_DEFINITIONS : "profile identifier"
-    CONNECTOR_DEFINITIONS ||--o{ MCP_TOOLS : declares
+    EXPERTS ||--o{ EXPERT_CONNECTOR_PROVIDERS : requires
+    CONNECTOR_PROVIDERS ||--o{ EXPERT_CONNECTOR_PROVIDERS : referenced_by
+    CONNECTOR_PROVIDERS ||--o{ MCP_TOOLS : declares
     EXPERTS ||--o{ RESOURCE_ACCESS_GRANTS : grants_access
     EXPERTS ||--o{ SESSIONS : used_by
 
@@ -91,7 +93,7 @@ erDiagram
         text name
         text description
         text prompt
-        jsonb profile
+        uuid default_model_id FK
         text resource_manifest_hash
         boolean enabled
         uuid created_by_user_id FK
@@ -100,11 +102,16 @@ erDiagram
         timestamptz deleted_at
     }
 
+    MODELS {
+        uuid id PK
+        text name
+        boolean enabled
+    }
+
     EXPERT_RULES {
         uuid id PK
         uuid expert_id FK
         uuid rule_id FK
-        integer sort_order
         timestamptz created_at
     }
 
@@ -112,11 +119,20 @@ erDiagram
         uuid id PK
         uuid expert_id FK
         uuid skill_id FK
-        integer sort_order
         timestamptz created_at
     }
 
-    CONNECTOR_DEFINITIONS {
+    EXPERT_CONNECTOR_PROVIDERS {
+        uuid id PK
+        uuid expert_id FK
+        uuid provider_id FK
+        boolean required
+        text_array tool_whitelist
+        text_array tool_blacklist
+        timestamptz created_at
+    }
+
+    CONNECTOR_PROVIDERS {
         uuid id PK
         text identifier UK
         text name
@@ -126,7 +142,7 @@ erDiagram
 
     MCP_TOOLS {
         uuid id PK
-        uuid definition_id FK
+        uuid provider_id FK
         text name
         boolean enabled
         numeric credits_per_call
@@ -149,34 +165,36 @@ erDiagram
     }
 ```
 
-图中的 Expert 与 Connector Definition 是 Profile 中的逻辑关系，不是数据库外键：
+Expert 通过关系表关联 Connector Provider：
 
 ```text
-experts.profile.connectors[].identifier
-→ connector_definitions.identifier
-→ mcp_tools.definition_id
+experts.id
+→ expert_connector_providers.expert_id
+→ expert_connector_providers.provider_id
+→ connector_providers.id
+→ mcp_tools.provider_id
 ```
 
-每项 Connector 依赖还通过 `tool_whitelist`、`tool_blacklist` 保存工具名称过滤条件。Expert 不绑定具体 `connectors.id` 或 `mcp_tools.id`；创建会话时再根据 identifier 选择用户可用的具体 Connector 实例，并从该 Definition 的已启用工具中应用白名单和黑名单。
+每项关系通过 `required`、`tool_whitelist`、`tool_blacklist` 保存启动约束和工具名称过滤条件。Expert 不绑定具体 `connectors.id` 或 `mcp_tools.id`；创建会话时根据关联 Provider 的 identifier 选择用户可用的具体 Connector 实例，并从该 Connector Provider 的已启用工具中应用白名单和黑名单。
 
 ## 3. Admin 原型改动建议
 
 ### 3.1 工具页面
 
-当前页面以 MCP Server 为唯一实体，并在一个表单中配置 URL、授权模式和认证信息。需要改成 Definition 与 Connector 两层管理。
+当前页面以 MCP Server 为唯一实体，并在一个表单中配置 URL、授权模式和认证信息。需要改成 Connector Provider 与 Connector 两层管理。
 
-Definition 管理应支持：
+Provider 管理应支持：
 
 - identifier、名称、描述、图标；
 - Transport 和默认 URL；
 - 三种授权模式；
 - OAuth Discovery/Manual 配置；
 - Header Schema；
-- Definition 级工具目录、启停及集中认证积分。
+- Provider 级工具目录、启停及集中认证积分。
 
 Connector 管理应支持：
 
-- 同一 Definition 创建多个实例；
+- 同一 Connector Provider 创建多个实例；
 - URL 和非敏感 Header 覆盖；
 - 组织或个人所有权；
 - 集中认证管理员授权；
@@ -192,7 +210,7 @@ Connector 管理应支持：
 当前专家表单直接保存 `prompt`，这一点保留；硬编码的工具、规则和 Skill ID 需要替换为真实资源：
 
 - 编辑单 Agent Expert 的 Prompt；
-- Profile 编辑系统 identifier、必需标记、工具白名单/黑名单；
+- 选择系统 Connector Provider，并编辑必需标记、工具白名单/黑名单；
 - Rule、Skill 选择实际服务端系统资源；
 - 后台不再直接绑定具体 MCP Tool；
 - 展示 `resource_manifest_hash` 对应的资源状态；
@@ -223,7 +241,7 @@ Connector 管理应支持：
 - `mcp_server` 命名改为 Connector。
 - MCP 集中 OAuth 的“已授权”不能使用独立布尔值，应由 Credential 状态推导。
 - 当前文案若声称 Header 已加密，需要改为首版明文存储、界面不回显。
-- 专家硬编码工具选项改为 Definition identifier 与工具目录。
+- 专家硬编码工具选项改为 Provider identifier 与工具目录。
 
 ## 4. Desktop 改动建议
 
@@ -239,7 +257,7 @@ Desktop 当前已有两项适合复用的能力：
 需要新增：
 
 - MonkeyAI 全量资源快照与增量版本同步；
-- 系统专家、Rule、Skill、Definition 和 Connector 缓存；
+- 系统专家、Rule、Skill、Provider 和 Connector 缓存；
 - 服务端切换时清理旧服务端缓存；
 - 文件摘要缓存及签名地址下载；
 - 专家 `resource_manifest_hash` 比较。
@@ -303,7 +321,7 @@ OhMyAgent 不负责远程 Token 交换、持久化和刷新，这些由 MonkeyAI
 
 需要新增：
 
-- 读取 `expert/profile.json` 和 `manifest.json`；
+- 读取 `expert/manifest.json`；
 - 将 `experts.prompt` 物化为单 Agent 的主提示词；
 - 将有序 Rule 注入系统指令；
 - 扫描专家目录 Skill；
@@ -320,7 +338,7 @@ OhMyAgent 不负责远程 Token 交换、持久化和刷新，这些由 MonkeyAI
 
 1. 服务端需要为每个 Connector 提供独立 MCP 网关端点。
 2. 网关调用必须携带用户和会话身份，但不得把上游凭证返回客户端。
-3. `tools/list` 应应用 Definition 工具启停和专家工具过滤。
+3. `tools/list` 应应用 Connector Provider 工具启停和专家工具过滤。
 4. `tools/call` 仅记录状态、耗时和资源标识，不记录请求/响应 Payload。
 5. 集中认证成功调用按工具扣费；独立和 none 只统计。
 6. 产品所称任务统一对应 `sessions`；新会话固定资源快照，运行中不热更新，恢复会话时重新同步最新资源。
@@ -330,7 +348,7 @@ OhMyAgent 不负责远程 Token 交换、持久化和刷新，这些由 MonkeyAI
 本设计借鉴 WorkBuddy 调研中的以下思想：
 
 - 专家以 Agent、Skill、Rule 和 Connector 依赖组成可移植包；
-- Connector Definition 与用户运行实例分离；
+- Connector Provider 与用户运行实例分离；
 - 专家按 identifier 声明 Connector，而不是绑定某个账号凭证；
 - Credential 不进入专家包。
 

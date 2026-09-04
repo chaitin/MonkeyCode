@@ -41,14 +41,14 @@ flowchart LR
 服务端资源采用“定义、实例、凭证”三层模型：
 
 ```text
-connector_definitions
+connector_providers
         ↓ 1:N
 connectors
         ↓ 1:N
 connector_credentials
 ```
 
-- Definition 描述一类 MCP 服务如何连接和认证，具有稳定 `identifier`。
+- Provider 描述一类 MCP 服务如何连接和认证，具有稳定 `identifier`。
 - Connector 表示一个实际可选择的连接实例。
 - Credential 表示某个 Connector 的组织共享凭证或用户独立凭证。
 
@@ -74,7 +74,7 @@ ai-resources/<kind>/<resource-id>/<object-id>/<safe-file-name>
 
 ```text
 ai-resources/skills/<skill-id>/<object-id>/code-review.zip
-ai-resources/connector-icons/<definition-id>/<object-id>/github.svg
+ai-resources/connector-icons/<provider-id>/<object-id>/github.svg
 ```
 
 `object-id` 每次写入重新生成，保证不可变和低冲突。`safe-file-name` 仅用于运维识别。Object Key 禁止绝对路径、`..`、反斜杠路径穿越和用户控制的目录片段。
@@ -96,9 +96,9 @@ ai-resources/connector-icons/<definition-id>/<object-id>/github.svg
 | 资源 | 业务表 | S3 字段 |
 | --- | --- | --- |
 | Skill ZIP | `skills` | `package_file_name`、`package_s3_key`、`package_size_bytes`、`package_sha256` |
-| Connector 图标 | `connector_definitions` | `icon_file_name`、`icon_s3_key`、`icon_mime_type`、`icon_size_bytes`、`icon_sha256` |
+| Connector 图标 | `connector_providers` | `icon_file_name`、`icon_s3_key`、`icon_mime_type`、`icon_size_bytes`、`icon_sha256` |
 
-服务端不保存组装后的系统专家 ZIP。Prompt、Profile 与 Rule 保存在数据库，Skill ZIP 通过 `skills.package_s3_key` 定位；Desktop 根据专家 Manifest 组装专家目录。
+服务端不保存组装后的系统专家 ZIP。Prompt、默认模型及资源关系保存在数据库，Rule 正文保存在数据库，Skill ZIP 通过 `skills.package_s3_key` 定位；Desktop 根据专家 Manifest 组装专家目录。
 
 ### 3.5 Skill 包
 
@@ -127,7 +127,7 @@ ZIP 根目录必须直接包含 `SKILL.md`，不得额外包装同名目录。`S
 
 ### 3.6 Connector 图标
 
-Connector Definition 直接保存图标 Object Key 和元数据。PNG 保留原始字节；SVG 必须拒绝或清理脚本、事件属性、外部资源引用和其他主动内容。图标通过受控文件接口或短期预签名地址下发，不要求 S3 对象公开可读。
+Connector Provider 直接保存图标 Object Key 和元数据。PNG 保留原始字节；SVG 必须拒绝或清理脚本、事件属性、外部资源引用和其他主动内容。图标通过受控文件接口或短期预签名地址下发，不要求 S3 对象公开可读。
 
 ### 3.7 文件读取与下发
 
@@ -152,37 +152,20 @@ Connector Definition 直接保存图标 Object Key 和元数据。PNG 保留原�
 
 一个 Expert 就是一个 Agent。`experts.prompt` 保存该 Agent 的角色、目标和工作方式；Rule、Skill 与 Connector 依赖均直接作用于该 Agent。本期不保留成员、角色、团队拓扑或成员级资源范围。
 
-### 4.3 Profile
+### 4.3 默认模型与 Connector Provider
 
-`experts.profile` 使用 `jsonb`：
+`experts.default_model_id` 可空并关联 `models.id`，只作为新任务默认值，用户仍可选择其他有权模型。不配置 Expert 级 `max_turns`。
 
-```json
-{
-  "schema_version": 1,
-  "connectors": [
-    {
-      "identifier": "github",
-      "required": true,
-      "tool_whitelist": ["search_code"],
-      "tool_blacklist": ["delete_repository"]
-    }
-  ],
-  "runtime": {
-    "default_model_id": null
-  }
-}
-```
+Expert 通过 `expert_connector_providers` 关联系统 Connector Provider。每项关系保存 `required`、`tool_whitelist` 和 `tool_blacklist`：
 
-约束：
-
-- `identifier` 必须对应有效的系统 Definition，同一 Profile 中不得重复。
-- 白名单为空表示不限制候选工具；黑名单最后执行并具有更高优先级。
-- `default_model_id` 可空，只是默认值，用户仍可选择其他有权模型。
-- 不配置 Expert 级 `max_turns`。
+- 同一 Expert 不得重复关联同一 Connector Provider；
+- 白名单为空表示不限制候选工具；
+- 黑名单最后执行并具有更高优先级；
+- Expert 不直接绑定具体 Connector 实例或 Credential。
 
 ### 4.4 专家静态资源
 
-Expert 通过关系表引用系统 Rule 和系统 Skill。关系表使用 `sort_order` 定义稳定装配顺序，同一 Expert 不得重复引用同一资源。
+Expert 通过关系表引用系统 Rule 和系统 Skill。关系表不保存人工排序，同一 Expert 不得重复引用同一资源。运行时按资源规范化名称、资源 ID 升序稳定装配；规范化名称去除首尾空格并转换为小写。
 
 系统专家不允许引用个人 Rule 或个人 Skill，避免个人资源生命周期破坏组织专家。
 
@@ -201,7 +184,7 @@ Expert 通过关系表引用系统 Rule 和系统 Skill。关系表使用 `sort_
 
 ```text
 系统强制 Rule
-→ 专家绑定 Rule（按 sort_order）
+→ 专家绑定 Rule（按规范化名称、资源 ID）
 → 用户本次选择 Rule
 ```
 
@@ -215,25 +198,26 @@ Skill 同名优先级：
 → 系统 Skill
 ```
 
-Skill 名称同样去除首尾空格并忽略大小写。专家 Skill 按 `expert_skills.sort_order` 排序；用户本次选择的 Skill 保持选择顺序。同一 Skill ID 或规范化名称只物化优先级最高的一项。
+Skill 名称同样去除首尾空格并忽略大小写。专家 Skill 按规范化名称、资源 ID 升序排序；用户本次选择的 Skill 保持选择顺序。同一 Skill ID 或规范化名称只物化优先级最高的一项。
 
 ### 4.7 专家资源清单与本地更新
 
 `experts.resource_manifest_hash` 持久化服务端当前专家资源组合的 SHA-256。摘要包含：
 
-- `experts.profile`；
+- `experts.default_model_id`；
+- `expert_connector_providers` 关系、必需标记和工具过滤条件；
 - `experts.prompt`；
-- 专家 Rule 关系、顺序、名称和正文摘要；
-- 专家 Skill 关系、顺序、包文件摘要及启用状态；
+- 专家 Rule 关系、名称和正文摘要；
+- 专家 Skill 关系、包文件摘要及启用状态；
 
 摘要不包含：
 
-- Connector Definition；
+- Connector Provider；
 - 系统强制 Rule。
 
-以下变化在同一数据库事务内同步重算所有受影响专家的摘要：修改 `experts.prompt` 或 `experts.profile`；新增、修改或删除 `expert_rules` 或 `expert_skills`；修改关系顺序；修改被引用 Rule 的名称或正文；修改被引用 Skill 的名称、描述、包文件或启用状态。
+以下变化在同一数据库事务内同步重算所有受影响专家的摘要：修改 `experts.prompt` 或 `experts.default_model_id`；新增、修改或删除 `expert_connector_providers`、`expert_rules` 或 `expert_skills`；修改被引用 Rule 的名称或正文；修改被引用 Skill 的名称、描述、包文件或启用状态。
 
-摘要输入采用确定性 JSON：对象键按 Unicode 码点升序排列；关系按 `sort_order`、资源 ID 升序排列；字符串使用 UTF-8；缺失值与 `null` 区分；数组保持业务顺序；最终对无额外空白的 JSON 字节计算 SHA-256。
+摘要输入采用确定性 JSON：对象键按 Unicode 码点升序排列；Connector Provider 关系按 Provider identifier、Provider ID 升序排列，白名单和黑名单分别按规范化工具名称升序排列；Rule 和 Skill 关系按资源规范化名称、资源 ID 升序排列；字符串使用 UTF-8；缺失值与 `null` 区分；数组保持业务顺序；最终对无额外空白的 JSON 字节计算 SHA-256。
 
 Desktop 保存本地已物化清单。服务端摘要不一致时提示用户“专家资源可更新”；用户确认前继续使用本地旧目录。确认后在临时目录构建完整新版本，全部下载、解压和校验成功后原子替换；失败则继续使用旧目录。
 
@@ -247,21 +231,21 @@ Desktop 保存本地已物化清单。服务端摘要不一致时提示用户“
 - 被专家引用的系统 Rule 禁止删除，必须先解除引用。
 - 系统 Rule 可通过 `usage_requirement = required` 强制下发；个人 Rule 只能是 `optional`。
 
-## 6. Connector Definition
+## 6. Connector Provider
 
 ### 6.1 identifier
 
 `identifier` 是服务类型的稳定机器标识，例如 `github`、`gitlab`、`tavily`。
 
 - 系统 identifier 由管理员填写，格式为 `^[a-z][a-z0-9_-]{1,63}$`，在实例内唯一。
-- 用户自建 Definition 自动生成 `custom:<uuid>`，不允许手填。
+- 用户自建 Provider 自动生成 `custom:<uuid>`，不允许手填。
 - identifier 创建后不可修改。
-- 系统 identifier 是保留名称，用户不能创建同名 Definition，只能基于系统 Definition 创建个人 Connector。
-- 用户 Definition 仅本人使用，不支持服务端分享。
+- 系统 identifier 是保留名称，用户不能创建同名 Connector Provider，只能基于系统 Connector Provider 创建个人 Connector。
+- 用户 Connector Provider 仅本人使用，不支持服务端分享。
 
-### 6.2 Definition 内容
+### 6.2 Connector Provider 内容
 
-Definition 保存：
+Connector Provider 保存：
 
 - 名称、描述、图标；
 - 远程 `streamable_http` 地址；
@@ -271,7 +255,7 @@ Definition 保存：
 - Header Schema；
 - 最近一次工具发现来源 Connector。
 
-系统启用的 Definition 对所有用户可见，用户可基于 `none` 或 `independent` Definition 创建私有 Connector。`centralized` Definition 只能由管理员创建组织 Connector。
+系统启用的 Connector Provider 对所有用户可见，用户可基于 `none` 或 `independent` Connector Provider 创建私有 Connector。`centralized` Provider 只能由管理员创建组织 Connector。
 
 ### 6.3 OAuth 配置
 
@@ -287,7 +271,7 @@ OAuth Client Secret 首版明文保存于数据库，但 API、日志和审计�
 
 ### 6.4 Header Schema
 
-Definition 使用 `header_schema jsonb` 声明 Header：
+Provider 使用 `header_schema jsonb` 声明 Header：
 
 ```json
 [
@@ -316,16 +300,16 @@ Definition 使用 `header_schema jsonb` 声明 Header：
 
 ### 7.1 实例
 
-Connector 可以覆盖 Definition 的 URL 和非敏感 Header，但不能覆盖授权模式和认证方式。
+Connector 可以覆盖 Provider 的 URL 和非敏感 Header，但不能覆盖授权模式和认证方式。
 
 - 系统 Connector 由管理员创建，通过 `resource_access_grants` 授权用户或分组。
 - 用户 Connector 仅所有者可用，不支持分享。
-- 同一 Definition 可创建多个 Connector，例如同一 `github` 下的“研发 GitHub”和“开源 GitHub”。
-- 同一用户也可以为同一 Definition 创建多个私有 Connector。
+- 同一 Connector Provider 可创建多个 Connector，例如同一 `github` 下的“研发 GitHub”和“开源 GitHub”。
+- 同一用户也可以为同一 Connector Provider 创建多个私有 Connector。
 
-`none` 和 `independent` Connector 创建时保存 `definition_snapshot`，固定当时的 URL、授权配置、OAuth 非密钥配置和 Header Schema。Definition 后续普通配置变更只影响新建实例，旧实例可由用户主动升级。OAuth Client Secret 不复制到快照；服务端换取和刷新 Token 时读取 Definition 当前 Secret，因此 Secret 轮换作为安全配置对既有 Connector 立即生效，且不得同时改变 Client ID 或其他快照配置。
+`none` 和 `independent` Connector 创建时保存 `provider_snapshot`，固定当时的 URL、授权配置、OAuth 非密钥配置和 Header Schema。Connector Provider 后续普通配置变更只影响新建实例，旧实例可由用户主动升级。OAuth Client Secret 不复制到快照；服务端换取和刷新 Token 时读取 Connector Provider 当前 Secret，因此 Secret 轮换作为安全配置对既有 Connector 立即生效，且不得同时改变 Client ID 或其他快照配置。
 
-`centralized` Connector 不保存快照，新任务使用 Definition 当前配置。Definition 禁用后，集中 Connector 对新任务不可用。
+`centralized` Connector 不保存快照，新任务使用 Provider 当前配置。Provider 禁用后，集中 Connector 对新任务不可用。
 
 ### 7.2 凭证
 
@@ -335,14 +319,14 @@ Connector 可以覆盖 Definition 的 URL 和非敏感 Header，但不能覆盖�
 - `independent`：`user_id` 必填，个人 Connector 的用户必须等于 Connector 所有者；
 - `none`：不得存在凭证记录。
 
-认证方式以 Connector 实际 Definition 配置为准，Credential 不重复保存 `method`。重新授权覆盖原记录，不保存凭证历史。
+认证方式以 Connector 实际 Connector Provider 配置为准，Credential 不重复保存 `method`。重新授权覆盖原记录，不保存凭证历史。
 
 ### 7.3 Header 合并
 
 网关按以下顺序合并，后者覆盖前者：
 
 ```text
-Definition Header 默认值
+Connector Provider Header 默认值
 → Connector header_values
 → Credential http_headers
 ```
@@ -383,7 +367,7 @@ Desktop 发起授权
 → Desktop 打开系统浏览器
 → OhMyAgent 接收 callback 并校验 state
 → Desktop 提交 code、code_verifier、redirect_uri
-→ 服务端使用 Definition Client 配置换取 Token
+→ 服务端使用 Connector Provider Client 配置换取 Token
 → 服务端写入 connector_credentials
 ```
 
@@ -391,14 +375,14 @@ Desktop 发起授权
 
 ## 9. MCP 工具目录与调用事实
 
-`mcp_tools` 按 Definition 保存，同一 Definition 的全部 Connector 共享工具目录、启停状态和积分配置。
+`mcp_tools` 按 Connector Provider 保存，同一 Connector Provider 的全部 Connector 共享工具目录、启停状态和积分配置。
 
 - 任意 Connector 手动测试成功后执行 `tools/list`。
 - 实际网关请求也可被动更新连接状态。
 - 最近一次成功结果覆盖共享工具目录。
 - 新工具创建，缺失工具软删除，再次发现同名工具时恢复。
 - 工具改名视为旧工具删除、新工具新增。
-- `(definition_id, lower(name))` 唯一；调用时仍使用上游原始精确名称。
+- `(provider_id, lower(name))` 唯一；调用时仍使用上游原始精确名称。
 - 同步不得覆盖管理员设置的 `enabled` 和 `credits_per_call`。
 - `credits_per_call` 仅对 `centralized` 有效。
 
@@ -414,7 +398,7 @@ Desktop 发起授权
 2. 校验 Connector 可用性及组织 Connector 授权。
 3. 根据模式选择共享凭证、用户凭证或不使用凭证。
 4. 合并 Header 并连接上游 MCP。
-5. 依据 Definition 工具目录、启停配置和专家过滤条件暴露工具。
+5. 依据 Connector Provider 工具目录、启停配置和专家过滤条件暴露工具。
 6. 记录不包含请求/响应 Payload 的调用事实。
 7. 仅为集中认证成功调用扣费。
 
@@ -431,7 +415,7 @@ Desktop 使用“版本化快照 + 增量通知”：
 - 切换服务端时清空旧服务端资源快照、授权缓存和组织 Connector；
 - 服务端资源归属原服务端，不自动迁移。
 
-本地专家保留在设备上。切换服务端后若缺少 identifier，任务启动前要求映射已有 Definition、在当前服务端创建 Connector，或在非必需依赖上选择跳过。
+本地专家保留在设备上。切换服务端后若缺少 identifier，任务启动前要求映射已有 Connector Provider、在当前服务端创建 Connector，或在非必需依赖上选择跳过。
 
 ### 11.2 Connector 选择
 
@@ -457,7 +441,6 @@ Desktop 的统一物化结构：
 
 ```text
 expert/
-├── profile.json
 ├── manifest.json
 ├── agents/
 │   └── expert.md
@@ -471,7 +454,7 @@ expert/
         └── ...
 ```
 
-Profile 和 Rule 可随资源清单内联下发；Skill 通过独立 ZIP 下载并由 Desktop 组装。OhMyAgent 只消费物化结果，不需要理解资源来自系统、个人或专家包。
+默认模型、Connector Provider 依赖和 Rule 可随资源清单内联下发；Skill 通过独立 ZIP 下载并由 Desktop 组装。OhMyAgent 只消费物化结果，不需要理解资源来自系统、个人或专家包。
 
 ## 12. 本地 stdio MCP
 
@@ -492,7 +475,6 @@ Desktop/OhMyAgent 可配置本地 stdio MCP：
 ```text
 expert.zip
 ├── manifest.json
-├── profile.json
 ├── agents/
 │   └── expert.md
 ├── rules/
@@ -500,23 +482,23 @@ expert.zip
 ├── skills/
 │   └── <skill-name>/
 │       └── SKILL.md
-└── connector-definitions/
+└── connector-providers/
     └── *.json
 ```
 
-导出时可选择携带 Connector Definition 的非敏感配置，但禁止包含 Credential、本地 Connector ID、敏感 Header、Token、`env` 和本机路径。
+导出时可选择携带 Connector Provider 的非敏感配置，但禁止包含 Credential、本地 Connector ID、敏感 Header、Token、`env` 和本机路径。
 
 接收者导入时可以：
 
-- 将来源 identifier 映射到已有 Definition；
-- 导入 Definition，并生成新的 `custom:<uuid>` 后重写 Profile。
+- 将来源 identifier 映射到已有 Connector Provider；
+- 导入 Connector Provider，并生成新的 `custom:<uuid>` 后重写 Manifest 中的 Provider identifier。
 
-Desktop 保存稳定来源 Definition ID 到本地 Definition ID 的映射，后续导入新版专家包时自动沿用；只有新增依赖、映射失效或配置不兼容时重新确认。
+Desktop 保存稳定来源 Connector Provider ID 到本地 Connector Provider ID 的映射，后续导入新版专家包时自动沿用；只有新增依赖、映射失效或配置不兼容时重新确认。
 
 ## 14. 删除与完整性规则
 
 - Expert 使用软删除。
-- Definition 被任意有效 Connector 引用时禁止删除。
+- Connector Provider 被任意有效 Connector 或 Expert 引用时禁止删除。
 - Connector 使用软删除，同时撤销 Credential；历史调用保留。
 - 被专家引用的 Rule 和 Skill 禁止删除，必须先解除关系。
 - 专家资源关系解除时物理删除，历史写入 `audits`。
@@ -526,15 +508,17 @@ Desktop 保存稳定来源 Definition ID 到本地 Definition ID 的映射，后
 
 ```mermaid
 erDiagram
-    USERS ||--o{ CONNECTOR_DEFINITIONS : owns
-    CONNECTOR_DEFINITIONS ||--o{ CONNECTORS : instantiates
-    CONNECTOR_DEFINITIONS ||--o{ MCP_TOOLS : declares
+    USERS ||--o{ CONNECTOR_PROVIDERS : owns
+    CONNECTOR_PROVIDERS ||--o{ CONNECTORS : instantiates
+    CONNECTOR_PROVIDERS ||--o{ MCP_TOOLS : declares
     CONNECTORS ||--o{ CONNECTOR_CREDENTIALS : authenticates
     CONNECTORS ||--o{ MCP_TOOL_CALLS : receives_calls
     MCP_TOOLS ||--o{ MCP_TOOL_CALLS : called_as
 
     USERS ||--o{ EXPERTS : creates
-    EXPERTS ||--|{ EXPERT_AGENTS : contains
+    MODELS ||--o{ EXPERTS : defaults_for
+    EXPERTS ||--o{ EXPERT_CONNECTOR_PROVIDERS : requires
+    CONNECTOR_PROVIDERS ||--o{ EXPERT_CONNECTOR_PROVIDERS : referenced_by
     EXPERTS ||--o{ EXPERT_RULES : binds
     RULES ||--o{ EXPERT_RULES : referenced_by
     EXPERTS ||--o{ EXPERT_SKILLS : binds
