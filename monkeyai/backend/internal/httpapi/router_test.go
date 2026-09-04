@@ -25,6 +25,7 @@ func TestHealth(t *testing.T) {
 		stubPinger{},
 		http.NotFoundHandler(),
 		http.NotFoundHandler(),
+		http.NotFoundHandler(),
 	).
 		ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
@@ -43,6 +44,7 @@ func TestReadyWhenDatabaseUnavailable(t *testing.T) {
 		stubPinger{err: errors.New("unavailable")},
 		http.NotFoundHandler(),
 		http.NotFoundHandler(),
+		http.NotFoundHandler(),
 	).
 		ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 
@@ -56,6 +58,7 @@ func TestPprofNotExposed(t *testing.T) {
 	New(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		stubPinger{},
+		http.NotFoundHandler(),
 		http.NotFoundHandler(),
 		http.NotFoundHandler(),
 	).
@@ -76,6 +79,9 @@ func TestAPIRoutes(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = io.WriteString(w, "agent")
 		}),
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, "auth")
+		}),
 	)
 
 	tests := []struct {
@@ -84,6 +90,7 @@ func TestAPIRoutes(t *testing.T) {
 	}{
 		{path: "/api/admin/v1/status", want: "admin"},
 		{path: "/api/agent/v1/status", want: "agent"},
+		{path: "/api/auth/v1/status", want: "auth"},
 	}
 	for _, test := range tests {
 		t.Run(test.want, func(t *testing.T) {

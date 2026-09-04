@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import {
   Delete02Icon,
   Edit02Icon,
@@ -51,12 +51,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldTitle,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
@@ -76,9 +74,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { useSkillTags } from "@/hooks/use-skill-tags"
+import { api } from "@/lib/api"
 
 const OAUTH_PROVIDERS = [
   { value: "github", labelKey: "pages.otherSettings.oauth.providers.github" },
@@ -127,13 +125,9 @@ type OAuthConnection = {
   provider: OAuthProvider
   name: string
   clientId: string
+  clientSecret: string
   issuerUrl?: string
   enabled: boolean
-}
-
-type LoginMethodSettings = {
-  passwordEnabled: boolean
-  emailCodeEnabled: boolean
 }
 
 type EmailSettings = {
@@ -177,27 +171,7 @@ type KnowledgeBaseSettings = {
 
 type KnowledgeModelKind = "embeddingModel" | "rerankerModel"
 
-const INITIAL_OAUTH_CONNECTIONS: OAuthConnection[] = [
-  {
-    id: "oauth-github-company",
-    provider: "github",
-    name: "GitHub",
-    clientId: "Iv1.8c91••••••••",
-    enabled: true,
-  },
-  {
-    id: "oauth-google-workspace",
-    provider: "google",
-    name: "Google Workspace",
-    clientId: "827540••••••••.apps.googleusercontent.com",
-    enabled: false,
-  },
-]
-
-const INITIAL_LOGIN_METHOD_SETTINGS: LoginMethodSettings = {
-  passwordEnabled: true,
-  emailCodeEnabled: false,
-}
+const INITIAL_OAUTH_CONNECTIONS: OAuthConnection[] = []
 
 const INITIAL_EMAIL_SETTINGS: EmailSettings = {
   registrationEnabled: false,
@@ -225,14 +199,12 @@ export function OtherSettingsPage() {
   const [toolName, setToolName] = useState("MonkeyAI")
   const [savedToolName, setSavedToolName] = useState("MonkeyAI")
   const [brandInfoSaved, setBrandInfoSaved] = useState(false)
+  const [settingsError, setSettingsError] = useState("")
   const [oauthConnections, setOauthConnections] = useState(
     INITIAL_OAUTH_CONNECTIONS
   )
   const [oauthDialogOpen, setOauthDialogOpen] = useState(false)
   const [oauthProvider, setOauthProvider] = useState<OAuthProvider>("github")
-  const [loginMethodSettings, setLoginMethodSettings] = useState(
-    INITIAL_LOGIN_METHOD_SETTINGS
-  )
   const [emailSettings, setEmailSettings] = useState(INITIAL_EMAIL_SETTINGS)
   const [savedEmailSettings, setSavedEmailSettings] = useState(
     INITIAL_EMAIL_SETTINGS
@@ -263,6 +235,109 @@ export function OtherSettingsPage() {
   const emailSettingsDirty =
     JSON.stringify(emailSettings) !== JSON.stringify(savedEmailSettings)
 
+  useEffect(() => {
+    api<{
+      settings: Array<{
+        key: string
+        value: Record<string, unknown>
+      }>
+    }>("/api/admin/v1/settings")
+      .then(({ settings }) => {
+        for (const setting of settings) {
+          if (setting.key === "branding") {
+            const workspaceName = String(
+              setting.value.workspace_name ?? "Monkey AI"
+            )
+            const productName = String(setting.value.product_name ?? "MonkeyAI")
+            setTeamName(workspaceName)
+            setSavedTeamName(workspaceName)
+            setToolName(productName)
+            setSavedToolName(productName)
+          }
+          if (setting.key === "authentication") {
+            const connections = Array.isArray(setting.value.oauth_connections)
+              ? setting.value.oauth_connections
+              : []
+            setOauthConnections(
+              connections.map((item) => {
+                const connection = item as Record<string, unknown>
+                return {
+                  id: String(connection.id),
+                  provider: String(connection.provider) as OAuthProvider,
+                  name: String(connection.name),
+                  clientId: String(connection.client_id),
+                  clientSecret: String(connection.client_secret ?? ""),
+                  issuerUrl: connection.issuer_url
+                    ? String(connection.issuer_url)
+                    : undefined,
+                  enabled: Boolean(connection.enabled),
+                }
+              })
+            )
+            const registrationEnabled = Boolean(
+              setting.value.registration_enabled
+            )
+            setEmailSettings((current) => ({
+              ...current,
+              registrationEnabled,
+            }))
+            setSavedEmailSettings((current) => ({
+              ...current,
+              registrationEnabled,
+            }))
+          }
+          if (setting.key === "email") {
+            const applyEmail = (current: EmailSettings): EmailSettings => ({
+              registrationEnabled: current.registrationEnabled,
+              senderName: String(setting.value.sender_name ?? ""),
+              senderEmail: String(setting.value.sender_email ?? ""),
+              smtpHost: String(setting.value.smtp_host ?? ""),
+              smtpPort: String(setting.value.smtp_port ?? "587"),
+              smtpUsername: String(setting.value.smtp_username ?? ""),
+              smtpPassword: String(setting.value.smtp_password ?? ""),
+              encryption: String(
+                setting.value.smtp_encryption ?? "starttls"
+              ) as Encryption,
+            })
+            setEmailSettings(applyEmail)
+            setSavedEmailSettings(applyEmail)
+          }
+        }
+      })
+      .catch((reason: Error) => setSettingsError(reason.message))
+  }, [])
+
+  const saveSetting = async (key: string, value: Record<string, unknown>) => {
+    setSettingsError("")
+    try {
+      await api(`/api/admin/v1/settings/${key}`, {
+        method: "PUT",
+        body: JSON.stringify({ value, schema_version: 1 }),
+      })
+      return true
+    } catch (reason) {
+      setSettingsError((reason as Error).message)
+      return false
+    }
+  }
+
+  const saveAuthentication = async (
+    connections: OAuthConnection[],
+    registrationEnabled = savedEmailSettings.registrationEnabled
+  ) =>
+    saveSetting("authentication", {
+      registration_enabled: registrationEnabled,
+      oauth_connections: connections.map((connection) => ({
+        id: connection.id,
+        provider: connection.provider,
+        name: connection.name,
+        client_id: connection.clientId,
+        client_secret: connection.clientSecret,
+        issuer_url: connection.issuerUrl ?? null,
+        enabled: connection.enabled,
+      })),
+    })
+
   const providerItems = OAUTH_PROVIDERS.map((provider) => ({
     value: provider.value,
     label: t(provider.labelKey),
@@ -286,7 +361,7 @@ export function OtherSettingsPage() {
     }
   }
 
-  const handleAddOauth = (event: FormEvent<HTMLFormElement>) => {
+  const handleAddOauth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = event.currentTarget
     const formData = new FormData(form)
@@ -304,27 +379,41 @@ export function OtherSettingsPage() {
       return
     }
 
-    setOauthConnections((connections) => [
-      ...connections,
+    const connections = [
+      ...oauthConnections,
       {
-        id: `oauth-${oauthProvider}-${Date.now()}`,
+        id: crypto.randomUUID(),
         provider: oauthProvider,
         name,
         clientId,
+        clientSecret,
         issuerUrl: issuerUrl || undefined,
         enabled: true,
       },
-    ])
-    form.reset()
-    handleOauthDialogOpenChange(false)
+    ]
+    if (await saveAuthentication(connections)) {
+      setOauthConnections(connections)
+      form.reset()
+      handleOauthDialogOpenChange(false)
+    }
   }
 
-  const setOauthEnabled = (id: string, enabled: boolean) => {
-    setOauthConnections((connections) =>
-      connections.map((connection) =>
-        connection.id === id ? { ...connection, enabled } : connection
-      )
+  const setOauthEnabled = async (id: string, enabled: boolean) => {
+    const connections = oauthConnections.map((connection) =>
+      connection.id === id ? { ...connection, enabled } : connection
     )
+    if (await saveAuthentication(connections)) {
+      setOauthConnections(connections)
+    }
+  }
+
+  const removeOauthConnection = async (id: string) => {
+    const connections = oauthConnections.filter(
+      (connection) => connection.id !== id
+    )
+    if (await saveAuthentication(connections)) {
+      setOauthConnections(connections)
+    }
   }
 
   const updateEmailSetting = <Key extends keyof EmailSettings>(
@@ -343,10 +432,24 @@ export function OtherSettingsPage() {
     }
   }
 
-  const handleEmailSettingsSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleEmailSettingsSubmit = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
     event.preventDefault()
-    setSavedEmailSettings(emailSettings)
-    setEmailDialogOpen(false)
+    const saved = await saveSetting("email", {
+      registration_enabled: emailSettings.registrationEnabled,
+      sender_name: emailSettings.senderName,
+      sender_email: emailSettings.senderEmail,
+      smtp_host: emailSettings.smtpHost,
+      smtp_port: Number(emailSettings.smtpPort),
+      smtp_username: emailSettings.smtpUsername,
+      smtp_password: emailSettings.smtpPassword,
+      smtp_encryption: emailSettings.encryption,
+    })
+    if (saved) {
+      setSavedEmailSettings(emailSettings)
+      setEmailDialogOpen(false)
+    }
   }
 
   const handleKnowledgeModelSubmit = (
@@ -498,6 +601,14 @@ export function OtherSettingsPage() {
 
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
+      {settingsError && (
+        <p
+          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+        >
+          {settingsError}
+        </p>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>{t("pages.otherSettings.brandInfo.title")}</CardTitle>
@@ -515,10 +626,16 @@ export function OtherSettingsPage() {
                 <Button
                   type="button"
                   disabled={!teamName.trim() || !toolName.trim()}
-                  onClick={() => {
-                    setSavedTeamName(teamName)
-                    setSavedToolName(toolName)
-                    setBrandInfoSaved(true)
+                  onClick={async () => {
+                    const saved = await saveSetting("branding", {
+                      workspace_name: teamName.trim(),
+                      product_name: toolName.trim(),
+                    })
+                    if (saved) {
+                      setSavedTeamName(teamName)
+                      setSavedToolName(toolName)
+                      setBrandInfoSaved(true)
+                    }
                   }}
                 >
                   {t("pages.otherSettings.brandInfo.save")}
@@ -1377,51 +1494,6 @@ export function OtherSettingsPage() {
           </CardAction>
         </CardHeader>
         <CardContent className="gap-6">
-          <FieldGroup className="gap-4">
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldTitle>
-                  {t("pages.otherSettings.loginMethods.password")}
-                </FieldTitle>
-                <FieldDescription>
-                  {t("pages.otherSettings.loginMethods.passwordDescription")}
-                </FieldDescription>
-              </FieldContent>
-              <Switch
-                checked={loginMethodSettings.passwordEnabled}
-                onCheckedChange={(enabled) =>
-                  setLoginMethodSettings((settings) => ({
-                    ...settings,
-                    passwordEnabled: enabled,
-                  }))
-                }
-                aria-label={t("pages.otherSettings.loginMethods.password")}
-              />
-            </Field>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldTitle>
-                  {t("pages.otherSettings.loginMethods.emailCode")}
-                </FieldTitle>
-                <FieldDescription>
-                  {t("pages.otherSettings.loginMethods.emailCodeDescription")}
-                </FieldDescription>
-              </FieldContent>
-              <Switch
-                checked={loginMethodSettings.emailCodeEnabled}
-                onCheckedChange={(enabled) =>
-                  setLoginMethodSettings((settings) => ({
-                    ...settings,
-                    emailCodeEnabled: enabled,
-                  }))
-                }
-                aria-label={t("pages.otherSettings.loginMethods.emailCode")}
-              />
-            </Field>
-          </FieldGroup>
-
-          <Separator />
-
           <div className="flex flex-col gap-3">
             {oauthConnections.map((connection) => (
               <div
@@ -1447,12 +1519,22 @@ export function OtherSettingsPage() {
                 <Switch
                   checked={connection.enabled}
                   onCheckedChange={(enabled) =>
-                    setOauthEnabled(connection.id, enabled)
+                    void setOauthEnabled(connection.id, enabled)
                   }
                   aria-label={t("pages.otherSettings.oauth.toggle", {
                     name: connection.name,
                   })}
                 />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="cursor-pointer text-destructive"
+                  aria-label={`删除 ${connection.name}`}
+                  onClick={() => void removeOauthConnection(connection.id)}
+                >
+                  <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                </Button>
               </div>
             ))}
           </div>
@@ -1744,21 +1826,28 @@ export function OtherSettingsPage() {
               {t("pages.otherSettings.email.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
+              onClick={async () => {
                 if (registrationPendingValue === null) {
                   return
                 }
 
                 const registrationEnabled = registrationPendingValue
-                setSavedEmailSettings((settings) => ({
-                  ...settings,
-                  registrationEnabled,
-                }))
-                setEmailSettings((settings) => ({
-                  ...settings,
-                  registrationEnabled,
-                }))
-                setRegistrationPendingValue(null)
+                if (
+                  await saveAuthentication(
+                    oauthConnections,
+                    registrationEnabled
+                  )
+                ) {
+                  setSavedEmailSettings((settings) => ({
+                    ...settings,
+                    registrationEnabled,
+                  }))
+                  setEmailSettings((settings) => ({
+                    ...settings,
+                    registrationEnabled,
+                  }))
+                  setRegistrationPendingValue(null)
+                }
               }}
             >
               {t(

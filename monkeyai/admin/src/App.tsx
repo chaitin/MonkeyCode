@@ -18,6 +18,7 @@ import { BillingSettingsPage } from "@/pages/billing-settings-page"
 import { ExpertsPage } from "@/pages/experts-page"
 import { KnowledgeBasesPage } from "@/pages/knowledge-bases-page"
 import { LoginPage } from "@/pages/login-page"
+import { ClientLoginPage } from "@/pages/client-login-page"
 import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
 import { ModelStatisticsPage } from "@/pages/model-statistics-page"
 import { ModelsPage } from "@/pages/models-page"
@@ -31,21 +32,25 @@ import { TaskStatisticsPage } from "@/pages/task-statistics-page"
 import { ToolsPage } from "@/pages/tools-page"
 
 function RootRedirect() {
-  const { isAuthenticated } = useAuth()
+  const { isLoading, user } = useAuth()
+
+  if (isLoading) return <PageLoading />
 
   return (
     <Navigate
-      to={isAuthenticated ? DEFAULT_CONSOLE_PATH : LOGIN_PATH}
+      to={user?.role === "admin" ? DEFAULT_CONSOLE_PATH : LOGIN_PATH}
       replace
     />
   )
 }
 
 function RequireAuth() {
-  const { isAuthenticated } = useAuth()
+  const { isLoading, user } = useAuth()
   const location = useLocation()
 
-  if (!isAuthenticated) {
+  if (isLoading) return <PageLoading />
+
+  if (user?.role !== "admin") {
     return (
       <Navigate
         to={LOGIN_PATH}
@@ -60,6 +65,17 @@ function RequireAuth() {
   return <Outlet />
 }
 
+function PageLoading() {
+  return (
+    <main
+      className="flex min-h-svh items-center justify-center bg-background text-sm text-muted-foreground"
+      role="status"
+    >
+      正在检查登录状态…
+    </main>
+  )
+}
+
 export function App() {
   const { i18n, t } = useTranslation()
 
@@ -72,6 +88,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path={LOGIN_PATH} element={<LoginPage />} />
+        <Route path="/client-login" element={<ClientLoginPage />} />
         <Route element={<RequireAuth />}>
           <Route path={CONSOLE_PATH} element={<Dashboard />}>
             <Route

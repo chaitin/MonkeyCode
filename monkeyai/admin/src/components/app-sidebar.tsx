@@ -23,18 +23,14 @@ import {
   Wallet01Icon,
 } from "@hugeicons/core-free-icons"
 import { CONSOLE_ROUTES, DEFAULT_CONSOLE_PATH } from "@/lib/routes"
-
-const user = {
-  name: "MonkeyAI Admin",
-  email: "admin@monkeyai.local",
-  avatar: "/placeholder.svg",
-}
+import { useAuth } from "@/hooks/use-auth"
 
 export function AppSidebar({
   onLogout,
   ...props
 }: React.ComponentProps<typeof Sidebar> & { onLogout: () => void }) {
   const { i18n, t } = useTranslation()
+  const { user } = useAuth()
   const navMain = [
     {
       title: t("sections.statistics"),
@@ -166,7 +162,14 @@ export function AppSidebar({
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={user} onLogout={onLogout} />
+        <NavUser
+          user={{
+            name: user?.name ?? "MonkeyAI Admin",
+            email: user?.email ?? "",
+            avatar: user?.avatar_url ?? "/placeholder.svg",
+          }}
+          onLogout={onLogout}
+        />
       </SidebarFooter>
     </Sidebar>
   )
