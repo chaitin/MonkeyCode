@@ -72,6 +72,83 @@
 - `expert_rules`、`expert_skills` 增加 `target_member_keys` 和 `sort_order`。
 - `expert_knowledge_bases` 及知识库相关改动移入未来规划，不进入本期表结构。
 
+本期 Expert 表结构关系如下：
+
+```mermaid
+erDiagram
+    USERS ||--o{ EXPERTS : creates
+    EXPERTS ||--|{ EXPERT_AGENTS : contains
+    EXPERTS ||--o{ EXPERT_RULES : binds
+    RULES ||--o{ EXPERT_RULES : referenced_by
+    EXPERTS ||--o{ EXPERT_SKILLS : binds
+    SKILLS ||--o{ EXPERT_SKILLS : referenced_by
+    EXPERTS ||--o{ RESOURCE_ACCESS_GRANTS : grants_access
+    EXPERTS ||--o{ SESSIONS : used_by
+
+    EXPERTS {
+        uuid id PK
+        text name
+        text description
+        jsonb profile
+        text resource_manifest_hash
+        boolean enabled
+        uuid created_by_user_id FK
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    EXPERT_AGENTS {
+        uuid id PK
+        uuid expert_id FK
+        text agent_key
+        text display_name
+        text role
+        text prompt_file_name
+        text prompt_s3_key
+        bigint prompt_size_bytes
+        text prompt_sha256
+        integer sort_order
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    EXPERT_RULES {
+        uuid id PK
+        uuid expert_id FK
+        uuid rule_id FK
+        jsonb target_member_keys
+        integer sort_order
+        timestamptz created_at
+    }
+
+    EXPERT_SKILLS {
+        uuid id PK
+        uuid expert_id FK
+        uuid skill_id FK
+        jsonb target_member_keys
+        integer sort_order
+        timestamptz created_at
+    }
+
+    RULES {
+        uuid id PK
+        text ownership_type
+        text name
+        text content
+    }
+
+    SKILLS {
+        uuid id PK
+        text ownership_type
+        text name
+        text package_s3_key
+        text package_sha256
+        boolean enabled
+    }
+```
+
 ## 3. Admin 原型改动建议
 
 ### 3.1 工具页面
