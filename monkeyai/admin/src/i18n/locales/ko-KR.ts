@@ -31,6 +31,9 @@ export const koKR = {
     submit: "로그인",
     continueWith: "또는 다음으로 계속",
     loginWith: "{{provider}}로 로그인",
+    oauthAdminRequired:
+      "이 OAuth 계정은 활성 관리자 계정에 연결되어 있지 않습니다",
+    oauthFailed: "OAuth 로그인에 실패했습니다. 다시 시도해 주세요",
     workspacePreview: "MonkeyAI 작업 공간 미리보기",
     legal: "<terms>서비스 약관</terms> 및 <privacy>개인정보 처리방침</privacy>",
   },

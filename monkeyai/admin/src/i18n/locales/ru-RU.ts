@@ -31,6 +31,9 @@ export const ruRU = {
     submit: "Войти",
     continueWith: "Или продолжить с помощью",
     loginWith: "Войти через {{provider}}",
+    oauthAdminRequired:
+      "Эта учётная запись OAuth не связана с активным администратором",
+    oauthFailed: "Не удалось войти через OAuth. Повторите попытку",
     workspacePreview: "Предварительный просмотр рабочего пространства MonkeyAI",
     legal:
       "<terms>Условия использования</terms> и <privacy>Политика конфиденциальности</privacy>",

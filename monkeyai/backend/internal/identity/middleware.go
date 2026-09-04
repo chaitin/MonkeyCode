@@ -30,12 +30,12 @@ func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "请先登录")
 			return
 		}
-		user, authenticationMethod, err := s.userByBrowserToken(r.Context(), tokenHash(cookie.Value))
+		user, _, err := s.userByBrowserToken(r.Context(), tokenHash(cookie.Value))
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "请先登录")
 			return
 		}
-		if user.Role != "admin" || authenticationMethod != "password" {
+		if user.Role != "admin" {
 			writeError(w, http.StatusForbidden, "forbidden", "需要管理员权限")
 			return
 		}

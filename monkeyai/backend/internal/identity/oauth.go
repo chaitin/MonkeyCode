@@ -26,6 +26,7 @@ func (s *Service) AuthRouter() http.Handler {
 	router.Get("/client-requests/{requestID}", s.clientRequest)
 	router.With(s.RequireBrowser).Post("/client-requests/{requestID}/complete", s.completeClientRequest)
 	router.Get("/oauth/{connectionID}/start", s.startUpstream)
+	router.Get("/oauth/{connectionID}/admin-start", s.startAdminUpstream)
 	router.Get("/oauth/callback", s.upstreamCallback)
 	return router
 }
@@ -179,15 +180,23 @@ func (s *Service) startUpstream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "request_required", "缺少客户端授权请求")
 		return
 	}
+	request, err := s.authorizationRequest(r.Context(), requestID)
+	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
+		writeError(w, http.StatusBadRequest, "request_unavailable", "授权请求无效")
+		return
+	}
+	s.beginUpstream(w, r, requestID, loginPurposeClient)
+}
+
+func (s *Service) startAdminUpstream(w http.ResponseWriter, r *http.Request) {
+	s.beginUpstream(w, r, "", loginPurposeAdmin)
+}
+
+func (s *Service) beginUpstream(w http.ResponseWriter, r *http.Request, requestID, purpose string) {
 	connectionID := chi.URLParam(r, "connectionID")
 	connection, err := s.connection(r.Context(), connectionID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "provider_not_found", "登录方式不存在")
-		return
-	}
-	request, err := s.authorizationRequest(r.Context(), requestID)
-	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
-		writeError(w, http.StatusBadRequest, "request_unavailable", "授权请求无效")
 		return
 	}
 	state, err := randomToken(32)
@@ -195,7 +204,7 @@ func (s *Service) startUpstream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "server_error", "无法发起登录")
 		return
 	}
-	if err := s.createLoginState(r.Context(), tokenHash(state), connectionID, requestID, s.now().Add(s.requestTTL)); err != nil {
+	if err := s.createLoginState(r.Context(), tokenHash(state), connectionID, requestID, purpose, s.now().Add(s.requestTTL)); err != nil {
 		writeError(w, http.StatusInternalServerError, "server_error", "无法发起登录")
 		return
 	}
@@ -209,36 +218,61 @@ func (s *Service) startUpstream(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 	state, err := s.consumeLoginState(r.Context(), tokenHash(r.URL.Query().Get("state")))
-	if err != nil || r.URL.Query().Get("code") == "" {
+	if err != nil {
 		http.Redirect(w, r, s.clientLoginURL("", "oauth_callback"), http.StatusFound)
+		return
+	}
+	if r.URL.Query().Get("code") == "" {
+		http.Redirect(w, r, s.upstreamResultURL(state, "oauth_callback"), http.StatusFound)
 		return
 	}
 	connection, err := s.connection(r.Context(), state.ConnectionID)
 	if err != nil {
-		http.Redirect(w, r, s.clientLoginURL(state.AuthorizationRequestID, "provider_unavailable"), http.StatusFound)
+		http.Redirect(w, r, s.upstreamResultURL(state, "provider_unavailable"), http.StatusFound)
 		return
 	}
 	profile, err := s.exchangeUpstream(r.Context(), connection, r.URL.Query().Get("code"))
 	if err != nil {
-		http.Redirect(w, r, s.clientLoginURL(state.AuthorizationRequestID, "oauth_exchange"), http.StatusFound)
+		http.Redirect(w, r, s.upstreamResultURL(state, "oauth_exchange"), http.StatusFound)
 		return
 	}
-	user, err := s.upsertIdentity(r.Context(), profile)
+	adminLogin := state.Purpose == loginPurposeAdmin
+	user, err := s.upsertIdentity(r.Context(), profile, adminLogin)
 	if err != nil {
 		code := "user_unavailable"
-		if errors.Is(err, ErrAdminPasswordRequired) {
+		switch {
+		case errors.Is(err, ErrAdminRoleRequired):
+			code = "admin_role_required"
+		case adminLogin && errors.Is(err, ErrUserDisabled):
+			code = "admin_role_required"
+		case errors.Is(err, ErrAdminPasswordRequired):
 			code = "admin_password_required"
 		}
-		http.Redirect(w, r, s.clientLoginURL(state.AuthorizationRequestID, code), http.StatusFound)
+		http.Redirect(w, r, s.upstreamResultURL(state, code), http.StatusFound)
 		return
 	}
 	token, err := randomToken(32)
 	if err != nil || s.createBrowserSession(r.Context(), user.ID, tokenHash(token), "oauth", s.now().Add(s.sessionTTL)) != nil {
-		http.Redirect(w, r, s.clientLoginURL(state.AuthorizationRequestID, "session_failed"), http.StatusFound)
+		http.Redirect(w, r, s.upstreamResultURL(state, "session_failed"), http.StatusFound)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: s.secureCookie, SameSite: http.SameSiteLaxMode, MaxAge: int(s.sessionTTL.Seconds())})
-	http.Redirect(w, r, s.clientLoginURL(state.AuthorizationRequestID, ""), http.StatusFound)
+	http.Redirect(w, r, s.upstreamResultURL(state, ""), http.StatusFound)
+}
+
+func (s *Service) upstreamResultURL(state LoginState, errorCode string) string {
+	if state.Purpose == loginPurposeAdmin {
+		query := url.Values{}
+		if errorCode != "" {
+			query.Set("oauth_error", errorCode)
+		}
+		result := s.adminURL + "/login"
+		if encoded := query.Encode(); encoded != "" {
+			result += "?" + encoded
+		}
+		return result
+	}
+	return s.clientLoginURL(state.AuthorizationRequestID, errorCode)
 }
 
 func (s *Service) clientLoginURL(requestID, errorCode string) string {

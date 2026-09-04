@@ -31,6 +31,10 @@ export const deDE = {
     submit: "Anmelden",
     continueWith: "Oder fortfahren mit",
     loginWith: "Mit {{provider}} anmelden",
+    oauthAdminRequired:
+      "Dieses OAuth-Konto ist keinem aktiven Administrator zugeordnet",
+    oauthFailed:
+      "OAuth-Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut",
     workspacePreview: "Vorschau des MonkeyAI-Arbeitsbereichs",
     legal:
       "<terms>Nutzungsbedingungen</terms> und <privacy>Datenschutzerklärung</privacy>",

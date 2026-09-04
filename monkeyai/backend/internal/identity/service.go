@@ -77,7 +77,13 @@ type AuthorizationCode struct {
 type LoginState struct {
 	ConnectionID           string
 	AuthorizationRequestID string
+	Purpose                string
 }
+
+const (
+	loginPurposeClient = "client"
+	loginPurposeAdmin  = "admin"
+)
 
 type Token struct {
 	AccessToken  string    `json:"access_token"`
@@ -124,12 +130,27 @@ func NewService(db *pgxpool.Pool, settings SettingReader, publicURL, adminURL st
 }
 
 func (s *Service) BeginAuthorization(ctx context.Context, values url.Values) (AuthorizationRequest, error) {
+	request, err := s.newAuthorizationRequest(values)
+	if err != nil {
+		return AuthorizationRequest{}, err
+	}
+	if err := s.createAuthorizationRequest(ctx, &request); err != nil {
+		return AuthorizationRequest{}, err
+	}
+	return request, nil
+}
+
+func (s *Service) newAuthorizationRequest(values url.Values) (AuthorizationRequest, error) {
 	if values.Get("response_type") != "code" {
 		return AuthorizationRequest{}, oauthError("unsupported_response_type", "仅支持 authorization code")
 	}
 	client, ok := Clients[values.Get("client_id")]
-	if !ok || values.Get("redirect_uri") != client.RedirectURI {
-		return AuthorizationRequest{}, oauthError("invalid_request", "client_id 或 redirect_uri 无效")
+	if !ok {
+		return AuthorizationRequest{}, oauthError("invalid_request", "client_id 无效")
+	}
+	redirectURI := values.Get("redirect_uri")
+	if redirectURI == "" {
+		return AuthorizationRequest{}, oauthError("invalid_request", "redirect_uri 不能为空")
 	}
 	state := values.Get("state")
 	if state == "" {
@@ -140,18 +161,14 @@ func (s *Service) BeginAuthorization(ctx context.Context, values url.Values) (Au
 		return AuthorizationRequest{}, oauthError("invalid_request", "必须使用有效的 PKCE S256")
 	}
 
-	request := AuthorizationRequest{
+	return AuthorizationRequest{
 		ClientID:            client.ID,
-		RedirectURI:         client.RedirectURI,
+		RedirectURI:         redirectURI,
 		State:               state,
 		CodeChallenge:       challenge,
 		CodeChallengeMethod: "S256",
 		ExpiresAt:           s.now().Add(s.requestTTL),
-	}
-	if err := s.createAuthorizationRequest(ctx, &request); err != nil {
-		return AuthorizationRequest{}, err
-	}
-	return request, nil
+	}, nil
 }
 
 func (s *Service) CompleteAuthorization(ctx context.Context, requestID, userID string) (string, error) {
@@ -178,8 +195,7 @@ func (s *Service) CompleteAuthorization(ctx context.Context, requestID, userID s
 }
 
 func (s *Service) ExchangeCode(ctx context.Context, clientID, redirectURI, code, verifier string) (Token, error) {
-	client, ok := Clients[clientID]
-	if !ok || redirectURI != client.RedirectURI {
+	if _, ok := Clients[clientID]; !ok {
 		return Token{}, oauthError("invalid_client", "客户端信息无效")
 	}
 	if !verifierPattern.MatchString(verifier) {

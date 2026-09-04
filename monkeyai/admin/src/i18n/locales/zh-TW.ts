@@ -31,6 +31,8 @@ export const zhTW = {
     submit: "登入",
     continueWith: "或透過以下方式繼續",
     loginWith: "使用 {{provider}} 登入",
+    oauthAdminRequired: "此 OAuth 帳號未連結至已啟用的管理員帳戶",
+    oauthFailed: "OAuth 登入失敗，請重試",
     workspacePreview: "MonkeyAI 工作區預覽",
     legal: "<terms>服務條款</terms> 和 <privacy>隱私權政策</privacy>",
   },

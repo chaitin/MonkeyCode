@@ -31,6 +31,8 @@ export const ar = {
     submit: "تسجيل الدخول",
     continueWith: "أو تابع باستخدام",
     loginWith: "تسجيل الدخول باستخدام {{provider}}",
+    oauthAdminRequired: "حساب OAuth هذا غير مرتبط بمسؤول نشط",
+    oauthFailed: "فشل تسجيل الدخول عبر OAuth. حاول مرة أخرى",
     workspacePreview: "معاينة مساحة عمل MonkeyAI",
     legal: "<terms>شروط الخدمة</terms> و <privacy>سياسة الخصوصية</privacy>",
   },
