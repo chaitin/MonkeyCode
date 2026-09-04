@@ -17,7 +17,7 @@
 1. 系统资源由 MonkeyAI 服务端统一管理，个人资源保留清晰的所有权边界。
 2. Desktop 负责登录 MonkeyAI、同步资源、管理本地专家、创建会话快照和物化资源。
 3. OhMyAgent 负责读取已物化资源并执行 Agent 与 MCP 调用，不持有 MonkeyAI 登录态。
-4. 专家按专家团结构存储，但本期只调度唯一的 Lead Agent。
+4. Expert 固定为单 Agent，Rule、Skill 和 Connector 直接为该 Agent 提供能力。
 5. 远程 MCP 统一通过 MonkeyAI 网关调用，凭证不下发客户端。
 6. Desktop 本地 stdio MCP 保持本地运行，不进入服务端 AAA、统计或计费链路。
 
@@ -74,7 +74,6 @@ ai-resources/<kind>/<resource-id>/<object-id>/<safe-file-name>
 
 ```text
 ai-resources/skills/<skill-id>/<object-id>/code-review.zip
-ai-resources/expert-prompts/<expert-agent-id>/<object-id>/lead.md
 ai-resources/connector-icons/<definition-id>/<object-id>/github.svg
 ```
 
@@ -97,10 +96,9 @@ ai-resources/connector-icons/<definition-id>/<object-id>/github.svg
 | 资源 | 业务表 | S3 字段 |
 | --- | --- | --- |
 | Skill ZIP | `skills` | `package_file_name`、`package_s3_key`、`package_size_bytes`、`package_sha256` |
-| 专家提示词 | `expert_agents` | `prompt_file_name`、`prompt_s3_key`、`prompt_size_bytes`、`prompt_sha256` |
 | Connector 图标 | `connector_definitions` | `icon_file_name`、`icon_s3_key`、`icon_mime_type`、`icon_size_bytes`、`icon_sha256` |
 
-服务端不保存组装后的系统专家 ZIP。Profile 与 Rule 保存在数据库，成员提示词和 Skill ZIP 分别通过业务表中的 Object Key 定位；Desktop 根据专家 Manifest 下载并组装专家目录。
+服务端不保存组装后的系统专家 ZIP。Prompt、Profile 与 Rule 保存在数据库，Skill ZIP 通过 `skills.package_s3_key` 定位；Desktop 根据专家 Manifest 组装专家目录。
 
 ### 3.5 Skill 包
 
@@ -127,17 +125,11 @@ ZIP 根目录必须直接包含 `SKILL.md`，不得额外包装同名目录。`S
 
 服务端必须在入库前检查 ZIP 路径穿越、绝对路径、符号链接、重复路径、压缩后展开大小和文件数量，并验证根目录 `SKILL.md` 可解析。包内文件保持原始相对目录，不在服务端解压为权威存储。
 
-### 3.6 专家提示词
-
-Admin 中仍以文本编辑器编辑提示词。服务端保存时生成 Markdown 文件并上传 S3，再将 Object Key 和元数据写入 `expert_agents`。文件化是存储细节，不要求管理员手动上传。
-
-生成文件统一使用 UTF-8、LF 换行和 `.md` 扩展名。`sha256` 基于最终写入字节计算，保证服务端 Manifest 与 Desktop 下载校验使用同一内容。
-
-### 3.7 Connector 图标
+### 3.6 Connector 图标
 
 Connector Definition 直接保存图标 Object Key 和元数据。PNG 保留原始字节；SVG 必须拒绝或清理脚本、事件属性、外部资源引用和其他主动内容。图标通过受控文件接口或短期预签名地址下发，不要求 S3 对象公开可读。
 
-### 3.8 文件读取与下发
+### 3.7 文件读取与下发
 
 元数据接口返回业务资源 ID、文件名、MIME、大小和 SHA-256。文件内容通过需要身份认证的下载接口或短期预签名 URL 获取：
 
@@ -156,17 +148,9 @@ Connector Definition 直接保存图标 Object Key 和元数据。PNG 保留原�
 - 本地专家通过 ZIP 文件导入导出，可经任意渠道分享，不经过服务端。
 - Desktop 将两种来源统一转换成相同的会话物化目录。
 
-### 4.2 专家团结构与首版调度
+### 4.2 单 Agent 结构
 
-专家按专家团结构存储：一个专家包含多个 `expert_agents` 成员、共享资源关系和团队 Profile。本期只允许一个有效成员，且该成员必须是 `role = lead`；任务完全由该成员执行。
-
-数据结构保留：
-
-- `role = member`；
-- `profile.team.topology`；
-- 每项资源的 `target_member_keys`。
-
-这些字段用于未来多 Agent 调度，本期不执行。
+一个 Expert 就是一个 Agent。`experts.prompt` 保存该 Agent 的角色、目标和工作方式；Rule、Skill 与 Connector 依赖均直接作用于该 Agent。本期不保留成员、角色、团队拓扑或成员级资源范围。
 
 ### 4.3 Profile
 
@@ -175,16 +159,12 @@ Connector Definition 直接保存图标 Object Key 和元数据。PNG 保留原�
 ```json
 {
   "schema_version": 1,
-  "team": {
-    "topology": []
-  },
   "connectors": [
     {
       "identifier": "github",
       "required": true,
       "tool_whitelist": ["search_code"],
-      "tool_blacklist": ["delete_repository"],
-      "target_member_keys": []
+      "tool_blacklist": ["delete_repository"]
     }
   ],
   "runtime": {
@@ -195,21 +175,14 @@ Connector Definition 直接保存图标 Object Key 和元数据。PNG 保留原�
 
 约束：
 
-- `topology` 本期只能为空数组。
 - `identifier` 必须对应有效的系统 Definition，同一 Profile 中不得重复。
 - 白名单为空表示不限制候选工具；黑名单最后执行并具有更高优先级。
-- `target_member_keys = []` 表示所有成员可用，否则只允许指定 `agent_key`。
 - `default_model_id` 可空，只是默认值，用户仍可选择其他有权模型。
-- 不配置专家级或成员级 `max_turns`。
+- 不配置 Expert 级 `max_turns`。
 
 ### 4.4 专家静态资源
 
-本期专家通过关系表引用系统 Rule 和系统 Skill。关系表均包含：
-
-- `target_member_keys`：成员作用范围；
-- `sort_order`：稳定装配顺序。
-
-同一专家不得重复引用同一资源。`target_member_keys` 的成员归属由应用层按 `(expert_id, agent_key)` 校验。
+Expert 通过关系表引用系统 Rule 和系统 Skill。关系表使用 `sort_order` 定义稳定装配顺序，同一 Expert 不得重复引用同一资源。
 
 系统专家不允许引用个人 Rule 或个人 Skill，避免个人资源生命周期破坏组织专家。
 
@@ -249,16 +222,16 @@ Skill 名称同样去除首尾空格并忽略大小写。专家 Skill 按 `exper
 `experts.resource_manifest_hash` 持久化服务端当前专家资源组合的 SHA-256。摘要包含：
 
 - `experts.profile`；
-- 专家成员及提示词文件摘要；
-- 专家 Rule 关系、顺序、成员范围、名称和正文摘要；
-- 专家 Skill 关系、顺序、成员范围、包文件摘要及启用状态；
+- `experts.prompt`；
+- 专家 Rule 关系、顺序、名称和正文摘要；
+- 专家 Skill 关系、顺序、包文件摘要及启用状态；
 
 摘要不包含：
 
 - Connector Definition；
 - 系统强制 Rule。
 
-以下变化在同一数据库事务内同步重算所有受影响专家的摘要：修改 `experts.profile`；新增、修改或删除 `expert_agents`；更换成员提示词文件；新增、修改或删除 `expert_rules` 或 `expert_skills`；修改关系的顺序或成员范围；修改被引用 Rule 的名称或正文；修改被引用 Skill 的名称、描述、包文件或启用状态。
+以下变化在同一数据库事务内同步重算所有受影响专家的摘要：修改 `experts.prompt` 或 `experts.profile`；新增、修改或删除 `expert_rules` 或 `expert_skills`；修改关系顺序；修改被引用 Rule 的名称或正文；修改被引用 Skill 的名称、描述、包文件或启用状态。
 
 摘要输入采用确定性 JSON：对象键按 Unicode 码点升序排列；关系按 `sort_order`、资源 ID 升序排列；字符串使用 UTF-8；缺失值与 `null` 区分；数组保持业务顺序；最终对无额外空白的 JSON 字节计算 SHA-256。
 
@@ -487,7 +460,7 @@ expert/
 ├── profile.json
 ├── manifest.json
 ├── agents/
-│   └── lead.md
+│   └── expert.md
 ├── rules/
 │   ├── 001-system-required.md
 │   ├── 100-expert-rule.md
@@ -521,7 +494,7 @@ expert.zip
 ├── manifest.json
 ├── profile.json
 ├── agents/
-│   └── lead.md
+│   └── expert.md
 ├── rules/
 │   └── *.md
 ├── skills/

@@ -61,15 +61,15 @@
 
 ### 2.5 Expert
 
-现有 `experts.prompt` 无法表达专家团成员，也不能文件化提示词。
+本次确认 Expert 固定为单 Agent，保留 `experts.prompt` 作为该 Agent 的提示词，不为未来专家团提前拆分成员表。
 
 改动：
 
-- 删除 `experts.prompt`。
+- 保留 `experts.prompt`。
 - 增加 `experts.profile` 和 `resource_manifest_hash`。
-- 新增 `expert_agents`，直接保存提示词 S3 Object Key 与元数据。
+- 不新增 `expert_agents`。
 - 删除 `expert_mcp_tools`；Connector 依赖改存 `profile.connectors`，按 identifier 声明。
-- `expert_rules`、`expert_skills` 增加 `target_member_keys` 和 `sort_order`。
+- `expert_rules`、`expert_skills` 增加 `sort_order`。
 - `expert_knowledge_bases` 及知识库相关改动移入未来规划，不进入本期表结构。
 
 本期 Expert 表结构关系如下：
@@ -77,7 +77,6 @@
 ```mermaid
 erDiagram
     USERS ||--o{ EXPERTS : creates
-    EXPERTS ||--|{ EXPERT_AGENTS : contains
     EXPERTS ||--o{ EXPERT_RULES : binds
     RULES ||--o{ EXPERT_RULES : referenced_by
     EXPERTS ||--o{ EXPERT_SKILLS : binds
@@ -91,6 +90,7 @@ erDiagram
         uuid id PK
         text name
         text description
+        text prompt
         jsonb profile
         text resource_manifest_hash
         boolean enabled
@@ -100,27 +100,10 @@ erDiagram
         timestamptz deleted_at
     }
 
-    EXPERT_AGENTS {
-        uuid id PK
-        uuid expert_id FK
-        text agent_key
-        text display_name
-        text role
-        text prompt_file_name
-        text prompt_s3_key
-        bigint prompt_size_bytes
-        text prompt_sha256
-        integer sort_order
-        timestamptz created_at
-        timestamptz updated_at
-        timestamptz deleted_at
-    }
-
     EXPERT_RULES {
         uuid id PK
         uuid expert_id FK
         uuid rule_id FK
-        jsonb target_member_keys
         integer sort_order
         timestamptz created_at
     }
@@ -129,7 +112,6 @@ erDiagram
         uuid id PK
         uuid expert_id FK
         uuid skill_id FK
-        jsonb target_member_keys
         integer sort_order
         timestamptz created_at
     }
@@ -207,14 +189,13 @@ Connector 管理应支持：
 
 ### 3.2 专家页面
 
-当前专家表单直接保存 `prompt`，并绑定硬编码的工具、规则和 Skill ID。需要修改为：
+当前专家表单直接保存 `prompt`，这一点保留；硬编码的工具、规则和 Skill ID 需要替换为真实资源：
 
-- 编辑唯一 Lead Agent 的 Markdown 提示词；
+- 编辑单 Agent Expert 的 Prompt；
 - Profile 编辑系统 identifier、必需标记、工具白名单/黑名单；
 - Rule、Skill 选择实际服务端系统资源；
 - 后台不再直接绑定具体 MCP Tool；
 - 展示 `resource_manifest_hash` 对应的资源状态；
-- 首版不展示成员管理和 topology 编辑。
 
 系统专家只允许管理员编辑。专家授权 UI 固定为可查看和运行，不展示 `read_write`。
 
@@ -323,11 +304,10 @@ OhMyAgent 不负责远程 Token 交换、持久化和刷新，这些由 MonkeyAI
 需要新增：
 
 - 读取 `expert/profile.json` 和 `manifest.json`；
-- 根据 `expert_agents.role = lead` 对应的物化提示词启动主 Agent；
-- 首版拒绝或忽略非空 topology；
+- 将 `experts.prompt` 物化为单 Agent 的主提示词；
 - 将有序 Rule 注入系统指令；
 - 扫描专家目录 Skill；
-- 按成员范围、白名单和黑名单注册 MCP Tool；
+- 按白名单和黑名单注册 MCP Tool；
 - 保持本地 stdio 与远程网关 Connector 的统一工具接口。
 
 ### 5.4 会话资源

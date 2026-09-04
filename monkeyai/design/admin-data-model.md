@@ -481,7 +481,8 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `id` | `uuid` | 是 | 自动生成 | 专家 ID。 |
 | `name` | `text` | 是 | 无 | 专家名称。 |
 | `description` | `text` | 是 | 无 | 专家用途说明。 |
-| `profile` | `jsonb` | 是 | 无 | 团队拓扑预留、Connector 依赖与默认模型。 |
+| `prompt` | `text` | 是 | 无 | 专家角色、目标和工作方式提示词。 |
+| `profile` | `jsonb` | 是 | 无 | Connector 依赖与默认模型。 |
 | `resource_manifest_hash` | `text` | 是 | 无 | 当前专家资源清单 SHA-256。 |
 | `enabled` | `boolean` | 是 | `true` | 是否允许新会话使用。 |
 | `created_by_user_id` | `uuid` | 是 | 无 | 创建管理员。 |
@@ -489,53 +490,31 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
 
-Profile 包含 `schema_version`、本期固定为空的 `team.topology`、按系统 identifier 声明的 Connector 依赖，以及可空的 `runtime.default_model_id`。每项 Connector 依赖保存 `required`、工具白名单、工具黑名单和 `target_member_keys`。同一 Profile 中 identifier 不重复。
+Profile 包含 `schema_version`、按系统 identifier 声明的 Connector 依赖，以及可空的 `runtime.default_model_id`。每项 Connector 依赖保存 `required`、工具白名单和工具黑名单。同一 Profile 中 identifier 不重复。
 
-### 8.11 `expert_agents`：专家成员
-
-| 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
-| --- | --- | --- | --- | --- |
-| `id` | `uuid` | 是 | 自动生成 | 成员 ID。 |
-| `expert_id` | `uuid` | 是 | 无 | 所属专家。 |
-| `agent_key` | `text` | 是 | 无 | 专家内部不可变成员标识。 |
-| `display_name` | `text` | 是 | 无 | 展示名称。 |
-| `role` | `text` | 是 | 无 | `lead`、`member`。 |
-| `prompt_file_name` | `text` | 是 | 无 | 提示词文件名。 |
-| `prompt_s3_key` | `text` | 是 | 无 | Markdown 提示词 Object Key。 |
-| `prompt_size_bytes` | `bigint` | 是 | 无 | 提示词文件字节数。 |
-| `prompt_sha256` | `text` | 是 | 无 | 提示词文件摘要。 |
-| `sort_order` | `integer` | 是 | `0` | 展示顺序。 |
-| `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
-| `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
-| `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
-
-本期每个专家只允许一个有效成员且必须为 lead，由该成员完成任务；结构预留 member。同一专家下有效 agent_key 唯一。
-
-### 8.12 `expert_rules`：专家规则关系
+### 8.11 `expert_rules`：专家规则关系
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 关系 ID。 |
 | `expert_id` | `uuid` | 是 | 无 | 专家 ID。 |
 | `rule_id` | `uuid` | 是 | 无 | 系统规则 ID。 |
-| `target_member_keys` | `jsonb` | 是 | 空数组 | 可用成员 agent_key；空数组表示全部成员。 |
 | `sort_order` | `integer` | 是 | `0` | 装配顺序。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 绑定时间。 |
 
-### 8.13 `expert_skills`：专家技能关系
+### 8.12 `expert_skills`：专家技能关系
 
 | 字段 | PostgreSQL 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | 是 | 自动生成 | 关系 ID。 |
 | `expert_id` | `uuid` | 是 | 无 | 专家 ID。 |
 | `skill_id` | `uuid` | 是 | 无 | 系统技能 ID。 |
-| `target_member_keys` | `jsonb` | 是 | 空数组 | 可用成员 agent_key；空数组表示全部成员。 |
 | `sort_order` | `integer` | 是 | `0` | 装配顺序。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 绑定时间。 |
 
-两张关系表均要求同一专家不能重复关联同一资源，且 `sort_order >= 0`。`target_member_keys` 由应用层验证为同一专家的成员。解除关系时物理删除并写入审计。被有效关系引用的 Rule 或 Skill 禁止删除。
+两张关系表均要求同一专家不能重复关联同一资源，且 `sort_order >= 0`。解除关系时物理删除并写入审计。被有效关系引用的 Rule 或 Skill 禁止删除。
 
-`resource_manifest_hash` 包含 Profile、成员提示词、专家 Rule 和 Skill 包摘要，不包含 Connector Definition 和系统强制 Rule。相关资源或关系变化时在同一事务内同步重算。
+`resource_manifest_hash` 包含 Prompt、Profile、专家 Rule 和 Skill 包摘要，不包含 Connector Definition 和系统强制 Rule。相关资源或关系变化时在同一事务内同步重算。
 
 ## 9. 会话与用量事实
 
@@ -701,7 +680,7 @@ Profile 包含 `schema_version`、本期固定为空的 `team.topology`、按系
 | 任务历史 | `sessions`、`model_calls`、`credit_ledger_entries`、`users` |
 | 模型管理 | `models`、`resource_access_grants` |
 | 技能 | `skills`、`tags`、`resource_tags`、`resource_access_grants`、S3 对象存储 |
-| 专家 | `experts`、`expert_agents`、`expert_rules`、`expert_skills`、`resource_access_grants`、S3 对象存储 |
+| 专家 | `experts`、`expert_rules`、`expert_skills`、`resource_access_grants` |
 | 工具 | `connector_definitions`、`connectors`、`connector_credentials`、`mcp_tools`、`resource_access_grants` |
 | 规则 | `rules`、`resource_access_grants` |
 | 扣费明细 | `credit_ledger_entries`、`credit_accounts` |
