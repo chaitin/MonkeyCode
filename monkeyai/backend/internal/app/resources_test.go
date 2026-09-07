@@ -63,16 +63,16 @@ func TestResourceIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = storage.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err = storage.Init(ctx); err != nil {
-		t.Fatalf("重复初始化: %v", err)
-	}
 	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
 	handler, err := newApplicationHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://localhost:8080", AdminURL: "http://localhost:8080", InitialAdminName: "测试管理员", InitialAdminEmail: "resources@example.com", InitialAdminPassword: "resource-test-password"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err = storage.Ping(ctx); err != nil {
+		t.Fatalf("应用启动后 Bucket 不可访问: %v", err)
+	}
+	if err = storage.Init(ctx); err != nil {
+		t.Fatalf("重复初始化: %v", err)
 	}
 	var cookie *http.Cookie
 	call := func(method, path string, body any, token, revision string) (int, resource.Object, http.Header) {

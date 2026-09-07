@@ -72,11 +72,11 @@ PostgreSQL 数据保存在 `./data/postgres`，执行 `docker compose down` 不�
 
 1. 使用新数据库/数据目录，按 `.env.example` 设置数据库、管理员和 RustFS 凭据。已有数据需要保留时，先完成备份，另建部署目录。
 2. 构建镜像：`docker compose build`。
-3. 执行 `docker compose up -d rustfs`，再执行 `docker compose run --rm rustfs-init`。初始化只检查和创建资源 Bucket，重复执行不会删除对象。
-4. 在本机 `http://127.0.0.1:9001` 的 RustFS 控制台创建应用凭据，授予 `monkeyai-resources` Bucket 的 `s3:ListBucket`、`s3:GetBucketLocation` 和其中对象的 `s3:GetObject`、`s3:PutObject`、`s3:DeleteObject` 权限；填入 `MONKEYAI_S3_ACCESS_KEY` / `MONKEYAI_S3_SECRET_KEY`。初始化命令单独使用有建桶权限的 RustFS 管理凭据。
-5. 执行 `docker compose up -d`。依赖顺序为 PostgreSQL → migrate，以及 RustFS → rustfs-init，然后启动后端和管理页。
+3. 执行 `docker compose up -d`。PostgreSQL 健康且 migrate 成功、RustFS 健康后启动后端，后端在启动流程中检查并按需创建私有资源 Bucket，然后提供 HTTP 服务并启动管理页。初始化限时 1 分钟，失败时后端退出，由 Compose 重启重试；重复启动不会删除已有对象。
 
-RustFS 镜像固定到已联调的 digest `sha256:b7014e0ce2bc703c1316b3ef760e29dfae61fe4a50d1a66fa89638e0f8ea211f`，可通过 `RUSTFS_IMAGE` 覆盖。数据位于 `./data/rustfs`，日志位于 `./data/rustfs-logs`；初始化服务只调整这两个目录的所有者为 `10001:10001`，不修改其他宿主机目录。S3 API 默认仅在 Compose 网络开放，控制台只绑定宿主机回环地址。
+Compose 默认使用 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 供后端初始化和读写资源。可通过 `MONKEYAI_S3_ACCESS_KEY` / `MONKEYAI_S3_SECRET_KEY` 覆盖为独立应用凭据，需具备资源 Bucket 的 `s3:ListBucket`、`s3:GetBucketLocation` 和其中对象的 `s3:GetObject`、`s3:PutObject`、`s3:DeleteObject` 权限；Bucket 不存在时还需 `s3:CreateBucket` 权限。
+
+RustFS 镜像固定为 `chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/rustfs:v1.0.0-rc.5`。数据位于 `./data/rustfs`，日志位于 `./data/rustfs-logs`，RustFS 容器以 `0:0` 运行，直接写入挂载目录，无需独立权限初始化容器。S3 API 默认仅在 Compose 网络开放，控制台只绑定宿主机回环地址。
 
 `/healthz` 表示进程存活；`/readyz` 检查数据库和 Bucket（S3 检查超时 3 秒，缓存 5 秒）。Nginx 允许 21 MiB 请求体，技能文件限 20 MiB，解包限 50 MiB/500 个条目，拒绝路径穿越、重复项、链接及不合法的 `SKILL.md`。
 

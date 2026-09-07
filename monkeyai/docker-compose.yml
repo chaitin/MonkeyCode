@@ -28,17 +28,9 @@ services:
         condition: service_healthy
     restart: "no"
 
-  rustfs-permissions:
-    image: alpine:3.23
-    user: "0:0"
-    command: ["sh", "-c", "chown 10001:10001 /data /logs"]
-    volumes:
-      - ./data/rustfs:/data
-      - ./data/rustfs-logs:/logs
-    restart: "no"
-
   rustfs:
-    image: ${RUSTFS_IMAGE:-rustfs/rustfs@sha256:b7014e0ce2bc703c1316b3ef760e29dfae61fe4a50d1a66fa89638e0f8ea211f}
+    image: chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/rustfs:v1.0.0-rc.5
+    user: "0:0"
     restart: unless-stopped
     environment:
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?请设置 RUSTFS_ACCESS_KEY}
@@ -51,34 +43,12 @@ services:
       - ./data/rustfs-logs:/logs
     ports:
       - "127.0.0.1:${RUSTFS_CONSOLE_PORT:-9001}:9001"
-    depends_on:
-      rustfs-permissions:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/health"]
       interval: 5s
       timeout: 3s
       retries: 20
       start_period: 20s
-
-  rustfs-init:
-    image: ${BACKEND_IMAGE:-monkeyai-backend:local}
-    build:
-      context: ./backend
-    command: ["./monkeyai-storage-init"]
-    environment:
-      MONKEYAI_S3_ENDPOINT: http://rustfs:9000
-      MONKEYAI_S3_REGION: ${MONKEYAI_S3_REGION:-us-east-1}
-      MONKEYAI_S3_BUCKET: ${MONKEYAI_S3_BUCKET:-monkeyai-resources}
-      MONKEYAI_S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
-      MONKEYAI_S3_SECRET_KEY: ${RUSTFS_SECRET_KEY}
-    depends_on:
-      rustfs:
-        condition: service_healthy
-    restart: "no"
-    read_only: true
-    tmpfs:
-      - /tmp
 
   backend:
     image: ${BACKEND_IMAGE:-monkeyai-backend:local}
@@ -90,8 +60,8 @@ services:
       MONKEYAI_S3_ENDPOINT: ${MONKEYAI_S3_ENDPOINT:-http://rustfs:9000}
       MONKEYAI_S3_REGION: ${MONKEYAI_S3_REGION:-us-east-1}
       MONKEYAI_S3_BUCKET: ${MONKEYAI_S3_BUCKET:-monkeyai-resources}
-      MONKEYAI_S3_ACCESS_KEY: ${MONKEYAI_S3_ACCESS_KEY:?请设置 Bucket 应用访问密钥}
-      MONKEYAI_S3_SECRET_KEY: ${MONKEYAI_S3_SECRET_KEY:?请设置 Bucket 应用密钥}
+      MONKEYAI_S3_ACCESS_KEY: ${MONKEYAI_S3_ACCESS_KEY:-${RUSTFS_ACCESS_KEY}}
+      MONKEYAI_S3_SECRET_KEY: ${MONKEYAI_S3_SECRET_KEY:-${RUSTFS_SECRET_KEY}}
       MONKEYAI_S3_FORCE_PATH_STYLE: ${MONKEYAI_S3_FORCE_PATH_STYLE:-true}
       MONKEYAI_MCP_ALLOWED_CIDRS: ${MONKEYAI_MCP_ALLOWED_CIDRS:-}
 
@@ -104,8 +74,8 @@ services:
       MONKEYAI_INITIAL_ADMIN_EMAIL: ${MONKEYAI_INITIAL_ADMIN_EMAIL:-}
       MONKEYAI_INITIAL_ADMIN_PASSWORD: ${MONKEYAI_INITIAL_ADMIN_PASSWORD:-}
     depends_on:
-      rustfs-init:
-        condition: service_completed_successfully
+      rustfs:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     healthcheck:

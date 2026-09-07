@@ -15,9 +15,6 @@ ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags="-s -w" -o /out/monkeyai-server ./cmd/server
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags="-s -w" -o /out/monkeyai-storage-init ./cmd/storageinit
 
 FROM alpine:3.23
 
@@ -28,8 +25,6 @@ RUN apk add --no-cache ca-certificates tzdata \
 WORKDIR /app
 
 COPY --from=builder --chown=monkeyai:monkeyai /out/monkeyai-server ./monkeyai-server
-
-COPY --from=builder --chown=monkeyai:monkeyai /out/monkeyai-storage-init ./monkeyai-storage-init
 
 USER monkeyai
 
