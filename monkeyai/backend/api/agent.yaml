@@ -5,6 +5,183 @@ info:
 security:
   - OAuthAccessToken: []
 paths:
+  /api/v1/users:
+    get:
+      summary: 按用户名或邮箱查找分享接收用户
+      description: 不区分大小写的字面子串匹配，仅返回有效用户，排除当前用户。用户名对应用户的 name 字段。按名称和 ID 排序，最多返回 limit 项；结果过多时请细化关键词。
+      parameters:
+      - in: query
+        name: q
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description: 去除首尾空白后长度为 1—200 字节。
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      responses:
+        '200':
+          description: 匹配的用户简要信息。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchUsersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/models:
+    get:
+      summary: 查询当前用户可用的模型
+      description: 与配置快照的 models 一致，仅包含启用的系统授权模型、自有模型和收到分享的模型。
+      responses:
+        '200':
+          description: 可用模型，不含上游地址和密钥。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentModelsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      summary: 创建当前用户的个人模型
+      description: 所有者由登录身份确定。创建时 api_key 必填，积分倍率由服务端设为 1，初始仅本人可用。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserModelInput'
+      responses:
+        '201':
+          description: 创建成功，密钥原文不返回。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+  /api/v1/models/{modelID}:
+    parameters:
+    - in: path
+      name: modelID
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      summary: 读取自己的模型以供编辑
+      description: 系统模型或他人模型均返回 404。已禁用的自有模型仍可读取。
+      responses:
+        '200':
+          description: 模型配置，不包含密钥原文。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+    put:
+      summary: 修改自己的模型
+      description: 完整替换可编辑配置。api_key 省略或为空时保留原密钥；已有分享、启用状态和积分倍率保持不变。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserModelInput'
+      responses:
+        '200':
+          description: 修改成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+    delete:
+      summary: 删除自己的模型
+      description: 软删除并在同一事务内清除分享授权，后续配置下发和代理调用立即不可用。
+      responses:
+        '204':
+          description: 删除成功，无响应体。
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+  /api/v1/resources/shares:
+    post:
+      summary: 批量分享自己的资源给指定用户
+      description: 本期仅支持 model。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各 1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareResourcesInput'
+      responses:
+        '204':
+          description: 整批分享成功，无响应体。
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+    delete:
+      summary: 批量撤销指定用户的资源分享
+      description: 仅所有者可以撤销。只移除本批指定资源与用户间的授权，不存在的授权视为成功；允许撤销已停用或已删除用户的授权。任一资源无权操作则整批回滚。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareResourcesInput'
+      responses:
+        '204':
+          description: 整批撤销成功，无响应体。
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
   /api/v1/config:
     get:
       summary: 获取当前 Agent 配置快照
@@ -617,6 +794,179 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    UserSummary:
+      type: object
+      required:
+      - id
+      - name
+      - email
+      properties:
+        id: &id006
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: 用户名。
+        email:
+          type: string
+          format: email
+    SearchUsersResponse:
+      type: object
+      required:
+      - users
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSummary'
+    AgentModelsResponse:
+      type: object
+      required:
+      - models
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentModel'
+    UserModelInput:
+      type: object
+      required:
+      - model_id
+      - display_name
+      - protocol
+      - base_url
+      - advanced_config
+      properties:
+        model_id: &id001
+          type: string
+          description: 上游模型名称，非代理调用时的内部模型 ID。
+        display_name: &id002
+          type: string
+          description: 展示名称。
+        protocol: &id003
+          type: string
+          enum:
+          - openai_chat_completions
+          - openai_responses
+          - anthropic
+        base_url: &id004
+          type: string
+          format: uri
+          description: 上游 HTTP(S) 地址，不允许包含用户名密码。
+        api_key:
+          type: string
+          writeOnly: true
+          description: 上游密钥，仅写入；更新时省略或为空表示保留。
+        advanced_config: &id005
+          type: object
+          required:
+          - context_window_tokens
+          - max_output_tokens
+          - supports_vision
+          properties:
+            context_window_tokens:
+              type: integer
+              format: int64
+              minimum: 1
+            max_output_tokens:
+              type: integer
+              format: int64
+              minimum: 1
+            supports_vision:
+              type: boolean
+    CreateUserModelInput:
+      allOf:
+      - $ref: '#/components/schemas/UserModelInput'
+      - type: object
+        required:
+        - api_key
+        properties:
+          api_key:
+            type: string
+            minLength: 1
+            writeOnly: true
+    UserModel:
+      type: object
+      required:
+      - id
+      - ownership_type
+      - owner_user_id
+      - model_id
+      - display_name
+      - protocol
+      - base_url
+      - api_key_configured
+      - advanced_config
+      - credit_multiplier
+      - authorization
+      - enabled
+      - created_at
+      - updated_at
+      properties:
+        model_id: *id001
+        display_name: *id002
+        protocol: *id003
+        base_url: *id004
+        advanced_config: *id005
+        id: *id006
+        ownership_type:
+          type: string
+          const: user
+        owner_user_id: *id006
+        api_key_configured:
+          type: boolean
+        credit_multiplier:
+          type: number
+          exclusiveMinimum: 0
+          description: 服务端管理，用户不可修改。
+        authorization:
+          type: object
+          required:
+          - user_ids
+          - group_ids
+          properties:
+            user_ids:
+              type: array
+              items: *id006
+            group_ids:
+              type: array
+              items: *id006
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ShareResourcesInput:
+      type: object
+      required:
+      - resources
+      - user_ids
+      properties:
+        resources:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            required:
+            - type
+            - id
+            properties:
+              type:
+                type: string
+                enum:
+                - model
+                description: 资源类型。将来可扩展 skill、connector、rule；本期其他类型返回 400。
+              id: *id006
+        user_ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: *id006
+          description: 接收用户 ID，重复项自动去重。
     ErrorResponse:
       type: object
       required: [error]
@@ -838,6 +1188,8 @@ components:
     AgentModel:
       type: object
       required:
+        - ownership_type
+        - owner_user_id
         - id
         - model
         - display_name
@@ -847,6 +1199,24 @@ components:
         - supports_vision
         - credit_multiplier
       properties:
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+          description: 资源归属，固定为 system 或 user；分享不会改变此值。自有和他人分享的个人模型均为 user，通过 owner_user_id 区分。
+        owner_user_id:
+          type: string
+          format: uuid
+          description: 创建者用户 ID。
+        creator:
+          $ref: '#/components/schemas/UserSummary'
+          description: 他人创建的用户模型返回创建者；自己的模型和系统模型不返回。
+        shared_users:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅自己的用户模型返回分享用户列表，未分享时为空数组，排除已删除用户。接收方和系统模型不返回此字段。
         id:
           type: string
           format: uuid

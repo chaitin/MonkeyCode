@@ -86,7 +86,8 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 		return nil, fmt.Errorf("初始化管理员: %w", err)
 	}
 	keys := apikey.NewService(apikey.NewPostgres(pool))
-	models := model.NewService(model.NewPostgres(pool)).WithKeyAuthenticator(keys)
+	modelRepo := model.NewPostgres(pool)
+	models := model.NewService(modelRepo).WithKeyAuthenticator(keys)
 	storage, err := resource.NewS3(ctx)
 	if err != nil {
 		return nil, err
@@ -123,6 +124,8 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	agent.Use(identities.RequireAgent)
 	identities.RegisterAgent(agent)
 	keys.RegisterAgent(agent)
+	models.RegisterAgent(agent)
+	store.RegisterSharing(agent, map[string]resource.Shareable{"model": modelRepo})
 	agentConfig.RegisterAgent(agent)
 	connectors.RegisterAgent(agent)
 	resources.RegisterAgent(agent)
