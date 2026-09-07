@@ -90,7 +90,7 @@ CREATE TABLE billing_migration_issues (
 );
 INSERT INTO billing_quotas(subject_type,group_id,credits_per_cycle,updated_by_user_id)
 SELECT 'group','00000000-0000-0000-0000-000000000001',CASE WHEN (s.value->>'root_credits') ~ '^\d+(\.\d{1,6})?$' THEN (s.value->>'root_credits')::numeric ELSE 15000 END,s.updated_by_user_id
-FROM settings s WHERE s.key='billing' AND NOT EXISTS(SELECT 1 FROM billing_quotas WHERE group_id='00000000-0000-0000-0000-000000000001' AND deleted_at IS NULL);
+FROM settings s WHERE s.key='billing' AND EXISTS(SELECT 1 FROM groups WHERE id='00000000-0000-0000-0000-000000000001') AND NOT EXISTS(SELECT 1 FROM billing_quotas WHERE group_id='00000000-0000-0000-0000-000000000001' AND deleted_at IS NULL);
 CREATE TEMP TABLE billing_legacy_quotas ON COMMIT DROP AS
 SELECT e.key,e.value,s.updated_by_user_id,
  CASE WHEN g.id IS NOT NULL AND u.id IS NULL THEN 'group' WHEN u.id IS NOT NULL AND g.id IS NULL THEN 'user' END subject_type,
@@ -108,7 +108,7 @@ INSERT INTO billing_quotas(subject_type,group_id,user_id,credits_per_cycle,updat
 SELECT l.subject_type,l.group_id,l.user_id,l.credits,l.updated_by_user_id FROM billing_legacy_quotas l
 WHERE l.subject_type IS NOT NULL AND l.credits IS NOT NULL AND NOT EXISTS(SELECT 1 FROM billing_quotas q WHERE q.deleted_at IS NULL AND (q.group_id=l.group_id OR q.user_id=l.user_id));
 
-UPDATE settings SET value=value-'root_credits'-'quota_overrides'-'remote_billing_api_key'-'remote_billing_base_url',revision=revision+1 WHERE key='billing';
+UPDATE settings SET value=value-'quota_overrides'-'remote_billing_api_key'-'remote_billing_base_url',revision=revision+1 WHERE key='billing';
 CREATE FUNCTION billing_immutable_ledger() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '计费流水不可修改或删除，请使用冲正'; END $$;
 CREATE TRIGGER credit_ledger_immutable BEFORE UPDATE OR DELETE ON credit_ledger_entries FOR EACH ROW EXECUTE FUNCTION billing_immutable_ledger();
 COMMIT;

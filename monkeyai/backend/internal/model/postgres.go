@@ -214,7 +214,7 @@ func (p *Postgres) ListAvailable(ctx context.Context, userID string, isAdmin boo
 func (p *Postgres) Resolve(ctx context.Context, userID, id string) (Model, error) {
 	item, err := scanModel(database.Reader(ctx, p.pool).QueryRow(ctx, `
 		WITH RECURSIVE user_groups(group_id) AS (
-			SELECT id FROM groups WHERE deleted_at IS NULL AND (parent_id IS NULL OR (id='00000000-0000-0000-0000-000000000002' AND EXISTS(SELECT 1 FROM users WHERE id=$1 AND role='admin')) OR id IN(SELECT group_id FROM group_users WHERE user_id=$1 AND removed_at IS NULL))
+			SELECT id FROM groups WHERE deleted_at IS NULL AND id IN(SELECT group_id FROM group_users WHERE user_id=$1 AND removed_at IS NULL)
 			UNION
 			SELECT parent.id
 			FROM groups g
@@ -295,7 +295,7 @@ const modelSelect = `
 
 const availableModelSelect = `
 	WITH RECURSIVE user_groups(group_id) AS (
-		SELECT id FROM groups WHERE deleted_at IS NULL AND (parent_id IS NULL OR (id='00000000-0000-0000-0000-000000000002' AND EXISTS(SELECT 1 FROM users WHERE id=$1 AND role='admin')) OR id IN(SELECT group_id FROM group_users WHERE user_id=$1 AND removed_at IS NULL))
+		SELECT id FROM groups WHERE deleted_at IS NULL AND id IN(SELECT group_id FROM group_users WHERE user_id=$1 AND removed_at IS NULL)
 		UNION
 		SELECT parent.id
 		FROM groups g

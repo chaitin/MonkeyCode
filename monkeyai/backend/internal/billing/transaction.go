@@ -177,7 +177,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 	if mode == "remote" {
 		state = "created"
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO billing_transactions(id,user_id,account_id,session_id,category,resource_id,connector_id,item_name,user_name,user_email,group_id,mode,status,reserve,pricing,idempotency_key,request_hash,started_at) VALUES($1,$2,$3,NULLIF($4,'')::uuid,$5,$6,NULLIF($7,'')::uuid,$8,$9,$10,$11,$12,$13,$14,$15,NULLIF($16,''),$17,$18)`, id, r.UserID, a.ID, r.SessionID, r.Category, r.ResourceID, r.ConnectorID, item, name, email, a.GroupID, mode, state, reserve.String(), snapshot, r.IdempotencyKey, r.RequestHash, s.now())
+	_, err = tx.Exec(ctx, `INSERT INTO billing_transactions(id,user_id,account_id,session_id,category,resource_id,connector_id,item_name,user_name,user_email,group_id,mode,status,reserve,pricing,idempotency_key,request_hash,started_at) VALUES($1,$2,$3,NULLIF($4,'')::uuid,$5,$6,NULLIF($7,'')::uuid,$8,$9,$10,NULLIF($11,'')::uuid,$12,$13,$14,$15,NULLIF($16,''),$17,$18)`, id, r.UserID, a.ID, r.SessionID, r.Category, r.ResourceID, r.ConnectorID, item, name, email, a.GroupID, mode, state, reserve.String(), snapshot, r.IdempotencyKey, r.RequestHash, s.now())
 	if err != nil {
 		return Reservation{}, err
 	}

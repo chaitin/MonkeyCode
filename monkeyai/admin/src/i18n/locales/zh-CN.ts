@@ -576,6 +576,10 @@ export const zhCN = {
       deleteDialogDescription: "确定删除“{{rule}}”吗？此操作无法撤销。",
     },
     membersAndGroups: {
+      directMembersHint:
+        "仅调整直接加入本组的成员；子分组成员仍会显示在本组中。",
+      deleteChildrenHint: "请先移动或删除子分组，再删除此分组。",
+      deleteMembersHint: "成员账号会保留；本组的成员关系与资源授权将一并移除。",
       title: "成员与分组",
       description: "管理成员、分组及其资源访问范围。",
       groupsTitle: "分组",

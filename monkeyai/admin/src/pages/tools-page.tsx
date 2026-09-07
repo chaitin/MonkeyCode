@@ -1,7 +1,6 @@
 import { api } from "@/lib/api"
 import {
   base,
-  ROOT_GROUP,
   grants,
   selection,
   match,
@@ -191,7 +190,7 @@ export function ToolsPage() {
   const [centralizedAuthorized, setCentralizedAuthorized] = useState(false)
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
-    groupIds: [ROOT_GROUP],
+    groupIds: [],
     memberIds: [],
   })
   const [testingServerId, setTestingServerId] = useState<string | null>(null)
@@ -262,7 +261,7 @@ export function ToolsPage() {
     setAuthorizationMethod("oauth")
     setCentralizedAuthorized(false)
     setAuthorizationOpen(false)
-    setAuthorization({ groupIds: [ROOT_GROUP], memberIds: [] })
+    setAuthorization({ groupIds: [], memberIds: [] })
   }
 
   const handleDialogOpenChange = (open: boolean) => {

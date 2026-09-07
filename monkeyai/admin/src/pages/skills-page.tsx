@@ -1,7 +1,6 @@
 import { api } from "@/lib/api"
 import {
   base,
-  ROOT_GROUP,
   grants,
   selection,
   match,
@@ -171,7 +170,7 @@ export function SkillsPage() {
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
-    groupIds: [ROOT_GROUP],
+    groupIds: [],
     memberIds: [],
   })
   const [draft, setDraft] = useState<SkillDraft>(EMPTY_SKILL_DRAFT)
@@ -188,7 +187,7 @@ export function SkillsPage() {
     packageRequestId.current += 1
     setAuthorizationOpen(false)
     setTagsOpen(false)
-    setAuthorization({ groupIds: [ROOT_GROUP], memberIds: [] })
+    setAuthorization({ groupIds: [], memberIds: [] })
     setDraft(EMPTY_SKILL_DRAFT)
     setPackageAnalysis(null)
     setPackageFile(null)

@@ -146,9 +146,9 @@ func Row(ctx context.Context, q Queryer, sql string, args ...any) (Object, error
 	return o, err
 }
 
-// 根组和管理员组按有效身份计算，其他分组沿父链继承。
+// 用户仅属于显式加入的分组及其未删除的上级分组。
 const GroupsSQL = `WITH RECURSIVE user_groups(group_id) AS (
- SELECT id FROM groups WHERE deleted_at IS NULL AND (parent_id IS NULL OR (id='00000000-0000-0000-0000-000000000002' AND EXISTS(SELECT 1 FROM users WHERE id=$1 AND role='admin')) OR id IN (SELECT group_id FROM group_users WHERE user_id=$1 AND removed_at IS NULL))
+ SELECT id FROM groups WHERE deleted_at IS NULL AND id IN (SELECT group_id FROM group_users WHERE user_id=$1 AND removed_at IS NULL)
  UNION SELECT parent.id FROM groups g JOIN user_groups ug ON ug.group_id=g.id JOIN groups parent ON parent.id=g.parent_id WHERE g.deleted_at IS NULL AND parent.deleted_at IS NULL
 ) `
 

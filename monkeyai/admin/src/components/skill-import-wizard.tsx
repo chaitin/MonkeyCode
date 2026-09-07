@@ -1,4 +1,4 @@
-import { ROOT_GROUP, useSubjects } from "@/lib/resources"
+import { useSubjects } from "@/lib/resources"
 import { useRef, useState, type ChangeEvent } from "react"
 import {
   ArrowDown01Icon,
@@ -117,7 +117,7 @@ export function SkillImportWizard({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
-    groupIds: [ROOT_GROUP],
+    groupIds: [],
     memberIds: [],
   })
   const requestId = useRef(0)

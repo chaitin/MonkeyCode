@@ -609,6 +609,12 @@ export const enUS = {
         'Delete "{{rule}}"? This action cannot be undone.',
     },
     membersAndGroups: {
+      directMembersHint:
+        "Only direct membership is changed; members of subgroups remain visible here.",
+      deleteChildrenHint:
+        "Move or delete subgroups before deleting this group.",
+      deleteMembersHint:
+        "Member accounts are kept. Memberships and resource grants for this group will be removed.",
       title: "Members & Groups",
       description: "Manage members, groups, and their access to resources.",
       groupsTitle: "Groups",

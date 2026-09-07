@@ -182,7 +182,7 @@ func TestConcurrentReservations(t *testing.T) {
 	if _, err := s.pool.Exec(ctx, `UPDATE models SET advanced_config='{"context_window_tokens":10,"max_output_tokens":4}' WHERE id=$1`, model); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.pool.Exec(ctx, `UPDATE billing_quotas SET credits_per_cycle=10 WHERE group_id=$1`, rootGroup); err != nil {
+	if _, err := s.pool.Exec(ctx, `UPDATE settings SET value=jsonb_set(value,'{root_credits}','"10"') WHERE key='billing'`); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
@@ -225,7 +225,7 @@ func TestQuotaInheritanceAndNoRefill(t *testing.T) {
 	s, user, _ := fixture(t)
 	ctx := t.Context()
 	g := resource.ID()
-	_, err := s.pool.Exec(ctx, `INSERT INTO groups(id,parent_id,name) VALUES($1,$2,'研发');`, g, rootGroup)
+	_, err := s.pool.Exec(ctx, `INSERT INTO groups(id,parent_id,name) VALUES($1,NULL,'研发');`, g)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +462,7 @@ func TestQuotaChangePreservesUnopenedAccount(t *testing.T) {
 	if err = s.PreserveAccounts(ctx, tx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE billing_quotas SET credits_per_cycle=1 WHERE group_id=$1`, rootGroup); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE settings SET value=jsonb_set(value,'{root_credits}','"1"') WHERE key='billing'`); err != nil {
 		t.Fatal(err)
 	}
 	if err = tx.Commit(ctx); err != nil {
