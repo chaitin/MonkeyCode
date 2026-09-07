@@ -1,4 +1,17 @@
-import { useMemo, useState, type FormEvent } from "react"
+import { api } from "@/lib/api"
+import {
+  base,
+  grants,
+  selection,
+  match,
+  saveResource,
+  listResources,
+  useResources,
+  useSubjects,
+  type ResourceRow,
+} from "@/lib/resources"
+import { ResourceNotice } from "@/components/resource-notice"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
 import {
   AiBrain01Icon,
   Copy02Icon,
@@ -70,10 +83,13 @@ import {
 import { cn } from "@/lib/utils"
 
 type Expert = {
+  revision: number
   id: string
   name: string
   description: string
   prompt: string
+  providerSettings: ResourceRow["providers"]
+  defaultModelId: string
   knowledgeBaseIds: string[]
   toolIds: string[]
   ruleIds: string[]
@@ -83,7 +99,7 @@ type Expert = {
   updatedAt: string
 }
 
-type ExpertForm = Omit<Expert, "id" | "updatedAt" | "enabled">
+type ExpertForm = Omit<Expert, "id" | "updatedAt" | "enabled" | "revision">
 type AssociationKey = "knowledgeBaseIds" | "toolIds" | "ruleIds" | "skillIds"
 
 type AssociationOption = {
@@ -92,168 +108,44 @@ type AssociationOption = {
   description: string
 }
 
-const ASSOCIATION_OPTIONS: Record<AssociationKey, AssociationOption[]> = {
-  knowledgeBaseIds: [
-    {
-      id: "kb-product",
-      name: "产品文档库",
-      description: "产品功能、版本说明与使用指南",
-    },
-    {
-      id: "kb-support",
-      name: "客户支持知识库",
-      description: "常见问题、工单与标准回复",
-    },
-    {
-      id: "kb-contract",
-      name: "合同与制度库",
-      description: "合同模板、制度与合规资料",
-    },
-    {
-      id: "kb-engineering",
-      name: "研发知识库",
-      description: "技术方案、API 文档与故障手册",
-    },
-  ],
-  toolIds: [
-    {
-      id: "tool-search",
-      name: "联网搜索",
-      description: "检索公开网络信息",
-    },
-    {
-      id: "tool-code",
-      name: "代码执行器",
-      description: "运行脚本并分析执行结果",
-    },
-    {
-      id: "tool-database",
-      name: "数据查询",
-      description: "查询业务数据库与指标",
-    },
-  ],
-  ruleIds: [
-    {
-      id: "rule-privacy",
-      name: "隐私信息保护",
-      description: "屏蔽和脱敏敏感信息",
-    },
-    {
-      id: "rule-citation",
-      name: "答案引用来源",
-      description: "要求回答标注知识来源",
-    },
-    {
-      id: "rule-safe-output",
-      name: "安全输出规范",
-      description: "限制高风险内容输出",
-    },
-  ],
-  skillIds: [
-    {
-      id: "skill-report",
-      name: "报告生成",
-      description: "生成结构化分析报告",
-    },
-    {
-      id: "skill-data-analysis",
-      name: "数据分析",
-      description: "分析数据并提炼业务洞察",
-    },
-    {
-      id: "skill-document-review",
-      name: "文档审查",
-      description: "检查文档风险与完整性",
-    },
-    {
-      id: "skill-code-review",
-      name: "代码审查",
-      description: "识别代码问题并提供修改建议",
-    },
-  ],
+function toExpert(row: ResourceRow): Expert {
+  return {
+    id: row.id,
+    revision: row.revision,
+    name: row.name,
+    description: row.description,
+    prompt: row.prompt,
+    providerSettings: row.providers ?? [],
+    defaultModelId: row.default_model_id ?? "",
+    knowledgeBaseIds: [],
+    toolIds: (row.providers ?? []).map((p) => p.provider_id),
+    ruleIds: row.rule_ids ?? [],
+    skillIds: row.skill_ids ?? [],
+    authorization: selection(row.grants),
+    enabled: row.enabled,
+    updatedAt: row.updated_at,
+  }
 }
-
 const EMPTY_FORM: ExpertForm = {
   name: "",
   description: "",
   prompt: "",
+  providerSettings: [],
+  defaultModelId: "",
   knowledgeBaseIds: [],
   toolIds: [],
   ruleIds: [],
   skillIds: [],
   authorization: {
-    groupIds: ["administrators"],
+    groupIds: [],
     memberIds: [],
   },
 }
-
-const INITIAL_EXPERTS: Expert[] = [
-  {
-    id: "expert-product",
-    name: "产品顾问",
-    description: "解答产品功能、使用方法和最佳实践相关问题。",
-    prompt:
-      "你是一名资深产品顾问。请基于产品文档提供准确、简洁、可执行的回答，并在必要时给出操作步骤。",
-    knowledgeBaseIds: ["kb-product", "kb-support"],
-    toolIds: ["tool-search"],
-    ruleIds: ["rule-citation", "rule-safe-output"],
-    skillIds: ["skill-report"],
-    authorization: { groupIds: ["all-members"], memberIds: [] },
-    enabled: true,
-    updatedAt: "2026-09-02T08:20:00Z",
-  },
-  {
-    id: "expert-data",
-    name: "数据分析专家",
-    description: "分析业务数据、解释指标变化并生成洞察报告。",
-    prompt:
-      "你是一名数据分析专家。分析前先确认指标口径，清晰区分事实、推断和建议，并用结构化方式呈现结论。",
-    knowledgeBaseIds: ["kb-product"],
-    toolIds: ["tool-code", "tool-database"],
-    ruleIds: ["rule-privacy"],
-    skillIds: ["skill-data-analysis", "skill-report"],
-    authorization: {
-      groupIds: ["product-and-engineering"],
-      memberIds: [],
-    },
-    enabled: true,
-    updatedAt: "2026-09-01T11:35:00Z",
-  },
-  {
-    id: "expert-contract",
-    name: "合同审查专家",
-    description: "识别合同条款风险，并给出清晰的审查意见。",
-    prompt:
-      "你是一名合同审查专家。逐项识别权利义务、违约责任、终止条件和争议解决等风险，但不要替代正式法律意见。",
-    knowledgeBaseIds: ["kb-contract"],
-    toolIds: [],
-    ruleIds: ["rule-privacy", "rule-citation", "rule-safe-output"],
-    skillIds: ["skill-document-review"],
-    authorization: { groupIds: ["administrators"], memberIds: [] },
-    enabled: true,
-    updatedAt: "2026-08-29T05:10:00Z",
-  },
-  {
-    id: "expert-engineering",
-    name: "研发支持专家",
-    description: "协助研发团队排查问题、理解接口和审查代码。",
-    prompt:
-      "你是一名研发支持专家。先复述问题和已知条件，再给出验证步骤、可能原因和修复建议，避免未经验证的确定性结论。",
-    knowledgeBaseIds: ["kb-engineering"],
-    toolIds: ["tool-search", "tool-code"],
-    ruleIds: ["rule-safe-output"],
-    skillIds: ["skill-code-review"],
-    authorization: { groupIds: ["engineering"], memberIds: [] },
-    enabled: false,
-    updatedAt: "2026-08-25T02:45:00Z",
-  },
-]
 
 const ASSOCIATION_SECTIONS: Array<{
   key: AssociationKey
   labelKey: string
 }> = [
-  { key: "knowledgeBaseIds", labelKey: "knowledgeBases" },
   { key: "toolIds", labelKey: "tools" },
   { key: "ruleIds", labelKey: "rules" },
   { key: "skillIds", labelKey: "skills" },
@@ -384,7 +276,17 @@ function ExpertAssociationSelect({
 
 export function ExpertsPage() {
   const { i18n, t } = useTranslation()
-  const [experts, setExperts] = useState(INITIAL_EXPERTS)
+  const remote = useResources("/experts", toExpert)
+  const experts = remote.items
+  const subjects = useSubjects()
+  const [options, setOptions] = useState<
+    Record<AssociationKey, AssociationOption[]>
+  >({ knowledgeBaseIds: [], toolIds: [], ruleIds: [], skillIds: [] })
+  const [models, setModels] = useState<{ id: string; display_name: string }[]>(
+    []
+  )
+  const [optionError, setOptionError] = useState("")
+
   const [query, setQuery] = useState("")
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null)
@@ -392,6 +294,42 @@ export function ExpertsPage() {
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [pendingDeletion, setPendingDeletion] = useState<Expert | null>(null)
 
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      listResources(base + "/rules?ownership_type=system"),
+      listResources(base + "/skills?ownership_type=system"),
+      listResources(base + "/connector-providers?ownership_type=system"),
+      api<{ models: { id: string; display_name: string }[] }>(
+        base + "/models?ownership_type=system"
+      ),
+    ])
+      .then(([rules, skills, providers, models]) => {
+        if (cancelled) return
+        const map = (rows: ResourceRow[]) =>
+          rows
+            .filter((r) => r.enabled !== false)
+            .map((r) => ({
+              id: r.id,
+              name: r.name,
+              description: r.description ?? r.content ?? "",
+            }))
+        setOptions({
+          knowledgeBaseIds: [],
+          ruleIds: map(rules.items),
+          skillIds: map(skills.items),
+          toolIds: map(providers.items),
+        })
+        setModels(models.models)
+        setOptionError("")
+      })
+      .catch((e) => {
+        if (!cancelled) setOptionError(e.message)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [editorOpen])
   const filteredExperts = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase(i18n.language)
     if (!normalizedQuery) return experts
@@ -416,6 +354,8 @@ export function ExpertsPage() {
       name: expert.name,
       description: expert.description,
       prompt: expert.prompt,
+      defaultModelId: expert.defaultModelId,
+      providerSettings: expert.providerSettings,
       knowledgeBaseIds: expert.knowledgeBaseIds,
       toolIds: expert.toolIds,
       ruleIds: expert.ruleIds,
@@ -432,65 +372,90 @@ export function ExpertsPage() {
     setForm((current) => ({ ...current, [key]: value }))
   }
 
-  const saveExpert = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const updatedAt = new Date().toISOString()
-
-    if (editingExpert) {
-      setExperts((current) =>
-        current.map((expert) =>
-          expert.id === editingExpert.id
-            ? { ...expert, ...form, updatedAt }
-            : expert
-        )
-      )
-    } else {
-      setExperts((current) => [
-        {
-          ...form,
-          id: `expert-${Date.now()}`,
-          enabled: true,
-          updatedAt,
-        },
-        ...current,
-      ])
+  const updateProvider = (
+    id: string,
+    patch: Partial<ResourceRow["providers"][number]>
+  ) => {
+    const current = form.providerSettings.find((p) => p.provider_id === id) ?? {
+      provider_id: id,
+      required: true,
+      tool_allowlist: [],
+      tool_denylist: [],
     }
-
-    setEditorOpen(false)
-  }
-
-  const setExpertEnabled = (id: string, enabled: boolean) => {
-    setExperts((current) =>
-      current.map((expert) =>
-        expert.id === id
-          ? { ...expert, enabled, updatedAt: new Date().toISOString() }
-          : expert
-      )
-    )
-  }
-
-  const duplicateExpert = (expert: Expert) => {
-    setExperts((current) => [
-      {
-        ...expert,
-        id: `expert-${Date.now()}`,
-        name: `${expert.name}${t("pages.experts.copySuffix")}`,
-        updatedAt: new Date().toISOString(),
-      },
-      ...current,
+    updateForm("providerSettings", [
+      ...form.providerSettings.filter((p) => p.provider_id !== id),
+      { ...current, ...patch },
     ])
   }
-
-  const deleteExpert = () => {
+  const saveExpert = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    await remote.run(async () => {
+      await saveResource(
+        editingExpert ? `/experts/${editingExpert.id}` : "/experts",
+        {
+          name: form.name,
+          description: form.description,
+          prompt: form.prompt,
+          default_model_id: form.defaultModelId || null,
+          rule_ids: form.ruleIds,
+          skill_ids: form.skillIds,
+          providers: form.toolIds.map(
+            (provider_id) =>
+              form.providerSettings.find(
+                (p) => p.provider_id === provider_id
+              ) ?? {
+                provider_id,
+                required: true,
+                tool_allowlist: [],
+                tool_denylist: [],
+              }
+          ),
+          grants: grants(form.authorization),
+        },
+        editingExpert?.revision
+      )
+      setEditorOpen(false)
+    })
+  }
+  const setExpertEnabled = async (id: string, enabled: boolean) => {
+    const item = experts.find((e) => e.id === id)
+    if (!item) return
+    await remote.run(async () => {
+      await api(base + `/experts/${id}/enabled`, {
+        method: "PATCH",
+        headers: match(item.revision),
+        body: JSON.stringify({ enabled }),
+      })
+    })
+  }
+  const duplicateExpert = async (expert: Expert) => {
+    await remote.run(async () => {
+      await api(base + `/experts/${expert.id}/copy`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: expert.name + t("pages.experts.copySuffix"),
+        }),
+      })
+    })
+  }
+  const deleteExpert = async () => {
     if (!pendingDeletion) return
-    setExperts((current) =>
-      current.filter((expert) => expert.id !== pendingDeletion.id)
-    )
-    setPendingDeletion(null)
+    await remote.run(async () => {
+      await api(base + `/experts/${pendingDeletion.id}`, {
+        method: "DELETE",
+        headers: match(pendingDeletion.revision),
+      })
+      setPendingDeletion(null)
+    })
   }
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-0">
+      <ResourceNotice
+        error={remote.error || subjects.error || optionError}
+        loading={remote.loading}
+        pending={remote.pending}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative w-full sm:w-64">
           <HugeiconsIcon
@@ -616,9 +581,19 @@ export function ExpertsPage() {
                 </span>
                 <span
                   className="w-3/5 truncate text-end font-medium"
-                  title={getAuthorizationNames(expert.authorization, t)}
+                  title={getAuthorizationNames(
+                    expert.authorization,
+                    t,
+                    subjects.flatGroups,
+                    subjects.members
+                  )}
                 >
-                  {getAuthorizationNames(expert.authorization, t)}
+                  {getAuthorizationNames(
+                    expert.authorization,
+                    t,
+                    subjects.flatGroups,
+                    subjects.members
+                  )}
                 </span>
               </CardFooter>
             </Card>
@@ -659,6 +634,24 @@ export function ExpertsPage() {
             onSubmit={saveExpert}
           >
             <FieldGroup className="max-h-[calc(100vh-12rem)] gap-6 overflow-y-auto pe-1">
+              <Field>
+                <FieldLabel htmlFor="expert-model">
+                  {t("resources.defaultModel")}
+                </FieldLabel>
+                <select
+                  id="expert-model"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.defaultModelId}
+                  onChange={(e) => updateForm("defaultModelId", e.target.value)}
+                >
+                  <option value="">{t("resources.noDefaultModel")}</option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.display_name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <Field>
                 <FieldLabel htmlFor="expert-name">
                   {t("pages.experts.name")}
@@ -707,17 +700,67 @@ export function ExpertsPage() {
                   <ExpertAssociationSelect
                     id={`expert-${key}`}
                     label={t(`pages.experts.${labelKey}`)}
-                    options={ASSOCIATION_OPTIONS[key]}
+                    options={options[key]}
                     value={form[key]}
                     onValueChange={(value) => updateForm(key, value)}
                   />
                 </Field>
               ))}
+              {form.toolIds.map((id) => {
+                const settings = form.providerSettings.find(
+                  (p) => p.provider_id === id
+                )
+                return (
+                  <Field key={id}>
+                    <FieldLabel>
+                      {options.toolIds.find((p) => p.id === id)?.name}
+                    </FieldLabel>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={settings?.required ?? true}
+                        onChange={(e) =>
+                          updateProvider(id, { required: e.target.checked })
+                        }
+                      />
+                      {t("resources.requiredProvider")}
+                    </label>
+                    <Input
+                      aria-label={t("resources.allowTools")}
+                      placeholder={t("resources.allowTools")}
+                      value={(settings?.tool_allowlist ?? []).join(",")}
+                      onChange={(e) =>
+                        updateProvider(id, {
+                          tool_allowlist: e.target.value
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                    />
+                    <Input
+                      aria-label={t("resources.denyTools")}
+                      placeholder={t("resources.denyTools")}
+                      value={(settings?.tool_denylist ?? []).join(",")}
+                      onChange={(e) =>
+                        updateProvider(id, {
+                          tool_denylist: e.target.value
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                    />
+                  </Field>
+                )
+              })}
               <Field>
                 <FieldLabel htmlFor="expert-authorization">
                   {t("pages.experts.authorizedScope")}
                 </FieldLabel>
                 <AuthorizationSelect
+                  groups={subjects.groups}
+                  members={subjects.members}
                   id="expert-authorization"
                   open={authorizationOpen}
                   placeholder={t("pages.experts.authorizationPlaceholder")}
@@ -728,11 +771,16 @@ export function ExpertsPage() {
                 />
               </Field>
             </FieldGroup>
+            <ResourceNotice
+              error={remote.error || subjects.error || optionError}
+              loading={false}
+              pending={remote.pending}
+            />
             <DialogFooter>
               <DialogClose render={<Button type="button" variant="outline" />}>
                 {t("pages.experts.cancel")}
               </DialogClose>
-              <Button type="submit">
+              <Button type="submit" disabled={remote.pending}>
                 {editingExpert
                   ? t("pages.experts.save")
                   : t("pages.experts.create")}

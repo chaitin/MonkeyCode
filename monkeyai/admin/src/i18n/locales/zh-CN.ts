@@ -1,4 +1,23 @@
 export const zhCN = {
+  resources: {
+    providerIcon: "连接模板图标（PNG/JPEG，1 MiB 内，影响同模板连接）",
+    skillContent: "技能正文",
+    downloadPackage: "下载技能包",
+    providerTemplate: "连接模板",
+    newProvider: "新建连接模板",
+    enable: "启用连接",
+    disable: "停用连接",
+    requiredProvider: "必须绑定此服务",
+    allowTools: "工具白名单，逗号分隔；留空表示全部",
+    denyTools: "工具黑名单，逗号分隔",
+    loading: "正在加载…",
+    saving: "正在保存…",
+    availableScope: "可用范围",
+    selectScope: "选择用户或分组",
+    defaultModel: "默认模型",
+    noDefaultModel: "由用户选择模型",
+    saveBeforeAuthorize: "保存连接后，可重新打开编辑窗口完成 OAuth 授权。",
+  },
   app: {
     documentTitle: "MonkeyAI 管理后台",
     adminConsole: "管理后台",

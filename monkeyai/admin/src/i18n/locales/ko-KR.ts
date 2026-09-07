@@ -1,6 +1,7 @@
 import { enUS } from "./en-US.ts"
 
 export const koKR = {
+  resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI 관리자 콘솔",
     adminConsole: "관리자 콘솔",

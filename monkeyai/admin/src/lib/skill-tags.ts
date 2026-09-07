@@ -7,9 +7,9 @@ export type SkillTag = {
 
 export type SkillTagsContextValue = {
   tags: SkillTag[]
-  addTag: (name: string) => boolean
-  renameTag: (id: string, name: string) => boolean
-  deleteTag: (id: string) => void
+  addTag: (name: string) => Promise<boolean>
+  renameTag: (id: string, name: string) => Promise<boolean>
+  deleteTag: (id: string) => Promise<void>
 }
 
 export const INITIAL_SKILL_TAGS: SkillTag[] = [

@@ -109,6 +109,418 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/connectors/{id}/icon:
+    get:
+      summary: 按用户权限读取连接图标
+      responses:
+        '200':
+          description: 按用户权限读取连接图标
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/experts/{id}/manifest:
+    get:
+      summary: 读取当前用户可用专家的完整清单
+      responses:
+        '200':
+          description: 读取当前用户可用专家的完整清单
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertManifest'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+        '304':
+          description: ETag 未变化
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/resources/resolve:
+    post:
+      summary: 解析专家、规则、技能与连接绑定
+      responses:
+        '200':
+          description: 解析专家、规则、技能与连接绑定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertManifest'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveResources'
+  /api/v1/experts/{id}/skills/{skillID}/package:
+    get:
+      summary: 按专家委托下载技能包
+      responses:
+        '200':
+          description: 按专家委托下载技能包
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: skillID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: sha256
+        in: query
+        schema:
+          type: string
+        description: 客户端清单记录的包摘要；与当前包不同返回 412。
+  /api/v1/connectors/{id}/credential:
+    put:
+      summary: 配置或撤销当前合法认证上下文
+      responses:
+        '204':
+          description: 配置或撤销当前合法认证上下文
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredentialInput'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: 配置或撤销当前合法认证上下文
+      responses:
+        '204':
+          description: 配置或撤销当前合法认证上下文
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/connectors/{id}/test:
+    post:
+      summary: 执行真实 MCP 握手与全量工具发现
+      responses:
+        '200':
+          description: 执行真实 MCP 握手与全量工具发现
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connection_status:
+                    type: string
+                  tool_count:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/connectors/{id}/tools:
+    get:
+      summary: 读取认证上下文的工具目录
+      responses:
+        '200':
+          description: 读取认证上下文的工具目录
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MCPTool'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/connectors/{id}/oauth/authorizations:
+    post:
+      summary: 生成 OAuth state 与 PKCE 授权事务
+      responses:
+        '200':
+          description: 生成 OAuth state 与 PKCE 授权事务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthAuthorization'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/connector-authorizations/{id}:
+    get:
+      summary: 查询本人发起的授权事务状态
+      responses:
+        '200':
+          description: 查询本人发起的授权事务状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationStatus'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/v1/skills/{id}/package:
+    get:
+      summary: 按当前权限下载技能包
+      responses:
+        '200':
+          description: 按当前权限下载技能包
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: sha256
+        in: query
+        schema:
+          type: string
+        description: 客户端清单记录的包摘要；与当前包不同返回 412。
 components:
   securitySchemes:
     OAuthAccessToken:
@@ -126,6 +538,60 @@ components:
         type: string
         format: uuid
   responses:
+    ResourceError400:
+      description: 字段或关联无效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceError'
+    ResourceError401:
+      description: 需要登录
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceError'
+    ResourceError403:
+      description: 无权操作
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceError'
+    ResourceError404:
+      description: 资源不存在或无权访问
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceError'
+    ResourceError409:
+      description: 名称或引用冲突
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceError'
+    ResourceError412:
+      description: 修订或技能包摘要已变化
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceError'
+    ResourceError428:
+      description: 缺少 If-Match
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceError'
+    ResourceError500:
+      description: 读取或保存失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceError'
+    ResourceError502:
+      description: 上游连接失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceError'
     BadRequest:
       description: 请求参数或请求体无效。
       content:
@@ -170,8 +636,27 @@ components:
           description: 面向用户或开发者的错误说明。
     AgentConfigSnapshot:
       type: object
-      required: [version, updated_at, settings, model_gateway, models]
+      required: [version, updated_at, settings, model_gateway, models, schema_version, rules, skills, experts, connectors]
       properties:
+        schema_version:
+          type: integer
+          const: 2
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentRule'
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentSkill'
+        experts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentExpert'
+        connectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentConnector'
         version:
           type: string
           pattern: "^sha256:[0-9a-f]{64}$"
@@ -488,3 +973,812 @@ components:
               type: string
               pattern: "^mk_"
               description: 可用于模型或 MCP 请求鉴权的密钥原文，只返回一次。
+
+    ResourceGrant:
+      type: object
+      properties:
+        user_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        group_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        usage_requirement:
+          type: string
+          enum:
+          - optional
+          - required
+          description: 仅系统规则可设置 required。
+      required:
+      - usage_requirement
+    ResourceError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            references:
+              type:
+              - array
+              - 'null'
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  name:
+                    type: string
+          required:
+          - code
+          - message
+      required:
+      - error
+    ResourceTag:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
+    ProviderDependency:
+      type: object
+      properties:
+        provider_id:
+          type: string
+          format: uuid
+        required:
+          type: boolean
+        tool_allowlist:
+          type: array
+          items:
+            type: string
+        tool_denylist:
+          type: array
+          items:
+            type: string
+      required:
+      - provider_id
+    OAuthConnectionConfig:
+      type: object
+      properties:
+        authorization_url:
+          type: string
+        token_url:
+          type: string
+        client_id:
+          type: string
+        scopes:
+          type: string
+    ResourceIssue:
+      type: object
+      properties:
+        code:
+          type: string
+        provider_id:
+          type: string
+          format: uuid
+        blocking:
+          type: boolean
+      required:
+      - code
+      - blocking
+    MCPTool:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        input_schema:
+          type: object
+        enabled:
+          type: boolean
+        credits_per_call:
+          type: number
+          minimum: 0
+      required:
+      - id
+      - name
+      - description
+      - input_schema
+      - enabled
+      - credits_per_call
+    AgentRule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        content:
+          type: string
+        sha256:
+          type: string
+        required:
+          type: boolean
+      required:
+      - id
+      - name
+      - content
+      - sha256
+      - required
+    AgentSkill:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        package_sha256:
+          type: string
+        package_size_bytes:
+          type: integer
+        file_count:
+          type: integer
+        download_path:
+          type: string
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceTag'
+      required:
+      - id
+      - name
+      - description
+      - package_sha256
+      - download_path
+    AgentConnector:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        provider_identifier:
+          type: string
+        icon_path:
+          type: string
+        name:
+          type: string
+        authorization_mode:
+          type: string
+          enum:
+          - none
+          - centralized
+          - independent
+        authorization_method:
+          type:
+          - string
+          - 'null'
+        authorization_status:
+          type: string
+          enum:
+          - not_required
+          - authorized
+          - authorization_required
+        connection_status:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum:
+            - catalog
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPTool'
+        tools_version:
+          type: string
+        tools_path:
+          type: string
+      required:
+      - id
+      - provider_id
+      - name
+      - authorization_status
+      - capabilities
+      - tools
+    AgentExpert:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        version:
+          type: string
+        manifest_path:
+          type: string
+        available:
+          type: boolean
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceIssue'
+      required:
+      - id
+      - name
+      - version
+      - manifest_path
+      - available
+      - issues
+    ExpertManifest:
+      type: object
+      properties:
+        expert_id:
+          type: string
+        name:
+          type: string
+        prompt:
+          type: string
+        default_model_id:
+          type: string
+        version:
+          type: string
+        available:
+          type: boolean
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentRule'
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentSkill'
+        providers:
+          type: array
+          items:
+            type: object
+            properties:
+              provider_id:
+                type: string
+                format: uuid
+              required:
+                type: boolean
+              tool_allowlist:
+                type: array
+                items:
+                  type: string
+              tool_denylist:
+                type: array
+                items:
+                  type: string
+              connectors:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentConnector'
+        connectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentConnector'
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceIssue'
+      required:
+      - expert_id
+      - prompt
+      - version
+      - available
+      - rules
+      - skills
+      - providers
+      - issues
+    ResolveResources:
+      type: object
+      properties:
+        expert_id:
+          type: string
+          format: uuid
+        rule_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        skill_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        connector_bindings:
+          type: object
+          additionalProperties:
+            type: string
+            format: uuid
+    OAuthAuthorization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        authorization_url:
+          type: string
+          format: uri
+      required:
+      - id
+      - authorization_url
+    AuthorizationStatus:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - pending
+          - processing
+          - authorized
+          - error
+          - expired
+      required:
+      - id
+      - status
+    CredentialInput:
+      type: object
+      properties:
+        http_headers:
+          type: object
+          additionalProperties:
+            type: string
+          writeOnly: true
+      required:
+      - http_headers
+    RuleResource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+        owner_user_id:
+          type: string
+          format: uuid
+        owner_name:
+          type: string
+        icon_path:
+          type: string
+        enabled:
+          type: boolean
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        content:
+          type: string
+      required:
+      - id
+      - name
+      - revision
+      - grants
+    RuleInput:
+      type: object
+      properties:
+        content:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+      required:
+      - name
+      - content
+    SkillResource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+        owner_user_id:
+          type: string
+          format: uuid
+        owner_name:
+          type: string
+        icon_path:
+          type: string
+        enabled:
+          type: boolean
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        description:
+          type: string
+        package_file_name:
+          type: string
+        package_sha256:
+          type: string
+        package_size_bytes:
+          type: integer
+        file_count:
+          type: integer
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceTag'
+      required:
+      - id
+      - name
+      - revision
+      - grants
+    SkillInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        content:
+          type: string
+        tag_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+      required:
+      - name
+    ExpertResource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+        owner_user_id:
+          type: string
+          format: uuid
+        owner_name:
+          type: string
+        icon_path:
+          type: string
+        enabled:
+          type: boolean
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        description:
+          type: string
+        prompt:
+          type: string
+        default_model_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        rule_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        skill_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderDependency'
+      required:
+      - id
+      - name
+      - revision
+      - grants
+    ExpertInput:
+      type: object
+      properties:
+        description:
+          type: string
+        prompt:
+          type: string
+        default_model_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        rule_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        skill_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderDependency'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+      required:
+      - name
+      - prompt
+    ConnectorProviderResource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+        owner_user_id:
+          type: string
+          format: uuid
+        owner_name:
+          type: string
+        icon_path:
+          type: string
+        enabled:
+          type: boolean
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        identifier:
+          type: string
+        description:
+          type: string
+        url:
+          type: string
+          format: uri
+        authorization_mode:
+          type: string
+          enum:
+          - none
+          - centralized
+          - independent
+        authorization_method:
+          type:
+          - string
+          - 'null'
+          enum:
+          - http_header
+          - oauth
+          - null
+        oauth_config:
+          $ref: '#/components/schemas/OAuthConnectionConfig'
+        header_schema:
+          type: object
+      required:
+      - id
+      - name
+      - revision
+      - grants
+    ConnectorProviderInput:
+      type: object
+      properties:
+        identifier:
+          type: string
+        description:
+          type: string
+        url:
+          type: string
+          format: uri
+        authorization_mode:
+          type: string
+          enum:
+          - none
+          - centralized
+          - independent
+        authorization_method:
+          type:
+          - string
+          - 'null'
+          enum:
+          - http_header
+          - oauth
+          - null
+        oauth_config:
+          $ref: '#/components/schemas/OAuthConnectionConfig'
+        header_schema:
+          type: object
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+        oauth_client_secret:
+          type: string
+          writeOnly: true
+          description: 仅写入；空字符串表示保留已有密钥。
+      required:
+      - name
+      - identifier
+      - url
+      - authorization_mode
+    ConnectorResource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+        owner_user_id:
+          type: string
+          format: uuid
+        owner_name:
+          type: string
+        icon_path:
+          type: string
+        enabled:
+          type: boolean
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        provider_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        url:
+          type: string
+          format: uri
+        authorization_mode:
+          type: string
+          enum:
+          - none
+          - centralized
+          - independent
+        authorization_method:
+          type:
+          - string
+          - 'null'
+        oauth_config:
+          $ref: '#/components/schemas/OAuthConnectionConfig'
+        config_revision:
+          type: integer
+        credential_configured:
+          type: boolean
+        connection_status:
+          type: string
+        tool_count:
+          type: integer
+      required:
+      - id
+      - name
+      - revision
+      - grants
+    ConnectorInput:
+      type: object
+      properties:
+        provider_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        url:
+          type: string
+          format: uri
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+      required:
+      - name
+      - provider_id

@@ -156,13 +156,13 @@ CREATE TABLE skills (
     owner_user_id uuid NOT NULL REFERENCES users (id),
     name text NOT NULL,
     description text NOT NULL,
-    instructions text NOT NULL,
     package_file_name text NOT NULL,
     package_s3_key text NOT NULL,
     package_size_bytes bigint NOT NULL,
     package_sha256 text NOT NULL,
     file_count integer NOT NULL DEFAULT 0,
     enabled boolean NOT NULL DEFAULT true,
+    revision bigint NOT NULL DEFAULT 1,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
@@ -185,6 +185,7 @@ CREATE TABLE rules (
     owner_user_id uuid NOT NULL REFERENCES users (id),
     name text NOT NULL,
     content text NOT NULL,
+    revision bigint NOT NULL DEFAULT 1,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
@@ -195,108 +196,109 @@ CREATE INDEX rules_owner_idx
     ON rules (owner_user_id)
     WHERE deleted_at IS NULL;
 
-CREATE TABLE mcp_servers (
+CREATE TABLE connector_providers (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    ownership_type text NOT NULL,
-    owner_user_id uuid NOT NULL REFERENCES users (id),
+    identifier text NOT NULL,
+    ownership_type text NOT NULL DEFAULT 'system' CHECK (ownership_type IN ('system','user')),
+    owner_user_id uuid NOT NULL REFERENCES users(id),
     name text NOT NULL,
-    description text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    icon_s3_key text NOT NULL DEFAULT '',
     url text NOT NULL,
-    authorization_mode text NOT NULL,
-    authorization_method text,
-    connection_status text NOT NULL DEFAULT 'unknown',
-    last_checked_at timestamptz,
-    last_error text,
+    authorization_mode text NOT NULL CHECK (authorization_mode IN ('none','centralized','independent')),
+    authorization_method text CHECK (authorization_method IN ('http_header','oauth')),
+    header_schema jsonb NOT NULL DEFAULT '{}'::jsonb,
+    oauth_config jsonb NOT NULL DEFAULT '{}'::jsonb,
+    oauth_client_secret text NOT NULL DEFAULT '',
+    enabled boolean NOT NULL DEFAULT true,
+    revision bigint NOT NULL DEFAULT 1,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
-    CONSTRAINT mcp_servers_ownership_type_check CHECK (ownership_type IN ('system', 'user')),
-    CONSTRAINT mcp_servers_authorization_check CHECK (
-        (authorization_mode = 'none' AND authorization_method IS NULL)
-        OR (
-            authorization_mode IN ('independent', 'centralized')
-            AND authorization_method IN ('oauth', 'http_header')
-        )
-    ),
-    CONSTRAINT mcp_servers_connection_status_check CHECK (
-        connection_status IN ('connected', 'error', 'unknown')
-    )
+    CHECK ((authorization_mode = 'none' AND authorization_method IS NULL) OR
+           (authorization_mode <> 'none' AND authorization_method IS NOT NULL))
 );
+CREATE UNIQUE INDEX connector_providers_identifier_key ON connector_providers(lower(btrim(identifier))) WHERE deleted_at IS NULL;
 
-CREATE INDEX mcp_servers_owner_idx
-    ON mcp_servers (owner_user_id)
-    WHERE deleted_at IS NULL;
-
-CREATE TABLE mcp_server_credentials (
+CREATE TABLE connectors (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    server_id uuid NOT NULL REFERENCES mcp_servers (id),
-    user_id uuid REFERENCES users (id),
-    method text NOT NULL,
-    http_headers jsonb,
-    oauth_access_token text,
-    oauth_refresh_token text,
-    oauth_token_type text,
-    oauth_scopes text,
-    oauth_expires_at timestamptz,
-    status text NOT NULL DEFAULT 'pending',
-    authorized_at timestamptz,
+    provider_id uuid NOT NULL REFERENCES connector_providers(id),
+    ownership_type text NOT NULL DEFAULT 'system' CHECK (ownership_type IN ('system','user')),
+    owner_user_id uuid NOT NULL REFERENCES users(id),
+    name text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    url text NOT NULL,
+    authorization_mode text NOT NULL CHECK (authorization_mode IN ('none','centralized','independent')),
+    authorization_method text CHECK (authorization_method IN ('http_header','oauth')),
+    oauth_config jsonb NOT NULL DEFAULT '{}'::jsonb,
+    oauth_client_secret text NOT NULL DEFAULT '',
+    enabled boolean NOT NULL DEFAULT true,
+    connection_status text NOT NULL DEFAULT 'unknown' CHECK (connection_status IN ('unknown','connected','error')),
+    last_checked_at timestamptz,
     last_error text,
+    revision bigint NOT NULL DEFAULT 1,
+    config_revision bigint NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    deleted_at timestamptz,
+    CHECK ((authorization_mode = 'none' AND authorization_method IS NULL) OR
+           (authorization_mode <> 'none' AND authorization_method IS NOT NULL))
+);
+CREATE TABLE connector_credentials (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    connector_id uuid NOT NULL REFERENCES connectors(id),
+    user_id uuid REFERENCES users(id),
+    method text NOT NULL CHECK (method IN ('oauth','http_header')),
+    http_headers jsonb NOT NULL DEFAULT '{}'::jsonb,
+    oauth_access_token text NOT NULL DEFAULT '',
+    oauth_refresh_token text NOT NULL DEFAULT '',
+    oauth_expires_at timestamptz,
+    status text NOT NULL DEFAULT 'authorized' CHECK (status IN ('authorized','expired','revoked','error')),
+    config_revision bigint NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     revoked_at timestamptz,
-    CONSTRAINT mcp_server_credentials_method_check CHECK (method IN ('oauth', 'http_header')),
-    CONSTRAINT mcp_server_credentials_headers_check CHECK (
-        http_headers IS NULL OR jsonb_typeof(http_headers) = 'object'
-    ),
-    CONSTRAINT mcp_server_credentials_status_check CHECK (
-        status IN ('pending', 'authorized', 'expired', 'revoked', 'error')
-    )
+    UNIQUE NULLS NOT DISTINCT (connector_id,user_id)
 );
-
-CREATE UNIQUE INDEX mcp_server_credentials_centralized_active_key
-    ON mcp_server_credentials (server_id)
-    WHERE user_id IS NULL AND revoked_at IS NULL;
-
-CREATE UNIQUE INDEX mcp_server_credentials_independent_active_key
-    ON mcp_server_credentials (server_id, user_id)
-    WHERE user_id IS NOT NULL AND revoked_at IS NULL;
-
-CREATE INDEX mcp_server_credentials_user_idx
-    ON mcp_server_credentials (user_id)
-    WHERE user_id IS NOT NULL AND revoked_at IS NULL;
-
 CREATE TABLE mcp_tools (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    server_id uuid NOT NULL REFERENCES mcp_servers (id),
+    connector_id uuid NOT NULL REFERENCES connectors(id),
+    credential_id uuid REFERENCES connector_credentials(id),
     name text NOT NULL,
-    description text NOT NULL,
-    input_schema jsonb,
-    enabled boolean NOT NULL DEFAULT true,
-    credits_per_call numeric(24, 6) NOT NULL DEFAULT 0,
+    description text NOT NULL DEFAULT '',
+    input_schema jsonb NOT NULL DEFAULT '{}'::jsonb,
+    enabled boolean NOT NULL DEFAULT false,
+    credits_per_call numeric(24,6) NOT NULL DEFAULT 0 CHECK (credits_per_call >= 0),
+    config_revision bigint NOT NULL,
     discovered_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
-    CONSTRAINT mcp_tools_input_schema_check CHECK (
-        input_schema IS NULL OR jsonb_typeof(input_schema) = 'object'
-    ),
-    CONSTRAINT mcp_tools_credits_per_call_check CHECK (credits_per_call >= 0)
+    UNIQUE NULLS NOT DISTINCT (connector_id,credential_id,name)
 );
-
-CREATE UNIQUE INDEX mcp_tools_name_active_key
-    ON mcp_tools (server_id, name)
-    WHERE deleted_at IS NULL;
-
-CREATE INDEX mcp_tools_enabled_idx
-    ON mcp_tools (server_id, enabled)
-    WHERE deleted_at IS NULL;
+CREATE TABLE connector_oauth_requests (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    connector_id uuid NOT NULL REFERENCES connectors(id),
+    user_id uuid NOT NULL REFERENCES users(id),
+    centralized boolean NOT NULL,
+    config_revision bigint NOT NULL,
+    state_hash text NOT NULL UNIQUE,
+    verifier text NOT NULL,
+    redirect_uri text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    status text NOT NULL DEFAULT 'pending',
+    created_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE experts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name text NOT NULL,
     description text NOT NULL,
     prompt text NOT NULL,
+    default_model_id uuid REFERENCES models(id),
     enabled boolean NOT NULL DEFAULT true,
     created_by_user_id uuid NOT NULL REFERENCES users (id),
+    revision bigint NOT NULL DEFAULT 1,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz
@@ -318,7 +320,7 @@ CREATE TABLE resource_access_grants (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT resource_access_grants_resource_type_check CHECK (
-        resource_type IN ('model', 'skill', 'rule', 'mcp_server', 'expert')
+        resource_type IN ('model', 'skill', 'rule', 'connector', 'expert')
     ),
     CONSTRAINT resource_access_grants_subject_check CHECK (
         (user_id IS NOT NULL)::integer + (group_id IS NOT NULL)::integer = 1
@@ -356,22 +358,22 @@ CREATE TABLE resource_tags (
     assigned_by_user_id uuid NOT NULL REFERENCES users (id),
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT resource_tags_resource_type_check CHECK (
-        resource_type IN ('model', 'skill', 'rule', 'mcp_server', 'expert')
+        resource_type IN ('model', 'skill', 'rule', 'connector', 'expert')
     ),
     CONSTRAINT resource_tags_resource_key UNIQUE (resource_type, resource_id, tag_id)
 );
 
 CREATE INDEX resource_tags_tag_idx ON resource_tags (tag_id);
 
-CREATE TABLE expert_mcp_tools (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    expert_id uuid NOT NULL REFERENCES experts (id),
-    tool_id uuid NOT NULL REFERENCES mcp_tools (id),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT expert_mcp_tools_key UNIQUE (expert_id, tool_id)
+CREATE TABLE expert_connector_providers (
+    expert_id uuid NOT NULL REFERENCES experts(id),
+    provider_id uuid NOT NULL REFERENCES connector_providers(id),
+    required boolean NOT NULL DEFAULT true,
+    tool_allowlist text[] NOT NULL DEFAULT '{}',
+    tool_denylist text[] NOT NULL DEFAULT '{}',
+    PRIMARY KEY (expert_id,provider_id)
 );
-
-CREATE INDEX expert_mcp_tools_tool_idx ON expert_mcp_tools (tool_id);
+CREATE INDEX expert_connector_providers_provider_idx ON expert_connector_providers(provider_id);
 
 CREATE TABLE expert_rules (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -483,7 +485,7 @@ CREATE TABLE mcp_tool_calls (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id uuid NOT NULL REFERENCES sessions (id),
     user_id uuid NOT NULL REFERENCES users (id),
-    server_id uuid NOT NULL REFERENCES mcp_servers (id),
+    connector_id uuid NOT NULL REFERENCES connectors (id),
     tool_id uuid NOT NULL REFERENCES mcp_tools (id),
     request_id text,
     status text NOT NULL,
@@ -513,8 +515,8 @@ CREATE INDEX mcp_tool_calls_tool_started_idx
 CREATE INDEX mcp_tool_calls_user_started_idx
     ON mcp_tool_calls (user_id, started_at DESC);
 
-CREATE INDEX mcp_tool_calls_server_started_idx
-    ON mcp_tool_calls (server_id, started_at DESC);
+CREATE INDEX mcp_tool_calls_connector_started_idx
+    ON mcp_tool_calls (connector_id, started_at DESC);
 
 CREATE TABLE billing_quotas (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -641,5 +643,127 @@ CREATE INDEX audits_category_occurred_idx ON audits (category, occurred_at DESC)
 CREATE INDEX audits_target_idx
     ON audits (target_type, target_id)
     WHERE target_type IS NOT NULL AND target_id IS NOT NULL;
+
+CREATE UNIQUE INDEX skills_system_name_key ON skills(lower(btrim(name))) WHERE ownership_type='system' AND deleted_at IS NULL;
+CREATE UNIQUE INDEX skills_user_name_key ON skills(owner_user_id,lower(btrim(name))) WHERE ownership_type='user' AND deleted_at IS NULL;
+CREATE UNIQUE INDEX rules_system_name_key ON rules(lower(btrim(name))) WHERE ownership_type='system' AND deleted_at IS NULL;
+CREATE UNIQUE INDEX rules_user_name_key ON rules(owner_user_id,lower(btrim(name))) WHERE ownership_type='user' AND deleted_at IS NULL;
+CREATE UNIQUE INDEX connectors_system_name_key ON connectors(lower(btrim(name))) WHERE ownership_type='system' AND deleted_at IS NULL;
+CREATE UNIQUE INDEX connectors_user_name_key ON connectors(owner_user_id,lower(btrim(name))) WHERE ownership_type='user' AND deleted_at IS NULL;
+CREATE UNIQUE INDEX experts_name_key ON experts(lower(btrim(name))) WHERE deleted_at IS NULL;
+INSERT INTO groups(id,parent_id,name) VALUES ('00000000-0000-0000-0000-000000000001',NULL,'所有用户'),('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','管理员');
+
+
+CREATE TABLE browser_sessions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    token_hash text NOT NULL UNIQUE,
+    user_id uuid NOT NULL REFERENCES users (id),
+    authentication_method text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    last_seen_at timestamptz NOT NULL DEFAULT now(),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    revoked_at timestamptz,
+    CONSTRAINT browser_sessions_authentication_method_check CHECK (
+        authentication_method IN ('password', 'oauth')
+    ),
+    CONSTRAINT browser_sessions_expiry_check CHECK (expires_at > created_at)
+);
+
+CREATE INDEX browser_sessions_user_idx
+    ON browser_sessions (user_id)
+    WHERE revoked_at IS NULL;
+
+CREATE TABLE oauth_authorization_requests (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id text NOT NULL,
+    redirect_uri text NOT NULL,
+    state text NOT NULL,
+    code_challenge text NOT NULL,
+    code_challenge_method text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    completed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT oauth_authorization_requests_method_check CHECK (
+        code_challenge_method = 'S256'
+    ),
+    CONSTRAINT oauth_authorization_requests_expiry_check CHECK (expires_at > created_at)
+);
+
+CREATE TABLE oauth_login_states (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    state_hash text NOT NULL UNIQUE,
+    connection_id text NOT NULL,
+    purpose text NOT NULL DEFAULT 'client' CHECK (purpose IN ('client','admin')),
+    CHECK ((purpose='client' AND authorization_request_id IS NOT NULL) OR (purpose='admin' AND authorization_request_id IS NULL)),
+    authorization_request_id uuid REFERENCES oauth_authorization_requests (id),
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT oauth_login_states_expiry_check CHECK (expires_at > created_at)
+);
+
+CREATE TABLE oauth_authorization_codes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    code_hash text NOT NULL UNIQUE,
+    authorization_request_id uuid NOT NULL UNIQUE REFERENCES oauth_authorization_requests (id),
+    user_id uuid NOT NULL REFERENCES users (id),
+    client_id text NOT NULL,
+    redirect_uri text NOT NULL,
+    code_challenge text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    redeemed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT oauth_authorization_codes_expiry_check CHECK (expires_at > created_at)
+);
+
+CREATE TABLE oauth_tokens (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users (id),
+    client_id text NOT NULL,
+    access_token_hash text NOT NULL UNIQUE,
+    refresh_token_hash text NOT NULL UNIQUE,
+    access_expires_at timestamptz NOT NULL,
+    refresh_expires_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    revoked_at timestamptz,
+    CONSTRAINT oauth_tokens_expiry_check CHECK (
+        access_expires_at > created_at AND refresh_expires_at > access_expires_at
+    )
+);
+
+CREATE INDEX oauth_tokens_user_idx
+    ON oauth_tokens (user_id, client_id)
+    WHERE revoked_at IS NULL;
+
+
+
+
+CREATE TABLE api_keys (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users (id),
+    name text NOT NULL,
+    key_prefix text NOT NULL,
+    key_hash text NOT NULL UNIQUE,
+    scopes text[] NOT NULL,
+    expires_at timestamptz NOT NULL,
+    last_used_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    revoked_at timestamptz,
+    CONSTRAINT api_keys_name_check CHECK (btrim(name) <> ''),
+    CONSTRAINT api_keys_scopes_check CHECK (
+        cardinality(scopes) > 0
+        AND scopes <@ ARRAY['model:invoke', 'mcp:invoke']::text[]
+    ),
+    CONSTRAINT api_keys_expiry_check CHECK (expires_at > created_at)
+);
+
+CREATE INDEX api_keys_user_active_idx
+    ON api_keys (user_id, created_at DESC)
+    WHERE revoked_at IS NULL;
+
+CREATE INDEX api_keys_expiry_idx
+    ON api_keys (expires_at)
+    WHERE revoked_at IS NULL;
+
 
 COMMIT;

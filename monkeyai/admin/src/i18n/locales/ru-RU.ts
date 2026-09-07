@@ -1,6 +1,7 @@
 import { enUS } from "./en-US.ts"
 
 export const ruRU = {
+  resources: enUS.resources,
   app: {
     documentTitle: "Администрирование MonkeyAI",
     adminConsole: "Панель администратора",

@@ -643,11 +643,11 @@ export function OtherSettingsPage() {
     setTagDialogOpen(true)
   }
 
-  const handleTagSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleTagSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const saved = editingTagId
-      ? renameTag(editingTagId, tagName)
-      : addTag(tagName)
+      ? await renameTag(editingTagId, tagName)
+      : await addTag(tagName)
 
     if (!saved) {
       setTagError(t("pages.otherSettings.skillTags.duplicate"))

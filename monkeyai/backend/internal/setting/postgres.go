@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,7 +19,7 @@ func NewPostgres(pool *pgxpool.Pool) *Postgres {
 }
 
 func (p *Postgres) Get(ctx context.Context, key string) (Record, error) {
-	record, err := scanRecord(p.pool.QueryRow(ctx, `
+	record, err := scanRecord(database.Reader(ctx, p.pool).QueryRow(ctx, `
 		SELECT key, value, schema_version, updated_by_user_id, updated_at
 		FROM settings
 		WHERE key = $1
@@ -30,7 +31,7 @@ func (p *Postgres) Get(ctx context.Context, key string) (Record, error) {
 }
 
 func (p *Postgres) List(ctx context.Context) ([]Record, error) {
-	rows, err := p.pool.Query(ctx, `
+	rows, err := database.Reader(ctx, p.pool).Query(ctx, `
 		SELECT key, value, schema_version, updated_by_user_id, updated_at
 		FROM settings
 		ORDER BY key
@@ -52,7 +53,7 @@ func (p *Postgres) List(ctx context.Context) ([]Record, error) {
 }
 
 func (p *Postgres) Put(ctx context.Context, record Record) (Record, error) {
-	stored, err := scanRecord(p.pool.QueryRow(ctx, `
+	stored, err := scanRecord(database.Reader(ctx, p.pool).QueryRow(ctx, `
 		INSERT INTO settings (key, value, schema_version, updated_by_user_id)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (key) DO UPDATE SET

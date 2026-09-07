@@ -1,3 +1,16 @@
+import { api } from "@/lib/api"
+import {
+  base,
+  ROOT_GROUP,
+  grants,
+  selection,
+  match,
+  saveResource,
+  useResources,
+  useSubjects,
+  type ResourceRow,
+} from "@/lib/resources"
+import { ResourceNotice } from "@/components/resource-notice"
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react"
 import {
   Delete02Icon,
@@ -84,6 +97,7 @@ import { cn } from "@/lib/utils"
 type SkillType = "system" | "user"
 
 type AgentSkill = {
+  revision: number
   id: string
   name: string
   description: string
@@ -104,117 +118,28 @@ type SkillDraft = {
   tagIds: string[]
 }
 
-const ADMIN_CREATOR = "MonkeyAI Admin"
+function toSkill(row: ResourceRow): AgentSkill {
+  return {
+    id: row.id,
+    revision: row.revision,
+    name: row.name,
+    description: row.description,
+    content: "",
+    tagIds: (row.tags ?? []).map((t) => t.id),
+    type: row.ownership_type,
+    creator: row.owner_name ?? row.owner_user_id,
+    authorization: selection(row.grants),
+    enabled: row.enabled,
+    packageFileName: row.package_file_name,
+    fileCount: row.file_count,
+  }
+}
 const EMPTY_SKILL_DRAFT: SkillDraft = {
   name: "",
   description: "",
   content: "",
   tagIds: [],
 }
-
-const INITIAL_SKILLS: AgentSkill[] = [
-  {
-    id: "skill-code-review",
-    name: "code-review",
-    description: "系统化检查代码质量、潜在缺陷、安全风险和可维护性问题。",
-    content:
-      "# Code Review\n\n审查代码时优先识别正确性、安全性和兼容性问题，并给出可执行的修改建议。",
-    tagIds: ["code", "review", "security"],
-    type: "system",
-    creator: ADMIN_CREATOR,
-    authorization: {
-      groupIds: ["engineering"],
-      memberIds: [],
-    },
-    enabled: true,
-    packageFileName: "code-review.zip",
-    fileCount: 4,
-  },
-  {
-    id: "skill-data-analysis",
-    name: "data-analysis",
-    description: "分析结构化数据，发现趋势、异常和可以支持业务决策的关键结论。",
-    content:
-      "# Data Analysis\n\n先确认数据口径，再进行清洗、分析和验证，最终给出带依据的结论。",
-    tagIds: ["data", "analysis"],
-    type: "system",
-    creator: ADMIN_CREATOR,
-    authorization: {
-      groupIds: ["product", "engineering", "operations"],
-      memberIds: [],
-    },
-    enabled: true,
-    packageFileName: "data-analysis.zip",
-    fileCount: 6,
-  },
-  {
-    id: "skill-product-copy",
-    name: "product-copywriting",
-    description: "根据产品定位和目标受众撰写清晰、准确且一致的产品文案。",
-    content:
-      "# Product Copywriting\n\n围绕用户价值组织内容，保持表达简洁，并避免无法验证的承诺。",
-    tagIds: ["product", "copywriting"],
-    type: "system",
-    creator: ADMIN_CREATOR,
-    authorization: {
-      groupIds: ["product"],
-      memberIds: [],
-    },
-    enabled: true,
-    packageFileName: "product-copywriting.zip",
-    fileCount: 3,
-  },
-  {
-    id: "skill-incident-response",
-    name: "incident-response",
-    description: "协助定位线上故障、整理影响范围并生成可执行的应急处置步骤。",
-    content:
-      "# Incident Response\n\n先控制影响范围，再收集证据和定位根因，所有高风险操作必须明确说明。",
-    tagIds: ["operations", "incident-response"],
-    type: "system",
-    creator: ADMIN_CREATOR,
-    authorization: {
-      groupIds: ["engineering", "operations"],
-      memberIds: [],
-    },
-    enabled: false,
-    packageFileName: "incident-response.zip",
-    fileCount: 5,
-  },
-  {
-    id: "skill-user-weekly-report",
-    name: "weekly-report",
-    description: "将本周工作记录整理成重点清晰、便于同步的周报。",
-    content: "# Weekly Report\n\n按完成事项、进展、风险和下周计划组织周报。",
-    tagIds: ["weekly-report", "writing"],
-    type: "user",
-    creator: "陈晨",
-    authorization: {
-      groupIds: [],
-      memberIds: ["member-01"],
-    },
-    enabled: true,
-    packageFileName: "weekly-report.zip",
-    fileCount: 2,
-  },
-  {
-    id: "skill-user-research-notes",
-    name: "research-notes",
-    description: "把零散的访谈和调研材料归纳为主题、证据与待验证假设。",
-    content:
-      "# Research Notes\n\n区分事实、观察和推断，并为每项结论保留信息来源。",
-    tagIds: ["research", "notes"],
-    type: "user",
-    creator: "林玫",
-    authorization: {
-      groupIds: [],
-      memberIds: ["member-04"],
-    },
-    enabled: true,
-    packageFileName: "research-notes.zip",
-    fileCount: 3,
-  },
-]
 
 function getCreatorInitials(creator: string) {
   return creator.trim().slice(0, 2).toUpperCase()
@@ -235,7 +160,9 @@ function formatBytes(bytes: number) {
 export function SkillsPage() {
   const { t } = useTranslation()
   const { tags: availableTags } = useSkillTags()
-  const [skills, setSkills] = useState(INITIAL_SKILLS)
+  const remote = useResources("/skills", toSkill)
+  const skills = remote.items
+  const subjects = useSubjects()
   const [activeSkillType, setActiveSkillType] = useState<SkillType>("system")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null)
@@ -244,7 +171,7 @@ export function SkillsPage() {
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
-    groupIds: ["all-members"],
+    groupIds: [ROOT_GROUP],
     memberIds: [],
   })
   const [draft, setDraft] = useState<SkillDraft>(EMPTY_SKILL_DRAFT)
@@ -261,7 +188,7 @@ export function SkillsPage() {
     packageRequestId.current += 1
     setAuthorizationOpen(false)
     setTagsOpen(false)
-    setAuthorization({ groupIds: ["all-members"], memberIds: [] })
+    setAuthorization({ groupIds: [ROOT_GROUP], memberIds: [] })
     setDraft(EMPTY_SKILL_DRAFT)
     setPackageAnalysis(null)
     setPackageFile(null)
@@ -278,7 +205,14 @@ export function SkillsPage() {
     }
   }
 
-  const handleEditSkill = (skill: AgentSkill) => {
+  const handleEditSkill = async (skill: AgentSkill) => {
+    const ok = await remote.run(async () => {
+      const manifest = await api<{ content: string }>(
+        base + `/skills/${skill.id}/manifest`
+      )
+      skill = { ...skill, content: manifest.content }
+    })
+    if (!ok) return
     if (skill.type !== "system") {
       return
     }
@@ -329,7 +263,10 @@ export function SkillsPage() {
       setDraft({
         name: analysis.name,
         description: analysis.description,
-        content: analysis.content,
+        content: analysis.content.replace(
+          /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/,
+          ""
+        ),
         tagIds: availableTags
           .filter((tag) =>
             analysis.tags.some(
@@ -353,94 +290,57 @@ export function SkillsPage() {
     }
   }
 
-  const setSkillEnabled = (skillId: string, enabled: boolean) => {
-    setSkills((currentSkills) =>
-      currentSkills.map((skill) =>
-        skill.id === skillId && skill.type === "system"
-          ? { ...skill, enabled }
-          : skill
-      )
-    )
+  const setSkillEnabled = async (id: string, enabled: boolean) => {
+    const item = skills.find((s) => s.id === id)
+    if (!item) return
+    await remote.run(async () => {
+      await api(base + `/skills/${id}/enabled`, {
+        method: "PATCH",
+        headers: match(item.revision),
+        body: JSON.stringify({ enabled }),
+      })
+    })
   }
-
-  const handleSubmitSkill = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmitSkill = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-
-    const name = draft.name.trim()
-    const description = draft.description.trim()
-    const content = draft.content.trim()
-    const tagIds = draft.tagIds.filter((tagId) =>
-      availableTags.some((tag) => tag.id === tagId)
-    )
-
-    if (
-      !name ||
-      !description ||
-      !content ||
-      Boolean(packageError) ||
-      (!editingSkill && (!packageFile || !packageAnalysis)) ||
-      authorization.groupIds.length + authorization.memberIds.length === 0 ||
-      editingSkill?.type === "user"
-    ) {
-      return
-    }
-
-    if (editingSkill) {
-      setSkills((currentSkills) =>
-        currentSkills.map((skill) =>
-          skill.id === editingSkill.id
-            ? {
-                ...skill,
-                name,
-                description,
-                content,
-                tagIds,
-                authorization,
-                packageFileName: packageFile?.name ?? skill.packageFileName,
-                fileCount: packageAnalysis?.fileCount ?? skill.fileCount,
-              }
-            : skill
+    if (!editingSkill) return
+    await remote.run(async () => {
+      let item = editingSkill
+      if (packageFile) {
+        const form = new FormData()
+        form.set("package", packageFile)
+        const row = await api<ResourceRow>(
+          base + `/skills/${item.id}/package`,
+          { method: "PUT", headers: match(item.revision), body: form }
         )
-      )
-    } else {
-      if (!packageFile || !packageAnalysis) {
-        return
+        item = toSkill(row)
       }
-
-      setSkills((currentSkills) => [
-        ...currentSkills,
-        {
-          id: `skill-${Date.now()}`,
-          name,
-          description,
-          content,
-          tagIds,
-          type: "system",
-          creator: ADMIN_CREATOR,
-          authorization,
-          enabled: true,
-          packageFileName: packageFile.name,
-          fileCount: packageAnalysis.fileCount,
-        },
-      ])
-    }
-
-    handleDialogOpenChange(false)
+      await saveResource(
+        `/skills/${item.id}`,
+        { ...draft, tag_ids: draft.tagIds, grants: grants(authorization) },
+        item.revision
+      )
+      handleDialogOpenChange(false)
+    })
   }
-
-  const handleDeleteSkill = () => {
-    if (!skillPendingDeletion || skillPendingDeletion.type !== "system") {
-      return
-    }
-
-    setSkills((currentSkills) =>
-      currentSkills.filter((skill) => skill.id !== skillPendingDeletion.id)
-    )
-    setSkillPendingDeletion(null)
+  const handleDeleteSkill = async () => {
+    if (!skillPendingDeletion) return
+    await remote.run(async () => {
+      await api(base + `/skills/${skillPendingDeletion.id}`, {
+        method: "DELETE",
+        headers: match(skillPendingDeletion.revision),
+      })
+      setSkillPendingDeletion(null)
+    })
   }
 
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
+      <ResourceNotice
+        error={remote.error || subjects.error}
+        loading={remote.loading}
+        pending={remote.pending}
+      />
       <Tabs
         className="gap-4"
         value={activeSkillType}
@@ -570,6 +470,28 @@ export function SkillsPage() {
                         />
                       </Field>
                       <Field>
+                        <FieldLabel htmlFor="skill-content">
+                          {t("resources.skillContent")}
+                        </FieldLabel>
+                        <Textarea
+                          id="skill-content"
+                          className="min-h-48 resize-y font-mono"
+                          value={draft.content}
+                          onChange={(e) =>
+                            setDraft((current) => ({
+                              ...current,
+                              content: e.target.value,
+                            }))
+                          }
+                        />
+                        <a
+                          className="text-sm text-primary underline"
+                          href={base + `/skills/${editingSkill.id}/package`}
+                        >
+                          {t("resources.downloadPackage")}
+                        </a>
+                      </Field>
+                      <Field>
                         <FieldLabel htmlFor="skill-tags">
                           {t("pages.skills.tags")}
                         </FieldLabel>
@@ -593,6 +515,8 @@ export function SkillsPage() {
                           {t("pages.skills.authorizedUsers")}
                         </FieldLabel>
                         <AuthorizationSelect
+                          groups={subjects.groups}
+                          members={subjects.members}
                           id="skill-authorized-users"
                           open={authorizationOpen}
                           placeholder={t(
@@ -605,6 +529,11 @@ export function SkillsPage() {
                         />
                       </Field>
                     </FieldGroup>
+                    <ResourceNotice
+                      error={remote.error || subjects.error}
+                      loading={false}
+                      pending={remote.pending}
+                    />
                     <DialogFooter>
                       <DialogClose
                         render={<Button type="button" variant="outline" />}
@@ -613,6 +542,7 @@ export function SkillsPage() {
                       </DialogClose>
                       <Button
                         disabled={
+                          remote.pending ||
                           packageParsing ||
                           Boolean(packageError) ||
                           (!editingSkill && packageAnalysis === null)
@@ -627,26 +557,25 @@ export function SkillsPage() {
                   </form>
                 ) : (
                   <SkillImportWizard
+                    onComplete={() => handleDialogOpenChange(false)}
                     availableTags={availableTags}
-                    onImport={(imports) => {
-                      const importedAt = Date.now()
-                      setSkills((currentSkills) => [
-                        ...currentSkills,
-                        ...imports.map((value, index) => ({
-                          id: `skill-${importedAt}-${index}`,
-                          name: value.analysis.name,
-                          description: value.analysis.description,
-                          content: value.analysis.content,
-                          tagIds: value.tagIds,
-                          type: "system" as const,
-                          creator: ADMIN_CREATOR,
-                          authorization: value.authorization,
-                          enabled: true,
-                          packageFileName: value.sourceName,
-                          fileCount: value.analysis.fileCount,
-                        })),
-                      ])
-                      handleDialogOpenChange(false)
+                    onImport={async (values) => {
+                      for (const value of values) {
+                        const form = new FormData()
+                        form.set("package", value.packageFile)
+                        form.set(
+                          "metadata",
+                          JSON.stringify({
+                            tag_ids: value.tagIds,
+                            grants: grants(value.authorization),
+                          })
+                        )
+                        await api(base + "/skills", {
+                          method: "POST",
+                          body: form,
+                        })
+                      }
+                      await remote.reload()
                     }}
                   />
                 )}
@@ -663,7 +592,9 @@ export function SkillsPage() {
                 .map((skill) => {
                   const authorizationNames = getAuthorizationNames(
                     skill.authorization,
-                    t
+                    t,
+                    subjects.flatGroups,
+                    subjects.members
                   )
                   const tagNames = availableTags
                     .filter((tag) => skill.tagIds.includes(tag.id))
@@ -679,7 +610,7 @@ export function SkillsPage() {
                         <div className="flex min-w-0 items-start gap-3">
                           <Avatar size="lg">
                             <AvatarFallback>
-                              {skill.creator === ADMIN_CREATOR ? (
+                              {skill.type === "system" ? (
                                 <HugeiconsIcon
                                   icon={DocumentValidationIcon}
                                   strokeWidth={2}

@@ -1,3 +1,4 @@
+import { ROOT_GROUP, useSubjects } from "@/lib/resources"
 import { useRef, useState, type ChangeEvent } from "react"
 import {
   ArrowDown01Icon,
@@ -74,6 +75,7 @@ type ImportCandidate = {
 }
 
 type SkillImportValue = {
+  packageFile: File
   analysis: SkillPackageAnalysis
   sourceName: string
   tagIds: string[]
@@ -95,11 +97,15 @@ function formatBytes(bytes: number) {
 export function SkillImportWizard({
   availableTags,
   onImport,
+  onComplete,
 }: {
+  onComplete: () => void
   availableTags: SkillTag[]
-  onImport: (values: SkillImportValue[]) => void
+  onImport: (values: SkillImportValue[]) => Promise<void>
 }) {
   const { t } = useTranslation()
+  const subjects = useSubjects()
+  const [importing, setImporting] = useState(false)
   const [step, setStep] = useState<WizardStep>("source")
   const [source, setSource] = useState<ImportSource | null>(null)
   const [candidates, setCandidates] = useState<ImportCandidate[]>([])
@@ -111,7 +117,7 @@ export function SkillImportWizard({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
-    groupIds: ["all-members"],
+    groupIds: [ROOT_GROUP],
     memberIds: [],
   })
   const requestId = useRef(0)
@@ -269,8 +275,6 @@ export function SkillImportWizard({
   )
   const allSelected =
     candidates.length > 0 && selectedIds.length === candidates.length
-  const authorizationIsEmpty =
-    authorization.groupIds.length + authorization.memberIds.length === 0
   const sourceName =
     source?.type === "archives"
       ? source.files.map((file) => file.name).join(", ")
@@ -288,23 +292,80 @@ export function SkillImportWizard({
     )
   }
 
-  const handleImport = () => {
-    if (selectedCandidates.length === 0 || authorizationIsEmpty) {
-      return
+  const handleImport = async () => {
+    if (!source || importing || selectedCandidates.length === 0) return
+    setImporting(true)
+    setSourceError("")
+    try {
+      const { default: JSZip } = await import("jszip")
+      for (const candidate of selectedCandidates) {
+        const zip = new JSZip()
+        const prefix = candidate.analysis.rootPath
+          ? candidate.analysis.rootPath + "/"
+          : ""
+        const otherRoots = candidates
+          .filter(
+            (c) =>
+              c.id !== candidate.id && c.sourceName === candidate.sourceName
+          )
+          .map((c) => c.analysis.rootPath + "/")
+          .filter((root) => root.startsWith(prefix))
+        const inside = (path: string) =>
+          path.startsWith(prefix) &&
+          !otherRoots.some((root) => path.startsWith(root))
+        if (source.type === "directory") {
+          for (const file of source.files) {
+            const path = file.webkitRelativePath || file.name
+            if (inside(path))
+              zip.file(path.slice(prefix.length), await file.arrayBuffer())
+          }
+        } else {
+          const file = source.files.find((f) => f.name === candidate.sourceName)
+          if (!file) throw new Error("源文件不存在")
+          const archive = await JSZip.loadAsync(await file.arrayBuffer())
+          for (const [path, entry] of Object.entries(archive.files)) {
+            if (!entry.dir && inside(path))
+              zip.file(
+                path.slice(prefix.length),
+                await entry.async("uint8array")
+              )
+          }
+        }
+        const blob = await zip.generateAsync({
+          type: "blob",
+          compression: "DEFLATE",
+        })
+        await onImport([
+          {
+            analysis: candidate.analysis,
+            sourceName: candidate.sourceName,
+            tagIds: selectedTagIds,
+            authorization,
+            packageFile: new File([blob], candidate.analysis.name + ".zip", {
+              type: "application/zip",
+            }),
+          },
+        ])
+        setCandidates((current) => current.filter((c) => c.id !== candidate.id))
+        setSelectedIds((current) => current.filter((id) => id !== candidate.id))
+      }
+      onComplete()
+    } catch (error) {
+      setSourceError(error instanceof Error ? error.message : "导入失败")
+    } finally {
+      setImporting(false)
     }
-
-    onImport(
-      selectedCandidates.map((candidate) => ({
-        analysis: candidate.analysis,
-        sourceName: candidate.sourceName,
-        tagIds: selectedTagIds,
-        authorization,
-      }))
-    )
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6" aria-busy={importing}>
+      <>
+        {sourceError && step === "select" && (
+          <p role="alert" className="text-sm text-destructive">
+            {sourceError}
+          </p>
+        )}
+      </>
       <DialogHeader>
         <DialogTitle>{t("pages.skills.dialogTitle")}</DialogTitle>
       </DialogHeader>
@@ -556,11 +617,13 @@ export function SkillImportWizard({
                 onValueChange={setSelectedTagIds}
               />
             </Field>
-            <Field data-invalid={authorizationIsEmpty}>
+            <Field>
               <FieldLabel htmlFor="batch-skill-authorized-users">
                 {t("pages.skills.authorizedUsers")}
               </FieldLabel>
               <AuthorizationSelect
+                groups={subjects.groups}
+                members={subjects.members}
                 id="batch-skill-authorized-users"
                 open={authorizationOpen}
                 placeholder={t("pages.skills.authorizationPlaceholder")}
@@ -580,7 +643,7 @@ export function SkillImportWizard({
               {t("pages.skills.batchImport.previous")}
             </Button>
             <Button
-              disabled={selectedCandidates.length === 0 || authorizationIsEmpty}
+              disabled={importing || selectedCandidates.length === 0}
               type="button"
               onClick={handleImport}
             >

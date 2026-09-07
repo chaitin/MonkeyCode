@@ -51,6 +51,9 @@ func TestMigrations(t *testing.T) {
 		}
 	}
 
+	if len(versions) != 1 || versions["000001"] != "initial_create_schema" {
+		t.Error("重新部署的迁移必须只保留版本 000001")
+	}
 	for key, directions := range pairs {
 		if !directions["up"] || !directions["down"] {
 			t.Errorf("迁移 %s 的 up/down 文件不完整", key)

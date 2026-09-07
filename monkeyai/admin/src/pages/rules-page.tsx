@@ -1,3 +1,16 @@
+import { api } from "@/lib/api"
+import {
+  base,
+  ROOT_GROUP,
+  grants,
+  selection,
+  match,
+  saveResource,
+  useResources,
+  useSubjects,
+  type ResourceRow,
+} from "@/lib/resources"
+import { ResourceNotice } from "@/components/resource-notice"
 import { useState, type FormEvent } from "react"
 import {
   Delete02Icon,
@@ -64,69 +77,28 @@ import {
 type RuleType = "system" | "user"
 
 type AgentRule = {
+  revision: number
   id: string
   name: string
   content: string
   type: RuleType
   creator: string
+  authorization: AuthorizationSelection
   forcedScope: AuthorizationSelection | null
 }
 
-const ADMIN_CREATOR = "MonkeyAI Admin"
-
-const INITIAL_RULES: AgentRule[] = [
-  {
-    id: "rule-security-boundary",
-    name: "安全边界",
-    content:
-      "不得协助执行违法、危险或破坏性操作。遇到此类请求时，应明确拒绝，并在合适的情况下提供安全的替代方案。",
-    type: "system",
-    creator: ADMIN_CREATOR,
-    forcedScope: { groupIds: ["all-members"], memberIds: [] },
-  },
-  {
-    id: "rule-code-quality",
-    name: "代码质量规范",
-    content:
-      "生成或修改代码时，应保持实现简洁、类型安全，并优先复用项目已有组件。提交结果前必须完成与改动范围匹配的检查。",
-    type: "system",
-    creator: ADMIN_CREATOR,
-    forcedScope: {
-      groupIds: ["administrators", "engineering"],
-      memberIds: [],
-    },
-  },
-  {
-    id: "rule-data-privacy",
-    name: "隐私数据保护",
-    content:
-      "不得在回答、日志或外部请求中泄露密钥、访问令牌、个人身份信息及其他敏感数据。",
-    type: "system",
-    creator: ADMIN_CREATOR,
-    forcedScope: {
-      groupIds: ["administrators", "product", "engineering"],
-      memberIds: [],
-    },
-  },
-  {
-    id: "rule-concise-response",
-    name: "简洁回复",
-    content:
-      "回答应直接给出结论，使用清晰、自然的语言；仅在有助于理解或执行任务时补充必要细节。",
-    type: "user",
-    creator: "陈晨",
-    forcedScope: null,
-  },
-  {
-    id: "rule-user-product-copy",
-    name: "产品文案风格",
-    content:
-      "撰写产品文案时使用简洁、友好的表达，避免过度承诺，并优先说明用户能够获得的实际价值。",
-    type: "user",
-    creator: "林玫",
-    forcedScope: null,
-  },
-]
+function toRule(row: ResourceRow): AgentRule {
+  return {
+    id: row.id,
+    revision: row.revision,
+    name: row.name,
+    content: row.content,
+    type: row.ownership_type,
+    creator: row.owner_name ?? row.owner_user_id,
+    authorization: selection(row.grants),
+    forcedScope: selection(row.grants, true),
+  }
+}
 
 function getCreatorInitials(creator: string) {
   return creator.trim().slice(0, 2).toUpperCase()
@@ -134,22 +106,30 @@ function getCreatorInitials(creator: string) {
 
 export function RulesPage() {
   const { t } = useTranslation()
-  const [rules, setRules] = useState(INITIAL_RULES)
+  const remote = useResources("/rules", toRule)
+  const rules = remote.items
+  const subjects = useSubjects()
   const [activeRuleType, setActiveRuleType] = useState<RuleType>("system")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
   const [rulePendingDeletion, setRulePendingDeletion] =
     useState<AgentRule | null>(null)
+  const [authorization, setAuthorization] = useState<AuthorizationSelection>({
+    groupIds: [],
+    memberIds: [],
+  })
+  const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [forcedScopeOpen, setForcedScopeOpen] = useState(false)
   const [forcedScope, setForcedScope] = useState<AuthorizationSelection>({
-    groupIds: ["all-members"],
+    groupIds: [ROOT_GROUP],
     memberIds: [],
   })
   const editingRule = rules.find((rule) => rule.id === editingRuleId)
 
   const resetRuleOptions = () => {
     setForcedScopeOpen(false)
-    setForcedScope({ groupIds: ["all-members"], memberIds: [] })
+    setAuthorization({ groupIds: [], memberIds: [] })
+    setForcedScope({ groupIds: [ROOT_GROUP], memberIds: [] })
   }
 
   const handleDialogOpenChange = (open: boolean) => {
@@ -165,70 +145,54 @@ export function RulesPage() {
       return
     }
 
+    setAuthorization(rule.authorization)
     setEditingRuleId(rule.id)
     setForcedScope(
-      rule.forcedScope ?? { groupIds: ["all-members"], memberIds: [] }
+      rule.forcedScope ?? { groupIds: [ROOT_GROUP], memberIds: [] }
     )
     setForcedScopeOpen(false)
     setDialogOpen(true)
   }
 
-  const handleSubmitRule = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmitRule = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-
-    const form = event.currentTarget
-    const formData = new FormData(form)
-    const name = String(formData.get("name") ?? "").trim()
-    const content = String(formData.get("content") ?? "").trim()
-
-    if (
-      !name ||
-      !content ||
-      forcedScope.groupIds.length + forcedScope.memberIds.length === 0 ||
-      editingRule?.type === "user"
-    ) {
-      return
-    }
-
-    if (editingRule) {
-      setRules((currentRules) =>
-        currentRules.map((rule) =>
-          rule.id === editingRule.id
-            ? { ...rule, name, content, forcedScope }
-            : rule
-        )
+    const data = new FormData(event.currentTarget)
+    await remote.run(async () => {
+      const required = grants(forcedScope, true)
+      const requiredKeys = new Set(required.map((g) => g.group_id ?? g.user_id))
+      const optional = grants(authorization).filter(
+        (g) => !requiredKeys.has(g.group_id ?? g.user_id)
       )
-    } else {
-      setRules((currentRules) => [
-        ...currentRules,
+      await saveResource(
+        editingRule ? `/rules/${editingRule.id}` : "/rules",
         {
-          id: `rule-${Date.now()}`,
-          name,
-          content,
-          type: "system",
-          creator: ADMIN_CREATOR,
-          forcedScope,
+          name: String(data.get("name") ?? ""),
+          content: String(data.get("content") ?? ""),
+          grants: [...optional, ...required],
         },
-      ])
-    }
-
-    form.reset()
-    handleDialogOpenChange(false)
+        editingRule?.revision
+      )
+      handleDialogOpenChange(false)
+    })
   }
-
-  const handleDeleteRule = () => {
-    if (!rulePendingDeletion) {
-      return
-    }
-
-    setRules((currentRules) =>
-      currentRules.filter((rule) => rule.id !== rulePendingDeletion.id)
-    )
-    setRulePendingDeletion(null)
+  const handleDeleteRule = async () => {
+    if (!rulePendingDeletion) return
+    await remote.run(async () => {
+      await api(base + `/rules/${rulePendingDeletion.id}`, {
+        method: "DELETE",
+        headers: match(rulePendingDeletion.revision),
+      })
+      setRulePendingDeletion(null)
+    })
   }
 
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
+      <ResourceNotice
+        error={remote.error || subjects.error}
+        loading={remote.loading}
+        pending={remote.pending}
+      />
       <Tabs
         className="gap-4"
         value={activeRuleType}
@@ -276,6 +240,20 @@ export function RulesPage() {
                   </DialogHeader>
                   <FieldGroup className="gap-5">
                     <Field>
+                      <FieldLabel>{t("resources.availableScope")}</FieldLabel>
+                      <AuthorizationSelect
+                        groups={subjects.groups}
+                        members={subjects.members}
+                        id="rule-available"
+                        open={authorizationOpen}
+                        onOpenChange={setAuthorizationOpen}
+                        value={authorization}
+                        onValueChange={setAuthorization}
+                        title={t("resources.availableScope")}
+                        placeholder={t("resources.selectScope")}
+                      />
+                    </Field>
+                    <Field>
                       <FieldLabel htmlFor="rule-name">
                         {t("pages.rules.name")}
                       </FieldLabel>
@@ -305,6 +283,8 @@ export function RulesPage() {
                         {t("pages.rules.forcedScope")}
                       </FieldLabel>
                       <AuthorizationSelect
+                        groups={subjects.groups}
+                        members={subjects.members}
                         id="rule-forced-scope"
                         open={forcedScopeOpen}
                         placeholder={t("pages.rules.forcedScopePlaceholder")}
@@ -318,13 +298,18 @@ export function RulesPage() {
                       </FieldDescription>
                     </Field>
                   </FieldGroup>
+                  <ResourceNotice
+                    error={remote.error || subjects.error}
+                    loading={false}
+                    pending={remote.pending}
+                  />
                   <DialogFooter>
                     <DialogClose
                       render={<Button type="button" variant="outline" />}
                     >
                       {t("pages.rules.cancel")}
                     </DialogClose>
-                    <Button type="submit">
+                    <Button type="submit" disabled={remote.pending}>
                       {editingRule
                         ? t("pages.rules.save")
                         : t("pages.rules.create")}
@@ -344,7 +329,12 @@ export function RulesPage() {
                 .map((rule) => {
                   const forcedScopeNames =
                     rule.type === "system" && rule.forcedScope
-                      ? getAuthorizationNames(rule.forcedScope, t)
+                      ? getAuthorizationNames(
+                          rule.forcedScope,
+                          t,
+                          subjects.flatGroups,
+                          subjects.members
+                        )
                       : null
 
                   return (
@@ -353,7 +343,7 @@ export function RulesPage() {
                         <div className="flex min-w-0 items-start gap-3">
                           <Avatar size="lg">
                             <AvatarFallback>
-                              {rule.creator === ADMIN_CREATOR ? (
+                              {rule.type === "system" ? (
                                 <HugeiconsIcon
                                   icon={DocumentValidationIcon}
                                   strokeWidth={2}
@@ -374,7 +364,7 @@ export function RulesPage() {
                               {rule.creator}
                             </CardDescription>
                           </div>
-                          {rule.type === "system" && (
+                          {
                             <DropdownMenu>
                               <DropdownMenuTrigger
                                 render={
@@ -392,7 +382,9 @@ export function RulesPage() {
                                 />
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuGroup>
+                                <DropdownMenuGroup
+                                  hidden={rule.type !== "system"}
+                                >
                                   <DropdownMenuItem
                                     onClick={() => handleEditRule(rule)}
                                   >
@@ -403,7 +395,9 @@ export function RulesPage() {
                                     {t("pages.rules.edit")}
                                   </DropdownMenuItem>
                                 </DropdownMenuGroup>
-                                <DropdownMenuSeparator />
+                                <DropdownMenuSeparator
+                                  hidden={rule.type !== "system"}
+                                />
                                 <DropdownMenuGroup>
                                   <DropdownMenuItem
                                     variant="destructive"
@@ -418,7 +412,7 @@ export function RulesPage() {
                                 </DropdownMenuGroup>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          )}
+                          }
                         </div>
                       </CardHeader>
                       <CardContent className="flex-1">

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,7 +20,7 @@ func NewPostgres(pool *pgxpool.Pool) *Postgres {
 }
 
 func (p *Postgres) List(ctx context.Context, ownership string) ([]Model, error) {
-	rows, err := p.pool.Query(ctx, modelSelect+`
+	rows, err := database.Reader(ctx, p.pool).Query(ctx, modelSelect+`
 		WHERE deleted_at IS NULL AND ($1 = '' OR ownership_type = $1)
 		ORDER BY created_at DESC
 	`, ownership)
@@ -37,7 +38,7 @@ func (p *Postgres) List(ctx context.Context, ownership string) ([]Model, error) 
 }
 
 func (p *Postgres) Get(ctx context.Context, id string) (Model, error) {
-	item, err := scanModel(p.pool.QueryRow(ctx, modelSelect+`
+	item, err := scanModel(database.Reader(ctx, p.pool).QueryRow(ctx, modelSelect+`
 		WHERE id = $1 AND deleted_at IS NULL
 	`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -129,7 +130,7 @@ func (p *Postgres) Update(ctx context.Context, item Model) (Model, error) {
 }
 
 func (p *Postgres) SetEnabled(ctx context.Context, id string, enabled bool) (Model, error) {
-	item, err := scanModel(p.pool.QueryRow(ctx, `
+	item, err := scanModel(database.Reader(ctx, p.pool).QueryRow(ctx, `
 		UPDATE models SET enabled = $2, updated_at = now()
 		WHERE id = $1 AND ownership_type = 'system' AND deleted_at IS NULL
 		RETURNING id, ownership_type, owner_user_id, model_id, display_name,
@@ -175,7 +176,7 @@ func (p *Postgres) Delete(ctx context.Context, id string) error {
 }
 
 func (p *Postgres) ListAvailable(ctx context.Context, userID string, isAdmin bool) ([]Model, error) {
-	rows, err := p.pool.Query(ctx, availableModelSelect+`
+	rows, err := database.Reader(ctx, p.pool).Query(ctx, availableModelSelect+`
 		ORDER BY m.display_name, m.id
 	`, userID, isAdmin)
 	if err != nil {
@@ -185,16 +186,15 @@ func (p *Postgres) ListAvailable(ctx context.Context, userID string, isAdmin boo
 }
 
 func (p *Postgres) Resolve(ctx context.Context, userID, id string) (Model, error) {
-	item, err := scanModel(p.pool.QueryRow(ctx, `
-		WITH RECURSIVE user_groups AS (
-			SELECT gu.group_id
-			FROM group_users gu
-			WHERE gu.user_id = $1 AND gu.removed_at IS NULL
+	item, err := scanModel(database.Reader(ctx, p.pool).QueryRow(ctx, `
+		WITH RECURSIVE user_groups(group_id) AS (
+			SELECT id FROM groups WHERE deleted_at IS NULL AND (parent_id IS NULL OR (id='00000000-0000-0000-0000-000000000002' AND EXISTS(SELECT 1 FROM users WHERE id=$1 AND role='admin')) OR id IN(SELECT group_id FROM group_users WHERE user_id=$1 AND removed_at IS NULL))
 			UNION
-			SELECT g.parent_id
+			SELECT parent.id
 			FROM groups g
 			JOIN user_groups ug ON ug.group_id = g.id
-			WHERE g.parent_id IS NOT NULL AND g.deleted_at IS NULL
+            JOIN groups parent ON parent.id=g.parent_id
+			WHERE parent.deleted_at IS NULL AND g.deleted_at IS NULL
 		)
 		SELECT m.id, m.ownership_type, m.owner_user_id, m.model_id,
 			m.display_name, m.protocol, m.base_url, m.api_key,
@@ -221,7 +221,7 @@ func (p *Postgres) Resolve(ctx context.Context, userID, id string) (Model, error
 
 func (p *Postgres) Subjects(ctx context.Context) (Subjects, error) {
 	result := Subjects{Groups: make([]Subject, 0), Users: make([]Subject, 0)}
-	groupRows, err := p.pool.Query(ctx, `
+	groupRows, err := database.Reader(ctx, p.pool).Query(ctx, `
 		SELECT id, parent_id, name FROM groups
 		WHERE deleted_at IS NULL ORDER BY name, id
 	`)
@@ -242,7 +242,7 @@ func (p *Postgres) Subjects(ctx context.Context) (Subjects, error) {
 	}
 	groupRows.Close()
 
-	userRows, err := p.pool.Query(ctx, `
+	userRows, err := database.Reader(ctx, p.pool).Query(ctx, `
 		SELECT id, name, email FROM users
 		WHERE status = 'active' AND deleted_at IS NULL ORDER BY name, id
 	`)
@@ -268,15 +268,14 @@ const modelSelect = `
 `
 
 const availableModelSelect = `
-	WITH RECURSIVE user_groups AS (
-		SELECT gu.group_id
-		FROM group_users gu
-		WHERE gu.user_id = $1 AND gu.removed_at IS NULL
+	WITH RECURSIVE user_groups(group_id) AS (
+		SELECT id FROM groups WHERE deleted_at IS NULL AND (parent_id IS NULL OR (id='00000000-0000-0000-0000-000000000002' AND EXISTS(SELECT 1 FROM users WHERE id=$1 AND role='admin')) OR id IN(SELECT group_id FROM group_users WHERE user_id=$1 AND removed_at IS NULL))
 		UNION
-		SELECT g.parent_id
+		SELECT parent.id
 		FROM groups g
 		JOIN user_groups ug ON ug.group_id = g.id
-		WHERE g.parent_id IS NOT NULL AND g.deleted_at IS NULL
+            JOIN groups parent ON parent.id=g.parent_id
+		WHERE parent.deleted_at IS NULL AND g.deleted_at IS NULL
 	)
 	SELECT m.id, m.ownership_type, m.owner_user_id, m.model_id,
 		m.display_name, m.protocol, m.base_url, m.api_key,
@@ -340,7 +339,7 @@ func (p *Postgres) loadGrants(ctx context.Context, models []Model) error {
 		ids = append(ids, models[index].ID)
 		byID[models[index].ID] = &models[index]
 	}
-	rows, err := p.pool.Query(ctx, `
+	rows, err := database.Reader(ctx, p.pool).Query(ctx, `
 		SELECT resource_id, user_id, group_id
 		FROM resource_access_grants
 		WHERE resource_type = 'model' AND resource_id::text = ANY($1)
