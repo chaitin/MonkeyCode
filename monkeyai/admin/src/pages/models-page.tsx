@@ -112,8 +112,8 @@ type ApiModel = {
   }
   credit_multiplier: number
   authorization: {
-    user_ids: string[]
-    group_ids: string[]
+    user_ids: string[] | null
+    group_ids: string[] | null
   }
   enabled: boolean
 }
@@ -138,8 +138,8 @@ function fromApiModel(model: ApiModel): Model {
     apiKeyConfigured: model.api_key_configured,
     multiplier: model.credit_multiplier,
     authorization: {
-      groupIds: model.authorization.group_ids,
-      memberIds: model.authorization.user_ids,
+      groupIds: model.authorization.group_ids ?? [],
+      memberIds: model.authorization.user_ids ?? [],
     },
     enabled: model.enabled,
     type: model.ownership_type,
