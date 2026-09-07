@@ -287,19 +287,20 @@ describe("DesignPreviewWorkbench native lifecycle", () => {
     expect(calls.filter((c) => c.cmd === "preview_create_artifact")).toHaveLength(1);
   });
 
-  it("reloads an artifact already selected inside the workbench", async () => {
-    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={{ kind: "artifact", path: "pages/first.html", artifactKind: "html" }} refreshKey={0} composer={composer} obscured={false} />);
+  it("refreshes the artifact selected inside the workbench without resetting it to the initial target", async () => {
+    const initialTarget = { kind: "artifact", path: "pages/first.html", artifactKind: "html" } as const;
+    const view = render(<DesignPreviewWorkbench sessionId="s1" initialTarget={initialTarget} refreshKey={0} composer={composer} obscured={false} />);
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create_artifact" && c.args?.path === "pages/first.html")).toBe(true));
     await userEvent.click(screen.getByRole("button", { name: "Choose workspace preview file" }));
     await userEvent.click(await screen.findByRole("button", { name: "pages/home.html" }));
     await waitFor(() => expect(calls.some((c) => c.cmd === "preview_create_artifact" && c.args?.path === "pages/home.html")).toBe(true));
     calls = [];
 
-    const target = { kind: "artifact", path: "pages/home.html", artifactKind: "html" } as const;
-    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={target} refreshKey={1} composer={composer} obscured={false} />);
+    view.rerender(<DesignPreviewWorkbench sessionId="s1" initialTarget={initialTarget} refreshKey={1} composer={composer} obscured={false} />);
 
     await waitFor(() => expect(calls.filter((c) => c.cmd === "preview_reload")).toHaveLength(1));
     expect(calls.some((c) => c.cmd === "preview_create_artifact")).toBe(false);
+    expect((screen.getByLabelText("Preview address") as HTMLInputElement).value).toBe("pages/home.html");
   });
 
   it("does not reload non-native artifacts", async () => {

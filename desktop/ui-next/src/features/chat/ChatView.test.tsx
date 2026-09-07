@@ -131,25 +131,6 @@ describe("聊天视图", () => {
     await waitFor(() => expect(screen.getByText(/再跑测试/)).toBeTruthy());
   });
 
-  it("running 会话切换到另一个 running 会话时重新建立 artifact baseline", async () => {
-    const shell = stubShell({
-      frames: [
-        { type: "user-input", data: { content: b64encode("设计页面") }, seq: 1 },
-        { type: "task-started", seq: 2 },
-      ],
-    });
-    const view = render(<ChatView meta={META} />);
-    await waitFor(() => expect(shell.ops.filter((op) => op.args?.kind === "repo_file_changes")).toHaveLength(1));
-    expect(shell.ops.find((op) => op.args?.kind === "repo_file_changes")?.args?.id).toBe("s1");
-
-    const nextMeta = { ...META, id: "s2", title: "另一个运行会话" };
-    view.rerender(<ChatView meta={nextMeta} />);
-    await waitFor(() => expect(shell.ops.filter((op) => op.args?.kind === "repo_file_changes")).toHaveLength(2));
-    const baselineCalls = shell.ops.filter((op) => op.args?.kind === "repo_file_changes");
-    expect(baselineCalls.map((op) => op.args?.id)).toEqual(["s1", "s2"]);
-    expect(shell.ops.some((op) => op.op === "listen" && op.cmd === "frames:s2")).toBe(true);
-  });
-
   it("打开历史会话:回放的旧轮末零副作用——不做 git 扫描、不自动开预览", async () => {
     // 回放窗口自带完整的一轮(含 localhost URL 与 task-ended):turnEnded
     // 为真,但本次挂载没亲历过活轮次(liveTurnSeen 闸),轮末流水线不得触发
@@ -177,8 +158,8 @@ describe("聊天视图", () => {
     expect(screen.queryByLabelText("设计预览工作台")).toBeNull();
   });
 
-  it("当前轮设计完成后自动打开预览并标记压缩布局", async () => {
-    const { emit } = stubShell();
+  it("轮末 localhost URL 不自动开预览，点击链接仍可打开，收起后后续轮次不再拉开", async () => {
+    const { emit, ops } = stubShell();
     const { container } = render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
 
@@ -196,62 +177,163 @@ describe("聊天视图", () => {
     expect(container.querySelector('[data-design-preview-open="true"]')).toBeNull();
 
     emit("frames:s1", [{ type: "task-ended", timestamp: 6, seq: 6 }]);
-    await waitFor(() => expect(container.querySelector('[data-design-preview-open="true"]')).toBeTruthy());
+    await waitFor(() => expect(ops.filter((op) => op.args?.kind === "repo_file_changes")).toHaveLength(1));
+    expect(container.querySelector('[data-design-preview-open="true"]')).toBeNull();
+    expect(screen.queryByLabelText("设计预览工作台")).toBeNull();
+
+    await userEvent.click(await screen.findByRole("link", { name: "http://127.0.0.1:49173/" }));
     expect(screen.getByLabelText("设计预览工作台")).toBeTruthy();
-  });
+    await userEvent.click(screen.getByRole("button", { name: "收起侧边栏" }));
 
-  it("无 localhost URL 的设计轮结束后自动打开最佳 HTML artifact，普通代码轮不弹", async () => {
-    const shell = stubShell({
-      changes: [
-        { result: [{ path: "legacy.html", status: "M" }], is_git_repo: true },
-        { result: [{ path: "legacy.html", status: "M" }, { path: "src/Login.tsx", status: "M" }], is_git_repo: true },
-      ],
-      previewFiles: { result: { files: [{ path: "index.html", kind: "html", mime: "text/html", size: 20 }], truncated: false } },
-    });
-    const view = render(<ChatView meta={META} />);
-    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
-    shell.emit("frames:s1", [
-      { type: "user-input", data: { content: b64encode("设计一个登录页面") }, seq: 3 },
-      { type: "task-started", seq: 4 },
-    ]);
-    await waitFor(() => expect(shell.ops.filter((op) => op.args?.kind === "repo_file_changes")).toHaveLength(1));
-    shell.emit("frames:s1", [
-      { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "页面已经完成" } } }, seq: 5 },
-      { type: "task-ended", seq: 6 },
-    ]);
-    expect(await screen.findByTitle("index.html")).toBeTruthy();
-    expect(screen.queryByTitle("Preview legacy.html")).toBeNull();
-    view.unmount();
-
-    const ordinary = stubShell({ changes: { result: [{ path: "server/api.rs", status: "M" }], is_git_repo: true } });
-    const plain = render(<ChatView meta={META} />);
-    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
-    ordinary.emit("frames:s1", [
-      { type: "user-input", data: { content: b64encode("修复 API 超时") }, seq: 7 },
+    const beforeNextTurn = ops.filter((op) => op.args?.kind === "repo_file_changes").length;
+    emit("frames:s1", [
+      { type: "user-input", data: { content: b64encode("继续调整页面") }, seq: 7 },
       { type: "task-started", seq: 8 },
-      { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "后端测试通过" } } }, seq: 9 },
+    ]);
+    await screen.findByText("继续调整页面");
+    emit("frames:s1", [
+      { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "完成：http://localhost:5173/" } } }, seq: 9 },
       { type: "task-ended", seq: 10 },
     ]);
-    await waitFor(() => expect(ordinary.ops.some((op) => op.args?.kind === "repo_file_changes")).toBe(true));
-    expect(plain.queryByLabelText("设计预览工作台")).toBeNull();
+    await waitFor(() => expect(ops.filter((op) => op.args?.kind === "repo_file_changes")).toHaveLength(beforeNextTurn + 1));
+    expect(container.querySelector('[data-design-preview-open="true"]')).toBeNull();
+    expect(screen.queryByLabelText("设计预览工作台")).toBeNull();
   });
 
-  it("本轮写工具可选中 baseline 已 dirty 的 HTML，而不选其他遗留 HTML", async () => {
-    const dirty = { result: [{ path: "legacy.html", status: "M" }, { path: "pages/login.html", status: "M" }], is_git_repo: true };
-    const shell = stubShell({ changes: [dirty, dirty] });
-    render(<ChatView meta={META} />);
+  it.each([
+    { prompt: "新增文件", path: "pages/login.html" },
+    { prompt: "更新图片", path: "screens/hero.png" },
+    { prompt: "设计登录页面", path: "src/Login.tsx" },
+  ])("本轮写入 $path 只更新变更信息，不自动打开预览", async ({ prompt, path }) => {
+    const shell = stubShell({
+      changes: { result: [{ path, status: "M" }], is_git_repo: true },
+      previewFiles: { result: { files: [{ path: "index.html", kind: "html", mime: "text/html", size: 20 }], truncated: false } },
+    });
+    const { container } = render(<ChatView meta={META} />);
     await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
     shell.emit("frames:s1", [
-      { type: "user-input", data: { content: b64encode("设计登录页面") }, seq: 11 },
-      { type: "task-started", seq: 12 },
+      { type: "user-input", data: { content: b64encode(prompt) }, seq: 3 },
+      { type: "task-started", seq: 4 },
+    ]);
+    await screen.findByText(prompt);
+    expect(shell.ops.some((op) => op.args?.kind === "repo_file_changes")).toBe(false);
+    shell.emit("frames:s1", [
+      { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "tool_call", toolCallId: "w1", title: "Write file", kind: "write", rawInput: { file_path: `/p/a/${path}` } } }, seq: 5 },
+      { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "已经完成" } } }, seq: 6 },
+      { type: "task-ended", seq: 7 },
     ]);
     await waitFor(() => expect(shell.ops.filter((op) => op.args?.kind === "repo_file_changes")).toHaveLength(1));
-    shell.emit("frames:s1", [
-      { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "tool_call", toolCallId: "w1", title: "Write page", kind: "write", rawInput: { file_path: "/p/a/pages/login.html" } } }, seq: 13 },
-      { type: "task-ended", seq: 14 },
-    ]);
+    expect(shell.ops.some((op) => op.args?.kind === "repo_preview_files")).toBe(false);
+    expect(container.querySelector('[data-design-preview-open="true"]')).toBeNull();
+    expect(screen.queryByLabelText("设计预览工作台")).toBeNull();
+  });
+
+  it("手动点击预览页签仍可打开工作区 HTML", async () => {
+    stubShell({
+      previewFiles: { result: { files: [{ path: "pages/login.html", kind: "html", mime: "text/html", size: 20 }], truncated: false } },
+    });
+    render(<ChatView meta={META} />);
+    await waitFor(() => expect(screen.getByText("帮我修 bug")).toBeTruthy());
+    await userEvent.click(screen.getByRole("button", { name: "打开侧边栏" }));
+    await userEvent.click(screen.getByRole("tab", { name: "预览" }));
     expect(await screen.findByTitle("pages/login.html")).toBeTruthy();
-    expect(screen.queryByTitle("Preview legacy.html")).toBeNull();
+  });
+
+  it.each(["收起侧边栏", "文件"])("查询预览文件期间点击%s，晚到的结果不再打开预览", async (action) => {
+    let resolveFiles!: (value: unknown) => void;
+    const pendingFiles = new Promise((resolve) => { resolveFiles = resolve; });
+    stubShell({ previewFiles: pendingFiles });
+    const { container } = render(<ChatView meta={META} />);
+    await screen.findByText("帮我修 bug");
+    await userEvent.click(screen.getByRole("button", { name: "打开侧边栏" }));
+    await userEvent.click(screen.getByRole("tab", { name: "预览" }));
+    await userEvent.click(screen.getByRole(action === "文件" ? "tab" : "button", { name: action }));
+    await act(async () => {
+      resolveFiles({ result: { files: [{ path: "pages/login.html", kind: "html", mime: "text/html", size: 20 }], truncated: false } });
+    });
+    expect(container.querySelector('[data-design-preview-open="true"]')).toBeNull();
+    expect(screen.queryByLabelText("设计预览工作台")).toBeNull();
+    if (action === "文件") {
+      expect(screen.getByRole("tab", { name: "文件" }).getAttribute("aria-selected")).toBe("true");
+    } else {
+      await userEvent.click(screen.getByRole("button", { name: "打开侧边栏" }));
+    }
+    // 取消只使旧请求失效，之后主动打开仍然正常。
+    await userEvent.click(screen.getByRole("tab", { name: "预览" }));
+    expect(await screen.findByTitle("pages/login.html")).toBeTruthy();
+  });
+
+  it("新的手动链接选择不会被晚到的 HTML 查询覆盖", async () => {
+    let resolveFiles!: (value: unknown) => void;
+    const pendingFiles = new Promise((resolve) => { resolveFiles = resolve; });
+    const shell = stubShell({ previewFiles: pendingFiles });
+    render(<ChatView meta={META} />);
+    await screen.findByText("帮我修 bug");
+    await userEvent.click(screen.getByRole("button", { name: "打开侧边栏" }));
+    await userEvent.click(screen.getByRole("tab", { name: "预览" }));
+    act(() => shell.emit("frames:s1", [
+      { type: "user-input", data: { content: b64encode("提供预览地址") }, seq: 3 },
+      { type: "task-started", seq: 4 },
+      { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "新的预览：http://localhost:5173/" } } }, seq: 5 },
+    ]));
+    await userEvent.click(await screen.findByRole("link", { name: "http://localhost:5173/" }));
+    await act(async () => {
+      resolveFiles({ result: { files: [{ path: "pages/login.html", kind: "html", mime: "text/html", size: 20 }], truncated: false } });
+    });
+    expect((screen.getByLabelText("预览地址") as HTMLInputElement).value).toBe("http://localhost:5173/");
+    expect(screen.queryByTitle("pages/login.html")).toBeNull();
+  });
+
+  it.each(["pages/login.html", "pages/second.html"])("轮末刷新已打开的 %s，保留用户选择的目标和页签", async (path) => {
+    const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Linux");
+    try {
+      const shell = stubShell({
+        changes: { result: [{ path, status: "M" }], is_git_repo: true },
+        previewFiles: { result: { files: [
+          { path: "pages/login.html", kind: "html", mime: "text/html", size: 20 },
+          { path: "pages/second.html", kind: "html", mime: "text/html", size: 20 },
+        ], truncated: false } },
+      });
+      const { container } = render(<ChatView meta={META} />);
+      await screen.findByText("帮我修 bug");
+      await userEvent.click(screen.getByRole("button", { name: "打开侧边栏" }));
+      await userEvent.click(screen.getByRole("tab", { name: "预览" }));
+      const selector = 'iframe[title="设计预览工作台"]';
+      await waitFor(() => expect(container.querySelector(selector)).not.toBeNull());
+      if (path !== "pages/login.html") {
+        await userEvent.click(screen.getByRole("button", { name: "选择工作区预览文件" }));
+        await userEvent.click(await screen.findByRole("button", { name: path }));
+      }
+      const src = `monkeycode-artifact://localhost/__workspace__/${path}`;
+      await waitFor(() => expect(container.querySelector(selector)?.getAttribute("src")).toBe(src));
+
+      for (const [index, tab] of ["预览", "文件"].entries()) {
+        await userEvent.click(screen.getByRole("tab", { name: tab }));
+        const before = container.querySelector(selector);
+        const seq = 3 + index * 5;
+        const prompt = `继续修改页面 ${index + 1}`;
+        act(() => shell.emit("frames:s1", [
+          { type: "user-input", data: { content: b64encode(prompt) }, seq },
+          { type: "task-started", seq: seq + 1 },
+        ]));
+        await screen.findByText(prompt);
+        act(() => shell.emit("frames:s1", [
+          { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "tool_call", toolCallId: `w${index}`, title: "Write page", kind: "write", rawInput: { file_path: `/p/a/${path}` } } }, seq: seq + 2 },
+          { type: "task-running", kind: "acp_event", data: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "页面修改完成，另一个地址：http://localhost:5173/" } } }, seq: seq + 3 },
+          { type: "task-ended", seq: seq + 4 },
+        ]));
+        await waitFor(() => {
+          const after = container.querySelector(selector);
+          expect(after).not.toBeNull();
+          expect(after).not.toBe(before);
+          expect(after?.getAttribute("src")).toBe(src);
+        });
+        expect(screen.getByRole("tab", { name: tab }).getAttribute("aria-selected")).toBe("true");
+        expect((screen.getByLabelText("预览地址") as HTMLInputElement).value).toBe(path);
+      }
+    } finally {
+      ua.mockRestore();
+    }
   });
 
   it("加载更早:前插历史且 cursor 前移,原条目仍在", async () => {

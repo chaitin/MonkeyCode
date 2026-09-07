@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { artifactInlineUrl, currentTurnAgentPreviewUrl, currentTurnItems, newestAgentPreviewUrl, normalizePreviewUrl, normalizeTypedPreviewUrl, previewUrlsInText } from "./previewUrl";
+import { artifactInlineUrl, newestAgentPreviewUrl, normalizePreviewUrl, normalizeTypedPreviewUrl, previewUrlsInText } from "./previewUrl";
 import type { ChatItem } from "@/lib/protocol/types";
 
 describe("design preview URL policy", () => {
@@ -38,32 +38,6 @@ describe("design preview URL policy", () => {
       { kind: "agent", text: "latest https://localhost:8443/new?q=1#x" },
     ];
     expect(newestAgentPreviewUrl(items)).toBe("https://localhost:8443/new?q=1#x");
-  });
-
-  it("only auto-detects a URL produced in the current turn", () => {
-    const previousTurnUrl: ChatItem[] = [
-      { kind: "agent", text: "http://localhost:3000/old" },
-      { kind: "user", text: "make another page" },
-      { kind: "agent", text: "done without a preview" },
-    ];
-    expect(currentTurnAgentPreviewUrl(previousTurnUrl)).toBeNull();
-
-    previousTurnUrl.push({ kind: "agent", text: "ready at http://127.0.0.1:5173/new" });
-    expect(currentTurnAgentPreviewUrl(previousTurnUrl)).toBe("http://127.0.0.1:5173/new");
-  });
-
-  it("currentTurnItems 取最后一条用户消息之后的条目;没有用户消息时取全部且不共享数组", () => {
-    const items: ChatItem[] = [
-      { kind: "user", text: "first" },
-      { kind: "agent", text: "a" },
-      { kind: "user", text: "second" },
-      { kind: "agent", text: "b" },
-    ];
-    expect(currentTurnItems(items)).toEqual([{ kind: "agent", text: "b" }]);
-    const noUser: ChatItem[] = [{ kind: "agent", text: "only" }];
-    const all = currentTurnItems(noUser);
-    expect(all).toEqual(noUser);
-    expect(all).not.toBe(noUser);
   });
 
   it("artifactInlineUrl 与壳侧 artifact_entry_url 同形:逐段编码", () => {

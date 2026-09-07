@@ -49,8 +49,8 @@ import { FilesPanel } from "@/features/files/FilesPanel";
 import { SidePanel, type SidePanelTab } from "@/components/SidePanel";
 import { TerminalPanel } from "@/features/terminal/TerminalPanel";
 import { DesignPreviewWorkbench } from "@/features/design/DesignPreviewWorkbench";
-import { hasDesignRelatedChanges, rankPreviewFiles, selectTurnPreviewArtifact, targetForFile, touchedTurnChanges, turnWarrantsArtifactPreview, writtenToolPaths, type DesignPreviewTarget } from "@/features/design/previewArtifact";
-import { currentTurnAgentPreviewUrl, currentTurnItems, newestAgentPreviewUrl, normalizePreviewUrl } from "@/features/design/previewUrl";
+import { rankPreviewFiles, targetForFile, type DesignPreviewTarget } from "@/features/design/previewArtifact";
+import { newestAgentPreviewUrl, normalizePreviewUrl } from "@/features/design/previewUrl";
 import { useSessionFeed } from "./useSessionFeed";
 
 const PIN_THRESHOLD = 40; // 距底多少像素内算"贴底"(scroll 只做进入贴底的单向判定)
@@ -124,22 +124,8 @@ export function ChatView({
     useSessionFeed(meta.id, epoch);
   useApprovalHotkeys(state, meta.id, undefined, hotkeysActive);
   const detectedPreviewUrl = useMemo(() => newestAgentPreviewUrl(state.items), [state.items]);
-  const currentTurnPreviewUrl = useMemo(() => currentTurnAgentPreviewUrl(state.items), [state.items]);
-  const currentTurnText = useMemo(() => {
-    let user = "";
-    const agents: string[] = [];
-    for (let i = state.items.length - 1; i >= 0; i--) {
-      const item = state.items[i]!;
-      if (item.kind === "user") {
-        user = item.text;
-        break;
-      }
-      if (item.kind === "agent") agents.unshift(item.text);
-    }
-    return { user, agent: agents.join("\n") };
-  }, [state.items]);
   const [preview, setPreview] = useState<{ sessionId: string; target: DesignPreviewTarget } | null>(null);
-  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  const previewOpenGeneration = useRef(0);
   const previewTarget = preview?.sessionId === meta.id ? preview.target : null;
   // 右侧侧边栏(2026-08-30 用户 mockup 定案):文件/变更/终端/预览扁平 tab
   // 统一收进来,header 只留一颗开合钮(云端 CloudTaskView 同构,tab 集不同)。
@@ -154,6 +140,7 @@ export function ChatView({
   const [termMounted, setTermMounted] = useState(false);
   /** 打开设计预览的唯一入口:落 target + 拉开侧边栏并切到「预览」tab。 */
   const openPreview = useCallback((sessionId: string, target: DesignPreviewTarget) => {
+    previewOpenGeneration.current += 1;
     setPreview({ sessionId, target });
     setSideOpen(true);
     setSideTab("preview");
@@ -586,8 +573,10 @@ export function ChatView({
   // 退化为扫描工作区内可预览 HTML，取排序后第一个。
   const openArtifactPreview = useCallback(async () => {
     const sessionId = metaRef.current.id;
+    const generation = ++previewOpenGeneration.current;
     const result = await repoPreviewFiles(sessionId);
-    if (metaRef.current.id !== sessionId) return;
+    // 用户收起侧栏、切页签或选择其他目标后，晚到的查询结果不能再打开预览。
+    if (previewOpenGeneration.current !== generation || metaRef.current.id !== sessionId) return;
     const html = rankPreviewFiles(result.files).find((file) => file.kind === "html");
     if (html) openPreview(sessionId, targetForFile(html));
   }, [openPreview]);
@@ -917,70 +906,35 @@ export function ChatView({
   const [changesCount, setChangesCount] = useState(0);
   const prevTurnEnded = useRef(false);
   const changesGeneration = useRef(0);
-  const baselineRunning = useRef(false);
-  const baselineSession = useRef<string | null>(null);
-  const turnBaseline = useRef<{ sessionId: string; value: Promise<Awaited<ReturnType<typeof repoChanges>>> } | null>(null);
+  const changesSession = useRef<string | null>(null);
   useEffect(() => {
-    const sessionChanged = baselineSession.current !== meta.id;
-    if (sessionChanged) {
-      baselineSession.current = meta.id;
-      baselineRunning.current = false;
+    if (changesSession.current !== meta.id) {
+      changesSession.current = meta.id;
       prevTurnEnded.current = false;
-      turnBaseline.current = null;
       changesGeneration.current += 1;
       // This render still carries useSessionFeed's previous-session state. Its
       // earlier effect resets that state before the new session replay lands.
       return;
     }
-    const rising = state.running && !baselineRunning.current;
-    baselineRunning.current = state.running;
-    // repo_file_changes 是整棵工作区快照。只有设计意图轮需要在开轮时留
-    // baseline；普通轮的改动徽标只在轮末查询一次，不能为自动预览白拉一份。
-    if (rising && turnWarrantsArtifactPreview(currentTurnText.user, currentTurnText.agent, [])) {
-      turnBaseline.current = { sessionId: meta.id, value: repoChanges(meta.id) };
-    }
-  }, [currentTurnText.agent, currentTurnText.user, meta.id, state.running]);
-  useEffect(() => {
     const turnJustEnded = state.turnEnded && !prevTurnEnded.current;
     prevTurnEnded.current = state.turnEnded;
     if (!turnJustEnded) return;
     // 回放的旧轮末零副作用(sawLive:本次打开后收到过实时帧才算活轮末,
-    // 见 useSessionFeed):打开历史会话不做全工作区 git 扫描、不把回放里的
-    // URL/产物当新产出抢视图开预览;改动徽标交给 FilesPanel 打开时自行探测
+    // 见 useSessionFeed):历史会话的改动徽标由 FilesPanel 打开时自行探测。
+    // 实时轮末刷新变更信息和已经打开的预览；预览开合与目标由用户控制。
     if (!sawLive) return;
     setChangesToken((n) => n + 1);
     const sessionId = meta.id;
     const generation = ++changesGeneration.current;
-    if (currentTurnPreviewUrl) {
-      openPreview(sessionId, { kind: "localhost", url: currentTurnPreviewUrl });
-      setPreviewRefreshKey((key) => key + 1);
-    }
-    void repoChanges(sessionId).then(async (result) => {
+    void repoChanges(sessionId).then((result) => {
       if (changesGeneration.current !== generation || metaRef.current.id !== sessionId) return;
       setChangesCount(result.changes.length);
-      if (currentTurnPreviewUrl) return;
-      const baseline = turnBaseline.current?.sessionId === sessionId
-        ? await turnBaseline.current.value.catch(() => ({ changes: result.changes, isGitRepo: result.isGitRepo }))
-        : { changes: result.changes, isGitRepo: result.isGitRepo };
-      if (changesGeneration.current !== generation || metaRef.current.id !== sessionId) return;
-      const tools = currentTurnItems(state.items).filter((item) => item.kind === "tool");
-      const touched = touchedTurnChanges(baseline.changes, result.changes, writtenToolPaths(tools), meta.workdir);
-      let artifact = selectTurnPreviewArtifact(touched, currentTurnText.user, currentTurnText.agent);
-      if (!artifact && hasDesignRelatedChanges(touched) && turnWarrantsArtifactPreview(currentTurnText.user, currentTurnText.agent, touched)) {
-        const files = await repoPreviewFiles(sessionId);
-        if (changesGeneration.current !== generation || metaRef.current.id !== sessionId) return;
-        artifact = selectTurnPreviewArtifact(touched, currentTurnText.user, currentTurnText.agent, files.files);
-      }
-      if (artifact && changesGeneration.current === generation && metaRef.current.id === sessionId) {
-        openPreview(sessionId, targetForFile(artifact));
-        setPreviewRefreshKey((key) => key + 1);
-      }
     }).catch(() => {
       if (changesGeneration.current === generation && metaRef.current.id === sessionId) setChangesCount(0);
     });
-  }, [currentTurnPreviewUrl, currentTurnText, meta.id, openPreview, sawLive, state.items, state.turnEnded]);
-  // 改动数徽标与自动 artifact 选择共用上面的轮末查询，避免重复读取全工作区。
+  }, [meta.id, sawLive, state.turnEnded]);
   useEffect(() => {
+    previewOpenGeneration.current += 1;
     changesGeneration.current += 1;
     prevTurnEnded.current = false;
     setChangesCount(0); // 徽标属于会话,切走清零
@@ -992,6 +946,7 @@ export function ChatView({
     setSideTab("files");
     setIsGitRepo(true);
     setTermMounted(false);
+    return () => { previewOpenGeneration.current += 1; };
   }, [meta.id]);
   // FilesPanel 的改动探测回流:非 git 收走「变更」tab;计数与轮末徽标同源
   const onRepoInfo = useCallback((info: { isGitRepo: boolean; changesCount: number }) => {
@@ -1004,6 +959,7 @@ export function ChatView({
   /** header 开合钮(旧「会话文件」钮改造):打开时按旧抽屉口径选落点——
    *  有改动直达「变更」;上次停在无货的「预览」则回「文件」。 */
   const toggleSide = () => {
+    previewOpenGeneration.current += 1;
     if (!sideOpen) {
       if (changesCount > 0 && isGitRepo) setSideTab("changes");
       else if (sideTab === "preview" && !previewTarget) setSideTab("files");
@@ -1013,6 +969,7 @@ export function ChatView({
   /** 「预览」tab 空手激活时的取材链:先认 agent 输出的 localhost URL,
    *  再退化扫描工作区可预览 HTML(与旧 header 预览钮同一条链)。 */
   const selectSideTab = (id: string) => {
+    previewOpenGeneration.current += 1;
     if (id === "preview") {
       setSideTab("preview");
       if (!previewTarget) {
@@ -1481,7 +1438,7 @@ export function ChatView({
               key={meta.id}
               sessionId={meta.id}
               initialTarget={previewTarget}
-              refreshKey={previewRefreshKey}
+              refreshKey={changesToken}
               composer={composerRef.current}
               obscured={sideTab !== "preview" || !!childId || overlayObscured}
               workdir={meta.workdir}

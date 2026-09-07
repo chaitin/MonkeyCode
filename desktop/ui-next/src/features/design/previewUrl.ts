@@ -1,5 +1,5 @@
 // Design preview URL policy. Keep this independent from the native child so links and
-// automatic discovery use exactly the same localhost-only boundary as preview.rs.
+// manually selected previews use the same localhost-only boundary as preview.rs.
 import type { ChatItem } from "@/lib/protocol/types";
 
 const URL_CANDIDATE = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?(?:[^\s<>"'`\])}]*)?/gi;
@@ -57,16 +57,4 @@ export function newestAgentPreviewUrl(items: ChatItem[]): string | null {
     if (urls[0]) return urls[0];
   }
   return null;
-}
-
-/** 最后一条用户消息之后的条目(没有用户消息时为全部,总是新数组)。 */
-export function currentTurnItems(items: ChatItem[]): ChatItem[] {
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    if (items[i]?.kind === "user") return items.slice(i + 1);
-  }
-  return items.slice();
-}
-
-export function currentTurnAgentPreviewUrl(items: ChatItem[]): string | null {
-  return newestAgentPreviewUrl(currentTurnItems(items));
 }
