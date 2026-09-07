@@ -1,5 +1,5 @@
 // Design preview URL policy. Keep this independent from the native child so links and
-// automatic discovery use exactly the same localhost-only boundary as preview.rs.
+// manually selected previews use the same localhost-only boundary as preview.rs.
 import type { ChatItem } from "@/lib/protocol/types";
 
 const URL_CANDIDATE = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?(?:[^\s<>"'`\])}]*)?/gi;
@@ -57,9 +57,4 @@ export function newestAgentPreviewUrl(items: ChatItem[]): string | null {
     if (urls[0]) return urls[0];
   }
   return null;
-}
-
-export function currentTurnAgentPreviewUrl(items: ChatItem[]): string | null {
-  const lastUserIndex = items.findLastIndex((item) => item.kind === "user");
-  return newestAgentPreviewUrl(items.slice(lastUserIndex + 1));
 }

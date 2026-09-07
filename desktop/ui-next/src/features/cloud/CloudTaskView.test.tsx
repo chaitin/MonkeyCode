@@ -93,6 +93,33 @@ describe("CloudTaskView", () => {
     expect(streamModes).toEqual([]);
   });
 
+  // 视图按任务 id 挂 key,切任务整棵重挂:打了一半没发的正文此前跟着组件 state 一起
+  // 没(2026-09-04 排查新建页草稿丢失时一并发现)。留档见 cloudDraftStash。
+  it("切走(卸载)再回来:未发送的草稿按 账号+任务 恢复;换一个任务不串档", async () => {
+    let infoCalls = 0;
+    stubShellWs((cmd, args) => {
+      if (cmd === "mc_task_info") {
+        infoCalls += 1;
+        return Promise.resolve({ id: String(args?.id ?? ""), status: "pending" });
+      }
+      return Promise.resolve({});
+    });
+    const first = renderCloud(<CloudTaskView task={{ id: "draft-a", status: "pending" }} />);
+    const box = await screen.findByLabelText("消息输入");
+    await waitFor(() => expect(infoCalls).toBeGreaterThan(0)); // 账号作用域已解析,留档才有键
+    fireEvent.change(box, { target: { value: "写了一半" } });
+    first.unmount();
+
+    const other = renderCloud(<CloudTaskView task={{ id: "draft-b", status: "pending" }} />);
+    expect(((await screen.findByLabelText("消息输入")) as HTMLTextAreaElement).value).toBe("");
+    other.unmount();
+
+    renderCloud(<CloudTaskView task={{ id: "draft-a", status: "pending" }} />);
+    await waitFor(() =>
+      expect(((screen.getByLabelText("消息输入")) as HTMLTextAreaElement).value).toBe("写了一半"),
+    );
+  });
+
   it("accountScope 初次从 null 初始化不打断已开始上传，计数能归零", async () => {
     type Identity = { logged_in: true; base_url: string; user: { id: string } };
     let resolveIdentity!: (value: Identity) => void;

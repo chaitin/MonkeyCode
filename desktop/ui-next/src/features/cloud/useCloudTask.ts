@@ -21,6 +21,7 @@ import {
   type CloudQueueAttachment,
   type SendQueueLane,
 } from "@/features/chat/composer/sendQueue";
+import { cloudDraftGet, cloudDraftSet, type CloudDraftEntry } from "@/features/cloud/cloudDraftStash";
 import { useCloudQueue, useCloudQueueTask } from "@/features/cloud/CloudQueueCoordinator";
 import type { CloudRuntimeEvent } from "@/features/cloud/cloudTaskRuntime";
 import { WAKE_CALL_TIMEOUT_MS, type CloudControl } from "@/lib/cloud/control";
@@ -245,6 +246,26 @@ export function useCloudTask(
     setUploading(0);
     attCountRef.current = 0;
   }, [id, applyCursor]);
+
+  // 草稿按 账号作用域+任务 留档/恢复(见 cloudDraftStash 头注)。挂在 [accountScope, id]
+  // 而非 [id]:身份未解析时(null)没有键,首次 null→scope 才恢复;切号/切任务/卸载
+  // 的 cleanup 留档。必须排在上面按 id 清空的 effect 之后——同一批提交里后设
+  // 的 state 才是最终值。cleanup 读 ref 里最后一次已提交的编辑面;编辑队列项
+  // 期间留的是进入编辑前的草稿,不是队列正文(与本地 composer 的 snapRef 同款)。
+  const draftSnapRef = useRef<CloudDraftEntry>({ input: "", atts: [] });
+  draftSnapRef.current = savedDraftRef.current ?? { input, atts };
+  useEffect(() => {
+    if (!accountScope) return;
+    const entry = cloudDraftGet(accountScope, id);
+    if (entry) {
+      setInput(entry.input);
+      setAtts([...entry.atts]);
+      attCountRef.current = entry.atts.length;
+    }
+    return () => {
+      cloudDraftSet(accountScope, id, draftSnapRef.current);
+    };
+  }, [accountScope, id]);
 
   const applyRuntimeEvent = useCallback((event: CloudRuntimeEvent) => {
     if (event.kind === "reconnect") {

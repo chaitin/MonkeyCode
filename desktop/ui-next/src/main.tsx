@@ -1,3 +1,5 @@
+// 必须是第一个 import:ESM 按出现顺序求值,后面的模块树才能看到补上的 API
+import "@/lib/webApiPolyfills";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -35,7 +37,8 @@ function mountApp(): void {
   );
 }
 
-// 不使用顶层 await（macOS 11 的 Safari 14 WKWebView 无法解析）。常规入口隐藏时
+// 不使用顶层 await(macOS 11 的 Safari 14 WKWebView 无法解析;vite.config.ts 的
+// WEBVIEW_TARGETS 让构建期直接报错)。常规入口隐藏时
 // 同时跳过资产读取；从设置页隐藏连击入口解锁后再按需初始化。
 const backgroundReady = customBackgroundEnabled() ? initializeStoredBackground() : Promise.resolve();
 void backgroundReady.then(mountApp, mountApp);

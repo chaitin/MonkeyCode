@@ -20,6 +20,10 @@
 //   运行环境过滤(lib/util/workdir);目录预填 = 过滤后首项,无则默认目录
 // - 模型记忆 mc.lastTaskModel(本地/对话共用);旧工程无 lastDir 持久化键,
 //   不发明新键
+// - 草稿暂存:本视图是格内内嵌形态,点别的会话即被卸载;未提交的正文/附件/
+//   目录/模型/技能/页签在关闭时留档(./draftStash),下次打开若没有待办派发
+//   等更强的预填就恢复;创建成功才清(2026-09-04 报障「切出去再回来,编辑
+//   的内容找不回」)
 import { IconCheck, IconChevronDown, IconCloud, IconFile as FileIcon, IconFolder, IconFolderCode, IconFolderOpen, IconMessages, IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
 import {
   useCallback,
@@ -61,23 +65,12 @@ import { DEFAULT_DIR, workdirMatchesEnv } from "@/lib/util/workdir";
 import { ModelMenu, SkillsMenu, THINK_LEVELS } from "@/features/chat/composer/pickers";
 import { NewCloudTask } from "@/features/cloud/NewCloudTask";
 import type { CloudProject, CloudTaskDetail } from "@/lib/ipc/cloudtasks";
+import { clearNewTaskDraft, readNewTaskDraft, revokeStalePreviews, saveNewTaskDraft, type NewTaskDraft, type StagedAtt } from "./draftStash";
 
 export { DEFAULT_DIR };
 
 function modelThinkLevel(model: ModelInfo | undefined): string {
   return THINK_LEVELS.find((level) => level === model?.think) ?? "low";
-}
-
-/** 暂存的附件:File 本体 + 展示名 + 图片预览 URL(非图片/占位 File 无);
- *  上传发生在建会话之后。
- *
- *  `name` 单独存一份而不是各处读 `file.name`:占位 File 与剪贴板截图都可能
- *  空名(uploads.ts::pathBackedFile 头注、壳 uploads.rs 也为此备了落盘兜底),
- *  五处渲染各写一遍 `|| 兜底` 迟早漏一处——加进来时算一次,渲染只管用。 */
-interface StagedAtt {
-  file: File;
-  name: string;
-  preview?: string;
 }
 
 export function NewTaskModal({
@@ -180,26 +173,33 @@ export function NewTaskModal({
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    // 每次打开都是一次全新的创建流:清掉上一次的草稿与错误态
-    // (待办派发带 initialText 时以它起步,仍可改)
+    // 每次打开先清错误态;编辑面按优先级起步:待办派发的预填(initialText/
+    // initialFiles)是更强的意图 > 上次未提交的草稿(留档见下方 cleanup)> 空表。
+    // 预填过的这次若也没提交,关闭时同样留档——它已经是用户手里的草稿了。
+    const prefilled = initialText !== undefined || (initialFiles?.length ?? 0) > 0;
+    const draft = prefilled ? null : readNewTaskDraft();
     dirTouched.current = false;
     setDirMenu(false);
-    setText(initialText ?? "");
-    setThinkOverride(null);
-    setEnabledSkills(null);
+    setText(draft?.text ?? initialText ?? "");
+    setThinkOverride(draft?.thinkOverride ?? null);
+    setEnabledSkills(draft?.enabledSkills ?? null);
     setStandaloneSkillsLoaded(false);
     setError("");
     setOfferCreate(false);
     setOfferReauthorize(false);
-    // 附件区从预填起步(待办派发带图;无预填即空):上一次的暂存连预览一起清
+    // 附件区:草稿 > 预填(待办派发带图)> 空。上一次打开留下的预览 URL 里,
+    // 没被这次带进来、也不在档里的才释放(恢复出来的条目与档共用同一批 URL)
     setAtts((prev) => {
-      for (const a of prev) if (a.preview) URL.revokeObjectURL(a.preview);
-      return (initialFiles ?? []).map((file) => ({
-        file,
-        name: file.name || t("common.unnamedFile"),
-        // path-backed 占位 File 是 0 字节,不建 objectURL(下面 addFiles 同注)
-        preview: file.type.startsWith("image/") && file.size > 0 ? URL.createObjectURL(file) : undefined,
-      }));
+      const next: StagedAtt[] = draft
+        ? [...draft.atts]
+        : (initialFiles ?? []).map((file) => ({
+            file,
+            name: file.name || t("common.unnamedFile"),
+            // path-backed 占位 File 是 0 字节,不建 objectURL(下面 addFiles 同注)
+            preview: file.type.startsWith("image/") && file.size > 0 ? URL.createObjectURL(file) : undefined,
+          }));
+      revokeStalePreviews(prev, next, readNewTaskDraft()?.atts ?? []);
+      return next;
     });
     dragDepth.current = 0;
     setDragging(false);
@@ -216,7 +216,12 @@ export function NewTaskModal({
       setDir("");
       dirTouched.current = true;
     } else {
-      setKind(initialKind ?? "local");
+      setKind(draft?.kind ?? initialKind ?? "local");
+      // 草稿里的目录只在用户明确改过时才带(null = 没碰过,照常走最近目录预填)
+      if (draft && draft.dir !== null) {
+        setDir(draft.dir);
+        dirTouched.current = true;
+      }
     }
     // 失败保留上一份、不清空(modelsList 现在会抛,见其头注):引擎重启期
     // 这一拉会撞上壳的「配置应用中」闸门,清空等于"重启一次就选不了模型";
@@ -236,7 +241,9 @@ export function NewTaskModal({
           ? (list.find((m) => m.name === remembered && !m.locked) ??
             list.find((m) => sameModelName(m.name, remembered) && !m.locked))
           : undefined;
-        const pick = byMemory || list.find((m) => m.default && !m.locked) || list.find((m) => !m.locked);
+        // 草稿里选过的模型优先于记忆(仍要在列表里且未锁定)
+        const byDraft = draft?.model ? list.find((m) => m.name === draft.model && !m.locked) : undefined;
+        const pick = byDraft || byMemory || list.find((m) => m.default && !m.locked) || list.find((m) => !m.locked);
         if (pick) setModel(pick.name);
       })
       .catch(() => {});
@@ -317,15 +324,25 @@ export function NewTaskModal({
       return list.filter((_, i) => i !== index);
     });
   };
-  // 卸载时释放尚未撤销的预览 URL(快照挂 ref,effect 只在卸载跑一次)
-  const attsRef = useRef(atts);
-  attsRef.current = atts;
-  useEffect(
-    () => () => {
-      for (const a of attsRef.current) if (a.preview) URL.revokeObjectURL(a.preview);
-    },
-    [],
-  );
+  // 关闭/卸载时留档,创建成功才清(2026-09-04 报障,见文件头注与 ./draftStash)。
+  // 快照挂 ref,cleanup 读到的是最后一次已提交状态;目录只在用户改过时进档。
+  // 附件预览 URL 随档一起活着——此前「卸载即释放」的规则并进这里:留档时
+  // 交给档管,清档时才释放,否则恢复出来的是裂图。
+  const draftRef = useRef<NewTaskDraft>({ kind, text, atts, dir: null, model, thinkOverride, enabledSkills });
+  draftRef.current = { kind, text, atts, dir: dirTouched.current ? dir : null, model, thinkOverride, enabledSkills };
+  const createdRef = useRef(false);
+  useEffect(() => {
+    if (!open) return;
+    createdRef.current = false;
+    return () => {
+      if (createdRef.current) {
+        revokeStalePreviews(draftRef.current.atts);
+        clearNewTaskDraft();
+      } else {
+        saveNewTaskDraft(draftRef.current);
+      }
+    };
+  }, [open]);
 
   // 系统对话框选文件:拿到的是本地路径,包成 path-backed 占位 File 走同一
   // 条管线(上传时 nativePathOf 分流为路径直拷,不搬字节)
@@ -444,6 +461,7 @@ export function NewTaskModal({
           console.warn("首条消息发送失败(会话已创建,可在会话内重发):", e);
         }
       }
+      createdRef.current = true;
       onCreated(meta);
       onClose("success");
     } catch (e) {
@@ -561,6 +579,7 @@ export function NewTaskModal({
                   initialProject={initialCloudProject}
                   onOpenSettings={onOpenSettings}
                   onCreated={(task) => {
+                    createdRef.current = true;
                     onCloudCreated?.(task);
                     onClose("success");
                   }}

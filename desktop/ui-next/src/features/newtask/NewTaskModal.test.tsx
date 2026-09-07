@@ -592,3 +592,55 @@ describe("首条消息附件", () => {
     );
   });
 });
+
+// 新建页是格内内嵌视图:点侧栏别的会话即被 SplitView 卸载,再点「新建」是一张
+// 空表——写了一半的首条消息、附件、目录全没(2026-09-04 报障)。留档见 draftStash。
+describe("草稿暂存(切走再回来不丢)", () => {
+  it("切到别的会话(新建页卸载)再打开:首条消息、附件、目录都从暂存恢复", async () => {
+    stubShell();
+    const first = render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
+    const box = await screen.findByRole("textbox", { name: "首条消息" });
+    await userEvent.type(box, "改一下登录页");
+    const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "image/png" });
+    await userEvent.paste(
+      { getData: () => "", items: [{ kind: "file", type: "image/png", getAsFile: () => file }] } as never,
+    );
+    expect(await screen.findByAltText("shot.png")).toBeDefined();
+    const dirInput = await openDirMenu();
+    await userEvent.clear(dirInput);
+    await userEvent.type(dirInput, "/home/me/proj{Enter}");
+    first.unmount();
+
+    render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
+    expect(((await screen.findByRole("textbox", { name: "首条消息" })) as HTMLTextAreaElement).value).toBe("改一下登录页");
+    expect(screen.getByAltText("shot.png")).toBeDefined();
+    expect((await openDirMenu()).value).toBe("/home/me/proj");
+  });
+
+  it("创建成功后清档:再打开是空表", async () => {
+    stubShell();
+    const onCreated = vi.fn();
+    const first = render(<NewTaskModal open onClose={() => {}} onCreated={onCreated} />);
+    await userEvent.type(await screen.findByRole("textbox", { name: "首条消息" }), "修个 bug");
+    await userEvent.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    first.unmount();
+
+    render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
+    expect(((await screen.findByRole("textbox", { name: "首条消息" })) as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("待办派发带 initialText:预填优先于暂存;预填过的这次没提交,它就成了新的草稿", async () => {
+    stubShell();
+    const first = render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
+    await userEvent.type(await screen.findByRole("textbox", { name: "首条消息" }), "草稿");
+    first.unmount();
+
+    const second = render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} initialText="待办正文" />);
+    expect(((await screen.findByRole("textbox", { name: "首条消息" })) as HTMLTextAreaElement).value).toBe("待办正文");
+    second.unmount();
+
+    render(<NewTaskModal open onClose={() => {}} onCreated={() => {}} />);
+    expect(((await screen.findByRole("textbox", { name: "首条消息" })) as HTMLTextAreaElement).value).toBe("待办正文");
+  });
+});

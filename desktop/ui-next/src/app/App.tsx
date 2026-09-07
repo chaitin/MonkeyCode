@@ -52,6 +52,7 @@ import {
 } from "@/lib/ipc/sessions";
 import { noticeForQueuedDelivery, noticeForSessionEvent, type NoticeKind, type SessionNotice } from "@/lib/notices";
 import { deliverQueued, dropStash } from "@/features/chat/composer/stash";
+import { dropCloudDraft } from "@/features/cloud/cloudDraftStash";
 import { disposeSessionTerminals } from "@/features/terminal/termStore";
 import { readLastSession } from "@/lib/util/prefs";
 import { projectKey, readArchivedProjects } from "@/lib/util/projects";
@@ -661,6 +662,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
                 // CloudTaskList 只在服务端删除成功后触发；此时再停 runtime 并删
                 // lane/index。失败路径不会触碰协调器和用户待发送内容。
                 cloudQueue.dropTask(id);
+                if (cloudQueue.accountScope) dropCloudDraft(cloudQueue.accountScope, id);
                 setCloudReload((n) => n + 1);
                 // prune 只认本地全表、特意跳过云端条目——列表侧删除要显式
                 // 弹格,否则格里留幽灵任务(2026-08-20 审计)

@@ -359,10 +359,6 @@ export function DesignPreviewWorkbench({
   const hostRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef(0);
   const createdRef = useRef(false);
-  const incomingTargetKey = initialTarget.kind === "localhost"
-    ? `localhost:${normalizePreviewUrl(initialTarget.url) ?? initialTarget.url}`
-    : `artifact:${initialTarget.path}`;
-  const incomingNative = initialTarget.kind === "localhost" || initialTarget.artifactKind === "html";
   const incomingRefreshRef = useRef(refreshKey);
   const [target, setTarget] = useState<DesignPreviewTarget>(initialTarget);
   const targetKey = target.kind === "localhost" ? `localhost:${normalizePreviewUrl(target.url) ?? target.url}` : target.kind === "artifact" ? `artifact:${target.path}` : "none";
@@ -464,16 +460,18 @@ export function DesignPreviewWorkbench({
   useEffect(() => {
     const previousRefreshKey = incomingRefreshRef.current;
     incomingRefreshRef.current = refreshKey;
-    if (refreshKey === previousRefreshKey || !incomingNative || incomingTargetKey !== latestRef.current.targetKey) return;
+    // 轮末只刷新当前目标，包括用户在工作台内手动选择的文件或地址。
+    // initialTarget 只负责显式打开，刷新不能把用户带回最初的目标。
+    if (refreshKey === previousRefreshKey || !native) return;
     if (inlineFallback) {
       setInlineReload((n) => n + 1);
       return;
     }
     void enqueuePreviewLifecycle(() => {
-      if (latestRef.current.targetKey !== incomingTargetKey) return Promise.resolve();
+      if (latestRef.current.targetKey !== targetKey) return Promise.resolve();
       return previewReload();
     }).catch(report);
-  }, [incomingNative, incomingTargetKey, inlineFallback, refreshKey, report]);
+  }, [native, targetKey, inlineFallback, refreshKey, report]);
   const submitFeedback = useCallback(async (image: string, feedbackAnnotations: Annotation[], message: string): Promise<boolean> => {
     if (feedbackSendingRef.current) return false;
     feedbackSendingRef.current = true;

@@ -33,6 +33,7 @@ import { useI18n } from "@/lib/i18n";
 import { mcTaskCreate, mcTaskOptions, type CloudProject, type CloudTaskDetail, type McTaskOptions } from "@/lib/ipc/cloudtasks";
 import { createImeGuard } from "@/lib/util/slash";
 import { useMcTransport } from "@/lib/mcTransport";
+import { clearCloudTaskDraft, readCloudTaskDraft, saveCloudTaskDraft } from "@/features/newtask/draftStash";
 
 export function NewCloudTask({
   onCreated,
@@ -61,7 +62,11 @@ export function NewCloudTask({
   // 401 原文摊在面板上,用户只能看到一句自己看不懂的报错(与侧栏未连接
   // 空态同一口径)
   const [connected, setConnected] = useState<boolean | null>(null);
-  const [content, setContent] = useState("");
+  // 描述/关联仓库从上次未提交的草稿起步:宿主 NewTaskModal 是格内视图,点别的
+  // 会话即被卸载,组件 state 全丢(2026-09-04 报障;留档见 newtask/draftStash)。
+  // 预选项目是更强的意图,下面的 initialProject effect 会覆盖。
+  const [restored] = useState(readCloudTaskDraft);
+  const [content, setContent] = useState(restored?.content ?? "");
   const [modelId, setModelId] = useState("");
   const [hostId, setHostId] = useState("");
   const [imageId, setImageId] = useState("");
@@ -69,9 +74,9 @@ export function NewCloudTask({
   const [error, setError] = useState("");
   // 仓库关联三态:project(选云端项目)/ repoUrl(手输地址)/ 都空(快速开始)。
   // 二者互斥——服务端按 project_id 复用已克隆的工作区,再给 repo_url 是矛盾输入
-  const [project, setProject] = useState<CloudProject | null>(initialProject ?? null);
-  const [repoUrl, setRepoUrl] = useState("");
-  const [repoDraft, setRepoDraft] = useState("");
+  const [project, setProject] = useState<CloudProject | null>(initialProject ?? restored?.project ?? null);
+  const [repoUrl, setRepoUrl] = useState(restored?.repoUrl ?? "");
+  const [repoDraft, setRepoDraft] = useState(restored?.repoUrl ?? "");
   const [repoErr, setRepoErr] = useState("");
   const [repoOpen, setRepoOpen] = useState(false);
   // 「关联仓库」下拉走 useDismiss(与 NewTaskModal 的「最近目录」同款,理由见
@@ -134,6 +139,13 @@ export function NewCloudTask({
     setRepoDraft("");
     setRepoErr("");
   }, [initialProject]);
+
+  // 直写留档而非卸载 cleanup:宿主留档时要据"停在云端页签且写了描述"决定要不要
+  // 把页签一起记住,父子 cleanup 的先后不可依赖;创建成功后清档、不再回写。
+  const createdRef = useRef(false);
+  useEffect(() => {
+    if (!createdRef.current) saveCloudTaskDraft({ content, project, repoUrl });
+  }, [content, project, repoUrl]);
 
   // 模型按档位/来源分组(基础/专业/旗舰/付费/我的/团队,移植旧 UI 口径)。
   // 触发器只显示组内名,「组名 / 组内名」全称走悬停 title:团队组名取自
@@ -224,6 +236,8 @@ export function NewCloudTask({
         project_id: project?.id || undefined,
       });
       if (!isTransportCurrent(expectedTransport)) return;
+      createdRef.current = true;
+      clearCloudTaskDraft();
       onCreated(task);
     } catch (e) {
       if (isTransportCurrent(expectedTransport)) setError(e instanceof Error ? e.message : String(e));

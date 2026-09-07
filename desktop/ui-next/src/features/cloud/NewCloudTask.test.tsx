@@ -1,7 +1,7 @@
 // 新建云端任务:三选器默认值、locked 禁选、提交契约(假壳 invoke)。
 // 三选器为 composer 同款菜单(pickers.OptionMenu):触发器 button 文本 =
 // 当前选中项展示名,列表 list 与触发器同可及名(role 区分)。
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -253,5 +253,27 @@ describe("NewCloudTask", () => {
     await screen.findByRole("button", { name: "模型" });
     await userEvent.click(screen.getByText("创建"));
     expect((await screen.findByRole("alert")).textContent).toContain("请填写任务描述");
+  });
+});
+
+// 宿主 NewTaskModal 是格内视图,切到别的会话即卸载;任务描述住在本组件 state 里,
+// 不留档就跟着没(2026-09-04 报障)。留档见 newtask/draftStash。
+describe("NewCloudTask 草稿暂存", () => {
+  it("卸载重挂:未提交的任务描述从暂存恢复;创建成功后清档", async () => {
+    stubShell();
+    const first = render(<NewCloudTask onCreated={() => {}} />);
+    await userEvent.type(await screen.findByLabelText("任务描述"), "跑一遍测试");
+    first.unmount();
+
+    const onCreated = vi.fn();
+    const second = render(<NewCloudTask onCreated={onCreated} />);
+    expect(((await screen.findByLabelText("任务描述")) as HTMLTextAreaElement).value).toBe("跑一遍测试");
+    await screen.findByRole("button", { name: "模型" }); // 选项已加载,默认模型/镜像就位
+    await userEvent.click(screen.getByText("创建"));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    second.unmount();
+
+    render(<NewCloudTask onCreated={() => {}} />);
+    expect(((await screen.findByLabelText("任务描述")) as HTMLTextAreaElement).value).toBe("");
   });
 });

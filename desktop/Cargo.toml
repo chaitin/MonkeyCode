@@ -107,6 +107,11 @@ windows = { version = "0.61", features = [
   "Win32_UI_WindowsAndMessaging",
 ] }
 
+# tauri-runtime-wry 2.11.4 仍依赖 Tao 0.35；固定上游 #1215 修复 Windows
+# 键盘/焦点消息重入死锁。正式运行时接入包含修复的 Tao 后可移除此补丁。
+[patch.crates-io]
+tao = { git = "https://github.com/tauri-apps/tao", rev = "c704261c519c58cfdd0bc2d58ba24e06a0b71c92" }
+
 [profile.release]
 strip = true
 lto = true
