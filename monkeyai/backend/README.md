@@ -127,7 +127,7 @@ migrations/<唯一版本>_<feature>_*.sql
 
 ## 本地启动
 
-启动前提供 PostgreSQL 连接地址，以及已初始化 Bucket 的 `MONKEYAI_S3_ENDPOINT`、`MONKEYAI_S3_ACCESS_KEY` 和 `MONKEYAI_S3_SECRET_KEY`（详见上层 README）：
+启动前提供 PostgreSQL 连接地址，以及 `MONKEYAI_S3_ENDPOINT`、`MONKEYAI_S3_ACCESS_KEY` 和 `MONKEYAI_S3_SECRET_KEY`。服务在启动流程中检查并按需创建资源 Bucket，初始化限时 1 分钟，失败则退出；凭据需具备 Bucket 访问权限及首次建桶所需的 `s3:CreateBucket` 权限（详见上层 README）：
 
 ```bash
 export MONKEYAI_DATABASE_URL='postgres://monkeyai:password@127.0.0.1:5432/monkeyai?sslmode=disable'

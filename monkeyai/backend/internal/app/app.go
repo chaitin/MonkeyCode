@@ -91,6 +91,12 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	if err != nil {
 		return nil, err
 	}
+	initCtx, cancel := context.WithTimeout(ctx, time.Minute)
+	err = storage.Init(initCtx)
+	cancel()
+	if err != nil {
+		return nil, fmt.Errorf("初始化资源 Bucket: %w", err)
+	}
 	store := resource.NewStore(pool)
 	rules := rule.NewService(store)
 	skills := skill.NewService(store, storage)

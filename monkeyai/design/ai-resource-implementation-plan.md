@@ -273,7 +273,7 @@ Connector 的下发 DTO 不包含上游 Token、Secret 或敏感 Header；工具
 5. 技能直接采用包文件权威模型；专家直接采用默认模型、规则/技能关系和 Provider 依赖；授权、标签、调用事实直接引用目标资源结构。
 6. 一次性定义名称唯一、外键、认证组合和关系约束；移除旧 `mcp_servers`、`mcp_server_credentials`、`expert_mcp_tools` 及 `skills.instructions` 的初始化定义。
 
-合并时整理为最终 DDL，去掉重复的创建后修改语句和旧结构过渡 SQL。删除 `000002`、`000003`、`000004` 的 up/down 文件，迁移镜像中也只包含版本 `000001`。首次管理员仍由后端按部署环境变量创建；RustFS Bucket 继续由 `rustfs-init` 单独初始化。
+合并时整理为最终 DDL，去掉重复的创建后修改语句和旧结构过渡 SQL。删除 `000002`、`000003`、`000004` 的 up/down 文件，迁移镜像中也只包含版本 `000001`。首次管理员仍由后端按部署环境变量创建；RustFS Bucket 由后端启动流程检查并按需创建。
 
 本次重新部署连接全新的 PostgreSQL 数据库或数据目录，再执行 `migrate up`；仅重建容器并挂载旧数据库目录不构成全新初始化。部署说明需要明确这一前提，本轮方案更新不操作用户现有数据。
 
@@ -283,32 +283,31 @@ Connector 的下发 DTO 不包含上游 Token、Secret 或敏感 Header；工具
 
 ### 8.2 Docker Compose 引入 RustFS
 
-在当前 `monkeyai/docker-compose.yml` 增加 `rustfs` 与一次性的 `rustfs-init` 服务。采用单节点部署作为当前默认拓扑，后端通过 Compose 网络连接 `http://rustfs:9000`。镜像使用经过联调的固定版本或 digest，通过 `RUSTFS_IMAGE` 配置；具体版本在实施阶段确定并验证。
+`monkeyai/docker-compose.yml` 使用单节点 `rustfs` 服务，后端通过 Compose 网络连接 `http://rustfs:9000`。镜像固定为 `chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/rustfs:v1.0.0-rc.5`。
 
 - RustFS 的 S3 API 使用容器内 `9000` 端口，默认供后端内网访问。
 - 管理控制台使用 `9001`，本机调试绑定 `127.0.0.1`，与 MonkeyAI 管理后台分开。
 - 数据持久化到 `./data/rustfs` 并挂载到容器 `/data`；日志单独挂载到 `./data/rustfs-logs`。数据目录随常规容器重建保留。
-- 依据选定镜像准备目录权限。官方镜像当前默认 UID/GID 为 `10001:10001`，初始化只处理本项目新增目录。
-- RustFS 健康检查验证 S3 服务的 `/health`；Bucket 是否存在、运行凭据能否访问由初始化任务和后端就绪检查验证。
+- RustFS 容器以非 root 用户 `10001:10001` 运行，部署前准备数据和日志挂载目录及其内容的读写权限，不配置独立目录权限初始化服务。
+- RustFS 健康检查验证 S3 服务的 `/health`；Bucket 是否存在、运行凭据能否访问由后端启动初始化和就绪检查验证。
 
-`rustfs-init` 使用后端镜像提供的独立存储初始化命令，经 S3 API 检查并按需创建私有 Bucket，随后退出。Bucket 已存在且可访问时视为成功，权限错误与网络错误不能当成“Bucket 不存在”。多次执行不清空 Bucket，也不改变已有对象。初始化使用有建桶权限的凭据，运行时使用仅覆盖资源 Bucket 所需操作的应用凭据。
+后端在启动流程中经 S3 API 检查并按需创建私有 Bucket，成功后开始提供 HTTP 服务。Bucket 已存在且可访问时视为成功，权限错误与网络错误不能当成“Bucket 不存在”。初始化限时 1 分钟，失败时后端退出，由 Compose 重启重试。多次启动不清空 Bucket，也不改变已有对象。Compose 默认复用 RustFS 凭据，独立应用凭据可通过 `MONKEYAI_S3_ACCESS_KEY` / `MONKEYAI_S3_SECRET_KEY` 覆盖；首次创建 Bucket 需要 `s3:CreateBucket` 权限。
 
-启动依赖为 `rustfs 健康 → rustfs-init 成功` 和 `PostgreSQL 健康 → migrate 成功` 两条链路；两者完成后启动后端，再启动管理后台。`/readyz` 增加有超时和短时缓存的资源 Bucket 检查，`/healthz` 继续只表达进程存活。
+启动依赖为 `rustfs 健康` 和 `PostgreSQL 健康 → migrate 成功` 两条链路；两者完成后启动后端并初始化 Bucket，再启动管理后台。`/readyz` 保留有超时和短时缓存的资源 Bucket 检查，`/healthz` 继续只表达进程存活。
 
 配置约定如下：
 
 | 配置 | 用途 / 默认值 |
 | --- | --- |
-| `RUSTFS_IMAGE` | 固定的 RustFS 镜像版本或 digest |
 | `RUSTFS_ACCESS_KEY`、`RUSTFS_SECRET_KEY` | RustFS 服务初始化的管理员凭据，通过部署环境提供 |
 | `RUSTFS_VOLUMES` | 容器内的数据路径，单节点配置使用 `/data` |
 | `MONKEYAI_S3_ENDPOINT` | 后端连接地址，Compose 默认 `http://rustfs:9000` |
 | `MONKEYAI_S3_REGION` | 签名 Region，默认 `us-east-1`，与 RustFS 配置一致 |
 | `MONKEYAI_S3_BUCKET` | 默认 `monkeyai-resources` |
-| `MONKEYAI_S3_ACCESS_KEY`、`MONKEYAI_S3_SECRET_KEY` | 后端应用凭据；初始化命令可由 Compose 单独注入建桶凭据 |
+| `MONKEYAI_S3_ACCESS_KEY`、`MONKEYAI_S3_SECRET_KEY` | 后端初始化及读写资源的凭据，Compose 默认复用 RustFS 凭据 |
 | `MONKEYAI_S3_FORCE_PATH_STYLE` | 默认 `true` |
 
-同步修改 `.env.example`、后端配置加载、Compose、初始化命令与部署 README，并调整管理反向代理的上传体积、超时和流式下载设置。后端配置 API 不返回上述访问密钥。
+同步修改 `.env.example`、后端配置加载、Compose、启动初始化与部署 README，并调整管理反向代理的上传体积、超时和流式下载设置。后端配置 API 不返回上述访问密钥。
 
 RustFS 对象与 PostgreSQL 元数据共同构成可恢复资源。备份应记录数据库快照及其引用的对象集合，旧对象清理不得早于有效备份和回滚窗口；验收时用数据库备份和 RustFS 对象恢复一次完整技能下载。
 
