@@ -20,6 +20,8 @@ type Repository interface {
 	Update(context.Context, Model) (Model, error)
 	SetEnabled(context.Context, string, bool) (Model, error)
 	Delete(context.Context, string) error
+	UpdateUser(context.Context, Model) (Model, error)
+	DeleteUser(context.Context, string, string) error
 	ListAvailable(context.Context, string, bool) ([]Model, error)
 	Resolve(context.Context, string, string) (Model, error)
 	Subjects(context.Context) (Subjects, error)
@@ -51,7 +53,7 @@ func (s *Service) List(ctx context.Context, ownership string) ([]Model, error) {
 }
 
 func (s *Service) Create(ctx context.Context, ownerUserID string, input SaveInput) (Model, error) {
-	item, err := modelFromInput(input)
+	item, err := systemModelFromInput(input)
 	if err != nil {
 		return Model{}, err
 	}
@@ -73,7 +75,7 @@ func (s *Service) Update(ctx context.Context, id, actorUserID string, input Save
 	if existing.OwnershipType != "system" {
 		return Model{}, errors.New("个人模型不能由管理员修改")
 	}
-	item, err := modelFromInput(input)
+	item, err := systemModelFromInput(input)
 	if err != nil {
 		return Model{}, err
 	}
@@ -107,7 +109,9 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 	}
 	result := make([]AgentModel, 0, len(models))
 	for _, item := range models {
-		result = append(result, AgentModel{
+		entry := AgentModel{
+			OwnershipType:       item.OwnershipType,
+			OwnerUserID:         item.OwnerUserID,
 			ID:                  item.ID,
 			Model:               item.ID,
 			DisplayName:         item.DisplayName,
@@ -117,7 +121,19 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 			SupportsVision:      item.AdvancedConfig.SupportsVision,
 			CreditMultiplier:    item.CreditMultiplier,
 			UpdatedAt:           item.UpdatedAt,
-		})
+		}
+		if item.OwnershipType == "user" {
+			if item.OwnerUserID == userID {
+				users := item.SharedUsers
+				if users == nil {
+					users = []Subject{}
+				}
+				entry.SharedUsers = &users
+			} else {
+				entry.Creator = item.Creator
+			}
+		}
+		result = append(result, entry)
 	}
 	return result, nil
 }
@@ -173,6 +189,14 @@ func modelFromInput(input SaveInput) (Model, error) {
 	}
 	if item.CreditMultiplier <= 0 {
 		return Model{}, errors.New("credit_multiplier 必须大于 0")
+	}
+	return item, nil
+}
+
+func systemModelFromInput(input SaveInput) (Model, error) {
+	item, err := modelFromInput(input)
+	if err != nil {
+		return Model{}, err
 	}
 	if len(item.Authorization.UserIDs)+len(item.Authorization.GroupIDs) == 0 {
 		return Model{}, errors.New("至少需要一个资源访问授权")

@@ -125,6 +125,7 @@ func TestResourceIntegration(t *testing.T) {
 		}
 		users = append(users, id)
 	}
+	t.Run("用户模型与批量分享", func(t *testing.T) { testModelSharing(t, pool, handler, users) })
 	for _, body := range []string{"null", "{} {}", "[]"} {
 		request := httptest.NewRequest("POST", "/api/admin/v1/rules", strings.NewReader(body))
 		request.AddCookie(cookie)

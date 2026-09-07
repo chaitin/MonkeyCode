@@ -116,3 +116,6 @@ func TestResolveUsesAPIKeyIdentity(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func (r *repositoryStub) UpdateUser(_ context.Context, item Model) (Model, error) { return item, nil }
+func (r *repositoryStub) DeleteUser(context.Context, string, string) error        { return nil }

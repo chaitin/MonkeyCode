@@ -26,6 +26,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 }
 
 func (s *Service) RegisterAgent(router chi.Router) {
+	router.Get("/users", s.searchUsers)
 	router.Get("/me", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := UserFromContext(r.Context())
 		writeJSON(w, http.StatusOK, user)

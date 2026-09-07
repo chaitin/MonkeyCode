@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -90,6 +91,14 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 }
 
 func (p *Postgres) Update(ctx context.Context, item Model) (Model, error) {
+	return p.update(ctx, item, "system")
+}
+
+func (p *Postgres) UpdateUser(ctx context.Context, item Model) (Model, error) {
+	return p.update(ctx, item, "user")
+}
+
+func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Model, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return Model{}, err
@@ -106,12 +115,12 @@ func (p *Postgres) Update(ctx context.Context, item Model) (Model, error) {
 			model_id = $2, display_name = $3, protocol = $4, base_url = $5,
 			api_key = $6, advanced_config = $7, credit_multiplier = $8,
 			updated_at = now()
-		WHERE id = $1 AND ownership_type = 'system' AND deleted_at IS NULL
+		WHERE id = $1 AND ownership_type = $9 AND owner_user_id = $10 AND deleted_at IS NULL
 		RETURNING id, ownership_type, owner_user_id, model_id, display_name,
 			protocol, base_url, api_key, advanced_config, credit_multiplier,
 			enabled, created_at, updated_at
 	`, item.ID, item.ModelID, item.DisplayName, item.Protocol, item.BaseURL,
-		item.APIKey, advanced, item.CreditMultiplier))
+		item.APIKey, advanced, item.CreditMultiplier, ownership, item.OwnerUserID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Model{}, ErrNotFound
 	}
@@ -120,8 +129,10 @@ func (p *Postgres) Update(ctx context.Context, item Model) (Model, error) {
 	}
 	item.Authorization = normalizeAuthorization(authorization)
 	item.GrantorUserID = grantorUserID
-	if err := replaceGrants(ctx, tx, item); err != nil {
-		return Model{}, err
+	if ownership == "system" {
+		if err := replaceGrants(ctx, tx, item); err != nil {
+			return Model{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Model{}, err
@@ -151,6 +162,14 @@ func (p *Postgres) SetEnabled(ctx context.Context, id string, enabled bool) (Mod
 }
 
 func (p *Postgres) Delete(ctx context.Context, id string) error {
+	return p.delete(ctx, id, "system", "")
+}
+
+func (p *Postgres) DeleteUser(ctx context.Context, id, userID string) error {
+	return p.delete(ctx, id, "user", userID)
+}
+
+func (p *Postgres) delete(ctx context.Context, id, ownership, userID string) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -158,8 +177,8 @@ func (p *Postgres) Delete(ctx context.Context, id string) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 	result, err := tx.Exec(ctx, `
 		UPDATE models SET deleted_at = now(), enabled = false, updated_at = now()
-		WHERE id = $1 AND ownership_type = 'system' AND deleted_at IS NULL
-	`, id)
+		WHERE id = $1 AND ownership_type = $2 AND ($2 = 'system' OR owner_user_id = NULLIF($3, '')::uuid) AND deleted_at IS NULL
+	`, id, ownership, userID)
 	if err != nil {
 		return err
 	}
@@ -182,7 +201,14 @@ func (p *Postgres) ListAvailable(ctx context.Context, userID string, isAdmin boo
 	if err != nil {
 		return nil, fmt.Errorf("查询可用模型: %w", err)
 	}
-	return scanModels(rows)
+	models, err := scanModels(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.loadPeople(ctx, models, userID); err != nil {
+		return nil, err
+	}
+	return models, nil
 }
 
 func (p *Postgres) Resolve(ctx context.Context, userID, id string) (Model, error) {
@@ -204,7 +230,7 @@ func (p *Postgres) Resolve(ctx context.Context, userID, id string) (Model, error
 		JOIN users u ON u.id = $1
 		WHERE m.id = $2 AND m.enabled AND m.deleted_at IS NULL
 			AND (
-				u.role = 'admin'
+				(u.role = 'admin' AND m.ownership_type = 'system')
 				OR m.owner_user_id = $1
 				OR EXISTS (
 					SELECT 1 FROM resource_access_grants rag
@@ -284,7 +310,7 @@ const availableModelSelect = `
 	FROM models m
 	WHERE m.enabled AND m.deleted_at IS NULL
 		AND (
-			$2
+			($2 AND m.ownership_type = 'system')
 			OR m.owner_user_id = $1
 			OR EXISTS (
 				SELECT 1 FROM resource_access_grants rag
@@ -336,6 +362,7 @@ func (p *Postgres) loadGrants(ctx context.Context, models []Model) error {
 	ids := make([]string, 0, len(models))
 	byID := make(map[string]*Model, len(models))
 	for index := range models {
+		models[index].Authorization = normalizeAuthorization(models[index].Authorization)
 		ids = append(ids, models[index].ID)
 		byID[models[index].ID] = &models[index]
 	}
@@ -402,4 +429,62 @@ func normalizeAuthorization(value Authorization) Authorization {
 	value.UserIDs = unique(value.UserIDs)
 	value.GroupIDs = unique(value.GroupIDs)
 	return value
+}
+
+// 与分享、删除使用同一模型行锁，避免删除后仍写入授权。
+func (p *Postgres) LockOwned(ctx context.Context, tx pgx.Tx, id, actor string) error {
+	var found string
+	err := tx.QueryRow(ctx, `SELECT id FROM models WHERE id=$1 AND owner_user_id=$2 AND ownership_type='user' AND deleted_at IS NULL FOR UPDATE`, id, actor).Scan(&found)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return resource.NotFound
+	}
+	return err
+}
+
+func (p *Postgres) TouchShared(ctx context.Context, tx pgx.Tx, id string) error {
+	_, err := tx.Exec(ctx, `UPDATE models SET updated_at=now() WHERE id=$1`, id)
+	return err
+}
+
+func (p *Postgres) loadPeople(ctx context.Context, models []Model, actor string) error {
+	ids := make([]string, 0, len(models))
+	byID := make(map[string]*Model, len(models))
+	for i := range models {
+		if models[i].OwnershipType != "user" {
+			continue
+		}
+		ids = append(ids, models[i].ID)
+		byID[models[i].ID] = &models[i]
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := database.Reader(ctx, p.pool).Query(ctx, `
+ SELECT m.id, u.id, u.name, u.email, true AS creator
+ FROM models m JOIN users u ON u.id=m.owner_user_id
+ WHERE m.id::text=ANY($1) AND m.owner_user_id<>$2
+ UNION ALL
+ SELECT m.id, u.id, u.name, u.email, false AS creator
+ FROM models m JOIN resource_access_grants g ON g.resource_type='model' AND g.resource_id=m.id
+ JOIN users u ON u.id=g.user_id
+ WHERE m.id::text=ANY($1) AND m.owner_user_id=$2 AND u.id<>$2 AND u.deleted_at IS NULL
+ ORDER BY 1, 3, 2`, ids, actor)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var person Subject
+		var creator bool
+		if err := rows.Scan(&id, &person.ID, &person.Name, &person.Email, &creator); err != nil {
+			return err
+		}
+		if creator {
+			byID[id].Creator = &person
+		} else {
+			byID[id].SharedUsers = append(byID[id].SharedUsers, person)
+		}
+	}
+	return rows.Err()
 }
