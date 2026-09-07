@@ -127,7 +127,7 @@ migrations/<唯一版本>_<feature>_*.sql
 
 ## 本地启动
 
-启动前提供 PostgreSQL 连接地址：
+启动前提供 PostgreSQL 连接地址，以及已初始化 Bucket 的 `MONKEYAI_S3_ENDPOINT`、`MONKEYAI_S3_ACCESS_KEY` 和 `MONKEYAI_S3_SECRET_KEY`（详见上层 README）：
 
 ```bash
 export MONKEYAI_DATABASE_URL='postgres://monkeyai:password@127.0.0.1:5432/monkeyai?sslmode=disable'
@@ -138,4 +138,20 @@ go run ./cmd/server
 
 空数据库首次启动时，必须通过 `MONKEYAI_INITIAL_ADMIN_EMAIL` 和 `MONKEYAI_INITIAL_ADMIN_PASSWORD` 创建管理员账号，可选 `MONKEYAI_INITIAL_ADMIN_NAME` 设置显示名称。密码至少 12 个字符；未配置时服务会拒绝启动，避免产生无法管理的实例。服务只在用户表为空时创建账号，不会在后续启动时重置密码。创建完成后应移除密码环境变量。完整登录流程见 [`../design/agent-auth-settings.md`](../design/agent-auth-settings.md)。
 
-服务提供 `/healthz` 存活检查和 `/readyz` 数据库就绪检查。pprof 默认单独监听 `127.0.0.1:6060`，入口为 `/debug/pprof/`，不对业务端口暴露。
+服务提供 `/healthz` 存活检查和 `/readyz` 数据库及 RustFS Bucket 就绪检查。pprof 默认单独监听 `127.0.0.1:6060`，入口为 `/debug/pprof/`，不对业务端口暴露。
+
+## 资源功能验证
+
+`go test ./...` 和 `go vet ./...` 运行常规检查。真实 PostgreSQL / RustFS 集成验证需要：
+
+```bash
+export MONKEYAI_TEST_DATABASE_URL='postgres://测试账号:测试密码@127.0.0.1:5432/测试库?sslmode=disable'
+export MONKEYAI_S3_ENDPOINT='http://127.0.0.1:9000'
+export MONKEYAI_S3_ACCESS_KEY='测试访问密钥'
+export MONKEYAI_S3_SECRET_KEY='测试访问密钥密码'
+go test ./... -count=1
+```
+
+集成测试创建独立随机 schema，测试结束后删除该 schema，不重置其他 schema；必须使用测试数据库和测试 Bucket。测试包括版本 1 的 up/down/up、Cookie 管理员身份与 Agent Bearer 身份、权限差异、配置 ETag、技能字节上传/重建/下载、专家委托、撤权、真实 MCP HTTP 协议、用户目录隔离及本地 OAuth state/PKCE 回调防重放。测试可能留下不可变技能对象，仅位于测试 Bucket。
+
+各业务服务显式注册到 `internal/app`。`resource.CRUD` 只接收服务端定义的表名和字段白名单，业务约束及关系事务由 `rule`、`skill`、`expert`、`mcp` 提供。Agent 配置在同一个 PostgreSQL Repeatable Read 视图中聚合，读取失败会使整个请求失败。

@@ -1,4 +1,18 @@
-import { useState, type FormEvent } from "react"
+import { api } from "@/lib/api"
+import {
+  base,
+  ROOT_GROUP,
+  grants,
+  selection,
+  match,
+  saveResource,
+  listResources,
+  useResources,
+  useSubjects,
+  type ResourceRow,
+} from "@/lib/resources"
+import { ResourceNotice } from "@/components/resource-notice"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import {
   Delete02Icon,
   Edit02Icon,
@@ -22,7 +36,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -89,6 +103,10 @@ type McpToolConfig = {
 }
 
 type McpServer = {
+  iconPath: string
+  revision: number
+  providerId: string
+  oauthConfig: Record<string, string>
   id: string
   name: string
   description: string
@@ -101,192 +119,35 @@ type McpServer = {
   centralizedAuthorized: boolean
   authorization: AuthorizationSelection
   connectionStatus: ConnectionStatus
+  enabled: boolean
   toolCount: number
 }
 
-const ADMIN_CREATOR = "MonkeyAI Admin"
-
-const TOOL_NAMES_BY_SERVER: Record<string, string[]> = {
-  "mcp-google-drive": [
-    "search_files",
-    "read_file",
-    "list_shared_drives",
-    "list_files",
-    "get_file_metadata",
-    "download_file",
-  ],
-  "mcp-github": [
-    "search_code",
-    "get_file_contents",
-    "list_issues",
-    "create_issue",
-    "list_pull_requests",
-    "get_pull_request",
-    "create_pull_request_review",
-  ],
-  "mcp-postgres": [
-    "list_schemas",
-    "list_tables",
-    "describe_table",
-    "query",
-    "explain_query",
-  ],
-  "mcp-sentry": [
-    "list_issues",
-    "get_issue_details",
-    "search_events",
-    "list_projects",
-  ],
+function toServer(row: ResourceRow): McpServer {
+  return {
+    id: row.id,
+    revision: row.revision,
+    iconPath: row.icon_path,
+    providerId: row.provider_id,
+    name: row.name,
+    description: row.description,
+    url: row.url,
+    authorizationMode: row.authorization_mode,
+    authorizationMethod:
+      row.authorization_method === "http_header"
+        ? "httpHeader"
+        : row.authorization_method,
+    hasHttpHeaders: row.credential_configured,
+    centralizedAuthorized: row.credential_configured,
+    authorization: selection(row.grants),
+    connectionStatus: row.connection_status,
+    type: row.ownership_type,
+    creator: row.owner_name ?? row.owner_user_id,
+    enabled: row.enabled,
+    toolCount: row.tool_count ?? 0,
+    oauthConfig: row.oauth_config ?? {},
+  }
 }
-
-const TOOL_DESCRIPTIONS: Record<string, string> = {
-  search_files: "按名称、内容或类型搜索文件。",
-  read_file: "读取指定文件的正文内容。",
-  list_shared_drives: "列出当前账号可以访问的共享云端硬盘。",
-  list_files: "列出指定目录或云端硬盘中的文件。",
-  get_file_metadata: "获取文件的名称、类型、大小和更新时间等信息。",
-  download_file: "下载指定文件的原始内容。",
-  search_code: "在 GitHub 仓库中搜索代码。",
-  get_file_contents: "读取 GitHub 仓库中的文件或目录内容。",
-  list_issues: "列出仓库中的 Issue。",
-  create_issue: "在指定仓库中创建 Issue。",
-  list_pull_requests: "列出仓库中的 Pull Request。",
-  get_pull_request: "获取指定 Pull Request 的详细信息。",
-  create_pull_request_review: "为 Pull Request 创建评审。",
-  list_schemas: "列出数据库中的 Schema。",
-  list_tables: "列出指定 Schema 中的数据表。",
-  describe_table: "查看数据表的字段、类型和约束。",
-  query: "执行只读 SQL 查询并返回结果。",
-  explain_query: "分析 SQL 查询的执行计划。",
-  get_issue_details: "获取线上问题的详情和上下文。",
-  search_events: "根据条件搜索错误和性能事件。",
-  list_projects: "列出当前账号可以访问的项目。",
-}
-
-function createToolConfigs(server: McpServer): McpToolConfig[] {
-  const knownNames = TOOL_NAMES_BY_SERVER[server.id] ?? []
-  const namePrefix = server.name
-    .toLocaleLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, "_")
-
-  return Array.from({ length: server.toolCount }, (_, index) => {
-    const name = knownNames[index] ?? `${namePrefix}_tool_${index + 1}`
-
-    return {
-      id: `${server.id}-tool-${index + 1}`,
-      name,
-      description:
-        TOOL_DESCRIPTIONS[name] ?? `执行 ${name.replaceAll("_", " ")} 操作。`,
-      enabled: true,
-      pointsPerCall: 0,
-    }
-  })
-}
-
-const INITIAL_MCP_SERVERS: McpServer[] = [
-  {
-    id: "mcp-google-drive",
-    name: "Google Drive",
-    description: "搜索和读取团队共享云盘中的文件与文档。",
-    type: "system",
-    creator: ADMIN_CREATOR,
-    url: "https://mcp.example.com/google-drive/mcp",
-    authorizationMode: "independent",
-    authorizationMethod: "oauth",
-    hasHttpHeaders: false,
-    centralizedAuthorized: false,
-    authorization: {
-      groupIds: ["administrators", "product", "engineering"],
-      memberIds: [],
-    },
-    connectionStatus: "connected",
-    toolCount: 14,
-  },
-  {
-    id: "mcp-github",
-    name: "GitHub",
-    description: "查询仓库、Issue、Pull Request，并执行研发协作操作。",
-    type: "system",
-    creator: ADMIN_CREATOR,
-    url: "https://api.githubcopilot.com/mcp/",
-    authorizationMode: "centralized",
-    authorizationMethod: "oauth",
-    hasHttpHeaders: false,
-    centralizedAuthorized: true,
-    authorization: {
-      groupIds: ["administrators", "engineering"],
-      memberIds: [],
-    },
-    connectionStatus: "connected",
-    toolCount: 26,
-  },
-  {
-    id: "mcp-postgres",
-    name: "PostgreSQL",
-    description: "以只读方式查询业务数据库中的结构化数据。",
-    type: "system",
-    creator: ADMIN_CREATOR,
-    url: "https://mcp.example.com/postgres/mcp",
-    authorizationMode: "centralized",
-    authorizationMethod: "httpHeader",
-    hasHttpHeaders: true,
-    centralizedAuthorized: true,
-    authorization: {
-      groupIds: ["administrators", "engineering"],
-      memberIds: [],
-    },
-    connectionStatus: "unknown",
-    toolCount: 12,
-  },
-  {
-    id: "mcp-sentry",
-    name: "Sentry",
-    description: "检索线上错误、事件详情和性能问题，辅助故障排查。",
-    type: "system",
-    creator: ADMIN_CREATOR,
-    url: "https://mcp.sentry.example.com/sse",
-    authorizationMode: "centralized",
-    authorizationMethod: "httpHeader",
-    hasHttpHeaders: true,
-    centralizedAuthorized: true,
-    authorization: {
-      groupIds: ["engineering", "operations"],
-      memberIds: [],
-    },
-    connectionStatus: "error",
-    toolCount: 9,
-  },
-  {
-    id: "mcp-user-notion",
-    name: "Notion",
-    description: "连接个人 Notion 工作区，读取页面和数据库内容。",
-    type: "user",
-    creator: "陈晨",
-    url: "https://mcp.notion.com/mcp",
-    authorizationMode: "independent",
-    authorizationMethod: "oauth",
-    hasHttpHeaders: false,
-    centralizedAuthorized: false,
-    authorization: { groupIds: [], memberIds: ["member-01"] },
-    connectionStatus: "connected",
-    toolCount: 8,
-  },
-  {
-    id: "mcp-user-playwright",
-    name: "Browser Automation",
-    description: "通过远程浏览器服务访问网页并完成个人工作流。",
-    type: "user",
-    creator: "林玫",
-    url: "https://mcp.browser.example.com/mcp",
-    authorizationMode: "independent",
-    authorizationMethod: "httpHeader",
-    hasHttpHeaders: false,
-    centralizedAuthorized: false,
-    authorization: { groupIds: [], memberIds: ["member-04"] },
-    connectionStatus: "connected",
-    toolCount: 21,
-  },
-]
 
 function getCreatorInitials(creator: string) {
   return creator.trim().slice(0, 2).toUpperCase()
@@ -309,8 +170,16 @@ function isValidHttpHeaders(value: string) {
 
 export function ToolsPage() {
   const { t } = useTranslation()
-  const [servers, setServers] = useState(INITIAL_MCP_SERVERS)
+  const remote = useResources("/connectors", toServer)
+  const pendingProvider = useRef("")
+  const servers = remote.items
+  const reload = remote.reload
+  const subjects = useSubjects()
   const [activeType, setActiveType] = useState<McpServerType>("system")
+  const [providers, setProviders] = useState<ResourceRow[]>([])
+  const [providerError, setProviderError] = useState("")
+  const [selectedProviderId, setSelectedProviderId] = useState("")
+  const [oauthRequest, setOAuthRequest] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingServerId, setEditingServerId] = useState<string | null>(null)
   const [serverPendingDeletion, setServerPendingDeletion] =
@@ -322,32 +191,78 @@ export function ToolsPage() {
   const [centralizedAuthorized, setCentralizedAuthorized] = useState(false)
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
-    groupIds: ["all-members"],
+    groupIds: [ROOT_GROUP],
     memberIds: [],
   })
   const [testingServerId, setTestingServerId] = useState<string | null>(null)
   const [viewingServerId, setViewingServerId] = useState<string | null>(null)
-  const [toolConfigs, setToolConfigs] = useState<
-    Record<string, McpToolConfig[]>
-  >(() =>
-    Object.fromEntries(
-      INITIAL_MCP_SERVERS.map((server) => [
-        server.id,
-        createToolConfigs(server),
-      ])
-    )
-  )
   const [toolDrafts, setToolDrafts] = useState<McpToolConfig[]>([])
   const editingServer = servers.find((server) => server.id === editingServerId)
   const viewingServer = servers.find((server) => server.id === viewingServerId)
 
+  useEffect(() => {
+    if (!dialogOpen) return
+    let cancelled = false
+    listResources(base + "/connector-providers")
+      .then((r) => {
+        if (!cancelled) {
+          setProviders(r.items)
+          setProviderError("")
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setProviderError(e.message)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [dialogOpen])
+  useEffect(() => {
+    if (!oauthRequest) return
+    const timer = window.setInterval(() => {
+      api<{ status: string }>(
+        base + `/connector-authorizations/${oauthRequest}`
+      )
+        .then((result) => {
+          if (result.status !== "pending" && result.status !== "processing") {
+            setOAuthRequest(null)
+            setCentralizedAuthorized(result.status === "authorized")
+            void reload().catch((e) => setProviderError(e.message))
+          }
+        })
+        .catch(() => setOAuthRequest(null))
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [oauthRequest, reload])
+  const selectedProvider = providers.find((p) => p.id === selectedProviderId)
+  const selectProvider = (id: string) => {
+    setSelectedProviderId(id)
+    const provider = providers.find((p) => p.id === id)
+    if (provider) {
+      setAuthorizationMode(provider.authorization_mode)
+      setAuthorizationMethod(
+        provider.authorization_method === "http_header" ? "httpHeader" : "oauth"
+      )
+    }
+  }
+  const setConnectionEnabled = async (server: McpServer) => {
+    await remote.run(async () => {
+      await api(base + `/connectors/${server.id}/enabled`, {
+        method: "PATCH",
+        headers: match(server.revision),
+        body: JSON.stringify({ enabled: !server.enabled }),
+      })
+    })
+  }
   const resetDraft = () => {
+    pendingProvider.current = ""
+    setSelectedProviderId("")
     setEditingServerId(null)
     setAuthorizationMode("independent")
     setAuthorizationMethod("oauth")
     setCentralizedAuthorized(false)
     setAuthorizationOpen(false)
-    setAuthorization({ groupIds: ["all-members"], memberIds: [] })
+    setAuthorization({ groupIds: [ROOT_GROUP], memberIds: [] })
   }
 
   const handleDialogOpenChange = (open: boolean) => {
@@ -367,7 +282,7 @@ export function ToolsPage() {
     setDialogOpen(true)
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = event.currentTarget
     const formData = new FormData(form)
@@ -384,7 +299,6 @@ export function ToolsPage() {
         authorizationMethod === "httpHeader" &&
         !httpHeaders &&
         !editingServer?.hasHttpHeaders) ||
-      authorization.groupIds.length + authorization.memberIds.length === 0 ||
       editingServer?.type === "user"
     ) {
       return
@@ -399,82 +313,130 @@ export function ToolsPage() {
       return
     }
 
-    const serverDraft = {
-      name,
-      description,
-      url,
-      authorizationMode,
-      authorizationMethod:
-        authorizationMode === "none" ? null : authorizationMethod,
-      hasHttpHeaders:
+    await remote.run(async () => {
+      let providerId =
+        editingServer?.providerId ||
+        selectedProviderId ||
+        pendingProvider.current
+      if (!providerId) {
+        const provider = await saveResource("/connector-providers", {
+          identifier: crypto.randomUUID(),
+          name,
+          description,
+          url,
+          authorization_mode: authorizationMode,
+          authorization_method:
+            authorizationMode === "none"
+              ? null
+              : authorizationMethod === "httpHeader"
+                ? "http_header"
+                : "oauth",
+          oauth_config: {
+            authorization_url: String(
+              formData.get("oauthAuthorizationURL") ?? ""
+            ),
+            token_url: String(formData.get("oauthTokenURL") ?? ""),
+            client_id: String(formData.get("oauthClientID") ?? ""),
+            scopes: String(formData.get("oauthScopes") ?? ""),
+          },
+          oauth_client_secret: String(formData.get("oauthClientSecret") ?? ""),
+        })
+        providerId = provider.id
+        pendingProvider.current = provider.id
+      }
+      const saved = await saveResource(
+        editingServer ? `/connectors/${editingServer.id}` : "/connectors",
+        {
+          provider_id: providerId,
+          name,
+          description,
+          url,
+          grants: grants(authorization),
+        },
+        editingServer?.revision
+      )
+      const icon = formData.get("icon")
+      if (icon instanceof File && icon.size > 0) {
+        const provider = await api<ResourceRow>(
+          base + `/connector-providers/${providerId}`
+        )
+        const data = new FormData()
+        data.set("icon", icon)
+        await api(base + `/connector-providers/${providerId}/icon`, {
+          method: "PUT",
+          headers: match(provider.revision),
+          body: data,
+        })
+      }
+      setEditingServerId(saved.id)
+      await remote.reload()
+      if (
+        httpHeaders &&
         authorizationMode === "centralized" &&
         authorizationMethod === "httpHeader"
-          ? Boolean(httpHeaders) || Boolean(editingServer?.hasHttpHeaders)
-          : false,
-      centralizedAuthorized:
-        authorizationMode === "centralized" &&
-        (authorizationMethod === "httpHeader" || centralizedAuthorized),
-      authorization,
-      connectionStatus: "unknown" as const,
-    }
-
-    if (editingServer) {
-      setServers((current) =>
-        current.map((server) =>
-          server.id === editingServer.id
-            ? { ...server, ...serverDraft }
-            : server
-        )
       )
-    } else {
-      setServers((current) => [
-        ...current,
-        {
-          ...serverDraft,
-          id: `mcp-server-${Date.now()}`,
-          type: "system",
-          creator: ADMIN_CREATOR,
-          toolCount: 0,
-        },
-      ])
-    }
-
-    form.reset()
-    handleDialogOpenChange(false)
+        await api(base + `/connectors/${saved.id}/credential`, {
+          method: "PUT",
+          body: JSON.stringify({ http_headers: JSON.parse(httpHeaders) }),
+        })
+      form.reset()
+      handleDialogOpenChange(false)
+    })
   }
-
-  const handleDeleteServer = () => {
-    if (!serverPendingDeletion || serverPendingDeletion.type !== "system")
-      return
-
-    setServers((current) =>
-      current.filter((server) => server.id !== serverPendingDeletion.id)
-    )
-    setServerPendingDeletion(null)
+  const handleDeleteServer = async () => {
+    if (!serverPendingDeletion) return
+    await remote.run(async () => {
+      await api(base + `/connectors/${serverPendingDeletion.id}`, {
+        method: "DELETE",
+        headers: match(serverPendingDeletion.revision),
+      })
+      setServerPendingDeletion(null)
+    })
   }
-
-  const handleTestConnection = (serverId: string) => {
-    setTestingServerId(serverId)
-    window.setTimeout(() => {
-      setServers((current) =>
-        current.map((server) =>
-          server.id === serverId
-            ? {
-                ...server,
-                connectionStatus: "connected",
-                toolCount: Math.max(server.toolCount, 1),
-              }
-            : server
-        )
+  const handleTestConnection = async (id: string) => {
+    setTestingServerId(id)
+    await remote.run(async () => {
+      await api(base + `/connectors/${id}/test`, { method: "POST" })
+    })
+    setTestingServerId(null)
+  }
+  const handleViewTools = async (server: McpServer) => {
+    await remote.run(async () => {
+      const result = await api<{
+        items: {
+          id: string
+          name: string
+          description: string
+          enabled: boolean
+          credits_per_call: number
+        }[]
+      }>(base + `/connectors/${server.id}/tools`)
+      setToolDrafts(
+        result.items.map((t) => ({
+          id: t.id,
+          name: t.name,
+          description: t.description,
+          enabled: t.enabled,
+          pointsPerCall: Number(t.credits_per_call),
+        }))
       )
-      setTestingServerId(null)
-    }, 1200)
+      setViewingServerId(server.id)
+    })
   }
-
-  const handleViewTools = (server: McpServer) => {
-    const configs = toolConfigs[server.id] ?? createToolConfigs(server)
-    setToolDrafts(configs.map((tool) => ({ ...tool })))
-    setViewingServerId(server.id)
+  const authorize = async () => {
+    if (!editingServer) return
+    const popup = window.open("about:blank", "_blank")
+    if (popup) popup.opener = null
+    const ok = await remote.run(async () => {
+      const result = await api<{ id: string; authorization_url: string }>(
+        base + `/connectors/${editingServer.id}/oauth/authorizations`,
+        { method: "POST" }
+      )
+      setOAuthRequest(result.id)
+      if (popup) popup.location.href = result.authorization_url
+      else window.location.assign(result.authorization_url)
+    })
+    if (!ok) popup?.close()
   }
 
   const updateToolDraft = (
@@ -488,26 +450,29 @@ export function ToolsPage() {
     )
   }
 
-  const handleSaveTools = () => {
-    if (
-      !viewingServer ||
-      toolDrafts.some(
-        (tool) => !Number.isFinite(tool.pointsPerCall) || tool.pointsPerCall < 0
-      )
-    ) {
-      return
-    }
-
-    setToolConfigs((current) => ({
-      ...current,
-      [viewingServer.id]: toolDrafts.map((tool) => ({ ...tool })),
-    }))
-    setViewingServerId(null)
-    setToolDrafts([])
+  const handleSaveTools = async () => {
+    if (!viewingServer) return
+    await remote.run(async () => {
+      for (const tool of toolDrafts) {
+        await api(base + `/connectors/${viewingServer.id}/tools/${tool.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            enabled: tool.enabled,
+            credits_per_call: tool.pointsPerCall,
+          }),
+        })
+      }
+      setViewingServerId(null)
+    })
   }
 
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
+      <ResourceNotice
+        error={remote.error || subjects.error || providerError}
+        loading={remote.loading}
+        pending={remote.pending}
+      />
       <Tabs
         className="gap-4"
         value={activeType}
@@ -541,7 +506,9 @@ export function ToolsPage() {
               >
                 <form
                   className="flex flex-col gap-6"
-                  key={editingServer?.id ?? "new-mcp-server"}
+                  key={
+                    editingServer?.id ?? `new-mcp-server-${selectedProviderId}`
+                  }
                   onSubmit={handleSubmit}
                 >
                   <DialogHeader>
@@ -556,6 +523,28 @@ export function ToolsPage() {
                   </DialogHeader>
 
                   <FieldGroup className="gap-5">
+                    {!editingServer && (
+                      <Field>
+                        <FieldLabel htmlFor="connector-provider">
+                          {t("resources.providerTemplate")}
+                        </FieldLabel>
+                        <select
+                          id="connector-provider"
+                          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                          value={selectedProviderId}
+                          onChange={(e) => selectProvider(e.target.value)}
+                        >
+                          <option value="">{t("resources.newProvider")}</option>
+                          {providers
+                            .filter((p) => p.enabled)
+                            .map((p) => (
+                              <option value={p.id} key={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                        </select>
+                      </Field>
+                    )}
                     <Field>
                       <FieldLabel htmlFor="mcp-name">
                         {t("pages.tools.name")}
@@ -566,6 +555,17 @@ export function ToolsPage() {
                         name="name"
                         placeholder={t("pages.tools.namePlaceholder")}
                         required
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="mcp-icon">
+                        {t("resources.providerIcon")}
+                      </FieldLabel>
+                      <Input
+                        id="mcp-icon"
+                        name="icon"
+                        type="file"
+                        accept="image/png,image/jpeg"
                       />
                     </Field>
                     <Field>
@@ -586,7 +586,10 @@ export function ToolsPage() {
                         {t("pages.tools.url")}
                       </FieldLabel>
                       <Input
-                        defaultValue={editingServer?.url}
+                        defaultValue={
+                          editingServer?.url ?? selectedProvider?.url
+                        }
+                        readOnly={Boolean(editingServer || selectedProvider)}
                         id="mcp-url"
                         name="url"
                         placeholder={t("pages.tools.urlPlaceholder")}
@@ -600,7 +603,10 @@ export function ToolsPage() {
                         <Tabs
                           value={authorizationMode}
                           onValueChange={(value) => {
-                            setAuthorizationMode(value as McpAuthorizationMode)
+                            if (!editingServer && !selectedProvider)
+                              setAuthorizationMode(
+                                value as McpAuthorizationMode
+                              )
                             setCentralizedAuthorized(false)
                           }}
                         >
@@ -623,9 +629,10 @@ export function ToolsPage() {
                           <Tabs
                             value={authorizationMethod}
                             onValueChange={(value) => {
-                              setAuthorizationMethod(
-                                value as McpAuthorizationMethod
-                              )
+                              if (!editingServer && !selectedProvider)
+                                setAuthorizationMethod(
+                                  value as McpAuthorizationMethod
+                                )
                               setCentralizedAuthorized(false)
                             }}
                           >
@@ -654,6 +661,66 @@ export function ToolsPage() {
                               : "pages.tools.centralizedAuthorizationDescription"
                         )}
                       </FieldDescription>
+                      {authorizationMode !== "none" &&
+                        authorizationMethod === "oauth" && (
+                          <>
+                            {!editingServer && (
+                              <p className="text-sm text-muted-foreground">
+                                {t("resources.saveBeforeAuthorize")}
+                              </p>
+                            )}
+                            {(
+                              [
+                                [
+                                  "oauthAuthorizationURL",
+                                  "authorization_url",
+                                  "OAuth Authorization URL",
+                                ],
+                                [
+                                  "oauthTokenURL",
+                                  "token_url",
+                                  "OAuth Token URL",
+                                ],
+                                [
+                                  "oauthClientID",
+                                  "client_id",
+                                  "OAuth Client ID",
+                                ],
+                                ["oauthScopes", "scopes", "OAuth Scopes"],
+                                [
+                                  "oauthClientSecret",
+                                  "secret",
+                                  "OAuth Client Secret",
+                                ],
+                              ] as const
+                            ).map(([name, key, label]) => (
+                              <Field key={name}>
+                                <FieldLabel htmlFor={name}>{label}</FieldLabel>
+                                <Input
+                                  id={name}
+                                  name={name}
+                                  type={key === "secret" ? "password" : "text"}
+                                  defaultValue={
+                                    editingServer?.oauthConfig[key] ??
+                                    selectedProvider?.oauth_config?.[key] ??
+                                    ""
+                                  }
+                                  readOnly={Boolean(
+                                    editingServer || selectedProvider
+                                  )}
+                                  required={
+                                    !editingServer &&
+                                    [
+                                      "authorization_url",
+                                      "token_url",
+                                      "client_id",
+                                    ].includes(key)
+                                  }
+                                />
+                              </Field>
+                            ))}
+                          </>
+                        )}
                       {authorizationMode ===
                       "none" ? null : authorizationMethod === "oauth" ? (
                         authorizationMode === "independent" ? (
@@ -687,7 +754,12 @@ export function ToolsPage() {
                               <Button
                                 type="button"
                                 variant="outline"
-                                onClick={() => setCentralizedAuthorized(true)}
+                                onClick={authorize}
+                                disabled={
+                                  !editingServer ||
+                                  remote.pending ||
+                                  Boolean(oauthRequest)
+                                }
                               >
                                 {centralizedAuthorized
                                   ? t("pages.tools.reauthorize")
@@ -737,6 +809,8 @@ export function ToolsPage() {
                         {t("pages.tools.availabilityScope")}
                       </FieldLabel>
                       <AuthorizationSelect
+                        groups={subjects.groups}
+                        members={subjects.members}
                         id="mcp-authorization"
                         open={authorizationOpen}
                         placeholder={t("pages.tools.authorizationPlaceholder")}
@@ -751,13 +825,18 @@ export function ToolsPage() {
                     </Field>
                   </FieldGroup>
 
+                  <ResourceNotice
+                    error={remote.error || subjects.error || providerError}
+                    loading={false}
+                    pending={remote.pending}
+                  />
                   <DialogFooter>
                     <DialogClose
                       render={<Button type="button" variant="outline" />}
                     >
                       {t("pages.tools.cancel")}
                     </DialogClose>
-                    <Button type="submit">
+                    <Button type="submit" disabled={remote.pending}>
                       {editingServer
                         ? t("pages.tools.save")
                         : t("pages.tools.create")}
@@ -777,7 +856,9 @@ export function ToolsPage() {
                 .map((server) => {
                   const authorizationNames = getAuthorizationNames(
                     server.authorization,
-                    t
+                    t,
+                    subjects.flatGroups,
+                    subjects.members
                   )
                   const connectionLabel = t(
                     `pages.tools.statuses.${server.connectionStatus}`
@@ -794,8 +875,11 @@ export function ToolsPage() {
                       <CardHeader>
                         <div className="flex min-w-0 items-start gap-3">
                           <Avatar size="lg">
+                            {server.iconPath && (
+                              <AvatarImage src={server.iconPath} alt="" />
+                            )}
                             <AvatarFallback>
-                              {server.creator === ADMIN_CREATOR ? (
+                              {server.type === "system" ? (
                                 <HugeiconsIcon
                                   icon={McpServerIcon}
                                   strokeWidth={2}
@@ -816,7 +900,7 @@ export function ToolsPage() {
                               {server.creator}
                             </CardDescription>
                           </div>
-                          {server.type === "system" && (
+                          {
                             <DropdownMenu>
                               <DropdownMenuTrigger
                                 render={
@@ -834,7 +918,18 @@ export function ToolsPage() {
                                 />
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuGroup>
+                                <DropdownMenuGroup
+                                  hidden={server.type !== "system"}
+                                >
+                                  <DropdownMenuItem
+                                    onClick={() => setConnectionEnabled(server)}
+                                  >
+                                    {t(
+                                      server.enabled
+                                        ? "resources.disable"
+                                        : "resources.enable"
+                                    )}
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={() => handleViewTools(server)}
                                   >
@@ -868,7 +963,9 @@ export function ToolsPage() {
                                       : t("pages.tools.testConnection")}
                                   </DropdownMenuItem>
                                 </DropdownMenuGroup>
-                                <DropdownMenuSeparator />
+                                <DropdownMenuSeparator
+                                  hidden={server.type !== "system"}
+                                />
                                 <DropdownMenuGroup>
                                   <DropdownMenuItem
                                     variant="destructive"
@@ -885,7 +982,7 @@ export function ToolsPage() {
                                 </DropdownMenuGroup>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          )}
+                          }
                         </div>
                       </CardHeader>
                       <CardContent className="flex flex-1 flex-col gap-4">
@@ -968,7 +1065,7 @@ export function ToolsPage() {
                   <TableHead className="w-24 text-center">
                     {t("pages.tools.toolEnabled")}
                   </TableHead>
-                  {viewingServer?.authorizationMode === "centralized" && (
+                  {Boolean(viewingServer) && (
                     <TableHead className="w-36">
                       {t("pages.tools.pointsPerCall")}
                     </TableHead>
@@ -1005,7 +1102,7 @@ export function ToolsPage() {
                         }
                       />
                     </TableCell>
-                    {viewingServer?.authorizationMode === "centralized" && (
+                    {Boolean(viewingServer) && (
                       <TableCell>
                         <Input
                           aria-label={t("pages.tools.pointsFor", {
@@ -1031,15 +1128,24 @@ export function ToolsPage() {
             </Table>
           </div>
 
+          <ResourceNotice
+            error={remote.error || subjects.error || providerError}
+            loading={false}
+            pending={remote.pending}
+          />
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" />}>
               {t("pages.tools.cancel")}
             </DialogClose>
             <Button
-              disabled={toolDrafts.some(
-                (tool) =>
-                  !Number.isFinite(tool.pointsPerCall) || tool.pointsPerCall < 0
-              )}
+              disabled={
+                remote.pending ||
+                toolDrafts.some(
+                  (tool) =>
+                    !Number.isFinite(tool.pointsPerCall) ||
+                    tool.pointsPerCall < 0
+                )
+              }
               type="button"
               onClick={handleSaveTools}
             >

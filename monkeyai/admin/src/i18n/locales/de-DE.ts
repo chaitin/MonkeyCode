@@ -1,6 +1,7 @@
 import { enUS } from "./en-US.ts"
 
 export const deDE = {
+  resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI-Administration",
     adminConsole: "Administrationskonsole",

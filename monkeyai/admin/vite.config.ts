@@ -8,8 +8,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      "/api": "http://localhost:8080",
-      "/oauth": "http://localhost:8080",
+      "/api": process.env.MONKEYAI_DEV_BACKEND_URL ?? "http://localhost:8080",
+      "/oauth": process.env.MONKEYAI_DEV_BACKEND_URL ?? "http://localhost:8080",
     },
   },
   resolve: {

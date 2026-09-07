@@ -63,3 +63,33 @@ docker compose down
 ```
 
 PostgreSQL 数据保存在 `./data/postgres`，执行 `docker compose down` 不会删除该目录。如需清空数据库，请先停止服务，再手动删除 `./data/postgres`；该操作不可恢复。
+
+## 资源管理与 RustFS
+
+技能、规则、专家和 MCP 连接使用 PostgreSQL 持久化；技能 ZIP 和连接模板图标字节保存在私有 RustFS Bucket。后台和工作 Agent 均经后端鉴权下载，不直接接触对象存储凭据；技能包在返回前校验大小与 SHA-256，发现损坏时拒绝下发。技能编辑会重建 ZIP 并计算 SHA-256，保留包内附件。
+
+首次重新部署按以下顺序操作：
+
+1. 使用新数据库/数据目录，按 `.env.example` 设置数据库、管理员和 RustFS 凭据。已有数据需要保留时，先完成备份，另建部署目录。
+2. 构建镜像：`docker compose build`。
+3. 执行 `docker compose up -d rustfs`，再执行 `docker compose run --rm rustfs-init`。初始化只检查和创建资源 Bucket，重复执行不会删除对象。
+4. 在本机 `http://127.0.0.1:9001` 的 RustFS 控制台创建应用凭据，授予 `monkeyai-resources` Bucket 的 `s3:ListBucket`、`s3:GetBucketLocation` 和其中对象的 `s3:GetObject`、`s3:PutObject`、`s3:DeleteObject` 权限；填入 `MONKEYAI_S3_ACCESS_KEY` / `MONKEYAI_S3_SECRET_KEY`。初始化命令单独使用有建桶权限的 RustFS 管理凭据。
+5. 执行 `docker compose up -d`。依赖顺序为 PostgreSQL → migrate，以及 RustFS → rustfs-init，然后启动后端和管理页。
+
+RustFS 镜像固定到已联调的 digest `sha256:b7014e0ce2bc703c1316b3ef760e29dfae61fe4a50d1a66fa89638e0f8ea211f`，可通过 `RUSTFS_IMAGE` 覆盖。数据位于 `./data/rustfs`，日志位于 `./data/rustfs-logs`；初始化服务只调整这两个目录的所有者为 `10001:10001`，不修改其他宿主机目录。S3 API 默认仅在 Compose 网络开放，控制台只绑定宿主机回环地址。
+
+`/healthz` 表示进程存活；`/readyz` 检查数据库和 Bucket（S3 检查超时 3 秒，缓存 5 秒）。Nginx 允许 21 MiB 请求体，技能文件限 20 MiB，解包限 50 MiB/500 个条目，拒绝路径穿越、重复项、链接及不合法的 `SKILL.md`。
+
+MCP 默认访问公网 HTTP(S) 目标；访问内网服务时用 `MONKEYAI_MCP_ALLOWED_CIDRS` 明确配置允许网段。连接使用真实 MCP 初始化和分页工具发现，拒绝自动重定向。新发现工具默认禁用。OAuth 固定回调为 `${MONKEYAI_PUBLIC_URL}/oauth/connectors/callback`，需要登记到上游 OAuth 应用。
+
+同一 Provider 可以创建多个 Connector，独立认证的目录按用户凭证隔离。已有实例的模板连接参数不能直接更换；新的地址或 OAuth 应用创建新模板并建立新连接。集中 Header/Token 只保存在后端；个人连接的敏感值不通过管理列表返回。
+
+Agent 继续使用 `/api/v1/config` 和 ETag，增加 `schema_version=2`、`rules`、`skills`、`experts`、`connectors`。通过专家清单和 `/api/v1/resources/resolve` 获取最终依赖；专家授权只委托其固定系统规则和技能，模型及连接仍单独检查授权。接口详见两份 OpenAPI。
+
+资源管理列表支持 `q`、`ownership_type`、`cursor` 和 `limit`（1—200），管理页面及关联选择器会读取全部分页。模板图标限 1 MiB 的 PNG/JPEG，由后端验证尺寸并经授权接口读取。
+
+当前工具下发声明 `capabilities: [catalog]`，包含工具目录与积分配置。本次不实现 MCP 生产调用网关、实际计费扣减或 Desktop/OhMyAgent 本地加载器；不下发不存在的执行地址。对象采用不可变 key，旧包与失败上传遗留对象保留，不在写事务中删除，以免破坏备份或正在下载的资源；清理时必须确认无数据库引用且超过备份保留窗口。
+
+备份应同时保留 PostgreSQL 快照与该快照引用的 RustFS 对象。恢复时先恢复对象和数据库，再用资源摘要验证技能下载。完整部署启动前不要清空 RustFS 数据卷。
+
+本地前端联调可设置 `MONKEYAI_DEV_BACKEND_URL` 指向单独的测试后端，避免占用现有实例端口。

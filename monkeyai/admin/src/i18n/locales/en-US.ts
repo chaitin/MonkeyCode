@@ -1,4 +1,25 @@
 export const enUS = {
+  resources: {
+    providerIcon:
+      "Template icon (PNG/JPEG, up to 1 MiB; shared by template connections)",
+    skillContent: "Skill instructions",
+    downloadPackage: "Download skill package",
+    providerTemplate: "Connection template",
+    newProvider: "Create a connection template",
+    enable: "Enable connection",
+    disable: "Disable connection",
+    requiredProvider: "This service is required",
+    allowTools: "Allowed tools, comma separated; empty allows all",
+    denyTools: "Denied tools, comma separated",
+    loading: "Loading…",
+    saving: "Saving…",
+    availableScope: "Available to",
+    selectScope: "Select users or groups",
+    defaultModel: "Default model",
+    noDefaultModel: "User selects a model",
+    saveBeforeAuthorize:
+      "Save the connection, then reopen it to authorize with OAuth.",
+  },
   app: {
     documentTitle: "MonkeyAI Admin",
     adminConsole: "Admin Console",

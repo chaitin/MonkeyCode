@@ -16,11 +16,16 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rule"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
 )
 
 type App struct {
@@ -82,7 +87,17 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	}
 	keys := apikey.NewService(apikey.NewPostgres(pool))
 	models := model.NewService(model.NewPostgres(pool)).WithKeyAuthenticator(keys)
-	agentConfig := agentconfig.NewService(settings, models, cfg.PublicURL)
+	storage, err := resource.NewS3(ctx)
+	if err != nil {
+		return nil, err
+	}
+	store := resource.NewStore(pool)
+	rules := rule.NewService(store)
+	skills := skill.NewService(store, storage)
+	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage)
+	experts := expert.NewService(store)
+	resources := agentconfig.NewResources(store, connectors, skills)
+	agentConfig := agentconfig.NewService(settings, models, cfg.PublicURL).WithResources(resources)
 
 	admin := chi.NewRouter()
 	admin.Use(identities.RequireAdmin)
@@ -90,18 +105,28 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	settings.RegisterAdmin(admin)
 	keys.RegisterAdmin(admin)
 	models.RegisterAdmin(admin)
+	store.RegisterAdmin(admin)
+	store.RegisterGrants(admin, map[string]*resource.CRUD{"rule": rules, "skill": skills.CRUD, "expert": experts.CRUD, "connector": connectors.Connectors})
+	rules.Register(admin)
+	skills.RegisterAdmin(admin)
+	connectors.RegisterAdmin(admin)
+	experts.RegisterAdmin(admin)
+	resources.RegisterAdmin(admin)
 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
 	identities.RegisterAgent(agent)
 	keys.RegisterAgent(agent)
 	agentConfig.RegisterAgent(agent)
+	connectors.RegisterAgent(agent)
+	resources.RegisterAgent(agent)
 
 	router := chi.NewRouter()
 	proxy.NewProxy(modelResolver{service: models}, logger).Register(router)
 	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
+	router.Get("/oauth/connectors/callback", connectors.Callback)
 	router.Mount("/oauth", identities.OAuthRouter())
-	router.Mount("/", httpapi.New(logger, pool, admin, agent, identities.AuthRouter()))
+	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage}, admin, agent, identities.AuthRouter()))
 	return router, nil
 }
 
@@ -162,4 +187,18 @@ func (a *App) Run(ctx context.Context) error {
 		completed++
 	}
 	return errors.Join(runErrors...)
+}
+
+type readiness struct {
+	pool    *pgxpool.Pool
+	storage resource.Storage
+}
+
+func (r readiness) Ping(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := r.pool.Ping(ctx); err != nil {
+		return err
+	}
+	return r.storage.Ping(ctx)
 }

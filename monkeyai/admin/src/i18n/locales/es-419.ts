@@ -1,6 +1,7 @@
 import { enUS } from "./en-US.ts"
 
 export const es419 = {
+  resources: enUS.resources,
   app: {
     documentTitle: "Administración de MonkeyAI",
     adminConsole: "Panel de administración",

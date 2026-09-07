@@ -1,6 +1,7 @@
 import { enUS } from "./en-US.ts"
 
 export const ar = {
+  resources: enUS.resources,
   app: {
     documentTitle: "إدارة MonkeyAI",
     adminConsole: "لوحة الإدارة",

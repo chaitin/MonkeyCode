@@ -1,6 +1,7 @@
 import { enUS } from "./en-US.ts"
 
 export const zhTW = {
+  resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI 管理後台",
     adminConsole: "管理後台",
