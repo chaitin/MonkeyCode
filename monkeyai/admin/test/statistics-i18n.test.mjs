@@ -33,7 +33,7 @@ test("billing details describe the item and usage in one content column", async 
 
   assert.match(source, /pages\.billingDetails\.columns\.content/)
   assert.doesNotMatch(source, /pages\.billingDetails\.columns\.(item|usage)/)
-  assert.match(source, /colSpan=\{6\}/)
+  assert.match(source, /colSpan=\{7\}/)
 })
 
 for (const page of [

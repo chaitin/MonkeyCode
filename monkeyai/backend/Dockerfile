@@ -4,9 +4,14 @@ FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
 
 WORKDIR /src
 ENV CGO_ENABLED=0
+ENV GOPRIVATE=git.in.chaitin.net
+RUN apk add --no-cache git openssh-client
 
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=secret,id=netrc,target=/root/.netrc \
+    --mount=type=ssh \
+    go mod download
 
 COPY . .
 

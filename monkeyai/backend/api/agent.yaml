@@ -5,6 +5,90 @@ info:
 security:
   - OAuthAccessToken: []
 paths:
+  /api/v1/billing/account:
+    get:
+      summary: 查询当前用户周期余额和冻结额
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditAccount'
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+  /mcp/connectors/{id}:
+    parameters:
+    - in: path
+      name: id
+      schema:
+        type: string
+        format: uuid
+      required: true
+    post:
+      summary: MCP 执行网关：集中认证成功调用计费
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jsonrpc:
+                    const: '2.0'
+                  id: {}
+                  result: {}
+                  error: {}
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jsonrpc:
+                  const: '2.0'
+                id: {}
+                method:
+                  enum:
+                  - initialize
+                  - notifications/initialized
+                  - ping
+                  - tools/list
+                  - tools/call
+                params:
+                  type: object
+              required:
+              - jsonrpc
+              - method
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+      - in: header
+        name: X-Session-ID
+        schema:
+          type: string
+          format: uuid
+      security:
+      - InvocationKey: []
+      description: Bearer 长期调用密钥必须包含 mcp:invoke。响应 X-Billing-Transaction-ID 用于查询。结果不确定保持冻结，不自动重放上游。
   /api/v1/users:
     get:
       summary: 按用户名或邮箱查找分享接收用户
@@ -700,6 +784,10 @@ paths:
         description: 客户端清单记录的包摘要；与当前包不同返回 412。
 components:
   securitySchemes:
+    InvocationKey:
+      type: http
+      scheme: bearer
+      description: 含 mcp:invoke 的长期调用密钥。
     OAuthAccessToken:
       type: http
       scheme: bearer
@@ -794,6 +882,45 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    CreditAmount:
+      type: string
+      pattern: ^-?\d+(\.\d{1,6})?$
+      description: 十进制定点积分，最多六位小数。
+    CreditAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        group_id:
+          type: string
+          format: uuid
+        period_start_at:
+          type: string
+          format: date-time
+        period_end_at:
+          type: string
+          format: date-time
+        balance:
+          $ref: '#/components/schemas/CreditAmount'
+        frozen:
+          $ref: '#/components/schemas/CreditAmount'
+        available:
+          $ref: '#/components/schemas/CreditAmount'
+        quota:
+          $ref: '#/components/schemas/CreditAmount'
+      required:
+      - id
+      - user_id
+      - balance
+      - frozen
+      - available
+      - quota
+      - period_start_at
+      - period_end_at
     UserSummary:
       type: object
       required:

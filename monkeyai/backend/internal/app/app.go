@@ -14,6 +14,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert"
@@ -32,6 +33,8 @@ type App struct {
 	servers         []*http.Server
 	database        *pgxpool.Pool
 	shutdownTimeout time.Duration
+	billing         *billing.Service
+	proxy           *proxy.Proxy
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
@@ -64,6 +67,8 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 				ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
 			},
 		},
+		billing:         handler.(*applicationHandler).billing,
+		proxy:           handler.(*applicationHandler).proxy,
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
 	}, nil
@@ -85,6 +90,15 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil {
 		return nil, fmt.Errorf("初始化管理员: %w", err)
 	}
+	wallet, err := billing.WalletFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("初始化远程计费: %w", err)
+	}
+	charges := billing.NewService(pool).WithWallet(wallet)
+	if err = charges.Initialize(ctx); err != nil {
+		return nil, fmt.Errorf("初始化计费: %w", err)
+	}
+	identities.WithAccountPreserver(charges)
 	keys := apikey.NewService(apikey.NewPostgres(pool))
 	modelRepo := model.NewPostgres(pool)
 	models := model.NewService(modelRepo).WithKeyAuthenticator(keys)
@@ -110,6 +124,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	admin.Use(identities.RequireAdmin)
 	identities.RegisterAdmin(admin)
 	settings.RegisterAdmin(admin)
+	charges.RegisterAdmin(admin)
 	keys.RegisterAdmin(admin)
 	models.RegisterAdmin(admin)
 	store.RegisterAdmin(admin)
@@ -129,14 +144,17 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	agentConfig.RegisterAgent(agent)
 	connectors.RegisterAgent(agent)
 	resources.RegisterAgent(agent)
+	charges.RegisterAgent(agent)
 
 	router := chi.NewRouter()
-	proxy.NewProxy(modelResolver{service: models}, logger).Register(router)
+	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).WithBilling(modelBilling{service: charges})
+	modelProxy.Register(router)
+	connectors.RegisterGateway(router, keys, toolBilling{service: charges})
 	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
 	router.Get("/oauth/connectors/callback", connectors.Callback)
 	router.Mount("/oauth", identities.OAuthRouter())
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage}, admin, agent, identities.AuthRouter()))
-	return router, nil
+	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy}, nil
 }
 
 type modelResolver struct {
@@ -160,6 +178,10 @@ func (r modelResolver) Resolve(ctx context.Context, credential, requestedModel s
 
 func (a *App) Run(ctx context.Context) error {
 	defer a.database.Close()
+	workerCtx, stopWorker := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); a.billing.Run(workerCtx) }()
+	defer func() { stopWorker(); <-workerDone }()
 
 	result := make(chan error, len(a.servers))
 	for _, server := range a.servers {
@@ -191,6 +213,9 @@ func (a *App) Run(ctx context.Context) error {
 		}
 	}
 
+	if err := a.proxy.Wait(shutdownCtx); err != nil {
+		runErrors = append(runErrors, err)
+	}
 	for completed < len(a.servers) {
 		runErrors = append(runErrors, <-result)
 		completed++

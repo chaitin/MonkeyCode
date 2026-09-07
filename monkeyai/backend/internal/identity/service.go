@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -97,7 +98,14 @@ type SettingReader interface {
 	GetValue(context.Context, string) (json.RawMessage, error)
 }
 
+type AccountPreserver interface {
+	PreserveAccounts(context.Context, pgx.Tx) error
+}
+
+func (s *Service) WithAccountPreserver(p AccountPreserver) *Service { s.accounts = p; return s }
+
 type Service struct {
+	accounts     AccountPreserver
 	db           *pgxpool.Pool
 	settings     SettingReader
 	client       *http.Client

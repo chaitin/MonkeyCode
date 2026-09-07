@@ -5,6 +5,985 @@ info:
 security:
   - AdminSession: []
 paths:
+  /api/admin/v1/billing/settings:
+    get:
+      summary: 读取计费策略与远程连接状态
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/BillingPolicy'
+                  wallet:
+                    $ref: '#/components/schemas/BillingWalletInfo'
+                  timezone:
+                    const: Asia/Shanghai
+                  next_refresh_at:
+                    type: string
+                    format: date-time
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+  /api/admin/v1/billing/settings/{section}:
+    parameters:
+    - in: path
+      name: section
+      schema:
+        enum:
+        - pricing
+        - cycle
+        - mode
+      required: true
+    patch:
+      summary: 独立保存计价、周期或模式配置
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/BillingPolicy'
+                  wallet:
+                    $ref: '#/components/schemas/BillingWalletInfo'
+                  timezone:
+                    const: Asia/Shanghai
+                  next_refresh_at:
+                    type: string
+                    format: date-time
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+                properties:
+                  revision:
+                    type: integer
+                  input_credits_per_million_tokens:
+                    $ref: '#/components/schemas/CreditAmount'
+                  cached_input_credits_per_million_tokens:
+                    $ref: '#/components/schemas/CreditAmount'
+                  output_credits_per_million_tokens:
+                    $ref: '#/components/schemas/CreditAmount'
+                required:
+                - revision
+                - input_credits_per_million_tokens
+                - cached_input_credits_per_million_tokens
+                - output_credits_per_million_tokens
+              - type: object
+                properties:
+                  revision:
+                    type: integer
+                  quota_refresh_cycle:
+                    enum:
+                    - daily
+                    - weekly
+                    - monthly
+                required:
+                - revision
+                - quota_refresh_cycle
+              - type: object
+                properties:
+                  revision:
+                    type: integer
+                  charging_mode:
+                    enum:
+                    - local
+                    - remote
+                  enabled:
+                    type: boolean
+                required:
+                - revision
+                - charging_mode
+                - enabled
+  /api/admin/v1/billing/quotas:
+    get:
+      summary: 读取真实分组、成员额度与继承来源
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        parent_id:
+                          type:
+                          - string
+                          - 'null'
+                          format: uuid
+                        name:
+                          type: string
+                        credits:
+                          anyOf:
+                          - $ref: '#/components/schemas/CreditAmount'
+                          - type: 'null'
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        status:
+                          type: string
+                        group_id:
+                          type: string
+                          format: uuid
+                        credits:
+                          anyOf:
+                          - $ref: '#/components/schemas/CreditAmount'
+                          - type: 'null'
+                        effective_credits:
+                          $ref: '#/components/schemas/CreditAmount'
+                        inherited_from:
+                          type: string
+                          format: uuid
+                        external_user_id:
+                          type:
+                          - string
+                          - 'null'
+                  revision:
+                    type: integer
+                  effective_at:
+                    type: string
+                    format: date-time
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+    put:
+      summary: 批量更新周期额度，下周期生效
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        parent_id:
+                          type:
+                          - string
+                          - 'null'
+                          format: uuid
+                        name:
+                          type: string
+                        credits:
+                          anyOf:
+                          - $ref: '#/components/schemas/CreditAmount'
+                          - type: 'null'
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        status:
+                          type: string
+                        group_id:
+                          type: string
+                          format: uuid
+                        credits:
+                          anyOf:
+                          - $ref: '#/components/schemas/CreditAmount'
+                          - type: 'null'
+                        effective_credits:
+                          $ref: '#/components/schemas/CreditAmount'
+                        inherited_from:
+                          type: string
+                          format: uuid
+                        external_user_id:
+                          type:
+                          - string
+                          - 'null'
+                  revision:
+                    type: integer
+                  effective_at:
+                    type: string
+                    format: date-time
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                revision:
+                  type: integer
+                changes:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      subject_type:
+                        enum:
+                        - user
+                        - group
+                      id:
+                        type: string
+                        format: uuid
+                      credits:
+                        anyOf:
+                        - $ref: '#/components/schemas/CreditAmount'
+                        - type: 'null'
+                    required:
+                    - subject_type
+                    - id
+                    - credits
+              required:
+              - revision
+              - changes
+  /api/admin/v1/billing/accounts/{userID}:
+    parameters:
+    - in: path
+      name: userID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    get:
+      summary: 查询当期账户与最近 24 个周期
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account:
+                    $ref: '#/components/schemas/CreditAccount'
+                  history:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CreditAccount'
+                  external_user_id:
+                    type: string
+                  wallet:
+                    $ref: '#/components/schemas/BillingWalletInfo'
+                  wallet_available:
+                    $ref: '#/components/schemas/CreditAmount'
+                  wallet_queried_at:
+                    type: string
+                    format: date-time
+                  wallet_error:
+                    type: string
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+  /api/admin/v1/billing/accounts/{userID}/adjustments:
+    parameters:
+    - in: path
+      name: userID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    post:
+      summary: 幂等调整当期积分，回收不侵占冻结额
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  properties:
+                    account:
+                      $ref: '#/components/schemas/CreditAccount'
+                    history:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/CreditAccount'
+                    external_user_id:
+                      type: string
+                    wallet:
+                      $ref: '#/components/schemas/BillingWalletInfo'
+                    wallet_available:
+                      $ref: '#/components/schemas/CreditAmount'
+                    wallet_queried_at:
+                      type: string
+                      format: date-time
+                    wallet_error:
+                      type: string
+                - $ref: '#/components/schemas/CreditAccount'
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delta:
+                  $ref: '#/components/schemas/CreditAmount'
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                idempotency_key:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+              required:
+              - delta
+              - reason
+              - idempotency_key
+  /api/admin/v1/billing/accounts/{userID}/wallet:
+    parameters:
+    - in: path
+      name: userID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    put:
+      summary: 核实并绑定百智云身份，有未完成远程交易时拒绝修改
+      responses:
+        '204':
+          description: 绑定成功
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                external_user_id:
+                  type: string
+              required:
+              - external_user_id
+  /api/admin/v1/billing/entries:
+    get:
+      summary: 分页查询不可变积分流水
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CreditEntry'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      parameters:
+      - in: query
+        name: user
+        schema:
+          type: string
+      - in: query
+        name: content
+        schema:
+          type: string
+      - in: query
+        name: category
+        schema:
+          type: string
+      - in: query
+        name: mode
+        schema:
+          type: string
+      - in: query
+        name: entry_type
+        schema:
+          type: string
+      - in: query
+        name: group_id
+        schema:
+          type: string
+      - in: query
+        name: from
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: until
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: page
+        schema:
+          type: integer
+          minimum: 1
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+  /api/admin/v1/billing/summary:
+    get:
+      summary: 按同一筛选口径汇总扣费和退款
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  charges:
+                    $ref: '#/components/schemas/CreditAmount'
+                  refunds:
+                    $ref: '#/components/schemas/CreditAmount'
+                  net_consumption:
+                    $ref: '#/components/schemas/CreditAmount'
+                  count:
+                    type: integer
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      parameters:
+      - in: query
+        name: user
+        schema:
+          type: string
+      - in: query
+        name: content
+        schema:
+          type: string
+      - in: query
+        name: category
+        schema:
+          type: string
+      - in: query
+        name: mode
+        schema:
+          type: string
+      - in: query
+        name: entry_type
+        schema:
+          type: string
+      - in: query
+        name: group_id
+        schema:
+          type: string
+      - in: query
+        name: from
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: until
+        schema:
+          type: string
+          format: date-time
+  /api/admin/v1/billing/reconciliation:
+    get:
+      summary: 查询未完成交易、本地账目差异和旧配置迁移问题
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BillingTransaction'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+                  differences:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        account_id:
+                          type: string
+                          format: uuid
+                        user_id:
+                          type: string
+                          format: uuid
+                        balance:
+                          $ref: '#/components/schemas/CreditAmount'
+                        ledger_balance:
+                          $ref: '#/components/schemas/CreditAmount'
+                        frozen:
+                          $ref: '#/components/schemas/CreditAmount'
+                        reserved:
+                          $ref: '#/components/schemas/CreditAmount'
+                  migration_issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        subject:
+                          type: string
+                        value: {}
+                        reason:
+                          type: string
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+          minimum: 1
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+  /api/admin/v1/billing/transactions/{id}:
+    parameters:
+    - in: path
+      name: id
+      schema:
+        type: string
+        format: uuid
+      required: true
+    get:
+      summary: 读取调用、用量、价格快照、流水及钱包记录
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingTransaction'
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+  /api/admin/v1/billing/transactions/{id}/retry:
+    parameters:
+    - in: path
+      name: id
+      schema:
+        type: string
+        format: uuid
+      required: true
+    post:
+      summary: 重试已确定用量的待结算交易
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingTransaction'
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+  /api/admin/v1/billing/transactions/{id}/resolve:
+    parameters:
+    - in: path
+      name: id
+      schema:
+        type: string
+        format: uuid
+      required: true
+    post:
+      summary: 按核实证据处理结果未知的交易
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingTransaction'
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                usage:
+                  $ref: '#/components/schemas/BillingUsage'
+                reason:
+                  type: string
+              required:
+              - usage
+              - reason
+  /api/admin/v1/billing/transactions/{id}/refund:
+    parameters:
+    - in: path
+      name: id
+      schema:
+        type: string
+        format: uuid
+      required: true
+    post:
+      summary: 全额冲正本地已结算扣款，同一交易只退款一次
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingTransaction'
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+              required:
+              - reason
+  /api/admin/v1/groups:
+    get:
+      summary: 查询真实分组和成员授权关系
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        parent_id:
+                          type:
+                          - string
+                          - 'null'
+                          format: uuid
+                        name:
+                          type: string
+                  memberships:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        group_id:
+                          type: string
+                          format: uuid
+                        user_id:
+                          type: string
+                          format: uuid
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+    post:
+      summary: 创建分组
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                parent_id:
+                  type: string
+                  format: uuid
+              required:
+              - name
+              - parent_id
+  /api/admin/v1/groups/{groupID}:
+    parameters:
+    - in: path
+      name: groupID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    patch:
+      summary: 改名或移动分组，禁止父子环
+      responses:
+        '200':
+          description: 请求成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                parent_id:
+                  type: string
+                  format: uuid
+              required:
+              - name
+              - parent_id
+    delete:
+      summary: 删除无引用的自定义分组
+      responses:
+        '204':
+          description: 删除成功
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+  /api/admin/v1/groups/{groupID}/members:
+    parameters:
+    - in: path
+      name: groupID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    put:
+      summary: 更新分组授权成员，计费归属保持独立
+      responses:
+        '204':
+          description: 更新成功
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+              required:
+              - user_ids
+  /api/admin/v1/users/{userID}/billing-group:
+    parameters:
+    - in: path
+      name: userID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    put:
+      summary: 修改单一计费归属分组，null 恢复角色默认分组
+      responses:
+        '204':
+          description: 更新成功
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '409':
+          description: 修订号、幂等键或交易状态冲突
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                group_id:
+                  type:
+                  - string
+                  - 'null'
+                  format: uuid
+              required:
+              - group_id
   /api/admin/v1/models:
     get:
       summary: 查询模型
@@ -2483,6 +3462,283 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    CreditAmount:
+      type: string
+      pattern: ^-?\d+(\.\d{1,6})?$
+      description: 十进制定点积分，最多六位小数。
+    BillingPrice:
+      type: object
+      properties:
+        input:
+          $ref: '#/components/schemas/CreditAmount'
+        cached:
+          $ref: '#/components/schemas/CreditAmount'
+        output:
+          $ref: '#/components/schemas/CreditAmount'
+        multiplier:
+          $ref: '#/components/schemas/CreditAmount'
+        tool:
+          $ref: '#/components/schemas/CreditAmount'
+    BillingPolicy:
+      type: object
+      properties:
+        revision:
+          type: integer
+        enabled:
+          type: boolean
+        charging_mode:
+          enum:
+          - local
+          - remote
+        quota_refresh_cycle:
+          enum:
+          - daily
+          - weekly
+          - monthly
+        pending_cycle:
+          enum:
+          - daily
+          - weekly
+          - monthly
+        cycle_effective_at:
+          type: string
+          format: date-time
+        cycle_anchor:
+          type: string
+          format: date-time
+        input_credits_per_million_tokens:
+          $ref: '#/components/schemas/CreditAmount'
+        cached_input_credits_per_million_tokens:
+          $ref: '#/components/schemas/CreditAmount'
+        output_credits_per_million_tokens:
+          $ref: '#/components/schemas/CreditAmount'
+      required:
+      - revision
+      - enabled
+      - charging_mode
+      - quota_refresh_cycle
+    BillingWalletInfo:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        environment:
+          enum:
+          - dev
+          - prod
+        app_id:
+          type: integer
+        certificate_expires_at:
+          type: string
+          format: date-time
+      required:
+      - configured
+    CreditAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        group_id:
+          type: string
+          format: uuid
+        period_start_at:
+          type: string
+          format: date-time
+        period_end_at:
+          type: string
+          format: date-time
+        balance:
+          $ref: '#/components/schemas/CreditAmount'
+        frozen:
+          $ref: '#/components/schemas/CreditAmount'
+        available:
+          $ref: '#/components/schemas/CreditAmount'
+        quota:
+          $ref: '#/components/schemas/CreditAmount'
+      required:
+      - id
+      - user_id
+      - balance
+      - frozen
+      - available
+      - quota
+      - period_start_at
+      - period_end_at
+    CreditEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        transaction_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        user_name:
+          type: string
+        user_email:
+          type: string
+        item_name:
+          type: string
+        category:
+          enum:
+          - model
+          - tool
+          - other
+        entry_type:
+          enum:
+          - grant
+          - charge
+          - refund
+          - adjustment
+          - reset
+        credit_delta:
+          $ref: '#/components/schemas/CreditAmount'
+        balance_after:
+          $ref: '#/components/schemas/CreditAmount'
+        mode:
+          enum:
+          - local
+          - remote
+        sequence:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+    BillingUsage:
+      type: object
+      properties:
+        known:
+          type: boolean
+        result:
+          enum:
+          - succeeded
+          - failed
+          - cancelled
+        request_id:
+          type: string
+        error_code:
+          type: string
+        input_tokens:
+          type: integer
+          minimum: 0
+        cached_input_tokens:
+          type: integer
+          minimum: 0
+        output_tokens:
+          type: integer
+          minimum: 0
+      required:
+      - result
+    BillingTransaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        user_name:
+          type: string
+        user_email:
+          type: string
+        item_name:
+          type: string
+        account_id:
+          type: string
+          format: uuid
+        session_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        category:
+          enum:
+          - model
+          - tool
+        mode:
+          enum:
+          - local
+          - remote
+        status:
+          enum:
+          - created
+          - reserved
+          - running
+          - settling
+          - settled
+          - released
+          - rejected
+          - unknown
+        reserve:
+          $ref: '#/components/schemas/CreditAmount'
+        amount:
+          anyOf:
+          - $ref: '#/components/schemas/CreditAmount'
+          - type: 'null'
+        raw_amount:
+          anyOf:
+          - $ref: '#/components/schemas/CreditAmount'
+          - type: 'null'
+        pricing:
+          $ref: '#/components/schemas/BillingPrice'
+        usage:
+          $ref: '#/components/schemas/BillingUsage'
+        error_code:
+          type: string
+        attempts:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditEntry'
+        wallet_records:
+          type: array
+          items:
+            type: object
+            properties:
+              biz_id:
+                type: string
+              status:
+                type: string
+              external_user_id:
+                type: string
+              environment:
+                type: string
+              app_id:
+                type: integer
+              frozen_amount_quota:
+                type: string
+              actual_amount_quota:
+                type:
+                - string
+                - 'null'
+              trace_id:
+                type: string
+              error_code:
+                type: string
     ErrorResponse:
       type: object
       required: [error]

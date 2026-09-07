@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -63,12 +64,16 @@ type proxyContext struct {
 	upstreamPath string
 	stream       bool
 	startedAt    time.Time
+	reservation  Reservation
+	settled      sync.Once
 }
 
 type Proxy struct {
 	resolver Resolver
 	logger   *slog.Logger
 	recorder UsageRecorder
+	billing  Billing
+	captures sync.WaitGroup
 	reverse  *httputil.ReverseProxy
 }
 
@@ -124,7 +129,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<20))
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
@@ -162,6 +167,26 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var reservation Reservation
+	if p.billing != nil {
+		reservation, err = p.billing.Begin(r.Context(), target, BillingRequest{Path: r.URL.Path, Body: body, IdempotencyKey: r.Header.Get("Idempotency-Key"), SessionID: r.Header.Get("X-Session-ID")})
+		if err != nil {
+			billingError(w, err)
+			return
+		}
+		body, err = billRequest(body, r.URL.Path, reservation.OutputLimit, meta.Stream)
+		if err != nil {
+			pc := &proxyContext{reservation: reservation}
+			p.finish(r.Context(), pc, Call{Known: true, Result: "failed", ErrorCode: "invalid_request"})
+			billingError(w, err)
+			return
+		}
+		if err = p.billing.Start(r.Context(), reservation.ID); err != nil {
+			billingError(w, err)
+			return
+		}
+		w.Header().Set("X-Billing-Transaction-ID", reservation.ID)
+	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
 	ctx := context.WithValue(r.Context(), proxyContextKey{}, &proxyContext{
@@ -170,6 +195,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		upstreamPath: upstreamPath,
 		stream:       meta.Stream,
 		startedAt:    time.Now(),
+		reservation:  reservation,
 	})
 	p.reverse.ServeHTTP(w, r.WithContext(ctx))
 }
@@ -219,6 +245,8 @@ func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 	}
 	r.Out.Header.Del("Authorization")
 	r.Out.Header.Del("X-Api-Key")
+	r.Out.Header.Del("Idempotency-Key")
+	r.Out.Header.Del("X-Session-ID")
 	if ctx.target.APIKey != "" {
 		r.Out.Header.Set("Authorization", "Bearer "+ctx.target.APIKey)
 		r.Out.Header.Set("X-Api-Key", ctx.target.APIKey)
@@ -228,6 +256,9 @@ func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 }
 
 func (p *Proxy) errorHandler(w http.ResponseWriter, r *http.Request, err error) {
+	if pc, ok := r.Context().Value(proxyContextKey{}).(*proxyContext); ok {
+		p.finish(r.Context(), pc, Call{Result: "failed", ErrorCode: "upstream_connection_failed"})
+	}
 	p.logger.ErrorContext(r.Context(), "模型上游请求失败", "path", r.URL.Path, "error", err)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusBadGateway)

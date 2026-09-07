@@ -1,3 +1,5 @@
+git.in.chaitin.net/ai/baizhiyun/opensdk v1.14.2 h1:IfmZeaM+r33o/N+79+F2qxGwRNONRZO3A9cna/4I/BE=
+git.in.chaitin.net/ai/baizhiyun/opensdk v1.14.2/go.mod h1:4K0FQvFkxAArbeyeohEfPppjgDRJTrvdIYDttxriRjM=
 github.com/aws/aws-sdk-go-v2 v1.46.0 h1:1kt7m/EKcEHt5mlyyxx9cSlMddRPIKbjb6DIQsu4HPk=
 github.com/aws/aws-sdk-go-v2 v1.46.0/go.mod h1:bttEH6JqnUL8LepvDVfdrds/fZ5bCIxzpe3abyUrhDU=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 h1:GPRlPwz40I2B2VrBEASOA3Bi77NyeqejNLkifosX0rs=

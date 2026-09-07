@@ -9,6 +9,7 @@ import (
 )
 
 func (s *Service) RegisterAdmin(router chi.Router) {
+	s.registerGroups(router)
 	router.Get("/me", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := UserFromContext(r.Context())
 		writeJSON(w, http.StatusOK, user)

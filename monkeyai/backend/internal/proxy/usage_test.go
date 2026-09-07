@@ -83,7 +83,7 @@ func TestUsageCaptureParsesAnthropicUsage(t *testing.T) {
 		"id":"msg_test",
 		"usage":{"input_tokens":7,"output_tokens":5,"cache_read_input_tokens":3,"cache_creation_input_tokens":2}
 	}`).handleNonStream()
-	if nonStream.ResponseID != "msg_test" || nonStream.InputTokens != 7 || nonStream.OutputTokens != 5 || nonStream.CacheReadInputTokens != 3 || nonStream.totalTokens() != 15 {
+	if nonStream.ResponseID != "msg_test" || nonStream.InputTokens != 7 || nonStream.OutputTokens != 5 || nonStream.CacheReadInputTokens != 3 || nonStream.totalTokens() != 17 {
 		t.Fatalf("non-stream result = %+v", nonStream)
 	}
 
@@ -96,7 +96,7 @@ func TestUsageCaptureParsesAnthropicUsage(t *testing.T) {
 		"",
 	}, "\n")
 	stream := newUsageCaptureForTest("/v1/messages", true, body).handleStream()
-	if stream.ResponseID != "msg_stream" || stream.InputTokens != 7 || stream.OutputTokens != 5 || stream.CacheReadInputTokens != 3 || stream.totalTokens() != 15 {
+	if stream.ResponseID != "msg_stream" || stream.InputTokens != 7 || stream.OutputTokens != 5 || stream.CacheReadInputTokens != 3 || stream.totalTokens() != 17 {
 		t.Fatalf("stream result = %+v", stream)
 	}
 }

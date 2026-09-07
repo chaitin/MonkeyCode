@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
@@ -367,8 +368,8 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 }
 func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Enabled *bool   `json:"enabled"`
-		Credits float64 `json:"credits_per_call"`
+		Enabled *bool          `json:"enabled"`
+		Credits billing.Amount `json:"credits_per_call"`
 	}
 	if err := resource.Decode(w, r, &in); err != nil || in.Enabled == nil || in.Credits < 0 {
 		resource.Fail(w, resource.Invalid("工具配置无效"))
@@ -380,7 +381,16 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
-	o, err := resource.Row(r.Context(), tx, `UPDATE mcp_tools t SET enabled=$3,credits_per_call=$4,updated_at=now() FROM connectors c WHERE t.id=$2 AND t.connector_id=$1 AND c.id=t.connector_id AND c.ownership_type='system' AND c.deleted_at IS NULL AND t.deleted_at IS NULL RETURNING to_jsonb(t)`, chi.URLParam(r, "id"), chi.URLParam(r, "toolID"), *in.Enabled, in.Credits)
+	var mode string
+	if err = tx.QueryRow(r.Context(), `SELECT authorization_mode FROM connectors WHERE id=$1 AND deleted_at IS NULL`, chi.URLParam(r, "id")).Scan(&mode); err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	if mode != "centralized" && in.Credits != 0 {
+		resource.Fail(w, resource.Invalid("仅集中认证工具可以设置非零积分"))
+		return
+	}
+	o, err := resource.Row(r.Context(), tx, `UPDATE mcp_tools t SET enabled=$3,credits_per_call=$4,updated_at=now() FROM connectors c WHERE t.id=$2 AND t.connector_id=$1 AND c.id=t.connector_id AND c.ownership_type='system' AND c.deleted_at IS NULL AND t.deleted_at IS NULL RETURNING to_jsonb(t)`, chi.URLParam(r, "id"), chi.URLParam(r, "toolID"), *in.Enabled, in.Credits.String())
 	if err != nil {
 		resource.Fail(w, err)
 		return
