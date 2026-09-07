@@ -46,6 +46,7 @@ import {
   ItemSeparator,
   ItemTitle,
 } from "@/components/ui/item"
+import { GroupManager } from "@/components/group-manager"
 import { useAuth } from "@/hooks/use-auth"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -192,6 +193,9 @@ export function MembersAndGroupsPage() {
         <Card className="min-h-64 md:min-h-0">
           <CardHeader>
             <CardTitle>{t("pages.membersAndGroups.groupsTitle")}</CardTitle>
+            <CardAction>
+              <GroupManager />
+            </CardAction>
           </CardHeader>
           <CardContent className="min-h-0 flex-1 overflow-y-auto">
             <ul

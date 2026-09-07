@@ -240,11 +240,21 @@ func (s *Service) userByID(ctx context.Context, id string) (User, error) {
 }
 
 func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwordHash string) (User, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback(ctx)
+	if s.accounts != nil {
+		if err = s.accounts.PreserveAccounts(ctx, tx); err != nil {
+			return User{}, err
+		}
+	}
 	var disabledAt any
 	if status == "disabled" {
 		disabledAt = s.now()
 	}
-	user, err := scanUser(s.db.QueryRow(ctx, `
+	user, err := scanUser(tx.QueryRow(ctx, `
 		UPDATE users SET name = $2, role = $3, status = $4, disabled_at = $5,
 			password_hash = CASE WHEN $6 = '' THEN password_hash ELSE $6 END,
 			updated_at = now()
@@ -254,7 +264,10 @@ func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwo
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
-	return user, err
+	if err != nil {
+		return User{}, err
+	}
+	return user, tx.Commit(ctx)
 }
 
 type rowScanner interface {

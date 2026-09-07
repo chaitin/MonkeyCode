@@ -17,6 +17,9 @@ type Call struct {
 	UserID            string
 	SessionID         string
 	RequestID         string
+	Known             bool
+	Result            string
+	ErrorCode         string
 	InputTokens       uint64
 	OutputTokens      uint64
 	CachedInputTokens uint64
@@ -25,15 +28,18 @@ type Call struct {
 }
 
 type usageResult struct {
-	InputTokens          uint64
-	OutputTokens         uint64
-	CacheReadInputTokens uint64
-	CachedTokens         uint64
-	ResponseID           string
+	InputTokens              uint64
+	OutputTokens             uint64
+	CacheReadInputTokens     uint64
+	CachedTokens             uint64
+	ResponseID               string
+	CacheCreationInputTokens uint64
+	Known                    bool
+	Result                   string
 }
 
 func (r usageResult) totalTokens() uint64 {
-	return r.InputTokens + r.OutputTokens + r.CacheReadInputTokens
+	return r.InputTokens + r.OutputTokens + r.CacheReadInputTokens + r.CacheCreationInputTokens
 }
 
 func (r usageResult) hasTokens() bool {
@@ -67,15 +73,19 @@ func newUsageCapture(logger *slog.Logger, src io.ReadCloser, ctx usageCaptureCon
 		reader: reader,
 		writer: writer,
 	}
-	go capture.handleShadow()
+	ctx.proxy.captures.Add(1)
+	go func() { defer ctx.proxy.captures.Done(); capture.handleShadow() }()
 	return capture
 }
 
 func (p *Proxy) modifyResponse(response *http.Response) error {
-	if response == nil || response.Body == nil || p.recorder == nil {
+	if response == nil || response.Body == nil || (p.recorder == nil && p.billing == nil) {
 		return nil
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		if pc, ok := response.Request.Context().Value(proxyContextKey{}).(*proxyContext); ok {
+			p.finish(response.Request.Context(), pc, Call{Known: response.StatusCode >= 400 && response.StatusCode < 500, Result: "failed", ErrorCode: "upstream_http_error"})
+		}
 		return nil
 	}
 	ctx, ok := response.Request.Context().Value(proxyContextKey{}).(*proxyContext)
@@ -106,21 +116,32 @@ func normalizeUsagePath(path string) string {
 }
 
 func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result usageResult) {
-	if p.recorder == nil || proxyCtx == nil || !result.hasTokens() {
+	if proxyCtx == nil {
 		return
 	}
 	target := proxyCtx.target
 	completedAt := time.Now()
 	call := Call{
-		ModelID:           target.ModelID,
-		UserID:            target.UserID,
-		SessionID:         target.SessionID,
-		RequestID:         result.ResponseID,
-		InputTokens:       result.InputTokens + result.CacheReadInputTokens,
+		ModelID:   target.ModelID,
+		UserID:    target.UserID,
+		SessionID: target.SessionID,
+		RequestID: result.ResponseID,
+		Known:     result.Known, Result: result.Result,
+		InputTokens:       result.InputTokens + result.CacheReadInputTokens + result.CacheCreationInputTokens,
 		OutputTokens:      result.OutputTokens,
 		CachedInputTokens: result.CacheReadInputTokens + result.CachedTokens,
 		StartedAt:         proxyCtx.startedAt,
 		CompletedAt:       completedAt,
+	}
+	if call.Result == "" {
+		call.Result = "succeeded"
+	}
+	if !call.Known {
+		call.ErrorCode = "usage_unknown"
+	}
+	p.finish(ctx, proxyCtx, call)
+	if p.recorder == nil || !result.hasTokens() {
+		return
 	}
 	if err := p.recorder.Record(context.WithoutCancel(ctx), call); err != nil {
 		p.logger.WarnContext(ctx, "记录模型调用用量失败", "model_id", target.ModelID, "error", err)
@@ -142,27 +163,39 @@ func (c *usageCapture) handleShadow() {
 
 func (c *usageCapture) handleStream() usageResult {
 	var result usageResult
+	var inputKnown, outputKnown bool
 	decoder := newSSEDecoder(c.reader)
 	logger := c.logger.With("path", c.ctx.path)
 	for decoder.Next() {
 		event := decoder.Event()
 		switch event.Type {
-		case "response.completed":
+		case "response.completed", "response.failed", "response.incomplete":
+			if event.Type != "response.completed" {
+				result.Result = "failed"
+			}
 			response, err := parseOpenAIResponseEvent(event.Data)
 			if err != nil {
 				logger.WarnContext(c.ctx.ctx, "解析 Responses 流式用量失败", "error", err)
 				continue
 			}
+			if response.Usage == nil {
+				continue
+			}
+			result.Known = response.Usage.inputKnown && response.Usage.outputKnown
 			result.InputTokens = response.Usage.InputTokens
 			result.OutputTokens = response.Usage.OutputTokens
 			result.ResponseID = response.ID
 			result.CachedTokens = response.Usage.InputTokensDetails.CachedTokens
-		case "done":
+		case "", "done":
 			response, err := parseChatCompletion(event.Data)
 			if err != nil {
 				logger.WarnContext(c.ctx.ctx, "解析 Chat Completions 流式用量失败", "error", err)
 				continue
 			}
+			if response.Usage == nil {
+				continue
+			}
+			result.Known = response.Usage.complete
 			result.InputTokens = response.Usage.PromptTokens
 			result.OutputTokens = response.Usage.CompletionTokens
 			result.ResponseID = response.ID
@@ -174,6 +207,11 @@ func (c *usageCapture) handleStream() usageResult {
 				continue
 			}
 			result.ResponseID = response.Message.ID
+			if response.Message.Usage == nil {
+				continue
+			}
+			inputKnown = response.Message.Usage.inputKnown
+			result.CacheCreationInputTokens = response.Message.Usage.CacheCreationInputTokens
 			result.InputTokens = response.Message.Usage.InputTokens
 			result.CacheReadInputTokens = response.Message.Usage.CacheReadInputTokens
 		case "message_delta":
@@ -182,16 +220,26 @@ func (c *usageCapture) handleStream() usageResult {
 				logger.WarnContext(c.ctx.ctx, "解析 Anthropic message_delta 用量失败", "error", err)
 				continue
 			}
+			if response.Usage == nil {
+				continue
+			}
 			if response.Usage.InputTokens > 0 {
 				result.InputTokens = response.Usage.InputTokens
 			}
+			outputKnown = response.Usage.outputKnown
 			result.OutputTokens = response.Usage.OutputTokens
 			if response.Usage.CacheReadInputTokens > 0 {
 				result.CacheReadInputTokens = response.Usage.CacheReadInputTokens
 			}
+		case "message_stop":
+			result.Known = inputKnown && outputKnown
+		case "error":
+			result.Result = "failed"
+			result.Known = false
 		}
 	}
 	if err := decoder.Err(); err != nil {
+		result.Result = "failed"
 		logger.WarnContext(c.ctx.ctx, "读取模型流式响应失败", "error", err)
 	}
 	return result
@@ -200,7 +248,7 @@ func (c *usageCapture) handleStream() usageResult {
 func (c *usageCapture) handleNonStream() usageResult {
 	var result usageResult
 	logger := c.logger.With("path", c.ctx.path)
-	data, err := io.ReadAll(c.reader)
+	data, err := io.ReadAll(io.LimitReader(c.reader, 32<<20))
 	if err != nil {
 		logger.WarnContext(c.ctx.ctx, "读取模型响应副本失败", "error", err)
 		return result
@@ -212,6 +260,13 @@ func (c *usageCapture) handleNonStream() usageResult {
 			logger.WarnContext(c.ctx.ctx, "解析 Responses 用量失败", "error", err)
 			return result
 		}
+		if response.Usage == nil {
+			return result
+		}
+		result.Known = response.Usage.inputKnown && response.Usage.outputKnown
+		if response.Status == "failed" || response.Status == "incomplete" {
+			result.Result = "failed"
+		}
 		result.InputTokens = response.Usage.InputTokens
 		result.OutputTokens = response.Usage.OutputTokens
 		result.ResponseID = response.ID
@@ -222,6 +277,10 @@ func (c *usageCapture) handleNonStream() usageResult {
 			logger.WarnContext(c.ctx.ctx, "解析 Chat Completions 用量失败", "error", err)
 			return result
 		}
+		if response.Usage == nil {
+			return result
+		}
+		result.Known = response.Usage.complete
 		result.InputTokens = response.Usage.PromptTokens
 		result.OutputTokens = response.Usage.CompletionTokens
 		result.ResponseID = response.ID
@@ -232,16 +291,21 @@ func (c *usageCapture) handleNonStream() usageResult {
 			logger.WarnContext(c.ctx.ctx, "解析 Anthropic 用量失败", "error", err)
 			return result
 		}
+		if response.Usage == nil {
+			return result
+		}
+		result.Known = response.Usage.inputKnown && response.Usage.outputKnown
 		result.InputTokens = response.Usage.InputTokens
 		result.OutputTokens = response.Usage.OutputTokens
 		result.CacheReadInputTokens = response.Usage.CacheReadInputTokens
+		result.CacheCreationInputTokens = response.Usage.CacheCreationInputTokens
 		result.ResponseID = response.ID
 	}
 	return result
 }
 
 func (c *usageCapture) Close() error {
-	_ = c.writer.Close()
+	_ = c.writer.CloseWithError(io.ErrUnexpectedEOF)
 	return c.src.Close()
 }
 
@@ -251,7 +315,7 @@ func (c *usageCapture) Read(buffer []byte) (int, error) {
 		_, _ = c.writer.Write(bytes.Clone(buffer[:n]))
 	}
 	if err != nil {
-		_ = c.writer.Close()
+		_ = c.writer.CloseWithError(err)
 	}
 	return n, err
 }
@@ -261,15 +325,18 @@ type openAIResponseEvent struct {
 }
 
 type openAIResponse struct {
-	ID    string     `json:"id"`
-	Usage tokenUsage `json:"usage"`
+	ID     string      `json:"id"`
+	Status string      `json:"status"`
+	Usage  *tokenUsage `json:"usage"`
 }
 
 type tokenUsage struct {
-	InputTokens          uint64       `json:"input_tokens"`
-	OutputTokens         uint64       `json:"output_tokens"`
-	CacheReadInputTokens uint64       `json:"cache_read_input_tokens"`
-	InputTokensDetails   tokenDetails `json:"input_tokens_details"`
+	inputKnown, outputKnown  bool
+	InputTokens              uint64       `json:"input_tokens"`
+	CacheCreationInputTokens uint64       `json:"cache_creation_input_tokens"`
+	OutputTokens             uint64       `json:"output_tokens"`
+	CacheReadInputTokens     uint64       `json:"cache_read_input_tokens"`
+	InputTokensDetails       tokenDetails `json:"input_tokens_details"`
 }
 
 type tokenDetails struct {
@@ -277,23 +344,52 @@ type tokenDetails struct {
 }
 
 type chatCompletion struct {
-	ID    string `json:"id"`
-	Usage struct {
-		PromptTokens        uint64       `json:"prompt_tokens"`
-		CompletionTokens    uint64       `json:"completion_tokens"`
-		PromptTokensDetails tokenDetails `json:"prompt_tokens_details"`
-	} `json:"usage"`
+	ID    string     `json:"id"`
+	Usage *chatUsage `json:"usage"`
+}
+type chatUsage struct {
+	PromptTokens        uint64       `json:"prompt_tokens"`
+	CompletionTokens    uint64       `json:"completion_tokens"`
+	PromptTokensDetails tokenDetails `json:"prompt_tokens_details"`
+	complete            bool
+}
+
+func (u *chatUsage) UnmarshalJSON(data []byte) error {
+	type plain chatUsage
+	if err := json.Unmarshal(data, (*plain)(u)); err != nil {
+		return err
+	}
+	u.complete = usageField(data, "prompt_tokens") && usageField(data, "completion_tokens")
+	return nil
+}
+func (u *tokenUsage) UnmarshalJSON(data []byte) error {
+	type plain tokenUsage
+	if err := json.Unmarshal(data, (*plain)(u)); err != nil {
+		return err
+	}
+	u.inputKnown = usageField(data, "input_tokens")
+	u.outputKnown = usageField(data, "output_tokens")
+	return nil
+}
+func usageField(data []byte, key string) bool {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return false
+	}
+	v, ok := raw[key]
+	return ok && string(v) != "null"
 }
 
 type anthropicResponse struct {
 	ID      string           `json:"id"`
-	Usage   tokenUsage       `json:"usage"`
+	Usage   *tokenUsage      `json:"usage"`
 	Message anthropicMessage `json:"message"`
 }
 
 type anthropicMessage struct {
-	ID    string     `json:"id"`
-	Usage tokenUsage `json:"usage"`
+	ID     string      `json:"id"`
+	Status string      `json:"status"`
+	Usage  *tokenUsage `json:"usage"`
 }
 
 func parseOpenAIResponseEvent(data []byte) (openAIResponse, error) {

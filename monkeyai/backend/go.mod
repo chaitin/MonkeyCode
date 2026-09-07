@@ -3,6 +3,7 @@ module github.com/chaitin/MonkeyCode/monkeyai/backend
 go 1.27.0
 
 require (
+	git.in.chaitin.net/ai/baizhiyun/opensdk v1.14.2
 	github.com/aws/aws-sdk-go-v2 v1.46.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.3

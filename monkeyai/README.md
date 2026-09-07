@@ -94,3 +94,44 @@ Agent 继续使用 `/api/v1/config` 和 ETag，增加 `schema_version=2`、`rule
 备份应同时保留 PostgreSQL 快照与该快照引用的 RustFS 对象。恢复时先恢复对象和数据库，再用资源摘要验证技能下载。完整部署启动前不要清空 RustFS 数据卷。
 
 本地前端联调可设置 `MONKEYAI_DEV_BACKEND_URL` 指向单独的测试后端，避免占用现有实例端口。
+
+
+## 计费管理
+
+计费后台使用 `/api/admin/v1/billing/*`。管理员可以设置分组/个人周期额度、独立保存价格和计费方式、查看账户余额与冻结额、调整当期积分，并查询流水、退款和待处理交易。组织授权分组与单一计费归属分组分开维护。
+
+- 首次升级先执行 `000002_billing_create_transactions` 增量迁移；保留历史账户和流水。已有交易后 down 迁移主动拒绝，回滚应关闭新调用扣费并保留交易恢复能力。
+- 默认关闭实际扣费，仅记录调用。检查价格、额度和模型上限后，在费用设置中开启。旧计费设置写接口返回冲突提示，统一通过计费接口写入。
+- 模型需要配置有效的 `context_window_tokens` 和 `max_output_tokens`。代理以管理员确认的模型上下文上界预留、强制输出限制，使用真实 usage 结算；目前仅支持单结果同步调用，不支持 `n > 1`、`best_of > 1` 或后台异步生成。上下文上界错误、缺失用量或实际费用超出预留都会转待核查，不能按估值扣款。
+- 模型调用沿用 `/v1/chat/completions`、`/v1/responses`、`/v1/messages`；MCP 使用 `POST /mcp/connectors/{id}`，密钥作用域为 `mcp:invoke`。集中认证工具成功收费；独立认证、免认证和明确失败不收费。远程 HTTP 返回 JSON/SSE 均可解析。
+- 返回的 `X-Billing-Transaction-ID` 关联真实交易；可选 `Idempotency-Key` 重复请求返回原交易 ID 和 409，禁止再次执行；`X-Session-ID` 可选，提供时验证所属用户。
+- 周期采用上海时区；每分钟准备最多 100 个账户，读取或调用时兜底开户。额度变更不重发当期余额；周期切换在当前周期结束时生效。未消费余额不结转，跨周期调用仍结算到原账户。
+- 待结算交易按原交易 ID 自动重试，最多退避一小时；执行中断 30 分钟后转核查，不自动重放上游。管理端可填写证据和用量处理未知结果，已结算本地扣款通过关联冲正全额退款。流水禁止更新或删除。
+
+### 百智云钱包
+
+应用使用 `opensdk v1.14.2`。在服务端显式设置 `BAIZHIYUN_ENV`、`BAIZHIYUN_APP_ID`、`MONKEYAI_WALLET_CERT_DIR`，证书目录包含 `app.crt`、`app.key`、`ca.crt`。未设置环境时不初始化远程客户端，管理端不能启用远程模式。密钥不通过后台表单输入。
+
+容器部署时通过单独 Compose override 或现有部署系统向后端传入上述变量，将真实证书目录只读挂载到 `MONKEYAI_WALLET_CERT_DIR`。证书和私钥不进入镜像。新增私有 SDK 依赖，构建机需要私有模块读取权限；Docker 构建支持 BuildKit 的 `netrc` secret（`--secret id=netrc,src=<已有认证文件>`），不得将凭据写入 Dockerfile 或构建参数。
+
+本地周期额度与百智云钱包余额独立管理。绑定用户时查询开放平台验证身份；远程预扣、确认和重试复用数据库中同一 BizID。SDK 的金额单位为 quota，100 quota = 1 积分；预留向上取整，结算每调用汇总后四舍五入到 0.01 积分。未提供钱包历史余额时页面不伪造扣后余额。
+
+远程真实联调尚需核实零金额确认、失败释放、重复确认、按 BizID 查询和退款/对账渠道。预扣结果不确定保留冻结，只有有证据的状态才能进入下一步；远程已结算退款不能仅增加本地余额。当前已覆盖 SDK 接口替身的确认失败及幂等恢复，不能代替真实钱包环境验收。
+
+### 验证
+
+```bash
+cd backend
+go test ./...
+go vet ./...
+# 事务及端到端测试：配置可丢弃的 PostgreSQL 和 RustFS
+MONKEYAI_TEST_DATABASE_URL='<测试库连接串>' MONKEYAI_S3_ENDPOINT='<测试 RustFS 地址>' \
+MONKEYAI_S3_BUCKET='<测试 Bucket>' MONKEYAI_S3_ACCESS_KEY='<测试访问键>' \
+MONKEYAI_S3_SECRET_KEY='<测试密钥>' go test ./... -count=1
+cd ../admin
+npm test
+npm run lint
+npm run build
+```
+
+数据库测试使用随机 schema 并清理。完整方案、实施状态和验收记录见 [计费实施方案](design/billing-implementation-plan.md)。

@@ -1,12 +1,9 @@
 package mcp
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -69,106 +66,13 @@ type remoteTool struct {
 func discover(ctx context.Context, target string, headers map[string]string) ([]remoteTool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	session := ""
-	version := "2025-03-26"
-	h := client()
-	defer h.CloseIdleConnections()
+	rpc, err := openRemote(ctx, target, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer rpc.http.CloseIdleConnections()
 	call := func(id int, method string, params any) (json.RawMessage, error) {
-		body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
-		req, err := http.NewRequestWithContext(ctx, "POST", target, bytes.NewReader(body))
-		if err != nil {
-			return nil, err
-		}
-		for k, v := range headers {
-			req.Header.Set(k, v)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json, text/event-stream")
-		req.Header.Set("MCP-Protocol-Version", version)
-		if session != "" {
-			req.Header.Set("Mcp-Session-Id", session)
-		}
-		resp, err := h.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, fmt.Errorf("MCP 返回 HTTP %d", resp.StatusCode)
-		}
-		if sid := resp.Header.Get("Mcp-Session-Id"); sid != "" {
-			session = sid
-		}
-		var data []byte
-		if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
-			scanner := bufio.NewScanner(io.LimitReader(resp.Body, 4<<20))
-			scanner.Buffer(make([]byte, 4096), 4<<20)
-			var event strings.Builder
-			for scanner.Scan() {
-				line := scanner.Text()
-				if strings.HasPrefix(line, "data:") {
-					event.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
-					event.WriteByte('\n')
-				}
-				if line == "" && event.Len() > 0 {
-					var candidate struct {
-						ID int `json:"id"`
-					}
-					if json.Unmarshal([]byte(event.String()), &candidate) == nil && candidate.ID == id {
-						data = []byte(event.String())
-						break
-					}
-					event.Reset()
-				}
-			}
-			if data == nil {
-				return nil, fmt.Errorf("MCP 事件流没有返回响应")
-			}
-		} else {
-			data, err = io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
-			if err != nil || len(data) > 4<<20 {
-				return nil, fmt.Errorf("MCP 响应超限")
-			}
-		}
-		var reply struct {
-			ID     int             `json:"id"`
-			Result json.RawMessage `json:"result"`
-			Error  json.RawMessage `json:"error"`
-		}
-		if err = json.Unmarshal(data, &reply); err != nil || reply.ID != id || len(reply.Error) > 0 || len(reply.Result) == 0 {
-			return nil, fmt.Errorf("MCP 协议响应无效")
-		}
-		return reply.Result, nil
-	}
-	init, err := call(1, "initialize", map[string]any{"protocolVersion": version, "capabilities": map[string]any{}, "clientInfo": map[string]string{"name": "MonkeyAI", "version": "1"}})
-	if err != nil {
-		return nil, err
-	}
-	var handshake struct {
-		Version string `json:"protocolVersion"`
-	}
-	if json.Unmarshal(init, &handshake) != nil || handshake.Version == "" {
-		return nil, fmt.Errorf("MCP 握手无效")
-	}
-	version = handshake.Version
-	notification := []byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
-	req, _ := http.NewRequestWithContext(ctx, "POST", target, bytes.NewReader(notification))
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
-	req.Header.Set("MCP-Protocol-Version", version)
-	if session != "" {
-		req.Header.Set("Mcp-Session-Id", session)
-	}
-	resp, err := h.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("MCP 初始化通知失败")
+		return rpc.call(ctx, id, method, params)
 	}
 	out := []remoteTool{}
 	cursor := ""

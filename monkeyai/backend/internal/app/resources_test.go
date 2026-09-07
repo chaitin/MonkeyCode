@@ -52,12 +52,18 @@ func TestResourceIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	up, err := os.ReadFile(filepath.Join("..", "..", "migrations", "000001_initial_create_schema.up.sql"))
+	migrations, err := filepath.Glob(filepath.Join("..", "..", "migrations", "*.up.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, string(up)); err != nil {
-		t.Fatal(err)
+	for _, path := range migrations {
+		up, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = pool.Exec(ctx, string(up)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	storage, err := resource.NewS3(ctx)
 	if err != nil {
@@ -274,7 +280,7 @@ func TestResourceIntegration(t *testing.T) {
 	if tool.Bool("enabled") {
 		t.Fatal("新工具必须默认禁用")
 	}
-	must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": 2.5}, "", "")
+	must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
 	agentTools := must("GET", "/api/v1/connectors/"+conn.String("id")+"/tools", nil, "a", "")
 	if len(agentTools["items"].([]any)) != 1 {
 		t.Fatal("启用工具下发失败")
@@ -324,7 +330,7 @@ func TestResourceIntegration(t *testing.T) {
 		if tool.String("name") != "Tool-"+name {
 			t.Fatal("账号工具串用")
 		}
-		must("PATCH", "/api/admin/v1/connectors/"+c2.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": 1}, "", "")
+		must("PATCH", "/api/admin/v1/connectors/"+c2.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
 	}
 	for _, name := range []string{"a", "b"} {
 		directory := must("GET", "/api/v1/connectors/"+c2.String("id")+"/tools", nil, name, "")
@@ -409,16 +415,24 @@ func TestResourceIntegration(t *testing.T) {
 		t.Fatal("仍继承已删除分组的授权")
 	}
 
-	// 一版迁移可以完整撤销并重建，保留身份和调用密钥结构。
-	down, err := os.ReadFile(filepath.Join("..", "..", "migrations", "000001_initial_create_schema.down.sql"))
-	if err != nil {
-		t.Fatal(err)
+	// 可丢弃测试库按版本逆序撤销，再完整初始化。
+	for i := len(migrations) - 1; i >= 0; i-- {
+		down, err := os.ReadFile(strings.Replace(migrations[i], ".up.sql", ".down.sql", 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = pool.Exec(ctx, string(down)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if _, err = pool.Exec(ctx, string(down)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, string(up)); err != nil {
-		t.Fatal(err)
+	for _, path := range migrations {
+		up, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = pool.Exec(ctx, string(up)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var tables int
 	if err = pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_schema=$1 AND table_name IN('oauth_tokens','oauth_login_states','api_keys','connectors')`, schema).Scan(&tables); err != nil || tables != 4 {

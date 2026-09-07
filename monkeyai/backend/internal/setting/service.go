@@ -59,6 +59,9 @@ func (s *Service) Put(ctx context.Context, key string, value json.RawMessage, sc
 	if !slices.Contains(Keys, key) {
 		return Record{}, ErrUnknownKey
 	}
+	if key == "billing" {
+		return Record{}, errors.New("请通过计费管理专用接口修改配置")
+	}
 	if schemaVersion < 1 {
 		return Record{}, errors.New("schema_version 必须大于 0")
 	}
@@ -123,6 +126,17 @@ func (s *Service) AgentConfig(ctx context.Context) (Config, error) {
 		value, err := redact(record.Key, record.Value)
 		if err != nil {
 			return Config{}, fmt.Errorf("过滤 %s 配置: %w", record.Key, err)
+		}
+		if record.Key == "billing" {
+			var all map[string]json.RawMessage
+			_ = json.Unmarshal(value, &all)
+			safe := map[string]json.RawMessage{}
+			for _, key := range []string{"input_credits_per_million_tokens", "cached_input_credits_per_million_tokens", "output_credits_per_million_tokens", "charging_mode", "enabled", "quota_refresh_cycle"} {
+				if v, ok := all[key]; ok {
+					safe[key] = v
+				}
+			}
+			value, _ = json.Marshal(safe)
 		}
 		config.Settings[record.Key] = value
 		if record.UpdatedAt.After(config.UpdatedAt) {

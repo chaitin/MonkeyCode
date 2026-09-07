@@ -1,0 +1,245 @@
+package app
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+func TestBillingIntegration(t *testing.T) {
+	dsn := os.Getenv("MONKEYAI_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("需要 PostgreSQL 与 RustFS 测试环境")
+	}
+	ctx := t.Context()
+	root, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := "test_billing_http_" + strings.ReplaceAll(resource.ID(), "-", "")
+	if _, err = root.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		pool.Close()
+		_, _ = root.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+		root.Close()
+	})
+	paths, _ := filepath.Glob("../../migrations/*.up.sql")
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = pool.Exec(ctx, string(data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
+	handler, err := newApplicationHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://localhost:8080", AdminURL: "http://localhost:8080", InitialAdminName: "计费测试", InitialAdminEmail: "billing-http@example.com", InitialAdminPassword: "billing-test-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cookie *http.Cookie
+	call := func(method, path string, body any, token, key string) (int, resource.Object, http.Header) {
+		t.Helper()
+		raw, _ := json.Marshal(body)
+		r := httptest.NewRequest(method, path, bytes.NewReader(raw))
+		r.Header.Set("Content-Type", "application/json")
+		if cookie != nil {
+			r.AddCookie(cookie)
+		}
+		if token == "" && strings.HasPrefix(path, "/api/v1/") {
+			token = "billing-oauth-test"
+		}
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		if key != "" {
+			r.Header.Set("Idempotency-Key", key)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if path == "/api/auth/v1/admin/login" && len(w.Result().Cookies()) > 0 {
+			cookie = w.Result().Cookies()[0]
+		}
+		out := resource.Object{}
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return w.Code, out, w.Header()
+	}
+	must := func(method, path string, body any, token string) resource.Object {
+		t.Helper()
+		code, out, _ := call(method, path, body, token, "")
+		if code < 200 || code >= 300 {
+			t.Fatalf("%s %s: %d %v", method, path, code, out)
+		}
+		return out
+	}
+	if code, _, _ := call("GET", "/api/admin/v1/billing/settings", nil, "", ""); code != 401 {
+		t.Fatalf("匿名管理接口: %d", code)
+	}
+	must("POST", "/api/auth/v1/admin/login", resource.Object{"email": "billing-http@example.com", "password": "billing-test-password"}, "")
+	var user string
+	if err = pool.QueryRow(ctx, `SELECT id FROM users WHERE email='billing-http@example.com'`).Scan(&user); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256([]byte("billing-oauth-test"))
+	if _, err = pool.Exec(ctx, `INSERT INTO oauth_tokens(user_id,client_id,access_token_hash,refresh_token_hash,access_expires_at,refresh_expires_at) VALUES($1,'test',$2,'billing-refresh',now()+interval '1 hour',now()+interval '2 hours')`, user, hex.EncodeToString(hash[:])); err != nil {
+		t.Fatal(err)
+	}
+
+	key := must("POST", "/api/v1/api-keys", resource.Object{"name": "计费调用", "scopes": []string{"model:invoke", "mcp:invoke"}}, "").String("api_key")
+	settings := must("GET", "/api/admin/v1/billing/settings", nil, "")
+	revision := resource.Object(settings["policy"].(map[string]any)).Int("revision")
+	must("PATCH", "/api/admin/v1/billing/settings/mode", resource.Object{"revision": revision, "charging_mode": "local", "enabled": true}, "")
+	if code, _, _ := call("PATCH", "/api/admin/v1/billing/settings/cycle", resource.Object{"revision": revision, "quota_refresh_cycle": "daily"}, "", ""); code != 409 {
+		t.Fatalf("旧版本应拒绝: %d", code)
+	}
+	var requests atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		var body resource.Object
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Int("max_completion_tokens") != 2000 {
+			t.Errorf("未限制输出: %v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"upstream-reused-id","usage":{"prompt_tokens":10000,"completion_tokens":2000,"prompt_tokens_details":{"cached_tokens":4000}}}`)
+	}))
+	defer upstream.Close()
+	model := must("POST", "/api/admin/v1/models", resource.Object{"model_id": "billing-model", "display_name": "计费模型", "protocol": "openai_chat_completions", "base_url": upstream.URL, "api_key": "test-key", "advanced_config": resource.Object{"context_window_tokens": 20000, "max_output_tokens": 2000}, "credit_multiplier": 1, "authorization": resource.Object{"user_ids": []string{user}, "group_ids": []string{}}}, "")
+	body := resource.Object{"model": model.String("id"), "messages": []resource.Object{{"role": "user", "content": "测试"}}}
+	code, out, headers := call("POST", "/v1/chat/completions", body, key, "http-call-1")
+	if code != 200 {
+		t.Fatalf("模型调用: %d %v", code, out)
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err = handler.(*applicationHandler).proxy.Wait(waitCtx); err != nil {
+		t.Fatal(err)
+	}
+	transaction := headers.Get("X-Billing-Transaction-ID")
+	detail := must("GET", "/api/admin/v1/billing/transactions/"+transaction, nil, "")
+	if detail.String("status") != "settled" || detail.String("amount") != "1.480000" {
+		t.Fatalf("结算错误: %v", detail)
+	}
+	if code, _, _ := call("POST", "/v1/chat/completions", body, key, "http-call-1"); code != 409 || requests.Load() != 1 {
+		t.Fatalf("重复执行: %d %d", code, requests.Load())
+	}
+	must("POST", "/api/admin/v1/billing/transactions/"+transaction+"/refund", resource.Object{"reason": "验证退款"}, "")
+	must("POST", "/api/admin/v1/billing/transactions/"+transaction+"/refund", resource.Object{"reason": "验证退款"}, "")
+	summary := must("GET", "/api/admin/v1/billing/summary", nil, "")
+	if summary.String("charges") != "1.480000" || summary.String("refunds") != "1.480000" {
+		t.Fatalf("退款重复或丢失: %v", summary)
+	}
+	must("POST", "/api/admin/v1/billing/accounts/"+user+"/adjustments", resource.Object{"delta": "-14999", "reason": "验证额度限制", "idempotency_key": "adjust-http-1"}, "")
+	if code, _, _ := call("POST", "/v1/chat/completions", body, key, ""); code != 402 || requests.Load() != 1 {
+		t.Fatalf("余额不足仍调用上游: %d %d", code, requests.Load())
+	}
+	must("GET", "/api/admin/v1/billing/entries?user=计费&category=model&page_size=1", nil, "")
+	reconciliation := must("GET", "/api/admin/v1/billing/reconciliation", nil, "")
+	if len(reconciliation["differences"].([]any)) != 0 {
+		t.Fatalf("账目不平: %v", reconciliation)
+	}
+	// MCP 通过真实鉴权、目录和工具执行入口验证成功收费、业务失败不收费。
+	must("POST", "/api/admin/v1/billing/accounts/"+user+"/adjustments", resource.Object{"delta": "100", "reason": "工具测试", "idempotency_key": "adjust-http-2"}, "")
+	mcpUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			ID     int    `json:"id"`
+			Method string `json:"method"`
+			Params struct {
+				Arguments struct {
+					Fail bool `json:"fail"`
+				} `json:"arguments"`
+			} `json:"params"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		var result any = resource.Object{}
+		switch in.Method {
+		case "initialize":
+			result = resource.Object{"protocolVersion": "2025-03-26"}
+		case "notifications/initialized":
+			w.WriteHeader(202)
+			return
+		case "tools/list":
+			result = resource.Object{"tools": []resource.Object{{"name": "search", "inputSchema": resource.Object{"type": "object"}}}}
+		case "tools/call":
+			result = resource.Object{"content": []resource.Object{{"type": "text", "text": "结果"}}, "isError": in.Params.Arguments.Fail}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resource.Object{"jsonrpc": "2.0", "id": in.ID, "result": result})
+	}))
+	defer mcpUpstream.Close()
+	for _, mode := range []string{"centralized", "independent", "none"} {
+		provider := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "计费工具-" + mode, "identifier": "billing-" + mode, "url": mcpUpstream.URL, "authorization_mode": mode, "authorization_method": "http_header"}, "")
+		connector := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "连接-" + mode, "description": "测试", "provider_id": provider.String("id"), "grants": []resource.Object{{"user_id": user, "usage_requirement": "optional"}}}, "")
+		path := "/api/admin/v1/connectors/" + connector.String("id")
+		if mode != "none" {
+			credentialPath := path + "/credential"
+			if mode == "independent" {
+				credentialPath = "/api/v1/connectors/" + connector.String("id") + "/credential"
+			}
+			must("PUT", credentialPath, resource.Object{"http_headers": resource.Object{"X-Test": "billing"}}, "")
+		}
+		testPath := path + "/test"
+		if mode == "independent" {
+			testPath = "/api/v1/connectors/" + connector.String("id") + "/test"
+		}
+		must("POST", testPath, nil, "")
+		toolsPath := path + "/tools"
+		if mode == "independent" {
+			toolsPath += "?user_id=" + user
+		}
+		list := must("GET", toolsPath, nil, "")["items"].([]any)
+		tool := resource.Object(list[0].(map[string]any))
+		cost := "0"
+		if mode == "centralized" {
+			cost = "2.5"
+		}
+		must("PATCH", path+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": cost}, "")
+		for _, failed := range []bool{false, true} {
+			_, _, h := call("POST", "/mcp/connectors/"+connector.String("id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": resource.Object{"name": "search", "arguments": resource.Object{"fail": failed}}}, key, "")
+			id := h.Get("X-Billing-Transaction-ID")
+			if id == "" {
+				t.Fatalf("MCP %s 缺少交易", mode)
+			}
+			detail := must("GET", "/api/admin/v1/billing/transactions/"+id, nil, "")
+			want := "0.000000"
+			if mode == "centralized" && !failed {
+				want = "2.500000"
+			}
+			if detail.String("amount") != want {
+				t.Fatalf("MCP %s %t: %v", mode, failed, detail)
+			}
+		}
+	}
+	reconciliation = must("GET", "/api/admin/v1/billing/reconciliation", nil, "")
+	if len(reconciliation["differences"].([]any)) != 0 || reconciliation.Int("total") != 0 {
+		t.Fatalf("MCP 账目不平: %v", reconciliation)
+	}
+}
