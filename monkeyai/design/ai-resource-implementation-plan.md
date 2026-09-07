@@ -288,7 +288,7 @@ Connector 的下发 DTO 不包含上游 Token、Secret 或敏感 Header；工具
 - RustFS 的 S3 API 使用容器内 `9000` 端口，默认供后端内网访问。
 - 管理控制台使用 `9001`，本机调试绑定 `127.0.0.1`，与 MonkeyAI 管理后台分开。
 - 数据持久化到 `./data/rustfs` 并挂载到容器 `/data`；日志单独挂载到 `./data/rustfs-logs`。数据目录随常规容器重建保留。
-- RustFS 容器以 `0:0` 运行并直接写入数据和日志挂载目录，不再配置独立目录权限初始化服务。
+- RustFS 容器以非 root 用户 `10001:10001` 运行，部署前准备数据和日志挂载目录及其内容的读写权限，不配置独立目录权限初始化服务。
 - RustFS 健康检查验证 S3 服务的 `/health`；Bucket 是否存在、运行凭据能否访问由后端启动初始化和就绪检查验证。
 
 后端在启动流程中经 S3 API 检查并按需创建私有 Bucket，成功后开始提供 HTTP 服务。Bucket 已存在且可访问时视为成功，权限错误与网络错误不能当成“Bucket 不存在”。初始化限时 1 分钟，失败时后端退出，由 Compose 重启重试。多次启动不清空 Bucket，也不改变已有对象。Compose 默认复用 RustFS 凭据，独立应用凭据可通过 `MONKEYAI_S3_ACCESS_KEY` / `MONKEYAI_S3_SECRET_KEY` 覆盖；首次创建 Bucket 需要 `s3:CreateBucket` 权限。

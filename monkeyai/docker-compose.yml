@@ -30,7 +30,7 @@ services:
 
   rustfs:
     image: chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/rustfs:v1.0.0-rc.5
-    user: "0:0"
+    user: "10001:10001"
     restart: unless-stopped
     environment:
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?请设置 RUSTFS_ACCESS_KEY}
