@@ -931,6 +931,17 @@ export const enUS = {
         emailCode: "Allow email verification code sign-in",
         emailCodeDescription:
           "Allow members to sign in with a verification code sent by email.",
+        allowRegistration: "Allow new account registration",
+        allowRegistrationDescription:
+          "Allow new users to create a regular account through enabled OAuth / OIDC sign-in providers.",
+        enableRegistrationDialogTitle: "Enable new account registration?",
+        enableRegistrationDialogDescription:
+          "New users will automatically receive a regular account after successful OAuth / OIDC authentication.",
+        disableRegistrationDialogTitle: "Disable new account registration?",
+        disableRegistrationDialogDescription:
+          "Only existing members will be able to sign in through OAuth / OIDC. Existing accounts are not affected.",
+        confirmEnableRegistration: "Enable registration",
+        confirmDisableRegistration: "Disable registration",
       },
       oauth: {
         title: "Third-party sign-in",
@@ -963,23 +974,12 @@ export const enUS = {
       },
       email: {
         title: "Email settings",
-        description: "Configure account registration and outgoing mail.",
+        description: "Configure outgoing system mail.",
         configure: "Configure",
         dialogTitle: "Configure email settings",
         dialogDescription:
           "Configure the sender identity and outgoing SMTP service.",
         sendingConfiguration: "Sending configuration",
-        allowRegistration: "Allow new account registration",
-        allowRegistrationDescription:
-          "Allow users without an invitation to create an account by email.",
-        enableRegistrationDialogTitle: "Enable new account registration?",
-        enableRegistrationDialogDescription:
-          "Users without an invitation will immediately be able to create an account by email.",
-        disableRegistrationDialogTitle: "Disable new account registration?",
-        disableRegistrationDialogDescription:
-          "Users without an invitation will no longer be able to create an account. Existing accounts are not affected.",
-        confirmEnableRegistration: "Enable registration",
-        confirmDisableRegistration: "Disable registration",
         senderName: "Sender name",
         senderEmail: "Sender email",
         smtpHost: "SMTP host",

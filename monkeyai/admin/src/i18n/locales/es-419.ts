@@ -806,6 +806,17 @@ export const es419 = {
         emailCode: "Permitir inicio de sesión con código por correo",
         emailCodeDescription:
           "Permite iniciar sesión con un código de verificación enviado por correo.",
+        allowRegistration: "Permitir registro de cuentas nuevas",
+        allowRegistrationDescription:
+          "Permite que los usuarios nuevos creen una cuenta estándar mediante proveedores OAuth / OIDC habilitados.",
+        enableRegistrationDialogTitle: "¿Permitir el registro de cuentas?",
+        enableRegistrationDialogDescription:
+          "Se creará automáticamente una cuenta estándar para los usuarios nuevos después de autenticarse con OAuth / OIDC.",
+        disableRegistrationDialogTitle: "¿Desactivar el registro de cuentas?",
+        disableRegistrationDialogDescription:
+          "Solo los miembros existentes podrán iniciar sesión mediante OAuth / OIDC. Las cuentas existentes no se ven afectadas.",
+        confirmEnableRegistration: "Permitir registro",
+        confirmDisableRegistration: "Desactivar registro",
       },
       oauth: {
         title: "Inicio de sesión de terceros",
@@ -837,23 +848,12 @@ export const es419 = {
       },
       email: {
         title: "Configuración de correo",
-        description: "Configura el registro de cuentas y el correo saliente.",
+        description: "Configura el envío de correos del sistema.",
         configure: "Configurar",
         dialogTitle: "Configurar correo",
         dialogDescription:
           "Configura la identidad del remitente y el servicio SMTP.",
         sendingConfiguration: "Configuración de envío",
-        allowRegistration: "Permitir registro de cuentas nuevas",
-        allowRegistrationDescription:
-          "Permite que usuarios sin invitación creen una cuenta.",
-        enableRegistrationDialogTitle: "¿Permitir el registro de cuentas?",
-        enableRegistrationDialogDescription:
-          "Los usuarios sin invitación podrán crear de inmediato una cuenta por correo.",
-        disableRegistrationDialogTitle: "¿Desactivar el registro de cuentas?",
-        disableRegistrationDialogDescription:
-          "Los usuarios sin invitación ya no podrán crear cuentas. Las cuentas existentes no se verán afectadas.",
-        confirmEnableRegistration: "Permitir registro",
-        confirmDisableRegistration: "Desactivar registro",
         senderName: "Nombre del remitente",
         senderEmail: "Correo del remitente",
         smtpHost: "Servidor SMTP",
