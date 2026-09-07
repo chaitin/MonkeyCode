@@ -288,11 +288,12 @@ func TestResourceIntegration(t *testing.T) {
 	if code, _, _ := call("GET", "/api/v1/connectors/"+conn.String("id")+"/tools", nil, "b", ""); code != 404 {
 		t.Fatalf("工具目录越权: %d", code)
 	}
-	rootRule := must("POST", "/api/admin/v1/rules", resource.Object{"name": "强制规则", "content": "强制", "grants": []resource.Object{{"group_id": "00000000-0000-0000-0000-000000000001", "usage_requirement": "required"}}}, "", "")
-	_ = rootRule
+	allGroup := must("POST", "/api/admin/v1/groups", resource.Object{"name": "资源测试组", "parent_id": nil}, "", "")
+	must("PUT", "/api/admin/v1/groups/"+allGroup.String("id")+"/members", resource.Object{"member_ids": users}, "", "")
+	must("POST", "/api/admin/v1/rules", resource.Object{"name": "强制规则", "content": "强制", "grants": []resource.Object{{"group_id": allGroup.String("id"), "usage_requirement": "required"}}}, "", "")
 	resolved = must("POST", "/api/v1/resources/resolve", resource.Object{}, "b", "")
 	if len(resolved["rules"].([]any)) != 1 {
-		t.Fatal("根组强制规则缺失")
+		t.Fatal("显式分组的强制规则缺失")
 	}
 	must("PUT", "/api/admin/v1/experts/"+expert.String("id"), resource.Object{"name": "专家", "description": "测试", "prompt": "审查代码", "rule_ids": []string{rule.String("id")}, "skill_ids": []string{skill.String("id")}, "providers": []any{}, "grants": []any{}}, "", `"1"`)
 	if code, _, _ := call("GET", "/api/v1/experts/"+expert.String("id")+"/skills/"+skill.String("id")+"/package", nil, "a", ""); code != 404 {
@@ -317,7 +318,7 @@ func TestResourceIntegration(t *testing.T) {
 	}))
 	defer independent.Close()
 	p2 := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "独立 MCP", "identifier": "independent", "url": independent.URL, "authorization_mode": "independent", "authorization_method": "http_header"}, "", "")
-	c2 := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "独立连接", "description": "按用户隔离", "provider_id": p2.String("id"), "grants": []resource.Object{{"group_id": "00000000-0000-0000-0000-000000000001", "usage_requirement": "optional"}}}, "", "")
+	c2 := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "独立连接", "description": "按用户隔离", "provider_id": p2.String("id"), "grants": []resource.Object{{"group_id": allGroup.String("id"), "usage_requirement": "optional"}}}, "", "")
 	for i, name := range []string{"a", "b"} {
 		must("PUT", "/api/v1/connectors/"+c2.String("id")+"/credential", resource.Object{"http_headers": resource.Object{"X-Account": "Tool-" + name}}, name, "")
 		must("POST", "/api/v1/connectors/"+c2.String("id")+"/test", nil, name, "")
@@ -389,7 +390,7 @@ func TestResourceIntegration(t *testing.T) {
 	// 父分组授权覆盖后代成员，删除父分组后不再继承失效授权。
 	adminUser := must("GET", "/api/admin/v1/me", nil, "", "")
 	parentID, childID := resource.ID(), resource.ID()
-	if _, err = pool.Exec(ctx, `INSERT INTO groups(id,parent_id,name) VALUES($1,'00000000-0000-0000-0000-000000000001','测试父分组'),($2,$1,'测试子分组')`, parentID, childID); err != nil {
+	if _, err = pool.Exec(ctx, `INSERT INTO groups(id,parent_id,name) VALUES($1,NULL,'测试父分组'),($2,$1,'测试子分组')`, parentID, childID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES($1,$2,$3)`, childID, users[0], adminUser.String("id")); err != nil {
@@ -415,8 +416,8 @@ func TestResourceIntegration(t *testing.T) {
 		t.Fatal("仍继承已删除分组的授权")
 	}
 
-	// 可丢弃测试库按版本逆序撤销，再完整初始化。
-	for i := len(migrations) - 1; i >= 0; i-- {
+	// 虚拟根的数据转换不可逆；可丢弃测试库从初始结构重建。
+	for i := 1; i >= 0; i-- {
 		down, err := os.ReadFile(strings.Replace(migrations[i], ".up.sql", ".down.sql", 1))
 		if err != nil {
 			t.Fatal(err)

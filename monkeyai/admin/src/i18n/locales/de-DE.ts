@@ -481,6 +481,12 @@ export const deDE = {
         "„{{rule}}“ löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
     },
     membersAndGroups: {
+      directMembersHint:
+        "Nur direkte Mitgliedschaften werden geändert. Mitglieder von Untergruppen bleiben sichtbar.",
+      deleteChildrenHint:
+        "Verschieben oder löschen Sie zuerst die Untergruppen.",
+      deleteMembersHint:
+        "Mitgliedskonten bleiben erhalten. Mitgliedschaften und Ressourcenrechte dieser Gruppe werden entfernt.",
       title: "Mitglieder und Gruppen",
       description:
         "Verwalten Sie Mitglieder, Gruppen und deren Zugriff auf Ressourcen.",

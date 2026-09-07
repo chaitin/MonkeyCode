@@ -135,12 +135,12 @@ paths:
                       properties:
                         id:
                           type: string
-                          format: uuid
+                          description: 分组 UUID 或虚拟团队标识 team。
                         parent_id:
                           type:
                           - string
                           - 'null'
-                          format: uuid
+                          description: 父分组 UUID、team 或 null（仅虚拟团队节点）。
                         name:
                           type: string
                         credits:
@@ -163,7 +163,7 @@ paths:
                           type: string
                         group_id:
                           type: string
-                          format: uuid
+                          description: 计费分组 UUID；无指定归属时为 team。
                         credits:
                           anyOf:
                           - $ref: '#/components/schemas/CreditAmount'
@@ -207,12 +207,12 @@ paths:
                       properties:
                         id:
                           type: string
-                          format: uuid
+                          description: 分组 UUID 或虚拟团队标识 team。
                         parent_id:
                           type:
                           - string
                           - 'null'
-                          format: uuid
+                          description: 父分组 UUID、team 或 null（仅虚拟团队节点）。
                         name:
                           type: string
                         credits:
@@ -235,7 +235,7 @@ paths:
                           type: string
                         group_id:
                           type: string
-                          format: uuid
+                          description: 计费分组 UUID；无指定归属时为 team。
                         credits:
                           anyOf:
                           - $ref: '#/components/schemas/CreditAmount'
@@ -282,7 +282,7 @@ paths:
                         - group
                       id:
                         type: string
-                        format: uuid
+                        description: 用户或分组 UUID；团队默认额度使用 team。
                       credits:
                         anyOf:
                         - $ref: '#/components/schemas/CreditAmount'
@@ -778,177 +778,141 @@ paths:
               - reason
   /api/admin/v1/groups:
     get:
-      summary: 查询真实分组和成员授权关系
+      summary: 查询成员分组
+      description: 返回全部未删除分组及直接成员。团队根节点不入库，名称由 branding.workspace_name 设置提供；parent_id 为 null 的分组均为团队根节点的直属子分组，不预置任何分组。
       responses:
-        '200':
-          description: 请求成功
+        "200":
+          description: 分组列表
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  groups:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                          format: uuid
-                        parent_id:
-                          type:
-                          - string
-                          - 'null'
-                          format: uuid
-                        name:
-                          type: string
-                  memberships:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        group_id:
-                          type: string
-                          format: uuid
-                        user_id:
-                          type: string
-                          format: uuid
-        '400':
-          description: 参数不合法
-        '401':
-          description: 未登录
-        '403':
-          description: 权限不足
-        '409':
-          description: 修订号、幂等键或交易状态冲突
+                $ref: "#/components/schemas/MemberGroupsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
     post:
-      summary: 创建分组
-      responses:
-        '200':
-          description: 请求成功
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    format: uuid
-        '400':
-          description: 参数不合法
-        '401':
-          description: 未登录
-        '403':
-          description: 权限不足
-        '409':
-          description: 修订号、幂等键或交易状态冲突
+      summary: 创建子分组
+      description: 名称去除首尾空白后须为 1—100 个字符，同级名称不区分大小写且不能重复。parent_id 为 null 或省略时，创建团队根节点的直属子分组。
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                parent_id:
-                  type: string
-                  format: uuid
-              required:
-              - name
-              - parent_id
+              $ref: "#/components/schemas/CreateMemberGroupInput"
+      responses:
+        "201":
+          description: 已创建分组
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberGroup"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ResourceError404"
+        "409":
+          $ref: "#/components/responses/ResourceError409"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/groups/{groupID}:
     parameters:
-    - in: path
-      name: groupID
-      schema:
-        type: string
-        format: uuid
-      required: true
+      - in: path
+        name: groupID
+        required: true
+        description: 分组 UUID。
+        schema:
+          type: string
+          format: uuid
     patch:
-      summary: 改名或移动分组，禁止父子环
+      summary: 修改分组名称或上级分组
+      description: 至少指定 name 或 parent_id。parent_id 为 null 表示移动到团队根节点下，省略则保留原上级。不能移动到自身或后代中；更换上级会改变成员继承的资源授权。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberGroupInput"
       responses:
-        '200':
-          description: 请求成功
+        "200":
+          description: 已更新分组
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    format: uuid
-        '400':
-          description: 参数不合法
-        '401':
-          description: 未登录
-        '403':
-          description: 权限不足
-        '409':
-          description: 修订号、幂等键或交易状态冲突
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                parent_id:
-                  type: string
-                  format: uuid
-              required:
-              - name
-              - parent_id
+                $ref: "#/components/schemas/MemberGroup"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ResourceError404"
+        "409":
+          $ref: "#/components/responses/ResourceError409"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
     delete:
-      summary: 删除无引用的自定义分组
+      summary: 删除分组
+      description: 有子分组或成员计费归属引用时返回 409。软删除分组、移除直接成员关系并清除本组资源授权，保留成员账号。
       responses:
-        '204':
-          description: 删除成功
-        '400':
-          description: 参数不合法
-        '401':
-          description: 未登录
-        '403':
-          description: 权限不足
-        '409':
-          description: 修订号、幂等键或交易状态冲突
+        "204":
+          description: 已删除，无响应体。
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ResourceError404"
+        "409":
+          $ref: "#/components/responses/ResourceError409"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/groups/{groupID}/members:
     parameters:
-    - in: path
-      name: groupID
-      schema:
-        type: string
-        format: uuid
-      required: true
+      - in: path
+        name: groupID
+        required: true
+        description: 分组 UUID。
+        schema:
+          type: string
+          format: uuid
     put:
-      summary: 更新分组授权成员，计费归属保持独立
-      responses:
-        '204':
-          description: 更新成功
-        '400':
-          description: 参数不合法
-        '401':
-          description: 未登录
-        '403':
-          description: 权限不足
-        '409':
-          description: 修订号、幂等键或交易状态冲突
+      summary: 替换分组直接成员
+      description: 仅调整直接成员关系，不改变用户角色或子分组成员。空数组清空直接成员，重复 ID 自动去重。所有数据库分组均通过显式成员关系管理。
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                user_ids:
-                  type: array
-                  items:
-                    type: string
-                    format: uuid
-              required:
-              - user_ids
+              $ref: "#/components/schemas/MemberGroupMembersInput"
+      responses:
+        "200":
+          description: 已更新成员关系
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberGroup"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ResourceError404"
+        "409":
+          $ref: "#/components/responses/ResourceError409"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/users/{userID}/billing-group:
     parameters:
     - in: path
@@ -3462,6 +3426,68 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    CreateMemberGroupInput:
+      allOf:
+        - $ref: "#/components/schemas/MemberGroupInput"
+        - type: object
+          required: [name]
+    MemberGroupMembersInput:
+      type: object
+      required: [member_ids]
+      properties:
+        member_ids:
+          type: array
+          maxItems: 10000
+          description: 完整的直接成员 ID 列表，空数组表示清空，重复 ID 自动去重；用户须存在且未删除。
+          items:
+            type: string
+            format: uuid
+    MemberGroupInput:
+      type: object
+      minProperties: 1
+      anyOf:
+        - required: [name]
+        - required: [parent_id]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 去除首尾空白后不能为空；同级名称不区分大小写且不能重复。
+        parent_id:
+          type: [string, "null"]
+          format: uuid
+          description: 新上级分组 ID，必须是有效分组；null 表示团队根节点，更新时省略则保留原值。
+    MemberGroupsResponse:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          description: 未删除的分组列表，按创建时间和 ID 排序。
+          items:
+            $ref: "#/components/schemas/MemberGroup"
+    MemberGroup:
+      type: object
+      required: [id, parent_id, name, member_ids]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 分组唯一标识。
+        parent_id:
+          type: [string, "null"]
+          format: uuid
+          description: 上级分组 ID；null 表示该分组直属团队根节点。
+        name:
+          type: string
+          description: 分组显示名称。
+        member_ids:
+          type: array
+          description: 未删除用户的直接分组关系，不含子分组成员，也不按用户角色自动分配。
+          items:
+            type: string
+            format: uuid
     CreditAmount:
       type: string
       pattern: ^-?\d+(\.\d{1,6})?$
@@ -3482,6 +3508,8 @@ components:
     BillingPolicy:
       type: object
       properties:
+        root_credits:
+          $ref: "#/components/schemas/CreditAmount"
         revision:
           type: integer
         enabled:
@@ -3544,7 +3572,7 @@ components:
           format: uuid
         group_id:
           type: string
-          format: uuid
+          description: 计费分组 UUID；未指定归属时为空字符串。
         period_start_at:
           type: string
           format: date-time

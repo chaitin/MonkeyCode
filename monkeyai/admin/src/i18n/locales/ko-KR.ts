@@ -463,6 +463,12 @@ export const koKR = {
         '"{{rule}}" 규칙을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
     },
     membersAndGroups: {
+      directMembersHint:
+        "직접 소속된 멤버만 변경합니다. 하위 그룹의 멤버는 계속 표시됩니다.",
+      deleteChildrenHint:
+        "이 그룹을 삭제하기 전에 하위 그룹을 이동하거나 삭제하세요.",
+      deleteMembersHint:
+        "멤버 계정은 유지됩니다. 이 그룹의 소속 관계와 리소스 권한은 삭제됩니다.",
       title: "구성원 및 그룹",
       description: "구성원, 그룹 및 리소스 접근 범위를 관리합니다.",
       groupsTitle: "그룹",

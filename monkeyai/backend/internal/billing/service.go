@@ -12,8 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const rootGroup = "00000000-0000-0000-0000-000000000001"
-const adminGroup = "00000000-0000-0000-0000-000000000002"
+const rootGroup = "team"
 
 type Price struct {
 	Input      Amount `json:"input"`
@@ -23,6 +22,7 @@ type Price struct {
 	Tool       Amount `json:"tool"`
 }
 type Policy struct {
+	RootCredits      Amount     `json:"root_credits"`
 	Input            Amount     `json:"input_credits_per_million_tokens"`
 	Cached           Amount     `json:"cached_input_credits_per_million_tokens"`
 	Output           Amount     `json:"output_credits_per_million_tokens"`
@@ -36,7 +36,7 @@ type Policy struct {
 }
 
 func defaultPolicy() Policy {
-	return Policy{Input: 100 * Amount(scale), Cached: 20 * Amount(scale), Output: 400 * Amount(scale), Cycle: "monthly", Mode: "local"}
+	return Policy{RootCredits: 15000 * Amount(scale), Input: 100 * Amount(scale), Cached: 20 * Amount(scale), Output: 400 * Amount(scale), Cycle: "monthly", Mode: "local"}
 }
 func (p Policy) period(now time.Time) (time.Time, time.Time) {
 	zone, _ := time.LoadLocation("Asia/Shanghai")
@@ -77,10 +77,6 @@ func (s *Service) Initialize(ctx context.Context) error {
 	p := defaultPolicy()
 	b, _ := json.Marshal(p)
 	_, err := s.pool.Exec(ctx, `INSERT INTO settings(key,value,updated_by_user_id) SELECT 'billing',$1,id FROM users WHERE role='admin' AND deleted_at IS NULL ORDER BY created_at LIMIT 1 ON CONFLICT(key) DO NOTHING`, b)
-	if err != nil {
-		return err
-	}
-	_, err = s.pool.Exec(ctx, `INSERT INTO billing_quotas(subject_type,group_id,credits_per_cycle,updated_by_user_id) SELECT 'group',$1,15000,id FROM users WHERE role='admin' AND deleted_at IS NULL ORDER BY created_at LIMIT 1 ON CONFLICT(group_id) WHERE subject_type='group' AND deleted_at IS NULL DO NOTHING`, rootGroup)
 	return err
 }
 func (s *Service) policy(ctx context.Context, q resource.Queryer, lock bool) (Policy, error) {
@@ -162,12 +158,13 @@ func accountRow(ctx context.Context, q resource.Queryer, user string, start time
 func effectiveQuota(ctx context.Context, q resource.Queryer, user string) (Amount, string, string, error) {
 	var value, group, source string
 	err := q.QueryRow(ctx, `WITH RECURSIVE chain AS (
- SELECT g.id,g.parent_id,0 depth FROM users u JOIN groups g ON g.id=COALESCE(u.billing_group_id,CASE WHEN u.role='admin' THEN $3::uuid ELSE $2::uuid END) WHERE u.id=$1 AND g.deleted_at IS NULL
+ SELECT g.id,g.parent_id,0 depth FROM users u JOIN groups g ON g.id=u.billing_group_id WHERE u.id=$1 AND g.deleted_at IS NULL
  UNION ALL SELECT g.id,g.parent_id,c.depth+1 FROM groups g JOIN chain c ON g.id=c.parent_id WHERE g.deleted_at IS NULL AND c.depth<100
  ), choices AS (
  SELECT credits_per_cycle,-1 depth,user_id::text source FROM billing_quotas WHERE user_id=$1 AND deleted_at IS NULL
  UNION ALL SELECT q.credits_per_cycle,c.depth,c.id::text FROM chain c JOIN billing_quotas q ON q.group_id=c.id AND q.deleted_at IS NULL
- ) SELECT COALESCE((SELECT credits_per_cycle::text FROM choices ORDER BY depth LIMIT 1),'15000'),COALESCE((SELECT id::text FROM chain WHERE depth=0),$2::text),COALESCE((SELECT source FROM choices ORDER BY depth LIMIT 1),$2::text)`, user, rootGroup, adminGroup).Scan(&value, &group, &source)
+ UNION ALL SELECT COALESCE((value->>'root_credits')::numeric,15000),101,$2::text FROM settings WHERE key='billing'
+ ) SELECT COALESCE((SELECT credits_per_cycle::text FROM choices ORDER BY depth LIMIT 1),'15000'),COALESCE((SELECT id::text FROM chain WHERE depth=0),''),COALESCE((SELECT source FROM choices ORDER BY depth LIMIT 1),$2::text)`, user, rootGroup).Scan(&value, &group, &source)
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -192,7 +189,7 @@ func (s *Service) ensureAccount(ctx context.Context, tx pgx.Tx, user string, p P
 		return a, err
 	}
 	var account string
-	err = tx.QueryRow(ctx, `INSERT INTO credit_accounts(user_id,balance,quota,group_id,period_start_at,period_end_at,last_refreshed_at) VALUES($1,$2,$2,$3,$4,$5,$6) RETURNING id`, user, quota.String(), group, start, end, s.now()).Scan(&account)
+	err = tx.QueryRow(ctx, `INSERT INTO credit_accounts(user_id,balance,quota,group_id,period_start_at,period_end_at,last_refreshed_at) VALUES($1,$2,$2,NULLIF($3,'')::uuid,$4,$5,$6) RETURNING id`, user, quota.String(), group, start, end, s.now()).Scan(&account)
 	if err != nil {
 		return a, err
 	}

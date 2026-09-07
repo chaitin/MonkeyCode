@@ -66,10 +66,6 @@ CREATE TABLE groups (
     CONSTRAINT groups_not_own_parent_check CHECK (parent_id IS DISTINCT FROM id)
 );
 
-CREATE UNIQUE INDEX groups_one_active_root_key
-    ON groups ((true))
-    WHERE parent_id IS NULL AND deleted_at IS NULL;
-
 CREATE INDEX groups_parent_idx
     ON groups (parent_id)
     WHERE deleted_at IS NULL;
@@ -651,7 +647,6 @@ CREATE UNIQUE INDEX rules_user_name_key ON rules(owner_user_id,lower(btrim(name)
 CREATE UNIQUE INDEX connectors_system_name_key ON connectors(lower(btrim(name))) WHERE ownership_type='system' AND deleted_at IS NULL;
 CREATE UNIQUE INDEX connectors_user_name_key ON connectors(owner_user_id,lower(btrim(name))) WHERE ownership_type='user' AND deleted_at IS NULL;
 CREATE UNIQUE INDEX experts_name_key ON experts(lower(btrim(name))) WHERE deleted_at IS NULL;
-INSERT INTO groups(id,parent_id,name) VALUES ('00000000-0000-0000-0000-000000000001',NULL,'所有用户'),('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','管理员');
 
 
 CREATE TABLE browser_sessions (

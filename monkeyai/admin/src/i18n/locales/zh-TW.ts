@@ -447,6 +447,9 @@ export const zhTW = {
       deleteDialogDescription: "確定刪除「{{rule}}」嗎？此操作無法復原。",
     },
     membersAndGroups: {
+      directMembersHint: "僅調整直接加入本組的成員；子分組成員仍會顯示於本組。",
+      deleteChildrenHint: "請先移動或刪除子分組，再刪除此分組。",
+      deleteMembersHint: "成員帳號會保留；本組的成員關係與資源授權將一併移除。",
       title: "成員與群組",
       description: "管理成員、群組及其資源存取範圍。",
       groupsTitle: "群組",

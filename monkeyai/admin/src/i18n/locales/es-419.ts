@@ -478,6 +478,12 @@ export const es419 = {
         '¿Eliminar "{{rule}}"? Esta acción no se puede deshacer.',
     },
     membersAndGroups: {
+      directMembersHint:
+        "Solo se cambia la membresía directa. Los miembros de subgrupos seguirán visibles.",
+      deleteChildrenHint:
+        "Mueve o elimina los subgrupos antes de eliminar este grupo.",
+      deleteMembersHint:
+        "Las cuentas se conservan. Se eliminarán las membresías y los permisos de recursos de este grupo.",
       title: "Miembros y grupos",
       description: "Administra miembros, grupos y su acceso a los recursos.",
       groupsTitle: "Grupos",

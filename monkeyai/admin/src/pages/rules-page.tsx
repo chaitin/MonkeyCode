@@ -1,7 +1,6 @@
 import { api } from "@/lib/api"
 import {
   base,
-  ROOT_GROUP,
   grants,
   selection,
   match,
@@ -121,7 +120,7 @@ export function RulesPage() {
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [forcedScopeOpen, setForcedScopeOpen] = useState(false)
   const [forcedScope, setForcedScope] = useState<AuthorizationSelection>({
-    groupIds: [ROOT_GROUP],
+    groupIds: [],
     memberIds: [],
   })
   const editingRule = rules.find((rule) => rule.id === editingRuleId)
@@ -129,7 +128,7 @@ export function RulesPage() {
   const resetRuleOptions = () => {
     setForcedScopeOpen(false)
     setAuthorization({ groupIds: [], memberIds: [] })
-    setForcedScope({ groupIds: [ROOT_GROUP], memberIds: [] })
+    setForcedScope({ groupIds: [], memberIds: [] })
   }
 
   const handleDialogOpenChange = (open: boolean) => {
@@ -147,9 +146,7 @@ export function RulesPage() {
 
     setAuthorization(rule.authorization)
     setEditingRuleId(rule.id)
-    setForcedScope(
-      rule.forcedScope ?? { groupIds: [ROOT_GROUP], memberIds: [] }
-    )
+    setForcedScope(rule.forcedScope ?? { groupIds: [], memberIds: [] })
     setForcedScopeOpen(false)
     setDialogOpen(true)
   }

@@ -476,6 +476,12 @@ export const frFR = {
         "Supprimer « {{rule}} » ? Cette action est irréversible.",
     },
     membersAndGroups: {
+      directMembersHint:
+        "Seules les appartenances directes sont modifiées. Les membres des sous-groupes restent visibles.",
+      deleteChildrenHint:
+        "Déplacez ou supprimez les sous-groupes avant de supprimer ce groupe.",
+      deleteMembersHint:
+        "Les comptes sont conservés. Les appartenances et les autorisations de ressources de ce groupe seront supprimées.",
       title: "Membres et groupes",
       description:
         "Gérez les membres, les groupes et leurs accès aux ressources.",

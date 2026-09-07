@@ -5,7 +5,6 @@ import type {
   AuthorizationGroupNode,
   AuthorizationMember,
 } from "@/lib/authorization-groups"
-export const ROOT_GROUP = "00000000-0000-0000-0000-000000000001"
 export type Grant = {
   user_id?: string | null
   group_id?: string | null
@@ -159,7 +158,7 @@ export function useSubjects() {
               children: tree(g.id),
             }))
         setGroups(tree())
-        setMembers(data.users.map((u) => ({ ...u, groupId: ROOT_GROUP })))
+        setMembers(data.users.map((u) => ({ ...u, groupId: "" })))
       })
       .catch((e) => {
         if (!cancelled) setError(e.message)

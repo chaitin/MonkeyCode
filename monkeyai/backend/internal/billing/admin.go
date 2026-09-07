@@ -165,21 +165,29 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	s.settings(w, r)
 }
 func (s *Service) quotas(w http.ResponseWriter, r *http.Request) {
-	groups, err := resource.Rows(r.Context(), s.pool, `SELECT jsonb_build_object('id',g.id,'parent_id',g.parent_id,'name',g.name,'credits',q.credits_per_cycle::text) FROM groups g LEFT JOIN billing_quotas q ON q.group_id=g.id AND q.deleted_at IS NULL WHERE g.deleted_at IS NULL ORDER BY g.name,g.id`)
-	if err != nil {
-		resource.Fail(w, err)
-		return
-	}
-	users, err := resource.Rows(r.Context(), s.pool, `WITH RECURSIVE ancestors AS (SELECT id child,id ancestor,parent_id,0 depth FROM groups WHERE deleted_at IS NULL UNION ALL SELECT a.child,g.id,g.parent_id,a.depth+1 FROM ancestors a JOIN groups g ON g.id=a.parent_id WHERE g.deleted_at IS NULL AND a.depth<100) SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,'status',u.status,'group_id',COALESCE(u.billing_group_id,CASE WHEN u.role='admin' THEN $2::uuid ELSE $1::uuid END),'credits',q.credits_per_cycle::text,'effective_credits',COALESCE(q.credits_per_cycle,g.credits_per_cycle,15000)::text,'inherited_from',CASE WHEN q.id IS NOT NULL THEN u.id ELSE COALESCE(g.ancestor,$1::uuid) END,'external_user_id',wb.external_user_id) FROM users u LEFT JOIN billing_quotas q ON q.user_id=u.id AND q.deleted_at IS NULL LEFT JOIN LATERAL (SELECT b.credits_per_cycle,a.ancestor FROM ancestors a JOIN billing_quotas b ON b.group_id=a.ancestor AND b.deleted_at IS NULL WHERE a.child=COALESCE(u.billing_group_id,CASE WHEN u.role='admin' THEN $2::uuid ELSE $1::uuid END) ORDER BY a.depth LIMIT 1) g ON true LEFT JOIN wallet_user_bindings wb ON wb.user_id=u.id WHERE u.deleted_at IS NULL ORDER BY u.name,u.id`, rootGroup, adminGroup)
-	if err != nil {
-		resource.Fail(w, err)
-		return
-	}
 	p, err := s.Policy(r.Context())
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
+
+	groups, err := resource.Rows(r.Context(), s.pool, `SELECT jsonb_build_object('id',g.id,'parent_id',COALESCE(g.parent_id::text,'team'),'name',g.name,'credits',q.credits_per_cycle::text) FROM groups g LEFT JOIN billing_quotas q ON q.group_id=g.id AND q.deleted_at IS NULL WHERE g.deleted_at IS NULL ORDER BY g.name,g.id`)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	users, err := resource.Rows(r.Context(), s.pool, `WITH RECURSIVE ancestors AS (SELECT id child,id ancestor,parent_id,0 depth FROM groups WHERE deleted_at IS NULL UNION ALL SELECT a.child,g.id,g.parent_id,a.depth+1 FROM ancestors a JOIN groups g ON g.id=a.parent_id WHERE g.deleted_at IS NULL AND a.depth<100) SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,'status',u.status,'group_id',COALESCE(u.billing_group_id::text,$1::text),'credits',q.credits_per_cycle::text,'effective_credits',COALESCE(q.credits_per_cycle,g.credits_per_cycle,$2::numeric)::text,'inherited_from',CASE WHEN q.id IS NOT NULL THEN u.id::text ELSE COALESCE(g.ancestor::text,$1::text) END,'external_user_id',wb.external_user_id) FROM users u LEFT JOIN billing_quotas q ON q.user_id=u.id AND q.deleted_at IS NULL LEFT JOIN LATERAL (SELECT b.credits_per_cycle,a.ancestor FROM ancestors a JOIN billing_quotas b ON b.group_id=a.ancestor AND b.deleted_at IS NULL WHERE a.child=u.billing_group_id ORDER BY a.depth LIMIT 1) g ON true LEFT JOIN wallet_user_bindings wb ON wb.user_id=u.id WHERE u.deleted_at IS NULL ORDER BY u.name,u.id`, rootGroup, p.RootCredits.String())
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	var teamName string
+	err = s.pool.QueryRow(r.Context(), `SELECT COALESCE((SELECT NULLIF(value->>'workspace_name','') FROM settings WHERE key='branding'),'Monkey AI')`).Scan(&teamName)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	groups = append([]resource.Object{{"id": rootGroup, "parent_id": nil, "name": teamName, "credits": p.RootCredits.String()}}, groups...)
 	_, end := p.period(s.now())
 	resource.JSON(w, 200, map[string]any{"groups": groups, "users": users, "revision": p.Revision, "effective_at": end})
 }
@@ -232,9 +240,22 @@ func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
 			resource.Fail(w, resource.Invalid("额度需为非负积分或 null"))
 			return
 		}
-		if v.ID == rootGroup && amount == nil {
-			resource.Fail(w, resource.Invalid("根分组必须设置额度"))
-			return
+		if v.Type == "group" && v.ID == rootGroup {
+			if amount == nil {
+				resource.Fail(w, resource.Invalid("团队必须设置额度"))
+				return
+			}
+			before := p.RootCredits
+			p.RootCredits = *amount
+			if _, err = tx.Exec(r.Context(), `UPDATE settings SET value=jsonb_set(value,'{root_credits}',to_jsonb($1::text)) WHERE key='billing'`, amount.String()); err != nil {
+				resource.Fail(w, err)
+				return
+			}
+			if err = audit(r.Context(), tx, u.ID, "configure_quota", "", map[string]any{"subject_type": "team", "before": before, "after": amount}); err != nil {
+				resource.Fail(w, err)
+				return
+			}
+			continue
 		}
 		var exists bool
 		err = tx.QueryRow(r.Context(), `SELECT CASE WHEN $2='group' THEN EXISTS(SELECT 1 FROM groups WHERE id=$1 AND deleted_at IS NULL) ELSE EXISTS(SELECT 1 FROM users WHERE id=$1 AND deleted_at IS NULL) END`, v.ID, v.Type).Scan(&exists)

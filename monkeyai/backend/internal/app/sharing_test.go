@@ -93,6 +93,42 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	assertAccess(users[0], ids[0], true)
 	assertAccess(users[1], ids[0], false)
 	assertAccess(adminID, ids[0], false)
+	parentGroup, childGroup := resource.ID(), resource.ID()
+	if _, err := pool.Exec(ctx, `INSERT INTO groups(id,parent_id,name) VALUES($1,NULL,'模型测试组'),($2,$1,'模型测试子组')`, parentGroup, childGroup); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO resource_access_grants(resource_type,resource_id,group_id,access_level,granted_by_user_id) VALUES('model',$1,$2,'read_only',$3)`, ids[0], parentGroup, users[0]); err != nil {
+		t.Fatal(err)
+	}
+	assertAccess(users[1], ids[0], false)
+	assertAccess(adminID, ids[0], false)
+	assertGroupModels := func(want int) {
+		t.Helper()
+		available, err := repo.ListAvailable(ctx, users[1], false)
+		if err != nil || len(available) != want {
+			t.Fatalf("分组模型可见数=%d，预期 %d，err=%v", len(available), want, err)
+		}
+	}
+	assertGroupModels(0)
+	if _, err := pool.Exec(ctx, `INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES($1,$2,$3)`, childGroup, users[1], adminID); err != nil {
+		t.Fatal(err)
+	}
+	assertAccess(users[1], ids[0], true)
+	assertGroupModels(1)
+	if _, err := pool.Exec(ctx, `UPDATE groups SET parent_id=NULL WHERE id=$1`, childGroup); err != nil {
+		t.Fatal(err)
+	}
+	assertAccess(users[1], ids[0], false)
+	assertGroupModels(0)
+	if _, err := pool.Exec(ctx, `DELETE FROM resource_access_grants WHERE group_id=$1`, parentGroup); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM group_users WHERE group_id=$1`, childGroup); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM groups WHERE id=ANY($1::uuid[])`, []string{parentGroup, childGroup}); err != nil {
+		t.Fatal(err)
+	}
 	call("GET", "/models/"+ids[0], "b", nil, 404)
 	call("PUT", "/models/"+ids[0], "b", input, 404)
 	call("DELETE", "/models/"+ids[0], "sharing-admin", nil, 404)

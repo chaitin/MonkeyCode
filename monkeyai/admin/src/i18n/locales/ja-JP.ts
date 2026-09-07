@@ -469,6 +469,11 @@ export const jaJP = {
         "「{{rule}}」を削除しますか？この操作は元に戻せません。",
     },
     membersAndGroups: {
+      directMembersHint:
+        "直接所属するメンバーのみ変更します。子グループのメンバーは引き続き表示されます。",
+      deleteChildrenHint: "先に子グループを移動または削除してください。",
+      deleteMembersHint:
+        "メンバーのアカウントは保持されます。このグループの所属情報とリソース権限は削除されます。",
       title: "メンバーとグループ",
       description: "メンバー、グループ、リソースへのアクセス範囲を管理します。",
       groupsTitle: "グループ",

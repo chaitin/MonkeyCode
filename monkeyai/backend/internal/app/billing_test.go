@@ -108,6 +108,32 @@ func TestBillingIntegration(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT id FROM users WHERE email='billing-http@example.com'`).Scan(&user); err != nil {
 		t.Fatal(err)
 	}
+	groups := must("GET", "/api/admin/v1/groups", nil, "")
+	if len(groups["groups"].([]any)) != 0 {
+		t.Fatal("启动应用不应初始化分组")
+	}
+	quotas := must("GET", "/api/admin/v1/billing/quotas", nil, "")
+	team := resource.Object(quotas["groups"].([]any)[0].(map[string]any))
+	if team.String("id") != "team" || team["parent_id"] != nil {
+		t.Fatalf("团队额度根节点: %v", team)
+	}
+	must("PUT", "/api/admin/v1/billing/quotas", resource.Object{"revision": quotas.Int("revision"), "changes": []resource.Object{{"subject_type": "group", "id": "team", "credits": "12345"}}}, "")
+	updated := must("GET", "/api/admin/v1/billing/quotas", nil, "")
+	if resource.Object(updated["users"].([]any)[0].(map[string]any)).String("effective_credits") != "12345" {
+		t.Fatalf("团队额度继承: %v", updated)
+	}
+	top := must("POST", "/api/admin/v1/groups", resource.Object{"name": "研发", "parent_id": nil}, "")
+	if top["parent_id"] != nil {
+		t.Fatalf("顶层分组入库父级不为 null: %v", top)
+	}
+	must("PATCH", "/api/admin/v1/groups/"+top.String("id"), resource.Object{"name": "研发组"}, "")
+	must("PUT", "/api/admin/v1/groups/"+top.String("id")+"/members", resource.Object{"member_ids": []string{user}}, "")
+	must("PUT", "/api/admin/v1/users/"+user+"/billing-group", resource.Object{"group_id": top.String("id")}, "")
+	if code, _, _ := call("DELETE", "/api/admin/v1/groups/"+top.String("id"), nil, "", ""); code != 409 {
+		t.Fatalf("计费归属引用应阻止删除: %d", code)
+	}
+	must("PUT", "/api/admin/v1/users/"+user+"/billing-group", resource.Object{"group_id": nil}, "")
+	must("DELETE", "/api/admin/v1/groups/"+top.String("id"), nil, "")
 	hash := sha256.Sum256([]byte("billing-oauth-test"))
 	if _, err = pool.Exec(ctx, `INSERT INTO oauth_tokens(user_id,client_id,access_token_hash,refresh_token_hash,access_expires_at,refresh_expires_at) VALUES($1,'test',$2,'billing-refresh',now()+interval '1 hour',now()+interval '2 hours')`, user, hex.EncodeToString(hash[:])); err != nil {
 		t.Fatal(err)

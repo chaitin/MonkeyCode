@@ -1,10 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import {
-  Add01Icon,
-  Folder02Icon,
-  FolderIcon,
-  MoreHorizontalIcon,
-} from "@hugeicons/core-free-icons"
+import { Add01Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
@@ -46,10 +41,16 @@ import {
   ItemSeparator,
   ItemTitle,
 } from "@/components/ui/item"
-import { GroupManager } from "@/components/group-manager"
 import { useAuth } from "@/hooks/use-auth"
 import { api } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { GroupActionDialog } from "@/components/members/group-action-dialog"
+import { GroupTreeItem } from "@/components/members/group-tree"
+import {
+  type ActiveGroupAction,
+  ROOT_GROUP_ID,
+  groupMemberIDs,
+  type MemberGroup,
+} from "@/lib/member-groups"
 
 type User = {
   id: string
@@ -62,13 +63,16 @@ type User = {
   last_login_at?: string
 }
 
-type GroupID = "all" | User["role"]
-
 export function MembersAndGroupsPage() {
   const { i18n, t } = useTranslation()
   const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<User[]>([])
-  const [selectedGroupID, setSelectedGroupID] = useState<GroupID>("all")
+  const [selectedGroupID, setSelectedGroupID] = useState(ROOT_GROUP_ID)
+  const [teamName, setTeamName] = useState("Monkey AI")
+  const [groups, setGroups] = useState<MemberGroup[]>([])
+  const [activeGroupAction, setActiveGroupAction] =
+    useState<ActiveGroupAction | null>(null)
+  const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState("")
   const [error, setError] = useState("")
   const [savingID, setSavingID] = useState("")
@@ -84,9 +88,23 @@ export function MembersAndGroupsPage() {
   })
 
   const load = () => {
-    api<{ users: User[] }>("/api/admin/v1/users")
-      .then((result) => setUsers(result.users))
+    Promise.all([
+      api<{ users: User[] }>("/api/admin/v1/users"),
+      api<{ groups: MemberGroup[] }>("/api/admin/v1/groups"),
+      api<{
+        settings: Array<{ key: string; value: { workspace_name?: string } }>
+      }>("/api/admin/v1/settings"),
+    ])
+      .then(([members, result, { settings }]) => {
+        setUsers(members.users)
+        setGroups(result.groups)
+        setTeamName(
+          settings.find((item) => item.key === "branding")?.value
+            .workspace_name || "Monkey AI"
+        )
+      })
       .catch((reason: Error) => setError(reason.message))
+      .finally(() => setLoading(false))
   }
 
   useEffect(load, [])
@@ -123,14 +141,15 @@ export function MembersAndGroupsPage() {
 
   const visibleUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
+    const memberIDs = groupMemberIDs(groups, users, selectedGroupID)
     return users.filter(
       (user) =>
-        (selectedGroupID === "all" || user.role === selectedGroupID) &&
+        memberIDs.has(user.id) &&
         (!normalizedQuery ||
           user.name.toLocaleLowerCase().includes(normalizedQuery) ||
           user.email.toLocaleLowerCase().includes(normalizedQuery))
     )
-  }, [query, selectedGroupID, users])
+  }, [groups, query, selectedGroupID, users])
 
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -169,22 +188,18 @@ export function MembersAndGroupsPage() {
     i18n.resolvedLanguage ?? i18n.language,
     { dateStyle: "medium" }
   )
-  const groups: Array<{ id: GroupID; label: string; count: number }> = [
-    {
-      id: "all",
-      label: t("pages.membersAndGroups.groupNames.rootGroup"),
-      count: users.length,
-    },
-    {
-      id: "admin",
-      label: t("pages.membersAndGroups.groupNames.administrators"),
-      count: users.filter((user) => user.role === "admin").length,
-    },
-    {
-      id: "user",
-      label: t("pages.membersAndGroups.membersTitle"),
-      count: users.filter((user) => user.role === "user").length,
-    },
+  const root: MemberGroup = {
+    id: ROOT_GROUP_ID,
+    parent_id: null,
+    name: teamName,
+    member_ids: [],
+  }
+  const displayGroups = [
+    root,
+    ...groups.map((group) => ({
+      ...group,
+      parent_id: group.parent_id ?? ROOT_GROUP_ID,
+    })),
   ]
 
   return (
@@ -193,40 +208,25 @@ export function MembersAndGroupsPage() {
         <Card className="min-h-64 md:min-h-0">
           <CardHeader>
             <CardTitle>{t("pages.membersAndGroups.groupsTitle")}</CardTitle>
-            <CardAction>
-              <GroupManager />
-            </CardAction>
           </CardHeader>
           <CardContent className="min-h-0 flex-1 overflow-y-auto">
             <ul
               className="flex flex-col gap-1"
               aria-label={t("pages.membersAndGroups.groupsTitle")}
             >
-              {groups.map((group, index) => (
-                <li key={group.id}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={selectedGroupID === group.id}
-                    className={cn(
-                      "w-full justify-start font-normal hover:bg-muted",
-                      index > 0 && "ps-8",
-                      selectedGroupID === group.id && "bg-muted"
-                    )}
-                    onClick={() => setSelectedGroupID(group.id)}
-                  >
-                    <HugeiconsIcon
-                      icon={group.id === "all" ? Folder02Icon : FolderIcon}
-                      strokeWidth={2}
-                    />
-                    <span className="truncate">{group.label}</span>
-                    <span className="ms-auto text-xs text-muted-foreground tabular-nums">
-                      {group.count}
-                    </span>
-                  </Button>
-                </li>
-              ))}
+              {displayGroups
+                .filter((group) => group.parent_id === null)
+                .map((group) => (
+                  <GroupTreeItem
+                    key={group.id}
+                    group={group}
+                    groups={displayGroups}
+                    users={users}
+                    selectedID={selectedGroupID}
+                    onSelect={setSelectedGroupID}
+                    onAction={setActiveGroupAction}
+                  />
+                ))}
             </ul>
           </CardContent>
         </Card>
@@ -262,6 +262,14 @@ export function MembersAndGroupsPage() {
                 role="alert"
               >
                 {error}
+              </p>
+            )}
+            {loading && (
+              <p
+                role="status"
+                className="py-6 text-center text-sm text-muted-foreground"
+              >
+                {t("common.loading")}
               </p>
             )}
             <ItemGroup className="gap-2">
@@ -378,7 +386,7 @@ export function MembersAndGroupsPage() {
                   </Item>
                 )
               })}
-              {visibleUsers.length === 0 && (
+              {!loading && visibleUsers.length === 0 && (
                 <p className="py-12 text-center text-sm text-muted-foreground">
                   {t("pages.membersAndGroups.noMembersFound")}
                 </p>
@@ -387,6 +395,40 @@ export function MembersAndGroupsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {activeGroupAction && (
+        <GroupActionDialog
+          key={`${activeGroupAction.action}-${activeGroupAction.group.id}`}
+          {...activeGroupAction}
+          groups={displayGroups}
+          users={users}
+          onClose={() => setActiveGroupAction(null)}
+          onSaved={(updated) => {
+            if (updated) {
+              setGroups((current) =>
+                current.some((group) => group.id === updated.id)
+                  ? current.map((group) =>
+                      group.id === updated.id ? updated : group
+                    )
+                  : [...current, updated]
+              )
+              setSelectedGroupID(updated.id)
+            } else {
+              setGroups((current) =>
+                current.filter(
+                  (group) => group.id !== activeGroupAction.group.id
+                )
+              )
+              if (selectedGroupID === activeGroupAction.group.id)
+                setSelectedGroupID(
+                  activeGroupAction.group.parent_id ?? ROOT_GROUP_ID
+                )
+            }
+            setError("")
+            setActiveGroupAction(null)
+          }}
+        />
+      )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>

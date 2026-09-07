@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
@@ -123,6 +124,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	admin := chi.NewRouter()
 	admin.Use(identities.RequireAdmin)
 	identities.RegisterAdmin(admin)
+	group.NewService(pool).WithAccountPreserver(charges).RegisterAdmin(admin)
 	settings.RegisterAdmin(admin)
 	charges.RegisterAdmin(admin)
 	keys.RegisterAdmin(admin)

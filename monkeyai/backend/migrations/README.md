@@ -1,12 +1,17 @@
-# 数据库初始化
+# 数据库迁移
 
-本次按重新部署要求，将原版本 000001—000004 与资源模型整合为一版：
+- `000001_initial_create_schema`：完整初始结构，包含身份、OAuth、调用密钥、模型、资源、计费及审计；不预置任何分组。
+- `000002_billing_create_transactions`：计费账户、额度与流水。
+- `000003_group_virtual_root`：将旧部署的系统分组转换为虚拟团队根节点的结构。新库同样执行此版本，不会创建分组。
 
-- `000001_initial_create_schema.up.sql`：完整最终结构，包含身份、OAuth、调用密钥、模型、资源、计费及审计。
-- `000001_initial_create_schema.down.sql`：依赖逆序撤销全部表，仅供可丢弃测试数据库验证。
+运行 `migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up`。成功后应为 `version=3, dirty=false`，再次执行为 `no change`。已有版本 1 或 2 的数据库执行增量升级，无需清库或 `force`。
 
-必须连接**新的 PostgreSQL 数据库或数据目录**。仅重新创建容器并继续挂载旧目录不会重新执行版本 1；不要对旧库使用 `force 1` 代替初始化。此仓库改动不会清空现有数据库。
+团队根节点仅用于界面展示，名称读取 `settings` 中 `branding` 的 `workspace_name`，不写入 `groups`。`parent_id IS NULL` 的记录均为团队根节点的直属子分组；成员关系通过 `group_users` 显式维护，不根据用户角色自动建组或分配。
 
-初始化：`migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up`。首次成功后应为 `version=1, dirty=false`，再次执行为 `no change`。迁移镜像只包含这一对 SQL。
+版本 3 升级会移除旧版固定 ID 的根组和管理员组，将它们的子分组提升到团队下，保留自定义分组、成员账号和自定义组的成员关系。旧系统组的资源授权转换为升级时有效成员的直接用户授权，保留强制规则和读写权限；后续新用户或角色变化不会自动获得这些授权。用户原有的直接授权和其他分组授权会保留。
 
-本次单版重置仅适用于本轮重新部署，后续正式发布的 schema 变更恢复追加版本。字符串统一使用 `text`，候选值使用 `CHECK`，名称按 `lower(btrim(name))` 约束唯一。
+升级前应备份数据库。系统分组及其授权转换无法无损还原，因此版本 3 的 down 脚本明确拒绝回滚，需要恢复升级前备份。版本 1 的 down 脚本仅供可丢弃测试数据库验证。
+
+后续 schema 变更追加迁移版本。字符串统一使用 `text`，候选值使用 `CHECK`。
+
+团队额度存入计费设置，旧管理员组额度转为当前相关用户及直属子分组的显式额度。旧系统组计费归属置空，历史账户金额保持不变，流水的旧分组 ID 留在 metadata 中。

@@ -51,7 +51,7 @@ func TestMigrations(t *testing.T) {
 		}
 	}
 
-	if versions["000001"] != "initial_create_schema" || versions["000002"] != "billing_create_transactions" {
+	if versions["000001"] != "initial_create_schema" || versions["000002"] != "billing_create_transactions" || versions["000003"] != "group_virtual_root" {
 		t.Error("必须保留初始化迁移及计费增量迁移")
 	}
 	for key, directions := range pairs {
