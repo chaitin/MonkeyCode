@@ -808,6 +808,18 @@ export const frFR = {
         emailCode: "Autoriser la connexion par code reçu par e-mail",
         emailCodeDescription:
           "Autorisez la connexion avec un code de vérification envoyé par e-mail.",
+        allowRegistration: "Autoriser les nouvelles inscriptions",
+        allowRegistrationDescription:
+          "Autoriser les nouveaux utilisateurs à créer un compte standard via les fournisseurs OAuth / OIDC activés.",
+        enableRegistrationDialogTitle: "Autoriser les nouvelles inscriptions ?",
+        enableRegistrationDialogDescription:
+          "Un compte standard sera automatiquement créé pour les nouveaux utilisateurs après une authentification OAuth / OIDC réussie.",
+        disableRegistrationDialogTitle:
+          "Désactiver les nouvelles inscriptions ?",
+        disableRegistrationDialogDescription:
+          "Seuls les membres existants pourront se connecter via OAuth / OIDC. Les comptes existants ne sont pas affectés.",
+        confirmEnableRegistration: "Autoriser les inscriptions",
+        confirmDisableRegistration: "Désactiver les inscriptions",
       },
       oauth: {
         title: "Connexion tierce",
@@ -840,24 +852,12 @@ export const frFR = {
       },
       email: {
         title: "Paramètres des e-mails",
-        description: "Configurez l’inscription et l’envoi d’e-mails.",
+        description: "Configurer l’envoi des e-mails système.",
         configure: "Configurer",
         dialogTitle: "Configurer les e-mails",
         dialogDescription:
           "Configurez l’identité de l’expéditeur et le service SMTP.",
         sendingConfiguration: "Configuration de l’envoi",
-        allowRegistration: "Autoriser les nouvelles inscriptions",
-        allowRegistrationDescription:
-          "Autorisez les utilisateurs non invités à créer un compte.",
-        enableRegistrationDialogTitle: "Autoriser les nouvelles inscriptions ?",
-        enableRegistrationDialogDescription:
-          "Les utilisateurs sans invitation pourront immédiatement créer un compte par e-mail.",
-        disableRegistrationDialogTitle:
-          "Désactiver les nouvelles inscriptions ?",
-        disableRegistrationDialogDescription:
-          "Les utilisateurs sans invitation ne pourront plus créer de compte. Les comptes existants ne sont pas affectés.",
-        confirmEnableRegistration: "Autoriser les inscriptions",
-        confirmDisableRegistration: "Désactiver les inscriptions",
         senderName: "Nom de l’expéditeur",
         senderEmail: "E-mail de l’expéditeur",
         smtpHost: "Hôte SMTP",

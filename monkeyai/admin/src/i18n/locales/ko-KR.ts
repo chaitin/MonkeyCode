@@ -776,6 +776,17 @@ export const koKR = {
         emailCode: "이메일 인증 코드 로그인 허용",
         emailCodeDescription:
           "이메일로 전송된 인증 코드를 사용한 로그인을 허용합니다.",
+        allowRegistration: "새 계정 등록 허용",
+        allowRegistrationDescription:
+          "활성화된 OAuth / OIDC 로그인 제공자를 통해 신규 사용자의 일반 계정을 자동으로 생성합니다.",
+        enableRegistrationDialogTitle: "새 계정 등록을 허용할까요?",
+        enableRegistrationDialogDescription:
+          "신규 사용자가 OAuth / OIDC 인증에 성공하면 일반 계정이 자동으로 생성됩니다.",
+        disableRegistrationDialogTitle: "새 계정 등록을 중지할까요?",
+        disableRegistrationDialogDescription:
+          "기존 멤버만 OAuth / OIDC로 로그인할 수 있습니다. 기존 계정에는 영향을 주지 않습니다.",
+        confirmEnableRegistration: "등록 허용",
+        confirmDisableRegistration: "등록 중지",
       },
       oauth: {
         title: "타사 로그인",
@@ -807,22 +818,11 @@ export const koKR = {
       },
       email: {
         title: "이메일 설정",
-        description: "계정 등록 및 발신 메일 서비스를 설정합니다.",
+        description: "시스템 메일 발송 서비스를 설정합니다.",
         configure: "설정",
         dialogTitle: "이메일 설정",
         dialogDescription: "보낸 사람 정보 및 SMTP 발신 서비스를 설정합니다.",
         sendingConfiguration: "발신 설정",
-        allowRegistration: "새 계정 등록 허용",
-        allowRegistrationDescription:
-          "초대받지 않은 사용자가 이메일로 계정을 만들 수 있습니다.",
-        enableRegistrationDialogTitle: "새 계정 등록을 허용할까요?",
-        enableRegistrationDialogDescription:
-          "초대받지 않은 사용자도 즉시 이메일로 계정을 만들 수 있습니다.",
-        disableRegistrationDialogTitle: "새 계정 등록을 중지할까요?",
-        disableRegistrationDialogDescription:
-          "초대받지 않은 사용자는 더 이상 새 계정을 만들 수 없습니다. 기존 계정은 영향을 받지 않습니다.",
-        confirmEnableRegistration: "등록 허용",
-        confirmDisableRegistration: "등록 중지",
         senderName: "보낸 사람 이름",
         senderEmail: "보낸 사람 이메일",
         smtpHost: "SMTP 호스트",

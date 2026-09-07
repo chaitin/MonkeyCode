@@ -775,6 +775,17 @@ export const ar = {
         emailCode: "السماح بتسجيل الدخول برمز البريد الإلكتروني",
         emailCodeDescription:
           "السماح بتسجيل الدخول باستخدام رمز تحقق يُرسل عبر البريد الإلكتروني.",
+        allowRegistration: "السماح بإنشاء حسابات جديدة",
+        allowRegistrationDescription:
+          "السماح للمستخدمين الجدد بإنشاء حساب عادي تلقائيًا عبر موفري تسجيل الدخول OAuth / OIDC المفعّلين.",
+        enableRegistrationDialogTitle: "السماح بإنشاء حسابات جديدة؟",
+        enableRegistrationDialogDescription:
+          "سيُنشأ حساب عادي تلقائيًا للمستخدمين الجدد بعد نجاح المصادقة عبر OAuth / OIDC.",
+        disableRegistrationDialogTitle: "إيقاف إنشاء حسابات جديدة؟",
+        disableRegistrationDialogDescription:
+          "سيتمكن الأعضاء الحاليون فقط من تسجيل الدخول عبر OAuth / OIDC. لن تتأثر الحسابات الحالية.",
+        confirmEnableRegistration: "السماح بالتسجيل",
+        confirmDisableRegistration: "إيقاف التسجيل",
       },
       oauth: {
         title: "تسجيل الدخول عبر جهة خارجية",
@@ -805,22 +816,11 @@ export const ar = {
       },
       email: {
         title: "إعدادات البريد الإلكتروني",
-        description: "اضبط إنشاء الحسابات وخدمة البريد الصادر.",
+        description: "إعداد خدمة إرسال رسائل البريد الإلكتروني للنظام.",
         configure: "تهيئة",
         dialogTitle: "تهيئة البريد الإلكتروني",
         dialogDescription: "اضبط هوية المرسل وخدمة إرسال SMTP.",
         sendingConfiguration: "إعدادات الإرسال",
-        allowRegistration: "السماح بإنشاء حسابات جديدة",
-        allowRegistrationDescription:
-          "السماح للمستخدمين غير المدعوين بإنشاء حساب عبر البريد.",
-        enableRegistrationDialogTitle: "السماح بإنشاء حسابات جديدة؟",
-        enableRegistrationDialogDescription:
-          "سيتمكن المستخدمون غير المدعوين فورًا من إنشاء حساب عبر البريد الإلكتروني.",
-        disableRegistrationDialogTitle: "إيقاف إنشاء حسابات جديدة؟",
-        disableRegistrationDialogDescription:
-          "لن يتمكن المستخدمون غير المدعوين من إنشاء حسابات جديدة. لن تتأثر الحسابات الحالية.",
-        confirmEnableRegistration: "السماح بالتسجيل",
-        confirmDisableRegistration: "إيقاف التسجيل",
         senderName: "اسم المرسل",
         senderEmail: "بريد المرسل",
         smtpHost: "مضيف SMTP",

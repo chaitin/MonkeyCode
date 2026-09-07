@@ -879,6 +879,17 @@ export const zhCN = {
         passwordDescription: "允许成员使用邮箱和密码登录。",
         emailCode: "允许使用邮箱验证码登录",
         emailCodeDescription: "允许成员通过邮箱接收验证码登录。",
+        allowRegistration: "允许新账号注册",
+        allowRegistrationDescription:
+          "允许新用户通过已启用的 OAuth / OIDC 登录方式自动创建普通账号。",
+        enableRegistrationDialogTitle: "开启新账号注册？",
+        enableRegistrationDialogDescription:
+          "开启后，新用户通过 OAuth / OIDC 认证成功时将自动创建普通账号。",
+        disableRegistrationDialogTitle: "关闭新账号注册？",
+        disableRegistrationDialogDescription:
+          "关闭后，仅已添加的成员可以通过 OAuth / OIDC 登录，已有账号不受影响。",
+        confirmEnableRegistration: "确认开启",
+        confirmDisableRegistration: "确认关闭",
       },
       oauth: {
         title: "第三方登录",
@@ -908,21 +919,11 @@ export const zhCN = {
       },
       email: {
         title: "邮件设置",
-        description: "配置账号注册和系统邮件的发件服务。",
+        description: "配置系统邮件的发件服务。",
         configure: "配置",
         dialogTitle: "配置邮件设置",
         dialogDescription: "配置发件人身份和 SMTP 发件服务。",
         sendingConfiguration: "发信配置",
-        allowRegistration: "允许新账号注册",
-        allowRegistrationDescription: "允许未受邀请的用户通过邮箱创建新账号。",
-        enableRegistrationDialogTitle: "开启新账号注册？",
-        enableRegistrationDialogDescription:
-          "开启后，未受邀请的用户将可以立即通过邮箱创建新账号。",
-        disableRegistrationDialogTitle: "关闭新账号注册？",
-        disableRegistrationDialogDescription:
-          "关闭后，未受邀请的用户将无法创建新账号，已有账号不受影响。",
-        confirmEnableRegistration: "确认开启",
-        confirmDisableRegistration: "确认关闭",
         senderName: "发件人名称",
         senderEmail: "发件邮箱",
         smtpHost: "SMTP 主机",

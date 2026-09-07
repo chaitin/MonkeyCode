@@ -817,6 +817,18 @@ export const deDE = {
         emailCode: "Anmeldung mit E-Mail-Code erlauben",
         emailCodeDescription:
           "Die Anmeldung mit einem per E-Mail gesendeten Bestätigungscode erlauben.",
+        allowRegistration: "Registrierung neuer Konten erlauben",
+        allowRegistrationDescription:
+          "Neue Benutzer können über aktivierte OAuth-/OIDC-Anbieter automatisch ein Standardkonto erstellen.",
+        enableRegistrationDialogTitle: "Registrierung neuer Konten aktivieren?",
+        enableRegistrationDialogDescription:
+          "Nach erfolgreicher OAuth-/OIDC-Authentifizierung wird für neue Benutzer automatisch ein Standardkonto erstellt.",
+        disableRegistrationDialogTitle:
+          "Registrierung neuer Konten deaktivieren?",
+        disableRegistrationDialogDescription:
+          "Nur bestehende Mitglieder können sich über OAuth / OIDC anmelden. Bestehende Konten bleiben unverändert.",
+        confirmEnableRegistration: "Registrierung aktivieren",
+        confirmDisableRegistration: "Registrierung deaktivieren",
       },
       oauth: {
         title: "Drittanbieter-Anmeldung",
@@ -849,24 +861,12 @@ export const deDE = {
       },
       email: {
         title: "E-Mail-Einstellungen",
-        description: "Konfigurieren Sie Registrierung und E-Mail-Versand.",
+        description: "Konfigurieren Sie den Versand von System-E-Mails.",
         configure: "Konfigurieren",
         dialogTitle: "E-Mail-Einstellungen konfigurieren",
         dialogDescription:
           "Konfigurieren Sie Absenderidentität und SMTP-Versand.",
         sendingConfiguration: "Versandkonfiguration",
-        allowRegistration: "Registrierung neuer Konten erlauben",
-        allowRegistrationDescription:
-          "Nicht eingeladene Benutzer dürfen ein Konto erstellen.",
-        enableRegistrationDialogTitle: "Registrierung neuer Konten aktivieren?",
-        enableRegistrationDialogDescription:
-          "Benutzer ohne Einladung können sofort ein Konto per E-Mail erstellen.",
-        disableRegistrationDialogTitle:
-          "Registrierung neuer Konten deaktivieren?",
-        disableRegistrationDialogDescription:
-          "Benutzer ohne Einladung können keine neuen Konten mehr erstellen. Bestehende Konten sind nicht betroffen.",
-        confirmEnableRegistration: "Registrierung aktivieren",
-        confirmDisableRegistration: "Registrierung deaktivieren",
         senderName: "Absendername",
         senderEmail: "Absenderadresse",
         smtpHost: "SMTP-Host",

@@ -747,6 +747,17 @@ export const zhTW = {
         passwordDescription: "允許成員使用電子郵件和密碼登入。",
         emailCode: "允許使用電子郵件驗證碼登入",
         emailCodeDescription: "允許成員透過電子郵件接收驗證碼登入。",
+        allowRegistration: "允許新帳號註冊",
+        allowRegistrationDescription:
+          "允許新使用者透過已啟用的 OAuth / OIDC 登入方式自動建立一般帳號。",
+        enableRegistrationDialogTitle: "開啟新帳號註冊？",
+        enableRegistrationDialogDescription:
+          "開啟後，新使用者通過 OAuth / OIDC 驗證時將自動建立一般帳號。",
+        disableRegistrationDialogTitle: "關閉新帳號註冊？",
+        disableRegistrationDialogDescription:
+          "關閉後，僅已新增的成員可以透過 OAuth / OIDC 登入，既有帳號不受影響。",
+        confirmEnableRegistration: "確認開啟",
+        confirmDisableRegistration: "確認關閉",
       },
       oauth: {
         title: "第三方登入",
@@ -776,22 +787,11 @@ export const zhTW = {
       },
       email: {
         title: "郵件設定",
-        description: "設定帳號註冊與系統郵件寄送服務。",
+        description: "設定系統郵件的寄件服務。",
         configure: "設定",
         dialogTitle: "設定郵件",
         dialogDescription: "設定寄件者身分和 SMTP 寄件服務。",
         sendingConfiguration: "寄信設定",
-        allowRegistration: "允許新帳號註冊",
-        allowRegistrationDescription:
-          "允許未受邀請的使用者透過電子郵件建立帳號。",
-        enableRegistrationDialogTitle: "開啟新帳號註冊？",
-        enableRegistrationDialogDescription:
-          "開啟後，未受邀請的使用者將可立即透過電子郵件建立新帳號。",
-        disableRegistrationDialogTitle: "關閉新帳號註冊？",
-        disableRegistrationDialogDescription:
-          "關閉後，未受邀請的使用者將無法建立新帳號，現有帳號不受影響。",
-        confirmEnableRegistration: "確認開啟",
-        confirmDisableRegistration: "確認關閉",
         senderName: "寄件者名稱",
         senderEmail: "寄件信箱",
         smtpHost: "SMTP 主機",

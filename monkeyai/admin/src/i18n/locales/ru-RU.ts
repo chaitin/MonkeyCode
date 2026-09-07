@@ -806,6 +806,18 @@ export const ruRU = {
         emailCode: "Разрешить вход по коду из письма",
         emailCodeDescription:
           "Разрешить вход по коду подтверждения, отправленному на электронную почту.",
+        allowRegistration: "Разрешить регистрацию новых аккаунтов",
+        allowRegistrationDescription:
+          "Разрешить новым пользователям автоматически создавать обычную учётную запись через включённых провайдеров OAuth / OIDC.",
+        enableRegistrationDialogTitle: "Разрешить регистрацию новых аккаунтов?",
+        enableRegistrationDialogDescription:
+          "После успешной аутентификации OAuth / OIDC для нового пользователя будет автоматически создана обычная учётная запись.",
+        disableRegistrationDialogTitle:
+          "Запретить регистрацию новых аккаунтов?",
+        disableRegistrationDialogDescription:
+          "Вход через OAuth / OIDC будет доступен только существующим участникам. Существующие учётные записи не изменятся.",
+        confirmEnableRegistration: "Разрешить регистрацию",
+        confirmDisableRegistration: "Запретить регистрацию",
       },
       oauth: {
         title: "Вход через сторонние сервисы",
@@ -838,23 +850,11 @@ export const ruRU = {
       },
       email: {
         title: "Настройки электронной почты",
-        description: "Настройте регистрацию и отправку системных писем.",
+        description: "Настройте отправку системных писем.",
         configure: "Настроить",
         dialogTitle: "Настроить электронную почту",
         dialogDescription: "Настройте данные отправителя и SMTP-сервис.",
         sendingConfiguration: "Настройки отправки",
-        allowRegistration: "Разрешить регистрацию новых аккаунтов",
-        allowRegistrationDescription:
-          "Разрешить пользователям без приглашения создавать аккаунты.",
-        enableRegistrationDialogTitle: "Разрешить регистрацию новых аккаунтов?",
-        enableRegistrationDialogDescription:
-          "Пользователи без приглашения сразу смогут создавать аккаунты по электронной почте.",
-        disableRegistrationDialogTitle:
-          "Запретить регистрацию новых аккаунтов?",
-        disableRegistrationDialogDescription:
-          "Пользователи без приглашения больше не смогут создавать аккаунты. Существующие аккаунты не изменятся.",
-        confirmEnableRegistration: "Разрешить регистрацию",
-        confirmDisableRegistration: "Запретить регистрацию",
         senderName: "Имя отправителя",
         senderEmail: "Адрес отправителя",
         smtpHost: "SMTP-сервер",

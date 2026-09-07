@@ -785,6 +785,17 @@ export const jaJP = {
         emailCode: "メール認証コードでのログインを許可",
         emailCodeDescription:
           "メールで送信された認証コードでのログインを許可します。",
+        allowRegistration: "新規アカウント登録を許可",
+        allowRegistrationDescription:
+          "有効な OAuth / OIDC ログイン方法を通じて、新規ユーザーの一般アカウントを自動作成します。",
+        enableRegistrationDialogTitle: "新規アカウント登録を有効にしますか？",
+        enableRegistrationDialogDescription:
+          "新規ユーザーが OAuth / OIDC 認証に成功すると、一般アカウントが自動作成されます。",
+        disableRegistrationDialogTitle: "新規アカウント登録を無効にしますか？",
+        disableRegistrationDialogDescription:
+          "OAuth / OIDC でログインできるのは追加済みのメンバーのみになります。既存のアカウントには影響しません。",
+        confirmEnableRegistration: "有効にする",
+        confirmDisableRegistration: "無効にする",
       },
       oauth: {
         title: "外部サービスログイン",
@@ -816,22 +827,11 @@ export const jaJP = {
       },
       email: {
         title: "メール設定",
-        description: "アカウント登録と送信メールを設定します。",
+        description: "システムメールの送信サービスを設定します。",
         configure: "設定",
         dialogTitle: "メール設定",
         dialogDescription: "送信者情報と SMTP 送信サービスを設定します。",
         sendingConfiguration: "送信設定",
-        allowRegistration: "新規アカウント登録を許可",
-        allowRegistrationDescription:
-          "招待されていないユーザーのメール登録を許可します。",
-        enableRegistrationDialogTitle: "新規アカウント登録を有効にしますか？",
-        enableRegistrationDialogDescription:
-          "招待されていないユーザーも、すぐにメールでアカウントを作成できるようになります。",
-        disableRegistrationDialogTitle: "新規アカウント登録を無効にしますか？",
-        disableRegistrationDialogDescription:
-          "招待されていないユーザーは新規アカウントを作成できなくなります。既存のアカウントには影響しません。",
-        confirmEnableRegistration: "有効にする",
-        confirmDisableRegistration: "無効にする",
         senderName: "送信者名",
         senderEmail: "送信元メールアドレス",
         smtpHost: "SMTP ホスト",

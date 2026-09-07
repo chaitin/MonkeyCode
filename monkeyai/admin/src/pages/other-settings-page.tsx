@@ -140,7 +140,6 @@ type LoginMethodSettings = {
 }
 
 type EmailSettings = {
-  registrationEnabled: boolean
   senderName: string
   senderEmail: string
   smtpHost: string
@@ -188,7 +187,6 @@ const INITIAL_LOGIN_METHOD_SETTINGS: LoginMethodSettings = {
 }
 
 const INITIAL_EMAIL_SETTINGS: EmailSettings = {
-  registrationEnabled: false,
   senderName: "Monkey AI",
   senderEmail: "no-reply@example.com",
   smtpHost: "smtp.example.com",
@@ -226,6 +224,7 @@ export function OtherSettingsPage() {
   const [loginMethodSaving, setLoginMethodSaving] = useState<
     keyof LoginMethodSettings | null
   >(null)
+  const [registrationEnabled, setRegistrationEnabled] = useState(false)
   const [emailSettings, setEmailSettings] = useState(INITIAL_EMAIL_SETTINGS)
   const [savedEmailSettings, setSavedEmailSettings] = useState(
     INITIAL_EMAIL_SETTINGS
@@ -305,21 +304,10 @@ export function OtherSettingsPage() {
                   ? setting.value.email_code_enabled
                   : INITIAL_LOGIN_METHOD_SETTINGS.emailCodeEnabled,
             })
-            const registrationEnabled = Boolean(
-              setting.value.registration_enabled
-            )
-            setEmailSettings((current) => ({
-              ...current,
-              registrationEnabled,
-            }))
-            setSavedEmailSettings((current) => ({
-              ...current,
-              registrationEnabled,
-            }))
+            setRegistrationEnabled(Boolean(setting.value.registration_enabled))
           }
           if (setting.key === "email") {
-            const applyEmail = (current: EmailSettings): EmailSettings => ({
-              registrationEnabled: current.registrationEnabled,
+            const applyEmail = (): EmailSettings => ({
               senderName: String(setting.value.sender_name ?? ""),
               senderEmail: String(setting.value.sender_email ?? ""),
               smtpHost: String(setting.value.smtp_host ?? ""),
@@ -354,11 +342,11 @@ export function OtherSettingsPage() {
 
   const saveAuthentication = async (
     connections: OAuthConnection[],
-    registrationEnabled = savedEmailSettings.registrationEnabled,
+    allowRegistration = registrationEnabled,
     loginMethods = loginMethodSettings
   ) =>
     saveSetting("authentication", {
-      registration_enabled: registrationEnabled,
+      registration_enabled: allowRegistration,
       password_enabled: loginMethods.passwordEnabled,
       email_code_enabled: loginMethods.emailCodeEnabled,
       oauth_connections: connections.map((connection) => ({
@@ -467,7 +455,7 @@ export function OtherSettingsPage() {
       if (
         await saveAuthentication(
           oauthConnections,
-          savedEmailSettings.registrationEnabled,
+          registrationEnabled,
           nextSettings
         )
       ) {
@@ -499,7 +487,6 @@ export function OtherSettingsPage() {
   ) => {
     event.preventDefault()
     const saved = await saveSetting("email", {
-      registration_enabled: emailSettings.registrationEnabled,
       sender_name: emailSettings.senderName,
       sender_email: emailSettings.senderEmail,
       smtp_host: emailSettings.smtpHost,
@@ -1572,6 +1559,25 @@ export function OtherSettingsPage() {
             <Field orientation="horizontal">
               <FieldContent>
                 <FieldTitle>
+                  {t("pages.otherSettings.loginMethods.allowRegistration")}
+                </FieldTitle>
+                <FieldDescription>
+                  {t(
+                    "pages.otherSettings.loginMethods.allowRegistrationDescription"
+                  )}
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                checked={registrationEnabled}
+                onCheckedChange={setRegistrationPendingValue}
+                aria-label={t(
+                  "pages.otherSettings.loginMethods.allowRegistration"
+                )}
+              />
+            </Field>
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldTitle>
                   {t("pages.otherSettings.loginMethods.password")}
                 </FieldTitle>
                 <FieldDescription>
@@ -1825,23 +1831,6 @@ export function OtherSettingsPage() {
             <Item variant="outline">
               <ItemContent>
                 <ItemTitle>
-                  {t("pages.otherSettings.email.allowRegistration")}
-                </ItemTitle>
-                <ItemDescription>
-                  {t("pages.otherSettings.email.allowRegistrationDescription")}
-                </ItemDescription>
-              </ItemContent>
-              <ItemActions>
-                <Switch
-                  checked={savedEmailSettings.registrationEnabled}
-                  onCheckedChange={setRegistrationPendingValue}
-                  aria-label={t("pages.otherSettings.email.allowRegistration")}
-                />
-              </ItemActions>
-            </Item>
-            <Item variant="outline">
-              <ItemContent>
-                <ItemTitle>
                   {t("pages.otherSettings.email.sendingConfiguration")}
                 </ItemTitle>
                 <ItemDescription>
@@ -1926,15 +1915,15 @@ export function OtherSettingsPage() {
             <AlertDialogTitle>
               {t(
                 registrationPendingValue
-                  ? "pages.otherSettings.email.enableRegistrationDialogTitle"
-                  : "pages.otherSettings.email.disableRegistrationDialogTitle"
+                  ? "pages.otherSettings.loginMethods.enableRegistrationDialogTitle"
+                  : "pages.otherSettings.loginMethods.disableRegistrationDialogTitle"
               )}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {t(
                 registrationPendingValue
-                  ? "pages.otherSettings.email.enableRegistrationDialogDescription"
-                  : "pages.otherSettings.email.disableRegistrationDialogDescription"
+                  ? "pages.otherSettings.loginMethods.enableRegistrationDialogDescription"
+                  : "pages.otherSettings.loginMethods.disableRegistrationDialogDescription"
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1955,22 +1944,15 @@ export function OtherSettingsPage() {
                     registrationEnabled
                   )
                 ) {
-                  setSavedEmailSettings((settings) => ({
-                    ...settings,
-                    registrationEnabled,
-                  }))
-                  setEmailSettings((settings) => ({
-                    ...settings,
-                    registrationEnabled,
-                  }))
+                  setRegistrationEnabled(registrationEnabled)
                   setRegistrationPendingValue(null)
                 }
               }}
             >
               {t(
                 registrationPendingValue
-                  ? "pages.otherSettings.email.confirmEnableRegistration"
-                  : "pages.otherSettings.email.confirmDisableRegistration"
+                  ? "pages.otherSettings.loginMethods.confirmEnableRegistration"
+                  : "pages.otherSettings.loginMethods.confirmDisableRegistration"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
