@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	_ "net/http/pprof"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -102,7 +103,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	identities.WithAccountPreserver(charges)
 	keys := apikey.NewService(apikey.NewPostgres(pool))
 	modelRepo := model.NewPostgres(pool)
-	models := model.NewService(modelRepo).WithKeyAuthenticator(keys)
+	models := model.NewService(modelRepo).WithKeyAuthenticator(keys).WithGatewayURL(strings.TrimRight(cfg.PublicURL, "/") + "/v1")
 	storage, err := resource.NewS3(ctx)
 	if err != nil {
 		return nil, err
@@ -119,7 +120,6 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage)
 	experts := expert.NewService(store)
 	resources := agentconfig.NewResources(store, connectors, skills)
-	agentConfig := agentconfig.NewService(settings, models, cfg.PublicURL).WithResources(resources)
 
 	admin := chi.NewRouter()
 	admin.Use(identities.RequireAdmin)
@@ -143,7 +143,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	keys.RegisterAgent(agent)
 	models.RegisterAgent(agent)
 	store.RegisterSharing(agent, map[string]resource.Shareable{"model": modelRepo})
-	agentConfig.RegisterAgent(agent)
+	settings.RegisterAgent(agent)
 	connectors.RegisterAgent(agent)
 	resources.RegisterAgent(agent)
 	charges.RegisterAgent(agent)

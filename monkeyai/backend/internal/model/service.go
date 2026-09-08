@@ -34,6 +34,7 @@ type KeyAuthenticator interface {
 type Service struct {
 	repository Repository
 	keys       KeyAuthenticator
+	gatewayURL string
 }
 
 func NewService(repository Repository) *Service {
@@ -42,6 +43,11 @@ func NewService(repository Repository) *Service {
 
 func (s *Service) WithKeyAuthenticator(keys KeyAuthenticator) *Service {
 	s.keys = keys
+	return s
+}
+
+func (s *Service) WithGatewayURL(url string) *Service {
+	s.gatewayURL = strings.TrimRight(url, "/")
 	return s
 }
 

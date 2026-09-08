@@ -68,13 +68,15 @@ export MONKEYAI_INITIAL_ADMIN_PASSWORD='至少十二个字符的初始密码'
 
 Agent 接口：
 
-- `GET /api/v1/config`：获取当前用户的完整配置快照，支持 `ETag` 和 `If-None-Match`。
+- `GET /api/v1/settings`：获取脱敏全局设置。
+- `GET /api/v1/models`：获取可用模型和模型代理地址。
+- `GET /api/v1/rules`、`/skills`、`/experts`、`/connectors`：分别获取当前用户可用的对应资源目录。
 - `GET /api/v1/api-keys`：列出当前用户的调用密钥元数据。
 - `POST /api/v1/api-keys`：创建调用密钥，原文只在响应中返回一次。
 - `POST /api/v1/api-keys/{keyID}/rotate`：轮换调用密钥。
 - `DELETE /api/v1/api-keys/{keyID}`：撤销调用密钥。
 
-配置快照包含脱敏后的全局设置、当前用户可用的模型目录和模型代理地址。快照内容生成稳定 SHA-256 版本；Agent 在启动、登录和网络恢复时拉取，并可使用 ETag 定期检查变化。系统暂不提供 SSE 配置通知。
+上述接口各自生成稳定 SHA-256 `version`，支持独立 `ETag`、`If-None-Match` 和 `304`；不再提供整体 `/api/v1/config`。Agent 在启动、登录和网络恢复时按需拉取，并按用户及接口隔离缓存。系统暂不提供 SSE 配置通知。
 
 OAuth access token 用于 Agent API；模型代理只接受具有 `model:invoke` 权限的调用密钥。后续 MCP 代理使用 `mcp:invoke`。调用密钥只保存 SHA-256 摘要，用户被停用、密钥过期或被撤销后立即失效。下发给 Agent 的配置不会包含任何上游供应商密钥。
 

@@ -35,7 +35,7 @@ backend/
 │   ├── httpapi/               # 公共路由、中间件和响应协议
 │   ├── identity/              # 登录、用户、角色和分组
 │   ├── apikey/                # Agent 调用密钥
-│   ├── agentconfig/           # Agent 配置快照聚合
+│   ├── agentconfig/           # Agent 资源目录与专家依赖解析
 │   ├── resource/              # 文件、标签、资源所有权和访问授权
 │   ├── model/                 # 模型配置与调用入口
 │   ├── proxy/                 # 模型协议代理与调用计费
@@ -152,6 +152,6 @@ export MONKEYAI_S3_SECRET_KEY='测试访问密钥密码'
 go test ./... -count=1
 ```
 
-集成测试创建独立随机 schema，测试结束后删除该 schema，不重置其他 schema；必须使用测试数据库和测试 Bucket。测试包括版本 1 的 up/down/up、版本 2 的计费升级、版本 3 的旧系统分组升级与授权和额度保留、虚拟团队根节点及分组操作、Cookie 管理员身份与 Agent Bearer 身份、权限差异、配置 ETag、技能字节上传/重建/下载、专家委托、撤权、真实 MCP HTTP 协议、用户目录隔离及本地 OAuth state/PKCE 回调防重放。测试可能留下不可变技能对象，仅位于测试 Bucket。
+集成测试创建独立随机 schema，测试结束后删除该 schema，不重置其他 schema；必须使用测试数据库和测试 Bucket。测试包括版本 1 的 up/down/up、版本 2 的计费升级、版本 3 的旧系统分组升级与授权和额度保留、虚拟团队根节点及分组操作、Cookie 管理员身份与 Agent Bearer 身份、权限差异、独立资源目录 ETag、技能字节上传/重建/下载、专家委托、撤权、真实 MCP HTTP 协议、用户目录隔离及本地 OAuth state/PKCE 回调防重放。测试可能留下不可变技能对象，仅位于测试 Bucket。
 
-各业务服务显式注册到 `internal/app`。`resource.CRUD` 只接收服务端定义的表名和字段白名单，业务约束及关系事务由 `rule`、`skill`、`expert`、`mcp` 提供。Agent 配置在同一个 PostgreSQL Repeatable Read 视图中聚合，读取失败会使整个请求失败。
+各业务服务显式注册到 `internal/app`。`resource.CRUD` 只接收服务端定义的表名和字段白名单，业务约束及关系事务由 `rule`、`skill`、`expert`、`mcp` 提供。Agent 按设置、模型、规则、技能、专家和连接器分别读取，各接口独立计算版本与 ETag。规则、技能、专家和连接器目录分别在 PostgreSQL Repeatable Read 视图中读取；某类资源读取失败只影响依赖它的请求，不返回伪造的空目录。

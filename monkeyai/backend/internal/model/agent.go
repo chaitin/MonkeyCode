@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
@@ -76,7 +77,12 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			userModelError(w, err)
 			return
 		}
-		modelJSON(w, http.StatusOK, map[string]any{"models": items})
+		if err = httpapi.CachedJSON(w, r, map[string]any{
+			"models":        items,
+			"model_gateway": map[string]string{"base_url": s.gatewayURL, "authentication": "api_key"},
+		}); err != nil {
+			userModelError(w, err)
+		}
 	})
 	router.Get("/models/{modelID}", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := identity.UserFromContext(r.Context())
