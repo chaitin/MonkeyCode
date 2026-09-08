@@ -62,8 +62,7 @@ func (s *S3) Init(ctx context.Context) error {
 	if err == nil {
 		return nil
 	}
-	var missing *types.NotFound
-	if !errors.As(err, &missing) {
+	if _, ok := errors.AsType[*types.NotFound](err); !ok {
 		return err
 	}
 	_, err = s.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: &s.bucket})

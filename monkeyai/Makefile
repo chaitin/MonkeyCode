@@ -14,6 +14,7 @@ image-admin:
 	docker buildx build \
 	  --platform $(PLATFORM) \
 	  --tag $(ADMIN_IMAGE) \
+	  --secret id=netrc,src=${HOME}/.netrc \
 	  --load \
 	  ./admin
 	@echo "Admin image: $(ADMIN_IMAGE)"
@@ -22,6 +23,7 @@ image-backend:
 	docker buildx build \
 	  --platform $(PLATFORM) \
 	  --tag $(BACKEND_IMAGE) \
+	  --secret id=netrc,src=${HOME}/.netrc \
 	  --load \
 	  ./backend
 	@echo "Backend image: $(BACKEND_IMAGE)"
@@ -30,6 +32,7 @@ image-migrate:
 	docker buildx build \
 	  --platform $(PLATFORM) \
 	  --tag $(MIGRATE_IMAGE) \
+	  --secret id=netrc,src=${HOME}/.netrc \
 	  --load \
 	  ./backend/migrations
 	@echo "Migrate image: $(MIGRATE_IMAGE)"
@@ -40,6 +43,7 @@ push-admin:
 	docker buildx build \
 	  --platform $(PLATFORM) \
 	  --tag $(ADMIN_IMAGE) \
+	  --secret id=netrc,src=${HOME}/.netrc \
 	  --push \
 	  ./admin
 	@echo "Pushed: $(ADMIN_IMAGE)"
@@ -48,6 +52,7 @@ push-backend:
 	docker buildx build \
 	  --platform $(PLATFORM) \
 	  --tag $(BACKEND_IMAGE) \
+	  --secret id=netrc,src=${HOME}/.netrc \
 	  --push \
 	  ./backend
 	@echo "Pushed: $(BACKEND_IMAGE)"
@@ -55,6 +60,7 @@ push-backend:
 push-migrate:
 	docker buildx build \
 	  --platform $(PLATFORM) \
+	  --secret id=netrc,src=${HOME}/.netrc \
 	  --tag $(MIGRATE_IMAGE) \
 	  --push \
 	  ./backend/migrations

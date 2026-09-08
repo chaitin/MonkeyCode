@@ -25,7 +25,7 @@ func CachedJSON(w http.ResponseWriter, r *http.Request, value map[string]any) er
 	etag := `"` + version + `"`
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, no-cache")
-	for _, match := range strings.Split(r.Header.Get("If-None-Match"), ",") {
+	for match := range strings.SplitSeq(r.Header.Get("If-None-Match"), ",") {
 		match = strings.TrimPrefix(strings.TrimSpace(match), "W/")
 		if match == etag || match == "*" {
 			w.WriteHeader(http.StatusNotModified)
