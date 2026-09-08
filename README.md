@@ -126,7 +126,7 @@ You can also get support through:
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=chaitin/MonkeyCode&type=Date)](https://star-history.com/#chaitin/MonkeyCode&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=chaitin/MonkeyCode&type=Date)](https://star-history.dera.page/#chaitin/MonkeyCode&type=Date)
 
 ## License
 
