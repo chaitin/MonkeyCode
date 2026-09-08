@@ -148,8 +148,8 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	if len(found["users"].([]any)) != 0 {
 		t.Fatal("搜索不应解释通配符")
 	}
-	beforeA, headA := call("GET", "/config", "a", nil, 200)
-	beforeB, headB := call("GET", "/config", "b", nil, 200)
+	beforeA, headA := call("GET", "/models", "a", nil, 200)
+	beforeB, headB := call("GET", "/models", "b", nil, 200)
 	if len(beforeB["models"].([]any)) != 0 {
 		t.Fatal("未分享的模型可见")
 	}
@@ -171,10 +171,10 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	call("POST", "/resources/shares", "a", resource.ShareInput{Resources: []resource.ShareResource{{Type: "skill", ID: ids[0]}}, UserIDs: []string{users[1]}}, 400)
 	call("POST", "/resources/shares", "a", share, 204)
 	call("POST", "/resources/shares", "a", share, 204)
-	afterA, newHeadA := call("GET", "/config", "a", nil, 200)
-	afterB, newHeadB := call("GET", "/config", "b", nil, 200)
+	afterA, newHeadA := call("GET", "/models", "a", nil, 200)
+	afterB, newHeadB := call("GET", "/models", "b", nil, 200)
 	if headA.Get("ETag") == newHeadA.Get("ETag") || headB.Get("ETag") == newHeadB.Get("ETag") {
-		t.Fatal("分享后配置 ETag 未变化")
+		t.Fatal("分享后模型目录 ETag 未变化")
 	}
 	if len(afterB["models"].([]any)) != 2 {
 		t.Fatalf("批量分享缺失: %v", afterB)
@@ -213,7 +213,7 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	call("DELETE", "/resources/shares", "a", share, 204)
 	assertAccess(users[1], ids[0], false)
 	assertAccess(adminID, ids[0], true)
-	revoked, revokedHeaders := call("GET", "/config", "b", nil, 200)
+	revoked, revokedHeaders := call("GET", "/models", "b", nil, 200)
 	if len(revoked["models"].([]any)) != 0 || revokedHeaders.Get("ETag") == newHeadB.Get("ETag") {
 		t.Fatal("撤销后配置仍包含模型或缓存未失效")
 	}

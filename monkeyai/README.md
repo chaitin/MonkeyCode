@@ -85,7 +85,7 @@ MCP 默认访问公网 HTTP(S) 目标；访问内网服务时用 `MONKEYAI_MCP_A
 
 同一 Provider 可以创建多个 Connector，独立认证的目录按用户凭证隔离。已有实例的模板连接参数不能直接更换；新的地址或 OAuth 应用创建新模板并建立新连接。集中 Header/Token 只保存在后端；个人连接的敏感值不通过管理列表返回。
 
-Agent 继续使用 `/api/v1/config` 和 ETag，增加 `schema_version=2`、`rules`、`skills`、`experts`、`connectors`。通过专家清单和 `/api/v1/resources/resolve` 获取最终依赖；专家授权只委托其固定系统规则和技能，模型及连接仍单独检查授权。接口详见两份 OpenAPI。
+Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rules`、`/api/v1/skills`、`/api/v1/experts`、`/api/v1/connectors`，每个接口独立提供 SHA-256 版本与 ETag/304。模型代理信息随模型列表返回，整体 `/api/v1/config` 已移除。通过专家清单和 `/api/v1/resources/resolve` 获取最终依赖；专家授权只委托其固定系统规则和技能，模型及连接仍单独检查授权。接口详见两份 OpenAPI。
 
 资源管理列表支持 `q`、`ownership_type`、`cursor` 和 `limit`（1—200），管理页面及关联选择器会读取全部分页。模板图标限 1 MiB 的 PNG/JPEG，由后端验证尺寸并经授权接口读取。
 

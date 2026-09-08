@@ -132,6 +132,59 @@ func TestResourceIntegration(t *testing.T) {
 		users = append(users, id)
 	}
 	t.Run("用户模型与批量分享", func(t *testing.T) { testModelSharing(t, pool, handler, users) })
+	t.Run("独立资源目录", func(t *testing.T) {
+		for _, kind := range []string{"settings", "models", "rules", "skills", "experts", "connectors"} {
+			path := "/api/v1/" + kind
+			if code, _, _ := call("GET", path, nil, "", ""); code != 401 {
+				t.Fatalf("%s 未校验 Agent 身份: %d", path, code)
+			}
+			code, out, headers := call("GET", path, nil, "a", "")
+			fields := 2
+			if kind == "models" {
+				fields = 3
+				gateway := out["model_gateway"].(map[string]any)
+				if gateway["base_url"] != "http://localhost:8080/v1" || gateway["authentication"] != "api_key" {
+					t.Fatalf("模型代理配置缺失: %v", out)
+				}
+			}
+			if code != 200 || len(out) != fields || out[kind] == nil || out.String("version") == "" {
+				t.Fatalf("%s 包含无关资源或缺少目录: %d %v", path, code, out)
+			}
+			if kind != "settings" && len(out[kind].([]any)) != 0 {
+				t.Fatalf("初始目录应为空数组: %v", out)
+			}
+			req := httptest.NewRequest("GET", path, nil)
+			req.Header.Set("Authorization", "Bearer a")
+			req.Header.Set("If-None-Match", headers.Get("ETag"))
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+			if w.Code != 304 || w.Body.Len() != 0 {
+				t.Fatalf("%s 未命中独立缓存: %d %s", path, w.Code, w.Body.String())
+			}
+		}
+		if code, _, _ := call("GET", "/api/v1/config", nil, "a", ""); code != 404 {
+			t.Fatalf("整体配置入口仍然可用: %d", code)
+		}
+	})
+	t.Run("资源读取失败隔离", func(t *testing.T) {
+		if _, err := pool.Exec(ctx, `ALTER TABLE connectors RENAME TO unavailable_connectors`); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if _, err := pool.Exec(ctx, `ALTER TABLE unavailable_connectors RENAME TO connectors`); err != nil {
+				t.Fatal(err)
+			}
+		}()
+		for _, kind := range []string{"settings", "models", "rules", "skills", "experts", "connectors"} {
+			want := 200
+			if kind == "experts" || kind == "connectors" {
+				want = 500
+			}
+			if code, _, _ := call("GET", "/api/v1/"+kind, nil, "a", ""); code != want {
+				t.Fatalf("%s 读取状态 = %d，预期 %d", kind, code, want)
+			}
+		}
+	})
 	for _, body := range []string{"null", "{} {}", "[]"} {
 		request := httptest.NewRequest("POST", "/api/admin/v1/rules", strings.NewReader(body))
 		request.AddCookie(cookie)
@@ -146,28 +199,43 @@ func TestResourceIntegration(t *testing.T) {
 	if code, _, _ := call("PUT", "/api/admin/v1/rules/"+rule.String("id"), resource.Object{"name": "规则", "content": "覆盖"}, "", `"99"`); code != 412 {
 		t.Fatalf("应拒绝过期修订: %d", code)
 	}
-	snapshot := must("GET", "/api/v1/config", nil, "a", "")
+	snapshot := must("GET", "/api/v1/rules", nil, "a", "")
 	before := snapshot.String("version")
 	if len(snapshot["rules"].([]any)) != 1 {
 		t.Fatalf("授权规则缺失: %v", snapshot)
 	}
-	b := must("GET", "/api/v1/config", nil, "b", "")
+	b := must("GET", "/api/v1/rules", nil, "b", "")
 	if len(b["rules"].([]any)) != 0 {
 		t.Fatal("规则越权")
 	}
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequest("GET", "/api/v1/rules", nil)
 	req.Header.Set("Authorization", "Bearer a")
 	req.Header.Set("If-None-Match", `"`+before+`"`)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 	if w.Code != 304 {
-		t.Fatalf("配置应返回 304: %d %s", w.Code, w.Body.String())
+		t.Fatalf("规则目录应返回 304: %d %s", w.Code, w.Body.String())
+	}
+	otherVersions := map[string]string{}
+	for _, kind := range []string{"settings", "models", "skills", "experts", "connectors"} {
+		otherVersions[kind] = must("GET", "/api/v1/"+kind, nil, "a", "").String("version")
 	}
 	rule = must("PUT", "/api/admin/v1/rules/"+rule.String("id"), resource.Object{"name": "规则", "content": "更新正文", "grants": grantA}, "", `"1"`)
-	after := must("GET", "/api/v1/config", nil, "a", "")
+	after := must("GET", "/api/v1/rules", nil, "a", "")
 	if before == after.String("version") {
 		t.Fatal("正文变化未更新版本")
 	}
+	for kind, version := range otherVersions {
+		if got := must("GET", "/api/v1/"+kind, nil, "a", "").String("version"); got != version {
+			t.Fatalf("无关规则变化影响 %s 版本", kind)
+		}
+	}
+	must("PUT", "/api/admin/v1/rules/"+rule.String("id"), resource.Object{"name": "规则", "content": "更新正文", "grants": []any{}}, "", `"2"`)
+	revoked := must("GET", "/api/v1/rules", nil, "a", "")
+	if len(revoked["rules"].([]any)) != 0 || revoked.String("version") == after.String("version") {
+		t.Fatal("撤销规则授权未更新目录及版本")
+	}
+	rule = must("PUT", "/api/admin/v1/rules/"+rule.String("id"), resource.Object{"name": "规则", "content": "更新正文", "grants": grantA}, "", `"3"`)
 	tag := must("POST", "/api/admin/v1/tags", resource.Object{"name": "测试标签"}, "", "")
 	var archive bytes.Buffer
 	z := zip.NewWriter(&archive)
@@ -206,6 +274,16 @@ func TestResourceIntegration(t *testing.T) {
 	}
 
 	expert := must("POST", "/api/admin/v1/experts", resource.Object{"name": "专家", "description": "测试", "prompt": "审查代码", "rule_ids": []string{rule.String("id")}, "skill_ids": []string{skill.String("id")}, "providers": []any{}, "grants": grantA}, "", "")
+	experts := must("GET", "/api/v1/experts", nil, "a", "")
+	if items := experts["experts"].([]any); len(items) != 1 || items[0].(map[string]any)["id"] != expert.String("id") {
+		t.Fatalf("专家目录缺失授权项: %v", experts)
+	}
+	if items := must("GET", "/api/v1/experts", nil, "b", "")["experts"].([]any); len(items) != 0 {
+		t.Fatal("专家目录越权")
+	}
+	if items := must("GET", "/api/v1/skills", nil, "a", "")["skills"].([]any); len(items) != 0 {
+		t.Fatal("专家委托不应扩散到独立技能目录")
+	}
 	must("GET", "/api/v1/experts/"+expert.String("id")+"/manifest", nil, "a", "")
 	if code, _, _ := call("GET", "/api/v1/skills/"+skill.String("id")+"/package", nil, "a", ""); code != 404 {
 		t.Fatalf("委托不应扩散独立访问: %d", code)
@@ -218,6 +296,23 @@ func TestResourceIntegration(t *testing.T) {
 	manifest := must("GET", "/api/admin/v1/skills/"+skill.String("id")+"/manifest", nil, "", "")
 	if manifest.String("content") != "更新正文" {
 		t.Fatal("包正文未更新")
+	}
+	if updated := must("GET", "/api/v1/experts", nil, "a", ""); updated.String("version") == experts.String("version") {
+		t.Fatal("技能包更新未改变依赖它的专家目录版本")
+	}
+	must("PUT", "/api/admin/v1/resources/skill/"+skill.String("id")+"/grants", resource.Object{"grants": grantA}, "", `"2"`)
+	skills := must("GET", "/api/v1/skills", nil, "a", "")
+	if items := skills["skills"].([]any); len(items) != 1 {
+		t.Fatalf("技能目录缺失授权项: %v", skills)
+	} else {
+		item := items[0].(map[string]any)
+		if item["id"] != skill.String("id") || item["package_sha256"] != skill.String("package_sha256") || len(item["tags"].([]any)) != 1 || !strings.Contains(item["download_path"].(string), skill.String("package_sha256")) {
+			t.Fatalf("技能目录元数据缺失: %v", item)
+		}
+	}
+	must("PUT", "/api/admin/v1/resources/skill/"+skill.String("id")+"/grants", resource.Object{"grants": []any{}}, "", `"3"`)
+	if revoked := must("GET", "/api/v1/skills", nil, "a", ""); len(revoked["skills"].([]any)) != 0 || revoked.String("version") == skills.String("version") {
+		t.Fatal("技能撤权后目录及版本未更新")
 	}
 	must("POST", "/api/admin/v1/experts/"+expert.String("id")+"/copy", resource.Object{"name": "专家副本"}, "", "")
 	resolved := must("POST", "/api/v1/resources/resolve", resource.Object{"expert_id": expert.String("id")}, "a", "")
@@ -372,7 +467,7 @@ func TestResourceIntegration(t *testing.T) {
 	if status.String("status") != "authorized" {
 		t.Fatal("OAuth 状态未落库")
 	}
-	snap := must("GET", "/api/v1/config", nil, "a", "")
+	snap := must("GET", "/api/v1/connectors", nil, "a", "")
 	encoded, _ := json.Marshal(snap)
 	if strings.Contains(string(encoded), "private-") {
 		t.Fatal("下发泄露凭据")
@@ -398,7 +493,7 @@ func TestResourceIntegration(t *testing.T) {
 	}
 	inherited := must("POST", "/api/admin/v1/rules", resource.Object{"name": "继承规则", "content": "继承", "grants": []resource.Object{{"group_id": parentID, "usage_requirement": "optional"}}}, "", "")
 	hasRule := func(token, id string) bool {
-		snap := must("GET", "/api/v1/config", nil, token, "")
+		snap := must("GET", "/api/v1/rules", nil, token, "")
 		for _, raw := range snap["rules"].([]any) {
 			if raw.(map[string]any)["id"] == id {
 				return true

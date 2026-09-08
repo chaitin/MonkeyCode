@@ -3,16 +3,17 @@ package agentconfig
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"slices"
+	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
-	"net/http"
-	"slices"
-	"strings"
-	"time"
 )
 
 type Resources struct {
@@ -25,14 +26,6 @@ func NewResources(store *resource.Store, m *mcp.Service, s *skill.Service) *Reso
 	return &Resources{store: store, mcp: m, skills: s}
 }
 
-type Bundle struct {
-	ResourceUpdatedAt time.Time         `json:"-"`
-	SchemaVersion     int               `json:"schema_version"`
-	Rules             []resource.Object `json:"rules"`
-	Skills            []resource.Object `json:"skills"`
-	Experts           []resource.Object `json:"experts"`
-	Connectors        []resource.Object `json:"connectors"`
-}
 type catalog struct {
 	rules, skills, experts, connectors map[string]resource.Object
 	grants                             map[string]bool
@@ -42,13 +35,19 @@ type catalog struct {
 	providers                          map[string]resource.Object
 }
 
-func (r *Resources) load(ctx context.Context, q resource.Queryer, user string) (catalog, error) {
+func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind string) (catalog, error) {
 	c := catalog{grants: map[string]bool{}, required: map[string]bool{}, links: map[string][]resource.Object{}, models: map[string]bool{}}
 	targets := []struct {
 		table string
 		out   *map[string]resource.Object
 	}{{"rules", &c.rules}, {"skills", &c.skills}, {"experts", &c.experts}, {"connectors", &c.connectors}, {"connector_providers", &c.providers}}
 	for _, t := range targets {
+		if (kind == "rules" || kind == "skills") && t.table != kind {
+			continue
+		}
+		if kind == "connectors" && t.table != "connectors" && t.table != "connector_providers" {
+			continue
+		}
 		out, err := resource.Rows(ctx, q, `SELECT to_jsonb(t) FROM `+t.table+` t WHERE deleted_at IS NULL`)
 		if err != nil {
 			return c, err
@@ -67,6 +66,9 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user string) (
 		if o.Bool("required") {
 			c.required[o.String("id")] = true
 		}
+	}
+	if kind == "rules" || kind == "skills" || kind == "connectors" {
+		return c, nil
 	}
 	for _, table := range []string{"expert_rules", "expert_skills", "expert_connector_providers"} {
 		out, err := resource.Rows(ctx, q, `SELECT to_jsonb(t) FROM `+table+` t ORDER BY expert_id`)
@@ -218,69 +220,79 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 	out["version"] = resource.Hash(out)
 	return out, nil
 }
-func (r *Resources) Snapshot(ctx context.Context, q resource.Queryer, user string) (Bundle, error) {
-	c, err := r.load(ctx, q, user)
+func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind string) ([]resource.Object, error) {
+	c, err := r.load(ctx, q, user, kind)
 	if err != nil {
-		return Bundle{}, err
+		return nil, err
 	}
-	b := Bundle{SchemaVersion: 2, Rules: []resource.Object{}, Skills: []resource.Object{}, Experts: []resource.Object{}, Connectors: []resource.Object{}}
-	for id, o := range c.rules {
-		if c.allowed("rule", o, user) {
-			b.Rules = append(b.Rules, ruleDTO(o, c.required[id]))
+	var items map[string]resource.Object
+	var resourceType string
+	switch kind {
+	case "rules":
+		items, resourceType = c.rules, "rule"
+	case "skills":
+		items, resourceType = c.skills, "skill"
+	case "experts":
+		items, resourceType = c.experts, "expert"
+	case "connectors":
+		items, resourceType = c.connectors, "connector"
+	default:
+		return nil, resource.NotFound
+	}
+	out := []resource.Object{}
+	for id, o := range items {
+		if !c.allowed(resourceType, o, user) {
+			continue
 		}
-	}
-	for _, o := range c.skills {
-		if c.allowed("skill", o, user) {
-			dto := skillDTO(o, "")
-			tags, err := resource.Rows(ctx, q, `SELECT jsonb_build_object('id',t.id,'name',t.name) FROM tags t JOIN resource_tags rt ON rt.tag_id=t.id WHERE rt.resource_type='skill' AND rt.resource_id=$1 AND t.deleted_at IS NULL ORDER BY t.id`, o.String("id"))
-			if err != nil {
-				return Bundle{}, err
+		var dto resource.Object
+		switch kind {
+		case "rules":
+			dto = ruleDTO(o, c.required[id])
+		case "skills":
+			dto = skillDTO(o, "")
+			dto["tags"], err = resource.Rows(ctx, q, `SELECT jsonb_build_object('id',t.id,'name',t.name) FROM tags t JOIN resource_tags rt ON rt.tag_id=t.id WHERE rt.resource_type='skill' AND rt.resource_id=$1 AND t.deleted_at IS NULL ORDER BY t.id`, id)
+		case "experts":
+			var manifest resource.Object
+			manifest, err = r.manifest(ctx, q, c, id, user)
+			if err == nil {
+				dto = resource.Object{"id": id, "name": o["name"], "description": o["description"], "version": manifest["version"], "manifest_path": "/api/v1/experts/" + id + "/manifest", "available": manifest["available"], "issues": manifest["issues"]}
 			}
-			dto["tags"] = tags
-			b.Skills = append(b.Skills, dto)
+		case "connectors":
+			dto, err = r.connectorDTO(ctx, q, c, o, user)
 		}
-	}
-	for id, o := range c.experts {
-		if c.allowed("expert", o, user) {
-			m, err := r.manifest(ctx, q, c, id, user)
-			if err != nil {
-				return Bundle{}, err
-			}
-			b.Experts = append(b.Experts, resource.Object{"id": id, "name": o["name"], "description": o["description"], "version": m["version"], "manifest_path": "/api/v1/experts/" + id + "/manifest", "available": m["available"], "issues": m["issues"]})
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, dto)
 	}
-	for _, o := range c.connectors {
-		if c.allowed("connector", o, user) {
-			dto, err := r.connectorDTO(ctx, q, c, o, user)
-			if err != nil {
-				return Bundle{}, err
-			}
-			b.Connectors = append(b.Connectors, dto)
-		}
-	}
-	for _, set := range []struct {
-		kind  string
-		items map[string]resource.Object
-	}{{"rule", c.rules}, {"skill", c.skills}, {"expert", c.experts}, {"connector", c.connectors}} {
-		for _, o := range set.items {
-			if c.allowed(set.kind, o, user) {
-				updated, _ := time.Parse(time.RFC3339Nano, o.String("updated_at"))
-				if updated.After(b.ResourceUpdatedAt) {
-					b.ResourceUpdatedAt = updated
-				}
-			}
-		}
-	}
-	resource.Stable(b.Rules)
-	resource.Stable(b.Skills)
-	resource.Stable(b.Experts)
-	resource.Stable(b.Connectors)
-	return b, nil
+	resource.Stable(out)
+	return out, nil
 }
+
+func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind string) {
+	u, _ := identity.UserFromContext(req.Context())
+	tx, err := r.transaction(req.Context())
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	defer tx.Rollback(req.Context())
+	items, err := r.list(req.Context(), tx, u.ID, kind)
+	if err == nil {
+		err = httpapi.CachedJSON(w, req, map[string]any{kind: items})
+	}
+	if err != nil {
+		resource.Fail(w, err)
+	}
+}
+
 func (r *Resources) transaction(ctx context.Context) (pgx.Tx, error) {
 	return r.store.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 }
 func (r *Resources) RegisterAgent(router chi.Router) {
+	for _, kind := range []string{"rules", "skills", "experts", "connectors"} {
+		router.Get("/"+kind, func(w http.ResponseWriter, req *http.Request) { r.getList(w, req, kind) })
+	}
 	router.Get("/experts/{id}/manifest", r.getManifest)
 	router.Post("/resources/resolve", r.resolve)
 	router.Get("/skills/{id}/package", func(w http.ResponseWriter, req *http.Request) { r.download(w, req, false) })
@@ -294,7 +306,7 @@ func (r *Resources) getManifest(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	defer tx.Rollback(req.Context())
-	c, err := r.load(req.Context(), tx, u.ID)
+	c, err := r.load(req.Context(), tx, u.ID, "")
 	if err != nil {
 		resource.Fail(w, err)
 		return
@@ -321,7 +333,7 @@ func (r *Resources) download(w http.ResponseWriter, req *http.Request, delegated
 		return
 	}
 	defer tx.Rollback(req.Context())
-	c, err := r.load(req.Context(), tx, u.ID)
+	c, err := r.load(req.Context(), tx, u.ID, "")
 	if err != nil {
 		resource.Fail(w, err)
 		return
@@ -367,7 +379,7 @@ func (r *Resources) Resolve(ctx context.Context, user string, in resource.Object
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	c, err := r.load(ctx, tx, user)
+	c, err := r.load(ctx, tx, user, "")
 	if err != nil {
 		return nil, err
 	}

@@ -124,15 +124,24 @@ paths:
           $ref: '#/components/responses/InternalError'
   /api/v1/models:
     get:
-      summary: 查询当前用户可用的模型
-      description: 与配置快照的 models 一致，仅包含启用的系统授权模型、自有模型和收到分享的模型。
+      summary: 读取 Agent 模型目录
+      description: 仅包含启用的系统授权模型、自有模型和收到分享的模型，同时返回模型代理地址与鉴权方式。版本只覆盖模型目录和代理信息。
+      parameters:
+      - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
-          description: 可用模型，不含上游地址和密钥。
+          description: 模型目录数据，不包含服务端密钥。
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentModelsResponse'
+        '304':
+          $ref: '#/components/responses/NotModified'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -266,44 +275,126 @@ paths:
           $ref: '#/components/responses/ResourceError404'
         '500':
           $ref: '#/components/responses/ResourceError500'
-  /api/v1/config:
+  /api/v1/settings:
     get:
-      summary: 获取当前 Agent 配置快照
+      summary: 读取 Agent 设置
+      description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
       parameters:
-        - in: header
-          name: If-None-Match
-          description: 上一次响应的 ETag；配置未变化时服务返回 304。
-          schema:
-            type: string
+      - $ref: '#/components/parameters/IfNoneMatch'
       responses:
-        "200":
-          description: 当前用户的完整 Agent 配置快照。
+        '200':
+          description: 设置数据，不包含服务端密钥。
           headers:
             ETag:
-              description: 基于配置内容生成的稳定版本标识。
-              schema:
-                type: string
-                examples: ['"sha256:0123456789abcdef"']
+              $ref: '#/components/headers/ETag'
             Cache-Control:
-              description: 配置快照的缓存策略。
-              schema:
-                type: string
-                examples: ["private, no-cache"]
+              $ref: '#/components/headers/CacheControl'
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentConfigSnapshot"
-        "304":
-          description: 配置未变化，无响应体。
+                $ref: '#/components/schemas/AgentSettingsResponse'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/rules:
+    get:
+      summary: 读取 Agent 规则
+      description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
+      parameters:
+      - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: 规则数据，不包含服务端密钥。
           headers:
             ETag:
-              description: 当前配置版本标识。
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
               schema:
-                type: string
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "500":
-          $ref: "#/components/responses/InternalError"
+                $ref: '#/components/schemas/AgentRulesResponse'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/skills:
+    get:
+      summary: 读取 Agent 技能
+      description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
+      parameters:
+      - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: 技能数据，不包含服务端密钥。
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSkillsResponse'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/experts:
+    get:
+      summary: 读取 Agent 专家
+      description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
+      parameters:
+      - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: 专家数据，不包含服务端密钥。
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentExpertsResponse'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/connectors:
+    get:
+      summary: 读取 Agent 连接器
+      description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
+      parameters:
+      - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: 连接器数据，不包含服务端密钥。
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentConnectorsResponse'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /api/v1/api-keys:
     get:
       summary: 查询当前用户的调用密钥
@@ -794,6 +885,12 @@ components:
       bearerFormat: OAuth 2.0 access token
       description: Agent 登录授权流程签发的短期 access token。
   parameters:
+    IfNoneMatch:
+      in: header
+      name: If-None-Match
+      description: 此接口上一次响应的 ETag；当前用户可见内容未变化时返回 304。
+      schema:
+        type: string
     KeyID:
       in: path
       name: keyID
@@ -802,7 +899,24 @@ components:
       schema:
         type: string
         format: uuid
+  headers:
+    ETag:
+      description: 当前接口响应内容的稳定 SHA-256 版本，以双引号包围。
+      schema:
+        type: string
+    CacheControl:
+      description: 按用户隔离缓存，每次使用前重新验证。
+      schema:
+        type: string
+        const: private, no-cache
   responses:
+    NotModified:
+      description: 当前接口内容未变化，无响应体。
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
     ResourceError400:
       description: 字段或关联无效
       content:
@@ -949,12 +1063,20 @@ components:
     AgentModelsResponse:
       type: object
       required:
+      - version
       - models
+      - model_gateway
+      additionalProperties: false
       properties:
+        version:
+          $ref: '#/components/schemas/ResourceVersion'
         models:
           type: array
+          description: 当前用户可用的资源，空集合返回 []。
           items:
             $ref: '#/components/schemas/AgentModel'
+        model_gateway:
+          $ref: '#/components/schemas/ModelGateway'
     UserModelInput:
       type: object
       required:
@@ -1111,49 +1233,80 @@ components:
         message:
           type: string
           description: 面向用户或开发者的错误说明。
-    AgentConfigSnapshot:
+    ResourceVersion:
+      type: string
+      pattern: ^sha256:[0-9a-f]{64}$
+      description: 当前接口实际下发内容的 SHA-256 摘要，不包含 version 字段。
+    AgentSettingsResponse:
       type: object
-      required: [version, updated_at, settings, model_gateway, models, schema_version, rules, skills, experts, connectors]
+      required:
+      - version
+      - settings
+      additionalProperties: false
       properties:
-        schema_version:
-          type: integer
-          const: 2
+        version:
+          $ref: '#/components/schemas/ResourceVersion'
+        settings:
+          $ref: '#/components/schemas/AgentSettings'
+    AgentRulesResponse:
+      type: object
+      required:
+      - version
+      - rules
+      additionalProperties: false
+      properties:
+        version:
+          $ref: '#/components/schemas/ResourceVersion'
         rules:
           type: array
+          description: 当前用户可用的资源，空集合返回 []。
           items:
             $ref: '#/components/schemas/AgentRule'
+    AgentSkillsResponse:
+      type: object
+      required:
+      - version
+      - skills
+      additionalProperties: false
+      properties:
+        version:
+          $ref: '#/components/schemas/ResourceVersion'
         skills:
           type: array
+          description: 当前用户可用的资源，空集合返回 []。
           items:
             $ref: '#/components/schemas/AgentSkill'
+    AgentExpertsResponse:
+      type: object
+      required:
+      - version
+      - experts
+      additionalProperties: false
+      properties:
+        version:
+          $ref: '#/components/schemas/ResourceVersion'
         experts:
           type: array
+          description: 当前用户可用的资源，空集合返回 []。
           items:
             $ref: '#/components/schemas/AgentExpert'
+    AgentConnectorsResponse:
+      type: object
+      required:
+      - version
+      - connectors
+      additionalProperties: false
+      properties:
+        version:
+          $ref: '#/components/schemas/ResourceVersion'
         connectors:
           type: array
+          description: 当前用户可用的资源，空集合返回 []。
           items:
             $ref: '#/components/schemas/AgentConnector'
-        version:
-          type: string
-          pattern: "^sha256:[0-9a-f]{64}$"
-          description: 对配置快照内容计算得到的稳定 SHA-256 版本。
-        updated_at:
-          type: string
-          format: date-time
-          description: 设置或可用模型最近一次发生变化的时间。
-        settings:
-          $ref: "#/components/schemas/AgentSettings"
-        model_gateway:
-          $ref: "#/components/schemas/ModelGateway"
-        models:
-          type: array
-          description: 当前用户有权调用且处于启用状态的模型。
-          items:
-            $ref: "#/components/schemas/AgentModel"
     AgentSettings:
       type: object
-      description: 按设置域组织的全局设置快照；只返回已配置的设置域，服务端密钥字段已移除。
+      description: 按设置域组织的全局设置；只返回已配置的设置域，服务端密钥字段已移除。
       properties:
         branding:
           $ref: "#/components/schemas/BrandingSettings"
@@ -1267,39 +1420,31 @@ components:
       type: object
       properties:
         input_credits_per_million_tokens:
-          type: number
-          minimum: 0
+          $ref: '#/components/schemas/CreditAmount'
           description: 每百万输入 Token 消耗的积分。
         cached_input_credits_per_million_tokens:
-          type: number
-          minimum: 0
+          $ref: '#/components/schemas/CreditAmount'
           description: 每百万缓存输入 Token 消耗的积分。
         output_credits_per_million_tokens:
-          type: number
-          minimum: 0
+          $ref: '#/components/schemas/CreditAmount'
           description: 每百万输出 Token 消耗的积分。
         quota_refresh_cycle:
           type: string
-          enum: [daily, weekly, monthly]
+          enum:
+          - daily
+          - weekly
+          - monthly
           description: 积分额度刷新周期。
         charging_mode:
           type: string
-          enum: [local, remote]
+          enum:
+          - local
+          - remote
           description: 使用本地积分账户或远程计费服务。
-        remote_billing_base_url:
-          type: [string, "null"]
-          format: uri
-          description: 远程计费服务地址；本地计费时可为空。
-        root_credits:
-          type: number
-          minimum: 0
-          description: 默认根额度积分数。
-        quota_overrides:
-          type: object
-          description: 按用户或分组标识覆盖的积分额度。
-          additionalProperties:
-            type: string
-      additionalProperties: true
+        enabled:
+          type: boolean
+          description: 是否启用计费。
+      additionalProperties: false
     ModelGateway:
       type: object
       required: [base_url, authentication]
