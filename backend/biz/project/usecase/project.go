@@ -418,7 +418,7 @@ func (u *ProjectUsecase) GetProjectBlob(ctx context.Context, uid uuid.UUID, req 
 	}
 	resp, err := client.Blob(ctx, &domain.BlobOptions{
 		Token: cctx.Token, Owner: cctx.Owner, Repo: cctx.Repo,
-		Ref: ref, Path: req.Path,
+		Ref: ref, Path: req.Path, MaxSize: req.MaxSize,
 		InstallID: cctx.InstallID, IsOAuth: cctx.IsOAuth,
 	})
 	if err != nil {

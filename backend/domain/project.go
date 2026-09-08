@@ -225,9 +225,10 @@ type GetProjectTreeReq struct {
 
 // GetProjectBlobReq 获取项目文件内容请求
 type GetProjectBlobReq struct {
-	ID   uuid.UUID `param:"id" validate:"required" json:"-" swaggerignore:"true"`
-	Path string    `query:"path" validate:"required"`
-	Ref  string    `query:"ref" validate:"omitempty"`
+	ID      uuid.UUID `param:"id" validate:"required" json:"-" swaggerignore:"true"`
+	Path    string    `query:"path" validate:"required"`
+	Ref     string    `query:"ref" validate:"omitempty"`
+	MaxSize int64     `json:"-" swaggerignore:"true"`
 }
 
 // GetProjectLogsReq 获取项目提交历史请求
