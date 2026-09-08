@@ -94,12 +94,8 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil {
 		return nil, fmt.Errorf("初始化管理员: %w", err)
 	}
-	wallet, err := billing.WalletFromEnv()
-	if err != nil {
-		return nil, fmt.Errorf("初始化远程计费: %w", err)
-	}
-	charges := billing.NewService(pool).WithWallet(wallet)
-	if err = charges.Initialize(ctx); err != nil {
+	charges := billing.NewService(pool)
+	if err := charges.Initialize(ctx); err != nil {
 		return nil, fmt.Errorf("初始化计费: %w", err)
 	}
 	identities.WithAccountPreserver(charges)

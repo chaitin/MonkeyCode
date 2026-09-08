@@ -23,6 +23,10 @@ import { Input } from "@/components/ui/input"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { api } from "@/lib/api"
 import {
+  WalletSettings,
+  type WalletInput,
+} from "@/components/billing/wallet-settings"
+import {
   credits,
   cycleNames,
   dateTime,
@@ -62,6 +66,7 @@ export function BillingSettingsPage() {
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
+  const [walletVersion, setWalletVersion] = useState(0)
   const [query, setQuery] = useState("")
   const [target, setTarget] = useState<Target | null>(null)
   const [quotaValue, setQuotaValue] = useState("")
@@ -88,6 +93,7 @@ export function BillingSettingsPage() {
         setMode(s.policy.charging_mode)
         setEnabled(s.policy.enabled)
         setChanges({})
+        setWalletVersion((value) => value + 1)
       }),
     []
   )
@@ -102,8 +108,11 @@ export function BillingSettingsPage() {
     setQuotaValue(v.own ?? v.inherited)
     setInherit(v.own === null && !v.root)
   }
-  const save = async (section: string) => {
-    if (!settings || !quotas || !pricing) return
+  const save = async (
+    section: string,
+    wallet?: WalletInput
+  ): Promise<boolean> => {
+    if (!settings || !quotas || !pricing) return false
     setBusy(section)
     setError("")
     setNotice("")
@@ -130,11 +139,13 @@ export function BillingSettingsPage() {
         )
       } else {
         const values =
-          section === "pricing"
-            ? pricing
-            : section === "cycle"
-              ? { quota_refresh_cycle: cycle }
-              : { charging_mode: mode, enabled }
+          section === "wallet"
+            ? wallet
+            : section === "pricing"
+              ? pricing
+              : section === "cycle"
+                ? { quota_refresh_cycle: cycle }
+                : { charging_mode: mode, enabled }
         const result = await api<BillingSettings>(
           `/api/admin/v1/billing/settings/${section}`,
           {
@@ -148,16 +159,23 @@ export function BillingSettingsPage() {
         setSettings(result)
         setQuotas({ ...quotas, revision: result.policy.revision })
         setNotice(
-          section === "cycle"
-            ? "刷新设置已保存，请查看下次刷新时间。"
-            : "设置已保存，对新调用生效。"
+          section === "wallet"
+            ? result.policy.charging_mode === "remote" && result.policy.enabled
+              ? "百智云连接配置已保存，无需重启。"
+              : "百智云连接配置已保存，无需重启；请保存计费方式以启用远程计费。"
+            : section === "cycle"
+              ? "刷新设置已保存，请查看下次刷新时间。"
+              : "设置已保存，对新调用生效。"
         )
       }
     } catch (e) {
       setError((e as Error).message)
+      if (section === "wallet") throw e
+      return false
     } finally {
       setBusy("")
     }
+    return true
   }
   const dirtyPricing =
     pricing &&
@@ -452,6 +470,7 @@ export function BillingSettingsPage() {
               disabled={
                 (mode === settings.policy.charging_mode &&
                   enabled === settings.policy.enabled) ||
+                (mode === "remote" && !settings.wallet.configured) ||
                 !!busy
               }
               onClick={() => void save("mode")}
@@ -490,30 +509,18 @@ export function BillingSettingsPage() {
               : "当前仅记录调用，不扣积分；启用后从新调用开始计费。"}
           </p>
           {mode === "remote" && (
-            <div className="space-y-2 rounded-md border p-3 text-sm">
-              {settings.wallet.configured ? (
-                <>
-                  <Badge variant="secondary">证书已配置</Badge>
-                  <p>
-                    环境：{settings.wallet.environment} · 应用 ID：
-                    {settings.wallet.app_id}
-                  </p>
-                  <p>
-                    证书到期：{dateTime(settings.wallet.certificate_expires_at)}
-                  </p>
-                  <p>
-                    已绑定{" "}
-                    {quotas.users.filter((u) => u.external_user_id).length} /{" "}
-                    {quotas.users.length}{" "}
-                    位成员，未绑定成员无法发起远程付费调用。
-                  </p>
-                </>
-              ) : (
-                <p>
-                  尚未配置百智云连接。请在部署环境设置应用 ID 和 mTLS
-                  证书，再启用远程模式。
-                </p>
-              )}
+            <div className="space-y-3">
+              <WalletSettings
+                key={walletVersion}
+                info={settings.wallet}
+                busy={!!busy}
+                onSave={(input) => save("wallet", input)}
+              />
+              <p className="text-sm">
+                已绑定{" "}
+                {quotas.users.filter((user) => user.external_user_id).length} /{" "}
+                {quotas.users.length} 位成员，未绑定成员无法发起远程付费调用。
+              </p>
               <p className="text-xs text-muted-foreground">
                 百智云扣款与本地周期额度分别管理；周期刷新不发放百智云积分。
               </p>

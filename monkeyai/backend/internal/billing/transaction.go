@@ -164,8 +164,13 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 	if !p.Enabled || reserve == 0 {
 		mode = "local"
 	}
+	var wallet *Wallet
 	if mode == "remote" {
-		if s.wallet == nil {
+		wallet, err = s.wallet(ctx, tx)
+		if err != nil {
+			return Reservation{}, err
+		}
+		if !wallet.ready() {
 			return Reservation{}, fail(503, "wallet_unavailable", "未配置百智云计费连接")
 		}
 		reserve = Amount(quotaAmount(reserve, true) * 10000)
@@ -183,7 +188,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		if err != nil {
 			return Reservation{}, err
 		}
-		biz, err = s.wallet.BizID()
+		biz, err = wallet.BizID()
 		if err != nil {
 			return Reservation{}, err
 		}
@@ -228,8 +233,8 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 			TransactionID:     id,
 			ExternalUserID:    walletUser,
 			TeamSlug:          team,
-			Environment:       s.wallet.Environment,
-			AppID:             int32(s.wallet.AppID),
+			Environment:       wallet.Environment,
+			AppID:             int32(wallet.AppID),
 			FrozenAmountQuota: int64(quotaAmount(reserve, true)),
 		})
 		if err != nil {

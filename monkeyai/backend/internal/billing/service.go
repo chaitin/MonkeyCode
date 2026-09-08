@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	auditlog "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
@@ -69,17 +70,26 @@ func (p Policy) period(now time.Time) (time.Time, time.Time) {
 }
 
 type Service struct {
-	pool   *pgxpool.Pool
-	now    func() time.Time
-	wallet *Wallet
+	pool         *pgxpool.Pool
+	now          func() time.Time
+	fallback     *Wallet
+	walletMu     sync.Mutex
+	cachedWallet *Wallet
 }
 
 func NewService(pool *pgxpool.Pool) *Service     { return &Service{pool: pool, now: time.Now} }
-func (s *Service) WithWallet(w *Wallet) *Service { s.wallet = w; return s }
+func (s *Service) WithWallet(w *Wallet) *Service { s.fallback = w; return s }
 func (s *Service) Initialize(ctx context.Context) error {
 	p := defaultPolicy()
 	b, _ := json.Marshal(p)
 	_, err := sqlc.New(s.pool).InitializePolicy(ctx, b)
+	if err != nil {
+		return err
+	}
+	cfg, err := s.walletConfig(ctx, s.pool)
+	if err == nil && cfg == nil && s.fallback == nil {
+		s.fallback, err = WalletFromEnv()
+	}
 	return err
 }
 func (s *Service) policy(ctx context.Context, q resource.Queryer, lock bool) (Policy, error) {
