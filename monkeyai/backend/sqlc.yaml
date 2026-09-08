@@ -1,0 +1,221 @@
+version: '2'
+sql:
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/agentconfig/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/agentconfig/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/apikey/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/apikey/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/billing/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/billing/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/expert/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/expert/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/group/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/group/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/identity/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/identity/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/mcp/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/mcp/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/model/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/model/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/resource/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/resource/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/rule/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/rule/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/setting/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/setting/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/skill/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/skill/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/stats/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/stats/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/mcp/provider.sql
+  gen:
+    go:
+      package: provider
+      out: internal/mcp/sqlc/provider
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/mcp/connector.sql
+  gen:
+    go:
+      package: connector
+      out: internal/mcp/sqlc/connector
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+overrides:
+  go:
+    overrides:
+    - db_type: uuid
+      go_type: string
+    - db_type: uuid
+      nullable: true
+      go_type:
+        type: string
+        pointer: true
+    - db_type: pg_catalog.numeric
+      go_type: string
+    - db_type: pg_catalog.numeric
+      nullable: true
+      go_type:
+        type: string
+        pointer: true
+    - db_type: timestamptz
+      go_type:
+        import: time
+        type: Time
+    - db_type: timestamptz
+      nullable: true
+      go_type:
+        import: time
+        type: Time
+        pointer: true
+    - db_type: timestamp
+      go_type:
+        import: time
+        type: Time
+    - db_type: timestamp
+      nullable: true
+      go_type:
+        import: time
+        type: Time
+        pointer: true
+    - column: models.credit_multiplier
+      go_type: float64

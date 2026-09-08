@@ -8,13 +8,10 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats/sqlc"
+
 	"github.com/jackc/pgx/v5"
 )
-
-const historyFilter = ` FROM sessions s JOIN users u ON u.id=s.owner_user_id WHERE s.deleted_at IS NULL
- AND ($1='' OR strpos(lower(s.title),lower($1))>0 OR strpos(s.id::text,lower($1))>0)
- AND ($2='' OR strpos(lower(u.name),lower($2))>0 OR strpos(lower(u.email),lower($2))>0)
- AND ($3::timestamptz IS NULL OR s.started_at >= $3) AND ($4::timestamptz IS NULL OR s.started_at < $4)`
 
 func (s *Service) history(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -57,16 +54,23 @@ func (s *Service) history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
-	args := []any{title, user, from, until}
 	var total int64
-	if err = tx.QueryRow(ctx, `SELECT count(*)`+historyFilter, args...).Scan(&total); err != nil {
+	total, err = sqlc.New(tx).CountHistory(ctx, sqlc.CountHistoryParams{TitleQuery: title, UserQuery: user, FromTime: from, UntilTime: until})
+	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
+
 	pages := max(1, (total+int64(size)-1)/int64(size))
 	page = min(page, int(pages))
-	items, err := resource.Rows(ctx, tx, `SELECT jsonb_build_object('id',s.id,'title',s.title,'user_name',u.name,'user_email',u.email,
- 'started_at',s.started_at,'last_active_at',s.last_active_at,'turn_count',s.turn_count)`+historyFilter+` ORDER BY s.started_at DESC,s.id DESC LIMIT $5 OFFSET $6`, append(args, size, (page-1)*size)...)
+	items, err := resource.DecodeObjects(sqlc.New(tx).ListHistory(ctx, sqlc.ListHistoryParams{
+		TitleQuery: title,
+		UserQuery:  user,
+		FromTime:   from,
+		UntilTime:  until,
+		Limit:      int32(size),
+		Offset:     int32((page - 1) * size),
+	}))
 	if err != nil {
 		resource.Fail(w, err)
 		return

@@ -10,9 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
@@ -30,6 +27,9 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type App struct {

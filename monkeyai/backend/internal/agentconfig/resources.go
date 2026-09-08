@@ -7,11 +7,13 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
@@ -37,10 +39,14 @@ type catalog struct {
 
 func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind string) (catalog, error) {
 	c := catalog{grants: map[string]bool{}, required: map[string]bool{}, links: map[string][]resource.Object{}, models: map[string]bool{}}
+	queries := sqlc.New(q)
 	targets := []struct {
 		table string
 		out   *map[string]resource.Object
-	}{{"rules", &c.rules}, {"skills", &c.skills}, {"experts", &c.experts}, {"connectors", &c.connectors}, {"connector_providers", &c.providers}}
+		read  func(context.Context) ([][]byte, error)
+	}{{"rules", &c.rules, queries.CatalogRules}, {"skills", &c.skills, queries.CatalogSkills},
+		{"experts", &c.experts, queries.CatalogExperts}, {"connectors", &c.connectors, queries.CatalogConnectors},
+		{"connector_providers", &c.providers, queries.CatalogProviders}}
 	for _, t := range targets {
 		if (kind == "rules" || kind == "skills") && t.table != kind {
 			continue
@@ -48,7 +54,7 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 		if kind == "connectors" && t.table != "connectors" && t.table != "connector_providers" {
 			continue
 		}
-		out, err := resource.Rows(ctx, q, `SELECT to_jsonb(t) FROM `+t.table+` t WHERE deleted_at IS NULL`)
+		out, err := resource.DecodeObjects(t.read(ctx))
 		if err != nil {
 			return c, err
 		}
@@ -57,7 +63,7 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 			(*t.out)[o.String("id")] = o
 		}
 	}
-	g, err := resource.Rows(ctx, q, resource.GroupsSQL+`SELECT jsonb_build_object('kind',resource_type,'id',resource_id,'required',bool_or(usage_requirement='required')) FROM resource_access_grants WHERE user_id=$1 OR group_id IN(SELECT group_id FROM user_groups) GROUP BY resource_type,resource_id`, user)
+	g, err := resource.DecodeObjects(sqlc.New(q).ListGrants(ctx, new(user)))
 	if err != nil {
 		return c, err
 	}
@@ -70,23 +76,28 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 	if kind == "rules" || kind == "skills" || kind == "connectors" {
 		return c, nil
 	}
-	for _, table := range []string{"expert_rules", "expert_skills", "expert_connector_providers"} {
-		out, err := resource.Rows(ctx, q, `SELECT to_jsonb(t) FROM `+table+` t ORDER BY expert_id`)
+	for _, link := range []struct {
+		table string
+		read  func(context.Context) ([][]byte, error)
+	}{{"expert_rules", queries.CatalogRuleLinks}, {"expert_skills", queries.CatalogSkillLinks}, {"expert_connector_providers", queries.CatalogProviderLinks}} {
+		out, err := resource.DecodeObjects(link.read(ctx))
 		if err != nil {
 			return c, err
 		}
 		for _, o := range out {
-			c.links[o.String("expert_id")+":"+table] = append(c.links[o.String("expert_id")+":"+table], o)
+			c.links[o.String("expert_id")+":"+link.table] = append(c.links[o.String("expert_id")+":"+link.table], o)
 		}
 	}
-	models, err := resource.Rows(ctx, q, `SELECT jsonb_build_object('id',id,'owner_user_id',owner_user_id,'enabled',enabled) FROM models WHERE deleted_at IS NULL`)
+	models, err := resource.DecodeObjects(sqlc.New(q).ListModels(ctx))
 	if err != nil {
 		return c, err
 	}
 	var admin bool
-	if err = q.QueryRow(ctx, `SELECT role='admin' FROM users WHERE id=$1 AND status='active' AND deleted_at IS NULL`, user).Scan(&admin); err != nil {
+	admin, err = sqlc.New(q).IsAdmin(ctx, user)
+	if err != nil {
 		return c, err
 	}
+
 	for _, m := range models {
 		c.models[m.String("id")] = m.Bool("enabled") && (admin || m.String("owner_user_id") == user || c.grants["model:"+m.String("id")])
 	}
@@ -138,9 +149,13 @@ func (r *Resources) connectorDTO(ctx context.Context, q resource.Queryer, c cata
 		}
 		if cred != nil {
 			var valid bool
-			if err = q.QueryRow(ctx, `SELECT oauth_expires_at IS NULL OR oauth_expires_at>now() FROM connector_credentials WHERE id=$1`, cred.String("id")).Scan(&valid); err != nil {
+			var record *bool
+			record, err = sqlc.New(q).CredentialCurrent(ctx, cred.String("id"))
+			if err != nil {
 				return nil, err
 			}
+			valid = record != nil && *record
+
 			if valid {
 				status = "authorized"
 			}
@@ -250,7 +265,7 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 			dto = ruleDTO(o, c.required[id])
 		case "skills":
 			dto = skillDTO(o, "")
-			dto["tags"], err = resource.Rows(ctx, q, `SELECT jsonb_build_object('id',t.id,'name',t.name) FROM tags t JOIN resource_tags rt ON rt.tag_id=t.id WHERE rt.resource_type='skill' AND rt.resource_id=$1 AND t.deleted_at IS NULL ORDER BY t.id`, id)
+			dto["tags"], err = resource.DecodeObjects(sqlc.New(q).ListSkillTags(ctx, id))
 		case "experts":
 			var manifest resource.Object
 			manifest, err = r.manifest(ctx, q, c, id, user)

@@ -2,9 +2,11 @@ package resource
 
 import (
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
-	"github.com/go-chi/chi/v5"
 	"net/http"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func (s *Store) RegisterGrants(r chi.Router, resources map[string]*CRUD) {
@@ -41,7 +43,7 @@ func (s *Store) RegisterGrants(r chi.Router, resources map[string]*CRUD) {
 		}
 		defer tx.Rollback(ctx)
 		id := chi.URLParam(r, "id")
-		o, err := Row(ctx, tx, `SELECT to_jsonb(t) FROM `+c.Def.Table+` t WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id)
+		o, err := DecodeObject(c.Def.Repository(tx).LockResource(ctx, id))
 		if err != nil {
 			Fail(w, err)
 			return
@@ -56,11 +58,12 @@ func (s *Store) RegisterGrants(r chi.Router, resources map[string]*CRUD) {
 		}
 		u, _ := identity.UserFromContext(ctx)
 		if err = SaveGrants(ctx, tx, c.Def.Kind, id, u.ID, in["grants"], false); err == nil {
-			_, err = tx.Exec(ctx, `UPDATE `+c.Def.Table+` SET updated_at=now(),revision=revision+1 WHERE id=$1`, id)
+			err = c.Def.Repository(tx).TouchResource(ctx, id)
 		}
 		if err == nil {
 			err = Audit(ctx, tx, u.ID, c.Def.Kind, id, "grants")
 		}
+
 		if err == nil {
 			err = tx.Commit(ctx)
 		}
@@ -68,6 +71,7 @@ func (s *Store) RegisterGrants(r chi.Router, resources map[string]*CRUD) {
 			Fail(w, err)
 			return
 		}
+
 		o, err = c.Get(ctx, s.Pool, id)
 		if err != nil {
 			Fail(w, err)

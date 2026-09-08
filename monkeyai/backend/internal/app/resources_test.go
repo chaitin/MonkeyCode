@@ -194,6 +194,52 @@ func TestResourceIntegration(t *testing.T) {
 			t.Fatalf("无效 JSON 应返回 400: %s: %d", body, response.Code)
 		}
 	}
+	t.Run("固定查询保留缺省字段与显式空值", func(t *testing.T) {
+		input := resource.Object{"name": "字段更新测试", "identifier": "sqlc-fields", "url": "https://example.com/mcp", "authorization_mode": "none", "description": "保留描述", "enabled": false}
+		provider := must("POST", "/api/admin/v1/connector-providers", input, "", "")
+		path := "/api/admin/v1/connector-providers/" + provider.String("id")
+		if provider.Bool("enabled") || provider["authorization_method"] != nil {
+			t.Fatalf("创建字段错误: %v", provider)
+		}
+		input["description"] = nil
+		input["name"] = "不应保存"
+		if code, _, _ := call("PUT", path, input, "", `"1"`); code < 400 {
+			t.Fatalf("显式 null 应触发非空约束: %d", code)
+		}
+		current := must("GET", path, nil, "", "")
+		if current.String("name") != "字段更新测试" || current.Int("revision") != 1 {
+			t.Fatalf("失败更新未回滚: %v", current)
+		}
+		delete(input, "description")
+		delete(input, "enabled")
+		input["name"] = "有效更新"
+		current = must("PUT", path, input, "", `"1"`)
+		if current.String("description") != "保留描述" || current.Bool("enabled") || current.Int("revision") != 2 {
+			t.Fatalf("未传字段不应被覆盖: %v", current)
+		}
+		if code, _, _ := call("DELETE", path, nil, "", `"2"`); code != 204 {
+			t.Fatalf("清理测试 Provider 失败: %d", code)
+		}
+	})
+	t.Run("提交失败不得返回成功", func(t *testing.T) {
+		if _, err := pool.Exec(ctx, `
+CREATE FUNCTION reject_test_tag() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.name='提交失败测试' THEN RAISE EXCEPTION '测试事务提交失败'; END IF;
+ RETURN NEW;
+END $$;
+CREATE CONSTRAINT TRIGGER reject_test_tag AFTER INSERT ON tags
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`); err != nil {
+			t.Fatal(err)
+		}
+		if code, _, _ := call("POST", "/api/admin/v1/tags", resource.Object{"name": "提交失败测试"}, "", ""); code != 500 {
+			t.Fatalf("提交失败应返回 500: %d", code)
+		}
+		var count int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM tags WHERE name='提交失败测试'`).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("失败事务不应留下数据: count=%d err=%v", count, err)
+		}
+	})
 	grantA := []resource.Object{{"user_id": users[0], "usage_requirement": "optional"}}
 	rule := must("POST", "/api/admin/v1/rules", resource.Object{"name": "规则", "content": "规则正文", "grants": grantA}, "", "")
 	if code, _, _ := call("PUT", "/api/admin/v1/rules/"+rule.String("id"), resource.Object{"name": "规则", "content": "覆盖"}, "", `"99"`); code != 412 {

@@ -6,13 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"io"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"gopkg.in/yaml.v3"
 )
 
 const MaxPackage = 20 << 20

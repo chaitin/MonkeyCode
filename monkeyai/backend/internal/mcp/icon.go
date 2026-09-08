@@ -11,7 +11,9 @@ import (
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+
 	"github.com/go-chi/chi/v5"
 )
 
@@ -66,7 +68,7 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 	id := chi.URLParam(r, "id")
-	p, err := resource.Row(ctx, tx, `SELECT to_jsonb(p) FROM connector_providers p WHERE id=$1 AND ownership_type='system' AND deleted_at IS NULL FOR UPDATE`, id)
+	p, err := resource.DecodeObject(sqlc.New(tx).LockIconProvider(ctx, id))
 	if err != nil {
 		resource.Fail(w, err)
 		return
@@ -77,12 +79,13 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request) {
 	}
 	key := "connector-icons/" + id + "/" + resource.ID() + "/icon." + format
 	if err = s.storage.Put(ctx, key, data, "image/"+format); err == nil {
-		_, err = tx.Exec(ctx, `UPDATE connector_providers SET icon_s3_key=$2,revision=revision+1,updated_at=now() WHERE id=$1`, id, key)
+		_, err = sqlc.New(tx).SetProviderIcon(ctx, sqlc.SetProviderIconParams{ID: id, IconS3Key: key})
 	}
 	u, _ := identity.UserFromContext(ctx)
 	if err == nil {
 		err = resource.Audit(ctx, tx, u.ID, "provider", id, "icon")
 	}
+
 	if err == nil {
 		err = tx.Commit(ctx)
 	}
@@ -90,6 +93,7 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+
 	p, err = s.Providers.Get(ctx, s.Store.Pool, id)
 	if err != nil {
 		resource.Fail(w, err)
@@ -99,11 +103,12 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request) {
 	resource.JSON(w, 200, p)
 }
 func (s *Service) icon(w http.ResponseWriter, r *http.Request, provider string) {
-	var key string
-	if err := s.Store.Pool.QueryRow(r.Context(), `SELECT icon_s3_key FROM connector_providers WHERE id=$1 AND deleted_at IS NULL`, provider).Scan(&key); err != nil || key == "" {
+	key, err := sqlc.New(s.Store.Pool).GetProviderIcon(r.Context(), provider)
+	if err != nil || key == "" {
 		resource.Fail(w, resource.NotFound)
 		return
 	}
+
 	body, err := s.storage.Get(r.Context(), key)
 	if err != nil {
 		resource.Fail(w, err)

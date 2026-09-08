@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -116,49 +118,13 @@ type Queryer interface {
 type Store struct{ Pool *pgxpool.Pool }
 
 func NewStore(p *pgxpool.Pool) *Store { return &Store{Pool: p} }
-func Rows(ctx context.Context, q Queryer, sql string, args ...any) ([]Object, error) {
-	rows, err := q.Query(ctx, sql, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []Object{}
-	for rows.Next() {
-		var b []byte
-		if err := rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		var o Object
-		if err := json.Unmarshal(b, &o); err != nil {
-			return nil, err
-		}
-		out = append(out, o)
-	}
-	return out, rows.Err()
-}
-func Row(ctx context.Context, q Queryer, sql string, args ...any) (Object, error) {
-	var b []byte
-	if err := q.QueryRow(ctx, sql, args...).Scan(&b); err != nil {
-		return nil, err
-	}
-	var o Object
-	err := json.Unmarshal(b, &o)
-	return o, err
-}
-
-// 用户仅属于显式加入的分组及其未删除的上级分组。
-const GroupsSQL = `WITH RECURSIVE user_groups(group_id) AS (
- SELECT id FROM groups WHERE deleted_at IS NULL AND id IN (SELECT group_id FROM group_users WHERE user_id=$1 AND removed_at IS NULL)
- UNION SELECT parent.id FROM groups g JOIN user_groups ug ON ug.group_id=g.id JOIN groups parent ON parent.id=g.parent_id WHERE g.deleted_at IS NULL AND parent.deleted_at IS NULL
-) `
-
 func Allowed(ctx context.Context, q Queryer, kind, id, user string) (bool, error) {
-	var ok bool
-	err := q.QueryRow(ctx, GroupsSQL+`SELECT EXISTS(SELECT 1 FROM resource_access_grants WHERE resource_type=$2 AND resource_id=$3 AND (user_id=$1 OR group_id IN (SELECT group_id FROM user_groups)))`, user, kind, id).Scan(&ok)
+	ok, err := sqlc.New(q).HasAccess(ctx, sqlc.HasAccessParams{UserID: new(user), ResourceType: kind, ResourceID: id})
+
 	return ok, err
 }
 func Grants(ctx context.Context, q Queryer, kind, id string) ([]Object, error) {
-	return Rows(ctx, q, `SELECT jsonb_build_object('user_id',user_id,'group_id',group_id,'usage_requirement',usage_requirement) FROM resource_access_grants WHERE resource_type=$1 AND resource_id=$2 ORDER BY group_id,user_id`, kind, id)
+	return DecodeObjects(sqlc.New(q).ListGrants(ctx, sqlc.ListGrantsParams{ResourceType: kind, ResourceID: id}))
 }
 func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any, personal bool) error {
 	b, _ := json.Marshal(raw)
@@ -170,7 +136,7 @@ func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any,
 	if err := json.Unmarshal(b, &grants); err != nil {
 		return Invalid("授权格式无效")
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM resource_access_grants WHERE resource_type=$1 AND resource_id=$2`, kind, id); err != nil {
+	if _, err := sqlc.New(tx).DeleteGrants(ctx, sqlc.DeleteGrantsParams{ResourceType: kind, ResourceID: id}); err != nil {
 		return err
 	}
 	for _, g := range grants {
@@ -183,33 +149,42 @@ func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any,
 		if g.Usage == "required" && (kind != "rule" || personal) {
 			return Invalid("仅系统规则可以强制应用")
 		}
-		var exists bool
-		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=NULLIF($1,'')::uuid AND deleted_at IS NULL AND status='active') OR EXISTS(SELECT 1 FROM groups WHERE id=NULLIF($2,'')::uuid AND deleted_at IS NULL)`, g.UserID, g.GroupID).Scan(&exists)
+
+		exists, err := sqlc.New(tx).SubjectExists(ctx, sqlc.SubjectExistsParams{UserID: g.UserID, GroupID: g.GroupID})
+
 		if err != nil {
 			return err
 		}
 		if !exists {
 			return Invalid("授权对象不存在")
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO resource_access_grants(resource_type,resource_id,user_id,group_id,access_level,usage_requirement,granted_by_user_id) VALUES($1,$2,NULLIF($3,'')::uuid,NULLIF($4,'')::uuid,'read_only',$5,$6)`, kind, id, g.UserID, g.GroupID, g.Usage, actor); err != nil {
+		if _, err := sqlc.New(tx).CreateGrant(ctx, sqlc.CreateGrantParams{
+			ResourceType:     kind,
+			ResourceID:       id,
+			UserID:           g.UserID,
+			GroupID:          g.GroupID,
+			UsageRequirement: g.Usage,
+			GrantedByUserID:  actor,
+		}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 func Audit(ctx context.Context, tx pgx.Tx, actor, kind, id, action string) error {
-	_, err := tx.Exec(ctx, `INSERT INTO audits(actor_type,actor_user_id,actor_name,actor_email,action,category,target_type,target_id,result,occurred_at) SELECT 'user',id,name,email,$2,'resource',$3,$4,'success',now() FROM users WHERE id=$1`, actor, action, kind, id)
+	_, err := sqlc.New(tx).CreateAudit(ctx, sqlc.CreateAuditParams{ID: actor, Action: action, TargetType: new(kind), TargetID: new(id)})
 	return err
 }
 
 type Definition struct {
-	Kind, Table, Path string
-	Fields            []string
-	Hidden            []string
-	Validate          func(context.Context, pgx.Tx, Object, Object) error
-	Persist           func(context.Context, pgx.Tx, Object) error
-	Decorate          func(context.Context, Queryer, Object) error
-	References        func(context.Context, pgx.Tx, string) ([]Object, error)
+	Kind, Path string
+	Repository func(Queryer) Repository
+	Fields     []string
+	Hidden     []string
+	Validate   func(context.Context, pgx.Tx, Object, Object) error
+	Persist    func(context.Context, pgx.Tx, Object) error
+	Decorate   func(context.Context, Queryer, Object) error
+	References func(context.Context, pgx.Tx, string) ([]Object, error)
 }
 type CRUD struct {
 	Store *Store
@@ -218,7 +193,7 @@ type CRUD struct {
 
 func NewCRUD(s *Store, d Definition) *CRUD { return &CRUD{Store: s, Def: d} }
 func (c *CRUD) Get(ctx context.Context, q Queryer, id string) (Object, error) {
-	o, err := Row(ctx, q, `SELECT to_jsonb(t) FROM `+c.Def.Table+` t WHERE id=$1 AND deleted_at IS NULL`, id)
+	o, err := DecodeObject(c.Def.Repository(q).GetResource(ctx, id))
 	if err != nil {
 		return nil, err
 	}
@@ -231,10 +206,11 @@ func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error
 	}
 	o["grants"] = g
 	if owner := o.String("owner_user_id"); owner != "" {
-		var name string
-		if err := q.QueryRow(ctx, `SELECT name FROM users WHERE id=$1`, owner).Scan(&name); err != nil {
+		name, err := sqlc.New(q).GetOwnerName(ctx, owner)
+		if err != nil {
 			return nil, err
 		}
+
 		o["owner_name"] = name
 	}
 	if c.Def.Decorate != nil {
@@ -248,7 +224,7 @@ func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error
 	return o, nil
 }
 func (c *CRUD) List(ctx context.Context, q Queryer) ([]Object, error) {
-	out, err := Rows(ctx, q, `SELECT to_jsonb(t) FROM `+c.Def.Table+` t WHERE deleted_at IS NULL ORDER BY lower(name),id`)
+	out, err := DecodeObjects(c.Def.Repository(q).ListResources(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +247,7 @@ func (c *CRUD) Save(ctx context.Context, actor, id, match string, in Object) (Ob
 	if create {
 		id = ID()
 	} else {
-		old, err = Row(ctx, tx, `SELECT to_jsonb(t) FROM `+c.Def.Table+` t WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id)
+		old, err = DecodeObject(c.Def.Repository(tx).LockResource(ctx, id))
 		if err != nil {
 			return nil, err
 		}
@@ -298,43 +274,22 @@ func (c *CRUD) Save(ctx context.Context, actor, id, match string, in Object) (Ob
 			return nil, err
 		}
 	}
-	fields := []string{}
-	args := []any{}
-	for _, k := range c.Def.Fields {
-		v, ok := in[k]
-		if !ok {
-			continue
+	payload := Object{"id": id, "actor_id": actor}
+	for _, key := range c.Def.Fields {
+		if value, ok := in[key]; ok {
+			payload[key] = value
 		}
-		fields = append(fields, k)
-		args = append(args, v)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
 	}
 	if create {
-		fields = append(fields, "id")
-		args = append(args, id)
-		if c.Def.Table == "experts" {
-			fields = append(fields, "created_by_user_id")
-		} else {
-			fields = append(fields, "owner_user_id")
-		}
-		args = append(args, actor)
-		if c.Def.Table != "experts" {
-			fields = append(fields, "ownership_type")
-			args = append(args, "system")
-		}
-		marks := []string{}
-		for i := range args {
-			marks = append(marks, fmt.Sprintf("$%d", i+1))
-		}
-		_, err = tx.Exec(ctx, `INSERT INTO `+c.Def.Table+` (`+strings.Join(fields, ",")+`) VALUES (`+strings.Join(marks, ",")+`)`, args...)
+		err = c.Def.Repository(tx).CreateResource(ctx, data)
 	} else {
-		sets := []string{}
-		for i, k := range fields {
-			sets = append(sets, fmt.Sprintf("%s=$%d", k, i+1))
-		}
-		args = append(args, id)
-		sets = append(sets, "revision=revision+1", "updated_at=now()")
-		_, err = tx.Exec(ctx, `UPDATE `+c.Def.Table+` SET `+strings.Join(sets, ",")+fmt.Sprintf(" WHERE id=$%d", len(args)), args...)
+		err = c.Def.Repository(tx).UpdateResource(ctx, data)
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +317,7 @@ func (c *CRUD) Delete(ctx context.Context, actor, id, match string) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	o, err := Row(ctx, tx, `SELECT to_jsonb(t) FROM `+c.Def.Table+` t WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id)
+	o, err := DecodeObject(c.Def.Repository(tx).LockResource(ctx, id))
 	if err != nil {
 		return err
 	}
@@ -378,7 +333,7 @@ func (c *CRUD) Delete(ctx context.Context, actor, id, match string) error {
 			return &Error{Status: 409, Code: "reference_conflict", Message: "资源仍被引用", References: refs}
 		}
 	}
-	if _, err = tx.Exec(ctx, `UPDATE `+c.Def.Table+` SET deleted_at=now(),updated_at=now(),revision=revision+1 WHERE id=$1`, id); err != nil {
+	if err = c.Def.Repository(tx).DeleteResource(ctx, id); err != nil {
 		return err
 	}
 	if err = Audit(ctx, tx, actor, c.Def.Kind, id, "delete"); err != nil {
@@ -403,11 +358,12 @@ func (c *CRUD) Register(r chi.Router) {
 			Fail(w, Invalid("所有权类型无效"))
 			return
 		}
-		ownerColumn := "t.ownership_type"
-		if c.Def.Table == "experts" {
-			ownerColumn = "'system'"
+		filter, err := json.Marshal(Object{"ownership": ownership, "search": r.URL.Query().Get("q"), "cursor": r.URL.Query().Get("cursor"), "limit": limit + 1})
+		if err != nil {
+			Fail(w, err)
+			return
 		}
-		items, err := Rows(r.Context(), c.Store.Pool, `SELECT to_jsonb(t) FROM `+c.Def.Table+` t WHERE deleted_at IS NULL AND ($1='' OR `+ownerColumn+`=$1) AND name ILIKE '%'||$2||'%' AND id::text>$3 ORDER BY id LIMIT $4`, ownership, r.URL.Query().Get("q"), r.URL.Query().Get("cursor"), limit+1)
+		items, err := DecodeObjects(c.Def.Repository(c.Store.Pool).PageResources(r.Context(), filter))
 		if err != nil {
 			Fail(w, err)
 			return
@@ -510,7 +466,7 @@ func (c *CRUD) SetEnabled(ctx context.Context, actor, id, match string, enabled 
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	o, err := Row(ctx, tx, `SELECT to_jsonb(t) FROM `+c.Def.Table+` t WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id)
+	o, err := DecodeObject(c.Def.Repository(tx).LockResource(ctx, id))
 	if err != nil {
 		return nil, err
 	}
@@ -520,7 +476,17 @@ func (c *CRUD) SetEnabled(ctx context.Context, actor, id, match string, enabled 
 	if match != fmt.Sprintf(`"%v"`, o["revision"]) {
 		return nil, Conflict
 	}
-	if _, err = tx.Exec(ctx, `UPDATE `+c.Def.Table+` SET enabled=$2,updated_at=now(),revision=revision+1 WHERE id=$1`, id, enabled); err != nil {
+	data, err := json.Marshal(Object{"id": id, "enabled": enabled})
+	if err != nil {
+		return nil, err
+	}
+	repository, ok := c.Def.Repository(tx).(interface {
+		SetResourceEnabled(context.Context, []byte) error
+	})
+	if !ok {
+		return nil, Invalid("资源不支持启停")
+	}
+	if err = repository.SetResourceEnabled(ctx, data); err != nil {
 		return nil, err
 	}
 	if err = Audit(ctx, tx, actor, c.Def.Kind, id, "enabled"); err != nil {

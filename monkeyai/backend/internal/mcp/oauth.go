@@ -8,14 +8,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-	"github.com/go-chi/chi/v5"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type oauthConfig struct {
@@ -51,7 +54,16 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 	state, verifier := token(), token()
 	redirect := s.PublicURL + "/oauth/connectors/callback"
 	id := resource.ID()
-	_, err = s.Store.Pool.Exec(r.Context(), `INSERT INTO connector_oauth_requests(id,connector_id,user_id,centralized,config_revision,state_hash,verifier,redirect_uri,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()+interval '10 minutes')`, id, c.String("id"), u.ID, admin, c.Int("config_revision"), hash(state), verifier, redirect)
+	_, err = sqlc.New(s.Store.Pool).CreateOAuthRequest(r.Context(), sqlc.CreateOAuthRequestParams{
+		ID:             id,
+		ConnectorID:    c.String("id"),
+		UserID:         u.ID,
+		Centralized:    admin,
+		ConfigRevision: int64(c.Int("config_revision")),
+		StateHash:      hash(state),
+		Verifier:       verifier,
+		RedirectUri:    redirect,
+	})
 	if err != nil {
 		resource.Fail(w, err)
 		return
@@ -72,7 +84,7 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 }
 func (s *Service) authorizationStatus(w http.ResponseWriter, r *http.Request) {
 	u, _ := identity.UserFromContext(r.Context())
-	o, err := resource.Row(r.Context(), s.Store.Pool, `SELECT jsonb_build_object('id',id,'status',CASE WHEN status='pending' AND expires_at<=now() THEN 'expired' ELSE status END) FROM connector_oauth_requests WHERE id=$1 AND user_id=$2`, chi.URLParam(r, "id"), u.ID)
+	o, err := resource.DecodeObject(sqlc.New(s.Store.Pool).GetOAuthStatus(r.Context(), sqlc.GetOAuthStatusParams{ID: chi.URLParam(r, "id"), UserID: u.ID}))
 	if err != nil {
 		resource.Fail(w, err)
 		return
@@ -87,7 +99,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx)
-	request, err := resource.Row(ctx, tx, `UPDATE connector_oauth_requests SET consumed_at=now(),status='processing' WHERE state_hash=$1 AND consumed_at IS NULL AND expires_at>now() RETURNING to_jsonb(connector_oauth_requests)`, hash(r.URL.Query().Get("state")))
+	request, err := resource.DecodeObject(sqlc.New(tx).ConsumeOAuthRequest(ctx, hash(r.URL.Query().Get("state"))))
 	if err != nil {
 		resource.Fail(w, resource.Invalid("授权事务无效或已使用"))
 		return
@@ -102,7 +114,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		if success {
 			status = "authorized"
 		}
-		_, _ = s.Store.Pool.Exec(context.WithoutCancel(ctx), `UPDATE connector_oauth_requests SET status=$2 WHERE id=$1`, request.String("id"), status)
+		_, _ = sqlc.New(s.Store.Pool).SetOAuthStatus(context.WithoutCancel(ctx), sqlc.SetOAuthStatusParams{ID: request.String("id"), Status: status})
 	}()
 	c, err := s.Connector(ctx, s.Store.Pool, request.String("connector_id"), request.String("user_id"), request.Bool("centralized"))
 	if err != nil || c.Int("config_revision") != request.Int("config_revision") || r.URL.Query().Get("code") == "" {
@@ -130,13 +142,21 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, resource.Conflict)
 		return
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO connector_credentials(connector_id,user_id,method,oauth_access_token,oauth_refresh_token,oauth_expires_at,config_revision) VALUES($1,NULLIF($2,'')::uuid,'oauth',$3,$4,$5,$6) ON CONFLICT(connector_id,user_id) DO UPDATE SET oauth_access_token=EXCLUDED.oauth_access_token,oauth_refresh_token=EXCLUDED.oauth_refresh_token,oauth_expires_at=EXCLUDED.oauth_expires_at,config_revision=EXCLUDED.config_revision,status='authorized',revoked_at=NULL,updated_at=now()`, c.String("id"), user, tokens.Access, tokens.Refresh, tokens.Expires, c.Int("config_revision"))
+	_, err = sqlc.New(tx).UpsertOAuthCredential(ctx, sqlc.UpsertOAuthCredentialParams{
+		ConnectorID:       c.String("id"),
+		UserID:            user,
+		OauthAccessToken:  tokens.Access,
+		OauthRefreshToken: tokens.Refresh,
+		OauthExpiresAt:    tokens.Expires,
+		ConfigRevision:    int64(c.Int("config_revision")),
+	})
 	if err == nil {
-		_, err = tx.Exec(ctx, `UPDATE mcp_tools SET deleted_at=now() WHERE credential_id IN(SELECT id FROM connector_credentials WHERE connector_id=$1 AND user_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid)`, c.String("id"), user)
+		_, err = sqlc.New(tx).InvalidateUserTools(ctx, sqlc.InvalidateUserToolsParams{ConnectorID: c.String("id"), UserID: user})
 	}
 	if err == nil {
 		err = resource.Audit(ctx, tx, request.String("user_id"), "connector", c.String("id"), "oauth_authorize")
 	}
+
 	if err == nil {
 		err = tx.Commit(ctx)
 	}
@@ -144,6 +164,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+
 	success = true
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -198,14 +219,18 @@ func (s *Service) refresh(ctx context.Context, c, cred resource.Object) (resourc
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	cred, err = resource.Row(ctx, tx, `SELECT to_jsonb(c) FROM connector_credentials c WHERE id=$1 AND revoked_at IS NULL AND status='authorized' FOR UPDATE`, cred.String("id"))
+	cred, err = resource.DecodeObject(sqlc.New(tx).LockAuthorizedCredential(ctx, cred.String("id")))
 	if err != nil {
 		return nil, err
 	}
 	var valid bool
-	if err = tx.QueryRow(ctx, `SELECT oauth_expires_at IS NULL OR oauth_expires_at>now()+interval '30 seconds' FROM connector_credentials WHERE id=$1`, cred.String("id")).Scan(&valid); err != nil {
+	var record *bool
+	record, err = sqlc.New(tx).CredentialFresh(ctx, cred.String("id"))
+	if err != nil {
 		return nil, err
 	}
+	valid = record != nil && *record
+
 	if valid {
 		return cred, nil
 	}
@@ -219,7 +244,12 @@ func (s *Service) refresh(ctx context.Context, c, cred resource.Object) (resourc
 	if tokens.Refresh == "" {
 		tokens.Refresh = cred.String("oauth_refresh_token")
 	}
-	out, err := resource.Row(ctx, tx, `UPDATE connector_credentials SET oauth_access_token=$2,oauth_refresh_token=$3,oauth_expires_at=$4,updated_at=now() WHERE id=$1 RETURNING to_jsonb(connector_credentials)`, cred.String("id"), tokens.Access, tokens.Refresh, tokens.Expires)
+	out, err := resource.DecodeObject(sqlc.New(tx).RefreshCredential(ctx, sqlc.RefreshCredentialParams{
+		ID:                cred.String("id"),
+		OauthAccessToken:  tokens.Access,
+		OauthRefreshToken: tokens.Refresh,
+		OauthExpiresAt:    tokens.Expires,
+	}))
 	if err != nil {
 		return nil, err
 	}

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
@@ -19,7 +21,7 @@ func (s *Service) groupTx(r *http.Request) (pgx.Tx, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err = tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock(741209)`); err != nil {
+	if _, err = sqlc.New(tx).LockGroups(r.Context()); err != nil {
 		tx.Rollback(r.Context())
 		return nil, err
 	}
@@ -36,7 +38,14 @@ func groupAudit(ctx context.Context, tx pgx.Tx, user User, action, id string, da
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO audits(actor_type,actor_user_id,actor_name,actor_email,action,category,target_type,target_id,request_params,result,occurred_at) VALUES('user',$1,$2,$3,$4,'identity','group',$5,$6,'success',now())`, user.ID, user.Name, user.Email, action, id, b)
+	_, err = sqlc.New(tx).CreateGroupAudit(ctx, sqlc.CreateGroupAuditParams{
+		ActorUserID:   new(user.ID),
+		ActorName:     user.Name,
+		ActorEmail:    new(user.Email),
+		Action:        action,
+		TargetID:      new(id),
+		RequestParams: b,
+	})
 	return err
 }
 func (s *Service) billingGroup(w http.ResponseWriter, r *http.Request) {
@@ -55,22 +64,23 @@ func (s *Service) billingGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 	if in.GroupID != nil {
-		var id string
-		if err = tx.QueryRow(ctx, `SELECT id FROM groups WHERE id=$1 AND deleted_at IS NULL`, *in.GroupID).Scan(&id); err != nil {
+		if _, err = sqlc.New(tx).GetGroup(ctx, *in.GroupID); err != nil {
 			writeError(w, 400, "invalid_group", "分组不存在")
 			return
 		}
 	}
 	id := chi.URLParam(r, "userID")
 	var previous *string
-	err = tx.QueryRow(ctx, `SELECT billing_group_id FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&previous)
+	previous, err = sqlc.New(tx).LockBillingGroup(ctx, id)
+
 	if err == nil {
-		_, err = tx.Exec(ctx, `UPDATE users SET billing_group_id=$2,updated_at=now() WHERE id=$1`, id, in.GroupID)
+		_, err = sqlc.New(tx).SetBillingGroup(ctx, sqlc.SetBillingGroupParams{ID: id, BillingGroupID: in.GroupID})
 	}
 	u, _ := UserFromContext(ctx)
 	if err == nil {
 		err = groupAudit(ctx, tx, u, "assign_billing_group", id, map[string]any{"before": previous, "after": in.GroupID})
 	}
+
 	if err == nil {
 		err = tx.Commit(ctx)
 	}
@@ -78,5 +88,6 @@ func (s *Service) billingGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "group_error", "保存计费归属失败")
 		return
 	}
+
 	w.WriteHeader(204)
 }

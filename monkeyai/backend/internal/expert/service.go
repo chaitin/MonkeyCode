@@ -3,12 +3,15 @@ package expert
 import (
 	"context"
 	"encoding/json"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 	"net/http"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 type Service struct {
@@ -18,7 +21,7 @@ type Service struct {
 
 func NewService(store *resource.Store) *Service {
 	s := &Service{Store: store}
-	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Table: "experts", Path: "/experts", Fields: []string{"name", "description", "prompt", "default_model_id", "enabled"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
+	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "default_model_id", "enabled"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
 	return s
 }
 func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
@@ -28,22 +31,27 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 	if in.String("default_model_id") == "" {
 		in["default_model_id"] = nil
 	} else {
-		var ok bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM models WHERE id=$1 AND ownership_type='system' AND deleted_at IS NULL AND enabled)`, in.String("default_model_id")).Scan(&ok); err != nil {
+		ok, err := sqlc.New(tx).ModelAvailable(ctx, in.String("default_model_id"))
+		if err != nil {
 			return err
 		}
+
 		if !ok {
 			return resource.Invalid("默认模型不存在或不可用")
 		}
 	}
-	for _, link := range []struct{ key, table string }{{"rule_ids", "rules"}, {"skill_ids", "skills"}} {
+	queries := sqlc.New(tx)
+	for _, link := range []struct {
+		key  string
+		lock func(context.Context, string) (string, error)
+	}{{"rule_ids", queries.LockRule}, {"skill_ids", queries.LockSkill}} {
 		seen := map[string]bool{}
 		for _, id := range resource.Strings(in[link.key]) {
 			if seen[id] {
 				return resource.Invalid("专家关联重复")
 			}
 			seen[id] = true
-			_, err := resource.Row(ctx, tx, `SELECT to_jsonb(t) FROM `+link.table+` t WHERE id=$1 AND ownership_type='system' AND deleted_at IS NULL FOR SHARE`, id)
+			_, err := link.lock(ctx, id)
 			if err != nil {
 				return resource.Invalid("专家只能关联有效系统资源")
 			}
@@ -56,7 +64,7 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 			return resource.Invalid("Provider 关联重复")
 		}
 		seen[p.String("provider_id")] = true
-		_, err := resource.Row(ctx, tx, `SELECT to_jsonb(p) FROM connector_providers p WHERE id=$1 AND ownership_type='system' AND deleted_at IS NULL FOR SHARE`, p.String("provider_id"))
+		_, err := resource.DecodeObject(sqlc.New(tx).LockProvider(ctx, p.String("provider_id")))
 		if err != nil {
 			return resource.Invalid("专家 Provider 不存在")
 		}
@@ -71,21 +79,29 @@ func providerLinks(v any) []resource.Object {
 }
 
 func (s *Service) links(ctx context.Context, tx pgx.Tx, in resource.Object) error {
-	for _, link := range []struct{ key, table, column string }{{"rule_ids", "expert_rules", "rule_id"}, {"skill_ids", "expert_skills", "skill_id"}} {
-		if _, ok := in[link.key]; !ok {
-			continue
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM `+link.table+` WHERE expert_id=$1`, in.String("id")); err != nil {
+	queries := sqlc.New(tx)
+	if raw, ok := in["rule_ids"]; ok {
+		if err := queries.DeleteRuleLinks(ctx, in.String("id")); err != nil {
 			return err
 		}
-		for _, id := range resource.Strings(in[link.key]) {
-			if _, err := tx.Exec(ctx, `INSERT INTO `+link.table+`(expert_id,`+link.column+`) VALUES($1,$2)`, in.String("id"), id); err != nil {
+		for _, id := range resource.Strings(raw) {
+			if err := queries.CreateRuleLink(ctx, sqlc.CreateRuleLinkParams{ExpertID: in.String("id"), RuleID: id}); err != nil {
+				return err
+			}
+		}
+	}
+	if raw, ok := in["skill_ids"]; ok {
+		if err := queries.DeleteSkillLinks(ctx, in.String("id")); err != nil {
+			return err
+		}
+		for _, id := range resource.Strings(raw) {
+			if err := queries.CreateSkillLink(ctx, sqlc.CreateSkillLinkParams{ExpertID: in.String("id"), SkillID: id}); err != nil {
 				return err
 			}
 		}
 	}
 	if _, ok := in["providers"]; ok {
-		if _, err := tx.Exec(ctx, `DELETE FROM expert_connector_providers WHERE expert_id=$1`, in.String("id")); err != nil {
+		if _, err := sqlc.New(tx).DeleteProviderLinks(ctx, in.String("id")); err != nil {
 			return err
 		}
 		for _, p := range providerLinks(in["providers"]) {
@@ -93,7 +109,13 @@ func (s *Service) links(ctx context.Context, tx pgx.Tx, in resource.Object) erro
 			if v, ok := p["required"].(bool); ok {
 				required = v
 			}
-			if _, err := tx.Exec(ctx, `INSERT INTO expert_connector_providers(expert_id,provider_id,required,tool_allowlist,tool_denylist) VALUES($1,$2,$3,$4,$5)`, in.String("id"), p.String("provider_id"), required, resource.Strings(p["tool_allowlist"]), resource.Strings(p["tool_denylist"])); err != nil {
+			if _, err := sqlc.New(tx).CreateProviderLink(ctx, sqlc.CreateProviderLinkParams{
+				ExpertID:      in.String("id"),
+				ProviderID:    p.String("provider_id"),
+				Required:      required,
+				ToolAllowlist: resource.Strings(p["tool_allowlist"]),
+				ToolDenylist:  resource.Strings(p["tool_denylist"]),
+			}); err != nil {
 				return err
 			}
 		}
@@ -101,14 +123,17 @@ func (s *Service) links(ctx context.Context, tx pgx.Tx, in resource.Object) erro
 	return nil
 }
 func (s *Service) decorate(ctx context.Context, q resource.Queryer, o resource.Object) error {
-	for _, link := range []struct{ key, table, column string }{{"rule_ids", "expert_rules", "rule_id"}, {"skill_ids", "expert_skills", "skill_id"}} {
-		var ids []string
-		if err := q.QueryRow(ctx, `SELECT COALESCE(array_agg(`+link.column+`::text ORDER BY `+link.column+`),'{}') FROM `+link.table+` WHERE expert_id=$1`, o.String("id")).Scan(&ids); err != nil {
-			return err
-		}
-		o[link.key] = ids
+	queries := sqlc.New(q)
+	rules, err := queries.ListRuleIDs(ctx, o.String("id"))
+	if err != nil {
+		return err
 	}
-	p, err := resource.Rows(ctx, q, `SELECT to_jsonb(x) FROM expert_connector_providers x WHERE expert_id=$1 ORDER BY provider_id`, o.String("id"))
+	skills, err := queries.ListSkillIDs(ctx, o.String("id"))
+	if err != nil {
+		return err
+	}
+	o["rule_ids"], o["skill_ids"] = rules, skills
+	p, err := resource.DecodeObjects(sqlc.New(q).ListProviderLinks(ctx, o.String("id")))
 	o["providers"] = p
 	return err
 }

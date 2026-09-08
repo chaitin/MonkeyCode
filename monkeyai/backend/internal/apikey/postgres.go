@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey/sqlc"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -18,77 +20,50 @@ func NewPostgres(pool *pgxpool.Pool) *Postgres {
 }
 
 func (p *Postgres) Create(ctx context.Context, key Key, keyHash string) (Key, error) {
-	err := p.pool.QueryRow(ctx, `
-		INSERT INTO api_keys (user_id, name, key_prefix, key_hash, scopes, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, user_id, name, key_prefix, scopes, expires_at,
-			last_used_at, created_at, revoked_at
-	`, key.UserID, key.Name, key.Prefix, keyHash, key.Scopes, key.ExpiresAt).Scan(
-		&key.ID, &key.UserID, &key.Name, &key.Prefix, &key.Scopes,
-		&key.ExpiresAt, &key.LastUsedAt, &key.CreatedAt, &key.RevokedAt,
-	)
+	record, err := sqlc.New(p.pool).CreateKey(ctx, sqlc.CreateKeyParams{
+		UserID:    key.UserID,
+		Name:      key.Name,
+		KeyPrefix: key.Prefix,
+		KeyHash:   keyHash,
+		Scopes:    key.Scopes,
+		ExpiresAt: key.ExpiresAt,
+	})
+
 	if err != nil {
 		return Key{}, fmt.Errorf("保存调用密钥: %w", err)
 	}
+	key.ID, key.UserID, key.Name, key.Prefix, key.Scopes, key.ExpiresAt, key.LastUsedAt, key.CreatedAt, key.RevokedAt = record.ID, record.UserID, record.Name, record.KeyPrefix, record.Scopes, record.ExpiresAt, record.LastUsedAt, record.CreatedAt, record.RevokedAt
+
 	return key, nil
 }
 
 func (p *Postgres) ListByUser(ctx context.Context, userID string) ([]Key, error) {
-	return p.list(ctx, `
-		SELECT k.id, k.user_id, u.name, k.name, k.key_prefix, k.scopes,
-			k.expires_at, k.last_used_at, k.created_at, k.revoked_at
-		FROM api_keys k
-		JOIN users u ON u.id = k.user_id
-		WHERE k.user_id = $1
-		ORDER BY k.created_at DESC
-	`, userID)
+	return p.list(ctx, userID, false)
 }
 
 func (p *Postgres) List(ctx context.Context, userID string) ([]Key, error) {
-	if userID != "" {
-		return p.ListByUser(ctx, userID)
-	}
-	return p.list(ctx, `
-		SELECT k.id, k.user_id, u.name, k.name, k.key_prefix, k.scopes,
-			k.expires_at, k.last_used_at, k.created_at, k.revoked_at
-		FROM api_keys k
-		JOIN users u ON u.id = k.user_id
-		ORDER BY k.created_at DESC
-	`)
+	return p.list(ctx, userID, userID == "")
 }
 
-func (p *Postgres) list(ctx context.Context, query string, args ...any) ([]Key, error) {
-	rows, err := p.pool.Query(ctx, query, args...)
+func (p *Postgres) list(ctx context.Context, userID string, all bool) ([]Key, error) {
+	rows, err := sqlc.New(p.pool).ListKeys(ctx, sqlc.ListKeysParams{AllUsers: all, UserID: userID})
 	if err != nil {
 		return nil, fmt.Errorf("查询调用密钥: %w", err)
 	}
-	defer rows.Close()
-	keys := make([]Key, 0)
-	for rows.Next() {
-		var key Key
-		if err := rows.Scan(
-			&key.ID, &key.UserID, &key.UserName, &key.Name, &key.Prefix,
-			&key.Scopes, &key.ExpiresAt, &key.LastUsedAt, &key.CreatedAt, &key.RevokedAt,
-		); err != nil {
-			return nil, err
-		}
-		keys = append(keys, key)
+	keys := make([]Key, 0, len(rows))
+	for _, row := range rows {
+		keys = append(keys, Key{ID: row.ID, UserID: row.UserID, UserName: row.UserName, Name: row.Name,
+			Prefix: row.KeyPrefix, Scopes: row.Scopes, ExpiresAt: row.ExpiresAt, LastUsedAt: row.LastUsedAt, CreatedAt: row.CreatedAt, RevokedAt: row.RevokedAt})
 	}
-	return keys, rows.Err()
+	return keys, nil
 }
 
 func (p *Postgres) Revoke(ctx context.Context, id, userID string) error {
-	query := `UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL`
-	args := []any{id}
-	if userID != "" {
-		query += ` AND user_id = $2`
-		args = append(args, userID)
-	}
-	result, err := p.pool.Exec(ctx, query, args...)
+	result, err := sqlc.New(p.pool).RevokeKey(ctx, sqlc.RevokeKeyParams{ID: id, UserID: userID})
 	if err != nil {
 		return fmt.Errorf("撤销调用密钥: %w", err)
 	}
-	if result.RowsAffected() != 1 {
+	if result != 1 {
 		return ErrNotFound
 	}
 	return nil
@@ -96,27 +71,17 @@ func (p *Postgres) Revoke(ctx context.Context, id, userID string) error {
 
 func (p *Postgres) Authenticate(ctx context.Context, keyHash, scope string) (string, error) {
 	var id, userID string
-	err := p.pool.QueryRow(ctx, `
-		SELECT k.id, k.user_id
-		FROM api_keys k
-		JOIN users u ON u.id = k.user_id
-		WHERE k.key_hash = $1
-			AND $2 = ANY(k.scopes)
-			AND k.revoked_at IS NULL
-			AND k.expires_at > now()
-			AND u.status = 'active'
-			AND u.deleted_at IS NULL
-	`, keyHash, scope).Scan(&id, &userID)
+	record, err := sqlc.New(p.pool).AuthenticateKey(ctx, sqlc.AuthenticateKeyParams{KeyHash: keyHash, Scope: scope})
+	if err == nil {
+		id, userID = record.ID, record.UserID
+	}
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrInvalidKey
 	}
 	if err != nil {
 		return "", fmt.Errorf("验证调用密钥: %w", err)
 	}
-	_, _ = p.pool.Exec(ctx, `
-		UPDATE api_keys SET last_used_at = now()
-		WHERE id = $1
-			AND (last_used_at IS NULL OR last_used_at < now() - interval '5 minutes')
-	`, id)
+	_, _ = sqlc.New(p.pool).TouchKey(ctx, id)
 	return userID, nil
 }
