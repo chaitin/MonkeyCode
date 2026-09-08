@@ -14,7 +14,7 @@ WITH RECURSIVE user_groups (
             FROM
                 group_users
             WHERE
-                user_id = $1
+                user_id = sqlc.narg(user_id)
                 AND removed_at IS NULL)
         UNION
         SELECT
@@ -33,7 +33,10 @@ SELECT
 FROM
     resource_access_grants rag
 WHERE
-    rag.user_id = $1
+    (rag.all_users AND EXISTS (
+        SELECT 1 FROM users u WHERE u.id = sqlc.narg(user_id) AND u.status = 'active' AND u.deleted_at IS NULL
+    ))
+    OR rag.user_id = sqlc.narg(user_id)
     OR rag.group_id IN (
         SELECT
             group_id

@@ -5075,9 +5075,13 @@ components:
           description: 模型是否支持图像输入。
     Authorization:
       type: object
-      description: 可使用该模型的用户和分组；两个数组合计至少包含一项。
+      description: 可使用该模型的用户和分组；须选择全员授权，或在两个数组中至少指定一项。全员授权包含后续新增用户，启用时忽略用户和分组数组。
       required: [user_ids, group_ids]
       properties:
+        all_users:
+          type: boolean
+          default: false
+          description: 是否授权给全体用户；界面通过选择虚拟根节点表达，不引用分组记录。
         user_ids:
           type: array
           description: 获得模型访问权的用户 UUID。
@@ -5255,7 +5259,12 @@ components:
 
     ResourceGrant:
       type: object
+      description: 每条授权必须且只能选择用户、分组或全体用户之一。全员授权仅用于系统资源，包含后续新增用户，user_id 和 group_id 须为空或省略。
       properties:
+        all_users:
+          type: boolean
+          default: false
+          description: 是否授权给全体用户；省略时按 false 处理。
         user_id:
           type:
           - string

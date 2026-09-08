@@ -125,7 +125,10 @@ WHERE
             WHERE
                 rag.resource_type = 'model'
                 AND rag.resource_id = m.id
-                AND (rag.user_id = sqlc.arg(owner_user_id)
+                AND ((rag.all_users AND EXISTS (
+                        SELECT 1 FROM users u WHERE u.id = sqlc.arg(owner_user_id) AND u.status = 'active' AND u.deleted_at IS NULL
+                    ))
+                    OR rag.user_id = sqlc.arg(owner_user_id)
                     OR rag.group_id IN (
                         SELECT
                             group_id
@@ -162,7 +165,8 @@ WHERE (m.id::text = sqlc.arg(requested_model)::text OR m.model_id = sqlc.arg(req
         OR EXISTS (
             SELECT 1 FROM resource_access_grants rag
             WHERE rag.resource_type = 'model' AND rag.resource_id = m.id
-                AND (rag.user_id = sqlc.arg(user_id) OR rag.group_id IN (SELECT group_id FROM user_groups))
+                AND ((rag.all_users AND u.status = 'active' AND u.deleted_at IS NULL)
+                    OR rag.user_id = sqlc.arg(user_id) OR rag.group_id IN (SELECT group_id FROM user_groups))
         )
     )
 ORDER BY (m.id::text = sqlc.arg(requested_model)::text) DESC, m.created_at, m.id
@@ -199,7 +203,8 @@ ORDER BY
 SELECT
     resource_id,
     user_id,
-    group_id
+    group_id,
+    all_users
 FROM
     resource_access_grants
 WHERE
@@ -216,6 +221,10 @@ INSERT INTO resource_access_grants (resource_type, resource_id, user_id, access_
 -- name: GrantGroup :execresult
 INSERT INTO resource_access_grants (resource_type, resource_id, group_id, access_level, granted_by_user_id)
     VALUES ('model', $1, $2, 'read_only', $3);
+
+-- name: GrantAllUsers :execresult
+INSERT INTO resource_access_grants (resource_type, resource_id, all_users, access_level, granted_by_user_id)
+    VALUES ('model', $1, true, 'read_only', $2);
 
 -- name: LockOwned :one
 SELECT

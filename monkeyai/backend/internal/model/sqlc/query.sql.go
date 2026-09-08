@@ -130,6 +130,20 @@ func (q *Queries) GetModel(ctx context.Context, id string) (Model, error) {
 	return i, err
 }
 
+const grantAllUsers = `-- name: GrantAllUsers :execresult
+INSERT INTO resource_access_grants (resource_type, resource_id, all_users, access_level, granted_by_user_id)
+    VALUES ('model', $1, true, 'read_only', $2)
+`
+
+type GrantAllUsersParams struct {
+	ResourceID      string
+	GrantedByUserID string
+}
+
+func (q *Queries) GrantAllUsers(ctx context.Context, arg GrantAllUsersParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, grantAllUsers, arg.ResourceID, arg.GrantedByUserID)
+}
+
 const grantGroup = `-- name: GrantGroup :execresult
 INSERT INTO resource_access_grants (resource_type, resource_id, group_id, access_level, granted_by_user_id)
     VALUES ('model', $1, $2, 'read_only', $3)
@@ -207,7 +221,10 @@ WHERE
             WHERE
                 rag.resource_type = 'model'
                 AND rag.resource_id = m.id
-                AND (rag.user_id = $2
+                AND ((rag.all_users AND EXISTS (
+                        SELECT 1 FROM users u WHERE u.id = $2 AND u.status = 'active' AND u.deleted_at IS NULL
+                    ))
+                    OR rag.user_id = $2
                     OR rag.group_id IN (
                         SELECT
                             group_id
@@ -262,7 +279,8 @@ const listGrants = `-- name: ListGrants :many
 SELECT
     resource_id,
     user_id,
-    group_id
+    group_id,
+    all_users
 FROM
     resource_access_grants
 WHERE
@@ -277,6 +295,7 @@ type ListGrantsRow struct {
 	ResourceID string
 	UserID     *string
 	GroupID    *string
+	AllUsers   bool
 }
 
 func (q *Queries) ListGrants(ctx context.Context, dollar_1 []string) ([]ListGrantsRow, error) {
@@ -288,7 +307,12 @@ func (q *Queries) ListGrants(ctx context.Context, dollar_1 []string) ([]ListGran
 	items := []ListGrantsRow{}
 	for rows.Next() {
 		var i ListGrantsRow
-		if err := rows.Scan(&i.ResourceID, &i.UserID, &i.GroupID); err != nil {
+		if err := rows.Scan(
+			&i.ResourceID,
+			&i.UserID,
+			&i.GroupID,
+			&i.AllUsers,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -555,7 +579,8 @@ WHERE (m.id::text = $2::text OR m.model_id = $2::text)
         OR EXISTS (
             SELECT 1 FROM resource_access_grants rag
             WHERE rag.resource_type = 'model' AND rag.resource_id = m.id
-                AND (rag.user_id = $1 OR rag.group_id IN (SELECT group_id FROM user_groups))
+                AND ((rag.all_users AND u.status = 'active' AND u.deleted_at IS NULL)
+                    OR rag.user_id = $1 OR rag.group_id IN (SELECT group_id FROM user_groups))
         )
     )
 ORDER BY (m.id::text = $2::text) DESC, m.created_at, m.id

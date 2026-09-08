@@ -115,7 +115,7 @@ WITH RECURSIVE user_groups (
             FROM
                 group_users
             WHERE
-                user_id = $1
+                user_id = sqlc.narg(user_id)
                 AND removed_at IS NULL)
         UNION
         SELECT
@@ -135,9 +135,12 @@ SELECT
         FROM
             resource_access_grants rag
         WHERE
-            rag.resource_type = $2
-            AND rag.resource_id = $3
-            AND (rag.user_id = $1
+            rag.resource_type = sqlc.arg(resource_type)
+            AND rag.resource_id = sqlc.arg(resource_id)
+            AND ((rag.all_users AND EXISTS (
+                    SELECT 1 FROM users u WHERE u.id = sqlc.narg(user_id) AND u.status = 'active' AND u.deleted_at IS NULL
+                ))
+                OR rag.user_id = sqlc.narg(user_id)
                 OR rag.group_id IN (
                     SELECT
                         group_id
@@ -146,7 +149,7 @@ SELECT
 
 -- name: ListGrants :many
 SELECT
-    jsonb_build_object('user_id', user_id, 'group_id', group_id, 'usage_requirement', usage_requirement)
+    jsonb_build_object('user_id', user_id, 'group_id', group_id, 'all_users', all_users, 'usage_requirement', usage_requirement)
 FROM
     resource_access_grants
 WHERE
@@ -182,10 +185,10 @@ SELECT
             AND deleted_at IS NULL);
 
 -- name: CreateGrant :execresult
-INSERT INTO resource_access_grants (resource_type, resource_id, user_id, group_id, access_level, usage_requirement,
+INSERT INTO resource_access_grants (resource_type, resource_id, user_id, group_id, all_users, access_level, usage_requirement,
     granted_by_user_id)
     VALUES (sqlc.arg(resource_type), sqlc.arg(resource_id), NULLIF (sqlc.arg(user_id)::text,
-	'')::UUID,NULLIF(sqlc.arg(group_id)::text,'')::uuid, 'read_only', sqlc.arg(usage_requirement), sqlc.arg(granted_by_user_id));
+	'')::UUID,NULLIF(sqlc.arg(group_id)::text,'')::uuid, sqlc.arg(all_users), 'read_only', sqlc.arg(usage_requirement), sqlc.arg(granted_by_user_id));
 
 -- name: GetOwnerName :one
 SELECT

@@ -720,3 +720,10 @@ CREATE TABLE email_code_deliveries (
 ALTER TABLE browser_sessions DROP CONSTRAINT browser_sessions_authentication_method_check;
 
 ALTER TABLE browser_sessions ADD CONSTRAINT browser_sessions_authentication_method_check CHECK (authentication_method IN ('password', 'oauth', 'email_code'));
+
+ALTER TABLE resource_access_grants
+    ADD COLUMN all_users boolean NOT NULL DEFAULT false,
+    DROP CONSTRAINT resource_access_grants_subject_check,
+    ADD CONSTRAINT resource_access_grants_subject_check CHECK (
+        (user_id IS NOT NULL)::integer + (group_id IS NOT NULL)::integer + all_users::integer = 1
+    );

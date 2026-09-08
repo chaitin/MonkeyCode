@@ -276,6 +276,7 @@ func (p *Postgres) loadGrants(ctx context.Context, models []Model) error {
 		var userID, groupID *string
 		resourceID, userID, groupID = row.ResourceID, row.UserID, row.GroupID
 		item := byID[resourceID]
+		item.Authorization.AllUsers = item.Authorization.AllUsers || row.AllUsers
 		if userID != nil {
 			item.Authorization.UserIDs = append(item.Authorization.UserIDs, *userID)
 		}
@@ -294,6 +295,10 @@ func replaceGrants(ctx context.Context, tx pgx.Tx, item Model) error {
 	if _, err := sqlc.New(tx).DeleteGrants(ctx, item.ID); err != nil {
 		return err
 	}
+	if item.Authorization.AllUsers {
+		_, err := sqlc.New(tx).GrantAllUsers(ctx, sqlc.GrantAllUsersParams{ResourceID: item.ID, GrantedByUserID: grantorUserID})
+		return err
+	}
 	for _, userID := range item.Authorization.UserIDs {
 		if _, err := sqlc.New(tx).GrantUser(ctx, sqlc.GrantUserParams{ResourceID: item.ID, UserID: new(userID), GrantedByUserID: grantorUserID}); err != nil {
 			return fmt.Errorf("保存用户授权: %w", err)
@@ -308,6 +313,9 @@ func replaceGrants(ctx context.Context, tx pgx.Tx, item Model) error {
 }
 
 func normalizeAuthorization(value Authorization) Authorization {
+	if value.AllUsers {
+		return Authorization{AllUsers: true, UserIDs: []string{}, GroupIDs: []string{}}
+	}
 	value.UserIDs = unique(value.UserIDs)
 	value.GroupIDs = unique(value.GroupIDs)
 	return value

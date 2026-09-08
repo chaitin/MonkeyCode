@@ -17,6 +17,7 @@ type AdvancedConfig struct {
 }
 
 type Authorization struct {
+	AllUsers bool     `json:"all_users"`
 	UserIDs  []string `json:"user_ids"`
 	GroupIDs []string `json:"group_ids"`
 }

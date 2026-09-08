@@ -175,10 +175,7 @@ func modelFromInput(input SaveInput) (Model, error) {
 		APIKey:           strings.TrimSpace(input.APIKey),
 		AdvancedConfig:   input.AdvancedConfig,
 		CreditMultiplier: input.CreditMultiplier,
-		Authorization: Authorization{
-			UserIDs:  unique(input.Authorization.UserIDs),
-			GroupIDs: unique(input.Authorization.GroupIDs),
-		},
+		Authorization:    normalizeAuthorization(input.Authorization),
 	}
 	if item.ModelID == "" || item.DisplayName == "" || item.BaseURL == "" {
 		return Model{}, errors.New("model_id、display_name 和 base_url 不能为空")
@@ -204,7 +201,7 @@ func systemModelFromInput(input SaveInput) (Model, error) {
 	if err != nil {
 		return Model{}, err
 	}
-	if len(item.Authorization.UserIDs)+len(item.Authorization.GroupIDs) == 0 {
+	if !item.Authorization.AllUsers && len(item.Authorization.UserIDs)+len(item.Authorization.GroupIDs) == 0 {
 		return Model{}, errors.New("至少需要一个资源访问授权")
 	}
 	return item, nil
