@@ -1,20 +1,23 @@
 package resource
 
 import (
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
-	"github.com/go-chi/chi/v5"
 	"net/http"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func (s *Store) RegisterAdmin(r chi.Router) {
 	r.Get("/resources/authorization-subjects", func(w http.ResponseWriter, r *http.Request) {
-		groups, err := Rows(r.Context(), s.Pool, `SELECT jsonb_build_object('id',id,'parent_id',parent_id,'name',name) FROM groups WHERE deleted_at IS NULL ORDER BY name,id`)
+		groups, err := DecodeObjects(sqlc.New(s.Pool).ListGroups(r.Context()))
 		if err != nil {
 			Fail(w, err)
 			return
 		}
-		users, err := Rows(r.Context(), s.Pool, `SELECT jsonb_build_object('id',id,'name',name,'email',email) FROM users WHERE deleted_at IS NULL AND status='active' ORDER BY name,id`)
+		users, err := DecodeObjects(sqlc.New(s.Pool).ListUsers(r.Context()))
 		if err != nil {
 			Fail(w, err)
 			return
@@ -22,7 +25,7 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 		JSON(w, 200, Object{"groups": groups, "users": users})
 	})
 	r.Get("/tags", func(w http.ResponseWriter, r *http.Request) {
-		items, err := Rows(r.Context(), s.Pool, `SELECT jsonb_build_object('id',id,'name',name) FROM tags WHERE deleted_at IS NULL ORDER BY lower(name),id`)
+		items, err := DecodeObjects(sqlc.New(s.Pool).ListTags(r.Context()))
 		if err != nil {
 			Fail(w, err)
 			return
@@ -50,13 +53,14 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 		id := chi.URLParam(r, "id")
 		var out Object
 		if id == "" {
-			out, err = Row(r.Context(), tx, `INSERT INTO tags(name,created_by_user_id) VALUES($1,$2) RETURNING jsonb_build_object('id',id,'name',name)`, name, u.ID)
+			out, err = DecodeObject(sqlc.New(tx).CreateTag(r.Context(), sqlc.CreateTagParams{Name: name, CreatedByUserID: u.ID}))
 		} else {
-			out, err = Row(r.Context(), tx, `UPDATE tags SET name=$2,updated_at=now() WHERE id=$1 AND deleted_at IS NULL RETURNING jsonb_build_object('id',id,'name',name)`, id, name)
+			out, err = DecodeObject(sqlc.New(tx).UpdateTag(r.Context(), sqlc.UpdateTagParams{ID: id, Name: name}))
 		}
 		if err == nil {
 			err = Audit(r.Context(), tx, u.ID, "tag", out.String("id"), "save")
 		}
+
 		if err == nil {
 			err = tx.Commit(r.Context())
 		}
@@ -64,6 +68,7 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 			Fail(w, err)
 			return
 		}
+
 		JSON(w, 200, out)
 	}
 	r.Post("/tags", save)
@@ -76,11 +81,12 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 		}
 		defer tx.Rollback(r.Context())
 		id := chi.URLParam(r, "id")
-		o, err := Row(r.Context(), tx, `UPDATE tags SET deleted_at=now(),updated_at=now() WHERE id=$1 AND deleted_at IS NULL RETURNING jsonb_build_object('id',id)`, id)
+		o, err := DecodeObject(sqlc.New(tx).DeleteTag(r.Context(), id))
 		u, _ := identity.UserFromContext(r.Context())
 		if err == nil {
 			err = Audit(r.Context(), tx, u.ID, "tag", o.String("id"), "delete")
 		}
+
 		if err == nil {
 			err = tx.Commit(r.Context())
 		}
@@ -88,6 +94,7 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 			Fail(w, err)
 			return
 		}
+
 		w.WriteHeader(204)
 	})
 }

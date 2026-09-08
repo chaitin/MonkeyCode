@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 )
 
 type UserSummary struct {
@@ -36,21 +38,16 @@ func (s *Service) searchUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) SearchUsers(ctx context.Context, actor, query string, limit int) ([]UserSummary, error) {
-	rows, err := s.db.Query(ctx, `SELECT id,name,email FROM users
- WHERE status='active' AND deleted_at IS NULL AND id<>$1
- AND (strpos(lower(name),lower($2))>0 OR strpos(lower(email),lower($2))>0)
- ORDER BY lower(name),id LIMIT $3`, actor, query, limit)
+	rows, err := sqlc.New(s.db).SearchUsers(ctx, sqlc.SearchUsersParams{ID: actor, Lower: query, Limit: int32(limit)})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+
 	users := []UserSummary{}
-	for rows.Next() {
+	for _, row := range rows {
 		var user UserSummary
-		if err := rows.Scan(&user.ID, &user.Name, &user.Email); err != nil {
-			return nil, err
-		}
+		user.ID, user.Name, user.Email = row.ID, row.Name, row.Email
 		users = append(users, user)
 	}
-	return users, rows.Err()
+	return users, nil
 }

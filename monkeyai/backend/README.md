@@ -73,6 +73,7 @@ internal/model/
 ├── admin.go                   # 管理后台接口
 ├── agent.go                   # Work Agent 接口
 ├── query.sql                  # sqlc 查询
+├── sqlc/                      # sqlc 生成的查询、参数和结果类型
 └── service_test.go            # 就地测试
 ```
 
@@ -154,4 +155,20 @@ go test ./... -count=1
 
 集成测试创建独立随机 schema，测试结束后删除该 schema，不重置其他 schema；必须使用测试数据库和测试 Bucket。测试包括版本 1 的 up/down/up、版本 2 的计费升级、版本 3 的旧系统分组升级与授权和额度保留、虚拟团队根节点及分组操作、Cookie 管理员身份与 Agent Bearer 身份、权限差异、独立资源目录 ETag、技能字节上传/重建/下载、专家委托、撤权、真实 MCP HTTP 协议、用户目录隔离及本地 OAuth state/PKCE 回调防重放。测试可能留下不可变技能对象，仅位于测试 Bucket。
 
-各业务服务显式注册到 `internal/app`。`resource.CRUD` 只接收服务端定义的表名和字段白名单，业务约束及关系事务由 `rule`、`skill`、`expert`、`mcp` 提供。Agent 按设置、模型、规则、技能、专家和连接器分别读取，各接口独立计算版本与 ETag。规则、技能、专家和连接器目录分别在 PostgreSQL Repeatable Read 视图中读取；某类资源读取失败只影响依赖它的请求，不返回伪造的空目录。
+各业务服务显式注册到 `internal/app`。`resource.CRUD` 接收各业务包的 sqlc Repository 和字段白名单，业务约束及关系事务由 `rule`、`skill`、`expert`、`mcp` 提供。Agent 按设置、模型、规则、技能、专家和连接器分别读取，各接口独立计算版本与 ETag。规则、技能、专家和连接器目录分别在 PostgreSQL Repeatable Read 视图中读取；某类资源读取失败只影响依赖它的请求，不返回伪造的空目录。
+
+## SQL 查询与代码生成
+
+生产查询维护在各业务包的 `query.sql` 中，使用 sqlc v1.30.0 生成 pgx/v5 的类型化调用。MCP 的 Provider 和 Connector CRUD 分别维护在 `provider.sql`、`connector.sql`，生成各自的 Repository。业务代码通过 `sqlc.New(pool)` 或 `sqlc.New(tx)` 使用查询；需要快照的读取继续使用 `database.Reader(ctx, pool)`。
+
+```bash
+make generate     # 从迁移提取结构，重新生成全部查询代码
+make sqlc-check   # 检查结构与迁移一致，并检查生成结果没有漂移
+make check        # 生成结果检查、全量测试、go vet
+```
+
+默认命令使用固定版本的 `go run`，不修改服务的运行时依赖。已安装同版本 sqlc 时，可设置 `SQLC=sqlc`。修改查询或迁移后运行 `make generate`，将 SQL 源文件、`schema/schema.sql` 和生成的 Go 文件一起提交；不要手工修改生成结果。
+
+`migrations` 是结构定义的唯一来源。`tools/sqlcschema` 按迁移顺序提取持久表、类型、域和序列的 DDL，跳过数据搬迁及临时表，避免 sqlc 对迁移中 `jsonb_each` 临时表推断的限制。`schema/schema.sql` 仅供代码生成，部署仍执行完整迁移。
+
+可空参数使用 `sqlc.narg`，数组显式声明 PostgreSQL 类型。通用资源的固定 CRUD 查询通过 JSON 参数区分未传字段与显式 `null`，保留数据库默认值、字段白名单及事务内版本校验。生产代码不拼接或执行 SQL 字符串；迁移脚本和集成测试中的建库、数据准备及独立数据库断言不经过业务查询层。

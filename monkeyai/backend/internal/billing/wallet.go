@@ -13,8 +13,10 @@ import (
 	"strconv"
 	"time"
 
-	"git.in.chaitin.net/ai/baizhiyun/opensdk"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+
+	"git.in.chaitin.net/ai/baizhiyun/opensdk"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -100,10 +102,13 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 	var biz, user, env string
 	var amount int64
 	var app int
-	err := s.pool.QueryRow(ctx, `SELECT biz_id,external_user_id,environment,app_id,frozen_amount_quota FROM wallet_billing_records WHERE transaction_id=$1`, id).Scan(&biz, &user, &env, &app, &amount)
+	record, err := sqlc.New(s.pool).WalletReservation(ctx, id)
+
 	if err != nil {
 		return err
 	}
+	biz, user, env, app, amount = record.BizID, record.ExternalUserID, record.Environment, int(record.AppID), record.FrozenAmountQuota
+
 	if s.wallet == nil || env != s.wallet.Environment || app != s.wallet.AppID {
 		return fail(503, "wallet_configuration_changed", "原交易的钱包配置不可用")
 	}
@@ -115,7 +120,7 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 		if profile.Team != nil {
 			team = profile.Team.Slug
 		}
-		_, err = s.pool.Exec(c, `UPDATE wallet_billing_records SET team_slug=$2 WHERE transaction_id=$1`, id, team)
+		_, err = sqlc.New(s.pool).SetWalletTeam(c, sqlc.SetWalletTeamParams{TransactionID: id, TeamSlug: team})
 	}
 	if err == nil {
 		err = s.wallet.Client.CreateBillingCharge(c, user, &opensdk.CreateBillingChargeReq{BizID: biz, FrozenAmountCreditCents: amount})
@@ -134,16 +139,16 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 		if definite {
 			state = "rejected"
 		}
-		_, e = tx.Exec(finalCtx, `UPDATE wallet_billing_records SET status=$2,error_code=$3,trace_id=$4,updated_at=now() WHERE transaction_id=$1`, id, state, code, trace)
+		_, e = sqlc.New(tx).SetWalletStatus(finalCtx, sqlc.SetWalletStatusParams{TransactionID: id, Status: state, ErrorCode: code, TraceID: trace})
 		if e != nil {
 			return e
 		}
-		_, e = tx.Exec(finalCtx, `UPDATE billing_transactions SET status=$2,error_code=$3,updated_at=now() WHERE id=$1`, id, state, code)
+		_, e = sqlc.New(tx).SetTransactionStatus(finalCtx, sqlc.SetTransactionStatusParams{ID: id, Status: state, ErrorCode: code})
 		if e != nil {
 			return e
 		}
 		if definite {
-			_, e = tx.Exec(finalCtx, `UPDATE credit_accounts a SET frozen=a.frozen-t.reserve FROM billing_transactions t WHERE t.id=$1 AND a.id=t.account_id`, id)
+			_, e = sqlc.New(tx).ReleaseFrozenBalance(finalCtx, id)
 			if e != nil {
 				return e
 			}
@@ -162,11 +167,11 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 		return err
 	}
 	defer tx.Rollback(finalCtx)
-	_, err = tx.Exec(finalCtx, `UPDATE wallet_billing_records SET status='reserved',updated_at=now() WHERE transaction_id=$1`, id)
+	_, err = sqlc.New(tx).MarkWalletReserved(finalCtx, id)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(finalCtx, `UPDATE billing_transactions SET status='reserved',updated_at=now() WHERE id=$1 AND status='created'`, id)
+	_, err = sqlc.New(tx).MarkReserved(finalCtx, id)
 	if err != nil {
 		return err
 	}
@@ -175,10 +180,13 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id string) error {
 	var biz, user, team, env, state, item, amountText string
 	var app int
-	err := conn.QueryRow(ctx, `SELECT w.biz_id,w.external_user_id,w.team_slug,w.environment,w.app_id,w.status,t.item_name,t.amount::text FROM wallet_billing_records w JOIN billing_transactions t ON t.id=w.transaction_id WHERE t.id=$1`, id).Scan(&biz, &user, &team, &env, &app, &state, &item, &amountText)
+	record, err := sqlc.New(conn).WalletConfirmation(ctx, id)
+
 	if err != nil {
 		return err
 	}
+	biz, user, team, env, app, state, item, amountText = record.BizID, record.ExternalUserID, record.TeamSlug, record.Environment, int(record.AppID), record.Status, record.ItemName, record.TAmount
+
 	if state == "confirmed" {
 		return nil
 	}
@@ -199,18 +207,18 @@ func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id stri
 			return fail(409, "wallet_identity_changed", "钱包归属已改变，需核查原交易")
 		}
 	}
-	_, err = conn.Exec(ctx, `UPDATE wallet_billing_records SET status='confirming',actual_amount_quota=$2,confirmation_status='success',updated_at=now() WHERE transaction_id=$1`, id, quotaAmount(amount, false))
+	_, err = sqlc.New(conn).MarkWalletConfirming(ctx, sqlc.MarkWalletConfirmingParams{TransactionID: id, ActualAmountQuota: new(quotaAmount(amount, false))})
 	if err != nil {
 		return err
 	}
 	err = s.wallet.Client.ConfirmBillingCharge(ctx, &opensdk.ConfirmBillingChargeReq{BizID: biz, UserID: user, TeamSlug: team, Status: "success", ActualAmountCreditCents: quotaAmount(amount, false), Subject: item})
 	if err != nil {
 		code, trace := walletFailure(err)
-		_, _ = conn.Exec(ctx, `UPDATE wallet_billing_records SET error_code=$2,trace_id=$3,updated_at=now() WHERE transaction_id=$1`, id, code, trace)
-		_, _ = conn.Exec(ctx, `UPDATE billing_transactions SET error_code=$2 WHERE id=$1`, id, code)
+		_, _ = sqlc.New(conn).SetWalletError(ctx, sqlc.SetWalletErrorParams{TransactionID: id, ErrorCode: code, TraceID: trace})
+		_, _ = sqlc.New(conn).SetTransactionError(ctx, sqlc.SetTransactionErrorParams{ID: id, ErrorCode: code})
 		return fail(503, code, "百智云确认待重试")
 	}
-	_, err = conn.Exec(ctx, `UPDATE wallet_billing_records SET status='confirmed',error_code='',confirmed_at=now(),updated_at=now() WHERE transaction_id=$1`, id)
+	_, err = sqlc.New(conn).MarkWalletConfirmed(ctx, id)
 	return err
 }
 func (s *Service) BindWallet(ctx context.Context, actor, user, external string) error {
@@ -234,18 +242,21 @@ func (s *Service) BindWallet(ctx context.Context, actor, user, external string) 
 		return err
 	}
 	defer tx.Rollback(ctx)
-	var current string
-	if err = tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, user).Scan(&current); err != nil {
+	_, err = sqlc.New(tx).LockUser(ctx, user)
+	if err != nil {
 		return err
 	}
+
 	var pending bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM billing_transactions WHERE user_id=$1 AND mode='remote' AND status NOT IN ('settled','released','rejected'))`, user).Scan(&pending); err != nil {
+	pending, err = sqlc.New(tx).HasPendingWalletTransactions(ctx, user)
+	if err != nil {
 		return err
 	}
+
 	if pending {
 		return fail(409, "wallet_transactions_pending", "用户有未完成的远程交易，暂不能变更绑定")
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO wallet_user_bindings(user_id,external_user_id,verified_at,updated_by_user_id) VALUES($1,$2,now(),$3) ON CONFLICT(user_id) DO UPDATE SET external_user_id=EXCLUDED.external_user_id,verified_at=now(),updated_by_user_id=EXCLUDED.updated_by_user_id`, user, external, actor)
+	_, err = sqlc.New(tx).BindWalletUser(ctx, sqlc.BindWalletUserParams{UserID: user, ExternalUserID: external, UpdatedByUserID: actor})
 	if err != nil {
 		return err
 	}

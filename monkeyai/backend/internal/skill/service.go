@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 	"io"
 	"net/http"
 	"strconv"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill/sqlc"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 type Service struct {
@@ -21,8 +24,8 @@ type Service struct {
 
 func NewService(store *resource.Store, storage resource.Storage) *Service {
 	s := &Service{store: store, storage: storage}
-	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "skill", Table: "skills", Path: "/skills", Fields: []string{"name", "description", "package_file_name", "package_s3_key", "package_size_bytes", "package_sha256", "file_count", "enabled"}, Hidden: []string{"package_s3_key"}, Validate: s.validate, Decorate: s.decorate, Persist: s.tags, References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
-		return resource.Rows(ctx, tx, `SELECT jsonb_build_object('id',e.id,'name',e.name) FROM experts e JOIN expert_skills x ON x.expert_id=e.id WHERE x.skill_id=$1 AND e.deleted_at IS NULL`, id)
+	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "skill", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/skills", Fields: []string{"name", "description", "package_file_name", "package_s3_key", "package_size_bytes", "package_sha256", "file_count", "enabled"}, Hidden: []string{"package_s3_key"}, Validate: s.validate, Decorate: s.decorate, Persist: s.tags, References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
+		return resource.DecodeObjects(sqlc.New(tx).ListReferences(ctx, id))
 	}})
 	return s
 }
@@ -85,7 +88,7 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 	return nil
 }
 func (s *Service) decorate(ctx context.Context, q resource.Queryer, o resource.Object) error {
-	tags, err := resource.Rows(ctx, q, `SELECT jsonb_build_object('id',t.id,'name',t.name) FROM tags t JOIN resource_tags rt ON rt.tag_id=t.id WHERE rt.resource_type='skill' AND rt.resource_id=$1 AND t.deleted_at IS NULL ORDER BY t.id`, o.String("id"))
+	tags, err := resource.DecodeObjects(sqlc.New(q).ListTags(ctx, o.String("id")))
 	if err != nil {
 		return err
 	}
@@ -97,18 +100,19 @@ func (s *Service) tags(ctx context.Context, tx pgx.Tx, in resource.Object) error
 	if !ok {
 		return nil
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM resource_tags WHERE resource_type='skill' AND resource_id=$1`, in.String("id")); err != nil {
+	if _, err := sqlc.New(tx).DeleteTags(ctx, in.String("id")); err != nil {
 		return err
 	}
 	for _, id := range resource.Strings(raw) {
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tags WHERE id=$1 AND deleted_at IS NULL)`, id).Scan(&exists); err != nil {
+		exists, err := sqlc.New(tx).TagExists(ctx, id)
+		if err != nil {
 			return err
 		}
+
 		if !exists {
 			return resource.Invalid("标签不存在")
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO resource_tags(resource_type,resource_id,tag_id,assigned_by_user_id) VALUES('skill',$1,$2,$3)`, in.String("id"), id, in.String("actor_id")); err != nil {
+		if _, err := sqlc.New(tx).CreateTagLink(ctx, sqlc.CreateTagLinkParams{ResourceID: in.String("id"), TagID: id, AssignedByUserID: in.String("actor_id")}); err != nil {
 			return err
 		}
 	}
@@ -120,7 +124,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 	r.Put("/skills/{id}/package", s.upload)
 	r.Get("/skills/{id}/package", func(w http.ResponseWriter, r *http.Request) { s.Download(w, r, chi.URLParam(r, "id")) })
 	r.Get("/skills/{id}/manifest", func(w http.ResponseWriter, r *http.Request) {
-		o, err := resource.Row(r.Context(), s.store.Pool, `SELECT to_jsonb(t) FROM skills t WHERE id=$1 AND deleted_at IS NULL`, chi.URLParam(r, "id"))
+		o, err := resource.DecodeObject(sqlc.New(s.store.Pool).GetSkill(r.Context(), chi.URLParam(r, "id")))
 		if err != nil {
 			resource.Fail(w, err)
 			return
@@ -176,7 +180,7 @@ func (s *Service) upload(w http.ResponseWriter, r *http.Request) {
 	resource.JSON(w, 200, o)
 }
 func (s *Service) Download(w http.ResponseWriter, r *http.Request, id string) {
-	o, err := resource.Row(r.Context(), s.store.Pool, `SELECT to_jsonb(t) FROM skills t WHERE id=$1 AND deleted_at IS NULL`, id)
+	o, err := resource.DecodeObject(sqlc.New(s.store.Pool).GetSkill(r.Context(), id))
 	if err != nil {
 		resource.Fail(w, err)
 		return

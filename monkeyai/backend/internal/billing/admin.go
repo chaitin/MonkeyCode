@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+
 	"github.com/go-chi/chi/v5"
 )
 
@@ -151,10 +153,11 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	p.Revision++
 	raw, _ := json.Marshal(p)
 	u, _ := identity.UserFromContext(r.Context())
-	_, err = tx.Exec(r.Context(), `UPDATE settings SET value=$1,revision=$2,updated_by_user_id=$3,updated_at=now() WHERE key='billing'`, raw, p.Revision, u.ID)
+	_, err = sqlc.New(tx).SavePolicy(r.Context(), sqlc.SavePolicyParams{Value: raw, Revision: int64(p.Revision), UpdatedByUserID: u.ID})
 	if err == nil {
 		err = audit(r.Context(), tx, u.ID, "configure_"+section, "", map[string]any{"before": before, "after": p})
 	}
+
 	if err == nil {
 		err = tx.Commit(r.Context())
 	}
@@ -162,6 +165,7 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+
 	s.settings(w, r)
 }
 func (s *Service) quotas(w http.ResponseWriter, r *http.Request) {
@@ -171,18 +175,19 @@ func (s *Service) quotas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groups, err := resource.Rows(r.Context(), s.pool, `SELECT jsonb_build_object('id',g.id,'parent_id',COALESCE(g.parent_id::text,'team'),'name',g.name,'credits',q.credits_per_cycle::text) FROM groups g LEFT JOIN billing_quotas q ON q.group_id=g.id AND q.deleted_at IS NULL WHERE g.deleted_at IS NULL ORDER BY g.name,g.id`)
+	groups, err := resource.DecodeObjects(sqlc.New(s.pool).ListGroupQuotas(r.Context()))
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
-	users, err := resource.Rows(r.Context(), s.pool, `WITH RECURSIVE ancestors AS (SELECT id child,id ancestor,parent_id,0 depth FROM groups WHERE deleted_at IS NULL UNION ALL SELECT a.child,g.id,g.parent_id,a.depth+1 FROM ancestors a JOIN groups g ON g.id=a.parent_id WHERE g.deleted_at IS NULL AND a.depth<100) SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,'status',u.status,'group_id',COALESCE(u.billing_group_id::text,$1::text),'credits',q.credits_per_cycle::text,'effective_credits',COALESCE(q.credits_per_cycle,g.credits_per_cycle,$2::numeric)::text,'inherited_from',CASE WHEN q.id IS NOT NULL THEN u.id::text ELSE COALESCE(g.ancestor::text,$1::text) END,'external_user_id',wb.external_user_id) FROM users u LEFT JOIN billing_quotas q ON q.user_id=u.id AND q.deleted_at IS NULL LEFT JOIN LATERAL (SELECT b.credits_per_cycle,a.ancestor FROM ancestors a JOIN billing_quotas b ON b.group_id=a.ancestor AND b.deleted_at IS NULL WHERE a.child=u.billing_group_id ORDER BY a.depth LIMIT 1) g ON true LEFT JOIN wallet_user_bindings wb ON wb.user_id=u.id WHERE u.deleted_at IS NULL ORDER BY u.name,u.id`, rootGroup, p.RootCredits.String())
+	users, err := resource.DecodeObjects(sqlc.New(s.pool).ListUserQuotas(r.Context(), sqlc.ListUserQuotasParams{RootGroup: rootGroup, RootCredits: p.RootCredits.String()}))
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
 	var teamName string
-	err = s.pool.QueryRow(r.Context(), `SELECT COALESCE((SELECT NULLIF(value->>'workspace_name','') FROM settings WHERE key='branding'),'Monkey AI')`).Scan(&teamName)
+	teamName, err = sqlc.New(s.pool).WorkspaceName(r.Context())
+
 	if err != nil {
 		resource.Fail(w, err)
 		return
@@ -247,7 +252,7 @@ func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
 			}
 			before := p.RootCredits
 			p.RootCredits = *amount
-			if _, err = tx.Exec(r.Context(), `UPDATE settings SET value=jsonb_set(value,'{root_credits}',to_jsonb($1::text)) WHERE key='billing'`, amount.String()); err != nil {
+			if _, err = sqlc.New(tx).SetRootQuota(r.Context(), amount.String()); err != nil {
 				resource.Fail(w, err)
 				return
 			}
@@ -258,7 +263,8 @@ func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		var exists bool
-		err = tx.QueryRow(r.Context(), `SELECT CASE WHEN $2='group' THEN EXISTS(SELECT 1 FROM groups WHERE id=$1 AND deleted_at IS NULL) ELSE EXISTS(SELECT 1 FROM users WHERE id=$1 AND deleted_at IS NULL) END`, v.ID, v.Type).Scan(&exists)
+		exists, err = sqlc.New(tx).SubjectExists(r.Context(), sqlc.SubjectExistsParams{ID: v.ID, SubjectType: v.Type})
+
 		if err != nil || !exists {
 			if err == nil {
 				err = resource.NotFound
@@ -267,14 +273,18 @@ func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var previous *string
-		_ = tx.QueryRow(r.Context(), `SELECT credits_per_cycle::text FROM billing_quotas WHERE subject_type=$2 AND (group_id=$1 OR user_id=$1) AND deleted_at IS NULL`, v.ID, v.Type).Scan(&previous)
-		_, err = tx.Exec(r.Context(), `UPDATE billing_quotas SET deleted_at=now(),updated_at=now() WHERE subject_type=$2 AND (group_id=$1 OR user_id=$1) AND deleted_at IS NULL`, v.ID, v.Type)
+		previousQuota, queryErr := sqlc.New(tx).GetQuota(r.Context(), sqlc.GetQuotaParams{GroupID: new(v.ID), SubjectType: v.Type})
+		if queryErr == nil {
+			previous = new(previousQuota)
+		}
+
+		_, err = sqlc.New(tx).DeleteQuota(r.Context(), sqlc.DeleteQuotaParams{GroupID: new(v.ID), SubjectType: v.Type})
 		if err != nil {
 			resource.Fail(w, err)
 			return
 		}
 		if amount != nil {
-			_, err = tx.Exec(r.Context(), `INSERT INTO billing_quotas(subject_type,group_id,user_id,credits_per_cycle,updated_by_user_id) VALUES($1,CASE WHEN $1='group' THEN $2::uuid END,CASE WHEN $1='user' THEN $2::uuid END,$3,$4)`, v.Type, v.ID, amount.String(), u.ID)
+			_, err = sqlc.New(tx).CreateQuota(r.Context(), sqlc.CreateQuotaParams{SubjectType: v.Type, SubjectID: v.ID, CreditsPerCycle: amount.String(), UpdatedByUserID: u.ID})
 			if err != nil {
 				resource.Fail(w, err)
 				return
@@ -285,7 +295,8 @@ func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	_, err = tx.Exec(r.Context(), `UPDATE settings SET revision=revision+1,updated_at=now(),updated_by_user_id=$1 WHERE key='billing'`, u.ID)
+	_, err = sqlc.New(tx).TouchPolicy(r.Context(), u.ID)
+
 	if err == nil {
 		err = tx.Commit(r.Context())
 	}
@@ -293,6 +304,7 @@ func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+
 	s.quotas(w, r)
 }
 func (s *Service) account(w http.ResponseWriter, r *http.Request) {
@@ -302,13 +314,14 @@ func (s *Service) account(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	history, err := resource.Rows(r.Context(), s.pool, `SELECT jsonb_build_object('id',id,'period_start_at',period_start_at,'period_end_at',period_end_at,'balance',balance::text,'frozen',frozen::text,'quota',quota::text) FROM credit_accounts WHERE user_id=$1 ORDER BY period_start_at DESC LIMIT 24`, user)
+	history, err := resource.DecodeObjects(sqlc.New(s.pool).AccountHistory(r.Context(), user))
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
-	var external string
-	_ = s.pool.QueryRow(r.Context(), `SELECT external_user_id FROM wallet_user_bindings WHERE user_id=$1`, user).Scan(&external)
+
+	external, _ := sqlc.New(s.pool).WalletUser(r.Context(), user)
+
 	out := map[string]any{"account": a, "history": history, "external_user_id": external, "wallet": s.walletInfo()}
 	if external != "" && s.wallet != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -357,7 +370,11 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 	}
 	event := "adjust:" + a.UserID + ":" + in.Key
 	var oldAmount, oldReason string
-	e := tx.QueryRow(ctx, `SELECT credit_delta::text,item_name FROM credit_ledger_entries WHERE event_key=$1`, event).Scan(&oldAmount, &oldReason)
+	record, e := sqlc.New(tx).GetAdjustment(ctx, new(event))
+	if e == nil {
+		oldAmount, oldReason = record.CreditDelta, record.ItemName
+	}
+
 	if e == nil {
 		if oldAmount != in.Delta.String() && amountText(oldAmount) != in.Delta || oldReason != in.Reason {
 			resource.Fail(w, fail(409, "idempotency_conflict", "同一幂等键的调整内容不同"))
@@ -374,7 +391,7 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, insufficient)
 		return
 	}
-	_, err = tx.Exec(ctx, `UPDATE credit_accounts SET balance=balance+$2 WHERE id=$1`, a.ID, in.Delta.String())
+	_, err = sqlc.New(tx).AdjustBalance(ctx, sqlc.AdjustBalanceParams{ID: a.ID, Balance: in.Delta.String()})
 	if err == nil {
 		err = ledger(ctx, tx, a.ID, "", event, "adjustment", "other", in.Reason, in.Delta, "local", nil)
 	}
@@ -382,6 +399,7 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = audit(ctx, tx, u.ID, "adjust_credits", a.UserID, in)
 	}
+
 	if err == nil {
 		err = tx.Commit(ctx)
 	}
@@ -389,6 +407,7 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+
 	s.account(w, r)
 }
 func pageParams(r *http.Request) (int, int) {
@@ -428,11 +447,15 @@ func (s *Service) refund(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 	var account, mode, status, amountText, category, item string
-	err = tx.QueryRow(ctx, `SELECT account_id,mode,status,amount::text,category,item_name FROM billing_transactions WHERE id=$1 FOR UPDATE`, id).Scan(&account, &mode, &status, &amountText, &category, &item)
+	var record sqlc.LockRefundRow
+	record, err = sqlc.New(tx).LockRefund(ctx, id)
+
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
+	account, mode, status, amountText, category, item = record.AccountID, record.Mode, record.Status, record.Amount, record.Category, record.ItemName
+
 	if mode != "local" {
 		resource.Fail(w, fail(409, "wallet_refund_required", "远程退款需经百智云退款或对账渠道处理"))
 		return
@@ -443,30 +466,36 @@ func (s *Service) refund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var existing bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM credit_ledger_entries WHERE event_key=$1)`, "refund:"+id).Scan(&existing); err != nil {
+	existing, err = sqlc.New(tx).EventExists(ctx, new("refund:"+id))
+	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
+
 	if existing {
 		s.transaction(w, r)
 		return
 	}
 	var charge string
-	if err = tx.QueryRow(ctx, `SELECT id FROM credit_ledger_entries WHERE event_key=$1`, "charge:"+id).Scan(&charge); err != nil {
+	charge, err = sqlc.New(tx).EventID(ctx, new("charge:"+id))
+	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
+
 	var balance string
-	if err = tx.QueryRow(ctx, `SELECT balance::text FROM credit_accounts WHERE id=$1 FOR UPDATE`, account).Scan(&balance); err != nil {
+	balance, err = sqlc.New(tx).LockBalance(ctx, account)
+	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
+
 	current, err := ParseAmount(balance)
 	if err != nil || current > maxAmount-amount {
 		resource.Fail(w, resource.Invalid("退款后余额超出允许范围，请先处理账户额度"))
 		return
 	}
-	_, err = tx.Exec(ctx, `UPDATE credit_accounts SET balance=balance+$2 WHERE id=$1`, account, amount.String())
+	_, err = sqlc.New(tx).AdjustBalance(ctx, sqlc.AdjustBalanceParams{ID: account, Balance: amount.String()})
 	if err == nil {
 		err = ledger(ctx, tx, account, id, "refund:"+id, "refund", category, item+" · "+in.Reason, amount, "local", map[string]string{"reverses_id": charge, "reason": in.Reason})
 	}
@@ -474,6 +503,7 @@ func (s *Service) refund(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = audit(ctx, tx, u.ID, "refund_charge", id, in)
 	}
+
 	if err == nil {
 		err = tx.Commit(ctx)
 	}
@@ -481,5 +511,6 @@ func (s *Service) refund(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+
 	s.transaction(w, r)
 }

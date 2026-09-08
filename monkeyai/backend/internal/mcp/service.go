@@ -3,13 +3,18 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 	"net/http"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc/connector"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc/provider"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 type Service struct {
@@ -21,16 +26,16 @@ type Service struct {
 
 func NewService(store *resource.Store, publicURL string) *Service {
 	s := &Service{Store: store, PublicURL: strings.TrimRight(publicURL, "/")}
-	s.Providers = resource.NewCRUD(store, resource.Definition{Kind: "provider", Table: "connector_providers", Path: "/connector-providers", Fields: []string{"identifier", "name", "description", "url", "authorization_mode", "authorization_method", "header_schema", "oauth_config", "oauth_client_secret", "enabled"}, Hidden: []string{"oauth_client_secret", "icon_s3_key"}, Decorate: func(ctx context.Context, q resource.Queryer, o resource.Object) error {
+	s.Providers = resource.NewCRUD(store, resource.Definition{Kind: "provider", Repository: func(q resource.Queryer) resource.Repository { return provider.New(q) }, Path: "/connector-providers", Fields: []string{"identifier", "name", "description", "url", "authorization_mode", "authorization_method", "header_schema", "oauth_config", "oauth_client_secret", "enabled"}, Hidden: []string{"oauth_client_secret", "icon_s3_key"}, Decorate: func(ctx context.Context, q resource.Queryer, o resource.Object) error {
 		o["icon_path"] = ""
 		if key := o.String("icon_s3_key"); key != "" {
 			o["icon_path"] = "/api/admin/v1/connector-providers/" + o.String("id") + "/icon?v=" + resource.Hash(key)
 		}
 		return nil
 	}, Validate: validateProvider, References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
-		return resource.Rows(ctx, tx, `SELECT jsonb_build_object('id',id,'name',name,'type','connector') FROM connectors WHERE provider_id=$1 AND deleted_at IS NULL UNION ALL SELECT jsonb_build_object('id',e.id,'name',e.name,'type','expert') FROM experts e JOIN expert_connector_providers x ON x.expert_id=e.id WHERE x.provider_id=$1 AND e.deleted_at IS NULL`, id)
+		return resource.DecodeObjects(sqlc.New(tx).ListProviderReferences(ctx, id))
 	}})
-	s.Connectors = resource.NewCRUD(store, resource.Definition{Kind: "connector", Table: "connectors", Path: "/connectors", Fields: []string{"provider_id", "name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "enabled", "config_revision", "connection_status"}, Hidden: []string{"oauth_client_secret"}, Validate: s.validateConnector, Decorate: s.decorateConnector})
+	s.Connectors = resource.NewCRUD(store, resource.Definition{Kind: "connector", Repository: func(q resource.Queryer) resource.Repository { return connector.New(q) }, Path: "/connectors", Fields: []string{"provider_id", "name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "enabled", "config_revision", "connection_status"}, Hidden: []string{"oauth_client_secret"}, Validate: s.validateConnector, Decorate: s.decorateConnector})
 	return s
 }
 func validateProvider(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
@@ -59,17 +64,18 @@ func validateProvider(ctx context.Context, tx pgx.Tx, in, old resource.Object) e
 	if old.String("id") != "" {
 		for _, key := range []string{"url", "authorization_mode", "authorization_method", "oauth_config"} {
 			if resource.Hash(in[key]) != resource.Hash(old[key]) {
-				var used bool
-				if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM connectors WHERE provider_id=$1 AND deleted_at IS NULL)`, old.String("id")).Scan(&used); err != nil {
+				used, err := sqlc.New(tx).ProviderInUse(ctx, old.String("id"))
+				if err != nil {
 					return err
 				}
+
 				if used {
 					return resource.Invalid("已有实例的连接模板不可更换，请创建新的 Provider")
 				}
 			}
 		}
 		if secret := in.String("oauth_client_secret"); secret != "" && secret != old.String("oauth_client_secret") {
-			if _, err := tx.Exec(ctx, `UPDATE connectors SET oauth_client_secret=$2,revision=revision+1,updated_at=now() WHERE provider_id=$1 AND deleted_at IS NULL`, old.String("id"), secret); err != nil {
+			if _, err := sqlc.New(tx).UpdateProviderSecrets(ctx, sqlc.UpdateProviderSecretsParams{ProviderID: old.String("id"), OauthClientSecret: secret}); err != nil {
 				return err
 			}
 		}
@@ -80,7 +86,7 @@ func validateProvider(ctx context.Context, tx pgx.Tx, in, old resource.Object) e
 	return nil
 }
 func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
-	p, err := resource.Row(ctx, tx, `SELECT to_jsonb(p) FROM connector_providers p WHERE id=$1 AND ownership_type='system' AND deleted_at IS NULL AND enabled FOR SHARE`, in.String("provider_id"))
+	p, err := resource.DecodeObject(sqlc.New(tx).GetEnabledProvider(ctx, in.String("provider_id")))
 	if err != nil {
 		return resource.Invalid("Provider 不存在或已禁用")
 	}
@@ -103,20 +109,26 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 	return nil
 }
 func (s *Service) decorateConnector(ctx context.Context, q resource.Queryer, o resource.Object) error {
-	var configured bool
-	if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM connector_credentials WHERE connector_id=$1 AND user_id IS NULL AND status='authorized' AND revoked_at IS NULL AND config_revision=$2 AND (oauth_expires_at IS NULL OR oauth_expires_at>now()))`, o.String("id"), o.Int("config_revision")).Scan(&configured); err != nil {
+	configured, err := sqlc.New(q).HasCentralCredential(ctx, sqlc.HasCentralCredentialParams{ConnectorID: o.String("id"), ConfigRevision: int64(o.Int("config_revision"))})
+	if err != nil {
 		return err
 	}
+
 	o["credential_configured"] = configured
 	var count int
-	if err := q.QueryRow(ctx, `SELECT count(*) FROM mcp_tools WHERE connector_id=$1 AND deleted_at IS NULL`, o.String("id")).Scan(&count); err != nil {
+	toolCount, err := sqlc.New(q).CountTools(ctx, o.String("id"))
+	if err != nil {
 		return err
 	}
+	count = int(toolCount)
+
 	o["tool_count"] = count
-	var iconKey string
-	if err := q.QueryRow(ctx, `SELECT icon_s3_key FROM connector_providers WHERE id=$1`, o.String("provider_id")).Scan(&iconKey); err != nil {
+
+	iconKey, err := sqlc.New(q).GetIconKey(ctx, o.String("provider_id"))
+	if err != nil {
 		return err
 	}
+
 	o["icon_path"] = ""
 	if iconKey != "" {
 		o["icon_path"] = "/api/admin/v1/connector-providers/" + o.String("provider_id") + "/icon?v=" + resource.Hash(iconKey)
@@ -124,14 +136,15 @@ func (s *Service) decorateConnector(ctx context.Context, q resource.Queryer, o r
 	return nil
 }
 func (s *Service) Connector(ctx context.Context, q resource.Queryer, id, user string, admin bool) (resource.Object, error) {
-	var active bool
-	if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND status='active' AND deleted_at IS NULL AND (NOT $2 OR role='admin'))`, user, admin).Scan(&active); err != nil {
+	active, err := sqlc.New(q).UserActive(ctx, sqlc.UserActiveParams{ID: user, IsAdmin: admin})
+	if err != nil {
 		return nil, err
 	}
+
 	if !active {
 		return nil, resource.NotFound
 	}
-	o, err := resource.Row(ctx, q, `SELECT to_jsonb(c) FROM connectors c JOIN connector_providers p ON p.id=c.provider_id WHERE c.id=$1 AND c.deleted_at IS NULL AND c.enabled AND p.deleted_at IS NULL AND p.enabled`, id)
+	o, err := resource.DecodeObject(sqlc.New(q).GetConnector(ctx, id))
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +170,7 @@ func (s *Service) Credential(ctx context.Context, q resource.Queryer, c resource
 	if c.String("authorization_mode") == "centralized" {
 		user = ""
 	}
-	return resource.Row(ctx, q, `SELECT to_jsonb(c) FROM connector_credentials c WHERE connector_id=$1 AND user_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid AND revoked_at IS NULL AND status='authorized' AND config_revision=$3`, c.String("id"), user, c.Int("config_revision"))
+	return resource.DecodeObject(sqlc.New(q).GetCredential(ctx, sqlc.GetCredentialParams{ConnectorID: c.String("id"), UserID: user, ConfigRevision: int64(c.Int("config_revision"))}))
 }
 func (s *Service) RegisterAdmin(r chi.Router) {
 	s.Providers.Register(r)
@@ -227,7 +240,7 @@ func (s *Service) credential(w http.ResponseWriter, r *http.Request, admin, revo
 		user = ""
 	}
 	if revoke {
-		_, err = tx.Exec(r.Context(), `UPDATE connector_credentials SET revoked_at=now(),status='revoked',updated_at=now() WHERE connector_id=$1 AND user_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid`, c.String("id"), user)
+		_, err = sqlc.New(tx).RevokeCredential(r.Context(), sqlc.RevokeCredentialParams{ConnectorID: c.String("id"), UserID: user})
 	} else {
 		if c.String("authorization_method") != "http_header" {
 			resource.Fail(w, resource.Invalid("此连接使用 OAuth"))
@@ -252,14 +265,20 @@ func (s *Service) credential(w http.ResponseWriter, r *http.Request, admin, revo
 			}
 		}
 		b, _ := json.Marshal(in.Headers)
-		_, err = tx.Exec(r.Context(), `INSERT INTO connector_credentials(connector_id,user_id,method,http_headers,config_revision) VALUES($1,NULLIF($2,'')::uuid,'http_header',$3,$4) ON CONFLICT(connector_id,user_id) DO UPDATE SET http_headers=EXCLUDED.http_headers,config_revision=EXCLUDED.config_revision,revoked_at=NULL,status='authorized',updated_at=now()`, c.String("id"), user, b, c.Int("config_revision"))
+		_, err = sqlc.New(tx).UpsertHeaderCredential(r.Context(), sqlc.UpsertHeaderCredentialParams{
+			ConnectorID:    c.String("id"),
+			UserID:         user,
+			HttpHeaders:    b,
+			ConfigRevision: int64(c.Int("config_revision")),
+		})
 	}
 	if err == nil {
-		_, err = tx.Exec(r.Context(), `UPDATE mcp_tools SET deleted_at=now() WHERE connector_id=$1 AND credential_id IN (SELECT id FROM connector_credentials WHERE connector_id=$1 AND user_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid)`, c.String("id"), user)
+		_, err = sqlc.New(tx).InvalidateConnectorUserTools(r.Context(), sqlc.InvalidateConnectorUserToolsParams{ConnectorID: c.String("id"), UserID: user})
 	}
 	if err == nil {
 		err = resource.Audit(r.Context(), tx, u.ID, "connector", c.String("id"), "credential_update")
 	}
+
 	if err == nil {
 		err = tx.Commit(r.Context())
 	}
@@ -267,6 +286,7 @@ func (s *Service) credential(w http.ResponseWriter, r *http.Request, admin, revo
 		resource.Fail(w, err)
 		return
 	}
+
 	w.WriteHeader(204)
 }
 func (s *Service) Tools(ctx context.Context, q resource.Queryer, c resource.Object, user string, admin bool) ([]resource.Object, error) {
@@ -281,14 +301,22 @@ func (s *Service) Tools(ctx context.Context, q resource.Queryer, c resource.Obje
 	if cred != nil {
 		credential = cred.String("id")
 		var current bool
-		if err := q.QueryRow(ctx, `SELECT oauth_expires_at IS NULL OR oauth_expires_at>now() FROM connector_credentials WHERE id=$1`, credential).Scan(&current); err != nil {
+		record, err := sqlc.New(q).CredentialCurrent(ctx, credential)
+		if err != nil {
 			return nil, err
 		}
+		current = record != nil && *record
+
 		if !current {
 			return []resource.Object{}, nil
 		}
 	}
-	return resource.Rows(ctx, q, `SELECT to_jsonb(t) FROM mcp_tools t WHERE connector_id=$1 AND credential_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid AND config_revision=$3 AND deleted_at IS NULL AND ($4 OR enabled) ORDER BY name,id`, c.String("id"), credential, c.Int("config_revision"), admin)
+	return resource.DecodeObjects(sqlc.New(q).ListTools(ctx, sqlc.ListToolsParams{
+		ConnectorID:    c.String("id"),
+		CredentialID:   credential,
+		ConfigRevision: int64(c.Int("config_revision")),
+		IsAdmin:        admin,
+	}))
 }
 func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 	u, _ := identity.UserFromContext(r.Context())
@@ -324,7 +352,7 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 	}
 	tools, err := discover(r.Context(), c.String("url"), headers)
 	if err != nil {
-		_, _ = s.Store.Pool.Exec(r.Context(), `UPDATE connectors SET connection_status='error',last_checked_at=now(),last_error='MCP 连接或工具发现失败',updated_at=now() WHERE id=$1`, c.String("id"))
+		_, _ = sqlc.New(s.Store.Pool).MarkConnectionFailed(r.Context(), c.String("id"))
 		resource.Fail(w, &resource.Error{Status: 502, Code: "upstream_error", Message: "MCP 连接或工具发现失败，请检查地址和认证"})
 		return
 	}
@@ -334,29 +362,37 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 		return
 	}
 	defer tx.Rollback(r.Context())
-	current, err := resource.Row(r.Context(), tx, `SELECT to_jsonb(c) FROM connectors c WHERE id=$1 AND deleted_at IS NULL AND enabled FOR UPDATE`, c.String("id"))
+	current, err := resource.DecodeObject(sqlc.New(tx).LockConnector(r.Context(), c.String("id")))
 	if err != nil || current.Int("config_revision") != c.Int("config_revision") {
 		resource.Fail(w, resource.Conflict)
 		return
 	}
 	if credential != "" {
-		fresh, err := resource.Row(r.Context(), tx, `SELECT to_jsonb(c) FROM connector_credentials c WHERE id=$1 AND revoked_at IS NULL FOR UPDATE`, credential)
+		fresh, err := resource.DecodeObject(sqlc.New(tx).LockCredential(r.Context(), credential))
 		if err != nil || fresh["updated_at"] != cred["updated_at"] {
 			resource.Fail(w, resource.Conflict)
 			return
 		}
 	}
-	_, err = tx.Exec(r.Context(), `UPDATE mcp_tools SET deleted_at=now() WHERE connector_id=$1 AND credential_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid`, c.String("id"), credential)
+	_, err = sqlc.New(tx).InvalidateTools(r.Context(), sqlc.InvalidateToolsParams{ConnectorID: c.String("id"), CredentialID: credential})
 	for _, t := range tools {
 		if err != nil {
 			break
 		}
 		schema, _ := json.Marshal(t.InputSchema)
-		_, err = tx.Exec(r.Context(), `INSERT INTO mcp_tools(connector_id,credential_id,name,description,input_schema,config_revision) VALUES($1,NULLIF($2,'')::uuid,$3,$4,$5,$6) ON CONFLICT(connector_id,credential_id,name) DO UPDATE SET description=EXCLUDED.description,input_schema=EXCLUDED.input_schema,config_revision=EXCLUDED.config_revision,discovered_at=now(),updated_at=now(),deleted_at=NULL`, c.String("id"), credential, t.Name, t.Description, schema, c.Int("config_revision"))
+		_, err = sqlc.New(tx).UpsertTool(r.Context(), sqlc.UpsertToolParams{
+			ConnectorID:    c.String("id"),
+			CredentialID:   credential,
+			Name:           t.Name,
+			Description:    t.Description,
+			InputSchema:    schema,
+			ConfigRevision: int64(c.Int("config_revision")),
+		})
 	}
 	if err == nil {
-		_, err = tx.Exec(r.Context(), `UPDATE connectors SET connection_status='connected',last_checked_at=now(),last_error=NULL,updated_at=now() WHERE id=$1`, c.String("id"))
+		_, err = sqlc.New(tx).MarkConnected(r.Context(), c.String("id"))
 	}
+
 	if err == nil {
 		err = tx.Commit(r.Context())
 	}
@@ -364,6 +400,7 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 		resource.Fail(w, err)
 		return
 	}
+
 	resource.JSON(w, 200, resource.Object{"connection_status": "connected", "tool_count": len(tools)})
 }
 func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
@@ -382,26 +419,36 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var mode string
-	if err = tx.QueryRow(r.Context(), `SELECT authorization_mode FROM connectors WHERE id=$1 AND deleted_at IS NULL`, chi.URLParam(r, "id")).Scan(&mode); err != nil {
+	mode, err = sqlc.New(tx).GetAuthorizationMode(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
+
 	if mode != "centralized" && in.Credits != 0 {
 		resource.Fail(w, resource.Invalid("仅集中认证工具可以设置非零积分"))
 		return
 	}
-	o, err := resource.Row(r.Context(), tx, `UPDATE mcp_tools t SET enabled=$3,credits_per_call=$4,updated_at=now() FROM connectors c WHERE t.id=$2 AND t.connector_id=$1 AND c.id=t.connector_id AND c.ownership_type='system' AND c.deleted_at IS NULL AND t.deleted_at IS NULL RETURNING to_jsonb(t)`, chi.URLParam(r, "id"), chi.URLParam(r, "toolID"), *in.Enabled, in.Credits.String())
+	o, err := resource.DecodeObject(sqlc.New(tx).UpdateTool(r.Context(), sqlc.UpdateToolParams{
+		ConnectorID:    chi.URLParam(r, "id"),
+		ID:             chi.URLParam(r, "toolID"),
+		Enabled:        *in.Enabled,
+		CreditsPerCall: in.Credits.String(),
+	}))
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
 	u, _ := identity.UserFromContext(r.Context())
-	if err = resource.Audit(r.Context(), tx, u.ID, "mcp_tool", o.String("id"), "configure"); err == nil {
+	err = resource.Audit(r.Context(), tx, u.ID, "mcp_tool", o.String("id"), "configure")
+
+	if err == nil {
 		err = tx.Commit(r.Context())
 	}
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
+
 	resource.JSON(w, 200, o)
 }

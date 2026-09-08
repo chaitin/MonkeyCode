@@ -7,7 +7,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -40,31 +42,28 @@ func (s *Service) WithAccountPreserver(accounts AccountPreserver) *Service {
 
 func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
 
-const selectSQL = `SELECT g.id,g.parent_id,g.name,ARRAY(
- SELECT gu.user_id::text FROM group_users gu JOIN users u ON u.id=gu.user_id
- WHERE gu.group_id=g.id AND gu.removed_at IS NULL AND u.deleted_at IS NULL ORDER BY gu.user_id
-) FROM groups g WHERE g.deleted_at IS NULL`
-
 func (s *Service) List(ctx context.Context) ([]Group, error) {
-	rows, err := s.pool.Query(ctx, selectSQL+` ORDER BY g.created_at,g.id`)
+	rows, err := sqlc.New(s.pool).ListGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+
 	groups := []Group{}
-	for rows.Next() {
+	for _, row := range rows {
 		var group Group
-		if err := rows.Scan(&group.ID, &group.ParentID, &group.Name, &group.MemberIDs); err != nil {
-			return nil, err
-		}
+		group.ID, group.ParentID, group.Name, group.MemberIDs = row.ID, row.ParentID, row.Name, row.MemberIds
 		groups = append(groups, group)
 	}
-	return groups, rows.Err()
+	return groups, nil
 }
 
 func get(ctx context.Context, tx pgx.Tx, id string) (Group, error) {
 	var group Group
-	err := tx.QueryRow(ctx, selectSQL+` AND g.id=$1`, id).Scan(&group.ID, &group.ParentID, &group.Name, &group.MemberIDs)
+	record, err := sqlc.New(tx).GetGroup(ctx, id)
+	if err == nil {
+		group.ID, group.ParentID, group.Name, group.MemberIDs = record.ID, record.ParentID, record.Name, record.MemberIds
+	}
+
 	return group, err
 }
 
@@ -74,7 +73,7 @@ func (s *Service) begin(ctx context.Context) (pgx.Tx, error) {
 		return nil, err
 	}
 	// 串行化分组写入，避免并发移动绕过祖先校验形成环。
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(741209)`); err != nil {
+	if _, err = sqlc.New(tx).LockGroups(ctx); err != nil {
 		_ = tx.Rollback(ctx)
 		return nil, err
 	}
@@ -129,10 +128,8 @@ func (s *Service) Save(ctx context.Context, actor, id string, in Input) (Group, 
 			return Group{}, err
 		}
 		var cycle bool
-		err = tx.QueryRow(ctx, `WITH RECURSIVE ancestors(id,parent_id) AS (
-   SELECT id,parent_id FROM groups WHERE id=$1 AND deleted_at IS NULL
-   UNION SELECT g.id,g.parent_id FROM groups g JOIN ancestors a ON g.id=a.parent_id WHERE g.deleted_at IS NULL
-  ) SELECT EXISTS(SELECT 1 FROM ancestors WHERE id=NULLIF($2,'')::uuid)`, parent.ID, id).Scan(&cycle)
+		cycle, err = sqlc.New(tx).WouldCreateCycle(ctx, sqlc.WouldCreateCycleParams{ID: parent.ID, GroupID: id})
+
 		if err != nil {
 			return Group{}, err
 		}
@@ -147,7 +144,8 @@ func (s *Service) Save(ctx context.Context, actor, id string, in Input) (Group, 
 		group.Name = *in.Name
 	}
 	var duplicate bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM groups WHERE deleted_at IS NULL AND parent_id IS NOT DISTINCT FROM $1::uuid AND lower(name)=lower($2) AND id IS DISTINCT FROM NULLIF($3,'')::uuid)`, group.ParentID, group.Name, id).Scan(&duplicate)
+	duplicate, err = sqlc.New(tx).NameExists(ctx, sqlc.NameExistsParams{ParentID: group.ParentID, Name: group.Name, GroupID: id})
+
 	if err != nil {
 		return Group{}, err
 	}
@@ -157,9 +155,10 @@ func (s *Service) Save(ctx context.Context, actor, id string, in Input) (Group, 
 	action := "update"
 	if create {
 		action = "create"
-		err = tx.QueryRow(ctx, `INSERT INTO groups(parent_id,name,created_by_user_id) VALUES($1,$2,$3) RETURNING id`, group.ParentID, group.Name, actor).Scan(&id)
+
+		id, err = sqlc.New(tx).CreateGroup(ctx, sqlc.CreateGroupParams{ParentID: group.ParentID, Name: group.Name, CreatedByUserID: new(actor)})
 	} else {
-		_, err = tx.Exec(ctx, `UPDATE groups SET parent_id=$2,name=$3,updated_at=now() WHERE id=$1`, id, group.ParentID, group.Name)
+		_, err = sqlc.New(tx).UpdateGroup(ctx, sqlc.UpdateGroupParams{ID: id, ParentID: group.ParentID, Name: group.Name})
 	}
 	if err != nil {
 		return Group{}, err
@@ -189,29 +188,21 @@ func (s *Service) SetMembers(ctx context.Context, actor, id string, ids []string
 	if err != nil {
 		return Group{}, err
 	}
-	rows, err := tx.Query(ctx, `SELECT id FROM users WHERE id=ANY($1::uuid[]) AND deleted_at IS NULL FOR SHARE`, ids)
+	rows, err := sqlc.New(tx).LockMembers(ctx, ids)
 	if err != nil {
 		return Group{}, err
 	}
-	count := 0
-	for rows.Next() {
-		count++
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return Group{}, err
-	}
+	count := len(rows)
 	if count != len(ids) {
 		return Group{}, resource.Invalid("所选成员不存在或已删除")
 	}
-	if _, err = tx.Exec(ctx, `UPDATE group_users SET removed_at=now() WHERE group_id=$1 AND removed_at IS NULL AND NOT(user_id=ANY($2::uuid[]))`, id, ids); err != nil {
+	if _, err = sqlc.New(tx).RemoveMembers(ctx, sqlc.RemoveMembersParams{GroupID: id, UserIds: ids}); err != nil {
 		return Group{}, err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO group_users(group_id,user_id,assigned_by_user_id) SELECT $1,unnest($2::uuid[]),$3 ON CONFLICT (group_id,user_id) WHERE removed_at IS NULL DO NOTHING`, id, ids, actor); err != nil {
+	if _, err = sqlc.New(tx).AddMembers(ctx, sqlc.AddMembersParams{GroupID: id, UserIds: ids, AssignedByUserID: actor}); err != nil {
 		return Group{}, err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE groups SET updated_at=now() WHERE id=$1`, id); err != nil {
+	if _, err = sqlc.New(tx).TouchGroup(ctx, id); err != nil {
 		return Group{}, err
 	}
 	group, err = get(ctx, tx, id)
@@ -234,26 +225,30 @@ func (s *Service) Delete(ctx context.Context, actor, id string) error {
 		return err
 	}
 	var children bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM groups WHERE parent_id=$1 AND deleted_at IS NULL)`, id).Scan(&children); err != nil {
+	children, err = sqlc.New(tx).HasChildren(ctx, new(id))
+	if err != nil {
 		return err
 	}
+
 	if children {
 		return conflict("请先移动或删除子分组")
 	}
 	var assigned bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE billing_group_id=$1 AND deleted_at IS NULL)`, id).Scan(&assigned); err != nil {
+	assigned, err = sqlc.New(tx).HasBillingUsers(ctx, new(id))
+	if err != nil {
 		return err
 	}
+
 	if assigned {
 		return conflict("请先迁移成员的计费归属")
 	}
-	if _, err = tx.Exec(ctx, `UPDATE groups SET deleted_at=now(),updated_at=now() WHERE id=$1`, id); err != nil {
+	if _, err = sqlc.New(tx).DeleteGroup(ctx, id); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE group_users SET removed_at=now() WHERE group_id=$1 AND removed_at IS NULL`, id); err != nil {
+	if _, err = sqlc.New(tx).RemoveAllMembers(ctx, id); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `DELETE FROM resource_access_grants WHERE group_id=$1`, id); err != nil {
+	if _, err = sqlc.New(tx).DeleteGrants(ctx, new(id)); err != nil {
 		return err
 	}
 	if err = resource.Audit(ctx, tx, actor, "group", id, "delete"); err != nil {

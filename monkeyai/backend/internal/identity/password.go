@@ -14,6 +14,8 @@ import (
 	"net/mail"
 	"strconv"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 )
 
 const (
@@ -27,13 +29,16 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context, name, email, password 
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('monkeyai:initial-admin'))`); err != nil {
+	if _, err := sqlc.New(tx).LockInitialAdmin(ctx); err != nil {
 		return err
 	}
 	var count int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE deleted_at IS NULL`).Scan(&count); err != nil {
+	record, err := sqlc.New(tx).CountUsers(ctx)
+	if err != nil {
 		return err
 	}
+	count = int(record)
+
 	if count > 0 {
 		return tx.Commit(ctx)
 	}
@@ -46,10 +51,7 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context, name, email, password 
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `
-		INSERT INTO users (name, email, password_hash, role, status)
-		VALUES ($1, $2, $3, 'admin', 'active')
-	`, name, email, hash)
+	_, err = sqlc.New(tx).CreateInitialAdmin(ctx, sqlc.CreateInitialAdminParams{Name: name, Email: email, PasswordHash: new(hash)})
 	if err != nil {
 		return fmt.Errorf("创建首次管理员: %w", err)
 	}
@@ -68,16 +70,14 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	var user User
 	var passwordHash string
-	err := s.db.QueryRow(r.Context(), `
-		SELECT id, name, email, coalesce(avatar_url, ''), role, status,
-			joined_at, last_login_at, password_hash
-		FROM users
-		WHERE lower(email) = $1 AND role = 'admin' AND status = 'active'
-			AND deleted_at IS NULL AND password_hash IS NOT NULL
-	`, input.Email).Scan(
-		&user.ID, &user.Name, &user.Email, &user.AvatarURL, &user.Role,
-		&user.Status, &user.JoinedAt, &user.LastLoginAt, &passwordHash,
-	)
+	row, err := sqlc.New(s.db).GetPasswordUser(r.Context(), input.Email)
+	if err == nil && row.PasswordHash == nil {
+		err = errors.New("未设置密码")
+	}
+	if err == nil {
+		user = User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}
+		passwordHash = *row.PasswordHash
+	}
 	if err != nil {
 		passwordHash = dummyPasswordHash
 	}
@@ -86,7 +86,7 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误")
 		return
 	}
-	if _, err := s.db.Exec(r.Context(), `UPDATE users SET last_login_at = now(), updated_at = now() WHERE id = $1`, user.ID); err != nil {
+	if _, err := sqlc.New(s.db).TouchLogin(r.Context(), user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}

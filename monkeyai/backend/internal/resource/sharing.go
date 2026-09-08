@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
@@ -93,30 +95,20 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 		}
 	}
 	if !revoke {
-		rows, err := tx.Query(ctx, `SELECT id FROM users WHERE id::text=ANY($1) AND deleted_at IS NULL AND status='active' ORDER BY id FOR SHARE`, input.UserIDs)
+		rows, err := sqlc.New(tx).LockRecipients(ctx, input.UserIDs)
 		if err != nil {
 			return err
 		}
-		count := 0
-		for rows.Next() {
-			count++
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return err
-		}
+		count := len(rows)
 		if count != len(input.UserIDs) {
 			return Invalid("接收用户不存在或已停用")
 		}
 	}
 	for _, item := range input.Resources {
 		if revoke {
-			_, err = tx.Exec(ctx, `DELETE FROM resource_access_grants WHERE resource_type=$1 AND resource_id=$2 AND user_id::text=ANY($3)`, item.Type, item.ID, input.UserIDs)
+			_, err = sqlc.New(tx).RevokeShares(ctx, sqlc.RevokeSharesParams{ResourceType: item.Type, ResourceID: item.ID, UserIds: input.UserIDs})
 		} else {
-			_, err = tx.Exec(ctx, `INSERT INTO resource_access_grants(resource_type,resource_id,user_id,access_level,granted_by_user_id)
-    SELECT $1,$2,id,'read_only',$3 FROM users WHERE id::text=ANY($4)
-    ON CONFLICT (resource_type,resource_id,user_id) WHERE user_id IS NOT NULL DO NOTHING`, item.Type, item.ID, actor, input.UserIDs)
+			_, err = sqlc.New(tx).CreateShares(ctx, sqlc.CreateSharesParams{ResourceType: item.Type, ResourceID: item.ID, GrantedByUserID: actor, UserIds: input.UserIDs})
 		}
 		if err != nil {
 			return err
