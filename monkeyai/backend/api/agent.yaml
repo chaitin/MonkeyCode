@@ -1492,11 +1492,10 @@ components:
         id:
           type: string
           format: uuid
-          description: MonkeyAI 内部模型 ID。
+          description: MonkeyAI 内部模型 ID，调用模型代理时作为请求的 model 值。
         model:
           type: string
-          format: uuid
-          description: 调用模型代理时传入的 model 值，当前与 id 相同。
+          description: 数据库 models.model_id 中配置的真实上游模型名称。
         display_name:
           type: string
           description: Agent 向用户展示的模型名称。
