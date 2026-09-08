@@ -89,7 +89,7 @@ Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rul
 
 资源管理列表支持 `q`、`ownership_type`、`cursor` 和 `limit`（1—200），管理页面及关联选择器会读取全部分页。模板图标限 1 MiB 的 PNG/JPEG，由后端验证尺寸并经授权接口读取。
 
-当前工具下发声明 `capabilities: [catalog]`，包含工具目录与积分配置。本次不实现 MCP 生产调用网关、实际计费扣减或 Desktop/OhMyAgent 本地加载器；不下发不存在的执行地址。对象采用不可变 key，旧包与失败上传遗留对象保留，不在写事务中删除，以免破坏备份或正在下载的资源；清理时必须确认无数据库引用且超过备份保留窗口。
+工具下发声明 `capabilities: [catalog, invoke]`，包含工具目录、积分配置和 `mcp_gateway`（代理 URL、`streamable_http` 传输及 `mcp:invoke` 调用密钥要求）。远程工具经服务端代理调用，上游凭证留在后端；Desktop/OhMyAgent 本地加载器独立接入。对象采用不可变 key，旧包与失败上传遗留对象保留，不在写事务中删除，以免破坏备份或正在下载的资源；清理时必须确认无数据库引用且超过备份保留窗口。
 
 备份应同时保留 PostgreSQL 快照与该快照引用的 RustFS 对象。恢复时先恢复对象和数据库，再用资源摘要验证技能下载。完整部署启动前不要清空 RustFS 数据卷。
 
@@ -103,7 +103,7 @@ Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rul
 - 首次升级先执行 `000002_billing_create_transactions` 增量迁移；保留历史账户和流水。已有交易后 down 迁移主动拒绝，回滚应关闭新调用扣费并保留交易恢复能力。
 - 默认关闭实际扣费，仅记录调用。检查价格、额度和模型上限后，在费用设置中开启。旧计费设置写接口返回冲突提示，统一通过计费接口写入。
 - 模型需要配置有效的 `context_window_tokens` 和 `max_output_tokens`。代理以管理员确认的模型上下文上界预留、强制输出限制，使用真实 usage 结算；目前仅支持单结果同步调用，不支持 `n > 1`、`best_of > 1` 或后台异步生成。上下文上界错误、缺失用量或实际费用超出预留都会转待核查，不能按估值扣款。
-- 模型调用沿用 `/v1/chat/completions`、`/v1/responses`、`/v1/messages`；MCP 使用 `POST /mcp/connectors/{id}`，密钥作用域为 `mcp:invoke`。集中认证工具成功收费；独立认证、免认证和明确失败不收费。远程 HTTP 返回 JSON/SSE 均可解析。
+- 模型调用沿用 `/v1/chat/completions`、`/v1/responses`、`/v1/messages`；MCP 使用 `POST /mcp/connectors/{id}`，密钥作用域为 `mcp:invoke`。集中认证工具成功收费；独立认证、免认证和明确失败不收费。入口采用无状态 Streamable HTTP，支持握手、通知、工具列表和调用，返回 JSON；上游 JSON/SSE 均可解析。OAuth 调用前自动刷新，每次上游会话结束后清理。详见 [MCP 接入说明](backend/api/README.md#mcp-代理)。
 - 返回的 `X-Billing-Transaction-ID` 关联真实交易；可选 `Idempotency-Key` 重复请求返回原交易 ID 和 409，禁止再次执行；`X-Session-ID` 可选，提供时验证所属用户。
 - 周期采用上海时区；每分钟准备最多 100 个账户，读取或调用时兜底开户。额度变更不重发当期余额；周期切换在当前周期结束时生效。未消费余额不结转，跨周期调用仍结算到原账户。
 - 待结算交易按原交易 ID 自动重试，最多退避一小时；执行中断 30 分钟后转核查，不自动重放上游。管理端可填写证据和用量处理未知结果，已结算本地扣款通过关联冲正全额退款。流水禁止更新或删除。

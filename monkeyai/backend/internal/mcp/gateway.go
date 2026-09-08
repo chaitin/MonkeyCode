@@ -1,15 +1,19 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"mime"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 type KeyAuthenticator interface {
@@ -27,152 +31,210 @@ type InvocationBilling interface {
 }
 
 func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, billing InvocationBilling) {
-	router.Post("/mcp/connectors/{id}", func(w http.ResponseWriter, r *http.Request) {
-		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok {
-			resource.Fail(w, &resource.Error{Status: 401, Code: "invalid_key", Message: "缺少 MCP 调用密钥"})
+	router.HandleFunc("/mcp/connectors/{id}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if origin := r.Header.Get("Origin"); origin != "" {
+			provided, err := url.Parse(origin)
+			public, _ := url.Parse(s.PublicURL)
+			if err != nil || public == nil || provided.User != nil || provided.Path != "" || provided.RawQuery != "" || provided.Fragment != "" || !strings.EqualFold(provided.Scheme, public.Scheme) || !strings.EqualFold(provided.Host, public.Host) {
+				rpcFail(w, nil, &resource.Error{Status: 403, Code: "invalid_origin", Message: "请求来源不被允许"})
+				return
+			}
+		}
+		scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+		if !ok || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp"`)
+			rpcFail(w, nil, &resource.Error{Status: 401, Code: "invalid_key", Message: "缺少 MCP 调用密钥"})
 			return
 		}
 		user, err := keys.Authenticate(r.Context(), strings.TrimSpace(token), "mcp:invoke")
 		if err != nil {
-			resource.Fail(w, &resource.Error{Status: 401, Code: "invalid_key", Message: "MCP 调用密钥无效或权限不足"})
+			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp", error="invalid_token"`)
+			rpcFail(w, nil, &resource.Error{Status: 401, Code: "invalid_key", Message: "MCP 调用密钥无效或权限不足"})
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || media != "application/json" {
+			rpcFail(w, nil, &resource.Error{Status: 415, Code: "invalid_content_type", Message: "请求须使用 application/json"})
+			return
+		}
+		if version := r.Header.Get("MCP-Protocol-Version"); version != "" && !supportedVersion(version) {
+			rpcFail(w, nil, &resource.Error{Status: 400, Code: "unsupported_protocol", Message: "MCP 协议版本不支持"})
+			return
+		}
+		in, ok := readRequest(w, r)
+		if !ok {
 			return
 		}
 		connector, err := s.Connector(r.Context(), s.Store.Pool, chi.URLParam(r, "id"), user, false)
 		if err != nil {
-			resource.Fail(w, err)
+			rpcFail(w, in.ID, err)
 			return
 		}
-		var in struct {
-			Version string          `json:"jsonrpc"`
-			ID      json.RawMessage `json:"id"`
-			Method  string          `json:"method"`
-			Params  json.RawMessage `json:"params"`
-		}
-		if err = resource.Decode(w, r, &in); err != nil {
-			resource.Fail(w, err)
+		if strings.HasPrefix(in.Method, "notifications/") {
+			if len(in.ID) != 0 {
+				rpcReply(w, 400, in.ID, nil, &rpcError{Code: -32600, Message: "通知不能包含请求 ID"})
+				return
+			}
+			w.WriteHeader(http.StatusAccepted)
 			return
 		}
-		if in.Version != "2.0" {
-			resource.Fail(w, resource.Invalid("JSON-RPC 版本无效"))
+		if len(in.ID) == 0 {
+			// 无 ID 的消息不执行工具，也不产生 JSON-RPC 响应。
+			w.WriteHeader(http.StatusAccepted)
 			return
-		}
-		respond := func(result any) {
-			resource.JSON(w, 200, map[string]any{"jsonrpc": "2.0", "id": in.ID, "result": result})
 		}
 		switch in.Method {
 		case "initialize":
-			respond(map[string]any{"protocolVersion": "2025-03-26", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]string{"name": "MonkeyAI", "version": "1"}})
-			return
-		case "notifications/initialized":
-			w.WriteHeader(202)
-			return
+			var params struct {
+				Version string `json:"protocolVersion"`
+			}
+			if json.Unmarshal(in.Params, &params) != nil || params.Version == "" {
+				rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "缺少 MCP 协议版本"})
+				return
+			}
+			if !supportedVersion(params.Version) {
+				params.Version = protocolVersion
+			}
+			rpcReply(w, 200, in.ID, resource.Object{"protocolVersion": params.Version, "capabilities": resource.Object{"tools": resource.Object{}}, "serverInfo": resource.Object{"name": "MonkeyAI", "version": "1"}}, nil)
 		case "ping":
-			respond(map[string]any{})
-			return
+			rpcReply(w, 200, in.ID, resource.Object{}, nil)
+		case "tools/list", "tools/call":
+			s.invoke(w, r, in, connector, user, billing)
+		default:
+			rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32601, Message: "不支持此方法"})
 		}
-		tools, err := s.Tools(r.Context(), s.Store.Pool, connector, user, false)
-		if err != nil {
-			resource.Fail(w, err)
-			return
-		}
-		if in.Method == "tools/list" {
-			out := []map[string]any{}
-			for _, tool := range tools {
-				out = append(out, map[string]any{"name": tool["name"], "description": tool["description"], "inputSchema": tool["input_schema"]})
+	})
+}
+
+func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, connector resource.Object, user string, billing InvocationBilling) {
+	credential, err := s.Credential(r.Context(), s.Store.Pool, connector, user)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = &resource.Error{Status: 403, Code: "authorization_required", Message: "请先完成连接认证"}
+	}
+	if err != nil {
+		rpcFail(w, in.ID, err)
+		return
+	}
+	headers := map[string]string{}
+	if credential != nil {
+		if credential.String("method") == "oauth" {
+			credential, err = s.refresh(r.Context(), connector, credential)
+			if err != nil {
+				rpcFail(w, in.ID, &resource.Error{Status: 403, Code: "authorization_required", Message: "OAuth 已失效，请重新授权"})
+				return
 			}
-			respond(map[string]any{"tools": out})
-			return
-		}
-		if in.Method != "tools/call" {
-			resource.JSON(w, 200, map[string]any{"jsonrpc": "2.0", "id": in.ID, "error": map[string]any{"code": -32601, "message": "不支持此方法"}})
-			return
-		}
-		if len(in.ID) == 0 || string(in.ID) == "null" {
-			resource.Fail(w, resource.Invalid("工具调用必须带请求 ID"))
-			return
-		}
-		var params struct {
-			Name      string         `json:"name"`
-			Arguments map[string]any `json:"arguments"`
-		}
-		if json.Unmarshal(in.Params, &params) != nil || params.Name == "" {
-			resource.Fail(w, resource.Invalid("工具参数无效"))
-			return
-		}
-		var tool resource.Object
-		for _, candidate := range tools {
-			if candidate.String("name") == params.Name {
-				tool = candidate
-				break
-			}
-		}
-		if tool == nil {
-			resource.Fail(w, resource.NotFound)
-			return
-		}
-		credential, err := s.Credential(r.Context(), s.Store.Pool, connector, user)
-		if err != nil {
-			resource.Fail(w, err)
-			return
-		}
-		headers := map[string]string{}
-		if credential != nil {
-			if connector.String("authorization_method") == "oauth" {
-				headers["Authorization"] = "Bearer " + credential.String("oauth_access_token")
-			} else {
-				b, _ := json.Marshal(credential["http_headers"])
-				if err = json.Unmarshal(b, &headers); err != nil {
-					resource.Fail(w, err)
-					return
-				}
-			}
-		}
-		remote, err := openRemote(r.Context(), connector.String("url"), headers)
-		if err != nil {
-			resource.Fail(w, &resource.Error{Status: 502, Code: "mcp_connect_failed", Message: "工具上游连接失败"})
-			return
-		}
-		defer remote.http.CloseIdleConnections()
-		id, err := billing.Begin(r.Context(), Invocation{UserID: user, ConnectorID: connector.String("id"), ToolID: tool.String("id"), SessionID: r.Header.Get("X-Session-ID"), IdempotencyKey: r.Header.Get("Idempotency-Key"), RequestHash: resource.Hash(map[string]any{"connector": connector.String("id"), "params": params})})
-		if err != nil {
-			resource.Fail(w, err)
-			return
-		}
-		if err = billing.Start(r.Context(), id); err != nil {
-			resource.Fail(w, err)
-			return
-		}
-		w.Header().Set("X-Billing-Transaction-ID", id)
-		result, callErr := remote.call(r.Context(), 2, "tools/call", params)
-		outcome := InvocationResult{Known: true, Result: "succeeded"}
-		var rpc *rpcError
-		if callErr != nil {
-			outcome.Result = "failed"
-			outcome.ErrorCode = "mcp_call_failed"
-			outcome.Known = errors.As(callErr, &rpc)
+			headers["Authorization"] = "Bearer " + credential.String("oauth_access_token")
 		} else {
-			var body struct {
-				IsError bool `json:"isError"`
-			}
-			if string(result) == "null" || json.Unmarshal(result, &body) != nil {
-				outcome.Known = false
-				outcome.Result = "failed"
-				outcome.ErrorCode = "mcp_invalid_result"
-			} else if body.IsError {
-				outcome.Result = "failed"
-				outcome.ErrorCode = "mcp_tool_error"
+			body, _ := json.Marshal(credential["http_headers"])
+			if err = json.Unmarshal(body, &headers); err != nil {
+				rpcFail(w, in.ID, err)
+				return
 			}
 		}
+	}
+	tools, err := credentialTools(r.Context(), s.Store.Pool, connector, credential, false)
+	if err != nil {
+		rpcFail(w, in.ID, err)
+		return
+	}
+	if in.Method == "tools/list" {
+		var params struct {
+			Cursor string `json:"cursor"`
+		}
+		if len(in.Params) > 0 && (json.Unmarshal(in.Params, &params) != nil || params.Cursor != "") {
+			rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具目录游标无效"})
+			return
+		}
+		out := []resource.Object{}
+		for _, tool := range tools {
+			out = append(out, resource.Object{"name": tool["name"], "description": tool["description"], "inputSchema": tool["input_schema"]})
+		}
+		rpcReply(w, 200, in.ID, resource.Object{"tools": out}, nil)
+		return
+	}
+	var params map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(in.Params))
+	decoder.UseNumber()
+	err = decoder.Decode(&params)
+	name, _ := params["name"].(string)
+	arguments, hasArguments := params["arguments"]
+	_, objectArguments := arguments.(map[string]any)
+	if err != nil || name == "" || (hasArguments && !objectArguments) {
+		rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具参数无效"})
+		return
+	}
+	var tool resource.Object
+	for _, candidate := range tools {
+		if candidate.String("name") == name {
+			tool = candidate
+			break
+		}
+	}
+	if tool == nil {
+		rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具不存在或未启用"})
+		return
+	}
+	remote, err := openRemote(r.Context(), connector.String("url"), headers)
+	if err != nil {
+		rpcFail(w, in.ID, &resource.Error{Status: 502, Code: "mcp_connect_failed", Message: "工具上游连接失败"})
+		return
+	}
+	defer remote.close()
+	id, err := billing.Begin(r.Context(), Invocation{UserID: user, ConnectorID: connector.String("id"), ToolID: tool.String("id"), SessionID: r.Header.Get("X-Session-ID"), IdempotencyKey: r.Header.Get("Idempotency-Key"), RequestHash: resource.Hash(resource.Object{"connector": connector.String("id"), "params": params, "session_id": r.Header.Get("X-Session-ID")})})
+	if err != nil {
+		rpcFail(w, in.ID, err)
+		return
+	}
+	w.Header().Set("X-Billing-Transaction-ID", id)
+	if err = billing.Start(r.Context(), id); err != nil {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
 		defer cancel()
-		if err = billing.Finish(ctx, id, outcome); err != nil {
+		if billing.Finish(ctx, id, InvocationResult{Known: true, Result: "failed", ErrorCode: "mcp_not_started"}) != nil {
 			w.Header().Set("X-Billing-Status", "pending")
 		}
-		if callErr != nil {
-			resource.JSON(w, 200, map[string]any{"jsonrpc": "2.0", "id": in.ID, "error": map[string]any{"code": -32603, "message": "工具调用失败，可凭交易 ID 查询状态"}})
-			return
+		rpcFail(w, in.ID, err)
+		return
+	}
+	result, callErr := remote.call(r.Context(), 2, "tools/call", in.Params)
+	outcome := InvocationResult{Known: true, Result: "succeeded"}
+	var rpc *rpcError
+	if callErr != nil {
+		outcome.Result = "failed"
+		outcome.ErrorCode = "mcp_call_failed"
+		outcome.Known = errors.As(callErr, &rpc)
+	} else {
+		var body struct {
+			Content []json.RawMessage `json:"content"`
+			IsError bool              `json:"isError"`
 		}
-		respond(result)
-	})
+		if json.Unmarshal(result, &body) != nil || body.Content == nil {
+			outcome.Known = false
+			outcome.Result = "failed"
+			outcome.ErrorCode = "mcp_invalid_result"
+			callErr = errors.New("MCP 工具结果无效")
+		} else if body.IsError {
+			outcome.Result = "failed"
+			outcome.ErrorCode = "mcp_tool_error"
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
+	defer cancel()
+	if err = billing.Finish(ctx, id, outcome); err != nil {
+		w.Header().Set("X-Billing-Status", "pending")
+	}
+	if callErr != nil {
+		code := -32603
+		if rpc != nil {
+			code = rpc.Code
+		}
+		rpcReply(w, 200, in.ID, nil, &rpcError{Code: code, Message: "工具调用失败，可凭交易 ID 查询状态"})
+		return
+	}
+	rpcReply(w, 200, in.ID, result, nil)
 }

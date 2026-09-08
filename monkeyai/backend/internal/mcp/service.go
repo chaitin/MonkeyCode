@@ -297,6 +297,10 @@ func (s *Service) Tools(ctx context.Context, q resource.Queryer, c resource.Obje
 		}
 		return nil, err
 	}
+	return credentialTools(ctx, q, c, cred, admin)
+}
+
+func credentialTools(ctx context.Context, q resource.Queryer, c, cred resource.Object, admin bool) ([]resource.Object, error) {
 	credential := ""
 	if cred != nil {
 		credential = cred.String("id")
@@ -307,7 +311,7 @@ func (s *Service) Tools(ctx context.Context, q resource.Queryer, c resource.Obje
 		}
 		current = record != nil && *record
 
-		if !current {
+		if !current && cred.String("oauth_refresh_token") == "" {
 			return []resource.Object{}, nil
 		}
 	}
