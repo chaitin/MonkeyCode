@@ -212,13 +212,17 @@ func TestBillingIntegration(t *testing.T) {
 	}
 	// MCP 通过真实鉴权、目录和工具执行入口验证成功收费、业务失败不收费。
 	must("POST", "/api/admin/v1/billing/accounts/"+user+"/adjustments", resource.Object{"delta": "100", "reason": "工具测试", "idempotency_key": "adjust-http-2"}, "")
+	var toolCalls atomic.Int64
 	mcpUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			ID     int    `json:"id"`
 			Method string `json:"method"`
 			Params struct {
+				Meta      json.RawMessage `json:"_meta"`
 				Arguments struct {
-					Fail bool `json:"fail"`
+					Fail   bool        `json:"fail"`
+					Format string      `json:"format"`
+					Value  json.Number `json:"value"`
 				} `json:"arguments"`
 			} `json:"params"`
 		}
@@ -233,6 +237,24 @@ func TestBillingIntegration(t *testing.T) {
 		case "tools/list":
 			result = resource.Object{"tools": []resource.Object{{"name": "search", "inputSchema": resource.Object{"type": "object"}}}}
 		case "tools/call":
+			toolCalls.Add(1)
+			if in.Params.Arguments.Value != "" && (in.Params.Arguments.Value != "9007199254740993" || !bytes.Contains(in.Params.Meta, []byte("request-trace"))) {
+				t.Error("代理改变参数精度或丢失元数据")
+			}
+			switch in.Params.Arguments.Format {
+			case "rpc":
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resource.Object{"jsonrpc": "2.0", "id": in.ID, "error": resource.Object{"code": -32602, "message": "private-upstream-error"}})
+				return
+			case "invalid":
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resource.Object{"jsonrpc": "2.0", "id": in.ID, "result": resource.Object{}})
+				return
+			case "sse":
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, "data: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[]}}\n\n")
+				return
+			}
 			result = resource.Object{"content": []resource.Object{{"type": "text", "text": "结果"}}, "isError": in.Params.Arguments.Fail}
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -281,10 +303,50 @@ func TestBillingIntegration(t *testing.T) {
 				t.Fatalf("MCP %s %t: %v", mode, failed, detail)
 			}
 		}
+		if mode == "centralized" {
+			gateway := "/mcp/connectors/" + connector.String("id")
+			request := resource.Object{"jsonrpc": "2.0", "id": "client-call", "method": "tools/call", "params": json.RawMessage(`{"name":"search","arguments":{"value":9007199254740993},"_meta":{"trace":"request-trace"}}`)}
+			code, out, first := call("POST", gateway, request, key, "mcp-once")
+			if code != 200 || out.String("id") != "client-call" || out["result"] == nil {
+				t.Fatalf("工具调用结果错误: %d %v", code, out)
+			}
+			count := toolCalls.Load()
+			request["params"] = json.RawMessage(`{"_meta":{"trace":"request-trace"},"arguments":{"value":9007199254740993},"name":"search"}`)
+			code, duplicateResult, duplicate := call("POST", gateway, request, key, "mcp-once")
+			if code != 409 || toolCalls.Load() != count || duplicate.Get("X-Billing-Transaction-ID") != first.Get("X-Billing-Transaction-ID") {
+				t.Fatal("幂等请求重复调用或丢失交易 ID")
+			}
+			if duplicateResult["error"].(map[string]any)["data"].(map[string]any)["code"] != "request_already_accepted" {
+				t.Fatal("JSON 字段顺序不应引起幂等冲突")
+			}
+			for _, test := range []struct{ format, status, amount string }{{"rpc", "released", "0.000000"}, {"sse", "settled", "2.500000"}, {"invalid", "unknown", "0.000000"}} {
+				request["params"] = resource.Object{"name": "search", "arguments": resource.Object{"format": test.format}}
+				code, out, headers := call("POST", gateway, request, key, "")
+				id := headers.Get("X-Billing-Transaction-ID")
+				if code != 200 || id == "" {
+					t.Fatalf("MCP 结果分类失败: %d %v", code, out)
+				}
+				detail := must("GET", "/api/admin/v1/billing/transactions/"+id, nil, "")
+				if detail.String("status") != test.status || detail.String("amount") != test.amount {
+					t.Fatalf("%s 结算错误: %v", test.format, detail)
+				}
+				encoded, _ := json.Marshal(out)
+				if strings.Contains(string(encoded), "private-upstream-error") {
+					t.Fatal("上游协议错误泄露内部详情")
+				}
+				if test.format == "invalid" && out["error"] == nil {
+					t.Fatal("无效结果被当作成功返回")
+				}
+			}
+		}
+
 	}
 	reconciliation = must("GET", "/api/admin/v1/billing/reconciliation", nil, "")
-	if len(reconciliation["differences"].([]any)) != 0 || reconciliation.Int("total") != 0 {
+	if len(reconciliation["differences"].([]any)) != 0 || reconciliation.Int("total") != 1 {
 		t.Fatalf("MCP 账目不平: %v", reconciliation)
+	}
+	if reconciliation["items"].([]any)[0].(map[string]any)["error_code"] != "mcp_invalid_result" {
+		t.Fatalf("无效结果未保留供核查: %v", reconciliation)
 	}
 	modelStats := must("GET", "/api/admin/v1/statistics/models?range=24h", nil, "")
 	if modelStats["summary"].(map[string]any)["calls"].(float64) == 0 {

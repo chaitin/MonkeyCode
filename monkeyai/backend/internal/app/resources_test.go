@@ -131,6 +131,10 @@ func TestResourceIntegration(t *testing.T) {
 		}
 		users = append(users, id)
 	}
+	invokeKeys := map[string]string{}
+	for _, name := range []string{"a", "b"} {
+		invokeKeys[name] = must("POST", "/api/v1/api-keys", resource.Object{"name": "MCP 测试", "scopes": []string{"mcp:invoke"}}, name, "").String("api_key")
+	}
 	t.Run("用户模型与批量分享", func(t *testing.T) { testModelSharing(t, pool, handler, users) })
 	t.Run("独立资源目录", func(t *testing.T) {
 		for _, kind := range []string{"settings", "models", "rules", "skills", "experts", "connectors"} {
@@ -429,6 +433,71 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	if code, _, _ := call("GET", "/api/v1/connectors/"+conn.String("id")+"/tools", nil, "b", ""); code != 404 {
 		t.Fatalf("工具目录越权: %d", code)
 	}
+	t.Run("MCP 协议与资源授权", func(t *testing.T) {
+		gateway := "/mcp/connectors/" + conn.String("id")
+		for _, version := range []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2099-01-01"} {
+			out := must("POST", gateway, resource.Object{"jsonrpc": "2.0", "id": "init", "method": "initialize", "params": resource.Object{"protocolVersion": version}}, invokeKeys["a"], "")
+			want := version
+			if version == "2099-01-01" {
+				want = "2025-11-25"
+			}
+			if out.String("id") != "init" || out["result"].(map[string]any)["protocolVersion"] != want {
+				t.Fatalf("版本协商错误: %v", out)
+			}
+		}
+		for _, method := range []string{"notifications/initialized", "notifications/cancelled", "tools/call"} {
+			code, out, h := call("POST", gateway, resource.Object{"jsonrpc": "2.0", "method": method}, invokeKeys["a"], "")
+			if code != 202 || len(out) != 0 || h.Get("X-Billing-Transaction-ID") != "" {
+				t.Fatalf("通知不应执行或返回响应: %d %v", code, out)
+			}
+		}
+		in := resource.Object{"jsonrpc": "2.0", "id": "list", "method": "tools/list"}
+		for _, test := range []struct {
+			token  string
+			status int
+		}{{"a", 401}, {invokeKeys["b"], 404}, {"", 401}} {
+			if code, _, _ := call("POST", gateway, in, test.token, ""); code != test.status {
+				t.Fatalf("身份或资源授权失效: %d", code)
+			}
+		}
+		modelKey := must("POST", "/api/v1/api-keys", resource.Object{"name": "模型专用", "scopes": []string{"model:invoke"}}, "a", "").String("api_key")
+		if code, _, _ := call("POST", gateway, in, modelKey, ""); code != 401 {
+			t.Fatal("模型密钥越权调用 MCP")
+		}
+		out := must("POST", gateway, in, invokeKeys["a"], "")
+		if len(out["result"].(map[string]any)["tools"].([]any)) != 1 {
+			t.Fatalf("代理目录缺失: %v", out)
+		}
+		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": false, "credits_per_call": "0"}, "", "")
+		out = must("POST", gateway, in, invokeKeys["a"], "")
+		if len(out["result"].(map[string]any)["tools"].([]any)) != 0 {
+			t.Fatal("禁用工具仍被暴露")
+		}
+		out = must("POST", gateway, resource.Object{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": resource.Object{"name": "ExactTool"}}, invokeKeys["a"], "")
+		if out["error"].(map[string]any)["code"] != float64(-32602) {
+			t.Fatal("禁用工具仍可执行")
+		}
+		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
+		out = must("POST", gateway, resource.Object{"jsonrpc": "2.0", "id": "unknown", "method": "resources/list"}, invokeKeys["a"], "")
+		if out["error"].(map[string]any)["code"] != float64(-32601) {
+			t.Fatal("未支持的方法应返回协议错误")
+		}
+		catalog := must("GET", "/api/v1/connectors", nil, "a", "")
+		entry := catalog["connectors"].([]any)[0].(map[string]any)
+		proxy := entry["mcp_gateway"].(map[string]any)
+		if proxy["url"] != "http://localhost:8080"+gateway || proxy["transport"] != "streamable_http" || proxy["required_scope"] != "mcp:invoke" || len(entry["capabilities"].([]any)) != 2 {
+			t.Fatalf("未下发可执行代理: %v", entry)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE connector_providers SET enabled=false WHERE id=$1`, provider.String("id")); err != nil {
+			t.Fatal(err)
+		}
+		if code, _, _ := call("POST", gateway, in, invokeKeys["a"], ""); code != 404 {
+			t.Fatal("禁用模板仍可代理")
+		}
+		if _, err := pool.Exec(ctx, `UPDATE connector_providers SET enabled=true WHERE id=$1`, provider.String("id")); err != nil {
+			t.Fatal(err)
+		}
+	})
 	allGroup := must("POST", "/api/admin/v1/groups", resource.Object{"name": "资源测试组", "parent_id": nil}, "", "")
 	must("PUT", "/api/admin/v1/groups/"+allGroup.String("id")+"/members", resource.Object{"member_ids": users}, "", "")
 	must("POST", "/api/admin/v1/rules", resource.Object{"name": "强制规则", "content": "强制", "grants": []resource.Object{{"group_id": allGroup.String("id"), "usage_requirement": "required"}}}, "", "")
@@ -450,11 +519,11 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		w.Header().Set("Content-Type", "application/json")
 		switch in.Method {
 		case "initialize":
-			_ = json.NewEncoder(w).Encode(resource.Object{"id": in.ID, "result": resource.Object{"protocolVersion": "2025-03-26"}})
+			_ = json.NewEncoder(w).Encode(resource.Object{"jsonrpc": "2.0", "id": in.ID, "result": resource.Object{"protocolVersion": "2025-03-26"}})
 		case "notifications/initialized":
 			w.WriteHeader(202)
 		case "tools/list":
-			_ = json.NewEncoder(w).Encode(resource.Object{"id": in.ID, "result": resource.Object{"tools": []resource.Object{{"name": r.Header.Get("X-Account"), "description": "Account tool", "inputSchema": resource.Object{"type": "object"}}}}})
+			_ = json.NewEncoder(w).Encode(resource.Object{"jsonrpc": "2.0", "id": in.ID, "result": resource.Object{"tools": []resource.Object{{"name": r.Header.Get("X-Account"), "description": "Account tool", "inputSchema": resource.Object{"type": "object"}}}}})
 		}
 	}))
 	defer independent.Close()
@@ -481,7 +550,18 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			t.Fatal("用户工具目录泄露认证元信息或缺失")
 		}
 	}
+	for _, name := range []string{"a", "b"} {
+		out := must("POST", "/mcp/connectors/"+c2.String("id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys[name], "")
+		tools := out["result"].(map[string]any)["tools"].([]any)
+		if len(tools) != 1 || tools[0].(map[string]any)["name"] != "Tool-"+name {
+			t.Fatal("独立凭证代理目录串用")
+		}
+	}
 	must("DELETE", "/api/v1/connectors/"+c2.String("id")+"/credential", nil, "a", "")
+	if code, _, _ := call("POST", "/mcp/connectors/"+c2.String("id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys["a"], ""); code != 403 {
+		t.Fatal("撤销凭证后代理仍可使用")
+	}
+
 	directory := must("GET", "/api/v1/connectors/"+c2.String("id")+"/tools", nil, "a", "")
 	if len(directory["items"].([]any)) != 0 {
 		t.Fatal("撤销凭证后工具仍可用")
@@ -512,6 +592,28 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	status := must("GET", "/api/admin/v1/connector-authorizations/"+auth.String("id"), nil, "", "")
 	if status.String("status") != "authorized" {
 		t.Fatal("OAuth 状态未落库")
+	}
+	must("POST", "/api/admin/v1/connectors/"+c3.String("id")+"/test", nil, "", "")
+	oauthTools := must("GET", "/api/admin/v1/connectors/"+c3.String("id")+"/tools", nil, "", "")["items"].([]any)
+	oauthTool := resource.Object(oauthTools[0].(map[string]any))
+	must("PATCH", "/api/admin/v1/connectors/"+c3.String("id")+"/tools/"+oauthTool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
+	if _, err := pool.Exec(ctx, `UPDATE connector_credentials SET oauth_access_token='expired-token',oauth_expires_at=now()-interval '1 minute' WHERE connector_id=$1`, c3.String("id")); err != nil {
+		t.Fatal(err)
+	}
+	refreshable := must("GET", "/api/v1/connectors", nil, "a", "")
+	for _, raw := range refreshable["connectors"].([]any) {
+		entry := resource.Object(raw.(map[string]any))
+		if entry.String("id") == c3.String("id") && (entry.String("authorization_status") != "authorized" || len(entry["tools"].([]any)) != 1) {
+			t.Fatal("可自动刷新的 OAuth 凭证不应要求手工重新授权")
+		}
+	}
+	refreshed := must("POST", "/mcp/connectors/"+c3.String("id"), resource.Object{"jsonrpc": "2.0", "id": "oauth", "method": "tools/list"}, invokeKeys["a"], "")
+	if refreshed["result"] == nil {
+		t.Fatalf("OAuth 自动刷新失败: %v", refreshed)
+	}
+	var fresh bool
+	if err := pool.QueryRow(ctx, `SELECT oauth_access_token='private-oauth-token' AND oauth_expires_at>now() FROM connector_credentials WHERE connector_id=$1`, c3.String("id")).Scan(&fresh); err != nil || !fresh {
+		t.Fatalf("刷新凭证未持久化: %v", err)
 	}
 	snap := must("GET", "/api/v1/connectors", nil, "a", "")
 	encoded, _ := json.Marshal(snap)

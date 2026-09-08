@@ -70,7 +70,7 @@ func discover(ctx context.Context, target string, headers map[string]string) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rpc.http.CloseIdleConnections()
+	defer rpc.close()
 	call := func(id int, method string, params any) (json.RawMessage, error) {
 		return rpc.call(ctx, id, method, params)
 	}

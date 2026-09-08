@@ -84,3 +84,38 @@ Agent 模型列表包含 `ownership_type`（固定为 `system` / `user`）及 `o
 已有事务内业务审计继续与变更原子提交，并通过服务端生成的 `request_id` 关联请求；完成时补齐脱敏参数和 HTTP 结果。没有事务审计或事务已回滚时补录请求事件，批量操作保留每个目标的事件。后置补录失败会记录带请求 ID 的服务日志，不改变已返回的业务结果；此机制不能保证数据库不可用或进程在业务提交后崩溃时仍保存补录事件。
 
 请求参数采用字段白名单，密码、密钥、凭证、Header、OAuth Token、URL、内容正文及未知配置默认脱敏。JSON 捕获最多 64 KiB，超限、无效 JSON 和上传文件仅记录省略标记；失败原因只保存标准 HTTP 状态说明。来源 IP 取实际连接地址，不信任任意转发头；部署在反向代理后时显示代理地址。历史记录中未采集的 IP、请求 ID 等字段展示为空。
+
+
+## MCP 代理
+
+`GET /api/v1/connectors` 以及专家清单、资源 resolve 的连接对象包含 `capabilities: [catalog, invoke]` 和 `mcp_gateway`：
+
+```json
+{
+  "url": "https://monkeyai.example/mcp/connectors/<connector-id>",
+  "transport": "streamable_http",
+  "authentication": "api_key",
+  "required_scope": "mcp:invoke"
+}
+```
+
+客户端将每个连接注册为独立的 HTTP MCP Server，使用 `Authorization: Bearer <调用密钥>`；密钥须有 `mcp:invoke` 权限。目录使用 OAuth access token 读取，代理使用调用密钥。连接若为 `authorization_required`，需先通过现有连接认证接口完成 Header/OAuth 认证。配置中不包含上游地址、Header 或 OAuth Token。访问令牌已过期但仍有刷新令牌的 OAuth 连接继续下发目录，由代理自动刷新；缺少刷新能力时要求重新授权。
+
+握手示例：
+
+```http
+POST /mcp/connectors/<connector-id>
+Authorization: Bearer <调用密钥>
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{"jsonrpc":"2.0","id":"init-1","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"agent","version":"1"}}}
+```
+
+随后发送无 ID 的 `notifications/initialized`，再使用 `tools/list` 和 `tools/call`。后续请求携带协商得到的 `MCP-Protocol-Version`。工具名称区分大小写，列表只返回当前用户可调用的启用工具；不接受非空分页游标。调用参数与有效工具结果保留原始数值精度、`_meta` 和 `structuredContent`。
+
+入口为无状态 Streamable HTTP：POST 返回 JSON，通知返回空的 202，GET/DELETE 返回 405；不产生下游 `Mcp-Session-Id`，不提供主动推送、resources、prompts 或 sampling/elicitation。上游支持 HTTP POST 的 JSON/SSE 响应，每次调用独立握手并在结束后发送 DELETE 清理上游会话；不支持旧版 GET SSE 传输、跨调用上游会话状态或本地 stdio 进程。非空 Origin 必须与 `MONKEYAI_PUBLIC_URL` 同源。
+
+工具调用可携带 `X-Session-ID` 关联本人工作会话，或 `Idempotency-Key` 避免重复执行；重复请求返回 409 和原 `X-Billing-Transaction-ID`。集中认证仅成功调用收费，独立认证和免认证只记录调用。JSON-RPC 错误或 `isError=true` 释放预留；超时、断流、无效结果保持未知状态供核查，不自动重放。上游 JSON/SSE 响应限制为 4 MiB，请求体限制为 1 MiB。
+
+协议错误使用 JSON-RPC 数字错误码；权限、额度等业务错误保留 HTTP 状态，并在 `error.data.code` 中提供业务错误码。上游内部错误详情不直接返回，使用 `X-Billing-Transaction-ID` 查询交易。生产 Nginx 和本地 Vite 已将 `/mcp` 转发到后端。

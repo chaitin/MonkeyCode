@@ -49,7 +49,7 @@ func TestDiscoveryPagination(t *testing.T) {
 			}
 			result["tools"] = []resource.Object{{"name": name, "inputSchema": resource.Object{"type": "object"}}}
 		}
-		_ = json.NewEncoder(w).Encode(resource.Object{"id": in.ID, "result": result})
+		_ = json.NewEncoder(w).Encode(resource.Object{"jsonrpc": "2.0", "id": in.ID, "result": result})
 	}))
 	defer s.Close()
 	tools, err := discover(context.Background(), s.URL, nil)

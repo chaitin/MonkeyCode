@@ -498,29 +498,40 @@ paths:
         type: string
         format: uuid
       required: true
+    - in: header
+      name: MCP-Protocol-Version
+      description: 后续请求应携带握手协商的版本；未知版本返回 400。
+      schema:
+        type: string
+        enum: ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']
     post:
-      summary: MCP 执行网关：集中认证成功调用计费
-      responses:
-        '200':
-          description: 请求成功
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  jsonrpc:
-                    const: '2.0'
-                  id: {}
-                  result: {}
-                  error: {}
-        '400':
-          description: 参数不合法
-        '401':
-          description: 未登录
-        '403':
-          description: 权限不足
-        '409':
-          description: 修订号、幂等键或交易状态冲突
+      summary: MCP 工具代理：集中认证成功调用计费
+      description: >-
+        无状态 Streamable HTTP 入口，返回 JSON，支持上游 JSON 和 SSE 响应。
+        Bearer 长期调用密钥必须包含 mcp:invoke；OAuth access token 不可代替调用密钥。
+        initialize 协商协议版本，不支持的版本返回服务端支持的 2025-11-25。
+        工具目录仅包含当前用户可用且启用的工具；调用前刷新 OAuth 凭证。
+        通知返回空的 202，无 ID 的消息不会执行工具。请求不支持批量 JSON-RPC。
+        不创建下游 MCP 会话，不提供服务端推送、resources、prompts 或双向交互。
+        每次工具调用独立建立并清理上游会话，原始参数与有效工具结果保真传递。
+        非空 Origin 必须与服务公开地址同源。客户端应接受 application/json 和 text/event-stream。
+        X-Billing-Transaction-ID 用于查询；X-Billing-Status 为 pending 时结算等待恢复。
+        集中认证工具成功收费，独立认证、免认证、JSON-RPC 错误及 isError=true 不收费。
+        超时、断流和无效结果转入核查，不重放上游；重复幂等键返回 409 和原交易 ID。
+        业务错误使用 JSON-RPC error，data.code 保留业务错误码，data.references 保留交易引用。
+      security:
+      - InvocationKey: []
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+          maxLength: 128
+      - in: header
+        name: X-Session-ID
+        schema:
+          type: string
+          format: uuid
       requestBody:
         required: true
         content:
@@ -530,32 +541,95 @@ paths:
               properties:
                 jsonrpc:
                   const: '2.0'
-                id: {}
+                id:
+                  type: [string, number]
+                  description: 请求必须携带，通知省略；原值随响应返回。
                 method:
-                  enum:
-                  - initialize
-                  - notifications/initialized
-                  - ping
-                  - tools/list
-                  - tools/call
+                  type: string
+                  examples: [initialize, notifications/initialized, ping, tools/list, tools/call]
                 params:
                   type: object
-              required:
-              - jsonrpc
-              - method
-      parameters:
-      - in: header
-        name: Idempotency-Key
-        schema:
-          type: string
-      - in: header
-        name: X-Session-ID
-        schema:
-          type: string
-          format: uuid
+                  description: tools/call 使用精确工具名称 name 和对象 arguments，保留 _meta 等扩展字段；tools/list 返回完整目录，不接受非空 cursor。
+              required: [jsonrpc, method]
+      responses:
+        '200':
+          description: JSON-RPC 结果或协议错误
+          headers:
+            X-Billing-Transaction-ID:
+              schema:
+                type: string
+                format: uuid
+            X-Billing-Status:
+              schema:
+                type: string
+                enum: [pending]
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jsonrpc:
+                    const: '2.0'
+                  id:
+                    type: [string, number, 'null']
+                  result: {}
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: integer
+                      message:
+                        type: string
+                      data: {}
+                    required: [code, message]
+                required: [jsonrpc, id]
+        '202':
+          description: 已接收通知，响应体为空
+        '400':
+          description: 请求格式、参数或协议版本不合法
+        '401':
+          description: 调用密钥缺失、失效或没有 mcp:invoke 作用域
+        '402':
+          description: 积分不足
+        '403':
+          description: 请求来源、用户、会话或连接认证不允许调用
+        '404':
+          description: 连接不存在、已禁用或未获授权
+        '409':
+          description: 幂等键或交易状态冲突，不重复执行工具
+          headers:
+            X-Billing-Transaction-ID:
+              schema:
+                type: string
+                format: uuid
+        '413':
+          description: 请求体超过 1 MiB
+        '415':
+          description: 请求类型必须为 application/json
+        '502':
+          description: 上游连接或握手失败
+    get:
+      summary: 此无状态入口不提供 SSE 订阅
       security:
       - InvocationKey: []
-      description: Bearer 长期调用密钥必须包含 mcp:invoke。响应 X-Billing-Transaction-ID 用于查询。结果不确定保持冻结，不自动重放上游。
+      responses:
+        '405':
+          description: 不支持此方法，Allow 为 POST
+        '401':
+          description: 调用密钥无效
+        '403':
+          description: 请求来源不允许
+    delete:
+      summary: 此无状态入口不维护下游 MCP 会话
+      security:
+      - InvocationKey: []
+      responses:
+        '405':
+          description: 不支持此方法，Allow 为 POST
+        '401':
+          description: 调用密钥无效
+        '403':
+          description: 请求来源不允许
   /api/v1/users:
     get:
       summary: 按用户名或邮箱查找分享接收用户
@@ -2363,6 +2437,21 @@ components:
             type: string
             enum:
             - catalog
+            - invoke
+        mcp_gateway:
+          type: object
+          description: 当前连接的 MCP 工具代理配置，不含上游地址或凭证；调用前仍需完成 authorization_status 要求的认证。
+          properties:
+            url:
+              type: string
+              format: uri
+            transport:
+              const: streamable_http
+            authentication:
+              const: api_key
+            required_scope:
+              const: mcp:invoke
+          required: [url, transport, authentication, required_scope]
         tools:
           type: array
           items:
@@ -2377,6 +2466,7 @@ components:
       - name
       - authorization_status
       - capabilities
+      - mcp_gateway
       - tools
     AgentExpert:
       type: object

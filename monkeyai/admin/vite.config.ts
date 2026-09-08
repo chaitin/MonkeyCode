@@ -10,6 +10,7 @@ export default defineConfig({
     proxy: {
       "/api": process.env.MONKEYAI_DEV_BACKEND_URL ?? "http://localhost:8080",
       "/oauth": process.env.MONKEYAI_DEV_BACKEND_URL ?? "http://localhost:8080",
+      "/mcp": process.env.MONKEYAI_DEV_BACKEND_URL ?? "http://localhost:8080",
     },
   },
   resolve: {
