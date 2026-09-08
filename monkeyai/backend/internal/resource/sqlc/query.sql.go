@@ -12,10 +12,10 @@ import (
 )
 
 const createGrant = `-- name: CreateGrant :execresult
-INSERT INTO resource_access_grants (resource_type, resource_id, user_id, group_id, access_level, usage_requirement,
+INSERT INTO resource_access_grants (resource_type, resource_id, user_id, group_id, all_users, access_level, usage_requirement,
     granted_by_user_id)
     VALUES ($1, $2, NULLIF ($3::text,
-	'')::UUID,NULLIF($4::text,'')::uuid, 'read_only', $5, $6)
+	'')::UUID,NULLIF($4::text,'')::uuid, $5, 'read_only', $6, $7)
 `
 
 type CreateGrantParams struct {
@@ -23,6 +23,7 @@ type CreateGrantParams struct {
 	ResourceID       string
 	UserID           string
 	GroupID          string
+	AllUsers         bool
 	UsageRequirement string
 	GrantedByUserID  string
 }
@@ -33,6 +34,7 @@ func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (pgcon
 		arg.ResourceID,
 		arg.UserID,
 		arg.GroupID,
+		arg.AllUsers,
 		arg.UsageRequirement,
 		arg.GrantedByUserID,
 	)
@@ -160,7 +162,7 @@ WITH RECURSIVE user_groups (
             FROM
                 group_users
             WHERE
-                user_id = $1
+                user_id = $3
                 AND removed_at IS NULL)
         UNION
         SELECT
@@ -180,9 +182,12 @@ SELECT
         FROM
             resource_access_grants rag
         WHERE
-            rag.resource_type = $2
-            AND rag.resource_id = $3
-            AND (rag.user_id = $1
+            rag.resource_type = $1
+            AND rag.resource_id = $2
+            AND ((rag.all_users AND EXISTS (
+                    SELECT 1 FROM users u WHERE u.id = $3 AND u.status = 'active' AND u.deleted_at IS NULL
+                ))
+                OR rag.user_id = $3
                 OR rag.group_id IN (
                     SELECT
                         group_id
@@ -191,13 +196,13 @@ SELECT
 `
 
 type HasAccessParams struct {
-	UserID       *string
 	ResourceType string
 	ResourceID   string
+	UserID       *string
 }
 
 func (q *Queries) HasAccess(ctx context.Context, arg HasAccessParams) (bool, error) {
-	row := q.db.QueryRow(ctx, hasAccess, arg.UserID, arg.ResourceType, arg.ResourceID)
+	row := q.db.QueryRow(ctx, hasAccess, arg.ResourceType, arg.ResourceID, arg.UserID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -205,7 +210,7 @@ func (q *Queries) HasAccess(ctx context.Context, arg HasAccessParams) (bool, err
 
 const listGrants = `-- name: ListGrants :many
 SELECT
-    jsonb_build_object('user_id', user_id, 'group_id', group_id, 'usage_requirement', usage_requirement)
+    jsonb_build_object('user_id', user_id, 'group_id', group_id, 'all_users', all_users, 'usage_requirement', usage_requirement)
 FROM
     resource_access_grants
 WHERE

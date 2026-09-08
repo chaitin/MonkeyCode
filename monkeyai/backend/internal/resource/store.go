@@ -130,9 +130,10 @@ func Grants(ctx context.Context, q Queryer, kind, id string) ([]Object, error) {
 func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any, personal bool) error {
 	b, _ := json.Marshal(raw)
 	var grants []struct {
-		UserID  string `json:"user_id"`
-		GroupID string `json:"group_id"`
-		Usage   string `json:"usage_requirement"`
+		UserID   string `json:"user_id"`
+		GroupID  string `json:"group_id"`
+		AllUsers bool   `json:"all_users"`
+		Usage    string `json:"usage_requirement"`
 	}
 	if err := json.Unmarshal(b, &grants); err != nil {
 		return Invalid("授权格式无效")
@@ -141,8 +142,12 @@ func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any,
 		return err
 	}
 	for _, g := range grants {
-		if (g.UserID == "") == (g.GroupID == "") {
-			return Invalid("每条授权必须指定一个用户或分组")
+		if g.AllUsers {
+			if personal || g.UserID != "" || g.GroupID != "" {
+				return Invalid("全员授权仅用于系统资源，且不能同时指定用户或分组")
+			}
+		} else if (g.UserID == "") == (g.GroupID == "") {
+			return Invalid("每条授权必须指定一个用户、分组或全体用户")
 		}
 		if g.Usage == "" {
 			g.Usage = "optional"
@@ -151,19 +156,21 @@ func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any,
 			return Invalid("仅系统规则可以强制应用")
 		}
 
-		exists, err := sqlc.New(tx).SubjectExists(ctx, sqlc.SubjectExistsParams{UserID: g.UserID, GroupID: g.GroupID})
-
-		if err != nil {
-			return err
-		}
-		if !exists {
-			return Invalid("授权对象不存在")
+		if !g.AllUsers {
+			exists, err := sqlc.New(tx).SubjectExists(ctx, sqlc.SubjectExistsParams{UserID: g.UserID, GroupID: g.GroupID})
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return Invalid("授权对象不存在")
+			}
 		}
 		if _, err := sqlc.New(tx).CreateGrant(ctx, sqlc.CreateGrantParams{
 			ResourceType:     kind,
 			ResourceID:       id,
 			UserID:           g.UserID,
 			GroupID:          g.GroupID,
+			AllUsers:         g.AllUsers,
 			UsageRequirement: g.Usage,
 			GrantedByUserID:  actor,
 		}); err != nil {

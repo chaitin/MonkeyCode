@@ -557,6 +557,83 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		t.Fatal("仍继承已删除分组的授权")
 	}
 
+	t.Run("全员授权保存回显下发与撤销", func(t *testing.T) {
+		all := []resource.Object{{"all_users": true, "usage_requirement": "optional"}}
+		item := must("POST", "/api/admin/v1/rules", resource.Object{"name": "全员规则", "content": "全员规则正文", "grants": all}, "", "")
+		id := item.String("id")
+		path := "/api/admin/v1/resources/rule/" + id + "/grants"
+		stored := must("GET", path, nil, "", "")
+		storedGrants := stored["grants"].([]any)
+		if len(storedGrants) != 1 {
+			t.Fatalf("全员授权记录数量错误: %v", stored)
+		}
+		grant := resource.Object(storedGrants[0].(map[string]any))
+		if !grant.Bool("all_users") || grant["user_id"] != nil || grant["group_id"] != nil {
+			t.Fatalf("全员授权不应引用用户或虚拟分组: %v", grant)
+		}
+		for _, token := range []string{"a", "b"} {
+			if !hasRule(token, id) {
+				t.Fatal("已有用户未获得全员规则")
+			}
+		}
+		newUser := resource.ID()
+		if _, err := pool.Exec(ctx, `INSERT INTO users(id,name,email) VALUES($1,'新成员','all-users-new@example.com')`, newUser); err != nil {
+			t.Fatal(err)
+		}
+		hash := sha256.Sum256([]byte("all-users-new"))
+		if _, err := pool.Exec(ctx, `INSERT INTO oauth_tokens(user_id,client_id,access_token_hash,refresh_token_hash,access_expires_at,refresh_expires_at) VALUES($1,'test',$2,'all-users-new',now()+interval '1 hour',now()+interval '2 hours')`, newUser, hex.EncodeToString(hash[:])); err != nil {
+			t.Fatal(err)
+		}
+		if !hasRule("all-users-new", id) {
+			t.Fatal("新增且未分组的用户未获得全员规则")
+		}
+		allowed, err := resource.Allowed(ctx, pool, "rule", id, newUser)
+		if err != nil || !allowed {
+			t.Fatalf("直接资源访问未识别全员授权: %v", err)
+		}
+		allowed, err = resource.Allowed(ctx, pool, "rule", id, resource.ID())
+		if err != nil || allowed {
+			t.Fatalf("全员授权不应覆盖不存在的用户: %v", err)
+		}
+		for _, invalid := range []resource.Object{
+			{"all_users": true, "user_id": users[0]},
+			{"all_users": true, "group_id": childID},
+			{"all_users": false},
+		} {
+			code, _, _ := call("PUT", path, resource.Object{"grants": []resource.Object{invalid}}, "", `"1"`)
+			if code != 400 || !hasRule("all-users-new", id) {
+				t.Fatalf("无效授权未拒绝或破坏了原授权: %d", code)
+			}
+		}
+		must("PUT", path, resource.Object{"grants": []resource.Object{
+			{"all_users": true, "usage_requirement": "optional"},
+			{"user_id": users[0], "usage_requirement": "required"},
+		}}, "", `"1"`)
+		for _, token := range []string{"a", "all-users-new"} {
+			result := must("GET", "/api/v1/rules", nil, token, "")
+			for _, raw := range result["rules"].([]any) {
+				rule := resource.Object(raw.(map[string]any))
+				if rule.String("id") == id && rule.Bool("required") != (token == "a") {
+					t.Fatalf("全员可用和部分用户强制的范围混淆: %v", rule)
+				}
+			}
+		}
+		must("PUT", path, resource.Object{"grants": []resource.Object{{"all_users": true, "usage_requirement": "required"}}}, "", `"2"`)
+		resolved := must("POST", "/api/v1/resources/resolve", resource.Object{}, "all-users-new", "")
+		if len(resolved["rules"].([]any)) != 1 || resolved["rules"].([]any)[0].(map[string]any)["id"] != id {
+			t.Fatalf("新增用户未获得全员强制规则: %v", resolved)
+		}
+		must("PUT", path, resource.Object{"grants": []any{}}, "", `"3"`)
+		if hasRule("a", id) || hasRule("all-users-new", id) {
+			t.Fatal("撤销全员授权后仍下发规则")
+		}
+		allowed, err = resource.Allowed(ctx, pool, "rule", id, newUser)
+		if err != nil || allowed {
+			t.Fatalf("直接资源访问未撤销: %v", err)
+		}
+		must("DELETE", "/api/admin/v1/rules/"+id, nil, "", `"4"`)
+	})
+
 	// 虚拟根的数据转换不可逆；可丢弃测试库从初始结构重建。
 	for i := len(migrations) - 1; i >= 0; i-- {
 		if filepath.Base(migrations[i]) == "000003_group_virtual_root.up.sql" {

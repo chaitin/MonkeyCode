@@ -132,4 +132,56 @@ func TestResolveModelName(t *testing.T) {
 			t.Fatalf("下发模型无法解析: %+v, %v", entry, err)
 		}
 	}
+	t.Run("全员授权覆盖新增用户并可撤销", func(t *testing.T) {
+		input := validInput()
+		input.ModelID = "all-users-model"
+		input.Authorization = Authorization{AllUsers: true}
+		service := NewService(repo)
+		item, err := service.Create(ctx, admin, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, err := repo.Get(ctx, item.ID)
+		if err != nil || !stored.Authorization.AllUsers || len(stored.Authorization.GroupIDs)+len(stored.Authorization.UserIDs) != 0 {
+			t.Fatalf("全员授权回读错误: %+v, %v", stored.Authorization, err)
+		}
+		newUser := resource.ID()
+		exec(`INSERT INTO users(id,name,email) VALUES($1,'新增用户','new@example.com')`, newUser)
+		for _, person := range []string{user, newUser} {
+			resolved, err := repo.Resolve(ctx, person, item.ID)
+			if err != nil || resolved.ID != item.ID {
+				t.Fatalf("用户未获得全员模型授权: %s, %v", person, err)
+			}
+			available, err := repo.ListAvailable(ctx, person, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, model := range available {
+				found = found || model.ID == item.ID
+			}
+			if !found {
+				t.Fatal("全员模型未出现在可用列表")
+			}
+		}
+		exec(`UPDATE users SET status='disabled',disabled_at=now() WHERE id=$1`, newUser)
+		if _, err := repo.Resolve(ctx, newUser, item.ID); !errors.Is(err, ErrUnauthorized) {
+			t.Fatalf("停用用户仍获得全员授权: %v", err)
+		}
+		exec(`UPDATE users SET status='active',disabled_at=NULL WHERE id=$1`, newUser)
+		input.Authorization = Authorization{UserIDs: []string{user}}
+		if _, err := service.Update(ctx, item.ID, admin, input); err != nil {
+			t.Fatal(err)
+		}
+		stored, err = repo.Get(ctx, item.ID)
+		if err != nil || stored.Authorization.AllUsers {
+			t.Fatalf("撤销后仍回显全员授权: %+v, %v", stored.Authorization, err)
+		}
+		if _, err := repo.Resolve(ctx, newUser, item.ID); !errors.Is(err, ErrUnauthorized) {
+			t.Fatalf("全员授权撤销未生效: %v", err)
+		}
+		if _, err := repo.Resolve(ctx, user, item.ID); err != nil {
+			t.Fatalf("显式用户授权受影响: %v", err)
+		}
+	})
 }

@@ -16,6 +16,7 @@ export type AuthorizationMember = {
 }
 
 export type AuthorizationSelection = {
+  allUsers?: boolean
   groupIds: AuthorizationGroup[]
   memberIds: string[]
 }
@@ -230,6 +231,9 @@ export function getAuthorizationNames(
   groups = AUTHORIZATION_GROUPS,
   members = AUTHORIZATION_MEMBERS
 ) {
+  if (authorization.allUsers) {
+    return t("pages.membersAndGroups.groupNames.rootGroup")
+  }
   const groupNames = authorization.groupIds.map((groupId) => {
     const group = groups.find((item) => item.value === groupId)
 

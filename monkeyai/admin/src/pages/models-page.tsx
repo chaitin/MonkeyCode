@@ -112,6 +112,7 @@ type ApiModel = {
   }
   credit_multiplier: number
   authorization: {
+    all_users?: boolean
     user_ids: string[] | null
     group_ids: string[] | null
   }
@@ -138,6 +139,7 @@ function fromApiModel(model: ApiModel): Model {
     apiKeyConfigured: model.api_key_configured,
     multiplier: model.credit_multiplier,
     authorization: {
+      allUsers: model.authorization.all_users ?? false,
       groupIds: model.authorization.group_ids ?? [],
       memberIds: model.authorization.user_ids ?? [],
     },
@@ -309,7 +311,8 @@ export function ModelsPage() {
       (!apiKey && !editingModel?.apiKeyConfigured) ||
       !Number.isFinite(multiplier) ||
       multiplier <= 0 ||
-      authorization.groupIds.length + authorization.memberIds.length === 0 ||
+      (!authorization.allUsers &&
+        authorization.groupIds.length + authorization.memberIds.length === 0) ||
       editingModel?.type === "user"
     ) {
       return
@@ -331,8 +334,9 @@ export function ModelsPage() {
         },
         credit_multiplier: multiplier,
         authorization: {
-          group_ids: authorization.groupIds,
-          user_ids: authorization.memberIds,
+          all_users: authorization.allUsers ?? false,
+          group_ids: authorization.allUsers ? [] : authorization.groupIds,
+          user_ids: authorization.allUsers ? [] : authorization.memberIds,
         },
       }
       const saved = await api<ApiModel>(

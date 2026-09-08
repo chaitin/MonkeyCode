@@ -6,6 +6,7 @@ import type {
   AuthorizationMember,
 } from "@/lib/authorization-groups"
 export type Grant = {
+  all_users?: boolean
   user_id?: string | null
   group_id?: string | null
   usage_requirement: "optional" | "required"
@@ -56,6 +57,7 @@ export function selection(
       (g.usage_requirement === "required") === required
   )
   return {
+    allUsers: gs.some((g) => g.all_users),
     groupIds: gs.flatMap((g) => (g.group_id ? [g.group_id] : [])),
     memberIds: gs.flatMap((g) => (g.user_id ? [g.user_id] : [])),
   }
@@ -64,6 +66,14 @@ export function grants(
   value: AuthorizationSelection,
   required = false
 ): Grant[] {
+  if (value.allUsers) {
+    return [
+      {
+        all_users: true,
+        usage_requirement: required ? "required" : "optional",
+      },
+    ]
+  }
   return [
     ...value.groupIds.map((group_id) => ({
       group_id,

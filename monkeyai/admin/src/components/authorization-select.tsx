@@ -27,6 +27,8 @@ import {
 } from "@/lib/authorization-groups"
 import { cn } from "@/lib/utils"
 
+const ROOT_ID = "authorization-root"
+
 function getGroupAndDescendantIds(
   group: AuthorizationGroupNode
 ): AuthorizationGroup[] {
@@ -58,14 +60,14 @@ export function AuthorizationSelect({
   members?: typeof AUTHORIZATION_MEMBERS
 }) {
   const { t } = useTranslation()
-  const summary = getAuthorizationNames(
-    value,
-    t,
-    flattenGroups(groups),
-    members
-  )
+  const flatGroups = flattenGroups(groups)
+  const summary = getAuthorizationNames(value, t, flatGroups, members)
 
   const setGroupChecked = (group: AuthorizationGroupNode, checked: boolean) => {
+    if (group.value === ROOT_ID) {
+      onValueChange({ allUsers: checked, groupIds: [], memberIds: [] })
+      return
+    }
     if (!checked) {
       onValueChange({
         ...value,
@@ -104,11 +106,16 @@ export function AuthorizationSelect({
     level = 0,
     inherited = false
   ): ReactNode => {
-    const selected = value.groupIds.includes(group.value)
+    const isRoot = group.value === ROOT_ID
+    const selected = isRoot
+      ? !!value.allUsers
+      : value.groupIds.includes(group.value)
     const effectivelySelected = inherited || selected
     const subtreeGroupIds = new Set(getGroupAndDescendantIds(group))
     const subtreeMemberIds = new Set(
-      getMemberIdsInGroupTreeFromMembers(group, members)
+      isRoot
+        ? members.map((member) => member.id)
+        : getMemberIdsInGroupTreeFromMembers(group, members)
     )
     const partiallySelected =
       !effectivelySelected &&
@@ -116,8 +123,10 @@ export function AuthorizationSelect({
         (groupId) => groupId !== group.value && subtreeGroupIds.has(groupId)
       ) ||
         value.memberIds.some((memberId) => subtreeMemberIds.has(memberId)))
-    const directMembers = members.filter(
-      (member) => member.groupId === group.value
+    const directMembers = members.filter((member) =>
+      isRoot
+        ? !flatGroups.some((node) => node.value === member.groupId)
+        : member.groupId === group.value
     )
     const groupCheckboxId = `${id}-group-${group.value}`
 
@@ -218,41 +227,11 @@ export function AuthorizationSelect({
           <PopoverTitle>{title}</PopoverTitle>
         </PopoverHeader>
         <div role="tree">
-          {groups.map((group) => renderGroup(group))}
-          {members
-            .filter(
-              (member) =>
-                !flattenGroups(groups).some(
-                  (group) => group.value === member.groupId
-                )
-            )
-            .map((member) => {
-              const memberCheckboxId = `${id}-member-${member.id}`
-              return (
-                <label
-                  className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted"
-                  htmlFor={memberCheckboxId}
-                  key={member.id}
-                >
-                  <Checkbox
-                    checked={value.memberIds.includes(member.id)}
-                    id={memberCheckboxId}
-                    onCheckedChange={(checked) =>
-                      setMemberChecked(member.id, checked)
-                    }
-                  />
-                  <HugeiconsIcon
-                    className="size-4 shrink-0 text-muted-foreground"
-                    icon={User02Icon}
-                    strokeWidth={2}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{member.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {member.email}
-                  </span>
-                </label>
-              )
-            })}
+          {renderGroup({
+            value: ROOT_ID,
+            labelKey: "pages.membersAndGroups.groupNames.rootGroup",
+            children: groups,
+          })}
         </div>
       </PopoverContent>
     </Popover>

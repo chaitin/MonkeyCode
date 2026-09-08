@@ -92,6 +92,15 @@ func TestModelValidation(t *testing.T) {
 	}
 }
 
+func TestCreateModelAllUsers(t *testing.T) {
+	input := validInput()
+	input.Authorization = Authorization{AllUsers: true}
+	item, err := NewService(&repositoryStub{}).Create(t.Context(), "admin-1", input)
+	if err != nil || !item.Authorization.AllUsers {
+		t.Fatalf("全员授权未保留: %+v, %v", item.Authorization, err)
+	}
+}
+
 type keyAuthenticatorStub struct {
 	userID string
 	err    error
