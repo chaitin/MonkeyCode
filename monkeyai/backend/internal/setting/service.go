@@ -167,6 +167,7 @@ func redact(key string, value json.RawMessage) (json.RawMessage, error) {
 		delete(object, "smtp_password")
 	case "billing":
 		delete(object, "remote_billing_api_key")
+		delete(object, "wallet")
 	}
 	return json.Marshal(object)
 }

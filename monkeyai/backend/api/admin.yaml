@@ -736,7 +736,7 @@ paths:
           $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/billing/settings:
     get:
-      summary: 读取计费策略与远程连接状态
+      summary: 读取计费策略与远程连接状态（不返回证书或私钥）
       responses:
         '200':
           description: 请求成功
@@ -756,10 +756,22 @@ paths:
                     format: date-time
         '400':
           description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: 未登录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: 修订号、幂等键或交易状态冲突
   /api/admin/v1/billing/settings/{section}:
@@ -771,9 +783,11 @@ paths:
         - pricing
         - cycle
         - mode
+        - wallet
       required: true
     patch:
-      summary: 独立保存计价、周期或模式配置
+      summary: 独立保存计价、周期、模式或百智云连接配置
+      description: wallet 配置保存后无需重启，各实例在下次使用时读取。证书和私钥省略或留空时保留原值。首次保存必须提供全部证书。客户端证书与私钥须匹配且处于有效期，私钥须为 PKCS#8 ECDSA 格式。CA 须为有效的 CA 证书。环境或应用 ID 变更不能影响未完成的远程交易。校验仅在本地执行，不代表远程网络或账户权限验证成功。
       responses:
         '200':
           description: 请求成功
@@ -793,12 +807,34 @@ paths:
                     format: date-time
         '400':
           description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: 未登录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: 修订号、幂等键或交易状态冲突
+          description: 修订号冲突，或未完成远程交易阻止环境或应用 ID 变更
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: 启用远程模式前须先配置有效证书
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       requestBody:
         required: true
         content:
@@ -846,6 +882,7 @@ paths:
                 - revision
                 - charging_mode
                 - enabled
+              - $ref: '#/components/schemas/BillingWalletInput'
   /api/admin/v1/billing/quotas:
     get:
       summary: 读取真实分组、成员额度与继承来源
@@ -4740,22 +4777,71 @@ components:
       - enabled
       - charging_mode
       - quota_refresh_cycle
+    BillingWalletInput:
+      type: object
+      additionalProperties: false
+      required:
+      - revision
+      - environment
+      - app_id
+      properties:
+        revision:
+          type: integer
+          description: 当前计费策略修订号；保存连接配置会递增该修订号。
+        environment:
+          type: string
+          enum: [dev, prod]
+          description: 百智云测试或生产环境。
+        app_id:
+          type: integer
+          minimum: 1
+          maximum: 999
+          description: 所选环境对应的百智云应用 ID。
+        certificate:
+          type: string
+          maxLength: 65536
+          writeOnly: true
+          description: 客户端证书 PEM 内容，首次配置必填，省略或空字符串保留已保存值。
+        private_key:
+          type: string
+          maxLength: 65536
+          writeOnly: true
+          description: PKCS#8 ECDSA 私钥 PEM 内容，首次配置必填，省略或空字符串保留已保存值；不回显、不写入审计明文。
+        ca_certificate:
+          type: string
+          maxLength: 65536
+          writeOnly: true
+          description: 服务端根 CA 证书 PEM 内容，首次配置必填，省略或空字符串保留已保存值。
     BillingWalletInfo:
       type: object
+      description: 仅返回连接元信息；configured 表示本地证书校验通过，不代表远程网络连通或账户授权成功。
       properties:
         configured:
           type: boolean
+        credentials_configured:
+          type: boolean
+          description: 是否已有完整证书和私钥；为 true 时更新配置可以省略对应文件。
         environment:
           enum:
           - dev
           - prod
         app_id:
           type: integer
+          minimum: 1
+          maximum: 999
         certificate_expires_at:
           type: string
           format: date-time
+        source:
+          type: string
+          enum: [admin, environment]
+          description: 当前使用后台保存的配置或部署环境配置；后台配置优先。
+        error:
+          type: string
+          description: 配置无效或证书过期时的提示，不包含凭证原文。
       required:
       - configured
+      - credentials_configured
     CreditAccount:
       type: object
       properties:

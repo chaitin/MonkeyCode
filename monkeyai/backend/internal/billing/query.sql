@@ -2,9 +2,13 @@
 UPDATE
     settings
 SET
-    value = $1,
-    revision = $2,
-    updated_by_user_id = $3,
+    value = sqlc.arg(value)::jsonb || CASE WHEN value ? 'wallet' THEN
+        jsonb_build_object('wallet', value -> 'wallet')
+    ELSE
+        '{}'::jsonb
+    END,
+    revision = sqlc.arg(revision),
+    updated_by_user_id = sqlc.arg(updated_by_user_id),
     updated_at = now()
 WHERE
     KEY = 'billing';
@@ -1084,12 +1088,14 @@ ON CONFLICT (user_id)
         updated_by_user_id = EXCLUDED.updated_by_user_id;
 
 -- name: GetPolicy :one
+-- 预留事务持有共享锁，避免连接切换漏查尚未提交的远程交易。
 SELECT
     *
 FROM
     settings
 WHERE
-    KEY = 'billing';
+    KEY = 'billing'
+FOR SHARE;
 
 -- name: LockPolicy :one
 SELECT
@@ -1099,3 +1105,17 @@ FROM
 WHERE
     KEY = 'billing'
 FOR UPDATE;
+
+-- name: SaveWalletConfig :execresult
+UPDATE settings
+SET value = jsonb_set(value, '{wallet}', $1::jsonb)
+WHERE key = 'billing';
+
+-- name: HasOtherWalletTransactions :one
+SELECT EXISTS (
+    SELECT 1
+    FROM wallet_billing_records w
+    JOIN billing_transactions t ON t.id = w.transaction_id
+    WHERE t.status NOT IN ('settled', 'released', 'rejected')
+        AND (w.environment <> $1 OR w.app_id <> $2)
+);

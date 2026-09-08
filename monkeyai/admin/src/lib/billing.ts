@@ -11,6 +11,9 @@ export type Policy = {
 }
 export type WalletInfo = {
   configured: boolean
+  credentials_configured: boolean
+  source?: "admin" | "environment"
+  error?: string
   environment?: string
   app_id?: number
   certificate_expires_at?: string

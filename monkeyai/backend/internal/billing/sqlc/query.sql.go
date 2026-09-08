@@ -715,8 +715,10 @@ FROM
     settings
 WHERE
     KEY = 'billing'
+FOR SHARE
 `
 
+// 预留事务持有共享锁，避免连接切换漏查尚未提交的远程交易。
 func (q *Queries) GetPolicy(ctx context.Context) (Setting, error) {
 	row := q.db.QueryRow(ctx, getPolicy)
 	var i Setting
@@ -789,6 +791,28 @@ SELECT
 
 func (q *Queries) HasExceededReservation(ctx context.Context, userID string) (bool, error) {
 	row := q.db.QueryRow(ctx, hasExceededReservation, userID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const hasOtherWalletTransactions = `-- name: HasOtherWalletTransactions :one
+SELECT EXISTS (
+    SELECT 1
+    FROM wallet_billing_records w
+    JOIN billing_transactions t ON t.id = w.transaction_id
+    WHERE t.status NOT IN ('settled', 'released', 'rejected')
+        AND (w.environment <> $1 OR w.app_id <> $2)
+)
+`
+
+type HasOtherWalletTransactionsParams struct {
+	Environment string
+	AppID       int32
+}
+
+func (q *Queries) HasOtherWalletTransactions(ctx context.Context, arg HasOtherWalletTransactionsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasOtherWalletTransactions, arg.Environment, arg.AppID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -1521,7 +1545,11 @@ const savePolicy = `-- name: SavePolicy :execresult
 UPDATE
     settings
 SET
-    value = $1,
+    value = $1::jsonb || CASE WHEN value ? 'wallet' THEN
+        jsonb_build_object('wallet', value -> 'wallet')
+    ELSE
+        '{}'::jsonb
+    END,
     revision = $2,
     updated_by_user_id = $3,
     updated_at = now()
@@ -1581,6 +1609,16 @@ func (q *Queries) SaveUsage(ctx context.Context, arg SaveUsageParams) (pgconn.Co
 		arg.RequestID,
 		arg.CompletedAt,
 	)
+}
+
+const saveWalletConfig = `-- name: SaveWalletConfig :execresult
+UPDATE settings
+SET value = jsonb_set(value, '{wallet}', $1::jsonb)
+WHERE key = 'billing'
+`
+
+func (q *Queries) SaveWalletConfig(ctx context.Context, dollar_1 []byte) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, saveWalletConfig, dollar_1)
 }
 
 const scheduleRetry = `-- name: ScheduleRetry :execresult

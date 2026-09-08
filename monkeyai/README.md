@@ -110,7 +110,11 @@ Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rul
 
 ### 百智云钱包
 
-应用使用 `opensdk v1.14.2`。在服务端显式设置 `BAIZHIYUN_ENV`、`BAIZHIYUN_APP_ID`、`MONKEYAI_WALLET_CERT_DIR`，证书目录包含 `app.crt`、`app.key`、`ca.crt`。未设置环境时不初始化远程客户端，管理端不能启用远程模式。密钥不通过后台表单输入。
+应用使用 `opensdk v1.14.2`。在后台「计费设置」选择「远程计费（百智云）」，填写测试或生产环境、对应的应用 ID（1–999），上传客户端证书 `app.crt`、客户端私钥 `app.key` 和服务端 CA 证书 `ca.crt`，再点击「保存连接配置」。三份文件均为 PEM 格式，私钥须为 PKCS#8 ECDSA 格式，每份最多 64 KiB。保存时检查证书有效期、CA 用途和证书与私钥的匹配关系，不发起真实扣款。保存连接后，再保存计费方式并启用实际扣费。
+
+连接配置保存在数据库 `settings.billing.wallet`，保存后无需重启，其他实例在下次使用时读取最新配置。更新时未上传的文件保留原值；证书和私钥不通过管理/Agent 查询接口回显，审计仅记录脱敏信息。数据库及备份应按包含凭据的数据管理。SDK 初始化使用仅当前进程用户可访问的临时文件，加载到内存后删除。
+
+已有部署可以继续通过 `BAIZHIYUN_ENV`、`BAIZHIYUN_APP_ID`、`MONKEYAI_WALLET_CERT_DIR` 提供配置，目录包含上述三个文件；后台保存的配置优先。存在未完成远程交易时禁止切换环境或应用 ID，同一应用允许更新证书。证书配置成功仅表示本地校验通过，真实钱包连接和账户权限仍需联调确认。
 
 容器部署时通过单独 Compose override 或现有部署系统向后端传入上述变量，将真实证书目录只读挂载到 `MONKEYAI_WALLET_CERT_DIR`。证书和私钥不进入镜像。新增私有 SDK 依赖，构建机需要私有模块读取权限；Docker 构建支持 BuildKit 的 `netrc` secret（`--secret id=netrc,src=<已有认证文件>`），不得将凭据写入 Dockerfile 或构建参数。
 

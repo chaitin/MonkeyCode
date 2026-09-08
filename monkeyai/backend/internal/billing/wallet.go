@@ -3,14 +3,9 @@ package billing
 import (
 	"context"
 	"crypto/rand"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
-	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
@@ -31,58 +26,18 @@ type Wallet struct {
 	Environment          string
 	AppID                int
 	CertificateExpiresAt time.Time
+	config               WalletConfig
+	validUntil           time.Time
+	error                string
+	source               string
 }
 
-func WalletFromEnv() (*Wallet, error) {
-	env := os.Getenv("BAIZHIYUN_ENV")
-	if env == "" {
-		return nil, nil
-	}
-	if env != "dev" && env != "prod" {
-		return nil, errors.New("BAIZHIYUN_ENV 必须为 dev 或 prod")
-	}
-	appID, err := strconv.Atoi(os.Getenv("BAIZHIYUN_APP_ID"))
-	if err != nil || appID < 1 || appID > 999 {
-		return nil, errors.New("BAIZHIYUN_APP_ID 必须在 1 到 999 之间")
-	}
-	dir := os.Getenv("MONKEYAI_WALLET_CERT_DIR")
-	if dir == "" {
-		return nil, errors.New("远程计费需配置 MONKEYAI_WALLET_CERT_DIR")
-	}
-	certPath := filepath.Join(dir, "app.crt")
-	data, err := os.ReadFile(certPath)
-	if err != nil {
-		return nil, fmt.Errorf("读取钱包证书: %w", err)
-	}
-	block, _ := pem.Decode(data)
-	if block == nil {
-		return nil, errors.New("钱包证书格式无效")
-	}
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return nil, err
-	}
-	if time.Now().Before(cert.NotBefore) || !time.Now().Before(cert.NotAfter) {
-		return nil, errors.New("钱包证书不在有效期内")
-	}
-	client, err := opensdk.NewOpenClientWithConfig(opensdk.OpenClientConfig{Env: env, AppID: appID, PrivateKeyPath: filepath.Join(dir, "app.key"), CertPath: certPath, CAFile: filepath.Join(dir, "ca.crt")})
-	if err != nil {
-		return nil, err
-	}
-	return &Wallet{Client: client, Environment: env, AppID: appID, CertificateExpiresAt: cert.NotAfter}, nil
-}
 func (w *Wallet) BizID() (string, error) {
 	n, err := rand.Int(rand.Reader, big.NewInt(10_000_000_000))
 	if err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("%03d%s%010d", w.AppID, time.Now().Format("20060102150405"), n.Int64()), nil
-}
-func (s *Service) walletInfo() any {
-	if s.wallet == nil {
-		return map[string]any{"configured": false}
-	}
-	return map[string]any{"configured": true, "environment": s.wallet.Environment, "app_id": s.wallet.AppID, "certificate_expires_at": s.wallet.CertificateExpiresAt}
 }
 func walletFailure(err error) (string, string) {
 	code := "wallet_unavailable"
@@ -109,12 +64,16 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 	}
 	biz, user, env, app, amount = record.BizID, record.ExternalUserID, record.Environment, int(record.AppID), record.FrozenAmountQuota
 
-	if s.wallet == nil || env != s.wallet.Environment || app != s.wallet.AppID {
+	wallet, err := s.wallet(ctx, s.pool)
+	if err != nil {
+		return err
+	}
+	if !wallet.ready() || env != wallet.Environment || app != wallet.AppID {
 		return fail(503, "wallet_configuration_changed", "原交易的钱包配置不可用")
 	}
 	c, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	profile, err := s.wallet.Client.GetUserByID(c, user)
+	profile, err := wallet.Client.GetUserByID(c, user)
 	team := ""
 	if err == nil {
 		if profile.Team != nil {
@@ -123,7 +82,7 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 		_, err = sqlc.New(s.pool).SetWalletTeam(c, sqlc.SetWalletTeamParams{TransactionID: id, TeamSlug: team})
 	}
 	if err == nil {
-		err = s.wallet.Client.CreateBillingCharge(c, user, &opensdk.CreateBillingChargeReq{BizID: biz, FrozenAmountCreditCents: amount})
+		err = wallet.Client.CreateBillingCharge(c, user, &opensdk.CreateBillingChargeReq{BizID: biz, FrozenAmountCreditCents: amount})
 	}
 	finalCtx, finish := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer finish()
@@ -190,7 +149,11 @@ func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id stri
 	if state == "confirmed" {
 		return nil
 	}
-	if s.wallet == nil || env != s.wallet.Environment || app != s.wallet.AppID {
+	wallet, err := s.wallet(ctx, conn)
+	if err != nil {
+		return err
+	}
+	if !wallet.ready() || env != wallet.Environment || app != wallet.AppID {
 		return fail(503, "wallet_configuration_changed", "原交易的钱包配置不可用")
 	}
 	amount, err := ParseAmount(amountText)
@@ -199,7 +162,7 @@ func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id stri
 	}
 	// SDK 对个人账户确认时会重新解析所属团队，身份变化必须先核查。
 	if team == "" {
-		profile, e := s.wallet.Client.GetUserByID(ctx, user)
+		profile, e := wallet.Client.GetUserByID(ctx, user)
 		if e != nil {
 			return e
 		}
@@ -211,7 +174,7 @@ func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id stri
 	if err != nil {
 		return err
 	}
-	err = s.wallet.Client.ConfirmBillingCharge(ctx, &opensdk.ConfirmBillingChargeReq{BizID: biz, UserID: user, TeamSlug: team, Status: "success", ActualAmountCreditCents: quotaAmount(amount, false), Subject: item})
+	err = wallet.Client.ConfirmBillingCharge(ctx, &opensdk.ConfirmBillingChargeReq{BizID: biz, UserID: user, TeamSlug: team, Status: "success", ActualAmountCreditCents: quotaAmount(amount, false), Subject: item})
 	if err != nil {
 		code, trace := walletFailure(err)
 		_, _ = sqlc.New(conn).SetWalletError(ctx, sqlc.SetWalletErrorParams{TransactionID: id, ErrorCode: code, TraceID: trace})
@@ -222,7 +185,11 @@ func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id stri
 	return err
 }
 func (s *Service) BindWallet(ctx context.Context, actor, user, external string) error {
-	if s.wallet == nil {
+	wallet, err := s.wallet(ctx, s.pool)
+	if err != nil {
+		return err
+	}
+	if !wallet.ready() {
 		return fail(503, "wallet_unavailable", "未配置百智云计费连接")
 	}
 	if external == "" || len(external) > 128 {
@@ -230,7 +197,7 @@ func (s *Service) BindWallet(ctx context.Context, actor, user, external string) 
 	}
 	c, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	profile, err := s.wallet.Client.GetUserByID(c, external)
+	profile, err := wallet.Client.GetUserByID(c, external)
 	if err != nil {
 		return fail(422, "wallet_user_invalid", "无法核实百智云用户")
 	}

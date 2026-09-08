@@ -63,8 +63,13 @@ func (s *Service) settings(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+	wallet, err := s.wallet(r.Context(), s.pool)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	_, end := p.period(s.now())
-	resource.JSON(w, 200, map[string]any{"policy": p, "wallet": s.walletInfo(), "timezone": "Asia/Shanghai", "next_refresh_at": end})
+	resource.JSON(w, 200, map[string]any{"policy": p, "wallet": wallet.info(), "timezone": "Asia/Shanghai", "next_refresh_at": end})
 }
 func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	var in map[string]json.RawMessage
@@ -81,6 +86,8 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 		allowed = append(allowed, "quota_refresh_cycle")
 	case "mode":
 		allowed = append(allowed, "charging_mode", "enabled")
+	case "wallet":
+		allowed = append(allowed, "environment", "app_id", "certificate", "private_key", "ca_certificate")
 	default:
 		resource.Fail(w, resource.NotFound)
 		return
@@ -112,6 +119,7 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	before := p
+	var walletBefore, walletAfter WalletInfo
 	switch section {
 	case "pricing":
 		for key, target := range map[string]*Amount{"input_credits_per_million_tokens": &p.Input, "cached_input_credits_per_million_tokens": &p.Cached, "output_credits_per_million_tokens": &p.Output} {
@@ -145,8 +153,21 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 			resource.Fail(w, resource.Invalid("计费方式或启用状态无效"))
 			return
 		}
-		if p.Mode == "remote" && s.wallet == nil {
-			resource.Fail(w, fail(422, "wallet_not_configured", "请先在部署环境配置百智云应用和证书"))
+		if p.Mode == "remote" {
+			wallet, e := s.wallet(r.Context(), tx)
+			if e != nil {
+				resource.Fail(w, e)
+				return
+			}
+			if !wallet.ready() {
+				resource.Fail(w, fail(422, "wallet_not_configured", "请先在计费设置中配置有效的百智云应用和证书"))
+				return
+			}
+		}
+	case "wallet":
+		walletBefore, walletAfter, err = s.saveWallet(r.Context(), tx, in)
+		if err != nil {
+			resource.Fail(w, err)
 			return
 		}
 	}
@@ -155,7 +176,11 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	u, _ := identity.UserFromContext(r.Context())
 	_, err = sqlc.New(tx).SavePolicy(r.Context(), sqlc.SavePolicyParams{Value: raw, Revision: int64(p.Revision), UpdatedByUserID: u.ID})
 	if err == nil {
-		err = audit(r.Context(), tx, u.ID, "configure_"+section, "", map[string]any{"before": before, "after": p})
+		data := map[string]any{"before": before, "after": p}
+		if section == "wallet" {
+			data = map[string]any{"before": walletBefore, "after": walletAfter}
+		}
+		err = audit(r.Context(), tx, u.ID, "configure_"+section, "", data)
 	}
 
 	if err == nil {
@@ -322,11 +347,16 @@ func (s *Service) account(w http.ResponseWriter, r *http.Request) {
 
 	external, _ := sqlc.New(s.pool).WalletUser(r.Context(), user)
 
-	out := map[string]any{"account": a, "history": history, "external_user_id": external, "wallet": s.walletInfo()}
-	if external != "" && s.wallet != nil {
+	wallet, err := s.wallet(r.Context(), s.pool)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	out := map[string]any{"account": a, "history": history, "external_user_id": external, "wallet": wallet.info()}
+	if external != "" && wallet.ready() {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
-		balance, e := s.wallet.Client.GetUserCreditBalance(ctx, external)
+		balance, e := wallet.Client.GetUserCreditBalance(ctx, external)
 		if e == nil {
 			out["wallet_available"] = Amount(balance.AvailableCreditCents * 10000)
 			out["wallet_queried_at"] = s.now()
