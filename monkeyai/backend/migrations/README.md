@@ -4,7 +4,9 @@
 - `000002_billing_create_transactions`：计费账户、额度与流水。
 - `000003_group_virtual_root`：将旧部署的系统分组转换为虚拟团队根节点的结构。新库同样执行此版本，不会创建分组。
 
-运行 `migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up`。成功后应为 `version=3, dirty=false`，再次执行为 `no change`。已有版本 1 或 2 的数据库执行增量升级，无需清库或 `force`。
+- `000004_stats_add_indexes`：为统计查询补充调用与会话的时间索引，仅增索引，可独立回滚。
+
+运行 `migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up`。成功后应为 `version=4, dirty=false`，再次执行为 `no change`。已有版本 1、2 或 3 的数据库执行增量升级，无需清库或 `force`。
 
 团队根节点仅用于界面展示，名称读取 `settings` 中 `branding` 的 `workspace_name`，不写入 `groups`。`parent_id IS NULL` 的记录均为团队根节点的直属子分组；成员关系通过 `group_users` 显式维护，不根据用户角色自动建组或分配。
 

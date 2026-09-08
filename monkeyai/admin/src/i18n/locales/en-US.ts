@@ -24,6 +24,20 @@ export const enUS = {
     documentTitle: "MonkeyAI Admin",
     adminConsole: "Admin Console",
   },
+  statistics: {
+    loading: "Loading statistics…",
+    retry: "Retry",
+    refresh: "Refresh",
+    empty: "No data for the selected filters.",
+    deleted: "Deleted",
+    modelScope:
+      "Calls use start time; credits use charge and refund time. Cache hit rate is the share of calls with cache hits.",
+    taskScope:
+      "Sessions started in this period. Completion rate is successful sessions / total; average duration includes ended sessions only. Session data requires client reporting.",
+    realtimeScope:
+      "Refreshes every 30 seconds. Throughput uses calls completed in the window; active tasks are recently active, open sessions.",
+    updated: "Updated {{time}}",
+  },
   common: {
     breadcrumb: "Breadcrumb",
     close: "Close",
@@ -149,13 +163,13 @@ export const enUS = {
         totalTasks: "Total tasks",
         completionRate: "Completion rate",
         averageDuration: "Average duration",
-        runningTasks: "Running tasks",
+        runningTasks: "Open tasks",
       },
       taskTrend: "Task trend",
       statusDistribution: "Status distribution",
       statuses: {
         completed: "Completed",
-        running: "Running",
+        running: "Open",
         failed: "Failed",
       },
       taskTypeDetails: "Task type details",

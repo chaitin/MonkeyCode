@@ -1,3 +1,4 @@
+import { useState } from "react"
 import {
   Clock01Icon,
   Loading03Icon,
@@ -15,6 +16,11 @@ import {
   YAxis,
 } from "recharts"
 
+import { useStatistics } from "@/hooks/use-statistics"
+import { change, type TaskStatistics } from "@/lib/statistics"
+import { StatisticsFeedback } from "@/components/statistics-feedback"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatisticsMetricCard } from "@/components/statistics-metric-card"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -39,46 +45,51 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-const TASK_SUMMARY = {
-  total: 12846,
-  completionRate: 92.4,
-  averageDurationSeconds: 102,
-  running: 186,
-  trends: ["+12.5%", "+2.1%", "-8.4%", "+14"],
-} as const
-
-const TASK_TYPE_ROWS = [
-  { key: "conversation", total: 5150, completionRate: 94.8, duration: 48 },
-  { key: "workflow", total: 2980, completionRate: 91.2, duration: 136 },
-  { key: "retrieval", total: 2236, completionRate: 93.5, duration: 64 },
-  { key: "tool", total: 1720, completionRate: 88.9, duration: 82 },
-  { key: "scheduled", total: 760, completionRate: 90.7, duration: 174 },
-] as const
-
-function buildTaskTrendData(dateFormatter: Intl.DateTimeFormat) {
-  const days = 30
-  const points = 10
-  const endDate = new Date(2026, 8, 2)
-
-  return Array.from({ length: points }, (_, index) => {
-    const date = new Date(endDate)
-    const daysAgo = Math.round(
-      ((points - 1 - index) * (days - 1)) / (points - 1)
-    )
-    date.setDate(date.getDate() - daysAgo)
-
-    return {
-      date: dateFormatter.format(date),
-      completed: Math.round(276 + index * 11 + Math.sin(index * 1.35) * 32),
-      failed: Math.max(8, Math.round(26 + Math.cos(index * 1.1) * 9)),
-    }
-  })
+export function TaskStatisticsPage() {
+  const { t } = useTranslation()
+  const [timeRange, setTimeRange] = useState("30d")
+  const request = useStatistics<TaskStatistics>(
+    `/api/admin/v1/statistics/tasks?range=${timeRange}`
+  )
+  return (
+    <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs value={timeRange} onValueChange={setTimeRange}>
+          <TabsList aria-label={t("pages.taskStatistics.timeRange")}>
+            {(["7d", "30d", "90d"] as const).map((range) => (
+              <TabsTrigger key={range} value={range}>
+                {t(`pages.taskStatistics.ranges.${range}`)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={request.reload}
+          disabled={request.loading}
+        >
+          {t("statistics.refresh")}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("statistics.taskScope")}
+      </p>
+      <StatisticsFeedback
+        {...request}
+        empty={request.data?.summary.total === 0}
+      />
+      {request.data && <TaskDetails data={request.data} />}
+    </section>
+  )
 }
 
-export function TaskStatisticsPage() {
+function TaskDetails({ data }: { data: TaskStatistics }) {
   const { i18n, t } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const numberFormatter = new Intl.NumberFormat(locale)
+  const numberFormatter = new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 1,
+  })
   const compactNumberFormatter = new Intl.NumberFormat(locale, {
     notation: "compact",
     maximumFractionDigits: 1,
@@ -87,30 +98,26 @@ export function TaskStatisticsPage() {
     month: "short",
     day: "numeric",
   })
-  const summary = TASK_SUMMARY
-  const trendData = buildTaskTrendData(dateFormatter)
-  const completedTasks = Math.round(
-    (summary.total * summary.completionRate) / 100
-  )
-  const failedTasks = Math.max(
-    0,
-    summary.total - completedTasks - summary.running
-  )
+  const summary = data.summary
+  const trendData = data.trend.map((row) => ({
+    ...row,
+    date: dateFormatter.format(new Date(row.at)),
+  }))
   const statusData = [
     {
       status: "completed",
-      value: completedTasks,
-      fill: "var(--color-completed)",
+      value: summary.completed,
+      fill: "var(--chart-2)",
     },
     {
       status: "running",
       value: summary.running,
-      fill: "var(--color-running)",
+      fill: "var(--chart-3)",
     },
     {
       status: "failed",
-      value: failedTasks,
-      fill: "var(--color-failed)",
+      value: summary.failed,
+      fill: "var(--chart-5)",
     },
   ]
   const trendChartConfig = {
@@ -137,53 +144,60 @@ export function TaskStatisticsPage() {
       color: "var(--chart-5)",
     },
   } satisfies ChartConfig
-  const scaledTaskTypes = TASK_TYPE_ROWS.map((row) => {
-    const total = row.total
-
-    return {
-      ...row,
-      total,
-      completed: Math.round((total * row.completionRate) / 100),
-    }
-  })
-  const formatDuration = (seconds: number) =>
-    seconds < 60
-      ? t("pages.taskStatistics.durationSeconds", { count: seconds })
+  const scaledTaskTypes = data.types
+  const formatDuration = (seconds: number | null) => {
+    if (seconds === null) return "—"
+    const rounded = Math.round(seconds)
+    return rounded < 60
+      ? t("pages.taskStatistics.durationSeconds", { count: rounded })
       : t("pages.taskStatistics.durationMinutes", {
-          minutes: Math.floor(seconds / 60),
-          seconds: seconds % 60,
+          minutes: Math.floor(rounded / 60),
+          seconds: rounded % 60,
         })
+  }
 
   return (
-    <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
+    <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatisticsMetricCard
           comparison={t("pages.taskStatistics.comparedToPrevious")}
           icon={Task01Icon}
           label={t("pages.taskStatistics.metrics.totalTasks")}
-          trend={summary.trends[0]}
+          trend={change(summary.total, data.previous.total, locale)}
           value={numberFormatter.format(summary.total)}
         />
         <StatisticsMetricCard
           comparison={t("pages.taskStatistics.comparedToPrevious")}
           icon={TaskDone01Icon}
           label={t("pages.taskStatistics.metrics.completionRate")}
-          trend={summary.trends[1]}
-          value={`${summary.completionRate}%`}
+          trend={change(
+            summary.completion_rate,
+            data.previous.completion_rate,
+            locale,
+            true
+          )}
+          value={
+            summary.completion_rate === null
+              ? "—"
+              : `${numberFormatter.format(summary.completion_rate)}%`
+          }
         />
         <StatisticsMetricCard
           comparison={t("pages.taskStatistics.comparedToPrevious")}
           icon={Clock01Icon}
           label={t("pages.taskStatistics.metrics.averageDuration")}
-          trend={summary.trends[2]}
-          trendDirection="down"
-          value={formatDuration(summary.averageDurationSeconds)}
+          trend={change(
+            summary.average_duration_seconds,
+            data.previous.average_duration_seconds,
+            locale
+          )}
+          value={formatDuration(summary.average_duration_seconds)}
         />
         <StatisticsMetricCard
           comparison={t("pages.taskStatistics.comparedToPrevious")}
           icon={Loading03Icon}
           label={t("pages.taskStatistics.metrics.runningTasks")}
-          trend={summary.trends[3]}
+          trend={change(summary.running, data.previous.running, locale)}
           value={numberFormatter.format(summary.running)}
         />
       </div>
@@ -220,6 +234,7 @@ export function TaskStatisticsPage() {
                   content={<ChartTooltipContent indicator="line" />}
                 />
                 <Area
+                  isAnimationActive={false}
                   dataKey="completed"
                   fill="var(--color-completed)"
                   fillOpacity={0.22}
@@ -228,6 +243,7 @@ export function TaskStatisticsPage() {
                   type="monotone"
                 />
                 <Area
+                  isAnimationActive={false}
                   dataKey="failed"
                   fill="var(--color-failed)"
                   fillOpacity={0.1}
@@ -257,6 +273,7 @@ export function TaskStatisticsPage() {
                   content={<ChartTooltipContent hideLabel nameKey="status" />}
                 />
                 <Pie
+                  isAnimationActive={false}
                   data={statusData}
                   dataKey="value"
                   innerRadius={56}
@@ -330,10 +347,14 @@ export function TaskStatisticsPage() {
                     {numberFormatter.format(row.completed)}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{row.completionRate}%</Badge>
+                    <Badge variant="outline">
+                      {row.completion_rate === null
+                        ? "—"
+                        : `${numberFormatter.format(row.completion_rate)}%`}
+                    </Badge>
                   </TableCell>
                   <TableCell className="pe-(--card-spacing) text-end tabular-nums">
-                    {formatDuration(row.duration)}
+                    {formatDuration(row.average_duration_seconds)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -341,6 +362,6 @@ export function TaskStatisticsPage() {
           </Table>
         </CardContent>
       </Card>
-    </section>
+    </>
   )
 }

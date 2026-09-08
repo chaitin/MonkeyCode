@@ -29,6 +29,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rule"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats"
 )
 
 type App struct {
@@ -127,6 +128,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	group.NewService(pool).WithAccountPreserver(charges).RegisterAdmin(admin)
 	settings.RegisterAdmin(admin)
 	charges.RegisterAdmin(admin)
+	stats.NewService(pool).RegisterAdmin(admin)
 	keys.RegisterAdmin(admin)
 	models.RegisterAdmin(admin)
 	store.RegisterAdmin(admin)

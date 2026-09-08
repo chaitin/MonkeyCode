@@ -25,6 +25,13 @@ function getLeafPaths(value, prefix = "") {
   })
 }
 
+test("统计反馈在每种语言中提供相同字段", () => {
+  const expected = getLeafPaths(enUS.statistics).sort()
+  for (const [language, resource] of Object.entries(resources)) {
+    assert.deepEqual(getLeafPaths(resource.statistics).sort(), expected, language)
+  }
+})
+
 test("billing details describe the item and usage in one content column", async () => {
   const source = await readFile(
     new URL("../src/pages/billing-details-page.tsx", import.meta.url),

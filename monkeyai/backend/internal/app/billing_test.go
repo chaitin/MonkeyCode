@@ -103,6 +103,11 @@ func TestBillingIntegration(t *testing.T) {
 	if code, _, _ := call("GET", "/api/admin/v1/billing/settings", nil, "", ""); code != 401 {
 		t.Fatalf("匿名管理接口: %d", code)
 	}
+	for _, path := range []string{"realtime", "models", "tasks", "history"} {
+		if code, _, _ := call("GET", "/api/admin/v1/statistics/"+path, nil, "", ""); code != 401 {
+			t.Fatalf("匿名统计接口 %s: %d", path, code)
+		}
+	}
 	must("POST", "/api/auth/v1/admin/login", resource.Object{"email": "billing-http@example.com", "password": "billing-test-password"}, "")
 	var user string
 	if err = pool.QueryRow(ctx, `SELECT id FROM users WHERE email='billing-http@example.com'`).Scan(&user); err != nil {
@@ -268,4 +273,17 @@ func TestBillingIntegration(t *testing.T) {
 	if len(reconciliation["differences"].([]any)) != 0 || reconciliation.Int("total") != 0 {
 		t.Fatalf("MCP 账目不平: %v", reconciliation)
 	}
+	modelStats := must("GET", "/api/admin/v1/statistics/models?range=24h", nil, "")
+	if modelStats["summary"].(map[string]any)["calls"].(float64) == 0 {
+		t.Fatal("真实模型调用未进入统计")
+	}
+	for _, path := range []string{"realtime", "tasks", "history"} {
+		must("GET", "/api/admin/v1/statistics/"+path, nil, "")
+	}
+	savedCookie := cookie
+	cookie = nil
+	if code, _, _ := call("GET", "/api/admin/v1/statistics/models", nil, "billing-oauth-test", ""); code != 401 {
+		t.Fatalf("Agent token 不应获得管理统计: %d", code)
+	}
+	cookie = savedCookie
 }

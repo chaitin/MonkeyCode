@@ -17,7 +17,7 @@ type StatisticsMetricCardProps = {
   comparison: string
   icon: IconSvgElement
   label: string
-  trend: string
+  trend?: string
   trendDirection?: "up" | "down"
   value: string
 }
@@ -27,7 +27,7 @@ export function StatisticsMetricCard({
   icon,
   label,
   trend,
-  trendDirection = "up",
+  trendDirection,
   value,
 }: StatisticsMetricCardProps) {
   return (
@@ -47,23 +47,26 @@ export function StatisticsMetricCard({
         <p className="text-2xl font-semibold tracking-tight tabular-nums">
           {value}
         </p>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline">
-            <HugeiconsIcon
-              icon={
-                trendDirection === "up"
-                  ? ArrowUpRight01Icon
-                  : ArrowDownRight01Icon
-              }
-              data-icon="inline-start"
-              strokeWidth={2}
-            />
-            {trend}
-          </Badge>
-          <span className="truncate text-xs text-muted-foreground">
-            {comparison}
-          </span>
-        </div>
+        {trend && (
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">
+              <HugeiconsIcon
+                icon={
+                  (trendDirection ?? (/[-−]/.test(trend) ? "down" : "up")) ===
+                  "down"
+                    ? ArrowDownRight01Icon
+                    : ArrowUpRight01Icon
+                }
+                data-icon="inline-start"
+                strokeWidth={2}
+              />
+              {trend}
+            </Badge>
+            <span className="truncate text-xs text-muted-foreground">
+              {comparison}
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

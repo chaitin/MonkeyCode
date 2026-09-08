@@ -6,6 +6,20 @@ export const jaJP = {
     documentTitle: "MonkeyAI 管理コンソール",
     adminConsole: "管理コンソール",
   },
+  statistics: {
+    loading: "統計を読み込み中…",
+    retry: "再試行",
+    refresh: "更新",
+    empty: "選択した条件のデータはありません。",
+    deleted: "削除済み",
+    modelScope:
+      "呼び出しは開始時刻、クレジットは課金・返金時刻で集計します。キャッシュヒット率はヒットした呼び出しの割合です。",
+    taskScope:
+      "期間内に開始したセッション。完了率は成功数 / 総数、平均時間は終了したセッションのみです。クライアントからの報告が必要です。",
+    realtimeScope:
+      "30 秒ごとに更新。スループットは期間内に完了した呼び出し、アクティブタスクは最近活動した未終了セッションです。",
+    updated: "更新時刻 {{time}}",
+  },
   common: {
     breadcrumb: "パンくずリスト",
     close: "閉じる",
@@ -131,13 +145,13 @@ export const jaJP = {
         totalTasks: "タスク総数",
         completionRate: "完了率",
         averageDuration: "平均所要時間",
-        runningTasks: "実行中のタスク",
+        runningTasks: "未終了タスク",
       },
       taskTrend: "タスクの推移",
       statusDistribution: "ステータス分布",
       statuses: {
         completed: "完了",
-        running: "実行中",
+        running: "未終了",
         failed: "失敗",
       },
       taskTypeDetails: "タスク種別の詳細",

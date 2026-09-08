@@ -22,6 +22,20 @@ export const zhCN = {
     documentTitle: "MonkeyAI 管理后台",
     adminConsole: "管理后台",
   },
+  statistics: {
+    loading: "加载统计数据…",
+    retry: "重试",
+    refresh: "刷新",
+    empty: "当前筛选范围内暂无数据。",
+    deleted: "已删除",
+    modelScope:
+      "调用按开始时间统计，积分按扣费与退款发生时间统计；缓存命中率为命中缓存的调用占比。",
+    taskScope:
+      "统计范围内新建的会话；完成率为成功结束数 / 总数，平均耗时仅包含已结束会话。任务数据依赖客户端上报。",
+    realtimeScope:
+      "每 30 秒刷新。吞吐按窗口内完成的调用计算；活跃任务为近期有活动的未结束会话。",
+    updated: "更新于 {{time}}",
+  },
   common: {
     breadcrumb: "面包屑导航",
     close: "关闭",
@@ -144,13 +158,13 @@ export const zhCN = {
         totalTasks: "任务总数",
         completionRate: "完成率",
         averageDuration: "平均耗时",
-        runningTasks: "运行中任务",
+        runningTasks: "未结束任务",
       },
       taskTrend: "任务趋势",
       statusDistribution: "状态分布",
       statuses: {
         completed: "已完成",
-        running: "运行中",
+        running: "未结束",
         failed: "失败",
       },
       taskTypeDetails: "任务类型明细",

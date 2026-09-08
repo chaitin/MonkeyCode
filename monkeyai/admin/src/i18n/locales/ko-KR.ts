@@ -6,6 +6,20 @@ export const koKR = {
     documentTitle: "MonkeyAI 관리자 콘솔",
     adminConsole: "관리자 콘솔",
   },
+  statistics: {
+    loading: "통계 로딩 중…",
+    retry: "재시도",
+    refresh: "새로 고침",
+    empty: "선택한 조건에 데이터가 없습니다.",
+    deleted: "삭제됨",
+    modelScope:
+      "호출은 시작 시각, 크레딧은 청구 및 환불 시각 기준입니다. 캐시 적중률은 적중한 호출의 비율입니다.",
+    taskScope:
+      "기간 내 시작한 세션입니다. 완료율은 성공 수 / 전체 수이며 평균 시간은 종료된 세션만 포함합니다. 클라이언트 보고가 필요합니다.",
+    realtimeScope:
+      "30초마다 갱신합니다. 처리량은 기간 내 완료된 호출, 활성 작업은 최근 활동한 미종료 세션 기준입니다.",
+    updated: "{{time}} 업데이트",
+  },
   common: {
     breadcrumb: "이동 경로",
     close: "닫기",
@@ -129,13 +143,13 @@ export const koKR = {
         totalTasks: "전체 작업",
         completionRate: "완료율",
         averageDuration: "평균 소요 시간",
-        runningTasks: "실행 중인 작업",
+        runningTasks: "미종료 작업",
       },
       taskTrend: "작업 추세",
       statusDistribution: "상태 분포",
       statuses: {
         completed: "완료",
-        running: "실행 중",
+        running: "미종료",
         failed: "실패",
       },
       taskTypeDetails: "작업 유형 상세",

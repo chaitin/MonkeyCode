@@ -5,6 +5,195 @@ info:
 security:
   - AdminSession: []
 paths:
+  /api/admin/v1/statistics/models:
+    get:
+      summary: 模型统计与真实环比
+      description: 仅管理员可访问。单次请求在同一 PostgreSQL 只读快照中聚合，不返回模拟数据。
+      parameters:
+        - name: range
+          in: query
+          required: false
+          description: 以服务端当前时间为终点的滚动窗口。
+          schema:
+            type: string
+            enum:
+              - 24h
+              - 7d
+              - 30d
+              - 90d
+            default: 30d
+        - name: model_id
+          in: query
+          required: false
+          description: 模型 UUID，省略时汇总全部模型；支持已有历史事实的软删除模型。
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 统计结果。
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsModels"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/statistics/tasks:
+    get:
+      summary: 会话统计与真实环比
+      description: 仅管理员可访问。单次请求在同一 PostgreSQL 只读快照中聚合，不返回模拟数据。
+      parameters:
+        - name: range
+          in: query
+          required: false
+          description: 以服务端当前时间为终点的滚动窗口。
+          schema:
+            type: string
+            enum:
+              - 24h
+              - 7d
+              - 30d
+              - 90d
+            default: 30d
+      responses:
+        "200":
+          description: 统计结果。
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsTasks"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/statistics/realtime:
+    get:
+      summary: 实时运行统计
+      description: 仅管理员可访问。单次请求在同一 PostgreSQL 只读快照中聚合，不返回模拟数据。
+      parameters:
+        - name: range
+          in: query
+          required: false
+          description: 以服务端当前时间为终点的滚动窗口。
+          schema:
+            type: string
+            enum:
+              - 5m
+              - 15m
+              - 30m
+              - 60m
+            default: 15m
+      responses:
+        "200":
+          description: 统计结果。
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsRealtime"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/statistics/history:
+    get:
+      summary: 分页查询会话历史
+      description: 仅管理员可访问。单次请求在同一 PostgreSQL 只读快照中聚合，不返回模拟数据。
+      parameters:
+        - name: task
+          in: query
+          required: false
+          description: 按会话标题或 UUID 包含匹配；百分号和下划线作为普通字符。
+          schema:
+            type: string
+            maxLength: 200
+        - name: user
+          in: query
+          required: false
+          description: 按用户名或邮箱包含匹配，忽略大小写。
+          schema:
+            type: string
+            maxLength: 200
+        - name: from
+          in: query
+          required: false
+          description: 会话开始时间下界，包含；必须携带时区。
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          required: false
+          description: 会话开始时间上界，不包含；必须晚于 from。日期筛选应传次日零点。
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          required: false
+          description: 页码。
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000
+            default: 1
+        - name: page_size
+          in: query
+          required: false
+          description: 每页条数。
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 20
+      responses:
+        "200":
+          description: 统计结果。
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsHistory"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/billing/settings:
     get:
       summary: 读取计费策略与远程连接状态
@@ -3426,6 +3615,323 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    StatisticsModelSummary:
+      type: object
+      required:
+        - calls
+        - input_tokens
+        - output_tokens
+        - cache_hit_rate
+        - success_rate
+        - credits
+      properties:
+        calls:
+          type: integer
+          minimum: 0
+          description: 按开始时间计数，包含成功、失败和取消调用。
+        input_tokens:
+          type: integer
+          minimum: 0
+          description: 输入 Token 总量，包含缓存输入。
+        output_tokens:
+          type: integer
+          minimum: 0
+          description: 输出 Token 总量。
+        cache_hit_rate:
+          type:
+            - number
+            - "null"
+          description: 命中缓存的调用次数 / 调用总数 × 100；没有调用时为 null。
+        success_rate:
+          type:
+            - number
+            - "null"
+          description: 成功调用 / 已结束调用 × 100；没有已结束调用时为 null。
+        credits: &a1
+          type: string
+          pattern: ^-?[0-9]+(\.[0-9]{1,6})?$
+          description: 扣费减退款后的积分净消费，十进制字符串；纯退款周期可为负值。
+    StatisticsModels:
+      type: object
+      required:
+        - from
+        - until
+        - summary
+        - previous
+        - models
+        - trend
+      properties:
+        from: &a2
+          type: string
+          format: date-time
+          description: 查询窗口起点，包含。
+        until: &a3
+          type: string
+          format: date-time
+          description: 查询窗口终点，不包含；由服务端统一确定。
+        summary:
+          $ref: "#/components/schemas/StatisticsModelSummary"
+        previous:
+          $ref: "#/components/schemas/StatisticsModelSummary"
+          description: 紧邻当前窗口之前的等长周期。
+        models:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - name
+              - deleted
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+                description: 模型显示名。
+              deleted:
+                type: boolean
+                description: 模型是否已软删除；历史调用和消费仍保留。
+        trend:
+          type: array
+          items:
+            type: object
+            required:
+              - at
+              - calls
+              - input_tokens
+              - output_tokens
+              - credits
+            properties:
+              at:
+                type: string
+                format: date-time
+                description: 分桶起点，从窗口起点每 1 小时（24h）或 24 小时递增，不按自然日对齐；空桶补零。
+              calls:
+                type: integer
+                minimum: 0
+                description: 本桶调用数。
+              input_tokens:
+                type: integer
+                minimum: 0
+                description: 本桶输入 Token。
+              output_tokens:
+                type: integer
+                minimum: 0
+                description: 本桶输出 Token。
+              credits: *a1
+    StatisticsTaskSummary:
+      type: object
+      required:
+        - total
+        - completed
+        - failed
+        - running
+        - completion_rate
+        - average_duration_seconds
+      properties:
+        total:
+          type: integer
+          minimum: 0
+          description: 窗口内新建且未软删除的会话总数。
+        completed:
+          type: integer
+          minimum: 0
+          description: 已结束且失败代码、失败描述均为空的会话数。
+        failed:
+          type: integer
+          minimum: 0
+          description: 已结束且失败代码或失败描述非空的会话数，包含异常取消。
+        running:
+          type: integer
+          minimum: 0
+          description: 尚未结束的会话数，可能处于空闲状态。
+        completion_rate:
+          type:
+            - number
+            - "null"
+          description: 成功结束数 / 会话总数 × 100；无会话时为 null。
+        average_duration_seconds:
+          type:
+            - number
+            - "null"
+          description: 已结束会话的平均耗时，单位秒；没有已结束会话时为 null。
+    StatisticsTasks:
+      type: object
+      required:
+        - from
+        - until
+        - summary
+        - previous
+        - trend
+        - types
+      properties:
+        from: *a2
+        until: *a3
+        summary:
+          $ref: "#/components/schemas/StatisticsTaskSummary"
+        previous:
+          $ref: "#/components/schemas/StatisticsTaskSummary"
+          description: 紧邻当前窗口之前的等长周期，按会话当前结果汇总。
+        trend:
+          type: array
+          items:
+            type: object
+            required:
+              - at
+              - completed
+              - failed
+              - running
+            properties:
+              at:
+                type: string
+                format: date-time
+                description: 分桶起点，从窗口起点每 1 小时（24h）或 24 小时递增；按会话开始时间归桶，空桶补零。
+              completed:
+                type: integer
+                minimum: 0
+                description: 本桶成功结束数。
+              failed:
+                type: integer
+                minimum: 0
+                description: 本桶失败数。
+              running:
+                type: integer
+                minimum: 0
+                description: 本桶未结束数。
+        types:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/StatisticsTaskSummary"
+              - type: object
+                required:
+                  - key
+                properties:
+                  key:
+                    type: string
+                    enum:
+                      - conversation
+                      - workflow
+                      - tool
+                      - scheduled
+    StatisticsRealtime:
+      type: object
+      required:
+        - from
+        - until
+        - model_consumption
+        - p95_response_time
+        - model_success_rate
+        - model_calls
+        - tpm
+        - rpm
+        - input_tokens
+        - output_tokens
+        - active_users
+        - active_tasks
+        - new_tasks
+      properties:
+        from: *a2
+        until: *a3
+        model_consumption: *a1
+        p95_response_time:
+          type:
+            - number
+            - "null"
+          description: 窗口内完成的模型调用响应耗时 P95，单位毫秒；优先使用记录的耗时，否则使用完成时间减开始时间。无样本为 null。
+        model_success_rate:
+          type:
+            - number
+            - "null"
+          description: 窗口内成功调用 / 已结束调用 × 100；取消计入分母，无样本为 null。
+        model_calls:
+          type: integer
+          minimum: 0
+          description: 窗口内完成的模型调用总数。
+        tpm:
+          type: number
+          description: 窗口内完成调用的输入加输出 Token 总量 / 窗口分钟数。
+        rpm:
+          type: number
+          description: 窗口内完成调用总数 / 窗口分钟数。
+        input_tokens:
+          type: integer
+          minimum: 0
+          description: 窗口内完成调用的输入 Token，包含缓存输入。
+        output_tokens:
+          type: integer
+          minimum: 0
+          description: 窗口内完成调用的输出 Token。
+        active_users:
+          type: integer
+          minimum: 0
+          description: 窗口内完成模型或 MCP 调用、有会话活动或发起仍在执行的计费调用的去重用户数；并非登录 DAU。
+        active_tasks:
+          type: integer
+          minimum: 0
+          description: 最近活动时间在窗口内且未结束、未删除的会话数。
+        new_tasks:
+          type: integer
+          minimum: 0
+          description: 窗口内创建且未删除的会话数。
+    StatisticsHistory:
+      type: object
+      required:
+        - items
+        - total
+        - page
+        - page_size
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - title
+              - user_name
+              - user_email
+              - started_at
+              - last_active_at
+              - turn_count
+            properties:
+              id:
+                type: string
+                format: uuid
+              title:
+                type: string
+                description: 会话标题。
+              user_name:
+                type: string
+                description: 所属用户当前姓名。
+              user_email:
+                type: string
+                description: 所属用户当前邮箱。
+              started_at:
+                type: string
+                format: date-time
+                description: 会话开始时间。
+              last_active_at:
+                type: string
+                format: date-time
+                description: 最近活动时间。
+              turn_count:
+                type: integer
+                minimum: 0
+                description: 会话累计对话轮数；不表示筛选窗口内新增轮数。
+        total:
+          type: integer
+          minimum: 0
+          description: 符合筛选条件的总记录数。
+        page:
+          type: integer
+          minimum: 1
+          description: 实际页码；超过最后一页时回退到最后一页。
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 500
     CreateMemberGroupInput:
       allOf:
         - $ref: "#/components/schemas/MemberGroupInput"
