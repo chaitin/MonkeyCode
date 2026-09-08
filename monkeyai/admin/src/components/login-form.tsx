@@ -9,10 +9,10 @@ import {
   Field,
   FieldDescription,
   FieldGroup,
-  FieldLabel,
   FieldSeparator,
 } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
+import { EmailAuthForm } from "@/components/email-auth-form"
+import type { AuthUser } from "@/lib/auth-context"
 import { cn } from "@/lib/utils"
 
 export type LoginProvider = {
@@ -22,28 +22,18 @@ export type LoginProvider = {
 }
 
 type LoginFormProps = React.ComponentProps<"div"> & {
-  email: string
-  password: string
   error: string
-  submitting: boolean
   oauthSubmitting: string
   providers: LoginProvider[]
-  onEmailChange: (value: string) => void
-  onPasswordChange: (value: string) => void
-  onLogin: () => void
+  onAuthenticated: (user: AuthUser) => Promise<void>
   onOAuthLogin: (provider: LoginProvider) => void
 }
 
 export function LoginForm({
-  email,
-  password,
   error,
-  submitting,
   oauthSubmitting,
   providers,
-  onEmailChange,
-  onPasswordChange,
-  onLogin,
+  onAuthenticated,
   onOAuthLogin,
   className,
   ...props
@@ -54,14 +44,7 @@ export function LoginForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0">
         <CardContent className="grid p-0 md:grid-cols-2">
-          <form
-            className="p-6 md:p-8"
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault()
-              onLogin()
-            }}
-          >
+          <div className="p-6 md:p-8">
             <FieldGroup>
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">{t("login.title")}</h1>
@@ -69,42 +52,12 @@ export function LoginForm({
                   {t("login.subtitle")}
                 </p>
               </div>
-              <Field>
-                <FieldLabel htmlFor="admin-email">
-                  {t("login.email")}
-                </FieldLabel>
-                <Input
-                  id="admin-email"
-                  type="email"
-                  placeholder="admin@example.com"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(event) => onEmailChange(event.target.value)}
-                  required
-                  autoFocus
-                />
-              </Field>
-              <Field>
-                <div className="flex items-center">
-                  <FieldLabel htmlFor="admin-password">
-                    {t("login.password")}
-                  </FieldLabel>
-                  <a
-                    href="#"
-                    className="ms-auto text-sm underline-offset-2 hover:underline"
-                  >
-                    {t("login.forgotPassword")}
-                  </a>
-                </div>
-                <Input
-                  id="admin-password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(event) => onPasswordChange(event.target.value)}
-                  required
-                />
-              </Field>
+              <EmailAuthForm
+                admin
+                disabled={Boolean(oauthSubmitting)}
+                hasProviders={providers.length > 0}
+                onAuthenticated={onAuthenticated}
+              />
               {error && (
                 <p
                   className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
@@ -113,22 +66,6 @@ export function LoginForm({
                   {error}
                 </p>
               )}
-              <Field>
-                <Button
-                  type="submit"
-                  size="lg"
-                  className="w-full"
-                  disabled={
-                    submitting ||
-                    Boolean(oauthSubmitting) ||
-                    !email.trim() ||
-                    !password
-                  }
-                  aria-busy={submitting}
-                >
-                  {submitting ? `${t("login.submit")}…` : t("login.submit")}
-                </Button>
-              </Field>
               {providers.length > 0 && (
                 <>
                   <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
@@ -141,7 +78,7 @@ export function LoginForm({
                         variant="outline"
                         type="button"
                         className="min-h-11 min-w-0 justify-start"
-                        disabled={submitting || Boolean(oauthSubmitting)}
+                        disabled={Boolean(oauthSubmitting)}
                         aria-busy={oauthSubmitting === provider.id}
                         aria-label={t("login.loginWith", {
                           provider: provider.name,
@@ -174,7 +111,7 @@ export function LoginForm({
                 />
               </FieldDescription>
             </FieldGroup>
-          </form>
+          </div>
           <div className="relative hidden bg-muted md:block">
             <EcosystemRadar />
           </div>

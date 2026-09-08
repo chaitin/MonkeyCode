@@ -12,6 +12,24 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+const cleanEmailCodes = `-- name: CleanEmailCodes :exec
+DELETE FROM email_codes WHERE expires_at < now()
+`
+
+func (q *Queries) CleanEmailCodes(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, cleanEmailCodes)
+	return err
+}
+
+const cleanEmailDeliveries = `-- name: CleanEmailDeliveries :exec
+DELETE FROM email_code_deliveries WHERE created_at < now() - interval '1 hour'
+`
+
+func (q *Queries) CleanEmailDeliveries(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, cleanEmailDeliveries)
+	return err
+}
+
 const completeAuthorizationRequest = `-- name: CompleteAuthorizationRequest :execresult
 UPDATE
     oauth_authorization_requests
@@ -319,6 +337,53 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 	return i, err
 }
 
+const deleteEmailCode = `-- name: DeleteEmailCode :exec
+DELETE FROM email_codes WHERE email = $1 AND purpose = $2
+`
+
+type DeleteEmailCodeParams struct {
+	Email   string
+	Purpose string
+}
+
+func (q *Queries) DeleteEmailCode(ctx context.Context, arg DeleteEmailCodeParams) error {
+	_, err := q.db.Exec(ctx, deleteEmailCode, arg.Email, arg.Purpose)
+	return err
+}
+
+const emailDeliveryLimited = `-- name: EmailDeliveryLimited :one
+SELECT (count(*) FILTER (WHERE email = $1) >= 10
+ OR count(*) FILTER (WHERE ip_hash = $2) >= 30
+ OR count(*) FILTER (WHERE email = $1 AND created_at > now() - interval '1 minute') > 0)::boolean AS limited
+FROM email_code_deliveries
+`
+
+type EmailDeliveryLimitedParams struct {
+	Email  string
+	IpHash string
+}
+
+func (q *Queries) EmailDeliveryLimited(ctx context.Context, arg EmailDeliveryLimitedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, emailDeliveryLimited, arg.Email, arg.IpHash)
+	var limited bool
+	err := row.Scan(&limited)
+	return limited, err
+}
+
+const failEmailCode = `-- name: FailEmailCode :exec
+UPDATE email_codes SET attempts = attempts + 1 WHERE email = $1 AND purpose = $2
+`
+
+type FailEmailCodeParams struct {
+	Email   string
+	Purpose string
+}
+
+func (q *Queries) FailEmailCode(ctx context.Context, arg FailEmailCodeParams) error {
+	_, err := q.db.Exec(ctx, failEmailCode, arg.Email, arg.Purpose)
+	return err
+}
+
 const getAuthorizationCode = `-- name: GetAuthorizationCode :one
 SELECT
     id,
@@ -453,6 +518,27 @@ func (q *Queries) GetBrowserUser(ctx context.Context, tokenHash string) (GetBrow
 	return i, err
 }
 
+const getEmailCode = `-- name: GetEmailCode :one
+SELECT code_hash, attempts FROM email_codes WHERE email = $1 AND purpose = $2 AND ready AND expires_at > now() FOR UPDATE
+`
+
+type GetEmailCodeParams struct {
+	Email   string
+	Purpose string
+}
+
+type GetEmailCodeRow struct {
+	CodeHash string
+	Attempts int32
+}
+
+func (q *Queries) GetEmailCode(ctx context.Context, arg GetEmailCodeParams) (GetEmailCodeRow, error) {
+	row := q.db.QueryRow(ctx, getEmailCode, arg.Email, arg.Purpose)
+	var i GetEmailCodeRow
+	err := row.Scan(&i.CodeHash, &i.Attempts)
+	return i, err
+}
+
 const getGroup = `-- name: GetGroup :one
 SELECT
     id
@@ -538,11 +624,16 @@ FROM
     users
 WHERE
     lower(email) = $1
-    AND ROLE = 'admin'
+    AND ROLE = $2
     AND status = 'active'
     AND deleted_at IS NULL
     AND password_hash IS NOT NULL
 `
+
+type GetPasswordUserParams struct {
+	Email string
+	Role  string
+}
 
 type GetPasswordUserRow struct {
 	ID           string
@@ -556,8 +647,8 @@ type GetPasswordUserRow struct {
 	PasswordHash *string
 }
 
-func (q *Queries) GetPasswordUser(ctx context.Context, email string) (GetPasswordUserRow, error) {
-	row := q.db.QueryRow(ctx, getPasswordUser, email)
+func (q *Queries) GetPasswordUser(ctx context.Context, arg GetPasswordUserParams) (GetPasswordUserRow, error) {
+	row := q.db.QueryRow(ctx, getPasswordUser, arg.Email, arg.Role)
 	var i GetPasswordUserRow
 	err := row.Scan(
 		&i.ID,
@@ -785,6 +876,15 @@ func (q *Queries) LockBillingGroup(ctx context.Context, id string) (*string, err
 	return billing_group_id, err
 }
 
+const lockEmailDelivery = `-- name: LockEmailDelivery :exec
+SELECT pg_advisory_xact_lock(741210)
+`
+
+func (q *Queries) LockEmailDelivery(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockEmailDelivery)
+	return err
+}
+
 const lockGroups = `-- name: LockGroups :execresult
 SELECT
     pg_advisory_xact_lock(741209)
@@ -803,6 +903,35 @@ func (q *Queries) LockInitialAdmin(ctx context.Context) (pgconn.CommandTag, erro
 	return q.db.Exec(ctx, lockInitialAdmin)
 }
 
+const readyEmailCode = `-- name: ReadyEmailCode :exec
+UPDATE email_codes SET ready = true WHERE email = $1 AND purpose = $2 AND code_hash = $3
+`
+
+type ReadyEmailCodeParams struct {
+	Email    string
+	Purpose  string
+	CodeHash string
+}
+
+func (q *Queries) ReadyEmailCode(ctx context.Context, arg ReadyEmailCodeParams) error {
+	_, err := q.db.Exec(ctx, readyEmailCode, arg.Email, arg.Purpose, arg.CodeHash)
+	return err
+}
+
+const recordEmailDelivery = `-- name: RecordEmailDelivery :exec
+INSERT INTO email_code_deliveries (email, ip_hash) VALUES ($1, $2)
+`
+
+type RecordEmailDeliveryParams struct {
+	Email  string
+	IpHash string
+}
+
+func (q *Queries) RecordEmailDelivery(ctx context.Context, arg RecordEmailDeliveryParams) error {
+	_, err := q.db.Exec(ctx, recordEmailDelivery, arg.Email, arg.IpHash)
+	return err
+}
+
 const redeemAuthorizationCode = `-- name: RedeemAuthorizationCode :execresult
 UPDATE
     oauth_authorization_codes
@@ -816,6 +945,23 @@ WHERE
 
 func (q *Queries) RedeemAuthorizationCode(ctx context.Context, id string) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, redeemAuthorizationCode, id)
+}
+
+const resetPassword = `-- name: ResetPassword :one
+UPDATE users SET password_hash = $2, updated_at = now()
+WHERE lower(email) = $1 AND deleted_at IS NULL AND status = 'active' RETURNING id
+`
+
+type ResetPasswordParams struct {
+	Email        string
+	PasswordHash *string
+}
+
+func (q *Queries) ResetPassword(ctx context.Context, arg ResetPasswordParams) (string, error) {
+	row := q.db.QueryRow(ctx, resetPassword, arg.Email, arg.PasswordHash)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const revokeBrowserSession = `-- name: RevokeBrowserSession :execresult
@@ -877,6 +1023,55 @@ type RevokeTokenParams struct {
 
 func (q *Queries) RevokeToken(ctx context.Context, arg RevokeTokenParams) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, revokeToken, arg.AccessTokenHash, arg.ClientID)
+}
+
+const revokeUserCodes = `-- name: RevokeUserCodes :exec
+UPDATE oauth_authorization_codes SET redeemed_at = now() WHERE user_id = $1 AND redeemed_at IS NULL
+`
+
+func (q *Queries) RevokeUserCodes(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, revokeUserCodes, userID)
+	return err
+}
+
+const revokeUserSessions = `-- name: RevokeUserSessions :exec
+UPDATE browser_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeUserSessions(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, revokeUserSessions, userID)
+	return err
+}
+
+const revokeUserTokens = `-- name: RevokeUserTokens :exec
+UPDATE oauth_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeUserTokens(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, revokeUserTokens, userID)
+	return err
+}
+
+const saveEmailCode = `-- name: SaveEmailCode :exec
+INSERT INTO email_codes (email, purpose, code_hash, expires_at) VALUES ($1, $2, $3, $4)
+ON CONFLICT (email, purpose) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, attempts = 0, ready = false
+`
+
+type SaveEmailCodeParams struct {
+	Email     string
+	Purpose   string
+	CodeHash  string
+	ExpiresAt time.Time
+}
+
+func (q *Queries) SaveEmailCode(ctx context.Context, arg SaveEmailCodeParams) error {
+	_, err := q.db.Exec(ctx, saveEmailCode,
+		arg.Email,
+		arg.Purpose,
+		arg.CodeHash,
+		arg.ExpiresAt,
+	)
+	return err
 }
 
 const searchUsers = `-- name: SearchUsers :many

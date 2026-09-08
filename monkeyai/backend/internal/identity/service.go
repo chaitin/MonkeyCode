@@ -105,6 +105,7 @@ type AccountPreserver interface {
 func (s *Service) WithAccountPreserver(p AccountPreserver) *Service { s.accounts = p; return s }
 
 type Service struct {
+	email        EmailSender
 	accounts     AccountPreserver
 	db           *pgxpool.Pool
 	settings     SettingReader

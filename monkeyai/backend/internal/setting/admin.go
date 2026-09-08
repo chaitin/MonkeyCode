@@ -31,6 +31,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		settingJSON(w, http.StatusOK, record)
 	})
 	router.Put("/settings/{key}", s.putSetting)
+	router.Post("/settings/email/test", s.testEmail)
 }
 
 func (s *Service) putSetting(w http.ResponseWriter, r *http.Request) {

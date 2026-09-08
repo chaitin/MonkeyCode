@@ -136,6 +136,22 @@ export const enUS = {
     system: "System",
   },
   login: {
+    codeSent:
+      "If this email is eligible, a verification code will be sent. Please check your inbox.",
+    passwordReset: "Password reset. Sign in with your new password.",
+    register: "Sign up with email",
+    resetPassword: "Reset password",
+    loadingMethods: "Loading sign-in methods…",
+    noMethods: "No sign-in methods are available. Contact your administrator.",
+    name: "Name",
+    code: "Email verification code",
+    sendingCode: "Sending…",
+    sendCode: "Send code",
+    newPassword: "New password (at least 12 characters)",
+    passwordHint: "Use at least 12 characters.",
+    passwordLogin: "Password sign-in",
+    codeLogin: "Code sign-in",
+
     title: "Monkey AI",
     subtitle: "Sign in to your MonkeyAI admin account",
     email: "Email",
@@ -1033,10 +1049,10 @@ export const enUS = {
           "Allow members to sign in with a verification code sent by email.",
         allowRegistration: "Allow new account registration",
         allowRegistrationDescription:
-          "Allow new users to create a regular account through enabled OAuth / OIDC sign-in providers.",
+          "Allow new users to sign up by email or create a regular account through enabled OAuth / OIDC providers.",
         enableRegistrationDialogTitle: "Enable new account registration?",
         enableRegistrationDialogDescription:
-          "New users will automatically receive a regular account after successful OAuth / OIDC authentication.",
+          "New users can sign up by email or receive a regular account after successful OAuth / OIDC authentication.",
         disableRegistrationDialogTitle: "Disable new account registration?",
         disableRegistrationDialogDescription:
           "Only existing members will be able to sign in through OAuth / OIDC. Existing accounts are not affected.",
@@ -1095,7 +1111,7 @@ export const enUS = {
         testEmail: "Test email",
         testDialogTitle: "Send a test email",
         testDialogDescription:
-          "Send a test message using the outgoing mail settings currently entered.",
+          "Send a test message using the saved outgoing mail settings.",
         testRecipient: "Test recipient",
         cancel: "Cancel",
         sendTest: "Send test email",
