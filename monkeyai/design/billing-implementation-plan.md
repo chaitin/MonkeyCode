@@ -326,6 +326,8 @@ PR 交付状态（2026-09-07）：已同步 `origin/main`（`fbaed233`），合�
 
 ## 2026-09-08 后台远程连接配置
 
+> 交付状态：已创建 [PR #1255](https://github.com/chaitin/MonkeyCode/pull/1255)，目标分支为 `main`，等待审查。
+
 - [x] 拉取 main 并建立 `feat-billing-wallet-settings` 独立 worktree。
 - [x] 增加环境、App ID、客户端证书、私钥和 CA 上传表单及专用保存接口。
 - [x] 复用计费修订号，保留未上传凭据，支持重启恢复和多实例读取新配置。
