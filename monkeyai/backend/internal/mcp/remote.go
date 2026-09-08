@@ -72,8 +72,8 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 		}
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.HasPrefix(line, "data:") {
-				event.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+			if after, ok := strings.CutPrefix(line, "data:"); ok {
+				event.WriteString(strings.TrimPrefix(after, " "))
 				event.WriteByte('\n')
 			}
 			if line == "" && event.Len() > 0 && check() {

@@ -73,8 +73,7 @@ func newUsageCapture(logger *slog.Logger, src io.ReadCloser, ctx usageCaptureCon
 		reader: reader,
 		writer: writer,
 	}
-	ctx.proxy.captures.Add(1)
-	go func() { defer ctx.proxy.captures.Done(); capture.handleShadow() }()
+	ctx.proxy.captures.Go(capture.handleShadow)
 	return capture
 }
 

@@ -15,7 +15,7 @@ import (
 
 func allowedIP(ip netip.Addr) bool {
 	ip = ip.Unmap()
-	for _, s := range strings.Split(os.Getenv("MONKEYAI_MCP_ALLOWED_CIDRS"), ",") {
+	for s := range strings.SplitSeq(os.Getenv("MONKEYAI_MCP_ALLOWED_CIDRS"), ",") {
 		p, err := netip.ParsePrefix(strings.TrimSpace(s))
 		if err == nil && p.Contains(ip) {
 			return true
@@ -78,7 +78,7 @@ func discover(ctx context.Context, target string, headers map[string]string) ([]
 	cursor := ""
 	cursors := map[string]bool{}
 	names := map[string]bool{}
-	for page := 0; page < 100; page++ {
+	for page := range 100 {
 		params := map[string]string{}
 		if cursor != "" {
 			params["cursor"] = cursor

@@ -90,9 +90,8 @@ func walletFailure(err error) (string, string) {
 	if errors.Is(err, opensdk.ErrCreditAccountSuspended) {
 		code = "wallet_account_suspended"
 	}
-	var e *opensdk.WalletError
 	trace := ""
-	if errors.As(err, &e) {
+	if e, ok := errors.AsType[*opensdk.WalletError](err); ok {
 		trace = e.TraceID
 	}
 	return code, trace
