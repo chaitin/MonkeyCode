@@ -159,12 +159,20 @@ func TestBillingIntegration(t *testing.T) {
 		if body.Int("max_completion_tokens") != 2000 {
 			t.Errorf("未限制输出: %v", body)
 		}
+		if body.String("model") != "billing-model" {
+			t.Errorf("上游模型名错误: %v", body)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"id":"upstream-reused-id","usage":{"prompt_tokens":10000,"completion_tokens":2000,"prompt_tokens_details":{"cached_tokens":4000}}}`)
 	}))
 	defer upstream.Close()
 	model := must("POST", "/api/admin/v1/models", resource.Object{"model_id": "billing-model", "display_name": "计费模型", "protocol": "openai_chat_completions", "base_url": upstream.URL, "api_key": "test-key", "advanced_config": resource.Object{"context_window_tokens": 20000, "max_output_tokens": 2000}, "credit_multiplier": 1, "authorization": resource.Object{"user_ids": []string{user}, "group_ids": []string{}}}, "")
-	body := resource.Object{"model": model.String("id"), "messages": []resource.Object{{"role": "user", "content": "测试"}}}
+	catalog := must("GET", "/api/v1/models", nil, "")["models"].([]any)
+	if len(catalog) != 1 {
+		t.Fatalf("模型目录错误: %v", catalog)
+	}
+	agentModel := resource.Object(catalog[0].(map[string]any))
+	body := resource.Object{"model": agentModel.String("model"), "messages": []resource.Object{{"role": "user", "content": "测试"}}}
 	code, out, headers := call("POST", "/v1/chat/completions", body, key, "http-call-1")
 	if code != 200 {
 		t.Fatalf("模型调用: %d %v", code, out)
@@ -179,6 +187,11 @@ func TestBillingIntegration(t *testing.T) {
 	if detail.String("status") != "settled" || detail.String("amount") != "1.480000" {
 		t.Fatalf("结算错误: %v", detail)
 	}
+	var recordedModel string
+	if err := pool.QueryRow(ctx, `SELECT model_id FROM model_calls WHERE id=$1`, transaction).Scan(&recordedModel); err != nil || recordedModel != model.String("id") {
+		t.Fatalf("模型调用记录未使用主键 UUID: %s, %v", recordedModel, err)
+	}
+	body["model"] = model.String("id")
 	if code, _, _ := call("POST", "/v1/chat/completions", body, key, "http-call-1"); code != 409 || requests.Load() != 1 {
 		t.Fatalf("重复执行: %d %d", code, requests.Load())
 	}

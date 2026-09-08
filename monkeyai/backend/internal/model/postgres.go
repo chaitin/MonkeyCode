@@ -211,7 +211,7 @@ func (p *Postgres) ListAvailable(ctx context.Context, userID string, isAdmin boo
 	return models, nil
 }
 
-func (p *Postgres) Resolve(ctx context.Context, userID, id string) (Model, error) {
+func (p *Postgres) Resolve(ctx context.Context, userID, requestedModel string) (Model, error) {
 	item, err := scanModel(database.Reader(ctx, p.pool).QueryRow(ctx, `
 		WITH RECURSIVE user_groups(group_id) AS (
 			SELECT id FROM groups WHERE deleted_at IS NULL AND id IN(SELECT group_id FROM group_users WHERE user_id=$1 AND removed_at IS NULL)
@@ -228,7 +228,7 @@ func (p *Postgres) Resolve(ctx context.Context, userID, id string) (Model, error
 			m.created_at, m.updated_at
 		FROM models m
 		JOIN users u ON u.id = $1
-		WHERE m.id = $2 AND m.enabled AND m.deleted_at IS NULL
+		WHERE (m.id::text = $2 OR m.model_id = $2) AND m.enabled AND m.deleted_at IS NULL
 			AND (
 				(u.role = 'admin' AND m.ownership_type = 'system')
 				OR m.owner_user_id = $1
@@ -238,7 +238,9 @@ func (p *Postgres) Resolve(ctx context.Context, userID, id string) (Model, error
 						AND (rag.user_id = $1 OR rag.group_id IN (SELECT group_id FROM user_groups))
 				)
 			)
-	`, userID, id))
+		ORDER BY (m.id::text = $2) DESC, m.created_at, m.id
+		LIMIT 1
+	`, userID, requestedModel))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Model{}, ErrUnauthorized
 	}
