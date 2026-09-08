@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 )
 
@@ -95,6 +96,7 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}
+	audit.Identify(r.Context(), audit.Actor{ID: user.ID, Name: user.Name, Email: user.Email})
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookie, Value: token, Path: "/", HttpOnly: true,
 		Secure: s.secureCookie, SameSite: http.SameSiteLaxMode,

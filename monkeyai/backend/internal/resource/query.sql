@@ -187,25 +187,6 @@ INSERT INTO resource_access_grants (resource_type, resource_id, user_id, group_i
     VALUES (sqlc.arg(resource_type), sqlc.arg(resource_id), NULLIF (sqlc.arg(user_id)::text,
 	'')::UUID,NULLIF(sqlc.arg(group_id)::text,'')::uuid, 'read_only', sqlc.arg(usage_requirement), sqlc.arg(granted_by_user_id));
 
--- name: CreateAudit :execresult
-INSERT INTO audits (actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id,
-    RESULT, occurred_at)
-SELECT
-    'user',
-    u.id,
-    u.name,
-    u.email,
-    $2,
-    'resource',
-    $3,
-    $4,
-    'success',
-    now()
-FROM
-    users u
-WHERE
-    u.id = $1;
-
 -- name: GetOwnerName :one
 SELECT
     name

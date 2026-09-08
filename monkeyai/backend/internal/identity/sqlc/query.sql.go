@@ -150,32 +150,6 @@ func (q *Queries) CreateBrowserSession(ctx context.Context, arg CreateBrowserSes
 	)
 }
 
-const createGroupAudit = `-- name: CreateGroupAudit :execresult
-INSERT INTO audits (actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id,
-    request_params, RESULT, occurred_at)
-    VALUES ('user', $1, $2, $3, $4, 'identity', 'group', $5, $6, 'success', now())
-`
-
-type CreateGroupAuditParams struct {
-	ActorUserID   *string
-	ActorName     string
-	ActorEmail    *string
-	Action        string
-	TargetID      *string
-	RequestParams []byte
-}
-
-func (q *Queries) CreateGroupAudit(ctx context.Context, arg CreateGroupAuditParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, createGroupAudit,
-		arg.ActorUserID,
-		arg.ActorName,
-		arg.ActorEmail,
-		arg.Action,
-		arg.TargetID,
-		arg.RequestParams,
-	)
-}
-
 const createIdentityUser = `-- name: CreateIdentityUser :one
 INSERT INTO users (name, email, avatar_url, ROLE, last_login_at)
     VALUES ($1, $2, NULLIF ($3::text, ''),

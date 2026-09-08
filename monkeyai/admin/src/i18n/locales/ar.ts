@@ -1,6 +1,18 @@
 import { enUS } from "./en-US.ts"
 
 export const ar = {
+  audit: {
+    ...enUS.audit,
+    since: "من",
+    until: "حتى (غير شامل)",
+    invalidRange: "يجب أن يسبق وقت البدء وقت الانتهاء",
+    details: "تفاصيل التدقيق",
+    target: "معرّف الهدف",
+    userAgent: "وكيل المستخدم",
+    requestId: "معرّف الطلب",
+    error: "الخطأ",
+  },
+
   resources: enUS.resources,
   app: {
     documentTitle: "إدارة MonkeyAI",

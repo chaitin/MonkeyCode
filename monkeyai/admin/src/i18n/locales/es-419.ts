@@ -1,6 +1,18 @@
 import { enUS } from "./en-US.ts"
 
 export const es419 = {
+  audit: {
+    ...enUS.audit,
+    since: "Desde",
+    until: "Hasta (exclusivo)",
+    invalidRange: "El inicio debe ser anterior al final",
+    details: "Detalles de auditoría",
+    target: "ID del destino",
+    userAgent: "Agente de usuario",
+    requestId: "ID de solicitud",
+    error: "Error",
+  },
+
   resources: enUS.resources,
   app: {
     documentTitle: "Administración de MonkeyAI",

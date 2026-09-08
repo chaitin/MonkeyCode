@@ -455,26 +455,6 @@ LIMIT 1
 ON CONFLICT (KEY)
     DO NOTHING;
 
--- name: CreateAudit :execresult
-INSERT INTO audits (actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id,
-    request_params, RESULT, occurred_at)
-SELECT
-    'user',
-    u.id,
-    u.name,
-    u.email,
-    sqlc.arg(action),
-    'billing',
-    'billing',
-    NULLIF (sqlc.arg(target_id)::text, '')::uuid,
-    sqlc.arg(request_params),
-    'success',
-    now()
-FROM
-    users u
-WHERE
-    u.id = sqlc.arg(id);
-
 -- name: LockAccount :one
 SELECT
     id,

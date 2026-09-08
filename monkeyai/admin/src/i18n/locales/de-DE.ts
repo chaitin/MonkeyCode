@@ -1,6 +1,18 @@
 import { enUS } from "./en-US.ts"
 
 export const deDE = {
+  audit: {
+    ...enUS.audit,
+    since: "Von",
+    until: "Bis (exklusiv)",
+    invalidRange: "Der Beginn muss vor dem Ende liegen",
+    details: "Audit-Details",
+    target: "Ziel-ID",
+    userAgent: "User-Agent",
+    requestId: "Anfrage-ID",
+    error: "Fehler",
+  },
+
   resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI-Administration",

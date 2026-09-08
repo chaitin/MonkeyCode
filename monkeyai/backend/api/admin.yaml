@@ -5,6 +5,89 @@ info:
 security:
   - AdminSession: []
 paths:
+  /api/admin/v1/audits:
+    get:
+      summary: 查询操作审计
+      description: 仅管理员可访问；按发生时间、ID 倒序稳定分页。支持历史记录与请求审计，时间范围左闭右开，文本筛选为不区分大小写的字面子串（IP 除外）。不提供修改或删除接口。
+      parameters:
+        - name: page
+          in: query
+          description: 页码，从 1 开始。
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000
+            default: 1
+        - name: page_size
+          in: query
+          description: 每页条数。
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 20
+        - name: actor
+          in: query
+          description: 操作者名称或邮箱的字面子串。
+          schema:
+            type: string
+            maxLength: 512
+        - name: ip
+          in: query
+          description: 实际连接来源 IP 的字面子串，不信任客户端转发头。
+          schema:
+            type: string
+            maxLength: 512
+        - name: params
+          in: query
+          description: 脱敏请求参数的字面子串。
+          schema:
+            type: string
+            maxLength: 512
+        - name: category
+          in: query
+          description: 操作分类。
+          schema:
+            type: string
+            enum: [model, identity, security, settings, resource, billing]
+        - name: result
+          in: query
+          description: 执行结果。
+          schema:
+            type: string
+            enum: [success, failed]
+        - name: since
+          in: query
+          description: 开始时间，包含该时刻。
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          description: 结束时间，不包含该时刻，必须晚于开始时间。
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: 匹配的审计记录与总条数；空页的 items 为 []，total 仍为匹配总数。
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPage"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/statistics/models:
     get:
       summary: 模型统计与真实环比
@@ -3615,6 +3698,86 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    AuditPage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditRecord"
+        total:
+          type: integer
+          minimum: 0
+          description: 所有匹配记录的数量。
+        page:
+          type: integer
+          minimum: 1
+          description: 请求页码。
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 500
+          description: 每页条数。
+    AuditRecord:
+      type: object
+      required: [id, actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id, request_params, source_ip, user_agent, result, error_message, occurred_at, request_id]
+      properties:
+        id:
+          type: string
+          description: "审计 ID。"
+          format: uuid
+        actor_type:
+          type: string
+          description: "操作者类型；登录失败是尚未认证的 user。"
+          enum: [user, system]
+        actor_user_id:
+          type: [string, "null"]
+          description: "操作者 ID；未认证用户及已删除用户为空。"
+          format: uuid
+        actor_name:
+          type: string
+          description: "操作者名称快照，未认证登录尝试固定为未认证用户。"
+        actor_email:
+          type: [string, "null"]
+          description: "操作者邮箱快照。"
+        action:
+          type: string
+          description: "操作标识；客户端应为未知标识保留原文回退。"
+        category:
+          type: string
+          description: "操作分类，兼容既有记录。"
+        target_type:
+          type: [string, "null"]
+          description: "目标资源类型。"
+        target_id:
+          type: [string, "null"]
+          description: "目标 UUID；无具体对象时为空。"
+          format: uuid
+        request_params:
+          type: object
+          description: "白名单参数快照，未知字段与凭证替换为 [REDACTED]；不保存上传文件、正文及原始响应。"
+          additionalProperties: true
+        source_ip:
+          type: [string, "null"]
+          description: "HTTP 对端 IPv4 或 IPv6 地址，历史记录可为空。"
+        user_agent:
+          type: [string, "null"]
+          description: "最多 512 个字符的客户端标识。"
+        result:
+          type: string
+          description: "执行结果。"
+          enum: [success, failed]
+        error_message:
+          type: [string, "null"]
+          description: "仅保存标准 HTTP 状态说明，不保存上游或数据库错误原文。"
+        occurred_at:
+          type: string
+          description: "操作发生时间。"
+          format: date-time
+        request_id:
+          type: [string, "null"]
+          description: "服务端生成的请求关联标识，同一批量操作可关联多个目标；历史或独立业务事件为空。"
     StatisticsModelSummary:
       type: object
       required:

@@ -2,6 +2,18 @@ version: '2'
 sql:
 - engine: postgresql
   schema: schema/schema.sql
+  queries: internal/audit/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/audit/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
   queries: internal/agentconfig/query.sql
   gen:
     go:

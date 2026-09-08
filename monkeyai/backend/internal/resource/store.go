@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
 
@@ -172,8 +173,11 @@ func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any,
 	return nil
 }
 func Audit(ctx context.Context, tx pgx.Tx, actor, kind, id, action string) error {
-	_, err := sqlc.New(tx).CreateAudit(ctx, sqlc.CreateAuditParams{ID: actor, Action: action, TargetType: new(kind), TargetID: new(id)})
-	return err
+	category := "resource"
+	if kind == "group" {
+		category = "identity"
+	}
+	return audit.Write(ctx, tx, audit.Event{ActorID: actor, Action: action, Category: category, TargetType: kind, TargetID: id})
 }
 
 type Definition struct {

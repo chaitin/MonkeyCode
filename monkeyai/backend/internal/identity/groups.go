@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 
 	"github.com/go-chi/chi/v5"
@@ -34,19 +35,7 @@ func (s *Service) groupTx(r *http.Request) (pgx.Tx, error) {
 	return tx, nil
 }
 func groupAudit(ctx context.Context, tx pgx.Tx, user User, action, id string, data any) error {
-	b, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	_, err = sqlc.New(tx).CreateGroupAudit(ctx, sqlc.CreateGroupAuditParams{
-		ActorUserID:   new(user.ID),
-		ActorName:     user.Name,
-		ActorEmail:    new(user.Email),
-		Action:        action,
-		TargetID:      new(id),
-		RequestParams: b,
-	})
-	return err
+	return audit.Write(ctx, tx, audit.Event{ActorID: user.ID, Action: action, Category: "identity", TargetType: "user", TargetID: id, Params: data})
 }
 func (s *Service) billingGroup(w http.ResponseWriter, r *http.Request) {
 	var in struct {

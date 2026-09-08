@@ -417,43 +417,6 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (s
 	return id, err
 }
 
-const createAudit = `-- name: CreateAudit :execresult
-INSERT INTO audits (actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id,
-    request_params, RESULT, occurred_at)
-SELECT
-    'user',
-    u.id,
-    u.name,
-    u.email,
-    $1,
-    'billing',
-    'billing',
-    NULLIF ($2::text, '')::uuid,
-    $3,
-    'success',
-    now()
-FROM
-    users u
-WHERE
-    u.id = $4
-`
-
-type CreateAuditParams struct {
-	Action        string
-	TargetID      string
-	RequestParams []byte
-	ID            string
-}
-
-func (q *Queries) CreateAudit(ctx context.Context, arg CreateAuditParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, createAudit,
-		arg.Action,
-		arg.TargetID,
-		arg.RequestParams,
-		arg.ID,
-	)
-}
-
 const createQuota = `-- name: CreateQuota :execresult
 INSERT INTO billing_quotas (subject_type, group_id, user_id, credits_per_cycle, updated_by_user_id)
     VALUES ($1, CASE WHEN $1 = 'group' THEN

@@ -1,6 +1,18 @@
 import { enUS } from "./en-US.ts"
 
 export const koKR = {
+  audit: {
+    ...enUS.audit,
+    since: "시작 시간",
+    until: "종료 시간 (미포함)",
+    invalidRange: "시작 시간은 종료 시간보다 빨라야 합니다",
+    details: "감사 상세 정보",
+    target: "대상 ID",
+    userAgent: "사용자 에이전트",
+    requestId: "요청 ID",
+    error: "오류",
+  },
+
   resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI 관리자 콘솔",
