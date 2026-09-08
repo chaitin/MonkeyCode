@@ -6,6 +6,20 @@ export const zhTW = {
     documentTitle: "MonkeyAI 管理後台",
     adminConsole: "管理後台",
   },
+  statistics: {
+    loading: "載入統計資料…",
+    retry: "重試",
+    refresh: "重新整理",
+    empty: "目前篩選範圍內沒有資料。",
+    deleted: "已刪除",
+    modelScope:
+      "呼叫按開始時間統計，積分按扣費與退款時間統計；快取命中率為命中快取的呼叫比例。",
+    taskScope:
+      "期間內建立的工作階段；完成率為成功結束數 / 總數，平均耗時僅含已結束工作階段。資料須由用戶端回報。",
+    realtimeScope:
+      "每 30 秒更新。吞吐量依期間內完成的呼叫計算；活躍任務為近期有活動的未結束工作階段。",
+    updated: "更新於 {{time}}",
+  },
   common: {
     breadcrumb: "麵包屑導覽",
     close: "關閉",
@@ -128,13 +142,13 @@ export const zhTW = {
         totalTasks: "任務總數",
         completionRate: "完成率",
         averageDuration: "平均耗時",
-        runningTasks: "執行中任務",
+        runningTasks: "未結束任務",
       },
       taskTrend: "任務趨勢",
       statusDistribution: "狀態分布",
       statuses: {
         completed: "已完成",
-        running: "執行中",
+        running: "未結束",
         failed: "失敗",
       },
       taskTypeDetails: "任務類型明細",

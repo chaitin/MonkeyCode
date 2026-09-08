@@ -6,6 +6,20 @@ export const es419 = {
     documentTitle: "Administración de MonkeyAI",
     adminConsole: "Panel de administración",
   },
+  statistics: {
+    loading: "Cargando estadísticas…",
+    retry: "Reintentar",
+    refresh: "Actualizar",
+    empty: "No hay datos para los filtros seleccionados.",
+    deleted: "Eliminado",
+    modelScope:
+      "Llamadas por hora de inicio; créditos por hora de cobro y reembolso. La tasa de caché es la proporción de llamadas con aciertos.",
+    taskScope:
+      "Sesiones iniciadas en el período. Tasa de finalización: exitosas / total; duración media solo de sesiones terminadas. Requiere informes del cliente.",
+    realtimeScope:
+      "Se actualiza cada 30 segundos. Rendimiento de llamadas terminadas; tareas activas: sesiones abiertas con actividad reciente.",
+    updated: "Actualizado a las {{time}}",
+  },
   common: {
     breadcrumb: "Ruta de navegación",
     close: "Cerrar",
@@ -132,13 +146,13 @@ export const es419 = {
         totalTasks: "Total de tareas",
         completionRate: "Tasa de finalización",
         averageDuration: "Duración promedio",
-        runningTasks: "Tareas en ejecución",
+        runningTasks: "Tareas abiertas",
       },
       taskTrend: "Tendencia de tareas",
       statusDistribution: "Distribución por estado",
       statuses: {
         completed: "Completadas",
-        running: "En ejecución",
+        running: "Abiertas",
         failed: "Fallidas",
       },
       taskTypeDetails: "Detalle por tipo de tarea",

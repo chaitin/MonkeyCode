@@ -6,6 +6,20 @@ export const frFR = {
     documentTitle: "Administration MonkeyAI",
     adminConsole: "Console d’administration",
   },
+  statistics: {
+    loading: "Chargement des statistiques…",
+    retry: "Réessayer",
+    refresh: "Actualiser",
+    empty: "Aucune donnée pour les filtres sélectionnés.",
+    deleted: "Supprimé",
+    modelScope:
+      "Appels par heure de début ; crédits par heure de débit et de remboursement. Le taux de cache est la part des appels avec un cache utilisé.",
+    taskScope:
+      "Sessions démarrées sur la période. Taux de réussite : réussies / total ; durée moyenne des sessions terminées uniquement. Nécessite les rapports du client.",
+    realtimeScope:
+      "Actualisation toutes les 30 secondes. Débit des appels terminés ; tâches actives : sessions ouvertes avec une activité récente.",
+    updated: "Mis à jour à {{time}}",
+  },
   common: {
     breadcrumb: "Fil d’Ariane",
     close: "Fermer",
@@ -132,13 +146,13 @@ export const frFR = {
         totalTasks: "Nombre total de tâches",
         completionRate: "Taux d’achèvement",
         averageDuration: "Durée moyenne",
-        runningTasks: "Tâches en cours",
+        runningTasks: "Tâches ouvertes",
       },
       taskTrend: "Évolution des tâches",
       statusDistribution: "Répartition par statut",
       statuses: {
         completed: "Terminées",
-        running: "En cours",
+        running: "Ouvertes",
         failed: "Échouées",
       },
       taskTypeDetails: "Détail par type de tâche",

@@ -7,7 +7,6 @@ import {
   Coins01Icon,
   DashboardSpeed01Icon,
   GaugeIcon,
-  Message01Icon,
   Task01Icon,
   TaskDone01Icon,
   TokenCircleIcon,
@@ -23,104 +22,34 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { useStatistics } from "@/hooks/use-statistics"
+import { type RealtimeStatistics } from "@/lib/statistics"
+import { StatisticsFeedback } from "@/components/statistics-feedback"
+import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type RealtimeRange = "5m" | "15m" | "30m" | "60m"
 
-type RealtimeSnapshot = {
-  modelConsumption: number
-  p95ResponseTime: number
-  modelSuccessRate: number
-  modelCalls: number
-  tpm: number
-  rpm: number
-  inputTokens: number
-  outputTokens: number
-  activeUsers: number
-  activeTasks: number
-  newTasks: number
-  conversations: number
-}
-
-type MetricKey = keyof RealtimeSnapshot
-
-const REALTIME_SNAPSHOTS: Record<RealtimeRange, RealtimeSnapshot> = {
-  "5m": {
-    modelConsumption: 128,
-    p95ResponseTime: 842,
-    modelSuccessRate: 99.7,
-    modelCalls: 1430,
-    tpm: 378400,
-    rpm: 286,
-    inputTokens: 1480000,
-    outputTokens: 412000,
-    activeUsers: 184,
-    activeTasks: 96,
-    newTasks: 421,
-    conversations: 1312,
-  },
-  "15m": {
-    modelConsumption: 362,
-    p95ResponseTime: 896,
-    modelSuccessRate: 99.5,
-    modelCalls: 4140,
-    tpm: 366800,
-    rpm: 276,
-    inputTokens: 4320000,
-    outputTokens: 1182000,
-    activeUsers: 326,
-    activeTasks: 207,
-    newTasks: 1248,
-    conversations: 3864,
-  },
-  "30m": {
-    modelConsumption: 711,
-    p95ResponseTime: 931,
-    modelSuccessRate: 99.4,
-    modelCalls: 7900,
-    tpm: 354600,
-    rpm: 263,
-    inputTokens: 8360000,
-    outputTokens: 2278000,
-    activeUsers: 451,
-    activeTasks: 318,
-    newTasks: 2436,
-    conversations: 7542,
-  },
-  "60m": {
-    modelConsumption: 1384,
-    p95ResponseTime: 1024,
-    modelSuccessRate: 99.2,
-    modelCalls: 15660,
-    tpm: 344300,
-    rpm: 261,
-    inputTokens: 16240000,
-    outputTokens: 4418000,
-    activeUsers: 612,
-    activeTasks: 428,
-    newTasks: 4680,
-    conversations: 14620,
-  },
-}
+type MetricKey = Exclude<keyof RealtimeStatistics, "from" | "until">
 
 const METRICS = [
   {
-    key: "modelConsumption",
+    key: "model_consumption",
     labelKey: "pages.realtimeStatus.metrics.modelConsumption",
     icon: Coins01Icon,
   },
   {
-    key: "p95ResponseTime",
+    key: "p95_response_time",
     labelKey: "pages.realtimeStatus.metrics.p95ResponseTime",
     icon: Clock01Icon,
   },
   {
-    key: "modelSuccessRate",
+    key: "model_success_rate",
     labelKey: "pages.realtimeStatus.metrics.modelSuccessRate",
     icon: TaskDone01Icon,
   },
   {
-    key: "modelCalls",
+    key: "model_calls",
     labelKey: "pages.realtimeStatus.metrics.modelCalls",
     icon: Activity01Icon,
   },
@@ -135,34 +64,29 @@ const METRICS = [
     icon: GaugeIcon,
   },
   {
-    key: "inputTokens",
+    key: "input_tokens",
     labelKey: "pages.realtimeStatus.metrics.inputTokens",
     icon: TokenCircleIcon,
   },
   {
-    key: "outputTokens",
+    key: "output_tokens",
     labelKey: "pages.realtimeStatus.metrics.outputTokens",
     icon: AiChat02Icon,
   },
   {
-    key: "activeUsers",
+    key: "active_users",
     labelKey: "pages.realtimeStatus.metrics.activeUsers",
     icon: UserMultiple02Icon,
   },
   {
-    key: "activeTasks",
+    key: "active_tasks",
     labelKey: "pages.realtimeStatus.metrics.activeTasks",
     icon: Task01Icon,
   },
   {
-    key: "newTasks",
+    key: "new_tasks",
     labelKey: "pages.realtimeStatus.metrics.newTasks",
     icon: AddSquareIcon,
-  },
-  {
-    key: "conversations",
-    labelKey: "pages.realtimeStatus.metrics.conversations",
-    icon: Message01Icon,
   },
 ] as const
 
@@ -210,29 +134,50 @@ export function RealtimeStatusPage() {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   })
-  const snapshot = REALTIME_SNAPSHOTS[timeRange]
-  const valueLabels: Record<MetricKey, string> = {
-    modelConsumption: t("pages.realtimeStatus.units.credits", {
-      count: numberFormatter.format(snapshot.modelConsumption),
-    }),
-    p95ResponseTime: t("pages.realtimeStatus.units.milliseconds", {
-      count: numberFormatter.format(snapshot.p95ResponseTime),
-    }),
-    modelSuccessRate: `${percentFormatter.format(snapshot.modelSuccessRate)}%`,
-    modelCalls: numberFormatter.format(snapshot.modelCalls),
-    tpm: compactNumberFormatter.format(snapshot.tpm),
-    rpm: numberFormatter.format(snapshot.rpm),
-    inputTokens: compactNumberFormatter.format(snapshot.inputTokens),
-    outputTokens: compactNumberFormatter.format(snapshot.outputTokens),
-    activeUsers: numberFormatter.format(snapshot.activeUsers),
-    activeTasks: numberFormatter.format(snapshot.activeTasks),
-    newTasks: numberFormatter.format(snapshot.newTasks),
-    conversations: numberFormatter.format(snapshot.conversations),
-  }
+  const request = useStatistics<RealtimeStatistics>(
+    `/api/admin/v1/statistics/realtime?range=${timeRange}`,
+    30000
+  )
+  const snapshot = request.data
+  const valueLabels: Record<MetricKey, string> | undefined = snapshot
+    ? {
+        model_consumption: t("pages.realtimeStatus.units.credits", {
+          count: new Intl.NumberFormat(locale, {
+            maximumFractionDigits: 6,
+          }).format(Number(snapshot.model_consumption)),
+        }),
+        p95_response_time:
+          snapshot.p95_response_time === null
+            ? "—"
+            : t("pages.realtimeStatus.units.milliseconds", {
+                count: numberFormatter.format(snapshot.p95_response_time),
+              }),
+        model_success_rate:
+          snapshot.model_success_rate === null
+            ? "—"
+            : `${percentFormatter.format(snapshot.model_success_rate)}%`,
+        model_calls: numberFormatter.format(snapshot.model_calls),
+        tpm: compactNumberFormatter.format(snapshot.tpm),
+        rpm: numberFormatter.format(snapshot.rpm),
+        input_tokens: compactNumberFormatter.format(snapshot.input_tokens),
+        output_tokens: compactNumberFormatter.format(snapshot.output_tokens),
+        active_users: numberFormatter.format(snapshot.active_users),
+        active_tasks: numberFormatter.format(snapshot.active_tasks),
+        new_tasks: numberFormatter.format(snapshot.new_tasks),
+      }
+    : undefined
 
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={request.reload}
+          disabled={request.loading}
+        >
+          {t("statistics.refresh")}
+        </Button>
         <Tabs
           value={timeRange}
           onValueChange={(value) => setTimeRange(value as RealtimeRange)}
@@ -247,16 +192,24 @@ export function RealtimeStatusPage() {
         </Tabs>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {METRICS.map((metric) => (
-          <RealtimeMetricCard
-            icon={metric.icon}
-            key={metric.key}
-            label={t(metric.labelKey)}
-            valueLabel={valueLabels[metric.key]}
-          />
-        ))}
-      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("statistics.realtimeScope")}
+        {snapshot &&
+          ` · ${t("statistics.updated", { time: new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(snapshot.until)) })}`}
+      </p>
+      <StatisticsFeedback {...request} />
+      {valueLabels && (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {METRICS.map((metric) => (
+            <RealtimeMetricCard
+              icon={metric.icon}
+              key={metric.key}
+              label={t(metric.labelKey)}
+              valueLabel={valueLabels[metric.key]}
+            />
+          ))}
+        </div>
+      )}
     </section>
   )
 }

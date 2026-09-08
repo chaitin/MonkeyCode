@@ -6,6 +6,20 @@ export const deDE = {
     documentTitle: "MonkeyAI-Administration",
     adminConsole: "Administrationskonsole",
   },
+  statistics: {
+    loading: "Statistik wird geladen…",
+    retry: "Erneut versuchen",
+    refresh: "Aktualisieren",
+    empty: "Keine Daten für die ausgewählten Filter.",
+    deleted: "Gelöscht",
+    modelScope:
+      "Aufrufe nach Startzeit, Credits nach Buchungs- und Erstattungszeit. Cache-Trefferquote: Anteil der Aufrufe mit Cache-Treffern.",
+    taskScope:
+      "Im Zeitraum gestartete Sitzungen. Abschlussquote: erfolgreich / gesamt. Durchschnittsdauer nur für beendete Sitzungen. Erfordert Client-Meldungen.",
+    realtimeScope:
+      "Aktualisierung alle 30 Sekunden. Durchsatz aus abgeschlossenen Aufrufen; aktive Aufgaben sind kürzlich aktive, offene Sitzungen.",
+    updated: "Aktualisiert: {{time}}",
+  },
   common: {
     breadcrumb: "Brotkrümelnavigation",
     close: "Schließen",
@@ -133,13 +147,13 @@ export const deDE = {
         totalTasks: "Aufgaben insgesamt",
         completionRate: "Abschlussquote",
         averageDuration: "Durchschnittliche Dauer",
-        runningTasks: "Laufende Aufgaben",
+        runningTasks: "Offene Aufgaben",
       },
       taskTrend: "Aufgabentrend",
       statusDistribution: "Statusverteilung",
       statuses: {
         completed: "Abgeschlossen",
-        running: "In Bearbeitung",
+        running: "Offen",
         failed: "Fehlgeschlagen",
       },
       taskTypeDetails: "Details nach Aufgabentyp",
