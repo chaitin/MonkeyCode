@@ -2,11 +2,6 @@
 SELECT
     pg_advisory_xact_lock(741209);
 
--- name: CreateGroupAudit :execresult
-INSERT INTO audits (actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id,
-    request_params, RESULT, occurred_at)
-    VALUES ('user', $1, $2, $3, $4, 'identity', 'group', $5, $6, 'success', now());
-
 -- name: GetGroup :one
 SELECT
     id

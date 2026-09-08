@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	auditlog "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 
@@ -118,12 +119,7 @@ var insufficient = fail(402, "insufficient_credits", "当期可用积分不足")
 var conflict = fail(409, "revision_conflict", "配置已更新，请重新加载后保存")
 
 func audit(ctx context.Context, q resource.Queryer, actor, action, target string, data any) error {
-	b, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	_, err = sqlc.New(q).CreateAudit(ctx, sqlc.CreateAuditParams{ID: actor, Action: action, TargetID: target, RequestParams: b})
-	return err
+	return auditlog.Write(ctx, q, auditlog.Event{ActorID: actor, Action: action, Category: "billing", TargetType: "billing", TargetID: target, Params: data})
 }
 
 type Account struct {

@@ -1,6 +1,18 @@
 import { enUS } from "./en-US.ts"
 
 export const frFR = {
+  audit: {
+    ...enUS.audit,
+    since: "Début",
+    until: "Fin (exclue)",
+    invalidRange: "Le début doit précéder la fin",
+    details: "Détails de l’audit",
+    target: "ID de la cible",
+    userAgent: "Agent utilisateur",
+    requestId: "ID de la requête",
+    error: "Erreur",
+  },
+
   resources: enUS.resources,
   app: {
     documentTitle: "Administration MonkeyAI",

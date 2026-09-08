@@ -12,6 +12,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
@@ -124,6 +125,12 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 
 	admin := chi.NewRouter()
 	admin.Use(identities.RequireAdmin)
+	audits := audit.NewService(pool, logger)
+	admin.Use(audits.Middleware(func(r *http.Request) audit.Actor {
+		user, _ := identity.UserFromContext(r.Context())
+		return audit.Actor{ID: user.ID, Name: user.Name, Email: user.Email}
+	}))
+	audits.RegisterAdmin(admin)
 	identities.RegisterAdmin(admin)
 	group.NewService(pool).WithAccountPreserver(charges).RegisterAdmin(admin)
 	settings.RegisterAdmin(admin)
@@ -157,7 +164,20 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
 	router.Get("/oauth/connectors/callback", connectors.Callback)
 	router.Mount("/oauth", identities.OAuthRouter())
-	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage}, admin, agent, identities.AuthRouter()))
+	auth := audits.Middleware(func(r *http.Request) audit.Actor {
+		switch r.URL.Path {
+		case "/api/auth/v1/admin/login":
+			return audit.Actor{Name: "未认证用户"}
+		case "/api/auth/v1/logout":
+			if user, ok := identities.BrowserUser(r); ok {
+				return audit.Actor{ID: user.ID, Name: user.Name, Email: user.Email}
+			}
+			return audit.Actor{Name: "未认证用户"}
+		default:
+			return audit.Actor{}
+		}
+	})(identities.AuthRouter())
+	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage}, admin, agent, auth))
 	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy}, nil
 }
 

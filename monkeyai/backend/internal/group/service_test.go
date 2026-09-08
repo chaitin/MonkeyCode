@@ -46,19 +46,18 @@ func TestGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "000001_initial_create_schema.up.sql"))
+	migrations, err := filepath.Glob("../../migrations/*.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, string(migration)); err != nil {
-		t.Fatal(err)
-	}
-	billingMigration, err := os.ReadFile("../../migrations/000002_billing_create_transactions.up.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, string(billingMigration)); err != nil {
-		t.Fatal(err)
+	for _, path := range migrations {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = pool.Exec(ctx, string(data)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	actor, member := resource.ID(), resource.ID()
 	if _, err = pool.Exec(ctx, `INSERT INTO users(id,name,email,role) VALUES($1,'管理员','admin@example.com','admin'),($2,'成员','member@example.com','user')`, actor, member); err != nil {

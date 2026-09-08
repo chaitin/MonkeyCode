@@ -697,3 +697,5 @@ CREATE TABLE billing_migration_issues (
 ALTER TABLE credit_ledger_entries DISABLE TRIGGER credit_ledger_immutable;
 
 ALTER TABLE credit_ledger_entries ENABLE TRIGGER credit_ledger_immutable;
+
+ALTER TABLE audits ADD COLUMN request_id text;

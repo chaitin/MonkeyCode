@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent } from "react"
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react"
 import {
   ArrowLeft02Icon,
   ArrowRight01Icon,
@@ -6,6 +6,16 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+
+import { api } from "@/lib/api"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -38,206 +48,41 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-type LogCategory = "model" | "member" | "knowledge" | "security" | "settings"
+type LogCategory =
+  "model" | "identity" | "resource" | "billing" | "security" | "settings"
 type LogResult = "success" | "failed"
-type LogAction =
-  | "addModel"
-  | "updateMemberRole"
-  | "deleteKnowledgeBase"
-  | "signIn"
-  | "updateOAuth"
-  | "createApiKey"
-  | "updateRule"
-  | "inviteMember"
-  | "signInFailed"
-  | "updateBranding"
-  | "disableModel"
-  | "exportLogs"
-
 type AuditLog = {
   id: string
-  occurredAt: string
-  actor: string
-  actorEmail: string
-  initials: string
-  action: LogAction
+  occurred_at: string
+  actor_name: string
+  actor_email: string | null
+  action: string
   category: LogCategory
-  requestParams: Record<string, unknown>
-  ipAddress: string
+  target_type: string | null
+  target_id: string | null
+  request_params: Record<string, unknown>
+  source_ip: string | null
+  user_agent: string | null
+  request_id: string | null
+  error_message: string | null
   result: LogResult
 }
-
+type AuditPage = {
+  items: AuditLog[]
+  total: number
+  page: number
+  page_size: number
+}
 type CategoryFilter = "all" | LogCategory
 type ResultFilter = "all" | LogResult
-
 const DEFAULT_PAGE_SIZE = 20
 const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
-
-const AUDIT_LOGS: AuditLog[] = [
-  {
-    id: "log-001",
-    occurredAt: "2026-09-02T06:32:18Z",
-    actor: "张明",
-    actorEmail: "admin@example.com",
-    initials: "ZM",
-    action: "addModel",
-    category: "model",
-    requestParams: {
-      provider: "openai",
-      model: "gpt-5",
-      context_window: 400000,
-    },
-    ipAddress: "203.0.113.24",
-    result: "success",
-  },
-  {
-    id: "log-002",
-    occurredAt: "2026-09-02T05:48:06Z",
-    actor: "李娜",
-    actorEmail: "lina@example.com",
-    initials: "LN",
-    action: "updateMemberRole",
-    category: "member",
-    requestParams: { member_id: "usr_7h2k", role: "admin" },
-    ipAddress: "198.51.100.17",
-    result: "success",
-  },
-  {
-    id: "log-003",
-    occurredAt: "2026-09-02T03:15:42Z",
-    actor: "张明",
-    actorEmail: "admin@example.com",
-    initials: "ZM",
-    action: "deleteKnowledgeBase",
-    category: "knowledge",
-    requestParams: { knowledge_base_id: "kb_help_center", force: false },
-    ipAddress: "203.0.113.24",
-    result: "failed",
-  },
-  {
-    id: "log-004",
-    occurredAt: "2026-09-02T01:06:29Z",
-    actor: "系统",
-    actorEmail: "system@monkeyai.local",
-    initials: "AI",
-    action: "signIn",
-    category: "security",
-    requestParams: { method: "password" },
-    ipAddress: "203.0.113.24",
-    result: "success",
-  },
-  {
-    id: "log-005",
-    occurredAt: "2026-09-01T11:44:10Z",
-    actor: "张明",
-    actorEmail: "admin@example.com",
-    initials: "ZM",
-    action: "updateOAuth",
-    category: "settings",
-    requestParams: { provider: "github", enabled: true },
-    ipAddress: "203.0.113.24",
-    result: "success",
-  },
-  {
-    id: "log-006",
-    occurredAt: "2026-09-01T08:23:57Z",
-    actor: "李娜",
-    actorEmail: "lina@example.com",
-    initials: "LN",
-    action: "createApiKey",
-    category: "security",
-    requestParams: {
-      name: "Production API Key",
-      scopes: ["chat:write", "models:read"],
-    },
-    ipAddress: "198.51.100.17",
-    result: "success",
-  },
-  {
-    id: "log-007",
-    occurredAt: "2026-08-31T09:17:33Z",
-    actor: "张明",
-    actorEmail: "admin@example.com",
-    initials: "ZM",
-    action: "updateRule",
-    category: "settings",
-    requestParams: { rule_id: "rule_masking", enabled: true },
-    ipAddress: "203.0.113.24",
-    result: "success",
-  },
-  {
-    id: "log-008",
-    occurredAt: "2026-08-31T06:02:11Z",
-    actor: "李娜",
-    actorEmail: "lina@example.com",
-    initials: "LN",
-    action: "inviteMember",
-    category: "member",
-    requestParams: {
-      email: "wangqi@example.com",
-      group_id: "grp_engineering",
-    },
-    ipAddress: "198.51.100.17",
-    result: "success",
-  },
-  {
-    id: "log-009",
-    occurredAt: "2026-08-30T14:51:08Z",
-    actor: "系统",
-    actorEmail: "system@monkeyai.local",
-    initials: "AI",
-    action: "signInFailed",
-    category: "security",
-    requestParams: { method: "password", reason: "invalid_credentials" },
-    ipAddress: "192.0.2.86",
-    result: "failed",
-  },
-  {
-    id: "log-010",
-    occurredAt: "2026-08-30T04:35:49Z",
-    actor: "张明",
-    actorEmail: "admin@example.com",
-    initials: "ZM",
-    action: "updateBranding",
-    category: "settings",
-    requestParams: {
-      workspace_name: "MonkeyAI Workspace",
-      logo_changed: true,
-    },
-    ipAddress: "203.0.113.24",
-    result: "success",
-  },
-  {
-    id: "log-011",
-    occurredAt: "2026-08-29T10:28:22Z",
-    actor: "李娜",
-    actorEmail: "lina@example.com",
-    initials: "LN",
-    action: "disableModel",
-    category: "model",
-    requestParams: { model_id: "claude-3-5-sonnet" },
-    ipAddress: "198.51.100.17",
-    result: "success",
-  },
-  {
-    id: "log-012",
-    occurredAt: "2026-08-29T02:13:04Z",
-    actor: "张明",
-    actorEmail: "admin@example.com",
-    initials: "ZM",
-    action: "exportLogs",
-    category: "security",
-    requestParams: { range: "2026-08", format: "csv" },
-    ipAddress: "203.0.113.24",
-    result: "success",
-  },
-]
-
 const CATEGORY_FILTERS: CategoryFilter[] = [
   "all",
   "model",
-  "member",
-  "knowledge",
+  "identity",
+  "resource",
+  "billing",
   "security",
   "settings",
 ]
@@ -255,69 +100,76 @@ export function OperationLogsPage() {
   const [requestParamsQuery, setRequestParamsQuery] = useState("")
   const [category, setCategory] = useState<CategoryFilter>("all")
   const [result, setResult] = useState<ResultFilter>("all")
+  const [revision, setRevision] = useState(0)
+  const [sinceInput, setSinceInput] = useState("")
+  const [untilInput, setUntilInput] = useState("")
+  const [since, setSince] = useState("")
+  const [until, setUntil] = useState("")
+  const [invalidRange, setInvalidRange] = useState(false)
+  const [loaded, setLoaded] = useState<{
+    path: string
+    revision: number
+    data?: AuditPage
+    error?: string
+  }>()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
   const categoryLabel = (value: CategoryFilter) =>
     value === "all"
       ? t("pages.operationLogs.filters.allActions")
-      : t(`pages.operationLogs.categories.${value}`)
+      : t(`audit.categories.${value}`)
   const resultLabel = (value: ResultFilter) =>
     value === "all"
       ? t("pages.operationLogs.filters.allResults")
       : t(`pages.operationLogs.results.${value}`)
 
-  const filteredLogs = useMemo(() => {
-    const normalizedOperatorQuery = operatorQuery
-      .trim()
-      .toLocaleLowerCase(i18n.language)
-    const normalizedIpQuery = ipQuery.trim().toLocaleLowerCase(i18n.language)
-    const normalizedRequestParamsQuery = requestParamsQuery
-      .trim()
-      .toLocaleLowerCase(i18n.language)
-
-    return AUDIT_LOGS.filter((log) => {
-      const matchesCategory = category === "all" || log.category === category
-      const matchesResult = result === "all" || log.result === result
-      const matchesOperator =
-        normalizedOperatorQuery.length === 0 ||
-        [log.actor, log.actorEmail].some((value) =>
-          value
-            .toLocaleLowerCase(i18n.language)
-            .includes(normalizedOperatorQuery)
-        )
-      const matchesIp =
-        normalizedIpQuery.length === 0 ||
-        log.ipAddress.includes(normalizedIpQuery)
-      const matchesRequestParams =
-        normalizedRequestParamsQuery.length === 0 ||
-        JSON.stringify(log.requestParams)
-          .toLocaleLowerCase(i18n.language)
-          .includes(normalizedRequestParamsQuery)
-
-      return (
-        matchesCategory &&
-        matchesResult &&
-        matchesOperator &&
-        matchesIp &&
-        matchesRequestParams
-      )
-    })
-  }, [
-    category,
-    i18n.language,
-    ipQuery,
-    operatorQuery,
-    requestParamsQuery,
-    result,
-  ])
-
-  const pageCount = Math.max(1, Math.ceil(filteredLogs.length / pageSize))
-  const currentPage = Math.min(page, pageCount)
-  const pageStart = (currentPage - 1) * pageSize
-  const visibleLogs = filteredLogs.slice(pageStart, pageStart + pageSize)
-  const firstVisible = filteredLogs.length === 0 ? 0 : pageStart + 1
-  const lastVisible = Math.min(pageStart + pageSize, filteredLogs.length)
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  })
+  for (const [key, value] of Object.entries({
+    actor: operatorQuery,
+    ip: ipQuery,
+    params: requestParamsQuery,
+    category: category === "all" ? "" : category,
+    result: result === "all" ? "" : result,
+    since,
+    until,
+  })) {
+    if (value) query.set(key, value)
+  }
+  const path = `/api/admin/v1/audits?${query}`
+  useEffect(() => {
+    const controller = new AbortController()
+    api<AuditPage>(path, { signal: controller.signal })
+      .then((data) => {
+        if (!controller.signal.aborted) setLoaded({ path, revision, data })
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted)
+          setLoaded({
+            path,
+            revision,
+            error: error instanceof Error ? error.message : String(error),
+          })
+      })
+    return () => controller.abort()
+  }, [path, revision])
+  const current =
+    loaded?.path === path && loaded.revision === revision ? loaded : undefined
+  const loading = !current
+  const error = current?.error
+  const total = current?.data?.total ?? 0
+  const visibleLogs = current?.data?.items ?? []
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const currentPage = page
+  const pageStart = (page - 1) * pageSize
+  const firstVisible = visibleLogs.length === 0 ? 0 : pageStart + 1
+  const lastVisible =
+    visibleLogs.length === 0 ? 0 : pageStart + visibleLogs.length
+  const actionLabel = (log: AuditLog) =>
+    `${t(`audit.actions.${log.action}`, { defaultValue: log.action })} · ${t(`audit.targets.${log.target_type}`, { defaultValue: log.target_type ?? categoryLabel(log.category) })}`
   const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
     value,
     label: t("pages.operationLogs.pagination.perPage", { count: value }),
@@ -345,6 +197,20 @@ export function OperationLogsPage() {
   }
 
   const applySearch = () => {
+    const start = sinceInput ? new Date(sinceInput) : undefined
+    const end = untilInput ? new Date(untilInput) : undefined
+    if (
+      (start && !Number.isFinite(start.getTime())) ||
+      (end && !Number.isFinite(end.getTime())) ||
+      (start && end && start >= end)
+    ) {
+      setInvalidRange(true)
+      return
+    }
+    setInvalidRange(false)
+    setSince(start?.toISOString() ?? "")
+    setUntil(end?.toISOString() ?? "")
+    setRevision((value) => value + 1)
     setOperatorQuery(operatorInput)
     setIpQuery(ipInput)
     setRequestParamsQuery(requestParamsInput)
@@ -446,7 +312,64 @@ export function OperationLogsPage() {
               {t("pages.operationLogs.filters.search")}
             </Button>
           </div>
-          <Table className="min-w-4xl">
+          <div className="flex flex-wrap items-center gap-3 px-(--card-spacing)">
+            <label className="flex items-center gap-2 text-sm">
+              {t("audit.since")}
+              <Input
+                type="datetime-local"
+                className="w-auto"
+                value={sinceInput}
+                onChange={(event) => setSinceInput(event.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                aria-invalid={invalidRange}
+                aria-describedby={
+                  invalidRange ? "audit-range-error" : undefined
+                }
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              {t("audit.until")}
+              <Input
+                type="datetime-local"
+                className="w-auto"
+                value={untilInput}
+                onChange={(event) => setUntilInput(event.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                aria-invalid={invalidRange}
+                aria-describedby={
+                  invalidRange ? "audit-range-error" : undefined
+                }
+              />
+            </label>
+            {invalidRange && (
+              <p
+                id="audit-range-error"
+                role="alert"
+                className="text-sm text-destructive"
+              >
+                {t("audit.invalidRange")}
+              </p>
+            )}
+          </div>
+          {error && (
+            <div
+              role="alert"
+              className="flex items-center gap-3 px-(--card-spacing) text-sm text-destructive"
+            >
+              {error}
+              <Button
+                variant="outline"
+                onClick={() => setRevision((value) => value + 1)}
+              >
+                {t("statistics.retry")}
+              </Button>
+            </div>
+          )}
+          <Table
+            className="min-w-4xl"
+            aria-label={t("pages.operationLogs.tableTitle")}
+            aria-busy={loading}
+          >
             <TableHeader>
               <TableRow>
                 <TableHead className="ps-(--card-spacing)">
@@ -472,34 +395,98 @@ export function OperationLogsPage() {
                 visibleLogs.map((log) => (
                   <TableRow key={log.id}>
                     <TableCell className="ps-(--card-spacing) text-muted-foreground">
-                      {dateFormatter.format(new Date(log.occurredAt))}
+                      {dateFormatter.format(new Date(log.occurred_at))}
                     </TableCell>
                     <TableCell>
                       <div
                         className="flex max-w-52 items-center gap-3"
-                        title={log.actorEmail}
+                        title={log.actor_email ?? undefined}
                       >
                         <Avatar className="size-6">
-                          <AvatarFallback>{log.initials}</AvatarFallback>
+                          <AvatarFallback>
+                            {log.actor_name.slice(0, 2)}
+                          </AvatarFallback>
                         </Avatar>
                         <span className="truncate font-medium">
-                          {log.actor}
+                          {log.actor_name}
                         </span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      {t(`pages.operationLogs.actions.${log.action}`)}
+                      <span>{actionLabel(log)}</span>
+                      {log.target_id && (
+                        <div
+                          className="max-w-52 truncate font-mono text-xs text-muted-foreground"
+                          title={log.target_id}
+                        >
+                          {log.target_id}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
-                      <code
-                        className="block max-w-80 truncate text-xs text-muted-foreground"
-                        title={JSON.stringify(log.requestParams)}
-                      >
-                        {JSON.stringify(log.requestParams)}
-                      </code>
+                      <Dialog>
+                        <DialogTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="max-w-80 justify-start font-mono text-xs"
+                            />
+                          }
+                          aria-label={t("audit.details")}
+                        >
+                          <span className="truncate">
+                            {JSON.stringify(log.request_params)}
+                          </span>
+                        </DialogTrigger>
+                        <DialogContent
+                          className="sm:max-w-2xl"
+                          closeLabel={t("common.close")}
+                        >
+                          <DialogHeader>
+                            <DialogTitle>{t("audit.details")}</DialogTitle>
+                            <DialogDescription>
+                              {dateFormatter.format(new Date(log.occurred_at))}{" "}
+                              · {log.actor_name} · {actionLabel(log)}
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="max-h-[65vh] space-y-3 overflow-auto">
+                            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                              {[
+                                [t("audit.target"), log.target_id],
+                                [
+                                  t("pages.operationLogs.columns.operator"),
+                                  log.actor_email,
+                                ],
+                                [
+                                  t("pages.operationLogs.columns.ipAddress"),
+                                  log.source_ip,
+                                ],
+                                [t("audit.userAgent"), log.user_agent],
+                                [t("audit.requestId"), log.request_id],
+                                [
+                                  t("pages.operationLogs.columns.result"),
+                                  resultLabel(log.result),
+                                ],
+                                [t("audit.error"), log.error_message],
+                              ].map(([label, value]) => (
+                                <div key={label} className="contents">
+                                  <dt className="text-muted-foreground">
+                                    {label}
+                                  </dt>
+                                  <dd className="break-all">{value || "—"}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                            <pre className="rounded-md bg-muted p-3 text-xs break-all whitespace-pre-wrap">
+                              {JSON.stringify(log.request_params, null, 2)}
+                            </pre>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     </TableCell>
                     <TableCell className="font-mono text-muted-foreground">
-                      {log.ipAddress}
+                      {log.source_ip || "—"}
                     </TableCell>
                     <TableCell className="pe-(--card-spacing)">
                       <Badge
@@ -518,7 +505,13 @@ export function OperationLogsPage() {
                     colSpan={6}
                     className="h-40 text-center text-muted-foreground"
                   >
-                    {t("pages.operationLogs.empty")}
+                    {loading ? (
+                      <span role="status">{t("resources.loading")}</span>
+                    ) : error ? (
+                      "—"
+                    ) : (
+                      t("pages.operationLogs.empty")
+                    )}
                   </TableCell>
                 </TableRow>
               )}
@@ -538,9 +531,7 @@ export function OperationLogsPage() {
               >
                 <SelectTrigger
                   size="sm"
-                  aria-label={t(
-                    "pages.operationLogs.pagination.pageSizeLabel"
-                  )}
+                  aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -558,7 +549,7 @@ export function OperationLogsPage() {
                 {t("pages.operationLogs.pagination.summary", {
                   from: firstVisible,
                   to: lastVisible,
-                  total: filteredLogs.length,
+                  total,
                 })}
               </p>
             </div>
@@ -573,7 +564,7 @@ export function OperationLogsPage() {
                 type="button"
                 variant="outline"
                 size="icon-sm"
-                disabled={currentPage === 1}
+                disabled={loading || currentPage === 1}
                 onClick={() => setPage((value) => Math.max(1, value - 1))}
                 aria-label={t("pages.operationLogs.pagination.previous")}
               >
@@ -586,7 +577,7 @@ export function OperationLogsPage() {
                 type="button"
                 variant="outline"
                 size="icon-sm"
-                disabled={currentPage === pageCount}
+                disabled={loading || Boolean(error) || currentPage >= pageCount}
                 onClick={() =>
                   setPage((value) => Math.min(pageCount, value + 1))
                 }

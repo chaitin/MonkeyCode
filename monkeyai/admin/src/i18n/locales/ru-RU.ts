@@ -1,6 +1,18 @@
 import { enUS } from "./en-US.ts"
 
 export const ruRU = {
+  audit: {
+    ...enUS.audit,
+    since: "Начало",
+    until: "Конец (не включительно)",
+    invalidRange: "Начало должно предшествовать концу",
+    details: "Подробности аудита",
+    target: "ID объекта",
+    userAgent: "User-Agent",
+    requestId: "ID запроса",
+    error: "Ошибка",
+  },
+
   resources: enUS.resources,
   app: {
     documentTitle: "Администрирование MonkeyAI",

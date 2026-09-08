@@ -687,12 +687,13 @@ Expert 关联 Connector Provider 类型，不直接绑定包含账号与凭证�
 | `actor_user_id` | `uuid` | 否 | `NULL` | 用户操作时的用户 ID。 |
 | `actor_name` | `text` | 是 | 无 | 操作者名称快照。 |
 | `actor_email` | `text` | 否 | `NULL` | 操作者邮箱快照。 |
-| `action` | `text` | 是 | 无 | 操作标识，例如 `add_model`、`disable_user`。 |
-| `category` | `text` | 是 | 无 | 分类：`model`、`user`、`security`、`settings`。 |
+| `action` | `text` | 是 | 无 | 操作标识，例如 `create`、`save`、`enabled`、`sign_in`。 |
+| `category` | `text` | 是 | 无 | 分类：`model`、`identity`、`resource`、`billing`、`security`、`settings`。 |
 | `target_type` | `text` | 否 | `NULL` | 被操作对象类型。 |
 | `target_id` | `uuid` | 否 | `NULL` | 被操作对象 ID。 |
 | `request_params` | `jsonb` | 是 | 空对象 | 脱敏后的请求参数。 |
-| `source_ip` | `inet` | 否 | `NULL` | 请求来源 IP。 |
+| `request_id` | `text` | 否 | `NULL` | 服务端生成的请求关联标识，同一批量请求可包含多个目标事件；历史及独立业务事件为空。 |
+| `source_ip` | `inet` | 否 | `NULL` | HTTP 实际连接来源 IP，不信任客户端转发头。 |
 | `user_agent` | `text` | 否 | `NULL` | 请求 User-Agent。 |
 | `result` | `text` | 是 | 无 | 执行结果：`success`、`failed`。 |
 | `error_message` | `text` | 否 | `NULL` | 脱敏后的失败原因。 |

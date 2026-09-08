@@ -1,6 +1,18 @@
 import { enUS } from "./en-US.ts"
 
 export const jaJP = {
+  audit: {
+    ...enUS.audit,
+    since: "開始日時",
+    until: "終了日時（含まない）",
+    invalidRange: "開始日時は終了日時より前にしてください",
+    details: "監査の詳細",
+    target: "対象 ID",
+    userAgent: "ユーザーエージェント",
+    requestId: "リクエスト ID",
+    error: "エラー",
+  },
+
   resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI 管理コンソール",

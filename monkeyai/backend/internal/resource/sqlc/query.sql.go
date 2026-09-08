@@ -11,42 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-const createAudit = `-- name: CreateAudit :execresult
-INSERT INTO audits (actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id,
-    RESULT, occurred_at)
-SELECT
-    'user',
-    u.id,
-    u.name,
-    u.email,
-    $2,
-    'resource',
-    $3,
-    $4,
-    'success',
-    now()
-FROM
-    users u
-WHERE
-    u.id = $1
-`
-
-type CreateAuditParams struct {
-	ID         string
-	Action     string
-	TargetType *string
-	TargetID   *string
-}
-
-func (q *Queries) CreateAudit(ctx context.Context, arg CreateAuditParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, createAudit,
-		arg.ID,
-		arg.Action,
-		arg.TargetType,
-		arg.TargetID,
-	)
-}
-
 const createGrant = `-- name: CreateGrant :execresult
 INSERT INTO resource_access_grants (resource_type, resource_id, user_id, group_id, access_level, usage_requirement,
     granted_by_user_id)

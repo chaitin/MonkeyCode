@@ -1,6 +1,18 @@
 import { enUS } from "./en-US.ts"
 
 export const zhTW = {
+  audit: {
+    ...enUS.audit,
+    since: "開始時間",
+    until: "結束時間（不含）",
+    invalidRange: "開始時間必須早於結束時間",
+    details: "稽核詳情",
+    target: "目標 ID",
+    userAgent: "用戶端",
+    requestId: "請求 ID",
+    error: "失敗原因",
+  },
+
   resources: enUS.resources,
   app: {
     documentTitle: "MonkeyAI 管理後台",
