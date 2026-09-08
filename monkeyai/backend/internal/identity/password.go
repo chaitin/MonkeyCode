@@ -60,6 +60,19 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context, name, email, password 
 }
 
 func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
+	methods, err := s.loginMethods(r.Context())
+	if err != nil {
+		writeError(w, 503, "settings_unavailable", "认证配置不可用")
+		return
+	}
+	if !methods.PasswordEnabled {
+		writeError(w, 403, "method_disabled", "密码登录未启用")
+		return
+	}
+	role := "user"
+	if strings.HasSuffix(r.URL.Path, "/admin/login") {
+		role = "admin"
+	}
 	var input struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -71,7 +84,7 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	var user User
 	var passwordHash string
-	row, err := sqlc.New(s.db).GetPasswordUser(r.Context(), input.Email)
+	row, err := sqlc.New(s.db).GetPasswordUser(r.Context(), sqlc.GetPasswordUserParams{Email: input.Email, Role: role})
 	if err == nil && row.PasswordHash == nil {
 		err = errors.New("未设置密码")
 	}
@@ -87,12 +100,16 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误")
 		return
 	}
+	s.loginSession(w, r, user, "password")
+}
+
+func (s *Service) loginSession(w http.ResponseWriter, r *http.Request, user User, method string) {
 	if _, err := sqlc.New(s.db).TouchLogin(r.Context(), user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}
 	token, err := randomToken(32)
-	if err != nil || s.createBrowserSession(r.Context(), user.ID, tokenHash(token), "password", s.now().Add(s.sessionTTL)) != nil {
+	if err != nil || s.createBrowserSession(r.Context(), user.ID, tokenHash(token), method, s.now().Add(s.sessionTTL)) != nil {
 		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}

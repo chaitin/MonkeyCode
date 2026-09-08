@@ -61,7 +61,7 @@ FROM
     users
 WHERE
     lower(email) = $1
-    AND ROLE = 'admin'
+    AND ROLE = sqlc.arg(role)
     AND status = 'active'
     AND deleted_at IS NULL
     AND password_hash IS NOT NULL;
@@ -405,3 +405,50 @@ ORDER BY
     lower(name),
     id
 LIMIT $3;
+
+-- name: LockEmailDelivery :exec
+SELECT pg_advisory_xact_lock(741210);
+
+-- name: CleanEmailDeliveries :exec
+DELETE FROM email_code_deliveries WHERE created_at < now() - interval '1 hour';
+
+-- name: CleanEmailCodes :exec
+DELETE FROM email_codes WHERE expires_at < now();
+
+-- name: EmailDeliveryLimited :one
+SELECT (count(*) FILTER (WHERE email = sqlc.arg(email)) >= 10
+ OR count(*) FILTER (WHERE ip_hash = sqlc.arg(ip_hash)) >= 30
+ OR count(*) FILTER (WHERE email = sqlc.arg(email) AND created_at > now() - interval '1 minute') > 0)::boolean AS limited
+FROM email_code_deliveries;
+
+-- name: RecordEmailDelivery :exec
+INSERT INTO email_code_deliveries (email, ip_hash) VALUES ($1, $2);
+
+-- name: SaveEmailCode :exec
+INSERT INTO email_codes (email, purpose, code_hash, expires_at) VALUES ($1, $2, $3, $4)
+ON CONFLICT (email, purpose) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, attempts = 0, ready = false;
+
+-- name: ReadyEmailCode :exec
+UPDATE email_codes SET ready = true WHERE email = $1 AND purpose = $2 AND code_hash = $3;
+
+-- name: GetEmailCode :one
+SELECT code_hash, attempts FROM email_codes WHERE email = $1 AND purpose = $2 AND ready AND expires_at > now() FOR UPDATE;
+
+-- name: FailEmailCode :exec
+UPDATE email_codes SET attempts = attempts + 1 WHERE email = $1 AND purpose = $2;
+
+-- name: DeleteEmailCode :exec
+DELETE FROM email_codes WHERE email = $1 AND purpose = $2;
+
+-- name: ResetPassword :one
+UPDATE users SET password_hash = $2, updated_at = now()
+WHERE lower(email) = $1 AND deleted_at IS NULL AND status = 'active' RETURNING id;
+
+-- name: RevokeUserSessions :exec
+UPDATE browser_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL;
+
+-- name: RevokeUserTokens :exec
+UPDATE oauth_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL;
+
+-- name: RevokeUserCodes :exec
+UPDATE oauth_authorization_codes SET redeemed_at = now() WHERE user_id = $1 AND redeemed_at IS NULL;

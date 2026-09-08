@@ -7,7 +7,6 @@ import { LoginForm, type LoginProvider } from "@/components/login-form"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useAuth } from "@/hooks/use-auth"
 import { api } from "@/lib/api"
-import type { AuthUser } from "@/lib/auth-context"
 import { DEFAULT_CONSOLE_PATH } from "@/lib/routes"
 
 const oauthErrorKeys: Record<string, string> = {
@@ -20,9 +19,6 @@ export function LoginPage() {
   const { isLoading, refresh, user } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [submitting, setSubmitting] = useState(false)
   const [oauthSubmitting, setOauthSubmitting] = useState("")
   const [providers, setProviders] = useState<LoginProvider[]>([])
   const [error, setError] = useState("")
@@ -53,21 +49,9 @@ export function LoginPage() {
     return <Navigate to={destination} replace />
   }
 
-  const submit = async () => {
-    setSubmitting(true)
-    setError("")
-    try {
-      await api<AuthUser>("/api/auth/v1/admin/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      })
-      await refresh()
-      navigate(destination, { replace: true })
-    } catch (reason) {
-      setError((reason as Error).message)
-    } finally {
-      setSubmitting(false)
-    }
+  const authenticated = async () => {
+    await refresh()
+    navigate(destination, { replace: true })
   }
 
   const startOAuthLogin = (provider: LoginProvider) => {
@@ -86,16 +70,11 @@ export function LoginPage() {
       </div>
       <div className="w-full max-w-sm md:max-w-4xl">
         <LoginForm
-          email={email}
-          password={password}
           error={visibleError}
-          submitting={submitting}
           oauthSubmitting={oauthSubmitting}
           providers={providers}
-          onEmailChange={setEmail}
-          onPasswordChange={setPassword}
-          onLogin={() => void submit()}
           onOAuthLogin={startOAuthLogin}
+          onAuthenticated={authenticated}
         />
       </div>
     </main>

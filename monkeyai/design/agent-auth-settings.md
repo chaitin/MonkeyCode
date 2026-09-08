@@ -16,7 +16,7 @@
 1. 客户端生成随机 `state` 和 PKCE `code_verifier`，计算 `code_challenge = BASE64URL(SHA256(code_verifier))`。
 2. 客户端用系统浏览器打开 `GET /oauth/authorize`，传入 `response_type=code`、`client_id`、非空 `redirect_uri`、`state`、`code_challenge` 和 `code_challenge_method=S256`。
 3. 服务端校验客户端白名单后创建 10 分钟有效的授权请求，并跳转到管理端 `/client-login` 页面。
-4. 页面调用服务端检查客户端用户的浏览器会话。已有会话时直接继续；未登录时展示管理员在后台启用的 OAuth/OIDC 登录方式。
+4. 页面调用服务端检查客户端用户的浏览器会话。已有会话时直接继续；未登录时展示管理员在后台启用的密码、邮箱验证码和 OAuth/OIDC 登录方式，并按注册开关展示邮箱注册入口。
 5. 上游 OAuth 回调只回到 MonkeyAI 服务端。服务端绑定或创建用户，建立 HttpOnly 浏览器会话，再返回 `/client-login`。
 6. 页面申请 2 分钟有效、仅能使用一次的授权码，并打开对应的桌面或移动应用地址；页面保留手动“打开应用”按钮。
 7. 客户端向 `POST /oauth/token` 提交授权码和原始 `code_verifier`。服务端校验 PKCE 后返回 1 小时有效的 access token 和 30 天有效的 refresh token。
@@ -92,3 +92,25 @@ OAuth access token 用于 Agent API；模型代理只接受具有 `model:invoke`
 - `api_keys`
 
 不新增 `oauth_clients` 和 `config_changes`。
+
+
+## 8. 邮箱认证与 SMTP
+
+管理端与客户端通过 `GET /api/auth/v1/methods` 获取公开开关。`password_enabled` 默认开启，`email_code_enabled`、`registration_enabled` 默认关闭；开关在服务端认证入口再次校验。管理员入口仅接受管理员，客户端邮箱登录入口仅接受普通用户。
+
+| 接口 | 用途 |
+| --- | --- |
+| `POST /api/admin/v1/settings/email/test` | 管理员使用已保存 SMTP 配置向 `recipient` 发送测试邮件 |
+| `POST /api/auth/v1/login` | 普通用户密码登录，管理员沿用 `/admin/login` |
+| `POST /api/auth/v1/email/code` | 提交 `email` 与 `purpose`（`login`、`register`、`reset`）发送验证码 |
+| `POST /api/auth/v1/email/login` | 普通用户验证码登录，管理员使用 `/admin/email/login` |
+| `POST /api/auth/v1/email/register` | 通过注册验证码提交邮箱、姓名和至少 12 字符密码，仅创建普通用户 |
+| `POST /api/auth/v1/email/reset-password` | 通过重置验证码设置至少 12 字符的新密码 |
+
+注册需要开放注册并至少开启一种邮箱登录方式；找回密码需要开启密码登录。验证码登录不会自动注册，用户需使用注册入口。密码重置成功后撤销该用户的浏览器会话、OAuth 令牌和未使用授权码，并使已有登录验证码失效。
+
+SMTP 配置包含 `sender_name`、`sender_email`、`smtp_host`、`smtp_port`、`smtp_username`、`smtp_password`、`smtp_encryption`（`starttls`、`tls`、`none`）。测试邮件和认证邮件共用实时读取的已保存配置。TLS 校验服务器证书，STARTTLS 失败不会降级；单次发送最多等待 15 秒，并响应请求取消。仅在 SMTP 接受 DATA 后显示发送成功；这表示服务器接收投递，不保证已进入收件箱。
+
+验证码使用安全随机六位数字，10 分钟有效，仅保存绑定邮箱和用途的摘要。数据库事务保证单次消费，最多允许 5 次错误尝试。按连接来源 IP（不信任转发头）和规范化邮箱限制发送：每邮箱每分钟 1 次、每小时 10 次，每 IP 每小时 30 次。SMTP 失败也占用发送额度，防止重试绕过限制。不存在、停用或不符合用途的账号返回统一提示。验证码与限流记录保存在 PostgreSQL，支持多实例；每次发送清理过期记录。
+
+上线前运行 `000006_identity_email_auth` 迁移。

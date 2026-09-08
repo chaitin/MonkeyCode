@@ -5,6 +5,463 @@ info:
 security:
   - AdminSession: []
 paths:
+  /api/auth/v1/methods:
+    get:
+      summary: 读取公开登录方式开关
+      security: []
+      responses:
+        "200":
+          description: 仅包含登录开关，不包含 SMTP 或 OAuth 密钥
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailLoginMethods"
+        "503":
+          description: 认证配置不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+  /api/auth/v1/email/code:
+    post:
+      summary: 发送邮箱验证码
+      description: login 受 email_code_enabled 控制；register 需要开放注册并至少启用一种邮箱登录方式；reset 受
+        password_enabled 控制。每邮箱每分钟最多 1 次、每小时最多 10 次，每连接来源 IP 每小时最多 30
+        次；失败发送也计入限额。不存在或不符合用途的账号返回相同成功响应但不发送邮件。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - purpose
+              properties:
+                email: &a1
+                  type: string
+                  format: email
+                  maxLength: 254
+                  description: 邮箱会去除首尾空白并转为小写。
+                purpose:
+                  type: string
+                  enum:
+                    - login
+                    - register
+                    - reset
+      responses:
+        "200":
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                  - retry_after
+                properties:
+                  message:
+                    type: string
+                  retry_after:
+                    type: integer
+                    const: 60
+        "400":
+          description: 请求无效，或验证码无效、过期、超过错误次数限制
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "401":
+          description: 邮箱密码不匹配或账号不符合登录入口角色
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "403":
+          description: 对应登录方式或注册开关关闭
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "409":
+          description: 邮箱已存在，注册冲突
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "429":
+          description: 验证码发送过于频繁
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 60
+        "500":
+          description: 认证操作失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "502":
+          description: 邮件发送失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "503":
+          description: 认证配置或邮件服务不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+  /api/auth/v1/email/reset-password:
+    post:
+      summary: 通过邮箱验证码重置密码
+      description: 使用 reset 用途验证码，需要开启密码登录。重置后撤销全部旧浏览器会话、OAuth token
+        和未使用授权码，并使现有登录验证码失效。不会自动登录。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - code
+                - password
+              properties:
+                email: *a1
+                code: &a2
+                  type: string
+                  pattern: ^[0-9]{6}$
+                  description: 十分钟内有效的六位数字验证码，仅可使用一次。
+                password:
+                  type: string
+                  minLength: 12
+                  maxLength: 1024
+                  writeOnly: true
+                  description: 新密码至少 12 个字符，长度按 UTF-8 字节校验。
+      responses:
+        "200":
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - reset
+                properties:
+                  reset:
+                    type: boolean
+                    const: true
+        "400":
+          description: 请求无效，或验证码无效、过期、超过错误次数限制
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "401":
+          description: 邮箱密码不匹配或账号不符合登录入口角色
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "403":
+          description: 对应登录方式或注册开关关闭
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "409":
+          description: 邮箱已存在，注册冲突
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "429":
+          description: 验证码发送过于频繁
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 60
+        "500":
+          description: 认证操作失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "502":
+          description: 邮件发送失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "503":
+          description: 认证配置或邮件服务不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+  /api/auth/v1/admin/login:
+    post:
+      summary: 使用密码登录管理后台
+      description: 需要开启 password_enabled，仅允许启用状态的管理员；成功设置 HttpOnly、SameSite=Lax 会话
+        Cookie，HTTPS 环境附加 Secure。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email: *a1
+                password:
+                  type: string
+                  maxLength: 1024
+                  writeOnly: true
+      responses:
+        "200":
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthUser"
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: monkeyai_session 会话 Cookie，默认有效期 7 天。
+        "400":
+          description: 请求无效，或验证码无效、过期、超过错误次数限制
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "401":
+          description: 邮箱密码不匹配或账号不符合登录入口角色
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "403":
+          description: 对应登录方式或注册开关关闭
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "409":
+          description: 邮箱已存在，注册冲突
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "429":
+          description: 验证码发送过于频繁
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 60
+        "500":
+          description: 认证操作失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "502":
+          description: 邮件发送失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "503":
+          description: 认证配置或邮件服务不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+  /api/auth/v1/admin/email/login:
+    post:
+      summary: 使用邮箱验证码登录管理后台
+      description: 需要开启 email_code_enabled，使用 login
+        用途验证码。仅允许启用状态的管理员，成功建立浏览器会话；验证码最多允许 5 次错误尝试。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - code
+              properties:
+                email: *a1
+                code: *a2
+      responses:
+        "200":
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthUser"
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: monkeyai_session 会话 Cookie，默认有效期 7 天。
+        "400":
+          description: 请求无效，或验证码无效、过期、超过错误次数限制
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "401":
+          description: 邮箱密码不匹配或账号不符合登录入口角色
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "403":
+          description: 对应登录方式或注册开关关闭
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "409":
+          description: 邮箱已存在，注册冲突
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "429":
+          description: 验证码发送过于频繁
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 60
+        "500":
+          description: 认证操作失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "502":
+          description: 邮件发送失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "503":
+          description: 认证配置或邮件服务不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+  /api/admin/v1/settings/email/test:
+    post:
+      summary: 使用已保存 SMTP 配置发送测试邮件
+      description: 仅管理员可调用。使用已保存的完整配置（包括未返回前端的密码）；SMTP 确认 DATA 后返回成功，连接、TLS、认证或投递失败返回 502。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recipient
+              properties:
+                recipient: *a1
+      responses:
+        "200":
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - sent
+                properties:
+                  sent:
+                    type: boolean
+                    const: true
+        "400":
+          description: 请求无效，或验证码无效、过期、超过错误次数限制
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "401":
+          description: 邮箱密码不匹配或账号不符合登录入口角色
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "403":
+          description: 对应登录方式或注册开关关闭
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "409":
+          description: 邮箱已存在，注册冲突
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "429":
+          description: 验证码发送过于频繁
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 60
+        "500":
+          description: 认证操作失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "502":
+          description: 邮件发送失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
+        "503":
+          description: 认证配置或邮件服务不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailAuthError"
   /api/admin/v1/audits:
     get:
       summary: 查询操作审计
@@ -3698,6 +4155,75 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    EmailAuthError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+    EmailLoginMethods:
+      type: object
+      required:
+        - password_enabled
+        - email_code_enabled
+        - registration_enabled
+      properties:
+        password_enabled:
+          type: boolean
+          description: 密码登录开关，未配置时默认 true，同时约束管理员和普通用户。
+        email_code_enabled:
+          type: boolean
+          description: 验证码登录开关，默认 false。
+        registration_enabled:
+          type: boolean
+          description: 自助注册开关，默认 false。
+    EmailAuthUser:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - role
+        - status
+        - joined_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: 邮箱会去除首尾空白并转为小写。
+        role:
+          type: string
+          enum:
+            - admin
+            - user
+        status:
+          type: string
+          enum:
+            - active
+            - disabled
+        joined_at:
+          type: string
+          format: date-time
+        avatar_url:
+          type: string
+        last_login_at:
+          type: string
+          format: date-time
     AuditPage:
       type: object
       required: [items, total, page, page_size]

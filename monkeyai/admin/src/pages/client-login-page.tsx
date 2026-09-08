@@ -7,6 +7,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useSearchParams } from "react-router-dom"
 
+import { EmailAuthForm } from "@/components/email-auth-form"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -45,9 +46,9 @@ export function ClientLoginPage() {
   const [error, setError] = useState("")
   const completionStarted = useRef(false)
   const requestError = !requestId
-    ? callbackErrorMessages[callbackError] ?? "缺少授权请求参数。"
+    ? (callbackErrorMessages[callbackError] ?? "缺少授权请求参数。")
     : callbackError
-      ? callbackErrorMessages[callbackError] ?? "登录失败，请重试。"
+      ? (callbackErrorMessages[callbackError] ?? "登录失败，请重试。")
       : error
 
   useEffect(() => {
@@ -134,13 +135,14 @@ export function ClientLoginPage() {
                 <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} />
               </Button>
             ))}
-          {request &&
-            !request.authenticated &&
-            request.providers.length === 0 && (
-              <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-                当前没有可用的登录方式，请联系管理员。
-              </p>
-            )}
+          {request && !request.authenticated && (
+            <EmailAuthForm
+              hasProviders={request.providers.length > 0}
+              onAuthenticated={(user) => {
+                setRequest({ ...request, authenticated: true, user })
+              }}
+            />
+          )}
           {request?.authenticated && !launchURL && !requestError && (
             <p
               className="py-5 text-center text-sm text-muted-foreground"

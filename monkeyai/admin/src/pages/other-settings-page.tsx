@@ -233,6 +233,8 @@ export function OtherSettingsPage() {
   const [registrationPendingValue, setRegistrationPendingValue] = useState<
     boolean | null
   >(null)
+  const [testSending, setTestSending] = useState(false)
+  const [testError, setTestError] = useState("")
   const [testSentTo, setTestSentTo] = useState<string | null>(null)
   const [knowledgeBaseSettings, setKnowledgeBaseSettings] = useState(
     INITIAL_KNOWLEDGE_BASE_SETTINGS
@@ -602,7 +604,7 @@ export function OtherSettingsPage() {
     setContentEnhancementDialogOpen(false)
   }
 
-  const handleTestEmail = (event: FormEvent<HTMLFormElement>) => {
+  const handleTestEmail = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
     const recipient = String(formData.get("recipient") ?? "").trim()
@@ -610,7 +612,21 @@ export function OtherSettingsPage() {
       return
     }
 
-    setTestSentTo(recipient)
+    if (testSending) return
+    setTestSending(true)
+    setTestSentTo(null)
+    setTestError("")
+    try {
+      await api("/api/admin/v1/settings/email/test", {
+        method: "POST",
+        body: JSON.stringify({ recipient }),
+      })
+      setTestSentTo(recipient)
+    } catch (reason) {
+      setTestError((reason as Error).message)
+    } finally {
+      setTestSending(false)
+    }
   }
 
   const handleTagDialogOpenChange = (open: boolean) => {
@@ -1879,6 +1895,11 @@ export function OtherSettingsPage() {
                     placeholder="admin@example.com"
                     required
                   />
+                  {testError && (
+                    <p role="alert" className="text-sm text-destructive">
+                      {testError}
+                    </p>
+                  )}
                   {testSentTo && (
                     <FieldDescription aria-live="polite">
                       {t("pages.otherSettings.email.testSent", {
@@ -1889,12 +1910,18 @@ export function OtherSettingsPage() {
                 </Field>
               </ItemContent>
               <ItemActions>
-                <Button type="submit">
+                <Button
+                  type="submit"
+                  disabled={testSending}
+                  aria-busy={testSending}
+                >
                   <HugeiconsIcon
                     icon={MailSend02Icon}
                     data-icon="inline-start"
                   />
-                  {t("pages.otherSettings.email.sendTest")}
+                  {testSending
+                    ? t("login.sendingCode", "发送中…")
+                    : t("pages.otherSettings.email.sendTest")}
                 </Button>
               </ItemActions>
             </Item>

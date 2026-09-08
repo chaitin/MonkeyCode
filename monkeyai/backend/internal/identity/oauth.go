@@ -18,9 +18,22 @@ func (s *Service) OAuthRouter() http.Handler {
 
 func (s *Service) AuthRouter() http.Handler {
 	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			next.ServeHTTP(w, r)
+		})
+	})
 	router.Get("/clients", s.clients)
 	router.Get("/providers", s.providers)
 	router.Post("/admin/login", s.passwordLogin)
+	router.Get("/methods", s.methods)
+	router.Post("/login", s.passwordLogin)
+	router.Post("/email/code", s.sendCode)
+	router.Post("/email/login", s.emailLogin)
+	router.Post("/admin/email/login", s.emailLogin)
+	router.Post("/email/register", s.registerEmail)
+	router.Post("/email/reset-password", s.resetPassword)
 	router.Get("/session", s.session)
 	router.Post("/logout", s.logout)
 	router.Get("/client-requests/{requestID}", s.clientRequest)

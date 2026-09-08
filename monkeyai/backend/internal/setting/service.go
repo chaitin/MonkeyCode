@@ -48,6 +48,9 @@ func (s *Service) Get(ctx context.Context, key string) (Record, error) {
 
 func (s *Service) GetValue(ctx context.Context, key string) (json.RawMessage, error) {
 	record, err := s.Get(ctx, key)
+	if key == "authentication" && errors.Is(err, ErrNotFound) {
+		return json.RawMessage(`{}`), nil
+	}
 	return record.Value, err
 }
 
@@ -212,6 +215,11 @@ func validate(key string, value map[string]json.RawMessage) error {
 			return errors.New("workspace_name 和 product_name 不能为空")
 		}
 	case "authentication":
+		for _, key := range []string{"password_enabled", "email_code_enabled", "registration_enabled"} {
+			if raw, ok := value[key]; ok && string(raw) != "true" && string(raw) != "false" {
+				return fmt.Errorf("%s 必须为布尔值", key)
+			}
+		}
 		var connections []struct {
 			ID           string `json:"id"`
 			Provider     string `json:"provider"`
@@ -237,10 +245,12 @@ func validate(key string, value map[string]json.RawMessage) error {
 			}
 		}
 	case "email":
-		var port int
-		if raw, ok := value["smtp_port"]; ok && json.Unmarshal(raw, &port) == nil && (port < 1 || port > 65535) {
-			return errors.New("smtp_port 必须在 1 到 65535 之间")
+		data, _ := json.Marshal(value)
+		var config emailConfig
+		if json.Unmarshal(data, &config) != nil {
+			return errors.New("邮件配置格式无效")
 		}
+		return config.validate()
 	case "billing":
 		cycle := rawString(value["quota_refresh_cycle"])
 		mode := rawString(value["charging_mode"])

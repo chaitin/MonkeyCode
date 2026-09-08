@@ -558,7 +558,10 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	}
 
 	// 虚拟根的数据转换不可逆；可丢弃测试库从初始结构重建。
-	for i := 1; i >= 0; i-- {
+	for i := len(migrations) - 1; i >= 0; i-- {
+		if filepath.Base(migrations[i]) == "000003_group_virtual_root.up.sql" {
+			continue
+		}
 		down, err := os.ReadFile(strings.Replace(migrations[i], ".up.sql", ".down.sql", 1))
 		if err != nil {
 			t.Fatal(err)

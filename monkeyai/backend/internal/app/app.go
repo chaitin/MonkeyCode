@@ -90,7 +90,7 @@ func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 
 func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) (http.Handler, error) {
 	settings := setting.NewService(setting.NewPostgres(pool))
-	identities := identity.NewService(pool, settings, cfg.PublicURL, cfg.AdminURL)
+	identities := identity.NewService(pool, settings, cfg.PublicURL, cfg.AdminURL).WithEmailSender(settings)
 	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil {
 		return nil, fmt.Errorf("初始化管理员: %w", err)
 	}
@@ -166,7 +166,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	router.Mount("/oauth", identities.OAuthRouter())
 	auth := audits.Middleware(func(r *http.Request) audit.Actor {
 		switch r.URL.Path {
-		case "/api/auth/v1/admin/login":
+		case "/api/auth/v1/admin/login", "/api/auth/v1/admin/email/login":
 			return audit.Actor{Name: "未认证用户"}
 		case "/api/auth/v1/logout":
 			if user, ok := identities.BrowserUser(r); ok {
