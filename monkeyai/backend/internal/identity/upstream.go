@@ -208,11 +208,40 @@ func (s *Service) exchangeUpstream(ctx context.Context, connection OAuthConnecti
 	if response.StatusCode != http.StatusOK {
 		return upstreamProfile{}, fmt.Errorf("读取上游用户: HTTP %d", response.StatusCode)
 	}
-	var raw map[string]any
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&raw); err != nil {
-		return upstreamProfile{}, err
+	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
+	var profile upstreamProfile
+	if connection.Provider == "baizhiyun" {
+		var result struct {
+			Code *int `json:"code"`
+			Data struct {
+				ID     string `json:"id"`
+				Name   string `json:"name"`
+				Avatar string `json:"avatar"`
+			} `json:"data"`
+		}
+		if err := decoder.Decode(&result); err != nil {
+			return upstreamProfile{}, fmt.Errorf("解析百智云用户: %w", err)
+		}
+		if result.Code == nil {
+			return upstreamProfile{}, errors.New("百智云用户响应缺少 code")
+		}
+		if *result.Code != 0 {
+			return upstreamProfile{}, fmt.Errorf("读取百智云用户: code %d", *result.Code)
+		}
+		profile = upstreamProfile{
+			Provider:  connection.Provider,
+			Issuer:    connection.IssuerURL,
+			Subject:   result.Data.ID,
+			Name:      result.Data.Name,
+			AvatarURL: result.Data.Avatar,
+		}
+	} else {
+		var raw map[string]any
+		if err := decoder.Decode(&raw); err != nil {
+			return upstreamProfile{}, err
+		}
+		profile = normalizeProfile(connection, raw)
 	}
-	profile := normalizeProfile(connection, raw)
 	if profile.Subject == "" {
 		return upstreamProfile{}, errors.New("上游用户缺少 subject")
 	}
