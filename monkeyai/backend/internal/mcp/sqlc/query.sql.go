@@ -262,18 +262,19 @@ SELECT to_jsonb(p)
 FROM connector_providers p
 WHERE id = $1
     AND deleted_at IS NULL
-    AND ((ownership_type = 'system' AND enabled AND authorization_mode IN ('none', 'independent'))
-        OR (ownership_type = 'user' AND owner_user_id = $2))
+    AND ((ownership_type = 'system' AND $2::boolean AND enabled AND authorization_mode IN ('none', 'independent'))
+        OR (ownership_type = 'user' AND owner_user_id = $3))
 FOR SHARE
 `
 
 type GetUserProviderParams struct {
-	ID     string
-	UserID string
+	ID           string
+	SystemAccess bool
+	UserID       string
 }
 
 func (q *Queries) GetUserProvider(ctx context.Context, arg GetUserProviderParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, getUserProvider, arg.ID, arg.UserID)
+	row := q.db.QueryRow(ctx, getUserProvider, arg.ID, arg.SystemAccess, arg.UserID)
 	var to_jsonb []byte
 	err := row.Scan(&to_jsonb)
 	return to_jsonb, err
@@ -471,13 +472,18 @@ const listUserProviders = `-- name: ListUserProviders :many
 SELECT to_jsonb(p)
 FROM connector_providers p
 WHERE deleted_at IS NULL
-    AND ((ownership_type = 'system' AND enabled AND authorization_mode IN ('none', 'independent'))
-        OR (ownership_type = 'user' AND owner_user_id = $1))
+    AND ((ownership_type = 'system' AND $1::boolean AND enabled AND authorization_mode IN ('none', 'independent'))
+        OR (ownership_type = 'user' AND owner_user_id = $2))
 ORDER BY lower(name), id
 `
 
-func (q *Queries) ListUserProviders(ctx context.Context, userID string) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listUserProviders, userID)
+type ListUserProvidersParams struct {
+	SystemAccess bool
+	UserID       string
+}
+
+func (q *Queries) ListUserProviders(ctx context.Context, arg ListUserProvidersParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listUserProviders, arg.SystemAccess, arg.UserID)
 	if err != nil {
 		return nil, err
 	}

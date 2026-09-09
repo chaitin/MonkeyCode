@@ -182,7 +182,12 @@ func (p *Postgres) delete(ctx context.Context, id, ownership, userID string) err
 }
 
 func (p *Postgres) ListAvailable(ctx context.Context, userID string, isAdmin bool) ([]Model, error) {
-	rows, err := sqlc.New(database.Reader(ctx, p.pool)).ListAvailable(ctx, sqlc.ListAvailableParams{OwnerUserID: userID, IsAdmin: isAdmin})
+	q := database.Reader(ctx, p.pool)
+	allowed, err := resource.CanUseSystem(ctx, q, userID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := sqlc.New(q).ListAvailable(ctx, sqlc.ListAvailableParams{OwnerUserID: userID, IsAdmin: isAdmin, SystemAccess: allowed})
 	if err != nil {
 		return nil, fmt.Errorf("查询可用模型: %w", err)
 	}
@@ -197,7 +202,12 @@ func (p *Postgres) ListAvailable(ctx context.Context, userID string, isAdmin boo
 }
 
 func (p *Postgres) Resolve(ctx context.Context, userID, requestedModel string) (Model, error) {
-	item, err := readModel(sqlc.New(database.Reader(ctx, p.pool)).ResolveModel(ctx, sqlc.ResolveModelParams{UserID: userID, RequestedModel: requestedModel}))
+	q := database.Reader(ctx, p.pool)
+	allowed, err := resource.CanUseSystem(ctx, q, userID)
+	if err != nil {
+		return Model{}, err
+	}
+	item, err := readModel(sqlc.New(q).ResolveModel(ctx, sqlc.ResolveModelParams{UserID: userID, RequestedModel: requestedModel, SystemAccess: allowed}))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Model{}, ErrUnauthorized
 	}

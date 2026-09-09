@@ -177,12 +177,22 @@ ORDER BY
 LIMIT 24;
 
 -- name: WalletUser :one
-SELECT
-    external_user_id
-FROM
-    wallet_user_bindings
-WHERE
-    user_id = $1;
+SELECT min(i.provider_subject)::text AS external_user_id
+FROM user_identities i
+JOIN users u ON u.id = i.user_id AND u.status = 'active' AND u.deleted_at IS NULL
+LEFT JOIN wallet_user_bindings wb ON wb.user_id = i.user_id
+WHERE i.user_id = $1 AND i.provider = 'baizhiyun' AND i.deleted_at IS NULL
+    AND (wb.user_id IS NULL OR wb.external_user_id = i.provider_subject)
+GROUP BY i.user_id
+HAVING count(DISTINCT i.provider_subject) = 1;
+
+-- name: HasWalletIdentity :one
+SELECT EXISTS (
+    SELECT 1 FROM user_identities i
+    JOIN users u ON u.id = i.user_id AND u.status = 'active' AND u.deleted_at IS NULL
+    WHERE i.user_id = $1 AND i.provider_subject = $2
+        AND i.provider = 'baizhiyun' AND i.deleted_at IS NULL
+)::boolean;
 
 -- name: GetAdjustment :one
 SELECT
@@ -702,7 +712,8 @@ WHERE
 SELECT
     t.name,
     t.credits_per_call::text,
-    c.authorization_mode
+    c.authorization_mode,
+    c.ownership_type
 FROM
     mcp_tools t
     JOIN connectors c ON c.id = t.connector_id

@@ -121,3 +121,17 @@ func TestOAuthIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestBaizhiyunConnection(t *testing.T) {
+	for _, issuer := range []string{"", "https://identity.example"} {
+		t.Run(issuer, func(t *testing.T) {
+			store := &memoryStore{records: map[string]Record{}}
+			service := NewService(store)
+			value, _ := json.Marshal(map[string]any{"oauth_connections": []map[string]any{{"provider": "baizhiyun", "name": "百智云", "client_id": "client", "client_secret": "secret", "issuer_url": issuer, "enabled": true}}})
+			_, err := service.Put(t.Context(), "authentication", value, 1, "user")
+			if (err != nil) != (issuer == "") {
+				t.Fatalf("百智云 Issuer 校验错误: %v", err)
+			}
+		})
+	}
+}

@@ -860,6 +860,98 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 
 	t.Run("个人资源创作与分享", func(t *testing.T) { testPersonalResources(t, pool, handler, users) })
 
+	t.Run("百智云扣费限制系统资源", func(t *testing.T) {
+		must := func(method, path string, body any, token, revision string) resource.Object {
+			t.Helper()
+			code, out, _ := call(method, path, body, token, revision)
+			if code < 200 || code > 299 {
+				t.Fatalf("%s %s: %d %v", method, path, code, out)
+			}
+			return out
+		}
+		expert := must("POST", "/api/admin/v1/experts", resource.Object{"name": "百智云权限测试专家", "description": "访问控制测试", "prompt": "测试", "rule_ids": []string{rule.String("id")}, "skill_ids": []string{skill.String("id")}, "providers": []any{}, "grants": grantA}, "", "")
+		exec := func(query string, args ...any) {
+			t.Helper()
+			if _, err := pool.Exec(ctx, query, args...); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var originalPolicy []byte
+		if err := pool.QueryRow(ctx, `SELECT value FROM settings WHERE key='billing'`).Scan(&originalPolicy); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			exec(`UPDATE settings SET value=$1 WHERE key='billing'`, originalPolicy)
+			exec(`DELETE FROM user_identities WHERE user_id=$1`, users[0])
+			exec(`UPDATE users SET role='user' WHERE id=$1`, users[0])
+		})
+		input := resource.Object{"model_id": "baizhiyun-access-test", "display_name": "百智云访问测试", "protocol": "openai_chat_completions", "base_url": upstream.URL, "api_key": "test", "advanced_config": resource.Object{"context_window_tokens": 1000, "max_output_tokens": 100}, "credit_multiplier": 1, "authorization": resource.Object{"all_users": true}}
+		systemModel := must("POST", "/api/admin/v1/models", input, "", "")
+		t.Cleanup(func() {
+			exec(`DELETE FROM resource_access_grants WHERE resource_type='model' AND resource_id=$1`, systemModel.String("id"))
+		})
+		personalModel := must("POST", "/api/v1/models", input, "a", "")
+		key := must("POST", "/api/v1/api-keys", resource.Object{"name": "百智云访问测试", "scopes": []string{"model:invoke"}}, "a", "").String("api_key")
+		personalRule := must("POST", "/api/v1/rules", resource.Object{"name": "远程模式个人规则", "content": "个人内容"}, "a", "")
+		exec(`UPDATE users SET role='admin' WHERE id=$1`, users[0])
+		exec(`INSERT INTO user_identities(user_id,provider,issuer,provider_subject) VALUES($1,'oidc','https://identity.example','1001')`, users[0])
+		exec(`UPDATE settings SET value=value || '{"charging_mode":"remote","enabled":false}' WHERE key='billing'`)
+		for _, kind := range []string{"models", "rules", "skills", "experts", "connectors"} {
+			out := must("GET", "/api/v1/"+kind, nil, "a", "")
+			for _, raw := range out[kind].([]any) {
+				o := resource.Object(raw.(map[string]any))
+				if o.String("ownership_type") == "system" || kind == "experts" {
+					t.Fatalf("普通 OIDC 用户收到系统 %s: %v", kind, o)
+				}
+			}
+		}
+		for _, path := range []string{
+			"/api/v1/experts/" + expert.String("id") + "/manifest",
+			"/api/v1/skills/" + skill.String("id") + "/package",
+			"/api/v1/experts/" + expert.String("id") + "/skills/" + skill.String("id") + "/package",
+			"/api/v1/connectors/" + conn.String("id") + "/tools",
+			"/api/v1/connector-providers/" + provider.String("id"),
+		} {
+			if code, _, _ := call("GET", path, nil, "a", ""); code != 404 {
+				t.Fatalf("系统资源未拒绝访问: %s %d", path, code)
+			}
+		}
+		for _, raw := range must("GET", "/api/v1/connector-providers", nil, "a", "")["items"].([]any) {
+			if raw.(map[string]any)["ownership_type"] == "system" {
+				t.Fatal("非百智云用户收到系统连接模板")
+			}
+		}
+		if code, _, _ := call("POST", "/mcp/connectors/"+conn.String("id"), resource.Object{"jsonrpc": "2.0", "id": "blocked", "method": "initialize"}, invokeKeys["a"], ""); code != 404 {
+			t.Fatalf("既有 MCP 密钥未受限制: %d", code)
+		}
+		if code, _, _ := call("POST", "/v1/chat/completions", resource.Object{"model": systemModel.String("id"), "messages": []any{}}, key, ""); code != 401 {
+			t.Fatalf("既有模型密钥未受限制: %d", code)
+		}
+		out := must("POST", "/api/v1/resources/resolve", resource.Object{"rule_ids": []string{personalRule.String("id")}}, "a", "")
+		if len(out["rules"].([]any)) != 1 || out["rules"].([]any)[0].(map[string]any)["id"] != personalRule.String("id") {
+			t.Fatalf("个人规则不可用或混入强制系统规则: %v", out)
+		}
+		must("GET", "/api/v1/models/"+personalModel.String("id"), nil, "a", "")
+		must("GET", "/api/admin/v1/billing/settings", nil, "", "")
+		exec(`INSERT INTO user_identities(user_id,provider,issuer,provider_subject) VALUES($1,'baizhiyun','https://identity.example','1001')`, users[0])
+		must("GET", "/api/v1/experts/"+expert.String("id")+"/manifest", nil, "a", "")
+		must("GET", "/api/v1/experts/"+expert.String("id")+"/skills/"+skill.String("id")+"/package?sha256="+skill.String("package_sha256"), nil, "a", "")
+		must("GET", "/api/v1/connectors/"+conn.String("id")+"/tools", nil, "a", "")
+		found := false
+		for _, raw := range must("GET", "/api/v1/models", nil, "a", "")["models"].([]any) {
+			found = found || raw.(map[string]any)["id"] == systemModel.String("id")
+		}
+		if !found {
+			t.Fatal("百智云用户缺少系统模型")
+		}
+		exec(`UPDATE user_identities SET deleted_at=now() WHERE user_id=$1 AND provider='baizhiyun'`, users[0])
+		if code, _, _ := call("GET", "/api/v1/experts/"+expert.String("id")+"/manifest", nil, "a", ""); code != 404 {
+			t.Fatalf("已失效百智云身份继续访问: %d", code)
+		}
+		exec(`UPDATE settings SET value=value || '{"charging_mode":"local"}' WHERE key='billing'`)
+		must("GET", "/api/v1/experts/"+expert.String("id")+"/manifest", nil, "a", "")
+	})
+
 	// 虚拟根的数据转换不可逆；可丢弃测试库从初始结构重建。
 	for i := len(migrations) - 1; i >= 0; i-- {
 		if filepath.Base(migrations[i]) == "000003_group_virtual_root.up.sql" {

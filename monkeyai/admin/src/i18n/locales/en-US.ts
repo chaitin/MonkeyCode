@@ -835,7 +835,8 @@ export const enUS = {
         },
         modeDescriptions: {
           local: "Usage and credit deductions are processed by this system.",
-          remote: "Usage is sent to Baizhi Cloud for charging.",
+          remote:
+            "Usage is charged through Baizhi Cloud. Only users with a Baizhi Cloud login identity can use system resources.",
         },
         baseUrl: "Baizhi Cloud URL",
         apiKey: "Baizhi Cloud key",
@@ -1073,6 +1074,8 @@ export const enUS = {
         provider: "Provider",
         name: "Display name",
         namePlaceholder: "For example: Company GitHub",
+        baizhiyunScopes:
+          "Default scopes: auth_certification openid phone user.",
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client secret",
@@ -1088,6 +1091,7 @@ export const enUS = {
           google: "Google",
           microsoft: "Microsoft",
           gitlab: "GitLab",
+          baizhiyun: "Baizhi Cloud",
           oidc: "Custom OIDC",
         },
       },

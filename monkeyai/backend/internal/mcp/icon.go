@@ -30,7 +30,7 @@ func (s *Service) iconRoutes(r chi.Router, admin bool) {
 		r.Get("/connector-providers/{id}/icon", func(w http.ResponseWriter, r *http.Request) {
 			u, _ := identity.UserFromContext(r.Context())
 			id := chi.URLParam(r, "id")
-			if _, err := sqlc.New(s.Store.Pool).GetUserProvider(r.Context(), sqlc.GetUserProviderParams{ID: id, UserID: u.ID}); err != nil {
+			if _, err := s.userProvider(r.Context(), s.Store.Pool, id, u.ID); err != nil {
 				resource.Fail(w, err)
 				return
 			}

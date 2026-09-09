@@ -106,7 +106,7 @@ func (s *Service) providerURLs(ctx context.Context, connection OAuthConnection) 
 		metadata = providerMetadata{"https://login.microsoftonline.com/common/oauth2/v2.0/authorize", "https://login.microsoftonline.com/common/oauth2/v2.0/token", "https://graph.microsoft.com/oidc/userinfo"}
 	case "gitlab":
 		metadata = providerMetadata{"https://gitlab.com/oauth/authorize", "https://gitlab.com/oauth/token", "https://gitlab.com/api/v4/user"}
-	case "oidc":
+	case "oidc", "baizhiyun":
 		if connection.IssuerURL == "" {
 			return providerMetadata{}, errors.New("OIDC issuer_url 不能为空")
 		}
@@ -143,8 +143,11 @@ func (s *Service) upstreamAuthorizeURL(ctx context.Context, connection OAuthConn
 	scopes := connection.Scopes
 	if len(scopes) == 0 {
 		scopes = []string{"openid", "profile", "email"}
-		if connection.Provider == "github" {
+		switch connection.Provider {
+		case "github":
 			scopes = []string{"read:user", "user:email"}
+		case "baizhiyun":
+			scopes = []string{"auth_certification", "openid", "phone", "user"}
 		}
 	}
 	query := endpoint.Query()

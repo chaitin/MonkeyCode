@@ -729,3 +729,9 @@ ALTER TABLE resource_access_grants
     );
 
 ALTER TABLE wallet_billing_records RENAME COLUMN environment TO base_url;
+
+ALTER TABLE user_identities
+    DROP CONSTRAINT user_identities_provider_check,
+    ADD CONSTRAINT user_identities_provider_check CHECK (
+        provider IN ('github', 'google', 'microsoft', 'gitlab', 'oidc', 'baizhiyun')
+    );

@@ -259,10 +259,10 @@ func validate(key string, value map[string]json.RawMessage) error {
 				return errors.New("OAuth 配置缺少必填字段或 ID 重复")
 			}
 			seen[connection.ID] = true
-			if !slices.Contains([]string{"github", "google", "microsoft", "gitlab", "oidc"}, connection.Provider) {
+			if !slices.Contains([]string{"github", "google", "microsoft", "gitlab", "oidc", "baizhiyun"}, connection.Provider) {
 				return errors.New("OAuth provider 无效")
 			}
-			if connection.Provider == "oidc" && connection.IssuerURL == "" {
+			if (connection.Provider == "oidc" || connection.Provider == "baizhiyun") && connection.IssuerURL == "" {
 				return errors.New("OIDC issuer_url 不能为空")
 			}
 		}

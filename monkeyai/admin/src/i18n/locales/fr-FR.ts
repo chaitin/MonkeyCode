@@ -864,6 +864,8 @@ export const frFR = {
         provider: "Fournisseur",
         name: "Nom affiché",
         namePlaceholder: "Par exemple : GitHub Entreprise",
+        baizhiyunScopes:
+          "Autorisations par défaut : auth_certification openid phone user",
         issuerUrl: "URL de l’émetteur",
         clientId: "ID client",
         clientSecret: "Secret client",
@@ -879,6 +881,7 @@ export const frFR = {
           google: "Google",
           microsoft: "Microsoft",
           gitlab: "GitLab",
+          baizhiyun: "Baizhi Cloud",
           oidc: "OIDC personnalisé",
         },
       },

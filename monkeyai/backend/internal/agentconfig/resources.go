@@ -39,6 +39,10 @@ type catalog struct {
 
 func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind string) (catalog, error) {
 	c := catalog{grants: map[string]bool{}, required: map[string]bool{}, links: map[string][]resource.Object{}, models: map[string]bool{}}
+	systemAccess, err := resource.CanUseSystem(ctx, q, user)
+	if err != nil {
+		return c, err
+	}
 	queries := sqlc.New(q)
 	targets := []struct {
 		table string
@@ -60,6 +64,9 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 		}
 		*t.out = map[string]resource.Object{}
 		for _, o := range out {
+			if !systemAccess && (t.table == "experts" || (t.table != "connector_providers" && o.String("ownership_type") == "system")) {
+				continue
+			}
 			(*t.out)[o.String("id")] = o
 		}
 	}
@@ -99,7 +106,7 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 	}
 
 	for _, m := range models {
-		c.models[m.String("id")] = m.Bool("enabled") && (admin || m.String("owner_user_id") == user || c.grants["model:"+m.String("id")])
+		c.models[m.String("id")] = m.Bool("enabled") && (m.String("ownership_type") == "user" || systemAccess) && (admin || m.String("owner_user_id") == user || c.grants["model:"+m.String("id")])
 	}
 	return c, nil
 }

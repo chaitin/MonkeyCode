@@ -116,6 +116,10 @@ type Queryer interface {
 type Store struct{ Pool *pgxpool.Pool }
 
 func NewStore(p *pgxpool.Pool) *Store { return &Store{Pool: p} }
+func CanUseSystem(ctx context.Context, q Queryer, user string) (bool, error) {
+	return sqlc.New(q).CanUseSystem(ctx, user)
+}
+
 func Allowed(ctx context.Context, q Queryer, kind, id, user string) (bool, error) {
 	ok, err := sqlc.New(q).HasAccess(ctx, sqlc.HasAccessParams{UserID: new(user), ResourceType: kind, ResourceID: id})
 
@@ -490,6 +494,12 @@ func Accessible(ctx context.Context, q Queryer, kind string, o Object, user stri
 	}
 	if v, ok := o["enabled"].(bool); ok && !v {
 		return false, nil
+	}
+	if o.String("ownership_type") == "system" {
+		ok, err := CanUseSystem(ctx, q, user)
+		if err != nil || !ok {
+			return false, err
+		}
 	}
 	if o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
 		return true, nil

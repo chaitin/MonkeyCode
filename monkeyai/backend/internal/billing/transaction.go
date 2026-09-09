@@ -99,7 +99,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		}
 	}
 	price := Price{Input: p.Input, Cached: p.Cached, Output: p.Output}
-	var item string
+	var item, ownership string
 	var reserve Amount
 	limit := r.OutputLimit
 	switch r.Category {
@@ -114,6 +114,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		if err != nil {
 			return Reservation{}, err
 		}
+		ownership = row.OwnershipType
 		if row.OwnershipType == "user" {
 			price = Price{}
 			break
@@ -151,6 +152,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		if err != nil {
 			return Reservation{}, err
 		}
+		ownership = row.OwnershipType
 		if auth == "centralized" && p.Enabled {
 			price.Tool, err = ParseAmount(credits)
 			if err != nil {
@@ -160,6 +162,15 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		}
 	default:
 		return Reservation{}, resource.Invalid("计费类型无效")
+	}
+	if p.Mode == "remote" && ownership == "system" {
+		allowed, err := resource.CanUseSystem(ctx, tx, r.UserID)
+		if err != nil {
+			return Reservation{}, err
+		}
+		if !allowed {
+			return Reservation{}, fail(403, "baizhiyun_identity_required", "百智云扣费模式下，请通过百智云登录后使用系统资源")
+		}
 	}
 	if !p.Enabled {
 		price = Price{}
@@ -187,7 +198,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		walletUser, err = sqlc.New(tx).WalletUser(ctx, r.UserID)
 
 		if errors.Is(err, pgx.ErrNoRows) {
-			return Reservation{}, fail(422, "wallet_user_unbound", "用户尚未绑定百智云身份")
+			return Reservation{}, fail(422, "wallet_user_unbound", "请通过百智云登录；多个百智云身份需绑定扣费账户")
 		}
 		if err != nil {
 			return Reservation{}, err

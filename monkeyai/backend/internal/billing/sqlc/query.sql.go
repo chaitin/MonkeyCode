@@ -838,6 +838,27 @@ func (q *Queries) HasPendingWalletTransactions(ctx context.Context, userID strin
 	return exists, err
 }
 
+const hasWalletIdentity = `-- name: HasWalletIdentity :one
+SELECT EXISTS (
+    SELECT 1 FROM user_identities i
+    JOIN users u ON u.id = i.user_id AND u.status = 'active' AND u.deleted_at IS NULL
+    WHERE i.user_id = $1 AND i.provider_subject = $2
+        AND i.provider = 'baizhiyun' AND i.deleted_at IS NULL
+)::boolean
+`
+
+type HasWalletIdentityParams struct {
+	UserID          string
+	ProviderSubject string
+}
+
+func (q *Queries) HasWalletIdentity(ctx context.Context, arg HasWalletIdentityParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasWalletIdentity, arg.UserID, arg.ProviderSubject)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const idempotentTransaction = `-- name: IdempotentTransaction :one
 SELECT
     id,
@@ -1933,7 +1954,8 @@ const toolPricing = `-- name: ToolPricing :one
 SELECT
     t.name,
     t.credits_per_call::text,
-    c.authorization_mode
+    c.authorization_mode,
+    c.ownership_type
 FROM
     mcp_tools t
     JOIN connectors c ON c.id = t.connector_id
@@ -1954,12 +1976,18 @@ type ToolPricingRow struct {
 	Name              string
 	TCreditsPerCall   string
 	AuthorizationMode string
+	OwnershipType     string
 }
 
 func (q *Queries) ToolPricing(ctx context.Context, arg ToolPricingParams) (ToolPricingRow, error) {
 	row := q.db.QueryRow(ctx, toolPricing, arg.ID, arg.ConnectorID)
 	var i ToolPricingRow
-	err := row.Scan(&i.Name, &i.TCreditsPerCall, &i.AuthorizationMode)
+	err := row.Scan(
+		&i.Name,
+		&i.TCreditsPerCall,
+		&i.AuthorizationMode,
+		&i.OwnershipType,
+	)
 	return i, err
 }
 
@@ -2314,12 +2342,14 @@ func (q *Queries) WalletStatus(ctx context.Context, transactionID string) (strin
 }
 
 const walletUser = `-- name: WalletUser :one
-SELECT
-    external_user_id
-FROM
-    wallet_user_bindings
-WHERE
-    user_id = $1
+SELECT min(i.provider_subject)::text AS external_user_id
+FROM user_identities i
+JOIN users u ON u.id = i.user_id AND u.status = 'active' AND u.deleted_at IS NULL
+LEFT JOIN wallet_user_bindings wb ON wb.user_id = i.user_id
+WHERE i.user_id = $1 AND i.provider = 'baizhiyun' AND i.deleted_at IS NULL
+    AND (wb.user_id IS NULL OR wb.external_user_id = i.provider_subject)
+GROUP BY i.user_id
+HAVING count(DISTINCT i.provider_subject) = 1
 `
 
 func (q *Queries) WalletUser(ctx context.Context, userID string) (string, error) {

@@ -838,6 +838,8 @@ export const jaJP = {
         provider: "プロバイダー",
         name: "表示名",
         namePlaceholder: "例：会社 GitHub",
+        baizhiyunScopes:
+          "デフォルトのスコープ： auth_certification openid phone user",
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client Secret",
@@ -853,6 +855,7 @@ export const jaJP = {
           google: "Google",
           microsoft: "Microsoft",
           gitlab: "GitLab",
+          baizhiyun: "Baizhi Cloud",
           oidc: "カスタム OIDC",
         },
       },
