@@ -1,15 +1,20 @@
 package v1
 
 import (
+	"context"
+
 	"github.com/GoYoko/web"
+	"github.com/google/uuid"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
 )
 
 type TeamRuleHandler struct {
 	usecase domain.TeamRuleUsecase
+	repo    domain.TeamGroupUserRepo
 }
 
 func NewTeamRuleHandler(i *do.Injector) (*TeamRuleHandler, error) {
@@ -19,10 +24,19 @@ func NewTeamRuleHandler(i *do.Injector) (*TeamRuleHandler, error) {
 
 	h := &TeamRuleHandler{
 		usecase: do.MustInvoke[domain.TeamRuleUsecase](i),
+		repo:    do.MustInvoke[domain.TeamGroupUserRepo](i),
 	}
 
+	adminAuth := middleware.TeamAdminAuth(func(ctx context.Context, teamID, userID uuid.UUID) bool {
+		member, err := h.repo.GetMember(ctx, teamID, userID)
+		if err != nil {
+			return false
+		}
+		return member.Role == consts.TeamMemberRoleAdmin
+	})
+
 	g := w.Group("/api/v1/teams/rules")
-	g.Use(auth.TeamAuth())
+	g.Use(auth.TeamAuth(), adminAuth)
 	g.GET("", web.BaseHandler(h.List))
 	g.POST("", web.BindHandler(h.Add), audit.Audit("add_team_rule"))
 	g.PUT("/:rule_id", web.BindHandler(h.Update), audit.Audit("update_team_rule"))
