@@ -243,6 +243,32 @@ func TestListActiveRules_SkipsDisabled(t *testing.T) {
 	}
 }
 
+func TestListActiveRules_SkipsDanglingActiveVersion(t *testing.T) {
+	ctx := context.Background()
+	client := newTestDB(t, "agentresource-rules-dangling")
+
+	aliveID, _ := seedRuleEnabled(t, ctx, client, "alive", false, true, "keep", true)
+	dangling, err := client.AgentRule.Create().
+		SetName("dangling").
+		SetCreatedBy(uuid.New()).
+		SetIsDeleted(false).
+		SetEnabled(true).
+		SetActiveVersionID(uuid.New()).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed dangling rule: %v", err)
+	}
+
+	repo := NewRepo(client)
+	out, err := repo.ListActiveRules(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveRules: %v", err)
+	}
+	if len(out) != 1 || out[0].ID != aliveID {
+		t.Fatalf("expected only alive rule, got %+v (dangling=%s)", out, dangling.ID)
+	}
+}
+
 // ---- ListActiveSkills ----
 
 func TestListActiveSkills_UnionWithForceDelivery(t *testing.T) {
