@@ -283,7 +283,7 @@ func TestRemoteConfirmationRecovery(t *testing.T) {
 	s, user, model := fixture(t)
 	ctx := t.Context()
 	stub := &walletStub{failConfirm: true}
-	s.WithWallet(&Wallet{Client: stub, Environment: "dev", AppID: 4})
+	s.WithWallet(&Wallet{Client: stub, BaseURL: "https://baizhiyun.vip", AppID: 4})
 	if err := s.BindWallet(ctx, user, user, "1001"); err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestUnknownAndRejectedRemoteReservation(t *testing.T) {
 			s, user, model := fixture(t)
 			ctx := t.Context()
 			stub := &walletStub{createErr: tc.err}
-			s.WithWallet(&Wallet{Client: stub, Environment: "dev", AppID: 4})
+			s.WithWallet(&Wallet{Client: stub, BaseURL: "https://baizhiyun.vip", AppID: 4})
 			if err := s.BindWallet(ctx, user, user, "1002"); err != nil {
 				t.Fatal(err)
 			}

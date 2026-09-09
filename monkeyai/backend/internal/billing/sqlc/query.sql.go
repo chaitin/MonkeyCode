@@ -496,7 +496,7 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 }
 
 const createWalletRecord = `-- name: CreateWalletRecord :execresult
-INSERT INTO wallet_billing_records (biz_id, transaction_id, external_user_id, team_slug, environment, app_id, status,
+INSERT INTO wallet_billing_records (biz_id, transaction_id, external_user_id, team_slug, base_url, app_id, status,
     frozen_amount_quota)
     VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
 `
@@ -506,7 +506,7 @@ type CreateWalletRecordParams struct {
 	TransactionID     string
 	ExternalUserID    string
 	TeamSlug          string
-	Environment       string
+	BaseUrl           string
 	AppID             int32
 	FrozenAmountQuota int64
 }
@@ -517,7 +517,7 @@ func (q *Queries) CreateWalletRecord(ctx context.Context, arg CreateWalletRecord
 		arg.TransactionID,
 		arg.ExternalUserID,
 		arg.TeamSlug,
-		arg.Environment,
+		arg.BaseUrl,
 		arg.AppID,
 		arg.FrozenAmountQuota,
 	)
@@ -802,17 +802,17 @@ SELECT EXISTS (
     FROM wallet_billing_records w
     JOIN billing_transactions t ON t.id = w.transaction_id
     WHERE t.status NOT IN ('settled', 'released', 'rejected')
-        AND (w.environment <> $1 OR w.app_id <> $2)
+        AND (w.base_url <> $1 OR w.app_id <> $2)
 )
 `
 
 type HasOtherWalletTransactionsParams struct {
-	Environment string
-	AppID       int32
+	BaseUrl string
+	AppID   int32
 }
 
 func (q *Queries) HasOtherWalletTransactions(ctx context.Context, arg HasOtherWalletTransactionsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, hasOtherWalletTransactions, arg.Environment, arg.AppID)
+	row := q.db.QueryRow(ctx, hasOtherWalletTransactions, arg.BaseUrl, arg.AppID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -2025,7 +2025,7 @@ func (q *Queries) TransactionStatus(ctx context.Context, id string) (string, err
 const transactionWalletRecords = `-- name: TransactionWalletRecords :many
 SELECT
     jsonb_build_object('biz_id', biz_id, 'status', status, 'external_user_id', external_user_id,
-	'environment', environment, 'app_id', app_id, 'frozen_amount_quota', frozen_amount_quota::text,
+	'base_url', base_url, 'app_id', app_id, 'frozen_amount_quota', frozen_amount_quota::text,
 	'actual_amount_quota', actual_amount_quota::text, 'error_code', error_code, 'trace_id', trace_id,
 	'confirmed_at', confirmed_at)
 FROM
@@ -2221,7 +2221,7 @@ SELECT
     w.biz_id,
     w.external_user_id,
     w.team_slug,
-    w.environment,
+    w.base_url,
     w.app_id,
     w.status,
     t.item_name,
@@ -2237,7 +2237,7 @@ type WalletConfirmationRow struct {
 	BizID          string
 	ExternalUserID string
 	TeamSlug       string
-	Environment    string
+	BaseUrl        string
 	AppID          int32
 	Status         string
 	ItemName       string
@@ -2251,7 +2251,7 @@ func (q *Queries) WalletConfirmation(ctx context.Context, id string) (WalletConf
 		&i.BizID,
 		&i.ExternalUserID,
 		&i.TeamSlug,
-		&i.Environment,
+		&i.BaseUrl,
 		&i.AppID,
 		&i.Status,
 		&i.ItemName,
@@ -2264,7 +2264,7 @@ const walletReservation = `-- name: WalletReservation :one
 SELECT
     biz_id,
     external_user_id,
-    environment,
+    base_url,
     app_id,
     frozen_amount_quota
 FROM
@@ -2276,7 +2276,7 @@ WHERE
 type WalletReservationRow struct {
 	BizID             string
 	ExternalUserID    string
-	Environment       string
+	BaseUrl           string
 	AppID             int32
 	FrozenAmountQuota int64
 }
@@ -2287,7 +2287,7 @@ func (q *Queries) WalletReservation(ctx context.Context, transactionID string) (
 	err := row.Scan(
 		&i.BizID,
 		&i.ExternalUserID,
-		&i.Environment,
+		&i.BaseUrl,
 		&i.AppID,
 		&i.FrozenAmountQuota,
 	)

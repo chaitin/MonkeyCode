@@ -9,6 +9,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,7 +23,7 @@ import (
 )
 
 type WalletConfig struct {
-	Environment   string `json:"environment"`
+	BaseURL       string `json:"base_url"`
 	AppID         int    `json:"app_id"`
 	Certificate   string `json:"certificate"`
 	PrivateKey    string `json:"private_key"`
@@ -31,7 +33,7 @@ type WalletConfig struct {
 type WalletInfo struct {
 	Configured            bool       `json:"configured"`
 	CredentialsConfigured bool       `json:"credentials_configured"`
-	Environment           string     `json:"environment,omitempty"`
+	BaseURL               string     `json:"base_url,omitempty"`
 	AppID                 int        `json:"app_id,omitempty"`
 	CertificateExpiresAt  *time.Time `json:"certificate_expires_at,omitempty"`
 	Source                string     `json:"source,omitempty"`
@@ -39,9 +41,18 @@ type WalletInfo struct {
 }
 
 func WalletFromEnv() (*Wallet, error) {
-	cfg := WalletConfig{Environment: os.Getenv("BAIZHIYUN_ENV")}
-	if cfg.Environment == "" {
-		return nil, nil
+	cfg := WalletConfig{BaseURL: os.Getenv("BAIZHIYUN_BASE_URL")}
+	if cfg.BaseURL == "" {
+		switch os.Getenv("BAIZHIYUN_ENV") {
+		case "":
+			return nil, nil
+		case "dev":
+			cfg.BaseURL = "https://baizhiyun.vip"
+		case "prod":
+			cfg.BaseURL = "https://baizhi.cloud"
+		default:
+			return nil, resource.Invalid("请配置百智云服务 URL")
+		}
 	}
 	cfg.AppID, _ = strconv.Atoi(os.Getenv("BAIZHIYUN_APP_ID"))
 	dir := os.Getenv("MONKEYAI_WALLET_CERT_DIR")
@@ -63,8 +74,10 @@ func WalletFromEnv() (*Wallet, error) {
 }
 
 func newWallet(cfg WalletConfig) (*Wallet, error) {
-	if cfg.Environment != "dev" && cfg.Environment != "prod" {
-		return nil, resource.Invalid("百智云环境必须为 dev 或 prod")
+	var err error
+	cfg.BaseURL, err = normalizeWalletURL(cfg.BaseURL)
+	if err != nil {
+		return nil, resource.Invalid("百智云服务 URL：" + err.Error())
 	}
 	if cfg.AppID < 1 || cfg.AppID > 999 {
 		return nil, resource.Invalid("应用 ID 必须在 1 到 999 之间")
@@ -128,14 +141,15 @@ func newWallet(cfg WalletConfig) (*Wallet, error) {
 			return nil, errors.New("写入钱包证书临时文件失败")
 		}
 	}
+	openURL, walletURL := walletEndpoints(cfg.BaseURL)
 	client, err := opensdk.NewOpenClientWithConfig(opensdk.OpenClientConfig{
-		Env: cfg.Environment, AppID: cfg.AppID,
+		Env: opensdk.OpenClientEnvProd, AppID: cfg.AppID, OpenAPIURL: openURL, WalletURL: walletURL,
 		PrivateKeyPath: filepath.Join(dir, "app.key"), CertPath: filepath.Join(dir, "app.crt"), CAFile: filepath.Join(dir, "ca.crt"),
 	})
 	if err != nil {
 		return nil, resource.Invalid("初始化百智云客户端失败，请检查证书配置")
 	}
-	return &Wallet{Client: client, Environment: cfg.Environment, AppID: cfg.AppID, CertificateExpiresAt: cert.NotAfter, validUntil: validUntil, config: cfg, source: "admin"}, nil
+	return &Wallet{Client: client, BaseURL: cfg.BaseURL, AppID: cfg.AppID, CertificateExpiresAt: cert.NotAfter, validUntil: validUntil, config: cfg, source: "admin"}, nil
 }
 
 func (s *Service) walletConfig(ctx context.Context, q resource.Queryer) (*WalletConfig, error) {
@@ -165,7 +179,7 @@ func (s *Service) wallet(ctx context.Context, q resource.Queryer) (*Wallet, erro
 	if s.cachedWallet == nil || s.cachedWallet.config != *cfg {
 		wallet, err := newWallet(*cfg)
 		if err != nil {
-			wallet = &Wallet{Environment: cfg.Environment, AppID: cfg.AppID, config: *cfg, source: "admin", error: err.Error()}
+			wallet = &Wallet{BaseURL: cfg.BaseURL, AppID: cfg.AppID, config: *cfg, source: "admin", error: err.Error()}
 		}
 		s.cachedWallet = wallet
 	}
@@ -180,7 +194,7 @@ func (w *Wallet) info() WalletInfo {
 	if w == nil {
 		return WalletInfo{}
 	}
-	info := WalletInfo{Configured: w.ready(), Environment: w.Environment, AppID: w.AppID, Source: w.source, Error: w.error,
+	info := WalletInfo{Configured: w.ready(), BaseURL: w.BaseURL, AppID: w.AppID, Source: w.source, Error: w.error,
 		CredentialsConfigured: w.config.Certificate != "" && w.config.PrivateKey != "" && w.config.CACertificate != ""}
 	if !w.CertificateExpiresAt.IsZero() {
 		info.CertificateExpiresAt = &w.CertificateExpiresAt
@@ -200,9 +214,9 @@ func (s *Service) saveWallet(ctx context.Context, q resource.Queryer, in map[str
 	if previous != nil {
 		next = previous.config
 	}
-	next.Environment, next.AppID = "", 0
-	if json.Unmarshal(in["environment"], &next.Environment) != nil || json.Unmarshal(in["app_id"], &next.AppID) != nil {
-		return WalletInfo{}, WalletInfo{}, resource.Invalid("请提供百智云环境和应用 ID")
+	next.BaseURL, next.AppID = "", 0
+	if json.Unmarshal(in["base_url"], &next.BaseURL) != nil || json.Unmarshal(in["app_id"], &next.AppID) != nil {
+		return WalletInfo{}, WalletInfo{}, resource.Invalid("请提供百智云服务 URL 和应用 ID")
 	}
 	for name, target := range map[string]*string{"certificate": &next.Certificate, "private_key": &next.PrivateKey, "ca_certificate": &next.CACertificate} {
 		if raw, ok := in[name]; ok {
@@ -219,14 +233,51 @@ func (s *Service) saveWallet(ctx context.Context, q resource.Queryer, in map[str
 	if err != nil {
 		return WalletInfo{}, WalletInfo{}, err
 	}
-	pending, err := sqlc.New(q).HasOtherWalletTransactions(ctx, sqlc.HasOtherWalletTransactionsParams{Environment: next.Environment, AppID: int32(next.AppID)})
+	next = wallet.config
+	pending, err := sqlc.New(q).HasOtherWalletTransactions(ctx, sqlc.HasOtherWalletTransactionsParams{BaseUrl: next.BaseURL, AppID: int32(next.AppID)})
 	if err != nil {
 		return WalletInfo{}, WalletInfo{}, err
 	}
 	if pending {
-		return WalletInfo{}, WalletInfo{}, fail(409, "wallet_transactions_pending", "存在未完成的远程交易，请处理后再切换环境或应用 ID；同一应用可以更新证书")
+		return WalletInfo{}, WalletInfo{}, fail(409, "wallet_transactions_pending", "存在未完成的远程交易，请处理后再切换服务 URL 或应用 ID；同一应用可以更新证书")
 	}
 	raw, _ := json.Marshal(next)
 	_, err = sqlc.New(q).SaveWalletConfig(ctx, raw)
 	return previous.info(), wallet.info(), err
+}
+
+func normalizeWalletURL(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Opaque != "" {
+		return "", errors.New("请输入完整的 HTTPS 服务地址，不含用户名或密码")
+	}
+	if (u.Path != "" && u.Path != "/") || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || strings.Contains(raw, "#") {
+		return "", errors.New("仅填写服务根地址，不含路径、查询参数或片段")
+	}
+	port := u.Port()
+	if port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return "", errors.New("端口必须在 1 到 65535 之间")
+		}
+		port = strconv.Itoa(n)
+	}
+	host := strings.ToLower(u.Hostname())
+	if port != "" && port != "443" {
+		host = net.JoinHostPort(host, port)
+	} else if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	return "https://" + host, nil
+}
+
+func walletEndpoints(baseURL string) (string, string) {
+	switch baseURL {
+	case "https://baizhi.cloud":
+		return opensdk.ProdOpenAPIURL, opensdk.ProdWalletURL
+	case "https://baizhiyun.vip":
+		return opensdk.DevOpenAPIURL, opensdk.DevWalletURL
+	default:
+		return baseURL, baseURL
+	}
 }

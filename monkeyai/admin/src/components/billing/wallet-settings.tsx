@@ -27,7 +27,7 @@ const certificates = [
 ] as const
 
 export type WalletInput = {
-  environment: string
+  base_url: string
   app_id: number
   certificate: string
   private_key: string
@@ -43,7 +43,7 @@ export function WalletSettings({
   busy: boolean
   onSave: (input: WalletInput) => Promise<boolean>
 }) {
-  const [environment, setEnvironment] = useState(info.environment ?? "")
+  const [baseURL, setBaseURL] = useState(info.base_url ?? "")
   const [appID, setAppID] = useState(info.app_id?.toString() ?? "")
   const [files, setFiles] = useState<
     Partial<Record<(typeof certificates)[number]["key"], File>>
@@ -53,11 +53,11 @@ export function WalletSettings({
   const validID =
     /^\d+$/.test(appID) && Number(appID) >= 1 && Number(appID) <= 999
   const dirty =
-    environment !== (info.environment ?? "") ||
+    baseURL.trim() !== (info.base_url ?? "") ||
     appID !== (info.app_id?.toString() ?? "") ||
     Object.values(files).some(Boolean)
   const complete =
-    !!environment &&
+    validWalletURL(baseURL) &&
     validID &&
     (info.credentials_configured || certificates.every(({ key }) => files[key]))
 
@@ -69,7 +69,7 @@ export function WalletSettings({
     setError("")
     try {
       const input: WalletInput = {
-        environment,
+        base_url: baseURL.trim(),
         app_id: Number(appID),
         certificate: "",
         private_key: "",
@@ -130,20 +130,26 @@ export function WalletSettings({
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field>
-            <FieldLabel htmlFor="billing-wallet-env">环境</FieldLabel>
-            <select
-              id="billing-wallet-env"
-              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+            <FieldLabel htmlFor="billing-wallet-url">
+              服务 URL（Base URL）
+            </FieldLabel>
+            <Input
+              id="billing-wallet-url"
+              type="url"
+              autoComplete="off"
+              spellCheck={false}
               required
-              value={environment}
-              onChange={(event) => setEnvironment(event.target.value)}
-            >
-              <option value="" disabled>
-                请选择环境
-              </option>
-              <option value="prod">生产环境</option>
-              <option value="dev">测试环境</option>
-            </select>
+              placeholder="https://baizhi.cloud"
+              value={baseURL}
+              aria-invalid={!!baseURL && !validWalletURL(baseURL)}
+              aria-describedby="billing-wallet-url-hint"
+              onChange={(event) => setBaseURL(event.target.value)}
+            />
+            <FieldDescription id="billing-wallet-url-hint">
+              {baseURL && !validWalletURL(baseURL)
+                ? "请输入 HTTPS 服务根地址，可包含端口，不含路径、参数或用户名密码。"
+                : "填写百智云服务地址，私有化部署填写统一网关地址。"}
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="billing-wallet-app">
@@ -162,7 +168,7 @@ export function WalletSettings({
             <FieldDescription id="billing-wallet-app-hint">
               {appID && !validID
                 ? "请输入 1 到 999 之间的整数"
-                : "填写所选环境对应的应用 ID"}
+                : "填写该百智云服务对应的应用 ID"}
             </FieldDescription>
           </Field>
         </div>
@@ -192,8 +198,8 @@ export function WalletSettings({
           </Field>
         ))}
         <p className="text-xs text-muted-foreground">
-          保存时校验证书格式、有效期及私钥匹配关系，证书和私钥内容不回显。存在未完成交易时不能切换环境或应用
-          ID，同一应用可更新证书。
+          保存时校验证书格式、有效期及私钥匹配关系，证书和私钥内容不回显。存在未完成交易时不能切换服务
+          URL 或应用 ID，同一应用可更新证书。
         </p>
         <Button type="submit" variant="outline" disabled={!complete || !dirty}>
           {saving ? "保存中…" : "保存连接配置"}
@@ -206,4 +212,23 @@ export function WalletSettings({
       )}
     </form>
   )
+}
+
+function validWalletURL(value: string) {
+  try {
+    const url = new URL(value.trim())
+    return (
+      /^https:\/\/[^/?#@\\\s]+\/?$/i.test(value.trim()) &&
+      url.protocol === "https:" &&
+      !!url.hostname &&
+      !url.username &&
+      !url.password &&
+      url.pathname === "/" &&
+      !url.search &&
+      !url.hash &&
+      url.port !== "0"
+    )
+  } catch {
+    return false
+  }
 }
