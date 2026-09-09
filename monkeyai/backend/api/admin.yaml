@@ -4413,7 +4413,7 @@ components:
             - number
             - "null"
           description: 成功调用 / 已结束调用 × 100；没有已结束调用时为 null。
-        credits: &a1
+        credits: &statisticsCredits
           type: string
           pattern: ^-?[0-9]+(\.[0-9]{1,6})?$
           description: 扣费减退款后的积分净消费，十进制字符串；纯退款周期可为负值。
@@ -4427,11 +4427,11 @@ components:
         - models
         - trend
       properties:
-        from: &a2
+        from: &statisticsFrom
           type: string
           format: date-time
           description: 查询窗口起点，包含。
-        until: &a3
+        until: &statisticsUntil
           type: string
           format: date-time
           description: 查询窗口终点，不包含；由服务端统一确定。
@@ -4485,7 +4485,7 @@ components:
                 type: integer
                 minimum: 0
                 description: 本桶输出 Token。
-              credits: *a1
+              credits: *statisticsCredits
     StatisticsTaskSummary:
       type: object
       required:
@@ -4532,8 +4532,8 @@ components:
         - trend
         - types
       properties:
-        from: *a2
-        until: *a3
+        from: *statisticsFrom
+        until: *statisticsUntil
         summary:
           $ref: "#/components/schemas/StatisticsTaskSummary"
         previous:
@@ -4598,9 +4598,9 @@ components:
         - active_tasks
         - new_tasks
       properties:
-        from: *a2
-        until: *a3
-        model_consumption: *a1
+        from: *statisticsFrom
+        until: *statisticsUntil
+        model_consumption: *statisticsCredits
         p95_response_time:
           type:
             - number

@@ -38,7 +38,7 @@ INSERT INTO connectors (provider_id, name, description, url, authorization_mode,
         ELSE
             'unknown'
 	END, ($1::jsonb ->> 'id')::uuid, ($1::jsonb ->>
-	    'actor_id')::uuid, 'system')
+	    'actor_id')::uuid, COALESCE($1::jsonb ->> 'ownership_type', 'system'))
 `
 
 func (q *Queries) CreateResource(ctx context.Context, data []byte) error {
@@ -47,6 +47,11 @@ func (q *Queries) CreateResource(ctx context.Context, data []byte) error {
 }
 
 const deleteResource = `-- name: DeleteResource :exec
+WITH revoked AS (
+    UPDATE connector_credentials
+    SET revoked_at = now(), status = 'revoked', updated_at = now()
+    WHERE connector_credentials.connector_id = $1 AND connector_credentials.revoked_at IS NULL
+)
 UPDATE
     connectors
 SET
@@ -54,7 +59,7 @@ SET
     updated_at = now(),
     revision = revision + 1
 WHERE
-    id = $1
+    connectors.id = $1
 `
 
 func (q *Queries) DeleteResource(ctx context.Context, id string) error {

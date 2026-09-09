@@ -778,7 +778,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户
-      description: 本期仅支持 model。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各 1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
+      description: 支持 model、skill、rule；Connector 和 Provider 暂不支持分享。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各 1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
       requestBody:
         required: true
         content:
@@ -864,6 +864,37 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+    post:
+      summary: 创建当前用户的个人规则
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRuleInput'
+      responses:
+        '201':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: 归属固定为当前用户；个人规则只能提供可选使用授权，分享通过 /resources/shares 管理。
   /api/v1/skills:
     get:
       summary: 读取 Agent 技能
@@ -888,6 +919,47 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+    post:
+      summary: 上传 ZIP 创建个人技能
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                package:
+                  type: string
+                  format: binary
+                  description: 最多 20 MiB ZIP，解包最多 50 MiB、500 个文件。
+                metadata:
+                  type: string
+                  description: 可选 JSON 对象字符串，仅 tag_ids 可写；名称、描述和包信息以服务端解析 SKILL.md 的结果为准。
+              required:
+              - package
+      responses:
+        '201':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: 技能包最多 20 MiB，解包最多 50 MiB、500 个文件。归属固定为当前用户；初始启用，上传元数据不能配置授权、归属或存储路径。
   /api/v1/experts:
     get:
       summary: 读取 Agent 专家
@@ -936,6 +1008,40 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+    post:
+      summary: 创建当前用户的个人 Connector
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/UserConnectorInput'
+              required:
+              - provider_id
+      responses:
+        '201':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: 基于启用的系统或本人 Provider 创建个人 Connector，仅支持 none / independent；禁止使用 centralized 或他人的私有 Provider。连接 URL 与认证配置由模板确定，凭证由本人通过现有认证接口单独配置。
   /api/v1/api-keys:
     get:
       summary: 查询当前用户的调用密钥
@@ -1414,6 +1520,578 @@ paths:
         schema:
           type: string
         description: 客户端清单记录的包摘要；与当前包不同返回 412。
+    put:
+      summary: 替换自己的个人技能 ZIP
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                package:
+                  type: string
+                  format: binary
+                  description: 最多 20 MiB ZIP，解包最多 50 MiB、500 个文件。
+                metadata:
+                  type: string
+                  description: 可选 JSON 对象字符串，仅 tag_ids 可写；名称、描述和包信息以服务端解析 SKILL.md 的结果为准。
+              required:
+              - package
+      responses:
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillResource'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+      description: 替换完整技能包，名称和描述以新 ZIP 的 SKILL.md 为准；保留既有分享和启用状态。
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+  /api/v1/rules/{id}:
+    get:
+      summary: 读取自己的个人规则
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+    put:
+      summary: 编辑自己的个人规则
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRuleInput'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。
+    delete:
+      summary: 删除自己的个人规则
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 资源已软删除，相关分享同步清理。
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+  /api/v1/skills/{id}:
+    get:
+      summary: 读取自己的个人技能
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+    put:
+      summary: 编辑自己的个人技能
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSkillInput'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。 description、content
+        省略时保留原值；编辑后重写完整 ZIP，更新大小与摘要，保留附属文件。
+    delete:
+      summary: 删除自己的个人技能
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 资源已软删除，相关分享同步清理。
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+  /api/v1/connectors/{id}:
+    get:
+      summary: 读取自己的个人 Connector
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+    put:
+      summary: 编辑自己的个人 Connector
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserConnectorInput'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。 provider_id 省略时保留原值，不能更换
+        Provider；认证及配置快照保持不变。
+    delete:
+      summary: 删除自己的个人 Connector
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 资源已软删除，相关分享同步清理。
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+  /api/v1/connector-providers:
+    get:
+      summary: 列出可用于个人连接的 Provider
+      description: 返回启用的系统 none / independent Provider，以及本人的 Provider；本人禁用模板也可查看。隐藏其他用户的 Provider 及服务端密钥。
+      responses:
+        '200':
+          description: 可见 Provider 列表。
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserConnectorProviderResource'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+    post:
+      summary: 创建当前用户的个人 Connector Provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/UserConnectorProviderInput'
+              required:
+              - url
+              - authorization_mode
+      responses:
+        '201':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserConnectorProviderResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: identifier 自动生成为 custom:<uuid>，用户不可指定或修改；仅支持 none / independent，OAuth Client Secret 仅写入。
+  /api/v1/connector-providers/{id}:
+    get:
+      summary: 读取可见 Provider 详情
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserConnectorProviderResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: 允许读取启用的系统 none / independent Provider，以及自己的 Provider。
+    put:
+      summary: 编辑自己的个人 Connector Provider
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserConnectorProviderInput'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserConnectorProviderResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。 identifier 固定不变；已存在实例时禁止更换连接模板，OAuth
+        Client Secret 轮换同步更新绑定实例。
+    delete:
+      summary: 删除自己的个人 Connector Provider
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Provider 已软删除；仍被 Connector 或专家引用时返回 409。
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+  /api/v1/skills/{id}/manifest:
+    get:
+      summary: 读取自己的个人技能正文
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSkillManifest'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+  /api/v1/connector-providers/{id}/icon:
+    put:
+      summary: 上传自己的个人 Provider 图标
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserConnectorProviderResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: If-Match
+        in: header
+        required: true
+        description: 上次读取返回的 ETag，例如 "1"。
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                icon:
+                  type: string
+                  format: binary
+                  description: PNG/JPEG，最多 1 MiB，最多 4096×4096。
+              required:
+              - icon
+      description: 只允许修改本人的 Provider 图标，不允许修改系统或他人的 Provider。
+    get:
+      summary: 读取可见 Provider 图标
+      responses:
+        '200':
+          description: 读取私有模板图标
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      description: 与 Provider 详情使用相同可见范围。
 components:
   securitySchemes:
     InvocationKey:
@@ -1426,6 +2104,20 @@ components:
       bearerFormat: OAuth 2.0 access token
       description: Agent 登录授权流程签发的短期 access token。
   parameters:
+    ResourceID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: 最近详情响应中的修订号 ETag，例如 "1"；缺省返回 428，已过期返回 412。
+      schema:
+        type: string
     IfNoneMatch:
       in: header
       name: If-None-Match
@@ -1441,6 +2133,10 @@ components:
         type: string
         format: uuid
   headers:
+    RevisionETag:
+      description: 资源修订号，以双引号包围，例如 "1"；创建、编辑、分享、撤销分享及删除都会更新修订号。
+      schema:
+        type: string
     ETag:
       description: 当前接口响应内容的稳定 SHA-256 版本，以双引号包围。
       schema:
@@ -1537,6 +2233,172 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    UserRuleInput:
+      type: object
+      properties:
+        content:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+      - name
+      - content
+      description: 仅声明的字段可由当前用户写入；归属、启用状态、授权和其他服务端字段忽略。
+    UserSkillInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          description: 省略时保留原值。
+        content:
+          type: string
+          description: 省略时保留原值。
+        tag_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - name
+      description: 仅声明的字段可由当前用户写入；归属、启用状态、授权和其他服务端字段忽略。
+    UserConnectorInput:
+      type: object
+      properties:
+        provider_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+      - name
+      description: 仅声明的字段可由当前用户写入；归属、启用状态、授权和其他服务端字段忽略。
+    UserConnectorProviderInput:
+      type: object
+      properties:
+        description:
+          type: string
+        url:
+          type: string
+          format: uri
+        authorization_mode:
+          type: string
+          enum:
+          - none
+          - independent
+        authorization_method:
+          type:
+          - string
+          - 'null'
+          enum:
+          - http_header
+          - oauth
+          - null
+        oauth_config:
+          $ref: '#/components/schemas/OAuthConnectionConfig'
+        header_schema:
+          type: object
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        oauth_client_secret:
+          type: string
+          writeOnly: true
+          description: 仅写入；空字符串表示保留已有密钥。
+      required:
+      - name
+      description: 仅声明的字段可由当前用户写入；归属、启用状态、授权和其他服务端字段忽略。
+    UserConnectorProviderResource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+        owner_user_id:
+          type: string
+          format: uuid
+        owner_name:
+          type: string
+        icon_path:
+          type: string
+        enabled:
+          type: boolean
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceGrant'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        identifier:
+          type: string
+        description:
+          type: string
+        url:
+          type: string
+          format: uri
+        authorization_mode:
+          type: string
+          enum:
+          - none
+          - centralized
+          - independent
+        authorization_method:
+          type:
+          - string
+          - 'null'
+          enum:
+          - http_header
+          - oauth
+          - null
+        oauth_config:
+          $ref: '#/components/schemas/OAuthConnectionConfig'
+        header_schema:
+          type: object
+      required:
+      - id
+      - name
+      - revision
+      - ownership_type
+      - owner_user_id
+      - identifier
+    UserSkillManifest:
+      type: object
+      required:
+      - name
+      - description
+      - content
+      - revision
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        content:
+          type: string
+        revision:
+          type: integer
     EmailAuthError:
       type: object
       required:
@@ -1818,7 +2680,9 @@ components:
                 type: string
                 enum:
                 - model
-                description: 资源类型。将来可扩展 skill、connector、rule；本期其他类型返回 400。
+                - skill
+                - rule
+                description: 可分享的个人资源类型；其他类型返回 400。
               id: *id006
         user_ids:
           type: array
@@ -2353,6 +3217,20 @@ components:
     AgentRule:
       type: object
       properties:
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+          description: 独立资源目录返回；分享不改变资源归属。
+        owner_user_id:
+          type: string
+          format: uuid
+          description: 独立资源目录返回；与当前用户 ID 比较以判断是否可编辑。
+        revision:
+          type: integer
+          minimum: 1
+          description: 独立资源目录返回；管理详情和修改接口使用此修订号作为 ETag。
         id:
           type: string
           format: uuid
@@ -2373,6 +3251,20 @@ components:
     AgentSkill:
       type: object
       properties:
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+          description: 独立资源目录返回；分享不改变资源归属。
+        owner_user_id:
+          type: string
+          format: uuid
+          description: 独立资源目录返回；与当前用户 ID 比较以判断是否可编辑。
+        revision:
+          type: integer
+          minimum: 1
+          description: 独立资源目录返回；管理详情和修改接口使用此修订号作为 ETag。
         id:
           type: string
           format: uuid
@@ -2401,6 +3293,20 @@ components:
     AgentConnector:
       type: object
       properties:
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+          description: 独立资源目录返回；分享不改变资源归属。
+        owner_user_id:
+          type: string
+          format: uuid
+          description: 独立资源目录返回；与当前用户 ID 比较以判断是否可编辑。
+        revision:
+          type: integer
+          minimum: 1
+          description: 独立资源目录返回；管理详情和修改接口使用此修订号作为 ETag。
         id:
           type: string
           format: uuid

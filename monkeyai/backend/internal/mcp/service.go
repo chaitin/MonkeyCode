@@ -26,19 +26,33 @@ type Service struct {
 
 func NewService(store *resource.Store, publicURL string) *Service {
 	s := &Service{Store: store, PublicURL: strings.TrimRight(publicURL, "/")}
-	s.Providers = resource.NewCRUD(store, resource.Definition{Kind: "provider", Repository: func(q resource.Queryer) resource.Repository { return provider.New(q) }, Path: "/connector-providers", Fields: []string{"identifier", "name", "description", "url", "authorization_mode", "authorization_method", "header_schema", "oauth_config", "oauth_client_secret", "enabled"}, Hidden: []string{"oauth_client_secret", "icon_s3_key"}, Decorate: func(ctx context.Context, q resource.Queryer, o resource.Object) error {
+	s.Providers = resource.NewCRUD(store, resource.Definition{Kind: "provider", Repository: func(q resource.Queryer) resource.Repository { return provider.New(q) }, Path: "/connector-providers", Fields: []string{"identifier", "name", "description", "url", "authorization_mode", "authorization_method", "header_schema", "oauth_config", "oauth_client_secret", "enabled"}, UserFields: []string{"name", "description", "url", "authorization_mode", "authorization_method", "header_schema", "oauth_config", "oauth_client_secret"}, Hidden: []string{"oauth_client_secret", "icon_s3_key"}, Decorate: func(ctx context.Context, q resource.Queryer, o resource.Object) error {
 		o["icon_path"] = ""
 		if key := o.String("icon_s3_key"); key != "" {
 			o["icon_path"] = "/api/admin/v1/connector-providers/" + o.String("id") + "/icon?v=" + resource.Hash(key)
 		}
 		return nil
-	}, Validate: validateProvider, References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
+	}, UserDecorate: userIcon, Validate: validateProvider, References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
 		return resource.DecodeObjects(sqlc.New(tx).ListProviderReferences(ctx, id))
 	}})
-	s.Connectors = resource.NewCRUD(store, resource.Definition{Kind: "connector", Repository: func(q resource.Queryer) resource.Repository { return connector.New(q) }, Path: "/connectors", Fields: []string{"provider_id", "name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "enabled", "config_revision", "connection_status"}, Hidden: []string{"oauth_client_secret"}, Validate: s.validateConnector, Decorate: s.decorateConnector})
+	s.Connectors = resource.NewCRUD(store, resource.Definition{Kind: "connector", Repository: func(q resource.Queryer) resource.Repository { return connector.New(q) }, Path: "/connectors", Fields: []string{"provider_id", "name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "enabled", "config_revision", "connection_status"}, UserFields: []string{"provider_id", "name", "description"}, Hidden: []string{"oauth_client_secret"}, Validate: s.validateConnector, Decorate: s.decorateConnector, UserDecorate: userIcon})
 	return s
 }
 func validateProvider(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
+	if in.String("ownership_type") == "user" {
+		in["identifier"] = old["identifier"]
+		if old.String("id") == "" {
+			in["identifier"] = "custom:" + in.String("id")
+		}
+		for _, key := range []string{"url", "authorization_mode", "authorization_method", "oauth_config"} {
+			if _, ok := in[key]; !ok && old.String("id") != "" {
+				in[key] = old[key]
+			}
+		}
+		if in.String("authorization_mode") != "none" && in.String("authorization_mode") != "independent" {
+			return resource.Invalid("个人 Provider 仅支持无认证或独立认证")
+		}
+	}
 	if strings.TrimSpace(in.String("identifier")) == "" {
 		in["identifier"] = old.String("identifier")
 		if old.String("id") == "" {
@@ -52,6 +66,7 @@ func validateProvider(ctx context.Context, tx pgx.Tx, in, old resource.Object) e
 	method := in.String("authorization_method")
 	if mode == "none" {
 		in["authorization_method"] = nil
+		method = ""
 	} else if (mode != "centralized" && mode != "independent") || (method != "http_header" && method != "oauth") {
 		return resource.Invalid("认证组合无效")
 	}
@@ -61,8 +76,7 @@ func validateProvider(ctx context.Context, tx pgx.Tx, in, old resource.Object) e
 		if json.Unmarshal(b, &o) != nil || !validURL(o.AuthorizationURL) || !validURL(o.TokenURL) || o.ClientID == "" {
 			return resource.Invalid("OAuth 应用配置不完整")
 		}
-		clean, _ := json.Marshal(o)
-		in["oauth_config"] = json.RawMessage(clean)
+		in["oauth_config"] = resource.Object{"authorization_url": o.AuthorizationURL, "token_url": o.TokenURL, "client_id": o.ClientID, "scopes": o.Scopes}
 	}
 	if old.String("id") != "" {
 		for _, key := range []string{"url", "authorization_mode", "authorization_method", "oauth_config"} {
@@ -89,9 +103,24 @@ func validateProvider(ctx context.Context, tx pgx.Tx, in, old resource.Object) e
 	return nil
 }
 func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
-	p, err := resource.DecodeObject(sqlc.New(tx).GetEnabledProvider(ctx, in.String("provider_id")))
+	personal := in.String("ownership_type") == "user"
+	if personal && old.String("id") != "" {
+		if _, ok := in["provider_id"]; !ok {
+			in["provider_id"] = old["provider_id"]
+		}
+	}
+	var p resource.Object
+	var err error
+	if personal {
+		p, err = resource.DecodeObject(sqlc.New(tx).GetUserProvider(ctx, sqlc.GetUserProviderParams{ID: in.String("provider_id"), UserID: in.String("actor_id")}))
+	} else {
+		p, err = resource.DecodeObject(sqlc.New(tx).GetEnabledProvider(ctx, in.String("provider_id")))
+	}
 	if err != nil {
 		return resource.Invalid("Provider 不存在或已禁用")
+	}
+	if !p.Bool("enabled") || (personal && p.String("authorization_mode") != "none" && p.String("authorization_mode") != "independent") {
+		return resource.Invalid("Provider 不可用于创建个人连接")
 	}
 	if old.String("id") != "" && old.String("provider_id") != p.String("id") {
 		return resource.Invalid("更换 Provider 请创建新连接")
@@ -112,7 +141,11 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 	return nil
 }
 func (s *Service) decorateConnector(ctx context.Context, q resource.Queryer, o resource.Object) error {
-	configured, err := sqlc.New(q).HasCentralCredential(ctx, sqlc.HasCentralCredentialParams{ConnectorID: o.String("id"), ConfigRevision: int64(o.Int("config_revision"))})
+	user := ""
+	if o.String("ownership_type") == "user" {
+		user = o.String("owner_user_id")
+	}
+	configured, err := sqlc.New(q).HasCredential(ctx, sqlc.HasCredentialParams{ConnectorID: o.String("id"), UserID: user, ConfigRevision: int64(o.Int("config_revision"))})
 	if err != nil {
 		return err
 	}
@@ -182,6 +215,10 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 	s.iconRoutes(r, true)
 }
 func (s *Service) RegisterAgent(r chi.Router) {
+	s.Providers.RegisterAgent(r)
+	s.Connectors.RegisterAgent(r)
+	r.Get("/connector-providers", s.listProviders)
+	r.Get("/connector-providers/{id}", s.getProvider)
 	s.routes(r, false)
 	s.iconRoutes(r, false)
 }

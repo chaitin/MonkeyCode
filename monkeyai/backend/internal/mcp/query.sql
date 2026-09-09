@@ -4,8 +4,9 @@ SELECT
 FROM
     connector_providers p
 WHERE
-    id = $1
-    AND ownership_type = 'system'
+    id = sqlc.arg(id)
+    AND ((ownership_type = 'system' AND sqlc.arg(user_id)::text = '')
+        OR (ownership_type = 'user' AND owner_user_id = NULLIF(sqlc.arg(user_id)::text, '')::uuid))
     AND deleted_at IS NULL
 FOR UPDATE;
 
@@ -182,7 +183,24 @@ WHERE
     AND deleted_at IS NULL
     AND enabled FOR SHARE;
 
--- name: HasCentralCredential :one
+-- name: GetUserProvider :one
+SELECT to_jsonb(p)
+FROM connector_providers p
+WHERE id = sqlc.arg(id)
+    AND deleted_at IS NULL
+    AND ((ownership_type = 'system' AND enabled AND authorization_mode IN ('none', 'independent'))
+        OR (ownership_type = 'user' AND owner_user_id = sqlc.arg(user_id)))
+FOR SHARE;
+
+-- name: ListUserProviders :many
+SELECT to_jsonb(p)
+FROM connector_providers p
+WHERE deleted_at IS NULL
+    AND ((ownership_type = 'system' AND enabled AND authorization_mode IN ('none', 'independent'))
+        OR (ownership_type = 'user' AND owner_user_id = sqlc.arg(user_id)))
+ORDER BY lower(name), id;
+
+-- name: HasCredential :one
 SELECT
     EXISTS (
         SELECT
@@ -190,11 +208,11 @@ SELECT
         FROM
             connector_credentials
         WHERE
-            connector_id = $1
-            AND user_id IS NULL
+            connector_id = sqlc.arg(connector_id)
+            AND user_id IS NOT DISTINCT FROM NULLIF(sqlc.arg(user_id)::text, '')::uuid
             AND status = 'authorized'
             AND revoked_at IS NULL
-            AND config_revision = $2
+            AND config_revision = sqlc.arg(config_revision)
             AND (oauth_expires_at IS NULL
                 OR oauth_expires_at > now()));
 

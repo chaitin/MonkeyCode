@@ -132,7 +132,7 @@ INSERT INTO skills (name, description, package_file_name, package_s3_key, packag
         ELSE
             TRUE
 	END, (sqlc.arg(DATA)::jsonb ->> 'id')::uuid, (sqlc.arg(DATA)::jsonb ->>
-	    'actor_id')::uuid, 'system');
+	    'actor_id')::uuid, COALESCE(sqlc.arg(DATA)::jsonb ->> 'ownership_type', 'system'));
 
 -- name: UpdateResource :exec
 UPDATE

@@ -11,7 +11,7 @@ import (
 )
 
 func NewService(s *resource.Store) *resource.CRUD {
-	return resource.NewCRUD(s, resource.Definition{Kind: "rule", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/rules", Fields: []string{"name", "content"}, Validate: func(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
+	return resource.NewCRUD(s, resource.Definition{Kind: "rule", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/rules", Fields: []string{"name", "content"}, UserFields: []string{"name", "content"}, Validate: func(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
 		if strings.TrimSpace(in.String("content")) == "" {
 			return resource.Invalid("规则正文不能为空")
 		}
