@@ -736,6 +736,8 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		must("DELETE", "/api/admin/v1/rules/"+id, nil, "", `"4"`)
 	})
 
+	t.Run("个人资源创作与分享", func(t *testing.T) { testPersonalResources(t, pool, handler, users) })
+
 	// 虚拟根的数据转换不可逆；可丢弃测试库从初始结构重建。
 	for i := len(migrations) - 1; i >= 0; i-- {
 		if filepath.Base(migrations[i]) == "000003_group_virtual_root.up.sql" {

@@ -48,7 +48,7 @@ INSERT INTO skills (name, description, package_file_name, package_s3_key, packag
         ELSE
             TRUE
 	END, ($1::jsonb ->> 'id')::uuid, ($1::jsonb ->>
-	    'actor_id')::uuid, 'system')
+	    'actor_id')::uuid, COALESCE($1::jsonb ->> 'ownership_type', 'system'))
 `
 
 func (q *Queries) CreateResource(ctx context.Context, data []byte) error {

@@ -23,9 +23,19 @@ func (s *Service) iconRoutes(r chi.Router, admin bool) {
 		return
 	}
 	if admin {
-		r.Put("/connector-providers/{id}/icon", s.uploadIcon)
+		r.Put("/connector-providers/{id}/icon", func(w http.ResponseWriter, r *http.Request) { s.uploadIcon(w, r, true) })
 		r.Get("/connector-providers/{id}/icon", func(w http.ResponseWriter, r *http.Request) { s.icon(w, r, chi.URLParam(r, "id")) })
 	} else {
+		r.Put("/connector-providers/{id}/icon", func(w http.ResponseWriter, r *http.Request) { s.uploadIcon(w, r, false) })
+		r.Get("/connector-providers/{id}/icon", func(w http.ResponseWriter, r *http.Request) {
+			u, _ := identity.UserFromContext(r.Context())
+			id := chi.URLParam(r, "id")
+			if _, err := sqlc.New(s.Store.Pool).GetUserProvider(r.Context(), sqlc.GetUserProviderParams{ID: id, UserID: u.ID}); err != nil {
+				resource.Fail(w, err)
+				return
+			}
+			s.icon(w, r, id)
+		})
 		r.Get("/connectors/{id}/icon", func(w http.ResponseWriter, r *http.Request) {
 			u, _ := identity.UserFromContext(r.Context())
 			c, err := s.Connector(r.Context(), s.Store.Pool, chi.URLParam(r, "id"), u.ID, false)
@@ -37,7 +47,7 @@ func (s *Service) iconRoutes(r chi.Router, admin bool) {
 		})
 	}
 }
-func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request) {
+func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, (1<<20)+4096)
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		resource.Fail(w, resource.Invalid("图标必须小于 1 MiB"))
@@ -68,9 +78,18 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 	id := chi.URLParam(r, "id")
-	p, err := resource.DecodeObject(sqlc.New(tx).LockIconProvider(ctx, id))
+	u, _ := identity.UserFromContext(ctx)
+	user := u.ID
+	if admin {
+		user = ""
+	}
+	p, err := resource.DecodeObject(sqlc.New(tx).LockIconProvider(ctx, sqlc.LockIconProviderParams{ID: id, UserID: user}))
 	if err != nil {
 		resource.Fail(w, err)
+		return
+	}
+	if r.Header.Get("If-Match") == "" {
+		resource.Fail(w, &resource.Error{Status: http.StatusPreconditionRequired, Code: "precondition_required", Message: "更新需要 If-Match"})
 		return
 	}
 	if r.Header.Get("If-Match") != fmt.Sprintf(`"%v"`, p["revision"]) {
@@ -81,7 +100,6 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request) {
 	if err = s.storage.Put(ctx, key, data, "image/"+format); err == nil {
 		_, err = sqlc.New(tx).SetProviderIcon(ctx, sqlc.SetProviderIconParams{ID: id, IconS3Key: key})
 	}
-	u, _ := identity.UserFromContext(ctx)
 	if err == nil {
 		err = resource.Audit(ctx, tx, u.ID, "provider", id, "icon")
 	}
@@ -94,7 +112,11 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err = s.Providers.Get(ctx, s.Store.Pool, id)
+	if admin {
+		p, err = s.Providers.Get(ctx, s.Store.Pool, id)
+	} else {
+		p, err = s.Providers.GetUser(ctx, s.Store.Pool, id, u.ID)
+	}
 	if err != nil {
 		resource.Fail(w, err)
 		return

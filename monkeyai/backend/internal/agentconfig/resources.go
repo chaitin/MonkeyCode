@@ -278,6 +278,11 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 		if err != nil {
 			return nil, err
 		}
+		if kind != "experts" {
+			dto["ownership_type"] = o["ownership_type"]
+			dto["owner_user_id"] = o["owner_user_id"]
+			dto["revision"] = o["revision"]
+		}
 		out = append(out, dto)
 	}
 	resource.Stable(out)

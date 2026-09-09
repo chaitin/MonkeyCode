@@ -54,7 +54,7 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 	input.UserIDs = slices.Clone(input.UserIDs)
 	for _, item := range input.Resources {
 		if kinds[item.Type] == nil {
-			return Invalid("本期仅支持模型分享")
+			return Invalid("不支持分享此资源类型")
 		}
 		if !validUUID(item.ID) {
 			return Invalid("资源 ID 必须是 UUID")

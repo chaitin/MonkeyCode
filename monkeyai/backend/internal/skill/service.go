@@ -24,7 +24,7 @@ type Service struct {
 
 func NewService(store *resource.Store, storage resource.Storage) *Service {
 	s := &Service{store: store, storage: storage}
-	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "skill", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/skills", Fields: []string{"name", "description", "package_file_name", "package_s3_key", "package_size_bytes", "package_sha256", "file_count", "enabled"}, Hidden: []string{"package_s3_key"}, Validate: s.validate, Decorate: s.decorate, Persist: s.tags, References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
+	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "skill", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/skills", Fields: []string{"name", "description", "package_file_name", "package_s3_key", "package_size_bytes", "package_sha256", "file_count", "enabled"}, UserFields: []string{"name", "description", "content", "tag_ids", "package_bytes"}, Hidden: []string{"package_s3_key"}, Validate: s.validate, Decorate: s.decorate, Persist: s.tags, References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
 		return resource.DecodeObjects(sqlc.New(tx).ListReferences(ctx, id))
 	}})
 	return s
@@ -60,6 +60,9 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 		return resource.Invalid(err.Error())
 	}
 	if !uploaded {
+		if _, ok := in["description"]; !ok {
+			in["description"] = p.Description
+		}
 		content := p.Content
 		if c, ok := in["content"].(string); ok {
 			content = c
@@ -120,25 +123,33 @@ func (s *Service) tags(ctx context.Context, tx pgx.Tx, in resource.Object) error
 }
 func (s *Service) RegisterAdmin(r chi.Router) {
 	s.CRUD.Register(r)
-	r.Post("/skills", s.upload)
-	r.Put("/skills/{id}/package", s.upload)
+	r.Post("/skills", func(w http.ResponseWriter, r *http.Request) { s.upload(w, r, false) })
+	r.Put("/skills/{id}/package", func(w http.ResponseWriter, r *http.Request) { s.upload(w, r, false) })
 	r.Get("/skills/{id}/package", func(w http.ResponseWriter, r *http.Request) { s.Download(w, r, chi.URLParam(r, "id")) })
-	r.Get("/skills/{id}/manifest", func(w http.ResponseWriter, r *http.Request) {
-		o, err := resource.DecodeObject(sqlc.New(s.store.Pool).GetSkill(r.Context(), chi.URLParam(r, "id")))
-		if err != nil {
-			resource.Fail(w, err)
-			return
-		}
-		p, err := s.read(r.Context(), o)
-		if err != nil {
-			resource.Fail(w, err)
-			return
-		}
-		resource.ETag(w, o)
-		resource.JSON(w, 200, resource.Object{"name": p.Name, "description": p.Description, "content": p.Content, "revision": o["revision"]})
-	})
+	r.Get("/skills/{id}/manifest", func(w http.ResponseWriter, r *http.Request) { s.manifest(w, r, false) })
 }
-func (s *Service) upload(w http.ResponseWriter, r *http.Request) {
+func (s *Service) manifest(w http.ResponseWriter, r *http.Request, personal bool) {
+	o, err := resource.DecodeObject(sqlc.New(s.store.Pool).GetSkill(r.Context(), chi.URLParam(r, "id")))
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	if personal {
+		user, _ := identity.UserFromContext(r.Context())
+		if o.String("ownership_type") != "user" || o.String("owner_user_id") != user.ID {
+			resource.Fail(w, resource.NotFound)
+			return
+		}
+	}
+	p, err := s.read(r.Context(), o)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	resource.ETag(w, o)
+	resource.JSON(w, 200, resource.Object{"name": p.Name, "description": p.Description, "content": p.Content, "revision": o["revision"]})
+}
+func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, MaxPackage+(1<<20))
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		resource.Fail(w, resource.Invalid("技能包上传无效或超限"))
@@ -171,13 +182,21 @@ func (s *Service) upload(w http.ResponseWriter, r *http.Request) {
 	in["name"] = p.Name
 	in["package_bytes"] = b
 	u, _ := identity.UserFromContext(r.Context())
-	o, err := s.CRUD.Save(r.Context(), u.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match"), in)
+	save := s.CRUD.Save
+	status := http.StatusOK
+	if personal {
+		save = s.CRUD.SaveUser
+		if r.Method == http.MethodPost {
+			status = http.StatusCreated
+		}
+	}
+	o, err := save(r.Context(), u.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match"), in)
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
 	resource.ETag(w, o)
-	resource.JSON(w, 200, o)
+	resource.JSON(w, status, o)
 }
 func (s *Service) Download(w http.ResponseWriter, r *http.Request, id string) {
 	o, err := resource.DecodeObject(sqlc.New(s.store.Pool).GetSkill(r.Context(), id))

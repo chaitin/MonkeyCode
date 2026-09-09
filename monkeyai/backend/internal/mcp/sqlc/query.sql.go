@@ -257,7 +257,29 @@ func (q *Queries) GetProviderIcon(ctx context.Context, id string) (string, error
 	return icon_s3_key, err
 }
 
-const hasCentralCredential = `-- name: HasCentralCredential :one
+const getUserProvider = `-- name: GetUserProvider :one
+SELECT to_jsonb(p)
+FROM connector_providers p
+WHERE id = $1
+    AND deleted_at IS NULL
+    AND ((ownership_type = 'system' AND enabled AND authorization_mode IN ('none', 'independent'))
+        OR (ownership_type = 'user' AND owner_user_id = $2))
+FOR SHARE
+`
+
+type GetUserProviderParams struct {
+	ID     string
+	UserID string
+}
+
+func (q *Queries) GetUserProvider(ctx context.Context, arg GetUserProviderParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getUserProvider, arg.ID, arg.UserID)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
+}
+
+const hasCredential = `-- name: HasCredential :one
 SELECT
     EXISTS (
         SELECT
@@ -266,21 +288,22 @@ SELECT
             connector_credentials
         WHERE
             connector_id = $1
-            AND user_id IS NULL
+            AND user_id IS NOT DISTINCT FROM NULLIF($2::text, '')::uuid
             AND status = 'authorized'
             AND revoked_at IS NULL
-            AND config_revision = $2
+            AND config_revision = $3
             AND (oauth_expires_at IS NULL
                 OR oauth_expires_at > now()))
 `
 
-type HasCentralCredentialParams struct {
+type HasCredentialParams struct {
 	ConnectorID    string
+	UserID         string
 	ConfigRevision int64
 }
 
-func (q *Queries) HasCentralCredential(ctx context.Context, arg HasCentralCredentialParams) (bool, error) {
-	row := q.db.QueryRow(ctx, hasCentralCredential, arg.ConnectorID, arg.ConfigRevision)
+func (q *Queries) HasCredential(ctx context.Context, arg HasCredentialParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasCredential, arg.ConnectorID, arg.UserID, arg.ConfigRevision)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -444,6 +467,35 @@ func (q *Queries) ListTools(ctx context.Context, arg ListToolsParams) ([][]byte,
 	return items, nil
 }
 
+const listUserProviders = `-- name: ListUserProviders :many
+SELECT to_jsonb(p)
+FROM connector_providers p
+WHERE deleted_at IS NULL
+    AND ((ownership_type = 'system' AND enabled AND authorization_mode IN ('none', 'independent'))
+        OR (ownership_type = 'user' AND owner_user_id = $1))
+ORDER BY lower(name), id
+`
+
+func (q *Queries) ListUserProviders(ctx context.Context, userID string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listUserProviders, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var to_jsonb []byte
+		if err := rows.Scan(&to_jsonb); err != nil {
+			return nil, err
+		}
+		items = append(items, to_jsonb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockAuthorizedCredential = `-- name: LockAuthorizedCredential :one
 SELECT
     to_jsonb (c)
@@ -507,13 +559,19 @@ FROM
     connector_providers p
 WHERE
     id = $1
-    AND ownership_type = 'system'
+    AND ((ownership_type = 'system' AND $2::text = '')
+        OR (ownership_type = 'user' AND owner_user_id = NULLIF($2::text, '')::uuid))
     AND deleted_at IS NULL
 FOR UPDATE
 `
 
-func (q *Queries) LockIconProvider(ctx context.Context, id string) ([]byte, error) {
-	row := q.db.QueryRow(ctx, lockIconProvider, id)
+type LockIconProviderParams struct {
+	ID     string
+	UserID string
+}
+
+func (q *Queries) LockIconProvider(ctx context.Context, arg LockIconProviderParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, lockIconProvider, arg.ID, arg.UserID)
 	var to_jsonb []byte
 	err := row.Scan(&to_jsonb)
 	return to_jsonb, err

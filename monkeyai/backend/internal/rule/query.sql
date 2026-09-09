@@ -65,7 +65,7 @@ INSERT INTO rules (name, content, id, owner_user_id, ownership_type)
         ELSE
             NULL
 	END, (sqlc.arg(DATA)::jsonb ->> 'id')::uuid, (sqlc.arg(DATA)::jsonb ->>
-	    'actor_id')::uuid, 'system');
+	    'actor_id')::uuid, COALESCE(sqlc.arg(DATA)::jsonb ->> 'ownership_type', 'system'));
 
 -- name: UpdateResource :exec
 UPDATE
