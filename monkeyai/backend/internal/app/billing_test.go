@@ -108,7 +108,11 @@ func TestBillingIntegration(t *testing.T) {
 			t.Fatalf("匿名统计接口 %s: %d", path, code)
 		}
 	}
+
 	must("POST", "/api/auth/v1/admin/login", resource.Object{"email": "billing-http@example.com", "password": "billing-test-password"}, "")
+	if code, _, _ := call("POST", "/api/admin/v1/identifiers", resource.Object{"count": 1}, "", ""); code != 404 {
+		t.Fatalf("不应注册标识分配接口: %d", code)
+	}
 	var user string
 	if err = pool.QueryRow(ctx, `SELECT id FROM users WHERE email='billing-http@example.com'`).Scan(&user); err != nil {
 		t.Fatal(err)
@@ -201,7 +205,12 @@ func TestBillingIntegration(t *testing.T) {
 	if summary.String("charges") != "1.480000" || summary.String("refunds") != "1.480000" {
 		t.Fatalf("退款重复或丢失: %v", summary)
 	}
-	must("POST", "/api/admin/v1/billing/accounts/"+user+"/adjustments", resource.Object{"delta": "-14999", "reason": "验证额度限制", "idempotency_key": "adjust-http-1"}, "")
+	accountPath := "/api/admin/v1/billing/accounts/" + user
+	accountVersion := func() any {
+		t.Helper()
+		return must("GET", accountPath, nil, "")["account"].(map[string]any)["version"]
+	}
+	must("POST", accountPath+"/adjustments", resource.Object{"delta": "-14999", "reason": "验证额度限制", "version": accountVersion()}, "")
 	if code, _, _ := call("POST", "/v1/chat/completions", body, key, ""); code != 402 || requests.Load() != 1 {
 		t.Fatalf("余额不足仍调用上游: %d %d", code, requests.Load())
 	}
@@ -211,7 +220,50 @@ func TestBillingIntegration(t *testing.T) {
 		t.Fatalf("账目不平: %v", reconciliation)
 	}
 	// MCP 通过真实鉴权、目录和工具执行入口验证成功收费、业务失败不收费。
-	must("POST", "/api/admin/v1/billing/accounts/"+user+"/adjustments", resource.Object{"delta": "100", "reason": "工具测试", "idempotency_key": "adjust-http-2"}, "")
+	adjustment := resource.Object{"delta": "100", "reason": "工具测试", "version": accountVersion()}
+	adjustPath := "/api/admin/v1/billing/accounts/" + user + "/adjustments"
+	adjusted := must("POST", adjustPath, adjustment, "")
+	retried := must("POST", adjustPath, adjustment, "")
+	if adjusted["account"].(map[string]any)["balance"] != retried["account"].(map[string]any)["balance"] {
+		t.Fatal("同一账户版本重试不应重复调整余额")
+	}
+	adjustment["delta"] = "200"
+	if code, _, _ := call("POST", adjustPath, adjustment, "", ""); code != 409 {
+		t.Fatalf("同一账户版本提交不同调整内容应冲突: %d", code)
+	}
+	if adjusted["account"].(map[string]any)["version"] == adjustment["version"] {
+		t.Fatal("记账后账户版本应变化")
+	}
+	if code, _, _ := call("POST", adjustPath, resource.Object{"delta": "100", "reason": "缺少版本"}, "", ""); code != 400 {
+		t.Fatalf("缺少账户版本应拒绝: %d", code)
+	}
+	if code, _, _ := call("POST", adjustPath, resource.Object{"delta": "100", "reason": "过期版本", "version": "stale"}, "", ""); code != 412 {
+		t.Fatalf("过期账户版本应拒绝: %d", code)
+	}
+	// 余额回到原值后，新的账本版本仍应允许相同内容的下一次调整。
+	must("POST", adjustPath, resource.Object{"delta": "-100", "reason": "恢复余额", "version": accountVersion()}, "")
+	adjustment["delta"] = "100"
+	adjustment["version"] = accountVersion()
+	type adjustmentResult struct {
+		status int
+		body   resource.Object
+	}
+	results := make(chan adjustmentResult, 2)
+	for range 2 {
+		go func() {
+			status, body, _ := call("POST", adjustPath, adjustment, "", "")
+			results <- adjustmentResult{status, body}
+		}()
+	}
+	for range 2 {
+		result := <-results
+		if result.status != 200 {
+			t.Fatalf("并发重试调整失败: %d %v", result.status, result.body)
+		}
+		if result.body["account"].(map[string]any)["balance"] != adjusted["account"].(map[string]any)["balance"] {
+			t.Fatal("新版本的相同内容并发提交应只记账一次")
+		}
+	}
 	var toolCalls atomic.Int64
 	mcpUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
@@ -262,7 +314,7 @@ func TestBillingIntegration(t *testing.T) {
 	}))
 	defer mcpUpstream.Close()
 	for _, mode := range []string{"centralized", "independent", "none"} {
-		provider := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "计费工具-" + mode, "identifier": "billing-" + mode, "url": mcpUpstream.URL, "authorization_mode": mode, "authorization_method": "http_header"}, "")
+		provider := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "计费工具-" + mode, "url": mcpUpstream.URL, "authorization_mode": mode, "authorization_method": "http_header"}, "")
 		connector := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "连接-" + mode, "description": "测试", "provider_id": provider.String("id"), "grants": []resource.Object{{"user_id": user, "usage_requirement": "optional"}}}, "")
 		path := "/api/admin/v1/connectors/" + connector.String("id")
 		if mode != "none" {

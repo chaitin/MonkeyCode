@@ -1881,7 +1881,7 @@ paths:
           $ref: '#/components/responses/ResourceError409'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: identifier 自动生成为 custom:<uuid>，用户不可指定或修改；仅支持 none / independent，OAuth Client Secret 仅写入。
+      description: 内部标识由服务端生成，客户端使用返回的资源 id；仅支持 none / independent，OAuth Client Secret 仅写入。
   /api/v1/connector-providers/{id}:
     get:
       summary: 读取可见 Provider 详情
@@ -1945,7 +1945,7 @@ paths:
           $ref: '#/components/responses/ResourceError428'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。 identifier 固定不变；已存在实例时禁止更换连接模板，OAuth
+      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。已存在实例时禁止更换连接模板，OAuth
         Client Secret 轮换同步更新绑定实例。
     delete:
       summary: 删除自己的个人 Connector Provider
@@ -2351,8 +2351,6 @@ components:
         updated_at:
           type: string
           format: date-time
-        identifier:
-          type: string
         description:
           type: string
         url:
@@ -2382,7 +2380,6 @@ components:
       - revision
       - ownership_type
       - owner_user_id
-      - identifier
     UserSkillManifest:
       type: object
       required:
@@ -2475,6 +2472,9 @@ components:
     CreditAccount:
       type: object
       properties:
+        version:
+          type: string
+          description: 当前账户的版本，随账本变更更新；用于管理员调整时检查并发及重复提交，历史账户条目可省略。
         id:
           type: string
           format: uuid
@@ -3313,8 +3313,6 @@ components:
         provider_id:
           type: string
           format: uuid
-        provider_identifier:
-          type: string
         icon_path:
           type: string
         name:
@@ -3790,8 +3788,6 @@ components:
         updated_at:
           type: string
           format: date-time
-        identifier:
-          type: string
         description:
           type: string
         url:
@@ -3823,8 +3819,6 @@ components:
     ConnectorProviderInput:
       type: object
       properties:
-        identifier:
-          type: string
         description:
           type: string
         url:
@@ -3862,7 +3856,6 @@ components:
           description: 仅写入；空字符串表示保留已有密钥。
       required:
       - name
-      - identifier
       - url
       - authorization_mode
     ConnectorResource:

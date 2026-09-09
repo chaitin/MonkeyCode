@@ -468,7 +468,8 @@ SELECT
     frozen::text,
     QUOTA::text,
     period_start_at,
-    period_end_at
+    period_end_at,
+    sequence
 FROM
     credit_accounts
 WHERE

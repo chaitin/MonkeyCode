@@ -80,7 +80,6 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { api } from "@/lib/api"
-import { createOAuthConnectionID } from "@/lib/oauth"
 
 const OAUTH_PROVIDERS = [
   { value: "github", labelKey: "pages.otherSettings.oauth.providers.github" },
@@ -132,6 +131,28 @@ type OAuthConnection = {
   clientSecret: string
   issuerUrl?: string
   enabled: boolean
+}
+
+function readOAuthConnections(
+  value: Record<string, unknown>
+): OAuthConnection[] {
+  const connections = Array.isArray(value.oauth_connections)
+    ? value.oauth_connections
+    : []
+  return connections.map((item) => {
+    const connection = item as Record<string, unknown>
+    return {
+      id: String(connection.id),
+      provider: String(connection.provider) as OAuthProvider,
+      name: String(connection.name),
+      clientId: String(connection.client_id),
+      clientSecret: String(connection.client_secret ?? ""),
+      issuerUrl: connection.issuer_url
+        ? String(connection.issuer_url)
+        : undefined,
+      enabled: Boolean(connection.enabled),
+    }
+  })
 }
 
 type LoginMethodSettings = {
@@ -277,25 +298,7 @@ export function OtherSettingsPage() {
             setSavedToolName(productName)
           }
           if (setting.key === "authentication") {
-            const connections = Array.isArray(setting.value.oauth_connections)
-              ? setting.value.oauth_connections
-              : []
-            setOauthConnections(
-              connections.map((item) => {
-                const connection = item as Record<string, unknown>
-                return {
-                  id: String(connection.id),
-                  provider: String(connection.provider) as OAuthProvider,
-                  name: String(connection.name),
-                  clientId: String(connection.client_id),
-                  clientSecret: String(connection.client_secret ?? ""),
-                  issuerUrl: connection.issuer_url
-                    ? String(connection.issuer_url)
-                    : undefined,
-                  enabled: Boolean(connection.enabled),
-                }
-              })
-            )
+            setOauthConnections(readOAuthConnections(setting.value))
             setLoginMethodSettings({
               passwordEnabled:
                 typeof setting.value.password_enabled === "boolean"
@@ -331,11 +334,13 @@ export function OtherSettingsPage() {
   const saveSetting = async (key: string, value: Record<string, unknown>) => {
     setSettingsError("")
     try {
-      await api(`/api/admin/v1/settings/${key}`, {
-        method: "PUT",
-        body: JSON.stringify({ value, schema_version: 1 }),
-      })
-      return true
+      return await api<{ value: Record<string, unknown> }>(
+        `/api/admin/v1/settings/${key}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ value, schema_version: 1 }),
+        }
+      )
     } catch (reason) {
       setSettingsError((reason as Error).message)
       return false
@@ -343,11 +348,11 @@ export function OtherSettingsPage() {
   }
 
   const saveAuthentication = async (
-    connections: OAuthConnection[],
+    connections: (Omit<OAuthConnection, "id"> & { id?: string })[],
     allowRegistration = registrationEnabled,
     loginMethods = loginMethodSettings
-  ) =>
-    saveSetting("authentication", {
+  ) => {
+    const saved = await saveSetting("authentication", {
       registration_enabled: allowRegistration,
       password_enabled: loginMethods.passwordEnabled,
       email_code_enabled: loginMethods.emailCodeEnabled,
@@ -361,6 +366,10 @@ export function OtherSettingsPage() {
         enabled: connection.enabled,
       })),
     })
+    if (!saved) return false
+    setOauthConnections(readOAuthConnections(saved.value))
+    return true
+  }
 
   const providerItems = OAUTH_PROVIDERS.map((provider) => ({
     value: provider.value,
@@ -410,7 +419,6 @@ export function OtherSettingsPage() {
       const connections = [
         ...oauthConnections,
         {
-          id: createOAuthConnectionID(),
           provider: oauthProvider,
           name,
           clientId,
@@ -420,7 +428,6 @@ export function OtherSettingsPage() {
         },
       ]
       if (await saveAuthentication(connections)) {
-        setOauthConnections(connections)
         form.reset()
         handleOauthDialogOpenChange(false)
       }
@@ -433,18 +440,14 @@ export function OtherSettingsPage() {
     const connections = oauthConnections.map((connection) =>
       connection.id === id ? { ...connection, enabled } : connection
     )
-    if (await saveAuthentication(connections)) {
-      setOauthConnections(connections)
-    }
+    await saveAuthentication(connections)
   }
 
   const removeOauthConnection = async (id: string) => {
     const connections = oauthConnections.filter(
       (connection) => connection.id !== id
     )
-    if (await saveAuthentication(connections)) {
-      setOauthConnections(connections)
-    }
+    await saveAuthentication(connections)
   }
 
   const setLoginMethodEnabled = async (

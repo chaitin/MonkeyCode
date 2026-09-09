@@ -48,6 +48,7 @@ export type Quotas = {
   effective_at: string
 }
 export type Account = {
+  version: string
   id: string
   user_id: string
   balance: string

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
-import { api } from "@/lib/api"
+import { ApiError, api } from "@/lib/api"
 import {
   WalletSettings,
   type WalletInput,
@@ -629,7 +629,7 @@ function AccountDialog({
   const [reason, setReason] = useState("")
   const [external, setExternal] = useState(user.external_user_id ?? "")
   const [group, setGroup] = useState(user.group_id)
-  const [key, setKey] = useState(() => crypto.randomUUID())
+  const running = useRef(false)
   const load = useCallback(
     () =>
       api<AccountDetails>(`/api/admin/v1/billing/accounts/${user.id}`).then(
@@ -641,17 +641,22 @@ function AccountDialog({
     void load().catch((e: Error) => setError(e.message))
   }, [load])
   const run = async (kind: "adjust" | "wallet" | "group") => {
+    if (running.current) return
+    running.current = true
     setBusy(true)
     setError("")
     try {
       if (kind === "adjust") {
         await api(`/api/admin/v1/billing/accounts/${user.id}/adjustments`, {
           method: "POST",
-          body: JSON.stringify({ delta, reason, idempotency_key: key }),
+          body: JSON.stringify({
+            delta,
+            reason,
+            version: data?.account.version,
+          }),
         })
         setDelta("")
         setReason("")
-        setKey(crypto.randomUUID())
       }
       if (kind === "wallet")
         await api(`/api/admin/v1/billing/accounts/${user.id}/wallet`, {
@@ -667,7 +672,11 @@ function AccountDialog({
       onChanged()
     } catch (e) {
       setError((e as Error).message)
+      if (e instanceof ApiError && (e.status === 409 || e.status === 412)) {
+        await load().catch((error: Error) => setError(error.message))
+      }
     } finally {
+      running.current = false
       setBusy(false)
     }
   }
@@ -747,10 +756,10 @@ function AccountDialog({
                 <FieldLabel htmlFor="adjust-delta">调整当期积分</FieldLabel>
                 <Input
                   id="adjust-delta"
+                  disabled={busy}
                   value={delta}
                   onChange={(e) => {
                     setDelta(e.target.value)
-                    setKey(crypto.randomUUID())
                   }}
                   placeholder="正数补发，负数回收"
                   inputMode="decimal"
@@ -760,11 +769,11 @@ function AccountDialog({
                 <FieldLabel htmlFor="adjust-reason">调整原因</FieldLabel>
                 <Input
                   id="adjust-reason"
+                  disabled={busy}
                   maxLength={500}
                   value={reason}
                   onChange={(e) => {
                     setReason(e.target.value)
-                    setKey(crypto.randomUUID())
                   }}
                 />
               </Field>

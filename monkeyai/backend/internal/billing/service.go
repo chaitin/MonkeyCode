@@ -133,6 +133,7 @@ func audit(ctx context.Context, q resource.Queryer, actor, action, target string
 }
 
 type Account struct {
+	Version   string    `json:"version"`
 	ID        string    `json:"id"`
 	UserID    string    `json:"user_id"`
 	GroupID   string    `json:"group_id"`
@@ -153,6 +154,7 @@ func accountRow(ctx context.Context, q resource.Queryer, user string, start time
 		return a, err
 	}
 	a.ID, a.UserID, a.GroupID, b, f, v, a.Start, a.End = record.ID, record.UserID, record.GroupID, record.Balance, record.Frozen, record.Quota, record.PeriodStartAt, record.PeriodEndAt
+	a.Version = resource.Hash(resource.Object{"id": record.ID, "sequence": record.Sequence})
 
 	var e error
 	a.Balance, e = ParseAmount(b)

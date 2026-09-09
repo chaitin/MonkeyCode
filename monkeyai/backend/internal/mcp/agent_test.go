@@ -110,7 +110,7 @@ func TestPersonalConnectors(t *testing.T) {
 	etag := func(o resource.Object) string { return fmt.Sprintf(`"%v"`, o["revision"]) }
 	seedProvider := func(mode string, enabled bool) resource.Object {
 		t.Helper()
-		p, err := s.Providers.Save(ctx, users["owner"], "", "", resource.Object{"identifier": resource.ID(), "name": "系统-" + mode, "url": "https://example.com/mcp", "authorization_mode": mode, "authorization_method": "http_header", "enabled": enabled})
+		p, err := s.Providers.Save(ctx, users["owner"], "", "", resource.Object{"name": "系统-" + mode, "url": "https://example.com/mcp", "authorization_mode": mode, "authorization_method": "http_header", "enabled": enabled})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,11 +124,11 @@ func TestPersonalConnectors(t *testing.T) {
 		call("POST", "/connector-providers", resource.Object{"name": "无效模式", "url": "https://example.com/mcp", "authorization_mode": mode, "authorization_method": "http_header"}, "owner", "", 400)
 	}
 	p := call("POST", "/connector-providers", resource.Object{
-		"name": "个人 Provider", "identifier": none["identifier"], "url": "https://example.com/private", "authorization_mode": "independent", "authorization_method": "oauth",
+		"name": "个人 Provider", "identifier": "client-supplied", "url": "https://example.com/private", "authorization_mode": "independent", "authorization_method": "oauth",
 		"oauth_config":        resource.Object{"client_id": "private-client", "authorization_url": "https://example.com/authorize", "token_url": "https://example.com/token", "client_secret": "嵌套秘密"},
 		"oauth_client_secret": "个人秘密", "ownership_type": "system", "owner_user_id": users["other"], "enabled": false,
 	}, "owner", "", 201)
-	if p.String("identifier") != "custom:"+p.String("id") || p.String("ownership_type") != "user" || p.String("owner_user_id") != users["owner"] || !p.Bool("enabled") {
+	if p["identifier"] != nil || p.String("ownership_type") != "user" || p.String("owner_user_id") != users["owner"] || !p.Bool("enabled") {
 		t.Fatalf("个人 Provider 归属或 identifier 无效：%v", p)
 	}
 	encoded, _ := json.Marshal(p)
@@ -150,7 +150,7 @@ func TestPersonalConnectors(t *testing.T) {
 	call("PUT", providerPath, resource.Object{"name": "缺少版本"}, "owner", "", 428)
 	call("PUT", providerPath, resource.Object{"name": "旧版本"}, "owner", `"0"`, 412)
 	p = call("PUT", providerPath, resource.Object{"name": "个人 Provider 新名称", "identifier": "spoofed", "enabled": false}, "owner", etag(p), 200)
-	if p.String("identifier") != "custom:"+p.String("id") || p.String("url") != "https://example.com/private" || !p.Bool("enabled") {
+	if p["identifier"] != nil || p.String("url") != "https://example.com/private" || !p.Bool("enabled") {
 		t.Fatal("编辑未保留受保护配置")
 	}
 	list := call("GET", "/connector-providers", nil, "owner", "", 200)

@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"uuid"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -108,6 +109,7 @@ func TestResourceIntegration(t *testing.T) {
 		}
 		out := resource.Object{}
 		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		assertNoIdentifiers(t, out)
 		return w.Code, out, w.Header()
 	}
 	must := func(method, path string, body any, token, rev string) resource.Object {
@@ -199,9 +201,19 @@ func TestResourceIntegration(t *testing.T) {
 		}
 	}
 	t.Run("固定查询保留缺省字段与显式空值", func(t *testing.T) {
-		input := resource.Object{"name": "字段更新测试", "identifier": "sqlc-fields", "url": "https://example.com/mcp", "authorization_mode": "none", "description": "保留描述", "enabled": false}
+		input := resource.Object{"name": "字段更新测试", "url": "https://example.com/mcp", "authorization_mode": "none", "description": "保留描述", "enabled": false}
 		provider := must("POST", "/api/admin/v1/connector-providers", input, "", "")
 		path := "/api/admin/v1/connector-providers/" + provider.String("id")
+		if _, ok := provider["identifier"]; ok {
+			t.Fatal("连接模板响应不应暴露内部标识")
+		}
+		var identifier string
+		if err := pool.QueryRow(ctx, "SELECT identifier FROM connector_providers WHERE id=$1", provider.String("id")).Scan(&identifier); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := uuid.Parse(identifier); err != nil {
+			t.Fatalf("内部标识应为服务端生成的 UUID: %v", err)
+		}
 		if provider.Bool("enabled") || provider["authorization_method"] != nil {
 			t.Fatalf("创建字段错误: %v", provider)
 		}
@@ -217,7 +229,15 @@ func TestResourceIntegration(t *testing.T) {
 		delete(input, "description")
 		delete(input, "enabled")
 		input["name"] = "有效更新"
+		input["identifier"] = "client-supplied"
 		current = must("PUT", path, input, "", `"1"`)
+		var updatedIdentifier string
+		if err := pool.QueryRow(ctx, "SELECT identifier FROM connector_providers WHERE id=$1", provider.String("id")).Scan(&updatedIdentifier); err != nil || updatedIdentifier != identifier {
+			t.Fatalf("更新连接模板不应改变内部标识: %v", err)
+		}
+		if _, ok := current["identifier"]; ok {
+			t.Fatal("更新响应不应暴露内部标识")
+		}
 		if current.String("description") != "保留描述" || current.Bool("enabled") || current.Int("revision") != 2 {
 			t.Fatalf("未传字段不应被覆盖: %v", current)
 		}
@@ -386,7 +406,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		}
 	}))
 	defer upstream.Close()
-	provider := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "测试 MCP", "identifier": "test-mcp", "description": "测试", "url": upstream.URL, "authorization_mode": "none"}, "", "")
+	provider := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "测试 MCP", "description": "测试", "url": upstream.URL, "authorization_mode": "none"}, "", "")
 	var iconBytes bytes.Buffer
 	if err := png.Encode(&iconBytes, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
 		t.Fatal(err)
@@ -527,7 +547,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		}
 	}))
 	defer independent.Close()
-	p2 := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "独立 MCP", "identifier": "independent", "url": independent.URL, "authorization_mode": "independent", "authorization_method": "http_header"}, "", "")
+	p2 := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "独立 MCP", "url": independent.URL, "authorization_mode": "independent", "authorization_method": "http_header"}, "", "")
 	c2 := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "独立连接", "description": "按用户隔离", "provider_id": p2.String("id"), "grants": []resource.Object{{"group_id": allGroup.String("id"), "usage_requirement": "optional"}}}, "", "")
 	for i, name := range []string{"a", "b"} {
 		must("PUT", "/api/v1/connectors/"+c2.String("id")+"/credential", resource.Object{"http_headers": resource.Object{"X-Account": "Tool-" + name}}, name, "")
@@ -577,7 +597,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		_, _ = io.WriteString(w, `{"access_token":"private-oauth-token","refresh_token":"private-refresh-token","token_type":"Bearer","expires_in":3600}`)
 	}))
 	defer oauthServer.Close()
-	p3 := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "OAuth MCP", "identifier": "oauth-test", "url": upstream.URL, "authorization_mode": "centralized", "authorization_method": "oauth", "oauth_config": resource.Object{"authorization_url": oauthServer.URL + "/authorize", "token_url": oauthServer.URL + "/token", "client_id": "test-client"}, "oauth_client_secret": "private-client-secret"}, "", "")
+	p3 := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "OAuth MCP", "url": upstream.URL, "authorization_mode": "centralized", "authorization_method": "oauth", "oauth_config": resource.Object{"authorization_url": oauthServer.URL + "/authorize", "token_url": oauthServer.URL + "/token", "client_id": "test-client"}, "oauth_client_secret": "private-client-secret"}, "", "")
 	c3 := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "OAuth 连接", "provider_id": p3.String("id"), "grants": grantA}, "", "")
 	auth := must("POST", "/api/admin/v1/connectors/"+c3.String("id")+"/oauth/authorizations", nil, "", "")
 	target, err := url.Parse(auth.String("authorization_url"))
@@ -763,5 +783,24 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	var tables int
 	if err = pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_schema=$1 AND table_name IN('oauth_tokens','oauth_login_states','api_keys','connectors')`, schema).Scan(&tables); err != nil || tables != 4 {
 		t.Fatal("重新初始化缺少必要表")
+	}
+}
+
+func assertNoIdentifiers(t *testing.T, value any) {
+	t.Helper()
+	switch v := value.(type) {
+	case resource.Object:
+		assertNoIdentifiers(t, map[string]any(v))
+	case map[string]any:
+		for key, child := range v {
+			if key == "identifier" || key == "provider_identifier" {
+				t.Fatalf("API 响应不应暴露内部字段 %s", key)
+			}
+			assertNoIdentifiers(t, child)
+		}
+	case []any:
+		for _, child := range v {
+			assertNoIdentifiers(t, child)
+		}
 	}
 }

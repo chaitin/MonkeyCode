@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"slices"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
 
 var Keys = []string{"branding", "authentication", "email", "billing"}
@@ -71,6 +73,25 @@ func (s *Service) Put(ctx context.Context, key string, value json.RawMessage, sc
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(value, &object); err != nil || object == nil {
 		return Record{}, errors.New("value 必须是 JSON 对象")
+	}
+	if key == "authentication" {
+		if raw, ok := object["oauth_connections"]; ok {
+			var connections []map[string]json.RawMessage
+			if json.Unmarshal(raw, &connections) != nil {
+				return Record{}, errors.New("oauth_connections 格式无效")
+			}
+			for _, connection := range connections {
+				if connection == nil {
+					return Record{}, errors.New("oauth_connections 格式无效")
+				}
+				id, ok := connection["id"]
+				if !ok || string(id) == `""` {
+					connection["id"], _ = json.Marshal(resource.ID())
+				}
+			}
+			object["oauth_connections"], _ = json.Marshal(connections)
+			value, _ = json.Marshal(object)
+		}
 	}
 	value, err := s.mergeSecrets(ctx, key, value)
 	if err != nil {

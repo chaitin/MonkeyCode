@@ -161,7 +161,7 @@ func (r *Resources) connectorDTO(ctx context.Context, q resource.Queryer, c cata
 			}
 		}
 	}
-	return resource.Object{"id": o["id"], "provider_id": o["provider_id"], "provider_identifier": c.providers[o.String("provider_id")]["identifier"], "icon_path": connectorIcon(c.providers[o.String("provider_id")], o.String("id")), "name": o["name"], "authorization_mode": o["authorization_mode"], "authorization_method": o["authorization_method"], "authorization_status": status, "connection_status": o["connection_status"], "capabilities": []string{"catalog", "invoke"}, "mcp_gateway": resource.Object{"url": r.mcp.PublicURL + "/mcp/connectors/" + o.String("id"), "transport": "streamable_http", "authentication": "api_key", "required_scope": "mcp:invoke"}, "tools": safe, "tools_version": resource.Hash(safe), "tools_path": "/api/v1/connectors/" + o.String("id") + "/tools"}, nil
+	return resource.Object{"id": o["id"], "provider_id": o["provider_id"], "icon_path": connectorIcon(c.providers[o.String("provider_id")], o.String("id")), "name": o["name"], "authorization_mode": o["authorization_mode"], "authorization_method": o["authorization_method"], "authorization_status": status, "connection_status": o["connection_status"], "capabilities": []string{"catalog", "invoke"}, "mcp_gateway": resource.Object{"url": r.mcp.PublicURL + "/mcp/connectors/" + o.String("id"), "transport": "streamable_http", "authentication": "api_key", "required_scope": "mcp:invoke"}, "tools": safe, "tools_version": resource.Hash(safe), "tools_path": "/api/v1/connectors/" + o.String("id") + "/tools"}, nil
 }
 func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog, expert, user string) (resource.Object, error) {
 	e := c.experts[expert]

@@ -2,29 +2,6 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
-import { createOAuthConnectionID } from "../src/lib/oauth.ts"
-
-test("creates unique OAuth connection IDs without randomUUID", () => {
-  const first = createOAuthConnectionID()
-  const second = createOAuthConnectionID()
-
-  assert.match(
-    first,
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-  )
-  assert.notEqual(first, second)
-})
-
-test("OAuth settings do not depend on crypto.randomUUID", async () => {
-  const source = await readFile(
-    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
-    "utf8"
-  )
-
-  assert.doesNotMatch(source, /crypto\.randomUUID/)
-  assert.match(source, /createOAuthConnectionID\(\)/)
-})
-
 test("login method switches remain visible and persist with authentication settings", async () => {
   const source = await readFile(
     new URL("../src/pages/other-settings-page.tsx", import.meta.url),

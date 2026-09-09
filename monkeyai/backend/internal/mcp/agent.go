@@ -36,6 +36,7 @@ func (s *Service) getProvider(w http.ResponseWriter, r *http.Request) {
 }
 
 func userProvider(p resource.Object) {
+	delete(p, "identifier")
 	p["icon_path"] = ""
 	if key := p.String("icon_s3_key"); key != "" {
 		p["icon_path"] = "/api/v1/connector-providers/" + p.String("id") + "/icon?v=" + resource.Hash(key)
