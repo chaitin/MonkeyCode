@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE agent_rules
+  DROP COLUMN IF EXISTS enabled;
+
+COMMIT;

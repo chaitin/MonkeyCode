@@ -36,6 +36,8 @@ const (
 	FieldExtensionVersion = "extension_version"
 	// FieldIsDeleted holds the string denoting the is_deleted field in the database.
 	FieldIsDeleted = "is_deleted"
+	// FieldEnabled holds the string denoting the enabled field in the database.
+	FieldEnabled = "enabled"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -66,6 +68,7 @@ var Columns = []string{
 	FieldExtensionRuleID,
 	FieldExtensionVersion,
 	FieldIsDeleted,
+	FieldEnabled,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -87,6 +90,8 @@ var (
 	DefaultScopeID string
 	// DefaultIsDeleted holds the default value on creation for the "is_deleted" field.
 	DefaultIsDeleted bool
+	// DefaultEnabled holds the default value on creation for the "enabled" field.
+	DefaultEnabled bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -178,6 +183,11 @@ func ByExtensionVersion(opts ...sql.OrderTermOption) OrderOption {
 // ByIsDeleted orders the results by the is_deleted field.
 func ByIsDeleted(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsDeleted, opts...).ToFunc()
+}
+
+// ByEnabled orders the results by the enabled field.
+func ByEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEnabled, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

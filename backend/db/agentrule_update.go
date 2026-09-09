@@ -201,6 +201,20 @@ func (_u *AgentRuleUpdate) SetNillableIsDeleted(v *bool) *AgentRuleUpdate {
 	return _u
 }
 
+// SetEnabled sets the "enabled" field.
+func (_u *AgentRuleUpdate) SetEnabled(v bool) *AgentRuleUpdate {
+	_u.mutation.SetEnabled(v)
+	return _u
+}
+
+// SetNillableEnabled sets the "enabled" field if the given value is not nil.
+func (_u *AgentRuleUpdate) SetNillableEnabled(v *bool) *AgentRuleUpdate {
+	if v != nil {
+		_u.SetEnabled(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *AgentRuleUpdate) SetCreatedAt(v time.Time) *AgentRuleUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -375,6 +389,9 @@ func (_u *AgentRuleUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.IsDeleted(); ok {
 		_spec.SetField(agentrule.FieldIsDeleted, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Enabled(); ok {
+		_spec.SetField(agentrule.FieldEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(agentrule.FieldCreatedAt, field.TypeTime, value)
@@ -619,6 +636,20 @@ func (_u *AgentRuleUpdateOne) SetNillableIsDeleted(v *bool) *AgentRuleUpdateOne 
 	return _u
 }
 
+// SetEnabled sets the "enabled" field.
+func (_u *AgentRuleUpdateOne) SetEnabled(v bool) *AgentRuleUpdateOne {
+	_u.mutation.SetEnabled(v)
+	return _u
+}
+
+// SetNillableEnabled sets the "enabled" field if the given value is not nil.
+func (_u *AgentRuleUpdateOne) SetNillableEnabled(v *bool) *AgentRuleUpdateOne {
+	if v != nil {
+		_u.SetEnabled(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *AgentRuleUpdateOne) SetCreatedAt(v time.Time) *AgentRuleUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -823,6 +854,9 @@ func (_u *AgentRuleUpdateOne) sqlSave(ctx context.Context) (_node *AgentRule, er
 	}
 	if value, ok := _u.mutation.IsDeleted(); ok {
 		_spec.SetField(agentrule.FieldIsDeleted, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Enabled(); ok {
+		_spec.SetField(agentrule.FieldEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(agentrule.FieldCreatedAt, field.TypeTime, value)

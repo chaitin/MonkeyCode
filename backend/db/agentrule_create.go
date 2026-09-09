@@ -149,6 +149,20 @@ func (_c *AgentRuleCreate) SetNillableIsDeleted(v *bool) *AgentRuleCreate {
 	return _c
 }
 
+// SetEnabled sets the "enabled" field.
+func (_c *AgentRuleCreate) SetEnabled(v bool) *AgentRuleCreate {
+	_c.mutation.SetEnabled(v)
+	return _c
+}
+
+// SetNillableEnabled sets the "enabled" field if the given value is not nil.
+func (_c *AgentRuleCreate) SetNillableEnabled(v *bool) *AgentRuleCreate {
+	if v != nil {
+		_c.SetEnabled(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *AgentRuleCreate) SetCreatedAt(v time.Time) *AgentRuleCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -253,6 +267,10 @@ func (_c *AgentRuleCreate) defaults() {
 		v := agentrule.DefaultIsDeleted
 		_c.mutation.SetIsDeleted(v)
 	}
+	if _, ok := _c.mutation.Enabled(); !ok {
+		v := agentrule.DefaultEnabled
+		_c.mutation.SetEnabled(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := agentrule.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -293,6 +311,9 @@ func (_c *AgentRuleCreate) check() error {
 	}
 	if _, ok := _c.mutation.IsDeleted(); !ok {
 		return &ValidationError{Name: "is_deleted", err: errors.New(`db: missing required field "AgentRule.is_deleted"`)}
+	}
+	if _, ok := _c.mutation.Enabled(); !ok {
+		return &ValidationError{Name: "enabled", err: errors.New(`db: missing required field "AgentRule.enabled"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`db: missing required field "AgentRule.created_at"`)}
@@ -375,6 +396,10 @@ func (_c *AgentRuleCreate) createSpec() (*AgentRule, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IsDeleted(); ok {
 		_spec.SetField(agentrule.FieldIsDeleted, field.TypeBool, value)
 		_node.IsDeleted = value
+	}
+	if value, ok := _c.mutation.Enabled(); ok {
+		_spec.SetField(agentrule.FieldEnabled, field.TypeBool, value)
+		_node.Enabled = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(agentrule.FieldCreatedAt, field.TypeTime, value)
@@ -599,6 +624,18 @@ func (u *AgentRuleUpsert) SetIsDeleted(v bool) *AgentRuleUpsert {
 // UpdateIsDeleted sets the "is_deleted" field to the value that was provided on create.
 func (u *AgentRuleUpsert) UpdateIsDeleted() *AgentRuleUpsert {
 	u.SetExcluded(agentrule.FieldIsDeleted)
+	return u
+}
+
+// SetEnabled sets the "enabled" field.
+func (u *AgentRuleUpsert) SetEnabled(v bool) *AgentRuleUpsert {
+	u.Set(agentrule.FieldEnabled, v)
+	return u
+}
+
+// UpdateEnabled sets the "enabled" field to the value that was provided on create.
+func (u *AgentRuleUpsert) UpdateEnabled() *AgentRuleUpsert {
+	u.SetExcluded(agentrule.FieldEnabled)
 	return u
 }
 
@@ -846,6 +883,20 @@ func (u *AgentRuleUpsertOne) SetIsDeleted(v bool) *AgentRuleUpsertOne {
 func (u *AgentRuleUpsertOne) UpdateIsDeleted() *AgentRuleUpsertOne {
 	return u.Update(func(s *AgentRuleUpsert) {
 		s.UpdateIsDeleted()
+	})
+}
+
+// SetEnabled sets the "enabled" field.
+func (u *AgentRuleUpsertOne) SetEnabled(v bool) *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.SetEnabled(v)
+	})
+}
+
+// UpdateEnabled sets the "enabled" field to the value that was provided on create.
+func (u *AgentRuleUpsertOne) UpdateEnabled() *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.UpdateEnabled()
 	})
 }
 
@@ -1264,6 +1315,20 @@ func (u *AgentRuleUpsertBulk) SetIsDeleted(v bool) *AgentRuleUpsertBulk {
 func (u *AgentRuleUpsertBulk) UpdateIsDeleted() *AgentRuleUpsertBulk {
 	return u.Update(func(s *AgentRuleUpsert) {
 		s.UpdateIsDeleted()
+	})
+}
+
+// SetEnabled sets the "enabled" field.
+func (u *AgentRuleUpsertBulk) SetEnabled(v bool) *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.SetEnabled(v)
+	})
+}
+
+// UpdateEnabled sets the "enabled" field to the value that was provided on create.
+func (u *AgentRuleUpsertBulk) UpdateEnabled() *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.UpdateEnabled()
 	})
 }
 

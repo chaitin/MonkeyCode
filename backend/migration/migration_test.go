@@ -119,3 +119,27 @@ func TestAgentRulesExtensionSourceMigrationExists(t *testing.T) {
 		t.Fatalf("down migration does not drop extension source columns")
 	}
 }
+
+func TestAgentRulesEnabledMigrationExists(t *testing.T) {
+	up, err := os.ReadFile("000026_agent_rules_enabled.up.sql")
+	if err != nil {
+		t.Fatalf("read up migration: %v", err)
+	}
+	for _, want := range []string{
+		"ALTER TABLE agent_rules",
+		"ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE",
+	} {
+		if !strings.Contains(string(up), want) {
+			t.Fatalf("up migration missing %q", want)
+		}
+	}
+
+	down, err := os.ReadFile("000026_agent_rules_enabled.down.sql")
+	if err != nil {
+		t.Fatalf("read down migration: %v", err)
+	}
+	if !strings.Contains(string(down), "DROP COLUMN IF EXISTS enabled") {
+		t.Fatalf("down migration does not drop enabled")
+	}
+}
+
