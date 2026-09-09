@@ -89,7 +89,7 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	case "mode":
 		allowed = append(allowed, "charging_mode", "enabled")
 	case "wallet":
-		allowed = append(allowed, "environment", "app_id", "certificate", "private_key", "ca_certificate")
+		allowed = append(allowed, "base_url", "app_id", "certificate", "private_key", "ca_certificate")
 	default:
 		resource.Fail(w, resource.NotFound)
 		return

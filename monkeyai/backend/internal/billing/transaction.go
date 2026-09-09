@@ -233,7 +233,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 			TransactionID:     id,
 			ExternalUserID:    walletUser,
 			TeamSlug:          team,
-			Environment:       wallet.Environment,
+			BaseUrl:           wallet.BaseURL,
 			AppID:             int32(wallet.AppID),
 			FrozenAmountQuota: int64(quotaAmount(reserve, true)),
 		})

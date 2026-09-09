@@ -727,3 +727,5 @@ ALTER TABLE resource_access_grants
     ADD CONSTRAINT resource_access_grants_subject_check CHECK (
         (user_id IS NOT NULL)::integer + (group_id IS NOT NULL)::integer + all_users::integer = 1
     );
+
+ALTER TABLE wallet_billing_records RENAME COLUMN environment TO base_url;

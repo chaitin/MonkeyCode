@@ -829,7 +829,7 @@ paths:
       required: true
     patch:
       summary: 独立保存计价、周期、模式或百智云连接配置
-      description: wallet 配置保存后无需重启，各实例在下次使用时读取。证书和私钥省略或留空时保留原值。首次保存必须提供全部证书。客户端证书与私钥须匹配且处于有效期，私钥须为 PKCS#8 ECDSA 格式。CA 须为有效的 CA 证书。环境或应用 ID 变更不能影响未完成的远程交易。校验仅在本地执行，不代表远程网络或账户权限验证成功。
+      description: wallet 配置保存后无需重启，各实例在下次使用时读取。证书和私钥省略或留空时保留原值。首次保存必须提供全部证书。客户端证书与私钥须匹配且处于有效期，私钥须为 PKCS#8 ECDSA 格式。CA 须为有效的 CA 证书。服务 URL 或应用 ID 变更不能影响未完成的远程交易。校验仅在本地执行，不代表远程网络或账户权限验证成功。
       responses:
         '200':
           description: 请求成功
@@ -866,7 +866,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: 修订号冲突，或未完成远程交易阻止环境或应用 ID 变更
+          description: 修订号冲突，或未完成远程交易阻止服务 URL 或应用 ID 变更
           content:
             application/json:
               schema:
@@ -4826,21 +4826,22 @@ components:
       additionalProperties: false
       required:
       - revision
-      - environment
+      - base_url
       - app_id
       properties:
         revision:
           type: integer
           description: 当前计费策略修订号；保存连接配置会递增该修订号。
-        environment:
+        base_url:
           type: string
-          enum: [dev, prod]
-          description: 百智云测试或生产环境。
+          format: uri
+          description: 百智云 HTTPS 服务根地址，可包含端口，不含路径、查询参数、片段或用户信息。公有云填写 https://baizhi.cloud 或 https://baizhiyun.vip，私有化填写同时提供用户和钱包接口的统一网关地址。
+          example: https://baizhi.cloud
         app_id:
           type: integer
           minimum: 1
           maximum: 999
-          description: 所选环境对应的百智云应用 ID。
+          description: 所填服务对应的百智云应用 ID。
         certificate:
           type: string
           maxLength: 65536
@@ -4865,10 +4866,9 @@ components:
         credentials_configured:
           type: boolean
           description: 是否已有完整证书和私钥；为 true 时更新配置可以省略对应文件。
-        environment:
-          enum:
-          - dev
-          - prod
+        base_url:
+          type: string
+          format: uri
         app_id:
           type: integer
           minimum: 1
@@ -5081,8 +5081,9 @@ components:
                 type: string
               external_user_id:
                 type: string
-              environment:
+              base_url:
                 type: string
+                format: uri
               app_id:
                 type: integer
               frozen_amount_quota:

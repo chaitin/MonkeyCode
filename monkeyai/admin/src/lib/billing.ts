@@ -14,7 +14,7 @@ export type WalletInfo = {
   credentials_configured: boolean
   source?: "admin" | "environment"
   error?: string
-  environment?: string
+  base_url?: string
   app_id?: number
   certificate_expires_at?: string
 }

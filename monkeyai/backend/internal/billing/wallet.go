@@ -23,7 +23,7 @@ type WalletClient interface {
 }
 type Wallet struct {
 	Client               WalletClient
-	Environment          string
+	BaseURL              string
 	AppID                int
 	CertificateExpiresAt time.Time
 	config               WalletConfig
@@ -54,7 +54,7 @@ func walletFailure(err error) (string, string) {
 	return code, trace
 }
 func (s *Service) reserveRemote(ctx context.Context, id string) error {
-	var biz, user, env string
+	var biz, user string
 	var amount int64
 	var app int
 	record, err := sqlc.New(s.pool).WalletReservation(ctx, id)
@@ -62,13 +62,13 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	biz, user, env, app, amount = record.BizID, record.ExternalUserID, record.Environment, int(record.AppID), record.FrozenAmountQuota
+	biz, user, app, amount = record.BizID, record.ExternalUserID, int(record.AppID), record.FrozenAmountQuota
 
 	wallet, err := s.wallet(ctx, s.pool)
 	if err != nil {
 		return err
 	}
-	if !wallet.ready() || env != wallet.Environment || app != wallet.AppID {
+	if !wallet.ready() || record.BaseUrl != wallet.BaseURL || app != wallet.AppID {
 		return fail(503, "wallet_configuration_changed", "原交易的钱包配置不可用")
 	}
 	c, cancel := context.WithTimeout(ctx, 25*time.Second)
@@ -137,14 +137,14 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 	return tx.Commit(finalCtx)
 }
 func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id string) error {
-	var biz, user, team, env, state, item, amountText string
+	var biz, user, team, state, item, amountText string
 	var app int
 	record, err := sqlc.New(conn).WalletConfirmation(ctx, id)
 
 	if err != nil {
 		return err
 	}
-	biz, user, team, env, app, state, item, amountText = record.BizID, record.ExternalUserID, record.TeamSlug, record.Environment, int(record.AppID), record.Status, record.ItemName, record.TAmount
+	biz, user, team, app, state, item, amountText = record.BizID, record.ExternalUserID, record.TeamSlug, int(record.AppID), record.Status, record.ItemName, record.TAmount
 
 	if state == "confirmed" {
 		return nil
@@ -153,7 +153,7 @@ func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id stri
 	if err != nil {
 		return err
 	}
-	if !wallet.ready() || env != wallet.Environment || app != wallet.AppID {
+	if !wallet.ready() || record.BaseUrl != wallet.BaseURL || app != wallet.AppID {
 		return fail(503, "wallet_configuration_changed", "原交易的钱包配置不可用")
 	}
 	amount, err := ParseAmount(amountText)
