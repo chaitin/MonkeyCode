@@ -7,7 +7,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { IconReport, IconUsersGroup } from "@tabler/icons-react"
-import { Blocks, FolderGit2, KeyRound, LayoutDashboard, ListTodo, MessagesSquare, Settings, Sparkles } from "lucide-react"
+import { Blocks, FileText, FolderGit2, KeyRound, LayoutDashboard, ListTodo, MessagesSquare, Settings, Sparkles } from "lucide-react"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { useTranslation } from "react-i18next"
 
@@ -81,6 +81,17 @@ export default function NavTeams() {
             <Link to="/manager/skills">
               <Sparkles />
               <span>{t("managerShell.nav.skills")}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={location.pathname === "/manager/rules"}
+            asChild
+          >
+            <Link to="/manager/rules">
+              <FileText />
+              <span>{t("managerShell.nav.rules")}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
