@@ -405,3 +405,5 @@ B、C、D 完成各自闭环后再集成 E，F 完成才标记本次功能交付
 - [x] `make check` 通过：Go 全量测试（含 PostgreSQL/RustFS 集成）、`go vet`、SQL 生成一致性；Admin/Agent OpenAPI 结构与引用校验通过。
 
 本次补齐 `/api/v1` 后端能力，未新增个人资源创作客户端。接口契约以 `backend/api/agent.yaml` 为准，无新增数据库迁移。
+
+- [x] 已提交 PR [#1256](https://github.com/chaitin/MonkeyCode/pull/1256)，分支 `feat-personal-resources`，目标分支 `main`，等待评审。
