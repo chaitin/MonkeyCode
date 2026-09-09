@@ -1447,6 +1447,7 @@ func (q *Queries) MigrationIssues(ctx context.Context) ([][]byte, error) {
 
 const modelPricing = `-- name: ModelPricing :one
 SELECT
+    ownership_type,
     display_name,
     credit_multiplier::text,
     COALESCE((advanced_config ->> 'context_window_tokens')::bigint, 0)::bigint AS context_window_tokens,
@@ -1460,6 +1461,7 @@ WHERE
 `
 
 type ModelPricingRow struct {
+	OwnershipType       string
 	DisplayName         string
 	CreditMultiplier    string
 	ContextWindowTokens int64
@@ -1470,6 +1472,7 @@ func (q *Queries) ModelPricing(ctx context.Context, id string) (ModelPricingRow,
 	row := q.db.QueryRow(ctx, modelPricing, id)
 	var i ModelPricingRow
 	err := row.Scan(
+		&i.OwnershipType,
 		&i.DisplayName,
 		&i.CreditMultiplier,
 		&i.ContextWindowTokens,

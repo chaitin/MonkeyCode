@@ -413,4 +413,36 @@ func TestBillingIntegration(t *testing.T) {
 		t.Fatalf("Agent token 不应获得管理统计: %d", code)
 	}
 	cookie = savedCookie
+
+	t.Run("用户模型不计费", func(t *testing.T) {
+		personal := must("POST", "/api/v1/models", resource.Object{"model_id": "billing-model", "display_name": "自定义模型", "protocol": "openai_chat_completions", "base_url": upstream.URL, "api_key": "test-key", "advanced_config": resource.Object{"context_window_tokens": 20000, "max_output_tokens": 2000}}, "")
+		application := handler.(*applicationHandler)
+		for _, mode := range []string{"local", "remote"} {
+			if _, err := pool.Exec(ctx, `UPDATE settings SET value=value || jsonb_build_object('charging_mode',$1::text) WHERE key='billing'`, mode); err != nil {
+				t.Fatal(err)
+			}
+			before, err := application.billing.Account(ctx, user)
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, out, headers := call("POST", "/v1/chat/completions", resource.Object{"model": personal.String("id"), "messages": []resource.Object{{"role": "user", "content": "hi"}}, "max_completion_tokens": 2000}, key, "user-model-"+mode)
+			if code != 200 {
+				t.Fatalf("%s 用户模型调用失败: %d %v", mode, code, out)
+			}
+			waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			err = application.proxy.Wait(waitCtx)
+			cancel()
+			if err != nil {
+				t.Fatal(err)
+			}
+			detail := must("GET", "/api/admin/v1/billing/transactions/"+headers.Get("X-Billing-Transaction-ID"), nil, "")
+			if detail.String("status") != "settled" || detail.String("amount") != "0.000000" || detail.String("mode") != "local" {
+				t.Fatalf("%s 用户模型应按零费用结算: %v", mode, detail)
+			}
+			after, err := application.billing.Account(ctx, user)
+			if err != nil || after.Balance != before.Balance || after.Frozen != before.Frozen {
+				t.Fatalf("%s 用户模型改变了积分: before=%+v after=%+v err=%v", mode, before, after, err)
+			}
+		}
+	})
 }

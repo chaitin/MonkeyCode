@@ -114,6 +114,10 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		if err != nil {
 			return Reservation{}, err
 		}
+		if row.OwnershipType == "user" {
+			price = Price{}
+			break
+		}
 		price.Multiplier, err = ParseAmount(multiplier)
 		if err != nil {
 			return Reservation{}, err
