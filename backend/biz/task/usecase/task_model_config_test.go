@@ -533,3 +533,52 @@ func TestCreateTaskReqSerializesRulesUnderConfigs(t *testing.T) {
 		t.Fatalf("configs missing %q: %s", wantPath, raw)
 	}
 }
+
+func TestGetCodingConfigsOpenCodeKeepsInstructionsGlob(t *testing.T) {
+	resolver := &stubRuleResolver{rules: []agentresource.MaterializedRule{
+		{Name: "alive", Content: "keep-me"},
+	}}
+	uc := &TaskUsecase{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		resolver: resolver,
+	}
+
+	_, cfs, _, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, testOpenCodeModel(), nil, nil, agentresource.GlobalOnlyScope(), true)
+	if err != nil {
+		t.Fatalf("getCodingConfigs() error = %v", err)
+	}
+
+	config := opencodeConfig(t, cfs)
+	got, ok := config["instructions"].([]any)
+	if !ok {
+		t.Fatalf("instructions = %#v, want glob array", config["instructions"])
+	}
+	if len(got) != 1 || got[0] != "${HOME}/.codingmatrix/project-tpl/.ai-ready/rules/*.md" {
+		t.Fatalf("instructions = %#v", got)
+	}
+
+	raw, err := json.Marshal(taskflow.CreateTaskReq{
+		SystemPrompt: "task-type prompt only",
+		Configs:      cfs,
+	})
+	if err != nil {
+		t.Fatalf("marshal CreateTaskReq: %v", err)
+	}
+	if !strings.Contains(string(raw), `"system_prompt":"task-type prompt only"`) {
+		t.Fatalf("system_prompt missing: %s", raw)
+	}
+	if strings.Contains(string(raw), "keep-me") && strings.Contains(string(raw), `"system_prompt":"keep-me"`) {
+		t.Fatal("rule content must not replace system_prompt")
+	}
+	payload := map[string]any{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("unmarshal CreateTaskReq: %v", err)
+	}
+	if payload["system_prompt"] != "task-type prompt only" {
+		t.Fatalf("system_prompt = %#v, want task-type prompt only", payload["system_prompt"])
+	}
+	prompt, _ := payload["system_prompt"].(string)
+	if strings.Contains(prompt, "keep-me") {
+		t.Fatal("system_prompt contains rule content")
+	}
+}
