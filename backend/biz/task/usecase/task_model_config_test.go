@@ -3,8 +3,13 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/agentresource"
 	"github.com/chaitin/MonkeyCode/backend/consts"
@@ -342,5 +347,138 @@ func assertLimit(t *testing.T, model map[string]any, wantContext, wantOutput int
 	}
 	if got := int(output); got != wantOutput {
 		t.Fatalf("limit output = %d, want %d", got, wantOutput)
+	}
+}
+
+type stubRuleResolver struct {
+	rules    []agentresource.MaterializedRule
+	rulesErr error
+	calls    int
+}
+
+func (s *stubRuleResolver) Rules(context.Context) ([]agentresource.MaterializedRule, error) {
+	s.calls++
+	return s.rules, s.rulesErr
+}
+func (s *stubRuleResolver) Skills(context.Context, []uuid.UUID) ([]agentresource.MaterializedAsset, error) {
+	return nil, nil
+}
+func (s *stubRuleResolver) Plugins(context.Context, []uuid.UUID) ([]agentresource.MaterializedAsset, error) {
+	return nil, nil
+}
+func (s *stubRuleResolver) SkillRefs(context.Context, []uuid.UUID) ([]agentresource.SkillRef, error) {
+	return nil, nil
+}
+func (s *stubRuleResolver) PluginRefs(context.Context, []uuid.UUID) ([]agentresource.PluginRef, error) {
+	return nil, nil
+}
+func (s *stubRuleResolver) SkillRefsScoped(context.Context, agentresource.SkillSelection) ([]agentresource.SkillRef, error) {
+	return nil, nil
+}
+func (s *stubRuleResolver) PluginRefsScoped(context.Context, agentresource.SkillSelection) ([]agentresource.PluginRef, error) {
+	return nil, nil
+}
+
+func testOpenCodeModel() *db.Model {
+	return &db.Model{
+		BaseURL:       "https://example.com/v1",
+		Model:         "gpt-4.1",
+		APIKey:        "sk-test",
+		InterfaceType: string(consts.InterfaceTypeOpenAIResponse),
+	}
+}
+
+func ruleConfigFiles(cfs []taskflow.ConfigFile) []taskflow.ConfigFile {
+	out := make([]taskflow.ConfigFile, 0)
+	prefix := "${HOME}/.codingmatrix/project-tpl/.ai-ready/rules/"
+	for _, cf := range cfs {
+		if strings.HasPrefix(cf.Path, prefix) {
+			out = append(out, cf)
+		}
+	}
+	return out
+}
+
+func TestGetCodingConfigsCreateInjectsEnabledRules(t *testing.T) {
+	resolver := &stubRuleResolver{rules: []agentresource.MaterializedRule{
+		{Name: "alive", Content: "keep-me"},
+	}}
+	uc := &TaskUsecase{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		resolver: resolver,
+	}
+
+	_, cfs, _, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, testOpenCodeModel(), nil, nil, agentresource.GlobalOnlyScope(), true)
+	if err != nil {
+		t.Fatalf("getCodingConfigs() error = %v", err)
+	}
+	rules := ruleConfigFiles(cfs)
+	if len(rules) != 1 {
+		t.Fatalf("rule files = %+v, want 1 enabled rule", rules)
+	}
+	if rules[0].Path != "${HOME}/.codingmatrix/project-tpl/.ai-ready/rules/alive.md" {
+		t.Fatalf("rule path = %q", rules[0].Path)
+	}
+	if rules[0].Content != "keep-me" {
+		t.Fatalf("rule content = %q", rules[0].Content)
+	}
+	if resolver.calls != 1 {
+		t.Fatalf("Rules calls = %d, want 1", resolver.calls)
+	}
+}
+
+func TestGetCodingConfigsCreateSkipsWhenNoEnabledRules(t *testing.T) {
+	resolver := &stubRuleResolver{}
+	uc := &TaskUsecase{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		resolver: resolver,
+	}
+
+	_, cfs, _, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, testOpenCodeModel(), nil, nil, agentresource.GlobalOnlyScope(), true)
+	if err != nil {
+		t.Fatalf("getCodingConfigs() error = %v", err)
+	}
+	if got := ruleConfigFiles(cfs); len(got) != 0 {
+		t.Fatalf("rule files = %+v, want none", got)
+	}
+	if resolver.calls != 1 {
+		t.Fatalf("Rules calls = %d, want 1", resolver.calls)
+	}
+}
+
+func TestGetCodingConfigsCreateContinuesWhenRulesQueryFails(t *testing.T) {
+	resolver := &stubRuleResolver{rulesErr: errors.New("db down")}
+	uc := &TaskUsecase{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		resolver: resolver,
+	}
+
+	_, cfs, _, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, testOpenCodeModel(), nil, nil, agentresource.GlobalOnlyScope(), true)
+	if err != nil {
+		t.Fatalf("getCodingConfigs() error = %v, want continue without rules", err)
+	}
+	if got := ruleConfigFiles(cfs); len(got) != 0 {
+		t.Fatalf("rule files = %+v, want none after query failure", got)
+	}
+}
+
+func TestGetCodingConfigsRebuildDoesNotRefreshRules(t *testing.T) {
+	resolver := &stubRuleResolver{rules: []agentresource.MaterializedRule{
+		{Name: "alive", Content: "keep-me"},
+	}}
+	uc := &TaskUsecase{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		resolver: resolver,
+	}
+
+	_, cfs, _, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, testOpenCodeModel(), nil, nil, agentresource.GlobalOnlyScope(), false)
+	if err != nil {
+		t.Fatalf("getCodingConfigs() error = %v", err)
+	}
+	if got := ruleConfigFiles(cfs); len(got) != 0 {
+		t.Fatalf("rebuild rule files = %+v, want none", got)
+	}
+	if resolver.calls != 0 {
+		t.Fatalf("Rules calls = %d, want 0 on includeRules=false", resolver.calls)
 	}
 }
