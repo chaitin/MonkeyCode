@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -100,5 +102,69 @@ func TestOAuthUserRegistration(t *testing.T) {
 				t.Fatalf("关闭注册后已有用户重复登录失败: err=%v id=%s", err, again.ID)
 			}
 		})
+	}
+}
+
+func TestOAuthAdminClientLogin(t *testing.T) {
+	pool := emailDatabase(t)
+	for _, bound := range []bool{false, true} {
+		name := "email_binding"
+		if bound {
+			name = "promoted_identity"
+		}
+		t.Run(name, func(t *testing.T) {
+			s := NewService(pool, authenticationStub{json.RawMessage(`{"registration_enabled":true}`)}, "http://localhost", "http://localhost")
+			profile := upstreamProfile{Provider: "oidc", Issuer: "https://issuer.example.com", Subject: name, Email: name + "@example.com", Name: name}
+			var user User
+			var err error
+			if bound {
+				user, err = s.upsertIdentity(t.Context(), profile, false)
+			} else {
+				user, err = s.insertUser(t.Context(), name, profile.Email, "user", "")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.updateUser(t.Context(), user.ID, user.Name, "admin", "active", ""); err != nil {
+				t.Fatal(err)
+			}
+			s.settings = authenticationStub{json.RawMessage(`{"registration_enabled":false}`)}
+			for _, adminOnly := range []bool{false, true} {
+				loggedIn, err := s.upsertIdentity(t.Context(), profile, adminOnly)
+				if err != nil || loggedIn.ID != user.ID || loggedIn.Role != "admin" {
+					t.Fatalf("管理员 OAuth 登录失败: adminOnly=%t user=%+v err=%v", adminOnly, loggedIn, err)
+				}
+			}
+			var identities int
+			if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM user_identities WHERE user_id = $1", user.ID).Scan(&identities); err != nil || identities != 1 {
+				t.Fatalf("第三方身份未正确复用: count=%d err=%v", identities, err)
+			}
+			if _, err := s.updateUser(t.Context(), user.ID, user.Name, "admin", "disabled", ""); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.upsertIdentity(t.Context(), profile, false); !errors.Is(err, ErrUserDisabled) {
+				t.Fatalf("停用管理员登录结果=%v", err)
+			}
+		})
+	}
+}
+
+func TestOAuthRegistrationConflictWithAdmin(t *testing.T) {
+	pool := emailDatabase(t)
+	s := NewService(pool, nil, "", "")
+	user, err := s.insertUser(t.Context(), "管理员", "admin@example.com", "admin", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := sqlc.CreateIdentityUserParams{Name: "OAuth 管理员", Email: user.Email}
+	row, err := sqlc.New(pool).CreateIdentityUser(t.Context(), params)
+	if err != nil || row.ID != user.ID || row.Role != "admin" {
+		t.Fatalf("OAuth 注册邮箱冲突未保留管理员身份: user=%+v err=%v", row, err)
+	}
+	if _, err := s.updateUser(t.Context(), user.ID, user.Name, "admin", "disabled", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlc.New(pool).CreateIdentityUser(t.Context(), params); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("OAuth 注册冲突不应更新停用管理员: %v", err)
 	}
 }

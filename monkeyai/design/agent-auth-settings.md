@@ -30,7 +30,9 @@ OAuth 元数据位于 `GET /.well-known/oauth-authorization-server`，客户端�
 
 管理后台同时支持密码和管理员启用的 OAuth/OIDC 登录。密码使用 `users.email + password_hash` 校验，并以带随机 Salt 的 PBKDF2-HMAC-SHA256 保存；OAuth/OIDC 登录页动态列出当前启用的连接。两种方式成功后都会建立 HttpOnly 浏览器会话。
 
-OAuth/OIDC 回调只允许关联到已存在、启用状态且 `role = 'admin'` 的用户。首次使用某个第三方身份时，可以按上游返回的邮箱绑定同邮箱管理员；不会通过 OAuth 自动创建管理员，也不会把普通用户提升为管理员。普通用户或停用用户完成上游认证后仍会被管理后台拒绝。
+管理后台的 OAuth/OIDC 回调只允许关联到已存在、启用状态且 `role = 'admin'` 的用户。首次使用某个第三方身份时，可以按上游返回的邮箱绑定同邮箱管理员；不会通过 OAuth 自动创建管理员，也不会把普通用户提升为管理员。普通用户或停用用户完成上游认证后仍会被管理后台拒绝。
+
+管理员同时可以登录客户端，使用已启用的密码、邮箱验证码或 OAuth/OIDC 登录方式。普通用户提升为管理员后，继续复用原用户身份和第三方绑定完成客户端登录、授权码交换及令牌刷新。
 
 空数据库首次启动时必须使用以下环境变量创建第一个管理员：
 
@@ -96,14 +98,14 @@ OAuth access token 用于 Agent API；模型代理只接受具有 `model:invoke`
 
 ## 8. 邮箱认证与 SMTP
 
-管理端与客户端通过 `GET /api/auth/v1/methods` 获取公开开关。`password_enabled` 默认开启，`email_code_enabled`、`registration_enabled` 默认关闭；开关在服务端认证入口再次校验。管理员入口仅接受管理员，客户端邮箱登录入口仅接受普通用户。
+管理端与客户端通过 `GET /api/auth/v1/methods` 获取公开开关。`password_enabled` 默认开启，`email_code_enabled`、`registration_enabled` 默认关闭；开关在服务端认证入口再次校验。管理员入口仅接受启用状态的管理员，客户端登录入口接受启用状态的普通用户和管理员。
 
 | 接口 | 用途 |
 | --- | --- |
 | `POST /api/admin/v1/settings/email/test` | 管理员使用已保存 SMTP 配置向 `recipient` 发送测试邮件 |
-| `POST /api/auth/v1/login` | 普通用户密码登录，管理员沿用 `/admin/login` |
+| `POST /api/auth/v1/login` | 普通用户和管理员的客户端密码登录；管理后台使用 `/admin/login` |
 | `POST /api/auth/v1/email/code` | 提交 `email` 与 `purpose`（`login`、`register`、`reset`）发送验证码 |
-| `POST /api/auth/v1/email/login` | 普通用户验证码登录，管理员使用 `/admin/email/login` |
+| `POST /api/auth/v1/email/login` | 普通用户和管理员的客户端验证码登录；管理后台使用 `/admin/email/login` |
 | `POST /api/auth/v1/email/register` | 通过注册验证码提交邮箱、姓名和至少 12 字符密码，仅创建普通用户 |
 | `POST /api/auth/v1/email/reset-password` | 通过重置验证码设置至少 12 字符的新密码 |
 

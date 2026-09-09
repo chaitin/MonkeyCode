@@ -33,7 +33,6 @@ const callbackErrorMessages: Record<string, string> = {
   provider_unavailable: "该登录方式当前不可用，请选择其他方式。",
   oauth_exchange: "第三方身份验证失败，请重试。",
   user_unavailable: "当前账号不能登录，请联系管理员。",
-  admin_password_required: "管理员账号只能使用密码登录管理后台。",
   session_failed: "登录会话创建失败，请重试。",
 }
 

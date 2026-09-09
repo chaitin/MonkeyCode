@@ -69,10 +69,7 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 403, "method_disabled", "密码登录未启用")
 		return
 	}
-	role := "user"
-	if strings.HasSuffix(r.URL.Path, "/admin/login") {
-		role = "admin"
-	}
+	adminOnly := strings.HasSuffix(r.URL.Path, "/admin/login")
 	var input struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -84,7 +81,7 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	var user User
 	var passwordHash string
-	row, err := sqlc.New(s.db).GetPasswordUser(r.Context(), sqlc.GetPasswordUserParams{Email: input.Email, Role: role})
+	row, err := sqlc.New(s.db).GetPasswordUser(r.Context(), sqlc.GetPasswordUserParams{Email: input.Email, AdminOnly: adminOnly})
 	if err == nil && row.PasswordHash == nil {
 		err = errors.New("未设置密码")
 	}

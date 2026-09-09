@@ -181,8 +181,7 @@ WHERE
             last_login_at = now(),
             updated_at = now()
         WHERE
-            users.role = 'user'
-            AND users.status = 'active'
+            users.status = 'active'
         RETURNING
             id,
             name,
@@ -624,15 +623,15 @@ FROM
     users
 WHERE
     lower(email) = $1
-    AND ROLE = $2
+    AND (NOT $2::boolean OR ROLE = 'admin')
     AND status = 'active'
     AND deleted_at IS NULL
     AND password_hash IS NOT NULL
 `
 
 type GetPasswordUserParams struct {
-	Email string
-	Role  string
+	Email     string
+	AdminOnly bool
 }
 
 type GetPasswordUserRow struct {
@@ -648,7 +647,7 @@ type GetPasswordUserRow struct {
 }
 
 func (q *Queries) GetPasswordUser(ctx context.Context, arg GetPasswordUserParams) (GetPasswordUserRow, error) {
-	row := q.db.QueryRow(ctx, getPasswordUser, arg.Email, arg.Role)
+	row := q.db.QueryRow(ctx, getPasswordUser, arg.Email, arg.AdminOnly)
 	var i GetPasswordUserRow
 	err := row.Scan(
 		&i.ID,

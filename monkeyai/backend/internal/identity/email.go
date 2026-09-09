@@ -295,7 +295,7 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 	default:
 		row, lookupErr := q.GetUserByEmail(ctx, input.Email)
 		admin := strings.HasPrefix(r.URL.Path, "/admin/") || strings.Contains(r.URL.Path, "/v1/admin/")
-		if lookupErr != nil || row.Status != "active" || admin && row.Role != "admin" || !admin && row.Role != "user" {
+		if lookupErr != nil || row.Status != "active" || admin && row.Role != "admin" {
 			writeError(w, 401, "invalid_credentials", "账号不可用于此登录入口")
 			return
 		}

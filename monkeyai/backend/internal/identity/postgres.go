@@ -306,7 +306,7 @@ func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile, a
 			user.ID, user.Name, user.Email, user.AvatarURL, user.Role, user.Status, user.JoinedAt, user.LastLoginAt = row.ID, row.Name, row.Email, row.AvatarUrl, row.Role, row.Status, row.JoinedAt, row.LastLoginAt
 		}
 		if errors.Is(err, pgx.ErrNoRows) {
-			return User{}, ErrAdminPasswordRequired
+			return User{}, ErrUserDisabled
 		}
 		if err != nil {
 			return User{}, err
@@ -339,16 +339,12 @@ func validateUpstreamUser(user User, adminOnly bool) error {
 	if adminOnly && user.Role != "admin" {
 		return ErrAdminRoleRequired
 	}
-	if !adminOnly && user.Role == "admin" {
-		return ErrAdminPasswordRequired
-	}
 	return nil
 }
 
 var (
-	ErrNotFound              = errors.New("记录不存在")
-	ErrUserDisabled          = errors.New("用户已停用")
-	ErrRegistrationDisabled  = errors.New("未开放新用户注册")
-	ErrAdminPasswordRequired = errors.New("管理员必须使用密码登录")
-	ErrAdminRoleRequired     = errors.New("管理后台 OAuth 登录必须关联管理员")
+	ErrNotFound             = errors.New("记录不存在")
+	ErrUserDisabled         = errors.New("用户已停用")
+	ErrRegistrationDisabled = errors.New("未开放新用户注册")
+	ErrAdminRoleRequired    = errors.New("管理后台 OAuth 登录必须关联管理员")
 )
