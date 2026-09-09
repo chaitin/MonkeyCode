@@ -1092,7 +1092,8 @@ SELECT
     frozen::text,
     QUOTA::text,
     period_start_at,
-    period_end_at
+    period_end_at,
+    sequence
 FROM
     credit_accounts
 WHERE
@@ -1115,6 +1116,7 @@ type LockAccountRow struct {
 	Quota         string
 	PeriodStartAt time.Time
 	PeriodEndAt   time.Time
+	Sequence      int64
 }
 
 func (q *Queries) LockAccount(ctx context.Context, arg LockAccountParams) (LockAccountRow, error) {
@@ -1129,6 +1131,7 @@ func (q *Queries) LockAccount(ctx context.Context, arg LockAccountParams) (LockA
 		&i.Quota,
 		&i.PeriodStartAt,
 		&i.PeriodEndAt,
+		&i.Sequence,
 	)
 	return i, err
 }

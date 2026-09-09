@@ -26,7 +26,7 @@ type Service struct {
 
 func NewService(store *resource.Store, publicURL string) *Service {
 	s := &Service{Store: store, PublicURL: strings.TrimRight(publicURL, "/")}
-	s.Providers = resource.NewCRUD(store, resource.Definition{Kind: "provider", Repository: func(q resource.Queryer) resource.Repository { return provider.New(q) }, Path: "/connector-providers", Fields: []string{"identifier", "name", "description", "url", "authorization_mode", "authorization_method", "header_schema", "oauth_config", "oauth_client_secret", "enabled"}, UserFields: []string{"name", "description", "url", "authorization_mode", "authorization_method", "header_schema", "oauth_config", "oauth_client_secret"}, Hidden: []string{"oauth_client_secret", "icon_s3_key"}, Decorate: func(ctx context.Context, q resource.Queryer, o resource.Object) error {
+	s.Providers = resource.NewCRUD(store, resource.Definition{Kind: "provider", Repository: func(q resource.Queryer) resource.Repository { return provider.New(q) }, Path: "/connector-providers", Fields: []string{"identifier", "name", "description", "url", "authorization_mode", "authorization_method", "header_schema", "oauth_config", "oauth_client_secret", "enabled"}, UserFields: []string{"name", "description", "url", "authorization_mode", "authorization_method", "header_schema", "oauth_config", "oauth_client_secret"}, Hidden: []string{"identifier", "oauth_client_secret", "icon_s3_key"}, Decorate: func(ctx context.Context, q resource.Queryer, o resource.Object) error {
 		o["icon_path"] = ""
 		if key := o.String("icon_s3_key"); key != "" {
 			o["icon_path"] = "/api/admin/v1/connector-providers/" + o.String("id") + "/icon?v=" + resource.Hash(key)
@@ -40,10 +40,6 @@ func NewService(store *resource.Store, publicURL string) *Service {
 }
 func validateProvider(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
 	if in.String("ownership_type") == "user" {
-		in["identifier"] = old["identifier"]
-		if old.String("id") == "" {
-			in["identifier"] = "custom:" + in.String("id")
-		}
 		for _, key := range []string{"url", "authorization_mode", "authorization_method", "oauth_config"} {
 			if _, ok := in[key]; !ok && old.String("id") != "" {
 				in[key] = old[key]
@@ -53,11 +49,9 @@ func validateProvider(ctx context.Context, tx pgx.Tx, in, old resource.Object) e
 			return resource.Invalid("个人 Provider 仅支持无认证或独立认证")
 		}
 	}
-	if strings.TrimSpace(in.String("identifier")) == "" {
-		in["identifier"] = old.String("identifier")
-		if old.String("id") == "" {
-			in["identifier"] = resource.ID()
-		}
+	in["identifier"] = old.String("identifier")
+	if old.String("id") == "" {
+		in["identifier"] = resource.ID()
 	}
 	if !validURL(in.String("url")) {
 		return resource.Invalid("MCP URL 无效")

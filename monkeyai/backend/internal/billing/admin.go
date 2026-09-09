@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *Service) RegisterAdmin(r chi.Router) {
@@ -368,17 +370,17 @@ func (s *Service) account(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Delta  Amount `json:"delta"`
-		Reason string `json:"reason"`
-		Key    string `json:"idempotency_key"`
+		Delta   Amount `json:"delta"`
+		Reason  string `json:"reason"`
+		Version string `json:"version"`
 	}
 	if err := resource.Decode(w, r, &in); err != nil {
 		resource.Fail(w, err)
 		return
 	}
 	in.Reason = strings.TrimSpace(in.Reason)
-	if in.Delta == 0 || in.Reason == "" || len(in.Reason) > 500 || len(in.Key) < 8 || len(in.Key) > 128 {
-		resource.Fail(w, resource.Invalid("调整需填写非零积分、原因和幂等键"))
+	if in.Delta == 0 || in.Reason == "" || len(in.Reason) > 500 || in.Version == "" || len(in.Version) > 128 {
+		resource.Fail(w, resource.Invalid("调整需填写非零积分、原因和账户版本"))
 		return
 	}
 	ctx := r.Context()
@@ -398,7 +400,7 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	event := "adjust:" + a.UserID + ":" + in.Key
+	event := "adjust:" + a.UserID + ":" + in.Version
 	var oldAmount, oldReason string
 	record, e := sqlc.New(tx).GetAdjustment(ctx, new(event))
 	if e == nil {
@@ -407,10 +409,22 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 
 	if e == nil {
 		if oldAmount != in.Delta.String() && amountText(oldAmount) != in.Delta || oldReason != in.Reason {
-			resource.Fail(w, fail(409, "idempotency_conflict", "同一幂等键的调整内容不同"))
+			resource.Fail(w, fail(409, "idempotency_conflict", "该账户版本已提交过不同的调整，请刷新后重试"))
 			return
 		}
-		resource.JSON(w, 200, a)
+		if err = tx.Commit(ctx); err != nil {
+			resource.Fail(w, err)
+			return
+		}
+		s.account(w, r)
+		return
+	}
+	if !errors.Is(e, pgx.ErrNoRows) {
+		resource.Fail(w, e)
+		return
+	}
+	if in.Version != a.Version {
+		resource.Fail(w, resource.Conflict)
 		return
 	}
 	if in.Delta > 0 && a.Balance > maxAmount-in.Delta {

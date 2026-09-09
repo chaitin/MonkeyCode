@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
-import { allocateIDs, api } from "@/lib/api"
+import { ApiError, api } from "@/lib/api"
 import {
   WalletSettings,
   type WalletInput,
@@ -629,7 +629,6 @@ function AccountDialog({
   const [reason, setReason] = useState("")
   const [external, setExternal] = useState(user.external_user_id ?? "")
   const [group, setGroup] = useState(user.group_id)
-  const adjustmentKey = useRef<string | null>(null)
   const running = useRef(false)
   const load = useCallback(
     () =>
@@ -648,21 +647,16 @@ function AccountDialog({
     setError("")
     try {
       if (kind === "adjust") {
-        if (!adjustmentKey.current) {
-          const [key] = await allocateIDs()
-          adjustmentKey.current = key
-        }
         await api(`/api/admin/v1/billing/accounts/${user.id}/adjustments`, {
           method: "POST",
           body: JSON.stringify({
             delta,
             reason,
-            idempotency_key: adjustmentKey.current,
+            version: data?.account.version,
           }),
         })
         setDelta("")
         setReason("")
-        adjustmentKey.current = null
       }
       if (kind === "wallet")
         await api(`/api/admin/v1/billing/accounts/${user.id}/wallet`, {
@@ -678,6 +672,9 @@ function AccountDialog({
       onChanged()
     } catch (e) {
       setError((e as Error).message)
+      if (e instanceof ApiError && (e.status === 409 || e.status === 412)) {
+        await load().catch((error: Error) => setError(error.message))
+      }
     } finally {
       running.current = false
       setBusy(false)
@@ -763,7 +760,6 @@ function AccountDialog({
                   value={delta}
                   onChange={(e) => {
                     setDelta(e.target.value)
-                    adjustmentKey.current = null
                   }}
                   placeholder="正数补发，负数回收"
                   inputMode="decimal"
@@ -778,7 +774,6 @@ function AccountDialog({
                   value={reason}
                   onChange={(e) => {
                     setReason(e.target.value)
-                    adjustmentKey.current = null
                   }}
                 />
               </Field>

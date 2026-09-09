@@ -3,7 +3,6 @@ package resource
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"uuid"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -32,13 +32,8 @@ type Object map[string]any
 func (o Object) String(k string) string { v, _ := o[k].(string); return v }
 func (o Object) Bool(k string) bool     { v, _ := o[k].(bool); return v }
 func (o Object) Int(k string) int64     { v, _ := o[k].(float64); return int64(v) }
-func ID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
-}
+func ID() string                        { return uuid.New().String() }
+
 func Hash(v any) string {
 	b, _ := json.Marshal(v)
 	h := sha256.Sum256(b)

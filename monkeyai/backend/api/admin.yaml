@@ -5,45 +5,6 @@ info:
 security:
   - AdminSession: []
 paths:
-  /api/admin/v1/identifiers:
-    post:
-      summary: 分配服务端标识
-      description: 用于提交前需要持有标识的操作。幂等请求重试时须复用已分配的标识，新的操作应重新申请。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [count]
-              properties:
-                count:
-                  type: integer
-                  minimum: 1
-                  maximum: 1000
-      responses:
-        '200':
-          description: 服务端生成的 UUID v4 列表；响应不可缓存。
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [ids]
-                properties:
-                  ids:
-                    type: array
-                    minItems: 1
-                    maxItems: 1000
-                    uniqueItems: true
-                    items:
-                      type: string
-                      format: uuid
-        '400':
-          description: 标识数量或请求格式无效
-        '401':
-          description: 未登录
-        '403':
-          description: 需要管理员权限
   /api/auth/v1/methods:
     get:
       summary: 读取公开登录方式开关
@@ -1186,7 +1147,9 @@ paths:
         '403':
           description: 权限不足
         '409':
-          description: 修订号、幂等键或交易状态冲突
+          description: 该账户版本已提交过不同的调整
+        '412':
+          description: 账户版本已过期，请刷新后重试
       requestBody:
         required: true
         content:
@@ -1200,15 +1163,14 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 500
-                idempotency_key:
+                version:
                   type: string
-                  description: 通过 POST /api/admin/v1/identifiers 预先申请；同一次调整失败重试时复用，修改调整内容后重新申请。
-                  minLength: 8
+                  description: 读取当前账户时返回的版本。相同版本与内容重试不会重复调整；账户变化后须刷新版本。
                   maxLength: 128
               required:
               - delta
               - reason
-              - idempotency_key
+              - version
   /api/admin/v1/billing/accounts/{userID}/wallet:
     parameters:
     - in: path
@@ -4885,6 +4847,9 @@ components:
     CreditAccount:
       type: object
       properties:
+        version:
+          type: string
+          description: 当前账户的版本，随账本变更更新；用于管理员调整时检查并发及重复提交，历史账户条目可省略。
         id:
           type: string
           format: uuid
@@ -5570,8 +5535,6 @@ components:
         provider_id:
           type: string
           format: uuid
-        provider_identifier:
-          type: string
         icon_path:
           type: string
         name:
@@ -6031,8 +5994,6 @@ components:
         updated_at:
           type: string
           format: date-time
-        identifier:
-          type: string
         description:
           type: string
         url:
@@ -6064,9 +6025,6 @@ components:
     ConnectorProviderInput:
       type: object
       properties:
-        identifier:
-          type: string
-          description: 新建时省略或留空由服务端生成；更新时省略或留空保留已有标识。
         description:
           type: string
         url:
@@ -6104,7 +6062,6 @@ components:
           description: 仅写入；空字符串表示保留已有密钥。
       required:
       - name
-      - identifier
       - url
       - authorization_mode
     ConnectorResource:

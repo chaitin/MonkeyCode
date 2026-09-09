@@ -11,7 +11,6 @@ import (
 )
 
 func (s *Store) RegisterAdmin(r chi.Router) {
-	r.Post("/identifiers", allocateIDs)
 	r.Get("/resources/authorization-subjects", func(w http.ResponseWriter, r *http.Request) {
 		groups, err := DecodeObjects(sqlc.New(s.Pool).ListGroups(r.Context()))
 		if err != nil {

@@ -155,7 +155,7 @@ go test ./... -count=1
 
 集成测试创建独立随机 schema，测试结束后删除该 schema，不重置其他 schema；必须使用测试数据库和测试 Bucket。测试包括版本 1 的 up/down/up、版本 2 的计费升级、版本 3 的旧系统分组升级与授权和额度保留、虚拟团队根节点及分组操作、Cookie 管理员身份与 Agent Bearer 身份、权限差异、独立资源目录 ETag、技能字节上传/重建/下载、专家委托、撤权、真实 MCP HTTP 协议、用户目录隔离及本地 OAuth state/PKCE 回调防重放。测试可能留下不可变技能对象，仅位于测试 Bucket。
 
-业务标识统一由后端生成：新建 MCP 连接模板时可省略 `identifier`，更新时省略或留空会保留原标识；保存 `authentication` 设置时，新 OAuth 连接省略 `id`，后端生成并通过保存响应返回，前端后续编辑和删除使用返回的 `id`。额度调整幂等键等提交前需要持有的标识，通过管理员接口 `POST /api/admin/v1/identifiers` 批量申请（请求 `{"count":1}`，响应 `{"ids":["UUID"]}`，单次 1～1000 个）；同一次调整失败重试时复用原标识，调整内容变化或成功后重新申请。知识库演示页面也使用此接口分配标识。
+业务标识统一由后端通过 Go 标准库 `uuid.New()` 生成。MCP 连接模板的内部 `identifier` 不接受客户端指定，管理端与 Agent API 均不返回该字段或 `provider_identifier`，调用方使用资源 `id` 关联。保存 `authentication` 设置时，新 OAuth 连接省略 `id`，后端生成并通过保存响应返回，后续编辑和删除使用返回的 `id`。管理员额度调整提交当前账户返回的 `version`；后端在事务中检查账本版本，相同版本和内容的重试不会重复记账，版本过期或已用于不同调整时须刷新账户再确认。
 
 各业务服务显式注册到 `internal/app`。`resource.CRUD` 接收各业务包的 sqlc Repository 和字段白名单，业务约束及关系事务由 `rule`、`skill`、`expert`、`mcp` 提供。Agent 按设置、模型、规则、技能、专家和连接器分别读取，各接口独立计算版本与 ETag。规则、技能、专家和连接器目录分别在 PostgreSQL Repeatable Read 视图中读取；某类资源读取失败只影响依赖它的请求，不返回伪造的空目录。
 

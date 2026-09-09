@@ -46,6 +46,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		if out["package_s3_key"] != nil || out["oauth_client_secret"] != nil {
 			t.Fatalf("响应泄露存储或凭证字段: %v", out)
 		}
+		assertNoIdentifiers(t, out)
 		return out
 	}
 	call := func(method, path, token, match string, input any, want int) resource.Object {
@@ -202,7 +203,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		"name": "个人服务", "identifier": "github", "url": "https://example.com/mcp", "authorization_mode": "independent", "authorization_method": "http_header", "ownership_type": "system", "owner_user_id": users[1],
 	}, 201)
 	providerID := provider.String("id")
-	if provider.String("identifier") != "custom:"+providerID || provider.String("owner_user_id") != users[0] || provider.String("ownership_type") != "user" {
+	if provider["identifier"] != nil || provider.String("owner_user_id") != users[0] || provider.String("ownership_type") != "user" {
 		t.Fatalf("个人 Provider 归属或 identifier 错误: %v", provider)
 	}
 	call("GET", "/connector-providers/"+providerID, "b", "", nil, 404)
