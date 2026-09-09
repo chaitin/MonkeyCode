@@ -116,6 +116,92 @@ func setPolicy(t *testing.T, s *Service, p Policy) {
 		t.Fatal(err)
 	}
 }
+
+func TestUserModelsAreFree(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode                   string
+		bound, shared, empty, limits bool
+	}{
+		{name: "本地积分耗尽", mode: "local", empty: true, limits: true},
+		{name: "未绑定钱包", mode: "remote", limits: true},
+		{name: "已绑定钱包", mode: "remote", bound: true, limits: true},
+		{name: "使用他人分享的模型", mode: "remote", shared: true, limits: true},
+		{name: "未配置计费输出限制", mode: "remote"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, owner, model := fixture(t)
+			ctx := t.Context()
+			if _, err := s.pool.Exec(ctx, `UPDATE models SET ownership_type='user' WHERE id=$1`, model); err != nil {
+				t.Fatal(err)
+			}
+			if !tc.limits {
+				if _, err := s.pool.Exec(ctx, `UPDATE models SET advanced_config='{}' WHERE id=$1`, model); err != nil {
+					t.Fatal(err)
+				}
+			}
+			user := owner
+			if tc.shared {
+				user = resource.ID()
+				if _, err := s.pool.Exec(ctx, `INSERT INTO users(id,name,email) VALUES($1,'模型使用者','shared@example.com')`, user); err != nil {
+					t.Fatal(err)
+				}
+			}
+			wallet := &walletStub{}
+			s.WithWallet(&Wallet{Client: wallet, BaseURL: "https://baizhiyun.vip", AppID: 4})
+			if tc.bound {
+				if err := s.BindWallet(ctx, user, user, "1001"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := defaultPolicy()
+			p.Enabled, p.Mode = true, tc.mode
+			if tc.empty {
+				p.RootCredits = 0
+			}
+			setPolicy(t, s, p)
+			before, err := s.Account(ctx, user)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := s.Begin(ctx, Request{UserID: user, ResourceID: model, Category: "model"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r.OutputLimit != 0 {
+				t.Fatalf("用户模型不应强制计费输出限制: %d", r.OutputLimit)
+			}
+			reserved, err := s.Account(ctx, user)
+			if err != nil || reserved.Frozen != before.Frozen {
+				t.Fatalf("用户模型不应冻结积分: %+v, %v", reserved, err)
+			}
+			if err := s.Start(ctx, r.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Finish(ctx, r.ID, Usage{Input: 10000, Cached: 4000, Output: 2000, Known: true, Result: "succeeded"}); err != nil {
+				t.Fatal(err)
+			}
+			after, err := s.Account(ctx, user)
+			if err != nil || after.Balance != before.Balance || after.Frozen != before.Frozen {
+				t.Fatalf("用户模型不应扣减积分: %+v, %v", after, err)
+			}
+			var mode, status string
+			var reserve, amount, input, output, walletRecords int64
+			if err := s.pool.QueryRow(ctx, `SELECT t.mode,t.status,t.reserve::bigint,t.amount::bigint,c.input_tokens,c.output_tokens FROM billing_transactions t JOIN model_calls c ON c.id=t.id WHERE t.id=$1`, r.ID).Scan(&mode, &status, &reserve, &amount, &input, &output); err != nil {
+				t.Fatal(err)
+			}
+			if mode != "local" || status != "settled" || reserve != 0 || amount != 0 || input != 10000 || output != 2000 {
+				t.Fatalf("应保留零费用用量记录: %s %s %d %d %d %d", mode, status, reserve, amount, input, output)
+			}
+			if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM wallet_billing_records`).Scan(&walletRecords); err != nil {
+				t.Fatal(err)
+			}
+			if walletRecords != 0 || len(wallet.creates) != 0 || len(wallet.confirms) != 0 {
+				t.Fatalf("用户模型不应进入钱包流程: records=%d creates=%v confirms=%v", walletRecords, wallet.creates, wallet.confirms)
+			}
+		})
+	}
+}
+
 func TestSettlementAndPeriodIsolation(t *testing.T) {
 	s, user, model := fixture(t)
 	ctx := t.Context()

@@ -686,6 +686,7 @@ SELECT
 
 -- name: ModelPricing :one
 SELECT
+    ownership_type,
     display_name,
     credit_multiplier::text,
     COALESCE((advanced_config ->> 'context_window_tokens')::bigint, 0)::bigint AS context_window_tokens,
