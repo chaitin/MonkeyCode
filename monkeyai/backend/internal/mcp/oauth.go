@@ -40,6 +40,9 @@ func token() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 func hash(value string) string { v := sha256.Sum256([]byte(value)); return hex.EncodeToString(v[:]) }
+func (s *Service) callbackURL(id string) string {
+	return s.PublicURL + "/oauth/connectors/" + id + "/callback"
+}
 func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) {
 	u, _ := identity.UserFromContext(r.Context())
 	c, err := s.Connector(r.Context(), s.Store.Pool, chi.URLParam(r, "id"), u.ID, admin)
@@ -52,7 +55,7 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 		return
 	}
 	state, verifier := token(), token()
-	redirect := s.PublicURL + "/oauth/connectors/callback"
+	redirect := s.callbackURL(c.String("id"))
 	id := resource.ID()
 	_, err = sqlc.New(s.Store.Pool).CreateOAuthRequest(r.Context(), sqlc.CreateOAuthRequestParams{
 		ID:             id,
@@ -92,6 +95,13 @@ func (s *Service) authorizationStatus(w http.ResponseWriter, r *http.Request) {
 	resource.JSON(w, 200, o)
 }
 func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	id, state := chi.URLParam(r, "id"), r.URL.Query().Get("state")
+	if id == "" || state == "" {
+		resource.Fail(w, resource.Invalid("授权事务无效或已使用"))
+		return
+	}
 	ctx := r.Context()
 	tx, err := s.Store.Pool.Begin(ctx)
 	if err != nil {
@@ -99,8 +109,8 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx)
-	request, err := resource.DecodeObject(sqlc.New(tx).ConsumeOAuthRequest(ctx, hash(r.URL.Query().Get("state"))))
-	if err != nil {
+	request, err := resource.DecodeObject(sqlc.New(tx).ConsumeOAuthRequest(ctx, hash(state)))
+	if err != nil || request.String("connector_id") != id {
 		resource.Fail(w, resource.Invalid("授权事务无效或已使用"))
 		return
 	}
@@ -117,7 +127,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		_, _ = sqlc.New(s.Store.Pool).SetOAuthStatus(context.WithoutCancel(ctx), sqlc.SetOAuthStatusParams{ID: request.String("id"), Status: status})
 	}()
 	c, err := s.Connector(ctx, s.Store.Pool, request.String("connector_id"), request.String("user_id"), request.Bool("centralized"))
-	if err != nil || c.Int("config_revision") != request.Int("config_revision") || r.URL.Query().Get("code") == "" {
+	if err != nil || c.Int("config_revision") != request.Int("config_revision") || r.URL.Query().Get("error") != "" || r.URL.Query().Get("code") == "" {
 		resource.Fail(w, resource.Invalid("授权已失效或取消"))
 		return
 	}
@@ -167,7 +177,6 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 
 	success = true
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
 	_, _ = io.WriteString(w, "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><title>授权成功</title><p>授权成功，请返回 MonkeyAI 并测试连接。</p></html>")
 }
 

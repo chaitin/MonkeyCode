@@ -166,6 +166,9 @@ func TestPersonalConnectors(t *testing.T) {
 		t.Fatalf("个人连接没有固定 Provider 配置：%v", c)
 	}
 	connectorPath := "/connectors/" + c.String("id")
+	if c.String("callback_url") != "" {
+		t.Fatal("非 OAuth 连接不应返回回调地址")
+	}
 	call("GET", connectorPath, nil, "other", "", 404)
 	call("PUT", connectorPath, resource.Object{"name": "越权"}, "other", etag(c), 404)
 	call("DELETE", connectorPath, nil, "other", etag(c), 404)

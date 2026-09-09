@@ -96,7 +96,11 @@ export const zhCN = {
     selectScope: "选择用户或分组",
     defaultModel: "默认模型",
     noDefaultModel: "由用户选择模型",
-    saveBeforeAuthorize: "保存连接后，可重新打开编辑窗口完成 OAuth 授权。",
+    saveBeforeAuthorize:
+      "创建 MCP 后将显示专属回调地址，登记到 OAuth 应用后即可授权。",
+    callbackURL: "OAuth 回调地址",
+    callbackURLDescription:
+      "复制此地址并登记为 OAuth 应用的回调地址。每个 MCP 使用独立地址。",
   },
   app: {
     documentTitle: "MonkeyAI 管理后台",

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -586,12 +587,16 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	if len(directory["items"].([]any)) != 0 {
 		t.Fatal("撤销凭证后工具仍可用")
 	}
-	// OAuth 回调绑定 state/PKCE，只能消费一次，Token 只存服务端。
+	// OAuth 回调绑定 MCP id、state 和 PKCE，只能消费一次，Token 只存服务端。
+	var redirect, challenge string
 	oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
-		if r.Form.Get("code_verifier") == "" && r.Form.Get("grant_type") == "authorization_code" {
-			http.Error(w, "missing pkce", 400)
-			return
+		if r.Form.Get("grant_type") == "authorization_code" {
+			digest := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
+			if r.Form.Get("redirect_uri") != redirect || base64.RawURLEncoding.EncodeToString(digest[:]) != challenge || r.Form.Get("client_secret") != "private-client-secret" {
+				http.Error(w, "回调地址、PKCE 或客户端凭据不匹配", 400)
+				return
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"access_token":"private-oauth-token","refresh_token":"private-refresh-token","token_type":"Bearer","expires_in":3600}`)
@@ -599,13 +604,41 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	defer oauthServer.Close()
 	p3 := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "OAuth MCP", "url": upstream.URL, "authorization_mode": "centralized", "authorization_method": "oauth", "oauth_config": resource.Object{"authorization_url": oauthServer.URL + "/authorize", "token_url": oauthServer.URL + "/token", "client_id": "test-client"}, "oauth_client_secret": "private-client-secret"}, "", "")
 	c3 := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "OAuth 连接", "provider_id": p3.String("id"), "grants": grantA}, "", "")
+	redirect = "http://localhost:8080/oauth/connectors/" + c3.String("id") + "/callback"
+	if c3.String("callback_url") != redirect {
+		t.Fatalf("创建 MCP 未返回专属回调地址：%v", c3)
+	}
+	detail := must("GET", "/api/admin/v1/connectors/"+c3.String("id"), nil, "", "")
+	if detail.String("callback_url") != redirect {
+		t.Fatal("MCP 详情回调地址与创建响应不一致")
+	}
+	other := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "另一个 OAuth 连接", "provider_id": p3.String("id")}, "", "")
+	if other.String("callback_url") == redirect || other.String("callback_url") == "" {
+		t.Fatal("同一模板下的 MCP 未区分回调地址")
+	}
 	auth := must("POST", "/api/admin/v1/connectors/"+c3.String("id")+"/oauth/authorizations", nil, "", "")
 	target, err := url.Parse(auth.String("authorization_url"))
-	if err != nil || target.Query().Get("code_challenge") == "" {
-		t.Fatal("未生成 PKCE")
+	if err != nil || target.Query().Get("code_challenge") == "" || target.Query().Get("redirect_uri") != redirect {
+		t.Fatal("授权 URL 未绑定回调地址或 PKCE")
 	}
-	callback := "/oauth/connectors/callback?state=" + url.QueryEscape(target.Query().Get("state")) + "&code=test-code"
-	must("GET", callback, nil, "", "")
+	challenge = target.Query().Get("code_challenge")
+	query := "?state=" + url.QueryEscape(target.Query().Get("state")) + "&code=test-code"
+	for _, path := range []string{other.String("callback_url") + query, redirect + "?code=test-code", redirect + "?state=invalid&code=test-code"} {
+		if code, _, _ := call("GET", path, nil, "", ""); code != 400 {
+			t.Fatalf("无效回调未被拒绝：%s = %d", path, code)
+		}
+	}
+	if status := must("GET", "/api/admin/v1/connector-authorizations/"+auth.String("id"), nil, "", ""); status.String("status") != "pending" {
+		t.Fatal("错误 MCP id 消费了其他 MCP 的授权事务")
+	}
+	callback := redirect + query
+	adminCookie := cookie
+	cookie = nil
+	code, _, headers := call("GET", callback, nil, "", "")
+	cookie = adminCookie
+	if code != 200 || headers.Get("Cache-Control") != "no-store" || !strings.HasPrefix(headers.Get("Content-Type"), "text/html") {
+		t.Fatalf("公开回调未成功返回授权页面：%d %v", code, headers)
+	}
 	if code, _, _ := call("GET", callback, nil, "", ""); code != 400 {
 		t.Fatalf("OAuth callback 可重放: %d", code)
 	}
@@ -613,6 +646,75 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	if status.String("status") != "authorized" {
 		t.Fatal("OAuth 状态未落库")
 	}
+	for _, scenario := range []string{"取消", "过期", "配置变更", "交换失败"} {
+		t.Run("OAuth 回调"+scenario, func(t *testing.T) {
+			auth := must("POST", "/api/admin/v1/connectors/"+other.String("id")+"/oauth/authorizations", nil, "", "")
+			target, err := url.Parse(auth.String("authorization_url"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := other.String("callback_url") + "?state=" + url.QueryEscape(target.Query().Get("state")) + "&code=test-code"
+			wantCode, wantStatus := 400, "error"
+			switch scenario {
+			case "取消":
+				path += "&error=access_denied"
+			case "过期":
+				_, err = pool.Exec(ctx, "UPDATE connector_oauth_requests SET expires_at=now()-interval '1 minute' WHERE id=$1", auth.String("id"))
+				wantStatus = "expired"
+			case "配置变更":
+				_, err = pool.Exec(ctx, "UPDATE connectors SET config_revision=config_revision+1 WHERE id=$1", other.String("id"))
+			case "交换失败":
+				wantCode = 502
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if code, _, _ := call("GET", path, nil, "", ""); code != wantCode {
+				t.Fatalf("回调状态码 = %d，预期 %d", code, wantCode)
+			}
+			status := must("GET", "/api/admin/v1/connector-authorizations/"+auth.String("id"), nil, "", "")
+			if status.String("status") != wantStatus {
+				t.Fatalf("授权状态 = %v，预期 %s", status, wantStatus)
+			}
+			var count int
+			if err := pool.QueryRow(ctx, "SELECT count(*) FROM connector_credentials WHERE connector_id=$1", other.String("id")).Scan(&count); err != nil || count != 0 {
+				t.Fatalf("失败回调保存了凭证：%d %v", count, err)
+			}
+		})
+	}
+	t.Run("个人 MCP OAuth 回调", func(t *testing.T) {
+		provider := must("POST", "/api/v1/connector-providers", resource.Object{"name": "个人 OAuth MCP", "url": upstream.URL, "authorization_mode": "independent", "authorization_method": "oauth", "oauth_config": p3["oauth_config"], "oauth_client_secret": "private-client-secret"}, "a", "")
+		connector := must("POST", "/api/v1/connectors", resource.Object{"name": "个人 OAuth 连接", "provider_id": provider.String("id")}, "a", "")
+		redirect = "http://localhost:8080/oauth/connectors/" + connector.String("id") + "/callback"
+		if connector.String("callback_url") != redirect {
+			t.Fatal("个人 MCP 创建未返回专属回调地址")
+		}
+		detail := must("GET", "/api/v1/connectors/"+connector.String("id"), nil, "a", "")
+		if detail.String("callback_url") != redirect {
+			t.Fatal("个人 MCP 详情回调地址错误")
+		}
+		auth := must("POST", "/api/v1/connectors/"+connector.String("id")+"/oauth/authorizations", nil, "a", "")
+		target, err := url.Parse(auth.String("authorization_url"))
+		if err != nil || target.Query().Get("redirect_uri") != redirect {
+			t.Fatal("个人 MCP 授权 URL 未绑定回调地址")
+		}
+		challenge = target.Query().Get("code_challenge")
+		adminCookie := cookie
+		cookie = nil
+		code, _, _ := call("GET", redirect+"?state="+url.QueryEscape(target.Query().Get("state"))+"&code=test-code", nil, "", "")
+		cookie = adminCookie
+		if code != 200 {
+			t.Fatalf("个人 MCP 公开回调失败：%d", code)
+		}
+		status := must("GET", "/api/v1/connector-authorizations/"+auth.String("id"), nil, "a", "")
+		if status.String("status") != "authorized" {
+			t.Fatal("个人 MCP OAuth 状态未落库")
+		}
+		var owner string
+		if err := pool.QueryRow(ctx, "SELECT user_id::text FROM connector_credentials WHERE connector_id=$1 AND status='authorized'", connector.String("id")).Scan(&owner); err != nil || owner != users[0] {
+			t.Fatalf("独立 OAuth 凭证未保存到发起用户：%s %v", owner, err)
+		}
+	})
 	must("POST", "/api/admin/v1/connectors/"+c3.String("id")+"/test", nil, "", "")
 	oauthTools := must("GET", "/api/admin/v1/connectors/"+c3.String("id")+"/tools", nil, "", "")["items"].([]any)
 	oauthTool := resource.Object(oauthTools[0].(map[string]any))

@@ -160,7 +160,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	modelProxy.Register(router)
 	connectors.RegisterGateway(router, keys, toolBilling{service: charges})
 	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
-	router.Get("/oauth/connectors/callback", connectors.Callback)
+	router.Get("/oauth/connectors/{id}/callback", connectors.Callback)
 	router.Mount("/oauth", identities.OAuthRouter())
 	auth := audits.Middleware(func(r *http.Request) audit.Actor {
 		switch r.URL.Path {

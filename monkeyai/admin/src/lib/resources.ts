@@ -45,6 +45,7 @@ export type ResourceRow = {
   tool_count: number
   connection_status: "connected" | "error" | "unknown"
   oauth_config: Record<string, string>
+  callback_url: string
 }
 export const base = "/api/admin/v1"
 export function selection(
