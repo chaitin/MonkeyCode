@@ -92,6 +92,7 @@ export default function TeamManagerRules() {
   const { t, i18n } = useTranslation()
   const [rules, setRules] = useState<ManagedRule[]>([])
   const [loading, setLoading] = useState(true)
+  const [forbidden, setForbidden] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ManagedRule | null>(null)
   const [name, setName] = useState("")
@@ -104,14 +105,28 @@ export default function TeamManagerRules() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [restoringId, setRestoringId] = useState("")
 
+  const isForbiddenError = (error: unknown): boolean => {
+    if (error instanceof Response) return error.status === 403
+    if (!error || typeof error !== "object") return false
+    return (error as { status?: number }).status === 403
+  }
+
   const fetchRules = async () => {
     setLoading(true)
+    setForbidden(false)
     await apiRequest("v1TeamsRulesList", {}, [], (resp) => {
       if (resp.code === 0) {
         setRules((resp.data?.rules || []).map(toManagedRule))
         return
       }
       toast.error(resp.message || t("managerRules.toast.fetchFailed"))
+    }, (error) => {
+      if (isForbiddenError(error)) {
+        setForbidden(true)
+        setRules([])
+        return
+      }
+      toast.error(t("managerRules.toast.fetchFailed"))
     })
     setLoading(false)
   }
@@ -244,10 +259,12 @@ export default function TeamManagerRules() {
           </CardTitle>
           <CardDescription>{t("managerRules.description")}</CardDescription>
           <CardAction>
-            <Button onClick={openCreate}>
-              <Plus />
-              {t("managerRules.actions.add")}
-            </Button>
+            {forbidden ? null : (
+              <Button onClick={openCreate}>
+                <Plus />
+                {t("managerRules.actions.add")}
+              </Button>
+            )}
           </CardAction>
         </CardHeader>
         <CardContent>
@@ -258,6 +275,16 @@ export default function TeamManagerRules() {
                   <FileText className="size-6" />
                 </EmptyMedia>
                 <EmptyTitle>{t("managerRules.empty.loading")}</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          ) : forbidden ? (
+            <Empty className="bg-muted">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <FileText className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>{t("managerRules.empty.forbiddenTitle")}</EmptyTitle>
+                <EmptyDescription>{t("managerRules.empty.forbiddenDescription")}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : rules.length === 0 ? (

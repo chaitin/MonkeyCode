@@ -3740,6 +3740,8 @@ const cn = {
       loading: "正在加载全局规范",
       title: "暂无全局规范",
       description: "新建规范后会显示在这里。",
+      forbiddenTitle: "无权限查看全局规范",
+      forbiddenDescription: "仅管理员可以管理企业级全局规范，普通成员不能查看正文。",
       historyLoading: "正在加载历史版本",
       historyTitle: "暂无历史版本",
       historyDescription: "保存规范后会在这里显示历史版本。",

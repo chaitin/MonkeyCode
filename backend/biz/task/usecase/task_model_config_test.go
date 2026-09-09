@@ -482,3 +482,54 @@ func TestGetCodingConfigsRebuildDoesNotRefreshRules(t *testing.T) {
 		t.Fatalf("Rules calls = %d, want 0 on includeRules=false", resolver.calls)
 	}
 }
+
+func TestCreateTaskReqSerializesRulesUnderConfigs(t *testing.T) {
+	resolver := &stubRuleResolver{rules: []agentresource.MaterializedRule{
+		{Name: "alive", Content: "keep-me"},
+	}}
+	uc := &TaskUsecase{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		resolver: resolver,
+	}
+
+	_, cfs, _, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, testOpenCodeModel(), nil, nil, agentresource.GlobalOnlyScope(), true)
+	if err != nil {
+		t.Fatalf("getCodingConfigs() error = %v", err)
+	}
+
+	raw, err := json.Marshal(taskflow.CreateTaskReq{Configs: cfs})
+	if err != nil {
+		t.Fatalf("marshal CreateTaskReq: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("unmarshal CreateTaskReq json: %v", err)
+	}
+	if _, ok := payload["config_files"]; ok {
+		t.Fatalf("CreateTaskReq json has config_files, want configs only: %s", raw)
+	}
+	configs, ok := payload["configs"].([]any)
+	if !ok {
+		t.Fatalf("CreateTaskReq json missing configs: %s", raw)
+	}
+
+	wantPath := "${HOME}/.codingmatrix/project-tpl/.ai-ready/rules/alive.md"
+	found := false
+	for _, item := range configs {
+		cfg, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if cfg["path"] == wantPath {
+			found = true
+			if cfg["content"] != "keep-me" {
+				t.Fatalf("rule content = %#v, want keep-me", cfg["content"])
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("configs missing %q: %s", wantPath, raw)
+	}
+}

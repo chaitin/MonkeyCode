@@ -3740,6 +3740,8 @@ const en = {
       loading: "Loading global rules",
       title: "No global rules",
       description: "Created rules will show up here.",
+      forbiddenTitle: "No permission to view global rules",
+      forbiddenDescription: "Only administrators can manage enterprise global rules. Members cannot view rule content.",
       historyLoading: "Loading history",
       historyTitle: "No history",
       historyDescription: "Saved versions will show up here.",
