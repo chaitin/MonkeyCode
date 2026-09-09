@@ -258,7 +258,7 @@ paths:
   /api/auth/v1/login:
     post:
       summary: 使用密码登录客户端
-      description: 需要开启 password_enabled，仅允许启用状态的普通用户；成功设置 HttpOnly、SameSite=Lax 会话
+      description: 需要开启 password_enabled，允许启用状态的普通用户和管理员；成功设置 HttpOnly、SameSite=Lax 会话
         Cookie，HTTPS 环境附加 Secure。
       security: []
       requestBody:
@@ -345,7 +345,7 @@ paths:
     post:
       summary: 使用邮箱验证码登录客户端
       description: 需要开启 email_code_enabled，使用 login
-        用途验证码。仅允许启用状态的普通用户，成功建立浏览器会话；验证码最多允许 5 次错误尝试。
+        用途验证码。允许启用状态的普通用户和管理员，成功建立浏览器会话；验证码最多允许 5 次错误尝试。
       security: []
       requestBody:
         required: true

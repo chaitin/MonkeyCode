@@ -258,8 +258,6 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 			code = "admin_role_required"
 		case adminLogin && errors.Is(err, ErrUserDisabled):
 			code = "admin_role_required"
-		case errors.Is(err, ErrAdminPasswordRequired):
-			code = "admin_password_required"
 		}
 		http.Redirect(w, r, s.upstreamResultURL(state, code), http.StatusFound)
 		return

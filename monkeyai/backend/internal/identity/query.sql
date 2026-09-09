@@ -61,7 +61,7 @@ FROM
     users
 WHERE
     lower(email) = $1
-    AND ROLE = sqlc.arg(role)
+    AND (NOT sqlc.arg(admin_only)::boolean OR ROLE = 'admin')
     AND status = 'active'
     AND deleted_at IS NULL
     AND password_hash IS NOT NULL;
@@ -371,8 +371,7 @@ WHERE
             last_login_at = now(),
             updated_at = now()
         WHERE
-            users.role = 'user'
-            AND users.status = 'active'
+            users.status = 'active'
         RETURNING
             id,
             name,

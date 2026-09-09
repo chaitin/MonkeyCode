@@ -98,7 +98,9 @@ func TestValidateUpstreamUserForAdminLogin(t *testing.T) {
 		{name: "active admin can use admin login", user: User{Role: "admin", Status: "active"}, adminOnly: true},
 		{name: "regular user cannot use admin login", user: User{Role: "user", Status: "active"}, adminOnly: true, want: ErrAdminRoleRequired},
 		{name: "disabled admin cannot use admin login", user: User{Role: "admin", Status: "disabled"}, adminOnly: true, want: ErrUserDisabled},
-		{name: "admin cannot enter client flow", user: User{Role: "admin", Status: "active"}, want: ErrAdminPasswordRequired},
+		{name: "admin can enter client flow", user: User{Role: "admin", Status: "active"}},
+		{name: "disabled admin cannot enter client flow", user: User{Role: "admin", Status: "disabled"}, want: ErrUserDisabled},
+		{name: "disabled user cannot enter client flow", user: User{Role: "user", Status: "disabled"}, want: ErrUserDisabled},
 		{name: "regular user can enter client flow", user: User{Role: "user", Status: "active"}},
 	}
 
