@@ -106,6 +106,7 @@ type McpServer = {
   revision: number
   providerId: string
   oauthConfig: Record<string, string>
+  callbackURL: string
   id: string
   name: string
   description: string
@@ -145,6 +146,7 @@ function toServer(row: ResourceRow): McpServer {
     enabled: row.enabled,
     toolCount: row.tool_count ?? 0,
     oauthConfig: row.oauth_config ?? {},
+    callbackURL: row.callback_url ?? "",
   }
 }
 
@@ -377,8 +379,10 @@ export function ToolsPage() {
           method: "PUT",
           body: JSON.stringify({ http_headers: JSON.parse(httpHeaders) }),
         })
-      form.reset()
-      handleDialogOpenChange(false)
+      if (editingServer || !saved.callback_url) {
+        form.reset()
+        handleDialogOpenChange(false)
+      }
     })
   }
   const handleDeleteServer = async () => {
@@ -662,7 +666,24 @@ export function ToolsPage() {
                       {authorizationMode !== "none" &&
                         authorizationMethod === "oauth" && (
                           <>
-                            {!editingServer && (
+                            {editingServer?.callbackURL ? (
+                              <Field>
+                                <FieldLabel htmlFor="mcp-callback-url">
+                                  {t("resources.callbackURL")}
+                                </FieldLabel>
+                                <Input
+                                  id="mcp-callback-url"
+                                  readOnly
+                                  value={editingServer.callbackURL}
+                                  onFocus={(event) =>
+                                    event.currentTarget.select()
+                                  }
+                                />
+                                <FieldDescription>
+                                  {t("resources.callbackURLDescription")}
+                                </FieldDescription>
+                              </Field>
+                            ) : (
                               <p className="text-sm text-muted-foreground">
                                 {t("resources.saveBeforeAuthorize")}
                               </p>

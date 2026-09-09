@@ -98,7 +98,10 @@ export const enUS = {
     defaultModel: "Default model",
     noDefaultModel: "User selects a model",
     saveBeforeAuthorize:
-      "Save the connection, then reopen it to authorize with OAuth.",
+      "Create the MCP to get its callback URL, then register it in your OAuth app before authorizing.",
+    callbackURL: "OAuth callback URL",
+    callbackURLDescription:
+      "Copy this URL and register it as the callback URL in your OAuth app. Each MCP has its own URL.",
   },
   app: {
     documentTitle: "MonkeyAI Admin",

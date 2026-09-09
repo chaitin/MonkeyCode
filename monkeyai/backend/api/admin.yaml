@@ -5,6 +5,48 @@ info:
 security:
   - AdminSession: []
 paths:
+  /oauth/connectors/{id}/callback:
+    get:
+      summary: 处理指定 MCP 的 OAuth 回调
+      description: 校验 MCP id 与 state 绑定、有效期及配置版本，单次消费授权事务并在服务端交换和保存 Token。无需浏览器会话或 Agent Token。
+      security: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: state
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: code
+        in: query
+        description: 授权成功时返回的授权码。
+        schema:
+          type: string
+      - name: error
+        in: query
+        description: 授权拒绝或取消时返回的错误码。
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 凭证已保存，浏览器显示授权成功页面。
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
   /api/auth/v1/methods:
     get:
       summary: 读取公开登录方式开关
@@ -6119,6 +6161,10 @@ components:
           - 'null'
         oauth_config:
           $ref: '#/components/schemas/OAuthConnectionConfig'
+        callback_url:
+          type: string
+          readOnly: true
+          description: OAuth MCP 的专属完整回调地址，格式为 {MONKEYAI_PUBLIC_URL}/oauth/connectors/{id}/callback；非 OAuth 连接为空字符串。
         config_revision:
           type: integer
         credential_configured:
@@ -6132,6 +6178,7 @@ components:
       - name
       - revision
       - grants
+      - callback_url
     ConnectorInput:
       type: object
       properties:

@@ -135,6 +135,10 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 	return nil
 }
 func (s *Service) decorateConnector(ctx context.Context, q resource.Queryer, o resource.Object) error {
+	o["callback_url"] = ""
+	if o.String("authorization_method") == "oauth" {
+		o["callback_url"] = s.callbackURL(o.String("id"))
+	}
 	user := ""
 	if o.String("ownership_type") == "user" {
 		user = o.String("owner_user_id")

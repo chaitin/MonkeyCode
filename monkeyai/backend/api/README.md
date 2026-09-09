@@ -119,3 +119,11 @@ Accept: application/json, text/event-stream
 工具调用可携带 `X-Session-ID` 关联本人工作会话，或 `Idempotency-Key` 避免重复执行；重复请求返回 409 和原 `X-Billing-Transaction-ID`。集中认证仅成功调用收费，独立认证和免认证只记录调用。JSON-RPC 错误或 `isError=true` 释放预留；超时、断流、无效结果保持未知状态供核查，不自动重放。上游 JSON/SSE 响应限制为 4 MiB，请求体限制为 1 MiB。
 
 协议错误使用 JSON-RPC 数字错误码；权限、额度等业务错误保留 HTTP 状态，并在 `error.data.code` 中提供业务错误码。上游内部错误详情不直接返回，使用 `X-Billing-Transaction-ID` 查询交易。生产 Nginx 和本地 Vite 已将 `/mcp` 转发到后端。
+
+## MCP OAuth 回调
+
+OAuth MCP 创建、详情和管理列表响应提供 `callback_url`，格式为 `{MONKEYAI_PUBLIC_URL}/oauth/connectors/{id}/callback`，其中 `id` 为 Connector 实例 ID。非 OAuth 连接返回空字符串。创建后将此完整地址登记到第三方 OAuth 应用；同一模板下的不同 MCP 实例也使用各自的地址。
+
+`POST /api/admin/v1/connectors/{id}/oauth/authorizations`（集中认证）或 `POST /api/v1/connectors/{id}/oauth/authorizations`（独立认证）生成带 state 和 PKCE 的授权 URL，`redirect_uri` 与 `callback_url` 一致。浏览器回调无需登录凭据，服务端核验路径 id、state、事务有效期、发起人权限和配置版本，单次消费后交换 Token，并按集中或独立认证上下文保存。成功页面提示返回 MonkeyAI，发起端通过授权事务状态接口查询结果。
+
+原有 OAuth 应用需将统一的 `/oauth/connectors/callback` 更新为各 MCP 的专属地址，再重新发起授权。
