@@ -915,6 +915,7 @@ paths:
                   revision:
                     type: integer
                   charging_mode:
+                    description: local 为本地扣费；remote 为百智云扣费，仅具有有效百智云登录身份的用户可访问系统资源，用户自建资源仍遵循原授权。
                     enum:
                     - local
                     - remote
@@ -1223,6 +1224,7 @@ paths:
       required: true
     put:
       summary: 核实并绑定百智云身份，有未完成远程交易时拒绝修改
+      description: external_user_id 必须匹配该用户有效百智云登录身份的 sub；普通 OAuth/OIDC 身份和历史手动绑定不能代替百智云身份。未指定绑定且只有一个百智云身份时自动使用其 sub。
       responses:
         '204':
           description: 绑定成功
@@ -4791,6 +4793,7 @@ components:
         enabled:
           type: boolean
         charging_mode:
+          description: local 为本地扣费；remote 为百智云扣费，仅具有有效百智云登录身份的用户可访问系统资源，用户自建资源仍遵循原授权。
           enum:
           - local
           - remote

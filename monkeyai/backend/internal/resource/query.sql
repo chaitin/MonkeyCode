@@ -197,3 +197,15 @@ FROM
     users
 WHERE
     id = $1;
+
+-- name: CanUseSystem :one
+SELECT EXISTS (
+    SELECT 1 FROM users u
+    WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL
+        AND (NOT EXISTS (
+            SELECT 1 FROM settings WHERE key = 'billing' AND value->>'charging_mode' = 'remote'
+        ) OR EXISTS (
+            SELECT 1 FROM user_identities i
+            WHERE i.user_id = u.id AND i.provider = 'baizhiyun' AND i.deleted_at IS NULL
+        ))
+)::boolean;

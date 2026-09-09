@@ -861,6 +861,8 @@ export const ruRU = {
         provider: "Поставщик",
         name: "Отображаемое имя",
         namePlaceholder: "Например: Корпоративный GitHub",
+        baizhiyunScopes:
+          "Разрешения по умолчанию: auth_certification openid phone user",
         issuerUrl: "URL издателя",
         clientId: "Client ID",
         clientSecret: "Client Secret",
@@ -876,6 +878,7 @@ export const ruRU = {
           google: "Google",
           microsoft: "Microsoft",
           gitlab: "GitLab",
+          baizhiyun: "Baizhi Cloud",
           oidc: "Пользовательский OIDC",
         },
       },

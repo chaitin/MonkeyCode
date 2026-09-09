@@ -2873,7 +2873,7 @@ components:
           description: OAuth 连接的稳定标识。
         provider:
           type: string
-          enum: [github, google, microsoft, gitlab, oidc]
+          enum: [github, google, microsoft, gitlab, oidc, baizhiyun]
           description: OAuth 或 OIDC 提供方。
         name:
           type: string
@@ -2884,7 +2884,7 @@ components:
         issuer_url:
           type: string
           format: uri
-          description: OIDC Issuer URL；非 OIDC 连接可不返回。
+          description: OIDC Issuer URL；oidc 和 baizhiyun 必填，其他连接可不返回。
         authorization_url:
           type: string
           format: uri
@@ -2899,7 +2899,7 @@ components:
           description: 自定义用户信息端点；使用提供方默认端点时可不返回。
         scopes:
           type: array
-          description: 请求上游授权时使用的 Scope；使用默认 Scope 时可不返回。
+          description: 请求上游授权时使用的 Scope；使用默认 Scope 时可不返回。百智云默认为 auth_certification、openid、phone、user。
           items:
             type: string
         enabled:
@@ -2952,11 +2952,11 @@ components:
           - monthly
           description: 积分额度刷新周期。
         charging_mode:
+          description: local 为本地扣费；remote 为百智云扣费，仅具有有效百智云登录身份的用户可访问系统资源，用户自建资源仍遵循原授权。
           type: string
           enum:
           - local
           - remote
-          description: 使用本地积分账户或远程计费服务。
         enabled:
           type: boolean
           description: 是否启用计费。

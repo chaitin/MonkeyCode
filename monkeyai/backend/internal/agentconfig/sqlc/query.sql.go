@@ -347,7 +347,7 @@ func (q *Queries) ListGrants(ctx context.Context, userID *string) ([][]byte, err
 
 const listModels = `-- name: ListModels :many
 SELECT
-    jsonb_build_object('id', id, 'owner_user_id', owner_user_id, 'enabled', enabled)
+    jsonb_build_object('id', id, 'ownership_type', ownership_type, 'owner_user_id', owner_user_id, 'enabled', enabled)
 FROM
     models
 WHERE

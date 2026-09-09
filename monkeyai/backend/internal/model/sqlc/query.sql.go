@@ -190,7 +190,7 @@ WITH RECURSIVE user_groups (
             FROM
                 group_users
             WHERE
-                user_id = $2
+                user_id = $3
                 AND removed_at IS NULL)
         UNION
         SELECT
@@ -210,9 +210,10 @@ FROM
 WHERE
     m.enabled
     AND m.deleted_at IS NULL
-    AND (($1::boolean
+    AND (m.ownership_type = 'user' OR $1::boolean)
+    AND (($2::boolean
             AND m.ownership_type = 'system')
-        OR m.owner_user_id = $2
+        OR m.owner_user_id = $3
         OR EXISTS (
             SELECT
                 1
@@ -222,9 +223,9 @@ WHERE
                 rag.resource_type = 'model'
                 AND rag.resource_id = m.id
                 AND ((rag.all_users AND EXISTS (
-                        SELECT 1 FROM users u WHERE u.id = $2 AND u.status = 'active' AND u.deleted_at IS NULL
+                        SELECT 1 FROM users u WHERE u.id = $3 AND u.status = 'active' AND u.deleted_at IS NULL
                     ))
-                    OR rag.user_id = $2
+                    OR rag.user_id = $3
                     OR rag.group_id IN (
                         SELECT
                             group_id
@@ -236,12 +237,13 @@ WHERE
 `
 
 type ListAvailableParams struct {
-	IsAdmin     bool
-	OwnerUserID string
+	SystemAccess bool
+	IsAdmin      bool
+	OwnerUserID  string
 }
 
 func (q *Queries) ListAvailable(ctx context.Context, arg ListAvailableParams) ([]Model, error) {
-	rows, err := q.db.Query(ctx, listAvailable, arg.IsAdmin, arg.OwnerUserID)
+	rows, err := q.db.Query(ctx, listAvailable, arg.SystemAccess, arg.IsAdmin, arg.OwnerUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -573,6 +575,7 @@ FROM models m
 JOIN users u ON u.id = $1
 WHERE (m.id::text = $2::text OR m.model_id = $2::text)
     AND m.enabled AND m.deleted_at IS NULL
+    AND (m.ownership_type = 'user' OR $3::boolean)
     AND (
         (u.role = 'admin' AND m.ownership_type = 'system')
         OR m.owner_user_id = $1
@@ -590,10 +593,11 @@ LIMIT 1
 type ResolveModelParams struct {
 	UserID         string
 	RequestedModel string
+	SystemAccess   bool
 }
 
 func (q *Queries) ResolveModel(ctx context.Context, arg ResolveModelParams) (Model, error) {
-	row := q.db.QueryRow(ctx, resolveModel, arg.UserID, arg.RequestedModel)
+	row := q.db.QueryRow(ctx, resolveModel, arg.UserID, arg.RequestedModel, arg.SystemAccess)
 	var i Model
 	err := row.Scan(
 		&i.ID,

@@ -860,6 +860,8 @@ export const es419 = {
         provider: "Proveedor",
         name: "Nombre para mostrar",
         namePlaceholder: "Por ejemplo: GitHub de la empresa",
+        baizhiyunScopes:
+          "Permisos predeterminados: auth_certification openid phone user",
         issuerUrl: "URL del emisor",
         clientId: "ID de cliente",
         clientSecret: "Secreto del cliente",
@@ -875,6 +877,7 @@ export const es419 = {
           google: "Google",
           microsoft: "Microsoft",
           gitlab: "GitLab",
+          baizhiyun: "Baizhi Cloud",
           oidc: "OIDC personalizado",
         },
       },

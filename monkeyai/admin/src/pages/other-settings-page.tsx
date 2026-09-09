@@ -89,6 +89,10 @@ const OAUTH_PROVIDERS = [
     labelKey: "pages.otherSettings.oauth.providers.microsoft",
   },
   { value: "gitlab", labelKey: "pages.otherSettings.oauth.providers.gitlab" },
+  {
+    value: "baizhiyun",
+    labelKey: "pages.otherSettings.oauth.providers.baizhiyun",
+  },
   { value: "oidc", labelKey: "pages.otherSettings.oauth.providers.oidc" },
 ] as const
 
@@ -130,6 +134,7 @@ type OAuthConnection = {
   clientId: string
   clientSecret: string
   issuerUrl?: string
+  scopes?: string[]
   enabled: boolean
 }
 
@@ -149,6 +154,9 @@ function readOAuthConnections(
       clientSecret: String(connection.client_secret ?? ""),
       issuerUrl: connection.issuer_url
         ? String(connection.issuer_url)
+        : undefined,
+      scopes: Array.isArray(connection.scopes)
+        ? connection.scopes.map(String)
         : undefined,
       enabled: Boolean(connection.enabled),
     }
@@ -363,6 +371,7 @@ export function OtherSettingsPage() {
         client_id: connection.clientId,
         client_secret: connection.clientSecret,
         issuer_url: connection.issuerUrl ?? null,
+        scopes: connection.scopes,
         enabled: connection.enabled,
       })),
     })
@@ -409,7 +418,8 @@ export function OtherSettingsPage() {
       !name ||
       !clientId ||
       !clientSecret ||
-      (oauthProvider === "oidc" && !issuerUrl)
+      ((oauthProvider === "oidc" || oauthProvider === "baizhiyun") &&
+        !issuerUrl)
     ) {
       return
     }
@@ -1511,7 +1521,8 @@ export function OtherSettingsPage() {
                         required
                       />
                     </Field>
-                    {oauthProvider === "oidc" && (
+                    {(oauthProvider === "oidc" ||
+                      oauthProvider === "baizhiyun") && (
                       <Field>
                         <FieldLabel htmlFor="oauth-issuer-url">
                           {t("pages.otherSettings.oauth.issuerUrl")}
@@ -1545,6 +1556,11 @@ export function OtherSettingsPage() {
                         {t("pages.otherSettings.oauth.secretDescription")}
                       </FieldDescription>
                     </Field>
+                    {oauthProvider === "baizhiyun" && (
+                      <FieldDescription>
+                        {t("pages.otherSettings.oauth.baizhiyunScopes")}
+                      </FieldDescription>
+                    )}
                   </FieldGroup>
                   <DialogFooter>
                     <DialogClose

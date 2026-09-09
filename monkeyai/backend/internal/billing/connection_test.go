@@ -244,6 +244,7 @@ func TestWalletSettings(t *testing.T) {
 func TestWalletSettingsProtectPendingTransactions(t *testing.T) {
 	s, user, model := fixture(t)
 	s.WithWallet(&Wallet{Client: &walletStub{}, BaseURL: "https://baizhiyun.vip", AppID: 4})
+	addWalletIdentity(t, s, user, "1001")
 	if err := s.BindWallet(t.Context(), user, user, "1001"); err != nil {
 		t.Fatal(err)
 	}
@@ -334,6 +335,7 @@ func TestWalletURLMigration(t *testing.T) {
 				cfg.BaseURL = "https://baizhi.cloud"
 			}
 			s.WithWallet(&Wallet{Client: &walletStub{}, BaseURL: cfg.BaseURL, AppID: cfg.AppID})
+			addWalletIdentity(t, s, user, "1001")
 			if err := s.BindWallet(t.Context(), user, user, "1001"); err != nil {
 				t.Fatal(err)
 			}

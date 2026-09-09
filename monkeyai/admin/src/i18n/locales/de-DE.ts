@@ -873,6 +873,8 @@ export const deDE = {
         provider: "Anbieter",
         name: "Anzeigename",
         namePlaceholder: "Zum Beispiel: Firmen-GitHub",
+        baizhiyunScopes:
+          "Standardberechtigungen: auth_certification openid phone user",
         issuerUrl: "Issuer-URL",
         clientId: "Client-ID",
         clientSecret: "Client-Secret",
@@ -888,6 +890,7 @@ export const deDE = {
           google: "Google",
           microsoft: "Microsoft",
           gitlab: "GitLab",
+          baizhiyun: "Baizhi Cloud",
           oidc: "Benutzerdefiniertes OIDC",
         },
       },

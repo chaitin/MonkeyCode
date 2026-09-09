@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -12,7 +13,12 @@ import (
 
 func (s *Service) listProviders(w http.ResponseWriter, r *http.Request) {
 	u, _ := identity.UserFromContext(r.Context())
-	items, err := resource.DecodeObjects(sqlc.New(s.Store.Pool).ListUserProviders(r.Context(), u.ID))
+	allowed, err := resource.CanUseSystem(r.Context(), s.Store.Pool, u.ID)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	items, err := resource.DecodeObjects(sqlc.New(s.Store.Pool).ListUserProviders(r.Context(), sqlc.ListUserProvidersParams{UserID: u.ID, SystemAccess: allowed}))
 	if err != nil {
 		resource.Fail(w, err)
 		return
@@ -25,7 +31,7 @@ func (s *Service) listProviders(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) getProvider(w http.ResponseWriter, r *http.Request) {
 	u, _ := identity.UserFromContext(r.Context())
-	p, err := resource.DecodeObject(sqlc.New(s.Store.Pool).GetUserProvider(r.Context(), sqlc.GetUserProviderParams{ID: chi.URLParam(r, "id"), UserID: u.ID}))
+	p, err := s.userProvider(r.Context(), s.Store.Pool, chi.URLParam(r, "id"), u.ID)
 	if err != nil {
 		resource.Fail(w, err)
 		return
@@ -52,4 +58,12 @@ func userIcon(o resource.Object) {
 	} else {
 		o["icon_path"] = strings.Replace(path, "/api/admin/v1/", "/api/v1/", 1)
 	}
+}
+
+func (s *Service) userProvider(ctx context.Context, q resource.Queryer, id, user string) (resource.Object, error) {
+	allowed, err := resource.CanUseSystem(ctx, q, user)
+	if err != nil {
+		return nil, err
+	}
+	return resource.DecodeObject(sqlc.New(q).GetUserProvider(ctx, sqlc.GetUserProviderParams{ID: id, UserID: user, SystemAccess: allowed}))
 }

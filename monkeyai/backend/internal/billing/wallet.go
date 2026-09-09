@@ -195,6 +195,13 @@ func (s *Service) BindWallet(ctx context.Context, actor, user, external string) 
 	if external == "" || len(external) > 128 {
 		return resource.Invalid("百智云用户 ID 无效")
 	}
+	ok, err := sqlc.New(s.pool).HasWalletIdentity(ctx, sqlc.HasWalletIdentityParams{UserID: user, ProviderSubject: external})
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fail(403, "baizhiyun_identity_required", "只能绑定用户通过百智云登录的身份")
+	}
 	c, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	profile, err := wallet.Client.GetUserByID(c, external)

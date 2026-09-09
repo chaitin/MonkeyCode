@@ -188,7 +188,7 @@ SELECT to_jsonb(p)
 FROM connector_providers p
 WHERE id = sqlc.arg(id)
     AND deleted_at IS NULL
-    AND ((ownership_type = 'system' AND enabled AND authorization_mode IN ('none', 'independent'))
+    AND ((ownership_type = 'system' AND sqlc.arg(system_access)::boolean AND enabled AND authorization_mode IN ('none', 'independent'))
         OR (ownership_type = 'user' AND owner_user_id = sqlc.arg(user_id)))
 FOR SHARE;
 
@@ -196,7 +196,7 @@ FOR SHARE;
 SELECT to_jsonb(p)
 FROM connector_providers p
 WHERE deleted_at IS NULL
-    AND ((ownership_type = 'system' AND enabled AND authorization_mode IN ('none', 'independent'))
+    AND ((ownership_type = 'system' AND sqlc.arg(system_access)::boolean AND enabled AND authorization_mode IN ('none', 'independent'))
         OR (ownership_type = 'user' AND owner_user_id = sqlc.arg(user_id)))
 ORDER BY lower(name), id;
 

@@ -11,6 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+const canUseSystem = `-- name: CanUseSystem :one
+SELECT EXISTS (
+    SELECT 1 FROM users u
+    WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL
+        AND (NOT EXISTS (
+            SELECT 1 FROM settings WHERE key = 'billing' AND value->>'charging_mode' = 'remote'
+        ) OR EXISTS (
+            SELECT 1 FROM user_identities i
+            WHERE i.user_id = u.id AND i.provider = 'baizhiyun' AND i.deleted_at IS NULL
+        ))
+)::boolean
+`
+
+func (q *Queries) CanUseSystem(ctx context.Context, id string) (bool, error) {
+	row := q.db.QueryRow(ctx, canUseSystem, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createGrant = `-- name: CreateGrant :execresult
 INSERT INTO resource_access_grants (resource_type, resource_id, user_id, group_id, all_users, access_level, usage_requirement,
     granted_by_user_id)

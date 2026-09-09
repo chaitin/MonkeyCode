@@ -114,6 +114,7 @@ FROM
 WHERE
     m.enabled
     AND m.deleted_at IS NULL
+    AND (m.ownership_type = 'user' OR sqlc.arg(system_access)::boolean)
     AND ((sqlc.arg(is_admin)::boolean
             AND m.ownership_type = 'system')
         OR m.owner_user_id = sqlc.arg(owner_user_id)
@@ -159,6 +160,7 @@ FROM models m
 JOIN users u ON u.id = sqlc.arg(user_id)
 WHERE (m.id::text = sqlc.arg(requested_model)::text OR m.model_id = sqlc.arg(requested_model)::text)
     AND m.enabled AND m.deleted_at IS NULL
+    AND (m.ownership_type = 'user' OR sqlc.arg(system_access)::boolean)
     AND (
         (u.role = 'admin' AND m.ownership_type = 'system')
         OR m.owner_user_id = sqlc.arg(user_id)

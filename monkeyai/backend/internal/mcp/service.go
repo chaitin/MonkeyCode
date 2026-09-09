@@ -106,7 +106,7 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 	var p resource.Object
 	var err error
 	if personal {
-		p, err = resource.DecodeObject(sqlc.New(tx).GetUserProvider(ctx, sqlc.GetUserProviderParams{ID: in.String("provider_id"), UserID: in.String("actor_id")}))
+		p, err = s.userProvider(ctx, tx, in.String("provider_id"), in.String("actor_id"))
 	} else {
 		p, err = resource.DecodeObject(sqlc.New(tx).GetEnabledProvider(ctx, in.String("provider_id")))
 	}

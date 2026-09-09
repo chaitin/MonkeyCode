@@ -149,6 +149,7 @@ func TestUserModelsAreFree(t *testing.T) {
 			wallet := &walletStub{}
 			s.WithWallet(&Wallet{Client: wallet, BaseURL: "https://baizhiyun.vip", AppID: 4})
 			if tc.bound {
+				addWalletIdentity(t, s, user, "1001")
 				if err := s.BindWallet(ctx, user, user, "1001"); err != nil {
 					t.Fatal(err)
 				}
@@ -370,6 +371,7 @@ func TestRemoteConfirmationRecovery(t *testing.T) {
 	ctx := t.Context()
 	stub := &walletStub{failConfirm: true}
 	s.WithWallet(&Wallet{Client: stub, BaseURL: "https://baizhiyun.vip", AppID: 4})
+	addWalletIdentity(t, s, user, "1001")
 	if err := s.BindWallet(ctx, user, user, "1001"); err != nil {
 		t.Fatal(err)
 	}
@@ -420,6 +422,7 @@ func TestUnknownAndRejectedRemoteReservation(t *testing.T) {
 			ctx := t.Context()
 			stub := &walletStub{createErr: tc.err}
 			s.WithWallet(&Wallet{Client: stub, BaseURL: "https://baizhiyun.vip", AppID: 4})
+			addWalletIdentity(t, s, user, "1002")
 			if err := s.BindWallet(ctx, user, user, "1002"); err != nil {
 				t.Fatal(err)
 			}

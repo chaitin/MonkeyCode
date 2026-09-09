@@ -829,6 +829,8 @@ export const ar = {
         provider: "الموفر",
         name: "اسم العرض",
         namePlaceholder: "مثال: GitHub للشركة",
+        baizhiyunScopes:
+          "نطاقات التفويض الافتراضية: auth_certification openid phone user",
         issuerUrl: "عنوان URL للمُصدر",
         clientId: "معرّف العميل",
         clientSecret: "سر العميل",
@@ -843,6 +845,7 @@ export const ar = {
           google: "Google",
           microsoft: "Microsoft",
           gitlab: "GitLab",
+          baizhiyun: "Baizhi Cloud",
           oidc: "OIDC مخصص",
         },
       },
