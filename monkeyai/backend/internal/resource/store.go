@@ -188,14 +188,16 @@ func Audit(ctx context.Context, tx pgx.Tx, actor, kind, id, action string) error
 }
 
 type Definition struct {
-	Kind, Path string
-	Repository func(Queryer) Repository
-	Fields     []string
-	Hidden     []string
-	Validate   func(context.Context, pgx.Tx, Object, Object) error
-	Persist    func(context.Context, pgx.Tx, Object) error
-	Decorate   func(context.Context, Queryer, Object) error
-	References func(context.Context, pgx.Tx, string) ([]Object, error)
+	Kind, Path   string
+	Repository   func(Queryer) Repository
+	Fields       []string
+	UserFields   []string
+	Hidden       []string
+	Validate     func(context.Context, pgx.Tx, Object, Object) error
+	Persist      func(context.Context, pgx.Tx, Object) error
+	Decorate     func(context.Context, Queryer, Object) error
+	UserDecorate func(Object)
+	References   func(context.Context, pgx.Tx, string) ([]Object, error)
 }
 type CRUD struct {
 	Store *Store
@@ -248,6 +250,9 @@ func (c *CRUD) List(ctx context.Context, q Queryer) ([]Object, error) {
 	return out, nil
 }
 func (c *CRUD) Save(ctx context.Context, actor, id, match string, in Object) (Object, error) {
+	return c.save(ctx, actor, id, match, in, false)
+}
+func (c *CRUD) save(ctx context.Context, actor, id, match string, in Object, personal bool) (Object, error) {
 	tx, err := c.Store.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -262,7 +267,10 @@ func (c *CRUD) Save(ctx context.Context, actor, id, match string, in Object) (Ob
 		if err != nil {
 			return nil, err
 		}
-		if old.String("ownership_type") == "user" {
+		if personal && !owned(old, actor) {
+			return nil, NotFound
+		}
+		if !personal && old.String("ownership_type") == "user" {
 			return nil, Invalid("个人资源仅允许治理删除")
 		}
 		if match == "" {
@@ -274,6 +282,16 @@ func (c *CRUD) Save(ctx context.Context, actor, id, match string, in Object) (Ob
 	}
 	in["id"] = id
 	in["actor_id"] = actor
+	in["ownership_type"] = "system"
+	if personal {
+		in["ownership_type"] = "user"
+		if slices.Contains(c.Def.Fields, "enabled") {
+			in["enabled"] = true
+			if !create {
+				in["enabled"] = old["enabled"]
+			}
+		}
+	}
 	if name, ok := in["name"].(string); ok {
 		in["name"] = strings.TrimSpace(name)
 	}
@@ -285,7 +303,7 @@ func (c *CRUD) Save(ctx context.Context, actor, id, match string, in Object) (Ob
 			return nil, err
 		}
 	}
-	payload := Object{"id": id, "actor_id": actor}
+	payload := Object{"id": id, "actor_id": actor, "ownership_type": in["ownership_type"]}
 	for _, key := range c.Def.Fields {
 		if value, ok := in[key]; ok {
 			payload[key] = value
@@ -304,7 +322,7 @@ func (c *CRUD) Save(ctx context.Context, actor, id, match string, in Object) (Ob
 	if err != nil {
 		return nil, err
 	}
-	if grants, ok := in["grants"]; ok {
+	if grants, ok := in["grants"]; ok && !personal {
 		if err = SaveGrants(ctx, tx, c.Def.Kind, id, actor, grants, false); err != nil {
 			return nil, err
 		}
@@ -320,9 +338,15 @@ func (c *CRUD) Save(ctx context.Context, actor, id, match string, in Object) (Ob
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
 	}
+	if personal {
+		return c.GetUser(ctx, c.Store.Pool, id, actor)
+	}
 	return c.Get(ctx, c.Store.Pool, id)
 }
 func (c *CRUD) Delete(ctx context.Context, actor, id, match string) error {
+	return c.delete(ctx, actor, id, match, false)
+}
+func (c *CRUD) delete(ctx context.Context, actor, id, match string, personal bool) error {
 	tx, err := c.Store.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -331,6 +355,12 @@ func (c *CRUD) Delete(ctx context.Context, actor, id, match string) error {
 	o, err := DecodeObject(c.Def.Repository(tx).LockResource(ctx, id))
 	if err != nil {
 		return err
+	}
+	if personal && !owned(o, actor) {
+		return NotFound
+	}
+	if personal && match == "" {
+		return &Error{Status: 428, Code: "precondition_required", Message: "删除需要 If-Match"}
 	}
 	if match != fmt.Sprintf(`"%v"`, o["revision"]) {
 		return Conflict
@@ -346,6 +376,11 @@ func (c *CRUD) Delete(ctx context.Context, actor, id, match string) error {
 	}
 	if err = c.Def.Repository(tx).DeleteResource(ctx, id); err != nil {
 		return err
+	}
+	if o.String("ownership_type") == "user" {
+		if _, err = sqlc.New(tx).DeleteGrants(ctx, sqlc.DeleteGrantsParams{ResourceType: c.Def.Kind, ResourceID: id}); err != nil {
+			return err
+		}
 	}
 	if err = Audit(ctx, tx, actor, c.Def.Kind, id, "delete"); err != nil {
 		return err

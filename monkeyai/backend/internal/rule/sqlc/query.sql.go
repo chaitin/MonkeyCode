@@ -21,7 +21,7 @@ INSERT INTO rules (name, content, id, owner_user_id, ownership_type)
         ELSE
             NULL
 	END, ($1::jsonb ->> 'id')::uuid, ($1::jsonb ->>
-	    'actor_id')::uuid, 'system')
+	    'actor_id')::uuid, COALESCE($1::jsonb ->> 'ownership_type', 'system'))
 `
 
 func (q *Queries) CreateResource(ctx context.Context, data []byte) error {

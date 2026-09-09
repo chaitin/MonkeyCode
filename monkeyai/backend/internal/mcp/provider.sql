@@ -64,7 +64,7 @@ INSERT INTO connector_providers (identifier, name, description, url, authorizati
         ELSE
             TRUE
 	END, (sqlc.arg(DATA)::jsonb ->> 'id')::uuid, (sqlc.arg(DATA)::jsonb ->>
-	    'actor_id')::uuid, 'system');
+	    'actor_id')::uuid, COALESCE(sqlc.arg(DATA)::jsonb ->> 'ownership_type', 'system'));
 
 -- name: UpdateResource :exec
 UPDATE

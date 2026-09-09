@@ -394,3 +394,16 @@ B、C、D 完成各自闭环后再集成 E，F 完成才标记本次功能交付
 ## 12. Agent 接口拆分状态（2026-09-07）
 
 已完成六类独立读取接口、整体配置入口移除、模型代理信息迁移及契约更新。PostgreSQL / RustFS 全量集成测试通过，覆盖独立缓存、分享与撤权、读取失败隔离、技能下载、专家依赖和连接器认证。
+
+## 13. 个人资源用户接口补齐（2026-09-09）
+
+- [x] 个人规则创建、详情、编辑和删除；个人技能 ZIP 上传、正文编辑、包替换、详情与删除。
+- [x] 个人 Provider 与 Connector 创建、详情、编辑和删除，以及可用 Provider 发现和个人图标管理。
+- [x] 个人模型、技能和规则使用统一批量分享/撤销接口；Connector 和 Provider 保持仅本人使用。
+- [x] 用户写入采用字段白名单，归属固定为当前用户；修改和删除检查所有权及 `If-Match`，分享变更递增修订号。
+- [x] 独立资源目录增加归属与修订号；删除个人资源同步清理分享，删除 Connector 同事务撤销凭证。
+- [x] `make check` 通过：Go 全量测试（含 PostgreSQL/RustFS 集成）、`go vet`、SQL 生成一致性；Admin/Agent OpenAPI 结构与引用校验通过。
+
+本次补齐 `/api/v1` 后端能力，未新增个人资源创作客户端。接口契约以 `backend/api/agent.yaml` 为准，无新增数据库迁移。
+
+- [x] 已提交 PR [#1256](https://github.com/chaitin/MonkeyCode/pull/1256)，分支 `feat-personal-resources`，目标分支 `main`，等待评审。
