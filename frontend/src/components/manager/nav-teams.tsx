@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 
 import {
@@ -10,10 +11,20 @@ import { IconReport, IconUsersGroup } from "@tabler/icons-react"
 import { Blocks, FileText, FolderGit2, KeyRound, LayoutDashboard, ListTodo, MessagesSquare, Settings, Sparkles } from "lucide-react"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { useTranslation } from "react-i18next"
+import { apiRequest } from "@/utils/requestUtils"
 
 export default function NavTeams() {
   const location = useLocation()
   const { t } = useTranslation()
+  const [canManageRules, setCanManageRules] = useState(false)
+
+  useEffect(() => {
+    void apiRequest("v1TeamsRulesList", {}, [], (resp) => {
+      setCanManageRules(resp.code === 0)
+    }, () => {
+      setCanManageRules(false)
+    })
+  }, [])
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
@@ -84,17 +95,19 @@ export default function NavTeams() {
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={location.pathname === "/manager/rules"}
-            asChild
-          >
-            <Link to="/manager/rules">
-              <FileText />
-              <span>{t("managerShell.nav.rules")}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        {canManageRules ? (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              isActive={location.pathname === "/manager/rules"}
+              asChild
+            >
+              <Link to="/manager/rules">
+                <FileText />
+                <span>{t("managerShell.nav.rules")}</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : null}
         <SidebarMenuItem>
           <SidebarMenuButton
             isActive={location.pathname === "/manager/mcp"}

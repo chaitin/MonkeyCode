@@ -9,6 +9,10 @@ const source = readFileSync(
   new URL("../src/pages/console/manager/rules.tsx", import.meta.url),
   "utf8",
 )
+const navSource = readFileSync(
+  new URL("../src/components/manager/nav-teams.tsx", import.meta.url),
+  "utf8",
+)
 const cjkPattern = /[\u3400-\u9fff]/
 
 test("全局规范管理页使用 managerRules i18n，403 不渲染成空列表", () => {
@@ -19,6 +23,9 @@ test("全局规范管理页使用 managerRules i18n，403 不渲染成空列表"
   assert.match(source, /error instanceof Response/)
   assert.match(source, /status === 403/)
   assert.doesNotMatch(source, cjkPattern)
+  assert.doesNotMatch(navSource, cjkPattern)
+  assert.match(navSource, /canManageRules/)
+  assert.match(navSource, /v1TeamsRulesList/)
 })
 
 test("全局规范无权限态提供中英文资源", () => {
