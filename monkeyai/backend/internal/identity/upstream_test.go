@@ -5,11 +5,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
 func TestBaizhiyunOIDC(t *testing.T) {
 	var issuer string
+	var userinfo string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
@@ -23,7 +25,8 @@ func TestBaizhiyunOIDC(t *testing.T) {
 			if r.Header.Get("Authorization") != "Bearer upstream-token" {
 				t.Error("缺少上游令牌")
 			}
-			writeJSON(w, 200, map[string]string{"sub": "1001", "name": "百智云用户", "phone_number": "13800000000"})
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(userinfo))
 		default:
 			http.NotFound(w, r)
 		}
@@ -54,10 +57,63 @@ func TestBaizhiyunOIDC(t *testing.T) {
 			t.Fatalf("授权地址无效: %s", target)
 		}
 	}
-	connection.Provider = "baizhiyun"
-	profile, err := s.exchangeUpstream(t.Context(), connection, "code")
-	if err != nil || profile.Provider != "baizhiyun" || profile.Subject != "1001" || profile.Issuer != issuer {
-		t.Fatalf("百智云身份解析错误: %+v %v", profile, err)
+	for _, tc := range []struct {
+		name     string
+		provider string
+		body     string
+		want     upstreamProfile
+		wantErr  string
+	}{
+		{
+			name:     "baizhiyun",
+			provider: "baizhiyun",
+			body:     `{"code":0,"message":"success","data":{"id":"1001","name":"百智云用户","avatar":"https://example.com/avatar.png","phone_number":"13800000000","is_certified":false,"user_type":"personal"}}`,
+			want:     upstreamProfile{Provider: "baizhiyun", Issuer: issuer, Subject: "1001", Name: "百智云用户", AvatarURL: "https://example.com/avatar.png"},
+		},
+		{
+			name:     "oidc",
+			provider: "oidc",
+			body:     `{"sub":"1002","name":"OIDC 用户","preferred_username":"user","email":"user@example.com","picture":"https://example.com/oidc.png"}`,
+			want:     upstreamProfile{Provider: "oidc", Issuer: issuer, Subject: "1002", Username: "user", Name: "OIDC 用户", Email: "user@example.com", AvatarURL: "https://example.com/oidc.png"},
+		},
+		{
+			name:     "business_error",
+			provider: "baizhiyun",
+			body:     `{"code":1001,"message":"denied","data":{"id":"1001"}}`,
+			wantErr:  "读取百智云用户: code 1001",
+		},
+		{
+			name:     "missing_code",
+			provider: "baizhiyun",
+			body:     `{"data":{"id":"1001"}}`,
+			wantErr:  "百智云用户响应缺少 code",
+		},
+		{
+			name:     "missing_data",
+			provider: "baizhiyun",
+			body:     `{"code":0,"data":null,"id":"1001"}`,
+			wantErr:  "上游用户缺少 subject",
+		},
+		{
+			name:     "missing_id",
+			provider: "baizhiyun",
+			body:     `{"code":0,"data":{"sub":"1001","phone_number":"13800000000"}}`,
+			wantErr:  "上游用户缺少 subject",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			connection.Provider, userinfo = tc.provider, tc.body
+			profile, err := s.exchangeUpstream(t.Context(), connection, "code")
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || profile != (upstreamProfile{}) {
+					t.Fatalf("无效用户信息未被拒绝: profile=%+v err=%v", profile, err)
+				}
+				return
+			}
+			if err != nil || profile != tc.want {
+				t.Fatalf("上游身份解析错误: profile=%+v want=%+v err=%v", profile, tc.want, err)
+			}
+		})
 	}
 }
 
