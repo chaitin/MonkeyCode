@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react"
-import { FileText, MoreVertical, Plus } from "lucide-react"
+import { FileText, History, MoreVertical, Plus } from "lucide-react"
 import { IconPencil, IconTrash } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
-import type { GithubComChaitinMonkeyCodeBackendDomainTeamRule as DomainTeamRule } from "@/api/Api"
+import type {
+  GithubComChaitinMonkeyCodeBackendDomainTeamRule as DomainTeamRule,
+  GithubComChaitinMonkeyCodeBackendDomainTeamRuleVersion as DomainTeamRuleVersion,
+} from "@/api/Api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -78,8 +81,15 @@ function toManagedRule(rule: DomainTeamRule): ManagedRule {
   }
 }
 
+
+function formatRuleVersionTime(value: number | undefined, language: string): string {
+  if (!value) return ""
+  const locale = language === "cn" ? "zh-CN" : "en-US"
+  return new Date(value * 1000).toLocaleString(locale, { hour12: false }).replace(/\//g, "-")
+}
+
 export default function TeamManagerRules() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [rules, setRules] = useState<ManagedRule[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -88,6 +98,11 @@ export default function TeamManagerRules() {
   const [description, setDescription] = useState("")
   const [content, setContent] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyRule, setHistoryRule] = useState<ManagedRule | null>(null)
+  const [historyVersions, setHistoryVersions] = useState<DomainTeamRuleVersion[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [restoringId, setRestoringId] = useState("")
 
   const fetchRules = async () => {
     setLoading(true)
@@ -188,6 +203,37 @@ export default function TeamManagerRules() {
     })
   }
 
+  const openHistory = (rule: ManagedRule) => {
+    setHistoryRule(rule)
+    setHistoryVersions([])
+    setHistoryOpen(true)
+    setHistoryLoading(true)
+    void apiRequest("v1TeamsRulesVersionsList", {}, [rule.id], (resp) => {
+      setHistoryLoading(false)
+      if (resp.code === 0) {
+        setHistoryVersions(resp.data?.versions || [])
+        return
+      }
+      toast.error(resp.message || t("managerRules.toast.historyFailed"))
+    }, () => setHistoryLoading(false))
+  }
+
+  const handleRestore = (versionId: string) => {
+    if (!historyRule || !versionId) return
+    setRestoringId(versionId)
+    void apiRequest("v1TeamsRulesRestoreCreate", { version_id: versionId }, [historyRule.id], (resp) => {
+      setRestoringId("")
+      if (resp.code === 0 && resp.data) {
+        const next = toManagedRule(resp.data)
+        setRules((prev) => prev.map((item) => (item.id === next.id ? next : item)))
+        setHistoryRule(next)
+        toast.success(t("managerRules.toast.restored"))
+        return
+      }
+      toast.error(resp.message || t("managerRules.toast.restoreFailed"))
+    }, () => setRestoringId(""))
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Card className="w-full shadow-none">
@@ -250,6 +296,10 @@ export default function TeamManagerRules() {
                         <DropdownMenuItem onSelect={() => openEdit(rule)}>
                           <IconPencil />
                           {t("managerRules.actions.edit")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => openHistory(rule)}>
+                          <History className="size-4" />
+                          {t("managerRules.actions.history")}
                         </DropdownMenuItem>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -333,6 +383,87 @@ export default function TeamManagerRules() {
             </Button>
             <Button onClick={handleSubmit} disabled={submitting}>
               {editing ? t("managerRules.actions.save") : t("managerRules.actions.add")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t("managerRules.dialogs.history.title", { name: historyRule?.name || "" })}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <p className="text-muted-foreground text-sm">
+              {t("managerRules.dialogs.history.description")}
+            </p>
+            {historyLoading ? (
+              <Empty className="bg-muted">
+                <EmptyHeader>
+                  <EmptyTitle>{t("managerRules.empty.historyLoading")}</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            ) : historyVersions.length === 0 ? (
+              <Empty className="bg-muted">
+                <EmptyHeader>
+                  <EmptyTitle>{t("managerRules.empty.historyTitle")}</EmptyTitle>
+                  <EmptyDescription>{t("managerRules.empty.historyDescription")}</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <ItemGroup className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+                {historyVersions.map((version) => {
+                  const versionId = version.id || ""
+                  const isActive = Boolean(version.version) && version.version === historyRule?.activeVersion
+                  return (
+                    <Item key={versionId || version.version} variant="outline" size="sm">
+                      <ItemContent>
+                        <ItemTitle className="font-mono text-sm">{version.version}</ItemTitle>
+                        <ItemDescription>
+                          {formatRuleVersionTime(version.created_at, i18n.language)}
+                        </ItemDescription>
+                      </ItemContent>
+                      <ItemActions>
+                        {isActive ? (
+                          <Badge variant="secondary">{t("managerRules.status.activeVersion")}</Badge>
+                        ) : (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="outline" disabled={Boolean(restoringId)}>
+                                {t("managerRules.actions.restore")}
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>{t("managerRules.dialogs.restore.title")}</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  {t("managerRules.dialogs.restore.description", { version: version.version })}
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>{t("managerShell.common.cancel")}</AlertDialogCancel>
+                                <AlertDialogAction
+                                  disabled={restoringId === versionId}
+                                  onClick={() => handleRestore(versionId)}
+                                >
+                                  {t("managerRules.dialogs.restore.confirm")}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                      </ItemActions>
+                    </Item>
+                  )
+                })}
+              </ItemGroup>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHistoryOpen(false)}>
+              {t("managerShell.common.close")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -161,3 +161,62 @@ func TestTeamRuleUsecaseEditContentCreatesVersionWithoutChangingEnabled(t *testi
 		t.Fatal("edit changed enabled")
 	}
 }
+
+func TestTeamRuleUsecaseRestoreSwitchesActiveVersionWithoutNewVersion(t *testing.T) {
+	ctx := context.Background()
+	client := newRuleTestClient(t, "team-rule-restore")
+	uc := &teamRuleUsecase{db: client}
+	user := testTeamUser()
+
+	created, err := uc.Add(ctx, user, &domain.AddTeamRuleReq{Name: "restore-me", Content: "# old\n"})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	updated, err := uc.Update(ctx, user, &domain.UpdateTeamRuleReq{RuleID: created.ID, Content: "# new\n"})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	versions, err := uc.ListVersions(ctx, user, &domain.ListTeamRuleVersionsReq{RuleID: created.ID})
+	if err != nil {
+		t.Fatalf("ListVersions: %v", err)
+	}
+	if len(versions.Versions) != 2 {
+		t.Fatalf("versions = %d, want 2", len(versions.Versions))
+	}
+	var oldID uuid.UUID
+	for _, v := range versions.Versions {
+		if v.Version == created.ActiveVersion {
+			oldID = v.ID
+		}
+	}
+	if oldID == uuid.Nil {
+		t.Fatal("old version id not found")
+	}
+
+	restored, err := uc.Restore(ctx, user, &domain.RestoreTeamRuleReq{RuleID: created.ID, VersionID: oldID})
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if restored.Content != "# old\n" {
+		t.Fatalf("restored content = %q, want old", restored.Content)
+	}
+	if restored.Enabled != updated.Enabled {
+		t.Fatal("restore changed enabled")
+	}
+	after, err := uc.ListVersions(ctx, user, &domain.ListTeamRuleVersionsReq{RuleID: created.ID})
+	if err != nil {
+		t.Fatalf("ListVersions after restore: %v", err)
+	}
+	if len(after.Versions) != 2 {
+		t.Fatalf("restore created a new version: %d", len(after.Versions))
+	}
+
+	repo := agentresource.NewRepo(client)
+	active, err := repo.ListActiveRules(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveRules: %v", err)
+	}
+	if len(active) != 1 || active[0].Content != "# old\n" {
+		t.Fatalf("injection after restore = %+v", active)
+	}
+}

@@ -3733,15 +3733,21 @@ const cn = {
       save: "保存",
       enable: "启用",
       disable: "禁用",
+      history: "历史版本",
+      restore: "恢复",
     },
     empty: {
       loading: "正在加载全局规范",
       title: "暂无全局规范",
       description: "新建规范后会显示在这里。",
+      historyLoading: "正在加载历史版本",
+      historyTitle: "暂无历史版本",
+      historyDescription: "保存规范后会在这里显示历史版本。",
     },
     status: {
       enabled: "已启用",
       disabled: "已禁用",
+      activeVersion: "当前活动版本",
     },
     dialogs: {
       add: { title: "新建全局规范" },
@@ -3750,6 +3756,15 @@ const cn = {
         title: "确认删除",
         description: "确定要删除规范 \"{{name}}\" 吗？已有任务不受影响，后续新建任务不再注入。",
         confirm: "确认删除",
+      },
+      history: {
+        title: "\"{{name}}\" 的历史版本",
+        description: "恢复后只切换当前活动版本，不新建版本，也不改变启停状态。已有任务保持创建时副本，后续新建任务使用恢复后的活动版本。",
+      },
+      restore: {
+        title: "确认恢复",
+        description: "确定要恢复版本 \"{{version}}\" 吗？已有任务不受影响，后续新建任务将使用该版本。",
+        confirm: "确认恢复",
       },
     },
     fields: {
@@ -3771,6 +3786,9 @@ const cn = {
       enableFailed: "启停失败",
       nameRequired: "名称不能为空",
       contentRequired: "正文不能为空",
+      historyFailed: "加载历史版本失败",
+      restored: "已恢复为活动版本",
+      restoreFailed: "恢复失败",
     },
   },
   managerSkills: {

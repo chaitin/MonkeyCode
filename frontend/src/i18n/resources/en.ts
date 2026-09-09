@@ -3733,15 +3733,21 @@ const en = {
       save: "Save",
       enable: "Enable",
       disable: "Disable",
+      history: "History",
+      restore: "Restore",
     },
     empty: {
       loading: "Loading global rules",
       title: "No global rules",
       description: "Created rules will show up here.",
+      historyLoading: "Loading history",
+      historyTitle: "No history",
+      historyDescription: "Saved versions will show up here.",
     },
     status: {
       enabled: "Enabled",
       disabled: "Disabled",
+      activeVersion: "Active version",
     },
     dialogs: {
       add: { title: "New global rule" },
@@ -3750,6 +3756,15 @@ const en = {
         title: "Delete rule",
         description: "Delete rule \"{{name}}\"? Existing tasks are unchanged; later tasks will not receive it.",
         confirm: "Delete",
+      },
+      history: {
+        title: "History of \"{{name}}\"",
+        description: "Restore switches the active version only. It does not create a new version or change enabled status. Existing tasks keep their original copies; later tasks use the restored version.",
+      },
+      restore: {
+        title: "Restore version",
+        description: "Restore version \"{{version}}\"? Existing tasks are unchanged; later tasks will use this version.",
+        confirm: "Restore",
       },
     },
     fields: {
@@ -3771,6 +3786,9 @@ const en = {
       enableFailed: "Failed to update status",
       nameRequired: "Name is required",
       contentRequired: "Content is required",
+      historyFailed: "Failed to load history",
+      restored: "Restored as the active version",
+      restoreFailed: "Failed to restore",
     },
   },
   managerSkills: {
