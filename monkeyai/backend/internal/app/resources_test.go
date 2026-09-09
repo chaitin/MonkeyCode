@@ -199,9 +199,12 @@ func TestResourceIntegration(t *testing.T) {
 		}
 	}
 	t.Run("固定查询保留缺省字段与显式空值", func(t *testing.T) {
-		input := resource.Object{"name": "字段更新测试", "identifier": "sqlc-fields", "url": "https://example.com/mcp", "authorization_mode": "none", "description": "保留描述", "enabled": false}
+		input := resource.Object{"name": "字段更新测试", "url": "https://example.com/mcp", "authorization_mode": "none", "description": "保留描述", "enabled": false}
 		provider := must("POST", "/api/admin/v1/connector-providers", input, "", "")
 		path := "/api/admin/v1/connector-providers/" + provider.String("id")
+		if provider.String("identifier") == "" {
+			t.Fatal("新建连接模板应由服务端生成标识")
+		}
 		if provider.Bool("enabled") || provider["authorization_method"] != nil {
 			t.Fatalf("创建字段错误: %v", provider)
 		}
@@ -218,6 +221,9 @@ func TestResourceIntegration(t *testing.T) {
 		delete(input, "enabled")
 		input["name"] = "有效更新"
 		current = must("PUT", path, input, "", `"1"`)
+		if current.String("identifier") != provider.String("identifier") {
+			t.Fatal("更新连接模板不应改变标识")
+		}
 		if current.String("description") != "保留描述" || current.Bool("enabled") || current.Int("revision") != 2 {
 			t.Fatalf("未传字段不应被覆盖: %v", current)
 		}

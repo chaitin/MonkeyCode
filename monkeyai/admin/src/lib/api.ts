@@ -30,3 +30,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return response.json() as Promise<T>
 }
+
+export async function allocateIDs(count = 1): Promise<string[]> {
+  const { ids } = await api<{ ids: string[] }>("/api/admin/v1/identifiers", {
+    method: "POST",
+    body: JSON.stringify({ count }),
+  })
+  return ids
+}

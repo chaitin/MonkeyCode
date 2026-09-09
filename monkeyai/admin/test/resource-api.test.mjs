@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { api, ApiError } from "../src/lib/api.ts"
+import { allocateIDs, api, ApiError } from "../src/lib/api.ts"
 
 test("上传保留 FormData，由浏览器生成 multipart boundary", async t => {
   const body = new FormData()
@@ -18,4 +18,23 @@ test("上传保留 FormData，由浏览器生成 multipart boundary", async t =>
 test("并发保存错误保留状态与可显示消息", async t => {
   t.mock.method(globalThis, "fetch", async () => Response.json({error:{code:"revision_conflict",message:"资源已更新，请刷新后重试"}}, {status:412}))
   await assert.rejects(api("/api/admin/v1/rules/id", {method:"PUT",body:JSON.stringify({content:"new"})}), e => e instanceof ApiError && e.status === 412 && e.message.includes("刷新"))
+})
+
+
+test("前端直接使用后端分配的标识", async t => {
+  t.mock.method(globalThis, "fetch", async (path, init) => {
+    assert.equal(path, "/api/admin/v1/identifiers")
+    assert.equal(init.method, "POST")
+    assert.equal(init.credentials, "include")
+    assert.deepEqual(JSON.parse(init.body), { count: 2 })
+    return Response.json({ ids: ["server-first", "server-second"] })
+  })
+  assert.deepEqual(await allocateIDs(2), ["server-first", "server-second"])
+})
+
+test("标识分配失败时保留错误供页面重试", async t => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ error: { message: "服务暂不可用" } }, { status: 503 })
+  )
+  await assert.rejects(allocateIDs(), e => e instanceof ApiError && e.status === 503)
 })

@@ -40,7 +40,10 @@ func NewService(store *resource.Store, publicURL string) *Service {
 }
 func validateProvider(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
 	if strings.TrimSpace(in.String("identifier")) == "" {
-		return resource.Invalid("Provider identifier 不能为空")
+		in["identifier"] = old.String("identifier")
+		if old.String("id") == "" {
+			in["identifier"] = resource.ID()
+		}
 	}
 	if !validURL(in.String("url")) {
 		return resource.Invalid("MCP URL 无效")

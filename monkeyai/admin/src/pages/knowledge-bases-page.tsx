@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react"
+import { useMemo, useRef, useState, type FormEvent } from "react"
 import {
   AlertCircleIcon,
   BookOpenTextIcon,
@@ -81,6 +81,7 @@ import {
   type AuthorizationSelection,
 } from "@/lib/authorization-groups"
 import { cn } from "@/lib/utils"
+import { allocateIDs } from "@/lib/api"
 
 type KnowledgeBaseType = "system" | "user"
 type KnowledgeContentType = "text" | "file"
@@ -297,6 +298,28 @@ export function KnowledgeBasesPage() {
   const { i18n, t } = useTranslation()
   const { tags: availableTags } = useSkillTags()
   const [knowledgeBases, setKnowledgeBases] = useState(INITIAL_KNOWLEDGE_BASES)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState("")
+  const submitting = useRef(false)
+
+  const submit = async (
+    event: FormEvent<HTMLFormElement>,
+    handler: (event: FormEvent<HTMLFormElement>) => Promise<void>
+  ) => {
+    event.preventDefault()
+    if (submitting.current) return
+    submitting.current = true
+    setSaving(true)
+    setSaveError("")
+    try {
+      await handler(event)
+    } catch (error) {
+      setSaveError((error as Error).message)
+    } finally {
+      submitting.current = false
+      setSaving(false)
+    }
+  }
   const [activeType, setActiveType] = useState<KnowledgeBaseType>("system")
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<
     string | null
@@ -348,6 +371,7 @@ export function KnowledgeBasesPage() {
 
   const handleKnowledgeBaseDialogOpenChange = (open: boolean) => {
     setKnowledgeBaseDialogOpen(open)
+    setSaveError("")
     if (!open) {
       setEditingKnowledgeBaseId(null)
       resetKnowledgeBaseOptions()
@@ -363,7 +387,9 @@ export function KnowledgeBasesPage() {
     setKnowledgeBaseDialogOpen(true)
   }
 
-  const handleSubmitKnowledgeBase = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmitKnowledgeBase = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
     event.preventDefault()
 
     const form = event.currentTarget
@@ -387,10 +413,11 @@ export function KnowledgeBasesPage() {
         )
       )
     } else {
+      const [id] = await allocateIDs()
       setKnowledgeBases((current) => [
         ...current,
         {
-          id: `knowledge-base-${Date.now()}`,
+          id,
           name,
           description,
           tagIds,
@@ -435,6 +462,7 @@ export function KnowledgeBasesPage() {
 
   const handleContentDialogOpenChange = (open: boolean) => {
     setContentDialogOpen(open)
+    setSaveError("")
     if (!open) {
       setContentMode("text")
       setEditingContentId(null)
@@ -535,12 +563,14 @@ export function KnowledgeBasesPage() {
       return
     }
 
-    const createdAt = Date.now()
+    const ids = await allocateIDs(
+      contentMode === "text" ? 1 : selectedFiles.length
+    )
     const newContents: KnowledgeContent[] =
       contentMode === "text"
         ? [
             {
-              id: `knowledge-content-${createdAt}`,
+              id: ids[0],
               name: textTitle,
               type: "text",
               status: "learning",
@@ -553,7 +583,7 @@ export function KnowledgeBasesPage() {
           ]
         : await Promise.all(
             selectedFiles.map(async (selectedFile, index) => ({
-              id: `knowledge-content-${createdAt}-${index}`,
+              id: ids[index],
               name: selectedFile.name,
               type: "file" as const,
               status: "learning" as const,
@@ -637,7 +667,7 @@ export function KnowledgeBasesPage() {
         <Dialog
           open
           onOpenChange={(open) => {
-            if (!open) {
+            if (!open && !submitting.current) {
               setSelectedKnowledgeBaseId(null)
               setContentDialogOpen(false)
               setPreviewContent(null)
@@ -886,7 +916,9 @@ export function KnowledgeBasesPage() {
         {isSystemKnowledgeBase && (
           <Dialog
             open={contentDialogOpen}
-            onOpenChange={handleContentDialogOpenChange}
+            onOpenChange={(open) => {
+              if (!submitting.current) handleContentDialogOpenChange(open)
+            }}
           >
             <DialogContent
               className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
@@ -895,7 +927,7 @@ export function KnowledgeBasesPage() {
               <form
                 key={editingContent?.id ?? "new-content"}
                 className="flex flex-col gap-6"
-                onSubmit={handleSubmitContent}
+                onSubmit={(event) => void submit(event, handleSubmitContent)}
               >
                 <DialogHeader>
                   <DialogTitle>
@@ -909,6 +941,11 @@ export function KnowledgeBasesPage() {
                       : t("pages.knowledgeBases.addContentDescription")}
                   </DialogDescription>
                 </DialogHeader>
+                {saveError && (
+                  <p className="text-sm text-destructive" role="alert">
+                    {saveError}
+                  </p>
+                )}
 
                 <Tabs
                   className="gap-5"
@@ -1008,7 +1045,7 @@ export function KnowledgeBasesPage() {
                   >
                     {t("pages.knowledgeBases.cancel")}
                   </DialogClose>
-                  <Button type="submit">
+                  <Button type="submit" disabled={saving}>
                     {editingContent
                       ? t("pages.knowledgeBases.saveAndRelearn")
                       : t("pages.knowledgeBases.addAndLearn")}
@@ -1092,7 +1129,10 @@ export function KnowledgeBasesPage() {
             {activeType === "system" && (
               <Dialog
                 open={knowledgeBaseDialogOpen}
-                onOpenChange={handleKnowledgeBaseDialogOpenChange}
+                onOpenChange={(open) => {
+                  if (!submitting.current)
+                    handleKnowledgeBaseDialogOpenChange(open)
+                }}
               >
                 <DialogTrigger
                   render={
@@ -1114,7 +1154,9 @@ export function KnowledgeBasesPage() {
                   <form
                     key={editingKnowledgeBase?.id ?? "new-knowledge-base"}
                     className="flex flex-col gap-6"
-                    onSubmit={handleSubmitKnowledgeBase}
+                    onSubmit={(event) =>
+                      void submit(event, handleSubmitKnowledgeBase)
+                    }
                   >
                     <DialogHeader>
                       <DialogTitle>
@@ -1126,6 +1168,11 @@ export function KnowledgeBasesPage() {
                         {t("pages.knowledgeBases.dialogDescription")}
                       </DialogDescription>
                     </DialogHeader>
+                    {saveError && (
+                      <p className="text-sm text-destructive" role="alert">
+                        {saveError}
+                      </p>
+                    )}
                     <FieldGroup className="gap-5">
                       <Field>
                         <FieldLabel htmlFor="knowledge-base-name">
@@ -1179,7 +1226,7 @@ export function KnowledgeBasesPage() {
                       >
                         {t("pages.knowledgeBases.cancel")}
                       </DialogClose>
-                      <Button type="submit">
+                      <Button type="submit" disabled={saving}>
                         {editingKnowledgeBase
                           ? t("pages.knowledgeBases.save")
                           : t("pages.knowledgeBases.create")}

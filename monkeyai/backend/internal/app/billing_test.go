@@ -108,6 +108,9 @@ func TestBillingIntegration(t *testing.T) {
 			t.Fatalf("匿名统计接口 %s: %d", path, code)
 		}
 	}
+	if code, _, _ := call("POST", "/api/admin/v1/identifiers", resource.Object{"count": 1}, "", ""); code != 401 {
+		t.Fatalf("匿名标识分配接口: %d", code)
+	}
 	must("POST", "/api/auth/v1/admin/login", resource.Object{"email": "billing-http@example.com", "password": "billing-test-password"}, "")
 	var user string
 	if err = pool.QueryRow(ctx, `SELECT id FROM users WHERE email='billing-http@example.com'`).Scan(&user); err != nil {
@@ -211,7 +214,18 @@ func TestBillingIntegration(t *testing.T) {
 		t.Fatalf("账目不平: %v", reconciliation)
 	}
 	// MCP 通过真实鉴权、目录和工具执行入口验证成功收费、业务失败不收费。
-	must("POST", "/api/admin/v1/billing/accounts/"+user+"/adjustments", resource.Object{"delta": "100", "reason": "工具测试", "idempotency_key": "adjust-http-2"}, "")
+	ids := must("POST", "/api/admin/v1/identifiers", resource.Object{"count": 1}, "")["ids"].([]any)
+	adjustment := resource.Object{"delta": "100", "reason": "工具测试", "idempotency_key": ids[0]}
+	adjustPath := "/api/admin/v1/billing/accounts/" + user + "/adjustments"
+	adjusted := must("POST", adjustPath, adjustment, "")
+	retried := must("POST", adjustPath, adjustment, "")
+	if adjusted["account"].(map[string]any)["balance"] != retried["balance"] {
+		t.Fatal("同一服务端幂等键重试不应重复调整余额")
+	}
+	adjustment["delta"] = "200"
+	if code, _, _ := call("POST", adjustPath, adjustment, "", ""); code != 409 {
+		t.Fatalf("同一标识提交不同调整内容应冲突: %d", code)
+	}
 	var toolCalls atomic.Int64
 	mcpUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {

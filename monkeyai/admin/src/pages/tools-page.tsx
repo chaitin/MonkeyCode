@@ -319,7 +319,6 @@ export function ToolsPage() {
         pendingProvider.current
       if (!providerId) {
         const provider = await saveResource("/connector-providers", {
-          identifier: crypto.randomUUID(),
           name,
           description,
           url,
