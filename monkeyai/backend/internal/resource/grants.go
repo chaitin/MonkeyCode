@@ -49,7 +49,7 @@ func (s *Store) RegisterGrants(r chi.Router, resources map[string]*CRUD) {
 			return
 		}
 		if o.String("ownership_type") == "user" {
-			Fail(w, Invalid("个人资源的分享范围由所有者管理"))
+			Fail(w, Invalid("个人资源不支持在管理端调整授权"))
 			return
 		}
 		if r.Header.Get("If-Match") != fmt.Sprintf(`"%v"`, o["revision"]) {

@@ -5795,12 +5795,6 @@ components:
     RuleResource:
       type: object
       properties:
-        shared_users:
-          type: array
-          readOnly: true
-          items:
-            $ref: '#/components/schemas/UserSummary'
-          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         id:
           type: string
           format: uuid
@@ -5824,6 +5818,7 @@ components:
         enabled:
           type: boolean
         grants:
+          description: 系统规则的授权范围；个人规则固定为空数组，仅创建者可用。
           type: array
           items:
             $ref: '#/components/schemas/ResourceGrant'

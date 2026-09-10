@@ -214,12 +214,16 @@ func (c *CRUD) Get(ctx context.Context, q Queryer, id string) (Object, error) {
 	return c.decorate(ctx, q, o)
 }
 func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error) {
-	g, err := Grants(ctx, q, c.Def.Kind, o.String("id"))
-	if err != nil {
-		return nil, err
+	g := []Object{}
+	var err error
+	if c.Def.Kind != "rule" || o.String("ownership_type") != "user" {
+		g, err = Grants(ctx, q, c.Def.Kind, o.String("id"))
+		if err != nil {
+			return nil, err
+		}
 	}
 	o["grants"] = g
-	if o.String("ownership_type") == "user" {
+	if c.Def.Kind != "rule" && o.String("ownership_type") == "user" {
 		users := []any{}
 		for _, grant := range g {
 			if user := grant["user"]; user != nil {
@@ -503,6 +507,9 @@ func Accessible(ctx context.Context, q Queryer, kind string, o Object, user stri
 	}
 	if v, ok := o["enabled"].(bool); ok && !v {
 		return false, nil
+	}
+	if kind == "rule" && o.String("ownership_type") == "user" {
+		return owned(o, user), nil
 	}
 	if o.String("ownership_type") == "system" {
 		ok, err := CanUseSystem(ctx, q, user)
