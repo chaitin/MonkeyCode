@@ -1754,7 +1754,7 @@ const en = {
     },
     invite: {
       title: "Invite users for credits",
-      description: "Share the invitation link with friends. After they register through this link, you will receive 5000 credits.",
+      description: "Share the invite link. After a friend registers through it, you earn 5,000 credits (reward cap: 10 people, 50,000 credits in total).",
       copyLink: "Copy link",
       invitedCount: "{{count}} invited",
       collapseList: "Collapse",
