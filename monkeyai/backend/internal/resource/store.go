@@ -513,9 +513,6 @@ func Accessible(ctx context.Context, q Queryer, kind string, o Object, user stri
 	if o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
 		return true, nil
 	}
-	if kind == "connector" && o.String("ownership_type") == "user" {
-		return false, nil
-	}
 	return Allowed(ctx, q, kind, o.String("id"), user)
 }
 func Stable(items []Object) {

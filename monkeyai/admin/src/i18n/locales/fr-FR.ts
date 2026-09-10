@@ -461,6 +461,7 @@ export const frFR = {
     },
     experts: {
       ...enUS.pages.experts,
+      personalExpert: "Expert personnel",
       title: "Experts",
       description:
         "Gérez les experts métier et les paramètres de leurs capacités.",

@@ -449,6 +449,7 @@ export const ar = {
     },
     experts: {
       ...enUS.pages.experts,
+      personalExpert: "خبير شخصي",
       title: "الخبراء",
       description: "أدِر خبراء المجالات وإعدادات قدراتهم.",
     },

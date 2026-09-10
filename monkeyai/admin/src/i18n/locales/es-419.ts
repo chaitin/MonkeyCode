@@ -463,6 +463,7 @@ export const es419 = {
     },
     experts: {
       ...enUS.pages.experts,
+      personalExpert: "Experto personal",
       title: "Expertos",
       description:
         "Administra expertos por área y la configuración de sus capacidades.",

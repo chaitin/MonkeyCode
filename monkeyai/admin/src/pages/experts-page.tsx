@@ -83,6 +83,8 @@ import {
 import { cn } from "@/lib/utils"
 
 type Expert = {
+  ownership: ResourceRow["ownership_type"]
+  owner: string
   revision: number
   id: string
   name: string
@@ -99,7 +101,10 @@ type Expert = {
   updatedAt: string
 }
 
-type ExpertForm = Omit<Expert, "id" | "updatedAt" | "enabled" | "revision">
+type ExpertForm = Omit<
+  Expert,
+  "id" | "updatedAt" | "enabled" | "revision" | "ownership" | "owner"
+>
 type AssociationKey = "knowledgeBaseIds" | "toolIds" | "ruleIds" | "skillIds"
 
 type AssociationOption = {
@@ -111,6 +116,8 @@ type AssociationOption = {
 function toExpert(row: ResourceRow): Expert {
   return {
     id: row.id,
+    ownership: row.ownership_type,
+    owner: row.owner_name ?? row.owner_user_id,
     revision: row.revision,
     name: row.name,
     description: row.description,
@@ -492,6 +499,11 @@ export function ExpertsPage() {
                       <span className="truncate" title={expert.name}>
                         {expert.name}
                       </span>
+                      {expert.ownership === "user" && (
+                        <Badge variant="outline">
+                          {t("pages.experts.personalExpert")}
+                        </Badge>
+                      )}
                       {!expert.enabled && (
                         <Badge variant="outline">
                           {t("pages.experts.disabled")}
@@ -504,6 +516,14 @@ export function ExpertsPage() {
                     >
                       {expert.description}
                     </CardDescription>
+                    {expert.ownership === "user" && (
+                      <CardDescription
+                        className="truncate"
+                        title={expert.owner}
+                      >
+                        {expert.owner}
+                      </CardDescription>
+                    )}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger
@@ -522,35 +542,45 @@ export function ExpertsPage() {
                       />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          disabled={expert.enabled}
-                          onClick={() => setExpertEnabled(expert.id, true)}
-                        >
-                          <HugeiconsIcon icon={PlayIcon} strokeWidth={2} />
-                          {t("pages.experts.enable")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={!expert.enabled}
-                          onClick={() => setExpertEnabled(expert.id, false)}
-                        >
-                          <HugeiconsIcon icon={PauseIcon} strokeWidth={2} />
-                          {t("pages.experts.disable")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => openEditDialog(expert)}
-                        >
-                          <HugeiconsIcon icon={Edit02Icon} strokeWidth={2} />
-                          {t("pages.experts.edit")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => duplicateExpert(expert)}
-                        >
-                          <HugeiconsIcon icon={Copy02Icon} strokeWidth={2} />
-                          {t("pages.experts.duplicate")}
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                      <DropdownMenuSeparator />
+                      {expert.ownership === "system" && (
+                        <>
+                          <DropdownMenuGroup>
+                            <DropdownMenuItem
+                              disabled={expert.enabled}
+                              onClick={() => setExpertEnabled(expert.id, true)}
+                            >
+                              <HugeiconsIcon icon={PlayIcon} strokeWidth={2} />
+                              {t("pages.experts.enable")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!expert.enabled}
+                              onClick={() => setExpertEnabled(expert.id, false)}
+                            >
+                              <HugeiconsIcon icon={PauseIcon} strokeWidth={2} />
+                              {t("pages.experts.disable")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => openEditDialog(expert)}
+                            >
+                              <HugeiconsIcon
+                                icon={Edit02Icon}
+                                strokeWidth={2}
+                              />
+                              {t("pages.experts.edit")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => duplicateExpert(expert)}
+                            >
+                              <HugeiconsIcon
+                                icon={Copy02Icon}
+                                strokeWidth={2}
+                              />
+                              {t("pages.experts.duplicate")}
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
                       <DropdownMenuGroup>
                         <DropdownMenuItem
                           variant="destructive"

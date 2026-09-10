@@ -64,7 +64,7 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 		}
 		*t.out = map[string]resource.Object{}
 		for _, o := range out {
-			if !systemAccess && (t.table == "experts" || (t.table != "connector_providers" && o.String("ownership_type") == "system")) {
+			if !systemAccess && t.table != "connector_providers" && o.String("ownership_type") == "system" {
 				continue
 			}
 			(*t.out)[o.String("id")] = o
@@ -106,7 +106,7 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 	}
 
 	for _, m := range models {
-		c.models[m.String("id")] = m.Bool("enabled") && (m.String("ownership_type") == "user" || systemAccess) && (admin || m.String("owner_user_id") == user || c.grants["model:"+m.String("id")])
+		c.models[m.String("id")] = m.Bool("enabled") && (m.String("ownership_type") == "user" || systemAccess) && ((admin && m.String("ownership_type") == "system") || m.String("owner_user_id") == user || c.grants["model:"+m.String("id")])
 	}
 	return c, nil
 }
@@ -121,9 +121,6 @@ func (c catalog) allowed(kind string, o resource.Object, user string) bool {
 		p := c.providers[o.String("provider_id")]
 		if p == nil || !p.Bool("enabled") {
 			return false
-		}
-		if o.String("ownership_type") == "user" {
-			return o.String("owner_user_id") == user
 		}
 	}
 	return (o.String("ownership_type") == "user" && o.String("owner_user_id") == user) || c.grants[kind+":"+o.String("id")]
@@ -178,7 +175,7 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 	rules, skills, providers, issues := []resource.Object{}, []resource.Object{}, []resource.Object{}, []resource.Object{}
 	for _, link := range c.links[expert+":expert_rules"] {
 		o := c.rules[link.String("rule_id")]
-		if o == nil {
+		if o == nil || (e.String("ownership_type") == "user" && !c.allowed("rule", o, user)) {
 			issues = append(issues, resource.Object{"code": "rule_missing", "blocking": true})
 			continue
 		}
@@ -186,7 +183,7 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 	}
 	for _, link := range c.links[expert+":expert_skills"] {
 		o := c.skills[link.String("skill_id")]
-		if o == nil || !o.Bool("enabled") {
+		if o == nil || !o.Bool("enabled") || (e.String("ownership_type") == "user" && !c.allowed("skill", o, user)) {
 			issues = append(issues, resource.Object{"code": "skill_disabled", "blocking": true})
 			continue
 		}
@@ -286,11 +283,9 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 		if err != nil {
 			return nil, err
 		}
-		if kind != "experts" {
-			dto["ownership_type"] = o["ownership_type"]
-			dto["owner_user_id"] = o["owner_user_id"]
-			dto["revision"] = o["revision"]
-		}
+		dto["ownership_type"] = o["ownership_type"]
+		dto["owner_user_id"] = o["owner_user_id"]
+		dto["revision"] = o["revision"]
 		if o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
 			owned = append(owned, id)
 		}
@@ -383,7 +378,8 @@ func (r *Resources) download(w http.ResponseWriter, req *http.Request, delegated
 	if delegated {
 		expert := id
 		id = chi.URLParam(req, "skillID")
-		if c.allowed("expert", c.experts[expert], u.ID) && c.skills[id] != nil && c.skills[id].Bool("enabled") {
+		e := c.experts[expert]
+		if c.allowed("expert", e, u.ID) && c.skills[id] != nil && c.skills[id].Bool("enabled") && (e.String("ownership_type") == "system" || c.allowed("skill", c.skills[id], u.ID)) {
 			for _, l := range c.links[expert+":expert_skills"] {
 				if l.String("skill_id") == id {
 					allowed = true

@@ -144,18 +144,43 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	upload("PUT", "/skills/"+skillID+"/package", "b", etag(savedSkill), "越权正文", 404)
 	call("DELETE", "/skills/"+skillID, "b", etag(savedSkill), nil, 404)
 
-	share := resource.ShareInput{Resources: []resource.ShareResource{{Type: "rule", ID: ruleID}, {Type: "skill", ID: skillID}}, UserIDs: []string{users[1]}}
+	expertInput := resource.Object{"name": "个人专家测试", "prompt": "个人提示词", "rule_ids": []string{ruleID}, "skill_ids": []string{skillID}, "ownership_type": "system", "owner_user_id": users[1], "enabled": false, "grants": []resource.Object{{"all_users": true}}}
+	call("POST", "/experts", "", "", expertInput, 401)
+	call("POST", "/experts", "b", "", expertInput, 400)
+	expert := call("POST", "/experts", "a", "", expertInput, 201)
+	expertID := expert.String("id")
+	expertPath := "/experts/" + expertID
+	if expert.String("owner_user_id") != users[0] || expert.String("ownership_type") != "user" || !expert.Bool("enabled") || len(expert["grants"].([]any)) != 0 {
+		t.Fatalf("专家归属、启用状态或授权被篡改: %v", expert)
+	}
+	call("POST", "/experts", "a", "", expertInput, 409)
+	otherExpert := call("POST", "/experts", "b", "", resource.Object{"name": expertInput["name"], "prompt": "其他用户"}, 201)
+	call("DELETE", "/experts/"+otherExpert.String("id"), "b", etag(otherExpert), nil, 204)
+	call("GET", expertPath, "b", "", nil, 404)
+	call("GET", expertPath+"/manifest", "b", "", nil, 404)
+	call("POST", "/resources/resolve", "b", "", resource.Object{"expert_id": expertID}, 404)
+	call("PUT", expertPath, "a", "", expertInput, 428)
+	call("PUT", expertPath, "a", `"0"`, expertInput, 412)
+	expertShare := resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: expertID}}, UserIDs: []string{users[1]}}
+	call("POST", "/resources/shares", "a", "", expertShare, 204)
+	blocked := call("GET", expertPath+"/manifest", "b", "", nil, 200)
+	if blocked.Bool("available") || len(blocked["rules"].([]any)) != 0 || len(blocked["skills"].([]any)) != 0 {
+		t.Fatalf("个人专家扩大了依赖资源权限: %v", blocked)
+	}
+	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 404)
+	call("DELETE", "/resources/shares", "a", "", expertShare, 204)
+	share := resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: expertID}, {Type: "rule", ID: ruleID}, {Type: "skill", ID: skillID}}, UserIDs: []string{users[1]}}
 	invalid := resource.ShareInput{Resources: share.Resources, UserIDs: []string{users[1], resource.ID()}}
 	call("POST", "/resources/shares", "a", "", invalid, 400)
 	invalid = resource.ShareInput{Resources: append([]resource.ShareResource{{Type: "rule", ID: otherRule.String("id")}}, share.Resources...), UserIDs: share.UserIDs}
 	call("POST", "/resources/shares", "a", "", invalid, 404)
-	if contains("rules", "b", ruleID) || contains("skills", "b", skillID) {
+	if contains("rules", "b", ruleID) || contains("skills", "b", skillID) || contains("experts", "b", expertID) {
 		t.Fatal("失败的批量分享未回滚")
 	}
 	before := call("GET", "/skills", "a", "", nil, 200).String("version")
 	call("POST", "/resources/shares", "a", "", share, 204)
 	call("POST", "/resources/shares", "a", "", share, 204)
-	if !contains("rules", "b", ruleID) || !contains("skills", "b", skillID) || before == call("GET", "/skills", "a", "", nil, 200).String("version") {
+	if !contains("rules", "b", ruleID) || !contains("skills", "b", skillID) || !contains("experts", "b", expertID) || before == call("GET", "/skills", "a", "", nil, 200).String("version") {
 		t.Fatal("分享后目录或版本未更新")
 	}
 	t.Run("个人资源共享用户信息与缓存", func(t *testing.T) {
@@ -195,7 +220,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		}
 		assertUsers("b", "b@example.com", 1)
 		versions := map[string]string{}
-		for _, kind := range []string{"skills", "rules"} {
+		for _, kind := range []string{"skills", "rules", "experts"} {
 			versions[kind] = call("GET", "/"+kind, "a", "", nil, 200).String("version")
 		}
 		t.Cleanup(func() {
@@ -221,6 +246,25 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		assertUsers("", "", 0)
 	})
 	call("POST", "/resources/shares", "b", "", resource.ShareInput{Resources: share.Resources, UserIDs: []string{users[0]}}, 404)
+	call("PUT", expertPath, "b", etag(expert), expertInput, 404)
+	call("DELETE", expertPath, "b", etag(expert), nil, 404)
+	expert = call("GET", expertPath, "a", "", nil, 200)
+	expert = call("PUT", expertPath, "a", etag(expert), resource.Object{"name": "编辑个人专家", "grants": []any{}}, 200)
+	if expert.String("prompt") != "个人提示词" || len(expert["shared_users"].([]any)) != 1 || len(expert["rule_ids"].([]any)) != 1 {
+		t.Fatalf("个人专家编辑丢失字段、依赖或共享: %v", expert)
+	}
+	resolved := call("POST", "/resources/resolve", "b", "", resource.Object{"expert_id": expertID}, 200)
+	if !resolved.Bool("available") || len(resolved["skills"].([]any)) != 1 {
+		t.Fatalf("共享专家不可用: %v", resolved)
+	}
+	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 200)
+	skillShare := resource.ShareInput{Resources: []resource.ShareResource{{Type: "skill", ID: skillID}}, UserIDs: share.UserIDs}
+	call("DELETE", "/resources/shares", "a", "", skillShare, 204)
+	if call("GET", expertPath+"/manifest", "b", "", nil, 200).Bool("available") {
+		t.Fatal("依赖撤权后专家仍可用")
+	}
+	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 404)
+	call("POST", "/resources/shares", "a", "", skillShare, 204)
 	call("PUT", "/skills/"+skillID, "b", etag(savedSkill), resource.Object{"name": "personal", "content": "越权"}, 404)
 	call("PUT", "/rules/"+ruleID, "a", etag(rule), ruleInput, 412)
 	rule = call("GET", "/rules/"+ruleID, "a", "", nil, 200)
@@ -247,7 +291,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		t.Fatalf("技能包未替换: %v", manifest)
 	}
 	call("DELETE", "/resources/shares", "a", "", share, 204)
-	if contains("rules", "b", ruleID) || contains("skills", "b", skillID) {
+	if contains("rules", "b", ruleID) || contains("skills", "b", skillID) || contains("experts", "b", expertID) {
 		t.Fatal("撤销分享后仍下发资源")
 	}
 	for _, item := range share.Resources {
@@ -266,6 +310,8 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 			}
 		}
 	}
+	call("GET", expertPath+"/manifest", "b", "", nil, 404)
+	call("POST", "/resources/resolve", "b", "", resource.Object{"expert_id": expertID}, 404)
 	request("GET", "/skills/"+skillID+"/package", "b", "", "", nil, 404)
 	call("POST", "/resources/shares", "a", "", share, 204)
 	for _, item := range share.Resources {
@@ -312,9 +358,47 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	if !contains("connectors", "a", connectorID) || contains("connectors", "b", connectorID) {
 		t.Fatal("个人 Connector 可见范围错误")
 	}
-	call("POST", "/resources/shares", "a", "", resource.ShareInput{Resources: []resource.ShareResource{{Type: "connector", ID: connectorID}}, UserIDs: []string{users[1]}}, 400)
+	connectorShare := resource.ShareInput{Resources: []resource.ShareResource{{Type: "connector", ID: connectorID}}, UserIDs: []string{users[1]}}
+	connectorVersion := call("GET", "/connectors", "a", "", nil, 200).String("version")
+	call("POST", "/resources/shares", "a", "", connectorShare, 204)
+	call("POST", "/resources/shares", "a", "", connectorShare, 204)
+	if !contains("connectors", "b", connectorID) || connectorVersion == call("GET", "/connectors", "a", "", nil, 200).String("version") {
+		t.Fatal("共享工具目录或版本未更新")
+	}
+	call("GET", "/connectors/"+connectorID, "b", "", nil, 404)
+	call("GET", "/connector-providers/"+providerID, "b", "", nil, 404)
+	call("PUT", "/connectors/"+connectorID, "b", etag(connector), resource.Object{"name": "越权编辑"}, 404)
+	call("DELETE", "/connectors/"+connectorID, "b", etag(connector), nil, 404)
+	call("POST", "/resources/shares", "b", "", resource.ShareInput{Resources: connectorShare.Resources, UserIDs: []string{users[0]}}, 404)
+	call("PUT", "/connectors/"+connectorID+"/credential", "b", "", resource.Object{"http_headers": resource.Object{"X-Test-Key": "recipient-secret"}}, 204)
+	boundExpert := call("POST", "/experts", "b", "", resource.Object{"name": "使用共享连接的专家", "prompt": "测试", "providers": []resource.Object{{"provider_id": providerID}}}, 201)
+	boundPath := "/experts/" + boundExpert.String("id")
+	if out := call("GET", boundPath+"/manifest", "b", "", nil, 200); !out.Bool("available") {
+		t.Fatalf("共享连接不能用于专家: %v", out)
+	}
+	call("DELETE", "/resources/shares", "a", "", connectorShare, 204)
+	if contains("connectors", "b", connectorID) {
+		t.Fatal("撤销后仍下发共享工具")
+	}
+	call("GET", "/connectors/"+connectorID+"/tools", "b", "", nil, 404)
+	call("PUT", "/connectors/"+connectorID+"/credential", "b", "", resource.Object{"http_headers": resource.Object{}}, 404)
+	if out := call("GET", boundPath+"/manifest", "b", "", nil, 200); out.Bool("available") {
+		t.Fatalf("共享连接撤权后专家仍可用: %v", out)
+	}
+	call("DELETE", boundPath, "b", etag(boundExpert), nil, 204)
+	call("POST", "/resources/shares", "a", "", connectorShare, 204)
+	connector = call("GET", "/connectors/"+connectorID, "a", "", nil, 200)
+	if len(connector["shared_users"].([]any)) != 1 {
+		t.Fatal("工具共享名单重复或缺失")
+	}
+
 	call("DELETE", "/connector-providers/"+providerID, "a", etag(provider), nil, 409)
 	call("DELETE", "/connectors/"+connectorID, "a", etag(connector), nil, 204)
+	call("GET", "/connectors/"+connectorID+"/tools", "b", "", nil, 404)
+	var grants int
+	if err = pool.QueryRow(t.Context(), `SELECT count(*) FROM resource_access_grants WHERE resource_type='connector' AND resource_id=$1`, connectorID).Scan(&grants); err != nil || grants != 0 {
+		t.Fatalf("删除未清理工具分享: %d %v", grants, err)
+	}
 	var activeCredentials int
 	if err = pool.QueryRow(t.Context(), `SELECT count(*) FROM connector_credentials WHERE connector_id=$1 AND revoked_at IS NULL`, connectorID).Scan(&activeCredentials); err != nil || activeCredentials != 0 {
 		t.Fatalf("删除 Connector 未撤销凭证: count=%d err=%v", activeCredentials, err)

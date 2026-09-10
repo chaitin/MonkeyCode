@@ -457,6 +457,7 @@ export const jaJP = {
     },
     experts: {
       ...enUS.pages.experts,
+      personalExpert: "個人エキスパート",
       title: "エキスパート",
       description: "分野別エキスパートと専門能力の設定を管理します。",
     },

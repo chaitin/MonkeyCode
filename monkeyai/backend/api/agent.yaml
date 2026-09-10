@@ -820,7 +820,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户
-      description: 支持 model、skill、rule；Connector 和 Provider 暂不支持分享。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各 1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
+      description: 支持 model、skill、rule、connector、expert；Provider 不支持直接分享。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各 1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
       requestBody:
         required: true
         content:
@@ -1005,7 +1005,7 @@ paths:
   /api/v1/experts:
     get:
       summary: 读取 Agent 专家
-      description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
+      description: 返回启用的系统授权专家、自有专家及收到分享的个人专家；包含归属与修订号，所有者可查看 shared_users。独立计算版本，每次请求重新检查身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
       responses:
@@ -1026,6 +1026,39 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+    post:
+      summary: 创建当前用户的个人专家
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/UserExpertInput'
+              - required: [prompt]
+      responses:
+        '201':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: 归属固定为当前用户，默认启用；仅允许关联自己可用的模型、规则、技能和连接模板。分享通过 /resources/shares 管理。
   /api/v1/connectors:
     get:
       summary: 读取 Agent 连接器
@@ -1611,6 +1644,91 @@ paths:
       parameters:
       - $ref: '#/components/parameters/ResourceID'
       - $ref: '#/components/parameters/IfMatch'
+  /api/v1/experts/{id}:
+    get:
+      summary: 读取自己的个人专家
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+    put:
+      summary: 编辑自己的个人专家
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserExpertInput'
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。
+    delete:
+      summary: 删除自己的个人专家
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 资源已软删除，相关分享同步清理。
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
   /api/v1/rules/{id}:
     get:
       summary: 读取自己的个人规则
@@ -2308,6 +2426,38 @@ components:
       required:
       - name
       description: 仅声明的字段可由当前用户写入；归属、启用状态、授权和其他服务端字段忽略。
+    UserExpertInput:
+      type: object
+      properties:
+        description:
+          type: string
+        prompt:
+          type: string
+        default_model_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        rule_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        skill_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderDependency'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+      - name
     UserConnectorInput:
       type: object
       properties:
@@ -2731,6 +2881,8 @@ components:
                 - model
                 - skill
                 - rule
+                - connector
+                - expert
                 description: 可分享的个人资源类型；其他类型返回 400。
               id: *id006
         user_ids:
@@ -3448,6 +3600,26 @@ components:
     AgentExpert:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
+        ownership_type:
+          type: string
+          enum:
+          - system
+          - user
+          description: 独立资源目录返回；分享不改变资源归属。
+        owner_user_id:
+          type: string
+          format: uuid
+          description: 独立资源目录返回；与当前用户 ID 比较以判断是否可编辑。
+        revision:
+          type: integer
+          minimum: 1
+          description: 独立资源目录返回；管理详情和修改接口使用此修订号作为 ETag。
         id:
           type: string
           format: uuid
@@ -3741,6 +3913,12 @@ components:
     ExpertResource:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         id:
           type: string
           format: uuid

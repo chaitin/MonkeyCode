@@ -18,7 +18,6 @@ FROM
     connector_providers p
 WHERE
     id = $1
-    AND ownership_type = 'system'
     AND deleted_at IS NULL FOR SHARE;
 
 -- name: DeleteProviderLinks :execresult
@@ -77,7 +76,7 @@ FROM
 WHERE
     deleted_at IS NULL
     AND (sqlc.arg(filter)::jsonb ->> 'ownership' = ''
-        OR 'system' = sqlc.arg(filter)::jsonb ->> 'ownership')
+        OR t.ownership_type = sqlc.arg(filter)::jsonb ->> 'ownership')
     AND name ILIKE '%' || (sqlc.arg(filter)::jsonb ->> 'search') || '%'
     AND id::text > sqlc.arg(filter)::jsonb ->> 'cursor'
 ORDER BY
@@ -85,7 +84,7 @@ ORDER BY
 LIMIT (sqlc.arg(filter)::jsonb ->> 'limit')::integer;
 
 -- name: CreateResource :exec
-INSERT INTO experts (name, description, prompt, default_model_id, enabled, id, created_by_user_id)
+INSERT INTO experts (name, description, prompt, default_model_id, enabled, id, created_by_user_id, owner_user_id, ownership_type)
     VALUES (
         CASE WHEN sqlc.arg(DATA)::jsonb ? 'name' THEN
             (sqlc.arg(DATA)::jsonb ->> 'name')::text
@@ -107,7 +106,8 @@ INSERT INTO experts (name, description, prompt, default_model_id, enabled, id, c
             (sqlc.arg(DATA)::jsonb ->> 'enabled')::boolean
         ELSE
             TRUE
-        END, (sqlc.arg(DATA)::jsonb ->> 'id')::uuid, (sqlc.arg(DATA)::jsonb ->> 'actor_id')::uuid);
+        END, (sqlc.arg(DATA)::jsonb ->> 'id')::uuid, (sqlc.arg(DATA)::jsonb ->> 'actor_id')::uuid,
+        (sqlc.arg(DATA)::jsonb ->> 'actor_id')::uuid, COALESCE(sqlc.arg(DATA)::jsonb ->> 'ownership_type', 'system'));
 
 -- name: UpdateResource :exec
 UPDATE
@@ -174,12 +174,11 @@ WHERE
 
 -- name: LockRule :one
 SELECT
-    id
+    to_jsonb(t)
 FROM
-    rules
+    rules t
 WHERE
     id = $1
-    AND ownership_type = 'system'
     AND deleted_at IS NULL FOR SHARE;
 
 -- name: DeleteRuleLinks :exec
@@ -202,12 +201,11 @@ ORDER BY
 
 -- name: LockSkill :one
 SELECT
-    id
+    to_jsonb(t)
 FROM
-    skills
+    skills t
 WHERE
     id = $1
-    AND ownership_type = 'system'
     AND deleted_at IS NULL FOR SHARE;
 
 -- name: DeleteSkillLinks :exec
@@ -227,3 +225,12 @@ WHERE
     expert_id = $1
 ORDER BY
     skill_id;
+
+-- name: GetModel :one
+SELECT to_jsonb(m) FROM models m WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: IsAdmin :one
+SELECT role = 'admin' FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL;
+
+-- name: ListProviderConnectors :many
+SELECT to_jsonb(c) FROM connectors c WHERE provider_id = $1 AND deleted_at IS NULL AND enabled;

@@ -3,6 +3,7 @@ package expert
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -21,56 +22,133 @@ type Service struct {
 
 func NewService(store *resource.Store) *Service {
 	s := &Service{Store: store}
-	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "default_model_id", "enabled"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
+	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "default_model_id", "enabled"}, UserFields: []string{"name", "description", "prompt", "default_model_id", "rule_ids", "skill_ids", "providers"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
 	return s
 }
 func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
+	personal := in.String("ownership_type") == "user"
+	if personal {
+		for _, key := range []string{"description", "prompt", "default_model_id"} {
+			if _, ok := in[key]; !ok {
+				in[key] = old.String(key)
+			}
+		}
+	}
 	if strings.TrimSpace(in.String("prompt")) == "" {
 		return resource.Invalid("专家 Prompt 不能为空")
 	}
+	queries := sqlc.New(tx)
 	if in.String("default_model_id") == "" {
 		in["default_model_id"] = nil
-	} else {
-		ok, err := sqlc.New(tx).ModelAvailable(ctx, in.String("default_model_id"))
+	} else if personal {
+		model, err := resource.DecodeObject(queries.GetModel(ctx, in.String("default_model_id")))
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return resource.Invalid("默认模型不存在或不可用")
+			}
+			return err
+		}
+		ok, err := resource.Accessible(ctx, tx, "model", model, in.String("actor_id"))
 		if err != nil {
 			return err
 		}
-
+		if !ok && model.String("ownership_type") == "system" && model.Bool("enabled") {
+			ok, err = resource.CanUseSystem(ctx, tx, in.String("actor_id"))
+			if err != nil {
+				return err
+			}
+			if ok {
+				ok, err = queries.IsAdmin(ctx, in.String("actor_id"))
+				if err != nil {
+					return err
+				}
+			}
+		}
+		if !ok {
+			return resource.Invalid("默认模型不存在或不可用")
+		}
+	} else {
+		ok, err := queries.ModelAvailable(ctx, in.String("default_model_id"))
+		if err != nil {
+			return err
+		}
 		if !ok {
 			return resource.Invalid("默认模型不存在或不可用")
 		}
 	}
-	queries := sqlc.New(tx)
 	for _, link := range []struct {
-		key  string
-		lock func(context.Context, string) (string, error)
-	}{{"rule_ids", queries.LockRule}, {"skill_ids", queries.LockSkill}} {
+		key, kind string
+		lock      func(context.Context, string) ([]byte, error)
+	}{{"rule_ids", "rule", queries.LockRule}, {"skill_ids", "skill", queries.LockSkill}, {"providers", "provider", queries.LockProvider}} {
+		ids := resource.Strings(in[link.key])
+		if link.kind == "provider" {
+			ids = nil
+			for _, p := range providerLinks(in[link.key]) {
+				ids = append(ids, p.String("provider_id"))
+			}
+		}
 		seen := map[string]bool{}
-		for _, id := range resource.Strings(in[link.key]) {
+		for _, id := range ids {
 			if seen[id] {
 				return resource.Invalid("专家关联重复")
 			}
 			seen[id] = true
-			_, err := link.lock(ctx, id)
+			o, err := resource.DecodeObject(link.lock(ctx, id))
 			if err != nil {
-				return resource.Invalid("专家只能关联有效系统资源")
+				if errors.Is(err, pgx.ErrNoRows) {
+					return resource.Invalid("专家关联资源不存在或不可用")
+				}
+				return err
 			}
-		}
-	}
-	b := providerLinks(in["providers"])
-	seen := map[string]bool{}
-	for _, p := range b {
-		if seen[p.String("provider_id")] {
-			return resource.Invalid("Provider 关联重复")
-		}
-		seen[p.String("provider_id")] = true
-		_, err := resource.DecodeObject(sqlc.New(tx).LockProvider(ctx, p.String("provider_id")))
-		if err != nil {
-			return resource.Invalid("专家 Provider 不存在")
+			ok := o.String("ownership_type") == "system"
+			if personal {
+				if link.kind == "provider" {
+					ok, err = s.providerAvailable(ctx, tx, o, in.String("actor_id"))
+				} else {
+					ok, err = resource.Accessible(ctx, tx, link.kind, o, in.String("actor_id"))
+				}
+				if err != nil {
+					return err
+				}
+			}
+			if !ok {
+				return resource.Invalid("专家关联资源不存在或不可用")
+			}
 		}
 	}
 	return nil
 }
+
+func (s *Service) providerAvailable(ctx context.Context, tx pgx.Tx, provider resource.Object, actor string) (bool, error) {
+	if !provider.Bool("enabled") {
+		return false, nil
+	}
+	if provider.String("ownership_type") == "system" {
+		ok, err := resource.CanUseSystem(ctx, tx, actor)
+		if err != nil || ok {
+			return ok, err
+		}
+	}
+	if provider.String("owner_user_id") == actor {
+		return true, nil
+	}
+	connectors, err := resource.DecodeObjects(sqlc.New(tx).ListProviderConnectors(ctx, provider.String("id")))
+	if err != nil {
+		return false, err
+	}
+	for _, connector := range connectors {
+		ok, err := resource.Accessible(ctx, tx, "connector", connector, actor)
+		if err != nil || ok {
+			return ok, err
+		}
+	}
+	return false, nil
+}
+
+func (s *Service) RegisterAgent(r chi.Router) {
+	s.CRUD.RegisterAgent(r)
+}
+
 func providerLinks(v any) []resource.Object {
 	b, _ := json.Marshal(v)
 	out := []resource.Object{}
@@ -143,6 +221,10 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		o, err := s.CRUD.Get(r.Context(), s.Store.Pool, chi.URLParam(r, "id"))
 		if err != nil {
 			resource.Fail(w, err)
+			return
+		}
+		if o.String("ownership_type") == "user" {
+			resource.Fail(w, resource.Invalid("个人资源仅允许治理删除"))
 			return
 		}
 		var in resource.Object

@@ -564,6 +564,7 @@ export const enUS = {
         'Delete "{{skill}}"? This action cannot be undone.',
     },
     experts: {
+      personalExpert: "Personal expert",
       title: "Experts",
       description: "Manage domain experts and their capability settings.",
       searchPlaceholder: "Search experts",

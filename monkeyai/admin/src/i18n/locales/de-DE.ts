@@ -466,6 +466,7 @@ export const deDE = {
     },
     experts: {
       ...enUS.pages.experts,
+      personalExpert: "Persönlicher Experte",
       title: "Experten",
       description:
         "Verwalten Sie Fachexperten und deren Fähigkeitseinstellungen.",

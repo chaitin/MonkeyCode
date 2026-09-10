@@ -460,6 +460,7 @@ export const ruRU = {
     },
     experts: {
       ...enUS.pages.experts,
+      personalExpert: "Личный эксперт",
       title: "Эксперты",
       description:
         "Управляйте отраслевыми экспертами и настройками их возможностей.",

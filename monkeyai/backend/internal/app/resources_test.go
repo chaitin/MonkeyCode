@@ -951,6 +951,71 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		must("DELETE", "/api/admin/v1/rules/"+id, nil, "", `"4"`)
 	})
 
+	t.Run("共享个人 MCP 认证与网关", func(t *testing.T) {
+		remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var in resource.Object
+			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+				t.Error(err)
+				w.WriteHeader(400)
+				return
+			}
+			var result any
+			switch in.String("method") {
+			case "notifications/initialized":
+				w.WriteHeader(202)
+				return
+			case "initialize":
+				result = resource.Object{"protocolVersion": "2025-11-25", "capabilities": resource.Object{"tools": resource.Object{}}}
+			case "tools/list":
+				result = resource.Object{"tools": []resource.Object{{"name": "shared_tool-" + r.Header.Get("X-Test-User"), "inputSchema": resource.Object{"type": "object"}}}}
+			}
+			resource.JSON(w, 200, resource.Object{"jsonrpc": "2.0", "id": in["id"], "result": result})
+		}))
+		defer remote.Close()
+		for _, mode := range []string{"none", "independent"} {
+			provider := must("POST", "/api/v1/connector-providers", resource.Object{"name": "共享认证-" + mode, "url": remote.URL, "authorization_mode": mode, "authorization_method": "http_header"}, "a", "")
+			connector := must("POST", "/api/v1/connectors", resource.Object{"name": "共享认证-" + mode, "provider_id": provider["id"]}, "a", "")
+			path := "/api/v1/connectors/" + connector.String("id")
+			gateway := "/mcp/connectors/" + connector.String("id")
+			if mode == "independent" {
+				must("PUT", path+"/credential", resource.Object{"http_headers": resource.Object{"X-Test-User": "owner"}}, "a", "")
+			}
+			must("POST", path+"/test", nil, "a", "")
+			share := resource.ShareInput{Resources: []resource.ShareResource{{Type: "connector", ID: connector.String("id")}}, UserIDs: []string{users[1]}}
+			must("POST", "/api/v1/resources/shares", share, "a", "")
+			list := resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+			want := ""
+			if mode == "independent" {
+				if code, _, _ := call("POST", gateway, list, invokeKeys["b"], ""); code != 403 {
+					t.Fatalf("接收方使用了所有者认证: %d", code)
+				}
+				if items := must("GET", path+"/tools", nil, "b", "")["items"].([]any); len(items) != 0 {
+					t.Fatal("接收方收到所有者工具上下文")
+				}
+				must("PUT", path+"/credential", resource.Object{"http_headers": resource.Object{"X-Test-User": "recipient"}}, "b", "")
+				must("POST", path+"/test", nil, "b", "")
+				want = "recipient"
+			}
+			out := must("POST", gateway, list, invokeKeys["b"], "")
+			if len(out["result"].(map[string]any)["tools"].([]any)) != 1 {
+				t.Fatalf("共享工具未进入网关目录: %v", out)
+			}
+			if tool := out["result"].(map[string]any)["tools"].([]any)[0].(map[string]any); tool["name"] != "shared_tool-"+want {
+				t.Fatalf("网关未返回当前用户的认证上下文: %v", tool)
+			}
+			if mode == "independent" {
+				must("DELETE", path+"/credential", nil, "b", "")
+				if len(must("GET", path+"/tools", nil, "a", "")["items"].([]any)) != 1 {
+					t.Fatal("接收方撤销凭证影响所有者")
+				}
+			}
+			must("DELETE", "/api/v1/resources/shares", share, "a", "")
+			if code, _, _ := call("POST", gateway, list, invokeKeys["b"], ""); code != 404 {
+				t.Fatalf("撤销共享后网关仍可调用: %d", code)
+			}
+		}
+	})
+
 	t.Run("个人资源创作与分享", func(t *testing.T) { testPersonalResources(t, pool, handler, users) })
 
 	t.Run("百智云扣费限制系统资源", func(t *testing.T) {
@@ -986,6 +1051,26 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		personalModel := must("POST", "/api/v1/models", input, "a", "")
 		key := must("POST", "/api/v1/api-keys", resource.Object{"name": "百智云访问测试", "scopes": []string{"model:invoke"}}, "a", "").String("api_key")
 		personalRule := must("POST", "/api/v1/rules", resource.Object{"name": "远程模式个人规则", "content": "个人内容"}, "a", "")
+		personalExpert := must("POST", "/api/v1/experts", resource.Object{"name": "远程模式个人专家", "prompt": "测试", "default_model_id": personalModel["id"], "rule_ids": []string{personalRule.String("id")}}, "a", "")
+		personalExpertPath := "/api/v1/experts/" + personalExpert.String("id")
+		defer func() {
+			current := must("GET", personalExpertPath, nil, "a", "")
+			must("DELETE", personalExpertPath, nil, "a", fmt.Sprintf(`"%d"`, current.Int("revision")))
+		}()
+		adminExpertPath := "/api/admin/v1/experts/" + personalExpert.String("id")
+		for _, suffix := range []string{"/copy", "/enabled", ""} {
+			method := "PUT"
+			if suffix == "/copy" {
+				method = "POST"
+			}
+			if suffix == "/enabled" {
+				method = "PATCH"
+			}
+			if code, _, _ := call(method, adminExpertPath+suffix, resource.Object{"name": "管理员编辑", "prompt": "测试", "enabled": false}, "", `"1"`); code != 400 {
+				t.Fatalf("管理员修改个人专家: %s %d", suffix, code)
+			}
+		}
+		must("GET", adminExpertPath, nil, "", "")
 		exec(`UPDATE users SET role='admin' WHERE id=$1`, users[0])
 		exec(`INSERT INTO user_identities(user_id,provider,issuer,provider_subject) VALUES($1,'oidc','https://identity.example','1001')`, users[0])
 		exec(`UPDATE settings SET value=value || '{"charging_mode":"remote","enabled":false}' WHERE key='billing'`)
@@ -993,7 +1078,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			out := must("GET", "/api/v1/"+kind, nil, "a", "")
 			for _, raw := range out[kind].([]any) {
 				o := resource.Object(raw.(map[string]any))
-				if o.String("ownership_type") == "system" || kind == "experts" {
+				if o.String("ownership_type") == "system" {
 					t.Fatalf("普通 OIDC 用户收到系统 %s: %v", kind, o)
 				}
 			}
@@ -1023,6 +1108,13 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		out := must("POST", "/api/v1/resources/resolve", resource.Object{"rule_ids": []string{personalRule.String("id")}}, "a", "")
 		if len(out["rules"].([]any)) != 1 || out["rules"].([]any)[0].(map[string]any)["id"] != personalRule.String("id") {
 			t.Fatalf("个人规则不可用或混入强制系统规则: %v", out)
+		}
+		if out := must("GET", personalExpertPath+"/manifest", nil, "a", ""); !out.Bool("available") {
+			t.Fatalf("远程模式个人专家不可用: %v", out)
+		}
+		must("POST", "/api/v1/resources/shares", resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: personalExpert.String("id")}, {Type: "rule", ID: personalRule.String("id")}, {Type: "model", ID: personalModel.String("id")}}, UserIDs: []string{users[1]}}, "a", "")
+		if out := must("GET", personalExpertPath+"/manifest", nil, "b", ""); !out.Bool("available") {
+			t.Fatalf("远程模式共享专家不可用: %v", out)
 		}
 		must("GET", "/api/v1/models/"+personalModel.String("id"), nil, "a", "")
 		must("GET", "/api/admin/v1/billing/settings", nil, "", "")
