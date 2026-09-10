@@ -862,7 +862,7 @@ export const es419 = {
         name: "Nombre para mostrar",
         namePlaceholder: "Por ejemplo: GitHub de la empresa",
         baizhiyunScopes:
-          "Permisos predeterminados: auth_certification openid phone user",
+          "Permisos predeterminados: auth_certification openid phone user email",
         issuerUrl: "URL del emisor",
         clientId: "ID de cliente",
         clientSecret: "Secreto del cliente",

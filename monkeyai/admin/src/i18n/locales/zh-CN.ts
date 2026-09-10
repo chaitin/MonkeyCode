@@ -1018,7 +1018,7 @@ export const zhCN = {
         provider: "提供方",
         name: "显示名称",
         namePlaceholder: "例如：公司 GitHub",
-        baizhiyunScopes: "默认授权范围：auth_certification openid phone user。",
+        baizhiyunScopes: "默认授权范围：auth_certification openid phone user email。",
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client Secret",

@@ -798,7 +798,7 @@ export const zhTW = {
         provider: "提供者",
         name: "顯示名稱",
         namePlaceholder: "例如：公司 GitHub",
-        baizhiyunScopes: "預設授權範圍： auth_certification openid phone user",
+        baizhiyunScopes: "預設授權範圍： auth_certification openid phone user email",
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client Secret",

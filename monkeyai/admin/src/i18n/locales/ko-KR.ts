@@ -831,7 +831,7 @@ export const koKR = {
         provider: "제공자",
         name: "표시 이름",
         namePlaceholder: "예: 회사 GitHub",
-        baizhiyunScopes: "기본 권한 범위: auth_certification openid phone user",
+        baizhiyunScopes: "기본 권한 범위: auth_certification openid phone user email",
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client Secret",

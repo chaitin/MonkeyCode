@@ -831,7 +831,7 @@ export const ar = {
         name: "اسم العرض",
         namePlaceholder: "مثال: GitHub للشركة",
         baizhiyunScopes:
-          "نطاقات التفويض الافتراضية: auth_certification openid phone user",
+          "نطاقات التفويض الافتراضية: auth_certification openid phone user email",
         issuerUrl: "عنوان URL للمُصدر",
         clientId: "معرّف العميل",
         clientSecret: "سر العميل",

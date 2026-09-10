@@ -249,6 +249,12 @@ func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile, a
 			return User{}, err
 		}
 
+		if profile.Provider == "baizhiyun" && profile.Email != "" {
+			if err := sqlc.New(tx).UpdateBaizhiyunEmail(ctx, sqlc.UpdateBaizhiyunEmailParams{UserID: user.ID, Issuer: profile.Issuer, ProviderSubject: profile.Subject, Email: profile.Email}); err != nil {
+				return User{}, err
+			}
+		}
+
 		var record sqlc.UpdateIdentityUserRow
 		record, err = sqlc.New(tx).UpdateIdentityUser(ctx, sqlc.UpdateIdentityUserParams{ID: user.ID, Name: profile.Name, AvatarUrl: profile.AvatarURL})
 

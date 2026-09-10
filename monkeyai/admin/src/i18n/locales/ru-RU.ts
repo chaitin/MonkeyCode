@@ -863,7 +863,7 @@ export const ruRU = {
         name: "Отображаемое имя",
         namePlaceholder: "Например: Корпоративный GitHub",
         baizhiyunScopes:
-          "Разрешения по умолчанию: auth_certification openid phone user",
+          "Разрешения по умолчанию: auth_certification openid phone user email",
         issuerUrl: "URL издателя",
         clientId: "Client ID",
         clientSecret: "Client Secret",
