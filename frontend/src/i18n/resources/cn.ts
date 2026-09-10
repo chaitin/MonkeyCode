@@ -1754,7 +1754,7 @@ const cn = {
     },
     invite: {
       title: "邀请注册赚积分",
-      description: "将邀请链接分享给好友，好友通过该链接注册后，你将获得 5000 积分奖励。",
+      description: "分享邀请链接，好友通过链接注册后你可获 5000 积分（奖励上限 10 人，即 5 万积分）。",
       copyLink: "复制链接",
       invitedCount: "已邀请 {{count}} 人",
       collapseList: "收起",
