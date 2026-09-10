@@ -17,6 +17,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+func assertShareUser(t *testing.T, raw any, id, name, email string) {
+	t.Helper()
+	user, ok := raw.(map[string]any)
+	if !ok || len(user) != 3 || user["id"] != id || user["name"] != name || user["email"] != email {
+		t.Fatalf("共享用户信息错误: %v", raw)
+	}
+}
+
 func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, users []string) {
 	ctx := t.Context()
 	repo := model.NewPostgres(pool)

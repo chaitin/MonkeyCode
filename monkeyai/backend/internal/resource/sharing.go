@@ -28,6 +28,24 @@ type ShareInput struct {
 	UserIDs   []string        `json:"user_ids"`
 }
 
+func SharedUsers(ctx context.Context, q Queryer, kind string, ids []string) (map[string][]Object, error) {
+	users := make(map[string][]Object, len(ids))
+	if len(ids) == 0 {
+		return users, nil
+	}
+	for _, id := range ids {
+		users[id] = []Object{}
+	}
+	rows, err := sqlc.New(q).ListSharedUsers(ctx, sqlc.ListSharedUsersParams{ResourceType: kind, ResourceIds: ids})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		users[row.ResourceID] = append(users[row.ResourceID], Object{"id": row.ID, "name": row.Name, "email": row.Email})
+	}
+	return users, nil
+}
+
 func (s *Store) RegisterSharing(router chi.Router, kinds map[string]Shareable) {
 	share := func(w http.ResponseWriter, r *http.Request) {
 		var input ShareInput

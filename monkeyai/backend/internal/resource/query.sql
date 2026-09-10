@@ -149,15 +149,33 @@ SELECT
 
 -- name: ListGrants :many
 SELECT
-    jsonb_build_object('user_id', user_id, 'group_id', group_id, 'all_users', all_users, 'usage_requirement', usage_requirement)
+    jsonb_build_object('user_id', rag.user_id, 'group_id', rag.group_id, 'all_users', rag.all_users, 'usage_requirement', rag.usage_requirement,
+        'user', CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email) END)
 FROM
-    resource_access_grants
+    resource_access_grants rag
+    LEFT JOIN users u ON u.id = rag.user_id AND u.deleted_at IS NULL
 WHERE
-    resource_type = $1
-    AND resource_id = $2
+    rag.resource_type = $1
+    AND rag.resource_id = $2
 ORDER BY
-    group_id,
-    user_id;
+    rag.group_id,
+    rag.user_id;
+
+-- name: ListSharedUsers :many
+SELECT
+    rag.resource_id,
+    u.id,
+    u.name,
+    u.email
+FROM
+    resource_access_grants rag
+    JOIN users u ON u.id = rag.user_id AND u.deleted_at IS NULL
+WHERE
+    rag.resource_type = sqlc.arg(resource_type)
+    AND rag.resource_id::text = ANY (sqlc.arg(resource_ids)::text[])
+ORDER BY
+    rag.resource_id,
+    u.id;
 
 -- name: DeleteGrants :execresult
 DELETE FROM resource_access_grants

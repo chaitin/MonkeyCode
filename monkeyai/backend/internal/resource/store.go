@@ -219,6 +219,15 @@ func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error
 		return nil, err
 	}
 	o["grants"] = g
+	if o.String("ownership_type") == "user" {
+		users := []any{}
+		for _, grant := range g {
+			if user := grant["user"]; user != nil {
+				users = append(users, user)
+			}
+		}
+		o["shared_users"] = users
+	}
 	if owner := o.String("owner_user_id"); owner != "" {
 		name, err := sqlc.New(q).GetOwnerName(ctx, owner)
 		if err != nil {

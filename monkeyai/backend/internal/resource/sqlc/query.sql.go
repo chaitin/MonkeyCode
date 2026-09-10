@@ -230,15 +230,17 @@ func (q *Queries) HasAccess(ctx context.Context, arg HasAccessParams) (bool, err
 
 const listGrants = `-- name: ListGrants :many
 SELECT
-    jsonb_build_object('user_id', user_id, 'group_id', group_id, 'all_users', all_users, 'usage_requirement', usage_requirement)
+    jsonb_build_object('user_id', rag.user_id, 'group_id', rag.group_id, 'all_users', rag.all_users, 'usage_requirement', rag.usage_requirement,
+        'user', CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email) END)
 FROM
-    resource_access_grants
+    resource_access_grants rag
+    LEFT JOIN users u ON u.id = rag.user_id AND u.deleted_at IS NULL
 WHERE
-    resource_type = $1
-    AND resource_id = $2
+    rag.resource_type = $1
+    AND rag.resource_id = $2
 ORDER BY
-    group_id,
-    user_id
+    rag.group_id,
+    rag.user_id
 `
 
 type ListGrantsParams struct {
@@ -291,6 +293,60 @@ func (q *Queries) ListGroups(ctx context.Context) ([][]byte, error) {
 			return nil, err
 		}
 		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSharedUsers = `-- name: ListSharedUsers :many
+SELECT
+    rag.resource_id,
+    u.id,
+    u.name,
+    u.email
+FROM
+    resource_access_grants rag
+    JOIN users u ON u.id = rag.user_id AND u.deleted_at IS NULL
+WHERE
+    rag.resource_type = $1
+    AND rag.resource_id::text = ANY ($2::text[])
+ORDER BY
+    rag.resource_id,
+    u.id
+`
+
+type ListSharedUsersParams struct {
+	ResourceType string
+	ResourceIds  []string
+}
+
+type ListSharedUsersRow struct {
+	ResourceID string
+	ID         string
+	Name       string
+	Email      string
+}
+
+func (q *Queries) ListSharedUsers(ctx context.Context, arg ListSharedUsersParams) ([]ListSharedUsersRow, error) {
+	rows, err := q.db.Query(ctx, listSharedUsers, arg.ResourceType, arg.ResourceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSharedUsersRow{}
+	for rows.Next() {
+		var i ListSharedUsersRow
+		if err := rows.Scan(
+			&i.ResourceID,
+			&i.ID,
+			&i.Name,
+			&i.Email,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

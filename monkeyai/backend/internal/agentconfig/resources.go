@@ -262,6 +262,7 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 		return nil, resource.NotFound
 	}
 	out := []resource.Object{}
+	owned := []string{}
 	for id, o := range items {
 		if !c.allowed(resourceType, o, user) {
 			continue
@@ -290,7 +291,19 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 			dto["owner_user_id"] = o["owner_user_id"]
 			dto["revision"] = o["revision"]
 		}
+		if o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
+			owned = append(owned, id)
+		}
 		out = append(out, dto)
+	}
+	users, err := resource.SharedUsers(ctx, q, resourceType, owned)
+	if err != nil {
+		return nil, err
+	}
+	for _, dto := range out {
+		if shared, ok := users[dto.String("id")]; ok {
+			dto["shared_users"] = shared
+		}
 	}
 	resource.Stable(out)
 	return out, nil
