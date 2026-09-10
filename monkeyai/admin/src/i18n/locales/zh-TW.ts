@@ -437,6 +437,7 @@ export const zhTW = {
     },
     experts: {
       ...enUS.pages.experts,
+      personalExpert: "個人專家",
       title: "專家",
       description: "管理領域專家及其專業能力設定。",
     },

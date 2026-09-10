@@ -735,3 +735,10 @@ ALTER TABLE user_identities
     ADD CONSTRAINT user_identities_provider_check CHECK (
         provider IN ('github', 'google', 'microsoft', 'gitlab', 'oidc', 'baizhiyun')
     );
+
+ALTER TABLE experts
+    ADD COLUMN ownership_type text NOT NULL DEFAULT 'system'
+        CHECK (ownership_type IN ('system', 'user')),
+    ADD COLUMN owner_user_id uuid REFERENCES users(id);
+
+ALTER TABLE experts ALTER COLUMN owner_user_id SET NOT NULL;

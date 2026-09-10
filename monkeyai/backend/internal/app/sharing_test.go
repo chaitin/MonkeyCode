@@ -176,7 +176,7 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	call("POST", "/resources/shares", "a", invalid, 404)
 	assertAccess(users[1], ids[0], false)
 	call("POST", "/resources/shares", "a", resource.ShareInput{Resources: share.Resources, UserIDs: []string{users[0]}}, 400)
-	call("POST", "/resources/shares", "a", resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: ids[0]}}, UserIDs: []string{users[1]}}, 400)
+	call("POST", "/resources/shares", "a", resource.ShareInput{Resources: []resource.ShareResource{{Type: "provider", ID: ids[0]}}, UserIDs: []string{users[1]}}, 400)
 	call("POST", "/resources/shares", "a", share, 204)
 	call("POST", "/resources/shares", "a", share, 204)
 	afterA, newHeadA := call("GET", "/models", "a", nil, 200)

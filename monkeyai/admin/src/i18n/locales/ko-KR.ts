@@ -451,6 +451,7 @@ export const koKR = {
     },
     experts: {
       ...enUS.pages.experts,
+      personalExpert: "개인 전문가",
       title: "전문가",
       description: "분야별 전문가와 전문 역량 설정을 관리합니다.",
     },

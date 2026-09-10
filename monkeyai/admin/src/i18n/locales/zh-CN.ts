@@ -540,6 +540,7 @@ export const zhCN = {
       deleteDialogDescription: "确定删除“{{skill}}”吗？此操作无法撤销。",
     },
     experts: {
+      personalExpert: "个人专家",
       title: "专家",
       description: "管理领域专家及其专业能力配置。",
       searchPlaceholder: "搜索专家",

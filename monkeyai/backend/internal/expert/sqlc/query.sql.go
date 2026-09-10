@@ -35,7 +35,7 @@ func (q *Queries) CreateProviderLink(ctx context.Context, arg CreateProviderLink
 }
 
 const createResource = `-- name: CreateResource :exec
-INSERT INTO experts (name, description, prompt, default_model_id, enabled, id, created_by_user_id)
+INSERT INTO experts (name, description, prompt, default_model_id, enabled, id, created_by_user_id, owner_user_id, ownership_type)
     VALUES (
         CASE WHEN $1::jsonb ? 'name' THEN
             ($1::jsonb ->> 'name')::text
@@ -57,7 +57,8 @@ INSERT INTO experts (name, description, prompt, default_model_id, enabled, id, c
             ($1::jsonb ->> 'enabled')::boolean
         ELSE
             TRUE
-        END, ($1::jsonb ->> 'id')::uuid, ($1::jsonb ->> 'actor_id')::uuid)
+        END, ($1::jsonb ->> 'id')::uuid, ($1::jsonb ->> 'actor_id')::uuid,
+        ($1::jsonb ->> 'actor_id')::uuid, COALESCE($1::jsonb ->> 'ownership_type', 'system'))
 `
 
 func (q *Queries) CreateResource(ctx context.Context, data []byte) error {
@@ -140,6 +141,17 @@ func (q *Queries) DeleteSkillLinks(ctx context.Context, expertID string) error {
 	return err
 }
 
+const getModel = `-- name: GetModel :one
+SELECT to_jsonb(m) FROM models m WHERE id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetModel(ctx context.Context, id string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getModel, id)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
+}
+
 const getResource = `-- name: GetResource :one
 SELECT
     to_jsonb (t)
@@ -155,6 +167,41 @@ func (q *Queries) GetResource(ctx context.Context, id string) ([]byte, error) {
 	var to_jsonb []byte
 	err := row.Scan(&to_jsonb)
 	return to_jsonb, err
+}
+
+const isAdmin = `-- name: IsAdmin :one
+SELECT role = 'admin' FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL
+`
+
+func (q *Queries) IsAdmin(ctx context.Context, id string) (bool, error) {
+	row := q.db.QueryRow(ctx, isAdmin, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const listProviderConnectors = `-- name: ListProviderConnectors :many
+SELECT to_jsonb(c) FROM connectors c WHERE provider_id = $1 AND deleted_at IS NULL AND enabled
+`
+
+func (q *Queries) ListProviderConnectors(ctx context.Context, providerID string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listProviderConnectors, providerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var to_jsonb []byte
+		if err := rows.Scan(&to_jsonb); err != nil {
+			return nil, err
+		}
+		items = append(items, to_jsonb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listProviderLinks = `-- name: ListProviderLinks :many
@@ -289,7 +336,6 @@ FROM
     connector_providers p
 WHERE
     id = $1
-    AND ownership_type = 'system'
     AND deleted_at IS NULL FOR SHARE
 `
 
@@ -320,36 +366,36 @@ func (q *Queries) LockResource(ctx context.Context, id string) ([]byte, error) {
 
 const lockRule = `-- name: LockRule :one
 SELECT
-    id
+    to_jsonb(t)
 FROM
-    rules
+    rules t
 WHERE
     id = $1
-    AND ownership_type = 'system'
     AND deleted_at IS NULL FOR SHARE
 `
 
-func (q *Queries) LockRule(ctx context.Context, id string) (string, error) {
+func (q *Queries) LockRule(ctx context.Context, id string) ([]byte, error) {
 	row := q.db.QueryRow(ctx, lockRule, id)
-	err := row.Scan(&id)
-	return id, err
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
 }
 
 const lockSkill = `-- name: LockSkill :one
 SELECT
-    id
+    to_jsonb(t)
 FROM
-    skills
+    skills t
 WHERE
     id = $1
-    AND ownership_type = 'system'
     AND deleted_at IS NULL FOR SHARE
 `
 
-func (q *Queries) LockSkill(ctx context.Context, id string) (string, error) {
+func (q *Queries) LockSkill(ctx context.Context, id string) ([]byte, error) {
 	row := q.db.QueryRow(ctx, lockSkill, id)
-	err := row.Scan(&id)
-	return id, err
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
 }
 
 const modelAvailable = `-- name: ModelAvailable :one
@@ -381,7 +427,7 @@ FROM
 WHERE
     deleted_at IS NULL
     AND ($1::jsonb ->> 'ownership' = ''
-        OR 'system' = $1::jsonb ->> 'ownership')
+        OR t.ownership_type = $1::jsonb ->> 'ownership')
     AND name ILIKE '%' || ($1::jsonb ->> 'search') || '%'
     AND id::text > $1::jsonb ->> 'cursor'
 ORDER BY
