@@ -147,7 +147,7 @@ func (s *Service) upstreamAuthorizeURL(ctx context.Context, connection OAuthConn
 		case "github":
 			scopes = []string{"read:user", "user:email"}
 		case "baizhiyun":
-			scopes = []string{"auth_certification", "openid", "phone", "user"}
+			scopes = []string{"auth_certification", "openid", "phone", "user", "email"}
 		}
 	}
 	query := endpoint.Query()
@@ -217,6 +217,7 @@ func (s *Service) exchangeUpstream(ctx context.Context, connection OAuthConnecti
 				ID     string `json:"id"`
 				Name   string `json:"name"`
 				Avatar string `json:"avatar"`
+				Email  string `json:"email"`
 			} `json:"data"`
 		}
 		if err := decoder.Decode(&result); err != nil {
@@ -233,6 +234,7 @@ func (s *Service) exchangeUpstream(ctx context.Context, connection OAuthConnecti
 			Issuer:    connection.IssuerURL,
 			Subject:   result.Data.ID,
 			Name:      result.Data.Name,
+			Email:     strings.ToLower(strings.TrimSpace(result.Data.Email)),
 			AvatarURL: result.Data.Avatar,
 		}
 	} else {

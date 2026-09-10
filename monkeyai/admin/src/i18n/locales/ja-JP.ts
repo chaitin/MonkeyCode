@@ -840,7 +840,7 @@ export const jaJP = {
         name: "表示名",
         namePlaceholder: "例：会社 GitHub",
         baizhiyunScopes:
-          "デフォルトのスコープ： auth_certification openid phone user",
+          "デフォルトのスコープ： auth_certification openid phone user email",
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client Secret",

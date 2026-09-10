@@ -1157,6 +1157,46 @@ func (q *Queries) TouchLogin(ctx context.Context, id string) (pgconn.CommandTag,
 	return q.db.Exec(ctx, touchLogin, id)
 }
 
+const updateBaizhiyunEmail = `-- name: UpdateBaizhiyunEmail :exec
+WITH identity AS (
+    UPDATE user_identities
+    SET email = $1::text
+    WHERE user_id = $2
+        AND provider = 'baizhiyun'
+        AND issuer = $3
+        AND provider_subject = $4
+        AND deleted_at IS NULL
+    RETURNING user_id, provider_subject
+)
+UPDATE users u
+SET email = $1::text, updated_at = now()
+FROM identity i
+WHERE u.id = i.user_id
+    AND u.email = i.provider_subject || '@baizhiyun.oauth.local'
+    AND NOT EXISTS (
+        SELECT 1 FROM users existing
+        WHERE lower(existing.email) = lower($1::text)
+            AND existing.deleted_at IS NULL
+    )
+`
+
+type UpdateBaizhiyunEmailParams struct {
+	Email           string
+	UserID          string
+	Issuer          string
+	ProviderSubject string
+}
+
+func (q *Queries) UpdateBaizhiyunEmail(ctx context.Context, arg UpdateBaizhiyunEmailParams) error {
+	_, err := q.db.Exec(ctx, updateBaizhiyunEmail,
+		arg.Email,
+		arg.UserID,
+		arg.Issuer,
+		arg.ProviderSubject,
+	)
+	return err
+}
+
 const updateIdentityUser = `-- name: UpdateIdentityUser :one
 UPDATE
     users

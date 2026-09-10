@@ -3058,7 +3058,7 @@ components:
           description: 自定义用户信息端点；使用提供方默认端点时可不返回。
         scopes:
           type: array
-          description: 请求上游授权时使用的 Scope；使用默认 Scope 时可不返回。百智云默认为 auth_certification、openid、phone、user。
+          description: 请求上游授权时使用的 Scope；使用默认 Scope 时可不返回。百智云默认为 auth_certification、openid、phone、user、email。
           items:
             type: string
         enabled:

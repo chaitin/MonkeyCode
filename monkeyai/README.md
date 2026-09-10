@@ -110,7 +110,9 @@ Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rul
 
 ### 百智云钱包
 
-先在「其他设置 → 第三方登录」添加「百智云」提供方（`baizhiyun`）。配置字段与自定义 OIDC 相同，需要 Issuer URL、Client ID 和 Client Secret；默认 scopes 为 `auth_certification openid phone user`，接口配置的自定义 scopes 会保留。
+先在「其他设置 → 第三方登录」添加「百智云」提供方（`baizhiyun`）。配置字段与自定义 OIDC 相同，需要 Issuer URL、Client ID 和 Client Secret；默认 scopes 为 `auth_certification openid phone user email`，接口配置的自定义 scopes 会保留。百智云 OAuth 客户端需先获准 `email` 权限；已有自定义 scopes 的连接需自行加入 `email` 才能获取邮箱。
+
+用户信息接口的 `data.email` 用于新用户注册和关联同邮箱账号，未返回邮箱时保留占位邮箱登录。已有百智云账号下次登录时，会在邮箱未被其他未删除账号占用的情况下将占位邮箱补齐为真实邮箱；已有真实邮箱和用户身份保持不变。
 
 选择远程计费后，只有具有有效百智云登录身份的用户可以获取或调用系统模型、规则、技能、专家和 MCP 连接。该限制也适用于已有访问令牌和 API Key，并在暂停实际扣费时继续生效；个人资源遵循原有授权，管理员仍可维护后台配置。已有自定义 OIDC 身份不会自动视为百智云身份，用户需通过新提供方登录。
 

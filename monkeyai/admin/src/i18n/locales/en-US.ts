@@ -1076,7 +1076,7 @@ export const enUS = {
         name: "Display name",
         namePlaceholder: "For example: Company GitHub",
         baizhiyunScopes:
-          "Default scopes: auth_certification openid phone user.",
+          "Default scopes: auth_certification openid phone user email.",
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client secret",

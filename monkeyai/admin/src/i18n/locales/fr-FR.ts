@@ -866,7 +866,7 @@ export const frFR = {
         name: "Nom affiché",
         namePlaceholder: "Par exemple : GitHub Entreprise",
         baizhiyunScopes:
-          "Autorisations par défaut : auth_certification openid phone user",
+          "Autorisations par défaut : auth_certification openid phone user email",
         issuerUrl: "URL de l’émetteur",
         clientId: "ID client",
         clientSecret: "Secret client",

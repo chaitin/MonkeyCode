@@ -322,6 +322,28 @@ WHERE
     AND i.deleted_at IS NULL
     AND u.deleted_at IS NULL;
 
+-- name: UpdateBaizhiyunEmail :exec
+WITH identity AS (
+    UPDATE user_identities
+    SET email = sqlc.arg(email)::text
+    WHERE user_id = sqlc.arg(user_id)
+        AND provider = 'baizhiyun'
+        AND issuer = sqlc.arg(issuer)
+        AND provider_subject = sqlc.arg(provider_subject)
+        AND deleted_at IS NULL
+    RETURNING user_id, provider_subject
+)
+UPDATE users u
+SET email = sqlc.arg(email)::text, updated_at = now()
+FROM identity i
+WHERE u.id = i.user_id
+    AND u.email = i.provider_subject || '@baizhiyun.oauth.local'
+    AND NOT EXISTS (
+        SELECT 1 FROM users existing
+        WHERE lower(existing.email) = lower(sqlc.arg(email)::text)
+            AND existing.deleted_at IS NULL
+    );
+
 -- name: UpdateIdentityUser :one
 UPDATE
     users

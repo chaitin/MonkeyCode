@@ -875,7 +875,7 @@ export const deDE = {
         name: "Anzeigename",
         namePlaceholder: "Zum Beispiel: Firmen-GitHub",
         baizhiyunScopes:
-          "Standardberechtigungen: auth_certification openid phone user",
+          "Standardberechtigungen: auth_certification openid phone user email",
         issuerUrl: "Issuer-URL",
         clientId: "Client-ID",
         clientSecret: "Client-Secret",
