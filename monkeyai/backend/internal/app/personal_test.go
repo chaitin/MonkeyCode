@@ -3,6 +3,7 @@ package app
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
@@ -66,6 +67,9 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 			if o.String("id") == id {
 				if o.String("ownership_type") != "user" || o.String("owner_user_id") != users[0] || o.Int("revision") < 1 {
 					t.Fatalf("目录缺少个人资源管理信息: %v", o)
+				}
+				if token != "a" && o["shared_users"] != nil {
+					t.Fatalf("接收方不应看到其他共享用户: %v", o)
 				}
 				return true
 			}
@@ -154,6 +158,68 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	if !contains("rules", "b", ruleID) || !contains("skills", "b", skillID) || before == call("GET", "/skills", "a", "", nil, 200).String("version") {
 		t.Fatal("分享后目录或版本未更新")
 	}
+	t.Run("个人资源共享用户信息与缓存", func(t *testing.T) {
+		assertUsers := func(name, email string, count int) {
+			t.Helper()
+			for _, item := range share.Resources {
+				kind := item.Type + "s"
+				detail := call("GET", "/"+kind+"/"+item.ID, "a", "", nil, 200)
+				out := call("GET", "/"+kind, "a", "", nil, 200)
+				found := false
+				for _, raw := range out[kind].([]any) {
+					entry := resource.Object(raw.(map[string]any))
+					if entry.String("id") == item.ID {
+						found = true
+						for _, o := range []resource.Object{detail, entry} {
+							people, ok := o["shared_users"].([]any)
+							if !ok || len(people) != count {
+								t.Fatalf("共享用户列表错误: %v", o)
+							}
+							if count > 0 {
+								assertShareUser(t, people[0], users[1], name, email)
+							}
+						}
+					}
+				}
+				if !found {
+					t.Fatalf("所有者目录缺少资源: %v", out)
+				}
+				grants := detail["grants"].([]any)
+				person := grants[0].(map[string]any)["user"]
+				if count > 0 {
+					assertShareUser(t, person, users[1], name, email)
+				} else if person != nil {
+					t.Fatalf("已删除用户仍返回展示信息: %v", person)
+				}
+			}
+		}
+		assertUsers("b", "b@example.com", 1)
+		versions := map[string]string{}
+		for _, kind := range []string{"skills", "rules"} {
+			versions[kind] = call("GET", "/"+kind, "a", "", nil, 200).String("version")
+		}
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), `UPDATE users SET name='b',email='b@example.com',status='active',deleted_at=NULL WHERE id=$1`, users[1])
+		})
+		if _, err := pool.Exec(t.Context(), `UPDATE users SET name='共享接收者',email='recipient@example.com',status='disabled' WHERE id=$1`, users[1]); err != nil {
+			t.Fatal(err)
+		}
+		assertUsers("共享接收者", "recipient@example.com", 1)
+		for kind, version := range versions {
+			req := httptest.NewRequest("GET", "/api/v1/"+kind, nil)
+			req.Header.Set("Authorization", "Bearer a")
+			req.Header.Set("If-None-Match", `"`+version+`"`)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+			if w.Code != 200 || decode(w).String("version") == version {
+				t.Fatalf("用户信息变化未刷新 %s 缓存: %d %s", kind, w.Code, w.Body.String())
+			}
+		}
+		if _, err := pool.Exec(t.Context(), `UPDATE users SET deleted_at=now() WHERE id=$1`, users[1]); err != nil {
+			t.Fatal(err)
+		}
+		assertUsers("", "", 0)
+	})
 	call("POST", "/resources/shares", "b", "", resource.ShareInput{Resources: share.Resources, UserIDs: []string{users[0]}}, 404)
 	call("PUT", "/skills/"+skillID, "b", etag(savedSkill), resource.Object{"name": "personal", "content": "越权"}, 404)
 	call("PUT", "/rules/"+ruleID, "a", etag(rule), ruleInput, 412)
@@ -183,6 +249,22 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	call("DELETE", "/resources/shares", "a", "", share, 204)
 	if contains("rules", "b", ruleID) || contains("skills", "b", skillID) {
 		t.Fatal("撤销分享后仍下发资源")
+	}
+	for _, item := range share.Resources {
+		kind := item.Type + "s"
+		detail := call("GET", "/"+kind+"/"+item.ID, "a", "", nil, 200)
+		if people, ok := detail["shared_users"].([]any); !ok || len(people) != 0 {
+			t.Fatalf("撤销后详情仍返回共享用户: %v", detail)
+		}
+		out := call("GET", "/"+kind, "a", "", nil, 200)
+		for _, raw := range out[kind].([]any) {
+			entry := raw.(map[string]any)
+			if entry["id"] == item.ID {
+				if people, ok := entry["shared_users"].([]any); !ok || len(people) != 0 {
+					t.Fatalf("撤销后目录仍返回共享用户: %v", entry)
+				}
+			}
+		}
 	}
 	request("GET", "/skills/"+skillID+"/package", "b", "", "", nil, 404)
 	call("POST", "/resources/shares", "a", "", share, 204)

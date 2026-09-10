@@ -2361,6 +2361,12 @@ components:
     UserConnectorProviderResource:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         id:
           type: string
           format: uuid
@@ -3139,6 +3145,12 @@ components:
           - string
           - 'null'
           format: uuid
+        user:
+          readOnly: true
+          description: 用户授权的展示信息；分组、全员授权或用户已删除时为 null。停用用户仍返回信息，便于撤销授权。
+          anyOf:
+          - $ref: '#/components/schemas/UserSummary'
+          - type: 'null'
         group_id:
           type:
           - string
@@ -3259,6 +3271,12 @@ components:
     AgentRule:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         ownership_type:
           type: string
           enum:
@@ -3293,6 +3311,12 @@ components:
     AgentSkill:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         ownership_type:
           type: string
           enum:
@@ -3335,6 +3359,12 @@ components:
     AgentConnector:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         ownership_type:
           type: string
           enum:
@@ -3566,6 +3596,12 @@ components:
     RuleResource:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         id:
           type: string
           format: uuid
@@ -3624,6 +3660,12 @@ components:
     SkillResource:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         id:
           type: string
           format: uuid
@@ -3798,6 +3840,12 @@ components:
     ConnectorProviderResource:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         id:
           type: string
           format: uuid
@@ -3903,6 +3951,12 @@ components:
     ConnectorResource:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         id:
           type: string
           format: uuid

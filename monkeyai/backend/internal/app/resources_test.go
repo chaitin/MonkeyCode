@@ -431,6 +431,34 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	}
 
 	conn := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "测试连接", "description": "测试", "provider_id": provider.String("id"), "grants": grantA}, "", "")
+	t.Run("资源授权返回用户信息", func(t *testing.T) {
+		for kind, item := range map[string]resource.Object{"rule": rule, "skill": skill, "expert": expert, "connector": conn} {
+			t.Run(kind, func(t *testing.T) {
+				id := resource.ID()
+				if _, err := pool.Exec(ctx, `INSERT INTO resource_access_grants(id,resource_type,resource_id,user_id,access_level,granted_by_user_id) VALUES($1,$2,$3,$4,'read_only',$4)`, id, kind, item.String("id"), users[1]); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM resource_access_grants WHERE id=$1`, id) })
+				for _, path := range []string{
+					"/api/admin/v1/" + kind + "s/" + item.String("id"),
+					"/api/admin/v1/resources/" + kind + "/" + item.String("id") + "/grants",
+				} {
+					out := must("GET", path, nil, "", "")
+					found := false
+					for _, raw := range out["grants"].([]any) {
+						grant := raw.(map[string]any)
+						if grant["user_id"] == users[1] {
+							assertShareUser(t, grant["user"], users[1], "b", "b@example.com")
+							found = true
+						}
+					}
+					if !found {
+						t.Fatalf("授权用户缺失: %v", out)
+					}
+				}
+			})
+		}
+	})
 	must("GET", "/api/v1/connectors/"+conn.String("id")+"/icon", nil, "a", "")
 	if status, _, _ := call("GET", "/api/v1/connectors/"+conn.String("id")+"/icon", nil, "b", ""); status != 404 {
 		t.Fatal("图标接口越权")
