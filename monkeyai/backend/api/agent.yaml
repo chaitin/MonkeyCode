@@ -820,7 +820,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户
-      description: 支持 model、skill、rule、connector、expert；Provider 不支持直接分享。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各 1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
+      description: 支持 model、skill、connector、expert；个人规则和 Provider 不支持分享。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各 1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
       requestBody:
         required: true
         content:
@@ -885,7 +885,7 @@ paths:
   /api/v1/rules:
     get:
       summary: 读取 Agent 规则
-      description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
+      description: 仅返回系统授权规则和当前用户创建的个人规则；历史个人规则分享授权不再生效。独立计算版本，每次请求重新检查当前用户身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
       responses:
@@ -936,7 +936,7 @@ paths:
           $ref: '#/components/responses/ResourceError409'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: 归属固定为当前用户；个人规则只能提供可选使用授权，分享通过 /resources/shares 管理。
+      description: 归属固定为当前用户；个人规则仅创建者可用，保留创建、读取、编辑和删除，不支持分享。
   /api/v1/skills:
     get:
       summary: 读取 Agent 技能
@@ -1791,7 +1791,7 @@ paths:
           $ref: '#/components/responses/ResourceError428'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。
+      description: name、content 必填。仅创建者可修改规则名称和正文，不能修改归属或授权。必须携带最近详情响应的 ETag 作为 If-Match。
     delete:
       summary: 删除自己的个人规则
       parameters:
@@ -1799,7 +1799,7 @@ paths:
       - $ref: '#/components/parameters/IfMatch'
       responses:
         '204':
-          description: 资源已软删除，相关分享同步清理。
+          description: 个人规则已软删除。
         '400':
           $ref: '#/components/responses/ResourceError400'
         '401':
@@ -2880,7 +2880,6 @@ components:
                 enum:
                 - model
                 - skill
-                - rule
                 - connector
                 - expert
                 description: 可分享的个人资源类型；其他类型返回 400。
@@ -3424,18 +3423,12 @@ components:
     AgentRule:
       type: object
       properties:
-        shared_users:
-          type: array
-          readOnly: true
-          items:
-            $ref: '#/components/schemas/UserSummary'
-          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         ownership_type:
           type: string
           enum:
           - system
           - user
-          description: 独立资源目录返回；分享不改变资源归属。
+          description: 独立资源目录返回；个人规则仅创建者可用。
         owner_user_id:
           type: string
           format: uuid
@@ -3769,12 +3762,6 @@ components:
     RuleResource:
       type: object
       properties:
-        shared_users:
-          type: array
-          readOnly: true
-          items:
-            $ref: '#/components/schemas/UserSummary'
-          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
         id:
           type: string
           format: uuid
@@ -3798,6 +3785,7 @@ components:
         enabled:
           type: boolean
         grants:
+          description: 系统规则的授权范围；个人规则固定为空数组，仅创建者可用。
           type: array
           items:
             $ref: '#/components/schemas/ResourceGrant'

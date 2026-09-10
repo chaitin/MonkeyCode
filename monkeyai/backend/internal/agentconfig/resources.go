@@ -75,6 +75,12 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 		return c, err
 	}
 	for _, o := range g {
+		if o.String("kind") == "rule" {
+			rule := c.rules[o.String("id")]
+			if rule == nil || rule.String("ownership_type") == "user" {
+				continue
+			}
+		}
 		c.grants[o.String("kind")+":"+o.String("id")] = true
 		if o.Bool("required") {
 			c.required[o.String("id")] = true
@@ -116,6 +122,9 @@ func (c catalog) allowed(kind string, o resource.Object, user string) bool {
 	}
 	if v, ok := o["enabled"].(bool); ok && !v {
 		return false
+	}
+	if kind == "rule" && o.String("ownership_type") == "user" {
+		return user != "" && o.String("owner_user_id") == user
 	}
 	if kind == "connector" {
 		p := c.providers[o.String("provider_id")]
@@ -286,7 +295,7 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 		dto["ownership_type"] = o["ownership_type"]
 		dto["owner_user_id"] = o["owner_user_id"]
 		dto["revision"] = o["revision"]
-		if o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
+		if resourceType != "rule" && o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
 			owned = append(owned, id)
 		}
 		out = append(out, dto)

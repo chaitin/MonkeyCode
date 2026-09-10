@@ -1112,9 +1112,9 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		if out := must("GET", personalExpertPath+"/manifest", nil, "a", ""); !out.Bool("available") {
 			t.Fatalf("远程模式个人专家不可用: %v", out)
 		}
-		must("POST", "/api/v1/resources/shares", resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: personalExpert.String("id")}, {Type: "rule", ID: personalRule.String("id")}, {Type: "model", ID: personalModel.String("id")}}, UserIDs: []string{users[1]}}, "a", "")
-		if out := must("GET", personalExpertPath+"/manifest", nil, "b", ""); !out.Bool("available") {
-			t.Fatalf("远程模式共享专家不可用: %v", out)
+		must("POST", "/api/v1/resources/shares", resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: personalExpert.String("id")}, {Type: "model", ID: personalModel.String("id")}}, UserIDs: []string{users[1]}}, "a", "")
+		if out := must("GET", personalExpertPath+"/manifest", nil, "b", ""); out.Bool("available") || len(out["rules"].([]any)) != 0 {
+			t.Fatalf("远程模式共享专家泄露个人规则: %v", out)
 		}
 		must("GET", "/api/v1/models/"+personalModel.String("id"), nil, "a", "")
 		must("GET", "/api/admin/v1/billing/settings", nil, "", "")

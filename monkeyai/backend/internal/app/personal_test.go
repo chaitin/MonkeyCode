@@ -68,8 +68,8 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 				if o.String("ownership_type") != "user" || o.String("owner_user_id") != users[0] || o.Int("revision") < 1 {
 					t.Fatalf("目录缺少个人资源管理信息: %v", o)
 				}
-				if token != "a" && o["shared_users"] != nil {
-					t.Fatalf("接收方不应看到其他共享用户: %v", o)
+				if (token != "a" || kind == "rules") && o["shared_users"] != nil {
+					t.Fatalf("目录不应返回共享用户: %v", o)
 				}
 				return true
 			}
@@ -80,7 +80,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	call("POST", "/rules", "", "", ruleInput, 401)
 	rule := call("POST", "/rules", "a", "", ruleInput, 201)
 	ruleID := rule.String("id")
-	if rule.String("owner_user_id") != users[0] || rule.String("ownership_type") != "user" || len(rule["grants"].([]any)) != 0 {
+	if rule.String("owner_user_id") != users[0] || rule.String("ownership_type") != "user" || len(rule["grants"].([]any)) != 0 || rule["shared_users"] != nil {
 		t.Fatalf("规则归属或授权被请求篡改: %v", rule)
 	}
 	call("POST", "/rules", "a", "", ruleInput, 409)
@@ -92,6 +92,43 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	call("DELETE", "/rules/"+ruleID, "b", etag(rule), nil, 404)
 	if !contains("rules", "a", ruleID) || contains("rules", "b", ruleID) {
 		t.Fatal("个人规则可见范围错误")
+	}
+
+	ruleShare := resource.ShareInput{Resources: []resource.ShareResource{{Type: "rule", ID: ruleID}}, UserIDs: []string{users[1]}}
+	call("POST", "/resources/shares", "a", "", ruleShare, 400)
+	call("DELETE", "/resources/shares", "a", "", ruleShare, 400)
+	beforeRules := call("GET", "/rules", "a", "", nil, 200).String("version")
+	if _, err := pool.Exec(t.Context(), `INSERT INTO resource_access_grants(resource_type,resource_id,user_id,access_level,usage_requirement,granted_by_user_id) VALUES('rule',$1,$2,'read_only','required',$2),('rule',$1,$3,'read_only','optional',$2)`, ruleID, users[0], users[1]); err != nil {
+		t.Fatal(err)
+	}
+	if contains("rules", "b", ruleID) || beforeRules != call("GET", "/rules", "a", "", nil, 200).String("version") {
+		t.Fatal("历史规则授权仍影响可见范围或所有者目录")
+	}
+	detail := call("GET", "/rules/"+ruleID, "a", "", nil, 200)
+	if detail["shared_users"] != nil || len(detail["grants"].([]any)) != 0 {
+		t.Fatalf("个人规则仍返回历史分享信息: %v", detail)
+	}
+	call("GET", "/rules/"+ruleID, "b", "", nil, 404)
+	call("POST", "/resources/resolve", "b", "", resource.Object{"rule_ids": []string{ruleID}}, 404)
+	call("POST", "/experts", "b", "", resource.Object{"name": "引用历史分享规则", "prompt": "测试", "rule_ids": []string{ruleID}}, 400)
+	selected := call("POST", "/resources/resolve", "a", "", resource.Object{"rule_ids": []string{ruleID}}, 200)
+	found := false
+	for _, raw := range selected["rules"].([]any) {
+		entry := resource.Object(raw.(map[string]any))
+		if entry.String("id") == ruleID {
+			found = true
+			if entry.Bool("required") {
+				t.Fatal("历史授权将个人规则设为强制")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("所有者不能使用个人规则")
+	}
+	for _, raw := range call("POST", "/resources/resolve", "a", "", resource.Object{}, 200)["rules"].([]any) {
+		if raw.(map[string]any)["id"] == ruleID {
+			t.Fatal("个人规则被自动强制应用")
+		}
 	}
 
 	archive := func(content string) []byte {
@@ -169,10 +206,12 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	}
 	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 404)
 	call("DELETE", "/resources/shares", "a", "", expertShare, 204)
-	share := resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: expertID}, {Type: "rule", ID: ruleID}, {Type: "skill", ID: skillID}}, UserIDs: []string{users[1]}}
+	share := resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: expertID}, {Type: "skill", ID: skillID}}, UserIDs: []string{users[1]}}
 	invalid := resource.ShareInput{Resources: share.Resources, UserIDs: []string{users[1], resource.ID()}}
 	call("POST", "/resources/shares", "a", "", invalid, 400)
-	invalid = resource.ShareInput{Resources: append([]resource.ShareResource{{Type: "rule", ID: otherRule.String("id")}}, share.Resources...), UserIDs: share.UserIDs}
+	invalid = resource.ShareInput{Resources: append(share.Resources, ruleShare.Resources...), UserIDs: share.UserIDs}
+	call("POST", "/resources/shares", "a", "", invalid, 400)
+	invalid = resource.ShareInput{Resources: append([]resource.ShareResource{{Type: "skill", ID: resource.ID()}}, share.Resources...), UserIDs: share.UserIDs}
 	call("POST", "/resources/shares", "a", "", invalid, 404)
 	if contains("rules", "b", ruleID) || contains("skills", "b", skillID) || contains("experts", "b", expertID) {
 		t.Fatal("失败的批量分享未回滚")
@@ -180,9 +219,20 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	before := call("GET", "/skills", "a", "", nil, 200).String("version")
 	call("POST", "/resources/shares", "a", "", share, 204)
 	call("POST", "/resources/shares", "a", "", share, 204)
-	if !contains("rules", "b", ruleID) || !contains("skills", "b", skillID) || !contains("experts", "b", expertID) || before == call("GET", "/skills", "a", "", nil, 200).String("version") {
+	if contains("rules", "b", ruleID) || !contains("skills", "b", skillID) || !contains("experts", "b", expertID) || before == call("GET", "/skills", "a", "", nil, 200).String("version") {
 		t.Fatal("分享后目录或版本未更新")
 	}
+
+	blocked = call("GET", expertPath+"/manifest", "b", "", nil, 200)
+	if blocked.Bool("available") || len(blocked["rules"].([]any)) != 0 || len(blocked["skills"].([]any)) != 1 {
+		t.Fatalf("共享专家泄露了个人规则或丢失已授权技能: %v", blocked)
+	}
+	if owner := call("GET", expertPath+"/manifest", "a", "", nil, 200); !owner.Bool("available") || len(owner["rules"].([]any)) != 1 {
+		t.Fatalf("所有者专家不可用: %v", owner)
+	}
+	expert = call("GET", expertPath, "a", "", nil, 200)
+	expert = call("PUT", expertPath, "a", etag(expert), resource.Object{"name": expert["name"], "rule_ids": []string{}}, 200)
+
 	t.Run("个人资源共享用户信息与缓存", func(t *testing.T) {
 		assertUsers := func(name, email string, count int) {
 			t.Helper()
@@ -220,7 +270,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		}
 		assertUsers("b", "b@example.com", 1)
 		versions := map[string]string{}
-		for _, kind := range []string{"skills", "rules", "experts"} {
+		for _, kind := range []string{"skills", "experts"} {
 			versions[kind] = call("GET", "/"+kind, "a", "", nil, 200).String("version")
 		}
 		t.Cleanup(func() {
@@ -250,7 +300,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	call("DELETE", expertPath, "b", etag(expert), nil, 404)
 	expert = call("GET", expertPath, "a", "", nil, 200)
 	expert = call("PUT", expertPath, "a", etag(expert), resource.Object{"name": "编辑个人专家", "grants": []any{}}, 200)
-	if expert.String("prompt") != "个人提示词" || len(expert["shared_users"].([]any)) != 1 || len(expert["rule_ids"].([]any)) != 1 {
+	if expert.String("prompt") != "个人提示词" || len(expert["shared_users"].([]any)) != 1 || len(expert["rule_ids"].([]any)) != 0 {
 		t.Fatalf("个人专家编辑丢失字段、依赖或共享: %v", expert)
 	}
 	resolved := call("POST", "/resources/resolve", "b", "", resource.Object{"expert_id": expertID}, 200)
@@ -266,12 +316,15 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 404)
 	call("POST", "/resources/shares", "a", "", skillShare, 204)
 	call("PUT", "/skills/"+skillID, "b", etag(savedSkill), resource.Object{"name": "personal", "content": "越权"}, 404)
-	call("PUT", "/rules/"+ruleID, "a", etag(rule), ruleInput, 412)
-	rule = call("GET", "/rules/"+ruleID, "a", "", nil, 200)
-	ruleInput["content"] = "分享后编辑"
+	oldRule := rule
+	ruleInput["content"] = "编辑个人规则"
 	rule = call("PUT", "/rules/"+ruleID, "a", etag(rule), ruleInput, 200)
-	if len(rule["grants"].([]any)) != 1 || rule["grants"].([]any)[0].(map[string]any)["usage_requirement"] != "optional" {
-		t.Fatalf("编辑破坏分享或将个人规则设为强制: %v", rule)
+	if rule.String("content") != "编辑个人规则" || len(rule["grants"].([]any)) != 0 || rule["shared_users"] != nil {
+		t.Fatalf("个人规则编辑失败或仍返回分享信息: %v", rule)
+	}
+	call("PUT", "/rules/"+ruleID, "a", etag(oldRule), ruleInput, 412)
+	if beforeRules == call("GET", "/rules", "a", "", nil, 200).String("version") {
+		t.Fatal("个人规则编辑未刷新目录版本")
 	}
 	savedSkill = call("GET", "/skills/"+skillID, "a", "", nil, 200)
 	oldHash := savedSkill.String("package_sha256")
@@ -326,6 +379,19 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		}
 	}
 	call("POST", "/resources/shares", "a", "", share, 404)
+
+	call("DELETE", "/rules/"+ruleID, "a", "", nil, 428)
+	call("DELETE", "/rules/"+ruleID, "a", etag(oldRule), nil, 412)
+	call("DELETE", "/rules/"+ruleID, "a", etag(rule), nil, 204)
+	call("GET", "/rules/"+ruleID, "a", "", nil, 404)
+	if contains("rules", "a", ruleID) {
+		t.Fatal("已删除的个人规则仍出现在目录")
+	}
+	var ruleGrants int
+	if err = pool.QueryRow(t.Context(), `SELECT count(*) FROM resource_access_grants WHERE resource_type='rule' AND resource_id=$1`, ruleID).Scan(&ruleGrants); err != nil || ruleGrants != 0 {
+		t.Fatalf("删除规则未清理历史授权: %d %v", ruleGrants, err)
+	}
+	call("DELETE", "/rules/"+otherRule.String("id"), "b", etag(otherRule), nil, 204)
 
 	provider := call("POST", "/connector-providers", "a", "", resource.Object{
 		"name": "个人服务", "identifier": "github", "url": "https://example.com/mcp", "authorization_mode": "independent", "authorization_method": "http_header", "ownership_type": "system", "owner_user_id": users[1],
