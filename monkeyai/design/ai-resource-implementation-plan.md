@@ -415,3 +415,5 @@ B、C、D 完成各自闭环后再集成 E，F 完成才标记本次功能交付
 - [x] 历史个人规则授权不再参与资源下发、解析和个人专家依赖校验；系统规则授权与强制范围保持原有语义，无新增数据库迁移。
 - [x] 同步 Admin/Agent OpenAPI 及 API 说明，补充旧授权隔离和 CRUD 回归覆盖。
 - [x] Go 全部包测试通过（含 PostgreSQL/RustFS 集成，修正测试数据后应用包复测通过）；`go vet`、SQL 生成一致性和 Admin/Agent OpenAPI 校验通过。
+
+- [x] 已提交 PR [#1273](https://github.com/chaitin/MonkeyCode/pull/1273)，分支 `fix-user-rules-crud`，目标分支 `main`，等待评审。
