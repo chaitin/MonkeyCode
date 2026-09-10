@@ -378,14 +378,15 @@ WHERE
     AND credential_id IS NOT DISTINCT FROM NULLIF (sqlc.arg(credential_id)::text, '')::uuid;
 
 -- name: UpsertTool :execresult
-INSERT INTO mcp_tools (connector_id, credential_id, name, description, input_schema, config_revision)
+INSERT INTO mcp_tools (connector_id, credential_id, name, description, input_schema, config_revision, enabled)
     VALUES (sqlc.arg(connector_id), NULLIF (sqlc.arg(credential_id)::text, '')::uuid,
-	sqlc.arg(name), sqlc.arg(description), sqlc.arg(input_schema), sqlc.arg(config_revision))
+	sqlc.arg(name), sqlc.arg(description), sqlc.arg(input_schema), sqlc.arg(config_revision), sqlc.arg(enabled))
 ON CONFLICT (connector_id, credential_id, name)
     DO UPDATE SET
         description = EXCLUDED.description,
         input_schema = EXCLUDED.input_schema,
         config_revision = EXCLUDED.config_revision,
+        enabled = mcp_tools.enabled OR EXCLUDED.enabled,
         discovered_at = now(),
         updated_at = now(),
         deleted_at = NULL;

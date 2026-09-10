@@ -114,6 +114,8 @@ Accept: application/json, text/event-stream
 
 随后发送无 ID 的 `notifications/initialized`，再使用 `tools/list` 和 `tools/call`。后续请求携带协商得到的 `MCP-Protocol-Version`。工具名称区分大小写，列表只返回当前用户可调用的启用工具；不接受非空分页游标。调用参数与有效工具结果保留原始数值精度、`_meta` 和 `structuredContent`。
 
+用户自定义 MCP（`ownership_type: user`）成功执行连接测试后，发现的工具自动启用，可直接从 Agent 目录和 MCP 代理读取及调用。使用系统模板创建的个人连接同样适用。系统 MCP 的新工具仍需管理员启用；重复发现保留其启停与积分配置。
+
 入口为无状态 Streamable HTTP：POST 返回 JSON，通知返回空的 202，GET/DELETE 返回 405；不产生下游 `Mcp-Session-Id`，不提供主动推送、resources、prompts 或 sampling/elicitation。上游支持 HTTP POST 的 JSON/SSE 响应，每次调用独立握手并在结束后发送 DELETE 清理上游会话；不支持旧版 GET SSE 传输、跨调用上游会话状态或本地 stdio 进程。非空 Origin 必须与 `MONKEYAI_PUBLIC_URL` 同源。
 
 工具调用可携带 `X-Session-ID` 关联本人工作会话，或 `Idempotency-Key` 避免重复执行；重复请求返回 409 和原 `X-Billing-Transaction-ID`。集中认证仅成功调用收费，独立认证和免认证只记录调用。JSON-RPC 错误或 `isError=true` 释放预留；超时、断流、无效结果保持未知状态供核查，不自动重放。上游 JSON/SSE 响应限制为 4 MiB，请求体限制为 1 MiB。

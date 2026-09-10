@@ -852,14 +852,15 @@ func (q *Queries) UpsertOAuthCredential(ctx context.Context, arg UpsertOAuthCred
 }
 
 const upsertTool = `-- name: UpsertTool :execresult
-INSERT INTO mcp_tools (connector_id, credential_id, name, description, input_schema, config_revision)
+INSERT INTO mcp_tools (connector_id, credential_id, name, description, input_schema, config_revision, enabled)
     VALUES ($1, NULLIF ($2::text, '')::uuid,
-	$3, $4, $5, $6)
+	$3, $4, $5, $6, $7)
 ON CONFLICT (connector_id, credential_id, name)
     DO UPDATE SET
         description = EXCLUDED.description,
         input_schema = EXCLUDED.input_schema,
         config_revision = EXCLUDED.config_revision,
+        enabled = mcp_tools.enabled OR EXCLUDED.enabled,
         discovered_at = now(),
         updated_at = now(),
         deleted_at = NULL
@@ -872,6 +873,7 @@ type UpsertToolParams struct {
 	Description    string
 	InputSchema    []byte
 	ConfigRevision int64
+	Enabled        bool
 }
 
 func (q *Queries) UpsertTool(ctx context.Context, arg UpsertToolParams) (pgconn.CommandTag, error) {
@@ -882,6 +884,7 @@ func (q *Queries) UpsertTool(ctx context.Context, arg UpsertToolParams) (pgconn.
 		arg.Description,
 		arg.InputSchema,
 		arg.ConfigRevision,
+		arg.Enabled,
 	)
 }
 

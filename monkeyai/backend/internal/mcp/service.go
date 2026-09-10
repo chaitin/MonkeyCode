@@ -429,6 +429,7 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 			Description:    t.Description,
 			InputSchema:    schema,
 			ConfigRevision: int64(c.Int("config_revision")),
+			Enabled:        c.String("ownership_type") == "user",
 		})
 	}
 	if err == nil {

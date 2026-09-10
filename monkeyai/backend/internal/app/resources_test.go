@@ -490,6 +490,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			t.Fatalf("代理目录缺失: %v", out)
 		}
 		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": false, "credits_per_call": "0"}, "", "")
+		must("POST", "/api/admin/v1/connectors/"+conn.String("id")+"/test", nil, "", "")
 		out = must("POST", gateway, in, invokeKeys["a"], "")
 		if len(out["result"].(map[string]any)["tools"].([]any)) != 0 {
 			t.Fatal("禁用工具仍被暴露")
@@ -499,6 +500,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			t.Fatal("禁用工具仍可执行")
 		}
 		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
+		must("POST", "/api/admin/v1/connectors/"+conn.String("id")+"/test", nil, "", "")
 		out = must("POST", gateway, resource.Object{"jsonrpc": "2.0", "id": "unknown", "method": "resources/list"}, invokeKeys["a"], "")
 		if out["error"].(map[string]any)["code"] != float64(-32601) {
 			t.Fatal("未支持的方法应返回协议错误")
@@ -522,6 +524,64 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	allGroup := must("POST", "/api/admin/v1/groups", resource.Object{"name": "资源测试组", "parent_id": nil}, "", "")
 	must("PUT", "/api/admin/v1/groups/"+allGroup.String("id")+"/members", resource.Object{"member_ids": users}, "", "")
 	must("POST", "/api/admin/v1/rules", resource.Object{"name": "强制规则", "content": "强制", "grants": []resource.Object{{"group_id": allGroup.String("id"), "usage_requirement": "required"}}}, "", "")
+	t.Run("个人 MCP 工具下发与历史数据修复", func(t *testing.T) {
+		provider := must("POST", "/api/v1/connector-providers", resource.Object{"name": "自定义 MCP", "url": upstream.URL, "authorization_mode": "none"}, "a", "")
+		connector := must("POST", "/api/v1/connectors", resource.Object{"name": "自定义连接", "provider_id": provider["id"]}, "a", "")
+		path := "/api/v1/connectors/" + connector.String("id")
+		gateway := "/mcp/connectors/" + connector.String("id")
+		must("POST", path+"/test", nil, "a", "")
+		verify := func() {
+			t.Helper()
+			items := must("GET", path+"/tools", nil, "a", "")["items"].([]any)
+			if len(items) != 1 || items[0].(map[string]any)["enabled"] != true {
+				t.Fatalf("个人工具未自动启用并下发：%v", items)
+			}
+			catalog := must("GET", "/api/v1/connectors", nil, "a", "")
+			found := false
+			for _, raw := range catalog["connectors"].([]any) {
+				entry := resource.Object(raw.(map[string]any))
+				if entry.String("id") == connector.String("id") {
+					found = len(entry["tools"].([]any)) == 1
+				}
+			}
+			if !found {
+				t.Fatal("个人工具未进入 Agent 资源目录")
+			}
+			out := must("POST", gateway, resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys["a"], "")
+			if out["result"] == nil || len(out["result"].(map[string]any)["tools"].([]any)) != 1 {
+				t.Fatalf("个人工具未进入 MCP 代理目录：%v", out)
+			}
+		}
+		verify()
+		if code, _, _ := call("POST", gateway, resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys["b"], ""); code != 404 {
+			t.Fatalf("其他用户可读取个人 MCP 目录：%d", code)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE mcp_tools SET enabled=false WHERE connector_id IN ($1,$2)`, connector.String("id"), conn.String("id")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO mcp_tools(connector_id,name,config_revision,deleted_at) VALUES($1,'removed',1,now()),($1,'stale',0,NULL)`, connector.String("id")); err != nil {
+			t.Fatal(err)
+		}
+		before := must("GET", "/api/v1/connectors", nil, "a", "")
+		for _, direction := range []string{"up", "down", "up"} {
+			migration, err := os.ReadFile("../../migrations/000010_mcp_enable_personal_tools." + direction + ".sql")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = pool.Exec(ctx, string(migration)); err != nil {
+				t.Fatal(err)
+			}
+			verify()
+			var enabled bool
+			if err := pool.QueryRow(ctx, `SELECT bool_or(enabled) FROM mcp_tools WHERE connector_id=$1 OR (connector_id=$2 AND name IN ('removed','stale'))`, conn.String("id"), connector.String("id")).Scan(&enabled); err != nil || enabled {
+				t.Fatalf("数据修复启用了系统工具或失效个人工具：%v", err)
+			}
+		}
+		if after := must("GET", "/api/v1/connectors", nil, "a", ""); after.String("version") == before.String("version") {
+			t.Fatal("个人工具修复后资源目录版本未更新")
+		}
+		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
+	})
 	resolved = must("POST", "/api/v1/resources/resolve", resource.Object{}, "b", "")
 	if len(resolved["rules"].([]any)) != 1 {
 		t.Fatal("显式分组的强制规则缺失")
@@ -713,6 +773,11 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		var owner string
 		if err := pool.QueryRow(ctx, "SELECT user_id::text FROM connector_credentials WHERE connector_id=$1 AND status='authorized'", connector.String("id")).Scan(&owner); err != nil || owner != users[0] {
 			t.Fatalf("独立 OAuth 凭证未保存到发起用户：%s %v", owner, err)
+		}
+		must("POST", "/api/v1/connectors/"+connector.String("id")+"/test", nil, "a", "")
+		out := must("POST", "/mcp/connectors/"+connector.String("id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys["a"], "")
+		if out["result"] == nil || len(out["result"].(map[string]any)["tools"].([]any)) != 1 {
+			t.Fatalf("个人 OAuth 工具未自动启用并下发：%v", out)
 		}
 	})
 	must("POST", "/api/admin/v1/connectors/"+c3.String("id")+"/test", nil, "", "")
