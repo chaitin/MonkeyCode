@@ -46,6 +46,9 @@ func readRequest(w http.ResponseWriter, r *http.Request) (request, bool) {
 		rpcReply(w, 400, nil, nil, &rpcError{Code: -32600, Message: "JSON-RPC 请求无效"})
 		return in, false
 	}
+	if bytes.Equal(bytes.TrimSpace(in.Params), []byte("null")) {
+		in.Params = nil
+	}
 	if len(in.Params) > 0 && !bytes.HasPrefix(bytes.TrimSpace(in.Params), []byte("{")) {
 		rpcReply(w, 400, in.ID, nil, &rpcError{Code: -32602, Message: "参数必须为 JSON 对象"})
 		return in, false

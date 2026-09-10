@@ -16,3 +16,10 @@
 - 覆盖调用密钥作用域、资源授权、模板/工具禁用、独立凭证目录隔离、凭证撤销、OAuth 到期刷新、三种认证模式计费、JSON/SSE 响应、幂等去重、无效结果保留核查及参数精度。
 - 两份 OpenAPI 的重复键与本地引用校验通过。Nginx 配置检查、容器内真实 POST 转发及 Vite 开发代理转发验证通过，认证 Header 正确保留。
 - 已完成实现与验证，进入 PR 评审交付阶段；使用 `feat-mcp-proxy` 分支，主工作树保持原状。合并与部署另行执行。
+
+兼容性修复（2026-09-10）：
+
+- [x] 同步 main，在独立 worktree 创建 `fix-mcp-null-params` 分支。
+- [x] 复现 `tools/list` 携带 `params: null` 时返回 `-32602`；将顶层 null 参数视为未传参数，继续拒绝数组和标量，并保留各方法的必填参数校验。
+- [x] 补充空参数、无效参数类型、调用参数精度及元数据保真的协议回归；Go 1.27.1 下 `go test ./internal/mcp/... -count=1 -v` 和 `go vet ./internal/mcp/...` 通过，使用本地专用 PostgreSQL 测试容器及独立随机 schema，无跳过的测试。
+- 当前修复已完成本地验证，进入 PR 评审交付阶段；使用 `fix-mcp-null-params` 分支，尚未合并或部署。
