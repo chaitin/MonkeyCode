@@ -1374,6 +1374,7 @@ paths:
   /api/v1/connectors/{id}/test:
     post:
       summary: 执行真实 MCP 握手与全量工具发现
+      description: 个人连接发现的工具自动启用，包括使用系统模板创建的个人连接；系统连接的新工具仍需管理员启用。
       responses:
         '200':
           description: 执行真实 MCP 握手与全量工具发现

@@ -248,4 +248,71 @@ func TestPersonalConnectors(t *testing.T) {
 	private = call("GET", "/connectors/"+private.String("id"), nil, "owner", "", 200)
 	call("DELETE", "/connectors/"+private.String("id"), nil, "owner", etag(private), 204)
 	call("DELETE", providerPath, nil, "owner", etag(p), 204)
+
+	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in request
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			t.Error(err)
+			w.WriteHeader(400)
+			return
+		}
+		switch in.Method {
+		case "initialize":
+			rpcReply(w, 200, in.ID, resource.Object{"protocolVersion": protocolVersion}, nil)
+		case "notifications/initialized":
+			w.WriteHeader(202)
+		case "tools/list":
+			tools := []resource.Object{}
+			for i := range 5 {
+				tools = append(tools, resource.Object{"name": fmt.Sprintf("tool%d", i), "inputSchema": resource.Object{"type": "object"}})
+			}
+			rpcReply(w, 200, in.ID, resource.Object{"tools": tools}, nil)
+		}
+	}))
+	defer upstream.Close()
+	for _, mode := range []string{"none", "independent"} {
+		for _, personalProvider := range []bool{false, true} {
+			input := resource.Object{"name": fmt.Sprintf("工具发现-%s-%t", mode, personalProvider), "url": upstream.URL, "authorization_mode": mode, "authorization_method": "http_header"}
+			var provider resource.Object
+			if personalProvider {
+				provider = call("POST", "/connector-providers", input, "owner", "", 201)
+			} else {
+				provider, err = s.Providers.Save(ctx, users["owner"], "", "", input)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			connector := call("POST", "/connectors", resource.Object{"name": input["name"], "provider_id": provider["id"]}, "owner", "", 201)
+			path := "/connectors/" + connector.String("id")
+			if mode == "independent" {
+				call("PUT", path+"/credential", resource.Object{"http_headers": resource.Object{"Authorization": "Bearer owner-token"}}, "owner", "", 204)
+			}
+			for attempt := range 2 {
+				if attempt == 1 {
+					if _, err := pool.Exec(ctx, "UPDATE mcp_tools SET enabled=false WHERE connector_id=$1", connector.String("id")); err != nil {
+						t.Fatal(err)
+					}
+				}
+				discovered := call("POST", path+"/test", nil, "owner", "", 200)
+				items := call("GET", path+"/tools", nil, "owner", "", 200)["items"].([]any)
+				if discovered.Int("tool_count") != 5 || len(items) != 5 {
+					t.Fatalf("个人 MCP %s 发现 %d 个工具，下发 %d 个", input.String("name"), discovered.Int("tool_count"), len(items))
+				}
+				for _, item := range items {
+					tool := resource.Object(item.(map[string]any))
+					if !tool.Bool("enabled") || tool["credits_per_call"] != float64(0) {
+						t.Fatalf("个人工具未启用或产生费用：%v", tool)
+					}
+				}
+			}
+			call("GET", path+"/tools", nil, "other", "", 404)
+			if mode == "independent" {
+				call("DELETE", path+"/credential", nil, "owner", "", 204)
+				if items := call("GET", path+"/tools", nil, "owner", "", 200)["items"].([]any); len(items) != 0 {
+					t.Fatal("撤销认证后仍下发个人工具")
+				}
+			}
+		}
+	}
 }

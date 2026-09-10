@@ -393,6 +393,25 @@ func TestBillingIntegration(t *testing.T) {
 		}
 
 	}
+	for _, mode := range []string{"none", "independent"} {
+		provider := must("POST", "/api/v1/connector-providers", resource.Object{"name": "个人工具-" + mode, "url": mcpUpstream.URL, "authorization_mode": mode, "authorization_method": "http_header"}, "")
+		connector := must("POST", "/api/v1/connectors", resource.Object{"name": "个人连接-" + mode, "provider_id": provider["id"]}, "")
+		path := "/api/v1/connectors/" + connector.String("id")
+		if mode == "independent" {
+			must("PUT", path+"/credential", resource.Object{"http_headers": resource.Object{"X-Test": "personal"}}, "")
+		}
+		must("POST", path+"/test", nil, "")
+		before := toolCalls.Load()
+		code, out, headers := call("POST", "/mcp/connectors/"+connector.String("id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": resource.Object{"name": "search"}}, key, "")
+		id := headers.Get("X-Billing-Transaction-ID")
+		if code != 200 || out["result"] == nil || out["error"] != nil || id == "" || toolCalls.Load() != before+1 {
+			t.Fatalf("个人 MCP %s 发现后不能直接调用：%d %v", mode, code, out)
+		}
+		detail := must("GET", "/api/admin/v1/billing/transactions/"+id, nil, "")
+		if detail.String("status") != "settled" || detail.String("amount") != "0.000000" {
+			t.Fatalf("个人 MCP %s 未按零积分完成调用：%v", mode, detail)
+		}
+	}
 	reconciliation = must("GET", "/api/admin/v1/billing/reconciliation", nil, "")
 	if len(reconciliation["differences"].([]any)) != 0 || reconciliation.Int("total") != 1 {
 		t.Fatalf("MCP 账目不平: %v", reconciliation)
