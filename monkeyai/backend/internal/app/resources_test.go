@@ -71,7 +71,7 @@ func TestResourceIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
-	handler, err := newApplicationHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://localhost:8080", AdminURL: "http://localhost:8080", InitialAdminName: "测试管理员", InitialAdminEmail: "resources@example.com", InitialAdminPassword: "resource-test-password"})
+	handler, err := newApplicationHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://localhost:8080", InitialAdminName: "测试管理员", InitialAdminEmail: "resources@example.com", InitialAdminPassword: "resource-test-password"})
 	if err != nil {
 		t.Fatal(err)
 	}

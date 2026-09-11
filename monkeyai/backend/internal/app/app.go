@@ -90,7 +90,7 @@ func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 
 func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) (http.Handler, error) {
 	settings := setting.NewService(setting.NewPostgres(pool))
-	identities := identity.NewService(pool, settings, cfg.PublicURL, cfg.AdminURL).WithEmailSender(settings)
+	identities := identity.NewService(pool, settings, cfg.PublicURL).WithEmailSender(settings)
 	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil {
 		return nil, fmt.Errorf("初始化管理员: %w", err)
 	}

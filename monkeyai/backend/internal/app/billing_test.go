@@ -61,7 +61,7 @@ func TestBillingIntegration(t *testing.T) {
 		}
 	}
 	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
-	handler, err := newApplicationHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://localhost:8080", AdminURL: "http://localhost:8080", InitialAdminName: "计费测试", InitialAdminEmail: "billing-http@example.com", InitialAdminPassword: "billing-test-password"})
+	handler, err := newApplicationHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://localhost:8080", InitialAdminName: "计费测试", InitialAdminEmail: "billing-http@example.com", InitialAdminPassword: "billing-test-password"})
 	if err != nil {
 		t.Fatal(err)
 	}

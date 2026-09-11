@@ -131,7 +131,7 @@ func walletAdmin(t *testing.T, s *Service, user string) func(string, string, any
 		t.Fatal(err)
 	}
 	settings := setting.NewService(setting.NewPostgres(s.pool))
-	identities := identity.NewService(s.pool, settings, "http://localhost", "http://localhost")
+	identities := identity.NewService(s.pool, settings, "http://localhost")
 	router := chi.NewRouter()
 	router.Use(identities.RequireAdmin)
 	router.Use(auditlog.NewService(s.pool, slog.New(slog.NewTextHandler(io.Discard, nil))).Middleware(func(r *http.Request) auditlog.Actor {

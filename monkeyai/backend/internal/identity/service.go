@@ -111,7 +111,6 @@ type Service struct {
 	settings     SettingReader
 	client       *http.Client
 	publicURL    string
-	adminURL     string
 	secureCookie bool
 	now          func() time.Time
 	sessionTTL   time.Duration
@@ -121,13 +120,12 @@ type Service struct {
 	refreshTTL   time.Duration
 }
 
-func NewService(db *pgxpool.Pool, settings SettingReader, publicURL, adminURL string) *Service {
+func NewService(db *pgxpool.Pool, settings SettingReader, publicURL string) *Service {
 	return &Service{
 		db:           db,
 		settings:     settings,
 		client:       &http.Client{Timeout: 15 * time.Second},
 		publicURL:    strings.TrimRight(publicURL, "/"),
-		adminURL:     strings.TrimRight(adminURL, "/"),
 		secureCookie: strings.HasPrefix(publicURL, "https://"),
 		now:          time.Now,
 		sessionTTL:   7 * 24 * time.Hour,

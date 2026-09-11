@@ -74,7 +74,7 @@ func TestOAuthUserRegistration(t *testing.T) {
 		{name: "unset", settings: `{}`, want: ErrRegistrationDisabled},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			service := NewService(pool, authenticationStub{value: json.RawMessage(test.settings)}, "http://localhost", "http://localhost")
+			service := NewService(pool, authenticationStub{value: json.RawMessage(test.settings)}, "http://localhost")
 			profile := upstreamProfile{Provider: "oidc", Issuer: "https://issuer.example.com", Subject: test.name, Email: test.name + "@example.com", Name: test.name}
 			user, err := service.upsertIdentity(ctx, profile, false)
 			if !errors.Is(err, test.want) {
@@ -113,7 +113,7 @@ func TestOAuthAdminClientLogin(t *testing.T) {
 			name = "promoted_identity"
 		}
 		t.Run(name, func(t *testing.T) {
-			s := NewService(pool, authenticationStub{json.RawMessage(`{"registration_enabled":true}`)}, "http://localhost", "http://localhost")
+			s := NewService(pool, authenticationStub{json.RawMessage(`{"registration_enabled":true}`)}, "http://localhost")
 			profile := upstreamProfile{Provider: "oidc", Issuer: "https://issuer.example.com", Subject: name, Email: name + "@example.com", Name: name}
 			var user User
 			var err error
@@ -151,7 +151,7 @@ func TestOAuthAdminClientLogin(t *testing.T) {
 
 func TestOAuthRegistrationConflictWithAdmin(t *testing.T) {
 	pool := emailDatabase(t)
-	s := NewService(pool, nil, "", "")
+	s := NewService(pool, nil, "")
 	user, err := s.insertUser(t.Context(), "管理员", "admin@example.com", "admin", "")
 	if err != nil {
 		t.Fatal(err)

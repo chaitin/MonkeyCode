@@ -104,7 +104,7 @@ func authCall(t *testing.T, s *Service, path string, body any, want int) *httpte
 func TestEmailAuthentication(t *testing.T) {
 	pool := emailDatabase(t)
 	sender := &mailStub{}
-	s := NewService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true,"registration_enabled":true}`)}, "http://localhost", "http://localhost").WithEmailSender(sender)
+	s := NewService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true,"registration_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
 	ctx := t.Context()
 	clearLimit := func() {
 		t.Helper()
@@ -207,7 +207,7 @@ func TestEmailAuthentication(t *testing.T) {
 
 func TestConcurrentEmailCode(t *testing.T) {
 	pool := emailDatabase(t)
-	s := NewService(pool, nil, "", "")
+	s := NewService(pool, nil, "")
 	input := emailInput{Email: "user@example.com", Purpose: "login"}
 	var wg sync.WaitGroup
 	results := make(chan error, 8)

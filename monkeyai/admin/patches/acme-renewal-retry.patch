@@ -1,0 +1,11 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -367,7 +367,7 @@
+             }
+             Err(ref err) => {
+                 warn!(log, "{err} while updating certificate, {lctx}");
+-                cert.write().set_error(&err);
++                next = cmp::min(next, cert.write().set_error(&err));
+                 continue;
+             }
+         };

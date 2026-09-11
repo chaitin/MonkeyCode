@@ -24,7 +24,7 @@
 
 OAuth 元数据位于 `GET /.well-known/oauth-authorization-server`，客户端清单位于 `GET /api/auth/v1/clients`。
 
-首期浏览器会话使用主机 Cookie，因此 `MONKEYAI_PUBLIC_URL` 与 `MONKEYAI_ADMIN_URL` 必须使用相同协议和主机名；开发环境可以使用不同端口。
+浏览器会话使用主机 Cookie。管理页面和 API 统一使用 `MONKEYAI_PUBLIC_URL` 作为对外访问地址；前后端分别开发时，将它设置为 Vite 页面地址，由开发代理转发服务端请求。
 
 ## 3. 管理员登录与首次启动
 

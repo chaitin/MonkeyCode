@@ -68,8 +68,7 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request) {
 		s.writeOAuthError(w, err)
 		return
 	}
-	target := s.adminURL + "/client-login?request_id=" + url.QueryEscape(request.ID)
-	http.Redirect(w, r, target, http.StatusFound)
+	http.Redirect(w, r, s.clientLoginURL(request.ID, ""), http.StatusFound)
 }
 
 func (s *Service) token(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +276,7 @@ func (s *Service) upstreamResultURL(state LoginState, errorCode string) string {
 		if errorCode != "" {
 			query.Set("oauth_error", errorCode)
 		}
-		result := s.adminURL + "/login"
+		result := s.publicURL + "/login"
 		if encoded := query.Encode(); encoded != "" {
 			result += "?" + encoded
 		}
@@ -294,5 +293,5 @@ func (s *Service) clientLoginURL(requestID, errorCode string) string {
 	if errorCode != "" {
 		query.Set("error", errorCode)
 	}
-	return s.adminURL + "/client-login?" + query.Encode()
+	return s.publicURL + "/client-login?" + query.Encode()
 }

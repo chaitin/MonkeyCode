@@ -92,7 +92,7 @@ func setup(t *testing.T) *fixture {
 	router := chi.NewRouter()
 	router.Get("/oauth/connectors/{id}/callback", s.Callback)
 	router.Group(func(r chi.Router) {
-		r.Use(identity.NewService(pool, nil, "http://localhost", "http://localhost").RequireAgent)
+		r.Use(identity.NewService(pool, nil, "http://localhost").RequireAgent)
 		r.Route("/agent", s.RegisterAgent)
 		r.Route("/admin", s.RegisterAdmin)
 	})
