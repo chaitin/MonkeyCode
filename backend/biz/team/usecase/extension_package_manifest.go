@@ -115,7 +115,8 @@ func parseExtensionPackage(data []byte) (*parsedExtensionPackage, error) {
 	if strings.TrimSpace(manifest.PackageID) == "" || strings.TrimSpace(manifest.Version) == "" {
 		return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("extension manifest missing package_id or version"))
 	}
-	if len(manifest.Rules) == 0 && len(manifest.Skills) == 0 && len(manifest.Images) == 0 {
+	// 显式空 rules 表示清空该包已有的规则。
+	if manifest.Rules == nil && len(manifest.Skills) == 0 && len(manifest.Images) == 0 {
 		return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("extension manifest contains no resources"))
 	}
 

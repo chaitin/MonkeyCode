@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/agentrule"
+	"github.com/chaitin/MonkeyCode/backend/db/agentruleversion"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 )
@@ -21,13 +23,53 @@ type extensionRuleImporter struct {
 const VersionFormat = "20060102150405"
 
 func (i *extensionRuleImporter) ImportRules(ctx context.Context, userID uuid.UUID, pkg *parsedExtensionPackage) (domain.ExtensionRuleImportResult, error) {
+	// 防止并发导入将同一个包的两批规则混在一起。
+	tx, err := i.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return domain.ExtensionRuleImportResult{}, err
+	}
+	defer tx.Rollback()
+
+	result, err := i.replaceRules(ctx, tx, userID, pkg)
+	if err != nil {
+		return domain.ExtensionRuleImportResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.ExtensionRuleImportResult{}, err
+	}
+	return result, nil
+}
+
+func (i *extensionRuleImporter) replaceRules(ctx context.Context, tx *db.Tx, userID uuid.UUID, pkg *parsedExtensionPackage) (domain.ExtensionRuleImportResult, error) {
 	var result domain.ExtensionRuleImportResult
-	for _, item := range pkg.Rules {
-		created, err := i.importRule(ctx, userID, pkg, item)
-		if err != nil {
-			return result, err
+	source := agentrule.ExtensionPackageIDEQ(pkg.PackageID)
+	rules, err := tx.AgentRule.Query().Where(source).All(ctx)
+	if err != nil {
+		return domain.ExtensionRuleImportResult{}, err
+	}
+	existing := make(map[string]*db.AgentRule, len(rules))
+	for _, rule := range rules {
+		if !rule.IsDeleted && rule.ExtensionRuleID != nil {
+			existing[*rule.ExtensionRuleID] = rule
 		}
-		if created {
+	}
+
+	// 生效版本与规则互相引用，先解除引用再清理历史版本。
+	if err := tx.AgentRule.Update().Where(source).ClearActiveVersionID().Exec(ctx); err != nil {
+		return domain.ExtensionRuleImportResult{}, err
+	}
+	if _, err := tx.AgentRuleVersion.Delete().Where(agentruleversion.HasRuleWith(source)).Exec(ctx); err != nil {
+		return domain.ExtensionRuleImportResult{}, err
+	}
+	if _, err := tx.AgentRule.Delete().Where(source).Exec(ctx); err != nil {
+		return domain.ExtensionRuleImportResult{}, err
+	}
+	for _, item := range pkg.Rules {
+		previous := existing[item.RuleID]
+		if err := i.importRule(ctx, tx, userID, pkg, item, previous); err != nil {
+			return domain.ExtensionRuleImportResult{}, err
+		}
+		if previous == nil {
 			result.CreatedRules++
 		} else {
 			result.UpdatedRules++
@@ -36,31 +78,8 @@ func (i *extensionRuleImporter) ImportRules(ctx context.Context, userID uuid.UUI
 	return result, nil
 }
 
-func (i *extensionRuleImporter) importRule(ctx context.Context, userID uuid.UUID, pkg *parsedExtensionPackage, item parsedExtensionRule) (bool, error) {
-	existingBySource, err := i.db.AgentRule.Query().
-		Where(
-			agentrule.ExtensionPackageIDEQ(pkg.PackageID),
-			agentrule.ExtensionRuleIDEQ(item.RuleID),
-			agentrule.IsDeletedEQ(false),
-		).
-		Only(ctx)
-	if err != nil && !db.IsNotFound(err) {
-		return false, err
-	}
-	if existingBySource != nil {
-		version, err := i.createRuleVersion(ctx, existingBySource.ID, item.Content)
-		if err != nil {
-			return false, err
-		}
-		_, err = i.db.AgentRule.UpdateOneID(existingBySource.ID).
-			SetDescription(item.Description).
-			SetExtensionVersion(pkg.Version).
-			SetActiveVersionID(version.ID).
-			Save(ctx)
-		return false, err
-	}
-
-	conflict, err := i.db.AgentRule.Query().
+func (i *extensionRuleImporter) importRule(ctx context.Context, tx *db.Tx, userID uuid.UUID, pkg *parsedExtensionPackage, item parsedExtensionRule, previous *db.AgentRule) error {
+	conflict, err := tx.AgentRule.Query().
 		Where(
 			agentrule.NameEQ(item.Name),
 			agentrule.ScopeTypeEQ("global"),
@@ -69,13 +88,13 @@ func (i *extensionRuleImporter) importRule(ctx context.Context, userID uuid.UUID
 		).
 		Exist(ctx)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if conflict {
-		return false, errcode.ErrBadRequest.Wrap(fmt.Errorf("agent rule name conflict: %s", item.Name))
+		return errcode.ErrBadRequest.Wrap(fmt.Errorf("agent rule name conflict: %s", item.Name))
 	}
 
-	rule, err := i.db.AgentRule.Create().
+	create := tx.AgentRule.Create().
 		SetID(uuid.New()).
 		SetName(item.Name).
 		SetDescription(item.Description).
@@ -84,23 +103,25 @@ func (i *extensionRuleImporter) importRule(ctx context.Context, userID uuid.UUID
 		SetCreatedBy(userID).
 		SetExtensionPackageID(pkg.PackageID).
 		SetExtensionRuleID(item.RuleID).
-		SetExtensionVersion(pkg.Version).
-		Save(ctx)
-	if err != nil {
-		return false, err
+		SetExtensionVersion(pkg.Version)
+	if previous != nil {
+		create.SetID(previous.ID).SetCreatedAt(previous.CreatedAt).SetCreatedBy(previous.CreatedBy)
 	}
-	version, err := i.createRuleVersion(ctx, rule.ID, item.Content)
+	rule, err := create.Save(ctx)
 	if err != nil {
-		return false, err
+		return err
 	}
-	_, err = i.db.AgentRule.UpdateOneID(rule.ID).SetActiveVersionID(version.ID).Save(ctx)
-	return true, err
+	version, err := i.createRuleVersion(ctx, tx, rule.ID, item.Content)
+	if err != nil {
+		return err
+	}
+	return tx.AgentRule.UpdateOneID(rule.ID).SetActiveVersionID(version.ID).Exec(ctx)
 }
 
-func (i *extensionRuleImporter) createRuleVersion(ctx context.Context, ruleID uuid.UUID, content string) (*db.AgentRuleVersion, error) {
+func (i *extensionRuleImporter) createRuleVersion(ctx context.Context, tx *db.Tx, ruleID uuid.UUID, content string) (*db.AgentRuleVersion, error) {
 	now := time.Now()
 	version := now.UTC().Format(VersionFormat)
-	return i.db.AgentRuleVersion.Create().
+	return tx.AgentRuleVersion.Create().
 		SetID(uuid.New()).
 		SetRuleID(ruleID).
 		SetVersion(version).
