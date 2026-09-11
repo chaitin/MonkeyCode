@@ -117,7 +117,7 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 	for _, item := range models {
 		entry := AgentModel{
 			OwnershipType:       item.OwnershipType,
-			OwnerUserID:         item.OwnerUserID,
+			User:                item.User,
 			ID:                  item.ID,
 			Model:               item.ModelID,
 			DisplayName:         item.DisplayName,

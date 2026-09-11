@@ -66,7 +66,9 @@ PostgreSQL 数据保存在 `./data/postgres`，执行 `docker compose down` 不�
 
 ## 资源管理与 RustFS
 
-技能、规则、专家和 MCP 连接使用 PostgreSQL 持久化；技能 ZIP 和连接模板图标字节保存在私有 RustFS Bucket。后台和工作 Agent 均经后端鉴权下载，不直接接触对象存储凭据；技能包在返回前校验大小与 SHA-256，发现损坏时拒绝下发。技能编辑会重建 ZIP 并计算 SHA-256，保留包内附件。
+Connector 已直接保存连接与认证配置，支持同一用户在同一连接下持有多份凭证。设计见 [连接与多凭证认证设计](design/connector-auth-design.md)，现有数据库升级见 [迁移与接入说明](design/connector-migration.md)。
+
+技能、规则、专家和 MCP 连接使用 PostgreSQL 持久化；技能 ZIP 和连接图标字节保存在私有 RustFS Bucket。后台和工作 Agent 均经后端鉴权下载，不直接接触对象存储凭据；技能包在返回前校验大小与 SHA-256，发现损坏时拒绝下发。技能编辑会重建 ZIP 并计算 SHA-256，保留包内附件。
 
 首次重新部署按以下顺序操作：
 
@@ -81,15 +83,15 @@ RustFS 镜像固定为 `chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/rustf
 
 `/healthz` 表示进程存活；`/readyz` 检查数据库和 Bucket（S3 检查超时 3 秒，缓存 5 秒）。Nginx 允许 21 MiB 请求体，技能文件限 20 MiB，解包限 50 MiB/500 个条目，拒绝路径穿越、重复项、链接及不合法的 `SKILL.md`。
 
-MCP 默认访问公网 HTTP(S) 目标；访问内网服务时用 `MONKEYAI_MCP_ALLOWED_CIDRS` 明确配置允许网段。连接使用真实 MCP 初始化和分页工具发现，拒绝自动重定向。新发现工具默认禁用。OAuth 固定回调为 `${MONKEYAI_PUBLIC_URL}/oauth/connectors/callback`，需要登记到上游 OAuth 应用。
+MCP 默认访问公网 HTTP(S) 目标；访问内网服务时用 `MONKEYAI_MCP_ALLOWED_CIDRS` 明确配置允许网段。连接使用真实 MCP 初始化和分页工具发现，拒绝自动重定向。系统连接新发现工具默认禁用，个人连接工具自动启用。OAuth 固定回调为 `${MONKEYAI_PUBLIC_URL}/oauth/connectors/{id}/callback`，需要登记到上游 OAuth 应用。
 
-同一 Provider 可以创建多个 Connector，独立认证的目录按用户凭证隔离。已有实例的模板连接参数不能直接更换；新的地址或 OAuth 应用创建新模板并建立新连接。集中 Header/Token 只保存在后端；个人连接的敏感值不通过管理列表返回。
+Connector 可以直接编辑地址、认证方式与 OAuth 应用。关键配置变更会使旧凭证和目录失效；用户需更新指定 Header 凭证或对指定凭证重新授权。同一用户可以添加多份凭证，工具目录按具体凭证隔离；调用密钥绑定连接和独立凭证 ID，集中 Header/Token 仅保存在后端。
 
 Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rules`、`/api/v1/skills`、`/api/v1/experts`、`/api/v1/connectors`，每个接口独立提供 SHA-256 版本与 ETag/304。模型代理信息随模型列表返回，整体 `/api/v1/config` 已移除。通过专家清单和 `/api/v1/resources/resolve` 获取最终依赖；专家授权只委托其固定系统规则和技能，模型及连接仍单独检查授权。接口详见两份 OpenAPI。
 
-资源管理列表支持 `q`、`ownership_type`、`cursor` 和 `limit`（1—200），管理页面及关联选择器会读取全部分页。模板图标限 1 MiB 的 PNG/JPEG，由后端验证尺寸并经授权接口读取。
+资源管理列表支持 `q`、`ownership_type`、`cursor` 和 `limit`（1—200），管理页面及关联选择器会读取全部分页。连接图标限 1 MiB 的 PNG/JPEG，由后端验证尺寸并经授权接口读取。
 
-工具下发声明 `capabilities: [catalog, invoke]`，包含工具目录、积分配置和 `mcp_gateway`（代理 URL、`streamable_http` 传输及 `mcp:invoke` 调用密钥要求）。远程工具经服务端代理调用，上游凭证留在后端；Desktop/OhMyAgent 本地加载器独立接入。对象采用不可变 key，旧包与失败上传遗留对象保留，不在写事务中删除，以免破坏备份或正在下载的资源；清理时必须确认无数据库引用且超过备份保留窗口。
+工具下发声明 `capabilities: [catalog, invoke]`，包含工具目录、积分配置和 `mcp_gateway`；独立连接在各份 `credentials` 中提供这些字段，选定后通过对应凭证地址调用，所有代理地址以 `/mcp` 开头并复用全局 API Key。网关字段（代理 URL、`streamable_http` 传输及 `mcp:invoke` 调用密钥要求）。远程工具经服务端代理调用，上游凭证留在后端；Desktop/OhMyAgent 本地加载器独立接入。对象采用不可变 key，旧包与失败上传遗留对象保留，不在写事务中删除，以免破坏备份或正在下载的资源；清理时必须确认无数据库引用且超过备份保留窗口。
 
 备份应同时保留 PostgreSQL 快照与该快照引用的 RustFS 对象。恢复时先恢复对象和数据库，再用资源摘要验证技能下载。完整部署启动前不要清空 RustFS 数据卷。
 
@@ -103,7 +105,7 @@ Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rul
 - 首次升级先执行 `000002_billing_create_transactions` 增量迁移；保留历史账户和流水。已有交易后 down 迁移主动拒绝，回滚应关闭新调用扣费并保留交易恢复能力。
 - 默认关闭实际扣费，仅记录调用。检查价格、额度和模型上限后，在费用设置中开启。旧计费设置写接口返回冲突提示，统一通过计费接口写入。
 - 模型需要配置有效的 `context_window_tokens` 和 `max_output_tokens`。代理以管理员确认的模型上下文上界预留、强制输出限制，使用真实 usage 结算；目前仅支持单结果同步调用，不支持 `n > 1`、`best_of > 1` 或后台异步生成。上下文上界错误、缺失用量或实际费用超出预留都会转待核查，不能按估值扣款。
-- 模型调用沿用 `/v1/chat/completions`、`/v1/responses`、`/v1/messages`；MCP 使用 `POST /mcp/connectors/{id}`，密钥作用域为 `mcp:invoke`。集中认证工具成功收费；独立认证、免认证和明确失败不收费。入口采用无状态 Streamable HTTP，支持握手、通知、工具列表和调用，返回 JSON；上游 JSON/SSE 均可解析。OAuth 调用前自动刷新，每次上游会话结束后清理。详见 [MCP 接入说明](backend/api/README.md#mcp-代理)。
+- 模型调用沿用 `/v1/chat/completions`、`/v1/responses`、`/v1/messages`；MCP 使用 `POST /mcp/connectors/{id}/credentials/{credential_id}`，免认证使用 `POST /mcp/connectors/{id}`；全局调用密钥认证用户，地址确定授权资源，密钥作用域为 `mcp:invoke`。集中认证工具成功收费；独立认证、免认证和明确失败不收费。入口采用无状态 Streamable HTTP，支持握手、通知、工具列表和调用，返回 JSON；上游 JSON/SSE 均可解析。OAuth 调用前自动刷新，每次上游会话结束后清理。详见 [MCP 接入说明](backend/api/README.md#mcp-代理)。
 - 返回的 `X-Billing-Transaction-ID` 关联真实交易；可选 `Idempotency-Key` 重复请求返回原交易 ID 和 409，禁止再次执行；`X-Session-ID` 可选，提供时验证所属用户。
 - 周期采用上海时区；每分钟准备最多 100 个账户，读取或调用时兜底开户。额度变更不重发当期余额；周期切换在当前周期结束时生效。未消费余额不结转，跨周期调用仍结算到原账户。
 - 待结算交易按原交易 ID 自动重试，最多退避一小时；执行中断 30 分钟后转核查，不自动重放上游。管理端可填写证据和用量处理未知结果，已结算本地扣款通过关联冲正全额退款。流水禁止更新或删除。

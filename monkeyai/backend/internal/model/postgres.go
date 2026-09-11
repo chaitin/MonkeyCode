@@ -85,7 +85,7 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 		return Model{}, err
 	}
 	item.Authorization = normalizeAuthorization(item.Authorization)
-	return item, nil
+	return p.Get(ctx, item.ID)
 }
 
 func (p *Postgres) Update(ctx context.Context, item Model) (Model, error) {
@@ -136,7 +136,7 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 	if err := tx.Commit(ctx); err != nil {
 		return Model{}, err
 	}
-	return item, nil
+	return p.Get(ctx, item.ID)
 }
 
 func (p *Postgres) SetEnabled(ctx context.Context, id string, enabled bool) (Model, error) {
@@ -269,6 +269,9 @@ func (p *Postgres) loadGrants(ctx context.Context, models []Model) error {
 	if len(models) == 0 {
 		return nil
 	}
+	if err := p.loadUsers(ctx, models); err != nil {
+		return err
+	}
 	ids := make([]string, 0, len(models))
 	byID := make(map[string]*Model, len(models))
 	for index := range models {
@@ -347,6 +350,9 @@ func (p *Postgres) TouchShared(ctx context.Context, tx pgx.Tx, id string) error 
 }
 
 func (p *Postgres) loadPeople(ctx context.Context, models []Model, actor string) error {
+	if err := p.loadUsers(ctx, models); err != nil {
+		return err
+	}
 	ids := make([]string, 0, len(models))
 	byID := make(map[string]*Model, len(models))
 	for i := range models {
@@ -374,6 +380,21 @@ func (p *Postgres) loadPeople(ctx context.Context, models []Model, actor string)
 		} else {
 			byID[id].SharedUsers = append(byID[id].SharedUsers, person)
 		}
+	}
+	return nil
+}
+
+func (p *Postgres) loadUsers(ctx context.Context, models []Model) error {
+	ids := make([]string, 0, len(models))
+	for _, item := range models {
+		ids = append(ids, item.OwnerUserID)
+	}
+	users, err := resource.Users(ctx, database.Reader(ctx, p.pool), ids)
+	if err != nil {
+		return err
+	}
+	for i := range models {
+		models[i].User = users[models[i].OwnerUserID]
 	}
 	return nil
 }

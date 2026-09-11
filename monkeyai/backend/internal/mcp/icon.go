@@ -22,30 +22,18 @@ func (s *Service) iconRoutes(r chi.Router, admin bool) {
 	if s.storage == nil {
 		return
 	}
-	if admin {
-		r.Put("/connector-providers/{id}/icon", func(w http.ResponseWriter, r *http.Request) { s.uploadIcon(w, r, true) })
-		r.Get("/connector-providers/{id}/icon", func(w http.ResponseWriter, r *http.Request) { s.icon(w, r, chi.URLParam(r, "id")) })
-	} else {
-		r.Put("/connector-providers/{id}/icon", func(w http.ResponseWriter, r *http.Request) { s.uploadIcon(w, r, false) })
-		r.Get("/connector-providers/{id}/icon", func(w http.ResponseWriter, r *http.Request) {
-			u, _ := identity.UserFromContext(r.Context())
-			id := chi.URLParam(r, "id")
-			if _, err := s.userProvider(r.Context(), s.Store.Pool, id, u.ID); err != nil {
+	r.Put("/connectors/{id}/icon", func(w http.ResponseWriter, r *http.Request) { s.uploadIcon(w, r, admin) })
+	r.Get("/connectors/{id}/icon", func(w http.ResponseWriter, r *http.Request) {
+		u, _ := identity.UserFromContext(r.Context())
+		id := chi.URLParam(r, "id")
+		if !admin {
+			if _, err := s.Connector(r.Context(), s.Store.Pool, id, u.ID, false); err != nil {
 				resource.Fail(w, err)
 				return
 			}
-			s.icon(w, r, id)
-		})
-		r.Get("/connectors/{id}/icon", func(w http.ResponseWriter, r *http.Request) {
-			u, _ := identity.UserFromContext(r.Context())
-			c, err := s.Connector(r.Context(), s.Store.Pool, chi.URLParam(r, "id"), u.ID, false)
-			if err != nil {
-				resource.Fail(w, err)
-				return
-			}
-			s.icon(w, r, c.String("provider_id"))
-		})
-	}
+		}
+		s.icon(w, r, id)
+	})
 }
 func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, (1<<20)+4096)
@@ -83,7 +71,7 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 	if admin {
 		user = ""
 	}
-	p, err := resource.DecodeObject(sqlc.New(tx).LockIconProvider(ctx, sqlc.LockIconProviderParams{ID: id, UserID: user}))
+	p, err := resource.DecodeObject(sqlc.New(tx).LockIconConnector(ctx, sqlc.LockIconConnectorParams{ID: id, UserID: user}))
 	if err != nil {
 		resource.Fail(w, err)
 		return
@@ -98,10 +86,10 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 	}
 	key := "connector-icons/" + id + "/" + resource.ID() + "/icon." + format
 	if err = s.storage.Put(ctx, key, data, "image/"+format); err == nil {
-		_, err = sqlc.New(tx).SetProviderIcon(ctx, sqlc.SetProviderIconParams{ID: id, IconS3Key: key})
+		err = sqlc.New(tx).SetConnectorIcon(ctx, sqlc.SetConnectorIconParams{ID: id, IconS3Key: key})
 	}
 	if err == nil {
-		err = resource.Audit(ctx, tx, u.ID, "provider", id, "icon")
+		err = resource.Audit(ctx, tx, u.ID, "connector", id, "icon")
 	}
 
 	if err == nil {
@@ -113,9 +101,9 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 	}
 
 	if admin {
-		p, err = s.Providers.Get(ctx, s.Store.Pool, id)
+		p, err = s.Connectors.Get(ctx, s.Store.Pool, id)
 	} else {
-		p, err = s.Providers.GetUser(ctx, s.Store.Pool, id, u.ID)
+		p, err = s.Connectors.GetUser(ctx, s.Store.Pool, id, u.ID)
 	}
 	if err != nil {
 		resource.Fail(w, err)
@@ -124,8 +112,8 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 	resource.ETag(w, p)
 	resource.JSON(w, 200, p)
 }
-func (s *Service) icon(w http.ResponseWriter, r *http.Request, provider string) {
-	key, err := sqlc.New(s.Store.Pool).GetProviderIcon(r.Context(), provider)
+func (s *Service) icon(w http.ResponseWriter, r *http.Request, connector string) {
+	key, err := sqlc.New(s.Store.Pool).GetConnectorIcon(r.Context(), connector)
 	if err != nil || key == "" {
 		resource.Fail(w, resource.NotFound)
 		return

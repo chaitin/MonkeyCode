@@ -12,22 +12,34 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-const consumeOAuthRequest = `-- name: ConsumeOAuthRequest :one
-UPDATE
-    connector_oauth_requests
-SET
-    consumed_at = now(),
-    status = 'processing'
-WHERE
-    state_hash = $1
-    AND consumed_at IS NULL
-    AND expires_at > now()
-RETURNING
-    to_jsonb (connector_oauth_requests)
+const cleanupOAuthRequests = `-- name: CleanupOAuthRequests :exec
+WITH expired AS (
+    UPDATE connector_oauth_requests SET status = CASE WHEN status = 'pending' THEN 'expired' ELSE 'failed' END
+    WHERE (status = 'pending' AND expires_at <= now())
+        OR (status = 'processing' AND consumed_at < now() - interval '2 minutes')
+)
+DELETE FROM connector_oauth_requests WHERE expires_at < now() - interval '1 day'
 `
 
-func (q *Queries) ConsumeOAuthRequest(ctx context.Context, stateHash string) ([]byte, error) {
-	row := q.db.QueryRow(ctx, consumeOAuthRequest, stateHash)
+func (q *Queries) CleanupOAuthRequests(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, cleanupOAuthRequests)
+	return err
+}
+
+const consumeOAuthRequest = `-- name: ConsumeOAuthRequest :one
+UPDATE connector_oauth_requests SET consumed_at = now(), status = 'processing'
+WHERE state_hash = $1 AND connector_id = $2
+    AND status = 'pending' AND consumed_at IS NULL AND expires_at > now()
+RETURNING to_jsonb(connector_oauth_requests)
+`
+
+type ConsumeOAuthRequestParams struct {
+	StateHash   string
+	ConnectorID string
+}
+
+func (q *Queries) ConsumeOAuthRequest(ctx context.Context, arg ConsumeOAuthRequestParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, consumeOAuthRequest, arg.StateHash, arg.ConnectorID)
 	var to_jsonb []byte
 	err := row.Scan(&to_jsonb)
 	return to_jsonb, err
@@ -50,68 +62,74 @@ func (q *Queries) CountTools(ctx context.Context, connectorID string) (int64, er
 	return count, err
 }
 
-const createOAuthRequest = `-- name: CreateOAuthRequest :execresult
-INSERT INTO connector_oauth_requests (id, connector_id, user_id, centralized, config_revision, state_hash, verifier,
-    redirect_uri, expires_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now() + interval '10 minutes')
+const createCredential = `-- name: CreateCredential :one
+INSERT INTO connector_credentials(id, connector_id, user_id, name, http_headers,
+    oauth_access_token, oauth_refresh_token, oauth_expires_at, config_revision)
+VALUES (($1::jsonb->>'id')::uuid,
+    ($1::jsonb->>'connector_id')::uuid,
+    NULLIF($1::jsonb->>'user_id', '')::uuid,
+    $1::jsonb->>'name', COALESCE($1::jsonb->'http_headers', '{}'::jsonb),
+    COALESCE($1::jsonb->>'oauth_access_token', ''),
+    COALESCE($1::jsonb->>'oauth_refresh_token', ''),
+    ($1::jsonb->>'oauth_expires_at')::timestamptz,
+    ($1::jsonb->>'config_revision')::bigint)
+RETURNING to_jsonb(connector_credentials)
 `
 
-type CreateOAuthRequestParams struct {
-	ID             string
-	ConnectorID    string
-	UserID         string
-	Centralized    bool
-	ConfigRevision int64
-	StateHash      string
-	Verifier       string
-	RedirectUri    string
+func (q *Queries) CreateCredential(ctx context.Context, data []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, createCredential, data)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
 }
 
-func (q *Queries) CreateOAuthRequest(ctx context.Context, arg CreateOAuthRequestParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, createOAuthRequest,
-		arg.ID,
-		arg.ConnectorID,
-		arg.UserID,
-		arg.Centralized,
-		arg.ConfigRevision,
-		arg.StateHash,
-		arg.Verifier,
-		arg.RedirectUri,
-	)
-}
-
-const credentialCurrent = `-- name: CredentialCurrent :one
-SELECT
-    oauth_expires_at IS NULL
-    OR oauth_expires_at > now()
-FROM
-    connector_credentials
-WHERE
-    id = $1
+const createOAuthRequest = `-- name: CreateOAuthRequest :one
+INSERT INTO connector_oauth_requests(id, connector_id, user_id, credential_id, credential_revision, name,
+    config_revision, state_hash, verifier, redirect_uri, expires_at)
+VALUES (($1::jsonb->>'id')::uuid, ($1::jsonb->>'connector_id')::uuid,
+    ($1::jsonb->>'user_id')::uuid, NULLIF($1::jsonb->>'credential_id','')::uuid,
+    ($1::jsonb->>'credential_revision')::bigint, $1::jsonb->>'name',
+    ($1::jsonb->>'config_revision')::bigint, $1::jsonb->>'state_hash',
+    $1::jsonb->>'verifier', $1::jsonb->>'redirect_uri', now() + interval '10 minutes')
+RETURNING to_jsonb(connector_oauth_requests)
 `
 
-func (q *Queries) CredentialCurrent(ctx context.Context, id string) (*bool, error) {
-	row := q.db.QueryRow(ctx, credentialCurrent, id)
-	var column_1 *bool
-	err := row.Scan(&column_1)
-	return column_1, err
+func (q *Queries) CreateOAuthRequest(ctx context.Context, data []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, createOAuthRequest, data)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
 }
 
-const credentialFresh = `-- name: CredentialFresh :one
-SELECT
-    oauth_expires_at IS NULL
-    OR oauth_expires_at > now() + interval '30 seconds'
-FROM
-    connector_credentials
-WHERE
-    id = $1
+const expireCredential = `-- name: ExpireCredential :exec
+UPDATE connector_credentials SET oauth_access_token = '', oauth_refresh_token = '', oauth_expires_at = now(),
+    revision = revision + 1, connection_status = 'error', last_error = 'OAuth 已失效，请重新授权', updated_at = now()
+WHERE id = $1 AND revoked_at IS NULL
 `
 
-func (q *Queries) CredentialFresh(ctx context.Context, id string) (*bool, error) {
-	row := q.db.QueryRow(ctx, credentialFresh, id)
-	var column_1 *bool
-	err := row.Scan(&column_1)
-	return column_1, err
+func (q *Queries) ExpireCredential(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, expireCredential, id)
+	return err
+}
+
+const finishOAuthRequest = `-- name: FinishOAuthRequest :execrows
+UPDATE connector_oauth_requests SET status = $1,
+    credential_id = COALESCE(NULLIF($2::text, '')::uuid, credential_id)
+WHERE id = $3 AND status = 'processing' AND consumed_at > now() - interval '2 minutes'
+`
+
+type FinishOAuthRequestParams struct {
+	Status       string
+	CredentialID string
+	ID           string
+}
+
+func (q *Queries) FinishOAuthRequest(ctx context.Context, arg FinishOAuthRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, finishOAuthRequest, arg.Status, arg.CredentialID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getAuthorizationMode = `-- name: GetAuthorizationMode :one
@@ -131,18 +149,27 @@ func (q *Queries) GetAuthorizationMode(ctx context.Context, id string) (string, 
 	return authorization_mode, err
 }
 
+const getCentralCredential = `-- name: GetCentralCredential :one
+SELECT to_jsonb(c) FROM connector_credentials c
+WHERE connector_id = $1 AND user_id IS NULL AND revoked_at IS NULL
+`
+
+func (q *Queries) GetCentralCredential(ctx context.Context, connectorID string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getCentralCredential, connectorID)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
+}
+
 const getConnector = `-- name: GetConnector :one
 SELECT
     to_jsonb (c)
 FROM
     connectors c
-    JOIN connector_providers p ON p.id = c.provider_id
 WHERE
     c.id = $1
     AND c.deleted_at IS NULL
     AND c.enabled
-    AND p.deleted_at IS NULL
-    AND p.enabled
 `
 
 func (q *Queries) GetConnector(ctx context.Context, id string) ([]byte, error) {
@@ -152,80 +179,39 @@ func (q *Queries) GetConnector(ctx context.Context, id string) ([]byte, error) {
 	return to_jsonb, err
 }
 
-const getCredential = `-- name: GetCredential :one
-SELECT
-    to_jsonb (c)
-FROM
-    connector_credentials c
-WHERE
-    connector_id = $1
-    AND user_id IS NOT DISTINCT FROM NULLIF ($2::text, '')::uuid
-    AND revoked_at IS NULL
-    AND status = 'authorized'
-    AND config_revision = $3
+const getConnectorIcon = `-- name: GetConnectorIcon :one
+SELECT icon_s3_key FROM connectors WHERE id = $1 AND deleted_at IS NULL
 `
 
-type GetCredentialParams struct {
-	ConnectorID    string
-	UserID         string
-	ConfigRevision int64
-}
-
-func (q *Queries) GetCredential(ctx context.Context, arg GetCredentialParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, getCredential, arg.ConnectorID, arg.UserID, arg.ConfigRevision)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
-}
-
-const getEnabledProvider = `-- name: GetEnabledProvider :one
-SELECT
-    to_jsonb (p)
-FROM
-    connector_providers p
-WHERE
-    id = $1
-    AND ownership_type = 'system'
-    AND deleted_at IS NULL
-    AND enabled FOR SHARE
-`
-
-func (q *Queries) GetEnabledProvider(ctx context.Context, id string) ([]byte, error) {
-	row := q.db.QueryRow(ctx, getEnabledProvider, id)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
-}
-
-const getIconKey = `-- name: GetIconKey :one
-SELECT
-    icon_s3_key
-FROM
-    connector_providers
-WHERE
-    id = $1
-`
-
-func (q *Queries) GetIconKey(ctx context.Context, id string) (string, error) {
-	row := q.db.QueryRow(ctx, getIconKey, id)
+func (q *Queries) GetConnectorIcon(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, getConnectorIcon, id)
 	var icon_s3_key string
 	err := row.Scan(&icon_s3_key)
 	return icon_s3_key, err
 }
 
+const getCredential = `-- name: GetCredential :one
+SELECT to_jsonb(c) FROM connector_credentials c
+WHERE id = $1 AND connector_id = $2 AND revoked_at IS NULL
+`
+
+type GetCredentialParams struct {
+	ID          string
+	ConnectorID string
+}
+
+func (q *Queries) GetCredential(ctx context.Context, arg GetCredentialParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getCredential, arg.ID, arg.ConnectorID)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
+}
+
 const getOAuthStatus = `-- name: GetOAuthStatus :one
-SELECT
-    jsonb_build_object('id', id, 'status', CASE WHEN status = 'pending'
-            AND expires_at <= now() THEN
-            'expired'
-        ELSE
-            status
-        END)
-FROM
-    connector_oauth_requests
-WHERE
-    id = $1
-    AND user_id = $2
+SELECT jsonb_build_object('id', id, 'credential_id', credential_id, 'expires_at', expires_at,
+    'status', CASE WHEN status = 'pending' AND expires_at <= now() THEN 'expired'
+        WHEN status = 'processing' AND consumed_at < now() - interval '2 minutes' THEN 'failed' ELSE status END)
+FROM connector_oauth_requests WHERE id = $1 AND user_id = $2
 `
 
 type GetOAuthStatusParams struct {
@@ -240,100 +226,13 @@ func (q *Queries) GetOAuthStatus(ctx context.Context, arg GetOAuthStatusParams) 
 	return jsonb_build_object, err
 }
 
-const getProviderIcon = `-- name: GetProviderIcon :one
-SELECT
-    icon_s3_key
-FROM
-    connector_providers
-WHERE
-    id = $1
-    AND deleted_at IS NULL
+const invalidateConnectorTools = `-- name: InvalidateConnectorTools :exec
+UPDATE mcp_tools SET deleted_at = now() WHERE connector_id = $1 AND deleted_at IS NULL
 `
 
-func (q *Queries) GetProviderIcon(ctx context.Context, id string) (string, error) {
-	row := q.db.QueryRow(ctx, getProviderIcon, id)
-	var icon_s3_key string
-	err := row.Scan(&icon_s3_key)
-	return icon_s3_key, err
-}
-
-const getUserProvider = `-- name: GetUserProvider :one
-SELECT to_jsonb(p)
-FROM connector_providers p
-WHERE id = $1
-    AND deleted_at IS NULL
-    AND ((ownership_type = 'system' AND $2::boolean AND enabled AND authorization_mode IN ('none', 'independent'))
-        OR (ownership_type = 'user' AND owner_user_id = $3))
-FOR SHARE
-`
-
-type GetUserProviderParams struct {
-	ID           string
-	SystemAccess bool
-	UserID       string
-}
-
-func (q *Queries) GetUserProvider(ctx context.Context, arg GetUserProviderParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, getUserProvider, arg.ID, arg.SystemAccess, arg.UserID)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
-}
-
-const hasCredential = `-- name: HasCredential :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            connector_credentials
-        WHERE
-            connector_id = $1
-            AND user_id IS NOT DISTINCT FROM NULLIF($2::text, '')::uuid
-            AND status = 'authorized'
-            AND revoked_at IS NULL
-            AND config_revision = $3
-            AND (oauth_expires_at IS NULL
-                OR oauth_expires_at > now()))
-`
-
-type HasCredentialParams struct {
-	ConnectorID    string
-	UserID         string
-	ConfigRevision int64
-}
-
-func (q *Queries) HasCredential(ctx context.Context, arg HasCredentialParams) (bool, error) {
-	row := q.db.QueryRow(ctx, hasCredential, arg.ConnectorID, arg.UserID, arg.ConfigRevision)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
-const invalidateConnectorUserTools = `-- name: InvalidateConnectorUserTools :execresult
-UPDATE
-    mcp_tools mt
-SET
-    deleted_at = now()
-WHERE
-    mt.connector_id = $1
-    AND mt.credential_id IN (
-        SELECT
-            cc.id
-        FROM
-            connector_credentials cc
-        WHERE
-            cc.connector_id = $1
-            AND cc.user_id IS NOT DISTINCT FROM NULLIF ($2::text, '')::uuid)
-`
-
-type InvalidateConnectorUserToolsParams struct {
-	ConnectorID string
-	UserID      string
-}
-
-func (q *Queries) InvalidateConnectorUserTools(ctx context.Context, arg InvalidateConnectorUserToolsParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, invalidateConnectorUserTools, arg.ConnectorID, arg.UserID)
+func (q *Queries) InvalidateConnectorTools(ctx context.Context, connectorID string) error {
+	_, err := q.db.Exec(ctx, invalidateConnectorTools, connectorID)
+	return err
 }
 
 const invalidateTools = `-- name: InvalidateTools :execresult
@@ -355,52 +254,14 @@ func (q *Queries) InvalidateTools(ctx context.Context, arg InvalidateToolsParams
 	return q.db.Exec(ctx, invalidateTools, arg.ConnectorID, arg.CredentialID)
 }
 
-const invalidateUserTools = `-- name: InvalidateUserTools :execresult
-UPDATE
-    mcp_tools
-SET
-    deleted_at = now()
-WHERE
-    credential_id IN (
-        SELECT
-            cc.id
-        FROM
-            connector_credentials cc
-        WHERE
-            cc.connector_id = $1
-            AND cc.user_id IS NOT DISTINCT FROM NULLIF ($2::text, '')::uuid)
+const listConnectorReferences = `-- name: ListConnectorReferences :many
+SELECT jsonb_build_object('id', e.id, 'name', e.name, 'type', 'expert')
+FROM experts e JOIN expert_connectors x ON x.expert_id = e.id
+WHERE x.connector_id = $1 AND e.deleted_at IS NULL
 `
 
-type InvalidateUserToolsParams struct {
-	ConnectorID string
-	UserID      string
-}
-
-func (q *Queries) InvalidateUserTools(ctx context.Context, arg InvalidateUserToolsParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, invalidateUserTools, arg.ConnectorID, arg.UserID)
-}
-
-const listProviderReferences = `-- name: ListProviderReferences :many
-SELECT
-    jsonb_build_object('id', id, 'name', name, 'type', 'connector')
-FROM
-    connectors c
-WHERE
-    c.provider_id = $1
-    AND c.deleted_at IS NULL
-UNION ALL
-SELECT
-    jsonb_build_object('id', e.id, 'name', e.name, 'type', 'expert')
-FROM
-    experts e
-    JOIN expert_connector_providers x ON x.expert_id = e.id
-WHERE
-    x.provider_id = $1
-    AND e.deleted_at IS NULL
-`
-
-func (q *Queries) ListProviderReferences(ctx context.Context, providerID string) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listProviderReferences, providerID)
+func (q *Queries) ListConnectorReferences(ctx context.Context, connectorID string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listConnectorReferences, connectorID)
 	if err != nil {
 		return nil, err
 	}
@@ -412,6 +273,64 @@ func (q *Queries) ListProviderReferences(ctx context.Context, providerID string)
 			return nil, err
 		}
 		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCredentials = `-- name: ListCredentials :many
+SELECT to_jsonb(c) FROM connector_credentials c
+WHERE connector_id = $1
+    AND user_id IS NOT DISTINCT FROM NULLIF($2::text, '')::uuid
+    AND revoked_at IS NULL
+ORDER BY created_at, id
+`
+
+type ListCredentialsParams struct {
+	ConnectorID string
+	UserID      string
+}
+
+func (q *Queries) ListCredentials(ctx context.Context, arg ListCredentialsParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listCredentials, arg.ConnectorID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var to_jsonb []byte
+		if err := rows.Scan(&to_jsonb); err != nil {
+			return nil, err
+		}
+		items = append(items, to_jsonb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listToolContexts = `-- name: ListToolContexts :many
+SELECT to_jsonb(c) FROM connector_credentials c
+WHERE connector_id = $1 AND revoked_at IS NULL ORDER BY user_id, created_at, id
+`
+
+func (q *Queries) ListToolContexts(ctx context.Context, connectorID string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listToolContexts, connectorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var to_jsonb []byte
+		if err := rows.Scan(&to_jsonb); err != nil {
+			return nil, err
+		}
+		items = append(items, to_jsonb)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -468,59 +387,6 @@ func (q *Queries) ListTools(ctx context.Context, arg ListToolsParams) ([][]byte,
 	return items, nil
 }
 
-const listUserProviders = `-- name: ListUserProviders :many
-SELECT to_jsonb(p)
-FROM connector_providers p
-WHERE deleted_at IS NULL
-    AND ((ownership_type = 'system' AND $1::boolean AND enabled AND authorization_mode IN ('none', 'independent'))
-        OR (ownership_type = 'user' AND owner_user_id = $2))
-ORDER BY lower(name), id
-`
-
-type ListUserProvidersParams struct {
-	SystemAccess bool
-	UserID       string
-}
-
-func (q *Queries) ListUserProviders(ctx context.Context, arg ListUserProvidersParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listUserProviders, arg.SystemAccess, arg.UserID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
-			return nil, err
-		}
-		items = append(items, to_jsonb)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const lockAuthorizedCredential = `-- name: LockAuthorizedCredential :one
-SELECT
-    to_jsonb (c)
-FROM
-    connector_credentials c
-WHERE
-    id = $1
-    AND revoked_at IS NULL
-    AND status = 'authorized'
-FOR UPDATE
-`
-
-func (q *Queries) LockAuthorizedCredential(ctx context.Context, id string) ([]byte, error) {
-	row := q.db.QueryRow(ctx, lockAuthorizedCredential, id)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
-}
-
 const lockConnector = `-- name: LockConnector :one
 SELECT
     to_jsonb (c)
@@ -558,94 +424,31 @@ func (q *Queries) LockCredential(ctx context.Context, id string) ([]byte, error)
 	return to_jsonb, err
 }
 
-const lockIconProvider = `-- name: LockIconProvider :one
-SELECT
-    to_jsonb (p)
-FROM
-    connector_providers p
-WHERE
-    id = $1
+const lockIconConnector = `-- name: LockIconConnector :one
+SELECT to_jsonb(c) FROM connectors c
+WHERE id = $1 AND deleted_at IS NULL
     AND ((ownership_type = 'system' AND $2::text = '')
         OR (ownership_type = 'user' AND owner_user_id = NULLIF($2::text, '')::uuid))
-    AND deleted_at IS NULL
 FOR UPDATE
 `
 
-type LockIconProviderParams struct {
+type LockIconConnectorParams struct {
 	ID     string
 	UserID string
 }
 
-func (q *Queries) LockIconProvider(ctx context.Context, arg LockIconProviderParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, lockIconProvider, arg.ID, arg.UserID)
+func (q *Queries) LockIconConnector(ctx context.Context, arg LockIconConnectorParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, lockIconConnector, arg.ID, arg.UserID)
 	var to_jsonb []byte
 	err := row.Scan(&to_jsonb)
 	return to_jsonb, err
 }
 
-const markConnected = `-- name: MarkConnected :execresult
-UPDATE
-    connectors
-SET
-    connection_status = 'connected',
-    last_checked_at = now(),
-    last_error = NULL,
-    updated_at = now()
-WHERE
-    id = $1
-`
-
-func (q *Queries) MarkConnected(ctx context.Context, id string) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, markConnected, id)
-}
-
-const markConnectionFailed = `-- name: MarkConnectionFailed :execresult
-UPDATE
-    connectors
-SET
-    connection_status = 'error',
-    last_checked_at = now(),
-    last_error = 'MCP 连接或工具发现失败',
-    updated_at = now()
-WHERE
-    id = $1
-`
-
-func (q *Queries) MarkConnectionFailed(ctx context.Context, id string) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, markConnectionFailed, id)
-}
-
-const providerInUse = `-- name: ProviderInUse :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            connectors
-        WHERE
-            provider_id = $1
-            AND deleted_at IS NULL)
-`
-
-func (q *Queries) ProviderInUse(ctx context.Context, providerID string) (bool, error) {
-	row := q.db.QueryRow(ctx, providerInUse, providerID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const refreshCredential = `-- name: RefreshCredential :one
-UPDATE
-    connector_credentials
-SET
-    oauth_access_token = $2,
-    oauth_refresh_token = $3,
-    oauth_expires_at = $4,
-    updated_at = now()
-WHERE
-    id = $1
-RETURNING
-    to_jsonb (connector_credentials)
+UPDATE connector_credentials SET oauth_access_token = $2, oauth_refresh_token = $3,
+    oauth_expires_at = $4, updated_at = now()
+WHERE id = $1 AND revoked_at IS NULL
+RETURNING to_jsonb(connector_credentials)
 `
 
 type RefreshCredentialParams struct {
@@ -667,84 +470,93 @@ func (q *Queries) RefreshCredential(ctx context.Context, arg RefreshCredentialPa
 	return to_jsonb, err
 }
 
-const revokeCredential = `-- name: RevokeCredential :execresult
-UPDATE
-    connector_credentials
-SET
-    revoked_at = now(),
-    status = 'revoked',
-    updated_at = now()
-WHERE
-    connector_id = $1
-    AND user_id IS NOT DISTINCT FROM NULLIF ($2::text, '')::uuid
+const revokeConnectorCredentials = `-- name: RevokeConnectorCredentials :exec
+UPDATE connector_credentials SET revoked_at = now(), revision = revision + 1, updated_at = now()
+WHERE connector_id = $1 AND revoked_at IS NULL
 `
 
-type RevokeCredentialParams struct {
-	ConnectorID string
-	UserID      string
+func (q *Queries) RevokeConnectorCredentials(ctx context.Context, connectorID string) error {
+	_, err := q.db.Exec(ctx, revokeConnectorCredentials, connectorID)
+	return err
 }
 
-func (q *Queries) RevokeCredential(ctx context.Context, arg RevokeCredentialParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, revokeCredential, arg.ConnectorID, arg.UserID)
-}
-
-const setOAuthStatus = `-- name: SetOAuthStatus :execresult
-UPDATE
-    connector_oauth_requests
-SET
-    status = $2
-WHERE
-    id = $1
+const revokeCredential = `-- name: RevokeCredential :exec
+UPDATE connector_credentials SET revoked_at = now(), revision = revision + 1, updated_at = now() WHERE id = $1
 `
 
-type SetOAuthStatusParams struct {
-	ID     string
-	Status string
+func (q *Queries) RevokeCredential(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, revokeCredential, id)
+	return err
 }
 
-func (q *Queries) SetOAuthStatus(ctx context.Context, arg SetOAuthStatusParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, setOAuthStatus, arg.ID, arg.Status)
-}
-
-const setProviderIcon = `-- name: SetProviderIcon :execresult
-UPDATE
-    connector_providers
-SET
-    icon_s3_key = $2,
-    revision = revision + 1,
-    updated_at = now()
-WHERE
-    id = $1
+const setConnectionTest = `-- name: SetConnectionTest :exec
+UPDATE connectors SET connection_status = $2, last_checked_at = now(), last_error = NULLIF($3, ''), updated_at = now()
+WHERE id = $1
 `
 
-type SetProviderIconParams struct {
+type SetConnectionTestParams struct {
+	ID               string
+	ConnectionStatus string
+	Column3          interface{}
+}
+
+func (q *Queries) SetConnectionTest(ctx context.Context, arg SetConnectionTestParams) error {
+	_, err := q.db.Exec(ctx, setConnectionTest, arg.ID, arg.ConnectionStatus, arg.Column3)
+	return err
+}
+
+const setConnectorIcon = `-- name: SetConnectorIcon :exec
+UPDATE connectors SET icon_s3_key = $2, revision = revision + 1, updated_at = now() WHERE id = $1
+`
+
+type SetConnectorIconParams struct {
 	ID        string
 	IconS3Key string
 }
 
-func (q *Queries) SetProviderIcon(ctx context.Context, arg SetProviderIconParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, setProviderIcon, arg.ID, arg.IconS3Key)
+func (q *Queries) SetConnectorIcon(ctx context.Context, arg SetConnectorIconParams) error {
+	_, err := q.db.Exec(ctx, setConnectorIcon, arg.ID, arg.IconS3Key)
+	return err
 }
 
-const updateProviderSecrets = `-- name: UpdateProviderSecrets :execresult
-UPDATE
-    connectors
-SET
-    oauth_client_secret = $2,
-    revision = revision + 1,
-    updated_at = now()
-WHERE
-    provider_id = $1
-    AND deleted_at IS NULL
+const setCredentialTest = `-- name: SetCredentialTest :exec
+UPDATE connector_credentials SET connection_status = $2, last_checked_at = now(), last_error = NULLIF($3, ''), updated_at = now()
+WHERE id = $1
 `
 
-type UpdateProviderSecretsParams struct {
-	ProviderID        string
-	OauthClientSecret string
+type SetCredentialTestParams struct {
+	ID               string
+	ConnectionStatus string
+	Column3          interface{}
 }
 
-func (q *Queries) UpdateProviderSecrets(ctx context.Context, arg UpdateProviderSecretsParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, updateProviderSecrets, arg.ProviderID, arg.OauthClientSecret)
+func (q *Queries) SetCredentialTest(ctx context.Context, arg SetCredentialTestParams) error {
+	_, err := q.db.Exec(ctx, setCredentialTest, arg.ID, arg.ConnectionStatus, arg.Column3)
+	return err
+}
+
+const updateCredential = `-- name: UpdateCredential :one
+UPDATE connector_credentials SET
+    name = COALESCE($1::jsonb->>'name', name),
+    http_headers = COALESCE($1::jsonb->'http_headers', http_headers),
+    oauth_access_token = COALESCE($1::jsonb->>'oauth_access_token', oauth_access_token),
+    oauth_refresh_token = COALESCE($1::jsonb->>'oauth_refresh_token', oauth_refresh_token),
+    oauth_expires_at = CASE WHEN $1::jsonb ? 'oauth_expires_at'
+        THEN ($1::jsonb->>'oauth_expires_at')::timestamptz ELSE oauth_expires_at END,
+    config_revision = COALESCE(($1::jsonb->>'config_revision')::bigint, config_revision),
+    connection_status = CASE WHEN ($1::jsonb->>'auth_change')::boolean THEN 'unknown' ELSE connection_status END,
+    last_checked_at = CASE WHEN ($1::jsonb->>'auth_change')::boolean THEN NULL ELSE last_checked_at END,
+    last_error = CASE WHEN ($1::jsonb->>'auth_change')::boolean THEN NULL ELSE last_error END,
+    revision = revision + 1, updated_at = now()
+WHERE id = ($1::jsonb->>'id')::uuid AND revoked_at IS NULL
+RETURNING to_jsonb(connector_credentials)
+`
+
+func (q *Queries) UpdateCredential(ctx context.Context, data []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, updateCredential, data)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
 }
 
 const updateTool = `-- name: UpdateTool :one
@@ -784,71 +596,6 @@ func (q *Queries) UpdateTool(ctx context.Context, arg UpdateToolParams) ([]byte,
 	var to_jsonb []byte
 	err := row.Scan(&to_jsonb)
 	return to_jsonb, err
-}
-
-const upsertHeaderCredential = `-- name: UpsertHeaderCredential :execresult
-INSERT INTO connector_credentials (connector_id, user_id, METHOD, http_headers, config_revision)
-    VALUES ($1, NULLIF ($2::text, '')::uuid, 'http_header',
-	$3, $4)
-ON CONFLICT (connector_id, user_id)
-    DO UPDATE SET
-        http_headers = EXCLUDED.http_headers,
-        config_revision = EXCLUDED.config_revision,
-        revoked_at = NULL,
-        status = 'authorized',
-        updated_at = now()
-`
-
-type UpsertHeaderCredentialParams struct {
-	ConnectorID    string
-	UserID         string
-	HttpHeaders    []byte
-	ConfigRevision int64
-}
-
-func (q *Queries) UpsertHeaderCredential(ctx context.Context, arg UpsertHeaderCredentialParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, upsertHeaderCredential,
-		arg.ConnectorID,
-		arg.UserID,
-		arg.HttpHeaders,
-		arg.ConfigRevision,
-	)
-}
-
-const upsertOAuthCredential = `-- name: UpsertOAuthCredential :execresult
-INSERT INTO connector_credentials (connector_id, user_id, METHOD, oauth_access_token, oauth_refresh_token,
-    oauth_expires_at, config_revision)
-    VALUES ($1, NULLIF ($2::text, '')::uuid, 'oauth',
-	$3, $4, $5, $6)
-ON CONFLICT (connector_id, user_id)
-    DO UPDATE SET
-        oauth_access_token = EXCLUDED.oauth_access_token,
-        oauth_refresh_token = EXCLUDED.oauth_refresh_token,
-        oauth_expires_at = EXCLUDED.oauth_expires_at,
-        config_revision = EXCLUDED.config_revision,
-        status = 'authorized',
-        revoked_at = NULL,
-        updated_at = now()
-`
-
-type UpsertOAuthCredentialParams struct {
-	ConnectorID       string
-	UserID            string
-	OauthAccessToken  string
-	OauthRefreshToken string
-	OauthExpiresAt    *time.Time
-	ConfigRevision    int64
-}
-
-func (q *Queries) UpsertOAuthCredential(ctx context.Context, arg UpsertOAuthCredentialParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, upsertOAuthCredential,
-		arg.ConnectorID,
-		arg.UserID,
-		arg.OauthAccessToken,
-		arg.OauthRefreshToken,
-		arg.OauthExpiresAt,
-		arg.ConfigRevision,
-	)
 }
 
 const upsertTool = `-- name: UpsertTool :execresult

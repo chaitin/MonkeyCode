@@ -233,12 +233,12 @@ func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error
 		o["shared_users"] = users
 	}
 	if owner := o.String("owner_user_id"); owner != "" {
-		name, err := sqlc.New(q).GetOwnerName(ctx, owner)
+		users, err := Users(ctx, q, []string{owner})
 		if err != nil {
 			return nil, err
 		}
 
-		o["owner_name"] = name
+		o["user"] = users[owner]
 	}
 	if c.Def.Decorate != nil {
 		if err = c.Def.Decorate(ctx, q, o); err != nil {
@@ -248,6 +248,8 @@ func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error
 	for _, k := range c.Def.Hidden {
 		delete(o, k)
 	}
+	delete(o, "owner_user_id")
+	delete(o, "owner_name")
 	return o, nil
 }
 func (c *CRUD) List(ctx context.Context, q Queryer) ([]Object, error) {

@@ -150,22 +150,6 @@ func (q *Queries) DeleteTag(ctx context.Context, id string) ([]byte, error) {
 	return jsonb_build_object, err
 }
 
-const getOwnerName = `-- name: GetOwnerName :one
-SELECT
-    name
-FROM
-    users
-WHERE
-    id = $1
-`
-
-func (q *Queries) GetOwnerName(ctx context.Context, id string) (string, error) {
-	row := q.db.QueryRow(ctx, getOwnerName, id)
-	var name string
-	err := row.Scan(&name)
-	return name, err
-}
-
 const hasAccess = `-- name: HasAccess :one
 WITH RECURSIVE user_groups (
     group_id
@@ -293,6 +277,41 @@ func (q *Queries) ListGroups(ctx context.Context) ([][]byte, error) {
 			return nil, err
 		}
 		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOwners = `-- name: ListOwners :many
+SELECT
+    id, name, email
+FROM
+    users
+WHERE
+    id::text = ANY ($1::text[])
+`
+
+type ListOwnersRow struct {
+	ID    string
+	Name  string
+	Email string
+}
+
+func (q *Queries) ListOwners(ctx context.Context, dollar_1 []string) ([]ListOwnersRow, error) {
+	rows, err := q.db.Query(ctx, listOwners, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOwnersRow{}
+	for rows.Next() {
+		var i ListOwnersRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Email); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

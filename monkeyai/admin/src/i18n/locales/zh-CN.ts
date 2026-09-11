@@ -80,14 +80,29 @@ export const zhCN = {
   },
 
   resources: {
-    providerIcon: "连接模板图标（PNG/JPEG，1 MiB 内，影响同模板连接）",
+    credentials: "管理凭证",
+    selectCredential: "选择凭证",
+    credentialTestPassed: "凭证已保存，连接测试成功。",
+    credentialSaved: "凭证已保存。",
+    authorizationFailed: "授权未完成或已过期，请重新发起。",
+    headerDuplicate: "Header 名称不能为空或重复。",
+    credentialNameHint: "名称由你填写，用于区分凭证，不代表第三方账户身份。",
+    credentialName: "凭证名称",
+    replaceHeaders: "替换全部 Header（未勾选时保留原值）",
+    addHeader: "添加 Header",
+    reauthorizeHint: "重新授权会替换这份凭证的授权内容，并重新同步工具目录。",
+    continueAuthorization: "继续授权",
+    waitAuthorization: "正在等待授权结果…",
+    revokeCredential: "撤销凭证",
+    headerName: "Header {{index}} 名称",
+    headerValue: "Header {{index}} 内容",
+
+    connectorIcon: "连接图标（PNG/JPEG，1 MiB 内）",
     skillContent: "技能正文",
     downloadPackage: "下载技能包",
-    providerTemplate: "连接模板",
-    newProvider: "新建连接模板",
     enable: "启用连接",
     disable: "停用连接",
-    requiredProvider: "必须绑定此服务",
+    requiredConnector: "必须绑定此服务",
     allowTools: "工具白名单，逗号分隔；留空表示全部",
     denyTools: "工具黑名单，逗号分隔",
     loading: "正在加载…",
@@ -607,7 +622,7 @@ export const zhCN = {
         centralized: "集中授权",
       },
       independentAuthorizationDescription:
-        "客户端收到配置后分别完成授权，每个客户端拥有独立的权限。",
+        "每个用户可以添加多份凭证，并为每次会话选择使用的凭证。",
       centralizedAuthorizationDescription:
         "在管理后台统一完成授权，所有客户端共用这里配置的权限。",
       authorizationMethod: "授权方式",
@@ -618,9 +633,9 @@ export const zhCN = {
       noAuthorizationDescription:
         "客户端可以直接调用此 MCP，无需提供授权信息。",
       independentMethodDescriptions: {
-        oauth: "每个客户端首次使用时分别完成 MCP OAuth 授权。",
+        oauth: "用户为每份凭证单独完成 OAuth 授权。",
         httpHeader:
-          '每个客户端分别填写自己的 HTTP Header JSON，例如 {"Authorization":"Bearer xxx"}。',
+          '用户为每份凭证填写 HTTP Header，例如 {"Authorization":"Bearer xxx"}。',
       },
       oauthAuthorization: "集中 OAuth 授权",
       oauthAuthorizationDescription: "授权结果将由所有可用客户端共用。",
@@ -628,7 +643,7 @@ export const zhCN = {
       notAuthorized: "待授权",
       connectAndAuthorize: "连接并授权",
       reauthorize: "重新授权",
-      httpHeaders: "HTTP Header（JSON）",
+      httpHeaders: "HTTP Header",
       httpHeadersDefaultValue: '{\n  "Authorization": "Bearer xxx"\n}',
       httpHeadersUpdatePlaceholder: "留空则不修改已保存的 HTTP Header",
       httpHeadersDescription:
@@ -1018,7 +1033,8 @@ export const zhCN = {
         provider: "提供方",
         name: "显示名称",
         namePlaceholder: "例如：公司 GitHub",
-        baizhiyunScopes: "默认授权范围：auth_certification openid phone user email。",
+        baizhiyunScopes:
+          "默认授权范围：auth_certification openid phone user email。",
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client Secret",

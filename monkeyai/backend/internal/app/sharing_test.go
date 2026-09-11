@@ -88,7 +88,7 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 		_, _ = pool.Exec(context.Background(), `DELETE FROM resource_access_grants WHERE resource_type='model' AND resource_id::text=ANY($1)`, ids)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM models WHERE id::text=ANY($1)`, ids)
 	})
-	if first.String("ownership_type") != "user" || first.String("owner_user_id") != users[0] || first["credit_multiplier"] != float64(1) {
+	if first.String("ownership_type") != "user" || first["user"].(map[string]any)["id"] != users[0] || first["credit_multiplier"] != float64(1) {
 		t.Fatalf("模型归属或倍率可被伪造: %v", first)
 	}
 	assertAccess := func(user, id string, allowed bool) {

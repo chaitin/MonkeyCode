@@ -13,13 +13,12 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 )
 
 type KeyAuthenticator interface {
 	Authenticate(context.Context, string, string) (string, error)
 }
-type Invocation struct{ UserID, ConnectorID, ToolID, SessionID, IdempotencyKey, RequestHash string }
+type Invocation struct{ UserID, ConnectorID, CredentialID, ToolID, SessionID, IdempotencyKey, RequestHash string }
 type InvocationResult struct {
 	Known             bool
 	Result, ErrorCode string
@@ -31,7 +30,7 @@ type InvocationBilling interface {
 }
 
 func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, billing InvocationBilling) {
-	router.HandleFunc("/mcp/connectors/{id}", func(w http.ResponseWriter, r *http.Request) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if origin := r.Header.Get("Origin"); origin != "" {
 			provided, err := url.Parse(origin)
@@ -76,6 +75,20 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 			rpcFail(w, in.ID, err)
 			return
 		}
+		credentialID := chi.URLParam(r, "credentialID")
+		if connector.String("authorization_mode") != "none" && credentialID == "" {
+			rpcFail(w, in.ID, selectionRequired)
+			return
+		}
+		credential, err := s.Credential(r.Context(), s.Store.Pool, connector, user, credentialID)
+		if err != nil {
+			rpcFail(w, in.ID, err)
+			return
+		}
+		if connector.String("authorization_mode") != "none" && credentialStatus(connector, credential) != "authorized" {
+			rpcFail(w, in.ID, authorizationRequired)
+			return
+		}
 		if strings.HasPrefix(in.Method, "notifications/") {
 			if len(in.ID) != 0 {
 				rpcReply(w, 400, in.ID, nil, &rpcError{Code: -32600, Message: "通知不能包含请求 ID"})
@@ -105,38 +118,20 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 		case "ping":
 			rpcReply(w, 200, in.ID, resource.Object{}, nil)
 		case "tools/list", "tools/call":
-			s.invoke(w, r, in, connector, user, billing)
+			s.invoke(w, r, in, connector, credential, user, billing)
 		default:
 			rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32601, Message: "不支持此方法"})
 		}
-	})
+	}
+	router.HandleFunc("/mcp/connectors/{id}", handler)
+	router.HandleFunc("/mcp/connectors/{id}/credentials/{credentialID}", handler)
 }
 
-func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, connector resource.Object, user string, billing InvocationBilling) {
-	credential, err := s.Credential(r.Context(), s.Store.Pool, connector, user)
-	if errors.Is(err, pgx.ErrNoRows) {
-		err = &resource.Error{Status: 403, Code: "authorization_required", Message: "请先完成连接认证"}
-	}
+func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, connector, credential resource.Object, user string, billing InvocationBilling) {
+	headers, credential, err := s.headers(r.Context(), connector, credential)
 	if err != nil {
 		rpcFail(w, in.ID, err)
 		return
-	}
-	headers := map[string]string{}
-	if credential != nil {
-		if credential.String("method") == "oauth" {
-			credential, err = s.refresh(r.Context(), connector, credential)
-			if err != nil {
-				rpcFail(w, in.ID, &resource.Error{Status: 403, Code: "authorization_required", Message: "OAuth 已失效，请重新授权"})
-				return
-			}
-			headers["Authorization"] = "Bearer " + credential.String("oauth_access_token")
-		} else {
-			body, _ := json.Marshal(credential["http_headers"])
-			if err = json.Unmarshal(body, &headers); err != nil {
-				rpcFail(w, in.ID, err)
-				return
-			}
-		}
 	}
 	tools, err := credentialTools(r.Context(), s.Store.Pool, connector, credential, false)
 	if err != nil {
@@ -186,7 +181,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 		return
 	}
 	defer remote.close()
-	id, err := billing.Begin(r.Context(), Invocation{UserID: user, ConnectorID: connector.String("id"), ToolID: tool.String("id"), SessionID: r.Header.Get("X-Session-ID"), IdempotencyKey: r.Header.Get("Idempotency-Key"), RequestHash: resource.Hash(resource.Object{"connector": connector.String("id"), "params": params, "session_id": r.Header.Get("X-Session-ID")})})
+	id, err := billing.Begin(r.Context(), Invocation{UserID: user, ConnectorID: connector.String("id"), CredentialID: credential.String("id"), ToolID: tool.String("id"), SessionID: r.Header.Get("X-Session-ID"), IdempotencyKey: r.Header.Get("Idempotency-Key"), RequestHash: resource.Hash(resource.Object{"connector": connector.String("id"), "credential": credential.String("id"), "params": params, "session_id": r.Header.Get("X-Session-ID")})})
 	if err != nil {
 		rpcFail(w, in.ID, err)
 		return

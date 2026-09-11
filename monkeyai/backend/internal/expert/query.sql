@@ -11,32 +11,32 @@ SELECT
             AND deleted_at IS NULL
             AND enabled);
 
--- name: LockProvider :one
+-- name: LockConnector :one
 SELECT
     to_jsonb (p)
 FROM
-    connector_providers p
+    connectors p
 WHERE
     id = $1
-    AND deleted_at IS NULL FOR SHARE;
+    AND deleted_at IS NULL AND enabled FOR SHARE;
 
--- name: DeleteProviderLinks :execresult
-DELETE FROM expert_connector_providers
+-- name: DeleteConnectorLinks :execresult
+DELETE FROM expert_connectors
 WHERE expert_id = $1;
 
--- name: CreateProviderLink :execresult
-INSERT INTO expert_connector_providers (expert_id, provider_id, required, tool_allowlist, tool_denylist)
+-- name: CreateConnectorLink :execresult
+INSERT INTO expert_connectors (expert_id, connector_id, required, tool_allowlist, tool_denylist)
     VALUES ($1, $2, $3, $4, $5);
 
--- name: ListProviderLinks :many
+-- name: ListConnectorLinks :many
 SELECT
     to_jsonb (x)
 FROM
-    expert_connector_providers x
+    expert_connectors x
 WHERE
     expert_id = $1
 ORDER BY
-    provider_id;
+    connector_id;
 
 -- name: GetResource :one
 SELECT
@@ -231,6 +231,3 @@ SELECT to_jsonb(m) FROM models m WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: IsAdmin :one
 SELECT role = 'admin' FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL;
-
--- name: ListProviderConnectors :many
-SELECT to_jsonb(c) FROM connectors c WHERE provider_id = $1 AND deleted_at IS NULL AND enabled;

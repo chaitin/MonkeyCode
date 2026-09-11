@@ -90,7 +90,7 @@ type Expert = {
   name: string
   description: string
   prompt: string
-  providerSettings: ResourceRow["providers"]
+  connectorSettings: ResourceRow["connectors"]
   defaultModelId: string
   knowledgeBaseIds: string[]
   toolIds: string[]
@@ -117,15 +117,15 @@ function toExpert(row: ResourceRow): Expert {
   return {
     id: row.id,
     ownership: row.ownership_type,
-    owner: row.owner_name ?? row.owner_user_id,
+    owner: row.user.name || row.user.email || row.user.id,
     revision: row.revision,
     name: row.name,
     description: row.description,
     prompt: row.prompt,
-    providerSettings: row.providers ?? [],
+    connectorSettings: row.connectors ?? [],
     defaultModelId: row.default_model_id ?? "",
     knowledgeBaseIds: [],
-    toolIds: (row.providers ?? []).map((p) => p.provider_id),
+    toolIds: (row.connectors ?? []).map((p) => p.connector_id),
     ruleIds: row.rule_ids ?? [],
     skillIds: row.skill_ids ?? [],
     authorization: selection(row.grants),
@@ -137,7 +137,7 @@ const EMPTY_FORM: ExpertForm = {
   name: "",
   description: "",
   prompt: "",
-  providerSettings: [],
+  connectorSettings: [],
   defaultModelId: "",
   knowledgeBaseIds: [],
   toolIds: [],
@@ -306,12 +306,12 @@ export function ExpertsPage() {
     Promise.all([
       listResources(base + "/rules?ownership_type=system"),
       listResources(base + "/skills?ownership_type=system"),
-      listResources(base + "/connector-providers?ownership_type=system"),
+      listResources(base + "/connector-connectors?ownership_type=system"),
       api<{ models: { id: string; display_name: string }[] }>(
         base + "/models?ownership_type=system"
       ),
     ])
-      .then(([rules, skills, providers, models]) => {
+      .then(([rules, skills, connectors, models]) => {
         if (cancelled) return
         const map = (rows: ResourceRow[]) =>
           rows
@@ -325,7 +325,7 @@ export function ExpertsPage() {
           knowledgeBaseIds: [],
           ruleIds: map(rules.items),
           skillIds: map(skills.items),
-          toolIds: map(providers.items),
+          toolIds: map(connectors.items),
         })
         setModels(models.models)
         setOptionError("")
@@ -362,7 +362,7 @@ export function ExpertsPage() {
       description: expert.description,
       prompt: expert.prompt,
       defaultModelId: expert.defaultModelId,
-      providerSettings: expert.providerSettings,
+      connectorSettings: expert.connectorSettings,
       knowledgeBaseIds: expert.knowledgeBaseIds,
       toolIds: expert.toolIds,
       ruleIds: expert.ruleIds,
@@ -379,18 +379,20 @@ export function ExpertsPage() {
     setForm((current) => ({ ...current, [key]: value }))
   }
 
-  const updateProvider = (
+  const updateConnector = (
     id: string,
-    patch: Partial<ResourceRow["providers"][number]>
+    patch: Partial<ResourceRow["connectors"][number]>
   ) => {
-    const current = form.providerSettings.find((p) => p.provider_id === id) ?? {
-      provider_id: id,
+    const current = form.connectorSettings.find(
+      (p) => p.connector_id === id
+    ) ?? {
+      connector_id: id,
       required: true,
       tool_allowlist: [],
       tool_denylist: [],
     }
-    updateForm("providerSettings", [
-      ...form.providerSettings.filter((p) => p.provider_id !== id),
+    updateForm("connectorSettings", [
+      ...form.connectorSettings.filter((p) => p.connector_id !== id),
       { ...current, ...patch },
     ])
   }
@@ -406,12 +408,12 @@ export function ExpertsPage() {
           default_model_id: form.defaultModelId || null,
           rule_ids: form.ruleIds,
           skill_ids: form.skillIds,
-          providers: form.toolIds.map(
-            (provider_id) =>
-              form.providerSettings.find(
-                (p) => p.provider_id === provider_id
+          connectors: form.toolIds.map(
+            (connector_id) =>
+              form.connectorSettings.find(
+                (p) => p.connector_id === connector_id
               ) ?? {
-                provider_id,
+                connector_id,
                 required: true,
                 tool_allowlist: [],
                 tool_denylist: [],
@@ -737,8 +739,8 @@ export function ExpertsPage() {
                 </Field>
               ))}
               {form.toolIds.map((id) => {
-                const settings = form.providerSettings.find(
-                  (p) => p.provider_id === id
+                const settings = form.connectorSettings.find(
+                  (p) => p.connector_id === id
                 )
                 return (
                   <Field key={id}>
@@ -750,17 +752,17 @@ export function ExpertsPage() {
                         type="checkbox"
                         checked={settings?.required ?? true}
                         onChange={(e) =>
-                          updateProvider(id, { required: e.target.checked })
+                          updateConnector(id, { required: e.target.checked })
                         }
                       />
-                      {t("resources.requiredProvider")}
+                      {t("resources.requiredConnector")}
                     </label>
                     <Input
                       aria-label={t("resources.allowTools")}
                       placeholder={t("resources.allowTools")}
                       value={(settings?.tool_allowlist ?? []).join(",")}
                       onChange={(e) =>
-                        updateProvider(id, {
+                        updateConnector(id, {
                           tool_allowlist: e.target.value
                             .split(",")
                             .map((s) => s.trim())
@@ -773,7 +775,7 @@ export function ExpertsPage() {
                       placeholder={t("resources.denyTools")}
                       value={(settings?.tool_denylist ?? []).join(",")}
                       onChange={(e) =>
-                        updateProvider(id, {
+                        updateConnector(id, {
                           tool_denylist: e.target.value
                             .split(",")
                             .map((s) => s.trim())

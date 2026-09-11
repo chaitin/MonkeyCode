@@ -126,7 +126,7 @@ function toSkill(row: ResourceRow): AgentSkill {
     content: "",
     tagIds: (row.tags ?? []).map((t) => t.id),
     type: row.ownership_type,
-    creator: row.owner_name ?? row.owner_user_id,
+    creator: row.user.name || row.user.email || row.user.id,
     authorization: selection(row.grants),
     enabled: row.enabled,
     packageFileName: row.package_file_name,

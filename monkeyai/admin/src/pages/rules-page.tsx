@@ -93,7 +93,7 @@ function toRule(row: ResourceRow): AgentRule {
     name: row.name,
     content: row.content,
     type: row.ownership_type,
-    creator: row.owner_name ?? row.owner_user_id,
+    creator: row.user.name || row.user.email || row.user.id,
     authorization: selection(row.grants),
     forcedScope: selection(row.grants, true),
   }

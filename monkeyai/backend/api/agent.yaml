@@ -2,6 +2,8 @@ openapi: 3.1.0
 info:
   title: MonkeyAI Agent API
   version: 1.0.0
+servers:
+  - url: /
 security:
   - OAuthAccessToken: []
 paths:
@@ -545,22 +547,15 @@ paths:
       description: 后续请求应携带握手协商的版本；未知版本返回 400。
       schema:
         type: string
-        enum: ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']
+        enum:
+        - '2024-11-05'
+        - '2025-03-26'
+        - '2025-06-18'
+        - '2025-11-25'
     post:
-      summary: MCP 工具代理：集中认证成功调用计费
-      description: >-
-        无状态 Streamable HTTP 入口，返回 JSON，支持上游 JSON 和 SSE 响应。
-        Bearer 长期调用密钥必须包含 mcp:invoke；OAuth access token 不可代替调用密钥。
-        initialize 协商协议版本，不支持的版本返回服务端支持的 2025-11-25。
-        工具目录仅包含当前用户可用且启用的工具；调用前刷新 OAuth 凭证。
-        通知返回空的 202，无 ID 的消息不会执行工具。请求不支持批量 JSON-RPC。
-        不创建下游 MCP 会话，不提供服务端推送、resources、prompts 或双向交互。
-        每次工具调用独立建立并清理上游会话，原始参数与有效工具结果保真传递。
-        非空 Origin 必须与服务公开地址同源。客户端应接受 application/json 和 text/event-stream。
-        X-Billing-Transaction-ID 用于查询；X-Billing-Status 为 pending 时结算等待恢复。
-        集中认证工具成功收费，独立认证、免认证、JSON-RPC 错误及 isError=true 不收费。
-        超时、断流和无效结果转入核查，不重放上游；重复幂等键返回 409 和原交易 ID。
-        业务错误使用 JSON-RPC error，data.code 保留业务错误码，data.references 保留交易引用。
+      summary: 调用免认证连接的 MCP 网关
+      description: 仅用于免认证连接，使用全局 mcp:invoke API Key 认证用户并校验连接使用权。集中和独立认证必须改用具体凭证地址，省略凭证返回 400 credential_selection_required。
+        tools/list 和 tools/call 使用上游原始工具名称，并执行实时工具启停检查。
       security:
       - InvocationKey: []
       parameters:
@@ -584,15 +579,24 @@ paths:
                 jsonrpc:
                   const: '2.0'
                 id:
-                  type: [string, number]
+                  type:
+                  - string
+                  - number
                   description: 请求必须携带，通知省略；原值随响应返回。
                 method:
                   type: string
-                  examples: [initialize, notifications/initialized, ping, tools/list, tools/call]
+                  examples:
+                  - initialize
+                  - notifications/initialized
+                  - ping
+                  - tools/list
+                  - tools/call
                 params:
                   type: object
                   description: tools/call 使用精确工具名称 name 和对象 arguments，保留 _meta 等扩展字段；tools/list 返回完整目录，不接受非空 cursor。
-              required: [jsonrpc, method]
+              required:
+              - jsonrpc
+              - method
       responses:
         '200':
           description: JSON-RPC 结果或协议错误
@@ -604,7 +608,8 @@ paths:
             X-Billing-Status:
               schema:
                 type: string
-                enum: [pending]
+                enum:
+                - pending
           content:
             application/json:
               schema:
@@ -613,7 +618,10 @@ paths:
                   jsonrpc:
                     const: '2.0'
                   id:
-                    type: [string, number, 'null']
+                    type:
+                    - string
+                    - number
+                    - 'null'
                   result: {}
                   error:
                     type: object
@@ -623,8 +631,168 @@ paths:
                       message:
                         type: string
                       data: {}
-                    required: [code, message]
-                required: [jsonrpc, id]
+                    required:
+                    - code
+                    - message
+                required:
+                - jsonrpc
+                - id
+        '202':
+          description: 已接收通知，响应体为空
+        '400':
+          description: 请求格式、参数或协议版本不合法
+        '401':
+          description: 调用密钥缺失、失效或没有 mcp:invoke 作用域
+        '402':
+          description: 积分不足
+        '403':
+          description: 请求来源、用户、会话或连接认证不允许调用
+        '404':
+          description: 连接不存在、已禁用或未获授权
+        '409':
+          description: 幂等键或交易状态冲突，不重复执行工具
+          headers:
+            X-Billing-Transaction-ID:
+              schema:
+                type: string
+                format: uuid
+        '413':
+          description: 请求体超过 1 MiB
+        '415':
+          description: 请求类型必须为 application/json
+        '502':
+          description: 上游连接或握手失败
+    get:
+      summary: 此无状态入口不提供 SSE 订阅
+      security:
+      - InvocationKey: []
+      responses:
+        '405':
+          description: 不支持此方法，Allow 为 POST
+        '401':
+          description: 调用密钥无效
+        '403':
+          description: 请求来源不允许
+    delete:
+      summary: 此无状态入口不维护下游 MCP 会话
+      security:
+      - InvocationKey: []
+      responses:
+        '405':
+          description: 不支持此方法，Allow 为 POST
+        '401':
+          description: 调用密钥无效
+        '403':
+          description: 请求来源不允许
+  /mcp/connectors/{id}/credentials/{credential_id}:
+    parameters:
+    - in: path
+      name: id
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - in: header
+      name: MCP-Protocol-Version
+      description: 后续请求应携带握手协商的版本；未知版本返回 400。
+      schema:
+        type: string
+        enum:
+        - '2024-11-05'
+        - '2025-03-26'
+        - '2025-06-18'
+        - '2025-11-25'
+    - name: credential_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      summary: 调用指定凭证的 MCP 网关
+      description: 使用全局 mcp:invoke API Key 认证用户；地址明确指定集中或独立凭证。每次请求校验用户的连接使用权、凭证与连接关系及当前状态，独立凭证必须属于调用用户。撤销的凭证地址不自动切换到新凭证。 tools/list
+        和 tools/call 使用上游原始工具名称，并执行实时工具启停检查。
+      security:
+      - InvocationKey: []
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+          maxLength: 128
+      - in: header
+        name: X-Session-ID
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jsonrpc:
+                  const: '2.0'
+                id:
+                  type:
+                  - string
+                  - number
+                  description: 请求必须携带，通知省略；原值随响应返回。
+                method:
+                  type: string
+                  examples:
+                  - initialize
+                  - notifications/initialized
+                  - ping
+                  - tools/list
+                  - tools/call
+                params:
+                  type: object
+                  description: tools/call 使用精确工具名称 name 和对象 arguments，保留 _meta 等扩展字段；tools/list 返回完整目录，不接受非空 cursor。
+              required:
+              - jsonrpc
+              - method
+      responses:
+        '200':
+          description: JSON-RPC 结果或协议错误
+          headers:
+            X-Billing-Transaction-ID:
+              schema:
+                type: string
+                format: uuid
+            X-Billing-Status:
+              schema:
+                type: string
+                enum:
+                - pending
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jsonrpc:
+                    const: '2.0'
+                  id:
+                    type:
+                    - string
+                    - number
+                    - 'null'
+                  result: {}
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: integer
+                      message:
+                        type: string
+                      data: {}
+                    required:
+                    - code
+                    - message
+                required:
+                - jsonrpc
+                - id
         '202':
           description: 已接收通知，响应体为空
         '400':
@@ -820,7 +988,8 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户
-      description: 支持 model、skill、connector、expert；个人规则和 Provider 不支持分享。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各 1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
+      description: 支持 model、skill、connector、expert；个人规则不支持分享。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各
+        1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
       requestBody:
         required: true
         content:
@@ -1035,7 +1204,8 @@ paths:
             schema:
               allOf:
               - $ref: '#/components/schemas/UserExpertInput'
-              - required: [prompt]
+              - required:
+                - prompt
       responses:
         '201':
           description: 资源详情；仅资源所有者可编辑。
@@ -1058,7 +1228,7 @@ paths:
           $ref: '#/components/responses/ResourceError409'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: 归属固定为当前用户，默认启用；仅允许关联自己可用的模型、规则、技能和连接模板。分享通过 /resources/shares 管理。
+      description: 归属固定为当前用户，默认启用；仅允许关联自己可用的模型、规则、技能和连接。分享通过 /resources/shares 管理。
   /api/v1/connectors:
     get:
       summary: 读取 Agent 连接器
@@ -1093,7 +1263,9 @@ paths:
               allOf:
               - $ref: '#/components/schemas/UserConnectorInput'
               required:
-              - provider_id
+              - name
+              - url
+              - authorization_mode
       responses:
         '201':
           description: 资源详情；仅资源所有者可编辑。
@@ -1116,21 +1288,21 @@ paths:
           $ref: '#/components/responses/ResourceError409'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: 基于启用的系统或本人 Provider 创建个人 Connector，仅支持 none / independent；禁止使用 centralized 或他人的私有 Provider。连接 URL 与认证配置由模板确定，凭证由本人通过现有认证接口单独配置。
+      description: 直接配置 Connector 地址、认证方式和 OAuth 应用，不使用 Provider。个人连接仅支持 none / independent，凭证通过独立接口管理。
   /api/v1/api-keys:
     get:
       summary: 查询当前用户的调用密钥
       responses:
-        "200":
+        '200':
           description: 当前用户的调用密钥元数据列表，不包含密钥原文。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/APIKeysResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "500":
-          $ref: "#/components/responses/InternalError"
+                $ref: '#/components/schemas/APIKeysResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
     post:
       summary: 创建调用密钥
       requestBody:
@@ -1138,51 +1310,51 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateAPIKeyInput"
+              $ref: '#/components/schemas/CreateAPIKeyInput'
       responses:
-        "201":
+        '201':
           description: 创建成功；api_key 原文只在本次响应中返回。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CreatedAPIKey"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+                $ref: '#/components/schemas/CreatedAPIKey'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/v1/api-keys/{keyID}:
     parameters:
-      - $ref: "#/components/parameters/KeyID"
+    - $ref: '#/components/parameters/KeyID'
     delete:
       summary: 撤销调用密钥
       responses:
-        "204":
+        '204':
           description: 撤销成功，无响应体。
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /api/v1/api-keys/{keyID}/rotate:
     parameters:
-      - $ref: "#/components/parameters/KeyID"
+    - $ref: '#/components/parameters/KeyID'
     post:
       summary: 轮换调用密钥
       description: 创建同名、同权限的新密钥并撤销原密钥。
       responses:
-        "201":
+        '201':
           description: 轮换成功；api_key 原文只在本次响应中返回。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CreatedAPIKey"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
+                $ref: '#/components/schemas/CreatedAPIKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /api/v1/connectors/{id}/icon:
     get:
       summary: 按用户权限读取连接图标
@@ -1219,6 +1391,65 @@ paths:
         schema:
           type: string
           format: uuid
+    put:
+      summary: 上传连接图标
+      responses:
+        '200':
+          description: 资源详情；仅资源所有者可编辑。
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorResource'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters:
+      - name: If-Match
+        in: header
+        required: true
+        description: 上次读取返回的 ETag，例如 "1"。
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                icon:
+                  type: string
+                  format: binary
+                  description: PNG/JPEG，最多 1 MiB，最多 4096×4096。
+              required:
+              - icon
+      description: 系统连接由管理员维护，个人连接由所有者维护；携带连接 If-Match。
   /api/v1/experts/{id}/manifest:
     get:
       summary: 读取当前用户可用专家的完整清单
@@ -1337,77 +1568,10 @@ paths:
         schema:
           type: string
         description: 客户端清单记录的包摘要；与当前包不同返回 412。
-  /api/v1/connectors/{id}/credential:
-    put:
-      summary: 配置或撤销当前合法认证上下文
-      responses:
-        '204':
-          description: 配置或撤销当前合法认证上下文
-        '400':
-          $ref: '#/components/responses/ResourceError400'
-        '401':
-          $ref: '#/components/responses/ResourceError401'
-        '403':
-          $ref: '#/components/responses/ResourceError403'
-        '404':
-          $ref: '#/components/responses/ResourceError404'
-        '409':
-          $ref: '#/components/responses/ResourceError409'
-        '412':
-          $ref: '#/components/responses/ResourceError412'
-        '428':
-          $ref: '#/components/responses/ResourceError428'
-        '500':
-          $ref: '#/components/responses/ResourceError500'
-        '502':
-          $ref: '#/components/responses/ResourceError502'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CredentialInput'
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    delete:
-      summary: 配置或撤销当前合法认证上下文
-      responses:
-        '204':
-          description: 配置或撤销当前合法认证上下文
-        '400':
-          $ref: '#/components/responses/ResourceError400'
-        '401':
-          $ref: '#/components/responses/ResourceError401'
-        '403':
-          $ref: '#/components/responses/ResourceError403'
-        '404':
-          $ref: '#/components/responses/ResourceError404'
-        '409':
-          $ref: '#/components/responses/ResourceError409'
-        '412':
-          $ref: '#/components/responses/ResourceError412'
-        '428':
-          $ref: '#/components/responses/ResourceError428'
-        '500':
-          $ref: '#/components/responses/ResourceError500'
-        '502':
-          $ref: '#/components/responses/ResourceError502'
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
   /api/v1/connectors/{id}/test:
     post:
       summary: 执行真实 MCP 握手与全量工具发现
-      description: 个人连接发现的工具自动启用，包括使用系统模板创建的个人连接；系统连接的新工具仍需管理员启用。
+      description: 独立认证必须使用包含 credential_id 的接口，否则返回 400 credential_selection_required。连接级工具适用于 none / centralized；集中测试仅限管理员。
       responses:
         '200':
           description: 执行真实 MCP 握手与全量工具发现
@@ -1485,12 +1649,20 @@ paths:
         schema:
           type: string
           format: uuid
+      description: 独立认证必须使用包含 credential_id 的接口，否则返回 400 credential_selection_required。连接级工具适用于 none / centralized；集中测试仅限管理员。
   /api/v1/connectors/{id}/oauth/authorizations:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     post:
-      summary: 生成 OAuth state 与 PKCE 授权事务
+      summary: 添加命名 OAuth 凭证，每次成功新建
       responses:
         '200':
-          description: 生成 OAuth state 与 PKCE 授权事务
+          description: 成功；不返回凭证秘密。
           content:
             application/json:
               schema:
@@ -1513,13 +1685,12 @@ paths:
           $ref: '#/components/responses/ResourceError500'
         '502':
           $ref: '#/components/responses/ResourceError502'
-      parameters:
-      - name: id
-        in: path
+      requestBody:
         required: true
-        schema:
-          type: string
-          format: uuid
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizationName'
   /api/v1/connector-authorizations/{id}:
     get:
       summary: 查询本人发起的授权事务状态
@@ -1962,8 +2133,7 @@ paths:
           $ref: '#/components/responses/ResourceError428'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。 provider_id 省略时保留原值，不能更换
-        Provider；认证及配置快照保持不变。
+      description: 直接编辑连接，携带连接 If-Match。关键配置变更递增 config_revision 并使旧凭证、目录和授权事务失效；Client Secret 轮换不使既有 Token 失效。
     delete:
       summary: 删除自己的个人 Connector
       parameters:
@@ -1972,150 +2142,6 @@ paths:
       responses:
         '204':
           description: 资源已软删除，相关分享同步清理。
-        '400':
-          $ref: '#/components/responses/ResourceError400'
-        '401':
-          $ref: '#/components/responses/ResourceError401'
-        '404':
-          $ref: '#/components/responses/ResourceError404'
-        '409':
-          $ref: '#/components/responses/ResourceError409'
-        '412':
-          $ref: '#/components/responses/ResourceError412'
-        '428':
-          $ref: '#/components/responses/ResourceError428'
-        '500':
-          $ref: '#/components/responses/ResourceError500'
-  /api/v1/connector-providers:
-    get:
-      summary: 列出可用于个人连接的 Provider
-      description: 返回启用的系统 none / independent Provider，以及本人的 Provider；本人禁用模板也可查看。隐藏其他用户的 Provider 及服务端密钥。
-      responses:
-        '200':
-          description: 可见 Provider 列表。
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                - items
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/UserConnectorProviderResource'
-        '401':
-          $ref: '#/components/responses/ResourceError401'
-        '500':
-          $ref: '#/components/responses/ResourceError500'
-    post:
-      summary: 创建当前用户的个人 Connector Provider
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-              - $ref: '#/components/schemas/UserConnectorProviderInput'
-              required:
-              - url
-              - authorization_mode
-      responses:
-        '201':
-          description: 资源详情；仅资源所有者可编辑。
-          headers:
-            ETag:
-              $ref: '#/components/headers/RevisionETag'
-            Cache-Control:
-              $ref: '#/components/headers/CacheControl'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserConnectorProviderResource'
-        '400':
-          $ref: '#/components/responses/ResourceError400'
-        '401':
-          $ref: '#/components/responses/ResourceError401'
-        '404':
-          $ref: '#/components/responses/ResourceError404'
-        '409':
-          $ref: '#/components/responses/ResourceError409'
-        '500':
-          $ref: '#/components/responses/ResourceError500'
-      description: 内部标识由服务端生成，客户端使用返回的资源 id；仅支持 none / independent，OAuth Client Secret 仅写入。
-  /api/v1/connector-providers/{id}:
-    get:
-      summary: 读取可见 Provider 详情
-      parameters:
-      - $ref: '#/components/parameters/ResourceID'
-      responses:
-        '200':
-          description: 资源详情；仅资源所有者可编辑。
-          headers:
-            ETag:
-              $ref: '#/components/headers/RevisionETag'
-            Cache-Control:
-              $ref: '#/components/headers/CacheControl'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserConnectorProviderResource'
-        '400':
-          $ref: '#/components/responses/ResourceError400'
-        '401':
-          $ref: '#/components/responses/ResourceError401'
-        '404':
-          $ref: '#/components/responses/ResourceError404'
-        '500':
-          $ref: '#/components/responses/ResourceError500'
-      description: 允许读取启用的系统 none / independent Provider，以及自己的 Provider。
-    put:
-      summary: 编辑自己的个人 Connector Provider
-      parameters:
-      - $ref: '#/components/parameters/ResourceID'
-      - $ref: '#/components/parameters/IfMatch'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserConnectorProviderInput'
-      responses:
-        '200':
-          description: 资源详情；仅资源所有者可编辑。
-          headers:
-            ETag:
-              $ref: '#/components/headers/RevisionETag'
-            Cache-Control:
-              $ref: '#/components/headers/CacheControl'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserConnectorProviderResource'
-        '400':
-          $ref: '#/components/responses/ResourceError400'
-        '401':
-          $ref: '#/components/responses/ResourceError401'
-        '404':
-          $ref: '#/components/responses/ResourceError404'
-        '409':
-          $ref: '#/components/responses/ResourceError409'
-        '412':
-          $ref: '#/components/responses/ResourceError412'
-        '428':
-          $ref: '#/components/responses/ResourceError428'
-        '500':
-          $ref: '#/components/responses/ResourceError500'
-      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。已存在实例时禁止更换连接模板，OAuth
-        Client Secret 轮换同步更新绑定实例。
-    delete:
-      summary: 删除自己的个人 Connector Provider
-      parameters:
-      - $ref: '#/components/parameters/ResourceID'
-      - $ref: '#/components/parameters/IfMatch'
-      responses:
-        '204':
-          description: Provider 已软删除；仍被 Connector 或专家引用时返回 409。
         '400':
           $ref: '#/components/responses/ResourceError400'
         '401':
@@ -2157,21 +2183,176 @@ paths:
           $ref: '#/components/responses/ResourceError500'
         '502':
           $ref: '#/components/responses/ResourceError502'
-  /api/v1/connector-providers/{id}/icon:
-    put:
-      summary: 上传自己的个人 Provider 图标
+  /api/v1/connectors/{id}/credentials:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      summary: 列出当前用户的独立凭证
       responses:
         '200':
-          description: 资源详情；仅资源所有者可编辑。
-          headers:
-            ETag:
-              $ref: '#/components/headers/RevisionETag'
-            Cache-Control:
-              $ref: '#/components/headers/CacheControl'
+          description: 成功；不返回凭证秘密。
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserConnectorProviderResource'
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConnectorCredential'
+                required:
+                - items
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+    post:
+      summary: 新增 HTTP Header 凭证，保存后单独测试
+      responses:
+        '201':
+          description: 成功；不返回凭证秘密。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredential'
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredentialInput'
+  /api/v1/connectors/{id}/credentials/{credential_id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: credential_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      summary: 读取指定凭证元数据及 ETag
+      responses:
+        '200':
+          description: 成功；不返回凭证秘密。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredential'
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+    patch:
+      summary: 改名或整组替换 Header
+      responses:
+        '200':
+          description: 成功；不返回凭证秘密。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCredential'
+          headers:
+            ETag:
+              $ref: '#/components/headers/RevisionETag'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredentialPatch'
+      parameters:
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+        description: 当前凭证 revision 的带双引号 ETag；冲突返回 412 revision_conflict。
+    delete:
+      summary: 本地撤销指定凭证并失效其工具目录
+      responses:
+        '204':
+          description: 操作成功。
         '400':
           $ref: '#/components/responses/ResourceError400'
         '401':
@@ -2194,39 +2375,32 @@ paths:
       - name: If-Match
         in: header
         required: true
-        description: 上次读取返回的 ETag，例如 "1"。
         schema:
           type: string
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                icon:
-                  type: string
-                  format: binary
-                  description: PNG/JPEG，最多 1 MiB，最多 4096×4096。
-              required:
-              - icon
-      description: 只允许修改本人的 Provider 图标，不允许修改系统或他人的 Provider。
-    get:
-      summary: 读取可见 Provider 图标
+        description: 当前凭证 revision 的带双引号 ETag；冲突返回 412 revision_conflict。
+  /api/v1/connectors/{id}/credentials/{credential_id}/oauth/authorizations:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: credential_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      summary: 重新授权指定凭证，成功后保持 ID 并失效原目录
       responses:
         '200':
-          description: 读取私有模板图标
+          description: 成功；不返回凭证秘密。
           content:
-            image/png:
+            application/json:
               schema:
-                type: string
-                format: binary
+                $ref: '#/components/schemas/OAuthAuthorization'
         '400':
           $ref: '#/components/responses/ResourceError400'
         '401':
@@ -2246,13 +2420,108 @@ paths:
         '502':
           $ref: '#/components/responses/ResourceError502'
       parameters:
-      - name: id
-        in: path
+      - name: If-Match
+        in: header
         required: true
         schema:
           type: string
-          format: uuid
-      description: 与 Provider 详情使用相同可见范围。
+        description: 当前凭证 revision 的带双引号 ETag；冲突返回 412 revision_conflict。
+  /api/v1/connectors/{id}/credentials/{credential_id}/test:
+    post:
+      summary: 执行真实 MCP 握手与全量工具发现
+      description: 操作明确指定的凭证上下文；校验连接、凭证、当前用户和配置版本。管理端工具只读上下文允许查看系统连接用户工具，不能代用户测试。
+      responses:
+        '200':
+          description: 执行真实 MCP 握手与全量工具发现
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connection_status:
+                    type: string
+                  tool_count:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters: []
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: credential_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  /api/v1/connectors/{id}/credentials/{credential_id}/tools:
+    get:
+      summary: 读取认证上下文的工具目录
+      responses:
+        '200':
+          description: 读取认证上下文的工具目录
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MCPTool'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '403':
+          $ref: '#/components/responses/ResourceError403'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          $ref: '#/components/responses/ResourceError409'
+        '412':
+          $ref: '#/components/responses/ResourceError412'
+        '428':
+          $ref: '#/components/responses/ResourceError428'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
+        '502':
+          $ref: '#/components/responses/ResourceError502'
+      parameters: []
+      description: 操作明确指定的凭证上下文；校验连接、凭证、当前用户和配置版本。管理端工具只读上下文允许查看系统连接用户工具，不能代用户测试。
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: credential_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
 components:
   securitySchemes:
     InvocationKey:
@@ -2448,36 +2717,25 @@ components:
           items:
             type: string
             format: uuid
-        providers:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProviderDependency'
         name:
           type: string
           minLength: 1
           maxLength: 200
+        connectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDependency'
       required:
       - name
     UserConnectorInput:
       type: object
       properties:
-        provider_id:
-          type: string
-          format: uuid
         description:
           type: string
         name:
           type: string
           minLength: 1
           maxLength: 200
-      required:
-      - name
-      description: 仅声明的字段可由当前用户写入；归属、启用状态、授权和其他服务端字段忽略。
-    UserConnectorProviderInput:
-      type: object
-      properties:
-        description:
-          type: string
         url:
           type: string
           format: uri
@@ -2491,94 +2749,18 @@ components:
           - string
           - 'null'
           enum:
-          - http_header
           - oauth
+          - http_header
           - null
         oauth_config:
           $ref: '#/components/schemas/OAuthConnectionConfig'
-        header_schema:
-          type: object
-        name:
-          type: string
-          minLength: 1
-          maxLength: 200
         oauth_client_secret:
           type: string
           writeOnly: true
-          description: 仅写入；空字符串表示保留已有密钥。
+          description: 省略保留，空字符串清空；应用或端点变更时省略会清除旧 Secret。
       required:
       - name
       description: 仅声明的字段可由当前用户写入；归属、启用状态、授权和其他服务端字段忽略。
-    UserConnectorProviderResource:
-      type: object
-      properties:
-        shared_users:
-          type: array
-          readOnly: true
-          items:
-            $ref: '#/components/schemas/UserSummary'
-          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        revision:
-          type: integer
-          minimum: 1
-        ownership_type:
-          type: string
-          enum:
-          - system
-          - user
-        owner_user_id:
-          type: string
-          format: uuid
-        owner_name:
-          type: string
-        icon_path:
-          type: string
-        enabled:
-          type: boolean
-        grants:
-          type: array
-          items:
-            $ref: '#/components/schemas/ResourceGrant'
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-        description:
-          type: string
-        url:
-          type: string
-          format: uri
-        authorization_mode:
-          type: string
-          enum:
-          - none
-          - centralized
-          - independent
-        authorization_method:
-          type:
-          - string
-          - 'null'
-          enum:
-          - http_header
-          - oauth
-          - null
-        oauth_config:
-          $ref: '#/components/schemas/OAuthConnectionConfig'
-        header_schema:
-          type: object
-      required:
-      - id
-      - name
-      - revision
-      - ownership_type
-      - owner_user_id
     UserSkillManifest:
       type: object
       required:
@@ -2810,7 +2992,7 @@ components:
       required:
       - id
       - ownership_type
-      - owner_user_id
+      - user
       - model_id
       - display_name
       - protocol
@@ -2832,7 +3014,10 @@ components:
         ownership_type:
           type: string
           const: user
-        owner_user_id: *id006
+        user:
+          $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         api_key_configured:
           type: boolean
         credit_multiplier:
@@ -3135,7 +3320,7 @@ components:
       type: object
       required:
         - ownership_type
-        - owner_user_id
+        - user
         - id
         - model
         - display_name
@@ -3150,11 +3335,11 @@ components:
           enum:
           - system
           - user
-          description: 资源归属，固定为 system 或 user；分享不会改变此值。自有和他人分享的个人模型均为 user，通过 owner_user_id 区分。
-        owner_user_id:
-          type: string
-          format: uuid
-          description: 创建者用户 ID。
+          description: 资源归属，固定为 system 或 user；分享不会改变此值。自有和他人分享的个人模型均为 user，通过 user.id 与当前用户 ID 比较区分。
+        user:
+          $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         creator:
           $ref: '#/components/schemas/UserSummary'
           description: 他人创建的用户模型返回创建者；自己的模型和系统模型不返回。
@@ -3205,7 +3390,8 @@ components:
             $ref: "#/components/schemas/APIKey"
     CreateAPIKeyInput:
       type: object
-      required: [name]
+      required:
+      - name
       properties:
         name:
           type: string
@@ -3214,27 +3400,32 @@ components:
         scopes:
           type: array
           description: 调用权限；不传或传空数组时默认为 model:invoke。
-          default: ["model:invoke"]
+          default:
+          - model:invoke
           uniqueItems: true
           items:
             type: string
-            enum: ["model:invoke", "mcp:invoke"]
+            enum:
+            - model:invoke
+            - mcp:invoke
         expires_in_days:
           type: integer
           minimum: 1
           maximum: 365
           default: 90
           description: 密钥自创建时起的有效天数。
+      additionalProperties: false
+      description: 创建全局调用密钥；MCP 使用 mcp:invoke scope，无需绑定连接或凭证，具体资源访问权由代理地址及用户权限决定。
     APIKey:
       type: object
       required:
-        - id
-        - user_id
-        - name
-        - key_prefix
-        - scopes
-        - expires_at
-        - created_at
+      - id
+      - user_id
+      - name
+      - key_prefix
+      - scopes
+      - expires_at
+      - created_at
       properties:
         id:
           type: string
@@ -3253,7 +3444,8 @@ components:
         key_prefix:
           type: string
           description: 用于识别密钥的安全前缀，不可用于鉴权。
-          examples: [mk_abcd1234]
+          examples:
+          - mk_abcd1234
         scopes:
           type: array
           description: 密钥具备的调用权限。
@@ -3261,7 +3453,9 @@ components:
           uniqueItems: true
           items:
             type: string
-            enum: ["model:invoke", "mcp:invoke"]
+            enum:
+            - model:invoke
+            - mcp:invoke
         expires_at:
           type: string
           format: date-time
@@ -3354,24 +3548,6 @@ components:
       required:
       - id
       - name
-    ProviderDependency:
-      type: object
-      properties:
-        provider_id:
-          type: string
-          format: uuid
-        required:
-          type: boolean
-        tool_allowlist:
-          type: array
-          items:
-            type: string
-        tool_denylist:
-          type: array
-          items:
-            type: string
-      required:
-      - provider_id
     OAuthConnectionConfig:
       type: object
       properties:
@@ -3388,11 +3564,11 @@ components:
       properties:
         code:
           type: string
-        provider_id:
-          type: string
-          format: uuid
         blocking:
           type: boolean
+        connector_id:
+          type: string
+          format: uuid
       required:
       - code
       - blocking
@@ -3429,10 +3605,10 @@ components:
           - system
           - user
           description: 独立资源目录返回；个人规则仅创建者可用。
-        owner_user_id:
-          type: string
-          format: uuid
-          description: 独立资源目录返回；与当前用户 ID 比较以判断是否可编辑。
+        user:
+          $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         revision:
           type: integer
           minimum: 1
@@ -3469,10 +3645,10 @@ components:
           - system
           - user
           description: 独立资源目录返回；分享不改变资源归属。
-        owner_user_id:
-          type: string
-          format: uuid
-          description: 独立资源目录返回；与当前用户 ID 比较以判断是否可编辑。
+        user:
+          $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         revision:
           type: integer
           minimum: 1
@@ -3517,18 +3693,15 @@ components:
           - system
           - user
           description: 独立资源目录返回；分享不改变资源归属。
-        owner_user_id:
-          type: string
-          format: uuid
-          description: 独立资源目录返回；与当前用户 ID 比较以判断是否可编辑。
+        user:
+          $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         revision:
           type: integer
           minimum: 1
           description: 独立资源目录返回；管理详情和修改接口使用此修订号作为 ETag。
         id:
-          type: string
-          format: uuid
-        provider_id:
           type: string
           format: uuid
         icon_path:
@@ -3561,35 +3734,29 @@ components:
             - catalog
             - invoke
         mcp_gateway:
-          type: object
-          description: 当前连接的 MCP 工具代理配置，不含上游地址或凭证；调用前仍需完成 authorization_status 要求的认证。
-          properties:
-            url:
-              type: string
-              format: uri
-            transport:
-              const: streamable_http
-            authentication:
-              const: api_key
-            required_scope:
-              const: mcp:invoke
-          required: [url, transport, authentication, required_scope]
+          $ref: '#/components/schemas/MCPGateway'
         tools:
           type: array
           items:
             $ref: '#/components/schemas/MCPTool'
         tools_version:
           type: string
-        tools_path:
+        credentials:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentCredential'
+        credential_id:
           type: string
+          format: uuid
+          description: 集中认证返回当前集中凭证 ID；独立认证在 resolve 选定后返回所选凭证 ID。
+        required:
+          type: boolean
       required:
       - id
-      - provider_id
       - name
-      - authorization_status
+      - authorization_mode
       - capabilities
-      - mcp_gateway
-      - tools
+      description: 独立认证在 credentials 内返回每份凭证的工具和专属代理地址；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。resolve 返回所选凭证、工具和 mcp_gateway，API Key 全局创建。
     AgentExpert:
       type: object
       properties:
@@ -3605,10 +3772,10 @@ components:
           - system
           - user
           description: 独立资源目录返回；分享不改变资源归属。
-        owner_user_id:
-          type: string
-          format: uuid
-          description: 独立资源目录返回；与当前用户 ID 比较以判断是否可编辑。
+        user:
+          $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         revision:
           type: integer
           minimum: 1
@@ -3660,28 +3827,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AgentSkill'
-        providers:
-          type: array
-          items:
-            type: object
-            properties:
-              provider_id:
-                type: string
-                format: uuid
-              required:
-                type: boolean
-              tool_allowlist:
-                type: array
-                items:
-                  type: string
-              tool_denylist:
-                type: array
-                items:
-                  type: string
-              connectors:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AgentConnector'
         connectors:
           type: array
           items:
@@ -3697,7 +3842,7 @@ components:
       - available
       - rules
       - skills
-      - providers
+      - connectors
       - issues
     ResolveResources:
       type: object
@@ -3720,6 +3865,12 @@ components:
           additionalProperties:
             type: string
             format: uuid
+          description: 本次已选择的独立 Connector ID 到凭证 ID；不会隐式选择连接。无绑定时恰好一个有效凭证才自动选择，多份返回 credential_selection_required。
+        connector_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
     OAuthAuthorization:
       type: object
       properties:
@@ -3729,9 +3880,15 @@ components:
         authorization_url:
           type: string
           format: uri
+        expires_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
       required:
       - id
       - authorization_url
+      - expires_at
     AuthorizationStatus:
       type: object
       properties:
@@ -3743,21 +3900,39 @@ components:
           enum:
           - pending
           - processing
-          - authorized
-          - error
+          - succeeded
+          - failed
           - expired
+        credential_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        expires_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
       required:
       - id
       - status
     CredentialInput:
       type: object
       properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
         http_headers:
           type: object
+          minProperties: 1
+          maxProperties: 30
           additionalProperties:
             type: string
           writeOnly: true
+          description: 完整 Header 键值；禁止大小写重复、CR/LF、Host、传输控制、Mcp-*、Content-Type 和 Accept。整组替换，响应不回填。
       required:
+      - name
       - http_headers
     RuleResource:
       type: object
@@ -3775,11 +3950,10 @@ components:
           enum:
           - system
           - user
-        owner_user_id:
-          type: string
-          format: uuid
-        owner_name:
-          type: string
+        user:
+          $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         icon_path:
           type: string
         enabled:
@@ -3840,11 +4014,10 @@ components:
           enum:
           - system
           - user
-        owner_user_id:
-          type: string
-          format: uuid
-        owner_name:
-          type: string
+        user:
+          $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         icon_path:
           type: string
         enabled:
@@ -3920,11 +4093,10 @@ components:
           enum:
           - system
           - user
-        owner_user_id:
-          type: string
-          format: uuid
-        owner_name:
-          type: string
+        user:
+          $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         icon_path:
           type: string
         enabled:
@@ -3958,10 +4130,10 @@ components:
           items:
             type: string
             format: uuid
-        providers:
+        connectors:
           type: array
           items:
-            $ref: '#/components/schemas/ProviderDependency'
+            $ref: '#/components/schemas/ConnectorDependency'
       required:
       - id
       - name
@@ -3989,10 +4161,6 @@ components:
           items:
             type: string
             format: uuid
-        providers:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProviderDependency'
         name:
           type: string
           minLength: 1
@@ -4001,120 +4169,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ResourceGrant'
+        connectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorDependency'
       required:
       - name
       - prompt
-    ConnectorProviderResource:
-      type: object
-      properties:
-        shared_users:
-          type: array
-          readOnly: true
-          items:
-            $ref: '#/components/schemas/UserSummary'
-          description: 仅资源所有者和管理端读取个人资源时返回共享用户列表，未共享时为 []，排除已删除用户；接收方和系统资源不返回。目录中的用户信息变化会更新 ETag。
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        revision:
-          type: integer
-          minimum: 1
-        ownership_type:
-          type: string
-          enum:
-          - system
-          - user
-        owner_user_id:
-          type: string
-          format: uuid
-        owner_name:
-          type: string
-        icon_path:
-          type: string
-        enabled:
-          type: boolean
-        grants:
-          type: array
-          items:
-            $ref: '#/components/schemas/ResourceGrant'
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-        description:
-          type: string
-        url:
-          type: string
-          format: uri
-        authorization_mode:
-          type: string
-          enum:
-          - none
-          - centralized
-          - independent
-        authorization_method:
-          type:
-          - string
-          - 'null'
-          enum:
-          - http_header
-          - oauth
-          - null
-        oauth_config:
-          $ref: '#/components/schemas/OAuthConnectionConfig'
-        header_schema:
-          type: object
-      required:
-      - id
-      - name
-      - revision
-      - grants
-    ConnectorProviderInput:
-      type: object
-      properties:
-        description:
-          type: string
-        url:
-          type: string
-          format: uri
-        authorization_mode:
-          type: string
-          enum:
-          - none
-          - centralized
-          - independent
-        authorization_method:
-          type:
-          - string
-          - 'null'
-          enum:
-          - http_header
-          - oauth
-          - null
-        oauth_config:
-          $ref: '#/components/schemas/OAuthConnectionConfig'
-        header_schema:
-          type: object
-        name:
-          type: string
-          minLength: 1
-          maxLength: 200
-        grants:
-          type: array
-          items:
-            $ref: '#/components/schemas/ResourceGrant'
-        oauth_client_secret:
-          type: string
-          writeOnly: true
-          description: 仅写入；空字符串表示保留已有密钥。
-      required:
-      - name
-      - url
-      - authorization_mode
     ConnectorResource:
       type: object
       properties:
@@ -4137,11 +4198,10 @@ components:
           enum:
           - system
           - user
-        owner_user_id:
-          type: string
-          format: uuid
-        owner_name:
-          type: string
+        user:
+          $ref: '#/components/schemas/UserSummary'
+          readOnly: true
+          description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         icon_path:
           type: string
         enabled:
@@ -4156,9 +4216,6 @@ components:
         updated_at:
           type: string
           format: date-time
-        provider_id:
-          type: string
-          format: uuid
         description:
           type: string
         url:
@@ -4188,6 +4245,10 @@ components:
           type: string
         tool_count:
           type: integer
+        credentials:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorCredential'
       required:
       - id
       - name
@@ -4197,9 +4258,6 @@ components:
     ConnectorInput:
       type: object
       properties:
-        provider_id:
-          type: string
-          format: uuid
         description:
           type: string
         url:
@@ -4213,6 +4271,174 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ResourceGrant'
+        authorization_mode:
+          type: string
+          enum:
+          - none
+          - centralized
+          - independent
+        authorization_method:
+          type:
+          - string
+          - 'null'
+          enum:
+          - oauth
+          - http_header
+          - null
+        oauth_config:
+          $ref: '#/components/schemas/OAuthConnectionConfig'
+        oauth_client_secret:
+          type: string
+          writeOnly: true
+          description: 省略保留，空字符串清空；应用或端点变更时省略会清除旧 Secret。
       required:
       - name
-      - provider_id
+    AgentCredential:
+      allOf:
+      - $ref: '#/components/schemas/ConnectorCredential'
+      - type: object
+        properties:
+          tools:
+            type: array
+            items:
+              $ref: '#/components/schemas/MCPTool'
+          tools_version:
+            type: string
+          mcp_gateway:
+            $ref: '#/components/schemas/MCPGateway'
+    AuthorizationName:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required:
+      - name
+    ConnectorCredential:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        connector_id:
+          type: string
+          format: uuid
+        user:
+          oneOf:
+          - $ref: '#/components/schemas/UserSummary'
+          - type: 'null'
+          readOnly: true
+          description: 凭证所属的平台用户基本信息；集中凭证为 null，不读取上游 OAuth 用户资料。
+        name:
+          type: string
+        revision:
+          type: integer
+        config_revision:
+          type: integer
+        authorization_status:
+          type: string
+          enum:
+          - authorized
+          - authorization_required
+          - revoked
+        connection_status:
+          type: string
+          enum:
+          - unknown
+          - connected
+          - error
+        header_names:
+          type: array
+          items:
+            type: string
+        last_checked_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_error:
+          type:
+          - string
+          - 'null'
+        oauth_expires_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        created_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        revoked_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      required:
+      - id
+      - connector_id
+      - user
+      - name
+      - revision
+      - authorization_status
+      - connection_status
+    ConnectorDependency:
+      type: object
+      properties:
+        required:
+          type: boolean
+        tool_allowlist:
+          type: array
+          items:
+            type: string
+        tool_denylist:
+          type: array
+          items:
+            type: string
+        connector_id:
+          type: string
+          format: uuid
+      required:
+      - connector_id
+    CredentialPatch:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        http_headers:
+          type: object
+          minProperties: 1
+          maxProperties: 30
+          additionalProperties:
+            type: string
+          writeOnly: true
+          description: 完整 Header 键值；禁止大小写重复、CR/LF、Host、传输控制、Mcp-*、Content-Type 和 Accept。整组替换，响应不回填。
+      minProperties: 1
+    MCPGateway:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: 以 /mcp 为前缀：免认证为 /mcp/connectors/{id}，集中或独立认证为 /mcp/connectors/{id}/credentials/{credential_id}。全局 API Key
+            认证用户，服务端校验地址对应连接使用权、凭证归属和有效性。
+        transport:
+          const: streamable_http
+        authentication:
+          const: api_key
+        required_scope:
+          const: mcp:invoke
+      required:
+      - url
+      - transport
+      - authentication
+      - required_scope

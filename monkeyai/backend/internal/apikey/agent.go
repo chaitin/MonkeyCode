@@ -26,7 +26,9 @@ func (s *Service) RegisterAgent(router chi.Router) {
 
 func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 	var input CreateInput
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
 		keyError(w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
@@ -67,6 +69,7 @@ func (s *Service) rotate(w http.ResponseWriter, r *http.Request) {
 }
 
 func keyJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)

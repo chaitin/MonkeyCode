@@ -1,3 +1,4 @@
+import { ConnectorCredentials } from "@/components/connector-credentials"
 import { api } from "@/lib/api"
 import {
   base,
@@ -5,13 +6,13 @@ import {
   selection,
   match,
   saveResource,
-  listResources,
   useResources,
   useSubjects,
   type ResourceRow,
+  type Credential,
 } from "@/lib/resources"
 import { ResourceNotice } from "@/components/resource-notice"
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import {
   Delete02Icon,
   Edit02Icon,
@@ -66,7 +67,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
@@ -104,7 +104,7 @@ type McpToolConfig = {
 type McpServer = {
   iconPath: string
   revision: number
-  providerId: string
+  credentials: Credential[]
   oauthConfig: Record<string, string>
   callbackURL: string
   id: string
@@ -128,7 +128,7 @@ function toServer(row: ResourceRow): McpServer {
     id: row.id,
     revision: row.revision,
     iconPath: row.icon_path,
-    providerId: row.provider_id,
+    credentials: row.credentials ?? [],
     name: row.name,
     description: row.description,
     url: row.url,
@@ -140,9 +140,12 @@ function toServer(row: ResourceRow): McpServer {
     hasHttpHeaders: row.credential_configured,
     centralizedAuthorized: row.credential_configured,
     authorization: selection(row.grants),
-    connectionStatus: row.connection_status,
+    connectionStatus:
+      row.connection_status ??
+      row.credentials?.[0]?.connection_status ??
+      "unknown",
     type: row.ownership_type,
-    creator: row.owner_name ?? row.owner_user_id,
+    creator: row.user.name || row.user.email || row.user.id,
     enabled: row.enabled,
     toolCount: row.tool_count ?? 0,
     oauthConfig: row.oauth_config ?? {},
@@ -154,33 +157,13 @@ function getCreatorInitials(creator: string) {
   return creator.trim().slice(0, 2).toUpperCase()
 }
 
-function isValidHttpHeaders(value: string) {
-  try {
-    const config: unknown = JSON.parse(value)
-
-    return (
-      typeof config === "object" &&
-      config !== null &&
-      !Array.isArray(config) &&
-      Object.values(config).every((item) => typeof item === "string")
-    )
-  } catch {
-    return false
-  }
-}
-
 export function ToolsPage() {
   const { t } = useTranslation()
   const remote = useResources("/connectors", toServer)
-  const pendingProvider = useRef("")
   const servers = remote.items
   const reload = remote.reload
   const subjects = useSubjects()
   const [activeType, setActiveType] = useState<McpServerType>("system")
-  const [providers, setProviders] = useState<ResourceRow[]>([])
-  const [providerError, setProviderError] = useState("")
-  const [selectedProviderId, setSelectedProviderId] = useState("")
-  const [oauthRequest, setOAuthRequest] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingServerId, setEditingServerId] = useState<string | null>(null)
   const [serverPendingDeletion, setServerPendingDeletion] =
@@ -189,7 +172,6 @@ export function ToolsPage() {
     useState<McpAuthorizationMode>("independent")
   const [authorizationMethod, setAuthorizationMethod] =
     useState<McpAuthorizationMethod>("oauth")
-  const [centralizedAuthorized, setCentralizedAuthorized] = useState(false)
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
@@ -197,55 +179,15 @@ export function ToolsPage() {
   })
   const [testingServerId, setTestingServerId] = useState<string | null>(null)
   const [viewingServerId, setViewingServerId] = useState<string | null>(null)
+  const [contexts, setContexts] = useState<Credential[]>([])
+  const [contextID, setContextID] = useState("")
+  const [credentialServer, setCredentialServer] = useState<McpServer | null>(
+    null
+  )
   const [toolDrafts, setToolDrafts] = useState<McpToolConfig[]>([])
   const editingServer = servers.find((server) => server.id === editingServerId)
   const viewingServer = servers.find((server) => server.id === viewingServerId)
 
-  useEffect(() => {
-    if (!dialogOpen) return
-    let cancelled = false
-    listResources(base + "/connector-providers")
-      .then((r) => {
-        if (!cancelled) {
-          setProviders(r.items)
-          setProviderError("")
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setProviderError(e.message)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [dialogOpen])
-  useEffect(() => {
-    if (!oauthRequest) return
-    const timer = window.setInterval(() => {
-      api<{ status: string }>(
-        base + `/connector-authorizations/${oauthRequest}`
-      )
-        .then((result) => {
-          if (result.status !== "pending" && result.status !== "processing") {
-            setOAuthRequest(null)
-            setCentralizedAuthorized(result.status === "authorized")
-            void reload().catch((e) => setProviderError(e.message))
-          }
-        })
-        .catch(() => setOAuthRequest(null))
-    }, 2000)
-    return () => window.clearInterval(timer)
-  }, [oauthRequest, reload])
-  const selectedProvider = providers.find((p) => p.id === selectedProviderId)
-  const selectProvider = (id: string) => {
-    setSelectedProviderId(id)
-    const provider = providers.find((p) => p.id === id)
-    if (provider) {
-      setAuthorizationMode(provider.authorization_mode)
-      setAuthorizationMethod(
-        provider.authorization_method === "http_header" ? "httpHeader" : "oauth"
-      )
-    }
-  }
   const setConnectionEnabled = async (server: McpServer) => {
     await remote.run(async () => {
       await api(base + `/connectors/${server.id}/enabled`, {
@@ -256,12 +198,9 @@ export function ToolsPage() {
     })
   }
   const resetDraft = () => {
-    pendingProvider.current = ""
-    setSelectedProviderId("")
     setEditingServerId(null)
     setAuthorizationMode("independent")
     setAuthorizationMethod("oauth")
-    setCentralizedAuthorized(false)
     setAuthorizationOpen(false)
     setAuthorization({ groupIds: [], memberIds: [] })
   }
@@ -277,7 +216,6 @@ export function ToolsPage() {
     setEditingServerId(server.id)
     setAuthorizationMode(server.authorizationMode)
     setAuthorizationMethod(server.authorizationMethod ?? "oauth")
-    setCentralizedAuthorized(server.centralizedAuthorized)
     setAuthorization(server.authorization)
     setAuthorizationOpen(false)
     setDialogOpen(true)
@@ -290,40 +228,16 @@ export function ToolsPage() {
     const name = String(formData.get("name") ?? "").trim()
     const description = String(formData.get("description") ?? "").trim()
     const url = String(formData.get("url") ?? "").trim()
-    const httpHeaders = String(formData.get("httpHeaders") ?? "").trim()
-
-    if (
-      !name ||
-      !description ||
-      !url ||
-      (authorizationMode === "centralized" &&
-        authorizationMethod === "httpHeader" &&
-        !httpHeaders &&
-        !editingServer?.hasHttpHeaders) ||
-      editingServer?.type === "user"
-    ) {
-      return
-    }
-
-    if (httpHeaders && !isValidHttpHeaders(httpHeaders)) {
-      const httpHeadersInput = form.elements.namedItem(
-        "httpHeaders"
-      ) as HTMLTextAreaElement | null
-      httpHeadersInput?.setCustomValidity(t("pages.tools.httpHeadersInvalid"))
-      httpHeadersInput?.reportValidity()
-      return
-    }
-
+    if (!name || !url || editingServer?.type === "user") return
     await remote.run(async () => {
-      let providerId =
-        editingServer?.providerId ||
-        selectedProviderId ||
-        pendingProvider.current
-      if (!providerId) {
-        const provider = await saveResource("/connector-providers", {
+      const secret = String(formData.get("oauthClientSecret") ?? "")
+      const saved = await saveResource(
+        editingServer ? `/connectors/${editingServer.id}` : "/connectors",
+        {
           name,
           description,
           url,
+          grants: grants(authorization),
           authorization_mode: authorizationMode,
           authorization_method:
             authorizationMode === "none"
@@ -339,50 +253,27 @@ export function ToolsPage() {
             client_id: String(formData.get("oauthClientID") ?? ""),
             scopes: String(formData.get("oauthScopes") ?? ""),
           },
-          oauth_client_secret: String(formData.get("oauthClientSecret") ?? ""),
-        })
-        providerId = provider.id
-        pendingProvider.current = provider.id
-      }
-      const saved = await saveResource(
-        editingServer ? `/connectors/${editingServer.id}` : "/connectors",
-        {
-          provider_id: providerId,
-          name,
-          description,
-          url,
-          grants: grants(authorization),
+          ...(secret || !editingServer ? { oauth_client_secret: secret } : {}),
         },
         editingServer?.revision
       )
+      setEditingServerId(saved.id)
+      await remote.reload()
       const icon = formData.get("icon")
       if (icon instanceof File && icon.size > 0) {
-        const provider = await api<ResourceRow>(
-          base + `/connector-providers/${providerId}`
-        )
         const data = new FormData()
         data.set("icon", icon)
-        await api(base + `/connector-providers/${providerId}/icon`, {
+        await api(base + `/connectors/${saved.id}/icon`, {
           method: "PUT",
-          headers: match(provider.revision),
+          headers: match(saved.revision),
           body: data,
         })
       }
-      setEditingServerId(saved.id)
-      await remote.reload()
-      if (
-        httpHeaders &&
-        authorizationMode === "centralized" &&
-        authorizationMethod === "httpHeader"
-      )
-        await api(base + `/connectors/${saved.id}/credential`, {
-          method: "PUT",
-          body: JSON.stringify({ http_headers: JSON.parse(httpHeaders) }),
-        })
-      if (editingServer || !saved.callback_url) {
-        form.reset()
+      if (saved.authorization_mode === "centralized") {
         handleDialogOpenChange(false)
-      }
+        setCredentialServer(toServer(saved))
+      } else if (!saved.callback_url || editingServer)
+        handleDialogOpenChange(false)
     })
   }
   const handleDeleteServer = async () => {
@@ -402,43 +293,41 @@ export function ToolsPage() {
     })
     setTestingServerId(null)
   }
-  const handleViewTools = async (server: McpServer) => {
-    await remote.run(async () => {
-      const result = await api<{
-        items: {
-          id: string
-          name: string
-          description: string
-          enabled: boolean
-          credits_per_call: number
-        }[]
-      }>(base + `/connectors/${server.id}/tools`)
-      setToolDrafts(
-        result.items.map((t) => ({
-          id: t.id,
-          name: t.name,
-          description: t.description,
-          enabled: t.enabled,
-          pointsPerCall: Number(t.credits_per_call),
-        }))
-      )
-      setViewingServerId(server.id)
-    })
+  const loadTools = async (server: McpServer, credential = "") => {
+    const path =
+      `/connectors/${server.id}` +
+      (credential ? `/credentials/${credential}` : "") +
+      "/tools"
+    const result = await api<{
+      items: {
+        id: string
+        name: string
+        description: string
+        enabled: boolean
+        credits_per_call: number
+      }[]
+    }>(base + path)
+    setToolDrafts(
+      result.items.map((tool) => ({
+        ...tool,
+        pointsPerCall: Number(tool.credits_per_call),
+      }))
+    )
+    setContextID(credential)
   }
-  const authorize = async () => {
-    if (!editingServer) return
-    const popup = window.open("about:blank", "_blank")
-    if (popup) popup.opener = null
-    const ok = await remote.run(async () => {
-      const result = await api<{ id: string; authorization_url: string }>(
-        base + `/connectors/${editingServer.id}/oauth/authorizations`,
-        { method: "POST" }
-      )
-      setOAuthRequest(result.id)
-      if (popup) popup.location.href = result.authorization_url
-      else window.location.assign(result.authorization_url)
+  const handleViewTools = async (server: McpServer) => {
+    setToolDrafts([])
+    setContexts([])
+    setContextID("")
+    setViewingServerId(server.id)
+    await remote.run(async () => {
+      if (server.authorizationMode === "independent") {
+        const result = await api<{ items: Credential[] }>(
+          base + `/connectors/${server.id}/tool-contexts`
+        )
+        setContexts(result.items)
+      } else await loadTools(server)
     })
-    if (!ok) popup?.close()
   }
 
   const updateToolDraft = (
@@ -471,7 +360,7 @@ export function ToolsPage() {
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
       <ResourceNotice
-        error={remote.error || subjects.error || providerError}
+        error={remote.error || subjects.error}
         loading={remote.loading}
         pending={remote.pending}
       />
@@ -508,9 +397,7 @@ export function ToolsPage() {
               >
                 <form
                   className="flex flex-col gap-6"
-                  key={
-                    editingServer?.id ?? `new-mcp-server-${selectedProviderId}`
-                  }
+                  key={editingServer?.id ?? "new-mcp-server"}
                   onSubmit={handleSubmit}
                 >
                   <DialogHeader>
@@ -525,28 +412,6 @@ export function ToolsPage() {
                   </DialogHeader>
 
                   <FieldGroup className="gap-5">
-                    {!editingServer && (
-                      <Field>
-                        <FieldLabel htmlFor="connector-provider">
-                          {t("resources.providerTemplate")}
-                        </FieldLabel>
-                        <select
-                          id="connector-provider"
-                          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                          value={selectedProviderId}
-                          onChange={(e) => selectProvider(e.target.value)}
-                        >
-                          <option value="">{t("resources.newProvider")}</option>
-                          {providers
-                            .filter((p) => p.enabled)
-                            .map((p) => (
-                              <option value={p.id} key={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                        </select>
-                      </Field>
-                    )}
                     <Field>
                       <FieldLabel htmlFor="mcp-name">
                         {t("pages.tools.name")}
@@ -561,7 +426,7 @@ export function ToolsPage() {
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="mcp-icon">
-                        {t("resources.providerIcon")}
+                        {t("resources.connectorIcon")}
                       </FieldLabel>
                       <Input
                         id="mcp-icon"
@@ -588,10 +453,7 @@ export function ToolsPage() {
                         {t("pages.tools.url")}
                       </FieldLabel>
                       <Input
-                        defaultValue={
-                          editingServer?.url ?? selectedProvider?.url
-                        }
-                        readOnly={Boolean(editingServer || selectedProvider)}
+                        defaultValue={editingServer?.url}
                         id="mcp-url"
                         name="url"
                         placeholder={t("pages.tools.urlPlaceholder")}
@@ -601,15 +463,11 @@ export function ToolsPage() {
                     </Field>
                     <Field>
                       <FieldLabel>{t("pages.tools.authorization")}</FieldLabel>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-wrap gap-3">
                         <Tabs
                           value={authorizationMode}
                           onValueChange={(value) => {
-                            if (!editingServer && !selectedProvider)
-                              setAuthorizationMode(
-                                value as McpAuthorizationMode
-                              )
-                            setCentralizedAuthorized(false)
+                            setAuthorizationMode(value as McpAuthorizationMode)
                           }}
                         >
                           <TabsList
@@ -631,11 +489,9 @@ export function ToolsPage() {
                           <Tabs
                             value={authorizationMethod}
                             onValueChange={(value) => {
-                              if (!editingServer && !selectedProvider)
-                                setAuthorizationMethod(
-                                  value as McpAuthorizationMethod
-                                )
-                              setCentralizedAuthorized(false)
+                              setAuthorizationMethod(
+                                value as McpAuthorizationMethod
+                              )
                             }}
                           >
                             <TabsList
@@ -720,108 +576,18 @@ export function ToolsPage() {
                                   name={name}
                                   type={key === "secret" ? "password" : "text"}
                                   defaultValue={
-                                    editingServer?.oauthConfig[key] ??
-                                    selectedProvider?.oauth_config?.[key] ??
-                                    ""
+                                    editingServer?.oauthConfig[key] ?? ""
                                   }
-                                  readOnly={Boolean(
-                                    editingServer || selectedProvider
-                                  )}
-                                  required={
-                                    !editingServer &&
-                                    [
-                                      "authorization_url",
-                                      "token_url",
-                                      "client_id",
-                                    ].includes(key)
-                                  }
+                                  required={[
+                                    "authorization_url",
+                                    "token_url",
+                                    "client_id",
+                                  ].includes(key)}
                                 />
                               </Field>
                             ))}
                           </>
                         )}
-                      {authorizationMode ===
-                      "none" ? null : authorizationMethod === "oauth" ? (
-                        authorizationMode === "independent" ? (
-                          <FieldDescription>
-                            {t(
-                              "pages.tools.independentMethodDescriptions.oauth"
-                            )}
-                          </FieldDescription>
-                        ) : (
-                          <Field orientation="horizontal">
-                            <FieldContent>
-                              <FieldLabel>
-                                {t("pages.tools.oauthAuthorization")}
-                              </FieldLabel>
-                              <FieldDescription>
-                                {t("pages.tools.oauthAuthorizationDescription")}
-                              </FieldDescription>
-                            </FieldContent>
-                            <div className="flex shrink-0 items-center gap-2">
-                              <Badge
-                                variant={
-                                  centralizedAuthorized
-                                    ? "successOutline"
-                                    : "warningOutline"
-                                }
-                              >
-                                {centralizedAuthorized
-                                  ? t("pages.tools.authorized")
-                                  : t("pages.tools.notAuthorized")}
-                              </Badge>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={authorize}
-                                disabled={
-                                  !editingServer ||
-                                  remote.pending ||
-                                  Boolean(oauthRequest)
-                                }
-                              >
-                                {centralizedAuthorized
-                                  ? t("pages.tools.reauthorize")
-                                  : t("pages.tools.connectAndAuthorize")}
-                              </Button>
-                            </div>
-                          </Field>
-                        )
-                      ) : authorizationMode === "independent" ? (
-                        <FieldDescription>
-                          {t(
-                            "pages.tools.independentMethodDescriptions.httpHeader"
-                          )}
-                        </FieldDescription>
-                      ) : (
-                        <Field>
-                          <FieldLabel htmlFor="mcp-http-headers">
-                            {t("pages.tools.httpHeaders")}
-                          </FieldLabel>
-                          <Textarea
-                            className="max-h-48 min-h-28 resize-y overflow-y-auto font-mono"
-                            defaultValue={
-                              editingServer?.hasHttpHeaders
-                                ? undefined
-                                : t("pages.tools.httpHeadersDefaultValue")
-                            }
-                            id="mcp-http-headers"
-                            name="httpHeaders"
-                            placeholder={
-                              editingServer?.hasHttpHeaders
-                                ? t("pages.tools.httpHeadersUpdatePlaceholder")
-                                : undefined
-                            }
-                            required={!editingServer?.hasHttpHeaders}
-                            onInput={(event) =>
-                              event.currentTarget.setCustomValidity("")
-                            }
-                          />
-                          <FieldDescription>
-                            {t("pages.tools.httpHeadersDescription")}
-                          </FieldDescription>
-                        </Field>
-                      )}
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="mcp-authorization">
@@ -845,7 +611,7 @@ export function ToolsPage() {
                   </FieldGroup>
 
                   <ResourceNotice
-                    error={remote.error || subjects.error || providerError}
+                    error={remote.error || subjects.error}
                     loading={false}
                     pending={remote.pending}
                   />
@@ -958,6 +724,18 @@ export function ToolsPage() {
                                     />
                                     {t("pages.tools.viewTools")}
                                   </DropdownMenuItem>
+                                  {server.authorizationMode ===
+                                    "centralized" && (
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        setCredentialServer(server)
+                                      }
+                                    >
+                                      {t("resources.credentials", {
+                                        defaultValue: "管理凭证",
+                                      })}
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem
                                     onClick={() => handleEditServer(server)}
                                   >
@@ -968,7 +746,12 @@ export function ToolsPage() {
                                     {t("pages.tools.edit")}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
-                                    disabled={testingServerId === server.id}
+                                    disabled={
+                                      testingServerId === server.id ||
+                                      server.authorizationMode ===
+                                        "independent" ||
+                                      !server.enabled
+                                    }
                                     onClick={() =>
                                       handleTestConnection(server.id)
                                     }
@@ -1024,7 +807,9 @@ export function ToolsPage() {
                               </Badge>
                             )}
                           <Badge variant={connectionVariant}>
-                            {connectionLabel}
+                            {server.authorizationMode === "independent"
+                              ? t("pages.tools.authorizationModes.independent")
+                              : connectionLabel}
                           </Badge>
                           <Badge variant="outline">
                             {t("pages.tools.toolCount", {
@@ -1055,6 +840,13 @@ export function ToolsPage() {
         ))}
       </Tabs>
 
+      {credentialServer && (
+        <ConnectorCredentials
+          connector={credentialServer}
+          onClose={() => setCredentialServer(null)}
+          onChange={reload}
+        />
+      )}
       <Dialog
         open={viewingServer !== undefined}
         onOpenChange={(open) => {
@@ -1076,6 +868,46 @@ export function ToolsPage() {
             </DialogTitle>
           </DialogHeader>
 
+          {viewingServer?.authorizationMode === "independent" && (
+            <Field>
+              <FieldLabel htmlFor="tool-context">
+                {t("resources.selectCredential", { defaultValue: "选择凭证" })}
+              </FieldLabel>
+              <select
+                id="tool-context"
+                className="h-9 rounded-md border bg-background px-3"
+                value={contextID}
+                onChange={(e) => {
+                  const id = e.target.value
+                  setContextID(id)
+                  setToolDrafts([])
+                  if (id) void remote.run(() => loadTools(viewingServer, id))
+                }}
+              >
+                <option value="">
+                  {t("resources.selectCredential", {
+                    defaultValue: "选择凭证",
+                  })}
+                </option>
+                {contexts.map((credential) => (
+                  <option key={credential.id} value={credential.id}>
+                    {[
+                      credential.name,
+                      credential.user?.name || credential.user?.email,
+                      credential.id,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <ResourceNotice
+            error={remote.error}
+            pending={remote.pending}
+            loading={false}
+          />
           <div className="max-h-[min(60dvh,36rem)] overflow-y-auto rounded-md border">
             <Table>
               <TableHeader>
@@ -1084,7 +916,7 @@ export function ToolsPage() {
                   <TableHead className="w-24 text-center">
                     {t("pages.tools.toolEnabled")}
                   </TableHead>
-                  {Boolean(viewingServer) && (
+                  {viewingServer?.authorizationMode === "centralized" && (
                     <TableHead className="w-36">
                       {t("pages.tools.pointsPerCall")}
                     </TableHead>
@@ -1121,7 +953,7 @@ export function ToolsPage() {
                         }
                       />
                     </TableCell>
-                    {Boolean(viewingServer) && (
+                    {viewingServer?.authorizationMode === "centralized" && (
                       <TableCell>
                         <Input
                           aria-label={t("pages.tools.pointsFor", {
@@ -1148,7 +980,7 @@ export function ToolsPage() {
           </div>
 
           <ResourceNotice
-            error={remote.error || subjects.error || providerError}
+            error={remote.error || subjects.error}
             loading={false}
             pending={remote.pending}
           />

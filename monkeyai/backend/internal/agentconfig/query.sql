@@ -45,7 +45,6 @@ WHERE
 GROUP BY
     resource_type,
     resource_id;
-
 -- name: ListModels :many
 SELECT
     jsonb_build_object('id', id, 'ownership_type', ownership_type, 'owner_user_id', owner_user_id, 'enabled', enabled)
@@ -53,7 +52,6 @@ FROM
     models
 WHERE
     deleted_at IS NULL;
-
 -- name: IsAdmin :one
 SELECT
     ROLE = 'admin'
@@ -63,16 +61,6 @@ WHERE
     id = $1
     AND status = 'active'
     AND deleted_at IS NULL;
-
--- name: CredentialCurrent :one
-SELECT
-    oauth_expires_at IS NULL
-    OR oauth_expires_at > now()
-FROM
-    connector_credentials
-WHERE
-    id = $1;
-
 -- name: ListSkillTags :many
 SELECT
     jsonb_build_object('id', t.id, 'name', t.name)
@@ -85,7 +73,6 @@ WHERE
     AND t.deleted_at IS NULL
 ORDER BY
     t.id;
-
 -- name: CatalogRules :many
 SELECT
     to_jsonb (t)
@@ -93,7 +80,6 @@ FROM
     rules t
 WHERE
     deleted_at IS NULL;
-
 -- name: CatalogSkills :many
 SELECT
     to_jsonb (t)
@@ -101,7 +87,6 @@ FROM
     skills t
 WHERE
     deleted_at IS NULL;
-
 -- name: CatalogExperts :many
 SELECT
     to_jsonb (t)
@@ -109,7 +94,6 @@ FROM
     experts t
 WHERE
     deleted_at IS NULL;
-
 -- name: CatalogConnectors :many
 SELECT
     to_jsonb (t)
@@ -117,15 +101,6 @@ FROM
     connectors t
 WHERE
     deleted_at IS NULL;
-
--- name: CatalogProviders :many
-SELECT
-    to_jsonb (t)
-FROM
-    connector_providers t
-WHERE
-    deleted_at IS NULL;
-
 -- name: CatalogRuleLinks :many
 SELECT
     to_jsonb (t)
@@ -133,7 +108,6 @@ FROM
     expert_rules t
 ORDER BY
     expert_id;
-
 -- name: CatalogSkillLinks :many
 SELECT
     to_jsonb (t)
@@ -141,11 +115,10 @@ FROM
     expert_skills t
 ORDER BY
     expert_id;
-
--- name: CatalogProviderLinks :many
+-- name: CatalogConnectorLinks :many
 SELECT
     to_jsonb (t)
 FROM
-    expert_connector_providers t
+    expert_connectors t
 ORDER BY
     expert_id;

@@ -80,15 +80,32 @@ export const enUS = {
   },
 
   resources: {
-    providerIcon:
-      "Template icon (PNG/JPEG, up to 1 MiB; shared by template connections)",
+    credentials: "Manage credentials",
+    selectCredential: "Select a credential",
+    credentialTestPassed: "Credential saved. Connection test passed.",
+    credentialSaved: "Credential saved.",
+    authorizationFailed: "Authorization failed or expired. Start again.",
+    headerDuplicate: "Header names must be nonempty and unique.",
+    credentialNameHint:
+      "Choose a name to identify this credential. It does not verify the upstream account.",
+    credentialName: "Credential name",
+    replaceHeaders:
+      "Replace all headers (leave unchecked to keep existing values)",
+    addHeader: "Add header",
+    reauthorizeHint:
+      "Reauthorization replaces this credential and refreshes its tool catalog.",
+    continueAuthorization: "Continue authorization",
+    waitAuthorization: "Waiting for authorization…",
+    revokeCredential: "Revoke credential",
+    headerName: "Header {{index}} name",
+    headerValue: "Header {{index}} value",
+
+    connectorIcon: "Connection icon (PNG/JPEG, up to 1 MiB)",
     skillContent: "Skill instructions",
     downloadPackage: "Download skill package",
-    providerTemplate: "Connection template",
-    newProvider: "Create a connection template",
     enable: "Enable connection",
     disable: "Disable connection",
-    requiredProvider: "This service is required",
+    requiredConnector: "This service is required",
     allowTools: "Allowed tools, comma separated; empty allows all",
     denyTools: "Denied tools, comma separated",
     loading: "Loading…",
@@ -656,7 +673,7 @@ export const enUS = {
       notAuthorized: "Authorization required",
       connectAndAuthorize: "Connect and authorize",
       reauthorize: "Reauthorize",
-      httpHeaders: "HTTP Header (JSON)",
+      httpHeaders: "HTTP Header",
       httpHeadersDefaultValue: '{\n  "Authorization": "Bearer xxx"\n}',
       httpHeadersUpdatePlaceholder: "Leave blank to keep the saved HTTP Header",
       httpHeadersDescription:

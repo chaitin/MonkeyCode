@@ -116,6 +116,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	rules := rule.NewService(store)
 	skills := skill.NewService(store, storage)
 	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage)
+	go connectors.Run(ctx)
 	experts := expert.NewService(store)
 	resources := agentconfig.NewResources(store, connectors, skills)
 
